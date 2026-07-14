@@ -12,7 +12,7 @@ export type ToolId =
   | "stone_shovel"
   | "stone_sword";
 export type ArmorId = "leather_helmet" | "leather_chestplate" | "leather_leggings" | "leather_boots";
-export type ItemId = BlockId | "stick" | "leather" | ToolId | ArmorId;
+export type ItemId = BlockId | "stick" | "leather" | "wool" | "pork" | "beef" | "mutton" | "rotten_flesh" | ToolId | ArmorId;
 export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
 export type ToolTier = "none" | "wood" | "stone";
 export type ArmorSlot = "head" | "chest" | "legs" | "feet";
@@ -34,13 +34,14 @@ export type ItemDefinition = {
   label: string;
   shortLabel: string;
   description: string;
-  category: "block" | "material" | "tool" | "armor";
+  category: "block" | "material" | "tool" | "armor" | "food";
   maxStack: number;
   glyph: string;
   color: string;
   placesBlock?: BlockId;
   tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none">; attackDamage: number };
   armor?: { slot: ArmorSlot; protection: number };
+  food?: { hunger: number };
 };
 
 export type ItemStack = { itemId: ItemId; count: number };
@@ -91,6 +92,11 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   torch: blockItem("torch", "TCH", "♨"),
   stick: { id: "stick", label: "Stick", shortLabel: "STK", description: "A straight handle for simple tools.", category: "material", maxStack: 64, glyph: "╱", color: "#c09557" },
   leather: { id: "leather", label: "Leather", shortLabel: "LTH", description: "Tough hide used for lightweight armor.", category: "material", maxStack: 64, glyph: "◩", color: "#8d552f" },
+  wool: { id: "wool", label: "Wool", shortLabel: "WOL", description: "Soft sheep wool for beds and future textiles.", category: "material", maxStack: 64, glyph: "◌", color: "#ddd8c8" },
+  pork: foodItem("pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"),
+  beef: foodItem("beef", "Raw Beef", "BEF", 4, "Raw beef from a cow.", "◆", "#a9544d"),
+  mutton: foodItem("mutton", "Raw Mutton", "MTN", 3, "Raw mutton from a sheep.", "◇", "#b66b63"),
+  rotten_flesh: foodItem("rotten_flesh", "Rotten Flesh", "ROT", 1, "Unpleasant, but technically edible.", "✦", "#756d3e"),
   wooden_pickaxe: toolItem("wooden_pickaxe", "Wood Pickaxe", "W·PX", "pickaxe", "wood", "A light pick for fieldstone.", "⌁", "#b7874d"),
   wooden_axe: toolItem("wooden_axe", "Wood Axe", "W·AX", "axe", "wood", "A rough axe for timber.", "◒", "#b7874d"),
   wooden_shovel: toolItem("wooden_shovel", "Wood Shovel", "W·SH", "shovel", "wood", "A broad wooden spade for earth.", "♠", "#b7874d"),
@@ -118,6 +124,10 @@ function toolItem(id: ToolId, label: string, shortLabel: string, kind: Exclude<T
 
 function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSlot, protection: number, description: string, glyph: string): ItemDefinition {
   return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color: "#9b6339", armor: { slot, protection } };
+}
+
+function foodItem(id: "pork" | "beef" | "mutton" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
+  return { id, label, shortLabel, description, category: "food", maxStack: 64, glyph, color, food: { hunger } };
 }
 
 export const RECIPES: readonly Recipe[] = [

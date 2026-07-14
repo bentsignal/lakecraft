@@ -2,6 +2,9 @@ export type MobKind = "pig" | "cow" | "sheep" | "zombie";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase";
 export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh";
 
+/** Combat currently exists only in one browser simulation and is never persisted. */
+export const MOB_COMBAT_AUTHORITY = "client-only" as const;
+
 export interface MobDropDefinition {
   itemId: MobDropId;
   minCount: number;
@@ -16,6 +19,8 @@ export interface MobDefinition {
   moveSpeed: number;
   chaseSpeed: number;
   collisionRadius: number;
+  /** Generous crosshair hit radius; quadruped models are longer than their collision footprint. */
+  targetRadius: number;
   height: number;
   contactDamage: number;
   attackCooldownSeconds: number;
@@ -30,6 +35,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 1.15,
     chaseSpeed: 1.15,
     collisionRadius: 0.45,
+    targetRadius: 0.62,
     height: 0.9,
     contactDamage: 0,
     attackCooldownSeconds: 0,
@@ -42,6 +48,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 1,
     chaseSpeed: 1,
     collisionRadius: 0.48,
+    targetRadius: 0.7,
     height: 1.35,
     contactDamage: 0,
     attackCooldownSeconds: 0,
@@ -57,6 +64,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 1.05,
     chaseSpeed: 1.05,
     collisionRadius: 0.44,
+    targetRadius: 0.68,
     height: 1.25,
     contactDamage: 0,
     attackCooldownSeconds: 0,
@@ -72,6 +80,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 0.9,
     chaseSpeed: 1.45,
     collisionRadius: 0.38,
+    targetRadius: 0.4,
     height: 1.8,
     contactDamage: 3,
     attackCooldownSeconds: 1,
@@ -122,6 +131,7 @@ export interface MobState extends MobSpawnDescriptor {
   hostileActive: boolean;
   randomState: number;
   damageSequence: number;
+  nextContactDamageAtSeconds: number;
 }
 
 export interface MobSimulation {
@@ -174,6 +184,17 @@ export interface MobDamageResult {
   remainingHealth: number;
   drops: MobDrop[];
 }
+
+export interface MobRayTarget {
+  id: string;
+  kind: MobKind;
+  distance: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export const MAX_CONTACT_DAMAGE_PER_TICK = 6;
 
 function hashUint(x: number, z: number, seed: number): number {
   let value = Math.imul(x ^ seed, 0x45d9f3b) ^ Math.imul(z + seed, 0x119de1f3);
@@ -286,6 +307,7 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
       hostileActive: false,
       randomState: spawn.behaviorSeed || 0x6d2b79f5,
       damageSequence: 0,
+      nextContactDamageAtSeconds: 0,
     };
   }
   return { elapsedSeconds: 0, tick: 0, mobs };
@@ -474,4 +496,112 @@ export function damageMob(simulation: MobSimulation, id: string, rawDamage: numb
   if (mob.health > 0) return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
   mob.alive = false;
   return { found: true, killed: true, remainingHealth: 0, drops: rollDrops(mob) };
+}
+
+function rayAxisInterval(
+  origin: number,
+  direction: number,
+  minimum: number,
+  maximum: number,
+  near: number,
+  far: number,
+): readonly [number, number] | null {
+  if (Math.abs(direction) < 1e-9) return origin >= minimum && origin <= maximum ? [near, far] : null;
+  let first = (minimum - origin) / direction;
+  let second = (maximum - origin) / direction;
+  if (first > second) {
+    const swap = first;
+    first = second;
+    second = swap;
+  }
+  const nextNear = Math.max(near, first);
+  const nextFar = Math.min(far, second);
+  return nextNear <= nextFar ? [nextNear, nextFar] : null;
+}
+
+/** Returns the nearest living mob intersected by a ray, without considering world-block occlusion. */
+export function raycastMobs(
+  origin: readonly [number, number, number],
+  rawDirection: readonly [number, number, number],
+  mobs: readonly MobState[],
+  reach = 6,
+): MobRayTarget | null {
+  const directionLength = Math.hypot(rawDirection[0], rawDirection[1], rawDirection[2]);
+  const maximumDistance = Number.isFinite(reach) ? Math.max(0, reach) : 6;
+  if (directionLength < 1e-9 || maximumDistance === 0) return null;
+  const directionX = rawDirection[0] / directionLength;
+  const directionY = rawDirection[1] / directionLength;
+  const directionZ = rawDirection[2] / directionLength;
+  let nearest: MobRayTarget | null = null;
+  let nearestDistance = maximumDistance;
+
+  for (let index = 0; index < mobs.length; index += 1) {
+    const mob = mobs[index];
+    if (!mob.alive) continue;
+    const definition = MOB_DEFINITIONS[mob.kind];
+    const radius = definition.targetRadius;
+    let near = 0;
+    let far = nearestDistance;
+    const xInterval = rayAxisInterval(origin[0], directionX, mob.x - radius, mob.x + radius, near, far);
+    if (!xInterval) continue;
+    near = xInterval[0]; far = xInterval[1];
+    const yInterval = rayAxisInterval(origin[1], directionY, mob.y, mob.y + definition.height, near, far);
+    if (!yInterval) continue;
+    near = yInterval[0]; far = yInterval[1];
+    const zInterval = rayAxisInterval(origin[2], directionZ, mob.z - radius, mob.z + radius, near, far);
+    if (!zInterval) continue;
+    near = zInterval[0];
+    if (near > nearestDistance) continue;
+    nearestDistance = near;
+    nearest = {
+      id: mob.id,
+      kind: mob.kind,
+      distance: near,
+      x: origin[0] + directionX * near,
+      y: origin[1] + directionY * near,
+      z: origin[2] + directionZ * near,
+    };
+  }
+  return nearest;
+}
+
+export function mobTargetHasClickPriority(mobDistance: number, blockDistance: number | null): boolean {
+  if (!Number.isFinite(mobDistance) || mobDistance < 0) return false;
+  return blockDistance === null || !Number.isFinite(blockDistance) || mobDistance <= blockDistance + 0.001;
+}
+
+/**
+ * Consumes cooldown-ready zombie contact hits and returns bounded aggregate damage.
+ * The mutation is local simulation state only; this alpha combat is not authoritative
+ * or synchronized through Lakebed.
+ */
+export function consumeMobContactDamage(
+  simulation: MobSimulation,
+  player: Readonly<MobTarget>,
+  nowSeconds: number,
+  isNight: boolean,
+  maximumDamage = MAX_CONTACT_DAMAGE_PER_TICK,
+): number {
+  if (!isNight || !Number.isFinite(nowSeconds)) return 0;
+  const damageLimit = Number.isFinite(maximumDamage) ? Math.max(0, maximumDamage) : MAX_CONTACT_DAMAGE_PER_TICK;
+  let damage = 0;
+  for (let index = 0; index < simulation.mobs.length; index += 1) {
+    const mob = simulation.mobs[index];
+    if (!mob.alive || mob.kind !== "zombie" || nowSeconds + 1e-9 < mob.nextContactDamageAtSeconds) continue;
+    const definition = MOB_DEFINITIONS[mob.kind];
+    const horizontalReach = definition.collisionRadius + 0.32;
+    const dx = player.x - mob.x;
+    const dz = player.z - mob.z;
+    if (dx * dx + dz * dz > horizontalReach * horizontalReach) continue;
+    if (player.y + 1.78 <= mob.y || mob.y + definition.height <= player.y) continue;
+    if (damage + definition.contactDamage > damageLimit) {
+      // The attempted contact is consumed even when the aggregate cap absorbs it,
+      // preventing a crowd from leaking queued hits across consecutive frames.
+      mob.nextContactDamageAtSeconds = nowSeconds + definition.attackCooldownSeconds;
+      continue;
+    }
+    damage += definition.contactDamage;
+    mob.nextContactDamageAtSeconds = nowSeconds + definition.attackCooldownSeconds;
+  }
+  return damage;
 }

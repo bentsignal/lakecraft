@@ -1,4 +1,5 @@
 import type { DayNightConfig } from "./dayNight.ts";
+import type { MobDrop } from "./mobs.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -85,6 +86,15 @@ export interface VoxelEngineOptions {
   onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId) => void;
   /** Seconds the primary action must be held before a block is mined. */
   getMiningDuration?: (block: BlockId) => number;
+  /**
+   * Client-authoritative alpha combat hooks. Mob health, damage, and drops are
+   * intentionally local-only and are not synchronized or persisted by Lakebed.
+   */
+  getAttackDamage?: () => number;
+  getPlayerProtection?: () => number;
+  onMobDrops?: (drops: readonly MobDrop[]) => void;
+  onPlayerDamage?: (amount: number) => void;
+  onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
   onPoseChange?: (pose: PlayerPose) => void;
   onTargetChange?: (target: BlockTarget | null) => void;
   onPointerLockChange?: (locked: boolean) => void;
@@ -102,4 +112,5 @@ export interface VoxelEngine {
   getTarget(): BlockTarget | null;
   getPerformanceStats(): VoxelPerformanceStats;
   requestPointerLock(): void;
+  respawn(): void;
 }

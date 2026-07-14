@@ -20,8 +20,12 @@ import {
 } from "./dayNight.ts";
 import { createMobRenderer } from "./mobRenderer.ts";
 import {
+  consumeMobContactDamage,
   createMobSimulation,
   createMobSpawns,
+  damageMob,
+  mobTargetHasClickPriority,
+  raycastMobs,
   stepMobSimulation,
   writeMobPoseSnapshots,
   type MobPoseSnapshot,
@@ -38,6 +42,8 @@ import {
 } from "./types.ts";
 
 type Vec3 = [number, number, number];
+
+export const PLAYER_MAX_HEALTH = 20;
 
 interface ChunkMesh {
   buffer: WebGLBuffer;
@@ -581,6 +587,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastMobSimulationMs = 0;
   let mobAccumulatorSeconds = 0;
   const mobStepSeconds = 0.1;
+  let playerHealth = PLAYER_MAX_HEALTH;
   let lastPerformanceSent = 0;
   let activeTorchLights = 0;
   let lastTorchSelectionAt = -Infinity;
@@ -756,9 +763,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     mobAccumulatorSeconds = Math.min(0.3, mobAccumulatorSeconds + dt);
     let steps = 0;
     while (mobAccumulatorSeconds >= mobStepSeconds && steps < 3) {
+      const isNight = dayNightState.label === "night" || dayNightState.label === "dusk";
       stepMobSimulation(mobSimulation, {
         dtSeconds: mobStepSeconds,
-        isNight: dayNightState.label === "night" || dayNightState.label === "dusk",
+        isNight,
         terrainHeight: (x, z) => terrainHeight(x, z, seed),
         player: pose,
         canOccupy: mobCanOccupy,
@@ -766,6 +774,23 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       });
       mobAccumulatorSeconds -= mobStepSeconds;
       steps += 1;
+      if (playerHealth > 0) {
+        const contactDamage = consumeMobContactDamage(
+          mobSimulation,
+          pose,
+          mobSimulation.elapsedSeconds,
+          isNight,
+        );
+        if (contactDamage > 0) {
+          const rawProtection = options.getPlayerProtection?.() ?? 0;
+          const protection = Number.isFinite(rawProtection) ? Math.max(0, Math.min(20, rawProtection)) : 0;
+          const mitigatedDamage = Math.max(1, contactDamage - Math.floor(protection / 2));
+          const appliedDamage = Math.min(playerHealth, mitigatedDamage);
+          playerHealth -= appliedDamage;
+          options.onPlayerDamage?.(appliedDamage);
+          options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+        }
+      }
     }
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     lastMobSimulationMs = performance.now() - startedAt;
@@ -1041,14 +1066,30 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return pose.x + 0.29 > x && pose.x - 0.29 < x + 1 && pose.y + 1.78 > y && pose.y < y + 1 && pose.z + 0.29 > z && pose.z - 0.29 < z + 1;
   }
 
+  function attackMobUnderCrosshair(): boolean {
+    const eye: Vec3 = [pose.x, pose.y + 1.62, pose.z];
+    const mobTarget = raycastMobs(eye, direction(), mobSimulation.mobs, options.reach ?? 6);
+    // A solid voxel hit closer to the camera occludes the mob.
+    if (!mobTarget || !mobTargetHasClickPriority(mobTarget.distance, target?.distance ?? null)) return false;
+    const rawDamage = options.getAttackDamage?.() ?? 1;
+    const attackDamage = Number.isFinite(rawDamage) ? Math.max(0, Math.min(100, rawDamage)) : 1;
+    const result = damageMob(mobSimulation, mobTarget.id, attackDamage);
+    if (!result.found) return false;
+    clearMining();
+    writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    if (result.killed && result.drops.length) options.onMobDrops?.(result.drops);
+    return true;
+  }
+
   function onMouseDown(event: MouseEvent): void {
     event.preventDefault();
     if (document.pointerLockElement !== canvas) {
       canvas.requestPointerLock();
       return;
     }
-    if (!target) return;
     if (event.button === 0) {
+      if (attackMobUnderCrosshair()) return;
+      if (!target) return;
       if (miningTimer) return;
       const mined = { ...target.block };
       const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
@@ -1063,6 +1104,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         }, duration * 1_000);
       }
     } else if (event.button === 2 && selectedBlock !== BLOCK.AIR) {
+      if (!target) return;
       const { x, y, z } = target.place;
       if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) emitEdit({ x, y, z, block: selectedBlock });
     }
@@ -1097,6 +1139,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.addEventListener("mouseup", onMouseUp);
       canvas.addEventListener("contextmenu", onContextMenu);
       options.onPoseChange?.({ ...pose });
+      options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       frameId = requestAnimationFrame(frame);
     },
     destroy() {
@@ -1147,5 +1190,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },
     getPerformanceStats,
     requestPointerLock() { canvas.requestPointerLock(); },
+    respawn() {
+      pose.x = 0.5;
+      pose.y = startY;
+      pose.z = 0.5;
+      pose.yaw = 0;
+      pose.pitch = -0.08;
+      velocity[0] = 0;
+      velocity[1] = 0;
+      velocity[2] = 0;
+      playerHealth = PLAYER_MAX_HEALTH;
+      poseDirty = true;
+      options.onPoseChange?.({ ...pose });
+      options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+    },
   };
 }

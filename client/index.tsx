@@ -17,12 +17,14 @@ import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lob
 import {
   ITEMS,
   addItem,
+  attackDamage,
   clampHotbarIndex,
   craftRecipe,
   createEmptyEquipment,
   createSerializablePlayerState,
   createStarterInventory,
   equipArmorFromInventory,
+  equippedArmorProtection,
   getMiningDrop,
   miningSeconds,
   normalizeEquipment,
@@ -186,6 +188,7 @@ export function App() {
   const lastPresenceSentRef = useRef(0);
   const targetRef = useRef<BlockTarget | null>(null);
   const inventoryRef = useRef<Inventory>(createStarterInventory());
+  const equipmentRef = useRef<Equipment>(createEmptyEquipment());
   const selectedRef = useRef(2);
   const hydratedRef = useRef(false);
   const hydratedUserRef = useRef("");
@@ -214,6 +217,7 @@ export function App() {
   const [lastSeenChatCount, setLastSeenChatCount] = useState(0);
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [showPerformance, setShowPerformance] = useState(false);
+  const [playerHealth, setPlayerHealth] = useState(20);
 
   function notify(text: string, detail?: string, tone: HudMessage["tone"] = "info") {
     const id = `note-${++toastCounter.current}`;
@@ -266,10 +270,11 @@ export function App() {
 
   useEffect(() => {
     inventoryRef.current = inventory;
+    equipmentRef.current = equipment;
     selectedRef.current = selectedHotbar;
     const selected = inventory[selectedHotbar];
     engineRef.current?.setSelectedBlock(selected ? ITEM_TO_ENGINE[selected.itemId] ?? BLOCK.AIR : BLOCK.AIR);
-  }, [inventory, selectedHotbar]);
+  }, [inventory, selectedHotbar, equipment]);
 
   useEffect(() => {
     if (!auth.isAuthenticated || auth.isGuest || hydratedUserRef.current === auth.userId || savedInventory === undefined) return;
@@ -311,6 +316,29 @@ export function App() {
           const gameBlock = ENGINE_TO_GAME[block];
           const heldItem = inventoryRef.current[selectedRef.current]?.itemId;
           return gameBlock ? miningSeconds(gameBlock, heldItem) : 0.2;
+        },
+        getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
+        getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
+        onMobDrops: (drops) => {
+          let next = inventoryRef.current;
+          const collected: string[] = [];
+          for (const drop of drops) {
+            if (!(drop.itemId in ITEMS)) continue;
+            const itemId = drop.itemId as ItemId;
+            const added = addItem(next, itemId, drop.count);
+            next = added.inventory;
+            if (drop.count > added.remainder) collected.push(`${drop.count - added.remainder} ${ITEMS[itemId].label}`);
+          }
+          updateInventory(next);
+          if (collected.length) notify("Mob drops collected", collected.join(" · "), "success");
+        },
+        onPlayerDamage: (amount) => notify("Zombie hit", `${amount} health lost.`, "warning"),
+        onPlayerHealthChange: (health) => {
+          setPlayerHealth(health);
+          if (health <= 0) {
+            notify("You were overwhelmed", "Respawning at the trailhead…", "warning");
+            window.setTimeout(() => engineRef.current?.respawn(), 900);
+          }
         },
         onBlockEdit: handleBlockEdit,
         onPoseChange: (pose) => {
@@ -610,6 +638,7 @@ export function App() {
       <GameHud
         connected={connected}
         equipment={equipment}
+        health={playerHealth}
         inventory={inventory}
         inventoryOpen={inventoryOpen}
         messages={messages}

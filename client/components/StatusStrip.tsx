@@ -5,6 +5,8 @@ export type StatusStripProps = {
   onlineCount?: number;
   latencyMs?: number | null;
   connected?: boolean;
+  health?: number;
+  maxHealth?: number;
 };
 
 export function StatusStrip({
@@ -14,6 +16,8 @@ export function StatusStrip({
   onlineCount = 1,
   latencyMs = null,
   connected = true,
+  health = 20,
+  maxHealth = 20,
 }: StatusStripProps) {
   return (
     <header className="lc-status" aria-label="World and connection status">
@@ -25,6 +29,9 @@ export function StatusStrip({
         <span className="lc-kicker">current survey</span>
         <strong>{worldName}</strong>
         <span className="lc-status__room">ROOM / {roomCode}</span>
+      </div>
+      <div className="lc-status__health" aria-label={`${Math.max(0, health)} of ${maxHealth} health`}>
+        <span>HEALTH</span><strong>{Array.from({ length: 10 }, (_, index) => index * 2 < health ? "♥" : "♡").join("")}</strong>
       </div>
       <div className="lc-status__presence">
         <span className={`lc-signal${connected ? " is-online" : ""}`} aria-hidden="true" />
