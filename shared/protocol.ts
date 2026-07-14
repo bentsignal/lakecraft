@@ -8,7 +8,10 @@ export const BLOCK_TYPES = [
   "planks",
   "crafting_table",
   "torch",
-  "chest"
+  "chest",
+  "door_closed",
+  "door_open",
+  "bed"
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];

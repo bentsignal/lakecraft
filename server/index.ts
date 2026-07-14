@@ -11,8 +11,19 @@ import {
   validateChestCoordinate,
   validateChestInventoryJson
 } from "../shared/chests";
+import {
+  ACTIVE_PLAYER_WINDOW_MS,
+  MAX_SLEEP_PARTICIPANTS,
+  MORNING_PHASE,
+  SLEEP_VOTE_FRESH_MS,
+  WORLD_CLOCK_KEY,
+  morningClockSnapshot,
+  sleepVoteStatus,
+  validateSleepCoordinate,
+  worldClockSnapshot
+} from "../shared/sleep";
 
-const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest"];
+const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest", "bed", "door_closed", "door_open"];
 
 function boundedInteger(value: string, minimum: number, maximum: number): number | null {
   if (!/^-?\d{1,4}$/.test(value.trim())) return null;
@@ -85,7 +96,23 @@ export default capsule({
       sentAt: string()
     })
       .index("by_sent_at", ["sentAt"])
-      .index("by_user_sent_at", ["userId", "sentAt"])
+      .index("by_user_sent_at", ["userId", "sentAt"]),
+
+    /** Singleton-like shared day/night origin, addressed by WORLD_CLOCK_KEY. */
+    worldClock: table({
+      clockKey: string(),
+      epochMs: string(),
+      epochPhase: string()
+    }).index("by_key", ["clockKey"]),
+
+    /** One current vote per authenticated user; stale rows are pruned on each vote. */
+    sleepVotes: table({
+      userId: string(),
+      coordKey: string(),
+      votedAt: string()
+    })
+      .index("by_user", ["userId"])
+      .index("by_voted_at", ["votedAt"])
   },
 
   queries: {
@@ -164,6 +191,15 @@ export default capsule({
         .order("desc")
         .take(RECENT_CHAT_LIMIT);
       return newest.reverse();
+    }),
+
+    worldClock: query(async (ctx) => {
+      const serverNow = Date.now();
+      const clock = await ctx.db.worldClock
+        .withIndex("by_key", (q) => q.eq("clockKey", WORLD_CLOCK_KEY))
+        .order("desc")
+        .first();
+      return worldClockSnapshot(clock, serverNow);
     })
   },
 
@@ -342,6 +378,86 @@ export default capsule({
         ? await ctx.db.chests.update(existing.id, value)
         : await ctx.db.chests.insert(value);
       return { ok: true, chest };
+    }),
+
+    sleepInBed: mutation(async (ctx, rawCoordKey: string) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
+      }
+      const coordinate = validateSleepCoordinate(rawCoordKey);
+      if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
+      const bed = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .order("desc")
+        .first();
+      if (!bed || bed.blockType !== "bed") return { ok: false, reason: "bed_required" };
+
+      const serverNow = Date.now();
+      const activeSince = String(serverNow - ACTIVE_PLAYER_WINDOW_MS);
+      const presences = await ctx.db.playerPresence
+        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", activeSince))
+        .order("desc")
+        .take(MAX_SLEEP_PARTICIPANTS);
+      const preVoteStatus = sleepVoteStatus(presences, [], serverNow);
+      if (!preVoteStatus.activePlayerIds.includes(ctx.auth.userId)) {
+        return { ok: false, reason: "active_presence_required" };
+      }
+
+      const staleBefore = String(serverNow - SLEEP_VOTE_FRESH_MS);
+      const staleVotes = await ctx.db.sleepVotes
+        .withIndex("by_voted_at", (q) => q.lt("votedAt", staleBefore))
+        .order("asc")
+        .take(MAX_SLEEP_PARTICIPANTS);
+      for (const staleVote of staleVotes) await ctx.db.sleepVotes.delete(staleVote.id);
+
+      const existingVote = await ctx.db.sleepVotes
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const voteValue = {
+        userId: ctx.auth.userId,
+        coordKey: coordinate.coordKey,
+        votedAt: String(serverNow)
+      };
+      if (existingVote) await ctx.db.sleepVotes.update(existingVote.id, voteValue);
+      else await ctx.db.sleepVotes.insert(voteValue);
+
+      const votes = await ctx.db.sleepVotes
+        .withIndex("by_voted_at", (q) => q.gte("votedAt", staleBefore))
+        .order("desc")
+        .take(MAX_SLEEP_PARTICIPANTS);
+      const status = sleepVoteStatus(presences, votes, serverNow);
+      if (!status.reached) {
+        return {
+          ok: true,
+          slept: false,
+          activePlayers: status.activePlayers,
+          sleepingPlayers: status.sleepingPlayers,
+          requiredPlayers: status.requiredPlayers
+        };
+      }
+
+      const existingClock = await ctx.db.worldClock
+        .withIndex("by_key", (q) => q.eq("clockKey", WORLD_CLOCK_KEY))
+        .order("desc")
+        .first();
+      const clockValue = {
+        clockKey: WORLD_CLOCK_KEY,
+        epochMs: String(serverNow),
+        epochPhase: String(MORNING_PHASE)
+      };
+      if (existingClock) await ctx.db.worldClock.update(existingClock.id, clockValue);
+      else await ctx.db.worldClock.insert(clockValue);
+      for (const vote of votes) await ctx.db.sleepVotes.delete(vote.id);
+
+      return {
+        ok: true,
+        slept: true,
+        activePlayers: status.activePlayers,
+        sleepingPlayers: status.sleepingPlayers,
+        requiredPlayers: status.requiredPlayers,
+        clock: morningClockSnapshot(serverNow)
+      };
     }),
 
     claimUsername: mutation(async (ctx, requestedUsername: string) => {

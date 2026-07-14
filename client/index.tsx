@@ -55,6 +55,7 @@ import {
   type PlayerPresence,
   type WorldEdit,
 } from "../shared/protocol";
+import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep";
 
 const APP_CSS = `
 html, body, #app { height: 100%; margin: 0; overflow: hidden; }
@@ -76,10 +77,19 @@ button { -webkit-tap-highlight-color: transparent; }
 .lakecraft-error { background: #171a16; color: #e6dcc1; display: grid; inset: 0; padding: 40px; place-content: center; position: absolute; z-index: 120; }
 .lakecraft-error strong { color: #d49a45; font: 700 16px "Courier New", monospace; }.lakecraft-error p { max-width: 560px; }
 .lakecraft-perf { background: rgba(9,12,9,.88); border-left: 3px solid #91ae58; color: #dce7c4; font: 11px/1.45 "Courier New", monospace; left: 14px; padding: 9px 11px; pointer-events: none; position: absolute; top: 14px; white-space: pre; z-index: 70; }
+.lakecraft-sleep-layer { align-items: center; background: rgba(7,10,17,.76); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 67; }
+.lakecraft-sleep { background: #d9cfb3; border-top: 7px solid #8f3e3e; box-shadow: 12px 14px 0 rgba(42,49,66,.5), 0 28px 90px rgba(0,0,0,.58); color: #24261f; max-width: 430px; padding: 30px; width: 100%; }
+.lakecraft-sleep small { color: #8f3e3e; font: 10px "Courier New", monospace; letter-spacing: .12em; text-transform: uppercase; }
+.lakecraft-sleep h2 { font: 900 34px/1 "Trebuchet MS", sans-serif; margin: 12px 0; text-transform: uppercase; }
+.lakecraft-sleep p { font: 12px/1.6 "Courier New", monospace; min-height: 3.2em; }
+.lakecraft-sleep__actions { display: grid; gap: 8px; grid-template-columns: 1fr auto; margin-top: 20px; }
+.lakecraft-sleep button { background: #24261f; border: 0; color: #e6dcc1; cursor: pointer; font: 800 11px "Trebuchet MS", sans-serif; letter-spacing: .08em; padding: 13px 15px; text-transform: uppercase; }
+.lakecraft-sleep button:disabled { cursor: progress; opacity: .58; }
+.lakecraft-sleep button:last-child { background: transparent; color: #24261f; outline: 1px solid rgba(36,38,31,.4); }
 @media (max-width: 700px) { .lakecraft-entry__card { padding: 27px 24px; }.lakecraft-entry h1 { font-size: 48px; } }
 `;
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "wood" | "leaves" | "planks" | "crafting_table" | "torch" | "chest"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "wood" | "leaves" | "planks" | "crafting_table" | "torch" | "chest" | "door_closed" | "door_open" | "bed"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -90,6 +100,9 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.CRAFTING_TABLE]: "crafting_table",
   [BLOCK.TORCH]: "torch",
   [BLOCK.CHEST]: "chest",
+  [BLOCK.DOOR_CLOSED]: "door_closed",
+  [BLOCK.DOOR_OPEN]: "door_open",
+  [BLOCK.BED]: "bed",
 };
 
 const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
@@ -104,6 +117,9 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   crafting_table: BLOCK.CRAFTING_TABLE,
   torch: BLOCK.TORCH,
   chest: BLOCK.CHEST,
+  door_closed: BLOCK.DOOR_CLOSED,
+  door_open: BLOCK.DOOR_OPEN,
+  bed: BLOCK.BED,
 };
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
@@ -116,6 +132,9 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.CRAFTING_TABLE]: "crafting_table",
   [BLOCK.TORCH]: "torch",
   [BLOCK.CHEST]: "chest",
+  [BLOCK.DOOR_CLOSED]: "door",
+  [BLOCK.DOOR_OPEN]: "door",
+  [BLOCK.BED]: "bed",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -128,6 +147,8 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   crafting_table: BLOCK.CRAFTING_TABLE,
   torch: BLOCK.TORCH,
   chest: BLOCK.CHEST,
+  door: BLOCK.DOOR_CLOSED,
+  bed: BLOCK.BED,
 };
 
 function playerColor(id: string): string {
@@ -180,6 +201,7 @@ export function App() {
   const profile = useQuery<Profile | null>("myProfile");
   const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
   const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
+  const worldClock = useQuery<WorldClockSnapshot>("worldClock");
 
   const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
@@ -189,6 +211,7 @@ export function App() {
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
   const saveChest = useMutation<[coordKey: string, inventoryJson: string, expectedUpdatedAt: string], SaveChestResult>("saveChest");
+  const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
@@ -231,6 +254,9 @@ export function App() {
   const [chestToken, setChestToken] = useState("");
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
+  const [activeBedKey, setActiveBedKey] = useState("");
+  const [sleepBusy, setSleepBusy] = useState(false);
+  const [sleepStatus, setSleepStatus] = useState("Rest until every active explorer is in bed, then Lakebed will move the shared clock to morning.");
 
   function notify(text: string, detail?: string, tone: HudMessage["tone"] = "info") {
     const id = `note-${++toastCounter.current}`;
@@ -324,6 +350,12 @@ export function App() {
     try {
       const engine = createVoxelEngine(canvas, {
         worldRadius: 18,
+        dayNight: worldClock ? {
+          cycleLengthMs: worldClock.cycleLengthMs,
+          epochMs: worldClock.epochMs,
+          epochPhase: worldClock.epochPhase,
+        } : undefined,
+        serverTimeOffsetMs: worldClock ? worldClock.serverNow - Date.now() : 0,
         selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
         getMiningDuration: (block) => {
           const gameBlock = ENGINE_TO_GAME[block];
@@ -362,12 +394,18 @@ export function App() {
         onPointerLockChange: setPointerLocked,
         onInteractBlock: (target) => {
           const key = blockCoordinateKey(target.block.x, target.block.y, target.block.z);
-          setActiveChestKey(key);
-          setChestBusy(true);
-          setChestError("");
           setInventoryOpen(false);
           setChatOpen(false);
           if (document.pointerLockElement) document.exitPointerLock();
+          if (target.block.block === BLOCK.BED) {
+            setActiveBedKey(key);
+            setSleepStatus("Checking the shared night watch with Lakebed…");
+            void handleSleepInBed(key);
+            return true;
+          }
+          setActiveChestKey(key);
+          setChestBusy(true);
+          setChestError("");
           return true;
         },
         onPerformanceStats: setPerformanceStats,
@@ -382,6 +420,15 @@ export function App() {
       setEngineError(error instanceof Error ? error.message : "Unable to start the WebGL world.");
     }
   }, [inWorld, inventoryReady]);
+
+  useEffect(() => {
+    if (!worldClock) return;
+    engineRef.current?.setDayNightClock({
+      cycleLengthMs: worldClock.cycleLengthMs,
+      epochMs: worldClock.epochMs,
+      epochPhase: worldClock.epochPhase,
+    }, worldClock.serverNow - Date.now());
+  }, [worldClock]);
 
   useEffect(() => {
     engineRef.current?.applyWorldEdits(toEngineEdits(worldEvents));
@@ -455,10 +502,11 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!inWorld) return;
-      if (activeChestKey) {
+      if (activeChestKey || activeBedKey) {
         if (event.code === "Escape" || event.code === "KeyE") {
           event.preventDefault();
           setActiveChestKey("");
+          setActiveBedKey("");
           setChestError("");
         }
         return;
@@ -496,7 +544,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inWorld, activeChestKey, chatOpen, inventoryOpen, chatEvents.length]);
+  }, [inWorld, activeChestKey, activeBedKey, chatOpen, inventoryOpen, chatEvents.length]);
 
   const activePlayers = activePlayerPresences(presenceEvents);
 
@@ -581,6 +629,40 @@ export function App() {
       setConnected(false);
       setChestError("Chest save lost contact with Lakebed. No items were moved.");
     }).finally(() => setChestBusy(false));
+  }
+
+  function handleSleepInBed(coordKey = activeBedKey) {
+    if (!coordKey || sleepBusy) return;
+    setSleepBusy(true);
+    setSleepStatus("Checking the shared night watch with Lakebed…");
+    void sleepInBed(coordKey).then((result) => {
+      setConnected(true);
+      if (!result.ok) {
+        const detail = result.reason === "active_presence_required"
+          ? "Wait for your multiplayer presence to connect, then try again."
+          : result.reason === "bed_required"
+            ? "That bed was moved before the sleep vote reached Lakebed."
+            : result.reason === "authentication_required"
+              ? "Sign in again before sleeping in the shared world."
+              : "Lakebed rejected that bed coordinate.";
+        setSleepStatus(detail);
+        return;
+      }
+      if (result.slept && result.clock) {
+        engineRef.current?.setDayNightClock({
+          cycleLengthMs: result.clock.cycleLengthMs,
+          epochMs: result.clock.epochMs,
+          epochPhase: result.clock.epochPhase,
+        }, result.clock.serverNow - Date.now());
+        setSleepStatus("Morning reached. Every connected explorer agreed to skip the night.");
+        notify("Dawn breaks over Fern Hollow", "The shared Lakebed clock advanced to morning.", "success");
+      } else {
+        setSleepStatus(`${result.sleepingPlayers} of ${result.requiredPlayers} active explorer${result.requiredPlayers === 1 ? "" : "s"} in bed. Waiting for the rest…`);
+      }
+    }).catch(() => {
+      setConnected(false);
+      setSleepStatus("The sleep vote lost contact with Lakebed. Try again.");
+    }).finally(() => setSleepBusy(false));
   }
 
   function handleUsernameClaim(value: string) {
@@ -730,7 +812,7 @@ export function App() {
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
       <div className="lakecraft-vignette" />
 
-      {!pointerLocked && !inventoryOpen && !chatOpen && !activeChestKey && !engineError ? (
+      {!pointerLocked && !inventoryOpen && !chatOpen && !activeChestKey && !activeBedKey && !engineError ? (
         <section className="lakecraft-entry" aria-label="Enter Lakecraft">
           <div className="lakecraft-entry__card">
             <span className="lakecraft-entry__eyebrow">survey 01 / shared world online</span>
@@ -762,7 +844,7 @@ export function App() {
         playerName={profile?.username ?? auth.displayName}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}
-        showControls={showControls && !inventoryOpen && !chatOpen && !activeChestKey}
+        showControls={showControls && !inventoryOpen && !chatOpen && !activeChestKey && !activeBedKey}
         worldName="Fern Hollow"
       />
 
@@ -780,6 +862,20 @@ export function App() {
         playerInventory={inventory}
         status={chestBusy ? "Saving this transfer through Lakebed…" : "Shared storage is current."}
       />
+
+      {activeBedKey ? (
+        <div className="lakecraft-sleep-layer" onMouseDown={(event) => event.target === event.currentTarget && !sleepBusy && setActiveBedKey("")}>
+          <section className="lakecraft-sleep" role="dialog" aria-modal="true" aria-labelledby="lakecraft-sleep-title">
+            <small>shared Lakebed sleep vote</small>
+            <h2 id="lakecraft-sleep-title">Rest until morning</h2>
+            <p role="status">{sleepStatus}</p>
+            <div className="lakecraft-sleep__actions">
+              <button disabled={sleepBusy} onClick={() => handleSleepInBed()} type="button">{sleepBusy ? "Contacting Lakebed…" : "Vote to sleep"}</button>
+              <button disabled={sleepBusy} onClick={() => setActiveBedKey("")} type="button">Close · E</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       <ChatOverlay
         connected={connected}

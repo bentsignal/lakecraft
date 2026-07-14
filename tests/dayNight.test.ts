@@ -6,6 +6,7 @@ import {
   timeToMorningMs,
   type DayNightConfig,
 } from "../client/game/dayNight.ts";
+import { applyDayNightClockUpdate } from "../client/game/voxelEngine.ts";
 
 const config: DayNightConfig = {
   cycleLengthMs: 1_000,
@@ -57,6 +58,12 @@ assert.equal(timeToMorningMs(10_250, config), 0);
 assert.equal(timeToMorningMs(10_000, config), 250);
 assert.equal(timeToMorningMs(10_500, config), 750);
 assert.equal(timeToMorningMs(9_750, config), 500);
+
+const mutableClock = { ...config };
+assert.equal(applyDayNightClockUpdate(mutableClock, { epochMs: 20_000, epochPhase: 0.25 }, 0, 125), 125);
+assert.deepEqual(mutableClock, { ...config, epochMs: 20_000, epochPhase: 0.25 });
+assert.equal(applyDayNightClockUpdate(mutableClock, { cycleLengthMs: -1 }, 125, Number.NaN), 125);
+assert.equal(mutableClock.cycleLengthMs, config.cycleLengthMs, "invalid clock updates should be ignored");
 
 for (const value of [noon, justBeforeWrap, atWrap, dawnA, dawnB, dawnC]) {
   for (const channel of [value.skyR, value.skyG, value.skyB, value.fogR, value.fogG, value.fogB]) {

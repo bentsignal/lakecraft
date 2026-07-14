@@ -66,6 +66,8 @@ export const MAX_ACTIVE_TORCH_LIGHTS = 8;
 export const TORCH_LIGHT_RADIUS = 11;
 export const TORCH_MESH_VERTEX_COUNT = 72;
 export const CHEST_MESH_VERTEX_COUNT = 108;
+export const DOOR_MESH_VERTEX_COUNT = 144;
+export const BED_MESH_VERTEX_COUNT = 108;
 
 const VERTEX_SHADER = `
 attribute vec3 aPosition;
@@ -131,6 +133,9 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.CRAFTING_TABLE]: [0.55, 0.35, 0.16],
   [BLOCK.TORCH]: [0.76, 0.46, 0.14],
   [BLOCK.CHEST]: [0.57, 0.31, 0.10],
+  [BLOCK.DOOR_CLOSED]: [0.57, 0.34, 0.14],
+  [BLOCK.DOOR_OPEN]: [0.57, 0.34, 0.14],
+  [BLOCK.BED]: [0.72, 0.08, 0.07],
 };
 
 function rankedTorchCompare(a: RankedTorchLight, b: RankedTorchLight): number {
@@ -167,11 +172,48 @@ export function selectNearestTorchLights(
 }
 
 export function blockOccludesFaces(block: BlockId): boolean {
-  return block !== BLOCK.AIR && block !== BLOCK.TORCH;
+  return block !== BLOCK.AIR && block !== BLOCK.TORCH && block !== BLOCK.DOOR_OPEN;
 }
 
 export function blockHasCollision(block: BlockId): boolean {
   return blockOccludesFaces(block);
+}
+
+export function isDoorBlock(block: BlockId): boolean {
+  return block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN;
+}
+
+export function toggledDoorBlock(block: BlockId): BlockId | null {
+  if (block === BLOCK.DOOR_CLOSED) return BLOCK.DOOR_OPEN;
+  if (block === BLOCK.DOOR_OPEN) return BLOCK.DOOR_CLOSED;
+  return null;
+}
+
+export function doorPlacementBlock(block: BlockId): BlockId {
+  return isDoorBlock(block) ? BLOCK.DOOR_CLOSED : block;
+}
+
+export function createDoorToggleEdit(target: BlockTarget): WorldEdit | null {
+  const block = toggledDoorBlock(target.block.block);
+  return block === null
+    ? null
+    : { x: target.block.x, y: target.block.y, z: target.block.z, block };
+}
+
+export function applyDayNightClockUpdate(
+  target: DayNightConfig,
+  update: Partial<DayNightConfig>,
+  currentServerTimeOffsetMs: number,
+  nextServerTimeOffsetMs?: number,
+): number {
+  if (Number.isFinite(update.cycleLengthMs) && (update.cycleLengthMs ?? 0) > 0) {
+    target.cycleLengthMs = update.cycleLengthMs as number;
+  }
+  if (Number.isFinite(update.epochMs)) target.epochMs = update.epochMs as number;
+  if (Number.isFinite(update.epochPhase)) target.epochPhase = update.epochPhase as number;
+  return Number.isFinite(nextServerTimeOffsetMs)
+    ? nextServerTimeOffsetMs as number
+    : currentServerTimeOffsetMs;
 }
 
 /** Dispatches the currently supported block interaction without changing placement state. */
@@ -179,7 +221,7 @@ export function tryInteractBlock(
   target: BlockTarget,
   onInteractBlock?: (target: BlockTarget) => boolean,
 ): boolean {
-  if (target.block.block !== BLOCK.CHEST || !onInteractBlock) return false;
+  if ((target.block.block !== BLOCK.CHEST && target.block.block !== BLOCK.BED) || !onInteractBlock) return false;
   return onInteractBlock(target) === true;
 }
 
@@ -333,6 +375,34 @@ export function appendChestMesh(output: number[], x: number, y: number, z: numbe
     [x + 0.57, y + 0.70, z + 0.08],
     [0.86, 0.68, 0.20],
   );
+}
+
+/** Adds a 1.9-block wooden slab with inset panels and a contrasting handle. */
+export function appendDoorMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  open: boolean,
+): void {
+  if (open) {
+    appendAxisAlignedBox(output, [x + 0.05, y, z + 0.02], [x + 0.15, y + 1.9, z + 0.98], BLOCK_COLORS[BLOCK.DOOR_OPEN]);
+    appendAxisAlignedBox(output, [x + 0.035, y + 0.18, z + 0.16], [x + 0.065, y + 0.75, z + 0.84], [0.38, 0.20, 0.07]);
+    appendAxisAlignedBox(output, [x + 0.035, y + 1.05, z + 0.16], [x + 0.065, y + 1.70, z + 0.84], [0.38, 0.20, 0.07]);
+    appendAxisAlignedBox(output, [x, y + 0.90, z + 0.77], [x + 0.05, y + 1.0, z + 0.87], [0.84, 0.69, 0.22]);
+    return;
+  }
+  appendAxisAlignedBox(output, [x + 0.02, y, z + 0.45], [x + 0.98, y + 1.9, z + 0.55], BLOCK_COLORS[BLOCK.DOOR_CLOSED]);
+  appendAxisAlignedBox(output, [x + 0.16, y + 0.18, z + 0.42], [x + 0.84, y + 0.75, z + 0.455], [0.38, 0.20, 0.07]);
+  appendAxisAlignedBox(output, [x + 0.16, y + 1.05, z + 0.42], [x + 0.84, y + 1.70, z + 0.455], [0.38, 0.20, 0.07]);
+  appendAxisAlignedBox(output, [x + 0.77, y + 0.90, z + 0.38], [x + 0.87, y + 1.0, z + 0.43], [0.84, 0.69, 0.22]);
+}
+
+/** A low wooden frame with a red blanket and white pillow. */
+export function appendBedMesh(output: number[], x: number, y: number, z: number): void {
+  appendAxisAlignedBox(output, [x + 0.03, y + 0.08, z + 0.03], [x + 0.97, y + 0.32, z + 0.97], [0.38, 0.20, 0.07]);
+  appendAxisAlignedBox(output, [x + 0.04, y + 0.32, z + 0.04], [x + 0.96, y + 0.53, z + 0.69], BLOCK_COLORS[BLOCK.BED]);
+  appendAxisAlignedBox(output, [x + 0.08, y + 0.32, z + 0.69], [x + 0.92, y + 0.55, z + 0.94], [0.91, 0.90, 0.84]);
 }
 
 function avatarTransform(
@@ -538,7 +608,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     epochMs: options.dayNight?.epochMs ?? DEFAULT_DAY_NIGHT_CONFIG.epochMs,
     epochPhase: options.dayNight?.epochPhase ?? DEFAULT_DAY_NIGHT_CONFIG.epochPhase,
   };
-  const serverTimeOffsetMs = Number.isFinite(options.serverTimeOffsetMs)
+  let serverTimeOffsetMs = Number.isFinite(options.serverTimeOffsetMs)
     ? options.serverTimeOffsetMs ?? 0
     : 0;
   const dayNightState = createDayNightState();
@@ -671,13 +741,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (block === undefined || block === BLOCK.AIR) continue;
       const [x, y, z] = key.split(",").map(Number);
       minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y + 1);
+      maxY = Math.max(maxY, y + (isDoorBlock(block) ? 1.9 : 1));
       if (block === BLOCK.TORCH) {
         appendTorchMesh(vertices, x, y, z);
         continue;
       }
       if (block === BLOCK.CHEST) {
         appendChestMesh(vertices, x, y, z);
+        continue;
+      }
+      if (isDoorBlock(block)) {
+        appendDoorMesh(vertices, x, y, z, block === BLOCK.DOOR_OPEN);
+        continue;
+      }
+      if (block === BLOCK.BED) {
+        appendBedMesh(vertices, x, y, z);
         continue;
       }
       const base = BLOCK_COLORS[block] ?? BLOCK_COLORS[BLOCK.STONE];
@@ -744,7 +822,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (let bx = minX; bx <= maxX; bx += 1) {
       for (let by = minY; by <= maxY; by += 1) {
         for (let bz = minZ; bz <= maxZ; bz += 1) {
-          if (blockHasCollision(getBlock(bx, by, bz))) return true;
+          const block = getBlock(bx, by, bz);
+          if (blockHasCollision(block)) return true;
+          if (by > 0 && getBlock(bx, by - 1, bz) === BLOCK.DOOR_CLOSED) return true;
         }
       }
     }
@@ -1142,10 +1222,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
     } else if (event.button === 2) {
       if (!target) return;
+      const doorEdit = createDoorToggleEdit(target);
+      if (doorEdit) {
+        emitEdit(doorEdit);
+        return;
+      }
       if (tryInteractBlock(target, options.onInteractBlock)) return;
       if (selectedBlock === BLOCK.AIR) return;
       const { x, y, z } = target.place;
-      if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) emitEdit({ x, y, z, block: selectedBlock });
+      if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) {
+        emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) });
+      }
     }
   }
 
@@ -1224,6 +1311,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (const id of remoteStates.keys()) {
         if (!incomingIds.has(id)) remoteStates.delete(id);
       }
+    },
+    setDayNightClock(config, nextServerTimeOffsetMs) {
+      serverTimeOffsetMs = applyDayNightClockUpdate(
+        dayNightConfig,
+        config,
+        serverTimeOffsetMs,
+        nextServerTimeOffsetMs,
+      );
     },
     getPose() { return { ...pose }; },
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },

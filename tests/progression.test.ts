@@ -38,6 +38,8 @@ assert.equal(BLOCKS.crafting_table.drop, "crafting_table");
 assert.equal(ITEMS.crafting_table.placesBlock, "crafting_table");
 assert.equal(ITEMS.torch.placesBlock, "torch");
 assert.equal(ITEMS.chest.placesBlock, "chest");
+assert.equal(ITEMS.door.placesBlock, "door");
+assert.equal(ITEMS.bed.placesBlock, "bed");
 assert.equal(new Set(RECIPES.map(({ id }) => id)).size, RECIPES.length, "recipe ids stay unique");
 
 let woodInventory = addItem(createEmptyInventory(), "log", 3).inventory;

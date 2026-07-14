@@ -1,7 +1,7 @@
 export const HOTBAR_SIZE = 9;
 export const INVENTORY_SIZE = 27;
 
-export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks" | "crafting_table" | "torch" | "chest";
+export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks" | "crafting_table" | "torch" | "chest" | "door" | "bed";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -80,6 +80,8 @@ export const BLOCKS: Record<BlockId, BlockDefinition> = {
   crafting_table: { id: "crafting_table", label: "Crafting Table", description: "A sturdy workbench for more involved recipes.", color: "#8a5b32", accent: "#d39a54", hardness: 1.4, preferredTool: "axe", drop: "crafting_table" },
   torch: { id: "torch", label: "Torch", description: "A warm light for shelters and night trails.", color: "#d99a3d", accent: "#ffd36a", hardness: 0.1, preferredTool: "hand", drop: "torch" },
   chest: { id: "chest", label: "Chest", description: "A shared wooden container for supplies.", color: "#8b5728", accent: "#dca14d", hardness: 1.8, preferredTool: "axe", drop: "chest" },
+  door: { id: "door", label: "Oak Door", description: "A hinged wooden door for a shelter entrance.", color: "#9a6832", accent: "#d7a35c", hardness: 1.4, preferredTool: "axe", drop: "door" },
+  bed: { id: "bed", label: "Bed", description: "A wool bed that can vote to skip the night.", color: "#b85045", accent: "#eee2c4", hardness: 0.5, preferredTool: "hand", drop: "bed" },
 };
 
 export const ITEMS: Record<ItemId, ItemDefinition> = {
@@ -92,6 +94,8 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   crafting_table: blockItem("crafting_table", "CRF", "▧"),
   torch: blockItem("torch", "TCH", "♨"),
   chest: blockItem("chest", "CHT", "▣"),
+  door: blockItem("door", "DOR", "▥"),
+  bed: blockItem("bed", "BED", "▰"),
   stick: { id: "stick", label: "Stick", shortLabel: "STK", description: "A straight handle for simple tools.", category: "material", maxStack: 64, glyph: "╱", color: "#c09557" },
   leather: { id: "leather", label: "Leather", shortLabel: "LTH", description: "Tough hide used for lightweight armor.", category: "material", maxStack: 64, glyph: "◩", color: "#8d552f" },
   wool: { id: "wool", label: "Wool", shortLabel: "WOL", description: "Soft sheep wool for beds and future textiles.", category: "material", maxStack: 64, glyph: "◌", color: "#ddd8c8" },
@@ -138,6 +142,8 @@ export const RECIPES: readonly Recipe[] = [
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A stick and board make four crude lights.", ingredients: [{ itemId: "stick", count: 1 }, { itemId: "planks", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
+  { id: "door", label: "Oak door", note: "Six boards make a shelter door.", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
+  { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
   { id: "wooden_pickaxe", label: "Wood pickaxe", note: "A starter quarrying tool.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_pickaxe", count: 1 } },
   { id: "wooden_axe", label: "Wood axe", note: "Fells logs faster.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_axe", count: 1 } },
   { id: "wooden_shovel", label: "Wood shovel", note: "Clears dirt and grass faster.", ingredients: [{ itemId: "planks", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_shovel", count: 1 } },
