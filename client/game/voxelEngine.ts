@@ -65,6 +65,7 @@ interface RankedTorchLight extends TorchLightPosition {
 export const MAX_ACTIVE_TORCH_LIGHTS = 8;
 export const TORCH_LIGHT_RADIUS = 11;
 export const TORCH_MESH_VERTEX_COUNT = 72;
+export const CHEST_MESH_VERTEX_COUNT = 108;
 
 const VERTEX_SHADER = `
 attribute vec3 aPosition;
@@ -129,6 +130,7 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.PLANKS]: [0.69, 0.48, 0.25],
   [BLOCK.CRAFTING_TABLE]: [0.55, 0.35, 0.16],
   [BLOCK.TORCH]: [0.76, 0.46, 0.14],
+  [BLOCK.CHEST]: [0.57, 0.31, 0.10],
 };
 
 function rankedTorchCompare(a: RankedTorchLight, b: RankedTorchLight): number {
@@ -170,6 +172,15 @@ export function blockOccludesFaces(block: BlockId): boolean {
 
 export function blockHasCollision(block: BlockId): boolean {
   return blockOccludesFaces(block);
+}
+
+/** Dispatches the currently supported block interaction without changing placement state. */
+export function tryInteractBlock(
+  target: BlockTarget,
+  onInteractBlock?: (target: BlockTarget) => boolean,
+): boolean {
+  if (target.block.block !== BLOCK.CHEST || !onInteractBlock) return false;
+  return onInteractBlock(target) === true;
 }
 
 function compileShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
@@ -299,6 +310,28 @@ export function appendTorchMesh(output: number[], x: number, y: number, z: numbe
     [x + 0.38, y + 0.67, z + 0.38],
     [x + 0.62, y + 0.88, z + 0.62],
     BLOCK_COLORS[BLOCK.TORCH],
+  );
+}
+
+/** A warm inset body, raised lid, and gold front latch make the chest readable at a glance. */
+export function appendChestMesh(output: number[], x: number, y: number, z: number): void {
+  appendAxisAlignedBox(
+    output,
+    [x + 0.04, y, z + 0.04],
+    [x + 0.96, y + 0.64, z + 0.96],
+    BLOCK_COLORS[BLOCK.CHEST],
+  );
+  appendAxisAlignedBox(
+    output,
+    [x + 0.02, y + 0.64, z + 0.02],
+    [x + 0.98, y + 0.92, z + 0.98],
+    [0.68, 0.39, 0.13],
+  );
+  appendAxisAlignedBox(
+    output,
+    [x + 0.43, y + 0.48, z - 0.01],
+    [x + 0.57, y + 0.70, z + 0.08],
+    [0.86, 0.68, 0.20],
   );
 }
 
@@ -641,6 +674,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       maxY = Math.max(maxY, y + 1);
       if (block === BLOCK.TORCH) {
         appendTorchMesh(vertices, x, y, z);
+        continue;
+      }
+      if (block === BLOCK.CHEST) {
+        appendChestMesh(vertices, x, y, z);
         continue;
       }
       const base = BLOCK_COLORS[block] ?? BLOCK_COLORS[BLOCK.STONE];
@@ -1039,7 +1076,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onKeyDown(event: KeyboardEvent): void {
-    if (/^Digit[1-7]$/.test(event.code)) selectedBlock = Number(event.code.slice(5)) as BlockId;
+    if (/^Digit[1-9]$/.test(event.code)) selectedBlock = Number(event.code.slice(5)) as BlockId;
     if (document.pointerLockElement !== canvas) return;
     keys.add(event.code);
     if (event.code === "Space") {
@@ -1103,8 +1140,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           }
         }, duration * 1_000);
       }
-    } else if (event.button === 2 && selectedBlock !== BLOCK.AIR) {
+    } else if (event.button === 2) {
       if (!target) return;
+      if (tryInteractBlock(target, options.onInteractBlock)) return;
+      if (selectedBlock === BLOCK.AIR) return;
       const { x, y, z } = target.place;
       if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) emitEdit({ x, y, z, block: selectedBlock });
     }

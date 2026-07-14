@@ -5,8 +5,14 @@ import {
   validateChatMessage,
   validateUsername
 } from "../shared/multiplayer";
+import {
+  decideChestWrite,
+  normalizeChestToken,
+  validateChestCoordinate,
+  validateChestInventoryJson
+} from "../shared/chests";
 
-const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch"];
+const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest"];
 
 function boundedInteger(value: string, minimum: number, maximum: number): number | null {
   if (!/^-?\d{1,4}$/.test(value.trim())) return null;
@@ -54,6 +60,13 @@ export default capsule({
       userId: string(),
       inventoryJson: string()
     }).index("by_user", ["userId"]),
+
+    /** Shared container state. updatedAt is the optimistic concurrency token. */
+    chests: table({
+      coordKey: string(),
+      inventoryJson: string(),
+      lastActorId: string()
+    }).index("by_coord", ["coordKey"]),
 
     /** Immutable, one-time username claims. Lakebed serializes each mutation transaction. */
     profiles: table({
@@ -107,6 +120,16 @@ export default capsule({
         .order("desc")
         .first()) ?? null
     ),
+
+    chestAt: query(async (ctx, rawCoordKey: string) => {
+      const coordinate = validateChestCoordinate(rawCoordKey);
+      if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
+      const chest = await ctx.db.chests
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .order("desc")
+        .first();
+      return { ok: true, chest: chest ?? null };
+    }),
 
     myProfile: query(async (ctx) =>
       (await ctx.db.profiles
@@ -290,6 +313,35 @@ export default capsule({
       return existing
         ? ctx.db.inventories.update(existing.id, value)
         : ctx.db.inventories.insert(value);
+    }),
+
+    saveChest: mutation(async (ctx, rawCoordKey: string, rawInventoryJson: string, rawExpectedUpdatedAt: string) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
+      }
+      const coordinate = validateChestCoordinate(rawCoordKey);
+      if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
+      const inventory = validateChestInventoryJson(rawInventoryJson);
+      if (!inventory.ok) return { ok: false, reason: "invalid_inventory", detail: inventory.reason };
+      const expectedUpdatedAt = normalizeChestToken(rawExpectedUpdatedAt);
+      if (expectedUpdatedAt === null) return { ok: false, reason: "invalid_token" };
+
+      const existing = await ctx.db.chests
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .order("desc")
+        .first();
+      const decision = decideChestWrite(existing?.updatedAt ?? null, expectedUpdatedAt);
+      if (decision === "conflict") return { ok: false, reason: "conflict", chest: existing ?? null };
+
+      const value = {
+        coordKey: coordinate.coordKey,
+        inventoryJson: inventory.inventoryJson,
+        lastActorId: ctx.auth.userId
+      };
+      const chest = existing
+        ? await ctx.db.chests.update(existing.id, value)
+        : await ctx.db.chests.insert(value);
+      return { ok: true, chest };
     }),
 
     claimUsername: mutation(async (ctx, requestedUsername: string) => {

@@ -4,6 +4,7 @@ export { Hotbar, type HotbarProps } from "./Hotbar";
 export { HudStyles } from "./HudStyles";
 export { IngredientGlyph, ItemGlyph, type ItemGlyphProps } from "./ItemGlyph";
 export { InventoryCraftingDrawer, type InventoryCraftingDrawerProps } from "./InventoryDrawer";
+export { ChestDrawer, type ChestDrawerProps, type ChestTransferDirection } from "./ChestDrawer";
 export { MobileUnsupportedOverlay, type MobileUnsupportedOverlayProps } from "./MobileUnsupportedOverlay";
 export { StatusStrip, type StatusStripProps } from "./StatusStrip";
 export { ToastSurface, type HudMessage, type ToastSurfaceProps } from "./ToastSurface";

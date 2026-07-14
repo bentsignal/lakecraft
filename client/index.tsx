@@ -1,7 +1,7 @@
 import { signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
-import { GameHud, type HudMessage } from "./components";
+import { ChestDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
 import {
   BLOCK,
   createVoxelEngine,
@@ -21,6 +21,7 @@ import {
   clampHotbarIndex,
   craftRecipe,
   createEmptyEquipment,
+  createEmptyInventory,
   createSerializablePlayerState,
   createStarterInventory,
   equipArmorFromInventory,
@@ -38,6 +39,7 @@ import {
   type ItemId,
   type Recipe,
 } from "../shared/game";
+import { CHEST_SLOT_COUNT, type ChestAtResult, type SaveChestResult } from "../shared/chests";
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   type ChatMessage,
@@ -77,7 +79,7 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 700px) { .lakecraft-entry__card { padding: 27px 24px; }.lakecraft-entry h1 { font-size: 48px; } }
 `;
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "wood" | "leaves" | "planks" | "crafting_table" | "torch"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "wood" | "leaves" | "planks" | "crafting_table" | "torch" | "chest"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -87,6 +89,7 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.PLANKS]: "planks",
   [BLOCK.CRAFTING_TABLE]: "crafting_table",
   [BLOCK.TORCH]: "torch",
+  [BLOCK.CHEST]: "chest",
 };
 
 const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
@@ -100,6 +103,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   planks: BLOCK.PLANKS,
   crafting_table: BLOCK.CRAFTING_TABLE,
   torch: BLOCK.TORCH,
+  chest: BLOCK.CHEST,
 };
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
@@ -111,6 +115,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.PLANKS]: "planks",
   [BLOCK.CRAFTING_TABLE]: "crafting_table",
   [BLOCK.TORCH]: "torch",
+  [BLOCK.CHEST]: "chest",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -122,6 +127,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   planks: BLOCK.PLANKS,
   crafting_table: BLOCK.CRAFTING_TABLE,
   torch: BLOCK.TORCH,
+  chest: BLOCK.CHEST,
 };
 
 function playerColor(id: string): string {
@@ -166,12 +172,14 @@ function parsePlayerState(row: PersistedInventory | null): { inventory: Inventor
 
 export function App() {
   const auth = useAuth();
+  const [activeChestKey, setActiveChestKey] = useState("");
   const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
   const [activeSince] = useState(() => String(Date.now() - 30_000));
   const presenceEvents = useQuery<PlayerPresence[], string>("recentPlayers", activeSince) ?? [];
   const savedInventory = useQuery<PersistedInventory | null>("myInventory");
   const profile = useQuery<Profile | null>("myProfile");
   const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
+  const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
 
   const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
@@ -180,6 +188,7 @@ export function App() {
   const saveInventory = useMutation<[inventoryJson: string], void>("saveInventory");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
+  const saveChest = useMutation<[coordKey: string, inventoryJson: string, expectedUpdatedAt: string], SaveChestResult>("saveChest");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
@@ -218,6 +227,10 @@ export function App() {
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [showPerformance, setShowPerformance] = useState(false);
   const [playerHealth, setPlayerHealth] = useState(20);
+  const [chestInventory, setChestInventory] = useState<Inventory>(() => createEmptyInventory(CHEST_SLOT_COUNT));
+  const [chestToken, setChestToken] = useState("");
+  const [chestBusy, setChestBusy] = useState(false);
+  const [chestError, setChestError] = useState("");
 
   function notify(text: string, detail?: string, tone: HudMessage["tone"] = "info") {
     const id = `note-${++toastCounter.current}`;
@@ -347,6 +360,16 @@ export function App() {
         },
         onTargetChange: (target) => { targetRef.current = target; },
         onPointerLockChange: setPointerLocked,
+        onInteractBlock: (target) => {
+          const key = blockCoordinateKey(target.block.x, target.block.y, target.block.z);
+          setActiveChestKey(key);
+          setChestBusy(true);
+          setChestError("");
+          setInventoryOpen(false);
+          setChatOpen(false);
+          if (document.pointerLockElement) document.exitPointerLock();
+          return true;
+        },
         onPerformanceStats: setPerformanceStats,
       });
       engineRef.current = engine;
@@ -363,6 +386,29 @@ export function App() {
   useEffect(() => {
     engineRef.current?.applyWorldEdits(toEngineEdits(worldEvents));
   }, [worldEvents]);
+
+  useEffect(() => {
+    if (!activeChestKey || chestResult === undefined) return;
+    if (!chestResult.ok) {
+      setChestBusy(false);
+      setChestError("That chest coordinate is invalid.");
+      return;
+    }
+    if (chestResult.chest && chestResult.chest.coordKey !== activeChestKey) return;
+    if (chestResult.chest) {
+      try {
+        setChestInventory(normalizeInventory(JSON.parse(chestResult.chest.inventoryJson), CHEST_SLOT_COUNT));
+      } catch {
+        setChestInventory(createEmptyInventory(CHEST_SLOT_COUNT));
+        setChestError("Lakebed returned a damaged chest payload.");
+      }
+      setChestToken(chestResult.chest.updatedAt);
+    } else {
+      setChestInventory(createEmptyInventory(CHEST_SLOT_COUNT));
+      setChestToken("");
+    }
+    setChestBusy(false);
+  }, [activeChestKey, chestResult]);
 
   useEffect(() => {
     const active = activePlayerPresences(presenceEvents).filter((player) => player.userId !== auth.userId);
@@ -409,6 +455,14 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!inWorld) return;
+      if (activeChestKey) {
+        if (event.code === "Escape" || event.code === "KeyE") {
+          event.preventDefault();
+          setActiveChestKey("");
+          setChestError("");
+        }
+        return;
+      }
       if (event.code === "F3" && !event.repeat) {
         event.preventDefault();
         setShowPerformance((shown) => !shown);
@@ -442,7 +496,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inWorld, chatOpen, inventoryOpen, chatEvents.length]);
+  }, [inWorld, activeChestKey, chatOpen, inventoryOpen, chatEvents.length]);
 
   const activePlayers = activePlayerPresences(presenceEvents);
 
@@ -474,6 +528,59 @@ export function App() {
     }
     updateInventory(result.inventory);
     setEquipment(result.equipment);
+  }
+
+  function loadChestRow(row: Extract<SaveChestResult, { ok: true }>["chest"] | null) {
+    if (!row) {
+      setChestInventory(createEmptyInventory(CHEST_SLOT_COUNT));
+      setChestToken("");
+      return;
+    }
+    try {
+      setChestInventory(normalizeInventory(JSON.parse(row.inventoryJson), CHEST_SLOT_COUNT));
+      setChestToken(row.updatedAt);
+    } catch {
+      setChestError("Lakebed returned a damaged chest payload.");
+    }
+  }
+
+  function handleChestTransfer(direction: ChestTransferDirection, index: number) {
+    if (!activeChestKey || chestBusy) return;
+    const source = direction === "to_chest" ? inventory : chestInventory;
+    const stack = source[index];
+    if (!stack) return;
+    const target = direction === "to_chest" ? chestInventory : inventory;
+    const added = addItem(target, stack.itemId, stack.count);
+    const moved = stack.count - added.remainder;
+    if (moved <= 0) {
+      setChestError(direction === "to_chest" ? "The chest is full." : "Your pack is full.");
+      return;
+    }
+    const reduced = removeItem(source, stack.itemId, moved).inventory;
+    const nextChest = direction === "to_chest" ? added.inventory : reduced;
+    const nextPlayer = direction === "to_chest" ? reduced : added.inventory;
+    setChestBusy(true);
+    setChestError("");
+    void saveChest(activeChestKey, JSON.stringify(nextChest), chestToken).then((result) => {
+      if (result.ok) {
+        setChestInventory(nextChest);
+        setChestToken(result.chest.updatedAt);
+        updateInventory(nextPlayer);
+        setConnected(true);
+        return;
+      }
+      if (result.reason === "conflict") {
+        loadChestRow(result.chest);
+        setChestError("Someone else changed this chest. Its latest contents were reloaded.");
+      } else if (result.reason === "authentication_required") {
+        setChestError("Sign in again before changing shared storage.");
+      } else {
+        setChestError("Lakebed rejected that chest transfer.");
+      }
+    }).catch(() => {
+      setConnected(false);
+      setChestError("Chest save lost contact with Lakebed. No items were moved.");
+    }).finally(() => setChestBusy(false));
   }
 
   function handleUsernameClaim(value: string) {
@@ -623,7 +730,7 @@ export function App() {
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
       <div className="lakecraft-vignette" />
 
-      {!pointerLocked && !inventoryOpen && !chatOpen && !engineError ? (
+      {!pointerLocked && !inventoryOpen && !chatOpen && !activeChestKey && !engineError ? (
         <section className="lakecraft-entry" aria-label="Enter Lakecraft">
           <div className="lakecraft-entry__card">
             <span className="lakecraft-entry__eyebrow">survey 01 / shared world online</span>
@@ -655,8 +762,23 @@ export function App() {
         playerName={profile?.username ?? auth.displayName}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}
-        showControls={showControls && !inventoryOpen && !chatOpen}
+        showControls={showControls && !inventoryOpen && !chatOpen && !activeChestKey}
         worldName="Fern Hollow"
+      />
+
+      <ChestDrawer
+        busy={chestBusy}
+        chestInventory={chestInventory}
+        error={chestError}
+        onClose={() => {
+          if (chestBusy) return;
+          setActiveChestKey("");
+          setChestError("");
+        }}
+        onTransfer={handleChestTransfer}
+        open={Boolean(activeChestKey)}
+        playerInventory={inventory}
+        status={chestBusy ? "Saving this transfer through Lakebed…" : "Shared storage is current."}
       />
 
       <ChatOverlay

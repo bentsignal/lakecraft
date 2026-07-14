@@ -1,5 +1,5 @@
 export { createVoxelEngine } from "./voxelEngine.ts";
-export { MAX_ACTIVE_TORCH_LIGHTS, PLAYER_MAX_HEALTH, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendTorchMesh, blockHasCollision, blockOccludesFaces, selectNearestTorchLights } from "./voxelEngine.ts";
+export { CHEST_MESH_VERTEX_COUNT, MAX_ACTIVE_TORCH_LIGHTS, PLAYER_MAX_HEALTH, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendChestMesh, appendTorchMesh, blockHasCollision, blockOccludesFaces, selectNearestTorchLights, tryInteractBlock } from "./voxelEngine.ts";
 export { BLOCK } from "./types.ts";
 export { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 export { WORLD_CHUNK_SIZE, chunkCoordinate, chunkKeyForBlock, dirtyChunkKeysForEdit, dirtyChunkKeysForEdits } from "./chunks.ts";

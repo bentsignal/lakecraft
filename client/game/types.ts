@@ -11,6 +11,7 @@ export const BLOCK = {
   PLANKS: 6,
   CRAFTING_TABLE: 7,
   TORCH: 8,
+  CHEST: 9,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -95,6 +96,8 @@ export interface VoxelEngineOptions {
   onMobDrops?: (drops: readonly MobDrop[]) => void;
   onPlayerDamage?: (amount: number) => void;
   onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
+  /** Return true after handling a chest interaction to suppress block placement. */
+  onInteractBlock?: (target: BlockTarget) => boolean;
   onPoseChange?: (pose: PlayerPose) => void;
   onTargetChange?: (target: BlockTarget | null) => void;
   onPointerLockChange?: (locked: boolean) => void;
