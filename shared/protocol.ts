@@ -29,6 +29,7 @@ export type WorldEdit = {
   z: string;
   blockType: string;
   actorId: string;
+  editedAt: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -97,19 +98,21 @@ export function parseInventory(value: string): InventoryCounts {
   }
 }
 
-/** Lakebed's anonymous database is append-only for this protocol. Newest logical key wins. */
+/** Collapse any legacy duplicate coordinate rows; current server writes upsert each coordinate. */
 export function latestWorldEdits(events: WorldEdit[]): WorldEdit[] {
   const latest = new Map<string, WorldEdit>();
   for (const event of events) {
     const previous = latest.get(event.coordKey);
-    if (!previous || event.createdAt > previous.createdAt || (event.createdAt === previous.createdAt && event.id > previous.id)) {
+    const eventTime = event.editedAt || event.updatedAt || event.createdAt;
+    const previousTime = previous ? previous.editedAt || previous.updatedAt || previous.createdAt : "";
+    if (!previous || eventTime > previousTime || (eventTime === previousTime && event.id > previous.id)) {
       latest.set(event.coordKey, event);
     }
   }
   return [...latest.values()];
 }
 
-/** Collapse heartbeat/leave events to one presence per user and omit stale/offline players. */
+/** Collapse legacy presence duplicates and omit stale/offline players; current server upserts users. */
 export function activePlayerPresences(
   events: PlayerPresence[],
   now = Date.now(),

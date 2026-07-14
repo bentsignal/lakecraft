@@ -29,8 +29,11 @@ export default capsule({
       y: string(),
       z: string(),
       blockType: string(),
-      actorId: string()
-    }).index("by_coord", ["coordKey"]),
+      actorId: string(),
+      editedAt: string().default("0")
+    })
+      .index("by_coord", ["coordKey"])
+      .index("by_edited", ["editedAt"]),
 
     playerPresence: table({
       userId: string(),
@@ -74,7 +77,7 @@ export default capsule({
 
   queries: {
     worldEdits: query(async (ctx) =>
-      ctx.db.worldEdits.withIndex("by_creation").order("desc").take(1_000)
+      ctx.db.worldEdits.withIndex("by_edited").order("desc").take(1_000)
     ),
 
     worldEditsAt: query(async (ctx, coordKey: string) =>
@@ -150,14 +153,22 @@ export default capsule({
         const pz = boundedInteger(z, -64, 64);
         const block = blockType.trim().toLowerCase();
         if (px == null || py == null || pz == null || !PLACEABLE_BLOCKS.includes(block)) return;
-        return ctx.db.worldEdits.insert({
+        const existing = await ctx.db.worldEdits
+          .withIndex("by_coord", (q) => q.eq("coordKey", `${px}:${py}:${pz}`))
+          .order("desc")
+          .first();
+        const value = {
           coordKey: `${px}:${py}:${pz}`,
           x: String(px),
           y: String(py),
           z: String(pz),
           blockType: block,
-          actorId: ctx.auth.userId
-        });
+          actorId: ctx.auth.userId,
+          editedAt: String(Date.now())
+        };
+        return existing
+          ? ctx.db.worldEdits.update(existing.id, value)
+          : ctx.db.worldEdits.insert(value);
       }
     ),
 
@@ -167,14 +178,22 @@ export default capsule({
       const py = boundedInteger(y, -4, 64);
       const pz = boundedInteger(z, -64, 64);
       if (px == null || py == null || pz == null) return;
-      return ctx.db.worldEdits.insert({
+      const existing = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", `${px}:${py}:${pz}`))
+        .order("desc")
+        .first();
+      const value = {
         coordKey: `${px}:${py}:${pz}`,
         x: String(px),
         y: String(py),
         z: String(pz),
         blockType: "air",
-        actorId: ctx.auth.userId
-      });
+        actorId: ctx.auth.userId,
+        editedAt: String(Date.now())
+      };
+      return existing
+        ? ctx.db.worldEdits.update(existing.id, value)
+        : ctx.db.worldEdits.insert(value);
     }),
 
     heartbeatPlayer: mutation(
@@ -202,7 +221,11 @@ export default capsule({
           .first();
         if (!profile) throw new Error("Choose a username before joining the shared world.");
         const safeColor = /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : "#8fbf79";
-        return ctx.db.playerPresence.insert({
+        const existing = await ctx.db.playerPresence
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .first();
+        const value = {
           userId: ctx.auth.userId,
           displayName: profile.username,
           color: safeColor,
@@ -213,7 +236,10 @@ export default capsule({
           pitch: String(playerPitch),
           heartbeatAt: String(Date.now()),
           online: true
-        });
+        };
+        return existing
+          ? ctx.db.playerPresence.update(existing.id, value)
+          : ctx.db.playerPresence.insert(value);
       }
     ),
 
@@ -224,7 +250,11 @@ export default capsule({
         .order("desc")
         .first();
       if (!profile) throw new Error("Choose a username before joining the shared world.");
-      return ctx.db.playerPresence.insert({
+      const existing = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const value = {
         userId: ctx.auth.userId,
         displayName: profile.username,
         color: "#8fbf79",
@@ -235,21 +265,31 @@ export default capsule({
         pitch: "0",
         heartbeatAt: String(Date.now()),
         online: false
-      });
+      };
+      return existing
+        ? ctx.db.playerPresence.update(existing.id, value)
+        : ctx.db.playerPresence.insert(value);
     }),
 
     saveInventory: mutation(async (ctx, inventoryJson: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to save inventory.");
-      const value = inventoryJson.trim().slice(0, 8_192);
+      const serialized = inventoryJson.trim().slice(0, 8_192);
       try {
-        JSON.parse(value);
+        JSON.parse(serialized);
       } catch {
         return;
       }
-      return ctx.db.inventories.insert({
+      const existing = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const value = {
         userId: ctx.auth.userId,
-        inventoryJson: value
-      });
+        inventoryJson: serialized
+      };
+      return existing
+        ? ctx.db.inventories.update(existing.id, value)
+        : ctx.db.inventories.insert(value);
     }),
 
     claimUsername: mutation(async (ctx, requestedUsername: string) => {
