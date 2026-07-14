@@ -7,6 +7,7 @@ import {
 } from "../shared/multiplayer";
 import {
   normalizeChestToken,
+  validateChestCoordinate,
   validateChestInventoryJson
 } from "../shared/chests";
 import {
