@@ -19,6 +19,7 @@ export type GameHudProps = StatusStripProps & {
   onCraft: (recipe: Recipe) => void;
   onEquipArmor: (inventoryIndex: number) => void;
   onUnequipArmor: (slot: ArmorSlot) => void;
+  onUseItem?: (inventoryIndex: number) => void;
   onCloseInventory: () => void;
   onDismissControls?: () => void;
   onDismissMessage?: (id: string) => void;
@@ -41,6 +42,7 @@ export function GameHud({
   onCraft,
   onEquipArmor,
   onUnequipArmor,
+  onUseItem,
   onCloseInventory,
   onDismissControls,
   onDismissMessage,
@@ -57,7 +59,7 @@ export function GameHud({
         <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
         <ToastSurface messages={messages} onDismiss={onDismissMessage} />
       </div>
-      <InventoryCraftingDrawer equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} open={inventoryOpen} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} onUseItem={onUseItem} open={inventoryOpen} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );

@@ -73,6 +73,10 @@ export interface VoxelPerformanceStats {
   avatarDrawCalls: number;
   avatarVertexCount: number;
   nameplateVertexCount: number;
+  remoteMeshMs: number;
+  remoteUploadBytes: number;
+  remoteMeshUpdates: number;
+  remoteVisiblePlayers: number;
   mobDrawCalls: number;
   mobVertexCount: number;
   mobVisibleCount: number;
@@ -107,6 +111,8 @@ export interface VoxelEngineOptions {
   onMobDrops?: (drops: readonly MobDrop[]) => void;
   onPlayerDamage?: (amount: number) => void;
   onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
+  /** Return true when the held non-block item handled secondary use (for example, eating food). */
+  onUseSelectedItem?: () => boolean;
   /** Return true after handling a chest or bed interaction to suppress block placement. */
   onInteractBlock?: (target: BlockTarget) => boolean;
   onPoseChange?: (pose: PlayerPose) => void;
@@ -124,6 +130,7 @@ export interface VoxelEngine {
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
   setRespawnPoint(point: RespawnPoint): void;
+  adjustPlayerHealth(delta: number): number;
   getPose(): PlayerPose;
   getTarget(): BlockTarget | null;
   getPerformanceStats(): VoxelPerformanceStats;

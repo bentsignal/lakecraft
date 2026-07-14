@@ -4,6 +4,7 @@ export { BLOCK } from "./types.ts";
 export { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 export { WORLD_CHUNK_SIZE, chunkCoordinate, chunkKeyForBlock, dirtyChunkKeysForEdit, dirtyChunkKeysForEdits } from "./chunks.ts";
 export { createMobRenderer, mobVertexCountForKind } from "./mobRenderer.ts";
+export { AVATAR_VERTICES_PER_PLAYER, MAX_NAMEPLATE_VERTICES_PER_PLAYER, REMOTE_MESH_INTERVAL_MS, createRemotePlayerRenderer, remotePlayerBufferCapacity, writeRemotePlayerGeometry } from "./remotePlayerRenderer.ts";
 export {
   MAX_CONTACT_DAMAGE_PER_TICK,
   MOB_COMBAT_AUTHORITY,

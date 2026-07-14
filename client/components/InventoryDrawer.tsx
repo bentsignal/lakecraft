@@ -10,6 +10,7 @@ export type InventoryCraftingDrawerProps = {
   onClose: () => void;
   onCraft: (recipe: Recipe) => void;
   onEquipArmor: (inventoryIndex: number) => void;
+  onUseItem?: (inventoryIndex: number) => void;
   onUnequipArmor: (slot: ArmorSlot) => void;
   onSelectSlot?: (index: number) => void;
 };
@@ -25,6 +26,7 @@ export function InventoryCraftingDrawer({
   onEquipArmor,
   onSelectSlot,
   onUnequipArmor,
+  onUseItem,
 }: InventoryCraftingDrawerProps) {
   if (!open) return null;
   return (
@@ -46,6 +48,7 @@ export function InventoryCraftingDrawer({
                   className={`lc-slot lc-inventory-grid__slot${index === selectedIndex ? " is-selected" : ""}`}
                   key={index}
                   onClick={() => stack && ITEMS[stack.itemId].armor ? onEquipArmor(index) : index < 9 ? onSelectSlot?.(index) : undefined}
+                  onDblClick={() => stack && ITEMS[stack.itemId].food ? onUseItem?.(index) : undefined}
                   title={stack ? ITEMS[stack.itemId].description : "Empty pocket"}
                   type="button"
                 >
@@ -65,7 +68,7 @@ export function InventoryCraftingDrawer({
                 );
               })}
             </div>
-            <p className="lc-pencil-note">Hotbar occupies pockets 01—09. Press a number key to ready an item.</p>
+            <p className="lc-pencil-note">Hotbar occupies pockets 01—09. Double-click food to eat, or ready it and use right-click.</p>
           </section>
           <section className="lc-crafting-panel" aria-labelledby="lc-recipes-title">
             <div className="lc-section-rule"><h3 id="lc-recipes-title">Field recipes</h3><small>{recipes.length} known</small></div>

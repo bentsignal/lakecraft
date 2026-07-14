@@ -8,7 +8,7 @@ export function ControlsCard({ visible = true, onDismiss }: ControlsCardProps) {
       <div className="lc-controls__grid">
         <div><span className="lc-key-cluster"><kbd>W</kbd><span><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></span><p><strong>Walk</strong><small>mouse to look</small></p></div>
         <div><span className="lc-mouse lc-mouse--left" aria-hidden="true" /><p><strong>Mine</strong><small>hold left click</small></p></div>
-        <div><span className="lc-mouse lc-mouse--right" aria-hidden="true" /><p><strong>Place</strong><small>right click</small></p></div>
+        <div><span className="lc-mouse lc-mouse--right" aria-hidden="true" /><p><strong>Place / Use</strong><small>interact or eat</small></p></div>
         <div><span className="lc-key-row"><kbd>SPC</kbd><kbd>E</kbd></span><p><strong>Jump / Pack</strong><small>esc frees cursor</small></p></div>
       </div>
     </aside>

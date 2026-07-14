@@ -1,5 +1,12 @@
 export const HOTBAR_SIZE = 9;
 export const INVENTORY_SIZE = 27;
+export const MAX_HUNGER = 20;
+export const MAX_HEALTH = 20;
+export const HUNGER_POINT_INTERVAL_SECONDS = 45;
+export const HEALTH_RECOVERY_INTERVAL_SECONDS = 4;
+export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
+export const MAX_SURVIVAL_STEP_SECONDS = 5;
+export const STARVATION_MIN_HEALTH = 1;
 
 export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks" | "crafting_table" | "torch" | "chest" | "door" | "bed";
 export type ToolId =
@@ -48,6 +55,29 @@ export type ItemStack = { itemId: ItemId; count: number };
 export type Inventory = Array<ItemStack | null>;
 export type ItemQuantity = { itemId: ItemId; count: number };
 
+export type FoodConsumptionResult =
+  | { ok: true; inventory: Inventory; hunger: number; consumed: ItemId; restored: number }
+  | { ok: false; inventory: Inventory; hunger: number; reason: "invalid_slot" | "empty_slot" | "not_food" | "hunger_full" };
+
+/**
+ * Transient client-side timing state for the survival loop. Only `hunger` is
+ * persisted; the progress fields deliberately reset when a play session starts.
+ */
+export type SurvivalTickState = {
+  hunger: number;
+  health: number;
+  hungerProgressSeconds: number;
+  recoveryProgressSeconds: number;
+  starvationProgressSeconds: number;
+};
+
+export type SurvivalTickResult = {
+  state: SurvivalTickState;
+  hungerLost: number;
+  healthRecovered: number;
+  starvationDamage: number;
+};
+
 export type Recipe = {
   id: string;
   label: string;
@@ -65,6 +95,7 @@ export type SerializablePlayerState = {
   selectedHotbar: number;
   equipment: Equipment;
   respawnPoint: PlayerRespawnPoint | null;
+  hunger: number;
 };
 
 export type PlayerRespawnPoint = {
@@ -211,6 +242,138 @@ export function normalizeInventory(value: unknown, size = INVENTORY_SIZE): Inven
     if (count > 0) output[index] = { itemId, count };
   }
   return output;
+}
+
+export function normalizeHunger(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(MAX_HUNGER, Math.floor(value)))
+    : MAX_HUNGER;
+}
+
+function normalizeHealth(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(MAX_HEALTH, value))
+    : MAX_HEALTH;
+}
+
+function normalizeTimer(value: unknown, intervalSeconds: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(intervalSeconds, value))
+    : 0;
+}
+
+/** Consumes exactly one food item from `inventoryIndex` when hunger is not full. */
+export function consumeFood(
+  inventory: readonly (ItemStack | null)[],
+  inventoryIndex: number,
+  hunger: number,
+): FoodConsumptionResult {
+  const next = cloneInventory(inventory);
+  const currentHunger = normalizeHunger(hunger);
+  if (!Number.isInteger(inventoryIndex) || inventoryIndex < 0 || inventoryIndex >= next.length) {
+    return { ok: false, inventory: next, hunger: currentHunger, reason: "invalid_slot" };
+  }
+  const stack = next[inventoryIndex];
+  if (!stack) return { ok: false, inventory: next, hunger: currentHunger, reason: "empty_slot" };
+  const food = ITEMS[stack.itemId].food;
+  if (!food) return { ok: false, inventory: next, hunger: currentHunger, reason: "not_food" };
+  if (currentHunger >= MAX_HUNGER) return { ok: false, inventory: next, hunger: currentHunger, reason: "hunger_full" };
+
+  const nextHunger = Math.min(MAX_HUNGER, currentHunger + food.hunger);
+  if (stack.count === 1) next[inventoryIndex] = null;
+  else stack.count -= 1;
+  return {
+    ok: true,
+    inventory: next,
+    hunger: nextHunger,
+    consumed: stack.itemId,
+    restored: nextHunger - currentHunger,
+  };
+}
+
+export function createSurvivalTickState(hunger = MAX_HUNGER, health = MAX_HEALTH): SurvivalTickState {
+  return {
+    hunger: normalizeHunger(hunger),
+    health: normalizeHealth(health),
+    hungerProgressSeconds: 0,
+    recoveryProgressSeconds: 0,
+    starvationProgressSeconds: 0,
+  };
+}
+
+/**
+ * Advances hunger and health without accessing clocks or browser state.
+ *
+ * `activityMultiplier` is capped to 0..4 so callers may distinguish resting,
+ * walking, and sprinting without allowing a delayed frame to drain the player
+ * unboundedly. Elapsed time is likewise capped per call. Well-fed players heal
+ * one point every four seconds at the cost of one hunger point; starving players
+ * lose health at the same cadence but never below one health from starvation.
+ */
+export function tickSurvival(
+  input: Readonly<SurvivalTickState>,
+  elapsedSeconds: number,
+  activityMultiplier = 1,
+): SurvivalTickResult {
+  const elapsed = Number.isFinite(elapsedSeconds)
+    ? Math.max(0, Math.min(MAX_SURVIVAL_STEP_SECONDS, elapsedSeconds))
+    : 0;
+  const activity = Number.isFinite(activityMultiplier)
+    ? Math.max(0, Math.min(4, activityMultiplier))
+    : 1;
+  let hunger = normalizeHunger(input.hunger);
+  let health = normalizeHealth(input.health);
+  let hungerProgressSeconds = normalizeTimer(input.hungerProgressSeconds, HUNGER_POINT_INTERVAL_SECONDS)
+    + elapsed * activity;
+  let recoveryProgressSeconds = normalizeTimer(input.recoveryProgressSeconds, HEALTH_RECOVERY_INTERVAL_SECONDS);
+  let starvationProgressSeconds = normalizeTimer(input.starvationProgressSeconds, STARVATION_DAMAGE_INTERVAL_SECONDS);
+  let hungerLost = 0;
+  let healthRecovered = 0;
+  let starvationDamage = 0;
+
+  const passiveHungerLoss = Math.min(hunger, Math.floor(hungerProgressSeconds / HUNGER_POINT_INTERVAL_SECONDS));
+  hunger -= passiveHungerLoss;
+  hungerLost += passiveHungerLoss;
+  hungerProgressSeconds -= passiveHungerLoss * HUNGER_POINT_INTERVAL_SECONDS;
+  if (hunger === 0) hungerProgressSeconds = 0;
+
+  if (hunger >= 18 && health < MAX_HEALTH) {
+    recoveryProgressSeconds += elapsed;
+    const recoveryEvents = Math.min(
+      Math.floor(recoveryProgressSeconds / HEALTH_RECOVERY_INTERVAL_SECONDS),
+      Math.ceil(MAX_HEALTH - health),
+      hunger - 17,
+    );
+    healthRecovered = Math.min(recoveryEvents, MAX_HEALTH - health);
+    health += healthRecovered;
+    hunger -= recoveryEvents;
+    hungerLost += recoveryEvents;
+    recoveryProgressSeconds -= recoveryEvents * HEALTH_RECOVERY_INTERVAL_SECONDS;
+    if (hunger < 18 || health >= MAX_HEALTH) recoveryProgressSeconds = 0;
+  } else {
+    recoveryProgressSeconds = 0;
+  }
+
+  if (hunger === 0 && health > STARVATION_MIN_HEALTH) {
+    starvationProgressSeconds += elapsed;
+    const starvationEvents = Math.min(
+      Math.floor(starvationProgressSeconds / STARVATION_DAMAGE_INTERVAL_SECONDS),
+      Math.ceil(health - STARVATION_MIN_HEALTH),
+    );
+    starvationDamage = Math.min(starvationEvents, health - STARVATION_MIN_HEALTH);
+    health -= starvationDamage;
+    starvationProgressSeconds -= starvationEvents * STARVATION_DAMAGE_INTERVAL_SECONDS;
+    if (health <= STARVATION_MIN_HEALTH) starvationProgressSeconds = 0;
+  } else {
+    starvationProgressSeconds = 0;
+  }
+
+  return {
+    state: { hunger, health, hungerProgressSeconds, recoveryProgressSeconds, starvationProgressSeconds },
+    hungerLost,
+    healthRecovered,
+    starvationDamage,
+  };
 }
 
 export function countItem(inventory: readonly (ItemStack | null)[], itemId: ItemId): number {
@@ -363,13 +526,15 @@ export function createSerializablePlayerState(
   inventory: readonly (ItemStack | null)[] = createStarterInventory(),
   selectedHotbar = 0,
   equipment: Equipment = createEmptyEquipment(),
-  respawnPoint: PlayerRespawnPoint | null = null
+  respawnPoint: PlayerRespawnPoint | null = null,
+  hunger = MAX_HUNGER,
 ): SerializablePlayerState {
   return {
     inventory: normalizeInventory(inventory),
     selectedHotbar: clampHotbarIndex(selectedHotbar),
     equipment: normalizeEquipment(equipment),
     respawnPoint: normalizeRespawnPoint(respawnPoint),
+    hunger: normalizeHunger(hunger),
   };
 }
 
@@ -381,12 +546,14 @@ export function normalizeSerializablePlayerState(value: unknown): SerializablePl
     selectedHotbar?: unknown;
     equipment?: unknown;
     respawnPoint?: unknown;
+    hunger?: unknown;
   };
   return createSerializablePlayerState(
     Array.isArray(candidate.inventory) ? candidate.inventory as Array<ItemStack | null> : createStarterInventory(),
     typeof candidate.selectedHotbar === "number" ? candidate.selectedHotbar : 0,
     normalizeEquipment(candidate.equipment),
     normalizeRespawnPoint(candidate.respawnPoint),
+    normalizeHunger(candidate.hunger),
   );
 }
 

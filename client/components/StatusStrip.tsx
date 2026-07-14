@@ -7,6 +7,8 @@ export type StatusStripProps = {
   connected?: boolean;
   health?: number;
   maxHealth?: number;
+  hunger?: number;
+  maxHunger?: number;
 };
 
 export function StatusStrip({
@@ -18,6 +20,8 @@ export function StatusStrip({
   connected = true,
   health = 20,
   maxHealth = 20,
+  hunger = 20,
+  maxHunger = 20,
 }: StatusStripProps) {
   return (
     <header className="lc-status" aria-label="World and connection status">
@@ -32,6 +36,9 @@ export function StatusStrip({
       </div>
       <div className="lc-status__health" aria-label={`${Math.max(0, health)} of ${maxHealth} health`}>
         <span>HEALTH</span><strong>{Array.from({ length: 10 }, (_, index) => index * 2 < health ? "♥" : "♡").join("")}</strong>
+      </div>
+      <div className="lc-status__hunger" aria-label={`${Math.max(0, hunger)} of ${maxHunger} hunger`}>
+        <span>HUNGER</span><strong>{Array.from({ length: 10 }, (_, index) => index * 2 < hunger ? "◆" : "◇").join("")}</strong>
       </div>
       <div className="lc-status__presence">
         <span className={`lc-signal${connected ? " is-online" : ""}`} aria-hidden="true" />

@@ -1,4 +1,4 @@
-import { boolean, capsule, endpoint, mutation, query, string, table, text } from "lakebed/server";
+import { boolean, capsule, endpoint, mutation, query, string, table, text, type WriteDatabase } from "lakebed/server";
 import {
   CHAT_RATE_LIMIT_MS,
   RECENT_CHAT_LIMIT,
@@ -22,6 +22,13 @@ import {
   validateSleepCoordinate,
   worldClockSnapshot
 } from "../shared/sleep";
+import {
+  applyWorldChunkEdit,
+  createWorldChunkSnapshot,
+  validateVisibleWorldChunkKeys,
+  worldEditChunkKey,
+  type WorldChunkEditInput
+} from "../shared/worldChunks";
 
 const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest", "bed", "door_closed", "door_open"];
 
@@ -34,6 +41,54 @@ function boundedInteger(value: string, minimum: number, maximum: number): number
 function boundedNumber(value: string, minimum: number, maximum: number): number | null {
   const number = Number(value);
   return Number.isFinite(number) && number >= minimum && number <= maximum ? number : null;
+}
+
+function databaseRowToChunkEdit(row: Record<string, unknown>): WorldChunkEditInput | null {
+  if (
+    typeof row.x !== "string"
+    || typeof row.y !== "string"
+    || typeof row.z !== "string"
+    || typeof row.blockType !== "string"
+  ) return null;
+  return {
+    id: typeof row.id === "string" ? row.id : "",
+    x: row.x,
+    y: row.y,
+    z: row.z,
+    blockType: row.blockType,
+    editedAt: typeof row.editedAt === "string"
+      ? row.editedAt
+      : typeof row.updatedAt === "string" ? row.updatedAt : "0"
+  };
+}
+
+async function maintainWorldChunkSnapshot(
+  db: WriteDatabase,
+  worldEditRow: Record<string, unknown>,
+): Promise<void> {
+  const edit = databaseRowToChunkEdit(worldEditRow);
+  if (!edit) throw new Error("Unable to encode the shared world edit.");
+  const chunkKey = worldEditChunkKey(Number(edit.x), Number(edit.z));
+  const existing = await db.worldChunks
+    .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+    .order("desc")
+    .first();
+  let snapshot = existing && typeof existing.snapshotJson === "string"
+    ? applyWorldChunkEdit(chunkKey, existing.snapshotJson, edit)
+    : null;
+  if (!snapshot?.ok) {
+    // First touch (or corrupt row recovery) safely folds every current legacy row
+    // for this chunk. Mutations are serialized, and the just-written row is included.
+    const legacyRows = await db.worldEdits.withIndex("by_edited").order("asc").collect();
+    const legacyEdits = legacyRows
+      .map((row) => databaseRowToChunkEdit(row))
+      .filter((row): row is WorldChunkEditInput => row !== null);
+    snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
+  }
+  if (!snapshot.ok) throw new Error(`Unable to compact shared world chunk: ${snapshot.reason}`);
+  const value = { chunkKey, snapshotJson: snapshot.snapshotJson };
+  if (existing) await db.worldChunks.update(existing.id, value);
+  else await db.worldChunks.insert(value);
 }
 
 export default capsule({
@@ -51,6 +106,12 @@ export default capsule({
     })
       .index("by_coord", ["coordKey"])
       .index("by_edited", ["editedAt"]),
+
+    /** Compact authoritative renderer snapshots, one row per 8x8 x/z column. */
+    worldChunks: table({
+      chunkKey: string(),
+      snapshotJson: string()
+    }).index("by_chunk", ["chunkKey"]),
 
     playerPresence: table({
       userId: string(),
@@ -119,6 +180,37 @@ export default capsule({
     worldEdits: query(async (ctx) =>
       ctx.db.worldEdits.withIndex("by_edited").order("desc").take(1_000)
     ),
+
+    worldChunks: query(async (ctx, rawChunkKeys: string[]) => {
+      const validation = validateVisibleWorldChunkKeys(rawChunkKeys);
+      if (!validation.ok) return { ok: false, reason: validation.reason, chunks: [] };
+      const chunks: Array<{ chunkKey: string; snapshotJson: string; updatedAt: string }> = [];
+      const missingChunkKeys: string[] = [];
+      for (const chunkKey of validation.chunkKeys) {
+        const row = await ctx.db.worldChunks
+          .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+          .order("desc")
+          .first();
+        if (row) chunks.push({ chunkKey: row.chunkKey, snapshotJson: row.snapshotJson, updatedAt: row.updatedAt });
+        else missingChunkKeys.push(chunkKey);
+      }
+      // Read-only compatibility for untouched pre-chunk data. The first later
+      // write persists the same compact snapshot, removing this fallback cost.
+      if (missingChunkKeys.length) {
+        const legacyRows = await ctx.db.worldEdits.withIndex("by_edited").order("asc").collect();
+        const legacyEdits = legacyRows
+          .map((row) => databaseRowToChunkEdit(row))
+          .filter((row): row is WorldChunkEditInput => row !== null);
+        for (const chunkKey of missingChunkKeys) {
+          const snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
+          if (snapshot.ok && snapshot.editCount > 0) {
+            chunks.push({ chunkKey, snapshotJson: snapshot.snapshotJson, updatedAt: "0" });
+          }
+        }
+      }
+      chunks.sort((a, b) => a.chunkKey.localeCompare(b.chunkKey));
+      return { ok: true, chunks };
+    }),
 
     worldEditsAt: query(async (ctx, coordKey: string) =>
       ctx.db.worldEdits
@@ -225,9 +317,12 @@ export default capsule({
           actorId: ctx.auth.userId,
           editedAt: String(Date.now())
         };
-        return existing
-          ? ctx.db.worldEdits.update(existing.id, value)
-          : ctx.db.worldEdits.insert(value);
+        const row = existing
+          ? await ctx.db.worldEdits.update(existing.id, value)
+          : await ctx.db.worldEdits.insert(value);
+        if (!row) throw new Error("Unable to persist the shared world edit.");
+        await maintainWorldChunkSnapshot(ctx.db, row);
+        return row;
       }
     ),
 
@@ -250,9 +345,12 @@ export default capsule({
         actorId: ctx.auth.userId,
         editedAt: String(Date.now())
       };
-      return existing
-        ? ctx.db.worldEdits.update(existing.id, value)
-        : ctx.db.worldEdits.insert(value);
+      const row = existing
+        ? await ctx.db.worldEdits.update(existing.id, value)
+        : await ctx.db.worldEdits.insert(value);
+      if (!row) throw new Error("Unable to persist the shared world edit.");
+      await maintainWorldChunkSnapshot(ctx.db, row);
+      return row;
     }),
 
     heartbeatPlayer: mutation(

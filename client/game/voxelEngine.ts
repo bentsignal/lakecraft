@@ -7,11 +7,11 @@ import {
 } from "./chunks.ts";
 import {
   MAX_REMOTE_PLAYERS,
-  advanceRemoteAvatarMotion,
   applyRemoteAvatarSnapshot,
   createRemoteAvatarMotion,
   type RemoteAvatarMotion,
 } from "./avatar.ts";
+import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import {
   DEFAULT_DAY_NIGHT_CONFIG,
   createDayNightState,
@@ -335,27 +335,6 @@ function tint(color: Vec3, shade: number, variation = 1): Vec3 {
   return [color[0] * shade * variation, color[1] * shade * variation, color[2] * shade * variation];
 }
 
-type PointTransform = (point: Vec3) => Vec3;
-
-function appendTransformedBox(
-  output: number[],
-  min: Vec3,
-  max: Vec3,
-  color: Vec3,
-  transform: PointTransform,
-): void {
-  for (const face of FACE_DEFS) {
-    const shaded = tint(color, face.shade);
-    for (const point of face.vertices) {
-      pushVertex(output, transform([
-        min[0] + point[0] * (max[0] - min[0]),
-        min[1] + point[1] * (max[1] - min[1]),
-        min[2] + point[2] * (max[2] - min[2]),
-      ]), shaded);
-    }
-  }
-}
-
 function appendAxisAlignedBox(output: number[], min: Vec3, max: Vec3, color: Vec3): void {
   for (const face of FACE_DEFS) {
     const shaded = tint(color, face.shade);
@@ -435,148 +414,6 @@ export function appendBedMesh(output: number[], x: number, y: number, z: number)
   appendAxisAlignedBox(output, [x + 0.08, y + 0.32, z + 0.69], [x + 0.92, y + 0.55, z + 0.94], [0.91, 0.90, 0.84]);
 }
 
-function avatarTransform(
-  origin: Vec3,
-  yaw: number,
-  pitch = 0,
-  pivotY = 0,
-  pivotZ = 0,
-): PointTransform {
-  const cosPitch = Math.cos(pitch);
-  const sinPitch = Math.sin(pitch);
-  const cosYaw = Math.cos(yaw);
-  const sinYaw = Math.sin(yaw);
-  return ([localX, localY, localZ]) => {
-    const offsetY = localY - pivotY;
-    const offsetZ = localZ - pivotZ;
-    const rotatedY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
-    const rotatedZ = pivotZ + offsetY * sinPitch + offsetZ * cosPitch;
-    return [
-      origin[0] + localX * cosYaw - rotatedZ * sinYaw,
-      origin[1] + rotatedY,
-      origin[2] + localX * sinYaw + rotatedZ * cosYaw,
-    ];
-  };
-}
-
-const AVATAR_COLORS = {
-  skin: [0.72, 0.50, 0.34] as Vec3,
-  skinHighlight: [0.82, 0.60, 0.43] as Vec3,
-  shirt: [0.05, 0.53, 0.55] as Vec3,
-  pants: [0.12, 0.20, 0.58] as Vec3,
-  shoes: [0.14, 0.12, 0.13] as Vec3,
-  hair: [0.18, 0.10, 0.055] as Vec3,
-  eye: [0.08, 0.19, 0.30] as Vec3,
-  mouth: [0.30, 0.13, 0.10] as Vec3,
-};
-
-function appendAvatar(output: number[], state: RemoteAvatarMotion): void {
-  const origin: Vec3 = [state.rendered.x, state.rendered.y, state.rendered.z];
-  const stride = Math.min(0.72, state.horizontalSpeed * 0.16) * Math.sin(state.walkPhase);
-  const body = avatarTransform(origin, state.bodyYaw);
-  const leftLeg = avatarTransform(origin, state.bodyYaw, stride, 0.69, 0);
-  const rightLeg = avatarTransform(origin, state.bodyYaw, -stride, 0.69, 0);
-  const leftArm = avatarTransform(origin, state.bodyYaw, -stride * 0.9, 1.31, 0);
-  const rightArm = avatarTransform(origin, state.bodyYaw, stride * 0.9, 1.31, 0);
-  const head = avatarTransform(origin, state.rendered.yaw, state.rendered.pitch * 0.32, 1.62, 0);
-
-  appendTransformedBox(output, [-0.26, 0.08, -0.14], [-0.02, 0.72, 0.14], AVATAR_COLORS.pants, leftLeg);
-  appendTransformedBox(output, [0.02, 0.08, -0.14], [0.26, 0.72, 0.14], AVATAR_COLORS.pants, rightLeg);
-  appendTransformedBox(output, [-0.26, 0, -0.15], [-0.02, 0.12, 0.16], AVATAR_COLORS.shoes, leftLeg);
-  appendTransformedBox(output, [0.02, 0, -0.15], [0.26, 0.12, 0.16], AVATAR_COLORS.shoes, rightLeg);
-  appendTransformedBox(output, [-0.34, 0.69, -0.18], [0.34, 1.39, 0.18], AVATAR_COLORS.shirt, body);
-
-  appendTransformedBox(output, [-0.55, 0.68, -0.14], [-0.34, 1.18, 0.14], AVATAR_COLORS.skin, leftArm);
-  appendTransformedBox(output, [0.34, 0.68, -0.14], [0.55, 1.18, 0.14], AVATAR_COLORS.skin, rightArm);
-  appendTransformedBox(output, [-0.55, 1.17, -0.145], [-0.34, 1.4, 0.145], AVATAR_COLORS.shirt, leftArm);
-  appendTransformedBox(output, [0.34, 1.17, -0.145], [0.55, 1.4, 0.145], AVATAR_COLORS.shirt, rightArm);
-
-  appendTransformedBox(output, [-0.25, 1.39, -0.25], [0.25, 1.89, 0.25], AVATAR_COLORS.skinHighlight, head);
-  appendTransformedBox(output, [-0.26, 1.80, -0.26], [0.26, 1.91, 0.26], AVATAR_COLORS.hair, head);
-  appendTransformedBox(output, [-0.26, 1.70, 0.245], [0.26, 1.84, 0.27], AVATAR_COLORS.hair, head);
-  appendTransformedBox(output, [-0.19, 1.72, -0.27], [-0.04, 1.79, -0.245], AVATAR_COLORS.hair, head);
-  appendTransformedBox(output, [0.11, 1.72, -0.27], [0.25, 1.79, -0.245], AVATAR_COLORS.hair, head);
-  appendTransformedBox(output, [-0.15, 1.63, -0.272], [-0.06, 1.69, -0.248], AVATAR_COLORS.eye, head);
-  appendTransformedBox(output, [0.06, 1.63, -0.272], [0.15, 1.69, -0.248], AVATAR_COLORS.eye, head);
-  appendTransformedBox(output, [-0.08, 1.50, -0.273], [0.08, 1.54, -0.248], AVATAR_COLORS.mouth, head);
-}
-
-const FONT: Readonly<Record<string, string>> = {
-  A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110",
-  E: "111100110100111", F: "111100110100100", G: "011100101101011", H: "101101111101101",
-  I: "111010010010111", J: "001001001101010", K: "101101110101101", L: "100100100100111",
-  M: "101111111101101", N: "101111111111101", O: "010101101101010", P: "110101110100100",
-  Q: "010101101111011", R: "110101110101101", S: "011100010001110", T: "111010010010010",
-  U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
-  Y: "101101010010010", Z: "111001010100111",
-  "0": "111101101101111", "1": "010110010010111", "2": "110001111100111", "3": "110001011001110",
-  "4": "101101111001001", "5": "111100110001110", "6": "011100111101111", "7": "111001010010010",
-  "8": "111101111101111", "9": "111101111001110", "?": "110001010000010", "-": "000000111000000",
-  "_": "000000000000111", ".": "000000000000010", " ": "000000000000000",
-};
-
-function appendBillboardQuad(
-  output: number[],
-  center: Vec3,
-  right: Vec3,
-  normal: Vec3,
-  left: number,
-  bottom: number,
-  width: number,
-  height: number,
-  depth: number,
-  color: Vec3,
-): void {
-  const point = (x: number, y: number): Vec3 => [
-    center[0] + right[0] * x + normal[0] * depth,
-    center[1] + y,
-    center[2] + right[2] * x + normal[2] * depth,
-  ];
-  const a = point(left, bottom);
-  const b = point(left + width, bottom);
-  const c = point(left + width, bottom + height);
-  const d = point(left, bottom + height);
-  pushVertex(output, a, color); pushVertex(output, b, color); pushVertex(output, c, color);
-  pushVertex(output, a, color); pushVertex(output, c, color); pushVertex(output, d, color);
-}
-
-function appendNameplate(output: number[], state: RemoteAvatarMotion, camera: Vec3): void {
-  const center: Vec3 = [state.rendered.x, state.rendered.y + 2.13, state.rendered.z];
-  let normalX = camera[0] - center[0];
-  let normalZ = camera[2] - center[2];
-  const length = Math.hypot(normalX, normalZ) || 1;
-  normalX /= length;
-  normalZ /= length;
-  const normal: Vec3 = [normalX, 0, normalZ];
-  const right: Vec3 = [normalZ, 0, -normalX];
-  const pixel = 0.025;
-  const advance = pixel * 4;
-  const textWidth = Math.max(pixel * 3, state.name.length * advance - pixel);
-  appendBillboardQuad(output, center, right, normal, -textWidth / 2 - 0.055, -0.045, textWidth + 0.11, 0.225, 0, [0.025, 0.028, 0.035]);
-
-  const startX = -textWidth / 2;
-  for (let characterIndex = 0; characterIndex < state.name.length; characterIndex += 1) {
-    const glyph = FONT[state.name[characterIndex].toUpperCase()] ?? FONT["?"];
-    for (let row = 0; row < 5; row += 1) {
-      for (let column = 0; column < 3; column += 1) {
-        if (glyph[row * 3 + column] !== "1") continue;
-        appendBillboardQuad(
-          output,
-          center,
-          right,
-          normal,
-          startX + characterIndex * advance + column * pixel,
-          0.015 + (4 - row) * pixel,
-          pixel * 0.82,
-          pixel * 0.82,
-          0.006,
-          [0.94, 0.95, 0.90],
-        );
-      }
-    }
-  }
-}
-
 function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
   return a === b || (!!a && !!b && a.block.x === b.block.x && a.block.y === b.block.y && a.block.z === b.block.z);
 }
@@ -626,10 +463,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const ambientIntensityLocation = gl.getUniformLocation(program, "uAmbientIntensity");
   const directionalIntensityLocation = gl.getUniformLocation(program, "uDirectionalIntensity");
   const torchLightsLocation = gl.getUniformLocation(program, "uTorchLights[0]");
-  const remoteBuffer = gl.createBuffer();
-  const nameplateBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
-  if (!remoteBuffer || !nameplateBuffer || !lineBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  if (!lineBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  const remotePlayerRenderer = createRemotePlayerRenderer(gl);
 
   const seed = options.seed ?? 7319;
   const radius = Math.max(8, Math.min(40, options.worldRadius ?? 20));
@@ -829,25 +665,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     totalRebuiltChunkCount += uniqueKeys.length;
   }
 
-  function rebuildRemoteMeshes(now: number, dt: number, camera: Vec3): void {
-    const avatarVertices: number[] = [];
-    const nameplateVertices: number[] = [];
-    for (const state of remoteStates.values()) {
-      advanceRemoteAvatarMotion(state, now, dt);
-      const distanceX = state.rendered.x - camera[0];
-      const distanceZ = state.rendered.z - camera[2];
-      if (distanceX * distanceX + distanceZ * distanceZ > 64 * 64) continue;
-      appendAvatar(avatarVertices, state);
-      appendNameplate(nameplateVertices, state, camera);
-    }
-    remoteVertexCount = avatarVertices.length / 6;
-    nameplateVertexCount = nameplateVertices.length / 6;
-    gl.bindBuffer(gl.ARRAY_BUFFER, remoteBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(avatarVertices), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, nameplateBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nameplateVertices), gl.DYNAMIC_DRAW);
-  }
-
   function collides(x: number, y: number, z: number): boolean {
     const halfWidth = 0.29;
     const minX = Math.floor(x - halfWidth);
@@ -1043,6 +860,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       avatarDrawCalls,
       avatarVertexCount: remoteVertexCount,
       nameplateVertexCount,
+      remoteMeshMs: remotePlayerRenderer.stats.meshMs,
+      remoteUploadBytes: remotePlayerRenderer.stats.uploadBytes,
+      remoteMeshUpdates: remotePlayerRenderer.stats.meshUpdates,
+      remoteVisiblePlayers: remotePlayerRenderer.stats.visiblePlayerCount,
       mobDrawCalls,
       mobVertexCount,
       mobVisibleCount: visibleMobCount,
@@ -1057,7 +878,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function render(now: number, dt: number): void {
     resize();
     const eye: Vec3 = [pose.x, pose.y + 1.62, pose.z];
-    rebuildRemoteMeshes(now, dt, eye);
+    const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
+    remoteVertexCount = remoteStats.avatarVertexCount;
+    nameplateVertexCount = remoteStats.nameplateVertexCount;
     const facing = direction();
     const projection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
@@ -1111,7 +934,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
     }
     if (remoteVertexCount) {
-      bindBuffer(remoteBuffer);
+      bindBuffer(remotePlayerRenderer.avatarBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, remoteVertexCount);
       drawCalls += 1;
       avatarDrawCalls += 1;
@@ -1123,7 +946,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       mobDrawCalls += 1;
     }
     if (nameplateVertexCount) {
-      bindBuffer(nameplateBuffer);
+      bindBuffer(remotePlayerRenderer.nameplateBuffer);
       gl.uniform1f(fogLocation, 0);
       gl.uniform1f(lightingLocation, 0);
       gl.drawArrays(gl.TRIANGLES, 0, nameplateVertexCount);
@@ -1258,13 +1081,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         }, duration * 1_000);
       }
     } else if (event.button === 2) {
-      if (!target) return;
-      const doorEdit = createDoorToggleEdit(target);
-      if (doorEdit) {
-        emitEdit(doorEdit);
-        return;
+      if (target) {
+        const doorEdit = createDoorToggleEdit(target);
+        if (doorEdit) {
+          emitEdit(doorEdit);
+          return;
+        }
+        if (tryInteractBlock(target, options.onInteractBlock)) return;
       }
-      if (tryInteractBlock(target, options.onInteractBlock)) return;
+      if (options.onUseSelectedItem?.()) return;
+      if (!target) return;
       if (selectedBlock === BLOCK.AIR) return;
       const { x, y, z } = target.place;
       if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) {
@@ -1321,8 +1147,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       clearMining();
       for (const mesh of chunkMeshes.values()) gl.deleteBuffer(mesh.buffer);
       chunkMeshes.clear();
-      gl.deleteBuffer(remoteBuffer);
-      gl.deleteBuffer(nameplateBuffer);
+      remotePlayerRenderer.destroy();
       gl.deleteBuffer(lineBuffer);
       mobRenderer.destroy();
       gl.deleteProgram(program);
@@ -1360,6 +1185,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     setRespawnPoint(point) {
       const validated = validateRespawnPoint(point, radius + 1);
       if (validated) respawnPoint = validated;
+    },
+    adjustPlayerHealth(delta) {
+      const change = Number.isFinite(delta) ? delta : 0;
+      const nextHealth = Math.max(0, Math.min(PLAYER_MAX_HEALTH, playerHealth + change));
+      if (nextHealth !== playerHealth) {
+        playerHealth = nextHealth;
+        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      }
+      return playerHealth;
     },
     getPose() { return { ...pose }; },
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },

@@ -16,6 +16,7 @@ import {
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
 import {
   ITEMS,
+  MAX_HUNGER,
   addItem,
   attackDamage,
   clampHotbarIndex,
@@ -24,6 +25,8 @@ import {
   createEmptyInventory,
   createSerializablePlayerState,
   createStarterInventory,
+  createSurvivalTickState,
+  consumeFood,
   equipArmorFromInventory,
   equippedArmorProtection,
   getMiningDrop,
@@ -33,6 +36,7 @@ import {
   normalizeRespawnPoint,
   parseSerializablePlayerStateJson,
   removeItem,
+  tickSurvival,
   unequipArmor,
   type ArmorSlot,
   type BlockId,
@@ -41,6 +45,7 @@ import {
   type ItemId,
   type PlayerRespawnPoint,
   type Recipe,
+  type SurvivalTickState,
 } from "../shared/game";
 import { CHEST_SLOT_COUNT, type ChestAtResult, type SaveChestResult } from "../shared/chests";
 import {
@@ -59,6 +64,10 @@ import {
   type WorldEdit,
 } from "../shared/protocol";
 import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep";
+import {
+  decodeWorldChunkSnapshot,
+  worldEditChunkCoordinate,
+} from "../shared/worldChunks";
 
 const APP_CSS = `
 html, body, #app { height: 100%; margin: 0; overflow: hidden; }
@@ -154,6 +163,21 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   bed: BLOCK.BED,
 };
 
+type WorldChunksQueryResult =
+  | { ok: true; chunks: Array<{ chunkKey: string; snapshotJson: string; updatedAt: string }> }
+  | { ok: false; reason: "invalid_chunk_keys" | "too_many_chunks"; chunks: [] };
+
+const WORLD_RADIUS = 18;
+const VISIBLE_WORLD_CHUNK_KEYS = (() => {
+  const minimum = worldEditChunkCoordinate(-WORLD_RADIUS);
+  const maximum = worldEditChunkCoordinate(WORLD_RADIUS);
+  const keys: string[] = [];
+  for (let chunkX = minimum; chunkX <= maximum; chunkX += 1) {
+    for (let chunkZ = minimum; chunkZ <= maximum; chunkZ += 1) keys.push(`${chunkX}:${chunkZ}`);
+  }
+  return keys;
+})();
+
 function playerColor(id: string): string {
   let hash = 0;
   for (let index = 0; index < id.length; index += 1) hash = Math.imul(hash ^ id.charCodeAt(index), 16777619);
@@ -180,6 +204,21 @@ function toEngineEdits(events: WorldEdit[]): EngineWorldEdit[] {
   });
 }
 
+function chunkSnapshotsToEngineEdits(result: WorldChunksQueryResult | undefined): EngineWorldEdit[] {
+  if (!result?.ok) return [];
+  const edits: EngineWorldEdit[] = [];
+  for (const chunk of result.chunks) {
+    const decoded = decodeWorldChunkSnapshot(chunk.chunkKey, chunk.snapshotJson);
+    if (!decoded.ok) continue;
+    for (const edit of decoded.edits) {
+      const block = PROTOCOL_TO_ENGINE[edit.blockType];
+      if (block == null) continue;
+      edits.push({ x: Number(edit.x), y: Number(edit.y), z: Number(edit.z), block });
+    }
+  }
+  return edits;
+}
+
 function parsePlayerState(row: PersistedInventory | null) {
   return row ? parseSerializablePlayerStateJson(row.inventoryJson) : null;
 }
@@ -188,6 +227,7 @@ export function App() {
   const auth = useAuth();
   const [activeChestKey, setActiveChestKey] = useState("");
   const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
+  const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", VISIBLE_WORLD_CHUNK_KEYS);
   const [activeSince] = useState(() => String(Date.now() - 30_000));
   const presenceEvents = useQuery<PlayerPresence[], string>("recentPlayers", activeSince) ?? [];
   const savedInventory = useQuery<PersistedInventory | null>("myInventory");
@@ -215,6 +255,9 @@ export function App() {
   const inventoryRef = useRef<Inventory>(createStarterInventory());
   const equipmentRef = useRef<Equipment>(createEmptyEquipment());
   const respawnPointRef = useRef<PlayerRespawnPoint | null>(null);
+  const hungerRef = useRef(MAX_HUNGER);
+  const survivalRef = useRef<SurvivalTickState>(createSurvivalTickState());
+  const recentlyActiveUntilRef = useRef(0);
   const selectedRef = useRef(2);
   const hydratedRef = useRef(false);
   const hydratedUserRef = useRef("");
@@ -223,6 +266,7 @@ export function App() {
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
   const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
   const [respawnPoint, setRespawnPoint] = useState<PlayerRespawnPoint | null>(null);
+  const [hunger, setHunger] = useState(MAX_HUNGER);
   const [selectedHotbar, setSelectedHotbar] = useState(2);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pointerLocked, setPointerLocked] = useState(false);
@@ -323,6 +367,9 @@ export function App() {
       setEquipment(saved.equipment);
       respawnPointRef.current = saved.respawnPoint;
       setRespawnPoint(saved.respawnPoint);
+      hungerRef.current = saved.hunger;
+      survivalRef.current = createSurvivalTickState(saved.hunger, playerHealth);
+      setHunger(saved.hunger);
       notify("Field kit restored", "Lakebed recovered your last inventory.", "success");
     }
     setInventoryReady(true);
@@ -331,14 +378,14 @@ export function App() {
   useEffect(() => {
     if (!hydratedRef.current || !auth.isAuthenticated || auth.isGuest) return;
     const timer = window.setTimeout(() => {
-      const state = createSerializablePlayerState(inventory, selectedHotbar, equipment, respawnPoint);
+      const state = createSerializablePlayerState(inventory, selectedHotbar, equipment, respawnPoint, hunger);
       void saveInventory(JSON.stringify(state)).then(() => setConnected(true)).catch(() => {
         setConnected(false);
         notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
       });
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [inventory, selectedHotbar, equipment, respawnPoint, auth.isAuthenticated, auth.isGuest]);
+  }, [inventory, selectedHotbar, equipment, respawnPoint, hunger, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
     if (!inWorld || !inventoryReady) return;
@@ -346,7 +393,7 @@ export function App() {
     if (!canvas) return;
     try {
       const engine = createVoxelEngine(canvas, {
-        worldRadius: 18,
+        worldRadius: WORLD_RADIUS,
         dayNight: worldClock ? {
           cycleLengthMs: worldClock.cycleLengthMs,
           epochMs: worldClock.epochMs,
@@ -361,6 +408,7 @@ export function App() {
         },
         getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
         getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
+        onUseSelectedItem: () => handleUseItem(),
         onMobDrops: (drops) => {
           let next = inventoryRef.current;
           const collected: string[] = [];
@@ -376,6 +424,7 @@ export function App() {
         },
         onPlayerDamage: (amount) => notify("Zombie hit", `${amount} health lost.`, "warning"),
         onPlayerHealthChange: (health) => {
+          survivalRef.current.health = health;
           setPlayerHealth(health);
           if (health <= 0) {
             notify("You were overwhelmed", "Respawning at the trailhead…", "warning");
@@ -386,6 +435,7 @@ export function App() {
         onPoseChange: (pose) => {
           poseRef.current = pose;
           poseDirtyRef.current = true;
+          recentlyActiveUntilRef.current = performance.now() + 1_200;
         },
         onTargetChange: (target) => { targetRef.current = target; },
         onPointerLockChange: setPointerLocked,
@@ -443,8 +493,31 @@ export function App() {
   }, [worldClock]);
 
   useEffect(() => {
-    engineRef.current?.applyWorldEdits(toEngineEdits(worldEvents));
-  }, [worldEvents]);
+    if (!inWorld || !inventoryReady) return;
+    let lastTickAt = performance.now();
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const elapsedSeconds = Math.max(0, (now - lastTickAt) / 1_000);
+      lastTickAt = now;
+      const activityMultiplier = now < recentlyActiveUntilRef.current ? 2 : 0.5;
+      const result = tickSurvival(survivalRef.current, elapsedSeconds, activityMultiplier);
+      survivalRef.current = result.state;
+      if (result.state.hunger !== hungerRef.current) {
+        hungerRef.current = result.state.hunger;
+        setHunger(result.state.hunger);
+      }
+      const healthDelta = result.healthRecovered - result.starvationDamage;
+      if (healthDelta !== 0) engineRef.current?.adjustPlayerHealth(healthDelta);
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [inWorld, inventoryReady]);
+
+  useEffect(() => {
+    engineRef.current?.applyWorldEdits([
+      ...toEngineEdits(worldEvents),
+      ...chunkSnapshotsToEngineEdits(worldChunks),
+    ]);
+  }, [worldEvents, worldChunks]);
 
   useEffect(() => {
     if (!activeChestKey || chestResult === undefined) return;
@@ -569,6 +642,20 @@ export function App() {
     }
     updateInventory(result.inventory);
     notify(`Made ${ITEMS[result.crafted.itemId].label}`, `Added ${result.crafted.count} to your field kit.`, "success");
+  }
+
+  function handleUseItem(inventoryIndex = selectedRef.current): boolean {
+    const result = consumeFood(inventoryRef.current, inventoryIndex, hungerRef.current);
+    if (!result.ok) {
+      if (result.reason === "hunger_full") notify("You are already full", "Save that food for later.");
+      return false;
+    }
+    updateInventory(result.inventory);
+    hungerRef.current = result.hunger;
+    survivalRef.current.hunger = result.hunger;
+    setHunger(result.hunger);
+    notify(`Ate ${ITEMS[result.consumed].label}`, `Restored ${result.restored} hunger.`, "success");
+    return true;
   }
 
   function handleEquipArmor(index: number) {
@@ -802,6 +889,9 @@ export function App() {
           setEquipment(emptyEquipment);
           respawnPointRef.current = null;
           setRespawnPoint(null);
+          hungerRef.current = MAX_HUNGER;
+          survivalRef.current = createSurvivalTickState();
+          setHunger(MAX_HUNGER);
           selectedRef.current = 2;
           setSelectedHotbar(2);
           setUsernameDraft("");
@@ -848,6 +938,8 @@ export function App() {
         connected={connected}
         equipment={equipment}
         health={playerHealth}
+        hunger={hunger}
+        maxHunger={MAX_HUNGER}
         inventory={inventory}
         inventoryOpen={inventoryOpen}
         messages={messages}
@@ -861,6 +953,7 @@ export function App() {
         onEquipArmor={handleEquipArmor}
         onSelectHotbar={(index) => setSelectedHotbar(clampHotbarIndex(index))}
         onUnequipArmor={handleUnequipArmor}
+        onUseItem={(inventoryIndex) => { handleUseItem(inventoryIndex); }}
         playerName={profile?.username ?? auth.displayName}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}
@@ -921,7 +1014,7 @@ export function App() {
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}

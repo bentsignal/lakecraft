@@ -19,7 +19,8 @@ npx lakebed auth as alice
 - Click the world to capture the mouse
 - `W A S D` move, `Space` jump, mouse to look
 - Left click mines; right click places the selected block
-- Right click a chest, door, or bed to interact
+- Right click a chest, door, or bed to interact; right click held food to eat
+- Double-click food in the pack to eat it
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
 - `T` or `Enter` opens world chat
 - `F3` toggles live frame, mesh, chunk, and draw-call counters
@@ -27,9 +28,9 @@ npx lakebed auth as alice
 
 ## Project shape
 
-- `client/game/` — custom chunked WebGL renderer, terrain, lighting, Steve avatars, mobs, combat, movement, collisions, and raycasting
+- `client/game/` — custom chunked WebGL renderer, terrain, lighting, fixed-buffer Steve avatars, mobs, combat, movement, collisions, and raycasting
 - `client/components/` — HUD, inventory, crafting, shared chests, onboarding, and feedback
-- `server/index.ts` — Lakebed schema, auth-backed profiles, bounded world state, multiplayer presence/chat, inventories, shared chests, and the synchronized sleep clock
+- `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, multiplayer presence/chat, inventories, shared chests, and the synchronized sleep clock
 - `shared/` — pure item, recipe, and wire-protocol types
 
 ## Build and deploy
@@ -43,6 +44,6 @@ The hosted Lakebed database persists shared world edits and player state. Anonym
 
 ## Multiplayer architecture
 
-Lakebed owns accounts, unique usernames, block edits, sparse player poses, chat, inventories, chests, and the world clock. Expensive high-frequency simulation stays deterministic on clients: remote poses are interpolated, terrain is generated from a shared seed, and alpha mob combat is intentionally client-authoritative. This compromise is deliberate—the project is an experiment in how far Lakebed can be pushed, so replacing it with a conventional game backend is out of scope.
+Lakebed owns accounts, unique usernames, compact block-edit snapshots, sparse player poses, chat, inventories and hunger, chests, and the world clock. Expensive high-frequency simulation stays deterministic on clients: remote poses are interpolated, terrain is generated from a shared seed, and alpha mob movement/combat is currently client-authoritative. This compromise is deliberate—the project is an experiment in how far Lakebed can be pushed, so replacing it with a conventional game backend is out of scope.
 
 Performance budgets and the repeatable benchmark loop live in [PERFORMANCE.md](./PERFORMANCE.md).

@@ -8,6 +8,15 @@ import {
 } from "../client/game/chunks.ts";
 import { createTerrain } from "../client/game/terrain.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
+import { createRemoteAvatarMotion, type RemoteAvatarMotion } from "../client/game/avatar.ts";
+import {
+  AVATAR_VERTICES_PER_PLAYER,
+  REMOTE_MESH_INTERVAL_MS,
+  createRemotePlayerRenderer,
+  remotePlayerBufferCapacity,
+  writeRemotePlayerGeometry,
+  type RemoteGeometryStats,
+} from "../client/game/remotePlayerRenderer.ts";
 
 assert.equal(chunkCoordinate(0), 0);
 assert.equal(chunkCoordinate(7), 0);
@@ -71,4 +80,66 @@ console.log(JSON.stringify({
   scanReduction: Number(scanReduction.toFixed(1)),
   uploadReduction: Number(uploadReduction.toFixed(1)),
 }));
+
+function remoteStates(count: number): Map<string, RemoteAvatarMotion> {
+  const states = new Map<string, RemoteAvatarMotion>();
+  for (let index = 0; index < count; index += 1) {
+    const id = `remote-${index}`;
+    states.set(id, createRemoteAvatarMotion({
+      id,
+      name: "WWWWWWWWWWWWWWWW",
+      x: (index % 8) + 1,
+      y: 8,
+      z: Math.floor(index / 8) + 1,
+      yaw: index * 0.1,
+      pitch: 0,
+    }, 0));
+  }
+  return states;
+}
+
+const remoteBenchmarks: Array<Record<string, number>> = [];
+for (const playerCount of [1, 8, 32]) {
+  const capacity = remotePlayerBufferCapacity(playerCount);
+  const avatarData = new Float32Array(capacity.avatarFloats);
+  const nameplateData = new Float32Array(capacity.nameplateFloats);
+  const remoteStats: RemoteGeometryStats = { avatarVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
+  writeRemotePlayerGeometry(remoteStates(playerCount), [0, 9, 0], avatarData, nameplateData, remoteStats);
+  assert.equal(remoteStats.visiblePlayerCount, playerCount);
+  assert.equal(remoteStats.avatarVertexCount, playerCount * AVATAR_VERTICES_PER_PLAYER);
+  assert.equal(remoteStats.nameplateVertexCount, playerCount * 1_158);
+  const uploadBytes = (remoteStats.avatarVertexCount + remoteStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
+  assert.ok(uploadBytes <= capacity.totalBytes);
+  remoteBenchmarks.push({ playerCount, uploadBytes, capacityBytes: capacity.totalBytes });
+}
+
+const glCalls = { bufferData: 0, bufferSubData: 0, deleteBuffer: 0 };
+let nextBufferId = 0;
+const fakeGl = {
+  ARRAY_BUFFER: 0x8892,
+  DYNAMIC_DRAW: 0x88e8,
+  createBuffer: () => ({ id: ++nextBufferId }),
+  bindBuffer: () => undefined,
+  bufferData: () => { glCalls.bufferData += 1; },
+  bufferSubData: () => { glCalls.bufferSubData += 1; },
+  deleteBuffer: () => { glCalls.deleteBuffer += 1; },
+} as unknown as WebGLRenderingContext;
+const remoteRenderer = createRemotePlayerRenderer(fakeGl);
+assert.equal(glCalls.bufferData, 2, "GPU buffers should be allocated exactly once");
+remoteRenderer.update(new Map(), 0, 0.016, [0, 9, 0]);
+assert.equal(glCalls.bufferSubData, 0, "zero remotes must skip GPU uploads");
+const oneRemote = remoteStates(1);
+oneRemote.get("remote-0")!.target.x += 1;
+assert.equal(remoteRenderer.update(oneRemote, 0, 0.016, [0, 9, 0]).updated, true);
+assert.equal(glCalls.bufferSubData, 2);
+const firstInterpolatedX = oneRemote.get("remote-0")!.rendered.x;
+assert.equal(remoteRenderer.update(oneRemote, REMOTE_MESH_INTERVAL_MS / 2, 0.016, [0, 9, 0]).updated, false);
+assert.ok(oneRemote.get("remote-0")!.rendered.x > firstInterpolatedX, "interpolation should advance between capped mesh uploads");
+assert.equal(glCalls.bufferSubData, 2);
+assert.equal(remoteRenderer.update(oneRemote, REMOTE_MESH_INTERVAL_MS + 1, 0.016, [0, 9, 0]).updated, true);
+assert.equal(glCalls.bufferSubData, 4);
+remoteRenderer.destroy();
+assert.equal(glCalls.deleteBuffer, 2);
+
+console.log(JSON.stringify({ benchmark: "remote player fixed-buffer scaling", samples: remoteBenchmarks }));
 console.log("lakecraft chunk performance tests: ok");
