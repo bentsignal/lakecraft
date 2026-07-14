@@ -99,6 +99,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.WOOD]: "log",
   [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "planks",
+  [BLOCK.CRAFTING_TABLE]: "crafting_table",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -108,6 +109,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   log: BLOCK.WOOD,
   leaves: BLOCK.LEAVES,
   planks: BLOCK.PLANKS,
+  crafting_table: BLOCK.CRAFTING_TABLE,
 };
 
 function playerColor(id: string): string {

@@ -1,11 +1,21 @@
 export const HOTBAR_SIZE = 9;
 export const INVENTORY_SIZE = 27;
 
-export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks";
-export type ToolId = "wooden_pickaxe" | "wooden_axe" | "stone_pickaxe" | "stone_axe";
-export type ItemId = BlockId | "stick" | ToolId;
-export type ToolKind = "hand" | "pickaxe" | "axe";
+export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks" | "crafting_table";
+export type ToolId =
+  | "wooden_pickaxe"
+  | "wooden_axe"
+  | "wooden_shovel"
+  | "wooden_sword"
+  | "stone_pickaxe"
+  | "stone_axe"
+  | "stone_shovel"
+  | "stone_sword";
+export type ArmorId = "leather_helmet" | "leather_chestplate" | "leather_leggings" | "leather_boots";
+export type ItemId = BlockId | "stick" | "leather" | ToolId | ArmorId;
+export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
 export type ToolTier = "none" | "wood" | "stone";
+export type ArmorSlot = "head" | "chest" | "legs" | "feet";
 
 export type BlockDefinition = {
   id: BlockId;
@@ -23,12 +33,13 @@ export type ItemDefinition = {
   label: string;
   shortLabel: string;
   description: string;
-  category: "block" | "material" | "tool";
+  category: "block" | "material" | "tool" | "armor";
   maxStack: number;
   glyph: string;
   color: string;
   placesBlock?: BlockId;
-  tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none"> };
+  tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none">; attackDamage: number };
+  armor?: { slot: ArmorSlot; protection: number };
 };
 
 export type ItemStack = { itemId: ItemId; count: number };
@@ -53,12 +64,13 @@ export type SerializablePlayerState = {
 };
 
 export const BLOCKS: Record<BlockId, BlockDefinition> = {
-  grass: { id: "grass", label: "Grass", description: "A living cap over packed earth.", color: "#718447", accent: "#a7b76a", hardness: 0.75, preferredTool: "hand", drop: "dirt" },
-  dirt: { id: "dirt", label: "Dirt", description: "Soft earth for quick shelter walls.", color: "#7f5638", accent: "#ad7951", hardness: 0.65, preferredTool: "hand", drop: "dirt" },
+  grass: { id: "grass", label: "Grass", description: "A living cap over packed earth.", color: "#718447", accent: "#a7b76a", hardness: 0.75, preferredTool: "shovel", drop: "dirt" },
+  dirt: { id: "dirt", label: "Dirt", description: "Soft earth for quick shelter walls.", color: "#7f5638", accent: "#ad7951", hardness: 0.65, preferredTool: "shovel", drop: "dirt" },
   stone: { id: "stone", label: "Stone", description: "Dense fieldstone. A pickaxe works best.", color: "#6d7069", accent: "#9a9c91", hardness: 2.5, preferredTool: "pickaxe", drop: "stone" },
   log: { id: "log", label: "Oak Log", description: "Fresh timber. An axe speeds the work.", color: "#76502f", accent: "#bd8a50", hardness: 1.6, preferredTool: "axe", drop: "log" },
   leaves: { id: "leaves", label: "Oak Leaves", description: "A loose, mossy canopy block.", color: "#4e6f3d", accent: "#7c9953", hardness: 0.3, preferredTool: "hand", drop: null },
   planks: { id: "planks", label: "Oak Planks", description: "Squared boards for building and tools.", color: "#a87841", accent: "#d0a45e", hardness: 1.1, preferredTool: "axe", drop: "planks" },
+  crafting_table: { id: "crafting_table", label: "Crafting Table", description: "A sturdy workbench for more involved recipes.", color: "#8a5b32", accent: "#d39a54", hardness: 1.4, preferredTool: "axe", drop: "crafting_table" },
 };
 
 export const ITEMS: Record<ItemId, ItemDefinition> = {
@@ -68,11 +80,21 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   log: blockItem("log", "LOG", "▥"),
   leaves: blockItem("leaves", "LEF", "✤"),
   planks: blockItem("planks", "PLK", "▤"),
+  crafting_table: blockItem("crafting_table", "CRF", "▧"),
   stick: { id: "stick", label: "Stick", shortLabel: "STK", description: "A straight handle for simple tools.", category: "material", maxStack: 64, glyph: "╱", color: "#c09557" },
+  leather: { id: "leather", label: "Leather", shortLabel: "LTH", description: "Tough hide used for lightweight armor.", category: "material", maxStack: 64, glyph: "◩", color: "#8d552f" },
   wooden_pickaxe: toolItem("wooden_pickaxe", "Wood Pickaxe", "W·PX", "pickaxe", "wood", "A light pick for fieldstone.", "⌁", "#b7874d"),
   wooden_axe: toolItem("wooden_axe", "Wood Axe", "W·AX", "axe", "wood", "A rough axe for timber.", "◒", "#b7874d"),
+  wooden_shovel: toolItem("wooden_shovel", "Wood Shovel", "W·SH", "shovel", "wood", "A broad wooden spade for earth.", "♠", "#b7874d"),
+  wooden_sword: toolItem("wooden_sword", "Wood Sword", "W·SW", "sword", "wood", "A simple wooden blade for defense.", "†", "#b7874d"),
   stone_pickaxe: toolItem("stone_pickaxe", "Stone Pickaxe", "S·PX", "pickaxe", "stone", "A sturdy pick for quick quarrying.", "⌁", "#a3a69e"),
   stone_axe: toolItem("stone_axe", "Stone Axe", "S·AX", "axe", "stone", "A weighty axe for felling trees.", "◒", "#a3a69e"),
+  stone_shovel: toolItem("stone_shovel", "Stone Shovel", "S·SH", "shovel", "stone", "A stone-edged spade that clears earth quickly.", "♠", "#a3a69e"),
+  stone_sword: toolItem("stone_sword", "Stone Sword", "S·SW", "sword", "stone", "A dependable stone blade.", "†", "#a3a69e"),
+  leather_helmet: armorItem("leather_helmet", "Leather Cap", "L·HD", "head", 1, "A light cap of hardened hide.", "⌒"),
+  leather_chestplate: armorItem("leather_chestplate", "Leather Tunic", "L·CH", "chest", 3, "A flexible hide tunic.", "▣"),
+  leather_leggings: armorItem("leather_leggings", "Leather Pants", "L·LG", "legs", 2, "Tough hide protection for the legs.", "⋒"),
+  leather_boots: armorItem("leather_boots", "Leather Boots", "L·FT", "feet", 1, "Soft boots for rough terrain.", "∪"),
 };
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -80,17 +102,32 @@ function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefiniti
   return { id, label: block.label, shortLabel, description: block.description, category: "block", maxStack: 64, glyph, color: block.color, placesBlock: id };
 }
 
-function toolItem(id: ToolId, label: string, shortLabel: string, kind: "pickaxe" | "axe", tier: "wood" | "stone", description: string, glyph: string, color: string): ItemDefinition {
-  return { id, label, shortLabel, description, category: "tool", maxStack: 1, glyph, color, tool: { kind, tier } };
+function toolItem(id: ToolId, label: string, shortLabel: string, kind: Exclude<ToolKind, "hand">, tier: Exclude<ToolTier, "none">, description: string, glyph: string, color: string): ItemDefinition {
+  const tierBonus = tier === "stone" ? 1 : 0;
+  const attackDamage = ({ pickaxe: 2, axe: 3, shovel: 1, sword: 4 } as const)[kind] + tierBonus;
+  return { id, label, shortLabel, description, category: "tool", maxStack: 1, glyph, color, tool: { kind, tier, attackDamage } };
+}
+
+function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSlot, protection: number, description: string, glyph: string): ItemDefinition {
+  return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color: "#9b6339", armor: { slot, protection } };
 }
 
 export const RECIPES: readonly Recipe[] = [
   { id: "planks_from_log", label: "Saw planks", note: "Split one log into four boards.", ingredients: [{ itemId: "log", count: 1 }], output: { itemId: "planks", count: 4 } },
   { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
+  { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "wooden_pickaxe", label: "Wood pickaxe", note: "A starter quarrying tool.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_pickaxe", count: 1 } },
   { id: "wooden_axe", label: "Wood axe", note: "Fells logs faster.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_axe", count: 1 } },
+  { id: "wooden_shovel", label: "Wood shovel", note: "Clears dirt and grass faster.", ingredients: [{ itemId: "planks", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_shovel", count: 1 } },
+  { id: "wooden_sword", label: "Wood sword", note: "Basic protection after dark.", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "wooden_sword", count: 1 } },
   { id: "stone_pickaxe", label: "Stone pickaxe", note: "A faster, sturdier pick.", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_pickaxe", count: 1 } },
   { id: "stone_axe", label: "Stone axe", note: "A proper timber tool.", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_axe", count: 1 } },
+  { id: "stone_shovel", label: "Stone shovel", note: "Moves soil in a hurry.", ingredients: [{ itemId: "stone", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_shovel", count: 1 } },
+  { id: "stone_sword", label: "Stone sword", note: "A sharper answer to hostile creatures.", ingredients: [{ itemId: "stone", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "stone_sword", count: 1 } },
+  { id: "leather_helmet", label: "Leather cap", note: "Light protection for the head.", ingredients: [{ itemId: "leather", count: 5 }], output: { itemId: "leather_helmet", count: 1 } },
+  { id: "leather_chestplate", label: "Leather tunic", note: "A hide layer for the torso.", ingredients: [{ itemId: "leather", count: 8 }], output: { itemId: "leather_chestplate", count: 1 } },
+  { id: "leather_leggings", label: "Leather pants", note: "Flexible leg protection.", ingredients: [{ itemId: "leather", count: 7 }], output: { itemId: "leather_leggings", count: 1 } },
+  { id: "leather_boots", label: "Leather boots", note: "A little protection underfoot.", ingredients: [{ itemId: "leather", count: 4 }], output: { itemId: "leather_boots", count: 1 } },
 ] as const;
 
 export function createEmptyInventory(size = INVENTORY_SIZE): Inventory {
@@ -115,7 +152,7 @@ export function normalizeInventory(value: unknown, size = INVENTORY_SIZE): Inven
   if (!Array.isArray(value)) return output;
   for (let index = 0; index < Math.min(output.length, value.length); index += 1) {
     const candidate = value[index] as { itemId?: unknown; count?: unknown } | null;
-    if (!candidate || typeof candidate.itemId !== "string" || !(candidate.itemId in ITEMS) || typeof candidate.count !== "number") continue;
+    if (!candidate || typeof candidate.itemId !== "string" || !(candidate.itemId in ITEMS) || typeof candidate.count !== "number" || !Number.isFinite(candidate.count)) continue;
     const itemId = candidate.itemId as ItemId;
     const count = Math.min(ITEMS[itemId].maxStack, Math.max(0, Math.floor(candidate.count)));
     if (count > 0) output[index] = { itemId, count };
@@ -218,6 +255,14 @@ export function toolEffectivenessLabel(blockId: BlockId, itemId?: ItemId | null)
 
 export function miningSeconds(blockId: BlockId, itemId?: ItemId | null): number {
   return Math.max(0.12, BLOCKS[blockId].hardness / toolEffectiveness(blockId, itemId));
+}
+
+export function attackDamage(itemId?: ItemId | null): number {
+  return itemId ? ITEMS[itemId].tool?.attackDamage ?? 1 : 1;
+}
+
+export function armorProtection(itemId?: ItemId | null): number {
+  return itemId ? ITEMS[itemId].armor?.protection ?? 0 : 0;
 }
 
 export function createSerializablePlayerState(inventory: readonly (ItemStack | null)[] = createStarterInventory(), selectedHotbar = 0): SerializablePlayerState {
