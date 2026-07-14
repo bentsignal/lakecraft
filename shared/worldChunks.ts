@@ -20,6 +20,9 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "bed",
   "door_closed",
   "door_open",
+  "coal_ore",
+  "iron_ore",
+  "furnace",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];
@@ -60,9 +63,15 @@ export type WorldChunkDecodeResult =
 const Y_LEVELS = WORLD_EDIT_MAX_Y - WORLD_EDIT_MIN_Y + 1;
 const CELLS_PER_Y = WORLD_EDIT_CHUNK_SIZE * WORLD_EDIT_CHUNK_SIZE;
 const CELL_COUNT = Y_LEVELS * CELLS_PER_Y;
-const PACKED_BYTE_COUNT = Math.ceil(CELL_COUNT / 2);
+const LEGACY_BLOCK_TYPE_COUNT = 13;
+const LEGACY_PACKED_BYTE_COUNT = Math.ceil(CELL_COUNT / 2);
+const CURRENT_BITS_PER_CELL = 5;
+const CURRENT_CODE_MASK = (1 << CURRENT_BITS_PER_CELL) - 1;
+const CURRENT_PACKED_BYTE_COUNT = Math.ceil(CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BLOCK_CODE = new Map<string, number>(WORLD_CHUNK_BLOCK_TYPES.map((block, index) => [block, index + 1]));
+
+type PackedSnapshot = { version: 1 | 2; packed: Uint8Array };
 
 export function worldEditChunkCoordinate(coordinate: number): number {
   return Math.floor(coordinate / WORLD_EDIT_CHUNK_SIZE);
@@ -133,6 +142,39 @@ function getNibble(packed: Uint8Array, index: number): number {
   return (index & 1) === 0 ? value & 0x0f : value >> 4;
 }
 
+function setCurrentCode(packed: Uint8Array, index: number, code: number): void {
+  const bitIndex = index * CURRENT_BITS_PER_CELL;
+  const byteIndex = bitIndex >> 3;
+  const shift = bitIndex & 7;
+  packed[byteIndex] = (packed[byteIndex] & ~(CURRENT_CODE_MASK << shift)) | ((code << shift) & 0xff);
+  if (shift > 8 - CURRENT_BITS_PER_CELL) {
+    const firstBits = 8 - shift;
+    const spillBits = CURRENT_BITS_PER_CELL - firstBits;
+    const spillMask = (1 << spillBits) - 1;
+    packed[byteIndex + 1] = (packed[byteIndex + 1] & ~spillMask) | ((code >> firstBits) & spillMask);
+  }
+}
+
+function getCurrentCode(packed: Uint8Array, index: number): number {
+  const bitIndex = index * CURRENT_BITS_PER_CELL;
+  const byteIndex = bitIndex >> 3;
+  const shift = bitIndex & 7;
+  let code = packed[byteIndex] >> shift;
+  if (shift > 8 - CURRENT_BITS_PER_CELL) code |= packed[byteIndex + 1] << (8 - shift);
+  return code & CURRENT_CODE_MASK;
+}
+
+function getSnapshotCode(snapshot: PackedSnapshot, index: number): number {
+  return snapshot.version === 1 ? getNibble(snapshot.packed, index) : getCurrentCode(snapshot.packed, index);
+}
+
+function migrateToCurrent(snapshot: PackedSnapshot): Uint8Array {
+  if (snapshot.version === 2) return snapshot.packed.slice();
+  const current = new Uint8Array(CURRENT_PACKED_BYTE_COUNT);
+  for (let index = 0; index < CELL_COUNT; index += 1) setCurrentCode(current, index, getNibble(snapshot.packed, index));
+  return current;
+}
+
 function encodeBase64(bytes: Uint8Array): string {
   let output = "";
   for (let index = 0; index < bytes.length; index += 3) {
@@ -168,16 +210,17 @@ function decodeBase64(value: string): Uint8Array | null {
 }
 
 function serializePacked(packed: Uint8Array): string {
-  return JSON.stringify({ v: 1, cells: encodeBase64(packed) });
+  return JSON.stringify({ v: 2, cells: encodeBase64(packed) });
 }
 
-function parsePacked(snapshotJson: string): Uint8Array | null {
+function parsePacked(snapshotJson: string): PackedSnapshot | null {
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return null;
   try {
     const parsed = JSON.parse(snapshotJson) as { v?: unknown; cells?: unknown };
-    if (parsed.v !== 1 || typeof parsed.cells !== "string") return null;
+    if ((parsed.v !== 1 && parsed.v !== 2) || typeof parsed.cells !== "string") return null;
     const packed = decodeBase64(parsed.cells);
-    return packed?.length === PACKED_BYTE_COUNT ? packed : null;
+    const expectedLength = parsed.v === 1 ? LEGACY_PACKED_BYTE_COUNT : CURRENT_PACKED_BYTE_COUNT;
+    return packed?.length === expectedLength ? { version: parsed.v, packed } : null;
   } catch {
     return null;
   }
@@ -212,8 +255,8 @@ export function createWorldChunkSnapshot(
     const previous = latest.get(index);
     if (!previous || isLaterEdit(edit, previous)) latest.set(index, edit);
   }
-  const packed = new Uint8Array(PACKED_BYTE_COUNT);
-  for (const [index, edit] of latest) setNibble(packed, index, BLOCK_CODE.get(edit.blockType) as number);
+  const packed = new Uint8Array(CURRENT_PACKED_BYTE_COUNT);
+  for (const [index, edit] of latest) setCurrentCode(packed, index, BLOCK_CODE.get(edit.blockType) as number);
   const snapshotJson = serializePacked(packed);
   return snapshotJson.length <= MAX_WORLD_CHUNK_SNAPSHOT_BYTES
     ? { ok: true, snapshotJson, editCount: latest.size }
@@ -228,8 +271,8 @@ export function applyWorldChunkEdit(
   const chunk = validateWorldChunkKey(rawChunkKey);
   if (!chunk.ok) return { ok: false, reason: chunk.reason };
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
-  const packed = parsePacked(snapshotJson);
-  if (!packed) return { ok: false, reason: "invalid_snapshot" };
+  const previous = parsePacked(snapshotJson);
+  if (!previous) return { ok: false, reason: "invalid_snapshot" };
   const x = finiteInteger(edit.x);
   const y = finiteInteger(edit.y);
   const z = finiteInteger(edit.z);
@@ -237,10 +280,11 @@ export function applyWorldChunkEdit(
   if (x === null || y === null || z === null || code === undefined) return { ok: false, reason: "invalid_edit" };
   const index = cellIndex(x, y, z, chunk.chunkX, chunk.chunkZ);
   if (index === null) return { ok: false, reason: "invalid_edit" };
-  setNibble(packed, index, code);
+  const packed = migrateToCurrent(previous);
+  setCurrentCode(packed, index, code);
   const nextSnapshotJson = serializePacked(packed);
   let editCount = 0;
-  for (let cell = 0; cell < CELL_COUNT; cell += 1) if (getNibble(packed, cell) !== 0) editCount += 1;
+  for (let cell = 0; cell < CELL_COUNT; cell += 1) if (getCurrentCode(packed, cell) !== 0) editCount += 1;
   return { ok: true, snapshotJson: nextSnapshotJson, editCount };
 }
 
@@ -248,12 +292,13 @@ export function decodeWorldChunkSnapshot(rawChunkKey: string, snapshotJson: stri
   const chunk = validateWorldChunkKey(rawChunkKey);
   if (!chunk.ok) return { ok: false, reason: chunk.reason };
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
-  const packed = parsePacked(snapshotJson);
-  if (!packed) return { ok: false, reason: "invalid_snapshot" };
+  const snapshot = parsePacked(snapshotJson);
+  if (!snapshot) return { ok: false, reason: "invalid_snapshot" };
   const edits: DecodedWorldChunkEdit[] = [];
   for (let index = 0; index < CELL_COUNT; index += 1) {
-    const code = getNibble(packed, index);
+    const code = getSnapshotCode(snapshot, index);
     if (code === 0) continue;
+    if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) return { ok: false, reason: "invalid_snapshot" };
     const blockType = WORLD_CHUNK_BLOCK_TYPES[code - 1];
     if (!blockType) return { ok: false, reason: "invalid_snapshot" };
     const yOffset = Math.floor(index / CELLS_PER_Y);

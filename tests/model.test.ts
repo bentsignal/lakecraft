@@ -7,7 +7,7 @@ import {
   createEmptyInventory,
   toolEffectiveness,
 } from "../shared/game.ts";
-import { activePlayerPresences, latestWorldEdits, type PlayerPresence, type WorldEdit } from "../shared/protocol.ts";
+import { activePlayerPresences, isBlockType, latestWorldEdits, type PlayerPresence, type WorldEdit } from "../shared/protocol.ts";
 import { createTerrain, raycastVoxels, terrainHeight } from "../client/game/terrain.ts";
 import { BLOCK } from "../client/game/types.ts";
 
@@ -44,9 +44,13 @@ const edits: WorldEdit[] = [
 ];
 assert.equal(latestWorldEdits(edits)[0]?.blockType, "air");
 assert.equal(latestWorldEdits([...edits].reverse())[0]?.blockType, "air");
+assert.equal(isBlockType("coal_ore"), true);
+assert.equal(isBlockType("iron_ore"), true);
+assert.equal(isBlockType("furnace"), true);
+assert.equal(isBlockType("diamond_ore"), false);
 
 const now = Date.now();
-const presenceBase = { color: "#ffffff", x: "0", y: "8", z: "0", yaw: "0", pitch: "0", createdAt: "1", updatedAt: "1" };
+const presenceBase = { color: "#ffffff", x: "0", y: "8", z: "0", yaw: "0", pitch: "0", vx: "0", vy: "0", vz: "0", createdAt: "1", updatedAt: "1" };
 const presences: PlayerPresence[] = [
   { ...presenceBase, id: "p1", userId: "alice", displayName: "Alice", heartbeatAt: String(now - 1_000), online: true },
   { ...presenceBase, id: "p2", userId: "bob", displayName: "Bob", heartbeatAt: String(now - 500), online: true },

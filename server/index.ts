@@ -59,8 +59,9 @@ import {
   buildOfflinePresenceValue,
   validatePresencePoseFields
 } from "./playerPresence";
+import { BLOCK_TYPES } from "../shared/protocol";
 
-const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest", "bed", "door_closed", "door_open"];
+const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 const CHEST_RECEIPT_PRUNE_LIMIT = 8;
 
@@ -403,7 +404,7 @@ export default capsule({
         const py = boundedInteger(y, -4, 64);
         const pz = boundedInteger(z, -64, 64);
         const block = blockType.trim().toLowerCase();
-        if (px == null || py == null || pz == null || !PLACEABLE_BLOCKS.includes(block)) return;
+        if (px == null || py == null || pz == null || !PLACEABLE_BLOCKS.has(block)) return;
         const existing = await ctx.db.worldEdits
           .withIndex("by_coord", (q) => q.eq("coordKey", `${px}:${py}:${pz}`))
           .order("desc")

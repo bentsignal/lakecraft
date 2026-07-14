@@ -15,6 +15,9 @@ export const BLOCK = {
   DOOR_CLOSED: 10,
   DOOR_OPEN: 11,
   BED: 12,
+  COAL_ORE: 13,
+  IRON_ORE: 14,
+  FURNACE: 15,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];

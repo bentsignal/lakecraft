@@ -75,6 +75,7 @@ export const TORCH_MESH_VERTEX_COUNT = 72;
 export const CHEST_MESH_VERTEX_COUNT = 108;
 export const DOOR_MESH_VERTEX_COUNT = 144;
 export const BED_MESH_VERTEX_COUNT = 108;
+export const FURNACE_MESH_VERTEX_COUNT = 72;
 export const MAX_RESPAWN_HEIGHT = 128;
 
 const VERTEX_SHADER = `
@@ -144,7 +145,20 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.DOOR_CLOSED]: [0.57, 0.34, 0.14],
   [BLOCK.DOOR_OPEN]: [0.57, 0.34, 0.14],
   [BLOCK.BED]: [0.72, 0.08, 0.07],
+  [BLOCK.COAL_ORE]: [0.25, 0.27, 0.28],
+  [BLOCK.IRON_ORE]: [0.66, 0.49, 0.35],
+  [BLOCK.FURNACE]: [0.42, 0.44, 0.45],
 };
+
+/** Stable material palette entry used by the dependency-free voxel renderer. */
+export function blockMaterialColor(block: BlockId): readonly [number, number, number] {
+  return BLOCK_COLORS[block] ?? BLOCK_COLORS[BLOCK.STONE];
+}
+
+/** Low-amplitude coordinate variation prevents large flat voxel fields looking tiled. */
+export function blockMaterialVariation(x: number, y: number, z: number): number {
+  return 0.93 + (((Math.imul(x, 13) ^ Math.imul(y, 7) ^ Math.imul(z, 17)) & 7) / 100);
+}
 
 function rankedTorchCompare(a: RankedTorchLight, b: RankedTorchLight): number {
   return a.distanceSquared - b.distanceSquared || a.x - b.x || a.y - b.y || a.z - b.z;
@@ -257,7 +271,15 @@ export function tryInteractBlock(
   target: BlockTarget,
   onInteractBlock?: (target: BlockTarget) => boolean,
 ): boolean {
-  if ((target.block.block !== BLOCK.CHEST && target.block.block !== BLOCK.BED && target.block.block !== BLOCK.CRAFTING_TABLE) || !onInteractBlock) return false;
+  if (
+    (
+      target.block.block !== BLOCK.CHEST
+      && target.block.block !== BLOCK.BED
+      && target.block.block !== BLOCK.CRAFTING_TABLE
+      && target.block.block !== BLOCK.FURNACE
+    )
+    || !onInteractBlock
+  ) return false;
   return onInteractBlock(target) === true;
 }
 
@@ -418,6 +440,12 @@ export function appendBedMesh(output: number[], x: number, y: number, z: number)
   appendAxisAlignedBox(output, [x + 0.03, y + 0.08, z + 0.03], [x + 0.97, y + 0.32, z + 0.97], [0.38, 0.20, 0.07]);
   appendAxisAlignedBox(output, [x + 0.04, y + 0.32, z + 0.04], [x + 0.96, y + 0.53, z + 0.69], BLOCK_COLORS[BLOCK.BED]);
   appendAxisAlignedBox(output, [x + 0.08, y + 0.32, z + 0.69], [x + 0.92, y + 0.55, z + 0.94], [0.91, 0.90, 0.84]);
+}
+
+/** A stone cube with a recessed charcoal opening on its north-facing side. */
+export function appendFurnaceMesh(output: number[], x: number, y: number, z: number): void {
+  appendAxisAlignedBox(output, [x, y, z], [x + 1, y + 1, z + 1], BLOCK_COLORS[BLOCK.FURNACE]);
+  appendAxisAlignedBox(output, [x + 0.18, y + 0.18, z - 0.012], [x + 0.82, y + 0.68, z + 0.012], [0.075, 0.068, 0.062]);
 }
 
 function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
@@ -640,8 +668,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         appendBedMesh(vertices, x, y, z);
         continue;
       }
-      const base = BLOCK_COLORS[block] ?? BLOCK_COLORS[BLOCK.STONE];
-      const variation = 0.93 + (((Math.imul(x, 13) ^ Math.imul(y, 7) ^ Math.imul(z, 17)) & 7) / 100);
+      if (block === BLOCK.FURNACE) {
+        appendFurnaceMesh(vertices, x, y, z);
+        continue;
+      }
+      const base = blockMaterialColor(block) as Vec3;
+      const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
         if (blockOccludesFaces(getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]))) continue;
         const color = tint(base, face.shade, variation);

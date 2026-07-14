@@ -1,8 +1,8 @@
 import { signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
-import { ChestDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
-import { isCraftingTableWithinReach, type CraftingTablePosition } from "./crafting";
+import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
+import { isCraftingTableWithinReach as isWorkstationWithinReach, type CraftingTablePosition as WorkstationPosition } from "./crafting";
 import {
   BLOCK,
   createVoxelEngine,
@@ -17,6 +17,7 @@ import {
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
 import {
   ITEMS,
+  BLOCKS,
   MAX_HUNGER,
   addItem,
   attackDamage,
@@ -38,6 +39,7 @@ import {
   normalizeRespawnPoint,
   parseSerializablePlayerStateJson,
   removeItem,
+  smeltRecipe,
   tickSurvival,
   unequipArmor,
   type ArmorSlot,
@@ -48,6 +50,7 @@ import {
   type ItemId,
   type PlayerRespawnPoint,
   type Recipe,
+  type SmeltingRecipe,
   type SurvivalTickState,
 } from "../shared/game";
 import { CHEST_SLOT_COUNT, type ChestAtResult, type PersistedChest } from "../shared/chests";
@@ -123,15 +126,18 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 700px) { .lakecraft-entry__card { padding: 27px 24px; }.lakecraft-entry h1 { font-size: 48px; } }
 `;
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "wood" | "leaves" | "planks" | "crafting_table" | "torch" | "chest" | "door_closed" | "door_open" | "bed"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
   [BLOCK.STONE]: "stone",
+  [BLOCK.COAL_ORE]: "coal_ore",
+  [BLOCK.IRON_ORE]: "iron_ore",
   [BLOCK.WOOD]: "wood",
   [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "planks",
   [BLOCK.CRAFTING_TABLE]: "crafting_table",
+  [BLOCK.FURNACE]: "furnace",
   [BLOCK.TORCH]: "torch",
   [BLOCK.CHEST]: "chest",
   [BLOCK.DOOR_CLOSED]: "door_closed",
@@ -144,11 +150,14 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   grass: BLOCK.GRASS,
   dirt: BLOCK.DIRT,
   stone: BLOCK.STONE,
+  coal_ore: BLOCK.COAL_ORE,
+  iron_ore: BLOCK.IRON_ORE,
   wood: BLOCK.WOOD,
   log: BLOCK.WOOD,
   leaves: BLOCK.LEAVES,
   planks: BLOCK.PLANKS,
   crafting_table: BLOCK.CRAFTING_TABLE,
+  furnace: BLOCK.FURNACE,
   torch: BLOCK.TORCH,
   chest: BLOCK.CHEST,
   door_closed: BLOCK.DOOR_CLOSED,
@@ -160,10 +169,13 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
   [BLOCK.STONE]: "stone",
+  [BLOCK.COAL_ORE]: "coal_ore",
+  [BLOCK.IRON_ORE]: "iron_ore",
   [BLOCK.WOOD]: "log",
   [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "planks",
   [BLOCK.CRAFTING_TABLE]: "crafting_table",
+  [BLOCK.FURNACE]: "furnace",
   [BLOCK.TORCH]: "torch",
   [BLOCK.CHEST]: "chest",
   [BLOCK.DOOR_CLOSED]: "door",
@@ -175,10 +187,13 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   grass: BLOCK.GRASS,
   dirt: BLOCK.DIRT,
   stone: BLOCK.STONE,
+  coal_ore: BLOCK.COAL_ORE,
+  iron_ore: BLOCK.IRON_ORE,
   log: BLOCK.WOOD,
   leaves: BLOCK.LEAVES,
   planks: BLOCK.PLANKS,
   crafting_table: BLOCK.CRAFTING_TABLE,
+  furnace: BLOCK.FURNACE,
   torch: BLOCK.TORCH,
   chest: BLOCK.CHEST,
   door: BLOCK.DOOR_CLOSED,
@@ -258,6 +273,15 @@ function chunkSnapshotsToEngineEdits(result: WorldChunksQueryResult | undefined)
   return edits;
 }
 
+function miningRequirementDetail(blockId: BlockId): string {
+  const block = BLOCKS[blockId];
+  const requirement = block.requiredDropTool;
+  if (!requirement) return `${block.label} cannot be recovered with the held item.`;
+  const tier = requirement.minimumTier === "wood" ? "wooden" : requirement.minimumTier;
+  const article = tier === "iron" ? "an" : "a";
+  return `${block.label} only drops when mined with ${article} ${tier} ${requirement.kind} or better.`;
+}
+
 function parsePlayerState(row: PersistedInventory | null) {
   return row ? parseSerializablePlayerStateJson(row.inventoryJson) : null;
 }
@@ -314,7 +338,7 @@ export function App() {
   const chestBusyRef = useRef(false);
   const chestTransferActiveRef = useRef(false);
   const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
-  const activeCraftingTableRef = useRef<CraftingTablePosition | null>(null);
+  const activeWorkstationRef = useRef<{ kind: "crafting_table" | "furnace"; position: WorkstationPosition } | null>(null);
   const toastCounter = useRef(0);
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
@@ -326,6 +350,9 @@ export function App() {
   const [selectedHotbar, setSelectedHotbar] = useState(2);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
+  const [furnaceOpen, setFurnaceOpen] = useState(false);
+  const [furnaceStatus, setFurnaceStatus] = useState("Choose a firing. One coal smelts up to eight matching items.");
+  const [furnaceError, setFurnaceError] = useState("");
   const [pointerLocked, setPointerLocked] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [mobileUnsupported, setMobileUnsupported] = useState(false);
@@ -366,9 +393,11 @@ export function App() {
   }
 
   function closeInventory() {
-    activeCraftingTableRef.current = null;
+    activeWorkstationRef.current = null;
     setCraftingContext("field");
     setInventoryOpen(false);
+    setFurnaceOpen(false);
+    setFurnaceError("");
   }
 
   function setChestOperationBusy(next: boolean) {
@@ -496,7 +525,8 @@ export function App() {
           updateInventory(added.inventory);
           notify(`Collected ${ITEMS[drop.itemId].label}`, added.remainder ? "Your pack is full." : "Added to the field kit.", added.remainder ? "warning" : "success");
         } else if (!canHarvestBlock(gameBlock, heldItem)) {
-          notify(`No ${ITEMS.stone.label} recovered`, "Stone only drops when mined with a wooden or stone pickaxe.", "warning");
+          const unavailableDrop = BLOCKS[gameBlock].drop;
+          notify(`No ${unavailableDrop ? ITEMS[unavailableDrop].label : BLOCKS[gameBlock].label} recovered`, miningRequirementDetail(gameBlock), "warning");
         }
       }
       void removeBlockMutation(key, String(edit.x), String(edit.y), String(edit.z)).then(() => setConnected(true)).catch(() => {
@@ -622,10 +652,11 @@ export function App() {
           poseRef.current = pose;
           presenceSampleRef.current?.(pose);
           recentlyActiveUntilRef.current = performance.now() + 1_200;
-          const table = activeCraftingTableRef.current;
-          if (table && !isCraftingTableWithinReach(pose, table)) {
+          const workstation = activeWorkstationRef.current;
+          if (workstation && !isWorkstationWithinReach(pose, workstation.position)) {
+            const label = workstation.kind === "furnace" ? "Furnace" : "Workbench";
             closeInventory();
-            notify("Workbench out of reach", "Move back to the crafting table to use advanced recipes.", "warning");
+            notify(`${label} out of reach`, `Move back to the ${workstation.kind === "furnace" ? "furnace" : "crafting table"} to keep using it.`, "warning");
           }
         },
         onTargetChange: (target) => { targetRef.current = target; },
@@ -636,13 +667,16 @@ export function App() {
           setChatOpen(false);
           if (document.pointerLockElement) document.exitPointerLock();
           if (target.block.block === BLOCK.CRAFTING_TABLE) {
-            activeCraftingTableRef.current = {
-              x: target.block.x,
-              y: target.block.y,
-              z: target.block.z,
-            };
+            activeWorkstationRef.current = { kind: "crafting_table", position: { x: target.block.x, y: target.block.y, z: target.block.z } };
             setCraftingContext("crafting_table");
             setInventoryOpen(true);
+            return true;
+          }
+          if (target.block.block === BLOCK.FURNACE) {
+            activeWorkstationRef.current = { kind: "furnace", position: { x: target.block.x, y: target.block.y, z: target.block.z } };
+            setFurnaceStatus("Choose a firing. One coal smelts up to eight matching items.");
+            setFurnaceError("");
+            setFurnaceOpen(true);
             return true;
           }
           if (target.block.block === BLOCK.BED) {
@@ -851,12 +885,12 @@ export function App() {
         }
         return;
       }
-      if (inventoryOpen && event.code === "Escape") {
+      if ((inventoryOpen || furnaceOpen) && event.code === "Escape") {
         event.preventDefault();
         closeInventory();
         return;
       }
-      if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat && !inventoryOpen) {
+      if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat && !inventoryOpen && !furnaceOpen) {
         event.preventDefault();
         if (document.pointerLockElement) document.exitPointerLock();
         setChatOpen(true);
@@ -868,10 +902,10 @@ export function App() {
       if (event.code === "KeyE" && !event.repeat) {
         event.preventDefault();
         if (!hydratedRef.current) return;
-        if (inventoryOpen) {
+        if (inventoryOpen || furnaceOpen) {
           closeInventory();
         } else {
-          activeCraftingTableRef.current = null;
+          activeWorkstationRef.current = null;
           setCraftingContext("field");
           if (document.pointerLockElement) document.exitPointerLock();
           setInventoryOpen(true);
@@ -880,7 +914,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inWorld, activeChestKey, activeBedKey, chatOpen, inventoryOpen, chatEvents.length]);
+  }, [inWorld, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
 
   const activePlayers = activePlayerPresences(presenceEvents);
 
@@ -898,6 +932,29 @@ export function App() {
     }
     updateInventory(result.inventory);
     notify(`Made ${ITEMS[result.crafted.itemId].label}`, `Added ${result.crafted.count} to your field kit.`, "success");
+  }
+
+  function handleSmelt(recipe: SmeltingRecipe) {
+    if (!hydratedRef.current) return;
+    const result = smeltRecipe(inventoryRef.current, recipe);
+    if (!result.ok) {
+      const detail = result.reason === "missing_fuel"
+        ? "Mine coal ore with a wooden pickaxe or better."
+        : result.reason === "missing_input"
+          ? "Bring raw ore or uncooked meat to the furnace."
+          : result.reason === "inventory_full"
+            ? "Make room in your pack before firing the furnace."
+            : "That firing is not available.";
+      setFurnaceError(detail);
+      notify("Furnace could not fire", detail, "warning");
+      return;
+    }
+    updateInventory(result.inventory);
+    const output = ITEMS[result.smelted.itemId];
+    const detail = `${result.smelted.count} ${output.label} returned to your pack · ${result.fuelConsumed} coal burned.`;
+    setFurnaceError("");
+    setFurnaceStatus(detail);
+    notify(`Smelted ${output.label}`, detail, "success");
   }
 
   function handleUseItem(inventoryIndex = selectedRef.current): boolean {
@@ -1269,7 +1326,7 @@ export function App() {
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
       <div className="lakecraft-vignette" />
 
-      {!pointerLocked && !inventoryOpen && !chatOpen && !activeChestKey && !activeBedKey && !engineError ? (
+      {!pointerLocked && !inventoryOpen && !furnaceOpen && !chatOpen && !activeChestKey && !activeBedKey && !engineError ? (
         <section className="lakecraft-entry" aria-label="Enter Lakecraft">
           <div className="lakecraft-entry__card">
             <span className="lakecraft-entry__eyebrow">survey 01 / shared world online</span>
@@ -1305,8 +1362,17 @@ export function App() {
         playerName={profile?.username ?? auth.displayName}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}
-        showControls={showControls && !inventoryOpen && !chatOpen && !activeChestKey && !activeBedKey}
+        showControls={showControls && !inventoryOpen && !furnaceOpen && !chatOpen && !activeChestKey && !activeBedKey}
         worldName="Fern Hollow"
+      />
+
+      <FurnaceDrawer
+        error={furnaceError}
+        inventory={inventory}
+        onClose={closeInventory}
+        onSmelt={handleSmelt}
+        open={furnaceOpen}
+        status={furnaceStatus}
       />
 
       <ChestDrawer

@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { blockKey, createTerrain, createTerrainRegion, terrainHeight } from "../client/game/terrain.ts";
+import {
+  blockKey,
+  createTerrain,
+  createTerrainRegion,
+  terrainBaseBlock,
+  terrainHeight,
+} from "../client/game/terrain.ts";
 import { BLOCK } from "../client/game/types.ts";
 
 const SEED = 7319;
+
+assert.equal(BLOCK.COAL_ORE, 13, "new block IDs must append without changing saved IDs");
+assert.equal(BLOCK.IRON_ORE, 14, "new block IDs must append without changing saved IDs");
+assert.equal(BLOCK.FURNACE, 15, "new block IDs must append without changing saved IDs");
 
 // Equal seeds must produce byte-for-byte equivalent insertion order and contents.
 const first = createTerrain(SEED, 24);
@@ -40,7 +50,10 @@ for (let x = -18; x <= 18; x += 1) {
     assert.equal(first.get(blockKey(x, top, z)), BLOCK.GRASS);
     assert.equal(first.get(blockKey(x, top - 1, z)), BLOCK.DIRT);
     assert.equal(first.get(blockKey(x, top - 2, z)), BLOCK.DIRT);
-    assert.equal(first.get(blockKey(x, 0, z)), BLOCK.STONE);
+    assert.ok(
+      [BLOCK.STONE, BLOCK.COAL_ORE, BLOCK.IRON_ORE].includes(first.get(blockKey(x, 0, z))!),
+      "the foundation may now contain deterministic ore",
+    );
   }
 }
 
@@ -55,6 +68,23 @@ assert.deepEqual(
   [...whole].sort(([left], [right]) => left.localeCompare(right)),
   "adjacent generated regions should merge without terrain or tree seams",
 );
+
+const oreBlocks = [...first].filter(([, block]) => block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE);
+const coalBlocks = oreBlocks.filter(([, block]) => block === BLOCK.COAL_ORE);
+const ironBlocks = oreBlocks.filter(([, block]) => block === BLOCK.IRON_ORE);
+const naturalStoneCount = [...first].filter(([, block]) => (
+  block === BLOCK.STONE || block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE
+)).length;
+assert.ok(coalBlocks.length >= 100, `expected useful coal deposits, received ${coalBlocks.length}`);
+assert.ok(ironBlocks.length >= 20, `expected useful iron deposits, received ${ironBlocks.length}`);
+assert.ok(coalBlocks.length < naturalStoneCount * 0.08, "coal density must stay safely below 8% of stone strata");
+assert.ok(ironBlocks.length < naturalStoneCount * 0.04, "iron must remain rarer than coal and below 4%");
+assert.ok(ironBlocks.length < coalBlocks.length, "iron should be rarer than coal");
+for (const [key, block] of oreBlocks) {
+  const [x, y, z] = key.split(",").map(Number);
+  assert.equal(terrainBaseBlock(x, y, z, SEED), BLOCK.STONE, `${key} replaced a non-stone block`);
+  assert.ok(y <= (block === BLOCK.IRON_ORE ? 4 : 6), `${key} exceeded its ore depth bound`);
+}
 
 const treeBlocks = [...first.values()].filter((block) => block === BLOCK.WOOD || block === BLOCK.LEAVES);
 assert.ok(treeBlocks.filter((block) => block === BLOCK.WOOD).length >= 20, "expected deterministic tree trunks");
@@ -71,5 +101,7 @@ console.log(JSON.stringify({
   generationMs: Number(generationMs.toFixed(2)),
   blockCount: benchmarkTerrain.size,
   treeBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.WOOD || block === BLOCK.LEAVES).length,
+  coalBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.COAL_ORE).length,
+  ironBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.IRON_ORE).length,
 }));
 console.log("lakecraft terrain tests: ok");

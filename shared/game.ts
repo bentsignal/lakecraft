@@ -8,7 +8,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks" | "crafting_table" | "torch" | "chest" | "door" | "bed";
+export type BlockId = "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -17,11 +17,38 @@ export type ToolId =
   | "stone_pickaxe"
   | "stone_axe"
   | "stone_shovel"
-  | "stone_sword";
-export type ArmorId = "leather_helmet" | "leather_chestplate" | "leather_leggings" | "leather_boots";
-export type ItemId = BlockId | "stick" | "leather" | "wool" | "pork" | "beef" | "mutton" | "rotten_flesh" | ToolId | ArmorId;
+  | "stone_sword"
+  | "iron_pickaxe"
+  | "iron_axe"
+  | "iron_shovel"
+  | "iron_sword";
+export type ArmorId =
+  | "leather_helmet"
+  | "leather_chestplate"
+  | "leather_leggings"
+  | "leather_boots"
+  | "iron_helmet"
+  | "iron_chestplate"
+  | "iron_leggings"
+  | "iron_boots";
+export type ItemId = BlockId
+  | "stick"
+  | "leather"
+  | "wool"
+  | "coal"
+  | "raw_iron"
+  | "iron_ingot"
+  | "pork"
+  | "beef"
+  | "mutton"
+  | "cooked_pork"
+  | "cooked_beef"
+  | "cooked_mutton"
+  | "rotten_flesh"
+  | ToolId
+  | ArmorId;
 export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
-export type ToolTier = "none" | "wood" | "stone";
+export type ToolTier = "none" | "wood" | "stone" | "iron";
 export type CraftingContext = "field" | "crafting_table";
 export type ArmorSlot = "head" | "chest" | "legs" | "feet";
 export type Equipment = Record<ArmorSlot, ArmorId | null>;
@@ -93,6 +120,17 @@ export type CraftResult =
   | { ok: true; inventory: Inventory; crafted: ItemQuantity }
   | { ok: false; inventory: Inventory; reason: "missing_ingredients" | "inventory_full" | "unknown_recipe" | "requires_crafting_table" };
 
+export type SmeltingRecipe = {
+  id: string;
+  label: string;
+  input: ItemId;
+  output: ItemId;
+};
+
+export type SmeltResult =
+  | { ok: true; inventory: Inventory; smelted: ItemQuantity; fuelConsumed: 1 }
+  | { ok: false; inventory: Inventory; reason: "missing_input" | "missing_fuel" | "inventory_full" | "unknown_recipe" };
+
 export type SerializablePlayerState = {
   inventory: Inventory;
   selectedHotbar: number;
@@ -117,10 +155,13 @@ export const BLOCKS: Record<BlockId, BlockDefinition> = {
   grass: { id: "grass", label: "Grass", description: "A living cap over packed earth.", color: "#718447", accent: "#a7b76a", hardness: 0.75, preferredTool: "shovel", drop: "dirt" },
   dirt: { id: "dirt", label: "Dirt", description: "Soft earth for quick shelter walls.", color: "#7f5638", accent: "#ad7951", hardness: 0.65, preferredTool: "shovel", drop: "dirt" },
   stone: { id: "stone", label: "Stone", description: "Dense fieldstone. A pickaxe is required to recover it.", color: "#6d7069", accent: "#9a9c91", hardness: 2.5, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "stone" },
+  coal_ore: { id: "coal_ore", label: "Coal Ore", description: "Coal flecks trapped in stone. A wooden pickaxe can recover the fuel.", color: "#565852", accent: "#242621", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "coal" },
+  iron_ore: { id: "iron_ore", label: "Iron Ore", description: "Rust-colored ore that needs a stone pickaxe before it can be smelted.", color: "#77776f", accent: "#b57c5d", hardness: 3.2, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "stone" }, drop: "raw_iron" },
   log: { id: "log", label: "Oak Log", description: "Fresh timber. An axe speeds the work.", color: "#76502f", accent: "#bd8a50", hardness: 1.6, preferredTool: "axe", drop: "log" },
   leaves: { id: "leaves", label: "Oak Leaves", description: "A loose, mossy canopy block.", color: "#4e6f3d", accent: "#7c9953", hardness: 0.3, preferredTool: "hand", drop: "leaves" },
   planks: { id: "planks", label: "Oak Planks", description: "Squared boards for building and tools.", color: "#a87841", accent: "#d0a45e", hardness: 1.1, preferredTool: "axe", drop: "planks" },
   crafting_table: { id: "crafting_table", label: "Crafting Table", description: "A sturdy workbench for more involved recipes.", color: "#8a5b32", accent: "#d39a54", hardness: 1.4, preferredTool: "axe", drop: "crafting_table" },
+  furnace: { id: "furnace", label: "Furnace", description: "A stone furnace that turns ore and raw meat into useful supplies.", color: "#5f625d", accent: "#a0a39b", hardness: 3.5, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "furnace" },
   torch: { id: "torch", label: "Torch", description: "A warm light for shelters and night trails.", color: "#d99a3d", accent: "#ffd36a", hardness: 0.1, preferredTool: "hand", drop: "torch" },
   chest: { id: "chest", label: "Chest", description: "A shared wooden container for supplies.", color: "#8b5728", accent: "#dca14d", hardness: 1.8, preferredTool: "axe", drop: "chest" },
   door: { id: "door", label: "Oak Door", description: "A hinged wooden door for a shelter entrance.", color: "#9a6832", accent: "#d7a35c", hardness: 1.4, preferredTool: "axe", drop: "door" },
@@ -131,10 +172,13 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   grass: blockItem("grass", "GRS", "▨"),
   dirt: blockItem("dirt", "DRT", "▦"),
   stone: blockItem("stone", "STN", "◆"),
+  coal_ore: blockItem("coal_ore", "C·OR", "✦"),
+  iron_ore: blockItem("iron_ore", "I·OR", "◈"),
   log: blockItem("log", "LOG", "▥"),
   leaves: blockItem("leaves", "LEF", "✤"),
   planks: blockItem("planks", "PLK", "▤"),
   crafting_table: blockItem("crafting_table", "CRF", "▧"),
+  furnace: blockItem("furnace", "FRN", "▩"),
   torch: blockItem("torch", "TCH", "♨"),
   chest: blockItem("chest", "CHT", "▣"),
   door: blockItem("door", "DOR", "▥"),
@@ -142,9 +186,15 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   stick: { id: "stick", label: "Stick", shortLabel: "STK", description: "A straight handle for simple tools.", category: "material", maxStack: 64, glyph: "╱", color: "#c09557" },
   leather: { id: "leather", label: "Leather", shortLabel: "LTH", description: "Tough hide used for lightweight armor.", category: "material", maxStack: 64, glyph: "◩", color: "#8d552f" },
   wool: { id: "wool", label: "Wool", shortLabel: "WOL", description: "Soft sheep wool for beds and future textiles.", category: "material", maxStack: 64, glyph: "◌", color: "#ddd8c8" },
+  coal: { id: "coal", label: "Coal", shortLabel: "COL", description: "Dense furnace fuel recovered from coal ore.", category: "material", maxStack: 64, glyph: "✦", color: "#30332e" },
+  raw_iron: { id: "raw_iron", label: "Raw Iron", shortLabel: "R·FE", description: "Freshly mined iron that must be smelted.", category: "material", maxStack: 64, glyph: "◈", color: "#b78062" },
+  iron_ingot: { id: "iron_ingot", label: "Iron Ingot", shortLabel: "I·FE", description: "Refined iron for durable tools and armor.", category: "material", maxStack: 64, glyph: "▰", color: "#d6d5cc" },
   pork: foodItem("pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"),
   beef: foodItem("beef", "Raw Beef", "BEF", 4, "Raw beef from a cow.", "◆", "#a9544d"),
   mutton: foodItem("mutton", "Raw Mutton", "MTN", 3, "Raw mutton from a sheep.", "◇", "#b66b63"),
+  cooked_pork: foodItem("cooked_pork", "Cooked Pork", "C·PK", 8, "Furnace-roasted pork that restores substantial hunger.", "◒", "#b96649"),
+  cooked_beef: foodItem("cooked_beef", "Steak", "STK", 8, "Furnace-cooked beef that restores substantial hunger.", "◆", "#743b32"),
+  cooked_mutton: foodItem("cooked_mutton", "Cooked Mutton", "C·MT", 6, "Furnace-roasted mutton.", "◇", "#825047"),
   rotten_flesh: foodItem("rotten_flesh", "Rotten Flesh", "ROT", 1, "Unpleasant, but technically edible.", "✦", "#756d3e"),
   wooden_pickaxe: toolItem("wooden_pickaxe", "Wood Pickaxe", "W·PX", "pickaxe", "wood", "A light pick for fieldstone.", "⌁", "#b7874d"),
   wooden_axe: toolItem("wooden_axe", "Wood Axe", "W·AX", "axe", "wood", "A rough axe for timber.", "◒", "#b7874d"),
@@ -154,10 +204,18 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   stone_axe: toolItem("stone_axe", "Stone Axe", "S·AX", "axe", "stone", "A weighty axe for felling trees.", "◒", "#a3a69e"),
   stone_shovel: toolItem("stone_shovel", "Stone Shovel", "S·SH", "shovel", "stone", "A stone-edged spade that clears earth quickly.", "♠", "#a3a69e"),
   stone_sword: toolItem("stone_sword", "Stone Sword", "S·SW", "sword", "stone", "A dependable stone blade.", "†", "#a3a69e"),
+  iron_pickaxe: toolItem("iron_pickaxe", "Iron Pickaxe", "I·PX", "pickaxe", "iron", "A durable pick for deep mining.", "⌁", "#d6d5cc"),
+  iron_axe: toolItem("iron_axe", "Iron Axe", "I·AX", "axe", "iron", "A keen iron axe for timber.", "◒", "#d6d5cc"),
+  iron_shovel: toolItem("iron_shovel", "Iron Shovel", "I·SH", "shovel", "iron", "An iron spade that moves soil rapidly.", "♠", "#d6d5cc"),
+  iron_sword: toolItem("iron_sword", "Iron Sword", "I·SW", "sword", "iron", "A strong iron blade for hostile creatures.", "†", "#d6d5cc"),
   leather_helmet: armorItem("leather_helmet", "Leather Cap", "L·HD", "head", 1, "A light cap of hardened hide.", "⌒"),
   leather_chestplate: armorItem("leather_chestplate", "Leather Tunic", "L·CH", "chest", 3, "A flexible hide tunic.", "▣"),
   leather_leggings: armorItem("leather_leggings", "Leather Pants", "L·LG", "legs", 2, "Tough hide protection for the legs.", "⋒"),
   leather_boots: armorItem("leather_boots", "Leather Boots", "L·FT", "feet", 1, "Soft boots for rough terrain.", "∪"),
+  iron_helmet: armorItem("iron_helmet", "Iron Helmet", "I·HD", "head", 2, "A fitted iron helmet.", "⌒", "#d6d5cc"),
+  iron_chestplate: armorItem("iron_chestplate", "Iron Chestplate", "I·CH", "chest", 6, "A solid iron chestplate.", "▣", "#d6d5cc"),
+  iron_leggings: armorItem("iron_leggings", "Iron Leggings", "I·LG", "legs", 5, "Articulated iron leg protection.", "⋒", "#d6d5cc"),
+  iron_boots: armorItem("iron_boots", "Iron Boots", "I·FT", "feet", 2, "Heavy iron boots.", "∪", "#d6d5cc"),
 };
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -166,16 +224,16 @@ function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefiniti
 }
 
 function toolItem(id: ToolId, label: string, shortLabel: string, kind: Exclude<ToolKind, "hand">, tier: Exclude<ToolTier, "none">, description: string, glyph: string, color: string): ItemDefinition {
-  const tierBonus = tier === "stone" ? 1 : 0;
+  const tierBonus = tier === "iron" ? 2 : tier === "stone" ? 1 : 0;
   const attackDamage = ({ pickaxe: 2, axe: 3, shovel: 1, sword: 4 } as const)[kind] + tierBonus;
   return { id, label, shortLabel, description, category: "tool", maxStack: 1, glyph, color, tool: { kind, tier, attackDamage } };
 }
 
-function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSlot, protection: number, description: string, glyph: string): ItemDefinition {
-  return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color: "#9b6339", armor: { slot, protection } };
+function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSlot, protection: number, description: string, glyph: string, color = "#9b6339"): ItemDefinition {
+  return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color, armor: { slot, protection } };
 }
 
-function foodItem(id: "pork" | "beef" | "mutton" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
+function foodItem(id: "pork" | "beef" | "mutton" | "cooked_pork" | "cooked_beef" | "cooked_mutton" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
   return { id, label, shortLabel, description, category: "food", maxStack: 64, glyph, color, food: { hunger } };
 }
 
@@ -184,6 +242,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A stick and board make four crude lights.", craftingContext: "field", ingredients: [{ itemId: "stick", count: 1 }, { itemId: "planks", count: 1 }], output: { itemId: "torch", count: 4 } },
+  { id: "furnace", label: "Furnace", note: "Eight stone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
   { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
   { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
@@ -195,10 +254,25 @@ export const RECIPES: readonly Recipe[] = [
   { id: "stone_axe", label: "Stone axe", note: "A proper timber tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_axe", count: 1 } },
   { id: "stone_shovel", label: "Stone shovel", note: "Moves soil in a hurry.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_shovel", count: 1 } },
   { id: "stone_sword", label: "Stone sword", note: "A sharper answer to hostile creatures.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "stone_sword", count: 1 } },
+  { id: "iron_pickaxe", label: "Iron pickaxe", note: "A durable pick for deeper mining.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_pickaxe", count: 1 } },
+  { id: "iron_axe", label: "Iron axe", note: "A keen edge for timber.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_axe", count: 1 } },
+  { id: "iron_shovel", label: "Iron shovel", note: "A strong spade for quick excavation.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_shovel", count: 1 } },
+  { id: "iron_sword", label: "Iron sword", note: "A reliable blade after dark.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "iron_sword", count: 1 } },
   { id: "leather_helmet", label: "Leather cap", note: "Light protection for the head.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 5 }], output: { itemId: "leather_helmet", count: 1 } },
   { id: "leather_chestplate", label: "Leather tunic", note: "A hide layer for the torso.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 8 }], output: { itemId: "leather_chestplate", count: 1 } },
   { id: "leather_leggings", label: "Leather pants", note: "Flexible leg protection.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 7 }], output: { itemId: "leather_leggings", count: 1 } },
   { id: "leather_boots", label: "Leather boots", note: "A little protection underfoot.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 4 }], output: { itemId: "leather_boots", count: 1 } },
+  { id: "iron_helmet", label: "Iron helmet", note: "Five ingots protect the head.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 5 }], output: { itemId: "iron_helmet", count: 1 } },
+  { id: "iron_chestplate", label: "Iron chestplate", note: "Eight ingots protect the torso.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 8 }], output: { itemId: "iron_chestplate", count: 1 } },
+  { id: "iron_leggings", label: "Iron leggings", note: "Seven ingots protect the legs.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 7 }], output: { itemId: "iron_leggings", count: 1 } },
+  { id: "iron_boots", label: "Iron boots", note: "Four ingots protect the feet.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 4 }], output: { itemId: "iron_boots", count: 1 } },
+] as const;
+
+export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
+  { id: "iron_ingot", label: "Smelt iron", input: "raw_iron", output: "iron_ingot" },
+  { id: "cooked_pork", label: "Cook pork", input: "pork", output: "cooked_pork" },
+  { id: "cooked_beef", label: "Cook beef", input: "beef", output: "cooked_beef" },
+  { id: "cooked_mutton", label: "Cook mutton", input: "mutton", output: "cooked_mutton" },
 ] as const;
 
 export function createEmptyInventory(size = INVENTORY_SIZE): Inventory {
@@ -470,13 +544,45 @@ export function craftRecipe(
   return { ok: true, inventory: added.inventory, crafted: { ...recipe.output } };
 }
 
+/**
+ * Burns one coal to smelt up to eight matching inputs in one atomic operation.
+ * Capacity is checked after removing the input and fuel, since those removals may
+ * legitimately free the slot needed by the output. Every failure returns a
+ * detached copy of the original inventory and consumes nothing.
+ */
+export function smeltRecipe(
+  inventory: readonly (ItemStack | null)[],
+  recipeOrId: SmeltingRecipe | string,
+): SmeltResult {
+  const recipeId = typeof recipeOrId === "string" ? recipeOrId : recipeOrId.id;
+  const recipe = SMELTING_RECIPES.find(({ id }) => id === recipeId);
+  const original = cloneInventory(inventory);
+  if (!recipe) return { ok: false, inventory: original, reason: "unknown_recipe" };
+
+  const inputCount = countItem(original, recipe.input);
+  if (inputCount < 1) return { ok: false, inventory: original, reason: "missing_input" };
+  if (countItem(original, "coal") < 1) return { ok: false, inventory: original, reason: "missing_fuel" };
+
+  const batchSize = Math.min(8, inputCount);
+  let next = removeItem(original, recipe.input, batchSize).inventory;
+  next = removeItem(next, "coal", 1).inventory;
+  const added = addItem(next, recipe.output, batchSize);
+  if (added.remainder > 0) return { ok: false, inventory: cloneInventory(inventory), reason: "inventory_full" };
+  return {
+    ok: true,
+    inventory: added.inventory,
+    smelted: { itemId: recipe.output, count: batchSize },
+    fuelConsumed: 1,
+  };
+}
+
 export function canHarvestBlock(blockId: BlockId, itemId?: ItemId | null): boolean {
   const requirement = BLOCKS[blockId].requiredDropTool;
   if (!requirement) return true;
   if (!itemId) return false;
   const tool = ITEMS[itemId].tool;
   if (!tool || tool.kind !== requirement.kind) return false;
-  const tierRank: Record<Exclude<ToolTier, "none">, number> = { wood: 1, stone: 2 };
+  const tierRank: Record<Exclude<ToolTier, "none">, number> = { wood: 1, stone: 2, iron: 3 };
   return tierRank[tool.tier] >= tierRank[requirement.minimumTier];
 }
 
@@ -500,7 +606,7 @@ export function toolEffectiveness(blockId: BlockId, itemId?: ItemId | null): num
   const tool = ITEMS[itemId].tool;
   if (!tool) return block.preferredTool === "hand" ? 1 : 0.35;
   if (tool.kind !== block.preferredTool) return 0.5;
-  return tool.tier === "stone" ? 4 : 2.5;
+  return tool.tier === "iron" ? 6 : tool.tier === "stone" ? 4 : 2.5;
 }
 
 export function toolEffectivenessLabel(blockId: BlockId, itemId?: ItemId | null): "ideal" | "workable" | "poor" {

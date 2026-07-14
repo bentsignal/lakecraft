@@ -1,3 +1,5 @@
+import type { ItemId } from "./game.ts";
+
 export const BLOCK_TYPES = [
   "air",
   "grass",
@@ -11,18 +13,15 @@ export const BLOCK_TYPES = [
   "chest",
   "door_closed",
   "door_open",
-  "bed"
+  "bed",
+  "coal_ore",
+  "iron_ore",
+  "furnace"
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
-export type InventoryItem =
-  | BlockType
-  | "stick"
-  | "wooden_pickaxe"
-  | "wooden_axe"
-  | "stone_pickaxe"
-  | "stone_axe";
+export type InventoryItem = ItemId;
 
 export type InventoryCounts = Partial<Record<InventoryItem, number>>;
 

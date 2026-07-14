@@ -114,8 +114,30 @@ const fullSnapshot = createWorldChunkSnapshot("0:0", fullChunk);
 assert.equal(fullSnapshot.ok, true);
 if (fullSnapshot.ok) {
   assert.ok(fullSnapshot.snapshotJson.length < 4_000, `dense snapshot was ${fullSnapshot.snapshotJson.length} bytes`);
+  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 2, "new snapshots use the five-bit block codec");
   const decoded = decodeWorldChunkSnapshot("0:0", fullSnapshot.snapshotJson);
   assert.equal(decoded.ok && decoded.edits.length, fullChunk.length);
+}
+
+// Production rows written before ore/furnace support used two four-bit cells
+// per byte. They must remain readable and upgrade on the next edit.
+const legacyPacked = new Uint8Array(Math.ceil(((WORLD_EDIT_MAX_Y - WORLD_EDIT_MIN_Y + 1) * 8 * 8) / 2));
+const legacyStoneIndex = (0 - WORLD_EDIT_MIN_Y) * 64;
+legacyPacked[legacyStoneIndex >> 1] = 4; // v1 code 4 = stone
+const legacySnapshot = JSON.stringify({ v: 1, cells: Buffer.from(legacyPacked).toString("base64") });
+const legacyDecoded = decodeWorldChunkSnapshot("0:0", legacySnapshot);
+assert.equal(legacyDecoded.ok, true);
+if (legacyDecoded.ok) assert.equal(legacyDecoded.edits.find((edit) => edit.coordKey === "0:0:0")?.blockType, "stone");
+const migrated = applyWorldChunkEdit("0:0", legacySnapshot, { x: 1, y: 0, z: 0, blockType: "furnace" });
+assert.equal(migrated.ok, true);
+if (migrated.ok) {
+  assert.equal(JSON.parse(migrated.snapshotJson).v, 2, "editing a legacy row migrates it to the current codec");
+  const decoded = decodeWorldChunkSnapshot("0:0", migrated.snapshotJson);
+  assert.equal(decoded.ok, true);
+  if (decoded.ok) {
+    assert.equal(decoded.edits.find((edit) => edit.coordKey === "0:0:0")?.blockType, "stone");
+    assert.equal(decoded.edits.find((edit) => edit.coordKey === "1:0:0")?.blockType, "furnace");
+  }
 }
 
 const empty = createWorldChunkSnapshot("0:0", []);
