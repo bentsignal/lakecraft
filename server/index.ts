@@ -6,11 +6,16 @@ import {
   validateUsername
 } from "../shared/multiplayer";
 import {
-  decideChestWrite,
   normalizeChestToken,
-  validateChestCoordinate,
   validateChestInventoryJson
 } from "../shared/chests";
+import {
+  applyChestTransfer,
+  decideChestTransferCas,
+  decideChestTransferReplay,
+  validateChestTransferRequestJson,
+  validatePlayerStateJson
+} from "../shared/chestTransfers";
 import {
   ACTIVE_PLAYER_WINDOW_MS,
   MAX_SLEEP_PARTICIPANTS,
@@ -37,8 +42,18 @@ import {
   validateMobIdentity,
   type StoredMobAuthorityState
 } from "../shared/mobCombat";
+import {
+  CHEST_RECEIPT_OVERFLOW_PRUNE_LIMIT,
+  MAX_CHEST_TRANSFER_RECEIPTS_PER_USER,
+  compareStoredPlayerState,
+  decodeChestTransferReceipt,
+  encodeChestTransferReceipt,
+  selectChestTransferReceiptOverflow
+} from "./chestTransferReceipts";
 
 const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest", "bed", "door_closed", "door_open"];
+const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
+const CHEST_RECEIPT_PRUNE_LIMIT = 8;
 
 function boundedInteger(value: string, minimum: number, maximum: number): number | null {
   if (!/^-?\d{1,4}$/.test(value.trim())) return null;
@@ -169,6 +184,17 @@ export default capsule({
       inventoryJson: string(),
       lastActorId: string()
     }).index("by_coord", ["coordKey"]),
+
+    /** Idempotency receipts make retried atomic chest transfers replay-safe. */
+    chestTransferReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
 
     /** Immutable, one-time username claims. Lakebed serializes each mutation transaction. */
     profiles: table({
@@ -494,54 +520,161 @@ export default capsule({
         : ctx.db.playerPresence.insert(value);
     }),
 
-    saveInventory: mutation(async (ctx, inventoryJson: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to save inventory.");
-      const serialized = inventoryJson.trim().slice(0, 8_192);
-      try {
-        JSON.parse(serialized);
-      } catch {
-        return;
+    saveInventory: mutation(async (ctx, inventoryJson: string, rawExpectedUpdatedAt?: string) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", inventory: null };
       }
+      const validation = validatePlayerStateJson(inventoryJson.trim());
+      if (!validation.ok) {
+        return { ok: false, reason: "invalid_inventory", detail: validation.reason, inventory: null };
+      }
+      const expectedUpdatedAt = normalizeChestToken(rawExpectedUpdatedAt ?? "");
+      if (expectedUpdatedAt === null) return { ok: false, reason: "invalid_token", inventory: null };
       const existing = await ctx.db.inventories
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .first();
+      if ((existing?.updatedAt ?? null) === null) {
+        if (expectedUpdatedAt !== "") return { ok: false, reason: "conflict", inventory: null };
+      } else if (existing?.updatedAt !== expectedUpdatedAt) {
+        return { ok: false, reason: "conflict", inventory: existing };
+      }
       const value = {
         userId: ctx.auth.userId,
-        inventoryJson: serialized
+        inventoryJson: validation.playerStateJson
       };
-      return existing
+      const inventory = existing
         ? ctx.db.inventories.update(existing.id, value)
         : ctx.db.inventories.insert(value);
+      return { ok: true, inventory: await inventory };
     }),
 
-    saveChest: mutation(async (ctx, rawCoordKey: string, rawInventoryJson: string, rawExpectedUpdatedAt: string) => {
+    saveChest: mutation(async (ctx, _rawCoordKey: string, _rawInventoryJson: string, _rawExpectedUpdatedAt: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
         return { ok: false, reason: "authentication_required" };
       }
-      const coordinate = validateChestCoordinate(rawCoordKey);
-      if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
-      const inventory = validateChestInventoryJson(rawInventoryJson);
-      if (!inventory.ok) return { ok: false, reason: "invalid_inventory", detail: inventory.reason };
-      const expectedUpdatedAt = normalizeChestToken(rawExpectedUpdatedAt);
-      if (expectedUpdatedAt === null) return { ok: false, reason: "invalid_token" };
+      return { ok: false, reason: "atomic_transfer_required" };
+    }),
 
-      const existing = await ctx.db.chests
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+    transferChest: mutation(async (ctx, requestJson: string) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
+      }
+      const validation = validateChestTransferRequestJson(requestJson);
+      if (!validation.ok) {
+        return {
+          ok: false,
+          reason: "invalid_request",
+          detail: validation.playerStateIssue ?? validation.reason
+        };
+      }
+      const request = validation.request;
+      const existingReceipt = await ctx.db.chestTransferReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
         .order("desc")
         .first();
-      const decision = decideChestWrite(existing?.updatedAt ?? null, expectedUpdatedAt);
-      if (decision === "conflict") return { ok: false, reason: "conflict", chest: existing ?? null };
+      const replayDecision = decideChestTransferReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
+      if (replayDecision === "operation_id_reused") {
+        return { ok: false, reason: "operation_id_reused" };
+      }
+      if (replayDecision === "replay" && existingReceipt) {
+        const savedResult = decodeChestTransferReceipt(existingReceipt.resultJson);
+        return savedResult ?? { ok: false, reason: "conservation_failure" };
+      }
 
-      const value = {
-        coordKey: coordinate.coordKey,
-        inventoryJson: inventory.inventoryJson,
+      const worldBlock = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+        .order("desc")
+        .first();
+      if (!worldBlock || worldBlock.blockType !== "chest") {
+        return { ok: false, reason: "chest_required" };
+      }
+
+      const existingPlayer = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const existingChest = await ctx.db.chests
+        .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+        .order("desc")
+        .first();
+      const cas = decideChestTransferCas(
+        existingPlayer?.updatedAt ?? null,
+        existingChest?.updatedAt ?? null,
+        request.expectedInventoryUpdatedAt,
+        request.expectedChestUpdatedAt
+      );
+      if (cas !== "apply") {
+        const conflict = cas === "inventory_conflict"
+          ? "inventory"
+          : cas === "chest_conflict" ? "chest" : "both";
+        return { ok: false, reason: "conflict", conflict, player: existingPlayer ?? null, chest: existingChest ?? null };
+      }
+
+      if (existingPlayer) {
+        const playerStateDecision = compareStoredPlayerState(
+          existingPlayer.inventoryJson,
+          request.canonicalPlayerStateJson
+        );
+        if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
+        if (playerStateDecision === "mismatch") {
+          return {
+            ok: false,
+            reason: "conflict",
+            conflict: "inventory",
+            player: existingPlayer,
+            chest: existingChest ?? null
+          };
+        }
+      }
+
+      const chestValidation = validateChestInventoryJson(existingChest?.inventoryJson ?? "[]");
+      if (!chestValidation.ok) return { ok: false, reason: "conservation_failure" };
+      const applied = applyChestTransfer(request, request.playerState.inventory, chestValidation.inventory);
+      if (!applied.ok) return { ok: false, reason: applied.reason };
+      const nextPlayerJson = JSON.stringify({ ...request.playerState, inventory: applied.playerInventory });
+      const nextChestJson = JSON.stringify(applied.chestInventory);
+      const playerValue = { userId: ctx.auth.userId, inventoryJson: nextPlayerJson };
+      const chestValue = {
+        coordKey: request.coordKey,
+        inventoryJson: nextChestJson,
         lastActorId: ctx.auth.userId
       };
-      const chest = existing
-        ? await ctx.db.chests.update(existing.id, value)
-        : await ctx.db.chests.insert(value);
-      return { ok: true, chest };
+      const player = existingPlayer
+        ? await ctx.db.inventories.update(existingPlayer.id, playerValue)
+        : await ctx.db.inventories.insert(playerValue);
+      const chest = existingChest
+        ? await ctx.db.chests.update(existingChest.id, chestValue)
+        : await ctx.db.chests.insert(chestValue);
+      if (!player || !chest) return { ok: false, reason: "conservation_failure" };
+
+      const receiptCreatedAt = String(Date.now());
+      const result = { ok: true, replayed: false, moved: applied.moved, player, chest };
+      const receipt = await ctx.db.chestTransferReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        resultJson: encodeChestTransferReceipt(result),
+        receiptCreatedAt
+      });
+      const newestReceipts = await ctx.db.chestTransferReceipts
+        .withIndex("by_user_created", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(MAX_CHEST_TRANSFER_RECEIPTS_PER_USER + CHEST_RECEIPT_OVERFLOW_PRUNE_LIMIT);
+      const overflowReceiptIds = selectChestTransferReceiptOverflow(newestReceipts, receipt.id);
+      for (const receiptId of overflowReceiptIds) await ctx.db.chestTransferReceipts.delete(receiptId);
+
+      const staleBefore = String(Number(receiptCreatedAt) - CHEST_RECEIPT_TTL_MS);
+      const staleReceipts = await ctx.db.chestTransferReceipts
+        .withIndex("by_user_created", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .lt("receiptCreatedAt", staleBefore))
+        .order("asc")
+        .take(CHEST_RECEIPT_PRUNE_LIMIT);
+      for (const staleReceipt of staleReceipts) await ctx.db.chestTransferReceipts.delete(staleReceipt.id);
+      return result;
     }),
 
     sleepInBed: mutation(async (ctx, rawCoordKey: string) => {

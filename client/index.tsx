@@ -47,7 +47,13 @@ import {
   type Recipe,
   type SurvivalTickState,
 } from "../shared/game";
-import { CHEST_SLOT_COUNT, type ChestAtResult, type SaveChestResult } from "../shared/chests";
+import { CHEST_SLOT_COUNT, type ChestAtResult, type PersistedChest } from "../shared/chests";
+import {
+  type ChestTransferRequest,
+  type ChestTransferResult,
+  type PersistedInventoryState,
+  validatePlayerStateJson,
+} from "../shared/chestTransfers";
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   type ChatMessage,
@@ -172,6 +178,22 @@ type WorldChunksQueryResult =
   | { ok: true; chunks: Array<{ chunkKey: string; snapshotJson: string; updatedAt: string }> }
   | { ok: false; reason: "invalid_chunk_keys" | "too_many_chunks"; chunks: [] };
 
+type SaveInventoryResult =
+  | { ok: true; inventory: PersistedInventoryState }
+  | { ok: false; reason: "authentication_required" | "invalid_inventory" | "invalid_token" | "conflict"; inventory: PersistedInventoryState | null };
+
+type PendingChestTransfer = { requestJson: string; transportFailures: number };
+
+let chestOperationSequence = 0;
+
+function createChestOperationId(): string {
+  chestOperationSequence += 1;
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replaceAll("-", "")
+    : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
+  return `lc_${Date.now().toString(36)}_${chestOperationSequence.toString(36)}_${randomPart}`.slice(0, 64);
+}
+
 const WORLD_RADIUS = 18;
 const VISIBLE_WORLD_CHUNK_KEYS = (() => {
   const minimum = worldEditChunkCoordinate(-WORLD_RADIUS);
@@ -247,10 +269,10 @@ export function App() {
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
   const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string], void>("heartbeatPlayer");
   const leavePlayer = useMutation<[heartbeatAt: string], void>("leavePlayer");
-  const saveInventory = useMutation<[inventoryJson: string], void>("saveInventory");
+  const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
-  const saveChest = useMutation<[coordKey: string, inventoryJson: string, expectedUpdatedAt: string], SaveChestResult>("saveChest");
+  const transferChest = useMutation<[requestJson: string], ChestTransferResult>("transferChest");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
   const attackMob = useMutation<[mobId: string, kind: string, damage: string], MobAttackResult>("attackMob");
 
@@ -269,6 +291,16 @@ export function App() {
   const selectedRef = useRef(2);
   const hydratedRef = useRef(false);
   const hydratedUserRef = useRef("");
+  const inventoryTokenRef = useRef("");
+  const inventorySessionRef = useRef(0);
+  const lastCommittedPlayerJsonRef = useRef("");
+  const inventorySavePromiseRef = useRef<Promise<void> | null>(null);
+  const inventorySavePendingRef = useRef(false);
+  const chestTokenRef = useRef("");
+  const chestInventoryRef = useRef<Inventory>(createEmptyInventory(CHEST_SLOT_COUNT));
+  const chestBusyRef = useRef(false);
+  const chestTransferActiveRef = useRef(false);
+  const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
   const toastCounter = useRef(0);
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
@@ -298,9 +330,9 @@ export function App() {
   const [showPerformance, setShowPerformance] = useState(false);
   const [playerHealth, setPlayerHealth] = useState(20);
   const [chestInventory, setChestInventory] = useState<Inventory>(() => createEmptyInventory(CHEST_SLOT_COUNT));
-  const [chestToken, setChestToken] = useState("");
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
+  const [chestRetryAvailable, setChestRetryAvailable] = useState(false);
   const [activeBedKey, setActiveBedKey] = useState("");
   const [sleepBusy, setSleepBusy] = useState(false);
   const [sleepStatus, setSleepStatus] = useState("Rest until every active explorer is in bed, then Lakebed will move the shared clock to morning.");
@@ -314,6 +346,101 @@ export function App() {
   function updateInventory(next: Inventory) {
     inventoryRef.current = next;
     setInventory(next);
+  }
+
+  function setChestOperationBusy(next: boolean) {
+    chestBusyRef.current = next;
+    setChestBusy(next);
+  }
+
+  function setCanonicalChestToken(next: string) {
+    chestTokenRef.current = next;
+  }
+
+  function currentPlayerStateJson(): string {
+    const raw = JSON.stringify(createSerializablePlayerState(
+      inventoryRef.current,
+      selectedRef.current,
+      equipmentRef.current,
+      respawnPointRef.current,
+      hungerRef.current,
+    ));
+    const canonical = validatePlayerStateJson(raw);
+    return canonical.ok ? canonical.playerStateJson : raw;
+  }
+
+  function loadCanonicalPlayer(row: PersistedInventoryState | null): boolean {
+    if (!row) {
+      inventoryTokenRef.current = "";
+      lastCommittedPlayerJsonRef.current = "";
+      return true;
+    }
+    const saved = parseSerializablePlayerStateJson(row.inventoryJson);
+    if (!saved) return false;
+    inventoryTokenRef.current = row.updatedAt;
+    const canonical = validatePlayerStateJson(row.inventoryJson);
+    lastCommittedPlayerJsonRef.current = canonical.ok ? canonical.playerStateJson : row.inventoryJson;
+    updateInventory(saved.inventory);
+    selectedRef.current = saved.selectedHotbar;
+    setSelectedHotbar(saved.selectedHotbar);
+    equipmentRef.current = saved.equipment;
+    setEquipment(saved.equipment);
+    respawnPointRef.current = saved.respawnPoint;
+    setRespawnPoint(saved.respawnPoint);
+    if (saved.respawnPoint) engineRef.current?.setRespawnPoint(saved.respawnPoint);
+    hungerRef.current = saved.hunger;
+    survivalRef.current.hunger = saved.hunger;
+    setHunger(saved.hunger);
+    return true;
+  }
+
+  function requestInventorySave(allowWhileChestBusy = false): Promise<void> {
+    if (chestBusyRef.current && !allowWhileChestBusy) {
+      inventorySavePendingRef.current = true;
+      return inventorySavePromiseRef.current ?? Promise.resolve();
+    }
+    if (inventorySavePromiseRef.current) {
+      inventorySavePendingRef.current = true;
+      return inventorySavePromiseRef.current;
+    }
+    const payload = currentPlayerStateJson();
+    if (payload === lastCommittedPlayerJsonRef.current) return Promise.resolve();
+    const expectedToken = inventoryTokenRef.current;
+    const session = inventorySessionRef.current;
+    const task = (async () => {
+      try {
+        const result = await saveInventory(payload, expectedToken);
+        if (session !== inventorySessionRef.current) return;
+        setConnected(true);
+        if (result.ok) {
+          inventoryTokenRef.current = result.inventory.updatedAt;
+          lastCommittedPlayerJsonRef.current = result.inventory.inventoryJson;
+          if (currentPlayerStateJson() !== payload) inventorySavePendingRef.current = true;
+        } else if (result.reason === "conflict") {
+          inventorySavePendingRef.current = false;
+          if (!loadCanonicalPlayer(result.inventory)) {
+            notify("Pack reconciliation failed", "Lakebed returned a damaged canonical inventory.", "warning");
+          } else {
+            notify("Pack reconciled", "A newer Lakebed inventory replaced a stale local save.", "warning");
+          }
+        } else if (result.reason === "authentication_required") {
+          notify("Pack save paused", "Sign in again before saving inventory.", "warning");
+        } else {
+          notify("Pack save rejected", "Lakebed rejected an invalid inventory update.", "warning");
+        }
+      } catch {
+        setConnected(false);
+        notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
+      } finally {
+        inventorySavePromiseRef.current = null;
+        if (inventorySavePendingRef.current && !chestBusyRef.current) {
+          inventorySavePendingRef.current = false;
+          void requestInventorySave();
+        }
+      }
+    })();
+    inventorySavePromiseRef.current = task;
+    return task;
   }
 
   function collectMobDrops(drops: readonly { itemId: string; count: number }[]) {
@@ -377,10 +504,22 @@ export function App() {
   }, [inventory, selectedHotbar, equipment]);
 
   useEffect(() => {
+    chestInventoryRef.current = chestInventory;
+  }, [chestInventory]);
+
+  useEffect(() => {
     if (!auth.isAuthenticated || auth.isGuest || hydratedUserRef.current === auth.userId || savedInventory === undefined) return;
     if (savedInventory && savedInventory.userId !== auth.userId) return;
     hydratedRef.current = true;
     hydratedUserRef.current = auth.userId;
+    inventorySessionRef.current += 1;
+    inventoryTokenRef.current = savedInventory?.updatedAt ?? "";
+    if (savedInventory) {
+      const canonical = validatePlayerStateJson(savedInventory.inventoryJson);
+      lastCommittedPlayerJsonRef.current = canonical.ok ? canonical.playerStateJson : savedInventory.inventoryJson;
+    } else {
+      lastCommittedPlayerJsonRef.current = "";
+    }
     const saved = parsePlayerState(savedInventory);
     if (saved) {
       updateInventory(saved.inventory);
@@ -400,11 +539,7 @@ export function App() {
   useEffect(() => {
     if (!hydratedRef.current || !auth.isAuthenticated || auth.isGuest) return;
     const timer = window.setTimeout(() => {
-      const state = createSerializablePlayerState(inventory, selectedHotbar, equipment, respawnPoint, hunger);
-      void saveInventory(JSON.stringify(state)).then(() => setConnected(true)).catch(() => {
-        setConnected(false);
-        notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
-      });
+      void requestInventorySave();
     }, 450);
     return () => window.clearTimeout(timer);
   }, [inventory, selectedHotbar, equipment, respawnPoint, hunger, auth.isAuthenticated, auth.isGuest]);
@@ -486,8 +621,11 @@ export function App() {
             void handleSleepInBed(key);
             return true;
           }
+          chestTransferActiveRef.current = false;
+          pendingChestTransferRef.current = null;
+          setChestRetryAvailable(false);
           setActiveChestKey(key);
-          setChestBusy(true);
+          setChestOperationBusy(true);
           setChestError("");
           return true;
         },
@@ -552,8 +690,9 @@ export function App() {
 
   useEffect(() => {
     if (!activeChestKey || chestResult === undefined) return;
+    if (chestTransferActiveRef.current || pendingChestTransferRef.current) return;
     if (!chestResult.ok) {
-      setChestBusy(false);
+      setChestOperationBusy(false);
       setChestError("That chest coordinate is invalid.");
       return;
     }
@@ -565,12 +704,12 @@ export function App() {
         setChestInventory(createEmptyInventory(CHEST_SLOT_COUNT));
         setChestError("Lakebed returned a damaged chest payload.");
       }
-      setChestToken(chestResult.chest.updatedAt);
+      setCanonicalChestToken(chestResult.chest.updatedAt);
     } else {
       setChestInventory(createEmptyInventory(CHEST_SLOT_COUNT));
-      setChestToken("");
+      setCanonicalChestToken("");
     }
-    setChestBusy(false);
+    setChestOperationBusy(false);
   }, [activeChestKey, chestResult]);
 
   useEffect(() => {
@@ -621,9 +760,11 @@ export function App() {
       if (activeChestKey || activeBedKey) {
         if (event.code === "Escape" || event.code === "KeyE") {
           event.preventDefault();
+          if (activeChestKey && chestBusyRef.current) return;
           setActiveChestKey("");
           setActiveBedKey("");
           setChestError("");
+          setChestRetryAvailable(false);
         }
         return;
       }
@@ -708,57 +849,138 @@ export function App() {
     setEquipment(result.equipment);
   }
 
-  function loadChestRow(row: Extract<SaveChestResult, { ok: true }>["chest"] | null) {
+  function loadCanonicalChest(row: PersistedChest | null): boolean {
     if (!row) {
-      setChestInventory(createEmptyInventory(CHEST_SLOT_COUNT));
-      setChestToken("");
-      return;
+      const empty = createEmptyInventory(CHEST_SLOT_COUNT);
+      chestInventoryRef.current = empty;
+      setChestInventory(empty);
+      setCanonicalChestToken("");
+      return true;
     }
     try {
-      setChestInventory(normalizeInventory(JSON.parse(row.inventoryJson), CHEST_SLOT_COUNT));
-      setChestToken(row.updatedAt);
+      const next = normalizeInventory(JSON.parse(row.inventoryJson), CHEST_SLOT_COUNT);
+      chestInventoryRef.current = next;
+      setChestInventory(next);
+      setCanonicalChestToken(row.updatedAt);
+      return true;
     } catch {
       setChestError("Lakebed returned a damaged chest payload.");
+      return false;
     }
   }
 
-  function handleChestTransfer(direction: ChestTransferDirection, index: number) {
-    if (!activeChestKey || chestBusy) return;
-    const source = direction === "to_chest" ? inventory : chestInventory;
-    const stack = source[index];
-    if (!stack) return;
-    const target = direction === "to_chest" ? chestInventory : inventory;
-    const added = addItem(target, stack.itemId, stack.count);
-    const moved = stack.count - added.remainder;
-    if (moved <= 0) {
-      setChestError(direction === "to_chest" ? "The chest is full." : "Your pack is full.");
-      return;
-    }
-    const reduced = removeItem(source, stack.itemId, moved).inventory;
-    const nextChest = direction === "to_chest" ? added.inventory : reduced;
-    const nextPlayer = direction === "to_chest" ? reduced : added.inventory;
-    setChestBusy(true);
-    setChestError("");
-    void saveChest(activeChestKey, JSON.stringify(nextChest), chestToken).then((result) => {
+  async function submitPendingChestTransfer(): Promise<void> {
+    const pending = pendingChestTransferRef.current;
+    if (!pending) return;
+    setChestRetryAvailable(false);
+    try {
+      const result = await transferChest(pending.requestJson);
+      setConnected(true);
       if (result.ok) {
-        setChestInventory(nextChest);
-        setChestToken(result.chest.updatedAt);
-        updateInventory(nextPlayer);
-        setConnected(true);
+        const playerLoaded = loadCanonicalPlayer(result.player);
+        const chestLoaded = loadCanonicalChest(result.chest);
+        pendingChestTransferRef.current = null;
+        chestTransferActiveRef.current = false;
+        inventorySavePendingRef.current = false;
+        setChestOperationBusy(false);
+        if (!playerLoaded || !chestLoaded) {
+          setChestError("The transfer committed, but its canonical state could not be displayed. Reopen the chest to reconcile.");
+          return;
+        }
+        setChestError("");
+        notify(
+          result.replayed ? "Chest transfer reconciled" : "Chest transfer committed",
+          `${result.moved.count} ${ITEMS[result.moved.itemId].label} moved atomically through Lakebed.`,
+          "success",
+        );
         return;
       }
+      pendingChestTransferRef.current = null;
+      chestTransferActiveRef.current = false;
+      inventorySavePendingRef.current = false;
+      setChestOperationBusy(false);
       if (result.reason === "conflict") {
-        loadChestRow(result.chest);
-        setChestError("Someone else changed this chest. Its latest contents were reloaded.");
+        const playerLoaded = loadCanonicalPlayer(result.player);
+        const chestLoaded = loadCanonicalChest(result.chest);
+        setChestError(playerLoaded && chestLoaded
+          ? `The ${result.conflict === "both" ? "pack and chest changed" : result.conflict + " changed"}. Both authoritative states were reloaded; no transfer occurred.`
+          : "Lakebed found a conflict, but the authoritative state could not be displayed safely.");
       } else if (result.reason === "authentication_required") {
-        setChestError("Sign in again before changing shared storage.");
+        setChestError("Sign in again before changing shared storage. No transfer occurred.");
+      } else if (result.reason === "no_capacity") {
+        setChestError("The destination has no room. No transfer occurred.");
+      } else if (result.reason === "empty_source") {
+        setChestError("That source slot changed before Lakebed committed the transfer. No transfer occurred.");
+      } else if (result.reason === "chest_required") {
+        setChestError("That block is no longer a chest. No transfer occurred.");
+      } else if (result.reason === "operation_id_reused") {
+        setChestError("Lakebed rejected a reused operation identifier. Reopen the chest before trying again.");
       } else {
-        setChestError("Lakebed rejected that chest transfer.");
+        setChestError("Lakebed rejected the atomic transfer. No inventory state changed.");
       }
-    }).catch(() => {
+      if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) void requestInventorySave();
+    } catch {
       setConnected(false);
-      setChestError("Chest save lost contact with Lakebed. No items were moved.");
-    }).finally(() => setChestBusy(false));
+      pending.transportFailures += 1;
+      if (pending.transportFailures === 1) {
+        setChestError("Transfer outcome unknown after a connection loss. Reconciling the identical operation…");
+        await submitPendingChestTransfer();
+        return;
+      }
+      setChestRetryAvailable(true);
+      setChestError("Transfer outcome is still unknown. Retry reconciliation with the same operation before moving anything else.");
+    }
+  }
+
+  function retryPendingChestTransfer() {
+    if (!pendingChestTransferRef.current) return;
+    setChestRetryAvailable(false);
+    setChestError("Reconciling the same atomic transfer with Lakebed…");
+    void submitPendingChestTransfer();
+  }
+
+  async function handleChestTransfer(direction: ChestTransferDirection, index: number) {
+    if (!activeChestKey || chestBusyRef.current || pendingChestTransferRef.current) return;
+    chestTransferActiveRef.current = true;
+    setChestOperationBusy(true);
+    setChestRetryAvailable(false);
+    setChestError("");
+    const inFlightSave = inventorySavePromiseRef.current;
+    if (inFlightSave) await inFlightSave;
+    for (let attempt = 0; attempt < 3 && currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current; attempt += 1) {
+      await requestInventorySave(true);
+    }
+    if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) {
+      chestTransferActiveRef.current = false;
+      setChestOperationBusy(false);
+      setChestError("Your pack could not be synchronized safely. No chest transfer was attempted.");
+      return;
+    }
+    if (!activeChestKey) {
+      chestTransferActiveRef.current = false;
+      setChestOperationBusy(false);
+      return;
+    }
+    const source = direction === "to_chest" ? inventoryRef.current : chestInventoryRef.current;
+    const stack = source[index];
+    if (!stack) {
+      chestTransferActiveRef.current = false;
+      setChestOperationBusy(false);
+      setChestError("That source slot changed before the transfer started.");
+      return;
+    }
+    const request: ChestTransferRequest = {
+      operationId: createChestOperationId(),
+      coordKey: activeChestKey,
+      direction: direction === "to_chest" ? "to_chest" : "from_chest",
+      sourceSlot: index,
+      count: stack.count,
+      expectedChestUpdatedAt: chestTokenRef.current,
+      expectedInventoryUpdatedAt: inventoryTokenRef.current,
+      playerStateJson: lastCommittedPlayerJsonRef.current,
+    };
+    pendingChestTransferRef.current = { requestJson: JSON.stringify(request), transportFailures: 0 };
+    await submitPendingChestTransfer();
   }
 
   function handleSleepInBed(coordKey = activeBedKey) {
@@ -931,6 +1153,13 @@ export function App() {
           setInventoryReady(false);
           hydratedRef.current = false;
           hydratedUserRef.current = "";
+          inventoryTokenRef.current = "";
+          inventorySessionRef.current += 1;
+          lastCommittedPlayerJsonRef.current = "";
+          inventorySavePendingRef.current = false;
+          pendingChestTransferRef.current = null;
+          chestTransferActiveRef.current = false;
+          setChestRetryAvailable(false);
         }}
         onUsernameChange={(value) => {
           setUsernameDraft(value);
@@ -1001,11 +1230,14 @@ export function App() {
           if (chestBusy) return;
           setActiveChestKey("");
           setChestError("");
+          setChestRetryAvailable(false);
         }}
         onTransfer={handleChestTransfer}
+        onRetry={retryPendingChestTransfer}
         open={Boolean(activeChestKey)}
         playerInventory={inventory}
-        status={chestBusy ? "Saving this transfer through Lakebed…" : "Shared storage is current."}
+        retryAvailable={chestRetryAvailable}
+        status={chestBusy ? "Waiting for Lakebed to settle one atomic transfer…" : "Pack and chest are synchronized with Lakebed."}
       />
 
       {activeBedKey ? (

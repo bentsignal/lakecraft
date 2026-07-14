@@ -37,6 +37,8 @@ Authoritative block state is compacted into 8×8 Lakebed chunk rows. The regress
 
 The anonymous hosted quota is the harder multiplayer constraint: the current public deploy reports 1,000 mutations/day. Active movement snapshots are therefore deliberately sparse and interpolated locally. Production load testing must track mutation exhaustion as closely as frame time; claiming the deploy is required before treating the current quota as final.
 
+Chest transfers now replace the former chest-write-plus-delayed-pack-save sequence with one transactional mutation. A representative dense receipt is about 2.4 KiB including the exact replay result and semantic request fingerprint. Receipts are limited to the newest 16 per user, with a bounded eight-row cleanup batch and a 24-hour stale pass, preventing an ordinary player from growing an unbounded retry log against the anonymous deploy's 1 MiB state ceiling. Inventory autosaves and chest transfers share CAS tokens, and an outcome-unknown client blocks further moves until it replays the same operation ID.
+
 ## Strategy
 
 - Prefer deterministic client generation and compact Lakebed records; world coordinates, presence, and inventories are indexed upserts, while chat remains bounded append-only history.
@@ -45,4 +47,5 @@ The anonymous hosted quota is the harder multiplayer constraint: the current pub
 - Cap/paginate append-only feeds and preserve legacy duplicate-collapse helpers for migrated data.
 - Track Lakebed daily mutation and row limits alongside rendering performance.
 - Persist mob combat only on explicit attacks; deterministic movement and local respawn timers must never create Lakebed writes.
+- Commit chest and pack state together, retain only a bounded exact-replay window, and never optimistically mutate either side on the client.
 - Do not move multiplayer or persistence to another backend to solve performance.
