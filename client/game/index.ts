@@ -1,4 +1,5 @@
 export { createVoxelEngine } from "./voxelEngine.ts";
+export { MAX_ACTIVE_TORCH_LIGHTS, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendTorchMesh, blockHasCollision, blockOccludesFaces, selectNearestTorchLights } from "./voxelEngine.ts";
 export { BLOCK } from "./types.ts";
 export { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 export { WORLD_CHUNK_SIZE, chunkCoordinate, chunkKeyForBlock, dirtyChunkKeysForEdit, dirtyChunkKeysForEdits } from "./chunks.ts";

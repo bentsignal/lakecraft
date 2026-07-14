@@ -9,6 +9,7 @@ export const BLOCK = {
   LEAVES: 5,
   PLANKS: 6,
   CRAFTING_TABLE: 7,
+  TORCH: 8,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -64,6 +65,8 @@ export interface VoxelPerformanceStats {
   mobVisibleCount: number;
   mobCount: number;
   mobSimulationMs: number;
+  torchCount: number;
+  activeTorchLights: number;
   estimatedMeshBytes: number;
 }
 

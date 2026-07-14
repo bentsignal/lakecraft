@@ -1,7 +1,7 @@
 export const HOTBAR_SIZE = 9;
 export const INVENTORY_SIZE = 27;
 
-export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks" | "crafting_table";
+export type BlockId = "grass" | "dirt" | "stone" | "log" | "leaves" | "planks" | "crafting_table" | "torch";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -77,6 +77,7 @@ export const BLOCKS: Record<BlockId, BlockDefinition> = {
   leaves: { id: "leaves", label: "Oak Leaves", description: "A loose, mossy canopy block.", color: "#4e6f3d", accent: "#7c9953", hardness: 0.3, preferredTool: "hand", drop: null },
   planks: { id: "planks", label: "Oak Planks", description: "Squared boards for building and tools.", color: "#a87841", accent: "#d0a45e", hardness: 1.1, preferredTool: "axe", drop: "planks" },
   crafting_table: { id: "crafting_table", label: "Crafting Table", description: "A sturdy workbench for more involved recipes.", color: "#8a5b32", accent: "#d39a54", hardness: 1.4, preferredTool: "axe", drop: "crafting_table" },
+  torch: { id: "torch", label: "Torch", description: "A warm light for shelters and night trails.", color: "#d99a3d", accent: "#ffd36a", hardness: 0.1, preferredTool: "hand", drop: "torch" },
 };
 
 export const ITEMS: Record<ItemId, ItemDefinition> = {
@@ -87,6 +88,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   leaves: blockItem("leaves", "LEF", "✤"),
   planks: blockItem("planks", "PLK", "▤"),
   crafting_table: blockItem("crafting_table", "CRF", "▧"),
+  torch: blockItem("torch", "TCH", "♨"),
   stick: { id: "stick", label: "Stick", shortLabel: "STK", description: "A straight handle for simple tools.", category: "material", maxStack: 64, glyph: "╱", color: "#c09557" },
   leather: { id: "leather", label: "Leather", shortLabel: "LTH", description: "Tough hide used for lightweight armor.", category: "material", maxStack: 64, glyph: "◩", color: "#8d552f" },
   wooden_pickaxe: toolItem("wooden_pickaxe", "Wood Pickaxe", "W·PX", "pickaxe", "wood", "A light pick for fieldstone.", "⌁", "#b7874d"),
@@ -122,6 +124,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "planks_from_log", label: "Saw planks", note: "Split one log into four boards.", ingredients: [{ itemId: "log", count: 1 }], output: { itemId: "planks", count: 4 } },
   { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
+  { id: "torch", label: "Torches", note: "A stick and board make four crude lights.", ingredients: [{ itemId: "stick", count: 1 }, { itemId: "planks", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "wooden_pickaxe", label: "Wood pickaxe", note: "A starter quarrying tool.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_pickaxe", count: 1 } },
   { id: "wooden_axe", label: "Wood axe", note: "Fells logs faster.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_axe", count: 1 } },
   { id: "wooden_shovel", label: "Wood shovel", note: "Clears dirt and grass faster.", ingredients: [{ itemId: "planks", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_shovel", count: 1 } },

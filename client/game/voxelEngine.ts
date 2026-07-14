@@ -46,6 +46,20 @@ interface ChunkMesh {
   maxY: number;
 }
 
+export interface TorchLightPosition {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface RankedTorchLight extends TorchLightPosition {
+  distanceSquared: number;
+}
+
+export const MAX_ACTIVE_TORCH_LIGHTS = 8;
+export const TORCH_LIGHT_RADIUS = 11;
+export const TORCH_MESH_VERTEX_COUNT = 72;
+
 const VERTEX_SHADER = `
 attribute vec3 aPosition;
 attribute vec3 aColor;
@@ -57,6 +71,7 @@ uniform vec3 uAmbientColor;
 uniform vec3 uDirectionalColor;
 uniform float uAmbientIntensity;
 uniform float uDirectionalIntensity;
+uniform vec4 uTorchLights[8];
 varying vec3 vColor;
 varying float vFog;
 void main() {
@@ -64,6 +79,13 @@ void main() {
   vec3 lighting = vec3(0.16)
     + uAmbientColor * uAmbientIntensity * 0.75
     + uDirectionalColor * uDirectionalIntensity * 0.30;
+  vec3 torchLight = vec3(0.0);
+  for (int lightIndex = 0; lightIndex < 8; lightIndex++) {
+    vec4 light = uTorchLights[lightIndex];
+    float attenuation = step(0.001, light.w) * clamp(1.0 - length(light.xyz - aPosition) / max(light.w, 0.001), 0.0, 1.0);
+    torchLight += vec3(1.0, 0.43, 0.12) * attenuation * attenuation * 0.95;
+  }
+  lighting += torchLight;
   vColor = aColor * mix(vec3(1.0), lighting, uLightingEnabled);
   float distanceFromCamera = length(aPosition - uCamera);
   vFog = uFogEnabled * smoothstep(18.0, 42.0, distanceFromCamera);
@@ -100,7 +122,49 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.LEAVES]: [0.18, 0.48, 0.19],
   [BLOCK.PLANKS]: [0.69, 0.48, 0.25],
   [BLOCK.CRAFTING_TABLE]: [0.55, 0.35, 0.16],
+  [BLOCK.TORCH]: [0.76, 0.46, 0.14],
 };
+
+function rankedTorchCompare(a: RankedTorchLight, b: RankedTorchLight): number {
+  return a.distanceSquared - b.distanceSquared || a.x - b.x || a.y - b.y || a.z - b.z;
+}
+
+/** Selects a stable, bounded nearest set without sorting or copying the full input. */
+export function selectNearestTorchLights(
+  lights: Iterable<TorchLightPosition>,
+  camera: readonly [number, number, number],
+  limit = MAX_ACTIVE_TORCH_LIGHTS,
+  radius = TORCH_LIGHT_RADIUS,
+): TorchLightPosition[] {
+  const boundedLimit = Math.max(0, Math.min(MAX_ACTIVE_TORCH_LIGHTS, Math.floor(limit)));
+  if (boundedLimit === 0 || radius <= 0) return [];
+  const radiusSquared = radius * radius;
+  const ranked: RankedTorchLight[] = [];
+  for (const light of lights) {
+    const dx = light.x - camera[0];
+    const dy = light.y - camera[1];
+    const dz = light.z - camera[2];
+    const distanceSquared = dx * dx + dy * dy + dz * dz;
+    if (distanceSquared > radiusSquared) continue;
+    const candidate: RankedTorchLight = { x: light.x, y: light.y, z: light.z, distanceSquared };
+    let insertionIndex = ranked.length;
+    while (insertionIndex > 0 && rankedTorchCompare(candidate, ranked[insertionIndex - 1]) < 0) {
+      insertionIndex -= 1;
+    }
+    if (insertionIndex >= boundedLimit) continue;
+    ranked.splice(insertionIndex, 0, candidate);
+    if (ranked.length > boundedLimit) ranked.pop();
+  }
+  return ranked.map(({ x, y, z }) => ({ x, y, z }));
+}
+
+export function blockOccludesFaces(block: BlockId): boolean {
+  return block !== BLOCK.AIR && block !== BLOCK.TORCH;
+}
+
+export function blockHasCollision(block: BlockId): boolean {
+  return blockOccludesFaces(block);
+}
 
 function compileShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
@@ -201,6 +265,35 @@ function appendTransformedBox(
       ]), shaded);
     }
   }
+}
+
+function appendAxisAlignedBox(output: number[], min: Vec3, max: Vec3, color: Vec3): void {
+  for (const face of FACE_DEFS) {
+    const shaded = tint(color, face.shade);
+    for (const point of face.vertices) {
+      pushVertex(output, [
+        min[0] + point[0] * (max[0] - min[0]),
+        min[1] + point[1] * (max[1] - min[1]),
+        min[2] + point[2] * (max[2] - min[2]),
+      ], shaded);
+    }
+  }
+}
+
+/** Adds a thin wooden stem and a bright ember cap centered in its block cell. */
+export function appendTorchMesh(output: number[], x: number, y: number, z: number): void {
+  appendAxisAlignedBox(
+    output,
+    [x + 0.42, y, z + 0.42],
+    [x + 0.58, y + 0.7, z + 0.58],
+    [0.53, 0.30, 0.09],
+  );
+  appendAxisAlignedBox(
+    output,
+    [x + 0.38, y + 0.67, z + 0.38],
+    [x + 0.62, y + 0.88, z + 0.62],
+    BLOCK_COLORS[BLOCK.TORCH],
+  );
 }
 
 function avatarTransform(
@@ -393,6 +486,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const directionalColorLocation = gl.getUniformLocation(program, "uDirectionalColor");
   const ambientIntensityLocation = gl.getUniformLocation(program, "uAmbientIntensity");
   const directionalIntensityLocation = gl.getUniformLocation(program, "uDirectionalIntensity");
+  const torchLightsLocation = gl.getUniformLocation(program, "uTorchLights[0]");
   const remoteBuffer = gl.createBuffer();
   const nameplateBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
@@ -415,6 +509,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (edit.block === BLOCK.AIR) blocks.delete(key);
     else blocks.set(key, edit.block);
   }
+  const torchLights = new Map<string, TorchLightPosition>();
+  for (const [key, block] of blocks) {
+    if (block !== BLOCK.TORCH) continue;
+    const [x, y, z] = key.split(",").map(Number);
+    torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
+  }
+  const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const chunkBlocks = new Map<string, Set<string>>();
   for (const key of blocks.keys()) {
     const separatorA = key.indexOf(",");
@@ -481,6 +582,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let mobAccumulatorSeconds = 0;
   const mobStepSeconds = 0.1;
   let lastPerformanceSent = 0;
+  let activeTorchLights = 0;
+  let lastTorchSelectionAt = -Infinity;
+  let lastTorchCameraX = Infinity;
+  let lastTorchCameraY = Infinity;
+  let lastTorchCameraZ = Infinity;
 
   function clearMining(): void {
     if (miningTimer) window.clearTimeout(miningTimer);
@@ -496,6 +602,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const key = blockKey(x, y, z);
     const owner = chunkKeyForBlock(x, z);
     const previous = blocks.get(key) ?? BLOCK.AIR;
+    if (previous === BLOCK.TORCH) torchLights.delete(key);
     if (block === BLOCK.AIR) {
       blocks.delete(key);
       const owned = chunkBlocks.get(owner);
@@ -503,6 +610,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (owned?.size === 0) chunkBlocks.delete(owner);
     } else {
       blocks.set(key, block);
+      if (block === BLOCK.TORCH) torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
       if (previous === BLOCK.AIR) {
         let owned = chunkBlocks.get(owner);
         if (!owned) {
@@ -524,10 +632,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const [x, y, z] = key.split(",").map(Number);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y + 1);
+      if (block === BLOCK.TORCH) {
+        appendTorchMesh(vertices, x, y, z);
+        continue;
+      }
       const base = BLOCK_COLORS[block] ?? BLOCK_COLORS[BLOCK.STONE];
       const variation = 0.93 + (((Math.imul(x, 13) ^ Math.imul(y, 7) ^ Math.imul(z, 17)) & 7) / 100);
       for (const face of FACE_DEFS) {
-        if (getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]) !== BLOCK.AIR) continue;
+        if (blockOccludesFaces(getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]))) continue;
         const color = tint(base, face.shade, variation);
         for (const point of face.vertices) pushVertex(vertices, [x + point[0], y + point[1], z + point[2]], color);
       }
@@ -588,7 +700,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (let bx = minX; bx <= maxX; bx += 1) {
       for (let by = minY; by <= maxY; by += 1) {
         for (let bz = minZ; bz <= maxZ; bz += 1) {
-          if (getBlock(bx, by, bz) !== BLOCK.AIR) return true;
+          if (blockHasCollision(getBlock(bx, by, bz))) return true;
         }
       }
     }
@@ -632,7 +744,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (let zSide = -1; zSide <= 1; zSide += 2) {
         const sampleZ = z + collisionRadius * zSide;
         for (let sampleY = minY; sampleY <= maxY; sampleY += 1) {
-          if (getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ)) !== BLOCK.AIR) return false;
+          if (blockHasCollision(getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ)))) return false;
         }
       }
     }
@@ -709,6 +821,26 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.viewport(0, 0, width, height);
   }
 
+  function updateActiveTorchLights(now: number, eye: Vec3): void {
+    const movedSquared = (eye[0] - lastTorchCameraX) ** 2 + (eye[1] - lastTorchCameraY) ** 2 + (eye[2] - lastTorchCameraZ) ** 2;
+    if (now - lastTorchSelectionAt < 250 && movedSquared < 0.25) return;
+    lastTorchSelectionAt = now;
+    lastTorchCameraX = eye[0];
+    lastTorchCameraY = eye[1];
+    lastTorchCameraZ = eye[2];
+    activeTorchUniforms.fill(0);
+    const nearest = selectNearestTorchLights(torchLights.values(), eye, MAX_ACTIVE_TORCH_LIGHTS, TORCH_LIGHT_RADIUS);
+    activeTorchLights = nearest.length;
+    for (let index = 0; index < nearest.length; index += 1) {
+      const light = nearest[index];
+      const offset = index * 4;
+      activeTorchUniforms[offset] = light.x;
+      activeTorchUniforms[offset + 1] = light.y;
+      activeTorchUniforms[offset + 2] = light.z;
+      activeTorchUniforms[offset + 3] = TORCH_LIGHT_RADIUS;
+    }
+  }
+
   function getPerformanceStats(): VoxelPerformanceStats {
     const sortedFrameTimes = [...frameTimes].sort((a, b) => a - b);
     const averageFrameTimeMs = frameTimes.length
@@ -737,6 +869,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       mobVisibleCount: visibleMobCount,
       mobCount: mobSimulation.mobs.length,
       mobSimulationMs: lastMobSimulationMs,
+      torchCount: torchLights.size,
+      activeTorchLights,
       estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
     };
   }
@@ -750,6 +884,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
     sampleDayNight(Date.now() + serverTimeOffsetMs, dayNightConfig, dayNightState);
+    updateActiveTorchLights(now, eye);
     const mobStats = mobRenderer.rebuild(
       mobSnapshots,
       eye[0],
@@ -782,6 +917,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     );
     gl.uniform1f(ambientIntensityLocation, dayNightState.ambientIntensity);
     gl.uniform1f(directionalIntensityLocation, dayNightState.directionalIntensity);
+    gl.uniform4fv(torchLightsLocation, activeTorchUniforms);
     gl.uniform1f(lightingLocation, 1);
     gl.uniform1f(fogLocation, 1);
     visibleChunkCount = 0;

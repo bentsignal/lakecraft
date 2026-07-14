@@ -36,6 +36,7 @@ function craft(inventory: Inventory, id: string): Inventory {
 
 assert.equal(BLOCKS.crafting_table.drop, "crafting_table");
 assert.equal(ITEMS.crafting_table.placesBlock, "crafting_table");
+assert.equal(ITEMS.torch.placesBlock, "torch");
 assert.equal(new Set(RECIPES.map(({ id }) => id)).size, RECIPES.length, "recipe ids stay unique");
 
 let woodInventory = addItem(createEmptyInventory(), "log", 3).inventory;
@@ -44,9 +45,11 @@ woodInventory = craft(woodInventory, "planks_from_log");
 woodInventory = craft(woodInventory, "planks_from_log");
 woodInventory = craft(woodInventory, "sticks_from_planks");
 woodInventory = craft(woodInventory, "crafting_table");
+woodInventory = craft(woodInventory, "torch");
 woodInventory = craft(woodInventory, "wooden_shovel");
 woodInventory = craft(woodInventory, "wooden_sword");
 assert.equal(countItem(woodInventory, "crafting_table"), 1);
+assert.equal(countItem(woodInventory, "torch"), 4);
 assert.equal(countItem(woodInventory, "wooden_shovel"), 1);
 assert.equal(countItem(woodInventory, "wooden_sword"), 1);
 

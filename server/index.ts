@@ -6,7 +6,7 @@ import {
   validateUsername
 } from "../shared/multiplayer";
 
-const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table"];
+const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch"];
 
 function boundedInteger(value: string, minimum: number, maximum: number): number | null {
   if (!/^-?\d{1,4}$/.test(value.trim())) return null;
