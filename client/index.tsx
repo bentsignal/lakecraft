@@ -72,6 +72,14 @@ import {
   type PlayerPresence,
   type WorldEdit,
 } from "../shared/protocol";
+import {
+  PRESENCE_MAX_WRITES_PER_MINUTE,
+  createPresenceSchedulerState,
+  parsePersistedPresencePose,
+  parsePresenceVelocityFields,
+  stepPresenceScheduler,
+  type PresenceSchedulerState,
+} from "../shared/presenceMotion";
 import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep";
 import {
   MAX_MOB_ATTACK_DAMAGE,
@@ -198,6 +206,7 @@ function createChestOperationId(): string {
 }
 
 const WORLD_RADIUS = 18;
+const DEFAULT_PLAYER_POSE: Readonly<PlayerPose> = Object.freeze({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
 const VISIBLE_WORLD_CHUNK_KEYS = (() => {
   const minimum = worldEditChunkCoordinate(-WORLD_RADIUS);
   const maximum = worldEditChunkCoordinate(WORLD_RADIUS);
@@ -260,6 +269,7 @@ export function App() {
   const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", VISIBLE_WORLD_CHUNK_KEYS);
   const [activeSince] = useState(() => String(Date.now() - 30_000));
   const presenceEvents = useQuery<PlayerPresence[], string>("recentPlayers", activeSince) ?? [];
+  const savedPresence = useQuery<PlayerPresence | null>("myPresence");
   const savedInventory = useQuery<PersistedInventory | null>("myInventory");
   const profile = useQuery<Profile | null>("myProfile");
   const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
@@ -270,7 +280,7 @@ export function App() {
 
   const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
-  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string], void>("heartbeatPlayer");
+  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string], void>("heartbeatPlayer");
   const leavePlayer = useMutation<[heartbeatAt: string], void>("leavePlayer");
   const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
@@ -281,9 +291,9 @@ export function App() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
-  const poseRef = useRef<PlayerPose>({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
-  const poseDirtyRef = useRef(true);
-  const lastPresenceSentRef = useRef(0);
+  const poseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
+  const presenceSampleRef = useRef<((pose: PlayerPose, at?: number) => void) | null>(null);
+  const presenceSchedulerRef = useRef<PresenceSchedulerState | null>(null);
   const targetRef = useRef<BlockTarget | null>(null);
   const inventoryRef = useRef<Inventory>(createStarterInventory());
   const equipmentRef = useRef<Equipment>(createEmptyEquipment());
@@ -306,6 +316,8 @@ export function App() {
   const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
   const activeCraftingTableRef = useRef<CraftingTablePosition | null>(null);
   const toastCounter = useRef(0);
+
+  if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
   const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
@@ -563,7 +575,10 @@ export function App() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     try {
+      const resumedPresencePose = savedPresence ? parsePersistedPresencePose(savedPresence) : null;
+      if (resumedPresencePose) poseRef.current = resumedPresencePose;
       const engine = createVoxelEngine(canvas, {
+        initialPose: resumedPresencePose ?? poseRef.current,
         worldRadius: WORLD_RADIUS,
         dayNight: worldClock ? {
           cycleLengthMs: worldClock.cycleLengthMs,
@@ -605,7 +620,7 @@ export function App() {
         onBlockEdit: handleBlockEdit,
         onPoseChange: (pose) => {
           poseRef.current = pose;
-          poseDirtyRef.current = true;
+          presenceSampleRef.current?.(pose);
           recentlyActiveUntilRef.current = performance.now() + 1_200;
           const table = activeCraftingTableRef.current;
           if (table && !isCraftingTableWithinReach(pose, table)) {
@@ -743,33 +758,59 @@ export function App() {
 
   useEffect(() => {
     const active = activePlayerPresences(presenceEvents).filter((player) => player.userId !== auth.userId);
-    const remotes: RemotePlayer[] = active.map((player) => ({
-      id: player.userId,
-      name: player.displayName,
-      x: Number(player.x),
-      y: Number(player.y),
-      z: Number(player.z),
-      yaw: Number(player.yaw),
-      pitch: Number(player.pitch),
-      color: remoteColor(player.color),
-    })).filter((player) => [player.x, player.y, player.z, player.yaw, player.pitch].every(Number.isFinite));
+    const remotes: RemotePlayer[] = active.map((player) => {
+      const velocity = parsePresenceVelocityFields(player);
+      return {
+        id: player.userId,
+        name: player.displayName,
+        x: Number(player.x),
+        y: Number(player.y),
+        z: Number(player.z),
+        yaw: Number(player.yaw),
+        pitch: Number(player.pitch),
+        vx: velocity.vx,
+        vy: velocity.vy,
+        vz: velocity.vz,
+        color: remoteColor(player.color),
+      };
+    }).filter((player) => [player.x, player.y, player.z, player.yaw, player.pitch].every(Number.isFinite));
     engineRef.current?.setRemotePlayers(remotes);
   }, [presenceEvents, auth.userId]);
 
   useEffect(() => {
     if (!inWorld || auth.isLoading || !auth.isAuthenticated || auth.isGuest || !profile) return;
-    const sendHeartbeat = (force = false) => {
-      const now = Date.now();
-      if (!force && !poseDirtyRef.current && now - lastPresenceSentRef.current < 12_000) return;
-      const pose = engineRef.current?.getPose() ?? poseRef.current;
+    const scheduler = createPresenceSchedulerState();
+    presenceSchedulerRef.current = scheduler;
+    let writeInFlight = false;
+    const samplePresence = (pose: PlayerPose, at = Date.now()) => {
       poseRef.current = pose;
-      poseDirtyRef.current = false;
-      lastPresenceSentRef.current = now;
-      void heartbeatPlayer(profile.username, playerColor(auth.userId), String(pose.x), String(pose.y), String(pose.z), String(pose.yaw), String(pose.pitch), String(now)).then(() => setConnected(true)).catch(() => setConnected(false));
+      if (writeInFlight) return;
+      const decision = stepPresenceScheduler(scheduler, { ...pose, at });
+      if (!decision.send) return;
+      writeInFlight = true;
+      void heartbeatPlayer(
+        profile.username,
+        playerColor(auth.userId),
+        String(pose.x),
+        String(pose.y),
+        String(pose.z),
+        String(pose.yaw),
+        String(pose.pitch),
+        String(at),
+        decision.fields.vx,
+        decision.fields.vy,
+        decision.fields.vz,
+      ).then(() => setConnected(true)).catch(() => setConnected(false)).finally(() => {
+        writeInFlight = false;
+      });
     };
-    sendHeartbeat(true);
-    const interval = window.setInterval(() => sendHeartbeat(), 2_000);
+    presenceSampleRef.current = samplePresence;
+    samplePresence(engineRef.current?.getPose() ?? poseRef.current);
+    const interval = window.setInterval(() => {
+      samplePresence(engineRef.current?.getPose() ?? poseRef.current);
+    }, 250);
     return () => {
+      if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
       window.clearInterval(interval);
       void leavePlayer(String(Date.now())).catch(() => undefined);
     };
@@ -1092,7 +1133,7 @@ export function App() {
     if (!profile) return;
     setJoinPhase("joining");
     window.setTimeout(() => {
-      if (!hydratedRef.current) {
+      if (!hydratedRef.current || savedPresence === undefined) {
         setJoinPhase("waiting");
         return;
       }
@@ -1105,14 +1146,14 @@ export function App() {
   }
 
   useEffect(() => {
-    if (joinPhase !== "waiting" || !inventoryReady || !profile) return;
+    if (joinPhase !== "waiting" || !inventoryReady || savedPresence === undefined || !profile) return;
     setJoinPhase("ready");
     const timer = window.setTimeout(() => {
       setInWorld(true);
       setJoinPhase("idle");
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [joinPhase, inventoryReady, profile?.id]);
+  }, [joinPhase, inventoryReady, savedPresence, profile?.id]);
 
   useEffect(() => {
     if (inWorld && !auth.isLoading && (!auth.isAuthenticated || auth.isGuest)) {
@@ -1192,6 +1233,7 @@ export function App() {
           setHunger(MAX_HUNGER);
           selectedRef.current = 2;
           setSelectedHotbar(2);
+          poseRef.current = { ...DEFAULT_PLAYER_POSE };
           setUsernameDraft("");
           setUsernameState("idle");
           setInventoryReady(false);
@@ -1323,7 +1365,7 @@ export function App() {
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nPRESENCE ${presenceSchedulerRef.current?.writeCount ?? 0} attempts · cap ${PRESENCE_MAX_WRITES_PER_MINUTE}/min\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}

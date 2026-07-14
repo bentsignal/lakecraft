@@ -43,6 +43,10 @@ import {
   type StoredMobAuthorityState
 } from "../shared/mobCombat";
 import {
+  encodePresenceVelocityFields,
+  validatePresenceVelocityFields
+} from "../shared/presenceMotion";
+import {
   CHEST_RECEIPT_OVERFLOW_PRUNE_LIMIT,
   MAX_CHEST_TRANSFER_RECEIPTS_PER_USER,
   compareStoredPlayerState,
@@ -50,6 +54,10 @@ import {
   encodeChestTransferReceipt,
   selectChestTransferReceiptOverflow
 } from "./chestTransferReceipts";
+import {
+  buildOfflinePresenceValue,
+  validatePresencePoseFields
+} from "./playerPresence";
 
 const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest", "bed", "door_closed", "door_open"];
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -59,11 +67,6 @@ function boundedInteger(value: string, minimum: number, maximum: number): number
   if (!/^-?\d{1,4}$/.test(value.trim())) return null;
   const number = Number(value);
   return Number.isInteger(number) && number >= minimum && number <= maximum ? number : null;
-}
-
-function boundedNumber(value: string, minimum: number, maximum: number): number | null {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= minimum && number <= maximum ? number : null;
 }
 
 function databaseRowToChunkEdit(row: Record<string, unknown>): WorldChunkEditInput | null {
@@ -167,6 +170,10 @@ export default capsule({
       z: string(),
       yaw: string(),
       pitch: string(),
+      /** Defaults retain compatibility with rows written before motion-aware presence. */
+      vx: string().default("0"),
+      vy: string().default("0"),
+      vz: string().default("0"),
       heartbeatAt: string(),
       online: boolean().default(true)
     })
@@ -455,15 +462,15 @@ export default capsule({
         z: string,
         yaw: string,
         pitch: string,
-        _heartbeatAt: string
+        _heartbeatAt: string,
+        rawVx?: string,
+        rawVy?: string,
+        rawVz?: string
       ) => {
         if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to join the shared world.");
-        const px = boundedNumber(x, -128, 128);
-        const py = boundedNumber(y, -32, 128);
-        const pz = boundedNumber(z, -128, 128);
-        const playerYaw = boundedNumber(yaw, -100_000, 100_000);
-        const playerPitch = boundedNumber(pitch, -2, 2);
-        if (px == null || py == null || pz == null || playerYaw == null || playerPitch == null) return;
+        const pose = validatePresencePoseFields(x, y, z, yaw, pitch);
+        const velocity = validatePresenceVelocityFields(rawVx ?? "0", rawVy ?? "0", rawVz ?? "0");
+        if (!pose || !velocity) return;
         const profile = await ctx.db.profiles
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
@@ -478,11 +485,12 @@ export default capsule({
           userId: ctx.auth.userId,
           displayName: profile.username,
           color: safeColor,
-          x: String(px),
-          y: String(py),
-          z: String(pz),
-          yaw: String(playerYaw),
-          pitch: String(playerPitch),
+          x: String(pose.x),
+          y: String(pose.y),
+          z: String(pose.z),
+          yaw: String(pose.yaw),
+          pitch: String(pose.pitch),
+          ...encodePresenceVelocityFields(velocity),
           heartbeatAt: String(Date.now()),
           online: true
         };
@@ -494,30 +502,14 @@ export default capsule({
 
     leavePlayer: mutation(async (ctx, _heartbeatAt: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to leave the shared world.");
-      const profile = await ctx.db.profiles
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
-        .order("desc")
-        .first();
-      if (!profile) throw new Error("Choose a username before joining the shared world.");
       const existing = await ctx.db.playerPresence
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .first();
-      const value = {
-        userId: ctx.auth.userId,
-        displayName: profile.username,
-        color: "#8fbf79",
-        x: "0",
-        y: "0",
-        z: "0",
-        yaw: "0",
-        pitch: "0",
-        heartbeatAt: String(Date.now()),
-        online: false
-      };
-      return existing
-        ? ctx.db.playerPresence.update(existing.id, value)
-        : ctx.db.playerPresence.insert(value);
+      // A leave without a prior authoritative heartbeat must not manufacture a
+      // second source of spawn truth. Existing rows retain their exact pose.
+      if (!existing) return null;
+      return ctx.db.playerPresence.update(existing.id, buildOfflinePresenceValue(existing, Date.now()));
     }),
 
     saveInventory: mutation(async (ctx, inventoryJson: string, rawExpectedUpdatedAt?: string) => {

@@ -49,6 +49,10 @@ export type PlayerPresence = {
   z: string;
   yaw: string;
   pitch: string;
+  /** Quantized velocity fields; older rows are surfaced as zero by the schema. */
+  vx: string;
+  vy: string;
+  vz: string;
   heartbeatAt: string;
   online: boolean;
   createdAt: string;

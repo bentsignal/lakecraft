@@ -46,6 +46,10 @@ export interface RemotePlayer extends PlayerPose {
   id: string;
   name?: string;
   color?: readonly [number, number, number] | string;
+  /** Explicit bounded velocity from the sparse Lakebed presence snapshot. */
+  vx?: number;
+  vy?: number;
+  vz?: number;
 }
 
 export interface BlockTarget {

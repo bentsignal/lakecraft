@@ -8,8 +8,8 @@ Lakecraft is intentionally pushing Lakebed far outside its natural workload. Per
 - P95 frame time: at most 22 ms during ordinary movement.
 - Local block edit mesh work: at most 8 ms P95 and limited to the dirty chunk plus boundary neighbors.
 - Main-world join to interactive first frame: at most 3 seconds on a warm connection.
-- Remote movement freshness: target under 2.5 seconds while a player is active.
-- Idle presence writes: no more than one every 12 seconds per connected player.
+- Remote movement snapshots: no more than 7.5 seconds apart while active, with up to 5 seconds of bounded horizontal dead reckoning between Lakebed writes.
+- Presence writes: at most eight in every sliding minute per connected player; idle lease refreshes target six per minute.
 - Client world-edit query: capped and collapsed by coordinate before renderer application.
 
 ## Required evidence per milestone
@@ -36,6 +36,8 @@ Remote Steve/nameplate geometry now uses fixed-capacity typed arrays and preallo
 Authoritative block state is compacted into 8×8 Lakebed chunk rows. The regression fixture reconstructs 1,500 distinct edits across 34 chunks, past the old 1,000-row divergence boundary; a pathological fully edited 4,416-cell column encodes to 2,962 bytes, well below Lakebed's 64 KiB value limit.
 
 The anonymous hosted quota is the harder multiplayer constraint: the current public deploy reports 1,000 mutations/day. Active movement snapshots are therefore deliberately sparse and interpolated locally. Production load testing must track mutation exhaustion as closely as frame time; claiming the deploy is required before treating the current quota as final.
+
+Presence protocol v2 replaces two-second dirty-pose writes with server-validated, quantized velocity snapshots and a deterministic 7.5-second rate gate. A one-hour 250 ms simulation records 360 idle writes and 480 writes during straight movement or adversarial turn spam, with no sliding minute exceeding eight writes. That is a 73.3% reduction from the former 1,800 moving writes/hour per player. Horizontal prediction is capped at five seconds and 14 blocks/second; vertical prediction uses a separate half-second safety horizon so stale jump velocity cannot launch an avatar into the sky. Leave writes preserve the last authoritative pose for reconnect rather than resetting the player to the origin.
 
 Chest transfers now replace the former chest-write-plus-delayed-pack-save sequence with one transactional mutation. A representative dense receipt is about 2.4 KiB including the exact replay result and semantic request fingerprint. Receipts are limited to the newest 16 per user, with a bounded eight-row cleanup batch and a 24-hour stale pass, preventing an ordinary player from growing an unbounded retry log against the anonymous deploy's 1 MiB state ceiling. Inventory autosaves and chest transfers share CAS tokens, and an outcome-unknown client blocks further moves until it replays the same operation ID.
 

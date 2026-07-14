@@ -1,10 +1,21 @@
 import type { PlayerPose, RemotePlayer } from "./types.ts";
+import {
+  PRESENCE_MAX_EXTRAPOLATION_MS,
+  PRESENCE_MAX_HORIZONTAL_SPEED,
+  PRESENCE_MAX_PITCH,
+  PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS,
+  PRESENCE_MAX_VERTICAL_SPEED,
+  PRESENCE_MAX_X,
+  PRESENCE_MAX_Y,
+  PRESENCE_MAX_YAW,
+  PRESENCE_MAX_Z,
+  PRESENCE_MIN_X,
+  PRESENCE_MIN_Y,
+  PRESENCE_MIN_Z,
+} from "../../shared/presenceMotion.ts";
 
 export const MAX_REMOTE_PLAYERS = 32;
 export const MAX_PLAYER_NAME_LENGTH = 16;
-
-const POSITION_LIMIT = 1_000_000;
-const MAX_SNAPSHOT_SPEED = 14;
 
 export interface RemoteAvatarMotion {
   readonly id: string;
@@ -13,6 +24,7 @@ export interface RemoteAvatarMotion {
   rendered: PlayerPose;
   target: PlayerPose;
   velocityX: number;
+  velocityY: number;
   velocityZ: number;
   horizontalSpeed: number;
   walkPhase: number;
@@ -20,20 +32,43 @@ export interface RemoteAvatarMotion {
   lastSnapshotAt: number;
 }
 
-function finiteBounded(value: number, fallback: number, limit = POSITION_LIMIT): number {
+function finiteRange(value: number, fallback: number, minimum: number, maximum: number): number {
   if (!Number.isFinite(value)) return fallback;
-  return Math.max(-limit, Math.min(limit, value));
+  return Math.max(minimum, Math.min(maximum, value));
 }
 
 function safePose(player: RemotePlayer, fallback?: PlayerPose): PlayerPose {
   const base = fallback ?? { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
   return {
-    x: finiteBounded(player.x, base.x),
-    y: finiteBounded(player.y, base.y),
-    z: finiteBounded(player.z, base.z),
-    yaw: finiteBounded(player.yaw, base.yaw, Math.PI * 1_000),
-    pitch: finiteBounded(player.pitch, base.pitch, Math.PI / 2),
+    x: finiteRange(player.x, base.x, PRESENCE_MIN_X, PRESENCE_MAX_X),
+    y: finiteRange(player.y, base.y, PRESENCE_MIN_Y, PRESENCE_MAX_Y),
+    z: finiteRange(player.z, base.z, PRESENCE_MIN_Z, PRESENCE_MAX_Z),
+    yaw: finiteRange(player.yaw, base.yaw, -PRESENCE_MAX_YAW, PRESENCE_MAX_YAW),
+    pitch: finiteRange(player.pitch, base.pitch, -PRESENCE_MAX_PITCH, PRESENCE_MAX_PITCH),
   };
+}
+
+function assignBoundedVelocity(
+  state: RemoteAvatarMotion,
+  rawX: number,
+  rawY: number,
+  rawZ: number,
+): void {
+  let vx = Number.isFinite(rawX) ? rawX : 0;
+  const vy = Number.isFinite(rawY)
+    ? Math.max(-PRESENCE_MAX_VERTICAL_SPEED, Math.min(PRESENCE_MAX_VERTICAL_SPEED, rawY))
+    : 0;
+  let vz = Number.isFinite(rawZ) ? rawZ : 0;
+  const horizontalSpeed = Math.hypot(vx, vz);
+  const strictHorizontalLimit = PRESENCE_MAX_HORIZONTAL_SPEED - 1e-9;
+  if (horizontalSpeed > strictHorizontalLimit) {
+    const scale = strictHorizontalLimit / horizontalSpeed;
+    vx *= scale;
+    vz *= scale;
+  }
+  state.velocityX = vx;
+  state.velocityY = vy;
+  state.velocityZ = vz;
 }
 
 /**
@@ -60,19 +95,24 @@ export function shortestAngleDelta(from: number, to: number): number {
 
 export function createRemoteAvatarMotion(player: RemotePlayer, now: number): RemoteAvatarMotion {
   const target = safePose(player);
-  return {
+  const state: RemoteAvatarMotion = {
     id: String(player.id).slice(0, 128),
     name: sanitizePlayerName(player.name),
     color: player.color,
     rendered: { ...target },
     target: { ...target },
     velocityX: 0,
+    velocityY: 0,
     velocityZ: 0,
     horizontalSpeed: 0,
     walkPhase: 0,
     bodyYaw: target.yaw,
     lastSnapshotAt: now,
   };
+  if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
+    assignBoundedVelocity(state, player.vx as number, player.vy as number, player.vz as number);
+  }
+  return state;
 }
 
 /** Records a sparse Lakebed pose without snapping the rendered avatar to it. */
@@ -83,12 +123,16 @@ export function applyRemoteAvatarSnapshot(
 ): void {
   const next = safePose(player, state.target);
   const elapsed = Math.max(1 / 60, Math.min(2, (now - state.lastSnapshotAt) / 1_000));
-  const rawVelocityX = (next.x - state.target.x) / elapsed;
-  const rawVelocityZ = (next.z - state.target.z) / elapsed;
-  const rawSpeed = Math.hypot(rawVelocityX, rawVelocityZ);
-  const scale = rawSpeed > MAX_SNAPSHOT_SPEED ? MAX_SNAPSHOT_SPEED / rawSpeed : 1;
-  state.velocityX = rawVelocityX * scale;
-  state.velocityZ = rawVelocityZ * scale;
+  if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
+    assignBoundedVelocity(state, player.vx as number, player.vy as number, player.vz as number);
+  } else {
+    assignBoundedVelocity(
+      state,
+      (next.x - state.target.x) / elapsed,
+      (next.y - state.target.y) / elapsed,
+      (next.z - state.target.z) / elapsed,
+    );
+  }
   state.target = next;
   state.name = sanitizePlayerName(player.name);
   state.color = player.color;
@@ -96,9 +140,10 @@ export function applyRemoteAvatarSnapshot(
 }
 
 /**
- * Smooths toward the latest pose and permits at most 100ms of bounded
- * extrapolation. The small look-ahead avoids a stop/start gait between sparse
- * snapshots while still settling quickly when a player stops sending updates.
+ * Smooths toward the latest pose and permits a few seconds of bounded
+ * extrapolation. Explicit zero-velocity corrections immediately collapse the
+ * goal back to the authoritative pose, while stale motion never extrapolates
+ * beyond the shared presence budget.
  */
 export function advanceRemoteAvatarMotion(
   state: RemoteAvatarMotion,
@@ -108,21 +153,23 @@ export function advanceRemoteAvatarMotion(
   const dt = Math.max(0, Math.min(0.1, deltaSeconds));
   if (dt === 0) return;
   const snapshotAge = Math.max(0, (now - state.lastSnapshotAt) / 1_000);
-  const lookAhead = Math.min(0.1, snapshotAge);
-  const goalX = state.target.x + state.velocityX * lookAhead;
-  const goalZ = state.target.z + state.velocityZ * lookAhead;
+  const lookAhead = Math.min(PRESENCE_MAX_EXTRAPOLATION_MS / 1_000, snapshotAge);
+  const verticalLookAhead = Math.min(PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS / 1_000, snapshotAge);
+  const goalX = finiteRange(state.target.x + state.velocityX * lookAhead, state.target.x, PRESENCE_MIN_X, PRESENCE_MAX_X);
+  const goalY = finiteRange(state.target.y + state.velocityY * verticalLookAhead, state.target.y, PRESENCE_MIN_Y, PRESENCE_MAX_Y);
+  const goalZ = finiteRange(state.target.z + state.velocityZ * lookAhead, state.target.z, PRESENCE_MIN_Z, PRESENCE_MAX_Z);
   const follow = 1 - Math.exp(-15 * dt);
   const previousX = state.rendered.x;
   const previousZ = state.rendered.z;
 
   state.rendered.x += (goalX - state.rendered.x) * follow;
-  state.rendered.y += (state.target.y - state.rendered.y) * follow;
+  state.rendered.y += (goalY - state.rendered.y) * follow;
   state.rendered.z += (goalZ - state.rendered.z) * follow;
   state.rendered.yaw += shortestAngleDelta(state.rendered.yaw, state.target.yaw) * follow;
   state.rendered.pitch += (state.target.pitch - state.rendered.pitch) * follow;
 
   const measuredSpeed = Math.min(
-    MAX_SNAPSHOT_SPEED,
+    PRESENCE_MAX_HORIZONTAL_SPEED,
     Math.hypot(state.rendered.x - previousX, state.rendered.z - previousZ) / dt,
   );
   const gaitFollow = 1 - Math.exp(-10 * dt);
@@ -135,9 +182,4 @@ export function advanceRemoteAvatarMotion(
     : state.rendered.yaw;
   state.bodyYaw += shortestAngleDelta(state.bodyYaw, desiredBodyYaw) * (1 - Math.exp(-7 * dt));
 
-  if (snapshotAge > 0.35) {
-    const settle = 1 - Math.exp(-8 * dt);
-    state.velocityX *= 1 - settle;
-    state.velocityZ *= 1 - settle;
-  }
 }
