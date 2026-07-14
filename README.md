@@ -37,10 +37,12 @@ npx lakebed auth as alice
 
 ```sh
 npx lakebed build . --target anonymous --json
-npx lakebed deploy . --json
+stage="$(mktemp -d)"
+node scripts/prepare-lakebed-deploy.mjs "$stage"
+npx lakebed deploy "$stage" --json
 ```
 
-The hosted Lakebed database persists shared world edits and player state. Anonymous deploys expire after seven days; run `npx lakebed auth login` and `npx lakebed claim .` to attach a deploy to a Lakebed account. Local development data resets when the dev process restarts.
+The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB; it still builds and deploys through `npx lakebed` and uses Lakebed's own bundled compiler. The hosted Lakebed database persists shared world edits and player state. Anonymous deploys expire after seven days; run `npx lakebed auth login` and `npx lakebed claim .` to attach a deploy to a Lakebed account. Local development data resets when the dev process restarts.
 
 ## Multiplayer architecture
 

@@ -41,6 +41,8 @@ Chest transfers now replace the former chest-write-plus-delayed-pack-save sequen
 
 Skeletons share the existing mob simulation and one-buffer/one-draw renderer. Their arrows come from a retained 24-projectile pool, use swept player collision, and never write to Lakebed during flight. The deterministic stress fixture advances 64 skeletons for 3,000 ticks (192,000 skeleton-ticks plus arrows) in about 25–40 ms on the development Mac, comfortably below its 350 ms regression ceiling.
 
+The capsule also reached a Lakebed packaging boundary: a direct deploy request grew to 2.14 MiB because the current CLI snapshots repository metadata and emits inline source maps. `scripts/prepare-lakebed-deploy.mjs` stages only capsule files and minifies them with Lakebed's bundled compiler before the normal `npx lakebed deploy`; the same release payload is 1.55 MiB. Treat 1.9 MiB as the deployment-envelope warning threshold until the upstream packager excludes repository internals.
+
 ## Strategy
 
 - Prefer deterministic client generation and compact Lakebed records; world coordinates, presence, and inventories are indexed upserts, while chat remains bounded append-only history.
