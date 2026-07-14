@@ -26,6 +26,9 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "iron_ore",
   "furnace",
   "ladder",
+  "cobblestone",
+  "sand",
+  "glass",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];

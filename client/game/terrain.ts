@@ -22,6 +22,9 @@ const CAVE_TUNNEL_RADIUS = 1.3;
 const CAVE_CHAMBER_RADIUS = 2.15;
 const CAVE_SAMPLE_SPACING = 0.75;
 export const CAVE_SPAWN_SANCTUARY_RADIUS = 10;
+export const SAND_SPAWN_SANCTUARY_RADIUS = 10;
+const SAND_PATCH_CELL_SIZE = 14;
+const SAND_PATCH_CHANCE = 0.38;
 
 interface OreVeinConfig {
   block: BlockId;
@@ -95,10 +98,41 @@ export function terrainHeight(x: number, z: number, seed: number): number {
   return Math.max(MIN_TERRAIN_HEIGHT, Math.min(MAX_TERRAIN_HEIGHT, Math.round(height)));
 }
 
-/** The natural strata before deterministic ore replacement. */
+/**
+ * Returns the globally anchored sand depth for a surface column. Patches are
+ * clipped out of the spawn sanctuary and never alter the column's height.
+ */
+export function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 {
+  if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(seed)) return 0;
+  const blockX = Math.floor(x);
+  const blockZ = Math.floor(z);
+  if (Math.max(Math.abs(blockX), Math.abs(blockZ)) <= SAND_SPAWN_SANCTUARY_RADIUS) return 0;
+  const ownerCellX = Math.floor(blockX / SAND_PATCH_CELL_SIZE);
+  const ownerCellZ = Math.floor(blockZ / SAND_PATCH_CELL_SIZE);
+  for (let cellX = ownerCellX - 1; cellX <= ownerCellX + 1; cellX += 1) {
+    for (let cellZ = ownerCellZ - 1; cellZ <= ownerCellZ + 1; cellZ += 1) {
+      if (hash2(cellX, cellZ, seed + 4_019) >= SAND_PATCH_CHANCE) continue;
+      const centerX = cellX * SAND_PATCH_CELL_SIZE
+        + Math.floor(hash2(cellX, cellZ, seed + 4_037) * SAND_PATCH_CELL_SIZE);
+      const centerZ = cellZ * SAND_PATCH_CELL_SIZE
+        + Math.floor(hash2(cellX, cellZ, seed + 4_069) * SAND_PATCH_CELL_SIZE);
+      const radius = 2.25 + hash2(cellX, cellZ, seed + 4_091) * 2;
+      const dx = blockX + 0.5 - (centerX + 0.5);
+      const dz = blockZ + 0.5 - (centerZ + 0.5);
+      if (dx * dx + dz * dz <= radius * radius) {
+        return hash2(blockX, blockZ, seed + 4_123) < 0.24 ? 3 : 2;
+      }
+    }
+  }
+  return 0;
+}
+
+/** The natural strata, including surface deposits, before deterministic ore replacement. */
 export function terrainBaseBlock(x: number, y: number, z: number, seed: number): BlockId {
   const top = terrainHeight(x, z, seed);
   if (y < 0 || y > top) return BLOCK.AIR;
+  const sandDepth = terrainSandDepth(x, z, seed);
+  if (sandDepth > 0 && y > top - sandDepth) return BLOCK.SAND;
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
   return y === top ? BLOCK.GRASS : y >= top - dirtDepth ? BLOCK.DIRT : BLOCK.STONE;
 }
@@ -141,9 +175,16 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
   for (let x = region.minX; x <= region.maxX; x += 1) {
     for (let z = region.minZ; z <= region.maxZ; z += 1) {
       const top = terrainHeight(x, z, seed);
+      const sandDepth = terrainSandDepth(x, z, seed);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
       for (let y = 0; y <= top; y += 1) {
-        const base = y === top ? BLOCK.GRASS : y >= top - dirtDepth ? BLOCK.DIRT : BLOCK.STONE;
+        const base = sandDepth > 0 && y > top - sandDepth
+          ? BLOCK.SAND
+          : y === top
+            ? BLOCK.GRASS
+            : y >= top - dirtDepth
+              ? BLOCK.DIRT
+              : BLOCK.STONE;
         const block = base === BLOCK.STONE ? oreBlockAtKnownStone(x, y, z, seed) ?? base : base;
         blocks.set(blockKey(x, y, z), block);
       }
@@ -240,6 +281,7 @@ function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: n
 function isTreeSite(x: number, z: number, seed: number): boolean {
   // Keep the shared spawn visually clear and safe from leaf/trunk collision.
   if (Math.max(Math.abs(x), Math.abs(z)) <= SPAWN_BLEND_RADIUS + TREE_MARGIN) return false;
+  if (terrainSandDepth(x, z, seed) > 0) return false;
 
   // Low-frequency forest noise creates recognizable groves and open meadows.
   const forestDensity = valueNoise(x, z, seed + 977, 24);

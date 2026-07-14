@@ -15,8 +15,13 @@ import {
   type WorldChunkEditInput,
 } from "../shared/worldChunks.ts";
 
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 20, "the palette uses 20 of 31 available five-bit codes");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
-assert.ok(WORLD_CHUNK_BLOCK_TYPES.includes("ladder"));
+assert.deepEqual(
+  WORLD_CHUNK_BLOCK_TYPES.slice(-4),
+  ["ladder", "cobblestone", "sand", "glass"],
+  "new persisted block codes only append after ladder",
+);
 
 assert.equal(worldEditChunkCoordinate(0), 0);
 assert.equal(worldEditChunkCoordinate(7), 0);
@@ -78,6 +83,11 @@ assert.equal(reconstructed.size, 1_500, "chunk rows must reconstruct more than t
 for (const edit of edits) {
   assert.equal(reconstructed.get(`${edit.x}:${edit.y}:${edit.z}`), edit.blockType);
 }
+assert.deepEqual(
+  [...new Set(reconstructed.values())].sort(),
+  [...blockTypes].sort(),
+  "the current codec round trips every supported non-air block type",
+);
 
 const ordering = createWorldChunkSnapshot("0:0", [
   { id: "z", x: 1, y: 2, z: 3, blockType: "air", editedAt: "20" },
@@ -142,6 +152,18 @@ if (migrated.ok) {
     assert.equal(decoded.edits.find((edit) => edit.coordKey === "0:0:0")?.blockType, "stone");
     assert.equal(decoded.edits.find((edit) => edit.coordKey === "1:0:0")?.blockType, "furnace");
   }
+}
+
+const highestCode = createWorldChunkSnapshot("0:0", [
+  { x: 0, y: 1, z: 0, blockType: "cobblestone" },
+  { x: 1, y: 1, z: 0, blockType: "sand" },
+  { x: 2, y: 1, z: 0, blockType: "glass" },
+]);
+assert.equal(highestCode.ok, true);
+if (highestCode.ok) {
+  const decoded = decodeWorldChunkSnapshot("0:0", highestCode.snapshotJson);
+  assert.equal(decoded.ok, true);
+  if (decoded.ok) assert.deepEqual(decoded.edits.map(({ blockType }) => blockType), ["cobblestone", "sand", "glass"]);
 }
 
 const empty = createWorldChunkSnapshot("0:0", []);

@@ -54,11 +54,11 @@ assert.deepEqual(getMiningDrop("iron_ore", "stone_pickaxe"), { itemId: "raw_iron
 assert.ok(miningSeconds("iron_ore", "iron_pickaxe") < miningSeconds("iron_ore", "stone_pickaxe"));
 assert.ok(miningSeconds("iron_ore", "stone_pickaxe") < miningSeconds("iron_ore", "wooden_pickaxe"));
 
-const furnaceIngredients = inventoryWith(["stone", 8]);
+const furnaceIngredients = inventoryWith(["cobblestone", 8]);
 assert.equal(craftRecipe(furnaceIngredients, "furnace", "field").ok, false);
 const craftedFurnace = craftRecipe(furnaceIngredients, "furnace", "crafting_table");
 assert.equal(craftedFurnace.ok, true);
-assert.equal(countItem(craftedFurnace.inventory, "stone"), 0);
+assert.equal(countItem(craftedFurnace.inventory, "cobblestone"), 0);
 assert.equal(countItem(craftedFurnace.inventory, "furnace"), 1);
 
 const ironEquipment = [
@@ -104,6 +104,7 @@ assert.deepEqual(
   SMELTING_RECIPES.map(({ id, input, output }) => ({ id, input, output })),
   [
     { id: "iron_ingot", input: "raw_iron", output: "iron_ingot" },
+    { id: "glass", input: "sand", output: "glass" },
     { id: "cooked_pork", input: "pork", output: "cooked_pork" },
     { id: "cooked_beef", input: "beef", output: "cooked_beef" },
     { id: "cooked_mutton", input: "mutton", output: "cooked_mutton" },

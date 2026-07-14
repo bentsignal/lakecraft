@@ -77,6 +77,7 @@ export const DOOR_MESH_VERTEX_COUNT = 144;
 export const BED_MESH_VERTEX_COUNT = 108;
 export const FURNACE_MESH_VERTEX_COUNT = 72;
 export const LADDER_MESH_VERTEX_COUNT = 252;
+export const GLASS_MESH_VERTEX_COUNT = 30;
 export const MAX_RESPAWN_HEIGHT = 128;
 export const PLAYER_GRAVITY = 22;
 export const PLAYER_TERMINAL_VELOCITY = -18;
@@ -156,6 +157,9 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.IRON_ORE]: [0.66, 0.49, 0.35],
   [BLOCK.FURNACE]: [0.42, 0.44, 0.45],
   [BLOCK.LADDER]: [0.67, 0.43, 0.19],
+  [BLOCK.COBBLESTONE]: [0.36, 0.39, 0.40],
+  [BLOCK.SAND]: [0.78, 0.69, 0.45],
+  [BLOCK.GLASS]: [0.63, 0.84, 0.86],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -202,11 +206,18 @@ export function selectNearestTorchLights(
 }
 
 export function blockOccludesFaces(block: BlockId): boolean {
-  return block !== BLOCK.AIR && block !== BLOCK.TORCH && block !== BLOCK.DOOR_OPEN && block !== BLOCK.LADDER;
+  return block !== BLOCK.AIR
+    && block !== BLOCK.TORCH
+    && block !== BLOCK.DOOR_OPEN
+    && block !== BLOCK.LADDER
+    && block !== BLOCK.GLASS;
 }
 
 export function blockHasCollision(block: BlockId): boolean {
-  return blockOccludesFaces(block);
+  return block !== BLOCK.AIR
+    && block !== BLOCK.TORCH
+    && block !== BLOCK.DOOR_OPEN
+    && block !== BLOCK.LADDER;
 }
 
 export type LadderBlockLookup = (x: number, y: number, z: number) => BlockId;
@@ -520,6 +531,35 @@ export function appendLadderMesh(output: number[], x: number, y: number, z: numb
   }
 }
 
+function appendNorthFacingQuad(
+  output: number[],
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+  z: number,
+  color: Vec3,
+): void {
+  pushVertex(output, [minX, minY, z], color);
+  pushVertex(output, [maxX, maxY, z], color);
+  pushVertex(output, [maxX, minY, z], color);
+  pushVertex(output, [minX, minY, z], color);
+  pushVertex(output, [minX, maxY, z], color);
+  pushVertex(output, [maxX, maxY, z], color);
+}
+
+/** Four pale-cyan frame quads surround one efficient opaque center pane. */
+export function appendGlassMesh(output: number[], x: number, y: number, z: number): void {
+  const frameColor: Vec3 = [0.42, 0.68, 0.72];
+  const paneColor = BLOCK_COLORS[BLOCK.GLASS];
+  const paneZ = z + 0.5;
+  appendNorthFacingQuad(output, x + 0.03, y + 0.03, x + 0.13, y + 0.97, paneZ, frameColor);
+  appendNorthFacingQuad(output, x + 0.87, y + 0.03, x + 0.97, y + 0.97, paneZ, frameColor);
+  appendNorthFacingQuad(output, x + 0.13, y + 0.03, x + 0.87, y + 0.13, paneZ, frameColor);
+  appendNorthFacingQuad(output, x + 0.13, y + 0.87, x + 0.87, y + 0.97, paneZ, frameColor);
+  appendNorthFacingQuad(output, x + 0.13, y + 0.13, x + 0.87, y + 0.87, paneZ, paneColor);
+}
+
 function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
   return a === b || (!!a && !!b && a.block.x === b.block.x && a.block.y === b.block.y && a.block.z === b.block.z);
 }
@@ -746,6 +786,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       if (block === BLOCK.LADDER) {
         appendLadderMesh(vertices, x, y, z);
+        continue;
+      }
+      if (block === BLOCK.GLASS) {
+        appendGlassMesh(vertices, x, y, z);
         continue;
       }
       const base = blockMaterialColor(block) as Vec3;

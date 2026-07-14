@@ -8,7 +8,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -154,7 +154,10 @@ export type EquipResult =
 export const BLOCKS: Record<BlockId, BlockDefinition> = {
   grass: { id: "grass", label: "Grass", description: "A living cap over packed earth.", color: "#718447", accent: "#a7b76a", hardness: 0.75, preferredTool: "shovel", drop: "dirt" },
   dirt: { id: "dirt", label: "Dirt", description: "Soft earth for quick shelter walls.", color: "#7f5638", accent: "#ad7951", hardness: 0.65, preferredTool: "shovel", drop: "dirt" },
-  stone: { id: "stone", label: "Stone", description: "Dense fieldstone. A pickaxe is required to recover it.", color: "#6d7069", accent: "#9a9c91", hardness: 2.5, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "stone" },
+  stone: { id: "stone", label: "Stone", description: "Dense natural stone. A pickaxe breaks it into cobblestone.", color: "#6d7069", accent: "#9a9c91", hardness: 2.5, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "cobblestone" },
+  cobblestone: { id: "cobblestone", label: "Cobblestone", description: "Rough quarried stone for sturdy shelters and furnaces.", color: "#686b65", accent: "#979a91", hardness: 2, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "cobblestone" },
+  sand: { id: "sand", label: "Sand", description: "Loose pale grains that can be fired into glass.", color: "#c7b77b", accent: "#e4d69a", hardness: 0.5, preferredTool: "shovel", drop: "sand" },
+  glass: { id: "glass", label: "Glass", description: "Clear fired panes for windows and bright shelters.", color: "#9fc7c1", accent: "#d6efeb", hardness: 0.3, preferredTool: "hand", drop: "glass" },
   coal_ore: { id: "coal_ore", label: "Coal Ore", description: "Coal flecks trapped in stone. A wooden pickaxe can recover the fuel.", color: "#565852", accent: "#242621", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "coal" },
   iron_ore: { id: "iron_ore", label: "Iron Ore", description: "Rust-colored ore that needs a stone pickaxe before it can be smelted.", color: "#77776f", accent: "#b57c5d", hardness: 3.2, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "stone" }, drop: "raw_iron" },
   log: { id: "log", label: "Oak Log", description: "Fresh timber. An axe speeds the work.", color: "#76502f", accent: "#bd8a50", hardness: 1.6, preferredTool: "axe", drop: "log" },
@@ -173,6 +176,9 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   grass: blockItem("grass", "GRS", "▨"),
   dirt: blockItem("dirt", "DRT", "▦"),
   stone: blockItem("stone", "STN", "◆"),
+  cobblestone: blockItem("cobblestone", "COB", "▦"),
+  sand: blockItem("sand", "SND", "░"),
+  glass: blockItem("glass", "GLS", "◇"),
   coal_ore: blockItem("coal_ore", "C·OR", "✦"),
   iron_ore: blockItem("iron_ore", "I·OR", "◈"),
   log: blockItem("log", "LOG", "▥"),
@@ -244,7 +250,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A stick and board make four crude lights.", craftingContext: "field", ingredients: [{ itemId: "stick", count: 1 }, { itemId: "planks", count: 1 }], output: { itemId: "torch", count: 4 } },
-  { id: "furnace", label: "Furnace", note: "Eight stone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 8 }], output: { itemId: "furnace", count: 1 } },
+  { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
   { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
@@ -273,6 +279,7 @@ export const RECIPES: readonly Recipe[] = [
 
 export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
   { id: "iron_ingot", label: "Smelt iron", input: "raw_iron", output: "iron_ingot" },
+  { id: "glass", label: "Smelt glass", input: "sand", output: "glass" },
   { id: "cooked_pork", label: "Cook pork", input: "pork", output: "cooked_pork" },
   { id: "cooked_beef", label: "Cook beef", input: "beef", output: "cooked_beef" },
   { id: "cooked_mutton", label: "Cook mutton", input: "mutton", output: "cooked_mutton" },

@@ -6,6 +6,7 @@ import {
   createTerrainRegion,
   terrainBaseBlock,
   terrainHeight,
+  terrainSandDepth,
 } from "../client/game/terrain.ts";
 import { BLOCK } from "../client/game/types.ts";
 
@@ -14,6 +15,10 @@ const SEED = 7319;
 assert.equal(BLOCK.COAL_ORE, 13, "new block IDs must append without changing saved IDs");
 assert.equal(BLOCK.IRON_ORE, 14, "new block IDs must append without changing saved IDs");
 assert.equal(BLOCK.FURNACE, 15, "new block IDs must append without changing saved IDs");
+assert.equal(BLOCK.LADDER, 16, "new block IDs must append without changing saved IDs");
+assert.equal(BLOCK.COBBLESTONE, 17, "new block IDs must append without changing saved IDs");
+assert.equal(BLOCK.SAND, 18, "new block IDs must append without changing saved IDs");
+assert.equal(BLOCK.GLASS, 19, "new block IDs must append without changing saved IDs");
 
 // Equal seeds must produce byte-for-byte equivalent insertion order and contents.
 const first = createTerrain(SEED, 24);
@@ -42,14 +47,15 @@ for (const seed of [1, 42, SEED, 999_999]) {
   }
 }
 
-// Every terrain column has a grass cap, dirt subsoil, and stone foundation.
+// Every terrain column has a grass/dirt or bounded sand surface over stone.
 for (let x = -18; x <= 18; x += 1) {
   for (let z = -18; z <= 18; z += 1) {
     const top = terrainHeight(x, z, SEED);
+    const sandDepth = terrainSandDepth(x, z, SEED);
     assert.ok(top >= 3 && top <= 11, `height ${top} at ${x},${z} is outside generation bounds`);
-    assert.equal(first.get(blockKey(x, top, z)), BLOCK.GRASS);
-    assert.equal(first.get(blockKey(x, top - 1, z)), BLOCK.DIRT);
-    assert.equal(first.get(blockKey(x, top - 2, z)), BLOCK.DIRT);
+    assert.equal(first.get(blockKey(x, top, z)), sandDepth ? BLOCK.SAND : BLOCK.GRASS);
+    assert.equal(first.get(blockKey(x, top - 1, z)), sandDepth ? BLOCK.SAND : BLOCK.DIRT);
+    assert.equal(first.get(blockKey(x, top - 2, z)), sandDepth === 3 ? BLOCK.SAND : BLOCK.DIRT);
     assert.ok(
       [BLOCK.STONE, BLOCK.COAL_ORE, BLOCK.IRON_ORE].includes(first.get(blockKey(x, 0, z))!),
       "the foundation may now contain deterministic ore",
@@ -103,5 +109,6 @@ console.log(JSON.stringify({
   treeBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.WOOD || block === BLOCK.LEAVES).length,
   coalBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.COAL_ORE).length,
   ironBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.IRON_ORE).length,
+  sandBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.SAND).length,
 }));
 console.log("lakecraft terrain tests: ok");

@@ -48,6 +48,9 @@ assert.equal(isBlockType("coal_ore"), true);
 assert.equal(isBlockType("iron_ore"), true);
 assert.equal(isBlockType("furnace"), true);
 assert.equal(isBlockType("ladder"), true);
+assert.equal(isBlockType("cobblestone"), true);
+assert.equal(isBlockType("sand"), true);
+assert.equal(isBlockType("glass"), true);
 assert.equal(isBlockType("diamond_ore"), false);
 
 const now = Date.now();

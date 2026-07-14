@@ -126,11 +126,14 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 700px) { .lakecraft-entry__card { padding: 27px 24px; }.lakecraft-entry h1 { font-size: 48px; } }
 `;
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
   [BLOCK.STONE]: "stone",
+  [BLOCK.COBBLESTONE]: "cobblestone",
+  [BLOCK.SAND]: "sand",
+  [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
   [BLOCK.WOOD]: "wood",
@@ -151,6 +154,9 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   grass: BLOCK.GRASS,
   dirt: BLOCK.DIRT,
   stone: BLOCK.STONE,
+  cobblestone: BLOCK.COBBLESTONE,
+  sand: BLOCK.SAND,
+  glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
   wood: BLOCK.WOOD,
@@ -171,6 +177,9 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
   [BLOCK.STONE]: "stone",
+  [BLOCK.COBBLESTONE]: "cobblestone",
+  [BLOCK.SAND]: "sand",
+  [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
   [BLOCK.WOOD]: "log",
@@ -190,6 +199,9 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   grass: BLOCK.GRASS,
   dirt: BLOCK.DIRT,
   stone: BLOCK.STONE,
+  cobblestone: BLOCK.COBBLESTONE,
+  sand: BLOCK.SAND,
+  glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
   log: BLOCK.WOOD,
