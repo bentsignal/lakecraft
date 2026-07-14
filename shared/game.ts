@@ -8,7 +8,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed";
+export type BlockId = "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -166,6 +166,7 @@ export const BLOCKS: Record<BlockId, BlockDefinition> = {
   chest: { id: "chest", label: "Chest", description: "A shared wooden container for supplies.", color: "#8b5728", accent: "#dca14d", hardness: 1.8, preferredTool: "axe", drop: "chest" },
   door: { id: "door", label: "Oak Door", description: "A hinged wooden door for a shelter entrance.", color: "#9a6832", accent: "#d7a35c", hardness: 1.4, preferredTool: "axe", drop: "door" },
   bed: { id: "bed", label: "Bed", description: "A wool bed that can vote to skip the night.", color: "#b85045", accent: "#eee2c4", hardness: 0.5, preferredTool: "hand", drop: "bed" },
+  ladder: { id: "ladder", label: "Ladder", description: "Wooden rungs for climbing walls and mine shafts.", color: "#a97742", accent: "#d6aa68", hardness: 0.4, preferredTool: "axe", drop: "ladder" },
 };
 
 export const ITEMS: Record<ItemId, ItemDefinition> = {
@@ -183,6 +184,7 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   chest: blockItem("chest", "CHT", "▣"),
   door: blockItem("door", "DOR", "▥"),
   bed: blockItem("bed", "BED", "▰"),
+  ladder: blockItem("ladder", "LDR", "╫"),
   stick: { id: "stick", label: "Stick", shortLabel: "STK", description: "A straight handle for simple tools.", category: "material", maxStack: 64, glyph: "╱", color: "#c09557" },
   leather: { id: "leather", label: "Leather", shortLabel: "LTH", description: "Tough hide used for lightweight armor.", category: "material", maxStack: 64, glyph: "◩", color: "#8d552f" },
   wool: { id: "wool", label: "Wool", shortLabel: "WOL", description: "Soft sheep wool for beds and future textiles.", category: "material", maxStack: 64, glyph: "◌", color: "#ddd8c8" },
@@ -243,6 +245,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A stick and board make four crude lights.", craftingContext: "field", ingredients: [{ itemId: "stick", count: 1 }, { itemId: "planks", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "furnace", label: "Furnace", note: "Eight stone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 8 }], output: { itemId: "furnace", count: 1 } },
+  { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
   { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
   { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },

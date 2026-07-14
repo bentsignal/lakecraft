@@ -5,6 +5,8 @@ export const WORLD_EDIT_MIN_Y = -4;
 export const WORLD_EDIT_MAX_Y = 64;
 export const MAX_VISIBLE_WORLD_CHUNKS = 49;
 export const MAX_WORLD_CHUNK_SNAPSHOT_BYTES = 16_384;
+/** Five-bit v2 reserves code zero for an untouched cell. */
+export const WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES = 31;
 
 export const WORLD_CHUNK_BLOCK_TYPES = [
   "air",
@@ -23,9 +25,14 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "coal_ore",
   "iron_ore",
   "furnace",
+  "ladder",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];
+
+if (WORLD_CHUNK_BLOCK_TYPES.length > WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES) {
+  throw new Error("World chunk block palette exceeds the five-bit codec capacity.");
+}
 
 export interface WorldChunkEditInput {
   id?: string;

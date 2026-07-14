@@ -17,12 +17,23 @@ const SPAWN_BLEND_RADIUS = 9;
 const TREE_CELL_SIZE = 7;
 const TREE_MARGIN = 2;
 const ORE_CELL_SIZE = 4;
+const CAVE_CELL_SIZE = 10;
+const CAVE_TUNNEL_RADIUS = 1.3;
+const CAVE_CHAMBER_RADIUS = 2.15;
+const CAVE_SAMPLE_SPACING = 0.75;
+export const CAVE_SPAWN_SANCTUARY_RADIUS = 10;
 
 interface OreVeinConfig {
   block: BlockId;
   maximumY: number;
   chance: number;
   salt: number;
+}
+
+interface CaveNode {
+  x: number;
+  y: number;
+  z: number;
 }
 
 // One compact Manhattan-radius-one deposit may occupy each 4x4x4 cell. The
@@ -140,6 +151,92 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
   }
 }
 
+function caveNode(cellX: number, cellZ: number, seed: number): CaveNode {
+  return {
+    // Nodes stay two blocks inside their owning cell. This bounds how far a
+    // chamber can reach while leaving the connecting segments free to cross it.
+    x: cellX * CAVE_CELL_SIZE + 2 + hash3(cellX, 0, cellZ, seed + 3_011) * 6,
+    y: 1.45 + hash3(cellX, 1, cellZ, seed + 3_037) * 3.9,
+    z: cellZ * CAVE_CELL_SIZE + 2 + hash3(cellX, 2, cellZ, seed + 3_071) * 6,
+  };
+}
+
+function canCarveCaveBlock(block: BlockId | undefined): boolean {
+  return block === BLOCK.STONE || block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE;
+}
+
+function carveCaveSphere(
+  blocks: Map<string, BlockId>,
+  region: TerrainRegion,
+  center: CaveNode,
+  radius: number,
+): void {
+  const radiusSquared = radius * radius;
+  const minX = Math.max(region.minX, Math.floor(center.x - radius));
+  const maxX = Math.min(region.maxX, Math.floor(center.x + radius));
+  const minY = Math.max(1, Math.floor(center.y - radius));
+  const maxY = Math.floor(center.y + radius);
+  const minZ = Math.max(region.minZ, Math.floor(center.z - radius));
+  const maxZ = Math.min(region.maxZ, Math.floor(center.z + radius));
+  for (let x = minX; x <= maxX; x += 1) {
+    for (let z = minZ; z <= maxZ; z += 1) {
+      // The square sanctuary is slightly stronger than the requested circular
+      // radius: every underground spawn block within ten on either axis stays solid.
+      if (Math.max(Math.abs(x), Math.abs(z)) <= CAVE_SPAWN_SANCTUARY_RADIUS) continue;
+      for (let y = minY; y <= maxY; y += 1) {
+        const dx = x + 0.5 - center.x;
+        const dy = y + 0.5 - center.y;
+        const dz = z + 0.5 - center.z;
+        if (dx * dx + dy * dy + dz * dz > radiusSquared) continue;
+        const key = blockKey(x, y, z);
+        if (canCarveCaveBlock(blocks.get(key))) blocks.delete(key);
+      }
+    }
+  }
+}
+
+function carveCaveTunnel(
+  blocks: Map<string, BlockId>,
+  region: TerrainRegion,
+  start: CaveNode,
+  end: CaveNode,
+): void {
+  const length = Math.hypot(end.x - start.x, end.y - start.y, end.z - start.z);
+  const steps = Math.max(1, Math.ceil(length / CAVE_SAMPLE_SPACING));
+  for (let step = 0; step <= steps; step += 1) {
+    const amount = step / steps;
+    carveCaveSphere(blocks, region, {
+      x: lerp(start.x, end.x, amount),
+      y: lerp(start.y, end.y, amount),
+      z: lerp(start.z, end.z, amount),
+    }, CAVE_TUNNEL_RADIUS);
+  }
+}
+
+function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: number): void {
+  // Include one cell beyond each clipped region. It contains every chamber or
+  // forward connection whose bounded radius can touch this region, ensuring an
+  // independently generated half sees the same cross-boundary tunnel as a whole.
+  const minCellX = Math.floor(region.minX / CAVE_CELL_SIZE) - 1;
+  const maxCellX = Math.floor(region.maxX / CAVE_CELL_SIZE) + 1;
+  const minCellZ = Math.floor(region.minZ / CAVE_CELL_SIZE) - 1;
+  const maxCellZ = Math.floor(region.maxZ / CAVE_CELL_SIZE) + 1;
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+      const node = caveNode(cellX, cellZ, seed);
+      if (hash3(cellX, 3, cellZ, seed + 3_101) < 0.32) {
+        carveCaveSphere(blocks, region, node, CAVE_CHAMBER_RADIUS);
+      }
+      if (hash3(cellX, 4, cellZ, seed + 3_127) < 0.58) {
+        carveCaveTunnel(blocks, region, node, caveNode(cellX + 1, cellZ, seed));
+      }
+      if (hash3(cellX, 5, cellZ, seed + 3_173) < 0.58) {
+        carveCaveTunnel(blocks, region, node, caveNode(cellX, cellZ + 1, seed));
+      }
+    }
+  }
+}
+
 function isTreeSite(x: number, z: number, seed: number): boolean {
   // Keep the shared spawn visually clear and safe from leaf/trunk collision.
   if (Math.max(Math.abs(x), Math.abs(z)) <= SPAWN_BLEND_RADIUS + TREE_MARGIN) return false;
@@ -223,6 +320,7 @@ export function createTerrainRegion(
   };
   const blocks = new Map<string, BlockId>();
   addGround(blocks, region, seed);
+  carveCaves(blocks, region, seed);
   addTrees(blocks, region, seed);
   return blocks;
 }

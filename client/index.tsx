@@ -126,7 +126,7 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 700px) { .lakecraft-entry__card { padding: 27px 24px; }.lakecraft-entry h1 { font-size: 48px; } }
 `;
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "coal_ore" | "iron_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -143,6 +143,7 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.DOOR_CLOSED]: "door_closed",
   [BLOCK.DOOR_OPEN]: "door_open",
   [BLOCK.BED]: "bed",
+  [BLOCK.LADDER]: "ladder",
 };
 
 const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
@@ -163,6 +164,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   door_closed: BLOCK.DOOR_CLOSED,
   door_open: BLOCK.DOOR_OPEN,
   bed: BLOCK.BED,
+  ladder: BLOCK.LADDER,
 };
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
@@ -181,6 +183,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.DOOR_CLOSED]: "door",
   [BLOCK.DOOR_OPEN]: "door",
   [BLOCK.BED]: "bed",
+  [BLOCK.LADDER]: "ladder",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -198,6 +201,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   chest: BLOCK.CHEST,
   door: BLOCK.DOOR_CLOSED,
   bed: BLOCK.BED,
+  ladder: BLOCK.LADDER,
 };
 
 type WorldChunksQueryResult =

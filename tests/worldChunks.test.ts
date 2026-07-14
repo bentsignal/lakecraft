@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   MAX_VISIBLE_WORLD_CHUNKS,
   MAX_WORLD_CHUNK_SNAPSHOT_BYTES,
+  WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES,
   WORLD_CHUNK_BLOCK_TYPES,
   WORLD_EDIT_MAX_Y,
   WORLD_EDIT_MIN_Y,
@@ -13,6 +14,9 @@ import {
   worldEditChunkKey,
   type WorldChunkEditInput,
 } from "../shared/worldChunks.ts";
+
+assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
+assert.ok(WORLD_CHUNK_BLOCK_TYPES.includes("ladder"));
 
 assert.equal(worldEditChunkCoordinate(0), 0);
 assert.equal(worldEditChunkCoordinate(7), 0);

@@ -76,7 +76,14 @@ export const CHEST_MESH_VERTEX_COUNT = 108;
 export const DOOR_MESH_VERTEX_COUNT = 144;
 export const BED_MESH_VERTEX_COUNT = 108;
 export const FURNACE_MESH_VERTEX_COUNT = 72;
+export const LADDER_MESH_VERTEX_COUNT = 252;
 export const MAX_RESPAWN_HEIGHT = 128;
+export const PLAYER_GRAVITY = 22;
+export const PLAYER_TERMINAL_VELOCITY = -18;
+export const PLAYER_JUMP_SPEED = 8.25;
+export const LADDER_CLIMB_SPEED = 3.2;
+export const LADDER_DESCEND_SPEED = -3.2;
+export const LADDER_IDLE_SLIDE_SPEED = -1.2;
 
 const VERTEX_SHADER = `
 attribute vec3 aPosition;
@@ -148,6 +155,7 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.COAL_ORE]: [0.25, 0.27, 0.28],
   [BLOCK.IRON_ORE]: [0.66, 0.49, 0.35],
   [BLOCK.FURNACE]: [0.42, 0.44, 0.45],
+  [BLOCK.LADDER]: [0.67, 0.43, 0.19],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -194,11 +202,63 @@ export function selectNearestTorchLights(
 }
 
 export function blockOccludesFaces(block: BlockId): boolean {
-  return block !== BLOCK.AIR && block !== BLOCK.TORCH && block !== BLOCK.DOOR_OPEN;
+  return block !== BLOCK.AIR && block !== BLOCK.TORCH && block !== BLOCK.DOOR_OPEN && block !== BLOCK.LADDER;
 }
 
 export function blockHasCollision(block: BlockId): boolean {
   return blockOccludesFaces(block);
+}
+
+export type LadderBlockLookup = (x: number, y: number, z: number) => BlockId;
+
+/** Allocation-free player AABB overlap check covering both feet and torso cells. */
+export function playerTouchesLadder(
+  x: number,
+  y: number,
+  z: number,
+  getBlock: LadderBlockLookup,
+): boolean {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return false;
+  const halfWidth = 0.29;
+  const minX = Math.floor(x - halfWidth);
+  const maxX = Math.floor(x + halfWidth);
+  const minY = Math.floor(y + 0.001);
+  const maxY = Math.floor(y + 1.77);
+  const minZ = Math.floor(z - halfWidth);
+  const maxZ = Math.floor(z + halfWidth);
+  for (let blockX = minX; blockX <= maxX; blockX += 1) {
+    for (let blockY = minY; blockY <= maxY; blockY += 1) {
+      for (let blockZ = minZ; blockZ <= maxZ; blockZ += 1) {
+        if (getBlock(blockX, blockY, blockZ) === BLOCK.LADDER) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Resolves climbing or normal gravity into a finite, game-safe vertical speed.
+ * The caller passes key intent as booleans, avoiding per-frame input objects.
+ */
+export function ladderVerticalVelocity(
+  currentVelocity: number,
+  touchingLadder: boolean,
+  ascend: boolean,
+  descend: boolean,
+  elapsedSeconds: number,
+): number {
+  const boundedVelocity = Number.isFinite(currentVelocity)
+    ? Math.max(PLAYER_TERMINAL_VELOCITY, Math.min(PLAYER_JUMP_SPEED, currentVelocity))
+    : 0;
+  if (touchingLadder === true) {
+    if (ascend === true && descend !== true) return LADDER_CLIMB_SPEED;
+    if (descend === true && ascend !== true) return LADDER_DESCEND_SPEED;
+    return Math.max(LADDER_IDLE_SLIDE_SPEED, Math.min(0, boundedVelocity));
+  }
+  const dt = Number.isFinite(elapsedSeconds)
+    ? Math.max(0, Math.min(0.05, elapsedSeconds))
+    : 0;
+  return Math.max(PLAYER_TERMINAL_VELOCITY, boundedVelocity - PLAYER_GRAVITY * dt);
 }
 
 export function isDoorBlock(block: BlockId): boolean {
@@ -448,6 +508,18 @@ export function appendFurnaceMesh(output: number[], x: number, y: number, z: num
   appendAxisAlignedBox(output, [x + 0.18, y + 0.18, z - 0.012], [x + 0.82, y + 0.68, z + 0.012], [0.075, 0.068, 0.062]);
 }
 
+/** Two rails and five rungs form a thin wooden ladder facing fixed north (-Z). */
+export function appendLadderMesh(output: number[], x: number, y: number, z: number): void {
+  const railColor: Vec3 = [0.47, 0.27, 0.10];
+  const rungColor = BLOCK_COLORS[BLOCK.LADDER];
+  appendAxisAlignedBox(output, [x + 0.13, y + 0.03, z + 0.84], [x + 0.23, y + 0.97, z + 0.93], railColor);
+  appendAxisAlignedBox(output, [x + 0.77, y + 0.03, z + 0.84], [x + 0.87, y + 0.97, z + 0.93], railColor);
+  for (let rung = 0; rung < 5; rung += 1) {
+    const rungY = y + 0.12 + rung * 0.19;
+    appendAxisAlignedBox(output, [x + 0.18, rungY, z + 0.78], [x + 0.82, rungY + 0.07, z + 0.98], rungColor);
+  }
+}
+
 function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
   return a === b || (!!a && !!b && a.block.x === b.block.x && a.block.y === b.block.y && a.block.z === b.block.z);
 }
@@ -672,6 +744,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         appendFurnaceMesh(vertices, x, y, z);
         continue;
       }
+      if (block === BLOCK.LADDER) {
+        appendLadderMesh(vertices, x, y, z);
+        continue;
+      }
       const base = blockMaterialColor(block) as Vec3;
       const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
@@ -814,15 +890,26 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function update(dt: number, now: number): void {
-    const forward = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
+    const forwardInput = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
     const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+    const ladderAtFrameStart = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
+    // Once attached, W/S become vertical controls while strafing remains the
+    // deliberate way to step off the non-solid ladder.
+    const forward = ladderAtFrameStart ? 0 : forwardInput;
     const magnitude = Math.hypot(forward, strafe) || 1;
-    const speed = keys.has("ShiftLeft") ? 6.1 : 4.35;
+    const speed = keys.has("ShiftLeft") && !ladderAtFrameStart ? 6.1 : 4.35;
     const dx = ((Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * strafe) / magnitude) * speed * dt;
     const dz = ((-Math.cos(pose.yaw) * forward + Math.sin(pose.yaw) * strafe) / magnitude) * speed * dt;
     moveAxis(0, dx);
     moveAxis(2, dz);
-    velocity[1] = Math.max(-18, velocity[1] - 22 * dt);
+    const touchingLadder = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
+    velocity[1] = ladderVerticalVelocity(
+      velocity[1],
+      touchingLadder,
+      keys.has("KeyW") || keys.has("Space"),
+      keys.has("KeyS") || keys.has("ShiftLeft") || keys.has("ShiftRight"),
+      dt,
+    );
     const verticalBlocked = moveAxis(1, velocity[1] * dt);
     if (verticalBlocked) {
       grounded = velocity[1] < 0;
@@ -836,7 +923,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       options.onTargetChange?.(target);
     } else target = nextTarget;
 
-    if (now - lastPoseSent > 90 && (poseDirty || forward !== 0 || strafe !== 0 || Math.abs(velocity[1]) > 0.01)) {
+    if (now - lastPoseSent > 90 && (poseDirty || forwardInput !== 0 || strafe !== 0 || Math.abs(velocity[1]) > 0.01)) {
       lastPoseSent = now;
       poseDirty = false;
       options.onPoseChange?.({ ...pose });
@@ -1068,8 +1155,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     keys.add(event.code);
     if (event.code === "Space") {
       event.preventDefault();
-      if (grounded) {
-        velocity[1] = 8.25;
+      // Space is a climb command while touching a ladder; do not inject the
+      // normal 8.25-block/s ground impulse before the next physics frame.
+      if (grounded && !playerTouchesLadder(pose.x, pose.y, pose.z, getBlock)) {
+        velocity[1] = PLAYER_JUMP_SPEED;
         grounded = false;
       }
     }

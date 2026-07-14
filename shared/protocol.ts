@@ -16,7 +16,8 @@ export const BLOCK_TYPES = [
   "bed",
   "coal_ore",
   "iron_ore",
-  "furnace"
+  "furnace",
+  "ladder"
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
