@@ -1,6 +1,6 @@
 # Lakecraft
 
-Lakecraft is a deliberately compact multiplayer voxel sandbox built entirely as a [Lakebed](https://lakebed.dev) capsule. It uses Lakebed's Preact client, hosted database, guest identity, mutations, queries, and deployment pipeline. The 3D renderer is dependency-free WebGL.
+Lakecraft is a deliberately unreasonable multiplayer voxel sandbox built entirely as a [Lakebed](https://lakebed.dev) capsule. Lakebed is intentionally the auth system, database, realtime-ish presence/chat transport, runtime, and host even though it was not designed to be a game backend. The 3D renderer is dependency-free TypeScript/WebGL.
 
 ## Run locally
 
@@ -8,10 +8,11 @@ Lakecraft is a deliberately compact multiplayer voxel sandbox built entirely as 
 npx lakebed dev
 ```
 
-Open two local guest sessions to exercise multiplayer:
+Google sign-in and a unique explorer username are required before joining the shared world. For local identity testing, use Lakebed's development auth command before opening the app:
 
-- `http://localhost:3000/?lakebed_guest=alice`
-- `http://localhost:3000/?lakebed_guest=bob`
+```sh
+npx lakebed auth as alice
+```
 
 ## Controls
 
@@ -19,13 +20,15 @@ Open two local guest sessions to exercise multiplayer:
 - `W A S D` move, `Space` jump, mouse to look
 - Left click mines; right click places the selected block
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
+- `T` or `Enter` opens world chat
+- `F3` toggles live frame, mesh, chunk, and draw-call counters
 - `Esc` releases the pointer
 
 ## Project shape
 
-- `client/game/` — custom WebGL voxel renderer, terrain, movement, collisions, and raycasting
+- `client/game/` — custom chunked WebGL renderer, terrain, day/night lighting, avatars, movement, collisions, and raycasting
 - `client/components/` — HUD, inventory, crafting, onboarding, and feedback
-- `server/index.ts` — Lakebed schema, shared-world edits, and multiplayer presence
+- `server/index.ts` — Lakebed schema, auth-backed profiles, bounded world state, multiplayer presence, chat, and inventories
 - `shared/` — pure item, recipe, and wire-protocol types
 
 ## Build and deploy
@@ -35,4 +38,6 @@ npx lakebed build . --target anonymous --json
 npx lakebed deploy . --json
 ```
 
-The hosted Lakebed database persists shared world edits. Local development data resets when the dev process restarts.
+The hosted Lakebed database persists shared world edits and player state. Anonymous deploys expire after seven days; run `npx lakebed auth login` and `npx lakebed claim .` to attach a deploy to a Lakebed account. Local development data resets when the dev process restarts.
+
+Performance budgets and the repeatable benchmark loop live in [PERFORMANCE.md](./PERFORMANCE.md).

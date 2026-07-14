@@ -25,11 +25,17 @@ Lakecraft is intentionally pushing Lakebed far outside its natural workload. Per
 
 Default radius-18 terrain contains 8,702 blocks, 6,314 exposed faces, and 37,884 vertices. A Node proxy of the original full-world neighbor scan measured 19.474 ms median, 27.471 ms P95, and 31.58 ms maximum across 25 runs. This excludes vertex-array allocation and GPU upload, so the original architecture cannot reliably meet a 16.7 ms frame budget when editing blocks.
 
+## Current alpha: commit f05e58b+
+
+The richer radius-18 terrain contains roughly 16,019 blocks. A representative interior edit scans 502 dirty-chunk blocks instead of 16,019 (`31.9×` less work) and uploads 912 vertices instead of 44,364 (`48.6×` less data). Radius-40 deterministic terrain generation produces about 55,929 blocks in 15–25 ms. Day/night sampling reuses a single state object and completes one million samples in roughly 100–150 ms. Remote player geometry and nameplates remain capped at two draw calls, with 32-player and 64-block-distance safety limits.
+
+The anonymous hosted quota is the harder multiplayer constraint: the current public deploy reports 1,000 mutations/day. Active movement snapshots are therefore deliberately sparse and interpolated locally. Production load testing must track mutation exhaustion as closely as frame time; claiming the deploy is required before treating the current quota as final.
+
 ## Strategy
 
-- Prefer deterministic client generation and compact Lakebed edit/event records.
+- Prefer deterministic client generation and compact Lakebed records; world coordinates, presence, and inventories are indexed upserts, while chat remains bounded append-only history.
 - Rebuild only dirty chunks; never remesh the entire loaded world for one block.
 - Interpolate remote state client-side rather than increasing Lakebed heartbeat volume.
-- Cap/paginate append-only feeds and compact logical state in client helpers.
+- Cap/paginate append-only feeds and preserve legacy duplicate-collapse helpers for migrated data.
 - Track Lakebed daily mutation and row limits alongside rendering performance.
 - Do not move multiplayer or persistence to another backend to solve performance.

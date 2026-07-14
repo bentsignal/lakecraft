@@ -59,6 +59,11 @@ export interface VoxelPerformanceStats {
   avatarDrawCalls: number;
   avatarVertexCount: number;
   nameplateVertexCount: number;
+  mobDrawCalls: number;
+  mobVertexCount: number;
+  mobVisibleCount: number;
+  mobCount: number;
+  mobSimulationMs: number;
   estimatedMeshBytes: number;
 }
 

@@ -18,6 +18,14 @@ import {
   sampleDayNight,
   type DayNightConfig,
 } from "./dayNight.ts";
+import { createMobRenderer } from "./mobRenderer.ts";
+import {
+  createMobSimulation,
+  createMobSpawns,
+  stepMobSimulation,
+  writeMobPoseSnapshots,
+  type MobPoseSnapshot,
+} from "./mobs.ts";
 import {
   BLOCK,
   type BlockId,
@@ -422,6 +430,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     owned.add(key);
   }
   const chunkMeshes = new Map<string, ChunkMesh>();
+  const mobRenderer = createMobRenderer(gl);
+  const mobSimulation = createMobSimulation(createMobSpawns({
+    seed,
+    radius: Math.max(6, radius - 2),
+    terrainHeight: (x, z) => terrainHeight(x, z, seed),
+    passivePopulation: Math.min(12, Math.max(6, Math.floor(radius / 2))),
+    hostilePopulation: Math.min(5, Math.max(2, Math.floor(radius / 5))),
+    maxPopulation: 17,
+    spawnClearRadius: 6,
+    isSpawnable: (_kind, x, y, z) => !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
+  }));
+  const mobSnapshots: MobPoseSnapshot[] = [];
   const startY = terrainHeight(0, 0, seed) + 1.02;
   const pose: PlayerPose = {
     x: options.initialPose?.x ?? 0.5,
@@ -454,6 +474,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let visibleChunkCount = 0;
   let drawCalls = 0;
   let avatarDrawCalls = 0;
+  let mobDrawCalls = 0;
+  let mobVertexCount = 0;
+  let visibleMobCount = 0;
+  let lastMobSimulationMs = 0;
+  let mobAccumulatorSeconds = 0;
+  const mobStepSeconds = 0.1;
   let lastPerformanceSent = 0;
 
   function clearMining(): void {
@@ -598,6 +624,41 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return [Math.sin(pose.yaw) * cosPitch, Math.sin(pose.pitch), -Math.cos(pose.yaw) * cosPitch];
   }
 
+  function mobCanOccupy(_kind: unknown, x: number, y: number, z: number, collisionRadius: number, height: number): boolean {
+    const minY = Math.floor(y + 0.01);
+    const maxY = Math.floor(y + height - 0.01);
+    for (let xSide = -1; xSide <= 1; xSide += 2) {
+      const sampleX = x + collisionRadius * xSide;
+      for (let zSide = -1; zSide <= 1; zSide += 2) {
+        const sampleZ = z + collisionRadius * zSide;
+        for (let sampleY = minY; sampleY <= maxY; sampleY += 1) {
+          if (getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ)) !== BLOCK.AIR) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function updateMobs(dt: number): void {
+    const startedAt = performance.now();
+    mobAccumulatorSeconds = Math.min(0.3, mobAccumulatorSeconds + dt);
+    let steps = 0;
+    while (mobAccumulatorSeconds >= mobStepSeconds && steps < 3) {
+      stepMobSimulation(mobSimulation, {
+        dtSeconds: mobStepSeconds,
+        isNight: dayNightState.label === "night" || dayNightState.label === "dusk",
+        terrainHeight: (x, z) => terrainHeight(x, z, seed),
+        player: pose,
+        canOccupy: mobCanOccupy,
+        worldRadius: radius - 1,
+      });
+      mobAccumulatorSeconds -= mobStepSeconds;
+      steps += 1;
+    }
+    writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    lastMobSimulationMs = performance.now() - startedAt;
+  }
+
   function update(dt: number, now: number): void {
     const forward = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
     const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
@@ -626,6 +687,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       poseDirty = false;
       options.onPoseChange?.({ ...pose });
     }
+    updateMobs(dt);
   }
 
   function bindBuffer(buffer: WebGLBuffer): void {
@@ -670,7 +732,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       avatarDrawCalls,
       avatarVertexCount: remoteVertexCount,
       nameplateVertexCount,
-      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
+      mobDrawCalls,
+      mobVertexCount,
+      mobVisibleCount: visibleMobCount,
+      mobCount: mobSimulation.mobs.length,
+      mobSimulationMs: lastMobSimulationMs,
+      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
     };
   }
 
@@ -683,6 +750,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
     sampleDayNight(Date.now() + serverTimeOffsetMs, dayNightConfig, dayNightState);
+    const mobStats = mobRenderer.rebuild(
+      mobSnapshots,
+      eye[0],
+      eye[2],
+      facing[0],
+      facing[2],
+      Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
+      now / 1_000,
+    );
+    mobVertexCount = mobStats.vertexCount;
+    visibleMobCount = mobStats.visibleMobCount;
     gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
@@ -709,6 +787,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     visibleChunkCount = 0;
     drawCalls = 0;
     avatarDrawCalls = 0;
+    mobDrawCalls = 0;
     for (const [key, mesh] of chunkMeshes) {
       if (!chunkIntersectsView(key, mesh, mvp)) continue;
       bindBuffer(mesh.buffer);
@@ -721,6 +800,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.drawArrays(gl.TRIANGLES, 0, remoteVertexCount);
       drawCalls += 1;
       avatarDrawCalls += 1;
+    }
+    if (mobVertexCount) {
+      bindBuffer(mobRenderer.buffer);
+      gl.drawArrays(gl.TRIANGLES, 0, mobVertexCount);
+      drawCalls += 1;
+      mobDrawCalls += 1;
     }
     if (nameplateVertexCount) {
       bindBuffer(nameplateBuffer);
@@ -897,6 +982,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteBuffer(remoteBuffer);
       gl.deleteBuffer(nameplateBuffer);
       gl.deleteBuffer(lineBuffer);
+      mobRenderer.destroy();
       gl.deleteProgram(program);
     },
     applyWorldEdits(edits) {
