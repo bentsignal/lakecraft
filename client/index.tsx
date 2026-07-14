@@ -83,6 +83,7 @@ import {
   stepPresenceScheduler,
   type PresenceSchedulerState,
 } from "../shared/presenceMotion";
+import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
 import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep";
 import {
   MAX_MOB_ATTACK_DAMAGE,
@@ -320,7 +321,7 @@ export function App() {
 
   const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
-  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string], void>("heartbeatPlayer");
+  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string], void>("heartbeatPlayer");
   const leavePlayer = useMutation<[heartbeatAt: string], void>("leavePlayer");
   const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
@@ -810,6 +811,13 @@ export function App() {
     const active = activePlayerPresences(presenceEvents).filter((player) => player.userId !== auth.userId);
     const remotes: RemotePlayer[] = active.map((player) => {
       const velocity = parsePresenceVelocityFields(player);
+      const appearance = normalizeAvatarAppearance(
+        player.heldItem,
+        player.armorHead,
+        player.armorChest,
+        player.armorLegs,
+        player.armorFeet,
+      );
       return {
         id: player.userId,
         name: player.displayName,
@@ -821,6 +829,11 @@ export function App() {
         vx: velocity.vx,
         vy: velocity.vy,
         vz: velocity.vz,
+        heldItem: appearance.heldItem || null,
+        armorHead: appearance.armorHead || null,
+        armorChest: appearance.armorChest || null,
+        armorLegs: appearance.armorLegs || null,
+        armorFeet: appearance.armorFeet || null,
         color: remoteColor(player.color),
       };
     }).filter((player) => [player.x, player.y, player.z, player.yaw, player.pitch].every(Number.isFinite));
@@ -837,6 +850,14 @@ export function App() {
       if (writeInFlight) return;
       const decision = stepPresenceScheduler(scheduler, { ...pose, at });
       if (!decision.send) return;
+      const worn = equipmentRef.current;
+      const appearance = normalizeAvatarAppearance(
+        inventoryRef.current[selectedRef.current]?.itemId,
+        worn.head,
+        worn.chest,
+        worn.legs,
+        worn.feet,
+      );
       writeInFlight = true;
       void heartbeatPlayer(
         profile.username,
@@ -850,6 +871,11 @@ export function App() {
         decision.fields.vx,
         decision.fields.vy,
         decision.fields.vz,
+        appearance.heldItem,
+        appearance.armorHead,
+        appearance.armorChest,
+        appearance.armorLegs,
+        appearance.armorFeet,
       ).then(() => setConnected(true)).catch(() => setConnected(false)).finally(() => {
         writeInFlight = false;
       });

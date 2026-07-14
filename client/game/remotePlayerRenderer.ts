@@ -4,17 +4,26 @@ import {
   advanceRemoteAvatarMotion,
   type RemoteAvatarMotion,
 } from "./avatar.ts";
+import { ITEMS, type ArmorId, type ItemId } from "../../shared/game.ts";
 
 type Vec3 = readonly [number, number, number];
 
 const FLOATS_PER_VERTEX = 6;
 const VERTICES_PER_BOX = 36;
-const AVATAR_BOXES = 17;
+const BASE_AVATAR_BOXES = 17;
+const MAX_ARMOR_BOXES = 10;
+const MAX_HELD_ITEM_BOXES = 2;
 const MAX_GLYPH_PIXELS = 15;
 const REMOTE_RENDER_DISTANCE_SQUARED = 64 * 64;
 
 export const REMOTE_MESH_INTERVAL_MS = 1_000 / 30;
-export const AVATAR_VERTICES_PER_PLAYER = AVATAR_BOXES * VERTICES_PER_BOX;
+export const BASE_AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_BOXES * VERTICES_PER_BOX;
+export const MAX_ARMOR_VERTICES_PER_PLAYER = MAX_ARMOR_BOXES * VERTICES_PER_BOX;
+export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = MAX_HELD_ITEM_BOXES * VERTICES_PER_BOX;
+/** Worst-case fixed avatar capacity, including a two-box tool and all armor. */
+export const AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_VERTICES_PER_PLAYER
+  + MAX_ARMOR_VERTICES_PER_PLAYER
+  + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
 export const MAX_NAMEPLATE_VERTICES_PER_PLAYER = 6 + MAX_PLAYER_NAME_LENGTH * MAX_GLYPH_PIXELS * 6;
 
 const BOX_FACES: ReadonlyArray<{ shade: number; vertices: ReadonlyArray<Vec3> }> = [
@@ -49,6 +58,18 @@ const COLORS = {
   hair: [0.18, 0.10, 0.055] as Vec3,
   eye: [0.08, 0.19, 0.30] as Vec3,
   mouth: [0.30, 0.13, 0.10] as Vec3,
+  leatherArmor: [0.48, 0.25, 0.11] as Vec3,
+  ironArmor: [0.72, 0.74, 0.72] as Vec3,
+  toolHandle: [0.43, 0.27, 0.11] as Vec3,
+  woodItem: [0.58, 0.36, 0.16] as Vec3,
+  stoneItem: [0.43, 0.45, 0.44] as Vec3,
+  ironItem: [0.76, 0.78, 0.76] as Vec3,
+  greenItem: [0.28, 0.51, 0.20] as Vec3,
+  sandItem: [0.78, 0.69, 0.45] as Vec3,
+  glassItem: [0.54, 0.77, 0.79] as Vec3,
+  coalItem: [0.14, 0.15, 0.14] as Vec3,
+  woolItem: [0.84, 0.82, 0.76] as Vec3,
+  redItem: [0.66, 0.22, 0.18] as Vec3,
   nameBackground: [0.025, 0.028, 0.035] as Vec3,
   nameText: [0.94, 0.95, 0.90] as Vec3,
 };
@@ -150,6 +171,95 @@ function appendBox(
   }
 }
 
+function armorColor(itemId: ArmorId): Vec3 {
+  return itemId.startsWith("iron_") ? COLORS.ironArmor : COLORS.leatherArmor;
+}
+
+function heldItemColor(itemId: ItemId): Vec3 {
+  const tool = ITEMS[itemId].tool;
+  if (tool?.tier === "iron") return COLORS.ironItem;
+  if (tool?.tier === "stone") return COLORS.stoneItem;
+  if (tool) return COLORS.woodItem;
+  switch (itemId) {
+    case "grass":
+    case "leaves": return COLORS.greenItem;
+    case "stone":
+    case "cobblestone":
+    case "furnace":
+    case "coal_ore": return COLORS.stoneItem;
+    case "iron_ore":
+    case "raw_iron":
+    case "iron_ingot": return COLORS.ironItem;
+    case "sand": return COLORS.sandItem;
+    case "glass": return COLORS.glassItem;
+    case "coal": return COLORS.coalItem;
+    case "wool": return COLORS.woolItem;
+    case "bed":
+    case "pork":
+    case "beef":
+    case "mutton":
+    case "cooked_pork":
+    case "cooked_beef":
+    case "cooked_mutton":
+    case "rotten_flesh": return COLORS.redItem;
+    default: return COLORS.woodItem;
+  }
+}
+
+function appendArmor(writer: VertexWriter, state: RemoteAvatarMotion, stride: number): void {
+  const headYaw = state.rendered.yaw;
+  const headPitch = state.rendered.pitch * 0.32;
+  if (state.armorHead) {
+    const color = armorColor(state.armorHead);
+    appendBox(writer,state,headYaw,headPitch,1.62,0,-0.28,1.84,-0.28,0.28,1.94,0.28,color);
+    appendBox(writer,state,headYaw,headPitch,1.62,0,-0.28,1.47,-0.28,-0.23,1.86,0.28,color);
+    appendBox(writer,state,headYaw,headPitch,1.62,0,0.23,1.47,-0.28,0.28,1.86,0.28,color);
+  }
+  if (state.armorChest) {
+    const color = armorColor(state.armorChest);
+    appendBox(writer,state,state.bodyYaw,0,0,0,-0.35,0.70,-0.205,0.35,1.40,-0.18,color);
+    appendBox(writer,state,state.bodyYaw,-stride*0.9,1.31,0,-0.57,1.14,-0.16,-0.33,1.42,0.16,color);
+    appendBox(writer,state,state.bodyYaw,stride*0.9,1.31,0,0.33,1.14,-0.16,0.57,1.42,0.16,color);
+  }
+  if (state.armorLegs) {
+    const color = armorColor(state.armorLegs);
+    appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.27,0.10,-0.17,-0.01,0.73,-0.14,color);
+    appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.01,0.10,-0.17,0.27,0.73,-0.14,color);
+  }
+  if (state.armorFeet) {
+    const color = armorColor(state.armorFeet);
+    appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.27,-0.01,-0.17,-0.01,0.17,0.18,color);
+    appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.01,-0.01,-0.17,0.27,0.17,0.18,color);
+  }
+}
+
+function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, stride: number): void {
+  const itemId = state.heldItem;
+  if (!itemId) return;
+  const item = ITEMS[itemId];
+  const armPitch = stride * 0.9;
+  const color = heldItemColor(itemId);
+  if (!item.tool) {
+    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.35,0.43,-0.25,0.62,0.70,0.02,color);
+    return;
+  }
+  appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.44,0.28,-0.08,0.50,0.80,-0.02,COLORS.toolHandle);
+  switch (item.tool.kind) {
+    case "sword":
+      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.40,0.08,-0.07,0.54,0.54,-0.03,color);
+      break;
+    case "pickaxe":
+      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.29,0.22,-0.08,0.65,0.34,-0.02,color);
+      break;
+    case "axe":
+      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.38,0.18,-0.09,0.59,0.42,-0.01,color);
+      break;
+    default:
+      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.39,0.16,-0.10,0.55,0.37,0,color);
+      break;
+  }
+}
+
 function appendAvatar(writer: VertexWriter, state: RemoteAvatarMotion): void {
   const stride = Math.min(0.72, state.horizontalSpeed * 0.16) * Math.sin(state.walkPhase);
   appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.26,0.08,-0.14,-0.02,0.72,0.14,COLORS.pants);
@@ -171,6 +281,8 @@ function appendAvatar(writer: VertexWriter, state: RemoteAvatarMotion): void {
   appendBox(writer,state,headYaw,headPitch,1.62,0,-0.15,1.63,-0.272,-0.06,1.69,-0.248,COLORS.eye);
   appendBox(writer,state,headYaw,headPitch,1.62,0,0.06,1.63,-0.272,0.15,1.69,-0.248,COLORS.eye);
   appendBox(writer,state,headYaw,headPitch,1.62,0,-0.08,1.50,-0.273,0.08,1.54,-0.248,COLORS.mouth);
+  appendArmor(writer, state, stride);
+  appendHeldItem(writer, state, stride);
 }
 
 function appendBillboardQuad(
@@ -275,7 +387,6 @@ export function createRemotePlayerRenderer(gl: WebGLRenderingContext): RemotePla
   let avatarUploadFloats = 0;
   let nameplateUploadFloats = 0;
   let lastMeshAt = -Infinity;
-  let lastPlayerCount = 0;
   const stats: RemotePlayerRenderStats = {
     avatarVertexCount: 0,
     nameplateVertexCount: 0,
@@ -303,10 +414,9 @@ export function createRemotePlayerRenderer(gl: WebGLRenderingContext): RemotePla
         stats.visiblePlayerCount = 0;
         stats.meshMs = 0;
         stats.uploadBytes = 0;
-        lastPlayerCount = 0;
         return stats;
       }
-      if (states.size === lastPlayerCount && now - lastMeshAt < REMOTE_MESH_INTERVAL_MS) return stats;
+      if (now - lastMeshAt < REMOTE_MESH_INTERVAL_MS) return stats;
       const startedAt = performance.now();
       writeRemotePlayerGeometry(states, camera, avatarData, nameplateData, stats);
       const nextAvatarFloats = stats.avatarVertexCount * FLOATS_PER_VERTEX;
@@ -333,7 +443,6 @@ export function createRemotePlayerRenderer(gl: WebGLRenderingContext): RemotePla
       stats.meshUpdates += 1;
       stats.updated = true;
       lastMeshAt = now;
-      lastPlayerCount = states.size;
       return stats;
     },
     destroy() {

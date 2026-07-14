@@ -18,6 +18,12 @@ export type StoredPlayerPresence = {
   z: string;
   yaw: string;
   pitch: string;
+  /** Optional only for pure compatibility with rows predating avatar appearance. */
+  heldItem?: string;
+  armorHead?: string;
+  armorChest?: string;
+  armorLegs?: string;
+  armorFeet?: string;
 };
 
 export type OfflinePlayerPresenceValue = StoredPlayerPresence & {
@@ -85,6 +91,11 @@ export function buildOfflinePresenceValue(
     z: existing.z,
     yaw: existing.yaw,
     pitch: existing.pitch,
+    heldItem: existing.heldItem ?? "",
+    armorHead: existing.armorHead ?? "",
+    armorChest: existing.armorChest ?? "",
+    armorLegs: existing.armorLegs ?? "",
+    armorFeet: existing.armorFeet ?? "",
     vx: "0",
     vy: "0",
     vz: "0",

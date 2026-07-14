@@ -5,6 +5,8 @@ import {
   applyRemoteAvatarSnapshot,
   createRemoteAvatarMotion,
   sanitizePlayerName,
+  sanitizeRemoteArmor,
+  sanitizeRemoteHeldItem,
   shortestAngleDelta,
 } from "../client/game/avatar.ts";
 import { PRESENCE_MAX_EXTRAPOLATION_MS, PRESENCE_MAX_HORIZONTAL_SPEED, PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS, PRESENCE_MAX_VERTICAL_SPEED, PRESENCE_MAX_X } from "../shared/presenceMotion.ts";
@@ -26,9 +28,22 @@ function player(overrides: Partial<RemotePlayer> = {}): RemotePlayer {
 assert.equal(sanitizePlayerName("  <b>Alice</b>\n  "), "?b?Alice??b?");
 assert.equal(sanitizePlayerName(""), "Player");
 assert.equal(sanitizePlayerName("x".repeat(100)).length, MAX_PLAYER_NAME_LENGTH);
+assert.equal(sanitizeRemoteHeldItem("iron_pickaxe"), "iron_pickaxe");
+assert.equal(sanitizeRemoteHeldItem("sand"), "sand");
+assert.equal(sanitizeRemoteHeldItem("constructor"), null, "prototype keys are not item IDs");
+assert.equal(sanitizeRemoteHeldItem("diamond_sword"), null);
+assert.equal(sanitizeRemoteArmor("iron_helmet", "head"), "iron_helmet");
+assert.equal(sanitizeRemoteArmor("leather_chestplate", "chest"), "leather_chestplate");
+assert.equal(sanitizeRemoteArmor("iron_chestplate", "head"), null, "armor must match the exact remote slot");
+assert.equal(sanitizeRemoteArmor("stone", "head"), null);
 assert.ok(Math.abs(shortestAngleDelta(Math.PI - 0.1, -Math.PI + 0.1) - 0.2) < 0.0001);
 
 const motion = createRemoteAvatarMotion(player(), 0);
+assert.deepEqual(
+  [motion.heldItem, motion.armorHead, motion.armorChest, motion.armorLegs, motion.armorFeet],
+  [null, null, null, null, null],
+  "legacy presence snapshots render an ungeared Steve",
+);
 applyRemoteAvatarSnapshot(motion, player({ x: 4, z: -2, yaw: Math.PI / 2 }), 200);
 assert.equal(motion.rendered.x, 0, "a sparse snapshot must not teleport the rendered avatar");
 advanceRemoteAvatarMotion(motion, 216, 0.016);
@@ -76,5 +91,41 @@ assert.equal(positionBounded.rendered.x, PRESENCE_MAX_X, "malicious positions an
 const malicious = createRemoteAvatarMotion(player({ x: Number.NaN, y: Infinity, name: "\u0000Bob<script>" }), 0);
 assert.deepEqual([malicious.rendered.x, malicious.rendered.y], [0, 0]);
 assert.equal(malicious.name, "Bob?script?");
+
+const geared = createRemoteAvatarMotion(player({
+  heldItem: "iron_pickaxe",
+  armorHead: "iron_helmet",
+  armorChest: "leather_chestplate",
+  armorLegs: "iron_leggings",
+  armorFeet: "leather_boots",
+}), 0);
+assert.deepEqual(
+  [geared.heldItem, geared.armorHead, geared.armorChest, geared.armorLegs, geared.armorFeet],
+  ["iron_pickaxe", "iron_helmet", "leather_chestplate", "iron_leggings", "leather_boots"],
+);
+applyRemoteAvatarSnapshot(geared, player({
+  heldItem: "sand",
+  armorHead: "leather_helmet",
+  armorChest: "iron_chestplate",
+  armorLegs: "leather_leggings",
+  armorFeet: "iron_boots",
+}), 100);
+assert.deepEqual(
+  [geared.heldItem, geared.armorHead, geared.armorChest, geared.armorLegs, geared.armorFeet],
+  ["sand", "leather_helmet", "iron_chestplate", "leather_leggings", "iron_boots"],
+  "gear changes apply atomically with the sparse pose snapshot",
+);
+applyRemoteAvatarSnapshot(geared, player({
+  heldItem: "constructor",
+  armorHead: "iron_chestplate",
+  armorChest: "iron_helmet",
+  armorLegs: "stone_sword",
+  armorFeet: "missing_boots",
+} as unknown as Partial<RemotePlayer>), 200);
+assert.deepEqual(
+  [geared.heldItem, geared.armorHead, geared.armorChest, geared.armorLegs, geared.armorFeet],
+  [null, null, null, null, null],
+  "malformed and cross-slot equipment is cleared instead of rendered",
+);
 
 console.log("lakecraft avatar tests: ok");

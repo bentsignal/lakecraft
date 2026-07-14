@@ -1,4 +1,5 @@
 import type { PlayerPose, RemotePlayer } from "./types.ts";
+import { ITEMS, type ArmorId, type ArmorSlot, type ItemId } from "../../shared/game.ts";
 import {
   PRESENCE_MAX_EXTRAPOLATION_MS,
   PRESENCE_MAX_HORIZONTAL_SPEED,
@@ -21,6 +22,11 @@ export interface RemoteAvatarMotion {
   readonly id: string;
   name: string;
   color: RemotePlayer["color"];
+  heldItem: ItemId | null;
+  armorHead: ArmorId | null;
+  armorChest: ArmorId | null;
+  armorLegs: ArmorId | null;
+  armorFeet: ArmorId | null;
   rendered: PlayerPose;
   target: PlayerPose;
   velocityX: number;
@@ -86,6 +92,27 @@ export function sanitizePlayerName(name: string | undefined): string {
   return safe || "Player";
 }
 
+/** Rejects unknown/prototype keys before held-item data reaches geometry code. */
+export function sanitizeRemoteHeldItem(value: unknown): ItemId | null {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(ITEMS, value)
+    ? value as ItemId
+    : null;
+}
+
+/** Armor snapshots must name a real armor item for the exact rendered slot. */
+export function sanitizeRemoteArmor(value: unknown, slot: ArmorSlot): ArmorId | null {
+  if (typeof value !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, value)) return null;
+  return ITEMS[value as ItemId].armor?.slot === slot ? value as ArmorId : null;
+}
+
+function assignRemoteGear(state: RemoteAvatarMotion, player: RemotePlayer): void {
+  state.heldItem = sanitizeRemoteHeldItem(player.heldItem);
+  state.armorHead = sanitizeRemoteArmor(player.armorHead, "head");
+  state.armorChest = sanitizeRemoteArmor(player.armorChest, "chest");
+  state.armorLegs = sanitizeRemoteArmor(player.armorLegs, "legs");
+  state.armorFeet = sanitizeRemoteArmor(player.armorFeet, "feet");
+}
+
 export function shortestAngleDelta(from: number, to: number): number {
   let delta = (to - from) % (Math.PI * 2);
   if (delta > Math.PI) delta -= Math.PI * 2;
@@ -99,6 +126,11 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     id: String(player.id).slice(0, 128),
     name: sanitizePlayerName(player.name),
     color: player.color,
+    heldItem: null,
+    armorHead: null,
+    armorChest: null,
+    armorLegs: null,
+    armorFeet: null,
     rendered: { ...target },
     target: { ...target },
     velocityX: 0,
@@ -112,6 +144,7 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
   if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
     assignBoundedVelocity(state, player.vx as number, player.vy as number, player.vz as number);
   }
+  assignRemoteGear(state, player);
   return state;
 }
 
@@ -136,6 +169,7 @@ export function applyRemoteAvatarSnapshot(
   state.target = next;
   state.name = sanitizePlayerName(player.name);
   state.color = player.color;
+  assignRemoteGear(state, player);
   state.lastSnapshotAt = now;
 }
 

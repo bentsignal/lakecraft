@@ -60,6 +60,7 @@ import {
   validatePresencePoseFields
 } from "./playerPresence";
 import { BLOCK_TYPES } from "../shared/protocol";
+import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -176,6 +177,12 @@ export default capsule({
       vx: string().default("0"),
       vy: string().default("0"),
       vz: string().default("0"),
+      /** Empty defaults retain rows written before equipment-aware avatars. */
+      heldItem: string().default(""),
+      armorHead: string().default(""),
+      armorChest: string().default(""),
+      armorLegs: string().default(""),
+      armorFeet: string().default(""),
       heartbeatAt: string(),
       online: boolean().default(true)
     })
@@ -467,12 +474,24 @@ export default capsule({
         _heartbeatAt: string,
         rawVx?: string,
         rawVy?: string,
-        rawVz?: string
+        rawVz?: string,
+        rawHeldItem?: string,
+        rawArmorHead?: string,
+        rawArmorChest?: string,
+        rawArmorLegs?: string,
+        rawArmorFeet?: string
       ) => {
         if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to join the shared world.");
         const pose = validatePresencePoseFields(x, y, z, yaw, pitch);
         const velocity = validatePresenceVelocityFields(rawVx ?? "0", rawVy ?? "0", rawVz ?? "0");
         if (!pose || !velocity) return;
+        const appearance = normalizeAvatarAppearance(
+          rawHeldItem,
+          rawArmorHead,
+          rawArmorChest,
+          rawArmorLegs,
+          rawArmorFeet,
+        );
         const profile = await ctx.db.profiles
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
@@ -493,6 +512,7 @@ export default capsule({
           yaw: String(pose.yaw),
           pitch: String(pose.pitch),
           ...encodePresenceVelocityFields(velocity),
+          ...appearance,
           heartbeatAt: String(Date.now()),
           online: true
         };

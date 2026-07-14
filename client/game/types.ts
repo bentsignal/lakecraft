@@ -1,5 +1,6 @@
 import type { DayNightConfig } from "./dayNight.ts";
 import type { MobCombatStateSnapshot, MobDrop, MobRayTarget } from "./mobs.ts";
+import type { ArmorId, ItemId } from "../../shared/game.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -57,6 +58,11 @@ export interface RemotePlayer extends PlayerPose {
   vx?: number;
   vy?: number;
   vz?: number;
+  heldItem?: ItemId | null;
+  armorHead?: ArmorId | null;
+  armorChest?: ArmorId | null;
+  armorLegs?: ArmorId | null;
+  armorFeet?: ArmorId | null;
 }
 
 export interface BlockTarget {

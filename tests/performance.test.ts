@@ -8,9 +8,10 @@ import {
 } from "../client/game/chunks.ts";
 import { createTerrain } from "../client/game/terrain.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
-import { createRemoteAvatarMotion, type RemoteAvatarMotion } from "../client/game/avatar.ts";
+import { MAX_REMOTE_PLAYERS, createRemoteAvatarMotion, type RemoteAvatarMotion } from "../client/game/avatar.ts";
 import {
   AVATAR_VERTICES_PER_PLAYER,
+  BASE_AVATAR_VERTICES_PER_PLAYER,
   REMOTE_MESH_INTERVAL_MS,
   createRemotePlayerRenderer,
   remotePlayerBufferCapacity,
@@ -81,7 +82,7 @@ console.log(JSON.stringify({
   uploadReduction: Number(uploadReduction.toFixed(1)),
 }));
 
-function remoteStates(count: number): Map<string, RemoteAvatarMotion> {
+function remoteStates(count: number, geared = false): Map<string, RemoteAvatarMotion> {
   const states = new Map<string, RemoteAvatarMotion>();
   for (let index = 0; index < count; index += 1) {
     const id = `remote-${index}`;
@@ -93,6 +94,11 @@ function remoteStates(count: number): Map<string, RemoteAvatarMotion> {
       z: Math.floor(index / 8) + 1,
       yaw: index * 0.1,
       pitch: 0,
+      heldItem: geared ? "iron_pickaxe" : null,
+      armorHead: geared ? "iron_helmet" : null,
+      armorChest: geared ? "iron_chestplate" : null,
+      armorLegs: geared ? "iron_leggings" : null,
+      armorFeet: geared ? "iron_boots" : null,
     }, 0));
   }
   return states;
@@ -106,12 +112,30 @@ for (const playerCount of [1, 8, 32]) {
   const remoteStats: RemoteGeometryStats = { avatarVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
   writeRemotePlayerGeometry(remoteStates(playerCount), [0, 9, 0], avatarData, nameplateData, remoteStats);
   assert.equal(remoteStats.visiblePlayerCount, playerCount);
-  assert.equal(remoteStats.avatarVertexCount, playerCount * AVATAR_VERTICES_PER_PLAYER);
+  assert.equal(remoteStats.avatarVertexCount, playerCount * BASE_AVATAR_VERTICES_PER_PLAYER);
   assert.equal(remoteStats.nameplateVertexCount, playerCount * 1_158);
   const uploadBytes = (remoteStats.avatarVertexCount + remoteStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
   assert.ok(uploadBytes <= capacity.totalBytes);
   remoteBenchmarks.push({ playerCount, uploadBytes, capacityBytes: capacity.totalBytes });
 }
+
+const gearedCapacity = remotePlayerBufferCapacity(MAX_REMOTE_PLAYERS);
+const gearedAvatarData = new Float32Array(gearedCapacity.avatarFloats);
+const gearedNameplateData = new Float32Array(gearedCapacity.nameplateFloats);
+const gearedStats: RemoteGeometryStats = { avatarVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
+writeRemotePlayerGeometry(remoteStates(MAX_REMOTE_PLAYERS, true), [0, 9, 0], gearedAvatarData, gearedNameplateData, gearedStats);
+assert.equal(gearedStats.visiblePlayerCount, MAX_REMOTE_PLAYERS);
+assert.equal(gearedStats.avatarVertexCount, MAX_REMOTE_PLAYERS * AVATAR_VERTICES_PER_PLAYER);
+assert.equal(gearedStats.nameplateVertexCount, MAX_REMOTE_PLAYERS * 1_158);
+const gearedUploadBytes = (gearedStats.avatarVertexCount + gearedStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
+const base32UploadBytes = remoteBenchmarks[remoteBenchmarks.length - 1].uploadBytes;
+const gearDeltaBytes = gearedUploadBytes - base32UploadBytes;
+assert.equal(
+  gearDeltaBytes,
+  MAX_REMOTE_PLAYERS * (AVATAR_VERTICES_PER_PLAYER - BASE_AVATAR_VERTICES_PER_PLAYER) * 6 * Float32Array.BYTES_PER_ELEMENT,
+);
+assert.ok(gearedUploadBytes <= gearedCapacity.totalBytes, "32 fully geared players fit the one preallocated avatar buffer");
+assert.ok(gearedUploadBytes < 1_750_000, `worst-case remote upload ${gearedUploadBytes} exceeded 1.75MB`);
 
 const glCalls = { bufferData: 0, bufferSubData: 0, deleteBuffer: 0 };
 let nextBufferId = 0;
@@ -136,10 +160,20 @@ const firstInterpolatedX = oneRemote.get("remote-0")!.rendered.x;
 assert.equal(remoteRenderer.update(oneRemote, REMOTE_MESH_INTERVAL_MS / 2, 0.016, [0, 9, 0]).updated, false);
 assert.ok(oneRemote.get("remote-0")!.rendered.x > firstInterpolatedX, "interpolation should advance between capped mesh uploads");
 assert.equal(glCalls.bufferSubData, 2);
+assert.equal(
+  remoteRenderer.update(remoteStates(2, true), REMOTE_MESH_INTERVAL_MS * 0.75, 0.016, [0, 9, 0]).updated,
+  false,
+  "even player-count and gear changes must respect the 30Hz upload cap",
+);
+assert.equal(glCalls.bufferSubData, 2);
 assert.equal(remoteRenderer.update(oneRemote, REMOTE_MESH_INTERVAL_MS + 1, 0.016, [0, 9, 0]).updated, true);
 assert.equal(glCalls.bufferSubData, 4);
 remoteRenderer.destroy();
 assert.equal(glCalls.deleteBuffer, 2);
 
-console.log(JSON.stringify({ benchmark: "remote player fixed-buffer scaling", samples: remoteBenchmarks }));
+console.log(JSON.stringify({
+  benchmark: "remote player fixed-buffer scaling",
+  samples: remoteBenchmarks,
+  fullyGeared32: { uploadBytes: gearedUploadBytes, capacityBytes: gearedCapacity.totalBytes, gearDeltaBytes },
+}));
 console.log("lakecraft chunk performance tests: ok");

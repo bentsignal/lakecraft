@@ -56,6 +56,12 @@ export type PlayerPresence = {
   vx: string;
   vy: string;
   vz: string;
+  /** Canonical shared item IDs; physically old Lakebed rows may omit these fields. */
+  heldItem?: string;
+  armorHead?: string;
+  armorChest?: string;
+  armorLegs?: string;
+  armorFeet?: string;
   heartbeatAt: string;
   online: boolean;
   createdAt: string;
