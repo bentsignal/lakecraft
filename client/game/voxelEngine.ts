@@ -1,16 +1,36 @@
 import { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 import {
+  WORLD_CHUNK_SIZE,
+  chunkKeyForBlock,
+  dirtyChunkKeysForEdits,
+  parseChunkKey,
+} from "./chunks.ts";
+import {
+  MAX_REMOTE_PLAYERS,
+  advanceRemoteAvatarMotion,
+  applyRemoteAvatarSnapshot,
+  createRemoteAvatarMotion,
+  type RemoteAvatarMotion,
+} from "./avatar.ts";
+import {
   BLOCK,
   type BlockId,
   type BlockTarget,
   type PlayerPose,
-  type RemotePlayer,
   type VoxelEngine,
   type VoxelEngineOptions,
+  type VoxelPerformanceStats,
   type WorldEdit,
 } from "./types.ts";
 
 type Vec3 = [number, number, number];
+
+interface ChunkMesh {
+  buffer: WebGLBuffer;
+  vertexCount: number;
+  minY: number;
+  maxY: number;
+}
 
 const VERTEX_SHADER = `
 attribute vec3 aPosition;
@@ -140,39 +160,200 @@ function tint(color: Vec3, shade: number, variation = 1): Vec3 {
   return [color[0] * shade * variation, color[1] * shade * variation, color[2] * shade * variation];
 }
 
-function appendBox(output: number[], min: Vec3, max: Vec3, color: Vec3): void {
+type PointTransform = (point: Vec3) => Vec3;
+
+function appendTransformedBox(
+  output: number[],
+  min: Vec3,
+  max: Vec3,
+  color: Vec3,
+  transform: PointTransform,
+): void {
   for (const face of FACE_DEFS) {
     const shaded = tint(color, face.shade);
     for (const point of face.vertices) {
-      pushVertex(output, [
+      pushVertex(output, transform([
         min[0] + point[0] * (max[0] - min[0]),
         min[1] + point[1] * (max[1] - min[1]),
         min[2] + point[2] * (max[2] - min[2]),
-      ], shaded);
+      ]), shaded);
     }
   }
 }
 
-function colorForPlayer(id: string): Vec3 {
-  let hash = 0;
-  for (let index = 0; index < id.length; index += 1) hash = Math.imul(hash ^ id.charCodeAt(index), 16777619);
-  return [0.35 + ((hash >>> 0) & 63) / 180, 0.4 + ((hash >>> 8) & 63) / 190, 0.52 + ((hash >>> 16) & 63) / 170];
+function avatarTransform(
+  origin: Vec3,
+  yaw: number,
+  pitch = 0,
+  pivotY = 0,
+  pivotZ = 0,
+): PointTransform {
+  const cosPitch = Math.cos(pitch);
+  const sinPitch = Math.sin(pitch);
+  const cosYaw = Math.cos(yaw);
+  const sinYaw = Math.sin(yaw);
+  return ([localX, localY, localZ]) => {
+    const offsetY = localY - pivotY;
+    const offsetZ = localZ - pivotZ;
+    const rotatedY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
+    const rotatedZ = pivotZ + offsetY * sinPitch + offsetZ * cosPitch;
+    return [
+      origin[0] + localX * cosYaw - rotatedZ * sinYaw,
+      origin[1] + rotatedY,
+      origin[2] + localX * sinYaw + rotatedZ * cosYaw,
+    ];
+  };
 }
 
-function normalizePlayerColor(color: RemotePlayer["color"], id: string): Vec3 {
-  if (Array.isArray(color)) return [color[0], color[1], color[2]];
-  if (typeof color === "string") {
-    const match = color.trim().match(/^#?([0-9a-f]{6})$/i);
-    if (match) {
-      const value = Number.parseInt(match[1], 16);
-      return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
+const AVATAR_COLORS = {
+  skin: [0.72, 0.50, 0.34] as Vec3,
+  skinHighlight: [0.82, 0.60, 0.43] as Vec3,
+  shirt: [0.05, 0.53, 0.55] as Vec3,
+  pants: [0.12, 0.20, 0.58] as Vec3,
+  shoes: [0.14, 0.12, 0.13] as Vec3,
+  hair: [0.18, 0.10, 0.055] as Vec3,
+  eye: [0.08, 0.19, 0.30] as Vec3,
+  mouth: [0.30, 0.13, 0.10] as Vec3,
+};
+
+function appendAvatar(output: number[], state: RemoteAvatarMotion): void {
+  const origin: Vec3 = [state.rendered.x, state.rendered.y, state.rendered.z];
+  const stride = Math.min(0.72, state.horizontalSpeed * 0.16) * Math.sin(state.walkPhase);
+  const body = avatarTransform(origin, state.bodyYaw);
+  const leftLeg = avatarTransform(origin, state.bodyYaw, stride, 0.69, 0);
+  const rightLeg = avatarTransform(origin, state.bodyYaw, -stride, 0.69, 0);
+  const leftArm = avatarTransform(origin, state.bodyYaw, -stride * 0.9, 1.31, 0);
+  const rightArm = avatarTransform(origin, state.bodyYaw, stride * 0.9, 1.31, 0);
+  const head = avatarTransform(origin, state.rendered.yaw, state.rendered.pitch * 0.32, 1.62, 0);
+
+  appendTransformedBox(output, [-0.26, 0.08, -0.14], [-0.02, 0.72, 0.14], AVATAR_COLORS.pants, leftLeg);
+  appendTransformedBox(output, [0.02, 0.08, -0.14], [0.26, 0.72, 0.14], AVATAR_COLORS.pants, rightLeg);
+  appendTransformedBox(output, [-0.26, 0, -0.15], [-0.02, 0.12, 0.16], AVATAR_COLORS.shoes, leftLeg);
+  appendTransformedBox(output, [0.02, 0, -0.15], [0.26, 0.12, 0.16], AVATAR_COLORS.shoes, rightLeg);
+  appendTransformedBox(output, [-0.34, 0.69, -0.18], [0.34, 1.39, 0.18], AVATAR_COLORS.shirt, body);
+
+  appendTransformedBox(output, [-0.55, 0.68, -0.14], [-0.34, 1.18, 0.14], AVATAR_COLORS.skin, leftArm);
+  appendTransformedBox(output, [0.34, 0.68, -0.14], [0.55, 1.18, 0.14], AVATAR_COLORS.skin, rightArm);
+  appendTransformedBox(output, [-0.55, 1.17, -0.145], [-0.34, 1.4, 0.145], AVATAR_COLORS.shirt, leftArm);
+  appendTransformedBox(output, [0.34, 1.17, -0.145], [0.55, 1.4, 0.145], AVATAR_COLORS.shirt, rightArm);
+
+  appendTransformedBox(output, [-0.25, 1.39, -0.25], [0.25, 1.89, 0.25], AVATAR_COLORS.skinHighlight, head);
+  appendTransformedBox(output, [-0.26, 1.80, -0.26], [0.26, 1.91, 0.26], AVATAR_COLORS.hair, head);
+  appendTransformedBox(output, [-0.26, 1.70, 0.245], [0.26, 1.84, 0.27], AVATAR_COLORS.hair, head);
+  appendTransformedBox(output, [-0.19, 1.72, -0.27], [-0.04, 1.79, -0.245], AVATAR_COLORS.hair, head);
+  appendTransformedBox(output, [0.11, 1.72, -0.27], [0.25, 1.79, -0.245], AVATAR_COLORS.hair, head);
+  appendTransformedBox(output, [-0.15, 1.63, -0.272], [-0.06, 1.69, -0.248], AVATAR_COLORS.eye, head);
+  appendTransformedBox(output, [0.06, 1.63, -0.272], [0.15, 1.69, -0.248], AVATAR_COLORS.eye, head);
+  appendTransformedBox(output, [-0.08, 1.50, -0.273], [0.08, 1.54, -0.248], AVATAR_COLORS.mouth, head);
+}
+
+const FONT: Readonly<Record<string, string>> = {
+  A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110",
+  E: "111100110100111", F: "111100110100100", G: "011100101101011", H: "101101111101101",
+  I: "111010010010111", J: "001001001101010", K: "101101110101101", L: "100100100100111",
+  M: "101111111101101", N: "101111111111101", O: "010101101101010", P: "110101110100100",
+  Q: "010101101111011", R: "110101110101101", S: "011100010001110", T: "111010010010010",
+  U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
+  Y: "101101010010010", Z: "111001010100111",
+  "0": "111101101101111", "1": "010110010010111", "2": "110001111100111", "3": "110001011001110",
+  "4": "101101111001001", "5": "111100110001110", "6": "011100111101111", "7": "111001010010010",
+  "8": "111101111101111", "9": "111101111001110", "?": "110001010000010", "-": "000000111000000",
+  "_": "000000000000111", ".": "000000000000010", " ": "000000000000000",
+};
+
+function appendBillboardQuad(
+  output: number[],
+  center: Vec3,
+  right: Vec3,
+  normal: Vec3,
+  left: number,
+  bottom: number,
+  width: number,
+  height: number,
+  depth: number,
+  color: Vec3,
+): void {
+  const point = (x: number, y: number): Vec3 => [
+    center[0] + right[0] * x + normal[0] * depth,
+    center[1] + y,
+    center[2] + right[2] * x + normal[2] * depth,
+  ];
+  const a = point(left, bottom);
+  const b = point(left + width, bottom);
+  const c = point(left + width, bottom + height);
+  const d = point(left, bottom + height);
+  pushVertex(output, a, color); pushVertex(output, b, color); pushVertex(output, c, color);
+  pushVertex(output, a, color); pushVertex(output, c, color); pushVertex(output, d, color);
+}
+
+function appendNameplate(output: number[], state: RemoteAvatarMotion, camera: Vec3): void {
+  const center: Vec3 = [state.rendered.x, state.rendered.y + 2.13, state.rendered.z];
+  let normalX = camera[0] - center[0];
+  let normalZ = camera[2] - center[2];
+  const length = Math.hypot(normalX, normalZ) || 1;
+  normalX /= length;
+  normalZ /= length;
+  const normal: Vec3 = [normalX, 0, normalZ];
+  const right: Vec3 = [normalZ, 0, -normalX];
+  const pixel = 0.025;
+  const advance = pixel * 4;
+  const textWidth = Math.max(pixel * 3, state.name.length * advance - pixel);
+  appendBillboardQuad(output, center, right, normal, -textWidth / 2 - 0.055, -0.045, textWidth + 0.11, 0.225, 0, [0.025, 0.028, 0.035]);
+
+  const startX = -textWidth / 2;
+  for (let characterIndex = 0; characterIndex < state.name.length; characterIndex += 1) {
+    const glyph = FONT[state.name[characterIndex].toUpperCase()] ?? FONT["?"];
+    for (let row = 0; row < 5; row += 1) {
+      for (let column = 0; column < 3; column += 1) {
+        if (glyph[row * 3 + column] !== "1") continue;
+        appendBillboardQuad(
+          output,
+          center,
+          right,
+          normal,
+          startX + characterIndex * advance + column * pixel,
+          0.015 + (4 - row) * pixel,
+          pixel * 0.82,
+          pixel * 0.82,
+          0.006,
+          [0.94, 0.95, 0.90],
+        );
+      }
     }
   }
-  return colorForPlayer(id);
 }
 
 function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
   return a === b || (!!a && !!b && a.block.x === b.block.x && a.block.y === b.block.y && a.block.z === b.block.z);
+}
+
+function chunkIntersectsView(key: string, mesh: ChunkMesh, mvp: Float32Array): boolean {
+  const coordinate = parseChunkKey(key);
+  const minX = coordinate.x * WORLD_CHUNK_SIZE;
+  const maxX = minX + WORLD_CHUNK_SIZE;
+  const minZ = coordinate.z * WORLD_CHUNK_SIZE;
+  const maxZ = minZ + WORLD_CHUNK_SIZE;
+  const centerX = (minX + maxX) * 0.5;
+  const centerY = (mesh.minY + mesh.maxY) * 0.5;
+  const centerZ = (minZ + maxZ) * 0.5;
+  const extentX = WORLD_CHUNK_SIZE * 0.5;
+  const extentY = Math.max(0.5, (mesh.maxY - mesh.minY) * 0.5);
+  const extentZ = WORLD_CHUNK_SIZE * 0.5;
+  // Column-major clip matrix: each plane is row 4 +/- one axis row.
+  const planes = [
+    [mvp[3] + mvp[0], mvp[7] + mvp[4], mvp[11] + mvp[8], mvp[15] + mvp[12]],
+    [mvp[3] - mvp[0], mvp[7] - mvp[4], mvp[11] - mvp[8], mvp[15] - mvp[12]],
+    [mvp[3] + mvp[1], mvp[7] + mvp[5], mvp[11] + mvp[9], mvp[15] + mvp[13]],
+    [mvp[3] - mvp[1], mvp[7] - mvp[5], mvp[11] - mvp[9], mvp[15] - mvp[13]],
+    [mvp[3] + mvp[2], mvp[7] + mvp[6], mvp[11] + mvp[10], mvp[15] + mvp[14]],
+    [mvp[3] - mvp[2], mvp[7] - mvp[6], mvp[11] - mvp[10], mvp[15] - mvp[14]],
+  ];
+  for (const plane of planes) {
+    const distance = plane[0] * centerX + plane[1] * centerY + plane[2] * centerZ + plane[3];
+    const radius = Math.abs(plane[0]) * extentX + Math.abs(plane[1]) * extentY + Math.abs(plane[2]) * extentZ;
+    if (distance + radius < 0) return false;
+  }
+  return true;
 }
 
 export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngineOptions = {}): VoxelEngine {
@@ -185,15 +366,34 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const cameraLocation = gl.getUniformLocation(program, "uCamera");
   const fogLocation = gl.getUniformLocation(program, "uFogEnabled");
   const fogColorLocation = gl.getUniformLocation(program, "uFogColor");
-  const worldBuffer = gl.createBuffer();
   const remoteBuffer = gl.createBuffer();
+  const nameplateBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
-  if (!worldBuffer || !remoteBuffer || !lineBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  if (!remoteBuffer || !nameplateBuffer || !lineBuffer) throw new Error("Unable to allocate WebGL buffers.");
 
   const seed = options.seed ?? 7319;
   const radius = Math.max(8, Math.min(40, options.worldRadius ?? 20));
   const blocks = createTerrain(seed, radius);
-  for (const edit of options.initialEdits ?? []) blocks.set(blockKey(edit.x, edit.y, edit.z), edit.block);
+  for (const edit of options.initialEdits ?? []) {
+    const key = blockKey(edit.x, edit.y, edit.z);
+    if (edit.block === BLOCK.AIR) blocks.delete(key);
+    else blocks.set(key, edit.block);
+  }
+  const chunkBlocks = new Map<string, Set<string>>();
+  for (const key of blocks.keys()) {
+    const separatorA = key.indexOf(",");
+    const separatorB = key.indexOf(",", separatorA + 1);
+    const x = Number(key.slice(0, separatorA));
+    const z = Number(key.slice(separatorB + 1));
+    const owner = chunkKeyForBlock(x, z);
+    let owned = chunkBlocks.get(owner);
+    if (!owned) {
+      owned = new Set<string>();
+      chunkBlocks.set(owner, owned);
+    }
+    owned.add(key);
+  }
+  const chunkMeshes = new Map<string, ChunkMesh>();
   const startY = terrainHeight(0, 0, seed) + 1.02;
   const pose: PlayerPose = {
     x: options.initialPose?.x ?? 0.5,
@@ -207,7 +407,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
   let worldVertexCount = 0;
   let remoteVertexCount = 0;
-  let remotes: readonly RemotePlayer[] = [];
+  let nameplateVertexCount = 0;
+  const remoteStates = new Map<string, RemoteAvatarMotion>();
   let target: BlockTarget | null = null;
   let running = false;
   let destroyed = false;
@@ -217,6 +418,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let poseDirty = true;
   let grounded = false;
   let miningTimer = 0;
+  const frameTimes: number[] = [];
+  let totalMeshRebuildMs = 0;
+  let lastMeshRebuildMs = 0;
+  let lastRebuiltChunkCount = 0;
+  let totalRebuiltChunkCount = 0;
+  let visibleChunkCount = 0;
+  let drawCalls = 0;
+  let avatarDrawCalls = 0;
+  let lastPerformanceSent = 0;
 
   function clearMining(): void {
     if (miningTimer) window.clearTimeout(miningTimer);
@@ -228,11 +438,38 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
   };
 
-  function rebuildWorldMesh(): void {
+  function setBlock(x: number, y: number, z: number, block: BlockId): void {
+    const key = blockKey(x, y, z);
+    const owner = chunkKeyForBlock(x, z);
+    const previous = blocks.get(key) ?? BLOCK.AIR;
+    if (block === BLOCK.AIR) {
+      blocks.delete(key);
+      const owned = chunkBlocks.get(owner);
+      owned?.delete(key);
+      if (owned?.size === 0) chunkBlocks.delete(owner);
+    } else {
+      blocks.set(key, block);
+      if (previous === BLOCK.AIR) {
+        let owned = chunkBlocks.get(owner);
+        if (!owned) {
+          owned = new Set<string>();
+          chunkBlocks.set(owner, owned);
+        }
+        owned.add(key);
+      }
+    }
+  }
+
+  function rebuildChunkMesh(chunkKey: string): void {
     const vertices: number[] = [];
-    for (const [key, block] of blocks) {
-      if (block === BLOCK.AIR) continue;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const key of chunkBlocks.get(chunkKey) ?? []) {
+      const block = blocks.get(key);
+      if (block === undefined || block === BLOCK.AIR) continue;
       const [x, y, z] = key.split(",").map(Number);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y + 1);
       const base = BLOCK_COLORS[block] ?? BLOCK_COLORS[BLOCK.STONE];
       const variation = 0.93 + (((Math.imul(x, 13) ^ Math.imul(y, 7) ^ Math.imul(z, 17)) & 7) / 100);
       for (const face of FACE_DEFS) {
@@ -241,26 +478,49 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         for (const point of face.vertices) pushVertex(vertices, [x + point[0], y + point[1], z + point[2]], color);
       }
     }
-    worldVertexCount = vertices.length / 6;
-    gl.bindBuffer(gl.ARRAY_BUFFER, worldBuffer);
+    const previous = chunkMeshes.get(chunkKey);
+    worldVertexCount -= previous?.vertexCount ?? 0;
+    if (vertices.length === 0) {
+      if (previous) gl.deleteBuffer(previous.buffer);
+      chunkMeshes.delete(chunkKey);
+      return;
+    }
+    const buffer = previous?.buffer ?? gl.createBuffer();
+    if (!buffer) throw new Error("Unable to allocate a chunk mesh buffer.");
+    const vertexCount = vertices.length / 6;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+    chunkMeshes.set(chunkKey, { buffer, vertexCount, minY, maxY });
+    worldVertexCount += vertexCount;
   }
 
-  function rebuildRemoteMesh(): void {
-    const vertices: number[] = [];
-    for (const player of remotes) {
-      const color = normalizePlayerColor(player.color, player.id);
-      const x = player.x;
-      const y = player.y;
-      const z = player.z;
-      appendBox(vertices, [x - 0.28, y + 0.58, z - 0.17], [x + 0.28, y + 1.42, z + 0.17], color);
-      appendBox(vertices, [x - 0.25, y + 1.42, z - 0.25], [x + 0.25, y + 1.92, z + 0.25], tint(color, 1.12));
-      appendBox(vertices, [x - 0.25, y, z - 0.14], [x - 0.03, y + 0.62, z + 0.14], tint(color, 0.66));
-      appendBox(vertices, [x + 0.03, y, z - 0.14], [x + 0.25, y + 0.62, z + 0.14], tint(color, 0.66));
+  function rebuildWorldChunks(keys: readonly string[]): void {
+    const uniqueKeys = [...new Set(keys)];
+    const startedAt = performance.now();
+    for (const key of uniqueKeys) rebuildChunkMesh(key);
+    lastMeshRebuildMs = performance.now() - startedAt;
+    totalMeshRebuildMs += lastMeshRebuildMs;
+    lastRebuiltChunkCount = uniqueKeys.length;
+    totalRebuiltChunkCount += uniqueKeys.length;
+  }
+
+  function rebuildRemoteMeshes(now: number, dt: number, camera: Vec3): void {
+    const avatarVertices: number[] = [];
+    const nameplateVertices: number[] = [];
+    for (const state of remoteStates.values()) {
+      advanceRemoteAvatarMotion(state, now, dt);
+      const distanceX = state.rendered.x - camera[0];
+      const distanceZ = state.rendered.z - camera[2];
+      if (distanceX * distanceX + distanceZ * distanceZ > 64 * 64) continue;
+      appendAvatar(avatarVertices, state);
+      appendNameplate(nameplateVertices, state, camera);
     }
-    remoteVertexCount = vertices.length / 6;
+    remoteVertexCount = avatarVertices.length / 6;
+    nameplateVertexCount = nameplateVertices.length / 6;
     gl.bindBuffer(gl.ARRAY_BUFFER, remoteBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(avatarVertices), gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, nameplateBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nameplateVertices), gl.DYNAMIC_DRAW);
   }
 
   function collides(x: number, y: number, z: number): boolean {
@@ -359,9 +619,37 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.viewport(0, 0, width, height);
   }
 
-  function render(): void {
+  function getPerformanceStats(): VoxelPerformanceStats {
+    const sortedFrameTimes = [...frameTimes].sort((a, b) => a - b);
+    const averageFrameTimeMs = frameTimes.length
+      ? frameTimes.reduce((total, value) => total + value, 0) / frameTimes.length
+      : 0;
+    const p95Index = Math.max(0, Math.ceil(sortedFrameTimes.length * 0.95) - 1);
+    return {
+      fps: averageFrameTimeMs > 0 ? 1_000 / averageFrameTimeMs : 0,
+      averageFrameTimeMs,
+      p95FrameTimeMs: sortedFrameTimes[p95Index] ?? 0,
+      frameSampleCount: frameTimes.length,
+      lastMeshRebuildMs,
+      totalMeshRebuildMs,
+      lastRebuiltChunkCount,
+      totalRebuiltChunkCount,
+      worldVertexCount,
+      blockCount: blocks.size,
+      chunkCount: chunkMeshes.size,
+      visibleChunkCount,
+      drawCalls,
+      avatarDrawCalls,
+      avatarVertexCount: remoteVertexCount,
+      nameplateVertexCount,
+      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
+    };
+  }
+
+  function render(now: number, dt: number): void {
     resize();
     const eye: Vec3 = [pose.x, pose.y + 1.62, pose.z];
+    rebuildRemoteMeshes(now, dt, eye);
     const facing = direction();
     const projection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
@@ -375,11 +663,28 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform3fv(cameraLocation, eye);
     gl.uniform3fv(fogColorLocation, sky);
     gl.uniform1f(fogLocation, 1);
-    bindBuffer(worldBuffer);
-    gl.drawArrays(gl.TRIANGLES, 0, worldVertexCount);
+    visibleChunkCount = 0;
+    drawCalls = 0;
+    avatarDrawCalls = 0;
+    for (const [key, mesh] of chunkMeshes) {
+      if (!chunkIntersectsView(key, mesh, mvp)) continue;
+      bindBuffer(mesh.buffer);
+      gl.drawArrays(gl.TRIANGLES, 0, mesh.vertexCount);
+      visibleChunkCount += 1;
+      drawCalls += 1;
+    }
     if (remoteVertexCount) {
       bindBuffer(remoteBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, remoteVertexCount);
+      drawCalls += 1;
+      avatarDrawCalls += 1;
+    }
+    if (nameplateVertexCount) {
+      bindBuffer(nameplateBuffer);
+      gl.uniform1f(fogLocation, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, nameplateVertexCount);
+      drawCalls += 1;
+      avatarDrawCalls += 1;
     }
 
     if (target) {
@@ -397,6 +702,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       bindBuffer(lineBuffer);
       gl.uniform1f(fogLocation, 0);
       gl.drawArrays(gl.LINES, 0, edgeIndices.length);
+      drawCalls += 1;
     }
 
     // Crosshair in clip space, drawn last so it remains readable against foliage.
@@ -412,21 +718,31 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniformMatrix4fv(mvpLocation, false, new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]));
     gl.uniform1f(fogLocation, 0);
     gl.drawArrays(gl.LINES, 0, 4);
+    drawCalls += 1;
   }
 
   function frame(now: number): void {
     if (!running || destroyed) return;
-    const dt = Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
+    const frameTimeMs = Math.max(0, now - lastFrame);
+    const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
+    if (frameTimeMs > 0) {
+      frameTimes.push(frameTimeMs);
+      if (frameTimes.length > 120) frameTimes.shift();
+    }
     update(dt, now);
-    render();
+    render(now, dt);
+    if (now - lastPerformanceSent >= 500) {
+      lastPerformanceSent = now;
+      options.onPerformanceStats?.(getPerformanceStats());
+    }
     frameId = requestAnimationFrame(frame);
   }
 
   function emitEdit(edit: WorldEdit): void {
     const previousBlock = getBlock(edit.x, edit.y, edit.z);
-    blocks.set(blockKey(edit.x, edit.y, edit.z), edit.block);
-    rebuildWorldMesh();
+    setBlock(edit.x, edit.y, edit.z, edit.block);
+    rebuildWorldChunks(dirtyChunkKeysForEdits([edit]));
     options.onBlockEdit?.(edit, previousBlock);
   }
 
@@ -499,8 +815,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onContextMenu(event: MouseEvent): void { event.preventDefault(); }
 
-  rebuildWorldMesh();
-  rebuildRemoteMesh();
+  rebuildWorldChunks([...chunkBlocks.keys()]);
 
   return {
     start() {
@@ -531,24 +846,38 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.removeEventListener("contextmenu", onContextMenu);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
       clearMining();
-      gl.deleteBuffer(worldBuffer);
+      for (const mesh of chunkMeshes.values()) gl.deleteBuffer(mesh.buffer);
+      chunkMeshes.clear();
       gl.deleteBuffer(remoteBuffer);
+      gl.deleteBuffer(nameplateBuffer);
       gl.deleteBuffer(lineBuffer);
       gl.deleteProgram(program);
     },
     applyWorldEdits(edits) {
-      for (const edit of edits) blocks.set(blockKey(edit.x, edit.y, edit.z), edit.block);
-      if (edits.length) rebuildWorldMesh();
+      for (const edit of edits) setBlock(edit.x, edit.y, edit.z, edit.block);
+      if (edits.length) rebuildWorldChunks(dirtyChunkKeysForEdits(edits));
     },
     setSelectedBlock(block) {
       selectedBlock = block;
     },
     setRemotePlayers(players) {
-      remotes = players;
-      rebuildRemoteMesh();
+      const now = performance.now();
+      const incomingIds = new Set<string>();
+      for (const player of players.slice(0, MAX_REMOTE_PLAYERS)) {
+        const id = String(player.id).slice(0, 128);
+        if (!id || incomingIds.has(id)) continue;
+        incomingIds.add(id);
+        const current = remoteStates.get(id);
+        if (current) applyRemoteAvatarSnapshot(current, player, now);
+        else remoteStates.set(id, createRemoteAvatarMotion({ ...player, id }, now));
+      }
+      for (const id of remoteStates.keys()) {
+        if (!incomingIds.has(id)) remoteStates.delete(id);
+      }
     },
     getPose() { return { ...pose }; },
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },
+    getPerformanceStats,
     requestPointerLock() { canvas.requestPointerLock(); },
   };
 }

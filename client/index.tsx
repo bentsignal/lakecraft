@@ -1,5 +1,6 @@
-import { useAuth, useMutation, useQuery } from "lakebed/client";
+import { signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { ChatOverlay, type LakecraftChatMessage } from "./chat";
 import { GameHud, type HudMessage } from "./components";
 import {
   BLOCK,
@@ -9,8 +10,10 @@ import {
   type PlayerPose,
   type RemotePlayer,
   type VoxelEngine,
+  type VoxelPerformanceStats,
   type WorldEdit as EngineWorldEdit,
 } from "./game";
+import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
 import {
   ITEMS,
   addItem,
@@ -27,6 +30,13 @@ import {
   type ItemId,
   type Recipe,
 } from "../shared/game";
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  type ChatMessage,
+  type ClaimUsernameResult,
+  type Profile,
+  type SendChatResult,
+} from "../shared/multiplayer";
 import {
   activePlayerPresences,
   blockCoordinateKey,
@@ -55,10 +65,11 @@ button { -webkit-tap-highlight-color: transparent; }
 .lakecraft-entry small { color: rgba(36,38,31,.56); display: block; font: 9px "Courier New", monospace; margin-top: 13px; }
 .lakecraft-error { background: #171a16; color: #e6dcc1; display: grid; inset: 0; padding: 40px; place-content: center; position: absolute; z-index: 120; }
 .lakecraft-error strong { color: #d49a45; font: 700 16px "Courier New", monospace; }.lakecraft-error p { max-width: 560px; }
+.lakecraft-perf { background: rgba(9,12,9,.88); border-left: 3px solid #91ae58; color: #dce7c4; font: 11px/1.45 "Courier New", monospace; left: 14px; padding: 9px 11px; pointer-events: none; position: absolute; top: 14px; white-space: pre; z-index: 70; }
 @media (max-width: 700px) { .lakecraft-entry__card { padding: 27px 24px; }.lakecraft-entry h1 { font-size: 48px; } }
 `;
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "wood" | "leaves" | "planks"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "wood" | "leaves" | "planks" | "crafting_table"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -66,6 +77,7 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.WOOD]: "wood",
   [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "planks",
+  [BLOCK.CRAFTING_TABLE]: "crafting_table",
 };
 
 const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
@@ -77,6 +89,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   log: BLOCK.WOOD,
   leaves: BLOCK.LEAVES,
   planks: BLOCK.PLANKS,
+  crafting_table: BLOCK.CRAFTING_TABLE,
 };
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
@@ -142,12 +155,16 @@ export function App() {
   const [activeSince] = useState(() => String(Date.now() - 30_000));
   const presenceEvents = useQuery<PlayerPresence[], string>("recentPlayers", activeSince) ?? [];
   const savedInventory = useQuery<PersistedInventory | null>("myInventory");
+  const profile = useQuery<Profile | null>("myProfile");
+  const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
 
   const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
   const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string], void>("heartbeatPlayer");
   const leavePlayer = useMutation<[heartbeatAt: string], void>("leavePlayer");
   const saveInventory = useMutation<[inventoryJson: string], void>("saveInventory");
+  const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
+  const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
@@ -158,6 +175,7 @@ export function App() {
   const inventoryRef = useRef<Inventory>(createStarterInventory());
   const selectedRef = useRef(2);
   const hydratedRef = useRef(false);
+  const hydratedUserRef = useRef("");
   const toastCounter = useRef(0);
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
@@ -170,6 +188,18 @@ export function App() {
   const [engineError, setEngineError] = useState("");
   const [inventoryReady, setInventoryReady] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [inWorld, setInWorld] = useState(false);
+  const [joinPhase, setJoinPhase] = useState<LobbyJoinPhase>("idle");
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [usernameState, setUsernameState] = useState<UsernameClaimState>("idle");
+  const [usernameError, setUsernameError] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [lastSeenChatCount, setLastSeenChatCount] = useState(0);
+  const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
+  const [showPerformance, setShowPerformance] = useState(false);
 
   function notify(text: string, detail?: string, tone: HudMessage["tone"] = "info") {
     const id = `note-${++toastCounter.current}`;
@@ -228,8 +258,10 @@ export function App() {
   }, [inventory, selectedHotbar]);
 
   useEffect(() => {
-    if (hydratedRef.current || savedInventory === undefined) return;
+    if (!auth.isAuthenticated || auth.isGuest || hydratedUserRef.current === auth.userId || savedInventory === undefined) return;
+    if (savedInventory && savedInventory.userId !== auth.userId) return;
     hydratedRef.current = true;
+    hydratedUserRef.current = auth.userId;
     const saved = parsePlayerState(savedInventory);
     if (saved) {
       updateInventory(saved.inventory);
@@ -238,10 +270,10 @@ export function App() {
       notify("Field kit restored", "Lakebed recovered your last inventory.", "success");
     }
     setInventoryReady(true);
-  }, [savedInventory]);
+  }, [savedInventory, auth.userId, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
-    if (!hydratedRef.current) return;
+    if (!hydratedRef.current || !auth.isAuthenticated || auth.isGuest) return;
     const timer = window.setTimeout(() => {
       const state = createSerializablePlayerState(inventory, selectedHotbar);
       void saveInventory(JSON.stringify(state)).then(() => setConnected(true)).catch(() => {
@@ -250,9 +282,10 @@ export function App() {
       });
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [inventory, selectedHotbar]);
+  }, [inventory, selectedHotbar, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
+    if (!inWorld || !inventoryReady) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     try {
@@ -271,6 +304,7 @@ export function App() {
         },
         onTargetChange: (target) => { targetRef.current = target; },
         onPointerLockChange: setPointerLocked,
+        onPerformanceStats: setPerformanceStats,
       });
       engineRef.current = engine;
       engine.start();
@@ -281,7 +315,7 @@ export function App() {
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : "Unable to start the WebGL world.");
     }
-  }, []);
+  }, [inWorld, inventoryReady]);
 
   useEffect(() => {
     engineRef.current?.applyWorldEdits(toEngineEdits(worldEvents));
@@ -303,7 +337,7 @@ export function App() {
   }, [presenceEvents, auth.userId]);
 
   useEffect(() => {
-    if (auth.isLoading) return;
+    if (!inWorld || auth.isLoading || !auth.isAuthenticated || auth.isGuest || !profile) return;
     const sendHeartbeat = (force = false) => {
       const now = Date.now();
       if (!force && !poseDirtyRef.current && now - lastPresenceSentRef.current < 12_000) return;
@@ -311,7 +345,7 @@ export function App() {
       poseRef.current = pose;
       poseDirtyRef.current = false;
       lastPresenceSentRef.current = now;
-      void heartbeatPlayer(auth.displayName, playerColor(auth.userId), String(pose.x), String(pose.y), String(pose.z), String(pose.yaw), String(pose.pitch), String(now)).then(() => setConnected(true)).catch(() => setConnected(false));
+      void heartbeatPlayer(profile.username, playerColor(auth.userId), String(pose.x), String(pose.y), String(pose.z), String(pose.yaw), String(pose.pitch), String(now)).then(() => setConnected(true)).catch(() => setConnected(false));
     };
     sendHeartbeat(true);
     const interval = window.setInterval(() => sendHeartbeat(), 2_000);
@@ -319,7 +353,7 @@ export function App() {
       window.clearInterval(interval);
       void leavePlayer(String(Date.now())).catch(() => undefined);
     };
-  }, [auth.userId, auth.displayName, auth.isLoading]);
+  }, [inWorld, auth.userId, auth.isLoading, auth.isAuthenticated, auth.isGuest, profile?.username]);
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 760px), (pointer: coarse)");
@@ -331,6 +365,28 @@ export function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (!inWorld) return;
+      if (event.code === "F3" && !event.repeat) {
+        event.preventDefault();
+        setShowPerformance((shown) => !shown);
+        return;
+      }
+      if (chatOpen) {
+        if (event.code === "Escape") {
+          event.preventDefault();
+          setChatOpen(false);
+          setLastSeenChatCount(chatEvents.length);
+        }
+        return;
+      }
+      if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat && !inventoryOpen) {
+        event.preventDefault();
+        if (document.pointerLockElement) document.exitPointerLock();
+        setChatOpen(true);
+        setLastSeenChatCount(chatEvents.length);
+        setChatError("");
+        return;
+      }
       if (/^Digit[1-9]$/.test(event.code)) setSelectedHotbar(clampHotbarIndex(Number(event.code.slice(5)) - 1));
       if (event.code === "KeyE" && !event.repeat) {
         event.preventDefault();
@@ -343,7 +399,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [inWorld, chatOpen, inventoryOpen, chatEvents.length]);
 
   const activePlayers = activePlayerPresences(presenceEvents);
 
@@ -358,13 +414,154 @@ export function App() {
     notify(`Made ${ITEMS[result.crafted.itemId].label}`, `Added ${result.crafted.count} to your field kit.`, "success");
   }
 
+  function handleUsernameClaim(value: string) {
+    setUsernameState("saving");
+    setUsernameError("");
+    void claimUsername(value).then((result) => {
+      if (result.ok) {
+        setUsernameDraft(result.profile.username);
+        setUsernameState("claimed");
+        return;
+      }
+      if (result.reason === "taken") {
+        setUsernameState("taken");
+        setUsernameError("Another explorer already claimed that name.");
+      } else if (result.reason === "username_locked") {
+        setUsernameState("error");
+        setUsernameError("This account already has an explorer tag.");
+      } else if (result.reason === "authentication_required") {
+        setUsernameState("error");
+        setUsernameError("Sign in again before claiming a name.");
+      } else {
+        setUsernameState("error");
+        setUsernameError("That explorer tag is not valid.");
+      }
+    }).catch(() => {
+      setUsernameState("error");
+      setUsernameError("Lakebed did not answer. Try claiming the name again.");
+    });
+  }
+
+  function enterWorld() {
+    if (!profile) return;
+    setJoinPhase("joining");
+    window.setTimeout(() => {
+      if (!hydratedRef.current) {
+        setJoinPhase("waiting");
+        return;
+      }
+      setJoinPhase("ready");
+      window.setTimeout(() => {
+        setInWorld(true);
+        setJoinPhase("idle");
+      }, 180);
+    }, 260);
+  }
+
+  useEffect(() => {
+    if (joinPhase !== "waiting" || !inventoryReady || !profile) return;
+    setJoinPhase("ready");
+    const timer = window.setTimeout(() => {
+      setInWorld(true);
+      setJoinPhase("idle");
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [joinPhase, inventoryReady, profile?.id]);
+
+  useEffect(() => {
+    if (inWorld && !auth.isLoading && (!auth.isAuthenticated || auth.isGuest)) {
+      if (document.pointerLockElement) document.exitPointerLock();
+      setInWorld(false);
+      setChatOpen(false);
+    }
+  }, [inWorld, auth.isLoading, auth.isAuthenticated, auth.isGuest]);
+
+  function handleChatSubmit(value: string) {
+    setChatSending(true);
+    setChatError("");
+    void sendChat(value).then((result) => {
+      if (result.ok) {
+        setChatDraft("");
+        setLastSeenChatCount(chatEvents.length + 1);
+        return;
+      }
+      if (result.reason === "rate_limited") {
+        setChatError(`Slow down — try again in ${Math.max(1, Math.ceil((result.retryAfterMs ?? 0) / 100) / 10)}s.`);
+      } else if (result.reason === "too_long") {
+        setChatError(`Messages can be at most ${CHAT_MESSAGE_MAX_LENGTH} characters.`);
+      } else if (result.reason === "profile_required") {
+        setChatError("Choose an explorer tag before chatting.");
+      } else {
+        setChatError("Lakebed could not send that message.");
+      }
+    }).catch(() => setChatError("Chat lost contact with Lakebed. Try again.")).finally(() => setChatSending(false));
+  }
+
+  const signedIn = auth.isAuthenticated && !auth.isGuest;
+  const lobbyAuthState = auth.isLoading || (signedIn && profile === undefined)
+    ? "loading"
+    : !signedIn
+      ? "signed_out"
+      : profile
+        ? "ready"
+        : "needs_username";
+  const chatMessages: LakecraftChatMessage[] = chatEvents.map((message) => ({
+    id: message.id,
+    username: message.username,
+    body: message.message,
+    sentAt: Number(message.sentAt),
+    own: message.userId === auth.userId,
+  }));
+  const unreadChat = chatOpen ? 0 : Math.max(0, chatMessages.length - lastSeenChatCount);
+
+  if (!inWorld) {
+    return (
+      <LobbyScreen
+        authState={lobbyAuthState}
+        buildLabel="MULTIPLAYER ALPHA"
+        displayName={profile?.username ?? auth.displayName}
+        email={auth.email}
+        joinPhase={joinPhase}
+        onlineCount={activePlayers.length}
+        onJoinWorld={enterWorld}
+        onSignInWithGoogle={() => {
+          setUsernameError("");
+          void signInWithGoogle().catch(() => {
+            setUsernameState("error");
+            setUsernameError("Google sign-in could not start. Please try again.");
+          });
+        }}
+        onSignOut={() => {
+          signOut();
+          setUsernameDraft("");
+          setUsernameState("idle");
+          setInventoryReady(false);
+          hydratedRef.current = false;
+          hydratedUserRef.current = "";
+        }}
+        onUsernameChange={(value) => {
+          setUsernameDraft(value);
+          setUsernameState("idle");
+          setUsernameError("");
+        }}
+        onUsernameSubmit={handleUsernameClaim}
+        username={profile?.username ?? usernameDraft}
+        usernameError={usernameError}
+        usernameState={profile ? "claimed" : usernameState}
+        worldDescription="One persistent world, synchronized through Lakebed even though Lakebed was absolutely not designed for this."
+        worldName="Fern Hollow"
+        worldStatus="online"
+      />
+    );
+  }
+
   return (
     <main className="lakecraft-shell">
       <style>{APP_CSS}</style>
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
       <div className="lakecraft-vignette" />
 
-      {!pointerLocked && !inventoryOpen && !engineError ? (
+      {!pointerLocked && !inventoryOpen && !chatOpen && !engineError ? (
         <section className="lakecraft-entry" aria-label="Enter Lakecraft">
           <div className="lakecraft-entry__card">
             <span className="lakecraft-entry__eyebrow">survey 01 / shared world online</span>
@@ -389,12 +586,39 @@ export function App() {
         onDismissControls={() => setShowControls(false)}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         onSelectHotbar={(index) => setSelectedHotbar(clampHotbarIndex(index))}
-        playerName={auth.displayName}
+        playerName={profile?.username ?? auth.displayName}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}
-        showControls={showControls && !inventoryOpen}
+        showControls={showControls && !inventoryOpen && !chatOpen}
         worldName="Fern Hollow"
       />
+
+      <ChatOverlay
+        connected={connected}
+        draft={chatDraft}
+        error={chatError}
+        maxLength={CHAT_MESSAGE_MAX_LENGTH}
+        messages={chatMessages}
+        onClose={() => {
+          setChatOpen(false);
+          setLastSeenChatCount(chatMessages.length);
+        }}
+        onDraftChange={setChatDraft}
+        onOpen={() => {
+          if (document.pointerLockElement) document.exitPointerLock();
+          setChatOpen(true);
+          setLastSeenChatCount(chatMessages.length);
+          setChatError("");
+        }}
+        onSubmit={handleChatSubmit}
+        open={chatOpen}
+        sending={chatSending}
+        unreadCount={unreadChat}
+      />
+
+      {showPerformance && performanceStats ? (
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+      ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}
     </main>
