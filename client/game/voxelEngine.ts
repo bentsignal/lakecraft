@@ -13,6 +13,12 @@ import {
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import {
+  DEFAULT_DAY_NIGHT_CONFIG,
+  createDayNightState,
+  sampleDayNight,
+  type DayNightConfig,
+} from "./dayNight.ts";
+import {
   BLOCK,
   type BlockId,
   type BlockTarget,
@@ -38,11 +44,19 @@ attribute vec3 aColor;
 uniform mat4 uMvp;
 uniform vec3 uCamera;
 uniform float uFogEnabled;
+uniform float uLightingEnabled;
+uniform vec3 uAmbientColor;
+uniform vec3 uDirectionalColor;
+uniform float uAmbientIntensity;
+uniform float uDirectionalIntensity;
 varying vec3 vColor;
 varying float vFog;
 void main() {
   gl_Position = uMvp * vec4(aPosition, 1.0);
-  vColor = aColor;
+  vec3 lighting = vec3(0.16)
+    + uAmbientColor * uAmbientIntensity * 0.75
+    + uDirectionalColor * uDirectionalIntensity * 0.30;
+  vColor = aColor * mix(vec3(1.0), lighting, uLightingEnabled);
   float distanceFromCamera = length(aPosition - uCamera);
   vFog = uFogEnabled * smoothstep(18.0, 42.0, distanceFromCamera);
 }`;
@@ -366,6 +380,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const cameraLocation = gl.getUniformLocation(program, "uCamera");
   const fogLocation = gl.getUniformLocation(program, "uFogEnabled");
   const fogColorLocation = gl.getUniformLocation(program, "uFogColor");
+  const lightingLocation = gl.getUniformLocation(program, "uLightingEnabled");
+  const ambientColorLocation = gl.getUniformLocation(program, "uAmbientColor");
+  const directionalColorLocation = gl.getUniformLocation(program, "uDirectionalColor");
+  const ambientIntensityLocation = gl.getUniformLocation(program, "uAmbientIntensity");
+  const directionalIntensityLocation = gl.getUniformLocation(program, "uDirectionalIntensity");
   const remoteBuffer = gl.createBuffer();
   const nameplateBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
@@ -373,6 +392,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   const seed = options.seed ?? 7319;
   const radius = Math.max(8, Math.min(40, options.worldRadius ?? 20));
+  const dayNightConfig: DayNightConfig = {
+    cycleLengthMs: options.dayNight?.cycleLengthMs ?? DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs,
+    epochMs: options.dayNight?.epochMs ?? DEFAULT_DAY_NIGHT_CONFIG.epochMs,
+    epochPhase: options.dayNight?.epochPhase ?? DEFAULT_DAY_NIGHT_CONFIG.epochPhase,
+  };
+  const serverTimeOffsetMs = Number.isFinite(options.serverTimeOffsetMs)
+    ? options.serverTimeOffsetMs ?? 0
+    : 0;
+  const dayNightState = createDayNightState();
   const blocks = createTerrain(seed, radius);
   for (const edit of options.initialEdits ?? []) {
     const key = blockKey(edit.x, edit.y, edit.z);
@@ -654,14 +682,29 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const projection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
-    const sky: Vec3 = [0.45, 0.69, 0.86];
-    gl.clearColor(sky[0], sky[1], sky[2], 1);
+    sampleDayNight(Date.now() + serverTimeOffsetMs, dayNightConfig, dayNightState);
+    gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
     gl.useProgram(program);
     gl.uniformMatrix4fv(mvpLocation, false, mvp);
     gl.uniform3fv(cameraLocation, eye);
-    gl.uniform3fv(fogColorLocation, sky);
+    gl.uniform3f(fogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+    gl.uniform3f(
+      ambientColorLocation,
+      dayNightState.ambientR,
+      dayNightState.ambientG,
+      dayNightState.ambientB,
+    );
+    gl.uniform3f(
+      directionalColorLocation,
+      dayNightState.directionalR,
+      dayNightState.directionalG,
+      dayNightState.directionalB,
+    );
+    gl.uniform1f(ambientIntensityLocation, dayNightState.ambientIntensity);
+    gl.uniform1f(directionalIntensityLocation, dayNightState.directionalIntensity);
+    gl.uniform1f(lightingLocation, 1);
     gl.uniform1f(fogLocation, 1);
     visibleChunkCount = 0;
     drawCalls = 0;
@@ -682,6 +725,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (nameplateVertexCount) {
       bindBuffer(nameplateBuffer);
       gl.uniform1f(fogLocation, 0);
+      gl.uniform1f(lightingLocation, 0);
       gl.drawArrays(gl.TRIANGLES, 0, nameplateVertexCount);
       drawCalls += 1;
       avatarDrawCalls += 1;
@@ -701,6 +745,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lines), gl.DYNAMIC_DRAW);
       bindBuffer(lineBuffer);
       gl.uniform1f(fogLocation, 0);
+      gl.uniform1f(lightingLocation, 0);
       gl.drawArrays(gl.LINES, 0, edgeIndices.length);
       drawCalls += 1;
     }
@@ -717,6 +762,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.disable(gl.DEPTH_TEST);
     gl.uniformMatrix4fv(mvpLocation, false, new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]));
     gl.uniform1f(fogLocation, 0);
+    gl.uniform1f(lightingLocation, 0);
     gl.drawArrays(gl.LINES, 0, 4);
     drawCalls += 1;
   }

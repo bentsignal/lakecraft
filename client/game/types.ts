@@ -1,3 +1,5 @@
+import type { DayNightConfig } from "./dayNight.ts";
+
 export const BLOCK = {
   AIR: 0,
   GRASS: 1,
@@ -67,6 +69,10 @@ export interface VoxelEngineOptions {
   initialPose?: Partial<PlayerPose>;
   selectedBlock?: BlockId;
   reach?: number;
+  /** Shared clock configuration. Defaults to an eight-minute alpha cycle. */
+  dayNight?: Partial<DayNightConfig>;
+  /** Add a measured server-minus-client clock skew to Date.now(). */
+  serverTimeOffsetMs?: number;
   /** previousBlock lets inventory code distinguish mining from placement. */
   onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId) => void;
   /** Seconds the primary action must be held before a block is mined. */
