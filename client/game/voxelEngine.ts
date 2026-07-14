@@ -21,11 +21,14 @@ import {
 import { createMobRenderer } from "./mobRenderer.ts";
 import {
   consumeMobContactDamage,
+  applyAuthoritativeMobCombatStates,
   createMobSimulation,
   createMobSpawns,
   damageMob,
+  listMobIds,
   mobTargetHasClickPriority,
   raycastMobs,
+  respawnExpiredAuthoritativeMobs,
   stepMobSimulation,
   writeMobPoseSnapshots,
   type MobPoseSnapshot,
@@ -517,6 +520,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     spawnClearRadius: 6,
     isSpawnable: (_kind, x, y, z) => !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
   }));
+  const mobIds = listMobIds(mobSimulation);
+  let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
   const mobSnapshots: MobPoseSnapshot[] = [];
   const startY = terrainHeight(0, 0, seed) + 1.02;
   const pose: PlayerPose = {
@@ -731,6 +736,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function updateMobs(dt: number): void {
     const startedAt = performance.now();
+    respawnExpiredAuthoritativeMobs(mobSimulation, Date.now() + mobCombatServerTimeOffsetMs);
     mobAccumulatorSeconds = Math.min(0.3, mobAccumulatorSeconds + dt);
     let steps = 0;
     while (mobAccumulatorSeconds >= mobStepSeconds && steps < 3) {
@@ -1050,6 +1056,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!mobTarget || !mobTargetHasClickPriority(mobTarget.distance, target?.distance ?? null)) return false;
     const rawDamage = options.getAttackDamage?.() ?? 1;
     const attackDamage = Number.isFinite(rawDamage) ? Math.max(0, Math.min(100, rawDamage)) : 1;
+    if (options.onMobAttack) {
+      clearMining();
+      void options.onMobAttack({ ...mobTarget }, attackDamage);
+      return true;
+    }
     const result = damageMob(mobSimulation, mobTarget.id, attackDamage);
     if (!result.found) return false;
     clearMining();
@@ -1155,6 +1166,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     applyWorldEdits(edits) {
       for (const edit of edits) setBlock(edit.x, edit.y, edit.z, edit.block);
       if (edits.length) rebuildWorldChunks(dirtyChunkKeysForEdits(edits));
+    },
+    applyMobCombatStates(states, nextServerTimeOffsetMs) {
+      if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
+      applyAuthoritativeMobCombatStates(
+        mobSimulation,
+        states,
+        Date.now() + mobCombatServerTimeOffsetMs,
+      );
+      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    },
+    getMobIds() {
+      return mobIds.slice();
     },
     setSelectedBlock(block) {
       selectedBlock = block;

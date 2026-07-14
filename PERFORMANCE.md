@@ -44,4 +44,5 @@ The anonymous hosted quota is the harder multiplayer constraint: the current pub
 - Interpolate remote state client-side rather than increasing Lakebed heartbeat volume.
 - Cap/paginate append-only feeds and preserve legacy duplicate-collapse helpers for migrated data.
 - Track Lakebed daily mutation and row limits alongside rendering performance.
+- Persist mob combat only on explicit attacks; deterministic movement and local respawn timers must never create Lakebed writes.
 - Do not move multiplayer or persistence to another backend to solve performance.

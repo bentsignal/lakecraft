@@ -65,6 +65,11 @@ import {
 } from "../shared/protocol";
 import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep";
 import {
+  MAX_MOB_ATTACK_DAMAGE,
+  type MobAttackResult,
+  type MobAuthorityQueryResult,
+} from "../shared/mobCombat";
+import {
   decodeWorldChunkSnapshot,
   worldEditChunkCoordinate,
 } from "../shared/worldChunks";
@@ -235,6 +240,8 @@ export function App() {
   const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
   const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
   const worldClock = useQuery<WorldClockSnapshot>("worldClock");
+  const [mobIds, setMobIds] = useState<string[]>([]);
+  const mobAuthority = useQuery<MobAuthorityQueryResult, string[]>("mobAuthority", mobIds);
 
   const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
@@ -245,6 +252,7 @@ export function App() {
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
   const saveChest = useMutation<[coordKey: string, inventoryJson: string, expectedUpdatedAt: string], SaveChestResult>("saveChest");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
+  const attackMob = useMutation<[mobId: string, kind: string, damage: string], MobAttackResult>("attackMob");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
@@ -306,6 +314,20 @@ export function App() {
   function updateInventory(next: Inventory) {
     inventoryRef.current = next;
     setInventory(next);
+  }
+
+  function collectMobDrops(drops: readonly { itemId: string; count: number }[]) {
+    let next = inventoryRef.current;
+    const collected: string[] = [];
+    for (const drop of drops) {
+      if (!(drop.itemId in ITEMS)) continue;
+      const itemId = drop.itemId as ItemId;
+      const added = addItem(next, itemId, drop.count);
+      next = added.inventory;
+      if (drop.count > added.remainder) collected.push(`${drop.count - added.remainder} ${ITEMS[itemId].label}`);
+    }
+    updateInventory(next);
+    if (collected.length) notify("Mob drops collected", collected.join(" · "), "success");
   }
 
   function handleBlockEdit(edit: EngineWorldEdit, previousBlock: EngineBlockId) {
@@ -409,19 +431,19 @@ export function App() {
         getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
         getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
         onUseSelectedItem: () => handleUseItem(),
-        onMobDrops: (drops) => {
-          let next = inventoryRef.current;
-          const collected: string[] = [];
-          for (const drop of drops) {
-            if (!(drop.itemId in ITEMS)) continue;
-            const itemId = drop.itemId as ItemId;
-            const added = addItem(next, itemId, drop.count);
-            next = added.inventory;
-            if (drop.count > added.remainder) collected.push(`${drop.count - added.remainder} ${ITEMS[itemId].label}`);
-          }
-          updateInventory(next);
-          if (collected.length) notify("Mob drops collected", collected.join(" · "), "success");
+        onMobAttack: (target, damage) => {
+          void attackMob(target.id, target.kind, String(Math.max(1, Math.min(MAX_MOB_ATTACK_DAMAGE, Math.floor(damage))))).then((result) => {
+            setConnected(true);
+            if (result.state) {
+              engineRef.current?.applyMobCombatStates([result.state], result.serverNow - Date.now());
+            }
+            if (result.ok && result.killed && result.drops.length) collectMobDrops(result.drops);
+          }).catch(() => {
+            setConnected(false);
+            notify("Attack lost contact", "Lakebed could not confirm that hit.", "warning");
+          });
         },
+        onMobDrops: collectMobDrops,
         onPlayerDamage: (amount) => notify("Zombie hit", `${amount} health lost.`, "warning"),
         onPlayerHealthChange: (health) => {
           survivalRef.current.health = health;
@@ -473,6 +495,7 @@ export function App() {
       });
       engineRef.current = engine;
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
+      setMobIds(engine.getMobIds());
       engine.start();
       return () => {
         engine.destroy();
@@ -491,6 +514,14 @@ export function App() {
       epochPhase: worldClock.epochPhase,
     }, worldClock.serverNow - Date.now());
   }, [worldClock]);
+
+  useEffect(() => {
+    if (!mobAuthority?.ok) return;
+    engineRef.current?.applyMobCombatStates(
+      mobAuthority.states,
+      mobAuthority.serverNow - Date.now(),
+    );
+  }, [mobAuthority]);
 
   useEffect(() => {
     if (!inWorld || !inventoryReady) return;
@@ -823,6 +854,7 @@ export function App() {
       if (document.pointerLockElement) document.exitPointerLock();
       setInWorld(false);
       setChatOpen(false);
+      setMobIds([]);
     }
   }, [inWorld, auth.isLoading, auth.isAuthenticated, auth.isGuest]);
 

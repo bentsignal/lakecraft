@@ -6,6 +6,7 @@ import {
   createMobSimulation,
   createMobSpawns,
   damageMob,
+  listMobIds,
   stepMobSimulation,
   writeMobPoseSnapshots,
   type MobSpawnDescriptor,
@@ -42,6 +43,12 @@ for (const spawn of spawns) {
   assert.equal(spawn.y, heightAt(spawn.x, spawn.z) + 1);
 }
 assert.equal(createMobSpawns({ ...spawnOptions, maxPopulation: 0 }).length, 0);
+
+const boundedIdsSimulation = createMobSimulation(spawns);
+const boundedIds = listMobIds(boundedIdsSimulation);
+assert.deepEqual(boundedIds, boundedIdsSimulation.mobs.map((mob) => mob.id));
+boundedIds[0] = "mutated-copy";
+assert.notEqual(listMobIds(boundedIdsSimulation)[0], "mutated-copy", "mob authority IDs must be returned as a copy");
 assert.equal(
   createMobSpawns({ ...spawnOptions, maxPopulation: 1_000, passivePopulation: 1_000, hostilePopulation: 1_000 }).length,
   HARD_MAX_MOB_POPULATION,

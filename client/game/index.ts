@@ -9,12 +9,15 @@ export {
   MAX_CONTACT_DAMAGE_PER_TICK,
   MOB_COMBAT_AUTHORITY,
   MOB_DEFINITIONS,
+  applyAuthoritativeMobCombatStates,
   consumeMobContactDamage,
   createMobSimulation,
   createMobSpawns,
   damageMob,
+  listMobIds,
   mobTargetHasClickPriority,
   raycastMobs,
+  respawnExpiredAuthoritativeMobs,
   stepMobSimulation,
   writeMobPoseSnapshots,
 } from "./mobs.ts";
@@ -46,5 +49,5 @@ export type {
   VoxelPerformanceStats,
   WorldEdit,
 } from "./types.ts";
-export type { MobBehavior, MobDefinition, MobDrop, MobKind, MobPoseSnapshot, MobRayTarget, MobSimulation, MobState } from "./mobs.ts";
+export type { MobBehavior, MobCombatApplyResult, MobCombatStateSnapshot, MobDefinition, MobDrop, MobKind, MobPoseSnapshot, MobRayTarget, MobSimulation, MobState } from "./mobs.ts";
 export type { DayNightConfig, DayNightState, TimeOfDayLabel } from "./dayNight.ts";

@@ -2,16 +2,19 @@ import assert from "node:assert/strict";
 import {
   MAX_CONTACT_DAMAGE_PER_TICK,
   MOB_COMBAT_AUTHORITY,
+  applyAuthoritativeMobCombatStates,
   consumeMobContactDamage,
   createMobSimulation,
   damageMob,
   mobTargetHasClickPriority,
   raycastMobs,
+  respawnExpiredAuthoritativeMobs,
+  writeMobPoseSnapshots,
   type MobKind,
   type MobSpawnDescriptor,
 } from "../client/game/mobs.ts";
 
-assert.equal(MOB_COMBAT_AUTHORITY, "client-only");
+assert.equal(MOB_COMBAT_AUTHORITY, "lakebed-optional");
 assert.equal(mobTargetHasClickPriority(2.9, 3), true, "a mob in front of a block gets click priority");
 assert.equal(mobTargetHasClickPriority(3.1, 3), false, "a closer block occludes the mob");
 assert.equal(mobTargetHasClickPriority(3, null), true);
@@ -61,5 +64,66 @@ assert.equal(consumeMobContactDamage(contact, player, 0.5, true), 0, "per-zombie
 assert.equal(consumeMobContactDamage(contact, player, 1, true), MAX_CONTACT_DAMAGE_PER_TICK);
 assert.equal(consumeMobContactDamage(contact, { x: 3, y: 0, z: 3 }, 2, true), 0, "contact damage requires overlap");
 assert.equal(consumeMobContactDamage(contact, player, 2, true, 3), 3, "callers may lower the aggregate damage cap");
+
+const authority = createMobSimulation([spawn("cow", "cow-authority", 4, 1, -3)]);
+const authoritativeCow = authority.mobs[0];
+const partial = applyAuthoritativeMobCombatStates(authority, [{
+  mobId: authoritativeCow.id,
+  kind: "cow",
+  health: 6,
+  maxHealth: 10,
+  revision: 1,
+  deadUntil: 0,
+}], 10_000);
+assert.deepEqual(partial, { applied: 1, stale: 0, invalid: 0, unknown: 0 });
+assert.equal(authoritativeCow.health, 6);
+assert.equal(authoritativeCow.alive, true);
+
+const stale = applyAuthoritativeMobCombatStates(authority, [{
+  mobId: authoritativeCow.id,
+  kind: "cow",
+  health: 1,
+  maxHealth: 10,
+  revision: 1,
+  deadUntil: 0,
+}], 10_000);
+assert.equal(stale.stale, 1);
+assert.equal(authoritativeCow.health, 6, "equal or older revisions cannot roll health backward");
+
+const killed = applyAuthoritativeMobCombatStates(authority, [{
+  mobId: authoritativeCow.id,
+  kind: "cow",
+  health: 0,
+  maxHealth: 10,
+  revision: 2,
+  deadUntil: 12_000,
+}], 10_000);
+assert.equal(killed.applied, 1);
+assert.equal(authoritativeCow.alive, false);
+assert.equal(writeMobPoseSnapshots(authority).length, 0);
+assert.equal(respawnExpiredAuthoritativeMobs(authority, 11_999), 0);
+assert.equal(respawnExpiredAuthoritativeMobs(authority, 12_000), 1);
+assert.equal(authoritativeCow.alive, true);
+assert.equal(authoritativeCow.health, 10);
+assert.deepEqual(
+  { x: authoritativeCow.x, y: authoritativeCow.y, z: authoritativeCow.z },
+  { x: 4, y: 1, z: -3 },
+  "expired deaths respawn at the deterministic home pose",
+);
+assert.equal(applyAuthoritativeMobCombatStates(authority, [{
+  mobId: authoritativeCow.id,
+  kind: "cow",
+  health: 0,
+  maxHealth: 10,
+  revision: 2,
+  deadUntil: 12_000,
+}], 12_001).stale, 1, "an old death snapshot cannot kill a locally expired respawn again");
+assert.equal(authoritativeCow.alive, true);
+
+const rejected = applyAuthoritativeMobCombatStates(authority, [
+  { mobId: authoritativeCow.id, kind: "pig", health: 10, maxHealth: 10, revision: 3, deadUntil: 0 },
+  { mobId: "unknown", kind: "cow", health: 10, maxHealth: 10, revision: 1, deadUntil: 0 },
+], 12_001);
+assert.deepEqual(rejected, { applied: 0, stale: 0, invalid: 1, unknown: 1 });
 
 console.log("lakecraft combat model tests: ok");

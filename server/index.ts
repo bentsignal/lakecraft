@@ -29,6 +29,14 @@ import {
   worldEditChunkKey,
   type WorldChunkEditInput
 } from "../shared/worldChunks";
+import {
+  MOB_AUTHORITY_WORLD_SEED_TOKEN,
+  materializeMobAuthorityState,
+  resolveMobAttack,
+  validateMobIdList,
+  validateMobIdentity,
+  type StoredMobAuthorityState
+} from "../shared/mobCombat";
 
 const PLACEABLE_BLOCKS = ["grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest", "bed", "door_closed", "door_open"];
 
@@ -89,6 +97,28 @@ async function maintainWorldChunkSnapshot(
   const value = { chunkKey, snapshotJson: snapshot.snapshotJson };
   if (existing) await db.worldChunks.update(existing.id, value);
   else await db.worldChunks.insert(value);
+}
+
+function databaseRowToStoredMobAuthority(row: Record<string, unknown> | null): StoredMobAuthorityState | null {
+  if (!row) return null;
+  if (
+    typeof row.mobId !== "string"
+    || typeof row.kind !== "string"
+    || typeof row.health !== "string"
+    || typeof row.revision !== "string"
+    || typeof row.deadUntil !== "string"
+    || typeof row.lastAttackAt !== "string"
+    || typeof row.lastAttackerId !== "string"
+  ) return null;
+  return {
+    mobId: row.mobId,
+    kind: row.kind,
+    health: row.health,
+    revision: row.revision,
+    deadUntil: row.deadUntil,
+    lastAttackAt: row.lastAttackAt,
+    lastAttackerId: row.lastAttackerId
+  };
 }
 
 export default capsule({
@@ -173,7 +203,18 @@ export default capsule({
       votedAt: string()
     })
       .index("by_user", ["userId"])
-      .index("by_voted_at", ["votedAt"])
+      .index("by_voted_at", ["votedAt"]),
+
+    /** Sparse combat authority only; mob movement intentionally never enters Lakebed. */
+    mobAuthority: table({
+      mobId: string(),
+      kind: string(),
+      health: string(),
+      revision: string(),
+      deadUntil: string(),
+      lastAttackAt: string(),
+      lastAttackerId: string()
+    }).index("by_mob", ["mobId"])
   },
 
   queries: {
@@ -292,6 +333,31 @@ export default capsule({
         .order("desc")
         .first();
       return worldClockSnapshot(clock, serverNow);
+    }),
+
+    mobAuthority: query(async (ctx, rawMobIds: string[]) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", states: [], serverNow };
+      }
+      const validation = validateMobIdList(rawMobIds, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+      if (!validation.ok) return { ok: false, reason: validation.reason, states: [], serverNow };
+      const states = [];
+      for (const mobId of validation.mobIds) {
+        const identity = validateMobIdentity(mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+        if (!identity.ok) continue;
+        const row = await ctx.db.mobAuthority
+          .withIndex("by_mob", (q) => q.eq("mobId", mobId))
+          .order("desc")
+          .first();
+        states.push(materializeMobAuthorityState(
+          databaseRowToStoredMobAuthority(row),
+          identity.mobId,
+          identity.kind,
+          serverNow,
+        ));
+      }
+      return { ok: true, states, serverNow };
     })
   },
 
@@ -555,6 +621,37 @@ export default capsule({
         sleepingPlayers: status.sleepingPlayers,
         requiredPlayers: status.requiredPlayers,
         clock: morningClockSnapshot(serverNow)
+      };
+    }),
+
+    attackMob: mutation(async (ctx, rawMobId: string, rawKind: string, rawDamage: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const identity = validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+      if (!identity.ok) return { ok: false, reason: identity.reason, serverNow };
+      const existing = await ctx.db.mobAuthority
+        .withIndex("by_mob", (q) => q.eq("mobId", identity.mobId))
+        .order("desc")
+        .first();
+      const resolution = resolveMobAttack({
+        stored: databaseRowToStoredMobAuthority(existing),
+        rawMobId: identity.mobId,
+        rawKind: identity.kind,
+        rawDamage,
+        attackerId: ctx.auth.userId,
+        serverNow,
+      });
+      if (!resolution.ok) return { ...resolution, serverNow };
+      if (existing) await ctx.db.mobAuthority.update(existing.id, resolution.nextRow);
+      else await ctx.db.mobAuthority.insert(resolution.nextRow);
+      return {
+        ok: true,
+        killed: resolution.killed,
+        drops: resolution.drops,
+        state: resolution.state,
+        serverNow,
       };
     }),
 

@@ -1,9 +1,11 @@
+import type { MobAuthorityState } from "../../shared/mobCombat.ts";
+
 export type MobKind = "pig" | "cow" | "sheep" | "zombie";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase";
 export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh";
 
-/** Combat currently exists only in one browser simulation and is never persisted. */
-export const MOB_COMBAT_AUTHORITY = "client-only" as const;
+/** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
+export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
 
 export interface MobDropDefinition {
   itemId: MobDropId;
@@ -116,6 +118,7 @@ export interface MobSpawnOptions {
 }
 
 export interface MobState extends MobSpawnDescriptor {
+  homeY: number;
   previousX: number;
   previousY: number;
   previousZ: number;
@@ -132,6 +135,8 @@ export interface MobState extends MobSpawnDescriptor {
   randomState: number;
   damageSequence: number;
   nextContactDamageAtSeconds: number;
+  authoritativeRevision: number;
+  authoritativeDeadUntil: number;
 }
 
 export interface MobSimulation {
@@ -183,6 +188,19 @@ export interface MobDamageResult {
   killed: boolean;
   remainingHealth: number;
   drops: MobDrop[];
+}
+
+/** Minimal client view of the bounded state returned by shared mob-combat queries. */
+export type MobCombatStateSnapshot = Pick<
+  MobAuthorityState,
+  "mobId" | "kind" | "health" | "maxHealth" | "revision" | "deadUntil"
+>;
+
+export interface MobCombatApplyResult {
+  applied: number;
+  stale: number;
+  invalid: number;
+  unknown: number;
 }
 
 export interface MobRayTarget {
@@ -292,6 +310,7 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
     const spawn = spawns[index];
     mobs[index] = {
       ...spawn,
+      homeY: spawn.y,
       previousX: spawn.x,
       previousY: spawn.y,
       previousZ: spawn.z,
@@ -308,9 +327,16 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
       randomState: spawn.behaviorSeed || 0x6d2b79f5,
       damageSequence: 0,
       nextContactDamageAtSeconds: 0,
+      authoritativeRevision: -1,
+      authoritativeDeadUntil: 0,
     };
   }
   return { elapsedSeconds: 0, tick: 0, mobs };
+}
+
+/** Returns a stable-order copy suitable for the bounded Lakebed authority query. */
+export function listMobIds(simulation: Readonly<MobSimulation>): string[] {
+  return simulation.mobs.slice(0, HARD_MAX_MOB_POPULATION).map((mob) => mob.id);
 }
 
 function choosePassiveBehavior(mob: MobState, elapsedSeconds: number): void {
@@ -496,6 +522,97 @@ export function damageMob(simulation: MobSimulation, id: string, rawDamage: numb
   if (mob.health > 0) return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
   mob.alive = false;
   return { found: true, killed: true, remainingHealth: 0, drops: rollDrops(mob) };
+}
+
+function resetMobAtHome(mob: MobState): void {
+  mob.x = mob.homeX;
+  mob.y = mob.homeY;
+  mob.z = mob.homeZ;
+  mob.previousX = mob.homeX;
+  mob.previousY = mob.homeY;
+  mob.previousZ = mob.homeZ;
+  mob.health = MOB_DEFINITIONS[mob.kind].maxHealth;
+  mob.alive = true;
+  mob.behavior = mob.kind === "zombie" ? "dormant" : "idle";
+  mob.behaviorUntilSeconds = 0;
+  mob.directionX = 0;
+  mob.directionZ = 0;
+  mob.desiredX = mob.homeX;
+  mob.desiredZ = mob.homeZ;
+  mob.hostileActive = false;
+  mob.nextContactDamageAtSeconds = 0;
+}
+
+/**
+ * Applies only newer combat revisions to deterministic local mobs. Movement
+ * remains local, while health, death, and the respawn window follow Lakebed.
+ */
+export function applyAuthoritativeMobCombatStates(
+  simulation: MobSimulation,
+  states: readonly MobCombatStateSnapshot[],
+  serverNow: number,
+): MobCombatApplyResult {
+  const byId = new Map(simulation.mobs.map((mob) => [mob.id, mob]));
+  const now = Number.isFinite(serverNow) ? serverNow : 0;
+  const result: MobCombatApplyResult = { applied: 0, stale: 0, invalid: 0, unknown: 0 };
+  for (const state of states) {
+    const mob = byId.get(state.mobId);
+    if (!mob) {
+      result.unknown += 1;
+      continue;
+    }
+    if (state.kind !== mob.kind
+      || !Number.isFinite(state.health)
+      || !Number.isFinite(state.maxHealth)
+      || !Number.isFinite(state.revision)
+      || !Number.isFinite(state.deadUntil)
+      || !Number.isInteger(state.health)
+      || !Number.isInteger(state.revision)
+      || !Number.isInteger(state.deadUntil)
+      || state.maxHealth !== MOB_DEFINITIONS[mob.kind].maxHealth
+      || state.health < 0
+      || state.health > state.maxHealth
+      || state.revision < 0
+      || state.deadUntil < 0) {
+      result.invalid += 1;
+      continue;
+    }
+    const revision = Math.floor(state.revision);
+    if (revision <= mob.authoritativeRevision) {
+      result.stale += 1;
+      continue;
+    }
+    mob.authoritativeRevision = revision;
+    mob.authoritativeDeadUntil = Math.max(0, state.deadUntil);
+    const dead = mob.authoritativeDeadUntil > now;
+    if (dead) {
+      mob.health = 0;
+      mob.alive = false;
+      mob.hostileActive = false;
+      mob.directionX = 0;
+      mob.directionZ = 0;
+    } else if (!mob.alive || state.health <= 0) {
+      resetMobAtHome(mob);
+    } else {
+      mob.health = Math.max(0, Math.min(MOB_DEFINITIONS[mob.kind].maxHealth, state.health));
+      mob.alive = mob.health > 0;
+    }
+    result.applied += 1;
+  }
+  return result;
+}
+
+/** Respawns dead authoritative mobs once their Lakebed deadline has elapsed. */
+export function respawnExpiredAuthoritativeMobs(simulation: MobSimulation, serverNow: number): number {
+  if (!Number.isFinite(serverNow)) return 0;
+  let respawned = 0;
+  for (const mob of simulation.mobs) {
+    if (mob.alive || mob.authoritativeRevision < 0 || mob.authoritativeDeadUntil <= 0 || serverNow < mob.authoritativeDeadUntil) continue;
+    mob.authoritativeDeadUntil = 0;
+    resetMobAtHome(mob);
+    respawned += 1;
+  }
+  return respawned;
 }
 
 function rayAxisInterval(

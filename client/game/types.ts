@@ -1,5 +1,5 @@
 import type { DayNightConfig } from "./dayNight.ts";
-import type { MobDrop } from "./mobs.ts";
+import type { MobCombatStateSnapshot, MobDrop, MobRayTarget } from "./mobs.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -102,12 +102,15 @@ export interface VoxelEngineOptions {
   onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId) => void;
   /** Seconds the primary action must be held before a block is mined. */
   getMiningDuration?: (block: BlockId) => number;
-  /**
-   * Client-authoritative alpha combat hooks. Mob health, damage, and drops are
-   * intentionally local-only and are not synchronized or persisted by Lakebed.
-   */
+  /** Combat damage used by either Lakebed authority or the local fallback. */
   getAttackDamage?: () => number;
+  /**
+   * When configured, attacks are delegated without optimistic local damage or
+   * drops. Apply the resulting/query state through `applyMobCombatStates`.
+   */
+  onMobAttack?: (target: Readonly<MobRayTarget>, damage: number) => void | Promise<void>;
   getPlayerProtection?: () => number;
+  /** Used only by the client-local fallback when `onMobAttack` is absent. */
   onMobDrops?: (drops: readonly MobDrop[]) => void;
   onPlayerDamage?: (amount: number) => void;
   onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
@@ -126,6 +129,9 @@ export interface VoxelEngine {
   start(): void;
   destroy(): void;
   applyWorldEdits(edits: readonly WorldEdit[]): void;
+  applyMobCombatStates(states: readonly MobCombatStateSnapshot[], serverTimeOffsetMs?: number): void;
+  /** Stable deterministic IDs used by the bounded Lakebed authority query. */
+  getMobIds(): string[];
   setSelectedBlock(block: BlockId): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
