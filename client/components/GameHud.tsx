@@ -1,4 +1,4 @@
-import type { Inventory, Recipe } from "../../shared/game";
+import type { ArmorSlot, Equipment, Inventory, Recipe } from "../../shared/game";
 import { ControlsCard } from "./ControlsCard";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
@@ -9,6 +9,7 @@ import { ToastSurface, type HudMessage } from "./ToastSurface";
 
 export type GameHudProps = StatusStripProps & {
   inventory: Inventory;
+  equipment: Equipment;
   selectedIndex: number;
   inventoryOpen: boolean;
   messages?: readonly HudMessage[];
@@ -16,6 +17,8 @@ export type GameHudProps = StatusStripProps & {
   mobileUnsupported?: boolean;
   onSelectHotbar: (index: number) => void;
   onCraft: (recipe: Recipe) => void;
+  onEquipArmor: (inventoryIndex: number) => void;
+  onUnequipArmor: (slot: ArmorSlot) => void;
   onCloseInventory: () => void;
   onDismissControls?: () => void;
   onDismissMessage?: (id: string) => void;
@@ -28,6 +31,7 @@ export function Crosshair() {
 
 export function GameHud({
   inventory,
+  equipment,
   selectedIndex,
   inventoryOpen,
   messages = [],
@@ -35,6 +39,8 @@ export function GameHud({
   mobileUnsupported = false,
   onSelectHotbar,
   onCraft,
+  onEquipArmor,
+  onUnequipArmor,
   onCloseInventory,
   onDismissControls,
   onDismissMessage,
@@ -51,7 +57,7 @@ export function GameHud({
         <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
         <ToastSurface messages={messages} onDismiss={onDismissMessage} />
       </div>
-      <InventoryCraftingDrawer inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onSelectSlot={onSelectHotbar} open={inventoryOpen} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} open={inventoryOpen} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );

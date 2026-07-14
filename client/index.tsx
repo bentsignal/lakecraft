@@ -19,13 +19,19 @@ import {
   addItem,
   clampHotbarIndex,
   craftRecipe,
+  createEmptyEquipment,
   createSerializablePlayerState,
   createStarterInventory,
+  equipArmorFromInventory,
   getMiningDrop,
   miningSeconds,
+  normalizeEquipment,
   normalizeInventory,
   removeItem,
+  unequipArmor,
+  type ArmorSlot,
   type BlockId,
+  type Equipment,
   type Inventory,
   type ItemId,
   type Recipe,
@@ -138,13 +144,14 @@ function toEngineEdits(events: WorldEdit[]): EngineWorldEdit[] {
   });
 }
 
-function parsePlayerState(row: PersistedInventory | null): { inventory: Inventory; selectedHotbar: number } | null {
+function parsePlayerState(row: PersistedInventory | null): { inventory: Inventory; selectedHotbar: number; equipment: Equipment } | null {
   if (!row) return null;
   try {
     const value = JSON.parse(row.inventoryJson) as { inventory?: unknown; selectedHotbar?: unknown };
     return {
       inventory: normalizeInventory(value.inventory),
       selectedHotbar: clampHotbarIndex(typeof value.selectedHotbar === "number" ? value.selectedHotbar : 0),
+      equipment: normalizeEquipment((value as { equipment?: unknown }).equipment),
     };
   } catch {
     return null;
@@ -181,6 +188,7 @@ export function App() {
   const toastCounter = useRef(0);
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
+  const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
   const [selectedHotbar, setSelectedHotbar] = useState(2);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pointerLocked, setPointerLocked] = useState(false);
@@ -269,6 +277,7 @@ export function App() {
       updateInventory(saved.inventory);
       selectedRef.current = saved.selectedHotbar;
       setSelectedHotbar(saved.selectedHotbar);
+      setEquipment(saved.equipment);
       notify("Field kit restored", "Lakebed recovered your last inventory.", "success");
     }
     setInventoryReady(true);
@@ -277,14 +286,14 @@ export function App() {
   useEffect(() => {
     if (!hydratedRef.current || !auth.isAuthenticated || auth.isGuest) return;
     const timer = window.setTimeout(() => {
-      const state = createSerializablePlayerState(inventory, selectedHotbar);
+      const state = createSerializablePlayerState(inventory, selectedHotbar, equipment);
       void saveInventory(JSON.stringify(state)).then(() => setConnected(true)).catch(() => {
         setConnected(false);
         notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
       });
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [inventory, selectedHotbar, auth.isAuthenticated, auth.isGuest]);
+  }, [inventory, selectedHotbar, equipment, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
     if (!inWorld || !inventoryReady) return;
@@ -414,6 +423,25 @@ export function App() {
     }
     updateInventory(result.inventory);
     notify(`Made ${ITEMS[result.crafted.itemId].label}`, `Added ${result.crafted.count} to your field kit.`, "success");
+  }
+
+  function handleEquipArmor(index: number) {
+    const equippedItem = inventory[index]?.itemId;
+    const result = equipArmorFromInventory(inventory, equipment, index);
+    if (!result.ok) return;
+    updateInventory(result.inventory);
+    setEquipment(result.equipment);
+    notify("Armor equipped", equippedItem ? ITEMS[equippedItem].label : undefined, "success");
+  }
+
+  function handleUnequipArmor(slot: ArmorSlot) {
+    const result = unequipArmor(inventory, equipment, slot);
+    if (!result.ok) {
+      if (result.reason === "inventory_full") notify("Pack is full", "Clear a pocket before removing armor.", "warning");
+      return;
+    }
+    updateInventory(result.inventory);
+    setEquipment(result.equipment);
   }
 
   function handleUsernameClaim(value: string) {
@@ -577,6 +605,7 @@ export function App() {
 
       <GameHud
         connected={connected}
+        equipment={equipment}
         inventory={inventory}
         inventoryOpen={inventoryOpen}
         messages={messages}
@@ -587,7 +616,9 @@ export function App() {
         onCraft={handleCraft}
         onDismissControls={() => setShowControls(false)}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
+        onEquipArmor={handleEquipArmor}
         onSelectHotbar={(index) => setSelectedHotbar(clampHotbarIndex(index))}
+        onUnequipArmor={handleUnequipArmor}
         playerName={profile?.username ?? auth.displayName}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}

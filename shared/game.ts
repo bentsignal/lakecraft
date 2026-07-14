@@ -16,6 +16,7 @@ export type ItemId = BlockId | "stick" | "leather" | ToolId | ArmorId;
 export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
 export type ToolTier = "none" | "wood" | "stone";
 export type ArmorSlot = "head" | "chest" | "legs" | "feet";
+export type Equipment = Record<ArmorSlot, ArmorId | null>;
 
 export type BlockDefinition = {
   id: BlockId;
@@ -61,7 +62,12 @@ export type CraftResult =
 export type SerializablePlayerState = {
   inventory: Inventory;
   selectedHotbar: number;
+  equipment: Equipment;
 };
+
+export type EquipResult =
+  | { ok: true; inventory: Inventory; equipment: Equipment }
+  | { ok: false; inventory: Inventory; equipment: Equipment; reason: "not_armor" | "empty_slot" | "inventory_full" };
 
 export const BLOCKS: Record<BlockId, BlockDefinition> = {
   grass: { id: "grass", label: "Grass", description: "A living cap over packed earth.", color: "#718447", accent: "#a7b76a", hardness: 0.75, preferredTool: "shovel", drop: "dirt" },
@@ -132,6 +138,22 @@ export const RECIPES: readonly Recipe[] = [
 
 export function createEmptyInventory(size = INVENTORY_SIZE): Inventory {
   return Array.from({ length: Math.max(HOTBAR_SIZE, Math.floor(size)) }, () => null);
+}
+
+export function createEmptyEquipment(): Equipment {
+  return { head: null, chest: null, legs: null, feet: null };
+}
+
+export function normalizeEquipment(value: unknown): Equipment {
+  const equipment = createEmptyEquipment();
+  if (!value || typeof value !== "object") return equipment;
+  for (const slot of Object.keys(equipment) as ArmorSlot[]) {
+    const itemId = (value as Partial<Record<ArmorSlot, unknown>>)[slot];
+    if (typeof itemId === "string" && itemId in ITEMS && ITEMS[itemId as ItemId].armor?.slot === slot) {
+      equipment[slot] = itemId as ArmorId;
+    }
+  }
+  return equipment;
 }
 
 export function createStarterInventory(): Inventory {
@@ -265,6 +287,37 @@ export function armorProtection(itemId?: ItemId | null): number {
   return itemId ? ITEMS[itemId].armor?.protection ?? 0 : 0;
 }
 
-export function createSerializablePlayerState(inventory: readonly (ItemStack | null)[] = createStarterInventory(), selectedHotbar = 0): SerializablePlayerState {
-  return { inventory: normalizeInventory(inventory), selectedHotbar: clampHotbarIndex(selectedHotbar) };
+export function equippedArmorProtection(equipment: Equipment): number {
+  return (Object.values(equipment) as Array<ArmorId | null>).reduce((total, itemId) => total + armorProtection(itemId), 0);
+}
+
+export function equipArmorFromInventory(inventory: readonly (ItemStack | null)[], equipment: Equipment, inventoryIndex: number): EquipResult {
+  const nextInventory = cloneInventory(inventory);
+  const nextEquipment = normalizeEquipment(equipment);
+  const stack = nextInventory[inventoryIndex];
+  const armor = stack ? ITEMS[stack.itemId].armor : undefined;
+  if (!stack) return { ok: false, inventory: nextInventory, equipment: nextEquipment, reason: "empty_slot" };
+  if (!armor) return { ok: false, inventory: nextInventory, equipment: nextEquipment, reason: "not_armor" };
+  const previous = nextEquipment[armor.slot];
+  nextEquipment[armor.slot] = stack.itemId as ArmorId;
+  nextInventory[inventoryIndex] = previous ? { itemId: previous, count: 1 } : null;
+  return { ok: true, inventory: nextInventory, equipment: nextEquipment };
+}
+
+export function unequipArmor(inventory: readonly (ItemStack | null)[], equipment: Equipment, slot: ArmorSlot): EquipResult {
+  const nextEquipment = normalizeEquipment(equipment);
+  const itemId = nextEquipment[slot];
+  if (!itemId) return { ok: false, inventory: cloneInventory(inventory), equipment: nextEquipment, reason: "empty_slot" };
+  const added = addItem(inventory, itemId, 1);
+  if (added.remainder) return { ok: false, inventory: cloneInventory(inventory), equipment: nextEquipment, reason: "inventory_full" };
+  nextEquipment[slot] = null;
+  return { ok: true, inventory: added.inventory, equipment: nextEquipment };
+}
+
+export function createSerializablePlayerState(
+  inventory: readonly (ItemStack | null)[] = createStarterInventory(),
+  selectedHotbar = 0,
+  equipment: Equipment = createEmptyEquipment()
+): SerializablePlayerState {
+  return { inventory: normalizeInventory(inventory), selectedHotbar: clampHotbarIndex(selectedHotbar), equipment: normalizeEquipment(equipment) };
 }

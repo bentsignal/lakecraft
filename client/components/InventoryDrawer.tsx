@@ -1,24 +1,30 @@
-import { ITEMS, RECIPES, canCraft, countItem, type Inventory, type Recipe } from "../../shared/game";
+import { ITEMS, RECIPES, canCraft, countItem, equippedArmorProtection, type ArmorSlot, type Equipment, type Inventory, type Recipe } from "../../shared/game";
 import { IngredientGlyph, ItemGlyph } from "./ItemGlyph";
 
 export type InventoryCraftingDrawerProps = {
   open: boolean;
   inventory: Inventory;
+  equipment: Equipment;
   selectedIndex?: number;
   recipes?: readonly Recipe[];
   onClose: () => void;
   onCraft: (recipe: Recipe) => void;
+  onEquipArmor: (inventoryIndex: number) => void;
+  onUnequipArmor: (slot: ArmorSlot) => void;
   onSelectSlot?: (index: number) => void;
 };
 
 export function InventoryCraftingDrawer({
   open,
   inventory,
+  equipment,
   selectedIndex = 0,
   recipes = RECIPES,
   onClose,
   onCraft,
+  onEquipArmor,
   onSelectSlot,
+  onUnequipArmor,
 }: InventoryCraftingDrawerProps) {
   if (!open) return null;
   return (
@@ -39,7 +45,7 @@ export function InventoryCraftingDrawer({
                   aria-label={`${index + 1}: ${stack ? ITEMS[stack.itemId].label + `, ${stack.count}` : "Empty"}`}
                   className={`lc-slot lc-inventory-grid__slot${index === selectedIndex ? " is-selected" : ""}`}
                   key={index}
-                  onClick={() => onSelectSlot?.(index)}
+                  onClick={() => stack && ITEMS[stack.itemId].armor ? onEquipArmor(index) : index < 9 ? onSelectSlot?.(index) : undefined}
                   title={stack ? ITEMS[stack.itemId].description : "Empty pocket"}
                   type="button"
                 >
@@ -47,6 +53,17 @@ export function InventoryCraftingDrawer({
                   <ItemGlyph stack={stack} />
                 </button>
               ))}
+            </div>
+            <div className="lc-armor-rack" aria-label="Equipped armor">
+              <div><strong>Worn armor</strong><small>{equippedArmorProtection(equipment)} protection</small></div>
+              {(Object.keys(equipment) as ArmorSlot[]).map((slot) => {
+                const itemId = equipment[slot];
+                return (
+                  <button className={`lc-armor-slot${itemId ? " is-equipped" : ""}`} disabled={!itemId} key={slot} onClick={() => onUnequipArmor(slot)} title={itemId ? `Remove ${ITEMS[itemId].label}` : `${slot} armor slot`} type="button">
+                    <span>{slot}</span><ItemGlyph stack={itemId ? { itemId, count: 1 } : null} />
+                  </button>
+                );
+              })}
             </div>
             <p className="lc-pencil-note">Hotbar occupies pockets 01—09. Press a number key to ready an item.</p>
           </section>

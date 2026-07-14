@@ -8,10 +8,16 @@ import {
   attackDamage,
   countItem,
   craftRecipe,
+  createEmptyEquipment,
   createEmptyInventory,
+  createSerializablePlayerState,
+  equipArmorFromInventory,
+  equippedArmorProtection,
   miningSeconds,
+  normalizeEquipment,
   normalizeInventory,
   toolEffectiveness,
+  unequipArmor,
   type Inventory,
   type Recipe,
 } from "../shared/game.ts";
@@ -95,5 +101,30 @@ assert.ok(miningSeconds("stone", "stone_pickaxe") < miningSeconds("stone", "ston
 assert.equal(attackDamage("wooden_sword"), 4);
 assert.equal(attackDamage("stone_sword"), 5);
 assert.ok(attackDamage("stone_sword") > attackDamage("stone_axe"));
+
+const equipmentInventory = createEmptyInventory();
+equipmentInventory[4] = { itemId: "leather_chestplate", count: 1 };
+const equipped = equipArmorFromInventory(equipmentInventory, createEmptyEquipment(), 4);
+assert.equal(equipped.ok, true);
+assert.equal(equipped.equipment.chest, "leather_chestplate");
+assert.equal(equipped.inventory[4], null);
+assert.equal(equippedArmorProtection(equipped.equipment), 3);
+const unequipped = unequipArmor(equipped.inventory, equipped.equipment, "chest");
+assert.equal(unequipped.ok, true);
+assert.equal(unequipped.equipment.chest, null);
+assert.equal(countItem(unequipped.inventory, "leather_chestplate"), 1);
+
+const corruptEquipment = normalizeEquipment({ head: "stone_sword", chest: "leather_helmet", feet: "leather_boots" });
+assert.deepEqual(corruptEquipment, { head: null, chest: null, legs: null, feet: "leather_boots" });
+const legacyState = createSerializablePlayerState([], 99, normalizeEquipment(undefined));
+assert.deepEqual(legacyState.equipment, createEmptyEquipment());
+assert.equal(legacyState.selectedHotbar, 8);
+
+const fullInventory = Array.from({ length: 27 }, () => ({ itemId: "stone_sword" as const, count: 1 }));
+const fullEquipment = { ...createEmptyEquipment(), head: "leather_helmet" as const };
+const failedUnequip = unequipArmor(fullInventory, fullEquipment, "head");
+assert.equal(failedUnequip.ok, false);
+assert.equal(failedUnequip.equipment.head, "leather_helmet");
+assert.equal(countItem(failedUnequip.inventory, "leather_helmet"), 0);
 
 console.log("lakecraft progression tests: ok");
