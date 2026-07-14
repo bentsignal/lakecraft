@@ -21,6 +21,7 @@ import {
 import { createMobRenderer } from "./mobRenderer.ts";
 import {
   consumeMobContactDamage,
+  consumeMobProjectileDamage,
   applyAuthoritativeMobCombatStates,
   createMobSimulation,
   createMobSpawns,
@@ -31,7 +32,9 @@ import {
   respawnExpiredAuthoritativeMobs,
   stepMobSimulation,
   writeMobPoseSnapshots,
+  writeMobProjectileSnapshots,
   type MobPoseSnapshot,
+  type MobProjectileSnapshot,
 } from "./mobs.ts";
 import {
   BLOCK,
@@ -254,7 +257,7 @@ export function tryInteractBlock(
   target: BlockTarget,
   onInteractBlock?: (target: BlockTarget) => boolean,
 ): boolean {
-  if ((target.block.block !== BLOCK.CHEST && target.block.block !== BLOCK.BED) || !onInteractBlock) return false;
+  if ((target.block.block !== BLOCK.CHEST && target.block.block !== BLOCK.BED && target.block.block !== BLOCK.CRAFTING_TABLE) || !onInteractBlock) return false;
   return onInteractBlock(target) === true;
 }
 
@@ -523,6 +526,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobIds = listMobIds(mobSimulation);
   let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
   const mobSnapshots: MobPoseSnapshot[] = [];
+  const mobProjectileSnapshots: MobProjectileSnapshot[] = [];
   const startY = terrainHeight(0, 0, seed) + 1.02;
   const pose: PlayerPose = {
     x: options.initialPose?.x ?? 0.5,
@@ -747,21 +751,24 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         terrainHeight: (x, z) => terrainHeight(x, z, seed),
         player: pose,
         canOccupy: mobCanOccupy,
+        isProjectileBlocked: (x, y, z) => blockHasCollision(getBlock(Math.floor(x), Math.floor(y), Math.floor(z))),
         worldRadius: radius - 1,
       });
       mobAccumulatorSeconds -= mobStepSeconds;
       steps += 1;
+      const contactDamage = consumeMobContactDamage(
+        mobSimulation,
+        pose,
+        mobSimulation.elapsedSeconds,
+        isNight,
+      );
+      const projectileDamage = consumeMobProjectileDamage(mobSimulation);
       if (playerHealth > 0) {
-        const contactDamage = consumeMobContactDamage(
-          mobSimulation,
-          pose,
-          mobSimulation.elapsedSeconds,
-          isNight,
-        );
-        if (contactDamage > 0) {
+        const incomingDamage = contactDamage + projectileDamage;
+        if (incomingDamage > 0) {
           const rawProtection = options.getPlayerProtection?.() ?? 0;
           const protection = Number.isFinite(rawProtection) ? Math.max(0, Math.min(20, rawProtection)) : 0;
-          const mitigatedDamage = Math.max(1, contactDamage - Math.floor(protection / 2));
+          const mitigatedDamage = Math.max(1, incomingDamage - Math.floor(protection / 2));
           const appliedDamage = Math.min(playerHealth, mitigatedDamage);
           playerHealth -= appliedDamage;
           options.onPlayerDamage?.(appliedDamage);
@@ -770,6 +777,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
     }
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
     lastMobSimulationMs = performance.now() - startedAt;
   }
 
@@ -901,6 +909,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       facing[2],
       Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
       now / 1_000,
+      mobProjectileSnapshots,
     );
     mobVertexCount = mobStats.vertexCount;
     visibleMobCount = mobStats.visibleMobCount;

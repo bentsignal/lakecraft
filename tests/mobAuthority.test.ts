@@ -17,6 +17,7 @@ import {
 } from "../shared/mobCombat.ts";
 
 assert.deepEqual(validateMobIdentity("pig-5nf-0"), { ok: true, mobId: "pig-5nf-0", kind: "pig" });
+assert.deepEqual(validateMobIdentity("skeleton-5nf-4"), { ok: true, mobId: "skeleton-5nf-4", kind: "skeleton" });
 assert.equal(validateMobIdentity("pig-5nf-0", "pig").ok, true);
 assert.equal(validateMobIdentity("pig-5nf-0", "cow").ok, false);
 assert.equal(validateMobIdentity("pig-5nb-0", "pig", MOB_AUTHORITY_WORLD_SEED_TOKEN).ok, true);
@@ -44,6 +45,7 @@ for (const damage of ["0", "1.5", "NaN", "Infinity", String(MAX_MOB_ATTACK_DAMAG
 }
 assert.equal(defaultMobAuthorityState("sheep-5nf-1", "sheep").health, MOB_AUTHORITY_DEFINITIONS.sheep.maxHealth);
 assert.equal(defaultMobAuthorityState("zombie-5nf-2", "zombie").health, 20);
+assert.equal(defaultMobAuthorityState("skeleton-5nf-3", "skeleton").health, 20);
 
 const first = resolveMobAttack({
   rawMobId: "pig-5nf-0",
@@ -125,6 +127,31 @@ assert.ok(afterRespawnAttack.ok);
 assert.equal(afterRespawnAttack.state.health, 7);
 assert.equal(afterRespawnAttack.state.revision, 3);
 
+const skeletonHit = resolveMobAttack({
+  rawMobId: "skeleton-5nf-4",
+  rawKind: "skeleton",
+  rawDamage: 12,
+  attackerId: "alice",
+  serverNow: 10_000,
+});
+assert.ok(skeletonHit.ok);
+const skeletonFatal = resolveMobAttack({
+  stored: skeletonHit.ok ? skeletonHit.nextRow : undefined,
+  rawMobId: "skeleton-5nf-4",
+  rawKind: "skeleton",
+  rawDamage: 8,
+  attackerId: "alice",
+  serverNow: 10_000 + MOB_ATTACK_COOLDOWN_MS,
+});
+assert.ok(skeletonFatal.ok && skeletonFatal.killed);
+assert.deepEqual(
+  skeletonFatal.ok ? skeletonFatal.drops : [],
+  deterministicMobDrops("skeleton-5nf-4", "skeleton", 2),
+);
+if (skeletonFatal.ok) {
+  assert.ok(skeletonFatal.drops.every((drop) => drop.itemId === "stick" && drop.count <= 2));
+}
+
 const corrupted: StoredMobAuthorityState = {
   mobId: "cow-5nf-2",
   kind: "cow",
@@ -156,7 +183,7 @@ assert.equal(resolveMobAttack({
   serverNow: 1,
 }).ok, false);
 
-for (const kind of ["pig", "cow", "sheep", "zombie"] as const) {
+for (const kind of ["pig", "cow", "sheep", "zombie", "skeleton"] as const) {
   const a = deterministicMobDrops(`${kind}-5nf-0`, kind, 9);
   const b = deterministicMobDrops(`${kind}-5nf-0`, kind, 9);
   assert.deepEqual(b, a);

@@ -22,6 +22,7 @@ export type ArmorId = "leather_helmet" | "leather_chestplate" | "leather_legging
 export type ItemId = BlockId | "stick" | "leather" | "wool" | "pork" | "beef" | "mutton" | "rotten_flesh" | ToolId | ArmorId;
 export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
 export type ToolTier = "none" | "wood" | "stone";
+export type CraftingContext = "field" | "crafting_table";
 export type ArmorSlot = "head" | "chest" | "legs" | "feet";
 export type Equipment = Record<ArmorSlot, ArmorId | null>;
 
@@ -33,6 +34,7 @@ export type BlockDefinition = {
   accent: string;
   hardness: number;
   preferredTool: ToolKind;
+  requiredDropTool?: { kind: Exclude<ToolKind, "hand">; minimumTier: Exclude<ToolTier, "none"> };
   drop: ItemId | null;
 };
 
@@ -82,13 +84,14 @@ export type Recipe = {
   id: string;
   label: string;
   note: string;
+  craftingContext: CraftingContext;
   ingredients: ItemQuantity[];
   output: ItemQuantity;
 };
 
 export type CraftResult =
   | { ok: true; inventory: Inventory; crafted: ItemQuantity }
-  | { ok: false; inventory: Inventory; reason: "missing_ingredients" | "inventory_full" | "unknown_recipe" };
+  | { ok: false; inventory: Inventory; reason: "missing_ingredients" | "inventory_full" | "unknown_recipe" | "requires_crafting_table" };
 
 export type SerializablePlayerState = {
   inventory: Inventory;
@@ -113,9 +116,9 @@ export type EquipResult =
 export const BLOCKS: Record<BlockId, BlockDefinition> = {
   grass: { id: "grass", label: "Grass", description: "A living cap over packed earth.", color: "#718447", accent: "#a7b76a", hardness: 0.75, preferredTool: "shovel", drop: "dirt" },
   dirt: { id: "dirt", label: "Dirt", description: "Soft earth for quick shelter walls.", color: "#7f5638", accent: "#ad7951", hardness: 0.65, preferredTool: "shovel", drop: "dirt" },
-  stone: { id: "stone", label: "Stone", description: "Dense fieldstone. A pickaxe works best.", color: "#6d7069", accent: "#9a9c91", hardness: 2.5, preferredTool: "pickaxe", drop: "stone" },
+  stone: { id: "stone", label: "Stone", description: "Dense fieldstone. A pickaxe is required to recover it.", color: "#6d7069", accent: "#9a9c91", hardness: 2.5, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "stone" },
   log: { id: "log", label: "Oak Log", description: "Fresh timber. An axe speeds the work.", color: "#76502f", accent: "#bd8a50", hardness: 1.6, preferredTool: "axe", drop: "log" },
-  leaves: { id: "leaves", label: "Oak Leaves", description: "A loose, mossy canopy block.", color: "#4e6f3d", accent: "#7c9953", hardness: 0.3, preferredTool: "hand", drop: null },
+  leaves: { id: "leaves", label: "Oak Leaves", description: "A loose, mossy canopy block.", color: "#4e6f3d", accent: "#7c9953", hardness: 0.3, preferredTool: "hand", drop: "leaves" },
   planks: { id: "planks", label: "Oak Planks", description: "Squared boards for building and tools.", color: "#a87841", accent: "#d0a45e", hardness: 1.1, preferredTool: "axe", drop: "planks" },
   crafting_table: { id: "crafting_table", label: "Crafting Table", description: "A sturdy workbench for more involved recipes.", color: "#8a5b32", accent: "#d39a54", hardness: 1.4, preferredTool: "axe", drop: "crafting_table" },
   torch: { id: "torch", label: "Torch", description: "A warm light for shelters and night trails.", color: "#d99a3d", accent: "#ffd36a", hardness: 0.1, preferredTool: "hand", drop: "torch" },
@@ -177,25 +180,25 @@ function foodItem(id: "pork" | "beef" | "mutton" | "rotten_flesh", label: string
 }
 
 export const RECIPES: readonly Recipe[] = [
-  { id: "planks_from_log", label: "Saw planks", note: "Split one log into four boards.", ingredients: [{ itemId: "log", count: 1 }], output: { itemId: "planks", count: 4 } },
-  { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
-  { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
-  { id: "torch", label: "Torches", note: "A stick and board make four crude lights.", ingredients: [{ itemId: "stick", count: 1 }, { itemId: "planks", count: 1 }], output: { itemId: "torch", count: 4 } },
-  { id: "chest", label: "Chest", note: "Eight boards make shared storage.", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
-  { id: "door", label: "Oak door", note: "Six boards make a shelter door.", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
-  { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
-  { id: "wooden_pickaxe", label: "Wood pickaxe", note: "A starter quarrying tool.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_pickaxe", count: 1 } },
-  { id: "wooden_axe", label: "Wood axe", note: "Fells logs faster.", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_axe", count: 1 } },
-  { id: "wooden_shovel", label: "Wood shovel", note: "Clears dirt and grass faster.", ingredients: [{ itemId: "planks", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_shovel", count: 1 } },
-  { id: "wooden_sword", label: "Wood sword", note: "Basic protection after dark.", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "wooden_sword", count: 1 } },
-  { id: "stone_pickaxe", label: "Stone pickaxe", note: "A faster, sturdier pick.", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_pickaxe", count: 1 } },
-  { id: "stone_axe", label: "Stone axe", note: "A proper timber tool.", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_axe", count: 1 } },
-  { id: "stone_shovel", label: "Stone shovel", note: "Moves soil in a hurry.", ingredients: [{ itemId: "stone", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_shovel", count: 1 } },
-  { id: "stone_sword", label: "Stone sword", note: "A sharper answer to hostile creatures.", ingredients: [{ itemId: "stone", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "stone_sword", count: 1 } },
-  { id: "leather_helmet", label: "Leather cap", note: "Light protection for the head.", ingredients: [{ itemId: "leather", count: 5 }], output: { itemId: "leather_helmet", count: 1 } },
-  { id: "leather_chestplate", label: "Leather tunic", note: "A hide layer for the torso.", ingredients: [{ itemId: "leather", count: 8 }], output: { itemId: "leather_chestplate", count: 1 } },
-  { id: "leather_leggings", label: "Leather pants", note: "Flexible leg protection.", ingredients: [{ itemId: "leather", count: 7 }], output: { itemId: "leather_leggings", count: 1 } },
-  { id: "leather_boots", label: "Leather boots", note: "A little protection underfoot.", ingredients: [{ itemId: "leather", count: 4 }], output: { itemId: "leather_boots", count: 1 } },
+  { id: "planks_from_log", label: "Saw planks", note: "Split one log into four boards.", craftingContext: "field", ingredients: [{ itemId: "log", count: 1 }], output: { itemId: "planks", count: 4 } },
+  { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
+  { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
+  { id: "torch", label: "Torches", note: "A stick and board make four crude lights.", craftingContext: "field", ingredients: [{ itemId: "stick", count: 1 }, { itemId: "planks", count: 1 }], output: { itemId: "torch", count: 4 } },
+  { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
+  { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
+  { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
+  { id: "wooden_pickaxe", label: "Wood pickaxe", note: "A starter quarrying tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_pickaxe", count: 1 } },
+  { id: "wooden_axe", label: "Wood axe", note: "Fells logs faster.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_axe", count: 1 } },
+  { id: "wooden_shovel", label: "Wood shovel", note: "Clears dirt and grass faster.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_shovel", count: 1 } },
+  { id: "wooden_sword", label: "Wood sword", note: "Basic protection after dark.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "wooden_sword", count: 1 } },
+  { id: "stone_pickaxe", label: "Stone pickaxe", note: "A faster, sturdier pick.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_pickaxe", count: 1 } },
+  { id: "stone_axe", label: "Stone axe", note: "A proper timber tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_axe", count: 1 } },
+  { id: "stone_shovel", label: "Stone shovel", note: "Moves soil in a hurry.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_shovel", count: 1 } },
+  { id: "stone_sword", label: "Stone sword", note: "A sharper answer to hostile creatures.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "stone_sword", count: 1 } },
+  { id: "leather_helmet", label: "Leather cap", note: "Light protection for the head.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 5 }], output: { itemId: "leather_helmet", count: 1 } },
+  { id: "leather_chestplate", label: "Leather tunic", note: "A hide layer for the torso.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 8 }], output: { itemId: "leather_chestplate", count: 1 } },
+  { id: "leather_leggings", label: "Leather pants", note: "Flexible leg protection.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 7 }], output: { itemId: "leather_leggings", count: 1 } },
+  { id: "leather_boots", label: "Leather boots", note: "A little protection underfoot.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 4 }], output: { itemId: "leather_boots", count: 1 } },
 ] as const;
 
 export function createEmptyInventory(size = INVENTORY_SIZE): Inventory {
@@ -423,17 +426,42 @@ export function removeItem(inventory: readonly (ItemStack | null)[], itemId: Ite
   return { inventory: next, remainder };
 }
 
-export function canCraft(inventory: readonly (ItemStack | null)[], recipe: Recipe): boolean {
+export function recipeCraftingContext(recipeOrId: Recipe | string): CraftingContext | null {
+  const recipe = typeof recipeOrId === "string" ? RECIPES.find(({ id }) => id === recipeOrId) : recipeOrId;
+  return recipe?.craftingContext ?? null;
+}
+
+/** A crafting table includes the player's 2x2 field grid, so it can make either recipe class. */
+export function isRecipeAvailableInContext(recipeOrId: Recipe | string, context: CraftingContext): boolean {
+  const requiredContext = recipeCraftingContext(recipeOrId);
+  return requiredContext === "field" || (requiredContext === "crafting_table" && context === "crafting_table");
+}
+
+export function availableRecipes(context: CraftingContext): readonly Recipe[] {
+  return RECIPES.filter((recipe) => isRecipeAvailableInContext(recipe, context));
+}
+
+export function canCraft(
+  inventory: readonly (ItemStack | null)[],
+  recipe: Recipe,
+  context: CraftingContext = "crafting_table",
+): boolean {
+  if (!isRecipeAvailableInContext(recipe, context)) return false;
   if (!hasItems(inventory, recipe.ingredients)) return false;
   let next = cloneInventory(inventory);
   for (const ingredient of recipe.ingredients) next = removeItem(next, ingredient.itemId, ingredient.count).inventory;
   return addItem(next, recipe.output.itemId, recipe.output.count).remainder === 0;
 }
 
-export function craftRecipe(inventory: readonly (ItemStack | null)[], recipeOrId: Recipe | string): CraftResult {
+export function craftRecipe(
+  inventory: readonly (ItemStack | null)[],
+  recipeOrId: Recipe | string,
+  context: CraftingContext = "crafting_table",
+): CraftResult {
   const recipe = typeof recipeOrId === "string" ? RECIPES.find(({ id }) => id === recipeOrId) : recipeOrId;
   const original = cloneInventory(inventory);
   if (!recipe) return { ok: false, inventory: original, reason: "unknown_recipe" };
+  if (!isRecipeAvailableInContext(recipe, context)) return { ok: false, inventory: original, reason: "requires_crafting_table" };
   if (!hasItems(original, recipe.ingredients)) return { ok: false, inventory: original, reason: "missing_ingredients" };
   let next = original;
   for (const ingredient of recipe.ingredients) next = removeItem(next, ingredient.itemId, ingredient.count).inventory;
@@ -442,7 +470,18 @@ export function craftRecipe(inventory: readonly (ItemStack | null)[], recipeOrId
   return { ok: true, inventory: added.inventory, crafted: { ...recipe.output } };
 }
 
-export function getMiningDrop(blockId: BlockId): ItemQuantity | null {
+export function canHarvestBlock(blockId: BlockId, itemId?: ItemId | null): boolean {
+  const requirement = BLOCKS[blockId].requiredDropTool;
+  if (!requirement) return true;
+  if (!itemId) return false;
+  const tool = ITEMS[itemId].tool;
+  if (!tool || tool.kind !== requirement.kind) return false;
+  const tierRank: Record<Exclude<ToolTier, "none">, number> = { wood: 1, stone: 2 };
+  return tierRank[tool.tier] >= tierRank[requirement.minimumTier];
+}
+
+export function getMiningDrop(blockId: BlockId, itemId?: ItemId | null): ItemQuantity | null {
+  if (!canHarvestBlock(blockId, itemId)) return null;
   const drop = BLOCKS[blockId].drop;
   return drop ? { itemId: drop, count: 1 } : null;
 }

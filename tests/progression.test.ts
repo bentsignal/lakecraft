@@ -6,6 +6,9 @@ import {
   addItem,
   armorProtection,
   attackDamage,
+  availableRecipes,
+  canCraft,
+  canHarvestBlock,
   countItem,
   craftRecipe,
   createEmptyEquipment,
@@ -13,12 +16,15 @@ import {
   createSerializablePlayerState,
   equipArmorFromInventory,
   equippedArmorProtection,
+  getMiningDrop,
+  isRecipeAvailableInContext,
   miningSeconds,
   normalizeEquipment,
   normalizeInventory,
   normalizeRespawnPoint,
   normalizeSerializablePlayerState,
   parseSerializablePlayerStateJson,
+  recipeCraftingContext,
   toolEffectiveness,
   unequipArmor,
   type Inventory,
@@ -45,6 +51,36 @@ assert.equal(ITEMS.chest.placesBlock, "chest");
 assert.equal(ITEMS.door.placesBlock, "door");
 assert.equal(ITEMS.bed.placesBlock, "bed");
 assert.equal(new Set(RECIPES.map(({ id }) => id)).size, RECIPES.length, "recipe ids stay unique");
+
+const fieldRecipeIds = ["planks_from_log", "sticks_from_planks", "crafting_table", "torch"];
+assert.deepEqual(availableRecipes("field").map(({ id }) => id), fieldRecipeIds, "the 2x2 field kit exposes only compact recipes");
+assert.deepEqual(availableRecipes("crafting_table").map(({ id }) => id), RECIPES.map(({ id }) => id), "a crafting table includes field recipes");
+for (const fieldRecipeId of fieldRecipeIds) {
+  assert.equal(recipeCraftingContext(fieldRecipeId), "field");
+  assert.equal(isRecipeAvailableInContext(fieldRecipeId, "field"), true);
+  assert.equal(isRecipeAvailableInContext(fieldRecipeId, "crafting_table"), true);
+}
+for (const tableRecipe of RECIPES.filter(({ id }) => !fieldRecipeIds.includes(id))) {
+  assert.equal(recipeCraftingContext(tableRecipe), "crafting_table");
+  assert.equal(isRecipeAvailableInContext(tableRecipe, "field"), false, `${tableRecipe.id} should not fit the field grid`);
+  assert.equal(isRecipeAvailableInContext(tableRecipe, "crafting_table"), true);
+}
+assert.equal(recipeCraftingContext("not_a_recipe"), null);
+assert.equal(isRecipeAvailableInContext("not_a_recipe", "crafting_table"), false);
+
+const tableToolIngredients = addItem(addItem(createEmptyInventory(), "planks", 3).inventory, "stick", 2).inventory;
+assert.equal(canCraft(tableToolIngredients, recipe("wooden_pickaxe"), "field"), false);
+assert.equal(canCraft(tableToolIngredients, recipe("wooden_pickaxe"), "crafting_table"), true);
+const blockedFieldCraft = craftRecipe(tableToolIngredients, "wooden_pickaxe", "field");
+assert.equal(blockedFieldCraft.ok, false);
+assert.equal(blockedFieldCraft.ok ? null : blockedFieldCraft.reason, "requires_crafting_table");
+assert.deepEqual(blockedFieldCraft.inventory, tableToolIngredients, "a blocked craft must consume nothing");
+const allowedTableCraft = craftRecipe(tableToolIngredients, "wooden_pickaxe", "crafting_table");
+assert.equal(allowedTableCraft.ok, true);
+
+const fieldIngredients = addItem(createEmptyInventory(), "log", 1).inventory;
+assert.equal(canCraft(fieldIngredients, recipe("planks_from_log"), "field"), true);
+assert.equal(craftRecipe(fieldIngredients, "planks_from_log", "field").ok, true);
 
 let woodInventory = addItem(createEmptyInventory(), "log", 3).inventory;
 woodInventory = craft(woodInventory, "planks_from_log");
@@ -108,6 +144,19 @@ assert.ok(toolEffectiveness("dirt", "stone_shovel") > toolEffectiveness("dirt", 
 assert.ok(toolEffectiveness("dirt", "wooden_shovel") > toolEffectiveness("dirt", "wooden_sword"));
 assert.ok(miningSeconds("dirt", "stone_shovel") < miningSeconds("dirt", "wooden_shovel"));
 assert.ok(miningSeconds("stone", "stone_pickaxe") < miningSeconds("stone", "stone_shovel"));
+assert.equal(canHarvestBlock("stone"), false, "bare hands may break stone but recover no item");
+assert.equal(canHarvestBlock("stone", "stone_sword"), false);
+assert.equal(canHarvestBlock("stone", "wooden_axe"), false);
+assert.equal(canHarvestBlock("stone", "wooden_pickaxe"), true);
+assert.equal(canHarvestBlock("stone", "stone_pickaxe"), true);
+assert.equal(getMiningDrop("stone"), null);
+assert.equal(getMiningDrop("stone", "stone_shovel"), null);
+assert.deepEqual(getMiningDrop("stone", "wooden_pickaxe"), { itemId: "stone", count: 1 });
+assert.deepEqual(getMiningDrop("stone", "stone_pickaxe"), { itemId: "stone", count: 1 });
+assert.deepEqual(getMiningDrop("grass"), { itemId: "dirt", count: 1 });
+assert.deepEqual(getMiningDrop("dirt"), { itemId: "dirt", count: 1 });
+assert.deepEqual(getMiningDrop("log"), { itemId: "log", count: 1 });
+assert.deepEqual(getMiningDrop("leaves"), { itemId: "leaves", count: 1 });
 assert.equal(attackDamage("wooden_sword"), 4);
 assert.equal(attackDamage("stone_sword"), 5);
 assert.ok(attackDamage("stone_sword") > attackDamage("stone_axe"));

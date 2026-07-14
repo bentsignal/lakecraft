@@ -1,4 +1,4 @@
-import type { ArmorSlot, Equipment, Inventory, Recipe } from "../../shared/game";
+import { availableRecipes, type ArmorSlot, type CraftingContext, type Equipment, type Inventory, type Recipe } from "../../shared/game";
 import { ControlsCard } from "./ControlsCard";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
@@ -12,6 +12,7 @@ export type GameHudProps = StatusStripProps & {
   equipment: Equipment;
   selectedIndex: number;
   inventoryOpen: boolean;
+  craftingContext: CraftingContext;
   messages?: readonly HudMessage[];
   showControls?: boolean;
   mobileUnsupported?: boolean;
@@ -35,6 +36,7 @@ export function GameHud({
   equipment,
   selectedIndex,
   inventoryOpen,
+  craftingContext,
   messages = [],
   showControls = true,
   mobileUnsupported = false,
@@ -59,7 +61,7 @@ export function GameHud({
         <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
         <ToastSurface messages={messages} onDismiss={onDismissMessage} />
       </div>
-      <InventoryCraftingDrawer equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} onUseItem={onUseItem} open={inventoryOpen} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} onUseItem={onUseItem} open={inventoryOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );

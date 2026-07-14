@@ -48,6 +48,17 @@ assert.equal(calls, 1);
 assert.equal(tryInteractBlock(chestTarget, () => false), false, "unhandled interactions preserve placement");
 assert.equal(tryInteractBlock(chestTarget), false);
 
+const craftingTableTarget: BlockTarget = {
+  ...chestTarget,
+  block: { ...chestTarget.block, block: BLOCK.CRAFTING_TABLE },
+};
+assert.equal(tryInteractBlock(craftingTableTarget, (received) => {
+  calls += 1;
+  assert.equal(received, craftingTableTarget);
+  return true;
+}), true, "crafting tables dispatch the shared interaction callback");
+assert.equal(calls, 2);
+
 const stoneTarget: BlockTarget = {
   ...chestTarget,
   block: { ...chestTarget.block, block: BLOCK.STONE },
@@ -56,6 +67,6 @@ assert.equal(tryInteractBlock(stoneTarget, () => {
   calls += 1;
   return true;
 }), false);
-assert.equal(calls, 1, "non-chest targets must not dispatch the chest callback");
+assert.equal(calls, 2, "non-interactive targets must not dispatch the interaction callback");
 
 console.log("lakecraft chest block tests: ok");

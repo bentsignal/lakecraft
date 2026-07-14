@@ -48,10 +48,10 @@ function pose(kind: MobKind, x: number, z: number, index: number): MobPoseSnapsh
     previousY: 7,
     previousZ: z - 0.25,
     previousYaw: 0,
-    behavior: kind === "zombie" ? "chase" : "wander",
+    behavior: kind === "zombie" || kind === "skeleton" ? "chase" : "wander",
     health: 8,
-    maxHealth: kind === "zombie" ? 20 : 10,
-    hostileActive: kind === "zombie",
+    maxHealth: kind === "zombie" || kind === "skeleton" ? 20 : 10,
+    hostileActive: kind === "zombie" || kind === "skeleton",
   };
 }
 
@@ -60,12 +60,12 @@ const renderer = createMobRenderer(gl as unknown as WebGLRenderingContext);
 assert.equal(gl.createBufferCalls, 1, "all mobs should share one WebGL buffer");
 assert.ok(gl.allocationBytes > 0);
 
-const kinds: MobKind[] = ["pig", "cow", "sheep", "zombie"];
+const kinds: MobKind[] = ["pig", "cow", "sheep", "zombie", "skeleton"];
 const poses = kinds.map((kind, index) => pose(kind, index * 2 - 3, 8 + index, index));
 const stats = renderer.rebuild(poses, 0, 0, 0, 1, 0.5, 2);
 const expectedVertexCount = kinds.reduce((total, kind) => total + mobVertexCountForKind(kind), 0);
-assert.equal(stats.totalMobCount, 4);
-assert.equal(stats.visibleMobCount, 4);
+assert.equal(stats.totalMobCount, 5);
+assert.equal(stats.visibleMobCount, 5);
 assert.equal(stats.vertexCount, expectedVertexCount);
 assert.equal(gl.uploadCalls, 1, "one rebuild should issue one batched geometry upload");
 assert.ok(gl.uploaded);
@@ -116,7 +116,31 @@ const cullingStats = renderer.rebuild([farAway, behindCamera, nearbyBehindCamera
 assert.equal(cullingStats.totalMobCount, 3);
 assert.equal(cullingStats.visibleMobCount, 1, "distance and rear-view culling should retain only the nearby mob");
 assert.equal(cullingStats.vertexCount, mobVertexCountForKind("sheep"));
-assert.equal(gl.uploadCalls, 8);
+assert.equal(gl.uploadCalls, 9);
+
+const projectileStats = renderer.rebuild(
+  [],
+  0,
+  0,
+  0,
+  1,
+  1,
+  3,
+  Array.from({ length: 24 }, (_, id) => ({
+    id,
+    x: id % 4,
+    y: 2,
+    z: 4 + Math.floor(id / 4),
+    previousX: id % 4,
+    previousY: 2,
+    previousZ: 4 + Math.floor(id / 4),
+    yaw: 0,
+    pitch: 0,
+  })),
+);
+assert.equal(projectileStats.projectileCount, 24);
+assert.equal(projectileStats.projectileVertexCount, 24 * 36);
+assert.equal(projectileStats.vertexCount, 24 * 36, "the fixed arrow pool must fit in the shared batch allocation");
 
 const reusedStats = renderer.rebuild([], 0, 0, 0, 1, 0, 0);
 assert.equal(reusedStats, stats, "renderer stats should be reused rather than allocated every frame");

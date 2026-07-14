@@ -1,8 +1,8 @@
 import type { MobAuthorityState } from "../../shared/mobCombat.ts";
 
-export type MobKind = "pig" | "cow" | "sheep" | "zombie";
+export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase";
-export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh";
+export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick";
 
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
 export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
@@ -26,6 +26,10 @@ export interface MobDefinition {
   height: number;
   contactDamage: number;
   attackCooldownSeconds: number;
+  rangedDamage: number;
+  rangedCooldownSeconds: number;
+  rangedRange: number;
+  projectileSpeed: number;
   drops: readonly MobDropDefinition[];
 }
 
@@ -41,6 +45,10 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     height: 0.9,
     contactDamage: 0,
     attackCooldownSeconds: 0,
+    rangedDamage: 0,
+    rangedCooldownSeconds: 0,
+    rangedRange: 0,
+    projectileSpeed: 0,
     drops: Object.freeze([{ itemId: "pork", minCount: 1, maxCount: 3, chance: 1 }]),
   }),
   cow: Object.freeze({
@@ -54,6 +62,10 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     height: 1.35,
     contactDamage: 0,
     attackCooldownSeconds: 0,
+    rangedDamage: 0,
+    rangedCooldownSeconds: 0,
+    rangedRange: 0,
+    projectileSpeed: 0,
     drops: Object.freeze([
       { itemId: "beef", minCount: 1, maxCount: 3, chance: 1 },
       { itemId: "leather", minCount: 0, maxCount: 2, chance: 0.75 },
@@ -70,6 +82,10 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     height: 1.25,
     contactDamage: 0,
     attackCooldownSeconds: 0,
+    rangedDamage: 0,
+    rangedCooldownSeconds: 0,
+    rangedRange: 0,
+    projectileSpeed: 0,
     drops: Object.freeze([
       { itemId: "wool", minCount: 1, maxCount: 1, chance: 1 },
       { itemId: "mutton", minCount: 1, maxCount: 2, chance: 1 },
@@ -86,12 +102,36 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     height: 1.8,
     contactDamage: 3,
     attackCooldownSeconds: 1,
+    rangedDamage: 0,
+    rangedCooldownSeconds: 0,
+    rangedRange: 0,
+    projectileSpeed: 0,
     drops: Object.freeze([{ itemId: "rotten_flesh", minCount: 0, maxCount: 2, chance: 0.85 }]),
+  }),
+  skeleton: Object.freeze({
+    kind: "skeleton",
+    passive: false,
+    maxHealth: 20,
+    moveSpeed: 0.82,
+    chaseSpeed: 1.15,
+    collisionRadius: 0.34,
+    targetRadius: 0.38,
+    height: 1.9,
+    contactDamage: 0,
+    attackCooldownSeconds: 0,
+    rangedDamage: 3,
+    rangedCooldownSeconds: 2.1,
+    rangedRange: 16,
+    projectileSpeed: 8.5,
+    drops: Object.freeze([{ itemId: "stick", minCount: 0, maxCount: 2, chance: 0.85 }]),
   }),
 });
 
 export const DEFAULT_MAX_MOB_POPULATION = 24;
 export const HARD_MAX_MOB_POPULATION = 64;
+export const MAX_MOB_PROJECTILES = 24;
+export const MOB_PROJECTILE_LIFETIME_SECONDS = 3;
+export const MOB_PROJECTILE_GRAVITY = 2.4;
 
 export interface MobSpawnDescriptor {
   id: string;
@@ -135,6 +175,8 @@ export interface MobState extends MobSpawnDescriptor {
   randomState: number;
   damageSequence: number;
   nextContactDamageAtSeconds: number;
+  nextRangedAttackAtSeconds: number;
+  rangedSequence: number;
   authoritativeRevision: number;
   authoritativeDeadUntil: number;
 }
@@ -143,6 +185,39 @@ export interface MobSimulation {
   elapsedSeconds: number;
   tick: number;
   mobs: MobState[];
+  projectiles: MobProjectile[];
+  pendingProjectileDamage: number;
+}
+
+export interface MobProjectile {
+  id: number;
+  active: boolean;
+  ownerId: string;
+  x: number;
+  y: number;
+  z: number;
+  previousX: number;
+  previousY: number;
+  previousZ: number;
+  velocityX: number;
+  velocityY: number;
+  velocityZ: number;
+  yaw: number;
+  pitch: number;
+  remainingSeconds: number;
+  damage: number;
+}
+
+export interface MobProjectileSnapshot {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  previousX: number;
+  previousY: number;
+  previousZ: number;
+  yaw: number;
+  pitch: number;
 }
 
 export interface MobTarget {
@@ -158,6 +233,8 @@ export interface MobStepInput {
   player?: Readonly<MobTarget> | null;
   /** Return false when a mob's body would overlap a solid block or entity. */
   canOccupy?: (kind: MobKind, x: number, y: number, z: number, radius: number, height: number) => boolean;
+  /** Called for arrow world collision; movement and attacks remain client-only. */
+  isProjectileBlocked?: (x: number, y: number, z: number) => boolean;
   worldRadius?: number;
 }
 
@@ -243,6 +320,10 @@ function passiveKind(index: number, seed: number): MobKind {
   return choice === 0 ? "pig" : choice === 1 ? "cow" : "sheep";
 }
 
+function hostileKind(index: number, seed: number): MobKind {
+  return ((index + (hashUint(seed, 113, seed + 29) & 1)) & 1) === 0 ? "zombie" : "skeleton";
+}
+
 function hasSafeSlope(heightAt: (x: number, z: number) => number, x: number, z: number): boolean {
   const center = heightAt(x, z);
   return Math.abs(heightAt(x + 1, z) - center) <= 1
@@ -275,7 +356,9 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
 
   for (let attempt = 0; attempt < maxAttempts && spawns.length < target; attempt += 1) {
     const slot = spawns.length;
-    const kind = slot < passiveCount ? passiveKind(slot, options.seed) : "zombie";
+    const kind = slot < passiveCount
+      ? passiveKind(slot, options.seed)
+      : hostileKind(slot - passiveCount, options.seed);
     const angle = hash01(attempt, slot, options.seed + 101) * Math.PI * 2;
     const distance = clearRadius + 1 + Math.sqrt(hash01(slot, attempt, options.seed + 131)) * (usableRange - 1);
     const x = Math.max(-radius, Math.min(radius, Math.round(Math.cos(angle) * distance)));
@@ -317,7 +400,7 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
       previousYaw: spawn.yaw,
       health: MOB_DEFINITIONS[spawn.kind].maxHealth,
       alive: true,
-      behavior: spawn.kind === "zombie" ? "dormant" : "idle",
+      behavior: MOB_DEFINITIONS[spawn.kind].passive ? "idle" : "dormant",
       behaviorUntilSeconds: 0,
       directionX: 0,
       directionZ: 0,
@@ -327,11 +410,34 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
       randomState: spawn.behaviorSeed || 0x6d2b79f5,
       damageSequence: 0,
       nextContactDamageAtSeconds: 0,
+      nextRangedAttackAtSeconds: 0.65 + (spawn.behaviorSeed % 1_000) / 1_000,
+      rangedSequence: 0,
       authoritativeRevision: -1,
       authoritativeDeadUntil: 0,
     };
   }
-  return { elapsedSeconds: 0, tick: 0, mobs };
+  const projectiles = new Array<MobProjectile>(MAX_MOB_PROJECTILES);
+  for (let index = 0; index < projectiles.length; index += 1) {
+    projectiles[index] = {
+      id: index,
+      active: false,
+      ownerId: "",
+      x: 0,
+      y: 0,
+      z: 0,
+      previousX: 0,
+      previousY: 0,
+      previousZ: 0,
+      velocityX: 0,
+      velocityY: 0,
+      velocityZ: 0,
+      yaw: 0,
+      pitch: 0,
+      remainingSeconds: 0,
+      damage: 0,
+    };
+  }
+  return { elapsedSeconds: 0, tick: 0, mobs, projectiles, pendingProjectileDamage: 0 };
 }
 
 /** Returns a stable-order copy suitable for the bounded Lakebed authority query. */
@@ -392,6 +498,138 @@ function moveMob(mob: MobState, dx: number, dz: number, input: Readonly<MobStepI
   mob.behaviorUntilSeconds = 0;
 }
 
+function spawnSkeletonProjectile(
+  simulation: MobSimulation,
+  mob: MobState,
+  player: Readonly<MobTarget>,
+  definition: MobDefinition,
+): boolean {
+  let projectile: MobProjectile | undefined;
+  for (let index = 0; index < simulation.projectiles.length; index += 1) {
+    if (!simulation.projectiles[index].active) {
+      projectile = simulation.projectiles[index];
+      break;
+    }
+  }
+  if (!projectile) return false;
+  const startX = mob.x;
+  const startY = mob.y + 1.38;
+  const startZ = mob.z;
+  const targetX = player.x;
+  const targetY = player.y + 0.92;
+  const targetZ = player.z;
+  const dx = targetX - startX;
+  const dy = targetY - startY;
+  const dz = targetZ - startZ;
+  const distance = Math.hypot(dx, dy, dz);
+  if (distance < 0.001) return false;
+  const inverseDistance = 1 / distance;
+  projectile.active = true;
+  projectile.ownerId = mob.id;
+  projectile.x = projectile.previousX = startX;
+  projectile.y = projectile.previousY = startY;
+  projectile.z = projectile.previousZ = startZ;
+  projectile.velocityX = dx * inverseDistance * definition.projectileSpeed;
+  // A small deterministic lift counteracts gravity over ordinary combat ranges.
+  projectile.velocityY = dy * inverseDistance * definition.projectileSpeed + Math.min(1.15, distance * 0.055);
+  projectile.velocityZ = dz * inverseDistance * definition.projectileSpeed;
+  projectile.yaw = Math.atan2(projectile.velocityX, projectile.velocityZ);
+  projectile.pitch = Math.atan2(projectile.velocityY, Math.hypot(projectile.velocityX, projectile.velocityZ));
+  projectile.remainingSeconds = MOB_PROJECTILE_LIFETIME_SECONDS;
+  projectile.damage = definition.rangedDamage;
+  mob.rangedSequence += 1;
+  return true;
+}
+
+function segmentIntersectsPlayer(
+  fromX: number,
+  fromY: number,
+  fromZ: number,
+  toX: number,
+  toY: number,
+  toZ: number,
+  player: Readonly<MobTarget>,
+): boolean {
+  let near = 0;
+  let far = 1;
+  const minX = player.x - 0.34;
+  const maxX = player.x + 0.34;
+  const minY = player.y;
+  const maxY = player.y + 1.78;
+  const minZ = player.z - 0.34;
+  const maxZ = player.z + 0.34;
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const dz = toZ - fromZ;
+  if (Math.abs(dx) < 1e-9) {
+    if (fromX < minX || fromX > maxX) return false;
+  } else {
+    let first = (minX - fromX) / dx;
+    let second = (maxX - fromX) / dx;
+    if (first > second) { const swap = first; first = second; second = swap; }
+    near = Math.max(near, first); far = Math.min(far, second);
+    if (near > far) return false;
+  }
+  if (Math.abs(dy) < 1e-9) {
+    if (fromY < minY || fromY > maxY) return false;
+  } else {
+    let first = (minY - fromY) / dy;
+    let second = (maxY - fromY) / dy;
+    if (first > second) { const swap = first; first = second; second = swap; }
+    near = Math.max(near, first); far = Math.min(far, second);
+    if (near > far) return false;
+  }
+  if (Math.abs(dz) < 1e-9) {
+    if (fromZ < minZ || fromZ > maxZ) return false;
+  } else {
+    let first = (minZ - fromZ) / dz;
+    let second = (maxZ - fromZ) / dz;
+    if (first > second) { const swap = first; first = second; second = swap; }
+    near = Math.max(near, first); far = Math.min(far, second);
+    if (near > far) return false;
+  }
+  return true;
+}
+
+function stepMobProjectiles(simulation: MobSimulation, input: Readonly<MobStepInput>, dt: number): void {
+  for (let index = 0; index < simulation.projectiles.length; index += 1) {
+    const projectile = simulation.projectiles[index];
+    if (!projectile.active) continue;
+    projectile.previousX = projectile.x;
+    projectile.previousY = projectile.y;
+    projectile.previousZ = projectile.z;
+    projectile.remainingSeconds -= dt;
+    projectile.velocityY -= MOB_PROJECTILE_GRAVITY * dt;
+    const nextX = projectile.x + projectile.velocityX * dt;
+    const nextY = projectile.y + projectile.velocityY * dt;
+    const nextZ = projectile.z + projectile.velocityZ * dt;
+    if (projectile.remainingSeconds <= 0
+      || nextY < -32
+      || input.isProjectileBlocked?.(nextX, nextY, nextZ)) {
+      projectile.active = false;
+      continue;
+    }
+    if (input.player && segmentIntersectsPlayer(
+      projectile.x,
+      projectile.y,
+      projectile.z,
+      nextX,
+      nextY,
+      nextZ,
+      input.player,
+    )) {
+      simulation.pendingProjectileDamage = Math.min(12, simulation.pendingProjectileDamage + projectile.damage);
+      projectile.active = false;
+      continue;
+    }
+    projectile.x = nextX;
+    projectile.y = nextY;
+    projectile.z = nextZ;
+    projectile.yaw = Math.atan2(projectile.velocityX, projectile.velocityZ);
+    projectile.pitch = Math.atan2(projectile.velocityY, Math.hypot(projectile.velocityX, projectile.velocityZ));
+  }
+}
+
 /** Advances simulation in place without allocating during ordinary movement ticks. */
 export function stepMobSimulation(simulation: MobSimulation, input: Readonly<MobStepInput>): MobSimulation {
   const dt = Math.max(0, Math.min(0.1, Number.isFinite(input.dtSeconds) ? input.dtSeconds : 0));
@@ -425,11 +663,34 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       const distanceSquared = playerDx * playerDx + playerDz * playerDz;
       if (distanceSquared <= 16 * 16 && distanceSquared > 0.0001) {
         const inverseDistance = 1 / Math.sqrt(distanceSquared);
-        mob.directionX = playerDx * inverseDistance;
-        mob.directionZ = playerDz * inverseDistance;
+        if (mob.kind === "skeleton") {
+          const distance = 1 / inverseDistance;
+          if (distance > 10) {
+            mob.directionX = playerDx * inverseDistance;
+            mob.directionZ = playerDz * inverseDistance;
+            speed = definition.chaseSpeed;
+          } else if (distance < 5) {
+            mob.directionX = -playerDx * inverseDistance;
+            mob.directionZ = -playerDz * inverseDistance;
+            speed = definition.chaseSpeed;
+          } else {
+            const side = (mob.behaviorSeed & 1) === 0 ? 1 : -1;
+            mob.directionX = playerDz * inverseDistance * side;
+            mob.directionZ = -playerDx * inverseDistance * side;
+            speed = definition.moveSpeed * 0.58;
+          }
+          if (simulation.elapsedSeconds + 1e-9 >= mob.nextRangedAttackAtSeconds
+            && distance <= definition.rangedRange) {
+            spawnSkeletonProjectile(simulation, mob, input.player, definition);
+            mob.nextRangedAttackAtSeconds = simulation.elapsedSeconds + definition.rangedCooldownSeconds;
+          }
+        } else {
+          mob.directionX = playerDx * inverseDistance;
+          mob.directionZ = playerDz * inverseDistance;
+          speed = definition.chaseSpeed;
+        }
         mob.behavior = "chase";
         mob.behaviorUntilSeconds = simulation.elapsedSeconds + 0.25;
-        speed = definition.chaseSpeed;
         chasing = true;
       }
     }
@@ -463,6 +724,7 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       moveMob(mob, mob.directionX * speed * dt, mob.directionZ * speed * dt, input);
     }
   }
+  stepMobProjectiles(simulation, input, dt);
   return simulation;
 }
 
@@ -498,6 +760,40 @@ export function writeMobPoseSnapshots(
   return output;
 }
 
+/** Writes live arrows into a retained array; the projectile pool itself is fixed-size. */
+export function writeMobProjectileSnapshots(
+  simulation: Readonly<MobSimulation>,
+  output: MobProjectileSnapshot[] = [],
+): MobProjectileSnapshot[] {
+  let outputIndex = 0;
+  for (let index = 0; index < simulation.projectiles.length; index += 1) {
+    const projectile = simulation.projectiles[index];
+    if (!projectile.active) continue;
+    const snapshot = output[outputIndex] ?? {} as MobProjectileSnapshot;
+    snapshot.id = projectile.id;
+    snapshot.x = projectile.x;
+    snapshot.y = projectile.y;
+    snapshot.z = projectile.z;
+    snapshot.previousX = projectile.previousX;
+    snapshot.previousY = projectile.previousY;
+    snapshot.previousZ = projectile.previousZ;
+    snapshot.yaw = projectile.yaw;
+    snapshot.pitch = projectile.pitch;
+    output[outputIndex] = snapshot;
+    outputIndex += 1;
+  }
+  output.length = outputIndex;
+  return output;
+}
+
+/** Clears and returns damage from arrow impacts since the previous simulation step. */
+export function consumeMobProjectileDamage(simulation: MobSimulation, maximumDamage = 12): number {
+  const limit = Number.isFinite(maximumDamage) ? Math.max(0, maximumDamage) : 12;
+  const damage = Math.min(limit, simulation.pendingProjectileDamage);
+  simulation.pendingProjectileDamage = 0;
+  return damage;
+}
+
 function rollDrops(mob: MobState): MobDrop[] {
   const definitions = MOB_DEFINITIONS[mob.kind].drops;
   const drops: MobDrop[] = [];
@@ -524,7 +820,7 @@ export function damageMob(simulation: MobSimulation, id: string, rawDamage: numb
   return { found: true, killed: true, remainingHealth: 0, drops: rollDrops(mob) };
 }
 
-function resetMobAtHome(mob: MobState): void {
+function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
   mob.x = mob.homeX;
   mob.y = mob.homeY;
   mob.z = mob.homeZ;
@@ -533,7 +829,7 @@ function resetMobAtHome(mob: MobState): void {
   mob.previousZ = mob.homeZ;
   mob.health = MOB_DEFINITIONS[mob.kind].maxHealth;
   mob.alive = true;
-  mob.behavior = mob.kind === "zombie" ? "dormant" : "idle";
+  mob.behavior = MOB_DEFINITIONS[mob.kind].passive ? "idle" : "dormant";
   mob.behaviorUntilSeconds = 0;
   mob.directionX = 0;
   mob.directionZ = 0;
@@ -541,6 +837,8 @@ function resetMobAtHome(mob: MobState): void {
   mob.desiredZ = mob.homeZ;
   mob.hostileActive = false;
   mob.nextContactDamageAtSeconds = 0;
+  mob.nextRangedAttackAtSeconds = Math.max(0, elapsedSeconds) + 0.65 + (mob.behaviorSeed % 1_000) / 1_000;
+  mob.rangedSequence = 0;
 }
 
 /**
@@ -592,7 +890,7 @@ export function applyAuthoritativeMobCombatStates(
       mob.directionX = 0;
       mob.directionZ = 0;
     } else if (!mob.alive || state.health <= 0) {
-      resetMobAtHome(mob);
+      resetMobAtHome(mob, simulation.elapsedSeconds);
     } else {
       mob.health = Math.max(0, Math.min(MOB_DEFINITIONS[mob.kind].maxHealth, state.health));
       mob.alive = mob.health > 0;
@@ -609,7 +907,7 @@ export function respawnExpiredAuthoritativeMobs(simulation: MobSimulation, serve
   for (const mob of simulation.mobs) {
     if (mob.alive || mob.authoritativeRevision < 0 || mob.authoritativeDeadUntil <= 0 || serverNow < mob.authoritativeDeadUntil) continue;
     mob.authoritativeDeadUntil = 0;
-    resetMobAtHome(mob);
+    resetMobAtHome(mob, simulation.elapsedSeconds);
     respawned += 1;
   }
   return respawned;

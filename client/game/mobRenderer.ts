@@ -1,4 +1,10 @@
-import { HARD_MAX_MOB_POPULATION, type MobKind, type MobPoseSnapshot } from "./mobs.ts";
+import {
+  HARD_MAX_MOB_POPULATION,
+  MAX_MOB_PROJECTILES,
+  type MobKind,
+  type MobPoseSnapshot,
+  type MobProjectileSnapshot,
+} from "./mobs.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -16,6 +22,7 @@ const BOXES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
   cow: 9,
   sheep: 7,
   zombie: 6,
+  skeleton: 9,
 });
 
 const FLOATS_PER_VERTEX = 6;
@@ -27,6 +34,8 @@ export interface MobRenderStats {
   totalMobCount: number;
   visibleMobCount: number;
   vertexCount: number;
+  projectileCount: number;
+  projectileVertexCount: number;
 }
 
 export interface MobRenderer {
@@ -39,6 +48,7 @@ export interface MobRenderer {
     facingZ: number,
     interpolation: number,
     animationSeconds: number,
+    projectiles?: readonly MobProjectileSnapshot[],
   ): MobRenderStats;
   destroy(): void;
 }
@@ -159,14 +169,63 @@ function appendZombie(writer: VertexWriter, x: number, y: number, z: number, yaw
   appendBox(writer,x,y,z,yaw,0,0,0,-0.27,1.38,-0.27,0.27,1.9,0.27,0.32,0.58,0.28);
 }
 
+function appendSkeleton(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  const boneR = 0.78;
+  const boneG = 0.8;
+  const boneB = 0.73;
+  // Two narrow legs, pelvis, spine, crossed ribs, bow arms, and a square skull.
+  appendBox(writer,x,y,z,yaw,swing,0.7,0,-0.19,0,-0.11,-0.04,0.72,0.11,boneR,boneG,boneB);
+  appendBox(writer,x,y,z,yaw,-swing,0.7,0,0.04,0,-0.11,0.19,0.72,0.11,boneR,boneG,boneB);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.68,-0.13,0.27,0.8,0.13,0.62,0.64,0.58);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.07,0.76,-0.08,0.07,1.4,0.08,boneR,boneG,boneB);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.34,0.91,-0.09,0.34,1.03,0.09,boneR,boneG,boneB);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.3,1.15,-0.08,0.3,1.27,0.08,boneR,boneG,boneB);
+  appendBox(writer,x,y,z,yaw,-0.48,1.34,0,-0.52,0.82,-0.1,-0.3,1.37,0.1,boneR,boneG,boneB);
+  appendBox(writer,x,y,z,yaw,0.48,1.34,0,0.3,0.82,-0.1,0.52,1.37,0.1,boneR,boneG,boneB);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.28,1.38,-0.28,0.28,1.94,0.28,0.84,0.86,0.79);
+}
+
+function appendArrow(writer: VertexWriter, projectile: Readonly<MobProjectileSnapshot>, interpolation: number): void {
+  const x = projectile.previousX + (projectile.x - projectile.previousX) * interpolation;
+  const y = projectile.previousY + (projectile.y - projectile.previousY) * interpolation;
+  const z = projectile.previousZ + (projectile.z - projectile.previousZ) * interpolation;
+  appendBox(
+    writer,
+    x,
+    y,
+    z,
+    projectile.yaw,
+    -projectile.pitch,
+    0,
+    0,
+    -0.035,
+    -0.035,
+    -0.34,
+    0.035,
+    0.035,
+    0.34,
+    0.54,
+    0.37,
+    0.19,
+  );
+}
+
 export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const buffer = gl.createBuffer();
   if (!buffer) throw new Error("Unable to allocate the mob batch buffer.");
   const vertices = new Float32Array(
-    HARD_MAX_MOB_POPULATION * MAX_BOXES_PER_MOB * VERTICES_PER_BOX * FLOATS_PER_VERTEX,
+    (HARD_MAX_MOB_POPULATION * MAX_BOXES_PER_MOB + MAX_MOB_PROJECTILES)
+      * VERTICES_PER_BOX
+      * FLOATS_PER_VERTEX,
   );
   const writer: VertexWriter = { data: vertices, offset: 0 };
-  const stats: MobRenderStats = { totalMobCount: 0, visibleMobCount: 0, vertexCount: 0 };
+  const stats: MobRenderStats = {
+    totalMobCount: 0,
+    visibleMobCount: 0,
+    vertexCount: 0,
+    projectileCount: 0,
+    projectileVertexCount: 0,
+  };
   let uploadFloatCount = -1;
   let uploadView = vertices;
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -174,7 +233,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
 
   return {
     buffer,
-    rebuild(poses, cameraX, cameraZ, facingX, facingZ, interpolation, animationSeconds) {
+    rebuild(poses, cameraX, cameraZ, facingX, facingZ, interpolation, animationSeconds, projectiles = []) {
       writer.offset = 0;
       stats.totalMobCount = poses.length;
       stats.visibleMobCount = 0;
@@ -195,9 +254,20 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         if (pose.kind === "pig") appendPig(writer, x, y, z, yaw, swing);
         else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
         else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing);
-        else appendZombie(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "zombie") appendZombie(writer, x, y, z, yaw, swing);
+        else appendSkeleton(writer, x, y, z, yaw, swing);
         stats.visibleMobCount += 1;
       }
+      const mobFloatCount = writer.offset;
+      stats.projectileCount = Math.min(projectiles.length, MAX_MOB_PROJECTILES);
+      for (let index = 0; index < stats.projectileCount; index += 1) {
+        const projectile = projectiles[index];
+        const dx = projectile.x - cameraX;
+        const dz = projectile.z - cameraZ;
+        if (dx * dx + dz * dz > RENDER_DISTANCE_SQUARED) continue;
+        appendArrow(writer, projectile, alpha);
+      }
+      stats.projectileVertexCount = (writer.offset - mobFloatCount) / FLOATS_PER_VERTEX;
       stats.vertexCount = writer.offset / FLOATS_PER_VERTEX;
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       if (uploadFloatCount !== writer.offset) {

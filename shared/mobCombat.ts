@@ -1,5 +1,5 @@
-export type MobAuthorityKind = "pig" | "cow" | "sheep" | "zombie";
-export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh";
+export type MobAuthorityKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton";
+export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick";
 
 export interface MobAuthorityDrop {
   itemId: MobAuthorityDropId;
@@ -102,6 +102,12 @@ export const MOB_AUTHORITY_DEFINITIONS: Readonly<Record<MobAuthorityKind, Author
     maxHealth: 20,
     drops: Object.freeze([{ itemId: "rotten_flesh", minCount: 0, maxCount: 2, chance: 0.85 }]),
   }),
+  skeleton: Object.freeze({
+    maxHealth: 20,
+    // Bone/arrow inventory items are intentionally deferred; sticks preserve a useful,
+    // already-supported drop without widening the persisted inventory schema.
+    drops: Object.freeze([{ itemId: "stick", minCount: 0, maxCount: 2, chance: 0.85 }]),
+  }),
 });
 
 export type MobIdentityValidation =
@@ -113,7 +119,7 @@ export type MobIdListValidation =
   | { ok: false; reason: "invalid_mob_ids" };
 
 function isMobKind(value: string): value is MobAuthorityKind {
-  return value === "pig" || value === "cow" || value === "sheep" || value === "zombie";
+  return value === "pig" || value === "cow" || value === "sheep" || value === "zombie" || value === "skeleton";
 }
 
 export function validateMobIdentity(
@@ -125,7 +131,7 @@ export function validateMobIdentity(
     return { ok: false, reason: "invalid_mob" };
   }
   const mobId = rawMobId.trim();
-  const match = /^(pig|cow|sheep|zombie)-([0-9a-z]{1,8})-([0-9a-z]{1,3})$/.exec(mobId);
+  const match = /^(pig|cow|sheep|zombie|skeleton)-([0-9a-z]{1,8})-([0-9a-z]{1,3})$/.exec(mobId);
   if (!match || !isMobKind(match[1])) return { ok: false, reason: "invalid_mob" };
   const kind = match[1];
   const slot = Number.parseInt(match[3], 36);

@@ -2,6 +2,7 @@ import { signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakeb
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
 import { ChestDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
+import { isCraftingTableWithinReach, type CraftingTablePosition } from "./crafting";
 import {
   BLOCK,
   createVoxelEngine,
@@ -19,6 +20,7 @@ import {
   MAX_HUNGER,
   addItem,
   attackDamage,
+  canHarvestBlock,
   clampHotbarIndex,
   craftRecipe,
   createEmptyEquipment,
@@ -40,6 +42,7 @@ import {
   unequipArmor,
   type ArmorSlot,
   type BlockId,
+  type CraftingContext,
   type Equipment,
   type Inventory,
   type ItemId,
@@ -301,6 +304,7 @@ export function App() {
   const chestBusyRef = useRef(false);
   const chestTransferActiveRef = useRef(false);
   const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
+  const activeCraftingTableRef = useRef<CraftingTablePosition | null>(null);
   const toastCounter = useRef(0);
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
@@ -309,6 +313,7 @@ export function App() {
   const [hunger, setHunger] = useState(MAX_HUNGER);
   const [selectedHotbar, setSelectedHotbar] = useState(2);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [pointerLocked, setPointerLocked] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [mobileUnsupported, setMobileUnsupported] = useState(false);
@@ -346,6 +351,12 @@ export function App() {
   function updateInventory(next: Inventory) {
     inventoryRef.current = next;
     setInventory(next);
+  }
+
+  function closeInventory() {
+    activeCraftingTableRef.current = null;
+    setCraftingContext("field");
+    setInventoryOpen(false);
   }
 
   function setChestOperationBusy(next: boolean) {
@@ -464,13 +475,16 @@ export function App() {
       let droppedItem: ItemId | null = null;
       let droppedCount = 0;
       if (gameBlock) {
-        const drop = getMiningDrop(gameBlock);
+        const heldItem = inventoryRef.current[selectedRef.current]?.itemId;
+        const drop = getMiningDrop(gameBlock, heldItem);
         if (drop) {
           const added = addItem(inventoryRef.current, drop.itemId, drop.count);
           droppedItem = drop.itemId;
           droppedCount = drop.count - added.remainder;
           updateInventory(added.inventory);
           notify(`Collected ${ITEMS[drop.itemId].label}`, added.remainder ? "Your pack is full." : "Added to the field kit.", added.remainder ? "warning" : "success");
+        } else if (!canHarvestBlock(gameBlock, heldItem)) {
+          notify(`No ${ITEMS.stone.label} recovered`, "Stone only drops when mined with a wooden or stone pickaxe.", "warning");
         }
       }
       void removeBlockMutation(key, String(edit.x), String(edit.y), String(edit.z)).then(() => setConnected(true)).catch(() => {
@@ -593,14 +607,29 @@ export function App() {
           poseRef.current = pose;
           poseDirtyRef.current = true;
           recentlyActiveUntilRef.current = performance.now() + 1_200;
+          const table = activeCraftingTableRef.current;
+          if (table && !isCraftingTableWithinReach(pose, table)) {
+            closeInventory();
+            notify("Workbench out of reach", "Move back to the crafting table to use advanced recipes.", "warning");
+          }
         },
         onTargetChange: (target) => { targetRef.current = target; },
         onPointerLockChange: setPointerLocked,
         onInteractBlock: (target) => {
           const key = blockCoordinateKey(target.block.x, target.block.y, target.block.z);
-          setInventoryOpen(false);
+          closeInventory();
           setChatOpen(false);
           if (document.pointerLockElement) document.exitPointerLock();
+          if (target.block.block === BLOCK.CRAFTING_TABLE) {
+            activeCraftingTableRef.current = {
+              x: target.block.x,
+              y: target.block.y,
+              z: target.block.z,
+            };
+            setCraftingContext("crafting_table");
+            setInventoryOpen(true);
+            return true;
+          }
           if (target.block.block === BLOCK.BED) {
             const pose = engineRef.current?.getPose();
             const bedSpawn = pose ? normalizeRespawnPoint({
@@ -781,6 +810,11 @@ export function App() {
         }
         return;
       }
+      if (inventoryOpen && event.code === "Escape") {
+        event.preventDefault();
+        closeInventory();
+        return;
+      }
       if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat && !inventoryOpen) {
         event.preventDefault();
         if (document.pointerLockElement) document.exitPointerLock();
@@ -793,10 +827,14 @@ export function App() {
       if (event.code === "KeyE" && !event.repeat) {
         event.preventDefault();
         if (!hydratedRef.current) return;
-        setInventoryOpen((open) => {
-          if (!open && document.pointerLockElement) document.exitPointerLock();
-          return !open;
-        });
+        if (inventoryOpen) {
+          closeInventory();
+        } else {
+          activeCraftingTableRef.current = null;
+          setCraftingContext("field");
+          if (document.pointerLockElement) document.exitPointerLock();
+          setInventoryOpen(true);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -807,9 +845,14 @@ export function App() {
 
   function handleCraft(recipe: Recipe) {
     if (!hydratedRef.current) return;
-    const result = craftRecipe(inventoryRef.current, recipe);
+    const result = craftRecipe(inventoryRef.current, recipe, craftingContext);
     if (!result.ok) {
-      notify("Recipe unavailable", result.reason === "inventory_full" ? "Make room in your pack first." : "Gather the marked ingredients.", "warning");
+      const detail = result.reason === "inventory_full"
+        ? "Make room in your pack first."
+        : result.reason === "requires_crafting_table"
+          ? "Place and use a crafting table for advanced recipes."
+          : "Gather the marked ingredients.";
+      notify("Recipe unavailable", detail, "warning");
       return;
     }
     updateInventory(result.inventory);
@@ -1076,6 +1119,7 @@ export function App() {
       if (document.pointerLockElement) document.exitPointerLock();
       setInWorld(false);
       setChatOpen(false);
+      closeInventory();
       setMobIds([]);
     }
   }, [inWorld, auth.isLoading, auth.isAuthenticated, auth.isGuest]);
@@ -1198,6 +1242,7 @@ export function App() {
       <GameHud
         connected={connected}
         equipment={equipment}
+        craftingContext={craftingContext}
         health={playerHealth}
         hunger={hunger}
         maxHunger={MAX_HUNGER}
@@ -1206,7 +1251,7 @@ export function App() {
         messages={messages}
         mobileUnsupported={mobileUnsupported}
         onlineCount={Math.max(1, activePlayers.length)}
-        onCloseInventory={() => setInventoryOpen(false)}
+        onCloseInventory={closeInventory}
         onContinueMobile={() => setMobileUnsupported(false)}
         onCraft={handleCraft}
         onDismissControls={() => setShowControls(false)}

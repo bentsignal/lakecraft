@@ -39,6 +39,8 @@ The anonymous hosted quota is the harder multiplayer constraint: the current pub
 
 Chest transfers now replace the former chest-write-plus-delayed-pack-save sequence with one transactional mutation. A representative dense receipt is about 2.4 KiB including the exact replay result and semantic request fingerprint. Receipts are limited to the newest 16 per user, with a bounded eight-row cleanup batch and a 24-hour stale pass, preventing an ordinary player from growing an unbounded retry log against the anonymous deploy's 1 MiB state ceiling. Inventory autosaves and chest transfers share CAS tokens, and an outcome-unknown client blocks further moves until it replays the same operation ID.
 
+Skeletons share the existing mob simulation and one-buffer/one-draw renderer. Their arrows come from a retained 24-projectile pool, use swept player collision, and never write to Lakebed during flight. The deterministic stress fixture advances 64 skeletons for 3,000 ticks (192,000 skeleton-ticks plus arrows) in about 25–40 ms on the development Mac, comfortably below its 350 ms regression ceiling.
+
 ## Strategy
 
 - Prefer deterministic client generation and compact Lakebed records; world coordinates, presence, and inventories are indexed upserts, while chat remains bounded append-only history.
@@ -47,5 +49,6 @@ Chest transfers now replace the former chest-write-plus-delayed-pack-save sequen
 - Cap/paginate append-only feeds and preserve legacy duplicate-collapse helpers for migrated data.
 - Track Lakebed daily mutation and row limits alongside rendering performance.
 - Persist mob combat only on explicit attacks; deterministic movement and local respawn timers must never create Lakebed writes.
+- Keep hostile projectiles in fixed client-side pools and fold their geometry into the existing mob batch.
 - Commit chest and pack state together, retain only a bounded exact-replay window, and never optimistically mutate either side on the client.
 - Do not move multiplayer or persistence to another backend to solve performance.

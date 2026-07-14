@@ -1,10 +1,11 @@
-import { ITEMS, RECIPES, canCraft, countItem, equippedArmorProtection, type ArmorSlot, type Equipment, type Inventory, type Recipe } from "../../shared/game";
+import { ITEMS, availableRecipes, canCraft, countItem, equippedArmorProtection, type ArmorSlot, type CraftingContext, type Equipment, type Inventory, type Recipe } from "../../shared/game";
 import { IngredientGlyph, ItemGlyph } from "./ItemGlyph";
 
 export type InventoryCraftingDrawerProps = {
   open: boolean;
   inventory: Inventory;
   equipment: Equipment;
+  craftingContext?: CraftingContext;
   selectedIndex?: number;
   recipes?: readonly Recipe[];
   onClose: () => void;
@@ -19,8 +20,9 @@ export function InventoryCraftingDrawer({
   open,
   inventory,
   equipment,
+  craftingContext = "field",
   selectedIndex = 0,
-  recipes = RECIPES,
+  recipes,
   onClose,
   onCraft,
   onEquipArmor,
@@ -29,13 +31,15 @@ export function InventoryCraftingDrawer({
   onUseItem,
 }: InventoryCraftingDrawerProps) {
   if (!open) return null;
+  const displayedRecipes = recipes ?? availableRecipes(craftingContext);
+  const usingCraftingTable = craftingContext === "crafting_table";
   return (
     <div className="lc-drawer-layer" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
       <aside className="lc-drawer" role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
         <div className="lc-drawer__heading">
-          <div><span className="lc-kicker">field kit / contents</span><h2 id="lc-inventory-title">Pack & workbench</h2></div>
+          <div><span className="lc-kicker">{usingCraftingTable ? "crafting table / advanced patterns" : "field kit / 2×2 patterns"}</span><h2 id="lc-inventory-title">{usingCraftingTable ? "Pack & workbench" : "Pack & field kit"}</h2></div>
           <button className="lc-close" onClick={onClose} type="button" aria-label="Close inventory"><span>close</span><kbd>E</kbd></button>
         </div>
         <div className="lc-drawer__body">
@@ -71,10 +75,10 @@ export function InventoryCraftingDrawer({
             <p className="lc-pencil-note">Hotbar occupies pockets 01—09. Double-click food to eat, or ready it and use right-click.</p>
           </section>
           <section className="lc-crafting-panel" aria-labelledby="lc-recipes-title">
-            <div className="lc-section-rule"><h3 id="lc-recipes-title">Field recipes</h3><small>{recipes.length} known</small></div>
+            <div className="lc-section-rule"><h3 id="lc-recipes-title">{usingCraftingTable ? "Workbench recipes" : "Field recipes"}</h3><small>{displayedRecipes.length} known</small></div>
             <div className="lc-recipe-list">
-              {recipes.map((recipe, index) => {
-                const craftable = canCraft(inventory, recipe);
+              {displayedRecipes.map((recipe, index) => {
+                const craftable = canCraft(inventory, recipe, craftingContext);
                 const output = ITEMS[recipe.output.itemId];
                 return (
                   <button className={`lc-recipe${craftable ? " is-ready" : ""}`} disabled={!craftable} key={recipe.id} onClick={() => onCraft(recipe)} type="button">
