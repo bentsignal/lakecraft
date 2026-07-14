@@ -16,9 +16,13 @@ import {
   miningSeconds,
   normalizeEquipment,
   normalizeInventory,
+  normalizeRespawnPoint,
+  normalizeSerializablePlayerState,
+  parseSerializablePlayerStateJson,
   toolEffectiveness,
   unequipArmor,
   type Inventory,
+  type PlayerRespawnPoint,
   type Recipe,
 } from "../shared/game.ts";
 
@@ -125,6 +129,44 @@ assert.deepEqual(corruptEquipment, { head: null, chest: null, legs: null, feet: 
 const legacyState = createSerializablePlayerState([], 99, normalizeEquipment(undefined));
 assert.deepEqual(legacyState.equipment, createEmptyEquipment());
 assert.equal(legacyState.selectedHotbar, 8);
+assert.equal(legacyState.respawnPoint, null);
+
+const bedSpawn: PlayerRespawnPoint = { x: 12.5, y: 8.02, z: -4.5, yaw: Math.PI, pitch: -0.08 };
+assert.deepEqual(normalizeRespawnPoint(bedSpawn), bedSpawn);
+const stateWithSpawn = createSerializablePlayerState([], 2, createEmptyEquipment(), bedSpawn);
+assert.deepEqual(stateWithSpawn.respawnPoint, bedSpawn);
+assert.notEqual(stateWithSpawn.respawnPoint, bedSpawn, "serialized spawn state should not retain a mutable caller object");
+assert.deepEqual(parseSerializablePlayerStateJson(JSON.stringify(stateWithSpawn)), stateWithSpawn);
+
+for (const invalidSpawn of [
+  null,
+  { x: 65, y: 8, z: 0, yaw: 0, pitch: 0 },
+  { x: 0, y: 97, z: 0, yaw: 0, pitch: 0 },
+  { x: 0, y: 8, z: -65, yaw: 0, pitch: 0 },
+  { x: 0, y: 8, z: 0, yaw: Number.POSITIVE_INFINITY, pitch: 0 },
+  { x: 0, y: 8, z: 0, yaw: 0, pitch: 2 },
+  { x: "0", y: 8, z: 0, yaw: 0, pitch: 0 },
+]) {
+  assert.equal(normalizeRespawnPoint(invalidSpawn), null);
+}
+
+const parsedLegacyObject = parseSerializablePlayerStateJson(JSON.stringify({
+  inventory: [{ itemId: "stone", count: 3 }],
+  selectedHotbar: 99,
+  equipment: { feet: "leather_boots" },
+}));
+assert.ok(parsedLegacyObject);
+assert.equal(parsedLegacyObject.respawnPoint, null);
+assert.equal(parsedLegacyObject.selectedHotbar, 8);
+assert.equal(parsedLegacyObject.inventory[0]?.itemId, "stone");
+assert.equal(parsedLegacyObject.equipment.feet, "leather_boots");
+
+const parsedLegacyInventory = parseSerializablePlayerStateJson(JSON.stringify([{ itemId: "dirt", count: 5 }]));
+assert.equal(parsedLegacyInventory?.inventory[0]?.itemId, "dirt");
+assert.equal(parsedLegacyInventory?.respawnPoint, null);
+assert.equal(parseSerializablePlayerStateJson("not json"), null);
+assert.equal(parseSerializablePlayerStateJson("42"), null);
+assert.equal(normalizeSerializablePlayerState({ respawnPoint: { ...bedSpawn, x: 1_000 } }).respawnPoint, null);
 
 const fullInventory = Array.from({ length: 27 }, () => ({ itemId: "stone_sword" as const, count: 1 }));
 const fullEquipment = { ...createEmptyEquipment(), head: "leather_helmet" as const };

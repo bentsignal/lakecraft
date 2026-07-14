@@ -30,6 +30,8 @@ import {
   miningSeconds,
   normalizeEquipment,
   normalizeInventory,
+  normalizeRespawnPoint,
+  parseSerializablePlayerStateJson,
   removeItem,
   unequipArmor,
   type ArmorSlot,
@@ -37,6 +39,7 @@ import {
   type Equipment,
   type Inventory,
   type ItemId,
+  type PlayerRespawnPoint,
   type Recipe,
 } from "../shared/game";
 import { CHEST_SLOT_COUNT, type ChestAtResult, type SaveChestResult } from "../shared/chests";
@@ -177,18 +180,8 @@ function toEngineEdits(events: WorldEdit[]): EngineWorldEdit[] {
   });
 }
 
-function parsePlayerState(row: PersistedInventory | null): { inventory: Inventory; selectedHotbar: number; equipment: Equipment } | null {
-  if (!row) return null;
-  try {
-    const value = JSON.parse(row.inventoryJson) as { inventory?: unknown; selectedHotbar?: unknown };
-    return {
-      inventory: normalizeInventory(value.inventory),
-      selectedHotbar: clampHotbarIndex(typeof value.selectedHotbar === "number" ? value.selectedHotbar : 0),
-      equipment: normalizeEquipment((value as { equipment?: unknown }).equipment),
-    };
-  } catch {
-    return null;
-  }
+function parsePlayerState(row: PersistedInventory | null) {
+  return row ? parseSerializablePlayerStateJson(row.inventoryJson) : null;
 }
 
 export function App() {
@@ -221,6 +214,7 @@ export function App() {
   const targetRef = useRef<BlockTarget | null>(null);
   const inventoryRef = useRef<Inventory>(createStarterInventory());
   const equipmentRef = useRef<Equipment>(createEmptyEquipment());
+  const respawnPointRef = useRef<PlayerRespawnPoint | null>(null);
   const selectedRef = useRef(2);
   const hydratedRef = useRef(false);
   const hydratedUserRef = useRef("");
@@ -228,6 +222,7 @@ export function App() {
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
   const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
+  const [respawnPoint, setRespawnPoint] = useState<PlayerRespawnPoint | null>(null);
   const [selectedHotbar, setSelectedHotbar] = useState(2);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pointerLocked, setPointerLocked] = useState(false);
@@ -326,6 +321,8 @@ export function App() {
       selectedRef.current = saved.selectedHotbar;
       setSelectedHotbar(saved.selectedHotbar);
       setEquipment(saved.equipment);
+      respawnPointRef.current = saved.respawnPoint;
+      setRespawnPoint(saved.respawnPoint);
       notify("Field kit restored", "Lakebed recovered your last inventory.", "success");
     }
     setInventoryReady(true);
@@ -334,14 +331,14 @@ export function App() {
   useEffect(() => {
     if (!hydratedRef.current || !auth.isAuthenticated || auth.isGuest) return;
     const timer = window.setTimeout(() => {
-      const state = createSerializablePlayerState(inventory, selectedHotbar, equipment);
+      const state = createSerializablePlayerState(inventory, selectedHotbar, equipment, respawnPoint);
       void saveInventory(JSON.stringify(state)).then(() => setConnected(true)).catch(() => {
         setConnected(false);
         notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
       });
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [inventory, selectedHotbar, equipment, auth.isAuthenticated, auth.isGuest]);
+  }, [inventory, selectedHotbar, equipment, respawnPoint, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
     if (!inWorld || !inventoryReady) return;
@@ -398,6 +395,20 @@ export function App() {
           setChatOpen(false);
           if (document.pointerLockElement) document.exitPointerLock();
           if (target.block.block === BLOCK.BED) {
+            const pose = engineRef.current?.getPose();
+            const bedSpawn = pose ? normalizeRespawnPoint({
+              x: pose.x,
+              y: pose.y,
+              z: pose.z,
+              yaw: pose.yaw,
+              pitch: pose.pitch,
+            }) : null;
+            if (bedSpawn) {
+              respawnPointRef.current = bedSpawn;
+              setRespawnPoint(bedSpawn);
+              engineRef.current?.setRespawnPoint(bedSpawn);
+              notify("Spawn point set", "You will return beside this bed after death.", "success");
+            }
             setActiveBedKey(key);
             setSleepStatus("Checking the shared night watch with Lakebed…");
             void handleSleepInBed(key);
@@ -411,6 +422,7 @@ export function App() {
         onPerformanceStats: setPerformanceStats,
       });
       engineRef.current = engine;
+      if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
       engine.start();
       return () => {
         engine.destroy();
@@ -784,6 +796,14 @@ export function App() {
         }}
         onSignOut={() => {
           signOut();
+          updateInventory(createStarterInventory());
+          const emptyEquipment = createEmptyEquipment();
+          equipmentRef.current = emptyEquipment;
+          setEquipment(emptyEquipment);
+          respawnPointRef.current = null;
+          setRespawnPoint(null);
+          selectedRef.current = 2;
+          setSelectedHotbar(2);
           setUsernameDraft("");
           setUsernameState("idle");
           setInventoryReady(false);

@@ -35,6 +35,7 @@ import {
   type BlockId,
   type BlockTarget,
   type PlayerPose,
+  type RespawnPoint,
   type VoxelEngine,
   type VoxelEngineOptions,
   type VoxelPerformanceStats,
@@ -68,6 +69,7 @@ export const TORCH_MESH_VERTEX_COUNT = 72;
 export const CHEST_MESH_VERTEX_COUNT = 108;
 export const DOOR_MESH_VERTEX_COUNT = 144;
 export const BED_MESH_VERTEX_COUNT = 108;
+export const MAX_RESPAWN_HEIGHT = 128;
 
 const VERTEX_SHADER = `
 attribute vec3 aPosition;
@@ -214,6 +216,34 @@ export function applyDayNightClockUpdate(
   return Number.isFinite(nextServerTimeOffsetMs)
     ? nextServerTimeOffsetMs as number
     : currentServerTimeOffsetMs;
+}
+
+/** Returns a bounded engine pose, or null when a requested spawn is unsafe. */
+export function validateRespawnPoint(
+  point: RespawnPoint,
+  horizontalLimit = 64,
+): PlayerPose | null {
+  if (
+    !Number.isFinite(point.x)
+    || !Number.isFinite(point.y)
+    || !Number.isFinite(point.z)
+    || (point.y < 0 || point.y > MAX_RESPAWN_HEIGHT)
+    || !Number.isFinite(horizontalLimit)
+    || horizontalLimit <= 0
+    || Math.abs(point.x) > horizontalLimit
+    || Math.abs(point.z) > horizontalLimit
+    || (point.yaw !== undefined && !Number.isFinite(point.yaw))
+    || (point.pitch !== undefined && !Number.isFinite(point.pitch))
+  ) return null;
+  const rawYaw = point.yaw ?? 0;
+  const yaw = ((rawYaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  return {
+    x: point.x,
+    y: point.y,
+    z: point.z,
+    yaw,
+    pitch: Math.max(-1.52, Math.min(1.52, point.pitch ?? -0.08)),
+  };
 }
 
 /** Dispatches the currently supported block interaction without changing placement state. */
@@ -659,6 +689,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     z: options.initialPose?.z ?? 0.5,
     yaw: options.initialPose?.yaw ?? 0,
     pitch: options.initialPose?.pitch ?? -0.08,
+  };
+  let respawnPoint: PlayerPose = {
+    x: 0.5,
+    y: startY,
+    z: 0.5,
+    yaw: 0,
+    pitch: -0.08,
   };
   const velocity: Vec3 = [0, 0, 0];
   const keys = new Set<string>();
@@ -1320,16 +1357,20 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         nextServerTimeOffsetMs,
       );
     },
+    setRespawnPoint(point) {
+      const validated = validateRespawnPoint(point, radius + 1);
+      if (validated) respawnPoint = validated;
+    },
     getPose() { return { ...pose }; },
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },
     getPerformanceStats,
     requestPointerLock() { canvas.requestPointerLock(); },
     respawn() {
-      pose.x = 0.5;
-      pose.y = startY;
-      pose.z = 0.5;
-      pose.yaw = 0;
-      pose.pitch = -0.08;
+      pose.x = respawnPoint.x;
+      pose.y = respawnPoint.y;
+      pose.z = respawnPoint.z;
+      pose.yaw = respawnPoint.yaw;
+      pose.pitch = respawnPoint.pitch;
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;

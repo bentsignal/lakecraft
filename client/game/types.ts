@@ -34,6 +34,14 @@ export interface PlayerPose {
   pitch: number;
 }
 
+export interface RespawnPoint {
+  x: number;
+  y: number;
+  z: number;
+  yaw?: number;
+  pitch?: number;
+}
+
 export interface RemotePlayer extends PlayerPose {
   id: string;
   name?: string;
@@ -115,6 +123,7 @@ export interface VoxelEngine {
   setSelectedBlock(block: BlockId): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
+  setRespawnPoint(point: RespawnPoint): void;
   getPose(): PlayerPose;
   getTarget(): BlockTarget | null;
   getPerformanceStats(): VoxelPerformanceStats;

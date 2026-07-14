@@ -64,6 +64,15 @@ export type SerializablePlayerState = {
   inventory: Inventory;
   selectedHotbar: number;
   equipment: Equipment;
+  respawnPoint: PlayerRespawnPoint | null;
+};
+
+export type PlayerRespawnPoint = {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
 };
 
 export type EquipResult =
@@ -336,10 +345,57 @@ export function unequipArmor(inventory: readonly (ItemStack | null)[], equipment
   return { ok: true, inventory: added.inventory, equipment: nextEquipment };
 }
 
+export function normalizeRespawnPoint(value: unknown): PlayerRespawnPoint | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<Record<keyof PlayerRespawnPoint, unknown>>;
+  const { x, y, z, yaw, pitch } = candidate;
+  if (typeof x !== "number" || !Number.isFinite(x) || x < -64 || x > 64
+    || typeof y !== "number" || !Number.isFinite(y) || y < -4 || y > 96
+    || typeof z !== "number" || !Number.isFinite(z) || z < -64 || z > 64
+    || typeof yaw !== "number" || !Number.isFinite(yaw) || yaw < -100_000 || yaw > 100_000
+    || typeof pitch !== "number" || !Number.isFinite(pitch) || pitch < -1.52 || pitch > 1.52) {
+    return null;
+  }
+  return { x, y, z, yaw, pitch };
+}
+
 export function createSerializablePlayerState(
   inventory: readonly (ItemStack | null)[] = createStarterInventory(),
   selectedHotbar = 0,
-  equipment: Equipment = createEmptyEquipment()
+  equipment: Equipment = createEmptyEquipment(),
+  respawnPoint: PlayerRespawnPoint | null = null
 ): SerializablePlayerState {
-  return { inventory: normalizeInventory(inventory), selectedHotbar: clampHotbarIndex(selectedHotbar), equipment: normalizeEquipment(equipment) };
+  return {
+    inventory: normalizeInventory(inventory),
+    selectedHotbar: clampHotbarIndex(selectedHotbar),
+    equipment: normalizeEquipment(equipment),
+    respawnPoint: normalizeRespawnPoint(respawnPoint),
+  };
+}
+
+export function normalizeSerializablePlayerState(value: unknown): SerializablePlayerState {
+  if (Array.isArray(value)) return createSerializablePlayerState(value);
+  if (!value || typeof value !== "object") return createSerializablePlayerState();
+  const candidate = value as {
+    inventory?: unknown;
+    selectedHotbar?: unknown;
+    equipment?: unknown;
+    respawnPoint?: unknown;
+  };
+  return createSerializablePlayerState(
+    Array.isArray(candidate.inventory) ? candidate.inventory as Array<ItemStack | null> : createStarterInventory(),
+    typeof candidate.selectedHotbar === "number" ? candidate.selectedHotbar : 0,
+    normalizeEquipment(candidate.equipment),
+    normalizeRespawnPoint(candidate.respawnPoint),
+  );
+}
+
+export function parseSerializablePlayerStateJson(rawJson: string): SerializablePlayerState | null {
+  try {
+    const parsed = JSON.parse(rawJson) as unknown;
+    if (!parsed || (typeof parsed !== "object" && !Array.isArray(parsed))) return null;
+    return normalizeSerializablePlayerState(parsed);
+  } catch {
+    return null;
+  }
 }

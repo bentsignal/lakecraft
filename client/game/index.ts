@@ -1,5 +1,5 @@
 export { createVoxelEngine } from "./voxelEngine.ts";
-export { BED_MESH_VERTEX_COUNT, CHEST_MESH_VERTEX_COUNT, DOOR_MESH_VERTEX_COUNT, MAX_ACTIVE_TORCH_LIGHTS, PLAYER_MAX_HEALTH, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendBedMesh, appendChestMesh, appendDoorMesh, appendTorchMesh, applyDayNightClockUpdate, blockHasCollision, blockOccludesFaces, createDoorToggleEdit, doorPlacementBlock, isDoorBlock, selectNearestTorchLights, toggledDoorBlock, tryInteractBlock } from "./voxelEngine.ts";
+export { BED_MESH_VERTEX_COUNT, CHEST_MESH_VERTEX_COUNT, DOOR_MESH_VERTEX_COUNT, MAX_ACTIVE_TORCH_LIGHTS, MAX_RESPAWN_HEIGHT, PLAYER_MAX_HEALTH, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendBedMesh, appendChestMesh, appendDoorMesh, appendTorchMesh, applyDayNightClockUpdate, blockHasCollision, blockOccludesFaces, createDoorToggleEdit, doorPlacementBlock, isDoorBlock, selectNearestTorchLights, toggledDoorBlock, tryInteractBlock, validateRespawnPoint } from "./voxelEngine.ts";
 export { BLOCK } from "./types.ts";
 export { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 export { WORLD_CHUNK_SIZE, chunkCoordinate, chunkKeyForBlock, dirtyChunkKeysForEdit, dirtyChunkKeysForEdits } from "./chunks.ts";
@@ -39,6 +39,7 @@ export type {
   BlockTarget,
   PlayerPose,
   RemotePlayer,
+  RespawnPoint,
   VoxelEngine,
   VoxelEngineOptions,
   VoxelPerformanceStats,
