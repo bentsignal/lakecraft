@@ -50,13 +50,16 @@ function parseArguments(argv) {
   if (positional.length !== 2) {
     fail("usage: node scripts/pixelate-texture-sheet.mjs input.png output.png [--columns 4 --rows 4 --source-columns 4 --source-rows 4 --tile-size 16 --inset 0.04 --names a,b,... --ts output.ts]");
   }
-  if (options.names.length && options.names.length !== options.columns * options.rows) {
-    fail(`--names must contain exactly ${options.columns * options.rows} comma-separated names.`);
+  if (options.names.length > options.columns * options.rows) {
+    fail(`--names cannot contain more than ${options.columns * options.rows} comma-separated names.`);
   }
   const sourceColumns = options.sourceColumns ?? options.columns;
   const sourceRows = options.sourceRows ?? options.rows;
   if (sourceColumns * sourceRows > options.columns * options.rows) {
     fail("source grid cannot contain more cells than the output atlas.");
+  }
+  if (options.names.length && options.names.length < sourceColumns * sourceRows) {
+    fail(`--names must cover all ${sourceColumns * sourceRows} source cells.`);
   }
   return {
     input: resolve(positional[0]),
@@ -399,6 +402,36 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
       [2,2],[6,2],[9,1],[11,3],[15,5],[4,7],[6,6],[9,8],[12,8],[2,11],
       [4,10],[7,13],[9,12],[12,14],[13,13],[0,15],
     ]) paint(x, y, light);
+    return;
+  }
+
+  if (name === "wool") {
+    // Original 16px woven-fleece tile. Warm off-whites create a soft cloth
+    // field while short deterministic horizontal and vertical threads keep
+    // the cube readable at Minecraft-scale nearest-neighbor sampling.
+    const shadow = [187, 187, 170, 255];
+    const low = [204, 204, 187, 255];
+    const base = [221, 221, 204, 255];
+    const light = [238, 238, 221, 255];
+    const highlight = [255, 255, 238, 255];
+    fill(base);
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
+        const weave = (Math.imul(x + 5, 19) ^ Math.imul(y + 11, 31) ^ Math.imul(x * y + 3, 7)) & 31;
+        if (weave < 3) paint(x, y, low);
+        else if (weave === 3 || weave === 17) paint(x, y, light);
+      }
+    }
+    for (const [x, y] of [
+      [1,2],[2,2],[5,0],[5,1],[9,3],[10,3],[13,1],[14,1],
+      [3,6],[4,6],[7,5],[7,6],[11,7],[12,7],[15,5],[15,6],
+      [0,10],[1,10],[5,9],[6,9],[9,11],[10,11],[13,9],[14,9],
+      [2,14],[3,14],[7,13],[8,13],[11,15],[12,15],[15,13],[15,14],
+    ]) paint(x, y, shadow);
+    for (const [x, y] of [
+      [2,1],[6,2],[10,2],[14,3],[1,5],[5,7],[8,4],[13,6],
+      [2,9],[6,8],[10,10],[14,8],[0,13],[4,12],[9,14],[13,12],
+    ]) paint(x, y, highlight);
     return;
   }
 

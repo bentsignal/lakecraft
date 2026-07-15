@@ -38,7 +38,7 @@ import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
 import { cycleHotbarIndex } from "../game/hotbarInput";
-import { createGameAudio } from "../game/audio";
+import { createGameAudio, type GameAudioSurface } from "../game/audio";
 
 const SAVE_KEY = "lakecraft.singleplayer.v1";
 
@@ -52,6 +52,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.TORCH]: "torch", [BLOCK.CHEST]: "chest", [BLOCK.DOOR_CLOSED]: "door",
   [BLOCK.DOOR_OPEN]: "door", [BLOCK.BED]: "bed", [BLOCK.LADDER]: "ladder",
   [BLOCK.TNT]: "tnt",
+  [BLOCK.WOOL]: "wool",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -61,7 +62,20 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   planks: BLOCK.PLANKS, crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE,
   torch: BLOCK.TORCH, chest: BLOCK.CHEST, door: BLOCK.DOOR_CLOSED, bed: BLOCK.BED, ladder: BLOCK.LADDER,
   tnt: BLOCK.TNT,
+  wool: BLOCK.WOOL,
 };
+
+function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
+  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
+  if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
+    || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER) return "wood";
+  if (block === BLOCK.SAND) return "sand";
+  if (block === BLOCK.GRAVEL) return "gravel";
+  if (block === BLOCK.GLASS) return "glass";
+  if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
+  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE) return "stone";
+  return "generic";
+}
 
 type LocalSave = {
   inventory: Inventory;
@@ -80,7 +94,7 @@ function loadLocalSave(): LocalSave {
     const value = JSON.parse(raw) as Partial<LocalSave>;
     const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.TNT,
+      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.WOOL,
     )).slice(-8_000) : [];
     const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
@@ -338,6 +352,16 @@ export function SinglePlayerApp() {
           next = removeItem(next, held, 1).inventory;
         }
         updateInventory(next);
+        const seed = `local:${edit.x},${edit.y},${edit.z}:${performance.now().toFixed(0)}`;
+        if (toggledDoor) {
+          audio.play(edit.block === BLOCK.DOOR_OPEN ? "doorOpen" : "doorClose", { seed, surface: "wood" });
+        } else if (edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
+          audio.play("blockBreak", { seed, surface: audioSurfaceForBlock(previousBlock) });
+          engine.spawnBlockParticles({ action: "break", block: previousBlock, x: edit.x, y: edit.y, z: edit.z });
+        } else if (previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR) {
+          audio.play("blockPlace", { seed, surface: audioSurfaceForBlock(edit.block) });
+          engine.spawnBlockParticles({ action: "place", block: edit.block, x: edit.x, y: edit.y, z: edit.z });
+        }
       },
       onMobDrops: (drops) => {
         let next = inventoryRef.current;

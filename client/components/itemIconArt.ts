@@ -89,6 +89,10 @@ function decorateBlock(g: Grid, id: BlockId): void {
     case "furnace": box(g,4,8,4,3,"d"); box(g,9,7,3,3,"o"); dots(g,"h",[[5,8],[6,8]]); break;
     case "chest": box(g,3,8,10,1,"d"); box(g,7,7,2,4,"h"); break;
     case "tnt": box(g,3,7,10,3,"h"); box(g,4,8,8,1,"o"); dots(g,"a",[[5,2],[10,3],[4,5],[11,11],[6,12]]); break;
+    case "wool":
+      dots(g,"d",[[5,2],[9,3],[4,5],[7,6],[11,5],[3,8],[6,10],[10,9],[12,11],[7,12]]);
+      dots(g,"h",[[7,3],[11,4],[5,6],[9,7],[4,10],[8,11],[11,10]]);
+      break;
     default: dots(g,"a",[[6,3],[10,5],[4,9],[10,10]]);
   }
 }

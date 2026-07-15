@@ -24,7 +24,7 @@ assert.equal(ITEMS.gravel.category, "block");
 assert.equal(ITEMS.gravel.placesBlock, "gravel");
 assert.equal(ITEMS.gravel.maxStack, 64);
 assert.equal(isBlockType("gravel"), true);
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.at(-1), "gravel", "the append-only chunk palette preserves every deployed code");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES[23], "gravel", "the append-only chunk palette preserves gravel's deployed code");
 assert.equal(BLOCK.GRAVEL, 23, "the client block palette appends gravel after deployed TNT");
 
 assert.deepEqual(getMiningDrop("gravel", null), { itemId: "gravel", count: 1 });

@@ -64,4 +64,6 @@ A single Lakebed row holds the fixed-point mob timeline behind a session-bound l
 
 Sheep can be clipped by right-clicking with shears. The interaction is a discrete Lakebed mutation that reuses the active presence/reach checks and bounded combat receipt window; one accepted transaction changes the shared coat state, spends exactly one durability, and inserts a deterministic one-to-three wool into the same authoritative inventory. Replays return the current inventory without paying again, and the existing proximity composite carries the narrower pink sheared model without another query loop. Single-player uses the same visible state transition and inventory-capacity fence locally.
 
+The resulting white wool is a normal building block rather than a recipe-only token. Its existing item ID now places an opaque, collision-bearing 16×16 woven-fleece cube, mines back into itself by hand, and still feeds the unchanged bed recipe. Wool appends as world-chunk palette code 25 and protocol index 24, leaving every deployed block code stable; placement and mining reuse the ordinary exact-once world mutation and add no network loop.
+
 Performance budgets and the repeatable benchmark loop live in [PERFORMANCE.md](./PERFORMANCE.md).

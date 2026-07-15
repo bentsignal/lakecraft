@@ -30,6 +30,7 @@ const uniformMappings: ReadonlyArray<readonly [BlockId, TextureAtlasName]> = [
   [BLOCK.LEAVES, "leaves"],
   [BLOCK.SAND, "sand"],
   [BLOCK.GRAVEL, "gravel"],
+  [BLOCK.WOOL, "wool"],
   [BLOCK.COAL_ORE, "coal_ore"],
   [BLOCK.IRON_ORE, "iron_ore"],
   [BLOCK.GOLD_ORE, "gold_ore"],
@@ -115,9 +116,9 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 }
 
 const firstRow = textureAtlasUv("grass_top");
-assert.ok(firstRow.top > 0.98 && firstRow.bottom > 0.8 && firstRow.bottom < 0.81);
-const lastRow = textureAtlasUv("gravel");
-assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.02 && lastRow.top < 0.21);
+assert.ok(firstRow.top > 0.98 && firstRow.bottom > 0.83 && firstRow.bottom < 0.84);
+const lastRow = textureAtlasUv("wool");
+assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.02 && lastRow.top < 0.17);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the
 // old six-float stride instead of increasing every streamed chunk allocation.
@@ -127,7 +128,7 @@ const representativeWorldBytes = representativeWorldVertices
   * TEXTURED_WORLD_VERTEX_FLOATS
   * Float32Array.BYTES_PER_ELEMENT;
 const atlasBytes = TEXTURE_ATLAS_RGBA.byteLength;
-assert.equal(atlasBytes, 25 * 16 * 16 * 4, "the directional RGBA texture stays near 25 KiB");
+assert.equal(atlasBytes, 30 * 16 * 16 * 4, "the append-only RGBA texture stays at 30 KiB");
 assert.ok(representativeWorldBytes <= 4_080_000, "170k streamed vertices stay within the 4.08MB world VBO budget");
 assert.ok(
   representativeWorldBytes + atlasBytes < 4 * 1024 * 1024,

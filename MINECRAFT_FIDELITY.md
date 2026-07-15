@@ -45,6 +45,7 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 - Moving players target 5 updates/second through Lakebed, with local interpolation between compact snapshots and much slower idle keepalive. Measure the resulting mutation quota honestly.
 - Dropped items and pickups are authoritative Lakebed state changes, never client-only duplication opportunities and never frame-loop writes.
 - Right-clicking a sheep with shears yields one to three wool, spends one durability only on acceptance, and visibly removes its wool coat until death/respawn; retrying the same multiplayer operation cannot pay twice.
+- White wool is directly placeable, uses an original woven 16×16 texture, breaks softly by hand, drops itself, and remains the same item used in the three-wool bed recipe.
 
 ## Reference sources
 

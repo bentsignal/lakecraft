@@ -34,6 +34,7 @@ export const BLOCK = {
   DIAMOND_ORE: 21,
   TNT: 22,
   GRAVEL: 23,
+  WOOL: 24,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];

@@ -414,6 +414,8 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.GOLD_ORE]: [0.78, 0.64, 0.17],
   [BLOCK.DIAMOND_ORE]: [0.24, 0.78, 0.76],
   [BLOCK.TNT]: [0.72, 0.16, 0.12],
+  [BLOCK.GRAVEL]: [0.47, 0.45, 0.42],
+  [BLOCK.WOOL]: [0.86, 0.84, 0.78],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */

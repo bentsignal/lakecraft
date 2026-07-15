@@ -110,4 +110,10 @@ assert.equal(none.spawn(event), 0);
 assert.equal(none.spawn({ ...event, block: BLOCK.AIR }), 0);
 assert.equal(none.activeCount, 0);
 
+const wool = createBlockParticleSystem(1);
+assert.equal(wool.spawn({ block: BLOCK.WOOL, x: 2, y: 3, z: 4, action: "break" }), 1);
+wool.writeGeometry([1, 0, 0], [0, 1, 0], physicsGeometry, physicsStats);
+assert.ok(physicsGeometry[15] > 0.8 && physicsGeometry[16] > 0.78 && physicsGeometry[17] > 0.72,
+  "wool debris uses a soft warm-white particle palette");
+
 console.log("bounded deterministic block particle tests passed");
