@@ -9,7 +9,7 @@ assert.equal(client.includes("teleportEpoch: string"), false);
 
 const authorization = client.slice(
   client.indexOf("function requestAuthorizedRespawn"),
-  client.indexOf("function scheduleAuthorizedRespawn"),
+  client.indexOf("function exitPointerLockForUi"),
 );
 assert.ok(authorization.includes("void authorizeRespawn(presenceSessionIdRef.current).then((result) =>"));
 assert.ok(authorization.indexOf("if (!result.ok)") < authorization.indexOf("engine.respawn()"));
@@ -22,7 +22,8 @@ const deathFlow = client.slice(
   client.indexOf("const ownState = playerCombatResult.states.find"),
   client.indexOf("if (worldChunks?.ok)"),
 );
-assert.ok(deathFlow.includes("scheduleAuthorizedRespawn()"));
+assert.ok(deathFlow.includes("setDeathScreenOpen(true)"));
+assert.ok(deathFlow.includes("exitPointerLockForUi()"));
 assert.equal(deathFlow.includes("engineRef.current?.respawn()"), false);
 assert.ok(deathFlow.includes("engineRef.current.setPlayerHealth(ownState.health)"), "health is reconciled absolutely from Lakebed combat state");
 assert.ok(authorization.includes("loadCanonicalPlayer(result.inventory)"), "respawn hunger comes from the committed server snapshot");
@@ -36,8 +37,9 @@ assert.equal(bedInteraction.includes("respawnPointRef.current ="), false);
 assert.ok(client.includes("Lakebed confirmed this bed as your authoritative respawn point."));
 
 assert.equal(client.includes("pendingRespawnAuthorizationRef"), false);
-assert.ok(authorization.includes("result.retryAfterMs ?? 2_000"));
-assert.ok(authorization.includes("requestAuthorizedRespawn();"));
+assert.equal(client.includes("scheduleAuthorizedRespawn"), false, "death waits for the player's Respawn click");
+assert.equal(authorization.includes("requestAuthorizedRespawn();"), false, "respawn failures never create a mutation retry loop");
+assert.ok(client.includes("onRespawn={requestAuthorizedRespawn}"));
 assert.ok(client.includes("preserveInitialPose: Boolean(resumedPresencePose)"));
 assert.ok(engine.includes("if (!options.preserveInitialPose)"));
 assert.ok(engine.includes("if (playerHealth <= 0)"), "dead players are frozen while Lakebed authorizes respawn");

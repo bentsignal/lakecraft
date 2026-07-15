@@ -22,11 +22,13 @@ import {
   MAX_VISIBLE_DROPPED_ITEMS_PER_CHUNK,
   applyDropItemToInventory,
   applyPickupDroppedItem,
+  createPersistedDroppedItem,
   normalizeDroppedItemRow,
   validateDropItemRequestJson,
   validatePickupDroppedItemRequestJson,
   validateVisibleDroppedItemChunkKeys
 } from "../shared/droppedItems";
+import { planDeathDrops } from "../shared/deathDrops.ts";
 import {
   ACTIVE_PLAYER_WINDOW_MS,
   MAX_SLEEP_PARTICIPANTS,
@@ -2778,6 +2780,49 @@ export default capsule({
       if (deadUntil > serverNow) {
         return { ok: false, reason: "respawn_not_ready", retryAfterMs: deadUntil - serverNow };
       }
+      const deathPose = validatePresencePoseFields(
+        presence.x,
+        presence.y,
+        presence.z,
+        presence.yaw,
+        presence.pitch,
+      );
+      if (!deathPose) return { ok: false, reason: "invalid_presence_state" };
+      const deathPlan = planDeathDrops({
+        identity: {
+          userId: ctx.auth.userId,
+          eventId: `${combatRow.revision}:${combatRow.deadUntil}`,
+        },
+        inventory: respawnInventory.state.inventory,
+        equipment: respawnInventory.state.equipment,
+        deathPose: { x: deathPose.x, y: deathPose.y, z: deathPose.z },
+      });
+      if (!deathPlan.ok) return { ok: false, reason: "invalid_death_settlement" };
+      const activeOwnedDrops = await ctx.db.droppedItems
+        .withIndex("by_owner_expiry", (q) => q
+          .eq("ownerUserId", ctx.auth.userId)
+          .gt("expiresAt", String(serverNow)))
+        .order("asc")
+        .take(65);
+      if (deathPlan.drops.some((_, index) => !canCreateDroppedItem(activeOwnedDrops.length + index))) {
+        return { ok: false, reason: "drop_limit" };
+      }
+      const deathDropRows = deathPlan.drops.map((drop) => createPersistedDroppedItem(
+        ctx.auth.userId,
+        drop.operationId,
+        drop.stack,
+        drop.position,
+        serverNow,
+      ));
+      if (deathDropRows.some((row) => !row)) return { ok: false, reason: "invalid_death_settlement" };
+      for (const row of deathDropRows) {
+        if (!row) continue;
+        const collision = await ctx.db.droppedItems
+          .withIndex("by_drop", (q) => q.eq("dropId", row.dropId))
+          .order("desc")
+          .first();
+        if (collision) return { ok: false, reason: "drop_id_collision" };
+      }
       let destination = trailheadPoseForUser(ctx.auth.userId);
       const bedRespawn = storedBedRespawnPose(existingRespawn);
       if (bedRespawn) {
@@ -2849,14 +2894,22 @@ export default capsule({
         revision: deadState.revision + 1,
         deadUntil: 0,
       }));
-      const respawnedInventory = respawnInventory.state.hunger === 20
-        ? inventoryRow
-        : await ctx.db.inventories.update(inventoryRow.id, {
-            userId: ctx.auth.userId,
-            inventoryJson: JSON.stringify({ ...respawnInventory.state, hunger: 20 }),
-            revision: incrementStoredRevision(inventoryRow.revision),
-          });
-      if (!respawnedInventory) throw new Error("Unable to persist respawn hunger.");
+      const respawnedInventory = await ctx.db.inventories.update(inventoryRow.id, {
+        userId: ctx.auth.userId,
+        inventoryJson: JSON.stringify({
+          ...respawnInventory.state,
+          inventory: deathPlan.carriedState.inventory,
+          equipment: deathPlan.carriedState.equipment,
+          hunger: 20,
+        }),
+        revision: incrementStoredRevision(inventoryRow.revision),
+      });
+      if (!respawnedInventory) throw new Error("Unable to persist respawn inventory settlement.");
+      for (const row of deathDropRows) {
+        if (!row || !await ctx.db.droppedItems.insert(row)) {
+          throw new Error("Unable to persist conserved death drop.");
+        }
+      }
       return {
         ok: true,
         target: destination,
@@ -2865,6 +2918,7 @@ export default capsule({
         inventory: respawnedInventory,
         sessionId: respawnSessionId,
         nextPoseSequence: "1",
+        droppedStacks: deathDropRows.length,
       };
     }),
 
@@ -2955,8 +3009,6 @@ export default capsule({
         }
         const previousPose = validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch);
         if (!previousPose) return { ok: false, reason: "invalid_persisted_pose" };
-        const fallWorld = await authoritativeFallWorldFacts(ctx.db, pose);
-        if (!fallWorld.ok) return { ok: false, reason: fallWorld.reason };
         const inventoryRows = await ctx.db.inventories
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
@@ -2980,6 +3032,29 @@ export default capsule({
           ctx.auth.userId,
           serverNow,
         );
+        if (combat.health === 0) {
+          const persistedDeadPresence = await ctx.db.playerPresence.update(existing.id, {
+            heartbeatAt: String(serverNow),
+            online: true,
+            poseSequence: sequence.sequence,
+            vx: "0",
+            vy: "0",
+            vz: "0",
+          });
+          if (!persistedDeadPresence) throw new Error("Unable to retain authoritative death pose.");
+          return {
+            ok: true,
+            applied: false,
+            reason: "dead_pose_locked",
+            canonicalPose: previousPose,
+            poseSequence: sequence.sequence,
+            hunger: playerState.state.hunger,
+            health: 0,
+            combatRevision: combat.revision,
+          };
+        }
+        const fallWorld = await authoritativeFallWorldFacts(ctx.db, pose);
+        if (!fallWorld.ok) return { ok: false, reason: fallWorld.reason };
         const previousSurvivalAt = /^\d{1,16}$/.test(existing.survivalAt ?? "")
           ? Number(existing.survivalAt)
           : serverNow;

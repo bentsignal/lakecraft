@@ -4,6 +4,7 @@ import {
   BLOCK,
   createVoxelEngine,
   type BlockId as EngineBlockId,
+  type DroppedItemRenderItem,
   type VoxelEngine,
   type WorldEdit,
 } from "../game";
@@ -11,6 +12,7 @@ import {
   MAX_HEALTH,
   MAX_HUNGER,
   ITEMS,
+  addItemStack,
   addItem,
   applyConfirmedDurableItemUse,
   applyConfirmedToolUse,
@@ -30,6 +32,8 @@ import {
   type Inventory,
   type ItemId,
 } from "../../shared/game";
+import { DROPPED_ITEM_PICKUP_RADIUS, validateDroppedItemStack } from "../../shared/droppedItems.ts";
+import { planDeathDrops } from "../../shared/deathDrops.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
@@ -65,10 +69,11 @@ type LocalSave = {
   selected: number;
   hunger: number;
   edits: WorldEdit[];
+  drops: DroppedItemRenderItem[];
 };
 
 function loadLocalSave(): LocalSave {
-  const fallback = { inventory: createStarterInventory(), equipment: createEmptyEquipment(), selected: 2, hunger: MAX_HUNGER, edits: [] };
+  const fallback = { inventory: createStarterInventory(), equipment: createEmptyEquipment(), selected: 2, hunger: MAX_HUNGER, edits: [], drops: [] };
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return fallback;
@@ -77,12 +82,25 @@ function loadLocalSave(): LocalSave {
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
       && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.TNT,
     )).slice(-8_000) : [];
+    const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const row = candidate as Partial<DroppedItemRenderItem>;
+      const item = validateDroppedItemStack(row.item);
+      return typeof row.dropId === "string" && row.dropId.length <= 64 && item
+        && typeof row.x === "number" && Number.isFinite(row.x)
+        && typeof row.y === "number" && Number.isFinite(row.y)
+        && typeof row.z === "number" && Number.isFinite(row.z)
+        && typeof row.droppedAt === "number" && Number.isSafeInteger(row.droppedAt)
+        ? [{ dropId: row.dropId, item, x: row.x, y: row.y, z: row.z, droppedAt: row.droppedAt }]
+        : [];
+    }).slice(-256) : [];
     return {
       inventory: normalizeInventory(value.inventory),
       equipment: normalizeEquipment(value.equipment),
       selected: clampHotbarIndex(value.selected),
       hunger: Number.isInteger(value.hunger) ? Math.max(0, Math.min(MAX_HUNGER, Number(value.hunger))) : MAX_HUNGER,
       edits,
+      drops,
     };
   } catch {
     return fallback;
@@ -99,11 +117,16 @@ export function SinglePlayerApp() {
   const selectedRef = useRef(initial.current.selected);
   const editsRef = useRef(initial.current.edits);
   const hungerRef = useRef(initial.current.hunger);
+  const healthRef = useRef(MAX_HEALTH);
+  const dropsRef = useRef<DroppedItemRenderItem[]>(initial.current.drops);
+  const localRespawnBusyRef = useRef(false);
   const [inventory, setInventory] = useState<Inventory>(initial.current.inventory);
   const [equipment, setEquipment] = useState<Equipment>(initial.current.equipment);
   const [selected, setSelected] = useState(initial.current.selected);
   const [hunger, setHunger] = useState(initial.current.hunger);
   const [health, setHealth] = useState(MAX_HEALTH);
+  const [deathScreenOpen, setDeathScreenOpen] = useState(false);
+  const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(true);
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
@@ -119,6 +142,7 @@ export function SinglePlayerApp() {
         selected: selectedRef.current,
         hunger: hungerRef.current,
         edits: editsRef.current.slice(-8_000),
+        drops: dropsRef.current.slice(-256),
       } satisfies LocalSave));
     } catch {
       // A full browser storage bucket must never stop the local game loop.
@@ -137,6 +161,83 @@ export function SinglePlayerApp() {
     selectedRef.current = next;
     setSelected(next);
     persist();
+  }
+
+  function collectLocalDrops(pose: { x: number; y: number; z: number }): void {
+    if (healthRef.current <= 0 || dropsRef.current.length === 0) return;
+    let nextInventory = inventoryRef.current;
+    let changed = false;
+    const remaining: DroppedItemRenderItem[] = [];
+    for (const drop of dropsRef.current) {
+      const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
+      if (distanceSquared > DROPPED_ITEM_PICKUP_RADIUS ** 2) {
+        remaining.push(drop);
+        continue;
+      }
+      const added = addItemStack(nextInventory, drop.item);
+      const picked = drop.item.count - added.remainder;
+      if (picked <= 0) {
+        remaining.push(drop);
+        continue;
+      }
+      nextInventory = added.inventory;
+      changed = true;
+      if (added.remainder > 0) remaining.push({ ...drop, item: { ...drop.item, count: added.remainder } });
+    }
+    if (!changed) return;
+    inventoryRef.current = nextInventory;
+    dropsRef.current = remaining;
+    setInventory(nextInventory);
+    engineRef.current?.setDroppedItems(remaining);
+    persist(nextInventory);
+  }
+
+  function respawnLocally(): void {
+    if (localRespawnBusyRef.current || !engineRef.current) return;
+    localRespawnBusyRef.current = true;
+    setRespawning(true);
+    const engine = engineRef.current;
+    const deathAt = Date.now();
+    const pose = engine.getPose();
+    const plan = planDeathDrops({
+      identity: { userId: "singleplayer", eventId: `local-${deathAt}` },
+      inventory: inventoryRef.current,
+      equipment: equipmentRef.current,
+      deathPose: { x: pose.x, y: pose.y, z: pose.z },
+    });
+    if (!plan.ok) {
+      setMessages((current) => [...current.slice(-2), { id: `death-${deathAt}`, text: "Respawn failed", detail: "Your carried items were left untouched.", tone: "warning" }]);
+      localRespawnBusyRef.current = false;
+      setRespawning(false);
+      return;
+    }
+    if (dropsRef.current.length + plan.drops.length > 256) {
+      setMessages((current) => [...current.slice(-2), { id: `death-cap-${deathAt}`, text: "Respawn blocked", detail: "Too many saved items are already lying in this world; your pack was not changed.", tone: "warning" }]);
+      localRespawnBusyRef.current = false;
+      setRespawning(false);
+      return;
+    }
+    const drops = plan.drops.map((drop): DroppedItemRenderItem => ({
+      dropId: drop.operationId,
+      item: drop.stack,
+      x: drop.position.x,
+      y: drop.position.y,
+      z: drop.position.z,
+      droppedAt: deathAt,
+    }));
+    dropsRef.current = [...dropsRef.current, ...drops];
+    inventoryRef.current = plan.carriedState.inventory;
+    equipmentRef.current = plan.carriedState.equipment;
+    hungerRef.current = MAX_HUNGER;
+    setInventory(plan.carriedState.inventory);
+    setEquipment(plan.carriedState.equipment);
+    setHunger(MAX_HUNGER);
+    engine.setDroppedItems(dropsRef.current);
+    persist(plan.carriedState.inventory, plan.carriedState.equipment);
+    engine.respawn();
+    setDeathScreenOpen(false);
+    localRespawnBusyRef.current = false;
+    setRespawning(false);
   }
 
   useEffect(() => {
@@ -241,7 +342,15 @@ export function SinglePlayerApp() {
         for (const drop of drops) next = addItem(next, drop.itemId as ItemId, drop.count).inventory;
         updateInventory(next);
       },
-      onPlayerHealthChange: setHealth,
+      onPlayerHealthChange: (nextHealth) => {
+        healthRef.current = nextHealth;
+        setHealth(nextHealth);
+        if (nextHealth > 0) return;
+        setDeathScreenOpen(true);
+        setPauseOpen(false);
+        setInventoryOpen(false);
+        document.exitPointerLock();
+      },
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: () => setHandActionToken((value) => value + 1),
@@ -269,9 +378,11 @@ export function SinglePlayerApp() {
       onPoseChange: (pose) => {
         const next = { x: Math.floor(pose.x), y: Math.floor(pose.y), z: Math.floor(pose.z) };
         setCoordinates((current) => current.x === next.x && current.y === next.y && current.z === next.z ? current : next);
+        collectLocalDrops(pose);
       },
     });
     engineRef.current = engine;
+    engine.setDroppedItems(dropsRef.current);
     engine.start();
     return () => {
       for (const timer of fuseTimers.values()) {
@@ -314,6 +425,8 @@ export function SinglePlayerApp() {
       <GameHud
         connected={false}
         craftingContext={craftingContext}
+        deathCause="Player died"
+        deathScreenOpen={deathScreenOpen}
         equipment={equipment}
         handActionToken={handActionToken}
         health={health}
@@ -336,11 +449,14 @@ export function SinglePlayerApp() {
           return true;
         }}
         onOptions={() => setMessages((current) => [...current, { id: `options-${Date.now()}`, title: "Options", detail: "More single-player settings are next.", tone: "info" }])}
+        onRespawn={respawnLocally}
         onResume={() => { setPauseOpen(false); engineRef.current?.requestPointerLock(); }}
         onSelectHotbar={selectHotbar}
+        onTitleScreen={() => { persist(); window.location.href = window.location.pathname; }}
         pauseOpen={pauseOpen}
         playerName="Player"
         selectedIndex={selected}
+        respawning={respawning}
         worldName="Local World"
       />
     </main>

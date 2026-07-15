@@ -69,7 +69,7 @@ import {
   type Profile,
   type SendChatResult,
 } from "../shared/multiplayer";
-import { PLAYER_RESPAWN_DELAY_MS, type PlayerCombatState } from "../shared/playerCombat";
+import { type PlayerCombatState } from "../shared/playerCombat";
 import {
   blockCoordinateKey,
   latestWorldEdits,
@@ -865,6 +865,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [showPerformance, setShowPerformance] = useState(false);
   const [playerHealth, setPlayerHealth] = useState(20);
+  const [deathScreenOpen, setDeathScreenOpen] = useState(false);
+  const [respawning, setRespawning] = useState(false);
   const [miningProgress, setMiningProgress] = useState(0);
   const [handActionToken, setHandActionToken] = useState(0);
   const [bowCharging, setBowCharging] = useState(false);
@@ -892,9 +894,9 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   }, []);
 
   useEffect(() => {
-    authorityTrafficPausedRef.current = !transportForeground || pauseOpen || inventoryOpen || chatOpen
+    authorityTrafficPausedRef.current = !transportForeground || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen
       || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey);
-  }, [transportForeground, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
+  }, [transportForeground, deathScreenOpen, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
   const [chestRetryAvailable, setChestRetryAvailable] = useState(false);
   const [sleepBusy, setSleepBusy] = useState(false);
   const [sleepStatus, setSleepStatus] = useState("Rest until every active explorer is in bed, then Lakebed will move the shared clock to morning.");
@@ -1002,19 +1004,20 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     }
     const engine = engineRef.current;
     if (!engine) return;
+    respawnLeaseTransitionRef.current = true;
     respawnRequestInFlightRef.current = true;
+    setRespawning(true);
     void authorizeRespawn(presenceSessionIdRef.current).then((result) => {
       if (!result.ok) {
+        respawnLeaseTransitionRef.current = false;
         if (result.reason === "session_mismatch") {
-          respawnLeaseTransitionRef.current = false;
           notify("Respawn lease moved", "Another signed-in session owns this player now.", "warning");
           return;
         }
-        notify("Respawn not authorized", "Lakebed did not approve a spawn jump. You remain at the death location.", "warning");
-        respawnTimerRef.current = window.setTimeout(() => {
-          respawnTimerRef.current = null;
-          requestAuthorizedRespawn();
-        }, Math.max(1_000, Math.min(15_000, result.retryAfterMs ?? 2_000)));
+        const wait = result.reason === "respawn_not_ready" && result.retryAfterMs
+          ? ` Try again in ${Math.max(1, Math.ceil(result.retryAfterMs / 1_000))} second${result.retryAfterMs > 1_000 ? "s" : ""}.`
+          : "";
+        notify("Respawn not authorized", `Lakebed kept you at the death location; no items moved.${wait}`, "warning");
         return;
       }
       const target = validateRespawnPoint(result.target, Number.MAX_SAFE_INTEGER);
@@ -1026,11 +1029,13 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         || !result.sessionId
         || !Number.isSafeInteger(expiresAt)
         || engineRef.current !== engine) {
+        respawnLeaseTransitionRef.current = false;
         notify("Respawn not authorized", "Lakebed returned an invalid or expired spawn authorization.", "warning");
         return;
       }
       const nextPoseSequence = Number(result.nextPoseSequence);
       if (!Number.isSafeInteger(nextPoseSequence) || nextPoseSequence < 1) {
+        respawnLeaseTransitionRef.current = false;
         notify("Respawn not authorized", "Lakebed returned an invalid presence lease.", "warning");
         return;
       }
@@ -1040,28 +1045,19 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setMobLeaseSessionId(result.sessionId);
       engine.setRespawnPoint(target);
       if (!loadCanonicalPlayer(result.inventory)) {
+        respawnLeaseTransitionRef.current = false;
         notify("Respawn reconciliation failed", "Lakebed returned a damaged inventory snapshot.", "warning");
         return;
       }
       engine.respawn();
+      setDeathScreenOpen(false);
     }).catch(() => {
+      respawnLeaseTransitionRef.current = false;
       notify("Respawn lost contact", "Lakebed could not authorize the jump. You remain at the death location.", "warning");
-      respawnTimerRef.current = window.setTimeout(() => {
-        respawnTimerRef.current = null;
-        requestAuthorizedRespawn();
-      }, 2_000);
     }).finally(() => {
       respawnRequestInFlightRef.current = false;
+      setRespawning(false);
     });
-  }
-
-  function scheduleAuthorizedRespawn(): void {
-    if (respawnRequestInFlightRef.current || respawnTimerRef.current !== null) return;
-    respawnLeaseTransitionRef.current = true;
-    respawnTimerRef.current = window.setTimeout(() => {
-      respawnTimerRef.current = null;
-      requestAuthorizedRespawn();
-    }, PLAYER_RESPAWN_DELAY_MS);
   }
 
   function exitPointerLockForUi(): void {
@@ -2078,7 +2074,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     }
 
     const leaseId = mobLeaseSessionId;
-    const checkpointForeground = transportForeground && !pauseOpen && !inventoryOpen && !chatOpen
+    const checkpointForeground = transportForeground && !deathScreenOpen && !pauseOpen && !inventoryOpen && !chatOpen
       && !furnaceOpen && !activeChestKey && !activeBedKey;
     const mayCheckpoint = mobWorldAuthority.leaseOwnerUserId === ""
       || mobWorldAuthority.leaseOwnerUserId === auth.userId
@@ -2148,7 +2144,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         setConnected(false);
       });
     }
-  }, [mobWorldAuthority, mobLeaseSessionId, auth.userId, inWorld, transportForeground, pauseOpen,
+  }, [mobWorldAuthority, mobLeaseSessionId, auth.userId, inWorld, transportForeground, deathScreenOpen, pauseOpen,
     inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
 
   useEffect(() => {
@@ -2167,8 +2163,15 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     const awaitingRespawnLease = respawnLeaseTransitionRef.current && previous === 0 && ownState.health > 0;
     if (!awaitingRespawnLease) engineRef.current.setPlayerHealth(ownState.health);
     if (ownState.health <= 0) {
-      notify("You were overwhelmed", "Waiting for Lakebed to authorize your respawn…", "warning");
-      scheduleAuthorizedRespawn();
+      setDeathScreenOpen(true);
+      setPauseOpen(false);
+      setShowPlayerList(false);
+      setChatOpen(false);
+      closeInventory();
+      setFurnaceOpen(false);
+      setActiveChestKey("");
+      setActiveBedKey("");
+      exitPointerLockForUi();
     }
   }, [playerCombatResult, inWorld, auth.userId]);
 
@@ -3175,7 +3178,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         <MultiplayerSegmentTransport
           userId={auth.userId}
           sessionId={presenceSessionIdRef.current}
-          paused={!transportForeground || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
+          paused={!transportForeground || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
           getPose={() => engineRef.current?.getPose() ?? poseRef.current}
           mobIds={mobIds}
           onConnected={setConnected}
@@ -3194,7 +3197,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         <FirstPersonBow
           chargeMs={bowChargeMs}
           charging={bowCharging}
-          hidden={pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
+          hidden={deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
         />
       ) : null}
 
@@ -3202,6 +3205,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         connected={connected}
         equipment={equipment}
         craftingContext={craftingContext}
+        deathCause="You died"
+        deathScreenOpen={deathScreenOpen}
         health={playerHealth}
         hunger={hunger}
         maxHunger={MAX_HUNGER}
@@ -3223,7 +3228,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         onDisconnect={() => {
           void flushInventoryActions();
-          void leavePlayer(String(Date.now())).catch(() => undefined);
+          void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
           exitPointerLockForUi();
           setPauseOpen(false);
           setShowPlayerList(false);
@@ -3236,6 +3241,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }}
         onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
         onOptions={() => notify("Options", "Controls and graphics settings are coming next.")}
+        onRespawn={requestAuthorizedRespawn}
         soundMuted={soundMuted}
         onToggleSound={() => {
           const next = !soundMuted;
@@ -3252,11 +3258,28 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           engineRef.current?.requestPointerLock();
         }}
         onSelectHotbar={handleSelectHotbar}
+        onTitleScreen={() => {
+          void flushInventoryActions();
+          void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
+          exitPointerLockForUi();
+          setDeathScreenOpen(false);
+          setRespawning(false);
+          setPauseOpen(false);
+          setShowPlayerList(false);
+          setInWorld(false);
+          setChatOpen(false);
+          closeInventory();
+          setFurnaceOpen(false);
+          setActiveChestKey("");
+          setActiveBedKey("");
+          setMobIds([]);
+        }}
         playerName={profile?.username ?? auth.displayName}
         pauseOpen={pauseOpen}
         players={playerListEntries}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}
+        respawning={respawning}
         showPlayerList={showPlayerList}
         worldName="Fern Hollow"
       />

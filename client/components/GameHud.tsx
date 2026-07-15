@@ -10,6 +10,7 @@ import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
+import { DeathScreen } from "./DeathScreen";
 import { FirstPersonHeldItem } from "./FirstPersonHeldItem";
 import { InventoryCraftingDrawer } from "./InventoryDrawer";
 import { MobileUnsupportedOverlay } from "./MobileUnsupportedOverlay";
@@ -34,6 +35,10 @@ export type GameHudProps = {
   hideFirstPersonFeedback?: boolean;
   mobileUnsupported?: boolean;
   pauseOpen?: boolean;
+  deathScreenOpen?: boolean;
+  deathCause?: string;
+  deathScore?: number;
+  respawning?: boolean;
   showPlayerList?: boolean;
   players?: readonly PlayerListEntry[];
   onSelectHotbar: (index: number) => void;
@@ -50,6 +55,8 @@ export type GameHudProps = {
   soundMuted?: boolean;
   onToggleSound?: () => void;
   onDisconnect?: () => void;
+  onRespawn?: () => void;
+  onTitleScreen?: () => void;
   onDismissMessage?: (id: string) => void;
   onContinueMobile?: () => void;
   /** Backward-compatible world metadata; normal gameplay deliberately does not render it. */
@@ -83,6 +90,10 @@ export function GameHud({
   hideFirstPersonFeedback = false,
   mobileUnsupported = false,
   pauseOpen = false,
+  deathScreenOpen = false,
+  deathCause,
+  deathScore = 0,
+  respawning = false,
   showPlayerList = false,
   players = [],
   onSelectHotbar,
@@ -95,6 +106,8 @@ export function GameHud({
   soundMuted = false,
   onToggleSound,
   onDisconnect,
+  onRespawn,
+  onTitleScreen,
   onDismissMessage,
   onContinueMobile,
 }: GameHudProps) {
@@ -105,30 +118,31 @@ export function GameHud({
       <div className="lc-hud">
         <FirstPersonHeldItem
           actionToken={handActionToken}
-          hidden={hideFirstPersonFeedback || inventoryOpen || mobileUnsupported}
+          hidden={hideFirstPersonFeedback || inventoryOpen || mobileUnsupported || deathScreenOpen}
           miningProgress={miningProgress}
           paused={pauseOpen}
           stack={inventory[selectedIndex] ?? null}
         />
-        {!pauseOpen && !inventoryOpen ? <Crosshair /> : null}
-        {!inventoryOpen && !pauseOpen ? (
+        {!deathScreenOpen && !pauseOpen && !inventoryOpen ? <Crosshair /> : null}
+        {!deathScreenOpen && !inventoryOpen && !pauseOpen ? (
           <div className="lc-survival-wrap">
             <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} />
             <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
           </div>
         ) : null}
-        <PlayerList players={players} visible={showPlayerList && !pauseOpen} />
-        <ToastSurface messages={messages} onDismiss={onDismissMessage} />
+        <PlayerList players={players} visible={showPlayerList && !pauseOpen && !deathScreenOpen} />
+        {!deathScreenOpen ? <ToastSurface messages={messages} onDismiss={onDismissMessage} /> : null}
       </div>
       <PauseMenu
         onBack={onResume}
         onDisconnect={onDisconnect}
         onOptions={onOptions}
         onToggleSound={onToggleSound}
-        open={pauseOpen}
+        open={pauseOpen && !deathScreenOpen}
         soundMuted={soundMuted}
       />
-      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} open={inventoryOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
+      <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawning={respawning} score={deathScore} />
+      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );
