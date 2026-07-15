@@ -4,11 +4,12 @@ export const WORLD_EDIT_MAX_XZ = 1_000_000;
 export const WORLD_EDIT_MIN_Y = -24;
 export const WORLD_EDIT_MAX_Y = 128;
 export const WORLD_CHUNK_SECTION_HEIGHT = 8;
-export const WORLD_CHUNK_CODEC_VERSION = 3;
+export const WORLD_CHUNK_CODEC_VERSION = 4;
 export const MAX_VISIBLE_WORLD_CHUNKS = 49;
 export const MAX_WORLD_CHUNK_SNAPSHOT_BYTES = 16_384;
-/** Five-bit snapshots reserve code zero for an untouched cell. */
-export const WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES = 31;
+/** Current snapshots reserve code zero for an untouched cell. */
+export const WORLD_CHUNK_CODEC_BITS_PER_CELL = 6;
+export const WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES = (1 << WORLD_CHUNK_CODEC_BITS_PER_CELL) - 1;
 
 export const WORLD_CHUNK_BLOCK_TYPES = [
   "air",
@@ -48,7 +49,7 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];
 
 if (WORLD_CHUNK_BLOCK_TYPES.length > WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES) {
-  throw new Error("World chunk block palette exceeds the five-bit codec capacity.");
+  throw new Error("World chunk block palette exceeds the current codec capacity.");
 }
 
 export interface WorldChunkEditInput {
@@ -96,11 +97,12 @@ const CELLS_PER_Y = WORLD_EDIT_CHUNK_SIZE * WORLD_EDIT_CHUNK_SIZE;
 const LEGACY_CELL_COUNT = LEGACY_Y_LEVELS * CELLS_PER_Y;
 const LEGACY_BLOCK_TYPE_COUNT = 13;
 const LEGACY_PACKED_BYTE_COUNT = Math.ceil(LEGACY_CELL_COUNT / 2);
-const CURRENT_BITS_PER_CELL = 5;
-const CURRENT_CODE_MASK = (1 << CURRENT_BITS_PER_CELL) - 1;
-const LEGACY_V2_PACKED_BYTE_COUNT = Math.ceil(LEGACY_CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
+const LEGACY_V2_V3_BITS_PER_CELL = 5;
+const CURRENT_BITS_PER_CELL = WORLD_CHUNK_CODEC_BITS_PER_CELL;
+const LEGACY_V2_PACKED_BYTE_COUNT = Math.ceil(LEGACY_CELL_COUNT * LEGACY_V2_V3_BITS_PER_CELL / 8);
 const SECTION_CELL_COUNT = WORLD_CHUNK_SECTION_HEIGHT * CELLS_PER_Y;
 const SECTION_PACKED_BYTE_COUNT = Math.ceil(SECTION_CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
+const LEGACY_V3_SECTION_PACKED_BYTE_COUNT = Math.ceil(SECTION_CELL_COUNT * LEGACY_V2_V3_BITS_PER_CELL / 8);
 const MIN_SECTION_Y = Math.floor(WORLD_EDIT_MIN_Y / WORLD_CHUNK_SECTION_HEIGHT);
 const MAX_SECTION_Y = Math.floor(WORLD_EDIT_MAX_Y / WORLD_CHUNK_SECTION_HEIGHT);
 const MAX_SECTION_COUNT = MAX_SECTION_Y - MIN_SECTION_Y + 1;
@@ -108,13 +110,18 @@ const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/
 const BLOCK_CODE = new Map<string, number>(WORLD_CHUNK_BLOCK_TYPES.map((block, index) => [block, index + 1]));
 
 type LegacyPackedSnapshot = { version: 1 | 2; packed: Uint8Array };
-type SectionedSnapshot = { version: 3; sections: Map<number, Uint8Array> };
+type SectionedSnapshot = { version: 3 | 4; sections: Map<number, Uint8Array> };
 type PackedSnapshot = LegacyPackedSnapshot | SectionedSnapshot;
 
 interface CellAddress {
   sectionY: number;
   sectionIndex: number;
   absoluteIndex: number;
+}
+
+/** Explicit fence: future writers must not accidentally make a deployed codec unreadable. */
+function isSectionedCodecVersion(value: unknown): value is SectionedSnapshot["version"] {
+  return value === 3 || value === 4;
 }
 
 export function worldEditChunkCoordinate(coordinate: number): number {
@@ -187,26 +194,39 @@ function getNibble(packed: Uint8Array, index: number): number {
   return (index & 1) === 0 ? value & 0x0f : value >> 4;
 }
 
-function setCurrentCode(packed: Uint8Array, index: number, code: number): void {
-  const bitIndex = index * CURRENT_BITS_PER_CELL;
+function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerCell: number): void {
+  const codeMask = (1 << bitsPerCell) - 1;
+  const bitIndex = index * bitsPerCell;
   const byteIndex = bitIndex >> 3;
   const shift = bitIndex & 7;
-  packed[byteIndex] = (packed[byteIndex] & ~(CURRENT_CODE_MASK << shift)) | ((code << shift) & 0xff);
-  if (shift > 8 - CURRENT_BITS_PER_CELL) {
+  packed[byteIndex] = (packed[byteIndex] & ~(codeMask << shift)) | ((code << shift) & 0xff);
+  if (shift > 8 - bitsPerCell) {
     const firstBits = 8 - shift;
-    const spillBits = CURRENT_BITS_PER_CELL - firstBits;
+    const spillBits = bitsPerCell - firstBits;
     const spillMask = (1 << spillBits) - 1;
     packed[byteIndex + 1] = (packed[byteIndex + 1] & ~spillMask) | ((code >> firstBits) & spillMask);
   }
 }
 
-function getCurrentCode(packed: Uint8Array, index: number): number {
-  const bitIndex = index * CURRENT_BITS_PER_CELL;
+function getPackedCode(packed: Uint8Array, index: number, bitsPerCell: number): number {
+  const bitIndex = index * bitsPerCell;
   const byteIndex = bitIndex >> 3;
   const shift = bitIndex & 7;
   let code = packed[byteIndex] >> shift;
-  if (shift > 8 - CURRENT_BITS_PER_CELL) code |= packed[byteIndex + 1] << (8 - shift);
-  return code & CURRENT_CODE_MASK;
+  if (shift > 8 - bitsPerCell) code |= packed[byteIndex + 1] << (8 - shift);
+  return code & ((1 << bitsPerCell) - 1);
+}
+
+function setCurrentCode(packed: Uint8Array, index: number, code: number): void {
+  setPackedCode(packed, index, code, CURRENT_BITS_PER_CELL);
+}
+
+function getCurrentCode(packed: Uint8Array, index: number): number {
+  return getPackedCode(packed, index, CURRENT_BITS_PER_CELL);
+}
+
+function getLegacyFiveBitCode(packed: Uint8Array, index: number): number {
+  return getPackedCode(packed, index, LEGACY_V2_V3_BITS_PER_CELL);
 }
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -270,8 +290,11 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
       const expectedLength = parsed.v === 1 ? LEGACY_PACKED_BYTE_COUNT : LEGACY_V2_PACKED_BYTE_COUNT;
       return packed?.length === expectedLength ? { version: parsed.v, packed } : null;
     }
-    if (parsed.v !== WORLD_CHUNK_CODEC_VERSION || !Array.isArray(parsed.sections)) return null;
+    if (!isSectionedCodecVersion(parsed.v) || !Array.isArray(parsed.sections)) return null;
     if (parsed.sections.length > MAX_SECTION_COUNT) return null;
+    const sectionPackedByteCount = parsed.v === 3
+      ? LEGACY_V3_SECTION_PACKED_BYTE_COUNT
+      : SECTION_PACKED_BYTE_COUNT;
     const sections = new Map<number, Uint8Array>();
     for (const rawSection of parsed.sections) {
       if (!rawSection || typeof rawSection !== "object") return null;
@@ -279,32 +302,38 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
       if (!Number.isInteger(section.y) || Number(section.y) < MIN_SECTION_Y || Number(section.y) > MAX_SECTION_Y) return null;
       if (typeof section.cells !== "string" || sections.has(Number(section.y))) return null;
       const packed = decodeBase64(section.cells);
-      if (!packed || packed.length !== SECTION_PACKED_BYTE_COUNT) return null;
+      if (!packed || packed.length !== sectionPackedByteCount) return null;
       sections.set(Number(section.y), packed);
     }
-    return { version: 3, sections };
+    return { version: parsed.v, sections };
   } catch {
     return null;
   }
 }
 
 function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> | null {
-  if (snapshot.version === 3) {
+  if (snapshot.version === 3 || snapshot.version === 4) {
     const sections = new Map<number, Uint8Array>();
     for (const [y, packed] of snapshot.sections) {
+      const nextPacked = snapshot.version === 4
+        ? packed.slice()
+        : new Uint8Array(SECTION_PACKED_BYTE_COUNT);
       for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
-        const code = getCurrentCode(packed, index);
+        const code = snapshot.version === 3
+          ? getLegacyFiveBitCode(packed, index)
+          : getCurrentCode(packed, index);
         if (code > WORLD_CHUNK_BLOCK_TYPES.length) return null;
         const absoluteY = y * WORLD_CHUNK_SECTION_HEIGHT + Math.floor(index / CELLS_PER_Y);
         if (code !== 0 && (absoluteY < WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
+        if (snapshot.version === 3 && code !== 0) setCurrentCode(nextPacked, index, code);
       }
-      sections.set(y, packed.slice());
+      sections.set(y, nextPacked);
     }
     return sections;
   }
   const sections = new Map<number, Uint8Array>();
   for (let index = 0; index < LEGACY_CELL_COUNT; index += 1) {
-    const code = snapshot.version === 1 ? getNibble(snapshot.packed, index) : getCurrentCode(snapshot.packed, index);
+    const code = snapshot.version === 1 ? getNibble(snapshot.packed, index) : getLegacyFiveBitCode(snapshot.packed, index);
     if (code === 0) continue;
     if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) return null;
     if (!WORLD_CHUNK_BLOCK_TYPES[code - 1]) return null;
@@ -460,7 +489,9 @@ export function sampleWorldChunkSnapshot(
       || !Number.isSafeInteger(sample.z)) return { ok: false, reason: "invalid_sample" };
     const address = cellAddress(sample.x, sample.y, sample.z, chunk.chunkX, chunk.chunkZ);
     if (!address) return { ok: false, reason: "invalid_sample" };
-    const section = snapshot.version === 3 ? snapshot.sections.get(address.sectionY) : null;
+    const section = snapshot.version === 3 || snapshot.version === 4
+      ? snapshot.sections.get(address.sectionY)
+      : null;
     const horizontal = address.sectionIndex % CELLS_PER_Y;
     const legacyIndex = sample.y >= LEGACY_MIN_Y && sample.y <= LEGACY_MAX_Y
       ? (sample.y - LEGACY_MIN_Y) * CELLS_PER_Y + horizontal
@@ -468,9 +499,11 @@ export function sampleWorldChunkSnapshot(
     const code = snapshot.version === 1
       ? legacyIndex === null ? 0 : getNibble(snapshot.packed, legacyIndex)
       : snapshot.version === 2
-        ? legacyIndex === null ? 0 : getCurrentCode(snapshot.packed, legacyIndex)
+        ? legacyIndex === null ? 0 : getLegacyFiveBitCode(snapshot.packed, legacyIndex)
         : section
-          ? getCurrentCode(section, address.sectionIndex)
+          ? snapshot.version === 3
+            ? getLegacyFiveBitCode(section, address.sectionIndex)
+            : getCurrentCode(section, address.sectionIndex)
           : 0;
     if (code === 0) {
       blocks.push(null);

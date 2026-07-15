@@ -117,9 +117,11 @@ for (const [block, index] of stableProtocol) {
 }
 assert.equal(BLOCK_TYPES.indexOf("stone_brick_slab"), 30, "the slab uses the final append-only protocol identity");
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("stone_brick_slab"), 30,
-  "the slab uses final five-bit persisted code 31");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES,
-  "all 31 nonzero five-bit palette codes are now intentionally allocated");
+  "the slab keeps its deployed persisted code 31");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 31,
+  "the deployed append-only palette remains stable through slab code 31");
+assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES,
+  "the deployed palette fits within the expanded codec capacity");
 assert.equal(isBlockType("stone_brick_slab"), true);
 
 const snapshot = createWorldChunkSnapshot("0:0", [
