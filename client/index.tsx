@@ -105,6 +105,7 @@ import {
   MAX_MOB_ATTACK_DAMAGE,
   type MobAttackResult,
   type MobAuthorityState,
+  type MobShearResult,
 } from "../shared/mobCombat";
 import {
   decodeWorldChunkSnapshot,
@@ -521,6 +522,13 @@ function createCombatOperationId(): string {
   return `attack_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
 }
 
+function createMobShearOperationId(): string {
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replaceAll("-", "")
+    : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
+  return `shear_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
+}
+
 function createTntOperationId(): string {
   const randomPart = typeof globalThis.crypto?.randomUUID === "function"
     ? globalThis.crypto.randomUUID().replaceAll("-", "")
@@ -699,6 +707,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const operateFurnace = useMutation<[requestJson: string], FurnaceOperationResult>("operateFurnace");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
   const attackMob = useMutation<[mobId: string, kind: string, damage: string, operationId: string], MobAttackResult>("attackMob");
+  const shearMob = useMutation<[mobId: string, kind: string, operationId: string], MobShearResult>("shearMob");
   const checkpointMobWorld = useMutation<[requestJson: string], MobWorldCheckpointResult>("checkpointMobWorld");
   const claimMobPlayerDamage = useMutation<[requestJson: string], MobPlayerDamageResult>("claimMobPlayerDamage");
   const claimCreeperExplosion = useMutation<[requestJson: string], {
@@ -1797,6 +1806,39 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           const used = handleUseItem();
           if (used) motionActionSinkRef.current?.("use");
           return used;
+        },
+        onMobUse: (target) => {
+          if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
+          motionActionSinkRef.current?.("use");
+          const operationId = createMobShearOperationId();
+          void flushInventoryActions().then(async (flushed) => {
+            if (!flushed) throw new Error("inventory_action_pending");
+            if (!await refreshAuthoritativePose()) throw new Error("presence_refresh_failed");
+            return retryExactLakebedMutation(() => shearMob(target.id, target.kind, operationId));
+          }).then((result) => {
+            setConnected(true);
+            if (!result.ok) {
+              if (result.reason === "inventory_full") notify("Inventory full", "Make room for the sheep's wool.", "warning");
+              return;
+            }
+            engineRef.current?.applyMobCombatStates([result.state], result.serverNow - Date.now());
+            if (!loadCanonicalPlayer(result.inventory)) {
+              notify("Shearing reconciliation failed", "Lakebed returned an invalid inventory snapshot.", "warning");
+              return;
+            }
+            if (!result.replayed) {
+              audioRef.current?.play("pickup", { seed: operationId, intensity: 0.58 });
+              notify(
+                "Sheep sheared",
+                result.drops.map((drop) => `${drop.count} ${ITEMS[drop.itemId].label}`).join(" · "),
+                "success",
+              );
+            }
+          }).catch(() => {
+            setConnected(false);
+            notify("Shearing lost contact", "Lakebed could not confirm the interaction.", "warning");
+          });
+          return true;
         },
         onMobAttack: (target, damage) => {
           motionActionSinkRef.current?.("swing");

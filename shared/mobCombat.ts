@@ -12,6 +12,7 @@ export interface MobAuthorityState {
   health: number;
   maxHealth: number;
   revision: number;
+  sheared: boolean;
   deadUntil: number;
   lastAttackAt: number;
   lastAttackerId: string;
@@ -31,6 +32,8 @@ export interface StoredMobAuthorityState {
   kind: string;
   health: string;
   revision: string;
+  /** Missing on legacy rows; materialization treats every non-true value as false. */
+  sheared?: string;
   deadUntil: string;
   lastAttackAt: string;
   lastAttackerId: string;
@@ -51,6 +54,53 @@ export type MobAttackResolution =
       reason: MobAttackFailureReason;
       state?: MobAuthorityState;
       retryAfterMs?: number;
+    };
+
+export type MobShearFailureReason = "invalid_mob" | "wrong_mob" | "invalid_tool" | "dead" | "already_sheared";
+
+export type MobShearResolution =
+  | {
+      ok: true;
+      drops: [MobAuthorityDrop];
+      state: MobAuthorityState;
+      nextRow: StoredMobAuthorityState;
+    }
+  | {
+      ok: false;
+      reason: MobShearFailureReason;
+      state?: MobAuthorityState;
+      retryAfterMs?: number;
+    };
+
+/** Public mutation result shared by the Lakebed server and multiplayer client. */
+export type MobShearResult =
+  | {
+      ok: true;
+      replayed: boolean;
+      drops: [MobAuthorityDrop];
+      state: MobAuthorityState;
+      inventory: MobAttackInventory;
+      serverNow: number;
+    }
+  | {
+      ok: false;
+      reason:
+        | "authentication_required"
+        | "invalid_operation"
+        | "operation_id_reused"
+        | "invalid_receipt"
+        | "active_presence_required"
+        | "attacker_dead"
+        | "inventory_required"
+        | "inventory_invalid"
+        | "inventory_full"
+        | "authority_unavailable"
+        | "out_of_reach"
+        | "not_aimed"
+        | MobShearFailureReason;
+      state?: MobAuthorityState;
+      retryAfterMs?: number;
+      serverNow: number;
     };
 
 export type MobAttackResult =
@@ -209,6 +259,7 @@ export function defaultMobAuthorityState(mobId: string, kind: MobAuthorityKind):
     health: MOB_AUTHORITY_DEFINITIONS[kind].maxHealth,
     maxHealth: MOB_AUTHORITY_DEFINITIONS[kind].maxHealth,
     revision: 0,
+    sheared: false,
     deadUntil: 0,
     lastAttackAt: 0,
     lastAttackerId: "",
@@ -243,6 +294,7 @@ export function materializeMobAuthorityState(
     health,
     maxHealth,
     revision,
+    sheared: health > 0 && stored.sheared === "true",
     deadUntil: health === 0 ? deadUntil : 0,
     lastAttackAt,
     lastAttackerId: stored.lastAttackerId.slice(0, 128),
@@ -275,15 +327,60 @@ export function deterministicMobDrops(
   return drops;
 }
 
+/** Minecraft-compatible sheep shearing yields one to three wool. */
+export function deterministicSheepShearDrops(
+  mobId: string,
+  shearRevision: number,
+): [MobAuthorityDrop] {
+  const count = 1 + (hashString(`${mobId}:${shearRevision}:shear:wool`) % 3);
+  return [{ itemId: "wool", count }];
+}
+
 function storedRow(state: MobAuthorityState): StoredMobAuthorityState {
   return {
     mobId: state.mobId,
     kind: state.kind,
     health: String(state.health),
     revision: String(state.revision),
+    sheared: String(state.sheared),
     deadUntil: String(state.deadUntil),
     lastAttackAt: String(state.lastAttackAt),
     lastAttackerId: state.lastAttackerId,
+  };
+}
+
+/**
+ * Pure authority transition for a confirmed use of shears on a sheep.
+ * Receipt-level replay protection is handled by the caller; applying the
+ * returned row makes a second distinct operation fail without minting wool.
+ */
+export function resolveMobShear(input: {
+  stored?: StoredMobAuthorityState | null;
+  rawMobId: string;
+  rawKind: string;
+  rawHeldItem: string;
+  serverNow: number;
+}): MobShearResolution {
+  const identity = validateMobIdentity(input.rawMobId, input.rawKind);
+  if (!identity.ok || !Number.isFinite(input.serverNow) || input.serverNow < 0) {
+    return { ok: false, reason: "invalid_mob" };
+  }
+  if (identity.kind !== "sheep") return { ok: false, reason: "wrong_mob" };
+  if (input.rawHeldItem !== "shears") return { ok: false, reason: "invalid_tool" };
+
+  const state = materializeMobAuthorityState(input.stored, identity.mobId, identity.kind, input.serverNow);
+  if (state.health === 0 && state.deadUntil > input.serverNow) {
+    return { ok: false, reason: "dead", state, retryAfterMs: state.deadUntil - input.serverNow };
+  }
+  if (state.sheared) return { ok: false, reason: "already_sheared", state };
+
+  const revision = state.revision + 1;
+  const nextState: MobAuthorityState = { ...state, revision, sheared: true };
+  return {
+    ok: true,
+    drops: deterministicSheepShearDrops(identity.mobId, revision),
+    state: nextState,
+    nextRow: storedRow(nextState),
   };
 }
 
@@ -312,10 +409,15 @@ export function resolveMobAttack(input: {
   const health = Math.max(0, state.health - damage);
   const revision = state.revision + 1;
   const killed = health === 0;
+  const deathDrops = killed
+    ? deterministicMobDrops(identity.mobId, identity.kind, revision)
+      .filter((drop) => !state.sheared || drop.itemId !== "wool")
+    : [];
   const nextState: MobAuthorityState = {
     ...state,
     health,
     revision,
+    sheared: killed ? false : state.sheared,
     deadUntil: killed ? input.serverNow + MOB_RESPAWN_MS : 0,
     lastAttackAt: input.serverNow,
     lastAttackerId: input.attackerId.slice(0, 128),
@@ -323,7 +425,7 @@ export function resolveMobAttack(input: {
   return {
     ok: true,
     killed,
-    drops: killed ? deterministicMobDrops(identity.mobId, identity.kind, revision) : [],
+    drops: deathDrops,
     state: nextState,
     nextRow: storedRow(nextState),
   };

@@ -52,6 +52,7 @@ function pose(kind: MobKind, x: number, z: number, index: number): MobPoseSnapsh
     health: 8,
     maxHealth: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider" ? 20 : 10,
     hostileActive: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider",
+    sheared: false,
     fuseProgress: kind === "creeper" ? 0.7 : 0,
   };
 }
@@ -76,6 +77,14 @@ assert.equal(stats.visibleMobCount, 8);
 assert.equal(stats.vertexCount, expectedVertexCount);
 assert.equal(gl.uploadCalls, 1, "one rebuild should issue one batched geometry upload");
 assert.ok(gl.uploaded);
+
+const woollySheep = pose("sheep", 0, 8, 50);
+renderer.rebuild([woollySheep], 0, 0, 0, 1, 1, 3);
+const woollyGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
+renderer.rebuild([{ ...woollySheep, sheared: true }], 0, 0, 0, 1, 1, 3);
+const shearedGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
+assert.notDeepEqual(shearedGeometry, woollyGeometry, "authority shearing must visibly narrow and recolor the retained sheep mesh");
+assert.equal(shearedGeometry.length, woollyGeometry.length, "sheared sheep keep the fixed batched vertex budget");
 
 const used = gl.uploaded!.subarray(0, stats.vertexCount * 6);
 assert.equal(used.length, stats.vertexCount * 6, "positions and colors should be interleaved as six floats per vertex");

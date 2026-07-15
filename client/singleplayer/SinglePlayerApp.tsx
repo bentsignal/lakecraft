@@ -344,6 +344,38 @@ export function SinglePlayerApp() {
         for (const drop of drops) next = addItem(next, drop.itemId as ItemId, drop.count).inventory;
         updateInventory(next);
       },
+      onMobUse: (target) => {
+        if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
+        let acceptedInventory: Inventory | null = null;
+        let broke = false;
+        const result = engine.shearMob(target.id, (woolCount) => {
+          const wear = applyConfirmedDurableItemUse(inventoryRef.current, selectedRef.current, "shears");
+          if (!wear.used) return false;
+          const added = addItem(wear.inventory, "wool", woolCount);
+          if (added.remainder !== 0) return false;
+          acceptedInventory = added.inventory;
+          broke = wear.broke;
+          return true;
+        });
+        if (result.ok && acceptedInventory) {
+          updateInventory(acceptedInventory);
+          audio.play("pickup", { seed: `${target.id}:${result.woolCount}`, intensity: 0.58 });
+          setMessages((current) => [...current.slice(-2), {
+            id: `shear-${target.id}`,
+            text: `${result.woolCount} Wool`,
+            detail: broke ? "Sheep sheared · shears broke" : "Sheep sheared",
+            tone: "success",
+          }]);
+        } else if (result.reason === "rejected") {
+          setMessages((current) => [...current.slice(-2), {
+            id: `shear-full-${target.id}`,
+            text: "Inventory full",
+            detail: "Make room for the sheep's wool.",
+            tone: "warning",
+          }]);
+        }
+        return true;
+      },
       onPlayerHealthChange: (nextHealth) => {
         healthRef.current = nextHealth;
         setHealth(nextHealth);

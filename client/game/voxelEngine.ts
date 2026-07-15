@@ -65,6 +65,7 @@ import {
   mobTargetHasClickPriority,
   raycastMobs,
   respawnExpiredAuthoritativeMobs,
+  shearLocalMob,
   stepMobSimulation,
   writeMobPoseSnapshots,
   writeMobProjectileSnapshots,
@@ -2160,6 +2161,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return true;
   }
 
+  function useMobUnderCrosshair(): boolean {
+    if (!options.onMobUse) return false;
+    const eye = interactionEye();
+    const facing = direction();
+    const mobTarget = raycastMobs(eye, facing, mobSimulation.mobs, options.reach ?? 6);
+    if (!mobTarget || !mobTargetHasClickPriority(mobTarget.distance, target?.distance ?? null)) return false;
+    if (!options.onMobUse({ ...mobTarget })) return false;
+    clearMining();
+    options.onHandAction?.("use");
+    return true;
+  }
+
   function rangedShotIntent(now: number): RangedShotIntent {
     const eye = interactionEye();
     const facing = direction();
@@ -2225,6 +2238,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         }, duration * 1_000);
       }
     } else if (event.button === 2) {
+      if (useMobUnderCrosshair()) return;
       if (target) {
         const doorEdit = createDoorToggleEdit(target);
         if (doorEdit) {
@@ -2423,6 +2437,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     getMobIds() {
       return mobIds.slice();
+    },
+    shearMob(mobId, acceptWool) {
+      const result = shearLocalMob(mobSimulation, mobId, acceptWool);
+      if (result.ok) writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      return result;
     },
     setSelectedBlock(block) {
       selectedBlock = block;

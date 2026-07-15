@@ -9,6 +9,7 @@ import {
   mobTargetHasClickPriority,
   raycastMobs,
   respawnExpiredAuthoritativeMobs,
+  shearLocalMob,
   writeMobPoseSnapshots,
   type MobKind,
   type MobSpawnDescriptor,
@@ -47,6 +48,23 @@ assert.equal(deathA.killed, true);
 assert.deepEqual(deathB.drops, deathA.drops, "death drops must remain deterministic");
 assert.equal(damageMob(deterministicDeathA, "drop-cow", 20).killed, false, "a dead mob cannot drop twice");
 
+const clipping = createMobSimulation([spawn("sheep", "clip-sheep", 0, 0, 0)]);
+let acceptedWool = 0;
+const clipped = shearLocalMob(clipping, "clip-sheep", (count) => {
+  acceptedWool = count;
+  return true;
+});
+assert.deepEqual(clipped, { ok: true, woolCount: acceptedWool });
+assert.ok(acceptedWool >= 1 && acceptedWool <= 3);
+assert.equal(clipping.mobs[0].sheared, true);
+assert.deepEqual(shearLocalMob(clipping, "clip-sheep", () => true), { ok: false, reason: "already_sheared" }, "one sheep cannot pay wool twice");
+const clippedDeath = damageMob(clipping, "clip-sheep", 100);
+assert.equal(clippedDeath.drops.some((drop) => drop.itemId === "wool"), false, "a clipped sheep does not duplicate wool on death");
+assert.equal(clipping.mobs[0].sheared, false, "death clears local sheared state for a future respawn");
+const rejectedClip = createMobSimulation([spawn("sheep", "full-pack-sheep", 0, 0, 0)]);
+assert.deepEqual(shearLocalMob(rejectedClip, "full-pack-sheep", () => false), { ok: false, reason: "rejected" });
+assert.equal(rejectedClip.mobs[0].sheared, false, "inventory rejection preserves the woolly state");
+
 const contact = createMobSimulation([
   spawn("zombie", "zombie-a", 0, 0, 0),
   spawn("zombie", "zombie-b", 0.1, 0, 0.1),
@@ -74,6 +92,7 @@ const partial = applyAuthoritativeMobCombatStates(authority, [{
   maxHealth: 10,
   revision: 1,
   deadUntil: 0,
+  sheared: false,
 }], 10_000);
 assert.deepEqual(partial, { applied: 1, stale: 0, invalid: 0, unknown: 0 });
 assert.equal(authoritativeCow.health, 6);
@@ -86,6 +105,7 @@ const stale = applyAuthoritativeMobCombatStates(authority, [{
   maxHealth: 10,
   revision: 1,
   deadUntil: 0,
+  sheared: true,
 }], 10_000);
 assert.equal(stale.stale, 1);
 assert.equal(authoritativeCow.health, 6, "equal or older revisions cannot roll health backward");
@@ -97,6 +117,7 @@ const killed = applyAuthoritativeMobCombatStates(authority, [{
   maxHealth: 10,
   revision: 2,
   deadUntil: 12_000,
+  sheared: false,
 }], 10_000);
 assert.equal(killed.applied, 1);
 assert.equal(authoritativeCow.alive, false);
@@ -117,13 +138,37 @@ assert.equal(applyAuthoritativeMobCombatStates(authority, [{
   maxHealth: 10,
   revision: 2,
   deadUntil: 12_000,
+  sheared: false,
 }], 12_001).stale, 1, "an old death snapshot cannot kill a locally expired respawn again");
 assert.equal(authoritativeCow.alive, true);
 
 const rejected = applyAuthoritativeMobCombatStates(authority, [
-  { mobId: authoritativeCow.id, kind: "pig", health: 10, maxHealth: 10, revision: 3, deadUntil: 0 },
-  { mobId: "unknown", kind: "cow", health: 10, maxHealth: 10, revision: 1, deadUntil: 0 },
+  { mobId: authoritativeCow.id, kind: "pig", health: 10, maxHealth: 10, revision: 3, deadUntil: 0, sheared: false },
+  { mobId: "unknown", kind: "cow", health: 10, maxHealth: 10, revision: 1, deadUntil: 0, sheared: false },
 ], 12_001);
 assert.deepEqual(rejected, { applied: 0, stale: 0, invalid: 1, unknown: 1 });
+
+const authoritySheep = createMobSimulation([spawn("sheep", "sheep-authority", 0, 0, 2)]);
+assert.equal(applyAuthoritativeMobCombatStates(authoritySheep, [{
+  mobId: "sheep-authority",
+  kind: "sheep",
+  health: 8,
+  maxHealth: 8,
+  revision: 1,
+  deadUntil: 0,
+  sheared: true,
+}], 20_000).applied, 1);
+assert.equal(writeMobPoseSnapshots(authoritySheep)[0].sheared, true, "Lakebed sheared state reaches the retained pose snapshot");
+assert.equal(applyAuthoritativeMobCombatStates(authoritySheep, [{
+  mobId: "sheep-authority",
+  kind: "sheep",
+  health: 0,
+  maxHealth: 8,
+  revision: 2,
+  deadUntil: 21_000,
+  sheared: false,
+}], 20_000).applied, 1);
+assert.equal(respawnExpiredAuthoritativeMobs(authoritySheep, 21_000), 1);
+assert.equal(authoritySheep.mobs[0].sheared, false, "authority death/respawn restores a woolly sheep");
 
 console.log("lakecraft combat model tests: ok");

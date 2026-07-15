@@ -98,6 +98,7 @@ import { writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
 import {
   addItem,
   applyConfirmedArmorDamage,
+  applyConfirmedDurableItemUse,
   applyConfirmedToolUse,
   attackDamage,
   countItem,
@@ -129,6 +130,7 @@ import {
   deterministicMobDrops,
   materializeMobAuthorityState,
   resolveMobAttack,
+  resolveMobShear,
   validateMobIdList,
   validateMobIdentity,
   type MobAuthorityKind,
@@ -969,7 +971,8 @@ function databaseRowToStoredMobAuthority(row: Record<string, unknown> | null): S
     revision: row.revision,
     deadUntil: row.deadUntil,
     lastAttackAt: row.lastAttackAt,
-    lastAttackerId: row.lastAttackerId
+    lastAttackerId: row.lastAttackerId,
+    sheared: typeof row.sheared === "string" ? row.sheared : "false",
   };
 }
 
@@ -1491,7 +1494,8 @@ export default capsule({
       revision: string(),
       deadUntil: string(),
       lastAttackAt: string(),
-      lastAttackerId: string()
+      lastAttackerId: string(),
+      sheared: string().default("false")
     }).index("by_mob", ["mobId"]),
 
     /** Exactly one fixed-point mob checkpoint and one renewable writer lease. */
@@ -4970,6 +4974,162 @@ export default capsule({
         drops: collectedDrops,
         serverNow,
       };
+    }),
+
+    shearMob: mutation(async (
+      ctx,
+      rawMobId: string,
+      rawKind: string,
+      operationId: string,
+    ) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const identity = validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+      if (!identity.ok) return { ok: false, reason: identity.reason, serverNow };
+      if (typeof operationId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(operationId)) {
+        return { ok: false, reason: "invalid_operation", serverNow };
+      }
+      const fingerprint = JSON.stringify(["mob_shear", identity.mobId, identity.kind]);
+      const existingReceipt = await ctx.db.playerCombatReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", operationId))
+        .order("desc")
+        .first();
+      const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
+      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === "replay" && existingReceipt) {
+        try {
+          const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
+          const inventoryRows = await ctx.db.inventories
+            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .order("desc")
+            .take(2);
+          if (result.ok === true && inventoryRows.length === 1
+            && validatePlayerStateJson(inventoryRows[0].inventoryJson).ok) {
+            return { ...result, replayed: true, inventory: inventoryRows[0], serverNow };
+          }
+        } catch {
+          // Corrupt server-authored receipts fail closed.
+        }
+        return { ok: false, reason: "invalid_receipt", serverNow };
+      }
+
+      const presenceRow = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const playerPose = authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow);
+      if (!playerPose) return { ok: false, reason: "active_presence_required", serverNow };
+      const combatRow = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const playerCombat = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(combatRow),
+        ctx.auth.userId,
+        serverNow,
+      );
+      if (playerCombat.health === 0) {
+        return { ok: false, reason: "attacker_dead", retryAfterMs: playerCombat.deadUntil - serverNow, serverNow };
+      }
+
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      const inventoryRow = inventoryRows[0];
+      const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
+      if (!playerState.ok) return { ok: false, reason: "inventory_invalid", serverNow };
+      const selectedSlot = playerState.state.selectedHotbar;
+      const selectedStack = playerState.state.inventory[selectedSlot] ?? null;
+      const selectedItemId = selectedStack?.itemId ?? null;
+
+      const authorityRow = await ctx.db.mobWorldAuthority
+        .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
+        .order("desc")
+        .first();
+      const storedWorld = databaseRowToStoredMobWorld(authorityRow);
+      const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
+      const advancedWorld = storedWorld && replayInput
+        ? advanceMobWorldState(storedWorld, serverNow, replayInput)
+        : null;
+      const mobPose = advancedWorld
+        ? writeMobMotionPoses(advancedWorld.state).find((pose) => pose.mobId === identity.mobId)
+        : null;
+      if (!mobPose) return { ok: false, reason: "authority_unavailable", serverNow };
+      const spatial = validatePlayerMeleeSpatialAuthority(playerPose, {
+        userId: mobPose.mobId,
+        x: mobPose.x,
+        y: mobPose.y,
+        z: mobPose.z,
+        yaw: mobPose.yaw,
+        pitch: 0,
+        heartbeatAt: serverNow,
+        online: true,
+      });
+      if (!spatial.ok) return { ok: false, reason: spatial.reason, serverNow };
+
+      const existingMob = await ctx.db.mobAuthority
+        .withIndex("by_mob", (q) => q.eq("mobId", identity.mobId))
+        .order("desc")
+        .first();
+      const resolution = resolveMobShear({
+        stored: databaseRowToStoredMobAuthority(existingMob),
+        rawMobId: identity.mobId,
+        rawKind: identity.kind,
+        rawHeldItem: selectedItemId ?? "",
+        serverNow,
+      });
+      if (!resolution.ok) return { ...resolution, serverNow };
+
+      const toolUse = applyConfirmedDurableItemUse(
+        playerState.state.inventory,
+        selectedSlot,
+        "shears",
+      );
+      if (!toolUse.used) return { ok: false, reason: "invalid_tool", serverNow };
+      let nextInventory = toolUse.inventory;
+      for (const drop of resolution.drops) {
+        const added = addItem(nextInventory, drop.itemId, drop.count);
+        if (added.remainder !== 0) return { ok: false, reason: "inventory_full", serverNow };
+        nextInventory = added.inventory;
+      }
+
+      const persistedMob = existingMob
+        ? await ctx.db.mobAuthority.update(existingMob.id, resolution.nextRow)
+        : await ctx.db.mobAuthority.insert(resolution.nextRow);
+      if (!persistedMob) throw new Error("Unable to persist authoritative sheep shearing.");
+      const inventory = await ctx.db.inventories.update(inventoryRow.id, {
+        userId: ctx.auth.userId,
+        inventoryJson: JSON.stringify({ ...playerState.state, inventory: nextInventory }),
+        revision: incrementStoredRevision(inventoryRow.revision),
+      });
+      if (!inventory) throw new Error("Unable to persist authoritative sheep-shearing inventory.");
+      const result = {
+        ok: true,
+        replayed: false,
+        drops: resolution.drops,
+        state: resolution.state,
+        toolUse: {
+          broke: toolUse.broke,
+          remainingDurability: toolUse.remainingDurability,
+        },
+        inventory,
+        serverNow,
+      };
+      const receipt = await ctx.db.playerCombatReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId,
+        fingerprint,
+        resultJson: JSON.stringify(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      await maintainPlayerCombatReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      return result;
     }),
 
     attackMob: mutation(async (

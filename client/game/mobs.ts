@@ -243,6 +243,8 @@ export interface MobState extends MobSpawnDescriptor {
   rangedSequence: number;
   authoritativeRevision: number;
   authoritativeDeadUntil: number;
+  /** Sheep keep their clipped appearance until their next death/respawn cycle. */
+  sheared: boolean;
   fuseStartedAtSeconds: number;
   fuseUntilSeconds: number;
 }
@@ -319,6 +321,7 @@ export interface MobPoseSnapshot {
   health: number;
   maxHealth: number;
   hostileActive: boolean;
+  sheared: boolean;
   /** Stable 0..1 priming state; 1 means an authority explosion may be due. */
   fuseProgress: number;
 }
@@ -338,8 +341,12 @@ export interface MobDamageResult {
 /** Minimal client view of the bounded state returned by shared mob-combat queries. */
 export type MobCombatStateSnapshot = Pick<
   MobAuthorityState,
-  "mobId" | "kind" | "health" | "maxHealth" | "revision" | "deadUntil"
+  "mobId" | "kind" | "health" | "maxHealth" | "revision" | "deadUntil" | "sheared"
 >;
+
+export type LocalMobShearResult =
+  | { ok: true; woolCount: number }
+  | { ok: false; reason: "invalid_mob" | "already_sheared" | "rejected" };
 
 export interface MobCombatApplyResult {
   applied: number;
@@ -483,6 +490,7 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
       rangedSequence: 0,
       authoritativeRevision: -1,
       authoritativeDeadUntil: 0,
+      sheared: false,
       fuseStartedAtSeconds: 0,
       fuseUntilSeconds: 0,
     };
@@ -881,6 +889,7 @@ export function writeMobPoseSnapshots(
     snapshot.health = mob.health;
     snapshot.maxHealth = definition.maxHealth;
     snapshot.hostileActive = mob.hostileActive;
+    snapshot.sheared = mob.sheared;
     snapshot.fuseProgress = mob.fuseStartedAtSeconds > 0
       ? Math.max(0, Math.min(1,
         (simulation.elapsedSeconds - mob.fuseStartedAtSeconds)
@@ -932,6 +941,7 @@ function rollDrops(mob: MobState): MobDrop[] {
   const drops: MobDrop[] = [];
   for (let index = 0; index < definitions.length; index += 1) {
     const drop = definitions[index];
+    if (mob.kind === "sheep" && mob.sheared && drop.itemId === "wool") continue;
     const chance = hash01(mob.behaviorSeed, mob.damageSequence + index, 811);
     if (chance > drop.chance) continue;
     const range = drop.maxCount - drop.minCount + 1;
@@ -950,7 +960,28 @@ export function damageMob(simulation: MobSimulation, id: string, rawDamage: numb
   mob.health = Math.max(0, mob.health - damage);
   if (mob.health > 0) return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
   mob.alive = false;
-  return { found: true, killed: true, remainingHealth: 0, drops: rollDrops(mob) };
+  const drops = rollDrops(mob);
+  mob.sheared = false;
+  return { found: true, killed: true, remainingHealth: 0, drops };
+}
+
+/**
+ * Applies one local sheep clip. The accept callback lets the inventory layer
+ * reserve all wool before the visual state changes, so durability and drops
+ * stay atomic without teaching the renderer about inventory slots.
+ */
+export function shearLocalMob(
+  simulation: MobSimulation,
+  id: string,
+  acceptWool: (count: number) => boolean,
+): LocalMobShearResult {
+  const mob = simulation.mobs.find((candidate) => candidate.id === id);
+  if (!mob || !mob.alive || mob.kind !== "sheep") return { ok: false, reason: "invalid_mob" };
+  if (mob.sheared) return { ok: false, reason: "already_sheared" };
+  const woolCount = 1 + (hashUint(mob.behaviorSeed, mob.id.length, 947) % 3);
+  if (!acceptWool(woolCount)) return { ok: false, reason: "rejected" };
+  mob.sheared = true;
+  return { ok: true, woolCount };
 }
 
 function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
@@ -969,6 +1000,7 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
   mob.desiredX = mob.homeX;
   mob.desiredZ = mob.homeZ;
   mob.hostileActive = false;
+  mob.sheared = false;
   mob.nextContactDamageAtSeconds = 0;
   mob.nextRangedAttackAtSeconds = Math.max(0, elapsedSeconds) + 0.65 + (mob.behaviorSeed % 1_000) / 1_000;
   mob.rangedSequence = 0;
@@ -995,6 +1027,7 @@ export function applyAuthoritativeMobCombatStates(
       continue;
     }
     if (state.kind !== mob.kind
+      || typeof state.sheared !== "boolean"
       || !Number.isFinite(state.health)
       || !Number.isFinite(state.maxHealth)
       || !Number.isFinite(state.revision)
@@ -1017,6 +1050,7 @@ export function applyAuthoritativeMobCombatStates(
     }
     mob.authoritativeRevision = revision;
     mob.authoritativeDeadUntil = Math.max(0, state.deadUntil);
+    mob.sheared = state.kind === "sheep" && state.sheared;
     const dead = mob.authoritativeDeadUntil > now;
     if (dead) {
       mob.health = 0;

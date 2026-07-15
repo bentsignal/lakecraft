@@ -229,9 +229,10 @@ function appendCow(writer: VertexWriter, x: number, y: number, z: number, yaw: n
   appendBox(writer,x,y,z,yaw,0,0,0,0.25,1.1,0.66,0.42,1.32,0.82,0.78,0.7,0.5);
 }
 
-function appendSheep(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+function appendSheep(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number, sheared: boolean): void {
   appendQuadrupedLegs(writer,x,y,z,yaw,swing,0.2,0.42,-0.4,0.58,0.12,0.19,0.16,0.13);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.47,0.48,-0.66,0.47,1.17,0.61,0.86,0.84,0.72);
+  if (sheared) appendBox(writer,x,y,z,yaw,0,0,0,-0.36,0.52,-0.57,0.36,1.06,0.54,0.78,0.56,0.52);
+  else appendBox(writer,x,y,z,yaw,0,0,0,-0.47,0.48,-0.66,0.47,1.17,0.61,0.86,0.84,0.72);
   appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.6,0.54,0.27,1.09,1.05,0.26,0.24,0.21);
   appendBox(writer,x,y,z,yaw,0,0,0,-0.21,0.64,1,0.21,0.84,1.14,0.2,0.18,0.16);
 }
@@ -490,7 +491,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         const swing = moving ? Math.sin(animationSeconds * (pose.behavior === "chase" ? 9 : 6) + index * 1.71) * 0.46 : 0;
         if (pose.kind === "pig") appendPig(writer, x, y, z, yaw, swing);
         else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
-        else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing, pose.sheared);
         else if (pose.kind === "chicken") appendChicken(writer, x, y, z, yaw, swing);
         else if (pose.kind === "zombie") appendZombie(writer, x, y, z, yaw, swing);
         else if (pose.kind === "skeleton") appendSkeleton(writer, x, y, z, yaw, swing);

@@ -702,10 +702,11 @@ function validReceiptCombat(value: unknown, targetKind: RangedTargetKind): value
   if (!value || typeof value !== "object" || Array.isArray(value) || targetKind === "none") return false;
   const record = value as Record<string, unknown>;
   const playerKeys = ["userId", "health", "maxHealth", "revision", "deadUntil", "lastAttackAt", "lastAttackerId"];
-  const mobKeys = ["mobId", "kind", "health", "maxHealth", "revision", "deadUntil", "lastAttackAt", "lastAttackerId"];
+  const mobKeys = ["mobId", "kind", "health", "maxHealth", "revision", "sheared", "deadUntil", "lastAttackAt", "lastAttackerId"];
   if (targetKind === "player") {
     if (!exactKeys(record, playerKeys) || typeof record.userId !== "string") return false;
-  } else if (!exactKeys(record, mobKeys) || typeof record.mobId !== "string" || typeof record.kind !== "string") return false;
+  } else if (!exactKeys(record, mobKeys) || typeof record.mobId !== "string" || typeof record.kind !== "string"
+    || typeof record.sheared !== "boolean") return false;
   return Number.isInteger(record.health) && (record.health as number) >= 0
     && Number.isInteger(record.maxHealth) && (record.maxHealth as number) >= 1 && (record.health as number) <= (record.maxHealth as number)
     && Number.isSafeInteger(record.revision) && (record.revision as number) >= 0

@@ -190,6 +190,8 @@ export interface VoxelEngineOptions {
    * drops. Apply the resulting/query state through `applyMobCombatStates`.
    */
   onMobAttack?: (target: Readonly<MobRayTarget>, damage: number) => void | Promise<void>;
+  /** Return true when secondary use handled the targeted mob (for example, shearing a sheep). */
+  onMobUse?: (target: Readonly<MobRayTarget>) => boolean;
   /** Event-driven PvP attack request for the nearest rendered remote under the crosshair. */
   onRemotePlayerAttack?: (target: Readonly<RemotePlayerRayTarget>, damage: number) => void | Promise<void>;
   /** True only while the authoritative inventory says the selected stack is a bow. */
@@ -241,6 +243,8 @@ export interface VoxelEngine {
   applyMobMotionSnapshot(poses: readonly MobMotionPose[], serverTimeOffsetMs?: number): void;
   /** Stable deterministic IDs used by the bounded Lakebed authority query. */
   getMobIds(): string[];
+  /** Local-only exact sheep clip; inventory acceptance runs before visual state changes. */
+  shearMob(mobId: string, acceptWool: (count: number) => boolean): import("./mobs.ts").LocalMobShearResult;
   setSelectedBlock(block: BlockId): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */

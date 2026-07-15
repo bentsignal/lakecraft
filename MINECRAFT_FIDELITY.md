@@ -44,6 +44,7 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 - Generate/unload horizontal chunk windows as the player moves; global coordinates must be deterministic and seam-free in every direction.
 - Moving players target 5 updates/second through Lakebed, with local interpolation between compact snapshots and much slower idle keepalive. Measure the resulting mutation quota honestly.
 - Dropped items and pickups are authoritative Lakebed state changes, never client-only duplication opportunities and never frame-loop writes.
+- Right-clicking a sheep with shears yields one to three wool, spends one durability only on acceptance, and visibly removes its wool coat until death/respawn; retrying the same multiplayer operation cannot pay twice.
 
 ## Reference sources
 
