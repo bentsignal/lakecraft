@@ -1,6 +1,7 @@
 import { CREEPER_FUSE_TICKS } from "./mobMotionAuthority.ts";
 import { MOB_AUTHORITY_WORLD_SEED_TOKEN, validateMobIdentity } from "./mobCombat.ts";
 import type { BlockType } from "./protocol.ts";
+import { BLOCKS, type BlockId, type ItemId } from "./game.ts";
 
 export const CREEPER_EXPLOSION_RADIUS = 3;
 export const CREEPER_EXPLOSION_MAX_BLOCKS = 64;
@@ -34,6 +35,8 @@ export type CreeperExplosionCell = {
   coordKey: string;
   distanceSquared: number;
 };
+
+export type CreeperExplosionProbeCell = { x: number; y: number; z: number; coordKey: string };
 
 function record(raw: string): Record<string, unknown> | null {
   if (typeof raw !== "string" || raw.length > 1_024) return null;
@@ -156,6 +159,33 @@ export function planCreeperTerrainDestruction(
   return result;
 }
 
+function protocolBlockId(block: BlockType): BlockId | null {
+  if (block === "wood") return "log";
+  if (block === "door_closed" || block === "door_open") return "door";
+  return block !== "air" && block in BLOCKS ? block as BlockId : null;
+}
+
+export function planCreeperBlockDrops(
+  eventId: string,
+  destruction: readonly Readonly<CreeperExplosionCell & { previousBlock: BlockType }>[],
+): Array<{ itemId: ItemId; count: number }> {
+  const totals = new Map<ItemId, number>();
+  for (const cell of destruction) {
+    // A deterministic 30% survival roll mirrors Minecraft's lossy blast drops
+    // while guaranteeing every spawned item came from one destroyed block.
+    const roll = Number.parseInt(hashText(`${eventId}:${cell.coordKey}`), 36) % 10;
+    if (roll >= 3) continue;
+    const blockId = protocolBlockId(cell.previousBlock);
+    const drop = blockId ? BLOCKS[blockId].drop : null;
+    if (!drop) continue;
+    totals.set(drop, Math.min(64, (totals.get(drop) ?? 0) + 1));
+  }
+  return [...totals.entries()]
+    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    .slice(0, 8)
+    .map(([itemId, count]) => ({ itemId, count }));
+}
+
 export function resolveCreeperExplosionDamage(
   authority: Readonly<Pick<CreeperExplosionAuthority, "center" | "radius">>,
   target: Readonly<{ x: number; y: number; z: number }>,
@@ -170,6 +200,56 @@ export function resolveCreeperExplosionDamage(
   if (!Number.isFinite(distance) || distance >= reach || exposure <= 0) return 0;
   const impact = Math.max(0, Math.min(1, (1 - distance / reach) * Math.min(1, exposure)));
   return Math.max(1, Math.min(20, Math.floor((impact * impact + impact) * 7 + 1)));
+}
+
+function exposureRayCells(
+  authority: Readonly<Pick<CreeperExplosionAuthority, "center" | "radius">>,
+  target: Readonly<{ x: number; y: number; z: number }>,
+  targetY: number,
+): CreeperExplosionProbeCell[] {
+  const cells = new Map<string, CreeperExplosionProbeCell>();
+  const dx = target.x - authority.center.x;
+  const dy = targetY - (authority.center.y + 0.8);
+  const dz = target.z - authority.center.z;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy, dz) * 2.5));
+  for (let step = 1; step < steps; step += 1) {
+    const ratio = step / steps;
+    if (ratio < 0.2) continue;
+    const x = Math.floor(authority.center.x + dx * ratio);
+    const y = Math.floor(authority.center.y + 0.8 + dy * ratio);
+    const z = Math.floor(authority.center.z + dz * ratio);
+    const coordKey = `${x}:${y}:${z}`;
+    cells.set(coordKey, { x, y, z, coordKey });
+  }
+  return [...cells.values()].sort((left, right) => left.y - right.y || left.x - right.x || left.z - right.z);
+}
+
+export function creeperExplosionExposureCells(
+  authority: Readonly<Pick<CreeperExplosionAuthority, "center" | "radius">>,
+  target: Readonly<{ x: number; y: number; z: number }>,
+): CreeperExplosionProbeCell[] {
+  const cells = new Map<string, CreeperExplosionProbeCell>();
+  for (const targetY of [target.y + 0.2, target.y + 0.9, target.y + 1.6]) {
+    for (const cell of exposureRayCells(authority, target, targetY)) cells.set(cell.coordKey, cell);
+  }
+  return [...cells.values()].sort((left, right) => left.y - right.y || left.x - right.x || left.z - right.z);
+}
+
+export function sampleCreeperExplosionExposure(
+  authority: Readonly<Pick<CreeperExplosionAuthority, "center" | "radius">>,
+  target: Readonly<{ x: number; y: number; z: number }>,
+  readBlock: (cell: Readonly<CreeperExplosionProbeCell>) => BlockType,
+): number {
+  let clear = 0;
+  for (const targetY of [target.y + 0.2, target.y + 0.9, target.y + 1.6]) {
+    const cells = exposureRayCells(authority, target, targetY);
+    const occluded = cells.some((cell) => {
+      const block = readBlock(cell);
+      return block !== "air" && block !== "torch" && block !== "ladder" && block !== "door_open";
+    });
+    if (!occluded) clear += 1;
+  }
+  return clear / 3;
 }
 
 export function decideCreeperExplosionCommit(

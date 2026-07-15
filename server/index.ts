@@ -57,10 +57,13 @@ import {
   CREEPER_EXPLOSION_MAX_PLAYER_VICTIMS,
   CREEPER_EXPLOSION_RADIUS,
   authorizeCreeperExplosionRequest,
+  creeperExplosionExposureCells,
   decideCreeperExplosionCommit,
   enumerateCreeperExplosionBlocks,
+  planCreeperBlockDrops,
   planCreeperTerrainDestruction,
   resolveCreeperExplosionDamage,
+  sampleCreeperExplosionExposure,
   validateCreeperExplosionRequestJson,
   type CreeperExplosionAuthority,
 } from "../shared/creeperExplosion.ts";
@@ -3867,10 +3870,29 @@ export default capsule({
         return { ok: false, reason: "active_nearby_presence_required", serverNow };
       }
 
-      const cells = enumerateCreeperExplosionBlocks(authority).filter((cell) =>
+      const blastCells = enumerateCreeperExplosionBlocks(authority).filter((cell) =>
         cell.x >= WORLD_EDIT_MIN_XZ && cell.x <= WORLD_EDIT_MAX_XZ
         && cell.z >= WORLD_EDIT_MIN_XZ && cell.z <= WORLD_EDIT_MAX_XZ
         && cell.y >= WORLD_EDIT_MIN_Y && cell.y <= WORLD_EDIT_MAX_Y);
+      const potentialVictims = activePlayers
+        .map(({ row, pose: targetPose }) => ({
+          row,
+          pose: targetPose,
+          directDamage: resolveCreeperExplosionDamage(authority, targetPose),
+        }))
+        .filter((candidate) => candidate.directDamage > 0)
+        .sort((left, right) => right.directDamage - left.directDamage
+          || (left.row.userId < right.row.userId ? -1 : left.row.userId > right.row.userId ? 1 : 0))
+        .slice(0, CREEPER_EXPLOSION_MAX_PLAYER_VICTIMS);
+      const probeCells = new Map(blastCells.map((cell) => [cell.coordKey, cell] as const));
+      for (const candidate of potentialVictims) {
+        for (const cell of creeperExplosionExposureCells(authority, candidate.pose)) {
+          if (cell.x >= WORLD_EDIT_MIN_XZ && cell.x <= WORLD_EDIT_MAX_XZ
+            && cell.z >= WORLD_EDIT_MIN_XZ && cell.z <= WORLD_EDIT_MAX_XZ
+            && cell.y >= WORLD_EDIT_MIN_Y && cell.y <= WORLD_EDIT_MAX_Y) probeCells.set(cell.coordKey, cell);
+        }
+      }
+      const cells = [...probeCells.values()];
       const blockMap = new Map<string, BlockType>();
       const cellGroups = new Map<string, typeof cells>();
       for (const cell of cells) {
@@ -3912,12 +3934,38 @@ export default capsule({
         if (rows.length > 1) return { ok: false, reason: "duplicate_world_state", serverNow };
         existingEdits.set(cell.coordKey, rows[0] ?? null);
       }
+      const dropPlan = planCreeperBlockDrops(authorization.eventId, destruction);
+      const dropOwnerId = `world_${request.mobId}`;
+      const activeExplosionDrops = await ctx.db.droppedItems
+        .withIndex("by_owner_expiry", (q) => q
+          .eq("ownerUserId", dropOwnerId)
+          .gt("expiresAt", String(serverNow)))
+        .order("asc")
+        .take(65);
+      const explosionDropRows: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
+      for (let index = 0; index < dropPlan.length; index += 1) {
+        if (!canCreateDroppedItem(activeExplosionDrops.length + explosionDropRows.length)) break;
+        const row = buildDroppedItemRow(
+          dropOwnerId,
+          `${authorization.eventId}_d${index}`,
+          dropPlan[index],
+          authority.center,
+          pose.yaw,
+          serverNow,
+        );
+        if (!row) return { ok: false, reason: "drop_plan_invalid", serverNow };
+        explosionDropRows.push(row);
+      }
 
-      const victimCandidates = activePlayers
+      const victimCandidates = potentialVictims
         .map(({ row, pose: targetPose }) => ({
           row,
           pose: targetPose,
-          rawDamage: resolveCreeperExplosionDamage(authority, targetPose),
+          rawDamage: resolveCreeperExplosionDamage(
+            authority,
+            targetPose,
+            sampleCreeperExplosionExposure(authority, targetPose, (cell) => blockMap.get(cell.coordKey) ?? "air"),
+          ),
         }))
         .filter((candidate) => candidate.rawDamage > 0)
         .sort((left, right) => right.rawDamage - left.rawDamage
@@ -4011,6 +4059,7 @@ export default capsule({
         mobId: request.mobId,
         center: authority.center,
         destroyedBlocks: destruction.length,
+        drops: explosionDropRows.map((row) => JSON.parse(row.itemJson)),
         victims: victimPlans.map((plan) => plan.result),
         serverNow,
       };
@@ -4035,6 +4084,7 @@ export default capsule({
         writtenEdits.push(written);
       }
       await maintainWorldChunkSnapshots(ctx.db, writtenEdits);
+      for (const row of explosionDropRows) await ctx.db.droppedItems.insert(row);
       for (const plan of victimPlans) {
         await ctx.db.playerPresence.update(plan.presenceRow.id, plan.progress);
         if (plan.inventoryValue) await ctx.db.inventories.update(plan.inventoryRow.id, plan.inventoryValue);

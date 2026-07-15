@@ -4,10 +4,13 @@ import {
   CREEPER_EXPLOSION_RADIUS,
   authorizeCreeperExplosionRequest,
   creeperExplosionEventId,
+  creeperExplosionExposureCells,
   decideCreeperExplosionCommit,
   enumerateCreeperExplosionBlocks,
   planCreeperTerrainDestruction,
+  planCreeperBlockDrops,
   resolveCreeperExplosionDamage,
+  sampleCreeperExplosionExposure,
   validateCreeperExplosionRequestJson,
   type CreeperExplosionAuthority,
 } from "../shared/creeperExplosion.ts";
@@ -57,10 +60,22 @@ const planned = planCreeperTerrainDestruction(authority, (cell) =>
 assert.equal(planned.some(({ previousBlock }) => previousBlock === "chest" || previousBlock === "furnace" || previousBlock === "bed"), false,
   "interactive side-state blocks remain protected until their contents can be conserved");
 assert.ok(planned.length <= CREEPER_EXPLOSION_MAX_BLOCKS);
+const drops = planCreeperBlockDrops(operationId, planned);
+assert.deepEqual(drops, planCreeperBlockDrops(operationId, planned), "blast drops replay deterministically");
+assert.ok(drops.length <= 8 && drops.every((drop) => drop.count > 0 && drop.count <= 64));
+assert.ok(drops.reduce((total, drop) => total + drop.count, 0) <= planned.length,
+  "a blast cannot mint more item units than the number of destroyed source blocks");
 
 assert.ok(resolveCreeperExplosionDamage(authority, authority.center) > 0);
 assert.equal(resolveCreeperExplosionDamage(authority, { x: 100, y: 4, z: 100 }), 0);
 assert.equal(resolveCreeperExplosionDamage(authority, authority.center, 0), 0);
+const exposedTarget = { x: authority.center.x + 4, y: authority.center.y, z: authority.center.z };
+assert.ok(creeperExplosionExposureCells(authority, exposedTarget).length > 0);
+assert.equal(sampleCreeperExplosionExposure(authority, exposedTarget, () => "air"), 1);
+assert.equal(sampleCreeperExplosionExposure(authority, exposedTarget, () => "stone"), 0,
+  "an authoritative solid wall fully shields the player from the blast");
+assert.equal(resolveCreeperExplosionDamage(authority, exposedTarget,
+  sampleCreeperExplosionExposure(authority, exposedTarget, () => "stone")), 0);
 
 if (!accepted.ok) throw new Error("unreachable");
 assert.equal(decideCreeperExplosionCommit(null, accepted.fingerprint), "commit");
