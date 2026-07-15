@@ -18,6 +18,7 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   let palette: Palette;
   let variant = itemId;
   if (itemId === "sapling") palette = sapling(grid);
+  else if (itemId === "oak_fence") palette = oakFence(grid);
   else if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
     palette = bow(grid);
@@ -129,6 +130,18 @@ function sapling(g: Grid): Palette {
   dots(g, "m", [[4,4],[5,4],[3,6],[4,6],[5,6],[11,3],[12,4],[11,5],[12,5],[7,2],[8,3],[9,4]]);
   dots(g, "l", [[5,3],[3,5],[12,3],[13,5],[7,1],[10,5]]);
   dots(g, "d", [[4,7],[6,5],[10,4],[11,6],[8,4]]);
+  return p;
+}
+
+function oakFence(g: Grid): Palette {
+  const p = { o: "#3d2818", d: "#76502b", w: "#a8763e", h: "#d0a15b" };
+  // Tall central post with two rails receding to either side.
+  box(g, 6, 1, 5, 14, "o"); box(g, 7, 2, 3, 12, "w"); box(g, 7, 2, 1, 12, "h");
+  for (const y of [5, 10]) {
+    box(g, 1, y, 14, 4, "o"); box(g, 2, y + 1, 12, 2, "w");
+    box(g, 2, y + 1, 12, 1, "h");
+  }
+  box(g, 8, 5, 2, 4, "d"); box(g, 8, 10, 2, 4, "d");
   return p;
 }
 

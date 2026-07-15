@@ -6,7 +6,7 @@ const glyph = source("../client/components/ItemGlyph.tsx");
 const firstPerson = source("../client/components/FirstPersonHeldItem.tsx");
 const styles = source("../client/components/HudStyles.tsx");
 
-assert.ok(glyph.includes('new Set<BlockId>(["torch", "door", "bed", "ladder", "sapling"])'), "thin placeables preserve their authored item silhouettes");
+assert.ok(glyph.includes('new Set<BlockId>(["torch", "door", "bed", "ladder", "sapling", "oak_fence"])'), "thin placeables preserve their authored item silhouettes");
 assert.ok(glyph.includes('data-block={blockId}'), "the held voxel exposes selected material identity to its texture rules");
 assert.equal((glyph.match(/lc-held-voxel__face--/g) ?? []).length, 3, "held voxel has exactly three bounded face nodes");
 assert.ok(glyph.includes('blockId === "grass" ? BLOCKS.dirt.color'), "grass uses a green cap over earthy side faces");

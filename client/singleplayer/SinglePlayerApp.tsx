@@ -56,6 +56,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.WOOL]: "wool",
   [BLOCK.SAPLING]: "sapling",
   [BLOCK.STONE_BRICKS]: "stone_bricks",
+  [BLOCK.OAK_FENCE]: "oak_fence",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -68,13 +69,15 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   wool: BLOCK.WOOL,
   sapling: BLOCK.SAPLING,
   stone_bricks: BLOCK.STONE_BRICKS,
+  oak_fence: BLOCK.OAK_FENCE,
 };
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.SAPLING
     || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
   if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
-    || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER) return "wood";
+    || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER
+    || block === BLOCK.OAK_FENCE) return "wood";
   if (block === BLOCK.SAND) return "sand";
   if (block === BLOCK.GRAVEL) return "gravel";
   if (block === BLOCK.GLASS) return "glass";
@@ -100,7 +103,7 @@ function loadLocalSave(): LocalSave {
     const value = JSON.parse(raw) as Partial<LocalSave>;
     const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.STONE_BRICKS,
+      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.OAK_FENCE,
     )).slice(-8_000) : [];
     const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];

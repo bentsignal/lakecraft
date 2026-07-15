@@ -28,6 +28,7 @@ npx lakebed auth as alice
 - Break oak leaves for renewable saplings, craft one bone into three bone meal, plant on dirt/grass, then right click the sapling with bone meal to grow it
 - Smelt oak logs into charcoal; coal and charcoal both fuel furnaces and craft four torches over a stick
 - Smelt cobblestone back into stone, then arrange four stone in the 2×2 pack grid to craft four stone bricks
+- At a crafting table, arrange two rows of plank–stick–plank to craft three connecting oak fences
 - Right click a crafting table, furnace, chest, door, or bed to interact; right click held food to eat
 - Double-click food in the pack to eat it
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
@@ -39,7 +40,7 @@ npx lakebed auth as alice
 ## Project shape
 
 - `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered original 16×16 texture atlas, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
-- `client/components/` — Minecraft-style survival HUD, 72 original pixel item sprites, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
+- `client/components/` — Minecraft-style survival HUD, 91 original pixel item sprites, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
 - `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, quota-batched multiplayer history/chat, CAS-safe inventories, atomic world item drops/pickups, persistent furnaces and shared-chest transfers, a leased deterministic mob authority, and the synchronized sleep clock
 - `shared/` — pure item, recipe, furnace, and wire-protocol types
 
@@ -71,5 +72,7 @@ The resulting white wool is a normal building block rather than a recipe-only to
 Oak wood is renewable through the same offline/Lakebed rules. Uncut leaves resolve one deterministic conserved drop—an apple at one in 200, otherwise an oak sapling at one in 20—while shears still recover exactly one leaf block. One bone crafts three bone meal. Saplings append as world-chunk code 26/protocol index 25, render as alpha-tested crossed pixel art, only place above dirt or grass, and grow into a deterministic 4–5-log oak after a valid bone-meal use. Multiplayer commits the complete tree across at most four chunks and 70 edits together with exactly one selected bone meal and a bounded replay receipt; it adds no timer or polling loop.
 
 Stone building now has a renewable furnace progression: cobblestone smelts into stone, and an exact 2×2 arrangement of four stone crafts four stone bricks. The opaque masonry block appends as world-chunk code 27/protocol index 26, requires at least a wooden pickaxe to recover, and reuses the ordinary exact-once place/mine transaction without adding a request loop.
+
+Oak fences use the exact two-row plank–stick–plank crafting-table pattern and produce three sections. They append as world-chunk code 28/protocol index 27, connect their two rails toward neighboring fences or solid cubes with four bounded probes, reuse the oak-plank texture batch, and extend collision to 1.5 blocks so ordinary jumps cannot clear them. Placement and recovery stay on the generic exact-once Lakebed block transaction.
 
 Performance budgets and the repeatable benchmark loop live in [PERFORMANCE.md](./PERFORMANCE.md).

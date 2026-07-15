@@ -420,6 +420,7 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.WOOL]: [0.86, 0.84, 0.78],
   [BLOCK.SAPLING]: [0.28, 0.55, 0.18],
   [BLOCK.STONE_BRICKS]: [0.43, 0.45, 0.43],
+  [BLOCK.OAK_FENCE]: [0.69, 0.48, 0.25],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -471,7 +472,8 @@ export function blockOccludesFaces(block: BlockId): boolean {
     && block !== BLOCK.DOOR_OPEN
     && block !== BLOCK.LADDER
     && block !== BLOCK.GLASS
-    && block !== BLOCK.SAPLING;
+    && block !== BLOCK.SAPLING
+    && block !== BLOCK.OAK_FENCE;
 }
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
@@ -502,6 +504,55 @@ export function blockHasCollision(block: BlockId): boolean {
     && block !== BLOCK.DOOR_OPEN
     && block !== BLOCK.LADDER
     && block !== BLOCK.SAPLING;
+}
+
+export type OakFenceConnections = Readonly<{
+  east: boolean;
+  west: boolean;
+  south: boolean;
+  north: boolean;
+}>;
+
+export type OakFenceBlockLookup = (x: number, y: number, z: number) => BlockId;
+
+/** Fences join one another and opaque full-block terrain, never thin authored meshes. */
+export function oakFenceConnectsTo(block: BlockId): boolean {
+  return block === BLOCK.OAK_FENCE || (
+    blockOccludesFaces(block)
+    && block !== BLOCK.CHEST
+    && block !== BLOCK.BED
+    && block !== BLOCK.DOOR_CLOSED
+    && block !== BLOCK.DOOR_OPEN
+  );
+}
+
+/** Allocation-bounded, deterministic neighbor mask shared by meshing and tests. */
+export function oakFenceConnections(
+  x: number,
+  y: number,
+  z: number,
+  getBlock: OakFenceBlockLookup,
+): OakFenceConnections {
+  return {
+    east: oakFenceConnectsTo(getBlock(x + 1, y, z)),
+    west: oakFenceConnectsTo(getBlock(x - 1, y, z)),
+    south: oakFenceConnectsTo(getBlock(x, y, z + 1)),
+    north: oakFenceConnectsTo(getBlock(x, y, z - 1)),
+  };
+}
+
+export const OAK_FENCE_HEIGHT = 1.5;
+
+/** Exact vertical AABB rule used for the otherwise-empty half-block above a fence cell. */
+export function playerIntersectsOakFenceHeight(
+  playerY: number,
+  bodyHeight: number,
+  fenceY: number,
+): boolean {
+  if (![playerY, bodyHeight, fenceY].every(Number.isFinite) || bodyHeight <= 0) return false;
+  const playerBottom = playerY + 0.001;
+  const playerTop = playerY + Math.max(0.1, bodyHeight) - 0.01;
+  return playerTop > fenceY && playerBottom < fenceY + OAK_FENCE_HEIGHT;
 }
 
 export type LadderBlockLookup = (x: number, y: number, z: number) => BlockId;
@@ -786,6 +837,33 @@ function appendTexturedBlockFace(
   }
 }
 
+function appendTexturedAxisAlignedBox(
+  output: number[],
+  min: Vec3,
+  max: Vec3,
+  textureName: Parameters<typeof textureAtlasUv>[0],
+  shade = 1,
+): void {
+  const uv = textureAtlasUv(textureName);
+  for (const face of FACE_DEFS) {
+    for (const point of face.vertices) {
+      const horizontal = face.neighbor[0] !== 0 ? point[2] : point[0];
+      const vertical = face.neighbor[1] !== 0 ? point[2] : point[1];
+      pushTexturedVertex(
+        output,
+        [
+          min[0] + point[0] * (max[0] - min[0]),
+          min[1] + point[1] * (max[1] - min[1]),
+          min[2] + point[2] * (max[2] - min[2]),
+        ],
+        uv.left + (uv.right - uv.left) * horizontal,
+        uv.bottom + (uv.top - uv.bottom) * vertical,
+        face.shade * shade,
+      );
+    }
+  }
+}
+
 export const SAPLING_MESH_VERTEX_COUNT = 12;
 
 /** Two diagonal quads form the classic crossed-plant silhouette at a fixed vertex cost. */
@@ -812,6 +890,41 @@ export function appendSaplingMesh(output: number[], x: number, y: number, z: num
   vertex(right, bottom, near, uv.left, uv.bottom);
   vertex(left, top, far, uv.right, uv.top);
   vertex(left, bottom, far, uv.right, uv.bottom);
+}
+
+export const OAK_FENCE_BOX_VERTEX_COUNT = 36;
+
+export function oakFenceMeshVertexCount(connections: OakFenceConnections): number {
+  const connectionCount = Number(connections.east) + Number(connections.west)
+    + Number(connections.south) + Number(connections.north);
+  return OAK_FENCE_BOX_VERTEX_COUNT * (1 + connectionCount * 2);
+}
+
+/** One 1.5-block post plus two rails for each connected horizontal direction. */
+export function appendOakFenceMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  connections: OakFenceConnections,
+  shade = 1,
+): void {
+  const texture = "oak_planks" as const;
+  appendTexturedAxisAlignedBox(
+    output,
+    [x + 0.375, y, z + 0.375],
+    [x + 0.625, y + OAK_FENCE_HEIGHT, z + 0.625],
+    texture,
+    shade,
+  );
+  const addRails = (minX: number, maxX: number, minZ: number, maxZ: number): void => {
+    appendTexturedAxisAlignedBox(output, [minX, y + 0.50, minZ], [maxX, y + 0.75, maxZ], texture, shade);
+    appendTexturedAxisAlignedBox(output, [minX, y + 1.00, minZ], [maxX, y + 1.25, maxZ], texture, shade);
+  };
+  if (connections.east) addRails(x + 0.5, x + 1, z + 0.4375, z + 0.5625);
+  if (connections.west) addRails(x, x + 0.5, z + 0.4375, z + 0.5625);
+  if (connections.south) addRails(x + 0.4375, x + 0.5625, z + 0.5, z + 1);
+  if (connections.north) addRails(x + 0.4375, x + 0.5625, z, z + 0.5);
 }
 
 function tint(color: Vec3, shade: number, variation = 1): Vec3 {
@@ -1336,7 +1449,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (block === BLOCK.TNT && primedTnt.has(key)) continue;
       const [x, y, z] = key.split(",").map(Number);
       minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y + (isDoorBlock(block) ? 1.9 : 1));
+      maxY = Math.max(
+        maxY,
+        y + (isDoorBlock(block) ? 1.9 : block === BLOCK.OAK_FENCE ? OAK_FENCE_HEIGHT : 1),
+      );
       if (block === BLOCK.TORCH) {
         appendTorchMesh(colorVertices, x, y, z);
         continue;
@@ -1359,6 +1475,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       if (block === BLOCK.SAPLING) {
         appendSaplingMesh(textureVertices, x, y, z, blockMaterialVariation(x, y, z));
+        continue;
+      }
+      if (block === BLOCK.OAK_FENCE) {
+        appendOakFenceMesh(
+          textureVertices,
+          x,
+          y,
+          z,
+          oakFenceConnections(x, y, z, getBlock),
+          blockMaterialVariation(x, y, z),
+        );
         continue;
       }
       const base = blockMaterialColor(block) as Vec3;
@@ -1479,6 +1606,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           const block = getBlock(bx, by, bz);
           if (blockHasCollision(block)) return true;
           if (by > 0 && getBlock(bx, by - 1, bz) === BLOCK.DOOR_CLOSED) return true;
+          if (getBlock(bx, by - 1, bz) === BLOCK.OAK_FENCE
+            && playerIntersectsOakFenceHeight(y, bodyHeight, by - 1)) return true;
         }
       }
     }

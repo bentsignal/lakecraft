@@ -7,7 +7,7 @@ export type ItemGlyphProps = {
   muted?: boolean;
 };
 
-const HELD_SPRITE_BLOCKS = new Set<BlockId>(["torch", "door", "bed", "ladder", "sapling"]);
+const HELD_SPRITE_BLOCKS = new Set<BlockId>(["torch", "door", "bed", "ladder", "sapling", "oak_fence"]);
 
 /** Thin or non-cubic placeables keep their authored item silhouette when held. */
 export function isHeldVoxelBlock(itemId: ItemId): itemId is BlockId {

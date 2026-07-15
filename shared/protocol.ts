@@ -27,7 +27,8 @@ export const BLOCK_TYPES = [
   "gravel",
   "wool",
   "sapling",
-  "stone_bricks"
+  "stone_bricks",
+  "oak_fence"
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
