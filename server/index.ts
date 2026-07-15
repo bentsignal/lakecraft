@@ -137,6 +137,10 @@ const CHEST_RECEIPT_PRUNE_LIMIT = 8;
 const RESPAWN_AUTHORIZATION_COOLDOWN_MS = 15_000;
 const TRAILHEAD_POSE = Object.freeze({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
 
+function validPresenceSessionId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9-]{20,64}$/i.test(value);
+}
+
 function storedRespawnGrant(row: Record<string, unknown> | null): PresenceRelocationGrant | null {
   if (!row || typeof row.userId !== "string" || typeof row.grantEpoch !== "string" || !row.grantEpoch) return null;
   if (typeof row.grantX !== "string" || typeof row.grantY !== "string" || typeof row.grantZ !== "string"
@@ -955,6 +959,29 @@ export default capsule({
       };
     }),
 
+    startPresenceSession: mutation(async (ctx, rawSessionId: string) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
+      }
+      if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: "invalid_session" };
+      const rows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(64);
+      const keeper = rows.find((row) => row.userId === ctx.auth.userId && validatePresencePoseFields(
+        row.x,
+        row.y,
+        row.z,
+        row.yaw,
+        row.pitch,
+      )) ?? null;
+      for (const row of rows) {
+        if (!keeper || row.id !== keeper.id) await ctx.db.playerPresence.delete(row.id);
+      }
+      if (keeper) await ctx.db.playerPresence.update(keeper.id, { sessionId: rawSessionId });
+      return { ok: true, resetToTrailhead: rows.length > 0 && !keeper };
+    }),
+
     authorizeRespawn: mutation(async (ctx) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
         return { ok: false, reason: "authentication_required" };
@@ -1100,9 +1127,7 @@ export default capsule({
         if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to join the shared world.");
         const pose = validatePresencePoseFields(x, y, z, yaw, pitch);
         const velocity = validatePresenceVelocityFields(rawVx ?? "0", rawVy ?? "0", rawVz ?? "0");
-        const sessionId = typeof rawSessionId === "string" && /^[a-f0-9-]{20,64}$/i.test(rawSessionId)
-          ? rawSessionId
-          : null;
+        const sessionId = validPresenceSessionId(rawSessionId) ? rawSessionId : null;
         if (!pose || !velocity || !sessionId) return { ok: false, reason: "invalid_request" };
         const appearance = normalizeAvatarAppearance(
           rawHeldItem,
@@ -1123,6 +1148,9 @@ export default capsule({
           .take(2);
         if (existingRows.length > 1) return { ok: false, reason: "duplicate_state" };
         const existing = existingRows[0] ?? null;
+        if (existing?.sessionId && existing.sessionId !== sessionId) {
+          return { ok: false, reason: "session_mismatch" };
+        }
         const serverNow = Date.now();
         const gate = decidePresenceWriteGate(existing?.heartbeatAt, serverNow);
         if (!gate.accept) return { ok: false, reason: "rate_limited", retryAfterMs: gate.retryAfterMs };

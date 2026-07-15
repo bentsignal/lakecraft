@@ -8,6 +8,7 @@ for (const required of [
   "playerRespawns: table({",
   '.index("by_user", ["userId"])',
   "authorizeRespawn: mutation(async (ctx) =>",
+  "startPresenceSession: mutation(async (ctx, rawSessionId: string) =>",
   "buildPresenceRelocationGrant(ctx.auth.userId",
   "decidePresenceTrajectory(",
   "trajectory.relocationGrantUpdate",
@@ -47,8 +48,14 @@ assert.ok(sleep.indexOf("validatePresencePoseFields(") < sleep.indexOf("playerRe
 
 const leave = server.slice(server.indexOf("leavePlayer: mutation"), server.indexOf("saveInventory: mutation"));
 assert.ok(server.includes("sessionId: string().default"));
+assert.ok(server.includes("if (existing?.sessionId && existing.sessionId !== sessionId)"));
+const sessionStart = server.slice(server.indexOf("startPresenceSession: mutation"), server.indexOf("authorizeRespawn: mutation"));
+assert.ok(sessionStart.includes(".take(64)"));
+assert.ok(sessionStart.includes("playerPresence.delete(row.id)"), "legacy duplicate/malformed rows are healed before session ownership rotates");
+assert.ok(sessionStart.includes("sessionId: rawSessionId"));
 assert.ok(leave.includes("existing.sessionId !== rawSessionId"), "an old tab cannot take a new presence session offline");
 assert.ok(client.includes("const presenceSessionId = crypto.randomUUID()"));
+assert.ok(client.includes("startPresenceSession(presenceSessionId)"));
 assert.ok(client.includes("void leavePlayer(presenceSessionId)"));
 assert.ok(client.includes("engineRef.current?.reconcilePose(canonicalPose)"));
 assert.ok(client.includes("Object.assign(scheduler, createPresenceSchedulerState())"));

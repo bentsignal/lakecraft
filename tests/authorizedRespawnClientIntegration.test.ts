@@ -15,7 +15,7 @@ assert.ok(authorization.includes("void authorizeRespawn().then((result) =>"));
 assert.ok(authorization.indexOf("if (!result.ok)") < authorization.indexOf("engine.respawn()"));
 assert.ok(authorization.includes("validateRespawnPoint(result.target, Number.MAX_SAFE_INTEGER)"));
 assert.ok(authorization.includes("const expiresAt = Number(result.expiresAt)"));
-assert.ok(authorization.includes("expiresAt <= Date.now()"));
+assert.equal(authorization.includes("expiresAt <= Date.now()"), false, "an already-committed respawn is not rejected by client clock skew");
 assert.equal(authorization.includes("pendingRespawnAuthorizationRef.current"), false);
 
 const deathFlow = client.slice(

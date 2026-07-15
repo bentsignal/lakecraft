@@ -179,6 +179,7 @@ type AuthorizeRespawnResult =
   | { ok: false; reason: string; retryAfterMs?: number };
 
 type HeartbeatPlayerResult = void | { ok: boolean; reason?: string; canonicalPose?: PlayerPose };
+type StartPresenceSessionResult = { ok: boolean; reason?: string; resetToTrailhead?: boolean };
 
 function visibleDroppedItemChunkKeys(x: number, z: number): string[] {
   const centerX = Math.floor(x / DROPPED_ITEM_CHUNK_SIZE);
@@ -462,6 +463,7 @@ export function App() {
   ], WorldBlockEditMutationResult>("editWorldBlock");
   const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string, sessionId: string], HeartbeatPlayerResult>("heartbeatPlayer");
   const authorizeRespawn = useMutation<[], AuthorizeRespawnResult>("authorizeRespawn");
+  const startPresenceSession = useMutation<[sessionId: string], StartPresenceSessionResult>("startPresenceSession");
   const leavePlayer = useMutation<[sessionId: string], void>("leavePlayer");
   const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
@@ -606,7 +608,6 @@ export function App() {
         || typeof result.epoch !== "string"
         || !result.epoch
         || !Number.isSafeInteger(expiresAt)
-        || expiresAt <= Date.now()
         || engineRef.current !== engine) {
         notify("Respawn not authorized", "Lakebed returned an invalid or expired spawn authorization.", "warning");
         return;
@@ -1529,14 +1530,30 @@ export function App() {
         writeInFlight = false;
       });
     };
-    presenceSampleRef.current = samplePresence;
-    samplePresence(engineRef.current?.getPose() ?? poseRef.current);
-    const interval = window.setInterval(() => {
-      samplePresence(engineRef.current?.getPose() ?? poseRef.current);
-    }, PRESENCE_SAMPLE_INTERVAL_MS);
+    let cancelled = false;
+    let interval = 0;
+    let startRetryTimer = 0;
+    const beginPresenceSession = () => {
+      void startPresenceSession(presenceSessionId).then((result) => {
+        if (cancelled) return;
+        if (!result.ok) throw new Error(result.reason ?? "presence session rejected");
+        presenceSampleRef.current = samplePresence;
+        samplePresence(engineRef.current?.getPose() ?? poseRef.current);
+        interval = window.setInterval(() => {
+          samplePresence(engineRef.current?.getPose() ?? poseRef.current);
+        }, PRESENCE_SAMPLE_INTERVAL_MS);
+      }).catch(() => {
+        if (cancelled) return;
+        setConnected(false);
+        startRetryTimer = window.setTimeout(beginPresenceSession, 1_000);
+      });
+    };
+    beginPresenceSession();
     return () => {
+      cancelled = true;
       if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
-      window.clearInterval(interval);
+      if (interval) window.clearInterval(interval);
+      if (startRetryTimer) window.clearTimeout(startRetryTimer);
       void leavePlayer(presenceSessionId).catch(() => undefined);
     };
   }, [inWorld, auth.userId, auth.isLoading, auth.isAuthenticated, auth.isGuest, profile?.username]);
