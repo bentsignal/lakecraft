@@ -79,12 +79,18 @@ import {
   decideTntReceipt,
   electTntExplosionClaimer,
   normalizeStoredTntFuse,
+  spendFlintAndSteelIgnitionDurability,
   tntExplosionFingerprint,
   tntIgnitionFingerprint,
   validateTntExplosionRequestJson,
   validateTntIgnitionRequestJson,
-  type TntFuse,
 } from "../shared/tntAuthority.ts";
+import {
+  deriveTntChainPrimingPlan,
+  normalizeStoredTntChainFuse,
+  type ActiveTntFuse,
+  type AuthoritativeTntBlastCell,
+} from "../shared/tntChainAuthority.ts";
 import { writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
 import {
   addItem,
@@ -734,7 +740,7 @@ async function maintainWorldChunkSnapshots(
 }
 
 type AppliedWorldExplosion =
-  | { ok: true; destroyedBlocks: number; drops: Array<{ itemId: ItemId; count: number }>; victims: Array<{ userId: string; damage: number; killed: boolean }> }
+  | { ok: true; destroyedBlocks: number; drops: Array<{ itemId: ItemId; count: number }>; victims: Array<{ userId: string; damage: number; killed: boolean }>; chainCells: AuthoritativeTntBlastCell[] }
   | { ok: false; reason: string };
 
 /** Shared bounded blast executor used by server-authorized non-mob explosives. */
@@ -812,13 +818,19 @@ async function applyAuthoritativeWorldExplosion(
     }
   }
   const sourceCoordKey = `${Math.floor(input.center.x)}:${Math.floor(input.center.y)}:${Math.floor(input.center.z)}`;
-  const destruction = planCreeperTerrainDestruction(authority, (cell) => blocks.get(cell.coordKey) ?? "air")
+  const plannedDestruction = planCreeperTerrainDestruction(authority, (cell) => blocks.get(cell.coordKey) ?? "air");
+  const destruction = plannedDestruction
     .filter((cell) => cell.previousBlock !== "tnt" || cell.coordKey === sourceCoordKey);
+  const authoritativeCells: AuthoritativeTntBlastCell[] = [];
   const existingEdits = new Map<string, Record<string, unknown> | null>();
-  for (const cell of destruction) {
+  for (const cell of plannedDestruction) {
     const rows = await db.worldEdits.withIndex("by_coord", (q) => q.eq("coordKey", cell.coordKey)).order("desc").take(2);
     if (rows.length > 1) return { ok: false, reason: "duplicate_world_state" };
-    existingEdits.set(cell.coordKey, rows[0] ?? null);
+    const existing = rows[0] ?? null;
+    existingEdits.set(cell.coordKey, existing);
+    const blockInstanceToken = cell.previousBlock === "tnt" && existing ? furnaceBlockInstanceToken(existing) : null;
+    if (cell.previousBlock === "tnt" && !blockInstanceToken) return { ok: false, reason: "invalid_world_state" };
+    authoritativeCells.push({ ...cell, blockInstanceToken });
   }
   const dropPlan = planCreeperBlockDrops(input.eventId, destruction);
   const dropOwnerId = `world_${input.eventId}`;
@@ -932,6 +944,7 @@ async function applyAuthoritativeWorldExplosion(
     destroyedBlocks: destruction.length,
     drops: dropRows.map((row) => JSON.parse(row.itemJson) as { itemId: ItemId; count: number }),
     victims: victimPlans.map((plan) => plan.result),
+    chainCells: authoritativeCells,
   };
 }
 
@@ -1532,7 +1545,9 @@ export default capsule({
       blockInstanceToken: string(),
       igniterUserId: string(),
       ignitedAt: string(),
-      dueAt: string()
+      dueAt: string(),
+      parentEventId: string(),
+      cascadeDepth: string()
     })
       .index("by_event", ["eventId"])
       .index("by_coord", ["coordKey"])
@@ -1586,8 +1601,8 @@ export default capsule({
       const visible = new Set(validation.chunkKeys);
       const fuseRows = await ctx.db.primedTnt.withIndex("by_due").order("asc").take(TNT_MAX_ACTIVE_FUSES);
       const fuses = fuseRows
-        .map((row) => ({ row, fuse: normalizeStoredTntFuse(row) }))
-        .filter((entry): entry is { row: typeof fuseRows[number]; fuse: TntFuse } =>
+        .map((row) => ({ row, fuse: normalizeStoredTntFuse(row) ?? normalizeStoredTntChainFuse(row) }))
+        .filter((entry): entry is { row: typeof fuseRows[number]; fuse: ActiveTntFuse } =>
           entry.fuse !== null && visible.has(worldEditChunkKey(entry.fuse.x, entry.fuse.z)));
       let activePlayers: Array<{ userId: string; x: number; y: number; z: number; active: true }> = [];
       if (fuses.length > 0) {
@@ -4096,7 +4111,13 @@ export default capsule({
       if (receiptDecision === "replay") {
         try {
           const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
-          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: "invalid_receipt", serverNow };
+          if (replay?.ok !== true) return { ok: false, reason: "invalid_receipt", serverNow };
+          const replayInventoryRows = await ctx.db.inventories
+            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId)).order("desc").take(2);
+          if (replayInventoryRows.length !== 1 || !validatePlayerStateJson(replayInventoryRows[0].inventoryJson).ok) {
+            return { ok: false, reason: "replay_state_unavailable", serverNow };
+          }
+          return { ...replay, replayed: true, inventory: replayInventoryRows[0], serverNow };
         } catch {
           return { ok: false, reason: "invalid_receipt", serverNow };
         }
@@ -4148,8 +4169,21 @@ export default capsule({
         activeFuseAtCoordinate: activeAtCoordinate.length === 1,
       });
       if (!authorization.ok) return { ok: false, reason: authorization.reason, serverNow };
+      const selectedSlot = playerState.state.selectedHotbar;
+      const toolUse = spendFlintAndSteelIgnitionDurability(playerState.state.inventory[selectedSlot]);
+      if (!toolUse.ok) return { ok: false, reason: toolUse.reason, serverNow };
       const fuse = createTntFuse(request, ctx.auth.userId, serverNow);
       if (!fuse) return { ok: false, reason: "invalid_fuse", serverNow };
+      const nextInventory = playerState.state.inventory.slice();
+      nextInventory[selectedSlot] = toolUse.nextStack;
+      const inventoryJson = JSON.stringify({ ...playerState.state, inventory: nextInventory });
+      if (!validatePlayerStateJson(inventoryJson).ok) throw new Error("Unable to encode TNT ignition inventory.");
+      const persistedInventory = await ctx.db.inventories.update(inventoryRows[0].id, {
+        userId: ctx.auth.userId,
+        inventoryJson,
+        revision: incrementStoredRevision(inventoryRows[0].revision),
+      });
+      if (!persistedInventory) throw new Error("Unable to persist flint-and-steel durability.");
       const committedFuse = await ctx.db.primedTnt.insert({
         eventId: fuse.eventId,
         ignitionId: fuse.ignitionId,
@@ -4161,9 +4195,18 @@ export default capsule({
         igniterUserId: fuse.igniterUserId,
         ignitedAt: String(fuse.ignitedAt),
         dueAt: String(fuse.dueAt),
+        parentEventId: "",
+        cascadeDepth: "0",
       });
       if (!committedFuse) throw new Error("Unable to persist authoritative TNT fuse.");
-      const result = { ok: true, replayed: false, fuse, serverNow };
+      const result = {
+        ok: true,
+        replayed: false,
+        fuse,
+        inventory: persistedInventory,
+        toolUse: { broke: toolUse.broke, remainingDurability: toolUse.remainingDurability },
+        serverNow,
+      };
       const committedReceipt = await ctx.db.tntIgnitionReceipts.insert({
         userId: ctx.auth.userId,
         operationId: request.operationId,
@@ -4207,7 +4250,7 @@ export default capsule({
         .order("desc")
         .take(2);
       if (fuseRows.length !== 1) return { ok: false, reason: "fuse_unavailable", serverNow };
-      const fuse = normalizeStoredTntFuse(fuseRows[0]);
+      const fuse = normalizeStoredTntFuse(fuseRows[0]) ?? normalizeStoredTntChainFuse(fuseRows[0]);
       if (!fuse) return { ok: false, reason: "invalid_fuse", serverNow };
       const authorization = authorizeTntExplosion(request, fuse, serverNow);
       if (!authorization.ok) return { ok: false, reason: authorization.reason, retryAfterMs: authorization.retryAfterMs, serverNow };
@@ -4244,9 +4287,54 @@ export default capsule({
         serverNow,
       });
       if (!applied.ok) return { ...applied, serverNow };
+      const activeRows = await ctx.db.primedTnt.withIndex("by_due").order("asc").take(TNT_MAX_ACTIVE_FUSES + 1);
+      if (activeRows.length > TNT_MAX_ACTIVE_FUSES) return { ok: false, reason: "fuse_capacity", serverNow };
+      const activeFuses: ActiveTntFuse[] = [];
+      for (const row of activeRows) {
+        if (row.id === fuseRows[0].id) continue;
+        const active = normalizeStoredTntFuse(row) ?? normalizeStoredTntChainFuse(row);
+        if (!active) return { ok: false, reason: "invalid_fuse", serverNow };
+        activeFuses.push(active);
+      }
+      const chain = deriveTntChainPrimingPlan({
+        source: {
+          eventId: fuse.eventId,
+          sourceCoordKey: fuse.coordKey,
+          explodedAt: serverNow,
+          igniterUserId: fuse.igniterUserId,
+          cascadeDepth: "cascadeDepth" in fuse && typeof fuse.cascadeDepth === "number" ? fuse.cascadeDepth : 0,
+        },
+        authoritativeCells: applied.chainCells,
+        activeFuses,
+      });
+      if (!chain.ok) return { ok: false, reason: chain.reason, serverNow };
+      for (const chainedFuse of chain.creates) {
+        const inserted = await ctx.db.primedTnt.insert({
+          eventId: chainedFuse.eventId,
+          ignitionId: chainedFuse.ignitionId,
+          coordKey: chainedFuse.coordKey,
+          x: String(chainedFuse.x), y: String(chainedFuse.y), z: String(chainedFuse.z),
+          blockInstanceToken: chainedFuse.blockInstanceToken,
+          igniterUserId: chainedFuse.igniterUserId,
+          ignitedAt: String(chainedFuse.ignitedAt),
+          dueAt: String(chainedFuse.dueAt),
+          parentEventId: chainedFuse.parentEventId,
+          cascadeDepth: String(chainedFuse.cascadeDepth),
+        });
+        if (!inserted) throw new Error("Unable to persist authoritative TNT chain fuse.");
+      }
       const deleted = await ctx.db.primedTnt.delete(fuseRows[0].id);
       if (!deleted) throw new Error("Unable to settle authoritative TNT fuse.");
-      const result = { ok: true, replayed: false, eventId: fuse.eventId, center: { x: fuse.x + 0.5, y: fuse.y, z: fuse.z + 0.5 }, ...applied, serverNow };
+      const { chainCells: _privateChainCells, ...blast } = applied;
+      const result = {
+        ok: true,
+        replayed: false,
+        eventId: fuse.eventId,
+        center: { x: fuse.x + 0.5, y: fuse.y, z: fuse.z + 0.5 },
+        ...blast,
+        chainPrimed: chain.creates.length,
+        serverNow,
+      };
       const committedReceipt = await ctx.db.tntExplosionReceipts.insert({
         eventId: fuse.eventId,
         fingerprint,
@@ -4353,6 +4441,7 @@ export default capsule({
         serverNow,
       });
       if (!applied.ok) return { ...applied, serverNow };
+      const { chainCells: _privateChainCells, ...blast } = applied;
       motionMob.x = motionMob.homeX;
       motionMob.z = motionMob.homeZ;
       motionMob.behavior = "dormant";
@@ -4364,7 +4453,7 @@ export default capsule({
       motionMob.fuseUntilTick = 0;
       const nextCheckpointJson = encodeMobWorldCheckpoint(advanced.state);
       const result = {
-        ...applied,
+        ...blast,
         replayed: false,
         eventId: authorization.eventId,
         mobId: request.mobId,

@@ -77,6 +77,7 @@ import {
   type BlockTarget,
   type LocalExplosionEdit,
   type PlayerPose,
+  type PrimedTntVisualFuse,
   type RangedShotIntent,
   type RespawnPoint,
   type VoxelEngine,
@@ -143,6 +144,10 @@ export function planLocalTntExplosion(
   for (const cell of cells) {
     const previousBlock = readBlock(cell.x, cell.y, cell.z);
     if (LOCAL_EXPLOSION_PROTECTED_BLOCKS.has(previousBlock)) continue;
+    if (previousBlock === BLOCK.TNT && (cell.x !== x || cell.y !== y || cell.z !== z)) {
+      edits.push({ x: cell.x, y: cell.y, z: cell.z, block: BLOCK.TNT, previousBlock, chainPrimed: true });
+      continue;
+    }
     edits.push({ x: cell.x, y: cell.y, z: cell.z, block: BLOCK.AIR, previousBlock });
   }
   return edits;
@@ -1068,6 +1073,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let droppedItemVertexCount = 0;
   let droppedItemVisibleCount = 0;
   let playerProjectileVertexCount = 0;
+  let primedTntVertexCount = 0;
+  let primedTntVisibleCount = 0;
+  let primedTntUploadBytes = 0;
   let particleDrawCalls = 0;
   let particleVertexCount = 0;
   let particleUploadBytes = 0;
@@ -1206,6 +1214,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const key = blockKey(x, y, z);
     const owner = chunkKeyForBlock(x, z);
     const previous = blocks.get(key) ?? BLOCK.AIR;
+    if (previous === BLOCK.TNT && block !== BLOCK.TNT && primedTnt.delete(key)) {
+      mobRenderer.setLocalPrimedTnt(x, y, z, false);
+    }
     if (previous === BLOCK.TORCH) torchLights.delete(key);
     if (block === BLOCK.AIR) {
       blocks.delete(key);
@@ -1234,6 +1245,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const key of chunkBlocks.get(chunkKey) ?? []) {
       const block = blocks.get(key);
       if (block === undefined || block === BLOCK.AIR) continue;
+      if (block === BLOCK.TNT && primedTnt.has(key)) continue;
       const [x, y, z] = key.split(",").map(Number);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y + (isDoorBlock(block) ? 1.9 : 1));
@@ -1724,13 +1736,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       droppedItemCount: droppedItemRenderer.stats.totalItemCount,
       droppedItemMeshMs: droppedItemRenderer.stats.meshMs,
       droppedItemUploadBytes: droppedItemRenderer.stats.uploadBytes,
+      primedTntVertexCount,
+      primedTntVisibleCount,
+      primedTntUploadBytes,
       particleDrawCalls,
       particleVertexCount,
       activeParticleCount: blockParticles.activeCount,
       particleUploadBytes,
       torchCount: torchLights.size,
       activeTorchLights,
-      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
+      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + primedTntVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
     };
   }
 
@@ -1787,6 +1802,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     );
     mobVertexCount = mobStats.vertexCount;
     visibleMobCount = mobStats.visibleMobCount;
+    primedTntVertexCount = mobStats.primedTntVertexCount;
+    primedTntVisibleCount = mobStats.visiblePrimedTntCount;
+    primedTntUploadBytes = mobStats.primedTntVertexCount * 6 * Float32Array.BYTES_PER_ELEMENT;
     gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     visibleChunkCount = 0;
@@ -2396,24 +2414,63 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const key = blockKey(x, y, z);
       if (primed) {
         if (getBlock(x, y, z) !== BLOCK.TNT) return false;
+        if (!mobRenderer.setLocalPrimedTnt(x, y, z, true)) return false;
         primedTnt.add(key);
       } else {
         primedTnt.delete(key);
+        mobRenderer.setLocalPrimedTnt(x, y, z, false);
       }
+      rebuildWorldChunks(
+        dirtyChunkKeysForEdits([{ x, y, z, block: BLOCK.TNT }]).filter((owner) => loadedChunkKeys.has(owner)),
+      );
       return true;
+    },
+    setPrimedTntFuses(fuses: readonly PrimedTntVisualFuse[], authoritativeNow?: number) {
+      const nextKeys = new Set<string>();
+      const visibleFuses: PrimedTntVisualFuse[] = [];
+      for (const fuse of fuses) {
+        if (visibleFuses.length >= mobRenderer.maximumPrimedTnt) break;
+        if (![fuse.x, fuse.y, fuse.z].every(Number.isSafeInteger)) continue;
+        if (getBlock(fuse.x, fuse.y, fuse.z) !== BLOCK.TNT) continue;
+        const key = blockKey(fuse.x, fuse.y, fuse.z);
+        if (nextKeys.has(key)) continue;
+        nextKeys.add(key);
+        visibleFuses.push(fuse);
+      }
+      const changed: WorldEdit[] = [];
+      for (const key of primedTnt) {
+        if (nextKeys.has(key)) continue;
+        const [x, y, z] = key.split(",").map(Number);
+        changed.push({ x, y, z, block: BLOCK.TNT });
+      }
+      for (const key of nextKeys) {
+        if (primedTnt.has(key)) continue;
+        const [x, y, z] = key.split(",").map(Number);
+        changed.push({ x, y, z, block: BLOCK.TNT });
+      }
+      primedTnt.clear();
+      for (const key of nextKeys) primedTnt.add(key);
+      const accepted = mobRenderer.setPrimedTntFuses(visibleFuses, authoritativeNow);
+      if (changed.length) {
+        rebuildWorldChunks(dirtyChunkKeysForEdits(changed).filter((owner) => loadedChunkKeys.has(owner)));
+      }
+      return accepted;
     },
     explodeTnt(x, y, z) {
       const sourceKey = blockKey(x, y, z);
       if (!primedTnt.has(sourceKey) || getBlock(x, y, z) !== BLOCK.TNT) return [];
       primedTnt.delete(sourceKey);
+      mobRenderer.setLocalPrimedTnt(x, y, z, false);
       const edits = planLocalTntExplosion(x, y, z, getBlock);
       for (const edit of edits) {
+        if (edit.chainPrimed) continue;
         rememberWorldEdit(edit);
         setBlock(edit.x, edit.y, edit.z, BLOCK.AIR);
       }
-      if (edits.length) {
-        rebuildWorldChunks(dirtyChunkKeysForEdits(edits).filter((key) => loadedChunkKeys.has(key)));
-        for (const edit of edits.slice(0, 12)) {
+      const destruction = edits.filter((edit) => !edit.chainPrimed);
+      if (destruction.length) {
+        rebuildWorldChunks(dirtyChunkKeysForEdits(destruction).filter((key) => loadedChunkKeys.has(key)));
+        for (const edit of destruction.slice(0, 12)) {
           blockParticles.spawn({ action: "break", block: edit.previousBlock, x: edit.x, y: edit.y, z: edit.z });
         }
       }

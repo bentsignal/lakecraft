@@ -25,11 +25,12 @@ const interaction = client.slice(
   client.indexOf("onPerformanceStats:", client.indexOf("onInteractBlock: (target) =>")),
 );
 assert.ok(interaction.includes("target.block.block === BLOCK.TNT"), "right-click dispatch recognizes TNT as an interaction");
-assert.ok(interaction.includes('?.itemId !== "torch"'), "ignition requires an explicit held torch client gesture");
+assert.ok(interaction.includes('?.itemId !== "flint_and_steel"'), "ignition requires an explicit held flint-and-steel gesture");
 assert.ok(interaction.includes('row.coordKey === key && row.blockType === "tnt"'), "ignition resolves the placed authoritative TNT row at the targeted coordinate");
 assert.ok(interaction.includes("blockInstanceToken: `${placed.id}:${placed.updatedAt}`"), "ignition binds to the exact authoritative block instance");
 assert.ok(interaction.includes("retryExactLakebedMutation(() => igniteTnt(JSON.stringify(request)))"), "transport retry reuses the frozen ignition operation");
 assert.equal(interaction.indexOf("target.block.block === BLOCK.TNT") < interaction.indexOf("exitPointerLockForUi()"), true, "lighting TNT does not open a menu or unnecessarily drop pointer lock");
+assert.ok(interaction.includes("loadCanonicalPlayer(result.inventory)"), "confirmed durability returns through the canonical Lakebed inventory row");
 
 const fuseEffect = client.slice(
   client.indexOf("for (const fuse of worldChunks.tntFuses)"),
@@ -42,6 +43,8 @@ assert.ok(fuseEffect.includes("tntClaimTimersRef.current.set(fuse.eventId, timer
 assert.ok(fuseEffect.includes("claimTntExplosion(JSON.stringify(fuse.claim))"), "the client submits only Lakebed's event/ignition claim pair");
 assert.equal(fuseEffect.includes("x: fuse.x"), false, "the explosion request cannot forge a blast center");
 assert.equal(fuseEffect.includes("radius"), false, "the explosion request cannot forge blast strength");
+
+assert.ok(client.includes("setPrimedTntFuses(worldChunks.tntFuses, worldChunks.serverNow)"), "authoritative fuses reconcile into the fixed primed-TNT visual batch");
 
 const interactionDispatch = engine.slice(
   engine.indexOf("export function tryInteractBlock"),

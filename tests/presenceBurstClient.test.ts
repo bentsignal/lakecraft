@@ -25,7 +25,9 @@ assert.ok(source.includes("persistPresenceBurstGuard(auth.userId, guard);"), "bu
 assert.ok(source.includes("presenceHeartbeatInFlightRef.current > 0"), "action-time and sparse authority writes share one serialization fence");
 assert.ok(source.includes("reservePresenceAttempt(guard, attemptAt, false)"), "action-time authority refreshes debit the same browser-day guard");
 assert.ok(source.includes("respawnLeaseTransitionRef.current || heartbeatSessionId !== presenceSessionIdRef.current"), "a lost respawn response cannot cancel its presence loop before lease replay");
-assert.ok(!source.includes("result.inventory && !loadCanonicalPlayer"), "heartbeat responses cannot roll newer inventory mutations backward");
+const poseRefresh = source.slice(source.indexOf("function refreshAuthoritativePose"), source.indexOf("function requestAuthorizedRespawn"));
+const sparseHeartbeat = source.slice(source.indexOf("void heartbeatPlayer("), source.indexOf("}).catch", source.indexOf("void heartbeatPlayer(")));
+assert.ok(!poseRefresh.includes("loadCanonicalPlayer") && !sparseHeartbeat.includes("loadCanonicalPlayer"), "heartbeat responses cannot roll newer inventory mutations backward");
 assert.ok(!source.includes("result.health ==="), "heartbeat responses cannot roll newer combat revisions backward");
 assert.ok(source.includes("if (cancelled) return;"), "callbacks from a replaced presence effect cannot mutate current UI state");
 assert.ok(source.includes("<ErrorBoundary fallback="), "query-level quota errors are caught inside Lakebed's generated boundary");

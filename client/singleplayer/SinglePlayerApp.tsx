@@ -12,13 +12,14 @@ import {
   MAX_HUNGER,
   ITEMS,
   addItem,
+  applyConfirmedDurableItemUse,
   applyConfirmedToolUse,
   attackDamage,
   clampHotbarIndex,
   consumeFood,
   createEmptyEquipment,
   createStarterInventory,
-  getMiningDrop,
+  getDeterministicMiningDrop,
   miningSeconds,
   normalizeEquipment,
   normalizeInventory,
@@ -145,6 +146,64 @@ export function SinglePlayerApp() {
     const fuseTimers = new Map<string, { interval: number; timeout: number }>();
     window.addEventListener("pointerdown", unlockAudio, true);
     window.addEventListener("keydown", unlockAudio, true);
+    const primeLocalTnt = (
+      x: number,
+      y: number,
+      z: number,
+      durationMs: number,
+      cascadeDepth: number,
+      spendTool: boolean,
+    ): boolean => {
+      const key = `${x}:${y}:${z}`;
+      if (fuseTimers.has(key)) return true;
+      if (fuseTimers.size >= 32 || !engineRef.current?.setPrimedTnt(x, y, z, true)) return false;
+      if (spendTool) {
+        const toolUse = applyConfirmedDurableItemUse(inventoryRef.current, selectedRef.current, "flint_and_steel");
+        if (!toolUse.used) {
+          engineRef.current.setPrimedTnt(x, y, z, false);
+          return false;
+        }
+        updateInventory(toolUse.inventory);
+      }
+      audio.play("creeperFuse", { seed: key, intensity: 0.82 });
+      engineRef.current.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
+      if (spendTool) setMessages((current) => [...current.slice(-2), {
+        id: `tnt-${key}`,
+        text: "TNT primed",
+        detail: "Four-second fuse — stand back.",
+        tone: "warning",
+      }]);
+      const interval = window.setInterval(() => {
+        engineRef.current?.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
+      }, 500);
+      const timeout = window.setTimeout(() => {
+        window.clearInterval(interval);
+        fuseTimers.delete(key);
+        const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
+        const destruction = edits.filter((edit) => !edit.chainPrimed);
+        if (!destruction.length) return;
+        const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
+        for (const edit of destruction) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
+        editsRef.current = [...byCoordinate.values()].slice(-8_000);
+        persist();
+        audio.play("explosion", { seed: key, intensity: 1 });
+        if (cascadeDepth < 8) {
+          for (const edit of edits.filter((candidate) => candidate.chainPrimed).slice(0, 8)) {
+            const hash = Math.abs(Math.imul(edit.x, 73_856_093) ^ Math.imul(edit.y, 19_349_663)
+              ^ Math.imul(edit.z, 83_492_791) ^ cascadeDepth);
+            primeLocalTnt(edit.x, edit.y, edit.z, 500 + hash % 1_001, cascadeDepth + 1, false);
+          }
+        }
+        setMessages((current) => [...current.slice(-2), {
+          id: `boom-${key}`,
+          text: "Boom!",
+          detail: `${destruction.length} blocks destroyed locally.`,
+          tone: "warning",
+        }]);
+      }, durationMs);
+      fuseTimers.set(key, { interval, timeout });
+      return true;
+    };
     const engine = createVoxelEngine(canvas, {
       initialEdits: editsRef.current,
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
@@ -161,7 +220,7 @@ export function SinglePlayerApp() {
           || (previousBlock === BLOCK.DOOR_OPEN && edit.block === BLOCK.DOOR_CLOSED);
         if (!toggledDoor && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
           const gameBlock = ENGINE_TO_GAME[previousBlock];
-          const drop = gameBlock ? getMiningDrop(gameBlock, held) : null;
+          const drop = gameBlock ? getDeterministicMiningDrop(gameBlock, held, edit.x, edit.y, edit.z) : null;
           const wear = applyConfirmedToolUse(next, selectedRef.current, "mine", held);
           next = wear.inventory;
           if (drop) next = addItem(next, drop.itemId, drop.count).inventory;
@@ -196,41 +255,9 @@ export function SinglePlayerApp() {
         }
         if (target.block.block !== BLOCK.TNT
           || target.distance > TNT_IGNITION_REACH
-          || inventoryRef.current[selectedRef.current]?.itemId !== "torch") return false;
+          || inventoryRef.current[selectedRef.current]?.itemId !== "flint_and_steel") return false;
         const { x, y, z } = target.block;
-        const key = `${x}:${y}:${z}`;
-        if (fuseTimers.has(key)) return true;
-        if (!engineRef.current?.setPrimedTnt(x, y, z, true)) return true;
-        audio.play("creeperFuse", { seed: key, intensity: 0.82 });
-        engineRef.current.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
-        setMessages((current) => [...current.slice(-2), {
-          id: `tnt-${key}`,
-          text: "TNT primed",
-          detail: "Four-second fuse — stand back.",
-          tone: "warning",
-        }]);
-        const interval = window.setInterval(() => {
-          engineRef.current?.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
-        }, 500);
-        const timeout = window.setTimeout(() => {
-          window.clearInterval(interval);
-          fuseTimers.delete(key);
-          const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
-          if (!edits.length) return;
-          const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
-          for (const edit of edits) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
-          editsRef.current = [...byCoordinate.values()].slice(-8_000);
-          persist();
-          audio.play("explosion", { seed: key, intensity: 1 });
-          setMessages((current) => [...current.slice(-2), {
-            id: `boom-${key}`,
-            text: "Boom!",
-            detail: `${edits.length} blocks destroyed locally.`,
-            tone: "warning",
-          }]);
-        }, TNT_FUSE_MS);
-        fuseTimers.set(key, { interval, timeout });
-        return true;
+        return primeLocalTnt(x, y, z, TNT_FUSE_MS, 0, true);
       },
       onPoseChange: (pose) => {
         const next = { x: Math.floor(pose.x), y: Math.floor(pose.y), z: Math.floor(pose.z) };

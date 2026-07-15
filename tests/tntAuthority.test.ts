@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import {
   TNT_FUSE_MS,
+  FLINT_AND_STEEL_MAX_DURABILITY,
   authorizeTntExplosion,
   authorizeTntIgnition,
   createTntFuse,
   decideTntReceipt,
   electTntExplosionClaimer,
   normalizeStoredTntFuse,
+  spendFlintAndSteelIgnitionDurability,
   tntExplosionFingerprint,
   tntIgnitionFingerprint,
   validateTntExplosionRequestJson,
@@ -24,12 +26,30 @@ for (const forged of ["center", "radius", "damage", "victims", "blocks", "dueAt"
 }
 assert.equal(authorizeTntIgnition(ignition, {
   currentBlock: "tnt", blockInstanceToken: ignition.blockInstanceToken,
-  withinReach: true, heldItem: "torch", activeFuseAtCoordinate: false,
+  withinReach: true, heldItem: "flint_and_steel", activeFuseAtCoordinate: false,
 }).ok, true);
 assert.equal(authorizeTntIgnition(ignition, {
   currentBlock: "tnt", blockInstanceToken: "replaced_abc:1725000000001",
-  withinReach: true, heldItem: "torch", activeFuseAtCoordinate: false,
+  withinReach: true, heldItem: "flint_and_steel", activeFuseAtCoordinate: false,
 }).ok, false);
+assert.deepEqual(authorizeTntIgnition(ignition, {
+  currentBlock: "tnt", blockInstanceToken: ignition.blockInstanceToken,
+  withinReach: true, heldItem: "torch", activeFuseAtCoordinate: false,
+}), { ok: false, reason: "flint_and_steel_required" });
+assert.deepEqual(spendFlintAndSteelIgnitionDurability({
+  itemId: "flint_and_steel", count: 1, durability: FLINT_AND_STEEL_MAX_DURABILITY,
+}), {
+  ok: true,
+  nextStack: { itemId: "flint_and_steel", count: 1, durability: FLINT_AND_STEEL_MAX_DURABILITY - 1 },
+  broke: false,
+  remainingDurability: FLINT_AND_STEEL_MAX_DURABILITY - 1,
+});
+assert.deepEqual(spendFlintAndSteelIgnitionDurability({
+  itemId: "flint_and_steel", count: 1, durability: 1,
+}), { ok: true, nextStack: null, broke: true, remainingDurability: 0 });
+assert.deepEqual(spendFlintAndSteelIgnitionDurability({
+  itemId: "flint_and_steel", count: 1,
+}), { ok: false, reason: "invalid_durability" });
 
 const fuse = createTntFuse(ignition, "user-a", 1_725_000_000_000);
 assert.ok(fuse);

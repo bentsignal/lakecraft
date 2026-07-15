@@ -20,6 +20,8 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
     palette = bow(grid);
+  } else if (itemId === "flint_and_steel") {
+    palette = flintAndSteel(grid);
   } else if (item.category === "tool" && item.tool) {
     palette = tool(grid, item.tool.kind, item.tool.tier);
     variant = `${item.tool.tier}-${item.tool.kind}`;
@@ -122,6 +124,18 @@ function bow(g: Grid): Palette {
   return p;
 }
 
+function flintAndSteel(g: Grid): Palette {
+  const p = { o: "#252927", s: "#9fa8a4", l: "#e0e4df", d: "#5f6965", f: "#343a38", h: "#717b77" };
+  // Open C-shaped steel striker crossing a jagged dark flint shard.
+  box(g, 7, 1, 7, 2, "o"); box(g, 6, 2, 3, 8, "o"); box(g, 7, 2, 5, 2, "s");
+  box(g, 7, 4, 2, 5, "s"); box(g, 8, 8, 5, 3, "o"); box(g, 8, 8, 4, 1, "l");
+  dots(g, "d", [[8,3],[7,7],[9,10],[10,10]]);
+  dots(g, "o", [[3,7],[4,6],[5,7],[2,9],[3,8],[4,9],[5,10],[4,11],[5,12],[6,11],[6,13],[7,12]]);
+  dots(g, "f", [[4,7],[3,9],[4,9],[5,10],[5,11],[6,12]]);
+  dots(g, "h", [[4,8],[5,9]]);
+  return p;
+}
+
 function armor(g: Grid, slot: ArmorSlot, color: string): Palette {
   const p = { o:mix(color,"#161817",.72), m:color, l:mix(color,"#ffffff",.36), d:mix(color,"#000000",.3) };
   if (slot === "head") { box(g,3,3,10,8,"o"); box(g,4,2,8,8,"m"); box(g,5,3,6,2,"l"); box(g,5,7,6,4,"d"); box(g,6,7,4,2,""); }
@@ -140,6 +154,7 @@ function material(g: Grid, id: ItemId): Palette {
   else if (id === "leather") { box(g,4,2,8,12,"o"); box(g,2,5,12,6,"o"); box(g,4,3,7,10,"m"); box(g,3,6,10,4,"m"); dots(g,"l",[[5,4],[6,4],[4,7],[9,5]]); dots(g,"d",[[10,10],[11,8],[6,12]]); }
   else if (id === "wool") { for (const [x,y] of [[3,5],[6,3],[9,3],[11,6],[8,8],[4,9]] as const) box(g,x,y,4,4,"o"); for (const [x,y] of [[4,5],[7,4],[10,6],[7,8],[4,9]] as const) box(g,x,y,3,3,"m"); dots(g,"l",[[5,5],[8,4],[11,6],[5,9]]); }
   else if (["coal","raw_iron","raw_gold"].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }
+  else if (id === "flint") { dots(g,"o",[[7,1],[8,1],[6,2],[9,2],[5,3],[10,3],[4,4],[11,4],[3,6],[10,6],[2,8],[9,8],[3,10],[8,10],[4,12],[7,12],[5,14],[6,14]]); box(g,4,4,6,7,"m"); box(g,3,6,5,4,"m"); dots(g,"l",[[6,3],[5,5],[4,7],[6,6]]); dots(g,"d",[[9,4],[8,7],[7,10],[6,12]]); }
   else if (id === "gunpowder") { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[3,7],[13,7],[4,11],[11,12],[7,14],[9,14]]); box(g,5,4,6,9,"m"); box(g,3,7,10,4,"m"); dots(g,"l",[[6,4],[9,5],[4,7],[7,9],[11,8],[6,12]]); dots(g,"d",[[8,3],[5,6],[10,10],[8,13],[12,7]]); }
   else if (id === "iron_ingot" || id === "gold_ingot") { box(g,3,5,10,7,"o"); box(g,5,3,6,2,"o"); box(g,4,5,8,5,"m"); box(g,5,4,6,2,"l"); box(g,5,9,7,2,"d"); }
   else if (id === "diamond") { box(g,5,2,6,2,"o"); box(g,3,4,10,4,"o"); box(g,5,8,6,3,"o"); box(g,7,11,2,3,"o"); box(g,5,4,6,3,"m"); box(g,6,7,4,4,"m"); dots(g,"l",[[6,3],[7,3],[5,5],[6,5],[7,7]]); dots(g,"d",[[10,6],[9,9],[8,12]]); }

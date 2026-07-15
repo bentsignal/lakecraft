@@ -711,6 +711,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     reason?: string;
     replayed?: boolean;
     fuse?: { eventId: string; ignitionId: string; x: number; y: number; z: number; ignitedAt: number; dueAt: number };
+    inventory?: PersistedInventoryState;
+    toolUse?: { broke: boolean; remainingDurability: number };
     serverNow: number;
   }>("igniteTnt");
   const claimTntExplosion = useMutation<[requestJson: string], {
@@ -1944,8 +1946,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         onInteractBlock: (target) => {
           const key = blockCoordinateKey(target.block.x, target.block.y, target.block.z);
           if (target.block.block === BLOCK.TNT) {
-            if (inventoryRef.current[selectedRef.current]?.itemId !== "torch") {
-              notify("Torch required", "Hold a torch and use it on TNT to light the fuse.", "warning");
+            if (inventoryRef.current[selectedRef.current]?.itemId !== "flint_and_steel") {
+              notify("Flint and steel required", "Hold flint and steel and use it on TNT to light the fuse.", "warning");
               return true;
             }
             if (tntIgnitionBusyRef.current) return true;
@@ -1968,10 +1970,17 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
             }).then((result) => {
               setConnected(result.ok);
               if (result.ok && result.fuse) {
+                if (result.inventory && !loadCanonicalPlayer(result.inventory)) {
+                  throw new Error("invalid_inventory");
+                }
                 tntFuseCuesRef.current.add(result.fuse.eventId);
                 audioRef.current?.play("creeperFuse", { seed: result.fuse.eventId, intensity: 0.9 });
+                if (result.toolUse?.broke) notify("Flint and steel broke", "That was its final use.", "warning");
               } else {
-                notify("TNT did not ignite", result.reason === "already_primed" ? "That fuse is already burning." : "Lakebed rejected the ignition.", "warning");
+                const detail = result.reason === "already_primed" ? "That fuse is already burning."
+                  : result.reason === "flint_and_steel_required" ? "Hold a usable flint and steel."
+                    : "Lakebed rejected the ignition.";
+                notify("TNT did not ignite", detail, "warning");
               }
             }).catch(() => setConnected(false)).finally(() => { tntIgnitionBusyRef.current = false; });
             return true;
@@ -2208,6 +2217,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       authoritative,
       pendingWorldBlockEditRef.current?.optimisticEdit ?? null,
     ));
+    if (worldChunks?.ok) engineRef.current?.setPrimedTntFuses(worldChunks.tntFuses, worldChunks.serverNow);
   }, [worldEvents, worldChunks, worldChunkKeys]);
 
   useEffect(() => {

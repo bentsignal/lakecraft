@@ -36,6 +36,7 @@ function itemMechanics(items: GameModule["ITEMS"]) {
     placesBlock: item.placesBlock,
     tool: item.tool,
     armor: item.armor,
+    utility: item.utility,
     food: item.food,
   }]));
 }
@@ -102,6 +103,9 @@ assert.throws(() => assertNoServerGamePresentationUse([{
 }]), /namespace import/);
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");
+assert.match(prepareSource, /LAKEBED_COMPACT_BUNDLE/);
+assert.match(prepareSource, /minify: process\.env\.LAKEBED_COMPACT_BUNDLE === "1"/);
 const stage = mkdtempSync(join(tmpdir(), "lakecraft-server-stage-"));
 try {
   execFileSync(process.execPath, [join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), stage], {

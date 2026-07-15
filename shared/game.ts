@@ -62,6 +62,8 @@ export type ItemId = BlockId
   | "gold_ingot"
   | "diamond"
   | "gunpowder"
+  | "flint"
+  | "flint_and_steel"
   | "pork"
   | "beef"
   | "mutton"
@@ -103,6 +105,8 @@ export type ItemDefinition = {
   tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none">; attackDamage: number; maxDurability: number };
   armor?: { slot: ArmorSlot; protection: number; maxDurability: number };
   ranged?: { maxDurability: number; maxChargeMs: number };
+  /** Durable non-combat utility items, such as flint and steel. */
+  utility?: { maxDurability: number };
   food?: { hunger: number };
 };
 
@@ -258,6 +262,7 @@ function foodItem(id: "pork" | "beef" | "mutton" | "cooked_pork" | "cooked_beef"
 type BasicItemSpec = readonly [id: ItemId, label: string, shortLabel: string, description: string, glyph: string, color: string];
 type FoodItemSpec = readonly [id: Parameters<typeof foodItem>[0], label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string];
 type RangedItemSpec = readonly [id: "bow", label: string, shortLabel: string, description: string, category: "tool", maxStack: 1, glyph: string, color: string, maxDurability: number, maxChargeMs: number];
+type UtilityItemSpec = readonly [id: "flint_and_steel", label: string, shortLabel: string, description: string, glyph: string, color: string, maxDurability: number];
 
 const BLOCK_ITEM_SPECS = [
   ["grass", "GRS", "▨"], ["dirt", "DRT", "▦"], ["stone", "STN", "◆"], ["cobblestone", "COB", "▦"],
@@ -281,7 +286,12 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["gold_ingot", "Gold Ingot", "I·AU", "Refined gold for fast but fragile equipment.", "▰", "#f5d142"],
   ["diamond", "Diamond", "DIA", "A rare crystal for the strongest available equipment.", "◆", "#48d8cf"],
   ["gunpowder", "Gunpowder", "GUN", "A dark, volatile powder dropped by creepers and used to craft TNT.", "⁙", "#515650"],
+  ["flint", "Flint", "FLT", "A sharp stone chip recovered while shoveling sand.", "◆", "#3f4543"],
 ];
+
+const UTILITY_ITEM_SPECS: readonly UtilityItemSpec[] = [[
+  "flint_and_steel", "Flint and Steel", "F&S", "A steel striker for lighting TNT. It lasts for 64 ignitions.", "⌁", "#b9bfbc", 64,
+]];
 
 const RANGED_ITEM_SPECS: readonly RangedItemSpec[] = [[
   "bow", "Bow", "BOW", "A ranged weapon that fires arrows after being drawn.",
@@ -327,6 +337,10 @@ const ITEM_ENTRIES: Array<readonly [ItemId, ItemDefinition]> = [
   ...BLOCK_ITEM_SPECS.map(([id, shortLabel, glyph]) => [id, blockItem(id, shortLabel, glyph)] as const),
   ...BASIC_ITEM_SPECS.map(([id, label, shortLabel, description, glyph, color]) => [id, {
     id, label, shortLabel, description, category: "material", maxStack: 64, glyph, color,
+  }] as const),
+  ...UTILITY_ITEM_SPECS.map(([id, label, shortLabel, description, glyph, color, maxDurability]) => [id, {
+    id, label, shortLabel, description, category: "tool", maxStack: 1, glyph, color,
+    utility: { maxDurability },
   }] as const),
   ...RANGED_ITEM_SPECS.map(([id, label, shortLabel, description, category, maxStack, glyph, color, maxDurability, maxChargeMs]) => [id, {
     id, label, shortLabel, description, category, maxStack, glyph, color,
@@ -405,6 +419,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
   { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
   { id: "tnt", label: "TNT", note: "Five gunpowder and four sand make one volatile block.", craftingContext: "crafting_table", ingredients: [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }], output: { itemId: "tnt", count: 1 } },
+  { id: "flint_and_steel", label: "Flint and steel", note: "Strike flint against iron to make a reusable igniter.", craftingContext: "field", ingredients: [{ itemId: "iron_ingot", count: 1 }, { itemId: "flint", count: 1 }], output: { itemId: "flint_and_steel", count: 1 } },
   { id: "bow", label: "Bow", note: "Three sticks and three string make a ranged weapon.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 3 }, { itemId: "string", count: 3 }], output: { itemId: "bow", count: 1 } },
   { id: "arrows", label: "Arrows", note: "Stone, a shaft, and wool fletching make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "wool", count: 1 }], output: { itemId: "arrow", count: 4 } },
   ...GENERATED_TOOL_RECIPES,
@@ -477,7 +492,40 @@ export function maxItemDurability(itemId: ItemId): number | null {
   return ITEMS[itemId].tool?.maxDurability
     ?? ITEMS[itemId].armor?.maxDurability
     ?? ITEMS[itemId].ranged?.maxDurability
+    ?? ITEMS[itemId].utility?.maxDurability
     ?? null;
+}
+
+export type DurableItemUseResult = {
+  inventory: Inventory;
+  used: boolean;
+  broke: boolean;
+  itemId: ItemId | null;
+  remainingDurability: number | null;
+};
+
+/** Spends exactly one use from any canonical durable item after authority confirms an action. */
+export function applyConfirmedDurableItemUse(
+  inventory: readonly (ItemStack | null)[],
+  slot: number,
+  expectedItemId?: ItemId | null,
+): DurableItemUseResult {
+  const next = cloneInventory(inventory);
+  if (!Number.isInteger(slot) || slot < 0 || slot >= next.length) {
+    return { inventory: next, used: false, broke: false, itemId: null, remainingDurability: null };
+  }
+  const stack = next[slot];
+  const maximum = stack ? maxItemDurability(stack.itemId) : null;
+  if (!stack || maximum === null || (expectedItemId !== undefined && stack.itemId !== expectedItemId)) {
+    return { inventory: next, used: false, broke: false, itemId: null, remainingDurability: null };
+  }
+  const remaining = (remainingItemDurability(stack) ?? maximum) - 1;
+  if (remaining <= 0) {
+    next[slot] = null;
+    return { inventory: next, used: true, broke: true, itemId: stack.itemId, remainingDurability: 0 };
+  }
+  next[slot] = { itemId: stack.itemId, count: 1, durability: remaining };
+  return { inventory: next, used: true, broke: false, itemId: stack.itemId, remainingDurability: remaining };
 }
 
 /** Legacy durable items without a value are treated as unused, never as broken. */
@@ -835,6 +883,30 @@ export function getMiningDrop(blockId: BlockId, itemId?: ItemId | null): ItemQua
   if (!canHarvestBlock(blockId, itemId)) return null;
   const drop = BLOCKS[blockId].drop;
   return drop ? { itemId: drop, count: 1 } : null;
+}
+
+export const FLINT_DROP_CHANCE_DENOMINATOR = 10;
+
+/**
+ * Coordinate-derived mining loot for the authoritative world operation path.
+ * Until gravel exists, a shovel replaces exactly one in ten sand drops with
+ * flint. No client RNG or extra database row is involved, and every coordinate
+ * always resolves to the same conserved result in multiplayer and offline play.
+ */
+export function getDeterministicMiningDrop(
+  blockId: BlockId,
+  itemId: ItemId | null | undefined,
+  x: number,
+  y: number,
+  z: number,
+): ItemQuantity | null {
+  const ordinary = getMiningDrop(blockId, itemId);
+  if (blockId !== "sand" || !itemId || ITEMS[itemId].tool?.kind !== "shovel"
+    || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !Number.isSafeInteger(z)) return ordinary;
+  const coordinateHash = (Math.imul(x, 73_856_093) ^ Math.imul(y, 19_349_663) ^ Math.imul(z, 83_492_791)) >>> 0;
+  return coordinateHash % FLINT_DROP_CHANCE_DENOMINATOR === 0
+    ? { itemId: "flint", count: 1 }
+    : ordinary;
 }
 
 export function selectedItem(inventory: readonly (ItemStack | null)[], selectedHotbar: number): ItemStack | null {

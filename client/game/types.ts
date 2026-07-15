@@ -47,6 +47,18 @@ export interface WorldEdit {
 /** One locally resolved blast edit. `previousBlock` is evidence for particles/save state, not a mining drop. */
 export interface LocalExplosionEdit extends WorldEdit {
   previousBlock: BlockId;
+  /** A neighboring TNT remains in terrain and should receive a short secondary fuse. */
+  chainPrimed?: true;
+}
+
+/** Read-only fuse timing/position data consumed by the retained world renderer. */
+export interface PrimedTntVisualFuse {
+  eventId: string;
+  x: number;
+  y: number;
+  z: number;
+  ignitedAt: number;
+  dueAt: number;
 }
 
 export interface PlayerPose {
@@ -139,6 +151,9 @@ export interface VoxelPerformanceStats {
   droppedItemCount: number;
   droppedItemMeshMs: number;
   droppedItemUploadBytes: number;
+  primedTntVertexCount: number;
+  primedTntVisibleCount: number;
+  primedTntUploadBytes: number;
   particleDrawCalls: number;
   particleVertexCount: number;
   activeParticleCount: number;
@@ -235,6 +250,8 @@ export interface VoxelEngine {
   spawnBlockParticles(event: Readonly<BlockParticleEvent>): number;
   /** Marks a still-rendered TNT block as fused so local mining cannot cancel or duplicate it. */
   setPrimedTnt(x: number, y: number, z: number, primed: boolean): boolean;
+  /** Reconciles the bounded visible Lakebed fuse snapshot without producing any writes. */
+  setPrimedTntFuses(fuses: readonly PrimedTntVisualFuse[], authoritativeNow?: number): number;
   /** Resolves one bounded local-only TNT crater in a single mesh rebuild. */
   explodeTnt(x: number, y: number, z: number): LocalExplosionEdit[];
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;

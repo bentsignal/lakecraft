@@ -25,7 +25,7 @@ export { BED_MESH_VERTEX_COUNT, CHEST_MESH_VERTEX_COUNT, DOOR_MESH_VERTEX_COUNT,
 export { BLOCK } from "./types.ts";
 export { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 export { WORLD_CHUNK_SIZE, chunkCoordinate, chunkKeyForBlock, dirtyChunkKeysForEdit, dirtyChunkKeysForEdits } from "./chunks.ts";
-export { createMobRenderer, mobVertexCountForKind } from "./mobRenderer.ts";
+export { MAX_PRIMED_TNT_VISUALS, PRIMED_TNT_VERTICES_PER_ENTITY, createMobRenderer, mobVertexCountForKind, primedTntBufferBytes, samplePrimedTntVisual } from "./mobRenderer.ts";
 export { DROPPED_ITEM_MESH_INTERVAL_MS, DROPPED_ITEM_RENDER_DISTANCE, DROPPED_ITEM_VERTICES_PER_ITEM, MAX_RENDERED_DROPPED_ITEMS, createDroppedItemRenderer, droppedItemBufferCapacity, writeDroppedItemGeometry } from "./droppedItemRenderer.ts";
 export { MAX_RENDERED_PLAYER_PROJECTILES, PLAYER_PROJECTILE_GRAVITY, PLAYER_PROJECTILE_LIFETIME_MS, PLAYER_PROJECTILE_MESH_INTERVAL_MS, PLAYER_PROJECTILE_RENDER_DISTANCE, PLAYER_PROJECTILE_VERTICES, createPlayerProjectileRenderer, playerProjectileBufferCapacity, samplePlayerProjectile } from "./playerProjectileRenderer.ts";
 export { AVATAR_VERTICES_PER_PLAYER, MAX_NAMEPLATE_VERTICES_PER_PLAYER, REMOTE_MESH_INTERVAL_MS, createRemotePlayerRenderer, remotePlayerBufferCapacity, writeRemotePlayerGeometry } from "./remotePlayerRenderer.ts";
@@ -73,6 +73,7 @@ export type {
   BlockTarget,
   LocalExplosionEdit,
   PlayerPose,
+  PrimedTntVisualFuse,
   RemotePlayer,
   RespawnPoint,
   RangedShotIntent,
@@ -87,3 +88,4 @@ export type { DayNightConfig, DayNightState, TimeOfDayLabel } from "./dayNight.t
 export type { HeadBobOffsets, HorizontalMovementDelta, NormalizedMovementInput, PlayerEye, PlayerMovementInput, PlayerMovementMode, PlayerPostureTargets, ResolvedPlayerMovement } from "./playerMovement.ts";
 export type { DroppedItemGeometryStats, DroppedItemRenderItem, DroppedItemRenderer, DroppedItemRenderStats } from "./droppedItemRenderer.ts";
 export type { BallisticSample, PlayerProjectileRenderer, PlayerProjectileRenderStats, PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
+export type { PrimedTntVisualSample } from "./mobRenderer.ts";

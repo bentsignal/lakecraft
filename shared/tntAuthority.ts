@@ -7,6 +7,8 @@ export const TNT_CLAIM_RANGE = 48;
 export const TNT_IGNITION_REACH = 6;
 export const TNT_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 export const TNT_MAX_RECEIPTS = 256;
+export const FLINT_AND_STEEL_ITEM_ID = "flint_and_steel";
+export const FLINT_AND_STEEL_MAX_DURABILITY = 64;
 
 export type TntIgnitionRequest = {
   operationId: string;
@@ -30,6 +32,16 @@ export type TntFuse = {
   ignitedAt: number;
   dueAt: number;
 };
+
+export type FlintAndSteelStack = {
+  itemId: string;
+  count: number;
+  durability?: number;
+};
+
+export type FlintAndSteelUseResult =
+  | { ok: false; reason: "flint_and_steel_required" | "invalid_durability" }
+  | { ok: true; nextStack: FlintAndSteelStack | null; broke: boolean; remainingDurability: number };
 
 const OPERATION_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,160}:\d{1,16}$/;
@@ -97,11 +109,37 @@ export function authorizeTntIgnition(
   }>,
 ): { ok: true } | { ok: false; reason: string } {
   if (!authority.withinReach) return { ok: false, reason: "out_of_reach" };
-  if (authority.heldItem !== "torch") return { ok: false, reason: "torch_required" };
+  if (authority.heldItem !== FLINT_AND_STEEL_ITEM_ID) return { ok: false, reason: "flint_and_steel_required" };
   if (authority.activeFuseAtCoordinate) return { ok: false, reason: "already_primed" };
   if (authority.currentBlock !== "tnt") return { ok: false, reason: "tnt_required" };
   if (authority.blockInstanceToken !== request.blockInstanceToken) return { ok: false, reason: "block_replaced" };
   return { ok: true };
+}
+
+/**
+ * Spends one use only after a fresh ignition has been authorized. Replays must
+ * return their receipt before calling this helper, so one operation can never
+ * spend durability twice.
+ */
+export function spendFlintAndSteelIgnitionDurability(
+  stack: Readonly<FlintAndSteelStack> | null,
+): FlintAndSteelUseResult {
+  if (!stack || stack.itemId !== FLINT_AND_STEEL_ITEM_ID || stack.count !== 1) {
+    return { ok: false, reason: "flint_and_steel_required" };
+  }
+  if (!Number.isInteger(stack.durability) || (stack.durability ?? 0) < 1
+    || (stack.durability ?? 0) > FLINT_AND_STEEL_MAX_DURABILITY) {
+    return { ok: false, reason: "invalid_durability" };
+  }
+  const remainingDurability = (stack.durability ?? 0) - 1;
+  return remainingDurability === 0
+    ? { ok: true, nextStack: null, broke: true, remainingDurability }
+    : {
+      ok: true,
+      nextStack: { itemId: FLINT_AND_STEEL_ITEM_ID, count: 1, durability: remainingDurability },
+      broke: false,
+      remainingDurability,
+    };
 }
 
 export function createTntFuse(

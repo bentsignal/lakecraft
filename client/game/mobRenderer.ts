@@ -5,6 +5,8 @@ import {
   type MobPoseSnapshot,
   type MobProjectileSnapshot,
 } from "./mobs.ts";
+import { TNT_FUSE_MS, TNT_MAX_ACTIVE_FUSES } from "../../shared/tntAuthority.ts";
+import type { PrimedTntVisualFuse } from "./types.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -30,6 +32,37 @@ const FLOATS_PER_VERTEX = 6;
 const VERTICES_PER_BOX = 36;
 const MAX_BOXES_PER_MOB = 9;
 const RENDER_DISTANCE_SQUARED = 30 * 30;
+const PRIMED_TNT_RENDER_DISTANCE_SQUARED = 48 * 48;
+
+export const MAX_PRIMED_TNT_VISUALS = TNT_MAX_ACTIVE_FUSES;
+export const PRIMED_TNT_VERTICES_PER_ENTITY = 4 * VERTICES_PER_BOX;
+
+export interface PrimedTntVisualSample {
+  progress: number;
+  scale: number;
+  flashMix: number;
+}
+
+export function samplePrimedTntVisual(
+  ignitedAt: number,
+  dueAt: number,
+  now: number,
+  out: PrimedTntVisualSample,
+): PrimedTntVisualSample {
+  const elapsed = Math.max(0, now - ignitedAt);
+  const progress = Math.max(0, Math.min(1, elapsed / Math.max(1, dueAt - ignitedAt)));
+  const flashing = (Math.floor(elapsed / (380 - progress * 300)) & 1) === 1;
+  out.progress = progress;
+  out.flashMix = flashing ? 0.2 + progress * 0.72 : 0;
+  const swell = Math.max(0, (progress - 0.72) / 0.28);
+  out.scale = 0.98 + swell * swell * (flashing ? 0.1 : 0.045);
+  return out;
+}
+
+export function primedTntBufferBytes(count = MAX_PRIMED_TNT_VISUALS): number {
+  return Math.max(0, Math.min(MAX_PRIMED_TNT_VISUALS, Math.floor(count)))
+    * PRIMED_TNT_VERTICES_PER_ENTITY * FLOATS_PER_VERTEX * Float32Array.BYTES_PER_ELEMENT;
+}
 
 export interface MobRenderStats {
   totalMobCount: number;
@@ -37,10 +70,15 @@ export interface MobRenderStats {
   vertexCount: number;
   projectileCount: number;
   projectileVertexCount: number;
+  visiblePrimedTntCount: number;
+  primedTntVertexCount: number;
 }
 
 export interface MobRenderer {
   readonly buffer: WebGLBuffer;
+  readonly maximumPrimedTnt: number;
+  setPrimedTntFuses(fuses: readonly PrimedTntVisualFuse[], authoritativeNow?: number): number;
+  setLocalPrimedTnt(x: number, y: number, z: number, primed: boolean, now?: number): boolean;
   rebuild(
     poses: readonly MobPoseSnapshot[],
     cameraX: number,
@@ -112,6 +150,41 @@ function appendBox(
       writer.data[writer.offset++] = blue * face.shade;
     }
   }
+}
+
+function mixWhite(value: number, amount: number): number {
+  return value + (1 - value) * amount;
+}
+
+function appendPrimedTnt(
+  writer: VertexWriter,
+  x: number,
+  y: number,
+  z: number,
+  scale: number,
+  flash: number,
+): void {
+  const half = scale * 0.5;
+  const low = -half + scale * 0.34;
+  const high = -half + scale * 0.64;
+  const centerX = x + 0.5;
+  const centerY = y + 0.5;
+  const centerZ = z + 0.5;
+  const red = mixWhite(0.69, flash);
+  const green = mixWhite(0.12, flash);
+  const blue = mixWhite(0.085, flash);
+  const bandRed = mixWhite(0.88, flash);
+  const bandGreen = mixWhite(0.79, flash);
+  const bandBlue = mixWhite(0.61, flash);
+  appendBox(writer, centerX, centerY, centerZ, 0, 0, 0, 0, -half, -half, -half, half, low, half, red, green, blue);
+  appendBox(writer, centerX, centerY, centerZ, 0, 0, 0, 0, -half, low, -half, half, high, half, bandRed, bandGreen, bandBlue);
+  appendBox(writer, centerX, centerY, centerZ, 0, 0, 0, 0, -half, high, -half, half, half, half, red, green, blue);
+  const cap = scale * 0.075;
+  const dark = mixWhite(0.08, flash * 0.65);
+  appendBox(
+    writer, centerX, centerY, centerZ, 0, 0, 0, 0,
+    -cap, half + 0.002, -cap, cap, half + cap, cap, dark, dark, dark,
+  );
 }
 
 function appendQuadrupedLegs(
@@ -245,10 +318,16 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const buffer = gl.createBuffer();
   if (!buffer) throw new Error("Unable to allocate the mob batch buffer.");
   const vertices = new Float32Array(
-    (HARD_MAX_MOB_POPULATION * MAX_BOXES_PER_MOB + MAX_MOB_PROJECTILES)
+    (HARD_MAX_MOB_POPULATION * MAX_BOXES_PER_MOB + MAX_MOB_PROJECTILES
+      + MAX_PRIMED_TNT_VISUALS * 4)
       * VERTICES_PER_BOX
       * FLOATS_PER_VERTEX,
   );
+  const primedPositions = new Int32Array(MAX_PRIMED_TNT_VISUALS * 3);
+  const primedTimes = new Float64Array(MAX_PRIMED_TNT_VISUALS * 2);
+  const primedSample: PrimedTntVisualSample = { progress: 0, scale: 0.98, flashMix: 0 };
+  let primedCount = 0;
+  let primedClockOffset = 0;
   const writer: VertexWriter = { data: vertices, offset: 0 };
   const stats: MobRenderStats = {
     totalMobCount: 0,
@@ -256,14 +335,63 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
     vertexCount: 0,
     projectileCount: 0,
     projectileVertexCount: 0,
+    visiblePrimedTntCount: 0,
+    primedTntVertexCount: 0,
   };
   let uploadFloatCount = -1;
   let uploadView = vertices;
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
   gl.bufferData(gl.ARRAY_BUFFER, vertices.byteLength, gl.DYNAMIC_DRAW);
 
+  function removePrimed(index: number): void {
+    const last = --primedCount;
+    if (index === last) return;
+    primedPositions[index * 3] = primedPositions[last * 3];
+    primedPositions[index * 3 + 1] = primedPositions[last * 3 + 1];
+    primedPositions[index * 3 + 2] = primedPositions[last * 3 + 2];
+    primedTimes[index * 2] = primedTimes[last * 2];
+    primedTimes[index * 2 + 1] = primedTimes[last * 2 + 1];
+  }
+
   return {
     buffer,
+    maximumPrimedTnt: MAX_PRIMED_TNT_VISUALS,
+    setPrimedTntFuses(fuses, authoritativeNow = Date.now()) {
+      primedClockOffset = Number.isFinite(authoritativeNow) ? authoritativeNow - Date.now() : 0;
+      primedCount = 0;
+      for (let index = 0; index < fuses.length && primedCount < MAX_PRIMED_TNT_VISUALS; index += 1) {
+        const fuse = fuses[index];
+        if (![fuse.x, fuse.y, fuse.z].every(Number.isSafeInteger)
+          || !Number.isFinite(fuse.ignitedAt) || !Number.isFinite(fuse.dueAt)
+          || fuse.dueAt <= fuse.ignitedAt) continue;
+        primedPositions[primedCount * 3] = fuse.x;
+        primedPositions[primedCount * 3 + 1] = fuse.y;
+        primedPositions[primedCount * 3 + 2] = fuse.z;
+        primedTimes[primedCount * 2] = fuse.ignitedAt;
+        primedTimes[primedCount * 2 + 1] = fuse.dueAt;
+        primedCount += 1;
+      }
+      return primedCount;
+    },
+    setLocalPrimedTnt(x, y, z, primed, now = Date.now()) {
+      if (![x, y, z].every(Number.isSafeInteger)) return false;
+      for (let index = 0; index < primedCount; index += 1) {
+        const offset = index * 3;
+        if (primedPositions[offset] !== x || primedPositions[offset + 1] !== y || primedPositions[offset + 2] !== z) continue;
+        if (!primed) removePrimed(index);
+        return true;
+      }
+      if (!primed) return true;
+      if (primedCount >= MAX_PRIMED_TNT_VISUALS) return false;
+      primedClockOffset = 0;
+      primedPositions[primedCount * 3] = x;
+      primedPositions[primedCount * 3 + 1] = y;
+      primedPositions[primedCount * 3 + 2] = z;
+      primedTimes[primedCount * 2] = now;
+      primedTimes[primedCount * 2 + 1] = now + TNT_FUSE_MS;
+      primedCount += 1;
+      return true;
+    },
     rebuild(poses, cameraX, cameraZ, facingX, facingZ, interpolation, animationSeconds, projectiles = []) {
       writer.offset = 0;
       stats.totalMobCount = poses.length;
@@ -300,6 +428,23 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         appendArrow(writer, projectile, alpha);
       }
       stats.projectileVertexCount = (writer.offset - mobFloatCount) / FLOATS_PER_VERTEX;
+      const primedFloatStart = writer.offset;
+      stats.visiblePrimedTntCount = 0;
+      const primedNow = Date.now() + primedClockOffset;
+      for (let index = 0; index < primedCount; index += 1) {
+        const positionOffset = index * 3;
+        const x = primedPositions[positionOffset];
+        const y = primedPositions[positionOffset + 1];
+        const z = primedPositions[positionOffset + 2];
+        const dx = x + 0.5 - cameraX;
+        const dz = z + 0.5 - cameraZ;
+        if (dx * dx + dz * dz > PRIMED_TNT_RENDER_DISTANCE_SQUARED) continue;
+        const timeOffset = index * 2;
+        samplePrimedTntVisual(primedTimes[timeOffset], primedTimes[timeOffset + 1], primedNow, primedSample);
+        appendPrimedTnt(writer, x, y, z, primedSample.scale, primedSample.flashMix);
+        stats.visiblePrimedTntCount += 1;
+      }
+      stats.primedTntVertexCount = (writer.offset - primedFloatStart) / FLOATS_PER_VERTEX;
       stats.vertexCount = writer.offset / FLOATS_PER_VERTEX;
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       if (uploadFloatCount !== writer.offset) {

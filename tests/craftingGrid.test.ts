@@ -42,7 +42,7 @@ assert.deepEqual(CRAFTING_GRID_RECIPES.map(({ id }) => id), RECIPES.map(({ id })
 assert.deepEqual(Object.keys(INITIAL_RECIPE_PATTERNS).sort(), RECIPES.map(({ id }) => id).sort());
 assert.equal(
   createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
-  "8743cadf8eb7c99abc22590aaa934732a677a5a5df488676ac7c131d8589ebd6",
+  "12003390391ce10c064d63e3974294d38b5dd097b7afe68aaec161d032743f7d",
   "generated recipe patterns preserve the exact serialized layout and insertion order",
 );
 assert.equal(adaptRecipesToGrid([{ ...RECIPES[0], id: "unmapped" }]).length, 0);
@@ -75,7 +75,7 @@ for (const recipe of CRAFTING_GRID_RECIPES) {
 }
 
 // Compact player crafting supports canonical field recipes, translated within the grid.
-for (const id of ["planks_from_log", "sticks_from_planks", "crafting_table", "torch"]) {
+for (const id of ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "flint_and_steel"]) {
   const recipe = CRAFTING_GRID_RECIPES.find((candidate) => candidate.id === id)!;
   const grid = gridFromPattern(recipe, 2);
   assert.equal(matchCraftingGrid(grid, 2)?.recipe.id, id);

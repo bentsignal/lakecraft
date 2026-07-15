@@ -5,7 +5,7 @@ import {
   addItem,
   applyConfirmedToolUse,
   cloneInventory,
-  getMiningDrop,
+  getDeterministicMiningDrop,
   maxItemDurability,
   type BlockId,
   type Inventory,
@@ -452,7 +452,7 @@ export function resolveWorldBlockOperation(
     "mine",
     request.expectedHeldItem,
   );
-  const drop = getMiningDrop(gameBlock, request.expectedHeldItem);
+  const drop = getDeterministicMiningDrop(gameBlock, request.expectedHeldItem, request.x, request.y, request.z);
   const added = drop ? addItem(toolUse.inventory, drop.itemId, drop.count) : { inventory: toolUse.inventory, remainder: 0 };
   if (added.remainder > 0) return { ok: false, reason: "inventory_full" };
   const inventoryChanged = !inventoriesEqual(state.inventory, added.inventory);

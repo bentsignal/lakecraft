@@ -206,6 +206,8 @@ function heldItemColor(itemId: ItemId): Vec3 {
     case "sand": return COLORS.sandItem;
     case "glass": return COLORS.glassItem;
     case "gunpowder": return COLORS.coalItem;
+    case "flint": return COLORS.stoneItem;
+    case "flint_and_steel": return COLORS.ironItem;
     case "tnt": return COLORS.redItem;
     case "coal": return COLORS.coalItem;
     case "wool": return COLORS.woolItem;
@@ -257,6 +259,11 @@ function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, rightAr
   if (itemId === "bow") {
     appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.26,-0.07,0.48,0.58,-0.02,COLORS.toolHandle);
     appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.57,-0.07,0.48,0.91,-0.02,color);
+    return;
+  }
+  if (itemId === "flint_and_steel") {
+    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.28,-0.07,0.50,0.75,-0.02,COLORS.ironItem);
+    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.36,0.22,-0.08,0.45,0.45,0,COLORS.coalItem);
     return;
   }
   if (!item.tool) {
