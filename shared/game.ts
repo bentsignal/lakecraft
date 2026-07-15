@@ -51,6 +51,7 @@ export type ArmorId =
 export type ItemId = BlockId
   | "stick"
   | "string"
+  | "bone"
   | "arrow"
   | "bow"
   | "leather"
@@ -276,7 +277,8 @@ const BLOCK_ITEM_SPECS = [
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["stick", "Stick", "STK", "A straight handle for simple tools.", "╱", "#c09557"],
-  ["string", "String", "STR", "Strong fiber recovered from skeletons and used to tension bows.", "∿", "#d8d3c5"],
+  ["string", "String", "STR", "Strong fiber spun by spiders and used to tension bows.", "∿", "#d8d3c5"],
+  ["bone", "Bone", "BON", "A dry skeleton bone with no use yet.", "╱", "#ded8bf"],
   ["arrow", "Arrow", "ARR", "A stone-tipped projectile fired from a bow.", "↗", "#c6b38a"],
   ["leather", "Leather", "LTH", "Tough hide used for lightweight armor.", "◩", "#8d552f"],
   ["wool", "Wool", "WOL", "Soft sheep wool for beds and future textiles.", "◌", "#ddd8c8"],

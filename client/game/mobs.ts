@@ -7,9 +7,9 @@ import {
   MOB_MOTION_TICKS_PER_SECOND,
 } from "../../shared/mobMotionAuthority.ts";
 
-export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper";
+export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
-export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow" | "gunpowder";
+export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
 
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
 export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
@@ -132,7 +132,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     projectileSpeed: 8.5,
     drops: Object.freeze([
       { itemId: "arrow", minCount: 0, maxCount: 2, chance: 1 },
-      { itemId: "string", minCount: 0, maxCount: 2, chance: 0.65 },
+      { itemId: "bone", minCount: 0, maxCount: 2, chance: 1 },
     ]),
   }),
   creeper: Object.freeze({
@@ -151,6 +151,23 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     rangedRange: 0,
     projectileSpeed: 0,
     drops: Object.freeze([{ itemId: "gunpowder", minCount: 0, maxCount: 2, chance: 1 }]),
+  }),
+  spider: Object.freeze({
+    kind: "spider",
+    passive: false,
+    maxHealth: 16,
+    moveSpeed: 1.02,
+    chaseSpeed: 1.55,
+    collisionRadius: 0.68,
+    targetRadius: 0.72,
+    height: 0.8,
+    contactDamage: 2,
+    attackCooldownSeconds: 1,
+    rangedDamage: 0,
+    rangedCooldownSeconds: 0,
+    rangedRange: 0,
+    projectileSpeed: 0,
+    drops: Object.freeze([{ itemId: "string", minCount: 0, maxCount: 2, chance: 1 }]),
   }),
 });
 
@@ -352,8 +369,8 @@ function passiveKind(index: number, seed: number): MobKind {
 }
 
 function hostileKind(index: number, seed: number): MobKind {
-  const choice = (index + hashUint(seed, 113, seed + 29) % 3) % 3;
-  return choice === 0 ? "zombie" : choice === 1 ? "skeleton" : "creeper";
+  const choice = (index + hashUint(seed, 113, seed + 29) % 4) % 4;
+  return choice === 0 ? "zombie" : choice === 1 ? "skeleton" : choice === 2 ? "creeper" : "spider";
 }
 
 function hasSafeSlope(heightAt: (x: number, z: number) => number, x: number, z: number): boolean {
@@ -1084,7 +1101,7 @@ export function mobTargetHasClickPriority(mobDistance: number, blockDistance: nu
 }
 
 /**
- * Consumes cooldown-ready zombie contact hits and returns bounded aggregate damage.
+ * Consumes cooldown-ready hostile melee hits and returns bounded aggregate damage.
  * The mutation is local simulation state only; this alpha combat is not authoritative
  * or synchronized through Lakebed.
  */
@@ -1100,7 +1117,8 @@ export function consumeMobContactDamage(
   let damage = 0;
   for (let index = 0; index < simulation.mobs.length; index += 1) {
     const mob = simulation.mobs[index];
-    if (!mob.alive || mob.kind !== "zombie" || nowSeconds + 1e-9 < mob.nextContactDamageAtSeconds) continue;
+    if (!mob.alive || MOB_DEFINITIONS[mob.kind].contactDamage <= 0
+      || nowSeconds + 1e-9 < mob.nextContactDamageAtSeconds) continue;
     const definition = MOB_DEFINITIONS[mob.kind];
     const horizontalReach = definition.collisionRadius + 0.32;
     const dx = player.x - mob.x;

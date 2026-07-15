@@ -17,20 +17,20 @@ const clientSpawns = createMobSpawns({
   radius: 16,
   terrainHeight: flatHeight,
   isSpawnable: () => true,
-  maxPopulation: 12,
+  maxPopulation: 13,
   passivePopulation: 9,
-  hostilePopulation: 3,
+  hostilePopulation: 4,
   spawnClearRadius: 6,
 });
 const serverSpawns = canonicalMobSpawnSnapshot(flatHeight, () => true);
 assert.deepEqual(
   clientSpawns.map(({ id: mobId, kind, x, y, z, yaw }) => ({ mobId, kind, x, y, z, yaw })),
   serverSpawns,
-  "client and Lakebed must derive the exact same creeper slot and spawn pose",
+  "client and Lakebed must derive the exact same hostile slots and spawn poses",
 );
 assert.deepEqual(
   serverSpawns.slice(9).map(({ kind }) => kind).sort(),
-  ["creeper", "skeleton", "zombie"],
+  ["creeper", "skeleton", "spider", "zombie"],
   "the bounded canonical hostile population includes one of each implemented hostile",
 );
 

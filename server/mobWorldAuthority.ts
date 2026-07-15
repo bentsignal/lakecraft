@@ -190,7 +190,7 @@ export function canonicalMobSpawnSnapshot(
   const seed = MOB_WORLD_SEED;
   const radius = 16;
   const passiveCount = 9;
-  const target = 12;
+  const target = 13;
   const clearRadius = 6;
   const usableRange = radius - clearRadius;
   const occupied = new Set<string>();
@@ -213,9 +213,11 @@ export function canonicalMobSpawnSnapshot(
     return choice === 0 ? "pig" : choice === 1 ? "cow" : "sheep";
   };
   const hostileKind = (slot: number): MobAuthorityKind => (
-    ((slot + hashUint(seed, 113, seed + 29) % 3) % 3) === 0
+    ((slot + hashUint(seed, 113, seed + 29) % 4) % 4) === 0
       ? "zombie"
-      : ((slot + hashUint(seed, 113, seed + 29) % 3) % 3) === 1 ? "skeleton" : "creeper"
+      : ((slot + hashUint(seed, 113, seed + 29) % 4) % 4) === 1
+        ? "skeleton"
+        : ((slot + hashUint(seed, 113, seed + 29) % 4) % 4) === 2 ? "creeper" : "spider"
   );
   for (let attempt = 0; attempt < 384 && spawns.length < target; attempt += 1) {
     const slot = spawns.length;
@@ -275,6 +277,7 @@ function hashText(value: string): number {
 function attackCadence(kind: MobAuthorityKind): { ticks: number; reach: number; verticalReach: number; damage: number } | null {
   if (kind === "zombie") return { ticks: 10, reach: 1.75, verticalReach: 2.5, damage: 3 };
   if (kind === "skeleton") return { ticks: 16, reach: 12, verticalReach: 4, damage: 2 };
+  if (kind === "spider") return { ticks: 10, reach: 1.9, verticalReach: 1.5, damage: 2 };
   // Creeper damage is a separate, one-shot explosion claim. Never turn its
   // fuse into a repeating cadence hit.
   if (kind === "creeper") return null;

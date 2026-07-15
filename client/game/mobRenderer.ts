@@ -26,11 +26,12 @@ const BOXES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
   zombie: 6,
   skeleton: 9,
   creeper: 9,
+  spider: 12,
 });
 
 const FLOATS_PER_VERTEX = 6;
 const VERTICES_PER_BOX = 36;
-const MAX_BOXES_PER_MOB = 9;
+const MAX_BOXES_PER_MOB = 12;
 const RENDER_DISTANCE_SQUARED = 30 * 30;
 const PRIMED_TNT_RENDER_DISTANCE_SQUARED = 48 * 48;
 
@@ -289,6 +290,67 @@ function appendCreeper(
   appendBox(writer,x,y,z,yaw,0,0,0,-0.12,1.2,0.401,0.12,1.48,0.425,0.025,0.045,0.02);
 }
 
+function appendSpiderLeg(
+  writer: VertexWriter,
+  x: number,
+  y: number,
+  z: number,
+  yaw: number,
+  side: -1 | 1,
+  row: number,
+  swing: number,
+): void {
+  const rowZ = -0.43 + row * 0.27;
+  const splayZ = -0.34 + row * 0.225;
+  const phase = ((row + (side > 0 ? 1 : 0)) & 1) === 0 ? 1 : -1;
+  const attachX = side * 0.39;
+  const endX = side * 1.08;
+  const endZ = rowZ + splayZ + swing * 0.28 * phase;
+  const centerX = (attachX + endX) * 0.5;
+  const centerZ = (rowZ + endZ) * 0.5;
+  const liftedY = 0.34 + Math.max(0, swing * phase) * 0.12;
+  const deltaX = endX - attachX;
+  const deltaZ = endZ - rowZ;
+  const length = Math.hypot(deltaX, deltaZ);
+  const localYaw = Math.atan2(deltaZ, deltaX);
+  const cosYaw = Math.cos(yaw);
+  const sinYaw = Math.sin(yaw);
+  const worldX = x + centerX * cosYaw - centerZ * sinYaw;
+  const worldZ = z + centerX * sinYaw + centerZ * cosYaw;
+  appendBox(
+    writer,
+    worldX,
+    y + liftedY,
+    worldZ,
+    yaw + localYaw,
+    0,
+    0,
+    0,
+    -length * 0.5,
+    -0.055,
+    -0.055,
+    length * 0.5,
+    0.055,
+    0.055,
+    0.105,
+    0.075,
+    0.055,
+  );
+}
+
+function appendSpider(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  // A broad abdomen and forward head keep the body recognizably low while the
+  // eight individually phased legs produce the iconic two-block-wide outline.
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.48,0.3,-0.68,0.48,0.72,0.2,0.13,0.09,0.065);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.35,0.31,0.1,0.35,0.7,0.64,0.095,0.07,0.055);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.25,0.43,0.641,-0.07,0.58,0.67,0.88,0.025,0.018);
+  appendBox(writer,x,y,z,yaw,0,0,0,0.07,0.43,0.641,0.25,0.58,0.67,0.88,0.025,0.018);
+  for (let row = 0; row < 4; row += 1) {
+    appendSpiderLeg(writer, x, y, z, yaw, -1, row, swing);
+    appendSpiderLeg(writer, x, y, z, yaw, 1, row, swing);
+  }
+}
+
 function appendArrow(writer: VertexWriter, projectile: Readonly<MobProjectileSnapshot>, interpolation: number): void {
   const x = projectile.previousX + (projectile.x - projectile.previousX) * interpolation;
   const y = projectile.previousY + (projectile.y - projectile.previousY) * interpolation;
@@ -415,7 +477,8 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing);
         else if (pose.kind === "zombie") appendZombie(writer, x, y, z, yaw, swing);
         else if (pose.kind === "skeleton") appendSkeleton(writer, x, y, z, yaw, swing);
-        else appendCreeper(writer, x, y, z, yaw, swing, pose.fuseProgress);
+        else if (pose.kind === "creeper") appendCreeper(writer, x, y, z, yaw, swing, pose.fuseProgress);
+        else appendSpider(writer, x, y, z, yaw, swing);
         stats.visibleMobCount += 1;
       }
       const mobFloatCount = writer.offset;

@@ -48,10 +48,10 @@ function pose(kind: MobKind, x: number, z: number, index: number): MobPoseSnapsh
     previousY: 7,
     previousZ: z - 0.25,
     previousYaw: 0,
-    behavior: kind === "zombie" || kind === "skeleton" || kind === "creeper" ? "chase" : "wander",
+    behavior: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider" ? "chase" : "wander",
     health: 8,
-    maxHealth: kind === "zombie" || kind === "skeleton" || kind === "creeper" ? 20 : 10,
-    hostileActive: kind === "zombie" || kind === "skeleton" || kind === "creeper",
+    maxHealth: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider" ? 20 : 10,
+    hostileActive: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider",
     fuseProgress: kind === "creeper" ? 0.7 : 0,
   };
 }
@@ -60,13 +60,14 @@ const gl = new FakeWebGl();
 const renderer = createMobRenderer(gl as unknown as WebGLRenderingContext);
 assert.equal(gl.createBufferCalls, 1, "all mobs should share one WebGL buffer");
 assert.ok(gl.allocationBytes > 0);
+assert.ok(gl.allocationBytes <= 800 * 1024, "the complete 64-mob/projectile/TNT batch stays under 800 KiB");
 
-const kinds: MobKind[] = ["pig", "cow", "sheep", "zombie", "skeleton", "creeper"];
+const kinds: MobKind[] = ["pig", "cow", "sheep", "zombie", "skeleton", "creeper", "spider"];
 const poses = kinds.map((kind, index) => pose(kind, index * 2 - 3, 8 + index, index));
 const stats = renderer.rebuild(poses, 0, 0, 0, 1, 0.5, 2);
 const expectedVertexCount = kinds.reduce((total, kind) => total + mobVertexCountForKind(kind), 0);
-assert.equal(stats.totalMobCount, 6);
-assert.equal(stats.visibleMobCount, 6);
+assert.equal(stats.totalMobCount, 7);
+assert.equal(stats.visibleMobCount, 7);
 assert.equal(stats.vertexCount, expectedVertexCount);
 assert.equal(gl.uploadCalls, 1, "one rebuild should issue one batched geometry upload");
 assert.ok(gl.uploaded);
@@ -101,6 +102,36 @@ for (let index = 0; index < kinds.length; index += 1) {
 }
 assert.equal(colorSignatures.size, kinds.length, "each mob kind should have a distinct color palette");
 
+const spider = pose("spider", 0, 4, 0);
+spider.previousX = spider.x;
+spider.previousZ = spider.z;
+spider.previousYaw = spider.yaw = 0;
+const stillSpider = renderer.rebuild([spider], 0, 0, 0, 1, 1, 0);
+const stillSpiderGeometry = gl.uploaded!.slice(0, stillSpider.vertexCount * 6);
+let minimumX = Infinity;
+let maximumX = -Infinity;
+let minimumY = Infinity;
+let maximumY = -Infinity;
+let brightRedVertices = 0;
+for (let offset = 0; offset < stillSpiderGeometry.length; offset += 6) {
+  minimumX = Math.min(minimumX, stillSpiderGeometry[offset]);
+  maximumX = Math.max(maximumX, stillSpiderGeometry[offset]);
+  minimumY = Math.min(minimumY, stillSpiderGeometry[offset + 1]);
+  maximumY = Math.max(maximumY, stillSpiderGeometry[offset + 1]);
+  if (stillSpiderGeometry[offset + 3] > 0.6 && stillSpiderGeometry[offset + 4] < 0.1) brightRedVertices += 1;
+}
+assert.equal(stillSpider.vertexCount, 12 * 36, "a spider is exactly two body boxes, two eyes, and eight legs");
+assert.ok(maximumX - minimumX > 2, "spider legs create a wide silhouette");
+assert.ok(maximumY - minimumY < 0.7, "the spider stays recognizably low to the ground");
+assert.ok(brightRedVertices >= 12, "the forward face includes two visible bright-red eye blocks");
+renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.1);
+const walkingSpiderGeometry = gl.uploaded!.slice(0, stillSpider.vertexCount * 6);
+assert.notDeepEqual(
+  walkingSpiderGeometry.subarray(4 * 36 * 6),
+  stillSpiderGeometry.subarray(4 * 36 * 6),
+  "all eight leg boxes animate inside the same mob batch",
+);
+
 const calmCreeper = pose("creeper", 0, 4, 30);
 calmCreeper.fuseProgress = 0;
 renderer.rebuild([calmCreeper], 0, 0, 0, 1, 1, 0);
@@ -121,11 +152,12 @@ assert.ok(Math.abs((currentFirstX - previousFirstX) - 2) < 0.0001, "geometry sho
 const farAway = pose("pig", 31, 0, 9);
 const behindCamera = pose("zombie", 0, -20, 10);
 const nearbyBehindCamera = pose("sheep", 0, -5, 11);
+const uploadsBeforeCulling = gl.uploadCalls;
 const cullingStats = renderer.rebuild([farAway, behindCamera, nearbyBehindCamera], 0, 0, 0, 1, 1, 3);
 assert.equal(cullingStats.totalMobCount, 3);
 assert.equal(cullingStats.visibleMobCount, 1, "distance and rear-view culling should retain only the nearby mob");
 assert.equal(cullingStats.vertexCount, mobVertexCountForKind("sheep"));
-assert.equal(gl.uploadCalls, 12);
+assert.equal(gl.uploadCalls, uploadsBeforeCulling + 1, "the culled mob set still uses one batch upload");
 
 const projectileStats = renderer.rebuild(
   [],

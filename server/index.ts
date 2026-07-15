@@ -1795,6 +1795,7 @@ export default capsule({
         if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...emptyMobWorld };
         const advanced = advanceMobWorldState(stored, serverNow, replayInput);
         if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...emptyMobWorld };
+        const needsSpiderTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider");
         const requested = new Set(request.mobIds);
         const poses = writeMobMotionPoses(advanced.state).filter((pose) => requested.has(pose.mobId));
         const states = [];
@@ -1830,7 +1831,7 @@ export default capsule({
             : [],
           explosionClaims: creeperExplosionClaims(advanced.state, advanced.revision)
             .filter((claim) => aliveMobIds.has(claim.mobId)),
-          needsCheckpoint: serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
+          needsCheckpoint: needsSpiderTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
           serverNow,
         };
       })();
@@ -2014,6 +2015,7 @@ export default capsule({
       if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...empty };
       const advanced = advanceMobWorldState(stored, serverNow, replayInput);
       if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...empty };
+      const needsSpiderTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider");
       const requested = new Set(validation.mobIds);
       const poses = writeMobMotionPoses(advanced.state).filter((pose) => requested.has(pose.mobId));
       const states = [];
@@ -2044,7 +2046,7 @@ export default capsule({
           : [],
         explosionClaims: creeperExplosionClaims(advanced.state, advanced.revision)
           .filter((claim) => aliveMobIds.has(claim.mobId)),
-        needsCheckpoint: serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
+        needsCheckpoint: needsSpiderTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
         serverNow,
       };
     }),
@@ -3992,8 +3994,9 @@ export default capsule({
       const checkpointAt = parseStoredInteger(stored.checkpointAt);
       const leaseExpiresAt = parseStoredInteger(stored.leaseExpiresAt);
       const storedReplayInput = parseMobWorldReplayInputJson(stored.inputJson);
+      const storedCheckpoint = parseMobWorldCheckpointJson(stored.checkpointJson);
       if (revision === null || checkpointAt === null || leaseExpiresAt === null
-        || !parseMobWorldCheckpointJson(stored.checkpointJson) || !storedReplayInput) {
+        || !storedCheckpoint || !storedReplayInput) {
         return { ok: false, reason: "invalid_checkpoint", serverNow };
       }
       if (request.expectedRevision !== revision) {
@@ -4004,7 +4007,8 @@ export default capsule({
       if (!sameLease && !sameOwner && leaseExpiresAt > serverNow) {
         return { ok: false, reason: "lease_held", leaseExpiresAt, serverNow };
       }
-      if (sameLease && serverNow - checkpointAt < MOB_WORLD_CHECKPOINT_MS - 200) {
+      const needsSpiderTopology = !storedCheckpoint.mobs.some((mob) => mob.kind === "spider");
+      if (!needsSpiderTopology && sameLease && serverNow - checkpointAt < MOB_WORLD_CHECKPOINT_MS - 200) {
         return {
           ok: false,
           reason: "checkpoint_cooldown",
@@ -4014,8 +4018,15 @@ export default capsule({
       }
       const nextReplayInput = await readCurrentReplayInput();
       if (!nextReplayInput) return { ok: false, reason: "invalid_replay_input", serverNow };
-      const advanced = advanceMobWorldState(stored, serverNow, storedReplayInput);
-      if (!advanced) return { ok: false, reason: "invalid_checkpoint", serverNow };
+      const nextState = needsSpiderTopology
+        ? createCanonicalMobWorldState(
+            serverNow,
+            serverTerrainHeight,
+            (_kind, x, y, z) => naturalWorldBlockAt(x, y, z) === "air"
+              && naturalWorldBlockAt(x, y + 1, z) === "air",
+          )
+        : advanceMobWorldState(stored, serverNow, storedReplayInput)?.state ?? null;
+      if (!nextState) return { ok: false, reason: "invalid_checkpoint", serverNow };
       const nextRevision = revision + 1;
       const nextLeaseExpiresAt = serverNow + MOB_WORLD_LEASE_MS;
       await ctx.db.mobWorldAuthority.update(existing.id, {
@@ -4023,7 +4034,7 @@ export default capsule({
         ownerUserId: ctx.auth.userId,
         leaseId: request.leaseId,
         leaseExpiresAt: String(nextLeaseExpiresAt),
-        checkpointJson: encodeMobWorldCheckpoint(advanced.state),
+        checkpointJson: encodeMobWorldCheckpoint(nextState),
         inputJson: nextReplayInput.inputJson,
         checkpointRevision: String(nextRevision),
         checkpointAt: String(serverNow),
@@ -4833,7 +4844,7 @@ export default capsule({
           if (pose && mobRows.length <= 1) {
             const bounds = {
               pig: [0.9, 0.62], cow: [1.35, 0.7], sheep: [1.25, 0.68],
-              zombie: [1.8, 0.4], skeleton: [1.9, 0.38], creeper: [1.7, 0.42],
+              zombie: [1.8, 0.4], skeleton: [1.9, 0.38], creeper: [1.7, 0.42], spider: [0.8, 0.72],
             } as const;
             targetMobRow = mobRows[0] ?? null;
             targetMobKind = identity.kind;

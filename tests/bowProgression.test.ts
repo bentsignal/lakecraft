@@ -82,19 +82,33 @@ if (arrowsCrafted.ok) assert.deepEqual(arrowsCrafted.state.cursor, { itemId: "ar
 const authoritativeDrops = MOB_AUTHORITY_DEFINITIONS.skeleton.drops;
 const localDrops = MOB_DEFINITIONS.skeleton.drops;
 assert.deepEqual(localDrops, authoritativeDrops, "local presentation fallback mirrors the Lakebed-authoritative drop catalog");
-assert.deepEqual(authoritativeDrops.map(({ itemId }) => itemId), ["arrow", "string"]);
+assert.deepEqual(authoritativeDrops.map(({ itemId }) => itemId), ["arrow", "bone"]);
 const observedDropIds = new Set<string>();
 for (let revision = 1; revision <= 64; revision += 1) {
   const first = deterministicMobDrops("skeleton-5nf-4", "skeleton", revision);
   const second = deterministicMobDrops("skeleton-5nf-4", "skeleton", revision);
   assert.deepEqual(second, first, `skeleton revision ${revision} drops are deterministic`);
   for (const drop of first) {
-    assert.ok(drop.itemId === "arrow" || drop.itemId === "string");
+    assert.ok(drop.itemId === "arrow" || drop.itemId === "bone");
     assert.ok(drop.count >= 1 && drop.count <= 2);
     observedDropIds.add(drop.itemId);
   }
 }
-assert.deepEqual([...observedDropIds].sort(), ["arrow", "string"]);
+assert.deepEqual([...observedDropIds].sort(), ["arrow", "bone"]);
+
+assert.deepEqual(MOB_DEFINITIONS.spider.drops, MOB_AUTHORITY_DEFINITIONS.spider.drops);
+assert.deepEqual(MOB_AUTHORITY_DEFINITIONS.spider.drops, [
+  { itemId: "string", minCount: 0, maxCount: 2, chance: 1 },
+]);
+const observedSpiderStringCounts = new Set<number>();
+for (let revision = 1; revision <= 64; revision += 1) {
+  const first = deterministicMobDrops("spider-5nf-6", "spider", revision);
+  const second = deterministicMobDrops("spider-5nf-6", "spider", revision);
+  assert.deepEqual(second, first, `spider revision ${revision} drops are deterministic`);
+  assert.ok(first.length <= 1 && first.every(({ itemId, count }) => itemId === "string" && count >= 1 && count <= 2));
+  observedSpiderStringCounts.add(first[0]?.count ?? 0);
+}
+assert.deepEqual([...observedSpiderStringCounts].sort(), [0, 1, 2]);
 
 const iconHashes = Object.fromEntries(["string", "arrow", "bow"].map((itemId) => [
   itemId,

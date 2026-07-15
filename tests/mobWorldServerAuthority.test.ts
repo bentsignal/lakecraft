@@ -33,7 +33,7 @@ assert.equal(validateMobWorldCheckpointRequestJson(JSON.stringify({
 })), null);
 
 const spawns = canonicalMobSpawnSnapshot(() => 6, () => true);
-assert.equal(spawns.length, 12);
+assert.equal(spawns.length, 13);
 assert.ok(spawns.every((spawn, index) => spawn.mobId.endsWith(`-${index.toString(36)}`)));
 const state = createMobMotionState({ seed: MOB_WORLD_SEED, epoch: 1_000, snapshot: spawns });
 assert.ok(state);
@@ -128,7 +128,7 @@ assert.deepEqual(resolveMobDamage(combatState, request, target, 3, 20, 20), {
 assert.equal(resolveMobDamage(combatState, { ...request, operationId: `${request.operationId}x` }, target, 3, 20).ok, false);
 
 const creeper = spawns.find((spawn) => spawn.kind === "creeper")!;
-assert.ok(creeper, "the canonical three-hostile population includes a creeper");
+assert.ok(creeper, "the canonical four-hostile population includes a creeper");
 const creeperState = createMobMotionState({ seed: MOB_WORLD_SEED, epoch: 3_000, snapshot: [creeper] })!;
 replayMobMotion(creeperState, {
   isNight: true,
@@ -144,7 +144,20 @@ assert.equal(explosionClaims.length, 1, "a latched due fuse exposes one determin
 assert.equal(explosionClaims[0].mobId, creeper.mobId);
 assert.equal(explosionClaims[0].fuseStartedTick, creeperState.mobs[0].fuseStartedTick);
 
+const spider = spawns.find((spawn) => spawn.kind === "spider")!;
+assert.ok(spider, "the canonical four-hostile population includes a spider");
+const spiderState = createMobMotionState({ seed: MOB_WORLD_SEED, epoch: 4_000, snapshot: [spider] })!;
+const spiderTarget = { userId: "spider-target", x: spider.x, y: spider.y, z: spider.z, active: true };
+let spiderClaim = null;
+for (let tick = 0; tick < 32 && !spiderClaim; tick += 1) {
+  replayMobMotion(spiderState, { isNight: true, targets: [spiderTarget] }, 1);
+  spiderClaim = dueMobDamageClaim(writeMobMotionPoses(spiderState)[0], spiderTarget, spiderState.epoch, 5, spiderState.tick);
+}
+assert.ok(spiderClaim, "a nearby spider produces a bounded deterministic melee claim");
+assert.equal(spiderClaim!.damage, 2);
+
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+assert.ok(server.includes("spider: [0.8, 0.72]"), "ranged authority uses the spider's low, wide hit bounds");
 for (const marker of [
   "mobWorldAuthority: table({",
   "mobWorldAuthority: query(async",
@@ -157,8 +170,14 @@ for (const marker of [
   ".filter((claim) => aliveMobIds.has(claim.mobId))",
   'reason: "mob_dead"',
   "parseMobWorldReplayInputJson(stored.inputJson)",
+  'mob.kind === "spider"',
+  "needsSpiderTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS",
 ]) assert.ok(server.includes(marker), `missing server integration marker: ${marker}`);
 assert.equal((server.match(/mobWorldAuthority: table\(\{/g) ?? []).length, 1, "authority checkpoint must remain singleton-shaped");
+const checkpointMutation = server.slice(server.indexOf("checkpointMobWorld: mutation(async"), server.indexOf("claimMobPlayerDamage: mutation(async"));
+assert.ok(checkpointMutation.includes("const needsSpiderTopology"));
+assert.ok(checkpointMutation.includes("? createCanonicalMobWorldState("), "a spiderless retained alpha checkpoint is reseeded once through the existing lease mutation");
+assert.ok(checkpointMutation.includes("checkpointJson: encodeMobWorldCheckpoint(nextState)"));
 
 const mobDamageMutation = server.slice(server.indexOf("claimMobPlayerDamage: mutation(async"), server.indexOf("attackMob: mutation(async"));
 for (const marker of [

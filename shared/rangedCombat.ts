@@ -189,7 +189,7 @@ function validTargetId(kind: RangedTargetKind, id: unknown): id is string {
   if (typeof id !== "string") return false;
   if (kind === "none") return id === "";
   if (id.length < 1 || id.length > 128 || /[\u0000-\u001f\u007f]/.test(id)) return false;
-  if (kind === "mob") return /^(pig|cow|sheep|zombie|skeleton)-[0-9a-z]{1,8}-[0-9a-z]{1,3}$/.test(id);
+  if (kind === "mob") return /^(pig|cow|sheep|zombie|skeleton|creeper|spider)-[0-9a-z]{1,8}-[0-9a-z]{1,3}$/.test(id);
   return true;
 }
 

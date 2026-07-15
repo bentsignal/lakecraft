@@ -119,6 +119,8 @@ const MOTION_DEFINITIONS: Readonly<Record<MobAuthorityKind, MotionDefinition>> =
   zombie: Object.freeze({ passive: false, moveUnitsPerTick: 92, chaseUnitsPerTick: 120 }),
   skeleton: Object.freeze({ passive: false, moveUnitsPerTick: 84, chaseUnitsPerTick: 118 }),
   creeper: Object.freeze({ passive: false, moveUnitsPerTick: 86, chaseUnitsPerTick: 112 }),
+  // Two adjacent 10 Hz poses remain under the multiplayer 0.25-block budget.
+  spider: Object.freeze({ passive: false, moveUnitsPerTick: 104, chaseUnitsPerTick: 124 }),
 });
 
 /** Integer unit vectors avoid trigonometric drift in seeded wander decisions. */
