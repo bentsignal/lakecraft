@@ -96,12 +96,12 @@ assert.ok(PRESENCE_LEASE_REFRESH_MS < PRESENCE_ACTIVE_LEASE_MS, "refresh deadlin
 
 type Scenario = (at: number) => Partial<PresencePoseSample>;
 
-function runHour(scenario: Scenario): number[] {
+function runHour(scenario: Scenario, realtime = true): number[] {
   const state = createPresenceSchedulerState();
   const writes: number[] = [];
   // Half-open hour: [0, 3_600_000). This makes writes/minute arithmetic exact.
   for (let at = 0; at < 3_600_000; at += PRESENCE_SAMPLE_INTERVAL_MS) {
-    const decision = stepPresenceScheduler(state, sample(at, scenario(at)));
+    const decision = stepPresenceScheduler(state, sample(at, scenario(at)), realtime);
     if (decision.send) {
       writes.push(at);
       const payload = JSON.stringify({
@@ -131,23 +131,26 @@ function runHour(scenario: Scenario): number[] {
 const idleWrites = runHour(() => ({}));
 const straightWrites = runHour((at) => ({ x: ((at / 1_000) * 4) % 200 - 100 }));
 const turnSpamWrites = runHour((at) => ({ yaw: (at / 1_000) * Math.PI }));
+const soloMovingWrites = runHour((at) => ({ x: ((at / 1_000) * 4) % 200 - 100 }), false);
 
-assert.equal(idleWrites.length, 360);
+assert.equal(idleWrites.length, 60);
 assert.ok(Math.max(...idleWrites.slice(1).map((at, index) => at - idleWrites[index])) <= PRESENCE_LEASE_REFRESH_MS);
 assert.equal(straightWrites.length, PRESENCE_ACTIVE_WRITES_PER_SECOND * 60 * 60);
 assert.equal(turnSpamWrites.length, PRESENCE_ACTIVE_WRITES_PER_SECOND * 60 * 60);
+assert.equal(soloMovingWrites.length, idleWrites.length, "solo movement must not burn the realtime request budget");
 assert.equal(PRESENCE_ACTIVE_WRITE_INTERVAL_MS, 200);
 assert.equal(PRESENCE_MAX_WRITES_PER_MINUTE, 300);
 assert.equal(PRESENCE_MAX_ACTIVE_WRITES_PER_DAY, 432_000);
-assert.equal(PRESENCE_IDLE_WRITES_PER_MINUTE, 6);
-assert.equal(PRESENCE_MAX_IDLE_WRITES_PER_DAY, 8_640);
+assert.equal(PRESENCE_IDLE_WRITES_PER_MINUTE, 1);
+assert.equal(PRESENCE_MAX_IDLE_WRITES_PER_DAY, 1_440);
 assert.equal(PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS, 150);
 assert.equal(PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE, 400);
 assert.equal(PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_DAY, 576_000);
 
 console.log(JSON.stringify({
-  benchmark: "adaptive 5 Hz Lakebed presence over one hour",
+  benchmark: "multiplayer-only 5 Hz Lakebed presence over one hour",
   idleWrites: idleWrites.length,
+  soloMovingWrites: soloMovingWrites.length,
   straightWrites: straightWrites.length,
   turnSpamWrites: turnSpamWrites.length,
   maximumWritesPerMinute: PRESENCE_MAX_WRITES_PER_MINUTE,

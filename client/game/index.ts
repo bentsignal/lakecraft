@@ -31,6 +31,12 @@ export {
   timeToMorningMs,
 } from "./dayNight.ts";
 export {
+  ATMOSPHERE_SCREEN_TRIANGLE,
+  atmosphereLightLevels,
+  celestialDirection,
+  writeCelestialDirection,
+} from "./atmosphere.ts";
+export {
   MAX_PLAYER_NAME_LENGTH,
   MAX_REMOTE_PLAYERS,
   advanceRemoteAvatarMotion,

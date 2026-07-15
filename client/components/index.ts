@@ -1,5 +1,7 @@
 export { ControlsCard, type ControlsCardProps } from "./ControlsCard";
 export { Crosshair, GameHud, type GameHudProps } from "./GameHud";
+export { FirstPersonHeldItem, type FirstPersonHeldItemProps } from "./FirstPersonHeldItem";
+export { BLOCK_CRACK_STAGE_COUNT, miningCrackStage } from "./firstPersonFeedback";
 export { Hotbar, type HotbarProps } from "./Hotbar";
 export { HudStyles } from "./HudStyles";
 export { PauseMenu, type PauseMenuProps } from "./PauseMenu";

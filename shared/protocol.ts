@@ -78,7 +78,8 @@ export type PersistedInventory = {
   updatedAt: string;
 };
 
-export const PLAYER_STALE_AFTER_MS = 15_000;
+/** Sparse solo leases stay visible without spending the entire daily request bucket. */
+export const PLAYER_STALE_AFTER_MS = 90_000;
 
 export function blockCoordinateKey(x: number, y: number, z: number): string {
   if (![x, y, z].every(Number.isInteger)) {

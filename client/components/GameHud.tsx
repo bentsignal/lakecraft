@@ -9,6 +9,7 @@ import {
 } from "../../shared/game";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
+import { FirstPersonHeldItem } from "./FirstPersonHeldItem";
 import { InventoryCraftingDrawer } from "./InventoryDrawer";
 import { MobileUnsupportedOverlay } from "./MobileUnsupportedOverlay";
 import { PauseMenu } from "./PauseMenu";
@@ -27,6 +28,9 @@ export type GameHudProps = {
   maxHealth?: number;
   hunger?: number;
   maxHunger?: number;
+  miningProgress?: number;
+  handActionToken?: number;
+  hideFirstPersonFeedback?: boolean;
   mobileUnsupported?: boolean;
   pauseOpen?: boolean;
   showPlayerList?: boolean;
@@ -68,6 +72,9 @@ export function GameHud({
   maxHealth = 20,
   hunger = 20,
   maxHunger = 20,
+  miningProgress = 0,
+  handActionToken = 0,
+  hideFirstPersonFeedback = false,
   mobileUnsupported = false,
   pauseOpen = false,
   showPlayerList = false,
@@ -89,6 +96,13 @@ export function GameHud({
     <>
       <HudStyles />
       <div className="lc-hud">
+        <FirstPersonHeldItem
+          actionToken={handActionToken}
+          hidden={hideFirstPersonFeedback || inventoryOpen || mobileUnsupported}
+          miningProgress={miningProgress}
+          paused={pauseOpen}
+          stack={inventory[selectedIndex] ?? null}
+        />
         {!pauseOpen && !inventoryOpen ? <Crosshair /> : null}
         <div className="lc-survival-wrap">
           <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} />

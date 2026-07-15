@@ -2,6 +2,7 @@ import type { DayNightConfig } from "./dayNight.ts";
 import type { MobCombatStateSnapshot, MobDrop, MobRayTarget } from "./mobs.ts";
 import type { ArmorId, ItemId } from "../../shared/game.ts";
 import type { DroppedItemRenderItem } from "./droppedItemRenderer.ts";
+import type { RemotePlayerRayTarget } from "./remotePlayerTargeting.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -135,6 +136,12 @@ export interface VoxelEngineOptions {
    * drops. Apply the resulting/query state through `applyMobCombatStates`.
    */
   onMobAttack?: (target: Readonly<MobRayTarget>, damage: number) => void | Promise<void>;
+  /** Event-driven PvP attack request for the nearest rendered remote under the crosshair. */
+  onRemotePlayerAttack?: (target: Readonly<RemotePlayerRayTarget>, damage: number) => void | Promise<void>;
+  /** Normalized held-mining progress for the first-person crack overlay. */
+  onMiningProgress?: (progress: number) => void;
+  /** Discrete first-person swing/use feedback; never emitted from the frame loop. */
+  onHandAction?: (action: "mine" | "attack" | "place" | "use") => void;
   getPlayerProtection?: () => number;
   /** Used only by the client-local fallback when `onMobAttack` is absent. */
   onMobDrops?: (drops: readonly MobDrop[]) => void;

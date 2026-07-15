@@ -2,9 +2,9 @@
  * Quota-aware shared-player motion protocol.
  *
  * Lakebed remains the only multiplayer transport. Presence uses an adaptive
- * cadence: a compact 5 Hz stream while the player moves or turns, followed by
- * a sparse lease keepalive while idle. The deterministic rate gate keeps the
- * client budget measurable even when input is adversarial.
+ * cadence: a compact 5 Hz stream while another player is actually present,
+ * followed by a sparse lease keepalive for solo play. The deterministic rate
+ * gate keeps the client budget measurable even when input is adversarial.
  */
 
 export const PRESENCE_ACTIVE_WRITES_PER_SECOND = 5;
@@ -22,8 +22,8 @@ export const PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE = Math.ceil(
 );
 export const PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_DAY =
   PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE * 60 * 24;
-export const PRESENCE_LEASE_REFRESH_MS = 10_000;
-export const PRESENCE_ACTIVE_LEASE_MS = 15_000;
+export const PRESENCE_LEASE_REFRESH_MS = 60_000;
+export const PRESENCE_ACTIVE_LEASE_MS = 90_000;
 export const PRESENCE_IDLE_WRITES_PER_MINUTE = 60_000 / PRESENCE_LEASE_REFRESH_MS;
 export const PRESENCE_MAX_IDLE_WRITES_PER_DAY = PRESENCE_IDLE_WRITES_PER_MINUTE * 60 * 24;
 /** Keep turning active briefly so the final camera orientation is persisted. */
@@ -286,8 +286,12 @@ function currentReason(
   sample: PresencePoseSample,
   moving: boolean,
   active: boolean,
+  realtime: boolean,
 ): PresenceSendReason | null {
   if (state.lastWriteAt == null || !state.lastWrittenPose) return "join";
+  if (!realtime) {
+    return sample.at - state.lastWriteAt >= PRESENCE_LEASE_REFRESH_MS ? "lease" : null;
+  }
   if (moving !== state.lastWrittenMoving) return moving ? "motion_start" : "motion_stop";
   if (Math.abs(shortestAngleDelta(state.lastWrittenPose.yaw, sample.yaw)) >= PRESENCE_MAJOR_HEADING_RADIANS) {
     return "heading";
@@ -307,12 +311,14 @@ function currentReason(
 /**
  * Mutates a small ref-friendly state object and returns whether to write this
  * sample. The first valid sample always joins; all later writes pass through
- * the same 200ms rate gate, including stop/turn corrections. Active motion or
- * turning emits at 5 Hz, then the scheduler falls back to lease refreshes.
+ * the same 200ms rate gate, including stop/turn corrections. Realtime motion
+ * emits at 5 Hz only while another player is present; solo play keeps a sparse
+ * lease even while the local player moves.
  */
 export function stepPresenceScheduler(
   state: PresenceSchedulerState,
   sample: PresencePoseSample,
+  realtime = true,
 ): PresenceSendDecision {
   if (!isValidSample(sample)) {
     return { send: false, reason: null, velocity: { ...state.velocity }, waitMs: PRESENCE_LEASE_REFRESH_MS };
@@ -331,7 +337,7 @@ export function stepPresenceScheduler(
     state.activeUntilAt = sample.at + PRESENCE_ACTIVITY_LINGER_MS;
   }
   const active = sample.at <= state.activeUntilAt;
-  const reason = currentReason(state, sample, moving, active);
+  const reason = currentReason(state, sample, moving, active, realtime);
 
   if (state.lastWriteAt != null) {
     const sinceWrite = Math.max(0, sample.at - state.lastWriteAt);

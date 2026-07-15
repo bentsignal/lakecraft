@@ -68,7 +68,9 @@ import {
   type Profile,
   type SendChatResult,
 } from "../shared/multiplayer";
+import type { PlayerCombatState } from "../shared/playerCombat";
 import {
+  PLAYER_STALE_AFTER_MS,
   activePlayerPresences,
   blockCoordinateKey,
   latestWorldEdits,
@@ -264,6 +266,13 @@ function createChestOperationId(): string {
   return `lc_${Date.now().toString(36)}_${chestOperationSequence.toString(36)}_${randomPart}`.slice(0, 64);
 }
 
+function createCombatOperationId(): string {
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replaceAll("-", "")
+    : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
+  return `attack_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
+}
+
 const WORLD_RADIUS = 18;
 const DEFAULT_PLAYER_POSE: Readonly<PlayerPose> = Object.freeze({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
 function visibleWorldChunkKeys(x: number, z: number): string[] {
@@ -337,8 +346,19 @@ export function App() {
   const [worldChunkKeys, setWorldChunkKeys] = useState<string[]>(() => visibleWorldChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
   const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", worldChunkKeys);
-  const [activeSince] = useState(() => String(Date.now() - 30_000));
+  const [activeSince] = useState(() => String(Date.now() - PLAYER_STALE_AFTER_MS));
   const presenceEvents = useQuery<PlayerPresence[], string>("recentPlayers", activeSince) ?? [];
+  const activePlayers = activePlayerPresences(presenceEvents);
+  const combatUserIds = [...new Set([
+    auth.userId,
+    ...activePlayers.slice(0, 127).map((player) => player.userId),
+  ].filter((userId): userId is string => typeof userId === "string" && userId.length > 0))].sort();
+  const playerCombatResult = useQuery<{
+    ok: boolean;
+    reason?: string;
+    states: PlayerCombatState[];
+    serverNow: number;
+  }, string[]>("playerCombatStates", inWorld ? combatUserIds : []);
   const savedPresence = useQuery<PlayerPresence | null>("myPresence");
   const savedInventory = useQuery<PersistedInventory | null>("myInventory");
   const profile = useQuery<Profile | null>("myProfile");
@@ -360,6 +380,17 @@ export function App() {
   const transferChest = useMutation<[requestJson: string], ChestTransferResult>("transferChest");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
   const attackMob = useMutation<[mobId: string, kind: string, damage: string], MobAttackResult>("attackMob");
+  const attackPlayer = useMutation<[requestJson: string], {
+    ok: boolean;
+    reason?: string;
+    retryAfterMs?: number;
+    killed?: boolean;
+    replayed?: boolean;
+    damage?: number;
+    weaponItemId?: ItemId | null;
+    targetState?: PlayerCombatState;
+    serverNow: number;
+  }>("attackPlayer");
   const dropItemMutation = useMutation<[requestJson: string], DroppedItemMutationResult>("dropItem");
   const pickupDroppedItemMutation = useMutation<[requestJson: string], DroppedItemMutationResult>("pickupDroppedItem");
 
@@ -397,6 +428,8 @@ export function App() {
   const droppedItemsClockRef = useRef<{ result: DroppedItemsQueryResult; receivedAt: number } | null>(null);
   const droppedPickupAttemptRef = useRef(new Map<string, number>());
   const lastDroppedPickupSweepRef = useRef(0);
+  const appliedOwnCombatHealthRef = useRef<number | null>(null);
+  const realtimePresenceRef = useRef(false);
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
 
@@ -429,9 +462,15 @@ export function App() {
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [showPerformance, setShowPerformance] = useState(false);
   const [playerHealth, setPlayerHealth] = useState(20);
+  const [miningProgress, setMiningProgress] = useState(0);
+  const [handActionToken, setHandActionToken] = useState(0);
   const [chestInventory, setChestInventory] = useState<Inventory>(() => createEmptyInventory(CHEST_SLOT_COUNT));
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
+
+  useEffect(() => {
+    appliedOwnCombatHealthRef.current = null;
+  }, [auth.userId]);
   const [chestRetryAvailable, setChestRetryAvailable] = useState(false);
   const [activeBedKey, setActiveBedKey] = useState("");
   const [sleepBusy, setSleepBusy] = useState(false);
@@ -774,7 +813,42 @@ export function App() {
             notify("Attack lost contact", "Lakebed could not confirm that hit.", "warning");
           });
         },
+        onRemotePlayerAttack: (target) => {
+          const selectedHotbar = selectedRef.current;
+          const weaponItemId = inventoryRef.current[selectedHotbar]?.itemId ?? "";
+          const operationId = createCombatOperationId();
+          void requestInventorySave().then(() => attackPlayer(JSON.stringify({
+            operationId,
+            targetUserId: target.id,
+            selectedHotbar,
+            weaponItemId,
+          }))).then((result) => {
+            setConnected(true);
+            if (result.ok) {
+              notify(
+                result.killed ? `${target.name} was defeated` : `Hit ${target.name}`,
+                `${result.damage ?? 0} damage${result.replayed ? " · confirmed retry" : ""}`,
+                result.killed ? "success" : "info",
+              );
+              return;
+            }
+            if (result.reason === "cooldown") return;
+            const detail = result.reason === "weapon_mismatch"
+              ? "Your selected slot changed before Lakebed confirmed it. Swing again."
+              : result.reason === "out_of_reach" || result.reason === "not_aimed"
+                ? "Lakebed rejected the hit because the latest authoritative poses did not line up."
+                : result.reason === "target_dead"
+                  ? `${target.name} is already respawning.`
+                  : `Lakebed rejected the hit (${result.reason ?? "unknown"}).`;
+            notify("PvP hit rejected", detail, "warning");
+          }).catch(() => {
+            setConnected(false);
+            notify("PvP lost contact", "Lakebed could not confirm that swing.", "warning");
+          });
+        },
         onMobDrops: collectMobDrops,
+        onMiningProgress: setMiningProgress,
+        onHandAction: () => setHandActionToken((current) => current + 1),
         onPlayerDamage: (amount) => notify("Zombie hit", `${amount} health lost.`, "warning"),
         onPlayerHealthChange: (health) => {
           survivalRef.current.health = health;
@@ -905,6 +979,19 @@ export function App() {
   }, [mobAuthority]);
 
   useEffect(() => {
+    if (!inWorld || !playerCombatResult?.ok || !engineRef.current) return;
+    const ownState = playerCombatResult.states.find((state) => state.userId === auth.userId);
+    if (!ownState) return;
+    const previous = appliedOwnCombatHealthRef.current;
+    appliedOwnCombatHealthRef.current = ownState.health;
+    if (previous === null) {
+      if (ownState.health < MAX_HEALTH) engineRef.current.adjustPlayerHealth(ownState.health - MAX_HEALTH);
+      return;
+    }
+    if (ownState.health !== previous) engineRef.current.adjustPlayerHealth(ownState.health - previous);
+  }, [playerCombatResult, inWorld, auth.userId]);
+
+  useEffect(() => {
     if (!inWorld || !inventoryReady) return;
     let lastTickAt = performance.now();
     const timer = window.setInterval(() => {
@@ -985,6 +1072,7 @@ export function App() {
         color: remoteColor(player.color),
       };
     }).filter((player) => [player.x, player.y, player.z, player.yaw, player.pitch].every(Number.isFinite));
+    realtimePresenceRef.current = remotes.length > 0;
     engineRef.current?.setRemotePlayers(remotes);
   }, [presenceEvents, auth.userId]);
 
@@ -996,7 +1084,7 @@ export function App() {
     const samplePresence = (pose: PlayerPose, at = Date.now()) => {
       poseRef.current = pose;
       if (writeInFlight) return;
-      const decision = stepPresenceScheduler(scheduler, { ...pose, at });
+      const decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtimePresenceRef.current);
       if (!decision.send) return;
       const worn = equipmentRef.current;
       const appearance = normalizeAvatarAppearance(
@@ -1166,7 +1254,6 @@ export function App() {
     };
   }, [inWorld, pauseOpen, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
 
-  const activePlayers = activePlayerPresences(presenceEvents);
   const playerListEntries = activePlayers.map((player) => ({
     id: player.userId,
     name: player.displayName,
@@ -1595,6 +1682,9 @@ export function App() {
         maxHunger={MAX_HUNGER}
         inventory={inventory}
         inventoryOpen={inventoryOpen}
+        miningProgress={miningProgress}
+        handActionToken={handActionToken}
+        hideFirstPersonFeedback={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
         messages={messages}
         mobileUnsupported={mobileUnsupported}
         onlineCount={Math.max(1, activePlayers.length)}

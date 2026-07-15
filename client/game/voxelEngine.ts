@@ -21,6 +21,7 @@ import {
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
+import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import {
   DEFAULT_DAY_NIGHT_CONFIG,
@@ -28,6 +29,12 @@ import {
   sampleDayNight,
   type DayNightConfig,
 } from "./dayNight.ts";
+import {
+  ATMOSPHERE_FRAGMENT_SHADER,
+  ATMOSPHERE_SCREEN_TRIANGLE,
+  ATMOSPHERE_VERTEX_SHADER,
+  writeCelestialDirection,
+} from "./atmosphere.ts";
 import { createMobRenderer } from "./mobRenderer.ts";
 import {
   TEXTURED_WORLD_VERTEX_FLOATS,
@@ -794,6 +801,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   if (!gl) throw new Error("Lakecraft needs a browser with WebGL enabled.");
   const program = createProgram(gl);
   const terrainProgram = createProgram(gl, TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
+  const atmosphereProgram = createProgram(gl, ATMOSPHERE_VERTEX_SHADER, ATMOSPHERE_FRAGMENT_SHADER);
   const terrainTexture = createTerrainTexture(gl);
   const positionLocation = gl.getAttribLocation(program, "aPosition");
   const colorLocation = gl.getAttribLocation(program, "aColor");
@@ -820,8 +828,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const terrainDirectionalIntensityLocation = gl.getUniformLocation(terrainProgram, "uDirectionalIntensity");
   const terrainTorchLightsLocation = gl.getUniformLocation(terrainProgram, "uTorchLights[0]");
   const terrainAtlasLocation = gl.getUniformLocation(terrainProgram, "uAtlas");
+  const atmospherePositionLocation = gl.getAttribLocation(atmosphereProgram, "p");
+  const atmosphereAspectLocation = gl.getUniformLocation(atmosphereProgram, "A");
+  const atmosphereTimeLocation = gl.getUniformLocation(atmosphereProgram, "T");
+  const atmosphereEyeLocation = gl.getUniformLocation(atmosphereProgram, "E");
+  const atmosphereForwardLocation = gl.getUniformLocation(atmosphereProgram, "F");
+  const atmosphereRightLocation = gl.getUniformLocation(atmosphereProgram, "X");
+  const atmosphereUpLocation = gl.getUniformLocation(atmosphereProgram, "Y");
+  const atmosphereSkyColorLocation = gl.getUniformLocation(atmosphereProgram, "K");
+  const atmosphereFogColorLocation = gl.getUniformLocation(atmosphereProgram, "G");
+  const atmosphereSunDirectionLocation = gl.getUniformLocation(atmosphereProgram, "D");
+  const atmosphereMoonDirectionLocation = gl.getUniformLocation(atmosphereProgram, "N");
+  const atmosphereSunIntensityLocation = gl.getUniformLocation(atmosphereProgram, "S");
+  const atmosphereMoonIntensityLocation = gl.getUniformLocation(atmosphereProgram, "M");
+  const atmosphereStarIntensityLocation = gl.getUniformLocation(atmosphereProgram, "R");
+  const atmosphereBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
-  if (!lineBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  if (!lineBuffer || !atmosphereBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  gl.bindBuffer(gl.ARRAY_BUFFER, atmosphereBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, ATMOSPHERE_SCREEN_TRIANGLE, gl.STATIC_DRAW);
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
   const droppedItemRenderer = createDroppedItemRenderer(gl);
 
@@ -836,6 +861,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     ? options.serverTimeOffsetMs ?? 0
     : 0;
   const dayNightState = createDayNightState();
+  const atmosphereSunDirection = new Float32Array(3);
+  const atmosphereMoonDirection = new Float32Array(3);
+  const maximumVertexAttributes = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number;
   const startY = terrainHeight(0, 0, seed) + 1.02;
   const initialX = options.initialPose?.x ?? 0.5;
   const initialZ = options.initialPose?.z ?? 0.5;
@@ -928,6 +956,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let poseDirty = true;
   let grounded = false;
   let miningTimer = 0;
+  let miningStartedAt = 0;
+  let miningDurationMs = 0;
+  let lastMiningProgressAt = -Infinity;
   const frameTimes: number[] = [];
   let totalMeshRebuildMs = 0;
   let lastMeshRebuildMs = 0;
@@ -956,6 +987,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function clearMining(): void {
     if (miningTimer) window.clearTimeout(miningTimer);
     miningTimer = 0;
+    miningStartedAt = 0;
+    miningDurationMs = 0;
+    options.onMiningProgress?.(0);
   }
 
   function rememberWorldEdit(edit: WorldEdit): void {
@@ -1444,10 +1478,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     droppedItemVertexCount = droppedItemStats.vertexCount;
     droppedItemVisibleCount = droppedItemStats.visibleItemCount;
     const facing = direction();
+    const horizontalFacing = Math.hypot(facing[0], facing[2]) || 1;
+    const rightX = -facing[2] / horizontalFacing;
+    const rightZ = facing[0] / horizontalFacing;
+    const upX = -rightZ * facing[1];
+    const upY = rightZ * facing[0] - rightX * facing[2];
+    const upZ = rightX * facing[1];
     const projection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
     sampleDayNight(Date.now() + serverTimeOffsetMs, dayNightConfig, dayNightState);
+    writeCelestialDirection(dayNightState.sunAngle, atmosphereSunDirection);
+    writeCelestialDirection(dayNightState.moonAngle, atmosphereMoonDirection);
     updateActiveTorchLights(now, eye);
     const mobStats = mobRenderer.rebuild(
       mobSnapshots,
@@ -1463,12 +1505,36 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     visibleMobCount = mobStats.visibleMobCount;
     gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.enable(gl.DEPTH_TEST);
     visibleChunkCount = 0;
-    drawCalls = 0;
+    drawCalls = 1;
     avatarDrawCalls = 0;
     mobDrawCalls = 0;
     droppedItemDrawCalls = 0;
+
+    gl.disable(gl.DEPTH_TEST);
+    for (let attribute = 0; attribute < maximumVertexAttributes; attribute += 1) {
+      gl.disableVertexAttribArray(attribute);
+    }
+    gl.useProgram(atmosphereProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, atmosphereBuffer);
+    gl.enableVertexAttribArray(atmospherePositionLocation);
+    gl.vertexAttribPointer(atmospherePositionLocation, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform1f(atmosphereAspectLocation, canvas.width / canvas.height);
+    gl.uniform1f(atmosphereTimeLocation, now / 1_000);
+    gl.uniform3fv(atmosphereEyeLocation, eye);
+    gl.uniform3fv(atmosphereForwardLocation, facing);
+    gl.uniform3f(atmosphereRightLocation, rightX, 0, rightZ);
+    gl.uniform3f(atmosphereUpLocation, upX, upY, upZ);
+    gl.uniform3f(atmosphereSkyColorLocation, dayNightState.skyR, dayNightState.skyG, dayNightState.skyB);
+    gl.uniform3f(atmosphereFogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+    gl.uniform3fv(atmosphereSunDirectionLocation, atmosphereSunDirection);
+    gl.uniform3fv(atmosphereMoonDirectionLocation, atmosphereMoonDirection);
+    gl.uniform1f(atmosphereSunIntensityLocation, dayNightState.sunIntensity);
+    gl.uniform1f(atmosphereMoonIntensityLocation, dayNightState.moonIntensity);
+    gl.uniform1f(atmosphereStarIntensityLocation, dayNightState.starIntensity);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disableVertexAttribArray(atmospherePositionLocation);
+    gl.enable(gl.DEPTH_TEST);
 
     gl.useProgram(terrainProgram);
     gl.uniformMatrix4fv(terrainMvpLocation, false, mvp);
@@ -1583,6 +1649,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const frameTimeMs = Math.max(0, now - lastFrame);
     const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
+    if (miningTimer && miningDurationMs > 0 && now - lastMiningProgressAt >= 50) {
+      lastMiningProgressAt = now;
+      options.onMiningProgress?.(Math.max(0.01, Math.min(0.99, (now - miningStartedAt) / miningDurationMs)));
+    }
     if (frameTimeMs > 0) {
       frameTimes.push(frameTimeMs);
       if (frameTimes.length > 120) frameTimes.shift();
@@ -1635,21 +1705,39 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return pose.x + 0.29 > x && pose.x - 0.29 < x + 1 && pose.y + 1.78 > y && pose.y < y + 1 && pose.z + 0.29 > z && pose.z - 0.29 < z + 1;
   }
 
-  function attackMobUnderCrosshair(): boolean {
+  function attackEntityUnderCrosshair(): boolean {
     const eye: Vec3 = [pose.x, pose.y + 1.62, pose.z];
-    const mobTarget = raycastMobs(eye, direction(), mobSimulation.mobs, options.reach ?? 6);
-    // A solid voxel hit closer to the camera occludes the mob.
-    if (!mobTarget || !mobTargetHasClickPriority(mobTarget.distance, target?.distance ?? null)) return false;
+    const facing = direction();
+    const reach = options.reach ?? 6;
+    const mobTarget = raycastMobs(eye, facing, mobSimulation.mobs, reach);
+    const remoteTarget = options.onRemotePlayerAttack
+      ? raycastRemotePlayers(eye, facing, remoteStates.values(), reach)
+      : null;
+    const nearestDistance = Math.min(
+      mobTarget?.distance ?? Number.POSITIVE_INFINITY,
+      remoteTarget?.distance ?? Number.POSITIVE_INFINITY,
+    );
+    // Solid voxels occlude both players and mobs.
+    if (!Number.isFinite(nearestDistance) || !mobTargetHasClickPriority(nearestDistance, target?.distance ?? null)) return false;
     const rawDamage = options.getAttackDamage?.() ?? 1;
     const attackDamage = Number.isFinite(rawDamage) ? Math.max(0, Math.min(100, rawDamage)) : 1;
+    if (remoteTarget && remoteTarget.distance <= (mobTarget?.distance ?? Number.POSITIVE_INFINITY)) {
+      clearMining();
+      options.onHandAction?.("attack");
+      void options.onRemotePlayerAttack?.({ ...remoteTarget }, attackDamage);
+      return true;
+    }
+    if (!mobTarget) return false;
     if (options.onMobAttack) {
       clearMining();
+      options.onHandAction?.("attack");
       void options.onMobAttack({ ...mobTarget }, attackDamage);
       return true;
     }
     const result = damageMob(mobSimulation, mobTarget.id, attackDamage);
     if (!result.found) return false;
     clearMining();
+    options.onHandAction?.("attack");
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     if (result.killed && result.drops.length) options.onMobDrops?.(result.drops);
     return true;
@@ -1662,16 +1750,24 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return;
     }
     if (event.button === 0) {
-      if (attackMobUnderCrosshair()) return;
+      if (attackEntityUnderCrosshair()) return;
       if (!target) return;
       if (miningTimer) return;
       const mined = { ...target.block };
       const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
+      options.onHandAction?.("mine");
       if (duration === 0) {
         emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
       } else {
+        miningStartedAt = performance.now();
+        miningDurationMs = duration * 1_000;
+        lastMiningProgressAt = -Infinity;
+        options.onMiningProgress?.(0.01);
         miningTimer = window.setTimeout(() => {
           miningTimer = 0;
+          miningStartedAt = 0;
+          miningDurationMs = 0;
+          options.onMiningProgress?.(0);
           if (getBlock(mined.x, mined.y, mined.z) === mined.block) {
             emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
           }
@@ -1681,16 +1777,24 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (target) {
         const doorEdit = createDoorToggleEdit(target);
         if (doorEdit) {
+          options.onHandAction?.("use");
           emitEdit(doorEdit);
           return;
         }
-        if (tryInteractBlock(target, options.onInteractBlock)) return;
+        if (tryInteractBlock(target, options.onInteractBlock)) {
+          options.onHandAction?.("use");
+          return;
+        }
       }
-      if (options.onUseSelectedItem?.()) return;
+      if (options.onUseSelectedItem?.()) {
+        options.onHandAction?.("use");
+        return;
+      }
       if (!target) return;
       if (selectedBlock === BLOCK.AIR) return;
       const { x, y, z } = target.place;
       if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) {
+        options.onHandAction?.("place");
         emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) });
       }
     }
@@ -1760,9 +1864,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       remotePlayerRenderer.destroy();
       droppedItemRenderer.destroy();
       gl.deleteBuffer(lineBuffer);
+      gl.deleteBuffer(atmosphereBuffer);
       mobRenderer.destroy();
       gl.deleteProgram(program);
       gl.deleteProgram(terrainProgram);
+      gl.deleteProgram(atmosphereProgram);
       gl.deleteTexture(terrainTexture);
     },
     applyWorldEdits(edits) {

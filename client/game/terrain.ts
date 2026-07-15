@@ -97,10 +97,15 @@ function valueNoise(x: number, z: number, seed: number, cellSize: number): numbe
 }
 
 function rawTerrainHeight(x: number, z: number, seed: number): number {
-  const broadHills = (valueNoise(x, z, seed + 17, 30) - 0.5) * 6.2;
-  const rollingGround = (valueNoise(x, z, seed + 113, 12) - 0.5) * 3.2;
-  const smallVariation = (valueNoise(x, z, seed + 307, 5) - 0.5) * 1.2;
-  return 6.2 + broadHills + rollingGround + smallVariation;
+  const broadHills = (valueNoise(x, z, seed + 17, 34) - 0.5) * 5.8;
+  const rollingGround = (valueNoise(x, z, seed + 113, 13) - 0.5) * 3.0;
+  const ridgeNoise = valueNoise(x, z, seed + 241, 22);
+  // Squared ridges create occasional stepped high ground without adding a
+  // biome system or breaking the globally anchored, chunk-seam-safe height map.
+  const ridge = Math.max(0, 1 - Math.abs(ridgeNoise * 2 - 1) - 0.46);
+  const ridgeLift = ridge * ridge * 10.5;
+  const smallVariation = (valueNoise(x, z, seed + 307, 5) - 0.5) * 1.0;
+  return 5.9 + broadHills + rollingGround + ridgeLift + smallVariation;
 }
 
 export function terrainHeight(x: number, z: number, seed: number): number {

@@ -62,6 +62,19 @@ import {
   validatePresenceVelocityFields
 } from "../shared/presenceMotion";
 import {
+  MAX_PLAYER_COMBAT_RECEIPTS_PER_USER,
+  PLAYER_COMBAT_RECEIPT_PRUNE_LIMIT,
+  PLAYER_COMBAT_RECEIPT_TTL_MS,
+  authoritativeCombatPose,
+  decidePlayerCombatReplay,
+  materializePlayerCombatState,
+  resolvePlayerAttack,
+  selectPlayerCombatReceiptOverflow,
+  validatePlayerAttackRequestJson,
+  validatePlayerCombatUserIds,
+  type StoredPlayerCombatState
+} from "../shared/playerCombat";
+import {
   CHEST_RECEIPT_OVERFLOW_PRUNE_LIMIT,
   MAX_CHEST_TRANSFER_RECEIPTS_PER_USER,
   compareStoredPlayerState,
@@ -93,6 +106,11 @@ import {
 } from "./droppedItems";
 import { BLOCK_TYPES } from "../shared/protocol";
 import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
+import {
+  decodePlayerCombatReceipt,
+  encodePlayerCombatReceipt,
+  type PlayerCombatReceiptResult
+} from "./playerCombat";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -125,6 +143,26 @@ async function pruneExpiredDroppedItems(db: WriteDatabase, now: number): Promise
     .order("asc")
     .take(DROPPED_ITEM_EXPIRY_PRUNE_LIMIT);
   for (const dropId of selectExpiredDroppedItemIds(expiredRows, now)) await db.droppedItems.delete(dropId);
+}
+
+async function maintainPlayerCombatReceipts(
+  db: WriteDatabase,
+  userId: string,
+  committedReceiptId: string,
+  now: number,
+): Promise<void> {
+  const newestReceipts = await db.playerCombatReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(MAX_PLAYER_COMBAT_RECEIPTS_PER_USER + PLAYER_COMBAT_RECEIPT_PRUNE_LIMIT);
+  const overflowIds = selectPlayerCombatReceiptOverflow(newestReceipts, committedReceiptId);
+  for (const receiptId of overflowIds) await db.playerCombatReceipts.delete(receiptId);
+  const staleBefore = String(now - PLAYER_COMBAT_RECEIPT_TTL_MS);
+  const staleReceipts = await db.playerCombatReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .order("asc")
+    .take(PLAYER_COMBAT_RECEIPT_PRUNE_LIMIT);
+  for (const receipt of staleReceipts) await db.playerCombatReceipts.delete(receipt.id);
 }
 
 function boundedInteger(value: string, minimum: number, maximum: number): number | null {
@@ -201,6 +239,20 @@ function databaseRowToStoredMobAuthority(row: Record<string, unknown> | null): S
     deadUntil: row.deadUntil,
     lastAttackAt: row.lastAttackAt,
     lastAttackerId: row.lastAttackerId
+  };
+}
+
+function databaseRowToStoredPlayerCombat(row: Record<string, unknown> | null): StoredPlayerCombatState | null {
+  if (!row || typeof row.userId !== "string" || typeof row.health !== "string"
+    || typeof row.revision !== "string" || typeof row.deadUntil !== "string"
+    || typeof row.lastAttackAt !== "string" || typeof row.lastAttackerId !== "string") return null;
+  return {
+    userId: row.userId,
+    health: row.health,
+    revision: row.revision,
+    deadUntil: row.deadUntil,
+    lastAttackAt: row.lastAttackAt,
+    lastAttackerId: row.lastAttackerId,
   };
 }
 
@@ -348,7 +400,28 @@ export default capsule({
       deadUntil: string(),
       lastAttackAt: string(),
       lastAttackerId: string()
-    }).index("by_mob", ["mobId"])
+    }).index("by_mob", ["mobId"]),
+
+    /** Event-driven player combat state; movement remains in the sparse presence lease. */
+    playerCombat: table({
+      userId: string(),
+      health: string(),
+      revision: string(),
+      deadUntil: string(),
+      lastAttackAt: string(),
+      lastAttackerId: string()
+    }).index("by_user", ["userId"]),
+
+    /** Bounded attack receipts make mutation retries safe without an unbounded event log. */
+    playerCombatReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"])
   },
 
   queries: {
@@ -513,6 +586,24 @@ export default capsule({
           identity.kind,
           serverNow,
         ));
+      }
+      return { ok: true, states, serverNow };
+    }),
+
+    playerCombatStates: query(async (ctx, rawUserIds: string[]) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", states: [], serverNow };
+      }
+      const validation = validatePlayerCombatUserIds(rawUserIds);
+      if (!validation.ok) return { ok: false, reason: validation.reason, states: [], serverNow };
+      const states = [];
+      for (const userId of validation.userIds) {
+        const row = await ctx.db.playerCombat
+          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .order("desc")
+          .first();
+        states.push(materializePlayerCombatState(databaseRowToStoredPlayerCombat(row), userId, serverNow));
       }
       return { ok: true, states, serverNow };
     })
@@ -1113,6 +1204,88 @@ export default capsule({
         state: resolution.state,
         serverNow,
       };
+    }),
+
+    attackPlayer: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const validation = validatePlayerAttackRequestJson(requestJson);
+      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason, serverNow };
+      const request = validation.request;
+      const existingReceipt = await ctx.db.playerCombatReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .first();
+      const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
+      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === "replay" && existingReceipt) {
+        return decodePlayerCombatReceipt(existingReceipt.resultJson)
+          ?? { ok: false, reason: "invalid_receipt", serverNow };
+      }
+
+      const attackerPresenceRow = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const targetPresenceRow = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
+        .order("desc")
+        .first();
+      const attackerPresence = authoritativeCombatPose(attackerPresenceRow, ctx.auth.userId, serverNow);
+      const targetPresence = authoritativeCombatPose(targetPresenceRow, request.targetUserId, serverNow);
+
+      const attackerInventoryRow = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      if (!attackerInventoryRow) return { ok: false, reason: "inventory_required", serverNow };
+      const attackerPlayerState = validatePlayerStateJson(attackerInventoryRow.inventoryJson);
+      if (!attackerPlayerState.ok) return { ok: false, reason: "attacker_state_invalid", serverNow };
+      const targetInventoryRow = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
+        .order("desc")
+        .first();
+      const targetPlayerState = validatePlayerStateJson(targetInventoryRow?.inventoryJson ?? "[]");
+      if (!targetPlayerState.ok) return { ok: false, reason: "target_state_invalid", serverNow };
+
+      const attackerCombatRow = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const targetCombatRow = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
+        .order("desc")
+        .first();
+      const resolution = resolvePlayerAttack({
+        request,
+        attackerId: ctx.auth.userId,
+        attackerStored: databaseRowToStoredPlayerCombat(attackerCombatRow),
+        targetStored: databaseRowToStoredPlayerCombat(targetCombatRow),
+        attackerPresence,
+        targetPresence,
+        attackerPlayerState: attackerPlayerState.state,
+        targetPlayerState: targetPlayerState.state,
+        serverNow,
+      });
+      if (!resolution.ok) return { ...resolution, serverNow };
+      if (attackerCombatRow) await ctx.db.playerCombat.update(attackerCombatRow.id, resolution.attackerRow);
+      else await ctx.db.playerCombat.insert(resolution.attackerRow);
+      if (targetCombatRow) await ctx.db.playerCombat.update(targetCombatRow.id, resolution.targetRow);
+      else await ctx.db.playerCombat.insert(resolution.targetRow);
+      const result: PlayerCombatReceiptResult = { ...resolution, replayed: false, serverNow };
+      const receipt = await ctx.db.playerCombatReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        resultJson: encodePlayerCombatReceipt(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      await maintainPlayerCombatReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      return result;
     }),
 
     claimUsername: mutation(async (ctx, requestedUsername: string) => {

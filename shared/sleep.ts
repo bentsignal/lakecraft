@@ -1,8 +1,8 @@
 export const WORLD_CLOCK_KEY = "main";
 export const WORLD_CYCLE_LENGTH_MS = 8 * 60 * 1_000;
 export const MORNING_PHASE = 0.25;
-export const ACTIVE_PLAYER_WINDOW_MS = 15_000;
-export const SLEEP_VOTE_FRESH_MS = 20_000;
+export const ACTIVE_PLAYER_WINDOW_MS = 90_000;
+export const SLEEP_VOTE_FRESH_MS = 100_000;
 export const MAX_SLEEP_PARTICIPANTS = 128;
 
 export interface ClockRowLike {

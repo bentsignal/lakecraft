@@ -34,6 +34,7 @@ async function bundleEntrypoint(sourcePath, targetPath) {
   const result = await build({
     absWorkingDir: sourceRoot,
     bundle: true,
+    charset: "utf8",
     entryPoints: [sourcePath],
     external: ["lakebed/client", "lakebed/server", "preact", "preact/hooks", "preact/jsx-runtime"],
     format: "esm",
