@@ -119,6 +119,8 @@ export interface VoxelEngineOptions {
   worldRadius?: number;
   initialEdits?: readonly WorldEdit[];
   initialPose?: Partial<PlayerPose>;
+  /** Preserve a Lakebed-persisted reconnect pose exactly instead of lifting it to local safe-spawn height. */
+  preserveInitialPose?: boolean;
   selectedBlock?: BlockId;
   reach?: number;
   /** Shared clock configuration. Defaults to an eight-minute alpha cycle. */
@@ -174,6 +176,8 @@ export interface VoxelEngine {
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
   setRespawnPoint(point: RespawnPoint): void;
   adjustPlayerHealth(delta: number): number;
+  /** Snap to a Lakebed-authoritative pose without changing health or respawn state. */
+  reconcilePose(pose: PlayerPose): void;
   getPose(): PlayerPose;
   getTarget(): BlockTarget | null;
   getPerformanceStats(): VoxelPerformanceStats;

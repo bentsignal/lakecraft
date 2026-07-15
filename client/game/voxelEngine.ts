@@ -482,7 +482,7 @@ export function validateRespawnPoint(
     !Number.isFinite(point.x)
     || !Number.isFinite(point.y)
     || !Number.isFinite(point.z)
-    || (point.y < 0 || point.y > MAX_RESPAWN_HEIGHT)
+    || (point.y < -24 || point.y > MAX_RESPAWN_HEIGHT)
     || !Number.isFinite(horizontalLimit)
     || horizontalLimit <= 0
     || Math.abs(point.x) > horizontalLimit
@@ -1336,6 +1336,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function update(dt: number, now: number): void {
+    if (playerHealth <= 0) {
+      keys.clear();
+      velocity[0] = 0;
+      velocity[1] = 0;
+      velocity[2] = 0;
+      clearMining();
+      target = null;
+      processPendingChunkMeshes();
+      updateMobs(dt);
+      return;
+    }
     const forwardInput = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
     const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
     const ladderAtFrameStart = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
@@ -1723,7 +1734,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onMouseMove(event: MouseEvent): void {
-    if (document.pointerLockElement !== canvas) return;
+    if (document.pointerLockElement !== canvas || playerHealth <= 0) return;
     const look = applyMouseLookDelta(pose.yaw, pose.pitch, event.movementX, event.movementY);
     pose.yaw = look.yaw;
     pose.pitch = look.pitch;
@@ -1778,6 +1789,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.requestPointerLock();
       return;
     }
+    if (playerHealth <= 0) return;
     if (event.button === 0) {
       if (attackEntityUnderCrosshair()) return;
       if (!target) return;
@@ -1846,11 +1858,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onContextMenu(event: MouseEvent): void { event.preventDefault(); }
 
-  pose.y = resolveSafeSpawnY(
-    pose.y,
-    terrainHeight(pose.x, pose.z, seed) + 1.02,
-    (candidateY) => collides(pose.x, candidateY, pose.z),
-  );
+  if (!options.preserveInitialPose) {
+    pose.y = resolveSafeSpawnY(
+      pose.y,
+      terrainHeight(pose.x, pose.z, seed) + 1.02,
+      (candidateY) => collides(pose.x, candidateY, pose.z),
+    );
+  }
   rebuildWorldChunks([...chunkBlocks.keys()]);
 
   return {
@@ -1971,6 +1985,20 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       }
       return playerHealth;
+    },
+    reconcilePose(nextPose) {
+      pose.x = nextPose.x;
+      pose.y = nextPose.y;
+      pose.z = nextPose.z;
+      pose.yaw = nextPose.yaw;
+      pose.pitch = nextPose.pitch;
+      velocity[0] = 0;
+      velocity[1] = 0;
+      velocity[2] = 0;
+      keys.clear();
+      updateStreamingWindow(true);
+      poseDirty = true;
+      options.onPoseChange?.({ ...pose });
     },
     getPose() { return { ...pose }; },
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },

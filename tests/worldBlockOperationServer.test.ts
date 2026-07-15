@@ -15,7 +15,7 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const server = fs.readFileSync(path.join(root, "server/index.ts"), "utf8");
 const mutationStart = server.indexOf("editWorldBlock: mutation(async");
-const mutationEnd = server.indexOf("heartbeatPlayer: mutation(", mutationStart);
+const mutationEnd = server.indexOf("authorizeRespawn: mutation(", mutationStart);
 assert.ok(mutationStart >= 0 && mutationEnd > mutationStart, "authoritative mutation must be registered");
 const editMutation = server.slice(mutationStart, mutationEnd);
 

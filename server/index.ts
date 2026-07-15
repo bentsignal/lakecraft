@@ -88,9 +88,12 @@ import {
   selectChestTransferReceiptOverflow
 } from "./chestTransferReceipts";
 import {
+  buildPresenceRelocationGrant,
   buildOfflinePresenceValue,
+  decidePresenceTrajectory,
   decidePresenceWriteGate,
-  validatePresencePoseFields
+  validatePresencePoseFields,
+  type PresenceRelocationGrant,
 } from "./playerPresence";
 import {
   DROPPED_ITEM_EXPIRY_PRUNE_LIMIT,
@@ -131,6 +134,35 @@ import {
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 const CHEST_RECEIPT_PRUNE_LIMIT = 8;
+const RESPAWN_AUTHORIZATION_COOLDOWN_MS = 15_000;
+const TRAILHEAD_POSE = Object.freeze({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
+
+function storedRespawnGrant(row: Record<string, unknown> | null): PresenceRelocationGrant | null {
+  if (!row || typeof row.userId !== "string" || typeof row.grantEpoch !== "string" || !row.grantEpoch) return null;
+  if (typeof row.grantX !== "string" || typeof row.grantY !== "string" || typeof row.grantZ !== "string"
+    || typeof row.grantYaw !== "string" || typeof row.grantPitch !== "string"
+    || typeof row.grantIssuedAt !== "string" || typeof row.grantExpiresAt !== "string") return null;
+  return {
+    userId: row.userId,
+    epoch: row.grantEpoch,
+    x: row.grantX,
+    y: row.grantY,
+    z: row.grantZ,
+    yaw: row.grantYaw,
+    pitch: row.grantPitch,
+    issuedAt: row.grantIssuedAt,
+    expiresAt: row.grantExpiresAt,
+    ...(typeof row.grantConsumedAt === "string" && row.grantConsumedAt
+      ? { consumedAt: row.grantConsumedAt }
+      : {}),
+  };
+}
+
+function storedBedRespawnPose(row: Record<string, unknown> | null) {
+  if (!row || typeof row.bedCoordKey !== "string" || !row.bedCoordKey) return null;
+  const pose = validatePresencePoseFields(row.bedX, row.bedY, row.bedZ, row.bedYaw, row.bedPitch);
+  return pose ? { coordKey: row.bedCoordKey, pose } : null;
+}
 
 function storedRevision(value: unknown): string | null {
   return normalizeWorldBlockRevision(value ?? "0");
@@ -342,11 +374,34 @@ export default capsule({
       armorChest: string().default(""),
       armorLegs: string().default(""),
       armorFeet: string().default(""),
+      sessionId: string().default(""),
       heartbeatAt: string(),
       online: boolean().default(true)
     })
       .index("by_user", ["userId"])
       .index("by_heartbeat", ["heartbeatAt"]),
+
+    /** Server-owned bed home plus one active, expiring relocation grant per user. */
+    playerRespawns: table({
+      userId: string(),
+      bedCoordKey: string().default(""),
+      bedX: string().default(""),
+      bedY: string().default(""),
+      bedZ: string().default(""),
+      bedYaw: string().default(""),
+      bedPitch: string().default(""),
+      bedSetAt: string().default("0"),
+      grantEpoch: string().default("0"),
+      grantX: string().default(""),
+      grantY: string().default(""),
+      grantZ: string().default(""),
+      grantYaw: string().default(""),
+      grantPitch: string().default(""),
+      grantIssuedAt: string().default("0"),
+      grantExpiresAt: string().default("0"),
+      grantConsumedAt: string().default(""),
+      lastAuthorizedAt: string().default("0")
+    }).index("by_user", ["userId"]),
 
     inventories: table({
       userId: string(),
@@ -900,6 +955,126 @@ export default capsule({
       };
     }),
 
+    authorizeRespawn: mutation(async (ctx) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
+      }
+      const serverNow = Date.now();
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      const respawnRows = await ctx.db.playerRespawns
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (presenceRows.length !== 1 || respawnRows.length > 1) {
+        return { ok: false, reason: "duplicate_or_missing_state" };
+      }
+      const presence = presenceRows[0];
+      const heartbeatAt = /^\d{1,16}$/.test(presence.heartbeatAt) ? Number(presence.heartbeatAt) : Number.NaN;
+      if (!presence.online || !Number.isFinite(heartbeatAt) || serverNow - heartbeatAt < 0
+        || serverNow - heartbeatAt > ACTIVE_PLAYER_WINDOW_MS) {
+        return { ok: false, reason: "active_presence_required" };
+      }
+      const existingRespawn = respawnRows[0] ?? null;
+      const activeGrant = storedRespawnGrant(existingRespawn);
+      if (activeGrant) {
+        const issuedAt = Number(activeGrant.issuedAt);
+        const expiresAt = Number(activeGrant.expiresAt);
+        if (/^\d{1,16}$/.test(activeGrant.epoch)
+          && Number.isSafeInteger(issuedAt)
+          && Number.isSafeInteger(expiresAt)
+          && issuedAt <= serverNow
+          && expiresAt > serverNow
+          && expiresAt > issuedAt
+          && expiresAt - issuedAt <= 15_000) {
+          const target = validatePresencePoseFields(
+            activeGrant.x,
+            activeGrant.y,
+            activeGrant.z,
+            activeGrant.yaw,
+            activeGrant.pitch,
+          );
+          const currentPose = validatePresencePoseFields(
+            presence.x,
+            presence.y,
+            presence.z,
+            presence.yaw,
+            presence.pitch,
+          );
+          if (target && activeGrant.consumedAt && currentPose
+            && target.x === currentPose.x && target.y === currentPose.y && target.z === currentPose.z
+            && target.yaw === currentPose.yaw && target.pitch === currentPose.pitch) {
+            return { ok: true, target, epoch: activeGrant.epoch, expiresAt };
+          }
+        }
+      }
+      const lastAuthorizedAt = existingRespawn && /^\d{1,16}$/.test(existingRespawn.lastAuthorizedAt)
+        ? Number(existingRespawn.lastAuthorizedAt)
+        : 0;
+      if (lastAuthorizedAt > serverNow) return { ok: false, reason: "invalid_state" };
+      if (serverNow - lastAuthorizedAt < RESPAWN_AUTHORIZATION_COOLDOWN_MS) {
+        return {
+          ok: false,
+          reason: "cooldown",
+          retryAfterMs: RESPAWN_AUTHORIZATION_COOLDOWN_MS - (serverNow - lastAuthorizedAt),
+        };
+      }
+
+      let destination = TRAILHEAD_POSE;
+      const bedRespawn = storedBedRespawnPose(existingRespawn);
+      if (bedRespawn) {
+        const bedRows = await ctx.db.worldEdits
+          .withIndex("by_coord", (q) => q.eq("coordKey", bedRespawn.coordKey))
+          .order("desc")
+          .take(2);
+        if (bedRows.length > 1) return { ok: false, reason: "duplicate_state" };
+        if (bedRows[0]?.blockType === "bed") destination = bedRespawn.pose;
+      }
+      const previousEpoch = storedRevision(existingRespawn?.grantEpoch ?? "0");
+      if (previousEpoch === null) return { ok: false, reason: "invalid_state" };
+      const epoch = nextWorldBlockRevision(previousEpoch);
+      if (epoch === null) return { ok: false, reason: "invalid_state" };
+      const grant = buildPresenceRelocationGrant(ctx.auth.userId, epoch, destination, serverNow);
+      if (!grant) return { ok: false, reason: "authorization_failure" };
+      const value = {
+        userId: ctx.auth.userId,
+        bedCoordKey: existingRespawn?.bedCoordKey ?? "",
+        bedX: existingRespawn?.bedX ?? "",
+        bedY: existingRespawn?.bedY ?? "",
+        bedZ: existingRespawn?.bedZ ?? "",
+        bedYaw: existingRespawn?.bedYaw ?? "",
+        bedPitch: existingRespawn?.bedPitch ?? "",
+        bedSetAt: existingRespawn?.bedSetAt ?? "0",
+        grantEpoch: grant.epoch,
+        grantX: grant.x,
+        grantY: grant.y,
+        grantZ: grant.z,
+        grantYaw: grant.yaw,
+        grantPitch: grant.pitch,
+        grantIssuedAt: grant.issuedAt,
+        grantExpiresAt: grant.expiresAt,
+        grantConsumedAt: String(serverNow),
+        lastAuthorizedAt: String(serverNow),
+      };
+      if (existingRespawn) await ctx.db.playerRespawns.update(existingRespawn.id, value);
+      else await ctx.db.playerRespawns.insert(value);
+      await ctx.db.playerPresence.update(presence.id, {
+        x: grant.x,
+        y: grant.y,
+        z: grant.z,
+        yaw: grant.yaw,
+        pitch: grant.pitch,
+        vx: "0",
+        vy: "0",
+        vz: "0",
+        heartbeatAt: String(serverNow),
+        online: true,
+      });
+      return { ok: true, target: destination, epoch: grant.epoch, expiresAt: Number(grant.expiresAt) };
+    }),
+
     heartbeatPlayer: mutation(
       async (
         ctx,
@@ -918,12 +1093,17 @@ export default capsule({
         rawArmorHead?: string,
         rawArmorChest?: string,
         rawArmorLegs?: string,
-        rawArmorFeet?: string
+        rawArmorFeet?: string,
+        rawSessionId?: string,
+        rawRelocationEpoch?: string
       ) => {
         if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to join the shared world.");
         const pose = validatePresencePoseFields(x, y, z, yaw, pitch);
         const velocity = validatePresenceVelocityFields(rawVx ?? "0", rawVy ?? "0", rawVz ?? "0");
-        if (!pose || !velocity) return;
+        const sessionId = typeof rawSessionId === "string" && /^[a-f0-9-]{20,64}$/i.test(rawSessionId)
+          ? rawSessionId
+          : null;
+        if (!pose || !velocity || !sessionId) return { ok: false, reason: "invalid_request" };
         const appearance = normalizeAvatarAppearance(
           rawHeldItem,
           rawArmorHead,
@@ -937,13 +1117,48 @@ export default capsule({
           .first();
         if (!profile) throw new Error("Choose a username before joining the shared world.");
         const safeColor = /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : "#8fbf79";
-        const existing = await ctx.db.playerPresence
+        const existingRows = await ctx.db.playerPresence
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
-          .first();
+          .take(2);
+        if (existingRows.length > 1) return { ok: false, reason: "duplicate_state" };
+        const existing = existingRows[0] ?? null;
         const serverNow = Date.now();
         const gate = decidePresenceWriteGate(existing?.heartbeatAt, serverNow);
-        if (!gate.accept) return;
+        if (!gate.accept) return { ok: false, reason: "rate_limited", retryAfterMs: gate.retryAfterMs };
+        const relocationEpoch = typeof rawRelocationEpoch === "string" && /^\d{1,16}$/.test(rawRelocationEpoch)
+          ? rawRelocationEpoch
+          : null;
+        let respawnRow: Record<string, unknown> | null = null;
+        let activeGrant: PresenceRelocationGrant | null = null;
+        if (relocationEpoch) {
+          const respawnRows = await ctx.db.playerRespawns
+            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .order("desc")
+            .take(2);
+          if (respawnRows.length !== 1) return { ok: false, reason: "relocation_missing" };
+          respawnRow = respawnRows[0];
+          activeGrant = storedRespawnGrant(respawnRow);
+        }
+        const trajectory = decidePresenceTrajectory(
+          ctx.auth.userId,
+          existing,
+          pose,
+          serverNow,
+          TRAILHEAD_POSE,
+          relocationEpoch,
+          activeGrant,
+        );
+        if (!trajectory.accept) {
+          const persistedPose = existing
+            ? validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch)
+            : TRAILHEAD_POSE;
+          return {
+            ok: false,
+            reason: trajectory.reason,
+            ...(persistedPose ? { canonicalPose: persistedPose } : {}),
+          };
+        }
         const value = {
           userId: ctx.auth.userId,
           displayName: profile.username,
@@ -955,24 +1170,34 @@ export default capsule({
           pitch: String(pose.pitch),
           ...encodePresenceVelocityFields(velocity),
           ...appearance,
+          sessionId,
           heartbeatAt: String(serverNow),
           online: true
         };
-        return existing
-          ? ctx.db.playerPresence.update(existing.id, value)
-          : ctx.db.playerPresence.insert(value);
+        const persistedPresence = existing
+          ? await ctx.db.playerPresence.update(existing.id, value)
+          : await ctx.db.playerPresence.insert(value);
+        if (!persistedPresence) throw new Error("Unable to persist authoritative presence.");
+        if (trajectory.relocationGrantUpdate && respawnRow && typeof respawnRow.id === "string") {
+          await ctx.db.playerRespawns.update(respawnRow.id, {
+            grantConsumedAt: trajectory.relocationGrantUpdate.consumedAt ?? String(serverNow),
+          });
+        }
+        return { ok: true, reason: trajectory.reason };
       }
     ),
 
-    leavePlayer: mutation(async (ctx, _heartbeatAt: string) => {
+    leavePlayer: mutation(async (ctx, rawSessionId: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to leave the shared world.");
-      const existing = await ctx.db.playerPresence
+      const existingRows = await ctx.db.playerPresence
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
-        .first();
+        .take(2);
+      if (existingRows.length > 1) return null;
+      const existing = existingRows[0] ?? null;
       // A leave without a prior authoritative heartbeat must not manufacture a
       // second source of spawn truth. Existing rows retain their exact pose.
-      if (!existing) return null;
+      if (!existing || existing.sessionId !== rawSessionId) return null;
       return ctx.db.playerPresence.update(existing.id, buildOfflinePresenceValue(existing, Date.now()));
     }),
 
@@ -1347,10 +1572,11 @@ export default capsule({
       }
       const coordinate = validateSleepCoordinate(rawCoordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
-      const bed = await ctx.db.worldEdits
+      const bedRows = await ctx.db.worldEdits
         .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
         .order("desc")
-        .first();
+        .take(2);
+      const bed = bedRows.length === 1 ? bedRows[0] : null;
       if (!bed || bed.blockType !== "bed") return { ok: false, reason: "bed_required" };
 
       const serverNow = Date.now();
@@ -1363,6 +1589,48 @@ export default capsule({
       if (!preVoteStatus.activePlayerIds.includes(ctx.auth.userId)) {
         return { ok: false, reason: "active_presence_required" };
       }
+      const ownPresences = presences.filter((presence) => presence.userId === ctx.auth.userId);
+      if (ownPresences.length !== 1) return { ok: false, reason: "active_presence_required" };
+      const bedPose = validatePresencePoseFields(
+        ownPresences[0].x,
+        ownPresences[0].y,
+        ownPresences[0].z,
+        ownPresences[0].yaw,
+        ownPresences[0].pitch,
+      );
+      if (!bedPose || Math.hypot(
+        bedPose.x - (coordinate.x + 0.5),
+        bedPose.y + 1.62 - (coordinate.y + 0.5),
+        bedPose.z - (coordinate.z + 0.5),
+      ) > 6) return { ok: false, reason: "active_presence_required" };
+      const respawnRows = await ctx.db.playerRespawns
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (respawnRows.length > 1) return { ok: false, reason: "active_presence_required" };
+      const existingRespawn = respawnRows[0] ?? null;
+      const respawnValue = {
+        userId: ctx.auth.userId,
+        bedCoordKey: coordinate.coordKey,
+        bedX: String(bedPose.x),
+        bedY: String(bedPose.y),
+        bedZ: String(bedPose.z),
+        bedYaw: String(bedPose.yaw),
+        bedPitch: String(bedPose.pitch),
+        bedSetAt: String(serverNow),
+        grantEpoch: existingRespawn?.grantEpoch ?? "0",
+        grantX: existingRespawn?.grantX ?? "",
+        grantY: existingRespawn?.grantY ?? "",
+        grantZ: existingRespawn?.grantZ ?? "",
+        grantYaw: existingRespawn?.grantYaw ?? "",
+        grantPitch: existingRespawn?.grantPitch ?? "",
+        grantIssuedAt: existingRespawn?.grantIssuedAt ?? "0",
+        grantExpiresAt: existingRespawn?.grantExpiresAt ?? "0",
+        grantConsumedAt: existingRespawn?.grantConsumedAt ?? "",
+        lastAuthorizedAt: existingRespawn?.lastAuthorizedAt ?? "0",
+      };
+      if (existingRespawn) await ctx.db.playerRespawns.update(existingRespawn.id, respawnValue);
+      else await ctx.db.playerRespawns.insert(respawnValue);
 
       const staleBefore = String(serverNow - SLEEP_VOTE_FRESH_MS);
       const staleVotes = await ctx.db.sleepVotes

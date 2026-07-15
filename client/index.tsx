@@ -6,6 +6,7 @@ import { isCraftingTableWithinReach as isWorkstationWithinReach, type CraftingTa
 import {
   BLOCK,
   createVoxelEngine,
+  validateRespawnPoint,
   type BlockId as EngineBlockId,
   type BlockTarget,
   type PlayerPose,
@@ -67,7 +68,7 @@ import {
   type Profile,
   type SendChatResult,
 } from "../shared/multiplayer";
-import type { PlayerCombatState } from "../shared/playerCombat";
+import { PLAYER_RESPAWN_DELAY_MS, type PlayerCombatState } from "../shared/playerCombat";
 import {
   PLAYER_STALE_AFTER_MS,
   activePlayerPresences,
@@ -172,6 +173,12 @@ type DroppedItemsQueryResult =
 type DroppedItemMutationResult =
   | { ok: true; replayed: boolean; operation: "drop" | "pickup"; dropId: string; moved: { itemId: ItemId; count: number }; inventory: PersistedInventoryState; droppedItem: Record<string, unknown> | null }
   | { ok: false; reason: string; inventory?: PersistedInventoryState | null };
+
+type AuthorizeRespawnResult =
+  | { ok: true; target: PlayerPose; epoch: string; expiresAt: number | string }
+  | { ok: false; reason: string; retryAfterMs?: number };
+
+type HeartbeatPlayerResult = void | { ok: boolean; reason?: string; canonicalPose?: PlayerPose };
 
 function visibleDroppedItemChunkKeys(x: number, z: number): string[] {
   const centerX = Math.floor(x / DROPPED_ITEM_CHUNK_SIZE);
@@ -453,8 +460,9 @@ export function App() {
     poseYaw: string,
     posePitch: string,
   ], WorldBlockEditMutationResult>("editWorldBlock");
-  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string], void>("heartbeatPlayer");
-  const leavePlayer = useMutation<[heartbeatAt: string], void>("leavePlayer");
+  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string, sessionId: string], HeartbeatPlayerResult>("heartbeatPlayer");
+  const authorizeRespawn = useMutation<[], AuthorizeRespawnResult>("authorizeRespawn");
+  const leavePlayer = useMutation<[sessionId: string], void>("leavePlayer");
   const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
@@ -519,6 +527,8 @@ export function App() {
   const lastDroppedPickupSweepRef = useRef(0);
   const appliedOwnCombatHealthRef = useRef<number | null>(null);
   const realtimePresenceRef = useRef(false);
+  const respawnRequestInFlightRef = useRef(false);
+  const respawnTimerRef = useRef<number | null>(null);
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
   if (!presenceBurstGuardRef.current) presenceBurstGuardRef.current = createPresenceBurstGuardState(Date.now());
@@ -570,6 +580,56 @@ export function App() {
     const id = `note-${++toastCounter.current}`;
     setMessages((current) => [...current.slice(-2), { id, text, detail, tone }]);
     window.setTimeout(() => setMessages((current) => current.filter((message) => message.id !== id)), 3_500);
+  }
+
+  function requestAuthorizedRespawn(): void {
+    if (respawnRequestInFlightRef.current) return;
+    if (!auth.isAuthenticated || auth.isGuest) {
+      notify("Respawn unavailable", "Sign in again before returning to the world.", "warning");
+      return;
+    }
+    const engine = engineRef.current;
+    if (!engine) return;
+    respawnRequestInFlightRef.current = true;
+    void authorizeRespawn().then((result) => {
+      if (!result.ok) {
+        notify("Respawn not authorized", "Lakebed did not approve a spawn jump. You remain at the death location.", "warning");
+        respawnTimerRef.current = window.setTimeout(() => {
+          respawnTimerRef.current = null;
+          requestAuthorizedRespawn();
+        }, Math.max(1_000, Math.min(15_000, result.retryAfterMs ?? 2_000)));
+        return;
+      }
+      const target = validateRespawnPoint(result.target, Number.MAX_SAFE_INTEGER);
+      const expiresAt = Number(result.expiresAt);
+      if (!target
+        || typeof result.epoch !== "string"
+        || !result.epoch
+        || !Number.isSafeInteger(expiresAt)
+        || expiresAt <= Date.now()
+        || engineRef.current !== engine) {
+        notify("Respawn not authorized", "Lakebed returned an invalid or expired spawn authorization.", "warning");
+        return;
+      }
+      engine.setRespawnPoint(target);
+      engine.respawn();
+    }).catch(() => {
+      notify("Respawn lost contact", "Lakebed could not authorize the jump. You remain at the death location.", "warning");
+      respawnTimerRef.current = window.setTimeout(() => {
+        respawnTimerRef.current = null;
+        requestAuthorizedRespawn();
+      }, 2_000);
+    }).finally(() => {
+      respawnRequestInFlightRef.current = false;
+    });
+  }
+
+  function scheduleAuthorizedRespawn(): void {
+    if (respawnRequestInFlightRef.current || respawnTimerRef.current !== null) return;
+    respawnTimerRef.current = window.setTimeout(() => {
+      respawnTimerRef.current = null;
+      requestAuthorizedRespawn();
+    }, PLAYER_RESPAWN_DELAY_MS);
   }
 
   function exitPointerLockForUi(): void {
@@ -1053,6 +1113,7 @@ export function App() {
       if (resumedPresencePose) poseRef.current = resumedPresencePose;
       const engine = createVoxelEngine(canvas, {
         initialPose: resumedPresencePose ?? poseRef.current,
+        preserveInitialPose: Boolean(resumedPresencePose),
         worldRadius: WORLD_RADIUS,
         dayNight: worldClock ? {
           cycleLengthMs: worldClock.cycleLengthMs,
@@ -1127,11 +1188,11 @@ export function App() {
           survivalRef.current.health = health;
           setPlayerHealth(health);
           if (health <= 0) {
-            notify("You were overwhelmed", "Respawning at the trailhead…", "warning");
+            notify("You were overwhelmed", "Waiting for Lakebed to authorize your respawn…", "warning");
             hungerRef.current = MAX_HUNGER;
             survivalRef.current = createSurvivalTickState(MAX_HUNGER, MAX_HEALTH);
             setHunger(MAX_HUNGER);
-            window.setTimeout(() => engineRef.current?.respawn(), 900);
+            scheduleAuthorizedRespawn();
           }
         },
         onBlockEdit: handleBlockEdit,
@@ -1226,6 +1287,11 @@ export function App() {
       setMobIds(engine.getMobIds());
       engine.start();
       return () => {
+        if (respawnTimerRef.current !== null) {
+          window.clearTimeout(respawnTimerRef.current);
+          respawnTimerRef.current = null;
+        }
+        respawnRequestInFlightRef.current = false;
         engine.destroy();
         engineRef.current = null;
       };
@@ -1371,6 +1437,7 @@ export function App() {
     if (!inWorld || auth.isLoading || !auth.isAuthenticated || auth.isGuest || !profile) return;
     const scheduler = createPresenceSchedulerState();
     const guard = loadPresenceBurstGuard(auth.userId, Date.now());
+    const presenceSessionId = crypto.randomUUID();
     presenceSchedulerRef.current = scheduler;
     presenceBurstGuardRef.current = guard;
     presenceModeNoticeRef.current = "";
@@ -1438,7 +1505,19 @@ export function App() {
         appearance.armorChest,
         appearance.armorLegs,
         appearance.armorFeet,
-      ).then(() => {
+        presenceSessionId,
+      ).then((result) => {
+        if (result && !result.ok) {
+          const canonicalPose = result.canonicalPose
+            ? validateRespawnPoint(result.canonicalPose, Number.MAX_SAFE_INTEGER)
+            : null;
+          if (canonicalPose) {
+            engineRef.current?.reconcilePose(canonicalPose);
+            Object.assign(scheduler, createPresenceSchedulerState());
+          }
+          setConnected(false);
+          return;
+        }
         recordPresenceSuccess(guard, Date.now());
         setConnected(true);
       }).catch((error: unknown) => {
@@ -1458,7 +1537,7 @@ export function App() {
     return () => {
       if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
       window.clearInterval(interval);
-      void leavePlayer(String(Date.now())).catch(() => undefined);
+      void leavePlayer(presenceSessionId).catch(() => undefined);
     };
   }, [inWorld, auth.userId, auth.isLoading, auth.isAuthenticated, auth.isGuest, profile?.username]);
 
