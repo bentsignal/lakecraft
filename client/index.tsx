@@ -21,8 +21,6 @@ import {
   BLOCKS,
   MAX_HEALTH,
   MAX_HUNGER,
-  addItem,
-  applyConfirmedToolUse,
   attackDamage,
   clampHotbarIndex,
   createEmptyEquipment,
@@ -33,7 +31,6 @@ import {
   equippedArmorProtection,
   miningSeconds,
   normalizeInventory,
-  normalizeRespawnPoint,
   type ArmorSlot,
   type BlockId,
   type CraftingContext,
@@ -42,9 +39,12 @@ import {
   type ItemId,
   type PlayerRespawnPoint,
   type Recipe,
-  type ToolUseKind,
 } from "../shared/game";
 import type { StowedInventorySnapshot } from "../shared/inventoryWorkspace";
+import {
+  type InventoryActionMutationResult,
+  type InventoryRecipeBatch,
+} from "../shared/inventoryActions.ts";
 import {
   type FurnaceState,
   type FurnaceTransferAction,
@@ -422,11 +422,25 @@ type WorldChunksQueryResult =
   | { ok: true; chunks: Array<{ chunkKey: string; snapshotJson: string; revision: string; updatedAt: string }> }
   | { ok: false; reason: "invalid_chunk_keys" | "too_many_chunks"; chunks: [] };
 
-type SaveInventoryResult =
-  | { ok: true; inventory: PersistedInventoryState }
-  | { ok: false; reason: "authentication_required" | "invalid_inventory" | "invalid_token" | "conflict"; inventory: PersistedInventoryState | null };
-
 type PendingChestTransfer = { requestJson: string; transportFailures: number };
+
+type PendingInventoryAction = {
+  operationId: string;
+  requestJson: string;
+  transportFailures: number;
+  session: number;
+  action:
+    | { kind: "initialize" }
+    | { kind: "select_hotbar"; selectedHotbar: number }
+    | { kind: "eat"; sourceSlot: number; expectedItemId: ItemId }
+    | {
+        kind: "workspace_commit";
+        playerStateJson: string;
+        recipes: InventoryRecipeBatch[];
+        craftingContext: CraftingContext;
+        workstationCoordKey: string;
+      };
+};
 
 type WorldBlockEditMutationResult =
   | {
@@ -479,6 +493,13 @@ function createCombatOperationId(): string {
     ? globalThis.crypto.randomUUID().replaceAll("-", "")
     : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
   return `attack_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
+}
+
+function createInventoryActionOperationId(): string {
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replaceAll("-", "")
+    : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
+  return `inv_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
 }
 
 const WORLD_RADIUS = 18;
@@ -646,7 +667,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const authorizeRespawn = useMutation<[sessionId: string], AuthorizeRespawnResult>("authorizeRespawn");
   const startPresenceSession = useMutation<[sessionId: string], StartPresenceSessionResult>("startPresenceSession");
   const leavePlayer = useMutation<[sessionId: string], void>("leavePlayer");
-  const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
+  const applyInventoryActionMutation = useMutation<[requestJson: string], InventoryActionMutationResult>("applyInventoryAction");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
   const transferChest = useMutation<[requestJson: string], ChestTransferResult>("transferChest");
@@ -663,6 +684,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     replayed?: boolean;
     damage?: number;
     weaponItemId?: ItemId | null;
+    weaponBroken?: boolean;
+    attackerInventory?: PersistedInventoryState;
     targetState?: PlayerCombatState;
     serverNow: number;
   }>("attackPlayer");
@@ -690,12 +713,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const hydratedUserRef = useRef("");
   const inventoryTokenRef = useRef("");
   const inventoryRevisionRef = useRef("0");
-  const inventorySessionRef = useRef(0);
+  const inventoryAuthoritySessionRef = useRef(0);
   const lastCommittedPlayerJsonRef = useRef("");
-  const inventorySavePromiseRef = useRef<Promise<void> | null>(null);
-  const inventorySavePendingRef = useRef(false);
-  const inventorySaveRetryTimerRef = useRef<number | null>(null);
-  const inventorySaveRetryCountRef = useRef(0);
+  const inventoryActionQueueRef = useRef<PendingInventoryAction[]>([]);
+  const inventoryActionPromiseRef = useRef<Promise<boolean> | null>(null);
   const chestTokenRef = useRef("");
   const chestInventoryRef = useRef<Inventory>(createEmptyInventory(CHEST_SLOT_COUNT));
   const chestBusyRef = useRef(false);
@@ -704,7 +725,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const chestTransferActiveRef = useRef(false);
   const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
   const pendingWorldBlockEditRef = useRef<PendingWorldBlockEdit | null>(null);
-  const deferredMobDropsRef = useRef<Array<{ itemId: string; count: number }>>([]);
   const worldChunkRevisionRef = useRef(new Map<string, string>());
   const authoritativeWorldEditRef = useRef(new Map<string, EngineWorldEdit>());
   const latestSavedInventoryRef = useRef<PersistedInventory | null | undefined>(undefined);
@@ -917,16 +937,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     setInventoryAuthorityEpoch(inventoryAuthorityEpochRef.current);
   }
 
-  function recordConfirmedToolUse(slot: number, itemId: ItemId | null, kind: ToolUseKind): void {
-    if (!itemId) return;
-    const result = applyConfirmedToolUse(inventoryRef.current, slot, kind, itemId);
-    if (!result.used) return;
-    updateInventory(result.inventory);
-    if (result.broke && result.itemId) {
-      notify(`${ITEMS[result.itemId].label} broke`, "The last durability point was consumed by a Lakebed-confirmed action.", "warning");
-    }
-  }
-
   function closeInventory() {
     activeWorkstationRef.current = null;
     setCraftingContext("field");
@@ -976,6 +986,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       lastCommittedPlayerJsonRef.current = "";
       return true;
     }
+    if (row.revision !== inventoryRevisionRef.current
+      && isDecimalRevisionAtLeast(inventoryRevisionRef.current, row.revision)) return true;
     const canonical = validatePlayerStateJson(row.inventoryJson);
     if (!canonical.ok) return false;
     const saved = canonical.state;
@@ -1009,87 +1021,96 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     return true;
   }
 
-  function requestInventorySave(
-    allowWhileChestBusy = false,
-    allowWhileWorldEditPending = false,
-    allowWhileFurnaceBusy = false,
-  ): Promise<void> {
-    if (pendingWorldBlockEditRef.current && !allowWhileWorldEditPending) {
-      inventorySavePendingRef.current = true;
-      return inventorySavePromiseRef.current ?? Promise.resolve();
+  function enqueueInventoryAction(action: PendingInventoryAction["action"]): Promise<boolean> {
+    const queued = inventoryActionQueueRef.current;
+    const last = queued[queued.length - 1];
+    if (action.kind === "select_hotbar" && last?.action.kind === "select_hotbar" && !last.requestJson) {
+      last.action = action;
+      return flushInventoryActions();
     }
-    if (chestBusyRef.current && !allowWhileChestBusy) {
-      inventorySavePendingRef.current = true;
-      return inventorySavePromiseRef.current ?? Promise.resolve();
+    inventoryActionQueueRef.current.push({
+      operationId: createInventoryActionOperationId(),
+      requestJson: "",
+      transportFailures: 0,
+      session: inventoryAuthoritySessionRef.current,
+      action,
+    });
+    return flushInventoryActions();
+  }
+
+  function flushInventoryActions(): Promise<boolean> {
+    if (inventoryActionPromiseRef.current) return inventoryActionPromiseRef.current;
+    if (inventoryActionQueueRef.current.length === 0) {
+      return Promise.resolve(currentPlayerStateJson() === lastCommittedPlayerJsonRef.current);
     }
-    if (furnaceBusyRef.current && !allowWhileFurnaceBusy) {
-      inventorySavePendingRef.current = true;
-      return inventorySavePromiseRef.current ?? Promise.resolve();
-    }
-    if (inventorySavePromiseRef.current) {
-      inventorySavePendingRef.current = true;
-      return inventorySavePromiseRef.current;
-    }
-    if (inventorySaveRetryTimerRef.current !== null) {
-      window.clearTimeout(inventorySaveRetryTimerRef.current);
-      inventorySaveRetryTimerRef.current = null;
-    }
-    const payload = currentPlayerStateJson();
-    if (payload === lastCommittedPlayerJsonRef.current) return Promise.resolve();
-    const expectedToken = inventoryTokenRef.current;
-    const session = inventorySessionRef.current;
-    const task = (async () => {
-      try {
-        const result = await saveInventory(payload, expectedToken);
-        if (session !== inventorySessionRef.current) return;
-        setConnected(true);
-        inventorySaveRetryCountRef.current = 0;
-        if (result.ok) {
+    const task = (async (): Promise<boolean> => {
+      while (inventoryActionQueueRef.current.length > 0) {
+        const pending = inventoryActionQueueRef.current[0];
+        if (!pending.requestJson) {
+          pending.requestJson = JSON.stringify({
+            operationId: pending.operationId,
+            expectedRevision: inventoryRevisionRef.current,
+            ...pending.action,
+          });
+        }
+        let result: InventoryActionMutationResult;
+        try {
+          result = await applyInventoryActionMutation(pending.requestJson);
+          if (pending.session !== inventoryAuthoritySessionRef.current) return false;
+          setConnected(true);
+          pending.transportFailures = 0;
+        } catch {
+          if (pending.session !== inventoryAuthoritySessionRef.current) return false;
+          setConnected(false);
+          pending.transportFailures += 1;
+          if (pending.transportFailures <= 3) {
+            const retryDelay = 500 * 2 ** (pending.transportFailures - 1);
+            notify("Pack action delayed", `Lakebed will reconcile the same action in ${retryDelay / 1_000}s.`, "warning");
+            await new Promise<void>((resolve) => window.setTimeout(resolve, retryDelay));
+            continue;
+          }
+          notify("Pack action paused", "Lakebed could not confirm the action. It remains queued with the same operation ID.", "warning");
+          return false;
+        }
+        if (!result.ok) {
+          inventoryActionQueueRef.current.length = 0;
+          const returnedInventory = "inventory" in result ? result.inventory : undefined;
+          const fallbackInventory = latestSavedInventoryRef.current;
+          const reconciled = returnedInventory
+            ? loadCanonicalPlayer(returnedInventory, true)
+            : fallbackInventory && fallbackInventory.userId === auth.userId
+              ? loadCanonicalPlayer(fallbackInventory, true)
+              : false;
+          notify(
+            result.reason === "conflict" ? "Pack reconciled" : "Pack action rejected",
+            reconciled
+              ? "Lakebed restored the authoritative inventory; the unconfirmed action was discarded."
+              : `Lakebed rejected ${pending.action.kind.replaceAll("_", " ")}; no unconfirmed items were committed.`,
+            "warning",
+          );
+          return false;
+        }
+        inventoryActionQueueRef.current.shift();
+        const superseded = result.inventory.revision !== inventoryRevisionRef.current
+          && isDecimalRevisionAtLeast(inventoryRevisionRef.current, result.inventory.revision);
+        if (!superseded) {
           inventoryTokenRef.current = result.inventory.updatedAt;
           inventoryRevisionRef.current = result.inventory.revision;
           lastCommittedPlayerJsonRef.current = result.inventory.inventoryJson;
-          if (currentPlayerStateJson() !== payload) inventorySavePendingRef.current = true;
-        } else if (result.reason === "conflict") {
-          inventorySavePendingRef.current = false;
-          if (!loadCanonicalPlayer(result.inventory, true)) {
-            notify("Pack reconciliation failed", "Lakebed returned a damaged canonical inventory.", "warning");
-          } else {
-            notify("Pack reconciled", "A newer Lakebed inventory replaced a stale local save.", "warning");
-          }
-        } else if (result.reason === "authentication_required") {
-          notify("Pack save paused", "Sign in again before saving inventory.", "warning");
-        } else {
-          notify("Pack save rejected", "Lakebed rejected an invalid inventory update.", "warning");
         }
-      } catch {
-        setConnected(false);
-        if (session === inventorySessionRef.current && inventorySaveRetryCountRef.current < 3) {
-          inventorySaveRetryCountRef.current += 1;
-          const retryDelay = 1_000 * 2 ** (inventorySaveRetryCountRef.current - 1);
-          inventorySaveRetryTimerRef.current = window.setTimeout(() => {
-            inventorySaveRetryTimerRef.current = null;
-            void requestInventorySave();
-          }, retryDelay);
-          notify("Field kit save delayed", `Lakebed will retry in ${retryDelay / 1_000}s.`, "warning");
-        } else {
-          notify("Field kit save paused", "Lakebed could not save after three retries. Your next inventory change will try again.", "warning");
-        }
-      } finally {
-        inventorySavePromiseRef.current = null;
-        if (inventorySavePendingRef.current && !chestBusyRef.current
-          && !furnaceBusyRef.current && !pendingWorldBlockEditRef.current) {
-          inventorySavePendingRef.current = false;
-          void requestInventorySave();
+        if (inventoryActionQueueRef.current.length === 0 && !loadCanonicalPlayer(result.inventory, true)) {
+          notify("Pack reconciliation failed", "Lakebed returned a damaged canonical inventory.", "warning");
+          return false;
         }
       }
+      return currentPlayerStateJson() === lastCommittedPlayerJsonRef.current;
     })();
-    inventorySavePromiseRef.current = task;
+    inventoryActionPromiseRef.current = task;
+    void task.finally(() => {
+      if (inventoryActionPromiseRef.current === task) inventoryActionPromiseRef.current = null;
+    });
     return task;
   }
-
-  useEffect(() => () => {
-    if (inventorySaveRetryTimerRef.current !== null) window.clearTimeout(inventorySaveRetryTimerRef.current);
-  }, []);
 
   async function handleDropSelected(dropWholeStack = false): Promise<void> {
     if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
@@ -1098,7 +1119,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     if (!stack) return;
     droppedItemBusyRef.current = true;
     try {
-      await requestInventorySave();
+      if (!await flushInventoryActions()) throw new Error("inventory_action_pending");
       const result = await dropItemMutation(JSON.stringify({
         operationId: droppedItemOperationId(),
         sourceSlot,
@@ -1130,7 +1151,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
     droppedItemBusyRef.current = true;
     try {
-      await requestInventorySave();
+      if (!await flushInventoryActions()) throw new Error("inventory_action_pending");
       const result = await pickupDroppedItemMutation(JSON.stringify({
         operationId: droppedItemOperationId(),
         dropId: drop.dropId,
@@ -1168,35 +1189,9 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     void pickupNearbyDroppedItem(nearby);
   }
 
-  function collectMobDrops(drops: readonly { itemId: string; count: number }[]) {
-    if (pendingWorldBlockEditRef.current) {
-      deferredMobDropsRef.current.push(...drops);
-      return;
-    }
-    let next = inventoryRef.current;
-    const collected: string[] = [];
-    for (const drop of drops) {
-      if (!(drop.itemId in ITEMS)) continue;
-      const itemId = drop.itemId as ItemId;
-      const added = addItem(next, itemId, drop.count);
-      next = added.inventory;
-      if (drop.count > added.remainder) collected.push(`${drop.count - added.remainder} ${ITEMS[itemId].label}`);
-    }
-    updateInventory(next);
-    if (collected.length) notify("Mob drops collected", collected.join(" · "), "success");
-  }
-
   function releasePendingWorldBlockEdit(pending: PendingWorldBlockEdit): void {
     if (pendingWorldBlockEditRef.current !== pending) return;
     pendingWorldBlockEditRef.current = null;
-    if (deferredMobDropsRef.current.length) {
-      const deferredDrops = deferredMobDropsRef.current.splice(0);
-      collectMobDrops(deferredDrops);
-    }
-    if (inventorySavePendingRef.current && !chestBusyRef.current && !furnaceBusyRef.current) {
-      inventorySavePendingRef.current = false;
-      void requestInventorySave();
-    }
   }
 
   function rollbackPendingWorldBlockEdit(
@@ -1271,7 +1266,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
 
   async function submitPendingWorldBlockEdit(pending: PendingWorldBlockEdit): Promise<void> {
     try {
-      await requestInventorySave(false, true);
+      await flushInventoryActions();
       if (pendingWorldBlockEditRef.current !== pending) return;
       if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) {
         rollbackPendingWorldBlockEdit(
@@ -1407,7 +1402,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     if (savedInventory && savedInventory.userId !== auth.userId) return;
     hydratedRef.current = true;
     hydratedUserRef.current = auth.userId;
-    inventorySessionRef.current += 1;
+    inventoryAuthoritySessionRef.current += 1;
     inventoryTokenRef.current = savedInventory?.updatedAt ?? "";
     inventoryRevisionRef.current = savedInventory?.revision ?? "0";
     if (savedInventory) {
@@ -1427,9 +1422,18 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       hungerRef.current = saved.hunger;
       setHunger(saved.hunger);
       notify("Field kit restored", "Lakebed recovered your last inventory.", "success");
+      advanceInventoryAuthorityEpoch();
+      setInventoryReady(true);
+      return;
     }
-    advanceInventoryAuthorityEpoch();
-    setInventoryReady(true);
+    setInventoryReady(false);
+    void enqueueInventoryAction({ kind: "initialize" }).then((committed) => {
+      if (hydratedUserRef.current !== auth.userId) return;
+      if (committed || inventoryTokenRef.current) {
+        advanceInventoryAuthorityEpoch();
+        setInventoryReady(true);
+      }
+    });
   }, [savedInventory, auth.userId, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
@@ -1443,24 +1447,18 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       return;
     }
     if (!pending
+      && inventoryActionQueueRef.current.length === 0
       && savedInventory.revision !== inventoryRevisionRef.current
       && currentPlayerStateJson() === lastCommittedPlayerJsonRef.current
       && loadCanonicalPlayer(savedInventory, true)) {
       return;
     }
-    if (!pending && savedInventory.inventoryJson === lastCommittedPlayerJsonRef.current) {
+    if (!pending && inventoryActionQueueRef.current.length === 0
+      && savedInventory.inventoryJson === lastCommittedPlayerJsonRef.current) {
       inventoryTokenRef.current = savedInventory.updatedAt;
       inventoryRevisionRef.current = savedInventory.revision;
     }
   }, [savedInventory, auth.userId]);
-
-  useEffect(() => {
-    if (!hydratedRef.current || !auth.isAuthenticated || auth.isGuest) return;
-    const timer = window.setTimeout(() => {
-      void requestInventorySave();
-    }, 450);
-    return () => window.clearTimeout(timer);
-  }, [inventory, selectedHotbar, equipment, respawnPoint, hunger, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
     if (!furnaceOpen || !activeFurnaceKey) return;
@@ -1514,12 +1512,15 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         onUseSelectedItem: () => handleUseItem(),
         onMobAttack: (target, damage) => {
           const operationId = createCombatOperationId();
-          void requestInventorySave().then(() => attackMob(
+          void flushInventoryActions().then((flushed) => {
+            if (!flushed) throw new Error("inventory_action_pending");
+            return attackMob(
             target.id,
             target.kind,
             String(Math.max(1, Math.min(MAX_MOB_ATTACK_DAMAGE, Math.floor(damage)))),
             operationId,
-          )).then((result) => {
+            );
+          }).then((result) => {
             setConnected(true);
             if (result.state) {
               engineRef.current?.applyMobCombatStates([result.state], result.serverNow - Date.now());
@@ -1544,15 +1545,21 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           const selectedHotbar = selectedRef.current;
           const weaponItemId = inventoryRef.current[selectedHotbar]?.itemId ?? "";
           const operationId = createCombatOperationId();
-          void requestInventorySave().then(() => attackPlayer(JSON.stringify({
-            operationId,
-            targetUserId: target.id,
-            selectedHotbar,
-            weaponItemId,
-          }))).then((result) => {
+          void flushInventoryActions().then((flushed) => {
+            if (!flushed) throw new Error("inventory_action_pending");
+            return attackPlayer(JSON.stringify({
+              operationId,
+              targetUserId: target.id,
+              selectedHotbar,
+              weaponItemId,
+            }));
+          }).then((result) => {
             setConnected(true);
             if (result.ok) {
-              recordConfirmedToolUse(selectedHotbar, weaponItemId || null, "attack");
+              if (result.attackerInventory) loadCanonicalPlayer(result.attackerInventory);
+              if (result.weaponBroken && result.weaponItemId) {
+                notify(`${ITEMS[result.weaponItemId].label} broke`, "The last durability point was consumed by a Lakebed-confirmed hit.", "warning");
+              }
               audioRef.current?.play("playerHurt", { seed: operationId, intensity: result.killed ? 0.9 : 0.65 });
               notify(
                 result.killed ? `${target.name} was defeated` : `Hit ${target.name}`,
@@ -1575,7 +1582,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
             notify("PvP lost contact", "Lakebed could not confirm that swing.", "warning");
           });
         },
-        onMobDrops: collectMobDrops,
         onMiningProgress: setMiningProgress,
         onMiningHit: (target) => {
           const surface = audioSurfaceForBlock(target.block.block);
@@ -1670,20 +1676,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
             return true;
           }
           if (target.block.block === BLOCK.BED) {
-            const pose = engineRef.current?.getPose();
-            const bedSpawn = pose ? normalizeRespawnPoint({
-              x: pose.x,
-              y: pose.y,
-              z: pose.z,
-              yaw: pose.yaw,
-              pitch: pose.pitch,
-            }) : null;
-            if (bedSpawn) {
-              respawnPointRef.current = bedSpawn;
-              setRespawnPoint(bedSpawn);
-              engineRef.current?.setRespawnPoint(bedSpawn);
-              notify("Spawn point set", "You will return beside this bed after death.", "success");
-            }
             setActiveBedKey(key);
             setSleepStatus("Checking the shared night watch with Lakebed…");
             void handleSleepInBed(key);
@@ -2270,7 +2262,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         setChatError("");
         return;
       }
-      if (/^Digit[1-9]$/.test(event.code)) setSelectedHotbar(clampHotbarIndex(Number(event.code.slice(5)) - 1));
+      if (/^Digit[1-9]$/.test(event.code)) handleSelectHotbar(Number(event.code.slice(5)) - 1);
       if (event.code === "KeyE" && !event.repeat) {
         event.preventDefault();
         if (!hydratedRef.current) return;
@@ -2310,6 +2302,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   function handleInventoryWorkspaceChange(
     snapshot: StowedInventorySnapshot,
     expectedAuthorityEpoch: number,
+    recipes: readonly InventoryRecipeBatch[],
   ): boolean {
     if (!hydratedRef.current
       || expectedAuthorityEpoch !== inventoryAuthorityEpochRef.current
@@ -2319,6 +2312,20 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       || furnaceBusyRef.current) return false;
     updateInventory(snapshot.inventory);
     updateEquipment(snapshot.equipment);
+    const workstation = activeWorkstationRef.current;
+    const actionContext: CraftingContext = workstation?.kind === "crafting_table" ? "crafting_table" : "field";
+    const workstationCoordKey = actionContext === "crafting_table" && workstation
+      ? `${workstation.position.x}:${workstation.position.y}:${workstation.position.z}`
+      : "";
+    const playerStateJson = currentPlayerStateJson();
+    if (recipes.length === 0 && playerStateJson === lastCommittedPlayerJsonRef.current) return true;
+    void enqueueInventoryAction({
+      kind: "workspace_commit",
+      playerStateJson,
+      recipes: recipes.map(({ recipeId, crafts }) => ({ recipeId, crafts })),
+      craftingContext: actionContext,
+      workstationCoordKey,
+    });
     return true;
   }
 
@@ -2333,7 +2340,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     setFurnaceOperationBusy(true);
     setFurnaceError("");
     try {
-      await requestInventorySave(false, false, true);
+      await flushInventoryActions();
       if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) {
         setFurnaceError("Your pack is still saving. Wait a moment and try again; no items moved.");
         return;
@@ -2359,7 +2366,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           setFurnaceError("The transfer committed, but Lakebed returned a damaged pack snapshot.");
           return;
         }
-        inventorySavePendingRef.current = false;
         const item = ITEMS[result.moved.itemId];
         audioRef.current?.play("uiConfirm", { seed: `${activeFurnaceKey}:${result.moved.itemId}:${result.furnace.revision}`, intensity: 0.55 });
         setFurnaceStatus(`${result.moved.count} ${item.label} moved ${result.moved.direction === "to_furnace" ? "into" : "out of"} the shared furnace.`);
@@ -2389,15 +2395,11 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setFurnaceError("Furnace connection lost. No unconfirmed local changes were applied.");
     } finally {
       setFurnaceOperationBusy(false);
-      if (inventorySavePendingRef.current && !chestBusyRef.current && !pendingWorldBlockEditRef.current) {
-        inventorySavePendingRef.current = false;
-        void requestInventorySave();
-      }
     }
   }
 
   function handleUseItem(inventoryIndex = selectedRef.current): boolean {
-    if (pendingWorldBlockEditRef.current) return false;
+    if (pendingWorldBlockEditRef.current || chestBusyRef.current || furnaceBusyRef.current) return false;
     const result = consumeFood(inventoryRef.current, inventoryIndex, hungerRef.current);
     if (!result.ok) {
       if (result.reason === "hunger_full") notify("You are already full", "Save that food for later.");
@@ -2406,8 +2408,21 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     updateInventory(result.inventory);
     hungerRef.current = result.hunger;
     setHunger(result.hunger);
+    void enqueueInventoryAction({
+      kind: "eat",
+      sourceSlot: inventoryIndex,
+      expectedItemId: result.consumed,
+    });
     notify(`Ate ${ITEMS[result.consumed].label}`, `Restored ${result.restored} hunger.`, "success");
     return true;
+  }
+
+  function handleSelectHotbar(index: number): void {
+    const selectedHotbar = clampHotbarIndex(index);
+    if (!hydratedRef.current || selectedHotbar === selectedRef.current) return;
+    selectedRef.current = selectedHotbar;
+    setSelectedHotbar(selectedHotbar);
+    void enqueueInventoryAction({ kind: "select_hotbar", selectedHotbar });
   }
 
   function loadCanonicalChest(row: PersistedChest | null): boolean {
@@ -2442,7 +2457,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         const chestLoaded = loadCanonicalChest(result.chest);
         pendingChestTransferRef.current = null;
         chestTransferActiveRef.current = false;
-        inventorySavePendingRef.current = false;
         setChestOperationBusy(false);
         if (!playerLoaded || !chestLoaded) {
           setChestError("The transfer committed, but its canonical state could not be displayed. Reopen the chest to reconcile.");
@@ -2459,7 +2473,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       }
       pendingChestTransferRef.current = null;
       chestTransferActiveRef.current = false;
-      inventorySavePendingRef.current = false;
       setChestOperationBusy(false);
       if (result.reason === "conflict") {
         const playerLoaded = loadCanonicalPlayer(result.player);
@@ -2480,7 +2493,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       } else {
         setChestError("Lakebed rejected the atomic transfer. No inventory state changed.");
       }
-      if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) void requestInventorySave();
+      if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) void flushInventoryActions();
     } catch {
       setConnected(false);
       pending.transportFailures += 1;
@@ -2507,11 +2520,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     setChestOperationBusy(true);
     setChestRetryAvailable(false);
     setChestError("");
-    const inFlightSave = inventorySavePromiseRef.current;
-    if (inFlightSave) await inFlightSave;
-    for (let attempt = 0; attempt < 3 && currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current; attempt += 1) {
-      await requestInventorySave(true);
-    }
+    await flushInventoryActions();
     if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) {
       chestTransferActiveRef.current = false;
       setChestOperationBusy(false);
@@ -2562,6 +2571,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         setSleepStatus(detail);
         return;
       }
+      notify("Spawn point set", "Lakebed confirmed this bed as your authoritative respawn point.", "success");
       if (result.slept && result.clock) {
         engineRef.current?.setDayNightClock({
           cycleLengthMs: result.clock.cycleLengthMs,
@@ -2610,7 +2620,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   function enterWorld() {
     if (!profile) return;
     setJoinPhase("joining");
-    void requestInventorySave().then(() => window.setTimeout(() => {
+    void flushInventoryActions().then(() => window.setTimeout(() => {
       if (!hydratedRef.current || savedPresence === undefined) {
         setJoinPhase("waiting");
         return;
@@ -2628,7 +2638,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     if (joinPhase !== "waiting" || !inventoryReady || savedPresence === undefined || !profile) return;
     let cancelled = false;
     let timer = 0;
-    void requestInventorySave().then(() => {
+    void flushInventoryActions().then(() => {
       if (cancelled) return;
       setJoinPhase("ready");
       timer = window.setTimeout(() => {
@@ -2739,20 +2749,15 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           hydratedUserRef.current = "";
           inventoryTokenRef.current = "";
           inventoryRevisionRef.current = "0";
-          inventorySessionRef.current += 1;
+          inventoryAuthoritySessionRef.current += 1;
           lastCommittedPlayerJsonRef.current = "";
-          inventorySavePendingRef.current = false;
-          inventorySaveRetryCountRef.current = 0;
+          inventoryActionQueueRef.current.length = 0;
+          inventoryActionPromiseRef.current = null;
           appliedOwnCombatHealthRef.current = null;
           appliedOwnCombatRevisionRef.current = -1;
           respawnLeaseTransitionRef.current = false;
-          if (inventorySaveRetryTimerRef.current !== null) {
-            window.clearTimeout(inventorySaveRetryTimerRef.current);
-            inventorySaveRetryTimerRef.current = null;
-          }
           pendingChestTransferRef.current = null;
           pendingWorldBlockEditRef.current = null;
-          deferredMobDropsRef.current.length = 0;
           worldChunkRevisionRef.current.clear();
           authoritativeWorldEditRef.current.clear();
           latestSavedInventoryRef.current = undefined;
@@ -2804,7 +2809,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         onCrafted={handleCrafted}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         onDisconnect={() => {
-          void requestInventorySave();
+          void flushInventoryActions();
           void leavePlayer(String(Date.now())).catch(() => undefined);
           exitPointerLockForUi();
           setPauseOpen(false);
@@ -2833,7 +2838,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           setPauseOpen(false);
           engineRef.current?.requestPointerLock();
         }}
-        onSelectHotbar={(index) => setSelectedHotbar(clampHotbarIndex(index))}
+        onSelectHotbar={handleSelectHotbar}
         playerName={profile?.username ?? auth.displayName}
         pauseOpen={pauseOpen}
         players={playerListEntries}

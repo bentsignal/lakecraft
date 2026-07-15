@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { validatePlayerStateJson } from "../shared/chestTransfers.ts";
 import {
   CHEST_RECEIPT_OVERFLOW_PRUNE_LIMIT,
@@ -8,6 +9,15 @@ import {
   encodeChestTransferReceipt,
   selectChestTransferReceiptOverflow,
 } from "../server/chestTransferReceipts.ts";
+
+const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+const transferMutation = server.slice(
+  server.indexOf("transferChest: mutation"),
+  server.indexOf("claimUsername: mutation"),
+);
+assert.ok(transferMutation.includes("playerRows.length !== 1"), "a chest transfer requires the server-owned initialized inventory row");
+assert.ok(transferMutation.includes('reason: "inventory_required"'));
+assert.equal(transferMutation.includes("ctx.db.inventories.insert"), false, "a forged client ledger can never bootstrap through a chest");
 
 const stored = JSON.stringify([{ itemId: "stone", count: 4 }]);
 const canonical = validatePlayerStateJson(stored);

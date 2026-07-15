@@ -14,7 +14,6 @@ import {
   applyChestTransfer,
   decideChestTransferCas,
   decideChestTransferReplay,
-  isValidDurabilitySaveTransition,
   validateChestTransferRequestJson,
   validatePlayerStateJson
 } from "../shared/chestTransfers";
@@ -200,6 +199,18 @@ import {
   fallSupportBlockHasCollision,
   type FallProbeCell,
 } from "../shared/fallWorldProbe.ts";
+import {
+  INVENTORY_ACTION_RECEIPT_PRUNE_LIMIT,
+  INVENTORY_ACTION_RECEIPT_TTL_MS,
+  MAX_INVENTORY_ACTION_RECEIPTS_PER_USER,
+  applyInventoryAction as applyInventoryActionTransition,
+  createInitializedPlayerState,
+  decideInventoryActionReplay,
+  decodeInventoryActionReceipt,
+  encodeInventoryActionReceipt,
+  selectInventoryActionReceiptOverflow,
+  validateInventoryActionRequestJson,
+} from "../shared/inventoryActions.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -343,6 +354,26 @@ async function maintainPlayerCombatReceipts(
     .order("asc")
     .take(PLAYER_COMBAT_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.playerCombatReceipts.delete(receipt.id);
+}
+
+async function maintainInventoryActionReceipts(
+  db: WriteDatabase,
+  userId: string,
+  committedReceiptId: string,
+  now: number,
+): Promise<void> {
+  const newestReceipts = await db.inventoryActionReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(MAX_INVENTORY_ACTION_RECEIPTS_PER_USER + INVENTORY_ACTION_RECEIPT_PRUNE_LIMIT);
+  const overflowIds = selectInventoryActionReceiptOverflow(newestReceipts, committedReceiptId);
+  for (const receiptId of overflowIds) await db.inventoryActionReceipts.delete(receiptId);
+  const staleBefore = String(now - INVENTORY_ACTION_RECEIPT_TTL_MS);
+  const staleReceipts = await db.inventoryActionReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .order("asc")
+    .take(INVENTORY_ACTION_RECEIPT_PRUNE_LIMIT);
+  for (const receipt of staleReceipts) await db.inventoryActionReceipts.delete(receipt.id);
 }
 
 function databaseRowToChunkEdit(row: Record<string, unknown>): WorldChunkEditInput | null {
@@ -529,6 +560,53 @@ async function authoritativeFallWorldFacts(
   return { ok: true, supported, onLadder, chunkReads };
 }
 
+function parseInventoryWorkstationCoordinate(coordKey: string): { x: number; y: number; z: number } | null {
+  const match = /^(-?\d{1,7}):(-?\d{1,4}):(-?\d{1,7})$/.exec(coordKey);
+  if (!match) return null;
+  const [x, y, z] = match.slice(1).map(Number);
+  return Number.isSafeInteger(x) && x >= WORLD_EDIT_MIN_XZ && x <= WORLD_EDIT_MAX_XZ
+    && Number.isSafeInteger(y) && y >= WORLD_EDIT_MIN_Y && y <= WORLD_EDIT_MAX_Y
+    && Number.isSafeInteger(z) && z >= WORLD_EDIT_MIN_XZ && z <= WORLD_EDIT_MAX_XZ
+    ? { x, y, z }
+    : null;
+}
+
+async function authorizeInventoryCraftingTable(
+  db: WriteDatabase,
+  userId: string,
+  coordKey: string,
+  serverNow: number,
+): Promise<"ok" | "out_of_reach" | "crafting_table_required" | "invalid_state"> {
+  const coordinate = parseInventoryWorkstationCoordinate(coordKey);
+  if (!coordinate) return "crafting_table_required";
+  const presenceRows = await db.playerPresence
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(2);
+  if (presenceRows.length !== 1) return "out_of_reach";
+  const presence = presenceRows[0];
+  const pose = validatePresencePoseFields(presence.x, presence.y, presence.z, presence.yaw, presence.pitch);
+  const heartbeatAt = /^\d{1,16}$/.test(presence.heartbeatAt ?? "") ? Number(presence.heartbeatAt) : Number.NaN;
+  if (!pose || !presence.online || !Number.isFinite(heartbeatAt) || serverNow - heartbeatAt < 0
+    || serverNow - heartbeatAt > ACTIVE_PLAYER_WINDOW_MS
+    || Math.hypot(pose.x - (coordinate.x + 0.5), pose.y - (coordinate.y + 0.5), pose.z - (coordinate.z + 0.5)) > 6) {
+    return "out_of_reach";
+  }
+  const chunkKey = worldEditChunkKey(coordinate.x, coordinate.z);
+  const chunkRows = await db.worldChunks
+    .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+    .order("desc")
+    .take(2);
+  if (chunkRows.length > 1) return "invalid_state";
+  let block: BlockType = naturalWorldBlockAt(coordinate.x, coordinate.y, coordinate.z);
+  if (chunkRows.length === 1) {
+    const sampled = sampleWorldChunkSnapshot(chunkKey, chunkRows[0].snapshotJson, [coordinate]);
+    if (!sampled.ok) return "invalid_state";
+    block = sampled.blocks[0] ?? block;
+  }
+  return block === "crafting_table" ? "ok" : "crafting_table_required";
+}
+
 type FurnaceAuthorityView = {
   state: FurnaceState;
   revision: string;
@@ -665,6 +743,16 @@ export default capsule({
       inventoryJson: string(),
       revision: string().default("0")
     }).index("by_user", ["userId"]),
+
+    inventoryActionReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
 
     /** Bounded receipts make retried mining, placement, and door toggles exact-once. */
     worldBlockOperationReceipts: table({
@@ -1893,40 +1981,105 @@ export default capsule({
       });
     }),
 
-    saveInventory: mutation(async (ctx, inventoryJson: string, rawExpectedUpdatedAt?: string) => {
+    applyInventoryAction: mutation(async (ctx, requestJson: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", inventory: null };
+        return { ok: false, reason: "authentication_required" };
       }
-      const validation = validatePlayerStateJson(inventoryJson.trim());
-      if (!validation.ok) {
-        return { ok: false, reason: "invalid_inventory", detail: validation.reason, inventory: null };
+      const validation = validateInventoryActionRequestJson(requestJson);
+      if (!validation.ok) return {
+        ok: false,
+        reason: "invalid_request",
+        detail: validation.playerStateIssue ?? validation.reason,
+      };
+      const request = validation.request;
+      const receiptRows = await ctx.db.inventoryActionReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .take(2);
+      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      const receipt = receiptRows[0] ?? null;
+      const replay = decideInventoryActionReplay(receipt?.fingerprint ?? null, request.fingerprint);
+      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused" };
+      if (replay === "replay" && receipt) {
+        const payload = decodeInventoryActionReceipt(receipt.resultJson);
+        if (!payload) return { ok: false, reason: "invalid_state" };
+        const currentRows = await ctx.db.inventories
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .take(2);
+        if (currentRows.length !== 1 || storedRevision(currentRows[0].revision) === null) {
+          return { ok: false, reason: "invalid_state" };
+        }
+        return { ok: true, replayed: true, ...payload, inventory: currentRows[0] };
       }
-      const expectedUpdatedAt = normalizeChestToken(rawExpectedUpdatedAt ?? "");
-      if (expectedUpdatedAt === null) return { ok: false, reason: "invalid_token", inventory: null };
-      const existing = await ctx.db.inventories
+
+      const inventoryRows = await ctx.db.inventories
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
-        .first();
-      if ((existing?.updatedAt ?? null) === null) {
-        if (expectedUpdatedAt !== "") return { ok: false, reason: "conflict", inventory: null };
-      } else if (existing?.updatedAt !== expectedUpdatedAt) {
+        .take(2);
+      if (inventoryRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      const existing = inventoryRows[0] ?? null;
+      const currentRevision = storedRevision(existing?.revision);
+      if (currentRevision === null) return { ok: false, reason: "invalid_state" };
+      if (currentRevision !== request.expectedRevision) {
         return { ok: false, reason: "conflict", inventory: existing };
       }
-      if (existing) {
+
+      let effect;
+      if (request.action.kind === "initialize") {
+        if (existing) return { ok: false, reason: "already_initialized", inventory: existing };
+        const state = createInitializedPlayerState();
+        effect = {
+          ok: true as const,
+          state,
+          playerStateJson: JSON.stringify(state),
+          effect: "initialized" as const,
+        };
+      } else {
+        if (!existing) return { ok: false, reason: "inventory_required", inventory: null };
         const previous = validatePlayerStateJson(existing.inventoryJson);
-        if (!previous.ok || !isValidDurabilitySaveTransition(previous.state, validation.state)) {
-          return { ok: false, reason: "invalid_inventory", inventory: existing };
+        if (!previous.ok) return { ok: false, reason: "invalid_state" };
+        if (request.action.kind === "workspace_commit" && request.action.recipes.length > 0
+          && request.action.craftingContext === "crafting_table") {
+          const tableAuthority = await authorizeInventoryCraftingTable(
+            ctx.db,
+            ctx.auth.userId,
+            request.action.workstationCoordKey,
+            Date.now(),
+          );
+          if (tableAuthority !== "ok") return { ok: false, reason: tableAuthority, inventory: existing };
         }
+        effect = applyInventoryActionTransition(previous.state, request.action);
+        if (!effect.ok) return { ok: false, reason: effect.reason, inventory: existing };
       }
+      const revision = incrementStoredRevision(existing?.revision);
       const value = {
         userId: ctx.auth.userId,
-        inventoryJson: validation.playerStateJson,
-        revision: incrementStoredRevision(existing?.revision),
+        inventoryJson: effect.playerStateJson,
+        revision,
       };
       const inventory = existing
-        ? ctx.db.inventories.update(existing.id, value)
-        : ctx.db.inventories.insert(value);
-      return { ok: true, inventory: await inventory };
+        ? await ctx.db.inventories.update(existing.id, value)
+        : await ctx.db.inventories.insert(value);
+      if (!inventory) throw new Error("Unable to persist an authoritative inventory action.");
+      const payload = {
+        effect: effect.effect,
+        ...(effect.consumed ? { consumed: effect.consumed } : {}),
+        ...(effect.restored !== undefined ? { restored: effect.restored } : {}),
+        ...(effect.crafted ? { crafted: effect.crafted } : {}),
+      };
+      const committedAt = Date.now();
+      const committedReceipt = await ctx.db.inventoryActionReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        resultJson: encodeInventoryActionReceipt(payload),
+        receiptCreatedAt: String(committedAt),
+      });
+      await maintainInventoryActionReceipts(ctx.db, ctx.auth.userId, committedReceipt.id, committedAt);
+      return { ok: true, replayed: false, ...payload, inventory };
     }),
 
     dropItem: mutation(async (ctx, requestJson: string) => {
@@ -1957,10 +2110,12 @@ export default capsule({
       const position = authoritativeDroppedItemPosition(presence, ctx.auth.userId, serverNow);
       if (!position) return { ok: false, reason: "active_presence_required" };
 
-      const existingPlayer = await ctx.db.inventories
+      const playerRows = await ctx.db.inventories
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
-        .first();
+        .take(2);
+      if (playerRows.length !== 1) return { ok: false, reason: "inventory_required" };
+      const existingPlayer = playerRows[0];
       if (!existingPlayer) return { ok: false, reason: "inventory_required" };
       if (decideDroppedItemInventoryCas(existingPlayer.updatedAt, request.expectedInventoryUpdatedAt) !== "apply") {
         return { ok: false, reason: "conflict", inventory: existingPlayer };
@@ -2348,16 +2503,18 @@ export default capsule({
         return { ok: false, reason: "chest_required" };
       }
 
-      const existingPlayer = await ctx.db.inventories
+      const playerRows = await ctx.db.inventories
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
-        .first();
+        .take(2);
+      if (playerRows.length !== 1) return { ok: false, reason: "inventory_required" };
+      const existingPlayer = playerRows[0];
       const existingChest = await ctx.db.chests
         .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
         .order("desc")
         .first();
       const cas = decideChestTransferCas(
-        existingPlayer?.updatedAt ?? null,
+        existingPlayer.updatedAt,
         existingChest?.updatedAt ?? null,
         request.expectedInventoryUpdatedAt,
         request.expectedChestUpdatedAt
@@ -2366,24 +2523,22 @@ export default capsule({
         const conflict = cas === "inventory_conflict"
           ? "inventory"
           : cas === "chest_conflict" ? "chest" : "both";
-        return { ok: false, reason: "conflict", conflict, player: existingPlayer ?? null, chest: existingChest ?? null };
+        return { ok: false, reason: "conflict", conflict, player: existingPlayer, chest: existingChest ?? null };
       }
 
-      if (existingPlayer) {
-        const playerStateDecision = compareStoredPlayerState(
-          existingPlayer.inventoryJson,
-          request.canonicalPlayerStateJson
-        );
-        if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
-        if (playerStateDecision === "mismatch") {
-          return {
-            ok: false,
-            reason: "conflict",
-            conflict: "inventory",
-            player: existingPlayer,
-            chest: existingChest ?? null
-          };
-        }
+      const playerStateDecision = compareStoredPlayerState(
+        existingPlayer.inventoryJson,
+        request.canonicalPlayerStateJson
+      );
+      if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
+      if (playerStateDecision === "mismatch") {
+        return {
+          ok: false,
+          reason: "conflict",
+          conflict: "inventory",
+          player: existingPlayer,
+          chest: existingChest ?? null
+        };
       }
 
       const chestValidation = validateChestInventoryJson(existingChest?.inventoryJson ?? "[]");
@@ -2395,16 +2550,14 @@ export default capsule({
       const playerValue = {
         userId: ctx.auth.userId,
         inventoryJson: nextPlayerJson,
-        revision: incrementStoredRevision(existingPlayer?.revision),
+        revision: incrementStoredRevision(existingPlayer.revision),
       };
       const chestValue = {
         coordKey: request.coordKey,
         inventoryJson: nextChestJson,
         lastActorId: ctx.auth.userId
       };
-      const player = existingPlayer
-        ? await ctx.db.inventories.update(existingPlayer.id, playerValue)
-        : await ctx.db.inventories.insert(playerValue);
+      const player = await ctx.db.inventories.update(existingPlayer.id, playerValue);
       const chest = existingChest
         ? await ctx.db.chests.update(existingChest.id, chestValue)
         : await ctx.db.chests.insert(chestValue);
@@ -3129,6 +3282,25 @@ export default capsule({
         serverNow,
       });
       if (!resolution.ok) return { ...resolution, serverNow };
+      const weaponUse = applyConfirmedToolUse(
+        attackerPlayerState.state.inventory,
+        attackerPlayerState.state.selectedHotbar,
+        "attack",
+        resolution.weaponItemId,
+      );
+      let persistedAttackerInventory = attackerInventoryRow;
+      if (weaponUse.used) {
+        const updatedAttackerInventory = await ctx.db.inventories.update(attackerInventoryRow.id, {
+          userId: ctx.auth.userId,
+          inventoryJson: JSON.stringify({
+            ...attackerPlayerState.state,
+            inventory: weaponUse.inventory,
+          }),
+          revision: incrementStoredRevision(attackerInventoryRow.revision),
+        });
+        if (!updatedAttackerInventory) throw new Error("Unable to persist authoritative PvP weapon wear.");
+        persistedAttackerInventory = updatedAttackerInventory;
+      }
       let targetInventoryRevision = targetInventoryRow.revision;
       if (targetSurvival.hungerChanged || resolution.armorDamaged.length > 0) {
         const updatedTargetInventory = await ctx.db.inventories.update(targetInventoryRow.id, {
@@ -3151,6 +3323,10 @@ export default capsule({
         ...resolution,
         replayed: false,
         serverNow,
+        attackerInventory: persistedAttackerInventory,
+        attackerInventoryRevision: persistedAttackerInventory.revision,
+        weaponDamaged: weaponUse.used,
+        weaponBroken: weaponUse.broke,
         targetInventoryRevision,
       };
       const receipt = await ctx.db.playerCombatReceipts.insert({

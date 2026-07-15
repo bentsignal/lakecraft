@@ -16,7 +16,11 @@ assert.ok(drawer.includes("setDisplayFurnace(projected.state)"), "smooth progres
 assert.ok(app.includes("setActiveFurnaceKey(key)"));
 assert.equal(app.includes("function handleSmelt("), false, "instant local batch smelting is removed");
 const handler = app.slice(app.indexOf("async function handleFurnaceTransfer"), app.indexOf("function handleUseItem"));
-assert.ok(handler.includes("await requestInventorySave(false, false, true)"));
+assert.ok(handler.includes("await flushInventoryActions()"));
+assert.ok(
+  handler.indexOf("await flushInventoryActions()") < handler.indexOf("operateFurnace(JSON.stringify"),
+  "all bounded inventory actions commit before the atomic furnace transfer",
+);
 assert.ok(handler.includes("currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current"));
 assert.ok(handler.includes("Your pack is still saving"));
 assert.ok(handler.includes("expectedInventoryUpdatedAt: inventoryTokenRef.current"));
@@ -24,6 +28,7 @@ assert.ok(handler.includes("expectedFurnaceRevision: authority.revision"));
 assert.ok(handler.includes("expectedBlockInstanceToken: authority.blockInstanceToken"));
 assert.ok(handler.includes("loadCanonicalPlayer(result.player)"));
 assert.equal(handler.includes("updateInventory("), false, "furnace transfers never grant optimistic local items");
+assert.equal(app.includes("requestInventorySave"), false, "legacy client-trusted inventory saves stay removed");
 
 const keyHandler = app.slice(app.indexOf('if (event.code === "KeyQ"'), app.indexOf('if ((event.code === "KeyT"'));
 assert.ok(keyHandler.includes("if (inventoryOpen || furnaceOpen) return;"), "Q cannot drop items behind the furnace modal");

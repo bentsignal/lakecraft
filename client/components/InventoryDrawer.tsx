@@ -32,6 +32,11 @@ import {
   type InventoryWorkspaceActionResult,
   type StowedInventorySnapshot,
 } from "../../shared/inventoryWorkspace";
+import {
+  MAX_INVENTORY_ACTION_CRAFTS,
+  MAX_INVENTORY_ACTION_RECIPE_BATCHES,
+  type InventoryRecipeBatch,
+} from "../../shared/inventoryActions";
 import { CraftingGridView } from "./CraftingGrid";
 import { ItemGlyph } from "./ItemGlyph";
 
@@ -45,7 +50,11 @@ export type InventoryCraftingDrawerProps = {
   recipes?: readonly Recipe[];
   onClose: () => void;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
-  onWorkspaceChange: (snapshot: StowedInventorySnapshot, expectedAuthorityEpoch: number) => boolean;
+  onWorkspaceChange: (
+    snapshot: StowedInventorySnapshot,
+    expectedAuthorityEpoch: number,
+    recipes: readonly InventoryRecipeBatch[],
+  ) => boolean;
 };
 
 export function InventoryCraftingDrawer({
@@ -66,6 +75,7 @@ export function InventoryCraftingDrawer({
   const [interactionError, setInteractionError] = useState("");
   const stateRef = useRef(workspace);
   const doubleClickBaseRef = useRef<InventoryWorkspace | null>(null);
+  const recipeBatchesRef = useRef<InventoryRecipeBatch[]>([]);
   const authorityEpochRef = useRef(authorityEpoch);
   const wasOpenRef = useRef(open);
   const displayedRecipes = recipes ?? availableRecipes(craftingContext);
@@ -81,6 +91,7 @@ export function InventoryCraftingDrawer({
     replaceWorkspace(createInventoryWorkspace(inventory, equipment, size));
     authorityEpochRef.current = authorityEpoch;
     doubleClickBaseRef.current = null;
+    recipeBatchesRef.current = [];
     setInteractionError(message);
   }
 
@@ -110,13 +121,33 @@ export function InventoryCraftingDrawer({
       setInteractionError("No room for the crafted stack. Clear a slot first.");
       return false;
     }
-    if (!onWorkspaceChange(stowed.snapshot, authorityEpochRef.current)) {
-      resetFromAuthority("Your Lakebed inventory changed. The latest pack was reloaded.");
-      return false;
-    }
     setInteractionError("");
     replaceWorkspace(next);
     return true;
+  }
+
+  function recordRecipeBatch(recipeId: string, crafts: number): boolean {
+    const batches = recipeBatchesRef.current;
+    const totalCrafts = batches.reduce((total, batch) => total + batch.crafts, 0);
+    const last = batches[batches.length - 1];
+    const batchCount = last?.recipeId === recipeId ? batches.length : batches.length + 1;
+    if (totalCrafts + crafts > MAX_INVENTORY_ACTION_CRAFTS
+      || batchCount > MAX_INVENTORY_ACTION_RECIPE_BATCHES) {
+      setInteractionError("Close the inventory to save these crafts before making more.");
+      return false;
+    }
+    recipeBatchesRef.current = last?.recipeId === recipeId
+      ? [...batches.slice(0, -1), { recipeId, crafts: last.crafts + crafts }]
+      : [...batches, { recipeId, crafts }];
+    return true;
+  }
+
+  function publishCraft(next: InventoryWorkspace, recipeId: string, crafts: number): boolean {
+    const previousBatches = recipeBatchesRef.current;
+    if (!recordRecipeBatch(recipeId, crafts)) return false;
+    if (publish(next)) return true;
+    recipeBatchesRef.current = previousBatches;
+    return false;
   }
 
   function apply(result: InventoryWorkspaceActionResult, preserveDoubleClickBase = false) {
@@ -126,14 +157,22 @@ export function InventoryCraftingDrawer({
 
   function closeAndStow() {
     const stowed = stowInventoryWorkspace(stateRef.current);
-    if (stowed.ok) onWorkspaceChange(stowed.snapshot, authorityEpochRef.current);
+    if (!stowed.ok) {
+      setInteractionError("No room to stow the held items. Clear a slot first.");
+      return;
+    }
+    if (!onWorkspaceChange(stowed.snapshot, authorityEpochRef.current, recipeBatchesRef.current)) {
+      resetFromAuthority("Your Lakebed inventory changed. The latest pack was reloaded.");
+      return;
+    }
+    recipeBatchesRef.current = [];
     onClose();
   }
 
   function takeOutput(shiftAll: boolean) {
     if (!shiftAll) {
       const result = takeWorkspaceCraftingResult(stateRef.current);
-      if (!result.ok || !publish(result.state)) return;
+      if (!result.ok || !publishCraft(result.state, result.recipeId, 1)) return;
       const recipe = displayedRecipes.find(({ id }) => id === result.recipeId)
         ?? RECIPES.find(({ id }) => id === result.recipeId);
       if (recipe) onCrafted(recipe, result.crafted.count);
@@ -141,7 +180,7 @@ export function InventoryCraftingDrawer({
     }
 
     const result = takeAllWorkspaceCraftingResultsToInventory(stateRef.current);
-    if (!result.ok || !publish(result.state)) return;
+    if (!result.ok || !publishCraft(result.state, result.recipeId, result.crafted.batches)) return;
     const recipe = displayedRecipes.find(({ id }) => id === result.recipeId)
       ?? RECIPES.find(({ id }) => id === result.recipeId);
     if (recipe) onCrafted(recipe, result.crafted.count);

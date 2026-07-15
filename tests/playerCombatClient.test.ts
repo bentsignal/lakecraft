@@ -21,9 +21,10 @@ const callback = client.slice(
 );
 assert.ok(callback.length > 0);
 assert.ok(
-  callback.indexOf("requestInventorySave()") < callback.indexOf("attackPlayer(JSON.stringify"),
-  "persisted selected inventory must be synchronized before the authoritative hit request",
+  callback.indexOf("flushInventoryActions()") < callback.indexOf("attackPlayer(JSON.stringify"),
+  "the revisioned inventory action queue must flush before the authoritative hit request",
 );
+assert.ok(callback.includes("if (result.attackerInventory) loadCanonicalPlayer(result.attackerInventory)"), "PvP weapon wear reconciles from the same Lakebed transaction");
 assert.equal(callback.includes("damage:"), false, "the client must not submit damage authority");
 assert.equal(callback.includes("target.distance"), false, "the client must not submit its own reach claim");
 

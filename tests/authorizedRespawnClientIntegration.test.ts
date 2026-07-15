@@ -27,6 +27,13 @@ assert.equal(deathFlow.includes("engineRef.current?.respawn()"), false);
 assert.ok(deathFlow.includes("engineRef.current.setPlayerHealth(ownState.health)"), "health is reconciled absolutely from Lakebed combat state");
 assert.ok(authorization.includes("loadCanonicalPlayer(result.inventory)"), "respawn hunger comes from the committed server snapshot");
 assert.ok(authorization.includes("presenceSessionIdRef.current = result.sessionId"), "respawn adopts the server-rotated lease before moving");
+const bedInteraction = client.slice(
+  client.indexOf("if (target.block.block === BLOCK.BED)"),
+  client.indexOf("chestTransferActiveRef.current = false", client.indexOf("if (target.block.block === BLOCK.BED)")),
+);
+assert.equal(bedInteraction.includes("setRespawnPoint"), false, "bed spawn metadata is never forged into the inventory envelope locally");
+assert.equal(bedInteraction.includes("respawnPointRef.current ="), false);
+assert.ok(client.includes("Lakebed confirmed this bed as your authoritative respawn point."));
 
 assert.equal(client.includes("pendingRespawnAuthorizationRef"), false);
 assert.ok(authorization.includes("result.retryAfterMs ?? 2_000"));

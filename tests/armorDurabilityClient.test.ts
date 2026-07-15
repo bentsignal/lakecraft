@@ -13,7 +13,7 @@ assert.ok(updateEquipment.includes("setEquipment(next)"));
 
 const canonicalLoad = client.slice(
   client.indexOf("function loadCanonicalPlayer("),
-  client.indexOf("function requestInventorySave", client.indexOf("function loadCanonicalPlayer(")),
+  client.indexOf("function enqueueInventoryAction", client.indexOf("function loadCanonicalPlayer(")),
 );
 assert.ok(canonicalLoad.includes("validatePlayerStateJson(row.inventoryJson)"), "canonical loads fail closed instead of clamping corrupt armor");
 assert.equal(canonicalLoad.includes("parseSerializablePlayerStateJson"), false);
@@ -42,7 +42,7 @@ const saveConflictReconciliation = client.slice(
 );
 assert.ok(
   saveConflictReconciliation.includes("loadCanonicalPlayer(result.inventory, true)"),
-  "a concurrent PvP break is still announced when it races a local inventory save",
+  "a concurrent PvP break is still announced when it races a revisioned inventory action",
 );
 
 const equipHandler = client.slice(

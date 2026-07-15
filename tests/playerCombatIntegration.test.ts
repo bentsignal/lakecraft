@@ -16,6 +16,12 @@ for (const required of [
   "validatePlayerStateJson(attackerInventoryRow.inventoryJson)",
   "validatePlayerStateJson(targetInventoryRow.inventoryJson",
   "resolution.armorDamaged.length > 0",
+  "const weaponUse = applyConfirmedToolUse(",
+  "inventory: weaponUse.inventory",
+  "attackerInventory: persistedAttackerInventory",
+  "attackerInventoryRevision: persistedAttackerInventory.revision",
+  "weaponDamaged: weaponUse.used",
+  "weaponBroken: weaponUse.broke",
   "equipment: resolution.targetEquipment",
   "targetInventoryRevision",
   "resolvePlayerAttack({",
@@ -47,6 +53,10 @@ assert.equal(
   (mutation.match(/ctx\.db\.playerCombat\.(?:update|insert)/g) ?? []).length,
   4,
   "both attacker cooldown and target health are transactionally upserted",
+);
+assert.ok(
+  mutation.indexOf("ctx.db.inventories.update(attackerInventoryRow.id") < mutation.indexOf("ctx.db.playerCombatReceipts.insert"),
+  "attacker weapon wear and breakage must persist before the exact-once receipt",
 );
 assert.ok(
   mutation.indexOf("ctx.db.inventories.update(targetInventoryRow.id") < mutation.indexOf("ctx.db.playerCombatReceipts.insert"),

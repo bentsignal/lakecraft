@@ -7,6 +7,7 @@ import {
   type Recipe,
 } from "../../shared/game";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
+import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
 import { FirstPersonHeldItem } from "./FirstPersonHeldItem";
@@ -37,7 +38,11 @@ export type GameHudProps = {
   players?: readonly PlayerListEntry[];
   onSelectHotbar: (index: number) => void;
   inventoryAuthorityEpoch: number;
-  onInventoryWorkspaceChange: (snapshot: StowedInventorySnapshot, expectedAuthorityEpoch: number) => boolean;
+  onInventoryWorkspaceChange: (
+    snapshot: StowedInventorySnapshot,
+    expectedAuthorityEpoch: number,
+    recipes: readonly InventoryRecipeBatch[],
+  ) => boolean;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
   onCloseInventory: () => void;
   onResume?: () => void;

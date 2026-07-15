@@ -90,7 +90,7 @@ assert.ok(sleep.includes("ownPresences.length !== 1"));
 assert.ok(sleep.includes(") > 6) return"), "bed home requires authoritative presence within reach");
 assert.ok(sleep.indexOf("validatePresencePoseFields(") < sleep.indexOf("playerRespawns.update"));
 
-const leave = server.slice(server.indexOf("leavePlayer: mutation"), server.indexOf("saveInventory: mutation"));
+const leave = server.slice(server.indexOf("leavePlayer: mutation"), server.indexOf("applyInventoryAction: mutation"));
 assert.ok(server.includes("sessionId: string().default"));
 assert.ok(server.includes('poseSequence: string().default("0")'));
 assert.ok(server.includes('sessionId: ""'), "leave revokes the session lease");
@@ -114,6 +114,19 @@ assert.ok(client.includes("startPresenceSession(presenceSessionIdRef.current)"))
 assert.ok(client.includes("void leavePlayer(activeSessionId)"));
 assert.ok(client.includes("engineRef.current?.reconcilePose(canonicalPose)"));
 assert.ok(client.includes("Object.assign(scheduler, createPresenceSchedulerState())"));
+
+const inventoryAction = server.slice(
+  server.indexOf("applyInventoryAction: mutation"),
+  server.indexOf("dropItem: mutation"),
+);
+assert.ok(inventoryAction.includes("validateInventoryActionRequestJson(requestJson)"));
+assert.ok(inventoryAction.includes("decideInventoryActionReplay("), "actions are replay-safe before any write");
+assert.ok(inventoryAction.includes("currentRevision !== request.expectedRevision"), "actions use revision CAS");
+assert.ok(inventoryAction.includes("applyInventoryActionTransition(previous.state, request.action)"), "item deltas are derived by the shared authority reducer");
+assert.ok(inventoryAction.includes("createInitializedPlayerState()"), "starter inventory is selected by the server");
+assert.ok(inventoryAction.includes('reason: tableAuthority, inventory: existing'), "rejected table crafts return canonical state for rollback");
+assert.equal(server.includes("saveInventory: mutation"), false, "generic client-trusted inventory mutation stays removed");
+assert.equal(client.includes('>("saveInventory")'), false, "the client cannot call the removed minting boundary");
 
 console.log(JSON.stringify({
   benchmark: "server-authorized relocation event envelope",
