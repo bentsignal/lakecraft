@@ -15,6 +15,13 @@ assert.ok(source.includes("presenceTransportQuotaResetAt(error"), "Lakebed reset
 assert.ok(source.includes("reservePresenceAttempt(guard, attemptedAt, false)"), "session start retries share the same budget guard");
 assert.ok(source.includes("writesInFlight >= PRESENCE_MAX_IN_FLIGHT_WRITES"), "two bounded in-flight writes prevent RTT from halving cadence");
 assert.ok(source.includes("pendingPresenceSample"), "slow transport coalesces only the latest pose instead of growing a queue");
+assert.ok(source.includes("presenceNextPoseSequenceRef.current = 1"), "each presence lease owns one monotonic sequence");
+assert.ok(source.indexOf("const poseSequence = presenceNextPoseSequenceRef.current") > source.indexOf("reservePresenceAttempt(guard, at, realtime)"), "sequence allocation happens only after scheduler and budget admission");
+assert.ok(source.includes("persistPresenceBurstGuard(auth.userId, guard);"), "budget reservation is durable before transport starts");
+assert.ok(source.includes("respawnLeaseTransitionRef.current || heartbeatSessionId !== presenceSessionIdRef.current"), "a lost respawn response cannot cancel its presence loop before lease replay");
+assert.ok(!source.includes("result.inventory && !loadCanonicalPlayer"), "heartbeat responses cannot roll newer inventory mutations backward");
+assert.ok(!source.includes("result.health ==="), "heartbeat responses cannot roll newer combat revisions backward");
+assert.ok(source.includes("if (cancelled) return;"), "callbacks from a replaced presence effect cannot mutate current UI state");
 assert.ok(source.includes("<ErrorBoundary fallback="), "query-level quota errors are caught inside Lakebed's generated boundary");
 assert.ok(source.includes("<GameApp inWorld={inWorld}"), "query recovery retains the joined-world state above the remount boundary");
 assert.ok(source.includes("!quota ? <button"), "known quota pause cannot be bypassed into a manual query retry storm");

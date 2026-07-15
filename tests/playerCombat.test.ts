@@ -249,8 +249,8 @@ assert.equal(duplicateDeath.ok, false);
 if (!duplicateDeath.ok) assert.equal(duplicateDeath.reason, "target_dead");
 assert.equal(materializePlayerCombatState(fatal.targetRow, "bob", fatal.targetState.deadUntil - 1).health, 0);
 const respawned = materializePlayerCombatState(fatal.targetRow, "bob", fatal.targetState.deadUntil);
-assert.equal(respawned.health, 20);
-assert.equal(respawned.deadUntil, 0);
+assert.equal(respawned.health, 0, "timer expiry alone never revives a player without a revisioned mutation");
+assert.equal(respawned.deadUntil, fatal.targetState.deadUntil);
 assert.equal(respawned.revision, 9);
 
 const deadAttacker = storedPlayerCombatRow({

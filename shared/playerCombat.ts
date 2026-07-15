@@ -202,11 +202,11 @@ export function defaultPlayerCombatState(userId: string): PlayerCombatState {
   };
 }
 
-/** Death expiry materializes as a full-health respawn without timer/background writes. */
+/** Reads canonical combat state. Respawn is exclusively a revisioned server mutation. */
 export function materializePlayerCombatState(
   stored: StoredPlayerCombatState | null | undefined,
   userId: string,
-  serverNow: number,
+  _serverNow: number,
 ): PlayerCombatState {
   const fallback = defaultPlayerCombatState(userId);
   if (!stored || stored.userId !== userId) return fallback;
@@ -214,9 +214,6 @@ export function materializePlayerCombatState(
   const revision = finiteStoredInteger(stored.revision, 0, Number.MAX_SAFE_INTEGER, 0);
   const deadUntil = finiteStoredInteger(stored.deadUntil, 0, Number.MAX_SAFE_INTEGER, 0);
   const lastAttackAt = finiteStoredInteger(stored.lastAttackAt, 0, Number.MAX_SAFE_INTEGER, 0);
-  if (health === 0 && deadUntil <= serverNow) {
-    return { ...fallback, revision, lastAttackAt, lastAttackerId: stored.lastAttackerId.slice(0, 128) };
-  }
   return {
     userId,
     health,

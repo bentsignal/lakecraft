@@ -84,6 +84,7 @@ import {
 } from "../shared/mobCombat";
 import {
   encodePresenceVelocityFields,
+  parsePresenceVelocityFields,
   validatePresenceVelocityFields
 } from "../shared/presenceMotion";
 import {
@@ -113,6 +114,7 @@ import {
 import {
   buildPresenceRelocationGrant,
   buildOfflinePresenceValue,
+  decidePresenceSequence,
   decidePresenceTrajectory,
   decidePresenceWriteGate,
   validatePresencePoseFields,
@@ -181,6 +183,10 @@ import {
   selectFurnaceReceiptOverflow,
   validateFurnaceTransferRequestJson,
 } from "./furnaceReceipts.ts";
+import {
+  activityHalfUnitsForDisplacement,
+  advanceAuthoritativeSurvival,
+} from "../shared/survivalAuthority.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -200,6 +206,23 @@ function trailheadPoseForUser(userId: string) {
 
 function validPresenceSessionId(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9-]{20,64}$/i.test(value);
+}
+
+function nextPresenceSequenceValue(value: unknown): string | null {
+  if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed < Number.MAX_SAFE_INTEGER
+    ? String(parsed + 1)
+    : null;
+}
+
+function storedPresenceActivityHalfUnits(row: Record<string, unknown>): 1 | 2 | 4 | 6 {
+  const velocity = parsePresenceVelocityFields(row);
+  return activityHalfUnitsForDisplacement(
+    { x: 0, y: 0, z: 0 },
+    { x: velocity.vx, y: velocity.vy, z: velocity.vz },
+    1_000,
+  );
 }
 
 function storedRespawnGrant(row: Record<string, unknown> | null): PresenceRelocationGrant | null {
@@ -521,6 +544,11 @@ export default capsule({
       armorLegs: string().default(""),
       armorFeet: string().default(""),
       sessionId: string().default(""),
+      poseSequence: string().default("0"),
+      survivalAt: string().default("0"),
+      hungerProgressHalfMs: string().default("0"),
+      recoveryProgressMs: string().default("0"),
+      starvationProgressMs: string().default("0"),
       heartbeatAt: string(),
       online: boolean().default(true)
     })
@@ -1086,11 +1114,6 @@ export default capsule({
       }
 
       const serverNow = Date.now();
-      const profile = await ctx.db.profiles
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
-        .order("desc")
-        .first();
-      if (!profile) return { ok: false, reason: "profile_required" };
       const presence = await ctx.db.playerPresence
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
@@ -1250,30 +1273,6 @@ export default capsule({
       }
       if (minedFurnaceRow) await ctx.db.furnaces.delete(minedFurnaceRow.id as string);
 
-      if (!presence) throw new Error("Active presence disappeared during world edit.");
-      const presenceValue = {
-        userId: ctx.auth.userId,
-        displayName: profile.username,
-        color: presence.color,
-        x: String(pose.x),
-        y: String(pose.y),
-        z: String(pose.z),
-        yaw: String(pose.yaw),
-        pitch: String(pose.pitch),
-        vx: presence.vx ?? "0",
-        vy: presence.vy ?? "0",
-        vz: presence.vz ?? "0",
-        heldItem: presence.heldItem ?? "",
-        armorHead: presence.armorHead ?? "",
-        armorChest: presence.armorChest ?? "",
-        armorLegs: presence.armorLegs ?? "",
-        armorFeet: presence.armorFeet ?? "",
-        heartbeatAt: String(serverNow),
-        online: true,
-      };
-      const updatedPresence = await ctx.db.playerPresence.update(presence.id, presenceValue);
-      if (!updatedPresence) throw new Error("Unable to persist authoritative action presence.");
-
       const result: WorldBlockOperationReceiptResult = {
         ok: true,
         replayed: false,
@@ -1331,18 +1330,68 @@ export default capsule({
       for (const row of rows) {
         if (!keeper || row.id !== keeper.id) await ctx.db.playerPresence.delete(row.id);
       }
-      if (keeper) await ctx.db.playerPresence.update(keeper.id, { sessionId: rawSessionId });
+      const trailhead = trailheadPoseForUser(ctx.auth.userId);
+      const keeperPose = keeper
+        ? validatePresencePoseFields(keeper.x, keeper.y, keeper.z, keeper.yaw, keeper.pitch)
+        : null;
+      const sameSession = keeper?.sessionId === rawSessionId;
+      const nextStoredPoseSequence = nextPresenceSequenceValue(keeper?.poseSequence ?? "0");
+      if (sameSession && nextStoredPoseSequence === null) return { ok: false, reason: "invalid_or_exhausted_sequence_state" };
+      const poseSequence = sameSession ? keeper?.poseSequence ?? "0" : "0";
+      if (keeper) {
+        if (!sameSession) {
+          await ctx.db.playerPresence.update(keeper.id, {
+            sessionId: rawSessionId,
+            poseSequence: "0",
+            vx: "0",
+            vy: "0",
+            vz: "0",
+            survivalAt: String(Date.now()),
+            heartbeatAt: "0",
+            online: false,
+          });
+        }
+      } else {
+        await ctx.db.playerPresence.insert({
+          userId: ctx.auth.userId,
+          displayName: "",
+          color: "#8fbf79",
+          x: String(trailhead.x),
+          y: String(trailhead.y),
+          z: String(trailhead.z),
+          yaw: String(trailhead.yaw),
+          pitch: String(trailhead.pitch),
+          vx: "0",
+          vy: "0",
+          vz: "0",
+          heldItem: "",
+          armorHead: "",
+          armorChest: "",
+          armorLegs: "",
+          armorFeet: "",
+          sessionId: rawSessionId,
+          poseSequence: "0",
+          survivalAt: String(Date.now()),
+          hungerProgressHalfMs: "0",
+          recoveryProgressMs: "0",
+          starvationProgressMs: "0",
+          heartbeatAt: "0",
+          online: false,
+        });
+      }
       return {
         ok: true,
         resetToTrailhead: rows.length > 0 && !keeper,
-        spawnPose: keeper ? null : trailheadPoseForUser(ctx.auth.userId),
+        spawnPose: keeperPose ?? trailhead,
+        nextPoseSequence: sameSession ? nextStoredPoseSequence : "1",
       };
     }),
 
-    authorizeRespawn: mutation(async (ctx) => {
+    authorizeRespawn: mutation(async (ctx, rawSessionId: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
         return { ok: false, reason: "authentication_required" };
       }
+      if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: "invalid_session" };
       const serverNow = Date.now();
       const presenceRows = await ctx.db.playerPresence
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
@@ -1356,28 +1405,41 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .take(2);
-      if (presenceRows.length !== 1 || respawnRows.length > 1 || combatRows.length > 1) {
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (presenceRows.length !== 1 || respawnRows.length > 1 || combatRows.length > 1 || inventoryRows.length !== 1) {
         return { ok: false, reason: "duplicate_or_missing_state" };
       }
       const presence = presenceRows[0];
       const heartbeatAt = /^\d{1,16}$/.test(presence.heartbeatAt) ? Number(presence.heartbeatAt) : Number.NaN;
-      if (!presence.online || !Number.isFinite(heartbeatAt) || serverNow - heartbeatAt < 0
-        || serverNow - heartbeatAt > ACTIVE_PLAYER_WINDOW_MS) {
-        return { ok: false, reason: "active_presence_required" };
-      }
+      const presenceIsActive = presence.online && Number.isFinite(heartbeatAt) && serverNow - heartbeatAt >= 0
+        && serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS;
       const existingRespawn = respawnRows[0] ?? null;
       const combatRow = combatRows[0] ?? null;
+      const inventoryRow = inventoryRows[0];
+      const respawnInventory = validatePlayerStateJson(inventoryRow.inventoryJson);
+      if (!respawnInventory.ok || storedRevision(inventoryRow.revision) === null) {
+        return { ok: false, reason: "invalid_inventory_state" };
+      }
       const activeGrant = storedRespawnGrant(existingRespawn);
+      const replaySessionId = activeGrant ? `${rawSessionId.slice(0, 36)}-${activeGrant.epoch}` : "";
+      if (presence.sessionId !== rawSessionId && presence.sessionId !== replaySessionId) {
+        return { ok: false, reason: "session_mismatch" };
+      }
       if (activeGrant) {
         const issuedAt = Number(activeGrant.issuedAt);
         const expiresAt = Number(activeGrant.expiresAt);
-        if (/^\d{1,16}$/.test(activeGrant.epoch)
+        const consumedAt = Number(activeGrant.consumedAt);
+        const structurallyValidGrant = /^\d{1,16}$/.test(activeGrant.epoch)
           && Number.isSafeInteger(issuedAt)
           && Number.isSafeInteger(expiresAt)
           && issuedAt <= serverNow
-          && expiresAt > serverNow
           && expiresAt > issuedAt
-          && expiresAt - issuedAt <= RESPAWN_AUTHORIZATION_COOLDOWN_MS) {
+          && expiresAt - issuedAt <= RESPAWN_AUTHORIZATION_COOLDOWN_MS;
+        if (structurallyValidGrant && activeGrant.consumedAt
+          && Number.isSafeInteger(consumedAt) && consumedAt >= issuedAt && consumedAt <= expiresAt) {
           const target = validatePresencePoseFields(
             activeGrant.x,
             activeGrant.y,
@@ -1395,10 +1457,23 @@ export default capsule({
           if (combatRow && combatRow.health !== "0" && target && activeGrant.consumedAt && currentPose
             && target.x === currentPose.x && target.y === currentPose.y && target.z === currentPose.z
             && target.yaw === currentPose.yaw && target.pitch === currentPose.pitch) {
-            return { ok: true, target, epoch: activeGrant.epoch, expiresAt };
+            const nextPoseSequence = nextPresenceSequenceValue(presence.poseSequence);
+            if (!validPresenceSessionId(presence.sessionId) || nextPoseSequence === null) {
+              return { ok: false, reason: "invalid_presence_state" };
+            }
+            return {
+              ok: true,
+              target,
+              epoch: activeGrant.epoch,
+              expiresAt,
+              inventory: inventoryRow,
+              sessionId: presence.sessionId,
+              nextPoseSequence,
+            };
           }
         }
       }
+      if (!presenceIsActive) return { ok: false, reason: "active_presence_required" };
       if (!combatRow || combatRow.health !== "0") return { ok: false, reason: "authoritative_death_required" };
       const deadUntil = /^\d{1,16}$/.test(combatRow.deadUntil) ? Number(combatRow.deadUntil) : Number.NaN;
       if (!Number.isSafeInteger(deadUntil) || deadUntil <= 0) return { ok: false, reason: "invalid_combat_state" };
@@ -1421,6 +1496,8 @@ export default capsule({
       if (epoch === null) return { ok: false, reason: "invalid_state" };
       const grant = buildPresenceRelocationGrant(ctx.auth.userId, epoch, destination, serverNow);
       if (!grant) return { ok: false, reason: "authorization_failure" };
+      const respawnSessionId = `${presence.sessionId.slice(0, 36)}-${epoch}`;
+      if (!validPresenceSessionId(respawnSessionId)) return { ok: false, reason: "authorization_failure" };
       const value = {
         userId: ctx.auth.userId,
         bedCoordKey: existingRespawn?.bedCoordKey ?? "",
@@ -1452,6 +1529,12 @@ export default capsule({
         vx: "0",
         vy: "0",
         vz: "0",
+        sessionId: respawnSessionId,
+        poseSequence: "0",
+        survivalAt: String(serverNow),
+        hungerProgressHalfMs: "0",
+        recoveryProgressMs: "0",
+        starvationProgressMs: "0",
         heartbeatAt: String(serverNow),
         online: true,
       });
@@ -1466,7 +1549,23 @@ export default capsule({
         revision: deadState.revision + 1,
         deadUntil: 0,
       }));
-      return { ok: true, target: destination, epoch: grant.epoch, expiresAt: Number(grant.expiresAt) };
+      const respawnedInventory = respawnInventory.state.hunger === 20
+        ? inventoryRow
+        : await ctx.db.inventories.update(inventoryRow.id, {
+            userId: ctx.auth.userId,
+            inventoryJson: JSON.stringify({ ...respawnInventory.state, hunger: 20 }),
+            revision: incrementStoredRevision(inventoryRow.revision),
+          });
+      if (!respawnedInventory) throw new Error("Unable to persist respawn hunger.");
+      return {
+        ok: true,
+        target: destination,
+        epoch: grant.epoch,
+        expiresAt: Number(grant.expiresAt),
+        inventory: respawnedInventory,
+        sessionId: respawnSessionId,
+        nextPoseSequence: "1",
+      };
     }),
 
     heartbeatPlayer: mutation(
@@ -1479,7 +1578,7 @@ export default capsule({
         z: string,
         yaw: string,
         pitch: string,
-        _heartbeatAt: string,
+        rawPoseSequence: string,
         rawVx?: string,
         rawVy?: string,
         rawVz?: string,
@@ -1503,11 +1602,6 @@ export default capsule({
           rawArmorLegs,
           rawArmorFeet,
         );
-        const profile = await ctx.db.profiles
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
-          .order("desc")
-          .first();
-        if (!profile) throw new Error("Choose a username before joining the shared world.");
         const safeColor = /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : "#8fbf79";
         const existingRows = await ctx.db.playerPresence
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
@@ -1515,8 +1609,13 @@ export default capsule({
           .take(2);
         if (existingRows.length > 1) return { ok: false, reason: "duplicate_state" };
         const existing = existingRows[0] ?? null;
-        if (existing?.sessionId && existing.sessionId !== sessionId) {
-          return { ok: false, reason: "session_mismatch" };
+        if (!existing) return { ok: false, reason: "session_required" };
+        const sequence = decidePresenceSequence(existing.sessionId, existing.poseSequence, sessionId, rawPoseSequence);
+        if (!sequence.accept) {
+          if (sequence.reason === "stale_sequence") {
+            return { ok: true, applied: false, reason: "stale_sequence", poseSequence: existing.poseSequence };
+          }
+          return { ok: false, reason: sequence.reason };
         }
         const serverNow = Date.now();
         const gate = decidePresenceWriteGate(existing?.heartbeatAt, serverNow);
@@ -1554,6 +1653,51 @@ export default capsule({
             ...(persistedPose ? { canonicalPose: persistedPose } : {}),
           };
         }
+        const inventoryRows = await ctx.db.inventories
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .take(2);
+        const combatRows = await ctx.db.playerCombat
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .take(2);
+        if (inventoryRows.length !== 1 || combatRows.length > 1) {
+          return { ok: false, reason: "duplicate_or_missing_survival_state" };
+        }
+        const inventoryRow = inventoryRows[0];
+        const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
+        const inventoryRevision = storedRevision(inventoryRow.revision);
+        if (!playerState.ok || inventoryRevision === null) {
+          return { ok: false, reason: "invalid_survival_state" };
+        }
+        const combatRow = combatRows[0] ?? null;
+        const combat = materializePlayerCombatState(
+          databaseRowToStoredPlayerCombat(combatRow),
+          ctx.auth.userId,
+          serverNow,
+        );
+        const previousPose = validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch);
+        const previousSurvivalAt = /^\d{1,16}$/.test(existing.survivalAt ?? "")
+          ? Number(existing.survivalAt)
+          : serverNow;
+        const survival = advanceAuthoritativeSurvival({
+          hunger: playerState.state.hunger,
+          health: combat.health,
+          revision: combat.revision,
+          progress: existing,
+          serverNow,
+          activityHalfUnits: activityHalfUnitsForDisplacement(
+            previousPose,
+            pose,
+            Math.max(0, serverNow - previousSurvivalAt),
+          ),
+        });
+        if (survival.revisionExhausted) return { ok: false, reason: "combat_revision_exhausted" };
+        const profile = await ctx.db.profiles
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .first();
+        if (!profile) throw new Error("Choose a username before joining the shared world.");
         const value = {
           userId: ctx.auth.userId,
           displayName: profile.username,
@@ -1566,6 +1710,8 @@ export default capsule({
           ...encodePresenceVelocityFields(velocity),
           ...appearance,
           sessionId,
+          poseSequence: sequence.sequence,
+          ...survival.progress,
           heartbeatAt: String(serverNow),
           online: true
         };
@@ -1573,12 +1719,42 @@ export default capsule({
           ? await ctx.db.playerPresence.update(existing.id, value)
           : await ctx.db.playerPresence.insert(value);
         if (!persistedPresence) throw new Error("Unable to persist authoritative presence.");
+        let persistedInventory = null;
+        if (survival.hungerChanged) {
+          persistedInventory = await ctx.db.inventories.update(inventoryRow.id, {
+            userId: ctx.auth.userId,
+            inventoryJson: JSON.stringify({ ...playerState.state, hunger: survival.hunger }),
+            revision: incrementStoredRevision(inventoryRow.revision),
+          });
+          if (!persistedInventory) throw new Error("Unable to persist authoritative hunger.");
+        }
+        if (survival.healthChanged) {
+          const combatValue = storedPlayerCombatRow({
+            ...combat,
+            health: survival.health,
+            revision: survival.revision,
+            lastAttackerId: survival.starvationDamage > 0 ? "starvation" : combat.lastAttackerId,
+          });
+          const persistedCombat = combatRow
+            ? await ctx.db.playerCombat.update(combatRow.id, combatValue)
+            : await ctx.db.playerCombat.insert(combatValue);
+          if (!persistedCombat) throw new Error("Unable to persist authoritative survival health.");
+        }
         if (trajectory.relocationGrantUpdate && respawnRow && typeof respawnRow.id === "string") {
           await ctx.db.playerRespawns.update(respawnRow.id, {
             grantConsumedAt: trajectory.relocationGrantUpdate.consumedAt ?? String(serverNow),
           });
         }
-        return { ok: true, reason: trajectory.reason };
+        return {
+          ok: true,
+          applied: true,
+          reason: trajectory.reason,
+          poseSequence: sequence.sequence,
+          hunger: survival.hunger,
+          health: survival.health,
+          combatRevision: survival.revision,
+          ...(persistedInventory ? { inventory: persistedInventory } : {}),
+        };
       }
     ),
 
@@ -1593,7 +1769,10 @@ export default capsule({
       // A leave without a prior authoritative heartbeat must not manufacture a
       // second source of spawn truth. Existing rows retain their exact pose.
       if (!existing || existing.sessionId !== rawSessionId) return null;
-      return ctx.db.playerPresence.update(existing.id, buildOfflinePresenceValue(existing, Date.now()));
+      return ctx.db.playerPresence.update(existing.id, {
+        ...buildOfflinePresenceValue(existing, Date.now()),
+        sessionId: "",
+      });
     }),
 
     saveInventory: mutation(async (ctx, inventoryJson: string, rawExpectedUpdatedAt?: string) => {
@@ -2484,40 +2663,65 @@ export default capsule({
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
       if (!playerState.ok) return { ok: false, reason: "target_state_invalid", serverNow };
-      const rawHealth = combatRow && /^\d{1,3}$/.test(combatRow.health) ? Number(combatRow.health) : 20;
-      if (rawHealth <= 0) return { ok: false, reason: "target_dead", serverNow };
-      const armorProtection = equippedArmorProtection(playerState.state.equipment);
+      if (!callerPresenceRow) return { ok: false, reason: "active_presence_required", serverNow };
+      const previousState = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(combatRow),
+        ctx.auth.userId,
+        serverNow,
+      );
+      if (previousState.health <= 0) return { ok: false, reason: "target_dead", serverNow };
+      // A damage mutation is also a survival timeline boundary. Advance the
+      // elapsed lease before applying the hit so a late hit cannot receive
+      // regeneration (or avoid starvation) for time that preceded the hit.
+      const survival = advanceAuthoritativeSurvival({
+        hunger: playerState.state.hunger,
+        health: previousState.health,
+        revision: previousState.revision,
+        progress: callerPresenceRow,
+        serverNow,
+        activityHalfUnits: storedPresenceActivityHalfUnits(callerPresenceRow),
+      });
+      if (survival.revisionExhausted || survival.revision >= Number.MAX_SAFE_INTEGER) {
+        return { ok: false, reason: "combat_revision_exhausted", serverNow };
+      }
+      const combatAtEvent = {
+        ...previousState,
+        health: survival.health,
+        revision: survival.revision,
+        lastAttackerId: survival.starvationDamage > 0 ? "starvation" : previousState.lastAttackerId,
+      };
+      const playerStateAtEvent = { ...playerState.state, hunger: survival.hunger };
+      const armorProtection = equippedArmorProtection(playerStateAtEvent.equipment);
       const resolution = resolveMobDamage(
         advanced.state,
         request,
         callerTarget,
         advanced.revision,
-        rawHealth,
+        combatAtEvent.health,
         armorProtection,
       );
       if (!resolution.ok) return { ...resolution, serverNow };
-      const armorDamage = applyConfirmedArmorDamage(playerState.state.equipment);
+      const armorDamage = applyConfirmedArmorDamage(playerStateAtEvent.equipment);
       let inventoryRevision = inventoryRow.revision;
       let persistedInventory = inventoryRow;
-      if (armorDamage.damaged.length > 0) {
+      if (survival.hungerChanged || armorDamage.damaged.length > 0) {
         const updatedInventory = await ctx.db.inventories.update(inventoryRow.id, {
           userId: ctx.auth.userId,
-          inventoryJson: JSON.stringify({ ...playerState.state, equipment: armorDamage.equipment }),
+          inventoryJson: JSON.stringify({
+            ...playerStateAtEvent,
+            equipment: armorDamage.equipment,
+          }),
           revision: incrementStoredRevision(inventoryRow.revision),
         });
         if (!updatedInventory) throw new Error("Unable to persist authoritative armor wear.");
         persistedInventory = updatedInventory;
         inventoryRevision = updatedInventory.revision;
       }
-      const previousState = materializePlayerCombatState(
-        databaseRowToStoredPlayerCombat(combatRow),
-        ctx.auth.userId,
-        serverNow,
-      );
+      await ctx.db.playerPresence.update(callerPresenceRow.id, survival.progress);
       const state = {
-        ...previousState,
+        ...combatAtEvent,
         health: resolution.health,
-        revision: previousState.revision + 1,
+        revision: combatAtEvent.revision + 1,
         deadUntil: resolution.killed ? serverNow + PLAYER_RESPAWN_DELAY_MS : 0,
         lastAttackAt: serverNow,
         lastAttackerId: request.mobId,
@@ -2764,28 +2968,63 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
         .order("desc")
         .first();
+      if (request.targetUserId === ctx.auth.userId) return { ok: false, reason: "self_target", serverNow };
+      if (!attackerPresence) return { ok: false, reason: "active_attacker_presence_required", serverNow };
+      if (!targetPresence || !targetPresenceRow) return { ok: false, reason: "active_target_presence_required", serverNow };
+      const targetCombatBefore = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(targetCombatRow),
+        request.targetUserId,
+        serverNow,
+      );
+      const targetSurvival = advanceAuthoritativeSurvival({
+        hunger: targetPlayerState.state.hunger,
+        health: targetCombatBefore.health,
+        revision: targetCombatBefore.revision,
+        progress: targetPresenceRow,
+        serverNow,
+        activityHalfUnits: storedPresenceActivityHalfUnits(targetPresenceRow),
+      });
+      if (targetSurvival.revisionExhausted || targetSurvival.revision >= Number.MAX_SAFE_INTEGER) {
+        return { ok: false, reason: "combat_revision_exhausted", serverNow };
+      }
+      const targetCombatAtEvent = {
+        ...targetCombatBefore,
+        health: targetSurvival.health,
+        revision: targetSurvival.revision,
+        lastAttackerId: targetSurvival.starvationDamage > 0
+          ? "starvation"
+          : targetCombatBefore.lastAttackerId,
+      };
+      const targetPlayerStateAtEvent = {
+        ...targetPlayerState.state,
+        hunger: targetSurvival.hunger,
+      };
       const resolution = resolvePlayerAttack({
         request,
         attackerId: ctx.auth.userId,
         attackerStored: databaseRowToStoredPlayerCombat(attackerCombatRow),
-        targetStored: databaseRowToStoredPlayerCombat(targetCombatRow),
+        targetStored: storedPlayerCombatRow(targetCombatAtEvent),
         attackerPresence,
         targetPresence,
         attackerPlayerState: attackerPlayerState.state,
-        targetPlayerState: targetPlayerState.state,
+        targetPlayerState: targetPlayerStateAtEvent,
         serverNow,
       });
       if (!resolution.ok) return { ...resolution, serverNow };
       let targetInventoryRevision = targetInventoryRow.revision;
-      if (resolution.armorDamaged.length > 0) {
+      if (targetSurvival.hungerChanged || resolution.armorDamaged.length > 0) {
         const updatedTargetInventory = await ctx.db.inventories.update(targetInventoryRow.id, {
           userId: request.targetUserId,
-          inventoryJson: JSON.stringify({ ...targetPlayerState.state, equipment: resolution.targetEquipment }),
+          inventoryJson: JSON.stringify({
+            ...targetPlayerStateAtEvent,
+            equipment: resolution.targetEquipment,
+          }),
           revision: incrementStoredRevision(targetInventoryRow.revision),
         });
         if (!updatedTargetInventory) throw new Error("Unable to persist authoritative PvP armor wear.");
         targetInventoryRevision = updatedTargetInventory.revision;
       }
+      await ctx.db.playerPresence.update(targetPresenceRow.id, targetSurvival.progress);
       if (attackerCombatRow) await ctx.db.playerCombat.update(attackerCombatRow.id, resolution.attackerRow);
       else await ctx.db.playerCombat.insert(resolution.attackerRow);
       if (targetCombatRow) await ctx.db.playerCombat.update(targetCombatRow.id, resolution.targetRow);

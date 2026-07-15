@@ -4,14 +4,14 @@ import { readFileSync } from "node:fs";
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 
-assert.ok(client.includes('useMutation<[], AuthorizeRespawnResult>("authorizeRespawn")'));
+assert.ok(client.includes('useMutation<[sessionId: string], AuthorizeRespawnResult>("authorizeRespawn")'));
 assert.equal(client.includes("teleportEpoch: string"), false);
 
 const authorization = client.slice(
   client.indexOf("function requestAuthorizedRespawn"),
   client.indexOf("function scheduleAuthorizedRespawn"),
 );
-assert.ok(authorization.includes("void authorizeRespawn().then((result) =>"));
+assert.ok(authorization.includes("void authorizeRespawn(presenceSessionIdRef.current).then((result) =>"));
 assert.ok(authorization.indexOf("if (!result.ok)") < authorization.indexOf("engine.respawn()"));
 assert.ok(authorization.includes("validateRespawnPoint(result.target, Number.MAX_SAFE_INTEGER)"));
 assert.ok(authorization.includes("const expiresAt = Number(result.expiresAt)"));
@@ -19,11 +19,14 @@ assert.equal(authorization.includes("expiresAt <= Date.now()"), false, "an alrea
 assert.equal(authorization.includes("pendingRespawnAuthorizationRef.current"), false);
 
 const deathFlow = client.slice(
-  client.indexOf("onPlayerHealthChange: (health) =>"),
-  client.indexOf("onBlockEdit: handleBlockEdit"),
+  client.indexOf("const ownState = playerCombatResult.states.find"),
+  client.indexOf("if (worldChunks?.ok)"),
 );
 assert.ok(deathFlow.includes("scheduleAuthorizedRespawn()"));
 assert.equal(deathFlow.includes("engineRef.current?.respawn()"), false);
+assert.ok(deathFlow.includes("engineRef.current.setPlayerHealth(ownState.health)"), "health is reconciled absolutely from Lakebed combat state");
+assert.ok(authorization.includes("loadCanonicalPlayer(result.inventory)"), "respawn hunger comes from the committed server snapshot");
+assert.ok(authorization.includes("presenceSessionIdRef.current = result.sessionId"), "respawn adopts the server-rotated lease before moving");
 
 assert.equal(client.includes("pendingRespawnAuthorizationRef"), false);
 assert.ok(authorization.includes("result.retryAfterMs ?? 2_000"));

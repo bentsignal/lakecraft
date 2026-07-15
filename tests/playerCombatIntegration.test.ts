@@ -62,6 +62,7 @@ const query = server.slice(
   server.indexOf("mutations: {"),
 );
 assert.ok(query.includes("validatePlayerCombatUserIds(rawUserIds)"), "combat state fanout must remain bounded");
-assert.ok(query.includes("materializePlayerCombatState"), "expired deaths materialize as authoritative respawns");
+assert.ok(query.includes("materializePlayerCombatState"), "combat queries read canonical state without background writes");
+assert.ok(!query.includes("health: deadUntil"), "queries never synthesize an unrevisioned respawn");
 
 console.log("lakecraft player combat Lakebed integration tests: ok");

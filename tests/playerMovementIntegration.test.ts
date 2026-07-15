@@ -21,7 +21,8 @@ assert.ok(engine.includes("const mustRemainSneaking = collides"), "resets preser
 assert.ok(engine.includes("playerViewSuspended = true"), "death resets transient view state exactly once");
 assert.ok(!engine.includes("pose.y + 1.62"), "no stale fixed interaction eye remains in the engine");
 assert.ok(client.includes("canSprint: () => hungerRef.current > 6"), "survival hunger gates Ctrl sprint");
-assert.ok(client.includes("movementActivityRef.current = activityMultiplier"), "survival receives the resolved movement exertion");
+assert.ok(client.includes("activityHalfUnitsForDisplacement") === false, "the client cannot author survival exertion");
+assert.ok(!client.includes("tickSurvival("), "the client no longer advances survival health locally");
 assert.ok(!client.includes("recentlyActiveUntilRef"), "the old pose-update activity approximation is removed");
 
 console.log("lakecraft movement integration tests: ok");

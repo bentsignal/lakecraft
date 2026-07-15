@@ -10,6 +10,7 @@ import {
   PRESENCE_MIN_Y,
   PRESENCE_MIN_Z,
   PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS,
+  PRESENCE_ACTIVE_LEASE_MS,
 } from "../shared/presenceMotion.ts";
 
 export type StoredPlayerPresence = {
@@ -49,12 +50,45 @@ export type PresenceWriteGateDecision =
   | { accept: true; retryAfterMs: 0 }
   | { accept: false; retryAfterMs: number };
 
+export type PresenceSequenceDecision =
+  | { accept: true; sequence: string }
+  | { accept: false; reason: "session_mismatch" | "stale_sequence" | "invalid_sequence" };
+
+const MAX_PRESENCE_SEQUENCE = Number.MAX_SAFE_INTEGER;
+
+function parsePresenceSequence(value: unknown, allowZero: boolean): number | null {
+  if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return null;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_PRESENCE_SEQUENCE) return null;
+  return parsed >= (allowZero ? 0 : 1) ? parsed : null;
+}
+
+/**
+ * Orders concurrent heartbeat mutations within one explicitly-started session.
+ * Lakebed serializes each mutation, so persisting the accepted sequence in the
+ * presence row makes retries and delayed responses deterministic without a
+ * second database write.
+ */
+export function decidePresenceSequence(
+  storedSessionId: unknown,
+  storedSequence: unknown,
+  requestedSessionId: string,
+  requestedSequence: unknown,
+): PresenceSequenceDecision {
+  if (storedSessionId !== requestedSessionId) return { accept: false, reason: "session_mismatch" };
+  const previous = parsePresenceSequence(storedSequence, true);
+  const requested = parsePresenceSequence(requestedSequence, false);
+  if (previous === null || requested === null) return { accept: false, reason: "invalid_sequence" };
+  if (requested <= previous) return { accept: false, reason: "stale_sequence" };
+  return { accept: true, sequence: String(requested) };
+}
+
 /**
  * Motion authority deliberately permits only a short, continuously observed
  * trajectory. A heartbeat arriving after this window is a reconnect and must
  * resume at the exact persisted pose (or spend a server-approved relocation).
  */
-export const PRESENCE_TRAJECTORY_MAX_ELAPSED_MS = 2_000;
+export const PRESENCE_TRAJECTORY_MAX_ELAPSED_MS = PRESENCE_ACTIVE_LEASE_MS;
 export const PRESENCE_TRAJECTORY_HORIZONTAL_SLACK = 0.75;
 export const PRESENCE_TRAJECTORY_VERTICAL_SLACK = 1.25;
 export const PRESENCE_RELOCATION_MAX_LIFETIME_MS = 15_000;

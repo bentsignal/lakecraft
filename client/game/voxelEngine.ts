@@ -2231,6 +2231,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const validated = validateRespawnPoint(point, Number.MAX_SAFE_INTEGER);
       if (validated) respawnPoint = validated;
     },
+    setPlayerHealth(health) {
+      const nextHealth = Number.isFinite(health)
+        ? Math.max(0, Math.min(PLAYER_MAX_HEALTH, health))
+        : playerHealth;
+      if (nextHealth !== playerHealth) {
+        playerHealth = nextHealth;
+        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      }
+      return playerHealth;
+    },
     adjustPlayerHealth(delta) {
       const change = Number.isFinite(delta) ? delta : 0;
       const nextHealth = Math.max(0, Math.min(PLAYER_MAX_HEALTH, playerHealth + change));

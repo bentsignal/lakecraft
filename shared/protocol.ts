@@ -64,6 +64,8 @@ export type PlayerPresence = {
   armorChest?: string;
   armorLegs?: string;
   armorFeet?: string;
+  sessionId?: string;
+  poseSequence?: string;
   heartbeatAt: string;
   online: boolean;
   createdAt: string;
@@ -140,12 +142,36 @@ export function activePlayerPresences(
   now = Date.now(),
   staleAfterMs = PLAYER_STALE_AFTER_MS
 ): PlayerPresence[] {
+  const orderedDecimal = (value: unknown): number => {
+    if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return Number.NEGATIVE_INFINITY;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+  };
   const latest = new Map<string, PlayerPresence>();
   for (const event of events) {
     const previous = latest.get(event.userId);
-    if (!previous || event.heartbeatAt > previous.heartbeatAt) latest.set(event.userId, event);
+    const eventHeartbeat = orderedDecimal(event.heartbeatAt);
+    const previousHeartbeat = previous ? orderedDecimal(previous.heartbeatAt) : Number.NEGATIVE_INFINITY;
+    const eventSequence = orderedDecimal(event.poseSequence ?? "0");
+    const previousSequence = orderedDecimal(previous?.poseSequence ?? "0");
+    const equalHeartbeatNewer = Boolean(previous) && eventHeartbeat === previousHeartbeat && (
+      event.sessionId === previous?.sessionId && eventSequence !== previousSequence
+        ? eventSequence > previousSequence
+        : event.updatedAt !== previous?.updatedAt
+          ? event.updatedAt > (previous?.updatedAt ?? "")
+          : event.id > (previous?.id ?? "")
+    );
+    if (!previous
+      || eventHeartbeat > previousHeartbeat
+      || equalHeartbeatNewer) {
+      latest.set(event.userId, event);
+    }
   }
   return [...latest.values()].filter(
-    (player) => player.online && now - Number(player.heartbeatAt) <= staleAfterMs
+    (player) => {
+      const heartbeatAt = orderedDecimal(player.heartbeatAt);
+      return player.online && heartbeatAt !== Number.NEGATIVE_INFINITY
+        && now >= heartbeatAt && now - heartbeatAt <= staleAfterMs;
+    }
   );
 }

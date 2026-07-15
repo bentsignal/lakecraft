@@ -30,5 +30,10 @@ assert.equal(callback.includes("target.distance"), false, "the client must not s
 assert.ok(engine.includes("raycastRemotePlayers(eye, facing, remoteStates.values(), reach)"));
 assert.ok(engine.includes("mobTargetHasClickPriority(nearestDistance, target?.distance ?? null)"));
 assert.ok(engine.includes("options.onRemotePlayerAttack?.({ ...remoteTarget }, attackDamage)"));
+const identityReset = client.slice(
+  client.indexOf("appliedOwnCombatHealthRef.current = null"),
+  client.indexOf("}, [auth.userId]") + "}, [auth.userId]".length,
+);
+assert.ok(identityReset.includes("appliedOwnCombatRevisionRef.current = -1"), "combat ordering resets when auth identity changes");
 
 console.log("lakecraft player combat client integration tests: ok");

@@ -144,8 +144,8 @@ assert.equal((server.match(/mobWorldAuthority: table\(\{/g) ?? []).length, 1, "a
 const mobDamageMutation = server.slice(server.indexOf("claimMobPlayerDamage: mutation(async"), server.indexOf("attackMob: mutation(async"));
 for (const marker of [
   "validatePlayerStateJson(inventoryRow.inventoryJson)",
-  "equippedArmorProtection(playerState.state.equipment)",
-  "applyConfirmedArmorDamage(playerState.state.equipment)",
+  "equippedArmorProtection(playerStateAtEvent.equipment)",
+  "applyConfirmedArmorDamage(playerStateAtEvent.equipment)",
   "ctx.db.inventories.update(inventoryRow.id",
   "brokenArmor: armorDamage.broken",
   "inventory: persistedInventory",

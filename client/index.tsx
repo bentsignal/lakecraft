@@ -29,13 +29,11 @@ import {
   createEmptyInventory,
   createSerializablePlayerState,
   createStarterInventory,
-  createSurvivalTickState,
   consumeFood,
   equippedArmorProtection,
   miningSeconds,
   normalizeInventory,
   normalizeRespawnPoint,
-  tickSurvival,
   type ArmorSlot,
   type BlockId,
   type CraftingContext,
@@ -44,7 +42,6 @@ import {
   type ItemId,
   type PlayerRespawnPoint,
   type Recipe,
-  type SurvivalTickState,
   type ToolUseKind,
 } from "../shared/game";
 import type { StowedInventorySnapshot } from "../shared/inventoryWorkspace";
@@ -210,15 +207,35 @@ type DroppedItemMutationResult =
   | { ok: false; reason: string; inventory?: PersistedInventoryState | null };
 
 type AuthorizeRespawnResult =
-  | { ok: true; target: PlayerPose; epoch: string; expiresAt: number | string }
+  | {
+      ok: true;
+      target: PlayerPose;
+      epoch: string;
+      expiresAt: number | string;
+      inventory: PersistedInventoryState;
+      sessionId: string;
+      nextPoseSequence: string;
+    }
   | { ok: false; reason: string; retryAfterMs?: number };
 
-type HeartbeatPlayerResult = void | { ok: boolean; reason?: string; retryAfterMs?: number; canonicalPose?: PlayerPose };
+type HeartbeatPlayerResult = void | {
+  ok: boolean;
+  applied?: boolean;
+  reason?: string;
+  retryAfterMs?: number;
+  canonicalPose?: PlayerPose;
+  hunger?: number;
+  health?: number;
+  combatRevision?: number;
+  poseSequence?: string;
+  inventory?: PersistedInventoryState;
+};
 type StartPresenceSessionResult = {
   ok: boolean;
   reason?: string;
   resetToTrailhead?: boolean;
   spawnPose?: PlayerPose | null;
+  nextPoseSequence?: string;
 };
 
 type RecentPlayersResult = {
@@ -624,8 +641,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     poseYaw: string,
     posePitch: string,
   ], WorldBlockEditMutationResult>("editWorldBlock");
-  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string, sessionId: string], HeartbeatPlayerResult>("heartbeatPlayer");
-  const authorizeRespawn = useMutation<[], AuthorizeRespawnResult>("authorizeRespawn");
+  const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, poseSequence: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string, sessionId: string], HeartbeatPlayerResult>("heartbeatPlayer");
+  const authorizeRespawn = useMutation<[sessionId: string], AuthorizeRespawnResult>("authorizeRespawn");
   const startPresenceSession = useMutation<[sessionId: string], StartPresenceSessionResult>("startPresenceSession");
   const leavePlayer = useMutation<[sessionId: string], void>("leavePlayer");
   const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
@@ -655,6 +672,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const engineRef = useRef<VoxelEngine | null>(null);
   const audioRef = useRef<GameAudio | null>(null);
   const poseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
+  const presenceSessionIdRef = useRef("");
+  const presenceNextPoseSequenceRef = useRef(1);
   const presenceSampleRef = useRef<((pose: PlayerPose, at?: number) => void) | null>(null);
   const presenceSchedulerRef = useRef<PresenceSchedulerState | null>(null);
   const presenceBurstGuardRef = useRef<PresenceBurstGuardState | null>(null);
@@ -665,8 +684,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const inventoryAuthorityEpochRef = useRef(0);
   const respawnPointRef = useRef<PlayerRespawnPoint | null>(null);
   const hungerRef = useRef(MAX_HUNGER);
-  const survivalRef = useRef<SurvivalTickState>(createSurvivalTickState());
-  const movementActivityRef = useRef(0.5);
   const selectedRef = useRef(2);
   const hydratedRef = useRef(false);
   const hydratedUserRef = useRef("");
@@ -700,12 +717,14 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const droppedPickupAttemptRef = useRef(new Map<string, number>());
   const lastDroppedPickupSweepRef = useRef(0);
   const appliedOwnCombatHealthRef = useRef<number | null>(null);
+  const appliedOwnCombatRevisionRef = useRef(-1);
   const mobCheckpointInFlightRef = useRef(false);
   const mobDamageClaimsRef = useRef(new Set<string>());
   const realtimePresenceRef = useRef(false);
   const remotePoseAgeSamplesRef = useRef<number[]>([]);
   const remotePoseSeenRef = useRef(new Set<string>());
   const respawnRequestInFlightRef = useRef(false);
+  const respawnLeaseTransitionRef = useRef(false);
   const respawnTimerRef = useRef<number | null>(null);
   const confirmedFeedbackOperationsRef = useRef<Set<string> | null>(null);
   const previousChestKeyRef = useRef("");
@@ -755,6 +774,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
 
   useEffect(() => {
     appliedOwnCombatHealthRef.current = null;
+    appliedOwnCombatRevisionRef.current = -1;
   }, [auth.userId]);
   useEffect(() => {
     remotePoseAgeSamplesRef.current = [];
@@ -814,8 +834,13 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     const engine = engineRef.current;
     if (!engine) return;
     respawnRequestInFlightRef.current = true;
-    void authorizeRespawn().then((result) => {
+    void authorizeRespawn(presenceSessionIdRef.current).then((result) => {
       if (!result.ok) {
+        if (result.reason === "session_mismatch") {
+          respawnLeaseTransitionRef.current = false;
+          notify("Respawn lease moved", "Another signed-in session owns this player now.", "warning");
+          return;
+        }
         notify("Respawn not authorized", "Lakebed did not approve a spawn jump. You remain at the death location.", "warning");
         respawnTimerRef.current = window.setTimeout(() => {
           respawnTimerRef.current = null;
@@ -828,12 +853,27 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       if (!target
         || typeof result.epoch !== "string"
         || !result.epoch
+        || typeof result.sessionId !== "string"
+        || !result.sessionId
         || !Number.isSafeInteger(expiresAt)
         || engineRef.current !== engine) {
         notify("Respawn not authorized", "Lakebed returned an invalid or expired spawn authorization.", "warning");
         return;
       }
+      const nextPoseSequence = Number(result.nextPoseSequence);
+      if (!Number.isSafeInteger(nextPoseSequence) || nextPoseSequence < 1) {
+        notify("Respawn not authorized", "Lakebed returned an invalid presence lease.", "warning");
+        return;
+      }
+      presenceSessionIdRef.current = result.sessionId;
+      presenceNextPoseSequenceRef.current = nextPoseSequence;
+      respawnLeaseTransitionRef.current = false;
+      setMobLeaseSessionId(result.sessionId);
       engine.setRespawnPoint(target);
+      if (!loadCanonicalPlayer(result.inventory)) {
+        notify("Respawn reconciliation failed", "Lakebed returned a damaged inventory snapshot.", "warning");
+        return;
+      }
       engine.respawn();
     }).catch(() => {
       notify("Respawn lost contact", "Lakebed could not authorize the jump. You remain at the death location.", "warning");
@@ -848,6 +888,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
 
   function scheduleAuthorizedRespawn(): void {
     if (respawnRequestInFlightRef.current || respawnTimerRef.current !== null) return;
+    respawnLeaseTransitionRef.current = true;
     respawnTimerRef.current = window.setTimeout(() => {
       respawnTimerRef.current = null;
       requestAuthorizedRespawn();
@@ -954,7 +995,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     setRespawnPoint(saved.respawnPoint);
     if (saved.respawnPoint) engineRef.current?.setRespawnPoint(saved.respawnPoint);
     hungerRef.current = saved.hunger;
-    survivalRef.current.hunger = saved.hunger;
     setHunger(saved.hunger);
     advanceInventoryAuthorityEpoch();
     if (brokenArmor.length > 0) {
@@ -1384,7 +1424,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       respawnPointRef.current = saved.respawnPoint;
       setRespawnPoint(saved.respawnPoint);
       hungerRef.current = saved.hunger;
-      survivalRef.current = createSurvivalTickState(saved.hunger, playerHealth);
       setHunger(saved.hunger);
       notify("Field kit restored", "Lakebed recovered your last inventory.", "success");
     }
@@ -1560,9 +1599,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           });
         },
         canSprint: () => hungerRef.current > 6,
-        onMovementModeChange: (_mode, activityMultiplier) => {
-          movementActivityRef.current = activityMultiplier;
-        },
         onHandAction: (action) => {
           setHandActionToken((current) => current + 1);
           if (action === "attack") audioRef.current?.play("playerAttack", { seed: performance.now().toFixed(0), intensity: 0.44 });
@@ -1573,15 +1609,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           notify("Zombie hit", `${amount} health lost.`, "warning");
         },
         onPlayerHealthChange: (health) => {
-          survivalRef.current.health = health;
           setPlayerHealth(health);
-          if (health <= 0) {
-            notify("You were overwhelmed", "Waiting for Lakebed to authorize your respawn…", "warning");
-            hungerRef.current = MAX_HUNGER;
-            survivalRef.current = createSurvivalTickState(MAX_HUNGER, MAX_HEALTH);
-            setHunger(MAX_HUNGER);
-            scheduleAuthorizedRespawn();
-          }
         },
         onBlockEdit: handleBlockEdit,
         onPoseChange: (pose) => {
@@ -1760,38 +1788,22 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     if (!inWorld || !playerCombatResult?.ok || !engineRef.current) return;
     const ownState = playerCombatResult.states.find((state) => state.userId === auth.userId);
     if (!ownState) return;
+    if (!Number.isSafeInteger(ownState.revision) || ownState.revision < appliedOwnCombatRevisionRef.current) return;
     const previous = appliedOwnCombatHealthRef.current;
+    appliedOwnCombatRevisionRef.current = ownState.revision;
     appliedOwnCombatHealthRef.current = ownState.health;
-    if (previous === null) {
-      if (ownState.health < MAX_HEALTH) engineRef.current.adjustPlayerHealth(ownState.health - MAX_HEALTH);
-      return;
-    }
-    if (ownState.health !== previous) {
+    if (previous !== null && ownState.health !== previous) {
       if (ownState.health < previous) {
         audioRef.current?.play("playerHurt", { seed: `${ownState.revision}:${ownState.health}`, intensity: 0.8 });
       }
-      engineRef.current.adjustPlayerHealth(ownState.health - previous);
+    }
+    const awaitingRespawnLease = respawnLeaseTransitionRef.current && previous === 0 && ownState.health > 0;
+    if (!awaitingRespawnLease) engineRef.current.setPlayerHealth(ownState.health);
+    if (ownState.health <= 0) {
+      notify("You were overwhelmed", "Waiting for Lakebed to authorize your respawn…", "warning");
+      scheduleAuthorizedRespawn();
     }
   }, [playerCombatResult, inWorld, auth.userId]);
-
-  useEffect(() => {
-    if (!inWorld || !inventoryReady) return;
-    let lastTickAt = performance.now();
-    const timer = window.setInterval(() => {
-      const now = performance.now();
-      const elapsedSeconds = Math.max(0, (now - lastTickAt) / 1_000);
-      lastTickAt = now;
-      const result = tickSurvival(survivalRef.current, elapsedSeconds, movementActivityRef.current);
-      survivalRef.current = result.state;
-      if (result.state.hunger !== hungerRef.current) {
-        hungerRef.current = result.state.hunger;
-        setHunger(result.state.hunger);
-      }
-      const healthDelta = result.healthRecovered - result.starvationDamage;
-      if (healthDelta !== 0) engineRef.current?.adjustPlayerHealth(healthDelta);
-    }, 1_000);
-    return () => window.clearInterval(timer);
-  }, [inWorld, inventoryReady]);
 
   useEffect(() => {
     if (worldChunks?.ok) {
@@ -1847,7 +1859,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       .filter((player) => player.userId !== auth.userId);
     for (const player of active) {
       const heartbeatAt = Number(player.heartbeatAt);
-      const sampleKey = `${player.userId}:${player.heartbeatAt}`;
+      const sampleKey = `${player.userId}:${player.sessionId ?? "legacy"}:${player.poseSequence ?? player.heartbeatAt}`;
       const age = presenceServerNow - heartbeatAt;
       if (!remotePoseSeenRef.current.has(sampleKey)
         && Number.isFinite(age) && age >= 0 && age <= PLAYER_STALE_AFTER_MS) {
@@ -1857,7 +1869,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     }
     if (remotePoseSeenRef.current.size > 512) {
       remotePoseSeenRef.current.clear();
-      for (const player of active) remotePoseSeenRef.current.add(`${player.userId}:${player.heartbeatAt}`);
+      for (const player of active) remotePoseSeenRef.current.add(`${player.userId}:${player.sessionId ?? "legacy"}:${player.poseSequence ?? player.heartbeatAt}`);
     }
     if (remotePoseAgeSamplesRef.current.length > 256) {
       remotePoseAgeSamplesRef.current.splice(0, remotePoseAgeSamplesRef.current.length - 256);
@@ -1899,12 +1911,18 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     const scheduler = createPresenceSchedulerState();
     const guard = loadPresenceBurstGuard(auth.userId, Date.now());
     const presenceSessionId = crypto.randomUUID();
+    presenceSessionIdRef.current = presenceSessionId;
+    presenceNextPoseSequenceRef.current = 1;
     setMobLeaseSessionId(presenceSessionId);
     presenceSchedulerRef.current = scheduler;
     presenceBurstGuardRef.current = guard;
     presenceModeNoticeRef.current = "";
     let writesInFlight = 0;
     let pendingPresenceSample: { pose: PlayerPose; at: number } | null = null;
+    const terminalPresenceReason = (reason: string | undefined) => reason === "session_mismatch"
+      || reason === "session_required"
+      || reason === "invalid_sequence"
+      || reason === "combat_revision_exhausted";
     const announceTransportMode = (at: number) => {
       const snapshot = presenceBurstGuardSnapshot(guard, at, realtimePresenceRef.current);
       if (snapshot.mode === presenceModeNoticeRef.current) return snapshot;
@@ -1943,6 +1961,14 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       const decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtime);
       if (!decision.send) return;
       if (!reservePresenceAttempt(guard, at, realtime)) return;
+      const poseSequence = presenceNextPoseSequenceRef.current;
+      if (!Number.isSafeInteger(poseSequence) || poseSequence < 1 || poseSequence >= Number.MAX_SAFE_INTEGER) {
+        pendingPresenceSample = null;
+        setConnected(false);
+        return;
+      }
+      presenceNextPoseSequenceRef.current += 1;
+      persistPresenceBurstGuard(auth.userId, guard);
       announceTransportMode(at);
       const worn = equipmentRef.current;
       const appearance = normalizeAvatarAppearance(
@@ -1952,6 +1978,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         worn.legs?.itemId,
         worn.feet?.itemId,
       );
+      const heartbeatSessionId = presenceSessionIdRef.current;
       writesInFlight += 1;
       void heartbeatPlayer(
         profile.username,
@@ -1961,7 +1988,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         String(pose.z),
         String(pose.yaw),
         String(pose.pitch),
-        String(at),
+        String(poseSequence),
         decision.fields.vx,
         decision.fields.vy,
         decision.fields.vz,
@@ -1970,10 +1997,27 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         appearance.armorChest,
         appearance.armorLegs,
         appearance.armorFeet,
-        presenceSessionId,
+        heartbeatSessionId,
       ).then((result) => {
+        if (cancelled) return;
         if (result && !result.ok) {
           const rejectedAt = Date.now();
+          if (result.reason === "session_mismatch" && (
+            respawnLeaseTransitionRef.current || heartbeatSessionId !== presenceSessionIdRef.current
+          )) {
+            recordPresenceSuccess(guard, rejectedAt);
+            return;
+          }
+          if (terminalPresenceReason(result.reason)) {
+            cancelled = true;
+            pendingPresenceSample = null;
+            if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
+            if (interval) window.clearInterval(interval);
+            if (startRetryTimer) window.clearTimeout(startRetryTimer);
+            setConnected(false);
+            notify("Presence lease ended", "Another session or an exhausted authority fence owns this player now.", "warning");
+            return;
+          }
           const rejection = new Error(`${result.reason ?? "presence rejected"}${result.retryAfterMs ? ` retry-after ${result.retryAfterMs}ms` : ""}`);
           if (result.reason === "rate_limited") {
             recordPresenceRateLimit(guard, rejectedAt, result.retryAfterMs ?? 0);
@@ -2002,6 +2046,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         recordPresenceSuccess(guard, Date.now());
         setConnected(true);
       }).catch((error: unknown) => {
+        if (cancelled) return;
         const failedAt = Date.now();
         recordPresenceFailure(
           guard,
@@ -2015,7 +2060,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }
         setConnected(false);
       }).finally(() => {
-        persistPresenceBurstGuard(auth.userId, guard);
+        if (!cancelled) persistPresenceBurstGuard(auth.userId, guard);
         writesInFlight = Math.max(0, writesInFlight - 1);
         flushPresence();
       });
@@ -2044,10 +2089,20 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         return;
       }
       persistPresenceBurstGuard(auth.userId, guard);
-      void startPresenceSession(presenceSessionId).then((result) => {
+      void startPresenceSession(presenceSessionIdRef.current).then((result) => {
         if (cancelled) return;
-        if (!result.ok) throw new Error(result.reason ?? "presence session rejected");
+        if (!result.ok) {
+          if (result.reason === "invalid_or_exhausted_sequence_state") {
+            cancelled = true;
+            setConnected(false);
+            notify("Presence lease invalid", "Reload to establish a new ordered presence lease.", "warning");
+            return;
+          }
+          throw new Error(result.reason ?? "presence session rejected");
+        }
         recordPresenceSuccess(guard, Date.now());
+        const resumedSequence = Number(result.nextPoseSequence ?? "1");
+        presenceNextPoseSequenceRef.current = Number.isSafeInteger(resumedSequence) && resumedSequence >= 1 ? resumedSequence : 1;
         if (result.spawnPose) {
           engineRef.current?.reconcilePose(result.spawnPose);
           poseRef.current = result.spawnPose;
@@ -2076,11 +2131,12 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     beginPresenceSession();
     return () => {
       cancelled = true;
-      setMobLeaseSessionId((current) => current === presenceSessionId ? "" : current);
+      const activeSessionId = presenceSessionIdRef.current;
+      setMobLeaseSessionId((current) => current === activeSessionId ? "" : current);
       if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
       if (interval) window.clearInterval(interval);
       if (startRetryTimer) window.clearTimeout(startRetryTimer);
-      void leavePlayer(presenceSessionId).catch(() => undefined);
+      void leavePlayer(activeSessionId).catch(() => undefined);
     };
   }, [inWorld, auth.userId, auth.isLoading, auth.isAuthenticated, auth.isGuest, profile?.username]);
 
@@ -2321,7 +2377,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     }
     updateInventory(result.inventory);
     hungerRef.current = result.hunger;
-    survivalRef.current.hunger = result.hunger;
     setHunger(result.hunger);
     notify(`Ate ${ITEMS[result.consumed].label}`, `Restored ${result.restored} hunger.`, "success");
     return true;
@@ -2527,7 +2582,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   function enterWorld() {
     if (!profile) return;
     setJoinPhase("joining");
-    window.setTimeout(() => {
+    void requestInventorySave().then(() => window.setTimeout(() => {
       if (!hydratedRef.current || savedPresence === undefined) {
         setJoinPhase("waiting");
         return;
@@ -2538,18 +2593,26 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         setPauseOpen(true);
         setJoinPhase("idle");
       }, 180);
-    }, 260);
+    }, 260));
   }
 
   useEffect(() => {
     if (joinPhase !== "waiting" || !inventoryReady || savedPresence === undefined || !profile) return;
-    setJoinPhase("ready");
-    const timer = window.setTimeout(() => {
-      setInWorld(true);
-      setPauseOpen(true);
-      setJoinPhase("idle");
-    }, 180);
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    let timer = 0;
+    void requestInventorySave().then(() => {
+      if (cancelled) return;
+      setJoinPhase("ready");
+      timer = window.setTimeout(() => {
+        setInWorld(true);
+        setPauseOpen(true);
+        setJoinPhase("idle");
+      }, 180);
+    });
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [joinPhase, inventoryReady, savedPresence, profile?.id]);
 
   useEffect(() => {
@@ -2637,7 +2700,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           respawnPointRef.current = null;
           setRespawnPoint(null);
           hungerRef.current = MAX_HUNGER;
-          survivalRef.current = createSurvivalTickState();
           setHunger(MAX_HUNGER);
           selectedRef.current = 2;
           setSelectedHotbar(2);
@@ -2653,6 +2715,9 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           lastCommittedPlayerJsonRef.current = "";
           inventorySavePendingRef.current = false;
           inventorySaveRetryCountRef.current = 0;
+          appliedOwnCombatHealthRef.current = null;
+          appliedOwnCombatRevisionRef.current = -1;
+          respawnLeaseTransitionRef.current = false;
           if (inventorySaveRetryTimerRef.current !== null) {
             window.clearTimeout(inventorySaveRetryTimerRef.current);
             inventorySaveRetryTimerRef.current = null;

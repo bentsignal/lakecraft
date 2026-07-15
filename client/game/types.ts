@@ -194,6 +194,8 @@ export interface VoxelEngine {
   spawnBlockParticles(event: Readonly<BlockParticleEvent>): number;
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
   setRespawnPoint(point: RespawnPoint): void;
+  /** Reconciles local prediction to one Lakebed-authoritative health value. */
+  setPlayerHealth(health: number): number;
   adjustPlayerHealth(delta: number): number;
   /** Snap to a Lakebed-authoritative pose without changing health or respawn state. */
   reconcilePose(pose: PlayerPose): void;

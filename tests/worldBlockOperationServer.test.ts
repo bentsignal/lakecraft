@@ -15,7 +15,7 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const server = fs.readFileSync(path.join(root, "server/index.ts"), "utf8");
 const mutationStart = server.indexOf("editWorldBlock: mutation(async");
-const mutationEnd = server.indexOf("authorizeRespawn: mutation(", mutationStart);
+const mutationEnd = server.indexOf("startPresenceSession: mutation(", mutationStart);
 assert.ok(mutationStart >= 0 && mutationEnd > mutationStart, "authoritative mutation must be registered");
 const editMutation = server.slice(mutationStart, mutationEnd);
 
@@ -26,10 +26,10 @@ assert.match(server, /revision: storedRevision\(row\.revision\) \?\? "0"/);
 assert.match(server, /revision: "0", updatedAt: "0"/);
 
 const receiptRead = editMutation.indexOf("ctx.db.worldBlockOperationReceipts");
-for (const laterRead of ["ctx.db.profiles", "ctx.db.playerPresence", "ctx.db.inventories", "ctx.db.worldChunks", "ctx.db.worldEdits"]) {
+for (const laterRead of ["ctx.db.playerPresence", "ctx.db.inventories", "ctx.db.worldChunks", "ctx.db.worldEdits"]) {
   assert.ok(receiptRead >= 0 && receiptRead < editMutation.indexOf(laterRead), `receipt lookup must precede ${laterRead}`);
 }
-assert.ok(editMutation.indexOf("decodeWorldBlockOperationReceipt") < editMutation.indexOf("ctx.db.profiles"));
+assert.ok(editMutation.indexOf("decodeWorldBlockOperationReceipt") < editMutation.indexOf("ctx.db.playerPresence"));
 const replayBranch = editMutation.slice(
   editMutation.indexOf("if (existingReceipt)"),
   editMutation.indexOf("const serverNow = Date.now()"),
@@ -45,7 +45,7 @@ assert.match(editMutation, /applyWorldChunkEdit\(chunkKey, chunkRow\.snapshotJso
 assert.match(editMutation, /createWorldChunkSnapshot\(chunkKey, \[worldEditValue\]\)/);
 assert.doesNotMatch(editMutation, /maintainWorldChunkSnapshot/);
 assert.doesNotMatch(editMutation, /worldEdits[\s\S]*?\.collect\(\)/);
-assert.match(editMutation, /ctx\.db\.playerPresence\.update\(presence\.id, presenceValue\)/);
+assert.doesNotMatch(editMutation, /ctx\.db\.playerPresence\.update\(/, "block edits never compete with the ordered heartbeat as a pose publisher");
 assert.match(editMutation, /effect\.inventoryChanged[\s\S]*?ctx\.db\.inventories\.update/);
 assert.match(editMutation, /effect\.kind,[\s\S]*?effect\.nextBlock/);
 assert.match(editMutation, /inventory: persistedInventory,[\s\S]*?currentChunkRevision: effect\.chunkRevision/);
@@ -54,8 +54,8 @@ assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 7,
 
 // Every pre-migration inventory writer and the legacy chunk writer now advances
 // a monotonic revision as well; authoritative writes use resolver revisions.
-assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 9,
-  "legacy saves plus atomic block, drop, chest, furnace, mob-loot, PvP, and mob-damage writers advance inventory revisions");
+assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 11,
+  "legacy saves plus atomic gameplay, survival, and respawn inventory writers advance revisions");
 assert.equal((editMutation.match(/revision: effect\.(?:chunk|inventory)Revision/g) ?? []).length, 2);
 
 const storedPresence = {
