@@ -23,6 +23,7 @@ export interface LobbyScreenProps {
   joinError?: string;
   buildLabel?: string;
   onSignInWithGoogle: () => void;
+  onJoinSingleplayer: () => void;
   onSignOut?: () => void;
   onUsernameChange: (value: string) => void;
   onUsernameSubmit: (value: string) => void;
@@ -148,6 +149,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
 
         {props.authState === "signed_out" ? (
           <div className="lc-title-menu">
+            <MenuButton onClick={props.onJoinSingleplayer} wide>Singleplayer</MenuButton>
             <MenuButton onClick={props.onSignInWithGoogle} wide>Sign In with Google</MenuButton>
             <MenuButton disabled wide>Multiplayer</MenuButton>
             <div className="lc-menu-row">
@@ -161,6 +163,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
 
         {props.authState === "ready" ? (
           <div className="lc-title-menu">
+            <MenuButton disabled={joining} onClick={props.onJoinSingleplayer} wide>Singleplayer</MenuButton>
             <MenuButton disabled={joining || worldUnavailable} onClick={props.onJoinWorld} wide><JoinLabel {...props} /></MenuButton>
             <div className="lc-world-line" role="status">
               <span className={`is-${status}`} />

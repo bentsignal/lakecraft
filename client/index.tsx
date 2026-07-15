@@ -16,6 +16,7 @@ import {
   type WorldEdit as EngineWorldEdit,
 } from "./game";
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
+import { SinglePlayerApp } from "./singleplayer";
 import {
   ITEMS,
   BLOCKS,
@@ -2722,6 +2723,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         joinPhase={joinPhase}
         onlineCount={activePlayers.length}
         onJoinWorld={enterWorld}
+        onJoinSingleplayer={() => { window.location.search = "?singleplayer=1"; }}
         onSignInWithGoogle={() => {
           setUsernameError("");
           void signInWithGoogle().catch(() => {
@@ -2936,11 +2938,17 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   );
 }
 
-export function App() {
+function LakebedMultiplayerApp() {
   const [inWorld, setInWorld] = useState(false);
   return (
     <ErrorBoundary fallback={(error, retry) => <LakebedQueryRecovery error={error} retry={retry} />}>
       <GameApp inWorld={inWorld} setInWorld={setInWorld} />
     </ErrorBoundary>
   );
+}
+
+export function App() {
+  return new URLSearchParams(window.location.search).get("singleplayer") === "1"
+    ? <SinglePlayerApp />
+    : <LakebedMultiplayerApp />;
 }
