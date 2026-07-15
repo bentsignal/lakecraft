@@ -49,7 +49,16 @@ import {
 } from "../shared/worldChunks";
 import { naturalWorldBlockAt } from "../shared/worldTerrainAuthority.ts";
 import { writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
-import { addItem, applyConfirmedToolUse, attackDamage, type ItemId } from "../shared/game.ts";
+import { addItem, applyConfirmedToolUse, attackDamage, type ItemId, type ItemStack } from "../shared/game.ts";
+import {
+  applyFurnaceTransfer,
+  createEmptyFurnace,
+  materializeFurnace,
+  serializeFurnaceState,
+  validateFurnaceCoordinate,
+  validateFurnaceJson,
+  type FurnaceState,
+} from "../shared/furnaces.ts";
 import {
   MAX_WORLD_BLOCK_OPERATION_REQUEST_BYTES,
   nextWorldBlockRevision,
@@ -153,6 +162,17 @@ import {
   validateMobWorldCheckpointRequestJson,
   type StoredMobWorldAuthorityRow,
 } from "./mobWorldAuthority.ts";
+import {
+  FURNACE_RECEIPT_OVERFLOW_PRUNE_LIMIT,
+  FURNACE_RECEIPT_TTL_MS,
+  MAX_FURNACE_TRANSFER_RECEIPTS_PER_USER,
+  decideFurnaceReceiptReplay,
+  decideFurnaceTransferCas,
+  decodeFurnaceReceipt,
+  encodeFurnaceReceipt,
+  selectFurnaceReceiptOverflow,
+  validateFurnaceTransferRequestJson,
+} from "./furnaceReceipts.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -397,6 +417,53 @@ function serverTerrainHeight(x: number, z: number): number {
   return 3;
 }
 
+type FurnaceAuthorityView = {
+  state: FurnaceState;
+  revision: string;
+  blockInstanceToken: string;
+};
+
+function furnaceBlockInstanceToken(row: Record<string, unknown>): string | null {
+  return typeof row.id === "string" && typeof row.updatedAt === "string" && row.updatedAt
+    ? `${row.id}:${row.updatedAt}`
+    : null;
+}
+
+function materializedFurnaceView(
+  row: Record<string, unknown> | null,
+  coordKey: string,
+  blockInstanceToken: string,
+  serverNow: number,
+): FurnaceAuthorityView | null {
+  if (!row || row.blockInstanceToken !== blockInstanceToken) {
+    const created = createEmptyFurnace(coordKey, serverNow);
+    return created.ok ? { state: created.state, revision: "0", blockInstanceToken } : null;
+  }
+  if (row.coordKey !== coordKey || typeof row.stateJson !== "string"
+    || typeof row.revision !== "string" || !/^\d{1,16}$/.test(row.revision)) return null;
+  const validated = validateFurnaceJson(row.stateJson, coordKey);
+  const revision = Number(row.revision);
+  if (!validated.ok || !Number.isSafeInteger(revision)) return null;
+  const materialized = materializeFurnace(validated.state, serverNow);
+  return materialized.ok
+    ? { state: materialized.state, revision: String(revision), blockInstanceToken }
+    : null;
+}
+
+function furnaceWithinReach(
+  presenceRow: Record<string, unknown> | null,
+  userId: string,
+  coordinate: { x: number; y: number; z: number },
+  serverNow: number,
+): boolean {
+  const pose = authoritativeCombatPose(presenceRow, userId, serverNow);
+  return Boolean(pose && Math.hypot(
+    coordinate.x + 0.5 - pose.x,
+    coordinate.y + 0.5 - (pose.y + 1.62),
+    coordinate.z + 0.5 - pose.z,
+  ) <= 6);
+}
+
 function mobWorldIsNight(clock: { epochMs: string; epochPhase: string } | null, serverNow: number): boolean {
   const snapshot = worldClockSnapshot(clock, serverNow);
   const phase = worldPhaseAt(serverNow, snapshot.epochMs, snapshot.epochPhase, snapshot.cycleLengthMs);
@@ -497,6 +564,26 @@ export default capsule({
       inventoryJson: string(),
       lastActorId: string()
     }).index("by_coord", ["coordKey"]),
+
+    /** One deterministic three-slot furnace state per placed block instance. */
+    furnaces: table({
+      coordKey: string(),
+      blockInstanceToken: string(),
+      stateJson: string(),
+      revision: string().default("1"),
+      lastActorId: string()
+    }).index("by_coord", ["coordKey"]),
+
+    /** Bounded exact-replay window for atomic player/furnace transfers. */
+    furnaceTransferReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
 
     /** Idempotency receipts make retried atomic chest transfers replay-safe. */
     chestTransferReceipts: table({
@@ -719,6 +806,45 @@ export default capsule({
         .order("desc")
         .first();
       return { ok: true, chest: chest ?? null };
+    }),
+
+    furnaceAt: query(async (ctx, request: { coordKey: string; sample: string }) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const coordinate = request && typeof request.coordKey === "string"
+        && typeof request.sample === "string" && request.sample.length <= 16
+        ? validateFurnaceCoordinate(request.coordKey)
+        : { ok: false as const, reason: "invalid_coordinate" as const };
+      if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
+      const worldRows = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .order("desc")
+        .take(2);
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      const furnaceRows = await ctx.db.furnaces
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .order("desc")
+        .take(2);
+      if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
+        return { ok: false, reason: "furnace_required", serverNow };
+      }
+      if (presenceRows.length !== 1
+        || !furnaceWithinReach(presenceRows[0], ctx.auth.userId, coordinate, serverNow)) {
+        return { ok: false, reason: "out_of_reach", serverNow };
+      }
+      if (furnaceRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const blockInstanceToken = furnaceBlockInstanceToken(worldRows[0]);
+      const furnace = blockInstanceToken
+        ? materializedFurnaceView(furnaceRows[0] ?? null, coordinate.coordKey, blockInstanceToken, serverNow)
+        : null;
+      return furnace
+        ? { ok: true, furnace, serverNow }
+        : { ok: false, reason: "invalid_state", serverNow };
     }),
 
     myProfile: query(async (ctx) =>
@@ -1014,6 +1140,62 @@ export default capsule({
       });
       if (!resolution.ok) return { ok: false, reason: resolution.reason };
       const effect = resolution.effect;
+      let minedFurnaceRow: Record<string, unknown> | null = null;
+      const furnaceRecoveryDrops: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
+      if (effect.kind === "mine" && effect.previousBlock === "furnace") {
+        const furnaceRows = await ctx.db.furnaces
+          .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+          .order("desc")
+          .take(2);
+        if (furnaceRows.length > 1) return { ok: false, reason: "duplicate_state" };
+        minedFurnaceRow = furnaceRows[0] ?? null;
+        const blockInstanceToken = currentEdit ? furnaceBlockInstanceToken(currentEdit) : null;
+        if (!blockInstanceToken) return { ok: false, reason: "conservation_failure" };
+        let recoveryStacks: ItemStack[] = [];
+        if (minedFurnaceRow && minedFurnaceRow.blockInstanceToken !== blockInstanceToken) {
+          return { ok: false, reason: "invalid_state" };
+        }
+        if (minedFurnaceRow) {
+          const furnace = materializedFurnaceView(
+            minedFurnaceRow,
+            coordKey,
+            blockInstanceToken,
+            serverNow,
+          );
+          if (!furnace) return { ok: false, reason: "conservation_failure" };
+          recoveryStacks = [furnace.state.input, furnace.state.fuel, furnace.state.output]
+            .filter((stack): stack is ItemStack => stack !== null);
+        }
+        if (recoveryStacks.length > 0) {
+          const activeOwnedDrops = await ctx.db.droppedItems
+            .withIndex("by_owner_expiry", (q) => q
+              .eq("ownerUserId", ctx.auth.userId)
+              .gt("expiresAt", String(serverNow)))
+            .order("asc")
+            .take(65);
+          if (recoveryStacks.some((_, index) => !canCreateDroppedItem(activeOwnedDrops.length + index))) {
+            return { ok: false, reason: "drop_limit" };
+          }
+          for (let index = 0; index < recoveryStacks.length; index += 1) {
+            const recoveryOperationId = `${request.operationId.slice(0, 60)}_f${index}`;
+            const droppedValue = buildDroppedItemRow(
+              ctx.auth.userId,
+              recoveryOperationId,
+              recoveryStacks[index],
+              { x: pose.x, y: pose.y, z: pose.z },
+              pose.yaw,
+              serverNow,
+            );
+            if (!droppedValue) return { ok: false, reason: "conservation_failure" };
+            const collision = await ctx.db.droppedItems
+              .withIndex("by_drop", (q) => q.eq("dropId", droppedValue.dropId))
+              .order("desc")
+              .first();
+            if (collision) return { ok: false, reason: "drop_id_collision" };
+            furnaceRecoveryDrops.push(droppedValue);
+          }
+        }
+      }
       const worldEditValue = {
         coordKey,
         x: String(request.x),
@@ -1052,6 +1234,12 @@ export default capsule({
         if (!inventory) throw new Error("Unable to persist authoritative inventory.");
         persistedInventory = inventory;
       }
+
+      for (const droppedValue of furnaceRecoveryDrops) {
+        const recovered = await ctx.db.droppedItems.insert(droppedValue);
+        if (!recovered) throw new Error("Unable to recover mined furnace contents.");
+      }
+      if (minedFurnaceRow) await ctx.db.furnaces.delete(minedFurnaceRow.id as string);
 
       if (!presence) throw new Error("Active presence disappeared during world edit.");
       const presenceValue = {
@@ -1637,6 +1825,185 @@ export default capsule({
         return { ok: false, reason: "authentication_required" };
       }
       return { ok: false, reason: "atomic_transfer_required" };
+    }),
+
+    operateFurnace: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const request = validateFurnaceTransferRequestJson(requestJson);
+      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      const receiptRows = await ctx.db.furnaceTransferReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .take(2);
+      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const receiptDecision = decideFurnaceReceiptReplay(
+        receiptRows[0]?.fingerprint ?? null,
+        request.fingerprint,
+      );
+      if (receiptDecision === "operation_id_reused") {
+        return { ok: false, reason: "operation_id_reused", serverNow };
+      }
+      if (receiptDecision === "replay") {
+        const saved = decodeFurnaceReceipt(receiptRows[0].resultJson);
+        if (!saved) return { ok: false, reason: "invalid_receipt", serverNow };
+        const replayInventoryRows = await ctx.db.inventories
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .take(2);
+        const replayWorldRows = await ctx.db.worldEdits
+          .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+          .order("desc")
+          .take(2);
+        const replayFurnaceRows = await ctx.db.furnaces
+          .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+          .order("desc")
+          .take(2);
+        const replayBlockInstanceToken = replayWorldRows.length === 1
+          && replayWorldRows[0].blockType === "furnace"
+          ? furnaceBlockInstanceToken(replayWorldRows[0])
+          : null;
+        const replayFurnace = replayBlockInstanceToken && replayFurnaceRows.length <= 1
+          ? materializedFurnaceView(
+            replayFurnaceRows[0] ?? null,
+            request.coordKey,
+            replayBlockInstanceToken,
+            serverNow,
+          )
+          : null;
+        if (replayInventoryRows.length !== 1 || !validatePlayerStateJson(replayInventoryRows[0].inventoryJson).ok
+          || !replayFurnace) {
+          return { ok: false, reason: "replay_state_unavailable", serverNow };
+        }
+        return {
+          ...saved,
+          replayed: true,
+          player: replayInventoryRows[0],
+          furnace: replayFurnace,
+          serverNow,
+        };
+      }
+
+      const coordinate = validateFurnaceCoordinate(request.coordKey);
+      if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
+      const worldRows = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .order("desc")
+        .take(2);
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      const furnaceRows = await ctx.db.furnaces
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .order("desc")
+        .take(2);
+      if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
+        return { ok: false, reason: "furnace_required", serverNow };
+      }
+      if (presenceRows.length !== 1
+        || !furnaceWithinReach(presenceRows[0], ctx.auth.userId, coordinate, serverNow)) {
+        return { ok: false, reason: "out_of_reach", serverNow };
+      }
+      if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      if (furnaceRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const playerState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
+      if (!playerState.ok) return { ok: false, reason: "invalid_inventory", serverNow };
+      const blockInstanceToken = furnaceBlockInstanceToken(worldRows[0]);
+      const furnace = blockInstanceToken
+        ? materializedFurnaceView(furnaceRows[0] ?? null, coordinate.coordKey, blockInstanceToken, serverNow)
+        : null;
+      if (!furnace) return { ok: false, reason: "invalid_state", serverNow };
+      if (decideFurnaceTransferCas({
+        inventoryUpdatedAt: inventoryRows[0].updatedAt,
+        furnaceRevision: furnace.revision,
+        blockInstanceToken: furnace.blockInstanceToken,
+      }, {
+        inventoryUpdatedAt: request.expectedInventoryUpdatedAt,
+        furnaceRevision: request.expectedFurnaceRevision,
+        blockInstanceToken: request.expectedBlockInstanceToken,
+      }) === "conflict") {
+        return {
+          ok: false,
+          reason: "conflict",
+          player: inventoryRows[0],
+          furnace,
+          serverNow,
+        };
+      }
+
+      const applied = applyFurnaceTransfer(
+        furnace.state,
+        playerState.state.inventory,
+        request.action,
+        serverNow,
+      );
+      if (!applied.ok) return { ok: false, reason: applied.reason, furnace, serverNow };
+      const serialized = serializeFurnaceState(applied.state);
+      if (!serialized.ok) return { ok: false, reason: "conservation_failure", serverNow };
+      const nextRevision = incrementStoredRevision(furnace.revision);
+      const player = await ctx.db.inventories.update(inventoryRows[0].id, {
+        userId: ctx.auth.userId,
+        inventoryJson: JSON.stringify({ ...playerState.state, inventory: applied.inventory }),
+        revision: incrementStoredRevision(inventoryRows[0].revision),
+      });
+      const furnaceValue = {
+        coordKey: coordinate.coordKey,
+        blockInstanceToken,
+        stateJson: serialized.furnaceJson,
+        revision: nextRevision,
+        lastActorId: ctx.auth.userId,
+      };
+      const persistedFurnace = furnaceRows[0]
+        ? await ctx.db.furnaces.update(furnaceRows[0].id, furnaceValue)
+        : await ctx.db.furnaces.insert(furnaceValue);
+      if (!player || !persistedFurnace) return { ok: false, reason: "conservation_failure", serverNow };
+      const furnaceResult = {
+        state: serialized.state,
+        revision: nextRevision,
+        blockInstanceToken,
+      };
+      const result = {
+        ok: true,
+        replayed: false,
+        moved: {
+          direction: request.action.kind.startsWith("deposit_") ? "to_furnace" : "to_player",
+          ...applied.moved,
+        },
+        player,
+        furnace: furnaceResult,
+        serverNow,
+      };
+      const receipt = await ctx.db.furnaceTransferReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        resultJson: encodeFurnaceReceipt(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      const newestReceipts = await ctx.db.furnaceTransferReceipts
+        .withIndex("by_user_created", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(MAX_FURNACE_TRANSFER_RECEIPTS_PER_USER + FURNACE_RECEIPT_OVERFLOW_PRUNE_LIMIT);
+      for (const receiptId of selectFurnaceReceiptOverflow(newestReceipts, receipt.id)) {
+        await ctx.db.furnaceTransferReceipts.delete(receiptId);
+      }
+      const staleReceipts = await ctx.db.furnaceTransferReceipts
+        .withIndex("by_user_created", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .lt("receiptCreatedAt", String(serverNow - FURNACE_RECEIPT_TTL_MS)))
+        .order("asc")
+        .take(FURNACE_RECEIPT_OVERFLOW_PRUNE_LIMIT);
+      for (const staleReceipt of staleReceipts) await ctx.db.furnaceTransferReceipts.delete(staleReceipt.id);
+      return result;
     }),
 
     transferChest: mutation(async (ctx, requestJson: string) => {

@@ -62,6 +62,26 @@ Production validation requires two separate browser profiles that are already si
 
    Record request/mutation quota deltas when Lakebed exposes them. Expected application mutations for the scripted actions are two chats, one drop, one pickup, one attack, and one leave, plus up to 600 presence writes for two continuously moving clients during a full minute. Presence is an indexed upsert, so row-count growth is not a substitute for mutation accounting.
 
+## Shared furnace authority check
+
+Run this check when a furnace or inventory-authority milestone changes. Place one furnace where both authenticated clients are within interaction range, then use one shared coordinate throughout:
+
+1. Client A opens the furnace, deposits raw ore and coal, and leaves the drawer open. Client B opens the same furnace and must see the same input/fuel state without refreshing.
+2. Observe a full item cook for at least ten seconds. Both clients' arrows should advance from server-derived state and converge on one output; there must be no per-tick furnace mutation in the logs.
+3. Close both clients during a second cook, wait more than ten seconds, then reopen the furnace. The output must materialize from elapsed server time even though no client remained connected.
+4. Have both clients attempt a transfer from the same revision. Exactly one operation may commit; the loser must reload canonical pack and furnace state. Combined ore, fuel, and output totals must remain conserved.
+5. Simulate an outcome-unknown retry by replaying the winner's exact operation ID. It must return the prior result without moving a second stack. Reusing that operation ID for a different semantic action must be rejected.
+6. With one drawer open for a minute, verify the Lakebed reconciliation cadence is about 0.5 Hz (approximately 30 reads) while the local progress display remains smooth at 20 Hz, and that progress alone adds zero mutations. Record the request delta separately from presence and mob sampling.
+
+The deterministic preflight for the same invariants is:
+
+```sh
+node --test \
+  tests/furnaces.test.ts \
+  tests/furnaceServerAuthority.test.ts \
+  tests/furnaceAuthorityClient.test.ts
+```
+
 ## Release gates
 
 - Both identities, names, avatars, chat messages, and the transferred item converge without refresh.
@@ -70,6 +90,8 @@ Production validation requires two separate browser profiles that are already si
 - The item total is conserved across both inventories and the world drop.
 - PvP rejects cooldown spam, reach/aim spoofing, and stale/offline targets.
 - Both clients agree on mob IDs/targets and stay within 0.25 blocks; duplicate hostile-damage claims change health once and only persisted death can authorize respawn.
+- Both clients converge on the same persistent furnace slots and ten-second cook progress; offline elapsed time completes cooking without background writes.
+- Concurrent and retried furnace transfers conserve combined player/furnace items, commit once, and reject semantic operation-ID reuse.
 - Disconnect removes the old avatar and reconnect produces exactly one avatar at the saved pose.
 - Desktop rendering remains at least 55 FPS with at most 22 ms P95 frame time during the run.
 - Request and mutation quota exhaustion is a failed production gate and must be reported, never worked around with another backend.

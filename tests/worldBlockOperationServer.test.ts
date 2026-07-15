@@ -49,13 +49,13 @@ assert.match(editMutation, /ctx\.db\.playerPresence\.update\(presence\.id, prese
 assert.match(editMutation, /effect\.inventoryChanged[\s\S]*?ctx\.db\.inventories\.update/);
 assert.match(editMutation, /effect\.kind,[\s\S]*?effect\.nextBlock/);
 assert.match(editMutation, /inventory: persistedInventory,[\s\S]*?currentChunkRevision: effect\.chunkRevision/);
-assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 6,
-  "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit all fail closed on duplicates");
+assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 7,
+  "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit/current furnace all fail closed on duplicates");
 
 // Every pre-migration inventory writer and the legacy chunk writer now advances
 // a monotonic revision as well; authoritative writes use resolver revisions.
-assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 6,
-  "legacy saves plus atomic block, drop, chest, and mob-loot writers advance inventory revisions");
+assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 7,
+  "legacy saves plus atomic block, drop, chest, furnace, and mob-loot writers advance inventory revisions");
 assert.equal((editMutation.match(/revision: effect\.(?:chunk|inventory)Revision/g) ?? []).length, 2);
 
 const storedPresence = {

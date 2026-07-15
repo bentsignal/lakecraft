@@ -39,7 +39,6 @@ import {
   normalizeInventory,
   normalizeRespawnPoint,
   parseSerializablePlayerStateJson,
-  smeltRecipe,
   tickSurvival,
   unequipArmor,
   type ArmorSlot,
@@ -50,10 +49,13 @@ import {
   type ItemId,
   type PlayerRespawnPoint,
   type Recipe,
-  type SmeltingRecipe,
   type SurvivalTickState,
   type ToolUseKind,
 } from "../shared/game";
+import {
+  type FurnaceState,
+  type FurnaceTransferAction,
+} from "../shared/furnaces.ts";
 import { CHEST_SLOT_COUNT, type ChestAtResult, type PersistedChest } from "../shared/chests";
 import {
   type ChestTransferRequest,
@@ -218,6 +220,33 @@ type MobPlayerDamageResult =
   | { ok: true; replayed: boolean; killed: boolean; damage: number; state: PlayerCombatState; serverNow: number }
   | { ok: false; reason: string; retryAfterMs?: number; serverNow: number };
 
+type FurnaceAuthorityView = {
+  state: FurnaceState;
+  revision: string;
+  blockInstanceToken: string;
+};
+
+type FurnaceAtResult =
+  | { ok: true; furnace: FurnaceAuthorityView; serverNow: number }
+  | { ok: false; reason: string; serverNow: number };
+
+type FurnaceOperationResult =
+  | {
+      ok: true;
+      replayed: boolean;
+      moved: { direction: "to_furnace" | "to_player"; itemId: ItemId; count: number };
+      player: PersistedInventoryState;
+      furnace: FurnaceAuthorityView;
+      serverNow: number;
+    }
+  | {
+      ok: false;
+      reason: string;
+      player?: PersistedInventoryState;
+      furnace?: FurnaceAuthorityView;
+      serverNow: number;
+    };
+
 function visibleDroppedItemChunkKeys(x: number, z: number): string[] {
   const centerX = Math.floor(x / DROPPED_ITEM_CHUNK_SIZE);
   const centerZ = Math.floor(z / DROPPED_ITEM_CHUNK_SIZE);
@@ -230,6 +259,10 @@ function visibleDroppedItemChunkKeys(x: number, z: number): string[] {
 
 function droppedItemOperationId(): string {
   return `lc_${crypto.randomUUID()}`;
+}
+
+function furnaceOperationId(): string {
+  return `furnace_${crypto.randomUUID()}`;
 }
 
 const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder"> = {
@@ -462,6 +495,8 @@ function parsePlayerState(row: PersistedInventory | null) {
 export function App() {
   const auth = useAuth();
   const [activeChestKey, setActiveChestKey] = useState("");
+  const [activeFurnaceKey, setActiveFurnaceKey] = useState("");
+  const [furnaceQuerySample, setFurnaceQuerySample] = useState("0");
   const [inWorld, setInWorld] = useState(false);
   const [mobLeaseSessionId, setMobLeaseSessionId] = useState("");
   const [mobQuerySample, setMobQuerySample] = useState("0");
@@ -486,6 +521,10 @@ export function App() {
   const profile = useQuery<Profile | null>("myProfile");
   const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
   const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
+  const furnaceResult = useQuery<FurnaceAtResult, { coordKey: string; sample: string }>(
+    "furnaceAt",
+    { coordKey: activeFurnaceKey, sample: activeFurnaceKey ? furnaceQuerySample : "0" },
+  );
   const worldClock = useQuery<WorldClockSnapshot>("worldClock");
   const [mobIds, setMobIds] = useState<string[]>([]);
   const mobWorldAuthority = useQuery<MobWorldAuthorityResult, { mobIds: string[]; sample: string }>(
@@ -511,6 +550,7 @@ export function App() {
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
   const transferChest = useMutation<[requestJson: string], ChestTransferResult>("transferChest");
+  const operateFurnace = useMutation<[requestJson: string], FurnaceOperationResult>("operateFurnace");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
   const attackMob = useMutation<[mobId: string, kind: string, damage: string, operationId: string], MobAttackResult>("attackMob");
   const checkpointMobWorld = useMutation<[requestJson: string], MobWorldCheckpointResult>("checkpointMobWorld");
@@ -555,6 +595,8 @@ export function App() {
   const chestTokenRef = useRef("");
   const chestInventoryRef = useRef<Inventory>(createEmptyInventory(CHEST_SLOT_COUNT));
   const chestBusyRef = useRef(false);
+  const furnaceBusyRef = useRef(false);
+  const furnaceAuthorityRef = useRef<FurnaceAuthorityView | null>(null);
   const chestTransferActiveRef = useRef(false);
   const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
   const pendingWorldBlockEditRef = useRef<PendingWorldBlockEdit | null>(null);
@@ -589,7 +631,9 @@ export function App() {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [furnaceOpen, setFurnaceOpen] = useState(false);
-  const [furnaceStatus, setFurnaceStatus] = useState("Choose a firing. One coal smelts up to eight matching items.");
+  const [furnaceState, setFurnaceState] = useState<FurnaceState | null>(null);
+  const [furnaceBusy, setFurnaceBusy] = useState(false);
+  const [furnaceStatus, setFurnaceStatus] = useState("Input and fuel are shared through Lakebed.");
   const [furnaceError, setFurnaceError] = useState("");
   const [pauseOpen, setPauseOpen] = useState(false);
   const [showPlayerList, setShowPlayerList] = useState(false);
@@ -705,12 +749,25 @@ export function App() {
     setCraftingContext("field");
     setInventoryOpen(false);
     setFurnaceOpen(false);
+    setActiveFurnaceKey("");
+    furnaceAuthorityRef.current = null;
+    setFurnaceState(null);
     setFurnaceError("");
   }
 
   function setChestOperationBusy(next: boolean) {
     chestBusyRef.current = next;
     setChestBusy(next);
+  }
+
+  function setFurnaceOperationBusy(next: boolean) {
+    furnaceBusyRef.current = next;
+    setFurnaceBusy(next);
+  }
+
+  function loadCanonicalFurnace(furnace: FurnaceAuthorityView): void {
+    furnaceAuthorityRef.current = furnace;
+    setFurnaceState(furnace.state);
   }
 
   function setCanonicalChestToken(next: string) {
@@ -756,12 +813,20 @@ export function App() {
     return true;
   }
 
-  function requestInventorySave(allowWhileChestBusy = false, allowWhileWorldEditPending = false): Promise<void> {
+  function requestInventorySave(
+    allowWhileChestBusy = false,
+    allowWhileWorldEditPending = false,
+    allowWhileFurnaceBusy = false,
+  ): Promise<void> {
     if (pendingWorldBlockEditRef.current && !allowWhileWorldEditPending) {
       inventorySavePendingRef.current = true;
       return inventorySavePromiseRef.current ?? Promise.resolve();
     }
     if (chestBusyRef.current && !allowWhileChestBusy) {
+      inventorySavePendingRef.current = true;
+      return inventorySavePromiseRef.current ?? Promise.resolve();
+    }
+    if (furnaceBusyRef.current && !allowWhileFurnaceBusy) {
       inventorySavePendingRef.current = true;
       return inventorySavePromiseRef.current ?? Promise.resolve();
     }
@@ -800,7 +865,8 @@ export function App() {
         notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
       } finally {
         inventorySavePromiseRef.current = null;
-        if (inventorySavePendingRef.current && !chestBusyRef.current && !pendingWorldBlockEditRef.current) {
+        if (inventorySavePendingRef.current && !chestBusyRef.current
+          && !furnaceBusyRef.current && !pendingWorldBlockEditRef.current) {
           inventorySavePendingRef.current = false;
           void requestInventorySave();
         }
@@ -910,7 +976,7 @@ export function App() {
       const deferredDrops = deferredMobDropsRef.current.splice(0);
       collectMobDrops(deferredDrops);
     }
-    if (inventorySavePendingRef.current && !chestBusyRef.current) {
+    if (inventorySavePendingRef.current && !chestBusyRef.current && !furnaceBusyRef.current) {
       inventorySavePendingRef.current = false;
       void requestInventorySave();
     }
@@ -1152,6 +1218,29 @@ export function App() {
   }, [inventory, selectedHotbar, equipment, respawnPoint, hunger, auth.isAuthenticated, auth.isGuest]);
 
   useEffect(() => {
+    if (!furnaceOpen || !activeFurnaceKey) return;
+    setFurnaceQuerySample(String(Date.now()));
+    const timer = window.setInterval(() => setFurnaceQuerySample(String(Date.now())), 2_000);
+    return () => window.clearInterval(timer);
+  }, [furnaceOpen, activeFurnaceKey]);
+
+  useEffect(() => {
+    if (!furnaceOpen || !activeFurnaceKey || !furnaceResult) return;
+    if (!furnaceResult.ok) {
+      if (furnaceResult.reason === "furnace_required") setFurnaceError("That furnace no longer exists.");
+      else if (furnaceResult.reason === "out_of_reach") setFurnaceError("Move closer to use this furnace.");
+      else if (furnaceResult.reason !== "invalid_coordinate") setFurnaceError("Lakebed could not read the shared furnace.");
+      return;
+    }
+    if (furnaceResult.furnace.state.coordKey !== activeFurnaceKey || furnaceBusyRef.current) return;
+    loadCanonicalFurnace(furnaceResult.furnace);
+    setFurnaceStatus(furnaceResult.furnace.state.burnRemainingMs > 0
+      ? "The furnace is burning. Progress is derived from Lakebed server time."
+      : "Input and fuel are shared through Lakebed.");
+    setFurnaceError("");
+  }, [furnaceOpen, activeFurnaceKey, furnaceResult]);
+
+  useEffect(() => {
     if (!inWorld || !inventoryReady) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1306,7 +1395,8 @@ export function App() {
           }
           if (target.block.block === BLOCK.FURNACE) {
             activeWorkstationRef.current = { kind: "furnace", position: { x: target.block.x, y: target.block.y, z: target.block.z } };
-            setFurnaceStatus("Choose a firing. One coal smelts up to eight matching items.");
+            setActiveFurnaceKey(key);
+            setFurnaceStatus("Loading shared furnace…");
             setFurnaceError("");
             setFurnaceOpen(true);
             return true;
@@ -1745,6 +1835,7 @@ export function App() {
       }
       if ((inventoryOpen || furnaceOpen) && event.code === "Escape") {
         event.preventDefault();
+        if (furnaceOpen && furnaceBusyRef.current) return;
         closeInventory();
         engineRef.current?.requestPointerLock();
         return;
@@ -1758,6 +1849,7 @@ export function App() {
       }
       if (event.code === "KeyQ" && !event.repeat) {
         event.preventDefault();
+        if (inventoryOpen || furnaceOpen) return;
         void handleDropSelected(event.ctrlKey || event.metaKey);
         return;
       }
@@ -1774,6 +1866,7 @@ export function App() {
         event.preventDefault();
         if (!hydratedRef.current) return;
         if (inventoryOpen || furnaceOpen) {
+          if (furnaceOpen && furnaceBusyRef.current) return;
           closeInventory();
           engineRef.current?.requestPointerLock();
         } else {
@@ -1821,27 +1914,72 @@ export function App() {
     notify(`Made ${ITEMS[result.crafted.itemId].label}`, `Added ${result.crafted.count} to your field kit.`, "success");
   }
 
-  function handleSmelt(recipe: SmeltingRecipe) {
-    if (!hydratedRef.current || pendingWorldBlockEditRef.current) return;
-    const result = smeltRecipe(inventoryRef.current, recipe);
-    if (!result.ok) {
-      const detail = result.reason === "missing_fuel"
-        ? "Mine coal ore with a wooden pickaxe or better."
-        : result.reason === "missing_input"
-          ? "Bring raw ore or uncooked meat to the furnace."
-          : result.reason === "inventory_full"
-            ? "Make room in your pack before firing the furnace."
-            : "That firing is not available.";
-      setFurnaceError(detail);
-      notify("Furnace could not fire", detail, "warning");
-      return;
-    }
-    updateInventory(result.inventory);
-    const output = ITEMS[result.smelted.itemId];
-    const detail = `${result.smelted.count} ${output.label} returned to your pack · ${result.fuelConsumed} coal burned.`;
+  async function handleFurnaceTransfer(action: FurnaceTransferAction): Promise<void> {
+    if (!hydratedRef.current || !activeFurnaceKey || furnaceBusyRef.current
+      || pendingWorldBlockEditRef.current || chestBusyRef.current) return;
+    setFurnaceOperationBusy(true);
     setFurnaceError("");
-    setFurnaceStatus(detail);
-    notify(`Smelted ${output.label}`, detail, "success");
+    try {
+      await requestInventorySave(false, false, true);
+      if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) {
+        setFurnaceError("Your pack is still saving. Wait a moment and try again; no items moved.");
+        return;
+      }
+      const authority = furnaceAuthorityRef.current;
+      if (!authority || authority.state.coordKey !== activeFurnaceKey) {
+        setFurnaceError("The shared furnace has not finished loading.");
+        return;
+      }
+      const result = await operateFurnace(JSON.stringify({
+        operationId: furnaceOperationId(),
+        coordKey: activeFurnaceKey,
+        action,
+        expectedInventoryUpdatedAt: inventoryTokenRef.current,
+        expectedFurnaceRevision: authority.revision,
+        expectedBlockInstanceToken: authority.blockInstanceToken,
+      }));
+      setConnected(true);
+      if (result.ok) {
+        const playerLoaded = loadCanonicalPlayer(result.player);
+        loadCanonicalFurnace(result.furnace);
+        if (!playerLoaded) {
+          setFurnaceError("The transfer committed, but Lakebed returned a damaged pack snapshot.");
+          return;
+        }
+        inventorySavePendingRef.current = false;
+        const item = ITEMS[result.moved.itemId];
+        setFurnaceStatus(`${result.moved.count} ${item.label} moved ${result.moved.direction === "to_furnace" ? "into" : "out of"} the shared furnace.`);
+        return;
+      }
+      if (result.reason === "conflict") {
+        if (result.player) loadCanonicalPlayer(result.player);
+        if (result.furnace) {
+          loadCanonicalFurnace(result.furnace);
+        }
+        setFurnaceError("The pack or furnace changed first. Lakebed reloaded both; click again to retry.");
+      } else if (result.reason === "no_capacity") {
+        setFurnaceError("That slot has no room.");
+      } else if (result.reason === "wrong_item") {
+        setFurnaceError("Only smeltable items go above the flame, and coal goes below it.");
+      } else if (result.reason === "empty_source") {
+        setFurnaceError("That stack changed before Lakebed could move it.");
+      } else if (result.reason === "out_of_reach") {
+        setFurnaceError("Move closer to use this furnace.");
+      } else if (result.reason === "furnace_required") {
+        setFurnaceError("That furnace no longer exists.");
+      } else {
+        setFurnaceError("Lakebed rejected the furnace transfer; no items moved.");
+      }
+    } catch {
+      setConnected(false);
+      setFurnaceError("Furnace connection lost. No unconfirmed local changes were applied.");
+    } finally {
+      setFurnaceOperationBusy(false);
+      if (inventorySavePendingRef.current && !chestBusyRef.current && !pendingWorldBlockEditRef.current) {
+        inventorySavePendingRef.current = false;
+        void requestInventorySave();
+      }
+    }
   }
 
   function handleUseItem(inventoryIndex = selectedRef.current): boolean {
@@ -2287,13 +2425,16 @@ export function App() {
       />
 
       <FurnaceDrawer
+        busy={furnaceBusy}
         error={furnaceError}
+        furnace={furnaceState}
         inventory={inventory}
         onClose={() => {
+          if (furnaceBusy) return;
           closeInventory();
           engineRef.current?.requestPointerLock();
         }}
-        onSmelt={handleSmelt}
+        onTransfer={(action) => { void handleFurnaceTransfer(action); }}
         open={furnaceOpen}
         status={furnaceStatus}
       />
