@@ -11,6 +11,8 @@ npx lakebed build --json
 
 The first command simulates two moving clients for one minute with deterministic network jitter. It verifies the 5 Hz/300-writes-per-player ceiling, remote visibility and reconnect semantics, cross-player item conservation, chat bounds, authoritative PvP, and explicit mutation accounting. Its expected baseline is 600 presence mutations plus six representative action mutations per minute.
 
+The claimed production app currently allows 10,000 requests and only 1,000 mutations per day. A two-player 5 Hz run therefore spends about 606 mutations/minute and can exhaust the daily mutation bucket in under two minutes. That limitation is intentional evidence for this Lakebed experiment: run one bounded 60-second production pass after a reset, preserve the results, and never switch multiplayer to another transport.
+
 ## Identity prerequisite
 
 Lakebed supports per-tab development guests such as `http://localhost:3000/?lakebed_guest=alice`, but Lakecraft intentionally rejects guest identities for usernames and shared-world mutations. Guest tabs are therefore useful for checking auth rejection only; they are not a valid end-to-end multiplayer pass.
