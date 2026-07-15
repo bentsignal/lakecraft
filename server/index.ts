@@ -68,6 +68,7 @@ import {
   type CreeperExplosionAuthority,
 } from "../shared/creeperExplosion.ts";
 import { naturalWorldBlockAt } from "../shared/worldTerrainAuthority.ts";
+import { resolveFallingBlocks } from "../shared/fallingBlocks.ts";
 import {
   TNT_IGNITION_REACH,
   TNT_MAX_ACTIVE_FUSES,
@@ -2194,6 +2195,41 @@ export default capsule({
       });
       if (!resolution.ok) return { ok: false, reason: resolution.reason };
       const effect = resolution.effect;
+      const minimumFallingY = Math.max(WORLD_EDIT_MIN_Y, request.y - 22);
+      const maximumFallingY = Math.min(WORLD_EDIT_MAX_Y, request.y + 9);
+      const fallingCoordinates = Array.from(
+        { length: maximumFallingY - minimumFallingY + 1 },
+        (_, index) => ({ x: request.x, y: minimumFallingY + index, z: request.z }),
+      );
+      const sampledFalling = chunkRow
+        ? sampleWorldChunkSnapshot(chunkKey, chunkRow.snapshotJson, fallingCoordinates)
+        : null;
+      if (sampledFalling && !sampledFalling.ok) {
+        return { ok: false, reason: "conservation_failure", detail: sampledFalling.reason };
+      }
+      const falling = resolveFallingBlocks({
+        trigger: {
+          x: request.x, y: request.y, z: request.z, coordKey,
+          previousBlock: effect.previousBlock,
+          nextBlock: effect.nextBlock,
+        },
+        authoritativeCells: fallingCoordinates.map((coordinate, index) => ({
+          ...coordinate,
+          coordKey: `${coordinate.x}:${coordinate.y}:${coordinate.z}`,
+          block: coordinate.y === request.y
+            ? effect.nextBlock
+            : sampledFalling?.ok
+              ? sampledFalling.blocks[index] ?? naturalWorldBlockAt(coordinate.x, coordinate.y, coordinate.z)
+              : naturalWorldBlockAt(coordinate.x, coordinate.y, coordinate.z),
+          blockInstanceToken: null,
+        })),
+      });
+      const settledEdits = falling.ok
+        ? Object.entries(falling.finalBlocks).map(([settledCoordKey, block]) => {
+          const [x, y, z] = settledCoordKey.split(":").map(Number);
+          return { x, y, z, blockType: block };
+        })
+        : [];
       let minedFurnaceRow: Record<string, unknown> | null = null;
       const furnaceRecoveryDrops: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
       if (effect.kind === "mine" && effect.previousBlock === "furnace") {
@@ -2259,14 +2295,37 @@ export default capsule({
         actorId: ctx.auth.userId,
         editedAt: String(serverNow),
       };
+      const worldEditValues = new Map<string, typeof worldEditValue>([[coordKey, worldEditValue]]);
+      for (const settled of settledEdits) worldEditValues.set(`${settled.x}:${settled.y}:${settled.z}`, {
+        coordKey: `${settled.x}:${settled.y}:${settled.z}`,
+        x: String(settled.x), y: String(settled.y), z: String(settled.z),
+        blockType: settled.blockType,
+        actorId: ctx.auth.userId,
+        editedAt: String(serverNow),
+      });
+      const authoritativeWorldEdits = [...worldEditValues.values()];
       const snapshot = chunkRow
-        ? applyWorldChunkEdit(chunkKey, chunkRow.snapshotJson, worldEditValue)
-        : createWorldChunkSnapshot(chunkKey, [worldEditValue]);
+        ? applyWorldChunkEdits(chunkKey, chunkRow.snapshotJson, authoritativeWorldEdits)
+        : createWorldChunkSnapshot(chunkKey, authoritativeWorldEdits);
       if (!snapshot.ok) return { ok: false, reason: "conservation_failure", detail: snapshot.reason };
 
-      const worldEdit = currentEdit
-        ? await ctx.db.worldEdits.update(currentEdit.id, worldEditValue)
-        : await ctx.db.worldEdits.insert(worldEditValue);
+      const existingEditsByCoord = new Map<string, Record<string, unknown> | null>([[coordKey, currentEdit]]);
+      for (const value of authoritativeWorldEdits) {
+        if (value.coordKey === coordKey) continue;
+        const rows = await ctx.db.worldEdits
+          .withIndex("by_coord", (q) => q.eq("coordKey", value.coordKey)).order("desc").take(2);
+        if (rows.length > 1) return { ok: false, reason: "duplicate_state" };
+        existingEditsByCoord.set(value.coordKey, rows[0] ?? null);
+      }
+      const persistedWorldEdits = [];
+      for (const value of authoritativeWorldEdits) {
+        const existing = existingEditsByCoord.get(value.coordKey);
+        const persisted = existing
+          ? await ctx.db.worldEdits.update(existing.id, value)
+          : await ctx.db.worldEdits.insert(value);
+        if (!persisted) throw new Error("Unable to persist authoritative world edit batch.");
+        persistedWorldEdits.push(persisted);
+      }
       const chunkValue = {
         chunkKey,
         snapshotJson: snapshot.snapshotJson,
@@ -2275,7 +2334,9 @@ export default capsule({
       const chunk = chunkRow
         ? await ctx.db.worldChunks.update(chunkRow.id, chunkValue)
         : await ctx.db.worldChunks.insert(chunkValue);
-      if (!worldEdit || !chunk) throw new Error("Unable to persist authoritative world edit.");
+      if (!chunk || persistedWorldEdits.length !== authoritativeWorldEdits.length) {
+        throw new Error("Unable to persist authoritative world edit.");
+      }
 
       let persistedInventory = inventoryRow;
       if (effect.inventoryChanged) {
@@ -2317,6 +2378,7 @@ export default capsule({
           itemId: effect.toolUse.itemId,
           remainingDurability: effect.toolUse.remainingDurability,
         } : null,
+        settledEdits,
       };
       const receipt = await ctx.db.worldBlockOperationReceipts.insert({
         userId: ctx.auth.userId,

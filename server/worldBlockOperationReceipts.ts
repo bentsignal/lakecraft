@@ -7,6 +7,7 @@ import type {
   ResolvedWorldBlockOperation,
   WorldBlockOperationRequest,
 } from "../shared/worldBlockOperations.ts";
+import { WORLD_CHUNK_BLOCK_TYPES, type WorldChunkBlockType } from "../shared/worldChunks.ts";
 
 export const MAX_WORLD_BLOCK_OPERATION_RECEIPTS_PER_USER = 64;
 export const WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT = 8;
@@ -47,6 +48,7 @@ export type WorldBlockOperationReceiptResult = {
     itemId: string | null;
     remainingDurability: number | null;
   };
+  settledEdits: Array<{ x: number; y: number; z: number; blockType: WorldChunkBlockType }>;
 };
 
 export type StoredWorldBlockPresence = {
@@ -137,7 +139,11 @@ export function decodeWorldBlockOperationReceipt(raw: string): WorldBlockOperati
       || !Number.isSafeInteger(parsed.x) || !Number.isSafeInteger(parsed.y) || !Number.isSafeInteger(parsed.z)
       || typeof parsed.previousBlock !== "string" || typeof parsed.nextBlock !== "string"
       || typeof parsed.inventoryRevision !== "string" || typeof parsed.chunkKey !== "string"
-      || typeof parsed.chunkRevision !== "string" || typeof parsed.inventoryChanged !== "boolean") return null;
+      || typeof parsed.chunkRevision !== "string" || typeof parsed.inventoryChanged !== "boolean"
+      || !Array.isArray(parsed.settledEdits) || parsed.settledEdits.length > 16
+      || parsed.settledEdits.some((edit) => !edit || !Number.isSafeInteger(edit.x)
+        || !Number.isSafeInteger(edit.y) || !Number.isSafeInteger(edit.z)
+        || !WORLD_CHUNK_BLOCK_TYPES.includes(edit.blockType))) return null;
     return { ...parsed, replayed: true } as WorldBlockOperationReceiptResult;
   } catch {
     return null;

@@ -90,6 +90,8 @@ import {
   CREEPER_EXPLOSION_RADIUS,
   enumerateCreeperExplosionBlocks,
 } from "../../shared/creeperExplosion.ts";
+import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/fallingBlocks.ts";
+import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
 import {
@@ -151,6 +153,45 @@ export function planLocalTntExplosion(
     edits.push({ x: cell.x, y: cell.y, z: cell.z, block: BLOCK.AIR, previousBlock });
   }
   return edits;
+}
+
+function fallingProtocolBlock(block: BlockId): FallingBlockCellBlock {
+  if (block === BLOCK.AIR) return "air";
+  if (block === BLOCK.SAND) return "sand";
+  if (block === BLOCK.GRAVEL) return "gravel";
+  return "stone";
+}
+
+/** Pure offline adapter over the shared authority model. `readBlock` is post-trigger state. */
+export function planLocalFallingBlockSettlement(
+  edit: Readonly<WorldEdit>,
+  previousBlock: BlockId,
+  readBlock: (x: number, y: number, z: number) => BlockId,
+): WorldEdit[] {
+  if (![edit.x, edit.y, edit.z].every(Number.isSafeInteger)) return [];
+  const minimumY = Math.max(WORLD_EDIT_MIN_Y, edit.y - 22);
+  const maximumY = Math.min(WORLD_EDIT_MAX_Y, edit.y + 9);
+  const resolution = resolveFallingBlocks({
+    trigger: {
+      x: edit.x, y: edit.y, z: edit.z,
+      coordKey: `${edit.x}:${edit.y}:${edit.z}`,
+      previousBlock: fallingProtocolBlock(previousBlock),
+      nextBlock: fallingProtocolBlock(edit.block),
+    },
+    authoritativeCells: Array.from({ length: maximumY - minimumY + 1 }, (_, index) => {
+      const y = minimumY + index;
+      return {
+        x: edit.x, y, z: edit.z, coordKey: `${edit.x}:${y}:${edit.z}`,
+        block: fallingProtocolBlock(readBlock(edit.x, y, edit.z)),
+        blockInstanceToken: null,
+      };
+    }),
+  });
+  if (!resolution.ok || resolution.moves.length === 0) return [];
+  return Object.entries(resolution.finalBlocks).map(([coordKey, block]) => {
+    const [x, y, z] = coordKey.split(":").map(Number);
+    return { x, y, z, block: block === "air" ? BLOCK.AIR : block === "sand" ? BLOCK.SAND : BLOCK.GRAVEL };
+  });
 }
 
 /**
@@ -2475,6 +2516,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         }
       }
       return edits;
+    },
+    settleFallingBlocks(edit, previousBlock) {
+      const settled = planLocalFallingBlockSettlement(edit, previousBlock, getBlock);
+      if (settled.length === 0) return [];
+      for (const next of settled) {
+        rememberWorldEdit(next);
+        setBlock(next.x, next.y, next.z, next.block);
+      }
+      rebuildWorldChunks(dirtyChunkKeysForEdits(settled).filter((key) => loadedChunkKeys.has(key)));
+      return settled;
     },
     setDayNightClock(config, nextServerTimeOffsetMs) {
       serverTimeOffsetMs = applyDayNightClockUpdate(

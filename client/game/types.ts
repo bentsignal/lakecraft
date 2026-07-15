@@ -33,6 +33,7 @@ export const BLOCK = {
   GOLD_ORE: 20,
   DIAMOND_ORE: 21,
   TNT: 22,
+  GRAVEL: 23,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -254,6 +255,8 @@ export interface VoxelEngine {
   setPrimedTntFuses(fuses: readonly PrimedTntVisualFuse[], authoritativeNow?: number): number;
   /** Resolves one bounded local-only TNT crater in a single mesh rebuild. */
   explodeTnt(x: number, y: number, z: number): LocalExplosionEdit[];
+  /** Settles sand/gravel after one explicit offline edit; never creates network traffic. */
+  settleFallingBlocks(edit: Readonly<WorldEdit>, previousBlock: BlockId): WorldEdit[];
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
   setRespawnPoint(point: RespawnPoint): void;
   /** Reconciles local prediction to one Lakebed-authoritative health value. */

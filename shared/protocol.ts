@@ -23,7 +23,8 @@ export const BLOCK_TYPES = [
   "cobblestone",
   "sand",
   "glass",
-  "tnt"
+  "tnt",
+  "gravel"
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];

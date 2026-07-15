@@ -70,6 +70,7 @@ const COLORS = {
   diamondItem: [0.20, 0.82, 0.79] as Vec3,
   greenItem: [0.28, 0.51, 0.20] as Vec3,
   sandItem: [0.78, 0.69, 0.45] as Vec3,
+  gravelItem: [0.47, 0.45, 0.42] as Vec3,
   glassItem: [0.54, 0.77, 0.79] as Vec3,
   coalItem: [0.14, 0.15, 0.14] as Vec3,
   woolItem: [0.84, 0.82, 0.76] as Vec3,
@@ -204,6 +205,7 @@ function heldItemColor(itemId: ItemId): Vec3 {
     case "diamond_ore":
     case "diamond": return COLORS.diamondItem;
     case "sand": return COLORS.sandItem;
+    case "gravel": return COLORS.gravelItem;
     case "glass": return COLORS.glassItem;
     case "gunpowder": return COLORS.coalItem;
     case "flint": return COLORS.stoneItem;

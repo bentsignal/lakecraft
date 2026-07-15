@@ -14,18 +14,18 @@ assert.equal(ITEMS.tnt.placesBlock, "tnt");
 assert.equal(BLOCKS.tnt.drop, "tnt");
 assert.equal(BLOCKS.tnt.preferredTool, "hand");
 assert.equal(isBlockType("tnt"), true);
-assert.equal(BLOCK_TYPES.at(-1), "tnt", "protocol block IDs grow append-only");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.at(-1), "tnt", "persisted palette codes grow append-only");
+assert.equal(BLOCK_TYPES.indexOf("tnt"), 22, "the deployed TNT protocol code remains stable");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("tnt"), 22, "the deployed TNT persisted code remains stable");
 assert.deepEqual(BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "door_closed", "door_open", "bed", "coal_ore", "iron_ore",
-  "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt",
-], "network block identity is append-only: TNT is code 22 without renumbering shipped blocks");
+  "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt", "gravel",
+], "network block identity is append-only: gravel follows TNT without renumbering shipped blocks");
 assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "bed", "door_closed", "door_open", "coal_ore", "iron_ore",
-  "furnace", "ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt",
-], "persisted snapshot palette is append-only: TNT is code 23 without renumbering deployed rows");
+  "furnace", "ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel",
+], "persisted snapshot palette is append-only: gravel follows TNT without renumbering deployed rows");
 
 const recipe = RECIPES.find(({ id }) => id === "tnt");
 assert.deepEqual(recipe?.ingredients, [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }]);

@@ -9,7 +9,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -219,6 +219,7 @@ export const BLOCKS = defineBlocks([
   ["stone", "Stone", "Dense natural stone. A pickaxe breaks it into cobblestone.", "#6d7069", "#9a9c91", 2.5, "pickaxe", "cobblestone", "wood"],
   ["cobblestone", "Cobblestone", "Rough quarried stone for sturdy shelters and furnaces.", "#686b65", "#979a91", 2, "pickaxe", "cobblestone", "wood"],
   ["sand", "Sand", "Loose pale grains that can be fired into glass.", "#c7b77b", "#e4d69a", 0.5, "shovel", "sand"],
+  ["gravel", "Gravel", "Loose stone fragments found in underground pockets. Shoveling it can reveal flint.", "#77736d", "#aaa49b", 0.6, "shovel", "gravel"],
   ["glass", "Glass", "Clear fired panes for windows and bright shelters.", "#9fc7c1", "#d6efeb", 0.3, "hand", "glass"],
   ["coal_ore", "Coal Ore", "Coal flecks trapped in stone. A wooden pickaxe can recover the fuel.", "#565852", "#242621", 3, "pickaxe", "coal", "wood"],
   ["iron_ore", "Iron Ore", "Rust-colored ore that needs a stone pickaxe before it can be smelted.", "#77776f", "#b57c5d", 3.2, "pickaxe", "raw_iron", "stone"],
@@ -266,7 +267,7 @@ type UtilityItemSpec = readonly [id: "flint_and_steel", label: string, shortLabe
 
 const BLOCK_ITEM_SPECS = [
   ["grass", "GRS", "▨"], ["dirt", "DRT", "▦"], ["stone", "STN", "◆"], ["cobblestone", "COB", "▦"],
-  ["sand", "SND", "░"], ["glass", "GLS", "◇"], ["coal_ore", "C·OR", "✦"], ["iron_ore", "I·OR", "◈"],
+  ["sand", "SND", "░"], ["gravel", "GRV", "▦"], ["glass", "GLS", "◇"], ["coal_ore", "C·OR", "✦"], ["iron_ore", "I·OR", "◈"],
   ["gold_ore", "G·OR", "✦"], ["diamond_ore", "D·OR", "◆"], ["log", "LOG", "▥"], ["leaves", "LEF", "✤"],
   ["planks", "PLK", "▤"], ["crafting_table", "CRF", "▧"], ["furnace", "FRN", "▩"], ["torch", "TCH", "♨"],
   ["chest", "CHT", "▣"], ["door", "DOR", "▥"], ["bed", "BED", "▰"], ["ladder", "LDR", "╫"],
@@ -286,7 +287,7 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["gold_ingot", "Gold Ingot", "I·AU", "Refined gold for fast but fragile equipment.", "▰", "#f5d142"],
   ["diamond", "Diamond", "DIA", "A rare crystal for the strongest available equipment.", "◆", "#48d8cf"],
   ["gunpowder", "Gunpowder", "GUN", "A dark, volatile powder dropped by creepers and used to craft TNT.", "⁙", "#515650"],
-  ["flint", "Flint", "FLT", "A sharp stone chip recovered while shoveling sand.", "◆", "#3f4543"],
+  ["flint", "Flint", "FLT", "A sharp stone chip recovered while shoveling gravel.", "◆", "#3f4543"],
 ];
 
 const UTILITY_ITEM_SPECS: readonly UtilityItemSpec[] = [[
@@ -889,9 +890,9 @@ export const FLINT_DROP_CHANCE_DENOMINATOR = 10;
 
 /**
  * Coordinate-derived mining loot for the authoritative world operation path.
- * Until gravel exists, a shovel replaces exactly one in ten sand drops with
- * flint. No client RNG or extra database row is involved, and every coordinate
- * always resolves to the same conserved result in multiplayer and offline play.
+ * A shovel replaces exactly one in ten gravel drops with flint. No client RNG
+ * or extra database row is involved, and every coordinate always resolves to
+ * the same conserved result in multiplayer and offline play.
  */
 export function getDeterministicMiningDrop(
   blockId: BlockId,
@@ -901,7 +902,7 @@ export function getDeterministicMiningDrop(
   z: number,
 ): ItemQuantity | null {
   const ordinary = getMiningDrop(blockId, itemId);
-  if (blockId !== "sand" || !itemId || ITEMS[itemId].tool?.kind !== "shovel"
+  if (blockId !== "gravel" || !itemId || ITEMS[itemId].tool?.kind !== "shovel"
     || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !Number.isSafeInteger(z)) return ordinary;
   const coordinateHash = (Math.imul(x, 73_856_093) ^ Math.imul(y, 19_349_663) ^ Math.imul(z, 83_492_791)) >>> 0;
   return coordinateHash % FLINT_DROP_CHANCE_DENOMINATOR === 0

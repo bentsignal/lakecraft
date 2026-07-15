@@ -36,6 +36,9 @@ export const CAVE_SPAWN_SANCTUARY_RADIUS = 10;
 export const SAND_SPAWN_SANCTUARY_RADIUS = 10;
 const SAND_PATCH_CELL_SIZE = 14;
 const SAND_PATCH_CHANCE = 0.38;
+const GRAVEL_CELL_SIZE_XZ = 8;
+const GRAVEL_CELL_SIZE_Y = 6;
+const GRAVEL_POCKET_CHANCE = 0.34;
 
 interface OreVeinConfig {
   block: BlockId;
@@ -158,6 +161,31 @@ export function terrainBaseBlock(x: number, y: number, z: number, seed: number):
   return y === top ? BLOCK.GRASS : y >= top - dirtDepth ? BLOCK.DIRT : BLOCK.STONE;
 }
 
+/**
+ * Globally anchored underground gravel pockets. The owning 8x6x8 lattice cell
+ * bounds every pocket, so separately generated chunks agree at their seams.
+ */
+export function terrainGravelBlock(x: number, y: number, z: number, seed: number): BlockId | null {
+  if (terrainBaseBlock(x, y, z, seed) !== BLOCK.STONE) return null;
+  const cellX = Math.floor(x / GRAVEL_CELL_SIZE_XZ);
+  const cellY = Math.floor(y / GRAVEL_CELL_SIZE_Y);
+  const cellZ = Math.floor(z / GRAVEL_CELL_SIZE_XZ);
+  if (hash3(cellX, cellY, cellZ, seed + 4_789) >= GRAVEL_POCKET_CHANCE) return null;
+  const localX = x - cellX * GRAVEL_CELL_SIZE_XZ;
+  const localY = y - cellY * GRAVEL_CELL_SIZE_Y;
+  const localZ = z - cellZ * GRAVEL_CELL_SIZE_XZ;
+  const centerX = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_811) * (GRAVEL_CELL_SIZE_XZ - 3);
+  const centerY = 1 + hash3(cellX, cellY, cellZ, seed + 4_837) * (GRAVEL_CELL_SIZE_Y - 2);
+  const centerZ = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_853) * (GRAVEL_CELL_SIZE_XZ - 3);
+  const radiusX = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_879) * 0.9;
+  const radiusY = 0.8 + hash3(cellX, cellY, cellZ, seed + 4_903) * 0.65;
+  const radiusZ = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_927) * 0.9;
+  const distance = ((localX + 0.5 - centerX) / radiusX) ** 2
+    + ((localY + 0.5 - centerY) / radiusY) ** 2
+    + ((localZ + 0.5 - centerZ) / radiusZ) ** 2;
+  return distance <= 1 ? BLOCK.GRAVEL : null;
+}
+
 function blockInOreVein(x: number, y: number, z: number, seed: number, config: OreVeinConfig): boolean {
   if (y < config.minimumY || y > config.maximumY) return false;
   const cellX = Math.floor(x / ORE_CELL_SIZE);
@@ -206,7 +234,9 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
             : y >= top - dirtDepth
               ? BLOCK.DIRT
               : BLOCK.STONE;
-        const block = base === BLOCK.STONE ? oreBlockAtKnownStone(x, y, z, seed) ?? base : base;
+        const block = base === BLOCK.STONE
+          ? terrainGravelBlock(x, y, z, seed) ?? oreBlockAtKnownStone(x, y, z, seed) ?? base
+          : base;
         blocks.set(blockKey(x, y, z), block);
       }
     }

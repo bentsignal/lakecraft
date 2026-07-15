@@ -41,16 +41,17 @@ assert.match(replayBranch, /inventory: replayInventories\[0\], currentChunkRevis
 assert.match(editMutation, /worldBlockOperationPoseFingerprint\(validation\.fingerprint, pose\)/);
 assert.match(editMutation, /validateWorldBlockActionPose\(/);
 assert.match(editMutation, /naturalWorldBlockAt\(request\.x, request\.y, request\.z\)/);
-assert.match(editMutation, /applyWorldChunkEdit\(chunkKey, chunkRow\.snapshotJson, worldEditValue\)/);
-assert.match(editMutation, /createWorldChunkSnapshot\(chunkKey, \[worldEditValue\]\)/);
+assert.match(editMutation, /applyWorldChunkEdits\(chunkKey, chunkRow\.snapshotJson, authoritativeWorldEdits\)/);
+assert.match(editMutation, /createWorldChunkSnapshot\(chunkKey, authoritativeWorldEdits\)/);
+assert.match(editMutation, /resolveFallingBlocks\([\s\S]*?settledEdits/);
 assert.doesNotMatch(editMutation, /maintainWorldChunkSnapshot/);
 assert.doesNotMatch(editMutation, /worldEdits[\s\S]*?\.collect\(\)/);
 assert.doesNotMatch(editMutation, /ctx\.db\.playerPresence\.update\(/, "block edits never compete with the ordered heartbeat as a pose publisher");
 assert.match(editMutation, /effect\.inventoryChanged[\s\S]*?ctx\.db\.inventories\.update/);
 assert.match(editMutation, /effect\.kind,[\s\S]*?effect\.nextBlock/);
 assert.match(editMutation, /inventory: persistedInventory,[\s\S]*?currentChunkRevision: effect\.chunkRevision/);
-assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 8,
-  "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit/primed TNT/current furnace all fail closed on duplicates");
+assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 9,
+  "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit/primed TNT/current furnace/falling coordinates fail closed on duplicates");
 
 // Every pre-migration inventory writer and the legacy chunk writer now advances
 // a monotonic revision as well; authoritative writes use resolver revisions.
@@ -126,6 +127,7 @@ const receiptResult: WorldBlockOperationReceiptResult = {
   drop: { itemId: "cobblestone", count: 1 },
   consumed: null,
   toolUse: { used: true, broke: false, itemId: "wooden_pickaxe", remainingDurability: 58 },
+  settledEdits: [],
 };
 assert.deepEqual(decodeWorldBlockOperationReceipt(encodeWorldBlockOperationReceipt(receiptResult)), {
   ...receiptResult,

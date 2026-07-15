@@ -43,13 +43,14 @@ assert.equal(matchCraftingGrid([
 assert.ok(CRAFTING_GRID_RECIPES.some(({ id }) => id === "flint_and_steel"));
 
 assert.equal(FLINT_DROP_CHANCE_DENOMINATOR, 10);
-const samples = Array.from({ length: 200 }, (_, x) => getDeterministicMiningDrop("sand", "wooden_shovel", x - 100, 4, 27)?.itemId);
+const samples = Array.from({ length: 200 }, (_, x) => getDeterministicMiningDrop("gravel", "wooden_shovel", x - 100, 4, 27)?.itemId);
 assert.ok(samples.includes("flint"), "a bounded terrain sample contains deterministic flint");
-assert.ok(samples.includes("sand"), "flint replaces only a subset of ordinary sand drops");
-assert.deepEqual(samples, Array.from({ length: 200 }, (_, x) => getDeterministicMiningDrop("sand", "wooden_shovel", x - 100, 4, 27)?.itemId));
+assert.ok(samples.includes("gravel"), "flint replaces only a subset of ordinary gravel drops");
+assert.deepEqual(samples, Array.from({ length: 200 }, (_, x) => getDeterministicMiningDrop("gravel", "wooden_shovel", x - 100, 4, 27)?.itemId));
 const flintX = samples.findIndex((drop) => drop === "flint") - 100;
-assert.deepEqual(getDeterministicMiningDrop("sand", null, flintX, 4, 27), { itemId: "sand", count: 1 }, "hands cannot trigger the surrogate gravel rule");
-assert.deepEqual(getDeterministicMiningDrop("sand", "wooden_pickaxe", flintX, 4, 27), { itemId: "sand", count: 1 });
+assert.deepEqual(getDeterministicMiningDrop("gravel", null, flintX, 4, 27), { itemId: "gravel", count: 1 }, "hands do not trigger the shovel-specific flint rule");
+assert.deepEqual(getDeterministicMiningDrop("gravel", "wooden_pickaxe", flintX, 4, 27), { itemId: "gravel", count: 1 });
+assert.deepEqual(getDeterministicMiningDrop("sand", "wooden_shovel", flintX, 4, 27), { itemId: "sand", count: 1 }, "sand always remains sand");
 assert.deepEqual(getDeterministicMiningDrop("stone", "wooden_pickaxe", flintX, 4, 27), { itemId: "cobblestone", count: 1 });
 const miningInventory = createEmptyInventory();
 miningInventory[0] = { itemId: "wooden_shovel", count: 1, durability: 20 };
@@ -59,13 +60,13 @@ const authoritativeMine = resolveWorldBlockOperation({
   x: flintX,
   y: 4,
   z: 27,
-  expectedBlock: "sand",
+  expectedBlock: "gravel",
   selectedHotbar: 0,
   expectedHeldItem: "wooden_shovel",
   expectedInventoryRevision: "0",
   expectedChunkRevision: "0",
 }, {
-  currentBlock: "sand",
+  currentBlock: "gravel",
   inventory: miningInventory,
   inventoryRevision: "0",
   chunkRevision: "0",
@@ -74,7 +75,7 @@ assert.equal(authoritativeMine.ok, true);
 if (authoritativeMine.ok) {
   assert.deepEqual(authoritativeMine.effect.drop, { itemId: "flint", count: 1 });
   assert.equal(authoritativeMine.effect.inventory.some((stack) => stack?.itemId === "flint" && stack.count === 1), true);
-  assert.equal(authoritativeMine.effect.inventory.some((stack) => stack?.itemId === "sand"), false, "one mined block conserves one drop");
+  assert.equal(authoritativeMine.effect.inventory.some((stack) => stack?.itemId === "gravel"), false, "one mined block conserves one drop");
 }
 
 const inventory = createEmptyInventory();

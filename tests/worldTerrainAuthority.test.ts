@@ -29,9 +29,11 @@ const ENGINE_TO_PROTOCOL: Readonly<Record<EngineBlockId, BlockType>> = {
   [BLOCK.LADDER]: "ladder",
   [BLOCK.COBBLESTONE]: "cobblestone",
   [BLOCK.SAND]: "sand",
+  [BLOCK.GRAVEL]: "gravel",
   [BLOCK.GLASS]: "glass",
   [BLOCK.GOLD_ORE]: "gold_ore",
   [BLOCK.DIAMOND_ORE]: "diamond_ore",
+  [BLOCK.TNT]: "tnt",
 };
 
 const chunkCache = new Map<string, Map<string, EngineBlockId>>();
@@ -69,6 +71,7 @@ const namedSamples = [
   [-62, -12, -62, "diamond_ore"],
   [-57, -23, -57, "air"], // deterministic deep cave
   [-64, 7, -53, "sand"],
+  [-64, -2, -37, "gravel"],
   [-59, 9, -33, "wood"],
   [-61, 10, -34, "leaves"],
 ] as const;

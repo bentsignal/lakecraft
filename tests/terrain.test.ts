@@ -58,7 +58,7 @@ for (const seed of [1, 42, SEED, 999_999]) {
   }
 }
 
-// Every terrain column has a grass/dirt or bounded sand surface over stone.
+// Every terrain column has a grass/dirt or bounded sand surface over natural stone strata.
 for (let x = -18; x <= 18; x += 1) {
   for (let z = -18; z <= 18; z += 1) {
     const top = terrainHeight(x, z, SEED);
@@ -68,8 +68,8 @@ for (let x = -18; x <= 18; x += 1) {
     assert.equal(first.get(blockKey(x, top - 1, z)), sandDepth ? BLOCK.SAND : BLOCK.DIRT);
     assert.equal(first.get(blockKey(x, top - 2, z)), sandDepth === 3 ? BLOCK.SAND : BLOCK.DIRT);
     assert.ok(
-      [BLOCK.STONE, BLOCK.COAL_ORE, BLOCK.IRON_ORE].includes(first.get(blockKey(x, 0, z))!),
-      "the foundation may now contain deterministic ore",
+      [BLOCK.STONE, BLOCK.GRAVEL, BLOCK.COAL_ORE, BLOCK.IRON_ORE].includes(first.get(blockKey(x, 0, z))!),
+      "the foundation may contain deterministic gravel or ore",
     );
   }
 }
@@ -132,7 +132,7 @@ const oreBlocks = [...first].filter(([, block]) => block === BLOCK.COAL_ORE || b
 const coalBlocks = oreBlocks.filter(([, block]) => block === BLOCK.COAL_ORE);
 const ironBlocks = oreBlocks.filter(([, block]) => block === BLOCK.IRON_ORE);
 const naturalStoneCount = [...first].filter(([, block]) => (
-  block === BLOCK.STONE || block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE
+  block === BLOCK.STONE || block === BLOCK.GRAVEL || block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE
 )).length;
 assert.ok(coalBlocks.length >= 100, `expected useful coal deposits, received ${coalBlocks.length}`);
 assert.ok(ironBlocks.length >= 20, `expected useful iron deposits, received ${ironBlocks.length}`);
@@ -163,5 +163,6 @@ console.log(JSON.stringify({
   coalBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.COAL_ORE).length,
   ironBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.IRON_ORE).length,
   sandBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.SAND).length,
+  gravelBlockCount: [...benchmarkTerrain.values()].filter((block) => block === BLOCK.GRAVEL).length,
 }));
 console.log("lakecraft terrain tests: ok");

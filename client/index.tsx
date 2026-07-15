@@ -180,6 +180,7 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
     || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER) return "wood";
   if (block === BLOCK.SAND) return "sand";
+  if (block === BLOCK.GRAVEL) return "gravel";
   if (block === BLOCK.GLASS) return "glass";
   if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
   if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE) return "stone";
@@ -322,13 +323,14 @@ function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
   [BLOCK.STONE]: "stone",
   [BLOCK.COBBLESTONE]: "cobblestone",
   [BLOCK.SAND]: "sand",
+  [BLOCK.GRAVEL]: "gravel",
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
@@ -355,6 +357,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   stone: BLOCK.STONE,
   cobblestone: BLOCK.COBBLESTONE,
   sand: BLOCK.SAND,
+  gravel: BLOCK.GRAVEL,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
@@ -381,6 +384,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.STONE]: "stone",
   [BLOCK.COBBLESTONE]: "cobblestone",
   [BLOCK.SAND]: "sand",
+  [BLOCK.GRAVEL]: "gravel",
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
@@ -406,6 +410,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   stone: BLOCK.STONE,
   cobblestone: BLOCK.COBBLESTONE,
   sand: BLOCK.SAND,
+  gravel: BLOCK.GRAVEL,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
@@ -481,6 +486,7 @@ type WorldBlockEditMutationResult =
       drop: { itemId: ItemId; count: number } | null;
       consumed: ItemId | null;
       toolUse: null | { used: boolean; broke: boolean; itemId: ItemId | null; remainingDurability: number | null };
+      settledEdits: Array<{ x: number; y: number; z: number; blockType: WorldChunkBlockType }>;
       inventory?: PersistedInventoryState;
     }
   | { ok: false; reason: string; detail?: string; inventory?: PersistedInventoryState | null };
@@ -1466,12 +1472,21 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         ? authoritativeWorldEditRef.current.get(coordKey) ?? null
         : { x: result.x, y: result.y, z: result.z, block: PROTOCOL_TO_ENGINE[result.nextBlock] };
       if (canonicalEdit?.block != null) {
-        engineRef.current?.applyWorldEdits([{
+        const confirmedEdits: EngineWorldEdit[] = [{
           x: canonicalEdit.x,
           y: canonicalEdit.y,
           z: canonicalEdit.z,
           block: canonicalEdit.block,
-        }]);
+        }];
+        if (!replayPassedByNewerChunk) {
+          for (const settled of result.settledEdits) confirmedEdits.push({
+            x: settled.x,
+            y: settled.y,
+            z: settled.z,
+            block: PROTOCOL_TO_ENGINE[settled.blockType],
+          });
+        }
+        engineRef.current?.applyWorldEdits(confirmedEdits);
       }
       worldChunkRevisionRef.current.set(result.chunkKey, result.currentChunkRevision ?? result.chunkRevision);
       if (!replayPassedByNewerChunk) emitConfirmedWorldBlockFeedback(result);

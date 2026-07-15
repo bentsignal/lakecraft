@@ -12,6 +12,9 @@ const ORE_CELL_SIZE = 4;
 const SAND_SPAWN_SANCTUARY_RADIUS = 10;
 const SAND_PATCH_CELL_SIZE = 14;
 const SAND_PATCH_CHANCE = 0.38;
+const GRAVEL_CELL_SIZE_XZ = 8;
+const GRAVEL_CELL_SIZE_Y = 6;
+const GRAVEL_POCKET_CHANCE = 0.34;
 
 interface OreVeinConfig {
   block: Extract<BlockType, "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore">;
@@ -118,6 +121,33 @@ function blockInOreVein(x: number, y: number, z: number, seed: number, config: O
   return Math.abs(localX - anchorX) + Math.abs(localY - anchorY) + Math.abs(localZ - anchorZ) <= 1;
 }
 
+/** Matches the client terrain's globally anchored, bounded underground pockets. */
+export function terrainGravelBlock(x: number, y: number, z: number, seed: number): Extract<BlockType, "gravel"> | null {
+  const top = terrainHeight(x, z, seed);
+  if (y < WORLD_TERRAIN_MIN_Y || y > top) return null;
+  const sandDepth = terrainSandDepth(x, z, seed);
+  if (sandDepth > 0 && y > top - sandDepth) return null;
+  const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
+  if (y === top || y >= top - dirtDepth) return null;
+  const cellX = Math.floor(x / GRAVEL_CELL_SIZE_XZ);
+  const cellY = Math.floor(y / GRAVEL_CELL_SIZE_Y);
+  const cellZ = Math.floor(z / GRAVEL_CELL_SIZE_XZ);
+  if (hash3(cellX, cellY, cellZ, seed + 4_789) >= GRAVEL_POCKET_CHANCE) return null;
+  const localX = x - cellX * GRAVEL_CELL_SIZE_XZ;
+  const localY = y - cellY * GRAVEL_CELL_SIZE_Y;
+  const localZ = z - cellZ * GRAVEL_CELL_SIZE_XZ;
+  const centerX = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_811) * (GRAVEL_CELL_SIZE_XZ - 3);
+  const centerY = 1 + hash3(cellX, cellY, cellZ, seed + 4_837) * (GRAVEL_CELL_SIZE_Y - 2);
+  const centerZ = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_853) * (GRAVEL_CELL_SIZE_XZ - 3);
+  const radiusX = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_879) * 0.9;
+  const radiusY = 0.8 + hash3(cellX, cellY, cellZ, seed + 4_903) * 0.65;
+  const radiusZ = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_927) * 0.9;
+  const distance = ((localX + 0.5 - centerX) / radiusX) ** 2
+    + ((localY + 0.5 - centerY) / radiusY) ** 2
+    + ((localZ + 0.5 - centerZ) / radiusZ) ** 2;
+  return distance <= 1 ? "gravel" : null;
+}
+
 function strataBlockAt(x: number, y: number, z: number, seed: number): BlockType {
   const top = terrainHeight(x, z, seed);
   if (y < WORLD_TERRAIN_MIN_Y || y > top) return "air";
@@ -126,6 +156,8 @@ function strataBlockAt(x: number, y: number, z: number, seed: number): BlockType
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
   if (y === top) return "grass";
   if (y >= top - dirtDepth) return "dirt";
+  const gravel = terrainGravelBlock(x, y, z, seed);
+  if (gravel) return gravel;
   for (const config of ORE_VEINS) {
     if (blockInOreVein(x, y, z, seed, config)) return config.block;
   }

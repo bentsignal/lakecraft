@@ -1,7 +1,8 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
+// Claimed Lakebed deploys currently report a 1 MiB source/artifact ceiling.
+const MAX_ARTIFACT_BYTES = 1024 * 1024;
 const MINIMUM_HEADROOM_BYTES = 32 * 1024;
 const artifactPath = process.argv[2];
 

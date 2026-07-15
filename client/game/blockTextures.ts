@@ -28,6 +28,7 @@ const UNIFORM_BLOCK_TEXTURES: Readonly<Partial<Record<BlockId, TextureAtlasName>
   [BLOCK.IRON_ORE]: "iron_ore",
   [BLOCK.COBBLESTONE]: "cobblestone",
   [BLOCK.SAND]: "sand",
+  [BLOCK.GRAVEL]: "gravel",
   [BLOCK.GLASS]: "glass",
   [BLOCK.GOLD_ORE]: "gold_ore",
   [BLOCK.DIAMOND_ORE]: "diamond_ore",

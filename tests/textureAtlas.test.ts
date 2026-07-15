@@ -36,6 +36,7 @@ const EXPECTED_NAMES = [
   "tnt_side",
   "tnt_top",
   "tnt_bottom",
+  "gravel",
 ] as const;
 
 function fnv1a32(bytes: Iterable<number>): string {
@@ -68,14 +69,14 @@ function atlasTile(index: number): Uint8Array {
 }
 
 assert.equal(TEXTURE_TILE_SIZE, 16, "world textures stay at Minecraft-scale 16px resolution");
-assert.equal(TEXTURE_ATLAS_COLUMNS, 8);
-assert.equal(TEXTURE_ATLAS_ROWS, 3);
+assert.equal(TEXTURE_ATLAS_COLUMNS, 5);
+assert.equal(TEXTURE_ATLAS_ROWS, 5);
 assert.deepEqual(TEXTURE_ATLAS_NAMES, EXPECTED_NAMES, "tile order is part of the renderer contract");
-assert.equal(TEXTURE_ATLAS_NAMES.length, 24);
+assert.equal(TEXTURE_ATLAS_NAMES.length, 25);
 
 const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
 const atlasHeight = TEXTURE_ATLAS_ROWS * TEXTURE_TILE_SIZE;
-assert.deepEqual([atlasWidth, atlasHeight], [128, 48]);
+assert.deepEqual([atlasWidth, atlasHeight], [80, 80]);
 assert.equal(TEXTURE_ATLAS_RGBA.length, atlasWidth * atlasHeight * 4);
 const tileFingerprints = new Set<string>();
 for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
@@ -92,7 +93,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   }
   tileFingerprints.add(fnv1a32(tile));
 }
-assert.equal(tileFingerprints.size, 24, "every atlas cell must be visually distinct");
+assert.equal(tileFingerprints.size, 25, "every atlas cell must be visually distinct");
 
 const glassTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("glass"));
 const glassAlphaCounts = new Map<number, number>();
@@ -104,7 +105,7 @@ assert.equal(glassAlphaCounts.get(187), 60, "glass keeps a readable one-pixel ou
 assert.ok((glassAlphaCounts.get(24) ?? 0) >= 180, "the low-alpha center keeps the world visible");
 
 // Intentional atlas regeneration should update this fingerprint in the same change.
-assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "22d27447", "generated RGBA atlas changed unexpectedly");
+assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "e55cfe80", "generated RGBA atlas changed unexpectedly");
 
 const png = readFileSync(new URL("../client/game/generated/texture-atlas-v1.png", import.meta.url));
 assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
@@ -121,9 +122,9 @@ try {
     new URL("../design/texture-concepts/lakecraft-materials-v1.png", import.meta.url).pathname,
     regeneratedPngPath,
     "--columns",
-    "8",
+    "5",
     "--rows",
-    "3",
+    "5",
     "--source-columns",
     "4",
     "--source-rows",

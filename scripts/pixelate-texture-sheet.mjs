@@ -372,6 +372,36 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "gravel") {
+    // A compact, high-contrast pebble field inspired by classic voxel gravel.
+    // The warm-gray flecks keep it distinct from both smooth stone and the
+    // larger mortar-separated shapes in cobblestone when viewed at distance.
+    const darkest = [68, 68, 68, 255];
+    const dark = [85, 85, 85, 255];
+    const base = [119, 119, 119, 255];
+    const warm = [136, 119, 102, 255];
+    const light = [170, 170, 153, 255];
+    fill(base);
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
+        const grain = (Math.imul(x + 3, 29) ^ Math.imul(y + 5, 47) ^ Math.imul(x * y + 7, 13)) & 31;
+        if (grain < 4) paint(x, y, dark);
+        else if (grain < 7) paint(x, y, warm);
+        else if (grain === 7 || grain === 19) paint(x, y, light);
+      }
+    }
+    for (const [x, y] of [
+      [1,1],[2,1],[1,2],[5,0],[6,0],[6,1],[10,2],[11,2],[10,3],[14,4],[15,4],
+      [3,5],[4,5],[3,6],[7,7],[8,7],[8,8],[12,6],[13,6],[13,7],[1,10],[2,10],
+      [5,12],[6,12],[5,13],[10,11],[11,11],[10,12],[14,14],[15,14],[14,15],
+    ]) paint(x, y, darkest);
+    for (const [x, y] of [
+      [2,2],[6,2],[9,1],[11,3],[15,5],[4,7],[6,6],[9,8],[12,8],[2,11],
+      [4,10],[7,13],[9,12],[12,14],[13,13],[0,15],
+    ]) paint(x, y, light);
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 

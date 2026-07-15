@@ -41,6 +41,7 @@ const SAVE_KEY = "lakecraft.singleplayer.v1";
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
   [BLOCK.COBBLESTONE]: "cobblestone", [BLOCK.SAND]: "sand", [BLOCK.GLASS]: "glass",
+  [BLOCK.GRAVEL]: "gravel",
   [BLOCK.COAL_ORE]: "coal_ore", [BLOCK.IRON_ORE]: "iron_ore", [BLOCK.GOLD_ORE]: "gold_ore",
   [BLOCK.DIAMOND_ORE]: "diamond_ore", [BLOCK.WOOD]: "log", [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "planks", [BLOCK.CRAFTING_TABLE]: "crafting_table", [BLOCK.FURNACE]: "furnace",
@@ -51,7 +52,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   grass: BLOCK.GRASS, dirt: BLOCK.DIRT, stone: BLOCK.STONE, cobblestone: BLOCK.COBBLESTONE,
-  sand: BLOCK.SAND, glass: BLOCK.GLASS, coal_ore: BLOCK.COAL_ORE, iron_ore: BLOCK.IRON_ORE,
+  sand: BLOCK.SAND, gravel: BLOCK.GRAVEL, glass: BLOCK.GLASS, coal_ore: BLOCK.COAL_ORE, iron_ore: BLOCK.IRON_ORE,
   gold_ore: BLOCK.GOLD_ORE, diamond_ore: BLOCK.DIAMOND_ORE, log: BLOCK.WOOD, leaves: BLOCK.LEAVES,
   planks: BLOCK.PLANKS, crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE,
   torch: BLOCK.TORCH, chest: BLOCK.CHEST, door: BLOCK.DOOR_CLOSED, bed: BLOCK.BED, ladder: BLOCK.LADDER,
@@ -213,7 +214,13 @@ export function SinglePlayerApp() {
       },
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
       onBlockEdit: (edit, previousBlock) => {
-        editsRef.current = [...editsRef.current.filter((candidate) => candidate.x !== edit.x || candidate.y !== edit.y || candidate.z !== edit.z), edit].slice(-8_000);
+        const settled = engineRef.current?.settleFallingBlocks(edit, previousBlock) ?? [];
+        const nextEdits = new Map(editsRef.current.map((candidate) => [`${candidate.x}:${candidate.y}:${candidate.z}`, candidate]));
+        nextEdits.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
+        for (const fallingEdit of settled) {
+          nextEdits.set(`${fallingEdit.x}:${fallingEdit.y}:${fallingEdit.z}`, fallingEdit);
+        }
+        editsRef.current = [...nextEdits.values()].slice(-8_000);
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
         let next = inventoryRef.current;
         const toggledDoor = (previousBlock === BLOCK.DOOR_CLOSED && edit.block === BLOCK.DOOR_OPEN)
