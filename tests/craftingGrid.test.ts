@@ -42,7 +42,7 @@ assert.deepEqual(CRAFTING_GRID_RECIPES.map(({ id }) => id), RECIPES.map(({ id })
 assert.deepEqual(Object.keys(INITIAL_RECIPE_PATTERNS).sort(), RECIPES.map(({ id }) => id).sort());
 assert.equal(
   createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
-  "dfe7c03f55fb0f8fb65cf10571020b7432fe9e096a5d23e20ea8ebc86bb343fc",
+  "4b0ad3b02cc0c40f86d22b36d818f0d1b81bb56de13deb37251c02c63a944904",
   "generated recipe patterns preserve the exact serialized layout and insertion order",
 );
 assert.equal(adaptRecipesToGrid([{ ...RECIPES[0], id: "unmapped" }]).length, 0);
@@ -80,8 +80,8 @@ const translatedStickRecipe = CRAFTING_GRID_RECIPES.find(({ id }) => id === "sti
 assert.equal(matchCraftingGrid(gridFromPattern(translatedStickRecipe, 3, 0, 2), 3)?.recipe.id, "sticks_from_planks");
 assert.equal(matchCraftingGrid(gridFromPattern(translatedStickRecipe, 3, 1, 1), 3)?.recipe.id, "sticks_from_planks");
 
-// The only asymmetric tool shape can be placed in either Minecraft orientation.
-for (const id of ["wooden_axe", "stone_axe", "iron_axe"]) {
+// Asymmetric tool shapes can be placed in either Minecraft orientation.
+for (const id of ["wooden_axe", "stone_axe", "iron_axe", "bow"]) {
   const recipe = CRAFTING_GRID_RECIPES.find((candidate) => candidate.id === id) as ShapedCraftingRecipe;
   const mirrored: ShapedCraftingRecipe = { ...recipe, pattern: recipe.pattern.map((row) => [...row].reverse()) };
   assert.equal(matchCraftingGrid(gridFromPattern(mirrored, 3), 3)?.recipe.id, id);

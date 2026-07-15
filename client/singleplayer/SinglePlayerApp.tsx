@@ -31,6 +31,7 @@ import {
 } from "../../shared/game";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
+import { cycleHotbarIndex } from "../game/hotbarInput";
 
 const SAVE_KEY = "lakecraft.singleplayer.v1";
 
@@ -100,11 +101,9 @@ export function SinglePlayerApp() {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(true);
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
-  const [miningProgress, setMiningProgress] = useState(0);
   const [handActionToken, setHandActionToken] = useState(0);
-  const [messages, setMessages] = useState<HudMessage[]>([{
-    id: "singleplayer-ready", title: "Single-player world", detail: "Browser-local: no Google account and zero Lakebed requests.", tone: "success",
-  }]);
+  const [messages, setMessages] = useState<HudMessage[]>([]);
+  const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
 
   function persist(nextInventory = inventoryRef.current, nextEquipment = equipmentRef.current) {
     try {
@@ -124,6 +123,14 @@ export function SinglePlayerApp() {
     inventoryRef.current = next;
     setInventory(next);
     persist(next);
+  }
+
+  function selectHotbar(index: number) {
+    const next = clampHotbarIndex(index);
+    if (next === selectedRef.current) return;
+    selectedRef.current = next;
+    setSelected(next);
+    persist();
   }
 
   useEffect(() => {
@@ -160,7 +167,8 @@ export function SinglePlayerApp() {
         updateInventory(next);
       },
       onPlayerHealthChange: setHealth,
-      onMiningProgress: setMiningProgress,
+      onHotbarSelect: selectHotbar,
+      onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: () => setHandActionToken((value) => value + 1),
       onUseSelectedItem: () => {
         const result = consumeFood(inventoryRef.current, selectedRef.current, hungerRef.current);
@@ -176,6 +184,10 @@ export function SinglePlayerApp() {
         setInventoryOpen(true);
         document.exitPointerLock();
         return true;
+      },
+      onPoseChange: (pose) => {
+        const next = { x: Math.floor(pose.x), y: Math.floor(pose.y), z: Math.floor(pose.z) };
+        setCoordinates((current) => current.x === next.x && current.y === next.y && current.z === next.z ? current : next);
       },
     });
     engineRef.current = engine;
@@ -204,9 +216,9 @@ export function SinglePlayerApp() {
 
   return (
     <main className="lc-singleplayer">
-      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-badge{position:fixed;top:12px;left:12px;z-index:8;padding:4px 7px;color:#fff;background:#0009;font:12px monospace;pointer-events:none}`}</style>
+      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}`}</style>
       <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
-      <span className="lc-singleplayer-badge">SINGLE-PLAYER · LOCAL SAVE · 0 LAKEBED REQUESTS</span>
+      <span aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}`} className="lc-singleplayer-coordinates">XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z}</span>
       <GameHud
         connected={false}
         craftingContext={craftingContext}
@@ -218,7 +230,7 @@ export function SinglePlayerApp() {
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
         messages={messages}
-        miningProgress={miningProgress}
+        miningProgress={0}
         onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); engineRef.current?.requestPointerLock(); }}
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
@@ -233,7 +245,7 @@ export function SinglePlayerApp() {
         }}
         onOptions={() => setMessages((current) => [...current, { id: `options-${Date.now()}`, title: "Options", detail: "More single-player settings are next.", tone: "info" }])}
         onResume={() => { setPauseOpen(false); engineRef.current?.requestPointerLock(); }}
-        onSelectHotbar={(index) => { selectedRef.current = clampHotbarIndex(index); setSelected(selectedRef.current); persist(); }}
+        onSelectHotbar={selectHotbar}
         pauseOpen={pauseOpen}
         playerName="Player"
         selectedIndex={selected}

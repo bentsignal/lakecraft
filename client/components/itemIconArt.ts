@@ -18,7 +18,9 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   let palette: Palette;
   let variant = itemId;
   if (item.category === "block") palette = block(grid, itemId as BlockId);
-  else if (item.category === "tool" && item.tool) {
+  else if (itemId === "bow") {
+    palette = bow(grid);
+  } else if (item.category === "tool" && item.tool) {
     palette = tool(grid, item.tool.kind, item.tool.tier);
     variant = `${item.tool.tier}-${item.tool.kind}`;
   } else if (item.category === "armor" && item.armor) {
@@ -110,6 +112,15 @@ function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"n
   return p;
 }
 
+function bow(g: Grid): Palette {
+  const p = { o: "#322419", w: "#9b6837", h: "#d19a56", s: "#e8e3d7" };
+  dots(g, "o", [[5,1],[6,1],[4,2],[6,2],[3,3],[5,3],[3,4],[4,4],[2,5],[4,5],[2,6],[3,6],[2,7],[3,7],[2,8],[3,8],[2,9],[4,9],[2,10],[4,10],[3,11],[5,11],[3,12],[5,12],[4,13],[6,13],[5,14],[6,14]]);
+  dots(g, "w", [[5,2],[4,3],[3,5],[3,10],[4,12],[5,13]]);
+  dots(g, "h", [[5,1],[3,4],[2,8],[3,11],[5,14]]);
+  diagonal(g, 7, 2, 0, 1, 12, "s");
+  return p;
+}
+
 function armor(g: Grid, slot: ArmorSlot, color: string): Palette {
   const p = { o:mix(color,"#161817",.72), m:color, l:mix(color,"#ffffff",.36), d:mix(color,"#000000",.3) };
   if (slot === "head") { box(g,3,3,10,8,"o"); box(g,4,2,8,8,"m"); box(g,5,3,6,2,"l"); box(g,5,7,6,4,"d"); box(g,6,7,4,2,""); }
@@ -123,6 +134,8 @@ function material(g: Grid, id: ItemId): Palette {
   const color = ITEMS[id].color;
   const p = { o:mix(color,"#111311",.7), m:color, l:mix(color,"#ffffff",.42), d:mix(color,"#000000",.3) };
   if (id === "stick") { diagonal(g,3,13,1,-1,10,"o",2); diagonal(g,4,13,1,-1,9,"m"); dots(g,"l",[[5,11],[8,8],[11,5]]); }
+  else if (id === "string") { diagonal(g,3,3,1,1,5,"o"); diagonal(g,7,7,1,-1,5,"o"); diagonal(g,7,7,1,1,5,"o"); diagonal(g,11,11,-1,1,5,"o"); diagonal(g,3,3,1,1,5,"m"); diagonal(g,7,7,1,-1,5,"m"); diagonal(g,7,7,1,1,5,"m"); diagonal(g,11,11,-1,1,5,"m"); dots(g,"l",[[3,3],[7,7],[11,3],[11,11],[7,15]]); }
+  else if (id === "arrow") { diagonal(g,2,13,1,-1,11,"o",2); diagonal(g,3,13,1,-1,10,"m"); box(g,11,1,3,3,"o"); dots(g,"d",[[12,1],[13,1],[13,2]]); dots(g,"l",[[5,11],[8,8],[11,5]]); box(g,1,11,3,4,"o"); dots(g,"l",[[1,12],[2,13],[3,14]]); }
   else if (id === "leather") { box(g,4,2,8,12,"o"); box(g,2,5,12,6,"o"); box(g,4,3,7,10,"m"); box(g,3,6,10,4,"m"); dots(g,"l",[[5,4],[6,4],[4,7],[9,5]]); dots(g,"d",[[10,10],[11,8],[6,12]]); }
   else if (id === "wool") { for (const [x,y] of [[3,5],[6,3],[9,3],[11,6],[8,8],[4,9]] as const) box(g,x,y,4,4,"o"); for (const [x,y] of [[4,5],[7,4],[10,6],[7,8],[4,9]] as const) box(g,x,y,3,3,"m"); dots(g,"l",[[5,5],[8,4],[11,6],[5,9]]); }
   else if (["coal","raw_iron","raw_gold"].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }

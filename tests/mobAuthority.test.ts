@@ -149,7 +149,7 @@ assert.deepEqual(
   deterministicMobDrops("skeleton-5nf-4", "skeleton", 2),
 );
 if (skeletonFatal.ok) {
-  assert.ok(skeletonFatal.drops.every((drop) => drop.itemId === "stick" && drop.count <= 2));
+  assert.ok(skeletonFatal.drops.every((drop) => (drop.itemId === "arrow" || drop.itemId === "string") && drop.count <= 2));
 }
 
 const corrupted: StoredMobAuthorityState = {

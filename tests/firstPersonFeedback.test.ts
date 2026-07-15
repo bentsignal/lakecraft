@@ -14,7 +14,11 @@ const hud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 
 assert.ok(component.includes("HeldBlockVoxel"), "held full blocks use the dedicated three-face voxel renderer");
-assert.ok(component.includes("ItemIcon compact"), "held tools and non-cubic items retain the canonical 16x16 renderer");
+assert.ok(component.includes("HeldSpriteExtrusion"), "held tools and non-cubic items use the depth-preserving sprite renderer");
+assert.ok(component.includes("ItemIcon compact"), "the depth renderer retains the canonical 16x16 artwork");
+assert.ok(component.includes("HELD_SPRITE_DEPTH_SLICES = [0, 1, 2, 3, 4]"), "sprite depth has a deterministic five-slice DOM budget");
+assert.equal(component.match(/lc-first-person__arm-face--/g)?.length, 3, "each reusable voxel arm segment defines exactly three camera-visible faces");
+assert.ok(component.includes('<VoxelArmSegment material="sleeve" />') && component.includes('<VoxelArmSegment material="skin" />'), "the first-person arm joins a sleeve prism to a hand prism");
 assert.ok(component.includes('data-held-mode={heldAsVoxel ? "voxel"'), "held mode distinguishes cubes from sprites and the empty hand");
 assert.ok(component.includes("actionToken > 0"), "an action token controls the replayable swing state");
 assert.ok(component.includes("if (hidden || paused) return null"), "hidden and paused states remove the bounded overlay DOM");
@@ -24,6 +28,9 @@ assert.ok(hud.includes("inventoryOpen || mobileUnsupported"), "blocking UI hides
 assert.ok(styles.includes("@keyframes lc-held-item-swing"), "swing feedback has a dedicated short animation");
 assert.ok(styles.includes("rotateX(-24deg) rotateY(-38deg)"), "held block rotates its front, right, and top faces toward the camera");
 assert.ok(styles.includes("lc-held-voxel__face--front") && styles.includes("lc-held-voxel__face--right") && styles.includes("lc-held-voxel__face--top"), "held cube exposes three independently shaded faces");
+assert.ok(styles.includes("transform-style: preserve-3d") && styles.includes("perspective: 560px"), "the arm rig retains perspective through its nested cuboids");
+assert.ok(styles.includes(".lc-held-sprite__slice.is-front"), "the foremost sprite layer restores full authored color above its shaded depth slices");
+assert.equal(styles.includes("lc-first-person__sleeve"), false, "the old flat sleeve rectangle is removed");
 assert.ok(styles.includes(".lc-first-person__rig.is-swinging { animation: none; }"), "reduced-motion users do not receive the swing animation");
 
 console.log("first-person held item and block crack feedback tests passed");

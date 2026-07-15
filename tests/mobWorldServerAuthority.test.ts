@@ -16,8 +16,8 @@ import {
 } from "../server/mobWorldAuthority.ts";
 import { createMobMotionState, replayMobMotion, writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
 
-assert.equal(MOB_WORLD_CHECKPOINT_MS, 1_000);
-assert.equal(MOB_WORLD_LEASE_MS, 30_000);
+assert.equal(MOB_WORLD_CHECKPOINT_MS, 30_000);
+assert.equal(MOB_WORLD_LEASE_MS, 60_000);
 assert.deepEqual(
   validateMobWorldCheckpointRequestJson(JSON.stringify({
     leaseId: "lease_0123456789abcdef",

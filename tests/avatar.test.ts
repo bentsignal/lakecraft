@@ -128,4 +128,18 @@ assert.deepEqual(
   "malformed and cross-slot equipment is cleared instead of rendered",
 );
 
+const acting = createRemoteAvatarMotion(player({
+  heldItem: "bow",
+  visualActions: [{ sequence: 3, kind: "bow_draw" }, { sequence: 4, kind: "swing" }],
+}), 1_000);
+assert.equal(acting.bowDrawing, true);
+advanceRemoteAvatarMotion(acting, 1_200, 0.016);
+assert.ok(acting.armActionPhase > 0, "replayed remote actions drive a visible arm animation");
+applyRemoteAvatarSnapshot(acting, player({
+  heldItem: "bow",
+  visualActions: [{ sequence: 4, kind: "swing" }, { sequence: 5, kind: "bow_release" }],
+}), 1_250);
+assert.equal(acting.bowDrawing, false);
+assert.equal(acting.lastVisualActionSequence, 5, "replayed visual actions apply exactly once by sequence");
+
 console.log("lakecraft avatar tests: ok");

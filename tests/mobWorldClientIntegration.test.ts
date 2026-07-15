@@ -5,9 +5,12 @@ const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8"
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const types = readFileSync(new URL("../client/game/types.ts", import.meta.url), "utf8");
 
-assert.ok(app.includes('useQuery<MobWorldAuthorityResult, { mobIds: string[]; sample: string }>('));
-assert.ok(app.includes('{ mobIds, sample: inWorld ? mobQuerySample : "0" }'));
-assert.ok(app.includes("window.setInterval(() => setMobQuerySample(String(Date.now())), 200)"));
+assert.equal(app.includes('"mobWorldAuthority"'), false, "mob snapshots must not use a second client query");
+assert.equal(app.includes("mobQuerySample"), false, "the 200ms mob polling sample is removed");
+assert.ok(app.includes("onMobWorldAuthority={setMobWorldAuthority}"));
+assert.ok(app.includes("mobIds={mobIds}"));
+assert.ok(app.includes("MOB_CHECKPOINT_ATTEMPT_MIN_MS = 30_000"));
+assert.ok(app.includes("checkpointForeground"), "menus/background must not checkpoint mob authority");
 assert.ok(app.includes('useMutation<[requestJson: string], MobWorldCheckpointResult>("checkpointMobWorld")'));
 assert.ok(app.includes('useMutation<[requestJson: string], MobPlayerDamageResult>("claimMobPlayerDamage")'));
 assert.ok(app.includes("engineRef.current?.applyMobMotionSnapshot(mobWorldAuthority.poses, clockOffset)"));

@@ -32,6 +32,7 @@ assert.deepEqual(
 );
 
 const source = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const transportSource = readFileSync(new URL("../client/MultiplayerSegmentTransport.tsx", import.meta.url), "utf8");
 assert.equal(
   source.match(/void heartbeatPlayer\(/g)?.length ?? 0,
   1,
@@ -40,7 +41,7 @@ assert.equal(
 assert.equal(
   source.match(/normalizeAvatarAppearance\(/g)?.length ?? 0,
   2,
-  "appearance is normalized once on send and once on receive",
+  "appearance is normalized for sparse and action-time authority writes",
 );
 
 const mutationStart = source.indexOf("const heartbeatPlayer = useMutation");
@@ -85,9 +86,9 @@ for (const field of outboundFields) {
   previousField = fieldIndex;
 }
 
-const remoteMappingStart = source.indexOf("const remotes: RemotePlayer[]");
-const remoteMappingEnd = source.indexOf("engineRef.current?.setRemotePlayers(remotes);", remoteMappingStart);
-const remoteMapping = source.slice(remoteMappingStart, remoteMappingEnd);
+const remoteMappingStart = transportSource.indexOf("function replayVisualToRemotePlayer");
+const remoteMappingEnd = transportSource.indexOf("function MultiplayerCompositeQuery", remoteMappingStart);
+const remoteMapping = transportSource.slice(remoteMappingStart, remoteMappingEnd);
 for (const field of [
   "player.heldItem",
   "player.armorHead",

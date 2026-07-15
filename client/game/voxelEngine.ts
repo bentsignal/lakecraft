@@ -23,6 +23,7 @@ import {
 import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
+import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
 import {
   blockParticleBufferCapacity,
   createBlockParticleSystem,
@@ -75,6 +76,7 @@ import {
   type BlockId,
   type BlockTarget,
   type PlayerPose,
+  type RangedShotIntent,
   type RespawnPoint,
   type VoxelEngine,
   type VoxelEngineOptions,
@@ -82,6 +84,8 @@ import {
   type WorldEdit,
 } from "./types.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
+import { appendWorldBlockCrackLines } from "./blockCracks.ts";
+import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
 import {
   DEFAULT_FOV_RADIANS,
   STANDING_BODY_HEIGHT,
@@ -106,6 +110,8 @@ export const PLAYER_MAX_HEALTH = 20;
 export const MOUSE_LOOK_SENSITIVITY = 0.0022;
 export const MAX_LOOK_PITCH = 1.52;
 export const STREAMING_MESH_REBUILDS_PER_FRAME = 1;
+export const PLAYER_RANGED_REACH = 32;
+export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
 
 /**
  * Reconstructs one deterministic terrain chunk and reapplies every remembered
@@ -855,12 +861,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const atmosphereStarIntensityLocation = gl.getUniformLocation(atmosphereProgram, "R");
   const atmosphereBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
+  const crackBuffer = gl.createBuffer();
   const particleBuffer = gl.createBuffer();
-  if (!lineBuffer || !atmosphereBuffer || !particleBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  if (!lineBuffer || !crackBuffer || !atmosphereBuffer || !particleBuffer) throw new Error("Unable to allocate WebGL buffers.");
   gl.bindBuffer(gl.ARRAY_BUFFER, atmosphereBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, ATMOSPHERE_SCREEN_TRIANGLE, gl.STATIC_DRAW);
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
   const droppedItemRenderer = createDroppedItemRenderer(gl);
+  const playerProjectileRenderer = createPlayerProjectileRenderer(gl);
   const blockParticles = createBlockParticleSystem();
   const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
   const particleGeometry = new Float32Array(particleCapacity.floatCount);
@@ -1001,6 +1009,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let miningTimer = 0;
   let miningStartedAt = 0;
   let miningDurationMs = 0;
+  let miningProgress = 0;
+  let crackVertexCount = 0;
+  const crackLines: number[] = [];
+  let rangedChargeStartedAt = 0;
+  let lastRangedChargeFeedbackAt = -Infinity;
   let lastMiningProgressAt = -Infinity;
   let lastMiningHitAt = -Infinity;
   let footstepDistance = 0;
@@ -1016,6 +1029,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let droppedItemDrawCalls = 0;
   let droppedItemVertexCount = 0;
   let droppedItemVisibleCount = 0;
+  let playerProjectileVertexCount = 0;
   let particleDrawCalls = 0;
   let particleVertexCount = 0;
   let particleUploadBytes = 0;
@@ -1037,8 +1051,28 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     miningTimer = 0;
     miningStartedAt = 0;
     miningDurationMs = 0;
+    miningProgress = 0;
+    crackVertexCount = 0;
     lastMiningHitAt = -Infinity;
     options.onMiningProgress?.(0);
+  }
+
+  function updateMiningCrackGeometry(): void {
+    crackLines.length = 0;
+    crackVertexCount = target
+      ? appendWorldBlockCrackLines(crackLines, target.block, miningProgress)
+      : 0;
+    if (!crackVertexCount) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, crackBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(crackLines), gl.DYNAMIC_DRAW);
+  }
+
+  function clearRangedCharge(cancelServer = false): void {
+    const hadCharge = rangedChargeStartedAt > 0;
+    if (hadCharge) options.onRangedChargeChange?.(false, 0);
+    rangedChargeStartedAt = 0;
+    lastRangedChargeFeedbackAt = -Infinity;
+    if (hadCharge && cancelServer) void options.onRangedCancel?.();
   }
 
   function rememberWorldEdit(edit: WorldEdit): void {
@@ -1671,6 +1705,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const droppedItemStats = droppedItemRenderer.update(now, eye);
     droppedItemVertexCount = droppedItemStats.vertexCount;
     droppedItemVisibleCount = droppedItemStats.visibleItemCount;
+    const playerProjectileStats = playerProjectileRenderer.update(now, eye);
+    playerProjectileVertexCount = playerProjectileStats.vertexCount;
     const facing = direction();
     const horizontalFacing = Math.hypot(facing[0], facing[2]) || 1;
     const rightX = -facing[2] / horizontalFacing;
@@ -1820,6 +1856,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
       droppedItemDrawCalls += 1;
     }
+    if (playerProjectileVertexCount) {
+      bindBuffer(playerProjectileRenderer.buffer);
+      gl.drawArrays(gl.TRIANGLES, 0, playerProjectileVertexCount);
+      drawCalls += 1;
+    }
     if (mobVertexCount) {
       bindBuffer(mobRenderer.buffer);
       gl.drawArrays(gl.TRIANGLES, 0, mobVertexCount);
@@ -1867,7 +1908,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
 
     if (target) {
+      if (crackVertexCount > 0) {
+        bindBuffer(crackBuffer);
+        gl.uniform1f(fogLocation, 0);
+        gl.uniform1f(lightingLocation, 0);
+        gl.lineWidth(2);
+        gl.drawArrays(gl.LINES, 0, crackVertexCount);
+        drawCalls += 1;
+      }
       const { x, y, z } = target.block;
+      gl.lineWidth(1);
       const e = 0.003;
       const corners: Vec3[] = [
         [x - e, y - e, z - e], [x + 1 + e, y - e, z - e], [x + 1 + e, y + 1 + e, z - e], [x - e, y + 1 + e, z - e],
@@ -1894,11 +1944,20 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     lastFrame = now;
     if (miningTimer && miningDurationMs > 0 && now - lastMiningProgressAt >= 50) {
       lastMiningProgressAt = now;
-      options.onMiningProgress?.(Math.max(0.01, Math.min(0.99, (now - miningStartedAt) / miningDurationMs)));
+      miningProgress = Math.max(0.01, Math.min(0.99, (now - miningStartedAt) / miningDurationMs));
+      updateMiningCrackGeometry();
+      options.onMiningProgress?.(miningProgress);
       if (target && now - lastMiningHitAt >= 225) {
         lastMiningHitAt = now;
         options.onMiningHit?.({ ...target, block: { ...target.block }, place: { ...target.place } });
       }
+    }
+    if (rangedChargeStartedAt > 0 && now - lastRangedChargeFeedbackAt >= 50) {
+      lastRangedChargeFeedbackAt = now;
+      options.onRangedChargeChange?.(
+        true,
+        Math.min(1, Math.max(0, (now - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS)),
+      );
     }
     if (frameTimeMs > 0) {
       frameTimes.push(frameTimeMs);
@@ -1922,8 +1981,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onKeyDown(event: KeyboardEvent): void {
-    if (/^Digit[1-9]$/.test(event.code)) selectedBlock = Number(event.code.slice(5)) as BlockId;
     if (document.pointerLockElement !== canvas) return;
+    const hotbarIndex = hotbarIndexForDigitCode(event.code);
+    if (hotbarIndex !== null) {
+      event.preventDefault();
+      options.onHotbarSelect?.(hotbarIndex);
+    }
     if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight"].includes(event.code)) {
       event.preventDefault();
     }
@@ -1948,6 +2011,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     pose.yaw = look.yaw;
     pose.pitch = look.pitch;
     poseDirty = true;
+  }
+
+  function onWheel(event: WheelEvent): void {
+    if (document.pointerLockElement !== canvas) return;
+    const direction = hotbarWheelDirection(event.deltaY);
+    if (direction === 0) return;
+    event.preventDefault();
+    options.onHotbarCycle?.(direction);
   }
 
   function playerIntersectsBlock(x: number, y: number, z: number): boolean {
@@ -1992,6 +2063,32 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return true;
   }
 
+  function rangedShotIntent(now: number): RangedShotIntent {
+    const eye = interactionEye();
+    const facing = direction();
+    const blockTarget = raycastVoxels(eye, facing, getBlock, PLAYER_RANGED_REACH);
+    const mobTarget = raycastMobs(eye, facing, mobSimulation.mobs, PLAYER_RANGED_REACH);
+    const remoteTarget = raycastRemotePlayers(eye, facing, remoteStates.values(), PLAYER_RANGED_REACH);
+    const occlusionDistance = blockTarget?.distance ?? PLAYER_RANGED_REACH;
+    const nearestEntityDistance = Math.min(
+      mobTarget?.distance ?? Number.POSITIVE_INFINITY,
+      remoteTarget?.distance ?? Number.POSITIVE_INFINITY,
+    );
+    const target = nearestEntityDistance <= occlusionDistance + 0.001
+      ? remoteTarget && remoteTarget.distance <= (mobTarget?.distance ?? Number.POSITIVE_INFINITY)
+        ? { kind: "player" as const, id: remoteTarget.id, name: remoteTarget.name, distance: remoteTarget.distance }
+        : mobTarget
+          ? { kind: "mob" as const, id: mobTarget.id, mobKind: mobTarget.kind, distance: mobTarget.distance }
+          : { kind: "none" as const, id: "" as const, distance: occlusionDistance }
+      : { kind: "none" as const, id: "" as const, distance: occlusionDistance };
+    return {
+      chargeMs: Math.max(0, Math.min(PLAYER_BOW_FULL_CHARGE_MS, now - rangedChargeStartedAt)),
+      target,
+      origin: [eye[0], eye[1], eye[2]],
+      direction: [facing[0], facing[1], facing[2]],
+    };
+  }
+
   function onMouseDown(event: MouseEvent): void {
     event.preventDefault();
     if (document.pointerLockElement !== canvas) {
@@ -2014,11 +2111,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         miningDurationMs = duration * 1_000;
         lastMiningProgressAt = -Infinity;
         lastMiningHitAt = -Infinity;
+        miningProgress = 0.01;
+        updateMiningCrackGeometry();
         options.onMiningProgress?.(0.01);
         miningTimer = window.setTimeout(() => {
           miningTimer = 0;
           miningStartedAt = 0;
           miningDurationMs = 0;
+          miningProgress = 0;
+          crackVertexCount = 0;
           options.onMiningProgress?.(0);
           if (getBlock(mined.x, mined.y, mined.z) === mined.block) {
             emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
@@ -2039,6 +2140,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           return;
         }
       }
+      if (options.isRangedWeaponSelected?.()) {
+        if (rangedChargeStartedAt === 0) {
+          rangedChargeStartedAt = performance.now();
+          lastRangedChargeFeedbackAt = -Infinity;
+          options.onRangedChargeChange?.(true, 0);
+        }
+        return;
+      }
       if (options.onUseSelectedItem?.()) {
         options.onHandAction?.("use");
         return;
@@ -2056,12 +2165,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onMouseUp(event: MouseEvent): void {
     if (event.button === 0) clearMining();
+    if (event.button === 2 && rangedChargeStartedAt > 0) {
+      const intent = rangedShotIntent(performance.now());
+      clearRangedCharge();
+      options.onHandAction?.("use");
+      void options.onRangedRelease?.(intent);
+    }
   }
 
   function onPointerLockChange(): void {
     if (document.pointerLockElement !== canvas) {
       keys.clear();
       clearMining();
+      clearRangedCharge(true);
       resetMovementView();
     }
     options.onPointerLockChange?.(document.pointerLockElement === canvas);
@@ -2089,6 +2205,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       document.addEventListener("pointerlockchange", onPointerLockChange);
       canvas.addEventListener("mousedown", onMouseDown);
       canvas.addEventListener("mouseup", onMouseUp);
+      canvas.addEventListener("wheel", onWheel, { passive: false });
       canvas.addEventListener("contextmenu", onContextMenu);
       options.onPoseChange?.({ ...pose });
       options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
@@ -2107,9 +2224,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       document.removeEventListener("pointerlockchange", onPointerLockChange);
       canvas.removeEventListener("mousedown", onMouseDown);
       canvas.removeEventListener("mouseup", onMouseUp);
+      canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("contextmenu", onContextMenu);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
       clearMining();
+      clearRangedCharge();
       for (const mesh of chunkMeshes.values()) {
         if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
         if (mesh.transparentBuffer) gl.deleteBuffer(mesh.transparentBuffer);
@@ -2123,9 +2242,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       torchLights.clear();
       remotePlayerRenderer.destroy();
       droppedItemRenderer.destroy();
+      playerProjectileRenderer.destroy();
       blockParticles.clear();
       gl.deleteBuffer(particleBuffer);
       gl.deleteBuffer(lineBuffer);
+      gl.deleteBuffer(crackBuffer);
       gl.deleteBuffer(atmosphereBuffer);
       mobRenderer.destroy();
       gl.deleteProgram(program);
@@ -2215,6 +2336,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     setDroppedItems(items) {
       droppedItemRenderer.setItems(items);
+    },
+    setPlayerProjectiles(projectiles: readonly PlayerProjectileVisual[]) {
+      playerProjectileRenderer.setProjectiles(projectiles);
     },
     spawnBlockParticles(event) {
       return blockParticles.spawn(event);

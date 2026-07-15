@@ -219,7 +219,7 @@ function heldItemColor(itemId: ItemId): Vec3 {
   }
 }
 
-function appendArmor(writer: VertexWriter, state: RemoteAvatarMotion, stride: number): void {
+function appendArmor(writer: VertexWriter, state: RemoteAvatarMotion, stride: number, rightArmPitch: number): void {
   const headYaw = state.rendered.yaw;
   const headPitch = state.rendered.pitch * 0.32;
   if (state.armorHead) {
@@ -232,7 +232,7 @@ function appendArmor(writer: VertexWriter, state: RemoteAvatarMotion, stride: nu
     const color = armorColor(state.armorChest);
     appendBox(writer,state,state.bodyYaw,0,0,0,-0.35,0.70,-0.205,0.35,1.40,-0.18,color);
     appendBox(writer,state,state.bodyYaw,-stride*0.9,1.31,0,-0.57,1.14,-0.16,-0.33,1.42,0.16,color);
-    appendBox(writer,state,state.bodyYaw,stride*0.9,1.31,0,0.33,1.14,-0.16,0.57,1.42,0.16,color);
+    appendBox(writer,state,state.bodyYaw,rightArmPitch,1.31,0,0.33,1.14,-0.16,0.57,1.42,0.16,color);
   }
   if (state.armorLegs) {
     const color = armorColor(state.armorLegs);
@@ -246,12 +246,17 @@ function appendArmor(writer: VertexWriter, state: RemoteAvatarMotion, stride: nu
   }
 }
 
-function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, stride: number): void {
+function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, rightArmPitch: number): void {
   const itemId = state.heldItem;
   if (!itemId) return;
   const item = ITEMS[itemId];
-  const armPitch = stride * 0.9;
+  const armPitch = rightArmPitch;
   const color = heldItemColor(itemId);
+  if (itemId === "bow") {
+    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.26,-0.07,0.48,0.58,-0.02,COLORS.toolHandle);
+    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.57,-0.07,0.48,0.91,-0.02,color);
+    return;
+  }
   if (!item.tool) {
     appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.35,0.43,-0.25,0.62,0.70,0.02,color);
     return;
@@ -275,15 +280,16 @@ function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, stride:
 
 function appendAvatar(writer: VertexWriter, state: RemoteAvatarMotion): void {
   const stride = Math.min(0.72, state.horizontalSpeed * 0.16) * Math.sin(state.walkPhase);
+  const rightArmPitch = state.bowDrawing ? -1.12 : stride * 0.9 - state.armActionPhase * 1.8;
   appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.26,0.08,-0.14,-0.02,0.72,0.14,COLORS.pants);
   appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.02,0.08,-0.14,0.26,0.72,0.14,COLORS.pants);
   appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.26,0,-0.15,-0.02,0.12,0.16,COLORS.shoes);
   appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.02,0,-0.15,0.26,0.12,0.16,COLORS.shoes);
   appendBox(writer,state,state.bodyYaw,0,0,0,-0.34,0.69,-0.18,0.34,1.39,0.18,COLORS.shirt);
   appendBox(writer,state,state.bodyYaw,-stride*0.9,1.31,0,-0.55,0.68,-0.14,-0.34,1.18,0.14,COLORS.skin);
-  appendBox(writer,state,state.bodyYaw,stride*0.9,1.31,0,0.34,0.68,-0.14,0.55,1.18,0.14,COLORS.skin);
+  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.31,0,0.34,0.68,-0.14,0.55,1.18,0.14,COLORS.skin);
   appendBox(writer,state,state.bodyYaw,-stride*0.9,1.31,0,-0.55,1.17,-0.145,-0.34,1.4,0.145,COLORS.shirt);
-  appendBox(writer,state,state.bodyYaw,stride*0.9,1.31,0,0.34,1.17,-0.145,0.55,1.4,0.145,COLORS.shirt);
+  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.31,0,0.34,1.17,-0.145,0.55,1.4,0.145,COLORS.shirt);
   const headYaw = state.rendered.yaw;
   const headPitch = state.rendered.pitch * 0.32;
   appendBox(writer,state,headYaw,headPitch,1.62,0,-0.25,1.39,-0.25,0.25,1.89,0.25,COLORS.skinHighlight);
@@ -294,8 +300,8 @@ function appendAvatar(writer: VertexWriter, state: RemoteAvatarMotion): void {
   appendBox(writer,state,headYaw,headPitch,1.62,0,-0.15,1.63,-0.272,-0.06,1.69,-0.248,COLORS.eye);
   appendBox(writer,state,headYaw,headPitch,1.62,0,0.06,1.63,-0.272,0.15,1.69,-0.248,COLORS.eye);
   appendBox(writer,state,headYaw,headPitch,1.62,0,-0.08,1.50,-0.273,0.08,1.54,-0.248,COLORS.mouth);
-  appendArmor(writer, state, stride);
-  appendHeldItem(writer, state, stride);
+  appendArmor(writer, state, stride, rightArmPitch);
+  appendHeldItem(writer, state, rightArmPitch);
 }
 
 function appendBillboardQuad(

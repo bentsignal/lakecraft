@@ -22,6 +22,8 @@ assert.ok(source.includes("if (queued.poseSequence === null)"), "safety retries 
 assert.ok(source.includes("presenceNextPoseSequenceRef.current = 1"), "each presence lease owns one monotonic sequence");
 assert.ok(source.indexOf("let poseSequence = queued.poseSequence") > source.indexOf("reservePresenceAttempt(guard, attemptAt, realtime)"), "sequence allocation happens only after scheduler and budget admission");
 assert.ok(source.includes("persistPresenceBurstGuard(auth.userId, guard);"), "budget reservation is durable before transport starts");
+assert.ok(source.includes("presenceHeartbeatInFlightRef.current > 0"), "action-time and sparse authority writes share one serialization fence");
+assert.ok(source.includes("reservePresenceAttempt(guard, attemptAt, false)"), "action-time authority refreshes debit the same browser-day guard");
 assert.ok(source.includes("respawnLeaseTransitionRef.current || heartbeatSessionId !== presenceSessionIdRef.current"), "a lost respawn response cannot cancel its presence loop before lease replay");
 assert.ok(!source.includes("result.inventory && !loadCanonicalPlayer"), "heartbeat responses cannot roll newer inventory mutations backward");
 assert.ok(!source.includes("result.health ==="), "heartbeat responses cannot roll newer combat revisions backward");
@@ -31,12 +33,10 @@ assert.ok(source.includes("<GameApp inWorld={inWorld}"), "query recovery retains
 assert.ok(source.includes("!quota ? <button"), "known quota pause cannot be bypassed into a manual query retry storm");
 assert.equal(source.match(/void heartbeatPlayer\(/g)?.length, 1, "the guard must wrap the one Lakebed presence mutation path");
 assert.equal(source.includes("WebSocket"), false, "presence does not introduce a WebSocket transport");
-assert.equal(source.includes("RT ${presenceTelemetry.realtimeRemaining}"), true, "F3 reports realtime burst remaining");
-assert.equal(source.includes("DAY ${presenceTelemetry.sessionRemaining}"), true, "F3 reports browser-day budget remaining");
-assert.equal(source.includes("AGE p50 ${remotePoseAge.p50}ms"), true, "F3 reports observer pose-age p50/p95");
-assert.ok(serverSource.includes("serverNow: Date.now()"), "presence query returns a same-clock age anchor");
-assert.ok(source.includes("presenceServerNow - heartbeatAt"), "F3 age uses the server clock instead of browser clock skew");
-assert.ok(source.includes("remotePoseSeenRef.current.has(sampleKey)"), "F3 samples each remote heartbeat once");
+assert.equal(source.includes("segmentTelemetry.mutationAttempts"), true, "F3 reports motion mutation budget usage");
+assert.equal(source.includes("segmentTelemetry.requestAttempts"), true, "F3 reports composite request budget usage");
+assert.equal(source.includes("segmentTelemetry.stalestRemoteMs"), true, "F3 reports observer pose age and staleness");
+assert.ok(serverSource.includes("multiplayerComposite: query") && serverSource.includes("const serverNow = Date.now()"), "the consolidated proximity query returns a server-clock anchor");
 assert.ok(source.includes("Realtime sync budget spent"), "burst degradation is visible without F3");
 assert.ok(source.includes("Repeated or quota-like rejections stopped retries"), "terminal retry suppression is visible");
 

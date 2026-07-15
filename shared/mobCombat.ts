@@ -1,5 +1,5 @@
 export type MobAuthorityKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton";
-export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick";
+export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow";
 
 export interface MobAuthorityDrop {
   itemId: MobAuthorityDropId;
@@ -126,9 +126,10 @@ export const MOB_AUTHORITY_DEFINITIONS: Readonly<Record<MobAuthorityKind, Author
   }),
   skeleton: Object.freeze({
     maxHealth: 20,
-    // Bone/arrow inventory items are intentionally deferred; sticks preserve a useful,
-    // already-supported drop without widening the persisted inventory schema.
-    drops: Object.freeze([{ itemId: "stick", minCount: 0, maxCount: 2, chance: 0.85 }]),
+    drops: Object.freeze([
+      { itemId: "arrow", minCount: 0, maxCount: 2, chance: 1 },
+      { itemId: "string", minCount: 0, maxCount: 2, chance: 0.65 },
+    ]),
   }),
 });
 

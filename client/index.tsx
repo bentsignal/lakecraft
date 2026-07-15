@@ -1,7 +1,7 @@
 import { ErrorBoundary, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
-import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
+import { ChestDrawer, FirstPersonBow, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
 import { isCraftingTableWithinReach as isWorkstationWithinReach, type CraftingTablePosition as WorkstationPosition } from "./crafting";
 import {
   BLOCK,
@@ -10,6 +10,7 @@ import {
   type BlockId as EngineBlockId,
   type BlockTarget,
   type PlayerPose,
+  type PlayerProjectileVisual,
   type RemotePlayer,
   type VoxelEngine,
   type VoxelPerformanceStats,
@@ -17,6 +18,8 @@ import {
 } from "./game";
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
+import { MultiplayerSegmentTransport } from "./MultiplayerSegmentTransport.tsx";
+import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
 import {
   ITEMS,
   BLOCKS,
@@ -24,6 +27,7 @@ import {
   MAX_HUNGER,
   attackDamage,
   clampHotbarIndex,
+  countItem,
   createEmptyEquipment,
   createEmptyInventory,
   createSerializablePlayerState,
@@ -41,6 +45,7 @@ import {
   type PlayerRespawnPoint,
   type Recipe,
 } from "../shared/game";
+import { RANGED_COMBAT_PROTOCOL_VERSION } from "../shared/rangedCombat.ts";
 import type { StowedInventorySnapshot } from "../shared/inventoryWorkspace";
 import {
   type InventoryActionMutationResult,
@@ -66,8 +71,6 @@ import {
 } from "../shared/multiplayer";
 import { PLAYER_RESPAWN_DELAY_MS, type PlayerCombatState } from "../shared/playerCombat";
 import {
-  PLAYER_STALE_AFTER_MS,
-  activePlayerPresences,
   blockCoordinateKey,
   latestWorldEdits,
   type PersistedInventory,
@@ -84,9 +87,7 @@ import {
   createPresenceBurstGuardState,
   createPresenceSchedulerState,
   parsePersistedPresencePose,
-  parsePresenceVelocityFields,
   presenceBurstGuardSnapshot,
-  presencePoseAgePercentiles,
   presenceTransportQuotaResetAt,
   recordPresenceFailure,
   recordPresenceRateLimit,
@@ -97,6 +98,7 @@ import {
   type PresenceSchedulerState,
   type PresenceSendDecision,
 } from "../shared/presenceMotion";
+import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
 import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
 import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep";
 import {
@@ -104,7 +106,6 @@ import {
   type MobAttackResult,
   type MobAuthorityState,
 } from "../shared/mobCombat";
-import type { MobMotionPose } from "../shared/mobMotionAuthority.ts";
 import {
   decodeWorldChunkSnapshot,
   worldEditChunkCoordinate,
@@ -163,6 +164,8 @@ const QUERY_RECOVERY_CSS = `
 
 const PRESENCE_BUDGET_STORAGE_PREFIX = "lakecraft:presence-budget:v1:";
 const AUDIO_MUTED_STORAGE_KEY = "lakecraft:audio-muted:v1";
+/** Browser-side guard matching the quota-honest persisted mob cadence. */
+const MOB_CHECKPOINT_ATTEMPT_MIN_MS = 30_000;
 
 function loadAudioMuted(): boolean {
   try {
@@ -240,34 +243,6 @@ type StartPresenceSessionResult = {
   nextPoseSequence?: string;
 };
 
-type RecentPlayersResult = {
-  players: PlayerPresence[];
-  serverNow: number;
-};
-
-type MobDamageClaim = {
-  operationId: string;
-  mobId: string;
-  checkpointRevision: number;
-  tick: number;
-};
-
-type MobWorldAuthorityResult =
-  | {
-      ok: true;
-      checkpointRevision: number;
-      motionTick: number;
-      checkpointAt: number;
-      leaseOwnerUserId: string;
-      leaseExpiresAt: number;
-      serverNow: number;
-      poses: MobMotionPose[];
-      states: MobAuthorityState[];
-      damageClaims: MobDamageClaim[];
-      needsCheckpoint: boolean;
-    }
-  | { ok: false; reason: string; poses: []; states: []; damageClaims: []; serverNow: number };
-
 type MobWorldCheckpointResult =
   | { ok: true; checkpointRevision: number; checkpointAt: number; leaseExpiresAt: number; serverNow: number }
   | { ok: false; reason: string; retryAfterMs?: number; serverNow: number };
@@ -275,6 +250,32 @@ type MobWorldCheckpointResult =
 type MobPlayerDamageResult =
   | { ok: true; replayed: boolean; killed: boolean; damage: number; state: PlayerCombatState; inventory: PersistedInventoryState; serverNow: number }
   | { ok: false; reason: string; retryAfterMs?: number; serverNow: number };
+
+type RangedCombatMutationResult = {
+  ok: boolean;
+  kind?: "begin_charge" | "cancel_charge" | "release";
+  reason?: string;
+  replayed?: boolean;
+  shot?: {
+    landed: boolean;
+    missReason?: string;
+    targetKind: "none" | "player" | "mob";
+    targetId: string;
+    targetCombat?: MobAuthorityState | PlayerCombatState;
+    killed: boolean;
+    bowBroken: boolean;
+    trajectory: {
+      origin: { x: number; y: number; z: number };
+      direction: { x: number; y: number; z: number };
+      speed: number;
+      chargeMs: number;
+    };
+    trace: { point: { x: number; y: number; z: number }; elapsedSeconds: number };
+  };
+  inventory?: PersistedInventoryState;
+  drops?: Array<{ itemId: ItemId; count: number }>;
+  serverNow: number;
+};
 
 type FurnaceAuthorityView = {
   state: FurnaceState;
@@ -496,6 +497,15 @@ function createCombatOperationId(): string {
   return `attack_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
 }
 
+async function retryExactLakebedMutation<T>(perform: () => Promise<T>): Promise<T> {
+  try {
+    return await perform();
+  } catch {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+    return perform();
+  }
+}
+
 function createInventoryActionOperationId(): string {
   const randomPart = typeof globalThis.crypto?.randomUUID === "function"
     ? globalThis.crypto.randomUUID().replaceAll("-", "")
@@ -522,13 +532,6 @@ function playerColor(id: string): string {
   const green = 104 + ((hash >>> 8) & 95);
   const blue = 88 + ((hash >>> 16) & 95);
   return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function remoteColor(value: string): readonly [number, number, number] | undefined {
-  const match = /^#([0-9a-f]{6})$/i.exec(value);
-  if (!match) return undefined;
-  const number = Number.parseInt(match[1], 16);
-  return [((number >> 16) & 255) / 255, ((number >> 8) & 255) / 255, (number & 255) / 255];
 }
 
 function toEngineEdits(events: WorldEdit[]): EngineWorldEdit[] {
@@ -617,20 +620,13 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [activeFurnaceKey, setActiveFurnaceKey] = useState("");
   const [furnaceQuerySample, setFurnaceQuerySample] = useState("0");
   const [mobLeaseSessionId, setMobLeaseSessionId] = useState("");
-  const [mobQuerySample, setMobQuerySample] = useState("0");
+  const [segmentRemotePlayers, setSegmentRemotePlayers] = useState<RemotePlayer[]>([]);
   const [worldChunkKeys, setWorldChunkKeys] = useState<string[]>(() => visibleWorldChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
   const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", worldChunkKeys);
-  const [activeSince] = useState(() => String(Date.now() - PLAYER_STALE_AFTER_MS));
-  const recentPlayersResult = useQuery<RecentPlayersResult, string>("recentPlayers", activeSince);
-  const presenceEvents = recentPlayersResult?.players ?? [];
-  const presenceServerNow = Number.isFinite(recentPlayersResult?.serverNow)
-    ? recentPlayersResult!.serverNow
-    : Date.now();
-  const activePlayers = activePlayerPresences(presenceEvents, presenceServerNow);
   const combatUserIds = [...new Set([
     auth.userId,
-    ...activePlayers.slice(0, 127).map((player) => player.userId),
+    ...segmentRemotePlayers.slice(0, 127).map((player) => player.id),
   ].filter((userId): userId is string => typeof userId === "string" && userId.length > 0))].sort();
   const playerCombatResult = useQuery<{
     ok: boolean;
@@ -649,10 +645,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   );
   const worldClock = useQuery<WorldClockSnapshot>("worldClock");
   const [mobIds, setMobIds] = useState<string[]>([]);
-  const mobWorldAuthority = useQuery<MobWorldAuthorityResult, { mobIds: string[]; sample: string }>(
-    "mobWorldAuthority",
-    { mobIds, sample: inWorld ? mobQuerySample : "0" },
-  );
+  const [mobWorldAuthority, setMobWorldAuthority] = useState<MobWorldCompositeSnapshot | null>(null);
   const [droppedChunkKeys, setDroppedChunkKeys] = useState<string[]>(() => visibleDroppedItemChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const droppedItemsResult = useQuery<DroppedItemsQueryResult, string[]>("droppedItems", inWorld ? droppedChunkKeys : []);
 
@@ -690,6 +683,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     targetState?: PlayerCombatState;
     serverNow: number;
   }>("attackPlayer");
+  const rangedCombat = useMutation<[requestJson: string], RangedCombatMutationResult>("rangedCombat");
   const dropItemMutation = useMutation<[requestJson: string], DroppedItemMutationResult>("dropItem");
   const pickupDroppedItemMutation = useMutation<[requestJson: string], DroppedItemMutationResult>("pickupDroppedItem");
 
@@ -700,6 +694,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const presenceSessionIdRef = useRef("");
   const presenceNextPoseSequenceRef = useRef(1);
   const presenceSampleRef = useRef<((pose: PlayerPose, at?: number) => void) | null>(null);
+  const authorityRefreshPromiseRef = useRef<Promise<boolean> | null>(null);
+  const presenceHeartbeatInFlightRef = useRef(0);
   const presenceSchedulerRef = useRef<PresenceSchedulerState | null>(null);
   const presenceBurstGuardRef = useRef<PresenceBurstGuardState | null>(null);
   const presenceModeNoticeRef = useRef("");
@@ -741,15 +737,23 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const appliedOwnCombatHealthRef = useRef<number | null>(null);
   const appliedOwnCombatRevisionRef = useRef(-1);
   const mobCheckpointInFlightRef = useRef(false);
+  const lastMobCheckpointAttemptAtRef = useRef(0);
   const mobDamageClaimsRef = useRef(new Set<string>());
   const realtimePresenceRef = useRef(false);
-  const remotePoseAgeSamplesRef = useRef<number[]>([]);
-  const remotePoseSeenRef = useRef(new Set<string>());
   const respawnRequestInFlightRef = useRef(false);
   const respawnLeaseTransitionRef = useRef(false);
   const respawnTimerRef = useRef<number | null>(null);
   const confirmedFeedbackOperationsRef = useRef<Set<string> | null>(null);
+  const rangedChargeStartRef = useRef<Promise<boolean> | null>(null);
+  const rangedChargeActiveRef = useRef(false);
+  const rangedChargeBeginOperationRef = useRef("");
+  const rangedChargeRevisionRef = useRef("");
+  const rangedChargeSelectedRef = useRef(0);
+  const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
   const previousChestKeyRef = useRef("");
+  const motionActionSinkRef = useRef<((kind: MotionVisualActionKind, value?: number) => void) | null>(null);
+  const previousSegmentPoseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
+  const authorityTrafficPausedRef = useRef(false);
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
   if (!presenceBurstGuardRef.current) presenceBurstGuardRef.current = createPresenceBurstGuardState(Date.now());
@@ -776,6 +780,9 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [engineError, setEngineError] = useState("");
   const [inventoryReady, setInventoryReady] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [segmentSessionReady, setSegmentSessionReady] = useState(false);
+  const [transportForeground, setTransportForeground] = useState(() => document.visibilityState === "visible" && document.hasFocus());
+  const [segmentTelemetry, setSegmentTelemetry] = useState<SegmentTelemetry | null>(null);
   const [joinPhase, setJoinPhase] = useState<LobbyJoinPhase>("idle");
   const [usernameDraft, setUsernameDraft] = useState("");
   const [usernameState, setUsernameState] = useState<UsernameClaimState>("idle");
@@ -790,6 +797,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [playerHealth, setPlayerHealth] = useState(20);
   const [miningProgress, setMiningProgress] = useState(0);
   const [handActionToken, setHandActionToken] = useState(0);
+  const [bowCharging, setBowCharging] = useState(false);
+  const [bowChargeMs, setBowChargeMs] = useState(0);
   const [chestInventory, setChestInventory] = useState<Inventory>(() => createEmptyInventory(CHEST_SLOT_COUNT));
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
@@ -799,9 +808,22 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     appliedOwnCombatRevisionRef.current = -1;
   }, [auth.userId]);
   useEffect(() => {
-    remotePoseAgeSamplesRef.current = [];
-    remotePoseSeenRef.current.clear();
-  }, [auth.userId, inWorld]);
+    const update = () => setTransportForeground(document.visibilityState === "visible" && document.hasFocus());
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("focus", update);
+    window.addEventListener("blur", update);
+    update();
+    return () => {
+      document.removeEventListener("visibilitychange", update);
+      window.removeEventListener("focus", update);
+      window.removeEventListener("blur", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    authorityTrafficPausedRef.current = !transportForeground || pauseOpen || inventoryOpen || chatOpen
+      || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey);
+  }, [transportForeground, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
   const [chestRetryAvailable, setChestRetryAvailable] = useState(false);
   const [activeBedKey, setActiveBedKey] = useState("");
   const [sleepBusy, setSleepBusy] = useState(false);
@@ -845,6 +867,61 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     const id = `note-${++toastCounter.current}`;
     setMessages((current) => [...current.slice(-2), { id, text, detail, tone }]);
     window.setTimeout(() => setMessages((current) => current.filter((message) => message.id !== id)), 3_500);
+  }
+
+  function refreshAuthoritativePose(): Promise<boolean> {
+    if (authorityRefreshPromiseRef.current) return authorityRefreshPromiseRef.current;
+    const task = (async () => {
+      if (!profile || !auth.isAuthenticated || auth.isGuest || !presenceSessionIdRef.current) return false;
+      const waitStartedAt = Date.now();
+      while (presenceHeartbeatInFlightRef.current > 0 && Date.now() - waitStartedAt < 1_500) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 20));
+      }
+      if (presenceHeartbeatInFlightRef.current > 0) return false;
+      const guard = presenceBurstGuardRef.current;
+      const attemptAt = Date.now();
+      if (!guard || !presenceBurstGuardSnapshot(guard, attemptAt, false).canAttempt
+        || !reservePresenceAttempt(guard, attemptAt, false)) return false;
+      persistPresenceBurstGuard(auth.userId, guard);
+      const pose = engineRef.current?.getPose() ?? poseRef.current;
+      const worn = equipmentRef.current;
+      const appearance = normalizeAvatarAppearance(
+        inventoryRef.current[selectedRef.current]?.itemId,
+        worn.head?.itemId,
+        worn.chest?.itemId,
+        worn.legs?.itemId,
+        worn.feet?.itemId,
+      );
+      const poseSequence = presenceNextPoseSequenceRef.current;
+      presenceNextPoseSequenceRef.current += 1;
+      presenceHeartbeatInFlightRef.current += 1;
+      try {
+        const result = await heartbeatPlayer(
+          profile.username,
+          playerColor(auth.userId),
+          String(pose.x), String(pose.y), String(pose.z), String(pose.yaw), String(pose.pitch),
+          String(poseSequence), "0", "0", "0",
+          appearance.heldItem, appearance.armorHead, appearance.armorChest,
+          appearance.armorLegs, appearance.armorFeet, presenceSessionIdRef.current,
+        );
+        const confirmedSequence = Number(result?.poseSequence ?? poseSequence);
+        if (Number.isSafeInteger(confirmedSequence)) {
+          presenceNextPoseSequenceRef.current = Math.max(presenceNextPoseSequenceRef.current, confirmedSequence + 1);
+        }
+        if (!result?.ok) return false;
+        poseRef.current = pose;
+        Object.assign(presenceSchedulerRef.current!, createPresenceSchedulerState());
+        setConnected(true);
+        return true;
+      } finally {
+        presenceHeartbeatInFlightRef.current = Math.max(0, presenceHeartbeatInFlightRef.current - 1);
+      }
+    })().catch(() => false);
+    authorityRefreshPromiseRef.current = task;
+    void task.finally(() => {
+      if (authorityRefreshPromiseRef.current === task) authorityRefreshPromiseRef.current = null;
+    });
+    return task;
   }
 
   function requestAuthorizedRespawn(): void {
@@ -1114,7 +1191,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   }
 
   async function handleDropSelected(dropWholeStack = false): Promise<void> {
-    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
+    if (!hydratedRef.current || rangedChargeActiveRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
     const sourceSlot = selectedRef.current;
     const stack = inventoryRef.current[sourceSlot];
     if (!stack) return;
@@ -1149,7 +1226,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   }
 
   async function pickupNearbyDroppedItem(drop: NormalizedDroppedItem): Promise<void> {
-    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
+    if (!hydratedRef.current || rangedChargeActiveRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
     droppedItemBusyRef.current = true;
     try {
       if (!await flushInventoryActions()) throw new Error("inventory_action_pending");
@@ -1510,11 +1587,148 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         },
         getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
         getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
-        onUseSelectedItem: () => handleUseItem(),
-        onMobAttack: (target, damage) => {
+        isRangedWeaponSelected: () => inventoryRef.current[selectedRef.current]?.itemId === "bow"
+          && countItem(inventoryRef.current, "arrow") > 0,
+        onRangedChargeChange: (charging, normalizedCharge) => {
+          rangedChargeActiveRef.current = charging;
+          setBowCharging(charging);
+          setBowChargeMs(charging ? Math.round(normalizedCharge * 1_000) : 0);
+          if (!charging || normalizedCharge !== 0 || rangedChargeStartRef.current) return;
+          motionActionSinkRef.current?.("bow_draw");
           const operationId = createCombatOperationId();
-          void flushInventoryActions().then((flushed) => {
+          rangedChargeBeginOperationRef.current = operationId;
+          const startPromise = flushInventoryActions().then(async (flushed) => {
+            if (!flushed) return false;
+            if (!await refreshAuthoritativePose()) {
+              notify("Bow draw rejected", "Lakebed could not refresh your authoritative pose.", "warning");
+              return false;
+            }
+            const selectedHotbar = selectedRef.current;
+            const expectedInventoryRevision = inventoryRevisionRef.current;
+            rangedChargeRevisionRef.current = expectedInventoryRevision;
+            rangedChargeSelectedRef.current = selectedHotbar;
+            const requestJson = JSON.stringify({
+              version: RANGED_COMBAT_PROTOCOL_VERSION,
+              operationId,
+              expectedInventoryRevision,
+              selectedHotbar,
+              kind: "begin_charge",
+            });
+            return retryExactLakebedMutation(() => rangedCombat(requestJson)).then((result) => {
+              if (result.ok) return true;
+              notify("Bow draw rejected", `Lakebed rejected the draw (${result.reason ?? "unknown"}).`, "warning");
+              return false;
+            });
+          }).catch(() => {
+            setConnected(false);
+            notify("Bow lost contact", "Lakebed could not begin the server-timed draw.", "warning");
+            return false;
+          });
+          rangedChargeStartRef.current = startPromise;
+        },
+        onRangedCancel: () => {
+          const startPromise = rangedChargeStartRef.current;
+          const beginOperationId = rangedChargeBeginOperationRef.current;
+          rangedChargeStartRef.current = null;
+          rangedChargeBeginOperationRef.current = "";
+          rangedChargeActiveRef.current = false;
+          if (!startPromise || !beginOperationId) return;
+          const operationId = createCombatOperationId();
+          void startPromise.then((started) => {
+            if (!started) return null;
+            const requestJson = JSON.stringify({
+              version: RANGED_COMBAT_PROTOCOL_VERSION,
+              operationId,
+              expectedInventoryRevision: rangedChargeRevisionRef.current,
+              selectedHotbar: rangedChargeSelectedRef.current,
+              kind: "cancel_charge",
+              beginOperationId,
+            });
+            return retryExactLakebedMutation(() => rangedCombat(requestJson));
+          }).catch(() => {
+            setConnected(false);
+            notify("Bow cancel delayed", "Lakebed could not immediately clear the draw; the lease will expire safely.", "warning");
+          });
+        },
+        onRangedRelease: (intent) => {
+          motionActionSinkRef.current?.("bow_release");
+          const startPromise = rangedChargeStartRef.current;
+          rangedChargeStartRef.current = null;
+          rangedChargeBeginOperationRef.current = "";
+          rangedChargeActiveRef.current = false;
+          setBowCharging(false);
+          setBowChargeMs(0);
+          if (!startPromise) return;
+          const operationId = createCombatOperationId();
+          void startPromise.then((started) => {
+            if (!started) return null;
+            const selectedHotbar = rangedChargeSelectedRef.current;
+            const expectedInventoryRevision = rangedChargeRevisionRef.current;
+            const requestJson = JSON.stringify({
+              version: RANGED_COMBAT_PROTOCOL_VERSION,
+              operationId,
+              expectedInventoryRevision,
+              selectedHotbar,
+              kind: "release",
+              targetKind: intent.target.kind,
+              targetId: intent.target.id,
+            });
+            return retryExactLakebedMutation(() => rangedCombat(requestJson));
+          }).then((result) => {
+            if (!result) return;
+            setConnected(true);
+            if (!result.ok || !result.shot) {
+              notify("Arrow rejected", `Lakebed rejected the shot (${result.reason ?? "unknown"}).`, "warning");
+              return;
+            }
+            if (result.inventory) loadCanonicalPlayer(result.inventory);
+            const launchedAt = performance.now();
+            const trajectory = result.shot.trajectory;
+            const projectile: PlayerProjectileVisual = {
+              projectileId: operationId,
+              originX: trajectory.origin.x,
+              originY: trajectory.origin.y,
+              originZ: trajectory.origin.z,
+              velocityX: trajectory.direction.x * trajectory.speed,
+              velocityY: trajectory.direction.y * trajectory.speed,
+              velocityZ: trajectory.direction.z * trajectory.speed,
+              launchedAt,
+              expiresAt: launchedAt + Math.max(80, result.shot.trace.elapsedSeconds * 1_000),
+              gravity: 12,
+            };
+            playerProjectilesRef.current = [
+              ...playerProjectilesRef.current.filter((candidate) => candidate.launchedAt + 5_000 > launchedAt),
+              projectile,
+            ].slice(-96);
+            engineRef.current?.setPlayerProjectiles(playerProjectilesRef.current);
+            if (result.shot.targetKind === "mob" && result.shot.targetCombat) {
+              engineRef.current?.applyMobCombatStates([result.shot.targetCombat as MobAuthorityState], result.serverNow - Date.now());
+            }
+            if (result.shot.bowBroken) notify("Bow broke", "The last durability point was consumed by this shot.", "warning");
+            if (result.drops?.length) notify(
+              "Mob drops collected",
+              result.drops.map((drop) => `${drop.count} ${ITEMS[drop.itemId].label}`).join(" · "),
+              "success",
+            );
+            if (result.shot.landed) {
+              notify(result.shot.killed ? "Arrow defeated the target" : "Arrow hit", `${result.shot.targetKind} · ${result.shot.targetId}`, result.shot.killed ? "success" : "info");
+            }
+          }).catch(() => {
+            setConnected(false);
+            notify("Arrow lost contact", "Lakebed could not confirm the shot.", "warning");
+          });
+        },
+        onUseSelectedItem: () => {
+          const used = handleUseItem();
+          if (used) motionActionSinkRef.current?.("use");
+          return used;
+        },
+        onMobAttack: (target, damage) => {
+          motionActionSinkRef.current?.("swing");
+          const operationId = createCombatOperationId();
+          void flushInventoryActions().then(async (flushed) => {
             if (!flushed) throw new Error("inventory_action_pending");
+            if (!await refreshAuthoritativePose()) throw new Error("presence_refresh_failed");
             return attackMob(
             target.id,
             target.kind,
@@ -1543,11 +1757,13 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           });
         },
         onRemotePlayerAttack: (target) => {
+          motionActionSinkRef.current?.("swing");
           const selectedHotbar = selectedRef.current;
           const weaponItemId = inventoryRef.current[selectedHotbar]?.itemId ?? "";
           const operationId = createCombatOperationId();
-          void flushInventoryActions().then((flushed) => {
+          void flushInventoryActions().then(async (flushed) => {
             if (!flushed) throw new Error("inventory_action_pending");
+            if (!await refreshAuthoritativePose()) throw new Error("presence_refresh_failed");
             return attackPlayer(JSON.stringify({
               operationId,
               targetUserId: target.id,
@@ -1619,8 +1835,14 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         onPlayerHealthChange: (health) => {
           setPlayerHealth(health);
         },
-        onBlockEdit: handleBlockEdit,
+        onBlockEdit: (edit) => {
+          motionActionSinkRef.current?.("swing");
+          handleBlockEdit(edit);
+        },
         onPoseChange: (pose) => {
+          const previousSegmentPose = previousSegmentPoseRef.current;
+          if (pose.y - previousSegmentPose.y > 0.08) motionActionSinkRef.current?.("jump");
+          previousSegmentPoseRef.current = pose;
           poseRef.current = pose;
           const pickupSweepAt = performance.now();
           if (pickupSweepAt - lastDroppedPickupSweepRef.current >= 250) {
@@ -1720,29 +1942,28 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   }, [worldClock]);
 
   useEffect(() => {
-    if (!inWorld) return;
-    setMobQuerySample(String(Date.now()));
-    const timer = window.setInterval(() => setMobQuerySample(String(Date.now())), 200);
-    return () => window.clearInterval(timer);
-  }, [inWorld]);
-
-  useEffect(() => {
-    if (!mobWorldAuthority?.ok) return;
+    if (!inWorld || !mobWorldAuthority?.ok) return;
     const clockOffset = mobWorldAuthority.serverNow - Date.now();
     engineRef.current?.applyMobMotionSnapshot(mobWorldAuthority.poses, clockOffset);
     engineRef.current?.applyMobCombatStates(mobWorldAuthority.states, clockOffset);
 
     const leaseId = mobLeaseSessionId;
+    const checkpointForeground = transportForeground && !pauseOpen && !inventoryOpen && !chatOpen
+      && !furnaceOpen && !activeChestKey && !activeBedKey;
     const mayCheckpoint = mobWorldAuthority.leaseOwnerUserId === ""
       || mobWorldAuthority.leaseOwnerUserId === auth.userId
       || mobWorldAuthority.leaseExpiresAt <= mobWorldAuthority.serverNow;
-    if (mobWorldAuthority.needsCheckpoint && mayCheckpoint && leaseId && !mobCheckpointInFlightRef.current) {
+    const checkpointCadenceReady = mobWorldAuthority.serverNow - lastMobCheckpointAttemptAtRef.current
+      >= MOB_CHECKPOINT_ATTEMPT_MIN_MS;
+    if (mobWorldAuthority.needsCheckpoint && mayCheckpoint && leaseId && checkpointForeground
+      && checkpointCadenceReady && !mobCheckpointInFlightRef.current) {
+      lastMobCheckpointAttemptAtRef.current = mobWorldAuthority.serverNow;
       mobCheckpointInFlightRef.current = true;
       void checkpointMobWorld(JSON.stringify({
         leaseId,
         expectedRevision: mobWorldAuthority.checkpointRevision,
       })).then((result) => {
-        setConnected(true);
+        setConnected(result.ok);
       }).catch(() => {
         setConnected(false);
       }).finally(() => {
@@ -1776,7 +1997,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         setConnected(false);
       });
     }
-  }, [mobWorldAuthority, mobLeaseSessionId, auth.userId]);
+  }, [mobWorldAuthority, mobLeaseSessionId, auth.userId, inWorld, transportForeground, pauseOpen,
+    inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
 
   useEffect(() => {
     if (!inWorld || !playerCombatResult?.ok || !engineRef.current) return;
@@ -1849,62 +2071,15 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   }, [activeChestKey, chestResult]);
 
   useEffect(() => {
-    const active = activePlayerPresences(presenceEvents, presenceServerNow)
-      .filter((player) => player.userId !== auth.userId);
-    for (const player of active) {
-      const heartbeatAt = Number(player.heartbeatAt);
-      const sampleKey = `${player.userId}:${player.sessionId ?? "legacy"}:${player.poseSequence ?? player.heartbeatAt}`;
-      const age = presenceServerNow - heartbeatAt;
-      if (!remotePoseSeenRef.current.has(sampleKey)
-        && Number.isFinite(age) && age >= 0 && age <= PLAYER_STALE_AFTER_MS) {
-        remotePoseSeenRef.current.add(sampleKey);
-        remotePoseAgeSamplesRef.current.push(age);
-      }
-    }
-    if (remotePoseSeenRef.current.size > 512) {
-      remotePoseSeenRef.current.clear();
-      for (const player of active) remotePoseSeenRef.current.add(`${player.userId}:${player.sessionId ?? "legacy"}:${player.poseSequence ?? player.heartbeatAt}`);
-    }
-    if (remotePoseAgeSamplesRef.current.length > 256) {
-      remotePoseAgeSamplesRef.current.splice(0, remotePoseAgeSamplesRef.current.length - 256);
-    }
-    const remotes: RemotePlayer[] = active.map((player) => {
-      const velocity = parsePresenceVelocityFields(player);
-      const appearance = normalizeAvatarAppearance(
-        player.heldItem,
-        player.armorHead,
-        player.armorChest,
-        player.armorLegs,
-        player.armorFeet,
-      );
-      return {
-        id: player.userId,
-        name: player.displayName,
-        x: Number(player.x),
-        y: Number(player.y),
-        z: Number(player.z),
-        yaw: Number(player.yaw),
-        pitch: Number(player.pitch),
-        vx: velocity.vx,
-        vy: velocity.vy,
-        vz: velocity.vz,
-        heldItem: appearance.heldItem || null,
-        armorHead: appearance.armorHead || null,
-        armorChest: appearance.armorChest || null,
-        armorLegs: appearance.armorLegs || null,
-        armorFeet: appearance.armorFeet || null,
-        color: remoteColor(player.color),
-      };
-    }).filter((player) => [player.x, player.y, player.z, player.yaw, player.pitch].every(Number.isFinite));
-    realtimePresenceRef.current = remotes.length > 0;
-    engineRef.current?.setRemotePlayers(remotes);
-  }, [presenceEvents, presenceServerNow, auth.userId]);
-
-  useEffect(() => {
+    // MultiplayerSegmentTransport owns visual motion. This path remains only
+    // as Lakebed's sparse authoritative lease for world and combat actions.
+    const authorityLeaseTransportEnabled = true;
+    if (!authorityLeaseTransportEnabled) return;
     if (!inWorld || auth.isLoading || !auth.isAuthenticated || auth.isGuest || !profile) return;
     const scheduler = createPresenceSchedulerState();
     const guard = loadPresenceBurstGuard(auth.userId, Date.now());
     const presenceSessionId = crypto.randomUUID();
+    setSegmentSessionReady(false);
     presenceSessionIdRef.current = presenceSessionId;
     presenceNextPoseSequenceRef.current = 1;
     setMobLeaseSessionId(presenceSessionId);
@@ -1954,7 +2129,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       return snapshot;
     };
     const flushPresence = () => {
-      if (cancelled) return;
+      if (cancelled || authorityTrafficPausedRef.current) return;
+      if (presenceHeartbeatInFlightRef.current > 0) return;
       const safetyWrite = safetyWrites[0] ?? null;
       if (safetyWrite ? writesInFlight > 0 : writesInFlight >= PRESENCE_MAX_IN_FLIGHT_WRITES) return;
       const queued = safetyWrite ?? pendingOrdinaryWrite;
@@ -1992,6 +2168,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       const heartbeatSessionId = presenceSessionIdRef.current;
       let retrySafetyWrite = false;
       writesInFlight += 1;
+      presenceHeartbeatInFlightRef.current += 1;
       void heartbeatPlayer(
         profile.username,
         playerColor(auth.userId),
@@ -2057,6 +2234,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }
         recordPresenceSuccess(guard, Date.now());
         setConnected(true);
+        setSegmentSessionReady(true);
       }).catch((error: unknown) => {
         if (cancelled) return;
         retrySafetyWrite = Boolean(safetyWrite);
@@ -2070,6 +2248,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         announceTransportMode(failedAt);
         setConnected(false);
       }).finally(() => {
+        presenceHeartbeatInFlightRef.current = Math.max(0, presenceHeartbeatInFlightRef.current - 1);
         if (!cancelled) persistPresenceBurstGuard(auth.userId, guard);
         writesInFlight = Math.max(0, writesInFlight - 1);
         if (safetyWrite && !retrySafetyWrite && safetyWrites[0] === queued) safetyWrites.shift();
@@ -2078,11 +2257,18 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     };
     const samplePresence = (pose: PlayerPose, at = Date.now()) => {
       poseRef.current = pose;
+      if (authorityTrafficPausedRef.current) return;
       const guardSnapshot = announceTransportMode(at);
-      const realtime = realtimePresenceRef.current && guardSnapshot.realtimeRemaining > 0;
-      const decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtime);
+      const realtime = false;
+      let decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtime);
+      const written = scheduler.lastWrittenPose;
+      const crossedProximityCell = Boolean(written
+        && Math.hypot(pose.x - written.x, pose.y - written.y, pose.z - written.z) >= 16);
+      if (!decision.send && crossedProximityCell) {
+        decision = stepPresenceScheduler(scheduler, { ...pose, at: at + 1 }, true);
+      }
       if (!decision.send) return;
-      const queued: QueuedPresenceWrite = { pose, at, realtime, decision, poseSequence: null };
+      const queued: QueuedPresenceWrite = { pose, at, realtime: false, decision, poseSequence: null };
       if (decision.safetyCritical) {
         if (safetyWrites.length < maximumQueuedSafetyWrites) safetyWrites.push(queued);
         else safetyWrites[safetyWrites.length - 1] = queued;
@@ -2103,6 +2289,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     };
     const beginPresenceSession = () => {
       if (cancelled) return;
+      if (authorityTrafficPausedRef.current) {
+        startRetryTimer = window.setTimeout(beginPresenceSession, 1_000);
+        return;
+      }
       const attemptedAt = Date.now();
       const snapshot = announceTransportMode(attemptedAt);
       if (!snapshot.canAttempt || !reservePresenceAttempt(guard, attemptedAt, false)) {
@@ -2153,6 +2343,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     return () => {
       cancelled = true;
       const activeSessionId = presenceSessionIdRef.current;
+      setSegmentSessionReady(false);
       setMobLeaseSessionId((current) => current === activeSessionId ? "" : current);
       if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
       if (interval) window.clearInterval(interval);
@@ -2290,11 +2481,11 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     };
   }, [inWorld, pauseOpen, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
 
-  const playerListEntries = activePlayers.map((player) => ({
-    id: player.userId,
-    name: player.displayName,
-    isSelf: player.userId === auth.userId,
-    connected: player.online,
+  const playerListEntries = segmentRemotePlayers.map((player) => ({
+    id: player.id,
+    name: player.name,
+    isSelf: false,
+    connected: true,
   }));
   if (profile && !playerListEntries.some(({ isSelf }) => isSelf)) {
     playerListEntries.unshift({ id: auth.userId, name: profile.username, isSelf: true, connected });
@@ -2307,6 +2498,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   ): boolean {
     if (!hydratedRef.current
       || expectedAuthorityEpoch !== inventoryAuthorityEpochRef.current
+      || rangedChargeActiveRef.current
       || pendingWorldBlockEditRef.current
       || droppedItemBusyRef.current
       || chestBusyRef.current
@@ -2400,7 +2592,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   }
 
   function handleUseItem(inventoryIndex = selectedRef.current): boolean {
-    if (pendingWorldBlockEditRef.current || chestBusyRef.current || furnaceBusyRef.current) return false;
+    if (rangedChargeActiveRef.current || pendingWorldBlockEditRef.current || chestBusyRef.current || furnaceBusyRef.current) return false;
     const result = consumeFood(inventoryRef.current, inventoryIndex, hungerRef.current);
     if (!result.ok) {
       if (result.reason === "hunger_full") notify("You are already full", "Save that food for later.");
@@ -2420,9 +2612,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
 
   function handleSelectHotbar(index: number): void {
     const selectedHotbar = clampHotbarIndex(index);
-    if (!hydratedRef.current || selectedHotbar === selectedRef.current) return;
+    if (!hydratedRef.current || rangedChargeActiveRef.current || selectedHotbar === selectedRef.current) return;
     selectedRef.current = selectedHotbar;
     setSelectedHotbar(selectedHotbar);
+    motionActionSinkRef.current?.("slot", selectedHotbar);
     void enqueueInventoryAction({ kind: "select_hotbar", selectedHotbar });
   }
 
@@ -2711,7 +2904,9 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     : presenceTelemetry.cadenceHz > 0
       ? "1/min"
       : "paused";
-  const remotePoseAge = presencePoseAgePercentiles(remotePoseAgeSamplesRef.current);
+  const segmentSyncTelemetry = segmentTelemetry
+    ? `${String(segmentTelemetry.mode).toUpperCase()} · PUB ${(segmentTelemetry.publishIntervalMs / 1_000).toFixed(1)}s ${segmentTelemetry.mutationAttempts}/${segmentTelemetry.mutationGrant} · READ ${(segmentTelemetry.compositeIntervalMs / 1_000).toFixed(2)}s ${segmentTelemetry.requestAttempts}/${segmentTelemetry.requestGrant}\nSEGMENT PEERS ${segmentTelemetry.nearbyPlayers} · STALE ${segmentTelemetry.stalePlayers} · MAXAGE ${segmentTelemetry.stalestRemoteMs}ms${segmentTelemetry.quotaPausedUntil > Date.now() ? ` · QUOTA ${(segmentTelemetry.quotaPausedUntil - Date.now()) / 1_000 | 0}s` : ""}`
+    : "STARTING · no segment budget spent yet";
 
   if (!inWorld) {
     return (
@@ -2721,7 +2916,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         displayName={profile?.username ?? auth.displayName}
         email={auth.email}
         joinPhase={joinPhase}
-        onlineCount={activePlayers.length}
+        onlineCount={profile ? 1 : 0}
         onJoinWorld={enterWorld}
         onJoinSingleplayer={() => { window.location.search = "?singleplayer=1"; }}
         onSignInWithGoogle={() => {
@@ -2787,6 +2982,33 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       <style>{APP_CSS}</style>
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
 
+      {segmentSessionReady ? (
+        <MultiplayerSegmentTransport
+          userId={auth.userId}
+          sessionId={presenceSessionIdRef.current}
+          paused={!transportForeground || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
+          getPose={() => engineRef.current?.getPose() ?? poseRef.current}
+          mobIds={mobIds}
+          onConnected={setConnected}
+          onMobWorldAuthority={setMobWorldAuthority}
+          onRemotePlayers={(players) => {
+            realtimePresenceRef.current = players.length > 0;
+            setSegmentRemotePlayers(players);
+            engineRef.current?.setRemotePlayers(players);
+          }}
+          onTelemetry={setSegmentTelemetry}
+          registerActionSink={(sink) => { motionActionSinkRef.current = sink; }}
+        />
+      ) : null}
+
+      {inventory[selectedHotbar]?.itemId === "bow" ? (
+        <FirstPersonBow
+          chargeMs={bowChargeMs}
+          charging={bowCharging}
+          hidden={pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
+        />
+      ) : null}
+
       <GameHud
         connected={connected}
         equipment={equipment}
@@ -2799,10 +3021,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         inventoryOpen={inventoryOpen}
         miningProgress={miningProgress}
         handActionToken={handActionToken}
-        hideFirstPersonFeedback={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
+        hideFirstPersonFeedback={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey) || inventory[selectedHotbar]?.itemId === "bow"}
         messages={messages}
         mobileUnsupported={mobileUnsupported}
-        onlineCount={Math.max(1, activePlayers.length)}
+        onlineCount={Math.max(1, segmentRemotePlayers.length + 1)}
         onCloseInventory={() => {
           closeInventory();
           engineRef.current?.requestPointerLock();
@@ -2930,7 +3152,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${presenceTelemetry.mode.toUpperCase()} ${presenceCadence} · RT ${presenceTelemetry.realtimeRemaining}/${PRESENCE_REALTIME_BURST_WRITES} · DAY ${presenceTelemetry.sessionRemaining}/${PRESENCE_SESSION_WRITE_BUDGET} · OK ${presenceTelemetry.confirmedCount}/${presenceTelemetry.attemptCount}\nAGE p50 ${remotePoseAge.p50}ms · p95 ${remotePoseAge.p95}ms · N ${remotePoseAge.count}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nPFX ${performanceStats.activeParticleCount}  DRAW ${performanceStats.particleDrawCalls}  ${(performanceStats.particleUploadBytes / 1024).toFixed(0)}KB\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${segmentSyncTelemetry}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nPFX ${performanceStats.activeParticleCount}  DRAW ${performanceStats.particleDrawCalls}  ${(performanceStats.particleUploadBytes / 1024).toFixed(0)}KB\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}

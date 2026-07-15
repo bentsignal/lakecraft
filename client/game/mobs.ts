@@ -2,7 +2,7 @@ import type { MobAuthorityState } from "../../shared/mobCombat.ts";
 
 export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase";
-export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick";
+export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow";
 
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
 export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
@@ -123,7 +123,10 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     rangedCooldownSeconds: 2.1,
     rangedRange: 16,
     projectileSpeed: 8.5,
-    drops: Object.freeze([{ itemId: "stick", minCount: 0, maxCount: 2, chance: 0.85 }]),
+    drops: Object.freeze([
+      { itemId: "arrow", minCount: 0, maxCount: 2, chance: 1 },
+      { itemId: "string", minCount: 0, maxCount: 2, chance: 0.65 },
+    ]),
   }),
 });
 

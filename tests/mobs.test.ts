@@ -29,6 +29,7 @@ assert.deepEqual(Object.keys(MOB_DEFINITIONS).sort(), ["cow", "pig", "sheep", "s
 assert.equal(MOB_DEFINITIONS.zombie.contactDamage, 3);
 assert.equal(MOB_DEFINITIONS.cow.drops.some((drop) => drop.itemId === "leather"), true);
 assert.equal(MOB_DEFINITIONS.sheep.drops.some((drop) => drop.itemId === "wool"), true);
+assert.deepEqual(MOB_DEFINITIONS.skeleton.drops.map(({ itemId }) => itemId), ["arrow", "string"]);
 
 const spawns = createMobSpawns(spawnOptions);
 assert.deepEqual(createMobSpawns(spawnOptions), spawns, "seeded mob population must be exactly repeatable");

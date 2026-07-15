@@ -48,7 +48,7 @@ for (const [value, reason] of [
 }
 assert.equal(validatePlayerAttackRequestJson("x".repeat(513)).ok, false);
 
-const now = 10_000;
+const now = 100_000;
 function pose(userId: string, x: number, y: number, z: number, yaw = 0, pitch = 0): CombatPose {
   return { userId, x, y, z, yaw, pitch, heartbeatAt: now, online: true };
 }

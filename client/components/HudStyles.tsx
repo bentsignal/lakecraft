@@ -23,16 +23,28 @@ const HUD_CSS = `
 .lc-crosshair::before { height: 2px; width: 16px; }.lc-crosshair::after { height: 16px; width: 2px; }
 .lc-block-cracks { height: clamp(108px,18vmin,168px); left: 50%; mix-blend-mode: multiply; position: absolute; stroke: rgba(14,14,14,.88); stroke-width: 3; top: 50%; transform: translate(-50%,-50%); width: clamp(108px,18vmin,168px); z-index: 2; }
 .lc-block-cracks path { fill: none; opacity: 0; }.lc-block-cracks path.is-visible { opacity: 1; }
-.lc-first-person { bottom: -44px; height: clamp(190px,31vw,310px); position: absolute; right: 0; width: clamp(170px,25vw,270px); z-index: 1; }
-.lc-first-person__rig { display: block; height: 100%; position: relative; transform: rotate(-7deg); transform-origin: 82% 100%; width: 100%; }
-.lc-first-person__rig.is-swinging { animation: lc-held-item-swing 220ms cubic-bezier(.2,.7,.35,1) both; }
-.lc-first-person__arm { bottom: -9%; height: 68%; position: absolute; right: -2%; transform: rotate(-14deg); width: 45%; }
-.lc-first-person__arm i { display: block; position: absolute; }
-.lc-first-person__sleeve { background: linear-gradient(90deg,#43a9aa 0 15%,#287f87 15% 78%,#155b67 78%); height: 48%; left: 5%; top: 50%; width: 82%; }
-.lc-first-person__skin--front { background: linear-gradient(90deg,#d49a70 0 18%,#b97855 18% 80%,#855036 80%); bottom: 44%; height: 39%; left: 2%; width: 88%; }
-.lc-first-person__item { bottom: 38%; height: clamp(88px,13vw,142px); position: absolute; right: 27%; transform: rotate(-13deg); width: clamp(88px,13vw,142px); z-index: 2; }
-.lc-first-person__item .lc-item-glyph,.lc-first-person__item .lc-item-icon__svg,.lc-first-person__item .lc-item-glyph--block .lc-item-icon__svg { height: 100%; width: 100%; }.lc-first-person__item .lc-item-icon__svg { filter: drop-shadow(5px 7px 0 #0005); }
-.lc-first-person[data-held-mode="voxel"] .lc-first-person__item { bottom: 27%; height: clamp(136px,18vw,190px); right: 15%; transform: rotate(-3deg); width: clamp(136px,18vw,190px); }.lc-first-person[data-held-family="tool"] .lc-first-person__item { bottom: 34%; transform: rotate(-17deg) scale(1.08); }
+.lc-first-person { bottom: -66px; height: clamp(250px,31vw,360px); position: absolute; right: -5px; width: clamp(230px,29vw,360px); z-index: 1; }
+.lc-first-person__rig { display: block; height: 100%; position: relative; transform: rotate(-4deg); transform-origin: 86% 100%; width: 100%; }
+.lc-first-person__rig.is-swinging { animation: lc-held-item-swing 250ms cubic-bezier(.18,.68,.28,1) both; }
+.lc-first-person__arm-scene { bottom: -2%; height: 79%; perspective: 560px; perspective-origin: 80% 55%; position: absolute; right: -2%; width: 51%; z-index: 1; }
+.lc-first-person__arm { bottom: -12%; height: 104%; position: absolute; right: 5%; transform: rotateZ(-20deg) rotateX(-9deg) rotateY(-18deg); transform-origin: 50% 100%; transform-style: preserve-3d; width: 58%; }
+.lc-first-person__arm-segment { --lc-arm-front: #b97855; --lc-arm-right: #7b4935; --lc-arm-top: #dc9f76; bottom: 0; display: block; height: 48%; left: 0; position: absolute; transform-style: preserve-3d; width: 100%; }
+.lc-first-person__arm-segment--sleeve { --lc-arm-front: #258b91; --lc-arm-right: #135966; --lc-arm-top: #43afb0; height: 56%; }
+.lc-first-person__arm-segment--skin { bottom: 52%; height: 42%; }
+.lc-first-person__arm-face { backface-visibility: hidden; box-sizing: border-box; display: block; image-rendering: pixelated; position: absolute; }
+.lc-first-person__arm-face--front { background-color: var(--lc-arm-front); background-image: linear-gradient(90deg,rgba(255,255,255,.08) 0 17%,transparent 17% 78%,rgba(0,0,0,.12) 78%); height: 100%; inset: 0; transform: translateZ(10px); width: 100%; }
+.lc-first-person__arm-face--right { background: var(--lc-arm-right); height: 100%; right: -20px; transform: rotateY(90deg); transform-origin: left center; width: 20px; }
+.lc-first-person__arm-face--top { background: var(--lc-arm-top); height: 20px; left: 0; top: -20px; transform: rotateX(90deg); transform-origin: bottom center; width: 100%; }
+.lc-first-person__arm-segment--sleeve .lc-first-person__arm-face--front { background-image: linear-gradient(90deg,rgba(65,180,181,.38) 0 14%,transparent 14% 77%,rgba(8,61,70,.3) 77%),linear-gradient(0deg,transparent 0 67%,rgba(79,191,188,.28) 67% 82%,transparent 82%); }
+.lc-first-person__arm-segment--skin .lc-first-person__arm-face--front { background-image: linear-gradient(90deg,rgba(231,172,128,.48) 0 17%,transparent 17% 79%,rgba(91,48,33,.22) 79%),linear-gradient(0deg,transparent 0 61%,rgba(132,77,52,.22) 61% 74%,transparent 74%); }
+.lc-first-person__item { bottom: 39%; height: clamp(112px,14vw,164px); position: absolute; right: 22%; transform: rotate(-17deg); transform-origin: 67% 74%; width: clamp(112px,14vw,164px); z-index: 2; }
+.lc-held-sprite { display: block; height: 100%; position: relative; transform: rotateX(9deg) rotateY(-13deg); transform-style: preserve-3d; width: 100%; }
+.lc-held-sprite__slice { filter: brightness(.38) saturate(.76); inset: 0; position: absolute; transform: translate(var(--lc-held-sprite-offset),var(--lc-held-sprite-offset)); }
+.lc-held-sprite__slice.is-front { filter: drop-shadow(6px 8px 0 rgba(0,0,0,.3)); }
+.lc-held-sprite__slice .lc-item-glyph,.lc-held-sprite__slice .lc-item-icon__svg,.lc-held-sprite__slice .lc-item-glyph--block .lc-item-icon__svg { height: 100%; width: 100%; }
+.lc-first-person[data-held-mode="voxel"] .lc-first-person__item { bottom: 28%; height: clamp(150px,19vw,208px); right: 14%; transform: rotate(-3deg); width: clamp(150px,19vw,208px); }
+.lc-first-person[data-held-family="tool"] .lc-first-person__item { bottom: 38%; right: 21%; transform: rotate(-27deg) scale(1.12); }
+.lc-first-person[data-held-family="food"] .lc-first-person__item,.lc-first-person[data-held-family="material"] .lc-first-person__item { bottom: 43%; right: 20%; transform: rotate(-12deg) scale(.88); }
 .lc-held-voxel { --lc-held-cube-size: clamp(80px,11vw,118px); display: block; filter: drop-shadow(7px 10px 0 rgba(0,0,0,.28)); height: 100%; perspective: 420px; perspective-origin: 50% 40%; position: relative; width: 100%; }
 .lc-held-voxel__cube { height: var(--lc-held-cube-size); left: 50%; position: absolute; top: 48%; transform: translate(-50%,-50%) rotateX(-24deg) rotateY(-38deg); transform-style: preserve-3d; width: var(--lc-held-cube-size); }
 .lc-held-voxel__face { --lc-voxel-face: var(--lc-voxel-front); backface-visibility: hidden; background-color: var(--lc-voxel-face); border: 2px solid var(--lc-voxel-edge); box-shadow: inset 3px 3px rgba(255,255,255,.08),inset -4px -4px rgba(0,0,0,.14); box-sizing: border-box; display: block; height: 100%; image-rendering: pixelated; overflow: hidden; position: absolute; width: 100%; }
@@ -45,7 +57,7 @@ const HUD_CSS = `
 .lc-held-voxel:is([data-block="stone"],[data-block="cobblestone"],[data-block="furnace"]) .lc-held-voxel__face { background-image: linear-gradient(145deg,transparent 0 46%,var(--lc-voxel-dark) 46% 52%,transparent 52%),linear-gradient(35deg,transparent 0 68%,var(--lc-voxel-accent) 68% 74%,transparent 74%); background-size: 39px 31px,47px 43px; }
 .lc-held-voxel[data-block="leaves"] .lc-held-voxel__face { background-image: linear-gradient(45deg,transparent 0 35%,var(--lc-voxel-accent) 35% 57%,transparent 57%),linear-gradient(135deg,transparent 0 61%,var(--lc-voxel-dark) 61% 76%,transparent 76%); background-size: 25px 27px,31px 33px; }
 .lc-held-voxel[data-block="glass"] { filter: drop-shadow(5px 8px 0 rgba(0,0,0,.16)); }.lc-held-voxel[data-block="glass"] .lc-held-voxel__face { background-color: color-mix(in srgb,var(--lc-voxel-face) 45%,transparent); background-image: linear-gradient(135deg,transparent 0 22%,rgba(255,255,255,.72) 22% 28%,transparent 28% 68%,var(--lc-voxel-accent) 68% 74%,transparent 74%); box-shadow: inset 5px 5px rgba(255,255,255,.18),inset -6px -6px rgba(57,117,121,.17); }
-@keyframes lc-held-item-swing { 46% { transform: rotate(-48deg) translate(-18%,19%) scale(.9); } 100% { transform: rotate(-7deg); } }
+@keyframes lc-held-item-swing { 0% { transform: rotate(-4deg); } 42% { transform: rotate(-39deg) translate(-24%,18%) scale(.92); } 72% { transform: rotate(-23deg) translate(-13%,8%) scale(.96); } 100% { transform: rotate(-4deg); } }
 .lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%); width: 364px; }
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 39px; margin: 0 2px 2px; }
 .lc-meter { align-items: center; display: flex; height: 18px; }

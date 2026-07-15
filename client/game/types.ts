@@ -2,10 +2,12 @@ import type { DayNightConfig } from "./dayNight.ts";
 import type { MobCombatStateSnapshot, MobDrop, MobRayTarget } from "./mobs.ts";
 import type { ArmorId, ItemId } from "../../shared/game.ts";
 import type { DroppedItemRenderItem } from "./droppedItemRenderer.ts";
+import type { PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
 import type { RemotePlayerRayTarget } from "./remotePlayerTargeting.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 import type { BlockParticleEvent } from "./blockParticles.ts";
 import type { PlayerMovementMode } from "./playerMovement.ts";
+import type { MotionVisualActionKind } from "../../shared/multiplayerSegments.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -70,12 +72,31 @@ export interface RemotePlayer extends PlayerPose {
   armorChest?: ArmorId | null;
   armorLegs?: ArmorId | null;
   armorFeet?: ArmorId | null;
+  visualActions?: readonly {
+    sequence: number;
+    kind: MotionVisualActionKind;
+    value?: number;
+  }[];
 }
 
 export interface BlockTarget {
   block: WorldEdit;
   place: { x: number; y: number; z: number };
   distance: number;
+}
+
+export type RangedShotTarget =
+  | { kind: "player"; id: string; name: string; distance: number }
+  | { kind: "mob"; id: string; mobKind: string; distance: number }
+  | { kind: "none"; id: ""; distance: number };
+
+export interface RangedShotIntent {
+  /** Client-local charge feedback only; Lakebed clamps and validates it. */
+  chargeMs: number;
+  target: RangedShotTarget;
+  /** Visual launch data. Combat authority derives its own ray from presence. */
+  origin: readonly [number, number, number];
+  direction: readonly [number, number, number];
 }
 
 /** Rolling runtime and mesh-work counters suitable for a debug HUD. */
@@ -149,8 +170,20 @@ export interface VoxelEngineOptions {
   onMobAttack?: (target: Readonly<MobRayTarget>, damage: number) => void | Promise<void>;
   /** Event-driven PvP attack request for the nearest rendered remote under the crosshair. */
   onRemotePlayerAttack?: (target: Readonly<RemotePlayerRayTarget>, damage: number) => void | Promise<void>;
+  /** True only while the authoritative inventory says the selected stack is a bow. */
+  isRangedWeaponSelected?: () => boolean;
+  /** Discrete draw feedback; never emits a Lakebed write. */
+  onRangedChargeChange?: (charging: boolean, normalizedCharge: number) => void;
+  /** Pointer-lock/menu cancellation clears the matching server draw without firing. */
+  onRangedCancel?: () => void | Promise<void>;
+  /** One release intent. The caller performs the single authoritative mutation. */
+  onRangedRelease?: (intent: Readonly<RangedShotIntent>) => void | Promise<void>;
   /** Normalized held-mining progress for the first-person crack overlay. */
   onMiningProgress?: (progress: number) => void;
+  /** Pointer-lock-gated physical number-key selection for the canonical nine-slot hotbar. */
+  onHotbarSelect?: (index: number) => void;
+  /** Pointer-lock-gated wheel selection. Positive cycles right; negative cycles left. */
+  onHotbarCycle?: (direction: -1 | 1) => void;
   /** Bounded material-aware mining impact, emitted at most about four times per second. */
   onMiningHit?: (target: Readonly<BlockTarget>) => void;
   /** Distance-based grounded step over the block beneath the player. */
@@ -190,6 +223,8 @@ export interface VoxelEngine {
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
   setDroppedItems(items: readonly DroppedItemRenderItem[]): void;
+  /** Replaces the bounded, event-driven player-arrow visual snapshot. */
+  setPlayerProjectiles(projectiles: readonly PlayerProjectileVisual[]): void;
   /** Local-only visual feedback; callers should use this after authoritative confirmation. */
   spawnBlockParticles(event: Readonly<BlockParticleEvent>): number;
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;

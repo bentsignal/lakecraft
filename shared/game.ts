@@ -50,6 +50,9 @@ export type ArmorId =
   | "diamond_boots";
 export type ItemId = BlockId
   | "stick"
+  | "string"
+  | "arrow"
+  | "bow"
   | "leather"
   | "wool"
   | "coal"
@@ -98,6 +101,7 @@ export type ItemDefinition = {
   placesBlock?: BlockId;
   tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none">; attackDamage: number; maxDurability: number };
   armor?: { slot: ArmorSlot; protection: number; maxDurability: number };
+  ranged?: { maxDurability: number; maxChargeMs: number };
   food?: { hunger: number };
 };
 
@@ -251,6 +255,7 @@ function foodItem(id: "pork" | "beef" | "mutton" | "cooked_pork" | "cooked_beef"
 
 type BasicItemSpec = readonly [id: ItemId, label: string, shortLabel: string, description: string, glyph: string, color: string];
 type FoodItemSpec = readonly [id: Parameters<typeof foodItem>[0], label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string];
+type RangedItemSpec = readonly [id: "bow", label: string, shortLabel: string, description: string, category: "tool", maxStack: 1, glyph: string, color: string, maxDurability: number, maxChargeMs: number];
 
 const BLOCK_ITEM_SPECS = [
   ["grass", "GRS", "▨"], ["dirt", "DRT", "▦"], ["stone", "STN", "◆"], ["cobblestone", "COB", "▦"],
@@ -262,6 +267,8 @@ const BLOCK_ITEM_SPECS = [
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["stick", "Stick", "STK", "A straight handle for simple tools.", "╱", "#c09557"],
+  ["string", "String", "STR", "Strong fiber recovered from skeletons and used to tension bows.", "∿", "#d8d3c5"],
+  ["arrow", "Arrow", "ARR", "A stone-tipped projectile fired from a bow.", "↗", "#c6b38a"],
   ["leather", "Leather", "LTH", "Tough hide used for lightweight armor.", "◩", "#8d552f"],
   ["wool", "Wool", "WOL", "Soft sheep wool for beds and future textiles.", "◌", "#ddd8c8"],
   ["coal", "Coal", "COL", "Dense furnace fuel recovered from coal ore.", "✦", "#30332e"],
@@ -271,6 +278,11 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["gold_ingot", "Gold Ingot", "I·AU", "Refined gold for fast but fragile equipment.", "▰", "#f5d142"],
   ["diamond", "Diamond", "DIA", "A rare crystal for the strongest available equipment.", "◆", "#48d8cf"],
 ];
+
+const RANGED_ITEM_SPECS: readonly RangedItemSpec[] = [[
+  "bow", "Bow", "BOW", "A ranged weapon that fires arrows after being drawn.",
+  "tool", 1, ")", "#a8753f", 384, 1000,
+]];
 
 const FOOD_ITEM_SPECS: readonly FoodItemSpec[] = [
   ["pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"],
@@ -311,6 +323,10 @@ const ITEM_ENTRIES: Array<readonly [ItemId, ItemDefinition]> = [
   ...BLOCK_ITEM_SPECS.map(([id, shortLabel, glyph]) => [id, blockItem(id, shortLabel, glyph)] as const),
   ...BASIC_ITEM_SPECS.map(([id, label, shortLabel, description, glyph, color]) => [id, {
     id, label, shortLabel, description, category: "material", maxStack: 64, glyph, color,
+  }] as const),
+  ...RANGED_ITEM_SPECS.map(([id, label, shortLabel, description, category, maxStack, glyph, color, maxDurability, maxChargeMs]) => [id, {
+    id, label, shortLabel, description, category, maxStack, glyph, color,
+    ranged: { maxDurability, maxChargeMs },
   }] as const),
   ...FOOD_ITEM_SPECS.map((spec) => [spec[0], foodItem(...spec)] as const),
   ...TOOL_TIER_SPECS.flatMap(([idPrefix, labelPrefix, shortPrefix, tier, color, descriptions]) => (
@@ -384,6 +400,8 @@ export const RECIPES: readonly Recipe[] = [
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
   { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
   { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
+  { id: "bow", label: "Bow", note: "Three sticks and three string make a ranged weapon.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 3 }, { itemId: "string", count: 3 }], output: { itemId: "bow", count: 1 } },
+  { id: "arrows", label: "Arrows", note: "Stone, a shaft, and wool fletching make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "wool", count: 1 }], output: { itemId: "arrow", count: 4 } },
   ...GENERATED_TOOL_RECIPES,
   ...GENERATED_ARMOR_RECIPES,
 ] as const;
@@ -451,7 +469,10 @@ export function createItemStack(itemId: ItemId, count = 1): ItemStack {
 }
 
 export function maxItemDurability(itemId: ItemId): number | null {
-  return ITEMS[itemId].tool?.maxDurability ?? ITEMS[itemId].armor?.maxDurability ?? null;
+  return ITEMS[itemId].tool?.maxDurability
+    ?? ITEMS[itemId].armor?.maxDurability
+    ?? ITEMS[itemId].ranged?.maxDurability
+    ?? null;
 }
 
 /** Legacy durable items without a value are treated as unused, never as broken. */

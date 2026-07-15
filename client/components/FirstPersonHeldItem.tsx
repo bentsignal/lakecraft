@@ -28,6 +28,39 @@ const CRACK_SEGMENTS = [
   "M82 91 L95 101 L108 99",
 ] as const;
 
+const HELD_SPRITE_DEPTH_SLICES = [0, 1, 2, 3, 4] as const;
+
+/**
+ * Repeats the canonical pixel sprite through a tiny, fixed depth stack. The
+ * silhouette remains the exact inventory art, but its dark rear slices make a
+ * pickaxe, sword, torch, or food item read as an object instead of a HUD icon.
+ */
+function HeldSpriteExtrusion({ stack }: { stack: ItemStack }) {
+  return (
+    <span className="lc-held-sprite" data-held-item={stack.itemId}>
+      {HELD_SPRITE_DEPTH_SLICES.map((slice) => (
+        <span
+          className={`lc-held-sprite__slice${slice === HELD_SPRITE_DEPTH_SLICES.length - 1 ? " is-front" : ""}`}
+          key={slice}
+          style={{ "--lc-held-sprite-offset": `${(HELD_SPRITE_DEPTH_SLICES.length - 1 - slice) * -2}px` } as Record<string, string>}
+        >
+          <ItemIcon compact stack={{ itemId: stack.itemId, count: 1 }} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function VoxelArmSegment({ material }: { material: "sleeve" | "skin" }) {
+  return (
+    <span className={`lc-first-person__arm-segment lc-first-person__arm-segment--${material}`}>
+      <i className="lc-first-person__arm-face lc-first-person__arm-face--front" />
+      <i className="lc-first-person__arm-face lc-first-person__arm-face--right" />
+      <i className="lc-first-person__arm-face lc-first-person__arm-face--top" />
+    </span>
+  );
+}
+
 /**
  * Fixed-cost first-person feedback. Full blocks become a large three-face voxel;
  * tools and non-cubic items retain the canonical 16x16 sprite used by the hotbar.
@@ -74,12 +107,14 @@ export function FirstPersonHeldItem({
             <span className="lc-first-person__item">
               {heldAsVoxel
                 ? <HeldBlockVoxel blockId={stack.itemId} />
-                : <ItemIcon compact stack={{ itemId: stack.itemId, count: 1 }} />}
+                : <HeldSpriteExtrusion stack={stack} />}
             </span>
           ) : null}
-          <span className="lc-first-person__arm">
-            <i className="lc-first-person__sleeve" />
-            <i className="lc-first-person__skin lc-first-person__skin--front" />
+          <span className="lc-first-person__arm-scene">
+            <span className="lc-first-person__arm">
+              <VoxelArmSegment material="sleeve" />
+              <VoxelArmSegment material="skin" />
+            </span>
           </span>
         </span>
       </span>

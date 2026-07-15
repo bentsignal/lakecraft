@@ -17,7 +17,8 @@ import {
 
 export const PLAYER_MELEE_REACH = 4.5;
 export const PLAYER_ATTACK_COOLDOWN_MS = 500;
-export const PLAYER_COMBAT_PRESENCE_FRESH_MS = 2_000;
+/** Matches the sparse authority lease; attackers explicitly refresh before combat. */
+export const PLAYER_COMBAT_PRESENCE_FRESH_MS = 90_000;
 export const PLAYER_RESPAWN_DELAY_MS = 2_000;
 export const MAX_PLAYER_COMBAT_QUERY_IDS = 128;
 export const MAX_PLAYER_COMBAT_RECEIPTS_PER_USER = 64;

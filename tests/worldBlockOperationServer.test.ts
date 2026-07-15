@@ -54,8 +54,8 @@ assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 7,
 
 // Every pre-migration inventory writer and the legacy chunk writer now advances
 // a monotonic revision as well; authoritative writes use resolver revisions.
-assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 11,
-  "legacy saves plus atomic gameplay, survival, and respawn inventory writers advance revisions");
+assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 13,
+  "all atomic gameplay, ranged combat, survival, and respawn inventory writers advance revisions");
 assert.equal((editMutation.match(/revision: effect\.(?:chunk|inventory)Revision/g) ?? []).length, 2);
 
 const storedPresence = {

@@ -22,8 +22,13 @@ import { mitigatedPlayerDamage } from "../shared/playerCombat.ts";
 
 export const MOB_WORLD_AUTHORITY_KEY = "main";
 export const MOB_WORLD_SEED = 7_319;
-export const MOB_WORLD_CHECKPOINT_MS = 1_000;
-export const MOB_WORLD_LEASE_MS = 30_000;
+/**
+ * Mob motion is deterministically replayed between persisted checkpoints. A
+ * thirty-second cadence keeps the singleton authority useful without spending
+ * one mutation per second (600 mutations in a ten-minute session).
+ */
+export const MOB_WORLD_CHECKPOINT_MS = 30_000;
+export const MOB_WORLD_LEASE_MS = 60_000;
 /** A bounded ten-minute catch-up avoids silently discarding a throttled lease. */
 export const MOB_WORLD_MAX_ADVANCE_TICKS = 6_000;
 export const MOB_WORLD_MAX_CHECKPOINT_BYTES = 32_768;

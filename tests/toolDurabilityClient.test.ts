@@ -16,14 +16,14 @@ assert.equal(mining.includes("recordConfirmedToolUse"), false, "mining durabilit
 assert.equal(mining.includes("updateInventory(addItem"), false, "mining drops cannot be granted optimistically");
 
 const mob = client.slice(client.indexOf("onMobAttack:"), client.indexOf("onRemotePlayerAttack:"));
-assert.ok(mob.includes("flushInventoryActions().then((flushed) =>"));
+assert.ok(mob.includes("flushInventoryActions().then(async (flushed) =>"));
 assert.ok(mob.includes("if (!flushed) throw new Error(\"inventory_action_pending\")"));
 assert.ok(mob.includes("return attackMob("));
 assert.ok(mob.includes("loadCanonicalPlayer(result.inventory)"));
 assert.equal(mob.includes("recordConfirmedToolUse"), false, "mob durability must come from the atomic canonical inventory row");
 
 const pvp = client.slice(client.indexOf("onRemotePlayerAttack:"), client.indexOf("onMobDrops:"));
-assert.ok(pvp.includes("flushInventoryActions().then((flushed) =>"));
+assert.ok(pvp.includes("flushInventoryActions().then(async (flushed) =>"));
 assert.ok(pvp.includes("return attackPlayer(JSON.stringify"));
 assert.ok(pvp.includes("if (result.attackerInventory) loadCanonicalPlayer(result.attackerInventory)"));
 assert.equal(pvp.includes("recordConfirmedToolUse"), false, "PvP weapon wear is returned by the authoritative transaction");

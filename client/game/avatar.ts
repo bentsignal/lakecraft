@@ -36,6 +36,11 @@ export interface RemoteAvatarMotion {
   walkPhase: number;
   bodyYaw: number;
   lastSnapshotAt: number;
+  lastVisualActionSequence: number;
+  armActionStartedAt: number;
+  armActionPhase: number;
+  bowDrawing: boolean;
+  crouching: boolean;
 }
 
 function finiteRange(value: number, fallback: number, minimum: number, maximum: number): number {
@@ -113,6 +118,20 @@ function assignRemoteGear(state: RemoteAvatarMotion, player: RemotePlayer): void
   state.armorFeet = sanitizeRemoteArmor(player.armorFeet, "feet");
 }
 
+function applyRemoteVisualActions(state: RemoteAvatarMotion, player: RemotePlayer, now: number): void {
+  for (const action of player.visualActions ?? []) {
+    if (!Number.isSafeInteger(action.sequence) || action.sequence <= state.lastVisualActionSequence) continue;
+    state.lastVisualActionSequence = action.sequence;
+    if (action.kind === "swing" || action.kind === "use" || action.kind === "bow_release") {
+      state.armActionStartedAt = now;
+    }
+    if (action.kind === "bow_draw") state.bowDrawing = true;
+    if (action.kind === "bow_release") state.bowDrawing = false;
+    if (action.kind === "crouch_on") state.crouching = true;
+    if (action.kind === "crouch_off") state.crouching = false;
+  }
+}
+
 export function shortestAngleDelta(from: number, to: number): number {
   let delta = (to - from) % (Math.PI * 2);
   if (delta > Math.PI) delta -= Math.PI * 2;
@@ -140,11 +159,17 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     walkPhase: 0,
     bodyYaw: target.yaw,
     lastSnapshotAt: now,
+    lastVisualActionSequence: -1,
+    armActionStartedAt: -Infinity,
+    armActionPhase: 0,
+    bowDrawing: false,
+    crouching: false,
   };
   if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
     assignBoundedVelocity(state, player.vx as number, player.vy as number, player.vz as number);
   }
   assignRemoteGear(state, player);
+  applyRemoteVisualActions(state, player, now);
   return state;
 }
 
@@ -170,6 +195,7 @@ export function applyRemoteAvatarSnapshot(
   state.name = sanitizePlayerName(player.name);
   state.color = player.color;
   assignRemoteGear(state, player);
+  applyRemoteVisualActions(state, player, now);
   state.lastSnapshotAt = now;
 }
 
@@ -209,6 +235,10 @@ export function advanceRemoteAvatarMotion(
   const gaitFollow = 1 - Math.exp(-10 * dt);
   state.horizontalSpeed += (measuredSpeed - state.horizontalSpeed) * gaitFollow;
   state.walkPhase = (state.walkPhase + state.horizontalSpeed * dt * 7.5) % (Math.PI * 2);
+  const armActionElapsed = now - state.armActionStartedAt;
+  state.armActionPhase = armActionElapsed >= 0 && armActionElapsed < 450
+    ? Math.sin(Math.PI * armActionElapsed / 450)
+    : 0;
 
   const intendedSpeed = Math.hypot(state.velocityX, state.velocityZ);
   const desiredBodyYaw = intendedSpeed > 0.08

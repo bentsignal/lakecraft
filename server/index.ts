@@ -58,7 +58,10 @@ import {
   applyConfirmedArmorDamage,
   applyConfirmedToolUse,
   attackDamage,
+  countItem,
   equippedArmorProtection,
+  remainingItemDurability,
+  removeItem,
   type ItemId,
   type ItemStack,
 } from "../shared/game.ts";
@@ -80,10 +83,12 @@ import {
 } from "../shared/worldBlockOperations.ts";
 import {
   MOB_AUTHORITY_WORLD_SEED_TOKEN,
+  deterministicMobDrops,
   materializeMobAuthorityState,
   resolveMobAttack,
   validateMobIdList,
   validateMobIdentity,
+  type MobAuthorityKind,
   type StoredMobAuthorityState
 } from "../shared/mobCombat";
 import {
@@ -105,6 +110,7 @@ import {
   validatePlayerMeleeSpatialAuthority,
   validatePlayerAttackRequestJson,
   validatePlayerCombatUserIds,
+  type CombatPose,
   type StoredPlayerCombatState
 } from "../shared/playerCombat";
 import {
@@ -211,12 +217,117 @@ import {
   selectInventoryActionReceiptOverflow,
   validateInventoryActionRequestJson,
 } from "../shared/inventoryActions.ts";
+import {
+  MAX_RANGED_COMBAT_RECEIPTS_PER_USER,
+  RANGED_COMBAT_RECEIPT_PRUNE_LIMIT,
+  RANGED_COMBAT_RECEIPT_TTL_MS,
+  RANGED_MAX_CHARGE_MS,
+  authoritativeRangedTrajectory,
+  decodeRangedCombatReceipt,
+  decideRangedCombatReplay,
+  encodeRangedCombatReceipt,
+  resolveRangedChargeStart,
+  resolveRangedReleaseIdempotently,
+  selectRangedCombatReceiptOverflow,
+  traceRangedTrajectory,
+  validateRangedCombatRequestJson,
+  type RangedAuthorityTarget,
+  type RangedChargeAuthority,
+  type RangedInventoryAuthority,
+  type RangedTrajectory,
+} from "../shared/rangedCombat.ts";
+import {
+  MOTION_MAX_BATCH_CHARS,
+  MOTION_RECEIPT_LIMIT,
+  MOTION_RECEIPT_RETENTION_MS,
+  MOTION_ROWS_PER_PLAYER,
+  MOTION_ROW_RETENTION_MS,
+  SEGMENT_MOTION_MUTATION_BUDGET,
+  canonicalMotionBatchPayload,
+  decodeMotionBatch,
+  dequantizeMotionPose,
+  motionBatchFingerprint,
+  utcQuotaWindowStartedAt,
+  type MotionBatchV1,
+} from "../shared/multiplayerSegments.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 const CHEST_RECEIPT_PRUNE_LIMIT = 8;
 /** Legacy name retained for the replay-grant validity bound; death proof replaces request throttling. */
 const RESPAWN_AUTHORIZATION_COOLDOWN_MS = 15_000;
+const MOTION_SERVER_MIN_PUBLISH_INTERVAL_MS = 1_000;
+const MOTION_COMPOSITE_MAX_PEERS = 12;
+const MOTION_COMPOSITE_MAX_BATCHES = 24;
+const MOTION_COMPOSITE_MAX_KNOWN = 12;
+const MOTION_COMPOSITE_MAX_BATCH_CHARS = 196_608;
+const MOTION_COMPOSITE_MIN_RADIUS = 16;
+const MOTION_COMPOSITE_MAX_RADIUS = 256;
+const MOTION_COMPOSITE_MAX_REQUEST_CHARS = 8_192;
+const MOTION_COMBAT_POSE_FRESH_MS = 15_000;
+const DIRECT_COMBAT_POSE_FRESH_MS = 5_000;
+
+interface MotionCompositeRequest {
+  radius: number;
+  sample: string;
+  known: Array<readonly [userId: string, sessionId: string, acceptedThrough: number]>;
+  mobIds: string[];
+}
+
+function parseMotionCompositeRequest(requestJson: string): MotionCompositeRequest | null {
+  if (typeof requestJson !== "string" || requestJson.length < 2
+    || requestJson.length > MOTION_COMPOSITE_MAX_REQUEST_CHARS) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(requestJson);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (keys.length !== 4 || keys[0] !== "known" || keys[1] !== "mobIds"
+    || keys[2] !== "radius" || keys[3] !== "sample") return null;
+  const mobValidation = validateMobIdList(record.mobIds, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+  if (!Number.isSafeInteger(record.radius)
+    || Number(record.radius) < MOTION_COMPOSITE_MIN_RADIUS
+    || Number(record.radius) > MOTION_COMPOSITE_MAX_RADIUS
+    || typeof record.sample !== "string" || !/^\d{1,16}$/.test(record.sample)
+    || !Array.isArray(record.known)
+    || record.known.length > MOTION_COMPOSITE_MAX_KNOWN
+    || !mobValidation.ok) return null;
+  const seen = new Set<string>();
+  const known: MotionCompositeRequest["known"] = [];
+  for (const tuple of record.known) {
+    if (!Array.isArray(tuple) || tuple.length !== 3
+      || typeof tuple[0] !== "string" || tuple[0].length < 1 || tuple[0].length > 256
+      || typeof tuple[1] !== "string" || !/^[A-Za-z0-9_-]{8,48}$/.test(tuple[1])
+      || !Number.isSafeInteger(tuple[2]) || tuple[2] < -1 || tuple[2] > 2_147_483_647
+      || seen.has(tuple[0])) return null;
+    seen.add(tuple[0]);
+    known.push([tuple[0], tuple[1], tuple[2]]);
+  }
+  return { radius: Number(record.radius), sample: record.sample, known, mobIds: mobValidation.mobIds };
+}
+
+function normalizedStoredMotionBatchJson(batch: MotionBatchV1): string {
+  return JSON.stringify({
+    version: batch.version,
+    sessionId: batch.sessionId,
+    batchId: batch.batchId,
+    firstSequence: batch.firstSequence,
+    lastSequence: batch.lastSequence,
+    durationTicks: batch.durationTicks,
+    keyframes: batch.keyframes,
+    actions: batch.actions,
+  });
+}
+
+function storedMotionInteger(value: unknown, minimum: number, maximum: number): number | null {
+  if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
+}
 function trailheadPoseForUser(userId: string) {
   let hash = 0x811c9dc5;
   for (let index = 0; index < userId.length; index += 1) {
@@ -374,6 +485,102 @@ async function maintainInventoryActionReceipts(
     .order("asc")
     .take(INVENTORY_ACTION_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.inventoryActionReceipts.delete(receipt.id);
+}
+
+async function maintainRangedCombatReceipts(
+  db: WriteDatabase,
+  userId: string,
+  committedReceiptId: string,
+  now: number,
+): Promise<void> {
+  const newest = await db.rangedCombatReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(MAX_RANGED_COMBAT_RECEIPTS_PER_USER + RANGED_COMBAT_RECEIPT_PRUNE_LIMIT);
+  for (const receiptId of selectRangedCombatReceiptOverflow(newest, committedReceiptId)) {
+    await db.rangedCombatReceipts.delete(receiptId);
+  }
+  const stale = await db.rangedCombatReceipts
+    .withIndex("by_user_created", (q) => q
+      .eq("userId", userId)
+      .lt("receiptCreatedAt", String(now - RANGED_COMBAT_RECEIPT_TTL_MS)))
+    .order("asc")
+    .take(RANGED_COMBAT_RECEIPT_PRUNE_LIMIT);
+  for (const receipt of stale) await db.rangedCombatReceipts.delete(receipt.id);
+}
+
+function rangedChargeFromRow(row: Record<string, unknown> | null): RangedChargeAuthority {
+  const integer = (value: unknown, fallback = 0) => {
+    const parsed = typeof value === "string" ? Number(value) : Number.NaN;
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+  return {
+    active: row?.active === true,
+    startedAt: integer(row?.startedAt),
+    lastReleasedAt: integer(row?.lastReleasedAt),
+    revision: integer(row?.revision),
+  };
+}
+
+function rangedBlockOccludes(block: BlockType): boolean {
+  return block !== "air" && block !== "torch" && block !== "ladder" && block !== "door_open";
+}
+
+type RangedProbeCell = { x: number; y: number; z: number; coordKey: string };
+const RANGED_MAX_PROBE_CHUNKS = 16;
+
+async function authoritativeRangedOccluders(
+  db: WriteDatabase,
+  trajectory: RangedTrajectory,
+  target: RangedAuthorityTarget | null,
+): Promise<{ ok: true; occludes: (x: number, y: number, z: number) => boolean } | { ok: false; reason: string }> {
+  const cells = new Map<string, RangedProbeCell>();
+  let probeOverflow = false;
+  traceRangedTrajectory(trajectory, target, (x, y, z) => {
+    const coordKey = `${x}:${y}:${z}`;
+    if (!cells.has(coordKey)) {
+      if (cells.size >= 384) probeOverflow = true;
+      else cells.set(coordKey, { x, y, z, coordKey });
+    }
+    return false;
+  });
+  if (probeOverflow || cells.size === 0) return { ok: false, reason: "invalid_world_probe" };
+  const blocks = new Map<string, BlockType>();
+  const groups = new Map<string, RangedProbeCell[]>();
+  for (const cell of cells.values()) {
+    if (cell.x < WORLD_EDIT_MIN_XZ || cell.x > WORLD_EDIT_MAX_XZ
+      || cell.z < WORLD_EDIT_MIN_XZ || cell.z > WORLD_EDIT_MAX_XZ
+      || cell.y < WORLD_EDIT_MIN_Y || cell.y > WORLD_EDIT_MAX_Y) {
+      blocks.set(cell.coordKey, cell.y < WORLD_EDIT_MIN_Y ? "stone" : "air");
+      continue;
+    }
+    const owner = worldEditChunkKey(cell.x, cell.z);
+    const group = groups.get(owner);
+    if (group) group.push(cell);
+    else groups.set(owner, [cell]);
+  }
+  if (groups.size > RANGED_MAX_PROBE_CHUNKS) return { ok: false, reason: "invalid_world_probe" };
+  for (const [chunkKey, group] of groups) {
+    const rows = await db.worldChunks
+      .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+      .order("desc")
+      .take(2);
+    if (rows.length > 1) return { ok: false, reason: "duplicate_world_state" };
+    if (rows.length === 0) {
+      for (const cell of group) blocks.set(cell.coordKey, naturalWorldBlockAt(cell.x, cell.y, cell.z));
+      continue;
+    }
+    const sampled = sampleWorldChunkSnapshot(chunkKey, rows[0].snapshotJson, group);
+    if (!sampled.ok || sampled.blocks.length !== group.length) return { ok: false, reason: "invalid_world_state" };
+    for (let index = 0; index < group.length; index += 1) {
+      const cell = group[index];
+      blocks.set(cell.coordKey, sampled.blocks[index] ?? naturalWorldBlockAt(cell.x, cell.y, cell.z));
+    }
+  }
+  return {
+    ok: true,
+    occludes: (x, y, z) => rangedBlockOccludes(blocks.get(`${x}:${y}:${z}`) ?? "air"),
+  };
 }
 
 function databaseRowToChunkEdit(row: Record<string, unknown>): WorldChunkEditInput | null {
@@ -654,6 +861,33 @@ function furnaceWithinReach(
   ) <= 6);
 }
 
+function motionBackedCombatPose(
+  presenceRow: Record<string, unknown> | null,
+  segmentRow: Record<string, unknown> | null,
+  userId: string,
+  serverNow: number,
+): CombatPose | null {
+  const presence = authoritativeCombatPose(presenceRow, userId, serverNow);
+  if (!presence) return null;
+  if (segmentRow && segmentRow.userId === userId && segmentRow.sessionId === presenceRow?.sessionId
+    && typeof segmentRow.batchJson === "string") {
+    const acceptedAt = storedMotionInteger(segmentRow.acceptedAt, 0, Number.MAX_SAFE_INTEGER);
+    if (acceptedAt !== null && serverNow - acceptedAt >= 0
+      && serverNow - acceptedAt <= MOTION_COMBAT_POSE_FRESH_MS) {
+      try {
+        const decoded = decodeMotionBatch(JSON.parse(segmentRow.batchJson));
+        if (decoded.ok && decoded.batch.sessionId === segmentRow.sessionId) {
+          const latest = decoded.batch.keyframes.at(-1);
+          if (latest) return { userId, ...dequantizeMotionPose(latest), heartbeatAt: acceptedAt, online: true };
+        }
+      } catch {
+        // Invalid retained motion is ignored; combat never trusts malformed history.
+      }
+    }
+  }
+  return serverNow - presence.heartbeatAt <= DIRECT_COMBAT_POSE_FRESH_MS ? presence : null;
+}
+
 function mobWorldIsNight(clock: { epochMs: string; epochPhase: string } | null, serverNow: number): boolean {
   const snapshot = worldClockSnapshot(clock, serverNow);
   const phase = worldPhaseAt(serverNow, snapshot.epochMs, snapshot.epochPhase, snapshot.cycleLengthMs);
@@ -716,6 +950,47 @@ export default capsule({
       .index("by_user", ["userId"])
       .index("by_heartbeat", ["heartbeatAt"]),
 
+    /** One contiguous visual-motion sequence cursor per authenticated user. */
+    motionAcceptance: table({
+      userId: string(),
+      sessionId: string(),
+      acceptedThrough: string(),
+      lastAcceptedAt: string(),
+    }).index("by_user", ["userId"]),
+
+    /** At most eight retained visual-only movement/action batches per user. */
+    motionSegments: table({
+      userId: string(),
+      sessionId: string(),
+      batchId: string(),
+      firstSequence: string(),
+      lastSequence: string(),
+      batchJson: string(),
+      acceptedAt: string(),
+    })
+      .index("by_user_accepted", ["userId", "acceptedAt"])
+      .index("by_accepted", ["acceptedAt"]),
+
+    /** Exact retry/collision evidence, capped at 32 recent receipts per user. */
+    motionSegmentReceipts: table({
+      userId: string(),
+      batchId: string(),
+      fingerprint: string(),
+      canonicalPayload: string(),
+      acceptedThrough: string(),
+      acceptedAt: string(),
+    })
+      .index("by_user_batch", ["userId", "batchId"])
+      .index("by_user_accepted", ["userId", "acceptedAt"]),
+
+    /** Deployment-wide UTC mutation guard for the 600-call motion allocation. */
+    motionDailyBudgets: table({
+      budgetKey: string(),
+      dayKey: string(),
+      acceptedCount: string(),
+      budgetAt: string(),
+    }).index("by_key", ["budgetKey"]),
+
     /** Server-owned bed home plus one active, expiring relocation grant per user. */
     playerRespawns: table({
       userId: string(),
@@ -745,6 +1020,30 @@ export default capsule({
     }).index("by_user", ["userId"]),
 
     inventoryActionReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
+
+    /** One server-timed bow draw per player; release clears it atomically. */
+    rangedCharges: table({
+      userId: string(),
+      active: boolean().default(false),
+      startedAt: string().default("0"),
+      lastReleasedAt: string().default("0"),
+      revision: string().default("0"),
+      beginOperationId: string().default(""),
+      beginFingerprint: string().default(""),
+      beginInventoryRevision: string().default(""),
+      beginSelectedHotbar: string().default("")
+    }).index("by_user", ["userId"]),
+
+    /** Exact replay window for arrow consumption, bow wear and target damage. */
+    rangedCombatReceipts: table({
       userId: string(),
       operationId: string(),
       fingerprint: string(),
@@ -984,13 +1283,173 @@ export default capsule({
         .collect()
     ),
 
-    recentPlayers: query(async (ctx, activeSince: string) => ({
-      players: await ctx.db.playerPresence
-        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", activeSince.trim().slice(0, 32)))
+    multiplayerComposite: query(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow, nearbyPlayers: [] };
+      }
+      const request = parseMotionCompositeRequest(requestJson);
+      if (!request) return { ok: false, reason: "invalid_request", serverNow, nearbyPlayers: [] };
+      const callerRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
-        .take(128),
-      serverNow: Date.now(),
-    })),
+        .take(2);
+      if (callerRows.length !== 1) {
+        return { ok: false, reason: "active_presence_required", serverNow, nearbyPlayers: [] };
+      }
+      const caller = callerRows[0];
+      const callerPose = validatePresencePoseFields(caller.x, caller.y, caller.z, caller.yaw, caller.pitch);
+      const callerHeartbeatAt = storedMotionInteger(caller.heartbeatAt, 0, Number.MAX_SAFE_INTEGER);
+      if (!callerPose || !caller.online || !validPresenceSessionId(caller.sessionId)
+        || callerHeartbeatAt === null || serverNow - callerHeartbeatAt < 0
+        || serverNow - callerHeartbeatAt > ACTIVE_PLAYER_WINDOW_MS) {
+        return { ok: false, reason: "active_presence_required", serverNow, nearbyPlayers: [] };
+      }
+
+      const activeRows = await ctx.db.playerPresence
+        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .order("desc")
+        .take(128);
+      const peers = activeRows.flatMap((row) => {
+        if (row.userId === ctx.auth.userId || !row.online || !validPresenceSessionId(row.sessionId)) return [];
+        const pose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+        const heartbeatAt = storedMotionInteger(row.heartbeatAt, 0, Number.MAX_SAFE_INTEGER);
+        if (!pose || heartbeatAt === null || serverNow - heartbeatAt < 0
+          || serverNow - heartbeatAt > ACTIVE_PLAYER_WINDOW_MS
+          || Math.hypot(pose.x - callerPose.x, pose.y - callerPose.y, pose.z - callerPose.z) > request.radius) {
+          return [];
+        }
+        return [{ row, pose, heartbeatAt }];
+      }).slice(0, MOTION_COMPOSITE_MAX_PEERS);
+      const knownByUser = new Map(request.known.map((known) => [known[0], known]));
+      const nearbyPlayers: Array<Record<string, unknown>> = [];
+      let returnedBatchCount = 0;
+      let returnedBatchChars = 0;
+
+      for (const peer of peers) {
+        const segmentRows = await ctx.db.motionSegments
+          .withIndex("by_user_accepted", (q) => q.eq("userId", peer.row.userId))
+          .order("asc")
+          .take(MOTION_ROWS_PER_PLAYER + 1);
+        if (segmentRows.length > MOTION_ROWS_PER_PLAYER) {
+          return { ok: false, reason: "invalid_server_state", serverNow, nearbyPlayers: [] };
+        }
+        const validSegments: Array<{ batch: MotionBatchV1; acceptedAt: number }> = [];
+        for (const segment of segmentRows) {
+          const acceptedAt = storedMotionInteger(segment.acceptedAt, 0, Number.MAX_SAFE_INTEGER);
+          if (acceptedAt === null || serverNow - acceptedAt < 0 || serverNow - acceptedAt > MOTION_ROW_RETENTION_MS) continue;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(segment.batchJson);
+          } catch {
+            return { ok: false, reason: "invalid_server_state", serverNow, nearbyPlayers: [] };
+          }
+          const decoded = decodeMotionBatch(parsed);
+          if (!decoded.ok || decoded.batch.sessionId !== segment.sessionId
+            || decoded.batch.batchId !== segment.batchId
+            || String(decoded.batch.firstSequence) !== segment.firstSequence
+            || String(decoded.batch.lastSequence) !== segment.lastSequence) {
+            return { ok: false, reason: "invalid_server_state", serverNow, nearbyPlayers: [] };
+          }
+          if (decoded.batch.sessionId === peer.row.sessionId) validSegments.push({ batch: decoded.batch, acceptedAt });
+        }
+        const known = knownByUser.get(peer.row.userId);
+        const candidates = known && known[1] === peer.row.sessionId
+          ? validSegments.filter((segment) => segment.batch.lastSequence > known[2]).slice(0, 3)
+          : validSegments.slice(-1);
+        const batches: Array<{ batch: MotionBatchV1; acceptedAt: number }> = [];
+        for (const candidate of candidates) {
+          if (returnedBatchCount + batches.length >= MOTION_COMPOSITE_MAX_BATCHES) break;
+          const chars = JSON.stringify(candidate.batch).length;
+          if (returnedBatchChars + chars > MOTION_COMPOSITE_MAX_BATCH_CHARS) break;
+          returnedBatchChars += chars;
+          batches.push(candidate);
+        }
+        returnedBatchCount += batches.length;
+        nearbyPlayers.push({
+          userId: peer.row.userId,
+          displayName: peer.row.displayName,
+          color: peer.row.color,
+          x: peer.pose.x,
+          y: peer.pose.y,
+          z: peer.pose.z,
+          yaw: peer.pose.yaw,
+          pitch: peer.pose.pitch,
+          heldItem: peer.row.heldItem,
+          armorHead: peer.row.armorHead,
+          armorChest: peer.row.armorChest,
+          armorLegs: peer.row.armorLegs,
+          armorFeet: peer.row.armorFeet,
+          sessionId: peer.row.sessionId,
+          heartbeatAt: peer.heartbeatAt,
+          online: peer.row.online,
+          batches,
+        });
+      }
+      const emptyMobWorld = {
+        checkpointRevision: 0,
+        motionTick: 0,
+        checkpointAt: 0,
+        leaseOwnerUserId: "",
+        leaseExpiresAt: 0,
+        poses: [],
+        states: [],
+        damageClaims: [],
+        needsCheckpoint: false,
+        serverNow,
+      };
+      const mobWorld = await (async () => {
+        const rows = await ctx.db.mobWorldAuthority
+          .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
+          .order("desc")
+          .take(2);
+        if (rows.length > 1) return { ok: false, reason: "duplicate_state", ...emptyMobWorld };
+        const stored = databaseRowToStoredMobWorld(rows[0] ?? null);
+        if (!stored) return { ok: true, ...emptyMobWorld, needsCheckpoint: true };
+
+        const replayInput = parseMobWorldReplayInputJson(stored.inputJson);
+        if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...emptyMobWorld };
+        const advanced = advanceMobWorldState(stored, serverNow, replayInput);
+        if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...emptyMobWorld };
+        const requested = new Set(request.mobIds);
+        const poses = writeMobMotionPoses(advanced.state).filter((pose) => requested.has(pose.mobId));
+        const states = [];
+        for (const mobId of request.mobIds) {
+          const identity = validateMobIdentity(mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+          if (!identity.ok) continue;
+          const row = await ctx.db.mobAuthority
+            .withIndex("by_mob", (q) => q.eq("mobId", mobId))
+            .order("desc")
+            .first();
+          states.push(materializeMobAuthorityState(
+            databaseRowToStoredMobAuthority(row),
+            identity.mobId,
+            identity.kind,
+            serverNow,
+          ));
+        }
+        const callerTarget = replayInput.targets.find((target) => target.userId === ctx.auth.userId);
+        const aliveMobIds = new Set(states.filter((state) => state.health > 0).map((state) => state.mobId));
+        const checkpointAt = advanced.checkpointAt + advanced.ticks * 1_000 / 10;
+        return {
+          ok: true,
+          checkpointRevision: advanced.revision,
+          motionTick: advanced.state.tick,
+          checkpointAt,
+          leaseOwnerUserId: stored.ownerUserId,
+          leaseExpiresAt: parseStoredInteger(stored.leaseExpiresAt) ?? 0,
+          poses,
+          states,
+          damageClaims: callerTarget
+            ? mobDamageClaimsForTarget(advanced.state, callerTarget, advanced.revision)
+              .filter((claim) => aliveMobIds.has(claim.mobId))
+            : [],
+          needsCheckpoint: serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
+          serverNow,
+        };
+      })();
+      return { ok: true, serverNow, nearbyPlayers, mobWorld };
+    }),
 
     myPresence: query(async (ctx) =>
       (await ctx.db.playerPresence
@@ -1557,6 +2016,218 @@ export default capsule({
         resetToTrailhead: rows.length > 0 && !keeper,
         spawnPose: keeperPose ?? trailhead,
         nextPoseSequence: sameSession ? nextStoredPoseSequence : "1",
+      };
+    }),
+
+    publishMotionSegments: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      if (typeof requestJson !== "string" || requestJson.length < 2
+        || requestJson.length > MOTION_MAX_BATCH_CHARS) {
+        return { ok: false, reason: "invalid_request", serverNow };
+      }
+      let rawBatch: unknown;
+      try {
+        rawBatch = JSON.parse(requestJson);
+      } catch {
+        return { ok: false, reason: "invalid_request", serverNow };
+      }
+      const decoded = decodeMotionBatch(rawBatch);
+      if (!decoded.ok) return { ok: false, reason: `invalid_batch:${decoded.reason}`, serverNow };
+      const batch = decoded.batch;
+      const fingerprint = motionBatchFingerprint(batch);
+      const canonicalPayload = canonicalMotionBatchPayload(batch);
+
+      // Exact replay is checked before liveness, cadence, or quota gates so a
+      // lost successful response can always be recovered without another write.
+      const matchingReceipts = await ctx.db.motionSegmentReceipts
+        .withIndex("by_user_batch", (q) => q.eq("userId", ctx.auth.userId).eq("batchId", batch.batchId))
+        .order("desc")
+        .take(2);
+      if (matchingReceipts.length > 1) return { ok: false, reason: "invalid_server_state", serverNow };
+      const existingReceipt = matchingReceipts[0] ?? null;
+      if (existingReceipt) {
+        const acceptedThrough = storedMotionInteger(existingReceipt.acceptedThrough, 0, 2_147_483_647);
+        const acceptedAt = storedMotionInteger(existingReceipt.acceptedAt, 0, Number.MAX_SAFE_INTEGER);
+        if (acceptedThrough === null || acceptedAt === null) {
+          return { ok: false, reason: "invalid_server_state", serverNow };
+        }
+        if (serverNow - acceptedAt >= 0 && serverNow - acceptedAt <= MOTION_RECEIPT_RETENTION_MS) {
+          if (existingReceipt.fingerprint !== fingerprint || existingReceipt.canonicalPayload !== canonicalPayload) {
+            return { ok: false, reason: "batch_id_collision", serverNow };
+          }
+          return { ok: true, replayed: true, acceptedThrough, acceptedAt, serverNow };
+        }
+        await ctx.db.motionSegmentReceipts.delete(existingReceipt.id);
+      }
+
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (presenceRows.length !== 1) return { ok: false, reason: "active_presence_required", serverNow };
+      const presence = presenceRows[0];
+      const pose = validatePresencePoseFields(presence.x, presence.y, presence.z, presence.yaw, presence.pitch);
+      const heartbeatAt = storedMotionInteger(presence.heartbeatAt, 0, Number.MAX_SAFE_INTEGER);
+      if (!pose || !presence.online || presence.sessionId !== batch.sessionId || heartbeatAt === null
+        || serverNow - heartbeatAt < 0 || serverNow - heartbeatAt > ACTIVE_PLAYER_WINDOW_MS) {
+        return { ok: false, reason: "active_presence_required", serverNow };
+      }
+      const latestMotionFrame = batch.keyframes.at(-1);
+      const latestMotionPose = latestMotionFrame ? dequantizeMotionPose(latestMotionFrame) : null;
+      const motionTrajectory = latestMotionPose
+        ? decidePresenceTrajectory(ctx.auth.userId, presence, latestMotionPose, serverNow)
+        : null;
+      if (!motionTrajectory?.accept) {
+        return { ok: false, reason: "invalid_motion_trajectory", serverNow };
+      }
+
+      // Honest clients already stop publishing without peers. This server gate
+      // prevents a modified solo client from consuming the shared mutation day.
+      const activeRows = await ctx.db.playerPresence
+        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .order("desc")
+        .take(128);
+      const hasNearbyPeer = activeRows.some((row) => {
+        if (row.userId === ctx.auth.userId || !row.online) return false;
+        const peerPose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+        const peerHeartbeatAt = storedMotionInteger(row.heartbeatAt, 0, Number.MAX_SAFE_INTEGER);
+        return Boolean(peerPose && peerHeartbeatAt !== null
+          && serverNow - peerHeartbeatAt >= 0 && serverNow - peerHeartbeatAt <= ACTIVE_PLAYER_WINDOW_MS
+          && Math.hypot(peerPose!.x - pose.x, peerPose!.y - pose.y, peerPose!.z - pose.z)
+            <= MOTION_COMPOSITE_MAX_RADIUS);
+      });
+      if (!hasNearbyPeer) return { ok: false, reason: "no_peers", serverNow };
+
+      const acceptanceRows = await ctx.db.motionAcceptance
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (acceptanceRows.length > 1) return { ok: false, reason: "invalid_server_state", serverNow };
+      const acceptance = acceptanceRows[0] ?? null;
+      const switchingSession = !acceptance || acceptance.sessionId !== batch.sessionId;
+      const acceptedThrough = switchingSession
+        ? -1
+        : storedMotionInteger(acceptance.acceptedThrough, 0, 2_147_483_647);
+      if (acceptedThrough === null) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (batch.lastSequence <= acceptedThrough) return {
+        ok: false,
+        reason: "stale_sequence",
+        acceptedThrough,
+        serverNow,
+      };
+      if (batch.firstSequence !== acceptedThrough + 1) return {
+        ok: false,
+        reason: "sequence_gap",
+        acceptedThrough,
+        serverNow,
+      };
+      const lastAcceptedAt = acceptance
+        ? storedMotionInteger(acceptance.lastAcceptedAt, 0, Number.MAX_SAFE_INTEGER)
+        : null;
+      if (acceptance && lastAcceptedAt === null) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (lastAcceptedAt !== null && serverNow - lastAcceptedAt < MOTION_SERVER_MIN_PUBLISH_INTERVAL_MS) {
+        return {
+          ok: false,
+          reason: "rate_limited",
+          retryAfterMs: MOTION_SERVER_MIN_PUBLISH_INTERVAL_MS - (serverNow - lastAcceptedAt),
+          serverNow,
+        };
+      }
+
+      const budgetRows = await ctx.db.motionDailyBudgets
+        .withIndex("by_key", (q) => q.eq("budgetKey", "motion"))
+        .order("desc")
+        .take(2);
+      if (budgetRows.length > 1) return { ok: false, reason: "invalid_server_state", serverNow };
+      const budget = budgetRows[0] ?? null;
+      const dayKey = String(utcQuotaWindowStartedAt(serverNow));
+      const priorAcceptedCount = budget?.dayKey === dayKey
+        ? storedMotionInteger(budget.acceptedCount, 0, SEGMENT_MOTION_MUTATION_BUDGET)
+        : 0;
+      if (priorAcceptedCount === null) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (priorAcceptedCount >= SEGMENT_MOTION_MUTATION_BUDGET) {
+        return {
+          ok: false,
+          reason: "daily_budget_exhausted",
+          retryAfterMs: utcQuotaWindowStartedAt(serverNow) + 24 * 60 * 60_000 - serverNow,
+          serverNow,
+        };
+      }
+
+      const receiptRows = await ctx.db.motionSegmentReceipts
+        .withIndex("by_user_accepted", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(MOTION_RECEIPT_LIMIT + 1);
+      const segmentRows = await ctx.db.motionSegments
+        .withIndex("by_user_accepted", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(MOTION_ROWS_PER_PLAYER + 1);
+      if (receiptRows.length > MOTION_RECEIPT_LIMIT || segmentRows.length > MOTION_ROWS_PER_PLAYER) {
+        return { ok: false, reason: "invalid_server_state", serverNow };
+      }
+
+      let retainedReceiptCount = 0;
+      for (const receipt of receiptRows) {
+        const acceptedAt = storedMotionInteger(receipt.acceptedAt, 0, Number.MAX_SAFE_INTEGER);
+        const retain = acceptedAt !== null && serverNow - acceptedAt >= 0
+          && serverNow - acceptedAt <= MOTION_RECEIPT_RETENTION_MS
+          && retainedReceiptCount < MOTION_RECEIPT_LIMIT - 1;
+        if (retain) retainedReceiptCount += 1;
+        else await ctx.db.motionSegmentReceipts.delete(receipt.id);
+      }
+      let retainedSegmentCount = 0;
+      for (const segment of segmentRows) {
+        const acceptedAt = storedMotionInteger(segment.acceptedAt, 0, Number.MAX_SAFE_INTEGER);
+        const retain = !switchingSession && segment.sessionId === batch.sessionId
+          && acceptedAt !== null && serverNow - acceptedAt >= 0
+          && serverNow - acceptedAt <= MOTION_ROW_RETENTION_MS
+          && retainedSegmentCount < MOTION_ROWS_PER_PLAYER - 1;
+        if (retain) retainedSegmentCount += 1;
+        else await ctx.db.motionSegments.delete(segment.id);
+      }
+
+      const acceptanceValue = {
+        userId: ctx.auth.userId,
+        sessionId: batch.sessionId,
+        acceptedThrough: String(batch.lastSequence),
+        lastAcceptedAt: String(serverNow),
+      };
+      if (acceptance) await ctx.db.motionAcceptance.update(acceptance.id, acceptanceValue);
+      else await ctx.db.motionAcceptance.insert(acceptanceValue);
+      const budgetValue = {
+        budgetKey: "motion",
+        dayKey,
+        acceptedCount: String(priorAcceptedCount + 1),
+        budgetAt: String(serverNow),
+      };
+      if (budget) await ctx.db.motionDailyBudgets.update(budget.id, budgetValue);
+      else await ctx.db.motionDailyBudgets.insert(budgetValue);
+      await ctx.db.motionSegmentReceipts.insert({
+        userId: ctx.auth.userId,
+        batchId: batch.batchId,
+        fingerprint,
+        canonicalPayload,
+        acceptedThrough: String(batch.lastSequence),
+        acceptedAt: String(serverNow),
+      });
+      await ctx.db.motionSegments.insert({
+        userId: ctx.auth.userId,
+        sessionId: batch.sessionId,
+        batchId: batch.batchId,
+        firstSequence: String(batch.firstSequence),
+        lastSequence: String(batch.lastSequence),
+        batchJson: normalizedStoredMotionBatchJson(batch),
+        acceptedAt: String(serverNow),
+      });
+      return {
+        ok: true,
+        replayed: false,
+        acceptedThrough: batch.lastSequence,
+        acceptedAt: serverNow,
+        serverNow,
       };
     }),
 
@@ -3024,6 +3695,339 @@ export default capsule({
       return result;
     }),
 
+    rangedCombat: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const validation = validateRangedCombatRequestJson(requestJson);
+      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason, serverNow };
+      const request = validation.request;
+
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      const inventoryRow = inventoryRows[0];
+      const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
+      if (!playerState.ok) return { ok: false, reason: "inventory_invalid", serverNow };
+      const selectedStack = playerState.state.inventory[playerState.state.selectedHotbar] ?? null;
+      const inventoryAuthority: RangedInventoryAuthority = {
+        revision: inventoryRow.revision,
+        selectedHotbar: playerState.state.selectedHotbar,
+        heldBowDurability: selectedStack?.itemId === "bow" ? remainingItemDurability(selectedStack) : null,
+        arrowCount: countItem(playerState.state.inventory, "arrow"),
+      };
+
+      if (request.kind === "release") {
+        const receiptRows = await ctx.db.rangedCombatReceipts
+          .withIndex("by_user_operation", (q) => q
+            .eq("userId", ctx.auth.userId)
+            .eq("operationId", request.operationId))
+          .order("desc")
+          .take(2);
+        if (receiptRows.length > 1) return { ok: false, reason: "duplicate_receipt", serverNow };
+        if (receiptRows.length === 1) {
+          const receipt = decodeRangedCombatReceipt(receiptRows[0].resultJson);
+          if (!receipt) return { ok: false, reason: "invalid_receipt", serverNow };
+          if (decideRangedCombatReplay(receipt.fingerprint, request.fingerprint) === "operation_id_reused") {
+            return { ok: false, reason: "operation_id_reused", serverNow };
+          }
+          return {
+            ok: true,
+            kind: "release",
+            replayed: true,
+            shot: receipt.result,
+            inventory: inventoryRow,
+            drops: [],
+            serverNow,
+          };
+        }
+      }
+
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      const presence = presenceRows.length === 1
+        ? authoritativeCombatPose(presenceRows[0], ctx.auth.userId, serverNow)
+        : null;
+      const attackerCombatRows = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (attackerCombatRows.length > 1) return { ok: false, reason: "attacker_state_invalid", serverNow };
+      const attackerCombat = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(attackerCombatRows[0] ?? null),
+        ctx.auth.userId,
+        serverNow,
+      );
+      const chargeRows = await ctx.db.rangedCharges
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (chargeRows.length > 1) return { ok: false, reason: "charge_state_invalid", serverNow };
+      const chargeRow = chargeRows[0] ?? null;
+      let charge = rangedChargeFromRow(chargeRow);
+      if (charge.active && serverNow - charge.startedAt > RANGED_MAX_CHARGE_MS) {
+        charge = { ...charge, active: false, startedAt: 0 };
+      }
+
+      if (request.kind === "cancel_charge") {
+        const matchesActiveDraw = Boolean(chargeRow
+          && charge.active
+          && chargeRow.beginOperationId === request.beginOperationId);
+        if (matchesActiveDraw && chargeRow) {
+          await ctx.db.rangedCharges.update(chargeRow.id, {
+            userId: ctx.auth.userId,
+            active: false,
+            startedAt: "0",
+            lastReleasedAt: String(charge.lastReleasedAt),
+            revision: String(charge.revision + 1),
+            beginOperationId: chargeRow.beginOperationId,
+            beginFingerprint: chargeRow.beginFingerprint,
+            beginInventoryRevision: chargeRow.beginInventoryRevision,
+            beginSelectedHotbar: chargeRow.beginSelectedHotbar,
+          });
+        }
+        return { ok: true, kind: "cancel_charge", canceled: matchesActiveDraw, serverNow };
+      }
+
+      if (request.kind === "begin_charge") {
+        if (charge.active && chargeRow?.beginOperationId === request.operationId) {
+          if (chargeRow.beginFingerprint !== request.fingerprint) {
+            return { ok: false, reason: "operation_id_reused", serverNow };
+          }
+          return { ok: true, kind: "begin_charge", replayed: true, charge, serverNow };
+        }
+        if (charge.active) return { ok: false, reason: "charge_in_progress", serverNow };
+        const started = resolveRangedChargeStart({
+          request,
+          inventory: inventoryAuthority,
+          charge,
+          attackerPresence: presence,
+          attackerAlive: attackerCombat.health > 0,
+          serverNow,
+        });
+        if (!started.ok) return { ...started, serverNow };
+        const storedCharge = {
+          userId: ctx.auth.userId,
+          active: true,
+          startedAt: String(started.charge.startedAt),
+          lastReleasedAt: String(started.charge.lastReleasedAt),
+          revision: String(started.charge.revision),
+          beginOperationId: request.operationId,
+          beginFingerprint: request.fingerprint,
+          beginInventoryRevision: request.expectedInventoryRevision,
+          beginSelectedHotbar: String(request.selectedHotbar),
+        };
+        if (chargeRow) await ctx.db.rangedCharges.update(chargeRow.id, storedCharge);
+        else await ctx.db.rangedCharges.insert(storedCharge);
+        return { ok: true, kind: "begin_charge", replayed: false, charge: started.charge, serverNow };
+      }
+
+      const clearRejectedCharge = async () => {
+        if (!chargeRow || !charge.active) return;
+        await ctx.db.rangedCharges.update(chargeRow.id, {
+          userId: ctx.auth.userId,
+          active: false,
+          startedAt: "0",
+          lastReleasedAt: String(charge.lastReleasedAt),
+          revision: String(charge.revision + 1),
+          beginOperationId: "",
+          beginFingerprint: "",
+          beginInventoryRevision: "",
+          beginSelectedHotbar: "",
+        });
+      };
+      if (charge.active && chargeRow && (
+        chargeRow.beginInventoryRevision !== request.expectedInventoryRevision
+        || chargeRow.beginSelectedHotbar !== String(request.selectedHotbar)
+      )) {
+        await clearRejectedCharge();
+        return { ok: false, reason: "conflict", serverNow };
+      }
+
+      let target: RangedAuthorityTarget | null = null;
+      let targetPresenceRow: Record<string, unknown> | null = null;
+      let targetInventoryRow: Record<string, unknown> | null = null;
+      let targetPlayerState: Extract<ReturnType<typeof validatePlayerStateJson>, { ok: true }> | null = null;
+      let targetCombatRow: Record<string, unknown> | null = null;
+      let targetMobRow: Record<string, unknown> | null = null;
+      let targetMobKind: MobAuthorityKind | null = null;
+      if (request.targetKind === "player" && request.targetId !== ctx.auth.userId) {
+        const targetPresenceRows = await ctx.db.playerPresence
+          .withIndex("by_user", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+        const targetInventoryRows = await ctx.db.inventories
+          .withIndex("by_user", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+        const targetCombatRows = await ctx.db.playerCombat
+          .withIndex("by_user", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+        const targetMotionRows = await ctx.db.motionSegments
+          .withIndex("by_user_accepted", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+        if (targetPresenceRows.length === 1 && targetInventoryRows.length === 1
+          && targetCombatRows.length <= 1 && targetMotionRows.length <= 1) {
+          const targetPresence = motionBackedCombatPose(
+            targetPresenceRows[0], targetMotionRows[0] ?? null, request.targetId, serverNow,
+          );
+          const parsedTarget = validatePlayerStateJson(targetInventoryRows[0].inventoryJson);
+          if (targetPresence && parsedTarget.ok) {
+            targetPresenceRow = targetPresenceRows[0];
+            targetInventoryRow = targetInventoryRows[0];
+            targetPlayerState = parsedTarget;
+            targetCombatRow = targetCombatRows[0] ?? null;
+            target = {
+              kind: "player",
+              id: request.targetId,
+              pose: targetPresence,
+              combat: materializePlayerCombatState(
+                databaseRowToStoredPlayerCombat(targetCombatRow),
+                request.targetId,
+                serverNow,
+              ),
+              armorProtection: equippedArmorProtection(parsedTarget.state.equipment),
+            };
+          }
+        }
+      } else if (request.targetKind === "mob") {
+        const identity = validateMobIdentity(request.targetId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+        if (identity.ok) {
+          const worldRows = await ctx.db.mobWorldAuthority
+            .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY)).order("desc").take(2);
+          const mobRows = await ctx.db.mobAuthority
+            .withIndex("by_mob", (q) => q.eq("mobId", identity.mobId)).order("desc").take(2);
+          const storedWorld = worldRows.length === 1 ? databaseRowToStoredMobWorld(worldRows[0]) : null;
+          const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
+          const advancedWorld = storedWorld && replayInput ? advanceMobWorldState(storedWorld, serverNow, replayInput) : null;
+          const pose = advancedWorld ? writeMobMotionPoses(advancedWorld.state).find(({ mobId }) => mobId === identity.mobId) : null;
+          if (pose && mobRows.length <= 1) {
+            const bounds = {
+              pig: [0.9, 0.62], cow: [1.35, 0.7], sheep: [1.25, 0.68],
+              zombie: [1.8, 0.4], skeleton: [1.9, 0.38],
+            } as const;
+            targetMobRow = mobRows[0] ?? null;
+            targetMobKind = identity.kind;
+            target = {
+              kind: "mob",
+              id: identity.mobId,
+              position: { x: pose.x, y: pose.y, z: pose.z },
+              height: bounds[identity.kind][0],
+              radius: bounds[identity.kind][1],
+              combat: materializeMobAuthorityState(
+                databaseRowToStoredMobAuthority(targetMobRow),
+                identity.mobId,
+                identity.kind,
+                serverNow,
+              ),
+            };
+          }
+        }
+      }
+
+      const trajectory = presence ? authoritativeRangedTrajectory(presence, serverNow - charge.startedAt) : null;
+      const worldAuthority = trajectory ? await authoritativeRangedOccluders(ctx.db, trajectory, target) : null;
+      if (trajectory && (!worldAuthority || !worldAuthority.ok)) {
+        await clearRejectedCharge();
+        return { ok: false, reason: worldAuthority?.reason ?? "invalid_world_state", serverNow };
+      }
+      const resolution = resolveRangedReleaseIdempotently(null, {
+        request,
+        attackerId: ctx.auth.userId,
+        attackerPresence: presence,
+        attackerAlive: attackerCombat.health > 0,
+        inventory: inventoryAuthority,
+        charge,
+        target,
+        serverNow,
+        occludes: worldAuthority?.ok ? worldAuthority.occludes : undefined,
+      });
+      if (!resolution.ok) {
+        await clearRejectedCharge();
+        return { ...resolution, serverNow };
+      }
+      const shot = resolution.result;
+
+      let nextInventory = removeItem(playerState.state.inventory, "arrow", 1).inventory;
+      const bow = nextInventory[playerState.state.selectedHotbar];
+      const bowDurability = bow?.itemId === "bow" ? remainingItemDurability(bow) : null;
+      if (bowDurability === null) throw new Error("Ranged authority lost the selected bow.");
+      nextInventory[playerState.state.selectedHotbar] = bowDurability > 1
+        ? { ...bow, count: 1, durability: bowDurability - 1 }
+        : null;
+      const collectedDrops: Array<{ itemId: ItemId; count: number }> = [];
+
+      if (shot.landed && shot.targetKind === "player" && shot.targetCombat && targetPlayerState && targetInventoryRow) {
+        const armorWear = applyConfirmedArmorDamage(targetPlayerState.state.equipment);
+        if (targetCombatRow) await ctx.db.playerCombat.update(targetCombatRow.id, storedPlayerCombatRow(shot.targetCombat));
+        else await ctx.db.playerCombat.insert(storedPlayerCombatRow(shot.targetCombat));
+        if (armorWear.damaged.length > 0) {
+          await ctx.db.inventories.update(targetInventoryRow.id, {
+            userId: request.targetId,
+            inventoryJson: JSON.stringify({ ...targetPlayerState.state, equipment: armorWear.equipment }),
+            revision: incrementStoredRevision(targetInventoryRow.revision),
+          });
+        }
+      } else if (shot.landed && shot.targetKind === "mob" && shot.targetCombat && targetMobKind) {
+        const mobState = shot.targetCombat;
+        const mobRow = {
+          mobId: request.targetId,
+          kind: targetMobKind,
+          health: String(mobState.health),
+          revision: String(mobState.revision),
+          deadUntil: String(mobState.deadUntil),
+          lastAttackAt: String(mobState.lastAttackAt),
+          lastAttackerId: mobState.lastAttackerId,
+        };
+        if (targetMobRow) await ctx.db.mobAuthority.update(targetMobRow.id, mobRow);
+        else await ctx.db.mobAuthority.insert(mobRow);
+        if (shot.killed) {
+          for (const drop of deterministicMobDrops(request.targetId, targetMobKind, mobState.revision)) {
+            const added = addItem(nextInventory, drop.itemId as ItemId, drop.count);
+            nextInventory = added.inventory;
+            const collected = drop.count - added.remainder;
+            if (collected > 0) collectedDrops.push({ itemId: drop.itemId as ItemId, count: collected });
+          }
+        }
+      }
+
+      const persistedInventory = await ctx.db.inventories.update(inventoryRow.id, {
+        userId: ctx.auth.userId,
+        inventoryJson: JSON.stringify({ ...playerState.state, inventory: nextInventory }),
+        revision: incrementStoredRevision(inventoryRow.revision),
+      });
+      if (!persistedInventory) throw new Error("Unable to persist ranged inventory authority.");
+      const storedCharge = {
+        userId: ctx.auth.userId,
+        active: false,
+        startedAt: "0",
+        lastReleasedAt: String(shot.charge.lastReleasedAt),
+        revision: String(shot.charge.revision),
+        beginOperationId: "",
+        beginFingerprint: "",
+        beginInventoryRevision: "",
+        beginSelectedHotbar: "",
+      };
+      if (chargeRow) await ctx.db.rangedCharges.update(chargeRow.id, storedCharge);
+      else await ctx.db.rangedCharges.insert(storedCharge);
+      const receipt = await ctx.db.rangedCombatReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        resultJson: encodeRangedCombatReceipt(resolution.receipt),
+        receiptCreatedAt: String(serverNow),
+      });
+      await maintainRangedCombatReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      return {
+        ok: true,
+        kind: "release",
+        replayed: false,
+        shot,
+        inventory: persistedInventory,
+        drops: collectedDrops,
+        serverNow,
+      };
+    }),
+
     attackMob: mutation(async (
       ctx,
       rawMobId: string,
@@ -3211,8 +4215,14 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
         .order("desc")
         .first();
+      const targetMotionRow = await ctx.db.motionSegments
+        .withIndex("by_user_accepted", (q) => q.eq("userId", request.targetUserId))
+        .order("desc")
+        .first();
       const attackerPresence = authoritativeCombatPose(attackerPresenceRow, ctx.auth.userId, serverNow);
-      const targetPresence = authoritativeCombatPose(targetPresenceRow, request.targetUserId, serverNow);
+      const targetPresence = motionBackedCombatPose(
+        targetPresenceRow, targetMotionRow, request.targetUserId, serverNow,
+      );
 
       const attackerInventoryRows = await ctx.db.inventories
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
