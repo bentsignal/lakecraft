@@ -13,6 +13,10 @@ assert.ok(drawer.includes("materializeFurnace(anchor.state, trustedNow)"));
 assert.ok(drawer.includes("window.setInterval(renderProgress, 50)"));
 assert.ok(drawer.includes("performance.now() - anchor.receivedAt"));
 assert.ok(drawer.includes("setDisplayFurnace(projected.state)"), "smooth progress is isolated to the furnace drawer subtree");
+assert.ok(drawer.includes("isFurnaceFuelItem(stack.itemId)"),
+  "the drawer shares authoritative coal and charcoal fuel eligibility");
+assert.equal(drawer.includes('stack.itemId === "coal"'), false,
+  "the drawer does not retain coal-only fuel drift");
 assert.ok(app.includes("setActiveFurnaceKey(key)"));
 assert.equal(app.includes("function handleSmelt("), false, "instant local batch smelting is removed");
 const handler = app.slice(app.indexOf("async function handleFurnaceTransfer"), app.indexOf("function handleUseItem"));

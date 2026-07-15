@@ -46,6 +46,7 @@ const P = "planks" as const;
 const S = "stick" as const;
 const C = "cobblestone" as const;
 const K = "coal" as const;
+const H = "charcoal" as const;
 const W = "wool" as const;
 
 function equipmentPatternEntries(prefix: string, material: ItemId, armor: boolean): RecipePatternEntry[] {
@@ -92,6 +93,7 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   sticks_from_planks: { kind: "shaped", pattern: [[P], [P]] },
   crafting_table: { kind: "shaped", pattern: [[P, P], [P, P]] },
   torch: { kind: "shaped", pattern: [[K], [S]] },
+  torch_charcoal: { kind: "shaped", pattern: [[H], [S]] },
   furnace: { kind: "shaped", pattern: [[C, C, C], [C, null, C], [C, C, C]] },
   ladder: { kind: "shaped", pattern: [[S, null, S], [S, S, S], [S, null, S]] },
   chest: { kind: "shaped", pattern: [[P, P, P], [P, null, P], [P, P, P]] },

@@ -56,8 +56,13 @@ assert.deepEqual(recipe("torch").ingredients, [
   { itemId: "stick", count: 1 },
 ], "torches consume the same coal-over-stick ingredients shown in the crafting grid");
 assert.deepEqual(recipe("torch").output, { itemId: "torch", count: 4 });
+assert.deepEqual(recipe("torch_charcoal").ingredients, [
+  { itemId: "charcoal", count: 1 },
+  { itemId: "stick", count: 1 },
+], "charcoal torches remain a separate, unambiguous economic recipe");
+assert.deepEqual(recipe("torch_charcoal").output, { itemId: "torch", count: 4 });
 
-const fieldRecipeIds = ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "flint_and_steel", "shears"];
+const fieldRecipeIds = ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "torch_charcoal", "flint_and_steel", "shears"];
 assert.deepEqual(availableRecipes("field").map(({ id }) => id), fieldRecipeIds, "the 2x2 field kit exposes only compact recipes");
 assert.deepEqual(availableRecipes("crafting_table").map(({ id }) => id), RECIPES.map(({ id }) => id), "a crafting table includes field recipes");
 for (const fieldRecipeId of fieldRecipeIds) {

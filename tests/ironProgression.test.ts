@@ -106,6 +106,7 @@ assert.ok((ITEMS.cooked_chicken.food?.hunger ?? 0) > (ITEMS.raw_chicken.food?.hu
 assert.deepEqual(
   SMELTING_RECIPES.map(({ id, input, output }) => ({ id, input, output })),
   [
+    { id: "charcoal", input: "log", output: "charcoal" },
     { id: "iron_ingot", input: "raw_iron", output: "iron_ingot" },
     { id: "gold_ingot", input: "raw_gold", output: "gold_ingot" },
     { id: "glass", input: "sand", output: "glass" },

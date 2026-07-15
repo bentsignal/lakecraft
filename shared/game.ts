@@ -58,6 +58,7 @@ export type ItemId = BlockId
   | "leather"
   | "wool"
   | "coal"
+  | "charcoal"
   | "raw_iron"
   | "iron_ingot"
   | "raw_gold"
@@ -289,6 +290,7 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["leather", "Leather", "LTH", "Tough hide used for lightweight armor.", "◩", "#8d552f"],
   ["wool", "Wool", "WOL", "Soft sheep wool for beds and future textiles.", "◌", "#ddd8c8"],
   ["coal", "Coal", "COL", "Dense furnace fuel recovered from coal ore.", "✦", "#30332e"],
+  ["charcoal", "Charcoal", "CHR", "Charred oak fuel made by smelting a log.", "▰", "#383632"],
   ["raw_iron", "Raw Iron", "R·FE", "Freshly mined iron that must be smelted.", "◈", "#b78062"],
   ["iron_ingot", "Iron Ingot", "I·FE", "Refined iron for durable tools and armor.", "▰", "#d6d5cc"],
   ["raw_gold", "Raw Gold", "R·AU", "A soft gold-bearing mineral that must be smelted.", "✦", "#dba92d"],
@@ -426,6 +428,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A lump of coal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "coal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
+  { id: "torch_charcoal", label: "Charcoal torches", note: "A piece of charcoal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "charcoal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
@@ -441,6 +444,7 @@ export const RECIPES: readonly Recipe[] = [
 ] as const;
 
 export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
+  { id: "charcoal", label: "Make charcoal", input: "log", output: "charcoal" },
   { id: "iron_ingot", label: "Smelt iron", input: "raw_iron", output: "iron_ingot" },
   { id: "gold_ingot", label: "Smelt gold", input: "raw_gold", output: "gold_ingot" },
   { id: "glass", label: "Smelt glass", input: "sand", output: "glass" },
@@ -853,7 +857,8 @@ export function craftRecipe(
 }
 
 /**
- * Burns one coal to smelt up to eight matching inputs in one atomic operation.
+ * Burns one coal or charcoal to smelt up to eight matching inputs in one
+ * atomic operation. Coal is chosen first when both fuels are present.
  * Capacity is checked after removing the input and fuel, since those removals may
  * legitimately free the slot needed by the output. Every failure returns a
  * detached copy of the original inventory and consumes nothing.
@@ -869,11 +874,16 @@ export function smeltRecipe(
 
   const inputCount = countItem(original, recipe.input);
   if (inputCount < 1) return { ok: false, inventory: original, reason: "missing_input" };
-  if (countItem(original, "coal") < 1) return { ok: false, inventory: original, reason: "missing_fuel" };
+  const fuelId: ItemId | null = countItem(original, "coal") >= 1
+    ? "coal"
+    : countItem(original, "charcoal") >= 1
+      ? "charcoal"
+      : null;
+  if (!fuelId) return { ok: false, inventory: original, reason: "missing_fuel" };
 
   const batchSize = Math.min(8, inputCount);
   let next = removeItem(original, recipe.input, batchSize).inventory;
-  next = removeItem(next, "coal", 1).inventory;
+  next = removeItem(next, fuelId, 1).inventory;
   const added = addItem(next, recipe.output, batchSize);
   if (added.remainder > 0) return { ok: false, inventory: cloneInventory(inventory), reason: "inventory_full" };
   return {

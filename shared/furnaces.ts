@@ -22,6 +22,7 @@ export const FURNACE_MAX_Y = 128;
 
 const INPUT_IDS = new Set<ItemId>(SMELTING_RECIPES.map(({ input }) => input));
 const OUTPUT_IDS = new Set<ItemId>(SMELTING_RECIPES.map(({ output }) => output));
+const FUEL_IDS = new Set<ItemId>(["coal", "charcoal"]);
 const FURNACE_STATE_KEYS = [
   "coordKey",
   "input",
@@ -96,6 +97,11 @@ export type FurnaceTransferResult =
       fuelConsumed: number;
     }
   | { ok: false; reason: FurnaceTransferFailure; state: FurnaceState; inventory: Inventory };
+
+/** Shared fuel eligibility keeps the drawer and authoritative transfer path in lockstep. */
+export function isFurnaceFuelItem(itemId: ItemId): boolean {
+  return FUEL_IDS.has(itemId);
+}
 
 function own(record: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
@@ -215,7 +221,7 @@ export function validateFurnaceState(value: unknown, expectedCoordKey?: string):
     if (!expected.ok || expected.coordKey !== coordinate.coordKey) return { ok: false, reason: "coordinate_mismatch" };
   }
   const input = validPlainStack(record.input, INPUT_IDS);
-  const fuel = validPlainStack(record.fuel, new Set<ItemId>(["coal"]));
+  const fuel = validPlainStack(record.fuel, FUEL_IDS);
   const output = validPlainStack(record.output, OUTPUT_IDS);
   if (input === undefined || fuel === undefined || output === undefined) return { ok: false, reason: "invalid_slot" };
   if (!Number.isInteger(record.burnRemainingMs) || (record.burnRemainingMs as number) < 0
@@ -379,7 +385,7 @@ export function applyFurnaceTransfer(
     const source = player[action.inventorySlot];
     if (!source || source.count < action.count) return transferFailure("empty_source", furnace, player);
     const inputDeposit = action.kind === "deposit_input";
-    if ((inputDeposit && !INPUT_IDS.has(source.itemId)) || (!inputDeposit && source.itemId !== "coal")) {
+    if ((inputDeposit && !INPUT_IDS.has(source.itemId)) || (!inputDeposit && !isFurnaceFuelItem(source.itemId))) {
       return transferFailure("wrong_item", furnace, player);
     }
     const target = inputDeposit ? furnace.input : furnace.fuel;

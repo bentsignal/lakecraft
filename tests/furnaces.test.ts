@@ -5,6 +5,7 @@ import {
   MAX_FURNACE_JSON_LENGTH,
   applyFurnaceTransfer,
   createEmptyFurnace,
+  isFurnaceFuelItem,
   materializeFurnace,
   serializeFurnaceState,
   validateFurnaceCoordinate,
@@ -16,6 +17,10 @@ import {
 import { INVENTORY_SIZE, ITEMS, SMELTING_RECIPES, createEmptyInventory, type Inventory, type ItemId, type ItemStack } from "../shared/game.ts";
 
 const NOW = 1_700_000_000_000;
+
+assert.equal(isFurnaceFuelItem("coal"), true);
+assert.equal(isFurnaceFuelItem("charcoal"), true);
+assert.equal(isFurnaceFuelItem("planks"), false);
 
 function emptyFurnace(now = NOW): FurnaceState {
   const created = createEmptyFurnace("12:7:-9", now);
@@ -55,6 +60,8 @@ for (const mutation of [
 ]) {
   assert.equal(validateFurnaceState({ ...canonical, ...mutation }).ok, false, JSON.stringify(mutation));
 }
+assert.equal(validateFurnaceState({ ...canonical, fuel: { itemId: "charcoal", count: 64 } }).ok, true,
+  "a canonical charcoal fuel stack is persisted without a new furnace shape");
 
 function materialized(state: FurnaceState, now: number): FurnaceState {
   const result = materializeFurnace(state, now);
@@ -88,6 +95,29 @@ if (offline.ok) {
   assert.equal(offline.state.burnRemainingMs, 0);
   const duplicate = materializeFurnace(offline.state, NOW + FURNACE_COAL_BURN_MS);
   assert.deepEqual(duplicate, { ok: true, state: offline.state, cooked: 0, fuelConsumed: 0 });
+}
+
+const charcoalLoaded: FurnaceState = {
+  ...emptyFurnace(),
+  input: { itemId: "raw_iron", count: 8 },
+  fuel: { itemId: "charcoal", count: 1 },
+};
+const charcoalOffline = materializeFurnace(charcoalLoaded, NOW + FURNACE_COAL_BURN_MS);
+assert.equal(charcoalOffline.ok, true);
+if (charcoalOffline.ok) {
+  assert.equal(charcoalOffline.cooked, 8);
+  assert.equal(charcoalOffline.fuelConsumed, 1);
+  assert.equal(charcoalOffline.state.input, null);
+  assert.equal(charcoalOffline.state.fuel, null);
+  assert.deepEqual(charcoalOffline.state.output, { itemId: "iron_ingot", count: 8 });
+  assert.equal(charcoalOffline.state.burnRemainingMs, 0,
+    "one charcoal burns for exactly the same 80 seconds as one coal");
+  assert.deepEqual(materializeFurnace(charcoalOffline.state, NOW + FURNACE_COAL_BURN_MS), {
+    ok: true,
+    state: charcoalOffline.state,
+    cooked: 0,
+    fuelConsumed: 0,
+  }, "replaying charcoal at the same trusted timestamp is idempotent");
 }
 
 const blockedFull: FurnaceState = {
@@ -164,6 +194,45 @@ if (!failedTake.ok) {
   assert.deepEqual(failedTake.inventory, fullInventory);
 }
 
+const mixedFuelInventory = createEmptyInventory();
+mixedFuelInventory[0] = { itemId: "charcoal", count: 2 };
+const coalFuelState: FurnaceState = {
+  ...emptyFurnace(),
+  fuel: { itemId: "coal", count: 63 },
+};
+const rejectedMixedFuel = applyFurnaceTransfer(
+  coalFuelState,
+  mixedFuelInventory,
+  { kind: "deposit_fuel", inventorySlot: 0, count: 1 },
+  NOW,
+);
+assert.equal(rejectedMixedFuel.ok, false);
+if (!rejectedMixedFuel.ok) {
+  assert.equal(rejectedMixedFuel.reason, "incompatible_stack",
+    "coal and charcoal never merge into one persisted fuel stack");
+  assert.deepEqual(rejectedMixedFuel.state, coalFuelState);
+  assert.deepEqual(rejectedMixedFuel.inventory, mixedFuelInventory);
+}
+
+const fullCharcoalState: FurnaceState = {
+  ...emptyFurnace(),
+  fuel: { itemId: "charcoal", count: ITEMS.charcoal.maxStack },
+};
+const fullCharcoalInventory = createEmptyInventory();
+fullCharcoalInventory[0] = { itemId: "charcoal", count: 1 };
+const rejectedFullCharcoal = applyFurnaceTransfer(
+  fullCharcoalState,
+  fullCharcoalInventory,
+  { kind: "deposit_fuel", inventorySlot: 0, count: 1 },
+  NOW,
+);
+assert.equal(rejectedFullCharcoal.ok, false);
+if (!rejectedFullCharcoal.ok) {
+  assert.equal(rejectedFullCharcoal.reason, "no_capacity");
+  assert.deepEqual(rejectedFullCharcoal.state, fullCharcoalState);
+  assert.deepEqual(rejectedFullCharcoal.inventory, fullCharcoalInventory);
+}
+
 // Deterministic property/interleaving run: 1,500 independent histories exercise
 // offline jumps, duplicate materialization, all transfer kinds, and conservation.
 let seed = 0x5eedc0de;
@@ -183,10 +252,12 @@ for (let scenario = 0; scenario < 1_500; scenario += 1) {
   const input = recipeInputs[randomInt(recipeInputs.length)];
   player[0] = { itemId: input, count: 1 + randomInt(64) };
   player[1] = { itemId: "coal", count: 1 + randomInt(32) };
+  player[2] = { itemId: "charcoal", count: 1 + randomInt(32) };
+  const firstFuelSlot = randomInt(2) === 0 ? 1 : 2;
 
   for (const initial of [
     { kind: "deposit_input", inventorySlot: 0, count: 1 + randomInt(player[0]!.count) },
-    { kind: "deposit_fuel", inventorySlot: 1, count: 1 + randomInt(player[1]!.count) },
+    { kind: "deposit_fuel", inventorySlot: firstFuelSlot, count: 1 + randomInt(player[firstFuelSlot]!.count) },
   ] as FurnaceTransferAction[]) {
     const before = totals(player, state);
     const result = applyFurnaceTransfer(state, player, initial, now);
@@ -199,9 +270,21 @@ for (let scenario = 0; scenario < 1_500; scenario += 1) {
 
   for (let step = 0; step < 8; step += 1) {
     now += randomInt(240_001);
+    const beforeInputCount = state.input?.count ?? 0;
+    const beforeFuelCount = state.fuel?.count ?? 0;
+    const beforeOutputCount = state.output?.count ?? 0;
     const advanced = materializeFurnace(state, now);
     assert.equal(advanced.ok, true, `scenario ${scenario} materialize ${step}`);
     if (!advanced.ok) break;
+    assert.equal(beforeFuelCount - (advanced.state.fuel?.count ?? 0), advanced.fuelConsumed,
+      `scenario ${scenario} materialize ${step} exact fuel conservation`);
+    const recipe = SMELTING_RECIPES.find(({ input: recipeInput }) => recipeInput === input);
+    assert.ok(recipe, `scenario ${scenario} has one smelting recipe`);
+    if (!recipe) break;
+    assert.equal(beforeInputCount - (advanced.state.input?.count ?? 0), advanced.cooked,
+      `scenario ${scenario} materialize ${step} exact input conservation`);
+    assert.equal((advanced.state.output?.count ?? 0) - beforeOutputCount, advanced.cooked,
+      `scenario ${scenario} materialize ${step} exact output conservation`);
     const duplicate = materializeFurnace(advanced.state, now);
     assert.deepEqual(duplicate, { ok: true, state: advanced.state, cooked: 0, fuelConsumed: 0 }, `scenario ${scenario} idempotence ${step}`);
     state = advanced.state;
@@ -212,6 +295,7 @@ for (let scenario = 0; scenario < 1_500; scenario += 1) {
     if (state.output) candidates.push({ kind: "take_output", count: 1 + randomInt(state.output.count) });
     if (player[0]) candidates.push({ kind: "deposit_input", inventorySlot: 0, count: 1 + randomInt(player[0].count) });
     if (player[1]) candidates.push({ kind: "deposit_fuel", inventorySlot: 1, count: 1 + randomInt(player[1].count) });
+    if (player[2]) candidates.push({ kind: "deposit_fuel", inventorySlot: 2, count: 1 + randomInt(player[2].count) });
     if (candidates.length === 0) continue;
     const action = candidates[randomInt(candidates.length)];
     const before = totals(player, state);
@@ -230,4 +314,5 @@ for (let scenario = 0; scenario < 1_500; scenario += 1) {
 }
 
 assert.equal(ITEMS.coal.maxStack, 64);
-console.log("lakecraft deterministic furnace model tests: ok (1,500 randomized histories)");
+assert.equal(ITEMS.charcoal.maxStack, 64);
+console.log("lakecraft deterministic coal/charcoal furnace model tests: ok (1,500 randomized histories)");

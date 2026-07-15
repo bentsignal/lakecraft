@@ -1,6 +1,7 @@
 import {
   FURNACE_COAL_BURN_MS,
   FURNACE_COOK_MS,
+  isFurnaceFuelItem,
   materializeFurnace,
   type FurnaceState,
   type FurnaceTransferAction,
@@ -63,7 +64,7 @@ function FurnaceSlot({
 }
 
 function inventoryDepositAction(stack: ItemStack, inventorySlot: number): FurnaceTransferAction | null {
-  if (stack.itemId === "coal") {
+  if (isFurnaceFuelItem(stack.itemId)) {
     return { kind: "deposit_fuel", inventorySlot, count: stack.count };
   }
   if (FURNACE_INPUTS.has(stack.itemId)) {
