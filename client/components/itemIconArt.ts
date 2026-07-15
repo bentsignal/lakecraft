@@ -22,6 +22,8 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
     palette = bow(grid);
   } else if (itemId === "flint_and_steel") {
     palette = flintAndSteel(grid);
+  } else if (itemId === "shears") {
+    palette = shears(grid);
   } else if (item.category === "tool" && item.tool) {
     palette = tool(grid, item.tool.kind, item.tool.tier);
     variant = `${item.tool.tier}-${item.tool.kind}`;
@@ -141,6 +143,18 @@ function flintAndSteel(g: Grid): Palette {
   return p;
 }
 
+function shears(g: Grid): Palette {
+  const p = { o: "#272b2a", s: "#aeb8b5", l: "#edf1ee", d: "#68716e", h: "#77513a", r: "#bd7652" };
+  // Crossed iron blades meeting at a warm pivot, with two open finger loops.
+  diagonal(g, 4, 3, 1, 1, 8, "o", 2); diagonal(g, 5, 3, 1, 1, 7, "s");
+  diagonal(g, 11, 2, -1, 1, 8, "o", 2); diagonal(g, 11, 3, -1, 1, 7, "s");
+  dots(g, "l", [[5,3],[6,4],[10,3],[9,4],[8,6]]); dots(g, "d", [[7,7],[9,7],[10,9]]);
+  box(g, 6, 8, 4, 4, "o"); box(g, 7, 9, 2, 2, "r");
+  dots(g, "o", [[3,10],[2,11],[2,12],[3,13],[4,13],[5,12],[5,11], [11,10],[10,11],[10,12],[11,13],[12,13],[13,12],[13,11]]);
+  dots(g, "h", [[3,11],[3,12],[4,12], [11,11],[11,12],[12,12]]);
+  return p;
+}
+
 function armor(g: Grid, slot: ArmorSlot, color: string): Palette {
   const p = { o:mix(color,"#161817",.72), m:color, l:mix(color,"#ffffff",.36), d:mix(color,"#000000",.3) };
   if (slot === "head") { box(g,3,3,10,8,"o"); box(g,4,2,8,8,"m"); box(g,5,3,6,2,"l"); box(g,5,7,6,4,"d"); box(g,6,7,4,2,""); }
@@ -191,6 +205,21 @@ function material(g: Grid, id: ItemId): Palette {
 function food(g: Grid, id: ItemId): Palette {
   const color = ITEMS[id].color, cooked = id.startsWith("cooked_"), rotten = id === "rotten_flesh";
   const p = { o:"#38221f", m:color, l:mix(color,"#ffffff",cooked?.2:.38), d:mix(color,"#000000",.32), b:rotten?"#a6a15e":"#eee0bc" };
+  if (id === "apple") {
+    const applePalette = { o: "#421a18", m: "#c83228", l: "#ef6550", d: "#85211f", s: "#5f3b20", g: "#56823b", h: "#8db455" };
+    // Rounded red fruit, indented at the stem, with one angled green leaf.
+    dots(g,"o",[[6,3],[7,3],[9,3],[10,3],[4,4],[5,4],[6,4],[7,4],[8,4],[9,4],[10,4],[11,4],
+      [3,5],[4,5],[5,5],[6,5],[7,5],[8,5],[9,5],[10,5],[11,5],[12,5],[3,6],[4,6],[5,6],
+      [6,6],[7,6],[8,6],[9,6],[10,6],[11,6],[12,6],[3,7],[4,7],[5,7],[6,7],[7,7],[8,7],
+      [9,7],[10,7],[11,7],[12,7],[3,8],[4,8],[5,8],[6,8],[7,8],[8,8],[9,8],[10,8],[11,8],
+      [12,8],[4,9],[5,9],[6,9],[7,9],[8,9],[9,9],[10,9],[11,9],[4,10],[5,10],[6,10],
+      [7,10],[8,10],[9,10],[10,10],[11,10],[5,11],[6,11],[7,11],[8,11],[9,11],[10,11],
+      [6,12],[7,12],[8,12],[9,12]]);
+    box(g,4,5,8,5,"m"); box(g,5,9,6,2,"m"); box(g,6,11,4,1,"m");
+    dots(g,"l",[[5,5],[6,5],[4,6],[5,6],[4,7]]); dots(g,"d",[[11,6],[11,7],[10,9],[9,11]]);
+    box(g,7,1,2,3,"s"); dots(g,"g",[[9,1],[10,1],[11,1],[9,2],[10,2]]); dots(g,"h",[[9,1],[10,1]]);
+    return applePalette;
+  }
   if (id === "raw_chicken" || id === "cooked_chicken") {
     // A compact diagonal drumstick: broad meat at the upper left, narrow bone
     // and two knuckles at the lower right. Cooked meat gains a crisp edge and

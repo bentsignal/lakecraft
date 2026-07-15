@@ -26,7 +26,7 @@ const TUPLE_CATALOGS = [
   {
     name: "UTILITY_ITEM_SPECS",
     anchor: "const UTILITY_ITEM_SPECS",
-    rows: 1,
+    rows: 2,
     widths: [7],
     scalarPresentationIndexes: [1, 2, 3, 4, 5],
   },
@@ -40,7 +40,7 @@ const TUPLE_CATALOGS = [
   {
     name: "FOOD_ITEM_SPECS",
     anchor: "const FOOD_ITEM_SPECS",
-    rows: 9,
+    rows: 10,
     widths: [7],
     scalarPresentationIndexes: [1, 2, 4, 5, 6],
   },
@@ -77,7 +77,7 @@ const TUPLE_CATALOGS = [
 ];
 
 const OBJECT_CATALOGS = [
-  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 26 },
+  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 28 },
   { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 7 },
 ];
 

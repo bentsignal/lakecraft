@@ -52,7 +52,7 @@ assert.equal(ITEMS.door.placesBlock, "door");
 assert.equal(ITEMS.bed.placesBlock, "bed");
 assert.equal(new Set(RECIPES.map(({ id }) => id)).size, RECIPES.length, "recipe ids stay unique");
 
-const fieldRecipeIds = ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "flint_and_steel"];
+const fieldRecipeIds = ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "flint_and_steel", "shears"];
 assert.deepEqual(availableRecipes("field").map(({ id }) => id), fieldRecipeIds, "the 2x2 field kit exposes only compact recipes");
 assert.deepEqual(availableRecipes("crafting_table").map(({ id }) => id), RECIPES.map(({ id }) => id), "a crafting table includes field recipes");
 for (const fieldRecipeId of fieldRecipeIds) {

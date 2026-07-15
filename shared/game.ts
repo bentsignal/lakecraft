@@ -66,6 +66,8 @@ export type ItemId = BlockId
   | "gunpowder"
   | "flint"
   | "flint_and_steel"
+  | "shears"
+  | "apple"
   | "pork"
   | "beef"
   | "mutton"
@@ -260,14 +262,14 @@ function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSl
   return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color, armor: { slot, protection, maxDurability: durabilityBase * slotMultiplier } };
 }
 
-function foodItem(id: "pork" | "beef" | "mutton" | "raw_chicken" | "cooked_pork" | "cooked_beef" | "cooked_mutton" | "cooked_chicken" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
+function foodItem(id: "apple" | "pork" | "beef" | "mutton" | "raw_chicken" | "cooked_pork" | "cooked_beef" | "cooked_mutton" | "cooked_chicken" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
   return { id, label, shortLabel, description, category: "food", maxStack: 64, glyph, color, food: { hunger } };
 }
 
 type BasicItemSpec = readonly [id: ItemId, label: string, shortLabel: string, description: string, glyph: string, color: string];
 type FoodItemSpec = readonly [id: Parameters<typeof foodItem>[0], label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string];
 type RangedItemSpec = readonly [id: "bow", label: string, shortLabel: string, description: string, category: "tool", maxStack: 1, glyph: string, color: string, maxDurability: number, maxChargeMs: number];
-type UtilityItemSpec = readonly [id: "flint_and_steel", label: string, shortLabel: string, description: string, glyph: string, color: string, maxDurability: number];
+type UtilityItemSpec = readonly [id: "flint_and_steel" | "shears", label: string, shortLabel: string, description: string, glyph: string, color: string, maxDurability: number];
 
 const BLOCK_ITEM_SPECS = [
   ["grass", "GRS", "▨"], ["dirt", "DRT", "▦"], ["stone", "STN", "◆"], ["cobblestone", "COB", "▦"],
@@ -296,9 +298,10 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["flint", "Flint", "FLT", "A sharp stone chip recovered while shoveling gravel.", "◆", "#3f4543"],
 ];
 
-const UTILITY_ITEM_SPECS: readonly UtilityItemSpec[] = [[
-  "flint_and_steel", "Flint and Steel", "F&S", "A steel striker for lighting TNT. It lasts for 64 ignitions.", "⌁", "#b9bfbc", 64,
-]];
+const UTILITY_ITEM_SPECS: readonly UtilityItemSpec[] = [
+  ["flint_and_steel", "Flint and Steel", "F&S", "A steel striker for lighting TNT. It lasts for 64 ignitions.", "⌁", "#b9bfbc", 64],
+  ["shears", "Shears", "SHR", "Iron shears that preserve leaf blocks when clipping them.", "✂", "#c8cfcc", 238],
+];
 
 const RANGED_ITEM_SPECS: readonly RangedItemSpec[] = [[
   "bow", "Bow", "BOW", "A ranged weapon that fires arrows after being drawn.",
@@ -306,6 +309,7 @@ const RANGED_ITEM_SPECS: readonly RangedItemSpec[] = [[
 ]];
 
 const FOOD_ITEM_SPECS: readonly FoodItemSpec[] = [
+  ["apple", "Apple", "APL", 4, "A crisp oak apple that restores four hunger points.", "●", "#c83228"],
   ["pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"],
   ["beef", "Raw Beef", "BEF", 4, "Raw beef from a cow.", "◆", "#a9544d"],
   ["mutton", "Raw Mutton", "MTN", 3, "Raw mutton from a sheep.", "◇", "#b66b63"],
@@ -429,6 +433,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
   { id: "tnt", label: "TNT", note: "Five gunpowder and four sand make one volatile block.", craftingContext: "crafting_table", ingredients: [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }], output: { itemId: "tnt", count: 1 } },
   { id: "flint_and_steel", label: "Flint and steel", note: "Strike flint against iron to make a reusable igniter.", craftingContext: "field", ingredients: [{ itemId: "iron_ingot", count: 1 }, { itemId: "flint", count: 1 }], output: { itemId: "flint_and_steel", count: 1 } },
+  { id: "shears", label: "Shears", note: "Two iron ingots make durable clipping shears.", craftingContext: "field", ingredients: [{ itemId: "iron_ingot", count: 2 }], output: { itemId: "shears", count: 1 } },
   { id: "bow", label: "Bow", note: "Three sticks and three string make a ranged weapon.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 3 }, { itemId: "string", count: 3 }], output: { itemId: "bow", count: 1 } },
   { id: "arrows", label: "Arrows", note: "Flint, a stick, and a feather make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "flint", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "feather", count: 1 }], output: { itemId: "arrow", count: 4 } },
   ...GENERATED_TOOL_RECIPES,
@@ -896,12 +901,15 @@ export function getMiningDrop(blockId: BlockId, itemId?: ItemId | null): ItemQua
 }
 
 export const FLINT_DROP_CHANCE_DENOMINATOR = 10;
+export const APPLE_DROP_CHANCE_DENOMINATOR = 20;
 
 /**
  * Coordinate-derived mining loot for the authoritative world operation path.
- * A shovel replaces exactly one in ten gravel drops with flint. No client RNG
- * or extra database row is involved, and every coordinate always resolves to
- * the same conserved result in multiplayer and offline play.
+ * A shovel replaces exactly one in ten gravel drops with flint. Oak leaves
+ * drop themselves only when cut with shears; otherwise they have a fixed
+ * one-in-twenty coordinate-derived chance to drop an apple. No client RNG or
+ * extra database row is involved, and every coordinate always resolves to the
+ * same conserved result in multiplayer and offline play.
  */
 export function getDeterministicMiningDrop(
   blockId: BlockId,
@@ -911,8 +919,17 @@ export function getDeterministicMiningDrop(
   z: number,
 ): ItemQuantity | null {
   const ordinary = getMiningDrop(blockId, itemId);
-  if (blockId !== "gravel" || !itemId || ITEMS[itemId].tool?.kind !== "shovel"
-    || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !Number.isSafeInteger(z)) return ordinary;
+  if (blockId === "leaves" && itemId === "shears") return { itemId: "leaves", count: 1 };
+  const hasCanonicalCoordinate = Number.isSafeInteger(x) && Number.isSafeInteger(y) && Number.isSafeInteger(z);
+  if (blockId === "leaves") {
+    if (!hasCanonicalCoordinate) return null;
+    const leafHash = (Math.imul(x, 73_856_093) ^ Math.imul(y, 19_349_663) ^ Math.imul(z, 83_492_791)
+      ^ 0x5bd1e995) >>> 0;
+    return leafHash % APPLE_DROP_CHANCE_DENOMINATOR === 0
+      ? { itemId: "apple", count: 1 }
+      : null;
+  }
+  if (blockId !== "gravel" || !itemId || ITEMS[itemId].tool?.kind !== "shovel" || !hasCanonicalCoordinate) return ordinary;
   const coordinateHash = (Math.imul(x, 73_856_093) ^ Math.imul(y, 19_349_663) ^ Math.imul(z, 83_492_791)) >>> 0;
   return coordinateHash % FLINT_DROP_CHANCE_DENOMINATOR === 0
     ? { itemId: "flint", count: 1 }

@@ -329,7 +329,9 @@ export function SinglePlayerApp() {
         if (!toggledDoor && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
           const gameBlock = ENGINE_TO_GAME[previousBlock];
           const drop = gameBlock ? getDeterministicMiningDrop(gameBlock, held, edit.x, edit.y, edit.z) : null;
-          const wear = applyConfirmedToolUse(next, selectedRef.current, "mine", held);
+          const wear = held === "shears" && gameBlock === "leaves"
+            ? applyConfirmedDurableItemUse(next, selectedRef.current, held)
+            : applyConfirmedToolUse(next, selectedRef.current, "mine", held);
           next = wear.inventory;
           if (drop) next = addItem(next, drop.itemId, drop.count).inventory;
         } else if (!toggledDoor && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR && held) {

@@ -3,6 +3,7 @@ import {
   INVENTORY_SIZE,
   ITEMS,
   addItem,
+  applyConfirmedDurableItemUse,
   applyConfirmedToolUse,
   cloneInventory,
   getDeterministicMiningDrop,
@@ -12,7 +13,7 @@ import {
   type ItemId,
   type ItemQuantity,
   type ItemStack,
-  type ToolUseResult,
+  type DurableItemUseResult,
 } from "./game.ts";
 import {
   WORLD_CHUNK_BLOCK_TYPES,
@@ -112,7 +113,7 @@ export type ResolvedMineWorldBlockOperation = ResolvedOperationBase & {
   nextBlock: "air";
   drop: ItemQuantity | null;
   consumed: null;
-  toolUse: ToolUseResult;
+  toolUse: DurableItemUseResult;
 };
 
 export type ResolvedPlaceWorldBlockOperation = ResolvedOperationBase & {
@@ -446,12 +447,21 @@ export function resolveWorldBlockOperation(
 
   const gameBlock = gameBlockForWorldBlock(request.expectedBlock);
   if (!gameBlock) return { ok: false, reason: "invalid_state" };
-  const toolUse = applyConfirmedToolUse(
-    state.inventory,
-    request.selectedHotbar,
-    "mine",
-    request.expectedHeldItem,
-  );
+  // Shears are a durable utility, not an axe-shaped tool. Spend their one
+  // durability only inside this confirmed mining resolution; every rejected
+  // operation returns before the immutable result can be persisted.
+  const toolUse = request.expectedHeldItem === "shears" && gameBlock === "leaves"
+    ? applyConfirmedDurableItemUse(
+      state.inventory,
+      request.selectedHotbar,
+      request.expectedHeldItem,
+    )
+    : applyConfirmedToolUse(
+      state.inventory,
+      request.selectedHotbar,
+      "mine",
+      request.expectedHeldItem,
+    );
   const drop = getDeterministicMiningDrop(gameBlock, request.expectedHeldItem, request.x, request.y, request.z);
   const added = drop ? addItem(toolUse.inventory, drop.itemId, drop.count) : { inventory: toolUse.inventory, remainder: 0 };
   if (added.remainder > 0) return { ok: false, reason: "inventory_full" };
