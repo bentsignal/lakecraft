@@ -15,6 +15,7 @@ export interface ChestDrawerProps {
   status?: string;
   error?: string;
   retryAvailable?: boolean;
+  eyebrow?: string;
   onClose: () => void;
   onRetry?: () => void;
   onTransfer: (direction: ChestTransferDirection, index: number) => void;
@@ -40,13 +41,13 @@ function StorageGrid({ inventory, busy, direction, onTransfer }: { inventory: In
   );
 }
 
-export function ChestDrawer({ open, chestInventory, playerInventory, busy = false, status, error, retryAvailable = false, onClose, onRetry, onTransfer }: ChestDrawerProps) {
+export function ChestDrawer({ open, chestInventory, playerInventory, busy = false, status, error, retryAvailable = false, eyebrow = "SHARED LAKEBED CONTAINER", onClose, onRetry, onTransfer }: ChestDrawerProps) {
   if (!open) return null;
   return (
     <div className="lc-chest-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <style>{CHEST_CSS}</style>
       <section className="lc-chest" role="dialog" aria-modal="true" aria-labelledby="lc-chest-title">
-        <header><div><small>SHARED LAKEBED CONTAINER</small><h2 id="lc-chest-title">Chest</h2></div><button disabled={busy} onClick={onClose} type="button">Close · E</button></header>
+        <header><div><small>{eyebrow}</small><h2 id="lc-chest-title">Chest</h2></div><button disabled={busy} onClick={onClose} type="button">Close · E</button></header>
         <div className="lc-chest-grid-wrap">
           <section><div className="lc-chest-section-head"><strong>Chest storage</strong><small>Click a stack to take it</small></div><StorageGrid busy={busy} direction="to_player" inventory={chestInventory} onTransfer={onTransfer} /></section>
           <section><div className="lc-chest-section-head"><strong>Your pack</strong><small>Click a stack to store it</small></div><StorageGrid busy={busy} direction="to_chest" inventory={playerInventory} onTransfer={onTransfer} /></section>

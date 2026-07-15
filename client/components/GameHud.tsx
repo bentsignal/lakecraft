@@ -24,6 +24,7 @@ export type GameHudProps = {
   equipment: Equipment;
   selectedIndex: number;
   inventoryOpen: boolean;
+  modalOpen?: boolean;
   craftingContext: CraftingContext;
   messages?: readonly HudMessage[];
   health?: number;
@@ -87,6 +88,7 @@ export function GameHud({
   equipment,
   selectedIndex,
   inventoryOpen,
+  modalOpen = false,
   craftingContext,
   messages = [],
   health = 20,
@@ -134,19 +136,19 @@ export function GameHud({
       <div className="lc-hud">
         <FirstPersonHeldItem
           actionToken={handActionToken}
-          hidden={hideFirstPersonFeedback || inventoryOpen || mobileUnsupported || deathScreenOpen}
+          hidden={hideFirstPersonFeedback || inventoryOpen || modalOpen || mobileUnsupported || deathScreenOpen}
           miningProgress={miningProgress}
           paused={pauseOpen}
           stack={inventory[selectedIndex] ?? null}
         />
-        {!deathScreenOpen && !pauseOpen && !inventoryOpen ? <Crosshair /> : null}
-        {!deathScreenOpen && !inventoryOpen && !pauseOpen ? (
+        {!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null}
+        {!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen ? (
           <div className="lc-survival-wrap">
             <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} />
             <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
           </div>
         ) : null}
-        <PlayerList players={players} visible={showPlayerList && !pauseOpen && !deathScreenOpen} />
+        <PlayerList players={players} visible={showPlayerList && !pauseOpen && !modalOpen && !deathScreenOpen} />
         {!deathScreenOpen ? <ToastSurface messages={messages} onDismiss={onDismissMessage} /> : null}
       </div>
       <PauseMenu

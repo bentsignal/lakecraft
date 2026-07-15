@@ -32,6 +32,7 @@ npx lakebed auth as alice
 - At a crafting table, arrange two rows of plank–stick–plank to craft three connecting oak fences
 - Arrange two rows of stick–plank–stick to craft an oak fence gate; right click it to open or close the passage
 - Right click a crafting table, furnace, chest, door, or bed to interact; right click held food to eat
+- Single-player chests and furnaces use the same full-stack transfer and smelting rules, but persist entirely in the local world save
 - Double-click food in the pack to eat it
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
 - `Q` drops one held item into the shared world for another player to pick up

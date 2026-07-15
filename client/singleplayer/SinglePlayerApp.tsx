@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { GameHud, type HudMessage } from "../components";
+import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
 import {
   BLOCK,
   createVoxelEngine,
@@ -54,9 +54,16 @@ import {
   createLocalContainers,
   exportLocalContainersSnapshot,
   importLocalContainersSnapshot,
-  removeLocalContainersAt,
+  materializeLocalFurnace,
+  openLocalChest,
+  openLocalFurnace,
+  recoverLocalContainerContents,
+  transferLocalChestFullStack,
+  transferLocalFurnaceFullStack,
   type LocalContainers,
 } from "./localContainers.ts";
+import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
+import type { ChestInventory } from "../../shared/chests.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -183,6 +190,13 @@ export function SinglePlayerApp() {
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(true);
+  const [activeChestKey, setActiveChestKey] = useState<string | null>(null);
+  const [chestInventory, setChestInventory] = useState<ChestInventory>([]);
+  const [activeFurnaceKey, setActiveFurnaceKey] = useState<string | null>(null);
+  const [furnaceState, setFurnaceState] = useState<FurnaceState | null>(null);
+  const [containerStatus, setContainerStatus] = useState("");
+  const [containerError, setContainerError] = useState("");
+  const containerOpen = activeChestKey !== null || activeFurnaceKey !== null;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [handActionToken, setHandActionToken] = useState(0);
   const [messages, setMessages] = useState<HudMessage[]>([]);
@@ -281,6 +295,114 @@ export function SinglePlayerApp() {
     if (next === selectedRef.current) return;
     selectedRef.current = next;
     setSelected(next);
+    markWorldDirty();
+  }
+
+  function closeActiveContainer(requestPointerLock = true): void {
+    if (activeFurnaceKey) {
+      const materialized = materializeLocalFurnace(containersRef.current, activeFurnaceKey, Date.now());
+      if (materialized.ok) {
+        containersRef.current = materialized.containers;
+        setFurnaceState(materialized.furnace);
+        markWorldDirty();
+      }
+    }
+    setActiveChestKey(null);
+    setActiveFurnaceKey(null);
+    setContainerError("");
+    setContainerStatus("");
+    if (requestPointerLock) engineRef.current?.requestPointerLock();
+  }
+
+  function transferChestStack(direction: ChestTransferDirection, index: number): void {
+    if (!activeChestKey) return;
+    const result = transferLocalChestFullStack(
+      containersRef.current,
+      activeChestKey,
+      inventoryRef.current,
+      { direction: direction === "to_chest" ? "to_chest" : "from_chest", sourceSlot: index },
+    );
+    if (!result.ok) {
+      setContainerError(result.reason === "no_capacity" ? "That full stack will not fit." : "Chest transfer failed safely.");
+      return;
+    }
+    containersRef.current = result.containers;
+    inventoryRef.current = result.inventory;
+    setInventory(result.inventory);
+    setChestInventory(result.containers.chests.get(activeChestKey) ?? []);
+    setContainerError("");
+    setContainerStatus(`Moved ${result.moved.count} ${ITEMS[result.moved.itemId].label}.`);
+    markWorldDirty();
+  }
+
+  function transferFurnaceStack(action: FurnaceTransferAction): void {
+    if (!activeFurnaceKey) return;
+    const localAction = action.kind === "deposit_input" || action.kind === "deposit_fuel"
+      ? { kind: action.kind, inventorySlot: action.inventorySlot }
+      : { kind: action.kind };
+    const result = transferLocalFurnaceFullStack(
+      containersRef.current,
+      activeFurnaceKey,
+      inventoryRef.current,
+      localAction,
+      Date.now(),
+    );
+    if (!result.ok) {
+      setContainerError(result.reason === "no_capacity" || result.reason === "incompatible_stack"
+        ? "That full stack will not fit."
+        : result.reason === "wrong_item" ? "That item cannot go in this furnace slot."
+          : "Furnace transfer failed safely.");
+      return;
+    }
+    containersRef.current = result.containers;
+    inventoryRef.current = result.inventory;
+    setInventory(result.inventory);
+    setFurnaceState(result.furnace);
+    setContainerError("");
+    setContainerStatus(`Moved ${result.moved.count} ${ITEMS[result.moved.itemId].label}.`);
+    markWorldDirty();
+  }
+
+  function settleBrokenContainerContents(x: number, y: number, z: number, block: EngineBlockId): void {
+    const coordKey = `${x}:${y}:${z}`;
+    if (block === BLOCK.FURNACE) {
+      const materialized = materializeLocalFurnace(containersRef.current, coordKey, Date.now());
+      if (materialized.ok) containersRef.current = materialized.containers;
+    }
+    const recovered = recoverLocalContainerContents(
+      containersRef.current,
+      coordKey,
+      inventoryRef.current,
+      SINGLEPLAYER_SAVE_LIMITS.drops - dropsRef.current.length,
+    );
+    if (!recovered.ok) {
+      setMessages((current) => [...current.slice(-2), {
+        id: `container-protected-${coordKey}-${Date.now()}`,
+        text: "Container contents protected",
+        detail: "The saved contents will return if you place the same container at this coordinate.",
+        tone: "warning",
+      }]);
+      return;
+    }
+    const droppedAt = Date.now();
+    const recoveredDrops = recovered.overflow.map((stack, index): DroppedItemRenderItem => ({
+      dropId: `local_container_${droppedAt}_${x}_${y}_${z}_${index}`.slice(0, 96),
+      item: { ...stack },
+      x: x + 0.35 + (index % 3) * 0.15,
+      y: y + 0.45,
+      z: z + 0.35 + (Math.floor(index / 3) % 3) * 0.15,
+      droppedAt,
+    }));
+    inventoryRef.current = recovered.inventory;
+    dropsRef.current = [...dropsRef.current, ...recoveredDrops];
+    engineRef.current?.setDroppedItems(dropsRef.current);
+    containersRef.current = recovered.containers;
+    setMessages((current) => [...current.slice(-2), {
+      id: `container-recovered-${coordKey}-${droppedAt}`,
+      text: "Container emptied safely",
+      detail: recovered.overflow.length > 0 ? "Contents moved to your pack and the ground." : "Contents moved into your pack.",
+      tone: "success",
+    }]);
     markWorldDirty();
   }
 
@@ -512,8 +634,7 @@ export function SinglePlayerApp() {
         }
         editsRef.current = [...nextEdits.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
         if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
-          const removed = removeLocalContainersAt(containersRef.current, `${edit.x}:${edit.y}:${edit.z}`);
-          if (removed.ok) containersRef.current = removed.containers;
+          settleBrokenContainerContents(edit.x, edit.y, edit.z, previousBlock);
         }
         markWorldDirty();
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
@@ -591,6 +712,8 @@ export function SinglePlayerApp() {
         setDeathScreenOpen(true);
         setPauseOpen(false);
         setInventoryOpen(false);
+        setActiveChestKey(null);
+        setActiveFurnaceKey(null);
         document.exitPointerLock();
       },
       onHotbarSelect: selectHotbar,
@@ -605,6 +728,39 @@ export function SinglePlayerApp() {
         return true;
       },
       onInteractBlock: (target) => {
+        const coordKey = `${target.block.x}:${target.block.y}:${target.block.z}`;
+        if (target.block.block === BLOCK.CHEST) {
+          const opened = openLocalChest(containersRef.current, coordKey);
+          if (!opened.ok) {
+            setContainerError("This chest could not be opened safely.");
+            return true;
+          }
+          containersRef.current = opened.containers;
+          setChestInventory(opened.inventory);
+          setActiveChestKey(coordKey);
+          setActiveFurnaceKey(null);
+          setContainerError("");
+          setContainerStatus(opened.created ? "New local chest." : "Local chest opened.");
+          if (opened.created) markWorldDirty();
+          document.exitPointerLock();
+          return true;
+        }
+        if (target.block.block === BLOCK.FURNACE) {
+          const opened = openLocalFurnace(containersRef.current, coordKey, Date.now());
+          if (!opened.ok) {
+            setContainerError("This furnace could not be opened safely.");
+            return true;
+          }
+          containersRef.current = opened.containers;
+          setFurnaceState(opened.furnace);
+          setActiveFurnaceKey(coordKey);
+          setActiveChestKey(null);
+          setContainerError("");
+          setContainerStatus(opened.created ? "New local furnace." : "Local furnace opened.");
+          if (opened.created) markWorldDirty();
+          document.exitPointerLock();
+          return true;
+        }
         if (target.block.block === BLOCK.SAPLING
           && inventoryRef.current[selectedRef.current]?.itemId === "bone_meal") {
           const localEngine = engineRef.current;
@@ -711,14 +867,14 @@ export function SinglePlayerApp() {
   }, []);
 
   useEffect(() => {
-    const paused = pauseOpen || inventoryOpen || deathScreenOpen || document.visibilityState !== "visible";
+    const paused = pauseOpen || inventoryOpen || containerOpen || deathScreenOpen || document.visibilityState !== "visible";
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
-  }, [pauseOpen, inventoryOpen, deathScreenOpen]);
+  }, [pauseOpen, inventoryOpen, containerOpen, deathScreenOpen]);
 
   useEffect(() => {
     const sample = () => {
-      const active = !pauseOpen && !inventoryOpen && !deathScreenOpen && document.visibilityState === "visible";
+      const active = !pauseOpen && !inventoryOpen && !containerOpen && !deathScreenOpen && document.visibilityState === "visible";
       if (active) markWorldDirty();
       const next = sampleSaveCadence(saveCadenceRef.current, performance.now(), active);
       saveCadenceRef.current = next.state;
@@ -727,7 +883,7 @@ export function SinglePlayerApp() {
     sample();
     const interval = window.setInterval(sample, 1_000);
     const onVisibilityChange = () => {
-      const paused = document.visibilityState !== "visible" || pauseOpen || inventoryOpen || deathScreenOpen;
+      const paused = document.visibilityState !== "visible" || pauseOpen || inventoryOpen || containerOpen || deathScreenOpen;
       engineRef.current?.setPaused(paused);
       setLocalFusesPausedRef.current(paused);
       sample();
@@ -737,7 +893,7 @@ export function SinglePlayerApp() {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [pauseOpen, inventoryOpen, deathScreenOpen]);
+  }, [pauseOpen, inventoryOpen, containerOpen, deathScreenOpen]);
 
   useEffect(() => {
     const saveBeforeLeaving = () => { performSaveRef.current("quit"); };
@@ -756,6 +912,11 @@ export function SinglePlayerApp() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.code === "KeyE" || event.code === "Escape") && !event.repeat && containerOpen) {
+        event.preventDefault();
+        closeActiveContainer();
+        return;
+      }
       if (event.code === "KeyE" && !event.repeat && !inventoryOpen) {
         event.preventDefault();
         setInventoryOpen(true);
@@ -766,7 +927,7 @@ export function SinglePlayerApp() {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [inventoryOpen]);
+  }, [inventoryOpen, containerOpen, activeFurnaceKey]);
 
   const lastSavedText = lastSavedAt === null ? "Not saved yet"
     : `Last saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
@@ -788,10 +949,12 @@ export function SinglePlayerApp() {
         equipment={equipment}
         handActionToken={handActionToken}
         health={health}
+        hideFirstPersonFeedback={containerOpen}
         hunger={hunger}
         inventory={inventory}
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
+        modalOpen={containerOpen}
         messages={messages}
         miningProgress={0}
         onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); engineRef.current?.requestPointerLock(); }}
@@ -828,6 +991,26 @@ export function SinglePlayerApp() {
         saveStatusText={saveStatusText}
         respawning={respawning}
         worldName="Local World"
+      />
+      <FurnaceDrawer
+        busy={false}
+        error={containerError}
+        furnace={furnaceState}
+        inventory={inventory}
+        onClose={() => closeActiveContainer()}
+        onTransfer={transferFurnaceStack}
+        open={activeFurnaceKey !== null}
+        status={containerStatus || "Local chest contents stay in this browser world."}
+      />
+      <ChestDrawer
+        chestInventory={chestInventory}
+        error={containerError}
+        eyebrow="LOCAL SINGLE-PLAYER CONTAINER"
+        onClose={() => closeActiveContainer()}
+        onTransfer={transferChestStack}
+        open={activeChestKey !== null}
+        playerInventory={inventory}
+        status={containerStatus}
       />
     </main>
   );

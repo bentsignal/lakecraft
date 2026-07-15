@@ -7,6 +7,7 @@ import {
   materializeLocalFurnace,
   openLocalChest,
   openLocalFurnace,
+  recoverLocalContainerContents,
   removeLocalContainersAt,
   transferLocalChestFullStack,
   transferLocalFurnaceFullStack,
@@ -71,6 +72,14 @@ containers = cooked.containers;
 assert.equal(cooked.cooked, 2);
 assert.deepEqual(cooked.furnace.output, { itemId: "iron_ingot", count: 2 });
 
+const storedForBreak = transferLocalChestFullStack(containers, "4:8:-3", inventory, {
+  direction: "to_chest", sourceSlot: 0,
+});
+assert.equal(storedForBreak.ok, true);
+if (!storedForBreak.ok) throw new Error(storedForBreak.reason);
+containers = storedForBreak.containers;
+inventory = storedForBreak.inventory;
+
 const exported = exportLocalContainersSnapshot(containers);
 assert.equal(exported.ok, true);
 if (!exported.ok) throw new Error(exported.reason);
@@ -83,10 +92,22 @@ assert.equal(importLocalContainersSnapshot({ ...exported.snapshot, extra: true }
 const duplicate = { chests: [exported.snapshot.chests[0], exported.snapshot.chests[0]], furnaces: [] };
 assert.equal(importLocalContainersSnapshot(duplicate).ok, false, "duplicate coordinates fail closed");
 
-const removed = removeLocalContainersAt(roundTrip.containers, "4:8:-3");
+const fullPack = Array.from({ length: 36 }, () => ({ itemId: "dirt" as const, count: 64 }));
+const blockedRecovery = recoverLocalContainerContents(roundTrip.containers, "4:8:-3", fullPack, 0);
+assert.equal(blockedRecovery.ok, false, "a full drop pool cannot silently erase chest contents");
+assert.equal(blockedRecovery.containers.chests.has("4:8:-3"), true, "failed recovery preserves the original container row");
+
+const recovered = recoverLocalContainerContents(roundTrip.containers, "4:8:-3", fullPack, 1);
+assert.equal(recovered.ok, true);
+if (!recovered.ok) throw new Error(recovered.reason);
+assert.deepEqual(recovered.overflow, [{ itemId: "brick", count: 32 }]);
+assert.equal(recovered.containers.chests.has("4:8:-3"), false);
+assert.equal(recovered.recovered.reduce((sum, stack) => sum + stack.count, 0), 32);
+
+const removed = removeLocalContainersAt(recovered.containers, "6:8:-3");
 assert.equal(removed.ok, true);
 if (!removed.ok) throw new Error(removed.reason);
-assert.equal(removed.removedChest, true);
-assert.equal(removed.removedFurnace, false);
+assert.equal(removed.removedChest, false);
+assert.equal(removed.removedFurnace, true);
 
 console.log("local chest/furnace conservation, elapsed cooking, strict snapshot, and removal tests passed");

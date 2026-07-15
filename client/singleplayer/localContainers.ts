@@ -20,6 +20,7 @@ import {
 import {
   INVENTORY_SIZE,
   ITEMS,
+  addItemStack,
   cloneInventory,
   createEmptyInventory,
   maxItemDurability,
@@ -361,6 +362,44 @@ export function removeLocalContainersAt(
   const removedChest = chests.delete(coordKey);
   const removedFurnace = furnaces.delete(coordKey);
   return { ok: true, containers: { chests, furnaces }, removedChest, removedFurnace };
+}
+
+/**
+ * Recovers every stored stack before a local chest/furnace block disappears.
+ * The operation is all-or-nothing when the caller cannot represent every
+ * overflow stack as a world drop, so a full world never silently erases items.
+ */
+export function recoverLocalContainerContents(
+  containers: LocalContainers,
+  rawCoordKey: string,
+  playerInventory: readonly (ItemStack | null)[],
+  maximumOverflowStacks: number,
+): { ok: true; containers: LocalContainers; inventory: Inventory; overflow: ItemStack[]; recovered: ItemStack[] }
+  | { ok: false; reason: "invalid_coordinate" | "invalid_inventory" | "no_capacity"; containers: LocalContainers; inventory: Inventory } {
+  const coordKey = canonicalCoordinate(rawCoordKey);
+  const player = strictPlayerInventory(playerInventory);
+  if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers, inventory: player ?? cloneInventory(playerInventory) };
+  if (!player) return { ok: false, reason: "invalid_inventory", containers, inventory: cloneInventory(playerInventory) };
+  const chest = containers.chests.get(coordKey);
+  const furnace = containers.furnaces.get(coordKey);
+  const recovered = [
+    ...(chest ? chest.filter((stack): stack is ItemStack => stack !== null) : []),
+    ...[furnace?.input, furnace?.fuel, furnace?.output].filter((stack): stack is ItemStack => Boolean(stack)),
+  ].map((stack) => ({ ...stack }));
+  let inventory = player;
+  const overflow: ItemStack[] = [];
+  for (const stack of recovered) {
+    const added = addItemStack(inventory, stack);
+    inventory = added.inventory;
+    if (added.remainder > 0) overflow.push({ ...stack, count: added.remainder });
+  }
+  if (!Number.isSafeInteger(maximumOverflowStacks) || maximumOverflowStacks < 0 || overflow.length > maximumOverflowStacks) {
+    return { ok: false, reason: "no_capacity", containers, inventory: player };
+  }
+  const removed = removeLocalContainersAt(containers, coordKey);
+  return removed.ok
+    ? { ok: true, containers: removed.containers, inventory, overflow, recovered }
+    : { ok: false, reason: "invalid_coordinate", containers, inventory: player };
 }
 
 /** Validates, clones and sorts all rows; oversized maps fail instead of truncating. */
