@@ -57,6 +57,8 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.SAPLING]: "sapling",
   [BLOCK.STONE_BRICKS]: "stone_bricks",
   [BLOCK.OAK_FENCE]: "oak_fence",
+  [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate",
+  [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -70,6 +72,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   sapling: BLOCK.SAPLING,
   stone_bricks: BLOCK.STONE_BRICKS,
   oak_fence: BLOCK.OAK_FENCE,
+  oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
 };
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
@@ -77,7 +80,7 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
     || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
   if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
     || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER
-    || block === BLOCK.OAK_FENCE) return "wood";
+    || block === BLOCK.OAK_FENCE || block === BLOCK.OAK_FENCE_GATE_CLOSED || block === BLOCK.OAK_FENCE_GATE_OPEN) return "wood";
   if (block === BLOCK.SAND) return "sand";
   if (block === BLOCK.GRAVEL) return "gravel";
   if (block === BLOCK.GLASS) return "glass";
@@ -103,7 +106,7 @@ function loadLocalSave(): LocalSave {
     const value = JSON.parse(raw) as Partial<LocalSave>;
     const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.OAK_FENCE,
+      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.OAK_FENCE_GATE_OPEN,
     )).slice(-8_000) : [];
     const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
@@ -347,9 +350,11 @@ export function SinglePlayerApp() {
         editsRef.current = [...nextEdits.values()].slice(-8_000);
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
         let next = inventoryRef.current;
-        const toggledDoor = (previousBlock === BLOCK.DOOR_CLOSED && edit.block === BLOCK.DOOR_OPEN)
-          || (previousBlock === BLOCK.DOOR_OPEN && edit.block === BLOCK.DOOR_CLOSED);
-        if (!toggledDoor && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
+        const toggledBlock = (previousBlock === BLOCK.DOOR_CLOSED && edit.block === BLOCK.DOOR_OPEN)
+          || (previousBlock === BLOCK.DOOR_OPEN && edit.block === BLOCK.DOOR_CLOSED)
+          || (previousBlock === BLOCK.OAK_FENCE_GATE_CLOSED && edit.block === BLOCK.OAK_FENCE_GATE_OPEN)
+          || (previousBlock === BLOCK.OAK_FENCE_GATE_OPEN && edit.block === BLOCK.OAK_FENCE_GATE_CLOSED);
+        if (!toggledBlock && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
           const gameBlock = ENGINE_TO_GAME[previousBlock];
           const drop = gameBlock ? getDeterministicMiningDrop(gameBlock, held, edit.x, edit.y, edit.z) : null;
           const wear = held === "shears" && gameBlock === "leaves"
@@ -357,13 +362,14 @@ export function SinglePlayerApp() {
             : applyConfirmedToolUse(next, selectedRef.current, "mine", held);
           next = wear.inventory;
           if (drop) next = addItem(next, drop.itemId, drop.count).inventory;
-        } else if (!toggledDoor && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR && held) {
+        } else if (!toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR && held) {
           next = removeItem(next, held, 1).inventory;
         }
         updateInventory(next);
         const seed = `local:${edit.x},${edit.y},${edit.z}:${performance.now().toFixed(0)}`;
-        if (toggledDoor) {
-          audio.play(edit.block === BLOCK.DOOR_OPEN ? "doorOpen" : "doorClose", { seed, surface: "wood" });
+        if (toggledBlock) {
+          const opened = edit.block === BLOCK.DOOR_OPEN || edit.block === BLOCK.OAK_FENCE_GATE_OPEN;
+          audio.play(opened ? "doorOpen" : "doorClose", { seed, surface: "wood" });
         } else if (edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
           audio.play("blockBreak", { seed, surface: audioSurfaceForBlock(previousBlock) });
           engine.spawnBlockParticles({ action: "break", block: previousBlock, x: edit.x, y: edit.y, z: edit.z });

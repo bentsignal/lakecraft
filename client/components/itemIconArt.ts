@@ -19,6 +19,7 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   let variant = itemId;
   if (itemId === "sapling") palette = sapling(grid);
   else if (itemId === "oak_fence") palette = oakFence(grid);
+  else if (itemId === "oak_fence_gate") palette = oakFenceGate(grid);
   else if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
     palette = bow(grid);
@@ -142,6 +143,18 @@ function oakFence(g: Grid): Palette {
     box(g, 2, y + 1, 12, 1, "h");
   }
   box(g, 8, 5, 2, 4, "d"); box(g, 8, 10, 2, 4, "d");
+  return p;
+}
+
+function oakFenceGate(g: Grid): Palette {
+  const p = { o: "#3d2818", d: "#76502b", w: "#a8763e", h: "#d0a15b", m: "#4e5551" };
+  // Two stout posts frame paired rails and a dark hinge pin.
+  box(g, 1, 1, 4, 14, "o"); box(g, 2, 2, 2, 12, "w"); box(g, 2, 2, 1, 12, "h");
+  box(g, 11, 1, 4, 14, "o"); box(g, 12, 2, 2, 12, "d"); box(g, 12, 2, 1, 12, "w");
+  for (const y of [5, 10]) {
+    box(g, 4, y, 8, 4, "o"); box(g, 5, y + 1, 6, 2, "w"); box(g, 5, y + 1, 6, 1, "h");
+  }
+  box(g, 4, 4, 2, 3, "m"); box(g, 10, 9, 2, 3, "m");
   return p;
 }
 

@@ -324,6 +324,7 @@ function treePlannerBlockId(block: BlockType): BlockId | "air" {
   if (block === "air") return "air";
   if (block === "wood") return "log";
   if (block === "door_closed" || block === "door_open") return "door";
+  if (block === "oak_fence_gate_closed" || block === "oak_fence_gate_open") return "oak_fence_gate";
   return block as BlockId;
 }
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -649,7 +650,8 @@ function rangedChargeFromRow(row: Record<string, unknown> | null): RangedChargeA
 }
 
 function rangedBlockOccludes(block: BlockType): boolean {
-  return block !== "air" && block !== "torch" && block !== "ladder" && block !== "door_open";
+  return block !== "air" && block !== "torch" && block !== "ladder"
+    && block !== "door_open" && block !== "oak_fence_gate_open";
 }
 
 type RangedProbeCell = { x: number; y: number; z: number; coordKey: string };

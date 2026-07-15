@@ -181,7 +181,7 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
     || block === BLOCK.WOOL || block === BLOCK.SAPLING) return "grass";
   if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
     || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER
-    || block === BLOCK.OAK_FENCE) return "wood";
+    || block === BLOCK.OAK_FENCE || block === BLOCK.OAK_FENCE_GATE_CLOSED || block === BLOCK.OAK_FENCE_GATE_OPEN) return "wood";
   if (block === BLOCK.SAND) return "sand";
   if (block === BLOCK.GRAVEL) return "gravel";
   if (block === BLOCK.GLASS) return "glass";
@@ -326,7 +326,7 @@ function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate_closed" | "oak_fence_gate_open"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -338,6 +338,8 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.SAPLING]: "sapling",
   [BLOCK.STONE_BRICKS]: "stone_bricks",
   [BLOCK.OAK_FENCE]: "oak_fence",
+  [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate_closed",
+  [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate_open",
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
@@ -369,6 +371,8 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   sapling: BLOCK.SAPLING,
   stone_bricks: BLOCK.STONE_BRICKS,
   oak_fence: BLOCK.OAK_FENCE,
+  oak_fence_gate_closed: BLOCK.OAK_FENCE_GATE_CLOSED,
+  oak_fence_gate_open: BLOCK.OAK_FENCE_GATE_OPEN,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
@@ -417,6 +421,8 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.SAPLING]: "sapling",
   [BLOCK.STONE_BRICKS]: "stone_bricks",
   [BLOCK.OAK_FENCE]: "oak_fence",
+  [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate",
+  [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -446,6 +452,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   sapling: BLOCK.SAPLING,
   stone_bricks: BLOCK.STONE_BRICKS,
   oak_fence: BLOCK.OAK_FENCE,
+  oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
 };
 
 type WorldChunksQueryResult =
@@ -1465,7 +1472,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       return;
     }
     if (result.kind === "toggle") {
-      audioRef.current?.play(next === BLOCK.DOOR_OPEN ? "doorOpen" : "doorClose", { seed, surface: "wood" });
+      const opened = next === BLOCK.DOOR_OPEN || next === BLOCK.OAK_FENCE_GATE_OPEN;
+      audioRef.current?.play(opened ? "doorOpen" : "doorClose", { seed, surface: "wood" });
     }
   }
 
@@ -1515,7 +1523,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }
         rollbackPendingWorldBlockEdit(
           pending,
-          request.kind === "mine" ? "Mine rolled back" : request.kind === "place" ? "Placement rolled back" : "Door restored",
+          request.kind === "mine" ? "Mine rolled back" : request.kind === "place" ? "Placement rolled back" : "Block restored",
           `Lakebed rejected the edit (${result.reason}). The world and field kit were reconciled.`,
           false,
         );
@@ -2004,9 +2012,9 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         onPlayerHealthChange: (health) => {
           setPlayerHealth(health);
         },
-        onBlockEdit: (edit) => {
+        onBlockEdit: (edit, previousBlock) => {
           motionActionSinkRef.current?.("swing");
-          handleBlockEdit(edit);
+          handleBlockEdit(edit, previousBlock);
         },
         onPoseChange: (pose) => {
           const previousSegmentPose = previousSegmentPoseRef.current;

@@ -85,8 +85,8 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
 }
 assert.match(client, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"[\s\S]*?oak_fence:\s*BLOCK\.OAK_FENCE/,
   "multiplayer round-trips engine, protocol, game, and item identities");
-assert.match(single, /edit\.block\s*<=\s*BLOCK\.OAK_FENCE/,
-  "single-player save validation retains the newest append-only engine ID");
+assert.match(single, /edit\.block\s*<=\s*BLOCK\.OAK_FENCE_GATE_OPEN/,
+  "single-player save validation retains oak fences and every newer append-only engine ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));
 assert.ok(mutation.includes("parseWorldBlockOperation(rawRequest)"));
@@ -99,7 +99,7 @@ assert.ok(mutation.indexOf("worldChunks.update") < mutation.indexOf("worldBlockO
 assert.match(server,
   /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air"\)\)/,
   "Lakebed derives fence acceptance from the append-only shared catalog");
-assert.doesNotMatch(server, /oak_fence/,
+assert.doesNotMatch(mutation, /effect\.nextBlock === "oak_fence"|oakFence[^\n]*mutation|mutation[^\n]*oakFence/i,
   "the server needs no fence-specific mutation branch: shared authority drives the existing exact-once path");
 assert.doesNotMatch(mutation, /setInterval|setTimeout|fetch\(/,
   "fences stay on the existing user-driven Lakebed mutation with no loop or alternate backend");

@@ -28,7 +28,9 @@ const confirmedFeedback = app.slice(
 );
 assert.ok(confirmedFeedback.indexOf("seen.has(result.operationId)") < confirmedFeedback.indexOf('play("blockBreak"'), "replayed receipts are deduplicated before feedback");
 assert.ok(confirmedFeedback.includes('action: "break"') && confirmedFeedback.includes('action: "place"'), "confirmed edits emit both debris variants");
-assert.ok(confirmedFeedback.includes('play(next === BLOCK.DOOR_OPEN ? "doorOpen" : "doorClose"'), "confirmed toggles use direction-specific door sounds");
+assert.ok(confirmedFeedback.includes("next === BLOCK.DOOR_OPEN || next === BLOCK.OAK_FENCE_GATE_OPEN")
+  && confirmedFeedback.includes('play(opened ? "doorOpen" : "doorClose"'),
+"confirmed door and gate toggles use direction-specific wood sounds");
 
 const blockSubmission = app.slice(
   app.indexOf("async function submitPendingWorldBlockEdit"),

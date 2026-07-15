@@ -40,6 +40,8 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "sapling",
   "stone_bricks",
   "oak_fence",
+  "oak_fence_gate_closed",
+  "oak_fence_gate_open",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];

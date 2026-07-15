@@ -124,4 +124,29 @@ const stoneBricks = createBlockParticleSystem(1);
 assert.equal(stoneBricks.spawn({ block: BLOCK.STONE_BRICKS, x: 2, y: 3, z: 4, action: "break" }), 1,
   "the append-only particle palette accepts stone bricks");
 
+for (const [block, label] of [
+  [BLOCK.OAK_FENCE, "oak fence"],
+  [BLOCK.OAK_FENCE_GATE_CLOSED, "closed oak fence gate"],
+  [BLOCK.OAK_FENCE_GATE_OPEN, "open oak fence gate"],
+] as const) {
+  const particles = createBlockParticleSystem(32);
+  assert.equal(
+    particles.spawn({ block, x: 2, y: 3, z: 4, action: "break" }),
+    BLOCK_PARTICLES_PER_ACTION.break,
+    `${label} emits the bounded break burst`,
+  );
+  assert.equal(
+    particles.spawn({ block, x: 2, y: 3, z: 4, action: "place" }),
+    BLOCK_PARTICLES_PER_ACTION.place,
+    `${label} emits the bounded place burst`,
+  );
+  assert.equal(particles.activeCount, BLOCK_PARTICLES_PER_ACTION.break + BLOCK_PARTICLES_PER_ACTION.place);
+  const output = new Float32Array(blockParticleBufferCapacity(32).floatCount);
+  const outputStats = geometryStats();
+  particles.writeGeometry([1, 0, 0], [0, 1, 0], output, outputStats);
+  assert.equal(outputStats.writtenParticleCount, particles.activeCount);
+  assert.ok(output[3] > 0.5 && output[4] > 0.34 && output[5] > 0.17,
+    `${label} debris uses the warm oak particle palette`);
+}
+
 console.log("bounded deterministic block particle tests passed");

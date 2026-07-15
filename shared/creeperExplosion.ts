@@ -162,6 +162,7 @@ export function planCreeperTerrainDestruction(
 function protocolBlockId(block: BlockType): BlockId | null {
   if (block === "wood") return "log";
   if (block === "door_closed" || block === "door_open") return "door";
+  if (block === "oak_fence_gate_closed" || block === "oak_fence_gate_open") return "oak_fence_gate";
   return block !== "air" && block in BLOCKS ? block as BlockId : null;
 }
 
@@ -246,7 +247,8 @@ export function sampleCreeperExplosionExposure(
     const cells = exposureRayCells(authority, target, targetY);
     const occluded = cells.some((cell) => {
       const block = readBlock(cell);
-      return block !== "air" && block !== "torch" && block !== "ladder" && block !== "door_open";
+      return block !== "air" && block !== "torch" && block !== "ladder"
+        && block !== "door_open" && block !== "oak_fence_gate_open";
     });
     if (!occluded) clear += 1;
   }

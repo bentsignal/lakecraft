@@ -28,10 +28,10 @@ assert.equal(
   "a malicious mid-block pose is not treated as grounded",
 );
 
-for (const block of ["grass", "dirt", "stone", "glass", "leaves", "door_closed", "bed"] as const) {
+for (const block of ["grass", "dirt", "stone", "glass", "leaves", "door_closed", "oak_fence_gate_closed", "bed"] as const) {
   assert.equal(fallSupportBlockHasCollision(block), true, `${block} supports the player`);
 }
-for (const block of ["air", "torch", "door_open", "ladder"] as const) {
+for (const block of ["air", "torch", "door_open", "oak_fence_gate_open", "ladder"] as const) {
   assert.equal(fallSupportBlockHasCollision(block), false, `${block} does not count as solid support`);
 }
 assert.equal(validFallProbeBlock("ladder"), true);

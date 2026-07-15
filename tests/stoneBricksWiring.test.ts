@@ -74,7 +74,7 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
 }
 assert.match(client, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"[\s\S]*?stone_bricks:\s*BLOCK\.STONE_BRICKS/,
   "multiplayer round-trips engine, protocol, game, and item identities");
-assert.match(single, /edit\.block\s*<=\s*BLOCK\.OAK_FENCE/, "single-player saves retain stone bricks and every newer append-only block ID");
+assert.match(single, /edit\.block\s*<=\s*BLOCK\.OAK_FENCE_GATE_OPEN/, "single-player saves retain stone bricks and every newer append-only block ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));
 assert.ok(mutation.includes("parseWorldBlockOperation(rawRequest)"));

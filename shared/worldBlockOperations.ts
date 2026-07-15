@@ -54,9 +54,15 @@ export type PlaceWorldBlockOperation = InventoryOperationBase & {
   placedBlock: Exclude<WorldChunkBlockType, "air">;
 };
 
+export type ToggleableWorldBlock =
+  | "door_closed"
+  | "door_open"
+  | "oak_fence_gate_closed"
+  | "oak_fence_gate_open";
+
 export type ToggleWorldBlockOperation = OperationBase & {
   kind: "toggle";
-  expectedBlock: "door_closed" | "door_open";
+  expectedBlock: ToggleableWorldBlock;
   expectedChunkRevision: string;
 };
 
@@ -125,8 +131,8 @@ export type ResolvedPlaceWorldBlockOperation = ResolvedOperationBase & {
 
 export type ResolvedToggleWorldBlockOperation = ResolvedOperationBase & {
   kind: "toggle";
-  previousBlock: "door_closed" | "door_open";
-  nextBlock: "door_closed" | "door_open";
+  previousBlock: ToggleableWorldBlock;
+  nextBlock: ToggleableWorldBlock;
   drop: null;
   consumed: null;
   toolUse: null;
@@ -143,6 +149,12 @@ export type WorldBlockOperationResolution =
 
 const WORLD_BLOCK_SET = new Set<string>(WORLD_CHUNK_BLOCK_TYPES);
 const ITEM_SET = new Set<string>(Object.keys(ITEMS));
+const TOGGLED_WORLD_BLOCKS: Readonly<Record<ToggleableWorldBlock, ToggleableWorldBlock>> = {
+  door_closed: "door_open",
+  door_open: "door_closed",
+  oak_fence_gate_closed: "oak_fence_gate_open",
+  oak_fence_gate_open: "oak_fence_gate_closed",
+};
 const REVISION_PATTERN = /^(0|[1-9]\d{0,15})$/;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -197,6 +209,14 @@ function isCoordinate(value: unknown, minimum: number, maximum: number): value i
 
 function isWorldBlock(value: unknown): value is WorldChunkBlockType {
   return typeof value === "string" && WORLD_BLOCK_SET.has(value);
+}
+
+export function isToggleableWorldBlock(value: unknown): value is ToggleableWorldBlock {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(TOGGLED_WORLD_BLOCKS, value);
+}
+
+export function toggledWorldBlock(block: ToggleableWorldBlock): ToggleableWorldBlock {
+  return TOGGLED_WORLD_BLOCKS[block];
 }
 
 function isItemId(value: unknown): value is ItemId {
@@ -264,7 +284,7 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
   }
 
   if (value.kind === "toggle") {
-    if (value.expectedBlock !== "door_closed" && value.expectedBlock !== "door_open") {
+    if (!isToggleableWorldBlock(value.expectedBlock)) {
       return { ok: false, reason: "invalid_block" };
     }
     const request: ToggleWorldBlockOperation = {
@@ -332,6 +352,7 @@ export function gameBlockForWorldBlock(block: WorldChunkBlockType): BlockId | nu
   if (block === "air") return null;
   if (block === "wood") return "log";
   if (block === "door_closed" || block === "door_open") return "door";
+  if (block === "oak_fence_gate_closed" || block === "oak_fence_gate_open") return "oak_fence_gate";
   return block;
 }
 
@@ -340,6 +361,7 @@ export function placedWorldBlockForItem(itemId: ItemId): Exclude<WorldChunkBlock
   if (!block) return null;
   if (block === "log") return "wood";
   if (block === "door") return "door_closed";
+  if (block === "oak_fence_gate") return "oak_fence_gate_closed";
   return block;
 }
 
@@ -389,7 +411,7 @@ export function resolveWorldBlockOperation(
   if (chunkRevision === null) return { ok: false, reason: "revision_overflow" };
 
   if (request.kind === "toggle") {
-    const nextBlock = request.expectedBlock === "door_closed" ? "door_open" : "door_closed";
+    const nextBlock = toggledWorldBlock(request.expectedBlock);
     return {
       ok: true,
       effect: {

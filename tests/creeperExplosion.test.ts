@@ -3,6 +3,7 @@ import {
   CREEPER_EXPLOSION_MAX_BLOCKS,
   CREEPER_EXPLOSION_RADIUS,
   authorizeCreeperExplosionRequest,
+  creeperBlockIsProtected,
   creeperExplosionEventId,
   creeperExplosionExposureCells,
   decideCreeperExplosionCommit,
@@ -65,6 +66,12 @@ assert.deepEqual(drops, planCreeperBlockDrops(operationId, planned), "blast drop
 assert.ok(drops.length <= 8 && drops.every((drop) => drop.count > 0 && drop.count <= 64));
 assert.ok(drops.reduce((total, drop) => total + drop.count, 0) <= planned.length,
   "a blast cannot mint more item units than the number of destroyed source blocks");
+assert.equal(creeperBlockIsProtected("oak_fence_gate_closed"), false);
+assert.equal(creeperBlockIsProtected("oak_fence_gate_open"), false);
+const gateCell = [{ ...cells[0], previousBlock: "oak_fence_gate_open" as const }];
+const gateDrops = Array.from({ length: 100 }, (_, index) => planCreeperBlockDrops(`gate-blast-${index}`, gateCell)).flat();
+assert.ok(gateDrops.some((drop) => drop.itemId === "oak_fence_gate"),
+  "either persisted gate state canonicalizes to the one conserved gate item identity");
 
 assert.ok(resolveCreeperExplosionDamage(authority, authority.center) > 0);
 assert.equal(resolveCreeperExplosionDamage(authority, { x: 100, y: 4, z: 100 }), 0);
@@ -72,6 +79,10 @@ assert.equal(resolveCreeperExplosionDamage(authority, authority.center, 0), 0);
 const exposedTarget = { x: authority.center.x + 4, y: authority.center.y, z: authority.center.z };
 assert.ok(creeperExplosionExposureCells(authority, exposedTarget).length > 0);
 assert.equal(sampleCreeperExplosionExposure(authority, exposedTarget, () => "air"), 1);
+assert.equal(sampleCreeperExplosionExposure(authority, exposedTarget, () => "oak_fence_gate_open"), 1,
+  "open fence gates do not shield blast rays");
+assert.equal(sampleCreeperExplosionExposure(authority, exposedTarget, () => "oak_fence_gate_closed"), 0,
+  "closed fence gates remain solid blast cover");
 assert.equal(sampleCreeperExplosionExposure(authority, exposedTarget, () => "stone"), 0,
   "an authoritative solid wall fully shields the player from the blast");
 assert.equal(resolveCreeperExplosionDamage(authority, exposedTarget,

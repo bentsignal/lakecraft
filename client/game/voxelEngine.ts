@@ -421,6 +421,8 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.SAPLING]: [0.28, 0.55, 0.18],
   [BLOCK.STONE_BRICKS]: [0.43, 0.45, 0.43],
   [BLOCK.OAK_FENCE]: [0.69, 0.48, 0.25],
+  [BLOCK.OAK_FENCE_GATE_CLOSED]: [0.69, 0.48, 0.25],
+  [BLOCK.OAK_FENCE_GATE_OPEN]: [0.69, 0.48, 0.25],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -473,7 +475,9 @@ export function blockOccludesFaces(block: BlockId): boolean {
     && block !== BLOCK.LADDER
     && block !== BLOCK.GLASS
     && block !== BLOCK.SAPLING
-    && block !== BLOCK.OAK_FENCE;
+    && block !== BLOCK.OAK_FENCE
+    && block !== BLOCK.OAK_FENCE_GATE_CLOSED
+    && block !== BLOCK.OAK_FENCE_GATE_OPEN;
 }
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
@@ -502,6 +506,7 @@ export function blockHasCollision(block: BlockId): boolean {
   return block !== BLOCK.AIR
     && block !== BLOCK.TORCH
     && block !== BLOCK.DOOR_OPEN
+    && block !== BLOCK.OAK_FENCE_GATE_OPEN
     && block !== BLOCK.LADDER
     && block !== BLOCK.SAPLING;
 }
@@ -517,13 +522,16 @@ export type OakFenceBlockLookup = (x: number, y: number, z: number) => BlockId;
 
 /** Fences join one another and opaque full-block terrain, never thin authored meshes. */
 export function oakFenceConnectsTo(block: BlockId): boolean {
-  return block === BLOCK.OAK_FENCE || (
-    blockOccludesFaces(block)
-    && block !== BLOCK.CHEST
-    && block !== BLOCK.BED
-    && block !== BLOCK.DOOR_CLOSED
-    && block !== BLOCK.DOOR_OPEN
-  );
+  return block === BLOCK.OAK_FENCE
+    || block === BLOCK.OAK_FENCE_GATE_CLOSED
+    || block === BLOCK.OAK_FENCE_GATE_OPEN
+    || (
+      blockOccludesFaces(block)
+      && block !== BLOCK.CHEST
+      && block !== BLOCK.BED
+      && block !== BLOCK.DOOR_CLOSED
+      && block !== BLOCK.DOOR_OPEN
+    );
 }
 
 /** Allocation-bounded, deterministic neighbor mask shared by meshing and tests. */
@@ -611,14 +619,22 @@ export function isDoorBlock(block: BlockId): boolean {
   return block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN;
 }
 
+export function isOakFenceGateBlock(block: BlockId): boolean {
+  return block === BLOCK.OAK_FENCE_GATE_CLOSED || block === BLOCK.OAK_FENCE_GATE_OPEN;
+}
+
 export function toggledDoorBlock(block: BlockId): BlockId | null {
   if (block === BLOCK.DOOR_CLOSED) return BLOCK.DOOR_OPEN;
   if (block === BLOCK.DOOR_OPEN) return BLOCK.DOOR_CLOSED;
+  if (block === BLOCK.OAK_FENCE_GATE_CLOSED) return BLOCK.OAK_FENCE_GATE_OPEN;
+  if (block === BLOCK.OAK_FENCE_GATE_OPEN) return BLOCK.OAK_FENCE_GATE_CLOSED;
   return null;
 }
 
 export function doorPlacementBlock(block: BlockId): BlockId {
-  return isDoorBlock(block) ? BLOCK.DOOR_CLOSED : block;
+  if (isDoorBlock(block)) return BLOCK.DOOR_CLOSED;
+  if (isOakFenceGateBlock(block)) return BLOCK.OAK_FENCE_GATE_CLOSED;
+  return block;
 }
 
 export function createDoorToggleEdit(target: BlockTarget): WorldEdit | null {
@@ -685,6 +701,7 @@ export function tryInteractBlock(
       && target.block.block !== BLOCK.FURNACE
       && target.block.block !== BLOCK.TNT
       && target.block.block !== BLOCK.SAPLING
+      && !isOakFenceGateBlock(target.block.block)
     )
     || !onInteractBlock
   ) return false;
@@ -925,6 +942,49 @@ export function appendOakFenceMesh(
   if (connections.west) addRails(x, x + 0.5, z + 0.4375, z + 0.5625);
   if (connections.south) addRails(x + 0.4375, x + 0.5625, z + 0.5, z + 1);
   if (connections.north) addRails(x + 0.4375, x + 0.5625, z, z + 0.5);
+}
+
+export const OAK_FENCE_GATE_MESH_VERTEX_COUNT = OAK_FENCE_BOX_VERTEX_COUNT * 4;
+
+/** Two fixed posts and two rails; opening swings the rails south around the west hinge. */
+export function appendOakFenceGateMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  open: boolean,
+  shade = 1,
+): void {
+  const texture = "oak_planks" as const;
+  appendTexturedAxisAlignedBox(
+    output,
+    [x + 0.0625, y, z + 0.375],
+    [x + 0.1875, y + OAK_FENCE_HEIGHT, z + 0.625],
+    texture,
+    shade,
+  );
+  appendTexturedAxisAlignedBox(
+    output,
+    [x + 0.8125, y, z + 0.375],
+    [x + 0.9375, y + OAK_FENCE_HEIGHT, z + 0.625],
+    texture,
+    shade,
+  );
+  const appendRail = (minimumY: number, maximumY: number): void => {
+    appendTexturedAxisAlignedBox(
+      output,
+      open
+        ? [x + 0.0625, y + minimumY, z + 0.5]
+        : [x + 0.125, y + minimumY, z + 0.4375],
+      open
+        ? [x + 0.1875, y + maximumY, z + 1]
+        : [x + 0.875, y + maximumY, z + 0.5625],
+      texture,
+      shade,
+    );
+  };
+  appendRail(0.50, 0.75);
+  appendRail(1.00, 1.25);
 }
 
 function tint(color: Vec3, shade: number, variation = 1): Vec3 {
@@ -1451,7 +1511,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       minY = Math.min(minY, y);
       maxY = Math.max(
         maxY,
-        y + (isDoorBlock(block) ? 1.9 : block === BLOCK.OAK_FENCE ? OAK_FENCE_HEIGHT : 1),
+        y + (
+          isDoorBlock(block)
+            ? 1.9
+            : block === BLOCK.OAK_FENCE || isOakFenceGateBlock(block) ? OAK_FENCE_HEIGHT : 1
+        ),
       );
       if (block === BLOCK.TORCH) {
         appendTorchMesh(colorVertices, x, y, z);
@@ -1484,6 +1548,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           y,
           z,
           oakFenceConnections(x, y, z, getBlock),
+          blockMaterialVariation(x, y, z),
+        );
+        continue;
+      }
+      if (isOakFenceGateBlock(block)) {
+        appendOakFenceGateMesh(
+          textureVertices,
+          x,
+          y,
+          z,
+          block === BLOCK.OAK_FENCE_GATE_OPEN,
           blockMaterialVariation(x, y, z),
         );
         continue;
@@ -1607,6 +1682,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           if (blockHasCollision(block)) return true;
           if (by > 0 && getBlock(bx, by - 1, bz) === BLOCK.DOOR_CLOSED) return true;
           if (getBlock(bx, by - 1, bz) === BLOCK.OAK_FENCE
+            && playerIntersectsOakFenceHeight(y, bodyHeight, by - 1)) return true;
+          if (getBlock(bx, by - 1, bz) === BLOCK.OAK_FENCE_GATE_CLOSED
             && playerIntersectsOakFenceHeight(y, bodyHeight, by - 1)) return true;
         }
       }

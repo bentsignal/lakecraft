@@ -1,6 +1,8 @@
 import type { ItemId } from "../shared/game.ts";
-import type {
-  WorldBlockOperationRequest,
+import {
+  isToggleableWorldBlock,
+  toggledWorldBlock,
+  type WorldBlockOperationRequest,
 } from "../shared/worldBlockOperations.ts";
 import type { WorldChunkBlockType } from "../shared/worldChunks.ts";
 
@@ -60,13 +62,15 @@ export function buildWorldBlockOperationRequest(
     y: input.y,
     z: input.z,
   };
-  const togglesDoor = (input.previousBlock === "door_closed" && input.nextBlock === "door_open")
-    || (input.previousBlock === "door_open" && input.nextBlock === "door_closed");
-  if (togglesDoor) {
+  const previousToggle = isToggleableWorldBlock(input.previousBlock) ? input.previousBlock : null;
+  const togglesBlock = previousToggle !== null
+    && isToggleableWorldBlock(input.nextBlock)
+    && toggledWorldBlock(previousToggle) === input.nextBlock;
+  if (togglesBlock) {
     return {
       ...base,
       kind: "toggle",
-      expectedBlock: input.previousBlock as "door_closed" | "door_open",
+      expectedBlock: previousToggle,
       expectedChunkRevision: input.expectedChunkRevision,
     };
   }

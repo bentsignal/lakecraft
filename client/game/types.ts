@@ -38,6 +38,8 @@ export const BLOCK = {
   SAPLING: 25,
   STONE_BRICKS: 26,
   OAK_FENCE: 27,
+  OAK_FENCE_GATE_CLOSED: 28,
+  OAK_FENCE_GATE_OPEN: 29,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];

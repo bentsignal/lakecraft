@@ -64,6 +64,34 @@ assert.deepEqual(buildWorldBlockOperationRequest({
   expectedBlock: "door_closed",
   expectedChunkRevision: "3",
 });
+assert.deepEqual(buildWorldBlockOperationRequest({
+  ...base,
+  previousBlock: "oak_fence_gate_closed",
+  nextBlock: "oak_fence_gate_open",
+}), {
+  operationId: "block_request_0001",
+  kind: "toggle",
+  x: -4,
+  y: 7,
+  z: 12,
+  expectedBlock: "oak_fence_gate_closed",
+  expectedChunkRevision: "3",
+});
+assert.deepEqual(buildWorldBlockOperationRequest({
+  ...base,
+  previousBlock: "oak_fence_gate_open",
+  nextBlock: "oak_fence_gate_closed",
+})?.expectedBlock, "oak_fence_gate_open", "open gates close through the same bounded toggle request");
+assert.equal(buildWorldBlockOperationRequest({
+  ...base,
+  previousBlock: "door_closed",
+  nextBlock: "oak_fence_gate_open",
+}), null, "cross-family toggle transitions are never serialized");
+assert.equal(buildWorldBlockOperationRequest({
+  ...base,
+  previousBlock: "oak_fence_gate_closed",
+  nextBlock: "door_open",
+}), null, "a gate cannot be transformed into a door by a forged optimistic edit");
 assert.equal(buildWorldBlockOperationRequest({ ...base, previousBlock: "stone", nextBlock: "dirt" }), null);
 
 const operationId = createWorldBlockOperationId(7, 123_456, "stable-random-value");
