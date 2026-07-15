@@ -1,4 +1,4 @@
-import { signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
+import { ErrorBoundary, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
 import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
@@ -80,6 +80,7 @@ import {
 } from "../shared/protocol";
 import {
   PRESENCE_ACTIVE_WRITES_PER_SECOND,
+  PRESENCE_MAX_IN_FLIGHT_WRITES,
   PRESENCE_REALTIME_BURST_WRITES,
   PRESENCE_SAMPLE_INTERVAL_MS,
   PRESENCE_SESSION_WRITE_BUDGET,
@@ -89,7 +90,10 @@ import {
   parsePersistedPresencePose,
   parsePresenceVelocityFields,
   presenceBurstGuardSnapshot,
+  presencePoseAgePercentiles,
+  presenceTransportQuotaResetAt,
   recordPresenceFailure,
+  recordPresenceRateLimit,
   recordPresenceSuccess,
   reservePresenceAttempt,
   stepPresenceScheduler,
@@ -153,6 +157,13 @@ button { -webkit-tap-highlight-color: transparent; }
 .lakecraft-sleep button:last-child { background: transparent; color: #24261f; outline: 1px solid rgba(36,38,31,.4); }
 `;
 
+const QUERY_RECOVERY_CSS = `
+.lakecraft-query-recovery{background:linear-gradient(#78a7d2 0 45%,#5f8738 45% 100%);box-sizing:border-box;color:#fff;display:grid;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;min-height:100dvh;padding:24px;place-items:center;position:fixed;text-align:center;text-shadow:2px 2px #202020}
+.lakecraft-query-recovery section{background:rgba(0,0,0,.72);border:2px solid #111;box-shadow:inset 0 0 0 2px #555;padding:24px;width:min(560px,100%)}
+.lakecraft-query-recovery h1{font-size:clamp(18px,4vw,30px);font-weight:400;margin:0 0 16px}.lakecraft-query-recovery p{line-height:1.5;margin:0 0 20px}
+.lakecraft-query-recovery button{background:#777;border:2px solid;border-color:#aaa #333 #333 #aaa;color:#fff;cursor:pointer;font:16px var(--lc-pixel-font,"Courier New",monospace);padding:10px 20px;text-shadow:2px 2px #333}.lakecraft-query-recovery button:active{border-color:#333 #aaa #aaa #333}
+`;
+
 const PRESENCE_BUDGET_STORAGE_PREFIX = "lakecraft:presence-budget:v1:";
 const AUDIO_MUTED_STORAGE_KEY = "lakecraft:audio-muted:v1";
 
@@ -204,12 +215,17 @@ type AuthorizeRespawnResult =
   | { ok: true; target: PlayerPose; epoch: string; expiresAt: number | string }
   | { ok: false; reason: string; retryAfterMs?: number };
 
-type HeartbeatPlayerResult = void | { ok: boolean; reason?: string; canonicalPose?: PlayerPose };
+type HeartbeatPlayerResult = void | { ok: boolean; reason?: string; retryAfterMs?: number; canonicalPose?: PlayerPose };
 type StartPresenceSessionResult = {
   ok: boolean;
   reason?: string;
   resetToTrailhead?: boolean;
   spawnPose?: PlayerPose | null;
+};
+
+type RecentPlayersResult = {
+  players: PlayerPresence[];
+  serverNow: number;
 };
 
 type MobDamageClaim = {
@@ -517,20 +533,63 @@ function parsePlayerState(row: PersistedInventory | null) {
   return canonical.ok ? canonical.state : null;
 }
 
-export function App() {
+function LakebedQueryRecovery({ error, retry }: { error: Error; retry: () => void }) {
+  const [remainingMs, setRemainingMs] = useState(0);
+  const quota = classifyPresenceTransportError(error) === "quota";
+  const [resetAt] = useState(() => quota ? presenceTransportQuotaResetAt(error, Date.now()) : null);
+
+  useEffect(() => {
+    if (resetAt === null) return;
+    let cancelled = false;
+    let timer = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const remaining = Math.max(0, resetAt - Date.now());
+      setRemainingMs(remaining);
+      if (remaining === 0) {
+        retry();
+        return;
+      }
+      timer = window.setTimeout(tick, Math.min(1_000, remaining));
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [resetAt, retry]);
+
+  return (
+    <main className="lakecraft-query-recovery" role="status" aria-live="polite">
+      <style>{QUERY_RECOVERY_CSS}</style>
+      <section>
+        <h1>{quota ? "LAKEBED QUOTA PAUSED" : "RECONNECTING TO LAKEBED"}</h1>
+        <p>{quota
+          ? `The shared world will retry automatically in ${Math.max(1, Math.ceil(remainingMs / 1_000))}s. No refresh is needed.`
+          : "The shared world query failed. Retry when your connection is ready; the page has not reloaded."}</p>
+        {!quota ? <button type="button" onClick={retry}>Retry now</button> : null}
+      </section>
+    </main>
+  );
+}
+
+function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWorld: boolean) => void }) {
   const auth = useAuth();
   const [activeChestKey, setActiveChestKey] = useState("");
   const [activeFurnaceKey, setActiveFurnaceKey] = useState("");
   const [furnaceQuerySample, setFurnaceQuerySample] = useState("0");
-  const [inWorld, setInWorld] = useState(false);
   const [mobLeaseSessionId, setMobLeaseSessionId] = useState("");
   const [mobQuerySample, setMobQuerySample] = useState("0");
   const [worldChunkKeys, setWorldChunkKeys] = useState<string[]>(() => visibleWorldChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
   const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", worldChunkKeys);
   const [activeSince] = useState(() => String(Date.now() - PLAYER_STALE_AFTER_MS));
-  const presenceEvents = useQuery<PlayerPresence[], string>("recentPlayers", activeSince) ?? [];
-  const activePlayers = activePlayerPresences(presenceEvents);
+  const recentPlayersResult = useQuery<RecentPlayersResult, string>("recentPlayers", activeSince);
+  const presenceEvents = recentPlayersResult?.players ?? [];
+  const presenceServerNow = Number.isFinite(recentPlayersResult?.serverNow)
+    ? recentPlayersResult!.serverNow
+    : Date.now();
+  const activePlayers = activePlayerPresences(presenceEvents, presenceServerNow);
   const combatUserIds = [...new Set([
     auth.userId,
     ...activePlayers.slice(0, 127).map((player) => player.userId),
@@ -643,6 +702,8 @@ export function App() {
   const mobCheckpointInFlightRef = useRef(false);
   const mobDamageClaimsRef = useRef(new Set<string>());
   const realtimePresenceRef = useRef(false);
+  const remotePoseAgeSamplesRef = useRef<number[]>([]);
+  const remotePoseSeenRef = useRef(new Set<string>());
   const respawnRequestInFlightRef = useRef(false);
   const respawnTimerRef = useRef<number | null>(null);
   const confirmedFeedbackOperationsRef = useRef<Set<string> | null>(null);
@@ -693,6 +754,10 @@ export function App() {
   useEffect(() => {
     appliedOwnCombatHealthRef.current = null;
   }, [auth.userId]);
+  useEffect(() => {
+    remotePoseAgeSamplesRef.current = [];
+    remotePoseSeenRef.current.clear();
+  }, [auth.userId, inWorld]);
   const [chestRetryAvailable, setChestRetryAvailable] = useState(false);
   const [activeBedKey, setActiveBedKey] = useState("");
   const [sleepBusy, setSleepBusy] = useState(false);
@@ -1748,7 +1813,25 @@ export function App() {
   }, [activeChestKey, chestResult]);
 
   useEffect(() => {
-    const active = activePlayerPresences(presenceEvents).filter((player) => player.userId !== auth.userId);
+    const active = activePlayerPresences(presenceEvents, presenceServerNow)
+      .filter((player) => player.userId !== auth.userId);
+    for (const player of active) {
+      const heartbeatAt = Number(player.heartbeatAt);
+      const sampleKey = `${player.userId}:${player.heartbeatAt}`;
+      const age = presenceServerNow - heartbeatAt;
+      if (!remotePoseSeenRef.current.has(sampleKey)
+        && Number.isFinite(age) && age >= 0 && age <= PLAYER_STALE_AFTER_MS) {
+        remotePoseSeenRef.current.add(sampleKey);
+        remotePoseAgeSamplesRef.current.push(age);
+      }
+    }
+    if (remotePoseSeenRef.current.size > 512) {
+      remotePoseSeenRef.current.clear();
+      for (const player of active) remotePoseSeenRef.current.add(`${player.userId}:${player.heartbeatAt}`);
+    }
+    if (remotePoseAgeSamplesRef.current.length > 256) {
+      remotePoseAgeSamplesRef.current.splice(0, remotePoseAgeSamplesRef.current.length - 256);
+    }
     const remotes: RemotePlayer[] = active.map((player) => {
       const velocity = parsePresenceVelocityFields(player);
       const appearance = normalizeAvatarAppearance(
@@ -1779,7 +1862,7 @@ export function App() {
     }).filter((player) => [player.x, player.y, player.z, player.yaw, player.pitch].every(Number.isFinite));
     realtimePresenceRef.current = remotes.length > 0;
     engineRef.current?.setRemotePlayers(remotes);
-  }, [presenceEvents, auth.userId]);
+  }, [presenceEvents, presenceServerNow, auth.userId]);
 
   useEffect(() => {
     if (!inWorld || auth.isLoading || !auth.isAuthenticated || auth.isGuest || !profile) return;
@@ -1790,7 +1873,8 @@ export function App() {
     presenceSchedulerRef.current = scheduler;
     presenceBurstGuardRef.current = guard;
     presenceModeNoticeRef.current = "";
-    let writeInFlight = false;
+    let writesInFlight = 0;
+    let pendingPresenceSample: { pose: PlayerPose; at: number } | null = null;
     const announceTransportMode = (at: number) => {
       const snapshot = presenceBurstGuardSnapshot(guard, at, realtimePresenceRef.current);
       if (snapshot.mode === presenceModeNoticeRef.current) return snapshot;
@@ -1804,7 +1888,7 @@ export function App() {
       } else if (snapshot.mode === "quota_paused") {
         notify(
           "Lakebed presence paused",
-          `Repeated or quota-like rejections stopped retries. Budget recovery is in ${Math.max(1, Math.ceil(snapshot.windowResetsInMs / 3_600_000))}h.`,
+          `Repeated or quota-like rejections stopped retries. Lakebed retry is in ${Math.max(1, Math.ceil(snapshot.retryInMs / 1_000))}s.`,
           "warning",
         );
         setConnected(false);
@@ -1818,9 +1902,11 @@ export function App() {
       }
       return snapshot;
     };
-    const samplePresence = (pose: PlayerPose, at = Date.now()) => {
+    const flushPresence = () => {
+      if (cancelled || writesInFlight >= PRESENCE_MAX_IN_FLIGHT_WRITES || !pendingPresenceSample) return;
+      const { pose, at } = pendingPresenceSample;
+      pendingPresenceSample = null;
       poseRef.current = pose;
-      if (writeInFlight) return;
       const guardSnapshot = announceTransportMode(at);
       if (!guardSnapshot.canAttempt) return;
       const realtime = realtimePresenceRef.current && guardSnapshot.realtimeRemaining > 0;
@@ -1836,7 +1922,7 @@ export function App() {
         worn.legs?.itemId,
         worn.feet?.itemId,
       );
-      writeInFlight = true;
+      writesInFlight += 1;
       void heartbeatPlayer(
         profile.username,
         playerColor(auth.userId),
@@ -1857,6 +1943,18 @@ export function App() {
         presenceSessionId,
       ).then((result) => {
         if (result && !result.ok) {
+          const rejectedAt = Date.now();
+          const rejection = new Error(`${result.reason ?? "presence rejected"}${result.retryAfterMs ? ` retry-after ${result.retryAfterMs}ms` : ""}`);
+          if (result.reason === "rate_limited") {
+            recordPresenceRateLimit(guard, rejectedAt, result.retryAfterMs ?? 0);
+          } else {
+            recordPresenceFailure(
+              guard,
+              rejectedAt,
+              classifyPresenceTransportError(rejection),
+              presenceTransportQuotaResetAt(rejection, rejectedAt),
+            );
+          }
           const canonicalPose = result.canonicalPose
             ? validateRespawnPoint(result.canonicalPose, Number.MAX_SAFE_INTEGER)
             : null;
@@ -1864,27 +1962,62 @@ export function App() {
             engineRef.current?.reconcilePose(canonicalPose);
             Object.assign(scheduler, createPresenceSchedulerState());
           }
+          announceTransportMode(rejectedAt);
+          if (presenceBurstGuardSnapshot(guard, rejectedAt, realtimePresenceRef.current).mode === "quota_paused") {
+            pendingPresenceSample = null;
+          }
           setConnected(false);
           return;
         }
         recordPresenceSuccess(guard, Date.now());
         setConnected(true);
       }).catch((error: unknown) => {
-        recordPresenceFailure(guard, Date.now(), classifyPresenceTransportError(error));
-        announceTransportMode(Date.now());
+        const failedAt = Date.now();
+        recordPresenceFailure(
+          guard,
+          failedAt,
+          classifyPresenceTransportError(error),
+          presenceTransportQuotaResetAt(error, failedAt),
+        );
+        announceTransportMode(failedAt);
+        if (presenceBurstGuardSnapshot(guard, failedAt, realtimePresenceRef.current).mode === "quota_paused") {
+          pendingPresenceSample = null;
+        }
         setConnected(false);
       }).finally(() => {
         persistPresenceBurstGuard(auth.userId, guard);
-        writeInFlight = false;
+        writesInFlight = Math.max(0, writesInFlight - 1);
+        flushPresence();
       });
+    };
+    const samplePresence = (pose: PlayerPose, at = Date.now()) => {
+      poseRef.current = pose;
+      pendingPresenceSample = { pose, at };
+      flushPresence();
     };
     let cancelled = false;
     let interval = 0;
     let startRetryTimer = 0;
+    const schedulePresenceSessionRetry = (at: number) => {
+      const snapshot = announceTransportMode(at);
+      const delay = snapshot.retryInMs > 0
+        ? Math.max(250, Math.min(60_000, snapshot.retryInMs))
+        : 1_000;
+      startRetryTimer = window.setTimeout(beginPresenceSession, delay);
+    };
     const beginPresenceSession = () => {
+      if (cancelled) return;
+      const attemptedAt = Date.now();
+      const snapshot = announceTransportMode(attemptedAt);
+      if (!snapshot.canAttempt || !reservePresenceAttempt(guard, attemptedAt, false)) {
+        schedulePresenceSessionRetry(attemptedAt);
+        return;
+      }
+      persistPresenceBurstGuard(auth.userId, guard);
       void startPresenceSession(presenceSessionId).then((result) => {
         if (cancelled) return;
         if (!result.ok) throw new Error(result.reason ?? "presence session rejected");
+        recordPresenceSuccess(guard, Date.now());
         if (result.spawnPose) {
           engineRef.current?.reconcilePose(result.spawnPose);
           poseRef.current = result.spawnPose;
@@ -1895,10 +2028,19 @@ export function App() {
         interval = window.setInterval(() => {
           samplePresence(engineRef.current?.getPose() ?? poseRef.current);
         }, PRESENCE_SAMPLE_INTERVAL_MS);
-      }).catch(() => {
+      }).catch((error: unknown) => {
         if (cancelled) return;
+        const failedAt = Date.now();
+        recordPresenceFailure(
+          guard,
+          failedAt,
+          classifyPresenceTransportError(error),
+          presenceTransportQuotaResetAt(error, failedAt),
+        );
+        persistPresenceBurstGuard(auth.userId, guard);
+        announceTransportMode(failedAt);
         setConnected(false);
-        startRetryTimer = window.setTimeout(beginPresenceSession, 1_000);
+        schedulePresenceSessionRetry(failedAt);
       });
     };
     beginPresenceSession();
@@ -2455,6 +2597,7 @@ export function App() {
     : presenceTelemetry.cadenceHz > 0
       ? "1/min"
       : "paused";
+  const remotePoseAge = presencePoseAgePercentiles(remotePoseAgeSamplesRef.current);
 
   if (!inWorld) {
     return (
@@ -2670,10 +2813,19 @@ export function App() {
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${presenceTelemetry.mode.toUpperCase()} ${presenceCadence} · RT ${presenceTelemetry.realtimeRemaining}/${PRESENCE_REALTIME_BURST_WRITES} · DAY ${presenceTelemetry.sessionRemaining}/${PRESENCE_SESSION_WRITE_BUDGET} · OK ${presenceTelemetry.confirmedCount}/${presenceTelemetry.attemptCount}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nPFX ${performanceStats.activeParticleCount}  DRAW ${performanceStats.particleDrawCalls}  ${(performanceStats.particleUploadBytes / 1024).toFixed(0)}KB\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${presenceTelemetry.mode.toUpperCase()} ${presenceCadence} · RT ${presenceTelemetry.realtimeRemaining}/${PRESENCE_REALTIME_BURST_WRITES} · DAY ${presenceTelemetry.sessionRemaining}/${PRESENCE_SESSION_WRITE_BUDGET} · OK ${presenceTelemetry.confirmedCount}/${presenceTelemetry.attemptCount}\nAGE p50 ${remotePoseAge.p50}ms · p95 ${remotePoseAge.p95}ms · N ${remotePoseAge.count}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nPFX ${performanceStats.activeParticleCount}  DRAW ${performanceStats.particleDrawCalls}  ${(performanceStats.particleUploadBytes / 1024).toFixed(0)}KB\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}
     </main>
+  );
+}
+
+export function App() {
+  const [inWorld, setInWorld] = useState(false);
+  return (
+    <ErrorBoundary fallback={(error, retry) => <LakebedQueryRecovery error={error} retry={retry} />}>
+      <GameApp inWorld={inWorld} setInWorld={setInWorld} />
+    </ErrorBoundary>
   );
 }

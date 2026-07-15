@@ -9,9 +9,9 @@ node --experimental-strip-types tests/twoClientMultiplayerQa.test.ts
 npx lakebed build --json
 ```
 
-The first command simulates two moving clients for one minute with deterministic network jitter. It verifies the 5 Hz/300-writes-per-player ceiling, remote visibility and reconnect semantics, cross-player item conservation, chat bounds, authoritative PvP, and explicit mutation accounting. Its expected baseline is 600 presence mutations plus six representative action mutations per minute; the shared mob authority adds at most 60 singleton checkpoint mutations/minute plus discrete idempotent damage claims while a player is in hostile range.
+The first command is a deterministic capacity/state-machine preflight, not a browser wire trace. It verifies the 5 Hz/300-writes-per-player ceiling, synthetic sample-to-delivery jitter, an ideal fixed-400 ms/two-slot capacity model, remote visibility and reconnect semantics, cross-player item conservation, chat bounds, authoritative PvP, and pure guard pause/reset behavior. Its modeled fixture contains 600 presence mutations, two session starts, and six representative actions (608 total). Live Lakebed latency, query executions, visible pause timing, and control-plane reconciliation are production-only evidence.
 
-The claimed production app currently allows 10,000 requests and only 1,000 mutations per day. A two-player active-presence run spends about 606 mutations/minute, while the 5 Hz shared-mob query adds roughly 600 read requests/minute; the daily mutation bucket can still be exhausted in under two minutes. That limitation is intentional evidence for this Lakebed experiment: run one bounded 60-second production pass after a reset, preserve the results, and never switch multiplayer to another transport.
+The claimed production app currently allows 10,000 requests and only 1,000 mutations per day. A two-player continuous active-presence minute can spend up to 600 heartbeat mutations before session starts and incidental systems, while the 5 Hz shared-mob query adds roughly 600 read requests/minute; the daily mutation bucket can still be exhausted in under two minutes. That limitation is intentional evidence for this Lakebed experiment: run one bounded sustained pass and a separately metered gameplay pass after reset, preserve both, and never switch multiplayer to another transport.
 
 ## Identity prerequisite
 
@@ -26,13 +26,18 @@ Production validation requires two separate browser profiles that are already si
    ```sh
    npx lakebed inspect https://craft.lakebed.app --json
    npx lakebed db dump https://craft.lakebed.app > /tmp/lakecraft-before.json
+   npx lakebed deploy list --json > /tmp/lakecraft-quota-before.json
    ```
 
    If the CLI returns `lakebed_quota_exceeded`, stop. Record the bucket, current value, limit, and `resetAt`; retrying only consumes more requests.
 
-2. Open `https://craft.lakebed.app` side by side in the two authenticated browser profiles. Join the same world as distinct usernames. Turn on F3 in both windows and begin a full-desktop recording or timestamped Computer Use capture.
+   The `deploy list` snapshot must be the final pre-run command so diagnostics do not contaminate the baseline.
 
-3. Run this fixed interaction sequence:
+2. Open `https://craft.lakebed.app` side by side in the two authenticated browser profiles. Join the same world as distinct usernames. Turn on F3 in both windows and begin a full-desktop recording or timestamped Computer Use capture. Wait until both F3 panels show `SYNC BURST`.
+
+3. Run the sustained cadence trace separately: both clients move and turn continuously for 60 seconds, with no chat, drops, combat, leave, or reconnect. Capture unique-heartbeat F3 server-age samples and browser-observed motion timing. Immediately save `npx lakebed deploy list --json > /tmp/lakecraft-quota-after-sustain.json`. The wire ledger—not a constant—must report the actual session, heartbeat, mob, query, and incidental operations.
+
+4. Take a new quota baseline and run this separate gameplay/reconnect sequence. Do not use its counter delta as the sustained-5 Hz result:
 
    | Time | Client A | Client B | Required observation |
    | ---: | --- | --- | --- |
@@ -44,23 +49,27 @@ Production validation requires two separate browser profiles that are already si
    | 45–55 s | Watch B | Leave the world, then rejoin | B disappears promptly, reconnects at its saved pose, and has one nameplate/avatar |
    | 55–60 s | Hold Tab | Hold Tab | Both player lists contain the same two unique usernames |
 
-4. Capture evidence:
+5. Capture evidence:
 
    - one side-by-side screenshot with both usernames/nameplates;
    - one screenshot of mirrored chat;
    - one screenshot before and after item transfer;
    - one screenshot of PvP health feedback;
    - F3 values from both clients: FPS, P95 frame time, draw calls, chunks, vertices, and mesh time;
-   - recording frame counts from the local movement start to the observer's first remote motion. Report median/P95 across at least ten direction changes; label this as observed end-to-end latency, not simulated latency.
+   - both F3 `AGE` lines after at least ten unique remote heartbeats; report server-clock snapshot-age P50/P95 and sample count;
+   - recording frame counts from the local movement start to the observer's first remote motion. Report median/P95 across at least ten direction changes; label this separately as browser-observed response.
 
-5. Inspect state and logs once after the run:
+6. Inspect state and logs once after the run:
 
    ```sh
+   npx lakebed deploy list --json > /tmp/lakecraft-quota-after.json
    npx lakebed db dump https://craft.lakebed.app > /tmp/lakecraft-after.json
    npx lakebed logs https://craft.lakebed.app
    ```
 
-   Record request/mutation quota deltas when Lakebed exposes them. Expected application mutations for the scripted actions are two chats, one drop, one pickup, one attack, and one leave, plus up to 600 presence writes for two continuously moving clients during a full minute. Presence is an indexed upsert, so row-count growth is not a substitute for mutation accounting.
+   Reconcile each phase's measured wire operation totals against its request/mutation counter deltas with `abs(controlPlaneDelta - wireCount) / controlPlaneDelta × 100`; both errors must be at most 5%. Do not force the gameplay/reconnect script into a 608 constant: it adds another session start/heartbeat and can include cleanup, mob, inventory, and other incidental operations. Presence is an indexed upsert, so row-count growth is not a substitute for mutation accounting.
+
+7. Preserve the per-phase quota snapshots, commit/deployment/artifact hashes, pseudonymous client IDs, UTC bounds, operation ledger, server-age samples, and separate chat/drop/PvP observations. If the actual run reaches 429, verify both clients show a persistent paused state within two seconds, produce at most one fallback presence attempt/client/minute, and recover at the displayed reset without reloading.
 
 ## Shared furnace authority check
 
@@ -70,7 +79,6 @@ Run this check when a furnace or inventory-authority milestone changes. Place on
 2. Observe a full item cook for at least ten seconds. Both clients' arrows should advance from server-derived state and converge on one output; there must be no per-tick furnace mutation in the logs.
 3. Close both clients during a second cook, wait more than ten seconds, then reopen the furnace. The output must materialize from elapsed server time even though no client remained connected.
 4. Have both clients attempt a transfer from the same revision. Exactly one operation may commit; the loser must reload canonical pack and furnace state. Combined ore, fuel, and output totals must remain conserved.
-5. Simulate an outcome-unknown retry by replaying the winner's exact operation ID. It must return the prior result without moving a second stack. Reusing that operation ID for a different semantic action must be rejected.
 6. With one drawer open for a minute, verify the Lakebed reconciliation cadence is about 0.5 Hz (approximately 30 reads) while the local progress display remains smooth at 20 Hz, and that progress alone adds zero mutations. Record the request delta separately from presence and mob sampling.
 
 The deterministic preflight for the same invariants is:
@@ -94,4 +102,4 @@ node --test \
 - Concurrent and retried furnace transfers conserve combined player/furnace items, commit once, and reject semantic operation-ID reuse.
 - Disconnect removes the old avatar and reconnect produces exactly one avatar at the saved pose.
 - Desktop rendering remains at least 55 FPS with at most 22 ms P95 frame time during the run.
-- Request and mutation quota exhaustion is a failed production gate and must be reported, never worked around with another backend.
+- Quota exhaustion must visibly suppress retries and recover at Lakebed's reset; it must be reported, measured, and never worked around with another backend.

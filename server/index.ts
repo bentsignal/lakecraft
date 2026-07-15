@@ -785,12 +785,13 @@ export default capsule({
         .collect()
     ),
 
-    recentPlayers: query(async (ctx, activeSince: string) =>
-      ctx.db.playerPresence
+    recentPlayers: query(async (ctx, activeSince: string) => ({
+      players: await ctx.db.playerPresence
         .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", activeSince.trim().slice(0, 32)))
         .order("desc")
-        .take(128)
-    ),
+        .take(128),
+      serverNow: Date.now(),
+    })),
 
     myPresence: query(async (ctx) =>
       (await ctx.db.playerPresence

@@ -26,11 +26,13 @@ export const PRESENCE_ACTION_MUTATION_RESERVE = 100;
 export const PRESENCE_SESSION_WRITE_BUDGET = Math.floor(
   (PRESENCE_CLAIMED_MUTATIONS_PER_DAY - PRESENCE_ACTION_MUTATION_RESERVE) / PRESENCE_EXPECTED_BURST_PLAYERS,
 );
-/** Thirty seconds of 5 Hz movement per participant, then sparse lease mode. */
-export const PRESENCE_REALTIME_BURST_WRITES = PRESENCE_ACTIVE_WRITES_PER_SECOND * 30;
+/** One measured minute of 5 Hz movement per participant, then sparse lease mode. */
+export const PRESENCE_REALTIME_BURST_WRITES = PRESENCE_ACTIVE_WRITES_PER_SECOND * 60;
 export const PRESENCE_MAX_ACTIVE_WRITES_PER_DAY = PRESENCE_SESSION_WRITE_BUDGET;
 /** Sample more often than the write cadence so input changes are queued quickly. */
 export const PRESENCE_SAMPLE_INTERVAL_MS = 50;
+/** Keep publication bounded while allowing one slow Lakebed round trip to overlap the next write. */
+export const PRESENCE_MAX_IN_FLIGHT_WRITES = 2;
 /** Server guard allows ordinary scheduler/network jitter but caps direct spam. */
 export const PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS = 150;
 export const PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE = Math.ceil(
@@ -217,7 +219,6 @@ export function createPresenceBurstGuardState(
   if (!persisted
     || !Number.isFinite(persisted.windowStartedAt)
     || persisted.windowStartedAt! > now
-    || now - persisted.windowStartedAt! >= PRESENCE_BUDGET_WINDOW_MS
     || !isValidGuardCount(persisted.attemptCount, PRESENCE_SESSION_WRITE_BUDGET)
     || !isValidGuardCount(persisted.confirmedCount, PRESENCE_SESSION_WRITE_BUDGET)
     || persisted.confirmedCount! > persisted.attemptCount!
@@ -226,6 +227,14 @@ export function createPresenceBurstGuardState(
     || !Number.isFinite(persisted.blockedUntilAt)
     || typeof persisted.quotaPaused !== "boolean") {
     return freshPresenceBurstGuardState(now);
+  }
+  if (now - persisted.windowStartedAt! >= PRESENCE_BUDGET_WINDOW_MS) {
+    const fresh = freshPresenceBurstGuardState(now);
+    if (persisted.quotaPaused && persisted.blockedUntilAt! > now) {
+      fresh.quotaPaused = true;
+      fresh.blockedUntilAt = persisted.blockedUntilAt!;
+    }
+    return fresh;
   }
   return {
     windowStartedAt: persisted.windowStartedAt!,
@@ -239,9 +248,21 @@ export function createPresenceBurstGuardState(
 }
 
 function refreshPresenceBurstGuardWindow(state: PresenceBurstGuardState, now: number): void {
-  if (Number.isFinite(now)
-    && (now < state.windowStartedAt || now - state.windowStartedAt >= PRESENCE_BUDGET_WINDOW_MS)) {
+  if (Number.isFinite(now) && now < state.windowStartedAt) {
     Object.assign(state, freshPresenceBurstGuardState(now));
+  } else if (Number.isFinite(now) && now - state.windowStartedAt >= PRESENCE_BUDGET_WINDOW_MS) {
+    const quotaBlockedUntilAt = state.quotaPaused ? state.blockedUntilAt : 0;
+    Object.assign(state, freshPresenceBurstGuardState(now));
+    if (quotaBlockedUntilAt > now) {
+      state.quotaPaused = true;
+      state.blockedUntilAt = quotaBlockedUntilAt;
+    }
+  } else if (state.quotaPaused && Number.isFinite(now) && now >= state.blockedUntilAt) {
+    // Keep the 50 ms sampler alive but resume through the same guarded Lakebed
+    // heartbeat path as soon as Retry-After/reset says the bucket recovered.
+    state.quotaPaused = false;
+    state.consecutiveFailures = 0;
+    state.blockedUntilAt = 0;
   }
 }
 
@@ -294,6 +315,10 @@ export function reservePresenceAttempt(
 
 export function recordPresenceSuccess(state: PresenceBurstGuardState, now: number): void {
   refreshPresenceBurstGuardWindow(state, now);
+  // With two bounded requests in flight, an earlier success can settle after a
+  // sibling has already reported deployment quota exhaustion. The quota pause
+  // must dominate that late settlement until its explicit reset deadline.
+  if (state.quotaPaused) return;
   state.confirmedCount = Math.min(state.attemptCount, state.confirmedCount + 1);
   state.consecutiveFailures = 0;
   state.blockedUntilAt = 0;
@@ -304,12 +329,23 @@ export function recordPresenceFailure(
   state: PresenceBurstGuardState,
   now: number,
   kind: PresenceTransportErrorKind,
+  quotaResetAt?: number | null,
 ): void {
   refreshPresenceBurstGuardWindow(state, now);
+  if (state.quotaPaused) {
+    if (kind === "quota" && typeof quotaResetAt === "number" && Number.isFinite(quotaResetAt) && quotaResetAt > now) {
+      state.blockedUntilAt = Math.max(state.blockedUntilAt, quotaResetAt);
+    }
+    return;
+  }
   state.consecutiveFailures = Math.min(PRESENCE_GENERIC_REJECTION_LIMIT, state.consecutiveFailures + 1);
   if (kind === "quota" || state.consecutiveFailures >= PRESENCE_GENERIC_REJECTION_LIMIT) {
     state.quotaPaused = true;
-    state.blockedUntilAt = state.windowStartedAt + PRESENCE_BUDGET_WINDOW_MS;
+    const browserWindowResetAt = state.windowStartedAt + PRESENCE_BUDGET_WINDOW_MS;
+    state.blockedUntilAt = kind === "quota" && typeof quotaResetAt === "number"
+      && Number.isFinite(quotaResetAt) && quotaResetAt > now
+      ? quotaResetAt
+      : browserWindowResetAt;
     return;
   }
   const backoffMs = Math.min(
@@ -319,11 +355,83 @@ export function recordPresenceFailure(
   state.blockedUntilAt = now + backoffMs;
 }
 
+/** A server cadence rejection is expected jitter, not evidence of a quota storm. */
+export function recordPresenceRateLimit(
+  state: PresenceBurstGuardState,
+  now: number,
+  retryAfterMs: number,
+): void {
+  refreshPresenceBurstGuardWindow(state, now);
+  if (state.quotaPaused) return;
+  state.consecutiveFailures = 0;
+  state.blockedUntilAt = now + Math.max(
+    PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS,
+    Math.min(PRESENCE_FAILURE_BACKOFF_MAX_MS, Number.isFinite(retryAfterMs) ? retryAfterMs : 0),
+  );
+}
+
 export function classifyPresenceTransportError(error: unknown): PresenceTransportErrorKind {
   const message = String(error instanceof Error ? error.message : error).toLowerCase();
   return /(?:429|quota|daily|limit exceeded|resource exhausted|too many requests|mutation limit)/.test(message)
     ? "quota"
     : "transient";
+}
+
+/** Extracts a bounded absolute recovery time from common Lakebed 429 shapes. */
+export function presenceTransportQuotaResetAt(error: unknown, now: number): number | null {
+  if (!Number.isFinite(now)) return null;
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : null;
+  const absoluteCandidates = [record?.resetAt, record?.retryAt];
+  for (const candidate of absoluteCandidates) {
+    const parsed = typeof candidate === "number"
+      ? candidate
+      : typeof candidate === "string"
+        ? Date.parse(candidate)
+        : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > now) return Math.min(parsed, now + PRESENCE_BUDGET_WINDOW_MS);
+  }
+  if (typeof record?.retryAfterMs === "number" && Number.isFinite(record.retryAfterMs) && record.retryAfterMs > 0) {
+    return Math.min(now + record.retryAfterMs, now + PRESENCE_BUDGET_WINDOW_MS);
+  }
+  if (typeof record?.retryAfterSeconds === "number" && Number.isFinite(record.retryAfterSeconds) && record.retryAfterSeconds > 0) {
+    return Math.min(now + record.retryAfterSeconds * 1_000, now + PRESENCE_BUDGET_WINDOW_MS);
+  }
+  const message = String(error instanceof Error ? error.message : error);
+  const isoTimestamp = message.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z/)?.[0];
+  if (isoTimestamp) {
+    const parsed = Date.parse(isoTimestamp);
+    if (Number.isFinite(parsed) && parsed > now) return Math.min(parsed, now + PRESENCE_BUDGET_WINDOW_MS);
+  }
+  const retryAfter = /retry(?:-|\s*)after[^\d]{0,8}(\d{1,10})\s*(ms|milliseconds?|s|seconds?)?/i.exec(message);
+  if (retryAfter) {
+    const amount = Number(retryAfter[1]);
+    const unit = retryAfter[2]?.toLowerCase();
+    const milliseconds = !unit || unit.startsWith("s") ? amount * 1_000 : amount;
+    if (Number.isFinite(milliseconds) && milliseconds > 0) {
+      return Math.min(now + milliseconds, now + PRESENCE_BUDGET_WINDOW_MS);
+    }
+  }
+  // Lakebed's current browser transport may retain only the error message and
+  // discard structured reset metadata. Hosted daily buckets reset at 00:00 UTC,
+  // so this documented control-plane boundary is the safe no-reload fallback.
+  const date = new Date(now);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
+}
+
+export interface PresencePoseAgeSummary {
+  count: number;
+  p50: number;
+  p95: number;
+}
+
+/** Bounded observer-side age summary for F3 and deterministic QA. */
+export function presencePoseAgePercentiles(ages: readonly number[]): PresencePoseAgeSummary {
+  const finite = ages
+    .filter((age) => Number.isFinite(age) && age >= 0)
+    .map((age) => Math.round(age))
+    .sort((left, right) => left - right);
+  const at = (fraction: number) => finite[Math.max(0, Math.ceil(finite.length * fraction) - 1)] ?? 0;
+  return { count: finite.length, p50: at(0.5), p95: at(0.95) };
 }
 
 function finiteWithin(value: number, limit: number): boolean {

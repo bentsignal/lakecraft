@@ -12,6 +12,7 @@ import {
   PRESENCE_GENERIC_REJECTION_LIMIT,
   PRESENCE_IDLE_WRITES_PER_MINUTE,
   PRESENCE_LEASE_REFRESH_MS,
+  PRESENCE_MAX_IN_FLIGHT_WRITES,
   PRESENCE_MAX_ACTIVE_WRITES_PER_DAY,
   PRESENCE_MAX_EXTRAPOLATION_MS,
   PRESENCE_MAX_HORIZONTAL_SPEED,
@@ -35,8 +36,11 @@ import {
   parsePresenceVelocityFields,
   parsePersistedPresencePose,
   presenceBurstGuardSnapshot,
+  presencePoseAgePercentiles,
+  presenceTransportQuotaResetAt,
   presenceExtrapolationSeconds,
   recordPresenceFailure,
+  recordPresenceRateLimit,
   recordPresenceSuccess,
   reservePresenceAttempt,
   stepPresenceScheduler,
@@ -161,6 +165,7 @@ assert.equal(PRESENCE_MAX_IDLE_WRITES_PER_DAY, PRESENCE_SESSION_WRITE_BUDGET);
 assert.equal(PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS, 150);
 assert.equal(PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE, 400);
 assert.equal(PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_DAY, 576_000);
+assert.equal(PRESENCE_MAX_IN_FLIGHT_WRITES, 2);
 
 // The outer browser-day guard makes the deliberately expensive 5 Hz cadence a
 // bounded burst instead of pretending 432k daily writes fit a 1k quota.
@@ -169,7 +174,7 @@ assert.equal(PRESENCE_CLAIMED_REQUESTS_PER_DAY, 10_000);
 assert.equal(PRESENCE_EXPECTED_BURST_PLAYERS, 2);
 assert.equal(PRESENCE_ACTION_MUTATION_RESERVE, 100);
 assert.equal(PRESENCE_SESSION_WRITE_BUDGET, 450);
-assert.equal(PRESENCE_REALTIME_BURST_WRITES, 150);
+assert.equal(PRESENCE_REALTIME_BURST_WRITES, 300);
 assert.equal(
   PRESENCE_SESSION_WRITE_BUDGET * PRESENCE_EXPECTED_BURST_PLAYERS + PRESENCE_ACTION_MUTATION_RESERVE,
   PRESENCE_CLAIMED_MUTATIONS_PER_DAY,
@@ -181,7 +186,7 @@ assert.deepEqual(presenceBurstGuardSnapshot(guarded, 0, false), {
   cadenceHz: 1 / 60,
   canAttempt: true,
   sessionRemaining: 450,
-  realtimeRemaining: 150,
+  realtimeRemaining: 300,
   confirmedCount: 0,
   attemptCount: 0,
   retryInMs: 0,
@@ -192,20 +197,20 @@ for (let write = 0; write < PRESENCE_REALTIME_BURST_WRITES; write += 1) {
   assert.equal(reservePresenceAttempt(guarded, at, true), true);
   recordPresenceSuccess(guarded, at);
 }
-const degraded = presenceBurstGuardSnapshot(guarded, 30_000, true);
+const degraded = presenceBurstGuardSnapshot(guarded, 60_000, true);
 assert.equal(degraded.mode, "degraded");
 assert.equal(degraded.cadenceHz, 1 / 60);
 assert.equal(degraded.realtimeRemaining, 0);
-assert.equal(degraded.sessionRemaining, 300);
-assert.equal(reservePresenceAttempt(guarded, 30_000, true), false, "realtime cannot overrun its burst allocation");
-for (let lease = 0; lease < 300; lease += 1) {
+assert.equal(degraded.sessionRemaining, 150);
+assert.equal(reservePresenceAttempt(guarded, 60_000, true), false, "realtime cannot overrun its burst allocation");
+for (let lease = 0; lease < 150; lease += 1) {
   assert.equal(reservePresenceAttempt(guarded, 60_000 + lease * 60_000, false), true);
   recordPresenceSuccess(guarded, 60_000 + lease * 60_000);
 }
-assert.equal(presenceBurstGuardSnapshot(guarded, 18_100_000, true).mode, "budget_exhausted");
-assert.equal(reservePresenceAttempt(guarded, 18_100_000, false), false);
+assert.equal(presenceBurstGuardSnapshot(guarded, 9_100_000, true).mode, "budget_exhausted");
+assert.equal(reservePresenceAttempt(guarded, 9_100_000, false), false);
 
-const hydratedGuard = createPresenceBurstGuardState(18_100_001, JSON.parse(JSON.stringify(guarded)));
+const hydratedGuard = createPresenceBurstGuardState(9_100_001, JSON.parse(JSON.stringify(guarded)));
 assert.equal(hydratedGuard.attemptCount, PRESENCE_SESSION_WRITE_BUDGET, "reloads retain the browser-day budget");
 const recoveredGuard = createPresenceBurstGuardState(PRESENCE_BUDGET_WINDOW_MS + 1, hydratedGuard);
 assert.equal(recoveredGuard.attemptCount, 0, "the next rolling day deterministically recovers the budget");
@@ -239,8 +244,56 @@ assert.equal(
 
 const explicitQuota = createPresenceBurstGuardState(0);
 assert.equal(reservePresenceAttempt(explicitQuota, 0, true), true);
-recordPresenceFailure(explicitQuota, 0, classifyPresenceTransportError(new Error("429 quota exceeded")));
+recordPresenceFailure(explicitQuota, 0, classifyPresenceTransportError(new Error("429 quota exceeded")), 60_000);
 assert.equal(presenceBurstGuardSnapshot(explicitQuota, 1, true).mode, "quota_paused");
+recordPresenceSuccess(explicitQuota, 100);
+assert.equal(presenceBurstGuardSnapshot(explicitQuota, 100, true).mode, "quota_paused", "a late sibling success cannot clear quota pause");
+assert.equal(explicitQuota.confirmedCount, 0);
+recordPresenceRateLimit(explicitQuota, 150, 175);
+assert.equal(explicitQuota.blockedUntilAt, 60_000, "a late cadence rejection cannot shorten quota pause");
+recordPresenceFailure(explicitQuota, 200, "transient");
+assert.equal(explicitQuota.blockedUntilAt, 60_000, "a late transient failure cannot shorten quota pause");
+assert.equal(presenceBurstGuardSnapshot(explicitQuota, 59_999, true).canAttempt, false);
+assert.equal(presenceBurstGuardSnapshot(explicitQuota, 60_000, true).mode, "burst", "the same guard resumes at reset without reload");
+assert.equal(reservePresenceAttempt(explicitQuota, 60_000, true), true);
+
+const delayedQuota = createPresenceBurstGuardState(0);
+recordPresenceFailure(delayedQuota, 0, "quota", PRESENCE_BUDGET_WINDOW_MS + 5_000);
+assert.equal(presenceBurstGuardSnapshot(delayedQuota, PRESENCE_BUDGET_WINDOW_MS, true).mode, "quota_paused");
+const rehydratedDelayedQuota = createPresenceBurstGuardState(
+  PRESENCE_BUDGET_WINDOW_MS + 1,
+  JSON.parse(JSON.stringify(delayedQuota)),
+);
+assert.equal(presenceBurstGuardSnapshot(rehydratedDelayedQuota, PRESENCE_BUDGET_WINDOW_MS + 1, true).mode, "quota_paused");
+assert.equal(presenceBurstGuardSnapshot(rehydratedDelayedQuota, PRESENCE_BUDGET_WINDOW_MS + 5_000, true).mode, "burst");
+
+const rateLimited = createPresenceBurstGuardState(0);
+assert.equal(reservePresenceAttempt(rateLimited, 0, true), true);
+recordPresenceRateLimit(rateLimited, 0, 175);
+assert.equal(rateLimited.consecutiveFailures, 0, "ordinary cadence jitter never escalates to terminal quota pause");
+assert.equal(presenceBurstGuardSnapshot(rateLimited, 174, true).mode, "backoff");
+assert.equal(presenceBurstGuardSnapshot(rateLimited, 175, true).mode, "burst");
+
+const resetNow = Date.parse("2026-07-15T12:00:00.000Z");
+assert.equal(presenceTransportQuotaResetAt({ resetAt: resetNow + 2_000 }, resetNow), resetNow + 2_000);
+assert.equal(presenceTransportQuotaResetAt({ retryAfterSeconds: 3 }, resetNow), resetNow + 3_000);
+assert.equal(presenceTransportQuotaResetAt(new Error("429 retry-after 2500ms"), resetNow), resetNow + 2_500);
+assert.equal(presenceTransportQuotaResetAt(new Error("429 Retry-After: 3"), resetNow), resetNow + 3_000);
+assert.equal(
+  presenceTransportQuotaResetAt(new Error("quota resets 2026-07-15T12:00:05.000Z"), resetNow),
+  resetNow + 5_000,
+);
+assert.equal(
+  presenceTransportQuotaResetAt(new Error("429 quota exceeded"), resetNow),
+  Date.parse("2026-07-16T00:00:00.000Z"),
+);
+
+assert.deepEqual(presencePoseAgePercentiles([210, 55, 90, 140, 75, 125, 180, 100]), {
+  count: 8,
+  p50: 100,
+  p95: 210,
+});
+assert.deepEqual(presencePoseAgePercentiles([-1, Number.NaN, 99.6]), { count: 1, p50: 100, p95: 100 });
 assert.equal(classifyPresenceTransportError(new Error("Mutation rejected")), "transient");
 assert.equal(classifyPresenceTransportError("resource exhausted"), "quota");
 
