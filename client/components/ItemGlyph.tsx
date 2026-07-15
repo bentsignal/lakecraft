@@ -8,7 +8,7 @@ export type ItemGlyphProps = {
 };
 
 const HELD_SPRITE_BLOCKS = new Set<BlockId>([
-  "torch", "door", "bed", "ladder", "sapling", "oak_fence", "oak_fence_gate",
+  "torch", "door", "bed", "ladder", "sapling", "oak_fence", "oak_fence_gate", "stone_brick_slab",
 ]);
 
 /** Thin or non-cubic placeables keep their authored item silhouette when held. */

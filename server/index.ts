@@ -296,6 +296,7 @@ import {
   resolveRangedChargeStart,
   resolveRangedReleaseIdempotently,
   selectRangedCombatReceiptOverflow,
+  segmentVoxelHeightIntersectionFraction,
   traceRangedTrajectory,
   validateRangedCombatRequestJson,
   type RangedAuthorityTarget,
@@ -649,9 +650,26 @@ function rangedChargeFromRow(row: Record<string, unknown> | null): RangedChargeA
   };
 }
 
-function rangedBlockOccludes(block: BlockType): boolean {
-  return block !== "air" && block !== "torch" && block !== "ladder"
-    && block !== "door_open" && block !== "oak_fence_gate_open";
+function rangedBlockOccludes(
+  block: BlockType,
+  x: number,
+  y: number,
+  z: number,
+  segmentStart?: Readonly<{ x: number; y: number; z: number }>,
+  segmentEnd?: Readonly<{ x: number; y: number; z: number }>,
+): boolean | number {
+  if (block === "air" || block === "torch" || block === "ladder"
+    || block === "door_open" || block === "oak_fence_gate_open") return false;
+  if (block !== "stone_brick_slab") return true;
+  if (!segmentStart || !segmentEnd) return false;
+  return segmentVoxelHeightIntersectionFraction(
+    segmentStart,
+    segmentEnd,
+    x,
+    y,
+    z,
+    0.5,
+  ) ?? false;
 }
 
 type RangedProbeCell = { x: number; y: number; z: number; coordKey: string };
@@ -661,7 +679,7 @@ async function authoritativeRangedOccluders(
   db: WriteDatabase,
   trajectory: RangedTrajectory,
   target: RangedAuthorityTarget | null,
-): Promise<{ ok: true; occludes: (x: number, y: number, z: number) => boolean } | { ok: false; reason: string }> {
+): Promise<{ ok: true; occludes: (x: number, y: number, z: number, segmentStart?: Readonly<{ x: number; y: number; z: number }>, segmentEnd?: Readonly<{ x: number; y: number; z: number }>) => boolean | number } | { ok: false; reason: string }> {
   const cells = new Map<string, RangedProbeCell>();
   let probeOverflow = false;
   traceRangedTrajectory(trajectory, target, (x, y, z) => {
@@ -707,7 +725,14 @@ async function authoritativeRangedOccluders(
   }
   return {
     ok: true,
-    occludes: (x, y, z) => rangedBlockOccludes(blocks.get(`${x}:${y}:${z}`) ?? "air"),
+    occludes: (x, y, z, segmentStart, segmentEnd) => rangedBlockOccludes(
+      blocks.get(`${x}:${y}:${z}`) ?? "air",
+      x,
+      y,
+      z,
+      segmentStart,
+      segmentEnd,
+    ),
   };
 }
 
@@ -1129,6 +1154,7 @@ async function authoritativeFallWorldFacts(
     const block = blocks.get(cell.coordKey);
     if (!block) return { ok: false, reason: "invalid_world_state" };
     if (cell.support && fallSupportBlockHasCollision(block)) supported = true;
+    if (cell.slabSupport && block === "stone_brick_slab") supported = true;
     if (cell.doorTop && cell.y + 1 > 0 && block === "door_closed") supported = true;
     if (cell.ladder && block === "ladder") onLadder = true;
   }

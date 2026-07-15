@@ -85,7 +85,7 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
 }
 assert.match(client, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"[\s\S]*?oak_fence:\s*BLOCK\.OAK_FENCE/,
   "multiplayer round-trips engine, protocol, game, and item identities");
-assert.match(single, /edit\.block\s*<=\s*BLOCK\.OAK_FENCE_GATE_OPEN/,
+assert.match(single, /edit\.block\s*<=\s*BLOCK\.STONE_BRICK_SLAB/,
   "single-player save validation retains oak fences and every newer append-only engine ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));

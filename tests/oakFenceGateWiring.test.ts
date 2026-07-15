@@ -142,7 +142,7 @@ assert.match(client, /onBlockEdit:\s*\(edit, previousBlock\)[\s\S]{0,140}handleB
   "multiplayer preserves the prior state needed to serialize a toggle safely");
 assert.match(client, /next === BLOCK\.DOOR_OPEN \|\| next === BLOCK\.OAK_FENCE_GATE_OPEN/,
   "confirmed gate opens and closes reuse direction-specific wood sounds");
-assert.match(local, /edit\.block\s*<=\s*BLOCK\.OAK_FENCE_GATE_OPEN/,
+assert.match(local, /edit\.block\s*<=\s*BLOCK\.STONE_BRICK_SLAB/,
   "single-player saves retain both append-only gate states");
 assert.match(local,
   /previousBlock === BLOCK\.OAK_FENCE_GATE_CLOSED && edit\.block === BLOCK\.OAK_FENCE_GATE_OPEN[\s\S]{0,160}previousBlock === BLOCK\.OAK_FENCE_GATE_OPEN && edit\.block === BLOCK\.OAK_FENCE_GATE_CLOSED/,
@@ -159,7 +159,7 @@ assert.ok(mutation.indexOf("worldChunks.update") < mutation.indexOf("worldBlockO
   "the existing transaction commits one gate transition before its exact-once receipt");
 assert.doesNotMatch(server, /oakFenceGate[^\n]*mutation|mutation[^\n]*oakFenceGate/i,
   "gate interaction adds no dedicated Lakebed mutation");
-assert.match(server, /block !== "door_open" && block !== "oak_fence_gate_open"/,
+assert.match(server, /block === "door_open" \|\| block === "oak_fence_gate_open"\) return false/,
   "authoritative ranged collision lets projectiles pass through an open gate");
 assert.match(server, /oak_fence_gate_closed" \|\| block === "oak_fence_gate_open"\) return "oak_fence_gate"/,
   "tree-growth authority treats both gate states as occupied canonical blocks");

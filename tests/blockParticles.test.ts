@@ -124,6 +124,15 @@ const stoneBricks = createBlockParticleSystem(1);
 assert.equal(stoneBricks.spawn({ block: BLOCK.STONE_BRICKS, x: 2, y: 3, z: 4, action: "break" }), 1,
   "the append-only particle palette accepts stone bricks");
 
+const stoneBrickSlab = createBlockParticleSystem(1);
+assert.equal(stoneBrickSlab.spawn({ block: BLOCK.STONE_BRICK_SLAB, x: 2, y: 3, z: 4, action: "break" }), 1,
+  "the final append-only particle ID accepts stone-brick slabs");
+stoneBrickSlab.writeGeometry([1, 0, 0], [0, 1, 0], physicsGeometry, physicsStats);
+assert.ok(physicsGeometry[3] > 0.3 && physicsGeometry[3] < 0.6
+  && physicsGeometry[4] > 0.3 && physicsGeometry[4] < 0.6
+  && physicsGeometry[5] > 0.3 && physicsGeometry[5] < 0.6,
+"slab debris reuses the bounded stone-colored particle palette");
+
 for (const [block, label] of [
   [BLOCK.OAK_FENCE, "oak fence"],
   [BLOCK.OAK_FENCE_GATE_CLOSED, "closed oak fence gate"],

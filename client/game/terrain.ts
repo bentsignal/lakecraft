@@ -1,5 +1,6 @@
 import { BLOCK, type BlockId, type BlockTarget } from "./types.ts";
 import { WORLD_CHUNK_SIZE, chunkBounds } from "./chunks.ts";
+import { blockContainsSolidPoint } from "./blockGeometry.ts";
 
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
 
@@ -690,22 +691,49 @@ export function raycastVoxels(
   let previousX = Math.floor(origin[0]);
   let previousY = Math.floor(origin[1]);
   let previousZ = Math.floor(origin[2]);
+  const originX = previousX;
+  const originY = previousY;
+  const originZ = previousZ;
+  let currentX = Number.NaN;
+  let currentY = Number.NaN;
+  let currentZ = Number.NaN;
+  let currentBlock = BLOCK.AIR as BlockId;
   // A fine fixed step is deterministic and plenty fast at Minecraft-scale reach.
   for (let distance = 0.025; distance <= reach; distance += 0.025) {
-    const x = Math.floor(origin[0] + direction[0] * distance);
-    const y = Math.floor(origin[1] + direction[1] * distance);
-    const z = Math.floor(origin[2] + direction[2] * distance);
-    if (x === previousX && y === previousY && z === previousZ) continue;
-    if (getBlock(x, y, z) !== BLOCK.AIR) {
+    const pointX = origin[0] + direction[0] * distance;
+    const pointY = origin[1] + direction[1] * distance;
+    const pointZ = origin[2] + direction[2] * distance;
+    const x = Math.floor(pointX);
+    const y = Math.floor(pointY);
+    const z = Math.floor(pointZ);
+    const enteredVoxel = x !== currentX || y !== currentY || z !== currentZ;
+    if (enteredVoxel) {
+      currentX = x;
+      currentY = y;
+      currentZ = z;
+      currentBlock = getBlock(x, y, z);
+    }
+    // Preserve the established rule that a ray never targets the voxel that
+    // contains its origin (for example an eye inside leaves or an open door).
+    if (x === originX && y === originY && z === originZ) continue;
+    if (currentBlock !== BLOCK.AIR && blockContainsSolidPoint(currentBlock, y, pointY)) {
+      // A descending ray may enter the empty upper half and later meet the slab
+      // top without changing voxel coordinates. Its placement neighbor is the
+      // cell above, not the already-occupied slab cell.
+      const place = !enteredVoxel && currentBlock === BLOCK.STONE_BRICK_SLAB
+        ? { x, y: y + 1, z }
+        : { x: previousX, y: previousY, z: previousZ };
       return {
-        block: { x, y, z, block: getBlock(x, y, z) },
-        place: { x: previousX, y: previousY, z: previousZ },
+        block: { x, y, z, block: currentBlock },
+        place,
         distance,
       };
     }
-    previousX = x;
-    previousY = y;
-    previousZ = z;
+    if (enteredVoxel) {
+      previousX = x;
+      previousY = y;
+      previousZ = z;
+    }
   }
   return null;
 }

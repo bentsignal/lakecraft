@@ -42,6 +42,7 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "oak_fence",
   "oak_fence_gate_closed",
   "oak_fence_gate_open",
+  "stone_brick_slab",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];

@@ -170,7 +170,18 @@ export type IdempotentRangedReleaseResult =
   | { ok: true; replayed: boolean; receipt: RangedCombatReceiptPayload; result: Extract<RangedReleaseResult, { ok: true }> }
   | { ok: false; reason: RangedReleaseFailureReason | "invalid_receipt" | "operation_id_reused"; retryAfterMs?: number };
 
-export type VoxelOccluder = (x: number, y: number, z: number) => boolean;
+/**
+ * Optional segment endpoints let partial-height blocks test their true AABB.
+ * Existing whole-voxel callers remain source-compatible and can ignore them.
+ */
+export type VoxelOccluderResult = boolean | number;
+export type VoxelOccluder = (
+  x: number,
+  y: number,
+  z: number,
+  segmentStart?: Vec3,
+  segmentEnd?: Vec3,
+) => VoxelOccluderResult;
 
 const BEGIN_KEYS = ["version", "operationId", "expectedInventoryRevision", "selectedHotbar", "kind"] as const;
 const CANCEL_KEYS = [...BEGIN_KEYS, "beginOperationId"] as const;
@@ -334,6 +345,41 @@ export function segmentAabbIntersectionFraction(start: Vec3, end: Vec3, min: Vec
   return enter >= 0 && enter <= 1 ? enter : null;
 }
 
+/** Exact global segment fraction entering the occupied lower portion of a voxel. */
+export function segmentVoxelHeightIntersectionFraction(
+  start: Vec3,
+  end: Vec3,
+  x: number,
+  y: number,
+  z: number,
+  height: number,
+): number | null {
+  if (![x, y, z].every(Number.isSafeInteger) || !Number.isFinite(height) || height <= 0 || height > 1) return null;
+  return segmentAabbIntersectionFraction(
+    start,
+    end,
+    { x, y, z },
+    { x: x + 1, y: y + height, z: z + 1 },
+  );
+}
+
+export function segmentIntersectsVoxelHeight(
+  start: Vec3,
+  end: Vec3,
+  x: number,
+  y: number,
+  z: number,
+  height: number,
+): boolean {
+  return segmentVoxelHeightIntersectionFraction(start, end, x, y, z, height) !== null;
+}
+
+function exactOcclusionFraction(result: VoxelOccluderResult, cellEntryFraction: number): number | null {
+  if (result === true) return Math.max(0, cellEntryFraction);
+  if (result === false || !Number.isFinite(result) || result < 0 || result > 1) return null;
+  return Math.max(0, cellEntryFraction, result);
+}
+
 /** Deterministic 3D DDA; X then Y then Z breaks exact boundary ties. */
 export function firstOccludingVoxelOnSegment(start: Vec3, end: Vec3, occludes: VoxelOccluder):
   | { x: number; y: number; z: number; fraction: number }
@@ -342,7 +388,8 @@ export function firstOccludingVoxelOnSegment(start: Vec3, end: Vec3, occludes: V
   let x = Math.floor(start.x);
   let y = Math.floor(start.y);
   let z = Math.floor(start.z);
-  if (occludes(x, y, z)) return { x, y, z, fraction: 0 };
+  const startingFraction = exactOcclusionFraction(occludes(x, y, z, start, end), 0);
+  if (startingFraction !== null) return { x, y, z, fraction: startingFraction };
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const dz = end.z - start.z;
@@ -372,7 +419,8 @@ export function firstOccludingVoxelOnSegment(start: Vec3, end: Vec3, occludes: V
       nextZ += deltaZ;
     }
     if (fraction > 1) return null;
-    if (occludes(x, y, z)) return { x, y, z, fraction: Math.max(0, fraction) };
+    const occlusionFraction = exactOcclusionFraction(occludes(x, y, z, start, end), fraction);
+    if (occlusionFraction !== null) return { x, y, z, fraction: occlusionFraction };
   }
   return null;
 }

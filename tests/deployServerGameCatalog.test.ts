@@ -49,6 +49,7 @@ function smeltingMechanics(recipes: GameModule["SMELTING_RECIPES"]) {
   return recipes.map(({ id, input, output }) => ({ id, input, output }));
 }
 
+async function run() {
 const source = readFileSync(new URL("../shared/game.ts", import.meta.url), "utf8");
 const transformed = stripServerGamePresentation(source);
 
@@ -155,3 +156,9 @@ try {
 }
 
 console.log("server game catalog deploy transform checks passed");
+}
+
+void run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

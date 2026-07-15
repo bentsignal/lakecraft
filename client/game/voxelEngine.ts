@@ -49,6 +49,13 @@ import {
   type BlockFace,
 } from "./blockTextures.ts";
 import {
+  STONE_BRICK_SLAB_HEIGHT,
+  blockCollisionHeight,
+  blockContainsSolidPoint,
+  blockSupportsPlayerFeet,
+  playerIntersectsBlockCollisionHeight,
+} from "./blockGeometry.ts";
+import {
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_RGBA,
   TEXTURE_ATLAS_ROWS,
@@ -423,6 +430,7 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.OAK_FENCE]: [0.69, 0.48, 0.25],
   [BLOCK.OAK_FENCE_GATE_CLOSED]: [0.69, 0.48, 0.25],
   [BLOCK.OAK_FENCE_GATE_OPEN]: [0.69, 0.48, 0.25],
+  [BLOCK.STONE_BRICK_SLAB]: [0.43, 0.45, 0.43],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -477,7 +485,8 @@ export function blockOccludesFaces(block: BlockId): boolean {
     && block !== BLOCK.SAPLING
     && block !== BLOCK.OAK_FENCE
     && block !== BLOCK.OAK_FENCE_GATE_CLOSED
-    && block !== BLOCK.OAK_FENCE_GATE_OPEN;
+    && block !== BLOCK.OAK_FENCE_GATE_OPEN
+    && block !== BLOCK.STONE_BRICK_SLAB;
 }
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
@@ -873,6 +882,43 @@ function appendTexturedAxisAlignedBox(
           min[1] + point[1] * (max[1] - min[1]),
           min[2] + point[2] * (max[2] - min[2]),
         ],
+        uv.left + (uv.right - uv.left) * horizontal,
+        uv.bottom + (uv.top - uv.bottom) * vertical,
+        face.shade * shade,
+      );
+    }
+  }
+}
+
+export const STONE_BRICK_SLAB_MESH_VERTEX_COUNT = 36;
+
+/**
+ * One bottom-half textured box in the retained opaque terrain batch. Side UVs
+ * consume exactly half of the 16px masonry tile instead of stretching it.
+ * The optional lookup culls only faces that are completely hidden.
+ */
+export function appendStoneBrickSlabMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  shade = 1,
+  getBlock?: (x: number, y: number, z: number) => BlockId,
+): void {
+  const uv = textureAtlasUv("stone_bricks");
+  for (const face of FACE_DEFS) {
+    if (getBlock) {
+      const neighbor = getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]);
+      const horizontalFace = face.neighbor[1] === 0;
+      if ((horizontalFace && (neighbor === BLOCK.STONE_BRICK_SLAB || blockOccludesFaces(neighbor)))
+        || (face.face === "bottom" && blockOccludesFaces(neighbor))) continue;
+    }
+    for (const point of face.vertices) {
+      const horizontal = face.neighbor[0] !== 0 ? point[2] : point[0];
+      const vertical = face.neighbor[1] !== 0 ? point[2] : point[1] * STONE_BRICK_SLAB_HEIGHT;
+      pushTexturedVertex(
+        output,
+        [x + point[0], y + point[1] * STONE_BRICK_SLAB_HEIGHT, z + point[2]],
         uv.left + (uv.right - uv.left) * horizontal,
         uv.bottom + (uv.top - uv.bottom) * vertical,
         face.shade * shade,
@@ -1367,7 +1413,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function updateMiningCrackGeometry(): void {
     crackLines.length = 0;
     crackVertexCount = target
-      ? appendWorldBlockCrackLines(crackLines, target.block, miningProgress)
+      ? appendWorldBlockCrackLines(crackLines, target.block,
+        miningProgress,
+        blockCollisionHeight(target.block.block),
+      )
       : 0;
     if (!crackVertexCount) return;
     gl.bindBuffer(gl.ARRAY_BUFFER, crackBuffer);
@@ -1514,7 +1563,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         y + (
           isDoorBlock(block)
             ? 1.9
-            : block === BLOCK.OAK_FENCE || isOakFenceGateBlock(block) ? OAK_FENCE_HEIGHT : 1
+            : block === BLOCK.OAK_FENCE || isOakFenceGateBlock(block)
+              ? OAK_FENCE_HEIGHT
+              : blockCollisionHeight(block)
         ),
       );
       if (block === BLOCK.TORCH) {
@@ -1560,6 +1611,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           z,
           block === BLOCK.OAK_FENCE_GATE_OPEN,
           blockMaterialVariation(x, y, z),
+        );
+        continue;
+      }
+      if (block === BLOCK.STONE_BRICK_SLAB) {
+        appendStoneBrickSlabMesh(
+          textureVertices,
+          x,
+          y,
+          z,
+          blockMaterialVariation(x, y, z),
+          getBlock,
         );
         continue;
       }
@@ -1679,7 +1741,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (let by = minY; by <= maxY; by += 1) {
         for (let bz = minZ; bz <= maxZ; bz += 1) {
           const block = getBlock(bx, by, bz);
-          if (blockHasCollision(block)) return true;
+          if (blockHasCollision(block) && playerIntersectsBlockCollisionHeight(y, bodyHeight, by, block)) return true;
           if (by > 0 && getBlock(bx, by - 1, bz) === BLOCK.DOOR_CLOSED) return true;
           if (getBlock(bx, by - 1, bz) === BLOCK.OAK_FENCE
             && playerIntersectsOakFenceHeight(y, bodyHeight, by - 1)) return true;
@@ -1696,7 +1758,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const sampleY = Math.floor(y - 0.08);
     for (const xOffset of [-0.26, 0.26]) {
       for (const zOffset of [-0.26, 0.26]) {
-        if (blockHasCollision(getBlock(Math.floor(x + xOffset), sampleY, Math.floor(z + zOffset)))) return true;
+        const block = getBlock(Math.floor(x + xOffset), sampleY, Math.floor(z + zOffset));
+        if (blockHasCollision(block) && blockSupportsPlayerFeet(block, sampleY, y)) return true;
       }
     }
     return false;
@@ -1777,7 +1840,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (let zSide = -1; zSide <= 1; zSide += 2) {
         const sampleZ = z + collisionRadius * zSide;
         for (let sampleY = minY; sampleY <= maxY; sampleY += 1) {
-          if (blockHasCollision(getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ)))) return false;
+          const block = getBlock(Math.floor(sampleX), sampleY, Math.floor(sampleZ));
+          if (blockHasCollision(block) && playerIntersectsBlockCollisionHeight(y, height, sampleY, block)) return false;
         }
       }
     }
@@ -1803,7 +1867,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         terrainHeight: (x, z) => terrainHeight(x, z, seed),
         player: pose,
         canOccupy: mobCanOccupy,
-        isProjectileBlocked: (x, y, z) => blockHasCollision(getBlock(Math.floor(x), Math.floor(y), Math.floor(z))),
+        isProjectileBlocked: (x, y, z) => {
+          const blockY = Math.floor(y);
+          const block = getBlock(Math.floor(x), blockY, Math.floor(z));
+          return blockHasCollision(block) && blockContainsSolidPoint(block, blockY, y);
+        },
         worldRadius: radius - 1,
       });
       mobAccumulatorSeconds -= mobStepSeconds;
@@ -2274,11 +2342,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         drawCalls += 1;
       }
       const { x, y, z } = target.block;
+      const targetHeight = blockCollisionHeight(target.block.block);
       gl.lineWidth(1);
       const e = 0.003;
       const corners: Vec3[] = [
-        [x - e, y - e, z - e], [x + 1 + e, y - e, z - e], [x + 1 + e, y + 1 + e, z - e], [x - e, y + 1 + e, z - e],
-        [x - e, y - e, z + 1 + e], [x + 1 + e, y - e, z + 1 + e], [x + 1 + e, y + 1 + e, z + 1 + e], [x - e, y + 1 + e, z + 1 + e],
+        [x - e, y - e, z - e], [x + 1 + e, y - e, z - e], [x + 1 + e, y + targetHeight + e, z - e], [x - e, y + targetHeight + e, z - e],
+        [x - e, y - e, z + 1 + e], [x + 1 + e, y - e, z + 1 + e], [x + 1 + e, y + targetHeight + e, z + 1 + e], [x - e, y + targetHeight + e, z + 1 + e],
       ];
       const edgeIndices = [0,1, 1,2, 2,3, 3,0, 4,5, 5,6, 6,7, 7,4, 0,4, 1,5, 2,6, 3,7];
       const lines: number[] = [];
@@ -2378,8 +2447,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     options.onHotbarCycle?.(direction);
   }
 
-  function playerIntersectsBlock(x: number, y: number, z: number): boolean {
-    return pose.x + 0.29 > x && pose.x - 0.29 < x + 1 && pose.y + cameraPosture.bodyHeight > y && pose.y < y + 1 && pose.z + 0.29 > z && pose.z - 0.29 < z + 1;
+  function playerIntersectsBlock(x: number, y: number, z: number, block: BlockId): boolean {
+    return pose.x + 0.29 > x
+      && pose.x - 0.29 < x + 1
+      && playerIntersectsBlockCollisionHeight(pose.y, cameraPosture.bodyHeight, y, block)
+      && pose.z + 0.29 > z
+      && pose.z - 0.29 < z + 1;
   }
 
   function attackEntityUnderCrosshair(): boolean {
@@ -2532,7 +2605,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (
         getBlock(x, y, z) === BLOCK.AIR
         && supportedSapling
-        && (saplingPlacement || !playerIntersectsBlock(x, y, z))
+        && (saplingPlacement || !playerIntersectsBlock(x, y, z, selectedBlock))
       ) {
         options.onHandAction?.("place");
         emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) });

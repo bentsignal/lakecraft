@@ -59,6 +59,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.OAK_FENCE]: "oak_fence",
   [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate",
   [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate",
+  [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -73,6 +74,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   stone_bricks: BLOCK.STONE_BRICKS,
   oak_fence: BLOCK.OAK_FENCE,
   oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
+  stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
 };
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
@@ -85,7 +87,8 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GRAVEL) return "gravel";
   if (block === BLOCK.GLASS) return "glass";
   if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
-  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE || block === BLOCK.STONE_BRICKS) return "stone";
+  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE
+    || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB) return "stone";
   return "generic";
 }
 
@@ -106,7 +109,7 @@ function loadLocalSave(): LocalSave {
     const value = JSON.parse(raw) as Partial<LocalSave>;
     const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.OAK_FENCE_GATE_OPEN,
+      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.STONE_BRICK_SLAB,
     )).slice(-8_000) : [];
     const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];

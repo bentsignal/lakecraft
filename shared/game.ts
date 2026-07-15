@@ -9,7 +9,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -248,6 +248,7 @@ export const BLOCKS = defineBlocks([
   ["stone_bricks", "Stone Bricks", "Cut stone blocks fitted into a durable masonry pattern.", "#74766f", "#a3a59c", 1.5, "pickaxe", "stone_bricks", "wood"],
   ["oak_fence", "Oak Fence", "Oak rails and posts that form a sturdy animal barrier.", "#95622f", "#c28a47", 2, "axe", "oak_fence"],
   ["oak_fence_gate", "Oak Fence Gate", "A hinged oak gate that opens a passage through connected fences.", "#8d5a2b", "#c28a47", 2, "axe", "oak_fence_gate"],
+  ["stone_brick_slab", "Stone Brick Slab", "A half-height course of fitted stone bricks.", "#74766f", "#a3a59c", 1.5, "pickaxe", "stone_brick_slab", "wood"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -289,6 +290,7 @@ const BLOCK_ITEM_SPECS = [
   ["stone_bricks", "S·BR", "▦"],
   ["oak_fence", "FNC", "╫"],
   ["oak_fence_gate", "GATE", "╪"],
+  ["stone_brick_slab", "SLAB", "▂"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
@@ -443,6 +445,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "stone_bricks", label: "Stone bricks", note: "Four stone blocks make four fitted stone bricks.", craftingContext: "field", ingredients: [{ itemId: "stone", count: 4 }], output: { itemId: "stone_bricks", count: 4 } },
   { id: "oak_fence", label: "Oak fence", note: "Four boards and two sticks make three oak fence sections.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 4 }, { itemId: "stick", count: 2 }], output: { itemId: "oak_fence", count: 3 } },
   { id: "oak_fence_gate", label: "Oak fence gate", note: "Two boards and four sticks make one hinged oak gate.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 4 }], output: { itemId: "oak_fence_gate", count: 1 } },
+  { id: "stone_brick_slab", label: "Stone brick slabs", note: "Three stone bricks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone_bricks", count: 3 }], output: { itemId: "stone_brick_slab", count: 6 } },
   { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },

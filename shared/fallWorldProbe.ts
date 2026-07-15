@@ -12,6 +12,7 @@ export type FallProbeCell = {
   y: number;
   z: number;
   support: boolean;
+  slabSupport: boolean;
   doorTop: boolean;
   ladder: boolean;
 };
@@ -22,6 +23,7 @@ function addProbeCell(
   y: number,
   z: number,
   support: boolean,
+  slabSupport: boolean,
   doorTop: boolean,
   ladder: boolean,
 ): void {
@@ -29,11 +31,12 @@ function addProbeCell(
   const existing = cells.get(coordKey);
   if (existing) {
     existing.support ||= support;
+    existing.slabSupport ||= slabSupport;
     existing.doorTop ||= doorTop;
     existing.ladder ||= ladder;
     return;
   }
-  cells.set(coordKey, { coordKey, x, y, z, support, doorTop, ladder });
+  cells.set(coordKey, { coordKey, x, y, z, support, slabSupport, doorTop, ladder });
 }
 
 /** Mirrors the client collision footprint without trusting a grounded claim. */
@@ -42,15 +45,16 @@ export function fallProbeCells(pose: { x: number; y: number; z: number }): FallP
   const cells = new Map<string, FallProbeCell>();
   const supportY = Math.floor(pose.y - FALL_SUPPORT_DEPTH);
   const touchesSupportSurface = Math.abs(pose.y - (supportY + 1)) <= FALL_SUPPORT_CONTACT_TOLERANCE;
-  if (touchesSupportSurface) {
+  const touchesSlabSurface = Math.abs(pose.y - (supportY + 0.5)) <= FALL_SUPPORT_CONTACT_TOLERANCE;
+  if (touchesSupportSurface || touchesSlabSurface) {
     for (const xOffset of [-FALL_SUPPORT_INSET, FALL_SUPPORT_INSET]) {
       for (const zOffset of [-FALL_SUPPORT_INSET, FALL_SUPPORT_INSET]) {
         const supportX = Math.floor(pose.x + xOffset);
         const supportZ = Math.floor(pose.z + zOffset);
-        addProbeCell(cells, supportX, supportY, supportZ, true, false, false);
+        addProbeCell(cells, supportX, supportY, supportZ, touchesSupportSurface, touchesSlabSurface, false, false);
         // The client treats a closed door as a two-cell-tall collision even
         // though only its lower cell is persisted.
-        addProbeCell(cells, supportX, supportY - 1, supportZ, false, true, false);
+        if (touchesSupportSurface) addProbeCell(cells, supportX, supportY - 1, supportZ, false, false, true, false);
       }
     }
   }
@@ -63,7 +67,7 @@ export function fallProbeCells(pose: { x: number; y: number; z: number }): FallP
   const maxZ = Math.floor(pose.z + FALL_PLAYER_HALF_WIDTH);
   for (let x = minX; x <= maxX; x += 1) {
     for (let y = minY; y <= maxY; y += 1) {
-      for (let z = minZ; z <= maxZ; z += 1) addProbeCell(cells, x, y, z, false, false, true);
+      for (let z = minZ; z <= maxZ; z += 1) addProbeCell(cells, x, y, z, false, false, false, true);
     }
   }
   return [...cells.values()];
@@ -76,5 +80,5 @@ export function validFallProbeBlock(value: unknown): value is BlockType {
 /** Matches the current client collision rule; ladders reset falls separately. */
 export function fallSupportBlockHasCollision(block: BlockType): boolean {
   return block !== "air" && block !== "torch" && block !== "door_open"
-    && block !== "oak_fence_gate_open" && block !== "ladder";
+    && block !== "oak_fence_gate_open" && block !== "ladder" && block !== "stone_brick_slab";
 }

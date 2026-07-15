@@ -39,28 +39,30 @@ export function appendWorldBlockCrackLines(
   output: number[],
   block: Pick<WorldEdit, "x" | "y" | "z">,
   progress: number,
+  height = 1,
 ): number {
   const stage = worldBlockCrackStage(progress);
   if (stage < 0) return 0;
   const startLength = output.length;
   const e = WORLD_BLOCK_CRACK_EPSILON;
+  const blockHeight = Number.isFinite(height) ? Math.max(0.01, Math.min(1, height)) : 1;
   for (let index = 0; index <= stage; index += 1) {
     const [[u1, v1], [u2, v2]] = CRACK_SEGMENTS[index];
     // West/east faces.
-    pushLineVertex(output, block.x - e, block.y + v1, block.z + u1);
-    pushLineVertex(output, block.x - e, block.y + v2, block.z + u2);
-    pushLineVertex(output, block.x + 1 + e, block.y + v1, block.z + u1);
-    pushLineVertex(output, block.x + 1 + e, block.y + v2, block.z + u2);
+    pushLineVertex(output, block.x - e, block.y + v1 * blockHeight, block.z + u1);
+    pushLineVertex(output, block.x - e, block.y + v2 * blockHeight, block.z + u2);
+    pushLineVertex(output, block.x + 1 + e, block.y + v1 * blockHeight, block.z + u1);
+    pushLineVertex(output, block.x + 1 + e, block.y + v2 * blockHeight, block.z + u2);
     // Bottom/top faces.
     pushLineVertex(output, block.x + u1, block.y - e, block.z + v1);
     pushLineVertex(output, block.x + u2, block.y - e, block.z + v2);
-    pushLineVertex(output, block.x + u1, block.y + 1 + e, block.z + v1);
-    pushLineVertex(output, block.x + u2, block.y + 1 + e, block.z + v2);
+    pushLineVertex(output, block.x + u1, block.y + blockHeight + e, block.z + v1);
+    pushLineVertex(output, block.x + u2, block.y + blockHeight + e, block.z + v2);
     // North/south faces.
-    pushLineVertex(output, block.x + u1, block.y + v1, block.z - e);
-    pushLineVertex(output, block.x + u2, block.y + v2, block.z - e);
-    pushLineVertex(output, block.x + u1, block.y + v1, block.z + 1 + e);
-    pushLineVertex(output, block.x + u2, block.y + v2, block.z + 1 + e);
+    pushLineVertex(output, block.x + u1, block.y + v1 * blockHeight, block.z - e);
+    pushLineVertex(output, block.x + u2, block.y + v2 * blockHeight, block.z - e);
+    pushLineVertex(output, block.x + u1, block.y + v1 * blockHeight, block.z + 1 + e);
+    pushLineVertex(output, block.x + u2, block.y + v2 * blockHeight, block.z + 1 + e);
   }
   return (output.length - startLength) / 6;
 }

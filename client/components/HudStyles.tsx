@@ -45,6 +45,7 @@ const HUD_CSS = `
 .lc-first-person[data-held-mode="voxel"] .lc-first-person__item { bottom: 28%; height: clamp(150px,19vw,208px); right: 14%; transform: rotate(-3deg); width: clamp(150px,19vw,208px); }
 .lc-first-person[data-held-family="tool"] .lc-first-person__item { bottom: 38%; right: 21%; transform: rotate(-27deg) scale(1.12); }
 .lc-first-person[data-held-family="food"] .lc-first-person__item,.lc-first-person[data-held-family="material"] .lc-first-person__item { bottom: 43%; right: 20%; transform: rotate(-12deg) scale(.88); }
+.lc-first-person__item [data-icon-variant="stone_brick_slab"] { transform: scale(1.08) translateY(8%); transform-origin: 50% 72%; }
 .lc-held-voxel { --lc-held-cube-size: clamp(80px,11vw,118px); display: block; filter: drop-shadow(7px 10px 0 rgba(0,0,0,.28)); height: 100%; perspective: 420px; perspective-origin: 50% 40%; position: relative; width: 100%; }
 .lc-held-voxel__cube { height: var(--lc-held-cube-size); left: 50%; position: absolute; top: 48%; transform: translate(-50%,-50%) rotateX(-24deg) rotateY(-38deg); transform-style: preserve-3d; width: var(--lc-held-cube-size); }
 .lc-held-voxel__face { --lc-voxel-face: var(--lc-voxel-front); backface-visibility: hidden; background-color: var(--lc-voxel-face); border: 2px solid var(--lc-voxel-edge); box-shadow: inset 3px 3px rgba(255,255,255,.08),inset -4px -4px rgba(0,0,0,.14); box-sizing: border-box; display: block; height: 100%; image-rendering: pixelated; overflow: hidden; position: absolute; width: 100%; }

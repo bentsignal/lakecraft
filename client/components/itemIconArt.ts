@@ -20,6 +20,7 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   if (itemId === "sapling") palette = sapling(grid);
   else if (itemId === "oak_fence") palette = oakFence(grid);
   else if (itemId === "oak_fence_gate") palette = oakFenceGate(grid);
+  else if (itemId === "stone_brick_slab") palette = stoneBrickSlab(grid);
   else if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
     palette = bow(grid);
@@ -155,6 +156,27 @@ function oakFenceGate(g: Grid): Palette {
     box(g, 4, y, 8, 4, "o"); box(g, 5, y + 1, 6, 2, "w"); box(g, 5, y + 1, 6, 1, "h");
   }
   box(g, 4, 4, 2, 3, "m"); box(g, 10, 9, 2, 3, "m");
+  return p;
+}
+
+function stoneBrickSlab(g: Grid): Palette {
+  const p = { o: "#343633", d: "#5b5e58", m: "#777a73", l: "#9da097", h: "#c0c2b8" };
+  // Low isometric masonry course: broad diamond top over two half-height sides.
+  for (let y = 3; y <= 7; y += 1) {
+    const inset = Math.abs(5 - y) * 2;
+    const start = Math.max(1, inset);
+    const end = Math.min(14, 15 - inset);
+    for (let x = start; x <= end; x += 1) px(g, x, y, x === start || x === end ? "o" : "l");
+  }
+  for (let y = 8; y <= 12; y += 1) {
+    const start = y - 7;
+    const end = 22 - y;
+    for (let x = start; x <= 7; x += 1) px(g, x, y, x === start || x === 7 ? "o" : "m");
+    for (let x = 8; x <= end; x += 1) px(g, x, y, x === 8 || x === end ? "o" : "d");
+  }
+  box(g, 3, 9, 5, 1, "o"); box(g, 9, 10, 5, 1, "o");
+  box(g, 6, 4, 1, 3, "d"); box(g, 10, 5, 1, 3, "d");
+  dots(g, "h", [[4,5],[8,4],[11,6],[5,8],[9,8]]);
   return p;
 }
 

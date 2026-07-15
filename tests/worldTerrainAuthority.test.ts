@@ -41,6 +41,7 @@ const ENGINE_TO_PROTOCOL: Readonly<Record<EngineBlockId, BlockType>> = {
   [BLOCK.OAK_FENCE]: "oak_fence",
   [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate_closed",
   [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate_open",
+  [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
 };
 
 const chunkCache = new Map<string, Map<string, EngineBlockId>>();

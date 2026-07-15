@@ -19,6 +19,7 @@ import {
   resolveRangedRelease,
   resolveRangedReleaseIdempotently,
   segmentAabbIntersectionFraction,
+  segmentVoxelHeightIntersectionFraction,
   selectRangedCombatReceiptOverflow,
   traceRangedTrajectory,
   validateRangedCombatRequestJson,
@@ -198,6 +199,36 @@ assert.equal(firstOccludingVoxelOnSegment(
   { x: 8.5, y: 1.5, z: 0.5 },
   () => false,
 ), null);
+
+const descendingThroughSlab = {
+  start: { x: 0.5, y: 1.8, z: 0.5 },
+  end: { x: 0.5, y: 0.2, z: 0.5 },
+} as const;
+const exactSlabFraction = segmentVoxelHeightIntersectionFraction(
+  descendingThroughSlab.start,
+  descendingThroughSlab.end,
+  0,
+  0,
+  0,
+  0.5,
+);
+assert.equal(exactSlabFraction, 0.8125, "partial voxels report their exact occupied AABB entry");
+const slabVoxel = firstOccludingVoxelOnSegment(
+  descendingThroughSlab.start,
+  descendingThroughSlab.end,
+  (x, y, z, start, end) => start && end && x === 0 && y === 0 && z === 0
+    ? segmentVoxelHeightIntersectionFraction(start, end, x, y, z, 0.5) ?? false
+    : false,
+);
+assert.equal(slabVoxel?.fraction, exactSlabFraction, "DDA preserves exact partial-height intersection instead of cell entry");
+const targetBeforeSlabFraction = segmentAabbIntersectionFraction(
+  descendingThroughSlab.start,
+  descendingThroughSlab.end,
+  { x: 0.25, y: 0.65, z: 0.25 },
+  { x: 0.75, y: 0.75, z: 0.75 },
+);
+assert.ok(targetBeforeSlabFraction !== null && exactSlabFraction !== null && targetBeforeSlabFraction < exactSlabFraction,
+  "a target in the same voxel's empty upper half resolves before the slab below it");
 
 const directTrace = traceRangedTrajectory(fullTrajectory, playerTarget);
 assert.equal(directTrace.outcome, "hit");
