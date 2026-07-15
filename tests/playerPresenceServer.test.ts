@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import {
   buildOfflinePresenceValue,
+  decidePresenceWriteGate,
   validatePresencePoseFields
 } from "../server/playerPresence.ts";
+import { PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS } from "../shared/presenceMotion.ts";
 import {
   MAX_AVATAR_APPEARANCE_ITEM_LENGTH,
   normalizeArmorAppearanceItem,
@@ -11,14 +13,52 @@ import {
 } from "../shared/avatarAppearance.ts";
 
 assert.deepEqual(
-  validatePresencePoseFields(" -128 ", "128", "128", "100000", "-2"),
-  { x: -128, y: 128, z: 128, yaw: 100_000, pitch: -2 },
+  validatePresencePoseFields(" -1000000 ", "128", "1000000", "100000", "-2"),
+  { x: -1_000_000, y: 128, z: 1_000_000, yaw: 100_000, pitch: -2 },
   "the documented spatial envelope is accepted at its exact bounds",
 );
 
+assert.deepEqual(decidePresenceWriteGate(undefined, 10_000), { accept: true, retryAfterMs: 0 });
+assert.deepEqual(decidePresenceWriteGate("legacy-bad-time", 10_000), { accept: true, retryAfterMs: 0 });
+assert.deepEqual(
+  decidePresenceWriteGate("10000", 10_000 + PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS),
+  { accept: true, retryAfterMs: 0 },
+  "the intended 200ms client cadence clears the more tolerant server guard",
+);
+assert.deepEqual(decidePresenceWriteGate("10000", 10_100), { accept: false, retryAfterMs: 50 });
+assert.deepEqual(
+  decidePresenceWriteGate("20000", 10_000),
+  { accept: true, retryAfterMs: 0 },
+  "a clock rollback heals the server-owned heartbeat instead of locking the player out",
+);
+assert.deepEqual(
+  decidePresenceWriteGate("10000", Number.NaN),
+  { accept: false, retryAfterMs: PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS },
+);
+
+let guardedHeartbeat: string | undefined;
+let guardedAccepts = 0;
+for (let now = 0; now < 60_000; now += 1) {
+  if (decidePresenceWriteGate(guardedHeartbeat, now).accept) {
+    guardedHeartbeat = String(now);
+    guardedAccepts += 1;
+  }
+}
+assert.equal(guardedAccepts, 400, "pathological direct calls are capped at 400 accepted writes/minute");
+
+let scheduledHeartbeat: string | undefined;
+let scheduledAccepts = 0;
+for (let now = 0; now < 60_000; now += 200) {
+  if (decidePresenceWriteGate(scheduledHeartbeat, now).accept) {
+    scheduledHeartbeat = String(now);
+    scheduledAccepts += 1;
+  }
+}
+assert.equal(scheduledAccepts, 300, "all intended 5 Hz scheduler writes clear the server guard");
+
 assert.equal(normalizeHeldAppearanceItem(" iron_sword "), "iron_sword");
 assert.equal(normalizeHeldAppearanceItem("cobblestone"), "cobblestone");
-assert.equal(normalizeHeldAppearanceItem("diamond_sword"), "");
+assert.equal(normalizeHeldAppearanceItem("obsidian_sword"), "");
 assert.equal(normalizeHeldAppearanceItem("x".repeat(MAX_AVATAR_APPEARANCE_ITEM_LENGTH + 1)), "");
 assert.equal(normalizeArmorAppearanceItem("iron_helmet", "head"), "iron_helmet");
 assert.equal(normalizeArmorAppearanceItem("iron_helmet", "chest"), "");
@@ -41,9 +81,10 @@ assert.deepEqual(normalizeAvatarAppearance(undefined, "iron_boots", "stone", "",
   armorFeet: "",
 });
 for (const fields of [
-  ["-128.01", "8", "0", "0", "0"],
+  ["-1000000.01", "8", "0", "0", "0"],
+  ["0", "-24.01", "0", "0", "0"],
   ["0", "128.01", "0", "0", "0"],
-  ["0", "8", "128.01", "0", "0"],
+  ["0", "8", "1000000.01", "0", "0"],
   ["0", "8", "0", "100000.01", "0"],
   ["0", "8", "0", "0", "2.01"],
   ["", "8", "0", "0", "0"],

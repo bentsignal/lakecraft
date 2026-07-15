@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
 import {
+  PRESENCE_ACTIVE_WRITE_INTERVAL_MS,
+  PRESENCE_ACTIVE_WRITES_PER_SECOND,
   PRESENCE_ACTIVE_LEASE_MS,
+  PRESENCE_IDLE_WRITES_PER_MINUTE,
   PRESENCE_LEASE_REFRESH_MS,
+  PRESENCE_MAX_ACTIVE_WRITES_PER_DAY,
   PRESENCE_MAX_EXTRAPOLATION_MS,
   PRESENCE_MAX_HORIZONTAL_SPEED,
+  PRESENCE_MAX_IDLE_WRITES_PER_DAY,
   PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS,
   PRESENCE_MAX_VERTICAL_SPEED,
   PRESENCE_MAX_WRITES_PER_MINUTE,
   PRESENCE_MIN_WRITE_INTERVAL_MS,
   PRESENCE_MOTION_PAYLOAD_MAX_CHARS,
+  PRESENCE_SAMPLE_INTERVAL_MS,
+  PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_DAY,
+  PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE,
+  PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS,
   computePresenceVelocity,
   createPresenceSchedulerState,
   encodePresenceVelocityFields,
@@ -49,7 +58,7 @@ assert.deepEqual(parsePersistedPresencePose({ x: "1.5", y: "8", z: "-2", yaw: "3
   yaw: 3.14,
   pitch: -0.5,
 });
-assert.equal(parsePersistedPresencePose({ x: "129", y: "8", z: "0", yaw: "0", pitch: "0" }), null);
+assert.equal(parsePersistedPresencePose({ x: "1000001", y: "8", z: "0", yaw: "0", pitch: "0" }), null);
 assert.equal(parsePersistedPresencePose({ x: "0", y: "8", z: "0", yaw: "0", pitch: "NaN" }), null);
 
 const first = createPresenceSchedulerState();
@@ -60,6 +69,18 @@ assert.equal(gated.send, false);
 assert.equal(gated.reason, "motion_start");
 assert.equal(gated.waitMs, PRESENCE_MIN_WRITE_INTERVAL_MS - 1);
 
+// A meaningful change after idle is sent immediately; active motion then
+// settles into the deterministic 5 Hz cadence.
+const wake = createPresenceSchedulerState();
+stepPresenceScheduler(wake, sample(0));
+const wakeDecision = stepPresenceScheduler(wake, sample(1_000, { x: 1 }));
+assert.equal(wakeDecision.send && wakeDecision.reason, "motion_start");
+const activeGated = stepPresenceScheduler(wake, sample(1_100, { x: 1.1 }));
+assert.equal(activeGated.send, false);
+assert.equal(activeGated.waitMs, 100);
+const activeDue = stepPresenceScheduler(wake, sample(1_200, { x: 1.2 }));
+assert.equal(activeDue.send && activeDue.reason, "active");
+
 // A stopped transition outranks a simultaneously-due heading/position update.
 const priority = createPresenceSchedulerState();
 stepPresenceScheduler(priority, sample(0));
@@ -68,7 +89,7 @@ const stopped = stepPresenceScheduler(priority, sample(PRESENCE_MIN_WRITE_INTERV
 assert.equal(stopped.send && stopped.reason, "motion_stop");
 
 assert.equal(presenceExtrapolationSeconds(-1), 0);
-assert.equal(presenceExtrapolationSeconds(1_500), 1.5);
+assert.equal(presenceExtrapolationSeconds(250), 0.25);
 assert.equal(presenceExtrapolationSeconds(99_000), PRESENCE_MAX_EXTRAPOLATION_MS / 1_000);
 assert.ok(PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS < PRESENCE_MAX_EXTRAPOLATION_MS);
 assert.ok(PRESENCE_LEASE_REFRESH_MS < PRESENCE_ACTIVE_LEASE_MS, "refresh deadline must stay safely inside the active lease");
@@ -79,7 +100,7 @@ function runHour(scenario: Scenario): number[] {
   const state = createPresenceSchedulerState();
   const writes: number[] = [];
   // Half-open hour: [0, 3_600_000). This makes writes/minute arithmetic exact.
-  for (let at = 0; at < 3_600_000; at += 250) {
+  for (let at = 0; at < 3_600_000; at += PRESENCE_SAMPLE_INTERVAL_MS) {
     const decision = stepPresenceScheduler(state, sample(at, scenario(at)));
     if (decision.send) {
       writes.push(at);
@@ -95,9 +116,11 @@ function runHour(scenario: Scenario): number[] {
       assert.ok(payload.length <= PRESENCE_MOTION_PAYLOAD_MAX_CHARS, `presence payload was ${payload.length} chars`);
     }
   }
-  for (let windowStart = 0; windowStart < 3_600_000; windowStart += 250) {
-    const windowWrites = writes.filter((at) => at >= windowStart && at < windowStart + 60_000).length;
-    assert.ok(windowWrites <= PRESENCE_MAX_WRITES_PER_MINUTE, `${windowWrites} writes in minute at ${windowStart}`);
+  let windowEnd = 0;
+  for (let windowStart = 0; windowStart < writes.length; windowStart += 1) {
+    while (windowEnd < writes.length && writes[windowEnd] < writes[windowStart] + 60_000) windowEnd += 1;
+    const windowWrites = windowEnd - windowStart;
+    assert.ok(windowWrites <= PRESENCE_MAX_WRITES_PER_MINUTE, `${windowWrites} writes in minute at ${writes[windowStart]}`);
   }
   for (let index = 1; index < writes.length; index += 1) {
     assert.ok(writes[index] - writes[index - 1] >= PRESENCE_MIN_WRITE_INTERVAL_MS);
@@ -111,11 +134,19 @@ const turnSpamWrites = runHour((at) => ({ yaw: (at / 1_000) * Math.PI }));
 
 assert.equal(idleWrites.length, 360);
 assert.ok(Math.max(...idleWrites.slice(1).map((at, index) => at - idleWrites[index])) <= PRESENCE_LEASE_REFRESH_MS);
-assert.equal(straightWrites.length, 480);
-assert.equal(turnSpamWrites.length, 480);
+assert.equal(straightWrites.length, PRESENCE_ACTIVE_WRITES_PER_SECOND * 60 * 60);
+assert.equal(turnSpamWrites.length, PRESENCE_ACTIVE_WRITES_PER_SECOND * 60 * 60);
+assert.equal(PRESENCE_ACTIVE_WRITE_INTERVAL_MS, 200);
+assert.equal(PRESENCE_MAX_WRITES_PER_MINUTE, 300);
+assert.equal(PRESENCE_MAX_ACTIVE_WRITES_PER_DAY, 432_000);
+assert.equal(PRESENCE_IDLE_WRITES_PER_MINUTE, 6);
+assert.equal(PRESENCE_MAX_IDLE_WRITES_PER_DAY, 8_640);
+assert.equal(PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS, 150);
+assert.equal(PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE, 400);
+assert.equal(PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_DAY, 576_000);
 
 console.log(JSON.stringify({
-  benchmark: "quota-aware sparse Lakebed presence over one hour",
+  benchmark: "adaptive 5 Hz Lakebed presence over one hour",
   idleWrites: idleWrites.length,
   straightWrites: straightWrites.length,
   turnSpamWrites: turnSpamWrites.length,

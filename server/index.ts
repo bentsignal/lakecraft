@@ -18,6 +18,16 @@ import {
   validatePlayerStateJson
 } from "../shared/chestTransfers";
 import {
+  MAX_VISIBLE_DROPPED_ITEMS,
+  MAX_VISIBLE_DROPPED_ITEMS_PER_CHUNK,
+  applyDropItemToInventory,
+  applyPickupDroppedItem,
+  normalizeDroppedItemRow,
+  validateDropItemRequestJson,
+  validatePickupDroppedItemRequestJson,
+  validateVisibleDroppedItemChunkKeys
+} from "../shared/droppedItems";
+import {
   ACTIVE_PLAYER_WINDOW_MS,
   MAX_SLEEP_PARTICIPANTS,
   MORNING_PHASE,
@@ -29,6 +39,10 @@ import {
   worldClockSnapshot
 } from "../shared/sleep";
 import {
+  WORLD_EDIT_MAX_XZ,
+  WORLD_EDIT_MAX_Y,
+  WORLD_EDIT_MIN_XZ,
+  WORLD_EDIT_MIN_Y,
   applyWorldChunkEdit,
   createWorldChunkSnapshot,
   validateVisibleWorldChunkKeys,
@@ -57,8 +71,26 @@ import {
 } from "./chestTransferReceipts";
 import {
   buildOfflinePresenceValue,
+  decidePresenceWriteGate,
   validatePresencePoseFields
 } from "./playerPresence";
+import {
+  DROPPED_ITEM_EXPIRY_PRUNE_LIMIT,
+  DROPPED_ITEM_RECEIPT_PRUNE_LIMIT,
+  DROPPED_ITEM_RECEIPT_TTL_MS,
+  MAX_DROPPED_ITEM_RECEIPTS_PER_USER,
+  authoritativeDroppedItemPosition,
+  buildDroppedItemRow,
+  canCreateDroppedItem,
+  compareDroppedItemStoredPlayerState,
+  decideDroppedItemInventoryCas,
+  decideDroppedItemReplay,
+  decodeDroppedItemReceipt,
+  encodeDroppedItemReceipt,
+  selectDroppedItemReceiptOverflow,
+  selectExpiredDroppedItemIds,
+  type DroppedItemReceiptResult
+} from "./droppedItems";
 import { BLOCK_TYPES } from "../shared/protocol";
 import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
 
@@ -66,9 +98,39 @@ const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !==
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 const CHEST_RECEIPT_PRUNE_LIMIT = 8;
 
+async function maintainDroppedItemReceipts(
+  db: WriteDatabase,
+  userId: string,
+  committedReceiptId: string,
+  now: number,
+): Promise<void> {
+  const newestReceipts = await db.droppedItemReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(MAX_DROPPED_ITEM_RECEIPTS_PER_USER + DROPPED_ITEM_RECEIPT_PRUNE_LIMIT);
+  const overflowIds = selectDroppedItemReceiptOverflow(newestReceipts, committedReceiptId);
+  for (const receiptId of overflowIds) await db.droppedItemReceipts.delete(receiptId);
+
+  const staleBefore = String(now - DROPPED_ITEM_RECEIPT_TTL_MS);
+  const staleReceipts = await db.droppedItemReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .order("asc")
+    .take(DROPPED_ITEM_RECEIPT_PRUNE_LIMIT);
+  for (const receipt of staleReceipts) await db.droppedItemReceipts.delete(receipt.id);
+}
+
+async function pruneExpiredDroppedItems(db: WriteDatabase, now: number): Promise<void> {
+  const expiredRows = await db.droppedItems
+    .withIndex("by_expiry", (q) => q.lt("expiresAt", String(now)))
+    .order("asc")
+    .take(DROPPED_ITEM_EXPIRY_PRUNE_LIMIT);
+  for (const dropId of selectExpiredDroppedItemIds(expiredRows, now)) await db.droppedItems.delete(dropId);
+}
+
 function boundedInteger(value: string, minimum: number, maximum: number): number | null {
-  if (!/^-?\d{1,4}$/.test(value.trim())) return null;
-  const number = Number(value);
+  const normalized = value.trim();
+  if (!/^-?\d{1,7}$/.test(normalized)) return null;
+  const number = Number(normalized);
   return Number.isInteger(number) && number >= minimum && number <= maximum ? number : null;
 }
 
@@ -212,6 +274,36 @@ export default capsule({
       .index("by_user_operation", ["userId", "operationId"])
       .index("by_user_created", ["userId", "receiptCreatedAt"]),
 
+    /** Five-minute world entities created only by atomic inventory-removing mutations. */
+    droppedItems: table({
+      dropId: string(),
+      chunkKey: string(),
+      ownerUserId: string(),
+      sourceUserId: string(),
+      itemJson: string(),
+      x: string(),
+      y: string(),
+      z: string(),
+      droppedAt: string(),
+      ownerPickupAt: string(),
+      expiresAt: string()
+    })
+      .index("by_drop", ["dropId"])
+      .index("by_chunk_expiry", ["chunkKey", "expiresAt"])
+      .index("by_owner_expiry", ["ownerUserId", "expiresAt"])
+      .index("by_expiry", ["expiresAt"]),
+
+    /** User-scoped operation receipts make drop and pickup retries idempotent. */
+    droppedItemReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
+
     /** Immutable, one-time username claims. Lakebed serializes each mutation transaction. */
     profiles: table({
       userId: string(),
@@ -293,6 +385,29 @@ export default capsule({
       }
       chunks.sort((a, b) => a.chunkKey.localeCompare(b.chunkKey));
       return { ok: true, chunks };
+    }),
+
+    droppedItems: query(async (ctx, rawChunkKeys: string[]) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", items: [], serverNow };
+      }
+      const validation = validateVisibleDroppedItemChunkKeys(rawChunkKeys);
+      if (!validation.ok) return { ok: false, reason: validation.reason, items: [], serverNow };
+      const items = [];
+      for (const chunkKey of validation.chunkKeys) {
+        const rows = await ctx.db.droppedItems
+          .withIndex("by_chunk_expiry", (q) => q.eq("chunkKey", chunkKey).gt("expiresAt", String(serverNow)))
+          .order("asc")
+          .take(MAX_VISIBLE_DROPPED_ITEMS_PER_CHUNK);
+        for (const row of rows) {
+          const item = normalizeDroppedItemRow(row, serverNow);
+          if (item) items.push(item);
+          if (items.length >= MAX_VISIBLE_DROPPED_ITEMS) break;
+        }
+        if (items.length >= MAX_VISIBLE_DROPPED_ITEMS) break;
+      }
+      return { ok: true, items, serverNow };
     }),
 
     worldEditsAt: query(async (ctx, coordKey: string) =>
@@ -407,9 +522,9 @@ export default capsule({
     setBlock: mutation(
       async (ctx, _coordKey: string, x: string, y: string, z: string, blockType: string) => {
         if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to edit the shared world.");
-        const px = boundedInteger(x, -64, 64);
-        const py = boundedInteger(y, -4, 64);
-        const pz = boundedInteger(z, -64, 64);
+        const px = boundedInteger(x, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
+        const py = boundedInteger(y, WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y);
+        const pz = boundedInteger(z, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
         const block = blockType.trim().toLowerCase();
         if (px == null || py == null || pz == null || !PLACEABLE_BLOCKS.has(block)) return;
         const existing = await ctx.db.worldEdits
@@ -436,9 +551,9 @@ export default capsule({
 
     removeBlock: mutation(async (ctx, _coordKey: string, x: string, y: string, z: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to edit the shared world.");
-      const px = boundedInteger(x, -64, 64);
-      const py = boundedInteger(y, -4, 64);
-      const pz = boundedInteger(z, -64, 64);
+      const px = boundedInteger(x, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
+      const py = boundedInteger(y, WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y);
+      const pz = boundedInteger(z, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
       if (px == null || py == null || pz == null) return;
       const existing = await ctx.db.worldEdits
         .withIndex("by_coord", (q) => q.eq("coordKey", `${px}:${py}:${pz}`))
@@ -502,6 +617,9 @@ export default capsule({
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
           .first();
+        const serverNow = Date.now();
+        const gate = decidePresenceWriteGate(existing?.heartbeatAt, serverNow);
+        if (!gate.accept) return;
         const value = {
           userId: ctx.auth.userId,
           displayName: profile.username,
@@ -513,7 +631,7 @@ export default capsule({
           pitch: String(pose.pitch),
           ...encodePresenceVelocityFields(velocity),
           ...appearance,
-          heartbeatAt: String(Date.now()),
+          heartbeatAt: String(serverNow),
           online: true
         };
         return existing
@@ -561,6 +679,201 @@ export default capsule({
         ? ctx.db.inventories.update(existing.id, value)
         : ctx.db.inventories.insert(value);
       return { ok: true, inventory: await inventory };
+    }),
+
+    dropItem: mutation(async (ctx, requestJson: string) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
+      }
+      const validation = validateDropItemRequestJson(requestJson);
+      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason };
+      const request = validation.request;
+      const existingReceipt = await ctx.db.droppedItemReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .first();
+      const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
+      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused" };
+      if (replay === "replay" && existingReceipt) {
+        return decodeDroppedItemReceipt(existingReceipt.resultJson)
+          ?? { ok: false, reason: "conservation_failure" };
+      }
+
+      const serverNow = Date.now();
+      const presence = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const position = authoritativeDroppedItemPosition(presence, ctx.auth.userId, serverNow);
+      if (!position) return { ok: false, reason: "active_presence_required" };
+
+      const existingPlayer = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      if (!existingPlayer) return { ok: false, reason: "inventory_required" };
+      if (decideDroppedItemInventoryCas(existingPlayer.updatedAt, request.expectedInventoryUpdatedAt) !== "apply") {
+        return { ok: false, reason: "conflict", inventory: existingPlayer };
+      }
+      const playerStateDecision = compareDroppedItemStoredPlayerState(
+        existingPlayer.inventoryJson,
+        request.canonicalPlayerStateJson
+      );
+      if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
+      if (playerStateDecision === "mismatch") return { ok: false, reason: "conflict", inventory: existingPlayer };
+
+      const activeOwnedDrops = await ctx.db.droppedItems
+        .withIndex("by_owner_expiry", (q) => q
+          .eq("ownerUserId", ctx.auth.userId)
+          .gt("expiresAt", String(serverNow)))
+        .order("asc")
+        .take(65);
+      if (!canCreateDroppedItem(activeOwnedDrops.length)) return { ok: false, reason: "drop_limit" };
+
+      const applied = applyDropItemToInventory(request);
+      if (!applied.ok) return { ok: false, reason: applied.reason };
+      const droppedValue = buildDroppedItemRow(
+        ctx.auth.userId,
+        request.operationId,
+        applied.dropped,
+        position,
+        Number(presence?.yaw),
+        serverNow
+      );
+      if (!droppedValue) return { ok: false, reason: "invalid_presence" };
+      const collision = await ctx.db.droppedItems
+        .withIndex("by_drop", (q) => q.eq("dropId", droppedValue.dropId))
+        .order("desc")
+        .first();
+      if (collision) return { ok: false, reason: "drop_id_collision" };
+
+      const player = await ctx.db.inventories.update(existingPlayer.id, {
+        userId: ctx.auth.userId,
+        inventoryJson: JSON.stringify({ ...request.playerState, inventory: applied.inventory })
+      });
+      const droppedItem = await ctx.db.droppedItems.insert(droppedValue);
+      const result: DroppedItemReceiptResult = {
+        ok: true,
+        replayed: false,
+        operation: "drop",
+        dropId: droppedValue.dropId,
+        moved: applied.dropped,
+        inventory: player,
+        droppedItem
+      };
+      const receipt = await ctx.db.droppedItemReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        resultJson: encodeDroppedItemReceipt(result),
+        receiptCreatedAt: String(serverNow)
+      });
+      await maintainDroppedItemReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      await pruneExpiredDroppedItems(ctx.db, serverNow);
+      return result;
+    }),
+
+    pickupDroppedItem: mutation(async (ctx, requestJson: string) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
+      }
+      const validation = validatePickupDroppedItemRequestJson(requestJson);
+      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason };
+      const request = validation.request;
+      const existingReceipt = await ctx.db.droppedItemReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .first();
+      const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
+      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused" };
+      if (replay === "replay" && existingReceipt) {
+        return decodeDroppedItemReceipt(existingReceipt.resultJson)
+          ?? { ok: false, reason: "conservation_failure" };
+      }
+
+      const serverNow = Date.now();
+      const presence = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const position = authoritativeDroppedItemPosition(presence, ctx.auth.userId, serverNow);
+      if (!position) return { ok: false, reason: "active_presence_required" };
+      const existingPlayer = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      if (!existingPlayer) return { ok: false, reason: "inventory_required" };
+      if (decideDroppedItemInventoryCas(existingPlayer.updatedAt, request.expectedInventoryUpdatedAt) !== "apply") {
+        return { ok: false, reason: "conflict", inventory: existingPlayer };
+      }
+      const playerStateDecision = compareDroppedItemStoredPlayerState(
+        existingPlayer.inventoryJson,
+        request.canonicalPlayerStateJson
+      );
+      if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
+      if (playerStateDecision === "mismatch") return { ok: false, reason: "conflict", inventory: existingPlayer };
+
+      const storedDrop = await ctx.db.droppedItems
+        .withIndex("by_drop", (q) => q.eq("dropId", request.dropId))
+        .order("desc")
+        .first();
+      if (!storedDrop) return { ok: false, reason: "not_found" };
+      const dropped = normalizeDroppedItemRow(storedDrop, serverNow, true);
+      if (!dropped) return { ok: false, reason: "invalid_drop_state" };
+      const applied = applyPickupDroppedItem(
+        request.playerState.inventory,
+        dropped,
+        ctx.auth.userId,
+        position,
+        serverNow
+      );
+      if (!applied.ok) {
+        if (applied.reason === "expired") await ctx.db.droppedItems.delete(storedDrop.id);
+        return { ok: false, reason: applied.reason };
+      }
+
+      const player = await ctx.db.inventories.update(existingPlayer.id, {
+        userId: ctx.auth.userId,
+        inventoryJson: JSON.stringify({ ...request.playerState, inventory: applied.inventory })
+      });
+      const droppedItem = applied.remaining
+        ? await ctx.db.droppedItems.update(storedDrop.id, {
+          dropId: storedDrop.dropId,
+          chunkKey: storedDrop.chunkKey,
+          ownerUserId: storedDrop.ownerUserId,
+          sourceUserId: storedDrop.sourceUserId,
+          itemJson: JSON.stringify(applied.remaining),
+          x: storedDrop.x,
+          y: storedDrop.y,
+          z: storedDrop.z,
+          droppedAt: storedDrop.droppedAt,
+          ownerPickupAt: storedDrop.ownerPickupAt,
+          expiresAt: storedDrop.expiresAt
+        })
+        : (await ctx.db.droppedItems.delete(storedDrop.id), null);
+      const result: DroppedItemReceiptResult = {
+        ok: true,
+        replayed: false,
+        operation: "pickup",
+        dropId: storedDrop.dropId,
+        moved: applied.picked,
+        inventory: player,
+        droppedItem
+      };
+      const receipt = await ctx.db.droppedItemReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        resultJson: encodeDroppedItemReceipt(result),
+        receiptCreatedAt: String(serverNow)
+      });
+      await maintainDroppedItemReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      await pruneExpiredDroppedItems(ctx.db, serverNow);
+      return result;
     }),
 
     saveChest: mutation(async (ctx, _rawCoordKey: string, _rawInventoryJson: string, _rawExpectedUpdatedAt: string) => {

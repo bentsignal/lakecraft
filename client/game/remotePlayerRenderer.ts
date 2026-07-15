@@ -60,10 +60,14 @@ const COLORS = {
   mouth: [0.30, 0.13, 0.10] as Vec3,
   leatherArmor: [0.48, 0.25, 0.11] as Vec3,
   ironArmor: [0.72, 0.74, 0.72] as Vec3,
+  goldArmor: [0.92, 0.72, 0.12] as Vec3,
+  diamondArmor: [0.20, 0.76, 0.74] as Vec3,
   toolHandle: [0.43, 0.27, 0.11] as Vec3,
   woodItem: [0.58, 0.36, 0.16] as Vec3,
   stoneItem: [0.43, 0.45, 0.44] as Vec3,
   ironItem: [0.76, 0.78, 0.76] as Vec3,
+  goldItem: [0.94, 0.76, 0.16] as Vec3,
+  diamondItem: [0.20, 0.82, 0.79] as Vec3,
   greenItem: [0.28, 0.51, 0.20] as Vec3,
   sandItem: [0.78, 0.69, 0.45] as Vec3,
   glassItem: [0.54, 0.77, 0.79] as Vec3,
@@ -172,11 +176,15 @@ function appendBox(
 }
 
 function armorColor(itemId: ArmorId): Vec3 {
+  if (itemId.startsWith("diamond_")) return COLORS.diamondArmor;
+  if (itemId.startsWith("golden_")) return COLORS.goldArmor;
   return itemId.startsWith("iron_") ? COLORS.ironArmor : COLORS.leatherArmor;
 }
 
 function heldItemColor(itemId: ItemId): Vec3 {
   const tool = ITEMS[itemId].tool;
+  if (tool?.tier === "diamond") return COLORS.diamondItem;
+  if (tool?.tier === "gold") return COLORS.goldItem;
   if (tool?.tier === "iron") return COLORS.ironItem;
   if (tool?.tier === "stone") return COLORS.stoneItem;
   if (tool) return COLORS.woodItem;
@@ -190,6 +198,11 @@ function heldItemColor(itemId: ItemId): Vec3 {
     case "iron_ore":
     case "raw_iron":
     case "iron_ingot": return COLORS.ironItem;
+    case "gold_ore":
+    case "raw_gold":
+    case "gold_ingot": return COLORS.goldItem;
+    case "diamond_ore":
+    case "diamond": return COLORS.diamondItem;
     case "sand": return COLORS.sandItem;
     case "glass": return COLORS.glassItem;
     case "coal": return COLORS.coalItem;

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import {
   CAVE_SPAWN_SANCTUARY_RADIUS,
+  TERRAIN_MIN_Y,
   blockKey,
+  createTerrainChunk,
   createTerrainRegion,
   terrainBaseBlock,
   terrainHeight,
@@ -79,6 +81,29 @@ for (let y = 1; y <= 6; y += 1) {
 }
 assert.ok(seamTunnelPairs > 0, "the seam test should exercise a tunnel crossing both halves");
 assert.ok(generationMs < 250, `radius-32 cave terrain took ${generationMs.toFixed(1)}ms`);
+
+// Deep streamed chunks expose caves below the legacy y=0 foundation without
+// breaching their true floor, and an arbitrary negative-coordinate seam agrees.
+const deepWhole = createTerrainRegion(SEED, -1_008, -993, 2_000, 2_007, { minimumY: TERRAIN_MIN_Y });
+const deepWest = createTerrainChunk(SEED, -126, 250);
+const deepEast = createTerrainChunk(SEED, -125, 250);
+assert.deepEqual(
+  [...new Map([...deepWest, ...deepEast])].sort(([left], [right]) => left.localeCompare(right)),
+  [...deepWhole].sort(([left], [right]) => left.localeCompare(right)),
+  "deep caves must cross a far negative chunk seam without disagreement",
+);
+let deepCarvedStone = 0;
+for (let x = -1_008; x <= -993; x += 1) {
+  for (let z = 2_000; z <= 2_007; z += 1) {
+    assert.notEqual(deepWhole.get(blockKey(x, TERRAIN_MIN_Y, z)), undefined, "true floor must remain solid");
+    for (let y = TERRAIN_MIN_Y + 1; y < 0; y += 1) {
+      if (terrainBaseBlock(x, y, z, SEED) === BLOCK.STONE && !deepWhole.has(blockKey(x, y, z))) {
+        deepCarvedStone += 1;
+      }
+    }
+  }
+}
+assert.ok(deepCarvedStone > 0, "deep streamed strata should contain mineable cave space");
 
 console.log(JSON.stringify({
   benchmark: "deterministic radius-32 cave terrain",

@@ -31,7 +31,7 @@ assert.equal(sanitizePlayerName("x".repeat(100)).length, MAX_PLAYER_NAME_LENGTH)
 assert.equal(sanitizeRemoteHeldItem("iron_pickaxe"), "iron_pickaxe");
 assert.equal(sanitizeRemoteHeldItem("sand"), "sand");
 assert.equal(sanitizeRemoteHeldItem("constructor"), null, "prototype keys are not item IDs");
-assert.equal(sanitizeRemoteHeldItem("diamond_sword"), null);
+assert.equal(sanitizeRemoteHeldItem("obsidian_sword"), null);
 assert.equal(sanitizeRemoteArmor("iron_helmet", "head"), "iron_helmet");
 assert.equal(sanitizeRemoteArmor("leather_chestplate", "chest"), "leather_chestplate");
 assert.equal(sanitizeRemoteArmor("iron_chestplate", "head"), null, "armor must match the exact remote slot");
@@ -84,7 +84,7 @@ assert.ok(
   "delayed jump/fall snapshots cannot extrapolate vertically for the full horizontal horizon",
 );
 
-const positionBounded = createRemoteAvatarMotion(player({ x: 999_999, vx: PRESENCE_MAX_HORIZONTAL_SPEED }), 0);
+const positionBounded = createRemoteAvatarMotion(player({ x: 1_000_001, vx: PRESENCE_MAX_HORIZONTAL_SPEED }), 0);
 advanceRemoteAvatarMotion(positionBounded, PRESENCE_MAX_EXTRAPOLATION_MS, 0.1);
 assert.equal(positionBounded.rendered.x, PRESENCE_MAX_X, "malicious positions and prediction remain inside server-compatible world bounds");
 

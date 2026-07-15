@@ -1,36 +1,54 @@
 /**
  * Quota-aware shared-player motion protocol.
  *
- * Lakebed's anonymous mutation allowance is intentionally tight. Presence is
- * therefore a sparse, velocity-aware snapshot stream rather than a realtime
- * socket feed. The scheduler is a deterministic leaky bucket: no two writes
- * can be closer than 7.5 seconds, so every half-open 60 second window contains
- * at most eight writes even when the player or camera is adversarial.
+ * Lakebed remains the only multiplayer transport. Presence uses an adaptive
+ * cadence: a compact 5 Hz stream while the player moves or turns, followed by
+ * a sparse lease keepalive while idle. The deterministic rate gate keeps the
+ * client budget measurable even when input is adversarial.
  */
 
-export const PRESENCE_MAX_WRITES_PER_MINUTE = 8;
-export const PRESENCE_MIN_WRITE_INTERVAL_MS = 60_000 / PRESENCE_MAX_WRITES_PER_MINUTE;
+export const PRESENCE_ACTIVE_WRITES_PER_SECOND = 5;
+export const PRESENCE_ACTIVE_WRITE_INTERVAL_MS = 1_000 / PRESENCE_ACTIVE_WRITES_PER_SECOND;
+/** Existing consumers use this name for the global scheduler rate gate. */
+export const PRESENCE_MIN_WRITE_INTERVAL_MS = PRESENCE_ACTIVE_WRITE_INTERVAL_MS;
+export const PRESENCE_MAX_WRITES_PER_MINUTE = PRESENCE_ACTIVE_WRITES_PER_SECOND * 60;
+export const PRESENCE_MAX_ACTIVE_WRITES_PER_DAY = PRESENCE_MAX_WRITES_PER_MINUTE * 60 * 24;
+/** Sample more often than the write cadence so input changes are queued quickly. */
+export const PRESENCE_SAMPLE_INTERVAL_MS = 50;
+/** Server guard allows ordinary scheduler/network jitter but caps direct spam. */
+export const PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS = 150;
+export const PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE = Math.ceil(
+  60_000 / PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS,
+);
+export const PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_DAY =
+  PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_MINUTE * 60 * 24;
 export const PRESENCE_LEASE_REFRESH_MS = 10_000;
 export const PRESENCE_ACTIVE_LEASE_MS = 15_000;
+export const PRESENCE_IDLE_WRITES_PER_MINUTE = 60_000 / PRESENCE_LEASE_REFRESH_MS;
+export const PRESENCE_MAX_IDLE_WRITES_PER_DAY = PRESENCE_IDLE_WRITES_PER_MINUTE * 60 * 24;
+/** Keep turning active briefly so the final camera orientation is persisted. */
+export const PRESENCE_ACTIVITY_LINGER_MS = PRESENCE_ACTIVE_WRITE_INTERVAL_MS * 2;
+export const PRESENCE_TURNING_RADIANS_PER_SECOND = Math.PI / 18;
 export const PRESENCE_MAX_HORIZONTAL_SPEED = 14;
 export const PRESENCE_MAX_VERTICAL_SPEED = 24;
 export const PRESENCE_VELOCITY_QUANTUM = 0.05;
 export const PRESENCE_MOVING_SPEED = 0.15;
 export const PRESENCE_MAJOR_HEADING_RADIANS = Math.PI / 3;
 export const PRESENCE_POSITION_CORRECTION_DISTANCE = 2;
-/** Horizontal dead reckoning bridges most of a 7.5s write interval. */
-export const PRESENCE_MAX_EXTRAPOLATION_MS = 5_000;
+/** A short prediction horizon smooths ordinary 5 Hz network jitter. */
+export const PRESENCE_MAX_EXTRAPOLATION_MS = 750;
 /** Vertical prediction stays short so a missed landing update cannot float. */
-export const PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS = 500;
+export const PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS = 300;
 export const PRESENCE_VELOCITY_FIELD_MAX_CHARS = 12;
 export const PRESENCE_MOTION_PAYLOAD_MAX_CHARS = 128;
 
-export const PRESENCE_MIN_X = -128;
-export const PRESENCE_MAX_X = 128;
-export const PRESENCE_MIN_Y = -32;
+/** Keep the shared pose envelope aligned with persisted streamed-world edits. */
+export const PRESENCE_MIN_X = -1_000_000;
+export const PRESENCE_MAX_X = 1_000_000;
+export const PRESENCE_MIN_Y = -24;
 export const PRESENCE_MAX_Y = 128;
-export const PRESENCE_MIN_Z = -128;
-export const PRESENCE_MAX_Z = 128;
+export const PRESENCE_MIN_Z = -1_000_000;
+export const PRESENCE_MAX_Z = 1_000_000;
 export const PRESENCE_MAX_YAW = 100_000;
 export const PRESENCE_MAX_PITCH = 2;
 
@@ -82,6 +100,7 @@ export interface PresencePoseFieldsLike {
 
 export type PresenceSendReason =
   | "join"
+  | "active"
   | "motion_stop"
   | "motion_start"
   | "heading"
@@ -94,6 +113,7 @@ export interface PresenceSchedulerState {
   lastObservedSample: PresencePoseSample | null;
   velocity: PresenceVelocity;
   lastWrittenMoving: boolean;
+  activeUntilAt: number;
   writeCount: number;
 }
 
@@ -249,6 +269,7 @@ export function createPresenceSchedulerState(): PresenceSchedulerState {
     lastObservedSample: null,
     velocity: { ...ZERO_VELOCITY },
     lastWrittenMoving: false,
+    activeUntilAt: Number.NEGATIVE_INFINITY,
     writeCount: 0,
   };
 }
@@ -264,6 +285,7 @@ function currentReason(
   state: PresenceSchedulerState,
   sample: PresencePoseSample,
   moving: boolean,
+  active: boolean,
 ): PresenceSendReason | null {
   if (state.lastWriteAt == null || !state.lastWrittenPose) return "join";
   if (moving !== state.lastWrittenMoving) return moving ? "motion_start" : "motion_stop";
@@ -277,6 +299,7 @@ function currentReason(
   ) >= PRESENCE_POSITION_CORRECTION_DISTANCE) {
     return "correction";
   }
+  if (active) return "active";
   if (sample.at - state.lastWriteAt >= PRESENCE_LEASE_REFRESH_MS) return "lease";
   return null;
 }
@@ -284,7 +307,8 @@ function currentReason(
 /**
  * Mutates a small ref-friendly state object and returns whether to write this
  * sample. The first valid sample always joins; all later writes pass through
- * the same 7.5 second rate gate, including stop/turn corrections.
+ * the same 200ms rate gate, including stop/turn corrections. Active motion or
+ * turning emits at 5 Hz, then the scheduler falls back to lease refreshes.
  */
 export function stepPresenceScheduler(
   state: PresenceSchedulerState,
@@ -294,11 +318,20 @@ export function stepPresenceScheduler(
     return { send: false, reason: null, velocity: { ...state.velocity }, waitMs: PRESENCE_LEASE_REFRESH_MS };
   }
 
-  const velocity = computePresenceVelocity(state.lastObservedSample, sample);
+  const previousObserved = state.lastObservedSample;
+  const velocity = computePresenceVelocity(previousObserved, sample);
+  const elapsedSeconds = previousObserved ? (sample.at - previousObserved.at) / 1_000 : 0;
+  const turningRate = previousObserved && elapsedSeconds > 0
+    ? Math.abs(shortestAngleDelta(previousObserved.yaw, sample.yaw)) / elapsedSeconds
+    : 0;
   state.lastObservedSample = { ...sample };
   state.velocity = velocity;
   const moving = Math.hypot(velocity.vx, velocity.vy, velocity.vz) >= PRESENCE_MOVING_SPEED;
-  const reason = currentReason(state, sample, moving);
+  if (moving || turningRate >= PRESENCE_TURNING_RADIANS_PER_SECOND) {
+    state.activeUntilAt = sample.at + PRESENCE_ACTIVITY_LINGER_MS;
+  }
+  const active = sample.at <= state.activeUntilAt;
+  const reason = currentReason(state, sample, moving, active);
 
   if (state.lastWriteAt != null) {
     const sinceWrite = Math.max(0, sample.at - state.lastWriteAt);

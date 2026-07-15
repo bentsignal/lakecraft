@@ -8,7 +8,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -21,7 +21,15 @@ export type ToolId =
   | "iron_pickaxe"
   | "iron_axe"
   | "iron_shovel"
-  | "iron_sword";
+  | "iron_sword"
+  | "golden_pickaxe"
+  | "golden_axe"
+  | "golden_shovel"
+  | "golden_sword"
+  | "diamond_pickaxe"
+  | "diamond_axe"
+  | "diamond_shovel"
+  | "diamond_sword";
 export type ArmorId =
   | "leather_helmet"
   | "leather_chestplate"
@@ -30,7 +38,15 @@ export type ArmorId =
   | "iron_helmet"
   | "iron_chestplate"
   | "iron_leggings"
-  | "iron_boots";
+  | "iron_boots"
+  | "golden_helmet"
+  | "golden_chestplate"
+  | "golden_leggings"
+  | "golden_boots"
+  | "diamond_helmet"
+  | "diamond_chestplate"
+  | "diamond_leggings"
+  | "diamond_boots";
 export type ItemId = BlockId
   | "stick"
   | "leather"
@@ -38,6 +54,9 @@ export type ItemId = BlockId
   | "coal"
   | "raw_iron"
   | "iron_ingot"
+  | "raw_gold"
+  | "gold_ingot"
+  | "diamond"
   | "pork"
   | "beef"
   | "mutton"
@@ -48,7 +67,7 @@ export type ItemId = BlockId
   | ToolId
   | ArmorId;
 export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
-export type ToolTier = "none" | "wood" | "stone" | "iron";
+export type ToolTier = "none" | "wood" | "gold" | "stone" | "iron" | "diamond";
 export type CraftingContext = "field" | "crafting_table";
 export type ArmorSlot = "head" | "chest" | "legs" | "feet";
 export type Equipment = Record<ArmorSlot, ArmorId | null>;
@@ -75,8 +94,8 @@ export type ItemDefinition = {
   glyph: string;
   color: string;
   placesBlock?: BlockId;
-  tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none">; attackDamage: number };
-  armor?: { slot: ArmorSlot; protection: number };
+  tool?: { kind: Exclude<ToolKind, "hand">; tier: Exclude<ToolTier, "none">; attackDamage: number; maxDurability: number };
+  armor?: { slot: ArmorSlot; protection: number; maxDurability: number };
   food?: { hunger: number };
 };
 
@@ -160,6 +179,8 @@ export const BLOCKS: Record<BlockId, BlockDefinition> = {
   glass: { id: "glass", label: "Glass", description: "Clear fired panes for windows and bright shelters.", color: "#9fc7c1", accent: "#d6efeb", hardness: 0.3, preferredTool: "hand", drop: "glass" },
   coal_ore: { id: "coal_ore", label: "Coal Ore", description: "Coal flecks trapped in stone. A wooden pickaxe can recover the fuel.", color: "#565852", accent: "#242621", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "coal" },
   iron_ore: { id: "iron_ore", label: "Iron Ore", description: "Rust-colored ore that needs a stone pickaxe before it can be smelted.", color: "#77776f", accent: "#b57c5d", hardness: 3.2, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "stone" }, drop: "raw_iron" },
+  gold_ore: { id: "gold_ore", label: "Gold Ore", description: "Deep stone threaded with gold. An iron pickaxe is required to recover it.", color: "#77776f", accent: "#e5bc35", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "iron" }, drop: "raw_gold" },
+  diamond_ore: { id: "diamond_ore", label: "Diamond Ore", description: "Rare deep stone crystals that drop diamonds when mined with iron or better.", color: "#6f7472", accent: "#42d9d2", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "iron" }, drop: "diamond" },
   log: { id: "log", label: "Oak Log", description: "Fresh timber. An axe speeds the work.", color: "#76502f", accent: "#bd8a50", hardness: 1.6, preferredTool: "axe", drop: "log" },
   leaves: { id: "leaves", label: "Oak Leaves", description: "A loose, mossy canopy block.", color: "#4e6f3d", accent: "#7c9953", hardness: 0.3, preferredTool: "hand", drop: "leaves" },
   planks: { id: "planks", label: "Oak Planks", description: "Squared boards for building and tools.", color: "#a87841", accent: "#d0a45e", hardness: 1.1, preferredTool: "axe", drop: "planks" },
@@ -181,6 +202,8 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   glass: blockItem("glass", "GLS", "◇"),
   coal_ore: blockItem("coal_ore", "C·OR", "✦"),
   iron_ore: blockItem("iron_ore", "I·OR", "◈"),
+  gold_ore: blockItem("gold_ore", "G·OR", "✦"),
+  diamond_ore: blockItem("diamond_ore", "D·OR", "◆"),
   log: blockItem("log", "LOG", "▥"),
   leaves: blockItem("leaves", "LEF", "✤"),
   planks: blockItem("planks", "PLK", "▤"),
@@ -197,6 +220,9 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   coal: { id: "coal", label: "Coal", shortLabel: "COL", description: "Dense furnace fuel recovered from coal ore.", category: "material", maxStack: 64, glyph: "✦", color: "#30332e" },
   raw_iron: { id: "raw_iron", label: "Raw Iron", shortLabel: "R·FE", description: "Freshly mined iron that must be smelted.", category: "material", maxStack: 64, glyph: "◈", color: "#b78062" },
   iron_ingot: { id: "iron_ingot", label: "Iron Ingot", shortLabel: "I·FE", description: "Refined iron for durable tools and armor.", category: "material", maxStack: 64, glyph: "▰", color: "#d6d5cc" },
+  raw_gold: { id: "raw_gold", label: "Raw Gold", shortLabel: "R·AU", description: "A soft gold-bearing mineral that must be smelted.", category: "material", maxStack: 64, glyph: "✦", color: "#dba92d" },
+  gold_ingot: { id: "gold_ingot", label: "Gold Ingot", shortLabel: "I·AU", description: "Refined gold for fast but fragile equipment.", category: "material", maxStack: 64, glyph: "▰", color: "#f5d142" },
+  diamond: { id: "diamond", label: "Diamond", shortLabel: "DIA", description: "A rare crystal for the strongest available equipment.", category: "material", maxStack: 64, glyph: "◆", color: "#48d8cf" },
   pork: foodItem("pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"),
   beef: foodItem("beef", "Raw Beef", "BEF", 4, "Raw beef from a cow.", "◆", "#a9544d"),
   mutton: foodItem("mutton", "Raw Mutton", "MTN", 3, "Raw mutton from a sheep.", "◇", "#b66b63"),
@@ -216,6 +242,14 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   iron_axe: toolItem("iron_axe", "Iron Axe", "I·AX", "axe", "iron", "A keen iron axe for timber.", "◒", "#d6d5cc"),
   iron_shovel: toolItem("iron_shovel", "Iron Shovel", "I·SH", "shovel", "iron", "An iron spade that moves soil rapidly.", "♠", "#d6d5cc"),
   iron_sword: toolItem("iron_sword", "Iron Sword", "I·SW", "sword", "iron", "A strong iron blade for hostile creatures.", "†", "#d6d5cc"),
+  golden_pickaxe: toolItem("golden_pickaxe", "Golden Pickaxe", "G·PX", "pickaxe", "gold", "Exceptionally fast, but too soft for advanced ores.", "⌁", "#f5d142"),
+  golden_axe: toolItem("golden_axe", "Golden Axe", "G·AX", "axe", "gold", "A very fast but fragile timber axe.", "◒", "#f5d142"),
+  golden_shovel: toolItem("golden_shovel", "Golden Shovel", "G·SH", "shovel", "gold", "A very fast but fragile spade.", "♠", "#f5d142"),
+  golden_sword: toolItem("golden_sword", "Golden Sword", "G·SW", "sword", "gold", "A bright blade with little staying power.", "†", "#f5d142"),
+  diamond_pickaxe: toolItem("diamond_pickaxe", "Diamond Pickaxe", "D·PX", "pickaxe", "diamond", "A deep-mining pick with exceptional durability.", "⌁", "#48d8cf"),
+  diamond_axe: toolItem("diamond_axe", "Diamond Axe", "D·AX", "axe", "diamond", "A durable, devastating timber axe.", "◒", "#48d8cf"),
+  diamond_shovel: toolItem("diamond_shovel", "Diamond Shovel", "D·SH", "shovel", "diamond", "A durable shovel for rapid excavation.", "♠", "#48d8cf"),
+  diamond_sword: toolItem("diamond_sword", "Diamond Sword", "D·SW", "sword", "diamond", "A powerful diamond blade.", "†", "#48d8cf"),
   leather_helmet: armorItem("leather_helmet", "Leather Cap", "L·HD", "head", 1, "A light cap of hardened hide.", "⌒"),
   leather_chestplate: armorItem("leather_chestplate", "Leather Tunic", "L·CH", "chest", 3, "A flexible hide tunic.", "▣"),
   leather_leggings: armorItem("leather_leggings", "Leather Pants", "L·LG", "legs", 2, "Tough hide protection for the legs.", "⋒"),
@@ -224,6 +258,14 @@ export const ITEMS: Record<ItemId, ItemDefinition> = {
   iron_chestplate: armorItem("iron_chestplate", "Iron Chestplate", "I·CH", "chest", 6, "A solid iron chestplate.", "▣", "#d6d5cc"),
   iron_leggings: armorItem("iron_leggings", "Iron Leggings", "I·LG", "legs", 5, "Articulated iron leg protection.", "⋒", "#d6d5cc"),
   iron_boots: armorItem("iron_boots", "Iron Boots", "I·FT", "feet", 2, "Heavy iron boots.", "∪", "#d6d5cc"),
+  golden_helmet: armorItem("golden_helmet", "Golden Helmet", "G·HD", "head", 2, "A soft but brilliant gold helmet.", "⌒", "#f5d142", "gold"),
+  golden_chestplate: armorItem("golden_chestplate", "Golden Chestplate", "G·CH", "chest", 5, "A gleaming gold chestplate.", "▣", "#f5d142", "gold"),
+  golden_leggings: armorItem("golden_leggings", "Golden Leggings", "G·LG", "legs", 3, "Gold leg protection.", "⋒", "#f5d142", "gold"),
+  golden_boots: armorItem("golden_boots", "Golden Boots", "G·FT", "feet", 1, "Light gold boots.", "∪", "#f5d142", "gold"),
+  diamond_helmet: armorItem("diamond_helmet", "Diamond Helmet", "D·HD", "head", 3, "A durable diamond helmet.", "⌒", "#48d8cf", "diamond"),
+  diamond_chestplate: armorItem("diamond_chestplate", "Diamond Chestplate", "D·CH", "chest", 8, "The strongest available chest protection.", "▣", "#48d8cf", "diamond"),
+  diamond_leggings: armorItem("diamond_leggings", "Diamond Leggings", "D·LG", "legs", 6, "Durable diamond leg protection.", "⋒", "#48d8cf", "diamond"),
+  diamond_boots: armorItem("diamond_boots", "Diamond Boots", "D·FT", "feet", 3, "Durable diamond boots.", "∪", "#48d8cf", "diamond"),
 };
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -232,13 +274,16 @@ function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefiniti
 }
 
 function toolItem(id: ToolId, label: string, shortLabel: string, kind: Exclude<ToolKind, "hand">, tier: Exclude<ToolTier, "none">, description: string, glyph: string, color: string): ItemDefinition {
-  const tierBonus = tier === "iron" ? 2 : tier === "stone" ? 1 : 0;
+  const tierBonus = tier === "diamond" ? 3 : tier === "iron" ? 2 : tier === "stone" ? 1 : 0;
   const attackDamage = ({ pickaxe: 2, axe: 3, shovel: 1, sword: 4 } as const)[kind] + tierBonus;
-  return { id, label, shortLabel, description, category: "tool", maxStack: 1, glyph, color, tool: { kind, tier, attackDamage } };
+  const maxDurability = ({ wood: 59, gold: 32, stone: 131, iron: 250, diamond: 1561 } as const)[tier];
+  return { id, label, shortLabel, description, category: "tool", maxStack: 1, glyph, color, tool: { kind, tier, attackDamage, maxDurability } };
 }
 
-function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSlot, protection: number, description: string, glyph: string, color = "#9b6339"): ItemDefinition {
-  return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color, armor: { slot, protection } };
+function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSlot, protection: number, description: string, glyph: string, color = "#9b6339", material: "leather" | "iron" | "gold" | "diamond" = color === "#9b6339" ? "leather" : "iron"): ItemDefinition {
+  const durabilityBase = ({ leather: 5, gold: 7, iron: 15, diamond: 33 } as const)[material];
+  const slotMultiplier = ({ head: 11, chest: 16, legs: 15, feet: 13 } as const)[slot];
+  return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color, armor: { slot, protection, maxDurability: durabilityBase * slotMultiplier } };
 }
 
 function foodItem(id: "pork" | "beef" | "mutton" | "cooked_pork" | "cooked_beef" | "cooked_mutton" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
@@ -267,6 +312,14 @@ export const RECIPES: readonly Recipe[] = [
   { id: "iron_axe", label: "Iron axe", note: "A keen edge for timber.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_axe", count: 1 } },
   { id: "iron_shovel", label: "Iron shovel", note: "A strong spade for quick excavation.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_shovel", count: 1 } },
   { id: "iron_sword", label: "Iron sword", note: "A reliable blade after dark.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "iron_sword", count: 1 } },
+  { id: "golden_pickaxe", label: "Golden pickaxe", note: "Extremely fast, but fragile and unable to harvest advanced ores.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "golden_pickaxe", count: 1 } },
+  { id: "golden_axe", label: "Golden axe", note: "A fast, fragile timber tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "golden_axe", count: 1 } },
+  { id: "golden_shovel", label: "Golden shovel", note: "A fast, fragile digging tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "golden_shovel", count: 1 } },
+  { id: "golden_sword", label: "Golden sword", note: "A bright but fragile blade.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "golden_sword", count: 1 } },
+  { id: "diamond_pickaxe", label: "Diamond pickaxe", note: "A durable pick for every current ore.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "diamond_pickaxe", count: 1 } },
+  { id: "diamond_axe", label: "Diamond axe", note: "A durable axe with a powerful edge.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "diamond_axe", count: 1 } },
+  { id: "diamond_shovel", label: "Diamond shovel", note: "A durable shovel for rapid excavation.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "diamond_shovel", count: 1 } },
+  { id: "diamond_sword", label: "Diamond sword", note: "A powerful and durable blade.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "diamond_sword", count: 1 } },
   { id: "leather_helmet", label: "Leather cap", note: "Light protection for the head.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 5 }], output: { itemId: "leather_helmet", count: 1 } },
   { id: "leather_chestplate", label: "Leather tunic", note: "A hide layer for the torso.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 8 }], output: { itemId: "leather_chestplate", count: 1 } },
   { id: "leather_leggings", label: "Leather pants", note: "Flexible leg protection.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 7 }], output: { itemId: "leather_leggings", count: 1 } },
@@ -275,10 +328,19 @@ export const RECIPES: readonly Recipe[] = [
   { id: "iron_chestplate", label: "Iron chestplate", note: "Eight ingots protect the torso.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 8 }], output: { itemId: "iron_chestplate", count: 1 } },
   { id: "iron_leggings", label: "Iron leggings", note: "Seven ingots protect the legs.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 7 }], output: { itemId: "iron_leggings", count: 1 } },
   { id: "iron_boots", label: "Iron boots", note: "Four ingots protect the feet.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 4 }], output: { itemId: "iron_boots", count: 1 } },
+  { id: "golden_helmet", label: "Golden helmet", note: "Five ingots form a gold helmet.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 5 }], output: { itemId: "golden_helmet", count: 1 } },
+  { id: "golden_chestplate", label: "Golden chestplate", note: "Eight ingots form a gold chestplate.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 8 }], output: { itemId: "golden_chestplate", count: 1 } },
+  { id: "golden_leggings", label: "Golden leggings", note: "Seven ingots form gold leggings.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 7 }], output: { itemId: "golden_leggings", count: 1 } },
+  { id: "golden_boots", label: "Golden boots", note: "Four ingots form gold boots.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 4 }], output: { itemId: "golden_boots", count: 1 } },
+  { id: "diamond_helmet", label: "Diamond helmet", note: "Five diamonds form a durable helmet.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 5 }], output: { itemId: "diamond_helmet", count: 1 } },
+  { id: "diamond_chestplate", label: "Diamond chestplate", note: "Eight diamonds form the strongest available chestplate.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 8 }], output: { itemId: "diamond_chestplate", count: 1 } },
+  { id: "diamond_leggings", label: "Diamond leggings", note: "Seven diamonds form durable leggings.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 7 }], output: { itemId: "diamond_leggings", count: 1 } },
+  { id: "diamond_boots", label: "Diamond boots", note: "Four diamonds form durable boots.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 4 }], output: { itemId: "diamond_boots", count: 1 } },
 ] as const;
 
 export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
   { id: "iron_ingot", label: "Smelt iron", input: "raw_iron", output: "iron_ingot" },
+  { id: "gold_ingot", label: "Smelt gold", input: "raw_gold", output: "gold_ingot" },
   { id: "glass", label: "Smelt glass", input: "sand", output: "glass" },
   { id: "cooked_pork", label: "Cook pork", input: "pork", output: "cooked_pork" },
   { id: "cooked_beef", label: "Cook beef", input: "beef", output: "cooked_beef" },
@@ -592,7 +654,7 @@ export function canHarvestBlock(blockId: BlockId, itemId?: ItemId | null): boole
   if (!itemId) return false;
   const tool = ITEMS[itemId].tool;
   if (!tool || tool.kind !== requirement.kind) return false;
-  const tierRank: Record<Exclude<ToolTier, "none">, number> = { wood: 1, stone: 2, iron: 3 };
+  const tierRank: Record<Exclude<ToolTier, "none">, number> = { wood: 1, gold: 1, stone: 2, iron: 3, diamond: 4 };
   return tierRank[tool.tier] >= tierRank[requirement.minimumTier];
 }
 
@@ -616,7 +678,7 @@ export function toolEffectiveness(blockId: BlockId, itemId?: ItemId | null): num
   const tool = ITEMS[itemId].tool;
   if (!tool) return block.preferredTool === "hand" ? 1 : 0.35;
   if (tool.kind !== block.preferredTool) return 0.5;
-  return tool.tier === "iron" ? 6 : tool.tier === "stone" ? 4 : 2.5;
+  return tool.tier === "gold" ? 12 : tool.tier === "diamond" ? 8 : tool.tier === "iron" ? 6 : tool.tier === "stone" ? 4 : 2.5;
 }
 
 export function toolEffectivenessLabel(blockId: BlockId, itemId?: ItemId | null): "ideal" | "workable" | "poor" {

@@ -1,30 +1,56 @@
-import { availableRecipes, type ArmorSlot, type CraftingContext, type Equipment, type Inventory, type Recipe } from "../../shared/game";
-import { ControlsCard } from "./ControlsCard";
+import {
+  availableRecipes,
+  equippedArmorProtection,
+  type ArmorSlot,
+  type CraftingContext,
+  type Equipment,
+  type Inventory,
+  type Recipe,
+} from "../../shared/game";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
 import { InventoryCraftingDrawer } from "./InventoryDrawer";
 import { MobileUnsupportedOverlay } from "./MobileUnsupportedOverlay";
-import { StatusStrip, type StatusStripProps } from "./StatusStrip";
+import { PauseMenu } from "./PauseMenu";
+import { PlayerList, type PlayerListEntry } from "./PlayerList";
+import { SurvivalHud } from "./StatusStrip";
 import { ToastSurface, type HudMessage } from "./ToastSurface";
 
-export type GameHudProps = StatusStripProps & {
+export type GameHudProps = {
   inventory: Inventory;
   equipment: Equipment;
   selectedIndex: number;
   inventoryOpen: boolean;
   craftingContext: CraftingContext;
   messages?: readonly HudMessage[];
-  showControls?: boolean;
+  health?: number;
+  maxHealth?: number;
+  hunger?: number;
+  maxHunger?: number;
   mobileUnsupported?: boolean;
+  pauseOpen?: boolean;
+  showPlayerList?: boolean;
+  players?: readonly PlayerListEntry[];
   onSelectHotbar: (index: number) => void;
   onCraft: (recipe: Recipe) => void;
   onEquipArmor: (inventoryIndex: number) => void;
   onUnequipArmor: (slot: ArmorSlot) => void;
   onUseItem?: (inventoryIndex: number) => void;
   onCloseInventory: () => void;
-  onDismissControls?: () => void;
+  onResume?: () => void;
+  onOptions?: () => void;
+  onDisconnect?: () => void;
   onDismissMessage?: (id: string) => void;
   onContinueMobile?: () => void;
+  /** Backward-compatible world metadata; normal gameplay deliberately does not render it. */
+  connected?: boolean;
+  latencyMs?: number | null;
+  onlineCount?: number;
+  playerName?: string;
+  roomCode?: string;
+  worldName?: string;
+  showControls?: boolean;
+  onDismissControls?: () => void;
 };
 
 export function Crosshair() {
@@ -38,29 +64,40 @@ export function GameHud({
   inventoryOpen,
   craftingContext,
   messages = [],
-  showControls = true,
+  health = 20,
+  maxHealth = 20,
+  hunger = 20,
+  maxHunger = 20,
   mobileUnsupported = false,
+  pauseOpen = false,
+  showPlayerList = false,
+  players = [],
   onSelectHotbar,
   onCraft,
   onEquipArmor,
   onUnequipArmor,
   onUseItem,
   onCloseInventory,
-  onDismissControls,
+  onResume,
+  onOptions,
+  onDisconnect,
   onDismissMessage,
   onContinueMobile,
-  ...status
 }: GameHudProps) {
+  const armor = equippedArmorProtection(equipment);
   return (
     <>
       <HudStyles />
       <div className="lc-hud">
-        <StatusStrip {...status} />
-        <Crosshair />
-        <ControlsCard visible={showControls} onDismiss={onDismissControls} />
-        <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
+        {!pauseOpen && !inventoryOpen ? <Crosshair /> : null}
+        <div className="lc-survival-wrap">
+          <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} />
+          <Hotbar disabled={pauseOpen} inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
+        </div>
+        <PlayerList players={players} visible={showPlayerList && !pauseOpen} />
         <ToastSurface messages={messages} onDismiss={onDismissMessage} />
       </div>
+      <PauseMenu onBack={onResume} onDisconnect={onDisconnect} onOptions={onOptions} open={pauseOpen} />
       <InventoryCraftingDrawer craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} onUseItem={onUseItem} open={inventoryOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>

@@ -16,6 +16,8 @@ export const BLOCK_TYPES = [
   "bed",
   "coal_ore",
   "iron_ore",
+  "gold_ore",
+  "diamond_ore",
   "furnace",
   "ladder",
   "cobblestone",

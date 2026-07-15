@@ -48,7 +48,7 @@ for (const [raw, reason] of [
   ["{", "invalid_json"],
   ["{}", "invalid_shape"],
   [JSON.stringify({ inventory: "not-an-array" }), "invalid_inventory"],
-  [JSON.stringify({ inventory: [{ itemId: "diamond", count: 1 }] }), "invalid_inventory"],
+  [JSON.stringify({ inventory: [{ itemId: "obsidian", count: 1 }] }), "invalid_inventory"],
   [JSON.stringify({ inventory: [{ itemId: "stone", count: 65 }] }), "invalid_inventory"],
   [JSON.stringify({ inventory: [], selectedHotbar: 9 }), "invalid_selected_hotbar"],
   [JSON.stringify({ inventory: [], equipment: { head: "stone", chest: null, legs: null, feet: null } }), "invalid_equipment"],

@@ -3,7 +3,10 @@ import { performance } from "node:perf_hooks";
 import {
   blockKey,
   createTerrain,
+  createTerrainChunk,
   createTerrainRegion,
+  MAX_TERRAIN_REGION_COLUMNS,
+  TERRAIN_MIN_Y,
   terrainBaseBlock,
   terrainHeight,
   terrainSandDepth,
@@ -19,6 +22,14 @@ assert.equal(BLOCK.LADDER, 16, "new block IDs must append without changing saved
 assert.equal(BLOCK.COBBLESTONE, 17, "new block IDs must append without changing saved IDs");
 assert.equal(BLOCK.SAND, 18, "new block IDs must append without changing saved IDs");
 assert.equal(BLOCK.GLASS, 19, "new block IDs must append without changing saved IDs");
+assert.equal(TERRAIN_MIN_Y, -24, "streamed chunks need substantially deeper mineable strata");
+assert.equal(createTerrainRegion(SEED, Number.NEGATIVE_INFINITY, 0, 0, 0).size, 0);
+assert.throws(() => createTerrainChunk(SEED, Number.POSITIVE_INFINITY, 0), RangeError);
+assert.throws(
+  () => createTerrainRegion(SEED, 0, MAX_TERRAIN_REGION_COLUMNS, 0, 1),
+  /limited/,
+  "a mistaken giant window must fail before doing unbounded generation work",
+);
 
 // Equal seeds must produce byte-for-byte equivalent insertion order and contents.
 const first = createTerrain(SEED, 24);
@@ -74,6 +85,48 @@ assert.deepEqual(
   [...whole].sort(([left], [right]) => left.localeCompare(right)),
   "adjacent generated regions should merge without terrain or tree seams",
 );
+
+// Chunk-native terrain is deterministic at far positive and negative global
+// coordinates, and arbitrary chunk splits reproduce the same deep region.
+for (const [chunkX, chunkZ] of [[15_432, -9_876], [-15_432, 9_876], [-1, -1], [0, 0]]) {
+  const chunk = createTerrainChunk(SEED, chunkX, chunkZ);
+  assert.deepEqual([...createTerrainChunk(SEED, chunkX, chunkZ)], [...chunk]);
+  assert.ok(chunk.size >= 8 * 8 * 20, `deep chunk ${chunkX},${chunkZ} is unexpectedly shallow`);
+  const minX = chunkX * 8;
+  const minZ = chunkZ * 8;
+  for (let x = minX; x < minX + 8; x += 1) {
+    for (let z = minZ; z < minZ + 8; z += 1) {
+      assert.notEqual(chunk.get(blockKey(x, TERRAIN_MIN_Y, z)), undefined, "deep floor must be solid");
+    }
+  }
+}
+
+const farChunkX = -12_345;
+const farChunkZ = 23_456;
+const farWhole = createTerrainRegion(
+  SEED,
+  farChunkX * 8,
+  farChunkX * 8 + 15,
+  farChunkZ * 8,
+  farChunkZ * 8 + 15,
+  { minimumY: TERRAIN_MIN_Y },
+);
+const farParts = [
+  createTerrainChunk(SEED, farChunkX, farChunkZ),
+  createTerrainChunk(SEED, farChunkX + 1, farChunkZ),
+  createTerrainChunk(SEED, farChunkX, farChunkZ + 1),
+  createTerrainChunk(SEED, farChunkX + 1, farChunkZ + 1),
+];
+assert.deepEqual(
+  [...new Map(farParts.flatMap((part) => [...part]))].sort(([left], [right]) => left.localeCompare(right)),
+  [...farWhole].sort(([left], [right]) => left.localeCompare(right)),
+  "far-coordinate chunks must merge without terrain, cave, ore, or tree seams",
+);
+const farDeepOre = [...farWhole].filter(([key, block]) => (
+  Number(key.split(",")[1]) < 0 && (block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE)
+));
+assert.ok(farDeepOre.some(([, block]) => block === BLOCK.COAL_ORE), "deep strata need mineable coal");
+assert.ok(farDeepOre.some(([, block]) => block === BLOCK.IRON_ORE), "deep strata need mineable iron");
 
 const oreBlocks = [...first].filter(([, block]) => block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE);
 const coalBlocks = oreBlocks.filter(([, block]) => block === BLOCK.COAL_ORE);

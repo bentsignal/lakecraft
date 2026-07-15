@@ -1,9 +1,10 @@
 export { createVoxelEngine } from "./voxelEngine.ts";
-export { BED_MESH_VERTEX_COUNT, CHEST_MESH_VERTEX_COUNT, DOOR_MESH_VERTEX_COUNT, MAX_ACTIVE_TORCH_LIGHTS, MAX_RESPAWN_HEIGHT, PLAYER_MAX_HEALTH, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendBedMesh, appendChestMesh, appendDoorMesh, appendTorchMesh, applyDayNightClockUpdate, blockHasCollision, blockOccludesFaces, createDoorToggleEdit, doorPlacementBlock, isDoorBlock, selectNearestTorchLights, toggledDoorBlock, tryInteractBlock, validateRespawnPoint } from "./voxelEngine.ts";
+export { BED_MESH_VERTEX_COUNT, CHEST_MESH_VERTEX_COUNT, DOOR_MESH_VERTEX_COUNT, MAX_ACTIVE_TORCH_LIGHTS, MAX_RESPAWN_HEIGHT, PLAYER_MAX_HEALTH, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendBedMesh, appendChestMesh, appendDoorMesh, appendTorchMesh, applyDayNightClockUpdate, blockHasCollision, blockOccludesFaces, createDoorToggleEdit, doorPlacementBlock, isDoorBlock, resolveSafeSpawnY, selectNearestTorchLights, toggledDoorBlock, tryInteractBlock, validateRespawnPoint } from "./voxelEngine.ts";
 export { BLOCK } from "./types.ts";
 export { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 export { WORLD_CHUNK_SIZE, chunkCoordinate, chunkKeyForBlock, dirtyChunkKeysForEdit, dirtyChunkKeysForEdits } from "./chunks.ts";
 export { createMobRenderer, mobVertexCountForKind } from "./mobRenderer.ts";
+export { DROPPED_ITEM_MESH_INTERVAL_MS, DROPPED_ITEM_RENDER_DISTANCE, DROPPED_ITEM_VERTICES_PER_ITEM, MAX_RENDERED_DROPPED_ITEMS, createDroppedItemRenderer, droppedItemBufferCapacity, writeDroppedItemGeometry } from "./droppedItemRenderer.ts";
 export { AVATAR_VERTICES_PER_PLAYER, MAX_NAMEPLATE_VERTICES_PER_PLAYER, REMOTE_MESH_INTERVAL_MS, createRemotePlayerRenderer, remotePlayerBufferCapacity, writeRemotePlayerGeometry } from "./remotePlayerRenderer.ts";
 export {
   MAX_CONTACT_DAMAGE_PER_TICK,
@@ -51,3 +52,4 @@ export type {
 } from "./types.ts";
 export type { MobBehavior, MobCombatApplyResult, MobCombatStateSnapshot, MobDefinition, MobDrop, MobKind, MobPoseSnapshot, MobRayTarget, MobSimulation, MobState } from "./mobs.ts";
 export type { DayNightConfig, DayNightState, TimeOfDayLabel } from "./dayNight.ts";
+export type { DroppedItemGeometryStats, DroppedItemRenderItem, DroppedItemRenderer, DroppedItemRenderStats } from "./droppedItemRenderer.ts";

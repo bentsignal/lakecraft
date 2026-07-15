@@ -15,12 +15,12 @@ import {
   type WorldChunkEditInput,
 } from "../shared/worldChunks.ts";
 
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 20, "the palette uses 20 of 31 available five-bit codes");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 22, "the palette uses 22 of 31 available five-bit codes");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
-  WORLD_CHUNK_BLOCK_TYPES.slice(-4),
-  ["ladder", "cobblestone", "sand", "glass"],
-  "new persisted block codes only append after ladder",
+  WORLD_CHUNK_BLOCK_TYPES.slice(-6),
+  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore"],
+  "new persisted block codes append without renumbering deployed materials",
 );
 
 assert.equal(worldEditChunkCoordinate(0), 0);
@@ -35,7 +35,7 @@ assert.deepEqual(validateVisibleWorldChunkKeys(["0:0", "-1:2", "0:0"]), {
   ok: true,
   chunkKeys: ["-1:2", "0:0"],
 });
-assert.equal(validateVisibleWorldChunkKeys(["9:0"]).ok, false);
+assert.equal(validateVisibleWorldChunkKeys(["125001:0"]).ok, false);
 assert.equal(validateVisibleWorldChunkKeys("0:0").ok, false);
 assert.deepEqual(
   validateVisibleWorldChunkKeys(Array.from({ length: MAX_VISIBLE_WORLD_CHUNKS + 1 }, (_, index) => `${index % 3}:0`)),
@@ -127,16 +127,16 @@ for (let y = WORLD_EDIT_MIN_Y; y <= WORLD_EDIT_MAX_Y; y += 1) {
 const fullSnapshot = createWorldChunkSnapshot("0:0", fullChunk);
 assert.equal(fullSnapshot.ok, true);
 if (fullSnapshot.ok) {
-  assert.ok(fullSnapshot.snapshotJson.length < 4_000, `dense snapshot was ${fullSnapshot.snapshotJson.length} bytes`);
-  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 2, "new snapshots use the five-bit block codec");
+  assert.ok(fullSnapshot.snapshotJson.length < 10_000, `dense snapshot was ${fullSnapshot.snapshotJson.length} bytes`);
+  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 3, "new snapshots use sparse vertical sections");
   const decoded = decodeWorldChunkSnapshot("0:0", fullSnapshot.snapshotJson);
   assert.equal(decoded.ok && decoded.edits.length, fullChunk.length);
 }
 
 // Production rows written before ore/furnace support used two four-bit cells
 // per byte. They must remain readable and upgrade on the next edit.
-const legacyPacked = new Uint8Array(Math.ceil(((WORLD_EDIT_MAX_Y - WORLD_EDIT_MIN_Y + 1) * 8 * 8) / 2));
-const legacyStoneIndex = (0 - WORLD_EDIT_MIN_Y) * 64;
+const legacyPacked = new Uint8Array(Math.ceil((69 * 8 * 8) / 2));
+const legacyStoneIndex = (0 - -4) * 64;
 legacyPacked[legacyStoneIndex >> 1] = 4; // v1 code 4 = stone
 const legacySnapshot = JSON.stringify({ v: 1, cells: Buffer.from(legacyPacked).toString("base64") });
 const legacyDecoded = decodeWorldChunkSnapshot("0:0", legacySnapshot);
@@ -145,7 +145,7 @@ if (legacyDecoded.ok) assert.equal(legacyDecoded.edits.find((edit) => edit.coord
 const migrated = applyWorldChunkEdit("0:0", legacySnapshot, { x: 1, y: 0, z: 0, blockType: "furnace" });
 assert.equal(migrated.ok, true);
 if (migrated.ok) {
-  assert.equal(JSON.parse(migrated.snapshotJson).v, 2, "editing a legacy row migrates it to the current codec");
+  assert.equal(JSON.parse(migrated.snapshotJson).v, 3, "editing a legacy row migrates it to vertical sections");
   const decoded = decodeWorldChunkSnapshot("0:0", migrated.snapshotJson);
   assert.equal(decoded.ok, true);
   if (decoded.ok) {
@@ -158,12 +158,17 @@ const highestCode = createWorldChunkSnapshot("0:0", [
   { x: 0, y: 1, z: 0, blockType: "cobblestone" },
   { x: 1, y: 1, z: 0, blockType: "sand" },
   { x: 2, y: 1, z: 0, blockType: "glass" },
+  { x: 3, y: 1, z: 0, blockType: "gold_ore" },
+  { x: 4, y: 1, z: 0, blockType: "diamond_ore" },
 ]);
 assert.equal(highestCode.ok, true);
 if (highestCode.ok) {
   const decoded = decodeWorldChunkSnapshot("0:0", highestCode.snapshotJson);
   assert.equal(decoded.ok, true);
-  if (decoded.ok) assert.deepEqual(decoded.edits.map(({ blockType }) => blockType), ["cobblestone", "sand", "glass"]);
+  if (decoded.ok) assert.deepEqual(
+    decoded.edits.map(({ blockType }) => blockType),
+    ["cobblestone", "sand", "glass", "gold_ore", "diamond_ore"],
+  );
 }
 
 const empty = createWorldChunkSnapshot("0:0", []);

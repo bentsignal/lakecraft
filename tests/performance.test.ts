@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import {
   WORLD_CHUNK_SIZE,
+  MAX_STREAMING_CHUNK_COUNT,
+  chunkBounds,
   chunkCoordinate,
   chunkKeyForBlock,
   dirtyChunkKeysForEdit,
   dirtyChunkKeysForEdits,
+  chunkWindow,
+  planChunkWindow,
 } from "../client/game/chunks.ts";
-import { createTerrain } from "../client/game/terrain.ts";
+import { createTerrain, createTerrainChunk } from "../client/game/terrain.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
 import { MAX_REMOTE_PLAYERS, createRemoteAvatarMotion, type RemoteAvatarMotion } from "../client/game/avatar.ts";
 import {
@@ -68,6 +72,15 @@ const scanReduction = allKeys.length / dirtyBlocks.length;
 const uploadReduction = fullVertices / dirtyVertices;
 
 assert.equal(WORLD_CHUNK_SIZE, 8);
+assert.deepEqual(chunkBounds(-1, 2), { x: -1, z: 2, minX: -8, maxX: -1, minZ: 16, maxZ: 23 });
+const initialWindow = chunkWindow(0, 0);
+assert.equal(initialWindow.length, MAX_STREAMING_CHUNK_COUNT);
+assert.deepEqual(initialWindow[0], { x: 0, z: 0 }, "near-first loading should prioritize the player's chunk");
+assert.equal(chunkWindow(0, 0, 999).length, MAX_STREAMING_CHUNK_COUNT, "view work must remain bounded");
+const shiftedPlan = planChunkWindow(8, 0, new Set(initialWindow.map(({ x, z }) => `${x},${z}`)));
+assert.equal(shiftedPlan.load.length, 7);
+assert.equal(shiftedPlan.unload.length, 7);
+assert.equal(shiftedPlan.active.length, MAX_STREAMING_CHUNK_COUNT);
 assert.equal(dirtyKeys.length, 1);
 assert.ok(scanReduction > 20, `expected >20x candidate scan reduction, got ${scanReduction.toFixed(1)}x`);
 assert.ok(uploadReduction > 15, `expected >15x vertex upload reduction, got ${uploadReduction.toFixed(1)}x`);
@@ -80,6 +93,21 @@ console.log(JSON.stringify({
   dirtyChunkVertices: dirtyVertices,
   scanReduction: Number(scanReduction.toFixed(1)),
   uploadReduction: Number(uploadReduction.toFixed(1)),
+}));
+
+const windowStartedAt = performance.now();
+const deepWindow = chunkWindow(8 * 25_000, 8 * -25_000)
+  .map(({ x, z }) => createTerrainChunk(7319, x, z));
+const windowGenerationMs = performance.now() - windowStartedAt;
+const deepWindowBlocks = deepWindow.reduce((total, chunk) => total + chunk.size, 0);
+assert.equal(deepWindow.length, MAX_STREAMING_CHUNK_COUNT);
+assert.ok(deepWindowBlocks > 70_000 && deepWindowBlocks < 160_000, `unexpected 7x7 deep-window size ${deepWindowBlocks}`);
+assert.ok(windowGenerationMs < 350, `far 7x7 deep window took ${windowGenerationMs.toFixed(1)}ms (budget: 350ms)`);
+console.log(JSON.stringify({
+  benchmark: "far-coordinate 7x7 deep streaming window",
+  generationMs: Number(windowGenerationMs.toFixed(2)),
+  chunks: deepWindow.length,
+  blockCount: deepWindowBlocks,
 }));
 
 function remoteStates(count: number, geared = false): Map<string, RemoteAvatarMotion> {

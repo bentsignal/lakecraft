@@ -7,6 +7,7 @@ import {
   PRESENCE_MIN_X,
   PRESENCE_MIN_Y,
   PRESENCE_MIN_Z,
+  PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS,
 } from "../shared/presenceMotion.ts";
 
 export type StoredPlayerPresence = {
@@ -42,6 +43,10 @@ export type ValidatedPresencePose = {
   pitch: number;
 };
 
+export type PresenceWriteGateDecision =
+  | { accept: true; retryAfterMs: 0 }
+  | { accept: false; retryAfterMs: number };
+
 const MAX_NUMERIC_FIELD_LENGTH = 32;
 
 function parseBoundedNumber(value: unknown, minimum: number, maximum: number): number | null {
@@ -71,6 +76,35 @@ export function validatePresencePoseFields(
   return x === null || y === null || z === null || yaw === null || pitch === null
     ? null
     : { x, y, z, yaw, pitch };
+}
+
+/**
+ * Server-authoritative per-user heartbeat gate. The stored heartbeat is the
+ * previous server timestamp, never a client claim. Malformed legacy values are
+ * accepted once so the next write heals the row. A future stored timestamp is
+ * likewise healed immediately; clients cannot author this server-owned field.
+ */
+export function decidePresenceWriteGate(
+  existingHeartbeatAt: unknown,
+  serverNow: number,
+): PresenceWriteGateDecision {
+  if (!Number.isFinite(serverNow)) {
+    return { accept: false, retryAfterMs: PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS };
+  }
+  if (typeof existingHeartbeatAt !== "string" || !/^\d{1,16}$/.test(existingHeartbeatAt)) {
+    return { accept: true, retryAfterMs: 0 };
+  }
+  const previous = Number(existingHeartbeatAt);
+  if (!Number.isFinite(previous)) return { accept: true, retryAfterMs: 0 };
+  const elapsed = serverNow - previous;
+  if (elapsed < 0) return { accept: true, retryAfterMs: 0 };
+  if (elapsed >= PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS) {
+    return { accept: true, retryAfterMs: 0 };
+  }
+  return {
+    accept: false,
+    retryAfterMs: Math.ceil(PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS - elapsed),
+  };
 }
 
 /**

@@ -25,15 +25,16 @@ npx lakebed auth as alice
 - Right click a crafting table, furnace, chest, door, or bed to interact; right click held food to eat
 - Double-click food in the pack to eat it
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
+- `Q` drops one held item into the shared world for another player to pick up
 - `T` or `Enter` opens world chat
+- Hold `Tab` for the live player list; `Esc` opens the game menu
 - `F3` toggles live frame, mesh, chunk, and draw-call counters
-- `Esc` releases the pointer
 
 ## Project shape
 
-- `client/game/` — custom chunked WebGL renderer, deterministic caves, sand deposits, and ore-bearing terrain, lighting, fixed-buffer Steve avatars with visible held gear and armor, passive mobs, zombies, ranged skeletons, combat, movement, collisions, and raycasting
-- `client/components/` — HUD, inventory, crafting, shared chests, onboarding, and feedback
-- `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, multiplayer presence/chat, CAS-safe inventories, atomic shared-chest transfers, and the synchronized sleep clock
+- `client/game/` — custom streamed-chunk WebGL renderer, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
+- `client/components/` — Minecraft-style survival HUD, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, furnaces, and shared chests
+- `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, 5 Hz multiplayer presence/chat, CAS-safe inventories, atomic world item drops/pickups, shared-chest transfers, and the synchronized sleep clock
 - `shared/` — pure item, recipe, and wire-protocol types
 
 ## Build and deploy
@@ -49,6 +50,6 @@ The staging step works around the current Lakebed packager including repository 
 
 ## Multiplayer architecture
 
-Lakebed owns accounts, unique usernames, compact block-edit snapshots, sparse player poses, chat, inventories and hunger, chests, the world clock, and sparse authoritative mob health/death/drop records. Presence snapshots carry server-validated, quantized velocity plus selected held gear and four armor slots, and remain rate-gated to eight writes per minute; clients use bounded dead reckoning between updates and render the remote equipment without another mutation loop. Chest moves use one dual-CAS Lakebed mutation for the player pack, chest, and an idempotency receipt, so a dropped response can be retried without duplicating or losing items. Expensive high-frequency simulation stays deterministic on clients: terrain, caves, sand, coal, and iron are generated from a shared seed, while zombie/skeleton movement and arrows never emit frame-loop writes. Player inventory remains Lakebed-persisted as furnaces batch-smelt ore, food, or glass locally, and climbable ladders use local physics while placed ladders, cobblestone, sand, and glass remain authoritative Lakebed world state. This compromise is deliberate—the project is an experiment in how far Lakebed can be pushed, so replacing it with a conventional game backend is out of scope.
+Lakebed owns accounts, unique usernames, compact block-edit snapshots, chat, inventories and hunger, chests, dropped items, the world clock, and sparse authoritative mob health/death/drop records. Active players publish server-validated, quantized poses at 5 Hz (with an explicit 300-writes/minute limiter), and clients use bounded dead reckoning between updates while rendering held gear and armor without another mutation loop. That intentionally burns through Lakebed's small hosted write quota quickly: the public deployment is a systems experiment, not an attempt to disguise the platform limitation. Item drops and pickups atomically compare-and-swap the player's inventory alongside a replay receipt so retrying a lost response cannot duplicate a stack. Chest moves use the same dual-CAS pattern. Expensive high-frequency simulation stays deterministic on clients: a bounded 7×7 chunk window streams effectively unbounded X/Z terrain, deep caves, sand, coal, iron, gold, and diamond, while mob motion and projectiles never emit frame-loop writes. Player inventory remains Lakebed-persisted as furnaces smelt ore, food, or glass locally, and placed blocks and interactables remain authoritative Lakebed world state. This compromise is deliberate—the project is an experiment in how far Lakebed can be pushed, so replacing it with a conventional game backend is out of scope.
 
 Performance budgets and the repeatable benchmark loop live in [PERFORMANCE.md](./PERFORMANCE.md).

@@ -1,6 +1,7 @@
 import type { DayNightConfig } from "./dayNight.ts";
 import type { MobCombatStateSnapshot, MobDrop, MobRayTarget } from "./mobs.ts";
 import type { ArmorId, ItemId } from "../../shared/game.ts";
+import type { DroppedItemRenderItem } from "./droppedItemRenderer.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -23,6 +24,8 @@ export const BLOCK = {
   COBBLESTONE: 17,
   SAND: 18,
   GLASS: 19,
+  GOLD_ORE: 20,
+  DIAMOND_ORE: 21,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -99,6 +102,12 @@ export interface VoxelPerformanceStats {
   mobVisibleCount: number;
   mobCount: number;
   mobSimulationMs: number;
+  droppedItemDrawCalls: number;
+  droppedItemVertexCount: number;
+  droppedItemVisibleCount: number;
+  droppedItemCount: number;
+  droppedItemMeshMs: number;
+  droppedItemUploadBytes: number;
   torchCount: number;
   activeTorchLights: number;
   estimatedMeshBytes: number;
@@ -151,6 +160,8 @@ export interface VoxelEngine {
   getMobIds(): string[];
   setSelectedBlock(block: BlockId): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
+  /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
+  setDroppedItems(items: readonly DroppedItemRenderItem[]): void;
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
   setRespawnPoint(point: RespawnPoint): void;
   adjustPlayerHealth(delta: number): number;

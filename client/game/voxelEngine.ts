@@ -1,9 +1,18 @@
-import { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
 import {
+  TERRAIN_MIN_Y,
+  blockKey,
+  createTerrainChunk,
+  raycastVoxels,
+  terrainHeight,
+} from "./terrain.ts";
+import {
+  DEFAULT_STREAMING_CHUNK_RADIUS,
   WORLD_CHUNK_SIZE,
+  chunkKey,
   chunkKeyForBlock,
   dirtyChunkKeysForEdits,
   parseChunkKey,
+  planChunkWindow,
 } from "./chunks.ts";
 import {
   MAX_REMOTE_PLAYERS,
@@ -12,6 +21,7 @@ import {
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
+import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import {
   DEFAULT_DAY_NIGHT_CONFIG,
   createDayNightState,
@@ -51,6 +61,67 @@ import {
 type Vec3 = [number, number, number];
 
 export const PLAYER_MAX_HEALTH = 20;
+export const MOUSE_LOOK_SENSITIVITY = 0.0022;
+export const MAX_LOOK_PITCH = 1.52;
+export const STREAMING_MESH_REBUILDS_PER_FRAME = 1;
+
+/**
+ * Reconstructs one deterministic terrain chunk and reapplies every remembered
+ * sparse edit owned by it. Keeping this operation pure makes unload/reload
+ * behavior testable without a browser or WebGL context.
+ */
+export function materializeTerrainChunk(
+  seed: number,
+  chunkX: number,
+  chunkZ: number,
+  edits: Iterable<WorldEdit> = [],
+): Map<string, BlockId> {
+  const owner = chunkKey(chunkX, chunkZ);
+  const materialized = createTerrainChunk(seed, chunkX, chunkZ);
+  for (const edit of edits) {
+    if (chunkKeyForBlock(edit.x, edit.z) !== owner) continue;
+    const key = blockKey(edit.x, edit.y, edit.z);
+    if (edit.block === BLOCK.AIR) materialized.delete(key);
+    else materialized.set(key, edit.block);
+  }
+  return materialized;
+}
+
+/**
+ * Converts pointer-lock movement into the engine's look convention. Positive
+ * yaw faces right from the default -Z heading; positive pitch faces upward.
+ */
+export function applyMouseLookDelta(
+  yaw: number,
+  pitch: number,
+  movementX: number,
+  movementY: number,
+): { yaw: number; pitch: number } {
+  return {
+    yaw: yaw + movementX * MOUSE_LOOK_SENSITIVITY,
+    pitch: Math.max(
+      -MAX_LOOK_PITCH,
+      Math.min(MAX_LOOK_PITCH, pitch - movementY * MOUSE_LOOK_SENSITIVITY),
+    ),
+  };
+}
+
+/** Lift a resumed player out of regenerated terrain or a newly placed block. */
+export function resolveSafeSpawnY(
+  preferredY: number,
+  surfaceY: number,
+  collidesAt: (y: number) => boolean,
+  maximumRise = 64,
+): number {
+  const preferred = Number.isFinite(preferredY) ? preferredY : surfaceY;
+  const firstCandidate = Math.max(preferred, surfaceY);
+  if (!collidesAt(firstCandidate)) return firstCandidate;
+  for (let rise = 0; rise <= Math.max(1, Math.floor(maximumRise)); rise += 0.5) {
+    const candidate = firstCandidate + rise;
+    if (!collidesAt(candidate)) return candidate;
+  }
+  return surfaceY;
+}
 
 interface ChunkMesh {
   buffer: WebGLBuffer;
@@ -160,6 +231,8 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.COBBLESTONE]: [0.36, 0.39, 0.40],
   [BLOCK.SAND]: [0.78, 0.69, 0.45],
   [BLOCK.GLASS]: [0.63, 0.84, 0.86],
+  [BLOCK.GOLD_ORE]: [0.78, 0.64, 0.17],
+  [BLOCK.DIAMOND_ORE]: [0.24, 0.78, 0.76],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -612,6 +685,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const lineBuffer = gl.createBuffer();
   if (!lineBuffer) throw new Error("Unable to allocate WebGL buffers.");
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
+  const droppedItemRenderer = createDroppedItemRenderer(gl);
 
   const seed = options.seed ?? 7319;
   const radius = Math.max(8, Math.min(40, options.worldRadius ?? 20));
@@ -624,33 +698,66 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     ? options.serverTimeOffsetMs ?? 0
     : 0;
   const dayNightState = createDayNightState();
-  const blocks = createTerrain(seed, radius);
-  for (const edit of options.initialEdits ?? []) {
-    const key = blockKey(edit.x, edit.y, edit.z);
-    if (edit.block === BLOCK.AIR) blocks.delete(key);
-    else blocks.set(key, edit.block);
-  }
+  const startY = terrainHeight(0, 0, seed) + 1.02;
+  const initialX = options.initialPose?.x ?? 0.5;
+  const initialZ = options.initialPose?.z ?? 0.5;
+  const pose: PlayerPose = {
+    x: initialX,
+    y: options.initialPose?.y ?? terrainHeight(initialX, initialZ, seed) + 1.02,
+    z: initialZ,
+    yaw: options.initialPose?.yaw ?? 0,
+    pitch: options.initialPose?.pitch ?? -0.08,
+  };
+  let respawnPoint: PlayerPose = {
+    x: 0.5,
+    y: startY,
+    z: 0.5,
+    yaw: 0,
+    pitch: -0.08,
+  };
+  const blocks = new Map<string, BlockId>();
   const torchLights = new Map<string, TorchLightPosition>();
-  for (const [key, block] of blocks) {
-    if (block !== BLOCK.TORCH) continue;
-    const [x, y, z] = key.split(",").map(Number);
-    torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
-  }
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const chunkBlocks = new Map<string, Set<string>>();
-  for (const key of blocks.keys()) {
-    const separatorA = key.indexOf(",");
-    const separatorB = key.indexOf(",", separatorA + 1);
-    const x = Number(key.slice(0, separatorA));
-    const z = Number(key.slice(separatorB + 1));
-    const owner = chunkKeyForBlock(x, z);
-    let owned = chunkBlocks.get(owner);
-    if (!owned) {
-      owned = new Set<string>();
-      chunkBlocks.set(owner, owned);
+  const loadedChunkKeys = new Set<string>();
+  const pendingChunkMeshRebuilds = new Set<string>();
+  const rememberedEditsByChunk = new Map<string, Map<string, WorldEdit>>();
+  for (const edit of options.initialEdits ?? []) {
+    const owner = chunkKeyForBlock(edit.x, edit.z);
+    let chunkEdits = rememberedEditsByChunk.get(owner);
+    if (!chunkEdits) {
+      chunkEdits = new Map<string, WorldEdit>();
+      rememberedEditsByChunk.set(owner, chunkEdits);
     }
-    owned.add(key);
+    chunkEdits.set(blockKey(edit.x, edit.y, edit.z), { ...edit });
   }
+  const initialChunkPlan = planChunkWindow(
+    pose.x,
+    pose.z,
+    loadedChunkKeys,
+    DEFAULT_STREAMING_CHUNK_RADIUS,
+  );
+  for (const coordinate of initialChunkPlan.load) {
+    const owner = chunkKey(coordinate.x, coordinate.z);
+    const materialized = materializeTerrainChunk(
+      seed,
+      coordinate.x,
+      coordinate.z,
+      rememberedEditsByChunk.get(owner)?.values() ?? [],
+    );
+    const owned = new Set<string>();
+    for (const [key, block] of materialized) {
+      blocks.set(key, block);
+      owned.add(key);
+      if (block === BLOCK.TORCH) {
+        const [x, y, z] = key.split(",").map(Number);
+        torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
+      }
+    }
+    chunkBlocks.set(owner, owned);
+    loadedChunkKeys.add(owner);
+  }
+  let streamingCenterKey = chunkKey(initialChunkPlan.center.x, initialChunkPlan.center.z);
   const chunkMeshes = new Map<string, ChunkMesh>();
   const mobRenderer = createMobRenderer(gl);
   const mobSimulation = createMobSimulation(createMobSpawns({
@@ -667,21 +774,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
   const mobSnapshots: MobPoseSnapshot[] = [];
   const mobProjectileSnapshots: MobProjectileSnapshot[] = [];
-  const startY = terrainHeight(0, 0, seed) + 1.02;
-  const pose: PlayerPose = {
-    x: options.initialPose?.x ?? 0.5,
-    y: options.initialPose?.y ?? startY,
-    z: options.initialPose?.z ?? 0.5,
-    yaw: options.initialPose?.yaw ?? 0,
-    pitch: options.initialPose?.pitch ?? -0.08,
-  };
-  let respawnPoint: PlayerPose = {
-    x: 0.5,
-    y: startY,
-    z: 0.5,
-    yaw: 0,
-    pitch: -0.08,
-  };
   const velocity: Vec3 = [0, 0, 0];
   const keys = new Set<string>();
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
@@ -707,6 +799,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let drawCalls = 0;
   let avatarDrawCalls = 0;
   let mobDrawCalls = 0;
+  let droppedItemDrawCalls = 0;
+  let droppedItemVertexCount = 0;
+  let droppedItemVisibleCount = 0;
   let mobVertexCount = 0;
   let visibleMobCount = 0;
   let lastMobSimulationMs = 0;
@@ -725,8 +820,90 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     miningTimer = 0;
   }
 
+  function rememberWorldEdit(edit: WorldEdit): void {
+    const owner = chunkKeyForBlock(edit.x, edit.z);
+    let chunkEdits = rememberedEditsByChunk.get(owner);
+    if (!chunkEdits) {
+      chunkEdits = new Map<string, WorldEdit>();
+      rememberedEditsByChunk.set(owner, chunkEdits);
+    }
+    chunkEdits.set(blockKey(edit.x, edit.y, edit.z), { ...edit });
+  }
+
+  function loadTerrainChunk(chunkX: number, chunkZ: number): void {
+    const owner = chunkKey(chunkX, chunkZ);
+    if (loadedChunkKeys.has(owner)) return;
+    const materialized = materializeTerrainChunk(
+      seed,
+      chunkX,
+      chunkZ,
+      rememberedEditsByChunk.get(owner)?.values() ?? [],
+    );
+    const owned = new Set<string>();
+    for (const [key, block] of materialized) {
+      blocks.set(key, block);
+      owned.add(key);
+      if (block === BLOCK.TORCH) {
+        const [x, y, z] = key.split(",").map(Number);
+        torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
+      }
+    }
+    chunkBlocks.set(owner, owned);
+    loadedChunkKeys.add(owner);
+  }
+
+  function unloadTerrainChunk(chunkX: number, chunkZ: number): void {
+    const owner = chunkKey(chunkX, chunkZ);
+    if (!loadedChunkKeys.has(owner)) return;
+    const mesh = chunkMeshes.get(owner);
+    if (mesh) {
+      worldVertexCount -= mesh.vertexCount;
+      gl.deleteBuffer(mesh.buffer);
+      chunkMeshes.delete(owner);
+    }
+    for (const key of chunkBlocks.get(owner) ?? []) {
+      blocks.delete(key);
+      torchLights.delete(key);
+    }
+    chunkBlocks.delete(owner);
+    loadedChunkKeys.delete(owner);
+  }
+
+  function markChunkAndNeighbors(target: Set<string>, chunkX: number, chunkZ: number): void {
+    target.add(chunkKey(chunkX, chunkZ));
+    target.add(chunkKey(chunkX - 1, chunkZ));
+    target.add(chunkKey(chunkX + 1, chunkZ));
+    target.add(chunkKey(chunkX, chunkZ - 1));
+    target.add(chunkKey(chunkX, chunkZ + 1));
+  }
+
+  function updateStreamingWindow(force = false): void {
+    const nextCenterKey = chunkKeyForBlock(pose.x, pose.z);
+    if (!force && nextCenterKey === streamingCenterKey) return;
+    const plan = planChunkWindow(
+      pose.x,
+      pose.z,
+      loadedChunkKeys,
+      DEFAULT_STREAMING_CHUNK_RADIUS,
+    );
+    streamingCenterKey = chunkKey(plan.center.x, plan.center.z);
+    if (!plan.load.length && !plan.unload.length) return;
+
+    const dirty = new Set<string>();
+    for (const coordinate of plan.unload) {
+      unloadTerrainChunk(coordinate.x, coordinate.z);
+    }
+    for (const coordinate of plan.load) {
+      loadTerrainChunk(coordinate.x, coordinate.z);
+      markChunkAndNeighbors(dirty, coordinate.x, coordinate.z);
+    }
+    for (const key of dirty) {
+      if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+    }
+  }
+
   const getBlock = (x: number, y: number, z: number): BlockId => {
-    if (y < 0) return BLOCK.STONE;
+    if (y < TERRAIN_MIN_Y) return BLOCK.STONE;
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
   };
 
@@ -739,7 +916,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       blocks.delete(key);
       const owned = chunkBlocks.get(owner);
       owned?.delete(key);
-      if (owned?.size === 0) chunkBlocks.delete(owner);
     } else {
       blocks.set(key, block);
       if (block === BLOCK.TORCH) torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
@@ -819,11 +995,26 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function rebuildWorldChunks(keys: readonly string[]): void {
     const uniqueKeys = [...new Set(keys)];
     const startedAt = performance.now();
-    for (const key of uniqueKeys) rebuildChunkMesh(key);
+    for (const key of uniqueKeys) {
+      pendingChunkMeshRebuilds.delete(key);
+      rebuildChunkMesh(key);
+    }
     lastMeshRebuildMs = performance.now() - startedAt;
     totalMeshRebuildMs += lastMeshRebuildMs;
     lastRebuiltChunkCount = uniqueKeys.length;
     totalRebuiltChunkCount += uniqueKeys.length;
+  }
+
+  function processPendingChunkMeshes(limit = STREAMING_MESH_REBUILDS_PER_FRAME): void {
+    if (!pendingChunkMeshRebuilds.size) return;
+    const batch: string[] = [];
+    for (const key of pendingChunkMeshRebuilds) {
+      pendingChunkMeshRebuilds.delete(key);
+      if (!loadedChunkKeys.has(key)) continue;
+      batch.push(key);
+      if (batch.length >= limit) break;
+    }
+    if (batch.length) rebuildWorldChunks(batch);
   }
 
   function collides(x: number, y: number, z: number): boolean {
@@ -946,6 +1137,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const dz = ((-Math.cos(pose.yaw) * forward + Math.sin(pose.yaw) * strafe) / magnitude) * speed * dt;
     moveAxis(0, dx);
     moveAxis(2, dz);
+    updateStreamingWindow();
     const touchingLadder = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
     velocity[1] = ladderVerticalVelocity(
       velocity[1],
@@ -972,6 +1164,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       poseDirty = false;
       options.onPoseChange?.({ ...pose });
     }
+    processPendingChunkMeshes();
     updateMobs(dt);
   }
 
@@ -1031,7 +1224,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       totalRebuiltChunkCount,
       worldVertexCount,
       blockCount: blocks.size,
-      chunkCount: chunkMeshes.size,
+      chunkCount: loadedChunkKeys.size,
       visibleChunkCount,
       drawCalls,
       avatarDrawCalls,
@@ -1046,9 +1239,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       mobVisibleCount: visibleMobCount,
       mobCount: mobSimulation.mobs.length,
       mobSimulationMs: lastMobSimulationMs,
+      droppedItemDrawCalls,
+      droppedItemVertexCount,
+      droppedItemVisibleCount,
+      droppedItemCount: droppedItemRenderer.stats.totalItemCount,
+      droppedItemMeshMs: droppedItemRenderer.stats.meshMs,
+      droppedItemUploadBytes: droppedItemRenderer.stats.uploadBytes,
       torchCount: torchLights.size,
       activeTorchLights,
-      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
+      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
     };
   }
 
@@ -1058,6 +1257,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
     remoteVertexCount = remoteStats.avatarVertexCount;
     nameplateVertexCount = remoteStats.nameplateVertexCount;
+    const droppedItemStats = droppedItemRenderer.update(now, eye);
+    droppedItemVertexCount = droppedItemStats.vertexCount;
+    droppedItemVisibleCount = droppedItemStats.visibleItemCount;
     const facing = direction();
     const projection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
@@ -1104,6 +1306,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     drawCalls = 0;
     avatarDrawCalls = 0;
     mobDrawCalls = 0;
+    droppedItemDrawCalls = 0;
     for (const [key, mesh] of chunkMeshes) {
       if (!chunkIntersectsView(key, mesh, mvp)) continue;
       bindBuffer(mesh.buffer);
@@ -1116,6 +1319,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.drawArrays(gl.TRIANGLES, 0, remoteVertexCount);
       drawCalls += 1;
       avatarDrawCalls += 1;
+    }
+    if (droppedItemVertexCount) {
+      bindBuffer(droppedItemRenderer.buffer);
+      gl.drawArrays(gl.TRIANGLES, 0, droppedItemVertexCount);
+      drawCalls += 1;
+      droppedItemDrawCalls += 1;
     }
     if (mobVertexCount) {
       bindBuffer(mobRenderer.buffer);
@@ -1151,21 +1360,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
     }
 
-    // Crosshair in clip space, drawn last so it remains readable against foliage.
-    const crossX = 9 / canvas.width * 2;
-    const crossY = 9 / canvas.height * 2;
-    const crosshair: number[] = [];
-    pushVertex(crosshair, [-crossX, 0, 0], [1, 1, 1]); pushVertex(crosshair, [crossX, 0, 0], [1, 1, 1]);
-    pushVertex(crosshair, [0, -crossY, 0], [1, 1, 1]); pushVertex(crosshair, [0, crossY, 0], [1, 1, 1]);
-    gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(crosshair), gl.DYNAMIC_DRAW);
-    bindBuffer(lineBuffer);
-    gl.disable(gl.DEPTH_TEST);
-    gl.uniformMatrix4fv(mvpLocation, false, new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]));
-    gl.uniform1f(fogLocation, 0);
-    gl.uniform1f(lightingLocation, 0);
-    gl.drawArrays(gl.LINES, 0, 4);
-    drawCalls += 1;
   }
 
   function frame(now: number): void {
@@ -1188,8 +1382,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function emitEdit(edit: WorldEdit): void {
     const previousBlock = getBlock(edit.x, edit.y, edit.z);
+    rememberWorldEdit(edit);
     setBlock(edit.x, edit.y, edit.z, edit.block);
-    rebuildWorldChunks(dirtyChunkKeysForEdits([edit]));
+    rebuildWorldChunks(dirtyChunkKeysForEdits([edit]).filter((key) => loadedChunkKeys.has(key)));
     options.onBlockEdit?.(edit, previousBlock);
   }
 
@@ -1214,8 +1409,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onMouseMove(event: MouseEvent): void {
     if (document.pointerLockElement !== canvas) return;
-    pose.yaw -= event.movementX * 0.0022;
-    pose.pitch = Math.max(-1.52, Math.min(1.52, pose.pitch - event.movementY * 0.0022));
+    const look = applyMouseLookDelta(pose.yaw, pose.pitch, event.movementX, event.movementY);
+    pose.yaw = look.yaw;
+    pose.pitch = look.pitch;
     poseDirty = true;
   }
 
@@ -1298,6 +1494,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onContextMenu(event: MouseEvent): void { event.preventDefault(); }
 
+  pose.y = resolveSafeSpawnY(
+    pose.y,
+    terrainHeight(pose.x, pose.z, seed) + 1.02,
+    (candidateY) => collides(pose.x, candidateY, pose.z),
+  );
   rebuildWorldChunks([...chunkBlocks.keys()]);
 
   return {
@@ -1332,14 +1533,30 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       clearMining();
       for (const mesh of chunkMeshes.values()) gl.deleteBuffer(mesh.buffer);
       chunkMeshes.clear();
+      pendingChunkMeshRebuilds.clear();
+      loadedChunkKeys.clear();
+      chunkBlocks.clear();
+      blocks.clear();
+      torchLights.clear();
       remotePlayerRenderer.destroy();
+      droppedItemRenderer.destroy();
       gl.deleteBuffer(lineBuffer);
       mobRenderer.destroy();
       gl.deleteProgram(program);
     },
     applyWorldEdits(edits) {
-      for (const edit of edits) setBlock(edit.x, edit.y, edit.z, edit.block);
-      if (edits.length) rebuildWorldChunks(dirtyChunkKeysForEdits(edits));
+      const loadedEdits: WorldEdit[] = [];
+      for (const edit of edits) {
+        rememberWorldEdit(edit);
+        if (!loadedChunkKeys.has(chunkKeyForBlock(edit.x, edit.z))) continue;
+        setBlock(edit.x, edit.y, edit.z, edit.block);
+        loadedEdits.push(edit);
+      }
+      if (loadedEdits.length) {
+        rebuildWorldChunks(
+          dirtyChunkKeysForEdits(loadedEdits).filter((key) => loadedChunkKeys.has(key)),
+        );
+      }
     },
     applyMobCombatStates(states, nextServerTimeOffsetMs) {
       if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
@@ -1371,6 +1588,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (!incomingIds.has(id)) remoteStates.delete(id);
       }
     },
+    setDroppedItems(items) {
+      droppedItemRenderer.setItems(items);
+    },
     setDayNightClock(config, nextServerTimeOffsetMs) {
       serverTimeOffsetMs = applyDayNightClockUpdate(
         dayNightConfig,
@@ -1380,7 +1600,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       );
     },
     setRespawnPoint(point) {
-      const validated = validateRespawnPoint(point, radius + 1);
+      const validated = validateRespawnPoint(point, Number.MAX_SAFE_INTEGER);
       if (validated) respawnPoint = validated;
     },
     adjustPlayerHealth(delta) {
@@ -1402,6 +1622,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = respawnPoint.z;
       pose.yaw = respawnPoint.yaw;
       pose.pitch = respawnPoint.pitch;
+      updateStreamingWindow(true);
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;

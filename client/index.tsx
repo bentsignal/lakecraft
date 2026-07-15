@@ -18,6 +18,7 @@ import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lob
 import {
   ITEMS,
   BLOCKS,
+  MAX_HEALTH,
   MAX_HUNGER,
   addItem,
   attackDamage,
@@ -77,6 +78,7 @@ import {
 } from "../shared/protocol";
 import {
   PRESENCE_MAX_WRITES_PER_MINUTE,
+  PRESENCE_SAMPLE_INTERVAL_MS,
   createPresenceSchedulerState,
   parsePersistedPresencePose,
   parsePresenceVelocityFields,
@@ -94,24 +96,20 @@ import {
   decodeWorldChunkSnapshot,
   worldEditChunkCoordinate,
 } from "../shared/worldChunks";
+import {
+  DROPPED_ITEM_CHUNK_SIZE,
+  DROPPED_ITEM_PICKUP_RADIUS,
+  type NormalizedDroppedItem,
+} from "../shared/droppedItems";
 
 const APP_CSS = `
-html, body, #app { height: 100%; margin: 0; overflow: hidden; }
+@font-face { font-display: swap; font-family: "Pixelify Sans"; font-style: normal; font-weight: 400 700; src: url("https://fonts.gstatic.com/s/pixelifysans/v3/CHylV-3HFUT7aC4iv1TxGDR9Jn0Eiw.woff2") format("woff2"); }
+:root { --lc-pixel-font: "Pixelify Sans", "Courier New", monospace; }
+html, body, #app { height: 100vh; height: 100dvh; margin: 0; overflow: hidden; width: 100%; }
 body { background: #171b15; }
 button { -webkit-tap-highlight-color: transparent; }
-.lakecraft-shell { background: #171b15; height: 100%; isolation: isolate; overflow: hidden; position: relative; width: 100%; }
+.lakecraft-shell { background: #171b15; height: 100vh; height: 100dvh; inset: 0; isolation: isolate; overflow: hidden; position: fixed; width: 100vw; }
 .lakecraft-world { cursor: crosshair; display: block; height: 100%; outline: none; width: 100%; }
-.lakecraft-vignette { background: radial-gradient(circle at center, transparent 52%, rgba(13,17,12,.18) 84%, rgba(9,12,9,.48)); inset: 0; pointer-events: none; position: absolute; z-index: 8; }
-.lakecraft-entry { align-items: center; background: linear-gradient(115deg, rgba(15,18,14,.86), rgba(15,18,14,.3) 52%, rgba(15,18,14,.72)); display: flex; inset: 0; justify-content: center; padding: 24px; position: absolute; z-index: 35; }
-.lakecraft-entry__card { background: rgba(226,216,189,.96); box-shadow: 12px 14px 0 rgba(94,112,61,.52), 0 30px 90px rgba(0,0,0,.48); color: #24261f; max-width: 430px; padding: 32px; position: relative; transform: rotate(-.45deg); }
-.lakecraft-entry__card::before { background: #667541; content: ""; height: 7px; left: 0; position: absolute; right: 0; top: 0; }
-.lakecraft-entry__eyebrow { color: #9a5434; font: 10px/1.2 "Courier New", monospace; letter-spacing: .14em; text-transform: uppercase; }
-.lakecraft-entry h1 { font: 900 clamp(42px, 8vw, 70px)/.84 "Trebuchet MS", sans-serif; letter-spacing: -.075em; margin: 17px 0 19px; text-transform: uppercase; }
-.lakecraft-entry p { font: 12px/1.65 "Courier New", monospace; margin: 0 0 23px; max-width: 38em; }
-.lakecraft-entry button { align-items: center; background: #24261f; border: 0; color: #e6dcc1; cursor: pointer; display: flex; font: 800 12px "Trebuchet MS", sans-serif; justify-content: space-between; letter-spacing: .08em; padding: 15px 17px; text-transform: uppercase; width: 100%; }
-.lakecraft-entry button:hover { background: #667541; }
-.lakecraft-entry button:disabled { background: #777a6d; cursor: progress; opacity: .72; }
-.lakecraft-entry small { color: rgba(36,38,31,.56); display: block; font: 9px "Courier New", monospace; margin-top: 13px; }
 .lakecraft-error { background: #171a16; color: #e6dcc1; display: grid; inset: 0; padding: 40px; place-content: center; position: absolute; z-index: 120; }
 .lakecraft-error strong { color: #d49a45; font: 700 16px "Courier New", monospace; }.lakecraft-error p { max-width: 560px; }
 .lakecraft-perf { background: rgba(9,12,9,.88); border-left: 3px solid #91ae58; color: #dce7c4; font: 11px/1.45 "Courier New", monospace; left: 14px; padding: 9px 11px; pointer-events: none; position: absolute; top: 14px; white-space: pre; z-index: 70; }
@@ -124,10 +122,31 @@ button { -webkit-tap-highlight-color: transparent; }
 .lakecraft-sleep button { background: #24261f; border: 0; color: #e6dcc1; cursor: pointer; font: 800 11px "Trebuchet MS", sans-serif; letter-spacing: .08em; padding: 13px 15px; text-transform: uppercase; }
 .lakecraft-sleep button:disabled { cursor: progress; opacity: .58; }
 .lakecraft-sleep button:last-child { background: transparent; color: #24261f; outline: 1px solid rgba(36,38,31,.4); }
-@media (max-width: 700px) { .lakecraft-entry__card { padding: 27px 24px; }.lakecraft-entry h1 { font-size: 48px; } }
 `;
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder"> = {
+type DroppedItemsQueryResult =
+  | { ok: true; items: NormalizedDroppedItem[]; serverNow: number }
+  | { ok: false; reason: string; items: []; serverNow: number };
+
+type DroppedItemMutationResult =
+  | { ok: true; replayed: boolean; operation: "drop" | "pickup"; dropId: string; moved: { itemId: ItemId; count: number }; inventory: PersistedInventoryState; droppedItem: Record<string, unknown> | null }
+  | { ok: false; reason: string; inventory?: PersistedInventoryState | null };
+
+function visibleDroppedItemChunkKeys(x: number, z: number): string[] {
+  const centerX = Math.floor(x / DROPPED_ITEM_CHUNK_SIZE);
+  const centerZ = Math.floor(z / DROPPED_ITEM_CHUNK_SIZE);
+  const keys: string[] = [];
+  for (let dz = -3; dz <= 3; dz += 1) {
+    for (let dx = -3; dx <= 3; dx += 1) keys.push(`${centerX + dx}:${centerZ + dz}`);
+  }
+  return keys;
+}
+
+function droppedItemOperationId(): string {
+  return `lc_${crypto.randomUUID()}`;
+}
+
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -137,6 +156,8 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
+  [BLOCK.GOLD_ORE]: "gold_ore",
+  [BLOCK.DIAMOND_ORE]: "diamond_ore",
   [BLOCK.WOOD]: "wood",
   [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "planks",
@@ -160,6 +181,8 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
+  gold_ore: BLOCK.GOLD_ORE,
+  diamond_ore: BLOCK.DIAMOND_ORE,
   wood: BLOCK.WOOD,
   log: BLOCK.WOOD,
   leaves: BLOCK.LEAVES,
@@ -183,6 +206,8 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
+  [BLOCK.GOLD_ORE]: "gold_ore",
+  [BLOCK.DIAMOND_ORE]: "diamond_ore",
   [BLOCK.WOOD]: "log",
   [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "planks",
@@ -205,6 +230,8 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
+  gold_ore: BLOCK.GOLD_ORE,
+  diamond_ore: BLOCK.DIAMOND_ORE,
   log: BLOCK.WOOD,
   leaves: BLOCK.LEAVES,
   planks: BLOCK.PLANKS,
@@ -239,15 +266,15 @@ function createChestOperationId(): string {
 
 const WORLD_RADIUS = 18;
 const DEFAULT_PLAYER_POSE: Readonly<PlayerPose> = Object.freeze({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
-const VISIBLE_WORLD_CHUNK_KEYS = (() => {
-  const minimum = worldEditChunkCoordinate(-WORLD_RADIUS);
-  const maximum = worldEditChunkCoordinate(WORLD_RADIUS);
+function visibleWorldChunkKeys(x: number, z: number): string[] {
+  const centerX = worldEditChunkCoordinate(x);
+  const centerZ = worldEditChunkCoordinate(z);
   const keys: string[] = [];
-  for (let chunkX = minimum; chunkX <= maximum; chunkX += 1) {
-    for (let chunkZ = minimum; chunkZ <= maximum; chunkZ += 1) keys.push(`${chunkX}:${chunkZ}`);
+  for (let dz = -3; dz <= 3; dz += 1) {
+    for (let dx = -3; dx <= 3; dx += 1) keys.push(`${centerX + dx}:${centerZ + dz}`);
   }
   return keys;
-})();
+}
 
 function playerColor(id: string): string {
   let hash = 0;
@@ -306,8 +333,10 @@ function parsePlayerState(row: PersistedInventory | null) {
 export function App() {
   const auth = useAuth();
   const [activeChestKey, setActiveChestKey] = useState("");
+  const [inWorld, setInWorld] = useState(false);
+  const [worldChunkKeys, setWorldChunkKeys] = useState<string[]>(() => visibleWorldChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
-  const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", VISIBLE_WORLD_CHUNK_KEYS);
+  const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", worldChunkKeys);
   const [activeSince] = useState(() => String(Date.now() - 30_000));
   const presenceEvents = useQuery<PlayerPresence[], string>("recentPlayers", activeSince) ?? [];
   const savedPresence = useQuery<PlayerPresence | null>("myPresence");
@@ -318,6 +347,8 @@ export function App() {
   const worldClock = useQuery<WorldClockSnapshot>("worldClock");
   const [mobIds, setMobIds] = useState<string[]>([]);
   const mobAuthority = useQuery<MobAuthorityQueryResult, string[]>("mobAuthority", mobIds);
+  const [droppedChunkKeys, setDroppedChunkKeys] = useState<string[]>(() => visibleDroppedItemChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
+  const droppedItemsResult = useQuery<DroppedItemsQueryResult, string[]>("droppedItems", inWorld ? droppedChunkKeys : []);
 
   const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
   const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
@@ -329,6 +360,8 @@ export function App() {
   const transferChest = useMutation<[requestJson: string], ChestTransferResult>("transferChest");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
   const attackMob = useMutation<[mobId: string, kind: string, damage: string], MobAttackResult>("attackMob");
+  const dropItemMutation = useMutation<[requestJson: string], DroppedItemMutationResult>("dropItem");
+  const pickupDroppedItemMutation = useMutation<[requestJson: string], DroppedItemMutationResult>("pickupDroppedItem");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
@@ -357,6 +390,13 @@ export function App() {
   const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
   const activeWorkstationRef = useRef<{ kind: "crafting_table" | "furnace"; position: WorkstationPosition } | null>(null);
   const toastCounter = useRef(0);
+  const droppedItemBusyRef = useRef(false);
+  const droppedChunkCenterRef = useRef("");
+  const worldChunkCenterRef = useRef("");
+  const intentionalPointerUnlockRef = useRef(false);
+  const droppedItemsClockRef = useRef<{ result: DroppedItemsQueryResult; receivedAt: number } | null>(null);
+  const droppedPickupAttemptRef = useRef(new Map<string, number>());
+  const lastDroppedPickupSweepRef = useRef(0);
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
 
@@ -370,14 +410,13 @@ export function App() {
   const [furnaceOpen, setFurnaceOpen] = useState(false);
   const [furnaceStatus, setFurnaceStatus] = useState("Choose a firing. One coal smelts up to eight matching items.");
   const [furnaceError, setFurnaceError] = useState("");
-  const [pointerLocked, setPointerLocked] = useState(false);
-  const [showControls, setShowControls] = useState(true);
+  const [pauseOpen, setPauseOpen] = useState(false);
+  const [showPlayerList, setShowPlayerList] = useState(false);
   const [mobileUnsupported, setMobileUnsupported] = useState(false);
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [engineError, setEngineError] = useState("");
   const [inventoryReady, setInventoryReady] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [inWorld, setInWorld] = useState(false);
   const [joinPhase, setJoinPhase] = useState<LobbyJoinPhase>("idle");
   const [usernameDraft, setUsernameDraft] = useState("");
   const [usernameState, setUsernameState] = useState<UsernameClaimState>("idle");
@@ -402,6 +441,12 @@ export function App() {
     const id = `note-${++toastCounter.current}`;
     setMessages((current) => [...current.slice(-2), { id, text, detail, tone }]);
     window.setTimeout(() => setMessages((current) => current.filter((message) => message.id !== id)), 3_500);
+  }
+
+  function exitPointerLockForUi(): void {
+    if (!document.pointerLockElement) return;
+    intentionalPointerUnlockRef.current = true;
+    document.exitPointerLock();
   }
 
   function updateInventory(next: Inventory) {
@@ -510,6 +555,81 @@ export function App() {
     })();
     inventorySavePromiseRef.current = task;
     return task;
+  }
+
+  async function handleDropSelected(dropWholeStack = false): Promise<void> {
+    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current) return;
+    const sourceSlot = selectedRef.current;
+    const stack = inventoryRef.current[sourceSlot];
+    if (!stack) return;
+    droppedItemBusyRef.current = true;
+    try {
+      await requestInventorySave();
+      const result = await dropItemMutation(JSON.stringify({
+        operationId: droppedItemOperationId(),
+        sourceSlot,
+        count: dropWholeStack ? stack.count : 1,
+        expectedInventoryUpdatedAt: inventoryTokenRef.current,
+        playerStateJson: currentPlayerStateJson(),
+      }));
+      setConnected(true);
+      if (result.ok) {
+        droppedPickupAttemptRef.current.set(drop.dropId, Number.POSITIVE_INFINITY);
+        if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
+        notify(`Dropped ${ITEMS[result.moved.itemId].label}`, result.moved.count > 1 ? `${result.moved.count} items can be picked up by nearby players.` : "Nearby players can pick it up.");
+      } else if (result.reason === "conflict" && result.inventory) {
+        loadCanonicalPlayer(result.inventory);
+        notify("Drop reconciled", "Lakebed had a newer inventory; try Q again.", "warning");
+      } else {
+        notify("Could not drop item", result.reason === "active_presence_required" ? "Wait for the world connection, then try Q again." : "Lakebed rejected the shared item drop.", "warning");
+      }
+    } catch {
+      setConnected(false);
+      notify("Drop lost contact", "The item stayed in your inventory. Try again.", "warning");
+    } finally {
+      droppedItemBusyRef.current = false;
+    }
+  }
+
+  async function pickupNearbyDroppedItem(drop: NormalizedDroppedItem): Promise<void> {
+    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current) return;
+    droppedItemBusyRef.current = true;
+    try {
+      await requestInventorySave();
+      const result = await pickupDroppedItemMutation(JSON.stringify({
+        operationId: droppedItemOperationId(),
+        dropId: drop.dropId,
+        expectedInventoryUpdatedAt: inventoryTokenRef.current,
+        playerStateJson: currentPlayerStateJson(),
+      }));
+      setConnected(true);
+      if (result.ok) {
+        if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
+        notify(`Picked up ${ITEMS[result.moved.itemId].label}`, result.moved.count > 1 ? `${result.moved.count} added to inventory.` : undefined, "success");
+      } else if (result.reason === "conflict" && result.inventory) {
+        loadCanonicalPlayer(result.inventory);
+      }
+    } catch {
+      setConnected(false);
+    } finally {
+      droppedItemBusyRef.current = false;
+    }
+  }
+
+  function maybePickupNearbyDroppedItem(pose: PlayerPose): void {
+    const snapshot = droppedItemsClockRef.current;
+    if (!snapshot?.result.ok || !Array.isArray(snapshot.result.items) || droppedItemBusyRef.current) return;
+    const estimatedServerNow = snapshot.result.serverNow + Math.max(0, Date.now() - snapshot.receivedAt);
+    const nearby = snapshot.result.items
+      .filter((drop) => drop.expiresAt > estimatedServerNow && (drop.ownerUserId !== auth.userId || drop.ownerPickupAt <= estimatedServerNow))
+      .map((drop) => ({ drop, distance: Math.hypot(drop.x - pose.x, drop.y - pose.y, drop.z - pose.z) }))
+      .filter(({ distance }) => distance <= DROPPED_ITEM_PICKUP_RADIUS)
+      .sort((left, right) => left.distance - right.distance)[0]?.drop;
+    if (!nearby) return;
+    const lastAttempt = droppedPickupAttemptRef.current.get(nearby.dropId) ?? 0;
+    if (Date.now() - lastAttempt < 5_000) return;
+    droppedPickupAttemptRef.current.set(nearby.dropId, Date.now());
+    void pickupNearbyDroppedItem(nearby);
   }
 
   function collectMobDrops(drops: readonly { itemId: string; count: number }[]) {
@@ -661,12 +781,30 @@ export function App() {
           setPlayerHealth(health);
           if (health <= 0) {
             notify("You were overwhelmed", "Respawning at the trailhead…", "warning");
+            hungerRef.current = MAX_HUNGER;
+            survivalRef.current = createSurvivalTickState(MAX_HUNGER, MAX_HEALTH);
+            setHunger(MAX_HUNGER);
             window.setTimeout(() => engineRef.current?.respawn(), 900);
           }
         },
         onBlockEdit: handleBlockEdit,
         onPoseChange: (pose) => {
           poseRef.current = pose;
+          const pickupSweepAt = performance.now();
+          if (pickupSweepAt - lastDroppedPickupSweepRef.current >= 250) {
+            lastDroppedPickupSweepRef.current = pickupSweepAt;
+            maybePickupNearbyDroppedItem(pose);
+          }
+          const worldChunkCenter = `${worldEditChunkCoordinate(pose.x)}:${worldEditChunkCoordinate(pose.z)}`;
+          if (worldChunkCenterRef.current !== worldChunkCenter) {
+            worldChunkCenterRef.current = worldChunkCenter;
+            setWorldChunkKeys(visibleWorldChunkKeys(pose.x, pose.z));
+          }
+          const droppedChunkCenter = `${Math.floor(pose.x / DROPPED_ITEM_CHUNK_SIZE)}:${Math.floor(pose.z / DROPPED_ITEM_CHUNK_SIZE)}`;
+          if (droppedChunkCenterRef.current !== droppedChunkCenter) {
+            droppedChunkCenterRef.current = droppedChunkCenter;
+            setDroppedChunkKeys(visibleDroppedItemChunkKeys(pose.x, pose.z));
+          }
           presenceSampleRef.current?.(pose);
           recentlyActiveUntilRef.current = performance.now() + 1_200;
           const workstation = activeWorkstationRef.current;
@@ -677,12 +815,22 @@ export function App() {
           }
         },
         onTargetChange: (target) => { targetRef.current = target; },
-        onPointerLockChange: setPointerLocked,
+        onPointerLockChange: (locked) => {
+          if (locked) {
+            intentionalPointerUnlockRef.current = false;
+            setPauseOpen(false);
+          } else if (intentionalPointerUnlockRef.current) {
+            intentionalPointerUnlockRef.current = false;
+          } else {
+            setShowPlayerList(false);
+            setPauseOpen(true);
+          }
+        },
         onInteractBlock: (target) => {
           const key = blockCoordinateKey(target.block.x, target.block.y, target.block.z);
           closeInventory();
           setChatOpen(false);
-          if (document.pointerLockElement) document.exitPointerLock();
+          exitPointerLockForUi();
           if (target.block.block === BLOCK.CRAFTING_TABLE) {
             activeWorkstationRef.current = { kind: "crafting_table", position: { x: target.block.x, y: target.block.y, z: target.block.z } };
             setCraftingContext("crafting_table");
@@ -884,13 +1032,35 @@ export function App() {
     samplePresence(engineRef.current?.getPose() ?? poseRef.current);
     const interval = window.setInterval(() => {
       samplePresence(engineRef.current?.getPose() ?? poseRef.current);
-    }, 250);
+    }, PRESENCE_SAMPLE_INTERVAL_MS);
     return () => {
       if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
       window.clearInterval(interval);
       void leavePlayer(String(Date.now())).catch(() => undefined);
     };
   }, [inWorld, auth.userId, auth.isLoading, auth.isAuthenticated, auth.isGuest, profile?.username]);
+
+  useEffect(() => {
+    if (!droppedItemsResult) return;
+    droppedItemsClockRef.current = { result: droppedItemsResult, receivedAt: Date.now() };
+    const resultItems = droppedItemsResult.ok && Array.isArray(droppedItemsResult.items) ? droppedItemsResult.items : [];
+    const visibleIds = new Set(resultItems.map(({ dropId }) => dropId));
+    for (const dropId of droppedPickupAttemptRef.current.keys()) {
+      if (!visibleIds.has(dropId)) droppedPickupAttemptRef.current.delete(dropId);
+    }
+    if (inWorld) maybePickupNearbyDroppedItem(poseRef.current);
+  }, [inWorld, droppedItemsResult, auth.userId]);
+
+  useEffect(() => {
+    const resultItems = droppedItemsResult?.ok && Array.isArray(droppedItemsResult.items) ? droppedItemsResult.items : [];
+    engineRef.current?.setDroppedItems(resultItems);
+  }, [inWorld, inventoryReady, droppedItemsResult]);
+
+  useEffect(() => {
+    for (const [dropId, attemptedAt] of droppedPickupAttemptRef.current) {
+      if (Number.isFinite(attemptedAt)) droppedPickupAttemptRef.current.delete(dropId);
+    }
+  }, [inventory]);
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 760px), (pointer: coarse)");
@@ -903,6 +1073,21 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!inWorld) return;
+      if (event.code === "Tab") {
+        event.preventDefault();
+        if (!event.repeat && !pauseOpen && !chatOpen && !inventoryOpen && !furnaceOpen && !activeChestKey && !activeBedKey) {
+          setShowPlayerList(true);
+        }
+        return;
+      }
+      if (pauseOpen) {
+        if (event.code === "Escape" && !event.repeat) {
+          event.preventDefault();
+          setPauseOpen(false);
+          engineRef.current?.requestPointerLock();
+        }
+        return;
+      }
       if (activeChestKey || activeBedKey) {
         if (event.code === "Escape" || event.code === "KeyE") {
           event.preventDefault();
@@ -911,6 +1096,7 @@ export function App() {
           setActiveBedKey("");
           setChestError("");
           setChestRetryAvailable(false);
+          engineRef.current?.requestPointerLock();
         }
         return;
       }
@@ -924,17 +1110,31 @@ export function App() {
           event.preventDefault();
           setChatOpen(false);
           setLastSeenChatCount(chatEvents.length);
+          engineRef.current?.requestPointerLock();
         }
         return;
       }
       if ((inventoryOpen || furnaceOpen) && event.code === "Escape") {
         event.preventDefault();
         closeInventory();
+        engineRef.current?.requestPointerLock();
+        return;
+      }
+      if (event.code === "Escape" && !event.repeat) {
+        event.preventDefault();
+        if (document.pointerLockElement) document.exitPointerLock();
+        setPauseOpen(true);
+        setShowPlayerList(false);
+        return;
+      }
+      if (event.code === "KeyQ" && !event.repeat) {
+        event.preventDefault();
+        void handleDropSelected(event.ctrlKey || event.metaKey);
         return;
       }
       if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat && !inventoryOpen && !furnaceOpen) {
         event.preventDefault();
-        if (document.pointerLockElement) document.exitPointerLock();
+        exitPointerLockForUi();
         setChatOpen(true);
         setLastSeenChatCount(chatEvents.length);
         setChatError("");
@@ -946,19 +1146,36 @@ export function App() {
         if (!hydratedRef.current) return;
         if (inventoryOpen || furnaceOpen) {
           closeInventory();
+          engineRef.current?.requestPointerLock();
         } else {
           activeWorkstationRef.current = null;
           setCraftingContext("field");
-          if (document.pointerLockElement) document.exitPointerLock();
+          exitPointerLockForUi();
           setInventoryOpen(true);
         }
       }
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Tab") setShowPlayerList(false);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [inWorld, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [inWorld, pauseOpen, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
 
   const activePlayers = activePlayerPresences(presenceEvents);
+  const playerListEntries = activePlayers.map((player) => ({
+    id: player.userId,
+    name: player.displayName,
+    isSelf: player.userId === auth.userId,
+    connected: player.online,
+  }));
+  if (profile && !playerListEntries.some(({ isSelf }) => isSelf)) {
+    playerListEntries.unshift({ id: auth.userId, name: profile.username, isSelf: true, connected });
+  }
 
   function handleCraft(recipe: Recipe) {
     if (!hydratedRef.current) return;
@@ -1239,6 +1456,7 @@ export function App() {
       setJoinPhase("ready");
       window.setTimeout(() => {
         setInWorld(true);
+        setPauseOpen(true);
         setJoinPhase("idle");
       }, 180);
     }, 260);
@@ -1249,6 +1467,7 @@ export function App() {
     setJoinPhase("ready");
     const timer = window.setTimeout(() => {
       setInWorld(true);
+      setPauseOpen(true);
       setJoinPhase("idle");
     }, 180);
     return () => window.clearTimeout(timer);
@@ -1256,7 +1475,7 @@ export function App() {
 
   useEffect(() => {
     if (inWorld && !auth.isLoading && (!auth.isAuthenticated || auth.isGuest)) {
-      if (document.pointerLockElement) document.exitPointerLock();
+      exitPointerLockForUi();
       setInWorld(false);
       setChatOpen(false);
       closeInventory();
@@ -1366,19 +1585,6 @@ export function App() {
     <main className="lakecraft-shell">
       <style>{APP_CSS}</style>
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
-      <div className="lakecraft-vignette" />
-
-      {!pointerLocked && !inventoryOpen && !furnaceOpen && !chatOpen && !activeChestKey && !activeBedKey && !engineError ? (
-        <section className="lakecraft-entry" aria-label="Enter Lakecraft">
-          <div className="lakecraft-entry__card">
-            <span className="lakecraft-entry__eyebrow">survey 01 / shared world online</span>
-            <h1>Fern<br />Hollow</h1>
-            <p>Walk the ridge, fell oak, quarry stone, and leave a shelter for the next wayfarer. Every block edit is shared through Lakebed.</p>
-            <button data-testid="enter-world" disabled={!inventoryReady} onClick={() => engineRef.current?.requestPointerLock()} type="button"><span>{inventoryReady ? "Enter the world" : "Restoring field kit…"}</span><span>→</span></button>
-            <small>{inventoryReady ? "WASD to move · mouse to look · E opens the field kit" : "Synchronizing this wayfarer with Lakebed"}</small>
-          </div>
-        </section>
-      ) : null}
 
       <GameHud
         connected={connected}
@@ -1392,26 +1598,51 @@ export function App() {
         messages={messages}
         mobileUnsupported={mobileUnsupported}
         onlineCount={Math.max(1, activePlayers.length)}
-        onCloseInventory={closeInventory}
+        onCloseInventory={() => {
+          closeInventory();
+          engineRef.current?.requestPointerLock();
+        }}
         onContinueMobile={() => setMobileUnsupported(false)}
         onCraft={handleCraft}
-        onDismissControls={() => setShowControls(false)}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
+        onDisconnect={() => {
+          void requestInventorySave();
+          void leavePlayer(String(Date.now())).catch(() => undefined);
+          exitPointerLockForUi();
+          setPauseOpen(false);
+          setShowPlayerList(false);
+          setInWorld(false);
+          setChatOpen(false);
+          closeInventory();
+          setActiveChestKey("");
+          setActiveBedKey("");
+          setMobIds([]);
+        }}
         onEquipArmor={handleEquipArmor}
+        onOptions={() => notify("Options", "Controls and graphics settings are coming next.")}
+        onResume={() => {
+          setPauseOpen(false);
+          engineRef.current?.requestPointerLock();
+        }}
         onSelectHotbar={(index) => setSelectedHotbar(clampHotbarIndex(index))}
         onUnequipArmor={handleUnequipArmor}
         onUseItem={(inventoryIndex) => { handleUseItem(inventoryIndex); }}
         playerName={profile?.username ?? auth.displayName}
+        pauseOpen={pauseOpen}
+        players={playerListEntries}
         roomCode="FERN-01"
         selectedIndex={selectedHotbar}
-        showControls={showControls && !inventoryOpen && !furnaceOpen && !chatOpen && !activeChestKey && !activeBedKey}
+        showPlayerList={showPlayerList}
         worldName="Fern Hollow"
       />
 
       <FurnaceDrawer
         error={furnaceError}
         inventory={inventory}
-        onClose={closeInventory}
+        onClose={() => {
+          closeInventory();
+          engineRef.current?.requestPointerLock();
+        }}
         onSmelt={handleSmelt}
         open={furnaceOpen}
         status={furnaceStatus}
@@ -1426,6 +1657,7 @@ export function App() {
           setActiveChestKey("");
           setChestError("");
           setChestRetryAvailable(false);
+          engineRef.current?.requestPointerLock();
         }}
         onTransfer={handleChestTransfer}
         onRetry={retryPendingChestTransfer}
@@ -1436,14 +1668,21 @@ export function App() {
       />
 
       {activeBedKey ? (
-        <div className="lakecraft-sleep-layer" onMouseDown={(event) => event.target === event.currentTarget && !sleepBusy && setActiveBedKey("")}>
+        <div className="lakecraft-sleep-layer" onMouseDown={(event) => {
+          if (event.target !== event.currentTarget || sleepBusy) return;
+          setActiveBedKey("");
+          engineRef.current?.requestPointerLock();
+        }}>
           <section className="lakecraft-sleep" role="dialog" aria-modal="true" aria-labelledby="lakecraft-sleep-title">
             <small>shared Lakebed sleep vote</small>
             <h2 id="lakecraft-sleep-title">Rest until morning</h2>
             <p role="status">{sleepStatus}</p>
             <div className="lakecraft-sleep__actions">
               <button disabled={sleepBusy} onClick={() => handleSleepInBed()} type="button">{sleepBusy ? "Contacting Lakebed…" : "Vote to sleep"}</button>
-              <button disabled={sleepBusy} onClick={() => setActiveBedKey("")} type="button">Close · E</button>
+              <button disabled={sleepBusy} onClick={() => {
+                setActiveBedKey("");
+                engineRef.current?.requestPointerLock();
+              }} type="button">Close · E</button>
             </div>
           </section>
         </div>
@@ -1458,10 +1697,11 @@ export function App() {
         onClose={() => {
           setChatOpen(false);
           setLastSeenChatCount(chatMessages.length);
+          engineRef.current?.requestPointerLock();
         }}
         onDraftChange={setChatDraft}
         onOpen={() => {
-          if (document.pointerLockElement) document.exitPointerLock();
+          exitPointerLockForUi();
           setChatOpen(true);
           setLastSeenChatCount(chatMessages.length);
           setChatError("");
@@ -1473,7 +1713,7 @@ export function App() {
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nPRESENCE ${presenceSchedulerRef.current?.writeCount ?? 0} attempts · cap ${PRESENCE_MAX_WRITES_PER_MINUTE}/min\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nPRESENCE ${presenceSchedulerRef.current?.writeCount ?? 0} attempts · cap ${PRESENCE_MAX_WRITES_PER_MINUTE}/min\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}

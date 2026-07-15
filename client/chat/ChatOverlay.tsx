@@ -31,29 +31,15 @@ export interface ChatOverlayProps {
   onRetryMessage?: (message: LakecraftChatMessage) => void;
 }
 
-function formatChatTime(value: number | string): string {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "--:--";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function chatDateTime(value: number | string): string | undefined {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
-}
-
 function ChatMessageRow({ message, onRetry }: { message: LakecraftChatMessage; onRetry?: (message: LakecraftChatMessage) => void }) {
   const tone = message.tone ?? "player";
+  const sender = tone === "player" ? `<${message.username}>` : tone === "warning" ? "[Warning]" : "[Server]";
   return (
     <li className={`lc-chat-message is-${tone}${message.own ? " is-own" : ""}${message.delivery ? ` is-${message.delivery}` : ""}`}>
-      <div className="lc-chat-message-meta">
-        <strong>{tone === "system" ? "WORLD" : message.username}</strong>
-        <time dateTime={chatDateTime(message.sentAt)}>{formatChatTime(message.sentAt)}</time>
-      </div>
-      <p>{message.body}</p>
+      <p><strong>{sender}</strong> <span>{message.body}</span></p>
       {message.delivery === "sending" ? <small>Sending…</small> : null}
       {message.delivery === "failed" ? (
-        onRetry ? <button type="button" onClick={() => onRetry(message)}>Not sent · retry</button> : <small>Not sent</small>
+        onRetry ? <button type="button" onClick={() => onRetry(message)}>Not sent — click to retry</button> : <small>Not sent</small>
       ) : null}
     </li>
   );
@@ -71,7 +57,6 @@ export function ChatOverlay({
   placeholder = "Message everyone…",
   onDraftChange,
   onSubmit,
-  onOpen,
   onClose,
   onRetryMessage,
 }: ChatOverlayProps) {
@@ -104,14 +89,13 @@ export function ChatOverlay({
         <ChatStyles />
         <ol aria-live="polite" aria-relevant="additions">
           {recent.map((message) => (
-            <li key={message.id}><strong>{message.tone === "system" ? "WORLD" : message.username}</strong><span>{message.body}</span></li>
+            <li className={`is-${message.tone ?? "player"}`} key={message.id}>
+              <strong>{message.tone === "player" || !message.tone ? `<${message.username}>` : message.tone === "warning" ? "[Warning]" : "[Server]"}</strong>
+              <span>{message.body}</span>
+            </li>
           ))}
         </ol>
-        <button type="button" onClick={onOpen} aria-label={unreadCount ? `Open chat, ${unreadCount} unread messages` : "Open chat"}>
-          <span aria-hidden="true">T</span>
-          <span>Chat</span>
-          {unreadCount > 0 ? <b>{unreadCount > 99 ? "99+" : unreadCount}</b> : null}
-        </button>
+        {unreadCount > 0 ? <span className="lc-chat-unread">+{unreadCount > 99 ? "99" : unreadCount}</span> : null}
       </aside>
     );
   }
@@ -119,25 +103,13 @@ export function ChatOverlay({
   return (
     <section className="lc-chat-dialog" role="dialog" aria-label="Multiplayer chat" aria-modal="false">
       <ChatStyles />
-      <header>
-        <div>
-          <span className={`lc-chat-signal${connected ? " is-connected" : ""}`} aria-hidden="true" />
-          <strong>World chat</strong>
-          <small>{connected ? "Live via Lakebed" : "Reconnecting…"}</small>
-        </div>
-        <button className="lc-chat-close" type="button" onClick={onClose} aria-label="Close chat"><span>Close</span><kbd>ESC</kbd></button>
-      </header>
-
       <ul className="lc-chat-history" ref={historyRef} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Chat messages">
-        {messages.length ? messages.map((message) => <ChatMessageRow key={message.id} message={message} onRetry={onRetryMessage} />) : (
-          <li className="lc-chat-empty"><span aria-hidden="true">⌁</span><strong>The trail is quiet.</strong><small>Say hello to the next explorer.</small></li>
-        )}
+        {messages.map((message) => <ChatMessageRow key={message.id} message={message} onRetry={onRetryMessage} />)}
       </ul>
 
       <form className="lc-chat-compose" onSubmit={submit}>
-        <label htmlFor="lc-chat-input">Message everyone in this world</label>
+        <label htmlFor="lc-chat-input">Chat message</label>
         <div>
-          <span aria-hidden="true">›</span>
           <input
             id="lc-chat-input"
             ref={inputRef}
@@ -145,13 +117,13 @@ export function ChatOverlay({
             disabled={!connected}
             maxLength={maxLength}
             onInput={(event) => onDraftChange(event.currentTarget.value)}
-            placeholder={connected ? placeholder : "Waiting for Lakebed…"}
+            placeholder={connected ? placeholder : "Connecting…"}
             value={draft}
           />
-          <small className={draft.length >= maxLength ? "is-limit" : ""}>{draft.length}/{maxLength}</small>
-          <button disabled={!draft.trim() || sending || !connected} type="submit">{sending ? "Sending" : "Send"}<kbd>↵</kbd></button>
+          <small className={draft.length >= maxLength ? "is-limit" : ""}>{draft.length > maxLength - 24 ? `${draft.length}/${maxLength}` : ""}</small>
+          <button aria-label="Send chat message" disabled={!draft.trim() || sending || !connected} type="submit">Send</button>
         </div>
-        {error ? <p role="alert">{error}</p> : <small>Enter sends · Esc returns to the world</small>}
+        {error ? <p role="alert">{error}</p> : null}
       </form>
     </section>
   );

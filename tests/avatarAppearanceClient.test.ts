@@ -21,7 +21,7 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
-  normalizeAvatarAppearance("diamond_sword", "iron_boots", "iron_sword", "stone", "<script>"),
+  normalizeAvatarAppearance("obsidian_sword", "iron_boots", "iron_sword", "stone", "<script>"),
   { heldItem: "", armorHead: "", armorChest: "", armorLegs: "", armorFeet: "" },
   "malformed remote appearance data is never forwarded to the renderer",
 );

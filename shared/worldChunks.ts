@@ -1,11 +1,13 @@
 export const WORLD_EDIT_CHUNK_SIZE = 8;
-export const WORLD_EDIT_MIN_XZ = -64;
-export const WORLD_EDIT_MAX_XZ = 64;
-export const WORLD_EDIT_MIN_Y = -4;
-export const WORLD_EDIT_MAX_Y = 64;
+export const WORLD_EDIT_MIN_XZ = -1_000_000;
+export const WORLD_EDIT_MAX_XZ = 1_000_000;
+export const WORLD_EDIT_MIN_Y = -24;
+export const WORLD_EDIT_MAX_Y = 128;
+export const WORLD_CHUNK_SECTION_HEIGHT = 8;
+export const WORLD_CHUNK_CODEC_VERSION = 3;
 export const MAX_VISIBLE_WORLD_CHUNKS = 49;
 export const MAX_WORLD_CHUNK_SNAPSHOT_BYTES = 16_384;
-/** Five-bit v2 reserves code zero for an untouched cell. */
+/** Five-bit snapshots reserve code zero for an untouched cell. */
 export const WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES = 31;
 
 export const WORLD_CHUNK_BLOCK_TYPES = [
@@ -29,6 +31,9 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "cobblestone",
   "sand",
   "glass",
+  /** Append-only palette: v1/v2 and deployed v3 codes must never be renumbered. */
+  "gold_ore",
+  "diamond_ore",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];
@@ -70,18 +75,34 @@ export type WorldChunkDecodeResult =
   | { ok: true; edits: DecodedWorldChunkEdit[] }
   | { ok: false; reason: "invalid_chunk_key" | "invalid_snapshot" | "snapshot_too_large" };
 
-const Y_LEVELS = WORLD_EDIT_MAX_Y - WORLD_EDIT_MIN_Y + 1;
+/** Production v1/v2 rows covered this exact fixed-height column. */
+const LEGACY_MIN_Y = -4;
+const LEGACY_MAX_Y = 64;
+const LEGACY_Y_LEVELS = LEGACY_MAX_Y - LEGACY_MIN_Y + 1;
 const CELLS_PER_Y = WORLD_EDIT_CHUNK_SIZE * WORLD_EDIT_CHUNK_SIZE;
-const CELL_COUNT = Y_LEVELS * CELLS_PER_Y;
+const LEGACY_CELL_COUNT = LEGACY_Y_LEVELS * CELLS_PER_Y;
 const LEGACY_BLOCK_TYPE_COUNT = 13;
-const LEGACY_PACKED_BYTE_COUNT = Math.ceil(CELL_COUNT / 2);
+const LEGACY_PACKED_BYTE_COUNT = Math.ceil(LEGACY_CELL_COUNT / 2);
 const CURRENT_BITS_PER_CELL = 5;
 const CURRENT_CODE_MASK = (1 << CURRENT_BITS_PER_CELL) - 1;
-const CURRENT_PACKED_BYTE_COUNT = Math.ceil(CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
+const LEGACY_V2_PACKED_BYTE_COUNT = Math.ceil(LEGACY_CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
+const SECTION_CELL_COUNT = WORLD_CHUNK_SECTION_HEIGHT * CELLS_PER_Y;
+const SECTION_PACKED_BYTE_COUNT = Math.ceil(SECTION_CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
+const MIN_SECTION_Y = Math.floor(WORLD_EDIT_MIN_Y / WORLD_CHUNK_SECTION_HEIGHT);
+const MAX_SECTION_Y = Math.floor(WORLD_EDIT_MAX_Y / WORLD_CHUNK_SECTION_HEIGHT);
+const MAX_SECTION_COUNT = MAX_SECTION_Y - MIN_SECTION_Y + 1;
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BLOCK_CODE = new Map<string, number>(WORLD_CHUNK_BLOCK_TYPES.map((block, index) => [block, index + 1]));
 
-type PackedSnapshot = { version: 1 | 2; packed: Uint8Array };
+type LegacyPackedSnapshot = { version: 1 | 2; packed: Uint8Array };
+type SectionedSnapshot = { version: 3; sections: Map<number, Uint8Array> };
+type PackedSnapshot = LegacyPackedSnapshot | SectionedSnapshot;
+
+interface CellAddress {
+  sectionY: number;
+  sectionIndex: number;
+  absoluteIndex: number;
+}
 
 export function worldEditChunkCoordinate(coordinate: number): number {
   return Math.floor(coordinate / WORLD_EDIT_CHUNK_SIZE);
@@ -92,7 +113,7 @@ export function worldEditChunkKey(x: number, z: number): string {
 }
 
 export function validateWorldChunkKey(rawChunkKey: string): WorldChunkKeyValidation {
-  const match = /^(-?\d{1,2}):(-?\d{1,2})$/.exec(rawChunkKey.trim());
+  const match = /^(-?\d{1,6}):(-?\d{1,6})$/.exec(rawChunkKey.trim());
   if (!match) return { ok: false, reason: "invalid_chunk_key" };
   const chunkX = Number(match[1]);
   const chunkZ = Number(match[2]);
@@ -125,10 +146,10 @@ function chunkKeyCompare(a: string, b: string): number {
 
 function finiteInteger(value: number | string): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isInteger(parsed) ? parsed : null;
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-function cellIndex(x: number, y: number, z: number, chunkX: number, chunkZ: number): number | null {
+function cellAddress(x: number, y: number, z: number, chunkX: number, chunkZ: number): CellAddress | null {
   if (
     x < WORLD_EDIT_MIN_XZ || x > WORLD_EDIT_MAX_XZ
     || z < WORLD_EDIT_MIN_XZ || z > WORLD_EDIT_MAX_XZ
@@ -138,13 +159,14 @@ function cellIndex(x: number, y: number, z: number, chunkX: number, chunkZ: numb
   ) return null;
   const localX = x - chunkX * WORLD_EDIT_CHUNK_SIZE;
   const localZ = z - chunkZ * WORLD_EDIT_CHUNK_SIZE;
-  return (y - WORLD_EDIT_MIN_Y) * CELLS_PER_Y + localZ * WORLD_EDIT_CHUNK_SIZE + localX;
-}
-
-function setNibble(packed: Uint8Array, index: number, code: number): void {
-  const byteIndex = index >> 1;
-  if ((index & 1) === 0) packed[byteIndex] = (packed[byteIndex] & 0xf0) | code;
-  else packed[byteIndex] = (packed[byteIndex] & 0x0f) | (code << 4);
+  const sectionY = Math.floor(y / WORLD_CHUNK_SECTION_HEIGHT);
+  const localY = y - sectionY * WORLD_CHUNK_SECTION_HEIGHT;
+  const horizontal = localZ * WORLD_EDIT_CHUNK_SIZE + localX;
+  return {
+    sectionY,
+    sectionIndex: localY * CELLS_PER_Y + horizontal,
+    absoluteIndex: (y - WORLD_EDIT_MIN_Y) * CELLS_PER_Y + horizontal,
+  };
 }
 
 function getNibble(packed: Uint8Array, index: number): number {
@@ -172,17 +194,6 @@ function getCurrentCode(packed: Uint8Array, index: number): number {
   let code = packed[byteIndex] >> shift;
   if (shift > 8 - CURRENT_BITS_PER_CELL) code |= packed[byteIndex + 1] << (8 - shift);
   return code & CURRENT_CODE_MASK;
-}
-
-function getSnapshotCode(snapshot: PackedSnapshot, index: number): number {
-  return snapshot.version === 1 ? getNibble(snapshot.packed, index) : getCurrentCode(snapshot.packed, index);
-}
-
-function migrateToCurrent(snapshot: PackedSnapshot): Uint8Array {
-  if (snapshot.version === 2) return snapshot.packed.slice();
-  const current = new Uint8Array(CURRENT_PACKED_BYTE_COUNT);
-  for (let index = 0; index < CELL_COUNT; index += 1) setCurrentCode(current, index, getNibble(snapshot.packed, index));
-  return current;
 }
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -219,21 +230,81 @@ function decodeBase64(value: string): Uint8Array | null {
   return output;
 }
 
-function serializePacked(packed: Uint8Array): string {
-  return JSON.stringify({ v: 2, cells: encodeBase64(packed) });
+function sectionHasEdits(section: Uint8Array): boolean {
+  for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
+    if (getCurrentCode(section, index) !== 0) return true;
+  }
+  return false;
+}
+
+function serializeSections(sections: Map<number, Uint8Array>): string {
+  return JSON.stringify({
+    v: WORLD_CHUNK_CODEC_VERSION,
+    sections: [...sections.entries()]
+      .filter(([, packed]) => sectionHasEdits(packed))
+      .sort(([left], [right]) => left - right)
+      .map(([y, packed]) => ({ y, cells: encodeBase64(packed) })),
+  });
 }
 
 function parsePacked(snapshotJson: string): PackedSnapshot | null {
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return null;
   try {
-    const parsed = JSON.parse(snapshotJson) as { v?: unknown; cells?: unknown };
-    if ((parsed.v !== 1 && parsed.v !== 2) || typeof parsed.cells !== "string") return null;
-    const packed = decodeBase64(parsed.cells);
-    const expectedLength = parsed.v === 1 ? LEGACY_PACKED_BYTE_COUNT : CURRENT_PACKED_BYTE_COUNT;
-    return packed?.length === expectedLength ? { version: parsed.v, packed } : null;
+    const parsed = JSON.parse(snapshotJson) as { v?: unknown; cells?: unknown; sections?: unknown };
+    if (parsed.v === 1 || parsed.v === 2) {
+      if (typeof parsed.cells !== "string") return null;
+      const packed = decodeBase64(parsed.cells);
+      const expectedLength = parsed.v === 1 ? LEGACY_PACKED_BYTE_COUNT : LEGACY_V2_PACKED_BYTE_COUNT;
+      return packed?.length === expectedLength ? { version: parsed.v, packed } : null;
+    }
+    if (parsed.v !== WORLD_CHUNK_CODEC_VERSION || !Array.isArray(parsed.sections)) return null;
+    if (parsed.sections.length > MAX_SECTION_COUNT) return null;
+    const sections = new Map<number, Uint8Array>();
+    for (const rawSection of parsed.sections) {
+      if (!rawSection || typeof rawSection !== "object") return null;
+      const section = rawSection as { y?: unknown; cells?: unknown };
+      if (!Number.isInteger(section.y) || Number(section.y) < MIN_SECTION_Y || Number(section.y) > MAX_SECTION_Y) return null;
+      if (typeof section.cells !== "string" || sections.has(Number(section.y))) return null;
+      const packed = decodeBase64(section.cells);
+      if (!packed || packed.length !== SECTION_PACKED_BYTE_COUNT) return null;
+      sections.set(Number(section.y), packed);
+    }
+    return { version: 3, sections };
   } catch {
     return null;
   }
+}
+
+function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> | null {
+  if (snapshot.version === 3) {
+    const sections = new Map<number, Uint8Array>();
+    for (const [y, packed] of snapshot.sections) {
+      for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
+        const code = getCurrentCode(packed, index);
+        if (code > WORLD_CHUNK_BLOCK_TYPES.length) return null;
+        const absoluteY = y * WORLD_CHUNK_SECTION_HEIGHT + Math.floor(index / CELLS_PER_Y);
+        if (code !== 0 && (absoluteY < WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
+      }
+      sections.set(y, packed.slice());
+    }
+    return sections;
+  }
+  const sections = new Map<number, Uint8Array>();
+  for (let index = 0; index < LEGACY_CELL_COUNT; index += 1) {
+    const code = snapshot.version === 1 ? getNibble(snapshot.packed, index) : getCurrentCode(snapshot.packed, index);
+    if (code === 0) continue;
+    if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) return null;
+    if (!WORLD_CHUNK_BLOCK_TYPES[code - 1]) return null;
+    const yOffset = Math.floor(index / CELLS_PER_Y);
+    const horizontal = index % CELLS_PER_Y;
+    const y = LEGACY_MIN_Y + yOffset;
+    const sectionY = Math.floor(y / WORLD_CHUNK_SECTION_HEIGHT);
+    const localY = y - sectionY * WORLD_CHUNK_SECTION_HEIGHT;
+    const packed = sections.get(sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
+    setCurrentCode(packed, localY * CELLS_PER_Y + horizontal, code);
+    sections.set(sectionY, packed);
+  }
+  return sections;
 }
 
 function editOrder(edit: WorldChunkEditInput): [number, string] {
@@ -247,27 +318,41 @@ function isLaterEdit(candidate: WorldChunkEditInput, previous: WorldChunkEditInp
   return candidateTime > previousTime || (candidateTime === previousTime && candidateId > previousId);
 }
 
+function countSectionEdits(sections: Map<number, Uint8Array>): number {
+  let count = 0;
+  for (const packed of sections.values()) {
+    for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
+      if (getCurrentCode(packed, index) !== 0) count += 1;
+    }
+  }
+  return count;
+}
+
 export function createWorldChunkSnapshot(
   rawChunkKey: string,
   edits: readonly WorldChunkEditInput[],
 ): WorldChunkSnapshotResult {
   const chunk = validateWorldChunkKey(rawChunkKey);
   if (!chunk.ok) return { ok: false, reason: chunk.reason };
-  const latest = new Map<number, WorldChunkEditInput>();
+  const latest = new Map<number, { edit: WorldChunkEditInput; address: CellAddress }>();
   for (const edit of edits) {
     const x = finiteInteger(edit.x);
     const y = finiteInteger(edit.y);
     const z = finiteInteger(edit.z);
     const code = BLOCK_CODE.get(edit.blockType);
     if (x === null || y === null || z === null || code === undefined) continue;
-    const index = cellIndex(x, y, z, chunk.chunkX, chunk.chunkZ);
-    if (index === null) continue;
-    const previous = latest.get(index);
-    if (!previous || isLaterEdit(edit, previous)) latest.set(index, edit);
+    const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
+    if (!address) continue;
+    const previous = latest.get(address.absoluteIndex);
+    if (!previous || isLaterEdit(edit, previous.edit)) latest.set(address.absoluteIndex, { edit, address });
   }
-  const packed = new Uint8Array(CURRENT_PACKED_BYTE_COUNT);
-  for (const [index, edit] of latest) setCurrentCode(packed, index, BLOCK_CODE.get(edit.blockType) as number);
-  const snapshotJson = serializePacked(packed);
+  const sections = new Map<number, Uint8Array>();
+  for (const { edit, address } of latest.values()) {
+    const packed = sections.get(address.sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
+    setCurrentCode(packed, address.sectionIndex, BLOCK_CODE.get(edit.blockType) as number);
+    sections.set(address.sectionY, packed);
+  }
+  const snapshotJson = serializeSections(sections);
   return snapshotJson.length <= MAX_WORLD_CHUNK_SNAPSHOT_BYTES
     ? { ok: true, snapshotJson, editCount: latest.size }
     : { ok: false, reason: "snapshot_too_large" };
@@ -288,14 +373,16 @@ export function applyWorldChunkEdit(
   const z = finiteInteger(edit.z);
   const code = BLOCK_CODE.get(edit.blockType);
   if (x === null || y === null || z === null || code === undefined) return { ok: false, reason: "invalid_edit" };
-  const index = cellIndex(x, y, z, chunk.chunkX, chunk.chunkZ);
-  if (index === null) return { ok: false, reason: "invalid_edit" };
-  const packed = migrateToCurrent(previous);
-  setCurrentCode(packed, index, code);
-  const nextSnapshotJson = serializePacked(packed);
-  let editCount = 0;
-  for (let cell = 0; cell < CELL_COUNT; cell += 1) if (getCurrentCode(packed, cell) !== 0) editCount += 1;
-  return { ok: true, snapshotJson: nextSnapshotJson, editCount };
+  const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
+  if (!address) return { ok: false, reason: "invalid_edit" };
+  const sections = snapshotToSections(previous);
+  if (!sections) return { ok: false, reason: "invalid_snapshot" };
+  const packed = sections.get(address.sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
+  setCurrentCode(packed, address.sectionIndex, code);
+  sections.set(address.sectionY, packed);
+  const nextSnapshotJson = serializeSections(sections);
+  if (nextSnapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
+  return { ok: true, snapshotJson: nextSnapshotJson, editCount: countSectionEdits(sections) };
 }
 
 export function decodeWorldChunkSnapshot(rawChunkKey: string, snapshotJson: string): WorldChunkDecodeResult {
@@ -304,21 +391,26 @@ export function decodeWorldChunkSnapshot(rawChunkKey: string, snapshotJson: stri
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
   const snapshot = parsePacked(snapshotJson);
   if (!snapshot) return { ok: false, reason: "invalid_snapshot" };
+  const sections = snapshotToSections(snapshot);
+  if (!sections) return { ok: false, reason: "invalid_snapshot" };
   const edits: DecodedWorldChunkEdit[] = [];
-  for (let index = 0; index < CELL_COUNT; index += 1) {
-    const code = getSnapshotCode(snapshot, index);
-    if (code === 0) continue;
-    if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) return { ok: false, reason: "invalid_snapshot" };
-    const blockType = WORLD_CHUNK_BLOCK_TYPES[code - 1];
-    if (!blockType) return { ok: false, reason: "invalid_snapshot" };
-    const yOffset = Math.floor(index / CELLS_PER_Y);
-    const horizontal = index % CELLS_PER_Y;
-    const localZ = Math.floor(horizontal / WORLD_EDIT_CHUNK_SIZE);
-    const localX = horizontal % WORLD_EDIT_CHUNK_SIZE;
-    const x = chunk.chunkX * WORLD_EDIT_CHUNK_SIZE + localX;
-    const y = WORLD_EDIT_MIN_Y + yOffset;
-    const z = chunk.chunkZ * WORLD_EDIT_CHUNK_SIZE + localZ;
-    edits.push({ coordKey: `${x}:${y}:${z}`, x: String(x), y: String(y), z: String(z), blockType });
+  for (const [sectionY, packed] of [...sections.entries()].sort(([left], [right]) => left - right)) {
+    for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
+      const code = getCurrentCode(packed, index);
+      if (code === 0) continue;
+      const blockType = WORLD_CHUNK_BLOCK_TYPES[code - 1];
+      if (!blockType) return { ok: false, reason: "invalid_snapshot" };
+      const localY = Math.floor(index / CELLS_PER_Y);
+      const horizontal = index % CELLS_PER_Y;
+      const localZ = Math.floor(horizontal / WORLD_EDIT_CHUNK_SIZE);
+      const localX = horizontal % WORLD_EDIT_CHUNK_SIZE;
+      const x = chunk.chunkX * WORLD_EDIT_CHUNK_SIZE + localX;
+      const y = sectionY * WORLD_CHUNK_SECTION_HEIGHT + localY;
+      const z = chunk.chunkZ * WORLD_EDIT_CHUNK_SIZE + localZ;
+      if (x < WORLD_EDIT_MIN_XZ || x > WORLD_EDIT_MAX_XZ || y < WORLD_EDIT_MIN_Y || y > WORLD_EDIT_MAX_Y
+        || z < WORLD_EDIT_MIN_XZ || z > WORLD_EDIT_MAX_XZ) return { ok: false, reason: "invalid_snapshot" };
+      edits.push({ coordKey: `${x}:${y}:${z}`, x: String(x), y: String(y), z: String(z), blockType });
+    }
   }
   return { ok: true, edits };
 }

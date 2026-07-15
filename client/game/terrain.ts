@@ -1,13 +1,24 @@
 import { BLOCK, type BlockId, type BlockTarget } from "./types.ts";
+import { WORLD_CHUNK_SIZE, chunkBounds } from "./chunks.ts";
 
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
 
 interface TerrainRegion {
   minX: number;
   maxX: number;
+  minY: number;
   minZ: number;
   maxZ: number;
 }
+
+export interface TerrainRegionOptions {
+  /** Inclusive natural floor. The legacy eager-world path defaults to y=0. */
+  minimumY?: number;
+}
+
+/** Deep enough for tiered ore progression while remaining compact per chunk. */
+export const TERRAIN_MIN_Y = -24;
+export const MAX_TERRAIN_REGION_COLUMNS = 16_384;
 
 const MIN_TERRAIN_HEIGHT = 3;
 const MAX_TERRAIN_HEIGHT = 11;
@@ -28,6 +39,7 @@ const SAND_PATCH_CHANCE = 0.38;
 
 interface OreVeinConfig {
   block: BlockId;
+  minimumY: number;
   maximumY: number;
   chance: number;
   salt: number;
@@ -43,8 +55,12 @@ interface CaveNode {
 // cell-local shape strictly caps a vein at seven blocks while global cell
 // coordinates keep ore identical no matter which terrain region generated it.
 const ORE_VEINS: readonly OreVeinConfig[] = [
-  { block: BLOCK.IRON_ORE, maximumY: 4, chance: 0.17, salt: 2_137 },
-  { block: BLOCK.COAL_ORE, maximumY: 6, chance: 0.43, salt: 1_619 },
+  // Rarest/highest-tier deposits go first so overlap resolution always favors
+  // the progression-gating ore. Every vein remains capped at seven blocks.
+  { block: BLOCK.DIAMOND_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
+  { block: BLOCK.GOLD_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
+  { block: BLOCK.IRON_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
+  { block: BLOCK.COAL_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
 ];
 
 function hash2(x: number, z: number, seed: number): number {
@@ -130,7 +146,7 @@ export function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 
 /** The natural strata, including surface deposits, before deterministic ore replacement. */
 export function terrainBaseBlock(x: number, y: number, z: number, seed: number): BlockId {
   const top = terrainHeight(x, z, seed);
-  if (y < 0 || y > top) return BLOCK.AIR;
+  if (y < TERRAIN_MIN_Y || y > top) return BLOCK.AIR;
   const sandDepth = terrainSandDepth(x, z, seed);
   if (sandDepth > 0 && y > top - sandDepth) return BLOCK.SAND;
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
@@ -138,7 +154,7 @@ export function terrainBaseBlock(x: number, y: number, z: number, seed: number):
 }
 
 function blockInOreVein(x: number, y: number, z: number, seed: number, config: OreVeinConfig): boolean {
-  if (y < 0 || y > config.maximumY) return false;
+  if (y < config.minimumY || y > config.maximumY) return false;
   const cellX = Math.floor(x / ORE_CELL_SIZE);
   const cellY = Math.floor(y / ORE_CELL_SIZE);
   const cellZ = Math.floor(z / ORE_CELL_SIZE);
@@ -153,7 +169,7 @@ function blockInOreVein(x: number, y: number, z: number, seed: number, config: O
   return Math.abs(localX - anchorX) + Math.abs(localY - anchorY) + Math.abs(localZ - anchorZ) <= 1;
 }
 
-/** Iron wins rare overlaps; both ores can replace natural stone only. */
+/** Higher-tier ores win rare overlaps; all deposits replace natural stone only. */
 function oreBlockAtKnownStone(x: number, y: number, z: number, seed: number): BlockId | null {
   for (const config of ORE_VEINS) {
     if (blockInOreVein(x, y, z, seed, config)) return config.block;
@@ -177,7 +193,7 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
       const top = terrainHeight(x, z, seed);
       const sandDepth = terrainSandDepth(x, z, seed);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
-      for (let y = 0; y <= top; y += 1) {
+      for (let y = region.minY; y <= top; y += 1) {
         const base = sandDepth > 0 && y > top - sandDepth
           ? BLOCK.SAND
           : y === top
@@ -203,7 +219,11 @@ function caveNode(cellX: number, cellZ: number, seed: number): CaveNode {
 }
 
 function canCarveCaveBlock(block: BlockId | undefined): boolean {
-  return block === BLOCK.STONE || block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE;
+  return block === BLOCK.STONE
+    || block === BLOCK.COAL_ORE
+    || block === BLOCK.IRON_ORE
+    || block === BLOCK.GOLD_ORE
+    || block === BLOCK.DIAMOND_ORE;
 }
 
 function carveCaveSphere(
@@ -215,7 +235,7 @@ function carveCaveSphere(
   const radiusSquared = radius * radius;
   const minX = Math.max(region.minX, Math.floor(center.x - radius));
   const maxX = Math.min(region.maxX, Math.floor(center.x + radius));
-  const minY = Math.max(1, Math.floor(center.y - radius));
+  const minY = Math.max(region.minY + 1, Math.floor(center.y - radius));
   const maxY = Math.floor(center.y + radius);
   const minZ = Math.max(region.minZ, Math.floor(center.z - radius));
   const maxZ = Math.min(region.maxZ, Math.floor(center.z + radius));
@@ -262,17 +282,26 @@ function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: n
   const maxCellX = Math.floor(region.maxX / CAVE_CELL_SIZE) + 1;
   const minCellZ = Math.floor(region.minZ / CAVE_CELL_SIZE) - 1;
   const maxCellZ = Math.floor(region.maxZ / CAVE_CELL_SIZE) + 1;
-  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
-    for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
-      const node = caveNode(cellX, cellZ, seed);
-      if (hash3(cellX, 3, cellZ, seed + 3_101) < 0.32) {
-        carveCaveSphere(blocks, region, node, CAVE_CHAMBER_RADIUS);
-      }
-      if (hash3(cellX, 4, cellZ, seed + 3_127) < 0.58) {
-        carveCaveTunnel(blocks, region, node, caveNode(cellX + 1, cellZ, seed));
-      }
-      if (hash3(cellX, 5, cellZ, seed + 3_173) < 0.58) {
-        carveCaveTunnel(blocks, region, node, caveNode(cellX, cellZ + 1, seed));
+  // Preserve the original shallow network and add globally anchored copies at
+  // eight-block intervals when a deep chunk asks for negative strata.
+  const minimumLayer = Math.floor(region.minY / 8);
+  for (let layer = minimumLayer; layer <= 0; layer += 1) {
+    const layerOffset = layer * 8;
+    for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+      for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+        const shallowNode = caveNode(cellX, cellZ, seed + layer * 7_919);
+        const node = { ...shallowNode, y: shallowNode.y + layerOffset };
+        if (hash3(cellX, layer * 11 + 3, cellZ, seed + 3_101) < 0.32) {
+          carveCaveSphere(blocks, region, node, CAVE_CHAMBER_RADIUS);
+        }
+        if (hash3(cellX, layer * 11 + 4, cellZ, seed + 3_127) < 0.58) {
+          const east = caveNode(cellX + 1, cellZ, seed + layer * 7_919);
+          carveCaveTunnel(blocks, region, node, { ...east, y: east.y + layerOffset });
+        }
+        if (hash3(cellX, layer * 11 + 5, cellZ, seed + 3_173) < 0.58) {
+          const south = caveNode(cellX, cellZ + 1, seed + layer * 7_919);
+          carveCaveTunnel(blocks, region, node, { ...south, y: south.y + layerOffset });
+        }
       }
     }
   }
@@ -353,10 +382,19 @@ export function createTerrainRegion(
   maxX: number,
   minZ: number,
   maxZ: number,
+  options: TerrainRegionOptions = {},
 ): Map<string, BlockId> {
+  if (![seed, minX, maxX, minZ, maxZ].every(Number.isFinite)) return new Map();
+  const columnCount = (Math.floor(Math.max(minX, maxX)) - Math.ceil(Math.min(minX, maxX)) + 1)
+    * (Math.floor(Math.max(minZ, maxZ)) - Math.ceil(Math.min(minZ, maxZ)) + 1);
+  if (columnCount > MAX_TERRAIN_REGION_COLUMNS) {
+    throw new RangeError(`Terrain regions are limited to ${MAX_TERRAIN_REGION_COLUMNS} columns.`);
+  }
+  const requestedMinimumY = Number.isFinite(options.minimumY) ? Math.floor(options.minimumY!) : 0;
   const region = {
     minX: Math.ceil(Math.min(minX, maxX)),
     maxX: Math.floor(Math.max(minX, maxX)),
+    minY: Math.max(TERRAIN_MIN_Y, Math.min(0, requestedMinimumY)),
     minZ: Math.ceil(Math.min(minZ, maxZ)),
     maxZ: Math.floor(Math.max(minZ, maxZ)),
   };
@@ -367,8 +405,24 @@ export function createTerrainRegion(
   return blocks;
 }
 
+/**
+ * Generates exactly one deep globally anchored chunk. Adjacent calls merge
+ * byte-for-byte with a single region generated over the same bounds.
+ */
+export function createTerrainChunk(
+  seed: number,
+  chunkX: number,
+  chunkZ: number,
+  size = WORLD_CHUNK_SIZE,
+): Map<string, BlockId> {
+  const bounds = chunkBounds(chunkX, chunkZ, size);
+  return createTerrainRegion(seed, bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ, {
+    minimumY: TERRAIN_MIN_Y,
+  });
+}
+
 export function createTerrain(seed = 7319, radius = 20): Map<string, BlockId> {
-  const wholeRadius = Math.max(0, Math.floor(radius));
+  const wholeRadius = Number.isFinite(radius) ? Math.max(0, Math.min(40, Math.floor(radius))) : 20;
   return createTerrainRegion(seed, -wholeRadius, wholeRadius, -wholeRadius, wholeRadius);
 }
 
