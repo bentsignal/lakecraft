@@ -119,6 +119,13 @@ import {
   type PlayerMovementMode,
   type PlayerPostureTargets,
 } from "./playerMovement.ts";
+import {
+  IDLE_PRIMARY_ACTION_HOLD,
+  pressPrimaryAction,
+  releasePrimaryAction,
+  shouldStartHeldMining,
+  type PrimaryActionHoldState,
+} from "./continuousMining.ts";
 
 type Vec3 = [number, number, number];
 
@@ -1131,7 +1138,11 @@ export function appendLadderMesh(output: number[], x: number, y: number, z: numb
 }
 
 function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
-  return a === b || (!!a && !!b && a.block.x === b.block.x && a.block.y === b.block.y && a.block.z === b.block.z);
+  return a === b || (!!a && !!b
+    && a.block.x === b.block.x
+    && a.block.y === b.block.y
+    && a.block.z === b.block.z
+    && a.block.block === b.block.block);
 }
 
 function chunkIntersectsView(key: string, mesh: ChunkMesh, mvp: Float32Array): boolean {
@@ -1368,6 +1379,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastRangedChargeFeedbackAt = -Infinity;
   let lastMiningProgressAt = -Infinity;
   let lastMiningHitAt = -Infinity;
+  let primaryActionHold: PrimaryActionHoldState = { ...IDLE_PRIMARY_ACTION_HOLD };
   let footstepDistance = 0;
   const frameTimes: number[] = [];
   let totalMeshRebuildMs = 0;
@@ -1412,6 +1424,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     options.onMiningProgress?.(0);
   }
 
+  function cancelPrimaryActionHold(): void {
+    primaryActionHold = releasePrimaryAction();
+    clearMining();
+  }
+
   function updateMiningCrackGeometry(): void {
     crackLines.length = 0;
     crackVertexCount = target
@@ -1423,6 +1440,46 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!crackVertexCount) return;
     gl.bindBuffer(gl.ARRAY_BUFFER, crackBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(crackLines), gl.DYNAMIC_DRAW);
+  }
+
+  function beginHeldBlockMining(): boolean {
+    if (!primaryActionHold.held || !primaryActionHold.miningArmed || miningTimer || !target) return false;
+    const mined = { ...target.block };
+    const targetPrimed = primedTnt.has(blockKey(mined.x, mined.y, mined.z));
+    const editAllowed = options.canEditBlock?.() !== false;
+    if (!shouldStartHeldMining(primaryActionHold, {
+      pointerLocked: document.pointerLockElement === canvas,
+      playerAlive: playerHealth > 0,
+      miningActive: miningTimer !== 0,
+      targetAvailable: true,
+      editAllowed,
+      targetPrimed,
+    })) return false;
+    const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
+    options.onHandAction?.("mine");
+    if (duration === 0) {
+      emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
+      return true;
+    }
+    miningStartedAt = performance.now();
+    miningDurationMs = duration * 1_000;
+    lastMiningProgressAt = -Infinity;
+    lastMiningHitAt = miningStartedAt;
+    miningProgress = 0.01;
+    updateMiningCrackGeometry();
+    options.onMiningProgress?.(0.01);
+    miningTimer = window.setTimeout(() => {
+      miningTimer = 0;
+      miningStartedAt = 0;
+      miningDurationMs = 0;
+      miningProgress = 0;
+      crackVertexCount = 0;
+      options.onMiningProgress?.(0);
+      if (getBlock(mined.x, mined.y, mined.z) === mined.block) {
+        emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
+      }
+    }, duration * 1_000);
+    return true;
   }
 
   function clearRangedCharge(cancelServer = false): void {
@@ -1913,7 +1970,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
-      clearMining();
+      cancelPrimaryActionHold();
       target = null;
       processPendingChunkMeshes();
       updateMobs(dt);
@@ -2006,6 +2063,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       target = nextTarget;
       options.onTargetChange?.(target);
     } else target = nextTarget;
+
+    beginHeldBlockMining();
 
     if (now - lastPoseSent > 90 && (poseDirty || forwardInput !== 0 || strafe !== 0 || Math.abs(velocity[1]) > 0.01)) {
       lastPoseSent = now;
@@ -2377,6 +2436,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       options.onMiningProgress?.(miningProgress);
       if (target && now - lastMiningHitAt >= 225) {
         lastMiningHitAt = now;
+        options.onHandAction?.("mine");
         options.onMiningHit?.({ ...target, block: { ...target.block }, place: { ...target.place } });
       }
     }
@@ -2541,36 +2601,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     if (playerHealth <= 0) return;
     if (event.button === 0) {
-      if (attackEntityUnderCrosshair()) return;
-      if (!target) return;
-      if (miningTimer) return;
-      if (options.canEditBlock?.() === false) return;
-      const mined = { ...target.block };
-      if (primedTnt.has(blockKey(mined.x, mined.y, mined.z))) return;
-      const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
-      options.onHandAction?.("mine");
-      if (duration === 0) {
-        emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
-      } else {
-        miningStartedAt = performance.now();
-        miningDurationMs = duration * 1_000;
-        lastMiningProgressAt = -Infinity;
-        lastMiningHitAt = -Infinity;
-        miningProgress = 0.01;
-        updateMiningCrackGeometry();
-        options.onMiningProgress?.(0.01);
-        miningTimer = window.setTimeout(() => {
-          miningTimer = 0;
-          miningStartedAt = 0;
-          miningDurationMs = 0;
-          miningProgress = 0;
-          crackVertexCount = 0;
-          options.onMiningProgress?.(0);
-          if (getBlock(mined.x, mined.y, mined.z) === mined.block) {
-            emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
-          }
-        }, duration * 1_000);
-      }
+      if (primaryActionHold.held) return;
+      const attackedEntity = attackEntityUnderCrosshair();
+      primaryActionHold = pressPrimaryAction(attackedEntity);
+      if (!attackedEntity) beginHeldBlockMining();
     } else if (event.button === 2) {
       if (useMobUnderCrosshair()) return;
       if (target) {
@@ -2616,7 +2650,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onMouseUp(event: MouseEvent): void {
-    if (event.button === 0) clearMining();
+    if (event.button === 0) cancelPrimaryActionHold();
     if (event.button === 2 && rangedChargeStartedAt > 0) {
       const intent = rangedShotIntent(performance.now());
       clearRangedCharge();
@@ -2628,7 +2662,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function onPointerLockChange(): void {
     if (document.pointerLockElement !== canvas) {
       keys.clear();
-      clearMining();
+      cancelPrimaryActionHold();
       clearRangedCharge(true);
       resetMovementView();
     }
@@ -2679,7 +2713,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("contextmenu", onContextMenu);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
-      clearMining();
+      cancelPrimaryActionHold();
       clearRangedCharge();
       for (const mesh of chunkMeshes.values()) {
         if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
@@ -2785,6 +2819,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     setSelectedBlock(block) {
       selectedBlock = block;
+      clearMining();
     },
     setRemotePlayers(players) {
       const now = performance.now();

@@ -26,9 +26,10 @@ assert.equal(component.match(/\"M\d+/g)?.length, BLOCK_CRACK_STAGE_COUNT, "crack
 assert.ok(hud.includes("stack={inventory[selectedIndex] ?? null}"), "GameHud drives the held rig from the selected hotbar stack");
 assert.ok(hud.includes("inventoryOpen || mobileUnsupported"), "blocking UI hides the first-person overlay");
 assert.ok(styles.includes("@keyframes lc-held-item-swing"), "swing feedback has a dedicated short animation");
-assert.ok(styles.includes("rotateX(-24deg) rotateY(-38deg)"), "held block rotates its front, right, and top faces toward the camera");
+assert.ok(styles.includes("rotateX(-24deg) rotateY(-34deg)"), "held block rotates its front, right, and top faces toward the camera");
 assert.ok(styles.includes("lc-held-voxel__face--front") && styles.includes("lc-held-voxel__face--right") && styles.includes("lc-held-voxel__face--top"), "held cube exposes three independently shaded faces");
-assert.ok(styles.includes("transform-style: preserve-3d") && styles.includes("perspective: 560px"), "the arm rig retains perspective through its nested cuboids");
+assert.ok(styles.includes("transform-style: preserve-3d") && styles.includes("perspective: 620px"), "the arm rig retains perspective through its nested cuboids");
+assert.ok(component.includes("lc-first-person__arm-face--left") && styles.includes("rotateY(-90deg)"), "the inward-angled right arm exposes its camera-facing left side instead of the hidden outer face");
 assert.ok(styles.includes(".lc-held-sprite__slice.is-front"), "the foremost sprite layer restores full authored color above its shaded depth slices");
 assert.equal(styles.includes("lc-first-person__sleeve"), false, "the old flat sleeve rectangle is removed");
 assert.ok(styles.includes(".lc-first-person__rig.is-swinging { animation: none; }"), "reduced-motion users do not receive the swing animation");

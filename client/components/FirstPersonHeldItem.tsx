@@ -55,7 +55,7 @@ function VoxelArmSegment({ material }: { material: "sleeve" | "skin" }) {
   return (
     <span className={`lc-first-person__arm-segment lc-first-person__arm-segment--${material}`}>
       <i className="lc-first-person__arm-face lc-first-person__arm-face--front" />
-      <i className="lc-first-person__arm-face lc-first-person__arm-face--right" />
+      <i className="lc-first-person__arm-face lc-first-person__arm-face--left" />
       <i className="lc-first-person__arm-face lc-first-person__arm-face--top" />
     </span>
   );

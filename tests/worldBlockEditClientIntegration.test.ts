@@ -62,6 +62,8 @@ assert.equal(client.includes("droppedPickupAttemptRef.current.set(drop.dropId"),
 assert.equal(client.includes("deferredMobDropsRef"), false, "mob drops cannot enter inventory through a deferred client-only mint path");
 assert.ok(client.includes("loadCanonicalPlayer(result.inventory)"), "authoritative operations reconcile their canonical inventory result");
 assert.ok(engineTypes.includes("canEditBlock?: () => boolean"));
-assert.ok((engine.match(/options\.canEditBlock\?\.\(\) === false/g) ?? []).length >= 3);
+assert.ok(engine.includes("const editAllowed = options.canEditBlock?.() !== false"));
+assert.ok(engine.includes("shouldStartHeldMining(primaryActionHold"));
+assert.ok((engine.match(/options\.canEditBlock\?\.\(\) === false/g) ?? []).length >= 2);
 
 console.log("atomic world block client integration source tests passed");
