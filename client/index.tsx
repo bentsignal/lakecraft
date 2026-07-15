@@ -127,6 +127,11 @@ import {
   serializeWorldBlockEditPose,
   type SerializedWorldBlockEditPose,
 } from "./worldBlockEditClient";
+import {
+  createGameAudio,
+  type GameAudio,
+  type GameAudioSurface,
+} from "./game/audio.ts";
 
 const APP_CSS = `
 @font-face { font-display: swap; font-family: "Pixelify Sans"; font-style: normal; font-weight: 400 700; src: url("https://fonts.gstatic.com/s/pixelifysans/v3/CHylV-3HFUT7aC4iv1TxGDR9Jn0Eiw.woff2") format("woff2"); }
@@ -151,6 +156,26 @@ button { -webkit-tap-highlight-color: transparent; }
 `;
 
 const PRESENCE_BUDGET_STORAGE_PREFIX = "lakecraft:presence-budget:v1:";
+const AUDIO_MUTED_STORAGE_KEY = "lakecraft:audio-muted:v1";
+
+function loadAudioMuted(): boolean {
+  try {
+    return window.localStorage.getItem(AUDIO_MUTED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
+  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED) return "grass";
+  if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
+    || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER) return "wood";
+  if (block === BLOCK.SAND) return "sand";
+  if (block === BLOCK.GLASS) return "glass";
+  if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
+  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE) return "stone";
+  return "generic";
+}
 
 function loadPresenceBurstGuard(userId: string, now: number): PresenceBurstGuardState {
   try {
@@ -571,6 +596,7 @@ export function App() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
+  const audioRef = useRef<GameAudio | null>(null);
   const poseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const presenceSampleRef = useRef<((pose: PlayerPose, at?: number) => void) | null>(null);
   const presenceSchedulerRef = useRef<PresenceSchedulerState | null>(null);
@@ -619,9 +645,12 @@ export function App() {
   const realtimePresenceRef = useRef(false);
   const respawnRequestInFlightRef = useRef(false);
   const respawnTimerRef = useRef<number | null>(null);
+  const confirmedFeedbackOperationsRef = useRef<Set<string> | null>(null);
+  const previousChestKeyRef = useRef("");
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
   if (!presenceBurstGuardRef.current) presenceBurstGuardRef.current = createPresenceBurstGuardState(Date.now());
+  if (!confirmedFeedbackOperationsRef.current) confirmedFeedbackOperationsRef.current = new Set<string>();
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
   const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
@@ -636,6 +665,7 @@ export function App() {
   const [furnaceStatus, setFurnaceStatus] = useState("Input and fuel are shared through Lakebed.");
   const [furnaceError, setFurnaceError] = useState("");
   const [pauseOpen, setPauseOpen] = useState(false);
+  const [soundMuted, setSoundMuted] = useState(loadAudioMuted);
   const [showPlayerList, setShowPlayerList] = useState(false);
   const [mobileUnsupported, setMobileUnsupported] = useState(false);
   const [messages, setMessages] = useState<HudMessage[]>([]);
@@ -667,6 +697,40 @@ export function App() {
   const [activeBedKey, setActiveBedKey] = useState("");
   const [sleepBusy, setSleepBusy] = useState(false);
   const [sleepStatus, setSleepStatus] = useState("Rest until every active explorer is in bed, then Lakebed will move the shared clock to morning.");
+
+  useEffect(() => {
+    const audio = createGameAudio({ muted: soundMuted, maxVoices: 16 });
+    audioRef.current = audio;
+    const unlock = () => { void audio.unlock(); };
+    const click = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("button:not(:disabled)")) {
+        audio.play("uiClick", { seed: `${target.tagName}:${performance.now().toFixed(0)}`, intensity: 0.48 });
+      }
+    };
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+    window.addEventListener("click", click, true);
+    return () => {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+      window.removeEventListener("click", click, true);
+      audio.destroy();
+      if (audioRef.current === audio) audioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    audioRef.current?.setMuted(soundMuted);
+    try { window.localStorage.setItem(AUDIO_MUTED_STORAGE_KEY, String(soundMuted)); } catch { /* local preference only */ }
+  }, [soundMuted]);
+
+  useEffect(() => {
+    const previous = previousChestKeyRef.current;
+    if (!previous && activeChestKey) audioRef.current?.play("chestOpen", { seed: activeChestKey, surface: "wood" });
+    if (previous && !activeChestKey) audioRef.current?.play("chestClose", { seed: previous, surface: "wood" });
+    previousChestKeyRef.current = activeChestKey;
+  }, [activeChestKey]);
 
   function notify(text: string, detail?: string, tone: HudMessage["tone"] = "info") {
     const id = `note-${++toastCounter.current}`;
@@ -895,6 +959,7 @@ export function App() {
       if (result.ok) {
         droppedPickupAttemptRef.current.set(result.dropId, Number.POSITIVE_INFINITY);
         if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
+        audioRef.current?.play("blockPlace", { seed: result.dropId, intensity: 0.45, surface: "generic" });
         notify(`Dropped ${ITEMS[result.moved.itemId].label}`, result.moved.count > 1 ? `${result.moved.count} items can be picked up by nearby players.` : "Nearby players can pick it up.");
       } else if (result.reason === "conflict" && result.inventory) {
         loadCanonicalPlayer(result.inventory);
@@ -924,6 +989,7 @@ export function App() {
       setConnected(true);
       if (result.ok) {
         if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
+        audioRef.current?.play("pickup", { seed: result.dropId, intensity: 0.72 });
         notify(`Picked up ${ITEMS[result.moved.itemId].label}`, result.moved.count > 1 ? `${result.moved.count} added to inventory.` : undefined, "success");
       } else if (result.reason === "conflict" && result.inventory) {
         loadCanonicalPlayer(result.inventory);
@@ -1025,6 +1091,33 @@ export function App() {
     }
   }
 
+  function emitConfirmedWorldBlockFeedback(result: Extract<WorldBlockEditMutationResult, { ok: true }>): void {
+    const seen = confirmedFeedbackOperationsRef.current!;
+    if (seen.has(result.operationId)) return;
+    if (seen.size >= 256) seen.delete(seen.values().next().value as string);
+    seen.add(result.operationId);
+    const previous = PROTOCOL_TO_ENGINE[result.previousBlock];
+    const next = PROTOCOL_TO_ENGINE[result.nextBlock];
+    const seed = `${result.operationId}:${result.x},${result.y},${result.z}`;
+    if (result.kind === "mine" && previous !== BLOCK.AIR) {
+      audioRef.current?.play("blockBreak", { seed, surface: audioSurfaceForBlock(previous) });
+      engineRef.current?.spawnBlockParticles({
+        action: "break", block: previous, x: result.x, y: result.y, z: result.z,
+      });
+      return;
+    }
+    if (result.kind === "place" && next !== BLOCK.AIR) {
+      audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(next) });
+      engineRef.current?.spawnBlockParticles({
+        action: "place", block: next, x: result.x, y: result.y, z: result.z,
+      });
+      return;
+    }
+    if (result.kind === "toggle") {
+      audioRef.current?.play(next === BLOCK.DOOR_OPEN ? "doorOpen" : "doorClose", { seed, surface: "wood" });
+    }
+  }
+
   async function submitPendingWorldBlockEdit(pending: PendingWorldBlockEdit): Promise<void> {
     try {
       await requestInventorySave(false, true);
@@ -1093,6 +1186,7 @@ export function App() {
         }]);
       }
       worldChunkRevisionRef.current.set(result.chunkKey, result.currentChunkRevision ?? result.chunkRevision);
+      if (!replayPassedByNewerChunk) emitConfirmedWorldBlockFeedback(result);
       notifyConfirmedWorldBlockEdit(result);
       if (result.inventory && loadCanonicalPlayer(result.inventory)) {
         releasePendingWorldBlockEdit(pending);
@@ -1281,6 +1375,7 @@ export function App() {
             }
             if (result.ok) {
               loadCanonicalPlayer(result.inventory);
+              audioRef.current?.play("mobHurt", { seed: operationId, intensity: result.killed ? 0.9 : 0.68 });
               if (result.killed && result.drops.length) {
                 notify(
                   "Mob drops collected",
@@ -1307,6 +1402,7 @@ export function App() {
             setConnected(true);
             if (result.ok) {
               recordConfirmedToolUse(selectedHotbar, weaponItemId || null, "attack");
+              audioRef.current?.play("playerHurt", { seed: operationId, intensity: result.killed ? 0.9 : 0.65 });
               notify(
                 result.killed ? `${target.name} was defeated` : `Hit ${target.name}`,
                 `${result.damage ?? 0} damage${result.replayed ? " · confirmed retry" : ""}`,
@@ -1330,8 +1426,37 @@ export function App() {
         },
         onMobDrops: collectMobDrops,
         onMiningProgress: setMiningProgress,
-        onHandAction: () => setHandActionToken((current) => current + 1),
-        onPlayerDamage: (amount) => notify("Zombie hit", `${amount} health lost.`, "warning"),
+        onMiningHit: (target) => {
+          const surface = audioSurfaceForBlock(target.block.block);
+          const seed = `${target.block.x},${target.block.y},${target.block.z}:${performance.now().toFixed(0)}`;
+          audioRef.current?.play("miningHit", { seed, surface, intensity: 0.6 });
+          engineRef.current?.spawnBlockParticles({
+            action: "hit",
+            block: target.block.block,
+            x: target.block.x,
+            y: target.block.y,
+            z: target.block.z,
+            normalX: target.place.x - target.block.x,
+            normalY: target.place.y - target.block.y,
+            normalZ: target.place.z - target.block.z,
+          });
+        },
+        onFootstep: (block) => {
+          audioRef.current?.play("footstep", {
+            seed: `${block}:${poseRef.current.x.toFixed(1)}:${poseRef.current.z.toFixed(1)}`,
+            surface: audioSurfaceForBlock(block),
+            intensity: 0.48,
+          });
+        },
+        onHandAction: (action) => {
+          setHandActionToken((current) => current + 1);
+          if (action === "attack") audioRef.current?.play("playerAttack", { seed: performance.now().toFixed(0), intensity: 0.44 });
+        },
+        onPlayerDamage: (amount) => {
+          audioRef.current?.play("mobAttack", { seed: `mob:${amount}:${performance.now().toFixed(0)}`, intensity: 0.7 });
+          audioRef.current?.play("playerHurt", { seed: `${amount}:${performance.now().toFixed(0)}`, intensity: 0.78 });
+          notify("Zombie hit", `${amount} health lost.`, "warning");
+        },
         onPlayerHealthChange: (health) => {
           survivalRef.current.health = health;
           setPlayerHealth(health);
@@ -1499,6 +1624,7 @@ export function App() {
       void claimMobPlayerDamage(JSON.stringify(claim)).then((result) => {
         setConnected(result.ok);
         if (result.ok && result.damage > 0) {
+          audioRef.current?.play("mobAttack", { seed: claim.operationId, intensity: 0.82 });
           notify(
             result.killed ? "You were overwhelmed" : "Monster hit",
             result.killed ? "Lakebed confirmed your death." : `${result.damage} health lost.`,
@@ -1522,7 +1648,12 @@ export function App() {
       if (ownState.health < MAX_HEALTH) engineRef.current.adjustPlayerHealth(ownState.health - MAX_HEALTH);
       return;
     }
-    if (ownState.health !== previous) engineRef.current.adjustPlayerHealth(ownState.health - previous);
+    if (ownState.health !== previous) {
+      if (ownState.health < previous) {
+        audioRef.current?.play("playerHurt", { seed: `${ownState.revision}:${ownState.health}`, intensity: 0.8 });
+      }
+      engineRef.current.adjustPlayerHealth(ownState.health - previous);
+    }
   }, [playerCombatResult, inWorld, auth.userId]);
 
   useEffect(() => {
@@ -1911,6 +2042,7 @@ export function App() {
       return;
     }
     updateInventory(result.inventory);
+    audioRef.current?.play("craft", { seed: `${recipe.id}:${result.crafted.count}`, intensity: 0.72, surface: "wood" });
     notify(`Made ${ITEMS[result.crafted.itemId].label}`, `Added ${result.crafted.count} to your field kit.`, "success");
   }
 
@@ -1948,6 +2080,7 @@ export function App() {
         }
         inventorySavePendingRef.current = false;
         const item = ITEMS[result.moved.itemId];
+        audioRef.current?.play("uiConfirm", { seed: `${activeFurnaceKey}:${result.moved.itemId}:${result.furnace.revision}`, intensity: 0.55 });
         setFurnaceStatus(`${result.moved.count} ${item.label} moved ${result.moved.direction === "to_furnace" ? "into" : "out of"} the shared furnace.`);
         return;
       }
@@ -2057,6 +2190,7 @@ export function App() {
           return;
         }
         setChestError("");
+        audioRef.current?.play("uiConfirm", { seed: `${result.moved.itemId}:${result.moved.count}:${result.chest.updatedAt}`, intensity: 0.55, surface: "wood" });
         notify(
           result.replayed ? "Chest transfer reconciled" : "Chest transfer committed",
           `${result.moved.count} ${ITEMS[result.moved.itemId].label} moved atomically through Lakebed.`,
@@ -2408,6 +2542,17 @@ export function App() {
         }}
         onEquipArmor={handleEquipArmor}
         onOptions={() => notify("Options", "Controls and graphics settings are coming next.")}
+        soundMuted={soundMuted}
+        onToggleSound={() => {
+          const next = !soundMuted;
+          audioRef.current?.setMuted(next);
+          setSoundMuted(next);
+          if (!next) {
+            void audioRef.current?.unlock().then(() => {
+              audioRef.current?.play("uiConfirm", { seed: "sound-on", intensity: 0.52 });
+            });
+          }
+        }}
         onResume={() => {
           setPauseOpen(false);
           engineRef.current?.requestPointerLock();
@@ -2504,7 +2649,7 @@ export function App() {
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${presenceTelemetry.mode.toUpperCase()} ${presenceCadence} · RT ${presenceTelemetry.realtimeRemaining}/${PRESENCE_REALTIME_BURST_WRITES} · DAY ${presenceTelemetry.sessionRemaining}/${PRESENCE_SESSION_WRITE_BUDGET} · OK ${presenceTelemetry.confirmedCount}/${presenceTelemetry.attemptCount}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${presenceTelemetry.mode.toUpperCase()} ${presenceCadence} · RT ${presenceTelemetry.realtimeRemaining}/${PRESENCE_REALTIME_BURST_WRITES} · DAY ${presenceTelemetry.sessionRemaining}/${PRESENCE_SESSION_WRITE_BUDGET} · OK ${presenceTelemetry.confirmedCount}/${presenceTelemetry.attemptCount}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nPFX ${performanceStats.activeParticleCount}  DRAW ${performanceStats.particleDrawCalls}  ${(performanceStats.particleUploadBytes / 1024).toFixed(0)}KB\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}

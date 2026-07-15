@@ -24,6 +24,11 @@ import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import {
+  blockParticleBufferCapacity,
+  createBlockParticleSystem,
+  type BlockParticleGeometryStats,
+} from "./blockParticles.ts";
+import {
   DEFAULT_DAY_NIGHT_CONFIG,
   createDayNightState,
   sampleDayNight,
@@ -833,11 +838,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const atmosphereStarIntensityLocation = gl.getUniformLocation(atmosphereProgram, "R");
   const atmosphereBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
-  if (!lineBuffer || !atmosphereBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  const particleBuffer = gl.createBuffer();
+  if (!lineBuffer || !atmosphereBuffer || !particleBuffer) throw new Error("Unable to allocate WebGL buffers.");
   gl.bindBuffer(gl.ARRAY_BUFFER, atmosphereBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, ATMOSPHERE_SCREEN_TRIANGLE, gl.STATIC_DRAW);
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
   const droppedItemRenderer = createDroppedItemRenderer(gl);
+  const blockParticles = createBlockParticleSystem();
+  const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
+  const particleGeometry = new Float32Array(particleCapacity.floatCount);
+  const particleGeometryStats: BlockParticleGeometryStats = {
+    activeParticleCount: 0,
+    writtenParticleCount: 0,
+    vertexCount: 0,
+    floatCount: 0,
+  };
+  const particleCameraRight = new Float32Array(3);
+  const particleCameraUp = new Float32Array(3);
+  gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, particleGeometry.byteLength, gl.DYNAMIC_DRAW);
 
   const seed = options.seed ?? 7319;
   const radius = Math.max(8, Math.min(40, options.worldRadius ?? 20));
@@ -951,6 +970,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let miningStartedAt = 0;
   let miningDurationMs = 0;
   let lastMiningProgressAt = -Infinity;
+  let lastMiningHitAt = -Infinity;
+  let footstepDistance = 0;
   const frameTimes: number[] = [];
   let totalMeshRebuildMs = 0;
   let lastMeshRebuildMs = 0;
@@ -963,6 +984,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let droppedItemDrawCalls = 0;
   let droppedItemVertexCount = 0;
   let droppedItemVisibleCount = 0;
+  let particleDrawCalls = 0;
+  let particleVertexCount = 0;
+  let particleUploadBytes = 0;
   let mobVertexCount = 0;
   let visibleMobCount = 0;
   let lastMobSimulationMs = 0;
@@ -981,6 +1005,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     miningTimer = 0;
     miningStartedAt = 0;
     miningDurationMs = 0;
+    lastMiningHitAt = -Infinity;
     options.onMiningProgress?.(0);
   }
 
@@ -1367,6 +1392,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const speed = keys.has("ShiftLeft") && !ladderAtFrameStart ? 6.1 : 4.35;
     const dx = ((Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * strafe) / magnitude) * speed * dt;
     const dz = ((-Math.cos(pose.yaw) * forward + Math.sin(pose.yaw) * strafe) / magnitude) * speed * dt;
+    const movementStartX = pose.x;
+    const movementStartZ = pose.z;
     moveAxis(0, dx);
     moveAxis(2, dz);
     updateStreamingWindow();
@@ -1383,6 +1410,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       grounded = velocity[1] < 0;
       velocity[1] = 0;
     } else grounded = false;
+
+    const movedHorizontally = Math.hypot(pose.x - movementStartX, pose.z - movementStartZ);
+    if (grounded && movedHorizontally > 0.0001) {
+      footstepDistance += movedHorizontally;
+      const stepDistance = speed > 5 ? 1.35 : 1.65;
+      if (footstepDistance >= stepDistance) {
+        footstepDistance %= stepDistance;
+        const floorBlock = getBlock(Math.floor(pose.x), Math.floor(pose.y - 0.08), Math.floor(pose.z));
+        if (floorBlock !== BLOCK.AIR) options.onFootstep?.(floorBlock);
+      }
+    } else if (!grounded) {
+      footstepDistance = Math.min(footstepDistance, 0.8);
+    }
 
     const nextTarget = raycastVoxels([pose.x, pose.y + 1.62, pose.z], direction(), getBlock, options.reach ?? 6);
     if (!sameTarget(target, nextTarget)) {
@@ -1488,9 +1528,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       droppedItemCount: droppedItemRenderer.stats.totalItemCount,
       droppedItemMeshMs: droppedItemRenderer.stats.meshMs,
       droppedItemUploadBytes: droppedItemRenderer.stats.uploadBytes,
+      particleDrawCalls,
+      particleVertexCount,
+      activeParticleCount: blockParticles.activeCount,
+      particleUploadBytes,
       torchCount: torchLights.size,
       activeTorchLights,
-      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
+      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
     };
   }
 
@@ -1510,6 +1554,20 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const upX = -rightZ * facing[1];
     const upY = rightZ * facing[0] - rightX * facing[2];
     const upZ = rightX * facing[1];
+    blockParticles.update(dt);
+    particleCameraRight[0] = rightX;
+    particleCameraRight[1] = 0;
+    particleCameraRight[2] = rightZ;
+    particleCameraUp[0] = upX;
+    particleCameraUp[1] = upY;
+    particleCameraUp[2] = upZ;
+    blockParticles.writeGeometry(particleCameraRight, particleCameraUp, particleGeometry, particleGeometryStats);
+    particleVertexCount = particleGeometryStats.vertexCount;
+    particleUploadBytes = particleVertexCount > 0 ? particleGeometry.byteLength : 0;
+    if (particleVertexCount > 0) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleGeometry);
+    }
     const projection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
@@ -1538,6 +1596,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     avatarDrawCalls = 0;
     mobDrawCalls = 0;
     droppedItemDrawCalls = 0;
+    particleDrawCalls = 0;
 
     gl.disable(gl.DEPTH_TEST);
     for (let attribute = 0; attribute < maximumVertexAttributes; attribute += 1) {
@@ -1643,6 +1702,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
       mobDrawCalls += 1;
     }
+    if (particleVertexCount) {
+      bindBuffer(particleBuffer);
+      gl.uniform1f(fogLocation, 1);
+      gl.uniform1f(lightingLocation, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, particleVertexCount);
+      drawCalls += 1;
+      particleDrawCalls += 1;
+    }
     if (nameplateVertexCount) {
       bindBuffer(remotePlayerRenderer.nameplateBuffer);
       gl.uniform1f(fogLocation, 0);
@@ -1704,6 +1771,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (miningTimer && miningDurationMs > 0 && now - lastMiningProgressAt >= 50) {
       lastMiningProgressAt = now;
       options.onMiningProgress?.(Math.max(0.01, Math.min(0.99, (now - miningStartedAt) / miningDurationMs)));
+      if (target && now - lastMiningHitAt >= 225) {
+        lastMiningHitAt = now;
+        options.onMiningHit?.({ ...target, block: { ...target.block }, place: { ...target.place } });
+      }
     }
     if (frameTimeMs > 0) {
       frameTimes.push(frameTimeMs);
@@ -1816,6 +1887,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         miningStartedAt = performance.now();
         miningDurationMs = duration * 1_000;
         lastMiningProgressAt = -Infinity;
+        lastMiningHitAt = -Infinity;
         options.onMiningProgress?.(0.01);
         miningTimer = window.setTimeout(() => {
           miningTimer = 0;
@@ -1922,6 +1994,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       torchLights.clear();
       remotePlayerRenderer.destroy();
       droppedItemRenderer.destroy();
+      blockParticles.clear();
+      gl.deleteBuffer(particleBuffer);
       gl.deleteBuffer(lineBuffer);
       gl.deleteBuffer(atmosphereBuffer);
       mobRenderer.destroy();
@@ -2012,6 +2086,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     setDroppedItems(items) {
       droppedItemRenderer.setItems(items);
+    },
+    spawnBlockParticles(event) {
+      return blockParticles.spawn(event);
     },
     setDayNightClock(config, nextServerTimeOffsetMs) {
       serverTimeOffsetMs = applyDayNightClockUpdate(

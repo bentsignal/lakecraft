@@ -43,6 +43,8 @@ export type GameHudProps = {
   onCloseInventory: () => void;
   onResume?: () => void;
   onOptions?: () => void;
+  soundMuted?: boolean;
+  onToggleSound?: () => void;
   onDisconnect?: () => void;
   onDismissMessage?: (id: string) => void;
   onContinueMobile?: () => void;
@@ -87,6 +89,8 @@ export function GameHud({
   onCloseInventory,
   onResume,
   onOptions,
+  soundMuted = false,
+  onToggleSound,
   onDisconnect,
   onDismissMessage,
   onContinueMobile,
@@ -111,7 +115,14 @@ export function GameHud({
         <PlayerList players={players} visible={showPlayerList && !pauseOpen} />
         <ToastSurface messages={messages} onDismiss={onDismissMessage} />
       </div>
-      <PauseMenu onBack={onResume} onDisconnect={onDisconnect} onOptions={onOptions} open={pauseOpen} />
+      <PauseMenu
+        onBack={onResume}
+        onDisconnect={onDisconnect}
+        onOptions={onOptions}
+        onToggleSound={onToggleSound}
+        open={pauseOpen}
+        soundMuted={soundMuted}
+      />
       <InventoryCraftingDrawer craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} onUseItem={onUseItem} open={inventoryOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>

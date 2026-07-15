@@ -4,6 +4,7 @@ import type { ArmorId, ItemId } from "../../shared/game.ts";
 import type { DroppedItemRenderItem } from "./droppedItemRenderer.ts";
 import type { RemotePlayerRayTarget } from "./remotePlayerTargeting.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
+import type { BlockParticleEvent } from "./blockParticles.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -110,6 +111,10 @@ export interface VoxelPerformanceStats {
   droppedItemCount: number;
   droppedItemMeshMs: number;
   droppedItemUploadBytes: number;
+  particleDrawCalls: number;
+  particleVertexCount: number;
+  activeParticleCount: number;
+  particleUploadBytes: number;
   torchCount: number;
   activeTorchLights: number;
   estimatedMeshBytes: number;
@@ -145,6 +150,10 @@ export interface VoxelEngineOptions {
   onRemotePlayerAttack?: (target: Readonly<RemotePlayerRayTarget>, damage: number) => void | Promise<void>;
   /** Normalized held-mining progress for the first-person crack overlay. */
   onMiningProgress?: (progress: number) => void;
+  /** Bounded material-aware mining impact, emitted at most about four times per second. */
+  onMiningHit?: (target: Readonly<BlockTarget>) => void;
+  /** Distance-based grounded step over the block beneath the player. */
+  onFootstep?: (block: BlockId) => void;
   /** Discrete first-person swing/use feedback; never emitted from the frame loop. */
   onHandAction?: (action: "mine" | "attack" | "place" | "use") => void;
   getPlayerProtection?: () => number;
@@ -176,6 +185,8 @@ export interface VoxelEngine {
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
   setDroppedItems(items: readonly DroppedItemRenderItem[]): void;
+  /** Local-only visual feedback; callers should use this after authoritative confirmation. */
+  spawnBlockParticles(event: Readonly<BlockParticleEvent>): number;
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
   setRespawnPoint(point: RespawnPoint): void;
   adjustPlayerHealth(delta: number): number;

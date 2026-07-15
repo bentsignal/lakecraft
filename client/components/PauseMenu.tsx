@@ -2,10 +2,12 @@ export type PauseMenuProps = {
   open: boolean;
   onBack?: () => void;
   onOptions?: () => void;
+  soundMuted?: boolean;
+  onToggleSound?: () => void;
   onDisconnect?: () => void;
 };
 
-export function PauseMenu({ open, onBack, onOptions, onDisconnect }: PauseMenuProps) {
+export function PauseMenu({ open, onBack, onOptions, soundMuted = false, onToggleSound, onDisconnect }: PauseMenuProps) {
   if (!open) return null;
   return (
     <div className="lc-menu-layer" role="presentation">
@@ -14,6 +16,9 @@ export function PauseMenu({ open, onBack, onOptions, onDisconnect }: PauseMenuPr
         <div className="lc-game-menu__buttons">
           <button autoFocus onClick={onBack} type="button">Back to Game</button>
           <button disabled={!onOptions} onClick={onOptions} type="button">Options…</button>
+          <button aria-pressed={soundMuted} disabled={!onToggleSound} onClick={onToggleSound} type="button">
+            Sound: {soundMuted ? "OFF" : "ON"}
+          </button>
           <button className="lc-game-menu__disconnect" onClick={onDisconnect} type="button">Disconnect</button>
         </div>
       </section>
