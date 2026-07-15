@@ -1,5 +1,5 @@
 import { ITEMS, type ItemStack } from "../../shared/game";
-import { ItemIcon } from "./ItemGlyph";
+import { HeldBlockVoxel, isHeldVoxelBlock, ItemIcon } from "./ItemGlyph";
 import { miningCrackStage } from "./firstPersonFeedback";
 
 export type FirstPersonHeldItemProps = {
@@ -29,8 +29,8 @@ const CRACK_SEGMENTS = [
 ] as const;
 
 /**
- * Fixed-cost first-person feedback. It intentionally uses the same deterministic
- * 16x16 art as the hotbar, so the held object always matches the selected slot.
+ * Fixed-cost first-person feedback. Full blocks become a large three-face voxel;
+ * tools and non-cubic items retain the canonical 16x16 sprite used by the hotbar.
  */
 export function FirstPersonHeldItem({
   stack,
@@ -41,6 +41,7 @@ export function FirstPersonHeldItem({
 }: FirstPersonHeldItemProps) {
   if (hidden || paused) return null;
   const family = stack ? ITEMS[stack.itemId].category : "hand";
+  const heldAsVoxel = stack ? isHeldVoxelBlock(stack.itemId) : false;
   const crackStage = miningCrackStage(miningProgress);
 
   return (
@@ -59,14 +60,21 @@ export function FirstPersonHeldItem({
           ))}
         </svg>
       ) : null}
-      <span aria-hidden="true" className="lc-first-person" data-held-family={family}>
+      <span
+        aria-hidden="true"
+        className="lc-first-person"
+        data-held-family={family}
+        data-held-mode={heldAsVoxel ? "voxel" : stack ? "sprite" : "hand"}
+      >
         <span
           className={`lc-first-person__rig${actionToken > 0 ? " is-swinging" : ""}`}
           key={`held-action-${actionToken}`}
         >
           {stack ? (
             <span className="lc-first-person__item">
-              <ItemIcon compact stack={{ itemId: stack.itemId, count: 1 }} />
+              {heldAsVoxel
+                ? <HeldBlockVoxel blockId={stack.itemId} />
+                : <ItemIcon compact stack={{ itemId: stack.itemId, count: 1 }} />}
             </span>
           ) : null}
           <span className="lc-first-person__arm">

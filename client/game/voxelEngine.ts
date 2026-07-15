@@ -145,6 +145,8 @@ export function resolveSafeSpawnY(
 interface ChunkMesh {
   textureBuffer: WebGLBuffer | null;
   textureVertexCount: number;
+  transparentBuffer: WebGLBuffer | null;
+  transparentVertexCount: number;
   colorBuffer: WebGLBuffer | null;
   colorVertexCount: number;
   vertexCount: number;
@@ -168,9 +170,9 @@ export const TORCH_MESH_VERTEX_COUNT = 72;
 export const CHEST_MESH_VERTEX_COUNT = 108;
 export const DOOR_MESH_VERTEX_COUNT = 144;
 export const BED_MESH_VERTEX_COUNT = 108;
-export const FURNACE_MESH_VERTEX_COUNT = 72;
 export const LADDER_MESH_VERTEX_COUNT = 252;
-export const GLASS_MESH_VERTEX_COUNT = 30;
+/** The 7x7 streaming window bounds glass to one extra draw per visible chunk. */
+export const MAX_TRANSPARENT_CHUNK_DRAWS = (DEFAULT_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
 export const MAX_RESPAWN_HEIGHT = 128;
 export const PLAYER_GRAVITY = 22;
 export const PLAYER_TERMINAL_VELOCITY = -18;
@@ -260,7 +262,6 @@ varying vec3 vLight;
 varying float vFog;
 void main() {
   vec4 texel = texture2D(uAtlas, vUv);
-  if (texel.a < 0.5) discard;
   gl_FragColor = vec4(mix(texel.rgb * vLight, uFogColor, vFog), texel.a);
 }`;
 
@@ -352,6 +353,28 @@ export function blockOccludesFaces(block: BlockId): boolean {
     && block !== BLOCK.DOOR_OPEN
     && block !== BLOCK.LADDER
     && block !== BLOCK.GLASS;
+}
+
+/** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
+export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
+  return (block === BLOCK.GLASS && neighbor === BLOCK.GLASS) || blockOccludesFaces(neighbor);
+}
+
+/** Stable far-to-near key order for the bounded per-chunk transparent pass. */
+export function sortTransparentChunkKeysBackToFront(
+  keys: readonly string[],
+  camera: readonly [number, number, number],
+): string[] {
+  const centerOffset = WORLD_CHUNK_SIZE * 0.5;
+  const distanceSquared = (key: string): number => {
+    const coordinate = parseChunkKey(key);
+    const dx = coordinate.x * WORLD_CHUNK_SIZE + centerOffset - camera[0];
+    const dz = coordinate.z * WORLD_CHUNK_SIZE + centerOffset - camera[2];
+    return dx * dx + dz * dz;
+  };
+  return [...keys].sort((left, right) => (
+    distanceSquared(right) - distanceSquared(left) || left.localeCompare(right)
+  )).slice(0, MAX_TRANSPARENT_CHUNK_DRAWS);
 }
 
 export function blockHasCollision(block: BlockId): boolean {
@@ -716,12 +739,6 @@ export function appendBedMesh(output: number[], x: number, y: number, z: number)
   appendAxisAlignedBox(output, [x + 0.08, y + 0.32, z + 0.69], [x + 0.92, y + 0.55, z + 0.94], [0.91, 0.90, 0.84]);
 }
 
-/** A stone cube with a recessed charcoal opening on its north-facing side. */
-export function appendFurnaceMesh(output: number[], x: number, y: number, z: number): void {
-  appendAxisAlignedBox(output, [x, y, z], [x + 1, y + 1, z + 1], BLOCK_COLORS[BLOCK.FURNACE]);
-  appendAxisAlignedBox(output, [x + 0.18, y + 0.18, z - 0.012], [x + 0.82, y + 0.68, z + 0.012], [0.075, 0.068, 0.062]);
-}
-
 /** Two rails and five rungs form a thin wooden ladder facing fixed north (-Z). */
 export function appendLadderMesh(output: number[], x: number, y: number, z: number): void {
   const railColor: Vec3 = [0.47, 0.27, 0.10];
@@ -732,35 +749,6 @@ export function appendLadderMesh(output: number[], x: number, y: number, z: numb
     const rungY = y + 0.12 + rung * 0.19;
     appendAxisAlignedBox(output, [x + 0.18, rungY, z + 0.78], [x + 0.82, rungY + 0.07, z + 0.98], rungColor);
   }
-}
-
-function appendNorthFacingQuad(
-  output: number[],
-  minX: number,
-  minY: number,
-  maxX: number,
-  maxY: number,
-  z: number,
-  color: Vec3,
-): void {
-  pushVertex(output, [minX, minY, z], color);
-  pushVertex(output, [maxX, maxY, z], color);
-  pushVertex(output, [maxX, minY, z], color);
-  pushVertex(output, [minX, minY, z], color);
-  pushVertex(output, [minX, maxY, z], color);
-  pushVertex(output, [maxX, maxY, z], color);
-}
-
-/** Four pale-cyan frame quads surround one efficient opaque center pane. */
-export function appendGlassMesh(output: number[], x: number, y: number, z: number): void {
-  const frameColor: Vec3 = [0.42, 0.68, 0.72];
-  const paneColor = BLOCK_COLORS[BLOCK.GLASS];
-  const paneZ = z + 0.5;
-  appendNorthFacingQuad(output, x + 0.03, y + 0.03, x + 0.13, y + 0.97, paneZ, frameColor);
-  appendNorthFacingQuad(output, x + 0.87, y + 0.03, x + 0.97, y + 0.97, paneZ, frameColor);
-  appendNorthFacingQuad(output, x + 0.13, y + 0.03, x + 0.87, y + 0.13, paneZ, frameColor);
-  appendNorthFacingQuad(output, x + 0.13, y + 0.87, x + 0.87, y + 0.97, paneZ, frameColor);
-  appendNorthFacingQuad(output, x + 0.13, y + 0.13, x + 0.87, y + 0.87, paneZ, paneColor);
 }
 
 function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
@@ -1031,6 +1019,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (mesh) {
       worldVertexCount -= mesh.vertexCount;
       if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
+      if (mesh.transparentBuffer) gl.deleteBuffer(mesh.transparentBuffer);
       if (mesh.colorBuffer) gl.deleteBuffer(mesh.colorBuffer);
       chunkMeshes.delete(owner);
     }
@@ -1105,6 +1094,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function rebuildChunkMesh(chunkKey: string): void {
     const textureVertices: number[] = [];
+    const transparentVertices: number[] = [];
     const colorVertices: number[] = [];
     let minY = Infinity;
     let maxY = -Infinity;
@@ -1137,11 +1127,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const base = blockMaterialColor(block) as Vec3;
       const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
-        if (blockOccludesFaces(getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]))) continue;
+        const neighbor = getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]);
+        if (blockFaceIsOccluded(block, neighbor)) continue;
         const textureName = blockTextureForFace(block, face.face);
         if (textureName) {
           appendTexturedBlockFace(
-            textureVertices,
+            block === BLOCK.GLASS ? transparentVertices : textureVertices,
             x,
             y,
             z,
@@ -1157,8 +1148,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const previous = chunkMeshes.get(chunkKey);
     worldVertexCount -= previous?.vertexCount ?? 0;
-    if (textureVertices.length === 0 && colorVertices.length === 0) {
+    if (textureVertices.length === 0 && transparentVertices.length === 0 && colorVertices.length === 0) {
       if (previous?.textureBuffer) gl.deleteBuffer(previous.textureBuffer);
+      if (previous?.transparentBuffer) gl.deleteBuffer(previous.transparentBuffer);
       if (previous?.colorBuffer) gl.deleteBuffer(previous.colorBuffer);
       chunkMeshes.delete(chunkKey);
       return;
@@ -1173,6 +1165,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteBuffer(textureBuffer);
       textureBuffer = null;
     }
+    let transparentBuffer = previous?.transparentBuffer ?? null;
+    if (transparentVertices.length) {
+      transparentBuffer ??= gl.createBuffer();
+      if (!transparentBuffer) throw new Error("Unable to allocate a transparent chunk mesh buffer.");
+      gl.bindBuffer(gl.ARRAY_BUFFER, transparentBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(transparentVertices), gl.STATIC_DRAW);
+    } else if (transparentBuffer) {
+      gl.deleteBuffer(transparentBuffer);
+      transparentBuffer = null;
+    }
     let colorBuffer = previous?.colorBuffer ?? null;
     if (colorVertices.length) {
       colorBuffer ??= gl.createBuffer();
@@ -1184,11 +1186,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       colorBuffer = null;
     }
     const textureVertexCount = textureVertices.length / TEXTURED_WORLD_VERTEX_FLOATS;
+    const transparentVertexCount = transparentVertices.length / TEXTURED_WORLD_VERTEX_FLOATS;
     const colorVertexCount = colorVertices.length / 6;
-    const vertexCount = textureVertexCount + colorVertexCount;
+    const vertexCount = textureVertexCount + transparentVertexCount + colorVertexCount;
     chunkMeshes.set(chunkKey, {
       textureBuffer,
       textureVertexCount,
+      transparentBuffer,
+      transparentVertexCount,
       colorBuffer,
       colorVertexCount,
       vertexCount,
@@ -1559,9 +1564,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
     gl.uniform1i(terrainAtlasLocation, 0);
+    const visibleMeshes: Array<readonly [string, ChunkMesh]> = [];
     for (const [key, mesh] of chunkMeshes) {
       if (!chunkIntersectsView(key, mesh, mvp)) continue;
       visibleChunkCount += 1;
+      visibleMeshes.push([key, mesh]);
       if (!mesh.textureBuffer || !mesh.textureVertexCount) continue;
       bindTerrainBuffer(mesh.textureBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, mesh.textureVertexCount);
@@ -1589,8 +1596,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform4fv(torchLightsLocation, activeTorchUniforms);
     gl.uniform1f(lightingLocation, 1);
     gl.uniform1f(fogLocation, 1);
-    for (const [key, mesh] of chunkMeshes) {
-      if (!chunkIntersectsView(key, mesh, mvp)) continue;
+    for (const [, mesh] of visibleMeshes) {
       if (!mesh.colorBuffer || !mesh.colorVertexCount) continue;
       bindBuffer(mesh.colorBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, mesh.colorVertexCount);
@@ -1621,6 +1627,29 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.drawArrays(gl.TRIANGLES, 0, nameplateVertexCount);
       drawCalls += 1;
       avatarDrawCalls += 1;
+    }
+
+    const transparentChunkKeys = sortTransparentChunkKeysBackToFront(
+      visibleMeshes
+        .filter(([, mesh]) => !!mesh.transparentBuffer && mesh.transparentVertexCount > 0)
+        .map(([key]) => key),
+      eye,
+    );
+    if (transparentChunkKeys.length) {
+      gl.useProgram(terrainProgram);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      for (const key of transparentChunkKeys) {
+        const mesh = chunkMeshes.get(key);
+        if (!mesh?.transparentBuffer || !mesh.transparentVertexCount) continue;
+        bindTerrainBuffer(mesh.transparentBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, mesh.transparentVertexCount);
+        drawCalls += 1;
+      }
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+      gl.useProgram(program);
     }
 
     if (target) {
@@ -1853,6 +1882,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       clearMining();
       for (const mesh of chunkMeshes.values()) {
         if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
+        if (mesh.transparentBuffer) gl.deleteBuffer(mesh.transparentBuffer);
         if (mesh.colorBuffer) gl.deleteBuffer(mesh.colorBuffer);
       }
       chunkMeshes.clear();

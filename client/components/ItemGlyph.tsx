@@ -1,4 +1,4 @@
-import { ITEMS, maxItemDurability, remainingItemDurability, type ItemId, type ItemStack } from "../../shared/game";
+import { BLOCKS, ITEMS, maxItemDurability, remainingItemDurability, type BlockId, type ItemId, type ItemStack } from "../../shared/game";
 import { ITEM_ICON_SIZE, getItemIconArt } from "./itemIconArt";
 
 export type ItemGlyphProps = {
@@ -6,6 +6,49 @@ export type ItemGlyphProps = {
   compact?: boolean;
   muted?: boolean;
 };
+
+const HELD_SPRITE_BLOCKS = new Set<BlockId>(["torch", "door", "bed", "ladder"]);
+
+/** Thin or non-cubic placeables keep their authored item silhouette when held. */
+export function isHeldVoxelBlock(itemId: ItemId): itemId is BlockId {
+  return ITEMS[itemId].category === "block" && !HELD_SPRITE_BLOCKS.has(itemId as BlockId);
+}
+
+function mixHex(from: string, to: string, amount: number): string {
+  const channel = (value: string, offset: number) => Number.parseInt(value.slice(offset, offset + 2), 16);
+  const mixed = (offset: number) => Math.round(channel(from, offset) + (channel(to, offset) - channel(from, offset)) * amount)
+    .toString(16)
+    .padStart(2, "0");
+  return `#${mixed(1)}${mixed(3)}${mixed(5)}`;
+}
+
+/**
+ * A fixed-cost, genuinely three-face held block. World textures stay in WebGL;
+ * this compact CSS palette keeps the first-person object material-specific.
+ */
+export function HeldBlockVoxel({ blockId }: { blockId: BlockId }) {
+  const block = BLOCKS[blockId];
+  const side = blockId === "grass" ? BLOCKS.dirt.color : block.color;
+  const top = blockId === "grass" ? block.color : mixHex(block.color, "#ffffff", blockId === "glass" ? 0.36 : 0.2);
+  const style = {
+    "--lc-voxel-top": top,
+    "--lc-voxel-front": mixHex(side, "#ffffff", 0.04),
+    "--lc-voxel-right": mixHex(side, "#000000", 0.24),
+    "--lc-voxel-accent": block.accent,
+    "--lc-voxel-dark": mixHex(block.accent, "#000000", 0.42),
+    "--lc-voxel-edge": mixHex(side, "#000000", blockId === "glass" ? 0.32 : 0.54),
+  } as Record<string, string>;
+
+  return (
+    <span aria-hidden="true" className="lc-held-voxel" data-block={blockId} style={style}>
+      <span className="lc-held-voxel__cube">
+        <i className="lc-held-voxel__face lc-held-voxel__face--front" />
+        <i className="lc-held-voxel__face lc-held-voxel__face--right" />
+        <i className="lc-held-voxel__face lc-held-voxel__face--top" />
+      </span>
+    </span>
+  );
+}
 
 export function ItemIcon({ stack, compact = false, muted = false }: ItemGlyphProps) {
   if (!stack) return <span className="lc-item-glyph lc-item-glyph--empty" aria-hidden="true" />;

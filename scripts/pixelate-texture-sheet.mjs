@@ -16,7 +16,16 @@ function parsePositiveInteger(value, label) {
 
 function parseArguments(argv) {
   const positional = [];
-  const options = { columns: 4, rows: 4, tileSize: 16, inset: 0.04, names: [], ts: "" };
+  const options = {
+    columns: 4,
+    rows: 4,
+    sourceColumns: null,
+    sourceRows: null,
+    tileSize: 16,
+    inset: 0.04,
+    names: [],
+    ts: "",
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (!argument.startsWith("--")) {
@@ -28,6 +37,8 @@ function parseArguments(argv) {
     index += 1;
     if (argument === "--columns") options.columns = parsePositiveInteger(value, "columns");
     else if (argument === "--rows") options.rows = parsePositiveInteger(value, "rows");
+    else if (argument === "--source-columns") options.sourceColumns = parsePositiveInteger(value, "source columns");
+    else if (argument === "--source-rows") options.sourceRows = parsePositiveInteger(value, "source rows");
     else if (argument === "--tile-size") options.tileSize = parsePositiveInteger(value, "tile size");
     else if (argument === "--inset") {
       options.inset = Number(value);
@@ -37,12 +48,23 @@ function parseArguments(argv) {
     else fail(`unknown option ${argument}.`);
   }
   if (positional.length !== 2) {
-    fail("usage: node scripts/pixelate-texture-sheet.mjs input.png output.png [--columns 4 --rows 4 --tile-size 16 --inset 0.04 --names a,b,... --ts output.ts]");
+    fail("usage: node scripts/pixelate-texture-sheet.mjs input.png output.png [--columns 4 --rows 4 --source-columns 4 --source-rows 4 --tile-size 16 --inset 0.04 --names a,b,... --ts output.ts]");
   }
   if (options.names.length && options.names.length !== options.columns * options.rows) {
     fail(`--names must contain exactly ${options.columns * options.rows} comma-separated names.`);
   }
-  return { input: resolve(positional[0]), output: resolve(positional[1]), ...options };
+  const sourceColumns = options.sourceColumns ?? options.columns;
+  const sourceRows = options.sourceRows ?? options.rows;
+  if (sourceColumns * sourceRows > options.columns * options.rows) {
+    fail("source grid cannot contain more cells than the output atlas.");
+  }
+  return {
+    input: resolve(positional[0]),
+    output: resolve(positional[1]),
+    ...options,
+    sourceColumns,
+    sourceRows,
+  };
 }
 
 function paeth(left, up, upperLeft) {
@@ -167,14 +189,162 @@ function pixelateSheet(image, columns, rows, tileSize, insetRatio) {
   return { width: atlasWidth, height: atlasHeight, rgba: atlas };
 }
 
+function pixelOffset(image, x, y) {
+  return (y * image.width + x) * 4;
+}
+
+function setPixel(image, x, y, color) {
+  const offset = pixelOffset(image, x, y);
+  image.rgba[offset] = color[0];
+  image.rgba[offset + 1] = color[1];
+  image.rgba[offset + 2] = color[2];
+  image.rgba[offset + 3] = color[3] ?? 255;
+}
+
+function copyTile(source, sourceIndex, output, outputIndex, sourceColumns, outputColumns, tileSize) {
+  const sourceX = (sourceIndex % sourceColumns) * tileSize;
+  const sourceY = Math.floor(sourceIndex / sourceColumns) * tileSize;
+  const outputX = (outputIndex % outputColumns) * tileSize;
+  const outputY = Math.floor(outputIndex / outputColumns) * tileSize;
+  for (let y = 0; y < tileSize; y += 1) {
+    for (let x = 0; x < tileSize; x += 1) {
+      const sourceOffset = pixelOffset(source, sourceX + x, sourceY + y);
+      setPixel(output, outputX + x, outputY + y, source.rgba.subarray(sourceOffset, sourceOffset + 4));
+    }
+  }
+}
+
+function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
+  const originX = (outputIndex % columns) * tileSize;
+  const originY = Math.floor(outputIndex / columns) * tileSize;
+  const paint = (x, y, color) => setPixel(output, originX + x, originY + y, color);
+  const fill = (color) => {
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) paint(x, y, color);
+    }
+  };
+
+  if (name === "oak_log_end") {
+    const bark = [102, 68, 34, 255];
+    const heartwood = [187, 136, 68, 255];
+    const light = [221, 170, 85, 255];
+    const ring = [153, 102, 51, 255];
+    fill(heartwood);
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
+        const radius = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        const edge = x < 2 || x > 13 || y < 2 || y > 13;
+        if (edge) paint(x, y, bark);
+        else if ((radius >= 2 && radius < 3) || (radius >= 5 && radius < 6)) paint(x, y, ring);
+        else if (((x * 7 + y * 11) & 15) === 0) paint(x, y, light);
+      }
+    }
+    for (const [x, y] of [[7, 6], [7, 7], [8, 7], [8, 8], [9, 8], [6, 9], [5, 10]]) paint(x, y, bark);
+    return;
+  }
+
+  if (name === "crafting_table_top") {
+    const dark = [85, 51, 17, 255];
+    const wood = [153, 102, 51, 255];
+    const light = [204, 153, 85, 255];
+    fill(wood);
+    for (let edge = 0; edge < tileSize; edge += 1) {
+      paint(edge, 0, dark); paint(edge, 15, dark); paint(0, edge, dark); paint(15, edge, dark);
+    }
+    for (let edge = 2; edge < 14; edge += 1) {
+      paint(edge, 2, light); paint(edge, 13, light); paint(2, edge, light); paint(13, edge, light);
+    }
+    for (let index = 3; index < 13; index += 1) {
+      paint(index, index, dark);
+      if (index < 12) paint(index + 1, index, light);
+    }
+    for (const [x, y] of [[5, 10], [6, 9], [9, 6], [10, 5], [11, 4]]) paint(x, y, [68, 68, 51, 255]);
+    return;
+  }
+
+  if (name === "crafting_table_front") {
+    const dark = [68, 34, 17, 255];
+    const wood = [153, 102, 51, 255];
+    const light = [221, 170, 85, 255];
+    fill(wood);
+    for (let x = 0; x < tileSize; x += 1) {
+      paint(x, 0, dark); paint(x, 1, light); paint(x, 7, dark); paint(x, 15, dark);
+    }
+    for (let y = 0; y < tileSize; y += 1) {
+      paint(0, y, dark); paint(7, y, dark); paint(15, y, dark);
+    }
+    for (let index = 3; index < 7; index += 1) paint(index, index, [68, 68, 51, 255]);
+    for (let y = 9; y < 14; y += 1) {
+      paint(10, y, [102, 102, 85, 255]);
+      paint(11, y, [102, 102, 85, 255]);
+    }
+    return;
+  }
+
+  if (name === "furnace_front") {
+    const mortar = [68, 68, 68, 255];
+    const stone = [136, 136, 136, 255];
+    const highlight = [170, 170, 153, 255];
+    fill(stone);
+    for (let y = 0; y < tileSize; y += 4) {
+      for (let x = (y / 4) % 2 ? 0 : 3; x < tileSize; x += 8) {
+        paint(x, y, mortar); paint(Math.min(15, x + 1), y, mortar);
+      }
+    }
+    for (let x = 2; x < 14; x += 1) {
+      paint(x, 2, highlight); paint(x, 7, mortar); paint(x, 14, mortar);
+    }
+    for (let y = 8; y < 14; y += 1) {
+      for (let x = 3; x < 13; x += 1) paint(x, y, x === 3 || x === 12 || y === 8 ? [51, 51, 51, 255] : [17, 17, 17, 255]);
+    }
+    return;
+  }
+
+  if (name === "furnace_top") {
+    const dark = [68, 68, 68, 255];
+    const stone = [136, 136, 136, 255];
+    const light = [170, 170, 170, 255];
+    fill(stone);
+    for (let edge = 0; edge < tileSize; edge += 1) {
+      paint(edge, 0, dark); paint(edge, 15, dark); paint(0, edge, dark); paint(15, edge, dark);
+      paint(edge, 2, light); paint(edge, 13, light); paint(2, edge, light); paint(13, edge, light);
+    }
+    for (let x = 4; x < 12; x += 1) {
+      paint(x, 4, dark); paint(x, 11, dark);
+    }
+    for (let y = 4; y < 12; y += 1) {
+      paint(4, y, dark); paint(11, y, dark);
+    }
+    return;
+  }
+
+  fail(`no deterministic material recipe exists for derived tile ${name}.`);
+}
+
+function expandNamedAtlas(source, names, columns, rows, sourceColumns, sourceRows, tileSize) {
+  const output = {
+    width: columns * tileSize,
+    height: rows * tileSize,
+    rgba: new Uint8Array(columns * rows * tileSize * tileSize * 4),
+  };
+  const sourceTileCount = sourceColumns * sourceRows;
+  for (let index = 0; index < sourceTileCount; index += 1) {
+    copyTile(source, index, output, index, sourceColumns, columns, tileSize);
+  }
+  for (let index = sourceTileCount; index < names.length; index += 1) {
+    paintDerivedTile(output, index, columns, tileSize, names[index]);
+  }
+  return output;
+}
+
 function applyNamedMaterialRules(image, names, columns, tileSize) {
   const glassIndex = names.indexOf("glass");
   if (glassIndex < 0) return;
   const tileX = glassIndex % columns;
   const tileY = Math.floor(glassIndex / columns);
-  // Glass is a binary cutout material in the WebGL 1 terrain pass. Preserve
-  // the brightest frame/highlight pixels and clear the pale generated fill so
-  // caves and players remain visible without requiring sorted alpha blending.
+  // Glass keeps a low-alpha cyan center, brighter diagonal glints, and a
+  // readable frame. It is isolated into the renderer's sorted transparent
+  // pass; opaque terrain never receives these alpha values.
   for (let y = 0; y < tileSize; y += 1) {
     for (let x = 0; x < tileSize; x += 1) {
       const offset = (
@@ -182,8 +352,14 @@ function applyNamedMaterialRules(image, names, columns, tileSize) {
         + tileX * tileSize
         + x
       ) * 4;
-      const brightness = (image.rgba[offset] + image.rgba[offset + 1] + image.rgba[offset + 2]) / 3;
-      image.rgba[offset + 3] = brightness >= 210 ? 255 : 0;
+      const frame = x === 0 || y === 0 || x === tileSize - 1 || y === tileSize - 1;
+      const glint = (x === y && x >= 3 && x <= 6)
+        || (x + y === tileSize - 1 && x >= 9 && x <= 12);
+      const color = frame ? [119, 187, 187] : glint ? [170, 238, 238] : [102, 187, 204];
+      image.rgba[offset] = color[0];
+      image.rgba[offset + 1] = color[1];
+      image.rgba[offset + 2] = color[2];
+      image.rgba[offset + 3] = frame ? 187 : glint ? 102 : 24;
     }
   }
 }
@@ -272,7 +448,22 @@ function textureSource(image, names, columns, rows, tileSize, inputName) {
 
 const options = parseArguments(process.argv.slice(2));
 const decoded = decodePng(await readFile(options.input));
-const pixelated = pixelateSheet(decoded, options.columns, options.rows, options.tileSize, options.inset);
+const sampled = pixelateSheet(
+  decoded,
+  options.sourceColumns,
+  options.sourceRows,
+  options.tileSize,
+  options.inset,
+);
+const pixelated = expandNamedAtlas(
+  sampled,
+  options.names,
+  options.columns,
+  options.rows,
+  options.sourceColumns,
+  options.sourceRows,
+  options.tileSize,
+);
 applyNamedMaterialRules(pixelated, options.names, options.columns, options.tileSize);
 const pngBytes = encodePng(pixelated);
 await writeFile(options.output, pngBytes);
@@ -287,7 +478,13 @@ if (options.ts) {
   ));
 }
 console.log(JSON.stringify({
-  input: { path: options.input, width: decoded.width, height: decoded.height },
+  input: {
+    path: options.input,
+    width: decoded.width,
+    height: decoded.height,
+    columns: options.sourceColumns,
+    rows: options.sourceRows,
+  },
   output: { path: options.output, width: pixelated.width, height: pixelated.height },
   tileSize: options.tileSize,
   tiles: options.columns * options.rows,

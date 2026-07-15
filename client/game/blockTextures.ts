@@ -58,15 +58,18 @@ export function blockTextureForFace(block: BlockId, face: BlockFace): TextureAtl
     return "grass_side";
   }
   if (block === BLOCK.WOOD) {
-    return face === "top" || face === "bottom" ? "oak_planks" : "oak_log";
+    return face === "top" || face === "bottom" ? "oak_log_end" : "oak_log";
   }
   if (block === BLOCK.CRAFTING_TABLE) {
-    return face === "bottom" ? "oak_planks" : "crafting_table";
+    if (face === "top") return "crafting_table_top";
+    if (face === "north") return "crafting_table_front";
+    if (face === "bottom") return "oak_planks";
+    return "crafting_table_side";
   }
   if (block === BLOCK.FURNACE) {
-    if (face === "north") return "furnace";
-    if (face === "top" || face === "bottom") return "stone";
-    return "cobblestone";
+    if (face === "north") return "furnace_front";
+    if (face === "top") return "furnace_top";
+    return "furnace_side";
   }
   return UNIFORM_BLOCK_TEXTURES[block] ?? null;
 }

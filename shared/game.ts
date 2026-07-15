@@ -174,103 +174,56 @@ export type EquipResult =
   | { ok: true; inventory: Inventory; equipment: Equipment }
   | { ok: false; inventory: Inventory; equipment: Equipment; reason: "not_armor" | "empty_slot" | "inventory_full" };
 
-export const BLOCKS: Record<BlockId, BlockDefinition> = {
-  grass: { id: "grass", label: "Grass", description: "A living cap over packed earth.", color: "#718447", accent: "#a7b76a", hardness: 0.75, preferredTool: "shovel", drop: "dirt" },
-  dirt: { id: "dirt", label: "Dirt", description: "Soft earth for quick shelter walls.", color: "#7f5638", accent: "#ad7951", hardness: 0.65, preferredTool: "shovel", drop: "dirt" },
-  stone: { id: "stone", label: "Stone", description: "Dense natural stone. A pickaxe breaks it into cobblestone.", color: "#6d7069", accent: "#9a9c91", hardness: 2.5, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "cobblestone" },
-  cobblestone: { id: "cobblestone", label: "Cobblestone", description: "Rough quarried stone for sturdy shelters and furnaces.", color: "#686b65", accent: "#979a91", hardness: 2, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "cobblestone" },
-  sand: { id: "sand", label: "Sand", description: "Loose pale grains that can be fired into glass.", color: "#c7b77b", accent: "#e4d69a", hardness: 0.5, preferredTool: "shovel", drop: "sand" },
-  glass: { id: "glass", label: "Glass", description: "Clear fired panes for windows and bright shelters.", color: "#9fc7c1", accent: "#d6efeb", hardness: 0.3, preferredTool: "hand", drop: "glass" },
-  coal_ore: { id: "coal_ore", label: "Coal Ore", description: "Coal flecks trapped in stone. A wooden pickaxe can recover the fuel.", color: "#565852", accent: "#242621", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "coal" },
-  iron_ore: { id: "iron_ore", label: "Iron Ore", description: "Rust-colored ore that needs a stone pickaxe before it can be smelted.", color: "#77776f", accent: "#b57c5d", hardness: 3.2, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "stone" }, drop: "raw_iron" },
-  gold_ore: { id: "gold_ore", label: "Gold Ore", description: "Deep stone threaded with gold. An iron pickaxe is required to recover it.", color: "#77776f", accent: "#e5bc35", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "iron" }, drop: "raw_gold" },
-  diamond_ore: { id: "diamond_ore", label: "Diamond Ore", description: "Rare deep stone crystals that drop diamonds when mined with iron or better.", color: "#6f7472", accent: "#42d9d2", hardness: 3, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "iron" }, drop: "diamond" },
-  log: { id: "log", label: "Oak Log", description: "Fresh timber. An axe speeds the work.", color: "#76502f", accent: "#bd8a50", hardness: 1.6, preferredTool: "axe", drop: "log" },
-  leaves: { id: "leaves", label: "Oak Leaves", description: "A loose, mossy canopy block.", color: "#4e6f3d", accent: "#7c9953", hardness: 0.3, preferredTool: "hand", drop: "leaves" },
-  planks: { id: "planks", label: "Oak Planks", description: "Squared boards for building and tools.", color: "#a87841", accent: "#d0a45e", hardness: 1.1, preferredTool: "axe", drop: "planks" },
-  crafting_table: { id: "crafting_table", label: "Crafting Table", description: "A sturdy workbench for more involved recipes.", color: "#8a5b32", accent: "#d39a54", hardness: 1.4, preferredTool: "axe", drop: "crafting_table" },
-  furnace: { id: "furnace", label: "Furnace", description: "A stone furnace that turns ore and raw meat into useful supplies.", color: "#5f625d", accent: "#a0a39b", hardness: 3.5, preferredTool: "pickaxe", requiredDropTool: { kind: "pickaxe", minimumTier: "wood" }, drop: "furnace" },
-  torch: { id: "torch", label: "Torch", description: "A warm light for shelters and night trails.", color: "#d99a3d", accent: "#ffd36a", hardness: 0.1, preferredTool: "hand", drop: "torch" },
-  chest: { id: "chest", label: "Chest", description: "A shared wooden container for supplies.", color: "#8b5728", accent: "#dca14d", hardness: 1.8, preferredTool: "axe", drop: "chest" },
-  door: { id: "door", label: "Oak Door", description: "A hinged wooden door for a shelter entrance.", color: "#9a6832", accent: "#d7a35c", hardness: 1.4, preferredTool: "axe", drop: "door" },
-  bed: { id: "bed", label: "Bed", description: "A wool bed that can vote to skip the night.", color: "#b85045", accent: "#eee2c4", hardness: 0.5, preferredTool: "hand", drop: "bed" },
-  ladder: { id: "ladder", label: "Ladder", description: "Wooden rungs for climbing walls and mine shafts.", color: "#a97742", accent: "#d6aa68", hardness: 0.4, preferredTool: "axe", drop: "ladder" },
-};
+type BlockSpec = readonly [
+  id: BlockId,
+  label: string,
+  description: string,
+  color: string,
+  accent: string,
+  hardness: number,
+  preferredTool: ToolKind,
+  drop: ItemId | null,
+  minimumTier?: Exclude<ToolTier, "none">,
+];
 
-export const ITEMS: Record<ItemId, ItemDefinition> = {
-  grass: blockItem("grass", "GRS", "▨"),
-  dirt: blockItem("dirt", "DRT", "▦"),
-  stone: blockItem("stone", "STN", "◆"),
-  cobblestone: blockItem("cobblestone", "COB", "▦"),
-  sand: blockItem("sand", "SND", "░"),
-  glass: blockItem("glass", "GLS", "◇"),
-  coal_ore: blockItem("coal_ore", "C·OR", "✦"),
-  iron_ore: blockItem("iron_ore", "I·OR", "◈"),
-  gold_ore: blockItem("gold_ore", "G·OR", "✦"),
-  diamond_ore: blockItem("diamond_ore", "D·OR", "◆"),
-  log: blockItem("log", "LOG", "▥"),
-  leaves: blockItem("leaves", "LEF", "✤"),
-  planks: blockItem("planks", "PLK", "▤"),
-  crafting_table: blockItem("crafting_table", "CRF", "▧"),
-  furnace: blockItem("furnace", "FRN", "▩"),
-  torch: blockItem("torch", "TCH", "♨"),
-  chest: blockItem("chest", "CHT", "▣"),
-  door: blockItem("door", "DOR", "▥"),
-  bed: blockItem("bed", "BED", "▰"),
-  ladder: blockItem("ladder", "LDR", "╫"),
-  stick: { id: "stick", label: "Stick", shortLabel: "STK", description: "A straight handle for simple tools.", category: "material", maxStack: 64, glyph: "╱", color: "#c09557" },
-  leather: { id: "leather", label: "Leather", shortLabel: "LTH", description: "Tough hide used for lightweight armor.", category: "material", maxStack: 64, glyph: "◩", color: "#8d552f" },
-  wool: { id: "wool", label: "Wool", shortLabel: "WOL", description: "Soft sheep wool for beds and future textiles.", category: "material", maxStack: 64, glyph: "◌", color: "#ddd8c8" },
-  coal: { id: "coal", label: "Coal", shortLabel: "COL", description: "Dense furnace fuel recovered from coal ore.", category: "material", maxStack: 64, glyph: "✦", color: "#30332e" },
-  raw_iron: { id: "raw_iron", label: "Raw Iron", shortLabel: "R·FE", description: "Freshly mined iron that must be smelted.", category: "material", maxStack: 64, glyph: "◈", color: "#b78062" },
-  iron_ingot: { id: "iron_ingot", label: "Iron Ingot", shortLabel: "I·FE", description: "Refined iron for durable tools and armor.", category: "material", maxStack: 64, glyph: "▰", color: "#d6d5cc" },
-  raw_gold: { id: "raw_gold", label: "Raw Gold", shortLabel: "R·AU", description: "A soft gold-bearing mineral that must be smelted.", category: "material", maxStack: 64, glyph: "✦", color: "#dba92d" },
-  gold_ingot: { id: "gold_ingot", label: "Gold Ingot", shortLabel: "I·AU", description: "Refined gold for fast but fragile equipment.", category: "material", maxStack: 64, glyph: "▰", color: "#f5d142" },
-  diamond: { id: "diamond", label: "Diamond", shortLabel: "DIA", description: "A rare crystal for the strongest available equipment.", category: "material", maxStack: 64, glyph: "◆", color: "#48d8cf" },
-  pork: foodItem("pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"),
-  beef: foodItem("beef", "Raw Beef", "BEF", 4, "Raw beef from a cow.", "◆", "#a9544d"),
-  mutton: foodItem("mutton", "Raw Mutton", "MTN", 3, "Raw mutton from a sheep.", "◇", "#b66b63"),
-  cooked_pork: foodItem("cooked_pork", "Cooked Pork", "C·PK", 8, "Furnace-roasted pork that restores substantial hunger.", "◒", "#b96649"),
-  cooked_beef: foodItem("cooked_beef", "Steak", "STK", 8, "Furnace-cooked beef that restores substantial hunger.", "◆", "#743b32"),
-  cooked_mutton: foodItem("cooked_mutton", "Cooked Mutton", "C·MT", 6, "Furnace-roasted mutton.", "◇", "#825047"),
-  rotten_flesh: foodItem("rotten_flesh", "Rotten Flesh", "ROT", 1, "Unpleasant, but technically edible.", "✦", "#756d3e"),
-  wooden_pickaxe: toolItem("wooden_pickaxe", "Wood Pickaxe", "W·PX", "pickaxe", "wood", "A light pick for fieldstone.", "⌁", "#b7874d"),
-  wooden_axe: toolItem("wooden_axe", "Wood Axe", "W·AX", "axe", "wood", "A rough axe for timber.", "◒", "#b7874d"),
-  wooden_shovel: toolItem("wooden_shovel", "Wood Shovel", "W·SH", "shovel", "wood", "A broad wooden spade for earth.", "♠", "#b7874d"),
-  wooden_sword: toolItem("wooden_sword", "Wood Sword", "W·SW", "sword", "wood", "A simple wooden blade for defense.", "†", "#b7874d"),
-  stone_pickaxe: toolItem("stone_pickaxe", "Stone Pickaxe", "S·PX", "pickaxe", "stone", "A sturdy pick for quick quarrying.", "⌁", "#a3a69e"),
-  stone_axe: toolItem("stone_axe", "Stone Axe", "S·AX", "axe", "stone", "A weighty axe for felling trees.", "◒", "#a3a69e"),
-  stone_shovel: toolItem("stone_shovel", "Stone Shovel", "S·SH", "shovel", "stone", "A stone-edged spade that clears earth quickly.", "♠", "#a3a69e"),
-  stone_sword: toolItem("stone_sword", "Stone Sword", "S·SW", "sword", "stone", "A dependable stone blade.", "†", "#a3a69e"),
-  iron_pickaxe: toolItem("iron_pickaxe", "Iron Pickaxe", "I·PX", "pickaxe", "iron", "A durable pick for deep mining.", "⌁", "#d6d5cc"),
-  iron_axe: toolItem("iron_axe", "Iron Axe", "I·AX", "axe", "iron", "A keen iron axe for timber.", "◒", "#d6d5cc"),
-  iron_shovel: toolItem("iron_shovel", "Iron Shovel", "I·SH", "shovel", "iron", "An iron spade that moves soil rapidly.", "♠", "#d6d5cc"),
-  iron_sword: toolItem("iron_sword", "Iron Sword", "I·SW", "sword", "iron", "A strong iron blade for hostile creatures.", "†", "#d6d5cc"),
-  golden_pickaxe: toolItem("golden_pickaxe", "Golden Pickaxe", "G·PX", "pickaxe", "gold", "Exceptionally fast, but too soft for advanced ores.", "⌁", "#f5d142"),
-  golden_axe: toolItem("golden_axe", "Golden Axe", "G·AX", "axe", "gold", "A very fast but fragile timber axe.", "◒", "#f5d142"),
-  golden_shovel: toolItem("golden_shovel", "Golden Shovel", "G·SH", "shovel", "gold", "A very fast but fragile spade.", "♠", "#f5d142"),
-  golden_sword: toolItem("golden_sword", "Golden Sword", "G·SW", "sword", "gold", "A bright blade with little staying power.", "†", "#f5d142"),
-  diamond_pickaxe: toolItem("diamond_pickaxe", "Diamond Pickaxe", "D·PX", "pickaxe", "diamond", "A deep-mining pick with exceptional durability.", "⌁", "#48d8cf"),
-  diamond_axe: toolItem("diamond_axe", "Diamond Axe", "D·AX", "axe", "diamond", "A durable, devastating timber axe.", "◒", "#48d8cf"),
-  diamond_shovel: toolItem("diamond_shovel", "Diamond Shovel", "D·SH", "shovel", "diamond", "A durable shovel for rapid excavation.", "♠", "#48d8cf"),
-  diamond_sword: toolItem("diamond_sword", "Diamond Sword", "D·SW", "sword", "diamond", "A powerful diamond blade.", "†", "#48d8cf"),
-  leather_helmet: armorItem("leather_helmet", "Leather Cap", "L·HD", "head", 1, "A light cap of hardened hide.", "⌒"),
-  leather_chestplate: armorItem("leather_chestplate", "Leather Tunic", "L·CH", "chest", 3, "A flexible hide tunic.", "▣"),
-  leather_leggings: armorItem("leather_leggings", "Leather Pants", "L·LG", "legs", 2, "Tough hide protection for the legs.", "⋒"),
-  leather_boots: armorItem("leather_boots", "Leather Boots", "L·FT", "feet", 1, "Soft boots for rough terrain.", "∪"),
-  iron_helmet: armorItem("iron_helmet", "Iron Helmet", "I·HD", "head", 2, "A fitted iron helmet.", "⌒", "#d6d5cc"),
-  iron_chestplate: armorItem("iron_chestplate", "Iron Chestplate", "I·CH", "chest", 6, "A solid iron chestplate.", "▣", "#d6d5cc"),
-  iron_leggings: armorItem("iron_leggings", "Iron Leggings", "I·LG", "legs", 5, "Articulated iron leg protection.", "⋒", "#d6d5cc"),
-  iron_boots: armorItem("iron_boots", "Iron Boots", "I·FT", "feet", 2, "Heavy iron boots.", "∪", "#d6d5cc"),
-  golden_helmet: armorItem("golden_helmet", "Golden Helmet", "G·HD", "head", 2, "A soft but brilliant gold helmet.", "⌒", "#f5d142", "gold"),
-  golden_chestplate: armorItem("golden_chestplate", "Golden Chestplate", "G·CH", "chest", 5, "A gleaming gold chestplate.", "▣", "#f5d142", "gold"),
-  golden_leggings: armorItem("golden_leggings", "Golden Leggings", "G·LG", "legs", 3, "Gold leg protection.", "⋒", "#f5d142", "gold"),
-  golden_boots: armorItem("golden_boots", "Golden Boots", "G·FT", "feet", 1, "Light gold boots.", "∪", "#f5d142", "gold"),
-  diamond_helmet: armorItem("diamond_helmet", "Diamond Helmet", "D·HD", "head", 3, "A durable diamond helmet.", "⌒", "#48d8cf", "diamond"),
-  diamond_chestplate: armorItem("diamond_chestplate", "Diamond Chestplate", "D·CH", "chest", 8, "The strongest available chest protection.", "▣", "#48d8cf", "diamond"),
-  diamond_leggings: armorItem("diamond_leggings", "Diamond Leggings", "D·LG", "legs", 6, "Durable diamond leg protection.", "⋒", "#48d8cf", "diamond"),
-  diamond_boots: armorItem("diamond_boots", "Diamond Boots", "D·FT", "feet", 3, "Durable diamond boots.", "∪", "#48d8cf", "diamond"),
-};
+function defineBlocks(specs: readonly BlockSpec[]): Record<BlockId, BlockDefinition> {
+  return Object.fromEntries(specs.map(([
+    id, label, description, color, accent, hardness, preferredTool, drop, minimumTier,
+  ]) => [id, {
+    id,
+    label,
+    description,
+    color,
+    accent,
+    hardness,
+    preferredTool,
+    ...(minimumTier ? { requiredDropTool: { kind: "pickaxe" as const, minimumTier } } : {}),
+    drop,
+  }])) as Record<BlockId, BlockDefinition>;
+}
+
+export const BLOCKS = defineBlocks([
+  ["grass", "Grass", "A living cap over packed earth.", "#718447", "#a7b76a", 0.75, "shovel", "dirt"],
+  ["dirt", "Dirt", "Soft earth for quick shelter walls.", "#7f5638", "#ad7951", 0.65, "shovel", "dirt"],
+  ["stone", "Stone", "Dense natural stone. A pickaxe breaks it into cobblestone.", "#6d7069", "#9a9c91", 2.5, "pickaxe", "cobblestone", "wood"],
+  ["cobblestone", "Cobblestone", "Rough quarried stone for sturdy shelters and furnaces.", "#686b65", "#979a91", 2, "pickaxe", "cobblestone", "wood"],
+  ["sand", "Sand", "Loose pale grains that can be fired into glass.", "#c7b77b", "#e4d69a", 0.5, "shovel", "sand"],
+  ["glass", "Glass", "Clear fired panes for windows and bright shelters.", "#9fc7c1", "#d6efeb", 0.3, "hand", "glass"],
+  ["coal_ore", "Coal Ore", "Coal flecks trapped in stone. A wooden pickaxe can recover the fuel.", "#565852", "#242621", 3, "pickaxe", "coal", "wood"],
+  ["iron_ore", "Iron Ore", "Rust-colored ore that needs a stone pickaxe before it can be smelted.", "#77776f", "#b57c5d", 3.2, "pickaxe", "raw_iron", "stone"],
+  ["gold_ore", "Gold Ore", "Deep stone threaded with gold. An iron pickaxe is required to recover it.", "#77776f", "#e5bc35", 3, "pickaxe", "raw_gold", "iron"],
+  ["diamond_ore", "Diamond Ore", "Rare deep stone crystals that drop diamonds when mined with iron or better.", "#6f7472", "#42d9d2", 3, "pickaxe", "diamond", "iron"],
+  ["log", "Oak Log", "Fresh timber. An axe speeds the work.", "#76502f", "#bd8a50", 1.6, "axe", "log"],
+  ["leaves", "Oak Leaves", "A loose, mossy canopy block.", "#4e6f3d", "#7c9953", 0.3, "hand", "leaves"],
+  ["planks", "Oak Planks", "Squared boards for building and tools.", "#a87841", "#d0a45e", 1.1, "axe", "planks"],
+  ["crafting_table", "Crafting Table", "A sturdy workbench for more involved recipes.", "#8a5b32", "#d39a54", 1.4, "axe", "crafting_table"],
+  ["furnace", "Furnace", "A stone furnace that turns ore and raw meat into useful supplies.", "#5f625d", "#a0a39b", 3.5, "pickaxe", "furnace", "wood"],
+  ["torch", "Torch", "A warm light for shelters and night trails.", "#d99a3d", "#ffd36a", 0.1, "hand", "torch"],
+  ["chest", "Chest", "A shared wooden container for supplies.", "#8b5728", "#dca14d", 1.8, "axe", "chest"],
+  ["door", "Oak Door", "A hinged wooden door for a shelter entrance.", "#9a6832", "#d7a35c", 1.4, "axe", "door"],
+  ["bed", "Bed", "A wool bed that can vote to skip the night.", "#b85045", "#eee2c4", 0.5, "hand", "bed"],
+  ["ladder", "Ladder", "Wooden rungs for climbing walls and mine shafts.", "#a97742", "#d6aa68", 0.4, "axe", "ladder"],
+]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
   const block = BLOCKS[id];
@@ -293,6 +246,86 @@ function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSl
 function foodItem(id: "pork" | "beef" | "mutton" | "cooked_pork" | "cooked_beef" | "cooked_mutton" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
   return { id, label, shortLabel, description, category: "food", maxStack: 64, glyph, color, food: { hunger } };
 }
+
+type BasicItemSpec = readonly [id: ItemId, label: string, shortLabel: string, description: string, glyph: string, color: string];
+type FoodItemSpec = readonly [id: Parameters<typeof foodItem>[0], label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string];
+
+const BLOCK_ITEM_SPECS = [
+  ["grass", "GRS", "▨"], ["dirt", "DRT", "▦"], ["stone", "STN", "◆"], ["cobblestone", "COB", "▦"],
+  ["sand", "SND", "░"], ["glass", "GLS", "◇"], ["coal_ore", "C·OR", "✦"], ["iron_ore", "I·OR", "◈"],
+  ["gold_ore", "G·OR", "✦"], ["diamond_ore", "D·OR", "◆"], ["log", "LOG", "▥"], ["leaves", "LEF", "✤"],
+  ["planks", "PLK", "▤"], ["crafting_table", "CRF", "▧"], ["furnace", "FRN", "▩"], ["torch", "TCH", "♨"],
+  ["chest", "CHT", "▣"], ["door", "DOR", "▥"], ["bed", "BED", "▰"], ["ladder", "LDR", "╫"],
+] as const;
+
+const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
+  ["stick", "Stick", "STK", "A straight handle for simple tools.", "╱", "#c09557"],
+  ["leather", "Leather", "LTH", "Tough hide used for lightweight armor.", "◩", "#8d552f"],
+  ["wool", "Wool", "WOL", "Soft sheep wool for beds and future textiles.", "◌", "#ddd8c8"],
+  ["coal", "Coal", "COL", "Dense furnace fuel recovered from coal ore.", "✦", "#30332e"],
+  ["raw_iron", "Raw Iron", "R·FE", "Freshly mined iron that must be smelted.", "◈", "#b78062"],
+  ["iron_ingot", "Iron Ingot", "I·FE", "Refined iron for durable tools and armor.", "▰", "#d6d5cc"],
+  ["raw_gold", "Raw Gold", "R·AU", "A soft gold-bearing mineral that must be smelted.", "✦", "#dba92d"],
+  ["gold_ingot", "Gold Ingot", "I·AU", "Refined gold for fast but fragile equipment.", "▰", "#f5d142"],
+  ["diamond", "Diamond", "DIA", "A rare crystal for the strongest available equipment.", "◆", "#48d8cf"],
+];
+
+const FOOD_ITEM_SPECS: readonly FoodItemSpec[] = [
+  ["pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"],
+  ["beef", "Raw Beef", "BEF", 4, "Raw beef from a cow.", "◆", "#a9544d"],
+  ["mutton", "Raw Mutton", "MTN", 3, "Raw mutton from a sheep.", "◇", "#b66b63"],
+  ["cooked_pork", "Cooked Pork", "C·PK", 8, "Furnace-roasted pork that restores substantial hunger.", "◒", "#b96649"],
+  ["cooked_beef", "Steak", "STK", 8, "Furnace-cooked beef that restores substantial hunger.", "◆", "#743b32"],
+  ["cooked_mutton", "Cooked Mutton", "C·MT", 6, "Furnace-roasted mutton.", "◇", "#825047"],
+  ["rotten_flesh", "Rotten Flesh", "ROT", 1, "Unpleasant, but technically edible.", "✦", "#756d3e"],
+];
+
+const TOOL_KIND_SPECS = [
+  ["pickaxe", "Pickaxe", "PX", "⌁"], ["axe", "Axe", "AX", "◒"],
+  ["shovel", "Shovel", "SH", "♠"], ["sword", "Sword", "SW", "†"],
+] as const;
+
+const TOOL_TIER_SPECS = [
+  ["wooden", "Wood", "W", "wood", "#b7874d", ["A light pick for fieldstone.", "A rough axe for timber.", "A broad wooden spade for earth.", "A simple wooden blade for defense."]],
+  ["stone", "Stone", "S", "stone", "#a3a69e", ["A sturdy pick for quick quarrying.", "A weighty axe for felling trees.", "A stone-edged spade that clears earth quickly.", "A dependable stone blade."]],
+  ["iron", "Iron", "I", "iron", "#d6d5cc", ["A durable pick for deep mining.", "A keen iron axe for timber.", "An iron spade that moves soil rapidly.", "A strong iron blade for hostile creatures."]],
+  ["golden", "Golden", "G", "gold", "#f5d142", ["Exceptionally fast, but too soft for advanced ores.", "A very fast but fragile timber axe.", "A very fast but fragile spade.", "A bright blade with little staying power."]],
+  ["diamond", "Diamond", "D", "diamond", "#48d8cf", ["A deep-mining pick with exceptional durability.", "A durable, devastating timber axe.", "A durable shovel for rapid excavation.", "A powerful diamond blade."]],
+] as const;
+
+const ARMOR_PIECE_SPECS = [
+  ["helmet", "HD", "head", "⌒"], ["chestplate", "CH", "chest", "▣"],
+  ["leggings", "LG", "legs", "⋒"], ["boots", "FT", "feet", "∪"],
+] as const;
+
+const ARMOR_MATERIAL_SPECS = [
+  ["leather", "Leather", "L", "#9b6339", "leather", ["Cap", "Tunic", "Pants", "Boots"], [1, 3, 2, 1], ["A light cap of hardened hide.", "A flexible hide tunic.", "Tough hide protection for the legs.", "Soft boots for rough terrain."]],
+  ["iron", "Iron", "I", "#d6d5cc", "iron", ["Helmet", "Chestplate", "Leggings", "Boots"], [2, 6, 5, 2], ["A fitted iron helmet.", "A solid iron chestplate.", "Articulated iron leg protection.", "Heavy iron boots."]],
+  ["golden", "Golden", "G", "#f5d142", "gold", ["Helmet", "Chestplate", "Leggings", "Boots"], [2, 5, 3, 1], ["A soft but brilliant gold helmet.", "A gleaming gold chestplate.", "Gold leg protection.", "Light gold boots."]],
+  ["diamond", "Diamond", "D", "#48d8cf", "diamond", ["Helmet", "Chestplate", "Leggings", "Boots"], [3, 8, 6, 3], ["A durable diamond helmet.", "The strongest available chest protection.", "Durable diamond leg protection.", "Durable diamond boots."]],
+] as const;
+
+const ITEM_ENTRIES: Array<readonly [ItemId, ItemDefinition]> = [
+  ...BLOCK_ITEM_SPECS.map(([id, shortLabel, glyph]) => [id, blockItem(id, shortLabel, glyph)] as const),
+  ...BASIC_ITEM_SPECS.map(([id, label, shortLabel, description, glyph, color]) => [id, {
+    id, label, shortLabel, description, category: "material", maxStack: 64, glyph, color,
+  }] as const),
+  ...FOOD_ITEM_SPECS.map((spec) => [spec[0], foodItem(...spec)] as const),
+  ...TOOL_TIER_SPECS.flatMap(([idPrefix, labelPrefix, shortPrefix, tier, color, descriptions]) => (
+    TOOL_KIND_SPECS.map(([kind, kindLabel, kindShort, glyph], index) => {
+      const id = `${idPrefix}_${kind}` as ToolId;
+      return [id, toolItem(id, `${labelPrefix} ${kindLabel}`, `${shortPrefix}·${kindShort}`, kind, tier, descriptions[index], glyph, color)] as const;
+    })
+  )),
+  ...ARMOR_MATERIAL_SPECS.flatMap(([idPrefix, labelPrefix, shortPrefix, color, material, pieceLabels, protections, descriptions]) => (
+    ARMOR_PIECE_SPECS.map(([piece, pieceShort, slot, glyph], index) => {
+      const id = `${idPrefix}_${piece}` as ArmorId;
+      return [id, armorItem(id, `${labelPrefix} ${pieceLabels[index]}`, `${shortPrefix}·${pieceShort}`, slot, protections[index], descriptions[index], glyph, color, material)] as const;
+    })
+  )),
+];
+
+export const ITEMS = Object.fromEntries(ITEM_ENTRIES) as Record<ItemId, ItemDefinition>;
 
 type RecipeIngredientSpec = readonly [itemId: ItemId, count: number];
 

@@ -44,20 +44,26 @@ for (const face of ["east", "west", "south", "north"] as const) {
   assert.equal(blockTextureForFace(BLOCK.WOOD, face), "oak_log");
   mappedTextureNames.add("oak_log");
 }
-assert.equal(blockTextureForFace(BLOCK.WOOD, "top"), "oak_planks");
-assert.equal(blockTextureForFace(BLOCK.WOOD, "bottom"), "oak_planks");
-for (const face of ["east", "west", "top", "south", "north"] as const) {
-  assert.equal(blockTextureForFace(BLOCK.CRAFTING_TABLE, face), "crafting_table");
-  mappedTextureNames.add("crafting_table");
-}
-assert.equal(blockTextureForFace(BLOCK.CRAFTING_TABLE, "bottom"), "oak_planks");
-assert.equal(blockTextureForFace(BLOCK.FURNACE, "north"), "furnace");
-assert.equal(blockTextureForFace(BLOCK.FURNACE, "top"), "stone");
-assert.equal(blockTextureForFace(BLOCK.FURNACE, "bottom"), "stone");
+assert.equal(blockTextureForFace(BLOCK.WOOD, "top"), "oak_log_end");
+assert.equal(blockTextureForFace(BLOCK.WOOD, "bottom"), "oak_log_end");
+mappedTextureNames.add("oak_log_end");
 for (const face of ["east", "west", "south"] as const) {
-  assert.equal(blockTextureForFace(BLOCK.FURNACE, face), "cobblestone");
+  assert.equal(blockTextureForFace(BLOCK.CRAFTING_TABLE, face), "crafting_table_side");
 }
-mappedTextureNames.add("furnace");
+assert.equal(blockTextureForFace(BLOCK.CRAFTING_TABLE, "top"), "crafting_table_top");
+assert.equal(blockTextureForFace(BLOCK.CRAFTING_TABLE, "north"), "crafting_table_front");
+assert.equal(blockTextureForFace(BLOCK.CRAFTING_TABLE, "bottom"), "oak_planks");
+mappedTextureNames.add("crafting_table_side");
+mappedTextureNames.add("crafting_table_top");
+mappedTextureNames.add("crafting_table_front");
+assert.equal(blockTextureForFace(BLOCK.FURNACE, "north"), "furnace_front");
+assert.equal(blockTextureForFace(BLOCK.FURNACE, "top"), "furnace_top");
+for (const face of ["east", "west", "south", "bottom"] as const) {
+  assert.equal(blockTextureForFace(BLOCK.FURNACE, face), "furnace_side");
+}
+mappedTextureNames.add("furnace_front");
+mappedTextureNames.add("furnace_side");
+mappedTextureNames.add("furnace_top");
 assert.deepEqual(
   [...mappedTextureNames].sort(),
   [...TEXTURE_ATLAS_NAMES].sort(),
@@ -78,7 +84,8 @@ for (const specialBlock of [
   }
 }
 
-const expectedCellSpan = (TEXTURE_TILE_SIZE - 1) / (TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE);
+const expectedCellSpanU = (TEXTURE_TILE_SIZE - 1) / (TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE);
+const expectedCellSpanV = (TEXTURE_TILE_SIZE - 1) / (TEXTURE_ATLAS_ROWS * TEXTURE_TILE_SIZE);
 for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   const name = TEXTURE_ATLAS_NAMES[index];
   const uv = textureAtlasUv(name);
@@ -86,8 +93,8 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   assert.equal(Object.isFrozen(uv), true);
   assert.ok(uv.left >= 0 && uv.left < uv.right && uv.right <= 1);
   assert.ok(uv.bottom >= 0 && uv.bottom < uv.top && uv.top <= 1);
-  assert.ok(Math.abs((uv.right - uv.left) - expectedCellSpan) < 1e-12);
-  assert.ok(Math.abs((uv.top - uv.bottom) - expectedCellSpan) < 1e-12);
+  assert.ok(Math.abs((uv.right - uv.left) - expectedCellSpanU) < 1e-12);
+  assert.ok(Math.abs((uv.top - uv.bottom) - expectedCellSpanV) < 1e-12);
   const column = index % TEXTURE_ATLAS_COLUMNS;
   const row = Math.floor(index / TEXTURE_ATLAS_COLUMNS);
   assert.equal(Math.floor(((uv.left + uv.right) / 2) * TEXTURE_ATLAS_COLUMNS), column);
@@ -99,9 +106,9 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 }
 
 const firstRow = textureAtlasUv("grass_top");
-assert.ok(firstRow.top > 0.99 && firstRow.bottom > 0.75 && firstRow.bottom < 0.76);
-const lastRow = textureAtlasUv("furnace");
-assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.01 && lastRow.top < 0.25);
+assert.ok(firstRow.top > 0.98 && firstRow.bottom > 0.66 && firstRow.bottom < 0.68);
+const lastRow = textureAtlasUv("furnace_top");
+assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.02 && lastRow.top < 0.34);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the
 // old six-float stride instead of increasing every streamed chunk allocation.
@@ -111,7 +118,7 @@ const representativeWorldBytes = representativeWorldVertices
   * TEXTURED_WORLD_VERTEX_FLOATS
   * Float32Array.BYTES_PER_ELEMENT;
 const atlasBytes = TEXTURE_ATLAS_RGBA.byteLength;
-assert.equal(atlasBytes, 16 * 16 * 16 * 4, "the full RGBA texture is only 16 KiB");
+assert.equal(atlasBytes, 21 * 16 * 16 * 4, "the directional RGBA texture is only 21 KiB");
 assert.ok(representativeWorldBytes <= 4_080_000, "170k streamed vertices stay within the 4.08MB world VBO budget");
 assert.ok(
   representativeWorldBytes + atlasBytes < 4 * 1024 * 1024,
