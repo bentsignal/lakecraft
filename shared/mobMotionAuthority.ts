@@ -11,6 +11,11 @@ export const MOB_MOTION_MAX_TARGETS = 64;
 export const MOB_MOTION_MAX_REPLAY_TICKS = MOB_MOTION_TICKS_PER_SECOND * 60 * 10;
 export const MOB_MOTION_MAX_CHECKPOINT_TICK = MOB_MOTION_TICKS_PER_SECOND * 60 * 60 * 24;
 export const MOB_MOTION_COORDINATE_LIMIT_BLOCKS = 1_000_000;
+/** Creepers prime for 1.5 seconds at the fixed 10 Hz authority cadence. */
+export const CREEPER_FUSE_TICKS = 15;
+export const CREEPER_FUSE_START_RANGE_BLOCKS = 3;
+export const CREEPER_FUSE_CANCEL_RANGE_BLOCKS = 7;
+export const CREEPER_FUSE_VERTICAL_RANGE_BLOCKS = 3;
 
 const MAX_TARGET_ID_LENGTH = 128;
 const CHASE_RANGE_UNITS = 16 * MOB_MOTION_UNITS_PER_BLOCK;
@@ -18,7 +23,7 @@ const HOME_RANGE_UNITS = 8 * MOB_MOTION_UNITS_PER_BLOCK;
 const MAX_HOME_RANGE_UNITS = 24 * MOB_MOTION_UNITS_PER_BLOCK;
 const DIRECTION_SCALE = 1_024;
 
-export type MobMotionBehavior = "dormant" | "idle" | "wander" | "chase";
+export type MobMotionBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
 
 export interface MobMotionSpawnSnapshot {
   mobId: string;
@@ -57,6 +62,9 @@ export interface MobMotionMobState {
   directionZ: number;
   randomState: number;
   targetUserId: string;
+  /** Zero when unprimed. A primed creeper retains these exact replay ticks. */
+  fuseStartedTick: number;
+  fuseUntilTick: number;
 }
 
 export interface MobMotionState {
@@ -84,6 +92,9 @@ export interface MobMotionPose {
   yaw: number;
   behavior: MobMotionBehavior;
   targetUserId: string;
+  fuseStartedTick: number;
+  fuseUntilTick: number;
+  fuseProgress: number;
 }
 
 type FixedTarget = {
@@ -107,6 +118,7 @@ const MOTION_DEFINITIONS: Readonly<Record<MobAuthorityKind, MotionDefinition>> =
   // budget even when two clients' 5 Hz query phases land on adjacent pairs.
   zombie: Object.freeze({ passive: false, moveUnitsPerTick: 92, chaseUnitsPerTick: 120 }),
   skeleton: Object.freeze({ passive: false, moveUnitsPerTick: 84, chaseUnitsPerTick: 118 }),
+  creeper: Object.freeze({ passive: false, moveUnitsPerTick: 86, chaseUnitsPerTick: 112 }),
 });
 
 /** Integer unit vectors avoid trigonometric drift in seeded wander decisions. */
@@ -165,7 +177,7 @@ function yawUnits(value: number | undefined): number | null {
 }
 
 function behavior(value: unknown): value is MobMotionBehavior {
-  return value === "dormant" || value === "idle" || value === "wander" || value === "chase";
+  return value === "dormant" || value === "idle" || value === "wander" || value === "chase" || value === "fuse";
 }
 
 function boundedInteger(value: unknown, minimum: number, maximum: number): value is number {
@@ -201,7 +213,33 @@ function canonicalSpawn(
     directionZ: 0,
     randomState,
     targetUserId: "",
+    fuseStartedTick: 0,
+    fuseUntilTick: 0,
   };
+}
+
+function cancelCreeperFuse(mob: MobMotionMobState): void {
+  mob.fuseStartedTick = 0;
+  mob.fuseUntilTick = 0;
+  if (mob.behavior === "fuse") mob.behavior = "chase";
+}
+
+function startCreeperFuse(mob: MobMotionMobState, tick: number): void {
+  mob.behavior = "fuse";
+  mob.behaviorUntilTick = tick + CREEPER_FUSE_TICKS;
+  mob.directionX = 0;
+  mob.directionZ = 0;
+  mob.fuseStartedTick = tick;
+  mob.fuseUntilTick = tick + CREEPER_FUSE_TICKS;
+}
+
+/** A completed fuse is latched until the future exact-once explosion claim consumes it. */
+export function isCreeperFuseDue(
+  mob: Readonly<Pick<MobMotionMobState, "kind" | "fuseStartedTick" | "fuseUntilTick">>,
+  tick: number,
+): boolean {
+  return mob.kind === "creeper" && mob.fuseStartedTick > 0
+    && mob.fuseUntilTick > mob.fuseStartedTick && tick >= mob.fuseUntilTick;
 }
 
 /**
@@ -342,8 +380,15 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
   for (let index = 0; index < state.mobs.length; index += 1) {
     const mob = state.mobs[index];
     const definition = MOTION_DEFINITIONS[mob.kind];
+    if (isCreeperFuseDue(mob, state.tick)) {
+      mob.behavior = "fuse";
+      mob.directionX = 0;
+      mob.directionZ = 0;
+      continue;
+    }
     mob.targetUserId = "";
     if (!definition.passive && snapshot.isNight !== true) {
+      if (mob.kind === "creeper") cancelCreeperFuse(mob);
       mob.behavior = "dormant";
       mob.directionX = 0;
       mob.directionZ = 0;
@@ -358,7 +403,28 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
       const dz = target.z - mob.z;
       const distanceSquared = dx * dx + dz * dz;
       const distance = Math.sqrt(distanceSquared);
-      if (mob.kind === "skeleton" && distance < 5 * MOB_MOTION_UNITS_PER_BLOCK) {
+      if (mob.kind === "creeper") {
+        const verticalDistance = Math.abs(target.y - mob.y);
+        const fuseActive = mob.fuseStartedTick > 0 && mob.fuseUntilTick > mob.fuseStartedTick;
+        if (fuseActive && (distance > CREEPER_FUSE_CANCEL_RANGE_BLOCKS * MOB_MOTION_UNITS_PER_BLOCK
+          || verticalDistance > CREEPER_FUSE_VERTICAL_RANGE_BLOCKS * MOB_MOTION_UNITS_PER_BLOCK)) {
+          cancelCreeperFuse(mob);
+        }
+        if (mob.fuseStartedTick > 0) {
+          mob.behavior = "fuse";
+          mob.directionX = 0;
+          mob.directionZ = 0;
+          mob.behaviorUntilTick = mob.fuseUntilTick;
+          continue;
+        }
+        if (distance <= CREEPER_FUSE_START_RANGE_BLOCKS * MOB_MOTION_UNITS_PER_BLOCK
+          && verticalDistance <= CREEPER_FUSE_VERTICAL_RANGE_BLOCKS * MOB_MOTION_UNITS_PER_BLOCK) {
+          startCreeperFuse(mob, state.tick);
+          continue;
+        }
+        setDirectionToward(mob, dx, dz);
+        speed = definition.chaseUnitsPerTick;
+      } else if (mob.kind === "skeleton" && distance < 5 * MOB_MOTION_UNITS_PER_BLOCK) {
         setDirectionToward(mob, dx, dz, -1);
       } else if (mob.kind === "skeleton" && distance <= 10 * MOB_MOTION_UNITS_PER_BLOCK) {
         const side = (mob.randomState & 1) === 0 ? 1 : -1;
@@ -371,6 +437,7 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
       mob.behavior = "chase";
       mob.behaviorUntilTick = state.tick + 2;
     } else {
+      if (mob.kind === "creeper") cancelCreeperFuse(mob);
       if (mob.behavior === "chase") mob.behaviorUntilTick = state.tick;
       if (state.tick >= mob.behaviorUntilTick || mob.behavior === "dormant") chooseWander(mob, state.tick);
       if (mob.behavior === "wander") {
@@ -427,7 +494,13 @@ function validCheckpointMob(raw: Readonly<MobMotionMobState>, seedToken: string)
     && boundedInteger(raw.directionZ, -DIRECTION_SCALE, DIRECTION_SCALE)
     && boundedInteger(raw.randomState, 1, 0xffff_ffff)
     && typeof raw.targetUserId === "string"
-    && raw.targetUserId.length <= MAX_TARGET_ID_LENGTH;
+    && raw.targetUserId.length <= MAX_TARGET_ID_LENGTH
+    && boundedInteger(raw.fuseStartedTick, 0, MOB_MOTION_MAX_CHECKPOINT_TICK)
+    && boundedInteger(raw.fuseUntilTick, 0, MOB_MOTION_MAX_CHECKPOINT_TICK + CREEPER_FUSE_TICKS)
+    && (identity.kind === "creeper"
+      ? (raw.fuseStartedTick === 0 && raw.fuseUntilTick === 0)
+        || raw.fuseUntilTick === raw.fuseStartedTick + CREEPER_FUSE_TICKS
+      : raw.fuseStartedTick === 0 && raw.fuseUntilTick === 0);
 }
 
 /** Reconstructs byte-identical fixed-point state from a persisted checkpoint. */
@@ -472,6 +545,8 @@ export function serializeMobMotionCheckpoint(checkpoint: Readonly<MobMotionCheck
       mob.directionZ,
       mob.randomState,
       mob.targetUserId,
+      mob.fuseStartedTick,
+      mob.fuseUntilTick,
     ]),
   });
 }
@@ -499,6 +574,11 @@ export function writeMobMotionPoses(
       yaw: mob.yaw / 1_000_000,
       behavior: mob.behavior,
       targetUserId: mob.targetUserId,
+      fuseStartedTick: mob.fuseStartedTick,
+      fuseUntilTick: mob.fuseUntilTick,
+      fuseProgress: mob.fuseStartedTick > 0
+        ? Math.max(0, Math.min(1, (state.tick - mob.fuseStartedTick) / CREEPER_FUSE_TICKS))
+        : 0,
     };
   }
   output.length = state.mobs.length;

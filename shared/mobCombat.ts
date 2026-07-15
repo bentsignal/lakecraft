@@ -1,4 +1,4 @@
-export type MobAuthorityKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton";
+export type MobAuthorityKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper";
 export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow";
 
 export interface MobAuthorityDrop {
@@ -131,6 +131,12 @@ export const MOB_AUTHORITY_DEFINITIONS: Readonly<Record<MobAuthorityKind, Author
       { itemId: "string", minCount: 0, maxCount: 2, chance: 0.65 },
     ]),
   }),
+  creeper: Object.freeze({
+    maxHealth: 20,
+    // Gunpowder is added alongside authoritative explosions so combat cannot
+    // mint an item that the current inventory schema does not recognize.
+    drops: Object.freeze([]),
+  }),
 });
 
 export type MobIdentityValidation =
@@ -142,7 +148,8 @@ export type MobIdListValidation =
   | { ok: false; reason: "invalid_mob_ids" };
 
 function isMobKind(value: string): value is MobAuthorityKind {
-  return value === "pig" || value === "cow" || value === "sheep" || value === "zombie" || value === "skeleton";
+  return value === "pig" || value === "cow" || value === "sheep" || value === "zombie"
+    || value === "skeleton" || value === "creeper";
 }
 
 export function validateMobIdentity(
@@ -154,7 +161,7 @@ export function validateMobIdentity(
     return { ok: false, reason: "invalid_mob" };
   }
   const mobId = rawMobId.trim();
-  const match = /^(pig|cow|sheep|zombie|skeleton)-([0-9a-z]{1,8})-([0-9a-z]{1,3})$/.exec(mobId);
+  const match = /^(pig|cow|sheep|zombie|skeleton|creeper)-([0-9a-z]{1,8})-([0-9a-z]{1,3})$/.exec(mobId);
   if (!match || !isMobKind(match[1])) return { ok: false, reason: "invalid_mob" };
   const kind = match[1];
   const slot = Number.parseInt(match[3], 36);

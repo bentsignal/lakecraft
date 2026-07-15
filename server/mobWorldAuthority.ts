@@ -6,12 +6,14 @@ import {
   restoreMobMotionCheckpoint,
   writeMobMotionCheckpoint,
   writeMobMotionPoses,
+  isCreeperFuseDue,
   type MobMotionCheckpoint,
   type MobMotionPose,
   type MobMotionState,
   type MobMotionTargetSnapshot,
   type MobMotionWorldSnapshot,
 } from "../shared/mobMotionAuthority.ts";
+import { creeperExplosionEventId, type CreeperExplosionRequest } from "../shared/creeperExplosion.ts";
 import {
   MOB_AUTHORITY_WORLD_SEED_TOKEN,
   validateMobIdentity,
@@ -59,6 +61,8 @@ export interface MobDamageClaim {
 }
 
 export interface MobDamageRequest extends MobDamageClaim {}
+
+export interface CreeperExplosionClaim extends CreeperExplosionRequest {}
 
 export interface MobWorldReplayInput {
   version: 1;
@@ -209,7 +213,9 @@ export function canonicalMobSpawnSnapshot(
     return choice === 0 ? "pig" : choice === 1 ? "cow" : "sheep";
   };
   const hostileKind = (slot: number): MobAuthorityKind => (
-    ((slot + (hashUint(seed, 113, seed + 29) & 1)) & 1) === 0 ? "zombie" : "skeleton"
+    ((slot + hashUint(seed, 113, seed + 29) % 3) % 3) === 0
+      ? "zombie"
+      : ((slot + hashUint(seed, 113, seed + 29) % 3) % 3) === 1 ? "skeleton" : "creeper"
   );
   for (let attempt = 0; attempt < 384 && spawns.length < target; attempt += 1) {
     const slot = spawns.length;
@@ -269,6 +275,9 @@ function hashText(value: string): number {
 function attackCadence(kind: MobAuthorityKind): { ticks: number; reach: number; verticalReach: number; damage: number } | null {
   if (kind === "zombie") return { ticks: 10, reach: 1.75, verticalReach: 2.5, damage: 3 };
   if (kind === "skeleton") return { ticks: 16, reach: 12, verticalReach: 4, damage: 2 };
+  // Creeper damage is a separate, one-shot explosion claim. Never turn its
+  // fuse into a repeating cadence hit.
+  if (kind === "creeper") return null;
   return null;
 }
 
@@ -303,6 +312,25 @@ export function mobDamageClaimsForTarget(
   for (const pose of writeMobMotionPoses(state)) {
     const claim = dueMobDamageClaim(pose, target, state.epoch, checkpointRevision, state.tick);
     if (claim) claims.push({ operationId: claim.operationId, mobId: claim.mobId, checkpointRevision, tick: claim.tick });
+  }
+  return claims;
+}
+
+export function creeperExplosionClaims(
+  state: Readonly<MobMotionState>,
+  checkpointRevision: number,
+): CreeperExplosionClaim[] {
+  const claims: CreeperExplosionClaim[] = [];
+  for (const pose of writeMobMotionPoses(state)) {
+    if (pose.kind !== "creeper" || !isCreeperFuseDue(pose, state.tick)
+      || state.tick - pose.fuseUntilTick > MOB_DAMAGE_CLAIM_MAX_AGE_TICKS) continue;
+    const claim = {
+      mobId: pose.mobId,
+      epoch: state.epoch,
+      checkpointRevision,
+      fuseStartedTick: pose.fuseStartedTick,
+    };
+    claims.push({ ...claim, operationId: creeperExplosionEventId(claim) });
   }
   return claims;
 }

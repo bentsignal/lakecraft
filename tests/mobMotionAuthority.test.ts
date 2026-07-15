@@ -24,6 +24,7 @@ const spawns: MobMotionSpawnSnapshot[] = [
   { mobId: "sheep-5nb-2", kind: "sheep", x: 3, y: 8, z: 9, yaw: 1.2 },
   { mobId: "zombie-5nb-3", kind: "zombie", x: -5, y: 8, z: -7, yaw: 0 },
   { mobId: "skeleton-5nb-4", kind: "skeleton", x: 9, y: 8, z: 6, yaw: 0 },
+  { mobId: "creeper-5nb-5", kind: "creeper", x: -9, y: 8, z: 6, yaw: 0 },
 ];
 const worldSnapshot: MobMotionWorldSnapshot = {
   isNight: true,
@@ -101,7 +102,7 @@ const bytesB = serializeMobMotionCheckpoint(checkpointB);
 const hashA = hashMobMotionCheckpoint(checkpointA);
 assert.equal(bytesB, bytesA, "two ten-minute replays produce byte-identical checkpoints");
 assert.equal(hashMobMotionCheckpoint(checkpointB), hashA, "two ten-minute replays produce the same hash");
-assert.equal(hashA, "1d5bfbaae8e310f6", "the fixed ten-minute replay remains byte-for-byte stable across releases");
+assert.equal(hashA, "7c65509b53510dc7", "the fixed ten-minute replay remains byte-for-byte stable across releases");
 
 const firstHalf = createMobMotionState({ seed, epoch, snapshot: spawns });
 assert.ok(firstHalf);

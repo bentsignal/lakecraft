@@ -7,6 +7,7 @@ import {
   WORLD_EDIT_MAX_Y,
   WORLD_EDIT_MIN_Y,
   applyWorldChunkEdit,
+  applyWorldChunkEdits,
   createWorldChunkSnapshot,
   decodeWorldChunkSnapshot,
   validateVisibleWorldChunkKeys,
@@ -116,6 +117,19 @@ if (ordering.ok) {
     assert.equal(decoded.ok, true);
     if (decoded.ok) assert.equal(decoded.edits.find((edit) => edit.coordKey === "1:2:3")?.blockType, "planks");
   }
+
+  const blastEdits: WorldChunkEditInput[] = [
+    { x: 1, y: 2, z: 3, blockType: "air" },
+    { x: 2, y: 2, z: 3, blockType: "air" },
+    { x: 3, y: 2, z: 3, blockType: "cobblestone" },
+  ];
+  const batched = applyWorldChunkEdits("0:0", ordering.snapshotJson, blastEdits);
+  let sequential = ordering;
+  for (const edit of blastEdits) {
+    if (!sequential.ok) break;
+    sequential = applyWorldChunkEdit("0:0", sequential.snapshotJson, edit);
+  }
+  assert.deepEqual(batched, sequential, "one-pass explosion edits must match serial chunk semantics byte-for-byte");
 }
 
 const fullChunk: WorldChunkEditInput[] = [];

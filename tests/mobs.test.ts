@@ -25,18 +25,19 @@ const spawnOptions = {
   spawnClearRadius: 7,
 } as const;
 
-assert.deepEqual(Object.keys(MOB_DEFINITIONS).sort(), ["cow", "pig", "sheep", "skeleton", "zombie"]);
+assert.deepEqual(Object.keys(MOB_DEFINITIONS).sort(), ["cow", "creeper", "pig", "sheep", "skeleton", "zombie"]);
 assert.equal(MOB_DEFINITIONS.zombie.contactDamage, 3);
 assert.equal(MOB_DEFINITIONS.cow.drops.some((drop) => drop.itemId === "leather"), true);
 assert.equal(MOB_DEFINITIONS.sheep.drops.some((drop) => drop.itemId === "wool"), true);
 assert.deepEqual(MOB_DEFINITIONS.skeleton.drops.map(({ itemId }) => itemId), ["arrow", "string"]);
+assert.equal(MOB_DEFINITIONS.creeper.contactDamage, 0, "creeper damage must remain a future one-shot explosion claim");
 
 const spawns = createMobSpawns(spawnOptions);
 assert.deepEqual(createMobSpawns(spawnOptions), spawns, "seeded mob population must be exactly repeatable");
 assert.notDeepEqual(createMobSpawns({ ...spawnOptions, seed: SEED + 1 }), spawns);
 assert.equal(spawns.length, 21);
 assert.ok(spawns.length <= spawnOptions.maxPopulation);
-assert.deepEqual(new Set(spawns.map((spawn) => spawn.kind)), new Set(["pig", "cow", "sheep", "zombie", "skeleton"]));
+assert.deepEqual(new Set(spawns.map((spawn) => spawn.kind)), new Set(["pig", "cow", "sheep", "zombie", "skeleton", "creeper"]));
 assert.equal(new Set(spawns.map((spawn) => `${spawn.x},${spawn.z}`)).size, spawns.length);
 for (const spawn of spawns) {
   assert.ok(Math.abs(spawn.x) <= spawnOptions.radius && Math.abs(spawn.z) <= spawnOptions.radius);

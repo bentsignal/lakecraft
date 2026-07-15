@@ -72,9 +72,16 @@ export type MobWorldCompositeSnapshot =
         checkpointRevision: number;
         tick: number;
       }>;
+      explosionClaims: Array<{
+        operationId: string;
+        mobId: string;
+        epoch: number;
+        checkpointRevision: number;
+        fuseStartedTick: number;
+      }>;
       needsCheckpoint: boolean;
     }
-  | { ok: false; reason: string; poses: []; states: []; damageClaims: []; serverNow: number };
+  | { ok: false; reason: string; poses: []; states: []; damageClaims: []; explosionClaims: []; serverNow: number };
 
 export type MultiplayerCompositeResult =
   | { ok: true; serverNow: number; nearbyPlayers: CompositeNearbyPlayer[]; mobWorld: MobWorldCompositeSnapshot }

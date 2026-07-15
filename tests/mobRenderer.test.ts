@@ -48,10 +48,11 @@ function pose(kind: MobKind, x: number, z: number, index: number): MobPoseSnapsh
     previousY: 7,
     previousZ: z - 0.25,
     previousYaw: 0,
-    behavior: kind === "zombie" || kind === "skeleton" ? "chase" : "wander",
+    behavior: kind === "zombie" || kind === "skeleton" || kind === "creeper" ? "chase" : "wander",
     health: 8,
-    maxHealth: kind === "zombie" || kind === "skeleton" ? 20 : 10,
-    hostileActive: kind === "zombie" || kind === "skeleton",
+    maxHealth: kind === "zombie" || kind === "skeleton" || kind === "creeper" ? 20 : 10,
+    hostileActive: kind === "zombie" || kind === "skeleton" || kind === "creeper",
+    fuseProgress: kind === "creeper" ? 0.7 : 0,
   };
 }
 
@@ -60,12 +61,12 @@ const renderer = createMobRenderer(gl as unknown as WebGLRenderingContext);
 assert.equal(gl.createBufferCalls, 1, "all mobs should share one WebGL buffer");
 assert.ok(gl.allocationBytes > 0);
 
-const kinds: MobKind[] = ["pig", "cow", "sheep", "zombie", "skeleton"];
+const kinds: MobKind[] = ["pig", "cow", "sheep", "zombie", "skeleton", "creeper"];
 const poses = kinds.map((kind, index) => pose(kind, index * 2 - 3, 8 + index, index));
 const stats = renderer.rebuild(poses, 0, 0, 0, 1, 0.5, 2);
 const expectedVertexCount = kinds.reduce((total, kind) => total + mobVertexCountForKind(kind), 0);
-assert.equal(stats.totalMobCount, 5);
-assert.equal(stats.visibleMobCount, 5);
+assert.equal(stats.totalMobCount, 6);
+assert.equal(stats.visibleMobCount, 6);
 assert.equal(stats.vertexCount, expectedVertexCount);
 assert.equal(gl.uploadCalls, 1, "one rebuild should issue one batched geometry upload");
 assert.ok(gl.uploaded);
@@ -100,6 +101,14 @@ for (let index = 0; index < kinds.length; index += 1) {
 }
 assert.equal(colorSignatures.size, kinds.length, "each mob kind should have a distinct color palette");
 
+const calmCreeper = pose("creeper", 0, 4, 30);
+calmCreeper.fuseProgress = 0;
+renderer.rebuild([calmCreeper], 0, 0, 0, 1, 1, 0);
+const calmColor = gl.uploaded![3];
+calmCreeper.fuseProgress = 1;
+renderer.rebuild([calmCreeper], 0, 0, 0, 1, 1, 0);
+assert.ok(gl.uploaded![3] > calmColor, "a completed creeper fuse visibly flashes toward white");
+
 const interpolatedPose = pose("pig", 2, 4, 20);
 interpolatedPose.previousX = 0;
 interpolatedPose.previousYaw = interpolatedPose.yaw;
@@ -116,7 +125,7 @@ const cullingStats = renderer.rebuild([farAway, behindCamera, nearbyBehindCamera
 assert.equal(cullingStats.totalMobCount, 3);
 assert.equal(cullingStats.visibleMobCount, 1, "distance and rear-view culling should retain only the nearby mob");
 assert.equal(cullingStats.vertexCount, mobVertexCountForKind("sheep"));
-assert.equal(gl.uploadCalls, 9);
+assert.equal(gl.uploadCalls, 12);
 
 const projectileStats = renderer.rebuild(
   [],

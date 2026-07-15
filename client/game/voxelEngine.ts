@@ -2306,7 +2306,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         mob.z = authoritative.z;
         mob.yaw = authoritative.yaw;
         mob.behavior = authoritative.behavior;
-        mob.hostileActive = authoritative.behavior === "chase";
+        mob.hostileActive = authoritative.behavior === "chase" || authoritative.behavior === "fuse";
+        if (mob.kind === "creeper" && authoritative.fuseProgress > 0) {
+          const fuseDurationSeconds = 1.5;
+          mob.fuseStartedAtSeconds = mobSimulation.elapsedSeconds
+            - Math.max(0, Math.min(1, authoritative.fuseProgress)) * fuseDurationSeconds;
+          mob.fuseUntilSeconds = mob.fuseStartedAtSeconds + fuseDurationSeconds;
+        } else if (mob.kind === "creeper") {
+          mob.fuseStartedAtSeconds = 0;
+          mob.fuseUntilSeconds = 0;
+        }
       }
       sharedMobMotionActive = true;
       sharedMobMotionAppliedAt = now;

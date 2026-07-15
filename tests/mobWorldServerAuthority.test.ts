@@ -6,6 +6,7 @@ import {
   MOB_WORLD_SEED,
   advanceMobWorldState,
   canonicalMobSpawnSnapshot,
+  creeperExplosionClaims,
   dueMobDamageClaim,
   encodeMobWorldCheckpoint,
   encodeMobWorldReplayInput,
@@ -84,7 +85,6 @@ assert.equal(
   }),
   "duplicate-user replay input is independent of database arrival order",
 );
-
 const hostile = spawns.find((spawn) => spawn.kind === "zombie" || spawn.kind === "skeleton")!;
 const combatState = createMobMotionState({ seed: MOB_WORLD_SEED, epoch: 2_000, snapshot: [hostile] })!;
 const target = { userId: "target", x: hostile.x, y: hostile.y, z: hostile.z, active: true };
@@ -127,12 +127,31 @@ assert.deepEqual(resolveMobDamage(combatState, request, target, 3, 20, 20), {
 }, "mob damage mitigation is derived from authoritative armor protection");
 assert.equal(resolveMobDamage(combatState, { ...request, operationId: `${request.operationId}x` }, target, 3, 20).ok, false);
 
+const creeper = spawns.find((spawn) => spawn.kind === "creeper")!;
+assert.ok(creeper, "the canonical three-hostile population includes a creeper");
+const creeperState = createMobMotionState({ seed: MOB_WORLD_SEED, epoch: 3_000, snapshot: [creeper] })!;
+replayMobMotion(creeperState, {
+  isNight: true,
+  targets: [{ userId: "target", x: creeper.x, y: creeper.y, z: creeper.z }],
+}, 20);
+assert.equal(
+  dueMobDamageClaim(writeMobMotionPoses(creeperState)[0], target, creeperState.epoch, 3, creeperState.tick),
+  null,
+  "a completed creeper fuse must never degrade into repeating contact-damage cadence",
+);
+const explosionClaims = creeperExplosionClaims(creeperState, 3);
+assert.equal(explosionClaims.length, 1, "a latched due fuse exposes one deterministic global claim");
+assert.equal(explosionClaims[0].mobId, creeper.mobId);
+assert.equal(explosionClaims[0].fuseStartedTick, creeperState.mobs[0].fuseStartedTick);
+
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 for (const marker of [
   "mobWorldAuthority: table({",
   "mobWorldAuthority: query(async",
   "checkpointMobWorld: mutation(async",
   "claimMobPlayerDamage: mutation(async",
+  "claimCreeperExplosion: mutation(async",
+  "creeperExplosionReceipts: table({",
   'reason: "authoritative_death_required"',
   "storedPlayerCombatRow({",
   ".filter((claim) => aliveMobIds.has(claim.mobId))",
@@ -154,6 +173,30 @@ for (const marker of [
 assert.ok(
   mobDamageMutation.indexOf("decidePlayerCombatReplay") < mobDamageMutation.indexOf("applyConfirmedArmorDamage"),
   "receipt replay must return before armor can wear again",
+);
+
+const creeperMutation = server.slice(
+  server.indexOf("claimCreeperExplosion: mutation(async"),
+  server.indexOf("rangedCombat: mutation(async"),
+);
+for (const marker of [
+  "validateCreeperExplosionRequestJson(requestJson)",
+  'withIndex("by_event"',
+  "authorizeCreeperExplosionRequest(request, authority)",
+  "planCreeperTerrainDestruction",
+  "maintainWorldChunkSnapshots(ctx.db, writtenEdits)",
+  'blockType: "air"',
+  "checkpointRevision: String(advanced.revision + 1)",
+  "motionMob.fuseStartedTick = 0",
+  "mitigatedPlayerDamage(candidate.rawDamage, armorProtection)",
+]) assert.ok(creeperMutation.includes(marker), `missing authoritative creeper explosion marker: ${marker}`);
+assert.ok(
+  creeperMutation.indexOf("creeperExplosionReceipts") < creeperMutation.indexOf("ctx.db.mobWorldAuthority"),
+  "global exact replay must return before mutable authority reads",
+);
+assert.ok(
+  creeperMutation.indexOf("planCreeperTerrainDestruction") < creeperMutation.indexOf("ctx.db.worldEdits.update"),
+  "the complete bounded terrain plan is derived before the first crater write",
 );
 assert.ok(mobDamageMutation.includes("inventory: replayInventoryRows[0]"), "receipt replay returns the latest canonical inventory row without reapplying wear");
 assert.ok(

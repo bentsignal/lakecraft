@@ -45,12 +45,25 @@ import {
   WORLD_EDIT_MIN_XZ,
   WORLD_EDIT_MIN_Y,
   applyWorldChunkEdit,
+  applyWorldChunkEdits,
   createWorldChunkSnapshot,
   sampleWorldChunkSnapshot,
   validateVisibleWorldChunkKeys,
   worldEditChunkKey,
   type WorldChunkEditInput
 } from "../shared/worldChunks";
+import {
+  CREEPER_EXPLOSION_CALLER_RANGE,
+  CREEPER_EXPLOSION_MAX_PLAYER_VICTIMS,
+  CREEPER_EXPLOSION_RADIUS,
+  authorizeCreeperExplosionRequest,
+  decideCreeperExplosionCommit,
+  enumerateCreeperExplosionBlocks,
+  planCreeperTerrainDestruction,
+  resolveCreeperExplosionDamage,
+  validateCreeperExplosionRequestJson,
+  type CreeperExplosionAuthority,
+} from "../shared/creeperExplosion.ts";
 import { naturalWorldBlockAt } from "../shared/worldTerrainAuthority.ts";
 import { writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
 import {
@@ -83,6 +96,7 @@ import {
 } from "../shared/worldBlockOperations.ts";
 import {
   MOB_AUTHORITY_WORLD_SEED_TOKEN,
+  MOB_RESPAWN_MS,
   deterministicMobDrops,
   materializeMobAuthorityState,
   resolveMobAttack,
@@ -104,6 +118,7 @@ import {
   authoritativeCombatPose,
   decidePlayerCombatReplay,
   materializePlayerCombatState,
+  mitigatedPlayerDamage,
   resolvePlayerAttack,
   selectPlayerCombatReceiptOverflow,
   storedPlayerCombatRow,
@@ -170,6 +185,7 @@ import {
   MOB_WORLD_CHECKPOINT_MS,
   MOB_WORLD_LEASE_MS,
   advanceMobWorldState,
+  creeperExplosionClaims,
   createCanonicalMobWorldState,
   encodeMobWorldCheckpoint,
   encodeMobWorldReplayInput,
@@ -633,6 +649,52 @@ async function maintainWorldChunkSnapshot(
   };
   if (existing) await db.worldChunks.update(existing.id, value);
   else await db.worldChunks.insert(value);
+}
+
+/**
+ * Compacts a mutation's edits with one decode/encode and one database write per
+ * affected chunk. Call this only after the corresponding worldEdits rows have
+ * been committed in the same Lakebed mutation transaction.
+ */
+async function maintainWorldChunkSnapshots(
+  db: WriteDatabase,
+  worldEditRows: readonly Record<string, unknown>[],
+): Promise<void> {
+  const groups = new Map<string, WorldChunkEditInput[]>();
+  for (const row of worldEditRows) {
+    const edit = databaseRowToChunkEdit(row);
+    if (!edit) throw new Error("Unable to encode a shared world edit batch.");
+    const chunkKey = worldEditChunkKey(Number(edit.x), Number(edit.z));
+    const group = groups.get(chunkKey);
+    if (group) group.push(edit);
+    else groups.set(chunkKey, [edit]);
+  }
+  for (const [chunkKey, edits] of groups) {
+    const rows = await db.worldChunks
+      .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+      .order("desc")
+      .take(2);
+    if (rows.length > 1) throw new Error("Duplicate shared world chunk state.");
+    const existing = rows[0] ?? null;
+    let snapshot = existing && typeof existing.snapshotJson === "string"
+      ? applyWorldChunkEdits(chunkKey, existing.snapshotJson, edits)
+      : null;
+    if (!snapshot?.ok) {
+      const legacyRows = await db.worldEdits.withIndex("by_edited").order("asc").collect();
+      const legacyEdits = legacyRows
+        .map((row) => databaseRowToChunkEdit(row))
+        .filter((row): row is WorldChunkEditInput => row !== null);
+      snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
+    }
+    if (!snapshot.ok) throw new Error(`Unable to compact shared world chunk batch: ${snapshot.reason}`);
+    const value = {
+      chunkKey,
+      snapshotJson: snapshot.snapshotJson,
+      revision: incrementStoredRevision(existing?.revision),
+    };
+    if (existing) await db.worldChunks.update(existing.id, value);
+    else await db.worldChunks.insert(value);
+  }
 }
 
 function databaseRowToStoredMobAuthority(row: Record<string, unknown> | null): StoredMobAuthorityState | null {
@@ -1209,7 +1271,17 @@ export default capsule({
       receiptCreatedAt: string()
     })
       .index("by_user_operation", ["userId", "operationId"])
-      .index("by_user_created", ["userId", "receiptCreatedAt"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
+
+    /** Global one-shot receipts prevent two nearby clients from exploding the same creeper. */
+    creeperExplosionReceipts: table({
+      eventId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_event", ["eventId"])
+      .index("by_created", ["receiptCreatedAt"])
   },
 
   queries: {
@@ -1395,6 +1467,7 @@ export default capsule({
         poses: [],
         states: [],
         damageClaims: [],
+        explosionClaims: [],
         needsCheckpoint: false,
         serverNow,
       };
@@ -1444,6 +1517,8 @@ export default capsule({
             ? mobDamageClaimsForTarget(advanced.state, callerTarget, advanced.revision)
               .filter((claim) => aliveMobIds.has(claim.mobId))
             : [],
+          explosionClaims: creeperExplosionClaims(advanced.state, advanced.revision)
+            .filter((claim) => aliveMobIds.has(claim.mobId)),
           needsCheckpoint: serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
           serverNow,
         };
@@ -1594,6 +1669,7 @@ export default capsule({
         poses: [],
         states: [],
         damageClaims: [],
+        explosionClaims: [],
         needsCheckpoint: false,
         serverNow,
       };
@@ -1655,6 +1731,8 @@ export default capsule({
           ? mobDamageClaimsForTarget(advanced.state, callerTarget, advanced.revision)
             .filter((claim) => aliveMobIds.has(claim.mobId))
           : [],
+        explosionClaims: creeperExplosionClaims(advanced.state, advanced.revision)
+          .filter((claim) => aliveMobIds.has(claim.mobId)),
         needsCheckpoint: serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
         serverNow,
       };
@@ -3695,6 +3773,299 @@ export default capsule({
       return result;
     }),
 
+    claimCreeperExplosion: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const request = validateCreeperExplosionRequestJson(requestJson);
+      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+
+      const receiptRows = await ctx.db.creeperExplosionReceipts
+        .withIndex("by_event", (q) => q.eq("eventId", request.operationId))
+        .order("desc")
+        .take(2);
+      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const requestFingerprint = JSON.stringify([
+        request.operationId,
+        request.mobId,
+        request.epoch,
+        request.checkpointRevision,
+        request.fuseStartedTick,
+      ]);
+      const commitDecision = decideCreeperExplosionCommit(
+        receiptRows[0]?.fingerprint ?? null,
+        requestFingerprint,
+      );
+      if (commitDecision === "event_collision") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (commitDecision === "replay") {
+        try {
+          const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
+          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: "invalid_receipt", serverNow };
+        } catch {
+          return { ok: false, reason: "invalid_receipt", serverNow };
+        }
+      }
+
+      const authorityRows = await ctx.db.mobWorldAuthority
+        .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
+        .order("desc")
+        .take(2);
+      if (authorityRows.length !== 1) return { ok: false, reason: "authority_unavailable", serverNow };
+      const authorityRow = authorityRows[0];
+      const storedWorld = databaseRowToStoredMobWorld(authorityRow);
+      const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
+      const advanced = storedWorld && replayInput ? advanceMobWorldState(storedWorld, serverNow, replayInput) : null;
+      if (!advanced) return { ok: false, reason: "authority_unavailable", serverNow };
+      const pose = writeMobMotionPoses(advanced.state).find((candidate) => candidate.mobId === request.mobId);
+      const motionMob = advanced.state.mobs.find((candidate) => candidate.mobId === request.mobId);
+      if (!pose || !motionMob || pose.kind !== "creeper") return { ok: false, reason: "unknown_mob", serverNow };
+      const authority: CreeperExplosionAuthority = {
+        mobId: pose.mobId,
+        epoch: advanced.state.epoch,
+        checkpointRevision: advanced.revision,
+        fuseStartedTick: pose.fuseStartedTick,
+        explosionTick: pose.fuseUntilTick,
+        currentTick: advanced.state.tick,
+        center: { x: pose.x, y: pose.y, z: pose.z },
+        radius: CREEPER_EXPLOSION_RADIUS,
+      };
+      const authorization = authorizeCreeperExplosionRequest(request, authority);
+      if (!authorization.ok) return { ok: false, reason: authorization.reason, serverNow };
+
+      const mobRows = await ctx.db.mobAuthority
+        .withIndex("by_mob", (q) => q.eq("mobId", request.mobId))
+        .order("desc")
+        .take(2);
+      if (mobRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const mobState = materializeMobAuthorityState(
+        databaseRowToStoredMobAuthority(mobRows[0] ?? null),
+        request.mobId,
+        "creeper",
+        serverNow,
+      );
+      if (mobState.health <= 0) return { ok: false, reason: "mob_dead", serverNow };
+
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .order("desc")
+        .take(64);
+      const activePlayers = presenceRows.flatMap((row) => {
+        const heartbeatAt = /^\d{1,16}$/.test(row.heartbeatAt) ? Number(row.heartbeatAt) : Number.NaN;
+        const playerPose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+        return row.online && playerPose && heartbeatAt <= serverNow + 5_000
+          && serverNow - heartbeatAt >= 0 && serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS
+          ? [{ row, pose: playerPose }]
+          : [];
+      });
+      const caller = activePlayers.find(({ row }) => row.userId === ctx.auth.userId);
+      if (!caller || Math.hypot(
+        caller.pose.x - authority.center.x,
+        caller.pose.y - authority.center.y,
+        caller.pose.z - authority.center.z,
+      ) > CREEPER_EXPLOSION_CALLER_RANGE) {
+        return { ok: false, reason: "active_nearby_presence_required", serverNow };
+      }
+
+      const cells = enumerateCreeperExplosionBlocks(authority).filter((cell) =>
+        cell.x >= WORLD_EDIT_MIN_XZ && cell.x <= WORLD_EDIT_MAX_XZ
+        && cell.z >= WORLD_EDIT_MIN_XZ && cell.z <= WORLD_EDIT_MAX_XZ
+        && cell.y >= WORLD_EDIT_MIN_Y && cell.y <= WORLD_EDIT_MAX_Y);
+      const blockMap = new Map<string, BlockType>();
+      const cellGroups = new Map<string, typeof cells>();
+      for (const cell of cells) {
+        const chunkKey = worldEditChunkKey(cell.x, cell.z);
+        const group = cellGroups.get(chunkKey);
+        if (group) group.push(cell);
+        else cellGroups.set(chunkKey, [cell]);
+      }
+      if (cellGroups.size > 4) return { ok: false, reason: "invalid_world_probe", serverNow };
+      for (const [chunkKey, group] of cellGroups) {
+        const chunkRows = await ctx.db.worldChunks
+          .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+          .order("desc")
+          .take(2);
+        if (chunkRows.length > 1) return { ok: false, reason: "duplicate_world_state", serverNow };
+        if (chunkRows.length === 0) {
+          for (const cell of group) blockMap.set(cell.coordKey, naturalWorldBlockAt(cell.x, cell.y, cell.z));
+        } else {
+          const sampled = sampleWorldChunkSnapshot(chunkKey, chunkRows[0].snapshotJson, group);
+          if (!sampled.ok || sampled.blocks.length !== group.length) {
+            return { ok: false, reason: "invalid_world_state", serverNow };
+          }
+          for (let index = 0; index < group.length; index += 1) {
+            blockMap.set(group[index].coordKey, sampled.blocks[index] ?? naturalWorldBlockAt(
+              group[index].x,
+              group[index].y,
+              group[index].z,
+            ));
+          }
+        }
+      }
+      const destruction = planCreeperTerrainDestruction(authority, (cell) => blockMap.get(cell.coordKey) ?? "air");
+      const existingEdits = new Map<string, Record<string, unknown> | null>();
+      for (const cell of destruction) {
+        const rows = await ctx.db.worldEdits
+          .withIndex("by_coord", (q) => q.eq("coordKey", cell.coordKey))
+          .order("desc")
+          .take(2);
+        if (rows.length > 1) return { ok: false, reason: "duplicate_world_state", serverNow };
+        existingEdits.set(cell.coordKey, rows[0] ?? null);
+      }
+
+      const victimCandidates = activePlayers
+        .map(({ row, pose: targetPose }) => ({
+          row,
+          pose: targetPose,
+          rawDamage: resolveCreeperExplosionDamage(authority, targetPose),
+        }))
+        .filter((candidate) => candidate.rawDamage > 0)
+        .sort((left, right) => right.rawDamage - left.rawDamage
+          || (left.row.userId < right.row.userId ? -1 : left.row.userId > right.row.userId ? 1 : 0))
+        .slice(0, CREEPER_EXPLOSION_MAX_PLAYER_VICTIMS);
+      const victimPlans: Array<{
+        presenceRow: Record<string, unknown>;
+        progress: Record<string, unknown>;
+        inventoryRow: Record<string, unknown>;
+        inventoryValue: Record<string, unknown> | null;
+        combatRow: Record<string, unknown> | null;
+        combatValue: ReturnType<typeof storedPlayerCombatRow>;
+        result: { userId: string; damage: number; killed: boolean };
+      }> = [];
+      for (const candidate of victimCandidates) {
+        const combatRows = await ctx.db.playerCombat
+          .withIndex("by_user", (q) => q.eq("userId", candidate.row.userId))
+          .order("desc")
+          .take(2);
+        const inventoryRows = await ctx.db.inventories
+          .withIndex("by_user", (q) => q.eq("userId", candidate.row.userId))
+          .order("desc")
+          .take(2);
+        if (combatRows.length > 1 || inventoryRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+        if (inventoryRows.length !== 1) continue;
+        const inventoryState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
+        if (!inventoryState.ok) return { ok: false, reason: "target_state_invalid", serverNow };
+        const previous = materializePlayerCombatState(
+          databaseRowToStoredPlayerCombat(combatRows[0] ?? null),
+          candidate.row.userId,
+          serverNow,
+        );
+        if (previous.health <= 0) continue;
+        const survival = advanceAuthoritativeSurvival({
+          hunger: inventoryState.state.hunger,
+          health: previous.health,
+          revision: previous.revision,
+          progress: candidate.row,
+          serverNow,
+          activityHalfUnits: storedPresenceActivityHalfUnits(candidate.row),
+        });
+        if (survival.revisionExhausted || survival.revision >= Number.MAX_SAFE_INTEGER) {
+          return { ok: false, reason: "combat_revision_exhausted", serverNow };
+        }
+        const armorProtection = equippedArmorProtection(inventoryState.state.equipment);
+        const damage = mitigatedPlayerDamage(candidate.rawDamage, armorProtection);
+        const health = Math.max(0, survival.health - damage);
+        const armorWear = applyConfirmedArmorDamage(inventoryState.state.equipment);
+        const combatValue = storedPlayerCombatRow({
+          ...previous,
+          health,
+          revision: survival.revision + 1,
+          deadUntil: health === 0 ? serverNow + PLAYER_RESPAWN_DELAY_MS : 0,
+          lastAttackAt: serverNow,
+          lastAttackerId: request.mobId,
+        });
+        const inventoryChanged = survival.hungerChanged || armorWear.damaged.length > 0;
+        victimPlans.push({
+          presenceRow: candidate.row,
+          progress: survival.progress,
+          inventoryRow: inventoryRows[0],
+          inventoryValue: inventoryChanged ? {
+            userId: candidate.row.userId,
+            inventoryJson: JSON.stringify({
+              ...inventoryState.state,
+              hunger: survival.hunger,
+              equipment: armorWear.equipment,
+            }),
+            revision: incrementStoredRevision(inventoryRows[0].revision),
+          } : null,
+          combatRow: combatRows[0] ?? null,
+          combatValue,
+          result: { userId: candidate.row.userId, damage, killed: health === 0 },
+        });
+      }
+
+      motionMob.x = motionMob.homeX;
+      motionMob.z = motionMob.homeZ;
+      motionMob.behavior = "dormant";
+      motionMob.behaviorUntilTick = advanced.state.tick + 1;
+      motionMob.directionX = 0;
+      motionMob.directionZ = 0;
+      motionMob.targetUserId = "";
+      motionMob.fuseStartedTick = 0;
+      motionMob.fuseUntilTick = 0;
+      const nextCheckpointJson = encodeMobWorldCheckpoint(advanced.state);
+      const result = {
+        ok: true,
+        replayed: false,
+        eventId: authorization.eventId,
+        mobId: request.mobId,
+        center: authority.center,
+        destroyedBlocks: destruction.length,
+        victims: victimPlans.map((plan) => plan.result),
+        serverNow,
+      };
+      const resultJson = JSON.stringify(result);
+
+      const writtenEdits: Record<string, unknown>[] = [];
+      for (const cell of destruction) {
+        const value = {
+          coordKey: cell.coordKey,
+          x: String(cell.x),
+          y: String(cell.y),
+          z: String(cell.z),
+          blockType: "air",
+          actorId: request.mobId,
+          editedAt: String(serverNow),
+        };
+        const existing = existingEdits.get(cell.coordKey);
+        const written = existing
+          ? await ctx.db.worldEdits.update(existing.id, value)
+          : await ctx.db.worldEdits.insert(value);
+        if (!written) throw new Error("Unable to persist creeper terrain destruction.");
+        writtenEdits.push(written);
+      }
+      await maintainWorldChunkSnapshots(ctx.db, writtenEdits);
+      for (const plan of victimPlans) {
+        await ctx.db.playerPresence.update(plan.presenceRow.id, plan.progress);
+        if (plan.inventoryValue) await ctx.db.inventories.update(plan.inventoryRow.id, plan.inventoryValue);
+        if (plan.combatRow) await ctx.db.playerCombat.update(plan.combatRow.id, plan.combatValue);
+        else await ctx.db.playerCombat.insert(plan.combatValue);
+      }
+      const deadMobValue = {
+        mobId: request.mobId,
+        kind: "creeper",
+        health: "0",
+        revision: String(mobState.revision + 1),
+        deadUntil: String(serverNow + MOB_RESPAWN_MS),
+        lastAttackAt: String(serverNow),
+        lastAttackerId: request.mobId,
+      };
+      if (mobRows[0]) await ctx.db.mobAuthority.update(mobRows[0].id, deadMobValue);
+      else await ctx.db.mobAuthority.insert(deadMobValue);
+      await ctx.db.mobWorldAuthority.update(authorityRow.id, {
+        checkpointJson: nextCheckpointJson,
+        checkpointRevision: String(advanced.revision + 1),
+        checkpointAt: String(serverNow),
+      });
+      await ctx.db.creeperExplosionReceipts.insert({
+        eventId: authorization.eventId,
+        fingerprint: authorization.fingerprint,
+        resultJson,
+        receiptCreatedAt: String(serverNow),
+      });
+      return result;
+    }),
+
     rangedCombat: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
@@ -3903,7 +4274,7 @@ export default capsule({
           if (pose && mobRows.length <= 1) {
             const bounds = {
               pig: [0.9, 0.62], cow: [1.35, 0.7], sheep: [1.25, 0.68],
-              zombie: [1.8, 0.4], skeleton: [1.9, 0.38],
+              zombie: [1.8, 0.4], skeleton: [1.9, 0.38], creeper: [1.7, 0.42],
             } as const;
             targetMobRow = mobRows[0] ?? null;
             targetMobKind = identity.kind;

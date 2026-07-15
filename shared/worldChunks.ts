@@ -367,23 +367,34 @@ export function applyWorldChunkEdit(
   snapshotJson: string,
   edit: WorldChunkEditInput,
 ): WorldChunkSnapshotResult {
+  return applyWorldChunkEdits(rawChunkKey, snapshotJson, [edit]);
+}
+
+/** Applies a bounded transaction's edits while decoding/encoding the chunk once. */
+export function applyWorldChunkEdits(
+  rawChunkKey: string,
+  snapshotJson: string,
+  edits: readonly WorldChunkEditInput[],
+): WorldChunkSnapshotResult {
   const chunk = validateWorldChunkKey(rawChunkKey);
   if (!chunk.ok) return { ok: false, reason: chunk.reason };
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
   const previous = parsePacked(snapshotJson);
   if (!previous) return { ok: false, reason: "invalid_snapshot" };
-  const x = finiteInteger(edit.x);
-  const y = finiteInteger(edit.y);
-  const z = finiteInteger(edit.z);
-  const code = BLOCK_CODE.get(edit.blockType);
-  if (x === null || y === null || z === null || code === undefined) return { ok: false, reason: "invalid_edit" };
-  const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
-  if (!address) return { ok: false, reason: "invalid_edit" };
   const sections = snapshotToSections(previous);
   if (!sections) return { ok: false, reason: "invalid_snapshot" };
-  const packed = sections.get(address.sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
-  setCurrentCode(packed, address.sectionIndex, code);
-  sections.set(address.sectionY, packed);
+  for (const edit of edits) {
+    const x = finiteInteger(edit.x);
+    const y = finiteInteger(edit.y);
+    const z = finiteInteger(edit.z);
+    const code = BLOCK_CODE.get(edit.blockType);
+    if (x === null || y === null || z === null || code === undefined) return { ok: false, reason: "invalid_edit" };
+    const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
+    if (!address) return { ok: false, reason: "invalid_edit" };
+    const packed = sections.get(address.sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
+    setCurrentCode(packed, address.sectionIndex, code);
+    sections.set(address.sectionY, packed);
+  }
   const nextSnapshotJson = serializeSections(sections);
   if (nextSnapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
   return { ok: true, snapshotJson: nextSnapshotJson, editCount: countSectionEdits(sections) };

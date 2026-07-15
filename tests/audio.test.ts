@@ -12,6 +12,7 @@ const expectedCues: GameAudioCue[] = [
   "footstep", "miningHit", "blockBreak", "blockPlace", "pickup", "craft",
   "doorOpen", "doorClose", "chestOpen", "chestClose",
   "playerAttack", "playerHurt", "mobAttack", "mobHurt",
+  "creeperFuse", "explosion",
   "uiClick", "uiConfirm", "uiBack",
 ];
 assert.deepEqual(GAME_AUDIO_CUES, expectedCues, "all required gameplay and UI variants remain available");

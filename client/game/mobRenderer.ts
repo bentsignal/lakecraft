@@ -23,6 +23,7 @@ const BOXES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
   sheep: 7,
   zombie: 6,
   skeleton: 9,
+  creeper: 9,
 });
 
 const FLOATS_PER_VERTEX = 6;
@@ -185,6 +186,36 @@ function appendSkeleton(writer: VertexWriter, x: number, y: number, z: number, y
   appendBox(writer,x,y,z,yaw,0,0,0,-0.28,1.38,-0.28,0.28,1.94,0.28,0.84,0.86,0.79);
 }
 
+function appendCreeper(
+  writer: VertexWriter,
+  x: number,
+  y: number,
+  z: number,
+  yaw: number,
+  swing: number,
+  fuseProgress: number,
+): void {
+  const progress = Math.max(0, Math.min(1, fuseProgress));
+  const pulse = progress >= 1 ? 0.82 : ((Math.floor(progress * 14) & 1) === 1 ? progress * 0.72 : 0);
+  const greenR = 0.2 + pulse * 0.8;
+  const greenG = 0.62 + pulse * 0.38;
+  const greenB = 0.18 + pulse * 0.82;
+  const darkR = 0.11 + pulse * 0.76;
+  const darkG = 0.4 + pulse * 0.5;
+  const darkB = 0.1 + pulse * 0.76;
+  // Four offset feet, a narrow upright body, and the oversized square head
+  // produce the unmistakable creeper silhouette without a per-mob draw call.
+  appendBox(writer,x,y,z,yaw,swing,0.38,0,-0.34,0,-0.34,-0.04,0.42,-0.04,darkR,darkG,darkB);
+  appendBox(writer,x,y,z,yaw,-swing,0.38,0,0.04,0,-0.34,0.34,0.42,-0.04,darkR,darkG,darkB);
+  appendBox(writer,x,y,z,yaw,-swing,0.38,0,-0.34,0,0.04,-0.04,0.42,0.34,darkR,darkG,darkB);
+  appendBox(writer,x,y,z,yaw,swing,0.38,0,0.04,0,0.04,0.34,0.42,0.34,darkR,darkG,darkB);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.34,-0.23,0.27,1.19,0.23,greenR,greenG,greenB);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.4,1.08,-0.4,0.4,1.79,0.4,greenR,greenG,greenB);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.28,1.5,0.401,-0.1,1.66,0.425,0.025,0.045,0.02);
+  appendBox(writer,x,y,z,yaw,0,0,0,0.1,1.5,0.401,0.28,1.66,0.425,0.025,0.045,0.02);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.12,1.2,0.401,0.12,1.48,0.425,0.025,0.045,0.02);
+}
+
 function appendArrow(writer: VertexWriter, projectile: Readonly<MobProjectileSnapshot>, interpolation: number): void {
   const x = projectile.previousX + (projectile.x - projectile.previousX) * interpolation;
   const y = projectile.previousY + (projectile.y - projectile.previousY) * interpolation;
@@ -255,7 +286,8 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
         else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing);
         else if (pose.kind === "zombie") appendZombie(writer, x, y, z, yaw, swing);
-        else appendSkeleton(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "skeleton") appendSkeleton(writer, x, y, z, yaw, swing);
+        else appendCreeper(writer, x, y, z, yaw, swing, pose.fuseProgress);
         stats.visibleMobCount += 1;
       }
       const mobFloatCount = writer.offset;

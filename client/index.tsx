@@ -670,6 +670,17 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const attackMob = useMutation<[mobId: string, kind: string, damage: string, operationId: string], MobAttackResult>("attackMob");
   const checkpointMobWorld = useMutation<[requestJson: string], MobWorldCheckpointResult>("checkpointMobWorld");
   const claimMobPlayerDamage = useMutation<[requestJson: string], MobPlayerDamageResult>("claimMobPlayerDamage");
+  const claimCreeperExplosion = useMutation<[requestJson: string], {
+    ok: boolean;
+    reason?: string;
+    replayed?: boolean;
+    eventId?: string;
+    mobId?: string;
+    center?: { x: number; y: number; z: number };
+    destroyedBlocks?: number;
+    victims?: Array<{ userId: string; damage: number; killed: boolean }>;
+    serverNow: number;
+  }>("claimCreeperExplosion");
   const attackPlayer = useMutation<[requestJson: string], {
     ok: boolean;
     reason?: string;
@@ -739,6 +750,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const mobCheckpointInFlightRef = useRef(false);
   const lastMobCheckpointAttemptAtRef = useRef(0);
   const mobDamageClaimsRef = useRef(new Set<string>());
+  const creeperFuseCuesRef = useRef(new Set<string>());
+  const creeperExplosionClaimsRef = useRef(new Set<string>());
   const realtimePresenceRef = useRef(false);
   const respawnRequestInFlightRef = useRef(false);
   const respawnLeaseTransitionRef = useRef(false);
@@ -1947,6 +1960,15 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     engineRef.current?.applyMobMotionSnapshot(mobWorldAuthority.poses, clockOffset);
     engineRef.current?.applyMobCombatStates(mobWorldAuthority.states, clockOffset);
 
+    for (const pose of mobWorldAuthority.poses) {
+      if (pose.kind !== "creeper" || pose.fuseStartedTick <= 0 || pose.fuseProgress >= 1) continue;
+      const fuseId = `${pose.mobId}:${pose.fuseStartedTick}`;
+      if (creeperFuseCuesRef.current.has(fuseId)) continue;
+      if (creeperFuseCuesRef.current.size >= 64) creeperFuseCuesRef.current.clear();
+      creeperFuseCuesRef.current.add(fuseId);
+      audioRef.current?.play("creeperFuse", { seed: fuseId, intensity: 0.82 });
+    }
+
     const leaseId = mobLeaseSessionId;
     const checkpointForeground = transportForeground && !pauseOpen && !inventoryOpen && !chatOpen
       && !furnaceOpen && !activeChestKey && !activeBedKey;
@@ -1994,6 +2016,27 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }
       }).catch(() => {
         mobDamageClaimsRef.current.delete(claim.operationId);
+        setConnected(false);
+      });
+    }
+    for (const claim of mobWorldAuthority.explosionClaims) {
+      if (creeperExplosionClaimsRef.current.has(claim.operationId)) continue;
+      if (creeperExplosionClaimsRef.current.size >= 64) creeperExplosionClaimsRef.current.clear();
+      creeperExplosionClaimsRef.current.add(claim.operationId);
+      void claimCreeperExplosion(JSON.stringify(claim)).then((result) => {
+        setConnected(result.ok);
+        if (!result.ok) return;
+        audioRef.current?.play("explosion", { seed: claim.operationId, intensity: 1 });
+        const ownHit = result.victims?.find((victim) => victim.userId === auth.userId);
+        if (ownHit?.damage) {
+          notify(
+            ownHit.killed ? "You blew up" : "Creeper explosion",
+            ownHit.killed ? "Lakebed confirmed the blast was fatal." : `${ownHit.damage} health lost.`,
+            "warning",
+          );
+        }
+      }).catch(() => {
+        creeperExplosionClaimsRef.current.delete(claim.operationId);
         setConnected(false);
       });
     }

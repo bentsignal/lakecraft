@@ -15,6 +15,8 @@ export const GAME_AUDIO_CUES = [
   "playerHurt",
   "mobAttack",
   "mobHurt",
+  "creeperFuse",
+  "explosion",
   "uiClick",
   "uiConfirm",
   "uiBack",
@@ -203,6 +205,16 @@ export function createGameAudioPlan(cue: GameAudioCue, options: GameAudioPlayOpt
     case "mobHurt":
       layer("noise", { duration: 0.15, gain: 0.18, filterHz: vary(980, 0.14), playbackRate: 0.76 });
       layer("tone", { duration: 0.2, gain: 0.14, frequency: vary(118, 0.12), frequencyEnd: 58, wave: "square" });
+      break;
+    case "creeperFuse":
+      layer("noise", { duration: 0.78, gain: 0.17, filterHz: vary(3_200, 0.08), playbackRate: 0.78 });
+      layer("noise", { delay: 0.48, duration: 0.78, gain: 0.2, filterHz: vary(3_700, 0.08), playbackRate: 0.86 });
+      layer("tone", { duration: 0.8, gain: 0.035, frequency: 78, frequencyEnd: 132, wave: "sawtooth" });
+      break;
+    case "explosion":
+      layer("noise", { duration: 0.72, gain: 0.38, filterHz: vary(1_050, 0.12), playbackRate: 0.62 });
+      layer("tone", { duration: 0.48, gain: 0.24, frequency: 82, frequencyEnd: 34, wave: "square" });
+      layer("noise", { delay: 0.08, duration: 0.8, gain: 0.16, filterHz: 420, playbackRate: 0.48 });
       break;
     case "uiClick":
       layer("tone", { duration: 0.045, gain: 0.085, frequency: vary(650, 0.035), frequencyEnd: 520, wave: "square" });

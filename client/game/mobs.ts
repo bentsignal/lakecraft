@@ -1,7 +1,14 @@
 import type { MobAuthorityState } from "../../shared/mobCombat.ts";
+import {
+  CREEPER_FUSE_CANCEL_RANGE_BLOCKS,
+  CREEPER_FUSE_START_RANGE_BLOCKS,
+  CREEPER_FUSE_TICKS,
+  CREEPER_FUSE_VERTICAL_RANGE_BLOCKS,
+  MOB_MOTION_TICKS_PER_SECOND,
+} from "../../shared/mobMotionAuthority.ts";
 
-export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton";
-export type MobBehavior = "dormant" | "idle" | "wander" | "chase";
+export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper";
+export type MobBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
 export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow";
 
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
@@ -128,6 +135,25 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
       { itemId: "string", minCount: 0, maxCount: 2, chance: 0.65 },
     ]),
   }),
+  creeper: Object.freeze({
+    kind: "creeper",
+    passive: false,
+    maxHealth: 20,
+    moveSpeed: 0.84,
+    chaseSpeed: 1.1,
+    collisionRadius: 0.36,
+    targetRadius: 0.4,
+    height: 1.7,
+    contactDamage: 0,
+    attackCooldownSeconds: 0,
+    rangedDamage: 0,
+    rangedCooldownSeconds: 0,
+    rangedRange: 0,
+    projectileSpeed: 0,
+    // Gunpowder joins the item registry with authoritative explosions; an
+    // ordinary melee kill cannot currently mint an unknown inventory item.
+    drops: Object.freeze([]),
+  }),
 });
 
 export const DEFAULT_MAX_MOB_POPULATION = 24;
@@ -182,6 +208,8 @@ export interface MobState extends MobSpawnDescriptor {
   rangedSequence: number;
   authoritativeRevision: number;
   authoritativeDeadUntil: number;
+  fuseStartedAtSeconds: number;
+  fuseUntilSeconds: number;
 }
 
 export interface MobSimulation {
@@ -256,6 +284,8 @@ export interface MobPoseSnapshot {
   health: number;
   maxHealth: number;
   hostileActive: boolean;
+  /** Stable 0..1 priming state; 1 means an authority explosion may be due. */
+  fuseProgress: number;
 }
 
 export interface MobDrop {
@@ -324,7 +354,8 @@ function passiveKind(index: number, seed: number): MobKind {
 }
 
 function hostileKind(index: number, seed: number): MobKind {
-  return ((index + (hashUint(seed, 113, seed + 29) & 1)) & 1) === 0 ? "zombie" : "skeleton";
+  const choice = (index + hashUint(seed, 113, seed + 29) % 3) % 3;
+  return choice === 0 ? "zombie" : choice === 1 ? "skeleton" : "creeper";
 }
 
 function hasSafeSlope(heightAt: (x: number, z: number) => number, x: number, z: number): boolean {
@@ -417,6 +448,8 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
       rangedSequence: 0,
       authoritativeRevision: -1,
       authoritativeDeadUntil: 0,
+      fuseStartedAtSeconds: 0,
+      fuseUntilSeconds: 0,
     };
   }
   const projectiles = new Array<MobProjectile>(MAX_MOB_PROJECTILES);
@@ -649,7 +682,22 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
     mob.previousYaw = mob.yaw;
     mob.hostileActive = !definition.passive && input.isNight;
 
+    if (mob.kind === "creeper" && mob.fuseStartedAtSeconds > 0
+      && mob.fuseUntilSeconds > mob.fuseStartedAtSeconds
+      && simulation.elapsedSeconds >= mob.fuseUntilSeconds) {
+      // Remain visibly ready until a later authoritative explosion integration
+      // consumes the latched event; do not silently restart a second fuse.
+      mob.behavior = "fuse";
+      mob.directionX = 0;
+      mob.directionZ = 0;
+      mob.desiredX = mob.x;
+      mob.desiredZ = mob.z;
+      continue;
+    }
+
     if (!definition.passive && !input.isNight) {
+      mob.fuseStartedAtSeconds = 0;
+      mob.fuseUntilSeconds = 0;
       mob.behavior = "dormant";
       mob.directionX = 0;
       mob.directionZ = 0;
@@ -664,10 +712,42 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       const playerDx = input.player.x - mob.x;
       const playerDz = input.player.z - mob.z;
       const distanceSquared = playerDx * playerDx + playerDz * playerDz;
-      if (distanceSquared <= 16 * 16 && distanceSquared > 0.0001) {
-        const inverseDistance = 1 / Math.sqrt(distanceSquared);
-        if (mob.kind === "skeleton") {
-          const distance = 1 / inverseDistance;
+      if (distanceSquared <= 16 * 16) {
+        const distance = Math.sqrt(distanceSquared);
+        const inverseDistance = distance > 0.0001 ? 1 / distance : 0;
+        if (mob.kind === "creeper") {
+          const verticalDistance = Math.abs(input.player.y - mob.y);
+          const fuseActive = mob.fuseStartedAtSeconds > 0 && mob.fuseUntilSeconds > mob.fuseStartedAtSeconds;
+          if (fuseActive && (distance > CREEPER_FUSE_CANCEL_RANGE_BLOCKS
+            || verticalDistance > CREEPER_FUSE_VERTICAL_RANGE_BLOCKS)) {
+            mob.fuseStartedAtSeconds = 0;
+            mob.fuseUntilSeconds = 0;
+          }
+          if (mob.fuseStartedAtSeconds > 0) {
+            mob.behavior = "fuse";
+            mob.directionX = 0;
+            mob.directionZ = 0;
+            mob.desiredX = mob.x;
+            mob.desiredZ = mob.z;
+            mob.behaviorUntilSeconds = mob.fuseUntilSeconds;
+            chasing = true;
+          } else if (distance <= CREEPER_FUSE_START_RANGE_BLOCKS
+            && verticalDistance <= CREEPER_FUSE_VERTICAL_RANGE_BLOCKS) {
+            mob.fuseStartedAtSeconds = simulation.elapsedSeconds;
+            mob.fuseUntilSeconds = simulation.elapsedSeconds + CREEPER_FUSE_TICKS / MOB_MOTION_TICKS_PER_SECOND;
+            mob.behavior = "fuse";
+            mob.directionX = 0;
+            mob.directionZ = 0;
+            mob.desiredX = mob.x;
+            mob.desiredZ = mob.z;
+            mob.behaviorUntilSeconds = mob.fuseUntilSeconds;
+            chasing = true;
+          } else {
+            mob.directionX = playerDx * inverseDistance;
+            mob.directionZ = playerDz * inverseDistance;
+            speed = definition.chaseSpeed;
+          }
+        } else if (mob.kind === "skeleton") {
           if (distance > 10) {
             mob.directionX = playerDx * inverseDistance;
             mob.directionZ = playerDz * inverseDistance;
@@ -692,10 +772,19 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
           mob.directionZ = playerDz * inverseDistance;
           speed = definition.chaseSpeed;
         }
-        mob.behavior = "chase";
-        mob.behaviorUntilSeconds = simulation.elapsedSeconds + 0.25;
-        chasing = true;
+        if (mob.behavior !== "fuse") {
+          mob.behavior = "chase";
+          mob.behaviorUntilSeconds = simulation.elapsedSeconds + 0.25;
+          chasing = true;
+        }
       }
+    }
+
+    if (mob.kind === "creeper" && mob.fuseStartedAtSeconds > 0 && !chasing) {
+      mob.fuseStartedAtSeconds = 0;
+      mob.fuseUntilSeconds = 0;
+      mob.behavior = "idle";
+      mob.behaviorUntilSeconds = simulation.elapsedSeconds;
     }
 
     if (mob.behavior === "chase" && !chasing) {
@@ -703,7 +792,8 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       mob.behaviorUntilSeconds = simulation.elapsedSeconds;
     }
 
-    if (mob.behavior !== "chase" && simulation.elapsedSeconds >= mob.behaviorUntilSeconds) {
+    if (mob.behavior !== "chase" && mob.behavior !== "fuse"
+      && simulation.elapsedSeconds >= mob.behaviorUntilSeconds) {
       choosePassiveBehavior(mob, simulation.elapsedSeconds);
     }
     if (mob.behavior === "idle" || mob.behavior === "dormant") {
@@ -756,6 +846,11 @@ export function writeMobPoseSnapshots(
     snapshot.health = mob.health;
     snapshot.maxHealth = definition.maxHealth;
     snapshot.hostileActive = mob.hostileActive;
+    snapshot.fuseProgress = mob.fuseStartedAtSeconds > 0
+      ? Math.max(0, Math.min(1,
+        (simulation.elapsedSeconds - mob.fuseStartedAtSeconds)
+          / (CREEPER_FUSE_TICKS / MOB_MOTION_TICKS_PER_SECOND)))
+      : 0;
     output[outputIndex] = snapshot;
     outputIndex += 1;
   }
@@ -842,6 +937,8 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
   mob.nextContactDamageAtSeconds = 0;
   mob.nextRangedAttackAtSeconds = Math.max(0, elapsedSeconds) + 0.65 + (mob.behaviorSeed % 1_000) / 1_000;
   mob.rangedSequence = 0;
+  mob.fuseStartedAtSeconds = 0;
+  mob.fuseUntilSeconds = 0;
 }
 
 /**
