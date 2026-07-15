@@ -95,6 +95,14 @@ assert.deepEqual(validateWorldBlockActionPose(
   { x: 12, y: 5, z: 10 },
   100_000,
 ), { ok: false, reason: "active_presence_required" });
+const crouchBoundaryPose = { x: 0.6, y: 0, z: 0.5, yaw: 0, pitch: 0 };
+assert.deepEqual(validateWorldBlockActionPose(
+  { userId: "user-1", x: "0.6", y: "0", z: "0.5", heartbeatAt: "1000", online: true },
+  "user-1",
+  crouchBoundaryPose,
+  { x: 6, y: 0, z: 0 },
+  1_000,
+), { ok: true, elapsedMs: 0 }, "Lakebed accepts the crouched eye at the survival reach boundary");
 
 const operationFingerprint = "[1,\"operation\"]";
 const fingerprint = worldBlockOperationPoseFingerprint(operationFingerprint, actionPose);

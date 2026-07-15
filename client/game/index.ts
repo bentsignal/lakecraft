@@ -1,4 +1,26 @@
 export { createVoxelEngine } from "./voxelEngine.ts";
+export {
+  DEFAULT_FOV_RADIANS,
+  SNEAKING_BODY_HEIGHT,
+  SNEAKING_EYE_HEIGHT,
+  SNEAK_SPEED,
+  SPRINT_FOV_RADIANS,
+  SPRINT_SPEED,
+  STANDING_BODY_HEIGHT,
+  STANDING_EYE_HEIGHT,
+  WALK_SPEED,
+  clampSneakAxisMovement,
+  movementActivityMultiplier,
+  normalizeMovementInput,
+  postureTargetsForMovement,
+  resolvePlayerMovement,
+  resolveSneakIntent,
+  sampleHeadBob,
+  smoothMovementValue,
+  smoothPlayerPosture,
+  writeHorizontalMovementDelta,
+  writePlayerEye,
+} from "./playerMovement.ts";
 export { BED_MESH_VERTEX_COUNT, CHEST_MESH_VERTEX_COUNT, DOOR_MESH_VERTEX_COUNT, MAX_ACTIVE_TORCH_LIGHTS, MAX_RESPAWN_HEIGHT, PLAYER_MAX_HEALTH, TORCH_LIGHT_RADIUS, TORCH_MESH_VERTEX_COUNT, appendBedMesh, appendChestMesh, appendDoorMesh, appendTorchMesh, applyDayNightClockUpdate, blockHasCollision, blockOccludesFaces, createDoorToggleEdit, doorPlacementBlock, isDoorBlock, resolveSafeSpawnY, selectNearestTorchLights, toggledDoorBlock, tryInteractBlock, validateRespawnPoint } from "./voxelEngine.ts";
 export { BLOCK } from "./types.ts";
 export { blockKey, createTerrain, raycastVoxels, terrainHeight } from "./terrain.ts";
@@ -58,4 +80,5 @@ export type {
 } from "./types.ts";
 export type { MobBehavior, MobCombatApplyResult, MobCombatStateSnapshot, MobDefinition, MobDrop, MobKind, MobPoseSnapshot, MobRayTarget, MobSimulation, MobState } from "./mobs.ts";
 export type { DayNightConfig, DayNightState, TimeOfDayLabel } from "./dayNight.ts";
+export type { HeadBobOffsets, HorizontalMovementDelta, NormalizedMovementInput, PlayerEye, PlayerMovementInput, PlayerMovementMode, PlayerPostureTargets, ResolvedPlayerMovement } from "./playerMovement.ts";
 export type { DroppedItemGeometryStats, DroppedItemRenderItem, DroppedItemRenderer, DroppedItemRenderStats } from "./droppedItemRenderer.ts";

@@ -667,7 +667,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const respawnPointRef = useRef<PlayerRespawnPoint | null>(null);
   const hungerRef = useRef(MAX_HUNGER);
   const survivalRef = useRef<SurvivalTickState>(createSurvivalTickState());
-  const recentlyActiveUntilRef = useRef(0);
+  const movementActivityRef = useRef(0.5);
   const selectedRef = useRef(2);
   const hydratedRef = useRef(false);
   const hydratedUserRef = useRef("");
@@ -1531,6 +1531,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
             intensity: 0.48,
           });
         },
+        canSprint: () => hungerRef.current > 6,
+        onMovementModeChange: (_mode, activityMultiplier) => {
+          movementActivityRef.current = activityMultiplier;
+        },
         onHandAction: (action) => {
           setHandActionToken((current) => current + 1);
           if (action === "attack") audioRef.current?.play("playerAttack", { seed: performance.now().toFixed(0), intensity: 0.44 });
@@ -1570,7 +1574,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
             setDroppedChunkKeys(visibleDroppedItemChunkKeys(pose.x, pose.z));
           }
           presenceSampleRef.current?.(pose);
-          recentlyActiveUntilRef.current = performance.now() + 1_200;
           const workstation = activeWorkstationRef.current;
           if (workstation && !isWorkstationWithinReach(pose, workstation.position)) {
             const label = workstation.kind === "furnace" ? "Furnace" : "Workbench";
@@ -1750,8 +1753,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       const now = performance.now();
       const elapsedSeconds = Math.max(0, (now - lastTickAt) / 1_000);
       lastTickAt = now;
-      const activityMultiplier = now < recentlyActiveUntilRef.current ? 2 : 0.5;
-      const result = tickSurvival(survivalRef.current, elapsedSeconds, activityMultiplier);
+      const result = tickSurvival(survivalRef.current, elapsedSeconds, movementActivityRef.current);
       survivalRef.current = result.state;
       if (result.state.hunger !== hungerRef.current) {
         hungerRef.current = result.state.hunger;

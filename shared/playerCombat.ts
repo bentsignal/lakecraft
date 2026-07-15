@@ -8,6 +8,7 @@ import {
   type Equipment,
   type ItemId,
 } from "./game.ts";
+import { PLAYER_INTERACTION_EYE_HEIGHTS } from "./playerPosture.ts";
 import {
   MAX_OPERATION_ID_LENGTH,
   MIN_OPERATION_ID_LENGTH,
@@ -273,9 +274,6 @@ export function validatePlayerMeleeSpatialAuthority(
   attacker: CombatPose,
   target: CombatPose,
 ): { ok: true } | { ok: false; reason: "out_of_reach" | "not_aimed" } {
-  const eyeX = attacker.x;
-  const eyeY = attacker.y + 1.62;
-  const eyeZ = attacker.z;
   const cosPitch = Math.cos(attacker.pitch);
   const direction = [
     Math.sin(attacker.yaw) * cosPitch,
@@ -288,16 +286,18 @@ export function validatePlayerMeleeSpatialAuthority(
   }
   let closestProjection = Number.POSITIVE_INFINITY;
   let closestRayDistance = Number.POSITIVE_INFINITY;
-  for (const targetHeight of [0.25, 0.9, 1.55]) {
-    const dx = target.x - eyeX;
-    const dy = target.y + targetHeight - eyeY;
-    const dz = target.z - eyeZ;
-    const projection = dx * direction[0] + dy * direction[1] + dz * direction[2];
-    const distanceSquared = dx * dx + dy * dy + dz * dz;
-    const rayDistance = Math.sqrt(Math.max(0, distanceSquared - projection * projection));
-    if (projection >= 0 && rayDistance < closestRayDistance) {
-      closestProjection = projection;
-      closestRayDistance = rayDistance;
+  for (const eyeHeight of PLAYER_INTERACTION_EYE_HEIGHTS) {
+    for (const targetHeight of [0.25, 0.9, 1.55]) {
+      const dx = target.x - attacker.x;
+      const dy = target.y + targetHeight - (attacker.y + eyeHeight);
+      const dz = target.z - attacker.z;
+      const projection = dx * direction[0] + dy * direction[1] + dz * direction[2];
+      const distanceSquared = dx * dx + dy * dy + dz * dz;
+      const rayDistance = Math.sqrt(Math.max(0, distanceSquared - projection * projection));
+      if (projection >= 0 && rayDistance < closestRayDistance) {
+        closestProjection = projection;
+        closestRayDistance = rayDistance;
+      }
     }
   }
   if (closestProjection > PLAYER_MELEE_REACH) return { ok: false, reason: "out_of_reach" };

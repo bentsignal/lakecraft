@@ -5,6 +5,7 @@ import type { DroppedItemRenderItem } from "./droppedItemRenderer.ts";
 import type { RemotePlayerRayTarget } from "./remotePlayerTargeting.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 import type { BlockParticleEvent } from "./blockParticles.ts";
+import type { PlayerMovementMode } from "./playerMovement.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -154,6 +155,10 @@ export interface VoxelEngineOptions {
   onMiningHit?: (target: Readonly<BlockTarget>) => void;
   /** Distance-based grounded step over the block beneath the player. */
   onFootstep?: (block: BlockId) => void;
+  /** Current authoritative hunger gate for initiating a local sprint. */
+  canSprint?: () => boolean;
+  /** Local posture feedback for survival exertion and UI; never adds a network write. */
+  onMovementModeChange?: (mode: PlayerMovementMode, activityMultiplier: number) => void;
   /** Discrete first-person swing/use feedback; never emitted from the frame loop. */
   onHandAction?: (action: "mine" | "attack" | "place" | "use") => void;
   getPlayerProtection?: () => number;

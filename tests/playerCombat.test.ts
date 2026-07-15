@@ -58,6 +58,11 @@ assert.deepEqual(validatePlayerMeleeSpatialAuthority(attackerPose, targetPose), 
 assert.equal(validatePlayerMeleeSpatialAuthority(attackerPose, pose("bob", 3, 0, 0)).reason, "not_aimed");
 assert.equal(validatePlayerMeleeSpatialAuthority(attackerPose, pose("bob", 0, 0, PLAYER_MELEE_REACH + 1)).reason, "out_of_reach");
 assert.equal(validatePlayerMeleeSpatialAuthority(attackerPose, pose("bob", 0, 4, -2)).reason, "out_of_reach");
+assert.deepEqual(
+  validatePlayerMeleeSpatialAuthority(pose("alice", 0, 0, 0, 0, -0.44), pose("bob", 0, -2, -4.1)),
+  { ok: true },
+  "Lakebed validates a legitimate crouched-eye melee ray without trusting a new client posture field",
+);
 
 const storedPresence = {
   userId: "alice",

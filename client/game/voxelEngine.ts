@@ -82,6 +82,23 @@ import {
   type WorldEdit,
 } from "./types.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
+import {
+  DEFAULT_FOV_RADIANS,
+  STANDING_BODY_HEIGHT,
+  STANDING_EYE_HEIGHT,
+  clampSneakAxisMovement,
+  postureTargetsForMovement,
+  resolvePlayerMovement,
+  resolveSneakIntent,
+  sampleHeadBob,
+  smoothMovementValue,
+  smoothPlayerPosture,
+  writeHorizontalMovementDelta,
+  writePlayerEye,
+  type HeadBobOffsets,
+  type PlayerMovementMode,
+  type PlayerPostureTargets,
+} from "./playerMovement.ts";
 
 type Vec3 = [number, number, number];
 
@@ -966,6 +983,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastPoseSent = 0;
   let poseDirty = true;
   let grounded = false;
+  let movementMode: PlayerMovementMode = "idle";
+  let movementActivity = 0.5;
+  let playerViewSuspended = false;
+  let movementDistance = 0;
+  let bobEnvelope = 0;
+  let bobMode: PlayerMovementMode = "walk";
+  const cameraPosture: PlayerPostureTargets = {
+    eyeHeight: STANDING_EYE_HEIGHT,
+    bodyHeight: STANDING_BODY_HEIGHT,
+    fovRadians: DEFAULT_FOV_RADIANS,
+  };
+  const cameraBob: HeadBobOffsets = { x: 0, y: 0 };
+  const cameraBobTarget: HeadBobOffsets = { x: 0, y: 0 };
+  const interactionBob: HeadBobOffsets = { x: 0, y: 0 };
+  const horizontalMovementDelta = { x: 0, z: 0 };
   let miningTimer = 0;
   let miningStartedAt = 0;
   let miningDurationMs = 0;
@@ -1257,12 +1289,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (batch.length) rebuildWorldChunks(batch);
   }
 
-  function collides(x: number, y: number, z: number): boolean {
+  function collides(x: number, y: number, z: number, bodyHeight = cameraPosture.bodyHeight): boolean {
     const halfWidth = 0.29;
     const minX = Math.floor(x - halfWidth);
     const maxX = Math.floor(x + halfWidth);
     const minY = Math.floor(y + 0.001);
-    const maxY = Math.floor(y + 1.77);
+    const maxY = Math.floor(y + Math.max(0.1, bodyHeight) - 0.01);
     const minZ = Math.floor(z - halfWidth);
     const maxZ = Math.floor(z + halfWidth);
     for (let bx = minX; bx <= maxX; bx += 1) {
@@ -1275,6 +1307,55 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
     }
     return false;
+  }
+
+  /** A sneaking player may hang their toes over an edge but never move until their whole footprint is unsupported. */
+  function hasGroundSupport(x: number, y: number, z: number): boolean {
+    const sampleY = Math.floor(y - 0.08);
+    for (const xOffset of [-0.26, 0.26]) {
+      for (const zOffset of [-0.26, 0.26]) {
+        if (blockHasCollision(getBlock(Math.floor(x + xOffset), sampleY, Math.floor(z + zOffset)))) return true;
+      }
+    }
+    return false;
+  }
+
+  function moveHorizontalAxis(axis: 0 | 2, amount: number, protectLedge: boolean): boolean {
+    if (!protectLedge || amount === 0) return moveAxis(axis, amount);
+    const initial = axis === 0 ? pose.x : pose.z;
+    const safeAmount = clampSneakAxisMovement(amount, (offset) => {
+      const x = axis === 0 ? initial + offset : pose.x;
+      const z = axis === 2 ? initial + offset : pose.z;
+      return hasGroundSupport(x, pose.y, z);
+    });
+    return moveAxis(axis, safeAmount);
+  }
+
+  function cameraEye(out: Vec3 = [0, 0, 0]): Vec3 {
+    return writePlayerEye(pose.x, pose.y, pose.z, pose.yaw, cameraPosture.eyeHeight, cameraBob, out);
+  }
+
+  /** Interaction bob is visual-only so Lakebed's bounded posture validator sees the same ray origin. */
+  function interactionEye(out: Vec3 = [0, 0, 0]): Vec3 {
+    const eyeHeight = postureTargetsForMovement(movementMode).eyeHeight;
+    return writePlayerEye(pose.x, pose.y, pose.z, pose.yaw, eyeHeight, interactionBob, out);
+  }
+
+  function resetMovementView(): void {
+    const mustRemainSneaking = collides(pose.x, pose.y, pose.z, STANDING_BODY_HEIGHT);
+    movementMode = mustRemainSneaking ? "sneak" : "idle";
+    movementActivity = 0.5;
+    movementDistance = 0;
+    bobEnvelope = 0;
+    bobMode = "walk";
+    cameraBob.x = 0;
+    cameraBob.y = 0;
+    cameraBobTarget.x = 0;
+    cameraBobTarget.y = 0;
+    cameraPosture.eyeHeight = mustRemainSneaking ? postureTargetsForMovement("sneak").eyeHeight : STANDING_EYE_HEIGHT;
+    cameraPosture.bodyHeight = mustRemainSneaking ? postureTargetsForMovement("sneak").bodyHeight : STANDING_BODY_HEIGHT;
+    cameraPosture.fovRadians = DEFAULT_FOV_RADIANS;
+    options.onMovementModeChange?.(movementMode, 0.5);
   }
 
   function moveAxis(axis: 0 | 1 | 2, amount: number): boolean {
@@ -1372,6 +1453,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function update(dt: number, now: number): void {
     if (playerHealth <= 0) {
+      if (!playerViewSuspended) {
+        resetMovementView();
+        playerViewSuspended = true;
+      }
       keys.clear();
       velocity[0] = 0;
       velocity[1] = 0;
@@ -1382,20 +1467,47 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       updateMobs(dt);
       return;
     }
+    playerViewSuspended = false;
     const forwardInput = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
     const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
     const ladderAtFrameStart = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
+    const shiftHeld = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    // Standing-clearance reads are only needed on the release edge. The mode
+    // then stays sneaking until the full standing body fits again.
+    const sneakHeld = resolveSneakIntent(
+      shiftHeld,
+      movementMode,
+      () => collides(pose.x, pose.y, pose.z, STANDING_BODY_HEIGHT),
+    );
+    const sprintHeld = keys.has("ControlLeft") || keys.has("ControlRight");
     // Once attached, W/S become vertical controls while strafing remains the
     // deliberate way to step off the non-solid ladder.
     const forward = ladderAtFrameStart ? 0 : forwardInput;
-    const magnitude = Math.hypot(forward, strafe) || 1;
-    const speed = keys.has("ShiftLeft") && !ladderAtFrameStart ? 6.1 : 4.35;
-    const dx = ((Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * strafe) / magnitude) * speed * dt;
-    const dz = ((-Math.cos(pose.yaw) * forward + Math.sin(pose.yaw) * strafe) / magnitude) * speed * dt;
+    const movement = resolvePlayerMovement({
+      forward,
+      strafe,
+      sprintHeld,
+      sneakHeld,
+      onLadder: ladderAtFrameStart,
+      ladderMotion: ladderAtFrameStart && (
+        forwardInput !== 0 || keys.has("Space") || shiftHeld
+      ),
+      hunger: options.canSprint?.() === false ? 0 : 20,
+    });
+    if (movement.mode !== movementMode || movement.activityMultiplier !== movementActivity) {
+      movementMode = movement.mode;
+      movementActivity = movement.activityMultiplier;
+      options.onMovementModeChange?.(movementMode, movement.activityMultiplier);
+    }
+    smoothPlayerPosture(cameraPosture, postureTargetsForMovement(movementMode), dt, cameraPosture);
+    writeHorizontalMovementDelta(pose.yaw, movement, dt, horizontalMovementDelta);
+    const dx = horizontalMovementDelta.x;
+    const dz = horizontalMovementDelta.z;
     const movementStartX = pose.x;
     const movementStartZ = pose.z;
-    moveAxis(0, dx);
-    moveAxis(2, dz);
+    const protectLedge = movementMode === "sneak" && grounded;
+    moveHorizontalAxis(0, dx, protectLedge);
+    moveHorizontalAxis(2, dz, protectLedge);
     updateStreamingWindow();
     const touchingLadder = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
     velocity[1] = ladderVerticalVelocity(
@@ -1412,9 +1524,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     } else grounded = false;
 
     const movedHorizontally = Math.hypot(pose.x - movementStartX, pose.z - movementStartZ);
+    movementDistance += movedHorizontally;
+    if (movementDistance > 1_228.8) movementDistance %= 1.2;
+    if (movedHorizontally > 0.0001 && movementMode !== "idle" && movementMode !== "ladder") bobMode = movementMode;
+    sampleHeadBob(bobMode, movementDistance, true, cameraBobTarget);
+    bobEnvelope = smoothMovementValue(
+      bobEnvelope,
+      grounded && movedHorizontally > 0.0001 ? 1 : 0,
+      dt,
+      12,
+    );
+    cameraBob.x = cameraBobTarget.x * bobEnvelope;
+    cameraBob.y = cameraBobTarget.y * bobEnvelope;
     if (grounded && movedHorizontally > 0.0001) {
       footstepDistance += movedHorizontally;
-      const stepDistance = speed > 5 ? 1.35 : 1.65;
+      const stepDistance = movementMode === "sprint" ? 1.35 : movementMode === "sneak" ? 2.1 : 1.65;
       if (footstepDistance >= stepDistance) {
         footstepDistance %= stepDistance;
         const floorBlock = getBlock(Math.floor(pose.x), Math.floor(pose.y - 0.08), Math.floor(pose.z));
@@ -1424,7 +1548,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       footstepDistance = Math.min(footstepDistance, 0.8);
     }
 
-    const nextTarget = raycastVoxels([pose.x, pose.y + 1.62, pose.z], direction(), getBlock, options.reach ?? 6);
+    const nextTarget = raycastVoxels(interactionEye(), direction(), getBlock, options.reach ?? 6);
     if (!sameTarget(target, nextTarget)) {
       clearMining();
       target = nextTarget;
@@ -1540,7 +1664,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function render(now: number, dt: number): void {
     resize();
-    const eye: Vec3 = [pose.x, pose.y + 1.62, pose.z];
+    const eye = cameraEye();
     const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
     remoteVertexCount = remoteStats.avatarVertexCount;
     nameplateVertexCount = remoteStats.nameplateVertexCount;
@@ -1568,7 +1692,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleGeometry);
     }
-    const projection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.05, 90);
+    const projection = perspective(cameraPosture.fovRadians, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
     sampleDayNight(Date.now() + serverTimeOffsetMs, dayNightConfig, dayNightState);
@@ -1800,9 +1924,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function onKeyDown(event: KeyboardEvent): void {
     if (/^Digit[1-9]$/.test(event.code)) selectedBlock = Number(event.code.slice(5)) as BlockId;
     if (document.pointerLockElement !== canvas) return;
+    if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight"].includes(event.code)) {
+      event.preventDefault();
+    }
     keys.add(event.code);
     if (event.code === "Space") {
-      event.preventDefault();
       // Space is a climb command while touching a ladder; do not inject the
       // normal 8.25-block/s ground impulse before the next physics frame.
       if (grounded && !playerTouchesLadder(pose.x, pose.y, pose.z, getBlock)) {
@@ -1825,11 +1951,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function playerIntersectsBlock(x: number, y: number, z: number): boolean {
-    return pose.x + 0.29 > x && pose.x - 0.29 < x + 1 && pose.y + 1.78 > y && pose.y < y + 1 && pose.z + 0.29 > z && pose.z - 0.29 < z + 1;
+    return pose.x + 0.29 > x && pose.x - 0.29 < x + 1 && pose.y + cameraPosture.bodyHeight > y && pose.y < y + 1 && pose.z + 0.29 > z && pose.z - 0.29 < z + 1;
   }
 
   function attackEntityUnderCrosshair(): boolean {
-    const eye: Vec3 = [pose.x, pose.y + 1.62, pose.z];
+    const eye = interactionEye();
     const facing = direction();
     const reach = options.reach ?? 6;
     const mobTarget = raycastMobs(eye, facing, mobSimulation.mobs, reach);
@@ -1936,6 +2062,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (document.pointerLockElement !== canvas) {
       keys.clear();
       clearMining();
+      resetMovementView();
     }
     options.onPointerLockChange?.(document.pointerLockElement === canvas);
   }
@@ -1965,12 +2092,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.addEventListener("contextmenu", onContextMenu);
       options.onPoseChange?.({ ...pose });
       options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      options.onMovementModeChange?.("idle", 0.5);
       frameId = requestAnimationFrame(frame);
     },
     destroy() {
       if (destroyed) return;
       destroyed = true;
       running = false;
+      resetMovementView();
       cancelAnimationFrame(frameId);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -2121,6 +2250,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[1] = 0;
       velocity[2] = 0;
       keys.clear();
+      resetMovementView();
+      playerViewSuspended = false;
       updateStreamingWindow(true);
       poseDirty = true;
       options.onPoseChange?.({ ...pose });
@@ -2139,6 +2270,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
+      keys.clear();
+      resetMovementView();
+      playerViewSuspended = false;
       playerHealth = PLAYER_MAX_HEALTH;
       poseDirty = true;
       options.onPoseChange?.({ ...pose });

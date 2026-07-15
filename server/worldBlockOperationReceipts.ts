@@ -2,6 +2,7 @@ import {
   PRESENCE_MAX_HORIZONTAL_SPEED,
   PRESENCE_MAX_VERTICAL_SPEED,
 } from "../shared/presenceMotion.ts";
+import { PLAYER_INTERACTION_EYE_HEIGHTS } from "../shared/playerPosture.ts";
 import type {
   ResolvedWorldBlockOperation,
   WorldBlockOperationRequest,
@@ -112,11 +113,11 @@ export function validateWorldBlockActionPose(
     || Math.abs(pose.y - y) > verticalAllowance) {
     return { ok: false, reason: "implausible_pose" };
   }
-  const targetDistance = Math.hypot(
+  const targetDistance = Math.min(...PLAYER_INTERACTION_EYE_HEIGHTS.map((eyeHeight) => Math.hypot(
     target.x + 0.5 - pose.x,
-    target.y + 0.5 - (pose.y + 1.62),
+    target.y + 0.5 - (pose.y + eyeHeight),
     target.z + 0.5 - pose.z,
-  );
+  )));
   return targetDistance <= WORLD_BLOCK_ACTION_REACH
     ? { ok: true, elapsedMs }
     : { ok: false, reason: "out_of_reach" };
