@@ -55,6 +55,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.TNT]: "tnt",
   [BLOCK.WOOL]: "wool",
   [BLOCK.SAPLING]: "sapling",
+  [BLOCK.STONE_BRICKS]: "stone_bricks",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -66,6 +67,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   tnt: BLOCK.TNT,
   wool: BLOCK.WOOL,
   sapling: BLOCK.SAPLING,
+  stone_bricks: BLOCK.STONE_BRICKS,
 };
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
@@ -77,7 +79,7 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GRAVEL) return "gravel";
   if (block === BLOCK.GLASS) return "glass";
   if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
-  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE) return "stone";
+  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE || block === BLOCK.STONE_BRICKS) return "stone";
   return "generic";
 }
 
@@ -98,7 +100,7 @@ function loadLocalSave(): LocalSave {
     const value = JSON.parse(raw) as Partial<LocalSave>;
     const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.SAPLING,
+      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.STONE_BRICKS,
     )).slice(-8_000) : [];
     const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];

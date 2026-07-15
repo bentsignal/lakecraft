@@ -120,4 +120,8 @@ const sapling = createBlockParticleSystem(1);
 assert.equal(sapling.spawn({ block: BLOCK.SAPLING, x: 2, y: 3, z: 4, action: "break" }), 1,
   "the append-only particle palette accepts saplings");
 
+const stoneBricks = createBlockParticleSystem(1);
+assert.equal(stoneBricks.spawn({ block: BLOCK.STONE_BRICKS, x: 2, y: 3, z: 4, action: "break" }), 1,
+  "the append-only particle palette accepts stone bricks");
+
 console.log("bounded deterministic block particle tests passed");

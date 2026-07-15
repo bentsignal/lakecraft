@@ -39,6 +39,7 @@ const EXPECTED_NAMES = [
   "gravel",
   "wool",
   "sapling",
+  "stone_bricks",
 ] as const;
 
 function fnv1a32(bytes: Iterable<number>): string {
@@ -74,7 +75,7 @@ assert.equal(TEXTURE_TILE_SIZE, 16, "world textures stay at Minecraft-scale 16px
 assert.equal(TEXTURE_ATLAS_COLUMNS, 5);
 assert.equal(TEXTURE_ATLAS_ROWS, 6);
 assert.deepEqual(TEXTURE_ATLAS_NAMES, EXPECTED_NAMES, "tile order is part of the renderer contract");
-assert.equal(TEXTURE_ATLAS_NAMES.length, 27);
+assert.equal(TEXTURE_ATLAS_NAMES.length, 28);
 
 const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
 const atlasHeight = TEXTURE_ATLAS_ROWS * TEXTURE_TILE_SIZE;
@@ -95,7 +96,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   }
   tileFingerprints.add(fnv1a32(tile));
 }
-assert.equal(tileFingerprints.size, 27, "every named atlas tile must be visually distinct");
+assert.equal(tileFingerprints.size, 28, "every named atlas tile must be visually distinct");
 
 for (let index = TEXTURE_ATLAS_NAMES.length; index < TEXTURE_ATLAS_COLUMNS * TEXTURE_ATLAS_ROWS; index += 1) {
   assert.equal(atlasTile(index).every((channel) => channel === 0), true, "unused atlas capacity stays transparent and inert");
@@ -120,7 +121,7 @@ assert.ok((saplingAlphaCounts.get(0) ?? 0) >= 150, "sapling negative space stays
 assert.ok((saplingAlphaCounts.get(255) ?? 0) >= 45, "sapling foliage remains readable at Minecraft-scale 16px");
 
 // Intentional atlas regeneration should update this fingerprint in the same change.
-assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "6f78ded8", "generated RGBA atlas changed unexpectedly");
+assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "4e2265c9", "generated RGBA atlas changed unexpectedly");
 
 const png = readFileSync(new URL("../client/game/generated/texture-atlas-v1.png", import.meta.url));
 assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);

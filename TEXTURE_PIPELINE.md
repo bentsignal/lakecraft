@@ -14,13 +14,13 @@ node scripts/pixelate-texture-sheet.mjs \
   --source-rows 4 \
   --tile-size 16 \
   --inset 0 \
-  --names grass_top,grass_side,dirt,stone,cobblestone,oak_log,oak_planks,leaves,sand,coal_ore,iron_ore,gold_ore,diamond_ore,glass,crafting_table_side,furnace_side,oak_log_end,crafting_table_top,crafting_table_front,furnace_front,furnace_top,tnt_side,tnt_top,tnt_bottom,gravel,wool,sapling \
+  --names grass_top,grass_side,dirt,stone,cobblestone,oak_log,oak_planks,leaves,sand,coal_ore,iron_ore,gold_ore,diamond_ore,glass,crafting_table_side,furnace_side,oak_log_end,crafting_table_top,crafting_table_front,furnace_front,furnace_top,tnt_side,tnt_top,tnt_bottom,gravel,wool,sapling,stone_bricks \
   --ts client/game/generated/textureAtlas.ts
 ```
 
 The script decodes RGB/RGBA PNG files itself, area-averages the original 4×4 concept sheet into 16×16 tiles, adds deterministic original pixel-art tiles for later materials and alpha-cutout plants, quantizes each RGB channel to a stable palette, writes an 80×96 PNG for human inspection, and emits palette indexes that reconstruct the exact RGBA bytes as TypeScript. Re-running the command with the same input must produce byte-identical outputs.
 
-At runtime WebGL uploads the reconstructed 80×96 RGBA array once with nearest-neighbor filtering. Blocks select a tile per face: logs expose growth rings, and workbenches and furnaces have recognizable top, front, and side materials. Glass is kept out of the opaque terrain buffers and composited in a far-to-near, per-visible-chunk alpha pass with depth writes disabled. Oak saplings use a fixed 12-vertex crossed mesh in the ordinary chunk batch with a 0.5 alpha cutoff.
+At runtime WebGL uploads the reconstructed 80×96 RGBA array once with nearest-neighbor filtering. Blocks select a tile per face: logs expose growth rings, workbenches and furnaces have recognizable top, front, and side materials, and stone bricks use an original staggered five-tone masonry tile. Glass is kept out of the opaque terrain buffers and composited in a far-to-near, per-visible-chunk alpha pass with depth writes disabled. Oak saplings use a fixed 12-vertex crossed mesh in the ordinary chunk batch with a 0.5 alpha cutoff.
 
 ## Check deployment headroom
 

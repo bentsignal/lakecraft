@@ -9,7 +9,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -245,6 +245,7 @@ export const BLOCKS = defineBlocks([
   ["tnt", "TNT", "A volatile block crafted from sand and gunpowder. It only explodes after an explicit ignition.", "#b73529", "#f0e1bd", 0.1, "hand", "tnt"],
   ["wool", "White Wool", "A soft building block clipped from sheep.", "#ddd8c8", "#f3f0e7", 0.8, "hand", "wool"],
   ["sapling", "Oak Sapling", "A young oak that can grow on dirt or grass.", "#477537", "#82a94e", 0, "hand", "sapling"],
+  ["stone_bricks", "Stone Bricks", "Cut stone blocks fitted into a durable masonry pattern.", "#74766f", "#a3a59c", 1.5, "pickaxe", "stone_bricks", "wood"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -283,6 +284,7 @@ const BLOCK_ITEM_SPECS = [
   ["tnt", "TNT", "▩"],
   ["wool", "WOL", "▦"],
   ["sapling", "SAP", "✣"],
+  ["stone_bricks", "S·BR", "▦"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
@@ -434,6 +436,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "torch", label: "Torches", note: "A lump of coal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "coal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "torch_charcoal", label: "Charcoal torches", note: "A piece of charcoal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "charcoal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "bone_meal", label: "Bone meal", note: "One bone makes three handfuls of bone meal.", craftingContext: "field", ingredients: [{ itemId: "bone", count: 1 }], output: { itemId: "bone_meal", count: 3 } },
+  { id: "stone_bricks", label: "Stone bricks", note: "Four stone blocks make four fitted stone bricks.", craftingContext: "field", ingredients: [{ itemId: "stone", count: 4 }], output: { itemId: "stone_bricks", count: 4 } },
   { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
@@ -450,6 +453,7 @@ export const RECIPES: readonly Recipe[] = [
 
 export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
   { id: "charcoal", label: "Make charcoal", input: "log", output: "charcoal" },
+  { id: "stone", label: "Smelt stone", input: "cobblestone", output: "stone" },
   { id: "iron_ingot", label: "Smelt iron", input: "raw_iron", output: "iron_ingot" },
   { id: "gold_ingot", label: "Smelt gold", input: "raw_gold", output: "gold_ingot" },
   { id: "glass", label: "Smelt glass", input: "sand", output: "glass" },

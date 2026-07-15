@@ -26,6 +26,7 @@ const uniformMappings: ReadonlyArray<readonly [BlockId, TextureAtlasName]> = [
   [BLOCK.DIRT, "dirt"],
   [BLOCK.STONE, "stone"],
   [BLOCK.COBBLESTONE, "cobblestone"],
+  [BLOCK.STONE_BRICKS, "stone_bricks"],
   [BLOCK.PLANKS, "oak_planks"],
   [BLOCK.LEAVES, "leaves"],
   [BLOCK.SAND, "sand"],
@@ -119,7 +120,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 
 const firstRow = textureAtlasUv("grass_top");
 assert.ok(firstRow.top > 0.98 && firstRow.bottom > 0.83 && firstRow.bottom < 0.84);
-const lastRow = textureAtlasUv("sapling");
+const lastRow = textureAtlasUv("stone_bricks");
 assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.02 && lastRow.top < 0.17);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the

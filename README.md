@@ -27,6 +27,7 @@ npx lakebed auth as alice
 - Clip oak leaves with shears to recover the block; ordinary breaking has a deterministic sparse apple drop
 - Break oak leaves for renewable saplings, craft one bone into three bone meal, plant on dirt/grass, then right click the sapling with bone meal to grow it
 - Smelt oak logs into charcoal; coal and charcoal both fuel furnaces and craft four torches over a stick
+- Smelt cobblestone back into stone, then arrange four stone in the 2×2 pack grid to craft four stone bricks
 - Right click a crafting table, furnace, chest, door, or bed to interact; right click held food to eat
 - Double-click food in the pack to eat it
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
@@ -68,5 +69,7 @@ Sheep can be clipped by right-clicking with shears. The interaction is a discret
 The resulting white wool is a normal building block rather than a recipe-only token. Its existing item ID now places an opaque, collision-bearing 16×16 woven-fleece cube, mines back into itself by hand, and still feeds the unchanged bed recipe. Wool appends as world-chunk palette code 25 and protocol index 24, leaving every deployed block code stable; placement and mining reuse the ordinary exact-once world mutation and add no network loop.
 
 Oak wood is renewable through the same offline/Lakebed rules. Uncut leaves resolve one deterministic conserved drop—an apple at one in 200, otherwise an oak sapling at one in 20—while shears still recover exactly one leaf block. One bone crafts three bone meal. Saplings append as world-chunk code 26/protocol index 25, render as alpha-tested crossed pixel art, only place above dirt or grass, and grow into a deterministic 4–5-log oak after a valid bone-meal use. Multiplayer commits the complete tree across at most four chunks and 70 edits together with exactly one selected bone meal and a bounded replay receipt; it adds no timer or polling loop.
+
+Stone building now has a renewable furnace progression: cobblestone smelts into stone, and an exact 2×2 arrangement of four stone crafts four stone bricks. The opaque masonry block appends as world-chunk code 27/protocol index 26, requires at least a wooden pickaxe to recover, and reuses the ordinary exact-once place/mine transaction without adding a request loop.
 
 Performance budgets and the repeatable benchmark loop live in [PERFORMANCE.md](./PERFORMANCE.md).

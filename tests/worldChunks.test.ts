@@ -16,11 +16,11 @@ import {
   type WorldChunkEditInput,
 } from "../shared/worldChunks.ts";
 
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 26, "the palette uses 26 of 31 available five-bit codes");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 27, "the palette uses 27 of 31 available five-bit codes");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
-  WORLD_CHUNK_BLOCK_TYPES.slice(-10),
-  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling"],
+  WORLD_CHUNK_BLOCK_TYPES.slice(-11),
+  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks"],
   "new persisted block codes append without renumbering deployed materials",
 );
 

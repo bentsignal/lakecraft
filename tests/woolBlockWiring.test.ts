@@ -71,7 +71,7 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
     `${label} wool placement adds no dedicated network or timer loop`);
 }
 assert.match(client, /wool:\s*BLOCK\.WOOL[\s\S]*?\[BLOCK\.WOOL\]:\s*"wool"/, "multiplayer has protocol, game, and item round-trip mappings");
-assert.match(single, /edit\.block\s*<=\s*BLOCK\.SAPLING/, "single-player saves retain wool and the newer append-only sapling block ID");
+assert.match(single, /edit\.block\s*<=\s*BLOCK\.STONE_BRICKS/, "single-player saves retain wool and every newer append-only block ID");
 assert.match(single, /action:\s*"break"[\s\S]*?audioSurfaceForBlock\(edit\.block\)/, "local edits emit bounded break/place particles and material audio");
 
 const editMutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("sleepVote: mutation(async"));

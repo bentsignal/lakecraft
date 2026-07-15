@@ -185,7 +185,7 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GRAVEL) return "gravel";
   if (block === BLOCK.GLASS) return "glass";
   if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
-  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE) return "stone";
+  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE || block === BLOCK.STONE_BRICKS) return "stone";
   return "generic";
 }
 
@@ -325,7 +325,7 @@ function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -335,6 +335,7 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.GRAVEL]: "gravel",
   [BLOCK.WOOL]: "wool",
   [BLOCK.SAPLING]: "sapling",
+  [BLOCK.STONE_BRICKS]: "stone_bricks",
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
@@ -364,6 +365,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   gravel: BLOCK.GRAVEL,
   wool: BLOCK.WOOL,
   sapling: BLOCK.SAPLING,
+  stone_bricks: BLOCK.STONE_BRICKS,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
@@ -410,6 +412,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.TNT]: "tnt",
   [BLOCK.WOOL]: "wool",
   [BLOCK.SAPLING]: "sapling",
+  [BLOCK.STONE_BRICKS]: "stone_bricks",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -437,6 +440,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   tnt: BLOCK.TNT,
   wool: BLOCK.WOOL,
   sapling: BLOCK.SAPLING,
+  stone_bricks: BLOCK.STONE_BRICKS,
 };
 
 type WorldChunksQueryResult =

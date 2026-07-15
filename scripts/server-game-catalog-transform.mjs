@@ -5,14 +5,14 @@ const TUPLE_CATALOGS = [
     name: "BLOCKS",
     anchor: "export const BLOCKS = defineBlocks(",
     arrayAfterAnchor: true,
-    rows: 24,
+    rows: 25,
     widths: [8, 9],
     scalarPresentationIndexes: [1, 2, 3, 4],
   },
   {
     name: "BLOCK_ITEM_SPECS",
     anchor: "const BLOCK_ITEM_SPECS",
-    rows: 24,
+    rows: 25,
     widths: [3],
     scalarPresentationIndexes: [1, 2],
   },
@@ -77,8 +77,8 @@ const TUPLE_CATALOGS = [
 ];
 
 const OBJECT_CATALOGS = [
-  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 32 },
-  { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 8 },
+  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 34 },
+  { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 9 },
 ];
 
 const GENERATED_PRESENTATION_EXPRESSIONS = [

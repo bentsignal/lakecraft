@@ -419,6 +419,7 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.GRAVEL]: [0.47, 0.45, 0.42],
   [BLOCK.WOOL]: [0.86, 0.84, 0.78],
   [BLOCK.SAPLING]: [0.28, 0.55, 0.18],
+  [BLOCK.STONE_BRICKS]: [0.43, 0.45, 0.43],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */

@@ -19,13 +19,13 @@ assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("tnt"), 22, "the deployed TNT persi
 assert.deepEqual(BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "door_closed", "door_open", "bed", "coal_ore", "iron_ore",
-  "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling",
-], "network block identity is append-only: wool follows gravel without renumbering shipped blocks");
+  "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling", "stone_bricks",
+], "network block identity is append-only: stone bricks follow saplings without renumbering shipped blocks");
 assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "bed", "door_closed", "door_open", "coal_ore", "iron_ore",
-  "furnace", "ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling",
-], "persisted snapshot palette is append-only: wool follows gravel without renumbering deployed rows");
+  "furnace", "ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks",
+], "persisted snapshot palette is append-only: stone bricks follow saplings without renumbering deployed rows");
 
 const recipe = RECIPES.find(({ id }) => id === "tnt");
 assert.deepEqual(recipe?.ingredients, [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }]);

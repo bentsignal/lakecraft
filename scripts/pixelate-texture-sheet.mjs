@@ -461,6 +461,33 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "stone_bricks") {
+    // Original cool-gray masonry with staggered courses, one-pixel dark
+    // mortar, and sparse worn highlights that stay legible at 16px.
+    const mortar = [68, 68, 68, 255];
+    const dark = [85, 85, 85, 255];
+    const base = [119, 119, 119, 255];
+    const light = [153, 153, 136, 255];
+    const worn = [136, 136, 119, 255];
+    fill(base);
+    for (const y of [0, 4, 8, 12, 15]) {
+      for (let x = 0; x < tileSize; x += 1) paint(x, y, mortar);
+    }
+    for (let course = 0; course < 4; course += 1) {
+      const top = course * 4 + 1;
+      const seamA = course % 2 === 0 ? 7 : 3;
+      const seamB = course % 2 === 0 ? 15 : 11;
+      for (let y = top; y < Math.min(top + 3, tileSize); y += 1) {
+        paint(seamA, y, mortar);
+        paint(seamB, y, mortar);
+      }
+    }
+    for (const [x, y] of [[1,1],[2,1],[8,1],[9,1],[4,5],[5,5],[12,5],[13,5],[1,9],[2,9],[8,9],[9,9],[4,13],[5,13],[12,13]]) paint(x, y, light);
+    for (const [x, y] of [[5,2],[11,3],[2,6],[8,7],[14,6],[5,10],[10,11],[1,14],[8,14],[13,13]]) paint(x, y, dark);
+    for (const [x, y] of [[3,2],[9,3],[6,6],[13,7],[3,10],[12,10],[6,14]]) paint(x, y, worn);
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 
