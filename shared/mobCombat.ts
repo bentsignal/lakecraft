@@ -17,6 +17,15 @@ export interface MobAuthorityState {
   lastAttackerId: string;
 }
 
+export interface MobAttackInventory {
+  id: string;
+  userId: string;
+  inventoryJson: string;
+  revision: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StoredMobAuthorityState {
   mobId: string;
   kind: string;
@@ -45,10 +54,23 @@ export type MobAttackResolution =
     };
 
 export type MobAttackResult =
-  | { ok: true; killed: boolean; drops: MobAuthorityDrop[]; state: MobAuthorityState; serverNow: number }
+  | { ok: true; replayed: boolean; killed: boolean; drops: MobAuthorityDrop[]; state: MobAuthorityState; inventory: MobAttackInventory; serverNow: number }
   | {
       ok: false;
-      reason: "authentication_required" | MobAttackFailureReason;
+      reason:
+        | "authentication_required"
+        | "invalid_operation"
+        | "operation_id_reused"
+        | "invalid_receipt"
+        | "active_presence_required"
+        | "attacker_dead"
+        | "inventory_required"
+        | "inventory_invalid"
+        | "weapon_mismatch"
+        | "authority_unavailable"
+        | "out_of_reach"
+        | "not_aimed"
+        | MobAttackFailureReason;
       state?: MobAuthorityState;
       retryAfterMs?: number;
       serverNow: number;

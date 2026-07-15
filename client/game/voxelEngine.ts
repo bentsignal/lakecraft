@@ -76,6 +76,7 @@ import {
   type VoxelPerformanceStats,
   type WorldEdit,
 } from "./types.ts";
+import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 
 type Vec3 = [number, number, number];
 
@@ -926,6 +927,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }));
   const mobIds = listMobIds(mobSimulation);
   let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
+  let sharedMobMotionActive = false;
+  let sharedMobMotionAppliedAt = 0;
+  let sharedMobMotionIntervalMs = 200;
   const mobSnapshots: MobPoseSnapshot[] = [];
   const mobProjectileSnapshots: MobProjectileSnapshot[] = [];
   const velocity: Vec3 = [0, 0, 0];
@@ -1295,6 +1299,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function updateMobs(dt: number): void {
     const startedAt = performance.now();
     respawnExpiredAuthoritativeMobs(mobSimulation, Date.now() + mobCombatServerTimeOffsetMs);
+    if (sharedMobMotionActive) {
+      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      mobProjectileSnapshots.length = 0;
+      lastMobSimulationMs = performance.now() - startedAt;
+      return;
+    }
     mobAccumulatorSeconds = Math.min(0.3, mobAccumulatorSeconds + dt);
     let steps = 0;
     while (mobAccumulatorSeconds >= mobStepSeconds && steps < 3) {
@@ -1513,7 +1523,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       eye[2],
       facing[0],
       facing[2],
-      Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
+      sharedMobMotionActive
+        ? Math.min(1, Math.max(0, (performance.now() - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs))
+        : Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
       now / 1_000,
       mobProjectileSnapshots,
     );
@@ -1939,6 +1951,42 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         states,
         Date.now() + mobCombatServerTimeOffsetMs,
       );
+      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    },
+    applyMobMotionSnapshot(poses: readonly MobMotionPose[], nextServerTimeOffsetMs?: number) {
+      if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
+      const now = performance.now();
+      const priorAlpha = sharedMobMotionActive
+        ? Math.min(1, Math.max(0, (now - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs))
+        : 1;
+      if (sharedMobMotionActive && sharedMobMotionAppliedAt > 0) {
+        const observedInterval = now - sharedMobMotionAppliedAt;
+        if (observedInterval >= 80 && observedInterval <= 2_000) {
+          sharedMobMotionIntervalMs = Math.max(100, Math.min(750, observedInterval));
+        }
+      }
+      const byId = new Map(poses.map((pose) => [pose.mobId, pose] as const));
+      for (const mob of mobSimulation.mobs) {
+        const authoritative = byId.get(mob.id);
+        if (!authoritative || authoritative.kind !== mob.kind) continue;
+        const displayedX = mob.previousX + (mob.x - mob.previousX) * priorAlpha;
+        const displayedY = mob.previousY + (mob.y - mob.previousY) * priorAlpha;
+        const displayedZ = mob.previousZ + (mob.z - mob.previousZ) * priorAlpha;
+        const displayedYaw = mob.previousYaw + (mob.yaw - mob.previousYaw) * priorAlpha;
+        mob.previousX = displayedX;
+        mob.previousY = displayedY;
+        mob.previousZ = displayedZ;
+        mob.previousYaw = displayedYaw;
+        mob.x = authoritative.x;
+        mob.y = authoritative.y;
+        mob.z = authoritative.z;
+        mob.yaw = authoritative.yaw;
+        mob.behavior = authoritative.behavior;
+        mob.hostileActive = authoritative.behavior === "chase";
+      }
+      sharedMobMotionActive = true;
+      sharedMobMotionAppliedAt = now;
+      mobProjectileSnapshots.length = 0;
       writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     },
     getMobIds() {

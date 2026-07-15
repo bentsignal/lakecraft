@@ -37,6 +37,7 @@ import {
   morningClockSnapshot,
   sleepVoteStatus,
   validateSleepCoordinate,
+  worldPhaseAt,
   worldClockSnapshot
 } from "../shared/sleep";
 import {
@@ -47,6 +48,8 @@ import {
   type WorldChunkEditInput
 } from "../shared/worldChunks";
 import { naturalWorldBlockAt } from "../shared/worldTerrainAuthority.ts";
+import { writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
+import { addItem, applyConfirmedToolUse, attackDamage, type ItemId } from "../shared/game.ts";
 import {
   MAX_WORLD_BLOCK_OPERATION_REQUEST_BYTES,
   nextWorldBlockRevision,
@@ -70,11 +73,14 @@ import {
   MAX_PLAYER_COMBAT_RECEIPTS_PER_USER,
   PLAYER_COMBAT_RECEIPT_PRUNE_LIMIT,
   PLAYER_COMBAT_RECEIPT_TTL_MS,
+  PLAYER_RESPAWN_DELAY_MS,
   authoritativeCombatPose,
   decidePlayerCombatReplay,
   materializePlayerCombatState,
   resolvePlayerAttack,
   selectPlayerCombatReceiptOverflow,
+  storedPlayerCombatRow,
+  validatePlayerMeleeSpatialAuthority,
   validatePlayerAttackRequestJson,
   validatePlayerCombatUserIds,
   type StoredPlayerCombatState
@@ -130,12 +136,39 @@ import {
   worldBlockOperationPoseFingerprint,
   type WorldBlockOperationReceiptResult,
 } from "./worldBlockOperationReceipts.ts";
+import {
+  MOB_WORLD_AUTHORITY_KEY,
+  MOB_WORLD_CHECKPOINT_MS,
+  MOB_WORLD_LEASE_MS,
+  advanceMobWorldState,
+  createCanonicalMobWorldState,
+  encodeMobWorldCheckpoint,
+  encodeMobWorldReplayInput,
+  mobDamageClaimsForTarget,
+  parseMobWorldCheckpointJson,
+  parseMobWorldReplayInputJson,
+  parseStoredInteger,
+  resolveMobDamage,
+  validateMobDamageRequestJson,
+  validateMobWorldCheckpointRequestJson,
+  type StoredMobWorldAuthorityRow,
+} from "./mobWorldAuthority.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 const CHEST_RECEIPT_PRUNE_LIMIT = 8;
+/** Legacy name retained for the replay-grant validity bound; death proof replaces request throttling. */
 const RESPAWN_AUTHORIZATION_COOLDOWN_MS = 15_000;
-const TRAILHEAD_POSE = Object.freeze({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
+function trailheadPoseForUser(userId: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < userId.length; index += 1) {
+    hash = Math.imul(hash ^ userId.charCodeAt(index), 0x01000193);
+  }
+  const unsigned = hash >>> 0;
+  const x = ((unsigned & 7) - 3) * 3 + 0.5;
+  const z = (((unsigned >>> 3) & 7) - 3) * 3 + 0.5;
+  return { x, y: serverTerrainHeight(x, z) + 1.02, z, yaw: 0, pitch: 0 };
+}
 
 function validPresenceSessionId(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9-]{20,64}$/i.test(value);
@@ -336,6 +369,40 @@ function databaseRowToStoredPlayerCombat(row: Record<string, unknown> | null): S
   };
 }
 
+function databaseRowToStoredMobWorld(row: Record<string, unknown> | null): StoredMobWorldAuthorityRow | null {
+  if (!row || typeof row.authorityKey !== "string" || typeof row.ownerUserId !== "string"
+    || typeof row.leaseId !== "string" || typeof row.leaseExpiresAt !== "string"
+    || typeof row.checkpointJson !== "string" || typeof row.inputJson !== "string"
+    || typeof row.checkpointRevision !== "string"
+    || typeof row.checkpointAt !== "string") return null;
+  return {
+    authorityKey: row.authorityKey,
+    ownerUserId: row.ownerUserId,
+    leaseId: row.leaseId,
+    leaseExpiresAt: row.leaseExpiresAt,
+    checkpointJson: row.checkpointJson,
+    inputJson: row.inputJson,
+    checkpointRevision: row.checkpointRevision,
+    checkpointAt: row.checkpointAt,
+  };
+}
+
+function serverTerrainHeight(x: number, z: number): number {
+  const blockX = Math.floor(x);
+  const blockZ = Math.floor(z);
+  for (let y = 20; y >= -24; y -= 1) {
+    const block = naturalWorldBlockAt(blockX, y, blockZ);
+    if (block === "grass" || block === "sand") return y;
+  }
+  return 3;
+}
+
+function mobWorldIsNight(clock: { epochMs: string; epochPhase: string } | null, serverNow: number): boolean {
+  const snapshot = worldClockSnapshot(clock, serverNow);
+  const phase = worldPhaseAt(serverNow, snapshot.epochMs, snapshot.epochPhase, snapshot.cycleLengthMs);
+  return phase >= 0.7 || phase < 0.18;
+}
+
 export default capsule({
   name: "lakecraft",
 
@@ -507,7 +574,7 @@ export default capsule({
       .index("by_user", ["userId"])
       .index("by_voted_at", ["votedAt"]),
 
-    /** Sparse combat authority only; mob movement intentionally never enters Lakebed. */
+    /** Sparse per-mob health/death authority; motion lives in the singleton timeline below. */
     mobAuthority: table({
       mobId: string(),
       kind: string(),
@@ -517,6 +584,18 @@ export default capsule({
       lastAttackAt: string(),
       lastAttackerId: string()
     }).index("by_mob", ["mobId"]),
+
+    /** Exactly one fixed-point mob checkpoint and one renewable writer lease. */
+    mobWorldAuthority: table({
+      authorityKey: string(),
+      ownerUserId: string(),
+      leaseId: string(),
+      leaseExpiresAt: string(),
+      checkpointJson: string(),
+      inputJson: string().default('{"version":1,"isNight":false,"targets":[]}'),
+      checkpointRevision: string(),
+      checkpointAt: string()
+    }).index("by_key", ["authorityKey"]),
 
     /** Event-driven player combat state; movement remains in the sparse presence lease. */
     playerCombat: table({
@@ -709,6 +788,83 @@ export default capsule({
         ));
       }
       return { ok: true, states, serverNow };
+    }),
+
+    mobWorldAuthority: query(async (ctx, request: { mobIds: string[]; sample: string }) => {
+      const serverNow = Date.now();
+      const empty = {
+        checkpointRevision: 0,
+        motionTick: 0,
+        checkpointAt: 0,
+        leaseOwnerUserId: "",
+        leaseExpiresAt: 0,
+        poses: [],
+        states: [],
+        damageClaims: [],
+        needsCheckpoint: false,
+        serverNow,
+      };
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", ...empty };
+      }
+      const rawMobIds = request && Array.isArray(request.mobIds) && typeof request.sample === "string"
+        && request.sample.length <= 16
+        ? request.mobIds
+        : null;
+      if (!rawMobIds) return { ok: false, reason: "invalid_request", ...empty };
+      const validation = validateMobIdList(rawMobIds, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+      if (!validation.ok) return { ok: false, reason: validation.reason, ...empty };
+      const rows = await ctx.db.mobWorldAuthority
+        .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
+        .order("desc")
+        .take(2);
+      if (rows.length > 1) return { ok: false, reason: "duplicate_state", ...empty };
+      const stored = databaseRowToStoredMobWorld(rows[0] ?? null);
+      if (!stored) {
+        // Subscribe the empty-world query to this caller's presence so the first
+        // accepted heartbeat retriggers lease initialization without polling.
+        await ctx.db.playerPresence
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .first();
+        return { ok: true, ...empty, needsCheckpoint: true };
+      }
+
+      const replayInput = parseMobWorldReplayInputJson(stored.inputJson);
+      if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...empty };
+      const advanced = advanceMobWorldState(stored, serverNow, replayInput);
+      if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...empty };
+      const requested = new Set(validation.mobIds);
+      const poses = writeMobMotionPoses(advanced.state).filter((pose) => requested.has(pose.mobId));
+      const states = [];
+      for (const mobId of validation.mobIds) {
+        const identity = validateMobIdentity(mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+        if (!identity.ok) continue;
+        const row = await ctx.db.mobAuthority
+          .withIndex("by_mob", (q) => q.eq("mobId", mobId))
+          .order("desc")
+          .first();
+        states.push(materializeMobAuthorityState(databaseRowToStoredMobAuthority(row), identity.mobId, identity.kind, serverNow));
+      }
+      const callerTarget = replayInput.targets.find((target) => target.userId === ctx.auth.userId);
+      const aliveMobIds = new Set(states.filter((state) => state.health > 0).map((state) => state.mobId));
+      const checkpointAt = advanced.checkpointAt + advanced.ticks * 1_000 / 10;
+      return {
+        ok: true,
+        checkpointRevision: advanced.revision,
+        motionTick: advanced.state.tick,
+        checkpointAt,
+        leaseOwnerUserId: stored.ownerUserId,
+        leaseExpiresAt: parseStoredInteger(stored.leaseExpiresAt) ?? 0,
+        poses,
+        states,
+        damageClaims: callerTarget
+          ? mobDamageClaimsForTarget(advanced.state, callerTarget, advanced.revision)
+            .filter((claim) => aliveMobIds.has(claim.mobId))
+          : [],
+        needsCheckpoint: serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
+        serverNow,
+      };
     }),
 
     playerCombatStates: query(async (ctx, rawUserIds: string[]) => {
@@ -979,7 +1135,11 @@ export default capsule({
         if (!keeper || row.id !== keeper.id) await ctx.db.playerPresence.delete(row.id);
       }
       if (keeper) await ctx.db.playerPresence.update(keeper.id, { sessionId: rawSessionId });
-      return { ok: true, resetToTrailhead: rows.length > 0 && !keeper };
+      return {
+        ok: true,
+        resetToTrailhead: rows.length > 0 && !keeper,
+        spawnPose: keeper ? null : trailheadPoseForUser(ctx.auth.userId),
+      };
     }),
 
     authorizeRespawn: mutation(async (ctx) => {
@@ -995,7 +1155,11 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .take(2);
-      if (presenceRows.length !== 1 || respawnRows.length > 1) {
+      const combatRows = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (presenceRows.length !== 1 || respawnRows.length > 1 || combatRows.length > 1) {
         return { ok: false, reason: "duplicate_or_missing_state" };
       }
       const presence = presenceRows[0];
@@ -1005,6 +1169,7 @@ export default capsule({
         return { ok: false, reason: "active_presence_required" };
       }
       const existingRespawn = respawnRows[0] ?? null;
+      const combatRow = combatRows[0] ?? null;
       const activeGrant = storedRespawnGrant(existingRespawn);
       if (activeGrant) {
         const issuedAt = Number(activeGrant.issuedAt);
@@ -1015,7 +1180,7 @@ export default capsule({
           && issuedAt <= serverNow
           && expiresAt > serverNow
           && expiresAt > issuedAt
-          && expiresAt - issuedAt <= 15_000) {
+          && expiresAt - issuedAt <= RESPAWN_AUTHORIZATION_COOLDOWN_MS) {
           const target = validatePresencePoseFields(
             activeGrant.x,
             activeGrant.y,
@@ -1030,26 +1195,20 @@ export default capsule({
             presence.yaw,
             presence.pitch,
           );
-          if (target && activeGrant.consumedAt && currentPose
+          if (combatRow && combatRow.health !== "0" && target && activeGrant.consumedAt && currentPose
             && target.x === currentPose.x && target.y === currentPose.y && target.z === currentPose.z
             && target.yaw === currentPose.yaw && target.pitch === currentPose.pitch) {
             return { ok: true, target, epoch: activeGrant.epoch, expiresAt };
           }
         }
       }
-      const lastAuthorizedAt = existingRespawn && /^\d{1,16}$/.test(existingRespawn.lastAuthorizedAt)
-        ? Number(existingRespawn.lastAuthorizedAt)
-        : 0;
-      if (lastAuthorizedAt > serverNow) return { ok: false, reason: "invalid_state" };
-      if (serverNow - lastAuthorizedAt < RESPAWN_AUTHORIZATION_COOLDOWN_MS) {
-        return {
-          ok: false,
-          reason: "cooldown",
-          retryAfterMs: RESPAWN_AUTHORIZATION_COOLDOWN_MS - (serverNow - lastAuthorizedAt),
-        };
+      if (!combatRow || combatRow.health !== "0") return { ok: false, reason: "authoritative_death_required" };
+      const deadUntil = /^\d{1,16}$/.test(combatRow.deadUntil) ? Number(combatRow.deadUntil) : Number.NaN;
+      if (!Number.isSafeInteger(deadUntil) || deadUntil <= 0) return { ok: false, reason: "invalid_combat_state" };
+      if (deadUntil > serverNow) {
+        return { ok: false, reason: "respawn_not_ready", retryAfterMs: deadUntil - serverNow };
       }
-
-      let destination = TRAILHEAD_POSE;
+      let destination = trailheadPoseForUser(ctx.auth.userId);
       const bedRespawn = storedBedRespawnPose(existingRespawn);
       if (bedRespawn) {
         const bedRows = await ctx.db.worldEdits
@@ -1099,6 +1258,17 @@ export default capsule({
         heartbeatAt: String(serverNow),
         online: true,
       });
+      const deadState = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(combatRow),
+        ctx.auth.userId,
+        deadUntil - 1,
+      );
+      await ctx.db.playerCombat.update(combatRow.id, storedPlayerCombatRow({
+        ...deadState,
+        health: deadState.maxHealth,
+        revision: deadState.revision + 1,
+        deadUntil: 0,
+      }));
       return { ok: true, target: destination, epoch: grant.epoch, expiresAt: Number(grant.expiresAt) };
     }),
 
@@ -1173,14 +1343,14 @@ export default capsule({
           existing,
           pose,
           serverNow,
-          TRAILHEAD_POSE,
+          trailheadPoseForUser(ctx.auth.userId),
           relocationEpoch,
           activeGrant,
         );
         if (!trajectory.accept) {
           const persistedPose = existing
             ? validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch)
-            : TRAILHEAD_POSE;
+            : trailheadPoseForUser(ctx.auth.userId);
           return {
             ok: false,
             reason: trajectory.reason,
@@ -1717,13 +1887,351 @@ export default capsule({
       };
     }),
 
-    attackMob: mutation(async (ctx, rawMobId: string, rawKind: string, rawDamage: string) => {
+    checkpointMobWorld: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const request = validateMobWorldCheckpointRequestJson(requestJson);
+      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      const presenceRow = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      if (!authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow)
+        || presenceRow?.sessionId !== request.leaseId) {
+        return { ok: false, reason: "active_presence_required", serverNow };
+      }
+      const rows = await ctx.db.mobWorldAuthority
+        .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
+        .order("desc")
+        .take(2);
+      if (rows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const existing = rows[0] ?? null;
+      const stored = databaseRowToStoredMobWorld(existing);
+      const readCurrentReplayInput = async () => {
+        const presenceRows = await ctx.db.playerPresence
+          .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+          .order("desc")
+          .take(64);
+        const targets = presenceRows.flatMap((row) => {
+          const heartbeatAt = /^\d{1,16}$/.test(row.heartbeatAt) ? Number(row.heartbeatAt) : Number.NaN;
+          const pose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+          return row.online && pose && heartbeatAt <= serverNow + 5_000
+            && serverNow - heartbeatAt >= 0 && serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS
+            ? [{ userId: row.userId, x: pose.x, y: pose.y, z: pose.z, active: true }]
+            : [];
+        });
+        const clock = await ctx.db.worldClock
+          .withIndex("by_key", (q) => q.eq("clockKey", WORLD_CLOCK_KEY))
+          .order("desc")
+          .first();
+        const snapshot = { isNight: mobWorldIsNight(clock, serverNow), targets };
+        const inputJson = encodeMobWorldReplayInput(snapshot);
+        return inputJson ? { snapshot, inputJson } : null;
+      };
+      if (!stored) {
+        if (existing || request.expectedRevision !== 0) {
+          return { ok: false, reason: existing ? "invalid_checkpoint" : "revision_conflict", serverNow };
+        }
+        const state = createCanonicalMobWorldState(
+          serverNow,
+          serverTerrainHeight,
+          (_kind, x, y, z) => naturalWorldBlockAt(x, y, z) === "air"
+            && naturalWorldBlockAt(x, y + 1, z) === "air",
+        );
+        if (!state) return { ok: false, reason: "initialization_failed", serverNow };
+        const replayInput = await readCurrentReplayInput();
+        if (!replayInput) return { ok: false, reason: "initialization_failed", serverNow };
+        await ctx.db.mobWorldAuthority.insert({
+          authorityKey: MOB_WORLD_AUTHORITY_KEY,
+          ownerUserId: ctx.auth.userId,
+          leaseId: request.leaseId,
+          leaseExpiresAt: String(serverNow + MOB_WORLD_LEASE_MS),
+          checkpointJson: encodeMobWorldCheckpoint(state),
+          inputJson: replayInput.inputJson,
+          checkpointRevision: "1",
+          checkpointAt: String(serverNow),
+        });
+        return {
+          ok: true,
+          checkpointRevision: 1,
+          checkpointAt: serverNow,
+          leaseExpiresAt: serverNow + MOB_WORLD_LEASE_MS,
+          serverNow,
+        };
+      }
+
+      const revision = parseStoredInteger(stored.checkpointRevision);
+      const checkpointAt = parseStoredInteger(stored.checkpointAt);
+      const leaseExpiresAt = parseStoredInteger(stored.leaseExpiresAt);
+      const storedReplayInput = parseMobWorldReplayInputJson(stored.inputJson);
+      if (revision === null || checkpointAt === null || leaseExpiresAt === null
+        || !parseMobWorldCheckpointJson(stored.checkpointJson) || !storedReplayInput) {
+        return { ok: false, reason: "invalid_checkpoint", serverNow };
+      }
+      if (request.expectedRevision !== revision) {
+        return { ok: false, reason: "revision_conflict", checkpointRevision: revision, serverNow };
+      }
+      const sameLease = stored.ownerUserId === ctx.auth.userId && stored.leaseId === request.leaseId;
+      const sameOwner = stored.ownerUserId === ctx.auth.userId;
+      if (!sameLease && !sameOwner && leaseExpiresAt > serverNow) {
+        return { ok: false, reason: "lease_held", leaseExpiresAt, serverNow };
+      }
+      if (sameLease && serverNow - checkpointAt < MOB_WORLD_CHECKPOINT_MS - 200) {
+        return {
+          ok: false,
+          reason: "checkpoint_cooldown",
+          retryAfterMs: MOB_WORLD_CHECKPOINT_MS - (serverNow - checkpointAt),
+          serverNow,
+        };
+      }
+      const nextReplayInput = await readCurrentReplayInput();
+      if (!nextReplayInput) return { ok: false, reason: "invalid_replay_input", serverNow };
+      const advanced = advanceMobWorldState(stored, serverNow, storedReplayInput);
+      if (!advanced) return { ok: false, reason: "invalid_checkpoint", serverNow };
+      const nextRevision = revision + 1;
+      const nextLeaseExpiresAt = serverNow + MOB_WORLD_LEASE_MS;
+      await ctx.db.mobWorldAuthority.update(existing.id, {
+        authorityKey: MOB_WORLD_AUTHORITY_KEY,
+        ownerUserId: ctx.auth.userId,
+        leaseId: request.leaseId,
+        leaseExpiresAt: String(nextLeaseExpiresAt),
+        checkpointJson: encodeMobWorldCheckpoint(advanced.state),
+        inputJson: nextReplayInput.inputJson,
+        checkpointRevision: String(nextRevision),
+        checkpointAt: String(serverNow),
+      });
+      return {
+        ok: true,
+        checkpointRevision: nextRevision,
+        checkpointAt: serverNow,
+        leaseExpiresAt: nextLeaseExpiresAt,
+        serverNow,
+      };
+    }),
+
+    claimMobPlayerDamage: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const request = validateMobDamageRequestJson(requestJson);
+      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      const fingerprint = JSON.stringify([
+        request.operationId,
+        request.mobId,
+        request.tick,
+      ]);
+      const receipt = await ctx.db.playerCombatReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .first();
+      const replay = decidePlayerCombatReplay(receipt?.fingerprint ?? null, fingerprint);
+      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === "replay" && receipt) {
+        try {
+          const parsed = JSON.parse(receipt.resultJson) as Record<string, unknown>;
+          if (parsed?.ok === true && parsed.state && typeof parsed.state === "object") {
+            return { ...parsed, replayed: true };
+          }
+        } catch {
+          // Corrupt server-authored receipts are rejected below.
+        }
+        return { ok: false, reason: "invalid_receipt", serverNow };
+      }
+
+      const authorityRow = await ctx.db.mobWorldAuthority
+        .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
+        .order("desc")
+        .first();
+      const storedWorld = databaseRowToStoredMobWorld(authorityRow);
+      if (!storedWorld) return { ok: false, reason: "authority_unavailable", serverNow };
+      const storedReplayInput = parseMobWorldReplayInputJson(storedWorld.inputJson);
+      if (!storedReplayInput) return { ok: false, reason: "authority_unavailable", serverNow };
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .order("desc")
+        .take(64);
+      const targets = presenceRows.flatMap((row) => {
+        const heartbeatAt = /^\d{1,16}$/.test(row.heartbeatAt) ? Number(row.heartbeatAt) : Number.NaN;
+        const pose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+        return row.online && pose && heartbeatAt <= serverNow + 5_000
+          && serverNow - heartbeatAt >= 0 && serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS
+          ? [{ userId: row.userId, x: pose.x, y: pose.y, z: pose.z, active: true }]
+          : [];
+      });
+      const callerPresenceRow = presenceRows.find((row) => row.userId === ctx.auth.userId) ?? null;
+      if (!authoritativeCombatPose(callerPresenceRow, ctx.auth.userId, serverNow)) {
+        return { ok: false, reason: "active_presence_required", serverNow };
+      }
+      const callerTarget = targets.find((target) => target.userId === ctx.auth.userId);
+      if (!callerTarget) return { ok: false, reason: "active_presence_required", serverNow };
+      const advanced = advanceMobWorldState(storedWorld, serverNow, storedReplayInput);
+      if (!advanced) return { ok: false, reason: "authority_unavailable", serverNow };
+      const mobIdentity = validateMobIdentity(request.mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
+      if (!mobIdentity.ok) return { ok: false, reason: "unknown_mob", serverNow };
+      const mobCombatRow = await ctx.db.mobAuthority
+        .withIndex("by_mob", (q) => q.eq("mobId", request.mobId))
+        .order("desc")
+        .first();
+      const mobCombatState = materializeMobAuthorityState(
+        databaseRowToStoredMobAuthority(mobCombatRow),
+        mobIdentity.mobId,
+        mobIdentity.kind,
+        serverNow,
+      );
+      if (mobCombatState.health <= 0) return { ok: false, reason: "mob_dead", serverNow };
+      const combatRow = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const rawHealth = combatRow && /^\d{1,3}$/.test(combatRow.health) ? Number(combatRow.health) : 20;
+      if (rawHealth <= 0) return { ok: false, reason: "target_dead", serverNow };
+      const resolution = resolveMobDamage(
+        advanced.state,
+        request,
+        callerTarget,
+        advanced.revision,
+        rawHealth,
+      );
+      if (!resolution.ok) return { ...resolution, serverNow };
+      const previousState = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(combatRow),
+        ctx.auth.userId,
+        serverNow,
+      );
+      const state = {
+        ...previousState,
+        health: resolution.health,
+        revision: previousState.revision + 1,
+        deadUntil: resolution.killed ? serverNow + PLAYER_RESPAWN_DELAY_MS : 0,
+        lastAttackAt: serverNow,
+        lastAttackerId: request.mobId,
+      };
+      const nextRow = storedPlayerCombatRow(state);
+      if (combatRow) await ctx.db.playerCombat.update(combatRow.id, nextRow);
+      else await ctx.db.playerCombat.insert(nextRow);
+      const result = {
+        ok: true,
+        replayed: false,
+        killed: resolution.killed,
+        damage: resolution.damage,
+        state,
+        serverNow,
+      };
+      const committedReceipt = await ctx.db.playerCombatReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint,
+        resultJson: JSON.stringify(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      await maintainPlayerCombatReceipts(ctx.db, ctx.auth.userId, committedReceipt.id, serverNow);
+      return result;
+    }),
+
+    attackMob: mutation(async (
+      ctx,
+      rawMobId: string,
+      rawKind: string,
+      rawDamage: string,
+      operationId: string,
+    ) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
         return { ok: false, reason: "authentication_required", serverNow };
       }
       const identity = validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!identity.ok) return { ok: false, reason: identity.reason, serverNow };
+      if (typeof operationId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(operationId)) {
+        return { ok: false, reason: "invalid_operation", serverNow };
+      }
+      const fingerprint = JSON.stringify([identity.mobId, identity.kind, rawDamage]);
+      const existingReceipt = await ctx.db.playerCombatReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", operationId))
+        .order("desc")
+        .first();
+      const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
+      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === "replay" && existingReceipt) {
+        try {
+          const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
+          const inventoryRows = await ctx.db.inventories
+            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .order("desc")
+            .take(2);
+          if (result.ok === true && inventoryRows.length === 1
+            && validatePlayerStateJson(inventoryRows[0].inventoryJson).ok) {
+            return { ...result, replayed: true, inventory: inventoryRows[0], serverNow };
+          }
+        } catch {
+          // Corrupt server-authored receipts fail closed.
+        }
+        return { ok: false, reason: "invalid_receipt", serverNow };
+      }
+
+      const presenceRow = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const attackerPresence = authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow);
+      if (!attackerPresence) return { ok: false, reason: "active_presence_required", serverNow };
+      const attackerCombatRow = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const attackerCombat = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(attackerCombatRow),
+        ctx.auth.userId,
+        serverNow,
+      );
+      if (attackerCombat.health === 0) {
+        return { ok: false, reason: "attacker_dead", retryAfterMs: attackerCombat.deadUntil - serverNow, serverNow };
+      }
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      const inventoryRow = inventoryRows[0];
+      const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
+      if (!playerState.ok) return { ok: false, reason: "inventory_invalid", serverNow };
+      const selectedStack = playerState.state.inventory[playerState.state.selectedHotbar] ?? null;
+      const selectedItemId = selectedStack?.itemId ?? null;
+      if (Number(rawDamage) !== attackDamage(selectedItemId)) {
+        return { ok: false, reason: "weapon_mismatch", serverNow };
+      }
+
+      const authorityRow = await ctx.db.mobWorldAuthority
+        .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
+        .order("desc")
+        .first();
+      const storedWorld = databaseRowToStoredMobWorld(authorityRow);
+      const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
+      const advancedWorld = storedWorld && replayInput
+        ? advanceMobWorldState(storedWorld, serverNow, replayInput)
+        : null;
+      const mobPose = advancedWorld
+        ? writeMobMotionPoses(advancedWorld.state).find((pose) => pose.mobId === identity.mobId)
+        : null;
+      if (!mobPose) return { ok: false, reason: "authority_unavailable", serverNow };
+      const spatial = validatePlayerMeleeSpatialAuthority(attackerPresence, {
+        userId: mobPose.mobId,
+        x: mobPose.x,
+        y: mobPose.y,
+        z: mobPose.z,
+        yaw: mobPose.yaw,
+        pitch: 0,
+        heartbeatAt: serverNow,
+        online: true,
+      });
+      if (!spatial.ok) return { ok: false, reason: spatial.reason, serverNow };
+
       const existing = await ctx.db.mobAuthority
         .withIndex("by_mob", (q) => q.eq("mobId", identity.mobId))
         .order("desc")
@@ -1737,15 +2245,50 @@ export default capsule({
         serverNow,
       });
       if (!resolution.ok) return { ...resolution, serverNow };
+      const toolUse = applyConfirmedToolUse(
+        playerState.state.inventory,
+        playerState.state.selectedHotbar,
+        "attack",
+        selectedItemId,
+      );
+      let nextInventory = toolUse.inventory;
+      const collectedDrops = [] as typeof resolution.drops;
+      if (resolution.killed) {
+        for (const drop of resolution.drops) {
+          const added = addItem(nextInventory, drop.itemId as ItemId, drop.count);
+          nextInventory = added.inventory;
+          const collected = drop.count - added.remainder;
+          if (collected > 0) collectedDrops.push({ ...drop, count: collected });
+        }
+      }
       if (existing) await ctx.db.mobAuthority.update(existing.id, resolution.nextRow);
       else await ctx.db.mobAuthority.insert(resolution.nextRow);
-      return {
+      const inventoryChanged = toolUse.used || collectedDrops.length > 0;
+      const inventory = inventoryChanged
+        ? await ctx.db.inventories.update(inventoryRow.id, {
+            userId: ctx.auth.userId,
+            inventoryJson: JSON.stringify({ ...playerState.state, inventory: nextInventory }),
+            revision: incrementStoredRevision(inventoryRow.revision),
+          })
+        : inventoryRow;
+      const result = {
         ok: true,
+        replayed: false,
         killed: resolution.killed,
-        drops: resolution.drops,
+        drops: collectedDrops,
         state: resolution.state,
+        inventory,
         serverNow,
       };
+      const receipt = await ctx.db.playerCombatReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId,
+        fingerprint,
+        resultJson: JSON.stringify(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      await maintainPlayerCombatReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      return result;
     }),
 
     attackPlayer: mutation(async (ctx, requestJson: string) => {

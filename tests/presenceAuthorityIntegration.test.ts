@@ -25,7 +25,7 @@ assert.equal(authorize.includes("rawY"), false, "respawn destination is never ac
 assert.equal(authorize.includes("rawZ"), false, "respawn destination is never accepted from the client");
 assert.ok(authorize.includes("storedBedRespawnPose(existingRespawn)"));
 assert.ok(authorize.includes('bedRows[0]?.blockType === "bed"'));
-assert.ok(authorize.includes("destination = TRAILHEAD_POSE"));
+assert.ok(authorize.includes("destination = trailheadPoseForUser(ctx.auth.userId)"));
 assert.ok(authorize.includes("activeGrant.consumedAt && currentPose"), "lost responses replay only a committed authorization whose authoritative pose already matches");
 assert.ok(authorize.indexOf("playerRespawns.update") < authorize.indexOf("playerPresence.update"));
 
@@ -53,6 +53,8 @@ const sessionStart = server.slice(server.indexOf("startPresenceSession: mutation
 assert.ok(sessionStart.includes(".take(64)"));
 assert.ok(sessionStart.includes("playerPresence.delete(row.id)"), "legacy duplicate/malformed rows are healed before session ownership rotates");
 assert.ok(sessionStart.includes("sessionId: rawSessionId"));
+assert.ok(sessionStart.includes("spawnPose: keeper ? null : trailheadPoseForUser(ctx.auth.userId)"));
+assert.ok(server.includes("const blockX = Math.floor(x)"), "fractional spawn centers use integer terrain columns");
 assert.ok(leave.includes("existing.sessionId !== rawSessionId"), "an old tab cannot take a new presence session offline");
 assert.ok(client.includes("const presenceSessionId = crypto.randomUUID()"));
 assert.ok(client.includes("startPresenceSession(presenceSessionId)"));
@@ -64,7 +66,7 @@ console.log(JSON.stringify({
   benchmark: "server-authorized relocation event envelope",
   ordinaryHeartbeat: { indexedReads: 2, writes: 1 },
   rejectedTrajectory: { indexedReads: 2, writes: 0 },
-  authorizeTrailhead: { indexedReads: 2, writes: 2 },
-  authorizeBed: { indexedReads: 3, writes: 2 },
+  authorizeTrailhead: { indexedReads: 3, writes: 3 },
+  authorizeBed: { indexedReads: 4, writes: 3 },
 }));
 console.log("presence authority Lakebed integration tests passed");

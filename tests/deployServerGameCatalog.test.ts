@@ -111,6 +111,18 @@ try {
   const clientBundle = readFileSync(join(stage, "client/index.tsx"), "utf8");
   const serverBundle = readFileSync(join(stage, "server/index.ts"), "utf8");
   const sourceMapPrefix = "//# sourceMappingURL=data:application/json;base64,";
+  const clientSourceMapOffset = clientBundle.lastIndexOf(sourceMapPrefix);
+  assert.notEqual(clientSourceMapOffset, -1, "client stage declares an upstream source-map boundary");
+  assert.deepEqual(JSON.parse(Buffer.from(
+    clientBundle.slice(clientSourceMapOffset + sourceMapPrefix.length).trim(),
+    "base64",
+  ).toString("utf8")), {
+    version: 3,
+    sources: ["lakecraft-client-stage.tsx"],
+    sourcesContent: [null],
+    names: [],
+    mappings: "AAAA",
+  });
   const sourceMapOffset = serverBundle.lastIndexOf(sourceMapPrefix);
   assert.notEqual(sourceMapOffset, -1, "server stage declares an upstream source-map boundary");
   const boundaryMap = JSON.parse(Buffer.from(

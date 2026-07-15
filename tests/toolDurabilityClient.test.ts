@@ -15,7 +15,9 @@ assert.equal(mining.includes("recordConfirmedToolUse"), false, "mining durabilit
 assert.equal(mining.includes("updateInventory(addItem"), false, "mining drops cannot be granted optimistically");
 
 const mob = client.slice(client.indexOf("onMobAttack:"), client.indexOf("onRemotePlayerAttack:"));
-assert.ok(mob.includes("if (result.ok) recordConfirmedToolUse(usedToolSlot, usedToolItemId, \"attack\")"));
+assert.ok(mob.includes("requestInventorySave().then(() => attackMob("));
+assert.ok(mob.includes("loadCanonicalPlayer(result.inventory)"));
+assert.equal(mob.includes("recordConfirmedToolUse"), false, "mob durability must come from the atomic canonical inventory row");
 
 const pvp = client.slice(client.indexOf("onRemotePlayerAttack:"), client.indexOf("onMobDrops:"));
 assert.ok(pvp.indexOf("if (result.ok)") < pvp.indexOf("recordConfirmedToolUse(selectedHotbar, weaponItemId || null, \"attack\")"));

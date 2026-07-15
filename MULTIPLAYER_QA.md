@@ -9,9 +9,9 @@ node --experimental-strip-types tests/twoClientMultiplayerQa.test.ts
 npx lakebed build --json
 ```
 
-The first command simulates two moving clients for one minute with deterministic network jitter. It verifies the 5 Hz/300-writes-per-player ceiling, remote visibility and reconnect semantics, cross-player item conservation, chat bounds, authoritative PvP, and explicit mutation accounting. Its expected baseline is 600 presence mutations plus six representative action mutations per minute.
+The first command simulates two moving clients for one minute with deterministic network jitter. It verifies the 5 Hz/300-writes-per-player ceiling, remote visibility and reconnect semantics, cross-player item conservation, chat bounds, authoritative PvP, and explicit mutation accounting. Its expected baseline is 600 presence mutations plus six representative action mutations per minute; the shared mob authority adds at most 60 singleton checkpoint mutations/minute plus discrete idempotent damage claims while a player is in hostile range.
 
-The claimed production app currently allows 10,000 requests and only 1,000 mutations per day. A two-player 5 Hz run therefore spends about 606 mutations/minute and can exhaust the daily mutation bucket in under two minutes. That limitation is intentional evidence for this Lakebed experiment: run one bounded 60-second production pass after a reset, preserve the results, and never switch multiplayer to another transport.
+The claimed production app currently allows 10,000 requests and only 1,000 mutations per day. A two-player active-presence run spends about 606 mutations/minute, while the 5 Hz shared-mob query adds roughly 600 read requests/minute; the daily mutation bucket can still be exhausted in under two minutes. That limitation is intentional evidence for this Lakebed experiment: run one bounded 60-second production pass after a reset, preserve the results, and never switch multiplayer to another transport.
 
 ## Identity prerequisite
 
@@ -69,6 +69,7 @@ Production validation requires two separate browser profiles that are already si
 - Observed remote movement P95 is reported and no unbounded freeze occurs between snapshots.
 - The item total is conserved across both inventories and the world drop.
 - PvP rejects cooldown spam, reach/aim spoofing, and stale/offline targets.
+- Both clients agree on mob IDs/targets and stay within 0.25 blocks; duplicate hostile-damage claims change health once and only persisted death can authorize respawn.
 - Disconnect removes the old avatar and reconnect produces exactly one avatar at the saved pose.
 - Desktop rendering remains at least 55 FPS with at most 22 ms P95 frame time during the run.
 - Request and mutation quota exhaustion is a failed production gate and must be reported, never worked around with another backend.

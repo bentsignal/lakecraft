@@ -3,6 +3,7 @@ import type { MobCombatStateSnapshot, MobDrop, MobRayTarget } from "./mobs.ts";
 import type { ArmorId, ItemId } from "../../shared/game.ts";
 import type { DroppedItemRenderItem } from "./droppedItemRenderer.ts";
 import type { RemotePlayerRayTarget } from "./remotePlayerTargeting.ts";
+import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -167,6 +168,8 @@ export interface VoxelEngine {
   destroy(): void;
   applyWorldEdits(edits: readonly WorldEdit[]): void;
   applyMobCombatStates(states: readonly MobCombatStateSnapshot[], serverTimeOffsetMs?: number): void;
+  /** Reconciles the retained renderer against Lakebed's shared fixed-tick mob timeline. */
+  applyMobMotionSnapshot(poses: readonly MobMotionPose[], serverTimeOffsetMs?: number): void;
   /** Stable deterministic IDs used by the bounded Lakebed authority query. */
   getMobIds(): string[];
   setSelectedBlock(block: BlockId): void;

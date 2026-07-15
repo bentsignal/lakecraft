@@ -101,8 +101,9 @@ import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep"
 import {
   MAX_MOB_ATTACK_DAMAGE,
   type MobAttackResult,
-  type MobAuthorityQueryResult,
+  type MobAuthorityState,
 } from "../shared/mobCombat";
+import type { MobMotionPose } from "../shared/mobMotionAuthority.ts";
 import {
   decodeWorldChunkSnapshot,
   worldEditChunkCoordinate,
@@ -179,7 +180,43 @@ type AuthorizeRespawnResult =
   | { ok: false; reason: string; retryAfterMs?: number };
 
 type HeartbeatPlayerResult = void | { ok: boolean; reason?: string; canonicalPose?: PlayerPose };
-type StartPresenceSessionResult = { ok: boolean; reason?: string; resetToTrailhead?: boolean };
+type StartPresenceSessionResult = {
+  ok: boolean;
+  reason?: string;
+  resetToTrailhead?: boolean;
+  spawnPose?: PlayerPose | null;
+};
+
+type MobDamageClaim = {
+  operationId: string;
+  mobId: string;
+  checkpointRevision: number;
+  tick: number;
+};
+
+type MobWorldAuthorityResult =
+  | {
+      ok: true;
+      checkpointRevision: number;
+      motionTick: number;
+      checkpointAt: number;
+      leaseOwnerUserId: string;
+      leaseExpiresAt: number;
+      serverNow: number;
+      poses: MobMotionPose[];
+      states: MobAuthorityState[];
+      damageClaims: MobDamageClaim[];
+      needsCheckpoint: boolean;
+    }
+  | { ok: false; reason: string; poses: []; states: []; damageClaims: []; serverNow: number };
+
+type MobWorldCheckpointResult =
+  | { ok: true; checkpointRevision: number; checkpointAt: number; leaseExpiresAt: number; serverNow: number }
+  | { ok: false; reason: string; retryAfterMs?: number; serverNow: number };
+
+type MobPlayerDamageResult =
+  | { ok: true; replayed: boolean; killed: boolean; damage: number; state: PlayerCombatState; serverNow: number }
+  | { ok: false; reason: string; retryAfterMs?: number; serverNow: number };
 
 function visibleDroppedItemChunkKeys(x: number, z: number): string[] {
   const centerX = Math.floor(x / DROPPED_ITEM_CHUNK_SIZE);
@@ -426,6 +463,8 @@ export function App() {
   const auth = useAuth();
   const [activeChestKey, setActiveChestKey] = useState("");
   const [inWorld, setInWorld] = useState(false);
+  const [mobLeaseSessionId, setMobLeaseSessionId] = useState("");
+  const [mobQuerySample, setMobQuerySample] = useState("0");
   const [worldChunkKeys, setWorldChunkKeys] = useState<string[]>(() => visibleWorldChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
   const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", worldChunkKeys);
@@ -449,7 +488,10 @@ export function App() {
   const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
   const worldClock = useQuery<WorldClockSnapshot>("worldClock");
   const [mobIds, setMobIds] = useState<string[]>([]);
-  const mobAuthority = useQuery<MobAuthorityQueryResult, string[]>("mobAuthority", mobIds);
+  const mobWorldAuthority = useQuery<MobWorldAuthorityResult, { mobIds: string[]; sample: string }>(
+    "mobWorldAuthority",
+    { mobIds, sample: inWorld ? mobQuerySample : "0" },
+  );
   const [droppedChunkKeys, setDroppedChunkKeys] = useState<string[]>(() => visibleDroppedItemChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const droppedItemsResult = useQuery<DroppedItemsQueryResult, string[]>("droppedItems", inWorld ? droppedChunkKeys : []);
 
@@ -470,7 +512,9 @@ export function App() {
   const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
   const transferChest = useMutation<[requestJson: string], ChestTransferResult>("transferChest");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
-  const attackMob = useMutation<[mobId: string, kind: string, damage: string], MobAttackResult>("attackMob");
+  const attackMob = useMutation<[mobId: string, kind: string, damage: string, operationId: string], MobAttackResult>("attackMob");
+  const checkpointMobWorld = useMutation<[requestJson: string], MobWorldCheckpointResult>("checkpointMobWorld");
+  const claimMobPlayerDamage = useMutation<[requestJson: string], MobPlayerDamageResult>("claimMobPlayerDamage");
   const attackPlayer = useMutation<[requestJson: string], {
     ok: boolean;
     reason?: string;
@@ -528,6 +572,8 @@ export function App() {
   const droppedPickupAttemptRef = useRef(new Map<string, number>());
   const lastDroppedPickupSweepRef = useRef(0);
   const appliedOwnCombatHealthRef = useRef<number | null>(null);
+  const mobCheckpointInFlightRef = useRef(false);
+  const mobDamageClaimsRef = useRef(new Set<string>());
   const realtimePresenceRef = useRef(false);
   const respawnRequestInFlightRef = useRef(false);
   const respawnTimerRef = useRef<number | null>(null);
@@ -1133,15 +1179,27 @@ export function App() {
         getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
         onUseSelectedItem: () => handleUseItem(),
         onMobAttack: (target, damage) => {
-          const usedToolSlot = selectedRef.current;
-          const usedToolItemId = inventoryRef.current[usedToolSlot]?.itemId ?? null;
-          void attackMob(target.id, target.kind, String(Math.max(1, Math.min(MAX_MOB_ATTACK_DAMAGE, Math.floor(damage))))).then((result) => {
+          const operationId = createCombatOperationId();
+          void requestInventorySave().then(() => attackMob(
+            target.id,
+            target.kind,
+            String(Math.max(1, Math.min(MAX_MOB_ATTACK_DAMAGE, Math.floor(damage)))),
+            operationId,
+          )).then((result) => {
             setConnected(true);
             if (result.state) {
               engineRef.current?.applyMobCombatStates([result.state], result.serverNow - Date.now());
             }
-            if (result.ok) recordConfirmedToolUse(usedToolSlot, usedToolItemId, "attack");
-            if (result.ok && result.killed && result.drops.length) collectMobDrops(result.drops);
+            if (result.ok) {
+              loadCanonicalPlayer(result.inventory);
+              if (result.killed && result.drops.length) {
+                notify(
+                  "Mob drops collected",
+                  result.drops.map((drop) => `${drop.count} ${ITEMS[drop.itemId].label}`).join(" · "),
+                  "success",
+                );
+              }
+            }
           }).catch(() => {
             setConnected(false);
             notify("Attack lost contact", "Lakebed could not confirm that hit.", "warning");
@@ -1311,12 +1369,58 @@ export function App() {
   }, [worldClock]);
 
   useEffect(() => {
-    if (!mobAuthority?.ok) return;
-    engineRef.current?.applyMobCombatStates(
-      mobAuthority.states,
-      mobAuthority.serverNow - Date.now(),
-    );
-  }, [mobAuthority]);
+    if (!inWorld) return;
+    setMobQuerySample(String(Date.now()));
+    const timer = window.setInterval(() => setMobQuerySample(String(Date.now())), 200);
+    return () => window.clearInterval(timer);
+  }, [inWorld]);
+
+  useEffect(() => {
+    if (!mobWorldAuthority?.ok) return;
+    const clockOffset = mobWorldAuthority.serverNow - Date.now();
+    engineRef.current?.applyMobMotionSnapshot(mobWorldAuthority.poses, clockOffset);
+    engineRef.current?.applyMobCombatStates(mobWorldAuthority.states, clockOffset);
+
+    const leaseId = mobLeaseSessionId;
+    const mayCheckpoint = mobWorldAuthority.leaseOwnerUserId === ""
+      || mobWorldAuthority.leaseOwnerUserId === auth.userId
+      || mobWorldAuthority.leaseExpiresAt <= mobWorldAuthority.serverNow;
+    if (mobWorldAuthority.needsCheckpoint && mayCheckpoint && leaseId && !mobCheckpointInFlightRef.current) {
+      mobCheckpointInFlightRef.current = true;
+      void checkpointMobWorld(JSON.stringify({
+        leaseId,
+        expectedRevision: mobWorldAuthority.checkpointRevision,
+      })).then((result) => {
+        setConnected(true);
+      }).catch(() => {
+        setConnected(false);
+      }).finally(() => {
+        mobCheckpointInFlightRef.current = false;
+      });
+    }
+
+    for (const claim of mobWorldAuthority.damageClaims) {
+      if (mobDamageClaimsRef.current.has(claim.operationId)) continue;
+      if (mobDamageClaimsRef.current.size >= 128) {
+        const oldest = mobDamageClaimsRef.current.values().next().value;
+        if (typeof oldest === "string") mobDamageClaimsRef.current.delete(oldest);
+      }
+      mobDamageClaimsRef.current.add(claim.operationId);
+      void claimMobPlayerDamage(JSON.stringify(claim)).then((result) => {
+        setConnected(result.ok);
+        if (result.ok && result.damage > 0) {
+          notify(
+            result.killed ? "You were overwhelmed" : "Monster hit",
+            result.killed ? "Lakebed confirmed your death." : `${result.damage} health lost.`,
+            "warning",
+          );
+        }
+      }).catch(() => {
+        mobDamageClaimsRef.current.delete(claim.operationId);
+        setConnected(false);
+      });
+    }
+  }, [mobWorldAuthority, mobLeaseSessionId, auth.userId]);
 
   useEffect(() => {
     if (!inWorld || !playerCombatResult?.ok || !engineRef.current) return;
@@ -1439,6 +1543,7 @@ export function App() {
     const scheduler = createPresenceSchedulerState();
     const guard = loadPresenceBurstGuard(auth.userId, Date.now());
     const presenceSessionId = crypto.randomUUID();
+    setMobLeaseSessionId(presenceSessionId);
     presenceSchedulerRef.current = scheduler;
     presenceBurstGuardRef.current = guard;
     presenceModeNoticeRef.current = "";
@@ -1537,6 +1642,11 @@ export function App() {
       void startPresenceSession(presenceSessionId).then((result) => {
         if (cancelled) return;
         if (!result.ok) throw new Error(result.reason ?? "presence session rejected");
+        if (result.spawnPose) {
+          engineRef.current?.reconcilePose(result.spawnPose);
+          poseRef.current = result.spawnPose;
+          Object.assign(scheduler, createPresenceSchedulerState());
+        }
         presenceSampleRef.current = samplePresence;
         samplePresence(engineRef.current?.getPose() ?? poseRef.current);
         interval = window.setInterval(() => {
@@ -1551,6 +1661,7 @@ export function App() {
     beginPresenceSession();
     return () => {
       cancelled = true;
+      setMobLeaseSessionId((current) => current === presenceSessionId ? "" : current);
       if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
       if (interval) window.clearInterval(interval);
       if (startRetryTimer) window.clearTimeout(startRetryTimer);

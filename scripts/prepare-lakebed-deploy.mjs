@@ -118,6 +118,18 @@ function appendServerSourceMapBoundary(source) {
   return `${source}\n//# sourceMappingURL=data:application/json;base64,${encoded}\n`;
 }
 
+function appendClientSourceMapBoundary(source) {
+  const map = {
+    version: 3,
+    sources: ["lakecraft-client-stage.tsx"],
+    sourcesContent: [null],
+    names: [],
+    mappings: "AAAA",
+  };
+  const encoded = Buffer.from(JSON.stringify(map)).toString("base64");
+  return `${source}\n//# sourceMappingURL=data:application/json;base64,${encoded}\n`;
+}
+
 async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {}) {
   const result = await build({
     absWorkingDir: sourceRoot,
@@ -151,7 +163,10 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
   if (!output) throw new Error(`Bundling ${sourcePath} produced no output.`);
   const absoluteTarget = join(stageRoot, targetPath);
   await mkdir(dirname(absoluteTarget), { recursive: true });
-  await writeFile(absoluteTarget, server ? appendServerSourceMapBoundary(output.text) : output.text);
+  await writeFile(
+    absoluteTarget,
+    server ? appendServerSourceMapBoundary(output.text) : appendClientSourceMapBoundary(output.text),
+  );
 }
 
 await mkdir(join(stageRoot, ".lakebed"), { recursive: true });
