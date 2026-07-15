@@ -70,7 +70,8 @@ export type ToolKind = "hand" | "pickaxe" | "axe" | "shovel" | "sword";
 export type ToolTier = "none" | "wood" | "gold" | "stone" | "iron" | "diamond";
 export type CraftingContext = "field" | "crafting_table";
 export type ArmorSlot = "head" | "chest" | "legs" | "feet";
-export type Equipment = Record<ArmorSlot, ArmorId | null>;
+export type ArmorStack = { itemId: ArmorId; durability: number };
+export type Equipment = Record<ArmorSlot, ArmorStack | null>;
 
 export type BlockDefinition = {
   id: BlockId;
@@ -100,8 +101,8 @@ export type ItemDefinition = {
 };
 
 /**
- * Remaining durability is stored only for tools. Legacy tool stacks omit the
- * field and are migrated to full durability by the normalizers below.
+ * Remaining durability is stored for tools and armor. Legacy equipment and
+ * item stacks omit the field and are migrated to full durability below.
  */
 export type ItemStack = { itemId: ItemId; count: number; durability?: number };
 export type Inventory = Array<ItemStack | null>;
@@ -407,10 +408,22 @@ export function normalizeEquipment(value: unknown): Equipment {
   const equipment = createEmptyEquipment();
   if (!value || typeof value !== "object") return equipment;
   for (const slot of Object.keys(equipment) as ArmorSlot[]) {
-    const itemId = (value as Partial<Record<ArmorSlot, unknown>>)[slot];
-    if (typeof itemId === "string" && itemId in ITEMS && ITEMS[itemId as ItemId].armor?.slot === slot) {
-      equipment[slot] = itemId as ArmorId;
-    }
+    const candidate = (value as Partial<Record<ArmorSlot, unknown>>)[slot];
+    const itemId = typeof candidate === "string"
+      ? candidate
+      : candidate && typeof candidate === "object" && !Array.isArray(candidate)
+        ? (candidate as { itemId?: unknown }).itemId
+        : null;
+    if (typeof itemId !== "string" || !(itemId in ITEMS)) continue;
+    const armor = ITEMS[itemId as ItemId].armor;
+    if (!armor || armor.slot !== slot) continue;
+    const durabilityCandidate = typeof candidate === "object" && candidate
+      ? (candidate as { durability?: unknown }).durability
+      : undefined;
+    const durability = typeof durabilityCandidate === "number" && Number.isInteger(durabilityCandidate)
+      ? Math.max(1, Math.min(armor.maxDurability, durabilityCandidate))
+      : armor.maxDurability;
+    equipment[slot] = { itemId: itemId as ArmorId, durability };
   }
   return equipment;
 }
@@ -428,19 +441,19 @@ export function cloneInventory(inventory: readonly (ItemStack | null)[]): Invent
   return inventory.map((stack) => stack ? { ...stack } : null);
 }
 
-/** Creates canonical stacks; newly acquired tools always begin at full durability. */
+/** Creates canonical stacks; newly acquired tools and armor begin at full durability. */
 export function createItemStack(itemId: ItemId, count = 1): ItemStack {
-  const tool = ITEMS[itemId].tool;
-  return tool
-    ? { itemId, count: 1, durability: tool.maxDurability }
+  const maximum = maxItemDurability(itemId);
+  return maximum
+    ? { itemId, count: 1, durability: maximum }
     : { itemId, count: Math.max(1, Math.min(ITEMS[itemId].maxStack, Math.floor(count))) };
 }
 
 export function maxItemDurability(itemId: ItemId): number | null {
-  return ITEMS[itemId].tool?.maxDurability ?? null;
+  return ITEMS[itemId].tool?.maxDurability ?? ITEMS[itemId].armor?.maxDurability ?? null;
 }
 
-/** Legacy tools without a value are treated as unused, never as broken. */
+/** Legacy durable items without a value are treated as unused, never as broken. */
 export function remainingItemDurability(stack: ItemStack): number | null {
   const maximum = maxItemDurability(stack.itemId);
   if (maximum === null) return null;
@@ -504,11 +517,11 @@ export function normalizeInventory(value: unknown, size = INVENTORY_SIZE): Inven
     const itemId = candidate.itemId as ItemId;
     const count = Math.min(ITEMS[itemId].maxStack, Math.max(0, Math.floor(candidate.count)));
     if (count <= 0) continue;
-    const tool = ITEMS[itemId].tool;
-    if (tool) {
+    const maximum = maxItemDurability(itemId);
+    if (maximum !== null) {
       const durability = typeof candidate.durability === "number" && Number.isInteger(candidate.durability)
-        ? Math.max(1, Math.min(tool.maxDurability, candidate.durability))
-        : tool.maxDurability;
+        ? Math.max(1, Math.min(maximum, candidate.durability))
+        : maximum;
       output[index] = { itemId, count: 1, durability };
     } else {
       output[index] = { itemId, count };
@@ -831,8 +844,39 @@ export function armorProtection(itemId?: ItemId | null): number {
   return itemId ? ITEMS[itemId].armor?.protection ?? 0 : 0;
 }
 
+export function equippedArmorItemId(value: ArmorStack | ArmorId | null | undefined): ArmorId | null {
+  return typeof value === "string" ? value : value?.itemId ?? null;
+}
+
 export function equippedArmorProtection(equipment: Equipment): number {
-  return (Object.values(equipment) as Array<ArmorId | null>).reduce((total, itemId) => total + armorProtection(itemId), 0);
+  return (Object.values(equipment) as Array<ArmorStack | ArmorId | null>)
+    .reduce((total, stack) => total + armorProtection(equippedArmorItemId(stack)), 0);
+}
+
+export type ArmorDamageResult = {
+  equipment: Equipment;
+  damaged: ArmorSlot[];
+  broken: Array<{ slot: ArmorSlot; itemId: ArmorId }>;
+};
+
+/** Applies one point of wear to every equipped piece after confirmed damage. */
+export function applyConfirmedArmorDamage(equipment: Equipment): ArmorDamageResult {
+  const next = normalizeEquipment(equipment);
+  const damaged: ArmorSlot[] = [];
+  const broken: Array<{ slot: ArmorSlot; itemId: ArmorId }> = [];
+  for (const slot of Object.keys(next) as ArmorSlot[]) {
+    const stack = next[slot];
+    if (!stack) continue;
+    damaged.push(slot);
+    const remaining = stack.durability - 1;
+    if (remaining <= 0) {
+      broken.push({ slot, itemId: stack.itemId });
+      next[slot] = null;
+    } else {
+      next[slot] = { ...stack, durability: remaining };
+    }
+  }
+  return { equipment: next, damaged, broken };
 }
 
 export function equipArmorFromInventory(inventory: readonly (ItemStack | null)[], equipment: Equipment, inventoryIndex: number): EquipResult {
@@ -843,16 +887,19 @@ export function equipArmorFromInventory(inventory: readonly (ItemStack | null)[]
   if (!stack) return { ok: false, inventory: nextInventory, equipment: nextEquipment, reason: "empty_slot" };
   if (!armor) return { ok: false, inventory: nextInventory, equipment: nextEquipment, reason: "not_armor" };
   const previous = nextEquipment[armor.slot];
-  nextEquipment[armor.slot] = stack.itemId as ArmorId;
-  nextInventory[inventoryIndex] = previous ? { itemId: previous, count: 1 } : null;
+  nextEquipment[armor.slot] = {
+    itemId: stack.itemId as ArmorId,
+    durability: remainingItemDurability(stack) ?? armor.maxDurability,
+  };
+  nextInventory[inventoryIndex] = previous ? { ...previous, count: 1 } : null;
   return { ok: true, inventory: nextInventory, equipment: nextEquipment };
 }
 
 export function unequipArmor(inventory: readonly (ItemStack | null)[], equipment: Equipment, slot: ArmorSlot): EquipResult {
   const nextEquipment = normalizeEquipment(equipment);
-  const itemId = nextEquipment[slot];
-  if (!itemId) return { ok: false, inventory: cloneInventory(inventory), equipment: nextEquipment, reason: "empty_slot" };
-  const added = addItem(inventory, itemId, 1);
+  const stack = nextEquipment[slot];
+  if (!stack) return { ok: false, inventory: cloneInventory(inventory), equipment: nextEquipment, reason: "empty_slot" };
+  const added = addItemStack(inventory, { ...stack, count: 1 }, 1);
   if (added.remainder) return { ok: false, inventory: cloneInventory(inventory), equipment: nextEquipment, reason: "inventory_full" };
   nextEquipment[slot] = null;
   return { ok: true, inventory: added.inventory, equipment: nextEquipment };

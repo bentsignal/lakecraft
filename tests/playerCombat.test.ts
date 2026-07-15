@@ -19,8 +19,8 @@ import {
   type CombatPose,
   type StoredPlayerCombatState,
 } from "../shared/playerCombat.ts";
-import { validatePlayerStateJson } from "../shared/chestTransfers.ts";
-import { createEmptyEquipment, createEmptyInventory } from "../shared/game.ts";
+import { PLAYER_STATE_VERSION, validatePlayerStateJson } from "../shared/chestTransfers.ts";
+import { ITEMS, createEmptyEquipment, createEmptyInventory } from "../shared/game.ts";
 
 const operationId = "attack_1234567890";
 const requestJson = JSON.stringify({
@@ -89,13 +89,13 @@ assert.ok(attackerStateValidation.ok);
 if (!attackerStateValidation.ok) throw new Error("expected valid attacker state");
 
 const diamondEquipment = {
-  head: "diamond_helmet",
-  chest: "diamond_chestplate",
-  legs: "diamond_leggings",
-  feet: "diamond_boots",
+  head: { itemId: "diamond_helmet", durability: 1 },
+  chest: { itemId: "diamond_chestplate", durability: ITEMS.diamond_chestplate.armor!.maxDurability },
+  legs: { itemId: "diamond_leggings", durability: 17 },
+  feet: { itemId: "diamond_boots", durability: 9 },
 };
 const targetStateValidation = validatePlayerStateJson(JSON.stringify({
-  version: 2,
+  version: PLAYER_STATE_VERSION,
   inventory: createEmptyInventory(),
   selectedHotbar: 0,
   equipment: diamondEquipment,
@@ -134,6 +134,12 @@ assert.equal(first.targetState.health, 18);
 assert.equal(first.targetState.revision, 1);
 assert.equal(first.targetState.lastAttackerId, "alice");
 assert.equal(first.attackerState.lastAttackAt, now);
+assert.deepEqual(first.armorDamaged, ["head", "chest", "legs", "feet"]);
+assert.deepEqual(first.brokenArmor, [{ slot: "head", itemId: "diamond_helmet" }]);
+assert.equal(first.targetEquipment.head, null);
+assert.equal(first.targetEquipment.chest?.durability, ITEMS.diamond_chestplate.armor!.maxDurability - 1);
+assert.equal(first.targetEquipment.legs?.durability, 16);
+assert.equal(first.targetEquipment.feet?.durability, 8);
 
 const cooldown = resolvePlayerAttack({
   request: validated.request,

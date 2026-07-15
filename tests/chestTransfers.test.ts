@@ -39,7 +39,10 @@ assert.equal(currentState.ok, true);
 if (!currentState.ok) throw new Error("current player state should validate");
 assert.equal(currentState.state.version, PLAYER_STATE_VERSION);
 assert.equal(currentState.state.selectedHotbar, 3);
-assert.equal(currentState.state.equipment.head, "leather_helmet");
+assert.deepEqual(currentState.state.equipment.head, {
+  itemId: "leather_helmet",
+  durability: ITEMS.leather_helmet.armor!.maxDurability,
+});
 assert.equal(currentState.state.respawnPoint?.z, -2.5);
 assert.equal(currentState.state.hunger, 13);
 assert.deepEqual(validatePlayerStateJson(currentState.playerStateJson), currentState, "canonical state should be stable");

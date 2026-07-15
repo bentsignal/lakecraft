@@ -1,6 +1,7 @@
 import {
   INVENTORY_SIZE,
   ITEMS,
+  maxItemDurability,
   type Inventory,
   type ItemId,
   type ItemStack,
@@ -131,20 +132,6 @@ function isItemId(value: unknown): value is ItemId {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(ITEMS, value);
 }
 
-/** Mirrors Minecraft durability values while remaining compatible with legacy tool stacks. */
-function toolDurabilityLimit(itemId: ItemId): number | null {
-  const item = ITEMS[itemId] as typeof ITEMS[ItemId] & { maxDurability?: number };
-  if (!item.tool) return null;
-  if (Number.isInteger(item.maxDurability) && (item.maxDurability ?? 0) > 0) return item.maxDurability ?? null;
-  const tier = item.tool.tier as string;
-  return tier === "wood" ? 59
-    : tier === "stone" ? 131
-      : tier === "iron" ? 250
-        : tier === "gold" ? 32
-          : tier === "diamond" ? 1_561
-            : null;
-}
-
 function stackDurability(stack: ItemStack): number | undefined {
   const durability = (stack as ItemStack & { durability?: unknown }).durability;
   return typeof durability === "number" ? durability : undefined;
@@ -162,20 +149,21 @@ function cloneExactInventory(inventory: readonly (ItemStack | null)[]): Inventor
   return inventory.map((stack) => stack ? cloneStack(stack) : null);
 }
 
-/** Strict server-bound validation; unknown fields and non-tool durability are rejected. */
+/** Strict server-bound validation; unknown fields and non-durable metadata are rejected. */
 export function validateDroppedItemStack(value: unknown): ItemStack | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (!hasOnlyKeys(record, ["itemId", "count", "durability"], ["itemId", "count"])) return null;
   if (!isItemId(record.itemId) || typeof record.count !== "number" || !Number.isInteger(record.count)
     || record.count < 1 || record.count > ITEMS[record.itemId].maxStack) return null;
-  const limit = toolDurabilityLimit(record.itemId);
+  const limit = maxItemDurability(record.itemId);
   if (limit === null) {
     if (record.durability !== undefined) return null;
     return exactStack(record.itemId, record.count);
   }
   if (record.count !== 1) return null;
-  // Old saved tools did not carry durability; canonicalize them as unused.
+  // Old saved tools and armor did not always carry durability; canonicalize
+  // omitted legacy values as unused.
   const durability = record.durability === undefined ? limit : record.durability;
   if (typeof durability !== "number" || !Number.isInteger(durability) || durability < 1 || durability > limit) return null;
   return exactStack(record.itemId, 1, durability);

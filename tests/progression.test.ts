@@ -165,7 +165,10 @@ const equipmentInventory = createEmptyInventory();
 equipmentInventory[4] = { itemId: "leather_chestplate", count: 1 };
 const equipped = equipArmorFromInventory(equipmentInventory, createEmptyEquipment(), 4);
 assert.equal(equipped.ok, true);
-assert.equal(equipped.equipment.chest, "leather_chestplate");
+assert.deepEqual(equipped.equipment.chest, {
+  itemId: "leather_chestplate",
+  durability: ITEMS.leather_chestplate.armor?.maxDurability,
+});
 assert.equal(equipped.inventory[4], null);
 assert.equal(equippedArmorProtection(equipped.equipment), 3);
 const unequipped = unequipArmor(equipped.inventory, equipped.equipment, "chest");
@@ -174,7 +177,12 @@ assert.equal(unequipped.equipment.chest, null);
 assert.equal(countItem(unequipped.inventory, "leather_chestplate"), 1);
 
 const corruptEquipment = normalizeEquipment({ head: "stone_sword", chest: "leather_helmet", feet: "leather_boots" });
-assert.deepEqual(corruptEquipment, { head: null, chest: null, legs: null, feet: "leather_boots" });
+assert.deepEqual(corruptEquipment, {
+  head: null,
+  chest: null,
+  legs: null,
+  feet: { itemId: "leather_boots", durability: ITEMS.leather_boots.armor?.maxDurability },
+});
 const legacyState = createSerializablePlayerState([], 99, normalizeEquipment(undefined));
 assert.deepEqual(legacyState.equipment, createEmptyEquipment());
 assert.equal(legacyState.selectedHotbar, 8);
@@ -208,7 +216,10 @@ assert.ok(parsedLegacyObject);
 assert.equal(parsedLegacyObject.respawnPoint, null);
 assert.equal(parsedLegacyObject.selectedHotbar, 8);
 assert.equal(parsedLegacyObject.inventory[0]?.itemId, "stone");
-assert.equal(parsedLegacyObject.equipment.feet, "leather_boots");
+assert.deepEqual(parsedLegacyObject.equipment.feet, {
+  itemId: "leather_boots",
+  durability: ITEMS.leather_boots.armor?.maxDurability,
+});
 
 const parsedLegacyInventory = parseSerializablePlayerStateJson(JSON.stringify([{ itemId: "dirt", count: 5 }]));
 assert.equal(parsedLegacyInventory?.inventory[0]?.itemId, "dirt");
@@ -221,7 +232,10 @@ const fullInventory = Array.from({ length: 27 }, () => ({ itemId: "stone_sword" 
 const fullEquipment = { ...createEmptyEquipment(), head: "leather_helmet" as const };
 const failedUnequip = unequipArmor(fullInventory, fullEquipment, "head");
 assert.equal(failedUnequip.ok, false);
-assert.equal(failedUnequip.equipment.head, "leather_helmet");
+assert.deepEqual(failedUnequip.equipment.head, {
+  itemId: "leather_helmet",
+  durability: ITEMS.leather_helmet.armor?.maxDurability,
+});
 assert.equal(countItem(failedUnequip.inventory, "leather_helmet"), 0);
 
 console.log("lakecraft progression tests: ok");

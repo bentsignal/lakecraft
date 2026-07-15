@@ -6,6 +6,7 @@ import {
   applyConfirmedToolUse,
   cloneInventory,
   getMiningDrop,
+  maxItemDurability,
   type BlockId,
   type Inventory,
   type ItemId,
@@ -210,12 +211,13 @@ function isCanonicalInventory(value: unknown): value is readonly (ItemStack | nu
     if (typeof stack.count !== "number" || !Number.isInteger(stack.count)
       || stack.count < 1 || stack.count > definition.maxStack) return false;
     const keys = Object.keys(stack);
-    if (!definition.tool) return stack.durability === undefined && hasExactKeys(stack, ["itemId", "count"]);
+    const maximum = maxItemDurability(stack.itemId);
+    if (maximum === null) return stack.durability === undefined && hasExactKeys(stack, ["itemId", "count"]);
     return stack.count === 1
       && typeof stack.durability === "number"
       && Number.isInteger(stack.durability)
       && stack.durability >= 1
-      && stack.durability <= definition.tool.maxDurability
+      && stack.durability <= maximum
       && keys.length === 3
       && hasExactKeys(stack, ["itemId", "count", "durability"]);
   });

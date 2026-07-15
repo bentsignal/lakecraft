@@ -35,10 +35,8 @@ import {
   equipArmorFromInventory,
   equippedArmorProtection,
   miningSeconds,
-  normalizeEquipment,
   normalizeInventory,
   normalizeRespawnPoint,
-  parseSerializablePlayerStateJson,
   tickSurvival,
   unequipArmor,
   type ArmorSlot,
@@ -242,7 +240,7 @@ type MobWorldCheckpointResult =
   | { ok: false; reason: string; retryAfterMs?: number; serverNow: number };
 
 type MobPlayerDamageResult =
-  | { ok: true; replayed: boolean; killed: boolean; damage: number; state: PlayerCombatState; serverNow: number }
+  | { ok: true; replayed: boolean; killed: boolean; damage: number; state: PlayerCombatState; inventory: PersistedInventoryState; serverNow: number }
   | { ok: false; reason: string; retryAfterMs?: number; serverNow: number };
 
 type FurnaceAuthorityView = {
@@ -514,7 +512,9 @@ function miningRequirementDetail(blockId: BlockId): string {
 }
 
 function parsePlayerState(row: PersistedInventory | null) {
-  return row ? parseSerializablePlayerStateJson(row.inventoryJson) : null;
+  if (!row) return null;
+  const canonical = validatePlayerStateJson(row.inventoryJson);
+  return canonical.ok ? canonical.state : null;
 }
 
 export function App() {
@@ -798,6 +798,11 @@ export function App() {
     setInventory(next);
   }
 
+  function updateEquipment(next: Equipment) {
+    equipmentRef.current = next;
+    setEquipment(next);
+  }
+
   function recordConfirmedToolUse(slot: number, itemId: ItemId | null, kind: ToolUseKind): void {
     if (!itemId) return;
     const result = applyConfirmedToolUse(inventoryRef.current, slot, kind, itemId);
@@ -850,30 +855,43 @@ export function App() {
     return canonical.ok ? canonical.playerStateJson : raw;
   }
 
-  function loadCanonicalPlayer(row: PersistedInventoryState | null): boolean {
+  function loadCanonicalPlayer(row: PersistedInventoryState | null, announceArmorBreaks = false): boolean {
     if (!row) {
       inventoryTokenRef.current = "";
       inventoryRevisionRef.current = "0";
       lastCommittedPlayerJsonRef.current = "";
       return true;
     }
-    const saved = parseSerializablePlayerStateJson(row.inventoryJson);
-    if (!saved) return false;
+    const canonical = validatePlayerStateJson(row.inventoryJson);
+    if (!canonical.ok) return false;
+    const saved = canonical.state;
+    const brokenArmor = announceArmorBreaks
+      ? (Object.keys(equipmentRef.current) as ArmorSlot[]).flatMap((slot) => {
+          const previous = equipmentRef.current[slot];
+          return previous && !saved.equipment[slot] ? [previous.itemId] : [];
+        })
+      : [];
     inventoryTokenRef.current = row.updatedAt;
     inventoryRevisionRef.current = row.revision;
-    const canonical = validatePlayerStateJson(row.inventoryJson);
-    lastCommittedPlayerJsonRef.current = canonical.ok ? canonical.playerStateJson : row.inventoryJson;
+    lastCommittedPlayerJsonRef.current = canonical.playerStateJson;
     updateInventory(saved.inventory);
     selectedRef.current = saved.selectedHotbar;
     setSelectedHotbar(saved.selectedHotbar);
-    equipmentRef.current = saved.equipment;
-    setEquipment(saved.equipment);
+    updateEquipment(saved.equipment);
     respawnPointRef.current = saved.respawnPoint;
     setRespawnPoint(saved.respawnPoint);
     if (saved.respawnPoint) engineRef.current?.setRespawnPoint(saved.respawnPoint);
     hungerRef.current = saved.hunger;
     survivalRef.current.hunger = saved.hunger;
     setHunger(saved.hunger);
+    if (brokenArmor.length > 0) {
+      const labels = brokenArmor.map((itemId) => ITEMS[itemId].label);
+      notify(
+        brokenArmor.length === 1 ? `${labels[0]} broke` : `${brokenArmor.length} armor pieces broke`,
+        `Lakebed confirmed the final durability use${labels.length > 1 ? `: ${labels.join(" · ")}` : "."}`,
+        "warning",
+      );
+    }
     return true;
   }
 
@@ -914,7 +932,7 @@ export function App() {
           if (currentPlayerStateJson() !== payload) inventorySavePendingRef.current = true;
         } else if (result.reason === "conflict") {
           inventorySavePendingRef.current = false;
-          if (!loadCanonicalPlayer(result.inventory)) {
+          if (!loadCanonicalPlayer(result.inventory, true)) {
             notify("Pack reconciliation failed", "Lakebed returned a damaged canonical inventory.", "warning");
           } else {
             notify("Pack reconciled", "A newer Lakebed inventory replaced a stale local save.", "warning");
@@ -1270,7 +1288,7 @@ export function App() {
       updateInventory(saved.inventory);
       selectedRef.current = saved.selectedHotbar;
       setSelectedHotbar(saved.selectedHotbar);
-      setEquipment(saved.equipment);
+      updateEquipment(saved.equipment);
       respawnPointRef.current = saved.respawnPoint;
       setRespawnPoint(saved.respawnPoint);
       hungerRef.current = saved.hunger;
@@ -1294,7 +1312,7 @@ export function App() {
     if (!pending
       && savedInventory.revision !== inventoryRevisionRef.current
       && currentPlayerStateJson() === lastCommittedPlayerJsonRef.current
-      && loadCanonicalPlayer(savedInventory)) {
+      && loadCanonicalPlayer(savedInventory, true)) {
       return;
     }
     if (!pending && savedInventory.inventoryJson === lastCommittedPlayerJsonRef.current) {
@@ -1624,6 +1642,10 @@ export function App() {
       void claimMobPlayerDamage(JSON.stringify(claim)).then((result) => {
         setConnected(result.ok);
         if (result.ok && result.damage > 0) {
+          if (!loadCanonicalPlayer(result.inventory, true)) {
+            notify("Armor reconciliation failed", "Lakebed returned a damaged canonical equipment snapshot.", "warning");
+            return;
+          }
           audioRef.current?.play("mobAttack", { seed: claim.operationId, intensity: 0.82 });
           notify(
             result.killed ? "You were overwhelmed" : "Monster hit",
@@ -1809,10 +1831,10 @@ export function App() {
       const worn = equipmentRef.current;
       const appearance = normalizeAvatarAppearance(
         inventoryRef.current[selectedRef.current]?.itemId,
-        worn.head,
-        worn.chest,
-        worn.legs,
-        worn.feet,
+        worn.head?.itemId,
+        worn.chest?.itemId,
+        worn.legs?.itemId,
+        worn.feet?.itemId,
       );
       writeInFlight = true;
       void heartbeatPlayer(
@@ -2132,23 +2154,23 @@ export function App() {
 
   function handleEquipArmor(index: number) {
     if (pendingWorldBlockEditRef.current) return;
-    const equippedItem = inventory[index]?.itemId;
-    const result = equipArmorFromInventory(inventory, equipment, index);
+    const equippedItem = inventoryRef.current[index]?.itemId;
+    const result = equipArmorFromInventory(inventoryRef.current, equipmentRef.current, index);
     if (!result.ok) return;
     updateInventory(result.inventory);
-    setEquipment(result.equipment);
+    updateEquipment(result.equipment);
     notify("Armor equipped", equippedItem ? ITEMS[equippedItem].label : undefined, "success");
   }
 
   function handleUnequipArmor(slot: ArmorSlot) {
     if (pendingWorldBlockEditRef.current) return;
-    const result = unequipArmor(inventory, equipment, slot);
+    const result = unequipArmor(inventoryRef.current, equipmentRef.current, slot);
     if (!result.ok) {
       if (result.reason === "inventory_full") notify("Pack is full", "Clear a pocket before removing armor.", "warning");
       return;
     }
     updateInventory(result.inventory);
-    setEquipment(result.equipment);
+    updateEquipment(result.equipment);
   }
 
   function loadCanonicalChest(row: PersistedChest | null): boolean {
@@ -2455,8 +2477,7 @@ export function App() {
           signOut();
           updateInventory(createStarterInventory());
           const emptyEquipment = createEmptyEquipment();
-          equipmentRef.current = emptyEquipment;
-          setEquipment(emptyEquipment);
+          updateEquipment(emptyEquipment);
           respawnPointRef.current = null;
           setRespawnPoint(null);
           hungerRef.current = MAX_HUNGER;

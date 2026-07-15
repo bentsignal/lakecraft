@@ -62,6 +62,12 @@ assert.ok(
   schedulerGate >= 0 && outboundNormalization > schedulerGate && heartbeatCall > outboundNormalization,
   "inventory/equipment are sampled only after the existing quota scheduler approves a write",
 );
+for (const field of ["worn.head?.itemId", "worn.chest?.itemId", "worn.legs?.itemId", "worn.feet?.itemId"]) {
+  assert.ok(
+    source.slice(outboundNormalization, heartbeatCall).includes(field),
+    `${field} keeps durable equipment metadata off the sparse presence wire`,
+  );
+}
 const heartbeatEnd = source.indexOf(").then(", heartbeatCall);
 const heartbeatArguments = source.slice(heartbeatCall, heartbeatEnd);
 const outboundFields = [

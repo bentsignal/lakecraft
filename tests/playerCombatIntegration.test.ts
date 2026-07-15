@@ -14,7 +14,10 @@ for (const required of [
   "authoritativeCombatPose(attackerPresenceRow",
   "authoritativeCombatPose(targetPresenceRow",
   "validatePlayerStateJson(attackerInventoryRow.inventoryJson)",
-  "validatePlayerStateJson(targetInventoryRow?.inventoryJson",
+  "validatePlayerStateJson(targetInventoryRow.inventoryJson",
+  "resolution.armorDamaged.length > 0",
+  "equipment: resolution.targetEquipment",
+  "targetInventoryRevision",
   "resolvePlayerAttack({",
   "maintainPlayerCombatReceipts(",
 ]) assert.ok(server.includes(required), `missing player-combat server integration: ${required}`);
@@ -37,13 +40,17 @@ assert.ok(
   "weapon authority must come from validated persisted inventory",
 );
 assert.ok(
-  mutation.indexOf("validatePlayerStateJson(targetInventoryRow?.inventoryJson") < mutation.indexOf("resolvePlayerAttack"),
+  mutation.indexOf("validatePlayerStateJson(targetInventoryRow.inventoryJson") < mutation.indexOf("resolvePlayerAttack"),
   "armor authority must come from validated persisted equipment",
 );
 assert.equal(
   (mutation.match(/ctx\.db\.playerCombat\.(?:update|insert)/g) ?? []).length,
   4,
   "both attacker cooldown and target health are transactionally upserted",
+);
+assert.ok(
+  mutation.indexOf("ctx.db.inventories.update(targetInventoryRow.id") < mutation.indexOf("ctx.db.playerCombatReceipts.insert"),
+  "target armor wear and breakage must persist before the exact-once receipt",
 );
 assert.ok(
   mutation.indexOf("ctx.db.playerCombat.update") < mutation.indexOf("ctx.db.playerCombatReceipts.insert"),

@@ -119,6 +119,12 @@ assert.deepEqual(resolveMobDamage(combatState, request, target, 3, 20), {
   health: 20 - claim!.damage,
   killed: false,
 });
+assert.deepEqual(resolveMobDamage(combatState, request, target, 3, 20, 20), {
+  ok: true,
+  damage: 1,
+  health: 19,
+  killed: false,
+}, "mob damage mitigation is derived from authoritative armor protection");
 assert.equal(resolveMobDamage(combatState, { ...request, operationId: `${request.operationId}x` }, target, 3, 20).ok, false);
 
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
@@ -134,6 +140,26 @@ for (const marker of [
   "parseMobWorldReplayInputJson(stored.inputJson)",
 ]) assert.ok(server.includes(marker), `missing server integration marker: ${marker}`);
 assert.equal((server.match(/mobWorldAuthority: table\(\{/g) ?? []).length, 1, "authority checkpoint must remain singleton-shaped");
+
+const mobDamageMutation = server.slice(server.indexOf("claimMobPlayerDamage: mutation(async"), server.indexOf("attackMob: mutation(async"));
+for (const marker of [
+  "validatePlayerStateJson(inventoryRow.inventoryJson)",
+  "equippedArmorProtection(playerState.state.equipment)",
+  "applyConfirmedArmorDamage(playerState.state.equipment)",
+  "ctx.db.inventories.update(inventoryRow.id",
+  "brokenArmor: armorDamage.broken",
+  "inventory: persistedInventory",
+  "inventoryRevision",
+]) assert.ok(mobDamageMutation.includes(marker), `missing authoritative mob armor marker: ${marker}`);
+assert.ok(
+  mobDamageMutation.indexOf("decidePlayerCombatReplay") < mobDamageMutation.indexOf("applyConfirmedArmorDamage"),
+  "receipt replay must return before armor can wear again",
+);
+assert.ok(mobDamageMutation.includes("inventory: replayInventoryRows[0]"), "receipt replay returns the latest canonical inventory row without reapplying wear");
+assert.ok(
+  mobDamageMutation.indexOf("ctx.db.inventories.update(inventoryRow.id") < mobDamageMutation.indexOf("ctx.db.playerCombatReceipts.insert"),
+  "mob armor wear and breakage must persist before the exact-once receipt",
+);
 
 const attackMobMutation = server.slice(server.indexOf("attackMob: mutation(async"), server.indexOf("attackPlayer: mutation(async"));
 assert.ok(attackMobMutation.includes("operationId: string"));

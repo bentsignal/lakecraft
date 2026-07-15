@@ -18,6 +18,7 @@ import {
   type MobAuthorityKind,
 } from "../shared/mobCombat.ts";
 import { MAX_HEALTH } from "../shared/game.ts";
+import { mitigatedPlayerDamage } from "../shared/playerCombat.ts";
 
 export const MOB_WORLD_AUTHORITY_KEY = "main";
 export const MOB_WORLD_SEED = 7_319;
@@ -307,6 +308,7 @@ export function resolveMobDamage(
   target: Readonly<MobMotionTargetSnapshot>,
   checkpointRevision: number,
   health: number,
+  armorProtection = 0,
 ): { ok: true; damage: number; health: number; killed: boolean } | { ok: false; reason: string } {
   if (request.checkpointRevision !== checkpointRevision
     || request.tick > state.tick || state.tick - request.tick > MOB_DAMAGE_CLAIM_MAX_AGE_TICKS) {
@@ -318,7 +320,7 @@ export function resolveMobDamage(
   if (!expected || expected.operationId !== request.operationId || expected.tick !== request.tick) {
     return { ok: false, reason: "invalid_claim" };
   }
-  const damage = expected.damage;
+  const damage = mitigatedPlayerDamage(expected.damage, armorProtection);
   const nextHealth = Math.max(0, Math.min(MAX_HEALTH, health) - damage);
   return { ok: true, damage, health: nextHealth, killed: nextHealth === 0 };
 }

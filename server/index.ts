@@ -49,7 +49,15 @@ import {
 } from "../shared/worldChunks";
 import { naturalWorldBlockAt } from "../shared/worldTerrainAuthority.ts";
 import { writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
-import { addItem, applyConfirmedToolUse, attackDamage, type ItemId, type ItemStack } from "../shared/game.ts";
+import {
+  addItem,
+  applyConfirmedArmorDamage,
+  applyConfirmedToolUse,
+  attackDamage,
+  equippedArmorProtection,
+  type ItemId,
+  type ItemStack,
+} from "../shared/game.ts";
 import {
   applyFurnaceTransfer,
   createEmptyFurnace,
@@ -2401,8 +2409,20 @@ export default capsule({
       if (replay === "replay" && receipt) {
         try {
           const parsed = JSON.parse(receipt.resultJson) as Record<string, unknown>;
-          if (parsed?.ok === true && parsed.state && typeof parsed.state === "object") {
-            return { ...parsed, replayed: true };
+          const replayInventoryRows = await ctx.db.inventories
+            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .order("desc")
+            .take(2);
+          if (parsed?.ok === true && parsed.state && typeof parsed.state === "object"
+            && Array.isArray(parsed.armorDamaged) && Array.isArray(parsed.brokenArmor)
+            && replayInventoryRows.length === 1
+            && validatePlayerStateJson(replayInventoryRows[0].inventoryJson).ok) {
+            return {
+              ...parsed,
+              replayed: true,
+              inventory: replayInventoryRows[0],
+              inventoryRevision: replayInventoryRows[0].revision,
+            };
           }
         } catch {
           // Corrupt server-authored receipts are rejected below.
@@ -2455,16 +2475,39 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .first();
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      const inventoryRow = inventoryRows[0];
+      const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
+      if (!playerState.ok) return { ok: false, reason: "target_state_invalid", serverNow };
       const rawHealth = combatRow && /^\d{1,3}$/.test(combatRow.health) ? Number(combatRow.health) : 20;
       if (rawHealth <= 0) return { ok: false, reason: "target_dead", serverNow };
+      const armorProtection = equippedArmorProtection(playerState.state.equipment);
       const resolution = resolveMobDamage(
         advanced.state,
         request,
         callerTarget,
         advanced.revision,
         rawHealth,
+        armorProtection,
       );
       if (!resolution.ok) return { ...resolution, serverNow };
+      const armorDamage = applyConfirmedArmorDamage(playerState.state.equipment);
+      let inventoryRevision = inventoryRow.revision;
+      let persistedInventory = inventoryRow;
+      if (armorDamage.damaged.length > 0) {
+        const updatedInventory = await ctx.db.inventories.update(inventoryRow.id, {
+          userId: ctx.auth.userId,
+          inventoryJson: JSON.stringify({ ...playerState.state, equipment: armorDamage.equipment }),
+          revision: incrementStoredRevision(inventoryRow.revision),
+        });
+        if (!updatedInventory) throw new Error("Unable to persist authoritative armor wear.");
+        persistedInventory = updatedInventory;
+        inventoryRevision = updatedInventory.revision;
+      }
       const previousState = materializePlayerCombatState(
         databaseRowToStoredPlayerCombat(combatRow),
         ctx.auth.userId,
@@ -2486,6 +2529,11 @@ export default capsule({
         replayed: false,
         killed: resolution.killed,
         damage: resolution.damage,
+        armorProtection,
+        armorDamaged: armorDamage.damaged,
+        brokenArmor: armorDamage.broken,
+        inventory: persistedInventory,
+        inventoryRevision,
         state,
         serverNow,
       };
@@ -2690,18 +2738,21 @@ export default capsule({
       const attackerPresence = authoritativeCombatPose(attackerPresenceRow, ctx.auth.userId, serverNow);
       const targetPresence = authoritativeCombatPose(targetPresenceRow, request.targetUserId, serverNow);
 
-      const attackerInventoryRow = await ctx.db.inventories
+      const attackerInventoryRows = await ctx.db.inventories
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
-        .first();
-      if (!attackerInventoryRow) return { ok: false, reason: "inventory_required", serverNow };
+        .take(2);
+      if (attackerInventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      const attackerInventoryRow = attackerInventoryRows[0];
       const attackerPlayerState = validatePlayerStateJson(attackerInventoryRow.inventoryJson);
       if (!attackerPlayerState.ok) return { ok: false, reason: "attacker_state_invalid", serverNow };
-      const targetInventoryRow = await ctx.db.inventories
+      const targetInventoryRows = await ctx.db.inventories
         .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
         .order("desc")
-        .first();
-      const targetPlayerState = validatePlayerStateJson(targetInventoryRow?.inventoryJson ?? "[]");
+        .take(2);
+      if (targetInventoryRows.length !== 1) return { ok: false, reason: "target_state_invalid", serverNow };
+      const targetInventoryRow = targetInventoryRows[0];
+      const targetPlayerState = validatePlayerStateJson(targetInventoryRow.inventoryJson);
       if (!targetPlayerState.ok) return { ok: false, reason: "target_state_invalid", serverNow };
 
       const attackerCombatRow = await ctx.db.playerCombat
@@ -2724,11 +2775,26 @@ export default capsule({
         serverNow,
       });
       if (!resolution.ok) return { ...resolution, serverNow };
+      let targetInventoryRevision = targetInventoryRow.revision;
+      if (resolution.armorDamaged.length > 0) {
+        const updatedTargetInventory = await ctx.db.inventories.update(targetInventoryRow.id, {
+          userId: request.targetUserId,
+          inventoryJson: JSON.stringify({ ...targetPlayerState.state, equipment: resolution.targetEquipment }),
+          revision: incrementStoredRevision(targetInventoryRow.revision),
+        });
+        if (!updatedTargetInventory) throw new Error("Unable to persist authoritative PvP armor wear.");
+        targetInventoryRevision = updatedTargetInventory.revision;
+      }
       if (attackerCombatRow) await ctx.db.playerCombat.update(attackerCombatRow.id, resolution.attackerRow);
       else await ctx.db.playerCombat.insert(resolution.attackerRow);
       if (targetCombatRow) await ctx.db.playerCombat.update(targetCombatRow.id, resolution.targetRow);
       else await ctx.db.playerCombat.insert(resolution.targetRow);
-      const result: PlayerCombatReceiptResult = { ...resolution, replayed: false, serverNow };
+      const result: PlayerCombatReceiptResult = {
+        ...resolution,
+        replayed: false,
+        serverNow,
+        targetInventoryRevision,
+      };
       const receipt = await ctx.db.playerCombatReceipts.insert({
         userId: ctx.auth.userId,
         operationId: request.operationId,

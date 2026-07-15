@@ -2,7 +2,10 @@ import {
   HOTBAR_SIZE,
   ITEMS,
   MAX_HEALTH,
+  applyConfirmedArmorDamage,
   equippedArmorProtection,
+  type ArmorDamageResult,
+  type Equipment,
   type ItemId,
 } from "./game.ts";
 import {
@@ -101,6 +104,9 @@ export type PlayerAttackResolution =
       baseDamage: number;
       damage: number;
       armorProtection: number;
+      armorDamaged: ArmorDamageResult["damaged"];
+      brokenArmor: ArmorDamageResult["broken"];
+      targetEquipment: Equipment;
       attackerState: PlayerCombatState;
       targetState: PlayerCombatState;
       attackerRow: StoredPlayerCombatState;
@@ -359,6 +365,7 @@ export function resolvePlayerAttack(input: {
   if (!weapon.ok) return { ...weapon, attackerState, targetState };
   const armorProtection = equippedArmorProtection(input.targetPlayerState.equipment);
   const damage = mitigatedPlayerDamage(weapon.damage, armorProtection);
+  const armorDamage = applyConfirmedArmorDamage(input.targetPlayerState.equipment);
   const health = Math.max(0, targetState.health - damage);
   const killed = health === 0;
   const nextAttacker: PlayerCombatState = { ...attackerState, lastAttackAt: input.serverNow };
@@ -376,6 +383,9 @@ export function resolvePlayerAttack(input: {
     baseDamage: weapon.damage,
     damage,
     armorProtection,
+    armorDamaged: armorDamage.damaged,
+    brokenArmor: armorDamage.broken,
+    targetEquipment: armorDamage.equipment,
     attackerState: nextAttacker,
     targetState: nextTarget,
     attackerRow: storedPlayerCombatRow(nextAttacker),

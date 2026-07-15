@@ -1,4 +1,4 @@
-import { ITEMS, type ItemId, type ItemStack } from "./game.ts";
+import { ITEMS, maxItemDurability, type ItemId, type ItemStack } from "./game.ts";
 
 export const CHEST_SLOT_COUNT = 27;
 export const MAX_CHEST_JSON_LENGTH = 8_192;
@@ -70,15 +70,17 @@ export function validateChestInventoryJson(rawInventoryJson: string): ChestInven
       || record.count > ITEMS[record.itemId].maxStack) {
       return { ok: false, reason: "invalid_slot" };
     }
-    const tool = ITEMS[record.itemId].tool;
-    if (!tool) {
+    const maximum = maxItemDurability(record.itemId);
+    if (maximum === null) {
       if (record.durability !== undefined) return { ok: false, reason: "invalid_slot" };
       inventory[index] = { itemId: record.itemId, count: record.count };
       continue;
     }
-    const durability = record.durability === undefined ? tool.maxDurability : record.durability;
+    // Stored chest rows predate durable armor; an omitted value is a one-way
+    // migration to full durability and every subsequent write is canonical.
+    const durability = record.durability === undefined ? maximum : record.durability;
     if (record.count !== 1 || typeof durability !== "number" || !Number.isInteger(durability)
-      || durability < 1 || durability > tool.maxDurability) return { ok: false, reason: "invalid_slot" };
+      || durability < 1 || durability > maximum) return { ok: false, reason: "invalid_slot" };
     inventory[index] = { itemId: record.itemId, count: 1, durability };
   }
   const inventoryJson = JSON.stringify(inventory);

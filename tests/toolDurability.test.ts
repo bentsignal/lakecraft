@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   ITEMS,
   applyConfirmedToolUse,
+  createEmptyEquipment,
   createEmptyInventory,
   createItemStack,
   normalizeInventory,
@@ -75,14 +76,17 @@ if (canonical.ok) {
 const savedWorn = validatePlayerStateJson(JSON.stringify({
   version: PLAYER_STATE_VERSION,
   inventory: [{ itemId: "iron_pickaxe", count: 1, durability: 37 }],
+  equipment: createEmptyEquipment(),
 }));
 const savedMoreWorn = validatePlayerStateJson(JSON.stringify({
   version: PLAYER_STATE_VERSION,
   inventory: [{ itemId: "iron_pickaxe", count: 1, durability: 36 }],
+  equipment: createEmptyEquipment(),
 }));
 const forgedRepair = validatePlayerStateJson(JSON.stringify({
   version: PLAYER_STATE_VERSION,
   inventory: [{ itemId: "iron_pickaxe", count: 1, durability: 250 }],
+  equipment: createEmptyEquipment(),
 }));
 const craftedAdditional = validatePlayerStateJson(JSON.stringify({
   version: PLAYER_STATE_VERSION,
@@ -90,6 +94,7 @@ const craftedAdditional = validatePlayerStateJson(JSON.stringify({
     { itemId: "iron_pickaxe", count: 1, durability: 37 },
     { itemId: "iron_pickaxe", count: 1, durability: 250 },
   ],
+  equipment: createEmptyEquipment(),
 }));
 if (!savedWorn.ok || !savedMoreWorn.ok || !forgedRepair.ok || !craftedAdditional.ok) throw new Error("transition fixtures must validate");
 assert.equal(isValidDurabilitySaveTransition(savedWorn.state, savedMoreWorn.state), true);
@@ -107,7 +112,11 @@ for (const stack of [
 }
 
 assert.deepEqual(
-  validatePlayerStateJson(JSON.stringify({ version: PLAYER_STATE_VERSION, inventory: [{ itemId: "iron_pickaxe", count: 1 }] })),
+  validatePlayerStateJson(JSON.stringify({
+    version: PLAYER_STATE_VERSION,
+    inventory: [{ itemId: "iron_pickaxe", count: 1 }],
+    equipment: createEmptyEquipment(),
+  })),
   { ok: false, reason: "invalid_inventory" },
   "current-version payloads cannot omit durability to repair a worn tool",
 );

@@ -4,6 +4,7 @@ import {
   SMELTING_RECIPES,
   addItemStack,
   cloneInventory,
+  maxItemDurability,
   type Inventory,
   type ItemId,
   type ItemStack,
@@ -145,9 +146,10 @@ function validInventory(value: readonly (ItemStack | null)[]): value is Inventor
     if (!slot || typeof slot !== "object" || Array.isArray(slot) || !own(ITEMS, slot.itemId)) return false;
     const item = ITEMS[slot.itemId];
     if (!Number.isInteger(slot.count) || slot.count < 1 || slot.count > item.maxStack) return false;
-    if (item.tool) {
+    const maximum = maxItemDurability(slot.itemId);
+    if (maximum !== null) {
       if (slot.count !== 1 || !Number.isInteger(slot.durability)
-        || (slot.durability ?? 0) < 1 || (slot.durability ?? 0) > item.tool.maxDurability) return false;
+        || (slot.durability ?? 0) < 1 || (slot.durability ?? 0) > maximum) return false;
     } else if (slot.durability !== undefined) return false;
   }
   return true;

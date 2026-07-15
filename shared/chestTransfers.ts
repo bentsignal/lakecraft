@@ -6,7 +6,10 @@ import {
   addItemStack,
   cloneInventory,
   createEmptyEquipment,
+  maxItemDurability,
+  type ArmorId,
   type ArmorSlot,
+  type ArmorStack,
   type Equipment,
   type Inventory,
   type ItemId,
@@ -25,7 +28,7 @@ export const MAX_CHEST_TRANSFER_REQUEST_LENGTH = 8_191;
 export const MAX_PLAYER_STATE_JSON_LENGTH = 7_000;
 export const MIN_OPERATION_ID_LENGTH = 16;
 export const MAX_OPERATION_ID_LENGTH = 64;
-export const PLAYER_STATE_VERSION = 3;
+export const PLAYER_STATE_VERSION = 4;
 
 export type ChestTransferDirection = "to_chest" | "from_chest";
 export type ChestTransferConflict = "inventory" | "chest" | "both";
@@ -158,7 +161,12 @@ function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[]
   return keys.every((key) => allowed.includes(key)) && required.every((key) => keys.includes(key));
 }
 
-function strictInventory(value: unknown, size: number, allowLegacyToolDurability: boolean): Inventory | null {
+function strictInventory(
+  value: unknown,
+  size: number,
+  allowLegacyToolDurability: boolean,
+  allowLegacyArmorDurability: boolean,
+): Inventory | null {
   if (!Array.isArray(value) || value.length > size) return null;
   const output: Inventory = new Array(size).fill(null);
   for (let index = 0; index < value.length; index += 1) {
@@ -171,36 +179,52 @@ function strictInventory(value: unknown, size: number, allowLegacyToolDurability
     const itemId = record.itemId as ItemId;
     if (typeof record.count !== "number" || !Number.isInteger(record.count)
       || record.count < 1 || record.count > ITEMS[itemId].maxStack) return null;
-    const tool = ITEMS[itemId].tool;
-    if (!tool) {
+    const maximum = maxItemDurability(itemId);
+    if (maximum === null) {
       if (record.durability !== undefined) return null;
       output[index] = { itemId, count: record.count };
       continue;
     }
     if (record.count !== 1) return null;
-    // Versions 1/2 and raw legacy arrays did not persist durability.
-    if (record.durability === undefined && !allowLegacyToolDurability) return null;
-    const durability = record.durability === undefined ? tool.maxDurability : record.durability;
+    // Versions 1-3 and raw legacy arrays did not persist armor durability;
+    // versions 1/2 and raw legacy arrays also omitted tool durability.
+    const mayOmitDurability = ITEMS[itemId].tool
+      ? allowLegacyToolDurability
+      : allowLegacyArmorDurability;
+    if (record.durability === undefined && !mayOmitDurability) return null;
+    const durability = record.durability === undefined ? maximum : record.durability;
     if (typeof durability !== "number" || !Number.isInteger(durability)
-      || durability < 1 || durability > tool.maxDurability) return null;
+      || durability < 1 || durability > maximum) return null;
     output[index] = { itemId, count: 1, durability };
   }
   return output;
 }
 
-function strictEquipment(value: unknown): Equipment | null {
-  if (value === undefined) return createEmptyEquipment();
+function strictEquipment(value: unknown, allowLegacyArmorIds: boolean): Equipment | null {
+  if (value === undefined) return allowLegacyArmorIds ? createEmptyEquipment() : null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (!hasOnlyKeys(record, ARMOR_SLOTS, ARMOR_SLOTS)) return null;
   const output = createEmptyEquipment();
   for (const slot of ARMOR_SLOTS) {
-    const itemId = record[slot];
-    if (itemId === null) continue;
-    if (typeof itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, itemId)) return null;
-    const item = ITEMS[itemId as ItemId];
-    if (!item.armor || item.armor.slot !== slot) return null;
-    output[slot] = itemId as NonNullable<Equipment[ArmorSlot]>;
+    const candidate = record[slot];
+    if (candidate === null) continue;
+    if (typeof candidate === "string") {
+      if (!allowLegacyArmorIds || !Object.prototype.hasOwnProperty.call(ITEMS, candidate)) return null;
+      const armor = ITEMS[candidate as ItemId].armor;
+      if (!armor || armor.slot !== slot) return null;
+      output[slot] = { itemId: candidate as ArmorId, durability: armor.maxDurability };
+      continue;
+    }
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+    const stack = candidate as Record<string, unknown>;
+    if (!hasOnlyKeys(stack, ["itemId", "durability"], ["itemId", "durability"])
+      || typeof stack.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, stack.itemId)) return null;
+    const armor = ITEMS[stack.itemId as ItemId].armor;
+    if (!armor || armor.slot !== slot || typeof stack.durability !== "number"
+      || !Number.isInteger(stack.durability) || stack.durability < 1
+      || stack.durability > armor.maxDurability) return null;
+    output[slot] = { itemId: stack.itemId as ArmorId, durability: stack.durability };
   }
   return output;
 }
@@ -235,15 +259,21 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
   let respawnPoint: PlayerRespawnPoint | null = null;
   let hunger = MAX_HUNGER;
   if (Array.isArray(parsed)) {
-    inventory = strictInventory(parsed, INVENTORY_SIZE, true);
+    inventory = strictInventory(parsed, INVENTORY_SIZE, true, true);
   } else {
     if (!parsed || typeof parsed !== "object") return { ok: false, reason: "invalid_shape" };
     const record = parsed as Record<string, unknown>;
     if (!hasOnlyKeys(record, PLAYER_STATE_KEYS, ["inventory"])) return { ok: false, reason: "invalid_shape" };
-    if (record.version !== undefined && record.version !== 1 && record.version !== 2 && record.version !== PLAYER_STATE_VERSION) {
+    if (record.version !== undefined && record.version !== 1 && record.version !== 2
+      && record.version !== 3 && record.version !== PLAYER_STATE_VERSION) {
       return { ok: false, reason: "invalid_version" };
     }
-    inventory = strictInventory(record.inventory, INVENTORY_SIZE, record.version !== PLAYER_STATE_VERSION);
+    inventory = strictInventory(
+      record.inventory,
+      INVENTORY_SIZE,
+      record.version !== 3 && record.version !== PLAYER_STATE_VERSION,
+      record.version !== PLAYER_STATE_VERSION,
+    );
     if (record.selectedHotbar !== undefined) {
       if (typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
         || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) {
@@ -251,7 +281,7 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
       }
       selectedHotbar = record.selectedHotbar;
     }
-    const parsedEquipment = strictEquipment(record.equipment);
+    const parsedEquipment = strictEquipment(record.equipment, record.version !== PLAYER_STATE_VERSION);
     if (!parsedEquipment) return { ok: false, reason: "invalid_equipment" };
     equipment = parsedEquipment;
     const parsedRespawnPoint = strictRespawnPoint(record.respawnPoint);
@@ -279,24 +309,31 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
 }
 
 /**
- * A normal save may consume durability or add newly crafted full tools, but it
- * may never repair an already persisted tool. Atomic chest/drop mutations use
- * their own exact-state CAS and therefore do not pass through this gate.
+ * A normal save may consume durability or add newly crafted full equipment,
+ * but it may never repair a persisted item. Inventory and equipped armor form
+ * one conservation domain so equip/unequip cannot disguise a repair. Atomic
+ * chest/drop mutations use their own exact-state CAS and skip this gate.
  */
 export function isValidDurabilitySaveTransition(
   previous: CanonicalPlayerState,
   next: CanonicalPlayerState,
 ): boolean {
   for (const itemId of Object.keys(ITEMS) as ItemId[]) {
-    const maximum = ITEMS[itemId].tool?.maxDurability;
-    if (!maximum) continue;
+    const maximum = maxItemDurability(itemId);
+    if (maximum === null) continue;
     const oldValues = previous.inventory
       .filter((stack): stack is ItemStack => stack?.itemId === itemId)
       .map((stack) => stack.durability ?? maximum)
+      .concat((Object.values(previous.equipment) as Array<ArmorStack | null>)
+        .filter((stack): stack is ArmorStack => stack?.itemId === itemId)
+        .map((stack) => stack.durability))
       .sort((left, right) => right - left);
     const newValues = next.inventory
       .filter((stack): stack is ItemStack => stack?.itemId === itemId)
       .map((stack) => stack.durability ?? maximum)
+      .concat((Object.values(next.equipment) as Array<ArmorStack | null>)
+        .filter((stack): stack is ArmorStack => stack?.itemId === itemId)
+        .map((stack) => stack.durability))
       .sort((left, right) => right - left);
     const addedCount = Math.max(0, newValues.length - oldValues.length);
     const added = newValues.splice(0, addedCount);

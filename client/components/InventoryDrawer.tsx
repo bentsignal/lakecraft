@@ -188,11 +188,24 @@ export function InventoryCraftingDrawer({
           <section className="lc-equipment-panel" aria-label="Player and equipped armor">
             <div className="lc-armor-column">
               {(Object.keys(equipment) as ArmorSlot[]).map((slot) => {
-                const itemId = equipment[slot];
+                const stack = equipment[slot];
+                const itemId = stack?.itemId ?? null;
+                const maximumDurability = itemId ? maxItemDurability(itemId) : null;
+                const durabilityLabel = stack && maximumDurability
+                  ? `${stack.durability}/${maximumDurability} durability`
+                  : "";
                 return (
-                  <button className={`lc-slot lc-armor-slot${itemId ? " is-equipped" : ""}`} disabled={!itemId} key={slot} onClick={() => onUnequipArmor(slot)} title={itemId ? `Remove ${ITEMS[itemId].label}` : `${slot} armor slot`} type="button">
+                  <button
+                    aria-label={itemId ? `${ITEMS[itemId].label}, ${durabilityLabel}; remove from ${slot} slot` : `Empty ${slot} armor slot`}
+                    className={`lc-slot lc-armor-slot${itemId ? " is-equipped" : ""}`}
+                    disabled={!itemId}
+                    key={slot}
+                    onClick={() => onUnequipArmor(slot)}
+                    title={itemId ? `Remove ${ITEMS[itemId].label} · ${durabilityLabel}` : `${slot} armor slot`}
+                    type="button"
+                  >
                     <span className="lc-armor-slot__label">{slot.slice(0, 1).toUpperCase()}</span>
-                    <ItemGlyph stack={itemId ? { itemId, count: 1 } : null} compact />
+                    <ItemGlyph stack={stack ? { ...stack, count: 1 } : null} compact />
                   </button>
                 );
               })}
