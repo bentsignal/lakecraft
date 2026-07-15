@@ -3,13 +3,14 @@ import {
   INVENTORY_SIZE,
   ITEMS,
   MAX_HUNGER,
-  addItem,
+  addItemStack,
   cloneInventory,
   createEmptyEquipment,
   type ArmorSlot,
   type Equipment,
   type Inventory,
   type ItemId,
+  type ItemStack,
   type PlayerRespawnPoint,
 } from "./game.ts";
 import {
@@ -24,7 +25,7 @@ export const MAX_CHEST_TRANSFER_REQUEST_LENGTH = 8_191;
 export const MAX_PLAYER_STATE_JSON_LENGTH = 7_000;
 export const MIN_OPERATION_ID_LENGTH = 16;
 export const MAX_OPERATION_ID_LENGTH = 64;
-export const PLAYER_STATE_VERSION = 2;
+export const PLAYER_STATE_VERSION = 3;
 
 export type ChestTransferDirection = "to_chest" | "from_chest";
 export type ChestTransferConflict = "inventory" | "chest" | "both";
@@ -156,7 +157,7 @@ function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[]
   return keys.every((key) => allowed.includes(key)) && required.every((key) => keys.includes(key));
 }
 
-function strictInventory(value: unknown, size: number): Inventory | null {
+function strictInventory(value: unknown, size: number, allowLegacyToolDurability: boolean): Inventory | null {
   if (!Array.isArray(value) || value.length > size) return null;
   const output: Inventory = new Array(size).fill(null);
   for (let index = 0; index < value.length; index += 1) {
@@ -164,12 +165,24 @@ function strictInventory(value: unknown, size: number): Inventory | null {
     if (slot === null) continue;
     if (!slot || typeof slot !== "object" || Array.isArray(slot)) return null;
     const record = slot as Record<string, unknown>;
-    if (!hasOnlyKeys(record, ["itemId", "count"], ["itemId", "count"])) return null;
+    if (!hasOnlyKeys(record, ["itemId", "count", "durability"], ["itemId", "count"])) return null;
     if (typeof record.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)) return null;
     const itemId = record.itemId as ItemId;
     if (typeof record.count !== "number" || !Number.isInteger(record.count)
       || record.count < 1 || record.count > ITEMS[itemId].maxStack) return null;
-    output[index] = { itemId, count: record.count };
+    const tool = ITEMS[itemId].tool;
+    if (!tool) {
+      if (record.durability !== undefined) return null;
+      output[index] = { itemId, count: record.count };
+      continue;
+    }
+    if (record.count !== 1) return null;
+    // Versions 1/2 and raw legacy arrays did not persist durability.
+    if (record.durability === undefined && !allowLegacyToolDurability) return null;
+    const durability = record.durability === undefined ? tool.maxDurability : record.durability;
+    if (typeof durability !== "number" || !Number.isInteger(durability)
+      || durability < 1 || durability > tool.maxDurability) return null;
+    output[index] = { itemId, count: 1, durability };
   }
   return output;
 }
@@ -221,15 +234,15 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
   let respawnPoint: PlayerRespawnPoint | null = null;
   let hunger = MAX_HUNGER;
   if (Array.isArray(parsed)) {
-    inventory = strictInventory(parsed, INVENTORY_SIZE);
+    inventory = strictInventory(parsed, INVENTORY_SIZE, true);
   } else {
     if (!parsed || typeof parsed !== "object") return { ok: false, reason: "invalid_shape" };
     const record = parsed as Record<string, unknown>;
     if (!hasOnlyKeys(record, PLAYER_STATE_KEYS, ["inventory"])) return { ok: false, reason: "invalid_shape" };
-    if (record.version !== undefined && record.version !== 1 && record.version !== PLAYER_STATE_VERSION) {
+    if (record.version !== undefined && record.version !== 1 && record.version !== 2 && record.version !== PLAYER_STATE_VERSION) {
       return { ok: false, reason: "invalid_version" };
     }
-    inventory = strictInventory(record.inventory, INVENTORY_SIZE);
+    inventory = strictInventory(record.inventory, INVENTORY_SIZE, record.version !== PLAYER_STATE_VERSION);
     if (record.selectedHotbar !== undefined) {
       if (typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
         || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) {
@@ -262,6 +275,36 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
   return playerStateJson.length <= MAX_PLAYER_STATE_JSON_LENGTH
     ? { ok: true, state, playerStateJson }
     : { ok: false, reason: "too_large" };
+}
+
+/**
+ * A normal save may consume durability or add newly crafted full tools, but it
+ * may never repair an already persisted tool. Atomic chest/drop mutations use
+ * their own exact-state CAS and therefore do not pass through this gate.
+ */
+export function isValidDurabilitySaveTransition(
+  previous: CanonicalPlayerState,
+  next: CanonicalPlayerState,
+): boolean {
+  for (const itemId of Object.keys(ITEMS) as ItemId[]) {
+    const maximum = ITEMS[itemId].tool?.maxDurability;
+    if (!maximum) continue;
+    const oldValues = previous.inventory
+      .filter((stack): stack is ItemStack => stack?.itemId === itemId)
+      .map((stack) => stack.durability ?? maximum)
+      .sort((left, right) => right - left);
+    const newValues = next.inventory
+      .filter((stack): stack is ItemStack => stack?.itemId === itemId)
+      .map((stack) => stack.durability ?? maximum)
+      .sort((left, right) => right - left);
+    const addedCount = Math.max(0, newValues.length - oldValues.length);
+    const added = newValues.splice(0, addedCount);
+    if (added.some((durability) => durability !== maximum)) return false;
+    for (let index = 0; index < newValues.length; index += 1) {
+      if (newValues[index] > oldValues[index]) return false;
+    }
+  }
+  return true;
 }
 
 export function chestTransferFingerprint(request: ChestTransferRequest, canonicalPlayerStateJson: string): string {
@@ -355,15 +398,22 @@ export function decideChestTransferReplay(
   return existingFingerprint === requestFingerprint ? "replay" : "operation_id_reused";
 }
 
-function combinedItemTotals(player: readonly (Inventory[number])[], chest: readonly (ChestInventory[number])[]): Map<ItemId, number> {
-  const totals = new Map<ItemId, number>();
+function stackConservationKey(stack: ItemStack): string {
+  return `${stack.itemId}:${stack.durability ?? ""}`;
+}
+
+function combinedItemTotals(player: readonly (Inventory[number])[], chest: readonly (ChestInventory[number])[]): Map<string, number> {
+  const totals = new Map<string, number>();
   for (const stack of [...player, ...chest]) {
-    if (stack) totals.set(stack.itemId, (totals.get(stack.itemId) ?? 0) + stack.count);
+    if (stack) {
+      const key = stackConservationKey(stack);
+      totals.set(key, (totals.get(key) ?? 0) + stack.count);
+    }
   }
   return totals;
 }
 
-function totalsEqual(left: ReadonlyMap<ItemId, number>, right: ReadonlyMap<ItemId, number>): boolean {
+function totalsEqual(left: ReadonlyMap<string, number>, right: ReadonlyMap<string, number>): boolean {
   if (left.size !== right.size) return false;
   for (const [itemId, count] of left) if (right.get(itemId) !== count) return false;
   return true;
@@ -382,11 +432,11 @@ export function applyChestTransfer(
   const sourceStack = source[request.sourceSlot];
   if (!sourceStack) return { ok: false, reason: "empty_source" };
   const requested = Math.min(request.count, sourceStack.count);
-  const added = addItem(target, sourceStack.itemId, requested);
+  const added = addItemStack(target, sourceStack, requested);
   const movedCount = requested - added.remainder;
   if (movedCount <= 0) return { ok: false, reason: "no_capacity" };
   if (movedCount === sourceStack.count) source[request.sourceSlot] = null;
-  else source[request.sourceSlot] = { itemId: sourceStack.itemId, count: sourceStack.count - movedCount };
+  else source[request.sourceSlot] = { ...sourceStack, count: sourceStack.count - movedCount };
   const nextPlayer = request.direction === "to_chest" ? source : added.inventory;
   const nextChest = request.direction === "to_chest" ? added.inventory : source;
   const before = combinedItemTotals(playerInventory, chestInventory);

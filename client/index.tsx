@@ -21,6 +21,7 @@ import {
   MAX_HEALTH,
   MAX_HUNGER,
   addItem,
+  applyConfirmedToolUse,
   attackDamage,
   canHarvestBlock,
   clampHotbarIndex,
@@ -53,6 +54,7 @@ import {
   type Recipe,
   type SmeltingRecipe,
   type SurvivalTickState,
+  type ToolUseKind,
 } from "../shared/game";
 import { CHEST_SLOT_COUNT, type ChestAtResult, type PersistedChest } from "../shared/chests";
 import {
@@ -79,12 +81,21 @@ import {
   type WorldEdit,
 } from "../shared/protocol";
 import {
-  PRESENCE_MAX_WRITES_PER_MINUTE,
+  PRESENCE_ACTIVE_WRITES_PER_SECOND,
+  PRESENCE_REALTIME_BURST_WRITES,
   PRESENCE_SAMPLE_INTERVAL_MS,
+  PRESENCE_SESSION_WRITE_BUDGET,
+  classifyPresenceTransportError,
+  createPresenceBurstGuardState,
   createPresenceSchedulerState,
   parsePersistedPresencePose,
   parsePresenceVelocityFields,
+  presenceBurstGuardSnapshot,
+  recordPresenceFailure,
+  recordPresenceSuccess,
+  reservePresenceAttempt,
   stepPresenceScheduler,
+  type PresenceBurstGuardState,
   type PresenceSchedulerState,
 } from "../shared/presenceMotion";
 import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
@@ -125,6 +136,25 @@ button { -webkit-tap-highlight-color: transparent; }
 .lakecraft-sleep button:disabled { cursor: progress; opacity: .58; }
 .lakecraft-sleep button:last-child { background: transparent; color: #24261f; outline: 1px solid rgba(36,38,31,.4); }
 `;
+
+const PRESENCE_BUDGET_STORAGE_PREFIX = "lakecraft:presence-budget:v1:";
+
+function loadPresenceBurstGuard(userId: string, now: number): PresenceBurstGuardState {
+  try {
+    const raw = window.localStorage.getItem(`${PRESENCE_BUDGET_STORAGE_PREFIX}${userId}`);
+    return createPresenceBurstGuardState(now, raw ? JSON.parse(raw) : null);
+  } catch {
+    return createPresenceBurstGuardState(now);
+  }
+}
+
+function persistPresenceBurstGuard(userId: string, state: PresenceBurstGuardState): void {
+  try {
+    window.localStorage.setItem(`${PRESENCE_BUDGET_STORAGE_PREFIX}${userId}`, JSON.stringify(state));
+  } catch {
+    // Storage can be unavailable in private contexts; the in-memory guard still applies.
+  }
+}
 
 type DroppedItemsQueryResult =
   | { ok: true; items: NormalizedDroppedItem[]; serverNow: number }
@@ -399,6 +429,8 @@ export function App() {
   const poseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const presenceSampleRef = useRef<((pose: PlayerPose, at?: number) => void) | null>(null);
   const presenceSchedulerRef = useRef<PresenceSchedulerState | null>(null);
+  const presenceBurstGuardRef = useRef<PresenceBurstGuardState | null>(null);
+  const presenceModeNoticeRef = useRef("");
   const targetRef = useRef<BlockTarget | null>(null);
   const inventoryRef = useRef<Inventory>(createStarterInventory());
   const equipmentRef = useRef<Equipment>(createEmptyEquipment());
@@ -432,6 +464,7 @@ export function App() {
   const realtimePresenceRef = useRef(false);
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
+  if (!presenceBurstGuardRef.current) presenceBurstGuardRef.current = createPresenceBurstGuardState(Date.now());
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
   const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
@@ -491,6 +524,16 @@ export function App() {
   function updateInventory(next: Inventory) {
     inventoryRef.current = next;
     setInventory(next);
+  }
+
+  function recordConfirmedToolUse(slot: number, itemId: ItemId | null, kind: ToolUseKind): void {
+    if (!itemId) return;
+    const result = applyConfirmedToolUse(inventoryRef.current, slot, kind, itemId);
+    if (!result.used) return;
+    updateInventory(result.inventory);
+    if (result.broke && result.itemId) {
+      notify(`${ITEMS[result.itemId].label} broke`, "The last durability point was consumed by a Lakebed-confirmed action.", "warning");
+    }
   }
 
   function closeInventory() {
@@ -688,6 +731,8 @@ export function App() {
   function handleBlockEdit(edit: EngineWorldEdit, previousBlock: EngineBlockId) {
     const key = blockCoordinateKey(edit.x, edit.y, edit.z);
     if (edit.block === BLOCK.AIR) {
+      const usedToolSlot = selectedRef.current;
+      const usedToolItemId = inventoryRef.current[usedToolSlot]?.itemId ?? null;
       const gameBlock = ENGINE_TO_GAME[previousBlock];
       let droppedItem: ItemId | null = null;
       let droppedCount = 0;
@@ -705,7 +750,10 @@ export function App() {
           notify(`No ${unavailableDrop ? ITEMS[unavailableDrop].label : BLOCKS[gameBlock].label} recovered`, miningRequirementDetail(gameBlock), "warning");
         }
       }
-      void removeBlockMutation(key, String(edit.x), String(edit.y), String(edit.z)).then(() => setConnected(true)).catch(() => {
+      void removeBlockMutation(key, String(edit.x), String(edit.y), String(edit.z)).then(() => {
+        setConnected(true);
+        recordConfirmedToolUse(usedToolSlot, usedToolItemId, "mine");
+      }).catch(() => {
         engineRef.current?.applyWorldEdits([{ ...edit, block: previousBlock }]);
         if (droppedItem && droppedCount) updateInventory(removeItem(inventoryRef.current, droppedItem, droppedCount).inventory);
         setConnected(false);
@@ -802,11 +850,14 @@ export function App() {
         getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
         onUseSelectedItem: () => handleUseItem(),
         onMobAttack: (target, damage) => {
+          const usedToolSlot = selectedRef.current;
+          const usedToolItemId = inventoryRef.current[usedToolSlot]?.itemId ?? null;
           void attackMob(target.id, target.kind, String(Math.max(1, Math.min(MAX_MOB_ATTACK_DAMAGE, Math.floor(damage))))).then((result) => {
             setConnected(true);
             if (result.state) {
               engineRef.current?.applyMobCombatStates([result.state], result.serverNow - Date.now());
             }
+            if (result.ok) recordConfirmedToolUse(usedToolSlot, usedToolItemId, "attack");
             if (result.ok && result.killed && result.drops.length) collectMobDrops(result.drops);
           }).catch(() => {
             setConnected(false);
@@ -825,6 +876,7 @@ export function App() {
           }))).then((result) => {
             setConnected(true);
             if (result.ok) {
+              recordConfirmedToolUse(selectedHotbar, weaponItemId || null, "attack");
               notify(
                 result.killed ? `${target.name} was defeated` : `Hit ${target.name}`,
                 `${result.damage ?? 0} damage${result.replayed ? " · confirmed retry" : ""}`,
@@ -1079,13 +1131,48 @@ export function App() {
   useEffect(() => {
     if (!inWorld || auth.isLoading || !auth.isAuthenticated || auth.isGuest || !profile) return;
     const scheduler = createPresenceSchedulerState();
+    const guard = loadPresenceBurstGuard(auth.userId, Date.now());
     presenceSchedulerRef.current = scheduler;
+    presenceBurstGuardRef.current = guard;
+    presenceModeNoticeRef.current = "";
     let writeInFlight = false;
+    const announceTransportMode = (at: number) => {
+      const snapshot = presenceBurstGuardSnapshot(guard, at, realtimePresenceRef.current);
+      if (snapshot.mode === presenceModeNoticeRef.current) return snapshot;
+      presenceModeNoticeRef.current = snapshot.mode;
+      if (snapshot.mode === "degraded") {
+        notify(
+          "Realtime sync budget spent",
+          "Lakebed presence is now a sparse lease. F3 shows the remaining daily session budget.",
+          "warning",
+        );
+      } else if (snapshot.mode === "quota_paused") {
+        notify(
+          "Lakebed presence paused",
+          `Repeated or quota-like rejections stopped retries. Budget recovery is in ${Math.max(1, Math.ceil(snapshot.windowResetsInMs / 3_600_000))}h.`,
+          "warning",
+        );
+        setConnected(false);
+      } else if (snapshot.mode === "budget_exhausted") {
+        notify(
+          "Daily presence budget exhausted",
+          `No more movement writes will be attempted for ${Math.max(1, Math.ceil(snapshot.windowResetsInMs / 3_600_000))}h.`,
+          "warning",
+        );
+        setConnected(false);
+      }
+      return snapshot;
+    };
     const samplePresence = (pose: PlayerPose, at = Date.now()) => {
       poseRef.current = pose;
       if (writeInFlight) return;
-      const decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtimePresenceRef.current);
+      const guardSnapshot = announceTransportMode(at);
+      if (!guardSnapshot.canAttempt) return;
+      const realtime = realtimePresenceRef.current && guardSnapshot.realtimeRemaining > 0;
+      const decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtime);
       if (!decision.send) return;
+      if (!reservePresenceAttempt(guard, at, realtime)) return;
+      announceTransportMode(at);
       const worn = equipmentRef.current;
       const appearance = normalizeAvatarAppearance(
         inventoryRef.current[selectedRef.current]?.itemId,
@@ -1112,7 +1199,15 @@ export function App() {
         appearance.armorChest,
         appearance.armorLegs,
         appearance.armorFeet,
-      ).then(() => setConnected(true)).catch(() => setConnected(false)).finally(() => {
+      ).then(() => {
+        recordPresenceSuccess(guard, Date.now());
+        setConnected(true);
+      }).catch((error: unknown) => {
+        recordPresenceFailure(guard, Date.now(), classifyPresenceTransportError(error));
+        announceTransportMode(Date.now());
+        setConnected(false);
+      }).finally(() => {
+        persistPresenceBurstGuard(auth.userId, guard);
         writeInFlight = false;
       });
     };
@@ -1607,6 +1702,16 @@ export function App() {
     own: message.userId === auth.userId,
   }));
   const unreadChat = chatOpen ? 0 : Math.max(0, chatMessages.length - lastSeenChatCount);
+  const presenceTelemetry = presenceBurstGuardSnapshot(
+    presenceBurstGuardRef.current!,
+    Date.now(),
+    realtimePresenceRef.current,
+  );
+  const presenceCadence = presenceTelemetry.cadenceHz === PRESENCE_ACTIVE_WRITES_PER_SECOND
+    ? `${PRESENCE_ACTIVE_WRITES_PER_SECOND}Hz`
+    : presenceTelemetry.cadenceHz > 0
+      ? "1/min"
+      : "paused";
 
   if (!inWorld) {
     return (
@@ -1803,7 +1908,7 @@ export function App() {
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nPRESENCE ${presenceSchedulerRef.current?.writeCount ?? 0} attempts · cap ${PRESENCE_MAX_WRITES_PER_MINUTE}/min\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${presenceTelemetry.mode.toUpperCase()} ${presenceCadence} · RT ${presenceTelemetry.realtimeRemaining}/${PRESENCE_REALTIME_BURST_WRITES} · DAY ${presenceTelemetry.sessionRemaining}/${PRESENCE_SESSION_WRITE_BUDGET} · OK ${presenceTelemetry.confirmedCount}/${presenceTelemetry.attemptCount}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}

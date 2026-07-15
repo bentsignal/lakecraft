@@ -1,4 +1,4 @@
-import { ITEMS, RECIPES, type ItemId, type ItemQuantity, type ItemStack, type Recipe } from "./game.ts";
+import { ITEMS, RECIPES, createItemStack, maxItemDurability, type ItemId, type ItemQuantity, type ItemStack, type Recipe } from "./game.ts";
 
 export type CraftingGridSize = 2 | 3;
 export type CraftingGrid = ReadonlyArray<ItemStack | null>;
@@ -124,7 +124,11 @@ export function createCraftingGrid(size: CraftingGridSize): CraftingGrid {
 export function isValidCraftingStack(stack: ItemStack | null): boolean {
   if (stack === null) return true;
   const item = ITEMS[stack.itemId];
-  return Boolean(item) && Number.isInteger(stack.count) && stack.count >= 1 && stack.count <= item.maxStack;
+  if (!item || !Number.isInteger(stack.count) || stack.count < 1 || stack.count > item.maxStack) return false;
+  const maximum = maxItemDurability(stack.itemId);
+  if (maximum === null) return stack.durability === undefined;
+  return stack.count === 1 && (stack.durability === undefined
+    || (Number.isInteger(stack.durability) && (stack.durability ?? 0) >= 1 && (stack.durability ?? 0) <= maximum));
 }
 
 export function isValidCraftingGrid(grid: CraftingGrid, size: CraftingGridSize): boolean {
@@ -315,7 +319,7 @@ function failure(grid: CraftingGrid, cursor: ItemStack | null, reason: "incompat
 }
 
 function quantityToStack(quantity: ItemQuantity): ItemStack {
-  return { itemId: quantity.itemId, count: quantity.count };
+  return createItemStack(quantity.itemId, quantity.count);
 }
 
 function areStacksCompatible(left: ItemStack, right: ItemStack): boolean {

@@ -99,7 +99,11 @@ export type ItemDefinition = {
   food?: { hunger: number };
 };
 
-export type ItemStack = { itemId: ItemId; count: number };
+/**
+ * Remaining durability is stored only for tools. Legacy tool stacks omit the
+ * field and are migrated to full durability by the normalizers below.
+ */
+export type ItemStack = { itemId: ItemId; count: number; durability?: number };
 export type Inventory = Array<ItemStack | null>;
 export type ItemQuantity = { itemId: ItemId; count: number };
 
@@ -290,6 +294,51 @@ function foodItem(id: "pork" | "beef" | "mutton" | "cooked_pork" | "cooked_beef"
   return { id, label, shortLabel, description, category: "food", maxStack: 64, glyph, color, food: { hunger } };
 }
 
+type RecipeIngredientSpec = readonly [itemId: ItemId, count: number];
+
+function craftingTableRecipe(id: ItemId, ingredients: readonly RecipeIngredientSpec[]): Recipe {
+  const item = ITEMS[id];
+  return {
+    id,
+    label: item.label,
+    note: item.description,
+    craftingContext: "crafting_table",
+    ingredients: ingredients.map(([itemId, count]) => ({ itemId, count })),
+    output: { itemId: id, count: 1 },
+  };
+}
+
+const GENERATED_TOOL_RECIPES = ([
+  ["wooden", "planks"],
+  ["stone", "cobblestone"],
+  ["iron", "iron_ingot"],
+  ["golden", "gold_ingot"],
+  ["diamond", "diamond"],
+] as const).flatMap(([prefix, material]) => ([
+  ["pickaxe", 3, 2],
+  ["axe", 3, 2],
+  ["shovel", 1, 2],
+  ["sword", 2, 1],
+] as const).map(([kind, materialCount, stickCount]) => craftingTableRecipe(
+  `${prefix}_${kind}` as ToolId,
+  [[material, materialCount], ["stick", stickCount]],
+)));
+
+const GENERATED_ARMOR_RECIPES = ([
+  ["leather", "leather"],
+  ["iron", "iron_ingot"],
+  ["golden", "gold_ingot"],
+  ["diamond", "diamond"],
+] as const).flatMap(([prefix, material]) => ([
+  ["helmet", 5],
+  ["chestplate", 8],
+  ["leggings", 7],
+  ["boots", 4],
+] as const).map(([piece, count]) => craftingTableRecipe(
+  `${prefix}_${piece}` as ArmorId,
+  [[material, count]],
+)));
+
 export const RECIPES: readonly Recipe[] = [
   { id: "planks_from_log", label: "Saw planks", note: "Split one log into four boards.", craftingContext: "field", ingredients: [{ itemId: "log", count: 1 }], output: { itemId: "planks", count: 4 } },
   { id: "sticks_from_planks", label: "Whittle sticks", note: "Two boards make four handles.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 2 }], output: { itemId: "stick", count: 4 } },
@@ -300,42 +349,8 @@ export const RECIPES: readonly Recipe[] = [
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
   { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
   { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
-  { id: "wooden_pickaxe", label: "Wood pickaxe", note: "A starter quarrying tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_pickaxe", count: 1 } },
-  { id: "wooden_axe", label: "Wood axe", note: "Fells logs faster.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_axe", count: 1 } },
-  { id: "wooden_shovel", label: "Wood shovel", note: "Clears dirt and grass faster.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "wooden_shovel", count: 1 } },
-  { id: "wooden_sword", label: "Wood sword", note: "Basic protection after dark.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "wooden_sword", count: 1 } },
-  { id: "stone_pickaxe", label: "Stone pickaxe", note: "A faster, sturdier pick.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_pickaxe", count: 1 } },
-  { id: "stone_axe", label: "Stone axe", note: "A proper timber tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_axe", count: 1 } },
-  { id: "stone_shovel", label: "Stone shovel", note: "Moves soil in a hurry.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "stone_shovel", count: 1 } },
-  { id: "stone_sword", label: "Stone sword", note: "A sharper answer to hostile creatures.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "stone_sword", count: 1 } },
-  { id: "iron_pickaxe", label: "Iron pickaxe", note: "A durable pick for deeper mining.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_pickaxe", count: 1 } },
-  { id: "iron_axe", label: "Iron axe", note: "A keen edge for timber.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_axe", count: 1 } },
-  { id: "iron_shovel", label: "Iron shovel", note: "A strong spade for quick excavation.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "iron_shovel", count: 1 } },
-  { id: "iron_sword", label: "Iron sword", note: "A reliable blade after dark.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "iron_sword", count: 1 } },
-  { id: "golden_pickaxe", label: "Golden pickaxe", note: "Extremely fast, but fragile and unable to harvest advanced ores.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "golden_pickaxe", count: 1 } },
-  { id: "golden_axe", label: "Golden axe", note: "A fast, fragile timber tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "golden_axe", count: 1 } },
-  { id: "golden_shovel", label: "Golden shovel", note: "A fast, fragile digging tool.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "golden_shovel", count: 1 } },
-  { id: "golden_sword", label: "Golden sword", note: "A bright but fragile blade.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "golden_sword", count: 1 } },
-  { id: "diamond_pickaxe", label: "Diamond pickaxe", note: "A durable pick for every current ore.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "diamond_pickaxe", count: 1 } },
-  { id: "diamond_axe", label: "Diamond axe", note: "A durable axe with a powerful edge.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 3 }, { itemId: "stick", count: 2 }], output: { itemId: "diamond_axe", count: 1 } },
-  { id: "diamond_shovel", label: "Diamond shovel", note: "A durable shovel for rapid excavation.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 1 }, { itemId: "stick", count: 2 }], output: { itemId: "diamond_shovel", count: 1 } },
-  { id: "diamond_sword", label: "Diamond sword", note: "A powerful and durable blade.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 2 }, { itemId: "stick", count: 1 }], output: { itemId: "diamond_sword", count: 1 } },
-  { id: "leather_helmet", label: "Leather cap", note: "Light protection for the head.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 5 }], output: { itemId: "leather_helmet", count: 1 } },
-  { id: "leather_chestplate", label: "Leather tunic", note: "A hide layer for the torso.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 8 }], output: { itemId: "leather_chestplate", count: 1 } },
-  { id: "leather_leggings", label: "Leather pants", note: "Flexible leg protection.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 7 }], output: { itemId: "leather_leggings", count: 1 } },
-  { id: "leather_boots", label: "Leather boots", note: "A little protection underfoot.", craftingContext: "crafting_table", ingredients: [{ itemId: "leather", count: 4 }], output: { itemId: "leather_boots", count: 1 } },
-  { id: "iron_helmet", label: "Iron helmet", note: "Five ingots protect the head.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 5 }], output: { itemId: "iron_helmet", count: 1 } },
-  { id: "iron_chestplate", label: "Iron chestplate", note: "Eight ingots protect the torso.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 8 }], output: { itemId: "iron_chestplate", count: 1 } },
-  { id: "iron_leggings", label: "Iron leggings", note: "Seven ingots protect the legs.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 7 }], output: { itemId: "iron_leggings", count: 1 } },
-  { id: "iron_boots", label: "Iron boots", note: "Four ingots protect the feet.", craftingContext: "crafting_table", ingredients: [{ itemId: "iron_ingot", count: 4 }], output: { itemId: "iron_boots", count: 1 } },
-  { id: "golden_helmet", label: "Golden helmet", note: "Five ingots form a gold helmet.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 5 }], output: { itemId: "golden_helmet", count: 1 } },
-  { id: "golden_chestplate", label: "Golden chestplate", note: "Eight ingots form a gold chestplate.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 8 }], output: { itemId: "golden_chestplate", count: 1 } },
-  { id: "golden_leggings", label: "Golden leggings", note: "Seven ingots form gold leggings.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 7 }], output: { itemId: "golden_leggings", count: 1 } },
-  { id: "golden_boots", label: "Golden boots", note: "Four ingots form gold boots.", craftingContext: "crafting_table", ingredients: [{ itemId: "gold_ingot", count: 4 }], output: { itemId: "golden_boots", count: 1 } },
-  { id: "diamond_helmet", label: "Diamond helmet", note: "Five diamonds form a durable helmet.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 5 }], output: { itemId: "diamond_helmet", count: 1 } },
-  { id: "diamond_chestplate", label: "Diamond chestplate", note: "Eight diamonds form the strongest available chestplate.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 8 }], output: { itemId: "diamond_chestplate", count: 1 } },
-  { id: "diamond_leggings", label: "Diamond leggings", note: "Seven diamonds form durable leggings.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 7 }], output: { itemId: "diamond_leggings", count: 1 } },
-  { id: "diamond_boots", label: "Diamond boots", note: "Four diamonds form durable boots.", craftingContext: "crafting_table", ingredients: [{ itemId: "diamond", count: 4 }], output: { itemId: "diamond_boots", count: 1 } },
+  ...GENERATED_TOOL_RECIPES,
+  ...GENERATED_ARMOR_RECIPES,
 ] as const;
 
 export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
@@ -369,26 +384,102 @@ export function normalizeEquipment(value: unknown): Equipment {
 
 export function createStarterInventory(): Inventory {
   const inventory = createEmptyInventory();
-  inventory[0] = { itemId: "wooden_pickaxe", count: 1 };
-  inventory[1] = { itemId: "wooden_axe", count: 1 };
+  inventory[0] = createItemStack("wooden_pickaxe", 1);
+  inventory[1] = createItemStack("wooden_axe", 1);
   inventory[2] = { itemId: "dirt", count: 16 };
   inventory[3] = { itemId: "planks", count: 8 };
   return inventory;
 }
 
 export function cloneInventory(inventory: readonly (ItemStack | null)[]): Inventory {
-  return inventory.map((stack) => stack ? { itemId: stack.itemId, count: stack.count } : null);
+  return inventory.map((stack) => stack ? { ...stack } : null);
+}
+
+/** Creates canonical stacks; newly acquired tools always begin at full durability. */
+export function createItemStack(itemId: ItemId, count = 1): ItemStack {
+  const tool = ITEMS[itemId].tool;
+  return tool
+    ? { itemId, count: 1, durability: tool.maxDurability }
+    : { itemId, count: Math.max(1, Math.min(ITEMS[itemId].maxStack, Math.floor(count))) };
+}
+
+export function maxItemDurability(itemId: ItemId): number | null {
+  return ITEMS[itemId].tool?.maxDurability ?? null;
+}
+
+/** Legacy tools without a value are treated as unused, never as broken. */
+export function remainingItemDurability(stack: ItemStack): number | null {
+  const maximum = maxItemDurability(stack.itemId);
+  if (maximum === null) return null;
+  return typeof stack.durability === "number" && Number.isInteger(stack.durability)
+    ? Math.max(1, Math.min(maximum, stack.durability))
+    : maximum;
+}
+
+export function itemStackIdentity(stack: ItemStack): string {
+  return `${stack.itemId}:${remainingItemDurability(stack) ?? ""}`;
+}
+
+export function areItemStacksCompatible(left: ItemStack, right: ItemStack): boolean {
+  return itemStackIdentity(left) === itemStackIdentity(right);
+}
+
+export type ToolUseKind = "mine" | "attack";
+export type ToolUseResult = {
+  inventory: Inventory;
+  used: boolean;
+  broke: boolean;
+  itemId: ToolId | null;
+  remainingDurability: number | null;
+};
+
+/**
+ * Applies one confirmed use to the exact selected stack. Swords lose two
+ * durability when used as an improvised mining tool, matching Minecraft.
+ */
+export function applyConfirmedToolUse(
+  inventory: readonly (ItemStack | null)[],
+  slot: number,
+  kind: ToolUseKind,
+  expectedItemId?: ItemId | null,
+): ToolUseResult {
+  const next = cloneInventory(inventory);
+  if (!Number.isInteger(slot) || slot < 0 || slot >= next.length) {
+    return { inventory: next, used: false, broke: false, itemId: null, remainingDurability: null };
+  }
+  const stack = next[slot];
+  const tool = stack ? ITEMS[stack.itemId].tool : undefined;
+  if (!stack || !tool || (expectedItemId !== undefined && stack.itemId !== expectedItemId)) {
+    return { inventory: next, used: false, broke: false, itemId: null, remainingDurability: null };
+  }
+  const spent = kind === "mine" && tool.kind === "sword" ? 2 : 1;
+  const remaining = (remainingItemDurability(stack) ?? tool.maxDurability) - spent;
+  if (remaining <= 0) {
+    next[slot] = null;
+    return { inventory: next, used: true, broke: true, itemId: stack.itemId as ToolId, remainingDurability: 0 };
+  }
+  next[slot] = { itemId: stack.itemId, count: 1, durability: remaining };
+  return { inventory: next, used: true, broke: false, itemId: stack.itemId as ToolId, remainingDurability: remaining };
 }
 
 export function normalizeInventory(value: unknown, size = INVENTORY_SIZE): Inventory {
   const output = createEmptyInventory(size);
   if (!Array.isArray(value)) return output;
   for (let index = 0; index < Math.min(output.length, value.length); index += 1) {
-    const candidate = value[index] as { itemId?: unknown; count?: unknown } | null;
+    const candidate = value[index] as { itemId?: unknown; count?: unknown; durability?: unknown } | null;
     if (!candidate || typeof candidate.itemId !== "string" || !(candidate.itemId in ITEMS) || typeof candidate.count !== "number" || !Number.isFinite(candidate.count)) continue;
     const itemId = candidate.itemId as ItemId;
     const count = Math.min(ITEMS[itemId].maxStack, Math.max(0, Math.floor(candidate.count)));
-    if (count > 0) output[index] = { itemId, count };
+    if (count <= 0) continue;
+    const tool = ITEMS[itemId].tool;
+    if (tool) {
+      const durability = typeof candidate.durability === "number" && Number.isInteger(candidate.durability)
+        ? Math.max(1, Math.min(tool.maxDurability, candidate.durability))
+        : tool.maxDurability;
+      output[index] = { itemId, count: 1, durability };
+    } else {
+      output[index] = { itemId, count };
+    }
   }
   return output;
 }
@@ -539,12 +630,21 @@ export function hasItems(inventory: readonly (ItemStack | null)[], quantities: r
 }
 
 export function addItem(inventory: readonly (ItemStack | null)[], itemId: ItemId, count = 1): { inventory: Inventory; remainder: number } {
+  return addItemStack(inventory, createItemStack(itemId, count), count);
+}
+
+/** Adds an exact metadata-bearing stack without repairing or merging worn tools. */
+export function addItemStack(
+  inventory: readonly (ItemStack | null)[],
+  source: ItemStack,
+  count = source.count,
+): { inventory: Inventory; remainder: number } {
   const next = cloneInventory(inventory);
   let remainder = Math.max(0, Math.floor(count));
-  const maxStack = ITEMS[itemId].maxStack;
+  const maxStack = ITEMS[source.itemId].maxStack;
   for (const stack of next) {
     if (remainder <= 0) break;
-    if (stack?.itemId !== itemId || stack.count >= maxStack) continue;
+    if (!stack || !areItemStacksCompatible(stack, source) || stack.count >= maxStack) continue;
     const added = Math.min(maxStack - stack.count, remainder);
     stack.count += added;
     remainder -= added;
@@ -552,7 +652,7 @@ export function addItem(inventory: readonly (ItemStack | null)[], itemId: ItemId
   for (let index = 0; index < next.length && remainder > 0; index += 1) {
     if (next[index]) continue;
     const added = Math.min(maxStack, remainder);
-    next[index] = { itemId, count: added };
+    next[index] = { ...source, count: added };
     remainder -= added;
   }
   return { inventory: next, remainder };

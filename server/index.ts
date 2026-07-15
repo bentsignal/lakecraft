@@ -14,6 +14,7 @@ import {
   applyChestTransfer,
   decideChestTransferCas,
   decideChestTransferReplay,
+  isValidDurabilitySaveTransition,
   validateChestTransferRequestJson,
   validatePlayerStateJson
 } from "../shared/chestTransfers";
@@ -761,6 +762,12 @@ export default capsule({
         if (expectedUpdatedAt !== "") return { ok: false, reason: "conflict", inventory: null };
       } else if (existing?.updatedAt !== expectedUpdatedAt) {
         return { ok: false, reason: "conflict", inventory: existing };
+      }
+      if (existing) {
+        const previous = validatePlayerStateJson(existing.inventoryJson);
+        if (!previous.ok || !isValidDurabilitySaveTransition(previous.state, validation.state)) {
+          return { ok: false, reason: "invalid_inventory", inventory: existing };
+        }
       }
       const value = {
         userId: ctx.auth.userId,

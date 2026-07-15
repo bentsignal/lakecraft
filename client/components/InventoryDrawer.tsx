@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
   ITEMS,
+  maxItemDurability,
+  remainingItemDurability,
   RECIPES,
   availableRecipes,
   canCraft,
@@ -228,9 +230,12 @@ export function InventoryCraftingDrawer({
             {inventoryOrder.map((index, displayIndex) => {
               const stack = visibleInventory[index];
               const isHotbar = displayIndex >= inventory.length - 9;
+              const maximumDurability = stack ? maxItemDurability(stack.itemId) : null;
+              const durability = stack ? remainingItemDurability(stack) : null;
+              const durabilityLabel = maximumDurability && durability !== null ? ` · ${durability}/${maximumDurability} durability` : "";
               return (
                 <button
-                  aria-label={`${index + 1}: ${stack ? `${ITEMS[stack.itemId].label}, ${stack.count}` : "Empty"}`}
+                  aria-label={`${index + 1}: ${stack ? `${ITEMS[stack.itemId].label}, ${stack.count}${durabilityLabel}` : "Empty"}`}
                   className={`lc-slot lc-inventory-grid__slot${index === selectedIndex ? " is-selected" : ""}${isHotbar ? " is-hotbar" : ""}`}
                   key={index}
                   onClick={(event) => {
@@ -240,7 +245,7 @@ export function InventoryCraftingDrawer({
                   onContextMenu={(event) => { event.preventDefault(); rightClickInventory(index); }}
                   onDblClick={() => stack && ITEMS[stack.itemId].food ? onUseItem?.(index) : undefined}
                   role="gridcell"
-                  title={stack ? `${ITEMS[stack.itemId].description}${ITEMS[stack.itemId].armor ? " · Shift-click to equip" : ""}` : "Empty slot"}
+                  title={stack ? `${ITEMS[stack.itemId].description}${durabilityLabel}${ITEMS[stack.itemId].armor ? " · Shift-click to equip" : ""}` : "Empty slot"}
                   type="button"
                 >
                   <ItemGlyph stack={stack} compact />

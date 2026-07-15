@@ -16,7 +16,6 @@ import {
 import { BLOCK, type BlockId } from "../client/game/types.ts";
 
 const FACES: readonly BlockFace[] = ["east", "west", "top", "bottom", "south", "north"];
-
 assert.equal(blockTextureForFace(BLOCK.GRASS, "top"), "grass_top");
 assert.equal(blockTextureForFace(BLOCK.GRASS, "bottom"), "dirt");
 for (const face of ["east", "west", "south", "north"] as const) {

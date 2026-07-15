@@ -63,13 +63,23 @@ export function validateChestInventoryJson(rawInventoryJson: string): ChestInven
     if (typeof slot !== "object" || Array.isArray(slot)) return { ok: false, reason: "invalid_slot" };
     const record = slot as Record<string, unknown>;
     const keys = Object.keys(record);
-    if (keys.length !== 2 || !keys.includes("itemId") || !keys.includes("count")
+    if (!keys.every((key) => key === "itemId" || key === "count" || key === "durability")
+      || !keys.includes("itemId") || !keys.includes("count")
       || !isItemId(record.itemId) || typeof record.count !== "number"
       || !Number.isInteger(record.count) || record.count < 1
       || record.count > ITEMS[record.itemId].maxStack) {
       return { ok: false, reason: "invalid_slot" };
     }
-    inventory[index] = { itemId: record.itemId, count: record.count };
+    const tool = ITEMS[record.itemId].tool;
+    if (!tool) {
+      if (record.durability !== undefined) return { ok: false, reason: "invalid_slot" };
+      inventory[index] = { itemId: record.itemId, count: record.count };
+      continue;
+    }
+    const durability = record.durability === undefined ? tool.maxDurability : record.durability;
+    if (record.count !== 1 || typeof durability !== "number" || !Number.isInteger(durability)
+      || durability < 1 || durability > tool.maxDurability) return { ok: false, reason: "invalid_slot" };
+    inventory[index] = { itemId: record.itemId, count: 1, durability };
   }
   const inventoryJson = JSON.stringify(inventory);
   return inventoryJson.length <= MAX_CHEST_JSON_LENGTH

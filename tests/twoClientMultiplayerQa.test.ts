@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import {
   PRESENCE_ACTIVE_WRITE_INTERVAL_MS,
-  PRESENCE_MAX_WRITES_PER_MINUTE,
+  PRESENCE_REALTIME_BURST_WRITES,
+  PRESENCE_SESSION_WRITE_BUDGET,
+  createPresenceBurstGuardState,
   createPresenceSchedulerState,
+  presenceBurstGuardSnapshot,
+  recordPresenceSuccess,
+  reservePresenceAttempt,
   stepPresenceScheduler,
   type PresencePoseSample,
 } from "../shared/presenceMotion.ts";
@@ -29,6 +34,7 @@ function percentile(values: readonly number[], fraction: number): number {
 
 function simulateActiveClient(userId: string, phase: number): Snapshot[] {
   const state = createPresenceSchedulerState();
+  const guard = createPresenceBurstGuardState(0);
   const latencies = [55, 90, 140, 210, 75, 125, 180, 100];
   const writes: Snapshot[] = [];
   for (let at = 0; at < 60_000; at += 50) {
@@ -40,12 +46,18 @@ function simulateActiveClient(userId: string, phase: number): Snapshot[] {
       yaw: phase / 10,
       pitch: 0,
     };
-    if (stepPresenceScheduler(state, sample).send) {
+    const guardSnapshot = presenceBurstGuardSnapshot(guard, at, true);
+    const realtime = guardSnapshot.realtimeRemaining > 0;
+    if (guardSnapshot.canAttempt && stepPresenceScheduler(state, sample, realtime).send) {
+      assert.equal(reservePresenceAttempt(guard, at, realtime), true);
+      recordPresenceSuccess(guard, at);
       const latency = latencies[(writes.length + phase) % latencies.length];
       writes.push({ ...sample, userId, deliveredAt: at + latency });
     }
   }
-  assert.equal(state.writeCount, PRESENCE_MAX_WRITES_PER_MINUTE);
+  assert.equal(state.writeCount, PRESENCE_REALTIME_BURST_WRITES);
+  assert.equal(guard.attemptCount, PRESENCE_REALTIME_BURST_WRITES);
+  assert.equal(presenceBurstGuardSnapshot(guard, 60_000, true).mode, "degraded");
   return writes;
 }
 
@@ -73,7 +85,8 @@ function presence(snapshot: Snapshot, online = true): PlayerPresence {
 const aliceWrites = simulateActiveClient("qa-alice", 0);
 const bobWrites = simulateActiveClient("qa-bob", 1);
 assert.equal(PRESENCE_ACTIVE_WRITE_INTERVAL_MS, 200);
-assert.equal(aliceWrites.length + bobWrites.length, 600, "two moving clients cost 600 presence mutations/minute");
+assert.equal(aliceWrites.length + bobWrites.length, 300, "two moving clients get a bounded 30-second 5 Hz burst");
+assert.equal(PRESENCE_SESSION_WRITE_BUDGET * 2, 900, "two browser-day envelopes reserve 100 mutations for gameplay");
 
 for (const writes of [aliceWrites, bobWrites]) {
   const latencies = writes.map(({ at, deliveredAt }) => deliveredAt - at);
@@ -162,9 +175,9 @@ const report = {
 assert.deepEqual(report, {
   clients: 2,
   simulatedSeconds: 60,
-  presenceMutations: 600,
+  presenceMutations: 300,
   actionMutations: 6,
-  totalMutations: 606,
+  totalMutations: 306,
   p95InjectedDeliveryMs: 210,
   maximumArrivalGapMs: 270,
 });

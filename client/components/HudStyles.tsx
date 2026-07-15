@@ -54,6 +54,7 @@ const HUD_CSS = `
 .lc-item-glyph--block .lc-item-icon__svg { height: min(36px,calc(100% - 3px)); width: min(36px,calc(100% - 3px)); }
 .lc-item-glyph--empty::before { border: 1px dashed rgba(230,220,193,.07); content: ""; height: 24px; width: 24px; }
 .lc-item-glyph__count { background: none; bottom: 2px; color: #fff; font: 900 13px/1 var(--lc-pixel-font); min-width: 11px; padding: 0; position: absolute; right: 2px; text-align: right; text-shadow: 2px 2px #303030; z-index: 2; }
+.lc-durability { background: #171717; bottom: 2px; display: block; height: 4px; left: 4px; padding: 1px; position: absolute; right: 4px; z-index: 3; }.lc-durability > span { display: block; height: 2px; image-rendering: pixelated; }
 .lc-item-glyph.is-muted { filter: grayscale(1); opacity: .45; }
 .lc-player-list { background: rgba(0,0,0,.55); color: #fff; left: 50%; max-width: min(620px, calc(100vw - 24px)); min-width: 330px; padding: 8px 10px 10px; pointer-events: none; position: absolute; text-shadow: 2px 2px #202020; top: 18px; transform: translateX(-50%); }
 .lc-player-list h2 { font: 16px/1.2 var(--lc-pixel-font); margin: 0 0 7px; text-align: center; }.lc-player-list ul { display: grid; gap: 2px 18px; grid-template-columns: repeat(auto-fit,minmax(145px,1fr)); list-style: none; margin: 0; padding: 0; }.lc-player-list li { align-items: center; display: grid; font: 14px/18px var(--lc-pixel-font); grid-template-columns: 18px 1fr 20px; min-width: 0; }.lc-player-list li > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -8,6 +8,7 @@ import {
   validateChestCoordinate,
   validateChestInventoryJson,
 } from "../shared/chests.ts";
+import { ITEMS } from "../shared/game.ts";
 
 assert.deepEqual(validateChestCoordinate("12:7:-9"), { ok: true, coordKey: "12:7:-9", x: 12, y: 7, z: -9 });
 assert.deepEqual(validateChestCoordinate(" 001:02:-003 "), { ok: true, coordKey: "1:2:-3", x: 1, y: 2, z: -3 });
@@ -35,7 +36,7 @@ if (valid.ok) {
   assert.deepEqual(valid.inventory.slice(0, 4), [
     { itemId: "stone", count: 64 },
     null,
-    { itemId: "wooden_pickaxe", count: 1 },
+    { itemId: "wooden_pickaxe", count: 1, durability: ITEMS.wooden_pickaxe.tool!.maxDurability },
     { itemId: "leather", count: 12 },
   ]);
   assert.deepEqual(validateChestInventoryJson(valid.inventoryJson), valid, "canonical chest JSON should validate deterministically");

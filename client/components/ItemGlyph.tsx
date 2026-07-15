@@ -1,4 +1,4 @@
-import { ITEMS, type ItemId, type ItemStack } from "../../shared/game";
+import { ITEMS, maxItemDurability, remainingItemDurability, type ItemId, type ItemStack } from "../../shared/game";
 import { ITEM_ICON_SIZE, getItemIconArt } from "./itemIconArt";
 
 export type ItemGlyphProps = {
@@ -11,6 +11,11 @@ export function ItemIcon({ stack, compact = false, muted = false }: ItemGlyphPro
   if (!stack) return <span className="lc-item-glyph lc-item-glyph--empty" aria-hidden="true" />;
   const item = ITEMS[stack.itemId];
   const art = getItemIconArt(stack.itemId);
+  const maximumDurability = maxItemDurability(stack.itemId);
+  const durability = remainingItemDurability(stack);
+  const durabilityPercent = maximumDurability && durability !== null
+    ? Math.max(0, Math.min(100, durability / maximumDurability * 100))
+    : null;
   return (
     <span
       className={`lc-item-glyph lc-item-icon lc-item-glyph--${item.category}${compact ? " is-compact" : ""}${muted ? " is-muted" : ""}`}
@@ -24,6 +29,11 @@ export function ItemIcon({ stack, compact = false, muted = false }: ItemGlyphPro
         ))}
       </svg>
       {stack.count > 1 ? <span className="lc-item-glyph__count">{stack.count}</span> : null}
+      {durabilityPercent !== null && durabilityPercent < 100 ? (
+        <span className="lc-durability" data-remaining={durability} data-maximum={maximumDurability}>
+          <span style={{ background: `hsl(${durabilityPercent * 1.2} 88% 48%)`, width: `${durabilityPercent}%` }} />
+        </span>
+      ) : null}
     </span>
   );
 }

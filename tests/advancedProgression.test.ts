@@ -64,7 +64,7 @@ const diamondPickaxeGrid: CraftingGrid = [
   null, { itemId: "stick", count: 1 }, null,
 ];
 assert.equal(matchCraftingGrid(diamondPickaxeGrid, 3)?.recipe.id, "diamond_pickaxe");
-assert.deepEqual(previewCraftingResult(diamondPickaxeGrid, 3)?.output, { itemId: "diamond_pickaxe", count: 1 });
+assert.deepEqual(previewCraftingResult(diamondPickaxeGrid, 3)?.output, { itemId: "diamond_pickaxe", count: 1, durability: 1561 });
 
 const mirroredGoldAxeGrid: CraftingGrid = [
   null, { itemId: "gold_ingot", count: 1 }, { itemId: "gold_ingot", count: 1 },

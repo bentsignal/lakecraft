@@ -17,7 +17,7 @@ import {
   type CraftingGridState,
   type ShapedCraftingRecipe,
 } from "../shared/craftingGrid.ts";
-import { RECIPES, type ItemId, type ItemStack } from "../shared/game.ts";
+import { ITEMS, RECIPES, createItemStack, type ItemId, type ItemStack } from "../shared/game.ts";
 
 function stack(itemId: ItemId, count = 1): ItemStack {
   return { itemId, count };
@@ -50,14 +50,14 @@ for (const recipe of CRAFTING_GRID_RECIPES) {
   assert.equal(match?.recipe.id, recipe.id, `${recipe.id} should match its canonical layout`);
   assert.deepEqual(previewCraftingResult(grid, 3), {
     recipeId: recipe.id,
-    output: { ...recipe.output },
+    output: createItemStack(recipe.output.itemId, recipe.output.count),
   });
   const before = structuredClone(grid);
   const taken = takeCraftingResult({ grid, cursor: null }, 3);
   assert.equal(taken.ok, true, `${recipe.id} should be takeable`);
   if (!taken.ok) continue;
   assert.equal(taken.recipeId, recipe.id);
-  assert.deepEqual(taken.state.cursor, recipe.output);
+  assert.deepEqual(taken.state.cursor, createItemStack(recipe.output.itemId, recipe.output.count));
   for (const slot of match?.consumedSlots ?? []) {
     assert.equal(taken.state.grid[slot]?.count, (before[slot]?.count ?? 0) - 1, `${recipe.id} consumes one per occupied cell`);
   }
@@ -155,5 +155,13 @@ assert.equal(pickedTool.ok, true);
 assert.deepEqual(pickedTool.state.cursor, wornTool);
 assert.notEqual(pickedTool.state.cursor, wornTool);
 assert.equal(isValidCraftingStack({ itemId: "wooden_pickaxe", count: 2 } as ItemStack), false);
+assert.equal(isValidCraftingStack({ itemId: "wooden_pickaxe", count: 1, durability: ITEMS.wooden_pickaxe.tool!.maxDurability + 1 }), false);
+assert.equal(isValidCraftingStack({ itemId: "dirt", count: 1, durability: 1 }), false);
+
+for (const recipeId of ["stone_pickaxe", "stone_axe", "stone_shovel", "stone_sword"]) {
+  const recipe = RECIPES.find(({ id }) => id === recipeId)!;
+  assert.equal(recipe.ingredients.some(({ itemId }) => itemId === "stone"), false, `${recipeId} cannot bypass cobblestone progression`);
+  assert.equal(recipe.ingredients.some(({ itemId }) => itemId === "cobblestone"), true);
+}
 
 console.log("crafting grid model checks passed");

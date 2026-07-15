@@ -12,7 +12,23 @@ export const PRESENCE_ACTIVE_WRITE_INTERVAL_MS = 1_000 / PRESENCE_ACTIVE_WRITES_
 /** Existing consumers use this name for the global scheduler rate gate. */
 export const PRESENCE_MIN_WRITE_INTERVAL_MS = PRESENCE_ACTIVE_WRITE_INTERVAL_MS;
 export const PRESENCE_MAX_WRITES_PER_MINUTE = PRESENCE_ACTIVE_WRITES_PER_SECOND * 60;
-export const PRESENCE_MAX_ACTIVE_WRITES_PER_DAY = PRESENCE_MAX_WRITES_PER_MINUTE * 60 * 24;
+/**
+ * Lakebed's currently claimed anonymous-tier envelope is deployment-wide, not
+ * a realtime-game allowance. The browser cannot coordinate every visitor, so
+ * it budgets the common two-player session conservatively: 450 presence calls
+ * per participant leaves 100 of the claimed 1,000 daily mutations for chat,
+ * inventory, world edits, combat, joins, and leaves.
+ */
+export const PRESENCE_CLAIMED_MUTATIONS_PER_DAY = 1_000;
+export const PRESENCE_CLAIMED_REQUESTS_PER_DAY = 10_000;
+export const PRESENCE_EXPECTED_BURST_PLAYERS = 2;
+export const PRESENCE_ACTION_MUTATION_RESERVE = 100;
+export const PRESENCE_SESSION_WRITE_BUDGET = Math.floor(
+  (PRESENCE_CLAIMED_MUTATIONS_PER_DAY - PRESENCE_ACTION_MUTATION_RESERVE) / PRESENCE_EXPECTED_BURST_PLAYERS,
+);
+/** Thirty seconds of 5 Hz movement per participant, then sparse lease mode. */
+export const PRESENCE_REALTIME_BURST_WRITES = PRESENCE_ACTIVE_WRITES_PER_SECOND * 30;
+export const PRESENCE_MAX_ACTIVE_WRITES_PER_DAY = PRESENCE_SESSION_WRITE_BUDGET;
 /** Sample more often than the write cadence so input changes are queued quickly. */
 export const PRESENCE_SAMPLE_INTERVAL_MS = 50;
 /** Server guard allows ordinary scheduler/network jitter but caps direct spam. */
@@ -25,7 +41,15 @@ export const PRESENCE_SERVER_MAX_ACCEPTED_WRITES_PER_DAY =
 export const PRESENCE_LEASE_REFRESH_MS = 60_000;
 export const PRESENCE_ACTIVE_LEASE_MS = 90_000;
 export const PRESENCE_IDLE_WRITES_PER_MINUTE = 60_000 / PRESENCE_LEASE_REFRESH_MS;
-export const PRESENCE_MAX_IDLE_WRITES_PER_DAY = PRESENCE_IDLE_WRITES_PER_MINUTE * 60 * 24;
+export const PRESENCE_MAX_IDLE_WRITES_PER_DAY = Math.min(
+  PRESENCE_IDLE_WRITES_PER_MINUTE * 60 * 24,
+  PRESENCE_SESSION_WRITE_BUDGET,
+);
+export const PRESENCE_BUDGET_WINDOW_MS = 24 * 60 * 60 * 1_000;
+export const PRESENCE_FAILURE_BACKOFF_BASE_MS = 1_000;
+export const PRESENCE_FAILURE_BACKOFF_MAX_MS = 60_000;
+/** Generic production rejection text becomes terminal after this many failures. */
+export const PRESENCE_GENERIC_REJECTION_LIMIT = 3;
 /** Keep turning active briefly so the final camera orientation is persisted. */
 export const PRESENCE_ACTIVITY_LINGER_MS = PRESENCE_ACTIVE_WRITE_INTERVAL_MS * 2;
 export const PRESENCE_TURNING_RADIANS_PER_SECOND = Math.PI / 18;
@@ -117,6 +141,39 @@ export interface PresenceSchedulerState {
   writeCount: number;
 }
 
+export type PresenceTransportMode =
+  | "solo"
+  | "burst"
+  | "degraded"
+  | "backoff"
+  | "quota_paused"
+  | "budget_exhausted";
+
+export type PresenceTransportErrorKind = "quota" | "transient";
+
+/** Persist this small record per signed-in user so reloads cannot reset the daily envelope. */
+export interface PresenceBurstGuardState {
+  windowStartedAt: number;
+  attemptCount: number;
+  confirmedCount: number;
+  realtimeAttemptCount: number;
+  consecutiveFailures: number;
+  blockedUntilAt: number;
+  quotaPaused: boolean;
+}
+
+export interface PresenceBurstGuardSnapshot {
+  mode: PresenceTransportMode;
+  cadenceHz: number;
+  canAttempt: boolean;
+  sessionRemaining: number;
+  realtimeRemaining: number;
+  confirmedCount: number;
+  attemptCount: number;
+  retryInMs: number;
+  windowResetsInMs: number;
+}
+
 export type PresenceSendDecision =
   | {
       send: true;
@@ -134,6 +191,140 @@ export type PresenceSendDecision =
     };
 
 const ZERO_VELOCITY: Readonly<PresenceVelocity> = Object.freeze({ vx: 0, vy: 0, vz: 0 });
+
+function freshPresenceBurstGuardState(now: number): PresenceBurstGuardState {
+  return {
+    windowStartedAt: now,
+    attemptCount: 0,
+    confirmedCount: 0,
+    realtimeAttemptCount: 0,
+    consecutiveFailures: 0,
+    blockedUntilAt: 0,
+    quotaPaused: false,
+  };
+}
+
+function isValidGuardCount(value: unknown, maximum: number): value is number {
+  return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= maximum;
+}
+
+/** Creates or strictly hydrates a browser-day transport budget. */
+export function createPresenceBurstGuardState(
+  now: number,
+  persisted?: Partial<PresenceBurstGuardState> | null,
+): PresenceBurstGuardState {
+  if (!Number.isFinite(now)) now = 0;
+  if (!persisted
+    || !Number.isFinite(persisted.windowStartedAt)
+    || persisted.windowStartedAt! > now
+    || now - persisted.windowStartedAt! >= PRESENCE_BUDGET_WINDOW_MS
+    || !isValidGuardCount(persisted.attemptCount, PRESENCE_SESSION_WRITE_BUDGET)
+    || !isValidGuardCount(persisted.confirmedCount, PRESENCE_SESSION_WRITE_BUDGET)
+    || persisted.confirmedCount! > persisted.attemptCount!
+    || !isValidGuardCount(persisted.realtimeAttemptCount, PRESENCE_REALTIME_BURST_WRITES)
+    || !isValidGuardCount(persisted.consecutiveFailures, PRESENCE_GENERIC_REJECTION_LIMIT)
+    || !Number.isFinite(persisted.blockedUntilAt)
+    || typeof persisted.quotaPaused !== "boolean") {
+    return freshPresenceBurstGuardState(now);
+  }
+  return {
+    windowStartedAt: persisted.windowStartedAt!,
+    attemptCount: persisted.attemptCount!,
+    confirmedCount: persisted.confirmedCount!,
+    realtimeAttemptCount: persisted.realtimeAttemptCount!,
+    consecutiveFailures: persisted.consecutiveFailures!,
+    blockedUntilAt: persisted.blockedUntilAt!,
+    quotaPaused: persisted.quotaPaused!,
+  };
+}
+
+function refreshPresenceBurstGuardWindow(state: PresenceBurstGuardState, now: number): void {
+  if (Number.isFinite(now)
+    && (now < state.windowStartedAt || now - state.windowStartedAt >= PRESENCE_BUDGET_WINDOW_MS)) {
+    Object.assign(state, freshPresenceBurstGuardState(now));
+  }
+}
+
+export function presenceBurstGuardSnapshot(
+  state: PresenceBurstGuardState,
+  now: number,
+  hasRemotePlayer: boolean,
+): PresenceBurstGuardSnapshot {
+  refreshPresenceBurstGuardWindow(state, now);
+  const sessionRemaining = Math.max(0, PRESENCE_SESSION_WRITE_BUDGET - state.attemptCount);
+  const realtimeRemaining = Math.max(0, PRESENCE_REALTIME_BURST_WRITES - state.realtimeAttemptCount);
+  const windowResetsInMs = Math.max(0, state.windowStartedAt + PRESENCE_BUDGET_WINDOW_MS - now);
+  const retryInMs = Math.max(0, state.blockedUntilAt - now);
+  let mode: PresenceTransportMode;
+  if (sessionRemaining === 0) mode = "budget_exhausted";
+  else if (state.quotaPaused) mode = "quota_paused";
+  else if (retryInMs > 0) mode = "backoff";
+  else if (!hasRemotePlayer) mode = "solo";
+  else if (realtimeRemaining > 0) mode = "burst";
+  else mode = "degraded";
+  return {
+    mode,
+    cadenceHz: mode === "burst"
+      ? PRESENCE_ACTIVE_WRITES_PER_SECOND
+      : mode === "solo" || mode === "degraded"
+        ? PRESENCE_IDLE_WRITES_PER_MINUTE / 60
+        : 0,
+    canAttempt: sessionRemaining > 0 && !state.quotaPaused && retryInMs === 0,
+    sessionRemaining,
+    realtimeRemaining,
+    confirmedCount: state.confirmedCount,
+    attemptCount: state.attemptCount,
+    retryInMs,
+    windowResetsInMs,
+  };
+}
+
+/** Reserves one Lakebed request before starting it; rejected calls still cost request budget. */
+export function reservePresenceAttempt(
+  state: PresenceBurstGuardState,
+  now: number,
+  realtime: boolean,
+): boolean {
+  const snapshot = presenceBurstGuardSnapshot(state, now, realtime);
+  if (!snapshot.canAttempt || (realtime && snapshot.realtimeRemaining === 0)) return false;
+  state.attemptCount += 1;
+  if (realtime) state.realtimeAttemptCount += 1;
+  return true;
+}
+
+export function recordPresenceSuccess(state: PresenceBurstGuardState, now: number): void {
+  refreshPresenceBurstGuardWindow(state, now);
+  state.confirmedCount = Math.min(state.attemptCount, state.confirmedCount + 1);
+  state.consecutiveFailures = 0;
+  state.blockedUntilAt = 0;
+}
+
+/** Quota-like errors pause immediately; three opaque rejections stop a retry storm. */
+export function recordPresenceFailure(
+  state: PresenceBurstGuardState,
+  now: number,
+  kind: PresenceTransportErrorKind,
+): void {
+  refreshPresenceBurstGuardWindow(state, now);
+  state.consecutiveFailures = Math.min(PRESENCE_GENERIC_REJECTION_LIMIT, state.consecutiveFailures + 1);
+  if (kind === "quota" || state.consecutiveFailures >= PRESENCE_GENERIC_REJECTION_LIMIT) {
+    state.quotaPaused = true;
+    state.blockedUntilAt = state.windowStartedAt + PRESENCE_BUDGET_WINDOW_MS;
+    return;
+  }
+  const backoffMs = Math.min(
+    PRESENCE_FAILURE_BACKOFF_MAX_MS,
+    PRESENCE_FAILURE_BACKOFF_BASE_MS * (2 ** (state.consecutiveFailures - 1)),
+  );
+  state.blockedUntilAt = now + backoffMs;
+}
+
+export function classifyPresenceTransportError(error: unknown): PresenceTransportErrorKind {
+  const message = String(error instanceof Error ? error.message : error).toLowerCase();
+  return /(?:429|quota|daily|limit exceeded|resource exhausted|too many requests|mutation limit)/.test(message)
+    ? "quota"
+    : "transient";
+}
 
 function finiteWithin(value: number, limit: number): boolean {
   return Number.isFinite(value) && Math.abs(value) <= limit;

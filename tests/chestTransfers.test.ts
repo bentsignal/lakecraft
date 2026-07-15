@@ -12,7 +12,7 @@ import {
   type ChestTransferRequest,
 } from "../shared/chestTransfers.ts";
 import { CHEST_SLOT_COUNT } from "../shared/chests.ts";
-import { INVENTORY_SIZE, createEmptyInventory, type Inventory, type ItemId } from "../shared/game.ts";
+import { INVENTORY_SIZE, ITEMS, createEmptyInventory, type Inventory, type ItemId } from "../shared/game.ts";
 
 const legacyInventory = JSON.stringify([{ itemId: "stone", count: 12 }, null, { itemId: "wooden_pickaxe", count: 1 }]);
 const legacy = validatePlayerStateJson(legacyInventory);
@@ -23,7 +23,7 @@ assert.equal(legacy.state.inventory.length, INVENTORY_SIZE);
 assert.deepEqual(legacy.state.inventory.slice(0, 3), [
   { itemId: "stone", count: 12 },
   null,
-  { itemId: "wooden_pickaxe", count: 1 },
+  { itemId: "wooden_pickaxe", count: 1, durability: ITEMS.wooden_pickaxe.tool!.maxDurability },
 ]);
 assert.equal(legacy.state.selectedHotbar, 0);
 assert.equal(legacy.state.hunger, 20);
@@ -37,7 +37,7 @@ const currentState = validatePlayerStateJson(JSON.stringify({
 }));
 assert.equal(currentState.ok, true);
 if (!currentState.ok) throw new Error("current player state should validate");
-assert.equal(currentState.state.version, 2);
+assert.equal(currentState.state.version, PLAYER_STATE_VERSION);
 assert.equal(currentState.state.selectedHotbar, 3);
 assert.equal(currentState.state.equipment.head, "leather_helmet");
 assert.equal(currentState.state.respawnPoint?.z, -2.5);
@@ -50,6 +50,9 @@ for (const [raw, reason] of [
   [JSON.stringify({ inventory: "not-an-array" }), "invalid_inventory"],
   [JSON.stringify({ inventory: [{ itemId: "obsidian", count: 1 }] }), "invalid_inventory"],
   [JSON.stringify({ inventory: [{ itemId: "stone", count: 65 }] }), "invalid_inventory"],
+  [JSON.stringify({ inventory: [{ itemId: "stone", count: 1, durability: 1 }] }), "invalid_inventory"],
+  [JSON.stringify({ inventory: [{ itemId: "wooden_pickaxe", count: 1, durability: 60 }] }), "invalid_inventory"],
+  [JSON.stringify({ inventory: [{ itemId: "wooden_pickaxe", count: 1, durability: 0 }] }), "invalid_inventory"],
   [JSON.stringify({ inventory: [], selectedHotbar: 9 }), "invalid_selected_hotbar"],
   [JSON.stringify({ inventory: [], equipment: { head: "stone", chest: null, legs: null, feet: null } }), "invalid_equipment"],
   [JSON.stringify({ inventory: [], respawnPoint: { x: 1, y: 8, z: 1, yaw: 0, pitch: 9 } }), "invalid_respawn_point"],
@@ -164,5 +167,16 @@ assert.deepEqual(
   applyChestTransfer({ direction: "to_chest", sourceSlot: 0, count: 1 }, player, fullChest),
   { ok: false, reason: "no_capacity" },
 );
+
+const wornToolPlayer = createEmptyInventory();
+wornToolPlayer[0] = { itemId: "iron_pickaxe", count: 1, durability: 37 };
+const toolDeposit = applyChestTransfer({ direction: "to_chest", sourceSlot: 0, count: 1 }, wornToolPlayer, chest);
+assert.equal(toolDeposit.ok, true);
+if (toolDeposit.ok) {
+  assert.deepEqual(toolDeposit.chestInventory[0], { itemId: "iron_pickaxe", count: 1, durability: 37 });
+  const toolWithdrawal = applyChestTransfer({ direction: "from_chest", sourceSlot: 0, count: 1 }, toolDeposit.playerInventory, toolDeposit.chestInventory);
+  assert.equal(toolWithdrawal.ok, true);
+  if (toolWithdrawal.ok) assert.deepEqual(toolWithdrawal.playerInventory[0], { itemId: "iron_pickaxe", count: 1, durability: 37 });
+}
 
 console.log("lakecraft atomic chest transfer model tests: ok");

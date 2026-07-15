@@ -96,11 +96,11 @@ assert.equal(countItem(woodInventory, "torch"), 4);
 assert.equal(countItem(woodInventory, "wooden_shovel"), 1);
 assert.equal(countItem(woodInventory, "wooden_sword"), 1);
 
-let stoneInventory = addItem(createEmptyInventory(), "stone", 3).inventory;
+let stoneInventory = addItem(createEmptyInventory(), "cobblestone", 3).inventory;
 stoneInventory = addItem(stoneInventory, "stick", 3).inventory;
 stoneInventory = craft(stoneInventory, "stone_shovel");
 stoneInventory = craft(stoneInventory, "stone_sword");
-assert.equal(countItem(stoneInventory, "stone"), 0);
+assert.equal(countItem(stoneInventory, "cobblestone"), 0);
 assert.equal(countItem(stoneInventory, "stick"), 0);
 
 let armorInventory = addItem(createEmptyInventory(), "leather", 24).inventory;
@@ -120,9 +120,9 @@ assert.deepEqual(stackedLeather.inventory.slice(0, 2), [
 ]);
 const unstackedTools = addItem(createEmptyInventory(), "stone_sword", 3);
 assert.deepEqual(unstackedTools.inventory.slice(0, 3), [
-  { itemId: "stone_sword", count: 1 },
-  { itemId: "stone_sword", count: 1 },
-  { itemId: "stone_sword", count: 1 },
+  { itemId: "stone_sword", count: 1, durability: 131 },
+  { itemId: "stone_sword", count: 1, durability: 131 },
+  { itemId: "stone_sword", count: 1, durability: 131 },
 ]);
 
 const normalized = normalizeInventory([
@@ -134,7 +134,7 @@ const normalized = normalizeInventory([
 ]);
 assert.deepEqual(normalized.slice(0, 5), [
   { itemId: "crafting_table", count: 64 },
-  { itemId: "wooden_shovel", count: 1 },
+  { itemId: "wooden_shovel", count: 1, durability: 59 },
   { itemId: "leather", count: 4 },
   null,
   null,
