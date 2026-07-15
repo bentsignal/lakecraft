@@ -51,6 +51,11 @@ assert.equal(ITEMS.chest.placesBlock, "chest");
 assert.equal(ITEMS.door.placesBlock, "door");
 assert.equal(ITEMS.bed.placesBlock, "bed");
 assert.equal(new Set(RECIPES.map(({ id }) => id)).size, RECIPES.length, "recipe ids stay unique");
+assert.deepEqual(recipe("torch").ingredients, [
+  { itemId: "coal", count: 1 },
+  { itemId: "stick", count: 1 },
+], "torches consume the same coal-over-stick ingredients shown in the crafting grid");
+assert.deepEqual(recipe("torch").output, { itemId: "torch", count: 4 });
 
 const fieldRecipeIds = ["planks_from_log", "sticks_from_planks", "crafting_table", "torch", "flint_and_steel", "shears"];
 assert.deepEqual(availableRecipes("field").map(({ id }) => id), fieldRecipeIds, "the 2x2 field kit exposes only compact recipes");
@@ -88,6 +93,7 @@ woodInventory = craft(woodInventory, "planks_from_log");
 woodInventory = craft(woodInventory, "planks_from_log");
 woodInventory = craft(woodInventory, "sticks_from_planks");
 woodInventory = craft(woodInventory, "crafting_table");
+woodInventory = addItem(woodInventory, "coal", 1).inventory;
 woodInventory = craft(woodInventory, "torch");
 woodInventory = craft(woodInventory, "wooden_shovel");
 woodInventory = craft(woodInventory, "wooden_sword");

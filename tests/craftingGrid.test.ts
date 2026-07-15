@@ -24,6 +24,12 @@ function stack(itemId: ItemId, count = 1): ItemStack {
   return { itemId, count };
 }
 
+function itemCounts(entries: Iterable<readonly [ItemId, number]>): Record<string, number> {
+  const counts = new Map<ItemId, number>();
+  for (const [itemId, count] of entries) counts.set(itemId, (counts.get(itemId) ?? 0) + count);
+  return Object.fromEntries([...counts].sort(([left], [right]) => left.localeCompare(right)));
+}
+
 function gridFromPattern(recipe: CraftingGridRecipe, size: CraftingGridSize, rowOffset = 0, columnOffset = 0): CraftingGrid {
   const grid = createCraftingGrid(size).slice() as Array<ItemStack | null>;
   if (recipe.kind === "shapeless") {
@@ -40,6 +46,22 @@ assert.deepEqual(createCraftingGrid(2), [null, null, null, null]);
 assert.equal(CRAFTING_GRID_RECIPES.length, RECIPES.length, "every current progression recipe has a grid layout");
 assert.deepEqual(CRAFTING_GRID_RECIPES.map(({ id }) => id), RECIPES.map(({ id }) => id));
 assert.deepEqual(Object.keys(INITIAL_RECIPE_PATTERNS).sort(), RECIPES.map(({ id }) => id).sort());
+
+// The aggregate recipe consumed by authoritative inventory replay must require
+// exactly the same item multiset as the occupied grid cells shown to players.
+// This covers handwritten recipes plus every generated tool and armor pattern.
+for (const recipe of RECIPES) {
+  const gridRecipe = CRAFTING_GRID_RECIPES.find(({ id }) => id === recipe.id)!;
+  const occupiedItems = gridRecipe.kind === "shaped"
+    ? gridRecipe.pattern.flat().filter((itemId): itemId is ItemId => itemId !== null)
+    : gridRecipe.ingredients;
+  assert.deepEqual(
+    itemCounts(occupiedItems.map((itemId) => [itemId, 1] as const)),
+    itemCounts(recipe.ingredients.map(({ itemId, count }) => [itemId, count] as const)),
+    `${recipe.id} grid cells and aggregate ingredients must consume the same item multiset`,
+  );
+}
+
 assert.equal(
   createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
   "47b63e9ab97ea0a9f95e2003cb7db0fe2296da87e43a8d16f1632d7538513ee5",
