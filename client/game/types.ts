@@ -127,6 +127,8 @@ export interface VoxelEngineOptions {
   serverTimeOffsetMs?: number;
   /** previousBlock lets inventory code distinguish mining from placement. */
   onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId) => void;
+  /** Prevent a second optimistic world edit while an authoritative one is pending. */
+  canEditBlock?: () => boolean;
   /** Seconds the primary action must be held before a block is mined. */
   getMiningDuration?: (block: BlockId) => number;
   /** Combat damage used by either Lakebed authority or the local fallback. */

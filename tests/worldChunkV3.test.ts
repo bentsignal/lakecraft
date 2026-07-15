@@ -147,13 +147,9 @@ assert.equal(decodeWorldChunkSnapshot("0:0", JSON.stringify({
 })).ok, false, "out-of-envelope vertical sections are rejected");
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-for (const mutationName of ["setBlock", "removeBlock"]) {
-  const mutationStart = serverSource.indexOf(`${mutationName}: mutation`);
-  assert.ok(mutationStart >= 0, `${mutationName} mutation exists`);
-  const mutationSource = serverSource.slice(mutationStart, mutationStart + 2_200);
-  assert.ok(mutationSource.includes("WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ"));
-  assert.ok(mutationSource.includes("WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y"));
-}
+assert.equal(serverSource.includes("setBlock: mutation"), false, "legacy placement bypass is removed");
+assert.equal(serverSource.includes("removeBlock: mutation"), false, "legacy mining bypass is removed");
+assert.ok(serverSource.includes("editWorldBlock: mutation"), "atomic authoritative world edit mutation exists");
 
 console.log(JSON.stringify({
   benchmark: "v3 vertical-section world persistence",

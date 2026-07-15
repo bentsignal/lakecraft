@@ -2,6 +2,10 @@ import { access, cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/p
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  assertNoServerGamePresentationUse,
+  stripServerGamePresentation,
+} from "./server-game-catalog-transform.mjs";
 
 const sourceRoot = resolve(process.cwd());
 const stageRoot = resolve(process.argv[2] ?? "");
@@ -89,7 +93,32 @@ const cssTemplateMinifier = {
   },
 };
 
-async function bundleEntrypoint(sourcePath, targetPath) {
+const serverGameCatalogStripper = {
+  name: "lakecraft-server-game-catalog-stripper",
+  setup(esbuild) {
+    esbuild.onLoad({ filter: /[/\\]shared[/\\]game\.ts$/ }, async ({ path }) => ({
+      contents: stripServerGamePresentation(await readFile(path, "utf8")),
+      loader: "ts",
+    }));
+  },
+};
+
+function appendServerSourceMapBoundary(source) {
+  // Lakebed bundles this already-minified stage a second time with inline source
+  // maps. Give that build a real upstream boundary so it does not embed the full
+  // generated server as duplicate sourcesContent in the deploy artifact.
+  const map = {
+    version: 3,
+    sources: ["lakecraft-server-stage.ts"],
+    sourcesContent: [null],
+    names: [],
+    mappings: "AAAA",
+  };
+  const encoded = Buffer.from(JSON.stringify(map)).toString("base64");
+  return `${source}\n//# sourceMappingURL=data:application/json;base64,${encoded}\n`;
+}
+
+async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {}) {
   const result = await build({
     absWorkingDir: sourceRoot,
     bundle: true,
@@ -100,25 +129,35 @@ async function bundleEntrypoint(sourcePath, targetPath) {
     jsx: "automatic",
     jsxImportSource: "preact",
     legalComments: "none",
+    metafile: server,
     minify: true,
     platform: "browser",
-    plugins: [cssTemplateMinifier],
+    plugins: server ? [serverGameCatalogStripper, cssTemplateMinifier] : [cssTemplateMinifier],
     sourcemap: false,
     target: "es2022",
     treeShaking: true,
     write: false,
   });
+  if (server) {
+    const inputPaths = Object.keys(result.metafile?.inputs ?? {})
+      .filter((path) => !path.includes("node_modules"))
+      .map((path) => resolve(sourceRoot, path));
+    assertNoServerGamePresentationUse(await Promise.all(inputPaths.map(async (path) => ({
+      path,
+      source: await readFile(path, "utf8"),
+    }))));
+  }
   const output = result.outputFiles?.[0];
   if (!output) throw new Error(`Bundling ${sourcePath} produced no output.`);
   const absoluteTarget = join(stageRoot, targetPath);
   await mkdir(dirname(absoluteTarget), { recursive: true });
-  await writeFile(absoluteTarget, output.text);
+  await writeFile(absoluteTarget, server ? appendServerSourceMapBoundary(output.text) : output.text);
 }
 
 await mkdir(join(stageRoot, ".lakebed"), { recursive: true });
 await Promise.all([
   bundleEntrypoint("client/index.tsx", "client/index.tsx"),
-  bundleEntrypoint("server/index.ts", "server/index.ts"),
+  bundleEntrypoint("server/index.ts", "server/index.ts", { server: true }),
 ]);
 await cp(join(sourceRoot, "favicon.svg"), join(stageRoot, "favicon.svg"));
 for (const relativePath of ["lakebed.json", ".lakebed/deploy.json", ".env.lakebed.server"]) {

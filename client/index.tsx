@@ -23,7 +23,6 @@ import {
   addItem,
   applyConfirmedToolUse,
   attackDamage,
-  canHarvestBlock,
   clampHotbarIndex,
   craftRecipe,
   createEmptyEquipment,
@@ -34,13 +33,11 @@ import {
   consumeFood,
   equipArmorFromInventory,
   equippedArmorProtection,
-  getMiningDrop,
   miningSeconds,
   normalizeEquipment,
   normalizeInventory,
   normalizeRespawnPoint,
   parseSerializablePlayerStateJson,
-  removeItem,
   smeltRecipe,
   tickSurvival,
   unequipArmor,
@@ -108,12 +105,24 @@ import {
 import {
   decodeWorldChunkSnapshot,
   worldEditChunkCoordinate,
+  worldEditChunkKey,
+  type WorldChunkBlockType,
 } from "../shared/worldChunks";
 import {
   DROPPED_ITEM_CHUNK_SIZE,
   DROPPED_ITEM_PICKUP_RADIUS,
   type NormalizedDroppedItem,
 } from "../shared/droppedItems";
+import type { WorldBlockOperationRequest } from "../shared/worldBlockOperations";
+import {
+  buildWorldBlockOperationRequest,
+  createWorldBlockOperationId,
+  invokeWorldBlockEditWithOneRetry,
+  isDecimalRevisionAtLeast,
+  overlayPendingWorldBlockEdit,
+  serializeWorldBlockEditPose,
+  type SerializedWorldBlockEditPose,
+} from "./worldBlockEditClient";
 
 const APP_CSS = `
 @font-face { font-display: swap; font-family: "Pixelify Sans"; font-style: normal; font-weight: 400 700; src: url("https://fonts.gstatic.com/s/pixelifysans/v3/CHylV-3HFUT7aC4iv1TxGDR9Jn0Eiw.woff2") format("woff2"); }
@@ -122,7 +131,7 @@ html, body, #app { height: 100vh; height: 100dvh; margin: 0; overflow: hidden; w
 body { background: #171b15; }
 button { -webkit-tap-highlight-color: transparent; }
 .lakecraft-shell { background: #171b15; height: 100vh; height: 100dvh; inset: 0; isolation: isolate; overflow: hidden; position: fixed; width: 100vw; }
-.lakecraft-world { cursor: crosshair; display: block; height: 100%; outline: none; width: 100%; }
+.lakecraft-world { cursor: none; display: block; height: 100%; outline: none; width: 100%; }
 .lakecraft-error { background: #171a16; color: #e6dcc1; display: grid; inset: 0; padding: 40px; place-content: center; position: absolute; z-index: 120; }
 .lakecraft-error strong { color: #d49a45; font: 700 16px "Courier New", monospace; }.lakecraft-error p { max-width: 560px; }
 .lakecraft-perf { background: rgba(9,12,9,.88); border-left: 3px solid #91ae58; color: #dce7c4; font: 11px/1.45 "Courier New", monospace; left: 14px; padding: 9px 11px; pointer-events: none; position: absolute; top: 14px; white-space: pre; z-index: 70; }
@@ -277,7 +286,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
 };
 
 type WorldChunksQueryResult =
-  | { ok: true; chunks: Array<{ chunkKey: string; snapshotJson: string; updatedAt: string }> }
+  | { ok: true; chunks: Array<{ chunkKey: string; snapshotJson: string; revision: string; updatedAt: string }> }
   | { ok: false; reason: "invalid_chunk_keys" | "too_many_chunks"; chunks: [] };
 
 type SaveInventoryResult =
@@ -286,7 +295,43 @@ type SaveInventoryResult =
 
 type PendingChestTransfer = { requestJson: string; transportFailures: number };
 
+type WorldBlockEditMutationResult =
+  | {
+      ok: true;
+      replayed: boolean;
+      operationId: string;
+      kind: WorldBlockOperationRequest["kind"];
+      x: number;
+      y: number;
+      z: number;
+      previousBlock: WorldChunkBlockType;
+      nextBlock: WorldChunkBlockType;
+      inventoryRevision: string;
+      chunkKey: string;
+      chunkRevision: string;
+      currentChunkRevision?: string;
+      inventoryChanged: boolean;
+      drop: { itemId: ItemId; count: number } | null;
+      consumed: ItemId | null;
+      toolUse: null | { used: boolean; broke: boolean; itemId: ItemId | null; remainingDurability: number | null };
+      inventory?: PersistedInventoryState;
+    }
+  | { ok: false; reason: string; detail?: string; inventory?: PersistedInventoryState | null };
+
+type PendingWorldBlockEdit = {
+  operationId: string;
+  request: WorldBlockOperationRequest | null;
+  requestJson: string;
+  pose: SerializedWorldBlockEditPose;
+  optimisticEdit: EngineWorldEdit;
+  previousBlock: EngineBlockId;
+  selectedHotbar: number;
+  expectedHeldItem: ItemId | null;
+  awaitingInventoryRevision: string;
+};
+
 let chestOperationSequence = 0;
+let worldBlockOperationSequence = 0;
 
 function createChestOperationId(): string {
   chestOperationSequence += 1;
@@ -400,8 +445,14 @@ export function App() {
   const [droppedChunkKeys, setDroppedChunkKeys] = useState<string[]>(() => visibleDroppedItemChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
   const droppedItemsResult = useQuery<DroppedItemsQueryResult, string[]>("droppedItems", inWorld ? droppedChunkKeys : []);
 
-  const setBlock = useMutation<[coordKey: string, x: string, y: string, z: string, blockType: string], void>("setBlock");
-  const removeBlockMutation = useMutation<[coordKey: string, x: string, y: string, z: string], void>("removeBlock");
+  const editWorldBlock = useMutation<[
+    requestJson: string,
+    poseX: string,
+    poseY: string,
+    poseZ: string,
+    poseYaw: string,
+    posePitch: string,
+  ], WorldBlockEditMutationResult>("editWorldBlock");
   const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, heartbeatAt: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string], void>("heartbeatPlayer");
   const leavePlayer = useMutation<[heartbeatAt: string], void>("leavePlayer");
   const saveInventory = useMutation<[inventoryJson: string, expectedUpdatedAt: string], SaveInventoryResult>("saveInventory");
@@ -442,6 +493,7 @@ export function App() {
   const hydratedRef = useRef(false);
   const hydratedUserRef = useRef("");
   const inventoryTokenRef = useRef("");
+  const inventoryRevisionRef = useRef("0");
   const inventorySessionRef = useRef(0);
   const lastCommittedPlayerJsonRef = useRef("");
   const inventorySavePromiseRef = useRef<Promise<void> | null>(null);
@@ -451,6 +503,11 @@ export function App() {
   const chestBusyRef = useRef(false);
   const chestTransferActiveRef = useRef(false);
   const pendingChestTransferRef = useRef<PendingChestTransfer | null>(null);
+  const pendingWorldBlockEditRef = useRef<PendingWorldBlockEdit | null>(null);
+  const deferredMobDropsRef = useRef<Array<{ itemId: string; count: number }>>([]);
+  const worldChunkRevisionRef = useRef(new Map<string, string>());
+  const authoritativeWorldEditRef = useRef(new Map<string, EngineWorldEdit>());
+  const latestSavedInventoryRef = useRef<PersistedInventory | null | undefined>(undefined);
   const activeWorkstationRef = useRef<{ kind: "crafting_table" | "furnace"; position: WorkstationPosition } | null>(null);
   const toastCounter = useRef(0);
   const droppedItemBusyRef = useRef(false);
@@ -568,12 +625,14 @@ export function App() {
   function loadCanonicalPlayer(row: PersistedInventoryState | null): boolean {
     if (!row) {
       inventoryTokenRef.current = "";
+      inventoryRevisionRef.current = "0";
       lastCommittedPlayerJsonRef.current = "";
       return true;
     }
     const saved = parseSerializablePlayerStateJson(row.inventoryJson);
     if (!saved) return false;
     inventoryTokenRef.current = row.updatedAt;
+    inventoryRevisionRef.current = row.revision;
     const canonical = validatePlayerStateJson(row.inventoryJson);
     lastCommittedPlayerJsonRef.current = canonical.ok ? canonical.playerStateJson : row.inventoryJson;
     updateInventory(saved.inventory);
@@ -590,7 +649,11 @@ export function App() {
     return true;
   }
 
-  function requestInventorySave(allowWhileChestBusy = false): Promise<void> {
+  function requestInventorySave(allowWhileChestBusy = false, allowWhileWorldEditPending = false): Promise<void> {
+    if (pendingWorldBlockEditRef.current && !allowWhileWorldEditPending) {
+      inventorySavePendingRef.current = true;
+      return inventorySavePromiseRef.current ?? Promise.resolve();
+    }
     if (chestBusyRef.current && !allowWhileChestBusy) {
       inventorySavePendingRef.current = true;
       return inventorySavePromiseRef.current ?? Promise.resolve();
@@ -610,6 +673,7 @@ export function App() {
         setConnected(true);
         if (result.ok) {
           inventoryTokenRef.current = result.inventory.updatedAt;
+          inventoryRevisionRef.current = result.inventory.revision;
           lastCommittedPlayerJsonRef.current = result.inventory.inventoryJson;
           if (currentPlayerStateJson() !== payload) inventorySavePendingRef.current = true;
         } else if (result.reason === "conflict") {
@@ -629,7 +693,7 @@ export function App() {
         notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
       } finally {
         inventorySavePromiseRef.current = null;
-        if (inventorySavePendingRef.current && !chestBusyRef.current) {
+        if (inventorySavePendingRef.current && !chestBusyRef.current && !pendingWorldBlockEditRef.current) {
           inventorySavePendingRef.current = false;
           void requestInventorySave();
         }
@@ -640,7 +704,7 @@ export function App() {
   }
 
   async function handleDropSelected(dropWholeStack = false): Promise<void> {
-    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current) return;
+    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
     const sourceSlot = selectedRef.current;
     const stack = inventoryRef.current[sourceSlot];
     if (!stack) return;
@@ -656,7 +720,7 @@ export function App() {
       }));
       setConnected(true);
       if (result.ok) {
-        droppedPickupAttemptRef.current.set(drop.dropId, Number.POSITIVE_INFINITY);
+        droppedPickupAttemptRef.current.set(result.dropId, Number.POSITIVE_INFINITY);
         if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
         notify(`Dropped ${ITEMS[result.moved.itemId].label}`, result.moved.count > 1 ? `${result.moved.count} items can be picked up by nearby players.` : "Nearby players can pick it up.");
       } else if (result.reason === "conflict" && result.inventory) {
@@ -674,7 +738,7 @@ export function App() {
   }
 
   async function pickupNearbyDroppedItem(drop: NormalizedDroppedItem): Promise<void> {
-    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current) return;
+    if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
     droppedItemBusyRef.current = true;
     try {
       await requestInventorySave();
@@ -715,6 +779,10 @@ export function App() {
   }
 
   function collectMobDrops(drops: readonly { itemId: string; count: number }[]) {
+    if (pendingWorldBlockEditRef.current) {
+      deferredMobDropsRef.current.push(...drops);
+      return;
+    }
     let next = inventoryRef.current;
     const collected: string[] = [];
     for (const drop of drops) {
@@ -728,51 +796,180 @@ export function App() {
     if (collected.length) notify("Mob drops collected", collected.join(" · "), "success");
   }
 
-  function handleBlockEdit(edit: EngineWorldEdit, previousBlock: EngineBlockId) {
-    const key = blockCoordinateKey(edit.x, edit.y, edit.z);
-    if (edit.block === BLOCK.AIR) {
-      const usedToolSlot = selectedRef.current;
-      const usedToolItemId = inventoryRef.current[usedToolSlot]?.itemId ?? null;
-      const gameBlock = ENGINE_TO_GAME[previousBlock];
-      let droppedItem: ItemId | null = null;
-      let droppedCount = 0;
-      if (gameBlock) {
-        const heldItem = inventoryRef.current[selectedRef.current]?.itemId;
-        const drop = getMiningDrop(gameBlock, heldItem);
-        if (drop) {
-          const added = addItem(inventoryRef.current, drop.itemId, drop.count);
-          droppedItem = drop.itemId;
-          droppedCount = drop.count - added.remainder;
-          updateInventory(added.inventory);
-          notify(`Collected ${ITEMS[drop.itemId].label}`, added.remainder ? "Your pack is full." : "Added to the field kit.", added.remainder ? "warning" : "success");
-        } else if (!canHarvestBlock(gameBlock, heldItem)) {
-          const unavailableDrop = BLOCKS[gameBlock].drop;
-          notify(`No ${unavailableDrop ? ITEMS[unavailableDrop].label : BLOCKS[gameBlock].label} recovered`, miningRequirementDetail(gameBlock), "warning");
+  function releasePendingWorldBlockEdit(pending: PendingWorldBlockEdit): void {
+    if (pendingWorldBlockEditRef.current !== pending) return;
+    pendingWorldBlockEditRef.current = null;
+    if (deferredMobDropsRef.current.length) {
+      const deferredDrops = deferredMobDropsRef.current.splice(0);
+      collectMobDrops(deferredDrops);
+    }
+    if (inventorySavePendingRef.current && !chestBusyRef.current) {
+      inventorySavePendingRef.current = false;
+      void requestInventorySave();
+    }
+  }
+
+  function rollbackPendingWorldBlockEdit(
+    pending: PendingWorldBlockEdit,
+    title: string,
+    detail: string,
+    transportFailed: boolean,
+  ): void {
+    if (pendingWorldBlockEditRef.current !== pending) return;
+    const coordKey = blockCoordinateKey(
+      pending.optimisticEdit.x,
+      pending.optimisticEdit.y,
+      pending.optimisticEdit.z,
+    );
+    const authoritative = authoritativeWorldEditRef.current.get(coordKey);
+    engineRef.current?.applyWorldEdits([
+      authoritative ?? { ...pending.optimisticEdit, block: pending.previousBlock },
+    ]);
+    const latestInventory = latestSavedInventoryRef.current;
+    if (latestInventory
+      && latestInventory.revision !== inventoryRevisionRef.current
+      && currentPlayerStateJson() === lastCommittedPlayerJsonRef.current) {
+      loadCanonicalPlayer(latestInventory);
+    }
+    releasePendingWorldBlockEdit(pending);
+    setConnected(!transportFailed);
+    notify(title, detail, "warning");
+  }
+
+  function notifyConfirmedWorldBlockEdit(result: Extract<WorldBlockEditMutationResult, { ok: true }>): void {
+    if (result.kind === "mine") {
+      if (result.drop) {
+        notify(`Collected ${ITEMS[result.drop.itemId].label}`, "Lakebed added it to the field kit.", "success");
+      } else {
+        const gameBlock = ENGINE_TO_GAME[PROTOCOL_TO_ENGINE[result.previousBlock]];
+        if (gameBlock && BLOCKS[gameBlock].drop) {
+          notify(`No ${ITEMS[BLOCKS[gameBlock].drop!].label} recovered`, miningRequirementDetail(gameBlock), "warning");
         }
       }
-      void removeBlockMutation(key, String(edit.x), String(edit.y), String(edit.z)).then(() => {
-        setConnected(true);
-        recordConfirmedToolUse(usedToolSlot, usedToolItemId, "mine");
-      }).catch(() => {
-        engineRef.current?.applyWorldEdits([{ ...edit, block: previousBlock }]);
-        if (droppedItem && droppedCount) updateInventory(removeItem(inventoryRef.current, droppedItem, droppedCount).inventory);
-        setConnected(false);
-        notify("Mine rolled back", "Lakebed rejected the save, so the block and field kit were restored.", "warning");
+    }
+    if (result.toolUse?.broke && result.toolUse.itemId && result.toolUse.itemId in ITEMS) {
+      notify(`${ITEMS[result.toolUse.itemId].label} broke`, "Lakebed confirmed the final durability use.", "warning");
+    }
+  }
+
+  async function submitPendingWorldBlockEdit(pending: PendingWorldBlockEdit): Promise<void> {
+    try {
+      await requestInventorySave(false, true);
+      if (pendingWorldBlockEditRef.current !== pending) return;
+      if (currentPlayerStateJson() !== lastCommittedPlayerJsonRef.current) {
+        rollbackPendingWorldBlockEdit(
+          pending,
+          "Edit paused",
+          "Lakebed could not flush the field kit first. The block was restored; try again after the save reconnects.",
+          true,
+        );
+        return;
+      }
+      const previousProtocol = ENGINE_TO_PROTOCOL[pending.previousBlock];
+      const nextProtocol = ENGINE_TO_PROTOCOL[pending.optimisticEdit.block];
+      const chunkKey = worldEditChunkKey(pending.optimisticEdit.x, pending.optimisticEdit.z);
+      const request = buildWorldBlockOperationRequest({
+        operationId: pending.operationId,
+        x: pending.optimisticEdit.x,
+        y: pending.optimisticEdit.y,
+        z: pending.optimisticEdit.z,
+        previousBlock: previousProtocol,
+        nextBlock: nextProtocol,
+        selectedHotbar: pending.selectedHotbar,
+        expectedHeldItem: pending.expectedHeldItem,
+        expectedInventoryRevision: inventoryRevisionRef.current,
+        expectedChunkRevision: worldChunkRevisionRef.current.get(chunkKey) ?? "0",
       });
+      if (!request) {
+        rollbackPendingWorldBlockEdit(pending, "Edit rolled back", "That block transition is not supported.", false);
+        return;
+      }
+      pending.request = request;
+      pending.requestJson = JSON.stringify(request);
+      const args = [pending.requestJson, ...pending.pose] as const;
+      const { result } = await invokeWorldBlockEditWithOneRetry(editWorldBlock, args);
+      if (pendingWorldBlockEditRef.current !== pending) return;
+      setConnected(true);
+      if (!result.ok) {
+        const latestInventory = latestSavedInventoryRef.current;
+        if (request.kind !== "toggle" && latestInventory
+          && latestInventory.revision !== request.expectedInventoryRevision) {
+          loadCanonicalPlayer(latestInventory);
+        }
+        rollbackPendingWorldBlockEdit(
+          pending,
+          request.kind === "mine" ? "Mine rolled back" : request.kind === "place" ? "Placement rolled back" : "Door restored",
+          `Lakebed rejected the edit (${result.reason}). The world and field kit were reconciled.`,
+          false,
+        );
+        return;
+      }
+
+      const coordKey = blockCoordinateKey(result.x, result.y, result.z);
+      const replayPassedByNewerChunk = result.replayed
+        && result.currentChunkRevision !== result.chunkRevision;
+      const canonicalEdit = replayPassedByNewerChunk
+        ? authoritativeWorldEditRef.current.get(coordKey) ?? null
+        : { x: result.x, y: result.y, z: result.z, block: PROTOCOL_TO_ENGINE[result.nextBlock] };
+      if (canonicalEdit?.block != null) {
+        engineRef.current?.applyWorldEdits([{
+          x: canonicalEdit.x,
+          y: canonicalEdit.y,
+          z: canonicalEdit.z,
+          block: canonicalEdit.block,
+        }]);
+      }
+      worldChunkRevisionRef.current.set(result.chunkKey, result.currentChunkRevision ?? result.chunkRevision);
+      notifyConfirmedWorldBlockEdit(result);
+      if (result.inventory && loadCanonicalPlayer(result.inventory)) {
+        releasePendingWorldBlockEdit(pending);
+        return;
+      }
+      if (!result.inventoryChanged) {
+        inventoryRevisionRef.current = result.inventoryRevision;
+        releasePendingWorldBlockEdit(pending);
+        return;
+      }
+
+      // A receipt replay intentionally omits the row payload. Keep serialization
+      // active until the reactive inventory query supplies that canonical revision.
+      pending.awaitingInventoryRevision = result.inventoryRevision;
+      const latestInventory = latestSavedInventoryRef.current;
+      if (latestInventory
+        && isDecimalRevisionAtLeast(latestInventory.revision, result.inventoryRevision)
+        && loadCanonicalPlayer(latestInventory)) {
+        releasePendingWorldBlockEdit(pending);
+      }
+    } catch {
+      rollbackPendingWorldBlockEdit(
+        pending,
+        pending.optimisticEdit.block === BLOCK.AIR ? "Mine lost contact" : "Edit lost contact",
+        "Lakebed could not confirm the edit after one exact retry, so the local block was restored.",
+        true,
+      );
+    }
+  }
+
+  function handleBlockEdit(edit: EngineWorldEdit, previousBlock: EngineBlockId) {
+    if (pendingWorldBlockEditRef.current) {
+      engineRef.current?.applyWorldEdits([{ ...edit, block: previousBlock }]);
       return;
     }
-
-    const selected = inventoryRef.current[selectedRef.current];
-    const placedItem = selected && ITEM_TO_ENGINE[selected.itemId] === edit.block ? selected.itemId : null;
-    if (placedItem) {
-      updateInventory(removeItem(inventoryRef.current, selected.itemId, 1).inventory);
-    }
-    void setBlock(key, String(edit.x), String(edit.y), String(edit.z), ENGINE_TO_PROTOCOL[edit.block]).then(() => setConnected(true)).catch(() => {
-      engineRef.current?.applyWorldEdits([{ ...edit, block: previousBlock }]);
-      if (placedItem) updateInventory(addItem(inventoryRef.current, placedItem, 1).inventory);
-      setConnected(false);
-      notify("Placement rolled back", "Lakebed rejected the save, so the block and field kit were restored.", "warning");
-    });
+    worldBlockOperationSequence += 1;
+    const selectedHotbar = selectedRef.current;
+    const pending: PendingWorldBlockEdit = {
+      operationId: createWorldBlockOperationId(worldBlockOperationSequence),
+      request: null,
+      requestJson: "",
+      pose: serializeWorldBlockEditPose(engineRef.current?.getPose() ?? poseRef.current),
+      optimisticEdit: { ...edit },
+      previousBlock,
+      selectedHotbar,
+      expectedHeldItem: inventoryRef.current[selectedHotbar]?.itemId ?? null,
+      awaitingInventoryRevision: "",
+    };
+    pendingWorldBlockEditRef.current = pending;
+    void submitPendingWorldBlockEdit(pending);
   }
 
   useEffect(() => {
@@ -794,6 +991,7 @@ export function App() {
     hydratedUserRef.current = auth.userId;
     inventorySessionRef.current += 1;
     inventoryTokenRef.current = savedInventory?.updatedAt ?? "";
+    inventoryRevisionRef.current = savedInventory?.revision ?? "0";
     if (savedInventory) {
       const canonical = validatePlayerStateJson(savedInventory.inventoryJson);
       lastCommittedPlayerJsonRef.current = canonical.ok ? canonical.playerStateJson : savedInventory.inventoryJson;
@@ -815,6 +1013,28 @@ export function App() {
     }
     setInventoryReady(true);
   }, [savedInventory, auth.userId, auth.isAuthenticated, auth.isGuest]);
+
+  useEffect(() => {
+    latestSavedInventoryRef.current = savedInventory;
+    if (!savedInventory || savedInventory.userId !== auth.userId) return;
+    const pending = pendingWorldBlockEditRef.current;
+    if (pending?.awaitingInventoryRevision
+      && isDecimalRevisionAtLeast(savedInventory.revision, pending.awaitingInventoryRevision)
+      && loadCanonicalPlayer(savedInventory)) {
+      releasePendingWorldBlockEdit(pending);
+      return;
+    }
+    if (!pending
+      && savedInventory.revision !== inventoryRevisionRef.current
+      && currentPlayerStateJson() === lastCommittedPlayerJsonRef.current
+      && loadCanonicalPlayer(savedInventory)) {
+      return;
+    }
+    if (!pending && savedInventory.inventoryJson === lastCommittedPlayerJsonRef.current) {
+      inventoryTokenRef.current = savedInventory.updatedAt;
+      inventoryRevisionRef.current = savedInventory.revision;
+    }
+  }, [savedInventory, auth.userId]);
 
   useEffect(() => {
     if (!hydratedRef.current || !auth.isAuthenticated || auth.isGuest) return;
@@ -841,6 +1061,7 @@ export function App() {
         } : undefined,
         serverTimeOffsetMs: worldClock ? worldClock.serverNow - Date.now() : 0,
         selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
+        canEditBlock: () => pendingWorldBlockEditRef.current === null,
         getMiningDuration: (block) => {
           const gameBlock = ENGINE_TO_GAME[block];
           const heldItem = inventoryRef.current[selectedRef.current]?.itemId;
@@ -1064,11 +1285,29 @@ export function App() {
   }, [inWorld, inventoryReady]);
 
   useEffect(() => {
-    engineRef.current?.applyWorldEdits([
+    if (worldChunks?.ok) {
+      for (const chunkKey of worldChunkKeys) {
+        if (!worldChunkRevisionRef.current.has(chunkKey)) worldChunkRevisionRef.current.set(chunkKey, "0");
+      }
+      for (const chunk of worldChunks.chunks) {
+        const current = worldChunkRevisionRef.current.get(chunk.chunkKey) ?? "0";
+        if (isDecimalRevisionAtLeast(chunk.revision, current)) {
+          worldChunkRevisionRef.current.set(chunk.chunkKey, chunk.revision);
+        }
+      }
+    }
+    const authoritative = [
       ...toEngineEdits(worldEvents),
       ...chunkSnapshotsToEngineEdits(worldChunks),
-    ]);
-  }, [worldEvents, worldChunks]);
+    ];
+    for (const edit of authoritative) {
+      authoritativeWorldEditRef.current.set(blockCoordinateKey(edit.x, edit.y, edit.z), edit);
+    }
+    engineRef.current?.applyWorldEdits(overlayPendingWorldBlockEdit(
+      authoritative,
+      pendingWorldBlockEditRef.current?.optimisticEdit ?? null,
+    ));
+  }, [worldEvents, worldChunks, worldChunkKeys]);
 
   useEffect(() => {
     if (!activeChestKey || chestResult === undefined) return;
@@ -1360,7 +1599,7 @@ export function App() {
   }
 
   function handleCraft(recipe: Recipe) {
-    if (!hydratedRef.current) return;
+    if (!hydratedRef.current || pendingWorldBlockEditRef.current) return;
     const result = craftRecipe(inventoryRef.current, recipe, craftingContext);
     if (!result.ok) {
       const detail = result.reason === "inventory_full"
@@ -1376,7 +1615,7 @@ export function App() {
   }
 
   function handleSmelt(recipe: SmeltingRecipe) {
-    if (!hydratedRef.current) return;
+    if (!hydratedRef.current || pendingWorldBlockEditRef.current) return;
     const result = smeltRecipe(inventoryRef.current, recipe);
     if (!result.ok) {
       const detail = result.reason === "missing_fuel"
@@ -1399,6 +1638,7 @@ export function App() {
   }
 
   function handleUseItem(inventoryIndex = selectedRef.current): boolean {
+    if (pendingWorldBlockEditRef.current) return false;
     const result = consumeFood(inventoryRef.current, inventoryIndex, hungerRef.current);
     if (!result.ok) {
       if (result.reason === "hunger_full") notify("You are already full", "Save that food for later.");
@@ -1413,6 +1653,7 @@ export function App() {
   }
 
   function handleEquipArmor(index: number) {
+    if (pendingWorldBlockEditRef.current) return;
     const equippedItem = inventory[index]?.itemId;
     const result = equipArmorFromInventory(inventory, equipment, index);
     if (!result.ok) return;
@@ -1422,6 +1663,7 @@ export function App() {
   }
 
   function handleUnequipArmor(slot: ArmorSlot) {
+    if (pendingWorldBlockEditRef.current) return;
     const result = unequipArmor(inventory, equipment, slot);
     if (!result.ok) {
       if (result.reason === "inventory_full") notify("Pack is full", "Clear a pocket before removing armor.", "warning");
@@ -1750,10 +1992,16 @@ export function App() {
           hydratedRef.current = false;
           hydratedUserRef.current = "";
           inventoryTokenRef.current = "";
+          inventoryRevisionRef.current = "0";
           inventorySessionRef.current += 1;
           lastCommittedPlayerJsonRef.current = "";
           inventorySavePendingRef.current = false;
           pendingChestTransferRef.current = null;
+          pendingWorldBlockEditRef.current = null;
+          deferredMobDropsRef.current.length = 0;
+          worldChunkRevisionRef.current.clear();
+          authoritativeWorldEditRef.current.clear();
+          latestSavedInventoryRef.current = undefined;
           chestTransferActiveRef.current = false;
           setChestRetryAvailable(false);
         }}

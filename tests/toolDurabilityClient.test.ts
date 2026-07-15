@@ -7,9 +7,12 @@ const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import
 
 assert.ok(client.includes("applyConfirmedToolUse(inventoryRef.current, slot, kind, itemId)"));
 
-const mining = client.slice(client.indexOf("void removeBlockMutation("), client.indexOf("return;", client.indexOf("void removeBlockMutation(")));
-assert.ok(mining.indexOf(".then(() =>") < mining.indexOf("recordConfirmedToolUse(usedToolSlot, usedToolItemId, \"mine\")"));
-assert.equal(mining.slice(mining.indexOf(".catch(() =>")).includes("recordConfirmedToolUse"), false, "rejected mining cannot wear a tool");
+const mining = client.slice(client.indexOf("async function submitPendingWorldBlockEdit"), client.indexOf("function handleBlockEdit"));
+assert.ok(mining.includes("await requestInventorySave(false, true)"));
+assert.ok(mining.includes("invokeWorldBlockEditWithOneRetry(editWorldBlock, args)"));
+assert.ok(mining.includes("loadCanonicalPlayer(result.inventory)"));
+assert.equal(mining.includes("recordConfirmedToolUse"), false, "mining durability must come only from the canonical inventory row");
+assert.equal(mining.includes("updateInventory(addItem"), false, "mining drops cannot be granted optimistically");
 
 const mob = client.slice(client.indexOf("onMobAttack:"), client.indexOf("onRemotePlayerAttack:"));
 assert.ok(mob.includes("if (result.ok) recordConfirmedToolUse(usedToolSlot, usedToolItemId, \"attack\")"));

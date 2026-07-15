@@ -1782,6 +1782,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (attackEntityUnderCrosshair()) return;
       if (!target) return;
       if (miningTimer) return;
+      if (options.canEditBlock?.() === false) return;
       const mined = { ...target.block };
       const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
       options.onHandAction?.("mine");
@@ -1806,6 +1807,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (target) {
         const doorEdit = createDoorToggleEdit(target);
         if (doorEdit) {
+          if (options.canEditBlock?.() === false) return;
           options.onHandAction?.("use");
           emitEdit(doorEdit);
           return;
@@ -1821,6 +1823,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       if (!target) return;
       if (selectedBlock === BLOCK.AIR) return;
+      if (options.canEditBlock?.() === false) return;
       const { x, y, z } = target.place;
       if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) {
         options.onHandAction?.("place");

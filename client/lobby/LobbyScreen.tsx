@@ -71,8 +71,8 @@ function Panorama() {
   );
 }
 
-function MenuButton({ children, disabled, onClick, wide = false }: { children: ComponentChildren; disabled?: boolean; onClick?: () => void; wide?: boolean }) {
-  return <button className={`lc-menu-button${wide ? " is-wide" : ""}`} disabled={disabled} onClick={onClick} type="button">{children}</button>;
+function MenuButton({ children, disabled, onClick, type = "button", wide = false }: { children: ComponentChildren; disabled?: boolean; onClick?: () => void; type?: "button" | "submit"; wide?: boolean }) {
+  return <button className={`lc-menu-button${wide ? " is-wide" : ""}`} disabled={disabled} onClick={onClick} type={type}>{children}</button>;
 }
 
 function UsernameMenu(props: LobbyScreenProps) {
@@ -112,7 +112,7 @@ function UsernameMenu(props: LobbyScreenProps) {
         value={props.username}
       />
       <p className={`lc-username-help${localError || state === "taken" || state === "error" ? " is-error" : ""}`} id="lc-username-help">{error}</p>
-      <MenuButton disabled={busy || !validation.valid} wide>{busy ? "Please wait…" : "Done"}</MenuButton>
+      <MenuButton disabled={busy || !validation.valid} type="submit" wide>{busy ? "Please wait…" : "Done"}</MenuButton>
       {props.onSignOut ? <button className="lc-menu-link" onClick={props.onSignOut} type="button">Use another account</button> : null}
     </form>
   );

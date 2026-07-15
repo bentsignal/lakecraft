@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   CRAFTING_GRID_RECIPES,
   INITIAL_RECIPE_PATTERNS,
@@ -39,6 +40,11 @@ assert.deepEqual(createCraftingGrid(2), [null, null, null, null]);
 assert.equal(CRAFTING_GRID_RECIPES.length, RECIPES.length, "every current progression recipe has a grid layout");
 assert.deepEqual(CRAFTING_GRID_RECIPES.map(({ id }) => id), RECIPES.map(({ id }) => id));
 assert.deepEqual(Object.keys(INITIAL_RECIPE_PATTERNS).sort(), RECIPES.map(({ id }) => id).sort());
+assert.equal(
+  createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
+  "dfe7c03f55fb0f8fb65cf10571020b7432fe9e096a5d23e20ea8ebc86bb343fc",
+  "generated recipe patterns preserve the exact serialized layout and insertion order",
+);
 assert.equal(adaptRecipesToGrid([{ ...RECIPES[0], id: "unmapped" }]).length, 0);
 assert.deepEqual(INITIAL_RECIPE_PATTERNS.torch, { kind: "shaped", pattern: [["coal"], ["stick"]] }, "torches use the Minecraft coal-over-stick layout");
 assert.deepEqual((INITIAL_RECIPE_PATTERNS.stone_pickaxe as ShapedCraftingRecipe).pattern[0], ["cobblestone", "cobblestone", "cobblestone"]);

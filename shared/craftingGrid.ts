@@ -40,16 +40,47 @@ export type CraftingTakeResult =
   | { ok: false; state: CraftingGridState; reason: "invalid_grid" | "invalid_stack" | "no_recipe" | "cursor_blocked" };
 
 type RecipeShape = Omit<ShapedCraftingRecipe, "id" | "output"> | Omit<ShapelessCraftingRecipe, "id" | "output">;
+type RecipePatternEntry = readonly [id: string, shape: RecipeShape];
 
 const P = "planks" as const;
 const S = "stick" as const;
 const C = "cobblestone" as const;
 const K = "coal" as const;
-const L = "leather" as const;
-const I = "iron_ingot" as const;
-const G = "gold_ingot" as const;
-const D = "diamond" as const;
 const W = "wool" as const;
+
+function equipmentPatternEntries(prefix: string, material: ItemId, armor: boolean): RecipePatternEntry[] {
+  const shapes: ReadonlyArray<readonly [string, ReadonlyArray<ReadonlyArray<ItemId | null>>]> = armor
+    ? [
+      ["helmet", [[material, material, material], [material, null, material]]],
+      ["chestplate", [[material, null, material], [material, material, material], [material, material, material]]],
+      ["leggings", [[material, material, material], [material, null, material], [material, null, material]]],
+      ["boots", [[material, null, material], [material, null, material]]],
+    ]
+    : [
+      ["pickaxe", [[material, material, material], [null, S, null], [null, S, null]]],
+      ["axe", [[material, material], [material, S], [null, S]]],
+      ["shovel", [[material], [S], [S]]],
+      ["sword", [[material], [material], [S]]],
+    ];
+  return shapes.map(([suffix, pattern], index) => [
+    `${prefix}_${suffix}`,
+    index === 1 && !armor
+      ? { kind: "shaped", pattern, allowHorizontalMirror: true }
+      : { kind: "shaped", pattern },
+  ]);
+}
+
+const GENERATED_EQUIPMENT_PATTERNS = Object.fromEntries(([
+  ["wooden", P, false],
+  ["stone", C, false],
+  ["iron", "iron_ingot", false],
+  ["golden", "gold_ingot", false],
+  ["diamond", "diamond", false],
+  ["leather", "leather", true],
+  ["iron", "iron_ingot", true],
+  ["golden", "gold_ingot", true],
+  ["diamond", "diamond", true],
+] as const).flatMap(([prefix, material, armor]) => equipmentPatternEntries(prefix, material, armor)));
 
 /**
  * Canonical, Minecraft-style layouts for every recipe currently exported by
@@ -66,43 +97,8 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   chest: { kind: "shaped", pattern: [[P, P, P], [P, null, P], [P, P, P]] },
   door: { kind: "shaped", pattern: [[P, P], [P, P], [P, P]] },
   bed: { kind: "shaped", pattern: [[W, W, W], [P, P, P]] },
-  wooden_pickaxe: { kind: "shaped", pattern: [[P, P, P], [null, S, null], [null, S, null]] },
-  wooden_axe: { kind: "shaped", pattern: [[P, P], [P, S], [null, S]], allowHorizontalMirror: true },
-  wooden_shovel: { kind: "shaped", pattern: [[P], [S], [S]] },
-  wooden_sword: { kind: "shaped", pattern: [[P], [P], [S]] },
-  stone_pickaxe: { kind: "shaped", pattern: [[C, C, C], [null, S, null], [null, S, null]] },
-  stone_axe: { kind: "shaped", pattern: [[C, C], [C, S], [null, S]], allowHorizontalMirror: true },
-  stone_shovel: { kind: "shaped", pattern: [[C], [S], [S]] },
-  stone_sword: { kind: "shaped", pattern: [[C], [C], [S]] },
-  iron_pickaxe: { kind: "shaped", pattern: [[I, I, I], [null, S, null], [null, S, null]] },
-  iron_axe: { kind: "shaped", pattern: [[I, I], [I, S], [null, S]], allowHorizontalMirror: true },
-  iron_shovel: { kind: "shaped", pattern: [[I], [S], [S]] },
-  iron_sword: { kind: "shaped", pattern: [[I], [I], [S]] },
-  golden_pickaxe: { kind: "shaped", pattern: [[G, G, G], [null, S, null], [null, S, null]] },
-  golden_axe: { kind: "shaped", pattern: [[G, G], [G, S], [null, S]], allowHorizontalMirror: true },
-  golden_shovel: { kind: "shaped", pattern: [[G], [S], [S]] },
-  golden_sword: { kind: "shaped", pattern: [[G], [G], [S]] },
-  diamond_pickaxe: { kind: "shaped", pattern: [[D, D, D], [null, S, null], [null, S, null]] },
-  diamond_axe: { kind: "shaped", pattern: [[D, D], [D, S], [null, S]], allowHorizontalMirror: true },
-  diamond_shovel: { kind: "shaped", pattern: [[D], [S], [S]] },
-  diamond_sword: { kind: "shaped", pattern: [[D], [D], [S]] },
-  leather_helmet: { kind: "shaped", pattern: [[L, L, L], [L, null, L]] },
-  leather_chestplate: { kind: "shaped", pattern: [[L, null, L], [L, L, L], [L, L, L]] },
-  leather_leggings: { kind: "shaped", pattern: [[L, L, L], [L, null, L], [L, null, L]] },
-  leather_boots: { kind: "shaped", pattern: [[L, null, L], [L, null, L]] },
-  iron_helmet: { kind: "shaped", pattern: [[I, I, I], [I, null, I]] },
-  iron_chestplate: { kind: "shaped", pattern: [[I, null, I], [I, I, I], [I, I, I]] },
-  iron_leggings: { kind: "shaped", pattern: [[I, I, I], [I, null, I], [I, null, I]] },
-  iron_boots: { kind: "shaped", pattern: [[I, null, I], [I, null, I]] },
-  golden_helmet: { kind: "shaped", pattern: [[G, G, G], [G, null, G]] },
-  golden_chestplate: { kind: "shaped", pattern: [[G, null, G], [G, G, G], [G, G, G]] },
-  golden_leggings: { kind: "shaped", pattern: [[G, G, G], [G, null, G], [G, null, G]] },
-  golden_boots: { kind: "shaped", pattern: [[G, null, G], [G, null, G]] },
-  diamond_helmet: { kind: "shaped", pattern: [[D, D, D], [D, null, D]] },
-  diamond_chestplate: { kind: "shaped", pattern: [[D, null, D], [D, D, D], [D, D, D]] },
-  diamond_leggings: { kind: "shaped", pattern: [[D, D, D], [D, null, D], [D, null, D]] },
-  diamond_boots: { kind: "shaped", pattern: [[D, null, D], [D, null, D]] },
-} as const;
+  ...GENERATED_EQUIPMENT_PATTERNS,
+};
 
 export function adaptRecipesToGrid(
   recipes: readonly Recipe[],

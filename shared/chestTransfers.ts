@@ -93,6 +93,7 @@ export interface PersistedInventoryState {
   id: string;
   userId: string;
   inventoryJson: string;
+  revision: string;
   createdAt: string;
   updatedAt: string;
 }

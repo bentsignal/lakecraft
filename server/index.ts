@@ -40,16 +40,20 @@ import {
   worldClockSnapshot
 } from "../shared/sleep";
 import {
-  WORLD_EDIT_MAX_XZ,
-  WORLD_EDIT_MAX_Y,
-  WORLD_EDIT_MIN_XZ,
-  WORLD_EDIT_MIN_Y,
   applyWorldChunkEdit,
   createWorldChunkSnapshot,
   validateVisibleWorldChunkKeys,
   worldEditChunkKey,
   type WorldChunkEditInput
 } from "../shared/worldChunks";
+import { naturalWorldBlockAt } from "../shared/worldTerrainAuthority.ts";
+import {
+  MAX_WORLD_BLOCK_OPERATION_REQUEST_BYTES,
+  nextWorldBlockRevision,
+  normalizeWorldBlockRevision,
+  parseWorldBlockOperation,
+  resolveWorldBlockOperation,
+} from "../shared/worldBlockOperations.ts";
 import {
   MOB_AUTHORITY_WORLD_SEED_TOKEN,
   materializeMobAuthorityState,
@@ -112,10 +116,52 @@ import {
   encodePlayerCombatReceipt,
   type PlayerCombatReceiptResult
 } from "./playerCombat";
+import {
+  MAX_WORLD_BLOCK_OPERATION_RECEIPTS_PER_USER,
+  WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT,
+  WORLD_BLOCK_OPERATION_RECEIPT_TTL_MS,
+  decodeWorldBlockOperationReceipt,
+  encodeWorldBlockOperationReceipt,
+  selectWorldBlockOperationReceiptOverflow,
+  validateWorldBlockActionPose,
+  worldBlockOperationPoseFingerprint,
+  type WorldBlockOperationReceiptResult,
+} from "./worldBlockOperationReceipts.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 const CHEST_RECEIPT_PRUNE_LIMIT = 8;
+
+function storedRevision(value: unknown): string | null {
+  return normalizeWorldBlockRevision(value ?? "0");
+}
+
+function incrementStoredRevision(value: unknown): string {
+  const revision = storedRevision(value);
+  const next = revision === null ? null : nextWorldBlockRevision(revision);
+  if (next === null) throw new Error("Stored revision is invalid or exhausted.");
+  return next;
+}
+
+async function maintainWorldBlockOperationReceipts(
+  db: WriteDatabase,
+  userId: string,
+  committedReceiptId: string,
+  now: number,
+): Promise<void> {
+  const newestReceipts = await db.worldBlockOperationReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(MAX_WORLD_BLOCK_OPERATION_RECEIPTS_PER_USER + WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT);
+  const overflowIds = selectWorldBlockOperationReceiptOverflow(newestReceipts, committedReceiptId);
+  for (const receiptId of overflowIds) await db.worldBlockOperationReceipts.delete(receiptId);
+  const staleBefore = String(now - WORLD_BLOCK_OPERATION_RECEIPT_TTL_MS);
+  const staleReceipts = await db.worldBlockOperationReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .order("asc")
+    .take(WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT);
+  for (const receipt of staleReceipts) await db.worldBlockOperationReceipts.delete(receipt.id);
+}
 
 async function maintainDroppedItemReceipts(
   db: WriteDatabase,
@@ -166,13 +212,6 @@ async function maintainPlayerCombatReceipts(
   for (const receipt of staleReceipts) await db.playerCombatReceipts.delete(receipt.id);
 }
 
-function boundedInteger(value: string, minimum: number, maximum: number): number | null {
-  const normalized = value.trim();
-  if (!/^-?\d{1,7}$/.test(normalized)) return null;
-  const number = Number(normalized);
-  return Number.isInteger(number) && number >= minimum && number <= maximum ? number : null;
-}
-
 function databaseRowToChunkEdit(row: Record<string, unknown>): WorldChunkEditInput | null {
   if (
     typeof row.x !== "string"
@@ -216,7 +255,11 @@ async function maintainWorldChunkSnapshot(
     snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
   }
   if (!snapshot.ok) throw new Error(`Unable to compact shared world chunk: ${snapshot.reason}`);
-  const value = { chunkKey, snapshotJson: snapshot.snapshotJson };
+  const value = {
+    chunkKey,
+    snapshotJson: snapshot.snapshotJson,
+    revision: incrementStoredRevision(existing?.revision),
+  };
   if (existing) await db.worldChunks.update(existing.id, value);
   else await db.worldChunks.insert(value);
 }
@@ -276,7 +319,8 @@ export default capsule({
     /** Compact authoritative renderer snapshots, one row per 8x8 x/z column. */
     worldChunks: table({
       chunkKey: string(),
-      snapshotJson: string()
+      snapshotJson: string(),
+      revision: string().default("0")
     }).index("by_chunk", ["chunkKey"]),
 
     playerPresence: table({
@@ -306,8 +350,20 @@ export default capsule({
 
     inventories: table({
       userId: string(),
-      inventoryJson: string()
+      inventoryJson: string(),
+      revision: string().default("0")
     }).index("by_user", ["userId"]),
+
+    /** Bounded receipts make retried mining, placement, and door toggles exact-once. */
+    worldBlockOperationReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
 
     /** Shared container state. updatedAt is the optimistic concurrency token. */
     chests: table({
@@ -433,14 +489,19 @@ export default capsule({
     worldChunks: query(async (ctx, rawChunkKeys: string[]) => {
       const validation = validateVisibleWorldChunkKeys(rawChunkKeys);
       if (!validation.ok) return { ok: false, reason: validation.reason, chunks: [] };
-      const chunks: Array<{ chunkKey: string; snapshotJson: string; updatedAt: string }> = [];
+      const chunks: Array<{ chunkKey: string; snapshotJson: string; revision: string; updatedAt: string }> = [];
       const missingChunkKeys: string[] = [];
       for (const chunkKey of validation.chunkKeys) {
         const row = await ctx.db.worldChunks
           .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
           .order("desc")
           .first();
-        if (row) chunks.push({ chunkKey: row.chunkKey, snapshotJson: row.snapshotJson, updatedAt: row.updatedAt });
+        if (row) chunks.push({
+          chunkKey: row.chunkKey,
+          snapshotJson: row.snapshotJson,
+          revision: storedRevision(row.revision) ?? "0",
+          updatedAt: row.updatedAt,
+        });
         else missingChunkKeys.push(chunkKey);
       }
       // Read-only compatibility for untouched pre-chunk data. The first later
@@ -453,7 +514,7 @@ export default capsule({
         for (const chunkKey of missingChunkKeys) {
           const snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
           if (snapshot.ok && snapshot.editCount > 0) {
-            chunks.push({ chunkKey, snapshotJson: snapshot.snapshotJson, updatedAt: "0" });
+            chunks.push({ chunkKey, snapshotJson: snapshot.snapshotJson, revision: "0", updatedAt: "0" });
           }
         }
       }
@@ -611,61 +672,232 @@ export default capsule({
   },
 
   mutations: {
-    setBlock: mutation(
-      async (ctx, _coordKey: string, x: string, y: string, z: string, blockType: string) => {
-        if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to edit the shared world.");
-        const px = boundedInteger(x, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
-        const py = boundedInteger(y, WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y);
-        const pz = boundedInteger(z, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
-        const block = blockType.trim().toLowerCase();
-        if (px == null || py == null || pz == null || !PLACEABLE_BLOCKS.has(block)) return;
-        const existing = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq("coordKey", `${px}:${py}:${pz}`))
-          .order("desc")
-          .first();
-        const value = {
-          coordKey: `${px}:${py}:${pz}`,
-          x: String(px),
-          y: String(py),
-          z: String(pz),
-          blockType: block,
-          actorId: ctx.auth.userId,
-          editedAt: String(Date.now())
-        };
-        const row = existing
-          ? await ctx.db.worldEdits.update(existing.id, value)
-          : await ctx.db.worldEdits.insert(value);
-        if (!row) throw new Error("Unable to persist the shared world edit.");
-        await maintainWorldChunkSnapshot(ctx.db, row);
-        return row;
+    /** The only public world-edit path: atomic, authoritative, and idempotent. */
+    editWorldBlock: mutation(async (
+      ctx,
+      requestJson: string,
+      poseX: string,
+      poseY: string,
+      poseZ: string,
+      poseYaw: string,
+      posePitch: string,
+    ) => {
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required" };
       }
-    ),
+      if (typeof requestJson !== "string" || requestJson.length > MAX_WORLD_BLOCK_OPERATION_REQUEST_BYTES) {
+        return { ok: false, reason: "invalid_request" };
+      }
+      let rawRequest: unknown;
+      try {
+        rawRequest = JSON.parse(requestJson);
+      } catch {
+        return { ok: false, reason: "invalid_request" };
+      }
+      const validation = parseWorldBlockOperation(rawRequest);
+      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason };
+      const pose = validatePresencePoseFields(poseX, poseY, poseZ, poseYaw, posePitch);
+      if (!pose) return { ok: false, reason: "invalid_pose" };
+      const request = validation.request;
+      const fingerprint = worldBlockOperationPoseFingerprint(validation.fingerprint, pose);
 
-    removeBlock: mutation(async (ctx, _coordKey: string, x: string, y: string, z: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to edit the shared world.");
-      const px = boundedInteger(x, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
-      const py = boundedInteger(y, WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y);
-      const pz = boundedInteger(z, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ);
-      if (px == null || py == null || pz == null) return;
-      const existing = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", `${px}:${py}:${pz}`))
+      // Receipt lookup intentionally precedes every mutable-state read. An exact
+      // replay returns before any profile, presence, inventory, chunk, or edit write.
+      const existingReceipts = await ctx.db.worldBlockOperationReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .take(2);
+      if (existingReceipts.length > 1) return { ok: false, reason: "duplicate_state" };
+      const existingReceipt = existingReceipts[0] ?? null;
+      if (existingReceipt) {
+        if (existingReceipt.fingerprint !== fingerprint) {
+          return { ok: false, reason: "operation_id_reused" };
+        }
+        const replay = decodeWorldBlockOperationReceipt(existingReceipt.resultJson);
+        if (!replay) return { ok: false, reason: "conservation_failure" };
+        const replayInventories = await ctx.db.inventories
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .take(2);
+        const replayChunks = await ctx.db.worldChunks
+          .withIndex("by_chunk", (q) => q.eq("chunkKey", replay.chunkKey))
+          .order("desc")
+          .take(2);
+        if (replayInventories.length !== 1 || replayChunks.length !== 1) {
+          return { ok: false, reason: "duplicate_or_missing_state" };
+        }
+        const currentChunkRevision = storedRevision(replayChunks[0].revision);
+        if (storedRevision(replayInventories[0].revision) === null || currentChunkRevision === null) {
+          return { ok: false, reason: "conservation_failure" };
+        }
+        return { ...replay, inventory: replayInventories[0], currentChunkRevision };
+      }
+
+      const serverNow = Date.now();
+      const profile = await ctx.db.profiles
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .first();
-      const value = {
-        coordKey: `${px}:${py}:${pz}`,
-        x: String(px),
-        y: String(py),
-        z: String(pz),
-        blockType: "air",
+      if (!profile) return { ok: false, reason: "profile_required" };
+      const presence = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const poseAuthority = validateWorldBlockActionPose(
+        presence,
+        ctx.auth.userId,
+        pose,
+        { x: request.x, y: request.y, z: request.z },
+        serverNow,
+      );
+      if (!poseAuthority.ok) return { ok: false, reason: poseAuthority.reason };
+
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (inventoryRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      const inventoryRow = inventoryRows[0] ?? null;
+      if (!inventoryRow) return { ok: false, reason: "inventory_required" };
+      const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
+      const inventoryRevision = storedRevision(inventoryRow.revision);
+      if (!playerState.ok || inventoryRevision === null) {
+        return { ok: false, reason: "conservation_failure" };
+      }
+
+      const chunkKey = worldEditChunkKey(request.x, request.z);
+      const chunkRows = await ctx.db.worldChunks
+        .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+        .order("desc")
+        .take(2);
+      if (chunkRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      const chunkRow = chunkRows[0] ?? null;
+      const chunkRevision = storedRevision(chunkRow?.revision);
+      if (chunkRevision === null) return { ok: false, reason: "conservation_failure" };
+
+      const coordKey = `${request.x}:${request.y}:${request.z}`;
+      const currentEdits = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .order("desc")
+        .take(2);
+      if (currentEdits.length > 1) return { ok: false, reason: "duplicate_state" };
+      const currentEdit = currentEdits[0] ?? null;
+      const currentBlock = currentEdit
+        ? currentEdit.blockType
+        : naturalWorldBlockAt(request.x, request.y, request.z);
+      if (currentBlock !== "air" && !PLACEABLE_BLOCKS.has(currentBlock)) {
+        return { ok: false, reason: "conservation_failure" };
+      }
+
+      const resolution = resolveWorldBlockOperation(request, {
+        currentBlock,
+        inventory: playerState.state.inventory,
+        inventoryRevision,
+        chunkRevision,
+      });
+      if (!resolution.ok) return { ok: false, reason: resolution.reason };
+      const effect = resolution.effect;
+      const worldEditValue = {
+        coordKey,
+        x: String(request.x),
+        y: String(request.y),
+        z: String(request.z),
+        blockType: effect.nextBlock,
         actorId: ctx.auth.userId,
-        editedAt: String(Date.now())
+        editedAt: String(serverNow),
       };
-      const row = existing
-        ? await ctx.db.worldEdits.update(existing.id, value)
-        : await ctx.db.worldEdits.insert(value);
-      if (!row) throw new Error("Unable to persist the shared world edit.");
-      await maintainWorldChunkSnapshot(ctx.db, row);
-      return row;
+      const snapshot = chunkRow
+        ? applyWorldChunkEdit(chunkKey, chunkRow.snapshotJson, worldEditValue)
+        : createWorldChunkSnapshot(chunkKey, [worldEditValue]);
+      if (!snapshot.ok) return { ok: false, reason: "conservation_failure", detail: snapshot.reason };
+
+      const worldEdit = currentEdit
+        ? await ctx.db.worldEdits.update(currentEdit.id, worldEditValue)
+        : await ctx.db.worldEdits.insert(worldEditValue);
+      const chunkValue = {
+        chunkKey,
+        snapshotJson: snapshot.snapshotJson,
+        revision: effect.chunkRevision,
+      };
+      const chunk = chunkRow
+        ? await ctx.db.worldChunks.update(chunkRow.id, chunkValue)
+        : await ctx.db.worldChunks.insert(chunkValue);
+      if (!worldEdit || !chunk) throw new Error("Unable to persist authoritative world edit.");
+
+      let persistedInventory = inventoryRow;
+      if (effect.inventoryChanged) {
+        const inventoryJson = JSON.stringify({ ...playerState.state, inventory: effect.inventory });
+        const inventory = await ctx.db.inventories.update(inventoryRow.id, {
+          userId: ctx.auth.userId,
+          inventoryJson,
+          revision: effect.inventoryRevision,
+        });
+        if (!inventory) throw new Error("Unable to persist authoritative inventory.");
+        persistedInventory = inventory;
+      }
+
+      if (!presence) throw new Error("Active presence disappeared during world edit.");
+      const presenceValue = {
+        userId: ctx.auth.userId,
+        displayName: profile.username,
+        color: presence.color,
+        x: String(pose.x),
+        y: String(pose.y),
+        z: String(pose.z),
+        yaw: String(pose.yaw),
+        pitch: String(pose.pitch),
+        vx: presence.vx ?? "0",
+        vy: presence.vy ?? "0",
+        vz: presence.vz ?? "0",
+        heldItem: presence.heldItem ?? "",
+        armorHead: presence.armorHead ?? "",
+        armorChest: presence.armorChest ?? "",
+        armorLegs: presence.armorLegs ?? "",
+        armorFeet: presence.armorFeet ?? "",
+        heartbeatAt: String(serverNow),
+        online: true,
+      };
+      const updatedPresence = await ctx.db.playerPresence.update(presence.id, presenceValue);
+      if (!updatedPresence) throw new Error("Unable to persist authoritative action presence.");
+
+      const result: WorldBlockOperationReceiptResult = {
+        ok: true,
+        replayed: false,
+        operationId: request.operationId,
+        kind: effect.kind,
+        x: request.x,
+        y: request.y,
+        z: request.z,
+        previousBlock: effect.previousBlock,
+        nextBlock: effect.nextBlock,
+        inventoryRevision: effect.inventoryRevision,
+        chunkKey,
+        chunkRevision: effect.chunkRevision,
+        inventoryChanged: effect.inventoryChanged,
+        drop: effect.drop,
+        consumed: effect.consumed,
+        toolUse: effect.toolUse ? {
+          used: effect.toolUse.used,
+          broke: effect.toolUse.broke,
+          itemId: effect.toolUse.itemId,
+          remainingDurability: effect.toolUse.remainingDurability,
+        } : null,
+      };
+      const receipt = await ctx.db.worldBlockOperationReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint,
+        resultJson: encodeWorldBlockOperationReceipt(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      await maintainWorldBlockOperationReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      return {
+        ...result,
+        inventory: persistedInventory,
+        currentChunkRevision: effect.chunkRevision,
+      };
     }),
 
     heartbeatPlayer: mutation(
@@ -771,7 +1003,8 @@ export default capsule({
       }
       const value = {
         userId: ctx.auth.userId,
-        inventoryJson: validation.playerStateJson
+        inventoryJson: validation.playerStateJson,
+        revision: incrementStoredRevision(existing?.revision),
       };
       const inventory = existing
         ? ctx.db.inventories.update(existing.id, value)
@@ -849,7 +1082,8 @@ export default capsule({
 
       const player = await ctx.db.inventories.update(existingPlayer.id, {
         userId: ctx.auth.userId,
-        inventoryJson: JSON.stringify({ ...request.playerState, inventory: applied.inventory })
+        inventoryJson: JSON.stringify({ ...request.playerState, inventory: applied.inventory }),
+        revision: incrementStoredRevision(existingPlayer.revision),
       });
       const droppedItem = await ctx.db.droppedItems.insert(droppedValue);
       const result: DroppedItemReceiptResult = {
@@ -936,7 +1170,8 @@ export default capsule({
 
       const player = await ctx.db.inventories.update(existingPlayer.id, {
         userId: ctx.auth.userId,
-        inventoryJson: JSON.stringify({ ...request.playerState, inventory: applied.inventory })
+        inventoryJson: JSON.stringify({ ...request.playerState, inventory: applied.inventory }),
+        revision: incrementStoredRevision(existingPlayer.revision),
       });
       const droppedItem = applied.remaining
         ? await ctx.db.droppedItems.update(storedDrop.id, {
@@ -1061,7 +1296,11 @@ export default capsule({
       if (!applied.ok) return { ok: false, reason: applied.reason };
       const nextPlayerJson = JSON.stringify({ ...request.playerState, inventory: applied.playerInventory });
       const nextChestJson = JSON.stringify(applied.chestInventory);
-      const playerValue = { userId: ctx.auth.userId, inventoryJson: nextPlayerJson };
+      const playerValue = {
+        userId: ctx.auth.userId,
+        inventoryJson: nextPlayerJson,
+        revision: incrementStoredRevision(existingPlayer?.revision),
+      };
       const chestValue = {
         coordKey: request.coordKey,
         inventoryJson: nextChestJson,
