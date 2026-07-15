@@ -30,6 +30,18 @@ import {
 } from "./dayNight.ts";
 import { createMobRenderer } from "./mobRenderer.ts";
 import {
+  TEXTURED_WORLD_VERTEX_FLOATS,
+  blockTextureForFace,
+  textureAtlasUv,
+  type BlockFace,
+} from "./blockTextures.ts";
+import {
+  TEXTURE_ATLAS_COLUMNS,
+  TEXTURE_ATLAS_RGBA,
+  TEXTURE_ATLAS_ROWS,
+  TEXTURE_TILE_SIZE,
+} from "./generated/textureAtlas.ts";
+import {
   consumeMobContactDamage,
   consumeMobProjectileDamage,
   applyAuthoritativeMobCombatStates,
@@ -124,7 +136,10 @@ export function resolveSafeSpawnY(
 }
 
 interface ChunkMesh {
-  buffer: WebGLBuffer;
+  textureBuffer: WebGLBuffer | null;
+  textureVertexCount: number;
+  colorBuffer: WebGLBuffer | null;
+  colorVertexCount: number;
   vertexCount: number;
   minY: number;
   maxY: number;
@@ -197,17 +212,63 @@ void main() {
   gl_FragColor = vec4(mix(vColor, uFogColor, vFog), 1.0);
 }`;
 
+const TERRAIN_VERTEX_SHADER = `
+attribute vec3 aPosition;
+attribute vec2 aUv;
+attribute float aShade;
+uniform mat4 uMvp;
+uniform vec3 uCamera;
+uniform float uFogEnabled;
+uniform vec3 uAmbientColor;
+uniform vec3 uDirectionalColor;
+uniform float uAmbientIntensity;
+uniform float uDirectionalIntensity;
+uniform vec4 uTorchLights[8];
+varying vec2 vUv;
+varying vec3 vLight;
+varying float vFog;
+void main() {
+  gl_Position = uMvp * vec4(aPosition, 1.0);
+  vec3 lighting = vec3(0.16)
+    + uAmbientColor * uAmbientIntensity * 0.75
+    + uDirectionalColor * uDirectionalIntensity * 0.30;
+  vec3 torchLight = vec3(0.0);
+  for (int lightIndex = 0; lightIndex < 8; lightIndex++) {
+    vec4 light = uTorchLights[lightIndex];
+    float attenuation = step(0.001, light.w) * clamp(1.0 - length(light.xyz - aPosition) / max(light.w, 0.001), 0.0, 1.0);
+    torchLight += vec3(1.0, 0.43, 0.12) * attenuation * attenuation * 0.95;
+  }
+  vUv = aUv;
+  vLight = (lighting + torchLight) * aShade;
+  float distanceFromCamera = length(aPosition - uCamera);
+  vFog = uFogEnabled * smoothstep(18.0, 42.0, distanceFromCamera);
+}`;
+
+const TERRAIN_FRAGMENT_SHADER = `
+precision mediump float;
+uniform sampler2D uAtlas;
+uniform vec3 uFogColor;
+varying vec2 vUv;
+varying vec3 vLight;
+varying float vFog;
+void main() {
+  vec4 texel = texture2D(uAtlas, vUv);
+  if (texel.a < 0.5) discard;
+  gl_FragColor = vec4(mix(texel.rgb * vLight, uFogColor, vFog), texel.a);
+}`;
+
 const FACE_DEFS: ReadonlyArray<{
+  face: BlockFace;
   neighbor: Vec3;
   shade: number;
   vertices: ReadonlyArray<Vec3>;
 }> = [
-  { neighbor: [1, 0, 0], shade: 0.79, vertices: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 0], [1, 1, 1], [1, 0, 1]] },
-  { neighbor: [-1, 0, 0], shade: 0.68, vertices: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 1], [0, 1, 0], [0, 0, 0]] },
-  { neighbor: [0, 1, 0], shade: 1.0, vertices: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [0, 1, 0], [1, 1, 1], [1, 1, 0]] },
-  { neighbor: [0, -1, 0], shade: 0.52, vertices: [[0, 0, 1], [0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 0], [1, 0, 1]] },
-  { neighbor: [0, 0, 1], shade: 0.88, vertices: [[1, 0, 1], [1, 1, 1], [0, 1, 1], [1, 0, 1], [0, 1, 1], [0, 0, 1]] },
-  { neighbor: [0, 0, -1], shade: 0.73, vertices: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 0], [1, 1, 0], [1, 0, 0]] },
+  { face: "east", neighbor: [1, 0, 0], shade: 0.79, vertices: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 0], [1, 1, 1], [1, 0, 1]] },
+  { face: "west", neighbor: [-1, 0, 0], shade: 0.68, vertices: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 1], [0, 1, 0], [0, 0, 0]] },
+  { face: "top", neighbor: [0, 1, 0], shade: 1.0, vertices: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [0, 1, 0], [1, 1, 1], [1, 1, 0]] },
+  { face: "bottom", neighbor: [0, -1, 0], shade: 0.52, vertices: [[0, 0, 1], [0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 0], [1, 0, 1]] },
+  { face: "south", neighbor: [0, 0, 1], shade: 0.88, vertices: [[1, 0, 1], [1, 1, 1], [0, 1, 1], [1, 0, 1], [0, 1, 1], [0, 0, 1]] },
+  { face: "north", neighbor: [0, 0, -1], shade: 0.73, vertices: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 0], [1, 1, 0], [1, 0, 0]] },
 ];
 
 const BLOCK_COLORS: Record<BlockId, Vec3> = {
@@ -438,16 +499,45 @@ function compileShader(gl: WebGLRenderingContext, type: number, source: string):
   return shader;
 }
 
-function createProgram(gl: WebGLRenderingContext): WebGLProgram {
+function createProgram(
+  gl: WebGLRenderingContext,
+  vertexSource = VERTEX_SHADER,
+  fragmentSource = FRAGMENT_SHADER,
+): WebGLProgram {
   const program = gl.createProgram();
   if (!program) throw new Error("Unable to create the WebGL program.");
-  gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER));
-  gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER));
+  gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, vertexSource));
+  gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource));
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     throw new Error(gl.getProgramInfoLog(program) || "WebGL program link failed.");
   }
   return program;
+}
+
+function createTerrainTexture(gl: WebGLRenderingContext): WebGLTexture {
+  const texture = gl.createTexture();
+  if (!texture) throw new Error("Unable to allocate the terrain texture atlas.");
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    TEXTURE_TILE_SIZE * TEXTURE_ATLAS_COLUMNS,
+    TEXTURE_TILE_SIZE * TEXTURE_ATLAS_ROWS,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    TEXTURE_ATLAS_RGBA,
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  return texture;
 }
 
 function perspective(fov: number, aspect: number, near: number, far: number): Float32Array {
@@ -501,6 +591,39 @@ function multiply(a: Float32Array, b: Float32Array): Float32Array {
 
 function pushVertex(output: number[], position: Vec3, color: Vec3): void {
   output.push(position[0], position[1], position[2], color[0], color[1], color[2]);
+}
+
+function pushTexturedVertex(
+  output: number[],
+  position: Vec3,
+  u: number,
+  v: number,
+  shade: number,
+): void {
+  output.push(position[0], position[1], position[2], u, v, shade);
+}
+
+function appendTexturedBlockFace(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  face: (typeof FACE_DEFS)[number],
+  textureName: Parameters<typeof textureAtlasUv>[0],
+  shade: number,
+): void {
+  const uv = textureAtlasUv(textureName);
+  for (const point of face.vertices) {
+    const horizontal = face.neighbor[0] !== 0 ? point[2] : point[0];
+    const vertical = face.neighbor[1] !== 0 ? point[2] : point[1];
+    pushTexturedVertex(
+      output,
+      [x + point[0], y + point[1], z + point[2]],
+      uv.left + (uv.right - uv.left) * horizontal,
+      uv.bottom + (uv.top - uv.bottom) * vertical,
+      shade,
+    );
+  }
 }
 
 function tint(color: Vec3, shade: number, variation = 1): Vec3 {
@@ -670,6 +793,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const gl = canvas.getContext("webgl", { alpha: false, antialias: true });
   if (!gl) throw new Error("Lakecraft needs a browser with WebGL enabled.");
   const program = createProgram(gl);
+  const terrainProgram = createProgram(gl, TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
+  const terrainTexture = createTerrainTexture(gl);
   const positionLocation = gl.getAttribLocation(program, "aPosition");
   const colorLocation = gl.getAttribLocation(program, "aColor");
   const mvpLocation = gl.getUniformLocation(program, "uMvp");
@@ -682,6 +807,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const ambientIntensityLocation = gl.getUniformLocation(program, "uAmbientIntensity");
   const directionalIntensityLocation = gl.getUniformLocation(program, "uDirectionalIntensity");
   const torchLightsLocation = gl.getUniformLocation(program, "uTorchLights[0]");
+  const terrainPositionLocation = gl.getAttribLocation(terrainProgram, "aPosition");
+  const terrainUvLocation = gl.getAttribLocation(terrainProgram, "aUv");
+  const terrainShadeLocation = gl.getAttribLocation(terrainProgram, "aShade");
+  const terrainMvpLocation = gl.getUniformLocation(terrainProgram, "uMvp");
+  const terrainCameraLocation = gl.getUniformLocation(terrainProgram, "uCamera");
+  const terrainFogLocation = gl.getUniformLocation(terrainProgram, "uFogEnabled");
+  const terrainFogColorLocation = gl.getUniformLocation(terrainProgram, "uFogColor");
+  const terrainAmbientColorLocation = gl.getUniformLocation(terrainProgram, "uAmbientColor");
+  const terrainDirectionalColorLocation = gl.getUniformLocation(terrainProgram, "uDirectionalColor");
+  const terrainAmbientIntensityLocation = gl.getUniformLocation(terrainProgram, "uAmbientIntensity");
+  const terrainDirectionalIntensityLocation = gl.getUniformLocation(terrainProgram, "uDirectionalIntensity");
+  const terrainTorchLightsLocation = gl.getUniformLocation(terrainProgram, "uTorchLights[0]");
+  const terrainAtlasLocation = gl.getUniformLocation(terrainProgram, "uAtlas");
   const lineBuffer = gl.createBuffer();
   if (!lineBuffer) throw new Error("Unable to allocate WebGL buffers.");
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
@@ -858,7 +996,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const mesh = chunkMeshes.get(owner);
     if (mesh) {
       worldVertexCount -= mesh.vertexCount;
-      gl.deleteBuffer(mesh.buffer);
+      if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
+      if (mesh.colorBuffer) gl.deleteBuffer(mesh.colorBuffer);
       chunkMeshes.delete(owner);
     }
     for (const key of chunkBlocks.get(owner) ?? []) {
@@ -931,7 +1070,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function rebuildChunkMesh(chunkKey: string): void {
-    const vertices: number[] = [];
+    const textureVertices: number[] = [];
+    const colorVertices: number[] = [];
     let minY = Infinity;
     let maxY = -Infinity;
     for (const key of chunkBlocks.get(chunkKey) ?? []) {
@@ -941,54 +1081,86 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y + (isDoorBlock(block) ? 1.9 : 1));
       if (block === BLOCK.TORCH) {
-        appendTorchMesh(vertices, x, y, z);
+        appendTorchMesh(colorVertices, x, y, z);
         continue;
       }
       if (block === BLOCK.CHEST) {
-        appendChestMesh(vertices, x, y, z);
+        appendChestMesh(colorVertices, x, y, z);
         continue;
       }
       if (isDoorBlock(block)) {
-        appendDoorMesh(vertices, x, y, z, block === BLOCK.DOOR_OPEN);
+        appendDoorMesh(colorVertices, x, y, z, block === BLOCK.DOOR_OPEN);
         continue;
       }
       if (block === BLOCK.BED) {
-        appendBedMesh(vertices, x, y, z);
-        continue;
-      }
-      if (block === BLOCK.FURNACE) {
-        appendFurnaceMesh(vertices, x, y, z);
+        appendBedMesh(colorVertices, x, y, z);
         continue;
       }
       if (block === BLOCK.LADDER) {
-        appendLadderMesh(vertices, x, y, z);
-        continue;
-      }
-      if (block === BLOCK.GLASS) {
-        appendGlassMesh(vertices, x, y, z);
+        appendLadderMesh(colorVertices, x, y, z);
         continue;
       }
       const base = blockMaterialColor(block) as Vec3;
       const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
         if (blockOccludesFaces(getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]))) continue;
+        const textureName = blockTextureForFace(block, face.face);
+        if (textureName) {
+          appendTexturedBlockFace(
+            textureVertices,
+            x,
+            y,
+            z,
+            face,
+            textureName,
+            face.shade * variation,
+          );
+          continue;
+        }
         const color = tint(base, face.shade, variation);
-        for (const point of face.vertices) pushVertex(vertices, [x + point[0], y + point[1], z + point[2]], color);
+        for (const point of face.vertices) pushVertex(colorVertices, [x + point[0], y + point[1], z + point[2]], color);
       }
     }
     const previous = chunkMeshes.get(chunkKey);
     worldVertexCount -= previous?.vertexCount ?? 0;
-    if (vertices.length === 0) {
-      if (previous) gl.deleteBuffer(previous.buffer);
+    if (textureVertices.length === 0 && colorVertices.length === 0) {
+      if (previous?.textureBuffer) gl.deleteBuffer(previous.textureBuffer);
+      if (previous?.colorBuffer) gl.deleteBuffer(previous.colorBuffer);
       chunkMeshes.delete(chunkKey);
       return;
     }
-    const buffer = previous?.buffer ?? gl.createBuffer();
-    if (!buffer) throw new Error("Unable to allocate a chunk mesh buffer.");
-    const vertexCount = vertices.length / 6;
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-    chunkMeshes.set(chunkKey, { buffer, vertexCount, minY, maxY });
+    let textureBuffer = previous?.textureBuffer ?? null;
+    if (textureVertices.length) {
+      textureBuffer ??= gl.createBuffer();
+      if (!textureBuffer) throw new Error("Unable to allocate a textured chunk mesh buffer.");
+      gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureVertices), gl.STATIC_DRAW);
+    } else if (textureBuffer) {
+      gl.deleteBuffer(textureBuffer);
+      textureBuffer = null;
+    }
+    let colorBuffer = previous?.colorBuffer ?? null;
+    if (colorVertices.length) {
+      colorBuffer ??= gl.createBuffer();
+      if (!colorBuffer) throw new Error("Unable to allocate a color chunk mesh buffer.");
+      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorVertices), gl.STATIC_DRAW);
+    } else if (colorBuffer) {
+      gl.deleteBuffer(colorBuffer);
+      colorBuffer = null;
+    }
+    const textureVertexCount = textureVertices.length / TEXTURED_WORLD_VERTEX_FLOATS;
+    const colorVertexCount = colorVertices.length / 6;
+    const vertexCount = textureVertexCount + colorVertexCount;
+    chunkMeshes.set(chunkKey, {
+      textureBuffer,
+      textureVertexCount,
+      colorBuffer,
+      colorVertexCount,
+      vertexCount,
+      minY,
+      maxY,
+    });
     worldVertexCount += vertexCount;
   }
 
@@ -1176,6 +1348,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 24, 12);
   }
 
+  function bindTerrainBuffer(buffer: WebGLBuffer): void {
+    const stride = TEXTURED_WORLD_VERTEX_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.enableVertexAttribArray(terrainPositionLocation);
+    gl.vertexAttribPointer(terrainPositionLocation, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(terrainUvLocation);
+    gl.vertexAttribPointer(terrainUvLocation, 2, gl.FLOAT, false, stride, 12);
+    gl.enableVertexAttribArray(terrainShadeLocation);
+    gl.vertexAttribPointer(terrainShadeLocation, 1, gl.FLOAT, false, stride, 20);
+  }
+
   function resize(): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
@@ -1281,6 +1464,44 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
+    visibleChunkCount = 0;
+    drawCalls = 0;
+    avatarDrawCalls = 0;
+    mobDrawCalls = 0;
+    droppedItemDrawCalls = 0;
+
+    gl.useProgram(terrainProgram);
+    gl.uniformMatrix4fv(terrainMvpLocation, false, mvp);
+    gl.uniform3fv(terrainCameraLocation, eye);
+    gl.uniform3f(terrainFogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+    gl.uniform3f(
+      terrainAmbientColorLocation,
+      dayNightState.ambientR,
+      dayNightState.ambientG,
+      dayNightState.ambientB,
+    );
+    gl.uniform3f(
+      terrainDirectionalColorLocation,
+      dayNightState.directionalR,
+      dayNightState.directionalG,
+      dayNightState.directionalB,
+    );
+    gl.uniform1f(terrainAmbientIntensityLocation, dayNightState.ambientIntensity);
+    gl.uniform1f(terrainDirectionalIntensityLocation, dayNightState.directionalIntensity);
+    gl.uniform4fv(terrainTorchLightsLocation, activeTorchUniforms);
+    gl.uniform1f(terrainFogLocation, 1);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
+    gl.uniform1i(terrainAtlasLocation, 0);
+    for (const [key, mesh] of chunkMeshes) {
+      if (!chunkIntersectsView(key, mesh, mvp)) continue;
+      visibleChunkCount += 1;
+      if (!mesh.textureBuffer || !mesh.textureVertexCount) continue;
+      bindTerrainBuffer(mesh.textureBuffer);
+      gl.drawArrays(gl.TRIANGLES, 0, mesh.textureVertexCount);
+      drawCalls += 1;
+    }
+
     gl.useProgram(program);
     gl.uniformMatrix4fv(mvpLocation, false, mvp);
     gl.uniform3fv(cameraLocation, eye);
@@ -1302,16 +1523,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform4fv(torchLightsLocation, activeTorchUniforms);
     gl.uniform1f(lightingLocation, 1);
     gl.uniform1f(fogLocation, 1);
-    visibleChunkCount = 0;
-    drawCalls = 0;
-    avatarDrawCalls = 0;
-    mobDrawCalls = 0;
-    droppedItemDrawCalls = 0;
     for (const [key, mesh] of chunkMeshes) {
       if (!chunkIntersectsView(key, mesh, mvp)) continue;
-      bindBuffer(mesh.buffer);
-      gl.drawArrays(gl.TRIANGLES, 0, mesh.vertexCount);
-      visibleChunkCount += 1;
+      if (!mesh.colorBuffer || !mesh.colorVertexCount) continue;
+      bindBuffer(mesh.colorBuffer);
+      gl.drawArrays(gl.TRIANGLES, 0, mesh.colorVertexCount);
       drawCalls += 1;
     }
     if (remoteVertexCount) {
@@ -1531,7 +1747,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.removeEventListener("contextmenu", onContextMenu);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
       clearMining();
-      for (const mesh of chunkMeshes.values()) gl.deleteBuffer(mesh.buffer);
+      for (const mesh of chunkMeshes.values()) {
+        if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
+        if (mesh.colorBuffer) gl.deleteBuffer(mesh.colorBuffer);
+      }
       chunkMeshes.clear();
       pendingChunkMeshRebuilds.clear();
       loadedChunkKeys.clear();
@@ -1543,6 +1762,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteBuffer(lineBuffer);
       mobRenderer.destroy();
       gl.deleteProgram(program);
+      gl.deleteProgram(terrainProgram);
+      gl.deleteTexture(terrainTexture);
     },
     applyWorldEdits(edits) {
       const loadedEdits: WorldEdit[] = [];

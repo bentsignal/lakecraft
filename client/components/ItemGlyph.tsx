@@ -1,4 +1,5 @@
 import { ITEMS, type ItemId, type ItemStack } from "../../shared/game";
+import { ITEM_ICON_SIZE, getItemIconArt } from "./itemIconArt";
 
 export type ItemGlyphProps = {
   stack: ItemStack | null;
@@ -6,28 +7,36 @@ export type ItemGlyphProps = {
   muted?: boolean;
 };
 
-export function ItemGlyph({ stack, compact = false, muted = false }: ItemGlyphProps) {
+export function ItemIcon({ stack, compact = false, muted = false }: ItemGlyphProps) {
   if (!stack) return <span className="lc-item-glyph lc-item-glyph--empty" aria-hidden="true" />;
   const item = ITEMS[stack.itemId];
+  const art = getItemIconArt(stack.itemId);
   return (
     <span
-      className={`lc-item-glyph lc-item-glyph--${item.category}${muted ? " is-muted" : ""}`}
-      style={{ "--item-color": item.color }}
+      className={`lc-item-glyph lc-item-icon lc-item-glyph--${item.category}${compact ? " is-compact" : ""}${muted ? " is-muted" : ""}`}
+      data-icon-family={art.family}
+      data-icon-variant={art.variant}
       aria-hidden="true"
     >
-      <span className="lc-item-glyph__mark">{item.glyph}</span>
-      {!compact ? <span className="lc-item-glyph__code">{item.shortLabel}</span> : null}
+      <svg className="lc-item-icon__svg" viewBox={`0 0 ${ITEM_ICON_SIZE} ${ITEM_ICON_SIZE}`} shape-rendering="crispEdges" focusable="false">
+        {art.runs.map((run, index) => (
+          <rect fill={run.color} height="1" key={`${run.x}:${run.y}:${index}`} width={run.width} x={run.x} y={run.y} />
+        ))}
+      </svg>
       {stack.count > 1 ? <span className="lc-item-glyph__count">{stack.count}</span> : null}
     </span>
   );
 }
+
+/** Existing call sites keep this name while new UI can use ItemIcon directly. */
+export const ItemGlyph = ItemIcon;
 
 export function IngredientGlyph({ itemId, count, available }: { itemId: ItemId; count: number; available: number }) {
   const item = ITEMS[itemId];
   const enough = available >= count;
   return (
     <span className={`lc-ingredient${enough ? "" : " is-short"}`} title={`${item.label}: ${available} held, ${count} needed`}>
-      <span className="lc-ingredient__mark" style={{ color: item.color }}>{item.glyph}</span>
+      <span className="lc-ingredient__icon"><ItemIcon stack={{ itemId, count: 1 }} compact /></span>
       <span>{count}</span>
     </span>
   );

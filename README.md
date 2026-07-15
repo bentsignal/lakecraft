@@ -32,10 +32,12 @@ npx lakebed auth as alice
 
 ## Project shape
 
-- `client/game/` — custom streamed-chunk WebGL renderer, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
-- `client/components/` — Minecraft-style survival HUD, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, furnaces, and shared chests
+- `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered original 16×16 texture atlas, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
+- `client/components/` — Minecraft-style survival HUD, 72 original pixel item sprites, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, furnaces, and shared chests
 - `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, 5 Hz multiplayer presence/chat, CAS-safe inventories, atomic world item drops/pickups, shared-chest transfers, and the synchronized sleep clock
 - `shared/` — pure item, recipe, and wire-protocol types
+
+The original pixel-art workflow and exact regeneration command live in [TEXTURE_PIPELINE.md](./TEXTURE_PIPELINE.md).
 
 ## Build and deploy
 
@@ -46,7 +48,7 @@ node scripts/prepare-lakebed-deploy.mjs "$stage"
 npx lakebed deploy "$stage" --json
 ```
 
-The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB; it still builds and deploys through `npx lakebed` and uses Lakebed's own bundled compiler. The staging helper carries `lakebed.json` into the release capsule so every update targets the claimed production deployment. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
+The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB. It uses Lakebed's bundled compiler to flatten the client and server into two minified entrypoints, then still builds and deploys through `npx lakebed`. The helper carries `lakebed.json` into the release capsule so every update targets the claimed production deployment. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
 
 ## Multiplayer architecture
 

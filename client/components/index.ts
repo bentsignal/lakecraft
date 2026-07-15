@@ -4,7 +4,7 @@ export { Hotbar, type HotbarProps } from "./Hotbar";
 export { HudStyles } from "./HudStyles";
 export { PauseMenu, type PauseMenuProps } from "./PauseMenu";
 export { PlayerList, type PlayerListEntry, type PlayerListProps } from "./PlayerList";
-export { IngredientGlyph, ItemGlyph, type ItemGlyphProps } from "./ItemGlyph";
+export { IngredientGlyph, ItemGlyph, ItemIcon, type ItemGlyphProps } from "./ItemGlyph";
 export { CraftingGridView, type CraftingGridViewProps } from "./CraftingGrid";
 export { InventoryCraftingDrawer, type InventoryCraftingDrawerProps } from "./InventoryDrawer";
 export { ChestDrawer, type ChestDrawerProps, type ChestTransferDirection } from "./ChestDrawer";

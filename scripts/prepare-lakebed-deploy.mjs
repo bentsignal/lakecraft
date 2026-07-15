@@ -1,6 +1,6 @@
-import { access, cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const sourceRoot = resolve(process.cwd());
@@ -28,29 +28,37 @@ async function findLakebedEsbuild() {
   return candidates[0].esbuildPath;
 }
 
-const { transform } = await import(pathToFileURL(await findLakebedEsbuild()).href);
+const { build } = await import(pathToFileURL(await findLakebedEsbuild()).href);
 
-async function transformTree(directory) {
-  const sourceDirectory = join(sourceRoot, directory);
-  for (const entry of await readdir(sourceDirectory, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    const sourcePath = join(entry.parentPath, entry.name);
-    const targetPath = join(stageRoot, relative(sourceRoot, sourcePath));
-    await mkdir(dirname(targetPath), { recursive: true });
-    const output = await transform(await readFile(sourcePath, "utf8"), {
-      format: "esm",
-      jsx: "automatic",
-      jsxImportSource: "preact",
-      loader: extname(sourcePath) === ".tsx" ? "tsx" : "ts",
-      minify: true,
-      target: "es2022",
-    });
-    await writeFile(targetPath, output.code);
-  }
+async function bundleEntrypoint(sourcePath, targetPath) {
+  const result = await build({
+    absWorkingDir: sourceRoot,
+    bundle: true,
+    entryPoints: [sourcePath],
+    external: ["lakebed/client", "lakebed/server", "preact", "preact/hooks", "preact/jsx-runtime"],
+    format: "esm",
+    jsx: "automatic",
+    jsxImportSource: "preact",
+    legalComments: "none",
+    minify: true,
+    platform: "browser",
+    sourcemap: false,
+    target: "es2022",
+    treeShaking: true,
+    write: false,
+  });
+  const output = result.outputFiles?.[0];
+  if (!output) throw new Error(`Bundling ${sourcePath} produced no output.`);
+  const absoluteTarget = join(stageRoot, targetPath);
+  await mkdir(dirname(absoluteTarget), { recursive: true });
+  await writeFile(absoluteTarget, output.text);
 }
 
 await mkdir(join(stageRoot, ".lakebed"), { recursive: true });
-await Promise.all([transformTree("client"), transformTree("server"), transformTree("shared")]);
+await Promise.all([
+  bundleEntrypoint("client/index.tsx", "client/index.tsx"),
+  bundleEntrypoint("server/index.ts", "server/index.ts"),
+]);
 await cp(join(sourceRoot, "favicon.svg"), join(stageRoot, "favicon.svg"));
 for (const relativePath of ["lakebed.json", ".lakebed/deploy.json", ".env.lakebed.server"]) {
   try {
