@@ -19,12 +19,8 @@ import {
   attackDamage,
   clampHotbarIndex,
   consumeFood,
-  createEmptyEquipment,
-  createStarterInventory,
   getDeterministicMiningDrop,
   miningSeconds,
-  normalizeEquipment,
-  normalizeInventory,
   removeItem,
   type BlockId,
   type CraftingContext,
@@ -32,7 +28,7 @@ import {
   type Inventory,
   type ItemId,
 } from "../../shared/game";
-import { DROPPED_ITEM_PICKUP_RADIUS, validateDroppedItemStack } from "../../shared/droppedItems.ts";
+import { DROPPED_ITEM_PICKUP_RADIUS } from "../../shared/droppedItems.ts";
 import { planDeathDrops } from "../../shared/deathDrops.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
@@ -40,8 +36,27 @@ import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
 import { planOakTreeGrowth } from "../../shared/treeGrowth";
 import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudioSurface } from "../game/audio";
-
-const SAVE_KEY = "lakecraft.singleplayer.v1";
+import {
+  SINGLEPLAYER_SAVE_LIMITS,
+  createDefaultSinglePlayerSnapshot,
+  loadSinglePlayerSave,
+  saveSinglePlayerSnapshot,
+  type SinglePlayerLoadResult,
+  type SinglePlayerSnapshot,
+} from "./localSave.ts";
+import {
+  commitSaveCadence,
+  createSaveCadenceState,
+  markSaveCadenceDirty,
+  sampleSaveCadence,
+} from "./saveCadence.ts";
+import {
+  createLocalContainers,
+  exportLocalContainersSnapshot,
+  importLocalContainersSnapshot,
+  removeLocalContainersAt,
+  type LocalContainers,
+} from "./localContainers.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -97,68 +112,73 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   return "generic";
 }
 
-type LocalSave = {
-  inventory: Inventory;
-  equipment: Equipment;
-  selected: number;
-  hunger: number;
-  edits: WorldEdit[];
-  drops: DroppedItemRenderItem[];
+type InitialLocalWorld = {
+  snapshot: SinglePlayerSnapshot;
+  containers: LocalContainers;
+  load: SinglePlayerLoadResult;
+  saveLocked: boolean;
 };
 
-function loadLocalSave(): LocalSave {
-  const fallback = { inventory: createStarterInventory(), equipment: createEmptyEquipment(), selected: 2, hunger: MAX_HUNGER, edits: [], drops: [] };
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return fallback;
-    const value = JSON.parse(raw) as Partial<LocalSave>;
-    const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
-      edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.BRICKS,
-    )).slice(-8_000) : [];
-    const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
-      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
-      const row = candidate as Partial<DroppedItemRenderItem>;
-      const item = validateDroppedItemStack(row.item);
-      return typeof row.dropId === "string" && row.dropId.length <= 64 && item
-        && typeof row.x === "number" && Number.isFinite(row.x)
-        && typeof row.y === "number" && Number.isFinite(row.y)
-        && typeof row.z === "number" && Number.isFinite(row.z)
-        && typeof row.droppedAt === "number" && Number.isSafeInteger(row.droppedAt)
-        ? [{ dropId: row.dropId, item, x: row.x, y: row.y, z: row.z, droppedAt: row.droppedAt }]
-        : [];
-    }).slice(-256) : [];
+function loadInitialLocalWorld(): InitialLocalWorld {
+  const now = Date.now();
+  const finish = (snapshot: SinglePlayerSnapshot, load: SinglePlayerLoadResult, saveLocked: boolean): InitialLocalWorld => {
+    const imported = importLocalContainersSnapshot({ chests: snapshot.chests, furnaces: snapshot.furnaces });
     return {
-      inventory: normalizeInventory(value.inventory),
-      equipment: normalizeEquipment(value.equipment),
-      selected: clampHotbarIndex(value.selected),
-      hunger: Number.isInteger(value.hunger) ? Math.max(0, Math.min(MAX_HUNGER, Number(value.hunger))) : MAX_HUNGER,
-      edits,
-      drops,
+      snapshot,
+      containers: imported.ok ? imported.containers : createLocalContainers(),
+      load,
+      saveLocked: saveLocked || !imported.ok,
     };
+  };
+  try {
+    const load = loadSinglePlayerSave(localStorage, { now: () => now });
+    if (load.snapshot) return finish(load.snapshot, load, false);
+    if (load.status === "empty") {
+      return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, false);
+    }
+    // Never overwrite corrupt or future-format data with a permissive reset.
+    return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, true);
   } catch {
-    return fallback;
+    const load: SinglePlayerLoadResult = {
+      status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: ["storage:unavailable"],
+    };
+    return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, true);
   }
 }
 
 export function SinglePlayerApp() {
-  const initial = useRef<LocalSave | null>(null);
-  if (!initial.current) initial.current = loadLocalSave();
+  const initial = useRef<InitialLocalWorld | null>(null);
+  if (!initial.current) initial.current = loadInitialLocalWorld();
+  const initialSnapshot = initial.current.snapshot;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
-  const inventoryRef = useRef(initial.current.inventory);
-  const equipmentRef = useRef(initial.current.equipment);
-  const selectedRef = useRef(initial.current.selected);
-  const editsRef = useRef(initial.current.edits);
-  const hungerRef = useRef(initial.current.hunger);
-  const healthRef = useRef(MAX_HEALTH);
-  const dropsRef = useRef<DroppedItemRenderItem[]>(initial.current.drops);
+  const inventoryRef = useRef(initialSnapshot.player.inventory);
+  const equipmentRef = useRef(initialSnapshot.player.equipment);
+  const selectedRef = useRef(initialSnapshot.player.selectedHotbar);
+  const editsRef = useRef(initialSnapshot.world.edits);
+  const hungerRef = useRef(initialSnapshot.player.hunger);
+  const healthRef = useRef(initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH);
+  const dropsRef = useRef<DroppedItemRenderItem[]>(initialSnapshot.drops);
+  const worldRef = useRef({ ...initialSnapshot.world, weather: { ...initialSnapshot.world.weather } });
+  const progressionRef = useRef({
+    experience: initialSnapshot.progression.experience,
+    recipes: [...initialSnapshot.progression.recipes],
+    advancements: [...initialSnapshot.progression.advancements],
+  });
+  const containersRef = useRef<LocalContainers>(initial.current.containers);
+  const primedTntRef = useRef(initialSnapshot.primedTnt.map((fuse) => ({ ...fuse })));
+  const initialRuntimeRef = useRef(initialSnapshot.runtime);
+  const saveCadenceRef = useRef(createSaveCadenceState(performance.now()));
+  const saveLockedRef = useRef(initial.current.saveLocked);
+  const saveInProgressRef = useRef(false);
+  const performSaveRef = useRef<(reason: "manual" | "autosave" | "quit") => boolean>(() => false);
+  const setLocalFusesPausedRef = useRef<(paused: boolean) => void>(() => undefined);
   const localRespawnBusyRef = useRef(false);
-  const [inventory, setInventory] = useState<Inventory>(initial.current.inventory);
-  const [equipment, setEquipment] = useState<Equipment>(initial.current.equipment);
-  const [selected, setSelected] = useState(initial.current.selected);
-  const [hunger, setHunger] = useState(initial.current.hunger);
-  const [health, setHealth] = useState(MAX_HEALTH);
+  const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
+  const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
+  const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
+  const [hunger, setHunger] = useState(initialSnapshot.player.hunger);
+  const [health, setHealth] = useState(initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
@@ -167,26 +187,93 @@ export function SinglePlayerApp() {
   const [handActionToken, setHandActionToken] = useState(0);
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
+  const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
+    : initial.current.load.status === "migrated" ? "Imported the previous local world."
+      : initial.current.saveLocked ? "Saving disabled to protect unreadable world data." : "";
+  const initialSavedAt = "savedAt" in initial.current.load ? initial.current.load.savedAt : null;
+  const [saveStatusText, setSaveStatusText] = useState(initialSaveText);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialSavedAt);
+  const [saveInProgress, setSaveInProgress] = useState(false);
 
-  function persist(nextInventory = inventoryRef.current, nextEquipment = equipmentRef.current) {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
-        inventory: nextInventory,
-        equipment: nextEquipment,
-        selected: selectedRef.current,
-        hunger: hungerRef.current,
-        edits: editsRef.current.slice(-8_000),
-        drops: dropsRef.current.slice(-256),
-      } satisfies LocalSave));
-    } catch {
-      // A full browser storage bucket must never stop the local game loop.
+  function markWorldDirty(): void {
+    const cadence = saveCadenceRef.current;
+    if (cadence.dirtyRevision === cadence.savedRevision) {
+      saveCadenceRef.current = markSaveCadenceDirty(cadence);
     }
   }
+
+  function buildSnapshot(): SinglePlayerSnapshot | null {
+    const containers = exportLocalContainersSnapshot(containersRef.current);
+    if (!containers.ok) return null;
+    const activePlayMs = Math.floor(Math.min(
+      Number.MAX_SAFE_INTEGER,
+      worldRef.current.activePlayMs + saveCadenceRef.current.activePlayMsSinceSave,
+    ));
+    return {
+      world: {
+        ...worldRef.current,
+        activePlayMs,
+        weather: { ...worldRef.current.weather },
+        edits: editsRef.current.map((edit) => ({ ...edit })),
+      },
+      player: {
+        inventory: inventoryRef.current.map((stack) => stack ? { ...stack } : null),
+        equipment: {
+          head: equipmentRef.current.head ? { ...equipmentRef.current.head } : null,
+          chest: equipmentRef.current.chest ? { ...equipmentRef.current.chest } : null,
+          legs: equipmentRef.current.legs ? { ...equipmentRef.current.legs } : null,
+          feet: equipmentRef.current.feet ? { ...equipmentRef.current.feet } : null,
+        },
+        selectedHotbar: selectedRef.current,
+        hunger: hungerRef.current,
+      },
+      progression: {
+        experience: progressionRef.current.experience,
+        recipes: [...progressionRef.current.recipes],
+        advancements: [...progressionRef.current.advancements],
+      },
+      drops: dropsRef.current.map((drop) => ({ ...drop, item: { ...drop.item } })),
+      chests: containers.snapshot.chests,
+      furnaces: containers.snapshot.furnaces,
+      primedTnt: primedTntRef.current.map((fuse) => ({ ...fuse })),
+      runtime: engineRef.current?.exportRuntimeSnapshot() ?? initialRuntimeRef.current,
+    };
+  }
+
+  function persist(reason: "manual" | "autosave" | "quit" = "manual"): boolean {
+    if (saveLockedRef.current || saveInProgressRef.current) return false;
+    const snapshot = buildSnapshot();
+    if (!snapshot) {
+      setSaveStatusText("Save failed: invalid local container state.");
+      return false;
+    }
+    saveInProgressRef.current = true;
+    setSaveInProgress(true);
+    const now = Date.now();
+    const result = saveSinglePlayerSnapshot(localStorage, snapshot, now);
+    saveInProgressRef.current = false;
+    setSaveInProgress(false);
+    if (!result.ok) {
+      const invalidPath = result.path ? ` (${result.path})` : "";
+      setSaveStatusText(result.reason === "too_large" ? "Save failed: this world exceeds browser storage limits."
+        : result.reason === "unsafe_existing_data" ? "Save blocked to protect existing world data."
+          : `Save failed${invalidPath}. The previous good snapshot is still intact.`);
+      if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
+      return false;
+    }
+    worldRef.current = { ...snapshot.world, weather: { ...snapshot.world.weather } };
+    initialRuntimeRef.current = snapshot.runtime;
+    saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
+    setLastSavedAt(now);
+    setSaveStatusText(reason === "autosave" ? "World autosaved." : reason === "quit" ? "World saved." : "World saved.");
+    return true;
+  }
+  performSaveRef.current = persist;
 
   function updateInventory(next: Inventory) {
     inventoryRef.current = next;
     setInventory(next);
-    persist(next);
+    markWorldDirty();
   }
 
   function selectHotbar(index: number) {
@@ -194,7 +281,7 @@ export function SinglePlayerApp() {
     if (next === selectedRef.current) return;
     selectedRef.current = next;
     setSelected(next);
-    persist();
+    markWorldDirty();
   }
 
   function collectLocalDrops(pose: { x: number; y: number; z: number }): void {
@@ -223,7 +310,7 @@ export function SinglePlayerApp() {
     dropsRef.current = remaining;
     setInventory(nextInventory);
     engineRef.current?.setDroppedItems(remaining);
-    persist(nextInventory);
+    markWorldDirty();
   }
 
   function respawnLocally(): void {
@@ -245,7 +332,7 @@ export function SinglePlayerApp() {
       setRespawning(false);
       return;
     }
-    if (dropsRef.current.length + plan.drops.length > 256) {
+    if (dropsRef.current.length + plan.drops.length > SINGLEPLAYER_SAVE_LIMITS.drops) {
       setMessages((current) => [...current.slice(-2), { id: `death-cap-${deathAt}`, text: "Respawn blocked", detail: "Too many saved items are already lying in this world; your pack was not changed.", tone: "warning" }]);
       localRespawnBusyRef.current = false;
       setRespawning(false);
@@ -267,7 +354,7 @@ export function SinglePlayerApp() {
     setEquipment(plan.carriedState.equipment);
     setHunger(MAX_HUNGER);
     engine.setDroppedItems(dropsRef.current);
-    persist(plan.carriedState.inventory, plan.carriedState.equipment);
+    markWorldDirty();
     engine.respawn();
     setDeathScreenOpen(false);
     localRespawnBusyRef.current = false;
@@ -279,7 +366,50 @@ export function SinglePlayerApp() {
     if (!canvas) return;
     const audio = createGameAudio({ maxVoices: 12 });
     const unlockAudio = () => { void audio.unlock(); };
-    const fuseTimers = new Map<string, { interval: number; timeout: number }>();
+    type LocalFuseTimer = {
+      interval: number;
+      timeout: number;
+      remainingMs: number;
+      startedAt: number;
+      explode: () => void;
+    };
+    const fuseTimers = new Map<string, LocalFuseTimer>();
+    let fusesPaused = true;
+    const clearFuseSchedule = (timer: LocalFuseTimer) => {
+      if (timer.interval) window.clearInterval(timer.interval);
+      if (timer.timeout) window.clearTimeout(timer.timeout);
+      timer.interval = 0;
+      timer.timeout = 0;
+    };
+    const scheduleFuse = (key: string, timer: LocalFuseTimer) => {
+      if (fusesPaused) return;
+      timer.startedAt = performance.now();
+      timer.interval = window.setInterval(() => {
+        const [x, y, z] = key.split(":").map(Number);
+        engineRef.current?.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
+      }, 500);
+      timer.timeout = window.setTimeout(timer.explode, timer.remainingMs);
+    };
+    const setFusesPaused = (paused: boolean) => {
+      if (paused === fusesPaused) return;
+      const now = performance.now();
+      fusesPaused = paused;
+      for (const [key, timer] of fuseTimers) {
+        if (paused) {
+          timer.remainingMs = Math.max(0, timer.remainingMs - Math.max(0, now - timer.startedAt));
+          clearFuseSchedule(timer);
+        } else {
+          scheduleFuse(key, timer);
+        }
+        const [x, y, z] = key.split(":").map(Number);
+        const savedAt = Date.now();
+        primedTntRef.current = primedTntRef.current.map((fuse) => fuse.x === x && fuse.y === y && fuse.z === z
+          ? { ...fuse, ignitedAt: savedAt, dueAt: savedAt + timer.remainingMs }
+          : fuse);
+      }
+      if (fuseTimers.size > 0) markWorldDirty();
+    };
+    setLocalFusesPausedRef.current = setFusesPaused;
     window.addEventListener("pointerdown", unlockAudio, true);
     window.addEventListener("keydown", unlockAudio, true);
     const primeLocalTnt = (
@@ -293,10 +423,24 @@ export function SinglePlayerApp() {
       const key = `${x}:${y}:${z}`;
       if (fuseTimers.has(key)) return true;
       if (fuseTimers.size >= 32 || !engineRef.current?.setPrimedTnt(x, y, z, true)) return false;
+      const startedAt = Date.now();
+      const persistedFuse = primedTntRef.current.find((fuse) => fuse.x === x && fuse.y === y && fuse.z === z);
+      const effectiveDurationMs = persistedFuse
+        ? Math.max(0, persistedFuse.dueAt - startedAt)
+        : Math.max(0, Math.floor(durationMs));
+      if (!persistedFuse) {
+        primedTntRef.current = [...primedTntRef.current, {
+          eventId: `local_tnt_${startedAt}_${x}_${y}_${z}`.slice(0, 96),
+          x, y, z, ignitedAt: startedAt, dueAt: startedAt + effectiveDurationMs,
+        }];
+        markWorldDirty();
+      }
       if (spendTool) {
         const toolUse = applyConfirmedDurableItemUse(inventoryRef.current, selectedRef.current, "flint_and_steel");
         if (!toolUse.used) {
           engineRef.current.setPrimedTnt(x, y, z, false);
+          primedTntRef.current = primedTntRef.current.filter((fuse) => fuse.x !== x || fuse.y !== y || fuse.z !== z);
+          markWorldDirty();
           return false;
         }
         updateInventory(toolUse.inventory);
@@ -309,19 +453,19 @@ export function SinglePlayerApp() {
         detail: "Four-second fuse — stand back.",
         tone: "warning",
       }]);
-      const interval = window.setInterval(() => {
-        engineRef.current?.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
-      }, 500);
-      const timeout = window.setTimeout(() => {
-        window.clearInterval(interval);
+      const explode = () => {
+        const timer = fuseTimers.get(key);
+        if (timer) clearFuseSchedule(timer);
         fuseTimers.delete(key);
+        primedTntRef.current = primedTntRef.current.filter((fuse) => fuse.x !== x || fuse.y !== y || fuse.z !== z);
+        markWorldDirty();
         const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
         const destruction = edits.filter((edit) => !edit.chainPrimed);
         if (!destruction.length) return;
         const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
         for (const edit of destruction) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
-        editsRef.current = [...byCoordinate.values()].slice(-8_000);
-        persist();
+        editsRef.current = [...byCoordinate.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
+        markWorldDirty();
         audio.play("explosion", { seed: key, intensity: 1 });
         if (cascadeDepth < 8) {
           for (const edit of edits.filter((candidate) => candidate.chainPrimed).slice(0, 8)) {
@@ -336,12 +480,23 @@ export function SinglePlayerApp() {
           detail: `${destruction.length} blocks destroyed locally.`,
           tone: "warning",
         }]);
-      }, durationMs);
-      fuseTimers.set(key, { interval, timeout });
+      };
+      const timer: LocalFuseTimer = {
+        interval: 0,
+        timeout: 0,
+        remainingMs: effectiveDurationMs,
+        startedAt: performance.now(),
+        explode,
+      };
+      fuseTimers.set(key, timer);
+      scheduleFuse(key, timer);
       return true;
     };
     const engine = createVoxelEngine(canvas, {
+      seed: worldRef.current.seed,
       initialEdits: editsRef.current,
+      initialPose: initialRuntimeRef.current?.pose,
+      preserveInitialPose: Boolean(initialRuntimeRef.current),
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
       getMiningDuration: (block) => {
         const gameBlock = ENGINE_TO_GAME[block];
@@ -355,7 +510,12 @@ export function SinglePlayerApp() {
         for (const fallingEdit of settled) {
           nextEdits.set(`${fallingEdit.x}:${fallingEdit.y}:${fallingEdit.z}`, fallingEdit);
         }
-        editsRef.current = [...nextEdits.values()].slice(-8_000);
+        editsRef.current = [...nextEdits.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
+        if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
+          const removed = removeLocalContainersAt(containersRef.current, `${edit.x}:${edit.y}:${edit.z}`);
+          if (removed.ok) containersRef.current = removed.containers;
+        }
+        markWorldDirty();
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
         let next = inventoryRef.current;
         const toggledBlock = (previousBlock === BLOCK.DOOR_CLOSED && edit.block === BLOCK.DOOR_OPEN)
@@ -426,6 +586,7 @@ export function SinglePlayerApp() {
       onPlayerHealthChange: (nextHealth) => {
         healthRef.current = nextHealth;
         setHealth(nextHealth);
+        markWorldDirty();
         if (nextHealth > 0) return;
         setDeathScreenOpen(true);
         setPauseOpen(false);
@@ -485,7 +646,8 @@ export function SinglePlayerApp() {
           }));
           const savedEdits = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
           for (const edit of growthEdits) savedEdits.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
-          editsRef.current = [...savedEdits.values()].slice(-8_000);
+          editsRef.current = [...savedEdits.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
+          markWorldDirty();
           localEngine.applyWorldEdits(growthEdits);
           updateInventory(nextInventory);
           localEngine.spawnBlockParticles({ action: "place", block: BLOCK.LEAVES, x, y: y + 1, z });
@@ -512,24 +674,78 @@ export function SinglePlayerApp() {
       },
       onPoseChange: (pose) => {
         const next = { x: Math.floor(pose.x), y: Math.floor(pose.y), z: Math.floor(pose.z) };
-        setCoordinates((current) => current.x === next.x && current.y === next.y && current.z === next.z ? current : next);
+        setCoordinates((current) => {
+          if (current.x === next.x && current.y === next.y && current.z === next.z) return current;
+          markWorldDirty();
+          return next;
+        });
         collectLocalDrops(pose);
       },
     });
     engineRef.current = engine;
+    if (initialRuntimeRef.current && !engine.importRuntimeSnapshot(initialRuntimeRef.current)) {
+      setSaveStatusText("The saved player runtime was invalid; world state was left untouched.");
+      saveLockedRef.current = true;
+    }
     engine.setDroppedItems(dropsRef.current);
     engine.start();
+    for (const fuse of [...primedTntRef.current]) {
+      if (!primeLocalTnt(fuse.x, fuse.y, fuse.z, Math.max(0, fuse.dueAt - Date.now()), 0, false)) {
+        primedTntRef.current = primedTntRef.current.filter((candidate) => candidate.eventId !== fuse.eventId);
+        markWorldDirty();
+      }
+    }
     return () => {
       for (const timer of fuseTimers.values()) {
-        window.clearInterval(timer.interval);
-        window.clearTimeout(timer.timeout);
+        clearFuseSchedule(timer);
       }
       fuseTimers.clear();
+      setLocalFusesPausedRef.current = () => undefined;
       window.removeEventListener("pointerdown", unlockAudio, true);
       window.removeEventListener("keydown", unlockAudio, true);
+      performSaveRef.current("quit");
       audio.destroy();
       engine.destroy();
       engineRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const paused = pauseOpen || inventoryOpen || deathScreenOpen || document.visibilityState !== "visible";
+    engineRef.current?.setPaused(paused);
+    setLocalFusesPausedRef.current(paused);
+  }, [pauseOpen, inventoryOpen, deathScreenOpen]);
+
+  useEffect(() => {
+    const sample = () => {
+      const active = !pauseOpen && !inventoryOpen && !deathScreenOpen && document.visibilityState === "visible";
+      if (active) markWorldDirty();
+      const next = sampleSaveCadence(saveCadenceRef.current, performance.now(), active);
+      saveCadenceRef.current = next.state;
+      if (next.autosaveDue) performSaveRef.current("autosave");
+    };
+    sample();
+    const interval = window.setInterval(sample, 1_000);
+    const onVisibilityChange = () => {
+      const paused = document.visibilityState !== "visible" || pauseOpen || inventoryOpen || deathScreenOpen;
+      engineRef.current?.setPaused(paused);
+      setLocalFusesPausedRef.current(paused);
+      sample();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [pauseOpen, inventoryOpen, deathScreenOpen]);
+
+  useEffect(() => {
+    const saveBeforeLeaving = () => { performSaveRef.current("quit"); };
+    window.addEventListener("pagehide", saveBeforeLeaving);
+    window.addEventListener("beforeunload", saveBeforeLeaving);
+    return () => {
+      window.removeEventListener("pagehide", saveBeforeLeaving);
+      window.removeEventListener("beforeunload", saveBeforeLeaving);
     };
   }, []);
 
@@ -551,6 +767,13 @@ export function SinglePlayerApp() {
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [inventoryOpen]);
+
+  const lastSavedText = lastSavedAt === null ? "Not saved yet"
+    : `Last saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
+  const returnToTitle = () => {
+    if (!saveLockedRef.current && !persist("quit")) return;
+    window.location.href = window.location.pathname;
+  };
 
   return (
     <main className="lc-singleplayer">
@@ -574,23 +797,35 @@ export function SinglePlayerApp() {
         onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); engineRef.current?.requestPointerLock(); }}
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
-        onDisconnect={() => { persist(); window.location.href = window.location.pathname; }}
+        disconnectLabel="Save and Quit to Title"
+        lastSavedText={lastSavedText}
+        onDisconnect={returnToTitle}
         onInventoryWorkspaceChange={(snapshot: StowedInventorySnapshot, _epoch: number, _recipes: readonly InventoryRecipeBatch[]) => {
           inventoryRef.current = snapshot.inventory;
           equipmentRef.current = snapshot.equipment;
           setInventory(snapshot.inventory);
           setEquipment(snapshot.equipment);
-          persist(snapshot.inventory, snapshot.equipment);
+          markWorldDirty();
           return true;
+        }}
+        onInventoryWorkspacePreview={(snapshot) => {
+          inventoryRef.current = snapshot.inventory;
+          equipmentRef.current = snapshot.equipment;
+          markWorldDirty();
         }}
         onOptions={() => setMessages((current) => [...current, { id: `options-${Date.now()}`, title: "Options", detail: "More single-player settings are next.", tone: "info" }])}
         onRespawn={respawnLocally}
         onResume={() => { setPauseOpen(false); engineRef.current?.requestPointerLock(); }}
+        onSave={() => { persist("manual"); }}
         onSelectHotbar={selectHotbar}
-        onTitleScreen={() => { persist(); window.location.href = window.location.pathname; }}
+        onTitleScreen={returnToTitle}
+        pauseTitle="Game Menu"
         pauseOpen={pauseOpen}
         playerName="Player"
         selectedIndex={selected}
+        saveDisabled={saveLockedRef.current}
+        saveInProgress={saveInProgress}
+        saveStatusText={saveStatusText}
         respawning={respawning}
         worldName="Local World"
       />

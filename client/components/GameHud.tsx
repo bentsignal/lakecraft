@@ -48,13 +48,21 @@ export type GameHudProps = {
     expectedAuthorityEpoch: number,
     recipes: readonly InventoryRecipeBatch[],
   ) => boolean;
+  onInventoryWorkspacePreview?: (snapshot: StowedInventorySnapshot) => void;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
   onCloseInventory: () => void;
   onResume?: () => void;
   onOptions?: () => void;
   soundMuted?: boolean;
   onToggleSound?: () => void;
+  onSave?: () => void;
+  saveStatusText?: string;
+  lastSavedText?: string;
+  saveDisabled?: boolean;
+  saveInProgress?: boolean;
   onDisconnect?: () => void;
+  pauseTitle?: string;
+  disconnectLabel?: string;
   onRespawn?: () => void;
   onTitleScreen?: () => void;
   onDismissMessage?: (id: string) => void;
@@ -99,13 +107,21 @@ export function GameHud({
   onSelectHotbar,
   inventoryAuthorityEpoch,
   onInventoryWorkspaceChange,
+  onInventoryWorkspacePreview,
   onCrafted,
   onCloseInventory,
   onResume,
   onOptions,
   soundMuted = false,
   onToggleSound,
+  onSave,
+  saveStatusText,
+  lastSavedText,
+  saveDisabled = false,
+  saveInProgress = false,
   onDisconnect,
+  pauseTitle,
+  disconnectLabel,
   onRespawn,
   onTitleScreen,
   onDismissMessage,
@@ -137,12 +153,19 @@ export function GameHud({
         onBack={onResume}
         onDisconnect={onDisconnect}
         onOptions={onOptions}
+        onSave={onSave}
         onToggleSound={onToggleSound}
+        disconnectLabel={disconnectLabel}
+        lastSavedText={lastSavedText}
         open={pauseOpen && !deathScreenOpen}
+        saveDisabled={saveDisabled}
+        saveInProgress={saveInProgress}
+        saveStatusText={saveStatusText}
         soundMuted={soundMuted}
+        title={pauseTitle}
       />
       <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawning={respawning} score={deathScore} />
-      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );

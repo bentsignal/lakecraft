@@ -1,0 +1,616 @@
+import {
+  HOTBAR_SIZE,
+  INVENTORY_SIZE,
+  ITEMS,
+  MAX_HUNGER,
+  createEmptyEquipment,
+  createStarterInventory,
+  maxItemDurability,
+  type ArmorId,
+  type ArmorSlot,
+  type Equipment,
+  type Inventory,
+  type ItemId,
+  type ItemStack,
+} from "../../shared/game.ts";
+import { BLOCK, validateVoxelRuntimeSnapshot, type BlockId, type VoxelRuntimeSnapshot, type WorldEdit } from "../game/types.ts";
+import { validateFurnaceState, type FurnaceState } from "../../shared/furnaces.ts";
+
+export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
+export const SINGLEPLAYER_SAVE_VERSION = 1 as const;
+export const SINGLEPLAYER_SAVE_SLOT_A_KEY = "lakecraft.singleplayer.save.a";
+export const SINGLEPLAYER_SAVE_SLOT_B_KEY = "lakecraft.singleplayer.save.b";
+export const SINGLEPLAYER_SAVE_HEAD_KEY = "lakecraft.singleplayer.save.head";
+export const SINGLEPLAYER_LEGACY_SAVE_KEY = "lakecraft.singleplayer.v1";
+/** localStorage is commonly quota-limited to a few MiB; leave room for the second slot and other app data. */
+export const SINGLEPLAYER_SAVE_MAX_SLOT_CHARS = 900_000;
+
+export const SINGLEPLAYER_SAVE_LIMITS = Object.freeze({
+  worldCoordinate: 30_000_000,
+  verticalCoordinate: 2_048,
+  edits: 12_000,
+  drops: 512,
+  chests: 512,
+  furnaces: 512,
+  mobs: 512,
+  primedTnt: 64,
+  progressionEntries: 512,
+  identifierChars: 96,
+});
+
+const MAX_TIMESTAMP = 8_640_000_000_000_000;
+const MAX_WEATHER_MS = 7 * 24 * 60 * 60 * 1_000;
+const ARMOR_SLOTS: readonly ArmorSlot[] = ["head", "chest", "legs", "feet"];
+const WEATHER_KINDS = new Set(["clear", "rain", "thunder"]);
+
+export type SinglePlayerSaveSlot = "a" | "b";
+
+export interface SinglePlayerStorageAdapter {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+export interface SinglePlayerPose {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+}
+
+export interface SinglePlayerWeatherState {
+  kind: "clear" | "rain" | "thunder";
+  remainingMs: number;
+}
+
+export interface SinglePlayerDropState {
+  dropId: string;
+  item: ItemStack;
+  x: number;
+  y: number;
+  z: number;
+  droppedAt: number;
+}
+
+export interface SinglePlayerChestState {
+  coordKey: string;
+  inventory: Array<ItemStack | null>;
+}
+
+export type SinglePlayerFurnaceState = FurnaceState;
+
+export interface SinglePlayerPrimedTntState {
+  eventId: string;
+  x: number;
+  y: number;
+  z: number;
+  ignitedAt: number;
+  dueAt: number;
+}
+
+export interface SinglePlayerSnapshot {
+  world: {
+    worldId: string;
+    generatorVersion: number;
+    seed: number;
+    createdAt: number;
+    activePlayMs: number;
+    weather: SinglePlayerWeatherState;
+    edits: WorldEdit[];
+  };
+  player: {
+    inventory: Inventory;
+    equipment: Equipment;
+    selectedHotbar: number;
+    hunger: number;
+  };
+  progression: {
+    experience: number;
+    recipes: string[];
+    advancements: string[];
+  };
+  drops: SinglePlayerDropState[];
+  chests: SinglePlayerChestState[];
+  furnaces: SinglePlayerFurnaceState[];
+  primedTnt: SinglePlayerPrimedTntState[];
+  /** Authoritative engine pose/respawn/health/time/mob simulation snapshot. Null only for a fresh or migrated legacy world. */
+  runtime: VoxelRuntimeSnapshot | null;
+}
+
+export interface SinglePlayerSaveEnvelope {
+  checksum: string;
+  format: typeof SINGLEPLAYER_SAVE_FORMAT;
+  payload: SinglePlayerSnapshot;
+  savedAt: number;
+  sequence: number;
+  version: typeof SINGLEPLAYER_SAVE_VERSION;
+}
+
+export type SinglePlayerSnapshotValidation =
+  | { ok: true; snapshot: SinglePlayerSnapshot }
+  | { ok: false; reason: "invalid_snapshot"; path: string };
+
+export type SinglePlayerLoadResult =
+  | { status: "empty"; snapshot: null; sequence: 0 }
+  | { status: "loaded" | "recovered"; snapshot: SinglePlayerSnapshot; sequence: number; savedAt: number; slot: SinglePlayerSaveSlot; issues: string[] }
+  | { status: "migrated"; snapshot: SinglePlayerSnapshot; sequence: number; savedAt: number; slot: SinglePlayerSaveSlot | null; persisted: boolean; issues: string[] }
+  | { status: "corrupt"; snapshot: null; sequence: 0; reason: "storage_read_failed" | "no_valid_snapshot" | "legacy_invalid"; issues: string[] }
+  | { status: "unsupported"; snapshot: null; sequence: 0; versions: number[]; issues: string[] };
+
+export type SinglePlayerSaveResult =
+  | { ok: true; envelope: SinglePlayerSaveEnvelope; slot: SinglePlayerSaveSlot; sequence: number; chars: number; headUpdated: boolean }
+  | { ok: false; reason: "invalid_snapshot" | "too_large" | "storage_read_failed" | "storage_write_failed" | "readback_failed" | "unsafe_existing_data"; path?: string; previousSequence: number };
+
+type ParsedSlot =
+  | { kind: "empty"; slot: SinglePlayerSaveSlot }
+  | { kind: "valid"; slot: SinglePlayerSaveSlot; envelope: SinglePlayerSaveEnvelope; raw: string }
+  | { kind: "unsupported"; slot: SinglePlayerSaveSlot; version: number }
+  | { kind: "corrupt"; slot: SinglePlayerSaveSlot; reason: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
+function safeInteger(value: unknown, minimum: number, maximum: number): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
+}
+
+function finiteNumber(value: unknown, minimum: number, maximum: number): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
+function identifier(value: unknown, allowEmpty = false): value is string {
+  return typeof value === "string" && (allowEmpty || value.length > 0)
+    && value.length <= SINGLEPLAYER_SAVE_LIMITS.identifierChars
+    && /^[A-Za-z0-9_.:\-]*$/.test(value);
+}
+
+function coordinateKey(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 64) return false;
+  const match = /^(-?\d+):(-?\d+):(-?\d+)$/.exec(value);
+  if (!match) return false;
+  const [x, y, z] = match.slice(1).map(Number);
+  return safeInteger(x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+    && safeInteger(y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+    && safeInteger(z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+    && value === `${x}:${y}:${z}`;
+}
+
+function validateStack(value: unknown): ItemStack | null | undefined {
+  if (value === null) return null;
+  if (!isRecord(value) || !exactKeys(value, value.durability === undefined
+    ? ["itemId", "count"]
+    : ["itemId", "count", "durability"])) return undefined;
+  if (typeof value.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, value.itemId)) return undefined;
+  const itemId = value.itemId as ItemId;
+  const definition = ITEMS[itemId];
+  if (!safeInteger(value.count, 1, definition.maxStack)) return undefined;
+  const maximum = maxItemDurability(itemId);
+  if (maximum === null) {
+    return value.durability === undefined ? { itemId, count: value.count } : undefined;
+  }
+  if (value.count !== 1 || !safeInteger(value.durability, 1, maximum)) return undefined;
+  return { itemId, count: 1, durability: value.durability };
+}
+
+function validateInventory(value: unknown, size = INVENTORY_SIZE): Inventory | null {
+  if (!Array.isArray(value) || value.length !== size) return null;
+  const inventory: Inventory = [];
+  for (const candidate of value) {
+    const stack = validateStack(candidate);
+    if (stack === undefined) return null;
+    inventory.push(stack);
+  }
+  return inventory;
+}
+
+function validateEquipment(value: unknown): Equipment | null {
+  if (!isRecord(value) || !exactKeys(value, ARMOR_SLOTS)) return null;
+  const equipment = createEmptyEquipment();
+  for (const slot of ARMOR_SLOTS) {
+    const candidate = value[slot];
+    if (candidate === null) continue;
+    if (!isRecord(candidate) || !exactKeys(candidate, ["itemId", "durability"])
+      || typeof candidate.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, candidate.itemId)) return null;
+    const itemId = candidate.itemId as ItemId;
+    const armor = ITEMS[itemId].armor;
+    if (!armor || armor.slot !== slot || !safeInteger(candidate.durability, 1, armor.maxDurability)) return null;
+    equipment[slot] = { itemId: itemId as ArmorId, durability: candidate.durability };
+  }
+  return equipment;
+}
+
+function validateEdits(value: unknown): WorldEdit[] | null {
+  if (!Array.isArray(value) || value.length > SINGLEPLAYER_SAVE_LIMITS.edits) return null;
+  const edits: WorldEdit[] = [];
+  const coordinates = new Set<string>();
+  for (const candidate of value) {
+    if (!isRecord(candidate) || !exactKeys(candidate, ["x", "y", "z", "block"])
+      || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+      || !safeInteger(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+      || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.BRICKS)) return null;
+    const key = `${candidate.x}:${candidate.y}:${candidate.z}`;
+    if (coordinates.has(key)) return null;
+    coordinates.add(key);
+    edits.push({ x: candidate.x, y: candidate.y, z: candidate.z, block: candidate.block as BlockId });
+  }
+  return edits.sort((left, right) => left.x - right.x || left.y - right.y || left.z - right.z);
+}
+
+function validateDrops(value: unknown): SinglePlayerDropState[] | null {
+  if (!Array.isArray(value) || value.length > SINGLEPLAYER_SAVE_LIMITS.drops) return null;
+  const drops: SinglePlayerDropState[] = [];
+  const ids = new Set<string>();
+  for (const candidate of value) {
+    if (!isRecord(candidate) || !exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt"]) || !identifier(candidate.dropId)
+      || !finiteNumber(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+      || !finiteNumber(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !finiteNumber(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+      || ids.has(candidate.dropId) || !safeInteger(candidate.droppedAt, 0, MAX_TIMESTAMP)) return null;
+    const item = validateStack(candidate.item);
+    if (!item) return null;
+    ids.add(candidate.dropId);
+    drops.push({ dropId: candidate.dropId, item, x: candidate.x, y: candidate.y, z: candidate.z, droppedAt: candidate.droppedAt });
+  }
+  return drops.sort((left, right) => left.dropId.localeCompare(right.dropId));
+}
+
+function validateChests(value: unknown): SinglePlayerChestState[] | null {
+  if (!Array.isArray(value) || value.length > SINGLEPLAYER_SAVE_LIMITS.chests) return null;
+  const chests: SinglePlayerChestState[] = [];
+  const coordinates = new Set<string>();
+  for (const candidate of value) {
+    if (!isRecord(candidate) || !exactKeys(candidate, ["coordKey", "inventory"]) || !coordinateKey(candidate.coordKey)
+      || coordinates.has(candidate.coordKey)) return null;
+    const inventory = validateInventory(candidate.inventory, 27);
+    if (!inventory) return null;
+    coordinates.add(candidate.coordKey);
+    chests.push({ coordKey: candidate.coordKey, inventory });
+  }
+  return chests.sort((left, right) => left.coordKey.localeCompare(right.coordKey));
+}
+
+function validateFurnaces(value: unknown): SinglePlayerFurnaceState[] | null {
+  if (!Array.isArray(value) || value.length > SINGLEPLAYER_SAVE_LIMITS.furnaces) return null;
+  const furnaces: SinglePlayerFurnaceState[] = [];
+  const coordinates = new Set<string>();
+  for (const candidate of value) {
+    if (!isRecord(candidate) || typeof candidate.coordKey !== "string" || !coordinateKey(candidate.coordKey)
+      || coordinates.has(candidate.coordKey)) return null;
+    const validation = validateFurnaceState(candidate, candidate.coordKey);
+    if (!validation.ok) return null;
+    coordinates.add(validation.state.coordKey);
+    furnaces.push(validation.state);
+  }
+  return furnaces.sort((left, right) => left.coordKey.localeCompare(right.coordKey));
+}
+
+function validatePrimedTnt(value: unknown): SinglePlayerPrimedTntState[] | null {
+  if (!Array.isArray(value) || value.length > SINGLEPLAYER_SAVE_LIMITS.primedTnt) return null;
+  const fuses: SinglePlayerPrimedTntState[] = [];
+  const ids = new Set<string>();
+  for (const candidate of value) {
+    if (!isRecord(candidate) || !exactKeys(candidate, ["eventId", "x", "y", "z", "ignitedAt", "dueAt"])
+      || !identifier(candidate.eventId) || ids.has(candidate.eventId)
+      || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+      || !safeInteger(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+      || !safeInteger(candidate.ignitedAt, 0, MAX_TIMESTAMP) || !safeInteger(candidate.dueAt, candidate.ignitedAt, MAX_TIMESTAMP)) return null;
+    ids.add(candidate.eventId);
+    fuses.push({ eventId: candidate.eventId, x: candidate.x, y: candidate.y, z: candidate.z, ignitedAt: candidate.ignitedAt, dueAt: candidate.dueAt });
+  }
+  return fuses.sort((left, right) => left.eventId.localeCompare(right.eventId));
+}
+
+function validateProgression(value: unknown): SinglePlayerSnapshot["progression"] | null {
+  if (!isRecord(value) || !exactKeys(value, ["experience", "recipes", "advancements"])
+    || !safeInteger(value.experience, 0, Number.MAX_SAFE_INTEGER)) return null;
+  const validateList = (candidate: unknown): string[] | null => {
+    if (!Array.isArray(candidate) || candidate.length > SINGLEPLAYER_SAVE_LIMITS.progressionEntries) return null;
+    const output: string[] = [];
+    const unique = new Set<string>();
+    for (const entry of candidate) {
+      if (!identifier(entry) || unique.has(entry)) return null;
+      unique.add(entry);
+      output.push(entry);
+    }
+    return output.sort((left, right) => left.localeCompare(right));
+  };
+  const recipes = validateList(value.recipes);
+  const advancements = validateList(value.advancements);
+  return recipes && advancements ? { experience: value.experience, recipes, advancements } : null;
+}
+
+export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapshotValidation {
+  if (!isRecord(value) || !exactKeys(value, ["world", "player", "progression", "drops", "chests", "furnaces", "primedTnt", "runtime"])) {
+    return { ok: false, reason: "invalid_snapshot", path: "$" };
+  }
+  if (!isRecord(value.world) || !exactKeys(value.world, ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "weather", "edits"])
+    || !identifier(value.world.worldId)
+    || !safeInteger(value.world.generatorVersion, 1, 1_000_000)
+    || !safeInteger(value.world.seed, -2_147_483_648, 2_147_483_647)
+    || !safeInteger(value.world.createdAt, 0, MAX_TIMESTAMP)
+    || !safeInteger(value.world.activePlayMs, 0, MAX_TIMESTAMP)) return { ok: false, reason: "invalid_snapshot", path: "$.world" };
+  if (!isRecord(value.world.weather) || !exactKeys(value.world.weather, ["kind", "remainingMs"])
+    || typeof value.world.weather.kind !== "string" || !WEATHER_KINDS.has(value.world.weather.kind)
+    || !safeInteger(value.world.weather.remainingMs, 0, MAX_WEATHER_MS)) return { ok: false, reason: "invalid_snapshot", path: "$.world.weather" };
+  const edits = validateEdits(value.world.edits);
+  if (!edits) return { ok: false, reason: "invalid_snapshot", path: "$.world.edits" };
+
+  if (!isRecord(value.player) || !exactKeys(value.player, ["inventory", "equipment", "selectedHotbar", "hunger"])) {
+    return { ok: false, reason: "invalid_snapshot", path: "$.player" };
+  }
+  const inventory = validateInventory(value.player.inventory);
+  const equipment = validateEquipment(value.player.equipment);
+  if (!inventory) return { ok: false, reason: "invalid_snapshot", path: "$.player.inventory" };
+  if (!equipment) return { ok: false, reason: "invalid_snapshot", path: "$.player.equipment" };
+  if (!safeInteger(value.player.selectedHotbar, 0, HOTBAR_SIZE - 1)
+    || !safeInteger(value.player.hunger, 0, MAX_HUNGER)) {
+    return { ok: false, reason: "invalid_snapshot", path: "$.player.vitals" };
+  }
+  const progression = validateProgression(value.progression);
+  if (!progression) return { ok: false, reason: "invalid_snapshot", path: "$.progression" };
+  const drops = validateDrops(value.drops);
+  const chests = validateChests(value.chests);
+  const furnaces = validateFurnaces(value.furnaces);
+  const primedTnt = validatePrimedTnt(value.primedTnt);
+  const runtime = value.runtime === null ? null : validateVoxelRuntimeSnapshot(value.runtime);
+  if (!drops) return { ok: false, reason: "invalid_snapshot", path: "$.drops" };
+  if (!chests) return { ok: false, reason: "invalid_snapshot", path: "$.chests" };
+  if (!furnaces) return { ok: false, reason: "invalid_snapshot", path: "$.furnaces" };
+  if (!primedTnt) return { ok: false, reason: "invalid_snapshot", path: "$.primedTnt" };
+  if (value.runtime !== null && !runtime) return { ok: false, reason: "invalid_snapshot", path: "$.runtime" };
+
+  return {
+    ok: true,
+    snapshot: {
+      world: {
+        worldId: value.world.worldId, generatorVersion: value.world.generatorVersion, seed: value.world.seed,
+        createdAt: value.world.createdAt, activePlayMs: value.world.activePlayMs,
+        weather: { kind: value.world.weather.kind as SinglePlayerWeatherState["kind"], remainingMs: value.world.weather.remainingMs }, edits,
+      },
+      player: { inventory, equipment, selectedHotbar: value.player.selectedHotbar, hunger: value.player.hunger },
+      progression,
+      drops, chests, furnaces, primedTnt, runtime,
+    },
+  };
+}
+
+export function createDefaultSinglePlayerSnapshot(seed = 7_319, createdAt = 0, worldId = "local-default"): SinglePlayerSnapshot {
+  return {
+    world: { worldId, generatorVersion: 1, seed, createdAt, activePlayMs: 0, weather: { kind: "clear", remainingMs: 0 }, edits: [] },
+    player: {
+      inventory: createStarterInventory(),
+      equipment: createEmptyEquipment(),
+      selectedHotbar: 2,
+      hunger: MAX_HUNGER,
+    },
+    progression: { experience: 0, recipes: [], advancements: [] },
+    drops: [], chests: [], furnaces: [], primedTnt: [], runtime: null,
+  };
+}
+
+/** Stable key ordering makes snapshots byte-for-byte reproducible and keeps checksums independent of caller object insertion order. */
+export function canonicalSinglePlayerJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalSinglePlayerJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalSinglePlayerJson(record[key])}`).join(",")}}`;
+}
+
+export function singlePlayerSaveChecksum(value: unknown): string {
+  const text = typeof value === "string" ? value : canonicalSinglePlayerJson(value);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function envelopeBody(payload: SinglePlayerSnapshot, sequence: number, savedAt: number): Omit<SinglePlayerSaveEnvelope, "checksum"> {
+  return { format: SINGLEPLAYER_SAVE_FORMAT, payload, savedAt, sequence, version: SINGLEPLAYER_SAVE_VERSION };
+}
+
+export function serializeSinglePlayerSave(payload: SinglePlayerSnapshot, sequence: number, savedAt: number):
+  | { ok: true; envelope: SinglePlayerSaveEnvelope; raw: string }
+  | { ok: false; reason: "invalid_snapshot" | "too_large"; path?: string } {
+  const validated = validateSinglePlayerSnapshot(payload);
+  if (!validated.ok) return validated;
+  if (!safeInteger(sequence, 1, Number.MAX_SAFE_INTEGER) || !safeInteger(savedAt, 0, MAX_TIMESTAMP)) {
+    return { ok: false, reason: "invalid_snapshot", path: "$.envelope" };
+  }
+  const body = envelopeBody(validated.snapshot, sequence, savedAt);
+  const envelope: SinglePlayerSaveEnvelope = { checksum: singlePlayerSaveChecksum(body), ...body };
+  const raw = canonicalSinglePlayerJson(envelope);
+  return raw.length <= SINGLEPLAYER_SAVE_MAX_SLOT_CHARS
+    ? { ok: true, envelope, raw }
+    : { ok: false, reason: "too_large" };
+}
+
+function parseSlotRaw(slot: SinglePlayerSaveSlot, raw: string | null): ParsedSlot {
+  if (raw === null) return { kind: "empty", slot };
+  if (raw.length === 0 || raw.length > SINGLEPLAYER_SAVE_MAX_SLOT_CHARS) return { kind: "corrupt", slot, reason: "invalid_size" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { kind: "corrupt", slot, reason: "invalid_json" };
+  }
+  if (!isRecord(parsed)) return { kind: "corrupt", slot, reason: "invalid_envelope" };
+  if (parsed.format === SINGLEPLAYER_SAVE_FORMAT && typeof parsed.version === "number"
+    && Number.isSafeInteger(parsed.version) && parsed.version !== SINGLEPLAYER_SAVE_VERSION) {
+    return { kind: "unsupported", slot, version: parsed.version };
+  }
+  if (!exactKeys(parsed, ["checksum", "format", "payload", "savedAt", "sequence", "version"])
+    || parsed.format !== SINGLEPLAYER_SAVE_FORMAT || parsed.version !== SINGLEPLAYER_SAVE_VERSION
+    || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)
+    || !safeInteger(parsed.sequence, 1, Number.MAX_SAFE_INTEGER) || !safeInteger(parsed.savedAt, 0, MAX_TIMESTAMP)) {
+    return { kind: "corrupt", slot, reason: "invalid_envelope" };
+  }
+  const validated = validateSinglePlayerSnapshot(parsed.payload);
+  if (!validated.ok) return { kind: "corrupt", slot, reason: validated.path };
+  const body = envelopeBody(validated.snapshot, parsed.sequence, parsed.savedAt);
+  if (singlePlayerSaveChecksum(body) !== parsed.checksum) return { kind: "corrupt", slot, reason: "checksum_mismatch" };
+  const envelope: SinglePlayerSaveEnvelope = { checksum: parsed.checksum, ...body };
+  if (canonicalSinglePlayerJson(envelope) !== raw) return { kind: "corrupt", slot, reason: "noncanonical_envelope" };
+  return { kind: "valid", slot, envelope, raw };
+}
+
+function slotKey(slot: SinglePlayerSaveSlot): string {
+  return slot === "a" ? SINGLEPLAYER_SAVE_SLOT_A_KEY : SINGLEPLAYER_SAVE_SLOT_B_KEY;
+}
+
+function readSlots(storage: SinglePlayerStorageAdapter): { slots: ParsedSlot[]; readFailed: boolean } {
+  const slots: ParsedSlot[] = [];
+  let readFailed = false;
+  for (const slot of ["a", "b"] as const) {
+    try {
+      slots.push(parseSlotRaw(slot, storage.getItem(slotKey(slot))));
+    } catch {
+      readFailed = true;
+      slots.push({ kind: "corrupt", slot, reason: "storage_read_failed" });
+    }
+  }
+  return { slots, readFailed };
+}
+
+function highestValid(slots: readonly ParsedSlot[]): Extract<ParsedSlot, { kind: "valid" }> | null {
+  const valid = slots.filter((slot): slot is Extract<ParsedSlot, { kind: "valid" }> => slot.kind === "valid");
+  valid.sort((left, right) => right.envelope.sequence - left.envelope.sequence || left.slot.localeCompare(right.slot));
+  return valid[0] ?? null;
+}
+
+function readHead(storage: SinglePlayerStorageAdapter): { slot: SinglePlayerSaveSlot; sequence: number } | null {
+  try {
+    const raw = storage.getItem(SINGLEPLAYER_SAVE_HEAD_KEY);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return isRecord(parsed) && exactKeys(parsed, ["sequence", "slot"])
+      && (parsed.slot === "a" || parsed.slot === "b") && safeInteger(parsed.sequence, 1, Number.MAX_SAFE_INTEGER)
+      ? { slot: parsed.slot, sequence: parsed.sequence }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function legacySnapshot(raw: string): SinglePlayerSnapshot | null {
+  if (raw.length === 0 || raw.length > SINGLEPLAYER_SAVE_MAX_SLOT_CHARS) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(value) || !exactKeys(value, ["inventory", "equipment", "selected", "hunger", "edits", "drops"])) return null;
+  const inventory = validateInventory(value.inventory);
+  const equipment = validateEquipment(value.equipment);
+  const edits = validateEdits(value.edits);
+  const drops = validateDrops(value.drops);
+  if (!inventory || !equipment || !edits || edits.length > 8_000 || !drops || drops.length > 256
+    || !safeInteger(value.selected, 0, HOTBAR_SIZE - 1) || !safeInteger(value.hunger, 0, MAX_HUNGER)) return null;
+  const snapshot = createDefaultSinglePlayerSnapshot();
+  snapshot.player.inventory = inventory;
+  snapshot.player.equipment = equipment;
+  snapshot.player.selectedHotbar = value.selected;
+  snapshot.player.hunger = value.hunger;
+  snapshot.world.edits = edits;
+  snapshot.drops = drops;
+  return snapshot;
+}
+
+export function loadSinglePlayerSave(
+  storage: SinglePlayerStorageAdapter,
+  options: { now?: () => number; migrateLegacy?: boolean } = {},
+): SinglePlayerLoadResult {
+  const scanned = readSlots(storage);
+  const issues = scanned.slots.flatMap((slot) => slot.kind === "corrupt" ? [`${slot.slot}:${slot.reason}`]
+    : slot.kind === "unsupported" ? [`${slot.slot}:unsupported_v${slot.version}`] : []);
+  const unsupported = scanned.slots.filter((slot): slot is Extract<ParsedSlot, { kind: "unsupported" }> => slot.kind === "unsupported");
+  // A future client may have written either slot. Never load an older sibling
+  // and later overwrite the unknown format during ordinary play.
+  if (unsupported.length > 0) {
+    return { status: "unsupported", snapshot: null, sequence: 0, versions: [...new Set(unsupported.map(({ version }) => version))].sort((a, b) => a - b), issues };
+  }
+  const selected = highestValid(scanned.slots);
+  if (selected) {
+    const head = readHead(storage);
+    const recovered = issues.length > 0 || Boolean(head && (head.slot !== selected.slot || head.sequence !== selected.envelope.sequence));
+    return {
+      status: recovered ? "recovered" : "loaded",
+      snapshot: selected.envelope.payload,
+      sequence: selected.envelope.sequence,
+      savedAt: selected.envelope.savedAt,
+      slot: selected.slot,
+      issues,
+    };
+  }
+  const occupiedInvalid = scanned.slots.some((slot) => slot.kind === "corrupt");
+  if (occupiedInvalid || scanned.readFailed) {
+    return { status: "corrupt", snapshot: null, sequence: 0, reason: scanned.readFailed ? "storage_read_failed" : "no_valid_snapshot", issues };
+  }
+  let legacyRaw: string | null = null;
+  try {
+    legacyRaw = storage.getItem(SINGLEPLAYER_LEGACY_SAVE_KEY);
+  } catch {
+    return { status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: [...issues, "legacy:storage_read_failed"] };
+  }
+  if (legacyRaw !== null && options.migrateLegacy !== false) {
+    const migrated = legacySnapshot(legacyRaw);
+    if (!migrated) return { status: "corrupt", snapshot: null, sequence: 0, reason: "legacy_invalid", issues: [...issues, "legacy:invalid"] };
+    const savedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor((options.now ?? Date.now)())));
+    const write = saveSinglePlayerSnapshot(storage, migrated, savedAt);
+    return write.ok
+      ? { status: "migrated", snapshot: write.envelope.payload, sequence: write.sequence, savedAt, slot: write.slot, persisted: true, issues }
+      : { status: "migrated", snapshot: migrated, sequence: 0, savedAt, slot: null, persisted: false, issues: [...issues, `migration:${write.reason}`] };
+  }
+  return { status: "empty", snapshot: null, sequence: 0 };
+}
+
+export function saveSinglePlayerSnapshot(
+  storage: SinglePlayerStorageAdapter,
+  snapshot: SinglePlayerSnapshot,
+  savedAt = Date.now(),
+): SinglePlayerSaveResult {
+  const scanned = readSlots(storage);
+  const current = highestValid(scanned.slots);
+  const previousSequence = current?.envelope.sequence ?? 0;
+  if (scanned.readFailed) return { ok: false, reason: "storage_read_failed", previousSequence };
+  if (scanned.slots.some((slot) => slot.kind === "unsupported")
+    || (!current && scanned.slots.some((slot) => slot.kind !== "empty"))) {
+    return { ok: false, reason: "unsafe_existing_data", previousSequence };
+  }
+  if (previousSequence >= Number.MAX_SAFE_INTEGER) return { ok: false, reason: "invalid_snapshot", path: "$.envelope.sequence", previousSequence };
+  const serialized = serializeSinglePlayerSave(snapshot, previousSequence + 1, savedAt);
+  if (!serialized.ok) return { ok: false, reason: serialized.reason, path: serialized.path, previousSequence };
+  const target: SinglePlayerSaveSlot = current ? (current.slot === "a" ? "b" : "a") : "a";
+  try {
+    storage.setItem(slotKey(target), serialized.raw);
+  } catch {
+    return { ok: false, reason: "storage_write_failed", previousSequence };
+  }
+  let readback: string | null;
+  try {
+    readback = storage.getItem(slotKey(target));
+  } catch {
+    return { ok: false, reason: "readback_failed", previousSequence };
+  }
+  const verified = parseSlotRaw(target, readback);
+  if (readback !== serialized.raw || verified.kind !== "valid" || verified.envelope.sequence !== previousSequence + 1) {
+    return { ok: false, reason: "readback_failed", previousSequence };
+  }
+  let headUpdated = true;
+  try {
+    storage.setItem(SINGLEPLAYER_SAVE_HEAD_KEY, canonicalSinglePlayerJson({ sequence: previousSequence + 1, slot: target }));
+  } catch {
+    headUpdated = false;
+  }
+  return { ok: true, envelope: serialized.envelope, slot: target, sequence: previousSequence + 1, chars: serialized.raw.length, headUpdated };
+}

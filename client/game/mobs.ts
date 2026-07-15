@@ -257,6 +257,21 @@ export interface MobSimulation {
   pendingProjectileDamage: number;
 }
 
+export const MOB_SIMULATION_SNAPSHOT_VERSION = 1 as const;
+
+/**
+ * Complete, bounded local simulation state. This deliberately includes inactive
+ * projectile pool entries so a restored simulation resumes deterministically.
+ */
+export interface MobSimulationSnapshot {
+  version: typeof MOB_SIMULATION_SNAPSHOT_VERSION;
+  elapsedSeconds: number;
+  tick: number;
+  mobs: MobState[];
+  projectiles: MobProjectile[];
+  pendingProjectileDamage: number;
+}
+
 export interface MobProjectile {
   id: number;
   active: boolean;
@@ -274,6 +289,153 @@ export interface MobProjectile {
   pitch: number;
   remainingSeconds: number;
   damage: number;
+}
+
+const MOB_STATE_SNAPSHOT_KEYS = [
+  "id", "kind", "x", "y", "z", "yaw", "homeX", "homeZ", "behaviorSeed",
+  "homeY", "previousX", "previousY", "previousZ", "previousYaw", "health", "alive",
+  "behavior", "behaviorUntilSeconds", "directionX", "directionZ", "desiredX", "desiredZ",
+  "hostileActive", "randomState", "damageSequence", "nextContactDamageAtSeconds",
+  "nextRangedAttackAtSeconds", "rangedSequence", "authoritativeRevision",
+  "authoritativeDeadUntil", "sheared", "fuseStartedAtSeconds", "fuseUntilSeconds",
+] as const;
+
+const MOB_PROJECTILE_SNAPSHOT_KEYS = [
+  "id", "active", "ownerId", "x", "y", "z", "previousX", "previousY", "previousZ",
+  "velocityX", "velocityY", "velocityZ", "yaw", "pitch", "remainingSeconds", "damage",
+] as const;
+
+function snapshotRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function hasExactKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(record);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
+function finiteInRange(value: unknown, minimum: number, maximum: number): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
+function safeIntegerInRange(value: unknown, minimum: number, maximum: number): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= minimum && (value as number) <= maximum;
+}
+
+function validMobStateSnapshot(value: unknown): value is MobState {
+  const mob = snapshotRecord(value);
+  if (!mob || !hasExactKeys(mob, MOB_STATE_SNAPSHOT_KEYS)) return false;
+  if (typeof mob.id !== "string" || mob.id.length < 1 || mob.id.length > 128) return false;
+  if (typeof mob.kind !== "string" || !(mob.kind in MOB_DEFINITIONS)) return false;
+  const kind = mob.kind as MobKind;
+  const positionFields = ["x", "y", "z", "homeX", "homeY", "homeZ", "previousX", "previousY", "previousZ", "desiredX", "desiredZ"] as const;
+  if (!positionFields.every((field) => finiteInRange(mob[field], -1_000_000, 1_000_000))) return false;
+  if (!finiteInRange(mob.yaw, -Math.PI * 4, Math.PI * 4)
+    || !finiteInRange(mob.previousYaw, -Math.PI * 4, Math.PI * 4)) return false;
+  if (!safeIntegerInRange(mob.behaviorSeed, 0, 0xffff_ffff)
+    || !safeIntegerInRange(mob.randomState, 1, 0xffff_ffff)
+    || !safeIntegerInRange(mob.damageSequence, 0, Number.MAX_SAFE_INTEGER)
+    || !safeIntegerInRange(mob.rangedSequence, 0, Number.MAX_SAFE_INTEGER)
+    || !safeIntegerInRange(mob.authoritativeRevision, -1, Number.MAX_SAFE_INTEGER)) return false;
+  if (typeof mob.behavior !== "string" || !(["dormant", "idle", "wander", "chase", "fuse"] as const).includes(mob.behavior as MobBehavior)) return false;
+  if (typeof mob.alive !== "boolean" || typeof mob.hostileActive !== "boolean" || typeof mob.sheared !== "boolean") return false;
+  if (!finiteInRange(mob.health, 0, MOB_DEFINITIONS[kind].maxHealth)) return false;
+  if ((mob.alive as boolean) !== ((mob.health as number) > 0)) return false;
+  if ((mob.sheared as boolean) && kind !== "sheep") return false;
+  if (!finiteInRange(mob.directionX, -1, 1) || !finiteInRange(mob.directionZ, -1, 1)) return false;
+  const timeFields = [
+    "behaviorUntilSeconds", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
+    "fuseStartedAtSeconds", "fuseUntilSeconds",
+  ] as const;
+  if (!timeFields.every((field) => finiteInRange(mob[field], 0, 1_000_000_000_000))) return false;
+  if (!finiteInRange(mob.authoritativeDeadUntil, 0, 10_000_000_000_000_000)) return false;
+  if (kind !== "creeper" && ((mob.fuseStartedAtSeconds as number) !== 0 || (mob.fuseUntilSeconds as number) !== 0)) return false;
+  if ((mob.fuseStartedAtSeconds as number) > (mob.fuseUntilSeconds as number)) return false;
+  return true;
+}
+
+function validMobProjectileSnapshot(value: unknown, expectedId: number): value is MobProjectile {
+  const projectile = snapshotRecord(value);
+  if (!projectile || !hasExactKeys(projectile, MOB_PROJECTILE_SNAPSHOT_KEYS)) return false;
+  if (projectile.id !== expectedId || typeof projectile.active !== "boolean") return false;
+  if (typeof projectile.ownerId !== "string" || projectile.ownerId.length > 128) return false;
+  const coordinates = ["x", "y", "z", "previousX", "previousY", "previousZ"] as const;
+  if (!coordinates.every((field) => finiteInRange(projectile[field], -1_000_000, 1_000_000))) return false;
+  const velocities = ["velocityX", "velocityY", "velocityZ"] as const;
+  if (!velocities.every((field) => finiteInRange(projectile[field], -1_000, 1_000))) return false;
+  if (!finiteInRange(projectile.yaw, -Math.PI * 4, Math.PI * 4)
+    || !finiteInRange(projectile.pitch, -Math.PI * 2, Math.PI * 2)
+    || !finiteInRange(projectile.remainingSeconds, -MOB_PROJECTILE_LIFETIME_SECONDS, MOB_PROJECTILE_LIFETIME_SECONDS)
+    || !finiteInRange(projectile.damage, 0, 100)) return false;
+  return true;
+}
+
+function cloneMobState(mob: Readonly<MobState>): MobState {
+  return { ...mob };
+}
+
+function cloneMobProjectile(projectile: Readonly<MobProjectile>): MobProjectile {
+  return { ...projectile };
+}
+
+/** Returns a detached, JSON-safe snapshot of all deterministic local mob state. */
+export function exportMobSimulationSnapshot(simulation: Readonly<MobSimulation>): MobSimulationSnapshot {
+  return {
+    version: MOB_SIMULATION_SNAPSHOT_VERSION,
+    elapsedSeconds: simulation.elapsedSeconds,
+    tick: simulation.tick,
+    mobs: simulation.mobs.slice(0, HARD_MAX_MOB_POPULATION).map(cloneMobState),
+    projectiles: simulation.projectiles.slice(0, MAX_MOB_PROJECTILES).map(cloneMobProjectile),
+    pendingProjectileDamage: simulation.pendingProjectileDamage,
+  };
+}
+
+/** Strictly validates untrusted persisted data and returns a detached copy. */
+export function validateMobSimulationSnapshot(value: unknown): MobSimulationSnapshot | null {
+  const snapshot = snapshotRecord(value);
+  if (!snapshot || !hasExactKeys(snapshot, [
+    "version", "elapsedSeconds", "tick", "mobs", "projectiles", "pendingProjectileDamage",
+  ])) return null;
+  if (snapshot.version !== MOB_SIMULATION_SNAPSHOT_VERSION
+    || !finiteInRange(snapshot.elapsedSeconds, 0, 1_000_000_000_000)
+    || !safeIntegerInRange(snapshot.tick, 0, Number.MAX_SAFE_INTEGER)
+    || !finiteInRange(snapshot.pendingProjectileDamage, 0, 12)
+    || !Array.isArray(snapshot.mobs)
+    || snapshot.mobs.length > HARD_MAX_MOB_POPULATION
+    || !Array.isArray(snapshot.projectiles)
+    || snapshot.projectiles.length !== MAX_MOB_PROJECTILES) return null;
+  const ids = new Set<string>();
+  for (const mob of snapshot.mobs) {
+    if (!validMobStateSnapshot(mob) || ids.has(mob.id)) return null;
+    ids.add(mob.id);
+  }
+  for (let index = 0; index < snapshot.projectiles.length; index += 1) {
+    const projectile = snapshot.projectiles[index];
+    if (!validMobProjectileSnapshot(projectile, index)) return null;
+    if (projectile.active && (!projectile.ownerId || !ids.has(projectile.ownerId))) return null;
+  }
+  return {
+    version: MOB_SIMULATION_SNAPSHOT_VERSION,
+    elapsedSeconds: snapshot.elapsedSeconds as number,
+    tick: snapshot.tick as number,
+    mobs: (snapshot.mobs as MobState[]).map(cloneMobState),
+    projectiles: (snapshot.projectiles as MobProjectile[]).map(cloneMobProjectile),
+    pendingProjectileDamage: snapshot.pendingProjectileDamage as number,
+  };
+}
+
+/** Atomically replaces a simulation only after the entire snapshot validates. */
+export function restoreMobSimulationSnapshot(simulation: MobSimulation, value: unknown): boolean {
+  const snapshot = validateMobSimulationSnapshot(value);
+  if (!snapshot) return false;
+  simulation.elapsedSeconds = snapshot.elapsedSeconds;
+  simulation.tick = snapshot.tick;
+  simulation.mobs = snapshot.mobs;
+  simulation.projectiles = snapshot.projectiles;
+  simulation.pendingProjectileDamage = snapshot.pendingProjectileDamage;
+  return true;
 }
 
 export interface MobProjectileSnapshot {

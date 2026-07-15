@@ -55,6 +55,8 @@ export type InventoryCraftingDrawerProps = {
     expectedAuthorityEpoch: number,
     recipes: readonly InventoryRecipeBatch[],
   ) => boolean;
+  /** Local worlds may retain a crash-safe stowed preview after every valid interaction. */
+  onWorkspacePreview?: (snapshot: StowedInventorySnapshot) => void;
 };
 
 export function InventoryCraftingDrawer({
@@ -68,6 +70,7 @@ export function InventoryCraftingDrawer({
   onClose,
   onCrafted,
   onWorkspaceChange,
+  onWorkspacePreview,
 }: InventoryCraftingDrawerProps) {
   const size: CraftingGridSize = craftingContext === "crafting_table" ? 3 : 2;
   const [workspace, setWorkspace] = useState<InventoryWorkspace>(() => createInventoryWorkspace(inventory, equipment, size));
@@ -123,6 +126,7 @@ export function InventoryCraftingDrawer({
     }
     setInteractionError("");
     replaceWorkspace(next);
+    onWorkspacePreview?.(stowed.snapshot);
     return true;
   }
 

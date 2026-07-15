@@ -1,5 +1,11 @@
 import type { DayNightConfig } from "./dayNight.ts";
-import type { MobCombatStateSnapshot, MobDrop, MobRayTarget } from "./mobs.ts";
+import {
+  validateMobSimulationSnapshot,
+  type MobCombatStateSnapshot,
+  type MobDrop,
+  type MobRayTarget,
+  type MobSimulationSnapshot,
+} from "./mobs.ts";
 import type { ArmorId, ItemId } from "../../shared/game.ts";
 import type { DroppedItemRenderItem } from "./droppedItemRenderer.ts";
 import type { PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
@@ -85,6 +91,98 @@ export interface RespawnPoint {
   z: number;
   yaw?: number;
   pitch?: number;
+}
+
+export const VOXEL_RUNTIME_SNAPSHOT_VERSION = 1 as const;
+
+/** Engine-owned state required to resume one local world without replaying time. */
+export interface VoxelRuntimeSnapshot {
+  version: typeof VOXEL_RUNTIME_SNAPSHOT_VERSION;
+  pose: PlayerPose;
+  respawnPoint: PlayerPose;
+  playerHealth: number;
+  /** Pause-aware world clock sampled by the day/night cycle. */
+  worldTimeMs: number;
+  dayNight: DayNightConfig;
+  mobAccumulatorSeconds: number;
+  mobSimulation: MobSimulationSnapshot;
+}
+
+function runtimeSnapshotRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function runtimeSnapshotHasKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(record);
+  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+}
+
+function validateRuntimePose(value: unknown): PlayerPose | null {
+  const pose = runtimeSnapshotRecord(value);
+  if (!pose || !runtimeSnapshotHasKeys(pose, ["x", "y", "z", "yaw", "pitch"])) return null;
+  if (![pose.x, pose.y, pose.z, pose.yaw, pose.pitch].every((part) => typeof part === "number" && Number.isFinite(part))) return null;
+  if (Math.abs(pose.x as number) > 1_000_000 || Math.abs(pose.z as number) > 1_000_000
+    || (pose.y as number) < -24 || (pose.y as number) > 128
+    || Math.abs(pose.yaw as number) > Math.PI * 4
+    || Math.abs(pose.pitch as number) > 1.52) return null;
+  return {
+    x: pose.x as number,
+    y: pose.y as number,
+    z: pose.z as number,
+    yaw: pose.yaw as number,
+    pitch: pose.pitch as number,
+  };
+}
+
+/** Strict all-or-nothing validator for the engine-owned portion of a local save. */
+export function validateVoxelRuntimeSnapshot(value: unknown): VoxelRuntimeSnapshot | null {
+  const snapshot = runtimeSnapshotRecord(value);
+  if (!snapshot || !runtimeSnapshotHasKeys(snapshot, [
+    "version", "pose", "respawnPoint", "playerHealth", "worldTimeMs", "dayNight",
+    "mobAccumulatorSeconds", "mobSimulation",
+  ])) return null;
+  if (snapshot.version !== VOXEL_RUNTIME_SNAPSHOT_VERSION) return null;
+  const pose = validateRuntimePose(snapshot.pose);
+  const respawnPoint = validateRuntimePose(snapshot.respawnPoint);
+  const dayNight = runtimeSnapshotRecord(snapshot.dayNight);
+  const mobSimulation = validateMobSimulationSnapshot(snapshot.mobSimulation);
+  if (!pose || !respawnPoint || !mobSimulation || !dayNight
+    || !runtimeSnapshotHasKeys(dayNight, ["cycleLengthMs", "epochMs", "epochPhase"])) return null;
+  if (typeof snapshot.playerHealth !== "number" || !Number.isFinite(snapshot.playerHealth)
+    || snapshot.playerHealth < 0 || snapshot.playerHealth > 20
+    || typeof snapshot.worldTimeMs !== "number" || !Number.isFinite(snapshot.worldTimeMs)
+    || Math.abs(snapshot.worldTimeMs) > 10_000_000_000_000_000
+    || typeof snapshot.mobAccumulatorSeconds !== "number" || !Number.isFinite(snapshot.mobAccumulatorSeconds)
+    || snapshot.mobAccumulatorSeconds < 0 || snapshot.mobAccumulatorSeconds > 0.3
+    || typeof dayNight.cycleLengthMs !== "number" || !Number.isFinite(dayNight.cycleLengthMs)
+    || dayNight.cycleLengthMs <= 0 || dayNight.cycleLengthMs > 1_000_000_000_000
+    || typeof dayNight.epochMs !== "number" || !Number.isFinite(dayNight.epochMs)
+    || Math.abs(dayNight.epochMs) > 10_000_000_000_000_000
+    || typeof dayNight.epochPhase !== "number" || !Number.isFinite(dayNight.epochPhase)
+    || Math.abs(dayNight.epochPhase) > 1_000_000) return null;
+  return {
+    version: VOXEL_RUNTIME_SNAPSHOT_VERSION,
+    pose,
+    respawnPoint,
+    playerHealth: snapshot.playerHealth,
+    worldTimeMs: snapshot.worldTimeMs,
+    dayNight: {
+      cycleLengthMs: dayNight.cycleLengthMs,
+      epochMs: dayNight.epochMs,
+      epochPhase: dayNight.epochPhase,
+    },
+    mobAccumulatorSeconds: snapshot.mobAccumulatorSeconds,
+    mobSimulation,
+  };
+}
+
+/** Frame-bounded clock step shared by the live engine and pause regression tests. */
+export function advanceVoxelWorldTimeMs(worldTimeMs: number, dtSeconds: number, paused: boolean): number {
+  if (!Number.isFinite(worldTimeMs) || paused) return worldTimeMs;
+  const dt = Number.isFinite(dtSeconds) ? Math.max(0, Math.min(0.05, dtSeconds)) : 0;
+  return worldTimeMs + dt * 1_000;
 }
 
 export interface RemotePlayer extends PlayerPose {
@@ -271,6 +369,9 @@ export interface VoxelEngine {
   /** Settles sand/gravel after one explicit offline edit; never creates network traffic. */
   settleFallingBlocks(edit: Readonly<WorldEdit>, previousBlock: BlockId): WorldEdit[];
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
+  /** Freezes local movement, simulation, combat, fuses, particles, and world time. */
+  setPaused(paused: boolean): boolean;
+  isPaused(): boolean;
   setRespawnPoint(point: RespawnPoint): void;
   /** Reconciles local prediction to one Lakebed-authoritative health value. */
   setPlayerHealth(health: number): number;
@@ -278,6 +379,13 @@ export interface VoxelEngine {
   /** Snap to a Lakebed-authoritative pose without changing health or respawn state. */
   reconcilePose(pose: PlayerPose): void;
   getPose(): PlayerPose;
+  getRespawnPoint(): PlayerPose;
+  getPlayerHealth(): number;
+  getWorldTimeMs(): number;
+  /** Returns a detached, bounded snapshot safe to pass to the local save codec. */
+  exportRuntimeSnapshot(): VoxelRuntimeSnapshot;
+  /** Restores only a completely valid snapshot and leaves the engine unchanged on failure. */
+  importRuntimeSnapshot(snapshot: unknown): boolean;
   getTarget(): BlockTarget | null;
   /** Read-only local material lookup for discrete offline authority checks. */
   getBlockAt(x: number, y: number, z: number): BlockId;

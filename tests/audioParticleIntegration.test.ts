@@ -40,9 +40,10 @@ assert.ok(blockSubmission.indexOf("if (!result.ok)") < blockSubmission.indexOf("
 assert.ok(blockSubmission.includes("if (!replayPassedByNewerChunk) emitConfirmedWorldBlockFeedback(result)"), "stale receipt replays cannot draw debris for a superseded block");
 
 const miningFeedback = engine.slice(
-  engine.indexOf("if (miningTimer && miningDurationMs > 0"),
-  engine.indexOf("if (frameTimeMs > 0)", engine.indexOf("if (miningTimer && miningDurationMs > 0")),
+  engine.indexOf("if (!paused && miningTimer && miningDurationMs > 0"),
+  engine.indexOf("if (frameTimeMs > 0)", engine.indexOf("if (!paused && miningTimer && miningDurationMs > 0")),
 );
+assert.ok(miningFeedback.includes("if (!paused && miningTimer"), "pause freezes mining feedback as well as block progress");
 assert.ok(miningFeedback.includes("now - lastMiningHitAt >= 225"), "held mining feedback is capped below five emissions per second");
 assert.ok(miningFeedback.includes("options.onMiningHit?."), "the throttled engine event reaches the local feedback layer");
 assert.ok(engine.includes("footstepDistance += movedHorizontally"), "footsteps are based on resolved movement distance, not frame rate");

@@ -37,12 +37,14 @@ npx lakebed auth as alice
 - `Q` drops one held item into the shared world for another player to pick up
 - `T` or `Enter` opens world chat
 - Hold `Tab` for the live player list; `Esc` opens the game menu
+- In single-player, the game menu can save immediately; dirty worlds also autosave after five minutes of active play and save before leaving
 - `F3` toggles live frame, mesh, chunk, and draw-call counters
 
 ## Project shape
 
 - `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered original 16×16 texture atlas, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
 - `client/components/` — Minecraft-style survival HUD, 93 original pixel item sprites, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
+- `client/singleplayer/` — offline world integration plus a checksummed two-slot browser journal for inventory, edits, drops, containers, TNT, pose, health, time, and deterministic mob state
 - `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, quota-batched multiplayer history/chat, CAS-safe inventories, atomic world item drops/pickups, persistent furnaces and shared-chest transfers, a leased deterministic mob authority, and the synchronized sleep clock
 - `shared/` — pure item, recipe, furnace, and wire-protocol types
 

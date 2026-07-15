@@ -68,10 +68,12 @@ import {
   createMobSimulation,
   createMobSpawns,
   damageMob,
+  exportMobSimulationSnapshot,
   listMobIds,
   mobTargetHasClickPriority,
   raycastMobs,
   respawnExpiredAuthoritativeMobs,
+  restoreMobSimulationSnapshot,
   shearLocalMob,
   stepMobSimulation,
   writeMobPoseSnapshots,
@@ -92,6 +94,9 @@ import {
   type VoxelEngineOptions,
   type VoxelPerformanceStats,
   type WorldEdit,
+  advanceVoxelWorldTimeMs,
+  validateVoxelRuntimeSnapshot,
+  VOXEL_RUNTIME_SNAPSHOT_VERSION,
 } from "./types.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 import {
@@ -1255,6 +1260,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let serverTimeOffsetMs = Number.isFinite(options.serverTimeOffsetMs)
     ? options.serverTimeOffsetMs ?? 0
     : 0;
+  let worldTimeMs = Date.now() + serverTimeOffsetMs;
   const dayNightState = createDayNightState();
   const atmosphereSunDirection = new Float32Array(3);
   const atmosphereMoonDirection = new Float32Array(3);
@@ -1332,7 +1338,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     spawnClearRadius: 6,
     isSpawnable: (_kind, x, y, z) => !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
   }));
-  const mobIds = listMobIds(mobSimulation);
+  let mobIds = listMobIds(mobSimulation);
   let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
   let sharedMobMotionActive = false;
   let sharedMobMotionAppliedAt = 0;
@@ -1349,6 +1355,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let target: BlockTarget | null = null;
   let running = false;
   let destroyed = false;
+  let paused = false;
+  let pausedStartedAt = 0;
+  let pausedVisualTime = 0;
   let frameId = 0;
   let lastFrame = 0;
   let lastPoseSent = 0;
@@ -2211,7 +2220,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const projection = perspective(cameraPosture.fovRadians, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
-    sampleDayNight(Date.now() + serverTimeOffsetMs, dayNightConfig, dayNightState);
+    sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
     writeCelestialDirection(dayNightState.sunAngle, atmosphereSunDirection);
     writeCelestialDirection(dayNightState.moonAngle, atmosphereMoonDirection);
     updateActiveTorchLights(now, eye);
@@ -2429,7 +2438,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const frameTimeMs = Math.max(0, now - lastFrame);
     const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
-    if (miningTimer && miningDurationMs > 0 && now - lastMiningProgressAt >= 50) {
+    worldTimeMs = advanceVoxelWorldTimeMs(worldTimeMs, dt, paused);
+    if (!paused && miningTimer && miningDurationMs > 0 && now - lastMiningProgressAt >= 50) {
       lastMiningProgressAt = now;
       miningProgress = Math.max(0.01, Math.min(0.99, (now - miningStartedAt) / miningDurationMs));
       updateMiningCrackGeometry();
@@ -2440,7 +2450,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         options.onMiningHit?.({ ...target, block: { ...target.block }, place: { ...target.place } });
       }
     }
-    if (rangedChargeStartedAt > 0 && now - lastRangedChargeFeedbackAt >= 50) {
+    if (!paused && rangedChargeStartedAt > 0 && now - lastRangedChargeFeedbackAt >= 50) {
       lastRangedChargeFeedbackAt = now;
       options.onRangedChargeChange?.(
         true,
@@ -2451,8 +2461,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       frameTimes.push(frameTimeMs);
       if (frameTimes.length > 120) frameTimes.shift();
     }
-    update(dt, now);
-    render(now, dt);
+    if (!paused) update(dt, now);
+    const visualNow = paused ? pausedVisualTime : now;
+    render(visualNow, paused ? 0 : dt);
     if (now - lastPerformanceSent >= 500) {
       lastPerformanceSent = now;
       options.onPerformanceStats?.(getPerformanceStats());
@@ -2469,6 +2480,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onKeyDown(event: KeyboardEvent): void {
+    if (paused) return;
     if (document.pointerLockElement !== canvas) return;
     const hotbarIndex = hotbarIndexForDigitCode(event.code);
     if (hotbarIndex !== null) {
@@ -2494,7 +2506,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onMouseMove(event: MouseEvent): void {
-    if (document.pointerLockElement !== canvas || playerHealth <= 0) return;
+    if (paused || document.pointerLockElement !== canvas || playerHealth <= 0) return;
     const look = applyMouseLookDelta(pose.yaw, pose.pitch, event.movementX, event.movementY);
     pose.yaw = look.yaw;
     pose.pitch = look.pitch;
@@ -2502,7 +2514,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onWheel(event: WheelEvent): void {
-    if (document.pointerLockElement !== canvas) return;
+    if (paused || document.pointerLockElement !== canvas) return;
     const direction = hotbarWheelDirection(event.deltaY);
     if (direction === 0) return;
     event.preventDefault();
@@ -2595,6 +2607,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onMouseDown(event: MouseEvent): void {
     event.preventDefault();
+    if (paused) return;
     if (document.pointerLockElement !== canvas) {
       canvas.requestPointerLock();
       return;
@@ -2928,6 +2941,35 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         serverTimeOffsetMs,
         nextServerTimeOffsetMs,
       );
+      worldTimeMs = Date.now() + serverTimeOffsetMs;
+    },
+    setPaused(nextPaused) {
+      const next = nextPaused === true;
+      if (paused === next) return paused;
+      paused = next;
+      keys.clear();
+      velocity[0] = 0;
+      velocity[1] = 0;
+      velocity[2] = 0;
+      cancelPrimaryActionHold();
+      clearRangedCharge(true);
+      resetMovementView();
+      if (paused) {
+        pausedStartedAt = performance.now();
+        pausedVisualTime = pausedStartedAt;
+      } else {
+        const resumedAt = performance.now();
+        if (sharedMobMotionAppliedAt > 0) {
+          sharedMobMotionAppliedAt += Math.max(0, resumedAt - pausedStartedAt);
+        }
+        pausedStartedAt = 0;
+        pausedVisualTime = 0;
+        lastFrame = resumedAt;
+      }
+      return paused;
+    },
+    isPaused() {
+      return paused;
     },
     setRespawnPoint(point) {
       const validated = validateRespawnPoint(point, Number.MAX_SAFE_INTEGER);
@@ -2969,6 +3011,57 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       options.onPoseChange?.({ ...pose });
     },
     getPose() { return { ...pose }; },
+    getRespawnPoint() { return { ...respawnPoint }; },
+    getPlayerHealth() { return playerHealth; },
+    getWorldTimeMs() { return worldTimeMs; },
+    exportRuntimeSnapshot() {
+      return {
+        version: VOXEL_RUNTIME_SNAPSHOT_VERSION,
+        pose: { ...pose },
+        respawnPoint: { ...respawnPoint },
+        playerHealth,
+        worldTimeMs,
+        dayNight: { ...dayNightConfig },
+        mobAccumulatorSeconds,
+        mobSimulation: exportMobSimulationSnapshot(mobSimulation),
+      };
+    },
+    importRuntimeSnapshot(value) {
+      const snapshot = validateVoxelRuntimeSnapshot(value);
+      if (!snapshot || !restoreMobSimulationSnapshot(mobSimulation, snapshot.mobSimulation)) return false;
+      pose.x = snapshot.pose.x;
+      pose.y = snapshot.pose.y;
+      pose.z = snapshot.pose.z;
+      pose.yaw = snapshot.pose.yaw;
+      pose.pitch = snapshot.pose.pitch;
+      respawnPoint = { ...snapshot.respawnPoint };
+      playerHealth = snapshot.playerHealth;
+      worldTimeMs = snapshot.worldTimeMs;
+      dayNightConfig.cycleLengthMs = snapshot.dayNight.cycleLengthMs;
+      dayNightConfig.epochMs = snapshot.dayNight.epochMs;
+      dayNightConfig.epochPhase = snapshot.dayNight.epochPhase;
+      serverTimeOffsetMs = worldTimeMs - Date.now();
+      mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
+      mobAccumulatorSeconds = snapshot.mobAccumulatorSeconds;
+      mobIds = listMobIds(mobSimulation);
+      sharedMobMotionActive = false;
+      velocity[0] = 0;
+      velocity[1] = 0;
+      velocity[2] = 0;
+      keys.clear();
+      clearMining();
+      clearRangedCharge(true);
+      resetMovementView();
+      playerViewSuspended = playerHealth <= 0;
+      target = null;
+      updateStreamingWindow(true);
+      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
+      poseDirty = true;
+      options.onPoseChange?.({ ...pose });
+      options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      return true;
+    },
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },
     getBlockAt(x, y, z) {
       if (![x, y, z].every(Number.isSafeInteger)) return BLOCK.AIR;

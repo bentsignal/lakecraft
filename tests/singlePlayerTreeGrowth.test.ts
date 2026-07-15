@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const saveSource = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const interactionStart = source.indexOf("target.block.block === BLOCK.SAPLING");
 const craftingStart = source.indexOf("target.block.block === BLOCK.CRAFTING_TABLE", interactionStart);
 assert.ok(interactionStart >= 0 && craftingStart > interactionStart, "sapling use is dispatched before ordinary block UI interactions");
@@ -9,7 +10,7 @@ const interaction = source.slice(interactionStart, craftingStart);
 
 assert.match(source, /\[BLOCK\.SAPLING\]:\s*"sapling"/);
 assert.match(source, /sapling:\s*BLOCK\.SAPLING/);
-assert.match(source, /edit\.block <= BLOCK\.BRICKS/, "offline saves retain saplings and later append-only block edits");
+assert.match(saveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "offline saves retain saplings and later append-only block edits");
 assert.match(interaction, /itemId === "bone_meal"/, "growth requires selected bone meal");
 assert.ok(
   interaction.indexOf("planOakTreeGrowth") < interaction.indexOf("stack.count - 1"),
