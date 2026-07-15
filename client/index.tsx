@@ -25,20 +25,17 @@ import {
   applyConfirmedToolUse,
   attackDamage,
   clampHotbarIndex,
-  craftRecipe,
   createEmptyEquipment,
   createEmptyInventory,
   createSerializablePlayerState,
   createStarterInventory,
   createSurvivalTickState,
   consumeFood,
-  equipArmorFromInventory,
   equippedArmorProtection,
   miningSeconds,
   normalizeInventory,
   normalizeRespawnPoint,
   tickSurvival,
-  unequipArmor,
   type ArmorSlot,
   type BlockId,
   type CraftingContext,
@@ -50,6 +47,7 @@ import {
   type SurvivalTickState,
   type ToolUseKind,
 } from "../shared/game";
+import type { StowedInventorySnapshot } from "../shared/inventoryWorkspace";
 import {
   type FurnaceState,
   type FurnaceTransferAction,
@@ -664,6 +662,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const targetRef = useRef<BlockTarget | null>(null);
   const inventoryRef = useRef<Inventory>(createStarterInventory());
   const equipmentRef = useRef<Equipment>(createEmptyEquipment());
+  const inventoryAuthorityEpochRef = useRef(0);
   const respawnPointRef = useRef<PlayerRespawnPoint | null>(null);
   const hungerRef = useRef(MAX_HUNGER);
   const survivalRef = useRef<SurvivalTickState>(createSurvivalTickState());
@@ -677,6 +676,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const lastCommittedPlayerJsonRef = useRef("");
   const inventorySavePromiseRef = useRef<Promise<void> | null>(null);
   const inventorySavePendingRef = useRef(false);
+  const inventorySaveRetryTimerRef = useRef<number | null>(null);
+  const inventorySaveRetryCountRef = useRef(0);
   const chestTokenRef = useRef("");
   const chestInventoryRef = useRef<Inventory>(createEmptyInventory(CHEST_SLOT_COUNT));
   const chestBusyRef = useRef(false);
@@ -715,6 +716,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
   const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
+  const [inventoryAuthorityEpoch, setInventoryAuthorityEpoch] = useState(0);
   const [respawnPoint, setRespawnPoint] = useState<PlayerRespawnPoint | null>(null);
   const [hunger, setHunger] = useState(MAX_HUNGER);
   const [selectedHotbar, setSelectedHotbar] = useState(2);
@@ -868,6 +870,11 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     setEquipment(next);
   }
 
+  function advanceInventoryAuthorityEpoch() {
+    inventoryAuthorityEpochRef.current += 1;
+    setInventoryAuthorityEpoch(inventoryAuthorityEpochRef.current);
+  }
+
   function recordConfirmedToolUse(slot: number, itemId: ItemId | null, kind: ToolUseKind): void {
     if (!itemId) return;
     const result = applyConfirmedToolUse(inventoryRef.current, slot, kind, itemId);
@@ -949,6 +956,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     hungerRef.current = saved.hunger;
     survivalRef.current.hunger = saved.hunger;
     setHunger(saved.hunger);
+    advanceInventoryAuthorityEpoch();
     if (brokenArmor.length > 0) {
       const labels = brokenArmor.map((itemId) => ITEMS[itemId].label);
       notify(
@@ -981,6 +989,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       inventorySavePendingRef.current = true;
       return inventorySavePromiseRef.current;
     }
+    if (inventorySaveRetryTimerRef.current !== null) {
+      window.clearTimeout(inventorySaveRetryTimerRef.current);
+      inventorySaveRetryTimerRef.current = null;
+    }
     const payload = currentPlayerStateJson();
     if (payload === lastCommittedPlayerJsonRef.current) return Promise.resolve();
     const expectedToken = inventoryTokenRef.current;
@@ -990,6 +1002,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         const result = await saveInventory(payload, expectedToken);
         if (session !== inventorySessionRef.current) return;
         setConnected(true);
+        inventorySaveRetryCountRef.current = 0;
         if (result.ok) {
           inventoryTokenRef.current = result.inventory.updatedAt;
           inventoryRevisionRef.current = result.inventory.revision;
@@ -1009,7 +1022,17 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }
       } catch {
         setConnected(false);
-        notify("Field kit save delayed", "Inventory will retry after your next change.", "warning");
+        if (session === inventorySessionRef.current && inventorySaveRetryCountRef.current < 3) {
+          inventorySaveRetryCountRef.current += 1;
+          const retryDelay = 1_000 * 2 ** (inventorySaveRetryCountRef.current - 1);
+          inventorySaveRetryTimerRef.current = window.setTimeout(() => {
+            inventorySaveRetryTimerRef.current = null;
+            void requestInventorySave();
+          }, retryDelay);
+          notify("Field kit save delayed", `Lakebed will retry in ${retryDelay / 1_000}s.`, "warning");
+        } else {
+          notify("Field kit save paused", "Lakebed could not save after three retries. Your next inventory change will try again.", "warning");
+        }
       } finally {
         inventorySavePromiseRef.current = null;
         if (inventorySavePendingRef.current && !chestBusyRef.current
@@ -1022,6 +1045,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     inventorySavePromiseRef.current = task;
     return task;
   }
+
+  useEffect(() => () => {
+    if (inventorySaveRetryTimerRef.current !== null) window.clearTimeout(inventorySaveRetryTimerRef.current);
+  }, []);
 
   async function handleDropSelected(dropWholeStack = false): Promise<void> {
     if (!hydratedRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
@@ -1361,6 +1388,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setHunger(saved.hunger);
       notify("Field kit restored", "Lakebed recovered your last inventory.", "success");
     }
+    advanceInventoryAuthorityEpoch();
     setInventoryReady(true);
   }, [savedInventory, auth.userId, auth.isAuthenticated, auth.isGuest]);
 
@@ -2195,21 +2223,24 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     playerListEntries.unshift({ id: auth.userId, name: profile.username, isSelf: true, connected });
   }
 
-  function handleCraft(recipe: Recipe) {
-    if (!hydratedRef.current || pendingWorldBlockEditRef.current) return;
-    const result = craftRecipe(inventoryRef.current, recipe, craftingContext);
-    if (!result.ok) {
-      const detail = result.reason === "inventory_full"
-        ? "Make room in your pack first."
-        : result.reason === "requires_crafting_table"
-          ? "Place and use a crafting table for advanced recipes."
-          : "Gather the marked ingredients.";
-      notify("Recipe unavailable", detail, "warning");
-      return;
-    }
-    updateInventory(result.inventory);
-    audioRef.current?.play("craft", { seed: `${recipe.id}:${result.crafted.count}`, intensity: 0.72, surface: "wood" });
-    notify(`Made ${ITEMS[result.crafted.itemId].label}`, `Added ${result.crafted.count} to your field kit.`, "success");
+  function handleInventoryWorkspaceChange(
+    snapshot: StowedInventorySnapshot,
+    expectedAuthorityEpoch: number,
+  ): boolean {
+    if (!hydratedRef.current
+      || expectedAuthorityEpoch !== inventoryAuthorityEpochRef.current
+      || pendingWorldBlockEditRef.current
+      || droppedItemBusyRef.current
+      || chestBusyRef.current
+      || furnaceBusyRef.current) return false;
+    updateInventory(snapshot.inventory);
+    updateEquipment(snapshot.equipment);
+    return true;
+  }
+
+  function handleCrafted(recipe: Recipe, craftedCount: number) {
+    audioRef.current?.play("craft", { seed: `${recipe.id}:${craftedCount}`, intensity: 0.72, surface: "wood" });
+    notify(`Made ${ITEMS[recipe.output.itemId].label}`, `Crafted ${craftedCount}.`, "success");
   }
 
   async function handleFurnaceTransfer(action: FurnaceTransferAction): Promise<void> {
@@ -2294,27 +2325,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     setHunger(result.hunger);
     notify(`Ate ${ITEMS[result.consumed].label}`, `Restored ${result.restored} hunger.`, "success");
     return true;
-  }
-
-  function handleEquipArmor(index: number) {
-    if (pendingWorldBlockEditRef.current) return;
-    const equippedItem = inventoryRef.current[index]?.itemId;
-    const result = equipArmorFromInventory(inventoryRef.current, equipmentRef.current, index);
-    if (!result.ok) return;
-    updateInventory(result.inventory);
-    updateEquipment(result.equipment);
-    notify("Armor equipped", equippedItem ? ITEMS[equippedItem].label : undefined, "success");
-  }
-
-  function handleUnequipArmor(slot: ArmorSlot) {
-    if (pendingWorldBlockEditRef.current) return;
-    const result = unequipArmor(inventoryRef.current, equipmentRef.current, slot);
-    if (!result.ok) {
-      if (result.reason === "inventory_full") notify("Pack is full", "Clear a pocket before removing armor.", "warning");
-      return;
-    }
-    updateInventory(result.inventory);
-    updateEquipment(result.equipment);
   }
 
   function loadCanonicalChest(row: PersistedChest | null): boolean {
@@ -2623,6 +2633,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           updateInventory(createStarterInventory());
           const emptyEquipment = createEmptyEquipment();
           updateEquipment(emptyEquipment);
+          advanceInventoryAuthorityEpoch();
           respawnPointRef.current = null;
           setRespawnPoint(null);
           hungerRef.current = MAX_HUNGER;
@@ -2641,6 +2652,11 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           inventorySessionRef.current += 1;
           lastCommittedPlayerJsonRef.current = "";
           inventorySavePendingRef.current = false;
+          inventorySaveRetryCountRef.current = 0;
+          if (inventorySaveRetryTimerRef.current !== null) {
+            window.clearTimeout(inventorySaveRetryTimerRef.current);
+            inventorySaveRetryTimerRef.current = null;
+          }
           pendingChestTransferRef.current = null;
           pendingWorldBlockEditRef.current = null;
           deferredMobDropsRef.current.length = 0;
@@ -2679,6 +2695,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         hunger={hunger}
         maxHunger={MAX_HUNGER}
         inventory={inventory}
+        inventoryAuthorityEpoch={inventoryAuthorityEpoch}
         inventoryOpen={inventoryOpen}
         miningProgress={miningProgress}
         handActionToken={handActionToken}
@@ -2691,7 +2708,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           engineRef.current?.requestPointerLock();
         }}
         onContinueMobile={() => setMobileUnsupported(false)}
-        onCraft={handleCraft}
+        onCrafted={handleCrafted}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         onDisconnect={() => {
           void requestInventorySave();
@@ -2706,7 +2723,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           setActiveBedKey("");
           setMobIds([]);
         }}
-        onEquipArmor={handleEquipArmor}
+        onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
         onOptions={() => notify("Options", "Controls and graphics settings are coming next.")}
         soundMuted={soundMuted}
         onToggleSound={() => {
@@ -2724,8 +2741,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           engineRef.current?.requestPointerLock();
         }}
         onSelectHotbar={(index) => setSelectedHotbar(clampHotbarIndex(index))}
-        onUnequipArmor={handleUnequipArmor}
-        onUseItem={(inventoryIndex) => { handleUseItem(inventoryIndex); }}
         playerName={profile?.username ?? auth.displayName}
         pauseOpen={pauseOpen}
         players={playerListEntries}

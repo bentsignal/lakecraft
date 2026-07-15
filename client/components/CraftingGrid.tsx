@@ -8,7 +8,7 @@ export type CraftingGridViewProps = {
   output: ItemStack | null;
   outputLabel?: string;
   outputDisabled?: boolean;
-  onLeftClickSlot: (slot: number) => void;
+  onLeftClickSlot: (slot: number, shiftQuickMove: boolean) => void;
   onRightClickSlot: (slot: number) => void;
   onTakeOutput: (shiftAll: boolean) => void;
 };
@@ -31,7 +31,7 @@ export function CraftingGridView({
             aria-label={`Crafting slot ${index + 1}: ${stack ? `${ITEMS[stack.itemId].label}, ${stack.count}` : "Empty"}`}
             className="lc-slot lc-crafting-slot"
             key={index}
-            onClick={() => onLeftClickSlot(index)}
+            onClick={(event) => onLeftClickSlot(index, event.shiftKey)}
             onContextMenu={(event) => {
               event.preventDefault();
               onRightClickSlot(index);
@@ -50,6 +50,10 @@ export function CraftingGridView({
         className={`lc-slot lc-crafting-result${output ? " is-ready" : ""}`}
         disabled={!output || outputDisabled}
         onClick={(event) => onTakeOutput(event.shiftKey)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (output && !outputDisabled) onTakeOutput(false);
+        }}
         title={output ? `Take ${output.count} ${outputLabel ?? ITEMS[output.itemId].label}` : "Arrange a valid recipe"}
         type="button"
       >

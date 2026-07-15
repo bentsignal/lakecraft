@@ -46,18 +46,18 @@ assert.ok(
 );
 
 const equipHandler = client.slice(
-  client.indexOf("function handleEquipArmor"),
+  client.indexOf("function handleInventoryWorkspaceChange"),
   client.indexOf("function loadCanonicalChest"),
 );
-assert.ok(equipHandler.includes("equipmentRef.current"));
-assert.ok(equipHandler.includes("updateEquipment(result.equipment)"));
+assert.ok(equipHandler.includes("updateEquipment(snapshot.equipment)"));
+assert.ok(equipHandler.includes("expectedAuthorityEpoch !== inventoryAuthorityEpochRef.current"));
 assert.equal(equipHandler.includes("setInterval"), false, "armor durability adds no client mutation loop");
 
 const equipmentSlots = inventoryDrawer.slice(
-  inventoryDrawer.indexOf('(Object.keys(equipment) as ArmorSlot[])'),
+  inventoryDrawer.indexOf('(Object.keys(workspace.equipment) as ArmorSlot[])'),
   inventoryDrawer.indexOf('<div className="lc-player-preview"'),
 );
-assert.ok(equipmentSlots.includes("const stack = equipment[slot]"));
+assert.ok(equipmentSlots.includes("const stack = workspace.equipment[slot]"));
 assert.ok(equipmentSlots.includes("stack.durability"));
 assert.ok(equipmentSlots.includes("maxItemDurability(itemId)"));
 assert.ok(equipmentSlots.includes("<ItemGlyph stack={stack ? { ...stack, count: 1 } : null} compact />"));

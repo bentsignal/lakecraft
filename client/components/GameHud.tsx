@@ -1,12 +1,12 @@
 import {
   availableRecipes,
   equippedArmorProtection,
-  type ArmorSlot,
   type CraftingContext,
   type Equipment,
   type Inventory,
   type Recipe,
 } from "../../shared/game";
+import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
 import { FirstPersonHeldItem } from "./FirstPersonHeldItem";
@@ -36,10 +36,9 @@ export type GameHudProps = {
   showPlayerList?: boolean;
   players?: readonly PlayerListEntry[];
   onSelectHotbar: (index: number) => void;
-  onCraft: (recipe: Recipe) => void;
-  onEquipArmor: (inventoryIndex: number) => void;
-  onUnequipArmor: (slot: ArmorSlot) => void;
-  onUseItem?: (inventoryIndex: number) => void;
+  inventoryAuthorityEpoch: number;
+  onInventoryWorkspaceChange: (snapshot: StowedInventorySnapshot, expectedAuthorityEpoch: number) => boolean;
+  onCrafted: (recipe: Recipe, craftedCount: number) => void;
   onCloseInventory: () => void;
   onResume?: () => void;
   onOptions?: () => void;
@@ -82,10 +81,9 @@ export function GameHud({
   showPlayerList = false,
   players = [],
   onSelectHotbar,
-  onCraft,
-  onEquipArmor,
-  onUnequipArmor,
-  onUseItem,
+  inventoryAuthorityEpoch,
+  onInventoryWorkspaceChange,
+  onCrafted,
   onCloseInventory,
   onResume,
   onOptions,
@@ -108,10 +106,12 @@ export function GameHud({
           stack={inventory[selectedIndex] ?? null}
         />
         {!pauseOpen && !inventoryOpen ? <Crosshair /> : null}
-        <div className="lc-survival-wrap">
-          <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} />
-          <Hotbar disabled={pauseOpen} inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
-        </div>
+        {!inventoryOpen && !pauseOpen ? (
+          <div className="lc-survival-wrap">
+            <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} />
+            <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
+          </div>
+        ) : null}
         <PlayerList players={players} visible={showPlayerList && !pauseOpen} />
         <ToastSurface messages={messages} onDismiss={onDismissMessage} />
       </div>
@@ -123,7 +123,7 @@ export function GameHud({
         open={pauseOpen}
         soundMuted={soundMuted}
       />
-      <InventoryCraftingDrawer craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCraft={onCraft} onEquipArmor={onEquipArmor} onSelectSlot={onSelectHotbar} onUnequipArmor={onUnequipArmor} onUseItem={onUseItem} open={inventoryOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} open={inventoryOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );

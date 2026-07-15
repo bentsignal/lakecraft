@@ -1,5 +1,6 @@
 export const HOTBAR_SIZE = 9;
-export const INVENTORY_SIZE = 27;
+/** Minecraft-style player storage: three 9-wide pack rows plus the 9-slot hotbar. */
+export const INVENTORY_SIZE = 36;
 export const MAX_HUNGER = 20;
 export const MAX_HEALTH = 20;
 export const HUNGER_POINT_INTERVAL_SECONDS = 45;

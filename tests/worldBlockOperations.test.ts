@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ITEMS, type Inventory } from "../shared/game.ts";
+import { INVENTORY_SIZE, ITEMS, type Inventory } from "../shared/game.ts";
 import {
   MAX_WORLD_BLOCK_OPERATION_ID_LENGTH,
   MAX_WORLD_BLOCK_REVISION,
@@ -110,7 +110,7 @@ assert.equal(placedWorldBlockForItem("door"), "door_closed");
 assert.equal(placedWorldBlockForItem("diamond"), null);
 
 function emptyInventory(): Inventory {
-  return Array.from({ length: 27 }, () => null);
+  return Array.from({ length: INVENTORY_SIZE }, () => null);
 }
 
 const miningInventory = emptyInventory();
@@ -182,7 +182,7 @@ const swordMine = resolveWorldBlockOperation({ ...mine, expectedBlock: "dirt", e
 assert.equal(swordMine.ok, true);
 if (swordMine.ok) assert.equal(swordMine.effect.toolUse.remainingDurability, 8, "swords spend two durability while mining");
 
-const fullInventory: Inventory = Array.from({ length: 27 }, (_, index) => index === 0
+const fullInventory: Inventory = Array.from({ length: INVENTORY_SIZE }, (_, index) => index === 0
   ? { itemId: "wooden_pickaxe", count: 1, durability: 10 }
   : { itemId: "dirt", count: 64 });
 const fullBefore = structuredClone(fullInventory);
@@ -194,7 +194,7 @@ assert.deepEqual(resolveWorldBlockOperation(mine, {
 }), { ok: false, reason: "inventory_full" });
 assert.deepEqual(fullInventory, fullBefore, "failed drop capacity checks must not spend durability");
 
-const breakingInventory: Inventory = Array.from({ length: 27 }, (_, index) => index === 0
+const breakingInventory: Inventory = Array.from({ length: INVENTORY_SIZE }, (_, index) => index === 0
   ? { itemId: "wooden_pickaxe", count: 1, durability: 1 }
   : { itemId: "dirt", count: 64 });
 const breakingMine = resolveWorldBlockOperation(mine, {

@@ -20,7 +20,7 @@ import {
   type DropItemRequest,
   type PickupDroppedItemRequest,
 } from "../shared/droppedItems.ts";
-import { createEmptyInventory, createSerializablePlayerState, type ItemStack } from "../shared/game.ts";
+import { INVENTORY_SIZE, createEmptyInventory, createSerializablePlayerState, type ItemStack } from "../shared/game.ts";
 
 const operationId = "drop_operation_1234";
 const pickupOperationId = "pickup_operation_1";
@@ -87,7 +87,7 @@ assert.deepEqual(appliedDrop.inventory[0], { itemId: "dirt", count: 7 });
 for (const [change, reason] of [
   [{ operationId: "short" }, "invalid_operation_id"],
   [{ operationId: "bad operation id!!" }, "invalid_operation_id"],
-  [{ sourceSlot: 27 }, "invalid_source_slot"],
+  [{ sourceSlot: INVENTORY_SIZE }, "invalid_source_slot"],
   [{ count: 0 }, "invalid_count"],
   [{ expectedInventoryUpdatedAt: "x".repeat(129) }, "invalid_token"],
   [{ playerStateJson: "{}" }, "invalid_player_state"],

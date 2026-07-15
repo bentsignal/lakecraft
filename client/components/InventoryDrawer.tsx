@@ -1,34 +1,37 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
   ITEMS,
-  maxItemDurability,
-  remainingItemDurability,
   RECIPES,
   availableRecipes,
-  canCraft,
-  craftRecipe,
   equippedArmorProtection,
-  removeItem,
+  maxItemDurability,
+  remainingItemDurability,
   type ArmorSlot,
   type CraftingContext,
   type Equipment,
   type Inventory,
-  type ItemId,
-  type ItemStack,
   type Recipe,
 } from "../../shared/game";
+import { CRAFTING_GRID_RECIPES, previewCraftingResult, type CraftingGridSize } from "../../shared/craftingGrid";
 import {
-  CRAFTING_GRID_RECIPES,
-  createCraftingGrid,
-  leftClickCraftingSlot,
-  matchCraftingGrid,
-  previewCraftingResult,
-  rightClickCraftingSlot,
-  takeCraftingResult,
-  type CraftingGridRecipe,
-  type CraftingGridSize,
-  type CraftingGridState,
-} from "../../shared/craftingGrid";
+  createInventoryWorkspace,
+  doubleClickGatherToCursor,
+  leftClickArmorSlot,
+  leftClickInventorySlot,
+  leftClickWorkspaceCraftingSlot,
+  rightClickArmorSlot,
+  rightClickInventorySlot,
+  rightClickWorkspaceCraftingSlot,
+  shiftClickArmorSlot,
+  shiftClickInventorySlot,
+  shiftClickWorkspaceCraftingSlot,
+  stowInventoryWorkspace,
+  takeAllWorkspaceCraftingResultsToInventory,
+  takeWorkspaceCraftingResult,
+  type InventoryWorkspace,
+  type InventoryWorkspaceActionResult,
+  type StowedInventorySnapshot,
+} from "../../shared/inventoryWorkspace";
 import { CraftingGridView } from "./CraftingGrid";
 import { ItemGlyph } from "./ItemGlyph";
 
@@ -36,172 +39,152 @@ export type InventoryCraftingDrawerProps = {
   open: boolean;
   inventory: Inventory;
   equipment: Equipment;
+  authorityEpoch: number;
   craftingContext?: CraftingContext;
   selectedIndex?: number;
   recipes?: readonly Recipe[];
   onClose: () => void;
-  /**
-   * The root owns the persisted inventory. The drawer passes an exact recipe
-   * reconstructed from the occupied grid; the existing root craft transaction
-   * atomically removes those ingredients and adds the result.
-   */
-  onCraft: (recipe: Recipe) => void;
-  onEquipArmor: (inventoryIndex: number) => void;
-  onUseItem?: (inventoryIndex: number) => void;
-  onUnequipArmor: (slot: ArmorSlot) => void;
-  onSelectSlot?: (index: number) => void;
+  onCrafted: (recipe: Recipe, craftedCount: number) => void;
+  onWorkspaceChange: (snapshot: StowedInventorySnapshot, expectedAuthorityEpoch: number) => boolean;
 };
 
 export function InventoryCraftingDrawer({
   open,
   inventory,
   equipment,
+  authorityEpoch,
   craftingContext = "field",
   selectedIndex = 0,
   recipes,
   onClose,
-  onCraft,
-  onEquipArmor,
-  onSelectSlot,
-  onUnequipArmor,
-  onUseItem,
+  onCrafted,
+  onWorkspaceChange,
 }: InventoryCraftingDrawerProps) {
   const size: CraftingGridSize = craftingContext === "crafting_table" ? 3 : 2;
-  const [craftingState, setCraftingState] = useState<CraftingGridState>(() => emptyCraftingState(2));
+  const [workspace, setWorkspace] = useState<InventoryWorkspace>(() => createInventoryWorkspace(inventory, equipment, size));
   const [pointer, setPointer] = useState({ x: 0, y: 0 });
-  const stateRef = useRef(craftingState);
-  const pendingCraftRef = useRef(false);
-  const previousModeRef = useRef(`${open}:${craftingContext}`);
+  const [interactionError, setInteractionError] = useState("");
+  const stateRef = useRef(workspace);
+  const doubleClickBaseRef = useRef<InventoryWorkspace | null>(null);
+  const authorityEpochRef = useRef(authorityEpoch);
+  const wasOpenRef = useRef(open);
   const displayedRecipes = recipes ?? availableRecipes(craftingContext);
   const allowedRecipeIds = new Set(displayedRecipes.map(({ id }) => id));
   const gridRecipes = CRAFTING_GRID_RECIPES.filter(({ id }) => allowedRecipeIds.has(id));
 
-  useEffect(() => {
-    const mode = `${open}:${craftingContext}`;
-    if (!open || mode !== previousModeRef.current) replaceCraftingState(emptyCraftingState(size));
-    previousModeRef.current = mode;
-  }, [open, craftingContext, size]);
-
-  useEffect(() => {
-    pendingCraftRef.current = false;
-    if (!reservationsFitInventory(inventory, stateRef.current)) replaceCraftingState(emptyCraftingState(size));
-  }, [inventory, size]);
-
-  function replaceCraftingState(next: CraftingGridState) {
+  function replaceWorkspace(next: InventoryWorkspace) {
     stateRef.current = next;
-    setCraftingState(next);
+    setWorkspace(next);
   }
 
-  function closeAndReturnItems() {
-    // Grid and cursor are reservations over the authoritative inventory, not
-    // copies. Clearing them returns every item without a persistence mutation.
-    replaceCraftingState(emptyCraftingState(size));
+  function resetFromAuthority(message = "") {
+    replaceWorkspace(createInventoryWorkspace(inventory, equipment, size));
+    authorityEpochRef.current = authorityEpoch;
+    doubleClickBaseRef.current = null;
+    setInteractionError(message);
+  }
+
+  useEffect(() => {
+    const openedNow = open && !wasOpenRef.current;
+    if (openedNow || authorityEpoch !== authorityEpochRef.current || stateRef.current.gridSize !== size) {
+      resetFromAuthority();
+    }
+    wasOpenRef.current = open;
+  }, [open, authorityEpoch, craftingContext]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "KeyE" && event.code !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeAndStow();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open, authorityEpoch, inventory, equipment, craftingContext]);
+
+  function publish(next: InventoryWorkspace): boolean {
+    const stowed = stowInventoryWorkspace(next);
+    if (!stowed.ok) {
+      setInteractionError("No room for the crafted stack. Clear a slot first.");
+      return false;
+    }
+    if (!onWorkspaceChange(stowed.snapshot, authorityEpochRef.current)) {
+      resetFromAuthority("Your Lakebed inventory changed. The latest pack was reloaded.");
+      return false;
+    }
+    setInteractionError("");
+    replaceWorkspace(next);
+    return true;
+  }
+
+  function apply(result: InventoryWorkspaceActionResult, preserveDoubleClickBase = false) {
+    if (!preserveDoubleClickBase) doubleClickBaseRef.current = null;
+    if (result.ok) publish(result.state);
+  }
+
+  function closeAndStow() {
+    const stowed = stowInventoryWorkspace(stateRef.current);
+    if (stowed.ok) onWorkspaceChange(stowed.snapshot, authorityEpochRef.current);
     onClose();
   }
 
-  function leftClickGrid(slot: number) {
-    const result = leftClickCraftingSlot(stateRef.current, slot, size);
-    if (result.ok) replaceCraftingState(result.state);
-  }
-
-  function rightClickGrid(slot: number) {
-    const result = rightClickCraftingSlot(stateRef.current, slot, size);
-    if (result.ok) replaceCraftingState(result.state);
-  }
-
-  const visibleInventory = inventoryWithoutReservations(inventory, craftingState);
-  const preview = previewCraftingResult(craftingState.grid, size, gridRecipes);
-  const previewRecipe = preview ? displayedRecipes.find(({ id }) => id === preview.recipeId) : undefined;
-
-  function leftClickInventory(index: number) {
-    const available = visibleInventory[index];
-    const cursor = stateRef.current.cursor;
-    if (!cursor) {
-      if (available) replaceCraftingState({ ...stateRef.current, cursor: { ...available } });
-      else if (index < 9) onSelectSlot?.(index);
-      return;
-    }
-    // Returning the current reservation and taking the clicked available stack
-    // is an atomic swap over the unchanged authoritative inventory.
-    replaceCraftingState({ ...stateRef.current, cursor: available ? { ...available } : null });
-  }
-
-  function rightClickInventory(index: number) {
-    const available = visibleInventory[index];
-    const cursor = stateRef.current.cursor;
-    if (!cursor) {
-      if (available) replaceCraftingState({ ...stateRef.current, cursor: { ...available, count: Math.ceil(available.count / 2) } });
-      return;
-    }
-    replaceCraftingState({
-      ...stateRef.current,
-      cursor: cursor.count > 1 ? { ...cursor, count: cursor.count - 1 } : null,
-    });
-  }
-
   function takeOutput(shiftAll: boolean) {
-    if (pendingCraftRef.current) return;
-    let current = stateRef.current;
-    if (shiftAll && current.cursor) return;
-    let shadowInventory = inventory.map((stack) => stack ? { ...stack } : null);
-    let craftedAny = false;
-
-    for (let attempt = 0; attempt < (shiftAll ? 64 : 1); attempt += 1) {
-      const match = matchCraftingGrid(current.grid, size, gridRecipes);
-      if (!match) break;
-      const base = displayedRecipes.find(({ id }) => id === match.recipe.id) ?? RECIPES.find(({ id }) => id === match.recipe.id);
-      if (!base) break;
-      const exactRecipe = recipeFromMatch(base, match.recipe, match.consumedSlots, current.grid);
-      const taken = takeCraftingResult(current, size, gridRecipes);
-      if (!taken.ok || !canCraft(shadowInventory, exactRecipe, craftingContext)) break;
-      const shadowResult = craftRecipe(shadowInventory, exactRecipe, craftingContext);
-      if (!shadowResult.ok) break;
-
-      craftedAny = true;
-      shadowInventory = shadowResult.inventory;
-      // Root's existing handler updates its inventory ref synchronously before
-      // this local result reservation is rendered.
-      onCraft(exactRecipe);
-      current = shiftAll ? { grid: taken.state.grid, cursor: null } : taken.state;
+    if (!shiftAll) {
+      const result = takeWorkspaceCraftingResult(stateRef.current);
+      if (!result.ok || !publish(result.state)) return;
+      const recipe = displayedRecipes.find(({ id }) => id === result.recipeId)
+        ?? RECIPES.find(({ id }) => id === result.recipeId);
+      if (recipe) onCrafted(recipe, result.crafted.count);
+      return;
     }
-    if (!craftedAny) return;
-    pendingCraftRef.current = true;
-    replaceCraftingState(current);
+
+    const result = takeAllWorkspaceCraftingResultsToInventory(stateRef.current);
+    if (!result.ok || !publish(result.state)) return;
+    const recipe = displayedRecipes.find(({ id }) => id === result.recipeId)
+      ?? RECIPES.find(({ id }) => id === result.recipeId);
+    if (recipe) onCrafted(recipe, result.crafted.count);
   }
 
   if (!open) return null;
-  const inventoryOrder = [...inventory.slice(9).keys()].map((offset) => offset + 9).concat([...inventory.slice(0, 9).keys()]);
+  const preview = previewCraftingResult(workspace.grid, size, gridRecipes);
+  const previewRecipe = preview ? displayedRecipes.find(({ id }) => id === preview.recipeId) : undefined;
+  const inventoryOrder = [...workspace.inventory.slice(9).keys()].map((offset) => offset + 9)
+    .concat([...workspace.inventory.slice(0, 9).keys()]);
+
   return (
     <div
       className="lc-drawer-layer"
       role="presentation"
-      onMouseDown={(event) => { if (event.target === event.currentTarget) closeAndReturnItems(); }}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) closeAndStow(); }}
+      onPointerDown={(event) => setPointer({ x: event.clientX, y: event.clientY })}
       onPointerMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
     >
       <aside className="lc-drawer lc-inventory-window" role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
         <div className="lc-inventory-titlebar">
           <h2 id="lc-inventory-title">{craftingContext === "crafting_table" ? "Crafting" : "Inventory"}</h2>
-          <button className="lc-close" onClick={closeAndReturnItems} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
+          <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
         </div>
 
         <div className="lc-inventory-upper">
           <section className="lc-equipment-panel" aria-label="Player and equipped armor">
             <div className="lc-armor-column">
-              {(Object.keys(equipment) as ArmorSlot[]).map((slot) => {
-                const stack = equipment[slot];
+              {(Object.keys(workspace.equipment) as ArmorSlot[]).map((slot) => {
+                const stack = workspace.equipment[slot];
                 const itemId = stack?.itemId ?? null;
                 const maximumDurability = itemId ? maxItemDurability(itemId) : null;
-                const durabilityLabel = stack && maximumDurability
-                  ? `${stack.durability}/${maximumDurability} durability`
-                  : "";
+                const durabilityLabel = stack && maximumDurability ? `${stack.durability}/${maximumDurability} durability` : "";
                 return (
                   <button
-                    aria-label={itemId ? `${ITEMS[itemId].label}, ${durabilityLabel}; remove from ${slot} slot` : `Empty ${slot} armor slot`}
+                    aria-label={itemId ? `${ITEMS[itemId].label}, ${durabilityLabel}; ${slot} slot` : `Empty ${slot} armor slot`}
                     className={`lc-slot lc-armor-slot${itemId ? " is-equipped" : ""}`}
-                    disabled={!itemId}
                     key={slot}
-                    onClick={() => onUnequipArmor(slot)}
-                    title={itemId ? `Remove ${ITEMS[itemId].label} · ${durabilityLabel}` : `${slot} armor slot`}
+                    onClick={(event) => apply(event.shiftKey
+                      ? shiftClickArmorSlot(stateRef.current, slot)
+                      : leftClickArmorSlot(stateRef.current, slot))}
+                    onContextMenu={(event) => { event.preventDefault(); apply(rightClickArmorSlot(stateRef.current, slot)); }}
+                    title={itemId ? `${ITEMS[itemId].label} · ${durabilityLabel}` : `${slot} armor slot`}
                     type="button"
                   >
                     <span className="lc-armor-slot__label">{slot.slice(0, 1).toUpperCase()}</span>
@@ -218,18 +201,19 @@ export function InventoryCraftingDrawer({
               <span className="lc-player-preview__leg lc-player-preview__leg--left" />
               <span className="lc-player-preview__leg lc-player-preview__leg--right" />
             </div>
-            <span className="lc-armor-score">Armor {equippedArmorProtection(equipment)}</span>
+            <span className="lc-armor-score">Armor {equippedArmorProtection(workspace.equipment)}</span>
           </section>
 
           <section className="lc-crafting-panel" aria-labelledby="lc-crafting-title">
             <h3 id="lc-crafting-title">Crafting</h3>
             <CraftingGridView
-              grid={craftingState.grid}
-              onLeftClickSlot={leftClickGrid}
-              onRightClickSlot={rightClickGrid}
+              grid={workspace.grid}
+              onLeftClickSlot={(slot, shiftQuickMove) => apply(shiftQuickMove
+                ? shiftClickWorkspaceCraftingSlot(stateRef.current, slot)
+                : leftClickWorkspaceCraftingSlot(stateRef.current, slot))}
+              onRightClickSlot={(slot) => apply(rightClickWorkspaceCraftingSlot(stateRef.current, slot))}
               onTakeOutput={takeOutput}
               output={preview?.output ?? null}
-              outputDisabled={pendingCraftRef.current}
               outputLabel={previewRecipe?.label}
               size={size}
             />
@@ -241,8 +225,8 @@ export function InventoryCraftingDrawer({
           <h3 id="lc-pack-title">Inventory</h3>
           <div className="lc-inventory-grid" role="grid" aria-label="Inventory slots">
             {inventoryOrder.map((index, displayIndex) => {
-              const stack = visibleInventory[index];
-              const isHotbar = displayIndex >= inventory.length - 9;
+              const stack = workspace.inventory[index];
+              const isHotbar = displayIndex >= workspace.inventory.length - 9;
               const maximumDurability = stack ? maxItemDurability(stack.itemId) : null;
               const durability = stack ? remainingItemDurability(stack) : null;
               const durabilityLabel = maximumDurability && durability !== null ? ` · ${durability}/${maximumDurability} durability` : "";
@@ -252,13 +236,23 @@ export function InventoryCraftingDrawer({
                   className={`lc-slot lc-inventory-grid__slot${index === selectedIndex ? " is-selected" : ""}${isHotbar ? " is-hotbar" : ""}`}
                   key={index}
                   onClick={(event) => {
-                    if (event.shiftKey && stack && ITEMS[stack.itemId].armor) onEquipArmor(index);
-                    else leftClickInventory(index);
+                    if (event.shiftKey) apply(shiftClickInventorySlot(stateRef.current, index));
+                    else if (event.detail >= 2) {
+                      let base = doubleClickBaseRef.current ?? stateRef.current;
+                      if (!base.cursor) {
+                        const pickedUp = leftClickInventorySlot(base, index);
+                        if (pickedUp.ok) base = pickedUp.state;
+                      }
+                      apply(doubleClickGatherToCursor(base));
+                      doubleClickBaseRef.current = null;
+                    } else {
+                      doubleClickBaseRef.current = stateRef.current;
+                      apply(leftClickInventorySlot(stateRef.current, index), true);
+                    }
                   }}
-                  onContextMenu={(event) => { event.preventDefault(); rightClickInventory(index); }}
-                  onDblClick={() => stack && ITEMS[stack.itemId].food ? onUseItem?.(index) : undefined}
+                  onContextMenu={(event) => { event.preventDefault(); apply(rightClickInventorySlot(stateRef.current, index)); }}
                   role="gridcell"
-                  title={stack ? `${ITEMS[stack.itemId].description}${durabilityLabel}${ITEMS[stack.itemId].armor ? " · Shift-click to equip" : ""}` : "Empty slot"}
+                  title={stack ? `${ITEMS[stack.itemId].description}${durabilityLabel}` : "Empty slot"}
                   type="button"
                 >
                   <ItemGlyph stack={stack} compact />
@@ -267,55 +261,14 @@ export function InventoryCraftingDrawer({
             })}
           </div>
         </section>
-        <span className="lc-inventory-help">Left-click moves a stack · Right-click splits or places one · Shift-click armor to equip</span>
+        <span className="lc-inventory-help">Left-click move · Right-click split/place one · Shift-click quick move · Double-click gather</span>
+        {interactionError ? <span className="lc-inventory-error" role="status">{interactionError}</span> : null}
       </aside>
-      {craftingState.cursor ? (
+      {workspace.cursor ? (
         <span className="lc-cursor-stack" style={{ left: pointer.x + 8, top: pointer.y + 8 }} aria-live="polite">
-          <ItemGlyph stack={craftingState.cursor} compact />
+          <ItemGlyph stack={workspace.cursor} compact />
         </span>
       ) : null}
     </div>
   );
-}
-
-function emptyCraftingState(size: CraftingGridSize): CraftingGridState {
-  return { grid: createCraftingGrid(size), cursor: null };
-}
-
-function inventoryWithoutReservations(inventory: Inventory, state: CraftingGridState): Inventory {
-  let next = inventory.map((stack) => stack ? { ...stack } : null);
-  for (const stack of [...state.grid, state.cursor]) {
-    if (!stack) continue;
-    next = removeItem(next, stack.itemId, stack.count).inventory;
-  }
-  return next;
-}
-
-function reservationsFitInventory(inventory: Inventory, state: CraftingGridState): boolean {
-  let next = inventory.map((stack) => stack ? { ...stack } : null);
-  for (const stack of [...state.grid, state.cursor]) {
-    if (!stack) continue;
-    const removed = removeItem(next, stack.itemId, stack.count);
-    if (removed.remainder > 0) return false;
-    next = removed.inventory;
-  }
-  return true;
-}
-
-function recipeFromMatch(
-  base: Recipe,
-  gridRecipe: CraftingGridRecipe,
-  consumedSlots: readonly number[],
-  grid: ReadonlyArray<ItemStack | null>,
-): Recipe {
-  const ingredientCounts = new Map<ItemId, number>();
-  for (const slot of consumedSlots) {
-    const stack = grid[slot];
-    if (stack) ingredientCounts.set(stack.itemId, (ingredientCounts.get(stack.itemId) ?? 0) + 1);
-  }
-  return {
-    ...base,
-    ingredients: [...ingredientCounts].map(([itemId, count]) => ({ itemId, count })),
-    output: { ...gridRecipe.output },
-  };
 }
