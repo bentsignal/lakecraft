@@ -52,7 +52,7 @@ async function transformTree(directory) {
 await mkdir(join(stageRoot, ".lakebed"), { recursive: true });
 await Promise.all([transformTree("client"), transformTree("server"), transformTree("shared")]);
 await cp(join(sourceRoot, "favicon.svg"), join(stageRoot, "favicon.svg"));
-for (const relativePath of [".lakebed/deploy.json", ".env.lakebed.server"]) {
+for (const relativePath of ["lakebed.json", ".lakebed/deploy.json", ".env.lakebed.server"]) {
   try {
     await cp(join(sourceRoot, relativePath), join(stageRoot, relativePath));
   } catch {
