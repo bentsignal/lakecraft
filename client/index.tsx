@@ -187,7 +187,8 @@ function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GLASS) return "glass";
   if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
   if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE
-    || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB) return "stone";
+    || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.BRICKS) return "stone";
+  if (block === BLOCK.CLAY) return "gravel";
   return "generic";
 }
 
@@ -327,7 +328,7 @@ function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate_closed" | "oak_fence_gate_open" | "stone_brick_slab"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate_closed" | "oak_fence_gate_open" | "stone_brick_slab" | "clay" | "bricks"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -342,6 +343,8 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate_closed",
   [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate_open",
   [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
+  [BLOCK.CLAY]: "clay",
+  [BLOCK.BRICKS]: "bricks",
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
@@ -376,6 +379,8 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   oak_fence_gate_closed: BLOCK.OAK_FENCE_GATE_CLOSED,
   oak_fence_gate_open: BLOCK.OAK_FENCE_GATE_OPEN,
   stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
+  clay: BLOCK.CLAY,
+  bricks: BLOCK.BRICKS,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
@@ -427,6 +432,8 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate",
   [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate",
   [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
+  [BLOCK.CLAY]: "clay",
+  [BLOCK.BRICKS]: "bricks",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -458,6 +465,8 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   oak_fence: BLOCK.OAK_FENCE,
   oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
   stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
+  clay: BLOCK.CLAY,
+  bricks: BLOCK.BRICKS,
 };
 
 type WorldChunksQueryResult =

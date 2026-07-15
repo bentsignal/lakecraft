@@ -79,6 +79,10 @@ function decorateBlock(g: Grid, id: BlockId): void {
   switch (id) {
     case "grass": dots(g,"a",[[6,2],[9,3],[4,5],[12,5],[3,8],[6,8],[10,7],[12,9]]); dots(g,"d",[[4,10],[6,12],[11,11]]); break;
     case "dirt": case "sand": case "stone": dots(g,"a",[[7,3],[4,5],[11,5],[3,9],[6,11],[11,9],[9,12]]); break;
+    case "clay":
+      dots(g,"d",[[5,2],[10,3],[3,6],[8,5],[12,7],[5,9],[9,10],[6,12]]);
+      dots(g,"h",[[7,3],[4,5],[11,6],[3,9],[8,11],[11,10]]);
+      break;
     case "gravel":
       dots(g,"d",[[5,2],[9,3],[4,5],[7,6],[11,5],[3,8],[6,10],[10,9],[12,11],[7,12]]);
       dots(g,"h",[[7,3],[11,4],[5,6],[9,7],[4,10],[8,11],[11,10]]);
@@ -89,6 +93,12 @@ function decorateBlock(g: Grid, id: BlockId): void {
       box(g,3,5,10,1,"d"); box(g,3,9,10,1,"d");
       box(g,7,2,1,4,"d"); box(g,5,6,1,4,"d"); box(g,9,6,1,4,"d"); box(g,7,10,1,3,"d");
       dots(g,"h",[[4,4],[8,3],[10,7],[6,8],[4,11],[9,11]]);
+      break;
+    case "bricks":
+      box(g,3,5,10,1,"d"); box(g,3,9,10,1,"d");
+      box(g,7,2,1,4,"d"); box(g,5,6,1,4,"d"); box(g,9,6,1,4,"d"); box(g,7,10,1,3,"d");
+      dots(g,"h",[[4,4],[8,3],[10,7],[6,8],[4,11],[9,11]]);
+      dots(g,"a",[[5,3],[11,5],[4,8],[10,10]]);
       break;
     case "glass": dots(g,"h",[[6,2],[7,2],[3,5],[4,5],[3,8],[11,8],[10,10]]); break;
     case "log": box(g,5,4,6,1,"d"); dots(g,"a",[[7,2],[6,3],[9,3],[8,5],[4,8],[5,10],[11,9]]); break;
@@ -236,7 +246,25 @@ function armor(g: Grid, slot: ArmorSlot, color: string): Palette {
 function material(g: Grid, id: ItemId): Palette {
   const color = ITEMS[id].color;
   const p = { o:mix(color,"#111311",.7), m:color, l:mix(color,"#ffffff",.42), d:mix(color,"#000000",.3), q:"#b8935c" };
-  if (id === "stick") { diagonal(g,3,13,1,-1,10,"o",2); diagonal(g,4,13,1,-1,9,"m"); dots(g,"l",[[5,11],[8,8],[11,5]]); }
+  if (id === "clay_ball") {
+    // Hand-sized kneaded clay lump: an irregular cool-gray silhouette with
+    // one compressed highlight ridge, distinct from stone and ore drops.
+    dots(g,"o",[[6,2],[9,2],[4,3],[5,3],[6,3],[7,3],[8,3],[9,3],[10,3],[11,3],
+      [3,4],[12,4],[2,6],[13,6],[2,9],[13,9],[3,11],[12,11],[5,13],[10,13],
+      [6,14],[7,14],[8,14],[9,14]]);
+    box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m");
+    dots(g,"l",[[5,4],[6,4],[4,5],[5,5],[8,6],[9,6]]);
+    dots(g,"d",[[11,5],[12,7],[10,9],[11,10],[8,12],[9,13],[5,11]]);
+  }
+  else if (id === "brick") {
+    // Single fired brick item, drawn as a chunky angled rectangular prism.
+    dots(g,"o",[[4,3],[5,2],[11,2],[12,3],[3,4],[13,4],[2,7],[13,7],[2,10],[11,12],
+      [3,11],[4,12],[10,13],[5,13],[6,14],[9,14]]);
+    box(g,4,4,9,7,"m"); box(g,3,6,9,5,"m");
+    box(g,5,3,7,2,"l"); dots(g,"l",[[4,5],[5,5],[6,5]]);
+    box(g,4,10,8,2,"d"); dots(g,"d",[[12,5],[12,6],[11,8],[10,11],[9,12]]);
+  }
+  else if (id === "stick") { diagonal(g,3,13,1,-1,10,"o",2); diagonal(g,4,13,1,-1,9,"m"); dots(g,"l",[[5,11],[8,8],[11,5]]); }
   else if (id === "bone_meal") {
     dots(g,"o",[[6,4],[9,4],[4,6],[11,6],[3,9],[12,9],[5,12],[10,12],[7,13],[9,13]]);
     box(g,5,6,6,6,"m"); box(g,4,8,8,3,"m");

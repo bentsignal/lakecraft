@@ -9,7 +9,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab" | "clay" | "bricks";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -66,6 +66,8 @@ export type ItemId = BlockId
   | "diamond"
   | "gunpowder"
   | "flint"
+  | "clay_ball"
+  | "brick"
   | "flint_and_steel"
   | "shears"
   | "apple"
@@ -249,6 +251,8 @@ export const BLOCKS = defineBlocks([
   ["oak_fence", "Oak Fence", "Oak rails and posts that form a sturdy animal barrier.", "#95622f", "#c28a47", 2, "axe", "oak_fence"],
   ["oak_fence_gate", "Oak Fence Gate", "A hinged oak gate that opens a passage through connected fences.", "#8d5a2b", "#c28a47", 2, "axe", "oak_fence_gate"],
   ["stone_brick_slab", "Stone Brick Slab", "A half-height course of fitted stone bricks.", "#74766f", "#a3a59c", 1.5, "pickaxe", "stone_brick_slab", "wood"],
+  ["clay", "Clay", "A soft blue-gray deposit that breaks into four clay balls.", "#9ea4b6", "#c0c5d2", 0.6, "shovel", "clay_ball"],
+  ["bricks", "Bricks", "A sturdy red masonry block crafted from fired clay bricks.", "#964c3d", "#c16f59", 2, "pickaxe", "bricks", "wood"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -291,6 +295,8 @@ const BLOCK_ITEM_SPECS = [
   ["oak_fence", "FNC", "╫"],
   ["oak_fence_gate", "GATE", "╪"],
   ["stone_brick_slab", "SLAB", "▂"],
+  ["clay", "CLY", "▦"],
+  ["bricks", "BRK", "▦"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
@@ -310,6 +316,8 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["diamond", "Diamond", "DIA", "A rare crystal for the strongest available equipment.", "◆", "#48d8cf"],
   ["gunpowder", "Gunpowder", "GUN", "A dark, volatile powder dropped by creepers and used to craft TNT.", "⁙", "#515650"],
   ["flint", "Flint", "FLT", "A sharp stone chip recovered while shoveling gravel.", "◆", "#3f4543"],
+  ["clay_ball", "Clay Ball", "CLY", "A lump of soft clay ready to be fired in a furnace.", "●", "#aeb4c5"],
+  ["brick", "Brick", "BRK", "A fired clay brick used to build masonry blocks.", "▰", "#a65342"],
 ];
 
 const UTILITY_ITEM_SPECS: readonly UtilityItemSpec[] = [
@@ -446,6 +454,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "oak_fence", label: "Oak fence", note: "Four boards and two sticks make three oak fence sections.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 4 }, { itemId: "stick", count: 2 }], output: { itemId: "oak_fence", count: 3 } },
   { id: "oak_fence_gate", label: "Oak fence gate", note: "Two boards and four sticks make one hinged oak gate.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 4 }], output: { itemId: "oak_fence_gate", count: 1 } },
   { id: "stone_brick_slab", label: "Stone brick slabs", note: "Three stone bricks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone_bricks", count: 3 }], output: { itemId: "stone_brick_slab", count: 6 } },
+  { id: "bricks", label: "Bricks", note: "Four fired bricks make one masonry block.", craftingContext: "field", ingredients: [{ itemId: "brick", count: 4 }], output: { itemId: "bricks", count: 1 } },
   { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
@@ -466,6 +475,7 @@ export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
   { id: "iron_ingot", label: "Smelt iron", input: "raw_iron", output: "iron_ingot" },
   { id: "gold_ingot", label: "Smelt gold", input: "raw_gold", output: "gold_ingot" },
   { id: "glass", label: "Smelt glass", input: "sand", output: "glass" },
+  { id: "brick", label: "Fire brick", input: "clay_ball", output: "brick" },
   { id: "cooked_pork", label: "Cook pork", input: "pork", output: "cooked_pork" },
   { id: "cooked_beef", label: "Cook beef", input: "beef", output: "cooked_beef" },
   { id: "cooked_mutton", label: "Cook mutton", input: "mutton", output: "cooked_mutton" },
@@ -925,7 +935,7 @@ export function canHarvestBlock(blockId: BlockId, itemId?: ItemId | null): boole
 export function getMiningDrop(blockId: BlockId, itemId?: ItemId | null): ItemQuantity | null {
   if (!canHarvestBlock(blockId, itemId)) return null;
   const drop = BLOCKS[blockId].drop;
-  return drop ? { itemId: drop, count: 1 } : null;
+  return drop ? { itemId: drop, count: blockId === "clay" ? 4 : 1 } : null;
 }
 
 export const FLINT_DROP_CHANCE_DENOMINATOR = 10;

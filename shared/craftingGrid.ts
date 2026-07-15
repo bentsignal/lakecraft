@@ -99,6 +99,7 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   oak_fence: { kind: "shaped", pattern: [[P, S, P], [P, S, P]] },
   oak_fence_gate: { kind: "shaped", pattern: [[S, P, S], [S, P, S]] },
   stone_brick_slab: { kind: "shaped", pattern: [["stone_bricks", "stone_bricks", "stone_bricks"]] },
+  bricks: { kind: "shaped", pattern: [["brick", "brick"], ["brick", "brick"]] },
   furnace: { kind: "shaped", pattern: [[C, C, C], [C, null, C], [C, C, C]] },
   ladder: { kind: "shaped", pattern: [[S, null, S], [S, S, S], [S, null, S]] },
   chest: { kind: "shaped", pattern: [[P, P, P], [P, null, P], [P, P, P]] },

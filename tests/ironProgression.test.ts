@@ -111,6 +111,7 @@ assert.deepEqual(
     { id: "iron_ingot", input: "raw_iron", output: "iron_ingot" },
     { id: "gold_ingot", input: "raw_gold", output: "gold_ingot" },
     { id: "glass", input: "sand", output: "glass" },
+    { id: "brick", input: "clay_ball", output: "brick" },
     { id: "cooked_pork", input: "pork", output: "cooked_pork" },
     { id: "cooked_beef", input: "beef", output: "cooked_beef" },
     { id: "cooked_mutton", input: "mutton", output: "cooked_mutton" },

@@ -431,6 +431,8 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.OAK_FENCE_GATE_CLOSED]: [0.69, 0.48, 0.25],
   [BLOCK.OAK_FENCE_GATE_OPEN]: [0.69, 0.48, 0.25],
   [BLOCK.STONE_BRICK_SLAB]: [0.43, 0.45, 0.43],
+  [BLOCK.CLAY]: [0.58, 0.64, 0.70],
+  [BLOCK.BRICKS]: [0.68, 0.28, 0.20],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */

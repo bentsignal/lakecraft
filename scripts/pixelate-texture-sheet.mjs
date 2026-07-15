@@ -488,6 +488,47 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "clay") {
+    // Original blue-gray clay: a quiet compacted surface with irregular
+    // compressed bands. It stays deliberately smoother than stone while the
+    // sparse cool highlights keep large deposits from reading as flat color.
+    const deep = [85, 102, 119, 255];
+    const shadow = [119, 136, 136, 255];
+    const base = [153, 170, 187, 255];
+    const light = [187, 204, 204, 255];
+    fill(base);
+    for (const [x, y] of [
+      [1,2],[2,2],[8,1],[9,1],[13,3],[14,3],
+      [4,6],[5,6],[10,5],[11,5],[1,9],[2,9],
+      [7,10],[8,10],[13,8],[14,8],[3,13],[4,13],[10,14],[11,14],
+    ]) paint(x, y, shadow);
+    for (const [x, y] of [[2,3],[6,2],[10,3],[14,2],[3,7],[8,6],[12,7],[1,12],[6,11],[9,12],[13,11],[7,15]]) paint(x, y, light);
+    for (const [x, y] of [[5,1],[11,2],[1,6],[6,7],[14,6],[4,10],[11,9],[2,14],[8,13],[13,14]]) paint(x, y, deep);
+    return;
+  }
+
+  if (name === "bricks") {
+    // Original fired-clay masonry with staggered courses, deep mortar and
+    // warm chipped highlights. The rhythm mirrors classic Minecraft brick
+    // scale without copying any source texture.
+    const mortar = [68, 51, 51, 255];
+    const dark = [119, 68, 51, 255];
+    const base = [204, 68, 51, 255];
+    const warm = [187, 102, 34, 255];
+    const light = [221, 136, 34, 255];
+    fill(base);
+    for (const y of [0, 4, 8, 12, 15]) for (let x = 0; x < tileSize; x += 1) paint(x, y, mortar);
+    for (let course = 0; course < 4; course += 1) {
+      const top = course * 4 + 1;
+      const seams = course % 2 === 0 ? [7, 15] : [3, 11];
+      for (let y = top; y < Math.min(top + 3, tileSize); y += 1) for (const x of seams) paint(x, y, mortar);
+    }
+    for (const [x, y] of [[1,1],[2,1],[8,1],[9,1],[4,5],[5,5],[12,5],[13,5],[1,9],[2,9],[8,9],[9,9],[4,13],[5,13],[12,13]]) paint(x, y, light);
+    for (const [x, y] of [[5,2],[11,3],[2,6],[8,7],[14,6],[5,10],[10,11],[1,14],[8,14],[13,13]]) paint(x, y, dark);
+    for (const [x, y] of [[3,2],[9,3],[6,6],[13,7],[3,10],[12,10],[6,14]]) paint(x, y, warm);
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 

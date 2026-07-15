@@ -31,7 +31,9 @@ export const BLOCK_TYPES = [
   "oak_fence",
   "oak_fence_gate_closed",
   "oak_fence_gate_open",
-  "stone_brick_slab"
+  "stone_brick_slab",
+  "clay",
+  "bricks"
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];

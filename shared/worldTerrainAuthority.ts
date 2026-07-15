@@ -15,6 +15,10 @@ const SAND_PATCH_CHANCE = 0.38;
 const GRAVEL_CELL_SIZE_XZ = 8;
 const GRAVEL_CELL_SIZE_Y = 6;
 const GRAVEL_POCKET_CHANCE = 0.34;
+export const CLAY_SPAWN_SANCTUARY_RADIUS = 10;
+const CLAY_PATCH_CELL_SIZE = 18;
+const CLAY_PATCH_CHANCE = 0.25;
+const CLAY_PATCH_MAX_RADIUS = 3.8;
 
 interface OreVeinConfig {
   block: Extract<BlockType, "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore">;
@@ -148,6 +152,47 @@ export function terrainGravelBlock(x: number, y: number, z: number, seed: number
   return distance <= 1 ? "gravel" : null;
 }
 
+/** Globally anchored shallow clay lenses, bounded to two or three blocks deep. */
+export function terrainClayDepth(x: number, z: number, seed: number): 0 | 2 | 3 {
+  if (![x, z, seed].every(Number.isFinite)) return 0;
+  const blockX = Math.floor(x);
+  const blockZ = Math.floor(z);
+  if (Math.max(Math.abs(blockX), Math.abs(blockZ)) <= CLAY_SPAWN_SANCTUARY_RADIUS) return 0;
+  const minCellX = Math.floor((blockX + 0.5 - CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const maxCellX = Math.floor((blockX + 0.5 + CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const minCellZ = Math.floor((blockZ + 0.5 - CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const maxCellZ = Math.floor((blockZ + 0.5 + CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+      if (hash2(cellX, cellZ, seed + 5_219) >= CLAY_PATCH_CHANCE) continue;
+      const centerX = cellX * CLAY_PATCH_CELL_SIZE
+        + hash2(cellX, cellZ, seed + 5_231) * CLAY_PATCH_CELL_SIZE;
+      const centerZ = cellZ * CLAY_PATCH_CELL_SIZE
+        + hash2(cellX, cellZ, seed + 5_253) * CLAY_PATCH_CELL_SIZE;
+      const radiusX = 2.35 + hash2(cellX, cellZ, seed + 5_277) * 1.45;
+      const radiusZ = 2.35 + hash2(cellX, cellZ, seed + 5_303) * 1.45;
+      const dx = (blockX + 0.5 - centerX) / radiusX;
+      const dz = (blockZ + 0.5 - centerZ) / radiusZ;
+      const distance = dx * dx + dz * dz;
+      if (distance <= 1) return distance <= 0.5 ? 3 : 2;
+    }
+  }
+  return 0;
+}
+
+function clayBlockAtResolvedStrata(
+  x: number,
+  y: number,
+  z: number,
+  seed: number,
+  resolved: BlockType,
+): BlockType {
+  if (resolved !== "dirt" && resolved !== "stone") return resolved;
+  const top = terrainHeight(x, z, seed);
+  const depth = terrainClayDepth(x, z, seed);
+  return depth > 0 && y < top && y >= top - depth ? "clay" : resolved;
+}
+
 function strataBlockAt(x: number, y: number, z: number, seed: number): BlockType {
   const top = terrainHeight(x, z, seed);
   if (y < WORLD_TERRAIN_MIN_Y || y > top) return "air";
@@ -155,13 +200,25 @@ function strataBlockAt(x: number, y: number, z: number, seed: number): BlockType
   if (sandDepth > 0 && y > top - sandDepth) return "sand";
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
   if (y === top) return "grass";
-  if (y >= top - dirtDepth) return "dirt";
+  if (y >= top - dirtDepth) return clayBlockAtResolvedStrata(x, y, z, seed, "dirt");
   const gravel = terrainGravelBlock(x, y, z, seed);
   if (gravel) return gravel;
   for (const config of ORE_VEINS) {
     if (blockInOreVein(x, y, z, seed, config)) return config.block;
   }
-  return "stone";
+  return clayBlockAtResolvedStrata(x, y, z, seed, "stone");
+}
+
+/** Clay at one untouched coordinate, after gravel/ore precedence but before caves. */
+export function terrainClayBlock(
+  x: number,
+  y: number,
+  z: number,
+  seed: number,
+): Extract<BlockType, "clay"> | null {
+  if (![x, y, z, seed].every(Number.isFinite)
+    || !Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) return null;
+  return strataBlockAt(x, y, z, seed) === "clay" ? "clay" : null;
 }
 
 const CAVE_CELL_SIZE = 10;
@@ -236,7 +293,7 @@ function caveCarvesBlock(x: number, y: number, z: number, seed: number): boolean
 function groundAfterCaves(x: number, y: number, z: number, seed: number): BlockType {
   const block = strataBlockAt(x, y, z, seed);
   const carvable = block === "stone" || block === "coal_ore" || block === "iron_ore"
-    || block === "gold_ore" || block === "diamond_ore";
+    || block === "gold_ore" || block === "diamond_ore" || block === "clay";
   return carvable && caveCarvesBlock(x, y, z, seed) ? "air" : block;
 }
 

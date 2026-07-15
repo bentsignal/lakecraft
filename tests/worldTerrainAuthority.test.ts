@@ -42,6 +42,8 @@ const ENGINE_TO_PROTOCOL: Readonly<Record<EngineBlockId, BlockType>> = {
   [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate_closed",
   [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate_open",
   [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
+  [BLOCK.CLAY]: "clay",
+  [BLOCK.BRICKS]: "bricks",
 };
 
 const chunkCache = new Map<string, Map<string, EngineBlockId>>();
@@ -80,6 +82,7 @@ const namedSamples = [
   [-57, -23, -57, "air", "negative deep cave"],
   [-64, 7, -53, "sand", "negative beach"],
   [-64, -2, -37, "gravel", "negative gravel pocket"],
+  [-76, 5, -17, "clay", "negative shallow clay lens"],
   [-59, 9, -33, "wood", "negative tree trunk"],
   [-61, 10, -34, "leaves", "negative tree canopy"],
   [8, -13, 14, "air", "positive chunk-boundary cave"],
@@ -102,7 +105,7 @@ for (const [x, y, z, expected, label] of namedSamples) {
   namedKinds.add(expected);
 }
 for (const expected of [
-  "air", "sand", "gravel", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "wood", "leaves",
+  "air", "sand", "gravel", "clay", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "wood", "leaves",
 ] as const) assert.equal(namedKinds.has(expected), true, `missing explicit ${expected} authority anchor`);
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");

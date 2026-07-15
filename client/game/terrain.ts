@@ -40,6 +40,10 @@ const SAND_PATCH_CHANCE = 0.38;
 const GRAVEL_CELL_SIZE_XZ = 8;
 const GRAVEL_CELL_SIZE_Y = 6;
 const GRAVEL_POCKET_CHANCE = 0.34;
+export const CLAY_SPAWN_SANCTUARY_RADIUS = 10;
+const CLAY_PATCH_CELL_SIZE = 18;
+const CLAY_PATCH_CHANCE = 0.25;
+const CLAY_PATCH_MAX_RADIUS = 3.8;
 
 interface OreVeinConfig {
   block: BlockId;
@@ -93,6 +97,13 @@ interface GravelCellCache {
   radiusX: Float64Array;
   radiusY: Float64Array;
   radiusZ: Float64Array;
+}
+
+interface ClayColumnCache {
+  minX: number;
+  minZ: number;
+  depth: number;
+  values: Uint8Array;
 }
 
 // One compact Manhattan-radius-one deposit may occupy each 4x4x4 cell. The
@@ -209,6 +220,102 @@ export function terrainBaseBlock(x: number, y: number, z: number, seed: number):
 export function terrainGravelBlock(x: number, y: number, z: number, seed: number): BlockId | null {
   if (terrainBaseBlock(x, y, z, seed) !== BLOCK.STONE) return null;
   return gravelBlockAtKnownStone(x, y, z, seed);
+}
+
+/**
+ * Returns a bounded, globally anchored shallow clay lens depth for a column.
+ * The surface grass stays intact; clay occupies two blocks around the rim and
+ * three near the center. Looking in adjacent owner cells allows one deposit to
+ * cross any independently generated terrain/chunk seam without disagreement.
+ */
+export function terrainClayDepth(x: number, z: number, seed: number): 0 | 2 | 3 {
+  if (![x, z, seed].every(Number.isFinite)) return 0;
+  const blockX = Math.floor(x);
+  const blockZ = Math.floor(z);
+  if (Math.max(Math.abs(blockX), Math.abs(blockZ)) <= CLAY_SPAWN_SANCTUARY_RADIUS) return 0;
+  const minCellX = Math.floor((blockX + 0.5 - CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const maxCellX = Math.floor((blockX + 0.5 + CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const minCellZ = Math.floor((blockZ + 0.5 - CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const maxCellZ = Math.floor((blockZ + 0.5 + CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+      if (hash2(cellX, cellZ, seed + 5_219) >= CLAY_PATCH_CHANCE) continue;
+      const centerX = cellX * CLAY_PATCH_CELL_SIZE
+        + hash2(cellX, cellZ, seed + 5_231) * CLAY_PATCH_CELL_SIZE;
+      const centerZ = cellZ * CLAY_PATCH_CELL_SIZE
+        + hash2(cellX, cellZ, seed + 5_253) * CLAY_PATCH_CELL_SIZE;
+      const radiusX = 2.35 + hash2(cellX, cellZ, seed + 5_277) * 1.45;
+      const radiusZ = 2.35 + hash2(cellX, cellZ, seed + 5_303) * 1.45;
+      const dx = (blockX + 0.5 - centerX) / radiusX;
+      const dz = (blockZ + 0.5 - centerZ) / radiusZ;
+      const distance = dx * dx + dz * dz;
+      if (distance <= 1) return distance <= 0.5 ? 3 : 2;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Rasterize the few active clay ellipses that can touch a generated region.
+ * Public single-column probes retain the reference implementation above;
+ * bulk generation avoids re-hashing the same owner cell for every column.
+ * Iterating owner cells in the same x-then-z order and only writing empty
+ * columns preserves the reference function's first-overlapping-lens result.
+ */
+function createClayColumnCache(region: TerrainRegion, seed: number): ClayColumnCache {
+  const depth = region.maxZ - region.minZ + 1;
+  const values = new Uint8Array((region.maxX - region.minX + 1) * depth);
+  const minCellX = Math.floor((region.minX + 0.5 - CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const maxCellX = Math.floor((region.maxX + 0.5 + CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const minCellZ = Math.floor((region.minZ + 0.5 - CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  const maxCellZ = Math.floor((region.maxZ + 0.5 + CLAY_PATCH_MAX_RADIUS) / CLAY_PATCH_CELL_SIZE);
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+      if (hash2(cellX, cellZ, seed + 5_219) >= CLAY_PATCH_CHANCE) continue;
+      const centerX = cellX * CLAY_PATCH_CELL_SIZE
+        + hash2(cellX, cellZ, seed + 5_231) * CLAY_PATCH_CELL_SIZE;
+      const centerZ = cellZ * CLAY_PATCH_CELL_SIZE
+        + hash2(cellX, cellZ, seed + 5_253) * CLAY_PATCH_CELL_SIZE;
+      const radiusX = 2.35 + hash2(cellX, cellZ, seed + 5_277) * 1.45;
+      const radiusZ = 2.35 + hash2(cellX, cellZ, seed + 5_303) * 1.45;
+      const minX = Math.max(region.minX, Math.ceil(centerX - radiusX - 0.5));
+      const maxX = Math.min(region.maxX, Math.floor(centerX + radiusX - 0.5));
+      const minZ = Math.max(region.minZ, Math.ceil(centerZ - radiusZ - 0.5));
+      const maxZ = Math.min(region.maxZ, Math.floor(centerZ + radiusZ - 0.5));
+      for (let blockX = minX; blockX <= maxX; blockX += 1) {
+        const dx = (blockX + 0.5 - centerX) / radiusX;
+        const dxSquared = dx * dx;
+        const columnOffset = (blockX - region.minX) * depth - region.minZ;
+        for (let blockZ = minZ; blockZ <= maxZ; blockZ += 1) {
+          const index = columnOffset + blockZ;
+          if (values[index] !== 0
+            || Math.max(Math.abs(blockX), Math.abs(blockZ)) <= CLAY_SPAWN_SANCTUARY_RADIUS) continue;
+          const dz = (blockZ + 0.5 - centerZ) / radiusZ;
+          const distance = dxSquared + dz * dz;
+          if (distance <= 1) values[index] = distance <= 0.5 ? 3 : 2;
+        }
+      }
+    }
+  }
+  return { minX: region.minX, minZ: region.minZ, depth, values };
+}
+
+function cachedClayDepth(cache: ClayColumnCache, x: number, z: number): 0 | 2 | 3 {
+  return cache.values[(x - cache.minX) * cache.depth + z - cache.minZ] as 0 | 2 | 3;
+}
+
+/** Clay replaces only unresolved dirt/stone strata, never sand, gravel, or ore. */
+export function terrainClayBlock(x: number, y: number, z: number, seed: number): BlockId | null {
+  if (![x, y, z, seed].every(Number.isFinite)
+    || !Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) return null;
+  const top = terrainHeight(x, z, seed);
+  const depth = terrainClayDepth(x, z, seed);
+  if (depth === 0 || y >= top || y < top - depth) return null;
+  const base = terrainBaseBlock(x, y, z, seed);
+  if (base !== BLOCK.DIRT && base !== BLOCK.STONE) return null;
+  if (base === BLOCK.STONE
+    && (gravelBlockAtKnownStone(x, y, z, seed) || oreBlockAtKnownStone(x, y, z, seed))) return null;
+  return BLOCK.CLAY;
 }
 
 /** Hot-path gravel probe for callers that already derived the natural stratum. */
@@ -394,12 +501,14 @@ function createGravelCellCache(region: TerrainRegion): GravelCellCache {
 function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: number): void {
   const oreCells = createOreCellCache(region);
   const gravelCells = createGravelCellCache(region);
+  const clayColumns = createClayColumnCache(region, seed);
   for (let x = region.minX; x <= region.maxX; x += 1) {
     const xPrefix = `${x},`;
     for (let z = region.minZ; z <= region.maxZ; z += 1) {
       const zSuffix = `,${z}`;
       const top = terrainHeight(x, z, seed);
       const sandDepth = terrainSandDepth(x, z, seed);
+      const clayDepth = cachedClayDepth(clayColumns, x, z);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
       for (let y = region.minY; y <= top; y += 1) {
         const base = sandDepth > 0 && y > top - sandDepth
@@ -409,11 +518,17 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
             : y >= top - dirtDepth
               ? BLOCK.DIRT
               : BLOCK.STONE;
-        const block = base === BLOCK.STONE
+        const resolvedStrata = base === BLOCK.STONE
           ? gravelBlockAtKnownStone(x, y, z, seed, gravelCells)
             ?? oreBlockAtKnownStone(x, y, z, seed, oreCells)
             ?? base
           : base;
+        const block = clayDepth > 0
+          && y < top
+          && y >= top - clayDepth
+          && (resolvedStrata === BLOCK.DIRT || resolvedStrata === BLOCK.STONE)
+          ? BLOCK.CLAY
+          : resolvedStrata;
         blocks.set(`${xPrefix}${y}${zSuffix}`, block);
       }
     }
@@ -432,6 +547,7 @@ function caveNode(cellX: number, cellZ: number, seed: number): CaveNode {
 
 function canCarveCaveBlock(block: BlockId | undefined): boolean {
   return block === BLOCK.STONE
+    || block === BLOCK.CLAY
     || block === BLOCK.COAL_ORE
     || block === BLOCK.IRON_ORE
     || block === BLOCK.GOLD_ORE

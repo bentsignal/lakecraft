@@ -49,7 +49,7 @@ assert.doesNotMatch(held, /HELD_SPRITE_BLOCKS[^;]*stone_bricks/s,
 const heldStyles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.match(heldStyles, /data-block="stone_bricks"[^}]+repeating-linear-gradient/,
   "held masonry has staggered brick courses instead of the generic speckle pattern");
-assert.match(heldStyles, /data-block="stone_bricks"\]\) \.lc-held-voxel__face::after/,
+assert.match(heldStyles, /data-block="stone_bricks"[^}]+\.lc-held-voxel__face::after/,
   "held masonry disables generic block speckles");
 
 console.log("lakecraft stone-brick material renderer tests: ok");

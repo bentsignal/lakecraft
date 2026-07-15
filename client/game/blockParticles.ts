@@ -70,7 +70,7 @@ export const BLOCK_PARTICLES_PER_ACTION: Readonly<Record<BlockParticleAction, nu
 const FLOATS_PER_PARTICLE = BLOCK_PARTICLE_VERTICES * BLOCK_PARTICLE_FLOATS_PER_VERTEX;
 const GRAVITY = 13.5;
 const BOUNCE = 0.28;
-const MAX_BLOCK_ID = 30;
+const MAX_BLOCK_ID = 32;
 const UINT32_SCALE = 1 / 4_294_967_296;
 
 /** Palette follows the numeric block IDs in client/game/types.ts. */
@@ -106,6 +106,8 @@ const BLOCK_COLORS = new Float32Array([
   0.69, 0.48, 0.25, // closed oak fence gate
   0.69, 0.48, 0.25, // open oak fence gate
   0.43, 0.45, 0.43, // stone brick slab
+  0.58, 0.64, 0.70, // clay
+  0.68, 0.28, 0.20, // bricks
 ]);
 
 function boundedParticleCount(value: number): number {

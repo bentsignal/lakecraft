@@ -8,6 +8,7 @@ import {
   MAX_TERRAIN_REGION_COLUMNS,
   TERRAIN_MIN_Y,
   terrainBaseBlock,
+  terrainClayBlock,
   terrainHeight,
   terrainSandDepth,
 } from "../client/game/terrain.ts";
@@ -65,11 +66,17 @@ for (let x = -18; x <= 18; x += 1) {
     const sandDepth = terrainSandDepth(x, z, SEED);
     assert.ok(top >= 3 && top <= 11, `height ${top} at ${x},${z} is outside generation bounds`);
     assert.equal(first.get(blockKey(x, top, z)), sandDepth ? BLOCK.SAND : BLOCK.GRASS);
-    assert.equal(first.get(blockKey(x, top - 1, z)), sandDepth ? BLOCK.SAND : BLOCK.DIRT);
-    assert.equal(first.get(blockKey(x, top - 2, z)), sandDepth === 3 ? BLOCK.SAND : BLOCK.DIRT);
+    assert.equal(
+      first.get(blockKey(x, top - 1, z)),
+      sandDepth ? BLOCK.SAND : terrainClayBlock(x, top - 1, z, SEED) ?? BLOCK.DIRT,
+    );
+    assert.equal(
+      first.get(blockKey(x, top - 2, z)),
+      sandDepth === 3 ? BLOCK.SAND : terrainClayBlock(x, top - 2, z, SEED) ?? BLOCK.DIRT,
+    );
     assert.ok(
-      [BLOCK.STONE, BLOCK.GRAVEL, BLOCK.COAL_ORE, BLOCK.IRON_ORE].includes(first.get(blockKey(x, 0, z))!),
-      "the foundation may contain deterministic gravel or ore",
+      [BLOCK.STONE, BLOCK.CLAY, BLOCK.GRAVEL, BLOCK.COAL_ORE, BLOCK.IRON_ORE].includes(first.get(blockKey(x, 0, z))!),
+      "the shallow stratum may contain deterministic clay, gravel, or ore",
     );
   }
 }
@@ -132,7 +139,8 @@ const oreBlocks = [...first].filter(([, block]) => block === BLOCK.COAL_ORE || b
 const coalBlocks = oreBlocks.filter(([, block]) => block === BLOCK.COAL_ORE);
 const ironBlocks = oreBlocks.filter(([, block]) => block === BLOCK.IRON_ORE);
 const naturalStoneCount = [...first].filter(([, block]) => (
-  block === BLOCK.STONE || block === BLOCK.GRAVEL || block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE
+  block === BLOCK.STONE || block === BLOCK.CLAY || block === BLOCK.GRAVEL
+    || block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE
 )).length;
 assert.ok(coalBlocks.length >= 100, `expected useful coal deposits, received ${coalBlocks.length}`);
 assert.ok(ironBlocks.length >= 20, `expected useful iron deposits, received ${ironBlocks.length}`);

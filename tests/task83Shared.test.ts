@@ -115,10 +115,10 @@ for (const [block, index] of stableProtocol) {
   assert.equal(BLOCK_TYPES.indexOf(block), index, `${block} keeps its deployed protocol index`);
   assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf(block), index, `${block} keeps its deployed persisted code ${index + 1}`);
 }
-assert.equal(BLOCK_TYPES.indexOf("stone_brick_slab"), 30, "the slab uses the final append-only protocol identity");
+assert.equal(BLOCK_TYPES.indexOf("stone_brick_slab"), 30, "the slab keeps its deployed append-only protocol identity");
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("stone_brick_slab"), 30,
   "the slab keeps its deployed persisted code 31");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 31,
+assert.ok(WORLD_CHUNK_BLOCK_TYPES.length >= 31,
   "the deployed append-only palette remains stable through slab code 31");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES,
   "the deployed palette fits within the expanded codec capacity");
@@ -230,13 +230,13 @@ for (const [label, source] of [["multiplayer", multiplayerSource], ["single-play
     `${label} maps engine slab 30 back to its canonical game identity`);
   assert.match(source, /stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
     `${label} maps the held slab item into engine block 30`);
-  assert.match(source, /BLOCK\.STONE_BRICKS \|\| block === BLOCK\.STONE_BRICK_SLAB\) return "stone"/,
+  assert.match(source, /BLOCK\.STONE_BRICKS \|\| block === BLOCK\.STONE_BRICK_SLAB[^\n]*return "stone"/,
     `${label} reuses the existing stone mining, placement, and footstep audio surface`);
 }
 assert.match(multiplayerSource, /\[BLOCK\.STONE_BRICK_SLAB\]:\s*"stone_brick_slab"[\s\S]*?stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
   "multiplayer round-trips engine, protocol, item, and game slab identities");
-assert.match(singlePlayerSource, /edit\.block\s*<=\s*BLOCK\.STONE_BRICK_SLAB/,
-  "single-player persistence admits the final append-only engine ID");
+assert.match(singlePlayerSource, /edit\.block\s*<=\s*BLOCK\.BRICKS/,
+  "single-player persistence admits every later append-only engine ID");
 const worldMutation = serverSource.slice(
   serverSource.indexOf("editWorldBlock: mutation(async"),
   serverSource.indexOf("startPresenceSession: mutation("),

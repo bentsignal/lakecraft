@@ -28,11 +28,11 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
 assert.equal(WORLD_CHUNK_CODEC_VERSION, 4);
 assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 6);
 assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 63, "six-bit snapshots reserve zero and expose 63 block codes");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 31, "the deployed append-only palette remains unchanged during the codec upgrade");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 33, "clay and bricks append without changing the six-bit codec");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
-  WORLD_CHUNK_BLOCK_TYPES.slice(-15),
-  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab"],
+  WORLD_CHUNK_BLOCK_TYPES.slice(-17),
+  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks"],
   "new persisted block codes append without renumbering deployed materials",
 );
 
@@ -254,7 +254,7 @@ if (highestCode.ok) {
 }
 
 const currentSectionProbe = createWorldChunkSnapshot("0:0", [
-  { x: 0, y: 0, z: 0, blockType: "stone_brick_slab" },
+  { x: 0, y: 0, z: 0, blockType: "bricks" },
 ]);
 assert.equal(currentSectionProbe.ok, true);
 if (currentSectionProbe.ok) {
@@ -288,7 +288,7 @@ assert.deepEqual(
 );
 
 const deterministicEdits: WorldChunkEditInput[] = [
-  { x: 7, y: 128, z: 7, blockType: "stone_brick_slab" },
+  { x: 7, y: 128, z: 7, blockType: "bricks" },
   { x: 0, y: -24, z: 0, blockType: "air" },
   { x: 4, y: 17, z: 2, blockType: "diamond_ore" },
   { x: 3, y: -1, z: 6, blockType: "torch" },
