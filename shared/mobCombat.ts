@@ -1,5 +1,5 @@
 export type MobAuthorityKind = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
-export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "feather" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
+export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "raw_chicken" | "feather" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
 
 export interface MobAuthorityDrop {
   itemId: MobAuthorityDropId;
@@ -122,7 +122,10 @@ export const MOB_AUTHORITY_DEFINITIONS: Readonly<Record<MobAuthorityKind, Author
   }),
   chicken: Object.freeze({
     maxHealth: 4,
-    drops: Object.freeze([{ itemId: "feather", minCount: 0, maxCount: 2, chance: 1 }]),
+    drops: Object.freeze([
+      { itemId: "raw_chicken", minCount: 1, maxCount: 1, chance: 1 },
+      { itemId: "feather", minCount: 0, maxCount: 2, chance: 1 },
+    ]),
   }),
   zombie: Object.freeze({
     maxHealth: 20,

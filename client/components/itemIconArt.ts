@@ -191,6 +191,23 @@ function material(g: Grid, id: ItemId): Palette {
 function food(g: Grid, id: ItemId): Palette {
   const color = ITEMS[id].color, cooked = id.startsWith("cooked_"), rotten = id === "rotten_flesh";
   const p = { o:"#38221f", m:color, l:mix(color,"#ffffff",cooked?.2:.38), d:mix(color,"#000000",.32), b:rotten?"#a6a15e":"#eee0bc" };
+  if (id === "raw_chicken" || id === "cooked_chicken") {
+    // A compact diagonal drumstick: broad meat at the upper left, narrow bone
+    // and two knuckles at the lower right. Cooked meat gains a crisp edge and
+    // char pixels while raw meat keeps pale highlights, so both sprites read
+    // independently even at native 16px scale.
+    dots(g,"o",[[4,2],[5,2],[6,2],[7,2],[8,2],[3,3],[4,3],[5,3],[6,3],[7,3],[8,3],[9,3],
+      [2,4],[3,4],[4,4],[5,4],[6,4],[7,4],[8,4],[9,4],[10,4],[2,5],[3,5],[4,5],[5,5],
+      [6,5],[7,5],[8,5],[9,5],[10,5],[2,6],[3,6],[4,6],[5,6],[6,6],[7,6],[8,6],[9,6],
+      [10,6],[3,7],[4,7],[5,7],[6,7],[7,7],[8,7],[9,7],[4,8],[5,8],[6,8],[7,8],[8,8],
+      [7,9],[8,9],[8,10],[9,10],[9,11],[10,11],[10,12],[11,12],[12,11],[12,12],[13,11],
+      [11,13],[12,13]]);
+    box(g,4,3,5,5,"m"); box(g,3,4,7,3,"m"); box(g,4,7,5,1,"m");
+    dots(g,"b",[[7,8],[8,9],[9,10],[10,11],[11,12],[12,11],[13,11],[11,13],[12,13]]);
+    if (cooked) dots(g,"d",[[4,4],[5,3],[8,4],[3,6],[6,7],[9,5]]);
+    else dots(g,"l",[[4,3],[5,3],[3,4],[4,4],[5,4],[3,5]]);
+    return p;
+  }
   box(g,3,4,9,9,"o"); box(g,2,6,12,5,"o"); box(g,4,4,7,8,"m"); box(g,3,6,10,4,"m"); box(g,10,9,4,2,"b"); box(g,13,8,2,2,"b"); box(g,13,11,2,2,"b"); dots(g,"l",[[5,5],[6,5],[4,7]]); dots(g,"d",[[8,10],[10,7],[6,11]]); if (rotten) dots(g,"b",[[5,8],[8,5],[10,9]]); return p;
 }
 

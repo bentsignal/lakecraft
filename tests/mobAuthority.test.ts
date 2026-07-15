@@ -52,6 +52,10 @@ assert.equal(defaultMobAuthorityState("skeleton-5nf-3", "skeleton").health, 20);
 assert.equal(defaultMobAuthorityState("creeper-5nf-5", "creeper").health, 20);
 assert.equal(defaultMobAuthorityState("spider-5nf-6", "spider").health, 16);
 assert.equal(defaultMobAuthorityState("chicken-5nf-7", "chicken").health, 4);
+assert.deepEqual(MOB_AUTHORITY_DEFINITIONS.chicken.drops, [
+  { itemId: "raw_chicken", minCount: 1, maxCount: 1, chance: 1 },
+  { itemId: "feather", minCount: 0, maxCount: 2, chance: 1 },
+]);
 
 const first = resolveMobAttack({
   rawMobId: "pig-5nf-0",
@@ -157,6 +161,29 @@ assert.deepEqual(
 if (skeletonFatal.ok) {
   assert.ok(skeletonFatal.drops.every((drop) => (drop.itemId === "arrow" || drop.itemId === "bone") && drop.count <= 2));
 }
+
+const chickenFatal = resolveMobAttack({
+  rawMobId: "chicken-5nf-7",
+  rawKind: "chicken",
+  rawDamage: 4,
+  attackerId: "alice",
+  serverNow: 20_000,
+});
+assert.ok(chickenFatal.ok && chickenFatal.killed);
+assert.deepEqual(
+  chickenFatal.ok ? chickenFatal.drops.filter(({ itemId }) => itemId === "raw_chicken") : [],
+  [{ itemId: "raw_chicken", count: 1 }],
+);
+const chickenDuplicate = resolveMobAttack({
+  stored: chickenFatal.ok ? chickenFatal.nextRow : undefined,
+  rawMobId: "chicken-5nf-7",
+  rawKind: "chicken",
+  rawDamage: 4,
+  attackerId: "alice",
+  serverNow: 20_000 + MOB_ATTACK_COOLDOWN_MS,
+});
+assert.equal(chickenDuplicate.ok, false);
+assert.equal("drops" in chickenDuplicate, false, "a duplicate chicken death cannot mint a second raw chicken");
 
 const corrupted: StoredMobAuthorityState = {
   mobId: "cow-5nf-2",

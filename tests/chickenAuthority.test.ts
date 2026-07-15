@@ -86,8 +86,21 @@ const localChicken: MobSpawnDescriptor = {
 const local = createMobSimulation([localChicken]);
 const localKill = damageMob(local, chickenId, 4);
 assert.equal(localKill.killed, true);
-assert.ok(localKill.drops.every(({ itemId, count }) => itemId === "feather" && count >= 1 && count <= 2));
-assert.deepEqual(damageMob(local, chickenId, 4).drops, [], "a local chicken death cannot mint feathers twice");
+assert.deepEqual(localKill.drops.filter(({ itemId }) => itemId === "raw_chicken"), [{ itemId: "raw_chicken", count: 1 }]);
+assert.ok(localKill.drops.filter(({ itemId }) => itemId === "feather").every(({ count }) => count >= 1 && count <= 2));
+assert.deepEqual(damageMob(local, chickenId, 4).drops, [], "a local chicken death cannot mint meat or feathers twice");
+
+for (let index = 0; index < 12; index += 1) {
+  const id = `chicken-5nb-${index.toString(36)}`;
+  const simulation = createMobSimulation([{ ...localChicken, id, behaviorSeed: 101 + index * 17 }]);
+  const firstDeath = damageMob(simulation, id, 4);
+  assert.deepEqual(
+    firstDeath.drops.filter(({ itemId }) => itemId === "raw_chicken"),
+    [{ itemId: "raw_chicken", count: 1 }],
+    `${id} local death must yield exactly one raw chicken`,
+  );
+  assert.deepEqual(damageMob(simulation, id, 4).drops, [], `${id} local duplicate death must yield nothing`);
+}
 
 const authorityKill = resolveMobAttack({
   rawMobId: chickenId,
@@ -98,6 +111,11 @@ const authorityKill = resolveMobAttack({
 });
 assert.ok(authorityKill.ok && authorityKill.killed);
 assert.deepEqual(authorityKill.ok ? authorityKill.drops : [], deterministicMobDrops(chickenId, "chicken", 1));
+assert.deepEqual(
+  authorityKill.ok ? authorityKill.drops.filter(({ itemId }) => itemId === "raw_chicken") : [],
+  [{ itemId: "raw_chicken", count: 1 }],
+  "every authoritative chicken death conserves exactly one raw chicken",
+);
 const duplicateKill = resolveMobAttack({
   stored: authorityKill.ok ? authorityKill.nextRow : null,
   rawMobId: chickenId,
@@ -107,7 +125,24 @@ const duplicateKill = resolveMobAttack({
   serverNow: 1_300,
 });
 assert.equal(duplicateKill.ok, false);
-assert.equal("drops" in duplicateKill, false, "a dead authority row cannot mint feathers twice");
+assert.equal("drops" in duplicateKill, false, "a dead authority row cannot mint meat or feathers twice");
+
+const observedAuthorityFeathers = new Set<number>();
+for (let slot = 0; slot < 36; slot += 1) {
+  const mobId = `chicken-5nb-${slot.toString(36)}`;
+  for (let revision = 1; revision <= 4; revision += 1) {
+    const drops = deterministicMobDrops(mobId, "chicken", revision);
+    assert.deepEqual(
+      drops.filter(({ itemId }) => itemId === "raw_chicken"),
+      [{ itemId: "raw_chicken", count: 1 }],
+      `${mobId} revision ${revision} must yield exactly one raw chicken`,
+    );
+    const feathers = drops.find(({ itemId }) => itemId === "feather")?.count ?? 0;
+    assert.ok(feathers >= 0 && feathers <= 2, `${mobId} revision ${revision} feathers must stay within 0-2`);
+    observedAuthorityFeathers.add(feathers);
+  }
+}
+assert.deepEqual([...observedAuthorityFeathers].sort(), [0, 1, 2], "deterministic chicken samples exercise every 0-2 feather outcome");
 
 console.log(JSON.stringify({
   benchmark: "deterministic chicken authority replay",

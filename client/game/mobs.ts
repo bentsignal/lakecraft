@@ -9,7 +9,7 @@ import {
 
 export type MobKind = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
-export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "feather" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
+export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "raw_chicken" | "feather" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
 
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
 export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
@@ -113,7 +113,10 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     rangedCooldownSeconds: 0,
     rangedRange: 0,
     projectileSpeed: 0,
-    drops: Object.freeze([{ itemId: "feather", minCount: 0, maxCount: 2, chance: 1 }]),
+    drops: Object.freeze([
+      { itemId: "raw_chicken", minCount: 1, maxCount: 1, chance: 1 },
+      { itemId: "feather", minCount: 0, maxCount: 2, chance: 1 },
+    ]),
   }),
   zombie: Object.freeze({
     kind: "zombie",

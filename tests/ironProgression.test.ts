@@ -96,9 +96,12 @@ assert.deepEqual(
 assert.equal(ITEMS.cooked_pork.food?.hunger, 8);
 assert.equal(ITEMS.cooked_beef.food?.hunger, 8);
 assert.equal(ITEMS.cooked_mutton.food?.hunger, 6);
+assert.equal(ITEMS.raw_chicken.food?.hunger, 2);
+assert.equal(ITEMS.cooked_chicken.food?.hunger, 6);
 assert.ok((ITEMS.cooked_pork.food?.hunger ?? 0) > (ITEMS.pork.food?.hunger ?? 0));
 assert.ok((ITEMS.cooked_beef.food?.hunger ?? 0) > (ITEMS.beef.food?.hunger ?? 0));
 assert.ok((ITEMS.cooked_mutton.food?.hunger ?? 0) > (ITEMS.mutton.food?.hunger ?? 0));
+assert.ok((ITEMS.cooked_chicken.food?.hunger ?? 0) > (ITEMS.raw_chicken.food?.hunger ?? 0));
 
 assert.deepEqual(
   SMELTING_RECIPES.map(({ id, input, output }) => ({ id, input, output })),
@@ -109,6 +112,7 @@ assert.deepEqual(
     { id: "cooked_pork", input: "pork", output: "cooked_pork" },
     { id: "cooked_beef", input: "beef", output: "cooked_beef" },
     { id: "cooked_mutton", input: "mutton", output: "cooked_mutton" },
+    { id: "cooked_chicken", input: "raw_chicken", output: "cooked_chicken" },
   ],
 );
 assert.equal(new Set(SMELTING_RECIPES.map(({ id }) => id)).size, SMELTING_RECIPES.length);

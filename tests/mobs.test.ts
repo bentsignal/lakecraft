@@ -31,7 +31,7 @@ assert.equal(MOB_DEFINITIONS.cow.drops.some((drop) => drop.itemId === "leather")
 assert.equal(MOB_DEFINITIONS.sheep.drops.some((drop) => drop.itemId === "wool"), true);
 assert.deepEqual(MOB_DEFINITIONS.skeleton.drops.map(({ itemId }) => itemId), ["arrow", "bone"]);
 assert.deepEqual(MOB_DEFINITIONS.spider.drops.map(({ itemId }) => itemId), ["string"]);
-assert.deepEqual(MOB_DEFINITIONS.chicken.drops.map(({ itemId }) => itemId), ["feather"]);
+assert.deepEqual(MOB_DEFINITIONS.chicken.drops.map(({ itemId }) => itemId), ["raw_chicken", "feather"]);
 assert.equal(MOB_DEFINITIONS.creeper.contactDamage, 0, "creeper damage must remain a future one-shot explosion claim");
 
 const spawns = createMobSpawns(spawnOptions);

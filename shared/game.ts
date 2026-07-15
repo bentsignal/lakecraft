@@ -69,9 +69,11 @@ export type ItemId = BlockId
   | "pork"
   | "beef"
   | "mutton"
+  | "raw_chicken"
   | "cooked_pork"
   | "cooked_beef"
   | "cooked_mutton"
+  | "cooked_chicken"
   | "rotten_flesh"
   | ToolId
   | ArmorId;
@@ -258,7 +260,7 @@ function armorItem(id: ArmorId, label: string, shortLabel: string, slot: ArmorSl
   return { id, label, shortLabel, description, category: "armor", maxStack: 1, glyph, color, armor: { slot, protection, maxDurability: durabilityBase * slotMultiplier } };
 }
 
-function foodItem(id: "pork" | "beef" | "mutton" | "cooked_pork" | "cooked_beef" | "cooked_mutton" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
+function foodItem(id: "pork" | "beef" | "mutton" | "raw_chicken" | "cooked_pork" | "cooked_beef" | "cooked_mutton" | "cooked_chicken" | "rotten_flesh", label: string, shortLabel: string, hunger: number, description: string, glyph: string, color: string): ItemDefinition {
   return { id, label, shortLabel, description, category: "food", maxStack: 64, glyph, color, food: { hunger } };
 }
 
@@ -307,9 +309,11 @@ const FOOD_ITEM_SPECS: readonly FoodItemSpec[] = [
   ["pork", "Raw Pork", "PRK", 3, "Raw pork from a pig.", "◒", "#d98e8b"],
   ["beef", "Raw Beef", "BEF", 4, "Raw beef from a cow.", "◆", "#a9544d"],
   ["mutton", "Raw Mutton", "MTN", 3, "Raw mutton from a sheep.", "◇", "#b66b63"],
+  ["raw_chicken", "Raw Chicken", "R·CH", 2, "Raw chicken from a chicken. Cooking it makes a much better meal.", "◖", "#d9a69a"],
   ["cooked_pork", "Cooked Pork", "C·PK", 8, "Furnace-roasted pork that restores substantial hunger.", "◒", "#b96649"],
   ["cooked_beef", "Steak", "STK", 8, "Furnace-cooked beef that restores substantial hunger.", "◆", "#743b32"],
   ["cooked_mutton", "Cooked Mutton", "C·MT", 6, "Furnace-roasted mutton.", "◇", "#825047"],
+  ["cooked_chicken", "Cooked Chicken", "C·CH", 6, "Furnace-roasted chicken that restores substantial hunger.", "◖", "#a8663e"],
   ["rotten_flesh", "Rotten Flesh", "ROT", 1, "Unpleasant, but technically edible.", "✦", "#756d3e"],
 ];
 
@@ -438,6 +442,7 @@ export const SMELTING_RECIPES: readonly SmeltingRecipe[] = [
   { id: "cooked_pork", label: "Cook pork", input: "pork", output: "cooked_pork" },
   { id: "cooked_beef", label: "Cook beef", input: "beef", output: "cooked_beef" },
   { id: "cooked_mutton", label: "Cook mutton", input: "mutton", output: "cooked_mutton" },
+  { id: "cooked_chicken", label: "Cook chicken", input: "raw_chicken", output: "cooked_chicken" },
 ] as const;
 
 export function createEmptyInventory(size = INVENTORY_SIZE): Inventory {
