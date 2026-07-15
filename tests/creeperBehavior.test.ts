@@ -17,8 +17,8 @@ const clientSpawns = createMobSpawns({
   radius: 16,
   terrainHeight: flatHeight,
   isSpawnable: () => true,
-  maxPopulation: 13,
-  passivePopulation: 9,
+  maxPopulation: 16,
+  passivePopulation: 12,
   hostilePopulation: 4,
   spawnClearRadius: 6,
 });
@@ -29,7 +29,7 @@ assert.deepEqual(
   "client and Lakebed must derive the exact same hostile slots and spawn poses",
 );
 assert.deepEqual(
-  serverSpawns.slice(9).map(({ kind }) => kind).sort(),
+  serverSpawns.slice(12).map(({ kind }) => kind).sort(),
   ["creeper", "skeleton", "spider", "zombie"],
   "the bounded canonical hostile population includes one of each implemented hostile",
 );

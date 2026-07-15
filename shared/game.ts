@@ -52,6 +52,7 @@ export type ItemId = BlockId
   | "stick"
   | "string"
   | "bone"
+  | "feather"
   | "arrow"
   | "bow"
   | "leather"
@@ -279,7 +280,8 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["stick", "Stick", "STK", "A straight handle for simple tools.", "╱", "#c09557"],
   ["string", "String", "STR", "Strong fiber spun by spiders and used to tension bows.", "∿", "#d8d3c5"],
   ["bone", "Bone", "BON", "A dry skeleton bone with no use yet.", "╱", "#ded8bf"],
-  ["arrow", "Arrow", "ARR", "A stone-tipped projectile fired from a bow.", "↗", "#c6b38a"],
+  ["feather", "Feather", "FTH", "A light chicken feather used to fletch arrows.", "≀", "#e7e1ce"],
+  ["arrow", "Arrow", "ARR", "A flint-tipped projectile fired from a bow.", "↗", "#c6b38a"],
   ["leather", "Leather", "LTH", "Tough hide used for lightweight armor.", "◩", "#8d552f"],
   ["wool", "Wool", "WOL", "Soft sheep wool for beds and future textiles.", "◌", "#ddd8c8"],
   ["coal", "Coal", "COL", "Dense furnace fuel recovered from coal ore.", "✦", "#30332e"],
@@ -424,7 +426,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "tnt", label: "TNT", note: "Five gunpowder and four sand make one volatile block.", craftingContext: "crafting_table", ingredients: [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }], output: { itemId: "tnt", count: 1 } },
   { id: "flint_and_steel", label: "Flint and steel", note: "Strike flint against iron to make a reusable igniter.", craftingContext: "field", ingredients: [{ itemId: "iron_ingot", count: 1 }, { itemId: "flint", count: 1 }], output: { itemId: "flint_and_steel", count: 1 } },
   { id: "bow", label: "Bow", note: "Three sticks and three string make a ranged weapon.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 3 }, { itemId: "string", count: 3 }], output: { itemId: "bow", count: 1 } },
-  { id: "arrows", label: "Arrows", note: "Stone, a shaft, and wool fletching make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "wool", count: 1 }], output: { itemId: "arrow", count: 4 } },
+  { id: "arrows", label: "Arrows", note: "Flint, a stick, and a feather make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "flint", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "feather", count: 1 }], output: { itemId: "arrow", count: 4 } },
   ...GENERATED_TOOL_RECIPES,
   ...GENERATED_ARMOR_RECIPES,
 ] as const;

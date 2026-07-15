@@ -60,14 +60,19 @@ const gl = new FakeWebGl();
 const renderer = createMobRenderer(gl as unknown as WebGLRenderingContext);
 assert.equal(gl.createBufferCalls, 1, "all mobs should share one WebGL buffer");
 assert.ok(gl.allocationBytes > 0);
+assert.equal(
+  gl.allocationBytes,
+  794_880,
+  "64 mobs, 24 projectiles, and 32 primed TNT visuals share one fixed 776.25 KiB allocation",
+);
 assert.ok(gl.allocationBytes <= 800 * 1024, "the complete 64-mob/projectile/TNT batch stays under 800 KiB");
 
-const kinds: MobKind[] = ["pig", "cow", "sheep", "zombie", "skeleton", "creeper", "spider"];
+const kinds: MobKind[] = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"];
 const poses = kinds.map((kind, index) => pose(kind, index * 2 - 3, 8 + index, index));
 const stats = renderer.rebuild(poses, 0, 0, 0, 1, 0.5, 2);
 const expectedVertexCount = kinds.reduce((total, kind) => total + mobVertexCountForKind(kind), 0);
-assert.equal(stats.totalMobCount, 7);
-assert.equal(stats.visibleMobCount, 7);
+assert.equal(stats.totalMobCount, 8);
+assert.equal(stats.visibleMobCount, 8);
 assert.equal(stats.vertexCount, expectedVertexCount);
 assert.equal(gl.uploadCalls, 1, "one rebuild should issue one batched geometry upload");
 assert.ok(gl.uploaded);
@@ -101,6 +106,35 @@ for (let index = 0; index < kinds.length; index += 1) {
   colorSignatures.add(`${red.toFixed(2)},${green.toFixed(2)},${blue.toFixed(2)}`);
 }
 assert.equal(colorSignatures.size, kinds.length, "each mob kind should have a distinct color palette");
+
+const chicken = pose("chicken", 0, 4, 0);
+chicken.previousX = chicken.x;
+chicken.previousZ = chicken.z;
+chicken.previousYaw = chicken.yaw = 0;
+const stillChicken = renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0);
+const stillChickenGeometry = gl.uploaded!.slice(0, stillChicken.vertexCount * 6);
+let whiteChickenVertices = 0;
+let yellowChickenVertices = 0;
+let redChickenVertices = 0;
+for (let offset = 0; offset < stillChickenGeometry.length; offset += 6) {
+  const red = stillChickenGeometry[offset + 3];
+  const green = stillChickenGeometry[offset + 4];
+  const blue = stillChickenGeometry[offset + 5];
+  if (red > 0.65 && green > 0.65 && blue > 0.6) whiteChickenVertices += 1;
+  if (red > 0.55 && green > 0.3 && blue < 0.1) yellowChickenVertices += 1;
+  if (red > 0.45 && green < 0.12 && blue < 0.1) redChickenVertices += 1;
+}
+assert.equal(stillChicken.vertexCount, 9 * 36, "a chicken uses nine bounded boxes including two wings and two legs");
+assert.ok(whiteChickenVertices >= 72, "the chicken has a recognizable white body and head");
+assert.ok(yellowChickenVertices >= 36, "the chicken has a visible yellow beak and legs");
+assert.ok(redChickenVertices >= 12, "the chicken has a visible red wattle below its beak");
+renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0.1);
+const walkingChickenGeometry = gl.uploaded!.slice(0, stillChicken.vertexCount * 6);
+assert.notDeepEqual(
+  walkingChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
+  stillChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
+  "both wing boxes animate inside the same mob batch",
+);
 
 const spider = pose("spider", 0, 4, 0);
 spider.previousX = spider.x;

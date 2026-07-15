@@ -1,5 +1,5 @@
-export type MobAuthorityKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider";
-export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
+export type MobAuthorityKind = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
+export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "feather" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
 
 export interface MobAuthorityDrop {
   itemId: MobAuthorityDropId;
@@ -120,6 +120,10 @@ export const MOB_AUTHORITY_DEFINITIONS: Readonly<Record<MobAuthorityKind, Author
       { itemId: "mutton", minCount: 1, maxCount: 2, chance: 1 },
     ]),
   }),
+  chicken: Object.freeze({
+    maxHealth: 4,
+    drops: Object.freeze([{ itemId: "feather", minCount: 0, maxCount: 2, chance: 1 }]),
+  }),
   zombie: Object.freeze({
     maxHealth: 20,
     drops: Object.freeze([{ itemId: "rotten_flesh", minCount: 0, maxCount: 2, chance: 0.85 }]),
@@ -150,7 +154,7 @@ export type MobIdListValidation =
   | { ok: false; reason: "invalid_mob_ids" };
 
 function isMobKind(value: string): value is MobAuthorityKind {
-  return value === "pig" || value === "cow" || value === "sheep" || value === "zombie"
+  return value === "pig" || value === "cow" || value === "sheep" || value === "chicken" || value === "zombie"
     || value === "skeleton" || value === "creeper" || value === "spider";
 }
 
@@ -163,7 +167,7 @@ export function validateMobIdentity(
     return { ok: false, reason: "invalid_mob" };
   }
   const mobId = rawMobId.trim();
-  const match = /^(pig|cow|sheep|zombie|skeleton|creeper|spider)-([0-9a-z]{1,8})-([0-9a-z]{1,3})$/.exec(mobId);
+  const match = /^(pig|cow|sheep|chicken|zombie|skeleton|creeper|spider)-([0-9a-z]{1,8})-([0-9a-z]{1,3})$/.exec(mobId);
   if (!match || !isMobKind(match[1])) return { ok: false, reason: "invalid_mob" };
   const kind = match[1];
   const slot = Number.parseInt(match[3], 36);

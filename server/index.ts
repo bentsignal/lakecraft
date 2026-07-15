@@ -1795,7 +1795,8 @@ export default capsule({
         if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...emptyMobWorld };
         const advanced = advanceMobWorldState(stored, serverNow, replayInput);
         if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...emptyMobWorld };
-        const needsSpiderTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider");
+        const needsCurrentMobTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider")
+          || !advanced.state.mobs.some((mob) => mob.kind === "chicken");
         const requested = new Set(request.mobIds);
         const poses = writeMobMotionPoses(advanced.state).filter((pose) => requested.has(pose.mobId));
         const states = [];
@@ -1831,7 +1832,7 @@ export default capsule({
             : [],
           explosionClaims: creeperExplosionClaims(advanced.state, advanced.revision)
             .filter((claim) => aliveMobIds.has(claim.mobId)),
-          needsCheckpoint: needsSpiderTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
+          needsCheckpoint: needsCurrentMobTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
           serverNow,
         };
       })();
@@ -2015,7 +2016,8 @@ export default capsule({
       if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...empty };
       const advanced = advanceMobWorldState(stored, serverNow, replayInput);
       if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...empty };
-      const needsSpiderTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider");
+      const needsCurrentMobTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider")
+        || !advanced.state.mobs.some((mob) => mob.kind === "chicken");
       const requested = new Set(validation.mobIds);
       const poses = writeMobMotionPoses(advanced.state).filter((pose) => requested.has(pose.mobId));
       const states = [];
@@ -2046,7 +2048,7 @@ export default capsule({
           : [],
         explosionClaims: creeperExplosionClaims(advanced.state, advanced.revision)
           .filter((claim) => aliveMobIds.has(claim.mobId)),
-        needsCheckpoint: needsSpiderTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
+        needsCheckpoint: needsCurrentMobTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS,
         serverNow,
       };
     }),
@@ -4007,8 +4009,9 @@ export default capsule({
       if (!sameLease && !sameOwner && leaseExpiresAt > serverNow) {
         return { ok: false, reason: "lease_held", leaseExpiresAt, serverNow };
       }
-      const needsSpiderTopology = !storedCheckpoint.mobs.some((mob) => mob.kind === "spider");
-      if (!needsSpiderTopology && sameLease && serverNow - checkpointAt < MOB_WORLD_CHECKPOINT_MS - 200) {
+      const needsCurrentMobTopology = !storedCheckpoint.mobs.some((mob) => mob.kind === "spider")
+        || !storedCheckpoint.mobs.some((mob) => mob.kind === "chicken");
+      if (!needsCurrentMobTopology && sameLease && serverNow - checkpointAt < MOB_WORLD_CHECKPOINT_MS - 200) {
         return {
           ok: false,
           reason: "checkpoint_cooldown",
@@ -4018,7 +4021,7 @@ export default capsule({
       }
       const nextReplayInput = await readCurrentReplayInput();
       if (!nextReplayInput) return { ok: false, reason: "invalid_replay_input", serverNow };
-      const nextState = needsSpiderTopology
+      const nextState = needsCurrentMobTopology
         ? createCanonicalMobWorldState(
             serverNow,
             serverTerrainHeight,
@@ -4843,7 +4846,7 @@ export default capsule({
           const pose = advancedWorld ? writeMobMotionPoses(advancedWorld.state).find(({ mobId }) => mobId === identity.mobId) : null;
           if (pose && mobRows.length <= 1) {
             const bounds = {
-              pig: [0.9, 0.62], cow: [1.35, 0.7], sheep: [1.25, 0.68],
+              pig: [0.9, 0.62], cow: [1.35, 0.7], sheep: [1.25, 0.68], chicken: [0.8, 0.38],
               zombie: [1.8, 0.4], skeleton: [1.9, 0.38], creeper: [1.7, 0.42], spider: [0.8, 0.72],
             } as const;
             targetMobRow = mobRows[0] ?? null;

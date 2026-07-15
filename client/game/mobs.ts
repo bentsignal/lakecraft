@@ -7,9 +7,9 @@ import {
   MOB_MOTION_TICKS_PER_SECOND,
 } from "../../shared/mobMotionAuthority.ts";
 
-export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper" | "spider";
+export type MobKind = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
-export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
+export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "feather" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
 
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
 export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
@@ -97,6 +97,23 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
       { itemId: "wool", minCount: 1, maxCount: 1, chance: 1 },
       { itemId: "mutton", minCount: 1, maxCount: 2, chance: 1 },
     ]),
+  }),
+  chicken: Object.freeze({
+    kind: "chicken",
+    passive: true,
+    maxHealth: 4,
+    moveSpeed: 1.1,
+    chaseSpeed: 1.1,
+    collisionRadius: 0.3,
+    targetRadius: 0.38,
+    height: 0.8,
+    contactDamage: 0,
+    attackCooldownSeconds: 0,
+    rangedDamage: 0,
+    rangedCooldownSeconds: 0,
+    rangedRange: 0,
+    projectileSpeed: 0,
+    drops: Object.freeze([{ itemId: "feather", minCount: 0, maxCount: 2, chance: 1 }]),
   }),
   zombie: Object.freeze({
     kind: "zombie",
@@ -363,9 +380,9 @@ function finiteInteger(value: number, fallback: number): number {
 }
 
 function passiveKind(index: number, seed: number): MobKind {
-  const offset = hashUint(seed, 71, seed + 19) % 3;
-  const choice = (index + offset) % 3;
-  return choice === 0 ? "pig" : choice === 1 ? "cow" : "sheep";
+  const offset = hashUint(seed, 71, seed + 19) % 4;
+  const choice = (index + offset) % 4;
+  return choice === 0 ? "pig" : choice === 1 ? "cow" : choice === 2 ? "sheep" : "chicken";
 }
 
 function hostileKind(index: number, seed: number): MobKind {

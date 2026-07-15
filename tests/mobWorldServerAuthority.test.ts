@@ -33,7 +33,7 @@ assert.equal(validateMobWorldCheckpointRequestJson(JSON.stringify({
 })), null);
 
 const spawns = canonicalMobSpawnSnapshot(() => 6, () => true);
-assert.equal(spawns.length, 13);
+assert.equal(spawns.length, 16);
 assert.ok(spawns.every((spawn, index) => spawn.mobId.endsWith(`-${index.toString(36)}`)));
 const state = createMobMotionState({ seed: MOB_WORLD_SEED, epoch: 1_000, snapshot: spawns });
 assert.ok(state);
@@ -156,6 +156,9 @@ for (let tick = 0; tick < 32 && !spiderClaim; tick += 1) {
 assert.ok(spiderClaim, "a nearby spider produces a bounded deterministic melee claim");
 assert.equal(spiderClaim!.damage, 2);
 
+const chicken = spawns.find((spawn) => spawn.kind === "chicken")!;
+assert.ok(chicken, "the canonical twelve-passive population includes a chicken");
+
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 assert.ok(server.includes("spider: [0.8, 0.72]"), "ranged authority uses the spider's low, wide hit bounds");
 for (const marker of [
@@ -171,11 +174,12 @@ for (const marker of [
   'reason: "mob_dead"',
   "parseMobWorldReplayInputJson(stored.inputJson)",
   'mob.kind === "spider"',
-  "needsSpiderTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS",
+  'mob.kind === "chicken"',
+  "needsCurrentMobTopology || serverNow - advanced.checkpointAt >= MOB_WORLD_CHECKPOINT_MS",
 ]) assert.ok(server.includes(marker), `missing server integration marker: ${marker}`);
 assert.equal((server.match(/mobWorldAuthority: table\(\{/g) ?? []).length, 1, "authority checkpoint must remain singleton-shaped");
 const checkpointMutation = server.slice(server.indexOf("checkpointMobWorld: mutation(async"), server.indexOf("claimMobPlayerDamage: mutation(async"));
-assert.ok(checkpointMutation.includes("const needsSpiderTopology"));
+assert.ok(checkpointMutation.includes("const needsCurrentMobTopology"));
 assert.ok(checkpointMutation.includes("? createCanonicalMobWorldState("), "a spiderless retained alpha checkpoint is reseeded once through the existing lease mutation");
 assert.ok(checkpointMutation.includes("checkpointJson: encodeMobWorldCheckpoint(nextState)"));
 

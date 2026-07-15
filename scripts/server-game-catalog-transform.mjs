@@ -19,7 +19,7 @@ const TUPLE_CATALOGS = [
   {
     name: "BASIC_ITEM_SPECS",
     anchor: "const BASIC_ITEM_SPECS",
-    rows: 14,
+    rows: 15,
     widths: [6],
     scalarPresentationIndexes: [1, 2, 3, 4, 5],
   },

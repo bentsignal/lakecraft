@@ -39,9 +39,9 @@ assert.ok(bowRecipe && arrowRecipe);
 assert.deepEqual(bowRecipe.ingredients, [{ itemId: "stick", count: 3 }, { itemId: "string", count: 3 }]);
 assert.deepEqual(bowRecipe.output, { itemId: "bow", count: 1 });
 assert.deepEqual(arrowRecipe.ingredients, [
-  { itemId: "cobblestone", count: 1 },
+  { itemId: "flint", count: 1 },
   { itemId: "stick", count: 1 },
-  { itemId: "wool", count: 1 },
+  { itemId: "feather", count: 1 },
 ]);
 assert.deepEqual(arrowRecipe.output, { itemId: "arrow", count: 4 });
 assert.deepEqual(INITIAL_RECIPE_PATTERNS.bow, {
@@ -51,7 +51,7 @@ assert.deepEqual(INITIAL_RECIPE_PATTERNS.bow, {
 });
 assert.deepEqual(INITIAL_RECIPE_PATTERNS.arrows, {
   kind: "shaped",
-  pattern: [["cobblestone"], ["stick"], ["wool"]],
+  pattern: [["flint"], ["stick"], ["feather"]],
 });
 
 function stack(itemId: ItemStack["itemId"]): ItemStack { return { itemId, count: 1 }; }
@@ -72,9 +72,9 @@ assert.ok(bowCrafted.ok);
 if (bowCrafted.ok) assert.deepEqual(bowCrafted.state.cursor, createItemStack("bow"));
 
 const arrowGrid = createCraftingGrid(3).slice() as Array<ItemStack | null>;
-arrowGrid[1] = stack("cobblestone");
+arrowGrid[1] = stack("flint");
 arrowGrid[4] = stack("stick");
-arrowGrid[7] = stack("wool");
+arrowGrid[7] = stack("feather");
 const arrowsCrafted = takeCraftingResult({ grid: arrowGrid, cursor: null }, 3);
 assert.ok(arrowsCrafted.ok);
 if (arrowsCrafted.ok) assert.deepEqual(arrowsCrafted.state.cursor, { itemId: "arrow", count: 4 });

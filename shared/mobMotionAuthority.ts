@@ -114,6 +114,7 @@ const MOTION_DEFINITIONS: Readonly<Record<MobAuthorityKind, MotionDefinition>> =
   pig: Object.freeze({ passive: true, moveUnitsPerTick: 118, chaseUnitsPerTick: 118 }),
   cow: Object.freeze({ passive: true, moveUnitsPerTick: 102, chaseUnitsPerTick: 102 }),
   sheep: Object.freeze({ passive: true, moveUnitsPerTick: 108, chaseUnitsPerTick: 108 }),
+  chicken: Object.freeze({ passive: true, moveUnitsPerTick: 112, chaseUnitsPerTick: 112 }),
   // Keep two 10 Hz snapshots below the multiplayer 0.25-block agreement
   // budget even when two clients' 5 Hz query phases land on adjacent pairs.
   zombie: Object.freeze({ passive: false, moveUnitsPerTick: 92, chaseUnitsPerTick: 120 }),

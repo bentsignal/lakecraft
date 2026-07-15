@@ -42,7 +42,7 @@ assert.deepEqual(CRAFTING_GRID_RECIPES.map(({ id }) => id), RECIPES.map(({ id })
 assert.deepEqual(Object.keys(INITIAL_RECIPE_PATTERNS).sort(), RECIPES.map(({ id }) => id).sort());
 assert.equal(
   createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
-  "12003390391ce10c064d63e3974294d38b5dd097b7afe68aaec161d032743f7d",
+  "7f465e36939d985e51419f1b215f47dd280822022549aad28d91ee00d9d19189",
   "generated recipe patterns preserve the exact serialized layout and insertion order",
 );
 assert.equal(adaptRecipesToGrid([{ ...RECIPES[0], id: "unmapped" }]).length, 0);
@@ -52,6 +52,10 @@ assert.deepEqual(INITIAL_RECIPE_PATTERNS.tnt, {
   kind: "shaped",
   pattern: [["gunpowder", "sand", "gunpowder"], ["sand", "gunpowder", "sand"], ["gunpowder", "sand", "gunpowder"]],
 }, "TNT uses the recognizable alternating five-gunpowder/four-sand layout");
+assert.deepEqual(INITIAL_RECIPE_PATTERNS.arrows, {
+  kind: "shaped",
+  pattern: [["flint"], ["stick"], ["feather"]],
+}, "arrows use Minecraft's flint-over-stick-over-feather layout");
 
 // Every recipe matches its canonical 3x3 layout and previews the established output quantity.
 for (const recipe of CRAFTING_GRID_RECIPES) {

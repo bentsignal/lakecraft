@@ -189,8 +189,8 @@ export function canonicalMobSpawnSnapshot(
 ): Array<{ mobId: string; kind: MobAuthorityKind; x: number; y: number; z: number; yaw: number }> {
   const seed = MOB_WORLD_SEED;
   const radius = 16;
-  const passiveCount = 9;
-  const target = 13;
+  const passiveCount = 12;
+  const target = 16;
   const clearRadius = 6;
   const usableRange = radius - clearRadius;
   const occupied = new Set<string>();
@@ -209,8 +209,8 @@ export function canonicalMobSpawnSnapshot(
       && Math.abs(terrainHeight(x, z - 1) - center) <= 1;
   };
   const passiveKind = (slot: number): MobAuthorityKind => {
-    const choice = (slot + hashUint(seed, 71, seed + 19) % 3) % 3;
-    return choice === 0 ? "pig" : choice === 1 ? "cow" : "sheep";
+    const choice = (slot + hashUint(seed, 71, seed + 19) % 4) % 4;
+    return choice === 0 ? "pig" : choice === 1 ? "cow" : choice === 2 ? "sheep" : "chicken";
   };
   const hostileKind = (slot: number): MobAuthorityKind => (
     ((slot + hashUint(seed, 113, seed + 29) % 4) % 4) === 0

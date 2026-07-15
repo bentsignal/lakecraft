@@ -23,6 +23,7 @@ const BOXES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
   pig: 9,
   cow: 9,
   sheep: 7,
+  chicken: 9,
   zombie: 6,
   skeleton: 9,
   creeper: 9,
@@ -233,6 +234,21 @@ function appendSheep(writer: VertexWriter, x: number, y: number, z: number, yaw:
   appendBox(writer,x,y,z,yaw,0,0,0,-0.47,0.48,-0.66,0.47,1.17,0.61,0.86,0.84,0.72);
   appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.6,0.54,0.27,1.09,1.05,0.26,0.24,0.21);
   appendBox(writer,x,y,z,yaw,0,0,0,-0.21,0.64,1,0.21,0.84,1.14,0.2,0.18,0.16);
+}
+
+function appendChicken(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  // The white body/head, tiny beak and dangling red wattle follow the classic
+  // chicken silhouette. Narrow yellow legs and side wings animate without
+  // leaving the shared mob batch or allocating any per-frame objects.
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.34,0.3,-0.45,0.34,0.83,0.08,0.88,0.88,0.82);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.61,-0.02,0.27,1.08,0.45,0.94,0.94,0.88);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.2,0.75,0.451,0.2,0.91,0.66,0.91,0.61,0.08);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.09,0.59,0.452,0.09,0.75,0.58,0.75,0.09,0.055);
+  appendBox(writer,x,y,z,yaw,swing,0.34,-0.04,-0.23,0,-0.12,-0.11,0.38,0.1,0.86,0.57,0.09);
+  appendBox(writer,x,y,z,yaw,-swing,0.34,-0.04,0.11,0,-0.12,0.23,0.38,0.1,0.86,0.57,0.09);
+  appendBox(writer,x,y,z,yaw,-swing*0.42,0.68,-0.08,-0.45,0.4,-0.34,-0.34,0.76,0.03,0.79,0.79,0.73);
+  appendBox(writer,x,y,z,yaw,swing*0.42,0.68,-0.08,0.34,0.4,-0.34,0.45,0.76,0.03,0.79,0.79,0.73);
+  appendBox(writer,x,y,z,yaw,0,0,0,-0.24,0.54,-0.64,0.24,0.85,-0.42,0.94,0.94,0.88);
 }
 
 function appendZombie(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
@@ -475,6 +491,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         if (pose.kind === "pig") appendPig(writer, x, y, z, yaw, swing);
         else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
         else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "chicken") appendChicken(writer, x, y, z, yaw, swing);
         else if (pose.kind === "zombie") appendZombie(writer, x, y, z, yaw, swing);
         else if (pose.kind === "skeleton") appendSkeleton(writer, x, y, z, yaw, swing);
         else if (pose.kind === "creeper") appendCreeper(writer, x, y, z, yaw, swing, pose.fuseProgress);
