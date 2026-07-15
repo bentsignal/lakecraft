@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { createTerrainChunk } from "../client/game/terrain.ts";
 import { BLOCK, type BlockId as EngineBlockId } from "../client/game/types.ts";
@@ -34,6 +35,12 @@ const ENGINE_TO_PROTOCOL: Readonly<Record<EngineBlockId, BlockType>> = {
   [BLOCK.GOLD_ORE]: "gold_ore",
   [BLOCK.DIAMOND_ORE]: "diamond_ore",
   [BLOCK.TNT]: "tnt",
+  [BLOCK.WOOL]: "wool",
+  [BLOCK.SAPLING]: "sapling",
+  [BLOCK.STONE_BRICKS]: "stone_bricks",
+  [BLOCK.OAK_FENCE]: "oak_fence",
+  [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate_closed",
+  [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate_open",
 };
 
 const chunkCache = new Map<string, Map<string, EngineBlockId>>();
@@ -65,20 +72,46 @@ assert.equal(naturalWorldBlockAt(0, WORLD_TERRAIN_MIN_Y - 1, 0), "air");
 assert.equal(naturalWorldBlockAt(0, 129, 0), "air");
 
 const namedSamples = [
-  [-64, -8, -64, "gold_ore"],
-  [-64, -19, -60, "iron_ore"],
-  [-63, -12, -64, "coal_ore"],
-  [-62, -12, -62, "diamond_ore"],
-  [-57, -23, -57, "air"], // deterministic deep cave
-  [-64, 7, -53, "sand"],
-  [-64, -2, -37, "gravel"],
-  [-59, 9, -33, "wood"],
-  [-61, 10, -34, "leaves"],
+  [-64, -8, -64, "gold_ore", "negative gold"],
+  [-64, -19, -60, "iron_ore", "negative iron"],
+  [-63, -12, -64, "coal_ore", "negative coal"],
+  [-62, -12, -62, "diamond_ore", "negative diamond"],
+  [-57, -23, -57, "air", "negative deep cave"],
+  [-64, 7, -53, "sand", "negative beach"],
+  [-64, -2, -37, "gravel", "negative gravel pocket"],
+  [-59, 9, -33, "wood", "negative tree trunk"],
+  [-61, 10, -34, "leaves", "negative tree canopy"],
+  [8, -13, 14, "air", "positive chunk-boundary cave"],
+  [14, -15, 12, "diamond_ore", "positive chunk-boundary diamond"],
+  [13, 9, 13, "wood", "positive chunk-boundary trunk"],
+  [11, 10, 12, "leaves", "positive chunk-boundary canopy"],
+  [1_000, -21, -1_997, "air", "far mixed-sign cave"],
+  [1_001, -3, -1_998, "gravel", "far mixed-sign gravel"],
+  [-997, 5, 2_000, "sand", "far mixed-sign beach"],
+  [-996, -15, 2_003, "diamond_ore", "far mixed-sign diamond"],
+  [65_536, -5, -65_536, "air", "large exact-boundary cave"],
+  [65_536, -12, -65_536, "iron_ore", "large exact-boundary iron"],
+  [-65_541, 9, 65_529, "sand", "large negative-boundary beach"],
+  [-65_543, 11, 65_530, "wood", "large negative-boundary trunk"],
 ] as const;
-for (const [x, y, z, expected] of namedSamples) {
-  assert.equal(clientBlockAt(x, y, z, WORLD_TERRAIN_SEED), expected);
+const namedKinds = new Set<BlockType>();
+for (const [x, y, z, expected, label] of namedSamples) {
+  assert.equal(clientBlockAt(x, y, z, WORLD_TERRAIN_SEED), expected, `${label} client anchor drifted`);
   assertParity(x, y, z);
+  namedKinds.add(expected);
 }
+for (const expected of [
+  "air", "sand", "gravel", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "wood", "leaves",
+] as const) assert.equal(namedKinds.has(expected), true, `missing explicit ${expected} authority anchor`);
+
+const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+assert.match(serverSource,
+  /import \{ naturalWorldBlockAt \} from "\.\.\/shared\/worldTerrainAuthority\.ts"/,
+  "Lakebed imports the same pure natural terrain authority used by this parity suite");
+assert.ok((serverSource.match(/naturalWorldBlockAt\(/g) ?? []).length >= 12,
+  "all first-touch world, combat, fall, growth, and spawn fallbacks remain rooted in shared authority");
+assert.doesNotMatch(serverSource, /function\s+(?:rawTerrainHeight|terrainHeight|terrainSandDepth|caveCarvesBlock)\s*\(/,
+  "the server must not grow a third terrain generator that can drift from client/shared output");
 
 let randomState = 0x51f15e;
 function random(): number {
@@ -99,9 +132,21 @@ for (let index = 0; index < 31; index += 1) {
 
 let comparisons = 0;
 const startedAt = performance.now();
+// Fully cover a feature-rich positive seam chunk and a far mixed-sign chunk.
+// These exact windows guard every air/present key, not only named anchors.
+for (const [chunkX, chunkZ] of [[1, 1], [125, -250]] as const) {
+  for (let x = chunkX * 8; x < chunkX * 8 + 8; x += 1) {
+    for (let z = chunkZ * 8; z < chunkZ * 8 + 8; z += 1) {
+      for (let y = WORLD_TERRAIN_MIN_Y - 2; y <= 24; y += 1) {
+        assertParity(x, y, z);
+        comparisons += 1;
+      }
+    }
+  }
+}
 for (const seed of [WORLD_TERRAIN_SEED, 1, 987_654_321]) {
   for (const [chunkX, chunkZ] of chunkCoordinates) {
-    for (let sample = 0; sample < 125; sample += 1) {
+    for (let sample = 0; sample < 65; sample += 1) {
       const x = chunkX * 8 + Math.floor(random() * 8);
       const y = WORLD_TERRAIN_MIN_Y - 2 + Math.floor(random() * 54);
       const z = chunkZ * 8 + Math.floor(random() * 8);

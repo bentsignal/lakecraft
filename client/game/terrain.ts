@@ -54,6 +54,46 @@ interface CaveNode {
   z: number;
 }
 
+interface CaveCarveMask {
+  region: TerrainRegion;
+  minY: number;
+  maxY: number;
+  depth: number;
+  columnCount: number;
+  marked: Uint8Array;
+  indices: number[];
+}
+
+interface OreCellCache {
+  minCellX: number;
+  minCellY: number;
+  minCellZ: number;
+  cellCountY: number;
+  cellCountZ: number;
+  cellsPerOre: number;
+  /** 0 = unknown, 1 = inactive, 2 = active. */
+  state: Uint8Array;
+  anchorX: Uint8Array;
+  anchorY: Uint8Array;
+  anchorZ: Uint8Array;
+}
+
+interface GravelCellCache {
+  minCellX: number;
+  minCellY: number;
+  minCellZ: number;
+  cellCountY: number;
+  cellCountZ: number;
+  /** 0 = unknown, 1 = inactive, 2 = active. */
+  state: Uint8Array;
+  centerX: Float64Array;
+  centerY: Float64Array;
+  centerZ: Float64Array;
+  radiusX: Float64Array;
+  radiusY: Float64Array;
+  radiusZ: Float64Array;
+}
+
 // One compact Manhattan-radius-one deposit may occupy each 4x4x4 cell. The
 // cell-local shape strictly caps a vein at seven blocks while global cell
 // coordinates keep ore identical no matter which terrain region generated it.
@@ -167,45 +207,124 @@ export function terrainBaseBlock(x: number, y: number, z: number, seed: number):
  */
 export function terrainGravelBlock(x: number, y: number, z: number, seed: number): BlockId | null {
   if (terrainBaseBlock(x, y, z, seed) !== BLOCK.STONE) return null;
+  return gravelBlockAtKnownStone(x, y, z, seed);
+}
+
+/** Hot-path gravel probe for callers that already derived the natural stratum. */
+function gravelBlockAtKnownStone(
+  x: number,
+  y: number,
+  z: number,
+  seed: number,
+  cache?: GravelCellCache,
+): BlockId | null {
   const cellX = Math.floor(x / GRAVEL_CELL_SIZE_XZ);
   const cellY = Math.floor(y / GRAVEL_CELL_SIZE_Y);
   const cellZ = Math.floor(z / GRAVEL_CELL_SIZE_XZ);
-  if (hash3(cellX, cellY, cellZ, seed + 4_789) >= GRAVEL_POCKET_CHANCE) return null;
+  let centerX: number;
+  let centerY: number;
+  let centerZ: number;
+  let radiusX: number;
+  let radiusY: number;
+  let radiusZ: number;
+  if (cache) {
+    const index = ((cellX - cache.minCellX) * cache.cellCountY + cellY - cache.minCellY)
+      * cache.cellCountZ + cellZ - cache.minCellZ;
+    let state = cache.state[index];
+    if (state === 0) {
+      state = hash3(cellX, cellY, cellZ, seed + 4_789) >= GRAVEL_POCKET_CHANCE ? 1 : 2;
+      cache.state[index] = state;
+      if (state === 2) {
+        cache.centerX[index] = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_811) * (GRAVEL_CELL_SIZE_XZ - 3);
+        cache.centerY[index] = 1 + hash3(cellX, cellY, cellZ, seed + 4_837) * (GRAVEL_CELL_SIZE_Y - 2);
+        cache.centerZ[index] = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_853) * (GRAVEL_CELL_SIZE_XZ - 3);
+        cache.radiusX[index] = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_879) * 0.9;
+        cache.radiusY[index] = 0.8 + hash3(cellX, cellY, cellZ, seed + 4_903) * 0.65;
+        cache.radiusZ[index] = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_927) * 0.9;
+      }
+    }
+    if (state === 1) return null;
+    centerX = cache.centerX[index];
+    centerY = cache.centerY[index];
+    centerZ = cache.centerZ[index];
+    radiusX = cache.radiusX[index];
+    radiusY = cache.radiusY[index];
+    radiusZ = cache.radiusZ[index];
+  } else {
+    if (hash3(cellX, cellY, cellZ, seed + 4_789) >= GRAVEL_POCKET_CHANCE) return null;
+    centerX = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_811) * (GRAVEL_CELL_SIZE_XZ - 3);
+    centerY = 1 + hash3(cellX, cellY, cellZ, seed + 4_837) * (GRAVEL_CELL_SIZE_Y - 2);
+    centerZ = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_853) * (GRAVEL_CELL_SIZE_XZ - 3);
+    radiusX = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_879) * 0.9;
+    radiusY = 0.8 + hash3(cellX, cellY, cellZ, seed + 4_903) * 0.65;
+    radiusZ = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_927) * 0.9;
+  }
   const localX = x - cellX * GRAVEL_CELL_SIZE_XZ;
   const localY = y - cellY * GRAVEL_CELL_SIZE_Y;
   const localZ = z - cellZ * GRAVEL_CELL_SIZE_XZ;
-  const centerX = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_811) * (GRAVEL_CELL_SIZE_XZ - 3);
-  const centerY = 1 + hash3(cellX, cellY, cellZ, seed + 4_837) * (GRAVEL_CELL_SIZE_Y - 2);
-  const centerZ = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_853) * (GRAVEL_CELL_SIZE_XZ - 3);
-  const radiusX = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_879) * 0.9;
-  const radiusY = 0.8 + hash3(cellX, cellY, cellZ, seed + 4_903) * 0.65;
-  const radiusZ = 1.35 + hash3(cellX, cellY, cellZ, seed + 4_927) * 0.9;
   const distance = ((localX + 0.5 - centerX) / radiusX) ** 2
     + ((localY + 0.5 - centerY) / radiusY) ** 2
     + ((localZ + 0.5 - centerZ) / radiusZ) ** 2;
   return distance <= 1 ? BLOCK.GRAVEL : null;
 }
 
-function blockInOreVein(x: number, y: number, z: number, seed: number, config: OreVeinConfig): boolean {
+function blockInOreVein(
+  x: number,
+  y: number,
+  z: number,
+  seed: number,
+  config: OreVeinConfig,
+  configIndex = -1,
+  cache?: OreCellCache,
+): boolean {
   if (y < config.minimumY || y > config.maximumY) return false;
   const cellX = Math.floor(x / ORE_CELL_SIZE);
   const cellY = Math.floor(y / ORE_CELL_SIZE);
   const cellZ = Math.floor(z / ORE_CELL_SIZE);
-  if (hash3(cellX, cellY, cellZ, seed + config.salt) >= config.chance) return false;
-
+  let anchorX: number;
+  let anchorY: number;
+  let anchorZ: number;
+  if (cache && configIndex >= 0) {
+    const localCell = ((cellX - cache.minCellX) * cache.cellCountY + cellY - cache.minCellY)
+      * cache.cellCountZ + cellZ - cache.minCellZ;
+    const index = configIndex * cache.cellsPerOre + localCell;
+    let state = cache.state[index];
+    if (state === 0) {
+      state = hash3(cellX, cellY, cellZ, seed + config.salt) >= config.chance ? 1 : 2;
+      cache.state[index] = state;
+      if (state === 2) {
+        cache.anchorX[index] = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 11) * ORE_CELL_SIZE);
+        cache.anchorY[index] = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
+        cache.anchorZ[index] = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 37) * ORE_CELL_SIZE);
+      }
+    }
+    if (state === 1) return false;
+    anchorX = cache.anchorX[index];
+    anchorY = cache.anchorY[index];
+    anchorZ = cache.anchorZ[index];
+  } else {
+    if (hash3(cellX, cellY, cellZ, seed + config.salt) >= config.chance) return false;
+    anchorX = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 11) * ORE_CELL_SIZE);
+    anchorY = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
+    anchorZ = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 37) * ORE_CELL_SIZE);
+  }
   const localX = x - cellX * ORE_CELL_SIZE;
   const localY = y - cellY * ORE_CELL_SIZE;
   const localZ = z - cellZ * ORE_CELL_SIZE;
-  const anchorX = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 11) * ORE_CELL_SIZE);
-  const anchorY = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
-  const anchorZ = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 37) * ORE_CELL_SIZE);
   return Math.abs(localX - anchorX) + Math.abs(localY - anchorY) + Math.abs(localZ - anchorZ) <= 1;
 }
 
 /** Higher-tier ores win rare overlaps; all deposits replace natural stone only. */
-function oreBlockAtKnownStone(x: number, y: number, z: number, seed: number): BlockId | null {
-  for (const config of ORE_VEINS) {
-    if (blockInOreVein(x, y, z, seed, config)) return config.block;
+function oreBlockAtKnownStone(
+  x: number,
+  y: number,
+  z: number,
+  seed: number,
+  cache?: OreCellCache,
+): BlockId | null {
+  for (let index = 0; index < ORE_VEINS.length; index += 1) {
+    const config = ORE_VEINS[index];
+    if (blockInOreVein(x, y, z, seed, config, index, cache)) return config.block;
   }
   return null;
 }
@@ -220,9 +339,64 @@ function isInside(region: TerrainRegion, x: number, z: number): boolean {
   return x >= region.minX && x <= region.maxX && z >= region.minZ && z <= region.maxZ;
 }
 
+function createOreCellCache(region: TerrainRegion): OreCellCache {
+  const minCellX = Math.floor(region.minX / ORE_CELL_SIZE);
+  const maxCellX = Math.floor(region.maxX / ORE_CELL_SIZE);
+  const minCellY = Math.floor(region.minY / ORE_CELL_SIZE);
+  const maxCellY = Math.floor(MAX_TERRAIN_HEIGHT / ORE_CELL_SIZE);
+  const minCellZ = Math.floor(region.minZ / ORE_CELL_SIZE);
+  const maxCellZ = Math.floor(region.maxZ / ORE_CELL_SIZE);
+  const cellCountY = maxCellY - minCellY + 1;
+  const cellCountZ = maxCellZ - minCellZ + 1;
+  const cellsPerOre = (maxCellX - minCellX + 1) * cellCountY * cellCountZ;
+  const totalCells = cellsPerOre * ORE_VEINS.length;
+  return {
+    minCellX,
+    minCellY,
+    minCellZ,
+    cellCountY,
+    cellCountZ,
+    cellsPerOre,
+    state: new Uint8Array(totalCells),
+    anchorX: new Uint8Array(totalCells),
+    anchorY: new Uint8Array(totalCells),
+    anchorZ: new Uint8Array(totalCells),
+  };
+}
+
+function createGravelCellCache(region: TerrainRegion): GravelCellCache {
+  const minCellX = Math.floor(region.minX / GRAVEL_CELL_SIZE_XZ);
+  const maxCellX = Math.floor(region.maxX / GRAVEL_CELL_SIZE_XZ);
+  const minCellY = Math.floor(region.minY / GRAVEL_CELL_SIZE_Y);
+  const maxCellY = Math.floor(MAX_TERRAIN_HEIGHT / GRAVEL_CELL_SIZE_Y);
+  const minCellZ = Math.floor(region.minZ / GRAVEL_CELL_SIZE_XZ);
+  const maxCellZ = Math.floor(region.maxZ / GRAVEL_CELL_SIZE_XZ);
+  const cellCountY = maxCellY - minCellY + 1;
+  const cellCountZ = maxCellZ - minCellZ + 1;
+  const totalCells = (maxCellX - minCellX + 1) * cellCountY * cellCountZ;
+  return {
+    minCellX,
+    minCellY,
+    minCellZ,
+    cellCountY,
+    cellCountZ,
+    state: new Uint8Array(totalCells),
+    centerX: new Float64Array(totalCells),
+    centerY: new Float64Array(totalCells),
+    centerZ: new Float64Array(totalCells),
+    radiusX: new Float64Array(totalCells),
+    radiusY: new Float64Array(totalCells),
+    radiusZ: new Float64Array(totalCells),
+  };
+}
+
 function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: number): void {
+  const oreCells = createOreCellCache(region);
+  const gravelCells = createGravelCellCache(region);
   for (let x = region.minX; x <= region.maxX; x += 1) {
+    const xPrefix = `${x},`;
     for (let z = region.minZ; z <= region.maxZ; z += 1) {
+      const zSuffix = `,${z}`;
       const top = terrainHeight(x, z, seed);
       const sandDepth = terrainSandDepth(x, z, seed);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
@@ -235,9 +409,11 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
               ? BLOCK.DIRT
               : BLOCK.STONE;
         const block = base === BLOCK.STONE
-          ? terrainGravelBlock(x, y, z, seed) ?? oreBlockAtKnownStone(x, y, z, seed) ?? base
+          ? gravelBlockAtKnownStone(x, y, z, seed, gravelCells)
+            ?? oreBlockAtKnownStone(x, y, z, seed, oreCells)
+            ?? base
           : base;
-        blocks.set(blockKey(x, y, z), block);
+        blocks.set(`${xPrefix}${y}${zSuffix}`, block);
       }
     }
   }
@@ -261,17 +437,61 @@ function canCarveCaveBlock(block: BlockId | undefined): boolean {
     || block === BLOCK.DIAMOND_ORE;
 }
 
+/**
+ * Cave tunnel samples overlap heavily. Keep their union in a region-bounded
+ * numeric mask so each surviving terrain key is built and probed only once.
+ */
+function createCaveCarveMask(region: TerrainRegion): CaveCarveMask {
+  const width = region.maxX - region.minX + 1;
+  const depth = region.maxZ - region.minZ + 1;
+  const minY = region.minY + 1;
+  const maxY = MAX_TERRAIN_HEIGHT;
+  const columnCount = width * depth;
+  return {
+    region,
+    minY,
+    maxY,
+    depth,
+    columnCount,
+    marked: new Uint8Array(columnCount * Math.max(0, maxY - minY + 1)),
+    indices: [],
+  };
+}
+
+function markCaveBlock(mask: CaveCarveMask, x: number, y: number, z: number): void {
+  const column = (x - mask.region.minX) * mask.depth + z - mask.region.minZ;
+  const index = (y - mask.minY) * mask.columnCount + column;
+  if (mask.marked[index] !== 0) return;
+  mask.marked[index] = 1;
+  mask.indices.push(index);
+}
+
+function applyCaveCarveMask(blocks: Map<string, BlockId>, mask: CaveCarveMask): void {
+  for (const index of mask.indices) {
+    const yOffset = Math.floor(index / mask.columnCount);
+    const column = index - yOffset * mask.columnCount;
+    const xOffset = Math.floor(column / mask.depth);
+    const zOffset = column - xOffset * mask.depth;
+    const key = blockKey(
+      mask.region.minX + xOffset,
+      mask.minY + yOffset,
+      mask.region.minZ + zOffset,
+    );
+    if (canCarveCaveBlock(blocks.get(key))) blocks.delete(key);
+  }
+}
+
 function carveCaveSphere(
-  blocks: Map<string, BlockId>,
-  region: TerrainRegion,
+  mask: CaveCarveMask,
   center: CaveNode,
   radius: number,
 ): void {
+  const { region } = mask;
   const radiusSquared = radius * radius;
   const minX = Math.max(region.minX, Math.floor(center.x - radius));
   const maxX = Math.min(region.maxX, Math.floor(center.x + radius));
-  const minY = Math.max(region.minY + 1, Math.floor(center.y - radius));
-  const maxY = Math.floor(center.y + radius);
+  const minY = Math.max(mask.minY, Math.floor(center.y - radius));
+  const maxY = Math.min(mask.maxY, Math.floor(center.y + radius));
   const minZ = Math.max(region.minZ, Math.floor(center.z - radius));
   const maxZ = Math.min(region.maxZ, Math.floor(center.z + radius));
   for (let x = minX; x <= maxX; x += 1) {
@@ -284,16 +504,14 @@ function carveCaveSphere(
         const dy = y + 0.5 - center.y;
         const dz = z + 0.5 - center.z;
         if (dx * dx + dy * dy + dz * dz > radiusSquared) continue;
-        const key = blockKey(x, y, z);
-        if (canCarveCaveBlock(blocks.get(key))) blocks.delete(key);
+        markCaveBlock(mask, x, y, z);
       }
     }
   }
 }
 
 function carveCaveTunnel(
-  blocks: Map<string, BlockId>,
-  region: TerrainRegion,
+  mask: CaveCarveMask,
   start: CaveNode,
   end: CaveNode,
 ): void {
@@ -301,7 +519,7 @@ function carveCaveTunnel(
   const steps = Math.max(1, Math.ceil(length / CAVE_SAMPLE_SPACING));
   for (let step = 0; step <= steps; step += 1) {
     const amount = step / steps;
-    carveCaveSphere(blocks, region, {
+    carveCaveSphere(mask, {
       x: lerp(start.x, end.x, amount),
       y: lerp(start.y, end.y, amount),
       z: lerp(start.z, end.z, amount),
@@ -310,6 +528,7 @@ function carveCaveTunnel(
 }
 
 function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: number): void {
+  const carveMask = createCaveCarveMask(region);
   // Include one cell beyond each clipped region. It contains every chamber or
   // forward connection whose bounded radius can touch this region, ensuring an
   // independently generated half sees the same cross-boundary tunnel as a whole.
@@ -327,19 +546,20 @@ function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: n
         const shallowNode = caveNode(cellX, cellZ, seed + layer * 7_919);
         const node = { ...shallowNode, y: shallowNode.y + layerOffset };
         if (hash3(cellX, layer * 11 + 3, cellZ, seed + 3_101) < 0.32) {
-          carveCaveSphere(blocks, region, node, CAVE_CHAMBER_RADIUS);
+          carveCaveSphere(carveMask, node, CAVE_CHAMBER_RADIUS);
         }
         if (hash3(cellX, layer * 11 + 4, cellZ, seed + 3_127) < 0.58) {
           const east = caveNode(cellX + 1, cellZ, seed + layer * 7_919);
-          carveCaveTunnel(blocks, region, node, { ...east, y: east.y + layerOffset });
+          carveCaveTunnel(carveMask, node, { ...east, y: east.y + layerOffset });
         }
         if (hash3(cellX, layer * 11 + 5, cellZ, seed + 3_173) < 0.58) {
           const south = caveNode(cellX, cellZ + 1, seed + layer * 7_919);
-          carveCaveTunnel(blocks, region, node, { ...south, y: south.y + layerOffset });
+          carveCaveTunnel(carveMask, node, { ...south, y: south.y + layerOffset });
         }
       }
     }
   }
+  applyCaveCarveMask(blocks, carveMask);
 }
 
 function isTreeSite(x: number, z: number, seed: number): boolean {
