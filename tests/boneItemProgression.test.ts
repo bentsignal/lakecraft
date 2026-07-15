@@ -6,7 +6,7 @@ assert.deepEqual(ITEMS.bone, {
   id: "bone",
   label: "Bone",
   shortLabel: "BON",
-  description: "A dry skeleton bone with no use yet.",
+  description: "A dry skeleton bone that can be ground into bone meal.",
   category: "material",
   maxStack: 64,
   glyph: "╱",

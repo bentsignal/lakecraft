@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   APPLE_DROP_CHANCE_DENOMINATOR,
+  SAPLING_DROP_CHANCE_DENOMINATOR,
   countItem,
   createEmptyInventory,
   createItemStack,
@@ -8,7 +9,8 @@ import {
 } from "../shared/game.ts";
 import { resolveWorldBlockOperation } from "../shared/worldBlockOperations.ts";
 
-assert.equal(APPLE_DROP_CHANCE_DENOMINATOR, 20, "oak leaves use the fixed one-in-twenty apple rule");
+assert.equal(APPLE_DROP_CHANCE_DENOMINATOR, 200, "oak leaves use Minecraft's one-in-two-hundred apple rule");
+assert.equal(SAPLING_DROP_CHANCE_DENOMINATOR, 20, "oak leaves use Minecraft's one-in-twenty sapling rule");
 assert.doesNotMatch(
   getDeterministicMiningDrop.toString(),
   /Math\.random/,
@@ -22,11 +24,16 @@ assert.deepEqual(repeated, handDrops, "the same leaf coordinates replay byte-for
 
 const appleCount = handDrops.filter((drop) => drop === "apple").length;
 assert.ok(
-  appleCount >= 70 && appleCount <= 130,
-  `coordinate-derived apple distribution ${appleCount}/2000 escaped the one-in-twenty budget`,
+  appleCount >= 3 && appleCount <= 18,
+  `coordinate-derived apple distribution ${appleCount}/2000 escaped the one-in-two-hundred budget`,
+);
+const saplingCount = handDrops.filter((drop) => drop === "sapling").length;
+assert.ok(
+  saplingCount >= 65 && saplingCount <= 135,
+  `coordinate-derived sapling distribution ${saplingCount}/2000 escaped the one-in-twenty budget`,
 );
 assert.ok(handDrops.some((drop) => drop === null), "most leaves conserve loot by dropping nothing");
-assert.ok(handDrops.every((drop) => drop === null || drop === "apple"), "bare leaves never duplicate themselves");
+assert.ok(handDrops.every((drop) => drop === null || drop === "apple" || drop === "sapling"), "bare leaves resolve at most one renewable drop");
 
 for (const held of ["wooden_axe", "diamond_sword"] as const) {
   assert.deepEqual(

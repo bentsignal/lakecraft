@@ -94,6 +94,7 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   crafting_table: { kind: "shaped", pattern: [[P, P], [P, P]] },
   torch: { kind: "shaped", pattern: [[K], [S]] },
   torch_charcoal: { kind: "shaped", pattern: [[H], [S]] },
+  bone_meal: { kind: "shapeless", ingredients: ["bone"] },
   furnace: { kind: "shaped", pattern: [[C, C, C], [C, null, C], [C, C, C]] },
   ladder: { kind: "shaped", pattern: [[S, null, S], [S, S, S], [S, null, S]] },
   chest: { kind: "shaped", pattern: [[P, P, P], [P, null, P], [P, P, P]] },

@@ -17,7 +17,8 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   const grid = makeGrid();
   let palette: Palette;
   let variant = itemId;
-  if (item.category === "block") palette = block(grid, itemId as BlockId);
+  if (itemId === "sapling") palette = sapling(grid);
+  else if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
     palette = bow(grid);
   } else if (itemId === "flint_and_steel") {
@@ -115,6 +116,17 @@ function ladder(g: Grid): Palette {
   for (const y of [3,7,11]) { box(g,5,y,6,2,"o"); box(g,6,y,4,1,"h"); } return p;
 }
 
+function sapling(g: Grid): Palette {
+  const p = { o: "#20351d", s: "#644425", w: "#966537", d: "#37612b", m: "#568d3b", l: "#7eb653" };
+  box(g, 7, 7, 2, 8, "o"); box(g, 8, 7, 1, 8, "w");
+  diagonal(g, 7, 10, -1, -1, 4, "s"); diagonal(g, 8, 9, 1, -1, 4, "s");
+  dots(g, "o", [[3,4],[4,3],[5,3],[6,4],[10,3],[11,2],[12,3],[13,4],[2,6],[3,5],[4,6],[5,7],[10,6],[11,5],[12,5],[13,6],[6,2],[7,1],[8,2],[9,3]]);
+  dots(g, "m", [[4,4],[5,4],[3,6],[4,6],[5,6],[11,3],[12,4],[11,5],[12,5],[7,2],[8,3],[9,4]]);
+  dots(g, "l", [[5,3],[3,5],[12,3],[13,5],[7,1],[10,5]]);
+  dots(g, "d", [[4,7],[6,5],[10,4],[11,6],[8,4]]);
+  return p;
+}
+
 function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"none">): Palette {
   const color = ({ wood:"#a86f38", gold:"#f2c93d", stone:"#858a83", iron:"#d1d6d2", diamond:"#35cfc6" } as const)[tier];
   const p = { o:"#29241e", w:"#7b4e28", h:"#ba8350", m:color, l:mix(color,"#ffffff",.38), d:mix(color,"#000000",.3) };
@@ -172,6 +184,12 @@ function material(g: Grid, id: ItemId): Palette {
   const color = ITEMS[id].color;
   const p = { o:mix(color,"#111311",.7), m:color, l:mix(color,"#ffffff",.42), d:mix(color,"#000000",.3), q:"#b8935c" };
   if (id === "stick") { diagonal(g,3,13,1,-1,10,"o",2); diagonal(g,4,13,1,-1,9,"m"); dots(g,"l",[[5,11],[8,8],[11,5]]); }
+  else if (id === "bone_meal") {
+    dots(g,"o",[[6,4],[9,4],[4,6],[11,6],[3,9],[12,9],[5,12],[10,12],[7,13],[9,13]]);
+    box(g,5,6,6,6,"m"); box(g,4,8,8,3,"m");
+    dots(g,"l",[[6,5],[8,5],[5,7],[7,7],[9,8],[6,9],[8,10],[5,11]]);
+    dots(g,"d",[[9,6],[10,8],[7,11],[9,12],[4,9]]);
+  }
   else if (id === "string") { diagonal(g,3,3,1,1,5,"o"); diagonal(g,7,7,1,-1,5,"o"); diagonal(g,7,7,1,1,5,"o"); diagonal(g,11,11,-1,1,5,"o"); diagonal(g,3,3,1,1,5,"m"); diagonal(g,7,7,1,-1,5,"m"); diagonal(g,7,7,1,1,5,"m"); diagonal(g,11,11,-1,1,5,"m"); dots(g,"l",[[3,3],[7,7],[11,3],[11,11],[7,15]]); }
   else if (id === "bone") {
     // Chunky diagonal shaft with the characteristic forked knuckles at both ends.

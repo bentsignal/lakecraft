@@ -116,4 +116,8 @@ wool.writeGeometry([1, 0, 0], [0, 1, 0], physicsGeometry, physicsStats);
 assert.ok(physicsGeometry[15] > 0.8 && physicsGeometry[16] > 0.78 && physicsGeometry[17] > 0.72,
   "wool debris uses a soft warm-white particle palette");
 
+const sapling = createBlockParticleSystem(1);
+assert.equal(sapling.spawn({ block: BLOCK.SAPLING, x: 2, y: 3, z: 4, action: "break" }), 1,
+  "the append-only particle palette accepts saplings");
+
 console.log("bounded deterministic block particle tests passed");

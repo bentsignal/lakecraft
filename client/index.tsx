@@ -177,7 +177,8 @@ function loadAudioMuted(): boolean {
 }
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
-  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
+  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED
+    || block === BLOCK.WOOL || block === BLOCK.SAPLING) return "grass";
   if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
     || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER) return "wood";
   if (block === BLOCK.SAND) return "sand";
@@ -324,7 +325,7 @@ function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -333,6 +334,7 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.SAND]: "sand",
   [BLOCK.GRAVEL]: "gravel",
   [BLOCK.WOOL]: "wool",
+  [BLOCK.SAPLING]: "sapling",
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
@@ -361,6 +363,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   sand: BLOCK.SAND,
   gravel: BLOCK.GRAVEL,
   wool: BLOCK.WOOL,
+  sapling: BLOCK.SAPLING,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
@@ -406,6 +409,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.LADDER]: "ladder",
   [BLOCK.TNT]: "tnt",
   [BLOCK.WOOL]: "wool",
+  [BLOCK.SAPLING]: "sapling",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -432,6 +436,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   ladder: BLOCK.LADDER,
   tnt: BLOCK.TNT,
   wool: BLOCK.WOOL,
+  sapling: BLOCK.SAPLING,
 };
 
 type WorldChunksQueryResult =
@@ -496,6 +501,24 @@ type WorldBlockEditMutationResult =
     }
   | { ok: false; reason: string; detail?: string; inventory?: PersistedInventoryState | null };
 
+type TreeGrowthMutationResult =
+  | {
+      ok: true;
+      replayed: boolean;
+      operationId: string;
+      x: number;
+      y: number;
+      z: number;
+      consumed: "bone_meal";
+      inventoryRevision: string;
+      edits: Array<{ x: number; y: number; z: number; blockType: WorldChunkBlockType }>;
+      chunks: Array<{ chunkKey: string; revision: string }>;
+      currentChunks: Array<{ chunkKey: string; revision: string }>;
+      inventory: PersistedInventoryState;
+      serverNow: number;
+    }
+  | { ok: false; reason: string; serverNow: number };
+
 type PendingWorldBlockEdit = {
   operationId: string;
   request: WorldBlockOperationRequest | null;
@@ -538,6 +561,13 @@ function createTntOperationId(): string {
     ? globalThis.crypto.randomUUID().replaceAll("-", "")
     : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36).padEnd(16, "0");
   return `tntignite_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
+}
+
+function createTreeGrowthOperationId(): string {
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replaceAll("-", "")
+    : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36).padEnd(16, "0");
+  return `grow_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
 }
 
 async function retryExactLakebedMutation<T>(perform: () => Promise<T>): Promise<T> {
@@ -700,6 +730,14 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     poseYaw: string,
     posePitch: string,
   ], WorldBlockEditMutationResult>("editWorldBlock");
+  const growOakTree = useMutation<[
+    requestJson: string,
+    poseX: string,
+    poseY: string,
+    poseZ: string,
+    poseYaw: string,
+    posePitch: string,
+  ], TreeGrowthMutationResult>("growOakTree");
   const heartbeatPlayer = useMutation<[displayName: string, color: string, x: string, y: string, z: string, yaw: string, pitch: string, poseSequence: string, vx: string, vy: string, vz: string, heldItem: string, armorHead: string, armorChest: string, armorLegs: string, armorFeet: string, sessionId: string], HeartbeatPlayerResult>("heartbeatPlayer");
   const authorizeRespawn = useMutation<[sessionId: string], AuthorizeRespawnResult>("authorizeRespawn");
   const startPresenceSession = useMutation<[sessionId: string], StartPresenceSessionResult>("startPresenceSession");
@@ -821,6 +859,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const tntExplosionClaimsRef = useRef(new Set<string>());
   const tntClaimTimersRef = useRef(new Map<string, number>());
   const tntIgnitionBusyRef = useRef(false);
+  const treeGrowthBusyRef = useRef(false);
   const realtimePresenceRef = useRef(false);
   const respawnRequestInFlightRef = useRef(false);
   const respawnLeaseTransitionRef = useRef(false);
@@ -2042,6 +2081,73 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
             }).catch(() => setConnected(false)).finally(() => { tntIgnitionBusyRef.current = false; });
             return true;
           }
+          if (target.block.block === BLOCK.SAPLING
+            && inventoryRef.current[selectedRef.current]?.itemId === "bone_meal") {
+            if (treeGrowthBusyRef.current) return true;
+            treeGrowthBusyRef.current = true;
+            const operationId = createTreeGrowthOperationId();
+            const requestJson = JSON.stringify({
+              operationId,
+              x: target.block.x,
+              y: target.block.y,
+              z: target.block.z,
+            });
+            void flushInventoryActions().then(async (flushed) => {
+              if (!flushed) throw new Error("inventory_action_pending");
+              if (!await refreshAuthoritativePose()) throw new Error("presence_refresh_failed");
+              const pose = serializeWorldBlockEditPose(engineRef.current?.getPose() ?? poseRef.current);
+              return retryExactLakebedMutation(() => growOakTree(requestJson, ...pose));
+            }).then((result) => {
+              setConnected(true);
+              if (!result.ok) {
+                const detail = result.reason === "blocked"
+                  ? "The oak needs clear space around and above the sapling."
+                  : result.reason === "invalid_support"
+                    ? "Oak saplings only grow on dirt or grass."
+                    : result.reason === "bone_meal_required"
+                      ? "Keep bone meal selected until Lakebed confirms the growth."
+                      : result.reason === "not_sapling"
+                        ? "That sapling changed before Lakebed confirmed it."
+                        : `Lakebed rejected the growth (${result.reason}).`;
+                notify("Oak did not grow", detail, "warning");
+                return;
+              }
+              if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
+              const currentChunkRevisions = new Map(result.currentChunks.map((chunk) => [chunk.chunkKey, chunk.revision]));
+              for (const chunk of result.currentChunks) worldChunkRevisionRef.current.set(chunk.chunkKey, chunk.revision);
+              const receiptStillCurrent = result.chunks.every((chunk) => currentChunkRevisions.get(chunk.chunkKey) === chunk.revision);
+              if (receiptStillCurrent) {
+                const engineEdits = result.edits.map((edit) => ({
+                  x: edit.x,
+                  y: edit.y,
+                  z: edit.z,
+                  block: PROTOCOL_TO_ENGINE[edit.blockType],
+                }));
+                for (const edit of engineEdits) {
+                  authoritativeWorldEditRef.current.set(blockCoordinateKey(edit.x, edit.y, edit.z), edit);
+                }
+                engineRef.current?.applyWorldEdits(engineEdits);
+              }
+              audioRef.current?.play("blockPlace", { seed: operationId, surface: "grass", intensity: 0.82 });
+              engineRef.current?.spawnBlockParticles({
+                action: "place",
+                block: BLOCK.LEAVES,
+                x: target.block.x,
+                y: target.block.y + 1,
+                z: target.block.z,
+              });
+              notify(
+                result.replayed ? "Oak growth confirmed" : "Oak grew",
+                `${result.edits.length} blocks · one bone meal consumed${receiptStillCurrent ? "" : " · newer terrain already loaded"}`,
+                "success",
+              );
+            }).catch(() => {
+              setConnected(false);
+              notify("Oak growth lost contact", "The exact operation can be retried safely; no background requests were started.", "warning");
+            }).finally(() => { treeGrowthBusyRef.current = false; });
+            return true;
+          }
+          if (target.block.block === BLOCK.SAPLING) return false;
           closeInventory();
           setChatOpen(false);
           exitPointerLockForUi();

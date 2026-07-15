@@ -1,4 +1,4 @@
-import type { BlockType } from "./protocol.ts";
+import { isBlockType, type BlockType } from "./protocol.ts";
 import {
   WORLD_EDIT_MAX_XZ,
   WORLD_EDIT_MAX_Y,
@@ -11,8 +11,7 @@ export const FALLING_BLOCK_MAX_MOVES = 8;
 export const FALLING_BLOCK_MAX_VERTICAL_CELLS = 32;
 
 export type FallingBlockMaterial = "sand" | "gravel";
-/** The explicit gravel union keeps this module usable while palettes are appended independently. */
-export type FallingBlockCellBlock = BlockType | "gravel";
+export type FallingBlockCellBlock = BlockType;
 
 export type AuthoritativeFallingBlockCell = {
   x: number;
@@ -78,16 +77,7 @@ function validCoordinate(x: number, y: number, z: number): boolean {
 }
 
 function validBlock(block: unknown): block is FallingBlockCellBlock {
-  // Runtime palettes append gravel independently; every other accepted value is
-  // already represented by the protocol's finite union.
-  return block === "gravel" || (
-    typeof block === "string"
-    && [
-      "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
-      "torch", "chest", "door_closed", "door_open", "bed", "coal_ore", "iron_ore",
-      "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt",
-    ].includes(block)
-  );
+  return isBlockType(block);
 }
 
 function isFallingBlock(block: FallingBlockCellBlock): block is FallingBlockMaterial {

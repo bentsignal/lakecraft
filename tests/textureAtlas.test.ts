@@ -38,6 +38,7 @@ const EXPECTED_NAMES = [
   "tnt_bottom",
   "gravel",
   "wool",
+  "sapling",
 ] as const;
 
 function fnv1a32(bytes: Iterable<number>): string {
@@ -73,7 +74,7 @@ assert.equal(TEXTURE_TILE_SIZE, 16, "world textures stay at Minecraft-scale 16px
 assert.equal(TEXTURE_ATLAS_COLUMNS, 5);
 assert.equal(TEXTURE_ATLAS_ROWS, 6);
 assert.deepEqual(TEXTURE_ATLAS_NAMES, EXPECTED_NAMES, "tile order is part of the renderer contract");
-assert.equal(TEXTURE_ATLAS_NAMES.length, 26);
+assert.equal(TEXTURE_ATLAS_NAMES.length, 27);
 
 const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
 const atlasHeight = TEXTURE_ATLAS_ROWS * TEXTURE_TILE_SIZE;
@@ -87,14 +88,14 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
     colors.add(`${tile[offset]},${tile[offset + 1]},${tile[offset + 2]},${tile[offset + 3]}`);
   }
   assert.ok(colors.size >= 3, `${TEXTURE_ATLAS_NAMES[index]} must retain readable pixel variation`);
-  if (TEXTURE_ATLAS_NAMES[index] !== "glass") {
+  if (TEXTURE_ATLAS_NAMES[index] !== "glass" && TEXTURE_ATLAS_NAMES[index] !== "sapling") {
     for (let offset = 3; offset < tile.length; offset += 4) {
       assert.equal(tile[offset], 255, `${TEXTURE_ATLAS_NAMES[index]} remains an opaque terrain material`);
     }
   }
   tileFingerprints.add(fnv1a32(tile));
 }
-assert.equal(tileFingerprints.size, 26, "every named atlas tile must be visually distinct");
+assert.equal(tileFingerprints.size, 27, "every named atlas tile must be visually distinct");
 
 for (let index = TEXTURE_ATLAS_NAMES.length; index < TEXTURE_ATLAS_COLUMNS * TEXTURE_ATLAS_ROWS; index += 1) {
   assert.equal(atlasTile(index).every((channel) => channel === 0), true, "unused atlas capacity stays transparent and inert");
@@ -109,8 +110,17 @@ assert.deepEqual([...glassAlphaCounts.keys()].sort((a, b) => a - b), [24, 102, 1
 assert.equal(glassAlphaCounts.get(187), 60, "glass keeps a readable one-pixel outer frame");
 assert.ok((glassAlphaCounts.get(24) ?? 0) >= 180, "the low-alpha center keeps the world visible");
 
+const saplingTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("sapling"));
+const saplingAlphaCounts = new Map<number, number>();
+for (let offset = 3; offset < saplingTile.length; offset += 4) {
+  saplingAlphaCounts.set(saplingTile[offset], (saplingAlphaCounts.get(saplingTile[offset]) ?? 0) + 1);
+}
+assert.deepEqual([...saplingAlphaCounts.keys()].sort((a, b) => a - b), [0, 255]);
+assert.ok((saplingAlphaCounts.get(0) ?? 0) >= 150, "sapling negative space stays transparent for crossed quads");
+assert.ok((saplingAlphaCounts.get(255) ?? 0) >= 45, "sapling foliage remains readable at Minecraft-scale 16px");
+
 // Intentional atlas regeneration should update this fingerprint in the same change.
-assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "e5f76770", "generated RGBA atlas changed unexpectedly");
+assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "6f78ded8", "generated RGBA atlas changed unexpectedly");
 
 const png = readFileSync(new URL("../client/game/generated/texture-atlas-v1.png", import.meta.url));
 assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);

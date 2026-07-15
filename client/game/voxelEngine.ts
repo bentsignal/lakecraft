@@ -368,11 +368,13 @@ const TERRAIN_FRAGMENT_SHADER = `
 precision mediump float;
 uniform sampler2D uAtlas;
 uniform vec3 uFogColor;
+uniform float uAlphaCutoff;
 varying vec2 vUv;
 varying vec3 vLight;
 varying float vFog;
 void main() {
   vec4 texel = texture2D(uAtlas, vUv);
+  if (texel.a < uAlphaCutoff) discard;
   gl_FragColor = vec4(mix(texel.rgb * vLight, uFogColor, vFog), texel.a);
 }`;
 
@@ -416,6 +418,7 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.TNT]: [0.72, 0.16, 0.12],
   [BLOCK.GRAVEL]: [0.47, 0.45, 0.42],
   [BLOCK.WOOL]: [0.86, 0.84, 0.78],
+  [BLOCK.SAPLING]: [0.28, 0.55, 0.18],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -466,7 +469,8 @@ export function blockOccludesFaces(block: BlockId): boolean {
     && block !== BLOCK.TORCH
     && block !== BLOCK.DOOR_OPEN
     && block !== BLOCK.LADDER
-    && block !== BLOCK.GLASS;
+    && block !== BLOCK.GLASS
+    && block !== BLOCK.SAPLING;
 }
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
@@ -495,7 +499,8 @@ export function blockHasCollision(block: BlockId): boolean {
   return block !== BLOCK.AIR
     && block !== BLOCK.TORCH
     && block !== BLOCK.DOOR_OPEN
-    && block !== BLOCK.LADDER;
+    && block !== BLOCK.LADDER
+    && block !== BLOCK.SAPLING;
 }
 
 export type LadderBlockLookup = (x: number, y: number, z: number) => BlockId;
@@ -627,10 +632,19 @@ export function tryInteractBlock(
       && target.block.block !== BLOCK.CRAFTING_TABLE
       && target.block.block !== BLOCK.FURNACE
       && target.block.block !== BLOCK.TNT
+      && target.block.block !== BLOCK.SAPLING
     )
     || !onInteractBlock
   ) return false;
   return onInteractBlock(target) === true;
+}
+
+/** Saplings only attach to the top of dirt-like soil, matching their non-cubic footprint. */
+export function canPlaceSapling(target: Readonly<BlockTarget>, blockBelow: BlockId): boolean {
+  return target.place.x === target.block.x
+    && target.place.z === target.block.z
+    && target.place.y === target.block.y + 1
+    && (blockBelow === BLOCK.GRASS || blockBelow === BLOCK.DIRT);
 }
 
 function compileShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
@@ -769,6 +783,34 @@ function appendTexturedBlockFace(
       shade,
     );
   }
+}
+
+export const SAPLING_MESH_VERTEX_COUNT = 12;
+
+/** Two diagonal quads form the classic crossed-plant silhouette at a fixed vertex cost. */
+export function appendSaplingMesh(output: number[], x: number, y: number, z: number, shade = 1): void {
+  const uv = textureAtlasUv("sapling");
+  const left = x + 0.12;
+  const right = x + 0.88;
+  const near = z + 0.12;
+  const far = z + 0.88;
+  const bottom = y;
+  const top = y + 1;
+  const vertex = (px: number, py: number, pz: number, u: number, v: number): void => {
+    pushTexturedVertex(output, [px, py, pz], u, v, shade);
+  };
+  vertex(left, bottom, near, uv.left, uv.bottom);
+  vertex(left, top, near, uv.left, uv.top);
+  vertex(right, top, far, uv.right, uv.top);
+  vertex(left, bottom, near, uv.left, uv.bottom);
+  vertex(right, top, far, uv.right, uv.top);
+  vertex(right, bottom, far, uv.right, uv.bottom);
+  vertex(right, bottom, near, uv.left, uv.bottom);
+  vertex(right, top, near, uv.left, uv.top);
+  vertex(left, top, far, uv.right, uv.top);
+  vertex(right, bottom, near, uv.left, uv.bottom);
+  vertex(left, top, far, uv.right, uv.top);
+  vertex(left, bottom, far, uv.right, uv.bottom);
 }
 
 function tint(color: Vec3, shade: number, variation = 1): Vec3 {
@@ -931,6 +973,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const terrainDirectionalIntensityLocation = gl.getUniformLocation(terrainProgram, "uDirectionalIntensity");
   const terrainTorchLightsLocation = gl.getUniformLocation(terrainProgram, "uTorchLights[0]");
   const terrainAtlasLocation = gl.getUniformLocation(terrainProgram, "uAtlas");
+  const terrainAlphaCutoffLocation = gl.getUniformLocation(terrainProgram, "uAlphaCutoff");
   const atmospherePositionLocation = gl.getAttribLocation(atmosphereProgram, "p");
   const atmosphereAspectLocation = gl.getUniformLocation(atmosphereProgram, "A");
   const atmosphereTimeLocation = gl.getUniformLocation(atmosphereProgram, "T");
@@ -1311,6 +1354,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       if (block === BLOCK.LADDER) {
         appendLadderMesh(colorVertices, x, y, z);
+        continue;
+      }
+      if (block === BLOCK.SAPLING) {
+        appendSaplingMesh(textureVertices, x, y, z, blockMaterialVariation(x, y, z));
         continue;
       }
       const base = blockMaterialColor(block) as Vec3;
@@ -1906,6 +1953,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
     gl.uniform1i(terrainAtlasLocation, 0);
+    gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
     const visibleMeshes: Array<readonly [string, ChunkMesh]> = [];
     for (const [key, mesh] of chunkMeshes) {
       if (!chunkIntersectsView(key, mesh, mvp)) continue;
@@ -1992,6 +2040,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     );
     if (transparentChunkKeys.length) {
       gl.useProgram(terrainProgram);
+      gl.uniform1f(terrainAlphaCutoffLocation, 0);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
@@ -2004,6 +2053,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       gl.depthMask(true);
       gl.disable(gl.BLEND);
+      gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
       gl.useProgram(program);
     }
 
@@ -2270,7 +2320,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (selectedBlock === BLOCK.AIR) return;
       if (options.canEditBlock?.() === false) return;
       const { x, y, z } = target.place;
-      if (getBlock(x, y, z) === BLOCK.AIR && !playerIntersectsBlock(x, y, z)) {
+      const saplingPlacement = selectedBlock === BLOCK.SAPLING;
+      const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
+      if (
+        getBlock(x, y, z) === BLOCK.AIR
+        && supportedSapling
+        && (saplingPlacement || !playerIntersectsBlock(x, y, z))
+      ) {
         options.onHandAction?.("place");
         emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) });
       }
@@ -2597,6 +2653,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     getPose() { return { ...pose }; },
     getTarget() { return target ? { block: { ...target.block }, place: { ...target.place }, distance: target.distance } : null; },
+    getBlockAt(x, y, z) {
+      if (![x, y, z].every(Number.isSafeInteger)) return BLOCK.AIR;
+      return getBlock(x, y, z);
+    },
     getPerformanceStats,
     requestPointerLock() { canvas.requestPointerLock(); },
     respawn() {

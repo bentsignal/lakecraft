@@ -9,7 +9,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -52,6 +52,7 @@ export type ItemId = BlockId
   | "stick"
   | "string"
   | "bone"
+  | "bone_meal"
   | "feather"
   | "arrow"
   | "bow"
@@ -243,6 +244,7 @@ export const BLOCKS = defineBlocks([
   ["ladder", "Ladder", "Wooden rungs for climbing walls and mine shafts.", "#a97742", "#d6aa68", 0.4, "axe", "ladder"],
   ["tnt", "TNT", "A volatile block crafted from sand and gunpowder. It only explodes after an explicit ignition.", "#b73529", "#f0e1bd", 0.1, "hand", "tnt"],
   ["wool", "White Wool", "A soft building block clipped from sheep.", "#ddd8c8", "#f3f0e7", 0.8, "hand", "wool"],
+  ["sapling", "Oak Sapling", "A young oak that can grow on dirt or grass.", "#477537", "#82a94e", 0, "hand", "sapling"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -280,12 +282,14 @@ const BLOCK_ITEM_SPECS = [
   ["chest", "CHT", "▣"], ["door", "DOR", "▥"], ["bed", "BED", "▰"], ["ladder", "LDR", "╫"],
   ["tnt", "TNT", "▩"],
   ["wool", "WOL", "▦"],
+  ["sapling", "SAP", "✣"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["stick", "Stick", "STK", "A straight handle for simple tools.", "╱", "#c09557"],
   ["string", "String", "STR", "Strong fiber spun by spiders and used to tension bows.", "∿", "#d8d3c5"],
-  ["bone", "Bone", "BON", "A dry skeleton bone with no use yet.", "╱", "#ded8bf"],
+  ["bone", "Bone", "BON", "A dry skeleton bone that can be ground into bone meal.", "╱", "#ded8bf"],
+  ["bone_meal", "Bone Meal", "BML", "Powdered bone that rapidly grows oak saplings.", "⁙", "#e6e1ce"],
   ["feather", "Feather", "FTH", "A light chicken feather used to fletch arrows.", "≀", "#e7e1ce"],
   ["arrow", "Arrow", "ARR", "A flint-tipped projectile fired from a bow.", "↗", "#c6b38a"],
   ["leather", "Leather", "LTH", "Tough hide used for lightweight armor.", "◩", "#8d552f"],
@@ -429,6 +433,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "crafting_table", label: "Crafting table", note: "Four boards make a proper workbench.", craftingContext: "field", ingredients: [{ itemId: "planks", count: 4 }], output: { itemId: "crafting_table", count: 1 } },
   { id: "torch", label: "Torches", note: "A lump of coal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "coal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
   { id: "torch_charcoal", label: "Charcoal torches", note: "A piece of charcoal and a stick make four warm lights.", craftingContext: "field", ingredients: [{ itemId: "charcoal", count: 1 }, { itemId: "stick", count: 1 }], output: { itemId: "torch", count: 4 } },
+  { id: "bone_meal", label: "Bone meal", note: "One bone makes three handfuls of bone meal.", craftingContext: "field", ingredients: [{ itemId: "bone", count: 1 }], output: { itemId: "bone_meal", count: 3 } },
   { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
@@ -911,15 +916,17 @@ export function getMiningDrop(blockId: BlockId, itemId?: ItemId | null): ItemQua
 }
 
 export const FLINT_DROP_CHANCE_DENOMINATOR = 10;
-export const APPLE_DROP_CHANCE_DENOMINATOR = 20;
+export const APPLE_DROP_CHANCE_DENOMINATOR = 200;
+export const SAPLING_DROP_CHANCE_DENOMINATOR = 20;
 
 /**
  * Coordinate-derived mining loot for the authoritative world operation path.
  * A shovel replaces exactly one in ten gravel drops with flint. Oak leaves
- * drop themselves only when cut with shears; otherwise they have a fixed
- * one-in-twenty coordinate-derived chance to drop an apple. No client RNG or
- * extra database row is involved, and every coordinate always resolves to the
- * same conserved result in multiplayer and offline play.
+ * drop themselves only when cut with shears. Otherwise a leaf resolves one
+ * conserved coordinate-derived result: an authentic one-in-two-hundred apple
+ * roll has priority over a one-in-twenty sapling roll. No client RNG or extra
+ * database row is involved, and every coordinate always resolves to the same
+ * result in multiplayer and offline play.
  */
 export function getDeterministicMiningDrop(
   blockId: BlockId,
@@ -933,10 +940,12 @@ export function getDeterministicMiningDrop(
   const hasCanonicalCoordinate = Number.isSafeInteger(x) && Number.isSafeInteger(y) && Number.isSafeInteger(z);
   if (blockId === "leaves") {
     if (!hasCanonicalCoordinate) return null;
-    const leafHash = (Math.imul(x, 73_856_093) ^ Math.imul(y, 19_349_663) ^ Math.imul(z, 83_492_791)
-      ^ 0x5bd1e995) >>> 0;
-    return leafHash % APPLE_DROP_CHANCE_DENOMINATOR === 0
-      ? { itemId: "apple", count: 1 }
+    const coordinateHash = (Math.imul(x, 73_856_093) ^ Math.imul(y, 19_349_663) ^ Math.imul(z, 83_492_791)) >>> 0;
+    const appleHash = Math.imul(coordinateHash ^ 0x5bd1e995, 0x27d4eb2d) >>> 0;
+    if (appleHash % APPLE_DROP_CHANCE_DENOMINATOR === 0) return { itemId: "apple", count: 1 };
+    const saplingHash = Math.imul(coordinateHash ^ 0x6c8e9cf5, 0x45d9f3b) >>> 0;
+    return saplingHash % SAPLING_DROP_CHANCE_DENOMINATOR === 0
+      ? { itemId: "sapling", count: 1 }
       : null;
   }
   if (blockId !== "gravel" || !itemId || ITEMS[itemId].tool?.kind !== "shovel" || !hasCanonicalCoordinate) return ordinary;

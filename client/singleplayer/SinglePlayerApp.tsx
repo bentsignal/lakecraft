@@ -37,6 +37,7 @@ import { planDeathDrops } from "../../shared/deathDrops.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
+import { planOakTreeGrowth } from "../../shared/treeGrowth";
 import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudioSurface } from "../game/audio";
 
@@ -53,6 +54,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.DOOR_OPEN]: "door", [BLOCK.BED]: "bed", [BLOCK.LADDER]: "ladder",
   [BLOCK.TNT]: "tnt",
   [BLOCK.WOOL]: "wool",
+  [BLOCK.SAPLING]: "sapling",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -63,10 +65,12 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   torch: BLOCK.TORCH, chest: BLOCK.CHEST, door: BLOCK.DOOR_CLOSED, bed: BLOCK.BED, ladder: BLOCK.LADDER,
   tnt: BLOCK.TNT,
   wool: BLOCK.WOOL,
+  sapling: BLOCK.SAPLING,
 };
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
-  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
+  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.SAPLING
+    || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
   if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
     || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER) return "wood";
   if (block === BLOCK.SAND) return "sand";
@@ -94,7 +98,7 @@ function loadLocalSave(): LocalSave {
     const value = JSON.parse(raw) as Partial<LocalSave>;
     const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.WOOL,
+      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.SAPLING,
     )).slice(-8_000) : [];
     const drops = Array.isArray(value.drops) ? value.drops.flatMap((candidate) => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
@@ -421,6 +425,60 @@ export function SinglePlayerApp() {
         return true;
       },
       onInteractBlock: (target) => {
+        if (target.block.block === BLOCK.SAPLING
+          && inventoryRef.current[selectedRef.current]?.itemId === "bone_meal") {
+          const localEngine = engineRef.current;
+          if (!localEngine) return true;
+          const { x, y, z } = target.block;
+          const plan = planOakTreeGrowth({
+            x,
+            y,
+            z,
+            blockAt: (blockX, blockY, blockZ) => {
+              const engineBlock = localEngine.getBlockAt(blockX, blockY, blockZ);
+              if (engineBlock === BLOCK.AIR) return "air";
+              // Unknown engine-only states (for example an open door) remain
+              // solid to the pure planner and can never be overwritten.
+              return ENGINE_TO_GAME[engineBlock] ?? "stone";
+            },
+          });
+          if (!plan.ok) {
+            setMessages((current) => [...current.slice(-2), {
+              id: `oak-blocked-${x}:${y}:${z}`,
+              text: "The sapling cannot grow",
+              detail: plan.reason === "invalid_support" ? "Oak saplings need dirt or grass beneath them." : "Clear some room around and above it.",
+              tone: "warning",
+            }]);
+            return true;
+          }
+
+          const selectedStack = inventoryRef.current[selectedRef.current];
+          if (!selectedStack || selectedStack.itemId !== "bone_meal") return true;
+          const nextInventory = inventoryRef.current.map((stack, index) => {
+            if (index !== selectedRef.current || !stack) return stack ? { ...stack } : null;
+            return stack.count > 1 ? { ...stack, count: stack.count - 1 } : null;
+          }) as Inventory;
+          const growthEdits = plan.edits.map((edit): WorldEdit => ({
+            x: edit.x,
+            y: edit.y,
+            z: edit.z,
+            block: edit.block === "log" ? BLOCK.WOOD : BLOCK.LEAVES,
+          }));
+          const savedEdits = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
+          for (const edit of growthEdits) savedEdits.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
+          editsRef.current = [...savedEdits.values()].slice(-8_000);
+          localEngine.applyWorldEdits(growthEdits);
+          updateInventory(nextInventory);
+          localEngine.spawnBlockParticles({ action: "place", block: BLOCK.LEAVES, x, y: y + 1, z });
+          audio.play("blockPlace", { seed: `grow:${x}:${y}:${z}`, surface: "grass", intensity: 0.72 });
+          setMessages((current) => [...current.slice(-2), {
+            id: `oak-grown-${x}:${y}:${z}`,
+            text: "Oak tree grown",
+            detail: "Used one bone meal.",
+            tone: "success",
+          }]);
+          return true;
+        }
         if (target.block.block === BLOCK.CRAFTING_TABLE) {
           setCraftingContext("crafting_table");
           setInventoryOpen(true);

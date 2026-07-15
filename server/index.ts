@@ -52,6 +52,7 @@ import {
   sampleWorldChunkSnapshot,
   validateVisibleWorldChunkKeys,
   worldEditChunkKey,
+  type WorldChunkBlockType,
   type WorldChunkEditInput
 } from "../shared/worldChunks";
 import {
@@ -107,7 +108,13 @@ import {
   removeItem,
   type ItemId,
   type ItemStack,
+  type BlockId,
 } from "../shared/game.ts";
+import {
+  OAK_TREE_MAX_EDITS,
+  oakTreeGrowthProbeCells,
+  planOakTreeGrowth,
+} from "../shared/treeGrowth.ts";
 import {
   applyFurnaceTransfer,
   createEmptyFurnace,
@@ -212,6 +219,19 @@ import {
   type WorldBlockOperationReceiptResult,
 } from "./worldBlockOperationReceipts.ts";
 import {
+  MAX_TREE_GROWTH_CHUNKS,
+  MAX_TREE_GROWTH_RECEIPTS_PER_USER,
+  TREE_GROWTH_RECEIPT_PRUNE_LIMIT,
+  TREE_GROWTH_RECEIPT_TTL_MS,
+  decodeTreeGrowthReceipt,
+  encodeTreeGrowthReceipt,
+  isValidTreeGrowthOperationId,
+  selectTreeGrowthReceiptOverflow,
+  treeGrowthFingerprint,
+  treeGrowthProtocolEdit,
+  type TreeGrowthReceiptResult,
+} from "./treeGrowthReceipts.ts";
+import {
   MOB_WORLD_AUTHORITY_KEY,
   MOB_WORLD_CHECKPOINT_MS,
   MOB_WORLD_LEASE_MS,
@@ -299,6 +319,13 @@ import {
 } from "../shared/multiplayerSegments.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
+
+function treePlannerBlockId(block: BlockType): BlockId | "air" {
+  if (block === "air") return "air";
+  if (block === "wood") return "log";
+  if (block === "door_closed" || block === "door_open") return "door";
+  return block as BlockId;
+}
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 const CHEST_RECEIPT_PRUNE_LIMIT = 8;
 /** Legacy name retained for the replay-grant validity bound; death proof replaces request throttling. */
@@ -463,6 +490,26 @@ async function maintainWorldBlockOperationReceipts(
     .order("asc")
     .take(WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.worldBlockOperationReceipts.delete(receipt.id);
+}
+
+async function maintainTreeGrowthReceipts(
+  db: WriteDatabase,
+  userId: string,
+  committedReceiptId: string,
+  now: number,
+): Promise<void> {
+  const newestReceipts = await db.treeGrowthReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(MAX_TREE_GROWTH_RECEIPTS_PER_USER + TREE_GROWTH_RECEIPT_PRUNE_LIMIT);
+  const overflowIds = selectTreeGrowthReceiptOverflow(newestReceipts, committedReceiptId);
+  for (const receiptId of overflowIds) await db.treeGrowthReceipts.delete(receiptId);
+  const staleBefore = String(now - TREE_GROWTH_RECEIPT_TTL_MS);
+  const staleReceipts = await db.treeGrowthReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .order("asc")
+    .take(TREE_GROWTH_RECEIPT_PRUNE_LIMIT);
+  for (const receipt of staleReceipts) await db.treeGrowthReceipts.delete(receipt.id);
 }
 
 async function maintainDroppedItemReceipts(
@@ -1383,6 +1430,17 @@ export default capsule({
       .index("by_user_operation", ["userId", "operationId"])
       .index("by_user_created", ["userId", "receiptCreatedAt"]),
 
+    /** Bounded exact replay for one bone meal plus one multi-chunk oak growth commit. */
+    treeGrowthReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
+
     /** Shared container state. updatedAt is the optimistic concurrency token. */
     chests: table({
       coordKey: string(),
@@ -2077,7 +2135,302 @@ export default capsule({
   },
 
   mutations: {
-    /** The only public world-edit path: atomic, authoritative, and idempotent. */
+    /** One explicit bone-meal interaction grows one bounded oak without background traffic. */
+    growOakTree: mutation(async (
+      ctx,
+      requestJson: string,
+      poseX: string,
+      poseY: string,
+      poseZ: string,
+      poseYaw: string,
+      posePitch: string,
+    ) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      if (typeof requestJson !== "string" || requestJson.length > 1_024) {
+        return { ok: false, reason: "invalid_request", serverNow };
+      }
+      let raw: unknown;
+      try {
+        raw = JSON.parse(requestJson);
+      } catch {
+        return { ok: false, reason: "invalid_request", serverNow };
+      }
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return { ok: false, reason: "invalid_request", serverNow };
+      }
+      const candidate = raw as Record<string, unknown>;
+      const keys = Object.keys(candidate).sort();
+      if (keys.length !== 4 || keys[0] !== "operationId" || keys[1] !== "x" || keys[2] !== "y" || keys[3] !== "z"
+        || !isValidTreeGrowthOperationId(candidate.operationId)
+        || !Number.isSafeInteger(candidate.x) || !Number.isSafeInteger(candidate.y) || !Number.isSafeInteger(candidate.z)) {
+        return { ok: false, reason: "invalid_request", serverNow };
+      }
+      const operationId = candidate.operationId;
+      const x = candidate.x as number;
+      const y = candidate.y as number;
+      const z = candidate.z as number;
+      if (x < WORLD_EDIT_MIN_XZ || x > WORLD_EDIT_MAX_XZ || z < WORLD_EDIT_MIN_XZ || z > WORLD_EDIT_MAX_XZ
+        || y < WORLD_EDIT_MIN_Y || y > WORLD_EDIT_MAX_Y) {
+        return { ok: false, reason: "invalid_coordinate", serverNow };
+      }
+      const pose = validatePresencePoseFields(poseX, poseY, poseZ, poseYaw, posePitch);
+      if (!pose) return { ok: false, reason: "invalid_pose", serverNow };
+      const requestFingerprint = treeGrowthFingerprint(operationId, x, y, z);
+      const fingerprint = worldBlockOperationPoseFingerprint(requestFingerprint, pose);
+
+      // Exact retry settles before presence, player state, tree, edit, or chunk authority reads.
+      const receiptRows = await ctx.db.treeGrowthReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", operationId))
+        .order("desc")
+        .take(2);
+      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (receiptRows.length === 1) {
+        if (receiptRows[0].fingerprint !== fingerprint) {
+          return { ok: false, reason: "operation_id_reused", serverNow };
+        }
+        const replay = decodeTreeGrowthReceipt(receiptRows[0].resultJson);
+        if (!replay || replay.operationId !== operationId) return { ok: false, reason: "invalid_receipt", serverNow };
+        const inventoryRows = await ctx.db.inventories
+          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .order("desc")
+          .take(2);
+        if (inventoryRows.length !== 1 || !validatePlayerStateJson(inventoryRows[0].inventoryJson).ok
+          || storedRevision(inventoryRows[0].revision) === null) {
+          return { ok: false, reason: "replay_state_unavailable", serverNow };
+        }
+        const currentChunks = [] as Array<{ chunkKey: string; revision: string }>;
+        for (const committed of replay.chunks) {
+          const rows = await ctx.db.worldChunks
+            .withIndex("by_chunk", (q) => q.eq("chunkKey", committed.chunkKey))
+            .order("desc")
+            .take(2);
+          const revision = rows.length === 1 ? storedRevision(rows[0].revision) : null;
+          if (revision === null) return { ok: false, reason: "replay_state_unavailable", serverNow };
+          currentChunks.push({ chunkKey: committed.chunkKey, revision });
+        }
+        return { ...replay, replayed: true, inventory: inventoryRows[0], currentChunks, serverNow };
+      }
+
+      const presence = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const poseAuthority = validateWorldBlockActionPose(presence, ctx.auth.userId, pose, { x, y, z }, serverNow);
+      if (!poseAuthority.ok) return { ok: false, reason: poseAuthority.reason, serverNow };
+      const combatRow = await ctx.db.playerCombat
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .first();
+      const combat = materializePlayerCombatState(
+        databaseRowToStoredPlayerCombat(combatRow),
+        ctx.auth.userId,
+        serverNow,
+      );
+      if (combat.health === 0) return { ok: false, reason: "player_dead", serverNow };
+
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      const inventoryRow = inventoryRows[0];
+      const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
+      if (!playerState.ok || storedRevision(inventoryRow.revision) === null) {
+        return { ok: false, reason: "inventory_invalid", serverNow };
+      }
+      const selectedSlot = playerState.state.selectedHotbar;
+      const selectedStack = playerState.state.inventory[selectedSlot] ?? null;
+      if (selectedStack?.itemId !== "bone_meal" || selectedStack.count < 1) {
+        return { ok: false, reason: "bone_meal_required", serverNow };
+      }
+
+      const probeCells = oakTreeGrowthProbeCells(x, y, z);
+      if (probeCells.length === 0 || probeCells.length > 256) {
+        return { ok: false, reason: "invalid_growth_plan", serverNow };
+      }
+      const probeGroups = new Map<string, Array<{ x: number; y: number; z: number }>>();
+      for (const cell of probeCells) {
+        const chunkKey = worldEditChunkKey(cell.x, cell.z);
+        const group = probeGroups.get(chunkKey);
+        if (group) group.push(cell);
+        else probeGroups.set(chunkKey, [cell]);
+      }
+      if (probeGroups.size === 0 || probeGroups.size > MAX_TREE_GROWTH_CHUNKS) {
+        return { ok: false, reason: "invalid_growth_plan", serverNow };
+      }
+      const chunkAuthority = new Map<string, {
+        row: Record<string, unknown> | null;
+        revision: string;
+        snapshotJson: string | null;
+      }>();
+      const authoritativeBlocks = new Map<string, BlockId | "air">();
+      for (const [chunkKey, cells] of probeGroups) {
+        const rows = await ctx.db.worldChunks
+          .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+          .order("desc")
+          .take(2);
+        if (rows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+        const row = rows[0] ?? null;
+        const revision = storedRevision(row?.revision);
+        if (revision === null) return { ok: false, reason: "invalid_world_state", serverNow };
+        const sampled = row ? sampleWorldChunkSnapshot(chunkKey, row.snapshotJson, cells) : null;
+        if (sampled && !sampled.ok) return { ok: false, reason: "invalid_world_state", serverNow };
+        chunkAuthority.set(chunkKey, {
+          row: row as Record<string, unknown> | null,
+          revision,
+          snapshotJson: row?.snapshotJson ?? null,
+        });
+        for (let index = 0; index < cells.length; index += 1) {
+          const cell = cells[index];
+          const protocolBlock = sampled?.ok
+            ? sampled.blocks[index] ?? naturalWorldBlockAt(cell.x, cell.y, cell.z)
+            : naturalWorldBlockAt(cell.x, cell.y, cell.z);
+          authoritativeBlocks.set(`${cell.x}:${cell.y}:${cell.z}`, treePlannerBlockId(protocolBlock));
+        }
+      }
+
+      const growth = planOakTreeGrowth({
+        x,
+        y,
+        z,
+        blockAt: (sampleX, sampleY, sampleZ) => authoritativeBlocks.get(`${sampleX}:${sampleY}:${sampleZ}`) ?? "stone",
+      });
+      if (!growth.ok) return { ok: false, reason: growth.reason, serverNow };
+      if (growth.edits.length === 0 || growth.edits.length > OAK_TREE_MAX_EDITS) {
+        return { ok: false, reason: "invalid_growth_plan", serverNow };
+      }
+      const edits = growth.edits.map(treeGrowthProtocolEdit);
+      const uniqueCoordinates = new Set(edits.map((edit) => `${edit.x}:${edit.y}:${edit.z}`));
+      if (uniqueCoordinates.size !== edits.length || edits.some((edit) => !PLACEABLE_BLOCKS.has(edit.blockType)
+        || edit.x < WORLD_EDIT_MIN_XZ || edit.x > WORLD_EDIT_MAX_XZ || edit.z < WORLD_EDIT_MIN_XZ || edit.z > WORLD_EDIT_MAX_XZ
+        || edit.y < WORLD_EDIT_MIN_Y || edit.y > WORLD_EDIT_MAX_Y)) {
+        return { ok: false, reason: "invalid_growth_plan", serverNow };
+      }
+      const editGroups = new Map<string, typeof edits>();
+      for (const edit of edits) {
+        const chunkKey = worldEditChunkKey(edit.x, edit.z);
+        const group = editGroups.get(chunkKey);
+        if (group) group.push(edit);
+        else editGroups.set(chunkKey, [edit]);
+      }
+      if (editGroups.size === 0 || editGroups.size > MAX_TREE_GROWTH_CHUNKS
+        || [...editGroups.keys()].some((chunkKey) => !chunkAuthority.has(chunkKey))) {
+        return { ok: false, reason: "invalid_growth_plan", serverNow };
+      }
+
+      const worldEditPlans = [] as Array<{
+        existing: Record<string, unknown> | null;
+        value: { coordKey: string; x: string; y: string; z: string; blockType: WorldChunkBlockType; actorId: string; editedAt: string };
+      }>;
+      for (const edit of edits) {
+        const coordKey = `${edit.x}:${edit.y}:${edit.z}`;
+        const rows = await ctx.db.worldEdits
+          .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+          .order("desc")
+          .take(2);
+        if (rows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+        worldEditPlans.push({
+          existing: (rows[0] ?? null) as Record<string, unknown> | null,
+          value: {
+            coordKey,
+            x: String(edit.x),
+            y: String(edit.y),
+            z: String(edit.z),
+            blockType: edit.blockType,
+            actorId: ctx.auth.userId,
+            editedAt: String(serverNow),
+          },
+        });
+      }
+
+      const chunkPlans = [] as Array<{
+        existing: Record<string, unknown> | null;
+        chunkKey: string;
+        snapshotJson: string;
+        revision: string;
+      }>;
+      for (const [chunkKey, groupedEdits] of editGroups) {
+        const authority = chunkAuthority.get(chunkKey)!;
+        const snapshotEdits = groupedEdits.map((edit) => ({
+          coordKey: `${edit.x}:${edit.y}:${edit.z}`,
+          x: String(edit.x),
+          y: String(edit.y),
+          z: String(edit.z),
+          blockType: edit.blockType,
+          editedAt: String(serverNow),
+        }));
+        const snapshot = authority.snapshotJson
+          ? applyWorldChunkEdits(chunkKey, authority.snapshotJson, snapshotEdits)
+          : createWorldChunkSnapshot(chunkKey, snapshotEdits);
+        if (!snapshot.ok) return { ok: false, reason: "invalid_world_state", serverNow };
+        chunkPlans.push({
+          existing: authority.row,
+          chunkKey,
+          snapshotJson: snapshot.snapshotJson,
+          revision: incrementStoredRevision(authority.revision),
+        });
+      }
+
+      const nextInventory = playerState.state.inventory.slice();
+      nextInventory[selectedSlot] = selectedStack.count === 1
+        ? null
+        : { ...selectedStack, count: selectedStack.count - 1 };
+      const inventoryJson = JSON.stringify({ ...playerState.state, inventory: nextInventory });
+      if (!validatePlayerStateJson(inventoryJson).ok) {
+        return { ok: false, reason: "inventory_invalid", serverNow };
+      }
+
+      for (const plan of worldEditPlans) {
+        const persisted = plan.existing
+          ? await ctx.db.worldEdits.update(plan.existing.id as string, plan.value)
+          : await ctx.db.worldEdits.insert(plan.value);
+        if (!persisted) throw new Error("Unable to persist authoritative oak growth edit.");
+      }
+      for (const plan of chunkPlans) {
+        const value = { chunkKey: plan.chunkKey, snapshotJson: plan.snapshotJson, revision: plan.revision };
+        const persisted = plan.existing
+          ? await ctx.db.worldChunks.update(plan.existing.id as string, value)
+          : await ctx.db.worldChunks.insert(value);
+        if (!persisted) throw new Error("Unable to persist authoritative oak growth chunk.");
+      }
+      const inventory = await ctx.db.inventories.update(inventoryRow.id, {
+        userId: ctx.auth.userId,
+        inventoryJson,
+        revision: incrementStoredRevision(inventoryRow.revision),
+      });
+      if (!inventory) throw new Error("Unable to consume authoritative bone meal.");
+
+      const result: TreeGrowthReceiptResult = {
+        ok: true,
+        replayed: false,
+        operationId,
+        x,
+        y,
+        z,
+        consumed: "bone_meal",
+        inventoryRevision: inventory.revision,
+        edits,
+        chunks: chunkPlans.map((plan) => ({ chunkKey: plan.chunkKey, revision: plan.revision })),
+        serverNow,
+      };
+      const receipt = await ctx.db.treeGrowthReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId,
+        fingerprint,
+        resultJson: encodeTreeGrowthReceipt(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      if (!receipt) throw new Error("Unable to persist authoritative oak growth receipt.");
+      await maintainTreeGrowthReceipts(ctx.db, ctx.auth.userId, receipt.id, serverNow);
+      return { ...result, inventory, currentChunks: result.chunks };
+    }),
+
+    /** The only public single-block edit path: atomic, authoritative, and idempotent. */
     editWorldBlock: mutation(async (
       ctx,
       requestJson: string,
@@ -2205,6 +2558,22 @@ export default capsule({
       });
       if (!resolution.ok) return { ok: false, reason: resolution.reason };
       const effect = resolution.effect;
+      if (effect.kind === "place" && effect.nextBlock === "sapling") {
+        if (request.y <= WORLD_EDIT_MIN_Y) return { ok: false, reason: "invalid_support" };
+        const supportCoordinate = { x: request.x, y: request.y - 1, z: request.z };
+        const sampledSupport = chunkRow
+          ? sampleWorldChunkSnapshot(chunkKey, chunkRow.snapshotJson, [supportCoordinate])
+          : null;
+        if (sampledSupport && !sampledSupport.ok) {
+          return { ok: false, reason: "conservation_failure", detail: sampledSupport.reason };
+        }
+        const supportBlock = sampledSupport?.ok
+          ? sampledSupport.blocks[0] ?? naturalWorldBlockAt(supportCoordinate.x, supportCoordinate.y, supportCoordinate.z)
+          : naturalWorldBlockAt(supportCoordinate.x, supportCoordinate.y, supportCoordinate.z);
+        if (supportBlock !== "grass" && supportBlock !== "dirt") {
+          return { ok: false, reason: "invalid_support" };
+        }
+      }
       const minimumFallingY = Math.max(WORLD_EDIT_MIN_Y, request.y - 22);
       const maximumFallingY = Math.min(WORLD_EDIT_MAX_Y, request.y + 9);
       const fallingCoordinates = Array.from(

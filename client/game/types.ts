@@ -35,6 +35,7 @@ export const BLOCK = {
   TNT: 22,
   GRAVEL: 23,
   WOOL: 24,
+  SAPLING: 25,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -271,6 +272,8 @@ export interface VoxelEngine {
   reconcilePose(pose: PlayerPose): void;
   getPose(): PlayerPose;
   getTarget(): BlockTarget | null;
+  /** Read-only local material lookup for discrete offline authority checks. */
+  getBlockAt(x: number, y: number, z: number): BlockId;
   getPerformanceStats(): VoxelPerformanceStats;
   requestPointerLock(): void;
   respawn(): void;

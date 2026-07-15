@@ -8,23 +8,23 @@ Lakecraft's texture art is original project material, not extracted game assets.
 node scripts/pixelate-texture-sheet.mjs \
   design/texture-concepts/lakecraft-materials-v1.png \
   client/game/generated/texture-atlas-v1.png \
-  --columns 7 \
-  --rows 3 \
+  --columns 5 \
+  --rows 6 \
   --source-columns 4 \
   --source-rows 4 \
   --tile-size 16 \
   --inset 0 \
-  --names grass_top,grass_side,dirt,stone,cobblestone,oak_log,oak_planks,leaves,sand,coal_ore,iron_ore,gold_ore,diamond_ore,glass,crafting_table_side,furnace_side,oak_log_end,crafting_table_top,crafting_table_front,furnace_front,furnace_top \
+  --names grass_top,grass_side,dirt,stone,cobblestone,oak_log,oak_planks,leaves,sand,coal_ore,iron_ore,gold_ore,diamond_ore,glass,crafting_table_side,furnace_side,oak_log_end,crafting_table_top,crafting_table_front,furnace_front,furnace_top,tnt_side,tnt_top,tnt_bottom,gravel,wool,sapling \
   --ts client/game/generated/textureAtlas.ts
 ```
 
-The script decodes RGB/RGBA PNG files itself, area-averages the original 4×4 concept sheet into 16×16 tiles, adds five deterministic pixel-art face tiles, quantizes each RGB channel to a stable palette, writes a 112×48 PNG for human inspection, and emits palette indexes that reconstruct the exact RGBA bytes as TypeScript. Re-running the command with the same input must produce byte-identical outputs.
+The script decodes RGB/RGBA PNG files itself, area-averages the original 4×4 concept sheet into 16×16 tiles, adds deterministic original pixel-art tiles for later materials and alpha-cutout plants, quantizes each RGB channel to a stable palette, writes an 80×96 PNG for human inspection, and emits palette indexes that reconstruct the exact RGBA bytes as TypeScript. Re-running the command with the same input must produce byte-identical outputs.
 
-At runtime WebGL uploads the reconstructed 112×48 RGBA array once with nearest-neighbor filtering. Blocks select a tile per face: logs expose growth rings, and workbenches and furnaces have recognizable top, front, and side materials. Glass is kept out of the opaque terrain buffers and composited in a far-to-near, per-visible-chunk alpha pass with depth writes disabled. Non-cube geometry keeps the lightweight color renderer until a purpose-built texture is available.
+At runtime WebGL uploads the reconstructed 80×96 RGBA array once with nearest-neighbor filtering. Blocks select a tile per face: logs expose growth rings, and workbenches and furnaces have recognizable top, front, and side materials. Glass is kept out of the opaque terrain buffers and composited in a far-to-near, per-visible-chunk alpha pass with depth writes disabled. Oak saplings use a fixed 12-vertex crossed mesh in the ordinary chunk batch with a 0.5 alpha cutoff.
 
 ## Check deployment headroom
 
-After preparing and building a staged release, keep at least 32 KiB below Lakebed's observed 2 MiB anonymous artifact ceiling:
+After preparing and building a staged release, keep at least 32 KiB below Lakebed's observed 1 MiB anonymous artifact ceiling:
 
 ```sh
 node scripts/check-lakebed-artifact-size.mjs \

@@ -53,10 +53,10 @@ assert.match(editMutation, /inventory: persistedInventory,[\s\S]*?currentChunkRe
 assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 9,
   "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit/primed TNT/current furnace/falling coordinates fail closed on duplicates");
 
-// Every pre-migration inventory writer and the legacy chunk writer now advances
-// a monotonic revision as well; authoritative writes use resolver revisions.
-assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 17,
-  "all atomic gameplay, ranged combat, blast, survival, and respawn inventory writers advance revisions");
+// Every authoritative inventory/chunk writer, including multi-chunk oak growth,
+// advances a monotonic revision; ordinary world edits use resolver revisions.
+assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 19,
+  "all atomic gameplay, growth, ranged combat, blast, survival, and respawn writers advance revisions");
 assert.equal((editMutation.match(/revision: effect\.(?:chunk|inventory)Revision/g) ?? []).length, 2);
 
 const storedPresence = {

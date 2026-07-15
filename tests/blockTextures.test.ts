@@ -74,6 +74,7 @@ assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");
 mappedTextureNames.add("tnt_side");
 mappedTextureNames.add("tnt_top");
 mappedTextureNames.add("tnt_bottom");
+mappedTextureNames.add("sapling");
 assert.deepEqual(
   [...mappedTextureNames].sort(),
   [...TEXTURE_ATLAS_NAMES].sort(),
@@ -88,6 +89,7 @@ for (const specialBlock of [
   BLOCK.DOOR_OPEN,
   BLOCK.BED,
   BLOCK.LADDER,
+  BLOCK.SAPLING,
 ] as const) {
   for (const face of FACES) {
     assert.equal(blockTextureForFace(specialBlock, face), null, `${specialBlock}:${face} uses special geometry`);
@@ -117,7 +119,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 
 const firstRow = textureAtlasUv("grass_top");
 assert.ok(firstRow.top > 0.98 && firstRow.bottom > 0.83 && firstRow.bottom < 0.84);
-const lastRow = textureAtlasUv("wool");
+const lastRow = textureAtlasUv("sapling");
 assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.02 && lastRow.top < 0.17);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the
