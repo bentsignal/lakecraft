@@ -9,7 +9,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -61,6 +61,7 @@ export type ItemId = BlockId
   | "raw_gold"
   | "gold_ingot"
   | "diamond"
+  | "gunpowder"
   | "pork"
   | "beef"
   | "mutton"
@@ -229,6 +230,7 @@ export const BLOCKS = defineBlocks([
   ["door", "Oak Door", "A hinged wooden door for a shelter entrance.", "#9a6832", "#d7a35c", 1.4, "axe", "door"],
   ["bed", "Bed", "A wool bed that can vote to skip the night.", "#b85045", "#eee2c4", 0.5, "hand", "bed"],
   ["ladder", "Ladder", "Wooden rungs for climbing walls and mine shafts.", "#a97742", "#d6aa68", 0.4, "axe", "ladder"],
+  ["tnt", "TNT", "A volatile block crafted from sand and gunpowder. It only explodes after an explicit ignition.", "#b73529", "#f0e1bd", 0.1, "hand", "tnt"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -263,6 +265,7 @@ const BLOCK_ITEM_SPECS = [
   ["gold_ore", "G·OR", "✦"], ["diamond_ore", "D·OR", "◆"], ["log", "LOG", "▥"], ["leaves", "LEF", "✤"],
   ["planks", "PLK", "▤"], ["crafting_table", "CRF", "▧"], ["furnace", "FRN", "▩"], ["torch", "TCH", "♨"],
   ["chest", "CHT", "▣"], ["door", "DOR", "▥"], ["bed", "BED", "▰"], ["ladder", "LDR", "╫"],
+  ["tnt", "TNT", "▩"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
@@ -277,6 +280,7 @@ const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
   ["raw_gold", "Raw Gold", "R·AU", "A soft gold-bearing mineral that must be smelted.", "✦", "#dba92d"],
   ["gold_ingot", "Gold Ingot", "I·AU", "Refined gold for fast but fragile equipment.", "▰", "#f5d142"],
   ["diamond", "Diamond", "DIA", "A rare crystal for the strongest available equipment.", "◆", "#48d8cf"],
+  ["gunpowder", "Gunpowder", "GUN", "A dark, volatile powder dropped by creepers and used to craft TNT.", "⁙", "#515650"],
 ];
 
 const RANGED_ITEM_SPECS: readonly RangedItemSpec[] = [[
@@ -400,6 +404,7 @@ export const RECIPES: readonly Recipe[] = [
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },
   { id: "door", label: "Oak door", note: "Six boards make a shelter door.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "door", count: 1 } },
   { id: "bed", label: "Bed", note: "Three wool and three boards make a bed.", craftingContext: "crafting_table", ingredients: [{ itemId: "wool", count: 3 }, { itemId: "planks", count: 3 }], output: { itemId: "bed", count: 1 } },
+  { id: "tnt", label: "TNT", note: "Five gunpowder and four sand make one volatile block.", craftingContext: "crafting_table", ingredients: [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }], output: { itemId: "tnt", count: 1 } },
   { id: "bow", label: "Bow", note: "Three sticks and three string make a ranged weapon.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 3 }, { itemId: "string", count: 3 }], output: { itemId: "bow", count: 1 } },
   { id: "arrows", label: "Arrows", note: "Stone, a shaft, and wool fletching make four arrows.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 1 }, { itemId: "stick", count: 1 }, { itemId: "wool", count: 1 }], output: { itemId: "arrow", count: 4 } },
   ...GENERATED_TOOL_RECIPES,

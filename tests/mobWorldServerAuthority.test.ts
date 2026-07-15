@@ -183,21 +183,22 @@ for (const marker of [
   "validateCreeperExplosionRequestJson(requestJson)",
   'withIndex("by_event"',
   "authorizeCreeperExplosionRequest(request, authority)",
-  "planCreeperTerrainDestruction",
-  "maintainWorldChunkSnapshots(ctx.db, writtenEdits)",
-  'blockType: "air"',
+  "applyAuthoritativeWorldExplosion(ctx.db",
   "checkpointRevision: String(advanced.revision + 1)",
   "motionMob.fuseStartedTick = 0",
-  "mitigatedPlayerDamage(candidate.rawDamage, armorProtection)",
 ]) assert.ok(creeperMutation.includes(marker), `missing authoritative creeper explosion marker: ${marker}`);
 assert.ok(
   creeperMutation.indexOf("creeperExplosionReceipts") < creeperMutation.indexOf("ctx.db.mobWorldAuthority"),
   "global exact replay must return before mutable authority reads",
 );
 assert.ok(
-  creeperMutation.indexOf("planCreeperTerrainDestruction") < creeperMutation.indexOf("ctx.db.worldEdits.update"),
-  "the complete bounded terrain plan is derived before the first crater write",
+  creeperMutation.indexOf("applyAuthoritativeWorldExplosion(ctx.db") < creeperMutation.indexOf("ctx.db.mobWorldAuthority.update"),
+  "the shared bounded blast transaction settles before the creeper checkpoint",
 );
+const explosionHelper = server.slice(server.indexOf("async function applyAuthoritativeWorldExplosion"), server.indexOf("function databaseRowToStoredMobAuthority"));
+for (const marker of ["planCreeperTerrainDestruction", "maintainWorldChunkSnapshots(db, written)", 'blockType: "air"', "mitigatedPlayerDamage"]) {
+  assert.ok(explosionHelper.includes(marker), `missing shared explosion executor marker: ${marker}`);
+}
 assert.ok(mobDamageMutation.includes("inventory: replayInventoryRows[0]"), "receipt replay returns the latest canonical inventory row without reapplying wear");
 assert.ok(
   mobDamageMutation.indexOf("ctx.db.inventories.update(inventoryRow.id") < mobDamageMutation.indexOf("ctx.db.playerCombatReceipts.insert"),

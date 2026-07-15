@@ -64,6 +64,14 @@ for (const face of ["east", "west", "south", "bottom"] as const) {
 mappedTextureNames.add("furnace_front");
 mappedTextureNames.add("furnace_side");
 mappedTextureNames.add("furnace_top");
+for (const face of ["east", "west", "south", "north"] as const) {
+  assert.equal(blockTextureForFace(BLOCK.TNT, face), "tnt_side");
+}
+assert.equal(blockTextureForFace(BLOCK.TNT, "top"), "tnt_top");
+assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");
+mappedTextureNames.add("tnt_side");
+mappedTextureNames.add("tnt_top");
+mappedTextureNames.add("tnt_bottom");
 assert.deepEqual(
   [...mappedTextureNames].sort(),
   [...TEXTURE_ATLAS_NAMES].sort(),
@@ -107,7 +115,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 
 const firstRow = textureAtlasUv("grass_top");
 assert.ok(firstRow.top > 0.98 && firstRow.bottom > 0.66 && firstRow.bottom < 0.68);
-const lastRow = textureAtlasUv("furnace_top");
+const lastRow = textureAtlasUv("tnt_bottom");
 assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.02 && lastRow.top < 0.34);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the
@@ -118,7 +126,7 @@ const representativeWorldBytes = representativeWorldVertices
   * TEXTURED_WORLD_VERTEX_FLOATS
   * Float32Array.BYTES_PER_ELEMENT;
 const atlasBytes = TEXTURE_ATLAS_RGBA.byteLength;
-assert.equal(atlasBytes, 21 * 16 * 16 * 4, "the directional RGBA texture is only 21 KiB");
+assert.equal(atlasBytes, 24 * 16 * 16 * 4, "the directional RGBA texture is only 24 KiB");
 assert.ok(representativeWorldBytes <= 4_080_000, "170k streamed vertices stay within the 4.08MB world VBO budget");
 assert.ok(
   representativeWorldBytes + atlasBytes < 4 * 1024 * 1024,

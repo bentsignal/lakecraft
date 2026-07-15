@@ -51,4 +51,11 @@ assert.ok(stylesSource.includes("height: 100dvh"), "HUD height follows the dynam
 assert.ok(stylesSource.includes("calc(100dvh - 56px)"), "desktop drawers stay inside the dynamic viewport");
 assert.equal(stylesSource.includes(".lc-controls {"), false, "dead tutorial styling is removed");
 
+const appSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+assert.ok(
+  appSource.indexOf('const [activeBedKey, setActiveBedKey] = useState("")')
+    < appSource.indexOf("authorityTrafficPausedRef.current ="),
+  "multiplayer state is initialized before the traffic-pause effect reads it",
+);
+
 console.log("immediate gameplay blocker tests passed");

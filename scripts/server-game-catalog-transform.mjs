@@ -5,21 +5,21 @@ const TUPLE_CATALOGS = [
     name: "BLOCKS",
     anchor: "export const BLOCKS = defineBlocks(",
     arrayAfterAnchor: true,
-    rows: 20,
+    rows: 21,
     widths: [8, 9],
     scalarPresentationIndexes: [1, 2, 3, 4],
   },
   {
     name: "BLOCK_ITEM_SPECS",
     anchor: "const BLOCK_ITEM_SPECS",
-    rows: 20,
+    rows: 21,
     widths: [3],
     scalarPresentationIndexes: [1, 2],
   },
   {
     name: "BASIC_ITEM_SPECS",
     anchor: "const BASIC_ITEM_SPECS",
-    rows: 11,
+    rows: 12,
     widths: [6],
     scalarPresentationIndexes: [1, 2, 3, 4, 5],
   },
@@ -70,7 +70,7 @@ const TUPLE_CATALOGS = [
 ];
 
 const OBJECT_CATALOGS = [
-  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 22 },
+  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 24 },
   { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 6 },
 ];
 

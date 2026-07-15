@@ -22,17 +22,36 @@ async function findLakebedEsbuild() {
     const lakebedPath = join(cacheRoot, entry.name, "node_modules", "lakebed", "package.json");
     try {
       await access(lakebedPath);
-      candidates.push({ esbuildPath, modifiedAt: (await stat(esbuildPath)).mtimeMs });
+      candidates.push({
+        esbuildPath,
+        lakebedBuildPath: join(cacheRoot, entry.name, "node_modules", "lakebed", "dist", "cli", "build.js"),
+        modifiedAt: (await stat(esbuildPath)).mtimeMs,
+      });
     } catch {
       // This npx cache entry is unrelated or incomplete.
     }
   }
   candidates.sort((left, right) => right.modifiedAt - left.modifiedAt);
   if (!candidates[0]) throw new Error("Run `npx lakebed build` once so Lakebed's bundled compiler is available.");
-  return candidates[0].esbuildPath;
+  return candidates[0];
 }
 
-const { build } = await import(pathToFileURL(await findLakebedEsbuild()).href);
+async function enableCompactLakebedBuild(buildPath) {
+  const source = await readFile(buildPath, "utf8");
+  if (source.includes("LAKEBED_COMPACT_BUNDLE")) return;
+  const needle = '        sourcemap: "inline",';
+  const matches = source.split(needle).length - 1;
+  if (matches !== 2) throw new Error("Lakebed's build layout changed; compact production patch needs review.");
+  await writeFile(buildPath, source.replaceAll(
+    needle,
+    '        sourcemap: process.env.LAKEBED_COMPACT_BUNDLE === "1" ? false : "inline",\n'
+      + '        minify: process.env.LAKEBED_COMPACT_BUNDLE === "1",',
+  ));
+}
+
+const lakebedRuntime = await findLakebedEsbuild();
+await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
+const { build } = await import(pathToFileURL(lakebedRuntime.esbuildPath).href);
 
 function minifyCssText(css) {
   return css

@@ -32,6 +32,7 @@ export const BLOCK = {
   GLASS: 19,
   GOLD_ORE: 20,
   DIAMOND_ORE: 21,
+  TNT: 22,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -41,6 +42,11 @@ export interface WorldEdit {
   y: number;
   z: number;
   block: BlockId;
+}
+
+/** One locally resolved blast edit. `previousBlock` is evidence for particles/save state, not a mining drop. */
+export interface LocalExplosionEdit extends WorldEdit {
+  previousBlock: BlockId;
 }
 
 export interface PlayerPose {
@@ -227,6 +233,10 @@ export interface VoxelEngine {
   setPlayerProjectiles(projectiles: readonly PlayerProjectileVisual[]): void;
   /** Local-only visual feedback; callers should use this after authoritative confirmation. */
   spawnBlockParticles(event: Readonly<BlockParticleEvent>): number;
+  /** Marks a still-rendered TNT block as fused so local mining cannot cancel or duplicate it. */
+  setPrimedTnt(x: number, y: number, z: number, primed: boolean): boolean;
+  /** Resolves one bounded local-only TNT crater in a single mesh rebuild. */
+  explodeTnt(x: number, y: number, z: number): LocalExplosionEdit[];
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
   setRespawnPoint(point: RespawnPoint): void;
   /** Reconciles local prediction to one Lakebed-authoritative health value. */

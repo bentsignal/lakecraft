@@ -16,11 +16,11 @@ import {
   type WorldChunkEditInput,
 } from "../shared/worldChunks.ts";
 
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 22, "the palette uses 22 of 31 available five-bit codes");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 23, "the palette uses 23 of 31 available five-bit codes");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
-  WORLD_CHUNK_BLOCK_TYPES.slice(-6),
-  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore"],
+  WORLD_CHUNK_BLOCK_TYPES.slice(-7),
+  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt"],
   "new persisted block codes append without renumbering deployed materials",
 );
 
@@ -174,6 +174,7 @@ const highestCode = createWorldChunkSnapshot("0:0", [
   { x: 2, y: 1, z: 0, blockType: "glass" },
   { x: 3, y: 1, z: 0, blockType: "gold_ore" },
   { x: 4, y: 1, z: 0, blockType: "diamond_ore" },
+  { x: 5, y: 1, z: 0, blockType: "tnt" },
 ]);
 assert.equal(highestCode.ok, true);
 if (highestCode.ok) {
@@ -181,7 +182,7 @@ if (highestCode.ok) {
   assert.equal(decoded.ok, true);
   if (decoded.ok) assert.deepEqual(
     decoded.edits.map(({ blockType }) => blockType),
-    ["cobblestone", "sand", "glass", "gold_ore", "diamond_ore"],
+    ["cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt"],
   );
 }
 

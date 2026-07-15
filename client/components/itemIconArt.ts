@@ -79,6 +79,7 @@ function decorateBlock(g: Grid, id: BlockId): void {
     case "crafting_table": box(g,4,4,3,2,"d"); box(g,9,4,3,2,"d"); box(g,4,9,3,2,"a"); box(g,10,9,2,2,"a"); break;
     case "furnace": box(g,4,8,4,3,"d"); box(g,9,7,3,3,"o"); dots(g,"h",[[5,8],[6,8]]); break;
     case "chest": box(g,3,8,10,1,"d"); box(g,7,7,2,4,"h"); break;
+    case "tnt": box(g,3,7,10,3,"h"); box(g,4,8,8,1,"o"); dots(g,"a",[[5,2],[10,3],[4,5],[11,11],[6,12]]); break;
     default: dots(g,"a",[[6,3],[10,5],[4,9],[10,10]]);
   }
 }
@@ -139,6 +140,7 @@ function material(g: Grid, id: ItemId): Palette {
   else if (id === "leather") { box(g,4,2,8,12,"o"); box(g,2,5,12,6,"o"); box(g,4,3,7,10,"m"); box(g,3,6,10,4,"m"); dots(g,"l",[[5,4],[6,4],[4,7],[9,5]]); dots(g,"d",[[10,10],[11,8],[6,12]]); }
   else if (id === "wool") { for (const [x,y] of [[3,5],[6,3],[9,3],[11,6],[8,8],[4,9]] as const) box(g,x,y,4,4,"o"); for (const [x,y] of [[4,5],[7,4],[10,6],[7,8],[4,9]] as const) box(g,x,y,3,3,"m"); dots(g,"l",[[5,5],[8,4],[11,6],[5,9]]); }
   else if (["coal","raw_iron","raw_gold"].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }
+  else if (id === "gunpowder") { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[3,7],[13,7],[4,11],[11,12],[7,14],[9,14]]); box(g,5,4,6,9,"m"); box(g,3,7,10,4,"m"); dots(g,"l",[[6,4],[9,5],[4,7],[7,9],[11,8],[6,12]]); dots(g,"d",[[8,3],[5,6],[10,10],[8,13],[12,7]]); }
   else if (id === "iron_ingot" || id === "gold_ingot") { box(g,3,5,10,7,"o"); box(g,5,3,6,2,"o"); box(g,4,5,8,5,"m"); box(g,5,4,6,2,"l"); box(g,5,9,7,2,"d"); }
   else if (id === "diamond") { box(g,5,2,6,2,"o"); box(g,3,4,10,4,"o"); box(g,5,8,6,3,"o"); box(g,7,11,2,3,"o"); box(g,5,4,6,3,"m"); box(g,6,7,4,4,"m"); dots(g,"l",[[6,3],[7,3],[5,5],[6,5],[7,7]]); dots(g,"d",[[10,6],[9,9],[8,12]]); }
   else { box(g,4,4,8,8,"o"); box(g,5,5,6,6,"m"); dots(g,"l",[[6,5],[7,5]]); dots(g,"d",[[10,9],[9,10]]); }

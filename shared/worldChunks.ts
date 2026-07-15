@@ -34,6 +34,7 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   /** Append-only palette: v1/v2 and deployed v3 codes must never be renumbered. */
   "gold_ore",
   "diamond_ore",
+  "tnt",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];

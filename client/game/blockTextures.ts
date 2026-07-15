@@ -71,6 +71,11 @@ export function blockTextureForFace(block: BlockId, face: BlockFace): TextureAtl
     if (face === "top") return "furnace_top";
     return "furnace_side";
   }
+  if (block === BLOCK.TNT) {
+    if (face === "top") return "tnt_top";
+    if (face === "bottom") return "tnt_bottom";
+    return "tnt_side";
+  }
   return UNIFORM_BLOCK_TEXTURES[block] ?? null;
 }
 

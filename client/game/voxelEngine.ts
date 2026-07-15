@@ -75,6 +75,7 @@ import {
   BLOCK,
   type BlockId,
   type BlockTarget,
+  type LocalExplosionEdit,
   type PlayerPose,
   type RangedShotIntent,
   type RespawnPoint,
@@ -84,6 +85,10 @@ import {
   type WorldEdit,
 } from "./types.ts";
 import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
+import {
+  CREEPER_EXPLOSION_RADIUS,
+  enumerateCreeperExplosionBlocks,
+} from "../../shared/creeperExplosion.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
 import {
@@ -112,6 +117,36 @@ export const MAX_LOOK_PITCH = 1.52;
 export const STREAMING_MESH_REBUILDS_PER_FRAME = 1;
 export const PLAYER_RANGED_REACH = 32;
 export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
+
+const LOCAL_EXPLOSION_PROTECTED_BLOCKS = new Set<BlockId>([
+  BLOCK.AIR,
+  BLOCK.CHEST,
+  BLOCK.FURNACE,
+  BLOCK.BED,
+  BLOCK.DOOR_CLOSED,
+  BLOCK.DOOR_OPEN,
+]);
+
+/** Pure, bounded local crater plan shared by the engine and focused tests. */
+export function planLocalTntExplosion(
+  x: number,
+  y: number,
+  z: number,
+  readBlock: (x: number, y: number, z: number) => BlockId,
+): LocalExplosionEdit[] {
+  if (![x, y, z].every(Number.isSafeInteger)) return [];
+  const cells = enumerateCreeperExplosionBlocks({
+    center: { x: x + 0.5, y, z: z + 0.5 },
+    radius: CREEPER_EXPLOSION_RADIUS,
+  });
+  const edits: LocalExplosionEdit[] = [];
+  for (const cell of cells) {
+    const previousBlock = readBlock(cell.x, cell.y, cell.z);
+    if (LOCAL_EXPLOSION_PROTECTED_BLOCKS.has(previousBlock)) continue;
+    edits.push({ x: cell.x, y: cell.y, z: cell.z, block: BLOCK.AIR, previousBlock });
+  }
+  return edits;
+}
 
 /**
  * Reconstructs one deterministic terrain chunk and reapplies every remembered
@@ -331,6 +366,7 @@ const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.GLASS]: [0.63, 0.84, 0.86],
   [BLOCK.GOLD_ORE]: [0.78, 0.64, 0.17],
   [BLOCK.DIAMOND_ORE]: [0.24, 0.78, 0.76],
+  [BLOCK.TNT]: [0.72, 0.16, 0.12],
 };
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
@@ -541,6 +577,7 @@ export function tryInteractBlock(
       && target.block.block !== BLOCK.BED
       && target.block.block !== BLOCK.CRAFTING_TABLE
       && target.block.block !== BLOCK.FURNACE
+      && target.block.block !== BLOCK.TNT
     )
     || !onInteractBlock
   ) return false;
@@ -915,6 +952,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     pitch: -0.08,
   };
   const blocks = new Map<string, BlockId>();
+  const primedTnt = new Set<string>();
   const torchLights = new Map<string, TorchLightPosition>();
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const chunkBlocks = new Map<string, Set<string>>();
@@ -2102,6 +2140,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (miningTimer) return;
       if (options.canEditBlock?.() === false) return;
       const mined = { ...target.block };
+      if (primedTnt.has(blockKey(mined.x, mined.y, mined.z))) return;
       const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
       options.onHandAction?.("mine");
       if (duration === 0) {
@@ -2239,6 +2278,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       loadedChunkKeys.clear();
       chunkBlocks.clear();
       blocks.clear();
+      primedTnt.clear();
       torchLights.clear();
       remotePlayerRenderer.destroy();
       droppedItemRenderer.destroy();
@@ -2351,6 +2391,33 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     spawnBlockParticles(event) {
       return blockParticles.spawn(event);
+    },
+    setPrimedTnt(x, y, z, primed) {
+      const key = blockKey(x, y, z);
+      if (primed) {
+        if (getBlock(x, y, z) !== BLOCK.TNT) return false;
+        primedTnt.add(key);
+      } else {
+        primedTnt.delete(key);
+      }
+      return true;
+    },
+    explodeTnt(x, y, z) {
+      const sourceKey = blockKey(x, y, z);
+      if (!primedTnt.has(sourceKey) || getBlock(x, y, z) !== BLOCK.TNT) return [];
+      primedTnt.delete(sourceKey);
+      const edits = planLocalTntExplosion(x, y, z, getBlock);
+      for (const edit of edits) {
+        rememberWorldEdit(edit);
+        setBlock(edit.x, edit.y, edit.z, BLOCK.AIR);
+      }
+      if (edits.length) {
+        rebuildWorldChunks(dirtyChunkKeysForEdits(edits).filter((key) => loadedChunkKeys.has(key)));
+        for (const edit of edits.slice(0, 12)) {
+          blockParticles.spawn({ action: "break", block: edit.previousBlock, x: edit.x, y: edit.y, z: edit.z });
+        }
+      }
+      return edits;
     },
     setDayNightClock(config, nextServerTimeOffsetMs) {
       serverTimeOffsetMs = applyDayNightClockUpdate(

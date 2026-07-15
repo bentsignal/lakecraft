@@ -322,7 +322,7 @@ function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -345,6 +345,7 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.DOOR_OPEN]: "door_open",
   [BLOCK.BED]: "bed",
   [BLOCK.LADDER]: "ladder",
+  [BLOCK.TNT]: "tnt",
 };
 
 const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
@@ -371,6 +372,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   door_open: BLOCK.DOOR_OPEN,
   bed: BLOCK.BED,
   ladder: BLOCK.LADDER,
+  tnt: BLOCK.TNT,
 };
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
@@ -395,6 +397,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.DOOR_OPEN]: "door",
   [BLOCK.BED]: "bed",
   [BLOCK.LADDER]: "ladder",
+  [BLOCK.TNT]: "tnt",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -418,11 +421,26 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   door: BLOCK.DOOR_CLOSED,
   bed: BLOCK.BED,
   ladder: BLOCK.LADDER,
+  tnt: BLOCK.TNT,
 };
 
 type WorldChunksQueryResult =
-  | { ok: true; chunks: Array<{ chunkKey: string; snapshotJson: string; revision: string; updatedAt: string }> }
-  | { ok: false; reason: "invalid_chunk_keys" | "too_many_chunks"; chunks: [] };
+  | {
+      ok: true;
+      chunks: Array<{ chunkKey: string; snapshotJson: string; revision: string; updatedAt: string }>;
+      tntFuses: Array<{
+        eventId: string;
+        ignitionId: string;
+        x: number;
+        y: number;
+        z: number;
+        ignitedAt: number;
+        dueAt: number;
+        claim: { eventId: string; ignitionId: string } | null;
+      }>;
+      serverNow: number;
+    }
+  | { ok: false; reason: "invalid_chunk_keys" | "too_many_chunks"; chunks: []; tntFuses: []; serverNow: number };
 
 type PendingChestTransfer = { requestJson: string; transportFailures: number };
 
@@ -495,6 +513,13 @@ function createCombatOperationId(): string {
     ? globalThis.crypto.randomUUID().replaceAll("-", "")
     : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
   return `attack_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
+}
+
+function createTntOperationId(): string {
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replaceAll("-", "")
+    : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36).padEnd(16, "0");
+  return `tntignite_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
 }
 
 async function retryExactLakebedMutation<T>(perform: () => Promise<T>): Promise<T> {
@@ -681,6 +706,24 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     victims?: Array<{ userId: string; damage: number; killed: boolean }>;
     serverNow: number;
   }>("claimCreeperExplosion");
+  const igniteTnt = useMutation<[requestJson: string], {
+    ok: boolean;
+    reason?: string;
+    replayed?: boolean;
+    fuse?: { eventId: string; ignitionId: string; x: number; y: number; z: number; ignitedAt: number; dueAt: number };
+    serverNow: number;
+  }>("igniteTnt");
+  const claimTntExplosion = useMutation<[requestJson: string], {
+    ok: boolean;
+    reason?: string;
+    retryAfterMs?: number;
+    replayed?: boolean;
+    eventId?: string;
+    center?: { x: number; y: number; z: number };
+    destroyedBlocks?: number;
+    victims?: Array<{ userId: string; damage: number; killed: boolean }>;
+    serverNow: number;
+  }>("claimTntExplosion");
   const attackPlayer = useMutation<[requestJson: string], {
     ok: boolean;
     reason?: string;
@@ -735,6 +778,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const pendingWorldBlockEditRef = useRef<PendingWorldBlockEdit | null>(null);
   const worldChunkRevisionRef = useRef(new Map<string, string>());
   const authoritativeWorldEditRef = useRef(new Map<string, EngineWorldEdit>());
+  const worldEventsRef = useRef<WorldEdit[]>([]);
   const latestSavedInventoryRef = useRef<PersistedInventory | null | undefined>(undefined);
   const activeWorkstationRef = useRef<{ kind: "crafting_table" | "furnace"; position: WorkstationPosition } | null>(null);
   const toastCounter = useRef(0);
@@ -752,6 +796,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const mobDamageClaimsRef = useRef(new Set<string>());
   const creeperFuseCuesRef = useRef(new Set<string>());
   const creeperExplosionClaimsRef = useRef(new Set<string>());
+  const tntFuseCuesRef = useRef(new Set<string>());
+  const tntExplosionClaimsRef = useRef(new Set<string>());
+  const tntClaimTimersRef = useRef(new Map<string, number>());
+  const tntIgnitionBusyRef = useRef(false);
   const realtimePresenceRef = useRef(false);
   const respawnRequestInFlightRef = useRef(false);
   const respawnLeaseTransitionRef = useRef(false);
@@ -778,6 +826,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [respawnPoint, setRespawnPoint] = useState<PlayerRespawnPoint | null>(null);
   const [hunger, setHunger] = useState(MAX_HUNGER);
   const [selectedHotbar, setSelectedHotbar] = useState(2);
+  worldEventsRef.current = worldEvents;
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [furnaceOpen, setFurnaceOpen] = useState(false);
@@ -815,6 +864,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [chestInventory, setChestInventory] = useState<Inventory>(() => createEmptyInventory(CHEST_SLOT_COUNT));
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
+  const [activeBedKey, setActiveBedKey] = useState("");
 
   useEffect(() => {
     appliedOwnCombatHealthRef.current = null;
@@ -838,7 +888,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey);
   }, [transportForeground, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
   const [chestRetryAvailable, setChestRetryAvailable] = useState(false);
-  const [activeBedKey, setActiveBedKey] = useState("");
   const [sleepBusy, setSleepBusy] = useState(false);
   const [sleepStatus, setSleepStatus] = useState("Rest until every active explorer is in bed, then Lakebed will move the shared clock to morning.");
 
@@ -1894,6 +1943,39 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         },
         onInteractBlock: (target) => {
           const key = blockCoordinateKey(target.block.x, target.block.y, target.block.z);
+          if (target.block.block === BLOCK.TNT) {
+            if (inventoryRef.current[selectedRef.current]?.itemId !== "torch") {
+              notify("Torch required", "Hold a torch and use it on TNT to light the fuse.", "warning");
+              return true;
+            }
+            if (tntIgnitionBusyRef.current) return true;
+            const placed = worldEventsRef.current.find((row) => row.coordKey === key && row.blockType === "tnt");
+            if (!placed) {
+              notify("TNT is still settling", "Wait for Lakebed to confirm this block before lighting it.", "warning");
+              return true;
+            }
+            tntIgnitionBusyRef.current = true;
+            const request = {
+              operationId: createTntOperationId(),
+              x: target.block.x,
+              y: target.block.y,
+              z: target.block.z,
+              blockInstanceToken: `${placed.id}:${placed.updatedAt}`,
+            };
+            void flushInventoryActions().then((flushed) => {
+              if (!flushed) throw new Error("inventory_action_pending");
+              return retryExactLakebedMutation(() => igniteTnt(JSON.stringify(request)));
+            }).then((result) => {
+              setConnected(result.ok);
+              if (result.ok && result.fuse) {
+                tntFuseCuesRef.current.add(result.fuse.eventId);
+                audioRef.current?.play("creeperFuse", { seed: result.fuse.eventId, intensity: 0.9 });
+              } else {
+                notify("TNT did not ignite", result.reason === "already_primed" ? "That fuse is already burning." : "Lakebed rejected the ignition.", "warning");
+              }
+            }).catch(() => setConnected(false)).finally(() => { tntIgnitionBusyRef.current = false; });
+            return true;
+          }
           closeInventory();
           setChatOpen(false);
           exitPointerLockForUi();
@@ -1932,6 +2014,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setMobIds(engine.getMobIds());
       engine.start();
       return () => {
+        for (const timer of tntClaimTimersRef.current.values()) window.clearTimeout(timer);
+        tntClaimTimersRef.current.clear();
         if (respawnTimerRef.current !== null) {
           window.clearTimeout(respawnTimerRef.current);
           respawnTimerRef.current = null;
@@ -2063,6 +2147,43 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       scheduleAuthorizedRespawn();
     }
   }, [playerCombatResult, inWorld, auth.userId]);
+
+  useEffect(() => {
+    if (!inWorld || !worldChunks?.ok) return;
+    for (const fuse of worldChunks.tntFuses) {
+      if (!tntFuseCuesRef.current.has(fuse.eventId)) {
+        if (tntFuseCuesRef.current.size >= 64) tntFuseCuesRef.current.clear();
+        tntFuseCuesRef.current.add(fuse.eventId);
+        audioRef.current?.play("creeperFuse", { seed: fuse.eventId, intensity: 0.9 });
+      }
+      if (!fuse.claim || tntExplosionClaimsRef.current.has(fuse.eventId)) continue;
+      tntExplosionClaimsRef.current.add(fuse.eventId);
+      const delay = Math.max(0, fuse.dueAt - worldChunks.serverNow + 50);
+      const timer = window.setTimeout(() => {
+        tntClaimTimersRef.current.delete(fuse.eventId);
+        void claimTntExplosion(JSON.stringify(fuse.claim)).then((result) => {
+          setConnected(result.ok);
+          if (!result.ok) {
+            tntExplosionClaimsRef.current.delete(fuse.eventId);
+            return;
+          }
+          audioRef.current?.play("explosion", { seed: fuse.eventId, intensity: 1 });
+          const ownHit = result.victims?.find((victim) => victim.userId === auth.userId);
+          if (ownHit?.damage) {
+            notify(
+              ownHit.killed ? "You blew up" : "TNT explosion",
+              ownHit.killed ? "Lakebed confirmed the blast was fatal." : `${ownHit.damage} health lost.`,
+              "warning",
+            );
+          }
+        }).catch(() => {
+          tntExplosionClaimsRef.current.delete(fuse.eventId);
+          setConnected(false);
+        });
+      }, delay);
+      tntClaimTimersRef.current.set(fuse.eventId, timer);
+    }
+  }, [worldChunks, inWorld, auth.userId]);
 
   useEffect(() => {
     if (worldChunks?.ok) {

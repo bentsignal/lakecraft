@@ -47,10 +47,10 @@ The original pixel-art workflow and exact regeneration command live in [TEXTURE_
 npx lakebed build . --target anonymous --json
 stage="$(mktemp -d)"
 node scripts/prepare-lakebed-deploy.mjs "$stage"
-npx lakebed deploy "$stage" --json
+LAKEBED_COMPACT_BUNDLE=1 npx lakebed deploy "$stage" --json
 ```
 
-The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB. It uses Lakebed's bundled compiler to flatten the client and server into two minified entrypoints, then still builds and deploys through `npx lakebed`. The helper carries `lakebed.json` into the release capsule so every update targets the claimed production deployment. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
+The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB. It uses Lakebed's bundled compiler to flatten the client and server into two minified entrypoints and enables Lakebed's opt-in compact production bundle, then still builds and deploys through `npx lakebed`. Normal `npx lakebed dev` builds keep their source maps. The helper carries `lakebed.json` into the release capsule so every update targets the claimed production deployment. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
 
 ## Multiplayer architecture
 

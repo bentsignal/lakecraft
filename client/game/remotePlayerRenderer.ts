@@ -205,6 +205,8 @@ function heldItemColor(itemId: ItemId): Vec3 {
     case "diamond": return COLORS.diamondItem;
     case "sand": return COLORS.sandItem;
     case "glass": return COLORS.glassItem;
+    case "gunpowder": return COLORS.coalItem;
+    case "tnt": return COLORS.redItem;
     case "coal": return COLORS.coalItem;
     case "wool": return COLORS.woolItem;
     case "bed":

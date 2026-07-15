@@ -31,7 +31,9 @@ import {
 } from "../../shared/game";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
+import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
 import { cycleHotbarIndex } from "../game/hotbarInput";
+import { createGameAudio } from "../game/audio";
 
 const SAVE_KEY = "lakecraft.singleplayer.v1";
 
@@ -43,6 +45,7 @@ const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.PLANKS]: "planks", [BLOCK.CRAFTING_TABLE]: "crafting_table", [BLOCK.FURNACE]: "furnace",
   [BLOCK.TORCH]: "torch", [BLOCK.CHEST]: "chest", [BLOCK.DOOR_CLOSED]: "door",
   [BLOCK.DOOR_OPEN]: "door", [BLOCK.BED]: "bed", [BLOCK.LADDER]: "ladder",
+  [BLOCK.TNT]: "tnt",
 };
 
 const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
@@ -51,6 +54,7 @@ const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   gold_ore: BLOCK.GOLD_ORE, diamond_ore: BLOCK.DIAMOND_ORE, log: BLOCK.WOOD, leaves: BLOCK.LEAVES,
   planks: BLOCK.PLANKS, crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE,
   torch: BLOCK.TORCH, chest: BLOCK.CHEST, door: BLOCK.DOOR_CLOSED, bed: BLOCK.BED, ladder: BLOCK.LADDER,
+  tnt: BLOCK.TNT,
 };
 
 type LocalSave = {
@@ -69,7 +73,7 @@ function loadLocalSave(): LocalSave {
     const value = JSON.parse(raw) as Partial<LocalSave>;
     const edits = Array.isArray(value.edits) ? value.edits.filter((edit): edit is WorldEdit => Boolean(
       edit && Number.isSafeInteger(edit.x) && Number.isSafeInteger(edit.y) && Number.isSafeInteger(edit.z)
-      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.DIAMOND_ORE,
+      && Number.isInteger(edit.block) && edit.block >= BLOCK.AIR && edit.block <= BLOCK.TNT,
     )).slice(-8_000) : [];
     return {
       inventory: normalizeInventory(value.inventory),
@@ -136,6 +140,11 @@ export function SinglePlayerApp() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const audio = createGameAudio({ maxVoices: 12 });
+    const unlockAudio = () => { void audio.unlock(); };
+    const fuseTimers = new Map<string, { interval: number; timeout: number }>();
+    window.addEventListener("pointerdown", unlockAudio, true);
+    window.addEventListener("keydown", unlockAudio, true);
     const engine = createVoxelEngine(canvas, {
       initialEdits: editsRef.current,
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
@@ -179,10 +188,48 @@ export function SinglePlayerApp() {
         return true;
       },
       onInteractBlock: (target) => {
-        if (target.block.block !== BLOCK.CRAFTING_TABLE) return false;
-        setCraftingContext("crafting_table");
-        setInventoryOpen(true);
-        document.exitPointerLock();
+        if (target.block.block === BLOCK.CRAFTING_TABLE) {
+          setCraftingContext("crafting_table");
+          setInventoryOpen(true);
+          document.exitPointerLock();
+          return true;
+        }
+        if (target.block.block !== BLOCK.TNT
+          || target.distance > TNT_IGNITION_REACH
+          || inventoryRef.current[selectedRef.current]?.itemId !== "torch") return false;
+        const { x, y, z } = target.block;
+        const key = `${x}:${y}:${z}`;
+        if (fuseTimers.has(key)) return true;
+        if (!engineRef.current?.setPrimedTnt(x, y, z, true)) return true;
+        audio.play("creeperFuse", { seed: key, intensity: 0.82 });
+        engineRef.current.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
+        setMessages((current) => [...current.slice(-2), {
+          id: `tnt-${key}`,
+          text: "TNT primed",
+          detail: "Four-second fuse — stand back.",
+          tone: "warning",
+        }]);
+        const interval = window.setInterval(() => {
+          engineRef.current?.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
+        }, 500);
+        const timeout = window.setTimeout(() => {
+          window.clearInterval(interval);
+          fuseTimers.delete(key);
+          const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
+          if (!edits.length) return;
+          const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
+          for (const edit of edits) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
+          editsRef.current = [...byCoordinate.values()].slice(-8_000);
+          persist();
+          audio.play("explosion", { seed: key, intensity: 1 });
+          setMessages((current) => [...current.slice(-2), {
+            id: `boom-${key}`,
+            text: "Boom!",
+            detail: `${edits.length} blocks destroyed locally.`,
+            tone: "warning",
+          }]);
+        }, TNT_FUSE_MS);
+        fuseTimers.set(key, { interval, timeout });
         return true;
       },
       onPoseChange: (pose) => {
@@ -192,7 +239,18 @@ export function SinglePlayerApp() {
     });
     engineRef.current = engine;
     engine.start();
-    return () => { engine.destroy(); engineRef.current = null; };
+    return () => {
+      for (const timer of fuseTimers.values()) {
+        window.clearInterval(timer.interval);
+        window.clearTimeout(timer.timeout);
+      }
+      fuseTimers.clear();
+      window.removeEventListener("pointerdown", unlockAudio, true);
+      window.removeEventListener("keydown", unlockAudio, true);
+      audio.destroy();
+      engine.destroy();
+      engineRef.current = null;
+    };
   }, []);
 
   useEffect(() => {

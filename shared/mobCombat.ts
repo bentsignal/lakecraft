@@ -1,5 +1,5 @@
 export type MobAuthorityKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper";
-export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow";
+export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow" | "gunpowder";
 
 export interface MobAuthorityDrop {
   itemId: MobAuthorityDropId;
@@ -133,9 +133,7 @@ export const MOB_AUTHORITY_DEFINITIONS: Readonly<Record<MobAuthorityKind, Author
   }),
   creeper: Object.freeze({
     maxHealth: 20,
-    // Gunpowder is added alongside authoritative explosions so combat cannot
-    // mint an item that the current inventory schema does not recognize.
-    drops: Object.freeze([]),
+    drops: Object.freeze([{ itemId: "gunpowder", minCount: 0, maxCount: 2, chance: 1 }]),
   }),
 });
 

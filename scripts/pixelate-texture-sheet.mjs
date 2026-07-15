@@ -318,6 +318,60 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "tnt_side") {
+    const dark = [102, 17, 17, 255];
+    const red = [187, 51, 34, 255];
+    const lightRed = [221, 68, 51, 255];
+    const paper = [238, 221, 187, 255];
+    const ink = [34, 34, 34, 255];
+    fill(red);
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
+        if (((x * 5 + y * 3) & 15) === 0) paint(x, y, lightRed);
+        if (x === 0 || x === 15) paint(x, y, dark);
+      }
+    }
+    for (let y = 5; y <= 10; y += 1) for (let x = 0; x < tileSize; x += 1) paint(x, y, paper);
+    // Chunky, legible T N T mark across the paper band.
+    for (const [x, y] of [
+      [1,6],[2,6],[3,6],[2,7],[2,8],[2,9],
+      [6,6],[6,7],[6,8],[6,9],[7,7],[8,8],[9,6],[9,7],[9,8],[9,9],
+      [12,6],[13,6],[14,6],[13,7],[13,8],[13,9],
+    ]) paint(x, y, ink);
+    return;
+  }
+
+  if (name === "tnt_top") {
+    const dark = [85, 17, 17, 255];
+    const red = [187, 51, 34, 255];
+    const light = [238, 85, 51, 255];
+    const fuse = [34, 34, 34, 255];
+    fill(red);
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
+        const radius = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        if (radius > 6) paint(x, y, dark);
+        else if (radius > 4 && ((x + y) & 1) === 0) paint(x, y, light);
+      }
+    }
+    for (const [x, y] of [[7,6],[8,6],[6,7],[7,7],[8,7],[9,7],[7,8],[8,8],[8,9]]) paint(x, y, fuse);
+    return;
+  }
+
+  if (name === "tnt_bottom") {
+    const dark = [102, 17, 17, 255];
+    const red = [170, 34, 34, 255];
+    const light = [204, 68, 51, 255];
+    fill(red);
+    for (let y = 0; y < tileSize; y += 1) {
+      for (let x = 0; x < tileSize; x += 1) {
+        if (x < 2 || x > 13 || y < 2 || y > 13) paint(x, y, dark);
+        else if (((x >> 1) + (y >> 1)) % 3 === 0) paint(x, y, light);
+      }
+    }
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 

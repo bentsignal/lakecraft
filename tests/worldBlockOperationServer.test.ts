@@ -23,7 +23,7 @@ assert.match(server, /worldChunks: table\(\{[\s\S]*?revision: string\(\)\.defaul
 assert.match(server, /inventories: table\(\{[\s\S]*?revision: string\(\)\.default\("0"\)/);
 assert.match(server, /worldBlockOperationReceipts: table\(\{[\s\S]*?\.index\("by_user_operation", \["userId", "operationId"\]\)[\s\S]*?\.index\("by_user_created", \["userId", "receiptCreatedAt"\]\)/);
 assert.match(server, /revision: storedRevision\(row\.revision\) \?\? "0"/);
-assert.match(server, /revision: "0", updatedAt: "0"/);
+assert.doesNotMatch(server, /missingChunkKeys|legacyRows|legacyEdits/, "prelaunch capsule has no migration-only world fallback");
 
 const receiptRead = editMutation.indexOf("ctx.db.worldBlockOperationReceipts");
 for (const laterRead of ["ctx.db.playerPresence", "ctx.db.inventories", "ctx.db.worldChunks", "ctx.db.worldEdits"]) {
@@ -49,13 +49,13 @@ assert.doesNotMatch(editMutation, /ctx\.db\.playerPresence\.update\(/, "block ed
 assert.match(editMutation, /effect\.inventoryChanged[\s\S]*?ctx\.db\.inventories\.update/);
 assert.match(editMutation, /effect\.kind,[\s\S]*?effect\.nextBlock/);
 assert.match(editMutation, /inventory: persistedInventory,[\s\S]*?currentChunkRevision: effect\.chunkRevision/);
-assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 7,
-  "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit/current furnace all fail closed on duplicates");
+assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 8,
+  "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit/primed TNT/current furnace all fail closed on duplicates");
 
 // Every pre-migration inventory writer and the legacy chunk writer now advances
 // a monotonic revision as well; authoritative writes use resolver revisions.
-assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 13,
-  "all atomic gameplay, ranged combat, survival, and respawn inventory writers advance revisions");
+assert.equal((server.match(/revision: incrementStoredRevision\(/g) ?? []).length, 15,
+  "all atomic gameplay, ranged combat, blast, survival, and respawn inventory writers advance revisions");
 assert.equal((editMutation.match(/revision: effect\.(?:chunk|inventory)Revision/g) ?? []).length, 2);
 
 const storedPresence = {

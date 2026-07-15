@@ -20,6 +20,7 @@ assert.ok(styles.includes("lc-held-voxel__face::after") && styles.includes("--lc
 assert.ok(styles.includes('data-block="diamond_ore"'), "ore texture rules retain selected ore identity");
 assert.ok(styles.includes('data-block="log"') && styles.includes("repeating-radial-gradient"), "logs receive bark sides and a ringed end face");
 assert.ok(styles.includes('data-block="glass"') && styles.includes("color-mix"), "glass has a distinct translucent presentation");
+assert.ok(styles.includes('data-block="tnt"') && styles.includes("repeating-conic-gradient"), "held TNT keeps its red charge cap and pale side band");
 assert.ok(styles.includes("height: clamp(150px,19vw,208px)"), "held cube remains large and responsive without unbounded viewport scaling");
 
 console.log("first-person held voxel cube checks passed");

@@ -171,6 +171,7 @@ export function planCreeperBlockDrops(
 ): Array<{ itemId: ItemId; count: number }> {
   const totals = new Map<ItemId, number>();
   for (const cell of destruction) {
+    if (cell.previousBlock === "tnt") continue;
     // A deterministic 30% survival roll mirrors Minecraft's lossy blast drops
     // while guaranteeing every spawned item came from one destroyed block.
     const roll = Number.parseInt(hashText(`${eventId}:${cell.coordKey}`), 36) % 10;

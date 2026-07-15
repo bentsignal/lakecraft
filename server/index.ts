@@ -68,6 +68,23 @@ import {
   type CreeperExplosionAuthority,
 } from "../shared/creeperExplosion.ts";
 import { naturalWorldBlockAt } from "../shared/worldTerrainAuthority.ts";
+import {
+  TNT_IGNITION_REACH,
+  TNT_MAX_ACTIVE_FUSES,
+  TNT_MAX_RECEIPTS,
+  TNT_RECEIPT_TTL_MS,
+  authorizeTntExplosion,
+  authorizeTntIgnition,
+  createTntFuse,
+  decideTntReceipt,
+  electTntExplosionClaimer,
+  normalizeStoredTntFuse,
+  tntExplosionFingerprint,
+  tntIgnitionFingerprint,
+  validateTntExplosionRequestJson,
+  validateTntIgnitionRequestJson,
+  type TntFuse,
+} from "../shared/tntAuthority.ts";
 import { writeMobMotionPoses } from "../shared/mobMotionAuthority.ts";
 import {
   addItem,
@@ -528,6 +545,38 @@ async function maintainRangedCombatReceipts(
   for (const receipt of stale) await db.rangedCombatReceipts.delete(receipt.id);
 }
 
+async function maintainTntIgnitionReceipts(
+  db: WriteDatabase,
+  userId: string,
+  committedId: string,
+  now: number,
+): Promise<void> {
+  const newest = await db.tntIgnitionReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(TNT_MAX_RECEIPTS + 8);
+  for (const row of newest.slice(TNT_MAX_RECEIPTS)) {
+    if (row.id !== committedId) await db.tntIgnitionReceipts.delete(row.id);
+  }
+  const stale = await db.tntIgnitionReceipts
+    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", String(now - TNT_RECEIPT_TTL_MS)))
+    .order("asc")
+    .take(8);
+  for (const row of stale) if (row.id !== committedId) await db.tntIgnitionReceipts.delete(row.id);
+}
+
+async function maintainTntExplosionReceipts(db: WriteDatabase, committedId: string, now: number): Promise<void> {
+  const newest = await db.tntExplosionReceipts.withIndex("by_created").order("desc").take(TNT_MAX_RECEIPTS + 8);
+  for (const row of newest.slice(TNT_MAX_RECEIPTS)) {
+    if (row.id !== committedId) await db.tntExplosionReceipts.delete(row.id);
+  }
+  const stale = await db.tntExplosionReceipts
+    .withIndex("by_created", (q) => q.lt("receiptCreatedAt", String(now - TNT_RECEIPT_TTL_MS)))
+    .order("asc")
+    .take(8);
+  for (const row of stale) if (row.id !== committedId) await db.tntExplosionReceipts.delete(row.id);
+}
+
 function rangedChargeFromRow(row: Record<string, unknown> | null): RangedChargeAuthority {
   const integer = (value: unknown, fallback = 0) => {
     const parsed = typeof value === "string" ? Number(value) : Number.NaN;
@@ -632,18 +681,9 @@ async function maintainWorldChunkSnapshot(
     .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
     .order("desc")
     .first();
-  let snapshot = existing && typeof existing.snapshotJson === "string"
+  const snapshot = existing && typeof existing.snapshotJson === "string"
     ? applyWorldChunkEdit(chunkKey, existing.snapshotJson, edit)
-    : null;
-  if (!snapshot?.ok) {
-    // First touch (or corrupt row recovery) safely folds every current legacy row
-    // for this chunk. Mutations are serialized, and the just-written row is included.
-    const legacyRows = await db.worldEdits.withIndex("by_edited").order("asc").collect();
-    const legacyEdits = legacyRows
-      .map((row) => databaseRowToChunkEdit(row))
-      .filter((row): row is WorldChunkEditInput => row !== null);
-    snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
-  }
+    : createWorldChunkSnapshot(chunkKey, [edit]);
   if (!snapshot.ok) throw new Error(`Unable to compact shared world chunk: ${snapshot.reason}`);
   const value = {
     chunkKey,
@@ -679,16 +719,9 @@ async function maintainWorldChunkSnapshots(
       .take(2);
     if (rows.length > 1) throw new Error("Duplicate shared world chunk state.");
     const existing = rows[0] ?? null;
-    let snapshot = existing && typeof existing.snapshotJson === "string"
+    const snapshot = existing && typeof existing.snapshotJson === "string"
       ? applyWorldChunkEdits(chunkKey, existing.snapshotJson, edits)
-      : null;
-    if (!snapshot?.ok) {
-      const legacyRows = await db.worldEdits.withIndex("by_edited").order("asc").collect();
-      const legacyEdits = legacyRows
-        .map((row) => databaseRowToChunkEdit(row))
-        .filter((row): row is WorldChunkEditInput => row !== null);
-      snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
-    }
+      : createWorldChunkSnapshot(chunkKey, edits);
     if (!snapshot.ok) throw new Error(`Unable to compact shared world chunk batch: ${snapshot.reason}`);
     const value = {
       chunkKey,
@@ -698,6 +731,208 @@ async function maintainWorldChunkSnapshots(
     if (existing) await db.worldChunks.update(existing.id, value);
     else await db.worldChunks.insert(value);
   }
+}
+
+type AppliedWorldExplosion =
+  | { ok: true; destroyedBlocks: number; drops: Array<{ itemId: ItemId; count: number }>; victims: Array<{ userId: string; damage: number; killed: boolean }> }
+  | { ok: false; reason: string };
+
+/** Shared bounded blast executor used by server-authorized non-mob explosives. */
+async function applyAuthoritativeWorldExplosion(
+  db: WriteDatabase,
+  input: Readonly<{
+    eventId: string;
+    sourceId: string;
+    center: { x: number; y: number; z: number };
+    yaw: number;
+    serverNow: number;
+  }>,
+): Promise<AppliedWorldExplosion> {
+  const authority: CreeperExplosionAuthority = {
+    mobId: input.sourceId,
+    epoch: 0,
+    checkpointRevision: 0,
+    fuseStartedTick: 1,
+    explosionTick: 16,
+    currentTick: 16,
+    center: input.center,
+    radius: CREEPER_EXPLOSION_RADIUS,
+  };
+  const presenceRows = await db.playerPresence
+    .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(input.serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+    .order("desc")
+    .take(64);
+  const activePlayers: Array<{ row: Record<string, unknown>; pose: CombatPose }> = [];
+  const seenPlayers = new Set<string>();
+  for (const row of presenceRows) {
+    if (seenPlayers.has(row.userId)) continue;
+    const heartbeatAt = /^\d{1,16}$/.test(row.heartbeatAt) ? Number(row.heartbeatAt) : Number.NaN;
+    const pose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+    if (row.online && pose && heartbeatAt <= input.serverNow + 5_000
+      && input.serverNow - heartbeatAt >= 0 && input.serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS) {
+      seenPlayers.add(row.userId);
+      activePlayers.push({ row, pose });
+    }
+  }
+  const blastCells = enumerateCreeperExplosionBlocks(authority).filter((cell) =>
+    cell.x >= WORLD_EDIT_MIN_XZ && cell.x <= WORLD_EDIT_MAX_XZ
+    && cell.z >= WORLD_EDIT_MIN_XZ && cell.z <= WORLD_EDIT_MAX_XZ
+    && cell.y >= WORLD_EDIT_MIN_Y && cell.y <= WORLD_EDIT_MAX_Y);
+  const potentialVictims = activePlayers
+    .map(({ row, pose }) => ({ row, pose, directDamage: resolveCreeperExplosionDamage(authority, pose) }))
+    .filter(({ directDamage }) => directDamage > 0)
+    .sort((left, right) => right.directDamage - left.directDamage
+      || (left.row.userId < right.row.userId ? -1 : left.row.userId > right.row.userId ? 1 : 0))
+    .slice(0, CREEPER_EXPLOSION_MAX_PLAYER_VICTIMS);
+  const probes = new Map(blastCells.map((cell) => [cell.coordKey, cell] as const));
+  for (const candidate of potentialVictims) {
+    for (const cell of creeperExplosionExposureCells(authority, candidate.pose)) probes.set(cell.coordKey, cell);
+  }
+  const blocks = new Map<string, BlockType>();
+  const groups = new Map<string, Array<{ x: number; y: number; z: number; coordKey: string }>>();
+  for (const cell of probes.values()) {
+    const chunkKey = worldEditChunkKey(cell.x, cell.z);
+    const group = groups.get(chunkKey);
+    if (group) group.push(cell);
+    else groups.set(chunkKey, [cell]);
+  }
+  if (groups.size > 4) return { ok: false, reason: "invalid_world_probe" };
+  for (const [chunkKey, group] of groups) {
+    const rows = await db.worldChunks.withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey)).order("desc").take(2);
+    if (rows.length > 1) return { ok: false, reason: "duplicate_world_state" };
+    if (rows.length === 0) {
+      for (const cell of group) blocks.set(cell.coordKey, naturalWorldBlockAt(cell.x, cell.y, cell.z));
+      continue;
+    }
+    const sampled = sampleWorldChunkSnapshot(chunkKey, rows[0].snapshotJson, group);
+    if (!sampled.ok || sampled.blocks.length !== group.length) return { ok: false, reason: "invalid_world_state" };
+    for (let index = 0; index < group.length; index += 1) {
+      const cell = group[index];
+      blocks.set(cell.coordKey, sampled.blocks[index] ?? naturalWorldBlockAt(cell.x, cell.y, cell.z));
+    }
+  }
+  const sourceCoordKey = `${Math.floor(input.center.x)}:${Math.floor(input.center.y)}:${Math.floor(input.center.z)}`;
+  const destruction = planCreeperTerrainDestruction(authority, (cell) => blocks.get(cell.coordKey) ?? "air")
+    .filter((cell) => cell.previousBlock !== "tnt" || cell.coordKey === sourceCoordKey);
+  const existingEdits = new Map<string, Record<string, unknown> | null>();
+  for (const cell of destruction) {
+    const rows = await db.worldEdits.withIndex("by_coord", (q) => q.eq("coordKey", cell.coordKey)).order("desc").take(2);
+    if (rows.length > 1) return { ok: false, reason: "duplicate_world_state" };
+    existingEdits.set(cell.coordKey, rows[0] ?? null);
+  }
+  const dropPlan = planCreeperBlockDrops(input.eventId, destruction);
+  const dropOwnerId = `world_${input.eventId}`;
+  const ownedDrops = await db.droppedItems
+    .withIndex("by_owner_expiry", (q) => q.eq("ownerUserId", dropOwnerId).gt("expiresAt", String(input.serverNow)))
+    .order("asc")
+    .take(65);
+  const dropRows: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
+  for (let index = 0; index < dropPlan.length; index += 1) {
+    if (!canCreateDroppedItem(ownedDrops.length + dropRows.length)) break;
+    const row = buildDroppedItemRow(
+      dropOwnerId,
+      `${input.eventId}_d${index}`,
+      dropPlan[index],
+      input.center,
+      input.yaw,
+      input.serverNow,
+    );
+    if (!row) return { ok: false, reason: "drop_plan_invalid" };
+    dropRows.push(row);
+  }
+  const victimPlans: Array<{
+    presence: Record<string, unknown>;
+    progress: Record<string, unknown>;
+    inventory: Record<string, unknown>;
+    inventoryValue: Record<string, unknown> | null;
+    combat: Record<string, unknown> | null;
+    combatValue: ReturnType<typeof storedPlayerCombatRow>;
+    result: { userId: string; damage: number; killed: boolean };
+  }> = [];
+  for (const candidate of potentialVictims) {
+    const exposure = sampleCreeperExplosionExposure(authority, candidate.pose, (cell) => blocks.get(cell.coordKey) ?? "air");
+    const rawDamage = resolveCreeperExplosionDamage(authority, candidate.pose, exposure);
+    if (rawDamage <= 0) continue;
+    const combatRows = await db.playerCombat.withIndex("by_user", (q) => q.eq("userId", candidate.row.userId)).order("desc").take(2);
+    const inventoryRows = await db.inventories.withIndex("by_user", (q) => q.eq("userId", candidate.row.userId)).order("desc").take(2);
+    if (combatRows.length > 1 || inventoryRows.length > 1) return { ok: false, reason: "duplicate_state" };
+    if (inventoryRows.length !== 1) continue;
+    const inventoryState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
+    if (!inventoryState.ok) return { ok: false, reason: "target_state_invalid" };
+    const previous = materializePlayerCombatState(
+      databaseRowToStoredPlayerCombat(combatRows[0] ?? null),
+      candidate.row.userId,
+      input.serverNow,
+    );
+    if (previous.health <= 0) continue;
+    const survival = advanceAuthoritativeSurvival({
+      hunger: inventoryState.state.hunger,
+      health: previous.health,
+      revision: previous.revision,
+      progress: candidate.row,
+      serverNow: input.serverNow,
+      activityHalfUnits: storedPresenceActivityHalfUnits(candidate.row),
+    });
+    if (survival.revisionExhausted || survival.revision >= Number.MAX_SAFE_INTEGER) {
+      return { ok: false, reason: "combat_revision_exhausted" };
+    }
+    const damage = mitigatedPlayerDamage(rawDamage, equippedArmorProtection(inventoryState.state.equipment));
+    const health = Math.max(0, survival.health - damage);
+    const armor = applyConfirmedArmorDamage(inventoryState.state.equipment);
+    victimPlans.push({
+      presence: candidate.row,
+      progress: survival.progress,
+      inventory: inventoryRows[0],
+      inventoryValue: survival.hungerChanged || armor.damaged.length > 0 ? {
+        userId: candidate.row.userId,
+        inventoryJson: JSON.stringify({ ...inventoryState.state, hunger: survival.hunger, equipment: armor.equipment }),
+        revision: incrementStoredRevision(inventoryRows[0].revision),
+      } : null,
+      combat: combatRows[0] ?? null,
+      combatValue: storedPlayerCombatRow({
+        ...previous,
+        health,
+        revision: survival.revision + 1,
+        deadUntil: health === 0 ? input.serverNow + PLAYER_RESPAWN_DELAY_MS : 0,
+        lastAttackAt: input.serverNow,
+        lastAttackerId: input.sourceId,
+      }),
+      result: { userId: candidate.row.userId, damage, killed: health === 0 },
+    });
+  }
+  const written: Record<string, unknown>[] = [];
+  for (const cell of destruction) {
+    const value = {
+      coordKey: cell.coordKey, x: String(cell.x), y: String(cell.y), z: String(cell.z),
+      blockType: "air", actorId: input.sourceId, editedAt: String(input.serverNow),
+    };
+    const existing = existingEdits.get(cell.coordKey);
+    const row = existing ? await db.worldEdits.update(existing.id, value) : await db.worldEdits.insert(value);
+    if (!row) throw new Error("Unable to persist authoritative explosion terrain.");
+    written.push(row);
+  }
+  await maintainWorldChunkSnapshots(db, written);
+  for (const row of dropRows) if (!await db.droppedItems.insert(row)) {
+    throw new Error("Unable to persist authoritative explosion drop.");
+  }
+  for (const plan of victimPlans) {
+    if (!await db.playerPresence.update(plan.presence.id, plan.progress)) {
+      throw new Error("Unable to persist authoritative blast survival.");
+    }
+    if (plan.inventoryValue && !await db.inventories.update(plan.inventory.id, plan.inventoryValue)) {
+      throw new Error("Unable to persist authoritative blast armor.");
+    }
+    const combatWrite = plan.combat
+      ? await db.playerCombat.update(plan.combat.id, plan.combatValue)
+      : await db.playerCombat.insert(plan.combatValue);
+    if (!combatWrite) throw new Error("Unable to persist authoritative blast damage.");
+  }
+  return {
+    ok: true,
+    destroyedBlocks: destruction.length,
+    drops: dropRows.map((row) => JSON.parse(row.itemJson) as { itemId: ItemId; count: number }),
+    victims: victimPlans.map((plan) => plan.result),
+  };
 }
 
 function databaseRowToStoredMobAuthority(row: Record<string, unknown> | null): StoredMobAuthorityState | null {
@@ -1284,6 +1519,44 @@ export default capsule({
       receiptCreatedAt: string()
     })
       .index("by_event", ["eventId"])
+      .index("by_created", ["receiptCreatedAt"]),
+
+    /** A placed TNT block becomes one sparse four-second fuse; no background timer writes are needed. */
+    primedTnt: table({
+      eventId: string(),
+      ignitionId: string(),
+      coordKey: string(),
+      x: string(),
+      y: string(),
+      z: string(),
+      blockInstanceToken: string(),
+      igniterUserId: string(),
+      ignitedAt: string(),
+      dueAt: string()
+    })
+      .index("by_event", ["eventId"])
+      .index("by_coord", ["coordKey"])
+      .index("by_due", ["dueAt"]),
+
+    /** User-scoped ignition retries cannot create two fuses for one action. */
+    tntIgnitionReceipts: table({
+      userId: string(),
+      operationId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_user_operation", ["userId", "operationId"])
+      .index("by_user_created", ["userId", "receiptCreatedAt"]),
+
+    /** Deployment-global explosion receipts settle competing nearby claimers exactly once. */
+    tntExplosionReceipts: table({
+      eventId: string(),
+      fingerprint: string(),
+      resultJson: string(),
+      receiptCreatedAt: string()
+    })
+      .index("by_event", ["eventId"])
       .index("by_created", ["receiptCreatedAt"])
   },
 
@@ -1293,10 +1566,10 @@ export default capsule({
     ),
 
     worldChunks: query(async (ctx, rawChunkKeys: string[]) => {
+      const serverNow = Date.now();
       const validation = validateVisibleWorldChunkKeys(rawChunkKeys);
-      if (!validation.ok) return { ok: false, reason: validation.reason, chunks: [] };
+      if (!validation.ok) return { ok: false, reason: validation.reason, chunks: [], tntFuses: [], serverNow };
       const chunks: Array<{ chunkKey: string; snapshotJson: string; revision: string; updatedAt: string }> = [];
-      const missingChunkKeys: string[] = [];
       for (const chunkKey of validation.chunkKeys) {
         const row = await ctx.db.worldChunks
           .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
@@ -1308,24 +1581,41 @@ export default capsule({
           revision: storedRevision(row.revision) ?? "0",
           updatedAt: row.updatedAt,
         });
-        else missingChunkKeys.push(chunkKey);
-      }
-      // Read-only compatibility for untouched pre-chunk data. The first later
-      // write persists the same compact snapshot, removing this fallback cost.
-      if (missingChunkKeys.length) {
-        const legacyRows = await ctx.db.worldEdits.withIndex("by_edited").order("asc").collect();
-        const legacyEdits = legacyRows
-          .map((row) => databaseRowToChunkEdit(row))
-          .filter((row): row is WorldChunkEditInput => row !== null);
-        for (const chunkKey of missingChunkKeys) {
-          const snapshot = createWorldChunkSnapshot(chunkKey, legacyEdits);
-          if (snapshot.ok && snapshot.editCount > 0) {
-            chunks.push({ chunkKey, snapshotJson: snapshot.snapshotJson, revision: "0", updatedAt: "0" });
-          }
-        }
       }
       chunks.sort((a, b) => a.chunkKey.localeCompare(b.chunkKey));
-      return { ok: true, chunks };
+      const visible = new Set(validation.chunkKeys);
+      const fuseRows = await ctx.db.primedTnt.withIndex("by_due").order("asc").take(TNT_MAX_ACTIVE_FUSES);
+      const fuses = fuseRows
+        .map((row) => ({ row, fuse: normalizeStoredTntFuse(row) }))
+        .filter((entry): entry is { row: typeof fuseRows[number]; fuse: TntFuse } =>
+          entry.fuse !== null && visible.has(worldEditChunkKey(entry.fuse.x, entry.fuse.z)));
+      let activePlayers: Array<{ userId: string; x: number; y: number; z: number; active: true }> = [];
+      if (fuses.length > 0) {
+        const presenceRows = await ctx.db.playerPresence
+          .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+          .order("desc")
+          .take(64);
+        activePlayers = presenceRows.flatMap((row) => {
+          const heartbeatAt = /^\d{1,16}$/.test(row.heartbeatAt) ? Number(row.heartbeatAt) : Number.NaN;
+          const pose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+          return row.online && pose && serverNow - heartbeatAt >= 0 && serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS
+            ? [{ userId: row.userId, x: pose.x, y: pose.y, z: pose.z, active: true as const }]
+            : [];
+        });
+      }
+      const tntFuses = fuses.map(({ fuse }) => ({
+        eventId: fuse.eventId,
+        ignitionId: fuse.ignitionId,
+        x: fuse.x,
+        y: fuse.y,
+        z: fuse.z,
+        ignitedAt: fuse.ignitedAt,
+        dueAt: fuse.dueAt,
+        claim: electTntExplosionClaimer(fuse, activePlayers) === ctx.auth.userId
+          ? { eventId: fuse.eventId, ignitionId: fuse.ignitionId }
+          : null,
+      }));
+      return { ok: true, chunks, tntFuses, serverNow };
     }),
 
     droppedItems: query(async (ctx, rawChunkKeys: string[]) => {
@@ -1868,6 +2158,12 @@ export default capsule({
         .take(2);
       if (currentEdits.length > 1) return { ok: false, reason: "duplicate_state" };
       const currentEdit = currentEdits[0] ?? null;
+      const primedRows = await ctx.db.primedTnt
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .order("desc")
+        .take(2);
+      if (primedRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (primedRows.length === 1) return { ok: false, reason: "block_primed" };
       const currentBlock = currentEdit
         ? currentEdit.blockType
         : naturalWorldBlockAt(request.x, request.y, request.z);
@@ -3776,6 +4072,192 @@ export default capsule({
       return result;
     }),
 
+    igniteTnt: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const request = validateTntIgnitionRequestJson(requestJson);
+      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      const fingerprint = tntIgnitionFingerprint(request);
+
+      // Exact retries settle before any mutable authority read.
+      const receiptRows = await ctx.db.tntIgnitionReceipts
+        .withIndex("by_user_operation", (q) => q
+          .eq("userId", ctx.auth.userId)
+          .eq("operationId", request.operationId))
+        .order("desc")
+        .take(2);
+      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const receiptDecision = decideTntReceipt(receiptRows[0]?.fingerprint ?? null, fingerprint);
+      if (receiptDecision === "operation_id_reused") {
+        return { ok: false, reason: "operation_id_reused", serverNow };
+      }
+      if (receiptDecision === "replay") {
+        try {
+          const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
+          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: "invalid_receipt", serverNow };
+        } catch {
+          return { ok: false, reason: "invalid_receipt", serverNow };
+        }
+      }
+
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (presenceRows.length !== 1) return { ok: false, reason: "active_presence_required", serverNow };
+      const pose = authoritativeCombatPose(presenceRows[0], ctx.auth.userId, serverNow);
+      if (!pose) return { ok: false, reason: "active_presence_required", serverNow };
+
+      const inventoryRows = await ctx.db.inventories
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .order("desc")
+        .take(2);
+      if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
+      const playerState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
+      if (!playerState.ok) return { ok: false, reason: "invalid_inventory", serverNow };
+      const heldItem = playerState.state.inventory[playerState.state.selectedHotbar]?.itemId ?? null;
+
+      const coordKey = `${request.x}:${request.y}:${request.z}`;
+      const worldRows = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .order("desc")
+        .take(2);
+      if (worldRows.length !== 1) return { ok: false, reason: "tnt_required", serverNow };
+      const activeAtCoordinate = await ctx.db.primedTnt
+        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .order("desc")
+        .take(2);
+      if (activeAtCoordinate.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const activeFuses = await ctx.db.primedTnt.withIndex("by_due").order("asc").take(TNT_MAX_ACTIVE_FUSES + 1);
+      if (activeFuses.length >= TNT_MAX_ACTIVE_FUSES && activeAtCoordinate.length === 0) {
+        return { ok: false, reason: "fuse_capacity", serverNow };
+      }
+      const blockInstanceToken = furnaceBlockInstanceToken(worldRows[0]);
+      if (!blockInstanceToken) return { ok: false, reason: "invalid_world_state", serverNow };
+      const authorization = authorizeTntIgnition(request, {
+        currentBlock: worldRows[0].blockType as BlockType,
+        blockInstanceToken,
+        withinReach: Math.hypot(
+          pose.x - (request.x + 0.5),
+          pose.y + 1.62 - (request.y + 0.5),
+          pose.z - (request.z + 0.5),
+        ) <= TNT_IGNITION_REACH,
+        heldItem,
+        activeFuseAtCoordinate: activeAtCoordinate.length === 1,
+      });
+      if (!authorization.ok) return { ok: false, reason: authorization.reason, serverNow };
+      const fuse = createTntFuse(request, ctx.auth.userId, serverNow);
+      if (!fuse) return { ok: false, reason: "invalid_fuse", serverNow };
+      const committedFuse = await ctx.db.primedTnt.insert({
+        eventId: fuse.eventId,
+        ignitionId: fuse.ignitionId,
+        coordKey: fuse.coordKey,
+        x: String(fuse.x),
+        y: String(fuse.y),
+        z: String(fuse.z),
+        blockInstanceToken: fuse.blockInstanceToken,
+        igniterUserId: fuse.igniterUserId,
+        ignitedAt: String(fuse.ignitedAt),
+        dueAt: String(fuse.dueAt),
+      });
+      if (!committedFuse) throw new Error("Unable to persist authoritative TNT fuse.");
+      const result = { ok: true, replayed: false, fuse, serverNow };
+      const committedReceipt = await ctx.db.tntIgnitionReceipts.insert({
+        userId: ctx.auth.userId,
+        operationId: request.operationId,
+        fingerprint,
+        resultJson: JSON.stringify(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      if (!committedReceipt) throw new Error("Unable to persist authoritative TNT ignition receipt.");
+      await maintainTntIgnitionReceipts(ctx.db, ctx.auth.userId, committedReceipt.id, serverNow);
+      return result;
+    }),
+
+    claimTntExplosion: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: "authentication_required", serverNow };
+      }
+      const request = validateTntExplosionRequestJson(requestJson);
+      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      const fingerprint = tntExplosionFingerprint(request);
+      const receiptRows = await ctx.db.tntExplosionReceipts
+        .withIndex("by_event", (q) => q.eq("eventId", request.eventId))
+        .order("desc")
+        .take(2);
+      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      const receiptDecision = decideTntReceipt(receiptRows[0]?.fingerprint ?? null, fingerprint);
+      if (receiptDecision === "operation_id_reused") {
+        return { ok: false, reason: "operation_id_reused", serverNow };
+      }
+      if (receiptDecision === "replay") {
+        try {
+          const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
+          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: "invalid_receipt", serverNow };
+        } catch {
+          return { ok: false, reason: "invalid_receipt", serverNow };
+        }
+      }
+
+      const fuseRows = await ctx.db.primedTnt
+        .withIndex("by_event", (q) => q.eq("eventId", request.eventId))
+        .order("desc")
+        .take(2);
+      if (fuseRows.length !== 1) return { ok: false, reason: "fuse_unavailable", serverNow };
+      const fuse = normalizeStoredTntFuse(fuseRows[0]);
+      if (!fuse) return { ok: false, reason: "invalid_fuse", serverNow };
+      const authorization = authorizeTntExplosion(request, fuse, serverNow);
+      if (!authorization.ok) return { ok: false, reason: authorization.reason, retryAfterMs: authorization.retryAfterMs, serverNow };
+
+      const presenceRows = await ctx.db.playerPresence
+        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .order("desc")
+        .take(64);
+      const activePlayers = presenceRows.flatMap((row) => {
+        const heartbeatAt = /^\d{1,16}$/.test(row.heartbeatAt) ? Number(row.heartbeatAt) : Number.NaN;
+        const pose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
+        return row.online && pose && heartbeatAt <= serverNow + 5_000
+          && serverNow - heartbeatAt >= 0 && serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS
+          ? [{ userId: row.userId, x: pose.x, y: pose.y, z: pose.z, active: true as const }]
+          : [];
+      });
+      if (electTntExplosionClaimer(fuse, activePlayers) !== ctx.auth.userId) {
+        return { ok: false, reason: "not_elected", serverNow };
+      }
+
+      const worldRows = await ctx.db.worldEdits
+        .withIndex("by_coord", (q) => q.eq("coordKey", fuse.coordKey))
+        .order("desc")
+        .take(2);
+      if (worldRows.length !== 1 || worldRows[0].blockType !== "tnt"
+        || furnaceBlockInstanceToken(worldRows[0]) !== fuse.blockInstanceToken) {
+        return { ok: false, reason: "block_replaced", serverNow };
+      }
+      const applied = await applyAuthoritativeWorldExplosion(ctx.db, {
+        eventId: fuse.eventId,
+        sourceId: `tnt:${fuse.eventId}`,
+        center: { x: fuse.x + 0.5, y: fuse.y, z: fuse.z + 0.5 },
+        yaw: 0,
+        serverNow,
+      });
+      if (!applied.ok) return { ...applied, serverNow };
+      const deleted = await ctx.db.primedTnt.delete(fuseRows[0].id);
+      if (!deleted) throw new Error("Unable to settle authoritative TNT fuse.");
+      const result = { ok: true, replayed: false, eventId: fuse.eventId, center: { x: fuse.x + 0.5, y: fuse.y, z: fuse.z + 0.5 }, ...applied, serverNow };
+      const committedReceipt = await ctx.db.tntExplosionReceipts.insert({
+        eventId: fuse.eventId,
+        fingerprint,
+        resultJson: JSON.stringify(result),
+        receiptCreatedAt: String(serverNow),
+      });
+      if (!committedReceipt) throw new Error("Unable to persist authoritative TNT explosion receipt.");
+      await maintainTntExplosionReceipts(ctx.db, committedReceipt.id, serverNow);
+      return result;
+    }),
+
     claimCreeperExplosion: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
@@ -3849,199 +4331,28 @@ export default capsule({
       );
       if (mobState.health <= 0) return { ok: false, reason: "mob_dead", serverNow };
 
-      const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+      const callerRows = await ctx.db.playerPresence
+        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
-        .take(64);
-      const activePlayers = presenceRows.flatMap((row) => {
-        const heartbeatAt = /^\d{1,16}$/.test(row.heartbeatAt) ? Number(row.heartbeatAt) : Number.NaN;
-        const playerPose = validatePresencePoseFields(row.x, row.y, row.z, row.yaw, row.pitch);
-        return row.online && playerPose && heartbeatAt <= serverNow + 5_000
-          && serverNow - heartbeatAt >= 0 && serverNow - heartbeatAt <= ACTIVE_PLAYER_WINDOW_MS
-          ? [{ row, pose: playerPose }]
-          : [];
-      });
-      const caller = activePlayers.find(({ row }) => row.userId === ctx.auth.userId);
+        .take(2);
+      const caller = callerRows.length === 1
+        ? authoritativeCombatPose(callerRows[0], ctx.auth.userId, serverNow)
+        : null;
       if (!caller || Math.hypot(
-        caller.pose.x - authority.center.x,
-        caller.pose.y - authority.center.y,
-        caller.pose.z - authority.center.z,
+        caller.x - authority.center.x,
+        caller.y - authority.center.y,
+        caller.z - authority.center.z,
       ) > CREEPER_EXPLOSION_CALLER_RANGE) {
         return { ok: false, reason: "active_nearby_presence_required", serverNow };
       }
-
-      const blastCells = enumerateCreeperExplosionBlocks(authority).filter((cell) =>
-        cell.x >= WORLD_EDIT_MIN_XZ && cell.x <= WORLD_EDIT_MAX_XZ
-        && cell.z >= WORLD_EDIT_MIN_XZ && cell.z <= WORLD_EDIT_MAX_XZ
-        && cell.y >= WORLD_EDIT_MIN_Y && cell.y <= WORLD_EDIT_MAX_Y);
-      const potentialVictims = activePlayers
-        .map(({ row, pose: targetPose }) => ({
-          row,
-          pose: targetPose,
-          directDamage: resolveCreeperExplosionDamage(authority, targetPose),
-        }))
-        .filter((candidate) => candidate.directDamage > 0)
-        .sort((left, right) => right.directDamage - left.directDamage
-          || (left.row.userId < right.row.userId ? -1 : left.row.userId > right.row.userId ? 1 : 0))
-        .slice(0, CREEPER_EXPLOSION_MAX_PLAYER_VICTIMS);
-      const probeCells = new Map(blastCells.map((cell) => [cell.coordKey, cell] as const));
-      for (const candidate of potentialVictims) {
-        for (const cell of creeperExplosionExposureCells(authority, candidate.pose)) {
-          if (cell.x >= WORLD_EDIT_MIN_XZ && cell.x <= WORLD_EDIT_MAX_XZ
-            && cell.z >= WORLD_EDIT_MIN_XZ && cell.z <= WORLD_EDIT_MAX_XZ
-            && cell.y >= WORLD_EDIT_MIN_Y && cell.y <= WORLD_EDIT_MAX_Y) probeCells.set(cell.coordKey, cell);
-        }
-      }
-      const cells = [...probeCells.values()];
-      const blockMap = new Map<string, BlockType>();
-      const cellGroups = new Map<string, typeof cells>();
-      for (const cell of cells) {
-        const chunkKey = worldEditChunkKey(cell.x, cell.z);
-        const group = cellGroups.get(chunkKey);
-        if (group) group.push(cell);
-        else cellGroups.set(chunkKey, [cell]);
-      }
-      if (cellGroups.size > 4) return { ok: false, reason: "invalid_world_probe", serverNow };
-      for (const [chunkKey, group] of cellGroups) {
-        const chunkRows = await ctx.db.worldChunks
-          .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
-          .order("desc")
-          .take(2);
-        if (chunkRows.length > 1) return { ok: false, reason: "duplicate_world_state", serverNow };
-        if (chunkRows.length === 0) {
-          for (const cell of group) blockMap.set(cell.coordKey, naturalWorldBlockAt(cell.x, cell.y, cell.z));
-        } else {
-          const sampled = sampleWorldChunkSnapshot(chunkKey, chunkRows[0].snapshotJson, group);
-          if (!sampled.ok || sampled.blocks.length !== group.length) {
-            return { ok: false, reason: "invalid_world_state", serverNow };
-          }
-          for (let index = 0; index < group.length; index += 1) {
-            blockMap.set(group[index].coordKey, sampled.blocks[index] ?? naturalWorldBlockAt(
-              group[index].x,
-              group[index].y,
-              group[index].z,
-            ));
-          }
-        }
-      }
-      const destruction = planCreeperTerrainDestruction(authority, (cell) => blockMap.get(cell.coordKey) ?? "air");
-      const existingEdits = new Map<string, Record<string, unknown> | null>();
-      for (const cell of destruction) {
-        const rows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq("coordKey", cell.coordKey))
-          .order("desc")
-          .take(2);
-        if (rows.length > 1) return { ok: false, reason: "duplicate_world_state", serverNow };
-        existingEdits.set(cell.coordKey, rows[0] ?? null);
-      }
-      const dropPlan = planCreeperBlockDrops(authorization.eventId, destruction);
-      const dropOwnerId = `world_${request.mobId}`;
-      const activeExplosionDrops = await ctx.db.droppedItems
-        .withIndex("by_owner_expiry", (q) => q
-          .eq("ownerUserId", dropOwnerId)
-          .gt("expiresAt", String(serverNow)))
-        .order("asc")
-        .take(65);
-      const explosionDropRows: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
-      for (let index = 0; index < dropPlan.length; index += 1) {
-        if (!canCreateDroppedItem(activeExplosionDrops.length + explosionDropRows.length)) break;
-        const row = buildDroppedItemRow(
-          dropOwnerId,
-          `${authorization.eventId}_d${index}`,
-          dropPlan[index],
-          authority.center,
-          pose.yaw,
-          serverNow,
-        );
-        if (!row) return { ok: false, reason: "drop_plan_invalid", serverNow };
-        explosionDropRows.push(row);
-      }
-
-      const victimCandidates = potentialVictims
-        .map(({ row, pose: targetPose }) => ({
-          row,
-          pose: targetPose,
-          rawDamage: resolveCreeperExplosionDamage(
-            authority,
-            targetPose,
-            sampleCreeperExplosionExposure(authority, targetPose, (cell) => blockMap.get(cell.coordKey) ?? "air"),
-          ),
-        }))
-        .filter((candidate) => candidate.rawDamage > 0)
-        .sort((left, right) => right.rawDamage - left.rawDamage
-          || (left.row.userId < right.row.userId ? -1 : left.row.userId > right.row.userId ? 1 : 0))
-        .slice(0, CREEPER_EXPLOSION_MAX_PLAYER_VICTIMS);
-      const victimPlans: Array<{
-        presenceRow: Record<string, unknown>;
-        progress: Record<string, unknown>;
-        inventoryRow: Record<string, unknown>;
-        inventoryValue: Record<string, unknown> | null;
-        combatRow: Record<string, unknown> | null;
-        combatValue: ReturnType<typeof storedPlayerCombatRow>;
-        result: { userId: string; damage: number; killed: boolean };
-      }> = [];
-      for (const candidate of victimCandidates) {
-        const combatRows = await ctx.db.playerCombat
-          .withIndex("by_user", (q) => q.eq("userId", candidate.row.userId))
-          .order("desc")
-          .take(2);
-        const inventoryRows = await ctx.db.inventories
-          .withIndex("by_user", (q) => q.eq("userId", candidate.row.userId))
-          .order("desc")
-          .take(2);
-        if (combatRows.length > 1 || inventoryRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
-        if (inventoryRows.length !== 1) continue;
-        const inventoryState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
-        if (!inventoryState.ok) return { ok: false, reason: "target_state_invalid", serverNow };
-        const previous = materializePlayerCombatState(
-          databaseRowToStoredPlayerCombat(combatRows[0] ?? null),
-          candidate.row.userId,
-          serverNow,
-        );
-        if (previous.health <= 0) continue;
-        const survival = advanceAuthoritativeSurvival({
-          hunger: inventoryState.state.hunger,
-          health: previous.health,
-          revision: previous.revision,
-          progress: candidate.row,
-          serverNow,
-          activityHalfUnits: storedPresenceActivityHalfUnits(candidate.row),
-        });
-        if (survival.revisionExhausted || survival.revision >= Number.MAX_SAFE_INTEGER) {
-          return { ok: false, reason: "combat_revision_exhausted", serverNow };
-        }
-        const armorProtection = equippedArmorProtection(inventoryState.state.equipment);
-        const damage = mitigatedPlayerDamage(candidate.rawDamage, armorProtection);
-        const health = Math.max(0, survival.health - damage);
-        const armorWear = applyConfirmedArmorDamage(inventoryState.state.equipment);
-        const combatValue = storedPlayerCombatRow({
-          ...previous,
-          health,
-          revision: survival.revision + 1,
-          deadUntil: health === 0 ? serverNow + PLAYER_RESPAWN_DELAY_MS : 0,
-          lastAttackAt: serverNow,
-          lastAttackerId: request.mobId,
-        });
-        const inventoryChanged = survival.hungerChanged || armorWear.damaged.length > 0;
-        victimPlans.push({
-          presenceRow: candidate.row,
-          progress: survival.progress,
-          inventoryRow: inventoryRows[0],
-          inventoryValue: inventoryChanged ? {
-            userId: candidate.row.userId,
-            inventoryJson: JSON.stringify({
-              ...inventoryState.state,
-              hunger: survival.hunger,
-              equipment: armorWear.equipment,
-            }),
-            revision: incrementStoredRevision(inventoryRows[0].revision),
-          } : null,
-          combatRow: combatRows[0] ?? null,
-          combatValue,
-          result: { userId: candidate.row.userId, damage, killed: health === 0 },
-        });
-      }
-
+      const applied = await applyAuthoritativeWorldExplosion(ctx.db, {
+        eventId: authorization.eventId,
+        sourceId: request.mobId,
+        center: authority.center,
+        yaw: pose.yaw,
+        serverNow,
+      });
+      if (!applied.ok) return { ...applied, serverNow };
       motionMob.x = motionMob.homeX;
       motionMob.z = motionMob.homeZ;
       motionMob.behavior = "dormant";
@@ -4053,44 +4364,14 @@ export default capsule({
       motionMob.fuseUntilTick = 0;
       const nextCheckpointJson = encodeMobWorldCheckpoint(advanced.state);
       const result = {
-        ok: true,
+        ...applied,
         replayed: false,
         eventId: authorization.eventId,
         mobId: request.mobId,
         center: authority.center,
-        destroyedBlocks: destruction.length,
-        drops: explosionDropRows.map((row) => JSON.parse(row.itemJson)),
-        victims: victimPlans.map((plan) => plan.result),
         serverNow,
       };
       const resultJson = JSON.stringify(result);
-
-      const writtenEdits: Record<string, unknown>[] = [];
-      for (const cell of destruction) {
-        const value = {
-          coordKey: cell.coordKey,
-          x: String(cell.x),
-          y: String(cell.y),
-          z: String(cell.z),
-          blockType: "air",
-          actorId: request.mobId,
-          editedAt: String(serverNow),
-        };
-        const existing = existingEdits.get(cell.coordKey);
-        const written = existing
-          ? await ctx.db.worldEdits.update(existing.id, value)
-          : await ctx.db.worldEdits.insert(value);
-        if (!written) throw new Error("Unable to persist creeper terrain destruction.");
-        writtenEdits.push(written);
-      }
-      await maintainWorldChunkSnapshots(ctx.db, writtenEdits);
-      for (const row of explosionDropRows) await ctx.db.droppedItems.insert(row);
-      for (const plan of victimPlans) {
-        await ctx.db.playerPresence.update(plan.presenceRow.id, plan.progress);
-        if (plan.inventoryValue) await ctx.db.inventories.update(plan.inventoryRow.id, plan.inventoryValue);
-        if (plan.combatRow) await ctx.db.playerCombat.update(plan.combatRow.id, plan.combatValue);
-        else await ctx.db.playerCombat.insert(plan.combatValue);
-      }
       const deadMobValue = {
         mobId: request.mobId,
         kind: "creeper",
@@ -4100,19 +4381,21 @@ export default capsule({
         lastAttackAt: String(serverNow),
         lastAttackerId: request.mobId,
       };
-      if (mobRows[0]) await ctx.db.mobAuthority.update(mobRows[0].id, deadMobValue);
-      else await ctx.db.mobAuthority.insert(deadMobValue);
-      await ctx.db.mobWorldAuthority.update(authorityRow.id, {
+      const mobWrite = mobRows[0]
+        ? await ctx.db.mobAuthority.update(mobRows[0].id, deadMobValue)
+        : await ctx.db.mobAuthority.insert(deadMobValue);
+      if (!mobWrite) throw new Error("Unable to settle authoritative creeper death.");
+      if (!await ctx.db.mobWorldAuthority.update(authorityRow.id, {
         checkpointJson: nextCheckpointJson,
         checkpointRevision: String(advanced.revision + 1),
         checkpointAt: String(serverNow),
-      });
-      await ctx.db.creeperExplosionReceipts.insert({
+      })) throw new Error("Unable to settle authoritative creeper checkpoint.");
+      if (!await ctx.db.creeperExplosionReceipts.insert({
         eventId: authorization.eventId,
         fingerprint: authorization.fingerprint,
         resultJson,
         receiptCreatedAt: String(serverNow),
-      });
+      })) throw new Error("Unable to persist authoritative creeper explosion receipt.");
       return result;
     }),
 

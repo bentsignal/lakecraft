@@ -53,6 +53,7 @@ assert.equal(isBlockType("sand"), true);
 assert.equal(isBlockType("glass"), true);
 assert.equal(isBlockType("gold_ore"), true);
 assert.equal(isBlockType("diamond_ore"), true);
+assert.equal(isBlockType("tnt"), true);
 
 const now = Date.now();
 const presenceBase = { color: "#ffffff", x: "0", y: "8", z: "0", yaw: "0", pitch: "0", vx: "0", vy: "0", vz: "0", createdAt: "1", updatedAt: "1" };

@@ -9,7 +9,7 @@ import {
 
 export type MobKind = "pig" | "cow" | "sheep" | "zombie" | "skeleton" | "creeper";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
-export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow";
+export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "rotten_flesh" | "stick" | "string" | "arrow" | "gunpowder";
 
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
 export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
@@ -150,9 +150,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     rangedCooldownSeconds: 0,
     rangedRange: 0,
     projectileSpeed: 0,
-    // Gunpowder joins the item registry with authoritative explosions; an
-    // ordinary melee kill cannot currently mint an unknown inventory item.
-    drops: Object.freeze([]),
+    drops: Object.freeze([{ itemId: "gunpowder", minCount: 0, maxCount: 2, chance: 1 }]),
   }),
 });
 
