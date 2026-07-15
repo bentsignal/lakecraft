@@ -58,3 +58,20 @@ capture, live request/mutation reconciliation, and production chat/item/PvP
 latency evidence remain gated until Lakebed's exact bucket reset at
 `2026-07-16T00:00:00.000Z`. This is an external Lakebed quota gate; another
 multiplayer backend is explicitly prohibited.
+
+## Deployment and hosted Computer Use check
+
+Commit `62cb788` deployed successfully through the documented staged Lakebed
+pipeline at `2026-07-15T08:02:48.822Z`. The staged artifact was 1,599,679 bytes
+with 497,473 bytes of request-body headroom; its artifact hash is
+`sha256:f624b1495518d849ea315878ced779319ffdcab0e27fce39977ea2441c385769`.
+
+A fresh Computer Use navigation to `https://craft.lakebed.app` after deploy was
+rejected by Lakebed before the capsule HTML loaded. The visible top-level JSON
+envelope reported request count 10,050/10,000, reset
+`2026-07-16T00:00:00.000Z`, and `retryAfterSeconds: 57411`. Because this gate is
+served by Lakebed ahead of application code, the inner query recovery boundary
+cannot affect a fresh post-exhaustion navigation. Its live production behavior
+must be tested with clients already loaded before quota exhaustion during the
+post-reset trace; the pure guard and source/build checks are the evidence until
+then.
