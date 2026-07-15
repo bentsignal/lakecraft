@@ -152,6 +152,27 @@ const straightWrites = runHour((at) => ({ x: ((at / 1_000) * 4) % 200 - 100 }));
 const turnSpamWrites = runHour((at) => ({ yaw: (at / 1_000) * Math.PI }));
 const soloMovingWrites = runHour((at) => ({ x: ((at / 1_000) * 4) % 200 - 100 }), false);
 
+// Solo horizontal motion remains lease-only, but a fall cannot disappear
+// between two 60-second writes. Takeoff, the apex/downward edge, and landing
+// all use the existing heartbeat mutation and the same 200 ms rate gate.
+const soloVertical = createPresenceSchedulerState();
+const soloVerticalDecisions = [
+  stepPresenceScheduler(soloVertical, sample(0, { y: 20 }), false),
+  stepPresenceScheduler(soloVertical, sample(200, { y: 21 }), false),
+  stepPresenceScheduler(soloVertical, sample(400, { y: 20 }), false),
+  stepPresenceScheduler(soloVertical, sample(600, { y: 20 }), false),
+];
+assert.deepEqual(
+  soloVerticalDecisions.map((decision) => decision.send && decision.reason),
+  ["join", "motion_start", "motion_start", "motion_stop"],
+  "solo vertical direction edges must reach the authoritative fall reducer",
+);
+assert.deepEqual(
+  soloVerticalDecisions.map((decision) => decision.send && decision.safetyCritical),
+  [false, true, true, true],
+);
+assert.equal(soloVertical.writeCount, 4);
+
 assert.equal(idleWrites.length, 60);
 assert.ok(Math.max(...idleWrites.slice(1).map((at, index) => at - idleWrites[index])) <= PRESENCE_LEASE_REFRESH_MS);
 assert.equal(straightWrites.length, PRESENCE_ACTIVE_WRITES_PER_SECOND * 60 * 60);

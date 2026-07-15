@@ -66,6 +66,8 @@ export type PlayerPresence = {
   armorFeet?: string;
   sessionId?: string;
   poseSequence?: string;
+  fallGrounded?: boolean;
+  fallPeakY?: string;
   heartbeatAt: string;
   online: boolean;
   createdAt: string;

@@ -139,9 +139,17 @@ export interface PresenceSchedulerState {
   lastObservedSample: PresencePoseSample | null;
   velocity: PresenceVelocity;
   lastWrittenMoving: boolean;
+  /**
+   * Solo mode normally publishes only its lease. Vertical direction edges are
+   * the exception: Lakebed's authoritative fall reducer must see takeoff,
+   * apex, and landing even when no remote player is currently visible.
+   */
+  lastWrittenVerticalMode: PresenceVerticalMode;
   activeUntilAt: number;
   writeCount: number;
 }
+
+export type PresenceVerticalMode = "up" | "down" | "still";
 
 export type PresenceTransportMode =
   | "solo"
@@ -180,6 +188,8 @@ export type PresenceSendDecision =
   | {
       send: true;
       reason: PresenceSendReason;
+      /** Vertical direction edge that must be delivered in order for fall authority. */
+      safetyCritical: boolean;
       velocity: PresenceVelocity;
       fields: PresenceVelocityFields;
       waitMs: 0;
@@ -568,6 +578,7 @@ export function createPresenceSchedulerState(): PresenceSchedulerState {
     lastObservedSample: null,
     velocity: { ...ZERO_VELOCITY },
     lastWrittenMoving: false,
+    lastWrittenVerticalMode: "still",
     activeUntilAt: Number.NEGATIVE_INFINITY,
     writeCount: 0,
   };
@@ -586,9 +597,13 @@ function currentReason(
   moving: boolean,
   active: boolean,
   realtime: boolean,
+  verticalMode: PresenceVerticalMode,
 ): PresenceSendReason | null {
   if (state.lastWriteAt == null || !state.lastWrittenPose) return "join";
   if (!realtime) {
+    if (verticalMode !== state.lastWrittenVerticalMode) {
+      return verticalMode === "still" ? "motion_stop" : "motion_start";
+    }
     return sample.at - state.lastWriteAt >= PRESENCE_LEASE_REFRESH_MS ? "lease" : null;
   }
   if (moving !== state.lastWrittenMoving) return moving ? "motion_start" : "motion_stop";
@@ -632,11 +647,17 @@ export function stepPresenceScheduler(
   state.lastObservedSample = { ...sample };
   state.velocity = velocity;
   const moving = Math.hypot(velocity.vx, velocity.vy, velocity.vz) >= PRESENCE_MOVING_SPEED;
+  const verticalMode: PresenceVerticalMode = velocity.vy >= PRESENCE_MOVING_SPEED
+    ? "up"
+    : velocity.vy <= -PRESENCE_MOVING_SPEED
+      ? "down"
+      : "still";
   if (moving || turningRate >= PRESENCE_TURNING_RADIANS_PER_SECOND) {
     state.activeUntilAt = sample.at + PRESENCE_ACTIVITY_LINGER_MS;
   }
   const active = sample.at <= state.activeUntilAt;
-  const reason = currentReason(state, sample, moving, active, realtime);
+  const safetyCritical = verticalMode !== state.lastWrittenVerticalMode;
+  const reason = currentReason(state, sample, moving, active, realtime, verticalMode);
 
   if (state.lastWriteAt != null) {
     const sinceWrite = Math.max(0, sample.at - state.lastWriteAt);
@@ -660,8 +681,16 @@ export function stepPresenceScheduler(
     pitch: sample.pitch,
   };
   state.lastWrittenMoving = moving;
+  state.lastWrittenVerticalMode = verticalMode;
   state.writeCount += 1;
-  return { send: true, reason: reason ?? "join", velocity: { ...velocity }, fields, waitMs: 0 };
+  return {
+    send: true,
+    reason: reason ?? "join",
+    safetyCritical,
+    velocity: { ...velocity },
+    fields,
+    waitMs: 0,
+  };
 }
 
 /** Bounded dead-reckoning horizon shared by renderer and deterministic tests. */

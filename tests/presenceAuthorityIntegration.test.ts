@@ -43,10 +43,20 @@ assert.ok(heartbeat.indexOf("decidePresenceSequence(") < heartbeat.indexOf("adva
 assert.ok(heartbeat.includes('return { ok: true, applied: false, reason: "stale_sequence", poseSequence: existing.poseSequence }'));
 assert.ok(heartbeat.includes("if (relocationEpoch)"), "ordinary motion does not read relocation state");
 assert.ok(heartbeat.indexOf("decidePresenceTrajectory(") < heartbeat.indexOf("playerPresence.update"));
+assert.ok(heartbeat.indexOf("decidePresenceTrajectory(") < heartbeat.indexOf("authoritativeFallWorldFacts("));
+assert.ok(heartbeat.indexOf("authoritativeFallWorldFacts(") < heartbeat.indexOf("advanceAuthoritativeSurvival("));
+assert.ok(heartbeat.indexOf("advanceAuthoritativeSurvival(") < heartbeat.indexOf("advanceAuthoritativeFall("));
 assert.ok(heartbeat.indexOf("playerPresence.update") < heartbeat.indexOf("grantConsumedAt:"));
 assert.ok(heartbeat.includes("...survival.progress"));
+assert.ok(heartbeat.includes("fallGrounded: fall.state.grounded"));
+assert.ok(heartbeat.includes("fallPeakY: fall.state.fallPeakY"));
+assert.ok(heartbeat.includes('lastAttackerId: fall.damage > 0'));
+assert.ok(heartbeat.includes('"fall"'));
+assert.ok(heartbeat.includes("serverNow + PLAYER_RESPAWN_DELAY_MS"));
 assert.ok(heartbeat.includes("if (survival.hungerChanged)"));
-assert.ok(heartbeat.includes("if (survival.healthChanged)"));
+assert.ok(heartbeat.includes("if (survival.healthChanged || fall.healthChanged)"));
+assert.equal(heartbeat.includes("armorDamaged"), false, "fall damage never wears or mitigates armor");
+assert.equal(heartbeat.includes("targetEquipment"), false, "fall damage cannot mutate equipment");
 
 const mobDamage = server.slice(
   server.indexOf("claimMobPlayerDamage: mutation"),
@@ -93,6 +103,10 @@ assert.ok(sessionStart.includes("invalid_or_exhausted_sequence_state"), "same-le
 assert.ok(sessionStart.includes("playerPresence.insert"), "a fresh session persists a fenced offline lease before heartbeat one");
 assert.ok(sessionStart.includes("spawnPose: keeperPose ?? trailhead"));
 assert.ok(sessionStart.includes("nextPoseSequence:"));
+assert.ok(sessionStart.includes("fallGrounded: true"));
+assert.ok(sessionStart.includes("fallPeakY: String(trailhead.y)"));
+assert.ok(authorize.includes("fallGrounded: true"));
+assert.ok(authorize.includes("fallPeakY: grant.y"));
 assert.ok(server.includes("const blockX = Math.floor(x)"), "fractional spawn centers use integer terrain columns");
 assert.ok(leave.includes("existing.sessionId !== rawSessionId"), "an old tab cannot take a new presence session offline");
 assert.ok(client.includes("const presenceSessionId = crypto.randomUUID()"));
@@ -103,9 +117,9 @@ assert.ok(client.includes("Object.assign(scheduler, createPresenceSchedulerState
 
 console.log(JSON.stringify({
   benchmark: "server-authorized relocation event envelope",
-  ordinaryHeartbeat: { indexedReads: 4, writes: 1 },
-  hungerBoundaryHeartbeat: { indexedReads: 4, writes: 2 },
-  healthBoundaryHeartbeat: { indexedReads: 4, writes: 2 },
+  modernChunkHeartbeat: { indexedReads: "5-8", writes: 1 },
+  hungerBoundaryHeartbeat: { indexedReads: "5-8", writes: 2 },
+  healthOrFallBoundaryHeartbeat: { indexedReads: "5-8", writes: 2 },
   rejectedTrajectory: { indexedReads: 2, writes: 0 },
   authorizeTrailhead: { indexedReads: 4, writes: "3-4" },
   authorizeBed: { indexedReads: 5, writes: "3-4" },

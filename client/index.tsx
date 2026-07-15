@@ -94,6 +94,7 @@ import {
   stepPresenceScheduler,
   type PresenceBurstGuardState,
   type PresenceSchedulerState,
+  type PresenceSendDecision,
 } from "../shared/presenceMotion";
 import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
 import { type SleepInBedResult, type WorldClockSnapshot } from "../shared/sleep";
@@ -1917,8 +1918,17 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     presenceSchedulerRef.current = scheduler;
     presenceBurstGuardRef.current = guard;
     presenceModeNoticeRef.current = "";
+    type QueuedPresenceWrite = {
+      pose: PlayerPose;
+      at: number;
+      realtime: boolean;
+      decision: Extract<PresenceSendDecision, { send: true }>;
+      poseSequence: number | null;
+    };
     let writesInFlight = 0;
-    let pendingPresenceSample: { pose: PlayerPose; at: number } | null = null;
+    let pendingOrdinaryWrite: QueuedPresenceWrite | null = null;
+    const safetyWrites: QueuedPresenceWrite[] = [];
+    const maximumQueuedSafetyWrites = 12;
     const terminalPresenceReason = (reason: string | undefined) => reason === "session_mismatch"
       || reason === "session_required"
       || reason === "invalid_sequence"
@@ -1951,25 +1961,33 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       return snapshot;
     };
     const flushPresence = () => {
-      if (cancelled || writesInFlight >= PRESENCE_MAX_IN_FLIGHT_WRITES || !pendingPresenceSample) return;
-      const { pose, at } = pendingPresenceSample;
-      pendingPresenceSample = null;
+      if (cancelled) return;
+      const safetyWrite = safetyWrites[0] ?? null;
+      if (safetyWrite ? writesInFlight > 0 : writesInFlight >= PRESENCE_MAX_IN_FLIGHT_WRITES) return;
+      const queued = safetyWrite ?? pendingOrdinaryWrite;
+      if (!queued) return;
+      const { pose, decision } = queued;
       poseRef.current = pose;
-      const guardSnapshot = announceTransportMode(at);
+      const attemptAt = Date.now();
+      const guardSnapshot = announceTransportMode(attemptAt);
       if (!guardSnapshot.canAttempt) return;
-      const realtime = realtimePresenceRef.current && guardSnapshot.realtimeRemaining > 0;
-      const decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtime);
-      if (!decision.send) return;
-      if (!reservePresenceAttempt(guard, at, realtime)) return;
-      const poseSequence = presenceNextPoseSequenceRef.current;
+      const realtime = queued.realtime && guardSnapshot.realtimeRemaining > 0;
+      if (!reservePresenceAttempt(guard, attemptAt, realtime)) return;
+      if (!safetyWrite) pendingOrdinaryWrite = null;
+      let poseSequence = queued.poseSequence;
+      if (poseSequence === null) poseSequence = presenceNextPoseSequenceRef.current;
       if (!Number.isSafeInteger(poseSequence) || poseSequence < 1 || poseSequence >= Number.MAX_SAFE_INTEGER) {
-        pendingPresenceSample = null;
+        pendingOrdinaryWrite = null;
+        safetyWrites.length = 0;
         setConnected(false);
         return;
       }
-      presenceNextPoseSequenceRef.current += 1;
+      if (queued.poseSequence === null) {
+        queued.poseSequence = poseSequence;
+        presenceNextPoseSequenceRef.current += 1;
+      }
       persistPresenceBurstGuard(auth.userId, guard);
-      announceTransportMode(at);
+      announceTransportMode(attemptAt);
       const worn = equipmentRef.current;
       const appearance = normalizeAvatarAppearance(
         inventoryRef.current[selectedRef.current]?.itemId,
@@ -1979,6 +1997,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         worn.feet?.itemId,
       );
       const heartbeatSessionId = presenceSessionIdRef.current;
+      let retrySafetyWrite = false;
       writesInFlight += 1;
       void heartbeatPlayer(
         profile.username,
@@ -2010,7 +2029,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           }
           if (terminalPresenceReason(result.reason)) {
             cancelled = true;
-            pendingPresenceSample = null;
+            pendingOrdinaryWrite = null;
+            safetyWrites.length = 0;
             if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
             if (interval) window.clearInterval(interval);
             if (startRetryTimer) window.clearTimeout(startRetryTimer);
@@ -2021,6 +2041,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           const rejection = new Error(`${result.reason ?? "presence rejected"}${result.retryAfterMs ? ` retry-after ${result.retryAfterMs}ms` : ""}`);
           if (result.reason === "rate_limited") {
             recordPresenceRateLimit(guard, rejectedAt, result.retryAfterMs ?? 0);
+            retrySafetyWrite = Boolean(safetyWrite);
           } else {
             recordPresenceFailure(
               guard,
@@ -2035,11 +2056,9 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           if (canonicalPose) {
             engineRef.current?.reconcilePose(canonicalPose);
             Object.assign(scheduler, createPresenceSchedulerState());
+            safetyWrites.length = 0;
           }
           announceTransportMode(rejectedAt);
-          if (presenceBurstGuardSnapshot(guard, rejectedAt, realtimePresenceRef.current).mode === "quota_paused") {
-            pendingPresenceSample = null;
-          }
           setConnected(false);
           return;
         }
@@ -2047,6 +2066,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         setConnected(true);
       }).catch((error: unknown) => {
         if (cancelled) return;
+        retrySafetyWrite = Boolean(safetyWrite);
         const failedAt = Date.now();
         recordPresenceFailure(
           guard,
@@ -2055,19 +2075,27 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           presenceTransportQuotaResetAt(error, failedAt),
         );
         announceTransportMode(failedAt);
-        if (presenceBurstGuardSnapshot(guard, failedAt, realtimePresenceRef.current).mode === "quota_paused") {
-          pendingPresenceSample = null;
-        }
         setConnected(false);
       }).finally(() => {
         if (!cancelled) persistPresenceBurstGuard(auth.userId, guard);
         writesInFlight = Math.max(0, writesInFlight - 1);
+        if (safetyWrite && !retrySafetyWrite && safetyWrites[0] === queued) safetyWrites.shift();
         flushPresence();
       });
     };
     const samplePresence = (pose: PlayerPose, at = Date.now()) => {
       poseRef.current = pose;
-      pendingPresenceSample = { pose, at };
+      const guardSnapshot = announceTransportMode(at);
+      const realtime = realtimePresenceRef.current && guardSnapshot.realtimeRemaining > 0;
+      const decision = stepPresenceScheduler(scheduler, { ...pose, at }, realtime);
+      if (!decision.send) return;
+      const queued: QueuedPresenceWrite = { pose, at, realtime, decision, poseSequence: null };
+      if (decision.safetyCritical) {
+        if (safetyWrites.length < maximumQueuedSafetyWrites) safetyWrites.push(queued);
+        else safetyWrites[safetyWrites.length - 1] = queued;
+      } else if (guardSnapshot.canAttempt) {
+        pendingOrdinaryWrite = queued;
+      }
       flushPresence();
     };
     let cancelled = false;

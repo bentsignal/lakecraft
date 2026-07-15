@@ -75,6 +75,10 @@ export type WorldChunkDecodeResult =
   | { ok: true; edits: DecodedWorldChunkEdit[] }
   | { ok: false; reason: "invalid_chunk_key" | "invalid_snapshot" | "snapshot_too_large" };
 
+export type WorldChunkTargetedSampleResult =
+  | { ok: true; blocks: Array<WorldChunkBlockType | null> }
+  | { ok: false; reason: "invalid_chunk_key" | "invalid_sample" | "invalid_snapshot" | "snapshot_too_large" };
+
 /** Production v1/v2 rows covered this exact fixed-height column. */
 const LEGACY_MIN_Y = -4;
 const LEGACY_MAX_Y = 64;
@@ -413,4 +417,51 @@ export function decodeWorldChunkSnapshot(rawChunkKey: string, snapshotJson: stri
     }
   }
   return { ok: true, edits };
+}
+
+/**
+ * Reads a bounded set of cells without allocating every edit in a potentially
+ * dense 8x8 column. `null` is untouched natural terrain; `air` is an explicit
+ * mined edit and must not fall back to terrain generation.
+ */
+export function sampleWorldChunkSnapshot(
+  rawChunkKey: string,
+  snapshotJson: string,
+  samples: readonly { x: number; y: number; z: number }[],
+): WorldChunkTargetedSampleResult {
+  const chunk = validateWorldChunkKey(rawChunkKey);
+  if (!chunk.ok) return { ok: false, reason: chunk.reason };
+  if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
+  const snapshot = parsePacked(snapshotJson);
+  if (!snapshot) return { ok: false, reason: "invalid_snapshot" };
+  const blocks: Array<WorldChunkBlockType | null> = [];
+  for (const sample of samples) {
+    if (!sample || !Number.isSafeInteger(sample.x) || !Number.isSafeInteger(sample.y)
+      || !Number.isSafeInteger(sample.z)) return { ok: false, reason: "invalid_sample" };
+    const address = cellAddress(sample.x, sample.y, sample.z, chunk.chunkX, chunk.chunkZ);
+    if (!address) return { ok: false, reason: "invalid_sample" };
+    const section = snapshot.version === 3 ? snapshot.sections.get(address.sectionY) : null;
+    const horizontal = address.sectionIndex % CELLS_PER_Y;
+    const legacyIndex = sample.y >= LEGACY_MIN_Y && sample.y <= LEGACY_MAX_Y
+      ? (sample.y - LEGACY_MIN_Y) * CELLS_PER_Y + horizontal
+      : null;
+    const code = snapshot.version === 1
+      ? legacyIndex === null ? 0 : getNibble(snapshot.packed, legacyIndex)
+      : snapshot.version === 2
+        ? legacyIndex === null ? 0 : getCurrentCode(snapshot.packed, legacyIndex)
+        : section
+          ? getCurrentCode(section, address.sectionIndex)
+          : 0;
+    if (code === 0) {
+      blocks.push(null);
+      continue;
+    }
+    if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) {
+      return { ok: false, reason: "invalid_snapshot" };
+    }
+    const block = WORLD_CHUNK_BLOCK_TYPES[code - 1];
+    if (!block) return { ok: false, reason: "invalid_snapshot" };
+    blocks.push(block);
+  }
+  return { ok: true, blocks };
 }

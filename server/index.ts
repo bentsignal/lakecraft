@@ -41,8 +41,13 @@ import {
   worldClockSnapshot
 } from "../shared/sleep";
 import {
+  WORLD_EDIT_MAX_XZ,
+  WORLD_EDIT_MAX_Y,
+  WORLD_EDIT_MIN_XZ,
+  WORLD_EDIT_MIN_Y,
   applyWorldChunkEdit,
   createWorldChunkSnapshot,
+  sampleWorldChunkSnapshot,
   validateVisibleWorldChunkKeys,
   worldEditChunkKey,
   type WorldChunkEditInput
@@ -137,7 +142,7 @@ import {
   selectExpiredDroppedItemIds,
   type DroppedItemReceiptResult
 } from "./droppedItems";
-import { BLOCK_TYPES } from "../shared/protocol";
+import { BLOCK_TYPES, type BlockType } from "../shared/protocol";
 import { normalizeAvatarAppearance } from "../shared/avatarAppearance";
 import {
   decodePlayerCombatReceipt,
@@ -187,6 +192,14 @@ import {
   activityHalfUnitsForDisplacement,
   advanceAuthoritativeSurvival,
 } from "../shared/survivalAuthority.ts";
+import {
+  advanceAuthoritativeFall,
+} from "../shared/fallDamageAuthority.ts";
+import {
+  fallProbeCells,
+  fallSupportBlockHasCollision,
+  type FallProbeCell,
+} from "../shared/fallWorldProbe.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 const CHEST_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -448,6 +461,74 @@ function serverTerrainHeight(x: number, z: number): number {
   return 3;
 }
 
+type AuthoritativeFallWorldFacts =
+  | { ok: true; supported: boolean; onLadder: boolean; chunkReads: number }
+  | { ok: false; reason: "invalid_probe" | "duplicate_world_state" | "invalid_world_state" };
+
+function naturalFallProbeBlock(cell: FallProbeCell): BlockType {
+  if (cell.y < WORLD_EDIT_MIN_Y) return "stone";
+  if (cell.x < WORLD_EDIT_MIN_XZ || cell.x > WORLD_EDIT_MAX_XZ
+    || cell.z < WORLD_EDIT_MIN_XZ || cell.z > WORLD_EDIT_MAX_XZ
+    || cell.y > WORLD_EDIT_MAX_Y) return "air";
+  return naturalWorldBlockAt(cell.x, cell.y, cell.z);
+}
+
+async function authoritativeFallWorldFacts(
+  db: WriteDatabase,
+  pose: { x: number; y: number; z: number },
+): Promise<AuthoritativeFallWorldFacts> {
+  const cells = fallProbeCells(pose);
+  if (cells.length < 1 || cells.length > 20) return { ok: false, reason: "invalid_probe" };
+  const blocks = new Map<string, BlockType>();
+  const groups = new Map<string, FallProbeCell[]>();
+  for (const cell of cells) {
+    if (cell.x < WORLD_EDIT_MIN_XZ || cell.x > WORLD_EDIT_MAX_XZ
+      || cell.z < WORLD_EDIT_MIN_XZ || cell.z > WORLD_EDIT_MAX_XZ
+      || cell.y < WORLD_EDIT_MIN_Y || cell.y > WORLD_EDIT_MAX_Y) {
+      blocks.set(cell.coordKey, naturalFallProbeBlock(cell));
+      continue;
+    }
+    const chunkKey = worldEditChunkKey(cell.x, cell.z);
+    const group = groups.get(chunkKey);
+    if (group) group.push(cell);
+    else groups.set(chunkKey, [cell]);
+  }
+
+  let chunkReads = 0;
+  for (const [chunkKey, group] of groups) {
+    const chunkRows = await db.worldChunks
+      .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
+      .order("desc")
+      .take(2);
+    chunkReads += 1;
+    if (chunkRows.length > 1) return { ok: false, reason: "duplicate_world_state" };
+    const chunkRow = chunkRows[0] ?? null;
+    if (!chunkRow) {
+      for (const cell of group) blocks.set(cell.coordKey, naturalFallProbeBlock(cell));
+      continue;
+    }
+    if (typeof chunkRow.snapshotJson !== "string") return { ok: false, reason: "invalid_world_state" };
+    const sampled = sampleWorldChunkSnapshot(chunkKey, chunkRow.snapshotJson, group);
+    if (!sampled.ok || sampled.blocks.length !== group.length) {
+      return { ok: false, reason: "invalid_world_state" };
+    }
+    for (let index = 0; index < group.length; index += 1) {
+      blocks.set(group[index].coordKey, sampled.blocks[index] ?? naturalFallProbeBlock(group[index]));
+    }
+  }
+
+  let supported = false;
+  let onLadder = false;
+  for (const cell of cells) {
+    const block = blocks.get(cell.coordKey);
+    if (!block) return { ok: false, reason: "invalid_world_state" };
+    if (cell.support && fallSupportBlockHasCollision(block)) supported = true;
+    if (cell.doorTop && cell.y + 1 > 0 && block === "door_closed") supported = true;
+    if (cell.ladder && block === "ladder") onLadder = true;
+  }
+  return { ok: true, supported, onLadder, chunkReads };
+}
+
 type FurnaceAuthorityView = {
   state: FurnaceState;
   revision: string;
@@ -549,6 +630,8 @@ export default capsule({
       hungerProgressHalfMs: string().default("0"),
       recoveryProgressMs: string().default("0"),
       starvationProgressMs: string().default("0"),
+      fallGrounded: boolean().default(true),
+      fallPeakY: string().default("0"),
       heartbeatAt: string(),
       online: boolean().default(true)
     })
@@ -1375,6 +1458,8 @@ export default capsule({
           hungerProgressHalfMs: "0",
           recoveryProgressMs: "0",
           starvationProgressMs: "0",
+          fallGrounded: true,
+          fallPeakY: String(trailhead.y),
           heartbeatAt: "0",
           online: false,
         });
@@ -1535,6 +1620,8 @@ export default capsule({
         hungerProgressHalfMs: "0",
         recoveryProgressMs: "0",
         starvationProgressMs: "0",
+        fallGrounded: true,
+        fallPeakY: grant.y,
         heartbeatAt: String(serverNow),
         online: true,
       });
@@ -1653,6 +1740,10 @@ export default capsule({
             ...(persistedPose ? { canonicalPose: persistedPose } : {}),
           };
         }
+        const previousPose = validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch);
+        if (!previousPose) return { ok: false, reason: "invalid_persisted_pose" };
+        const fallWorld = await authoritativeFallWorldFacts(ctx.db, pose);
+        if (!fallWorld.ok) return { ok: false, reason: fallWorld.reason };
         const inventoryRows = await ctx.db.inventories
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
@@ -1676,7 +1767,6 @@ export default capsule({
           ctx.auth.userId,
           serverNow,
         );
-        const previousPose = validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch);
         const previousSurvivalAt = /^\d{1,16}$/.test(existing.survivalAt ?? "")
           ? Number(existing.survivalAt)
           : serverNow;
@@ -1693,6 +1783,26 @@ export default capsule({
           ),
         });
         if (survival.revisionExhausted) return { ok: false, reason: "combat_revision_exhausted" };
+        const fall = advanceAuthoritativeFall({
+          state: {
+            grounded: existing.fallGrounded,
+            fallPeakY: existing.fallPeakY,
+          },
+          previousY: previousPose.y,
+          nextY: pose.y,
+          supported: fallWorld.supported,
+          onLadder: fallWorld.onLadder,
+          relocated: trajectory.reason === "approved_relocation" || trajectory.reason === "initial_spawn",
+          directDrop: Math.hypot(pose.x - previousPose.x, pose.z - previousPose.z) <= 0.75,
+          health: survival.health,
+          revision: survival.revision,
+        });
+        if (!fall.ok) {
+          return {
+            ok: false,
+            reason: fall.reason === "revision_exhausted" ? "combat_revision_exhausted" : "invalid_fall_state",
+          };
+        }
         const profile = await ctx.db.profiles
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
@@ -1712,6 +1822,8 @@ export default capsule({
           sessionId,
           poseSequence: sequence.sequence,
           ...survival.progress,
+          fallGrounded: fall.state.grounded,
+          fallPeakY: fall.state.fallPeakY,
           heartbeatAt: String(serverNow),
           online: true
         };
@@ -1728,12 +1840,17 @@ export default capsule({
           });
           if (!persistedInventory) throw new Error("Unable to persist authoritative hunger.");
         }
-        if (survival.healthChanged) {
+        if (survival.healthChanged || fall.healthChanged) {
           const combatValue = storedPlayerCombatRow({
             ...combat,
-            health: survival.health,
-            revision: survival.revision,
-            lastAttackerId: survival.starvationDamage > 0 ? "starvation" : combat.lastAttackerId,
+            health: fall.health,
+            revision: fall.revision,
+            deadUntil: fall.killed && combat.health > 0 ? serverNow + PLAYER_RESPAWN_DELAY_MS : combat.deadUntil,
+            lastAttackerId: fall.damage > 0
+              ? "fall"
+              : survival.starvationDamage > 0
+                ? "starvation"
+                : combat.lastAttackerId,
           });
           const persistedCombat = combatRow
             ? await ctx.db.playerCombat.update(combatRow.id, combatValue)
@@ -1751,8 +1868,9 @@ export default capsule({
           reason: trajectory.reason,
           poseSequence: sequence.sequence,
           hunger: survival.hunger,
-          health: survival.health,
-          combatRevision: survival.revision,
+          health: fall.health,
+          combatRevision: fall.revision,
+          fallDamage: fall.damage,
           ...(persistedInventory ? { inventory: persistedInventory } : {}),
         };
       }

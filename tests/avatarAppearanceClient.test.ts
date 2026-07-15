@@ -55,7 +55,7 @@ for (const field of mutationFields) {
   previousField = fieldIndex;
 }
 
-const schedulerGate = source.indexOf("if (!decision.send) return;");
+const schedulerGate = source.indexOf("if (!reservePresenceAttempt(guard, attemptAt, realtime)) return;");
 const outboundNormalization = source.indexOf("const worn = equipmentRef.current;", schedulerGate);
 const heartbeatCall = source.indexOf("void heartbeatPlayer(", outboundNormalization);
 assert.ok(
