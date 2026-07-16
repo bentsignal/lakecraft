@@ -1,11 +1,17 @@
 import { access, cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   assertNoServerGamePresentationUse,
   stripServerGamePresentation,
 } from "./server-game-catalog-transform.mjs";
+import {
+  compactClientIdentifiers,
+  CSS_DICTIONARY_ALPHABET,
+  dictionaryCompressCss,
+  minifyCssText,
+} from "./css-template-compression.mjs";
 
 const sourceRoot = resolve(process.cwd());
 const stageRoot = resolve(process.argv[2] ?? "");
@@ -53,58 +59,21 @@ const lakebedRuntime = await findLakebedEsbuild();
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
 const { build } = await import(pathToFileURL(lakebedRuntime.esbuildPath).href);
 
-function minifyCssText(css) {
-  return css
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\s+/g, " ")
-    .replace(/\s*([{}:;,])\s*/g, "$1")
-    .replace(/;}/g, "}")
-    .trim();
-}
-
-function dictionaryCompressCss(css) {
-  if (css.length < 10_000) return null;
-  const candidates = new Set();
-  for (const match of css.matchAll(/[a-z-]{4,}:|\.[a-z][a-z0-9_-]*|var\(--[a-z0-9-]+|rgba\(|calc\(/g)) {
-    candidates.add(match[0]);
-  }
-  for (const value of [
-    "absolute", "relative", "transparent", "uppercase", "center", "pointer", "auto", "none", "block",
-    "flex", "grid", "hidden", "solid", "fixed", "repeat(", "minmax(", "linear-gradient(", "text-shadow:",
-  ]) candidates.add(value);
-
-  const dictionary = [];
-  let compressed = css;
-  while (dictionary.length < 96) {
-    let best = null;
-    for (const candidate of candidates) {
-      const occurrences = compressed.split(candidate).length - 1;
-      const gain = occurrences * (Buffer.byteLength(candidate) - 3) - Buffer.byteLength(candidate) - 3;
-      if (!best || gain > best.gain) best = { candidate, gain };
-    }
-    if (!best || best.gain <= 0) break;
-    candidates.delete(best.candidate);
-    const token = String.fromCharCode(0xe000 + dictionary.length);
-    dictionary.push(best.candidate);
-    compressed = compressed.split(best.candidate).join(token);
-  }
-  return { compressed, dictionary };
-}
-
 const cssTemplateMinifier = {
   name: "lakecraft-css-template-minifier",
   setup(esbuild) {
     esbuild.onLoad({ filter: /\.[tj]sx?$/ }, async ({ path }) => {
       const source = await readFile(path, "utf8");
-      const contents = source.replace(
+      const compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
+        ? compactClientIdentifiers(source)
+        : source;
+      const contents = compactedSource.replace(
         /const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g,
         (_match, name, css) => {
           const minified = minifyCssText(css);
           const packed = dictionaryCompressCss(minified);
           if (!packed) return `const ${name}=\`${minified}\`;`;
-          const firstToken = String.fromCharCode(0xe000);
-          const lastToken = String.fromCharCode(0xe000 + packed.dictionary.length - 1);
-          return `const ${name}=(()=>{const d=${JSON.stringify(packed.dictionary)};return ${JSON.stringify(packed.compressed)}.replace(/[${firstToken}-${lastToken}]/g,t=>d[t.charCodeAt(0)-57344])})();`;
+          return `const ${name}=(()=>{const d=${JSON.stringify(packed.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(packed.compressed)}.replace(/~([0-9A-Za-z_$])~/g,(t,s)=>d[a.indexOf(s)]??t)})();`;
         },
       );
       return { contents, loader: path.endsWith(".tsx") ? "tsx" : "ts" };
