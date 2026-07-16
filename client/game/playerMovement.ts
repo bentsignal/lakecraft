@@ -117,6 +117,11 @@ export function movementActivityMultiplier(mode: PlayerMovementMode, moving = mo
   }
 }
 
+/** A fresh Ctrl press toggles off any stale held state; native repeats keep it held. */
+export function shouldHoldSprintAfterControlKeyDown(controlHeld: boolean, repeat: boolean): boolean {
+  return !controlHeld || repeat;
+}
+
 /**
  * Resolves a stable movement mode from controls and survival state. Sneaking has
  * precedence over sprinting, and sprinting requires Ctrl, forward input, and

@@ -7,15 +7,13 @@ import {
   stripServerGamePresentation,
 } from "./server-game-catalog-transform.mjs";
 import {
+  bundleCompressCss,
+  bundleDecompressCss,
   compactClientIdentifiers,
-  CSS_DICTIONARY_ALPHABET,
-  dictionaryCompressCss,
+  CSS_BUNDLE_SEPARATOR,
+  cssBundleRuntimeExpression,
   minifyCssText,
 } from "./css-template-compression.mjs";
-import {
-  cssLzRuntimeExpression,
-  lzCompressCss,
-} from "./css-lz-compression.mjs";
 
 const sourceRoot = resolve(process.cwd());
 const stageRoot = resolve(process.argv[2] ?? "");
@@ -63,34 +61,75 @@ const lakebedRuntime = await findLakebedEsbuild();
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
 const { build } = await import(pathToFileURL(lakebedRuntime.esbuildPath).href);
 
+async function clientSourcePaths(directory = join(sourceRoot, "client")) {
+  const paths = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) paths.push(...await clientSourcePaths(path));
+    else if (/\.[tj]sx?$/.test(entry.name)) paths.push(path);
+  }
+  return paths.sort();
+}
+
+async function createCssBundlePlan() {
+  const templates = [];
+  const indexes = new Map();
+  for (const path of await clientSourcePaths()) {
+    const source = compactClientIdentifiers(await readFile(path, "utf8"));
+    for (const match of source.matchAll(/const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g)) {
+      const index = templates.length;
+      templates.push(minifyCssText(match[2]));
+      indexes.set(`${path}\0${match[1]}`, index);
+    }
+  }
+  if (templates.some((css) => css.includes(CSS_BUNDLE_SEPARATOR))) {
+    throw new Error("A staged stylesheet contains the reserved CSS bundle separator.");
+  }
+  const joined = templates.join(CSS_BUNDLE_SEPARATOR);
+  const packed = bundleCompressCss(joined);
+  if (!packed || bundleDecompressCss(packed) !== joined) {
+    throw new Error("Unable to round-trip the staged client CSS bundle.");
+  }
+  return {
+    indexes,
+    moduleSource: `export const c=(${cssBundleRuntimeExpression(packed)}).split(${JSON.stringify(CSS_BUNDLE_SEPARATOR)});`,
+  };
+}
+
+const cssBundlePlan = await createCssBundlePlan();
+
 const cssTemplateMinifier = {
   name: "lakecraft-css-template-minifier",
   setup(esbuild) {
+    esbuild.onResolve({ filter: /^lakecraft:css$/ }, () => ({
+      path: "bundle",
+      namespace: "lakecraft-css",
+    }));
+    esbuild.onLoad({ filter: /.*/, namespace: "lakecraft-css" }, () => ({
+      contents: cssBundlePlan.moduleSource,
+      loader: "js",
+    }));
     esbuild.onLoad({ filter: /\.[tj]sx?$/ }, async ({ path }) => {
       const source = await readFile(path, "utf8");
       const compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
         ? compactClientIdentifiers(source)
         : source;
+      let usesCssBundle = false;
       const contents = compactedSource.replace(
         /const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g,
-        (_match, name, css) => {
-          const minified = minifyCssText(css);
-          const dictionary = dictionaryCompressCss(minified);
-          const lz = lzCompressCss(minified);
-          const dictionaryExpression = dictionary
-            ? `(()=>{const d=${JSON.stringify(dictionary.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(dictionary.compressed)}.replace(/~([0-9A-Za-z_$])/g,(t,s)=>d[a.indexOf(s)]??t)})()`
-            : null;
-          const lzExpression = lz ? cssLzRuntimeExpression(lz) : null;
-          const expression = !dictionaryExpression
-            ? lzExpression
-            : !lzExpression || Buffer.byteLength(dictionaryExpression) <= Buffer.byteLength(lzExpression)
-              ? dictionaryExpression
-              : lzExpression;
-          if (!expression) return `const ${name}=\`${minified}\`;`;
-          return `const ${name}=${expression};`;
+        (match, name) => {
+          const index = cssBundlePlan.indexes.get(`${path}\0${name}`);
+          if (index === undefined) return match;
+          usesCssBundle = true;
+          return `const ${name}=__lakecraftCss[${index}];`;
         },
       );
-      return { contents, loader: path.endsWith(".tsx") ? "tsx" : "ts" };
+      return {
+        contents: usesCssBundle
+          ? `import{c as __lakecraftCss}from"lakecraft:css";${contents}`
+          : contents,
+        loader: path.endsWith(".tsx") ? "tsx" : "ts",
+      };
     });
   },
 };

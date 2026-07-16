@@ -123,6 +123,7 @@ import {
   resolvePlayerMovement,
   resolveSneakIntent,
   sampleHeadBob,
+  shouldHoldSprintAfterControlKeyDown,
   smoothMovementValue,
   smoothPlayerPosture,
   writeHorizontalMovementDelta,
@@ -2689,7 +2690,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight"].includes(event.code)) {
       event.preventDefault();
     }
-    keys.add(event.code);
+    const controlKey = event.code === "ControlLeft" || event.code === "ControlRight";
+    if (controlKey && !shouldHoldSprintAfterControlKeyDown(
+      keys.has("ControlLeft") || keys.has("ControlRight"),
+      event.repeat,
+    )) {
+      keys.delete("ControlLeft");
+      keys.delete("ControlRight");
+    } else keys.add(event.code);
     if (event.code === "Space") {
       // Space is a climb command while touching a ladder; do not inject the
       // normal 8.25-block/s ground impulse before the next physics frame.

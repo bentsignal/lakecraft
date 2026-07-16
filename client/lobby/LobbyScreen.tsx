@@ -130,8 +130,8 @@ function JoinLabel(props: LobbyScreenProps) {
   return <>Join Server</>;
 }
 
-function AccountPanel({ allowSignIn, onChooseUsername, props }: {
-  allowSignIn: boolean;
+function AccountPanel({ onSignIn, onChooseUsername, props }: {
+  onSignIn?: () => void;
   onChooseUsername: () => void;
   props: LobbyScreenProps;
 }) {
@@ -146,8 +146,8 @@ function AccountPanel({ allowSignIn, onChooseUsername, props }: {
     <aside className="lc-account-panel" aria-label="Player account">
       <span className="lc-account-head" aria-hidden="true" />
       <div><small>Player</small><strong>{accountName}</strong></div>
-      {signedOut && allowSignIn ? <button onClick={props.onSignInWithGoogle} type="button">Sign In</button> : null}
-      {needsUsername ? <button onClick={onChooseUsername} type="button">Choose Name</button> : null}
+      {signedOut && onSignIn ? <button onClick={onSignIn} type="button">Sign In</button> : null}
+      {needsUsername ? <button onClick={onChooseUsername} type="button">Set Name</button> : null}
       {!signedOut && !loading && !needsUsername && props.onSignOut ? <button onClick={props.onSignOut} type="button">Sign Out</button> : null}
     </aside>
   );
@@ -174,7 +174,7 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
     <main className="lc-server-browser">
       <LobbyStyles />
       <div className="lc-dirt-background" aria-hidden="true" />
-      <AccountPanel allowSignIn onChooseUsername={onChooseUsername} props={props} />
+      <AccountPanel onSignIn={props.onSignInWithGoogle} onChooseUsername={onChooseUsername} props={props} />
       <section className="lc-server-browser__content" aria-label="Multiplayer server list">
         <h1>Play Multiplayer</h1>
         <div className="lc-server-list" role="listbox" aria-label="Available servers">
@@ -193,7 +193,6 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
         <p className={`lc-server-hint${phase === "error" ? " is-error" : ""}`} role={phase === "error" ? "alert" : "status"}>{phase === "error" && props.joinError ? props.joinError : accountHint}</p>
         <div className="lc-server-actions">
           <MenuButton disabled={!canJoin} onClick={props.onJoinWorld}><JoinLabel {...props} /></MenuButton>
-          <MenuButton disabled>Direct Connection</MenuButton>
           <MenuButton onClick={onBack}>Back</MenuButton>
         </div>
       </section>
@@ -222,7 +221,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
       <LobbyStyles />
       <Panorama />
       <div className="lc-title-shade" aria-hidden="true" />
-      <AccountPanel allowSignIn={false} onChooseUsername={() => setEditingUsername(true)} props={props} />
+      <AccountPanel onSignIn={() => setPage("multiplayer")} onChooseUsername={() => setEditingUsername(true)} props={props} />
       <section className="lc-title-content" aria-label="Lakecraft main menu">
         <header className="lc-title-logo">
           <h1>LAKECRAFT</h1>
@@ -247,7 +246,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
       />
       <footer className="lc-title-footer">
         <span>Lakecraft {props.buildLabel || "Alpha"}</span>
-        <span>{props.authState === "ready" ? props.username || props.displayName : "craft.lakebed.app"}</span>
+        <span>craft.lakebed.app</span>
       </footer>
     </main>
   );

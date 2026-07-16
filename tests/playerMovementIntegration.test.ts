@@ -7,6 +7,12 @@ const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "ut
 assert.ok(engine.includes('keys.has("ControlLeft") || keys.has("ControlRight")'), "either Ctrl key requests sprint");
 assert.ok(engine.includes('"ControlLeft", "ControlRight"].includes(event.code)'), "pointer-locked movement prevents browser Ctrl shortcuts");
 assert.ok(engine.includes('if (!event.ctrlKey)'), "a keyup reporting Ctrl released clears stale sprint modifiers");
+assert.ok(engine.includes("shouldHoldSprintAfterControlKeyDown"), "a fresh Ctrl press can toggle off a missed-keyup latch");
+const keyDown = engine.slice(engine.indexOf("function onKeyDown"), engine.indexOf("function onKeyUp"));
+assert.ok(keyDown.indexOf("shouldHoldSprintAfterControlKeyDown") < keyDown.indexOf("else keys.add(event.code)"),
+  "Ctrl reconciliation runs before the physical key is retained");
+assert.match(keyDown, /keys\.delete\("ControlLeft"\);[\s\S]*?keys\.delete\("ControlRight"\);/,
+  "toggle recovery clears either stale physical Ctrl code");
 assert.ok(engine.includes('window.addEventListener("blur", onWindowBlur)'), "focus loss releases held movement input");
 assert.ok(engine.includes('document.addEventListener("visibilitychange", onVisibilityChange)'), "backgrounding the tab releases held movement input");
 assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and low-ceiling posture use the tested release helper");

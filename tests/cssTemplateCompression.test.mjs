@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  bundleCompressCss,
+  bundleDecompressCss,
   COMPACT_CLIENT_IDENTIFIER_FAMILIES,
   compactClientIdentifiers,
+  CSS_BUNDLE_MAX_DISTANCE,
+  CSS_BUNDLE_SEPARATOR,
   CSS_DICTIONARY_ALPHABET,
+  cssBundleRuntimeExpression,
   dictionaryCompressCss,
   dictionaryDecompressCss,
   minifyCssText,
@@ -32,6 +37,7 @@ let totalPackedBytes = 0;
 let totalDictionaryBytes = 0;
 let totalLzBytes = 0;
 let lzWinnerCount = 0;
+const compactedTemplates = [];
 const startedAt = performance.now();
 for (const file of files) {
   const source = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
@@ -54,12 +60,47 @@ for (const file of files) {
     totalLzBytes += Buffer.byteLength(lzExpression);
     if (Buffer.byteLength(lzExpression) < Buffer.byteLength(expression)) lzWinnerCount += 1;
   }
+  const compactedSource = compactClientIdentifiers(source);
+  for (const match of compactedSource.matchAll(/const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g)) {
+    compactedTemplates.push(minifyCssText(match[2]));
+  }
 }
 const elapsedMs = performance.now() - startedAt;
 assert.ok(totalUnpackedBytes - totalPackedBytes > 14_000, "embedded CSS should reclaim at least 14 KB before capsule encoding");
 assert.ok(elapsedMs < 20_000, `CSS packing took ${elapsedMs.toFixed(1)}ms`);
 assert.equal(dictionaryCompressCss(".a~.b{color:red}"), null, "CSS containing the reserved token delimiter must fail safe");
 assert.equal(lzCompressCss(".a~.b{color:red}"), null, "LZ packing must reject the reserved token delimiter");
+
+const cssBundleSource = compactedTemplates.join(CSS_BUNDLE_SEPARATOR);
+const cssBundle = bundleCompressCss(cssBundleSource);
+assert.ok(cssBundle, "the shared stylesheet payload should contain profitable long-window references");
+assert.equal(bundleDecompressCss(cssBundle), cssBundleSource, "shared stylesheet payload must round-trip byte-for-byte");
+assert.deepEqual(bundleCompressCss(cssBundleSource), cssBundle, "shared stylesheet packing must be deterministic");
+const cssBundleExpression = cssBundleRuntimeExpression(cssBundle);
+assert.equal(Function(`return ${cssBundleExpression}`)(), cssBundleSource, "the staged runtime decoder must match the build-time decoder");
+const cssBundleBytes = Buffer.byteLength(cssBundleExpression)
+  + Buffer.byteLength(`.split(${JSON.stringify(CSS_BUNDLE_SEPARATOR)})`);
+assert.ok(
+  totalPackedBytes - cssBundleBytes > 8_000,
+  "one cross-template payload should reclaim at least 8 KB before capsule encoding",
+);
+assert.equal(bundleCompressCss(".a~.b{color:red}"), null, "shared packing rejects its short token prefix");
+assert.equal(bundleCompressCss(".a^.b{color:red}"), null, "shared packing rejects its medium token prefix");
+assert.equal(bundleCompressCss(".a`.b{color:red}"), null, "shared packing rejects its long token prefix");
+const separatorFixture = `.a{color:red}${CSS_BUNDLE_SEPARATOR}.b{color:red}`;
+assert.equal(bundleDecompressCss(bundleCompressCss(separatorFixture)), separatorFixture, "the joined payload preserves stylesheet separators");
+assert.throws(() => bundleDecompressCss({ compressed: "`" }), /Truncated/, "truncated shared tokens must be rejected");
+assert.throws(() => bundleDecompressCss({ compressed: "`000!" }), /Malformed/, "malformed shared tokens must be rejected");
+assert.throws(() => bundleDecompressCss({ compressed: "~00" }), /unavailable/, "forward shared references must be rejected");
+const longDistanceFixture = `ABCDEFGH${"x".repeat(4_096)}ABCDEFGH`;
+const longDistancePacked = bundleCompressCss(longDistanceFixture);
+assert.ok(longDistancePacked.compressed.includes("`"), "a distance beyond 4096 characters must use a long-window token");
+assert.equal(bundleDecompressCss(longDistancePacked), longDistanceFixture, "long-window shared tokens must round-trip");
+const maximumBundleDistanceDecoded = bundleDecompressCss({
+  compressed: `${"x".repeat(CSS_BUNDLE_MAX_DISTANCE)}\`$$$0`,
+});
+assert.equal(maximumBundleDistanceDecoded.length, CSS_BUNDLE_MAX_DISTANCE + 5, "maximum shared distance must decode");
+assert.ok(maximumBundleDistanceDecoded.endsWith("xxxxx"), "maximum shared distance must reference available output");
 
 const overlapping = "a".repeat(CSS_LZ_MAX_LENGTH + 20);
 const overlappingPacked = lzCompressCss(overlapping);
@@ -112,6 +153,8 @@ console.log(JSON.stringify({
   lzExpressionBytes: totalLzBytes,
   hybridSavingsOverDictionaryBytes: totalDictionaryBytes - totalPackedBytes,
   lzWinnerCount,
+  sharedExpressionBytes: cssBundleBytes,
+  sharedSavingsOverSeparateBytes: totalPackedBytes - cssBundleBytes,
   elapsedMs: Number(elapsedMs.toFixed(2)),
 }));
 console.log("lakecraft compact CSS roundtrip tests: ok");
