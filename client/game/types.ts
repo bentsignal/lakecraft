@@ -60,6 +60,8 @@ export interface WorldEdit {
   block: BlockId;
 }
 
+export type PlayerDamageCause = "mob" | "creeper" | "fall";
+
 /** One locally resolved blast edit. `previousBlock` is evidence for particles/save state, not a mining drop. */
 export interface LocalExplosionEdit extends WorldEdit {
   previousBlock: BlockId;
@@ -343,7 +345,7 @@ export interface VoxelEngineOptions {
     damage: number;
     edits: readonly LocalExplosionEdit[];
   }>) => void;
-  onPlayerDamage?: (amount: number) => void;
+  onPlayerDamage?: (amount: number, cause: PlayerDamageCause) => void;
   onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
   /** Return true when the held non-block item handled secondary use (for example, eating food). */
   onUseSelectedItem?: () => boolean;

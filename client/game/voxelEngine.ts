@@ -108,6 +108,7 @@ import {
 } from "../../shared/creeperExplosion.ts";
 import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/fallingBlocks.ts";
 import { fallDamageForDistance } from "../../shared/fallDamageAuthority.ts";
+import { mitigatedPlayerDamage } from "../../shared/playerCombat.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
@@ -1974,12 +1975,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (playerHealth > 0) {
         const incomingDamage = contactDamage + projectileDamage;
         if (incomingDamage > 0) {
-          const rawProtection = options.getPlayerProtection?.() ?? 0;
-          const protection = Number.isFinite(rawProtection) ? Math.max(0, Math.min(20, rawProtection)) : 0;
-          const mitigatedDamage = Math.max(1, incomingDamage - Math.floor(protection / 2));
+          const mitigatedDamage = mitigatedPlayerDamage(incomingDamage, options.getPlayerProtection?.() ?? 0);
           const appliedDamage = Math.min(playerHealth, mitigatedDamage);
           playerHealth -= appliedDamage;
-          options.onPlayerDamage?.(appliedDamage);
+          options.onPlayerDamage?.(appliedDamage, "mob");
           options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
         }
       }
@@ -1996,13 +1995,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         center: { x: explosion.x, y: explosion.y, z: explosion.z },
         radius: CREEPER_EXPLOSION_RADIUS,
       }, pose);
-      const rawProtection = options.getPlayerProtection?.() ?? 0;
-      const protection = Number.isFinite(rawProtection) ? Math.max(0, Math.min(20, rawProtection)) : 0;
-      const damage = rawDamage > 0 ? Math.max(1, rawDamage - Math.floor(protection / 2)) : 0;
+      const damage = rawDamage > 0
+        ? mitigatedPlayerDamage(rawDamage, options.getPlayerProtection?.() ?? 0)
+        : 0;
       const appliedDamage = Math.min(playerHealth, damage);
       if (appliedDamage > 0) {
         playerHealth -= appliedDamage;
-        options.onPlayerDamage?.(appliedDamage);
+        options.onPlayerDamage?.(appliedDamage, "creeper");
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       }
       options.onLocalCreeperExplosion?.({ ...explosion, damage: appliedDamage, edits });
@@ -2105,7 +2104,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (damage > 0 && playerHealth > 0) {
         const appliedDamage = Math.min(playerHealth, damage);
         playerHealth -= appliedDamage;
-        options.onPlayerDamage?.(appliedDamage);
+        options.onPlayerDamage?.(appliedDamage, "fall");
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       }
     }

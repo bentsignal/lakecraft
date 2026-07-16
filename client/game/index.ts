@@ -79,6 +79,7 @@ export type {
   BlockId,
   BlockTarget,
   LocalExplosionEdit,
+  PlayerDamageCause,
   PlayerPose,
   PrimedTntVisualFuse,
   RemotePlayer,

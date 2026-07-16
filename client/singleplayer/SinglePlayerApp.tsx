@@ -16,6 +16,7 @@ import {
   MAX_HUNGER,
   ITEMS,
   addItem,
+  applyConfirmedArmorDamage,
   applyConfirmedDurableItemUse,
   applyConfirmedToolUse,
   attackDamage,
@@ -881,10 +882,29 @@ export function SinglePlayerApp() {
         setActiveFurnaceKey(null);
         document.exitPointerLock();
       },
-      onPlayerDamage: (amount) => audio.play("playerHurt", {
-        seed: `local-hurt:${amount}:${performance.now().toFixed(0)}`,
-        intensity: Math.min(1, 0.45 + amount / 12),
-      }),
+      onPlayerDamage: (amount, cause) => {
+        if (amount > 0 && cause !== "fall") {
+          const armorDamage = applyConfirmedArmorDamage(equipmentRef.current);
+          if (armorDamage.damaged.length > 0) {
+            equipmentRef.current = armorDamage.equipment;
+            setEquipment(armorDamage.equipment);
+            markWorldDirty();
+          }
+          if (armorDamage.broken.length > 0) {
+            const labels = armorDamage.broken.map(({ itemId }) => ITEMS[itemId].label);
+            setMessages((current) => [...current.slice(-2), {
+              id: `armor-break-${performance.now().toFixed(0)}`,
+              text: labels.length === 1 ? `${labels[0]} broke` : `${labels.length} armor pieces broke`,
+              detail: labels.length === 1 ? "The final durability point was used." : labels.join(" · "),
+              tone: "warning",
+            }]);
+          }
+        }
+        audio.play("playerHurt", {
+          seed: `local-hurt:${cause}:${amount}:${performance.now().toFixed(0)}`,
+          intensity: Math.min(1, 0.45 + amount / 12),
+        });
+      },
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: (action) => {
