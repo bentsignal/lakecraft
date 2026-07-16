@@ -2629,6 +2629,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const frameTimeMs = Math.max(0, now - lastFrame);
     const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
+    if (paused) {
+      frameId = requestAnimationFrame(frame);
+      return;
+    }
     worldTimeMs = advanceVoxelWorldTimeMs(worldTimeMs, dt, paused);
     if (!paused && miningTimer && miningDurationMs > 0 && now - lastMiningProgressAt >= 50) {
       lastMiningProgressAt = now;
