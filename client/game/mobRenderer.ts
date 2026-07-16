@@ -35,6 +35,8 @@ const VERTICES_PER_BOX = 36;
 const MAX_BOXES_PER_MOB = 12;
 const RENDER_DISTANCE_SQUARED = 30 * 30;
 const PRIMED_TNT_RENDER_DISTANCE_SQUARED = 48 * 48;
+const MOB_HURT_FLASH_SECONDS = 0.5;
+const MOB_HURT_FLASH_MIX = 0.62;
 
 export const MAX_PRIMED_TNT_VISUALS = TNT_MAX_ACTIVE_FUSES;
 export const PRIMED_TNT_VERTICES_PER_ENTITY = 4 * VERTICES_PER_BOX;
@@ -108,6 +110,7 @@ function shortestAngle(from: number, to: number): number {
 interface VertexWriter {
   data: Float32Array;
   offset: number;
+  hurtMix: number;
 }
 
 function appendBox(
@@ -147,9 +150,13 @@ function appendBox(
       writer.data[writer.offset++] = originX + localX * cosYaw - localZ * sinYaw;
       writer.data[writer.offset++] = originY + localY;
       writer.data[writer.offset++] = originZ + localX * sinYaw + localZ * cosYaw;
-      writer.data[writer.offset++] = red * face.shade;
-      writer.data[writer.offset++] = green * face.shade;
-      writer.data[writer.offset++] = blue * face.shade;
+      const baseRed = red * face.shade;
+      const baseGreen = green * face.shade;
+      const baseBlue = blue * face.shade;
+      const hurtMix = writer.hurtMix;
+      writer.data[writer.offset++] = baseRed + (face.shade - baseRed) * hurtMix;
+      writer.data[writer.offset++] = baseGreen + (face.shade * 0.06 - baseGreen) * hurtMix;
+      writer.data[writer.offset++] = baseBlue + (face.shade * 0.06 - baseBlue) * hurtMix;
     }
   }
 }
@@ -407,7 +414,9 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const primedSample: PrimedTntVisualSample = { progress: 0, scale: 0.98, flashMix: 0 };
   let primedCount = 0;
   let primedClockOffset = 0;
-  const writer: VertexWriter = { data: vertices, offset: 0 };
+  const writer: VertexWriter = { data: vertices, offset: 0, hurtMix: 0 };
+  const observedHealth = new Map<string, number>();
+  const hurtUntilSeconds = new Map<string, number>();
   const stats: MobRenderStats = {
     totalMobCount: 0,
     visibleMobCount: 0,
@@ -476,8 +485,22 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
       stats.totalMobCount = poses.length;
       stats.visibleMobCount = 0;
       const alpha = Math.max(0, Math.min(1, interpolation));
+      const visualSeconds = Number.isFinite(animationSeconds) ? animationSeconds : 0;
       for (let index = 0; index < poses.length; index += 1) {
         const pose = poses[index];
+        const currentHealth = Number.isFinite(pose.health) ? Math.max(0, pose.health) : 0;
+        const previousHealth = observedHealth.get(pose.id);
+        if (previousHealth !== undefined) {
+          if (currentHealth < previousHealth) {
+            hurtUntilSeconds.set(pose.id, visualSeconds + MOB_HURT_FLASH_SECONDS);
+          } else if (currentHealth > previousHealth) {
+            hurtUntilSeconds.delete(pose.id);
+          }
+        }
+        observedHealth.set(pose.id, currentHealth);
+        const hurtUntil = hurtUntilSeconds.get(pose.id) ?? 0;
+        writer.hurtMix = visualSeconds < hurtUntil ? MOB_HURT_FLASH_MIX : 0;
+        if (hurtUntil > 0 && visualSeconds >= hurtUntil) hurtUntilSeconds.delete(pose.id);
         const x = pose.previousX + (pose.x - pose.previousX) * alpha;
         const y = pose.previousY + (pose.y - pose.previousY) * alpha;
         const z = pose.previousZ + (pose.z - pose.previousZ) * alpha;
@@ -499,6 +522,9 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         else appendSpider(writer, x, y, z, yaw, swing);
         stats.visibleMobCount += 1;
       }
+      // Hurt color is entity-local. Projectiles and primed TNT share this
+      // writer but must retain their own palettes.
+      writer.hurtMix = 0;
       const mobFloatCount = writer.offset;
       stats.projectileCount = Math.min(projectiles.length, MAX_MOB_PROJECTILES);
       for (let index = 0; index < stats.projectileCount; index += 1) {
@@ -536,6 +562,8 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
       return stats;
     },
     destroy() {
+      observedHealth.clear();
+      hurtUntilSeconds.clear();
       gl.deleteBuffer(buffer);
     },
   };

@@ -86,6 +86,95 @@ const shearedGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6
 assert.notDeepEqual(shearedGeometry, woollyGeometry, "authority shearing must visibly narrow and recolor the retained sheep mesh");
 assert.equal(shearedGeometry.length, woollyGeometry.length, "sheared sheep keep the fixed batched vertex budget");
 
+const hurtSheep = pose("sheep", 0, 6, 60);
+hurtSheep.behavior = "idle";
+hurtSheep.previousX = hurtSheep.x;
+hurtSheep.previousY = hurtSheep.y;
+hurtSheep.previousZ = hurtSheep.z;
+hurtSheep.previousYaw = hurtSheep.yaw;
+renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10);
+const calmHurtTestGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
+hurtSheep.health -= 1;
+renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10);
+const freshHurtGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
+assert.equal(freshHurtGeometry[0], calmHurtTestGeometry[0], "hurt feedback cannot move retained mob geometry");
+assert.ok(freshHurtGeometry[3] > calmHurtTestGeometry[3], "damage flashes the mob toward red");
+assert.ok(freshHurtGeometry[4] < calmHurtTestGeometry[4], "damage removes green from the hurt palette");
+assert.ok(freshHurtGeometry[5] < calmHurtTestGeometry[5], "damage removes blue from the hurt palette");
+renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10.49);
+assert.deepEqual(
+  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
+  freshHurtGeometry,
+  "equal health keeps the original flash deadline without extending or changing its tint",
+);
+renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10.5);
+assert.deepEqual(
+  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
+  calmHurtTestGeometry,
+  "the retained hurt flash expires exactly after half a second",
+);
+
+hurtSheep.health -= 1;
+renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 20);
+assert.ok(gl.uploaded![3] > calmHurtTestGeometry[3], "a later health decrease starts a fresh flash");
+hurtSheep.health += 1;
+renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 20.1);
+assert.deepEqual(
+  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
+  calmHurtTestGeometry,
+  "healing or respawn clears an active hurt flash",
+);
+
+const initiallyDamagedSheep = { ...hurtSheep, id: "sheep-initially-damaged", health: 1 };
+renderer.rebuild([initiallyDamagedSheep], 0, 0, 0, 1, 1, 30);
+assert.deepEqual(
+  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
+  calmHurtTestGeometry,
+  "the first observation initializes health silently even when a mob is already hurt",
+);
+
+const tintIsolationSheep = { ...hurtSheep, id: "sheep-tint-isolation", health: 8 };
+renderer.rebuild([tintIsolationSheep], 0, 0, 0, 1, 1, 40);
+tintIsolationSheep.health = 7;
+const calmCow = pose("cow", 2, 6, 61);
+calmCow.behavior = "idle";
+calmCow.previousX = calmCow.x;
+calmCow.previousY = calmCow.y;
+calmCow.previousZ = calmCow.z;
+calmCow.previousYaw = calmCow.yaw;
+renderer.rebuild([tintIsolationSheep, calmCow], 0, 0, 0, 1, 1, 40);
+const cowFloatOffset = mobVertexCountForKind("sheep") * 6;
+const cowAfterHurt = gl.uploaded!.slice(cowFloatOffset, cowFloatOffset + mobVertexCountForKind("cow") * 6);
+renderer.rebuild([calmCow], 0, 0, 0, 1, 1, 40);
+assert.deepEqual(
+  cowAfterHurt,
+  gl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6),
+  "hurt tint is reset before the next mob in the shared batch",
+);
+
+const futureFuseNow = Date.now();
+renderer.setPrimedTntFuses([{
+  x: 0,
+  y: 7,
+  z: 5,
+  ignitedAt: futureFuseNow + 10_000,
+  dueAt: futureFuseNow + 14_000,
+}], futureFuseNow);
+renderer.rebuild([tintIsolationSheep], 0, 0, 0, 1, 1, 40.1);
+const hurtWithTntStats = renderer.rebuild(
+  [{ ...tintIsolationSheep, health: 6 }],
+  0, 0, 0, 1, 1, 40.2,
+);
+const primedFloatOffset = (hurtWithTntStats.vertexCount - hurtWithTntStats.primedTntVertexCount) * 6;
+const tntAfterHurt = gl.uploaded!.slice(primedFloatOffset, hurtWithTntStats.vertexCount * 6);
+const tntOnlyStats = renderer.rebuild([], 0, 0, 0, 1, 1, 40.2);
+assert.deepEqual(
+  tntAfterHurt,
+  gl.uploaded!.slice(0, tntOnlyStats.vertexCount * 6),
+  "mob hurt tint cannot bleed into primed TNT geometry sharing the writer",
+);
+renderer.setPrimedTntFuses([]);
+
 const used = gl.uploaded!.subarray(0, stats.vertexCount * 6);
 assert.equal(used.length, stats.vertexCount * 6, "positions and colors should be interleaved as six floats per vertex");
 for (let offset = 0; offset < used.length; offset += 6) {
