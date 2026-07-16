@@ -2,7 +2,7 @@ import { ITEMS, type Inventory } from "../../shared/game";
 import { ItemGlyph } from "./ItemGlyph";
 
 const CHEST_CSS = `
-.lc-chest-layer{align-items:center;background:rgba(8,10,8,.72);display:flex;inset:0;justify-content:center;padding:24px;position:fixed;z-index:66}.lc-chest{background:#d9cfb3;border:1px solid #eee5ce;box-shadow:0 24px 80px rgba(0,0,0,.58),inset 0 0 0 5px rgba(87,77,49,.13);color:#24261f;max-height:calc(100vh - 48px);overflow:auto;padding:28px;width:min(940px,100%)}.lc-chest header{align-items:end;border-bottom:2px solid rgba(36,38,31,.7);display:flex;justify-content:space-between;margin-bottom:20px;padding-bottom:12px}.lc-chest h2{font:900 30px/1 "Trebuchet MS",sans-serif;margin:4px 0 0;text-transform:uppercase}.lc-chest header small,.lc-chest-status{font:9px "Courier New",monospace}.lc-chest header button{background:#24261f;border:0;color:#e6dcc1;cursor:pointer;padding:10px 13px}.lc-chest header button:disabled{cursor:wait;opacity:.5}.lc-chest-grid-wrap{display:grid;gap:28px;grid-template-columns:1fr 1fr}.lc-chest-section-head{align-items:center;display:flex;justify-content:space-between;margin-bottom:8px}.lc-chest-section-head strong{font:11px "Trebuchet MS",sans-serif;letter-spacing:.1em;text-transform:uppercase}.lc-chest-section-head small{color:rgba(36,38,31,.58);font:8px "Courier New",monospace}.lc-chest-grid{background:rgba(36,38,31,.88);display:grid;gap:3px;grid-template-columns:repeat(9,1fr);padding:6px}.lc-chest-slot{aspect-ratio:1;background:rgba(230,220,193,.045);border:1px solid rgba(230,220,193,.14);color:#e6dcc1;cursor:pointer;min-width:0;padding:0}.lc-chest-slot:disabled{cursor:default;opacity:.48}.lc-chest-slot:hover:not(:disabled){border-color:#d49a45}.lc-chest-status-row{align-items:center;display:flex;gap:14px;justify-content:space-between;margin-top:16px}.lc-chest-status{color:rgba(36,38,31,.65);margin:0}.lc-chest-status.is-error{color:#9a5434}.lc-chest-retry{background:#9a5434;border:0;color:#fff4dd;cursor:pointer;flex:none;font:700 9px "Courier New",monospace;padding:9px 11px;text-transform:uppercase}@media(max-width:760px){.lc-chest-grid-wrap{grid-template-columns:1fr}.lc-chest{padding:20px}.lc-chest-grid{grid-template-columns:repeat(9,minmax(28px,1fr))}.lc-chest-status-row{align-items:stretch;flex-direction:column}}
+.lc-chest-layer{align-items:center;background:rgba(0,0,0,.56);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);image-rendering:pixelated;inset:0;justify-content:center;padding:20px;position:fixed;z-index:66}.lc-chest{--lc-chest-slot:48px;background:#c6c6c6;border:4px solid #111;box-shadow:inset 4px 4px #fff,inset -4px -4px #555,0 18px 56px rgba(0,0,0,.66);box-sizing:border-box;color:#3f3f3f;max-height:calc(100dvh - 40px);overflow:auto;padding:18px 22px 16px;width:min(500px,100%)}.lc-chest header{align-items:center;display:flex;justify-content:space-between;margin-bottom:8px}.lc-chest h2,.lc-chest h3{font:16px/1 var(--lc-pixel-font,"Courier New",monospace);font-weight:400;margin:0;text-shadow:1px 1px #fff}.lc-chest h3{font-size:13px;margin:15px 0 7px}.lc-chest header button{align-items:center;background:none;border:0;color:#3f3f3f;cursor:pointer;display:flex;font:10px/1 var(--lc-pixel-font,"Courier New",monospace);gap:7px;padding:0}.lc-chest header button:disabled{cursor:wait;opacity:.45}.lc-chest header kbd{background:#8b8b8b;border:2px solid;border-color:#fff #373737 #373737 #fff;color:#fff;font:10px/1 var(--lc-pixel-font,"Courier New",monospace);padding:4px 6px;text-shadow:1px 1px #333}.lc-chest-grid{display:grid;grid-template-columns:repeat(9,var(--lc-chest-slot));justify-content:center}.lc-chest-grid--player .lc-chest-slot:nth-child(n+28){margin-top:11px}.lc-chest-slot{appearance:none;background:#8b8b8b;border:2px solid;border-color:#373737 #fff #fff #373737;color:#fff;cursor:pointer;height:var(--lc-chest-slot);min-width:0;padding:0;position:relative;width:var(--lc-chest-slot)}.lc-chest-slot:hover:not(:disabled){background:#a5a5a5}.lc-chest-slot:disabled{cursor:default;opacity:1}.lc-chest-slot .lc-item-glyph{min-height:calc(var(--lc-chest-slot) - 4px)}.lc-chest-slot .lc-item-icon__svg{height:min(40px,calc(100% - 4px));width:min(40px,calc(100% - 4px))}.lc-chest-status-row{align-items:center;display:flex;gap:12px;justify-content:space-between;margin-top:14px}.lc-chest-status{color:#555;font:9px/1.4 var(--lc-pixel-font,"Courier New",monospace);margin:0;text-shadow:1px 1px #fff}.lc-chest-status.is-error{color:#a40000}.lc-chest-retry{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;flex:none;font:9px/1 var(--lc-pixel-font,"Courier New",monospace);padding:7px 9px;text-shadow:1px 1px #333}@media(max-width:560px){.lc-chest-layer{padding:10px}.lc-chest{--lc-chest-slot:min(48px,calc((100vw - 72px)/9));max-height:calc(100dvh - 20px);padding:15px 17px 14px;width:100%}.lc-chest-status-row{align-items:stretch;flex-direction:column}}
 `;
 
 export type ChestTransferDirection = "to_chest" | "to_player";
@@ -15,47 +15,54 @@ export interface ChestDrawerProps {
   status?: string;
   error?: string;
   retryAvailable?: boolean;
-  eyebrow?: string;
   onClose: () => void;
   onRetry?: () => void;
   onTransfer: (direction: ChestTransferDirection, index: number) => void;
 }
 
+export function chestSlotIndex(direction: ChestTransferDirection, visualIndex: number, slotCount: number): number {
+  return direction === "to_chest" && slotCount === 36 ? (visualIndex + 9) % 36 : visualIndex;
+}
+
 function StorageGrid({ inventory, busy, direction, onTransfer }: { inventory: Inventory; busy: boolean; direction: ChestTransferDirection; onTransfer: ChestDrawerProps["onTransfer"] }) {
+  const playerGrid = direction === "to_chest" && inventory.length === 36;
   return (
-    <div className="lc-chest-grid">
-      {inventory.map((stack, index) => (
-        <button
-          aria-label={stack ? `${ITEMS[stack.itemId].label}, ${stack.count}; move stack` : "Empty slot"}
-          className="lc-chest-slot"
-          disabled={busy || !stack}
-          key={index}
-          onClick={() => onTransfer(direction, index)}
-          title={stack ? `Move ${ITEMS[stack.itemId].label}` : "Empty"}
-          type="button"
-        >
-          <ItemGlyph stack={stack} />
-        </button>
-      ))}
+    <div aria-label={playerGrid ? "Player inventory" : "Chest storage"} className={`lc-chest-grid${playerGrid ? " lc-chest-grid--player" : ""}`} role="group">
+      {Array.from({ length: inventory.length }, (_, visualIndex) => {
+        const index = chestSlotIndex(direction, visualIndex, inventory.length);
+        const stack = inventory[index] ?? null;
+        return (
+          <button
+            aria-label={stack ? `${ITEMS[stack.itemId].label}, ${stack.count}; move stack` : "Empty slot"}
+            className="lc-chest-slot"
+            disabled={busy || !stack}
+            key={index}
+            onClick={() => onTransfer(direction, index)}
+            title={stack ? `Move ${ITEMS[stack.itemId].label}` : "Empty"}
+            type="button"
+          >
+            <ItemGlyph stack={stack} />
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-export function ChestDrawer({ open, chestInventory, playerInventory, busy = false, status, error, retryAvailable = false, eyebrow = "SHARED LAKEBED CONTAINER", onClose, onRetry, onTransfer }: ChestDrawerProps) {
+export function ChestDrawer({ open, chestInventory, playerInventory, busy = false, status, error, retryAvailable = false, onClose, onRetry, onTransfer }: ChestDrawerProps) {
   if (!open) return null;
   return (
     <div className="lc-chest-layer" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <style>{CHEST_CSS}</style>
-      <section className="lc-chest" role="dialog" aria-modal="true" aria-labelledby="lc-chest-title">
-        <header><div><small>{eyebrow}</small><h2 id="lc-chest-title">Chest</h2></div><button disabled={busy} onClick={onClose} type="button">Close · E</button></header>
-        <div className="lc-chest-grid-wrap">
-          <section><div className="lc-chest-section-head"><strong>Chest storage</strong><small>Click a stack to take it</small></div><StorageGrid busy={busy} direction="to_player" inventory={chestInventory} onTransfer={onTransfer} /></section>
-          <section><div className="lc-chest-section-head"><strong>Your pack</strong><small>Click a stack to store it</small></div><StorageGrid busy={busy} direction="to_chest" inventory={playerInventory} onTransfer={onTransfer} /></section>
-        </div>
-        <div className="lc-chest-status-row">
-          <p className={`lc-chest-status${error ? " is-error" : ""}`} role={error ? "alert" : "status"}>{error || status || "Every transfer is committed atomically through Lakebed."}</p>
-          {retryAvailable ? <button className="lc-chest-retry" onClick={onRetry} type="button">Retry reconciliation</button> : null}
-        </div>
+      <section aria-busy={busy} className="lc-chest" role="dialog" aria-modal="true" aria-labelledby="lc-chest-title">
+        <header><h2 id="lc-chest-title">Chest</h2><button aria-label="Close chest" disabled={busy} onClick={onClose} type="button">Done <kbd>E</kbd></button></header>
+        <StorageGrid busy={busy} direction="to_player" inventory={chestInventory} onTransfer={onTransfer} />
+        <h3>Inventory</h3>
+        <StorageGrid busy={busy} direction="to_chest" inventory={playerInventory} onTransfer={onTransfer} />
+        {error || status || retryAvailable ? <div className="lc-chest-status-row">
+          {error || status ? <p className={`lc-chest-status${error ? " is-error" : ""}`} role={error ? "alert" : "status"}>{error || status}</p> : <span />}
+          {retryAvailable ? <button className="lc-chest-retry" onClick={onRetry} type="button">Retry</button> : null}
+        </div> : null}
       </section>
     </div>
   );

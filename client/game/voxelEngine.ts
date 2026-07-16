@@ -312,6 +312,7 @@ export function resolveSafeSpawnY(
 }
 
 interface ChunkMesh {
+  key: string;
   textureBuffer: WebGLBuffer | null;
   textureVertexCount: number;
   transparentBuffer: WebGLBuffer | null;
@@ -321,8 +322,16 @@ interface ChunkMesh {
   vertexCount: number;
   centerX: number;
   centerZ: number;
+  transparentDistanceSquared: number;
   minY: number;
   maxY: number;
+}
+
+export function compareTransparentChunkMeshes(
+  left: Readonly<{ key: string; transparentDistanceSquared: number }>,
+  right: Readonly<{ key: string; transparentDistanceSquared: number }>,
+): number {
+  return right.transparentDistanceSquared - left.transparentDistanceSquared || left.key.localeCompare(right.key);
 }
 
 export interface TorchLightPosition {
@@ -1398,6 +1407,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
   let streamingCenterKey = chunkKey(initialChunkPlan.center.x, initialChunkPlan.center.z);
   const chunkMeshes = new Map<string, ChunkMesh>();
+  const visibleMeshes: ChunkMesh[] = [];
+  const transparentMeshes: ChunkMesh[] = [];
   const mobRenderer = createMobRenderer(gl);
   const mobSimulation = createMobSimulation(createMobSpawns({
     seed,
@@ -1840,6 +1851,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const colorVertexCount = colorVertices.length / 6;
     const vertexCount = textureVertexCount + transparentVertexCount + colorVertexCount;
     chunkMeshes.set(chunkKey, {
+      key: chunkKey,
       textureBuffer,
       textureVertexCount,
       transparentBuffer,
@@ -1849,6 +1861,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       vertexCount,
       centerX: (coordinate.x + 0.5) * WORLD_CHUNK_SIZE,
       centerZ: (coordinate.z + 0.5) * WORLD_CHUNK_SIZE,
+      transparentDistanceSquared: 0,
       minY,
       maxY,
     });
@@ -2451,11 +2464,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
     gl.uniform1i(terrainAtlasLocation, 0);
     gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
-    const visibleMeshes: Array<readonly [string, ChunkMesh]> = [];
-    for (const [key, mesh] of chunkMeshes) {
+    visibleMeshes.length = 0;
+    transparentMeshes.length = 0;
+    for (const mesh of chunkMeshes.values()) {
       if (!chunkIntersectsView(mesh, frustumPlanes)) continue;
       visibleChunkCount += 1;
-      visibleMeshes.push([key, mesh]);
+      visibleMeshes.push(mesh);
+      if (mesh.transparentBuffer && mesh.transparentVertexCount > 0) {
+        const transparentDx = mesh.centerX - eye[0];
+        const transparentDz = mesh.centerZ - eye[2];
+        mesh.transparentDistanceSquared = transparentDx * transparentDx + transparentDz * transparentDz;
+        transparentMeshes.push(mesh);
+      }
       if (!mesh.textureBuffer || !mesh.textureVertexCount) continue;
       bindTerrainBuffer(mesh.textureBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, mesh.textureVertexCount);
@@ -2483,7 +2503,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform4fv(torchLightsLocation, activeTorchUniforms);
     gl.uniform1f(lightingLocation, 1);
     gl.uniform1f(fogLocation, 1);
-    for (const [, mesh] of visibleMeshes) {
+    for (const mesh of visibleMeshes) {
       if (!mesh.colorBuffer || !mesh.colorVertexCount) continue;
       bindBuffer(mesh.colorBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, mesh.colorVertexCount);
@@ -2529,21 +2549,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       avatarDrawCalls += 1;
     }
 
-    const transparentChunkKeys = sortTransparentChunkKeysBackToFront(
-      visibleMeshes
-        .filter(([, mesh]) => !!mesh.transparentBuffer && mesh.transparentVertexCount > 0)
-        .map(([key]) => key),
-      eye,
-    );
-    if (transparentChunkKeys.length) {
+    transparentMeshes.sort(compareTransparentChunkMeshes);
+    if (transparentMeshes.length) {
       gl.useProgram(terrainProgram);
       gl.uniform1f(terrainAlphaCutoffLocation, 0);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
-      for (const key of transparentChunkKeys) {
-        const mesh = chunkMeshes.get(key);
-        if (!mesh?.transparentBuffer || !mesh.transparentVertexCount) continue;
+      const transparentDrawCount = Math.min(transparentMeshes.length, MAX_TRANSPARENT_CHUNK_DRAWS);
+      for (let index = 0; index < transparentDrawCount; index += 1) {
+        const mesh = transparentMeshes[index];
+        if (!mesh.transparentBuffer || !mesh.transparentVertexCount) continue;
         bindTerrainBuffer(mesh.transparentBuffer);
         gl.drawArrays(gl.TRIANGLES, 0, mesh.transparentVertexCount);
         drawCalls += 1;

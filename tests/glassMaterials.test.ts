@@ -50,7 +50,7 @@ assert.equal(
 );
 
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-const transparentPass = engineSource.slice(engineSource.indexOf("const transparentChunkKeys"));
+const transparentPass = engineSource.slice(engineSource.indexOf("transparentMeshes.sort(compareTransparentChunkMeshes)"));
 assert.match(transparentPass, /gl\.enable\(gl\.BLEND\)/);
 assert.match(transparentPass, /gl\.blendFunc\(gl\.SRC_ALPHA, gl\.ONE_MINUS_SRC_ALPHA\)/);
 assert.match(transparentPass, /gl\.depthMask\(false\)/);
@@ -58,7 +58,7 @@ assert.match(transparentPass, /gl\.depthMask\(true\)/);
 assert.match(transparentPass, /gl\.disable\(gl\.BLEND\)/);
 assert.doesNotMatch(engineSource, /texel\.a < 0\.5/, "low-alpha glass center pixels must reach blending");
 assert.ok(
-  engineSource.indexOf("if (nameplateVertexCount)") < engineSource.indexOf("const transparentChunkKeys"),
+  engineSource.indexOf("if (nameplateVertexCount)") < engineSource.indexOf("transparentMeshes.sort(compareTransparentChunkMeshes)"),
   "glass composites after opaque terrain, players, mobs, drops, and nameplates",
 );
 

@@ -1423,7 +1423,6 @@ export function SinglePlayerApp() {
       <ChestDrawer
         chestInventory={chestInventory}
         error={containerError}
-        eyebrow="LOCAL SINGLE-PLAYER CONTAINER"
         onClose={() => closeActiveContainer()}
         onTransfer={transferChestStack}
         open={activeChestKey !== null}

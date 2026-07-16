@@ -29,7 +29,7 @@ assert.ok(app.includes("setLocalFusesPausedRef.current(paused)"), "container mod
 assert.ok(app.includes("<FurnaceDrawer"));
 assert.ok(app.includes("<ChestDrawer"));
 assert.ok(app.includes("modalOpen={worldModalOpen}"), "container drawers hide the crosshair and survival hotbar behind the modal");
-assert.ok(app.includes('eyebrow="LOCAL SINGLE-PLAYER CONTAINER"'));
-assert.ok(chestDrawer.includes('eyebrow = "SHARED LAKEBED CONTAINER"'), "multiplayer keeps its existing label by default");
+assert.equal(app.includes("LOCAL SINGLE-PLAYER CONTAINER"), false, "local chest no longer exposes implementation/debug copy");
+assert.equal(chestDrawer.includes("SHARED LAKEBED CONTAINER"), false, "shared drawer no longer brands its storage backend");
 
 console.log("single-player chest/furnace open, transfer, pause, recovery, and offline integration tests passed");

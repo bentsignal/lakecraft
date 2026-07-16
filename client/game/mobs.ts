@@ -196,10 +196,33 @@ export const HARD_MAX_MOB_POPULATION = 64;
 export const MAX_MOB_PROJECTILES = 24;
 export const MOB_PROJECTILE_LIFETIME_SECONDS = 3;
 export const MOB_PROJECTILE_GRAVITY = 2.4;
+export const LOCAL_MOB_LINE_OF_SIGHT_MAX_SAMPLES = 64;
 
 /** Creepers remain hostile in daylight; the other current hostiles do not. */
 export function localMobHostileActive(kind: MobKind, isNight: boolean): boolean {
   return !MOB_DEFINITIONS[kind].passive && (isNight || kind === "creeper");
+}
+
+/** Bounded allocation-free eye ray used only by the local hostile simulation. */
+export function localMobHasLineOfSight(
+  mob: Readonly<Pick<MobState, "kind" | "x" | "y" | "z">>,
+  player: Readonly<MobTarget>,
+  isBlocked?: (x: number, y: number, z: number) => boolean,
+): boolean {
+  if (!isBlocked) return true;
+  const dx = player.x - mob.x;
+  const dy = player.y + 0.9 - (mob.y + MOB_DEFINITIONS[mob.kind].height * 0.75);
+  const dz = player.z - mob.z;
+  const distance = Math.hypot(dx, dy, dz);
+  if (!Number.isFinite(distance)) return false;
+  const samples = Math.min(LOCAL_MOB_LINE_OF_SIGHT_MAX_SAMPLES, Math.max(1, Math.ceil(distance * 4)));
+  for (let sample = 1; sample < samples; sample += 1) {
+    const ratio = sample / samples;
+    if (isBlocked(mob.x + dx * ratio, mob.y + MOB_DEFINITIONS[mob.kind].height * 0.75 + dy * ratio, mob.z + dz * ratio)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export interface MobSpawnDescriptor {
@@ -955,7 +978,8 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       const playerDx = input.player.x - mob.x;
       const playerDz = input.player.z - mob.z;
       const distanceSquared = playerDx * playerDx + playerDz * playerDz;
-      if (distanceSquared <= 16 * 16) {
+      if (distanceSquared <= 16 * 16
+        && localMobHasLineOfSight(mob, input.player, input.isProjectileBlocked)) {
         const distance = Math.sqrt(distanceSquared);
         const inverseDistance = distance > 0.0001 ? 1 / distance : 0;
         if (mob.kind === "creeper") {
