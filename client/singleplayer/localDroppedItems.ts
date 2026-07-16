@@ -1,6 +1,9 @@
 import type { DroppedItemRenderItem } from "../game/droppedItemRenderer.ts";
 import type { LocalMobDeathDropEvent } from "../game/mobs.ts";
-import { DROPPED_ITEM_PICKUP_RADIUS } from "../../shared/droppedItems.ts";
+import {
+  DROPPED_ITEM_PICKUP_RADIUS,
+  DROPPED_ITEM_TTL_MS,
+} from "../../shared/droppedItems.ts";
 import { addItemStack, type Inventory } from "../../shared/game.ts";
 
 export type AppendLocalMobDropsResult =
@@ -11,6 +14,29 @@ export interface LocalDropCollectionResult {
   inventory: Inventory;
   drops: DroppedItemRenderItem[];
   changed: boolean;
+}
+
+/**
+ * Removes local world drops at the same exact TTL boundary as multiplayer.
+ * Survivors retain their original order and object identity; when nothing has
+ * expired, the original array is returned without allocating or mutating it.
+ */
+export function pruneExpiredLocalDroppedItems<T extends DroppedItemRenderItem>(
+  drops: T[],
+  now: number,
+): { drops: T[]; removed: number } {
+  let survivors: T[] | null = null;
+  let removed = 0;
+  for (let index = 0; index < drops.length; index += 1) {
+    const drop = drops[index];
+    if (now >= drop.droppedAt + DROPPED_ITEM_TTL_MS) {
+      if (!survivors) survivors = drops.slice(0, index);
+      removed += 1;
+    } else if (survivors) {
+      survivors.push(drop);
+    }
+  }
+  return { drops: survivors ?? drops, removed };
 }
 
 function hashText(value: string): number {

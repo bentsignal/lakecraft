@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { ChestDrawer, FurnaceDrawer, GameHud, FirstPersonBow, type ChestTransferDirection, type HudMessage } from "../components";
+import { ChestDrawer, FurnaceDrawer, GameHud, FirstPersonBow, bowChargeStage, type ChestTransferDirection, type HudMessage } from "../components";
 import {
   BLOCK,
   MORNING_PHASE,
@@ -86,7 +86,7 @@ import {
 } from "./localBed.ts";
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
-import { appendLocalMobDeathDrops, collectLocalDroppedItems } from "./localDroppedItems.ts";
+import { appendLocalMobDeathDrops, collectLocalDroppedItems, pruneExpiredLocalDroppedItems } from "./localDroppedItems.ts";
 import {
   canCommitLocalWorldEdits,
   createLocalWorldEditIndex,
@@ -152,17 +152,21 @@ type InitialLocalWorld = {
   containers: LocalContainers;
   load: SinglePlayerLoadResult;
   saveLocked: boolean;
+  prunedDropCount: number;
 };
 
 function loadInitialLocalWorld(): InitialLocalWorld {
   const now = Date.now();
   const finish = (snapshot: SinglePlayerSnapshot, load: SinglePlayerLoadResult, saveLocked: boolean): InitialLocalWorld => {
-    const imported = importLocalContainersSnapshot({ chests: snapshot.chests, furnaces: snapshot.furnaces });
+    const pruned = pruneExpiredLocalDroppedItems(snapshot.drops, now);
+    const currentSnapshot = pruned.removed > 0 ? { ...snapshot, drops: pruned.drops } : snapshot;
+    const imported = importLocalContainersSnapshot({ chests: currentSnapshot.chests, furnaces: currentSnapshot.furnaces });
     return {
-      snapshot,
+      snapshot: currentSnapshot,
       containers: imported.ok ? imported.containers : createLocalContainers(),
       load,
       saveLocked: saveLocked || !imported.ok,
+      prunedDropCount: pruned.removed,
     };
   };
   try {
@@ -208,7 +212,9 @@ export function SinglePlayerApp() {
   const containersRef = useRef<LocalContainers>(initial.current.containers);
   const primedTntRef = useRef(initialSnapshot.primedTnt.map((fuse) => ({ ...fuse })));
   const initialRuntimeRef = useRef(initialSnapshot.runtime);
-  const saveCadenceRef = useRef(createSaveCadenceState(performance.now()));
+  const saveCadenceRef = useRef(initial.current.prunedDropCount > 0
+    ? markSaveCadenceDirty(createSaveCadenceState(performance.now()))
+    : createSaveCadenceState(performance.now()));
   const saveLockedRef = useRef(initial.current.saveLocked);
   const saveInProgressRef = useRef(false);
   const performSaveRef = useRef<(reason: "manual" | "autosave" | "quit") => boolean>(() => false);
@@ -435,6 +441,7 @@ export function SinglePlayerApp() {
   }
 
   function settleBrokenContainerContents(x: number, y: number, z: number, block: EngineBlockId): void {
+    pruneLocalDrops();
     const coordKey = `${x}:${y}:${z}`;
     if (block === BLOCK.FURNACE) {
       const materialized = materializeLocalFurnace(containersRef.current, coordKey, Date.now());
@@ -528,7 +535,17 @@ export function SinglePlayerApp() {
     markWorldDirty();
   }
 
+  function pruneLocalDrops(now = Date.now()): boolean {
+    const pruned = pruneExpiredLocalDroppedItems(dropsRef.current, now);
+    if (pruned.removed === 0) return false;
+    dropsRef.current = pruned.drops;
+    engineRef.current?.setDroppedItems(pruned.drops);
+    markWorldDirty();
+    return true;
+  }
+
   function dropLocalSelected(wholeStack: boolean): void {
+    pruneLocalDrops();
     const engine = engineRef.current;
     const source = inventoryRef.current[selectedRef.current];
     if (!engine || !source || dropsRef.current.length >= SINGLEPLAYER_SAVE_LIMITS.drops) return;
@@ -562,6 +579,7 @@ export function SinglePlayerApp() {
 
   function respawnLocally(): void {
     if (localRespawnBusyRef.current || !engineRef.current) return;
+    pruneLocalDrops();
     localRespawnBusyRef.current = true;
     setRespawning(true);
     const engine = engineRef.current;
@@ -785,7 +803,7 @@ export function SinglePlayerApp() {
         && countItem(inventoryRef.current, "arrow") > 0,
       onRangedChargeChange: (charging, normalizedCharge) => {
         setBowCharging(charging);
-        setBowChargeMs(charging ? normalizedCharge * 1_000 : 0);
+        setBowChargeMs(charging ? bowChargeStage(normalizedCharge) * 550 : 0);
       },
       onRangedCancel: () => {
         setBowCharging(false);
@@ -835,6 +853,7 @@ export function SinglePlayerApp() {
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
       canSprint: () => hungerRef.current > 6,
       canMineBlock: (block) => {
+        pruneLocalDrops();
         const gameBlock = ENGINE_TO_GAME[block.block];
         const drop = gameBlock ? getDeterministicMiningDrop(
           gameBlock,
@@ -901,6 +920,7 @@ export function SinglePlayerApp() {
         }
       },
       onMobDrops: (event) => {
+        pruneLocalDrops();
         const appended = appendLocalMobDeathDrops(
           dropsRef.current,
           event,
@@ -1192,6 +1212,7 @@ export function SinglePlayerApp() {
 
   useEffect(() => {
     const sample = () => {
+      pruneLocalDrops(Date.now());
       const active = !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen && document.visibilityState === "visible";
       const now = performance.now();
       const elapsedSeconds = active ? Math.max(0, now - survivalSampledAtRef.current) / 1_000 : 0;

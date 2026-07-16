@@ -3,7 +3,6 @@ import {
   ITEMS,
   RECIPES,
   availableRecipes,
-  equippedArmorProtection,
   maxItemDurability,
   remainingItemDurability,
   type ArmorSlot,
@@ -244,7 +243,6 @@ export function InventoryCraftingDrawer({
               <span className="lc-player-preview__leg lc-player-preview__leg--left" />
               <span className="lc-player-preview__leg lc-player-preview__leg--right" />
             </div>
-            <span className="lc-armor-score">Armor {equippedArmorProtection(workspace.equipment)}</span>
           </section>
 
           <section className="lc-crafting-panel" aria-labelledby="lc-crafting-title">

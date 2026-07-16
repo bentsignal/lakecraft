@@ -1,7 +1,7 @@
 import { ErrorBoundary, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
-import { ChestDrawer, FirstPersonBow, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
+import { ChestDrawer, FirstPersonBow, FurnaceDrawer, GameHud, bowChargeStage, type ChestTransferDirection, type HudMessage } from "./components";
 import { isCraftingTableWithinReach as isWorkstationWithinReach, type CraftingTablePosition as WorkstationPosition } from "./crafting";
 import {
   BLOCK,
@@ -1761,7 +1761,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         onRangedChargeChange: (charging, normalizedCharge) => {
           rangedChargeActiveRef.current = charging;
           setBowCharging(charging);
-          setBowChargeMs(charging ? Math.round(normalizedCharge * 1_000) : 0);
+          setBowChargeMs(charging ? bowChargeStage(normalizedCharge) * 550 : 0);
           if (!charging || normalizedCharge !== 0 || rangedChargeStartRef.current) return;
           motionActionSinkRef.current?.("bow_draw");
           const operationId = createCombatOperationId();
