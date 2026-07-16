@@ -197,6 +197,11 @@ export const MAX_MOB_PROJECTILES = 24;
 export const MOB_PROJECTILE_LIFETIME_SECONDS = 3;
 export const MOB_PROJECTILE_GRAVITY = 2.4;
 
+/** Creepers remain hostile in daylight; the other current hostiles do not. */
+export function localMobHostileActive(kind: MobKind, isNight: boolean): boolean {
+  return !MOB_DEFINITIONS[kind].passive && (isNight || kind === "creeper");
+}
+
 export interface MobSpawnDescriptor {
   id: string;
   kind: MobKind;
@@ -918,7 +923,7 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
     mob.previousY = mob.y;
     mob.previousZ = mob.z;
     mob.previousYaw = mob.yaw;
-    mob.hostileActive = !definition.passive && input.isNight;
+    mob.hostileActive = localMobHostileActive(mob.kind, input.isNight);
 
     if (mob.kind === "creeper" && mob.fuseStartedAtSeconds > 0
       && mob.fuseUntilSeconds > mob.fuseStartedAtSeconds
@@ -933,7 +938,7 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       continue;
     }
 
-    if (!definition.passive && !input.isNight) {
+    if (!definition.passive && !mob.hostileActive) {
       mob.fuseStartedAtSeconds = 0;
       mob.fuseUntilSeconds = 0;
       mob.behavior = "dormant";
@@ -960,6 +965,7 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
             || verticalDistance > CREEPER_FUSE_VERTICAL_RANGE_BLOCKS)) {
             mob.fuseStartedAtSeconds = 0;
             mob.fuseUntilSeconds = 0;
+            if (mob.behavior === "fuse") mob.behavior = "chase";
           }
           if (mob.fuseStartedAtSeconds > 0) {
             mob.behavior = "fuse";

@@ -319,6 +319,8 @@ interface ChunkMesh {
   colorBuffer: WebGLBuffer | null;
   colorVertexCount: number;
   vertexCount: number;
+  centerX: number;
+  centerZ: number;
   minY: number;
   maxY: number;
 }
@@ -1190,33 +1192,48 @@ function sameTarget(a: BlockTarget | null, b: BlockTarget | null): boolean {
     && a.block.block === b.block.block);
 }
 
-function chunkIntersectsView(key: string, mesh: ChunkMesh, mvp: Float32Array): boolean {
-  const coordinate = parseChunkKey(key);
-  const minX = coordinate.x * WORLD_CHUNK_SIZE;
-  const maxX = minX + WORLD_CHUNK_SIZE;
-  const minZ = coordinate.z * WORLD_CHUNK_SIZE;
-  const maxZ = minZ + WORLD_CHUNK_SIZE;
-  const centerX = (minX + maxX) * 0.5;
-  const centerY = (mesh.minY + mesh.maxY) * 0.5;
-  const centerZ = (minZ + maxZ) * 0.5;
-  const extentX = WORLD_CHUNK_SIZE * 0.5;
-  const extentY = Math.max(0.5, (mesh.maxY - mesh.minY) * 0.5);
-  const extentZ = WORLD_CHUNK_SIZE * 0.5;
-  // Column-major clip matrix: each plane is row 4 +/- one axis row.
-  const planes = [
-    [mvp[3] + mvp[0], mvp[7] + mvp[4], mvp[11] + mvp[8], mvp[15] + mvp[12]],
-    [mvp[3] - mvp[0], mvp[7] - mvp[4], mvp[11] - mvp[8], mvp[15] - mvp[12]],
-    [mvp[3] + mvp[1], mvp[7] + mvp[5], mvp[11] + mvp[9], mvp[15] + mvp[13]],
-    [mvp[3] - mvp[1], mvp[7] - mvp[5], mvp[11] - mvp[9], mvp[15] - mvp[13]],
-    [mvp[3] + mvp[2], mvp[7] + mvp[6], mvp[11] + mvp[10], mvp[15] + mvp[14]],
-    [mvp[3] - mvp[2], mvp[7] - mvp[6], mvp[11] - mvp[10], mvp[15] - mvp[14]],
-  ];
-  for (const plane of planes) {
-    const distance = plane[0] * centerX + plane[1] * centerY + plane[2] * centerZ + plane[3];
-    const radius = Math.abs(plane[0]) * extentX + Math.abs(plane[1]) * extentY + Math.abs(plane[2]) * extentZ;
+/** Extracts six column-major clip planes once for a complete culling pass. */
+export function writeFrustumPlanes(output: Float32Array, mvp: Float32Array): Float32Array {
+  for (let plane = 0; plane < 6; plane += 1) {
+    const axis = plane >> 1;
+    const sign = (plane & 1) === 0 ? 1 : -1;
+    const offset = plane * 4;
+    output[offset] = mvp[3] + sign * mvp[axis];
+    output[offset + 1] = mvp[7] + sign * mvp[4 + axis];
+    output[offset + 2] = mvp[11] + sign * mvp[8 + axis];
+    output[offset + 3] = mvp[15] + sign * mvp[12 + axis];
+  }
+  return output;
+}
+
+/** Allocation-free AABB/frustum test used once per retained chunk mesh. */
+export function aabbIntersectsFrustum(
+  planes: Float32Array,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  extentX: number,
+  extentY: number,
+  extentZ: number,
+): boolean {
+  for (let offset = 0; offset < 24; offset += 4) {
+    const distance = planes[offset] * centerX + planes[offset + 1] * centerY + planes[offset + 2] * centerZ + planes[offset + 3];
+    const radius = Math.abs(planes[offset]) * extentX + Math.abs(planes[offset + 1]) * extentY + Math.abs(planes[offset + 2]) * extentZ;
     if (distance + radius < 0) return false;
   }
   return true;
+}
+
+function chunkIntersectsView(mesh: ChunkMesh, planes: Float32Array): boolean {
+  return aabbIntersectsFrustum(
+    planes,
+    mesh.centerX,
+    (mesh.minY + mesh.maxY) * 0.5,
+    mesh.centerZ,
+    WORLD_CHUNK_SIZE * 0.5,
+    Math.max(0.5, (mesh.maxY - mesh.minY) * 0.5),
+    WORLD_CHUNK_SIZE * 0.5,
+  );
 }
 
 export function localMobAttackIsReady(readyAt: number, now: number): boolean {
@@ -1300,6 +1317,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   };
   const particleCameraRight = new Float32Array(3);
   const particleCameraUp = new Float32Array(3);
+  const frustumPlanes = new Float32Array(24);
   gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, particleGeometry.byteLength, gl.DYNAMIC_DRAW);
 
@@ -1677,6 +1695,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function rebuildChunkMesh(chunkKey: string): void {
+    const coordinate = parseChunkKey(chunkKey);
     const textureVertices: number[] = [];
     const transparentVertices: number[] = [];
     const colorVertices: number[] = [];
@@ -1828,6 +1847,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       colorBuffer,
       colorVertexCount,
       vertexCount,
+      centerX: (coordinate.x + 0.5) * WORLD_CHUNK_SIZE,
+      centerZ: (coordinate.z + 0.5) * WORLD_CHUNK_SIZE,
       minY,
       maxY,
     });
@@ -2349,6 +2370,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const projection = perspective(cameraPosture.fovRadians, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
     const mvp = multiply(projection, view);
+    writeFrustumPlanes(frustumPlanes, mvp);
     sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
     writeCelestialDirection(dayNightState.sunAngle, atmosphereSunDirection);
     writeCelestialDirection(dayNightState.moonAngle, atmosphereMoonDirection);
@@ -2431,7 +2453,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform1f(terrainAlphaCutoffLocation, 0.5);
     const visibleMeshes: Array<readonly [string, ChunkMesh]> = [];
     for (const [key, mesh] of chunkMeshes) {
-      if (!chunkIntersectsView(key, mesh, mvp)) continue;
+      if (!chunkIntersectsView(mesh, frustumPlanes)) continue;
       visibleChunkCount += 1;
       visibleMeshes.push([key, mesh]);
       if (!mesh.textureBuffer || !mesh.textureVertexCount) continue;

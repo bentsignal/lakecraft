@@ -9,6 +9,18 @@ const pauseMenu = source("../client/components/PauseMenu.tsx");
 const playerList = source("../client/components/PlayerList.tsx");
 
 assert.equal(gameHud.match(/<Crosshair\s*\/>/g)?.length, 1, "there is exactly one CSS crosshair");
+assert.ok(gameHud.includes("!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null"),
+  "the one reticle remains hidden behind death, pause, inventory, and modal surfaces");
+const crosshairCss = styles.slice(styles.indexOf(".lc-crosshair {"), styles.indexOf(".lc-first-person {"));
+assert.match(crosshairCss, /\.lc-crosshair \{[^}]*height: 16px;[^}]*left: 50%;[^}]*pointer-events: none;[^}]*top: 50%;[^}]*transform: translate\(-50%,-50%\);[^}]*width: 16px;/,
+  "reticle remains one non-interactive 16px square at the exact viewport center");
+assert.equal(crosshairCss.match(/clip-path: polygon/g)?.length, 2, "black outline and white core use two authored crisp pixel silhouettes");
+assert.ok(crosshairCss.includes("background: #111") && crosshairCss.includes("background: #fff"),
+  "reticle preserves contrast over both bright and dark terrain");
+assert.ok(crosshairCss.includes("6px 0,10px 0") && crosshairCss.includes("7px 1px,9px 1px"),
+  "outer and inner pluses stay aligned to integer pixel coordinates");
+assert.equal(/filter:|drop-shadow|url\(|animation:/.test(crosshairCss), false,
+  "reticle uses no blurred filter, asset, or animated behavior");
 assert.equal(gameHud.includes("<StatusStrip"), false, "the permanent status strip is not rendered");
 assert.ok(gameHud.includes("<SurvivalHud"), "health, hunger, and armor are grouped with the hotbar");
 assert.ok(hotbar.includes("length: HOTBAR_SIZE"), "hotbar is backed by the canonical nine-slot size");

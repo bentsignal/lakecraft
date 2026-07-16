@@ -18,9 +18,9 @@ const HUD_CSS = `
 .lc-hud { height: 100vh; height: 100dvh; inset: 0 auto auto 0; overflow: hidden; pointer-events: none; position: fixed; width: 100vw; z-index: 20; }
 .lc-hud button, .lc-drawer-layer button, .lc-unsupported button, .lc-menu-layer button, .lc-death-layer button { font: inherit; }
 .lc-kicker { color: var(--lc-amber); font: 9px/1.2 var(--lc-note); letter-spacing: .14em; text-transform: uppercase; }
-.lc-crosshair { filter: drop-shadow(1px 1px 0 #000) drop-shadow(-1px -1px 0 rgba(0,0,0,.65)); height: 16px; left: 50%; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 16px; z-index: 3; }
-.lc-crosshair::before, .lc-crosshair::after { background: rgba(255,255,255,.94); content: ""; left: 50%; position: absolute; top: 50%; transform: translate(-50%,-50%); }
-.lc-crosshair::before { height: 2px; width: 16px; }.lc-crosshair::after { height: 16px; width: 2px; }
+.lc-crosshair { height: 16px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 16px; z-index: 3; }
+.lc-crosshair::before,.lc-crosshair::after { content: ""; inset: 0; position: absolute; }
+.lc-crosshair::before { background: #111; clip-path: polygon(6px 0,10px 0,10px 6px,16px 6px,16px 10px,10px 10px,10px 16px,6px 16px,6px 10px,0 10px,0 6px,6px 6px); }.lc-crosshair::after { background: #fff; clip-path: polygon(7px 1px,9px 1px,9px 7px,15px 7px,15px 9px,9px 9px,9px 15px,7px 15px,7px 9px,1px 9px,1px 7px,7px 7px); }
 .lc-first-person { bottom: -72px; height: clamp(272px,32vw,372px); position: absolute; right: -16px; width: clamp(250px,30vw,372px); z-index: 1; }
 .lc-first-person__rig { display: block; height: 100%; position: relative; transform: translate3d(0,0,0) rotateZ(-2deg); transform-origin: 91% 96%; transform-style: preserve-3d; width: 100%; }
 .lc-first-person__rig.is-swinging { animation: lc-held-item-swing 220ms cubic-bezier(.2,.72,.24,1) both; }
