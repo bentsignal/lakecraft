@@ -74,11 +74,11 @@ const HUD_CSS = `
 .lc-selected-item-name { bottom: calc(100% + 2px); color: #fff; font: 16px/1.2 var(--lc-pixel-font); left: 50%; max-width: min(330px,calc(100vw - 20px)); pointer-events: none; position: absolute; text-align: center; text-shadow: 2px 2px #202020; transform: translateX(-50%); width: 100%; }
 .lc-selected-item-name > span { animation: lc-selected-item-name 2s linear both; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes lc-selected-item-name { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
-.lc-hotbar { background: #8b8b8b; border: 2px solid #191919; box-shadow: inset 2px 2px #d0d0d0, inset -2px -2px #373737, 2px 2px 0 rgba(0,0,0,.6); display: grid; gap: 0; grid-template-columns: repeat(9, 40px); padding: 2px; position: relative; }
+.lc-hotbar { background: rgba(18,18,18,.62); border: 2px solid #191919; box-shadow: inset 2px 2px rgba(255,255,255,.2),inset -2px -2px rgba(0,0,0,.72),2px 2px 0 rgba(0,0,0,.6); box-sizing: border-box; display: grid; gap: 0; grid-template-columns: repeat(9, 40px); overflow: visible; padding: 0; position: relative; width: 100%; }
 .lc-slot { appearance: none; background: rgba(28,28,28,.66); border: 2px solid; border-color: #373737 #b8b8b8 #b8b8b8 #373737; color: var(--lc-paper); cursor: pointer; min-width: 0; padding: 0; position: relative; }
 .lc-slot:hover { background: rgba(70,70,70,.7); }
 .lc-slot:focus-visible, .lc-recipe:focus-visible, .lc-close:focus-visible, .lc-furnace-slot:focus-visible, .lc-furnace-inventory-slot:focus-visible, .lc-furnace__header button:focus-visible { outline: 2px solid var(--lc-amber); outline-offset: 2px; }
-.lc-hotbar__slot { height: 40px; }.lc-hotbar__slot.is-selected { background: rgba(90,90,90,.64); box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #777; border-color: #fff; z-index: 1; }
+.lc-hotbar__slot { box-sizing: border-box; height: 40px; }.lc-hotbar__slot.is-selected { background: rgba(90,90,90,.64); border-color: #777; box-shadow: none; z-index: 2; }.lc-hotbar__slot.is-selected::after { border: 2px solid #fff; box-shadow: inset 0 0 0 2px #777,0 0 0 1px #333; box-sizing: border-box; content: ""; height: 48px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 48px; }
 .lc-item-glyph { align-items: center; display: flex; height: 100%; justify-content: center; min-height: 34px; overflow: hidden; position: relative; width: 100%; }
 .lc-item-icon__svg { display: block; filter: drop-shadow(1px 2px 0 rgba(0,0,0,.42)); height: min(34px,calc(100% - 4px)); image-rendering: pixelated; overflow: visible; width: min(34px,calc(100% - 4px)); }
 .lc-item-glyph--block .lc-item-icon__svg { height: min(36px,calc(100% - 3px)); width: min(36px,calc(100% - 3px)); }

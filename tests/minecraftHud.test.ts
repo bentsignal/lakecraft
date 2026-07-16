@@ -24,6 +24,22 @@ for (const forbidden of ["setTimeout", "setInterval", "useEffect", "useState"]) 
 }
 assert.ok(styles.includes("repeat(9, 40px)"), "desktop hotbar uses reference-scale 40px slots");
 assert.ok(styles.includes("var(--lc-pixel-font)"), "HUD uses the shared pixel-font variable");
+const hotbarCss = styles.slice(styles.indexOf(".lc-hotbar {"), styles.indexOf(".lc-item-glyph {"));
+assert.match(styles, /\.lc-survival-wrap \{[^}]*width: 364px;/, "desktop survival HUD owns the exact 364px reference width");
+assert.match(hotbarCss, /\.lc-hotbar \{[^}]*background: rgba\([^)]*,\.62\);[^}]*box-sizing: border-box;[^}]*overflow: visible;[^}]*padding: 0;[^}]*width: 100%;/,
+  "translucent zero-padding chrome makes nine 40px tracks plus two 2px borders exactly 364px wide");
+assert.equal(hotbarCss.includes("background: #8b8b8b"), false, "hotbar no longer uses an opaque gray slab");
+assert.match(hotbarCss, /\.lc-hotbar__slot \{[^}]*box-sizing: border-box;[^}]*height: 40px;/,
+  "40px border-box slots plus the hotbar border produce the exact 44px desktop height");
+const selectedFrameCss = hotbarCss.slice(hotbarCss.indexOf(".lc-hotbar__slot.is-selected::after"));
+for (const token of ["height: 48px", "width: 48px", "pointer-events: none", "position: absolute", "transform: translate(-50%,-50%)"]) {
+  assert.ok(selectedFrameCss.includes(token), `selected frame preserves its protruding geometry: ${token}`);
+}
+assert.ok(hotbarCss.includes(".lc-hotbar__slot.is-selected::after"), "selection uses a frame pseudo-element without changing slot markup");
+assert.match(styles, /@media \(max-width: 820px\) \{ \.lc-survival-wrap \{ max-width: calc\(100vw - 12px\); \}/,
+  "narrow HUD keeps a six-pixel viewport gutter for the protruding selector");
+assert.match(styles, /@media \(max-width: 820px\)[^}]*[\s\S]*?\.lc-hotbar \{ grid-template-columns: repeat\(9, minmax\(0, 1fr\)\); \}/,
+  "narrow hotbars retain nine flexible tracks while the visible selector may protrude safely");
 const captionCss = styles.slice(styles.indexOf(".lc-selected-item-name"), styles.indexOf(".lc-hotbar {"));
 assert.ok(captionCss.includes("text-shadow: 2px 2px #202020") && captionCss.includes("text-overflow: ellipsis"),
   "caption uses bounded Minecraft-style pixel text without a card");

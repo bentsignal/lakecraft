@@ -145,6 +145,38 @@ export const MAX_LOOK_PITCH = 1.52;
 export const STREAMING_MESH_REBUILDS_PER_FRAME = 1;
 export const PLAYER_RANGED_REACH = 32;
 export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
+export const TARGET_OUTLINE_VERTEX_COUNT = 24;
+
+const TARGET_OUTLINE_CORNERS = [
+  0, 1, 1, 3, 3, 2, 2, 0,
+  4, 5, 5, 7, 7, 6, 6, 4,
+  0, 4, 1, 5, 3, 7, 2, 6,
+] as const;
+
+/** Writes the fixed 12-edge aimed-block outline without allocating temporary arrays. */
+export function writeTargetOutlineGeometry(
+  output: Float32Array,
+  target: Readonly<BlockTarget>,
+): number {
+  if (output.length < TARGET_OUTLINE_VERTEX_COUNT * 6) return 0;
+  const e = 0.003;
+  const height = blockCollisionHeight(target.block.block);
+  let offset = 0;
+  for (const corner of TARGET_OUTLINE_CORNERS) {
+    output[offset++] = target.block.x + ((corner & 1) ? 1 + e : -e);
+    output[offset++] = target.block.y + ((corner & 2) ? height + e : -e);
+    output[offset++] = target.block.z + ((corner & 4) ? 1 + e : -e);
+    output[offset++] = 1;
+    output[offset++] = 1;
+    output[offset++] = 1;
+  }
+  return TARGET_OUTLINE_VERTEX_COUNT;
+}
+
+/** Minecraft lets crouch-placeable input skip the aimed block's normal use action. */
+export function bypassBlockInteractionForPlacement(sneaking: boolean, selectedBlock: BlockId): boolean {
+  return sneaking && selectedBlock !== BLOCK.AIR;
+}
 
 const LOCAL_EXPLOSION_PROTECTED_BLOCKS = new Set<BlockId>([
   BLOCK.AIR,
@@ -1247,6 +1279,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const crackBuffer = gl.createBuffer();
   const particleBuffer = gl.createBuffer();
   if (!lineBuffer || !crackBuffer || !atmosphereBuffer || !particleBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  const targetOutlineGeometry = new Float32Array(TARGET_OUTLINE_VERTEX_COUNT * 6);
+  gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, targetOutlineGeometry.byteLength, gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, atmosphereBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, ATMOSPHERE_SCREEN_TRIANGLE, gl.STATIC_DRAW);
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
@@ -1372,6 +1407,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let nameplateVertexCount = 0;
   const remoteStates = new Map<string, RemoteAvatarMotion>();
   let target: BlockTarget | null = null;
+  let targetOutlineVertexCount = 0;
   let running = false;
   let destroyed = false;
   let paused = false;
@@ -1516,6 +1552,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     rangedChargeStartedAt = 0;
     lastRangedChargeFeedbackAt = -Infinity;
     if (hadCharge && cancelServer) void options.onRangedCancel?.();
+  }
+
+  function updateTargetOutlineGeometry(): void {
+    targetOutlineVertexCount = target ? writeTargetOutlineGeometry(targetOutlineGeometry, target) : 0;
+    if (!targetOutlineVertexCount) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, targetOutlineGeometry);
   }
 
   function rememberWorldEdit(edit: WorldEdit): void {
@@ -2151,6 +2194,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!sameTarget(target, nextTarget)) {
       clearMining();
       target = nextTarget;
+      updateTargetOutlineGeometry();
       options.onTargetChange?.(target);
     } else target = nextTarget;
 
@@ -2497,23 +2541,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.drawArrays(gl.LINES, 0, crackVertexCount);
         drawCalls += 1;
       }
-      const { x, y, z } = target.block;
-      const targetHeight = blockCollisionHeight(target.block.block);
       gl.lineWidth(1);
-      const e = 0.003;
-      const corners: Vec3[] = [
-        [x - e, y - e, z - e], [x + 1 + e, y - e, z - e], [x + 1 + e, y + targetHeight + e, z - e], [x - e, y + targetHeight + e, z - e],
-        [x - e, y - e, z + 1 + e], [x + 1 + e, y - e, z + 1 + e], [x + 1 + e, y + targetHeight + e, z + 1 + e], [x - e, y + targetHeight + e, z + 1 + e],
-      ];
-      const edgeIndices = [0,1, 1,2, 2,3, 3,0, 4,5, 5,6, 6,7, 7,4, 0,4, 1,5, 2,6, 3,7];
-      const lines: number[] = [];
-      for (const index of edgeIndices) pushVertex(lines, corners[index], [1, 1, 1]);
-      gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lines), gl.DYNAMIC_DRAW);
       bindBuffer(lineBuffer);
       gl.uniform1f(fogLocation, 0);
       gl.uniform1f(lightingLocation, 0);
-      gl.drawArrays(gl.LINES, 0, edgeIndices.length);
+      gl.drawArrays(gl.LINES, 0, targetOutlineVertexCount);
       drawCalls += 1;
     }
 
@@ -2755,7 +2787,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (!attackedEntity) beginHeldBlockMining();
     } else if (event.button === 2) {
       if (useMobUnderCrosshair()) return;
-      if (target) {
+      const bypassBlockInteraction = bypassBlockInteractionForPlacement(
+        keys.has("ShiftLeft") || keys.has("ShiftRight"),
+        selectedBlock,
+      );
+      if (target && !bypassBlockInteraction) {
         const doorEdit = createDoorToggleEdit(target);
         if (doorEdit) {
           if (options.canEditBlock?.() === false) return;
