@@ -2,8 +2,6 @@ export type PauseMenuProps = {
   open: boolean;
   onBack?: () => void;
   onOptions?: () => void;
-  soundMuted?: boolean;
-  onToggleSound?: () => void;
   onSave?: () => void;
   saveStatusText?: string;
   lastSavedText?: string;
@@ -18,8 +16,6 @@ export function PauseMenu({
   open,
   onBack,
   onOptions,
-  soundMuted = false,
-  onToggleSound,
   onSave,
   saveStatusText,
   lastSavedText,
@@ -37,10 +33,7 @@ export function PauseMenu({
         <h2 id="lc-game-menu-title">{title}</h2>
         <div className="lc-game-menu__buttons">
           <button autoFocus onClick={onBack} type="button">Back to Game</button>
-          <button disabled={!onOptions} onClick={onOptions} type="button">Options…</button>
-          <button aria-pressed={soundMuted} disabled={!onToggleSound} onClick={onToggleSound} type="button">
-            Sound: {soundMuted ? "OFF" : "ON"}
-          </button>
+          <button disabled={!onOptions} id="lc-game-menu-options" onClick={onOptions} type="button">Options…</button>
           {showSaveControls ? (
             <div className="lc-game-menu__save">
               <button

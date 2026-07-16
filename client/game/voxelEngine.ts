@@ -249,12 +249,14 @@ export function applyMouseLookDelta(
   pitch: number,
   movementX: number,
   movementY: number,
+  sensitivity = MOUSE_LOOK_SENSITIVITY,
 ): { yaw: number; pitch: number } {
+  const scale = Number.isFinite(sensitivity) && sensitivity > 0 ? sensitivity : MOUSE_LOOK_SENSITIVITY;
   return {
-    yaw: yaw + movementX * MOUSE_LOOK_SENSITIVITY,
+    yaw: yaw + movementX * scale,
     pitch: Math.max(
       -MAX_LOOK_PITCH,
-      Math.min(MAX_LOOK_PITCH, pitch - movementY * MOUSE_LOOK_SENSITIVITY),
+      Math.min(MAX_LOOK_PITCH, pitch - movementY * scale),
     ),
   };
 }
@@ -2598,7 +2600,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onMouseMove(event: MouseEvent): void {
     if (paused || document.pointerLockElement !== canvas || playerHealth <= 0) return;
-    const look = applyMouseLookDelta(pose.yaw, pose.pitch, event.movementX, event.movementY);
+    const look = applyMouseLookDelta(
+      pose.yaw,
+      pose.pitch,
+      event.movementX,
+      event.movementY,
+      options.getMouseLookSensitivity?.(),
+    );
     pose.yaw = look.yaw;
     pose.pitch = look.pitch;
     poseDirty = true;
@@ -2695,11 +2703,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     };
   }
 
+  function requestCanvasPointerLock(): void {
+    try {
+      void Promise.resolve(canvas.requestPointerLock()).catch(() => undefined);
+    } catch {
+      // A denied browser gesture must leave the menu usable without surfacing an unhandled error.
+    }
+  }
+
   function onMouseDown(event: MouseEvent): void {
     event.preventDefault();
     if (paused) return;
     if (document.pointerLockElement !== canvas) {
-      canvas.requestPointerLock();
+      requestCanvasPointerLock();
       return;
     }
     if (playerHealth <= 0) return;
@@ -3155,7 +3171,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return getBlock(x, y, z);
     },
     getPerformanceStats,
-    requestPointerLock() { canvas.requestPointerLock(); },
+    requestPointerLock() { requestCanvasPointerLock(); },
     respawn() {
       pose.x = respawnPoint.x;
       pose.y = respawnPoint.y;

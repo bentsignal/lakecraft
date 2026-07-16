@@ -22,6 +22,7 @@ Singleplayer requires no account and saves only in that browser. The title scree
 
 - Click the world to capture the mouse
 - `W A S D` move, `Space` jumps, and the mouse looks around
+- Use Options from the title screen or Game Menu to persist sound and mouse sensitivity locally across both play modes
 - Hold either `Ctrl` while moving forward to sprint (requires more than six hunger); hold either `Shift` to sneak, lower your view, and stop at ledges
 - While touching a ladder, `W` or `Space` climbs, `S` or either `Shift` key descends, and `A`/`D` steps off
 - Hold left click to mine continuously across successive blocks; right click places the selected block

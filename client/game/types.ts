@@ -280,6 +280,8 @@ export interface VoxelEngineOptions {
   preserveInitialPose?: boolean;
   selectedBlock?: BlockId;
   reach?: number;
+  /** Local pointer-look coefficient, sampled for each event so Options apply immediately. */
+  getMouseLookSensitivity?: () => number;
   /** Shared clock configuration. Defaults to an eight-minute alpha cycle. */
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */

@@ -39,7 +39,14 @@ import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
 import { planOakTreeGrowth } from "../../shared/treeGrowth";
 import { cycleHotbarIndex } from "../game/hotbarInput";
-import { createGameAudio, type GameAudioSurface } from "../game/audio";
+import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
+import {
+  loadClientSettings,
+  mouseLookScale,
+  normalizeClientSettings,
+  saveClientSettings,
+  type ClientSettings,
+} from "../settings";
 import {
   SINGLEPLAYER_SAVE_LIMITS,
   createDefaultSinglePlayerSnapshot,
@@ -170,6 +177,7 @@ export function SinglePlayerApp() {
   const initialSnapshot = initial.current.snapshot;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
+  const audioRef = useRef<GameAudio | null>(null);
   const inventoryRef = useRef(initialSnapshot.player.inventory);
   const equipmentRef = useRef(initialSnapshot.player.equipment);
   const selectedRef = useRef(initialSnapshot.player.selectedHotbar);
@@ -205,6 +213,10 @@ export function SinglePlayerApp() {
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [clientSettings, setClientSettings] = useState(() => loadClientSettings(window.localStorage));
+  const clientSettingsRef = useRef(clientSettings);
+  clientSettingsRef.current = clientSettings;
   const [activeChestKey, setActiveChestKey] = useState<string | null>(null);
   const [chestInventory, setChestInventory] = useState<ChestInventory>([]);
   const [activeFurnaceKey, setActiveFurnaceKey] = useState<string | null>(null);
@@ -225,6 +237,15 @@ export function SinglePlayerApp() {
   const [saveStatusText, setSaveStatusText] = useState(initialSaveText);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialSavedAt);
   const [saveInProgress, setSaveInProgress] = useState(false);
+
+  function updateClientSettings(value: ClientSettings): void {
+    const next = normalizeClientSettings(value);
+    const soundChanged = clientSettingsRef.current.soundMuted !== next.soundMuted;
+    clientSettingsRef.current = next;
+    setClientSettings(next);
+    saveClientSettings(window.localStorage, next);
+    if (soundChanged) audioRef.current?.setMuted(next.soundMuted);
+  }
 
   function markWorldDirty(): void {
     const cadence = saveCadenceRef.current;
@@ -568,7 +589,8 @@ export function SinglePlayerApp() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const audio = createGameAudio({ maxVoices: 12 });
+    const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, maxVoices: 12 });
+    audioRef.current = audio;
     const unlockAudio = () => { void audio.unlock(); };
     type LocalFuseTimer = {
       interval: number;
@@ -708,6 +730,7 @@ export function SinglePlayerApp() {
       initialEdits: editsRef.current,
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
+      getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
       getMiningDuration: (block) => {
         const gameBlock = ENGINE_TO_GAME[block];
@@ -1031,6 +1054,7 @@ export function SinglePlayerApp() {
       window.removeEventListener("keydown", unlockAudio, true);
       performSaveRef.current("quit");
       audio.destroy();
+      if (audioRef.current === audio) audioRef.current = null;
       engine.destroy();
       engineRef.current = null;
     };
@@ -1041,6 +1065,10 @@ export function SinglePlayerApp() {
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
   }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen]);
+
+  useEffect(() => {
+    if (deathScreenOpen) setOptionsOpen(false);
+  }, [deathScreenOpen]);
 
   useEffect(() => {
     const sample = () => {
@@ -1122,6 +1150,21 @@ export function SinglePlayerApp() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (optionsOpen) {
+        if (event.code === "Escape" && !event.repeat) {
+          event.preventDefault();
+          setOptionsOpen(false);
+        }
+        return;
+      }
+      if (pauseOpen) {
+        if (event.code === "Escape" && !event.repeat) {
+          event.preventDefault();
+          setPauseOpen(false);
+          engineRef.current?.requestPointerLock();
+        }
+        return;
+      }
       if (event.code === "KeyQ" && !event.repeat) {
         if (pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
@@ -1143,7 +1186,7 @@ export function SinglePlayerApp() {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [pauseOpen, inventoryOpen, worldModalOpen, containerOpen, deathScreenOpen, activeFurnaceKey]);
+  }, [optionsOpen, pauseOpen, inventoryOpen, worldModalOpen, containerOpen, deathScreenOpen, activeFurnaceKey]);
 
   const lastSavedText = lastSavedAt === null ? "Not saved yet"
     : `Last saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
@@ -1192,9 +1235,13 @@ export function SinglePlayerApp() {
           equipmentRef.current = snapshot.equipment;
           markWorldDirty();
         }}
-        onOptions={() => setMessages((current) => [...current, { id: `options-${Date.now()}`, title: "Options", detail: "More single-player settings are next.", tone: "info" }])}
+        mouseSensitivity={clientSettings.mouseSensitivity}
+        onCloseOptions={() => setOptionsOpen(false)}
+        onOptions={() => setOptionsOpen(true)}
+        onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
+        optionsOpen={optionsOpen}
         onRespawn={respawnLocally}
-        onResume={() => { setPauseOpen(false); engineRef.current?.requestPointerLock(); }}
+        onResume={() => { setOptionsOpen(false); setPauseOpen(false); engineRef.current?.requestPointerLock(); }}
         onSave={() => { persist("manual"); }}
         onSelectHotbar={selectHotbar}
         onTitleScreen={returnToTitle}
@@ -1206,6 +1253,14 @@ export function SinglePlayerApp() {
         saveInProgress={saveInProgress}
         saveStatusText={saveStatusText}
         respawning={respawning}
+        soundMuted={clientSettings.soundMuted}
+        onToggleSound={() => {
+          const nextMuted = !clientSettingsRef.current.soundMuted;
+          updateClientSettings({ ...clientSettingsRef.current, soundMuted: nextMuted });
+          if (!nextMuted) {
+            void audioRef.current?.unlock().then(() => audioRef.current?.play("uiConfirm", { seed: "local-sound-on", intensity: 0.52 }));
+          }
+        }}
         worldName="Local World"
       />
       <FurnaceDrawer

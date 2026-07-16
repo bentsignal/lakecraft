@@ -12,6 +12,10 @@ import {
   dictionaryCompressCss,
   minifyCssText,
 } from "./css-template-compression.mjs";
+import {
+  cssLzRuntimeExpression,
+  lzCompressCss,
+} from "./css-lz-compression.mjs";
 
 const sourceRoot = resolve(process.cwd());
 const stageRoot = resolve(process.argv[2] ?? "");
@@ -71,9 +75,19 @@ const cssTemplateMinifier = {
         /const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g,
         (_match, name, css) => {
           const minified = minifyCssText(css);
-          const packed = dictionaryCompressCss(minified);
-          if (!packed) return `const ${name}=\`${minified}\`;`;
-          return `const ${name}=(()=>{const d=${JSON.stringify(packed.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(packed.compressed)}.replace(/~([0-9A-Za-z_$])/g,(t,s)=>d[a.indexOf(s)]??t)})();`;
+          const dictionary = dictionaryCompressCss(minified);
+          const lz = lzCompressCss(minified);
+          const dictionaryExpression = dictionary
+            ? `(()=>{const d=${JSON.stringify(dictionary.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(dictionary.compressed)}.replace(/~([0-9A-Za-z_$])/g,(t,s)=>d[a.indexOf(s)]??t)})()`
+            : null;
+          const lzExpression = lz ? cssLzRuntimeExpression(lz) : null;
+          const expression = !dictionaryExpression
+            ? lzExpression
+            : !lzExpression || Buffer.byteLength(dictionaryExpression) <= Buffer.byteLength(lzExpression)
+              ? dictionaryExpression
+              : lzExpression;
+          if (!expression) return `const ${name}=\`${minified}\`;`;
+          return `const ${name}=${expression};`;
         },
       );
       return { contents, loader: path.endsWith(".tsx") ? "tsx" : "ts" };

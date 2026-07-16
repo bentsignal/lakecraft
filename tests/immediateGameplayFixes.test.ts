@@ -8,6 +8,11 @@ assert.ok(right.yaw > 0, "moving the mouse right increases yaw toward world +X")
 const left = applyMouseLookDelta(0, 0, -100, 0);
 assert.ok(left.yaw < 0, "moving the mouse left decreases yaw toward world -X");
 
+const defaultScaled = applyMouseLookDelta(0, 0, 100, 20);
+const halfScaled = applyMouseLookDelta(0, 0, 100, 20, 0.0011);
+assert.equal(halfScaled.yaw, defaultScaled.yaw / 2, "custom sensitivity scales horizontal look immediately");
+assert.equal(halfScaled.pitch, defaultScaled.pitch / 2, "custom sensitivity scales vertical look immediately");
+
 const down = applyMouseLookDelta(0, 0, 0, 100);
 assert.ok(down.pitch < 0, "moving the mouse down keeps Minecraft-style downward pitch");
 assert.equal(
@@ -27,6 +32,7 @@ assert.equal(
   0,
   "the obsolete four-vertex crosshair draw is absent",
 );
+assert.ok(engineSource.includes("Promise.resolve(canvas.requestPointerLock()).catch"), "denied pointer lock cannot surface an unhandled browser rejection");
 
 const hudSource = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
 assert.equal(

@@ -15,6 +15,8 @@ assert.ok(lobby.includes('{count} / 20'), "the Fern Hollow row displays player o
 assert.ok(lobby.includes("Join Server") && lobby.includes("Direct Connection") && lobby.includes(">Back<"), "the server browser mirrors the expected Minecraft action row");
 assert.ok(styles.includes(".lc-dirt-background") && styles.includes("image-rendering:pixelated"), "the server directory uses a pixelated dirt backdrop");
 assert.ok(app.includes('worldDescription="Survival · Lakebed shared world"'), "the server description stays concise and player-facing");
-assert.ok((app.match(/setInWorld\(true\);\s*setPauseOpen\(false\)/g) ?? []).length >= 2, "both multiplayer join paths enter without an artificial pause dialog");
+assert.ok((app.match(/setInWorld\(true\);[\s\S]{0,100}?setPauseOpen\(false\)/g) ?? []).length >= 2, "both multiplayer join paths enter without an artificial pause dialog");
+assert.ok(lobby.includes("<OptionsDialog") && lobby.includes('id="lc-title-options"'), "title Options opens the shared accessible settings screen");
+assert.equal(lobby.includes(">About<"), false, "the inert About action is removed from the title screen");
 
 console.log("lakecraft lobby refinement tests: ok");

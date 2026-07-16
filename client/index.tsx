@@ -21,6 +21,13 @@ import { SinglePlayerApp } from "./singleplayer";
 import { MultiplayerSegmentTransport } from "./MultiplayerSegmentTransport.tsx";
 import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
 import {
+  loadClientSettings,
+  mouseLookScale,
+  normalizeClientSettings,
+  saveClientSettings,
+  type ClientSettings,
+} from "./settings.ts";
+import {
   ITEMS,
   BLOCKS,
   MAX_HEALTH,
@@ -164,17 +171,8 @@ const QUERY_RECOVERY_CSS = `
 `;
 
 const PRESENCE_BUDGET_STORAGE_PREFIX = "lakecraft:presence-budget:v1:";
-const AUDIO_MUTED_STORAGE_KEY = "lakecraft:audio-muted:v1";
 /** Browser-side guard matching the quota-honest persisted mob cadence. */
 const MOB_CHECKPOINT_ATTEMPT_MIN_MS = 30_000;
-
-function loadAudioMuted(): boolean {
-  try {
-    return window.localStorage.getItem(AUDIO_MUTED_STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED
@@ -719,6 +717,10 @@ function LakebedQueryRecovery({ error, retry }: { error: Error; retry: () => voi
 
 function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWorld: boolean) => void }) {
   const auth = useAuth();
+  const [clientSettings, setClientSettings] = useState(() => loadClientSettings(window.localStorage));
+  const clientSettingsRef = useRef(clientSettings);
+  clientSettingsRef.current = clientSettings;
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [activeChestKey, setActiveChestKey] = useState("");
   const [activeFurnaceKey, setActiveFurnaceKey] = useState("");
   const [furnaceQuerySample, setFurnaceQuerySample] = useState("0");
@@ -925,7 +927,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [furnaceStatus, setFurnaceStatus] = useState("Input and fuel are shared through Lakebed.");
   const [furnaceError, setFurnaceError] = useState("");
   const [pauseOpen, setPauseOpen] = useState(false);
-  const [soundMuted, setSoundMuted] = useState(loadAudioMuted);
   const [showPlayerList, setShowPlayerList] = useState(false);
   const [mobileUnsupported, setMobileUnsupported] = useState(false);
   const [messages, setMessages] = useState<HudMessage[]>([]);
@@ -979,12 +980,24 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
     authorityTrafficPausedRef.current = !transportForeground || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen
       || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey);
   }, [transportForeground, deathScreenOpen, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
+  useEffect(() => {
+    if (!inWorld || deathScreenOpen) setOptionsOpen(false);
+  }, [inWorld, deathScreenOpen]);
   const [chestRetryAvailable, setChestRetryAvailable] = useState(false);
   const [sleepBusy, setSleepBusy] = useState(false);
   const [sleepStatus, setSleepStatus] = useState("Rest until every active explorer is in bed, then Lakebed will move the shared clock to morning.");
 
+  function updateClientSettings(value: ClientSettings): void {
+    const next = normalizeClientSettings(value);
+    const soundChanged = clientSettingsRef.current.soundMuted !== next.soundMuted;
+    clientSettingsRef.current = next;
+    setClientSettings(next);
+    saveClientSettings(window.localStorage, next);
+    if (soundChanged) audioRef.current?.setMuted(next.soundMuted);
+  }
+
   useEffect(() => {
-    const audio = createGameAudio({ muted: soundMuted, maxVoices: 16 });
+    const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, maxVoices: 16 });
     audioRef.current = audio;
     const unlock = () => { void audio.unlock(); };
     const click = (event: MouseEvent) => {
@@ -1004,11 +1017,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       if (audioRef.current === audio) audioRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    audioRef.current?.setMuted(soundMuted);
-    try { window.localStorage.setItem(AUDIO_MUTED_STORAGE_KEY, String(soundMuted)); } catch { /* local preference only */ }
-  }, [soundMuted]);
 
   useEffect(() => {
     const previous = previousChestKeyRef.current;
@@ -1729,6 +1737,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       const engine = createVoxelEngine(canvas, {
         initialPose: resumedPresencePose ?? poseRef.current,
         preserveInitialPose: Boolean(resumedPresencePose),
+        getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
         worldRadius: WORLD_RADIUS,
         dayNight: worldClock ? {
           cycleLengthMs: worldClock.cycleLengthMs,
@@ -2767,6 +2776,13 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }
         return;
       }
+      if (optionsOpen) {
+        if (event.code === "Escape" && !event.repeat) {
+          event.preventDefault();
+          setOptionsOpen(false);
+        }
+        return;
+      }
       if (pauseOpen) {
         if (event.code === "Escape" && !event.repeat) {
           event.preventDefault();
@@ -2854,7 +2870,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [inWorld, pauseOpen, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
+  }, [inWorld, optionsOpen, pauseOpen, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
 
   const playerListEntries = segmentRemotePlayers.map((player) => ({
     id: player.id,
@@ -3197,6 +3213,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setJoinPhase("ready");
       window.setTimeout(() => {
         setInWorld(true);
+        setOptionsOpen(false);
         setPauseOpen(false);
         setJoinPhase("idle");
       }, 180);
@@ -3212,6 +3229,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setJoinPhase("ready");
       timer = window.setTimeout(() => {
         setInWorld(true);
+        setOptionsOpen(false);
         setPauseOpen(false);
         setJoinPhase("idle");
       }, 180);
@@ -3292,8 +3310,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         email={auth.email}
         joinPhase={joinPhase}
         onlineCount={profile ? 1 : 0}
+        settings={clientSettings}
         onJoinWorld={enterWorld}
         onJoinSingleplayer={() => { window.location.search = "?singleplayer=1"; }}
+        onSettingsChange={updateClientSettings}
         onSignInWithGoogle={() => {
           setUsernameError("");
           void signInWithGoogle().catch(() => {
@@ -3413,6 +3433,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           void flushInventoryActions();
           void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
           exitPointerLockForUi();
+          setOptionsOpen(false);
           setPauseOpen(false);
           setShowPlayerList(false);
           setInWorld(false);
@@ -3423,20 +3444,24 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           setMobIds([]);
         }}
         onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
-        onOptions={() => notify("Options", "Controls and graphics settings are coming next.")}
+        mouseSensitivity={clientSettings.mouseSensitivity}
+        onCloseOptions={() => setOptionsOpen(false)}
+        onOptions={() => setOptionsOpen(true)}
+        onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
+        optionsOpen={optionsOpen}
         onRespawn={requestAuthorizedRespawn}
-        soundMuted={soundMuted}
+        soundMuted={clientSettings.soundMuted}
         onToggleSound={() => {
-          const next = !soundMuted;
-          audioRef.current?.setMuted(next);
-          setSoundMuted(next);
-          if (!next) {
+          const nextMuted = !clientSettingsRef.current.soundMuted;
+          updateClientSettings({ ...clientSettingsRef.current, soundMuted: nextMuted });
+          if (!nextMuted) {
             void audioRef.current?.unlock().then(() => {
               audioRef.current?.play("uiConfirm", { seed: "sound-on", intensity: 0.52 });
             });
           }
         }}
         onResume={() => {
+          setOptionsOpen(false);
           setPauseOpen(false);
           engineRef.current?.requestPointerLock();
         }}
@@ -3447,6 +3472,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
           exitPointerLockForUi();
           setDeathScreenOpen(false);
           setRespawning(false);
+          setOptionsOpen(false);
           setPauseOpen(false);
           setShowPlayerList(false);
           setInWorld(false);

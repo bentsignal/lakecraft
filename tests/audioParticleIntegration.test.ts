@@ -7,6 +7,9 @@ const engine = source("../client/game/voxelEngine.ts");
 const engineTypes = source("../client/game/types.ts");
 const gameHud = source("../client/components/GameHud.tsx");
 const pauseMenu = source("../client/components/PauseMenu.tsx");
+const optionsDialog = source("../client/components/OptionsDialog.tsx");
+const settings = source("../client/settings.ts");
+const singlePlayer = source("../client/singleplayer/SinglePlayerApp.tsx");
 const particles = source("../client/game/blockParticles.ts");
 
 const audioLifecycle = app.slice(
@@ -17,10 +20,12 @@ assert.ok(audioLifecycle.includes('window.addEventListener("pointerdown", unlock
 assert.ok(audioLifecycle.includes('window.addEventListener("keydown", unlock, true)'), "keyboard gestures unlock Web Audio");
 assert.ok(audioLifecycle.includes('window.removeEventListener("pointerdown", unlock, true)'), "gesture listeners are removed on teardown");
 assert.ok(audioLifecycle.includes("audio.destroy()"), "the AudioContext and voices are destroyed on unmount");
-assert.ok(app.includes("AUDIO_MUTED_STORAGE_KEY"), "mute preference survives reloads without Lakebed traffic");
-assert.ok(gameHud.includes("soundMuted={soundMuted}"), "GameHud passes the current mute state to the pause menu");
-assert.ok(pauseMenu.includes('aria-pressed={soundMuted}'), "the pause-menu sound toggle exposes accessible state");
-assert.ok(pauseMenu.includes('Sound: {soundMuted ? "OFF" : "ON"}'), "the sound toggle has an explicit Minecraft-style state label");
+assert.ok(settings.includes("CLIENT_SETTINGS_STORAGE_KEY"), "mute preference survives reloads in the shared local settings contract");
+assert.ok(gameHud.includes("<OptionsDialog"), "GameHud routes sound through the real Options screen");
+assert.ok(optionsDialog.includes('aria-pressed={soundMuted}'), "the Options sound toggle exposes accessible state");
+assert.ok(optionsDialog.includes('Sound: {soundMuted ? "OFF" : "ON"}'), "the sound toggle has an explicit Minecraft-style state label");
+assert.equal(pauseMenu.includes("Sound:"), false, "the Game Menu does not duplicate the Options sound control");
+assert.ok(singlePlayer.includes("audioRef.current = audio") && singlePlayer.includes("audioRef.current?.setMuted"), "single-player applies sound changes without recreating the world");
 
 const confirmedFeedback = app.slice(
   app.indexOf("function emitConfirmedWorldBlockFeedback"),

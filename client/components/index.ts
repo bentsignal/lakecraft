@@ -7,6 +7,7 @@ export { BLOCK_CRACK_STAGE_COUNT, miningCrackStage } from "./firstPersonFeedback
 export { Hotbar, type HotbarProps } from "./Hotbar";
 export { HudStyles } from "./HudStyles";
 export { PauseMenu, type PauseMenuProps } from "./PauseMenu";
+export { OptionsDialog, type OptionsDialogProps } from "./OptionsDialog";
 export { PlayerList, type PlayerListEntry, type PlayerListProps } from "./PlayerList";
 export { IngredientGlyph, ItemGlyph, ItemIcon, type ItemGlyphProps } from "./ItemGlyph";
 export { CraftingGridView, type CraftingGridViewProps } from "./CraftingGrid";

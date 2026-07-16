@@ -1,5 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useMemo, useState } from "preact/hooks";
+import { OptionsDialog } from "../components/OptionsDialog";
+import type { ClientSettings } from "../settings";
 import { LobbyStyles } from "./LobbyStyles";
 
 export type LobbyAuthState = "loading" | "signed_out" | "needs_username" | "ready";
@@ -22,6 +24,7 @@ export interface LobbyScreenProps {
   queuePosition?: number;
   joinError?: string;
   buildLabel?: string;
+  settings: ClientSettings;
   onSignInWithGoogle: () => void;
   onJoinSingleplayer: () => void;
   onSignOut?: () => void;
@@ -29,8 +32,7 @@ export interface LobbyScreenProps {
   onUsernameSubmit: (value: string) => void;
   onJoinWorld: () => void;
   onOpenHelp?: () => void;
-  onOpenSettings?: () => void;
-  onOpenAbout?: () => void;
+  onSettingsChange: (settings: ClientSettings) => void;
 }
 
 export interface UsernameValidationResult {
@@ -72,8 +74,8 @@ function Panorama() {
   );
 }
 
-function MenuButton({ children, disabled, onClick, type = "button", wide = false }: { children: ComponentChildren; disabled?: boolean; onClick?: () => void; type?: "button" | "submit"; wide?: boolean }) {
-  return <button className={`lc-menu-button${wide ? " is-wide" : ""}`} disabled={disabled} onClick={onClick} type={type}>{children}</button>;
+function MenuButton({ children, disabled, id, onClick, type = "button", wide = false }: { children: ComponentChildren; disabled?: boolean; id?: string; onClick?: () => void; type?: "button" | "submit"; wide?: boolean }) {
+  return <button className={`lc-menu-button${wide ? " is-wide" : ""}`} disabled={disabled} id={id} onClick={onClick} type={type}>{children}</button>;
 }
 
 function UsernameMenu(props: LobbyScreenProps & { onCancel?: () => void }) {
@@ -203,6 +205,7 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
 export function LobbyScreen(props: LobbyScreenProps) {
   const [page, setPage] = useState<"title" | "multiplayer">("title");
   const [editingUsername, setEditingUsername] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const showUsername = editingUsername && props.authState === "needs_username";
 
   if (page === "multiplayer") {
@@ -229,13 +232,19 @@ export function LobbyScreen(props: LobbyScreenProps) {
         <div className="lc-title-menu">
           <MenuButton onClick={props.onJoinSingleplayer} wide>Singleplayer</MenuButton>
           <MenuButton onClick={() => setPage("multiplayer")} wide>Multiplayer</MenuButton>
-          <div className="lc-menu-row">
-            <MenuButton onClick={props.onOpenSettings}>Options…</MenuButton>
-            <MenuButton onClick={props.onOpenAbout}>About</MenuButton>
-          </div>
+          <MenuButton id="lc-title-options" onClick={() => setOptionsOpen(true)} wide>Options…</MenuButton>
         </div>
       </section>
       {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
+      <OptionsDialog
+        mouseSensitivity={props.settings.mouseSensitivity}
+        onBack={() => setOptionsOpen(false)}
+        onSensitivityChange={(mouseSensitivity) => props.onSettingsChange({ ...props.settings, mouseSensitivity })}
+        onToggleSound={() => props.onSettingsChange({ ...props.settings, soundMuted: !props.settings.soundMuted })}
+        open={optionsOpen}
+        returnFocusId="lc-title-options"
+        soundMuted={props.settings.soundMuted}
+      />
       <footer className="lc-title-footer">
         <span>Lakecraft {props.buildLabel || "Alpha"}</span>
         <span>{props.authState === "ready" ? props.username || props.displayName : "craft.lakebed.app"}</span>

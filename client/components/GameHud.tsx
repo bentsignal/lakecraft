@@ -14,6 +14,7 @@ import { DeathScreen } from "./DeathScreen";
 import { FirstPersonHeldItem } from "./FirstPersonHeldItem";
 import { InventoryCraftingDrawer } from "./InventoryDrawer";
 import { MobileUnsupportedOverlay } from "./MobileUnsupportedOverlay";
+import { OptionsDialog } from "./OptionsDialog";
 import { PauseMenu } from "./PauseMenu";
 import { PlayerList, type PlayerListEntry } from "./PlayerList";
 import { SurvivalHud } from "./StatusStrip";
@@ -54,6 +55,10 @@ export type GameHudProps = {
   onCloseInventory: () => void;
   onResume?: () => void;
   onOptions?: () => void;
+  optionsOpen?: boolean;
+  mouseSensitivity?: number;
+  onSensitivityChange?: (value: number) => void;
+  onCloseOptions?: () => void;
   soundMuted?: boolean;
   onToggleSound?: () => void;
   onSave?: () => void;
@@ -114,6 +119,10 @@ export function GameHud({
   onCloseInventory,
   onResume,
   onOptions,
+  optionsOpen = false,
+  mouseSensitivity = 100,
+  onSensitivityChange,
+  onCloseOptions,
   soundMuted = false,
   onToggleSound,
   onSave,
@@ -156,16 +165,25 @@ export function GameHud({
         onDisconnect={onDisconnect}
         onOptions={onOptions}
         onSave={onSave}
-        onToggleSound={onToggleSound}
         disconnectLabel={disconnectLabel}
         lastSavedText={lastSavedText}
-        open={pauseOpen && !deathScreenOpen}
+        open={pauseOpen && !optionsOpen && !deathScreenOpen}
         saveDisabled={saveDisabled}
         saveInProgress={saveInProgress}
         saveStatusText={saveStatusText}
-        soundMuted={soundMuted}
         title={pauseTitle}
       />
+      {onCloseOptions && onSensitivityChange && onToggleSound ? (
+        <OptionsDialog
+          mouseSensitivity={mouseSensitivity}
+          onBack={onCloseOptions}
+          onSensitivityChange={onSensitivityChange}
+          onToggleSound={onToggleSound}
+          open={optionsOpen && pauseOpen && !deathScreenOpen}
+          returnFocusId="lc-game-menu-options"
+          soundMuted={soundMuted}
+        />
+      ) : null}
       <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawning={respawning} score={deathScore} />
       <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
