@@ -3169,8 +3169,26 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     explodeTnt(x, y, z) {
       const sourceKey = blockKey(x, y, z);
       if (!primedTnt.has(sourceKey) || getBlock(x, y, z) !== BLOCK.TNT) return [];
+      const blast = {
+        center: { x: x + 0.5, y, z: z + 0.5 },
+        radius: CREEPER_EXPLOSION_RADIUS,
+      };
+      const exposure = sampleCreeperExplosionExposure(blast, pose, (cell) =>
+        cell.x === x && cell.y === y && cell.z === z
+          ? "air"
+          : localCreeperExposureBlock(getBlock(cell.x, cell.y, cell.z)));
+      const rawDamage = resolveCreeperExplosionDamage(blast, pose, exposure);
       const edits = planLocalTntExplosion(x, y, z, getBlock);
       if (!applyLocalExplosionEdits(edits)) return [];
+      const damage = rawDamage > 0
+        ? mitigatedPlayerDamage(rawDamage, options.getPlayerProtection?.() ?? 0)
+        : 0;
+      const appliedDamage = Math.min(playerHealth, damage);
+      if (appliedDamage > 0) {
+        playerHealth -= appliedDamage;
+        options.onPlayerDamage?.(appliedDamage, "tnt");
+        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      }
       primedTnt.delete(sourceKey);
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
       return edits;

@@ -61,7 +61,7 @@ export interface WorldEdit {
   block: BlockId;
 }
 
-export type PlayerDamageCause = "mob" | "creeper" | "fall";
+export type PlayerDamageCause = "mob" | "creeper" | "tnt" | "fall";
 
 /** One locally resolved blast edit. `previousBlock` is evidence for particles/save state, not a mining drop. */
 export interface LocalExplosionEdit extends WorldEdit {

@@ -42,9 +42,10 @@ assert.equal(saved.ok, true);
 if (!saved.ok) throw new Error(saved.reason);
 assert.deepEqual(saved.envelope.payload.player.equipment, worn.equipment, "the local journal preserves exact worn durability");
 
-assert.ok(types.includes('export type PlayerDamageCause = "mob" | "creeper" | "fall"'));
+assert.ok(types.includes('export type PlayerDamageCause = "mob" | "creeper" | "tnt" | "fall"'));
 assert.ok(engine.includes('options.onPlayerDamage?.(appliedDamage, "mob")'));
 assert.ok(engine.includes('options.onPlayerDamage?.(appliedDamage, "creeper")'));
+assert.ok(engine.includes('options.onPlayerDamage?.(appliedDamage, "tnt")'));
 assert.ok(engine.includes('options.onPlayerDamage?.(appliedDamage, "fall")'));
 assert.equal(engine.includes("incomingDamage - Math.floor(protection / 2)"), false, "the divergent local mitigation formula is removed");
 assert.ok(app.includes('if (amount > 0 && cause !== "fall")'), "only positive combat damage wears local armor");
