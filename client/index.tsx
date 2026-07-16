@@ -3197,7 +3197,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setJoinPhase("ready");
       window.setTimeout(() => {
         setInWorld(true);
-        setPauseOpen(true);
+        setPauseOpen(false);
         setJoinPhase("idle");
       }, 180);
     }, 260));
@@ -3212,7 +3212,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
       setJoinPhase("ready");
       timer = window.setTimeout(() => {
         setInWorld(true);
-        setPauseOpen(true);
+        setPauseOpen(false);
         setJoinPhase("idle");
       }, 180);
     });
@@ -3345,7 +3345,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         username={profile?.username ?? usernameDraft}
         usernameError={usernameError}
         usernameState={profile ? "claimed" : usernameState}
-        worldDescription="One persistent world, synchronized through Lakebed even though Lakebed was absolutely not designed for this."
+        worldDescription="Survival · Lakebed shared world"
         worldName="Fern Hollow"
         worldStatus="online"
       />

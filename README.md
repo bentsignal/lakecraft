@@ -16,6 +16,8 @@ Google sign-in and a unique explorer username are required before joining the sh
 npx lakebed auth as alice
 ```
 
+Singleplayer requires no account and saves only in that browser. The title screen opens it directly; Multiplayer opens a separate dirt-background server directory where the compact account panel offers Sign In, username setup, and Fern Hollow's Join Server action.
+
 ## Controls
 
 - Click the world to capture the mouse

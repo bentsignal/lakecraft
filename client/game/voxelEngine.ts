@@ -2533,6 +2533,27 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onKeyUp(event: KeyboardEvent): void {
     keys.delete(event.code);
+    // Browsers occasionally lose the matching modifier keyup while pointer
+    // lock changes or a system shortcut takes focus. Any keyup that reports
+    // Ctrl released is authoritative and clears both physical Ctrl codes.
+    if (!event.ctrlKey) {
+      keys.delete("ControlLeft");
+      keys.delete("ControlRight");
+    }
+  }
+
+  function releaseTransientInput(): void {
+    keys.clear();
+    cancelPrimaryActionHold();
+    clearRangedCharge(true);
+  }
+
+  function onWindowBlur(): void {
+    releaseTransientInput();
+  }
+
+  function onVisibilityChange(): void {
+    if (document.visibilityState !== "visible") releaseTransientInput();
   }
 
   function onMouseMove(event: MouseEvent): void {
@@ -2730,6 +2751,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       lastFrame = performance.now();
       window.addEventListener("keydown", onKeyDown);
       window.addEventListener("keyup", onKeyUp);
+      window.addEventListener("blur", onWindowBlur);
+      document.addEventListener("visibilitychange", onVisibilityChange);
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("pointerlockchange", onPointerLockChange);
       canvas.addEventListener("mousedown", onMouseDown);
@@ -2749,6 +2772,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       cancelAnimationFrame(frameId);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("pointerlockchange", onPointerLockChange);
       canvas.removeEventListener("mousedown", onMouseDown);

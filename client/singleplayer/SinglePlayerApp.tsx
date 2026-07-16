@@ -203,7 +203,7 @@ export function SinglePlayerApp() {
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
-  const [pauseOpen, setPauseOpen] = useState(true);
+  const [pauseOpen, setPauseOpen] = useState(false);
   const [activeChestKey, setActiveChestKey] = useState<string | null>(null);
   const [chestInventory, setChestInventory] = useState<ChestInventory>([]);
   const [activeFurnaceKey, setActiveFurnaceKey] = useState<string | null>(null);

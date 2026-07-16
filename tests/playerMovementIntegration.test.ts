@@ -6,6 +6,9 @@ const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "ut
 
 assert.ok(engine.includes('keys.has("ControlLeft") || keys.has("ControlRight")'), "either Ctrl key requests sprint");
 assert.ok(engine.includes('"ControlLeft", "ControlRight"].includes(event.code)'), "pointer-locked movement prevents browser Ctrl shortcuts");
+assert.ok(engine.includes('if (!event.ctrlKey)'), "a keyup reporting Ctrl released clears stale sprint modifiers");
+assert.ok(engine.includes('window.addEventListener("blur", onWindowBlur)'), "focus loss releases held movement input");
+assert.ok(engine.includes('document.addEventListener("visibilitychange", onVisibilityChange)'), "backgrounding the tab releases held movement input");
 assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and low-ceiling posture use the tested release helper");
 assert.ok(engine.includes('movementMode === "sneak" && grounded'), "ledge protection is limited to grounded sneaking");
 assert.ok(engine.includes("clampSneakAxisMovement(amount"), "sneak movement uses the deterministic support clamp");
