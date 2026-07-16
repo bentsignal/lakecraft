@@ -104,6 +104,7 @@ import {
   enumerateCreeperExplosionBlocks,
 } from "../../shared/creeperExplosion.ts";
 import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/fallingBlocks.ts";
+import { fallDamageForDistance } from "../../shared/fallDamageAuthority.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
@@ -307,6 +308,7 @@ export const MAX_RESPAWN_HEIGHT = 128;
 export const PLAYER_GRAVITY = 22;
 export const PLAYER_TERMINAL_VELOCITY = -18;
 export const PLAYER_JUMP_SPEED = 8.25;
+const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
@@ -1363,6 +1365,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastPoseSent = 0;
   let poseDirty = true;
   let grounded = false;
+  let fallAirborne = false;
+  let fallPeakY = pose.y;
   let movementMode: PlayerMovementMode = "idle";
   let movementActivity = 0.5;
   let playerViewSuspended = false;
@@ -1981,6 +1985,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[2] = 0;
       cancelPrimaryActionHold();
       target = null;
+      fallAirborne = false;
+      fallPeakY = pose.y;
       processPendingChunkMeshes();
       updateMobs(dt);
       return;
@@ -2028,6 +2034,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     moveHorizontalAxis(2, dz, protectLedge);
     updateStreamingWindow();
     const touchingLadder = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
+    const verticalStartY = pose.y;
     velocity[1] = ladderVerticalVelocity(
       velocity[1],
       touchingLadder,
@@ -2040,6 +2047,29 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       grounded = velocity[1] < 0;
       velocity[1] = 0;
     } else grounded = false;
+
+    if (touchingLadder) {
+      fallAirborne = false;
+      fallPeakY = pose.y;
+    } else if (!grounded) {
+      fallPeakY = fallAirborne ? Math.max(fallPeakY, pose.y) : Math.max(verticalStartY, pose.y);
+      fallAirborne = true;
+    } else if (fallAirborne) {
+      // Collision separation leaves feet slightly below the ideal block top;
+      // remove that tolerance so an exact three-block fall remains safe.
+      const fallDistance = Math.max(0, fallPeakY - pose.y - LOCAL_FALL_LANDING_EPSILON);
+      const damage = fallDamageForDistance(fallDistance);
+      fallAirborne = false;
+      fallPeakY = pose.y;
+      const floorBlock = getBlock(Math.floor(pose.x), Math.floor(pose.y - 0.08), Math.floor(pose.z));
+      if (fallDistance > 0.25 && floorBlock !== BLOCK.AIR) options.onFootstep?.(floorBlock);
+      if (damage > 0 && playerHealth > 0) {
+        const appliedDamage = Math.min(playerHealth, damage);
+        playerHealth -= appliedDamage;
+        options.onPlayerDamage?.(appliedDamage);
+        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      }
+    }
 
     const movedHorizontally = Math.hypot(pose.x - movementStartX, pose.z - movementStartZ);
     movementDistance += movedHorizontally;
@@ -3006,6 +3036,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       keys.clear();
       resetMovementView();
       playerViewSuspended = false;
+      fallAirborne = false;
+      fallPeakY = pose.y;
       updateStreamingWindow(true);
       poseDirty = true;
       options.onPoseChange?.({ ...pose });
@@ -3053,6 +3085,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       clearRangedCharge(true);
       resetMovementView();
       playerViewSuspended = playerHealth <= 0;
+      fallAirborne = false;
+      fallPeakY = pose.y;
       target = null;
       updateStreamingWindow(true);
       writeMobPoseSnapshots(mobSimulation, mobSnapshots);
@@ -3082,6 +3116,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       keys.clear();
       resetMovementView();
       playerViewSuspended = false;
+      fallAirborne = false;
+      fallPeakY = pose.y;
       playerHealth = PLAYER_MAX_HEALTH;
       poseDirty = true;
       options.onPoseChange?.({ ...pose });

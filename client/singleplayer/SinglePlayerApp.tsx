@@ -695,6 +695,11 @@ export function SinglePlayerApp() {
       },
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
       canSprint: () => hungerRef.current > 6,
+      onFootstep: (block) => audio.play("footstep", {
+        seed: `local-step:${block}:${performance.now().toFixed(0)}`,
+        surface: audioSurfaceForBlock(block),
+        intensity: 0.5,
+      }),
       onBlockEdit: (edit, previousBlock) => {
         const settled = engineRef.current?.settleFallingBlocks(edit, previousBlock) ?? [];
         const nextEdits = new Map(editsRef.current.map((candidate) => [`${candidate.x}:${candidate.y}:${candidate.z}`, candidate]));
@@ -790,6 +795,10 @@ export function SinglePlayerApp() {
         setActiveFurnaceKey(null);
         document.exitPointerLock();
       },
+      onPlayerDamage: (amount) => audio.play("playerHurt", {
+        seed: `local-hurt:${amount}:${performance.now().toFixed(0)}`,
+        intensity: Math.min(1, 0.45 + amount / 12),
+      }),
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: () => setHandActionToken((value) => value + 1),

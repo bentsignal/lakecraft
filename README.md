@@ -36,6 +36,7 @@ npx lakebed auth as alice
 - Single-player chests and furnaces use the same full-stack transfer and smelting rules, but persist entirely in the local world save
 - Double-click food in the pack to eat it
 - Single-player hunger drains with activity, gates sprint below seven points, regenerates health while well fed, and starves down to one health
+- Falls up to three blocks are safe; longer single-player falls deal shared Minecraft-style landing damage and can kill
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
 - `Q` drops one held item into the shared world for another player to pick up
 - `T` or `Enter` opens world chat
