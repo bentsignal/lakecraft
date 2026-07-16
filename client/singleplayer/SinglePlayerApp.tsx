@@ -21,9 +21,11 @@ import {
   attackDamage,
   clampHotbarIndex,
   consumeFood,
+  createSurvivalTickState,
   getDeterministicMiningDrop,
   miningSeconds,
   removeItem,
+  tickSurvival,
   type BlockId,
   type CraftingContext,
   type Equipment,
@@ -173,6 +175,9 @@ export function SinglePlayerApp() {
   const editsRef = useRef(initialSnapshot.world.edits);
   const hungerRef = useRef(initialSnapshot.player.hunger);
   const healthRef = useRef(initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH);
+  const survivalStateRef = useRef(createSurvivalTickState(hungerRef.current, healthRef.current));
+  const survivalActivityRef = useRef(0.5);
+  const survivalSampledAtRef = useRef(performance.now());
   const dropsRef = useRef<DroppedItemRenderItem[]>(initialSnapshot.drops);
   const worldRef = useRef({ ...initialSnapshot.world, weather: { ...initialSnapshot.world.weather } });
   const progressionRef = useRef({
@@ -522,6 +527,7 @@ export function SinglePlayerApp() {
     inventoryRef.current = plan.carriedState.inventory;
     equipmentRef.current = plan.carriedState.equipment;
     hungerRef.current = MAX_HUNGER;
+    survivalStateRef.current = createSurvivalTickState(MAX_HUNGER, MAX_HEALTH);
     setInventory(plan.carriedState.inventory);
     setEquipment(plan.carriedState.equipment);
     setHunger(MAX_HUNGER);
@@ -688,6 +694,7 @@ export function SinglePlayerApp() {
         return gameBlock ? miningSeconds(gameBlock, inventoryRef.current[selectedRef.current]?.itemId) : 0.2;
       },
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
+      canSprint: () => hungerRef.current > 6,
       onBlockEdit: (edit, previousBlock) => {
         const settled = engineRef.current?.settleFallingBlocks(edit, previousBlock) ?? [];
         const nextEdits = new Map(editsRef.current.map((candidate) => [`${candidate.x}:${candidate.y}:${candidate.z}`, candidate]));
@@ -772,6 +779,7 @@ export function SinglePlayerApp() {
       },
       onPlayerHealthChange: (nextHealth) => {
         healthRef.current = nextHealth;
+        survivalStateRef.current = { ...survivalStateRef.current, health: nextHealth };
         setHealth(nextHealth);
         markWorldDirty();
         if (nextHealth > 0) return;
@@ -785,10 +793,14 @@ export function SinglePlayerApp() {
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: () => setHandActionToken((value) => value + 1),
+      onMovementModeChange: (_mode, activityMultiplier) => {
+        survivalActivityRef.current = activityMultiplier;
+      },
       onUseSelectedItem: () => {
         const result = consumeFood(inventoryRef.current, selectedRef.current, hungerRef.current);
         if (!result.ok) return false;
         hungerRef.current = result.hunger;
+        survivalStateRef.current = { ...survivalStateRef.current, hunger: result.hunger };
         setHunger(result.hunger);
         updateInventory(result.inventory);
         return true;
@@ -955,8 +967,23 @@ export function SinglePlayerApp() {
   useEffect(() => {
     const sample = () => {
       const active = !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen && document.visibilityState === "visible";
+      const now = performance.now();
+      const elapsedSeconds = active ? Math.max(0, now - survivalSampledAtRef.current) / 1_000 : 0;
+      survivalSampledAtRef.current = now;
+      if (active && elapsedSeconds > 0) {
+        const survival = tickSurvival(survivalStateRef.current, elapsedSeconds, survivalActivityRef.current);
+        const hungerChanged = survival.state.hunger !== hungerRef.current;
+        const healthChanged = survival.state.health !== healthRef.current;
+        survivalStateRef.current = survival.state;
+        if (hungerChanged) {
+          hungerRef.current = survival.state.hunger;
+          setHunger(survival.state.hunger);
+        }
+        if (healthChanged) engineRef.current?.setPlayerHealth(survival.state.health);
+        if (hungerChanged || healthChanged) markWorldDirty();
+      }
       if (active) markWorldDirty();
-      const next = sampleSaveCadence(saveCadenceRef.current, performance.now(), active);
+      const next = sampleSaveCadence(saveCadenceRef.current, now, active);
       saveCadenceRef.current = next.state;
       if (next.autosaveDue) performSaveRef.current("autosave");
     };

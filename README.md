@@ -35,6 +35,7 @@ npx lakebed auth as alice
 - In single-player, a bed always sets your respawn point; at night it sleeps through to dawn, and breaking that bed restores world spawn
 - Single-player chests and furnaces use the same full-stack transfer and smelting rules, but persist entirely in the local world save
 - Double-click food in the pack to eat it
+- Single-player hunger drains with activity, gates sprint below seven points, regenerates health while well fed, and starves down to one health
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
 - `Q` drops one held item into the shared world for another player to pick up
 - `T` or `Enter` opens world chat
