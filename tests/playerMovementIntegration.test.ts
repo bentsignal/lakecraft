@@ -13,9 +13,9 @@ assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and l
 assert.ok(engine.includes('movementMode === "sneak" && grounded'), "ledge protection is limited to grounded sneaking");
 assert.ok(engine.includes("clampSneakAxisMovement(amount"), "sneak movement uses the deterministic support clamp");
 assert.ok(engine.includes("smoothPlayerPosture(cameraPosture"), "eye/body/FOV posture is smoothed in the physics loop");
-assert.ok(engine.includes("perspective(cameraPosture.fovRadians"), "rendering consumes the smoothed FOV");
-assert.ok(engine.includes("const eye = cameraEye();"), "rendering consumes the bobbed visual camera origin");
-assert.ok(engine.includes("raycastVoxels(interactionEye()"), "block targeting uses the posture eye without cosmetic bob");
+assert.ok(engine.includes("writePerspectiveMatrix(projectionMatrix, cameraPosture.fovRadians"), "rendering consumes the smoothed FOV");
+assert.ok(engine.includes("const eye = cameraEye(renderEye);"), "rendering consumes the bobbed visual camera origin through retained scratch");
+assert.ok(engine.includes("interactionEye(raycastEye)"), "block targeting uses the posture eye without cosmetic bob or allocation");
 assert.ok(engine.includes("const eye = interactionEye();"), "combat uses the same Lakebed-valid posture eye");
 assert.ok(engine.includes("postureTargetsForMovement(movementMode).eyeHeight"), "interaction rays use one of Lakebed's discrete accepted posture heights");
 assert.ok(engine.includes("bobEnvelope = smoothMovementValue("), "head bob starts and stops through a bounded envelope");

@@ -105,10 +105,12 @@ import {
   CREEPER_EXPLOSION_RADIUS,
   enumerateCreeperExplosionBlocks,
   resolveCreeperExplosionDamage,
+  sampleCreeperExplosionExposure,
 } from "../../shared/creeperExplosion.ts";
 import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/fallingBlocks.ts";
 import { fallDamageForDistance } from "../../shared/fallDamageAuthority.ts";
 import { PLAYER_ATTACK_COOLDOWN_MS, mitigatedPlayerDamage } from "../../shared/playerCombat.ts";
+import type { BlockType } from "../../shared/protocol.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
@@ -711,6 +713,16 @@ export function doorPlacementBlock(block: BlockId): BlockId {
   return block;
 }
 
+/** Maps the engine palette onto the shared blast-cover categories. */
+export function localCreeperExposureBlock(block: BlockId): BlockType {
+  if (block === BLOCK.AIR) return "air";
+  if (block === BLOCK.TORCH) return "torch";
+  if (block === BLOCK.LADDER) return "ladder";
+  if (block === BLOCK.DOOR_OPEN) return "door_open";
+  if (block === BLOCK.OAK_FENCE_GATE_OPEN) return "oak_fence_gate_open";
+  return "stone";
+}
+
 export function createDoorToggleEdit(target: BlockTarget): WorldEdit | null {
   const block = toggledDoorBlock(target.block.block);
   return block === null
@@ -842,17 +854,18 @@ function createTerrainTexture(gl: WebGLRenderingContext): WebGLTexture {
   return texture;
 }
 
-function perspective(fov: number, aspect: number, near: number, far: number): Float32Array {
+export function writePerspectiveMatrix(out: Float32Array, fov: number, aspect: number, near: number, far: number): Float32Array {
   const f = 1 / Math.tan(fov / 2);
-  return new Float32Array([
-    f / aspect, 0, 0, 0,
-    0, f, 0, 0,
-    0, 0, (far + near) / (near - far), -1,
-    0, 0, (2 * far * near) / (near - far), 0,
-  ]);
+  out.fill(0);
+  out[0] = f / aspect;
+  out[5] = f;
+  out[10] = (far + near) / (near - far);
+  out[11] = -1;
+  out[14] = (2 * far * near) / (near - far);
+  return out;
 }
 
-function lookAt(eye: Vec3, center: Vec3): Float32Array {
+export function writeLookAtMatrix(out: Float32Array, eye: Vec3, center: Vec3): Float32Array {
   let zx = eye[0] - center[0];
   let zy = eye[1] - center[1];
   let zz = eye[2] - center[2];
@@ -866,19 +879,18 @@ function lookAt(eye: Vec3, center: Vec3): Float32Array {
   const yx = zy * xz - zz * xy;
   const yy = zz * xx - zx * xz;
   const yz = zx * xy - zy * xx;
-  return new Float32Array([
-    xx, yx, zx, 0,
-    xy, yy, zy, 0,
-    xz, yz, zz, 0,
-    -(xx * eye[0] + xy * eye[1] + xz * eye[2]),
-    -(yx * eye[0] + yy * eye[1] + yz * eye[2]),
-    -(zx * eye[0] + zy * eye[1] + zz * eye[2]),
-    1,
-  ]);
+  out[0] = xx; out[1] = yx; out[2] = zx; out[3] = 0;
+  out[4] = xy; out[5] = yy; out[6] = zy; out[7] = 0;
+  out[8] = xz; out[9] = yz; out[10] = zz; out[11] = 0;
+  out[12] = -(xx * eye[0] + xy * eye[1] + xz * eye[2]);
+  out[13] = -(yx * eye[0] + yy * eye[1] + yz * eye[2]);
+  out[14] = -(zx * eye[0] + zy * eye[1] + zz * eye[2]);
+  out[15] = 1;
+  return out;
 }
 
-function multiply(a: Float32Array, b: Float32Array): Float32Array {
-  const out = new Float32Array(16);
+/** Output must not alias either input. */
+export function writeMatrixProduct(out: Float32Array, a: Float32Array, b: Float32Array): Float32Array {
   for (let column = 0; column < 4; column += 1) {
     for (let row = 0; row < 4; row += 1) {
       out[column * 4 + row] =
@@ -1327,6 +1339,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const particleCameraRight = new Float32Array(3);
   const particleCameraUp = new Float32Array(3);
   const frustumPlanes = new Float32Array(24);
+  const renderEye: Vec3 = [0, 0, 0];
+  const renderFacing: Vec3 = [0, 0, 0];
+  const renderCenter: Vec3 = [0, 0, 0];
+  const raycastEye: Vec3 = [0, 0, 0];
+  const raycastFacing: Vec3 = [0, 0, 0];
+  const projectionMatrix = new Float32Array(16);
+  const viewMatrix = new Float32Array(16);
+  const mvpMatrix = new Float32Array(16);
   gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, particleGeometry.byteLength, gl.DYNAMIC_DRAW);
 
@@ -1991,9 +2011,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return true;
   }
 
-  function direction(): Vec3 {
+  function direction(out: Vec3 = [0, 0, 0]): Vec3 {
     const cosPitch = Math.cos(pose.pitch);
-    return [Math.sin(pose.yaw) * cosPitch, Math.sin(pose.pitch), -Math.cos(pose.yaw) * cosPitch];
+    out[0] = Math.sin(pose.yaw) * cosPitch;
+    out[1] = Math.sin(pose.pitch);
+    out[2] = -Math.cos(pose.yaw) * cosPitch;
+    return out;
   }
 
   function mobCanOccupy(_kind: unknown, x: number, y: number, z: number, collisionRadius: number, height: number): boolean {
@@ -2074,17 +2097,20 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
     }
     for (const explosion of consumeDueLocalCreeperExplosions(mobSimulation, localCreeperExplosions)) {
+      const blast = {
+        center: { x: explosion.x, y: explosion.y, z: explosion.z },
+        radius: CREEPER_EXPLOSION_RADIUS,
+      };
       const edits = planLocalTntExplosion(
         Math.floor(explosion.x),
         Math.floor(explosion.y),
         Math.floor(explosion.z),
         getBlock,
       );
+      const exposure = sampleCreeperExplosionExposure(blast, pose, (cell) =>
+        localCreeperExposureBlock(getBlock(cell.x, cell.y, cell.z)));
       const terrainAccepted = applyLocalExplosionEdits(edits);
-      const rawDamage = resolveCreeperExplosionDamage({
-        center: { x: explosion.x, y: explosion.y, z: explosion.z },
-        radius: CREEPER_EXPLOSION_RADIUS,
-      }, pose);
+      const rawDamage = resolveCreeperExplosionDamage(blast, pose, exposure);
       const damage = rawDamage > 0
         ? mitigatedPlayerDamage(rawDamage, options.getPlayerProtection?.() ?? 0)
         : 0;
@@ -2224,7 +2250,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       footstepDistance = Math.min(footstepDistance, 0.8);
     }
 
-    const nextTarget = raycastVoxels(interactionEye(), direction(), getBlock, options.reach ?? 6);
+    const nextTarget = raycastVoxels(
+      interactionEye(raycastEye),
+      direction(raycastFacing),
+      getBlock,
+      options.reach ?? 6,
+    );
     if (!sameTarget(target, nextTarget)) {
       clearMining();
       target = nextTarget;
@@ -2346,7 +2377,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function render(now: number, dt: number, frameNow: number): void {
     resize();
-    const eye = cameraEye();
+    const eye = cameraEye(renderEye);
     const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
     remoteVertexCount = remoteStats.avatarVertexCount;
     nameplateVertexCount = remoteStats.nameplateVertexCount;
@@ -2355,7 +2386,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     droppedItemVisibleCount = droppedItemStats.visibleItemCount;
     const playerProjectileStats = playerProjectileRenderer.update(now, eye);
     playerProjectileVertexCount = playerProjectileStats.vertexCount;
-    const facing = direction();
+    const facing = direction(renderFacing);
     const horizontalFacing = Math.hypot(facing[0], facing[2]) || 1;
     const rightX = -facing[2] / horizontalFacing;
     const rightZ = facing[0] / horizontalFacing;
@@ -2380,9 +2411,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleUploadView);
     }
-    const projection = perspective(cameraPosture.fovRadians, canvas.width / canvas.height, 0.05, 90);
-    const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
-    const mvp = multiply(projection, view);
+    renderCenter[0] = eye[0] + facing[0];
+    renderCenter[1] = eye[1] + facing[1];
+    renderCenter[2] = eye[2] + facing[2];
+    writePerspectiveMatrix(projectionMatrix, cameraPosture.fovRadians, canvas.width / canvas.height, 0.05, 90);
+    writeLookAtMatrix(viewMatrix, eye, renderCenter);
+    const mvp = writeMatrixProduct(mvpMatrix, projectionMatrix, viewMatrix);
     writeFrustumPlanes(frustumPlanes, mvp);
     sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
     writeCelestialDirection(dayNightState.sunAngle, atmosphereSunDirection);

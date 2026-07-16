@@ -203,14 +203,14 @@ export function InventoryCraftingDrawer({
       onPointerDown={(event) => setPointer({ x: event.clientX, y: event.clientY })}
       onPointerMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
     >
-      <aside className="lc-drawer lc-inventory-window" role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
+      <aside className={`lc-drawer lc-inventory-window${size === 3 ? " is-crafting-table" : ""}`} role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
         <div className="lc-inventory-titlebar">
           <h2 id="lc-inventory-title">{craftingContext === "crafting_table" ? "Crafting" : "Inventory"}</h2>
           <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
         </div>
 
         <div className="lc-inventory-upper">
-          <section className="lc-equipment-panel" aria-label="Player and equipped armor">
+          {size === 2 ? <section className="lc-equipment-panel" aria-label="Player and equipped armor">
             <div className="lc-armor-column">
               {(Object.keys(workspace.equipment) as ArmorSlot[]).map((slot) => {
                 const stack = workspace.equipment[slot];
@@ -243,10 +243,10 @@ export function InventoryCraftingDrawer({
               <span className="lc-player-preview__leg lc-player-preview__leg--left" />
               <span className="lc-player-preview__leg lc-player-preview__leg--right" />
             </div>
-          </section>
+          </section> : null}
 
-          <section className="lc-crafting-panel" aria-labelledby="lc-crafting-title">
-            <h3 id="lc-crafting-title">Crafting</h3>
+          <section className="lc-crafting-panel" aria-label={size === 3 ? "Crafting grid" : undefined} aria-labelledby={size === 2 ? "lc-crafting-title" : undefined}>
+            {size === 2 ? <h3 id="lc-crafting-title">Crafting</h3> : null}
             <CraftingGridView
               grid={workspace.grid}
               onLeftClickSlot={(slot, shiftQuickMove) => apply(shiftQuickMove
@@ -258,7 +258,6 @@ export function InventoryCraftingDrawer({
               outputLabel={previewRecipe?.label}
               size={size}
             />
-            <p>{size === 2 ? "Use a crafting table for 3×3 recipes." : "Arrange materials to match the recipe shape."}</p>
           </section>
         </div>
 
@@ -302,7 +301,6 @@ export function InventoryCraftingDrawer({
             })}
           </div>
         </section>
-        <span className="lc-inventory-help">Left-click move · Right-click split/place one · Shift-click quick move · Double-click gather</span>
         {interactionError ? <span className="lc-inventory-error" role="status">{interactionError}</span> : null}
       </aside>
       {workspace.cursor ? (

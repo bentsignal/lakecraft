@@ -18,5 +18,17 @@ assert.ok(workspace.includes("attempt < 64") && workspace.includes("result.recip
 assert.ok(grid.includes("event.shiftKey") && grid.includes("onContextMenu"), "result shift-click and right-click splitting are exposed in the view");
 assert.ok(styles.includes("repeat(var(--craft-grid-size),48px)"), "2x2 and 3x3 grids share Minecraft-scale slots");
 assert.ok(styles.includes(".lc-cursor-stack"), "the held stack follows the pointer instead of appearing as a duplicate inventory item");
+assert.ok(drawer.includes('size === 3 ? " is-crafting-table"'), "crafting-table mode exposes a dedicated layout modifier");
+assert.match(drawer, /\{size === 2 \? <section className="lc-equipment-panel"[\s\S]*?<\/section> : null\}/,
+  "armor and avatar remain exclusive to field inventory");
+assert.ok(drawer.includes('{size === 2 ? <h3 id="lc-crafting-title">Crafting</h3> : null}'),
+  "crafting table keeps only its dialog title while field inventory labels the 2x2 section");
+assert.ok(styles.includes(".lc-inventory-window.is-crafting-table .lc-inventory-upper { display: block; min-height: 0; }"),
+  "table mode removes the two-column equipment layout");
+assert.ok(styles.includes(".lc-inventory-window.is-crafting-table .lc-crafting-panel { margin: 0 auto; width: max-content; }"),
+  "existing 3x3 grid and output are centered above inventory");
+for (const stale of ["Use a crafting table for 3×3 recipes.", "Arrange materials to match the recipe shape.", "lc-inventory-help", "Left-click move"]) {
+  assert.equal(`${drawer}${styles}`.includes(stale), false, `drawer removes tutorial copy: ${stale}`);
+}
 
 console.log("manual crafting grid client checks passed");
