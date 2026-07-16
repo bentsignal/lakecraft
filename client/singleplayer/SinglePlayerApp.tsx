@@ -194,6 +194,7 @@ export function SinglePlayerApp() {
   const performSaveRef = useRef<(reason: "manual" | "autosave" | "quit") => boolean>(() => false);
   const setLocalFusesPausedRef = useRef<(paused: boolean) => void>(() => undefined);
   const localRespawnBusyRef = useRef(false);
+  const localDropSequenceRef = useRef(0);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
   const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
   const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
@@ -487,6 +488,38 @@ export function SinglePlayerApp() {
     dropsRef.current = remaining;
     setInventory(nextInventory);
     engineRef.current?.setDroppedItems(remaining);
+    markWorldDirty();
+  }
+
+  function dropLocalSelected(wholeStack: boolean): void {
+    const engine = engineRef.current;
+    const source = inventoryRef.current[selectedRef.current];
+    if (!engine || !source || dropsRef.current.length >= SINGLEPLAYER_SAVE_LIMITS.drops) return;
+    const count = wholeStack ? source.count : 1;
+    const next = inventoryRef.current.map((stack, index) => index !== selectedRef.current || !stack
+      ? stack ? { ...stack } : null
+      : stack.count === count ? null : { ...stack, count: stack.count - count }) as Inventory;
+    const pose = engine.getPose();
+    const droppedAt = Date.now();
+    localDropSequenceRef.current += 1;
+    const dropped: DroppedItemRenderItem = {
+      dropId: `local_drop_${droppedAt}_${localDropSequenceRef.current}`.slice(0, 96),
+      item: { ...source, count },
+      x: pose.x + Math.sin(pose.yaw) * 2.25,
+      y: pose.y + 1.1,
+      z: pose.z - Math.cos(pose.yaw) * 2.25,
+      droppedAt,
+    };
+    inventoryRef.current = next;
+    dropsRef.current = [...dropsRef.current, dropped];
+    setInventory(next);
+    engine.setDroppedItems(dropsRef.current);
+    setMessages((current) => [...current.slice(-2), {
+      id: dropped.dropId,
+      text: `Dropped ${ITEMS[source.itemId].label}`,
+      detail: count > 1 ? `${count} items` : "Walk over it to pick it back up.",
+      tone: "info",
+    }]);
     markWorldDirty();
   }
 
@@ -1075,6 +1108,12 @@ export function SinglePlayerApp() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "KeyQ" && !event.repeat) {
+        if (pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
+        event.preventDefault();
+        dropLocalSelected(event.ctrlKey || event.metaKey);
+        return;
+      }
       if ((event.code === "KeyE" || event.code === "Escape") && !event.repeat && containerOpen) {
         event.preventDefault();
         closeActiveContainer();
@@ -1090,7 +1129,7 @@ export function SinglePlayerApp() {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [inventoryOpen, containerOpen, activeFurnaceKey]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, containerOpen, deathScreenOpen, activeFurnaceKey]);
 
   const lastSavedText = lastSavedAt === null ? "Not saved yet"
     : `Last saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;

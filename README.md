@@ -39,7 +39,7 @@ npx lakebed auth as alice
 - Single-player hunger drains with activity, gates sprint below seven points, regenerates health while well fed, and starves down to one health
 - Falls up to three blocks are safe; longer single-player falls deal shared Minecraft-style landing damage and can kill
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
-- `Q` drops one held item into the shared world for another player to pick up
+- `Q` drops one held item and Ctrl/Cmd+`Q` drops its whole stack; multiplayer drops enter the shared world
 - `T` or `Enter` opens world chat
 - Hold `Tab` for the live player list; `Esc` opens the game menu
 - In single-player, the game menu can save immediately; dirty worlds also autosave after five minutes of active play and save before leaving
