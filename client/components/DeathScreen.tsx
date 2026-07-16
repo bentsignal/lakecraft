@@ -3,6 +3,8 @@ export type DeathScreenProps = {
   cause?: string;
   score?: number;
   respawning?: boolean;
+  respawnStatus?: string;
+  respawnError?: string;
   onRespawn?: () => void;
   onTitleScreen?: () => void;
 };
@@ -16,6 +18,8 @@ export function DeathScreen({
   cause,
   score = 0,
   respawning = false,
+  respawnStatus,
+  respawnError,
   onRespawn,
   onTitleScreen,
 }: DeathScreenProps) {
@@ -43,6 +47,16 @@ export function DeathScreen({
           </button>
           <button disabled={respawning || !onTitleScreen} onClick={onTitleScreen} type="button">Title Screen</button>
         </div>
+        {respawnError || respawnStatus ? (
+          <p
+            aria-atomic="true"
+            aria-live={respawnError ? "assertive" : "polite"}
+            className={`lc-death-screen__status${respawnError ? " is-error" : ""}`}
+            role={respawnError ? "alert" : "status"}
+          >
+            {respawnError || respawnStatus}
+          </p>
+        ) : null}
       </section>
     </div>
   );

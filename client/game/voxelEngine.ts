@@ -3345,11 +3345,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     requestPointerLock() { requestCanvasPointerLock(); },
     respawn() {
       pose.x = respawnPoint.x;
-      pose.y = respawnPoint.y;
       pose.z = respawnPoint.z;
       pose.yaw = respawnPoint.yaw;
       pose.pitch = respawnPoint.pitch;
       updateStreamingWindow(true);
+      pose.y = resolveSafeSpawnY(
+        respawnPoint.y,
+        respawnPoint.y,
+        (candidateY) => collides(respawnPoint.x, candidateY, respawnPoint.z),
+      );
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;

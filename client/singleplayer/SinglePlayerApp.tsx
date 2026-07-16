@@ -92,6 +92,11 @@ import {
   createLocalWorldEditIndex,
   tryCommitLocalWorldEdits,
 } from "./localWorldEditJournal.ts";
+import {
+  singlePlayerDeathMessage,
+  singlePlayerStartsDead,
+  type SinglePlayerDeathCause,
+} from "./deathPresentation.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -189,6 +194,7 @@ export function SinglePlayerApp() {
   const initial = useRef<InitialLocalWorld | null>(null);
   if (!initial.current) initial.current = loadInitialLocalWorld();
   const initialSnapshot = initial.current.snapshot;
+  const initialPlayerHealth = initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
   const audioRef = useRef<GameAudio | null>(null);
@@ -198,7 +204,7 @@ export function SinglePlayerApp() {
   const editsRef = useRef(createLocalWorldEditIndex(initialSnapshot.world.edits));
   const editCapacityWarningRef = useRef(false);
   const hungerRef = useRef(initialSnapshot.player.hunger);
-  const healthRef = useRef(initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH);
+  const healthRef = useRef(initialPlayerHealth);
   const survivalStateRef = useRef(createSurvivalTickState(hungerRef.current, healthRef.current));
   const survivalActivityRef = useRef(0.5);
   const survivalSampledAtRef = useRef(performance.now());
@@ -220,6 +226,7 @@ export function SinglePlayerApp() {
   const performSaveRef = useRef<(reason: "manual" | "autosave" | "quit") => boolean>(() => false);
   const setLocalFusesPausedRef = useRef<(paused: boolean) => void>(() => undefined);
   const localRespawnBusyRef = useRef(false);
+  const pendingDeathCauseRef = useRef<SinglePlayerDeathCause>("unknown");
   const localDropSequenceRef = useRef(0);
   const localArrowSequenceRef = useRef(0);
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
@@ -227,8 +234,10 @@ export function SinglePlayerApp() {
   const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
   const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
   const [hunger, setHunger] = useState(initialSnapshot.player.hunger);
-  const [health, setHealth] = useState(initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH);
-  const [deathScreenOpen, setDeathScreenOpen] = useState(false);
+  const [health, setHealth] = useState(initialPlayerHealth);
+  const [deathScreenOpen, setDeathScreenOpen] = useState(() => singlePlayerStartsDead(initialSnapshot.runtime?.playerHealth));
+  const [deathCause, setDeathCause] = useState(() => singlePlayerDeathMessage("unknown"));
+  const [deathStatus, setDeathStatus] = useState("");
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -581,6 +590,7 @@ export function SinglePlayerApp() {
     if (localRespawnBusyRef.current || !engineRef.current) return;
     pruneLocalDrops();
     localRespawnBusyRef.current = true;
+    setDeathStatus("");
     setRespawning(true);
     const engine = engineRef.current;
     const deathAt = Date.now();
@@ -592,13 +602,13 @@ export function SinglePlayerApp() {
       deathPose: { x: pose.x, y: pose.y, z: pose.z },
     });
     if (!plan.ok) {
-      setMessages((current) => [...current.slice(-2), { id: `death-${deathAt}`, text: "Respawn failed", detail: "Your carried items were left untouched.", tone: "warning" }]);
+      setDeathStatus("Respawn failed. Your carried items were left untouched.");
       localRespawnBusyRef.current = false;
       setRespawning(false);
       return;
     }
     if (dropsRef.current.length + plan.drops.length > SINGLEPLAYER_SAVE_LIMITS.drops) {
-      setMessages((current) => [...current.slice(-2), { id: `death-cap-${deathAt}`, text: "Respawn blocked", detail: "Too many saved items are already lying in this world; your pack was not changed.", tone: "warning" }]);
+      setDeathStatus("Respawn blocked. Too many saved items are already lying in this world; your pack was not changed.");
       localRespawnBusyRef.current = false;
       setRespawning(false);
       return;
@@ -632,6 +642,9 @@ export function SinglePlayerApp() {
       engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
     }
     engine.respawn();
+    pendingDeathCauseRef.current = "unknown";
+    setDeathCause(singlePlayerDeathMessage("unknown"));
+    setDeathStatus("");
     setDeathScreenOpen(false);
     localRespawnBusyRef.current = false;
     setRespawning(false);
@@ -997,7 +1010,13 @@ export function SinglePlayerApp() {
         survivalStateRef.current = { ...survivalStateRef.current, health: nextHealth };
         setHealth(nextHealth);
         markWorldDirty();
-        if (nextHealth > 0) return;
+        if (nextHealth > 0) {
+          pendingDeathCauseRef.current = "unknown";
+          return;
+        }
+        setDeathCause(singlePlayerDeathMessage(pendingDeathCauseRef.current));
+        pendingDeathCauseRef.current = "unknown";
+        setDeathStatus("");
         setDeathScreenOpen(true);
         setPauseOpen(false);
         setInventoryOpen(false);
@@ -1006,6 +1025,7 @@ export function SinglePlayerApp() {
         document.exitPointerLock();
       },
       onPlayerDamage: (amount, cause) => {
+        if (amount > 0) pendingDeathCauseRef.current = cause;
         if (amount > 0 && cause !== "fall") {
           const armorDamage = applyConfirmedArmorDamage(equipmentRef.current);
           if (armorDamage.damaged.length > 0) {
@@ -1226,7 +1246,10 @@ export function SinglePlayerApp() {
           hungerRef.current = survival.state.hunger;
           setHunger(survival.state.hunger);
         }
-        if (healthChanged) engineRef.current?.setPlayerHealth(survival.state.health);
+        if (healthChanged) {
+          if (survival.state.health < healthRef.current) pendingDeathCauseRef.current = "starvation";
+          engineRef.current?.setPlayerHealth(survival.state.health);
+        }
         if (hungerChanged || healthChanged) markWorldDirty();
       }
       if (active) markWorldDirty();
@@ -1351,7 +1374,7 @@ export function SinglePlayerApp() {
       <GameHud
         connected={false}
         craftingContext={craftingContext}
-        deathCause="Player died"
+        deathCause={deathCause}
         deathScreenOpen={deathScreenOpen}
         equipment={equipment}
         handActionToken={handActionToken}
@@ -1399,6 +1422,7 @@ export function SinglePlayerApp() {
         saveDisabled={saveLockedRef.current}
         saveInProgress={saveInProgress}
         saveStatusText={saveStatusText}
+        respawnError={deathStatus}
         respawning={respawning}
         soundMuted={clientSettings.soundMuted}
         onToggleSound={() => {

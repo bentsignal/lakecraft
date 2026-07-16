@@ -17,6 +17,7 @@ import {
 } from "../client/singleplayer/localSave.ts";
 import { createMobSimulation, exportMobSimulationSnapshot } from "../client/game/mobs.ts";
 import { VOXEL_RUNTIME_SNAPSHOT_VERSION } from "../client/game/types.ts";
+import { singlePlayerStartsDead } from "../client/singleplayer/deathPresentation.ts";
 
 class MemoryStorage implements SinglePlayerStorageAdapter {
   readonly values = new Map<string, string>();
@@ -84,6 +85,19 @@ function richSnapshot(): SinglePlayerSnapshot {
   if (loaded.status !== "loaded") throw new Error(loaded.status);
   assert.equal(loaded.sequence, 1);
   assert.deepEqual(loaded.snapshot, snapshot);
+}
+
+// A dead runtime survives the verified journal and must reopen the respawn UI after reload.
+{
+  const storage = new MemoryStorage();
+  const snapshot = richSnapshot();
+  snapshot.runtime!.playerHealth = 0;
+  assert.equal(saveSinglePlayerSnapshot(storage, snapshot, 10_001).ok, true);
+  const loaded = loadSinglePlayerSave(storage);
+  assert.equal(loaded.status, "loaded");
+  if (loaded.status !== "loaded") throw new Error(loaded.status);
+  assert.equal(loaded.snapshot.runtime?.playerHealth, 0);
+  assert.equal(singlePlayerStartsDead(loaded.snapshot.runtime?.playerHealth), true);
 }
 
 // The advisory head can be stale: the highest valid sequence still wins.

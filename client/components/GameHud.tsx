@@ -40,6 +40,8 @@ export type GameHudProps = {
   deathCause?: string;
   deathScore?: number;
   respawning?: boolean;
+  respawnStatus?: string;
+  respawnError?: string;
   showPlayerList?: boolean;
   players?: readonly PlayerListEntry[];
   onSelectHotbar: (index: number) => void;
@@ -107,6 +109,8 @@ export function GameHud({
   deathCause,
   deathScore = 0,
   respawning = false,
+  respawnStatus,
+  respawnError,
   showPlayerList = false,
   players = [],
   onSelectHotbar,
@@ -181,7 +185,7 @@ export function GameHud({
           soundMuted={soundMuted}
         />
       ) : null}
-      <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawning={respawning} score={deathScore} />
+      <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawnError={respawnError} respawning={respawning} respawnStatus={respawnStatus} score={deathScore} />
       <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
