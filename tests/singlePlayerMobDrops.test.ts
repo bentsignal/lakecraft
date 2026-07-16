@@ -140,6 +140,7 @@ assert.equal(blocked.killed, false);
 assert.equal(blockedSimulation.mobs[0]!.alive, true);
 assert.equal(blockedSimulation.mobs[0]!.health, 10);
 assert.equal(blockedSimulation.mobs[0]!.damageSequence, 0, "capacity rejection rolls back the entire fatal hit");
+assert.equal(blockedSimulation.mobs[0]!.behaviorUntilSeconds, 0, "a rejected death schedules no local respawn");
 let retriedEvent: LocalMobDeathDropEvent | null = null;
 const retried = damageMob(blockedSimulation, "pig-blocked", 100, (event) => {
   retriedEvent = { ...event, drops: event.drops.map((drop) => ({ ...drop })) };

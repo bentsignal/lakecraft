@@ -265,6 +265,8 @@ export interface LocalCreeperExplosionEvent {
 }
 
 export const MOB_SIMULATION_SNAPSHOT_VERSION = 1 as const;
+export const LOCAL_MOB_RESPAWN_DELAY_SECONDS = 30;
+export const LOCAL_MOB_RESPAWN_PLAYER_DISTANCE = 16;
 
 /**
  * Complete, bounded local simulation state. This deliberately includes inactive
@@ -901,7 +903,15 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
 
   for (let index = 0; index < simulation.mobs.length; index += 1) {
     const mob = simulation.mobs[index];
-    if (!mob.alive) continue;
+    if (!mob.alive) {
+      if (mob.authoritativeRevision < 0
+        && mob.behaviorUntilSeconds > 0
+        && simulation.elapsedSeconds + 1e-9 >= mob.behaviorUntilSeconds
+        && localMobHomeAvailable(simulation, mob, input)) {
+        resetMobAtHome(mob, simulation.elapsedSeconds);
+      }
+      continue;
+    }
     const definition = MOB_DEFINITIONS[mob.kind];
     mob.previousX = mob.x;
     mob.previousY = mob.y;
@@ -1067,6 +1077,7 @@ export function consumeDueLocalCreeperExplosions(
     outputIndex += 1;
     mob.alive = false;
     mob.health = 0;
+    mob.behaviorUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_RESPAWN_DELAY_SECONDS;
     mob.fuseStartedAtSeconds = 0;
     mob.fuseUntilSeconds = 0;
   }
@@ -1193,6 +1204,9 @@ export function damageMob(
   mob.health = 0;
   mob.alive = false;
   mob.sheared = false;
+  if (mob.authoritativeRevision < 0) {
+    mob.behaviorUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_RESPAWN_DELAY_SECONDS;
+  }
   return { found: true, killed: true, remainingHealth: 0, drops };
 }
 
@@ -1237,6 +1251,37 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
   mob.rangedSequence = 0;
   mob.fuseStartedAtSeconds = 0;
   mob.fuseUntilSeconds = 0;
+}
+
+function localMobHomeAvailable(
+  simulation: Readonly<MobSimulation>,
+  mob: Readonly<MobState>,
+  input: Readonly<MobStepInput>,
+): boolean {
+  if (input.player) {
+    const playerDx = input.player.x - mob.homeX;
+    const playerDz = input.player.z - mob.homeZ;
+    if (playerDx * playerDx + playerDz * playerDz < LOCAL_MOB_RESPAWN_PLAYER_DISTANCE ** 2) return false;
+  }
+  const definition = MOB_DEFINITIONS[mob.kind];
+  if (input.canOccupy && !input.canOccupy(
+    mob.kind,
+    mob.homeX,
+    mob.homeY,
+    mob.homeZ,
+    definition.collisionRadius,
+    definition.height,
+  )) return false;
+  for (const other of simulation.mobs) {
+    if (!other.alive || other.id === mob.id) continue;
+    const otherDefinition = MOB_DEFINITIONS[other.kind];
+    if (Math.abs(other.y - mob.homeY) >= Math.max(definition.height, otherDefinition.height)) continue;
+    const dx = other.x - mob.homeX;
+    const dz = other.z - mob.homeZ;
+    const separation = definition.collisionRadius + otherDefinition.collisionRadius;
+    if (dx * dx + dz * dz < separation * separation) return false;
+  }
+  return true;
 }
 
 /**
