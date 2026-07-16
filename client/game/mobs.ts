@@ -519,6 +519,7 @@ export interface LocalMobDeathDropEvent {
 
 export interface MobDamageResult {
   found: boolean;
+  applied: boolean;
   killed: boolean;
   remainingHealth: number;
   drops: MobDrop[];
@@ -1179,15 +1180,15 @@ export function damageMob(
   acceptFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean,
 ): MobDamageResult {
   const mob = simulation.mobs.find((candidate) => candidate.id === id);
-  if (!mob || !mob.alive) return { found: Boolean(mob), killed: false, remainingHealth: 0, drops: [] };
+  if (!mob || !mob.alive) return { found: Boolean(mob), applied: false, killed: false, remainingHealth: 0, drops: [] };
   const damage = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
-  if (damage === 0) return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
+  if (damage === 0) return { found: true, applied: false, killed: false, remainingHealth: mob.health, drops: [] };
   const damageSequence = mob.damageSequence + 1;
   const health = Math.max(0, mob.health - damage);
   if (health > 0) {
     mob.damageSequence = damageSequence;
     mob.health = health;
-    return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
+    return { found: true, applied: true, killed: false, remainingHealth: mob.health, drops: [] };
   }
   const drops = rollDrops(mob, damageSequence);
   if (acceptFatalDrops && !acceptFatalDrops({
@@ -1198,7 +1199,7 @@ export function damageMob(
     z: mob.z,
     drops,
   })) {
-    return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
+    return { found: true, applied: false, killed: false, remainingHealth: mob.health, drops: [] };
   }
   mob.damageSequence = damageSequence;
   mob.health = 0;
@@ -1207,7 +1208,7 @@ export function damageMob(
   if (mob.authoritativeRevision < 0) {
     mob.behaviorUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_RESPAWN_DELAY_SECONDS;
   }
-  return { found: true, killed: true, remainingHealth: 0, drops };
+  return { found: true, applied: true, killed: true, remainingHealth: 0, drops };
 }
 
 /**

@@ -837,6 +837,21 @@ export function SinglePlayerApp() {
         recordLocalExplosion(`creeper:${mobId}`, edits, 0);
         markWorldDirty();
       },
+      onLocalMobHit: () => {
+        const slot = selectedRef.current;
+        const held = inventoryRef.current[slot]?.itemId ?? null;
+        const wear = applyConfirmedToolUse(inventoryRef.current, slot, "attack", held);
+        if (!wear.used) return;
+        updateInventory(wear.inventory);
+        if (wear.broke && wear.itemId) {
+          setMessages((current) => [...current.slice(-2), {
+            id: `weapon-break-${performance.now().toFixed(0)}`,
+            text: `${ITEMS[wear.itemId].label} broke`,
+            detail: "That was its final durability use.",
+            tone: "warning",
+          }]);
+        }
+      },
       onMobUse: (target) => {
         if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
         let acceptedInventory: Inventory | null = null;

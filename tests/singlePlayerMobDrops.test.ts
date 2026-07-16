@@ -137,6 +137,7 @@ const blocked = damageMob(blockedSimulation, "pig-blocked", 100, (event) => {
   return appendLocalMobDeathDrops(saturatedPool, event, 12_000, SINGLEPLAYER_SAVE_LIMITS.drops).ok;
 });
 assert.equal(blocked.killed, false);
+assert.equal(blocked.applied, false, "rejected fatal loot cannot spend a weapon use");
 assert.equal(blockedSimulation.mobs[0]!.alive, true);
 assert.equal(blockedSimulation.mobs[0]!.health, 10);
 assert.equal(blockedSimulation.mobs[0]!.damageSequence, 0, "capacity rejection rolls back the entire fatal hit");
@@ -147,6 +148,7 @@ const retried = damageMob(blockedSimulation, "pig-blocked", 100, (event) => {
   return true;
 });
 assert.equal(retried.killed, true);
+assert.equal(retried.applied, true, "the accepted retry exposes exactly one confirmed weapon use");
 assert.deepEqual(retriedEvent, rejectedEvent, "retrying after capacity clears offers the identical deterministic reward");
 
 const storage = new MemoryStorage();

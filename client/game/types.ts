@@ -336,6 +336,8 @@ export interface VoxelEngineOptions {
    * items. Used only when `onMobAttack` is absent.
    */
   onMobDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean;
+  /** One locally confirmed mob-health reduction; delegated Lakebed attacks never emit it. */
+  onLocalMobHit?: () => void;
   /** One completed offline fuse after terrain and player damage resolve locally. */
   onLocalCreeperExplosion?: (event: Readonly<{
     mobId: string;

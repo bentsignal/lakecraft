@@ -2655,6 +2655,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const result = damageMob(mobSimulation, mobTarget.id, attackDamage, options.onMobDrops);
     if (!result.found) return false;
     clearMining();
+    if (result.applied) options.onLocalMobHit?.();
     options.onHandAction?.("attack");
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     return true;
