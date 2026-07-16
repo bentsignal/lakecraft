@@ -1,4 +1,6 @@
+import { useRef } from "preact/hooks";
 import { ITEMS, type ItemStack } from "../../shared/game";
+import { shouldAnimateFirstPersonAction } from "./firstPersonAction";
 import { HeldBlockVoxel, isHeldVoxelBlock, ItemIcon } from "./ItemGlyph";
 
 export type FirstPersonHeldItemProps = {
@@ -55,6 +57,17 @@ export function FirstPersonHeldItem({
   hidden = false,
   paused = false,
 }: FirstPersonHeldItemProps) {
+  const lastActionToken = useRef(actionToken);
+  const animatedActionToken = useRef<number | null>(null);
+  const actionChanged = shouldAnimateFirstPersonAction(
+    lastActionToken.current,
+    actionToken,
+    hidden,
+    paused,
+  );
+  lastActionToken.current = actionToken;
+  if (hidden || paused) animatedActionToken.current = null;
+  else if (actionChanged) animatedActionToken.current = actionToken;
   if (hidden || paused) return null;
   const family = stack ? ITEMS[stack.itemId].category : "hand";
   const heldAsVoxel = stack ? isHeldVoxelBlock(stack.itemId) : false;
@@ -67,17 +80,17 @@ export function FirstPersonHeldItem({
       data-held-mode={heldAsVoxel ? "voxel" : stack ? "sprite" : "hand"}
     >
       <span
-        className={`lc-first-person__rig${actionToken > 0 ? " is-swinging" : ""}`}
+        className={`lc-first-person__rig${animatedActionToken.current === actionToken ? " is-swinging" : ""}`}
         key={`held-action-${actionToken}`}
       >
-        {stack ? (
-          <span className="lc-first-person__item">
-            {heldAsVoxel
-              ? <HeldBlockVoxel blockId={stack.itemId} />
-              : <HeldSpriteExtrusion stack={stack} />}
-          </span>
-        ) : null}
-        <span className="lc-first-person__arm-scene">
+        <span className="lc-first-person__scene">
+          {stack ? (
+            <span className="lc-first-person__item">
+              {heldAsVoxel
+                ? <HeldBlockVoxel blockId={stack.itemId} />
+                : <HeldSpriteExtrusion stack={stack} />}
+            </span>
+          ) : null}
           <span className="lc-first-person__arm">
             <VoxelArmSegment material="sleeve" />
             <VoxelArmSegment material="skin" />

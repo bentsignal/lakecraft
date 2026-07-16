@@ -14,8 +14,14 @@ assert.ok(component.includes("ItemIcon compact"), "the depth renderer retains th
 assert.ok(component.includes("HELD_SPRITE_DEPTH_SLICES = [0, 1, 2, 3, 4]"), "sprite depth has a deterministic five-slice DOM budget");
 assert.equal(component.match(/lc-first-person__arm-face--/g)?.length, 3, "each reusable voxel arm segment defines exactly three camera-visible faces");
 assert.ok(component.includes('<VoxelArmSegment material="sleeve" />') && component.includes('<VoxelArmSegment material="skin" />'), "the first-person arm joins a sleeve prism to a hand prism");
+const sharedScene = component.slice(component.indexOf('className="lc-first-person__scene"'), component.indexOf('</span>\n      </span>', component.indexOf('className="lc-first-person__scene"')));
+assert.ok(sharedScene.indexOf('className="lc-first-person__item"') < sharedScene.indexOf('className="lc-first-person__arm"'), "item and arm share one scene with the grip painted last");
 assert.ok(component.includes('data-held-mode={heldAsVoxel ? "voxel"'), "held mode distinguishes cubes from sprites and the empty hand");
-assert.ok(component.includes("actionToken > 0"), "an action token controls the replayable swing state");
+assert.ok(component.includes("shouldAnimateFirstPersonAction"), "only a newly observed visible action controls the replayable swing state");
+assert.ok(component.includes("animatedActionToken.current === actionToken"), "unrelated renders retain the active swing class until another action or hide edge");
+assert.ok(component.includes("if (hidden || paused) animatedActionToken.current = null"), "blocking UI clears the retained swing class before unmounting it");
+assert.ok(component.indexOf("lastActionToken.current = actionToken") < component.indexOf("if (hidden || paused) return null"),
+  "hidden and paused renders consume their action edge before removing the overlay DOM");
 assert.ok(component.includes("if (hidden || paused) return null"), "hidden and paused states remove the bounded overlay DOM");
 assert.equal(component.includes("lc-block-cracks"), false, "the first-person rig does not draw a duplicate screen-space crack overlay");
 assert.equal(hud.includes("miningProgress"), false, "the HUD does not accept mining progress that would rerender the app while mining");
@@ -35,6 +41,10 @@ assert.equal(styles.includes("translate3d(-42%,4%,0)"), false, "the old sideways
 assert.ok(styles.includes("rotateX(-24deg) rotateY(-34deg)"), "held block rotates its front, right, and top faces toward the camera");
 assert.ok(styles.includes("lc-held-voxel__face--front") && styles.includes("lc-held-voxel__face--right") && styles.includes("lc-held-voxel__face--top"), "held cube exposes three independently shaded faces");
 assert.ok(styles.includes("transform-style: preserve-3d") && styles.includes("perspective: 620px"), "the arm rig retains perspective through its nested cuboids");
+assert.match(styles, /\.lc-first-person__scene \{[^}]*inset: 0;[^}]*perspective: 620px;[^}]*transform-style: preserve-3d;/, "item and arm share one full-size perspective stack");
+assert.match(styles, /\.lc-first-person__arm \{[^}]*z-index: 2;/, "the voxel arm occludes the held item's grip region");
+assert.match(styles, /\.lc-first-person__item \{[^}]*z-index: 1;/, "the existing item head and block remain behind the gripping hand");
+assert.equal(styles.includes("lc-first-person__arm-scene"), false, "the detached arm-only scene is removed");
 assert.ok(component.includes("lc-first-person__arm-face--left") && styles.includes("rotateY(-90deg)"), "the inward-angled right arm exposes its camera-facing left side instead of the hidden outer face");
 assert.ok(styles.includes(".lc-held-sprite__slice.is-front"), "the foremost sprite layer restores full authored color above its shaded depth slices");
 assert.equal(styles.includes("lc-first-person__sleeve"), false, "the old flat sleeve rectangle is removed");

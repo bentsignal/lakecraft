@@ -88,6 +88,8 @@ assert.match(app, /onRangedChargeChange:[\s\S]{0,500}setBowCharging[\s\S]{0,500}
 assert.match(app, /onRangedCancel:[\s\S]{0,300}setBowCharging\(false\)[\s\S]{0,300}setBowChargeMs\(0\)/,
   "cancel clears the visible local draw without entering release accounting");
 assert.ok(app.includes("<FirstPersonBow"), "single-player renders the existing first-person charge pose");
+assert.match(app, /<FirstPersonBow[\s\S]{0,180}actionToken=\{handActionToken\}/,
+  "single-player forwards accepted hand-action edges to the selected bow pose");
 assert.match(app, /onRangedRelease:[\s\S]{0,4000}applyConfirmedDurableItemUse\([^)]*"bow"\)[\s\S]{0,4000}removeItem\([^)]*"arrow"\s*,\s*1\)[\s\S]{0,4000}updateInventory/,
   "one local release atomically wears the bow, removes one arrow, and joins the dirty-save inventory path");
 assert.match(app, /onRangedRelease:[\s\S]{0,4000}damageLocalMobWithRangedShot\(intent\.target\.id/,

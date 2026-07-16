@@ -1366,6 +1366,7 @@ export function SinglePlayerApp() {
       <span aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}`} className="lc-singleplayer-coordinates">XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z}</span>
       {inventory[selected]?.itemId === "bow" ? (
         <FirstPersonBow
+          actionToken={handActionToken}
           chargeMs={bowChargeMs}
           charging={bowCharging}
           hidden={deathScreenOpen || pauseOpen || inventoryOpen || worldModalOpen}

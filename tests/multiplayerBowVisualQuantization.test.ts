@@ -17,6 +17,10 @@ assert.match(bow, /bounded >= 0\.9[\s\S]*?return 2;[\s\S]*?bounded >= 0\.55[\s\S
   "the reference values match the shipped three-stage bow reducer");
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+assert.match(client, /<FirstPersonBow[\s\S]{0,180}actionToken=\{handActionToken\}/,
+  "multiplayer forwards accepted hand-action edges to the selected bow pose");
+assert.match(client, /<FirstPersonBow[\s\S]{0,300}hidden=\{mobileUnsupported \|\|/,
+  "the multiplayer bow follows the standard mobile-unsupported feedback guard");
 const chargeStart = client.indexOf("onRangedChargeChange:");
 const chargeEnd = client.indexOf("onRangedCancel:", chargeStart);
 const charge = client.slice(chargeStart, chargeEnd);

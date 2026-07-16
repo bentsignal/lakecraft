@@ -19,5 +19,14 @@ assert.ok(source.includes('[data-bow-charge-stage="2"]') && source.includes('dat
   "the full-charge highlight targets the attribute emitted by the component");
 assert.equal(source.includes('[data-charge-stage="2"]'), false, "the stale non-emitted charge selector is removed");
 assert.ok(source.includes("if (hidden) return null"), "blocking UI still removes all bow feedback DOM");
+assert.ok(source.includes("actionToken?: number"), "the bow accepts the shared first-person action sequence");
+assert.ok(source.includes("shouldAnimateFirstPersonAction"), "bow release feedback uses the shared visible-edge rule");
+assert.ok(source.includes("animatedActionToken.current === actionToken") && source.includes("if (hidden) animatedActionToken.current = null"),
+  "bow release survives unrelated renders but clears before a hidden remount");
+assert.ok(source.includes('key={`bow-action-${actionToken}`}'), "each visible release remounts the bounded animation target");
+assert.ok(source.includes("lc-first-person-bow.is-acting") && source.includes("@keyframes lc-bow-release"),
+  "a visible release gets one compact stepped bow action animation");
+assert.ok(source.includes("@media(prefers-reduced-motion:reduce){.lc-first-person-bow{animation:none}}"),
+  "reduced-motion users do not receive the ready or release animation");
 
 console.log("first-person dimensional bow visual checks passed");

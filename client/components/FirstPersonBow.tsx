@@ -1,3 +1,6 @@
+import { useRef } from "preact/hooks";
+import { shouldAnimateFirstPersonAction } from "./firstPersonAction";
+
 export const BOW_FULL_CHARGE_MS = 1_000;
 
 export function bowChargeProgress(chargeMs: number): number {
@@ -13,6 +16,7 @@ export function bowChargeStage(progress: number): 0 | 1 | 2 {
 }
 
 export type FirstPersonBowProps = {
+  actionToken?: number;
   chargeMs: number;
   charging: boolean;
   hidden?: boolean;
@@ -31,11 +35,20 @@ const BOW_FEEDBACK_CSS = `
 .lc-first-person-bow__fletching{fill:#dfd8ca}
 .lc-first-person-bow__projectile-depth{filter:brightness(.35)}
 .lc-first-person-bow[data-bow-charge-stage="2"]{filter:drop-shadow(0 5px 0 rgba(0,0,0,.38)) drop-shadow(0 0 5px rgba(255,255,255,.16))}
+.lc-first-person-bow.is-acting{animation:lc-bow-release .18s steps(2)}
 @keyframes lc-bow-ready{from{transform:translate(3px,4px) rotate(1deg)}to{transform:none}}
+@keyframes lc-bow-release{50%{transform:translate(-8px,7px) rotate(-5deg)}}
+@media(prefers-reduced-motion:reduce){.lc-first-person-bow{animation:none}}
 `;
 
 /** Pixel-stepped first-person bow pose; combat timing remains server-authoritative. */
-export function FirstPersonBow({ chargeMs, charging, hidden = false }: FirstPersonBowProps) {
+export function FirstPersonBow({ actionToken = 0, chargeMs, charging, hidden = false }: FirstPersonBowProps) {
+  const lastActionToken = useRef(actionToken);
+  const animatedActionToken = useRef<number | null>(null);
+  const actionChanged = shouldAnimateFirstPersonAction(lastActionToken.current, actionToken, hidden);
+  lastActionToken.current = actionToken;
+  if (hidden) animatedActionToken.current = null;
+  else if (actionChanged) animatedActionToken.current = actionToken;
   if (hidden) return null;
   const progress = charging ? bowChargeProgress(chargeMs) : 0;
   const stage = bowChargeStage(progress);
@@ -48,9 +61,10 @@ export function FirstPersonBow({ chargeMs, charging, hidden = false }: FirstPers
       <style>{BOW_FEEDBACK_CSS}</style>
       <span
         aria-hidden="true"
-        className="lc-first-person-bow"
+        className={`lc-first-person-bow${animatedActionToken.current === actionToken ? " is-acting" : ""}`}
         data-bow-charge-stage={stage}
         data-bow-charging={charging ? "true" : "false"}
+        key={`bow-action-${actionToken}`}
       >
         <svg viewBox="0 0 80 80">
           <path className="lc-first-person-bow__wood-depth" d="M69 13 L76 25 L78 41 L76 57 L68 72" />

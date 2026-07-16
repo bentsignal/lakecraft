@@ -3394,9 +3394,10 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
 
       {inventory[selectedHotbar]?.itemId === "bow" ? (
         <FirstPersonBow
+          actionToken={handActionToken}
           chargeMs={bowChargeMs}
           charging={bowCharging}
-          hidden={deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
+          hidden={mobileUnsupported || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
         />
       ) : null}
 

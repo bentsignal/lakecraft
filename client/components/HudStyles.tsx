@@ -21,11 +21,11 @@ const HUD_CSS = `
 .lc-crosshair { height: 16px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 16px; z-index: 3; }
 .lc-crosshair::before,.lc-crosshair::after { content: ""; inset: 0; position: absolute; }
 .lc-crosshair::before { background: #111; clip-path: polygon(6px 0,10px 0,10px 6px,16px 6px,16px 10px,10px 10px,10px 16px,6px 16px,6px 10px,0 10px,0 6px,6px 6px); }.lc-crosshair::after { background: #fff; clip-path: polygon(7px 1px,9px 1px,9px 7px,15px 7px,15px 9px,9px 9px,9px 15px,7px 15px,7px 9px,1px 9px,1px 7px,7px 7px); }
-.lc-first-person { bottom: -72px; height: clamp(272px,32vw,372px); position: absolute; right: -16px; width: clamp(250px,30vw,372px); z-index: 1; }
+.lc-first-person { bottom: -72px; height: clamp(272px,32vw,372px); position: absolute; right: -14px; width: clamp(250px,30vw,372px); z-index: 1; }
 .lc-first-person__rig { display: block; height: 100%; position: relative; transform: translate3d(0,0,0) rotateZ(-2deg); transform-origin: 91% 96%; transform-style: preserve-3d; width: 100%; }
 .lc-first-person__rig.is-swinging { animation: lc-held-item-swing 220ms cubic-bezier(.2,.72,.24,1) both; }
-.lc-first-person__arm-scene { bottom: -1%; height: 86%; perspective: 620px; perspective-origin: 72% 42%; position: absolute; right: -1%; width: 48%; z-index: 1; }
-.lc-first-person__arm { bottom: -8%; height: 104%; position: absolute; right: 10%; transform: rotateZ(-28deg) rotateX(-6deg) rotateY(20deg); transform-origin: 50% 100%; transform-style: preserve-3d; width: 45%; }
+.lc-first-person__scene { inset: 0; perspective: 620px; perspective-origin: 86% 51%; position: absolute; transform-style: preserve-3d; }
+.lc-first-person__arm { bottom: -8%; height: 89%; position: absolute; right: 4%; transform: rotateZ(-28deg) rotateX(-6deg) rotateY(20deg); transform-origin: 50% 100%; transform-style: preserve-3d; width: 22%; z-index: 2; }
 .lc-first-person__arm-segment { --lc-arm-front: #b97855; --lc-arm-side: #754531; --lc-arm-top: #dda078; bottom: 0; display: block; height: 48%; left: 0; position: absolute; transform-style: preserve-3d; width: 100%; }
 .lc-first-person__arm-segment--sleeve { --lc-arm-front: #24969b; --lc-arm-side: #125963; --lc-arm-top: #47b8b5; height: 58%; }
 .lc-first-person__arm-segment--skin { bottom: 55%; height: 39%; }
@@ -35,13 +35,13 @@ const HUD_CSS = `
 .lc-first-person__arm-face--top { background: var(--lc-arm-top); height: 18px; left: 0; top: -18px; transform: rotateX(90deg); transform-origin: bottom center; width: 100%; }
 .lc-first-person__arm-segment--sleeve .lc-first-person__arm-face--front { background-image: linear-gradient(90deg,rgba(72,193,190,.34) 0 16%,transparent 16% 74%,rgba(5,63,70,.32) 74%),linear-gradient(0deg,transparent 0 62%,rgba(83,204,198,.24) 62% 78%,transparent 78%); }
 .lc-first-person__arm-segment--skin .lc-first-person__arm-face--front { background-image: linear-gradient(90deg,#c98661 0 15%,transparent 15% 78%,rgba(87,45,31,.24) 78%),linear-gradient(0deg,transparent 0 26%,rgba(224,157,116,.55) 26% 39%,transparent 39% 68%,rgba(126,70,48,.25) 68% 78%,transparent 78%); }
-.lc-first-person__item { bottom: 40%; height: clamp(104px,13vw,150px); position: absolute; right: 23%; transform: rotate(-18deg); transform-origin: 70% 78%; width: clamp(104px,13vw,150px); z-index: 2; }
+.lc-first-person__item { bottom: 40%; height: clamp(104px,13vw,150px); position: absolute; right: 23%; transform: rotate(-18deg); transform-origin: 70% 78%; width: clamp(104px,13vw,150px); z-index: 1; }
 .lc-held-sprite { display: block; height: 100%; position: relative; transform: rotateX(7deg) rotateY(-9deg); transform-origin: 70% 78%; transform-style: preserve-3d; width: 100%; }
 .lc-held-sprite__slice { filter: brightness(.38) saturate(.76); inset: 0; position: absolute; transform: translate(var(--lc-held-sprite-offset),var(--lc-held-sprite-offset)); }
 .lc-held-sprite__slice.is-front { filter: drop-shadow(6px 8px 0 rgba(0,0,0,.3)); }
 .lc-held-sprite__slice .lc-item-glyph,.lc-held-sprite__slice .lc-item-icon__svg,.lc-held-sprite__slice .lc-item-glyph--block .lc-item-icon__svg { height: 100%; width: 100%; }
 .lc-first-person[data-held-mode="voxel"] .lc-first-person__item { bottom: 31%; height: clamp(140px,17vw,190px); right: 16%; transform: rotate(-5deg); width: clamp(140px,17vw,190px); }
-.lc-first-person[data-held-family="tool"] .lc-first-person__item { bottom: 40%; right: 23%; transform: rotate(-23deg) scale(1.06); }
+.lc-first-person[data-held-family="tool"] .lc-first-person__item { bottom: 44%; right: 42%; transform: rotate(-23deg) scale(1.06); }
 .lc-first-person[data-held-family="food"] .lc-first-person__item,.lc-first-person[data-held-family="material"] .lc-first-person__item { bottom: 44%; right: 22%; transform: rotate(-11deg) scale(.84); }
 .lc-first-person__item [data-icon-variant="stone_brick_slab"] { transform: scale(1.08) translateY(8%); transform-origin: 50% 72%; }
 .lc-held-voxel { --lc-held-cube-size: clamp(80px,11vw,118px); display: block; filter: drop-shadow(7px 10px 0 rgba(0,0,0,.28)); height: 100%; perspective: 420px; perspective-origin: 50% 40%; position: relative; width: 100%; }
