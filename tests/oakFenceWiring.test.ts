@@ -71,6 +71,7 @@ assert.deepEqual(mined.effect.inventory[0], { itemId: "oak_fence", count: 2 },
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
   assert.match(source, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"/,
@@ -85,7 +86,7 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
 }
 assert.match(client, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"[\s\S]*?oak_fence:\s*BLOCK\.OAK_FENCE/,
   "multiplayer round-trips engine, protocol, game, and item identities");
-assert.match(single, /edit\.block\s*<=\s*BLOCK\.BRICKS/,
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
   "single-player save validation retains oak fences and every newer append-only engine ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));

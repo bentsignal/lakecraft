@@ -27,6 +27,7 @@ Singleplayer requires no account and saves only in that browser. The title scree
 - Hold left click to mine continuously across successive blocks; right click places the selected block
 - Left click a mob to attack it; a successful hit swings the held item and plays immediate hit confirmation
 - Mined resources pop into the single-player world and are collected by walking over them; a full pack leaves them safely on the ground
+- Defeated single-player mobs drop their rewards beside the body; partial or full packs leave the conserved remainder in the world and the local save
 - Hold right click with a bow to draw, then release to fire an authoritative arrow
 - Clip oak leaves with shears to recover the block; ordinary breaking has a deterministic sparse apple drop
 - Break oak leaves for renewable saplings, craft one bone into three bone meal, plant on dirt/grass, then right click the sapling with bone meal to grow it

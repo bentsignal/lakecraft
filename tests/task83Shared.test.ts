@@ -225,6 +225,7 @@ assert.doesNotMatch(engineSource, /STONE_BRICK_SLAB[\s\S]{0,180}gl\.drawArrays\(
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 const multiplayerSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const singlePlayerSaveSource = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 for (const [label, source] of [["multiplayer", multiplayerSource], ["single-player", singlePlayerSource]] as const) {
   assert.match(source, /\[BLOCK\.STONE_BRICK_SLAB\]:\s*"stone_brick_slab"/,
     `${label} maps engine slab 30 back to its canonical game identity`);
@@ -235,7 +236,7 @@ for (const [label, source] of [["multiplayer", multiplayerSource], ["single-play
 }
 assert.match(multiplayerSource, /\[BLOCK\.STONE_BRICK_SLAB\]:\s*"stone_brick_slab"[\s\S]*?stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
   "multiplayer round-trips engine, protocol, item, and game slab identities");
-assert.match(singlePlayerSource, /edit\.block\s*<=\s*BLOCK\.BRICKS/,
+assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
   "single-player persistence admits every later append-only engine ID");
 const worldMutation = serverSource.slice(
   serverSource.indexOf("editWorldBlock: mutation(async"),

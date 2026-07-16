@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const localDroppedItems = readFileSync(new URL("../client/singleplayer/localDroppedItems.ts", import.meta.url), "utf8");
 
 const respawnStart = server.indexOf("authorizeRespawn: mutation");
 const respawnEnd = server.indexOf("heartbeatPlayer: mutation", respawnStart);
@@ -44,9 +45,9 @@ assert.match(client, /setDeathScreenOpen\(true\)[\s\S]*exitPointerLockForUi\(\)/
   "authoritative death opens the blocking UI and releases the pointer");
 assert.match(singleplayer, /planDeathDrops\([\s\S]*engine\.setDroppedItems\(dropsRef\.current\)/,
   "single-player uses the same pure settlement and retains the resulting world drops");
-assert.match(singleplayer, /addItemStack\(nextInventory, drop\.item\)/,
+assert.match(localDroppedItems, /addItemStack\(nextInventory, drop\.item\)/,
   "single-player world drops can be picked back up with exact durability metadata");
-assert.match(singleplayer, /dropsRef\.current\.length \+ plan\.drops\.length > 256/,
+assert.match(singleplayer, /dropsRef\.current\.length \+ plan\.drops\.length > SINGLEPLAYER_SAVE_LIMITS\.drops/,
   "single-player fails closed instead of deleting old world loot at its local row cap");
 
 console.log("authoritative death settlement integration checks passed");

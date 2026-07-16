@@ -2,7 +2,7 @@ import type { DayNightConfig } from "./dayNight.ts";
 import {
   validateMobSimulationSnapshot,
   type MobCombatStateSnapshot,
-  type MobDrop,
+  type LocalMobDeathDropEvent,
   type MobRayTarget,
   type MobSimulationSnapshot,
 } from "./mobs.ts";
@@ -328,8 +328,12 @@ export interface VoxelEngineOptions {
   /** Discrete first-person swing/use feedback; never emitted from the frame loop. */
   onHandAction?: (action: "mine" | "attack" | "place" | "use") => void;
   getPlayerProtection?: () => number;
-  /** Used only by the client-local fallback when `onMobAttack` is absent. */
-  onMobDrops?: (drops: readonly MobDrop[]) => void;
+  /**
+   * Atomically reserves one client-local death reward before the mob dies.
+   * Returning false rejects the fatal hit so a bounded drop pool cannot lose
+   * items. Used only when `onMobAttack` is absent.
+   */
+  onMobDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean;
   /** One completed offline fuse after terrain and player damage resolve locally. */
   onLocalCreeperExplosion?: (event: Readonly<{
     mobId: string;

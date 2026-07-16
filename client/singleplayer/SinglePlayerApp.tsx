@@ -15,7 +15,6 @@ import {
   MAX_HEALTH,
   MAX_HUNGER,
   ITEMS,
-  addItemStack,
   addItem,
   applyConfirmedDurableItemUse,
   applyConfirmedToolUse,
@@ -34,7 +33,6 @@ import {
   type Inventory,
   type ItemId,
 } from "../../shared/game";
-import { DROPPED_ITEM_PICKUP_RADIUS } from "../../shared/droppedItems.ts";
 import { planDeathDrops } from "../../shared/deathDrops.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
@@ -76,6 +74,7 @@ import {
 } from "./localBed.ts";
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
+import { appendLocalMobDeathDrops, collectLocalDroppedItems } from "./localDroppedItems.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -466,30 +465,12 @@ export function SinglePlayerApp() {
 
   function collectLocalDrops(pose: { x: number; y: number; z: number }): void {
     if (healthRef.current <= 0 || dropsRef.current.length === 0) return;
-    let nextInventory = inventoryRef.current;
-    let changed = false;
-    const remaining: DroppedItemRenderItem[] = [];
-    for (const drop of dropsRef.current) {
-      const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
-      if (distanceSquared > DROPPED_ITEM_PICKUP_RADIUS ** 2) {
-        remaining.push(drop);
-        continue;
-      }
-      const added = addItemStack(nextInventory, drop.item);
-      const picked = drop.item.count - added.remainder;
-      if (picked <= 0) {
-        remaining.push(drop);
-        continue;
-      }
-      nextInventory = added.inventory;
-      changed = true;
-      if (added.remainder > 0) remaining.push({ ...drop, item: { ...drop.item, count: added.remainder } });
-    }
-    if (!changed) return;
-    inventoryRef.current = nextInventory;
-    dropsRef.current = remaining;
-    setInventory(nextInventory);
-    engineRef.current?.setDroppedItems(remaining);
+    const collected = collectLocalDroppedItems(inventoryRef.current, dropsRef.current, pose);
+    if (!collected.changed) return;
+    inventoryRef.current = collected.inventory;
+    dropsRef.current = collected.drops;
+    setInventory(collected.inventory);
+    engineRef.current?.setDroppedItems(collected.drops);
     markWorldDirty();
   }
 
@@ -807,10 +788,26 @@ export function SinglePlayerApp() {
           engine.spawnBlockParticles({ action: "place", block: edit.block, x: edit.x, y: edit.y, z: edit.z });
         }
       },
-      onMobDrops: (drops) => {
-        let next = inventoryRef.current;
-        for (const drop of drops) next = addItem(next, drop.itemId as ItemId, drop.count).inventory;
-        updateInventory(next);
+      onMobDrops: (event) => {
+        const appended = appendLocalMobDeathDrops(
+          dropsRef.current,
+          event,
+          Date.now(),
+          SINGLEPLAYER_SAVE_LIMITS.drops,
+        );
+        if (!appended.ok) {
+          setMessages((current) => [...current.slice(-2), {
+            id: `mob-loot-full-${event.eventId}`.slice(0, 96),
+            text: "Too many items nearby",
+            detail: "Pick up some world drops before finishing this mob.",
+            tone: "warning",
+          }]);
+          return false;
+        }
+        dropsRef.current = appended.drops;
+        if (appended.added > 0) engine.setDroppedItems(appended.drops);
+        markWorldDirty();
+        return true;
       },
       onLocalCreeperExplosion: ({ mobId, edits }) => {
         recordLocalExplosion(`creeper:${mobId}`, edits, 0);

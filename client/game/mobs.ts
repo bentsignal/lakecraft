@@ -500,6 +500,21 @@ export interface MobDrop {
   count: number;
 }
 
+/**
+ * One deterministic local mob-death reward offered before the death commits.
+ * The receiver must reserve every stack atomically; returning false preserves
+ * the living mob and its damage sequence so a bounded drop pool cannot delete
+ * earned items.
+ */
+export interface LocalMobDeathDropEvent {
+  eventId: string;
+  mobId: string;
+  x: number;
+  y: number;
+  z: number;
+  drops: readonly MobDrop[];
+}
+
 export interface MobDamageResult {
   found: boolean;
   killed: boolean;
@@ -1131,31 +1146,52 @@ export function consumeMobProjectileDamage(simulation: MobSimulation, maximumDam
   return damage;
 }
 
-function rollDrops(mob: MobState): MobDrop[] {
+function rollDrops(mob: MobState, damageSequence = mob.damageSequence): MobDrop[] {
   const definitions = MOB_DEFINITIONS[mob.kind].drops;
   const drops: MobDrop[] = [];
   for (let index = 0; index < definitions.length; index += 1) {
     const drop = definitions[index];
     if (mob.kind === "sheep" && mob.sheared && drop.itemId === "wool") continue;
-    const chance = hash01(mob.behaviorSeed, mob.damageSequence + index, 811);
+    const chance = hash01(mob.behaviorSeed, damageSequence + index, 811);
     if (chance > drop.chance) continue;
     const range = drop.maxCount - drop.minCount + 1;
-    const count = drop.minCount + Math.floor(hash01(mob.behaviorSeed, mob.damageSequence + index, 829) * range);
+    const count = drop.minCount + Math.floor(hash01(mob.behaviorSeed, damageSequence + index, 829) * range);
     if (count > 0) drops.push({ itemId: drop.itemId, count });
   }
   return drops;
 }
 
-export function damageMob(simulation: MobSimulation, id: string, rawDamage: number): MobDamageResult {
+export function damageMob(
+  simulation: MobSimulation,
+  id: string,
+  rawDamage: number,
+  acceptFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean,
+): MobDamageResult {
   const mob = simulation.mobs.find((candidate) => candidate.id === id);
   if (!mob || !mob.alive) return { found: Boolean(mob), killed: false, remainingHealth: 0, drops: [] };
   const damage = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
   if (damage === 0) return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
-  mob.damageSequence += 1;
-  mob.health = Math.max(0, mob.health - damage);
-  if (mob.health > 0) return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
+  const damageSequence = mob.damageSequence + 1;
+  const health = Math.max(0, mob.health - damage);
+  if (health > 0) {
+    mob.damageSequence = damageSequence;
+    mob.health = health;
+    return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
+  }
+  const drops = rollDrops(mob, damageSequence);
+  if (acceptFatalDrops && !acceptFatalDrops({
+    eventId: `${mob.id}:${damageSequence}`,
+    mobId: mob.id,
+    x: mob.x,
+    y: mob.y,
+    z: mob.z,
+    drops,
+  })) {
+    return { found: true, killed: false, remainingHealth: mob.health, drops: [] };
+  }
+  mob.damageSequence = damageSequence;
+  mob.health = 0;
   mob.alive = false;
-  const drops = rollDrops(mob);
   mob.sheared = false;
   return { found: true, killed: true, remainingHealth: 0, drops };
 }

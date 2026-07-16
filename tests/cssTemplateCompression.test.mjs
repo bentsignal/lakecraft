@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  COMPACT_CLIENT_IDENTIFIER_FAMILIES,
   compactClientIdentifiers,
   CSS_DICTIONARY_ALPHABET,
   dictionaryCompressCss,
@@ -27,7 +28,7 @@ for (const file of files) {
     assert.ok(packed, `${match[1]} should have at least one profitable dictionary entry`);
     assert.equal(dictionaryDecompressCss(packed), minified, `${match[1]} must round-trip byte-for-byte`);
     assert.deepEqual(dictionaryCompressCss(minified), packed, `${match[1]} packing must be deterministic`);
-    const expression = `(()=>{const d=${JSON.stringify(packed.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(packed.compressed)}.replace(/~([0-9A-Za-z_$])~/g,(t,s)=>d[a.indexOf(s)]??t)})()`;
+    const expression = `(()=>{const d=${JSON.stringify(packed.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(packed.compressed)}.replace(/~([0-9A-Za-z_$])/g,(t,s)=>d[a.indexOf(s)]??t)})()`;
     totalUnpackedBytes += Buffer.byteLength(JSON.stringify(minified));
     totalPackedBytes += Buffer.byteLength(expression);
   }
@@ -42,6 +43,20 @@ assert.equal(
   compactClientIdentifiers(identifierFixture),
   '.xpanel{color:var(--xcolor)}<section className="xpanel" aria-labelledby="ytitle" id="ytitle">',
   "compact client identifiers must rewrite selectors, variables, class names, and DOM references consistently",
+);
+assert.equal(
+  compactClientIdentifiers('.lc-inventory-window .lc-meter--health .lc-player-preview__head .lc-unmapped'),
+  '.xe-window .xl--health .xd__head .xunmapped',
+  "frequent client-only identifier families must compact before the generic namespace",
+);
+assert.equal(
+  new Set(COMPACT_CLIENT_IDENTIFIER_FAMILIES.map(([, compact]) => compact)).size,
+  COMPACT_CLIENT_IDENTIFIER_FAMILIES.length,
+  "compact family names must remain collision-free",
+);
+assert.ok(
+  COMPACT_CLIENT_IDENTIFIER_FAMILIES.every(([readable, compact]) => readable.startsWith("lc-") && /^x[a-z]$/.test(compact)),
+  "family rewrites must stay inside the private client namespace",
 );
 
 console.log(JSON.stringify({

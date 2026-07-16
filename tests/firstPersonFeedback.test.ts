@@ -24,7 +24,7 @@ assert.ok(component.includes("actionToken > 0"), "an action token controls the r
 assert.ok(component.includes("if (hidden || paused) return null"), "hidden and paused states remove the bounded overlay DOM");
 assert.equal(component.match(/\"M\d+/g)?.length, BLOCK_CRACK_STAGE_COUNT, "crack overlay has ten bounded damage segments");
 assert.ok(hud.includes("stack={inventory[selectedIndex] ?? null}"), "GameHud drives the held rig from the selected hotbar stack");
-assert.ok(hud.includes("inventoryOpen || mobileUnsupported"), "blocking UI hides the first-person overlay");
+assert.ok(hud.includes("inventoryOpen || modalOpen || mobileUnsupported"), "blocking UI hides the first-person overlay");
 assert.ok(styles.includes("@keyframes lc-held-item-swing"), "swing feedback has a dedicated short animation");
 assert.ok(styles.includes("rotateX(-24deg) rotateY(-34deg)"), "held block rotates its front, right, and top faces toward the camera");
 assert.ok(styles.includes("lc-held-voxel__face--front") && styles.includes("lc-held-voxel__face--right") && styles.includes("lc-held-voxel__face--top"), "held cube exposes three independently shaded faces");

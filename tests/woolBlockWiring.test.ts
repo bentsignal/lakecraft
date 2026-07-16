@@ -62,6 +62,7 @@ assert.deepEqual(mined.effect.inventory[0], { itemId: "wool", count: 2 }, "minin
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
   assert.match(source, /\[BLOCK\.WOOL\]:\s*"wool"/, `${label} maps engine wool to the shared block/item identity`);
@@ -71,7 +72,7 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
     `${label} wool placement adds no dedicated network or timer loop`);
 }
 assert.match(client, /wool:\s*BLOCK\.WOOL[\s\S]*?\[BLOCK\.WOOL\]:\s*"wool"/, "multiplayer has protocol, game, and item round-trip mappings");
-assert.match(single, /edit\.block\s*<=\s*BLOCK\.BRICKS/, "single-player saves retain wool and every newer append-only block ID");
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "single-player saves retain wool and every newer append-only block ID");
 assert.match(single, /action:\s*"break"[\s\S]*?audioSurfaceForBlock\(edit\.block\)/, "local edits emit bounded break/place particles and material audio");
 
 const editMutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("sleepVote: mutation(async"));

@@ -121,6 +121,7 @@ if (minedOpen.ok) assert.deepEqual(minedOpen.effect.drop, { itemId: "oak_fence_g
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const local = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const localSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const requestClient = readFileSync(new URL("../client/worldBlockEditClient.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 
@@ -142,7 +143,7 @@ assert.match(client, /onBlockEdit:\s*\(edit, previousBlock\)[\s\S]{0,140}handleB
   "multiplayer preserves the prior state needed to serialize a toggle safely");
 assert.match(client, /next === BLOCK\.DOOR_OPEN \|\| next === BLOCK\.OAK_FENCE_GATE_OPEN/,
   "confirmed gate opens and closes reuse direction-specific wood sounds");
-assert.match(local, /edit\.block\s*<=\s*BLOCK\.BRICKS/,
+assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
   "single-player saves retain both append-only gate states");
 assert.match(local,
   /previousBlock === BLOCK\.OAK_FENCE_GATE_CLOSED && edit\.block === BLOCK\.OAK_FENCE_GATE_OPEN[\s\S]{0,160}previousBlock === BLOCK\.OAK_FENCE_GATE_OPEN && edit\.block === BLOCK\.OAK_FENCE_GATE_CLOSED/,

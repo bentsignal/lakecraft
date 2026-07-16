@@ -64,6 +64,7 @@ assert.equal(mined.effect.toolUse.remainingDurability, ITEMS.wooden_pickaxe.tool
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
   assert.match(source, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"/, `${label} maps engine stone bricks to the canonical game identity`);
@@ -74,7 +75,7 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
 }
 assert.match(client, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"[\s\S]*?stone_bricks:\s*BLOCK\.STONE_BRICKS/,
   "multiplayer round-trips engine, protocol, game, and item identities");
-assert.match(single, /edit\.block\s*<=\s*BLOCK\.BRICKS/, "single-player saves retain stone bricks and every newer append-only block ID");
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "single-player saves retain stone bricks and every newer append-only block ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));
 assert.ok(mutation.includes("parseWorldBlockOperation(rawRequest)"));

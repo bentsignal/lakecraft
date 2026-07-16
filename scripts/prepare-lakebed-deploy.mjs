@@ -73,7 +73,7 @@ const cssTemplateMinifier = {
           const minified = minifyCssText(css);
           const packed = dictionaryCompressCss(minified);
           if (!packed) return `const ${name}=\`${minified}\`;`;
-          return `const ${name}=(()=>{const d=${JSON.stringify(packed.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(packed.compressed)}.replace(/~([0-9A-Za-z_$])~/g,(t,s)=>d[a.indexOf(s)]??t)})();`;
+          return `const ${name}=(()=>{const d=${JSON.stringify(packed.dictionary)},a=${JSON.stringify(CSS_DICTIONARY_ALPHABET)};return ${JSON.stringify(packed.compressed)}.replace(/~([0-9A-Za-z_$])/g,(t,s)=>d[a.indexOf(s)]??t)})();`;
         },
       );
       return { contents, loader: path.endsWith(".tsx") ? "tsx" : "ts" };

@@ -2649,12 +2649,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       void options.onMobAttack({ ...mobTarget }, attackDamage);
       return true;
     }
-    const result = damageMob(mobSimulation, mobTarget.id, attackDamage);
+    const result = damageMob(mobSimulation, mobTarget.id, attackDamage, options.onMobDrops);
     if (!result.found) return false;
     clearMining();
     options.onHandAction?.("attack");
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
-    if (result.killed && result.drops.length) options.onMobDrops?.(result.drops);
     return true;
   }
 

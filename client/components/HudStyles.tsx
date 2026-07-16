@@ -65,12 +65,14 @@ const HUD_CSS = `
 .lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%); width: 364px; }
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 39px; margin: 0 2px 2px; }
 .lc-meter { align-items: center; display: flex; height: 18px; }
-.lc-meter--health, .lc-meter--armor { justify-content: flex-start; }.lc-meter--hunger { justify-content: flex-end; }
-.lc-meter__icon { --meter-fill: 0%; background: linear-gradient(90deg, var(--meter-color) var(--meter-fill), rgba(20,20,20,.7) var(--meter-fill)); background-clip: text; color: transparent; filter: drop-shadow(1px 1px 0 #161616); font: 18px/18px Arial, sans-serif; height: 18px; position: relative; text-align: center; width: 18px; -webkit-background-clip: text; }
-.lc-meter__icon[data-state="full"] { --meter-fill: 100%; }.lc-meter__icon[data-state="half"] { --meter-fill: 50%; }
-.lc-meter__icon::before { content: "♥"; }.lc-meter--health { --meter-color: #d83333; }
-.lc-meter--hunger { --meter-color: #b86b31; }.lc-meter--hunger .lc-meter__icon::before { content: "●"; font-size: 16px; }.lc-meter--hunger .lc-meter__icon::after { background: currentColor; box-shadow: 1px 1px 0 #161616; content: ""; height: 7px; position: absolute; right: 1px; top: 1px; transform: rotate(45deg); width: 3px; }
-.lc-meter--armor { --meter-color: #d6d6d6; }.lc-meter--armor .lc-meter__icon::before { content: "♢"; font-size: 20px; font-weight: 900; }
+.lc-meter--health, .lc-meter--armor { justify-content: flex-start; }.lc-meter--hunger { flex-direction: row-reverse; justify-content: flex-start; }
+.lc-meter__icon { display: block; filter: drop-shadow(1px 1px 0 #161616); flex: 0 0 18px; height: 18px; width: 18px; }
+.lc-meter__icon > svg { display: block; height: 18px; image-rendering: pixelated; overflow: visible; width: 18px; }
+.lc-meter__outline { fill: var(--meter-outline); }.lc-meter__empty { fill: var(--meter-empty); }.lc-meter__fill { fill: var(--meter-fill); }.lc-meter__highlight { fill: var(--meter-highlight); }
+.lc-meter__fill-layer { overflow: hidden; }
+.lc-meter--health { --meter-outline: #260808; --meter-empty: #501a18; --meter-fill: #d83c35; --meter-highlight: #ff7669; }
+.lc-meter--hunger { --meter-outline: #241208; --meter-empty: #50301c; --meter-fill: #b8672b; --meter-highlight: #e8a254; }
+.lc-meter--armor { --meter-outline: #1d2428; --meter-empty: #465158; --meter-fill: #bbcbd1; --meter-highlight: #f2fbff; }
 .lc-hotbar { background: #8b8b8b; border: 2px solid #191919; box-shadow: inset 2px 2px #d0d0d0, inset -2px -2px #373737, 2px 2px 0 rgba(0,0,0,.6); display: grid; gap: 0; grid-template-columns: repeat(9, 40px); padding: 2px; position: relative; }
 .lc-slot { appearance: none; background: rgba(28,28,28,.66); border: 2px solid; border-color: #373737 #b8b8b8 #b8b8b8 #373737; color: var(--lc-paper); cursor: pointer; min-width: 0; padding: 0; position: relative; }
 .lc-slot:hover { background: rgba(70,70,70,.7); }
