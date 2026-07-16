@@ -17,6 +17,6 @@ assert.match(source, /function onPointerLockChange[\s\S]+cancelPrimaryActionHold
 assert.ok(teardown.includes("cancelPrimaryActionHold();"), "engine teardown cannot retain a physical-button state");
 assert.ok(pauseHandler.includes("cancelPrimaryActionHold();"), "pausing clears the held mine and its world-space crack buffer");
 assert.match(source, /miningTimer = window\.setTimeout\([\s\S]{0,260}crackVertexCount = 0;/, "block completion removes the world-space crack geometry before chaining");
-assert.match(source, /setSelectedBlock\(block\)[\s\S]{0,100}clearMining\(\)/, "hotbar/tool changes reset current block progress before the held chain restarts");
+assert.match(source, /setSelectedBlock\(block\)[\s\S]{0,180}clearMining\(\)/, "hotbar/tool changes reset current block progress before the held chain restarts");
 
 console.log("continuous mining engine integration tests passed");

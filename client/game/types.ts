@@ -295,6 +295,10 @@ export interface VoxelEngineOptions {
   acceptWorldEdits?: (edits: readonly WorldEdit[]) => boolean;
   /** Prevent a second optimistic world edit while an authoritative one is pending. */
   canEditBlock?: () => boolean;
+  /** Local inventory preflight proving the selected stack can pay for one placement. */
+  canPlaceSelectedBlock?: (block: BlockId) => boolean;
+  /** Explicit offline-only opt-in for bounded held secondary-button block placement. */
+  continuousBlockPlacement?: boolean;
   /** Local preflight for a completed mining edit, such as bounded drop capacity. */
   canMineBlock?: (block: Readonly<WorldEdit>) => boolean;
   /** Seconds the primary action must be held before a block is mined. */

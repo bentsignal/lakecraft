@@ -65,7 +65,7 @@ const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta
 assert.match(engine, /if \(texel\.a < uAlphaCutoff\) discard;/, "sapling holes use alpha testing instead of costly sorted blending");
 assert.match(engine, /block === BLOCK\.SAPLING[\s\S]{0,160}appendSaplingMesh\(textureVertices/,
   "saplings share each chunk's retained opaque texture buffer");
-assert.match(engine, /saplingPlacement \|\| !playerIntersectsBlock/, "non-colliding saplings do not reject placement inside the player cell");
+assert.match(engine, /!saplingPlacement && playerIntersectsBlock/, "non-colliding saplings do not reject placement inside the player cell");
 assert.match(engine, /getBlockAt\(x, y, z\)/, "offline growth can read local clearance without mutating the engine");
 
 console.log("lakecraft sapling crossed-quad and bone-meal visual tests: ok");

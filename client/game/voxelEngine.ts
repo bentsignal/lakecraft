@@ -139,6 +139,14 @@ import {
   shouldStartHeldMining,
   type PrimaryActionHoldState,
 } from "./continuousMining.ts";
+import {
+  IDLE_SECONDARY_PLACEMENT_HOLD,
+  advanceSecondaryPlacement,
+  pressSecondaryPlacement,
+  releaseSecondaryPlacement,
+  shouldRepeatSecondaryPlacement,
+  type SecondaryPlacementHoldState,
+} from "./continuousPlacement.ts";
 
 type Vec3 = [number, number, number];
 
@@ -1497,6 +1505,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastMiningProgressAt = -Infinity;
   let lastMiningHitAt = -Infinity;
   let primaryActionHold: PrimaryActionHoldState = { ...IDLE_PRIMARY_ACTION_HOLD };
+  let secondaryPlacementHold: Readonly<SecondaryPlacementHoldState> = IDLE_SECONDARY_PLACEMENT_HOLD;
+  let secondaryButtonHeld = false;
   let footstepDistance = 0;
   const frameTimes: number[] = [];
   let totalMeshRebuildMs = 0;
@@ -1543,6 +1553,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function cancelPrimaryActionHold(): void {
     primaryActionHold = releasePrimaryAction();
     clearMining();
+  }
+
+  function cancelSecondaryPlacementHold(releaseButton = false): void {
+    secondaryPlacementHold = releaseSecondaryPlacement();
+    if (releaseButton) secondaryButtonHeld = false;
   }
 
   function updateMiningCrackGeometry(): void {
@@ -2139,6 +2154,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[1] = 0;
       velocity[2] = 0;
       cancelPrimaryActionHold();
+      cancelSecondaryPlacementHold(true);
       target = null;
       fallAirborne = false;
       fallPeakY = pose.y;
@@ -2265,6 +2281,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     } else target = nextTarget;
 
     beginHeldBlockMining();
+    repeatHeldBlockPlacement(now);
 
     if (now - lastPoseSent > 90 && (poseDirty || forwardInput !== 0 || strafe !== 0 || Math.abs(velocity[1]) > 0.01)) {
       lastPoseSent = now;
@@ -2689,6 +2706,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const hotbarIndex = hotbarIndexForDigitCode(event.code);
     if (hotbarIndex !== null) {
       event.preventDefault();
+      cancelSecondaryPlacementHold();
       options.onHotbarSelect?.(hotbarIndex);
     }
     if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight"].includes(event.code)) {
@@ -2726,6 +2744,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function releaseTransientInput(): void {
     keys.clear();
     cancelPrimaryActionHold();
+    cancelSecondaryPlacementHold(true);
     clearRangedCharge(true);
   }
 
@@ -2756,6 +2775,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const direction = hotbarWheelDirection(event.deltaY);
     if (direction === 0) return;
     event.preventDefault();
+    cancelSecondaryPlacementHold();
     options.onHotbarCycle?.(direction);
   }
 
@@ -2765,6 +2785,28 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       && playerIntersectsBlockCollisionHeight(pose.y, cameraPosture.bodyHeight, y, block)
       && pose.z + 0.29 > z
       && pose.z - 0.29 < z + 1;
+  }
+
+  function tryPlaceSelectedBlock(): boolean {
+    if (!target || selectedBlock === BLOCK.AIR || options.canEditBlock?.() === false
+      || options.canPlaceSelectedBlock?.(selectedBlock) === false) return false;
+    const { x, y, z } = target.place;
+    const saplingPlacement = selectedBlock === BLOCK.SAPLING;
+    const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
+    if (
+      getBlock(x, y, z) !== BLOCK.AIR
+      || !supportedSapling
+      || (!saplingPlacement && playerIntersectsBlock(x, y, z, selectedBlock))
+    ) return false;
+    if (!emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) })) return false;
+    options.onHandAction?.("place");
+    return true;
+  }
+
+  function repeatHeldBlockPlacement(now: number): boolean {
+    if (!options.continuousBlockPlacement || !shouldRepeatSecondaryPlacement(secondaryPlacementHold, now)) return false;
+    secondaryPlacementHold = advanceSecondaryPlacement(secondaryPlacementHold, now);
+    return tryPlaceSelectedBlock();
   }
 
   function attackEntityUnderCrosshair(): boolean {
@@ -2870,6 +2912,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       primaryActionHold = pressPrimaryAction(attackedEntity);
       if (!attackedEntity) beginHeldBlockMining();
     } else if (event.button === 2) {
+      if (secondaryButtonHeld) return;
+      secondaryButtonHeld = true;
       if (useMobUnderCrosshair()) return;
       const bypassBlockInteraction = bypassBlockInteractionForPlacement(
         keys.has("ShiftLeft") || keys.has("ShiftRight"),
@@ -2900,25 +2944,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         options.onHandAction?.("use");
         return;
       }
-      if (!target) return;
-      if (selectedBlock === BLOCK.AIR) return;
-      if (options.canEditBlock?.() === false) return;
-      const { x, y, z } = target.place;
-      const saplingPlacement = selectedBlock === BLOCK.SAPLING;
-      const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
-      if (
-        getBlock(x, y, z) === BLOCK.AIR
-        && supportedSapling
-        && (saplingPlacement || !playerIntersectsBlock(x, y, z, selectedBlock))
-      ) {
-        options.onHandAction?.("place");
-        emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) });
+      const placementBlock = selectedBlock;
+      const accepted = tryPlaceSelectedBlock();
+      if (options.continuousBlockPlacement) {
+        const stillPayable = selectedBlock === placementBlock
+          && options.canPlaceSelectedBlock?.(placementBlock) !== false;
+        secondaryPlacementHold = pressSecondaryPlacement(accepted && stillPayable, placementBlock, performance.now());
       }
     }
   }
 
   function onMouseUp(event: MouseEvent): void {
     if (event.button === 0) cancelPrimaryActionHold();
+    if (event.button === 2) {
+      cancelSecondaryPlacementHold(true);
+    }
     if (event.button === 2 && rangedChargeStartedAt > 0) {
       const intent = rangedShotIntent(performance.now());
       clearRangedCharge();
@@ -2931,6 +2971,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (document.pointerLockElement !== canvas) {
       keys.clear();
       cancelPrimaryActionHold();
+      cancelSecondaryPlacementHold(true);
       clearRangedCharge(true);
       resetMovementView();
     }
@@ -2986,6 +3027,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       canvas.removeEventListener("contextmenu", onContextMenu);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
       cancelPrimaryActionHold();
+      cancelSecondaryPlacementHold(true);
       clearRangedCharge();
       for (const mesh of chunkMeshes.values()) {
         if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
@@ -3097,6 +3139,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return result;
     },
     setSelectedBlock(block) {
+      if (block !== selectedBlock) cancelSecondaryPlacementHold();
       selectedBlock = block;
       clearMining();
     },
@@ -3226,6 +3269,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[1] = 0;
       velocity[2] = 0;
       cancelPrimaryActionHold();
+      cancelSecondaryPlacementHold(true);
       clearRangedCharge(true);
       resetMovementView();
       if (paused) {
@@ -3269,6 +3313,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return playerHealth;
     },
     reconcilePose(nextPose) {
+      cancelSecondaryPlacementHold(true);
       pose.x = nextPose.x;
       pose.y = nextPose.y;
       pose.z = nextPose.z;
@@ -3326,6 +3371,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[2] = 0;
       keys.clear();
       clearMining();
+      cancelSecondaryPlacementHold(true);
       clearRangedCharge(true);
       resetMovementView();
       playerViewSuspended = playerHealth <= 0;
@@ -3348,6 +3394,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     getPerformanceStats,
     requestPointerLock() { requestCanvasPointerLock(); },
     respawn() {
+      cancelSecondaryPlacementHold(true);
       pose.x = respawnPoint.x;
       pose.z = respawnPoint.z;
       pose.yaw = respawnPoint.yaw;

@@ -71,7 +71,7 @@ assert.ok(secondaryAction.indexOf("useMobUnderCrosshair()") < secondaryAction.in
 assert.match(secondaryAction, /if \(target && !bypassBlockInteraction\)/);
 assert.ok(secondaryAction.indexOf("!bypassBlockInteraction") < secondaryAction.indexOf("createDoorToggleEdit"));
 assert.ok(secondaryAction.indexOf("!bypassBlockInteraction") < secondaryAction.indexOf("tryInteractBlock"));
-assert.ok(secondaryAction.indexOf("tryInteractBlock") < secondaryAction.indexOf("emitEdit\(\{ x, y, z, block: doorPlacementBlock"),
+assert.ok(secondaryAction.indexOf("tryInteractBlock") < secondaryAction.indexOf("tryPlaceSelectedBlock()"),
   "bypassed interactions proceed through existing placement validation");
 
 console.log("task111 sneak-place and retained target-outline tests passed");

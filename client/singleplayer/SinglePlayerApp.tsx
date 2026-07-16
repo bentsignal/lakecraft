@@ -97,6 +97,7 @@ import {
   singlePlayerStartsDead,
   type SinglePlayerDeathCause,
 } from "./deathPresentation.ts";
+import { consumeSelectedPlacementStack } from "./localPlacement.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -865,6 +866,11 @@ export function SinglePlayerApp() {
       },
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
       canSprint: () => hungerRef.current > 6,
+      continuousBlockPlacement: true,
+      canPlaceSelectedBlock: (block) => {
+        const stack = inventoryRef.current[selectedRef.current];
+        return Boolean(stack && stack.count > 0 && ITEM_TO_ENGINE[stack.itemId] === block);
+      },
       canMineBlock: (block) => {
         pruneLocalDrops();
         const gameBlock = ENGINE_TO_GAME[block.block];
@@ -916,8 +922,18 @@ export function SinglePlayerApp() {
             }];
             engine.setDroppedItems(dropsRef.current);
           }
-        } else if (!toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR && held) {
-          next = removeItem(next, held, 1).inventory;
+        } else if (!toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR) {
+          const placedItem = ENGINE_TO_GAME[edit.block];
+          const selectedSlot = selectedRef.current;
+          const selectedStack = next[selectedSlot];
+          if (!placedItem || ITEM_TO_ENGINE[placedItem] !== edit.block || selectedStack?.itemId !== placedItem) {
+            throw new Error("Accepted local placement no longer matches the selected stack.");
+          }
+          const payment = consumeSelectedPlacementStack(next, selectedSlot, placedItem);
+          if (!payment.ok) throw new Error("Accepted local placement could not consume its selected stack.");
+          next = payment.inventory;
+          const nextSelected = next[selectedSlot];
+          engine.setSelectedBlock(nextSelected ? ITEM_TO_ENGINE[nextSelected.itemId] ?? BLOCK.AIR : BLOCK.AIR);
         }
         updateInventory(next);
         const seed = `local:${edit.x},${edit.y},${edit.z}:${performance.now().toFixed(0)}`;

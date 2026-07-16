@@ -25,7 +25,7 @@ Singleplayer requires no account and saves only in that browser. The title scree
 - Use Options from the title screen or Game Menu to persist sound and mouse sensitivity locally across both play modes
 - Hold either `Ctrl` while moving forward to sprint (requires more than six hunger); hold either `Shift` to sneak, lower your view, and stop at ledges
 - While touching a ladder, `W` or `Space` climbs, `S` or either `Shift` key descends, and `A`/`D` steps off
-- Hold left click to mine continuously across successive blocks; right click places the selected block
+- Hold left click to mine continuously; in singleplayer, hold right click to place ordinary blocks across successive targets
 - Left click a mob to attack it; a successful hit swings the held item, plays immediate hit confirmation, and flashes the mob red
 - Mined resources pop into the single-player world and are collected by walking over them; a full pack leaves them safely on the ground
 - Defeated single-player mobs drop their rewards beside the body; partial or full packs leave the conserved remainder in the world and the local save
