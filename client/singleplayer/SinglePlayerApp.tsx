@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
 import {
   BLOCK,
+  MORNING_PHASE,
   createVoxelEngine,
+  phaseAtTime,
   type BlockId as EngineBlockId,
   type DroppedItemRenderItem,
   type VoxelEngine,
@@ -62,6 +64,12 @@ import {
   transferLocalFurnaceFullStack,
   type LocalContainers,
 } from "./localContainers.ts";
+import {
+  canSleepAtPhase,
+  respawnPointForBed,
+  respawnPointMatchesBed,
+  singlePlayerWorldSpawn,
+} from "./localBed.ts";
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
 
@@ -193,10 +201,12 @@ export function SinglePlayerApp() {
   const [activeChestKey, setActiveChestKey] = useState<string | null>(null);
   const [chestInventory, setChestInventory] = useState<ChestInventory>([]);
   const [activeFurnaceKey, setActiveFurnaceKey] = useState<string | null>(null);
+  const [sleepingBed, setSleepingBed] = useState<{ x: number; y: number; z: number } | null>(null);
   const [furnaceState, setFurnaceState] = useState<FurnaceState | null>(null);
   const [containerStatus, setContainerStatus] = useState("");
   const [containerError, setContainerError] = useState("");
   const containerOpen = activeChestKey !== null || activeFurnaceKey !== null;
+  const worldModalOpen = containerOpen || sleepingBed !== null;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [handActionToken, setHandActionToken] = useState(0);
   const [messages, setMessages] = useState<HudMessage[]>([]);
@@ -406,6 +416,46 @@ export function SinglePlayerApp() {
     markWorldDirty();
   }
 
+  function invalidateBrokenBed(x: number, y: number, z: number): void {
+    const engine = engineRef.current;
+    if (!engine || !respawnPointMatchesBed(engine.getRespawnPoint(), x, y, z)) return;
+    engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
+    setSleepingBed(null);
+    setMessages((current) => [...current.slice(-2), {
+      id: `bed-broken-${x}:${y}:${z}-${Date.now()}`,
+      text: "Respawn point lost",
+      detail: "Your bed was destroyed. World spawn is active again.",
+      tone: "warning",
+    }]);
+    markWorldDirty();
+  }
+
+  function interactWithLocalBed(x: number, y: number, z: number): boolean {
+    const engine = engineRef.current;
+    if (!engine) return true;
+    engine.setRespawnPoint(respawnPointForBed(x, y, z, engine.getPose().yaw));
+    markWorldDirty();
+    const runtime = engine.exportRuntimeSnapshot();
+    if (!canSleepAtPhase(phaseAtTime(runtime.worldTimeMs, runtime.dayNight))) {
+      setMessages((current) => [...current.slice(-2), {
+        id: `bed-day-${Date.now()}`,
+        text: "Respawn point set",
+        detail: "You can sleep only at night.",
+        tone: "info",
+      }]);
+      return true;
+    }
+    setMessages((current) => [...current.slice(-2), {
+      id: `bed-night-${Date.now()}`,
+      text: "Respawn point set",
+      detail: "Sleeping through the night…",
+      tone: "success",
+    }]);
+    setSleepingBed({ x, y, z });
+    document.exitPointerLock();
+    return true;
+  }
+
   function collectLocalDrops(pose: { x: number; y: number; z: number }): void {
     if (healthRef.current <= 0 || dropsRef.current.length === 0) return;
     let nextInventory = inventoryRef.current;
@@ -477,6 +527,16 @@ export function SinglePlayerApp() {
     setHunger(MAX_HUNGER);
     engine.setDroppedItems(dropsRef.current);
     markWorldDirty();
+    const respawn = engine.getRespawnPoint();
+    const bed = {
+      x: Math.round(respawn.x - 0.5),
+      y: Math.round(respawn.y - 1.02),
+      z: Math.round(respawn.z - 0.5),
+    };
+    if (respawnPointMatchesBed(respawn, bed.x, bed.y, bed.z)
+      && engine.getBlockAt(bed.x, bed.y, bed.z) !== BLOCK.BED) {
+      engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
+    }
     engine.respawn();
     setDeathScreenOpen(false);
     localRespawnBusyRef.current = false;
@@ -584,6 +644,9 @@ export function SinglePlayerApp() {
         const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
         const destruction = edits.filter((edit) => !edit.chainPrimed);
         if (!destruction.length) return;
+        for (const edit of destruction) {
+          if (edit.previousBlock === BLOCK.BED) invalidateBrokenBed(edit.x, edit.y, edit.z);
+        }
         const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
         for (const edit of destruction) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
         editsRef.current = [...byCoordinate.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
@@ -635,6 +698,9 @@ export function SinglePlayerApp() {
         editsRef.current = [...nextEdits.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
         if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
           settleBrokenContainerContents(edit.x, edit.y, edit.z, previousBlock);
+        }
+        if (previousBlock === BLOCK.BED && edit.block !== BLOCK.BED) {
+          invalidateBrokenBed(edit.x, edit.y, edit.z);
         }
         markWorldDirty();
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
@@ -729,6 +795,10 @@ export function SinglePlayerApp() {
       },
       onInteractBlock: (target) => {
         const coordKey = `${target.block.x}:${target.block.y}:${target.block.z}`;
+        if (target.block.block === BLOCK.BED) {
+          const { x, y, z } = target.block;
+          return interactWithLocalBed(x, y, z);
+        }
         if (target.block.block === BLOCK.CHEST) {
           const opened = openLocalChest(containersRef.current, coordKey);
           if (!opened.ok) {
@@ -844,6 +914,16 @@ export function SinglePlayerApp() {
       saveLockedRef.current = true;
     }
     engine.setDroppedItems(dropsRef.current);
+    const respawn = engine.getRespawnPoint();
+    const possibleBed = {
+      x: Math.round(respawn.x - 0.5),
+      y: Math.round(respawn.y - 1.02),
+      z: Math.round(respawn.z - 0.5),
+    };
+    if (respawnPointMatchesBed(respawn, possibleBed.x, possibleBed.y, possibleBed.z)
+      && engine.getBlockAt(possibleBed.x, possibleBed.y, possibleBed.z) !== BLOCK.BED) {
+      engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
+    }
     engine.start();
     for (const fuse of [...primedTntRef.current]) {
       if (!primeLocalTnt(fuse.x, fuse.y, fuse.z, Math.max(0, fuse.dueAt - Date.now()), 0, false)) {
@@ -867,14 +947,14 @@ export function SinglePlayerApp() {
   }, []);
 
   useEffect(() => {
-    const paused = pauseOpen || inventoryOpen || containerOpen || deathScreenOpen || document.visibilityState !== "visible";
+    const paused = pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || document.visibilityState !== "visible";
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
-  }, [pauseOpen, inventoryOpen, containerOpen, deathScreenOpen]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen]);
 
   useEffect(() => {
     const sample = () => {
-      const active = !pauseOpen && !inventoryOpen && !containerOpen && !deathScreenOpen && document.visibilityState === "visible";
+      const active = !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen && document.visibilityState === "visible";
       if (active) markWorldDirty();
       const next = sampleSaveCadence(saveCadenceRef.current, performance.now(), active);
       saveCadenceRef.current = next.state;
@@ -883,7 +963,7 @@ export function SinglePlayerApp() {
     sample();
     const interval = window.setInterval(sample, 1_000);
     const onVisibilityChange = () => {
-      const paused = document.visibilityState !== "visible" || pauseOpen || inventoryOpen || containerOpen || deathScreenOpen;
+      const paused = document.visibilityState !== "visible" || pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen;
       engineRef.current?.setPaused(paused);
       setLocalFusesPausedRef.current(paused);
       sample();
@@ -893,7 +973,32 @@ export function SinglePlayerApp() {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [pauseOpen, inventoryOpen, containerOpen, deathScreenOpen]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen]);
+
+  useEffect(() => {
+    if (!sleepingBed) return;
+    const timer = window.setTimeout(() => {
+      const engine = engineRef.current;
+      if (!engine || engine.getBlockAt(sleepingBed.x, sleepingBed.y, sleepingBed.z) !== BLOCK.BED) {
+        setSleepingBed(null);
+        return;
+      }
+      const worldTimeMs = engine.getWorldTimeMs();
+      engine.setDayNightClock(
+        { epochMs: worldTimeMs, epochPhase: MORNING_PHASE },
+        worldTimeMs - Date.now(),
+      );
+      markWorldDirty();
+      setSleepingBed(null);
+      setMessages((current) => [...current.slice(-2), {
+        id: `wake-${Date.now()}`,
+        text: "Good morning",
+        detail: "You slept through the night. Click the world to continue.",
+        tone: "success",
+      }]);
+    }, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [sleepingBed]);
 
   useEffect(() => {
     const saveBeforeLeaving = () => { performSaveRef.current("quit"); };
@@ -949,12 +1054,12 @@ export function SinglePlayerApp() {
         equipment={equipment}
         handActionToken={handActionToken}
         health={health}
-        hideFirstPersonFeedback={containerOpen}
+        hideFirstPersonFeedback={worldModalOpen}
         hunger={hunger}
         inventory={inventory}
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
-        modalOpen={containerOpen}
+        modalOpen={worldModalOpen}
         messages={messages}
         miningProgress={0}
         onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); engineRef.current?.requestPointerLock(); }}
@@ -1012,6 +1117,15 @@ export function SinglePlayerApp() {
         playerInventory={inventory}
         status={containerStatus}
       />
+      {sleepingBed ? (
+        <div className="lakecraft-sleep-layer" role="presentation">
+          <section className="lakecraft-sleep" role="status" aria-live="polite">
+            <small>single-player world</small>
+            <h2>Sleeping…</h2>
+            <p>Skipping through the night and setting this bed as your respawn point.</p>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -21,13 +21,14 @@ assert.ok(app.includes("recoverLocalContainerContents("), "breaking a container 
 assert.ok(app.includes("SINGLEPLAYER_SAVE_LIMITS.drops - dropsRef.current.length"), "world-drop capacity is proven before container removal");
 assert.ok(app.includes("containersRef.current = recovered.containers"), "successful recovery removes the container only after all contents have a destination");
 
-assert.ok(app.includes("pauseOpen || inventoryOpen || containerOpen || deathScreenOpen"), "open containers freeze world input through the existing local pause boundary");
-assert.ok(app.includes("!pauseOpen && !inventoryOpen && !containerOpen && !deathScreenOpen"), "container UI time does not spend the active autosave interval");
+assert.ok(app.includes("worldModalOpen = containerOpen || sleepingBed !== null"), "containers and sleep share one local modal boundary");
+assert.ok(app.includes("pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen"), "open containers freeze world input through the existing local pause boundary");
+assert.ok(app.includes("!pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen"), "container UI time does not spend the active autosave interval");
 assert.ok(app.includes("setLocalFusesPausedRef.current(paused)"), "container modal pause also freezes local TNT");
 
 assert.ok(app.includes("<FurnaceDrawer"));
 assert.ok(app.includes("<ChestDrawer"));
-assert.ok(app.includes("modalOpen={containerOpen}"), "container drawers hide the crosshair and survival hotbar behind the modal");
+assert.ok(app.includes("modalOpen={worldModalOpen}"), "container drawers hide the crosshair and survival hotbar behind the modal");
 assert.ok(app.includes('eyebrow="LOCAL SINGLE-PLAYER CONTAINER"'));
 assert.ok(chestDrawer.includes('eyebrow = "SHARED LAKEBED CONTAINER"'), "multiplayer keeps its existing label by default");
 
