@@ -18,6 +18,7 @@ import {
 } from "./game";
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
+import { cycleHotbarIndex } from "./game/hotbarInput";
 import { MultiplayerSegmentTransport } from "./MultiplayerSegmentTransport.tsx";
 import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
 import {
@@ -1746,6 +1747,8 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         serverTimeOffsetMs: worldClock ? worldClock.serverNow - Date.now() : 0,
         selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
         canEditBlock: () => pendingWorldBlockEditRef.current === null,
+        onHotbarSelect: handleSelectHotbar,
+        onHotbarCycle: (direction) => handleSelectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
         getMiningDuration: (block) => {
           const gameBlock = ENGINE_TO_GAME[block];
           const heldItem = inventoryRef.current[selectedRef.current]?.itemId;
@@ -2815,11 +2818,13 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         }
         return;
       }
-      if ((inventoryOpen || furnaceOpen) && event.code === "Escape") {
-        event.preventDefault();
-        if (furnaceOpen && furnaceBusyRef.current) return;
-        closeInventory();
-        engineRef.current?.requestPointerLock();
+      if (inventoryOpen || furnaceOpen) {
+        if (event.code === "Escape" || event.code === "KeyE") {
+          event.preventDefault();
+          if (furnaceOpen && furnaceBusyRef.current) return;
+          closeInventory();
+          engineRef.current?.requestPointerLock();
+        }
         return;
       }
       if (event.code === "Escape" && !event.repeat) {
@@ -2843,20 +2848,13 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         setChatError("");
         return;
       }
-      if (/^Digit[1-9]$/.test(event.code)) handleSelectHotbar(Number(event.code.slice(5)) - 1);
       if (event.code === "KeyE" && !event.repeat) {
         event.preventDefault();
         if (!hydratedRef.current) return;
-        if (inventoryOpen || furnaceOpen) {
-          if (furnaceOpen && furnaceBusyRef.current) return;
-          closeInventory();
-          engineRef.current?.requestPointerLock();
-        } else {
-          activeWorkstationRef.current = null;
-          setCraftingContext("field");
-          exitPointerLockForUi();
-          setInventoryOpen(true);
-        }
+        activeWorkstationRef.current = null;
+        setCraftingContext("field");
+        exitPointerLockForUi();
+        setInventoryOpen(true);
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
@@ -3414,6 +3412,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         inventory={inventory}
         inventoryAuthorityEpoch={inventoryAuthorityEpoch}
         inventoryOpen={inventoryOpen}
+        modalOpen={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
         handActionToken={handActionToken}
         hideFirstPersonFeedback={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey) || inventory[selectedHotbar]?.itemId === "bow"}
         messages={messages}
