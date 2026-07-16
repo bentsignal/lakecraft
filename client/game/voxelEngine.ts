@@ -1924,17 +1924,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return true;
   }
 
-  function applyLocalExplosionEdits(edits: readonly LocalExplosionEdit[]): void {
+  function applyLocalExplosionEdits(edits: readonly LocalExplosionEdit[]): boolean {
     const destruction = edits.filter((edit) => !edit.chainPrimed);
+    if (destruction.length && options.acceptWorldEdits?.(destruction) === false) return false;
     for (const edit of destruction) {
       rememberWorldEdit(edit);
       setBlock(edit.x, edit.y, edit.z, BLOCK.AIR);
     }
-    if (!destruction.length) return;
+    if (!destruction.length) return true;
     rebuildWorldChunks(dirtyChunkKeysForEdits(destruction).filter((key) => loadedChunkKeys.has(key)));
     for (const edit of destruction.slice(0, 12)) {
       blockParticles.spawn({ action: "break", block: edit.previousBlock, x: edit.x, y: edit.y, z: edit.z });
     }
+    return true;
   }
 
   function updateMobs(dt: number): void {
@@ -1990,7 +1992,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         Math.floor(explosion.z),
         getBlock,
       );
-      applyLocalExplosionEdits(edits);
+      const terrainAccepted = applyLocalExplosionEdits(edits);
       const rawDamage = resolveCreeperExplosionDamage({
         center: { x: explosion.x, y: explosion.y, z: explosion.z },
         radius: CREEPER_EXPLOSION_RADIUS,
@@ -2004,7 +2006,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         options.onPlayerDamage?.(appliedDamage, "creeper");
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       }
-      options.onLocalCreeperExplosion?.({ ...explosion, damage: appliedDamage, edits });
+      options.onLocalCreeperExplosion?.({ ...explosion, damage: appliedDamage, edits: terrainAccepted ? edits : [] });
     }
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
@@ -2538,12 +2540,22 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     frameId = requestAnimationFrame(frame);
   }
 
-  function emitEdit(edit: WorldEdit): void {
+  function emitEdit(edit: WorldEdit): boolean {
     const previousBlock = getBlock(edit.x, edit.y, edit.z);
-    rememberWorldEdit(edit);
-    setBlock(edit.x, edit.y, edit.z, edit.block);
-    rebuildWorldChunks(dirtyChunkKeysForEdits([edit]).filter((key) => loadedChunkKeys.has(key)));
-    options.onBlockEdit?.(edit, previousBlock);
+    const settledEdits = options.acceptWorldEdits ? planLocalFallingBlockSettlement(
+      edit,
+      previousBlock,
+      (x, y, z) => x === edit.x && y === edit.y && z === edit.z ? edit.block : getBlock(x, y, z),
+    ) : [];
+    const batch = settledEdits.length ? [edit, ...settledEdits] : [edit];
+    if (options.acceptWorldEdits?.(batch) === false) return false;
+    for (const next of batch) {
+      rememberWorldEdit(next);
+      setBlock(next.x, next.y, next.z, next.block);
+    }
+    rebuildWorldChunks(dirtyChunkKeysForEdits(batch).filter((key) => loadedChunkKeys.has(key)));
+    options.onBlockEdit?.(edit, previousBlock, settledEdits);
+    return true;
   }
 
   function onKeyDown(event: KeyboardEvent): void {
@@ -2861,6 +2873,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteTexture(terrainTexture);
     },
     applyWorldEdits(edits) {
+      if (edits.length && options.acceptWorldEdits?.(edits) === false) return false;
       const loadedEdits: WorldEdit[] = [];
       for (const edit of edits) {
         rememberWorldEdit(edit);
@@ -2873,6 +2886,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           dirtyChunkKeysForEdits(loadedEdits).filter((key) => loadedChunkKeys.has(key)),
         );
       }
+      return true;
     },
     applyMobCombatStates(states, nextServerTimeOffsetMs) {
       if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
@@ -3013,15 +3027,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     explodeTnt(x, y, z) {
       const sourceKey = blockKey(x, y, z);
       if (!primedTnt.has(sourceKey) || getBlock(x, y, z) !== BLOCK.TNT) return [];
+      const edits = planLocalTntExplosion(x, y, z, getBlock);
+      if (!applyLocalExplosionEdits(edits)) return [];
       primedTnt.delete(sourceKey);
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
-      const edits = planLocalTntExplosion(x, y, z, getBlock);
-      applyLocalExplosionEdits(edits);
       return edits;
     },
     settleFallingBlocks(edit, previousBlock) {
       const settled = planLocalFallingBlockSettlement(edit, previousBlock, getBlock);
       if (settled.length === 0) return [];
+      if (options.acceptWorldEdits?.(settled) === false) return [];
       for (const next of settled) {
         rememberWorldEdit(next);
         setBlock(next.x, next.y, next.z, next.block);

@@ -31,6 +31,9 @@ const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "ut
 assert.match(client, /for \(const settled of result\.settledEdits\)/,
   "multiplayer applies Lakebed-confirmed settlement rather than predicting extra writes");
 const offline = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-assert.match(offline, /settleFallingBlocks\(edit, previousBlock\)/, "offline mode uses the same bounded settlement contract");
+const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+assert.match(offline, /acceptWorldEdits: acceptLocalWorldEdits/, "offline mode reserves the complete local edit batch");
+assert.match(engine, /planLocalFallingBlockSettlement\([\s\S]*?options\.acceptWorldEdits\?\.\(batch\)/,
+  "offline primary and falling edits share one pre-mutation capacity boundary");
 
 console.log("lakecraft falling-block client/server integration tests: ok");

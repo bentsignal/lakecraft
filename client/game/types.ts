@@ -288,8 +288,10 @@ export interface VoxelEngineOptions {
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
   serverTimeOffsetMs?: number;
-  /** previousBlock lets inventory code distinguish mining from placement. */
-  onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId) => void;
+  /** previousBlock distinguishes mining from placement; settledEdits are one accepted local falling batch. */
+  onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId, settledEdits: readonly WorldEdit[]) => void;
+  /** Synchronously reserves a complete local edit batch before any terrain or callback side effect. */
+  acceptWorldEdits?: (edits: readonly WorldEdit[]) => boolean;
   /** Prevent a second optimistic world edit while an authoritative one is pending. */
   canEditBlock?: () => boolean;
   /** Local preflight for a completed mining edit, such as bounded drop capacity. */
@@ -363,7 +365,7 @@ export interface VoxelEngineOptions {
 export interface VoxelEngine {
   start(): void;
   destroy(): void;
-  applyWorldEdits(edits: readonly WorldEdit[]): void;
+  applyWorldEdits(edits: readonly WorldEdit[]): boolean;
   applyMobCombatStates(states: readonly MobCombatStateSnapshot[], serverTimeOffsetMs?: number): void;
   /** Reconciles the retained renderer against Lakebed's shared fixed-tick mob timeline. */
   applyMobMotionSnapshot(poses: readonly MobMotionPose[], serverTimeOffsetMs?: number): void;

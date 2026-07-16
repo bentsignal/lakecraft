@@ -56,8 +56,8 @@ assert.match(appSource, /target\.distance > TNT_IGNITION_REACH/, `local ignition
 assert.match(appSource, /primeLocalTnt\(x, y, z, TNT_FUSE_MS, 0, true\)/, "ignition schedules the shared four-second fuse");
 assert.match(appSource, /candidate\.chainPrimed[\s\S]*?slice\(0, 8\)/, "local chain reactions share the bounded eight-child cascade ceiling");
 const blastHandler = appSource.slice(appSource.indexOf("const edits = engineRef.current?.explodeTnt"), appSource.indexOf("fuseTimers.set", appSource.indexOf("const edits = engineRef.current?.explodeTnt")));
-const explosionRecorder = appSource.slice(appSource.indexOf("function recordLocalExplosion"), appSource.indexOf("const engine = createVoxelEngine"));
-assert.ok(blastHandler.includes("recordLocalExplosion") && explosionRecorder.includes("editsRef.current"), "blast edits are persisted in the local world save");
+assert.ok(blastHandler.includes("recordLocalExplosion") && appSource.includes("acceptWorldEdits: acceptLocalWorldEdits"),
+  "blast edits reserve the local journal before the engine changes terrain");
 assert.doesNotMatch(blastHandler, /addItem|getMiningDrop|applyConfirmedToolUse/, "explosion destruction, including source TNT, never produces mining drops or tool wear");
 
 console.log("lakecraft single-player TNT tests: ok");

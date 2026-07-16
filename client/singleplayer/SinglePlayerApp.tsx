@@ -5,6 +5,7 @@ import {
   MORNING_PHASE,
   createVoxelEngine,
   phaseAtTime,
+  planLocalTntExplosion,
   type BlockId as EngineBlockId,
   type DroppedItemRenderItem,
   type LocalExplosionEdit,
@@ -83,6 +84,11 @@ import {
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
 import { appendLocalMobDeathDrops, collectLocalDroppedItems } from "./localDroppedItems.ts";
+import {
+  canCommitLocalWorldEdits,
+  createLocalWorldEditIndex,
+  tryCommitLocalWorldEdits,
+} from "./localWorldEditJournal.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -182,7 +188,8 @@ export function SinglePlayerApp() {
   const inventoryRef = useRef(initialSnapshot.player.inventory);
   const equipmentRef = useRef(initialSnapshot.player.equipment);
   const selectedRef = useRef(initialSnapshot.player.selectedHotbar);
-  const editsRef = useRef(initialSnapshot.world.edits);
+  const editsRef = useRef(createLocalWorldEditIndex(initialSnapshot.world.edits));
+  const editCapacityWarningRef = useRef(false);
   const hungerRef = useRef(initialSnapshot.player.hunger);
   const healthRef = useRef(initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH);
   const survivalStateRef = useRef(createSurvivalTickState(hungerRef.current, healthRef.current));
@@ -239,6 +246,24 @@ export function SinglePlayerApp() {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialSavedAt);
   const [saveInProgress, setSaveInProgress] = useState(false);
 
+  function warnWorldEditCapacity(): void {
+    if (editCapacityWarningRef.current) return;
+    editCapacityWarningRef.current = true;
+    setMessages((current) => [...current.slice(-2), {
+      id: "local-world-edit-capacity",
+      text: "World save full",
+      detail: "New terrain changes are blocked; existing saved coordinates remain editable.",
+      tone: "warning",
+    }]);
+  }
+
+  function acceptLocalWorldEdits(edits: readonly WorldEdit[]): boolean {
+    const accepted = tryCommitLocalWorldEdits(editsRef.current, edits, SINGLEPLAYER_SAVE_LIMITS.edits);
+    if (!accepted) warnWorldEditCapacity();
+    else editCapacityWarningRef.current = false;
+    return accepted;
+  }
+
   function updateClientSettings(value: ClientSettings): void {
     const next = normalizeClientSettings(value);
     const soundChanged = clientSettingsRef.current.soundMuted !== next.soundMuted;
@@ -267,7 +292,7 @@ export function SinglePlayerApp() {
         ...worldRef.current,
         activePlayMs,
         weather: { ...worldRef.current.weather },
-        edits: editsRef.current.map((edit) => ({ ...edit })),
+        edits: [...editsRef.current.values()].map((edit) => ({ ...edit })),
       },
       player: {
         inventory: inventoryRef.current.map((stack) => stack ? { ...stack } : null),
@@ -649,6 +674,16 @@ export function SinglePlayerApp() {
     ): boolean {
       const key = `${x}:${y}:${z}`;
       if (fuseTimers.has(key)) return true;
+      const prospectiveDestruction = planLocalTntExplosion(
+        x,
+        y,
+        z,
+        (blockX, blockY, blockZ) => engineRef.current?.getBlockAt(blockX, blockY, blockZ) ?? BLOCK.AIR,
+      ).filter((edit) => !edit.chainPrimed);
+      if (!canCommitLocalWorldEdits(editsRef.current, prospectiveDestruction, SINGLEPLAYER_SAVE_LIMITS.edits)) {
+        warnWorldEditCapacity();
+        return false;
+      }
       if (fuseTimers.size >= 32 || !engineRef.current?.setPrimedTnt(x, y, z, true)) return false;
       const startedAt = Date.now();
       const persistedFuse = primedTntRef.current.find((fuse) => fuse.x === x && fuse.y === y && fuse.z === z);
@@ -684,9 +719,13 @@ export function SinglePlayerApp() {
         const timer = fuseTimers.get(key);
         if (timer) clearFuseSchedule(timer);
         fuseTimers.delete(key);
+        const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
         primedTntRef.current = primedTntRef.current.filter((fuse) => fuse.x !== x || fuse.y !== y || fuse.z !== z);
         markWorldDirty();
-        const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
+        if (!edits.length && engineRef.current?.getBlockAt(x, y, z) === BLOCK.TNT) {
+          engineRef.current.setPrimedTnt(x, y, z, false);
+          return;
+        }
         recordLocalExplosion(key, edits, cascadeDepth);
       };
       const timer: LocalFuseTimer = {
@@ -706,9 +745,6 @@ export function SinglePlayerApp() {
         if (edit.previousBlock === BLOCK.BED) invalidateBrokenBed(edit.x, edit.y, edit.z);
       }
       if (destruction.length) {
-        const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
-        for (const edit of destruction) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
-        editsRef.current = [...byCoordinate.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
         markWorldDirty();
       }
       audio.play("explosion", { seed: key, intensity: 1 });
@@ -728,7 +764,7 @@ export function SinglePlayerApp() {
     }
     const engine = createVoxelEngine(canvas, {
       seed: worldRef.current.seed,
-      initialEdits: editsRef.current,
+      initialEdits: [...editsRef.current.values()],
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
       getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
@@ -751,19 +787,13 @@ export function SinglePlayerApp() {
         ) : null;
         return !drop || dropsRef.current.length < SINGLEPLAYER_SAVE_LIMITS.drops;
       },
+      acceptWorldEdits: acceptLocalWorldEdits,
       onFootstep: (block) => audio.play("footstep", {
         seed: `local-step:${block}:${performance.now().toFixed(0)}`,
         surface: audioSurfaceForBlock(block),
         intensity: 0.5,
       }),
       onBlockEdit: (edit, previousBlock) => {
-        const settled = engineRef.current?.settleFallingBlocks(edit, previousBlock) ?? [];
-        const nextEdits = new Map(editsRef.current.map((candidate) => [`${candidate.x}:${candidate.y}:${candidate.z}`, candidate]));
-        nextEdits.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
-        for (const fallingEdit of settled) {
-          nextEdits.set(`${fallingEdit.x}:${fallingEdit.y}:${fallingEdit.z}`, fallingEdit);
-        }
-        editsRef.current = [...nextEdits.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
         if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
           settleBrokenContainerContents(edit.x, edit.y, edit.z, previousBlock);
         }
@@ -1018,11 +1048,8 @@ export function SinglePlayerApp() {
             z: edit.z,
             block: edit.block === "log" ? BLOCK.WOOD : BLOCK.LEAVES,
           }));
-          const savedEdits = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
-          for (const edit of growthEdits) savedEdits.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
-          editsRef.current = [...savedEdits.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
+          if (!localEngine.applyWorldEdits(growthEdits)) return true;
           markWorldDirty();
-          localEngine.applyWorldEdits(growthEdits);
           updateInventory(nextInventory);
           localEngine.spawnBlockParticles({ action: "place", block: BLOCK.LEAVES, x, y: y + 1, z });
           audio.play("blockPlace", { seed: `grow:${x}:${y}:${z}`, surface: "grass", intensity: 0.72 });
