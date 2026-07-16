@@ -92,7 +92,7 @@ export type {
   VoxelRuntimeSnapshot,
   WorldEdit,
 } from "./types.ts";
-export type { LocalMobShearResult, MobBehavior, MobCombatApplyResult, MobCombatStateSnapshot, MobDefinition, MobDrop, MobKind, MobPoseSnapshot, MobRayTarget, MobSimulation, MobSimulationSnapshot, MobState } from "./mobs.ts";
+export type { LocalMobShearResult, MobBehavior, MobCombatApplyResult, MobCombatStateSnapshot, MobDamageResult, MobDefinition, MobDrop, MobKind, MobPoseSnapshot, MobRayTarget, MobSimulation, MobSimulationSnapshot, MobState } from "./mobs.ts";
 export type { DayNightConfig, DayNightState, TimeOfDayLabel } from "./dayNight.ts";
 export type { HeadBobOffsets, HorizontalMovementDelta, NormalizedMovementInput, PlayerEye, PlayerMovementInput, PlayerMovementMode, PlayerPostureTargets, ResolvedPlayerMovement } from "./playerMovement.ts";
 export type { DroppedItemGeometryStats, DroppedItemRenderItem, DroppedItemRenderer, DroppedItemRenderStats } from "./droppedItemRenderer.ts";

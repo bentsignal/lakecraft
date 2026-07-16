@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   BLOCK_PARTICLE_FLOATS_PER_VERTEX,
   BLOCK_PARTICLE_VERTICES,
@@ -53,6 +54,33 @@ assert.deepEqual(firstGeometryStats, secondGeometryStats);
 assert.deepEqual(firstGeometry, secondGeometry, "block, coordinate, action, and normal produce deterministic geometry");
 assert.equal(firstGeometryStats.writtenParticleCount, BLOCK_PARTICLES_PER_ACTION.break);
 assert.equal(firstGeometryStats.floatCount, BLOCK_PARTICLES_PER_ACTION.break * 36);
+assert.equal(firstGeometryStats.floatCount * Float32Array.BYTES_PER_ELEMENT, 2_304,
+  "a 16-particle break burst uploads only its active geometry bytes");
+
+const hit = createBlockParticleSystem();
+assert.equal(hit.spawn({ ...event, action: "hit" }), 4);
+const hitGeometry = new Float32Array(capacity.floatCount);
+const hitGeometryStats = geometryStats();
+hit.writeGeometry([1, 0, 0], [0, 1, 0], hitGeometry, hitGeometryStats);
+const hitUploadView = hitGeometry.subarray(0, hitGeometryStats.floatCount);
+assert.equal(hitGeometryStats.floatCount, 4 * BLOCK_PARTICLE_VERTICES * BLOCK_PARTICLE_FLOATS_PER_VERTEX);
+assert.equal(hitUploadView.byteLength, 576, "four hit particles require exactly 576 active upload bytes");
+assert.notEqual(hitUploadView.byteLength, capacity.totalBytes,
+  "a sparse hit burst cannot upload the retained 27,648-byte capacity");
+
+const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const particleUploadPath = engineSource.slice(
+  engineSource.indexOf("blockParticles.writeGeometry"),
+  engineSource.indexOf("const projection", engineSource.indexOf("blockParticles.writeGeometry")),
+);
+assert.ok(particleUploadPath.includes("particleGeometryStats.floatCount"),
+  "the renderer derives its upload range from exact written geometry");
+assert.match(particleUploadPath, /particleUploadBytes\s*=\s*particleUploadView\.byteLength/,
+  "F3 reports active particle upload bytes rather than retained capacity");
+assert.match(particleUploadPath, /bufferSubData\([^;]*particleUploadView\)/,
+  "WebGL receives the bounded active particle view");
+assert.doesNotMatch(particleUploadPath, /particleUploadBytes\s*=.*particleGeometry\.byteLength/,
+  "particle telemetry cannot regress to full-capacity accounting");
 
 const changed = createBlockParticleSystem();
 changed.spawn({ ...event, x: event.x + 1 });

@@ -1,6 +1,7 @@
 import type { DayNightConfig } from "./dayNight.ts";
 import {
   validateMobSimulationSnapshot,
+  type MobDamageResult,
   type MobCombatStateSnapshot,
   type LocalMobDeathDropEvent,
   type MobRayTarget,
@@ -373,6 +374,8 @@ export interface VoxelEngine {
   getMobIds(): string[];
   /** Local-only exact sheep clip; inventory acceptance runs before visual state changes. */
   shearMob(mobId: string, acceptWool: (count: number) => boolean): import("./mobs.ts").LocalMobShearResult;
+  /** Resolves one already-paid offline arrow hit; never runs when Lakebed delegates combat. */
+  damageLocalMobWithRangedShot(mobId: string, damage: number): MobDamageResult;
   setSelectedBlock(block: BlockId): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */

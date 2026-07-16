@@ -1255,6 +1255,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const blockParticles = createBlockParticleSystem();
   const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
   const particleGeometry = new Float32Array(particleCapacity.floatCount);
+  let particleUploadFloatCount = -1;
+  let particleUploadView = particleGeometry.subarray(0, 0);
   const particleGeometryStats: BlockParticleGeometryStats = {
     activeParticleCount: 0,
     writtenParticleCount: 0,
@@ -2291,10 +2293,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     particleCameraUp[2] = upZ;
     blockParticles.writeGeometry(particleCameraRight, particleCameraUp, particleGeometry, particleGeometryStats);
     particleVertexCount = particleGeometryStats.vertexCount;
-    particleUploadBytes = particleVertexCount > 0 ? particleGeometry.byteLength : 0;
+    if (particleUploadFloatCount !== particleGeometryStats.floatCount) {
+      particleUploadFloatCount = particleGeometryStats.floatCount;
+      particleUploadView = particleGeometry.subarray(0, particleUploadFloatCount);
+    }
+    particleUploadBytes = particleUploadView.byteLength;
     if (particleVertexCount > 0) {
       gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleGeometry);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleUploadView);
     }
     const projection = perspective(cameraPosture.fovRadians, canvas.width / canvas.height, 0.05, 90);
     const view = lookAt(eye, [eye[0] + facing[0], eye[1] + facing[1], eye[2] + facing[2]]);
@@ -2963,6 +2969,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     shearMob(mobId, acceptWool) {
       const result = shearLocalMob(mobSimulation, mobId, acceptWool);
       if (result.ok) writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      return result;
+    },
+    damageLocalMobWithRangedShot(mobId, damage) {
+      const result = damageMob(mobSimulation, mobId, damage, options.onMobDrops);
+      if (result.applied) writeMobPoseSnapshots(mobSimulation, mobSnapshots);
       return result;
     },
     setSelectedBlock(block) {

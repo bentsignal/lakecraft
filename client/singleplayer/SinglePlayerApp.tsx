@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
+import { ChestDrawer, FurnaceDrawer, GameHud, FirstPersonBow, type ChestTransferDirection, type HudMessage } from "../components";
 import {
   BLOCK,
   MORNING_PHASE,
@@ -9,6 +9,7 @@ import {
   type BlockId as EngineBlockId,
   type DroppedItemRenderItem,
   type LocalExplosionEdit,
+  type PlayerProjectileVisual,
   type VoxelEngine,
   type WorldEdit,
 } from "../game";
@@ -22,6 +23,7 @@ import {
   applyConfirmedToolUse,
   attackDamage,
   clampHotbarIndex,
+  countItem,
   consumeFood,
   createSurvivalTickState,
   equippedArmorProtection,
@@ -35,6 +37,7 @@ import {
   type Inventory,
   type ItemId,
 } from "../../shared/game";
+import { RANGED_GRAVITY, rangedChargeProfile } from "../../shared/rangedCombat.ts";
 import { planDeathDrops } from "../../shared/deathDrops.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
@@ -212,6 +215,8 @@ export function SinglePlayerApp() {
   const setLocalFusesPausedRef = useRef<(paused: boolean) => void>(() => undefined);
   const localRespawnBusyRef = useRef(false);
   const localDropSequenceRef = useRef(0);
+  const localArrowSequenceRef = useRef(0);
+  const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
   const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
   const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
@@ -236,6 +241,8 @@ export function SinglePlayerApp() {
   const worldModalOpen = containerOpen || sleepingBed !== null;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [handActionToken, setHandActionToken] = useState(0);
+  const [bowCharging, setBowCharging] = useState(false);
+  const [bowChargeMs, setBowChargeMs] = useState(0);
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
@@ -774,6 +781,57 @@ export function SinglePlayerApp() {
         return gameBlock ? miningSeconds(gameBlock, inventoryRef.current[selectedRef.current]?.itemId) : 0.2;
       },
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
+      isRangedWeaponSelected: () => inventoryRef.current[selectedRef.current]?.itemId === "bow"
+        && countItem(inventoryRef.current, "arrow") > 0,
+      onRangedChargeChange: (charging, normalizedCharge) => {
+        setBowCharging(charging);
+        setBowChargeMs(charging ? normalizedCharge * 1_000 : 0);
+      },
+      onRangedCancel: () => {
+        setBowCharging(false);
+        setBowChargeMs(0);
+      },
+      onRangedRelease: (intent) => {
+        const profile = rangedChargeProfile(intent.chargeMs);
+        const slot = selectedRef.current;
+        if (!profile || inventoryRef.current[slot]?.itemId !== "bow") return;
+        const bowUse = applyConfirmedDurableItemUse(inventoryRef.current, slot, "bow");
+        if (!bowUse.used) return;
+        const arrowUse = removeItem(bowUse.inventory, "arrow", 1);
+        if (arrowUse.remainder !== 0) return;
+
+        updateInventory(arrowUse.inventory);
+        const launchedAt = performance.now();
+        const flightMs = Math.max(80, Math.min(5_000, intent.target.distance / profile.speed * 1_000));
+        const projectile: PlayerProjectileVisual = {
+          projectileId: `local_arrow_${++localArrowSequenceRef.current}`,
+          originX: intent.origin[0],
+          originY: intent.origin[1],
+          originZ: intent.origin[2],
+          velocityX: intent.direction[0] * profile.speed,
+          velocityY: intent.direction[1] * profile.speed,
+          velocityZ: intent.direction[2] * profile.speed,
+          launchedAt,
+          expiresAt: launchedAt + flightMs,
+          gravity: RANGED_GRAVITY,
+        };
+        playerProjectilesRef.current = [
+          ...playerProjectilesRef.current.filter((candidate) => candidate.launchedAt + 5_000 > launchedAt),
+          projectile,
+        ].slice(-96);
+        engine.setPlayerProjectiles(playerProjectilesRef.current);
+        audio.play("playerAttack", { seed: projectile.projectileId, intensity: 0.62 });
+        if (intent.target.kind === "mob") {
+          const hit = engine.damageLocalMobWithRangedShot(intent.target.id, profile.damage);
+          if (hit.applied) audio.play("mobHurt", { seed: `${projectile.projectileId}:${intent.target.id}`, intensity: 0.7 });
+        }
+        if (bowUse.broke) setMessages((current) => [...current.slice(-2), {
+          id: `bow-break-${projectile.projectileId}`,
+          text: "Bow broke",
+          detail: "The last durability point was consumed by this shot.",
+          tone: "warning",
+        }]);
+      },
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
       canSprint: () => hungerRef.current > 6,
       canMineBlock: (block) => {
@@ -1262,6 +1320,13 @@ export function SinglePlayerApp() {
       <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}`}</style>
       <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
       <span aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}`} className="lc-singleplayer-coordinates">XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z}</span>
+      {inventory[selected]?.itemId === "bow" ? (
+        <FirstPersonBow
+          chargeMs={bowChargeMs}
+          charging={bowCharging}
+          hidden={deathScreenOpen || pauseOpen || inventoryOpen || worldModalOpen}
+        />
+      ) : null}
       <GameHud
         connected={false}
         craftingContext={craftingContext}
@@ -1270,7 +1335,7 @@ export function SinglePlayerApp() {
         equipment={equipment}
         handActionToken={handActionToken}
         health={health}
-        hideFirstPersonFeedback={worldModalOpen}
+        hideFirstPersonFeedback={worldModalOpen || inventory[selected]?.itemId === "bow"}
         hunger={hunger}
         inventory={inventory}
         inventoryAuthorityEpoch={0}

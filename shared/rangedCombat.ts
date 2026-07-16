@@ -292,10 +292,30 @@ function normalize(value: Vec3): Vec3 | null {
   return length > 1e-9 ? { x: value.x / length, y: value.y / length, z: value.z / length } : null;
 }
 
+export type RangedChargeProfile = Readonly<{
+  power: number;
+  speed: number;
+  damage: number;
+}>;
+
+/** Shared draw curve used by both Lakebed authority and the offline combat path. */
+export function rangedChargeProfile(chargeMs: number): RangedChargeProfile | null {
+  if (!Number.isFinite(chargeMs) || chargeMs < RANGED_MIN_CHARGE_MS || chargeMs > RANGED_MAX_CHARGE_MS) return null;
+  const draw = Math.min(1, chargeMs / RANGED_FULL_CHARGE_MS);
+  const power = Math.min(1, (draw * draw + draw * 2) / 3);
+  return {
+    power,
+    speed: RANGED_MIN_SPEED + (RANGED_MAX_SPEED - RANGED_MIN_SPEED) * power,
+    damage: Math.max(1, Math.round(2 + power * 4)),
+  };
+}
+
 /** The request has no origin or direction fields: both come from Lakebed presence. */
 export function authoritativeRangedTrajectory(pose: CombatPose, chargeMs: number): RangedTrajectory | null {
   if (![pose.x, pose.y, pose.z, pose.yaw, pose.pitch].every(Number.isFinite)
-    || !Number.isFinite(chargeMs) || chargeMs < RANGED_MIN_CHARGE_MS || chargeMs > RANGED_MAX_CHARGE_MS) return null;
+  ) return null;
+  const profile = rangedChargeProfile(chargeMs);
+  if (!profile) return null;
   const cosPitch = Math.cos(pose.pitch);
   const direction = normalize({
     x: Math.sin(pose.yaw) * cosPitch,
@@ -303,15 +323,11 @@ export function authoritativeRangedTrajectory(pose: CombatPose, chargeMs: number
     z: -Math.cos(pose.yaw) * cosPitch,
   });
   if (!direction) return null;
-  const draw = Math.min(1, chargeMs / RANGED_FULL_CHARGE_MS);
-  const power = Math.min(1, (draw * draw + draw * 2) / 3);
   return {
     origin: { x: pose.x, y: pose.y + 1.62, z: pose.z },
     direction,
     chargeMs,
-    power,
-    speed: RANGED_MIN_SPEED + (RANGED_MAX_SPEED - RANGED_MIN_SPEED) * power,
-    damage: Math.max(1, Math.round(2 + power * 4)),
+    ...profile,
   };
 }
 
