@@ -23,7 +23,7 @@ const HUD_CSS = `
 .lc-crosshair::before { height: 2px; width: 16px; }.lc-crosshair::after { height: 16px; width: 2px; }
 .lc-first-person { bottom: -72px; height: clamp(272px,32vw,372px); position: absolute; right: -16px; width: clamp(250px,30vw,372px); z-index: 1; }
 .lc-first-person__rig { display: block; height: 100%; position: relative; transform: translate3d(0,0,0) rotateZ(-2deg); transform-origin: 91% 96%; transform-style: preserve-3d; width: 100%; }
-.lc-first-person__rig.is-swinging { animation: lc-held-item-swing 285ms cubic-bezier(.2,.72,.24,1) both; }
+.lc-first-person__rig.is-swinging { animation: lc-held-item-swing 220ms cubic-bezier(.2,.72,.24,1) both; }
 .lc-first-person__arm-scene { bottom: -1%; height: 86%; perspective: 620px; perspective-origin: 72% 42%; position: absolute; right: -1%; width: 48%; z-index: 1; }
 .lc-first-person__arm { bottom: -8%; height: 104%; position: absolute; right: 10%; transform: rotateZ(-28deg) rotateX(-6deg) rotateY(20deg); transform-origin: 50% 100%; transform-style: preserve-3d; width: 45%; }
 .lc-first-person__arm-segment { --lc-arm-front: #b97855; --lc-arm-side: #754531; --lc-arm-top: #dda078; bottom: 0; display: block; height: 48%; left: 0; position: absolute; transform-style: preserve-3d; width: 100%; }
@@ -59,7 +59,7 @@ const HUD_CSS = `
 .lc-held-voxel[data-block="leaves"] .lc-held-voxel__face { background-image: linear-gradient(45deg,transparent 0 35%,var(--lc-voxel-accent) 35% 57%,transparent 57%),linear-gradient(135deg,transparent 0 61%,var(--lc-voxel-dark) 61% 76%,transparent 76%); background-size: 25px 27px,31px 33px; }
 .lc-held-voxel[data-block="glass"] { filter: drop-shadow(5px 8px 0 rgba(0,0,0,.16)); }.lc-held-voxel[data-block="glass"] .lc-held-voxel__face { background-color: color-mix(in srgb,var(--lc-voxel-face) 45%,transparent); background-image: linear-gradient(135deg,transparent 0 22%,rgba(255,255,255,.72) 22% 28%,transparent 28% 68%,var(--lc-voxel-accent) 68% 74%,transparent 74%); box-shadow: inset 5px 5px rgba(255,255,255,.18),inset -6px -6px rgba(57,117,121,.17); }
 .lc-held-voxel[data-block="tnt"] .lc-held-voxel__face:not(.lc-held-voxel__face--top) { background-image: linear-gradient(0deg,transparent 0 32%,#efe1bb 32% 66%,transparent 66%),repeating-linear-gradient(90deg,transparent 0 14px,var(--lc-voxel-dark) 14px 18px); }.lc-held-voxel[data-block="tnt"] .lc-held-voxel__face--top { background-image: radial-gradient(circle at 50% 50%,#24211d 0 9%,transparent 10%),repeating-conic-gradient(var(--lc-voxel-accent) 0 12deg,var(--lc-voxel-dark) 13deg 24deg); }.lc-held-voxel[data-block="tnt"] .lc-held-voxel__face::after { content:none; }
-@keyframes lc-held-item-swing { 0% { transform: translate3d(0,0,0) rotateZ(-2deg) rotateX(0); } 16% { transform: translate3d(-4%,1%,0) rotateZ(-6deg) rotateX(2deg); } 48% { transform: translate3d(-42%,4%,0) rotateZ(-20deg) rotateX(8deg) scale(.96); } 72% { transform: translate3d(-18%,2%,0) rotateZ(-9deg) rotateX(3deg) scale(.99); } 100% { transform: translate3d(0,0,0) rotateZ(-2deg) rotateX(0); } }
+@keyframes lc-held-item-swing { 0%,100% { transform: translate3d(0,0,0) rotateZ(-2deg) rotateX(0); } 45% { transform: translate3d(-35%,18%,0) rotateZ(-38deg) rotateX(12deg) scale(.92); } }
 .lc-survival-wrap { bottom: max(6px, env(safe-area-inset-bottom)); left: 50%; pointer-events: auto; position: absolute; transform: translateX(-50%); width: 364px; z-index: 2; }
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 39px; margin: 0 2px 2px; }
 .lc-meter { align-items: center; display: flex; height: 18px; }

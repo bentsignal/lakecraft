@@ -40,6 +40,7 @@ const MOB_HURT_FLASH_MIX = 0.62;
 
 export const MAX_PRIMED_TNT_VISUALS = TNT_MAX_ACTIVE_FUSES;
 export const PRIMED_TNT_VERTICES_PER_ENTITY = 4 * VERTICES_PER_BOX;
+export const MOB_MESH_INTERVAL_MS = 1_000 / 30;
 
 export interface PrimedTntVisualSample {
   progress: number;
@@ -92,6 +93,7 @@ export interface MobRenderer {
     interpolation: number,
     animationSeconds: number,
     projectiles?: readonly MobProjectileSnapshot[],
+    frameNowMs?: number,
   ): MobRenderStats;
   destroy(): void;
 }
@@ -428,6 +430,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   };
   let uploadFloatCount = -1;
   let uploadView = vertices;
+  let lastMeshAt = -Infinity;
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
   gl.bufferData(gl.ARRAY_BUFFER, vertices.byteLength, gl.DYNAMIC_DRAW);
 
@@ -480,7 +483,12 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
       primedCount += 1;
       return true;
     },
-    rebuild(poses, cameraX, cameraZ, facingX, facingZ, interpolation, animationSeconds, projectiles = []) {
+    rebuild(poses, cameraX, cameraZ, facingX, facingZ, interpolation, animationSeconds, projectiles = [], frameNowMs) {
+      if (Number.isFinite(frameNowMs)) {
+        const frameClock = frameNowMs as number;
+        if (frameClock >= lastMeshAt && frameClock - lastMeshAt + 0.001 < MOB_MESH_INTERVAL_MS) return stats;
+        lastMeshAt = frameClock;
+      }
       writer.offset = 0;
       stats.totalMobCount = poses.length;
       stats.visibleMobCount = 0;

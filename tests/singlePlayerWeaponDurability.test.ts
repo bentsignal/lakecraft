@@ -77,7 +77,8 @@ const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const delegated = engine.slice(engine.indexOf("if (options.onMobAttack)"), engine.indexOf("const result = damageMob"));
 assert.equal(delegated.includes("onLocalMobHit"), false, "Lakebed-delegated multiplayer attacks never use local durability authority");
-assert.ok(engine.includes("if (result.applied) options.onLocalMobHit?.();"));
+assert.match(engine, /if \(result\.applied\) \{[\s\S]*?onLocalMobHit\?\.\(\);/,
+  "only a confirmed local health reduction spends one weapon use");
 assert.ok(app.includes("onLocalMobHit: () =>"));
 assert.ok(app.includes('applyConfirmedToolUse(inventoryRef.current, slot, "attack", held)'));
 assert.ok(app.includes("if (!wear.used) return;"));

@@ -108,7 +108,7 @@ import {
 } from "../../shared/creeperExplosion.ts";
 import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/fallingBlocks.ts";
 import { fallDamageForDistance } from "../../shared/fallDamageAuthority.ts";
-import { mitigatedPlayerDamage } from "../../shared/playerCombat.ts";
+import { PLAYER_ATTACK_COOLDOWN_MS, mitigatedPlayerDamage } from "../../shared/playerCombat.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
@@ -1187,6 +1187,14 @@ function chunkIntersectsView(key: string, mesh: ChunkMesh, mvp: Float32Array): b
   return true;
 }
 
+export function localMobAttackIsReady(readyAt: number, now: number): boolean {
+  return Number.isFinite(now) && now >= readyAt;
+}
+
+export function advanceLocalMobAttackReadyAt(readyAt: number, now: number, applied: boolean): number {
+  return applied ? now + PLAYER_ATTACK_COOLDOWN_MS : readyAt;
+}
+
 export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngineOptions = {}): VoxelEngine {
   const gl = canvas.getContext("webgl", { alpha: false, antialias: true });
   if (!gl) throw new Error("Lakecraft needs a browser with WebGL enabled.");
@@ -1369,6 +1377,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let pausedVisualTime = 0;
   let frameId = 0;
   let lastFrame = 0;
+  let localMobAttackReadyAt = 0;
   let lastPoseSent = 0;
   let poseDirty = true;
   let grounded = false;
@@ -2255,7 +2264,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     };
   }
 
-  function render(now: number, dt: number): void {
+  function render(now: number, dt: number, frameNow: number): void {
     resize();
     const eye = cameraEye();
     const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
@@ -2305,6 +2314,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         : Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
       now / 1_000,
       mobProjectileSnapshots,
+      frameNow,
     );
     mobVertexCount = mobStats.vertexCount;
     visibleMobCount = mobStats.visibleMobCount;
@@ -2532,7 +2542,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     if (!paused) update(dt, now);
     const visualNow = paused ? pausedVisualTime : now;
-    render(visualNow, paused ? 0 : dt);
+    render(visualNow, paused ? 0 : dt, now);
     if (now - lastPerformanceSent >= 500) {
       lastPerformanceSent = now;
       options.onPerformanceStats?.(getPerformanceStats());
@@ -2664,11 +2674,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       void options.onMobAttack({ ...mobTarget }, attackDamage);
       return true;
     }
+    clearMining();
+    const attackNow = performance.now();
+    if (!localMobAttackIsReady(localMobAttackReadyAt, attackNow)) return true;
     const result = damageMob(mobSimulation, mobTarget.id, attackDamage, options.onMobDrops);
     if (!result.found) return false;
-    clearMining();
-    if (result.applied) options.onLocalMobHit?.();
-    options.onHandAction?.("attack");
+    if (result.applied) {
+      localMobAttackReadyAt = advanceLocalMobAttackReadyAt(localMobAttackReadyAt, attackNow, true);
+      options.onLocalMobHit?.();
+      options.onHandAction?.("attack");
+    }
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     return true;
   }

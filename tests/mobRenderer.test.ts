@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createMobRenderer, mobVertexCountForKind } from "../client/game/mobRenderer.ts";
+import { MOB_MESH_INTERVAL_MS, createMobRenderer, mobVertexCountForKind } from "../client/game/mobRenderer.ts";
 import type { MobKind, MobPoseSnapshot } from "../client/game/mobs.ts";
 
 class FakeWebGl {
@@ -320,5 +320,40 @@ assert.equal(reusedStats, stats, "renderer stats should be reused rather than al
 assert.equal(reusedStats.vertexCount, 0);
 renderer.destroy();
 assert.equal(gl.deleted, true);
+
+const cadenceGl = new FakeWebGl();
+const cadenceRenderer = createMobRenderer(cadenceGl as unknown as WebGLRenderingContext);
+const cadenceSpider = pose("spider", 0, 4, 90);
+const cadenceStats = cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0, [], 0);
+const firstCadenceGeometry = cadenceGl.uploaded!.slice();
+cadenceSpider.x = 2;
+assert.equal(cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.016, [], 16), cadenceStats);
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.032, [], 32);
+assert.equal(cadenceGl.uploadCalls, 1, "16 and 32ms frames reuse the retained 30Hz mob batch");
+assert.deepEqual(cadenceGl.uploaded, firstCadenceGeometry, "a skipped mesh frame cannot mutate retained GPU input");
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.034, [], 34);
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.05, [], 50);
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.068, [], 68);
+assert.equal(cadenceGl.uploadCalls, 3, "0, 34, and 68ms are the only due uploads");
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.01, [], 10);
+assert.equal(cadenceGl.uploadCalls, 4, "a backward frame clock rebuilds instead of stalling");
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.02, [], 20);
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.044, [], 44);
+assert.equal(cadenceGl.uploadCalls, 5, "the cadence recovers from the rolled-back clock");
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.05);
+cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.06, [], Number.NaN);
+assert.equal(cadenceGl.uploadCalls, 7, "omitted and nonfinite clocks preserve immediate deterministic rebuilds");
+cadenceRenderer.destroy();
+
+const stressGl = new FakeWebGl();
+const stressRenderer = createMobRenderer(stressGl as unknown as WebGLRenderingContext);
+for (let frame = 0; frame < 600; frame += 1) {
+  stressRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, frame / 60, [], frame * 1_000 / 60);
+}
+assert.ok(stressGl.uploadCalls >= 299 && stressGl.uploadCalls <= 301,
+  `ten simulated seconds stay at 30Hz (received ${stressGl.uploadCalls} uploads)`);
+assert.equal(stressGl.createBufferCalls, 1, "cadence limiting never reallocates the retained mob buffer");
+assert.equal(MOB_MESH_INTERVAL_MS, 1_000 / 30);
+stressRenderer.destroy();
 
 console.log("lakecraft mob renderer geometry tests: ok");
