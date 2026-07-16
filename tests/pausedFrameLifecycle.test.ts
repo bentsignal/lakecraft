@@ -182,9 +182,8 @@ assert.equal(frames.size, 0, "pause calls after destroy cannot restart the loop"
 assert.deepEqual(glCalls, destroyedCalls, "destroyed engines remain render-inert");
 
 const appSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-const pausePredicate = "pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || document.visibilityState !== \"visible\"";
-assert.ok(appSource.includes(pausePredicate),
-  "menu, inventory/crafting, container/sleep modal, death, and hidden-document states share the engine pause gate");
+assert.equal(appSource.match(/singlePlayerGameplayPaused\(\{/g)?.length, 3,
+  "startup, UI transitions, and visibility transitions share one pause predicate");
 assert.equal(appSource.match(/engineRef\.current\?\.setPaused\(paused\)/g)?.length, 2,
   "both UI-state and visibility transitions preserve the pause contract");
 

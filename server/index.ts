@@ -2,6 +2,7 @@ import { boolean, capsule, endpoint, mutation, query, string, table, text, type 
 import {
   CHAT_RATE_LIMIT_MS,
   RECENT_CHAT_LIMIT,
+  fernHollowServerStatus,
   validateChatMessage,
   validateUsername
 } from "../shared/multiplayer";
@@ -1998,6 +1999,16 @@ export default capsule({
         .order("desc")
         .first()) ?? null
     ),
+
+    /** One reactive server-list snapshot; presence writes invalidate it without a client poll loop. */
+    fernHollowStatus: query(async (ctx) => {
+      const serverNow = Date.now();
+      const presences = await ctx.db.playerPresence
+        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .order("desc")
+        .take(MAX_SLEEP_PARTICIPANTS);
+      return fernHollowServerStatus(presences, serverNow);
+    }),
 
     /** Bounded profile event feed; currently one immutable claim exists per user. */
     currentProfiles: query(async (ctx) =>

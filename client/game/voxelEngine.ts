@@ -122,15 +122,19 @@ import {
   postureTargetsForMovement,
   resolvePlayerMovement,
   resolveSneakIntent,
+  RELEASED_SPRINT_CONTROLS,
   sampleHeadBob,
-  shouldHoldSprintAfterControlKeyDown,
+  sprintControlHeld,
   smoothMovementValue,
   smoothPlayerPosture,
+  updateSprintControl,
   writeHorizontalMovementDelta,
   writePlayerEye,
   type HeadBobOffsets,
   type PlayerMovementMode,
   type PlayerPostureTargets,
+  type SprintControlCode,
+  type SprintControlState,
 } from "./playerMovement.ts";
 import {
   IDLE_PRIMARY_ACTION_HOLD,
@@ -1459,6 +1463,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const localCreeperExplosions: LocalCreeperExplosionEvent[] = [];
   const velocity: Vec3 = [0, 0, 0];
   const keys = new Set<string>();
+  let sprintControls: SprintControlState = RELEASED_SPRINT_CONTROLS;
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
   let worldVertexCount = 0;
   let remoteVertexCount = 0;
@@ -1558,6 +1563,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function cancelSecondaryPlacementHold(releaseButton = false): void {
     secondaryPlacementHold = releaseSecondaryPlacement();
     if (releaseButton) secondaryButtonHeld = false;
+  }
+
+  function clearHeldMovementInput(): void {
+    keys.clear();
+    sprintControls = RELEASED_SPRINT_CONTROLS;
   }
 
   function updateMiningCrackGeometry(): void {
@@ -2149,7 +2159,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         resetMovementView();
         playerViewSuspended = true;
       }
-      keys.clear();
+      clearHeldMovementInput();
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
@@ -2174,7 +2184,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       movementMode,
       () => collides(pose.x, pose.y, pose.z, STANDING_BODY_HEIGHT),
     );
-    const sprintHeld = keys.has("ControlLeft") || keys.has("ControlRight");
+    const sprintHeld = sprintControlHeld(sprintControls);
     // Once attached, W/S become vertical controls while strafing remains the
     // deliberate way to step off the non-solid ladder.
     const forward = ladderAtFrameStart ? 0 : forwardInput;
@@ -2713,13 +2723,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       event.preventDefault();
     }
     const controlKey = event.code === "ControlLeft" || event.code === "ControlRight";
-    if (controlKey && !shouldHoldSprintAfterControlKeyDown(
-      keys.has("ControlLeft") || keys.has("ControlRight"),
-      event.repeat,
-    )) {
-      keys.delete("ControlLeft");
-      keys.delete("ControlRight");
-    } else keys.add(event.code);
+    if (controlKey) sprintControls = updateSprintControl(sprintControls, event.code as SprintControlCode, true);
+    else keys.add(event.code);
     if (event.code === "Space") {
       // Space is a climb command while touching a ladder; do not inject the
       // normal 8.25-block/s ground impulse before the next physics frame.
@@ -2731,18 +2736,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onKeyUp(event: KeyboardEvent): void {
-    keys.delete(event.code);
-    // Browsers occasionally lose the matching modifier keyup while pointer
-    // lock changes or a system shortcut takes focus. Any keyup that reports
-    // Ctrl released is authoritative and clears both physical Ctrl codes.
-    if (!event.ctrlKey) {
-      keys.delete("ControlLeft");
-      keys.delete("ControlRight");
-    }
+    if (event.code === "ControlLeft" || event.code === "ControlRight") {
+      sprintControls = updateSprintControl(sprintControls, event.code, false);
+    } else keys.delete(event.code);
   }
 
   function releaseTransientInput(): void {
-    keys.clear();
+    clearHeldMovementInput();
     cancelPrimaryActionHold();
     cancelSecondaryPlacementHold(true);
     clearRangedCharge(true);
@@ -2969,7 +2969,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onPointerLockChange(): void {
     if (document.pointerLockElement !== canvas) {
-      keys.clear();
+      clearHeldMovementInput();
       cancelPrimaryActionHold();
       cancelSecondaryPlacementHold(true);
       clearRangedCharge(true);
@@ -3264,7 +3264,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const next = nextPaused === true;
       if (paused === next) return paused;
       paused = next;
-      keys.clear();
+      clearHeldMovementInput();
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
@@ -3322,7 +3322,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
-      keys.clear();
+      clearHeldMovementInput();
       resetMovementView();
       playerViewSuspended = false;
       fallAirborne = false;
@@ -3369,7 +3369,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
-      keys.clear();
+      clearHeldMovementInput();
       clearMining();
       cancelSecondaryPlacementHold(true);
       clearRangedCharge(true);
@@ -3408,7 +3408,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
-      keys.clear();
+      clearHeldMovementInput();
       resetMovementView();
       playerViewSuspended = false;
       fallAirborne = false;

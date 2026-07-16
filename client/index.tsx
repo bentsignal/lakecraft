@@ -3305,7 +3305,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         displayName={profile?.username ?? auth.displayName}
         email={auth.email}
         joinPhase={joinPhase}
-        onlineCount={profile ? 1 : 0}
         settings={clientSettings}
         onJoinWorld={enterWorld}
         onJoinSingleplayer={() => { window.location.search = "?singleplayer=1"; }}

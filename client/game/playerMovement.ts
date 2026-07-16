@@ -117,9 +117,24 @@ export function movementActivityMultiplier(mode: PlayerMovementMode, moving = mo
   }
 }
 
-/** A fresh Ctrl press toggles off any stale held state; native repeats keep it held. */
-export function shouldHoldSprintAfterControlKeyDown(controlHeld: boolean, repeat: boolean): boolean {
-  return !controlHeld || repeat;
+export type SprintControlCode = "ControlLeft" | "ControlRight";
+export type SprintControlState = Readonly<{ left: boolean; right: boolean }>;
+
+export const RELEASED_SPRINT_CONTROLS: SprintControlState = Object.freeze({ left: false, right: false });
+
+/** Pure physical-key transition; native repeats are idempotent and keyup always releases its side. */
+export function updateSprintControl(
+  state: SprintControlState,
+  code: SprintControlCode,
+  pressed: boolean,
+): SprintControlState {
+  const left = code === "ControlLeft" ? pressed : state.left;
+  const right = code === "ControlRight" ? pressed : state.right;
+  return left === state.left && right === state.right ? state : { left, right };
+}
+
+export function sprintControlHeld(state: SprintControlState): boolean {
+  return state.left || state.right;
 }
 
 /**

@@ -16,10 +16,12 @@ import {
   postureTargetsForMovement,
   resolvePlayerMovement,
   resolveSneakIntent,
+  RELEASED_SPRINT_CONTROLS,
   sampleHeadBob,
-  shouldHoldSprintAfterControlKeyDown,
+  sprintControlHeld,
   smoothMovementValue,
   smoothPlayerPosture,
+  updateSprintControl,
   writeHorizontalMovementDelta,
   writePlayerEye,
   type PlayerMovementMode,
@@ -29,10 +31,14 @@ assert.equal(WALK_SPEED, 4.35);
 assert.equal(SPRINT_SPEED, 5.6);
 assert.equal(SNEAK_SPEED, 1.3);
 
-assert.equal(shouldHoldSprintAfterControlKeyDown(false, false), true, "the first Ctrl press starts held sprint");
-assert.equal(shouldHoldSprintAfterControlKeyDown(true, true), true, "native key repeat cannot toggle sprint off");
-assert.equal(shouldHoldSprintAfterControlKeyDown(true, false), false,
-  "a fresh Ctrl press clears stale state when the browser lost the prior keyup");
+const leftControl = updateSprintControl(RELEASED_SPRINT_CONTROLS, "ControlLeft", true);
+assert.equal(sprintControlHeld(leftControl), true, "the first Ctrl press starts held sprint");
+assert.equal(updateSprintControl(leftControl, "ControlLeft", true), leftControl, "native key repeat is idempotent");
+const bothControls = updateSprintControl(leftControl, "ControlRight", true);
+assert.equal(sprintControlHeld(updateSprintControl(bothControls, "ControlLeft", false)), true,
+  "releasing one Ctrl preserves the independently held side");
+assert.deepEqual(updateSprintControl(leftControl, "ControlLeft", false), RELEASED_SPRINT_CONTROLS,
+  "releasing the held Ctrl stops sprint immediately");
 
 const diagonal = normalizeMovementInput(1, 1);
 assert.ok(Math.abs(diagonal.magnitude - 1) < 1e-12, "diagonal input is normalized");

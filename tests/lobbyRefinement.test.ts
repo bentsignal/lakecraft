@@ -11,7 +11,9 @@ assert.equal(lobby.includes(">Sign In with Google<"), false, "Google branding is
 assert.ok(lobby.includes(">Sign In</button>"), "the multiplayer account panel exposes a compact sign-in action");
 assert.ok(lobby.includes(">Set Name</button>"), "signed-in accounts without a username expose concise name setup in the account panel");
 assert.ok(lobby.includes('role="listbox"') && lobby.includes('role="option"'), "the multiplayer screen exposes a semantic server list");
-assert.ok(lobby.includes('{count} / 20'), "the Fern Hollow row displays player occupancy");
+assert.ok(lobby.includes('useQuery<FernHollowServerStatus>("fernHollowStatus")'),
+  "the visible multiplayer directory subscribes to one Lakebed server-status projection");
+assert.ok(lobby.includes('{count} / {capacity}'), "the Fern Hollow row displays authoritative player occupancy and capacity");
 assert.ok(lobby.includes("Join Server") && lobby.includes(">Back<"), "the server browser exposes the requested Join and Back actions");
 assert.equal(lobby.includes("Direct Connection"), false, "the one-server directory has no inert action");
 assert.ok(styles.includes(".lc-dirt-background") && styles.includes("image-rendering:pixelated"), "the server directory uses a pixelated dirt backdrop");

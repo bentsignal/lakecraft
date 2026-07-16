@@ -13,10 +13,12 @@ assert.equal(singleplayer.includes("useMutation"), false, "single-player must no
 assert.ok(singleplayer.includes("saveSinglePlayerSnapshot(localStorage"), "single-player state should persist through the verified browser journal");
 assert.ok(singleplayer.includes("loadSinglePlayerSave(localStorage"), "single-player should restore the browser-local world before engine startup");
 assert.ok(singleplayer.includes("createVoxelEngine"), "single-player uses the real voxel engine");
-assert.ok(singleplayer.includes("const [pauseOpen, setPauseOpen] = useState(false)"), "single-player enters the world without opening the pause menu");
+assert.ok(singleplayer.includes("const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN)"), "single-player enters the world without opening the pause menu");
 assert.ok(singleplayer.includes("const [optionsOpen, setOptionsOpen] = useState(false)"), "single-player never enters behind Options");
-assert.match(singleplayer, /const paused = pauseOpen \|\| inventoryOpen \|\| worldModalOpen \|\| deathScreenOpen/,
-  "only an explicit gameplay modal can pause the newly joined local world");
+assert.ok(singleplayer.includes("engine.setPaused(initiallyPaused);\n    setLocalFusesPausedRef.current(initiallyPaused);\n    engine.start();"),
+  "the initial active/modal state reaches the engine before its first frame");
+assert.ok(singleplayer.includes('canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0}'),
+  "the active single-player canvas is immediately focusable and pointer-ready");
 assert.ok(lobby.includes("Singleplayer"), "the title screen exposes single-player");
 
 console.log("single-player offline mode tests passed");

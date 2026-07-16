@@ -4,17 +4,19 @@ import { readFileSync } from "node:fs";
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
-assert.ok(engine.includes('keys.has("ControlLeft") || keys.has("ControlRight")'), "either Ctrl key requests sprint");
+assert.ok(engine.includes("sprintControlHeld(sprintControls)"), "either physical Ctrl side requests sprint");
 assert.ok(engine.includes('"ControlLeft", "ControlRight"].includes(event.code)'), "pointer-locked movement prevents browser Ctrl shortcuts");
-assert.ok(engine.includes('if (!event.ctrlKey)'), "a keyup reporting Ctrl released clears stale sprint modifiers");
-assert.ok(engine.includes("shouldHoldSprintAfterControlKeyDown"), "a fresh Ctrl press can toggle off a missed-keyup latch");
 const keyDown = engine.slice(engine.indexOf("function onKeyDown"), engine.indexOf("function onKeyUp"));
-assert.ok(keyDown.indexOf("shouldHoldSprintAfterControlKeyDown") < keyDown.indexOf("else keys.add(event.code)"),
-  "Ctrl reconciliation runs before the physical key is retained");
-assert.match(keyDown, /keys\.delete\("ControlLeft"\);[\s\S]*?keys\.delete\("ControlRight"\);/,
-  "toggle recovery clears either stale physical Ctrl code");
+const keyUp = engine.slice(engine.indexOf("function onKeyUp"), engine.indexOf("function releaseTransientInput"));
+assert.ok(keyDown.includes("updateSprintControl(sprintControls, event.code as SprintControlCode, true)"),
+  "keydown records the exact physical Ctrl side without toggle heuristics");
+assert.ok(keyUp.includes("updateSprintControl(sprintControls, event.code, false)"),
+  "keyup releases the exact Ctrl side without trusting modifier metadata");
+assert.equal(keyUp.includes("event.ctrlKey"), false, "keyup cannot leave sprint latched through inconsistent modifier metadata");
 assert.ok(engine.includes('window.addEventListener("blur", onWindowBlur)'), "focus loss releases held movement input");
 assert.ok(engine.includes('document.addEventListener("visibilitychange", onVisibilityChange)'), "backgrounding the tab releases held movement input");
+const transientReset = engine.slice(engine.indexOf("function releaseTransientInput"), engine.indexOf("function onWindowBlur"));
+assert.ok(transientReset.includes("clearHeldMovementInput();"), "blur and background handlers share the complete sprint reset");
 assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and low-ceiling posture use the tested release helper");
 assert.ok(engine.includes('movementMode === "sneak" && grounded'), "ledge protection is limited to grounded sneaking");
 assert.ok(engine.includes("clampSneakAxisMovement(amount"), "sneak movement uses the deterministic support clamp");
@@ -28,6 +30,13 @@ assert.ok(engine.includes("bobEnvelope = smoothMovementValue("), "head bob start
 assert.ok(engine.includes("resetMovementView();"), "pointer loss and reconciliation reset transient camera state");
 assert.ok(engine.includes("const mustRemainSneaking = collides"), "resets preserve crouch under a low ceiling");
 assert.ok(engine.includes("playerViewSuspended = true"), "death resets transient view state exactly once");
+const deathResetStart = engine.indexOf("if (playerHealth <= 0)");
+const deathReset = engine.slice(deathResetStart, engine.indexOf("playerViewSuspended = false", deathResetStart));
+const pointerReset = engine.slice(engine.indexOf("function onPointerLockChange"), engine.indexOf("function onContextMenu"));
+const pauseReset = engine.slice(engine.indexOf("setPaused(nextPaused)"), engine.indexOf("isPaused()"));
+assert.ok(deathReset.includes("clearHeldMovementInput();"), "death releases sprint before another movement frame");
+assert.ok(pointerReset.includes("clearHeldMovementInput();"), "pointer-lock loss releases sprint");
+assert.ok(pauseReset.includes("clearHeldMovementInput();"), "opening a menu releases sprint");
 assert.ok(!engine.includes("pose.y + 1.62"), "no stale fixed interaction eye remains in the engine");
 assert.ok(client.includes("canSprint: () => hungerRef.current > 6"), "survival hunger gates Ctrl sprint");
 assert.ok(client.includes("activityHalfUnitsForDisplacement") === false, "the client cannot author survival exertion");

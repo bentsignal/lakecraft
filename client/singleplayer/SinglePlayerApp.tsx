@@ -98,6 +98,10 @@ import {
   type SinglePlayerDeathCause,
 } from "./deathPresentation.ts";
 import { consumeSelectedPlacementStack } from "./localPlacement.ts";
+import {
+  SINGLE_PLAYER_INITIAL_PAUSE_OPEN,
+  singlePlayerGameplayPaused,
+} from "./sessionState.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -241,7 +245,7 @@ export function SinglePlayerApp() {
   const [deathStatus, setDeathStatus] = useState("");
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
-  const [pauseOpen, setPauseOpen] = useState(false);
+  const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [clientSettings, setClientSettings] = useState(() => loadClientSettings(window.localStorage));
   const clientSettingsRef = useRef(clientSettings);
@@ -1213,6 +1217,15 @@ export function SinglePlayerApp() {
       && engine.getBlockAt(possibleBed.x, possibleBed.y, possibleBed.z) !== BLOCK.BED) {
       engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
     }
+    const initiallyPaused = singlePlayerGameplayPaused({
+      pauseOpen,
+      inventoryOpen,
+      worldModalOpen,
+      deathScreenOpen,
+      documentVisible: document.visibilityState === "visible",
+    });
+    engine.setPaused(initiallyPaused);
+    setLocalFusesPausedRef.current(initiallyPaused);
     engine.start();
     for (const fuse of [...primedTntRef.current]) {
       if (!primeLocalTnt(fuse.x, fuse.y, fuse.z, Math.max(0, fuse.dueAt - Date.now()), 0, false)) {
@@ -1237,7 +1250,13 @@ export function SinglePlayerApp() {
   }, []);
 
   useEffect(() => {
-    const paused = pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || document.visibilityState !== "visible";
+    const paused = singlePlayerGameplayPaused({
+      pauseOpen,
+      inventoryOpen,
+      worldModalOpen,
+      deathScreenOpen,
+      documentVisible: document.visibilityState === "visible",
+    });
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
   }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen]);
@@ -1276,7 +1295,13 @@ export function SinglePlayerApp() {
     sample();
     const interval = window.setInterval(sample, 1_000);
     const onVisibilityChange = () => {
-      const paused = document.visibilityState !== "visible" || pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen;
+      const paused = singlePlayerGameplayPaused({
+        pauseOpen,
+        inventoryOpen,
+        worldModalOpen,
+        deathScreenOpen,
+        documentVisible: document.visibilityState === "visible",
+      });
       engineRef.current?.setPaused(paused);
       setLocalFusesPausedRef.current(paused);
       sample();

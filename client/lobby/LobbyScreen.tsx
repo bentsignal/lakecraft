@@ -1,5 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useMemo, useState } from "preact/hooks";
+import { useQuery } from "lakebed/client";
+import type { FernHollowServerStatus } from "../../shared/multiplayer";
 import { OptionsDialog } from "../components/OptionsDialog";
 import type { ClientSettings } from "../settings";
 import { LobbyStyles } from "./LobbyStyles";
@@ -19,7 +21,6 @@ export interface LobbyScreenProps {
   worldName?: string;
   worldDescription?: string;
   worldStatus?: LobbyWorldStatus;
-  onlineCount?: number;
   joinPhase?: LobbyJoinPhase;
   queuePosition?: number;
   joinError?: string;
@@ -158,8 +159,9 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
   onChooseUsername: () => void;
   props: LobbyScreenProps;
 }) {
+  const liveStatus = useQuery<FernHollowServerStatus>("fernHollowStatus");
   const phase = props.joinPhase ?? "idle";
-  const status = props.worldStatus ?? "online";
+  const status = liveStatus?.status ?? props.worldStatus ?? "busy";
   const joining = phase === "joining" || phase === "waiting" || phase === "ready";
   const canJoin = props.authState === "ready" && status !== "maintenance" && status !== "offline" && !joining;
   const accountHint = props.authState === "signed_out" ? "Sign in to join this server."
@@ -168,7 +170,8 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
         : status === "maintenance" ? "Server maintenance in progress."
           : status === "offline" ? "The server is currently offline."
             : "Select a server and click Join Server.";
-  const count = Math.max(0, props.onlineCount ?? 0);
+  const count = Math.max(0, liveStatus?.onlinePlayers ?? 0);
+  const capacity = liveStatus?.capacity ?? 20;
 
   return (
     <main className="lc-server-browser">
@@ -186,7 +189,7 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
             </span>
             <span className="lc-server-population">
               <i className={`is-${status}`} aria-hidden="true" />
-              <small>{count} / 20</small>
+              <small>{count} / {capacity}</small>
             </span>
           </button>
         </div>

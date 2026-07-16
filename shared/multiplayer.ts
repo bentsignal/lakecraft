@@ -1,8 +1,35 @@
+import { sleepVoteStatus, type PresenceLike } from "./sleep.ts";
+
 export const USERNAME_MIN_LENGTH = 3;
 export const USERNAME_MAX_LENGTH = 16;
 export const CHAT_MESSAGE_MAX_LENGTH = 180;
 export const CHAT_RATE_LIMIT_MS = 900;
 export const RECENT_CHAT_LIMIT = 80;
+export const FERN_HOLLOW_PLAYER_CAPACITY = 20;
+
+export type FernHollowServerStatus = {
+  status: "online";
+  onlinePlayers: number;
+  capacity: typeof FERN_HOLLOW_PLAYER_CAPACITY;
+  sampledAt: number;
+};
+
+/** Bounded server-list projection over the same active lease used by shared sleep authority. */
+export function fernHollowServerStatus(
+  presences: readonly PresenceLike[],
+  serverNow: number,
+): FernHollowServerStatus {
+  const sampledAt = Number.isFinite(serverNow) ? Math.max(0, Math.floor(serverNow)) : 0;
+  return {
+    status: "online",
+    onlinePlayers: Math.min(
+      FERN_HOLLOW_PLAYER_CAPACITY,
+      sleepVoteStatus(presences, [], sampledAt).activePlayers,
+    ),
+    capacity: FERN_HOLLOW_PLAYER_CAPACITY,
+    sampledAt,
+  };
+}
 
 export type UsernameIssue = "required" | "too_short" | "too_long" | "invalid_characters";
 
