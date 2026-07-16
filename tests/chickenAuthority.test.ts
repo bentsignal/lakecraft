@@ -32,8 +32,8 @@ for (const forged of ["Chicken-5nb-3", "chicken-5nb-1s", "chicken-wrong-3", "cow
 }
 assert.equal(MOB_AUTHORITY_DEFINITIONS.chicken.maxHealth, 4);
 assert.equal(MOB_DEFINITIONS.chicken.maxHealth, 4);
-assert.equal(MOB_DEFINITIONS.chicken.height, 0.8);
-assert.equal(MOB_DEFINITIONS.chicken.targetRadius, 0.38);
+assert.equal(MOB_DEFINITIONS.chicken.height, 1.1, "attack bounds include the visible head");
+assert.equal(MOB_DEFINITIONS.chicken.targetRadius, 0.78, "attack bounds include the visible wings and tail");
 assert.equal(MOB_DEFINITIONS.chicken.passive, true);
 assert.deepEqual(MOB_DEFINITIONS.chicken.drops, MOB_AUTHORITY_DEFINITIONS.chicken.drops);
 

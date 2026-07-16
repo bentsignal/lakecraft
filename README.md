@@ -25,6 +25,7 @@ Singleplayer requires no account and saves only in that browser. The title scree
 - Hold either `Ctrl` while moving forward to sprint (requires more than six hunger); hold either `Shift` to sneak, lower your view, and stop at ledges
 - While touching a ladder, `W` or `Space` climbs, `S` or either `Shift` key descends, and `A`/`D` steps off
 - Hold left click to mine continuously across successive blocks; right click places the selected block
+- Left click a mob to attack it; a successful hit swings the held item and plays immediate hit confirmation
 - Mined resources pop into the single-player world and are collected by walking over them; a full pack leaves them safely on the ground
 - Hold right click with a bow to draw, then release to fire an authoritative arrow
 - Clip oak leaves with shears to recover the block; ordinary breaking has a deterministic sparse apple drop

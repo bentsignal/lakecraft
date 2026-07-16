@@ -48,8 +48,8 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 1.15,
     chaseSpeed: 1.15,
     collisionRadius: 0.45,
-    targetRadius: 0.62,
-    height: 0.9,
+    targetRadius: 1.05,
+    height: 1,
     contactDamage: 0,
     attackCooldownSeconds: 0,
     rangedDamage: 0,
@@ -65,7 +65,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 1,
     chaseSpeed: 1,
     collisionRadius: 0.48,
-    targetRadius: 0.7,
+    targetRadius: 1.22,
     height: 1.35,
     contactDamage: 0,
     attackCooldownSeconds: 0,
@@ -85,7 +85,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 1.05,
     chaseSpeed: 1.05,
     collisionRadius: 0.44,
-    targetRadius: 0.68,
+    targetRadius: 1.16,
     height: 1.25,
     contactDamage: 0,
     attackCooldownSeconds: 0,
@@ -105,8 +105,8 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     moveSpeed: 1.1,
     chaseSpeed: 1.1,
     collisionRadius: 0.3,
-    targetRadius: 0.38,
-    height: 0.8,
+    targetRadius: 0.78,
+    height: 1.1,
     contactDamage: 0,
     attackCooldownSeconds: 0,
     rangedDamage: 0,
@@ -255,6 +255,13 @@ export interface MobSimulation {
   mobs: MobState[];
   projectiles: MobProjectile[];
   pendingProjectileDamage: number;
+}
+
+export interface LocalCreeperExplosionEvent {
+  mobId: string;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export const MOB_SIMULATION_SNAPSHOT_VERSION = 1 as const;
@@ -1024,6 +1031,32 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
   }
   stepMobProjectiles(simulation, input, dt);
   return simulation;
+}
+
+/** Consumes completed offline fuses exactly once and removes those creepers. */
+export function consumeDueLocalCreeperExplosions(
+  simulation: MobSimulation,
+  output: LocalCreeperExplosionEvent[] = [],
+): LocalCreeperExplosionEvent[] {
+  let outputIndex = 0;
+  for (const mob of simulation.mobs) {
+    if (!mob.alive || mob.kind !== "creeper" || mob.fuseStartedAtSeconds <= 0
+      || mob.fuseUntilSeconds <= mob.fuseStartedAtSeconds
+      || simulation.elapsedSeconds < mob.fuseUntilSeconds) continue;
+    const event = output[outputIndex] ?? {} as LocalCreeperExplosionEvent;
+    event.mobId = mob.id;
+    event.x = mob.x;
+    event.y = mob.y;
+    event.z = mob.z;
+    output[outputIndex] = event;
+    outputIndex += 1;
+    mob.alive = false;
+    mob.health = 0;
+    mob.fuseStartedAtSeconds = 0;
+    mob.fuseUntilSeconds = 0;
+  }
+  output.length = outputIndex;
+  return output;
 }
 
 /** Writes live poses into a reusable array for rendering or network snapshots. */

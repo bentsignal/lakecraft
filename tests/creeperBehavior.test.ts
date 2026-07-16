@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createMobSpawns, createMobSimulation, stepMobSimulation, writeMobPoseSnapshots } from "../client/game/mobs.ts";
+import { consumeDueLocalCreeperExplosions, createMobSpawns, createMobSimulation, stepMobSimulation, writeMobPoseSnapshots } from "../client/game/mobs.ts";
 import { canonicalMobSpawnSnapshot, MOB_WORLD_SEED } from "../server/mobWorldAuthority.ts";
 import {
   CREEPER_FUSE_TICKS,
@@ -105,5 +105,9 @@ assert.equal(writeMobPoseSnapshots(local)[0].fuseProgress, 1);
 const dueX = localMob.x;
 localStep({ x: 20, y: 1, z: 0 });
 assert.equal(localMob.x, dueX, "completed local fuse stays put for the future explosion hook");
+const consumed = consumeDueLocalCreeperExplosions(local);
+assert.deepEqual(consumed, [{ mobId: "creeper-test", x: localMob.x, y: localMob.y, z: localMob.z }]);
+assert.equal(localMob.alive, false, "the completed local creeper leaves the rendered mob batch");
+assert.equal(consumeDueLocalCreeperExplosions(local).length, 0, "a completed local fuse is consumed exactly once");
 
 console.log("lakecraft deterministic creeper behavior tests: ok");

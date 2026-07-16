@@ -7,6 +7,7 @@ import {
   phaseAtTime,
   type BlockId as EngineBlockId,
   type DroppedItemRenderItem,
+  type LocalExplosionEdit,
   type VoxelEngine,
   type WorldEdit,
 } from "../game";
@@ -22,6 +23,7 @@ import {
   clampHotbarIndex,
   consumeFood,
   createSurvivalTickState,
+  equippedArmorProtection,
   getDeterministicMiningDrop,
   miningSeconds,
   removeItem,
@@ -633,14 +635,14 @@ export function SinglePlayerApp() {
     setLocalFusesPausedRef.current = setFusesPaused;
     window.addEventListener("pointerdown", unlockAudio, true);
     window.addEventListener("keydown", unlockAudio, true);
-    const primeLocalTnt = (
+    function primeLocalTnt(
       x: number,
       y: number,
       z: number,
       durationMs: number,
       cascadeDepth: number,
       spendTool: boolean,
-    ): boolean => {
+    ): boolean {
       const key = `${x}:${y}:${z}`;
       if (fuseTimers.has(key)) return true;
       if (fuseTimers.size >= 32 || !engineRef.current?.setPrimedTnt(x, y, z, true)) return false;
@@ -681,29 +683,7 @@ export function SinglePlayerApp() {
         primedTntRef.current = primedTntRef.current.filter((fuse) => fuse.x !== x || fuse.y !== y || fuse.z !== z);
         markWorldDirty();
         const edits = engineRef.current?.explodeTnt(x, y, z) ?? [];
-        const destruction = edits.filter((edit) => !edit.chainPrimed);
-        if (!destruction.length) return;
-        for (const edit of destruction) {
-          if (edit.previousBlock === BLOCK.BED) invalidateBrokenBed(edit.x, edit.y, edit.z);
-        }
-        const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
-        for (const edit of destruction) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
-        editsRef.current = [...byCoordinate.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
-        markWorldDirty();
-        audio.play("explosion", { seed: key, intensity: 1 });
-        if (cascadeDepth < 8) {
-          for (const edit of edits.filter((candidate) => candidate.chainPrimed).slice(0, 8)) {
-            const hash = Math.abs(Math.imul(edit.x, 73_856_093) ^ Math.imul(edit.y, 19_349_663)
-              ^ Math.imul(edit.z, 83_492_791) ^ cascadeDepth);
-            primeLocalTnt(edit.x, edit.y, edit.z, 500 + hash % 1_001, cascadeDepth + 1, false);
-          }
-        }
-        setMessages((current) => [...current.slice(-2), {
-          id: `boom-${key}`,
-          text: "Boom!",
-          detail: `${destruction.length} blocks destroyed locally.`,
-          tone: "warning",
-        }]);
+        recordLocalExplosion(key, edits, cascadeDepth);
       };
       const timer: LocalFuseTimer = {
         interval: 0,
@@ -715,7 +695,33 @@ export function SinglePlayerApp() {
       fuseTimers.set(key, timer);
       scheduleFuse(key, timer);
       return true;
-    };
+    }
+    function recordLocalExplosion(key: string, edits: readonly LocalExplosionEdit[], cascadeDepth: number): void {
+      const destruction = edits.filter((edit) => !edit.chainPrimed);
+      for (const edit of destruction) {
+        if (edit.previousBlock === BLOCK.BED) invalidateBrokenBed(edit.x, edit.y, edit.z);
+      }
+      if (destruction.length) {
+        const byCoordinate = new Map(editsRef.current.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit]));
+        for (const edit of destruction) byCoordinate.set(`${edit.x}:${edit.y}:${edit.z}`, edit);
+        editsRef.current = [...byCoordinate.values()].slice(-SINGLEPLAYER_SAVE_LIMITS.edits);
+        markWorldDirty();
+      }
+      audio.play("explosion", { seed: key, intensity: 1 });
+      if (cascadeDepth < 8) {
+        for (const edit of edits.filter((candidate) => candidate.chainPrimed).slice(0, 8)) {
+          const hash = Math.abs(Math.imul(edit.x, 73_856_093) ^ Math.imul(edit.y, 19_349_663)
+            ^ Math.imul(edit.z, 83_492_791) ^ cascadeDepth);
+          primeLocalTnt(edit.x, edit.y, edit.z, 500 + hash % 1_001, cascadeDepth + 1, false);
+        }
+      }
+      setMessages((current) => [...current.slice(-2), {
+        id: `boom-${key}`,
+        text: key.startsWith("creeper:") ? "Creeper exploded" : "Boom!",
+        detail: `${destruction.length} blocks destroyed locally.`,
+        tone: "warning",
+      }]);
+    }
     const engine = createVoxelEngine(canvas, {
       seed: worldRef.current.seed,
       initialEdits: editsRef.current,
@@ -727,6 +733,7 @@ export function SinglePlayerApp() {
         return gameBlock ? miningSeconds(gameBlock, inventoryRef.current[selectedRef.current]?.itemId) : 0.2;
       },
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
+      getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
       canSprint: () => hungerRef.current > 6,
       canMineBlock: (block) => {
         const gameBlock = ENGINE_TO_GAME[block.block];
@@ -805,6 +812,10 @@ export function SinglePlayerApp() {
         for (const drop of drops) next = addItem(next, drop.itemId as ItemId, drop.count).inventory;
         updateInventory(next);
       },
+      onLocalCreeperExplosion: ({ mobId, edits }) => {
+        recordLocalExplosion(`creeper:${mobId}`, edits, 0);
+        markWorldDirty();
+      },
       onMobUse: (target) => {
         if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
         let acceptedInventory: Inventory | null = null;
@@ -856,7 +867,13 @@ export function SinglePlayerApp() {
       }),
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
-      onHandAction: () => setHandActionToken((value) => value + 1),
+      onHandAction: (action) => {
+        setHandActionToken((value) => value + 1);
+        if (action === "attack") audio.play("mobHurt", {
+          seed: `local-mob-hit:${performance.now().toFixed(0)}`,
+          intensity: 0.68,
+        });
+      },
       onMovementModeChange: (_mode, activityMultiplier) => {
         survivalActivityRef.current = activityMultiplier;
       },

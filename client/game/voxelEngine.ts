@@ -63,6 +63,7 @@ import {
 } from "./generated/textureAtlas.ts";
 import {
   consumeMobContactDamage,
+  consumeDueLocalCreeperExplosions,
   consumeMobProjectileDamage,
   applyAuthoritativeMobCombatStates,
   createMobSimulation,
@@ -80,6 +81,7 @@ import {
   writeMobProjectileSnapshots,
   type MobPoseSnapshot,
   type MobProjectileSnapshot,
+  type LocalCreeperExplosionEvent,
 } from "./mobs.ts";
 import {
   BLOCK,
@@ -102,6 +104,7 @@ import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 import {
   CREEPER_EXPLOSION_RADIUS,
   enumerateCreeperExplosionBlocks,
+  resolveCreeperExplosionDamage,
 } from "../../shared/creeperExplosion.ts";
 import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/fallingBlocks.ts";
 import { fallDamageForDistance } from "../../shared/fallDamageAuthority.ts";
@@ -1347,6 +1350,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let sharedMobMotionIntervalMs = 200;
   const mobSnapshots: MobPoseSnapshot[] = [];
   const mobProjectileSnapshots: MobProjectileSnapshot[] = [];
+  const localCreeperExplosions: LocalCreeperExplosionEvent[] = [];
   const velocity: Vec3 = [0, 0, 0];
   const keys = new Set<string>();
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
@@ -1920,6 +1924,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return true;
   }
 
+  function applyLocalExplosionEdits(edits: readonly LocalExplosionEdit[]): void {
+    const destruction = edits.filter((edit) => !edit.chainPrimed);
+    for (const edit of destruction) {
+      rememberWorldEdit(edit);
+      setBlock(edit.x, edit.y, edit.z, BLOCK.AIR);
+    }
+    if (!destruction.length) return;
+    rebuildWorldChunks(dirtyChunkKeysForEdits(destruction).filter((key) => loadedChunkKeys.has(key)));
+    for (const edit of destruction.slice(0, 12)) {
+      blockParticles.spawn({ action: "break", block: edit.previousBlock, x: edit.x, y: edit.y, z: edit.z });
+    }
+  }
+
   function updateMobs(dt: number): void {
     const startedAt = performance.now();
     respawnExpiredAuthoritativeMobs(mobSimulation, Date.now() + mobCombatServerTimeOffsetMs);
@@ -1967,6 +1984,29 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
         }
       }
+    }
+    for (const explosion of consumeDueLocalCreeperExplosions(mobSimulation, localCreeperExplosions)) {
+      const edits = planLocalTntExplosion(
+        Math.floor(explosion.x),
+        Math.floor(explosion.y),
+        Math.floor(explosion.z),
+        getBlock,
+      );
+      applyLocalExplosionEdits(edits);
+      const rawDamage = resolveCreeperExplosionDamage({
+        center: { x: explosion.x, y: explosion.y, z: explosion.z },
+        radius: CREEPER_EXPLOSION_RADIUS,
+      }, pose);
+      const rawProtection = options.getPlayerProtection?.() ?? 0;
+      const protection = Number.isFinite(rawProtection) ? Math.max(0, Math.min(20, rawProtection)) : 0;
+      const damage = rawDamage > 0 ? Math.max(1, rawDamage - Math.floor(protection / 2)) : 0;
+      const appliedDamage = Math.min(playerHealth, damage);
+      if (appliedDamage > 0) {
+        playerHealth -= appliedDamage;
+        options.onPlayerDamage?.(appliedDamage);
+        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+      }
+      options.onLocalCreeperExplosion?.({ ...explosion, damage: appliedDamage, edits });
     }
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
@@ -2965,18 +3005,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       primedTnt.delete(sourceKey);
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
       const edits = planLocalTntExplosion(x, y, z, getBlock);
-      for (const edit of edits) {
-        if (edit.chainPrimed) continue;
-        rememberWorldEdit(edit);
-        setBlock(edit.x, edit.y, edit.z, BLOCK.AIR);
-      }
-      const destruction = edits.filter((edit) => !edit.chainPrimed);
-      if (destruction.length) {
-        rebuildWorldChunks(dirtyChunkKeysForEdits(destruction).filter((key) => loadedChunkKeys.has(key)));
-        for (const edit of destruction.slice(0, 12)) {
-          blockParticles.spawn({ action: "break", block: edit.previousBlock, x: edit.x, y: edit.y, z: edit.z });
-        }
-      }
+      applyLocalExplosionEdits(edits);
       return edits;
     },
     settleFallingBlocks(edit, previousBlock) {

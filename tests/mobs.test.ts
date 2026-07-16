@@ -7,6 +7,7 @@ import {
   createMobSpawns,
   damageMob,
   listMobIds,
+  raycastMobs,
   stepMobSimulation,
   writeMobPoseSnapshots,
   type MobSpawnDescriptor,
@@ -77,6 +78,19 @@ assert.ok(
 function descriptor(kind: MobSpawnDescriptor["kind"], x: number, z: number, seed: number): MobSpawnDescriptor {
   return { id: `${kind}-test`, kind, x, y: 1, z, yaw: 0, homeX: x, homeZ: z, behaviorSeed: seed };
 }
+
+const sheepTarget = createMobSimulation([descriptor("sheep", 0, 0, 77)]);
+assert.equal(
+  raycastMobs([3, 1.8, 1.05], [-1, 0, 0], sheepTarget.mobs, 6)?.id,
+  "sheep-test",
+  "the visible forward sheep head remains hittable from the side",
+);
+const chickenTarget = createMobSimulation([descriptor("chicken", 0, 0, 78)]);
+assert.equal(
+  raycastMobs([0, 2.05, 3], [0, 0, -1], chickenTarget.mobs, 6)?.id,
+  "chicken-test",
+  "the visible chicken head is included in its attack bounds",
+);
 
 // Zombies are dormant by day, then activate and close distance at night.
 const zombieSimulation = createMobSimulation([descriptor("zombie", 0, 0, 101)]);

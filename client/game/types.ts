@@ -330,6 +330,15 @@ export interface VoxelEngineOptions {
   getPlayerProtection?: () => number;
   /** Used only by the client-local fallback when `onMobAttack` is absent. */
   onMobDrops?: (drops: readonly MobDrop[]) => void;
+  /** One completed offline fuse after terrain and player damage resolve locally. */
+  onLocalCreeperExplosion?: (event: Readonly<{
+    mobId: string;
+    x: number;
+    y: number;
+    z: number;
+    damage: number;
+    edits: readonly LocalExplosionEdit[];
+  }>) => void;
   onPlayerDamage?: (amount: number) => void;
   onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
   /** Return true when the held non-block item handled secondary use (for example, eating food). */
