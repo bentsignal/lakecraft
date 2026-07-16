@@ -23,6 +23,7 @@ npx lakebed auth as alice
 - Hold either `Ctrl` while moving forward to sprint (requires more than six hunger); hold either `Shift` to sneak, lower your view, and stop at ledges
 - While touching a ladder, `W` or `Space` climbs, `S` or either `Shift` key descends, and `A`/`D` steps off
 - Hold left click to mine continuously across successive blocks; right click places the selected block
+- Mined resources pop into the single-player world and are collected by walking over them; a full pack leaves them safely on the ground
 - Hold right click with a bow to draw, then release to fire an authoritative arrow
 - Clip oak leaves with shears to recover the block; ordinary breaking has a deterministic sparse apple drop
 - Break oak leaves for renewable saplings, craft one bone into three bone meal, plant on dirt/grass, then right click the sapling with bone meal to grow it

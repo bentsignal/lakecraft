@@ -695,6 +695,17 @@ export function SinglePlayerApp() {
       },
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
       canSprint: () => hungerRef.current > 6,
+      canMineBlock: (block) => {
+        const gameBlock = ENGINE_TO_GAME[block.block];
+        const drop = gameBlock ? getDeterministicMiningDrop(
+          gameBlock,
+          inventoryRef.current[selectedRef.current]?.itemId ?? null,
+          block.x,
+          block.y,
+          block.z,
+        ) : null;
+        return !drop || dropsRef.current.length < SINGLEPLAYER_SAVE_LIMITS.drops;
+      },
       onFootstep: (block) => audio.play("footstep", {
         seed: `local-step:${block}:${performance.now().toFixed(0)}`,
         surface: audioSurfaceForBlock(block),
@@ -728,7 +739,18 @@ export function SinglePlayerApp() {
             ? applyConfirmedDurableItemUse(next, selectedRef.current, held)
             : applyConfirmedToolUse(next, selectedRef.current, "mine", held);
           next = wear.inventory;
-          if (drop) next = addItem(next, drop.itemId, drop.count).inventory;
+          if (drop) {
+            const droppedAt = Date.now();
+            dropsRef.current = [...dropsRef.current, {
+              dropId: `local_mine_${droppedAt}_${edit.x}_${edit.y}_${edit.z}`.slice(0, 96),
+              item: { ...drop },
+              x: edit.x + 0.5,
+              y: edit.y + 0.45,
+              z: edit.z + 0.5,
+              droppedAt,
+            }];
+            engine.setDroppedItems(dropsRef.current);
+          }
         } else if (!toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR && held) {
           next = removeItem(next, held, 1).inventory;
         }

@@ -288,6 +288,8 @@ export interface VoxelEngineOptions {
   onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId) => void;
   /** Prevent a second optimistic world edit while an authoritative one is pending. */
   canEditBlock?: () => boolean;
+  /** Local preflight for a completed mining edit, such as bounded drop capacity. */
+  canMineBlock?: (block: Readonly<WorldEdit>) => boolean;
   /** Seconds the primary action must be held before a block is mined. */
   getMiningDuration?: (block: BlockId) => number;
   /** Combat damage used by either Lakebed authority or the local fallback. */

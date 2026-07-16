@@ -1459,7 +1459,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!primaryActionHold.held || !primaryActionHold.miningArmed || miningTimer || !target) return false;
     const mined = { ...target.block };
     const targetPrimed = primedTnt.has(blockKey(mined.x, mined.y, mined.z));
-    const editAllowed = options.canEditBlock?.() !== false;
+    const editAllowed = options.canEditBlock?.() !== false && options.canMineBlock?.(mined) !== false;
     if (!shouldStartHeldMining(primaryActionHold, {
       pointerLocked: document.pointerLockElement === canvas,
       playerAlive: playerHealth > 0,
