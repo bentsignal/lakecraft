@@ -3,7 +3,6 @@ export { DeathScreen, type DeathScreenProps } from "./DeathScreen";
 export { Crosshair, GameHud, type GameHudProps } from "./GameHud";
 export { FirstPersonHeldItem, type FirstPersonHeldItemProps } from "./FirstPersonHeldItem";
 export { BOW_FULL_CHARGE_MS, FirstPersonBow, bowChargeProgress, bowChargeStage, type FirstPersonBowProps } from "./FirstPersonBow";
-export { BLOCK_CRACK_STAGE_COUNT, miningCrackStage } from "./firstPersonFeedback";
 export { Hotbar, type HotbarProps } from "./Hotbar";
 export { HudStyles } from "./HudStyles";
 export { PauseMenu, type PauseMenuProps } from "./PauseMenu";

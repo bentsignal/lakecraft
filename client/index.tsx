@@ -950,7 +950,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   const [playerHealth, setPlayerHealth] = useState(20);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
-  const [miningProgress, setMiningProgress] = useState(0);
   const [handActionToken, setHandActionToken] = useState(0);
   const [bowCharging, setBowCharging] = useState(false);
   const [bowChargeMs, setBowChargeMs] = useState(0);
@@ -1999,7 +1998,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
             notify("PvP lost contact", "Lakebed could not confirm that swing.", "warning");
           });
         },
-        onMiningProgress: setMiningProgress,
         onMiningHit: (target) => {
           const surface = audioSurfaceForBlock(target.block.block);
           const seed = `${target.block.x},${target.block.y},${target.block.z}:${performance.now().toFixed(0)}`;
@@ -3416,7 +3414,6 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         inventory={inventory}
         inventoryAuthorityEpoch={inventoryAuthorityEpoch}
         inventoryOpen={inventoryOpen}
-        miningProgress={miningProgress}
         handActionToken={handActionToken}
         hideFirstPersonFeedback={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey) || inventory[selectedHotbar]?.itemId === "bow"}
         messages={messages}

@@ -1215,7 +1215,6 @@ export function SinglePlayerApp() {
         inventoryOpen={inventoryOpen}
         modalOpen={worldModalOpen}
         messages={messages}
-        miningProgress={0}
         onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); engineRef.current?.requestPointerLock(); }}
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}

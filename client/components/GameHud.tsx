@@ -32,7 +32,6 @@ export type GameHudProps = {
   maxHealth?: number;
   hunger?: number;
   maxHunger?: number;
-  miningProgress?: number;
   handActionToken?: number;
   hideFirstPersonFeedback?: boolean;
   mobileUnsupported?: boolean;
@@ -100,7 +99,6 @@ export function GameHud({
   maxHealth = 20,
   hunger = 20,
   maxHunger = 20,
-  miningProgress = 0,
   handActionToken = 0,
   hideFirstPersonFeedback = false,
   mobileUnsupported = false,
@@ -146,7 +144,6 @@ export function GameHud({
         <FirstPersonHeldItem
           actionToken={handActionToken}
           hidden={hideFirstPersonFeedback || inventoryOpen || modalOpen || mobileUnsupported || deathScreenOpen}
-          miningProgress={miningProgress}
           paused={pauseOpen}
           stack={inventory[selectedIndex] ?? null}
         />

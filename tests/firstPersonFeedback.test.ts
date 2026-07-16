@@ -1,17 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BLOCK_CRACK_STAGE_COUNT, miningCrackStage } from "../client/components/firstPersonFeedback.ts";
-
-assert.equal(miningCrackStage(Number.NaN), -1, "invalid progress hides cracks");
-assert.equal(miningCrackStage(0), -1, "idle mining hides cracks");
-assert.equal(miningCrackStage(0.001), 0, "mining starts on the first crack frame");
-assert.equal(miningCrackStage(0.5), 5, "halfway mining selects the midpoint frame");
-assert.equal(miningCrackStage(0.999), BLOCK_CRACK_STAGE_COUNT - 1, "near-complete mining shows maximum damage");
-assert.equal(miningCrackStage(1), -1, "completed mining removes the crack overlay");
 
 const component = readFileSync(new URL("../client/components/FirstPersonHeldItem.tsx", import.meta.url), "utf8");
 const hud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
+const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const engineTypes = readFileSync(new URL("../client/game/types.ts", import.meta.url), "utf8");
+const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
 assert.ok(component.includes("HeldBlockVoxel"), "held full blocks use the dedicated three-face voxel renderer");
 assert.ok(component.includes("HeldSpriteExtrusion"), "held tools and non-cubic items use the depth-preserving sprite renderer");
@@ -22,7 +17,14 @@ assert.ok(component.includes('<VoxelArmSegment material="sleeve" />') && compone
 assert.ok(component.includes('data-held-mode={heldAsVoxel ? "voxel"'), "held mode distinguishes cubes from sprites and the empty hand");
 assert.ok(component.includes("actionToken > 0"), "an action token controls the replayable swing state");
 assert.ok(component.includes("if (hidden || paused) return null"), "hidden and paused states remove the bounded overlay DOM");
-assert.equal(component.match(/\"M\d+/g)?.length, BLOCK_CRACK_STAGE_COUNT, "crack overlay has ten bounded damage segments");
+assert.equal(component.includes("lc-block-cracks"), false, "the first-person rig does not draw a duplicate screen-space crack overlay");
+assert.equal(hud.includes("miningProgress"), false, "the HUD does not accept mining progress that would rerender the app while mining");
+assert.equal(styles.includes("lc-block-cracks"), false, "obsolete centered crack-overlay styles are removed");
+assert.equal(engineTypes.includes("onMiningProgress"), false, "the engine has no React-facing mining-progress callback");
+assert.equal(engine.includes("onMiningProgress"), false, "the animation loop never emits mining progress to React");
+assert.equal(multiplayer.includes("setMiningProgress"), false, "multiplayer owns no mining-progress React state");
+assert.ok(engine.includes("appendWorldBlockCrackLines"), "the perspective-correct world-space crack path remains active");
+assert.ok(engine.includes("updateMiningCrackGeometry();"), "world-space crack geometry still advances during held mining");
 assert.ok(hud.includes("stack={inventory[selectedIndex] ?? null}"), "GameHud drives the held rig from the selected hotbar stack");
 assert.ok(hud.includes("inventoryOpen || modalOpen || mobileUnsupported"), "blocking UI hides the first-person overlay");
 assert.ok(styles.includes("@keyframes lc-held-item-swing"), "swing feedback has a dedicated short animation");

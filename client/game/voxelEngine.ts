@@ -1440,7 +1440,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     miningProgress = 0;
     crackVertexCount = 0;
     lastMiningHitAt = -Infinity;
-    options.onMiningProgress?.(0);
   }
 
   function cancelPrimaryActionHold(): void {
@@ -1486,14 +1485,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     lastMiningHitAt = miningStartedAt;
     miningProgress = 0.01;
     updateMiningCrackGeometry();
-    options.onMiningProgress?.(0.01);
     miningTimer = window.setTimeout(() => {
       miningTimer = 0;
       miningStartedAt = 0;
       miningDurationMs = 0;
       miningProgress = 0;
       crackVertexCount = 0;
-      options.onMiningProgress?.(0);
       if (getBlock(mined.x, mined.y, mined.z) === mined.block) {
         emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
       }
@@ -2515,7 +2512,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       lastMiningProgressAt = now;
       miningProgress = Math.max(0.01, Math.min(0.99, (now - miningStartedAt) / miningDurationMs));
       updateMiningCrackGeometry();
-      options.onMiningProgress?.(miningProgress);
       if (target && now - lastMiningHitAt >= 225) {
         lastMiningHitAt = now;
         options.onHandAction?.("mine");

@@ -313,8 +313,6 @@ export interface VoxelEngineOptions {
   onRangedCancel?: () => void | Promise<void>;
   /** One release intent. The caller performs the single authoritative mutation. */
   onRangedRelease?: (intent: Readonly<RangedShotIntent>) => void | Promise<void>;
-  /** Normalized held-mining progress for the first-person crack overlay. */
-  onMiningProgress?: (progress: number) => void;
   /** Pointer-lock-gated physical number-key selection for the canonical nine-slot hotbar. */
   onHotbarSelect?: (index: number) => void;
   /** Pointer-lock-gated wheel selection. Positive cycles right; negative cycles left. */

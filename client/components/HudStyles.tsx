@@ -21,8 +21,6 @@ const HUD_CSS = `
 .lc-crosshair { filter: drop-shadow(1px 1px 0 #000) drop-shadow(-1px -1px 0 rgba(0,0,0,.65)); height: 16px; left: 50%; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 16px; z-index: 3; }
 .lc-crosshair::before, .lc-crosshair::after { background: rgba(255,255,255,.94); content: ""; left: 50%; position: absolute; top: 50%; transform: translate(-50%,-50%); }
 .lc-crosshair::before { height: 2px; width: 16px; }.lc-crosshair::after { height: 16px; width: 2px; }
-.lc-block-cracks { height: clamp(108px,18vmin,168px); left: 50%; mix-blend-mode: multiply; position: absolute; stroke: rgba(14,14,14,.88); stroke-width: 3; top: 50%; transform: translate(-50%,-50%); width: clamp(108px,18vmin,168px); z-index: 2; }
-.lc-block-cracks path { fill: none; opacity: 0; }.lc-block-cracks path.is-visible { opacity: 1; }
 .lc-first-person { bottom: -72px; height: clamp(272px,32vw,372px); position: absolute; right: -16px; width: clamp(250px,30vw,372px); z-index: 1; }
 .lc-first-person__rig { display: block; height: 100%; position: relative; transform: translate3d(0,0,0) rotateZ(-2deg); transform-origin: 91% 96%; transform-style: preserve-3d; width: 100%; }
 .lc-first-person__rig.is-swinging { animation: lc-held-item-swing 285ms cubic-bezier(.2,.72,.24,1) both; }
