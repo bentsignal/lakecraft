@@ -5,7 +5,8 @@ const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8"
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const lobby = readFileSync(new URL("../client/lobby/LobbyScreen.tsx", import.meta.url), "utf8");
 
-assert.ok(app.includes('get("singleplayer") === "1"'), "single-player route must bypass GameApp");
+assert.ok(app.includes("shouldRunSinglePlayer(window.location.hostname, window.location.search)"),
+  "the route must apply the tested host policy before choosing an app tree");
 assert.ok(app.includes("? <SinglePlayerApp />\n    : <LakebedMultiplayerApp />"), "the route must choose exactly one app tree");
 assert.equal(singleplayer.includes("lakebed/client"), false, "single-player must not import the Lakebed client runtime");
 assert.equal(singleplayer.includes("useQuery"), false, "single-player must not issue Lakebed queries");

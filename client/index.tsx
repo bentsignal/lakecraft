@@ -18,6 +18,7 @@ import {
 } from "./game";
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
+import { shouldRunSinglePlayer } from "./runtimeMode.ts";
 import { cycleHotbarIndex } from "./game/hotbarInput";
 import { MultiplayerSegmentTransport } from "./MultiplayerSegmentTransport.tsx";
 import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
@@ -3587,7 +3588,7 @@ function LakebedMultiplayerApp() {
 }
 
 export function App() {
-  return new URLSearchParams(window.location.search).get("singleplayer") === "1"
+  return shouldRunSinglePlayer(window.location.hostname, window.location.search)
     ? <SinglePlayerApp />
     : <LakebedMultiplayerApp />;
 }
