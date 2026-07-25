@@ -25,7 +25,7 @@ assert.equal(pause.includes("Sound:"), false, "sound belongs to Options rather t
 const multiplayerKeys = app.slice(app.indexOf("const onKey = (event: KeyboardEvent)"), app.indexOf("const onKeyUp", app.indexOf("const onKey = (event: KeyboardEvent)")));
 assert.ok(multiplayerKeys.indexOf("if (optionsOpen)") < multiplayerKeys.indexOf("if (pauseOpen)"), "multiplayer Options owns Escape before Game Menu resume");
 const singlePlayerKeys = singlePlayer.slice(singlePlayer.indexOf("const onKeyDown = (event: KeyboardEvent)"), singlePlayer.indexOf("window.addEventListener", singlePlayer.indexOf("const onKeyDown = (event: KeyboardEvent)")));
-assert.ok(singlePlayerKeys.indexOf("if (optionsOpen)") < singlePlayerKeys.indexOf("if (pauseOpen)"), "single-player Options owns Escape before Game Menu resume");
+assert.ok(singlePlayerKeys.indexOf("if (optionsOpen)") < singlePlayerKeys.indexOf("if (pointerSessionRef.current.pauseOpen)"), "single-player Options owns Escape before Game Menu resume");
 
 assert.ok(dialog.includes('role="dialog"') && dialog.includes('aria-modal="true"'), "Options exposes modal dialog semantics");
 assert.ok(dialog.includes('aria-label="Mouse sensitivity"') && dialog.includes("aria-valuetext"), "the sensitivity range has a stable accessible value");

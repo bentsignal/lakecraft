@@ -35,7 +35,7 @@ const deathReset = engine.slice(deathResetStart, engine.indexOf("playerViewSuspe
 const pointerReset = engine.slice(engine.indexOf("function onPointerLockChange"), engine.indexOf("function onContextMenu"));
 const pauseReset = engine.slice(engine.indexOf("setPaused(nextPaused)"), engine.indexOf("isPaused()"));
 assert.ok(deathReset.includes("clearHeldMovementInput();"), "death releases sprint before another movement frame");
-assert.ok(pointerReset.includes("clearHeldMovementInput();"), "pointer-lock loss releases sprint");
+assert.ok(pointerReset.includes("releaseTransientInput();"), "pointer-lock loss releases sprint and every other held action");
 assert.ok(pauseReset.includes("clearHeldMovementInput();"), "opening a menu releases sprint");
 assert.ok(!engine.includes("pose.y + 1.62"), "no stale fixed interaction eye remains in the engine");
 assert.ok(client.includes("canSprint: () => hungerRef.current > 6"), "survival hunger gates Ctrl sprint");

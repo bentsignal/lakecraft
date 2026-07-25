@@ -28,7 +28,7 @@ assert.ok(app.includes("setLocalFusesPausedRef.current(paused)"), "container mod
 
 assert.ok(app.includes("<FurnaceDrawer"));
 assert.ok(app.includes("<ChestDrawer"));
-assert.ok(app.includes("modalOpen={worldModalOpen}"), "container drawers hide the crosshair and survival hotbar behind the modal");
+assert.ok(app.includes("modalOpen={worldModalOpen || pointerCaptureNeeded}"), "containers and capture fallback hide the crosshair and survival hotbar behind the modal");
 assert.equal(app.includes("LOCAL SINGLE-PLAYER CONTAINER"), false, "local chest no longer exposes implementation/debug copy");
 assert.equal(chestDrawer.includes("SHARED LAKEBED CONTAINER"), false, "shared drawer no longer brands its storage backend");
 
