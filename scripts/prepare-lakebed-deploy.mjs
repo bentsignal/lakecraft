@@ -7,6 +7,11 @@ import {
   stripServerGamePresentation,
 } from "./server-game-catalog-transform.mjs";
 import {
+  CLIENT_BUNDLE_SHARED_STRINGS,
+  SERVER_BUNDLE_SHARED_STRINGS,
+  hoistRepeatedBundleStrings,
+} from "./bundle-string-hoisting.mjs";
+import {
   bundleCompressCss,
   bundleDecompressCss,
   compactClientIdentifiers,
@@ -202,11 +207,15 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
   }
   const output = result.outputFiles?.[0];
   if (!output) throw new Error(`Bundling ${sourcePath} produced no output.`);
+  const compactOutput = hoistRepeatedBundleStrings(
+    output.text,
+    server ? SERVER_BUNDLE_SHARED_STRINGS : CLIENT_BUNDLE_SHARED_STRINGS,
+  );
   const absoluteTarget = join(stageRoot, targetPath);
   await mkdir(dirname(absoluteTarget), { recursive: true });
   await writeFile(
     absoluteTarget,
-    server ? appendServerSourceMapBoundary(output.text) : appendClientSourceMapBoundary(output.text),
+    server ? appendServerSourceMapBoundary(compactOutput) : appendClientSourceMapBoundary(compactOutput),
   );
 }
 

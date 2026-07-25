@@ -45,7 +45,8 @@ Singleplayer requires no account and saves only in that browser. The title scree
 - Falls up to three blocks are safe; longer single-player falls deal shared Minecraft-style landing damage and can kill
 - `1`–`9` selects the hotbar; `E` opens inventory and crafting
 - `Q` drops one held item and Ctrl/Cmd+`Q` drops its whole stack; multiplayer drops enter the shared world
-- `T` or `Enter` opens world chat
+- `T` or `Enter` opens world chat in multiplayer or the local command console in single-player
+- Single-player commands include `/help`, `/gamemode <survival|creative>`, and `/give <item> [count]`; Up/Down recalls command history
 - Hold `Tab` for the live player list; `Esc` opens the game menu
 - In single-player, the game menu can save immediately; dirty worlds also autosave after five minutes of active play and save before leaving
 - `F3` toggles live frame, mesh, chunk, and draw-call counters
@@ -69,7 +70,7 @@ node scripts/prepare-lakebed-deploy.mjs "$stage"
 LAKEBED_COMPACT_BUNDLE=1 npx lakebed deploy "$stage" --json
 ```
 
-The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB. It uses Lakebed's bundled compiler to flatten the client and server into two minified entrypoints, minifies and safely dictionary-packs embedded CSS, shortens private client selector prefixes, and enables Lakebed's opt-in compact production bundle, then still builds and deploys through `npx lakebed`. `tests/cssTemplateCompression.test.mjs` proves stylesheet round trips and the transform fails safe on its reserved delimiter. Normal `npx lakebed dev` builds keep their source maps and unchanged source identifiers. The helper carries `lakebed.json` into the release capsule so every update targets the claimed production deployment. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
+The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB. It uses Lakebed's bundled compiler to flatten the client and server into two minified entrypoints, minifies and safely dictionary-packs embedded CSS, shortens private client selector prefixes, hoists an audited allowlist of repeated bundle strings, and enables Lakebed's opt-in compact production bundle, then still builds and deploys through `npx lakebed`. `tests/cssTemplateCompression.test.mjs` proves stylesheet round trips and the transform fails safe on its reserved delimiter; `tests/bundleStringHoisting.test.mjs` protects module specifiers, property keys, and deterministic output. Normal `npx lakebed dev` builds keep their source maps and unchanged source identifiers. The helper carries `lakebed.json` into the release capsule so every update targets the claimed production deployment. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
 
 ## Multiplayer architecture
 
