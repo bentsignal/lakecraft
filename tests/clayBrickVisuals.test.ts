@@ -65,7 +65,7 @@ for (const material of ["clay_ball", "brick"] as const) {
 }
 
 const heldRenderer = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.ok(heldRenderer.includes("blockTextureForFace(block, face.face)") && heldRenderer.includes("textureAtlasUv(texture)"),
+assert.ok(heldRenderer.includes("blockTextureForFace(block, face[0])") && heldRenderer.includes("textureAtlasUv(texture)"),
   "held clay and bricks reuse their exact world-atlas surface tiles on solid cubes");
 
 for (const relative of ["../client/index.tsx", "../client/singleplayer/SinglePlayerApp.tsx"] as const) {

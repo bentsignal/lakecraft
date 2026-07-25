@@ -14,7 +14,7 @@ assert.match(source, /const nockX = 0\.43 - chargeStage \* 0\.17/,
   "each stage pulls the solid string nock monotonically toward screen center");
 assert.ok(source.includes("appendSegment(output, [-0.72, 0], [nockX + 0.06, 0]"),
   "the arrow stays visibly nocked to the staged string");
-assert.ok(source.includes("COLORS.arrowhead") && source.includes("COLORS.fletching"),
+assert.ok(source.includes("ARROWHEAD") && source.includes("FLETCHING"),
   "the charged projectile has a solid shaft, head, and fletching");
 assert.equal(source.includes("<svg"), false, "the bow no longer falls back to flat SVG presentation");
 

@@ -44,7 +44,7 @@ assert.ok(art.runs.length >= 30, "inventory masonry carries brick joints across 
 assert.notDeepEqual(art.runs, getItemIconArt("stone").runs);
 assert.notDeepEqual(art.runs, getItemIconArt("cobblestone").runs);
 const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.ok(held.includes("blockTextureForFace(block, face.face)") && held.includes("textureAtlasUv(texture)"),
+assert.ok(held.includes("blockTextureForFace(block, face[0])") && held.includes("textureAtlasUv(texture)"),
   "held stone bricks reuse the world masonry tile rather than a CSS approximation");
 
 console.log("lakecraft stone-brick material renderer tests: ok");

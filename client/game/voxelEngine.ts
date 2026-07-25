@@ -49,6 +49,9 @@ import {
   textureAtlasUv,
   type BlockFace,
 } from "./blockTextures.ts";
+import { CUBE_FACES as FACE_DEFS } from "./cubeFaces.ts";
+import { writeMatrixProduct } from "./matrixProduct.ts";
+export { writeMatrixProduct };
 import {
   STONE_BRICK_SLAB_HEIGHT,
   blockCollisionHeight,
@@ -469,20 +472,6 @@ void main() {
   if (texel.a < uAlphaCutoff) discard;
   gl_FragColor = vec4(mix(texel.rgb * vLight, uFogColor, vFog), texel.a);
 }`;
-
-const FACE_DEFS: ReadonlyArray<{
-  face: BlockFace;
-  neighbor: Vec3;
-  shade: number;
-  vertices: ReadonlyArray<Vec3>;
-}> = [
-  { face: "east", neighbor: [1, 0, 0], shade: 0.79, vertices: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 0], [1, 1, 1], [1, 0, 1]] },
-  { face: "west", neighbor: [-1, 0, 0], shade: 0.68, vertices: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 1], [0, 1, 0], [0, 0, 0]] },
-  { face: "top", neighbor: [0, 1, 0], shade: 1.0, vertices: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [0, 1, 0], [1, 1, 1], [1, 1, 0]] },
-  { face: "bottom", neighbor: [0, -1, 0], shade: 0.52, vertices: [[0, 0, 1], [0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 0], [1, 0, 1]] },
-  { face: "south", neighbor: [0, 0, 1], shade: 0.88, vertices: [[1, 0, 1], [1, 1, 1], [0, 1, 1], [1, 0, 1], [0, 1, 1], [0, 0, 1]] },
-  { face: "north", neighbor: [0, 0, -1], shade: 0.73, vertices: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 0], [1, 1, 0], [1, 0, 0]] },
-];
 
 const BLOCK_COLORS: Record<BlockId, Vec3> = {
   [BLOCK.AIR]: [0, 0, 0],
@@ -909,20 +898,6 @@ export function writeLookAtMatrix(out: Float32Array, eye: Vec3, center: Vec3): F
   return out;
 }
 
-/** Output must not alias either input. */
-export function writeMatrixProduct(out: Float32Array, a: Float32Array, b: Float32Array): Float32Array {
-  for (let column = 0; column < 4; column += 1) {
-    for (let row = 0; row < 4; row += 1) {
-      out[column * 4 + row] =
-        a[row] * b[column * 4] +
-        a[4 + row] * b[column * 4 + 1] +
-        a[8 + row] * b[column * 4 + 2] +
-        a[12 + row] * b[column * 4 + 3];
-    }
-  }
-  return out;
-}
-
 function pushVertex(output: number[], position: Vec3, color: Vec3): void {
   output.push(position[0], position[1], position[2], color[0], color[1], color[2]);
 }
@@ -947,9 +922,9 @@ function appendTexturedBlockFace(
   shade: number,
 ): void {
   const uv = textureAtlasUv(textureName);
-  for (const point of face.vertices) {
-    const horizontal = face.neighbor[0] !== 0 ? point[2] : point[0];
-    const vertical = face.neighbor[1] !== 0 ? point[2] : point[1];
+  for (const point of face[5]) {
+    const horizontal = face[1] !== 0 ? point[2] : point[0];
+    const vertical = face[2] !== 0 ? point[2] : point[1];
     pushTexturedVertex(
       output,
       [x + point[0], y + point[1], z + point[2]],
@@ -969,9 +944,9 @@ function appendTexturedAxisAlignedBox(
 ): void {
   const uv = textureAtlasUv(textureName);
   for (const face of FACE_DEFS) {
-    for (const point of face.vertices) {
-      const horizontal = face.neighbor[0] !== 0 ? point[2] : point[0];
-      const vertical = face.neighbor[1] !== 0 ? point[2] : point[1];
+    for (const point of face[5]) {
+      const horizontal = face[1] !== 0 ? point[2] : point[0];
+      const vertical = face[2] !== 0 ? point[2] : point[1];
       pushTexturedVertex(
         output,
         [
@@ -981,7 +956,7 @@ function appendTexturedAxisAlignedBox(
         ],
         uv.left + (uv.right - uv.left) * horizontal,
         uv.bottom + (uv.top - uv.bottom) * vertical,
-        face.shade * shade,
+        face[4] * shade,
       );
     }
   }
@@ -1005,20 +980,20 @@ export function appendStoneBrickSlabMesh(
   const uv = textureAtlasUv("stone_bricks");
   for (const face of FACE_DEFS) {
     if (getBlock) {
-      const neighbor = getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]);
-      const horizontalFace = face.neighbor[1] === 0;
+      const neighbor = getBlock(x + face[1], y + face[2], z + face[3]);
+      const horizontalFace = face[2] === 0;
       if ((horizontalFace && (neighbor === BLOCK.STONE_BRICK_SLAB || blockOccludesFaces(neighbor)))
-        || (face.face === "bottom" && blockOccludesFaces(neighbor))) continue;
+        || (face[0] === "bottom" && blockOccludesFaces(neighbor))) continue;
     }
-    for (const point of face.vertices) {
-      const horizontal = face.neighbor[0] !== 0 ? point[2] : point[0];
-      const vertical = face.neighbor[1] !== 0 ? point[2] : point[1] * STONE_BRICK_SLAB_HEIGHT;
+    for (const point of face[5]) {
+      const horizontal = face[1] !== 0 ? point[2] : point[0];
+      const vertical = face[2] !== 0 ? point[2] : point[1] * STONE_BRICK_SLAB_HEIGHT;
       pushTexturedVertex(
         output,
         [x + point[0], y + point[1] * STONE_BRICK_SLAB_HEIGHT, z + point[2]],
         uv.left + (uv.right - uv.left) * horizontal,
         uv.bottom + (uv.top - uv.bottom) * vertical,
-        face.shade * shade,
+        face[4] * shade,
       );
     }
   }
@@ -1136,8 +1111,8 @@ function tint(color: Vec3, shade: number, variation = 1): Vec3 {
 
 function appendAxisAlignedBox(output: number[], min: Vec3, max: Vec3, color: Vec3): void {
   for (const face of FACE_DEFS) {
-    const shaded = tint(color, face.shade);
-    for (const point of face.vertices) {
+    const shaded = tint(color, face[4]);
+    for (const point of face[5]) {
       pushVertex(output, [
         min[0] + point[0] * (max[0] - min[0]),
         min[1] + point[1] * (max[1] - min[1]),
@@ -1346,6 +1321,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const droppedItemRenderer = createDroppedItemRenderer(gl);
   const playerProjectileRenderer = createPlayerProjectileRenderer(gl);
   const firstPersonRenderer = createFirstPersonRenderer(gl);
+  const firstPersonStats = firstPersonRenderer.stats;
   const blockParticles = createBlockParticleSystem();
   const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
   const particleGeometry = new Float32Array(particleCapacity.floatCount);
@@ -1853,9 +1829,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const base = blockMaterialColor(block) as Vec3;
       const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
-        const neighbor = getBlock(x + face.neighbor[0], y + face.neighbor[1], z + face.neighbor[2]);
+        const neighbor = getBlock(x + face[1], y + face[2], z + face[3]);
         if (blockFaceIsOccluded(block, neighbor)) continue;
-        const textureName = blockTextureForFace(block, face.face);
+        const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
           appendTexturedBlockFace(
             block === BLOCK.GLASS ? transparentVertices : textureVertices,
@@ -1864,12 +1840,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
             z,
             face,
             textureName,
-            face.shade * variation,
+            face[4] * variation,
           );
           continue;
         }
-        const color = tint(base, face.shade, variation);
-        for (const point of face.vertices) pushVertex(colorVertices, [x + point[0], y + point[1], z + point[2]], color);
+        const color = tint(base, face[4], variation);
+        for (const point of face[5]) pushVertex(colorVertices, [x + point[0], y + point[1], z + point[2]], color);
       }
     }
     const previous = chunkMeshes.get(chunkKey);
@@ -2418,14 +2394,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       particleUploadBytes,
       torchCount: torchLights.size,
       activeTorchLights,
-      firstPersonDrawCalls: firstPersonFeedbackHidden || paused || playerHealth <= 0 ? 0 : firstPersonRenderer.stats.drawCalls,
-      firstPersonVertexCount: firstPersonRenderer.stats.colorVertexCount + firstPersonRenderer.stats.texturedVertexCount,
-      firstPersonLastUploadBytes: firstPersonRenderer.stats.lastUploadBytes,
-      firstPersonTotalUploadBytes: firstPersonRenderer.stats.totalUploadBytes,
-      firstPersonMeshUpdates: firstPersonRenderer.stats.meshUpdates,
-      firstPersonBufferBytes: firstPersonRenderer.stats.bufferCapacityBytes,
+      firstPersonDrawCalls: firstPersonFeedbackHidden || paused || playerHealth <= 0 ? 0 : firstPersonStats[2],
+      firstPersonVertexCount: firstPersonStats[0] + firstPersonStats[1],
+      firstPersonLastUploadBytes: firstPersonStats[3],
+      firstPersonTotalUploadBytes: firstPersonStats[4],
+      firstPersonMeshUpdates: firstPersonStats[5],
+      firstPersonBufferBytes: firstPersonStats[6],
       estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + primedTntVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT
-        + firstPersonRenderer.stats.bufferCapacityBytes,
+        + firstPersonStats[6],
     };
   }
 
@@ -2690,7 +2666,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         now,
         reducedMotionQuery?.matches === true,
       );
-      if (firstPersonRenderer.stats.texturedVertexCount > 0) {
+      if (firstPersonStats[1] > 0) {
         gl.useProgram(terrainProgram);
         gl.uniformMatrix4fv(terrainMvpLocation, false, firstPersonMvpMatrix);
         gl.uniform3f(terrainCameraLocation, 0, 0, 0);
@@ -2707,18 +2683,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         bindTerrainBuffer(firstPersonRenderer.texturedBuffer);
-        gl.drawArrays(gl.TRIANGLES, 0, firstPersonRenderer.stats.texturedVertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[1]);
         gl.disable(gl.BLEND);
         drawCalls += 1;
       }
-      if (firstPersonRenderer.stats.colorVertexCount > 0) {
+      if (firstPersonStats[0] > 0) {
         gl.useProgram(program);
         gl.uniformMatrix4fv(mvpLocation, false, firstPersonMvpMatrix);
         gl.uniform3f(cameraLocation, 0, 0, 0);
         gl.uniform1f(fogLocation, 0);
         gl.uniform1f(lightingLocation, 0);
         bindBuffer(firstPersonRenderer.colorBuffer);
-        gl.drawArrays(gl.TRIANGLES, 0, firstPersonRenderer.stats.colorVertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[0]);
         drawCalls += 1;
       }
     }

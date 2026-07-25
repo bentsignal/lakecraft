@@ -33,7 +33,7 @@ assert.ok(gravelArt.runs.length >= 35, "inventory gravel uses a dense pixel-pebb
 assert.notDeepEqual(gravelArt.runs, getItemIconArt("stone").runs);
 assert.notDeepEqual(gravelArt.runs, getItemIconArt("cobblestone").runs);
 const heldSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.ok(heldSource.includes("blockTextureForFace(block, face.face)") && heldSource.includes("textureAtlasUv(texture)"),
+assert.ok(heldSource.includes("blockTextureForFace(block, face[0])") && heldSource.includes("textureAtlasUv(texture)"),
   "first-person gravel inherits the canonical six-face world-atlas cube");
 assert.equal(heldSource.includes("ItemIcon"), false, "gravel is never downgraded to a flat held sprite");
 
