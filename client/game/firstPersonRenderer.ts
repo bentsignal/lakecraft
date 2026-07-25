@@ -7,9 +7,7 @@ import { BLOCK, type BlockId } from "./types.ts";
 type Vec3 = readonly [number, number, number];
 
 const FLOATS_PER_COLOR_VERTEX = 6;
-const VERTICES_PER_BOX = 36;
-export const FIRST_PERSON_MAX_COLOR_BOXES = 18;
-export const FIRST_PERSON_MAX_COLOR_VERTICES = FIRST_PERSON_MAX_COLOR_BOXES * VERTICES_PER_BOX;
+export const FIRST_PERSON_MAX_COLOR_VERTICES = 648;
 export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
 
@@ -28,14 +26,11 @@ const LEAF: Vec3 = [0.25, 0.48, 0.16];
 const COOKED_FOOD: Vec3 = [0.52, 0.22, 0.10];
 const RAW_FOOD: Vec3 = [0.72, 0.32, 0.28];
 
-interface GeometryWriter {
-  readonly color: number[];
-  readonly textured: number[];
-}
+type GeometryWriter = [color: number[], textured: number[]];
 
 export type FirstPersonActionKind = "mine" | "attack" | "place" | "use";
 
-export type FirstPersonActionPose = Float32Array;
+export type FirstPersonActionPose = number[];
 
 export type FirstPersonRenderStats = [
   colorVertexCount: number,
@@ -47,16 +42,16 @@ export type FirstPersonRenderStats = [
   bufferCapacityBytes: number,
 ];
 
-export interface FirstPersonRenderer {
-  readonly colorBuffer: WebGLBuffer;
-  readonly texturedBuffer: WebGLBuffer;
-  readonly stats: FirstPersonRenderStats;
-  setHeldItem(itemId: ItemId | null, block: BlockId): void;
-  setBowCharge(charging: boolean, progress: number): void;
-  triggerAction(kind: FirstPersonActionKind, now: number): void;
-  writeMvp(output: Float32Array, projection: Float32Array, now: number, reducedMotion: boolean): Float32Array;
-  destroy(): void;
-}
+export type FirstPersonRenderer = readonly [
+  colorBuffer: WebGLBuffer,
+  texturedBuffer: WebGLBuffer,
+  stats: FirstPersonRenderStats,
+  setHeldItem: (itemId: ItemId | null, block: BlockId) => void,
+  setBowCharge: (charging: boolean, progress: number) => void,
+  triggerAction: (kind: FirstPersonActionKind, now: number) => void,
+  writeMvp: (output: Float32Array, projection: Float32Array, now: number, reducedMotion: boolean) => Float32Array,
+  destroy: () => void,
+];
 
 function parseHexColor(value: string | undefined): Vec3 {
   if (value && /^#[0-9a-f]{6}$/i.test(value)) {
@@ -86,9 +81,9 @@ function appendTransformedPoint(
   centerX: number,
   centerY: number,
   centerZ: number,
-  rx = 0,
-  ry = 0,
-  rz = 0,
+  rx: number,
+  ry: number,
+  rz: number,
 ): void {
   if (rx) {
     const cosine = Math.cos(rx);
@@ -251,7 +246,9 @@ function appendMaterial(output: number[], itemId: ItemId): void {
 }
 
 function canUseCanonicalCube(block: BlockId): boolean {
-  return block !== BLOCK.AIR && CUBE_FACES.every((face) => blockTextureForFace(block, face[0]) !== null);
+  // Every special-shape block resolves every face to null; one side therefore
+  // distinguishes the full atlas cubes without rebuilding a six-face probe.
+  return block !== BLOCK.AIR && blockTextureForFace(block, "east") !== null;
 }
 
 function appendTexturedCube(output: number[], block: BlockId): void {
@@ -288,18 +285,13 @@ function appendTexturedCube(output: number[], block: BlockId): void {
   }
 }
 
-export function firstPersonBufferCapacity(): {
-  colorVertexCount: number;
-  texturedVertexCount: number;
-  totalBytes: number;
-} {
-  const colorBytes = FIRST_PERSON_MAX_COLOR_VERTICES * FLOATS_PER_COLOR_VERTEX * Float32Array.BYTES_PER_ELEMENT;
-  const texturedBytes = FIRST_PERSON_MAX_TEXTURED_VERTICES * TEXTURED_WORLD_VERTEX_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-  return {
-    colorVertexCount: FIRST_PERSON_MAX_COLOR_VERTICES,
-    texturedVertexCount: FIRST_PERSON_MAX_TEXTURED_VERTICES,
-    totalBytes: colorBytes + texturedBytes,
-  };
+export function firstPersonBufferCapacity(): readonly [
+  colorVertexCount: number,
+  texturedVertexCount: number,
+  totalBytes: number,
+] {
+  // 648 color vertices + 36 textured vertices, both six float32 values wide.
+  return [FIRST_PERSON_MAX_COLOR_VERTICES, FIRST_PERSON_MAX_TEXTURED_VERTICES, 16_416];
 }
 
 export function firstPersonBowChargeStage(charging: boolean, progress: number): 0 | 1 | 2 {
@@ -334,7 +326,7 @@ export function sampleFirstPersonAction(
   return output;
 }
 
-function writeModelMatrix(output: Float32Array, pose: FirstPersonActionPose): Float32Array {
+function writeModelMatrix(output: Float32Array, pose: FirstPersonActionPose): void {
   const cx = Math.cos(pose[3]);
   const sx = Math.sin(pose[3]);
   const cz = Math.cos(pose[4]);
@@ -349,7 +341,6 @@ function writeModelMatrix(output: Float32Array, pose: FirstPersonActionPose): Fl
   output[13] = pivotY + pose[1] - (output[1] * pivotX + output[5] * pivotY + output[9] * pivotZ);
   output[14] = pivotZ + pose[2] - (output[2] * pivotX + output[6] * pivotY + output[10] * pivotZ);
   output[15] = 1;
-  return output;
 }
 
 export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPersonRenderer {
@@ -360,13 +351,13 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
   gl.bufferData(
     gl.ARRAY_BUFFER,
-    capacity.colorVertexCount * FLOATS_PER_COLOR_VERTEX * Float32Array.BYTES_PER_ELEMENT,
+    capacity[0] * FLOATS_PER_COLOR_VERTEX * Float32Array.BYTES_PER_ELEMENT,
     gl.DYNAMIC_DRAW,
   );
   gl.bindBuffer(gl.ARRAY_BUFFER, texturedBuffer);
   gl.bufferData(
     gl.ARRAY_BUFFER,
-    capacity.texturedVertexCount * TEXTURED_WORLD_VERTEX_FLOATS * Float32Array.BYTES_PER_ELEMENT,
+    capacity[1] * TEXTURED_WORLD_VERTEX_FLOATS * Float32Array.BYTES_PER_ELEMENT,
     gl.DYNAMIC_DRAW,
   );
 
@@ -376,32 +367,32 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   let chargeStage: 0 | 1 | 2 = 0;
   let actionKind: FirstPersonActionKind = "use";
   let actionStartedAt = -Infinity;
-  const actionPose: FirstPersonActionPose = new Float32Array(5);
+  const actionPose: FirstPersonActionPose = [0, 0, 0, 0, 0];
   const modelMatrix = new Float32Array(16);
-  const stats: FirstPersonRenderStats = [0, 0, 0, 0, 0, 0, capacity.totalBytes];
+  const stats: FirstPersonRenderStats = [0, 0, 0, 0, 0, 0, capacity[2]];
 
   function rebuild(): void {
-    const geometry: GeometryWriter = { color: [], textured: [] };
+    const geometry: GeometryWriter = [[], []];
     if (itemId && ITEMS[itemId].category === "block" && canUseCanonicalCube(block)) {
-      appendTexturedCube(geometry.textured, block);
+      appendTexturedCube(geometry[1], block);
     } else if (itemId === "bow") {
-      appendBow(geometry.color, chargeStage, charging);
+      appendBow(geometry[0], chargeStage, charging);
     } else if (itemId && ITEMS[itemId].tool) {
-      appendTool(geometry.color, itemId);
+      appendTool(geometry[0], itemId);
     } else if (itemId && ITEMS[itemId].category === "food") {
-      appendFood(geometry.color, itemId);
+      appendFood(geometry[0], itemId);
     } else if (itemId && ITEMS[itemId].category === "block") {
-      appendSpecialBlock(geometry.color, itemId);
+      appendSpecialBlock(geometry[0], itemId);
     } else if (itemId) {
-      appendMaterial(geometry.color, itemId);
+      appendMaterial(geometry[0], itemId);
     }
-    appendArm(geometry.color);
-    if (geometry.color.length > FIRST_PERSON_MAX_COLOR_VERTICES * FLOATS_PER_COLOR_VERTEX
-      || geometry.textured.length > FIRST_PERSON_MAX_TEXTURED_VERTICES * TEXTURED_WORLD_VERTEX_FLOATS) {
+    appendArm(geometry[0]);
+    if (geometry[0].length > FIRST_PERSON_MAX_COLOR_VERTICES * FLOATS_PER_COLOR_VERTEX
+      || geometry[1].length > FIRST_PERSON_MAX_TEXTURED_VERTICES * TEXTURED_WORLD_VERTEX_FLOATS) {
       throw new Error("First-person model exceeded its fixed geometry budget.");
     }
-    const colorData = new Float32Array(geometry.color);
-    const texturedData = new Float32Array(geometry.textured);
+    const colorData = new Float32Array(geometry[0]);
+    const texturedData = new Float32Array(geometry[1]);
     gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
     if (colorData.length) gl.bufferSubData(gl.ARRAY_BUFFER, 0, colorData);
     gl.bindBuffer(gl.ARRAY_BUFFER, texturedBuffer);
@@ -415,11 +406,11 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   }
 
   rebuild();
-  return {
+  return [
     colorBuffer,
     texturedBuffer,
     stats,
-    setHeldItem(nextItemId, nextBlock) {
+    (nextItemId, nextBlock) => {
       if (itemId === nextItemId && block === nextBlock) return;
       itemId = nextItemId;
       block = nextBlock;
@@ -428,18 +419,18 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       actionStartedAt = -Infinity;
       rebuild();
     },
-    setBowCharge(nextCharging, progress) {
+    (nextCharging, progress) => {
       const nextStage = firstPersonBowChargeStage(nextCharging, progress);
       if (charging === nextCharging && chargeStage === nextStage) return;
       charging = nextCharging;
       chargeStage = nextStage;
       if (itemId === "bow") rebuild();
     },
-    triggerAction(kind, now) {
+    (kind, now) => {
       actionKind = kind;
       actionStartedAt = Number.isFinite(now) ? now : 0;
     },
-    writeMvp(output, projection, now, reducedMotion) {
+    (output, projection, now, reducedMotion) => {
       sampleFirstPersonAction(
         actionPose,
         actionKind,
@@ -450,9 +441,9 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       writeModelMatrix(modelMatrix, actionPose);
       return writeMatrixProduct(output, projection, modelMatrix);
     },
-    destroy() {
+    () => {
       gl.deleteBuffer(colorBuffer);
       gl.deleteBuffer(texturedBuffer);
     },
-  };
+  ];
 }

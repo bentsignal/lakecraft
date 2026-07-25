@@ -20,7 +20,7 @@ assert.equal(source.includes("<svg"), false, "the bow no longer falls back to fl
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /const bowCharging = selectedItem === "bow" && rangedChargeStartedAt > 0/);
-assert.match(engine, /firstPersonRenderer\.setBowCharge\([\s\S]{0,240}PLAYER_BOW_FULL_CHARGE_MS/,
+assert.match(engine, /setFirstPersonBowCharge\([\s\S]{0,240}PLAYER_BOW_FULL_CHARGE_MS/,
   "engine-owned monotonic charge directly selects the retained bow model");
 assert.ok(engine.includes('emitHandAction("use");') && engine.includes("options.onRangedRelease?.(intent)"),
   "release keeps a readable pose edge without changing combat authority");

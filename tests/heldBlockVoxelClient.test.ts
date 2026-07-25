@@ -50,8 +50,8 @@ for (const [itemId, block] of [
   ["tnt", BLOCK.TNT],
   ["log", BLOCK.WOOD],
 ] as const) {
-  heldRenderer.setHeldItem(itemId, block);
-  const uploaded = captured.uploadFor(heldRenderer.texturedBuffer);
+  heldRenderer[3](itemId, block);
+  const uploaded = captured.uploadFor(heldRenderer[1]);
   assert.ok(uploaded, `${itemId} uploads its directional atlas cube`);
   assert.equal(uploaded.length, 36 * 6);
   faces.forEach((face, faceIndex) => {
@@ -69,7 +69,7 @@ for (const [itemId, block] of [
     });
   });
 }
-heldRenderer.destroy();
+heldRenderer[7]();
 
 const renderer = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
 const cubeFaces = readFileSync(new URL("../client/game/cubeFaces.ts", import.meta.url), "utf8");

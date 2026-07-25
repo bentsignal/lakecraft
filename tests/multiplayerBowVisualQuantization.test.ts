@@ -47,7 +47,7 @@ const intentStart = engine.indexOf("function rangedShotIntent");
 const intentEnd = engine.indexOf("function requestCanvasPointerLock", intentStart);
 assert.match(engine.slice(intentStart, intentEnd), /chargeMs: Math\.max\(0, Math\.min\(PLAYER_BOW_FULL_CHARGE_MS, now - rangedChargeStartedAt\)\)/,
   "exact monotonic charge duration remains engine-owned");
-assert.match(engine, /firstPersonRenderer\.setBowCharge\([\s\S]{0,240}PLAYER_BOW_FULL_CHARGE_MS/,
+assert.match(engine, /setFirstPersonBowCharge\([\s\S]{0,240}PLAYER_BOW_FULL_CHARGE_MS/,
   "the same exact engine clock drives only three retained geometry uploads");
 
 console.log("multiplayer bow visual quantization tests passed");

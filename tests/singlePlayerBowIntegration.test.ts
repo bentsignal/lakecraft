@@ -112,7 +112,7 @@ assert.ok(clearCharge.includes("onRangedCancel"), "pointer-lock and modal cancel
 assert.equal(clearCharge.includes("removeItem"), false, "canceling inside the engine cannot spend an arrow");
 
 assert.ok(engine.includes("options.onRangedRelease?.(intent)"), "delegated multiplayer release callback remains intact");
-assert.ok(engine.includes("firstPersonRenderer.setBowCharge"), "engine-owned charge selects retained bow geometry");
+assert.ok(engine.includes("setFirstPersonBowCharge"), "engine-owned charge selects retained bow geometry");
 assert.match(multiplayer, /onRangedRelease: \(intent\) =>[\s\S]{0,1800}rangedCombat\(requestJson\)/,
   "multiplayer release remains one Lakebed-authoritative mutation");
 assert.equal(app.includes("lakebed/client"), false, "single-player bow use adds zero Lakebed traffic");

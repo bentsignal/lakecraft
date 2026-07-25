@@ -1320,8 +1320,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
   const droppedItemRenderer = createDroppedItemRenderer(gl);
   const playerProjectileRenderer = createPlayerProjectileRenderer(gl);
-  const firstPersonRenderer = createFirstPersonRenderer(gl);
-  const firstPersonStats = firstPersonRenderer.stats;
+  const [
+    firstPersonColorBuffer,
+    firstPersonTexturedBuffer,
+    firstPersonStats,
+    setFirstPersonHeldItem,
+    setFirstPersonBowCharge,
+    triggerFirstPersonAction,
+    writeFirstPersonMvp,
+    destroyFirstPersonRenderer,
+  ] = createFirstPersonRenderer(gl);
   const blockParticles = createBlockParticleSystem();
   const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
   const particleGeometry = new Float32Array(particleCapacity.floatCount);
@@ -1453,7 +1461,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
   let selectedItem = options.selectedItem ?? null;
   let firstPersonFeedbackHidden = false;
-  firstPersonRenderer.setHeldItem(selectedItem, selectedBlock);
+  setFirstPersonHeldItem(selectedItem, selectedBlock);
   let worldVertexCount = 0;
   let remoteVertexCount = 0;
   let nameplateVertexCount = 0;
@@ -1536,7 +1544,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
 
   function emitHandAction(action: "mine" | "attack" | "place" | "use"): void {
-    firstPersonRenderer.triggerAction(action, performance.now());
+    triggerFirstPersonAction(action, performance.now());
     options.onHandAction?.(action);
   }
 
@@ -2652,7 +2660,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
 
     const bowCharging = selectedItem === "bow" && rangedChargeStartedAt > 0;
-    firstPersonRenderer.setBowCharge(
+    setFirstPersonBowCharge(
       bowCharging,
       bowCharging ? Math.min(1, Math.max(0, (frameNow - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS)) : 0,
     );
@@ -2660,7 +2668,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       // The viewmodel owns a fresh depth plane but retains the world color buffer,
       // so nearby terrain never clips the hand and the crosshair remains centered.
       gl.clear(gl.DEPTH_BUFFER_BIT);
-      firstPersonRenderer.writeMvp(
+      writeFirstPersonMvp(
         firstPersonMvpMatrix,
         projectionMatrix,
         now,
@@ -2682,7 +2690,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.uniform1f(terrainAlphaCutoffLocation, 0.08);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        bindTerrainBuffer(firstPersonRenderer.texturedBuffer);
+        bindTerrainBuffer(firstPersonTexturedBuffer);
         gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[1]);
         gl.disable(gl.BLEND);
         drawCalls += 1;
@@ -2693,7 +2701,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.uniform3f(cameraLocation, 0, 0, 0);
         gl.uniform1f(fogLocation, 0);
         gl.uniform1f(lightingLocation, 0);
-        bindBuffer(firstPersonRenderer.colorBuffer);
+        bindBuffer(firstPersonColorBuffer);
         gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[0]);
         drawCalls += 1;
       }
@@ -3091,7 +3099,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       remotePlayerRenderer.destroy();
       droppedItemRenderer.destroy();
       playerProjectileRenderer.destroy();
-      firstPersonRenderer.destroy();
+      destroyFirstPersonRenderer();
       blockParticles.clear();
       gl.deleteBuffer(particleBuffer);
       gl.deleteBuffer(lineBuffer);
@@ -3193,7 +3201,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     setSelectedItem(itemId) {
       selectedItem = itemId && itemId in ITEMS ? itemId : null;
-      firstPersonRenderer.setHeldItem(selectedItem, selectedBlock);
+      setFirstPersonHeldItem(selectedItem, selectedBlock);
     },
     setFirstPersonFeedbackHidden(hidden) {
       const nextHidden = hidden === true;

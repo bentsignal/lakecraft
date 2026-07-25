@@ -24,36 +24,37 @@ function fakeGl(): WebGLRenderingContext {
 }
 
 const capacity = firstPersonBufferCapacity();
-assert.equal(capacity.colorVertexCount, FIRST_PERSON_MAX_COLOR_VERTICES);
-assert.equal(capacity.texturedVertexCount, 36, "one held atlas cube is the complete textured budget");
-assert.equal(capacity.totalBytes, 16_416, "the retained first-person buffers stay below 17 KiB");
+assert.equal(capacity[0], FIRST_PERSON_MAX_COLOR_VERTICES);
+assert.equal(capacity[1], 36, "one held atlas cube is the complete textured budget");
+assert.equal(capacity[2], 16_416, "the retained first-person buffers stay below 17 KiB");
 
 const renderer = createFirstPersonRenderer(fakeGl());
-assert.equal(renderer.stats[0], 72, "empty hand is exactly two solid six-face prisms");
-assert.equal(renderer.stats[1], 0);
-assert.equal(renderer.stats[2], 1);
+const stats = renderer[2];
+assert.equal(stats[0], 72, "empty hand is exactly two solid six-face prisms");
+assert.equal(stats[1], 0);
+assert.equal(stats[2], 1);
 
-renderer.setHeldItem("dirt", BLOCK.DIRT);
+renderer[3]("dirt", BLOCK.DIRT);
 assert.deepEqual(
-  [renderer.stats[0], renderer.stats[1], renderer.stats[2], renderer.stats[3]],
+  [stats[0], stats[1], stats[2], stats[3]],
   [72, 36, 2, 2_592],
   "held full blocks reuse one atlas cube plus the two-prism arm in two fixed draws",
 );
 
-renderer.setHeldItem("iron_pickaxe", BLOCK.AIR);
-assert.equal(renderer.stats[0], 180, "pickaxe is three solid tool boxes plus the two-box arm");
-assert.equal(renderer.stats[3], 4_320);
+renderer[3]("iron_pickaxe", BLOCK.AIR);
+assert.equal(stats[0], 180, "pickaxe is three solid tool boxes plus the two-box arm");
+assert.equal(stats[3], 4_320);
 
-renderer.setHeldItem("iron_sword", BLOCK.AIR);
-assert.equal(renderer.stats[0], 180, "sword is a solid blade, guard, grip, sleeve, and hand");
+renderer[3]("iron_sword", BLOCK.AIR);
+assert.equal(stats[0], 180, "sword is a solid blade, guard, grip, sleeve, and hand");
 
-renderer.setHeldItem("apple", BLOCK.AIR);
-assert.equal(renderer.stats[0], 216, "apple/stem/leaf geometry remains compact and solid");
+renderer[3]("apple", BLOCK.AIR);
+assert.equal(stats[0], 216, "apple/stem/leaf geometry remains compact and solid");
 
-renderer.setHeldItem("bow", BLOCK.AIR);
-renderer.setBowCharge(true, 1);
-assert.equal(renderer.stats[0], 432, "full bow pose includes solid limbs, string, arrow, and arm under the 18-box ceiling");
-assert.equal(renderer.stats[3], 10_368, "largest staged pose upload remains below 11 KiB");
+renderer[3]("bow", BLOCK.AIR);
+renderer[4](true, 1);
+assert.equal(stats[0], 432, "full bow pose includes solid limbs, string, arrow, and arm under the 18-box ceiling");
+assert.equal(stats[3], 10_368, "largest staged pose upload remains below 11 KiB");
 
 const retainedPose = new Float32Array([9, 9, 9, 9, 9]);
 const idle = sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS, false, false);
@@ -79,23 +80,23 @@ assert.deepEqual(
 const projection = new Float32Array(16);
 projection[0] = projection[5] = projection[10] = projection[15] = 1;
 const retainedMvp = new Float32Array(16);
-assert.strictEqual(renderer.writeMvp(retainedMvp, projection, 1_000, false), retainedMvp,
+assert.strictEqual(renderer[6](retainedMvp, projection, 1_000, false), retainedMvp,
   "visible-frame MVP sampling writes into caller-owned matrix storage");
-assert.strictEqual(renderer.writeMvp(retainedMvp, projection, 1_016, true), retainedMvp,
+assert.strictEqual(renderer[6](retainedMvp, projection, 1_016, true), retainedMvp,
   "reduced-motion frames reuse the same matrix storage");
 
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
-  renderer.setHeldItem(itemId, BLOCK.AIR);
-  if (itemId === "bow") renderer.setBowCharge(true, 1);
-  assert.ok(renderer.stats[0] <= capacity.colorVertexCount,
+  renderer[3](itemId, BLOCK.AIR);
+  if (itemId === "bow") renderer[4](true, 1);
+  assert.ok(stats[0] <= capacity[0],
     `${itemId} stays inside the retained color capacity`);
-  assert.ok(renderer.stats[1] <= capacity.texturedVertexCount,
+  assert.ok(stats[1] <= capacity[1],
     `${itemId} stays inside the retained atlas capacity`);
 }
 for (const block of Object.values(BLOCK)) {
-  renderer.setHeldItem("dirt", block);
-  assert.ok(renderer.stats[0] <= capacity.colorVertexCount
-    && renderer.stats[1] <= capacity.texturedVertexCount,
+  renderer[3]("dirt", block);
+  assert.ok(stats[0] <= capacity[0]
+    && stats[1] <= capacity[1],
   `canonical block ${block} stays inside both retained buffers`);
 }
 
@@ -105,7 +106,7 @@ const gameHud = readFileSync(new URL("../client/components/GameHud.tsx", import.
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.ok(engine.includes("createFirstPersonRenderer(gl)"), "the retained viewmodel is created beside the world renderers");
 assert.ok(engine.includes("gl.clear(gl.DEPTH_BUFFER_BIT)"), "viewmodel receives a fresh depth plane after world rendering");
-assert.ok(engine.includes("firstPersonRenderer.writeMvp"), "actions alter only the small model matrix during frames");
+assert.ok(engine.includes("writeFirstPersonMvp"), "actions alter only the small model matrix during frames");
 assert.ok(rendererSource.includes("const actionPose: FirstPersonActionPose"), "the renderer retains one mutable action pose");
 const actionSamplerSource = rendererSource.slice(
   rendererSource.indexOf("export function sampleFirstPersonAction"),
@@ -118,5 +119,5 @@ assert.ok(engine.includes("!firstPersonFeedbackHidden && !paused && playerHealth
 assert.equal(gameHud.includes("FirstPersonHeldItem"), false, "the HUD no longer paints a duplicate DOM hand");
 assert.equal(styles.includes("lc-first-person"), false, "the rejected CSS 3D/sprite rig is absent from the artifact");
 
-renderer.destroy();
+renderer[7]();
 console.log("retained WebGL first-person renderer tests passed");
