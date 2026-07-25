@@ -8,6 +8,15 @@ assert.ok(right.yaw > 0, "moving the mouse right increases yaw toward world +X")
 const left = applyMouseLookDelta(0, 0, -100, 0);
 assert.ok(left.yaw < 0, "moving the mouse left decreases yaw toward world -X");
 
+let accumulatedYaw = 0;
+for (let turn = 0; turn < 10_000; turn += 1) {
+  accumulatedYaw = applyMouseLookDelta(accumulatedYaw, 0, 100, 0).yaw;
+}
+assert.ok(
+  accumulatedYaw >= -Math.PI && accumulatedYaw < Math.PI,
+  "ordinary accumulated turning keeps runtime yaw inside the canonical save range",
+);
+
 const defaultScaled = applyMouseLookDelta(0, 0, 100, 20);
 const halfScaled = applyMouseLookDelta(0, 0, 100, 20, 0.0011);
 assert.equal(halfScaled.yaw, defaultScaled.yaw / 2, "custom sensitivity scales horizontal look immediately");

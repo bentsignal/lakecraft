@@ -7,6 +7,7 @@ export type PauseMenuProps = {
   lastSavedText?: string;
   saveDisabled?: boolean;
   saveInProgress?: boolean;
+  onResetWorld?: () => void;
   onDisconnect?: () => void;
   title?: string;
   disconnectLabel?: string;
@@ -21,6 +22,7 @@ export function PauseMenu({
   lastSavedText,
   saveDisabled = false,
   saveInProgress = false,
+  onResetWorld,
   onDisconnect,
   title = "Game Menu",
   disconnectLabel = "Disconnect",
@@ -48,6 +50,9 @@ export function PauseMenu({
                 {saveStatusText ? <span>{saveStatusText}</span> : null}
                 {lastSavedText ? <span className="lc-game-menu__last-saved">{lastSavedText}</span> : null}
               </div>
+              {saveDisabled && onResetWorld ? (
+                <button className="lc-game-menu__reset" onClick={onResetWorld} type="button">Reset Local World…</button>
+              ) : null}
             </div>
           ) : null}
           <button className="lc-game-menu__disconnect" onClick={onDisconnect} type="button">{disconnectLabel}</button>

@@ -56,6 +56,7 @@ import {
   SINGLEPLAYER_SAVE_LIMITS,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
+  resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
   type SinglePlayerLoadResult,
   type SinglePlayerSnapshot,
@@ -186,8 +187,15 @@ function loadInitialLocalWorld(): InitialLocalWorld {
       return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, false);
     }
     // Never overwrite corrupt or future-format data with a permissive reset.
+    console.error("[Lakecraft save] Local world could not be loaded safely.", {
+      status: load.status,
+      issues: load.issues,
+      ...("reason" in load ? { reason: load.reason } : {}),
+      ...("versions" in load ? { versions: load.versions } : {}),
+    });
     return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, true);
-  } catch {
+  } catch (error) {
+    console.error("[Lakecraft save] Browser storage could not be read.", error);
     const load: SinglePlayerLoadResult = {
       status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: ["storage:unavailable"],
     };
@@ -267,7 +275,11 @@ export function SinglePlayerApp() {
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
     : initial.current.load.status === "migrated" ? "Imported the previous local world."
-      : initial.current.saveLocked ? "Saving disabled to protect unreadable world data." : "";
+      : initial.current.load.status === "unsupported"
+        ? "This world needs a newer Lakecraft version. Saving is disabled; reset it to start fresh."
+        : initial.current.saveLocked
+          ? "This local world could not be read. Saving is disabled; reset it to start fresh."
+          : "";
   const initialSavedAt = "savedAt" in initial.current.load ? initial.current.load.savedAt : null;
   const [saveStatusText, setSaveStatusText] = useState(initialSaveText);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialSavedAt);
@@ -359,10 +371,15 @@ export function SinglePlayerApp() {
     saveInProgressRef.current = false;
     setSaveInProgress(false);
     if (!result.ok) {
-      const invalidPath = result.path ? ` (${result.path})` : "";
+      console.error("[Lakecraft save] Snapshot commit rejected.", {
+        reason: result.reason,
+        path: result.path,
+        previousSequence: result.previousSequence,
+      });
       setSaveStatusText(result.reason === "too_large" ? "Save failed: this world exceeds browser storage limits."
         : result.reason === "unsafe_existing_data" ? "Save blocked to protect existing world data."
-          : `Save failed${invalidPath}. The previous good snapshot is still intact.`);
+          : result.path?.startsWith("$.runtime") ? "Save failed: player state could not be validated. Your previous save is safe."
+            : "Save failed. Your previous save is safe.");
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
       return false;
     }
@@ -374,6 +391,20 @@ export function SinglePlayerApp() {
     return true;
   }
   performSaveRef.current = persist;
+
+  function resetUnreadableWorld(): void {
+    const confirmed = window.confirm(
+      "Reset this local world? This permanently deletes its saved blocks, inventory, and progress. This cannot be undone.",
+    );
+    if (!confirmed) return;
+    const result = resetSinglePlayerSave(localStorage);
+    if (!result.ok) {
+      console.error("[Lakecraft save] Explicit local world reset failed.", result);
+      setSaveStatusText("Reset could not finish. Reload to check the existing save, then try again.");
+      return;
+    }
+    window.location.reload();
+  }
 
   function updateInventory(next: Inventory) {
     inventoryRef.current = next;
@@ -1455,6 +1486,7 @@ export function SinglePlayerApp() {
         onRespawn={respawnLocally}
         onResume={() => { setOptionsOpen(false); setPauseOpen(false); engineRef.current?.requestPointerLock(); }}
         onSave={() => { persist("manual"); }}
+        onResetWorld={saveLockedRef.current ? resetUnreadableWorld : undefined}
         onSelectHotbar={selectHotbar}
         onTitleScreen={returnToTitle}
         pauseTitle="Game Menu"

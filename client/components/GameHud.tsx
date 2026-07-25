@@ -67,6 +67,7 @@ export type GameHudProps = {
   lastSavedText?: string;
   saveDisabled?: boolean;
   saveInProgress?: boolean;
+  onResetWorld?: () => void;
   onDisconnect?: () => void;
   pauseTitle?: string;
   disconnectLabel?: string;
@@ -132,6 +133,7 @@ export function GameHud({
   lastSavedText,
   saveDisabled = false,
   saveInProgress = false,
+  onResetWorld,
   onDisconnect,
   pauseTitle,
   disconnectLabel,
@@ -165,6 +167,7 @@ export function GameHud({
         onBack={onResume}
         onDisconnect={onDisconnect}
         onOptions={onOptions}
+        onResetWorld={onResetWorld}
         onSave={onSave}
         disconnectLabel={disconnectLabel}
         lastSavedText={lastSavedText}
