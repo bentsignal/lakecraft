@@ -1,9 +1,10 @@
 const IDENTIFIER = "__lakecraftSharedBundleStrings";
 
 const REGEX_PREFIX_KEYWORDS = new Set([
-  "await", "case", "delete", "do", "else", "in", "instanceof", "new",
+  "await", "case", "default", "delete", "do", "else", "in", "instanceof", "new",
   "return", "throw", "typeof", "void", "yield",
 ]);
+const CONTROL_PAREN_KEYWORDS = new Set(["catch", "for", "if", "switch", "while", "with"]);
 const EXPRESSION_PREFIX_KEYWORDS = new Set([
   "await", "case", "in", "instanceof", "return", "throw", "typeof", "void", "yield",
 ]);
@@ -14,6 +15,11 @@ const EXPRESSION_PREFIX_PUNCTUATORS = new Set([
   "&&", "||", "??", "+=", "-=", "*=", "/=", "%=", "**=",
   "&=", "|=", "^=", "&&=", "||=", "??=", "<<", ">>", ">>>",
   "<<=", ">>=", ">>>=", "...",
+]);
+const STRING_CONTINUATION_PUNCTUATORS = new Set([
+  "(", "[", ".", "?.", "`", ",", "?", "+", "-", "*", "/", "%", "**",
+  "<", "<=", ">", ">=", "==", "===", "!=", "!==", "&&", "||", "??",
+  "&", "|", "^", "<<", ">>", ">>>",
 ]);
 const PUNCTUATORS = [
   ">>>=", "===", "!==", "**=", "&&=", "||=", "??=", "<<=", ">>=", ">>>",
@@ -69,11 +75,19 @@ function skipRegex(source, offset) {
   throw new Error("Unterminated JavaScript regex while hoisting bundle literals.");
 }
 
-function regexCanStartAfter(previous) {
-  if (!previous) return true;
-  if (previous.type === "identifier") return REGEX_PREFIX_KEYWORDS.has(previous.value);
-  if (previous.type !== "punctuator") return false;
-  return ![")", "]", "}", "++", "--", ".", "?."].includes(previous.value);
+function slashKindAfter(previous) {
+  if (!previous) return "regex";
+  if (previous.type === "identifier") {
+    return REGEX_PREFIX_KEYWORDS.has(previous.value) ? "regex" : "division";
+  }
+  if (previous.type !== "punctuator") return "division";
+  if (previous.value === ")") return previous.closesControl ? "regex" : "division";
+  if (previous.value === "}") {
+    if (previous.closesBlock === true) return "regex";
+    if (previous.closesBlock === false) return "division";
+    return "ambiguous";
+  }
+  return ["]", "++", "--", ".", "?."].includes(previous.value) ? "division" : "regex";
 }
 
 function skipTemplateExpression(source, offset) {
@@ -120,10 +134,16 @@ function skipTemplateExpression(source, offset) {
       previous = { type: "punctuator", value: "}" };
       continue;
     }
-    if (character === "/" && regexCanStartAfter(previous)) {
-      cursor = skipRegex(source, cursor);
-      previous = { type: "regex", value: "/" };
-      continue;
+    if (character === "/") {
+      const slashKind = slashKindAfter(previous);
+      if (slashKind === "ambiguous") {
+        throw new Error("Ambiguous JavaScript slash in template while hoisting bundle literals.");
+      }
+      if (slashKind === "regex") {
+        cursor = skipRegex(source, cursor);
+        previous = { type: "regex", value: "/" };
+        continue;
+      }
     }
     if (isIdentifierStart(character)) {
       const start = cursor++;
@@ -163,6 +183,8 @@ function skipTemplate(source, offset) {
 
 function tokenizeJavaScript(source) {
   const tokens = [];
+  const parens = [];
+  const braces = [];
   let cursor = 0;
   if (source.startsWith("#!")) {
     const newline = source.indexOf("\n", 2);
@@ -198,11 +220,15 @@ function tokenizeJavaScript(source) {
       continue;
     }
     const previous = tokens[tokens.length - 1] ?? null;
-    if (character === "/" && regexCanStartAfter(previous)) {
-      const start = cursor;
-      cursor = skipRegex(source, cursor);
-      tokens.push({ type: "regex", value: "/", start, end: cursor });
-      continue;
+    if (character === "/") {
+      const slashKind = slashKindAfter(previous);
+      if (slashKind === "ambiguous") return null;
+      if (slashKind === "regex") {
+        const start = cursor;
+        cursor = skipRegex(source, cursor);
+        tokens.push({ type: "regex", value: "/", start, end: cursor });
+        continue;
+      }
     }
     if (isIdentifierStart(character)) {
       const start = cursor++;
@@ -217,10 +243,61 @@ function tokenizeJavaScript(source) {
       continue;
     }
     const punctuator = PUNCTUATORS.find((value) => source.startsWith(value, cursor)) ?? character;
-    tokens.push({ type: "punctuator", value: punctuator, start: cursor, end: cursor + punctuator.length });
+    const token = { type: "punctuator", value: punctuator, start: cursor, end: cursor + punctuator.length };
+    if (punctuator === "(") {
+      const beforePrevious = tokens[tokens.length - 2];
+      const beforeFunctionStar = tokens[tokens.length - 3];
+      const control = previous?.type === "identifier" && (
+        CONTROL_PAREN_KEYWORDS.has(previous.value)
+        || (previous.value === "await" && beforePrevious?.value === "for")
+      );
+      const functionParameters = previous?.value === "function"
+        || beforePrevious?.value === "function" && (previous?.type === "identifier" || previous?.value === "*")
+        || previous?.type === "identifier"
+          && beforePrevious?.value === "*"
+          && beforeFunctionStar?.value === "function";
+      parens.push(control ? "control" : functionParameters ? "function" : "expression");
+    } else if (punctuator === ")") {
+      const kind = parens.pop();
+      if (!kind) return null;
+      token.closesControl = kind === "control";
+      token.closesFunctionParameters = kind === "function";
+    } else if (punctuator === "{") {
+      let kind = "ambiguous";
+      if (
+        previous?.closesControl
+        || previous?.type === "identifier" && ["catch", "do", "else", "finally", "try"].includes(previous.value)
+        || !previous
+        || previous?.value === ";"
+        || previous?.value === "{"
+      ) {
+        kind = "block";
+      } else if (previous?.closesFunctionParameters || previous?.value === "=>") {
+        kind = "ambiguous";
+      } else {
+        if (
+          previous?.type === "identifier" && ["default", "return"].includes(previous.value)
+          || previous?.type === "punctuator" && ["(", "[", ",", "="].includes(previous.value)
+        ) kind = "object";
+        for (let index = tokens.length - 1; index >= 0; index -= 1) {
+          const candidate = tokens[index];
+          if (candidate.value === "class") {
+            kind = "ambiguous";
+            break;
+          }
+          if ([";", "{", "}", "=", "=>"].includes(candidate.value)) break;
+        }
+      }
+      braces.push(kind);
+    } else if (punctuator === "}") {
+      const kind = braces.pop();
+      if (!kind) return null;
+      token.closesBlock = kind === "block" ? true : kind === "object" ? false : undefined;
+    }
+    tokens.push(token);
     cursor += punctuator.length;
   }
-  return tokens;
+  return parens.length || braces.length ? null : tokens;
 }
 
 function directiveInsertion(source, tokens) {
@@ -238,6 +315,12 @@ function directiveInsertion(source, tokens) {
       continue;
     }
     if (!next || /[\n\r]/.test(source.slice(directive.end, next.start))) {
+      const continuesExpression = next && (
+        next.type === "template"
+        || next.type === "identifier" && ["in", "instanceof"].includes(next.value)
+        || next.type === "punctuator" && STRING_CONTINUATION_PUNCTUATORS.has(next.value)
+      );
+      if (continuesExpression) break;
       offset = directive.end;
       needsSemicolon = true;
       tokenIndex += 1;
@@ -259,10 +342,30 @@ function isModuleSpecifier(tokens, index) {
   return receiver.endsWith("require") || receiver.endsWith("import.meta");
 }
 
+function isImportGrammarMetadata(tokens, index) {
+  let parenDepth = 0;
+  let braceDepth = 0;
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const token = tokens[cursor];
+    if (token.value === ")") parenDepth += 1;
+    else if (token.value === "(") {
+      if (parenDepth === 0) {
+        if (tokens[cursor - 1]?.value === "import") return true;
+      } else parenDepth -= 1;
+    } else if (token.value === "}") braceDepth += 1;
+    else if (token.value === "{") {
+      if (braceDepth === 0 && ["assert", "with"].includes(tokens[cursor - 1]?.value)) return true;
+      if (braceDepth > 0) braceDepth -= 1;
+    }
+    if (parenDepth === 0 && braceDepth === 0 && [";"].includes(token.value)) break;
+  }
+  return false;
+}
+
 function isSafeExpressionString(tokens, index) {
   const previous = tokens[index - 1];
   const next = tokens[index + 1];
-  if (!previous || !next || isModuleSpecifier(tokens, index)) return false;
+  if (!previous || !next || isModuleSpecifier(tokens, index) || isImportGrammarMetadata(tokens, index)) return false;
   if ([":", "(", "=", "=>"].includes(next.value)) return false;
   if (previous.type === "identifier") return EXPRESSION_PREFIX_KEYWORDS.has(previous.value);
   return previous.type === "punctuator" && EXPRESSION_PREFIX_PUNCTUATORS.has(previous.value);
@@ -276,6 +379,7 @@ function isSafeExpressionString(tokens, index) {
 export function hoistRepeatedBundleStrings(source, candidates) {
   if (source.includes(IDENTIFIER)) throw new Error("Reserved bundle string identifier already exists.");
   const tokens = tokenizeJavaScript(source);
+  if (!tokens) return source;
   const chosen = [];
   const replacements = [];
   for (const candidate of [...new Set(candidates)]) {
