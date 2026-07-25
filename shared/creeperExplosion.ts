@@ -2,6 +2,7 @@ import { CREEPER_FUSE_TICKS } from "./mobMotionAuthority.ts";
 import { MOB_AUTHORITY_WORLD_SEED_TOKEN, validateMobIdentity } from "./mobCombat.ts";
 import type { BlockType } from "./protocol.ts";
 import { BLOCKS, type BlockId, type ItemId } from "./game.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const CREEPER_EXPLOSION_RADIUS = 3;
 export const CREEPER_EXPLOSION_MAX_BLOCKS = 64;
@@ -80,7 +81,7 @@ export function creeperExplosionFingerprint(request: Readonly<CreeperExplosionRe
 export function validateCreeperExplosionRequestJson(rawJson: string): CreeperExplosionRequest | null {
   const parsed = record(rawJson);
   if (!parsed) return null;
-  const keys = ["operationId", "mobId", "epoch", "checkpointRevision", "fuseStartedTick"];
+  const keys = [BS.operationId, "mobId", "epoch", "checkpointRevision", "fuseStartedTick"];
   const actualKeys = Object.keys(parsed);
   if (actualKeys.length !== keys.length || actualKeys.some((key) => !keys.includes(key))
     || typeof parsed.operationId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(parsed.operationId)
@@ -144,7 +145,7 @@ export function enumerateCreeperExplosionBlocks(
 
 export function creeperBlockIsProtected(block: BlockType): boolean {
   return block === "air" || block === "chest" || block === "furnace" || block === "bed"
-    || block === "door_closed" || block === "door_open";
+    || block === BS.doorClosed || block === BS.doorOpen;
 }
 
 export function planCreeperTerrainDestruction(
@@ -161,8 +162,8 @@ export function planCreeperTerrainDestruction(
 
 function protocolBlockId(block: BlockType): BlockId | null {
   if (block === "wood") return "log";
-  if (block === "door_closed" || block === "door_open") return "door";
-  if (block === "oak_fence_gate_closed" || block === "oak_fence_gate_open") return "oak_fence_gate";
+  if (block === BS.doorClosed || block === BS.doorOpen) return "door";
+  if (block === BS.oakFenceGateClosed || block === BS.oakFenceGateOpen) return BS.oakFenceGate;
   return block !== "air" && block in BLOCKS ? block as BlockId : null;
 }
 
@@ -248,7 +249,7 @@ export function sampleCreeperExplosionExposure(
     const occluded = cells.some((cell) => {
       const block = readBlock(cell);
       return block !== "air" && block !== "torch" && block !== "ladder"
-        && block !== "door_open" && block !== "oak_fence_gate_open";
+        && block !== BS.doorOpen && block !== BS.oakFenceGateOpen;
     });
     if (!occluded) clear += 1;
   }

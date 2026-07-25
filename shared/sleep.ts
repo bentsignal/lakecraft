@@ -1,3 +1,5 @@
+
+import * as BS from "./bundleStrings.ts";
 export const WORLD_CLOCK_KEY = "main";
 export const WORLD_CYCLE_LENGTH_MS = 8 * 60 * 1_000;
 export const MORNING_PHASE = 0.25;
@@ -106,12 +108,12 @@ export function morningClockSnapshot(serverNow: number): WorldClockSnapshot {
 export function validateSleepCoordinate(rawCoordKey: string): SleepCoordinateValidation {
   const parts = rawCoordKey.trim().split(":");
   if (parts.length !== 3 || parts.some((part) => !/^-?\d{1,3}$/.test(part))) {
-    return { ok: false, reason: "invalid_coordinate" };
+    return { ok: false, reason: BS.invalidCoordinate };
   }
   const [x, y, z] = parts.map(Number);
   if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)
     || x < -64 || x > 64 || y < -4 || y > 64 || z < -64 || z > 64) {
-    return { ok: false, reason: "invalid_coordinate" };
+    return { ok: false, reason: BS.invalidCoordinate };
   }
   return { ok: true, coordKey: `${x}:${y}:${z}`, x, y, z };
 }

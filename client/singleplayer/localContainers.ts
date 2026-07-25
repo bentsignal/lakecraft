@@ -27,6 +27,7 @@ import {
   type Inventory,
   type ItemStack,
 } from "../../shared/game.ts";
+import * as BS from "../../shared/bundleStrings.ts";
 
 /**
  * Container count, rather than world extent, bounds browser storage. Five
@@ -166,13 +167,13 @@ export function openLocalChest(
 ): { ok: true; containers: LocalContainers; inventory: ChestInventory; created: boolean }
   | { ok: false; reason: LocalContainerIssue; containers: LocalContainers } {
   const coordKey = canonicalCoordinate(rawCoordKey);
-  if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers };
+  if (!coordKey) return { ok: false, reason: BS.invalidCoordinate, containers };
   const existing = containers.chests.get(coordKey);
   if (existing) {
     const inventory = canonicalChest(existing);
     return inventory
       ? { ok: true, containers, inventory: cloneInventory(inventory), created: false }
-      : { ok: false, reason: "invalid_state", containers };
+      : { ok: false, reason: BS.invalidState, containers };
   }
   if (containers.chests.size >= MAX_LOCAL_CHESTS) return { ok: false, reason: "chest_limit", containers };
   const inventory = createEmptyInventory(CHEST_SLOT_COUNT);
@@ -188,21 +189,21 @@ export function transferLocalChestFullStack(
 ): { ok: true; containers: LocalContainers; inventory: Inventory; moved: ItemStack }
   | { ok: false; reason: LocalContainerIssue; containers: LocalContainers; inventory: Inventory } {
   const player = strictPlayerInventory(playerInventory);
-  if (!player) return { ok: false, reason: "invalid_inventory", containers, inventory: cloneInventory(playerInventory) };
+  if (!player) return { ok: false, reason: BS.invalidInventory, containers, inventory: cloneInventory(playerInventory) };
   const opened = openLocalChest(containers, rawCoordKey);
   if (!opened.ok) return { ok: false, reason: opened.reason, containers, inventory: player };
   if (!action || !Number.isInteger(action.sourceSlot)) {
-    return { ok: false, reason: "invalid_action", containers: opened.containers, inventory: player };
+    return { ok: false, reason: BS.invalidAction, containers: opened.containers, inventory: player };
   }
   const source = action.direction === "to_chest" ? player : opened.inventory;
   if (action.direction !== "to_chest" && action.direction !== "from_chest") {
-    return { ok: false, reason: "invalid_action", containers: opened.containers, inventory: player };
+    return { ok: false, reason: BS.invalidAction, containers: opened.containers, inventory: player };
   }
   if (action.sourceSlot < 0 || action.sourceSlot >= source.length) {
-    return { ok: false, reason: "invalid_action", containers: opened.containers, inventory: player };
+    return { ok: false, reason: BS.invalidAction, containers: opened.containers, inventory: player };
   }
   const sourceStack = source[action.sourceSlot];
-  if (!sourceStack) return { ok: false, reason: "empty_source", containers: opened.containers, inventory: player };
+  if (!sourceStack) return { ok: false, reason: BS.emptySource, containers: opened.containers, inventory: player };
   const transfer = applyChestTransfer(
     { direction: action.direction, sourceSlot: action.sourceSlot, count: sourceStack.count },
     player,
@@ -211,7 +212,7 @@ export function transferLocalChestFullStack(
   if (!transfer.ok || transfer.moved.count !== sourceStack.count) {
     return {
       ok: false,
-      reason: transfer.ok ? "no_capacity" : transfer.reason,
+      reason: transfer.ok ? BS.noCapacity : transfer.reason,
       containers: opened.containers,
       inventory: player,
     };
@@ -233,15 +234,15 @@ export function openLocalFurnace(
 ): { ok: true; containers: LocalContainers; furnace: FurnaceState; created: boolean; cooked: number; fuelConsumed: number }
   | { ok: false; reason: LocalContainerIssue; containers: LocalContainers } {
   const coordKey = canonicalCoordinate(rawCoordKey);
-  if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers };
+  if (!coordKey) return { ok: false, reason: BS.invalidCoordinate, containers };
   const existing = containers.furnaces.get(coordKey);
   if (existing) {
-    if (existing.coordKey !== coordKey) return { ok: false, reason: "invalid_state", containers };
+    if (existing.coordKey !== coordKey) return { ok: false, reason: BS.invalidState, containers };
     const materialized = materializeFurnace(existing, trustedNowMs);
     if (!materialized.ok) {
       return {
         ok: false,
-        reason: materialized.reason === "invalid_time" ? "invalid_time" : "invalid_state",
+        reason: materialized.reason === "invalid_time" ? "invalid_time" : BS.invalidState,
         containers,
       };
     }
@@ -279,29 +280,29 @@ export function transferLocalFurnaceFullStack(
 ): { ok: true; containers: LocalContainers; inventory: Inventory; furnace: FurnaceState; moved: ItemStack; cooked: number; fuelConsumed: number }
   | { ok: false; reason: LocalContainerIssue; containers: LocalContainers; inventory: Inventory } {
   const player = strictPlayerInventory(playerInventory);
-  if (!player) return { ok: false, reason: "invalid_inventory", containers, inventory: cloneInventory(playerInventory) };
+  if (!player) return { ok: false, reason: BS.invalidInventory, containers, inventory: cloneInventory(playerInventory) };
   const advanced = materializeLocalFurnace(containers, rawCoordKey, trustedNowMs);
   if (!advanced.ok) return { ok: false, reason: advanced.reason, containers: advanced.containers, inventory: player };
   if (!action || typeof action.kind !== "string") {
-    return { ok: false, reason: "invalid_action", containers: advanced.containers, inventory: player };
+    return { ok: false, reason: BS.invalidAction, containers: advanced.containers, inventory: player };
   }
   let transferAction: FurnaceTransferAction;
   let source: ItemStack | null | undefined;
   if (action.kind === "deposit_input" || action.kind === "deposit_fuel") {
     if (!Number.isInteger(action.inventorySlot) || action.inventorySlot < 0 || action.inventorySlot >= player.length) {
-      return { ok: false, reason: "invalid_action", containers: advanced.containers, inventory: player };
+      return { ok: false, reason: BS.invalidAction, containers: advanced.containers, inventory: player };
     }
     source = player[action.inventorySlot];
-    if (!source) return { ok: false, reason: "empty_source", containers: advanced.containers, inventory: player };
+    if (!source) return { ok: false, reason: BS.emptySource, containers: advanced.containers, inventory: player };
     transferAction = { kind: action.kind, inventorySlot: action.inventorySlot, count: source.count };
   } else if (action.kind === "take_input" || action.kind === "take_fuel" || action.kind === "take_output") {
     source = action.kind === "take_input" ? advanced.furnace.input
       : action.kind === "take_fuel" ? advanced.furnace.fuel
       : advanced.furnace.output;
-    if (!source) return { ok: false, reason: "empty_source", containers: advanced.containers, inventory: player };
+    if (!source) return { ok: false, reason: BS.emptySource, containers: advanced.containers, inventory: player };
     transferAction = { kind: action.kind, count: source.count };
   } else {
-    return { ok: false, reason: "invalid_action", containers: advanced.containers, inventory: player };
+    return { ok: false, reason: BS.invalidAction, containers: advanced.containers, inventory: player };
   }
   const transferred = applyFurnaceTransfer(advanced.furnace, player, transferAction, trustedNowMs);
   if (!transferred.ok) {
@@ -324,7 +325,7 @@ export function removeLocalChest(
   rawCoordKey: string,
 ): { ok: true; containers: LocalContainers; removed: boolean } | { ok: false; reason: "invalid_coordinate"; containers: LocalContainers } {
   const coordKey = canonicalCoordinate(rawCoordKey);
-  if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers };
+  if (!coordKey) return { ok: false, reason: BS.invalidCoordinate, containers };
   if (!containers.chests.has(coordKey)) return { ok: true, containers, removed: false };
   const chests = new Map(containers.chests);
   chests.delete(coordKey);
@@ -336,7 +337,7 @@ export function removeLocalFurnace(
   rawCoordKey: string,
 ): { ok: true; containers: LocalContainers; removed: boolean } | { ok: false; reason: "invalid_coordinate"; containers: LocalContainers } {
   const coordKey = canonicalCoordinate(rawCoordKey);
-  if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers };
+  if (!coordKey) return { ok: false, reason: BS.invalidCoordinate, containers };
   if (!containers.furnaces.has(coordKey)) return { ok: true, containers, removed: false };
   const furnaces = new Map(containers.furnaces);
   furnaces.delete(coordKey);
@@ -350,7 +351,7 @@ export function removeLocalContainersAt(
 ): { ok: true; containers: LocalContainers; removedChest: boolean; removedFurnace: boolean }
   | { ok: false; reason: "invalid_coordinate"; containers: LocalContainers } {
   const coordKey = canonicalCoordinate(rawCoordKey);
-  if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers };
+  if (!coordKey) return { ok: false, reason: BS.invalidCoordinate, containers };
   const chests = new Map(containers.chests);
   const furnaces = new Map(containers.furnaces);
   const removedChest = chests.delete(coordKey);
@@ -373,8 +374,8 @@ export function recoverLocalContainerContents(
   | { ok: false; reason: LocalContainerIssue; containers: LocalContainers; inventory: Inventory } {
   const coordKey = canonicalCoordinate(rawCoordKey);
   const player = strictPlayerInventory(playerInventory);
-  if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers, inventory: player ?? cloneInventory(playerInventory) };
-  if (!player) return { ok: false, reason: "invalid_inventory", containers, inventory: cloneInventory(playerInventory) };
+  if (!coordKey) return { ok: false, reason: BS.invalidCoordinate, containers, inventory: player ?? cloneInventory(playerInventory) };
+  if (!player) return { ok: false, reason: BS.invalidInventory, containers, inventory: cloneInventory(playerInventory) };
   let working = containers;
   if (containers.furnaces.has(coordKey)) {
     const materialized = materializeLocalFurnace(containers, coordKey, trustedNowMs);
@@ -395,12 +396,12 @@ export function recoverLocalContainerContents(
     if (added.remainder > 0) overflow.push({ ...stack, count: added.remainder });
   }
   if (!Number.isSafeInteger(maximumOverflowStacks) || maximumOverflowStacks < 0 || overflow.length > maximumOverflowStacks) {
-    return { ok: false, reason: "no_capacity", containers, inventory: player };
+    return { ok: false, reason: BS.noCapacity, containers, inventory: player };
   }
   const removed = removeLocalContainersAt(working, coordKey);
   return removed.ok
     ? { ok: true, containers: removed.containers, inventory, overflow, recovered }
-    : { ok: false, reason: "invalid_coordinate", containers, inventory: player };
+    : { ok: false, reason: BS.invalidCoordinate, containers, inventory: player };
 }
 
 /** Validates, optionally materializes, clones and sorts every row without truncating. */
@@ -414,15 +415,15 @@ export function exportLocalContainersSnapshot(
   for (const [key, value] of containers.chests) {
     const coordKey = canonicalCoordinate(key);
     const inventory = canonicalChest(value);
-    if (!coordKey || coordKey !== key) return { ok: false, reason: "invalid_coordinate", path: `$.chests[${JSON.stringify(key)}]` };
-    if (!inventory) return { ok: false, reason: "invalid_state", path: `$.chests[${JSON.stringify(key)}].inventory` };
+    if (!coordKey || coordKey !== key) return { ok: false, reason: BS.invalidCoordinate, path: `$.chests[${JSON.stringify(key)}]` };
+    if (!inventory) return { ok: false, reason: BS.invalidState, path: `$.chests[${JSON.stringify(key)}].inventory` };
     chests.push({ coordKey, inventory });
   }
   const furnaces: FurnaceState[] = [];
   for (const [key, value] of containers.furnaces) {
     const validation = validateFurnaceState(value, key);
     if (!validation.ok) {
-      return { ok: false, reason: "invalid_state", path: `$.furnaces[${JSON.stringify(key)}]` };
+      return { ok: false, reason: BS.invalidState, path: `$.furnaces[${JSON.stringify(key)}]` };
     }
     let state = validation.state;
     if (trustedNowMs !== undefined) {
@@ -451,35 +452,35 @@ export function exportLocalContainersSnapshot(
 export function importLocalContainersSnapshot(value: unknown): LocalContainersImportResult {
   if (!value || typeof value !== "object" || Array.isArray(value)
     || !exactKeys(value as Record<string, unknown>, ["chests", "furnaces"])) {
-    return { ok: false, reason: "invalid_state", path: "$" };
+    return { ok: false, reason: BS.invalidState, path: "$" };
   }
   const record = value as Record<string, unknown>;
-  if (!Array.isArray(record.chests)) return { ok: false, reason: "invalid_state", path: "$.chests" };
-  if (!Array.isArray(record.furnaces)) return { ok: false, reason: "invalid_state", path: "$.furnaces" };
+  if (!Array.isArray(record.chests)) return { ok: false, reason: BS.invalidState, path: "$.chests" };
+  if (!Array.isArray(record.furnaces)) return { ok: false, reason: BS.invalidState, path: "$.furnaces" };
   if (record.chests.length > MAX_LOCAL_CHESTS) return { ok: false, reason: "chest_limit", path: "$.chests" };
   if (record.furnaces.length > MAX_LOCAL_FURNACES) return { ok: false, reason: "furnace_limit", path: "$.furnaces" };
   const chests = new Map<string, ChestInventory>();
   for (let index = 0; index < record.chests.length; index += 1) {
     const candidate = record.chests[index];
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)
-      || !exactKeys(candidate as Record<string, unknown>, ["coordKey", "inventory"])) {
-      return { ok: false, reason: "invalid_state", path: `$.chests[${index}]` };
+      || !exactKeys(candidate as Record<string, unknown>, [BS.coordKey, BS.inventory])) {
+      return { ok: false, reason: BS.invalidState, path: `$.chests[${index}]` };
     }
     const row = candidate as Record<string, unknown>;
-    if (typeof row.coordKey !== "string") return { ok: false, reason: "invalid_coordinate", path: `$.chests[${index}].coordKey` };
+    if (typeof row.coordKey !== "string") return { ok: false, reason: BS.invalidCoordinate, path: `$.chests[${index}].coordKey` };
     const coordKey = canonicalCoordinate(row.coordKey);
     if (!coordKey || coordKey !== row.coordKey || chests.has(coordKey)) {
-      return { ok: false, reason: "invalid_coordinate", path: `$.chests[${index}].coordKey` };
+      return { ok: false, reason: BS.invalidCoordinate, path: `$.chests[${index}].coordKey` };
     }
     const inventory = canonicalChest(row.inventory);
-    if (!inventory) return { ok: false, reason: "invalid_state", path: `$.chests[${index}].inventory` };
+    if (!inventory) return { ok: false, reason: BS.invalidState, path: `$.chests[${index}].inventory` };
     chests.set(coordKey, inventory);
   }
   const furnaces = new Map<string, FurnaceState>();
   for (let index = 0; index < record.furnaces.length; index += 1) {
     const validation = validateFurnaceState(record.furnaces[index]);
     if (!validation.ok || furnaces.has(validation.state.coordKey)) {
-      return { ok: false, reason: "invalid_state", path: `$.furnaces[${index}]` };
+      return { ok: false, reason: BS.invalidState, path: `$.furnaces[${index}]` };
     }
     furnaces.set(validation.state.coordKey, cloneFurnace(validation.state));
   }

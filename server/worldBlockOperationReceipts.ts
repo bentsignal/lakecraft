@@ -8,6 +8,7 @@ import type {
   WorldBlockOperationRequest,
 } from "../shared/worldBlockOperations.ts";
 import { WORLD_CHUNK_BLOCK_TYPES, type WorldChunkBlockType } from "../shared/worldChunks.ts";
+import * as BS from "../shared/bundleStrings.ts";
 
 export const MAX_WORLD_BLOCK_OPERATION_RECEIPTS_PER_USER = 64;
 export const WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT = 8;
@@ -91,7 +92,7 @@ export function validateWorldBlockActionPose(
   serverNow: number,
 ): WorldBlockPoseAuthorityResult {
   if (!stored || stored.userId !== expectedUserId || stored.online !== true) {
-    return { ok: false, reason: "active_presence_required" };
+    return { ok: false, reason: BS.activePresenceRequired };
   }
   const x = parsedStoredNumber(stored.x);
   const y = parsedStoredNumber(stored.y);
@@ -100,11 +101,11 @@ export function validateWorldBlockActionPose(
     ? Number(stored.heartbeatAt)
     : Number.NaN;
   if (x === null || y === null || z === null || !Number.isFinite(heartbeatAt)) {
-    return { ok: false, reason: "active_presence_required" };
+    return { ok: false, reason: BS.activePresenceRequired };
   }
   const elapsedMs = serverNow - heartbeatAt;
   if (elapsedMs < 0 || elapsedMs > WORLD_BLOCK_ACTION_PRESENCE_FRESH_MS) {
-    return { ok: false, reason: "active_presence_required" };
+    return { ok: false, reason: BS.activePresenceRequired };
   }
   const elapsedSeconds = elapsedMs / 1_000;
   const horizontalAllowance = WORLD_BLOCK_ACTION_POSITION_SLACK
@@ -122,7 +123,7 @@ export function validateWorldBlockActionPose(
   )));
   return targetDistance <= WORLD_BLOCK_ACTION_REACH
     ? { ok: true, elapsedMs }
-    : { ok: false, reason: "out_of_reach" };
+    : { ok: false, reason: BS.outOfReach };
 }
 
 export function encodeWorldBlockOperationReceipt(result: WorldBlockOperationReceiptResult): string {

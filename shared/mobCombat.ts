@@ -1,3 +1,5 @@
+
+import * as BS from "./bundleStrings.ts";
 export type MobAuthorityKind = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
 export type MobAuthorityDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "raw_chicken" | "feather" | "rotten_flesh" | "stick" | "string" | "arrow" | "bone" | "gunpowder";
 
@@ -190,7 +192,7 @@ export const MOB_AUTHORITY_DEFINITIONS: Readonly<Record<MobAuthorityKind, Author
   }),
   creeper: Object.freeze({
     maxHealth: 20,
-    drops: Object.freeze([{ itemId: "gunpowder", minCount: 0, maxCount: 2, chance: 1 }]),
+    drops: Object.freeze([{ itemId: BS.gunpowder, minCount: 0, maxCount: 2, chance: 1 }]),
   }),
   spider: Object.freeze({
     maxHealth: 16,

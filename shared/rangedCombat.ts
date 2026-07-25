@@ -9,6 +9,7 @@ import {
   MOB_RESPAWN_MS,
   type MobAuthorityState,
 } from "./mobCombat.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const RANGED_COMBAT_PROTOCOL_VERSION = 1;
 export const MAX_RANGED_COMBAT_REQUEST_BYTES = 768;
@@ -183,7 +184,7 @@ export type VoxelOccluder = (
   segmentEnd?: Vec3,
 ) => VoxelOccluderResult;
 
-const BEGIN_KEYS = ["version", "operationId", "expectedInventoryRevision", "selectedHotbar", "kind"] as const;
+const BEGIN_KEYS = ["version", BS.operationId, "expectedInventoryRevision", BS.selectedHotbar, "kind"] as const;
 const CANCEL_KEYS = [...BEGIN_KEYS, "beginOperationId"] as const;
 const RELEASE_KEYS = [...BEGIN_KEYS, "targetKind", "targetId"] as const;
 
@@ -231,16 +232,16 @@ export function validateRangedCombatRequestJson(rawJson: string):
   } catch {
     return { ok: false, reason: "invalid_json" };
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: "invalid_shape" };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
   if (record.version !== RANGED_COMBAT_PROTOCOL_VERSION) return { ok: false, reason: "invalid_version" };
-  if (typeof record.operationId !== "string" || !OPERATION_ID.test(record.operationId)) return { ok: false, reason: "invalid_operation_id" };
+  if (typeof record.operationId !== "string" || !OPERATION_ID.test(record.operationId)) return { ok: false, reason: BS.invalidOperationId };
   if (!validRevision(record.expectedInventoryRevision)) return { ok: false, reason: "invalid_revision" };
   if (typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
     || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) return { ok: false, reason: "invalid_selected_hotbar" };
   let request: RangedCombatRequest;
   if (record.kind === "begin_charge") {
-    if (!exactKeys(record, BEGIN_KEYS)) return { ok: false, reason: "invalid_shape" };
+    if (!exactKeys(record, BEGIN_KEYS)) return { ok: false, reason: BS.invalidShape };
     request = {
       version: RANGED_COMBAT_PROTOCOL_VERSION,
       operationId: record.operationId,
@@ -251,7 +252,7 @@ export function validateRangedCombatRequestJson(rawJson: string):
   } else if (record.kind === "cancel_charge") {
     if (!exactKeys(record, CANCEL_KEYS)
       || typeof record.beginOperationId !== "string" || !OPERATION_ID.test(record.beginOperationId)) {
-      return { ok: false, reason: "invalid_shape" };
+      return { ok: false, reason: BS.invalidShape };
     }
     request = {
       version: RANGED_COMBAT_PROTOCOL_VERSION,
@@ -262,7 +263,7 @@ export function validateRangedCombatRequestJson(rawJson: string):
       beginOperationId: record.beginOperationId,
     };
   } else if (record.kind === "release") {
-    if (!exactKeys(record, RELEASE_KEYS)) return { ok: false, reason: "invalid_shape" };
+    if (!exactKeys(record, RELEASE_KEYS)) return { ok: false, reason: BS.invalidShape };
     if (record.targetKind !== "none" && record.targetKind !== "player" && record.targetKind !== "mob") {
       return { ok: false, reason: "invalid_target" };
     }
@@ -277,7 +278,7 @@ export function validateRangedCombatRequestJson(rawJson: string):
       targetId: record.targetId,
     };
   } else {
-    return { ok: false, reason: "invalid_shape" };
+    return { ok: false, reason: BS.invalidShape };
   }
   return { ok: true, request: { ...request, fingerprint: rangedCombatFingerprint(request) } };
 }
@@ -522,7 +523,7 @@ function validCharge(charge: RangedChargeAuthority, serverNow: number): boolean 
 function validateWeaponAndRevision(request: RangedCombatRequest, inventory: RangedInventoryAuthority):
   | { ok: true }
   | { ok: false; reason: "inventory_invalid" | "conflict" | "weapon_mismatch" | "arrows_required" } {
-  if (!validInventory(inventory)) return { ok: false, reason: "inventory_invalid" };
+  if (!validInventory(inventory)) return { ok: false, reason: BS.inventoryInvalid };
   if (request.expectedInventoryRevision !== inventory.revision) return { ok: false, reason: "conflict" };
   if (request.selectedHotbar !== inventory.selectedHotbar || inventory.heldBowDurability === null) return { ok: false, reason: "weapon_mismatch" };
   if (inventory.arrowCount < 1) return { ok: false, reason: "arrows_required" };
@@ -539,7 +540,7 @@ export function resolveRangedChargeStart(input: {
 }): RangedChargeStartResult {
   if (input.request.kind !== "begin_charge") return { ok: false, reason: "invalid_request_kind" };
   if (!Number.isSafeInteger(input.serverNow) || input.serverNow < 0) return { ok: false, reason: "invalid_server_time" };
-  if (!input.attackerPresence || input.attackerPresence.online !== true) return { ok: false, reason: "active_presence_required" };
+  if (!input.attackerPresence || input.attackerPresence.online !== true) return { ok: false, reason: BS.activePresenceRequired };
   if (!input.attackerAlive) return { ok: false, reason: "attacker_dead" };
   const authority = validateWeaponAndRevision(input.request, input.inventory);
   if (!authority.ok) return authority;
@@ -631,7 +632,7 @@ export function resolveRangedRelease(input: {
   if (input.request.kind !== "release") return { ok: false, reason: "invalid_request_kind" };
   if (!Number.isSafeInteger(input.serverNow) || input.serverNow < 0) return { ok: false, reason: "invalid_server_time" };
   if (!input.attackerPresence || input.attackerPresence.online !== true || input.attackerPresence.userId !== input.attackerId) {
-    return { ok: false, reason: "active_presence_required" };
+    return { ok: false, reason: BS.activePresenceRequired };
   }
   if (!input.attackerAlive) return { ok: false, reason: "attacker_dead" };
   const authority = validateWeaponAndRevision(input.request, input.inventory);
@@ -648,7 +649,7 @@ export function resolveRangedRelease(input: {
     return { ok: false, reason: "cooldown", retryAfterMs: RANGED_RELEASE_COOLDOWN_MS - Math.max(0, cooldownElapsed) };
   }
   const trajectory = authoritativeRangedTrajectory(input.attackerPresence, chargeMs);
-  if (!trajectory) return { ok: false, reason: "active_presence_required" };
+  if (!trajectory) return { ok: false, reason: BS.activePresenceRequired };
   const selection = requestedTarget(input.request, input.target, input.attackerId);
   let trace: RangedTraceResult;
   let missReason = selection.missReason;
@@ -693,7 +694,7 @@ export function resolveRangedRelease(input: {
 
 export function decideRangedCombatReplay(existingFingerprint: string | null, requestFingerprint: string): "new" | "replay" | "operation_id_reused" {
   if (existingFingerprint === null) return "new";
-  return existingFingerprint === requestFingerprint ? "replay" : "operation_id_reused";
+  return existingFingerprint === requestFingerprint ? "replay" : BS.operationIdReused;
 }
 
 export function encodeRangedCombatReceipt(payload: RangedCombatReceiptPayload): string {
@@ -701,7 +702,7 @@ export function encodeRangedCombatReceipt(payload: RangedCombatReceiptPayload): 
 }
 
 const RELEASE_RESULT_KEYS = [
-  "ok", "fired", "landed", "missReason", "inventory", "charge", "trajectory", "trace",
+  "ok", "fired", "landed", "missReason", BS.inventory, "charge", "trajectory", "trace",
   "targetKind", "targetId", "targetCombat", "killed", "bowBroken",
 ] as const;
 const RELEASE_RESULT_REQUIRED_KEYS = RELEASE_RESULT_KEYS.filter((key) => key !== "missReason" && key !== "targetCombat");
@@ -825,9 +826,9 @@ export function resolveRangedReleaseIdempotently(
   if (input.request.kind !== "release") return { ok: false, reason: "invalid_request_kind" };
   if (existingReceiptJson !== null) {
     const receipt = decodeRangedCombatReceipt(existingReceiptJson);
-    if (!receipt) return { ok: false, reason: "invalid_receipt" };
+    if (!receipt) return { ok: false, reason: BS.invalidReceipt };
     const decision = decideRangedCombatReplay(receipt.fingerprint, input.request.fingerprint);
-    if (decision === "operation_id_reused") return { ok: false, reason: "operation_id_reused" };
+    if (decision === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused };
     return { ok: true, replayed: true, receipt, result: receipt.result };
   }
   const result = resolveRangedRelease(input);

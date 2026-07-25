@@ -6,6 +6,7 @@ import {
   CREEPER_FUSE_VERTICAL_RANGE_BLOCKS,
   MOB_MOTION_TICKS_PER_SECOND,
 } from "../../shared/mobMotionAuthority.ts";
+import * as BS from "../../shared/bundleStrings.ts";
 
 export type MobKind = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
@@ -170,7 +171,7 @@ export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.
     rangedCooldownSeconds: 0,
     rangedRange: 0,
     projectileSpeed: 0,
-    drops: Object.freeze([{ itemId: "gunpowder", minCount: 0, maxCount: 2, chance: 1 }]),
+    drops: Object.freeze([{ itemId: BS.gunpowder, minCount: 0, maxCount: 2, chance: 1 }]),
   }),
   spider: Object.freeze({
     kind: "spider",
@@ -330,7 +331,7 @@ export interface MobProjectile {
 
 const MOB_STATE_SNAPSHOT_KEYS = [
   "id", "kind", "x", "y", "z", "yaw", "homeX", "homeZ", "behaviorSeed",
-  "homeY", "previousX", "previousY", "previousZ", "previousYaw", "health", "alive",
+  "homeY", BS.previousX, BS.previousY, BS.previousZ, "previousYaw", "health", "alive",
   "behavior", "behaviorUntilSeconds", "directionX", "directionZ", "desiredX", "desiredZ",
   "hostileActive", "randomState", "damageSequence", "nextContactDamageAtSeconds",
   "nextRangedAttackAtSeconds", "rangedSequence", "authoritativeRevision",
@@ -338,7 +339,7 @@ const MOB_STATE_SNAPSHOT_KEYS = [
 ] as const;
 
 const MOB_PROJECTILE_SNAPSHOT_KEYS = [
-  "id", "active", "ownerId", "x", "y", "z", "previousX", "previousY", "previousZ",
+  "id", "active", "ownerId", "x", "y", "z", BS.previousX, BS.previousY, BS.previousZ,
   "velocityX", "velocityY", "velocityZ", "yaw", "pitch", "remainingSeconds", "damage",
 ] as const;
 
@@ -367,7 +368,7 @@ function validMobStateSnapshot(value: unknown): value is MobState {
   if (typeof mob.id !== "string" || mob.id.length < 1 || mob.id.length > 128) return false;
   if (typeof mob.kind !== "string" || !(mob.kind in MOB_DEFINITIONS)) return false;
   const kind = mob.kind as MobKind;
-  const positionFields = ["x", "y", "z", "homeX", "homeY", "homeZ", "previousX", "previousY", "previousZ", "desiredX", "desiredZ"] as const;
+  const positionFields = ["x", "y", "z", "homeX", "homeY", "homeZ", BS.previousX, BS.previousY, BS.previousZ, "desiredX", "desiredZ"] as const;
   if (!positionFields.every((field) => finiteInRange(mob[field], -1_000_000, 1_000_000))) return false;
   if (!finiteInRange(mob.yaw, -Math.PI * 4, Math.PI * 4)
     || !finiteInRange(mob.previousYaw, -Math.PI * 4, Math.PI * 4)) return false;
@@ -398,7 +399,7 @@ function validMobProjectileSnapshot(value: unknown, expectedId: number): value i
   if (!projectile || !hasExactKeys(projectile, MOB_PROJECTILE_SNAPSHOT_KEYS)) return false;
   if (projectile.id !== expectedId || typeof projectile.active !== "boolean") return false;
   if (typeof projectile.ownerId !== "string" || projectile.ownerId.length > 128) return false;
-  const coordinates = ["x", "y", "z", "previousX", "previousY", "previousZ"] as const;
+  const coordinates = ["x", "y", "z", BS.previousX, BS.previousY, BS.previousZ] as const;
   if (!coordinates.every((field) => finiteInRange(projectile[field], -1_000_000, 1_000_000))) return false;
   const velocities = ["velocityX", "velocityY", "velocityZ"] as const;
   if (!velocities.every((field) => finiteInRange(projectile[field], -1_000, 1_000))) return false;

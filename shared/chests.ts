@@ -1,4 +1,5 @@
 import { ITEMS, maxItemDurability, type ItemId, type ItemStack } from "./game.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const CHEST_SLOT_COUNT = 27;
 export const MAX_CHEST_JSON_LENGTH = 8_192;
@@ -31,12 +32,12 @@ export type SaveChestResult =
 export function validateChestCoordinate(rawCoordKey: string): ChestCoordinateValidation {
   const parts = rawCoordKey.trim().split(":");
   if (parts.length !== 3 || parts.some((part) => !/^-?\d{1,3}$/.test(part))) {
-    return { ok: false, reason: "invalid_coordinate" };
+    return { ok: false, reason: BS.invalidCoordinate };
   }
   const [x, y, z] = parts.map(Number);
   if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)
     || x < -64 || x > 64 || y < -4 || y > 64 || z < -64 || z > 64) {
-    return { ok: false, reason: "invalid_coordinate" };
+    return { ok: false, reason: BS.invalidCoordinate };
   }
   return { ok: true, coordKey: `${x}:${y}:${z}`, x, y, z };
 }
@@ -53,26 +54,26 @@ export function validateChestInventoryJson(rawInventoryJson: string): ChestInven
   } catch {
     return { ok: false, reason: "invalid_json" };
   }
-  if (!Array.isArray(parsed)) return { ok: false, reason: "invalid_shape" };
+  if (!Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   if (parsed.length > CHEST_SLOT_COUNT) return { ok: false, reason: "too_many_slots" };
 
   const inventory: ChestInventory = new Array(CHEST_SLOT_COUNT).fill(null);
   for (let index = 0; index < parsed.length; index += 1) {
     const slot = parsed[index] as unknown;
     if (slot === null) continue;
-    if (typeof slot !== "object" || Array.isArray(slot)) return { ok: false, reason: "invalid_slot" };
+    if (typeof slot !== "object" || Array.isArray(slot)) return { ok: false, reason: BS.invalidSlot };
     const record = slot as Record<string, unknown>;
     const keys = Object.keys(record);
-    if (!keys.every((key) => key === "itemId" || key === "count" || key === "durability")
+    if (!keys.every((key) => key === "itemId" || key === "count" || key === BS.durability)
       || !keys.includes("itemId") || !keys.includes("count")
       || !isItemId(record.itemId) || typeof record.count !== "number"
       || !Number.isInteger(record.count) || record.count < 1
       || record.count > ITEMS[record.itemId].maxStack) {
-      return { ok: false, reason: "invalid_slot" };
+      return { ok: false, reason: BS.invalidSlot };
     }
     const maximum = maxItemDurability(record.itemId);
     if (maximum === null) {
-      if (record.durability !== undefined) return { ok: false, reason: "invalid_slot" };
+      if (record.durability !== undefined) return { ok: false, reason: BS.invalidSlot };
       inventory[index] = { itemId: record.itemId, count: record.count };
       continue;
     }
@@ -80,7 +81,7 @@ export function validateChestInventoryJson(rawInventoryJson: string): ChestInven
     // migration to full durability and every subsequent write is canonical.
     const durability = record.durability === undefined ? maximum : record.durability;
     if (record.count !== 1 || typeof durability !== "number" || !Number.isInteger(durability)
-      || durability < 1 || durability > maximum) return { ok: false, reason: "invalid_slot" };
+      || durability < 1 || durability > maximum) return { ok: false, reason: BS.invalidSlot };
     inventory[index] = { itemId: record.itemId, count: 1, durability };
   }
   const inventoryJson = JSON.stringify(inventory);

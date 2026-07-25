@@ -1,3 +1,5 @@
+
+import * as BS from "./bundleStrings.ts";
 export const WORLD_EDIT_CHUNK_SIZE = 8;
 export const WORLD_EDIT_MIN_XZ = -1_000_000;
 export const WORLD_EDIT_MAX_XZ = 1_000_000;
@@ -19,31 +21,31 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "wood",
   "leaves",
   "planks",
-  "crafting_table",
+  BS.craftingTable,
   "torch",
   "chest",
   "bed",
-  "door_closed",
-  "door_open",
-  "coal_ore",
-  "iron_ore",
+  BS.doorClosed,
+  BS.doorOpen,
+  BS.coalOre,
+  BS.ironOre,
   "furnace",
   "ladder",
-  "cobblestone",
+  BS.cobblestone,
   "sand",
   "glass",
   /** Append-only palette: v1/v2 and deployed v3 codes must never be renumbered. */
-  "gold_ore",
-  "diamond_ore",
+  BS.goldOre,
+  BS.diamondOre,
   "tnt",
   "gravel",
   "wool",
   "sapling",
-  "stone_bricks",
-  "oak_fence",
-  "oak_fence_gate_closed",
-  "oak_fence_gate_open",
-  "stone_brick_slab",
+  BS.stoneBricks,
+  BS.oakFence,
+  BS.oakFenceGateClosed,
+  BS.oakFenceGateOpen,
+  BS.stoneBrickSlab,
   "clay",
   "bricks",
 ] as const;
@@ -148,13 +150,13 @@ export function validateWorldChunkKey(rawChunkKey: string): WorldChunkKeyValidat
 }
 
 export function validateVisibleWorldChunkKeys(rawChunkKeys: unknown): VisibleWorldChunkKeysValidation {
-  if (!Array.isArray(rawChunkKeys)) return { ok: false, reason: "invalid_chunk_keys" };
+  if (!Array.isArray(rawChunkKeys)) return { ok: false, reason: BS.invalidChunkKeys };
   if (rawChunkKeys.length > MAX_VISIBLE_WORLD_CHUNKS) return { ok: false, reason: "too_many_chunks" };
   const unique = new Set<string>();
   for (const raw of rawChunkKeys) {
-    if (typeof raw !== "string") return { ok: false, reason: "invalid_chunk_keys" };
+    if (typeof raw !== "string") return { ok: false, reason: BS.invalidChunkKeys };
     const validation = validateWorldChunkKey(raw);
-    if (!validation.ok) return { ok: false, reason: "invalid_chunk_keys" };
+    if (!validation.ok) return { ok: false, reason: BS.invalidChunkKeys };
     unique.add(validation.chunkKey);
   }
   return { ok: true, chunkKeys: [...unique].sort(chunkKeyCompare) };
@@ -420,9 +422,9 @@ export function applyWorldChunkEdits(
   if (!chunk.ok) return { ok: false, reason: chunk.reason };
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
   const previous = parsePacked(snapshotJson);
-  if (!previous) return { ok: false, reason: "invalid_snapshot" };
+  if (!previous) return { ok: false, reason: BS.invalidSnapshot };
   const sections = snapshotToSections(previous);
-  if (!sections) return { ok: false, reason: "invalid_snapshot" };
+  if (!sections) return { ok: false, reason: BS.invalidSnapshot };
   for (const edit of edits) {
     const x = finiteInteger(edit.x);
     const y = finiteInteger(edit.y);
@@ -445,16 +447,16 @@ export function decodeWorldChunkSnapshot(rawChunkKey: string, snapshotJson: stri
   if (!chunk.ok) return { ok: false, reason: chunk.reason };
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
   const snapshot = parsePacked(snapshotJson);
-  if (!snapshot) return { ok: false, reason: "invalid_snapshot" };
+  if (!snapshot) return { ok: false, reason: BS.invalidSnapshot };
   const sections = snapshotToSections(snapshot);
-  if (!sections) return { ok: false, reason: "invalid_snapshot" };
+  if (!sections) return { ok: false, reason: BS.invalidSnapshot };
   const edits: DecodedWorldChunkEdit[] = [];
   for (const [sectionY, packed] of [...sections.entries()].sort(([left], [right]) => left - right)) {
     for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
       const code = getCurrentCode(packed, index);
       if (code === 0) continue;
       const blockType = WORLD_CHUNK_BLOCK_TYPES[code - 1];
-      if (!blockType) return { ok: false, reason: "invalid_snapshot" };
+      if (!blockType) return { ok: false, reason: BS.invalidSnapshot };
       const localY = Math.floor(index / CELLS_PER_Y);
       const horizontal = index % CELLS_PER_Y;
       const localZ = Math.floor(horizontal / WORLD_EDIT_CHUNK_SIZE);
@@ -463,7 +465,7 @@ export function decodeWorldChunkSnapshot(rawChunkKey: string, snapshotJson: stri
       const y = sectionY * WORLD_CHUNK_SECTION_HEIGHT + localY;
       const z = chunk.chunkZ * WORLD_EDIT_CHUNK_SIZE + localZ;
       if (x < WORLD_EDIT_MIN_XZ || x > WORLD_EDIT_MAX_XZ || y < WORLD_EDIT_MIN_Y || y > WORLD_EDIT_MAX_Y
-        || z < WORLD_EDIT_MIN_XZ || z > WORLD_EDIT_MAX_XZ) return { ok: false, reason: "invalid_snapshot" };
+        || z < WORLD_EDIT_MIN_XZ || z > WORLD_EDIT_MAX_XZ) return { ok: false, reason: BS.invalidSnapshot };
       edits.push({ coordKey: `${x}:${y}:${z}`, x: String(x), y: String(y), z: String(z), blockType });
     }
   }
@@ -484,7 +486,7 @@ export function sampleWorldChunkSnapshot(
   if (!chunk.ok) return { ok: false, reason: chunk.reason };
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
   const snapshot = parsePacked(snapshotJson);
-  if (!snapshot) return { ok: false, reason: "invalid_snapshot" };
+  if (!snapshot) return { ok: false, reason: BS.invalidSnapshot };
   const blocks: Array<WorldChunkBlockType | null> = [];
   for (const sample of samples) {
     if (!sample || !Number.isSafeInteger(sample.x) || !Number.isSafeInteger(sample.y)
@@ -512,10 +514,10 @@ export function sampleWorldChunkSnapshot(
       continue;
     }
     if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) {
-      return { ok: false, reason: "invalid_snapshot" };
+      return { ok: false, reason: BS.invalidSnapshot };
     }
     const block = WORLD_CHUNK_BLOCK_TYPES[code - 1];
-    if (!block) return { ok: false, reason: "invalid_snapshot" };
+    if (!block) return { ok: false, reason: BS.invalidSnapshot };
     blocks.push(block);
   }
   return { ok: true, blocks };

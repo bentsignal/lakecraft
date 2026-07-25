@@ -10,6 +10,7 @@ import {
   type ItemStack,
   type SmeltingRecipe,
 } from "./game.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const FURNACE_COAL_BURN_MS = 80_000;
 export const FURNACE_COOK_MS = 10_000;
@@ -24,7 +25,7 @@ const INPUT_IDS = new Set<ItemId>(SMELTING_RECIPES.map(({ input }) => input));
 const OUTPUT_IDS = new Set<ItemId>(SMELTING_RECIPES.map(({ output }) => output));
 const FUEL_IDS = new Set<ItemId>(["coal", "charcoal"]);
 const FURNACE_STATE_KEYS = [
-  "coordKey",
+  BS.coordKey,
   "input",
   "fuel",
   "output",
@@ -174,22 +175,22 @@ function canonicalJson(state: FurnaceState): string {
 }
 
 export function validateFurnaceCoordinate(rawCoordKey: string): FurnaceCoordinateValidation {
-  if (typeof rawCoordKey !== "string") return { ok: false, reason: "invalid_coordinate" };
+  if (typeof rawCoordKey !== "string") return { ok: false, reason: BS.invalidCoordinate };
   const match = /^(-?\d{1,7}):(-?\d{1,3}):(-?\d{1,7})$/.exec(rawCoordKey.trim());
-  if (!match) return { ok: false, reason: "invalid_coordinate" };
+  if (!match) return { ok: false, reason: BS.invalidCoordinate };
   const x = Number(match[1]);
   const y = Number(match[2]);
   const z = Number(match[3]);
   if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !Number.isSafeInteger(z)
     || x < FURNACE_MIN_XZ || x > FURNACE_MAX_XZ
     || y < FURNACE_MIN_Y || y > FURNACE_MAX_Y
-    || z < FURNACE_MIN_XZ || z > FURNACE_MAX_XZ) return { ok: false, reason: "invalid_coordinate" };
+    || z < FURNACE_MIN_XZ || z > FURNACE_MAX_XZ) return { ok: false, reason: BS.invalidCoordinate };
   return { ok: true, coordKey: `${x}:${y}:${z}`, x, y, z };
 }
 
 export function createEmptyFurnace(rawCoordKey: string, trustedNowMs: number): FurnaceCreateResult {
   const coordinate = validateFurnaceCoordinate(rawCoordKey);
-  if (!coordinate.ok) return { ok: false, reason: "invalid_coordinate" };
+  if (!coordinate.ok) return { ok: false, reason: BS.invalidCoordinate };
   if (!isTrustedTime(trustedNowMs)) return { ok: false, reason: "invalid_time" };
   return {
     ok: true,
@@ -206,14 +207,14 @@ export function createEmptyFurnace(rawCoordKey: string, trustedNowMs: number): F
 }
 
 export function validateFurnaceState(value: unknown, expectedCoordKey?: string): FurnaceValidation {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, reason: "invalid_shape" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, reason: BS.invalidShape };
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
   if (keys.length !== FURNACE_STATE_KEYS.length || !FURNACE_STATE_KEYS.every((key) => own(record, key))
     || keys.some((key) => !(FURNACE_STATE_KEYS as readonly string[]).includes(key))) {
-    return { ok: false, reason: "invalid_shape" };
+    return { ok: false, reason: BS.invalidShape };
   }
-  if (typeof record.coordKey !== "string") return { ok: false, reason: "invalid_coordinate" };
+  if (typeof record.coordKey !== "string") return { ok: false, reason: BS.invalidCoordinate };
   const coordinate = validateFurnaceCoordinate(record.coordKey);
   if (!coordinate.ok) return coordinate;
   if (expectedCoordKey !== undefined) {
@@ -223,7 +224,7 @@ export function validateFurnaceState(value: unknown, expectedCoordKey?: string):
   const input = validPlainStack(record.input, INPUT_IDS);
   const fuel = validPlainStack(record.fuel, FUEL_IDS);
   const output = validPlainStack(record.output, OUTPUT_IDS);
-  if (input === undefined || fuel === undefined || output === undefined) return { ok: false, reason: "invalid_slot" };
+  if (input === undefined || fuel === undefined || output === undefined) return { ok: false, reason: BS.invalidSlot };
   if (!Number.isInteger(record.burnRemainingMs) || (record.burnRemainingMs as number) < 0
     || (record.burnRemainingMs as number) > FURNACE_COAL_BURN_MS
     || !Number.isInteger(record.cookProgressMs) || (record.cookProgressMs as number) < 0
@@ -362,9 +363,9 @@ export function applyFurnaceTransfer(
 ): FurnaceTransferResult {
   const stateValidation = validateFurnaceState(state);
   if (!stateValidation.ok) return transferFailure("invalid_furnace", state, inventory);
-  if (!validInventory(inventory)) return transferFailure("invalid_inventory", stateValidation.state, inventory);
+  if (!validInventory(inventory)) return transferFailure(BS.invalidInventory, stateValidation.state, inventory);
   if (!action || !Number.isInteger(action.count) || action.count < 1 || action.count > 64) {
-    return transferFailure("invalid_action", stateValidation.state, inventory);
+    return transferFailure(BS.invalidAction, stateValidation.state, inventory);
   }
   const materialized = materializeFurnace(stateValidation.state, trustedNowMs);
   if (!materialized.ok) return transferFailure(
@@ -379,18 +380,18 @@ export function applyFurnaceTransfer(
 
   if (action.kind === "deposit_input" || action.kind === "deposit_fuel") {
     if (!Number.isInteger(action.inventorySlot) || action.inventorySlot < 0 || action.inventorySlot >= player.length) {
-      return transferFailure("invalid_action", furnace, player);
+      return transferFailure(BS.invalidAction, furnace, player);
     }
     const source = player[action.inventorySlot];
-    if (!source || source.count < action.count) return transferFailure("empty_source", furnace, player);
+    if (!source || source.count < action.count) return transferFailure(BS.emptySource, furnace, player);
     const inputDeposit = action.kind === "deposit_input";
     if ((inputDeposit && !INPUT_IDS.has(source.itemId)) || (!inputDeposit && !isFurnaceFuelItem(source.itemId))) {
       return transferFailure("wrong_item", furnace, player);
     }
     const target = inputDeposit ? furnace.input : furnace.fuel;
-    if (target && target.itemId !== source.itemId) return transferFailure("incompatible_stack", furnace, player);
+    if (target && target.itemId !== source.itemId) return transferFailure(BS.incompatibleStack, furnace, player);
     if ((target?.count ?? 0) + action.count > ITEMS[source.itemId].maxStack) {
-      return transferFailure("no_capacity", furnace, player);
+      return transferFailure(BS.noCapacity, furnace, player);
     }
     moved = { ...source, count: action.count };
     player[action.inventorySlot] = decrementStack(source, action.count);
@@ -401,10 +402,10 @@ export function applyFurnaceTransfer(
     const slot = action.kind === "take_input" ? furnace.input
       : action.kind === "take_fuel" ? furnace.fuel
       : furnace.output;
-    if (!slot || slot.count < action.count) return transferFailure("empty_source", furnace, player);
+    if (!slot || slot.count < action.count) return transferFailure(BS.emptySource, furnace, player);
     moved = { ...slot, count: action.count };
     const added = addItemStack(player, moved, action.count);
-    if (added.remainder !== 0) return transferFailure("no_capacity", furnace, player);
+    if (added.remainder !== 0) return transferFailure(BS.noCapacity, furnace, player);
     player.splice(0, player.length, ...added.inventory);
     const remainder = decrementStack(slot, action.count);
     if (action.kind === "take_input") {
@@ -413,11 +414,11 @@ export function applyFurnaceTransfer(
     } else if (action.kind === "take_fuel") furnace.fuel = remainder;
     else furnace.output = remainder;
   } else {
-    return transferFailure("invalid_action", furnace, player);
+    return transferFailure(BS.invalidAction, furnace, player);
   }
 
   if (!totalsEqual(before, combinedTotals(player, furnace))) {
-    return transferFailure("conservation_failure", materialized.state, inventory);
+    return transferFailure(BS.conservationFailure, materialized.state, inventory);
   }
   return {
     ok: true,

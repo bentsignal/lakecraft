@@ -20,6 +20,7 @@ import {
   type CraftingGridSize,
   type CraftingTakeResult,
 } from "./craftingGrid.ts";
+import * as BS from "./bundleStrings.ts";
 
 export type InventoryWorkspace = {
   inventory: Inventory;
@@ -138,7 +139,7 @@ export function rightClickWorkspaceCraftingSlot(state: InventoryWorkspace, slot:
 /** Shift-clicking a crafting ingredient returns that exact stack to the pack. */
 export function shiftClickWorkspaceCraftingSlot(state: InventoryWorkspace, slot: number): InventoryWorkspaceActionResult {
   const next = cloneInventoryWorkspaceStrict(state);
-  if (!Number.isInteger(slot) || slot < 0 || slot >= next.grid.length) return failure(next, "invalid_slot");
+  if (!Number.isInteger(slot) || slot < 0 || slot >= next.grid.length) return failure(next, BS.invalidSlot);
   const source = next.grid[slot];
   if (!source) return failure(next, "empty_slot");
   const targetIndexes = [
@@ -146,7 +147,7 @@ export function shiftClickWorkspaceCraftingSlot(state: InventoryWorkspace, slot:
     ...range(0, Math.min(HOTBAR_SIZE, next.inventory.length)),
   ];
   const moved = moveStackToIndexes(next.inventory, source, targetIndexes);
-  if (moved <= 0) return failure(next, "no_capacity");
+  if (moved <= 0) return failure(next, BS.noCapacity);
   next.grid[slot] = moved === source.count ? null : withCount(source, source.count - moved);
   return { ok: true, state: next };
 }
@@ -158,7 +159,7 @@ export function shiftClickWorkspaceCraftingSlot(state: InventoryWorkspace, slot:
  */
 export function shiftClickInventorySlot(state: InventoryWorkspace, slot: number): InventoryWorkspaceActionResult {
   const next = cloneInventoryWorkspaceStrict(state);
-  if (!isInventorySlot(next, slot)) return failure(next, "invalid_slot");
+  if (!isInventorySlot(next, slot)) return failure(next, BS.invalidSlot);
   const source = next.inventory[slot];
   if (!source) return failure(next, "empty_slot");
 
@@ -173,7 +174,7 @@ export function shiftClickInventorySlot(state: InventoryWorkspace, slot: number)
     ? range(HOTBAR_SIZE, next.inventory.length)
     : range(0, Math.min(HOTBAR_SIZE, next.inventory.length));
   const moved = moveStackToIndexes(next.inventory, source, targetIndexes);
-  if (moved <= 0) return failure(next, "no_capacity");
+  if (moved <= 0) return failure(next, BS.noCapacity);
   next.inventory[slot] = moved === source.count ? null : withCount(source, source.count - moved);
   return { ok: true, state: next };
 }
@@ -181,7 +182,7 @@ export function shiftClickInventorySlot(state: InventoryWorkspace, slot: number)
 /** Shift-clicking worn armor atomically returns it to inventory or does nothing. */
 export function shiftClickArmorSlot(state: InventoryWorkspace, slot: ArmorSlot): InventoryWorkspaceActionResult {
   const next = cloneInventoryWorkspaceStrict(state);
-  if (!isArmorSlot(slot)) return failure(next, "invalid_slot");
+  if (!isArmorSlot(slot)) return failure(next, BS.invalidSlot);
   const equipped = next.equipment[slot];
   if (!equipped) return failure(next, "empty_slot");
   const source = { ...equipped, count: 1 };
@@ -189,7 +190,7 @@ export function shiftClickArmorSlot(state: InventoryWorkspace, slot: ArmorSlot):
     ...range(HOTBAR_SIZE, next.inventory.length),
     ...range(0, Math.min(HOTBAR_SIZE, next.inventory.length)),
   ];
-  if (moveStackToIndexes(next.inventory, source, targetIndexes) !== 1) return failure(next, "no_capacity");
+  if (moveStackToIndexes(next.inventory, source, targetIndexes) !== 1) return failure(next, BS.noCapacity);
   next.equipment[slot] = null;
   return { ok: true, state: next };
 }
@@ -212,7 +213,7 @@ export function doubleClickGatherToCursor(state: InventoryWorkspace): InventoryW
       slots[index] = moved === source.count ? null : withCount(source, source.count - moved);
     }
   }
-  if (count === cursor.count) return failure(next, "no_capacity");
+  if (count === cursor.count) return failure(next, BS.noCapacity);
   next.cursor = withCount(cursor, count);
   return { ok: true, state: next };
 }
@@ -252,7 +253,7 @@ export function takeAllWorkspaceCraftingResultsToInventory(state: InventoryWorks
     if (!result.state.cursor) break;
     const added = addItemStack(result.state.inventory, result.state.cursor, result.state.cursor.count);
     if (added.remainder > 0) {
-      if (batches === 0) return { ok: false, state: original, reason: "no_capacity" };
+      if (batches === 0) return { ok: false, state: original, reason: BS.noCapacity };
       break;
     }
     next = { ...result.state, inventory: added.inventory, cursor: null };
@@ -273,7 +274,7 @@ export function stowInventoryWorkspace(state: InventoryWorkspace): StowInventory
   for (const source of [...original.grid, original.cursor]) {
     if (!source) continue;
     const added = addItemStack(inventory, source, source.count);
-    if (added.remainder > 0) return { ok: false, state: original, reason: "no_capacity" };
+    if (added.remainder > 0) return { ok: false, state: original, reason: BS.noCapacity };
     inventory = added.inventory;
   }
   return {
@@ -284,7 +285,7 @@ export function stowInventoryWorkspace(state: InventoryWorkspace): StowInventory
 
 function clickInventorySlot(state: InventoryWorkspace, slot: number, right: boolean): InventoryWorkspaceActionResult {
   const next = cloneInventoryWorkspaceStrict(state);
-  if (!isInventorySlot(next, slot)) return failure(next, "invalid_slot");
+  if (!isInventorySlot(next, slot)) return failure(next, BS.invalidSlot);
   const target = next.inventory[slot];
   const cursor = next.cursor;
 
@@ -309,7 +310,7 @@ function clickInventorySlot(state: InventoryWorkspace, slot: number, right: bool
   }
 
   if (!areItemStacksCompatible(cursor, target)) {
-    if (right) return failure(next, "incompatible_stack");
+    if (right) return failure(next, BS.incompatibleStack);
     next.inventory[slot] = cursor;
     next.cursor = target;
     return { ok: true, state: next };
@@ -325,7 +326,7 @@ function clickInventorySlot(state: InventoryWorkspace, slot: number, right: bool
 
 function clickArmorSlot(state: InventoryWorkspace, slot: ArmorSlot): InventoryWorkspaceActionResult {
   const next = cloneInventoryWorkspaceStrict(state);
-  if (!isArmorSlot(slot)) return failure(next, "invalid_slot");
+  if (!isArmorSlot(slot)) return failure(next, BS.invalidSlot);
   const target = next.equipment[slot];
   const cursor = next.cursor;
   if (!cursor) {
@@ -336,7 +337,7 @@ function clickArmorSlot(state: InventoryWorkspace, slot: ArmorSlot): InventoryWo
   }
 
   const armor = ITEMS[cursor.itemId].armor;
-  if (!armor || armor.slot !== slot || cursor.count !== 1) return failure(next, "incompatible_stack");
+  if (!armor || armor.slot !== slot || cursor.count !== 1) return failure(next, BS.incompatibleStack);
   next.equipment[slot] = {
     itemId: cursor.itemId as NonNullable<Equipment[ArmorSlot]>["itemId"],
     durability: cursor.durability!,
@@ -429,7 +430,7 @@ function failure(state: InventoryWorkspace, reason: InventoryWorkspaceActionReas
 function mapCraftingClickReason(
   reason: "invalid_grid" | "invalid_slot" | "invalid_stack" | "incompatible_stack" | "stack_full",
 ): InventoryWorkspaceActionReason {
-  if (reason === "invalid_slot") return "invalid_slot";
+  if (reason === BS.invalidSlot) return BS.invalidSlot;
   if (reason === "stack_full") return "stack_full";
-  return "incompatible_stack";
+  return BS.incompatibleStack;
 }

@@ -3,6 +3,7 @@ import {
   validateFurnaceCoordinate,
   type FurnaceTransferAction,
 } from "../shared/furnaces.ts";
+import * as BS from "../shared/bundleStrings.ts";
 
 export const MAX_FURNACE_TRANSFER_RECEIPTS_PER_USER = 16;
 export const FURNACE_RECEIPT_OVERFLOW_PRUNE_LIMIT = 8;
@@ -82,10 +83,10 @@ export function validateFurnaceTransferRequestJson(rawJson: string): FurnaceTran
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   if (!exactKeys(record, [
-    "operationId",
-    "coordKey",
+    BS.operationId,
+    BS.coordKey,
     "action",
-    "expectedInventoryUpdatedAt",
+    BS.expectedInventoryUpdatedAt,
     "expectedFurnaceRevision",
     "expectedBlockInstanceToken",
   ]) || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(record.operationId)) return null;
@@ -125,7 +126,7 @@ export function decideFurnaceReceiptReplay(
   requestFingerprint: string,
 ): "new" | "replay" | "operation_id_reused" {
   if (storedFingerprint === null) return "new";
-  return storedFingerprint === requestFingerprint ? "replay" : "operation_id_reused";
+  return storedFingerprint === requestFingerprint ? "replay" : BS.operationIdReused;
 }
 
 export function encodeFurnaceReceipt(result: Record<string, unknown>): string {

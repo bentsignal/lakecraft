@@ -10,6 +10,7 @@ import {
 } from "../shared/droppedItems.ts";
 import { validatePlayerStateJson } from "../shared/chestTransfers.ts";
 import type { ItemStack } from "../shared/game.ts";
+import * as BS from "../shared/bundleStrings.ts";
 
 export const DROPPED_ITEM_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 export const MAX_DROPPED_ITEM_RECEIPTS_PER_USER = 32;
@@ -65,7 +66,7 @@ export function buildDroppedItemRow(
 
 export function decideDroppedItemReplay(existingFingerprint: string | null, requestFingerprint: string): DroppedItemReplayDecision {
   if (existingFingerprint === null) return "new";
-  return existingFingerprint === requestFingerprint ? "replay" : "operation_id_reused";
+  return existingFingerprint === requestFingerprint ? "replay" : BS.operationIdReused;
 }
 
 export function decideDroppedItemInventoryCas(currentUpdatedAt: string | null, expectedUpdatedAt: string): InventoryCasDecision {

@@ -1,4 +1,5 @@
 import type { BlockType } from "./protocol.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const TNT_FUSE_MS = 4_000;
 export const TNT_MAX_ACTIVE_FUSES = 32;
@@ -7,7 +8,7 @@ export const TNT_CLAIM_RANGE = 48;
 export const TNT_IGNITION_REACH = 6;
 export const TNT_RECEIPT_TTL_MS = 24 * 60 * 60 * 1_000;
 export const TNT_MAX_RECEIPTS = 256;
-export const FLINT_AND_STEEL_ITEM_ID = "flint_and_steel";
+export const FLINT_AND_STEEL_ITEM_ID = BS.flintAndSteel;
 export const FLINT_AND_STEEL_MAX_DURABILITY = 64;
 
 export type TntIgnitionRequest = {
@@ -79,7 +80,7 @@ function hashText(value: string): number {
 
 export function validateTntIgnitionRequestJson(rawJson: string): TntIgnitionRequest | null {
   const value = parsedRecord(rawJson);
-  if (!value || !exactKeys(value, ["operationId", "x", "y", "z", "blockInstanceToken"])
+  if (!value || !exactKeys(value, [BS.operationId, "x", "y", "z", "blockInstanceToken"])
     || typeof value.operationId !== "string" || !OPERATION_PATTERN.test(value.operationId)
     || !coordinate(value.x, -1_000_000, 1_000_000)
     || !coordinate(value.y, -24, 128)
@@ -108,7 +109,7 @@ export function authorizeTntIgnition(
     activeFuseAtCoordinate: boolean;
   }>,
 ): { ok: true } | { ok: false; reason: string } {
-  if (!authority.withinReach) return { ok: false, reason: "out_of_reach" };
+  if (!authority.withinReach) return { ok: false, reason: BS.outOfReach };
   if (authority.heldItem !== FLINT_AND_STEEL_ITEM_ID) return { ok: false, reason: "flint_and_steel_required" };
   if (authority.activeFuseAtCoordinate) return { ok: false, reason: "already_primed" };
   if (authority.currentBlock !== "tnt") return { ok: false, reason: "tnt_required" };
@@ -194,7 +195,7 @@ export function decideTntReceipt(
   fingerprint: string,
 ): "commit" | "replay" | "operation_id_reused" {
   return storedFingerprint === null ? "commit"
-    : storedFingerprint === fingerprint ? "replay" : "operation_id_reused";
+    : storedFingerprint === fingerprint ? "replay" : BS.operationIdReused;
 }
 
 export function electTntExplosionClaimer(

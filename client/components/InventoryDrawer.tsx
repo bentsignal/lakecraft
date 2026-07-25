@@ -38,6 +38,7 @@ import {
 } from "../../shared/inventoryActions";
 import { CraftingGridView } from "./CraftingGrid";
 import { ItemGlyph } from "./ItemGlyph";
+import * as BS from "../../shared/bundleStrings.ts";
 
 export type InventoryCraftingDrawerProps = {
   open: boolean;
@@ -71,7 +72,7 @@ export function InventoryCraftingDrawer({
   onWorkspaceChange,
   onWorkspacePreview,
 }: InventoryCraftingDrawerProps) {
-  const size: CraftingGridSize = craftingContext === "crafting_table" ? 3 : 2;
+  const size: CraftingGridSize = craftingContext === BS.craftingTable ? 3 : 2;
   const [workspace, setWorkspace] = useState<InventoryWorkspace>(() => createInventoryWorkspace(inventory, equipment, size));
   const [pointer, setPointer] = useState({ x: 0, y: 0 });
   const [interactionError, setInteractionError] = useState("");
@@ -205,7 +206,7 @@ export function InventoryCraftingDrawer({
     >
       <aside className={`lc-drawer lc-inventory-window${size === 3 ? " is-crafting-table" : ""}`} role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
         <div className="lc-inventory-titlebar">
-          <h2 id="lc-inventory-title">{craftingContext === "crafting_table" ? "Crafting" : "Inventory"}</h2>
+          <h2 id="lc-inventory-title">{craftingContext === BS.craftingTable ? "Crafting" : "Inventory"}</h2>
           <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
         </div>
 
