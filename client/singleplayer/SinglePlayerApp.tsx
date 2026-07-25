@@ -400,7 +400,9 @@ export function SinglePlayerApp() {
     const result = resetSinglePlayerSave(localStorage);
     if (!result.ok) {
       console.error("[Lakecraft save] Explicit local world reset failed.", result);
-      setSaveStatusText("Reset could not finish. Reload to check the existing save, then try again.");
+      setSaveStatusText(result.mutationStarted
+        ? "Reset stopped partway. Saving remains disabled; reload before trying again."
+        : "Reset did not start. Your saved world data was left unchanged.");
       return;
     }
     window.location.reload();

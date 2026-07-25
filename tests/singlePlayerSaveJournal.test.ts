@@ -26,8 +26,11 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   failWritesFor: string | null = null;
   failReadsFor: string | null = null;
   failDeletesFor: string | null = null;
+  readonly deleteAttempts: string[] = [];
+  readonly operations: string[] = [];
 
   getItem(key: string): string | null {
+    this.operations.push(`get:${key}`);
     if (this.failReadsFor === key) throw new Error("simulated read failure");
     return this.values.get(key) ?? null;
   }
@@ -38,6 +41,8 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   }
 
   removeItem(key: string): void {
+    this.deleteAttempts.push(key);
+    this.operations.push(`remove:${key}`);
     if (this.failDeletesFor === key) throw new Error("simulated delete failure");
     this.values.delete(key);
   }
@@ -347,14 +352,54 @@ function richSnapshot(): SinglePlayerSnapshot {
   assert.equal(saveSinglePlayerSnapshot(storage, previousGood, 1).ok, true);
   storage.values.set(SINGLEPLAYER_SAVE_SLOT_B_KEY, "interrupted write");
   storage.failDeletesFor = SINGLEPLAYER_SAVE_SLOT_A_KEY;
+  storage.operations.length = 0;
   assert.deepEqual(resetSinglePlayerSave(storage), {
     ok: false,
     reason: "storage_delete_failed",
     key: SINGLEPLAYER_SAVE_SLOT_A_KEY,
+    mutationStarted: true,
   });
+  assert.deepEqual(storage.operations, [
+    `get:${SINGLEPLAYER_SAVE_SLOT_A_KEY}`,
+    `get:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
+    `remove:${SINGLEPLAYER_LEGACY_SAVE_KEY}`,
+    `get:${SINGLEPLAYER_LEGACY_SAVE_KEY}`,
+    `remove:${SINGLEPLAYER_SAVE_HEAD_KEY}`,
+    `get:${SINGLEPLAYER_SAVE_HEAD_KEY}`,
+    `remove:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
+    `get:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
+    `remove:${SINGLEPLAYER_SAVE_SLOT_A_KEY}`,
+  ], "every non-selected deletion is verified before the selected valid slot is touched");
   const loaded = loadSinglePlayerSave(storage);
   assert.equal(loaded.status, "loaded");
   if (loaded.status !== "loaded") throw new Error(loaded.status);
+  assert.deepEqual(loaded.snapshot, previousGood);
+}
+
+// An incomplete preliminary slot scan fails closed before any mutation. Even
+// if later removals would have produced a destructive partial reset, the
+// previous-good slot remains byte-for-byte intact.
+{
+  const storage = new MemoryStorage();
+  const previousGood = richSnapshot();
+  assert.equal(saveSinglePlayerSnapshot(storage, previousGood, 1).ok, true);
+  const previousRaw = storage.values.get(SINGLEPLAYER_SAVE_SLOT_A_KEY);
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_B_KEY, "interrupted write");
+  storage.failReadsFor = SINGLEPLAYER_SAVE_SLOT_A_KEY;
+  storage.failDeletesFor = SINGLEPLAYER_SAVE_SLOT_B_KEY;
+  assert.deepEqual(resetSinglePlayerSave(storage), {
+    ok: false,
+    reason: "storage_read_failed",
+    mutationStarted: false,
+  });
+  assert.deepEqual(storage.deleteAttempts, [], "failed preflight cannot attempt any deletion");
+  assert.equal(storage.values.get(SINGLEPLAYER_SAVE_SLOT_A_KEY), previousRaw);
+  assert.equal(storage.values.get(SINGLEPLAYER_SAVE_SLOT_B_KEY), "interrupted write");
+  storage.failReadsFor = null;
+  storage.failDeletesFor = null;
+  const loaded = loadSinglePlayerSave(storage);
+  assert.equal(loaded.status, "recovered");
+  if (loaded.status !== "recovered") throw new Error(loaded.status);
   assert.deepEqual(loaded.snapshot, previousGood);
 }
 

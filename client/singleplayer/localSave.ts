@@ -150,7 +150,12 @@ export type SinglePlayerSaveResult =
 
 export type SinglePlayerResetResult =
   | { ok: true; removedKeys: string[] }
-  | { ok: false; reason: "storage_delete_unavailable" | "storage_delete_failed" | "storage_verify_failed"; key?: string };
+  | {
+    ok: false;
+    reason: "storage_read_failed" | "storage_delete_unavailable" | "storage_delete_failed" | "storage_verify_failed";
+    key?: string;
+    mutationStarted: boolean;
+  };
 
 type ParsedSlot =
   | { kind: "empty"; slot: SinglePlayerSaveSlot }
@@ -636,31 +641,43 @@ export function saveSinglePlayerSnapshot(
  * reset retains the best recoverable snapshot for as long as possible.
  */
 export function resetSinglePlayerSave(storage: SinglePlayerStorageAdapter): SinglePlayerResetResult {
-  if (!storage.removeItem) return { ok: false, reason: "storage_delete_unavailable" };
+  if (!storage.removeItem) {
+    return { ok: false, reason: "storage_delete_unavailable", mutationStarted: false };
+  }
   const scanned = readSlots(storage);
+  const completeSlotScan = scanned.slots.length === 2
+    && scanned.slots.some(({ slot }) => slot === "a")
+    && scanned.slots.some(({ slot }) => slot === "b");
+  if (scanned.readFailed || !completeSlotScan) {
+    return { ok: false, reason: "storage_read_failed", mutationStarted: false };
+  }
   const selected = highestValid(scanned.slots);
-  const orderedKeys = [
+  const selectedKey = selected ? slotKey(selected.slot) : null;
+  const nonSelectedKeys = [
     SINGLEPLAYER_LEGACY_SAVE_KEY,
     SINGLEPLAYER_SAVE_HEAD_KEY,
-    ...(selected?.slot === "a"
-      ? [SINGLEPLAYER_SAVE_SLOT_B_KEY, SINGLEPLAYER_SAVE_SLOT_A_KEY]
-      : [SINGLEPLAYER_SAVE_SLOT_A_KEY, SINGLEPLAYER_SAVE_SLOT_B_KEY]),
+    SINGLEPLAYER_SAVE_SLOT_A_KEY,
+    SINGLEPLAYER_SAVE_SLOT_B_KEY,
+  ].filter((key) => key !== selectedKey);
+  const orderedKeys = [
+    ...nonSelectedKeys,
+    ...(selectedKey ? [selectedKey] : []),
   ];
   const removedKeys: string[] = [];
   for (const key of orderedKeys) {
     try {
       storage.removeItem(key);
-      removedKeys.push(key);
     } catch {
-      return { ok: false, reason: "storage_delete_failed", key };
+      return { ok: false, reason: "storage_delete_failed", key, mutationStarted: true };
     }
-  }
-  for (const key of orderedKeys) {
     try {
-      if (storage.getItem(key) !== null) return { ok: false, reason: "storage_verify_failed", key };
+      if (storage.getItem(key) !== null) {
+        return { ok: false, reason: "storage_verify_failed", key, mutationStarted: true };
+      }
     } catch {
-      return { ok: false, reason: "storage_verify_failed", key };
+      return { ok: false, reason: "storage_verify_failed", key, mutationStarted: true };
     }
+    removedKeys.push(key);
   }
   return { ok: true, removedKeys };
 }
