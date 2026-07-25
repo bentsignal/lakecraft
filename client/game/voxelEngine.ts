@@ -128,7 +128,9 @@ import {
   resolvePlayerMovement,
   resolveSneakIntent,
   RELEASED_SPRINT_CONTROLS,
-  sampleHeadBob,
+  advanceHeadBob,
+  createHeadBobState,
+  resetHeadBob,
   sprintControlHeld,
   smoothMovementValue,
   smoothPlayerPosture,
@@ -1484,16 +1486,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let movementMode: PlayerMovementMode = "idle";
   let movementActivity = 0.5;
   let playerViewSuspended = false;
-  let movementDistance = 0;
-  let bobEnvelope = 0;
-  let bobMode: PlayerMovementMode = "walk";
   const cameraPosture: PlayerPostureTargets = {
     eyeHeight: STANDING_EYE_HEIGHT,
     bodyHeight: STANDING_BODY_HEIGHT,
     fovRadians: DEFAULT_FOV_RADIANS,
   };
-  const cameraBob: HeadBobOffsets = { x: 0, y: 0 };
-  const cameraBobTarget: HeadBobOffsets = { x: 0, y: 0 };
+  const cameraBob = createHeadBobState();
   const interactionBob: HeadBobOffsets = { x: 0, y: 0 };
   const horizontalMovementDelta = { x: 0, z: 0 };
   let miningTimer = 0;
@@ -2003,13 +2001,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const mustRemainSneaking = collides(pose.x, pose.y, pose.z, STANDING_BODY_HEIGHT);
     movementMode = mustRemainSneaking ? "sneak" : "idle";
     movementActivity = 0.5;
-    movementDistance = 0;
-    bobEnvelope = 0;
-    bobMode = "walk";
-    cameraBob.x = 0;
-    cameraBob.y = 0;
-    cameraBobTarget.x = 0;
-    cameraBobTarget.y = 0;
+    resetHeadBob(cameraBob);
     cameraPosture.eyeHeight = mustRemainSneaking ? postureTargetsForMovement("sneak").eyeHeight : STANDING_EYE_HEIGHT;
     cameraPosture.bodyHeight = mustRemainSneaking ? postureTargetsForMovement("sneak").bodyHeight : STANDING_BODY_HEIGHT;
     cameraPosture.fovRadians = DEFAULT_FOV_RADIANS;
@@ -2256,18 +2248,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
 
     const movedHorizontally = Math.hypot(pose.x - movementStartX, pose.z - movementStartZ);
-    movementDistance += movedHorizontally;
-    if (movementDistance > 1_228.8) movementDistance %= 1.2;
-    if (movedHorizontally > 0.0001 && movementMode !== "idle" && movementMode !== "ladder") bobMode = movementMode;
-    sampleHeadBob(bobMode, movementDistance, true, cameraBobTarget);
-    bobEnvelope = smoothMovementValue(
-      bobEnvelope,
-      grounded && movedHorizontally > 0.0001 ? 1 : 0,
+    advanceHeadBob(
+      cameraBob,
+      movementMode,
+      movedHorizontally,
+      grounded,
       dt,
-      12,
+      reducedMotionQuery?.matches !== true,
+      cameraBob,
     );
-    cameraBob.x = cameraBobTarget.x * bobEnvelope;
-    cameraBob.y = cameraBobTarget.y * bobEnvelope;
     if (grounded && movedHorizontally > 0.0001) {
       footstepDistance += movedHorizontally;
       const stepDistance = movementMode === "sprint" ? 1.35 : movementMode === "sneak" ? 2.1 : 1.65;
