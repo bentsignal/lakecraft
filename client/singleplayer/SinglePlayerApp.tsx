@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { ChestDrawer, FurnaceDrawer, GameHud, FirstPersonBow, bowChargeStage, type ChestTransferDirection, type HudMessage } from "../components";
+import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
 import {
   BLOCK,
   MORNING_PHASE,
@@ -274,9 +274,6 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   const containerOpen = activeChestKey !== null || activeFurnaceKey !== null;
   const worldModalOpen = containerOpen || sleepingBed !== null;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
-  const [handActionToken, setHandActionToken] = useState(0);
-  const [bowCharging, setBowCharging] = useState(false);
-  const [bowChargeMs, setBowChargeMs] = useState(0);
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
@@ -903,6 +900,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         setPointerCaptureNeeded(!locked);
       },
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
+      selectedItem: inventoryRef.current[selectedRef.current]?.itemId ?? null,
       getMiningDuration: (block) => {
         const gameBlock = ENGINE_TO_GAME[block];
         return gameBlock ? miningSeconds(gameBlock, inventoryRef.current[selectedRef.current]?.itemId) : 0.2;
@@ -910,14 +908,6 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
       isRangedWeaponSelected: () => inventoryRef.current[selectedRef.current]?.itemId === "bow"
         && countItem(inventoryRef.current, "arrow") > 0,
-      onRangedChargeChange: (charging, normalizedCharge) => {
-        setBowCharging(charging);
-        setBowChargeMs(charging ? bowChargeStage(normalizedCharge) * 550 : 0);
-      },
-      onRangedCancel: () => {
-        setBowCharging(false);
-        setBowChargeMs(0);
-      },
       onRangedRelease: (intent) => {
         const profile = rangedChargeProfile(intent.chargeMs);
         const slot = selectedRef.current;
@@ -1162,7 +1152,6 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: (action) => {
-        setHandActionToken((value) => value + 1);
         if (action === "attack") audio.play("mobHurt", {
           seed: `local-mob-hit:${performance.now().toFixed(0)}`,
           intensity: 0.68,
@@ -1293,6 +1282,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       },
     });
     engineRef.current = engine;
+    engine.setFirstPersonFeedbackHidden(pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen);
     if (initialRuntimeRef.current && !engine.importRuntimeSnapshot(initialRuntimeRef.current)) {
       setSaveStatusText("The saved player runtime was invalid; world state was left untouched.");
       saveLockedRef.current = true;
@@ -1362,6 +1352,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       pointerCaptureNeeded,
       documentVisible: document.visibilityState === "visible",
     });
+    engineRef.current?.setFirstPersonFeedbackHidden(paused);
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
   }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, pointerCaptureNeeded]);
@@ -1466,6 +1457,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   useEffect(() => {
     const block = ITEM_TO_ENGINE[inventory[selected]?.itemId ?? "stick"] ?? BLOCK.AIR;
     engineRef.current?.setSelectedBlock(block);
+    engineRef.current?.setSelectedItem(inventory[selected]?.itemId ?? null);
   }, [inventory, selected]);
 
   useEffect(() => {
@@ -1542,23 +1534,13 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           </button>
         </div>
       ) : null}
-      {inventory[selected]?.itemId === "bow" ? (
-        <FirstPersonBow
-          actionToken={handActionToken}
-          chargeMs={bowChargeMs}
-          charging={bowCharging}
-          hidden={deathScreenOpen || pauseOpen || inventoryOpen || worldModalOpen}
-        />
-      ) : null}
       <GameHud
         connected={false}
         craftingContext={craftingContext}
         deathCause={deathCause}
         deathScreenOpen={deathScreenOpen}
         equipment={equipment}
-        handActionToken={handActionToken}
         health={health}
-        hideFirstPersonFeedback={worldModalOpen || inventory[selected]?.itemId === "bow"}
         hunger={hunger}
         inventory={inventory}
         inventoryAuthorityEpoch={0}

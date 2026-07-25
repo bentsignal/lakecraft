@@ -12,20 +12,18 @@ assert.deepEqual([...visualValues], [0, 550, 1_100], "one draw has only three di
 assert.deepEqual([...visualValues].map((value) => referenceStage(Math.min(1, value / 1_000))), [0, 1, 2]);
 assert.equal(visualChargeMs(false, 1), 0, "cancel and release clear the visual immediately");
 
-const bow = readFileSync(new URL("../client/components/FirstPersonBow.tsx", import.meta.url), "utf8");
-assert.match(bow, /bounded >= 0\.9[\s\S]*?return 2;[\s\S]*?bounded >= 0\.55[\s\S]*?return 1;/,
-  "the reference values match the shipped three-stage bow reducer");
+const bow = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.match(bow, /progress >= 0\.9 \? 2 : 1/,
+  "the reference values match the retained three-stage bow geometry reducer");
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-assert.match(client, /<FirstPersonBow[\s\S]{0,180}actionToken=\{handActionToken\}/,
-  "multiplayer forwards accepted hand-action edges to the selected bow pose");
-assert.match(client, /<FirstPersonBow[\s\S]{0,300}hidden=\{mobileUnsupported \|\|/,
-  "the multiplayer bow follows the standard mobile-unsupported feedback guard");
+assert.match(client, /setFirstPersonFeedbackHidden\([\s\S]{0,220}mobileUnsupported \|\| deathScreenOpen \|\| pauseOpen/,
+  "multiplayer forwards blocking UI state to the retained WebGL bow");
 const chargeStart = client.indexOf("onRangedChargeChange:");
 const chargeEnd = client.indexOf("onRangedCancel:", chargeStart);
 const charge = client.slice(chargeStart, chargeEnd);
-assert.match(charge, /setBowChargeMs\(charging \? bowChargeStage\(normalizedCharge\) \* 550 : 0\)/,
-  "multiplayer quantizes only its three-stage visual state");
+assert.doesNotMatch(charge, /setBowCharge|setBowCharging|setBowChargeMs/,
+  "React owns no per-frame or quantized bow visual state");
 assert.match(charge, /if \(!charging \|\| normalizedCharge !== 0 \|\| rangedChargeStartRef\.current\) return;/,
   "the begin mutation still gates on raw zero progress");
 assert.ok(charge.includes('kind: "begin_charge"') && charge.includes("rangedCombat(requestJson)"),
@@ -40,11 +38,8 @@ assert.doesNotMatch(release, /chargeMs\s*:\s*bowChargeMs/,
   "quantized visual state never enters the release request");
 
 const singlePlayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-const localChargeStart = singlePlayer.indexOf("onRangedChargeChange:");
-const localChargeEnd = singlePlayer.indexOf("onRangedCancel:", localChargeStart);
-const localCharge = singlePlayer.slice(localChargeStart, localChargeEnd);
-assert.match(localCharge, /setBowChargeMs\(charging \? bowChargeStage\(normalizedCharge\) \* 550 : 0\)/,
-  "single-player uses the same three visual stages without quantizing combat");
+assert.match(singlePlayer, /selectedItem: inventoryRef\.current\[selectedRef\.current\]\?\.itemId \?\? null/,
+  "single-player initializes the same engine-owned first-person model");
 assert.equal(singlePlayer.includes("lakebed/client"), false, "local bow feedback remains offline");
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
@@ -52,5 +47,7 @@ const intentStart = engine.indexOf("function rangedShotIntent");
 const intentEnd = engine.indexOf("function requestCanvasPointerLock", intentStart);
 assert.match(engine.slice(intentStart, intentEnd), /chargeMs: Math\.max\(0, Math\.min\(PLAYER_BOW_FULL_CHARGE_MS, now - rangedChargeStartedAt\)\)/,
   "exact monotonic charge duration remains engine-owned");
+assert.match(engine, /setFirstPersonBowCharge\([\s\S]{0,240}PLAYER_BOW_FULL_CHARGE_MS/,
+  "the same exact engine clock drives only three retained geometry uploads");
 
 console.log("multiplayer bow visual quantization tests passed");

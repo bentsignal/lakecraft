@@ -32,10 +32,10 @@ assert.equal(gravelArt.variant, "gravel");
 assert.ok(gravelArt.runs.length >= 35, "inventory gravel uses a dense pixel-pebble treatment");
 assert.notDeepEqual(gravelArt.runs, getItemIconArt("stone").runs);
 assert.notDeepEqual(gravelArt.runs, getItemIconArt("cobblestone").runs);
-const heldSource = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");
-assert.match(heldSource, /ITEMS\[itemId\]\.category\s*===\s*"block"/);
-assert.doesNotMatch(heldSource, /HELD_SPRITE_BLOCKS[^;]*gravel/s, "gravel is not downgraded to a flat held sprite");
-assert.match(heldSource, /data-block=\{blockId\}/, "first-person gravel inherits the three-face material cube");
+const heldSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.ok(heldSource.includes("blockTextureForFace(block, face[0])") && heldSource.includes("textureAtlasUv(texture)"),
+  "first-person gravel inherits the canonical six-face world-atlas cube");
+assert.equal(heldSource.includes("ItemIcon"), false, "gravel is never downgraded to a flat held sprite");
 
 const remoteSource = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", import.meta.url), "utf8");
 assert.match(remoteSource, /gravelItem:\s*\[0\.47,\s*0\.45,\s*0\.42\]/);

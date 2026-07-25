@@ -36,7 +36,8 @@ for (const required of [
   "expectedInventoryRevision",
   "loadCanonicalPlayer(result.inventory)",
   "setPlayerProjectiles(playerProjectilesRef.current)",
-  "FirstPersonBow",
+  "selectedItem:",
+  "setFirstPersonFeedbackHidden",
 ]) assert.ok(client.includes(required), `missing ranged client integration: ${required}`);
 
 assert.ok(engine.includes("createPlayerProjectileRenderer(gl)"));

@@ -39,9 +39,9 @@ const localBranch = engine.slice(localGate, localEnd);
 assert.equal(delegatedBranch.includes("localMobAttackIsReady"), false, "Lakebed-delegated mob attacks remain server-authoritative");
 assert.match(localBranch, /if \(!localMobAttackIsReady[\s\S]*?return true;[\s\S]*?damageMob/,
   "a cooldown mob target retains click priority without reaching damage");
-assert.match(localBranch, /if \(result\.applied\) \{[\s\S]*?advanceLocalMobAttackReadyAt[\s\S]*?onLocalMobHit[\s\S]*?onHandAction/,
+assert.match(localBranch, /if \(result\.applied\) \{[\s\S]*?advanceLocalMobAttackReadyAt[\s\S]*?onLocalMobHit[\s\S]*?emitHandAction/,
   "only confirmed health reduction advances cooldown, spends durability, and emits hit feedback");
-assert.equal((localBranch.match(/onHandAction\?\.\("attack"\)/g) ?? []).length, 1,
+assert.equal((localBranch.match(/emitHandAction\("attack"\)/g) ?? []).length, 1,
   "cooldown rejection emits no swing or hit audio token");
 
 console.log("single-player local melee cooldown tests passed");

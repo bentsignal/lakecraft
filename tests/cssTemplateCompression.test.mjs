@@ -29,7 +29,6 @@ const files = [
   "client/lobby/LobbyStyles.tsx",
   "client/chat/ChatStyles.tsx",
   "client/components/ChestDrawer.tsx",
-  "client/components/FirstPersonBow.tsx",
   "client/components/OptionsDialog.tsx",
 ];
 let totalUnpackedBytes = 0;

@@ -43,13 +43,8 @@ assert.equal(art.variant, "stone_bricks");
 assert.ok(art.runs.length >= 30, "inventory masonry carries brick joints across its three-face cube");
 assert.notDeepEqual(art.runs, getItemIconArt("stone").runs);
 assert.notDeepEqual(art.runs, getItemIconArt("cobblestone").runs);
-const held = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");
-assert.doesNotMatch(held, /HELD_SPRITE_BLOCKS[^;]*stone_bricks/s,
-  "held stone bricks use the ordinary three-face block presentation");
-const heldStyles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
-assert.match(heldStyles, /data-block="stone_bricks"[^}]+repeating-linear-gradient/,
-  "held masonry has staggered brick courses instead of the generic speckle pattern");
-assert.match(heldStyles, /data-block="stone_bricks"[^}]+\.lc-held-voxel__face::after/,
-  "held masonry disables generic block speckles");
+const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.ok(held.includes("blockTextureForFace(block, face[0])") && held.includes("textureAtlasUv(texture)"),
+  "held stone bricks reuse the world masonry tile rather than a CSS approximation");
 
 console.log("lakecraft stone-brick material renderer tests: ok");

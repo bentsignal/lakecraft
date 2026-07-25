@@ -11,7 +11,7 @@ const playerList = source("../client/components/PlayerList.tsx");
 assert.equal(gameHud.match(/<Crosshair\s*\/>/g)?.length, 1, "there is exactly one CSS crosshair");
 assert.ok(gameHud.includes("!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null"),
   "the one reticle remains hidden behind death, pause, inventory, and modal surfaces");
-const crosshairCss = styles.slice(styles.indexOf(".lc-crosshair {"), styles.indexOf(".lc-first-person {"));
+const crosshairCss = styles.slice(styles.indexOf(".lc-crosshair {"), styles.indexOf(".lc-survival-wrap {"));
 assert.match(crosshairCss, /\.lc-crosshair \{[^}]*height: 16px;[^}]*left: 50%;[^}]*pointer-events: none;[^}]*top: 50%;[^}]*transform: translate\(-50%,-50%\);[^}]*width: 16px;/,
   "reticle remains one non-interactive 16px square at the exact viewport center");
 assert.equal(crosshairCss.match(/clip-path: polygon/g)?.length, 2, "black outline and white core use two authored crisp pixel silhouettes");

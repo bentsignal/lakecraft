@@ -86,8 +86,9 @@ assert.equal(art.variant, "oak_fence");
 assert.ok(art.runs.length >= 18, "inventory and held views use a readable original post-and-rails sprite");
 assert.notDeepEqual(art.runs, getItemIconArt("planks").runs);
 
-const held = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");
-assert.match(held, /HELD_SPRITE_BLOCKS[^;]*"oak_fence"/s, "held fences keep their thin authored silhouette");
+const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.match(held, /itemId === "oak_fence" \|\| itemId === "oak_fence_gate"[\s\S]{0,500}appendColorBox/,
+  "held fences use solid posts and rails rather than a flat silhouette");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /block === BLOCK\.OAK_FENCE[\s\S]{0,420}appendOakFenceMesh\(\s*textureVertices/,
   "oak fences reuse the retained textured chunk batch");
