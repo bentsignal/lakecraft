@@ -1,0 +1,53 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const component = readFileSync(new URL("../client/components/FirstPersonHeldItem.tsx", import.meta.url), "utf8");
+const hud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
+const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const engineTypes = readFileSync(new URL("../client/game/types.ts", import.meta.url), "utf8");
+const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+
+assert.ok(component.includes("HeldBlockVoxel"), "held full blocks use the dedicated three-face voxel renderer");
+assert.ok(component.includes("HeldSpriteExtrusion"), "held tools and non-cubic items use the depth-preserving sprite renderer");
+assert.ok(component.includes("ItemIcon compact"), "the depth renderer retains the canonical 16x16 artwork");
+assert.ok(component.includes("HELD_SPRITE_DEPTH_SLICES = [0, 1, 2, 3, 4]"), "sprite depth has a deterministic five-slice DOM budget");
+assert.equal(component.match(/lc-first-person__arm-face--/g)?.length, 3, "each reusable voxel arm segment defines exactly three camera-visible faces");
+assert.ok(component.includes('<VoxelArmSegment material="sleeve" />') && component.includes('<VoxelArmSegment material="skin" />'), "the first-person arm joins a sleeve prism to a hand prism");
+const sharedScene = component.slice(component.indexOf('className="lc-first-person__scene"'), component.indexOf('</span>\n      </span>', component.indexOf('className="lc-first-person__scene"')));
+assert.ok(sharedScene.indexOf('className="lc-first-person__item"') < sharedScene.indexOf('className="lc-first-person__arm"'), "item and arm share one scene with the grip painted last");
+assert.ok(component.includes('data-held-mode={heldAsVoxel ? "voxel"'), "held mode distinguishes cubes from sprites and the empty hand");
+assert.ok(component.includes("shouldAnimateFirstPersonAction"), "only a newly observed visible action controls the replayable swing state");
+assert.ok(component.includes("animatedActionToken.current === actionToken"), "unrelated renders retain the active swing class until another action or hide edge");
+assert.ok(component.includes("if (hidden || paused) animatedActionToken.current = null"), "blocking UI clears the retained swing class before unmounting it");
+assert.ok(component.indexOf("lastActionToken.current = actionToken") < component.indexOf("if (hidden || paused) return null"),
+  "hidden and paused renders consume their action edge before removing the overlay DOM");
+assert.ok(component.includes("if (hidden || paused) return null"), "hidden and paused states remove the bounded overlay DOM");
+assert.equal(component.includes("lc-block-cracks"), false, "the first-person rig does not draw a duplicate screen-space crack overlay");
+assert.equal(hud.includes("miningProgress"), false, "the HUD does not accept mining progress that would rerender the app while mining");
+assert.equal(styles.includes("lc-block-cracks"), false, "obsolete centered crack-overlay styles are removed");
+assert.equal(engineTypes.includes("onMiningProgress"), false, "the engine has no React-facing mining-progress callback");
+assert.equal(engine.includes("onMiningProgress"), false, "the animation loop never emits mining progress to React");
+assert.equal(multiplayer.includes("setMiningProgress"), false, "multiplayer owns no mining-progress React state");
+assert.ok(engine.includes("appendWorldBlockCrackLines"), "the perspective-correct world-space crack path remains active");
+assert.ok(engine.includes("updateMiningCrackGeometry();"), "world-space crack geometry still advances during held mining");
+assert.ok(hud.includes("stack={inventory[selectedIndex] ?? null}"), "GameHud drives the held rig from the selected hotbar stack");
+assert.ok(hud.includes("inventoryOpen || modalOpen || mobileUnsupported"), "blocking UI hides the first-person overlay");
+assert.ok(styles.includes("@keyframes lc-held-item-swing"), "swing feedback has a dedicated short animation");
+assert.ok(styles.includes("lc-held-item-swing 220ms"), "the swing completes before the 225ms held-mining pulse");
+assert.ok(engine.includes("now - lastMiningHitAt >= 225"), "the tested visual cadence remains coupled to held mining");
+assert.ok(styles.includes("translate3d(-35%,18%,0) rotateZ(-38deg)"), "the held rig reaches a clear downward-left Minecraft swing apex");
+assert.equal(styles.includes("translate3d(-42%,4%,0)"), false, "the old sideways-slide apex is removed");
+assert.ok(styles.includes("rotateX(-24deg) rotateY(-34deg)"), "held block rotates its front, right, and top faces toward the camera");
+assert.ok(styles.includes("lc-held-voxel__face--front") && styles.includes("lc-held-voxel__face--right") && styles.includes("lc-held-voxel__face--top"), "held cube exposes three independently shaded faces");
+assert.ok(styles.includes("transform-style: preserve-3d") && styles.includes("perspective: 620px"), "the arm rig retains perspective through its nested cuboids");
+assert.match(styles, /\.lc-first-person__scene \{[^}]*inset: 0;[^}]*perspective: 620px;[^}]*transform-style: preserve-3d;/, "item and arm share one full-size perspective stack");
+assert.match(styles, /\.lc-first-person__arm \{[^}]*z-index: 2;/, "the voxel arm occludes the held item's grip region");
+assert.match(styles, /\.lc-first-person__item \{[^}]*z-index: 1;/, "the existing item head and block remain behind the gripping hand");
+assert.equal(styles.includes("lc-first-person__arm-scene"), false, "the detached arm-only scene is removed");
+assert.ok(component.includes("lc-first-person__arm-face--left") && styles.includes("rotateY(-90deg)"), "the inward-angled right arm exposes its camera-facing left side instead of the hidden outer face");
+assert.ok(styles.includes(".lc-held-sprite__slice.is-front"), "the foremost sprite layer restores full authored color above its shaded depth slices");
+assert.equal(styles.includes("lc-first-person__sleeve"), false, "the old flat sleeve rectangle is removed");
+assert.ok(styles.includes(".lc-first-person__rig.is-swinging { animation: none; }"), "reduced-motion users do not receive the swing animation");
+
+console.log("first-person held item and block crack feedback tests passed");

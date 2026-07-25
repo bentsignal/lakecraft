@@ -1,3 +1,5 @@
+import type { ItemId } from "./game.ts";
+
 export const BLOCK_TYPES = [
   "air",
   "grass",
@@ -6,18 +8,37 @@ export const BLOCK_TYPES = [
   "wood",
   "leaves",
   "planks",
-  "crafting_table"
+  "crafting_table",
+  "torch",
+  "chest",
+  "door_closed",
+  "door_open",
+  "bed",
+  "coal_ore",
+  "iron_ore",
+  "gold_ore",
+  "diamond_ore",
+  "furnace",
+  "ladder",
+  "cobblestone",
+  "sand",
+  "glass",
+  "tnt",
+  "gravel",
+  "wool",
+  "sapling",
+  "stone_bricks",
+  "oak_fence",
+  "oak_fence_gate_closed",
+  "oak_fence_gate_open",
+  "stone_brick_slab",
+  "clay",
+  "bricks"
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
-export type InventoryItem =
-  | BlockType
-  | "stick"
-  | "wooden_pickaxe"
-  | "wooden_axe"
-  | "stone_pickaxe"
-  | "stone_axe";
+export type InventoryItem = ItemId;
 
 export type InventoryCounts = Partial<Record<InventoryItem, number>>;
 
@@ -29,6 +50,7 @@ export type WorldEdit = {
   z: string;
   blockType: string;
   actorId: string;
+  editedAt: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -43,6 +65,20 @@ export type PlayerPresence = {
   z: string;
   yaw: string;
   pitch: string;
+  /** Quantized velocity fields; older rows are surfaced as zero by the schema. */
+  vx: string;
+  vy: string;
+  vz: string;
+  /** Canonical shared item IDs; physically old Lakebed rows may omit these fields. */
+  heldItem?: string;
+  armorHead?: string;
+  armorChest?: string;
+  armorLegs?: string;
+  armorFeet?: string;
+  sessionId?: string;
+  poseSequence?: string;
+  fallGrounded?: boolean;
+  fallPeakY?: string;
   heartbeatAt: string;
   online: boolean;
   createdAt: string;
@@ -53,11 +89,13 @@ export type PersistedInventory = {
   id: string;
   userId: string;
   inventoryJson: string;
+  revision: string;
   createdAt: string;
   updatedAt: string;
 };
 
-export const PLAYER_STALE_AFTER_MS = 15_000;
+/** Sparse solo leases stay visible without spending the entire daily request bucket. */
+export const PLAYER_STALE_AFTER_MS = 90_000;
 
 export function blockCoordinateKey(x: number, y: number, z: number): string {
   if (![x, y, z].every(Number.isInteger)) {
@@ -97,30 +135,56 @@ export function parseInventory(value: string): InventoryCounts {
   }
 }
 
-/** Lakebed's anonymous database is append-only for this protocol. Newest logical key wins. */
+/** Collapse any legacy duplicate coordinate rows; current server writes upsert each coordinate. */
 export function latestWorldEdits(events: WorldEdit[]): WorldEdit[] {
   const latest = new Map<string, WorldEdit>();
   for (const event of events) {
     const previous = latest.get(event.coordKey);
-    if (!previous || event.createdAt > previous.createdAt || (event.createdAt === previous.createdAt && event.id > previous.id)) {
+    const eventTime = event.editedAt || event.updatedAt || event.createdAt;
+    const previousTime = previous ? previous.editedAt || previous.updatedAt || previous.createdAt : "";
+    if (!previous || eventTime > previousTime || (eventTime === previousTime && event.id > previous.id)) {
       latest.set(event.coordKey, event);
     }
   }
   return [...latest.values()];
 }
 
-/** Collapse heartbeat/leave events to one presence per user and omit stale/offline players. */
+/** Collapse legacy presence duplicates and omit stale/offline players; current server upserts users. */
 export function activePlayerPresences(
   events: PlayerPresence[],
   now = Date.now(),
   staleAfterMs = PLAYER_STALE_AFTER_MS
 ): PlayerPresence[] {
+  const orderedDecimal = (value: unknown): number => {
+    if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return Number.NEGATIVE_INFINITY;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+  };
   const latest = new Map<string, PlayerPresence>();
   for (const event of events) {
     const previous = latest.get(event.userId);
-    if (!previous || event.heartbeatAt > previous.heartbeatAt) latest.set(event.userId, event);
+    const eventHeartbeat = orderedDecimal(event.heartbeatAt);
+    const previousHeartbeat = previous ? orderedDecimal(previous.heartbeatAt) : Number.NEGATIVE_INFINITY;
+    const eventSequence = orderedDecimal(event.poseSequence ?? "0");
+    const previousSequence = orderedDecimal(previous?.poseSequence ?? "0");
+    const equalHeartbeatNewer = Boolean(previous) && eventHeartbeat === previousHeartbeat && (
+      event.sessionId === previous?.sessionId && eventSequence !== previousSequence
+        ? eventSequence > previousSequence
+        : event.updatedAt !== previous?.updatedAt
+          ? event.updatedAt > (previous?.updatedAt ?? "")
+          : event.id > (previous?.id ?? "")
+    );
+    if (!previous
+      || eventHeartbeat > previousHeartbeat
+      || equalHeartbeatNewer) {
+      latest.set(event.userId, event);
+    }
   }
   return [...latest.values()].filter(
-    (player) => player.online && now - Number(player.heartbeatAt) <= staleAfterMs
+    (player) => {
+      const heartbeatAt = orderedDecimal(player.heartbeatAt);
+      return player.online && heartbeatAt !== Number.NEGATIVE_INFINITY
+        && now >= heartbeatAt && now - heartbeatAt <= staleAfterMs;
+    }
   );
 }

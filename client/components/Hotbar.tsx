@@ -1,4 +1,4 @@
-import { HOTBAR_SIZE, ITEMS, type Inventory } from "../../shared/game";
+import { HOTBAR_SIZE, ITEMS, maxItemDurability, remainingItemDurability, type Inventory } from "../../shared/game";
 import { ItemGlyph } from "./ItemGlyph";
 
 export type HotbarProps = {
@@ -9,34 +9,37 @@ export type HotbarProps = {
 };
 
 export function Hotbar({ inventory, selectedIndex, onSelect, disabled = false }: HotbarProps) {
-  const selected = inventory[selectedIndex];
+  const selectedStack = inventory[selectedIndex] ?? null;
+  const selectedItem = selectedStack ? ITEMS[selectedStack.itemId] : null;
   return (
-    <section className="lc-hotbar-wrap" aria-label="Hotbar">
-      <p className="lc-hotbar-label">
-        <span>belt inventory</span>
-        <strong>{selected ? ITEMS[selected.itemId].label : "Empty hand"}</strong>
-      </p>
-      <div className="lc-hotbar" role="toolbar" aria-label="Select held item" style={`--selected:${selectedIndex}`}>
+    <>
+      <span aria-atomic="true" aria-live="polite" className="lc-selected-item-name">
+        {selectedItem ? <span key={`${selectedIndex}:${selectedStack!.itemId}`}>{selectedItem.label}</span> : null}
+      </span>
+      <section className="lc-hotbar" role="toolbar" aria-label="Hotbar">
         {Array.from({ length: HOTBAR_SIZE }, (_, index) => {
           const stack = inventory[index] ?? null;
           const item = stack ? ITEMS[stack.itemId] : null;
+          const maximumDurability = stack ? maxItemDurability(stack.itemId) : null;
+          const durability = stack ? remainingItemDurability(stack) : null;
+          const durabilityLabel = maximumDurability && durability !== null ? `, durability ${durability} of ${maximumDurability}` : "";
+          const selected = index === selectedIndex;
           return (
             <button
-              aria-label={`${index + 1}: ${item?.label ?? "Empty"}${index === selectedIndex ? ", selected" : ""}`}
-              aria-pressed={index === selectedIndex}
-              className={`lc-slot lc-hotbar__slot${index === selectedIndex ? " is-selected" : ""}`}
+              aria-label={`${index + 1}: ${item?.label ?? "Empty"}${durabilityLabel}${selected ? ", selected" : ""}`}
+              aria-pressed={selected}
+              className={`lc-slot lc-hotbar__slot${selected ? " is-selected" : ""}`}
               disabled={disabled}
               key={index}
               onClick={() => onSelect(index)}
-              title={item?.description ?? "Empty slot"}
+              title={item ? `${item.label}${durabilityLabel}` : "Empty slot"}
               type="button"
             >
-              <span className="lc-slot__key">{index + 1}</span>
               <ItemGlyph stack={stack} compact />
             </button>
           );
         })}
-      </div>
-    </section>
+      </section>
+    </>
   );
 }

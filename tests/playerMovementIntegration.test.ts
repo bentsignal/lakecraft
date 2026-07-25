@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+
+assert.ok(engine.includes("sprintControlHeld(sprintControls)"), "either physical Ctrl side requests sprint");
+assert.ok(engine.includes('"ControlLeft", "ControlRight"].includes(event.code)'), "pointer-locked movement prevents browser Ctrl shortcuts");
+const keyDown = engine.slice(engine.indexOf("function onKeyDown"), engine.indexOf("function onKeyUp"));
+const keyUp = engine.slice(engine.indexOf("function onKeyUp"), engine.indexOf("function releaseTransientInput"));
+assert.ok(keyDown.includes("updateSprintControl(sprintControls, event.code as SprintControlCode, true)"),
+  "keydown records the exact physical Ctrl side without toggle heuristics");
+assert.ok(keyUp.includes("updateSprintControl(sprintControls, event.code, false)"),
+  "keyup releases the exact Ctrl side without trusting modifier metadata");
+assert.equal(keyUp.includes("event.ctrlKey"), false, "keyup cannot leave sprint latched through inconsistent modifier metadata");
+assert.ok(engine.includes('window.addEventListener("blur", onWindowBlur)'), "focus loss releases held movement input");
+assert.ok(engine.includes('document.addEventListener("visibilitychange", onVisibilityChange)'), "backgrounding the tab releases held movement input");
+const transientReset = engine.slice(engine.indexOf("function releaseTransientInput"), engine.indexOf("function onWindowBlur"));
+assert.ok(transientReset.includes("clearHeldMovementInput();"), "blur and background handlers share the complete sprint reset");
+assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and low-ceiling posture use the tested release helper");
+assert.ok(engine.includes('movementMode === "sneak" && grounded'), "ledge protection is limited to grounded sneaking");
+assert.ok(engine.includes("clampSneakAxisMovement(amount"), "sneak movement uses the deterministic support clamp");
+assert.ok(engine.includes("smoothPlayerPosture(cameraPosture"), "eye/body/FOV posture is smoothed in the physics loop");
+assert.ok(engine.includes("writePerspectiveMatrix(projectionMatrix, cameraPosture.fovRadians"), "rendering consumes the smoothed FOV");
+assert.ok(engine.includes("const eye = cameraEye(renderEye);"), "rendering consumes the bobbed visual camera origin through retained scratch");
+assert.ok(engine.includes("interactionEye(raycastEye)"), "block targeting uses the posture eye without cosmetic bob or allocation");
+assert.ok(engine.includes("const eye = interactionEye();"), "combat uses the same Lakebed-valid posture eye");
+assert.ok(engine.includes("postureTargetsForMovement(movementMode).eyeHeight"), "interaction rays use one of Lakebed's discrete accepted posture heights");
+assert.ok(engine.includes("bobEnvelope = smoothMovementValue("), "head bob starts and stops through a bounded envelope");
+assert.ok(engine.includes("resetMovementView();"), "pointer loss and reconciliation reset transient camera state");
+assert.ok(engine.includes("const mustRemainSneaking = collides"), "resets preserve crouch under a low ceiling");
+assert.ok(engine.includes("playerViewSuspended = true"), "death resets transient view state exactly once");
+const deathResetStart = engine.indexOf("if (playerHealth <= 0)");
+const deathReset = engine.slice(deathResetStart, engine.indexOf("playerViewSuspended = false", deathResetStart));
+const pointerReset = engine.slice(engine.indexOf("function onPointerLockChange"), engine.indexOf("function onContextMenu"));
+const pauseReset = engine.slice(engine.indexOf("setPaused(nextPaused)"), engine.indexOf("isPaused()"));
+assert.ok(deathReset.includes("clearHeldMovementInput();"), "death releases sprint before another movement frame");
+assert.ok(pointerReset.includes("clearHeldMovementInput();"), "pointer-lock loss releases sprint");
+assert.ok(pauseReset.includes("clearHeldMovementInput();"), "opening a menu releases sprint");
+assert.ok(!engine.includes("pose.y + 1.62"), "no stale fixed interaction eye remains in the engine");
+assert.ok(client.includes("canSprint: () => hungerRef.current > 6"), "survival hunger gates Ctrl sprint");
+assert.ok(client.includes("activityHalfUnitsForDisplacement") === false, "the client cannot author survival exertion");
+assert.ok(!client.includes("tickSurvival("), "the client no longer advances survival health locally");
+assert.ok(!client.includes("recentlyActiveUntilRef"), "the old pose-update activity approximation is removed");
+
+console.log("lakecraft movement integration tests: ok");

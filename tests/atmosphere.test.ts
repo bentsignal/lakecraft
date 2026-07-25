@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import {
+  ATMOSPHERE_FRAGMENT_SHADER,
+  ATMOSPHERE_SCREEN_TRIANGLE,
+  atmosphereLightLevels,
+  celestialDirection,
+  writeCelestialDirection,
+} from "../client/game/atmosphere.ts";
+import { createDayNightState, sampleDayNight } from "../client/game/dayNight.ts";
+
+assert.equal(ATMOSPHERE_SCREEN_TRIANGLE.length, 6, "sky remains one fullscreen triangle");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /cloudWorld/, "sky pass includes world-anchored clouds");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /squareDisc/, "celestial bodies keep pixel-square silhouettes");
+assert.doesNotMatch(ATMOSPHERE_FRAGMENT_SHADER, /\bsin\s*\(/, "fullscreen hashes avoid expensive per-pixel sine calls");
+
+const noon = celestialDirection(Math.PI / 2);
+const midnight = celestialDirection(Math.PI * 1.5);
+assert.ok(noon[1] > 0.999 && midnight[1] < -0.999, "the sun follows a full horizon-to-horizon arc");
+for (let axis = 0; axis < 3; axis += 1) {
+  assert.ok(Math.abs(noon[axis] + midnight[axis]) < 0.000001, "sun and moon directions stay antipodal");
+}
+
+const reusable = new Float32Array(3);
+assert.equal(writeCelestialDirection(0, reusable), reusable, "the hot path reuses caller storage");
+assert.ok(reusable.every(Number.isFinite));
+assert.ok(Math.abs(Math.hypot(...reusable) - 1) < 0.000001, "celestial direction remains normalized");
+
+const sampled = sampleDayNight(500, { cycleLengthMs: 1_000, epochMs: 0, epochPhase: 0 });
+assert.deepEqual(atmosphereLightLevels(sampled), { sun: 1, moon: 0, stars: 0 });
+const invalid = createDayNightState();
+invalid.sunIntensity = 2;
+invalid.moonIntensity = -2;
+invalid.starIntensity = Number.NaN;
+assert.deepEqual(atmosphereLightLevels(invalid), { sun: 1, moon: 0, stars: 0 });
+
+let checksum = 0;
+const startedAt = performance.now();
+for (let index = 0; index < 1_000_000; index += 1) {
+  checksum += writeCelestialDirection(index / 1_000, reusable)[1];
+}
+const elapsedMs = performance.now() - startedAt;
+assert.ok(Number.isFinite(checksum));
+assert.ok(elapsedMs < 500, `one million allocation-free sky samples took ${elapsedMs.toFixed(1)}ms`);
+
+console.log(JSON.stringify({
+  benchmark: "allocation-free celestial direction sampling",
+  iterations: 1_000_000,
+  elapsedMs: Number(elapsedMs.toFixed(2)),
+}));
+console.log("lakecraft atmosphere tests: ok");
