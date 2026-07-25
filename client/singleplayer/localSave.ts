@@ -30,6 +30,7 @@ export const SINGLEPLAYER_SAVE_SLOT_A_KEY = "lakecraft.singleplayer.save.a";
 export const SINGLEPLAYER_SAVE_SLOT_B_KEY = "lakecraft.singleplayer.save.b";
 export const SINGLEPLAYER_SAVE_HEAD_KEY = "lakecraft.singleplayer.save.head";
 export const SINGLEPLAYER_LEGACY_SAVE_KEY = "lakecraft.singleplayer.v1";
+export const SINGLEPLAYER_WORLD_STORAGE_PREFIX = "lakecraft.singleplayer.world.";
 /** localStorage is commonly quota-limited to a few MiB; leave room for the second slot and other app data. */
 export const SINGLEPLAYER_SAVE_MAX_SLOT_CHARS = 900_000;
 
@@ -57,6 +58,10 @@ export interface SinglePlayerStorageAdapter {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem?(key: string): void;
+}
+
+export interface SinglePlayerWorldStorageOptions {
+  worldId?: string;
 }
 
 export interface SinglePlayerPose {
@@ -190,6 +195,50 @@ function identifier(value: unknown, allowEmpty = false): value is string {
   return typeof value === "string" && (allowEmpty || value.length > 0)
     && value.length <= SINGLEPLAYER_SAVE_LIMITS.identifierChars
     && /^[A-Za-z0-9_.:\-]*$/.test(value);
+}
+
+function worldStorageIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 1 && value.length <= 64
+    && /^[a-z0-9][a-z0-9-]*$/.test(value);
+}
+
+export function singlePlayerWorldStorageKey(worldId: string, key: string): string {
+  if (!worldStorageIdentifier(worldId) || !key.startsWith("lakecraft.singleplayer.")) {
+    throw new Error("Invalid single-player world storage namespace.");
+  }
+  return `${SINGLEPLAYER_WORLD_STORAGE_PREFIX}${worldId}.${key.slice("lakecraft.singleplayer.".length)}`;
+}
+
+export function singlePlayerWorldStorageKeys(worldId: string): readonly string[] {
+  return [
+    singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_LEGACY_SAVE_KEY),
+    singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_HEAD_KEY),
+    singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_SLOT_A_KEY),
+    singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_SLOT_B_KEY),
+  ];
+}
+
+export function createSinglePlayerWorldStorage(
+  storage: SinglePlayerStorageAdapter,
+  worldId: string,
+): SinglePlayerStorageAdapter {
+  // Validate before returning an adapter so an invalid registry entry can never
+  // escape its namespace and touch another world's journal.
+  singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_HEAD_KEY);
+  return {
+    getItem: (key) => storage.getItem(singlePlayerWorldStorageKey(worldId, key)),
+    setItem: (key, value) => storage.setItem(singlePlayerWorldStorageKey(worldId, key), value),
+    ...(storage.removeItem
+      ? { removeItem: (key: string) => storage.removeItem!(singlePlayerWorldStorageKey(worldId, key)) }
+      : {}),
+  };
+}
+
+function selectedStorage(
+  storage: SinglePlayerStorageAdapter,
+  options: SinglePlayerWorldStorageOptions,
+): SinglePlayerStorageAdapter {
+  return options.worldId ? createSinglePlayerWorldStorage(storage, options.worldId) : storage;
 }
 
 function coordinateKey(value: unknown): value is string {
@@ -587,9 +636,10 @@ function legacySnapshot(raw: string): SinglePlayerSnapshot | null {
 
 export function loadSinglePlayerSave(
   storage: SinglePlayerStorageAdapter,
-  options: { now?: () => number; migrateLegacy?: boolean } = {},
+  options: { now?: () => number; migrateLegacy?: boolean; worldId?: string } = {},
 ): SinglePlayerLoadResult {
-  const scanned = readSlots(storage);
+  const targetStorage = selectedStorage(storage, options);
+  const scanned = readSlots(targetStorage);
   const issues = scanned.slots.flatMap((slot) => slot.kind === "corrupt" ? [`${slot.slot}:${slot.reason}`]
     : slot.kind === "unsupported" ? [`${slot.slot}:unsupported_v${slot.version}`] : []);
   const unsupported = scanned.slots.filter((slot): slot is Extract<ParsedSlot, { kind: "unsupported" }> => slot.kind === "unsupported");
@@ -600,7 +650,7 @@ export function loadSinglePlayerSave(
   }
   const selected = highestValid(scanned.slots);
   if (selected) {
-    const head = readHead(storage);
+    const head = readHead(targetStorage);
     const recovered = issues.length > 0 || Boolean(head && (head.slot !== selected.slot || head.sequence !== selected.envelope.sequence));
     return {
       status: recovered ? "recovered" : "loaded",
@@ -617,7 +667,7 @@ export function loadSinglePlayerSave(
   }
   let legacyRaw: string | null = null;
   try {
-    legacyRaw = storage.getItem(SINGLEPLAYER_LEGACY_SAVE_KEY);
+    legacyRaw = targetStorage.getItem(SINGLEPLAYER_LEGACY_SAVE_KEY);
   } catch {
     return { status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: [...issues, "legacy:storage_read_failed"] };
   }
@@ -625,7 +675,7 @@ export function loadSinglePlayerSave(
     const migrated = legacySnapshot(legacyRaw);
     if (!migrated) return { status: "corrupt", snapshot: null, sequence: 0, reason: "legacy_invalid", issues: [...issues, "legacy:invalid"] };
     const savedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor((options.now ?? Date.now)())));
-    const write = saveSinglePlayerSnapshot(storage, migrated, savedAt);
+    const write = saveSinglePlayerSnapshot(targetStorage, migrated, savedAt);
     return write.ok
       ? { status: "migrated", snapshot: write.envelope.payload, sequence: write.sequence, savedAt, slot: write.slot, persisted: true, issues }
       : { status: "migrated", snapshot: migrated, sequence: 0, savedAt, slot: null, persisted: false, issues: [...issues, `migration:${write.reason}`] };
@@ -637,8 +687,10 @@ export function saveSinglePlayerSnapshot(
   storage: SinglePlayerStorageAdapter,
   snapshot: SinglePlayerSnapshot,
   savedAt = Date.now(),
+  options: SinglePlayerWorldStorageOptions = {},
 ): SinglePlayerSaveResult {
-  const scanned = readSlots(storage);
+  const targetStorage = selectedStorage(storage, options);
+  const scanned = readSlots(targetStorage);
   const current = highestValid(scanned.slots);
   const previousSequence = current?.envelope.sequence ?? 0;
   if (scanned.readFailed) return { ok: false, reason: "storage_read_failed", previousSequence };
@@ -651,13 +703,13 @@ export function saveSinglePlayerSnapshot(
   if (!serialized.ok) return { ok: false, reason: serialized.reason, path: serialized.path, previousSequence };
   const target: SinglePlayerSaveSlot = current ? (current.slot === "a" ? "b" : "a") : "a";
   try {
-    storage.setItem(slotKey(target), serialized.raw);
+    targetStorage.setItem(slotKey(target), serialized.raw);
   } catch {
     return { ok: false, reason: "storage_write_failed", previousSequence };
   }
   let readback: string | null;
   try {
-    readback = storage.getItem(slotKey(target));
+    readback = targetStorage.getItem(slotKey(target));
   } catch {
     return { ok: false, reason: "readback_failed", previousSequence };
   }
@@ -667,7 +719,7 @@ export function saveSinglePlayerSnapshot(
   }
   let headUpdated = true;
   try {
-    storage.setItem(SINGLEPLAYER_SAVE_HEAD_KEY, canonicalSinglePlayerJson({ sequence: previousSequence + 1, slot: target }));
+    targetStorage.setItem(SINGLEPLAYER_SAVE_HEAD_KEY, canonicalSinglePlayerJson({ sequence: previousSequence + 1, slot: target }));
   } catch {
     headUpdated = false;
   }
@@ -679,11 +731,15 @@ export function saveSinglePlayerSnapshot(
  * confirmation. The selected valid slot is removed last so an interrupted
  * reset retains the best recoverable snapshot for as long as possible.
  */
-export function resetSinglePlayerSave(storage: SinglePlayerStorageAdapter): SinglePlayerResetResult {
-  if (!storage.removeItem) {
+export function resetSinglePlayerSave(
+  storage: SinglePlayerStorageAdapter,
+  options: SinglePlayerWorldStorageOptions = {},
+): SinglePlayerResetResult {
+  const targetStorage = selectedStorage(storage, options);
+  if (!targetStorage.removeItem) {
     return { ok: false, reason: "storage_delete_unavailable", mutationStarted: false };
   }
-  const scanned = readSlots(storage);
+  const scanned = readSlots(targetStorage);
   const completeSlotScan = scanned.slots.length === 2
     && scanned.slots.some(({ slot }) => slot === "a")
     && scanned.slots.some(({ slot }) => slot === "b");
@@ -705,12 +761,12 @@ export function resetSinglePlayerSave(storage: SinglePlayerStorageAdapter): Sing
   const removedKeys: string[] = [];
   for (const key of orderedKeys) {
     try {
-      storage.removeItem(key);
+      targetStorage.removeItem(key);
     } catch {
       return { ok: false, reason: "storage_delete_failed", key, mutationStarted: true };
     }
     try {
-      if (storage.getItem(key) !== null) {
+      if (targetStorage.getItem(key) !== null) {
         return { ok: false, reason: "storage_verify_failed", key, mutationStarted: true };
       }
     } catch {
