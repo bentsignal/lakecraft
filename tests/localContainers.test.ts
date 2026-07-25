@@ -93,11 +93,11 @@ const duplicate = { chests: [exported.snapshot.chests[0], exported.snapshot.ches
 assert.equal(importLocalContainersSnapshot(duplicate).ok, false, "duplicate coordinates fail closed");
 
 const fullPack = Array.from({ length: 36 }, () => ({ itemId: "dirt" as const, count: 64 }));
-const blockedRecovery = recoverLocalContainerContents(roundTrip.containers, "4:8:-3", fullPack, 0);
+const blockedRecovery = recoverLocalContainerContents(roundTrip.containers, "4:8:-3", fullPack, 0, 21_000);
 assert.equal(blockedRecovery.ok, false, "a full drop pool cannot silently erase chest contents");
 assert.equal(blockedRecovery.containers.chests.has("4:8:-3"), true, "failed recovery preserves the original container row");
 
-const recovered = recoverLocalContainerContents(roundTrip.containers, "4:8:-3", fullPack, 1);
+const recovered = recoverLocalContainerContents(roundTrip.containers, "4:8:-3", fullPack, 1, 21_000);
 assert.equal(recovered.ok, true);
 if (!recovered.ok) throw new Error(recovered.reason);
 assert.deepEqual(recovered.overflow, [{ itemId: "brick", count: 32 }]);
