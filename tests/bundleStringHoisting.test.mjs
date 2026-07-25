@@ -103,6 +103,34 @@ const withRegex = [
 ].join("");
 assertSloppySemanticRoundTrip(withRegex, "sloppy with-body regex expression statement");
 
+const keywordMethods = [
+  "const api={",
+  ...["if", "for", "while", "with", "switch", "catch"].map(
+    (name) => `${name}(value){return value},`,
+  ),
+  "};",
+  "class KeywordApi{",
+  ...["if", "for", "while", "with", "switch", "catch"].map(
+    (name) => `${name}(value){return value}`,
+  ),
+  "}",
+  "const instance=new KeywordApi();",
+  `const exact=api.catch(8) / /x+"invalid_state"/.test('x"invalid_state"');`,
+  "const result=[exact,",
+  "api.if(8)/2,api?.for(8)/2,api.while?.(8)/2,",
+  'api["with"](8)/2,api.switch /* comment */ (8)/2,',
+  "instance.catch((8))/2,instance?.if?.(8)/2,",
+  `"invalid_state","invalid_state","invalid_state"];`,
+].join("");
+const keywordMethodOutput = assertSemanticRoundTrip(
+  keywordMethods,
+  "keyword-named object/class methods around division and regex",
+);
+assert.ok(keywordMethodOutput.includes(`api.catch(8) / /x+"invalid_state"/.test`),
+  "the exact property-call division/regex sequence remains lexically intact");
+assert.ok(keywordMethodOutput.includes("__lakecraftSharedBundleStrings[0]"),
+  "neighboring proven expressions still transform around keyword-named calls");
+
 for (const ambiguousBody of [
   `function declaration(){} /"invalid_state"/.test('"invalid_state"');const result=["invalid_state","invalid_state","invalid_state"];`,
   `function* generator(){} /"invalid_state"/.test('"invalid_state"');const result=["invalid_state","invalid_state","invalid_state"];`,
@@ -116,6 +144,25 @@ for (const ambiguousBody of [
   assert.equal(hoistRepeatedBundleStrings(ambiguousBody, ["invalid_state"]), ambiguousBody,
     "ambiguous slash after a function or class body fails closed for the complete segment");
   assert.doesNotThrow(() => Function(ambiguousBody), "fail-closed function/class slash fixtures still parse");
+}
+
+const ambiguousTemplate = [
+  'const template=`${class{} / 2}`;',
+  'const result=[template,"invalid_state","invalid_state","invalid_state"];',
+].join("");
+assert.equal(hoistRepeatedBundleStrings(ambiguousTemplate, ["invalid_state"]), ambiguousTemplate,
+  "an uncertain slash inside an otherwise opaque template fails closed without throwing");
+assert.doesNotThrow(() => Function(ambiguousTemplate), "the fail-closed ambiguous template fixture is valid");
+
+for (const malformedDelimiters of [
+  'const result=["invalid_state","invalid_state","invalid_state"];const broken=[',
+  'const result=["invalid_state","invalid_state","invalid_state"];const broken=({]',
+  'const result=["invalid_state","invalid_state","invalid_state"];const broken=([)]',
+  'const result=["invalid_state","invalid_state","invalid_state"];const broken={)',
+  'const broken=`${[}`;const result=["invalid_state","invalid_state","invalid_state"];',
+]) {
+  assert.equal(hoistRepeatedBundleStrings(malformedDelimiters, ["invalid_state"]), malformedDelimiters,
+    "unbalanced or mismatched (), [], and {} delimiters cannot produce a partial transform");
 }
 
 const divisionPairs = [

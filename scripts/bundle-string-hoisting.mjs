@@ -78,7 +78,7 @@ function skipRegex(source, offset) {
 function slashKindAfter(previous) {
   if (!previous) return "regex";
   if (previous.type === "identifier") {
-    return REGEX_PREFIX_KEYWORDS.has(previous.value) ? "regex" : "division";
+    return previous.regexPrefix === true ? "regex" : "division";
   }
   if (previous.type !== "punctuator") return "division";
   if (previous.value === ")") return previous.closesControl ? "regex" : "division";
@@ -92,7 +92,7 @@ function slashKindAfter(previous) {
 
 function skipTemplateExpression(source, offset) {
   let cursor = offset;
-  let depth = 1;
+  const delimiters = ["{"];
   let previous = null;
   while (cursor < source.length) {
     const character = source[cursor];
@@ -122,15 +122,17 @@ function skipTemplateExpression(source, offset) {
       continue;
     }
     if (character === "{") {
-      depth += 1;
+      delimiters.push("{");
       cursor += 1;
       previous = { type: "punctuator", value: "{" };
       continue;
     }
     if (character === "}") {
-      depth -= 1;
+      if (delimiters.pop() !== "{") {
+        throw new Error("Ambiguous JavaScript delimiter in template while hoisting bundle literals.");
+      }
       cursor += 1;
-      if (depth === 0) return cursor;
+      if (delimiters.length === 0) return cursor;
       previous = { type: "punctuator", value: "}" };
       continue;
     }
@@ -148,7 +150,13 @@ function skipTemplateExpression(source, offset) {
     if (isIdentifierStart(character)) {
       const start = cursor++;
       while (isIdentifierPart(source[cursor])) cursor += 1;
-      previous = { type: "identifier", value: source.slice(start, cursor) };
+      const value = source.slice(start, cursor);
+      const memberName = previous?.type === "punctuator" && [".", "?.", "#"].includes(previous.value);
+      previous = {
+        type: "identifier",
+        value,
+        regexPrefix: REGEX_PREFIX_KEYWORDS.has(value) && !memberName,
+      };
       continue;
     }
     if (/[0-9]/.test(character)) {
@@ -158,6 +166,13 @@ function skipTemplateExpression(source, offset) {
       continue;
     }
     const punctuator = PUNCTUATORS.find((value) => source.startsWith(value, cursor)) ?? character;
+    if (punctuator === "(" || punctuator === "[") delimiters.push(punctuator);
+    else if (
+      punctuator === ")" && delimiters.pop() !== "("
+      || punctuator === "]" && delimiters.pop() !== "["
+    ) {
+      throw new Error("Ambiguous JavaScript delimiter in template while hoisting bundle literals.");
+    }
     cursor += punctuator.length;
     previous = { type: "punctuator", value: punctuator };
   }
@@ -185,6 +200,7 @@ function tokenizeJavaScript(source) {
   const tokens = [];
   const parens = [];
   const braces = [];
+  const delimiters = [];
   let cursor = 0;
   if (source.startsWith("#!")) {
     const newline = source.indexOf("\n", 2);
@@ -233,7 +249,28 @@ function tokenizeJavaScript(source) {
     if (isIdentifierStart(character)) {
       const start = cursor++;
       while (isIdentifierPart(source[cursor])) cursor += 1;
-      tokens.push({ type: "identifier", value: source.slice(start, cursor), start, end: cursor });
+      const value = source.slice(start, cursor);
+      const previous = tokens[tokens.length - 1];
+      const memberName = previous?.type === "punctuator" && [".", "?.", "#"].includes(previous.value);
+      const statementPosition = !previous
+        || previous.value === ";"
+        || previous.value === "}"
+        || previous.value === "{"
+          && braces[braces.length - 1]?.statementBody === true
+        || previous.value === ":"
+          && braces[braces.length - 1]?.statementBody !== false
+        || previous.value === ")"
+          && previous.closesControl === true
+        || previous.type === "identifier"
+          && ["do", "else"].includes(previous.value);
+      tokens.push({
+        type: "identifier",
+        value,
+        start,
+        end: cursor,
+        regexPrefix: REGEX_PREFIX_KEYWORDS.has(value) && !memberName,
+        controlKeyword: CONTROL_PAREN_KEYWORDS.has(value) && !memberName && statementPosition,
+      });
       continue;
     }
     if (/[0-9]/.test(character)) {
@@ -245,24 +282,29 @@ function tokenizeJavaScript(source) {
     const punctuator = PUNCTUATORS.find((value) => source.startsWith(value, cursor)) ?? character;
     const token = { type: "punctuator", value: punctuator, start: cursor, end: cursor + punctuator.length };
     if (punctuator === "(") {
+      delimiters.push("(");
       const beforePrevious = tokens[tokens.length - 2];
       const beforeFunctionStar = tokens[tokens.length - 3];
-      const control = previous?.type === "identifier" && (
-        CONTROL_PAREN_KEYWORDS.has(previous.value)
-        || (previous.value === "await" && beforePrevious?.value === "for")
-      );
+      const control = previous?.controlKeyword === true
+        || previous?.value === "await" && beforePrevious?.value === "for"
+          && beforePrevious.controlKeyword === true;
       const functionParameters = previous?.value === "function"
         || beforePrevious?.value === "function" && (previous?.type === "identifier" || previous?.value === "*")
         || previous?.type === "identifier"
           && beforePrevious?.value === "*"
           && beforeFunctionStar?.value === "function";
-      parens.push(control ? "control" : functionParameters ? "function" : "expression");
+      const methodParameters = previous?.type === "identifier"
+        && braces[braces.length - 1]?.statementBody === false;
+      parens.push(control ? "control" : functionParameters ? "function" : methodParameters ? "method" : "expression");
     } else if (punctuator === ")") {
+      if (delimiters.pop() !== "(") return null;
       const kind = parens.pop();
       if (!kind) return null;
       token.closesControl = kind === "control";
       token.closesFunctionParameters = kind === "function";
+      token.closesMethodParameters = kind === "method";
     } else if (punctuator === "{") {
+      delimiters.push("{");
       let kind = "ambiguous";
       if (
         previous?.closesControl
@@ -272,8 +314,9 @@ function tokenizeJavaScript(source) {
         || previous?.value === "{"
       ) {
         kind = "block";
-      } else if (previous?.closesFunctionParameters || previous?.value === "=>") {
+      } else if (previous?.closesFunctionParameters || previous?.closesMethodParameters || previous?.value === "=>") {
         kind = "ambiguous";
+        token.statementBody = true;
       } else {
         if (
           previous?.type === "identifier" && ["default", "return"].includes(previous.value)
@@ -288,16 +331,28 @@ function tokenizeJavaScript(source) {
           if ([";", "{", "}", "=", "=>"].includes(candidate.value)) break;
         }
       }
-      braces.push(kind);
+      if (
+        previous?.value === ":"
+        && braces[braces.length - 1]?.statementBody === true
+      ) token.statementBody = true;
+      braces.push({
+        kind,
+        statementBody: token.statementBody ?? kind === "block",
+      });
     } else if (punctuator === "}") {
-      const kind = braces.pop();
-      if (!kind) return null;
-      token.closesBlock = kind === "block" ? true : kind === "object" ? false : undefined;
+      if (delimiters.pop() !== "{") return null;
+      const brace = braces.pop();
+      if (!brace) return null;
+      token.closesBlock = brace.kind === "block" ? true : brace.kind === "object" ? false : undefined;
+    } else if (punctuator === "[") {
+      delimiters.push("[");
+    } else if (punctuator === "]") {
+      if (delimiters.pop() !== "[") return null;
     }
     tokens.push(token);
     cursor += punctuator.length;
   }
-  return parens.length || braces.length ? null : tokens;
+  return delimiters.length || parens.length || braces.length ? null : tokens;
 }
 
 function directiveInsertion(source, tokens) {
@@ -378,7 +433,13 @@ function isSafeExpressionString(tokens, index) {
  */
 export function hoistRepeatedBundleStrings(source, candidates) {
   if (source.includes(IDENTIFIER)) throw new Error("Reserved bundle string identifier already exists.");
-  const tokens = tokenizeJavaScript(source);
+  let tokens;
+  try {
+    tokens = tokenizeJavaScript(source);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Ambiguous JavaScript")) return source;
+    throw error;
+  }
   if (!tokens) return source;
   const chosen = [];
   const replacements = [];
