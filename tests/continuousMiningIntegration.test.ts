@@ -11,7 +11,7 @@ assert.ok(primaryHandler.includes("pressPrimaryAction(attackedEntity)"), "primar
 assert.ok(primaryHandler.includes("beginHeldBlockMining()"), "a block-facing press starts the first mining cycle immediately");
 assert.ok(updateLoop.includes("beginHeldBlockMining();"), "the frame loop reacquires the next ray target while the button stays held");
 assert.ok(updateLoop.indexOf("target = nextTarget") < updateLoop.indexOf("beginHeldBlockMining();"), "continuous mining uses the freshly raycast target");
-assert.ok(source.includes('options.onHandAction?.("mine");\n        options.onMiningHit?.'), "long digs replay the same arm swing at the bounded hit cadence");
+assert.ok(source.includes('emitHandAction("mine");\n        options.onMiningHit?.'), "long digs replay the same arm swing at the bounded hit cadence");
 assert.match(source, /function onMouseUp[\s\S]+event\.button === 0\) cancelPrimaryActionHold\(\)/, "release cancels the timer and disarms chaining");
 assert.match(source, /function onPointerLockChange[\s\S]+cancelPrimaryActionHold\(\)/, "pointer-lock loss cancels a held mine");
 assert.ok(teardown.includes("cancelPrimaryActionHold();"), "engine teardown cannot retain a physical-button state");

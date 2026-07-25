@@ -59,8 +59,9 @@ assert.equal(boneMealArt.family, "material");
 assert.equal(boneMealArt.variant, "bone_meal");
 assert.ok(boneMealArt.runs.length >= 12, "bone meal has an original pale granular pile icon");
 
-const held = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");
-assert.match(held, /HELD_SPRITE_BLOCKS[^;]*"sapling"/s, "held saplings retain their authored flat plant silhouette");
+const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.match(held, /itemId === "oak_fence" \|\| itemId === "oak_fence_gate" \|\| itemId === "sapling"[\s\S]{0,500}appendColorBox/,
+  "held saplings use a compact solid stem-and-branch model");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /if \(texel\.a < uAlphaCutoff\) discard;/, "sapling holes use alpha testing instead of costly sorted blending");
 assert.match(engine, /block === BLOCK\.SAPLING[\s\S]{0,160}appendSaplingMesh\(textureVertices/,

@@ -1,7 +1,7 @@
 import { ErrorBoundary, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
-import { ChestDrawer, FirstPersonBow, FurnaceDrawer, GameHud, bowChargeStage, type ChestTransferDirection, type HudMessage } from "./components";
+import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
 import { isCraftingTableWithinReach as isWorkstationWithinReach, type CraftingTablePosition as WorkstationPosition } from "./crafting";
 import {
   BLOCK,
@@ -960,9 +960,6 @@ function GameApp({
   const [playerHealth, setPlayerHealth] = useState(20);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
-  const [handActionToken, setHandActionToken] = useState(0);
-  const [bowCharging, setBowCharging] = useState(false);
-  const [bowChargeMs, setBowChargeMs] = useState(0);
   const [chestInventory, setChestInventory] = useState<Inventory>(() => createEmptyInventory(CHEST_SLOT_COUNT));
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
@@ -1644,7 +1641,15 @@ function GameApp({
     selectedRef.current = selectedHotbar;
     const selected = inventory[selectedHotbar];
     engineRef.current?.setSelectedBlock(selected ? ITEM_TO_ENGINE[selected.itemId] ?? BLOCK.AIR : BLOCK.AIR);
+    engineRef.current?.setSelectedItem(selected?.itemId ?? null);
   }, [inventory, selectedHotbar, equipment]);
+
+  useEffect(() => {
+    engineRef.current?.setFirstPersonFeedbackHidden(
+      mobileUnsupported || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen
+      || Boolean(activeChestKey) || Boolean(activeBedKey),
+    );
+  }, [mobileUnsupported, deathScreenOpen, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
 
   useEffect(() => {
     chestInventoryRef.current = chestInventory;
@@ -1755,6 +1760,7 @@ function GameApp({
         } : undefined,
         serverTimeOffsetMs: worldClock ? worldClock.serverNow - Date.now() : 0,
         selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
+        selectedItem: inventoryRef.current[selectedRef.current]?.itemId ?? null,
         canEditBlock: () => pendingWorldBlockEditRef.current === null,
         onHotbarSelect: handleSelectHotbar,
         onHotbarCycle: (direction) => handleSelectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
@@ -1769,8 +1775,6 @@ function GameApp({
           && countItem(inventoryRef.current, "arrow") > 0,
         onRangedChargeChange: (charging, normalizedCharge) => {
           rangedChargeActiveRef.current = charging;
-          setBowCharging(charging);
-          setBowChargeMs(charging ? bowChargeStage(normalizedCharge) * 550 : 0);
           if (!charging || normalizedCharge !== 0 || rangedChargeStartRef.current) return;
           motionActionSinkRef.current?.("bow_draw");
           const operationId = createCombatOperationId();
@@ -1834,8 +1838,6 @@ function GameApp({
           rangedChargeStartRef.current = null;
           rangedChargeBeginOperationRef.current = "";
           rangedChargeActiveRef.current = false;
-          setBowCharging(false);
-          setBowChargeMs(0);
           if (!startPromise) return;
           const operationId = createCombatOperationId();
           void startPromise.then((started) => {
@@ -2034,7 +2036,6 @@ function GameApp({
         },
         canSprint: () => hungerRef.current > 6,
         onHandAction: (action) => {
-          setHandActionToken((current) => current + 1);
           if (action === "attack") audioRef.current?.play("playerAttack", { seed: performance.now().toFixed(0), intensity: 0.44 });
         },
         onPlayerDamage: (amount) => {
@@ -2232,6 +2233,10 @@ function GameApp({
         onPerformanceStats: setPerformanceStats,
       });
       engineRef.current = engine;
+      engine.setFirstPersonFeedbackHidden(
+        mobileUnsupported || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen
+        || Boolean(activeChestKey) || Boolean(activeBedKey),
+      );
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
       setMobIds(engine.getMobIds());
       engine.start();
@@ -3400,15 +3405,6 @@ function GameApp({
         />
       ) : null}
 
-      {inventory[selectedHotbar]?.itemId === "bow" ? (
-        <FirstPersonBow
-          actionToken={handActionToken}
-          chargeMs={bowChargeMs}
-          charging={bowCharging}
-          hidden={mobileUnsupported || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
-        />
-      ) : null}
-
       <GameHud
         connected={connected}
         equipment={equipment}
@@ -3422,8 +3418,6 @@ function GameApp({
         inventoryAuthorityEpoch={inventoryAuthorityEpoch}
         inventoryOpen={inventoryOpen}
         modalOpen={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
-        handActionToken={handActionToken}
-        hideFirstPersonFeedback={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey) || inventory[selectedHotbar]?.itemId === "bow"}
         messages={messages}
         mobileUnsupported={mobileUnsupported}
         onlineCount={Math.max(1, segmentRemotePlayers.length + 1)}

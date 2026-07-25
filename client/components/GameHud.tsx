@@ -11,7 +11,6 @@ import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
 import { DeathScreen } from "./DeathScreen";
-import { FirstPersonHeldItem } from "./FirstPersonHeldItem";
 import { InventoryCraftingDrawer } from "./InventoryDrawer";
 import { MobileUnsupportedOverlay } from "./MobileUnsupportedOverlay";
 import { OptionsDialog } from "./OptionsDialog";
@@ -32,8 +31,6 @@ export type GameHudProps = {
   maxHealth?: number;
   hunger?: number;
   maxHunger?: number;
-  handActionToken?: number;
-  hideFirstPersonFeedback?: boolean;
   mobileUnsupported?: boolean;
   pauseOpen?: boolean;
   deathScreenOpen?: boolean;
@@ -102,8 +99,6 @@ export function GameHud({
   maxHealth = 20,
   hunger = 20,
   maxHunger = 20,
-  handActionToken = 0,
-  hideFirstPersonFeedback = false,
   mobileUnsupported = false,
   pauseOpen = false,
   deathScreenOpen = false,
@@ -147,12 +142,6 @@ export function GameHud({
     <>
       <HudStyles />
       <div className="lc-hud">
-        <FirstPersonHeldItem
-          actionToken={handActionToken}
-          hidden={hideFirstPersonFeedback || inventoryOpen || modalOpen || mobileUnsupported || deathScreenOpen}
-          paused={pauseOpen}
-          stack={inventory[selectedIndex] ?? null}
-        />
         {!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null}
         {!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen ? (
           <div className="lc-survival-wrap">

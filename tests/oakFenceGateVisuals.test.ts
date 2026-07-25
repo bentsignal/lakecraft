@@ -82,9 +82,9 @@ assert.equal(art.family, "block");
 assert.equal(art.variant, "oak_fence_gate");
 assert.ok(art.runs.length >= 20, "inventory gate art reads as two posts, rails, and hinges");
 assert.notDeepEqual(art.runs, getItemIconArt("oak_fence").runs);
-const held = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");
-assert.match(held, /HELD_SPRITE_BLOCKS[\s\S]{0,180}"oak_fence_gate"/,
-  "held gates retain their authored thin silhouette");
+const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.match(held, /itemId === "oak_fence" \|\| itemId === "oak_fence_gate"[\s\S]{0,500}appendColorBox/,
+  "held gates use solid posts and rails from the compact WebGL model basis");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /isOakFenceGateBlock\(block\)[\s\S]{0,260}appendOakFenceGateMesh\(\s*textureVertices/,
   "both states use the retained oak-textured chunk batch");

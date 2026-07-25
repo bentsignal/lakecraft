@@ -1,8 +1,7 @@
 export { ControlsCard, type ControlsCardProps } from "./ControlsCard";
 export { DeathScreen, type DeathScreenProps } from "./DeathScreen";
 export { Crosshair, GameHud, type GameHudProps } from "./GameHud";
-export { FirstPersonHeldItem, type FirstPersonHeldItemProps } from "./FirstPersonHeldItem";
-export { BOW_FULL_CHARGE_MS, FirstPersonBow, bowChargeProgress, bowChargeStage, type FirstPersonBowProps } from "./FirstPersonBow";
+export { BOW_FULL_CHARGE_MS, bowChargeProgress, bowChargeStage } from "./bowCharge";
 export { Hotbar, type HotbarProps } from "./Hotbar";
 export { HudStyles } from "./HudStyles";
 export { PauseMenu, type PauseMenuProps } from "./PauseMenu";

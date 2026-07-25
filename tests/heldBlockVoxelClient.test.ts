@@ -1,27 +1,23 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { blockTextureForFace, type BlockFace } from "../client/game/blockTextures.ts";
+import { BLOCK } from "../client/game/types.ts";
 
-const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
-const glyph = source("../client/components/ItemGlyph.tsx");
-const firstPerson = source("../client/components/FirstPersonHeldItem.tsx");
-const styles = source("../client/components/HudStyles.tsx");
+const faces: readonly BlockFace[] = ["east", "west", "top", "bottom", "south", "north"];
+for (const block of [BLOCK.DIRT, BLOCK.GRASS, BLOCK.WOOD, BLOCK.STONE_BRICKS, BLOCK.CLAY, BLOCK.BRICKS]) {
+  for (const face of faces) assert.ok(blockTextureForFace(block, face), `held cube face ${face} reuses the world atlas`);
+}
 
-assert.match(glyph, /new Set<BlockId>\(\[[\s\S]*"sapling", "oak_fence", "oak_fence_gate",[\s\S]*\]\)/,
-  "thin placeables preserve their authored item silhouettes");
-assert.ok(glyph.includes('data-block={blockId}'), "the held voxel exposes selected material identity to its texture rules");
-assert.equal((glyph.match(/lc-held-voxel__face--/g) ?? []).length, 3, "held voxel has exactly three bounded face nodes");
-assert.ok(glyph.includes('blockId === "grass" ? BLOCKS.dirt.color'), "grass uses a green cap over earthy side faces");
-assert.ok(firstPerson.includes("isHeldVoxelBlock(stack.itemId)"), "first-person selection chooses cube presentation by item semantics");
-assert.ok(firstPerson.includes("<HeldBlockVoxel blockId={stack.itemId}"), "selected full block drives the voxel material");
-assert.ok(firstPerson.includes("<HeldSpriteExtrusion stack={stack}"), "tools, food, materials, and thin placeables gain bounded depth around their pixel sprites");
-assert.ok(firstPerson.includes("<ItemIcon compact"), "extruded items keep their original pixel artwork on every slice");
-assert.ok(styles.includes("perspective: 420px") && styles.includes("transform-style: preserve-3d"), "cube uses a perspective-preserving 3D scene");
-assert.ok(styles.includes("rotateY(-34deg)"), "cube orientation keeps the right face camera-visible under backface culling");
-assert.ok(styles.includes("lc-held-voxel__face::after") && styles.includes("--lc-held-cube-size)*.57"), "generic block materials use bounded square pixel flecks instead of stripe-grid placeholders");
-assert.ok(styles.includes('data-block="diamond_ore"'), "ore texture rules retain selected ore identity");
-assert.ok(styles.includes('data-block="log"') && styles.includes("repeating-radial-gradient"), "logs receive bark sides and a ringed end face");
-assert.ok(styles.includes('data-block="glass"') && styles.includes("color-mix"), "glass has a distinct translucent presentation");
-assert.ok(styles.includes('data-block="tnt"') && styles.includes("repeating-conic-gradient"), "held TNT keeps its red charge cap and pale side band");
-assert.ok(styles.includes("height: clamp(140px,17vw,190px)"), "held cube remains large and responsive without unbounded viewport scaling");
+const renderer = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.ok(renderer.includes("blockTextureForFace(block, face.face)"), "held blocks use the canonical face material resolver");
+assert.ok(renderer.includes("textureAtlasUv(texture)"), "held blocks use the canonical half-texel atlas UV resolver");
+assert.equal((renderer.match(/face: "(east|west|top|bottom|south|north)"/g) ?? []).length, 6,
+  "one canonical cube basis has six complete solid faces");
+assert.ok(renderer.includes("appendSpecialBlock"), "thin placeables receive compact solid geometry rather than a sprite exception");
+assert.equal(renderer.includes("ItemIcon"), false, "first-person block/tool geometry has no inventory-icon dependency");
 
-console.log("first-person held voxel cube checks passed");
+const hud = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
+assert.equal(hud.includes("lc-held-voxel"), false, "CSS block approximations are removed");
+assert.equal(hud.includes("lc-held-sprite"), false, "stacked sprite extrusions are removed");
+
+console.log("canonical held-block WebGL geometry tests passed");

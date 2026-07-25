@@ -314,6 +314,13 @@ export interface VoxelPerformanceStats {
   particleUploadBytes: number;
   torchCount: number;
   activeTorchLights: number;
+  /** Retained first-person model draws stay bounded at one color batch plus one atlas batch. */
+  firstPersonDrawCalls: number;
+  firstPersonVertexCount: number;
+  firstPersonLastUploadBytes: number;
+  firstPersonTotalUploadBytes: number;
+  firstPersonMeshUpdates: number;
+  firstPersonBufferBytes: number;
   estimatedMeshBytes: number;
 }
 
@@ -325,6 +332,8 @@ export interface VoxelEngineOptions {
   /** Preserve a Lakebed-persisted reconnect pose exactly instead of lifting it to local safe-spawn height. */
   preserveInitialPose?: boolean;
   selectedBlock?: BlockId;
+  /** Selected inventory identity for the retained first-person WebGL model. */
+  selectedItem?: ItemId | null;
   reach?: number;
   /** Local pointer-look coefficient, sampled for each event so Options apply immediately. */
   getMouseLookSensitivity?: () => number;
@@ -424,6 +433,10 @@ export interface VoxelEngine {
   /** Resolves one already-paid offline arrow hit; never runs when Lakebed delegates combat. */
   damageLocalMobWithRangedShot(mobId: string, damage: number): MobDamageResult;
   setSelectedBlock(block: BlockId): void;
+  /** Updates the retained first-person arm/item model without touching world interaction state. */
+  setSelectedItem(itemId: ItemId | null): void;
+  /** Removes the viewmodel for blocking UI, death, screenshots, or other cinematic surfaces. */
+  setFirstPersonFeedbackHidden(hidden: boolean): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
   setDroppedItems(items: readonly DroppedItemRenderItem[]): void;

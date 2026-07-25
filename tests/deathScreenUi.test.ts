@@ -6,6 +6,8 @@ const deathScreen = source("../client/components/DeathScreen.tsx");
 const gameHud = source("../client/components/GameHud.tsx");
 const exportsSource = source("../client/components/index.ts");
 const styles = source("../client/components/HudStyles.tsx");
+const client = source("../client/index.tsx");
+const singlePlayer = source("../client/singleplayer/SinglePlayerApp.tsx");
 
 assert.ok(deathScreen.includes('role="dialog"'), "death view is exposed as a dialog");
 assert.ok(deathScreen.includes('aria-modal="true"'), "death dialog blocks the game behind it");
@@ -22,7 +24,8 @@ assert.ok(gameHud.includes("deathScreenOpen = false"), "death UI visibility is e
 assert.ok(gameHud.includes("<DeathScreen"), "GameHud owns the blocking death modal seam");
 assert.ok(gameHud.includes("pauseOpen && !deathScreenOpen"), "pause menu cannot overlap death UI");
 assert.ok(gameHud.includes("inventoryOpen && !deathScreenOpen"), "inventory cannot overlap death UI");
-assert.ok(gameHud.includes("mobileUnsupported || deathScreenOpen"), "first-person held art is removed under the death UI");
+assert.ok(client.includes("mobileUnsupported || deathScreenOpen || pauseOpen"), "multiplayer removes the WebGL viewmodel under the death UI");
+assert.ok(singlePlayer.includes("pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen"), "single-player removes the WebGL viewmodel under the death UI");
 assert.ok(gameHud.includes("!deathScreenOpen ? <ToastSurface"), "gameplay notifications do not show through the translucent death tint");
 assert.match(gameHud, /<DeathScreen[^>]*respawnError=\{respawnError\}[^>]*respawnStatus=\{respawnStatus\}/, "GameHud forwards both optional feedback channels into the blocking modal");
 assert.ok(exportsSource.includes("DeathScreenProps"), "death screen is exported for focused reuse and testing");

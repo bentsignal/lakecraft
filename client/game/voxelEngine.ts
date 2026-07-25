@@ -24,6 +24,7 @@ import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
+import { createFirstPersonRenderer } from "./firstPersonRenderer.ts";
 import {
   blockParticleBufferCapacity,
   createBlockParticleSystem,
@@ -111,6 +112,7 @@ import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/f
 import { fallDamageForDistance } from "../../shared/fallDamageAuthority.ts";
 import { PLAYER_ATTACK_COOLDOWN_MS, mitigatedPlayerDamage } from "../../shared/playerCombat.ts";
 import type { BlockType } from "../../shared/protocol.ts";
+import { ITEMS } from "../../shared/game.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
@@ -1343,6 +1345,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
   const droppedItemRenderer = createDroppedItemRenderer(gl);
   const playerProjectileRenderer = createPlayerProjectileRenderer(gl);
+  const firstPersonRenderer = createFirstPersonRenderer(gl);
   const blockParticles = createBlockParticleSystem();
   const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
   const particleGeometry = new Float32Array(particleCapacity.floatCount);
@@ -1365,6 +1368,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const projectionMatrix = new Float32Array(16);
   const viewMatrix = new Float32Array(16);
   const mvpMatrix = new Float32Array(16);
+  const firstPersonMvpMatrix = new Float32Array(16);
   gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, particleGeometry.byteLength, gl.DYNAMIC_DRAW);
 
@@ -1404,6 +1408,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const primedTnt = new Set<string>();
   const torchLights = new Map<string, TorchLightPosition>();
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
+  const firstPersonTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const chunkBlocks = new Map<string, Set<string>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
@@ -1470,6 +1475,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const keys = new Set<string>();
   let sprintControls: SprintControlState = RELEASED_SPRINT_CONTROLS;
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
+  let selectedItem = options.selectedItem ?? null;
+  let firstPersonFeedbackHidden = false;
+  firstPersonRenderer.setHeldItem(selectedItem, selectedBlock);
   let worldVertexCount = 0;
   let remoteVertexCount = 0;
   let nameplateVertexCount = 0;
@@ -1549,6 +1557,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastTorchCameraX = Infinity;
   let lastTorchCameraY = Infinity;
   let lastTorchCameraZ = Infinity;
+  const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
+
+  function emitHandAction(action: "mine" | "attack" | "place" | "use"): void {
+    firstPersonRenderer.triggerAction(action, performance.now());
+    options.onHandAction?.(action);
+  }
 
   function clearMining(): void {
     if (miningTimer) window.clearTimeout(miningTimer);
@@ -1602,7 +1616,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       targetPrimed,
     })) return false;
     const duration = Math.max(0, options.getMiningDuration?.(mined.block) ?? 0);
-    options.onHandAction?.("mine");
+    emitHandAction("mine");
     if (duration === 0) {
       emitEdit({ x: mined.x, y: mined.y, z: mined.z, block: BLOCK.AIR });
       return true;
@@ -2404,7 +2418,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       particleUploadBytes,
       torchCount: torchLights.size,
       activeTorchLights,
-      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + primedTntVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT,
+      firstPersonDrawCalls: firstPersonFeedbackHidden || paused || playerHealth <= 0 ? 0 : firstPersonRenderer.stats.drawCalls,
+      firstPersonVertexCount: firstPersonRenderer.stats.colorVertexCount + firstPersonRenderer.stats.texturedVertexCount,
+      firstPersonLastUploadBytes: firstPersonRenderer.stats.lastUploadBytes,
+      firstPersonTotalUploadBytes: firstPersonRenderer.stats.totalUploadBytes,
+      firstPersonMeshUpdates: firstPersonRenderer.stats.meshUpdates,
+      firstPersonBufferBytes: firstPersonRenderer.stats.bufferCapacityBytes,
+      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + primedTntVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT
+        + firstPersonRenderer.stats.bufferCapacityBytes,
     };
   }
 
@@ -2654,6 +2675,54 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
     }
 
+    const bowCharging = selectedItem === "bow" && rangedChargeStartedAt > 0;
+    firstPersonRenderer.setBowCharge(
+      bowCharging,
+      bowCharging ? Math.min(1, Math.max(0, (frameNow - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS)) : 0,
+    );
+    if (!firstPersonFeedbackHidden && !paused && playerHealth > 0) {
+      // The viewmodel owns a fresh depth plane but retains the world color buffer,
+      // so nearby terrain never clips the hand and the crosshair remains centered.
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+      firstPersonRenderer.writeMvp(
+        firstPersonMvpMatrix,
+        projectionMatrix,
+        now,
+        reducedMotionQuery?.matches === true,
+      );
+      if (firstPersonRenderer.stats.texturedVertexCount > 0) {
+        gl.useProgram(terrainProgram);
+        gl.uniformMatrix4fv(terrainMvpLocation, false, firstPersonMvpMatrix);
+        gl.uniform3f(terrainCameraLocation, 0, 0, 0);
+        gl.uniform1f(terrainFogLocation, 0);
+        gl.uniform3f(terrainAmbientColorLocation, 1, 1, 1);
+        gl.uniform3f(terrainDirectionalColorLocation, 0, 0, 0);
+        gl.uniform1f(terrainAmbientIntensityLocation, 1.12);
+        gl.uniform1f(terrainDirectionalIntensityLocation, 0);
+        gl.uniform4fv(terrainTorchLightsLocation, firstPersonTorchUniforms);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
+        gl.uniform1i(terrainAtlasLocation, 0);
+        gl.uniform1f(terrainAlphaCutoffLocation, 0.08);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        bindTerrainBuffer(firstPersonRenderer.texturedBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, firstPersonRenderer.stats.texturedVertexCount);
+        gl.disable(gl.BLEND);
+        drawCalls += 1;
+      }
+      if (firstPersonRenderer.stats.colorVertexCount > 0) {
+        gl.useProgram(program);
+        gl.uniformMatrix4fv(mvpLocation, false, firstPersonMvpMatrix);
+        gl.uniform3f(cameraLocation, 0, 0, 0);
+        gl.uniform1f(fogLocation, 0);
+        gl.uniform1f(lightingLocation, 0);
+        bindBuffer(firstPersonRenderer.colorBuffer);
+        gl.drawArrays(gl.TRIANGLES, 0, firstPersonRenderer.stats.colorVertexCount);
+        drawCalls += 1;
+      }
+    }
+
   }
 
   function frame(now: number): void {
@@ -2672,7 +2741,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       updateMiningCrackGeometry();
       if (target && now - lastMiningHitAt >= 225) {
         lastMiningHitAt = now;
-        options.onHandAction?.("mine");
+        emitHandAction("mine");
         options.onMiningHit?.({ ...target, block: { ...target.block }, place: { ...target.place } });
       }
     }
@@ -2804,7 +2873,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       || (!saplingPlacement && playerIntersectsBlock(x, y, z, selectedBlock))
     ) return false;
     if (!emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) })) return false;
-    options.onHandAction?.("place");
+    emitHandAction("place");
     return true;
   }
 
@@ -2832,14 +2901,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const attackDamage = Number.isFinite(rawDamage) ? Math.max(0, Math.min(100, rawDamage)) : 1;
     if (remoteTarget && remoteTarget.distance <= (mobTarget?.distance ?? Number.POSITIVE_INFINITY)) {
       clearMining();
-      options.onHandAction?.("attack");
+      emitHandAction("attack");
       void options.onRemotePlayerAttack?.({ ...remoteTarget }, attackDamage);
       return true;
     }
     if (!mobTarget) return false;
     if (options.onMobAttack) {
       clearMining();
-      options.onHandAction?.("attack");
+      emitHandAction("attack");
       void options.onMobAttack({ ...mobTarget }, attackDamage);
       return true;
     }
@@ -2851,7 +2920,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (result.applied) {
       localMobAttackReadyAt = advanceLocalMobAttackReadyAt(localMobAttackReadyAt, attackNow, true);
       options.onLocalMobHit?.();
-      options.onHandAction?.("attack");
+      emitHandAction("attack");
     }
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     return true;
@@ -2865,7 +2934,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!mobTarget || !mobTargetHasClickPriority(mobTarget.distance, target?.distance ?? null)) return false;
     if (!options.onMobUse({ ...mobTarget })) return false;
     clearMining();
-    options.onHandAction?.("use");
+    emitHandAction("use");
     return true;
   }
 
@@ -2928,12 +2997,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         const doorEdit = createDoorToggleEdit(target);
         if (doorEdit) {
           if (options.canEditBlock?.() === false) return;
-          options.onHandAction?.("use");
+          emitHandAction("use");
           emitEdit(doorEdit);
           return;
         }
         if (tryInteractBlock(target, options.onInteractBlock)) {
-          options.onHandAction?.("use");
+          emitHandAction("use");
           return;
         }
       }
@@ -2946,7 +3015,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         return;
       }
       if (options.onUseSelectedItem?.()) {
-        options.onHandAction?.("use");
+        emitHandAction("use");
         return;
       }
       const placementBlock = selectedBlock;
@@ -2967,7 +3036,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (event.button === 2 && rangedChargeStartedAt > 0) {
       const intent = rangedShotIntent(performance.now());
       clearRangedCharge();
-      options.onHandAction?.("use");
+      emitHandAction("use");
       void options.onRangedRelease?.(intent);
     }
   }
@@ -3046,6 +3115,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       remotePlayerRenderer.destroy();
       droppedItemRenderer.destroy();
       playerProjectileRenderer.destroy();
+      firstPersonRenderer.destroy();
       blockParticles.clear();
       gl.deleteBuffer(particleBuffer);
       gl.deleteBuffer(lineBuffer);
@@ -3144,6 +3214,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (block !== selectedBlock) cancelSecondaryPlacementHold();
       selectedBlock = block;
       clearMining();
+    },
+    setSelectedItem(itemId) {
+      selectedItem = itemId && itemId in ITEMS ? itemId : null;
+      firstPersonRenderer.setHeldItem(selectedItem, selectedBlock);
+    },
+    setFirstPersonFeedbackHidden(hidden) {
+      const nextHidden = hidden === true;
+      if (firstPersonFeedbackHidden === nextHidden) return;
+      firstPersonFeedbackHidden = nextHidden;
+      if (nextHidden && running && !paused) {
+        const now = performance.now();
+        render(now, 0, now);
+      }
     },
     setRemotePlayers(players) {
       const now = performance.now();

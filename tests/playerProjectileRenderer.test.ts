@@ -12,7 +12,7 @@ import {
   type BallisticSample,
   type PlayerProjectileVisual,
 } from "../client/game/playerProjectileRenderer.ts";
-import { bowChargeProgress, bowChargeStage } from "../client/components/FirstPersonBow.tsx";
+import { bowChargeProgress, bowChargeStage } from "../client/components/bowCharge.ts";
 
 function projectile(index: number, overrides: Partial<PlayerProjectileVisual> = {}): PlayerProjectileVisual {
   return {

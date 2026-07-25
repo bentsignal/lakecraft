@@ -102,9 +102,9 @@ assert.equal(slabArt.variant, "stone_brick_slab");
 assert.ok(slabArt.runs.length >= 20, "inventory and held views use a readable original low masonry sprite");
 assert.notDeepEqual(slabArt.runs, getItemIconArt("stone_bricks").runs,
   "the slab silhouette is distinct from the full stone-brick cube");
-const heldSource = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");
-assert.match(heldSource, /HELD_SPRITE_BLOCKS[\s\S]{0,220}"stone_brick_slab"/,
-  "the first-person hand preserves the authored half-height item silhouette");
+const heldSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.match(heldSource, /itemId === "door" \|\| itemId === "bed" \|\| itemId === "ladder" \|\| itemId === "stone_brick_slab"[\s\S]{0,500}appendColorBox/,
+  "the first-person hand uses solid half-height slab geometry");
 
 const slabLookup = (x: number, y: number, z: number) => (
   x === 1 && y === 7 && z === 0 ? BLOCK.STONE_BRICK_SLAB : BLOCK.AIR

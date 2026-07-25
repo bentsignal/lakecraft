@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
-import { isHeldVoxelBlock } from "../client/components/ItemGlyph.tsx";
 import { blockTextureForFace, type BlockFace } from "../client/game/blockTextures.ts";
 import {
   TEXTURE_ATLAS_COLUMNS,
@@ -56,7 +55,6 @@ for (const block of ["clay", "bricks"] as const) {
   assert.equal(art.family, "block");
   assert.equal(art.variant, block);
   assert.ok(art.runs.length >= 25, `${block} has detailed original three-face voxel art`);
-  assert.equal(isHeldVoxelBlock(block), true, `${block} uses the proper held 3D block model`);
 }
 for (const material of ["clay_ball", "brick"] as const) {
   const art = getItemIconArt(material);
@@ -66,9 +64,9 @@ for (const material of ["clay_ball", "brick"] as const) {
   assert.notDeepEqual(art.runs, getItemIconArt(material === "brick" ? "clay_ball" : "brick").runs);
 }
 
-const heldStyles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
-assert.match(heldStyles, /data-block="clay"[^}]+background-image/, "held clay retains compressed surface banding");
-assert.match(heldStyles, /data-block="bricks"[^}]+repeating-linear-gradient/, "held bricks retain staggered masonry courses");
+const heldRenderer = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+assert.ok(heldRenderer.includes("blockTextureForFace(block, face.face)") && heldRenderer.includes("textureAtlasUv(texture)"),
+  "held clay and bricks reuse their exact world-atlas surface tiles on solid cubes");
 
 for (const relative of ["../client/index.tsx", "../client/singleplayer/SinglePlayerApp.tsx"] as const) {
   const source = readFileSync(new URL(relative, import.meta.url), "utf8");

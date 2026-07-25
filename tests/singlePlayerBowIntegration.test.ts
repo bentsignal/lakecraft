@@ -83,13 +83,12 @@ const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url)
 
 assert.match(app, /isRangedWeaponSelected:[\s\S]{0,300}itemId === "bow"[\s\S]{0,300}(?:countItem\([^)]*, "arrow"\)|hasItem\([^)]*, "arrow"\))/,
   "single-player only starts a draw from a selected bow with ammunition");
-assert.match(app, /onRangedChargeChange:[\s\S]{0,500}setBowCharging[\s\S]{0,500}setBowChargeMs/,
-  "single-player forwards bounded charge feedback to the existing bow pose");
-assert.match(app, /onRangedCancel:[\s\S]{0,300}setBowCharging\(false\)[\s\S]{0,300}setBowChargeMs\(0\)/,
-  "cancel clears the visible local draw without entering release accounting");
-assert.ok(app.includes("<FirstPersonBow"), "single-player renders the existing first-person charge pose");
-assert.match(app, /<FirstPersonBow[\s\S]{0,180}actionToken=\{handActionToken\}/,
-  "single-player forwards accepted hand-action edges to the selected bow pose");
+assert.match(app, /selectedItem: inventoryRef\.current\[selectedRef\.current\]\?\.itemId \?\? null/,
+  "single-player initializes the retained viewmodel from its canonical selected stack");
+assert.match(app, /setSelectedItem\(inventory\[selected\]\?\.itemId \?\? null\)/,
+  "hotbar changes update the engine-owned bow model without React visual state");
+assert.doesNotMatch(app, /FirstPersonBow|setBowCharging|setBowChargeMs/,
+  "single-player has no duplicate DOM/SVG bow or per-frame React charge state");
 assert.match(app, /onRangedRelease:[\s\S]{0,4000}applyConfirmedDurableItemUse\([^)]*"bow"\)[\s\S]{0,4000}removeItem\([^)]*"arrow"\s*,\s*1\)[\s\S]{0,4000}updateInventory/,
   "one local release atomically wears the bow, removes one arrow, and joins the dirty-save inventory path");
 assert.match(app, /onRangedRelease:[\s\S]{0,4000}damageLocalMobWithRangedShot\(intent\.target\.id/,
@@ -113,6 +112,7 @@ assert.ok(clearCharge.includes("onRangedCancel"), "pointer-lock and modal cancel
 assert.equal(clearCharge.includes("removeItem"), false, "canceling inside the engine cannot spend an arrow");
 
 assert.ok(engine.includes("options.onRangedRelease?.(intent)"), "delegated multiplayer release callback remains intact");
+assert.ok(engine.includes("firstPersonRenderer.setBowCharge"), "engine-owned charge selects retained bow geometry");
 assert.match(multiplayer, /onRangedRelease: \(intent\) =>[\s\S]{0,1800}rangedCombat\(requestJson\)/,
   "multiplayer release remains one Lakebed-authoritative mutation");
 assert.equal(app.includes("lakebed/client"), false, "single-player bow use adds zero Lakebed traffic");
