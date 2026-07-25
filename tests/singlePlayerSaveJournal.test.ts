@@ -9,6 +9,7 @@ import {
   canonicalSinglePlayerJson,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
+  resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
   serializeSinglePlayerSave,
   validateSinglePlayerSnapshot,
@@ -24,8 +25,12 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   corruptWritesFor: string | null = null;
   failWritesFor: string | null = null;
   failReadsFor: string | null = null;
+  failDeletesFor: string | null = null;
+  readonly deleteAttempts: string[] = [];
+  readonly operations: string[] = [];
 
   getItem(key: string): string | null {
+    this.operations.push(`get:${key}`);
     if (this.failReadsFor === key) throw new Error("simulated read failure");
     return this.values.get(key) ?? null;
   }
@@ -33,6 +38,13 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   setItem(key: string, value: string): void {
     if (this.failWritesFor === key) throw new Error("simulated quota failure");
     this.values.set(key, this.corruptWritesFor === key ? `${value.slice(0, -1)}!` : value);
+  }
+
+  removeItem(key: string): void {
+    this.deleteAttempts.push(key);
+    this.operations.push(`remove:${key}`);
+    if (this.failDeletesFor === key) throw new Error("simulated delete failure");
+    this.values.delete(key);
   }
 }
 
@@ -234,6 +246,14 @@ function richSnapshot(): SinglePlayerSnapshot {
   const badStack = richSnapshot();
   badStack.player.inventory[1] = { itemId: "diamond", count: 65 };
   assert.equal(validateSinglePlayerSnapshot(badStack).ok, false);
+
+  const accumulatedYaw = richSnapshot();
+  accumulatedYaw.runtime!.pose.yaw = Math.PI * 5;
+  assert.deepEqual(validateSinglePlayerSnapshot(accumulatedYaw), {
+    ok: false,
+    reason: "invalid_snapshot",
+    path: "$.runtime.pose.yaw",
+  });
 }
 
 // Serialization/checksum output is deterministic even when runtime object keys were inserted in another order.
@@ -281,6 +301,106 @@ function richSnapshot(): SinglePlayerSnapshot {
   assert.equal(loaded.status, "loaded");
   if (loaded.status !== "loaded") throw new Error(loaded.status);
   assert.deepEqual(loaded.snapshot, first);
+}
+
+// Corrupt worlds only become writable after an explicit, verified reset;
+// unrelated browser keys are retained.
+{
+  const storage = new MemoryStorage();
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_A_KEY, "not json");
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_B_KEY, "{}");
+  storage.values.set(SINGLEPLAYER_LEGACY_SAVE_KEY, "also invalid");
+  storage.values.set("lakecraft.settings.v1", "keep-me");
+  assert.equal(loadSinglePlayerSave(storage).status, "corrupt");
+  const reset = resetSinglePlayerSave(storage);
+  assert.equal(reset.ok, true);
+  if (!reset.ok) throw new Error(reset.reason);
+  assert.deepEqual(new Set(reset.removedKeys), new Set([
+    SINGLEPLAYER_LEGACY_SAVE_KEY,
+    SINGLEPLAYER_SAVE_HEAD_KEY,
+    SINGLEPLAYER_SAVE_SLOT_A_KEY,
+    SINGLEPLAYER_SAVE_SLOT_B_KEY,
+  ]));
+  assert.equal(storage.values.get("lakecraft.settings.v1"), "keep-me");
+  assert.equal(loadSinglePlayerSave(storage).status, "empty");
+  assert.equal(saveSinglePlayerSnapshot(storage, richSnapshot(), 3).ok, true);
+}
+
+// A future-format world follows the same explicit recovery path and is never
+// overwritten by an ordinary save attempt.
+{
+  const storage = new MemoryStorage();
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_A_KEY, JSON.stringify({
+    format: "lakecraft.singleplayer",
+    version: 99,
+  }));
+  assert.equal(loadSinglePlayerSave(storage).status, "unsupported");
+  assert.deepEqual(saveSinglePlayerSnapshot(storage, richSnapshot(), 4), {
+    ok: false,
+    reason: "unsafe_existing_data",
+    previousSequence: 0,
+  });
+  assert.equal(resetSinglePlayerSave(storage).ok, true);
+  assert.equal(loadSinglePlayerSave(storage).status, "empty");
+}
+
+// If reset is interrupted, the selected valid snapshot is removed last and
+// remains loadable rather than being silently replaced by a new world.
+{
+  const storage = new MemoryStorage();
+  const previousGood = richSnapshot();
+  assert.equal(saveSinglePlayerSnapshot(storage, previousGood, 1).ok, true);
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_B_KEY, "interrupted write");
+  storage.failDeletesFor = SINGLEPLAYER_SAVE_SLOT_A_KEY;
+  storage.operations.length = 0;
+  assert.deepEqual(resetSinglePlayerSave(storage), {
+    ok: false,
+    reason: "storage_delete_failed",
+    key: SINGLEPLAYER_SAVE_SLOT_A_KEY,
+    mutationStarted: true,
+  });
+  assert.deepEqual(storage.operations, [
+    `get:${SINGLEPLAYER_SAVE_SLOT_A_KEY}`,
+    `get:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
+    `remove:${SINGLEPLAYER_LEGACY_SAVE_KEY}`,
+    `get:${SINGLEPLAYER_LEGACY_SAVE_KEY}`,
+    `remove:${SINGLEPLAYER_SAVE_HEAD_KEY}`,
+    `get:${SINGLEPLAYER_SAVE_HEAD_KEY}`,
+    `remove:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
+    `get:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
+    `remove:${SINGLEPLAYER_SAVE_SLOT_A_KEY}`,
+  ], "every non-selected deletion is verified before the selected valid slot is touched");
+  const loaded = loadSinglePlayerSave(storage);
+  assert.equal(loaded.status, "loaded");
+  if (loaded.status !== "loaded") throw new Error(loaded.status);
+  assert.deepEqual(loaded.snapshot, previousGood);
+}
+
+// An incomplete preliminary slot scan fails closed before any mutation. Even
+// if later removals would have produced a destructive partial reset, the
+// previous-good slot remains byte-for-byte intact.
+{
+  const storage = new MemoryStorage();
+  const previousGood = richSnapshot();
+  assert.equal(saveSinglePlayerSnapshot(storage, previousGood, 1).ok, true);
+  const previousRaw = storage.values.get(SINGLEPLAYER_SAVE_SLOT_A_KEY);
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_B_KEY, "interrupted write");
+  storage.failReadsFor = SINGLEPLAYER_SAVE_SLOT_A_KEY;
+  storage.failDeletesFor = SINGLEPLAYER_SAVE_SLOT_B_KEY;
+  assert.deepEqual(resetSinglePlayerSave(storage), {
+    ok: false,
+    reason: "storage_read_failed",
+    mutationStarted: false,
+  });
+  assert.deepEqual(storage.deleteAttempts, [], "failed preflight cannot attempt any deletion");
+  assert.equal(storage.values.get(SINGLEPLAYER_SAVE_SLOT_A_KEY), previousRaw);
+  assert.equal(storage.values.get(SINGLEPLAYER_SAVE_SLOT_B_KEY), "interrupted write");
+  storage.failReadsFor = null;
+  storage.failDeletesFor = null;
+  const loaded = loadSinglePlayerSave(storage);
+  assert.equal(loaded.status, "recovered");
+  if (loaded.status !== "recovered") throw new Error(loaded.status);
+  assert.deepEqual(loaded.snapshot, previousGood);
 }
 
 console.log("durable single-player save journal roundtrip, recovery, migration, bounds, determinism, and budget tests passed");

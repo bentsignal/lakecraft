@@ -13,7 +13,13 @@ import {
   type ItemId,
   type ItemStack,
 } from "../../shared/game.ts";
-import { BLOCK, validateVoxelRuntimeSnapshot, type BlockId, type VoxelRuntimeSnapshot, type WorldEdit } from "../game/types.ts";
+import {
+  BLOCK,
+  validateVoxelRuntimeSnapshotDetailed,
+  type BlockId,
+  type VoxelRuntimeSnapshot,
+  type WorldEdit,
+} from "../game/types.ts";
 import { validateFurnaceState, type FurnaceState } from "../../shared/furnaces.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
@@ -48,6 +54,7 @@ export type SinglePlayerSaveSlot = "a" | "b";
 export interface SinglePlayerStorageAdapter {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface SinglePlayerPose {
@@ -140,6 +147,15 @@ export type SinglePlayerLoadResult =
 export type SinglePlayerSaveResult =
   | { ok: true; envelope: SinglePlayerSaveEnvelope; slot: SinglePlayerSaveSlot; sequence: number; chars: number; headUpdated: boolean }
   | { ok: false; reason: "invalid_snapshot" | "too_large" | "storage_read_failed" | "storage_write_failed" | "readback_failed" | "unsafe_existing_data"; path?: string; previousSequence: number };
+
+export type SinglePlayerResetResult =
+  | { ok: true; removedKeys: string[] }
+  | {
+    ok: false;
+    reason: "storage_read_failed" | "storage_delete_unavailable" | "storage_delete_failed" | "storage_verify_failed";
+    key?: string;
+    mutationStarted: boolean;
+  };
 
 type ParsedSlot =
   | { kind: "empty"; slot: SinglePlayerSaveSlot }
@@ -360,12 +376,16 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
   const chests = validateChests(value.chests);
   const furnaces = validateFurnaces(value.furnaces);
   const primedTnt = validatePrimedTnt(value.primedTnt);
-  const runtime = value.runtime === null ? null : validateVoxelRuntimeSnapshot(value.runtime);
+  const runtimeValidation = value.runtime === null ? null : validateVoxelRuntimeSnapshotDetailed(value.runtime);
+  const runtime = runtimeValidation?.ok ? runtimeValidation.snapshot : null;
   if (!drops) return { ok: false, reason: "invalid_snapshot", path: "$.drops" };
   if (!chests) return { ok: false, reason: "invalid_snapshot", path: "$.chests" };
   if (!furnaces) return { ok: false, reason: "invalid_snapshot", path: "$.furnaces" };
   if (!primedTnt) return { ok: false, reason: "invalid_snapshot", path: "$.primedTnt" };
-  if (value.runtime !== null && !runtime) return { ok: false, reason: "invalid_snapshot", path: "$.runtime" };
+  if (value.runtime !== null && (!runtimeValidation || !runtimeValidation.ok)) {
+    const runtimePath = runtimeValidation?.path === "$" ? "" : runtimeValidation?.path.slice(1);
+    return { ok: false, reason: "invalid_snapshot", path: `$.runtime${runtimePath ?? ""}` };
+  }
 
   return {
     ok: true,
@@ -613,4 +633,51 @@ export function saveSinglePlayerSnapshot(
     headUpdated = false;
   }
   return { ok: true, envelope: serialized.envelope, slot: target, sequence: previousSequence + 1, chars: serialized.raw.length, headUpdated };
+}
+
+/**
+ * Explicitly deletes the local world journal after the UI has obtained user
+ * confirmation. The selected valid slot is removed last so an interrupted
+ * reset retains the best recoverable snapshot for as long as possible.
+ */
+export function resetSinglePlayerSave(storage: SinglePlayerStorageAdapter): SinglePlayerResetResult {
+  if (!storage.removeItem) {
+    return { ok: false, reason: "storage_delete_unavailable", mutationStarted: false };
+  }
+  const scanned = readSlots(storage);
+  const completeSlotScan = scanned.slots.length === 2
+    && scanned.slots.some(({ slot }) => slot === "a")
+    && scanned.slots.some(({ slot }) => slot === "b");
+  if (scanned.readFailed || !completeSlotScan) {
+    return { ok: false, reason: "storage_read_failed", mutationStarted: false };
+  }
+  const selected = highestValid(scanned.slots);
+  const selectedKey = selected ? slotKey(selected.slot) : null;
+  const nonSelectedKeys = [
+    SINGLEPLAYER_LEGACY_SAVE_KEY,
+    SINGLEPLAYER_SAVE_HEAD_KEY,
+    SINGLEPLAYER_SAVE_SLOT_A_KEY,
+    SINGLEPLAYER_SAVE_SLOT_B_KEY,
+  ].filter((key) => key !== selectedKey);
+  const orderedKeys = [
+    ...nonSelectedKeys,
+    ...(selectedKey ? [selectedKey] : []),
+  ];
+  const removedKeys: string[] = [];
+  for (const key of orderedKeys) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      return { ok: false, reason: "storage_delete_failed", key, mutationStarted: true };
+    }
+    try {
+      if (storage.getItem(key) !== null) {
+        return { ok: false, reason: "storage_verify_failed", key, mutationStarted: true };
+      }
+    } catch {
+      return { ok: false, reason: "storage_verify_failed", key, mutationStarted: true };
+    }
+    removedKeys.push(key);
+  }
+  return { ok: true, removedKeys };
 }

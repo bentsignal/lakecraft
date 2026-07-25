@@ -15,6 +15,7 @@ import {
   VOXEL_RUNTIME_SNAPSHOT_VERSION,
   advanceVoxelWorldTimeMs,
   validateVoxelRuntimeSnapshot,
+  validateVoxelRuntimeSnapshotDetailed,
 } from "../client/game/types.ts";
 
 function spawn(kind: MobKind, id: string, x: number): MobSpawnDescriptor {
@@ -116,6 +117,10 @@ for (const corrupt of [
 ]) {
   assert.equal(validateVoxelRuntimeSnapshot(corrupt), null);
 }
+assert.deepEqual(validateVoxelRuntimeSnapshotDetailed({
+  ...runtime,
+  pose: { ...runtime.pose, yaw: Math.PI * 5 },
+}), { ok: false, path: "$.pose.yaw" }, "runtime diagnostics identify the exact invalid engine field");
 
 assert.equal(advanceVoxelWorldTimeMs(10_000, 0.016, true), 10_000, "pause freezes the day/world clock");
 assert.equal(advanceVoxelWorldTimeMs(10_000, 0.016, false), 10_016);

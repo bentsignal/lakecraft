@@ -300,8 +300,13 @@ export function applyMouseLookDelta(
   sensitivity = MOUSE_LOOK_SENSITIVITY,
 ): { yaw: number; pitch: number } {
   const scale = Number.isFinite(sensitivity) && sensitivity > 0 ? sensitivity : MOUSE_LOOK_SENSITIVITY;
+  const nextYaw = yaw + movementX * scale;
   return {
-    yaw: yaw + movementX * scale,
+    // Yaw is periodic. Keeping it canonical prevents ordinary accumulated
+    // mouse movement from eventually exceeding the strict save boundary.
+    yaw: nextYaw >= -Math.PI && nextYaw < Math.PI
+      ? nextYaw
+      : ((nextYaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI,
     pitch: Math.max(
       -MAX_LOOK_PITCH,
       Math.min(MAX_LOOK_PITCH, pitch - movementY * scale),

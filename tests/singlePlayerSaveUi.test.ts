@@ -13,6 +13,7 @@ for (const prop of [
   "lastSavedText?: string",
   "saveDisabled?: boolean",
   "saveInProgress?: boolean",
+  "onResetWorld?: () => void",
   "disconnectLabel?: string",
 ]) {
   assert.ok(pauseMenu.includes(prop), `PauseMenu exposes the optional ${prop} seam`);
@@ -26,6 +27,8 @@ assert.ok(pauseMenu.includes('disconnectLabel = "Disconnect"'), "multiplayer ret
 assert.ok(pauseMenu.includes('const showSaveControls = Boolean(onSave || saveStatusText || lastSavedText)'), "save UI stays absent when multiplayer omits save props");
 assert.ok(pauseMenu.includes('saveInProgress ? "Saving…" : "Save World"'), "the manual action has clear idle and saving labels");
 assert.ok(pauseMenu.includes('disabled={!onSave || saveDisabled || saveInProgress}'), "manual save is guarded while unavailable, disabled, or active");
+assert.ok(pauseMenu.includes("saveDisabled && onResetWorld"), "recovery is only offered while unsafe storage has saving locked");
+assert.ok(pauseMenu.includes("Reset Local World…"), "the destructive recovery action is explicit");
 
 assert.ok(pauseMenu.includes('role="status"'), "save feedback has an accessible status role");
 assert.ok(pauseMenu.includes('aria-live="polite"'), "save feedback is announced without interrupting gameplay");
@@ -49,6 +52,11 @@ assert.ok(singlePlayer.includes("setLocalFusesPausedRef.current(paused)"), "the 
 assert.ok(singlePlayer.includes("timer.remainingMs = Math.max(0"), "paused TNT retains bounded remaining fuse time");
 assert.ok(singlePlayer.includes('window.addEventListener("pagehide", saveBeforeLeaving)'), "page exit gets a final synchronous save attempt");
 assert.ok(singlePlayer.includes("return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, true)"), "corrupt or future data is protected from permissive overwrite");
+assert.ok(singlePlayer.includes("window.confirm("), "destructive world recovery requires explicit confirmation");
+assert.ok(singlePlayer.includes("resetSinglePlayerSave(localStorage)"), "confirmed recovery uses the verified journal reset helper");
+assert.ok(singlePlayer.includes('console.error("[Lakecraft save] Snapshot commit rejected."'), "exact save diagnostics remain available to developers");
+assert.ok(singlePlayer.includes("result.mutationStarted"), "reset feedback distinguishes unchanged preflight failures from partial resets");
+assert.ok(singlePlayer.includes("Your saved world data was left unchanged."), "failed preflight never falsely implies destructive recovery");
 assert.equal(singlePlayer.includes('localStorage.setItem("lakecraft.singleplayer.v1"'), false, "the old unverified one-key writer is gone");
 
 console.log("single-player save UI source tests passed");

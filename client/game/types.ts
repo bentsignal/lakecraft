@@ -122,63 +122,106 @@ function runtimeSnapshotHasKeys(record: Record<string, unknown>, keys: readonly 
   return actual.length === keys.length && actual.every((key) => keys.includes(key));
 }
 
-function validateRuntimePose(value: unknown): PlayerPose | null {
+type RuntimePoseValidation =
+  | { ok: true; pose: PlayerPose }
+  | { ok: false; path: string };
+
+export type VoxelRuntimeSnapshotValidation =
+  | { ok: true; snapshot: VoxelRuntimeSnapshot }
+  | { ok: false; path: string };
+
+function validateRuntimePose(value: unknown, path: string): RuntimePoseValidation {
   const pose = runtimeSnapshotRecord(value);
-  if (!pose || !runtimeSnapshotHasKeys(pose, ["x", "y", "z", "yaw", "pitch"])) return null;
-  if (![pose.x, pose.y, pose.z, pose.yaw, pose.pitch].every((part) => typeof part === "number" && Number.isFinite(part))) return null;
-  if (Math.abs(pose.x as number) > 1_000_000 || Math.abs(pose.z as number) > 1_000_000
-    || (pose.y as number) < -24 || (pose.y as number) > 128
-    || Math.abs(pose.yaw as number) > Math.PI * 4
-    || Math.abs(pose.pitch as number) > 1.52) return null;
+  if (!pose || !runtimeSnapshotHasKeys(pose, ["x", "y", "z", "yaw", "pitch"])) {
+    return { ok: false, path };
+  }
+  for (const key of ["x", "y", "z", "yaw", "pitch"] as const) {
+    if (typeof pose[key] !== "number" || !Number.isFinite(pose[key])) {
+      return { ok: false, path: `${path}.${key}` };
+    }
+  }
+  if (Math.abs(pose.x as number) > 1_000_000) return { ok: false, path: `${path}.x` };
+  if ((pose.y as number) < -24 || (pose.y as number) > 128) return { ok: false, path: `${path}.y` };
+  if (Math.abs(pose.z as number) > 1_000_000) return { ok: false, path: `${path}.z` };
+  if (Math.abs(pose.yaw as number) > Math.PI * 4) return { ok: false, path: `${path}.yaw` };
+  if (Math.abs(pose.pitch as number) > 1.52) return { ok: false, path: `${path}.pitch` };
   return {
-    x: pose.x as number,
-    y: pose.y as number,
-    z: pose.z as number,
-    yaw: pose.yaw as number,
-    pitch: pose.pitch as number,
+    ok: true,
+    pose: {
+      x: pose.x as number,
+      y: pose.y as number,
+      z: pose.z as number,
+      yaw: pose.yaw as number,
+      pitch: pose.pitch as number,
+    },
   };
 }
 
 /** Strict all-or-nothing validator for the engine-owned portion of a local save. */
-export function validateVoxelRuntimeSnapshot(value: unknown): VoxelRuntimeSnapshot | null {
+export function validateVoxelRuntimeSnapshotDetailed(value: unknown): VoxelRuntimeSnapshotValidation {
   const snapshot = runtimeSnapshotRecord(value);
   if (!snapshot || !runtimeSnapshotHasKeys(snapshot, [
     "version", "pose", "respawnPoint", "playerHealth", "worldTimeMs", "dayNight",
     "mobAccumulatorSeconds", "mobSimulation",
-  ])) return null;
-  if (snapshot.version !== VOXEL_RUNTIME_SNAPSHOT_VERSION) return null;
-  const pose = validateRuntimePose(snapshot.pose);
-  const respawnPoint = validateRuntimePose(snapshot.respawnPoint);
+  ])) return { ok: false, path: "$" };
+  if (snapshot.version !== VOXEL_RUNTIME_SNAPSHOT_VERSION) return { ok: false, path: "$.version" };
+  const pose = validateRuntimePose(snapshot.pose, "$.pose");
+  if (!pose.ok) return pose;
+  const respawnPoint = validateRuntimePose(snapshot.respawnPoint, "$.respawnPoint");
+  if (!respawnPoint.ok) return respawnPoint;
   const dayNight = runtimeSnapshotRecord(snapshot.dayNight);
   const mobSimulation = validateMobSimulationSnapshot(snapshot.mobSimulation);
-  if (!pose || !respawnPoint || !mobSimulation || !dayNight
-    || !runtimeSnapshotHasKeys(dayNight, ["cycleLengthMs", "epochMs", "epochPhase"])) return null;
+  if (!dayNight || !runtimeSnapshotHasKeys(dayNight, ["cycleLengthMs", "epochMs", "epochPhase"])) {
+    return { ok: false, path: "$.dayNight" };
+  }
+  if (!mobSimulation) return { ok: false, path: "$.mobSimulation" };
   if (typeof snapshot.playerHealth !== "number" || !Number.isFinite(snapshot.playerHealth)
-    || snapshot.playerHealth < 0 || snapshot.playerHealth > 20
-    || typeof snapshot.worldTimeMs !== "number" || !Number.isFinite(snapshot.worldTimeMs)
-    || Math.abs(snapshot.worldTimeMs) > 10_000_000_000_000_000
-    || typeof snapshot.mobAccumulatorSeconds !== "number" || !Number.isFinite(snapshot.mobAccumulatorSeconds)
-    || snapshot.mobAccumulatorSeconds < 0 || snapshot.mobAccumulatorSeconds > 0.3
-    || typeof dayNight.cycleLengthMs !== "number" || !Number.isFinite(dayNight.cycleLengthMs)
-    || dayNight.cycleLengthMs <= 0 || dayNight.cycleLengthMs > 1_000_000_000_000
-    || typeof dayNight.epochMs !== "number" || !Number.isFinite(dayNight.epochMs)
-    || Math.abs(dayNight.epochMs) > 10_000_000_000_000_000
-    || typeof dayNight.epochPhase !== "number" || !Number.isFinite(dayNight.epochPhase)
-    || Math.abs(dayNight.epochPhase) > 1_000_000) return null;
+    || snapshot.playerHealth < 0 || snapshot.playerHealth > 20) {
+    return { ok: false, path: "$.playerHealth" };
+  }
+  if (typeof snapshot.worldTimeMs !== "number" || !Number.isFinite(snapshot.worldTimeMs)
+    || Math.abs(snapshot.worldTimeMs) > 10_000_000_000_000_000) {
+    return { ok: false, path: "$.worldTimeMs" };
+  }
+  if (typeof snapshot.mobAccumulatorSeconds !== "number" || !Number.isFinite(snapshot.mobAccumulatorSeconds)
+    || snapshot.mobAccumulatorSeconds < 0 || snapshot.mobAccumulatorSeconds > 0.3) {
+    return { ok: false, path: "$.mobAccumulatorSeconds" };
+  }
+  if (typeof dayNight.cycleLengthMs !== "number" || !Number.isFinite(dayNight.cycleLengthMs)
+    || dayNight.cycleLengthMs <= 0 || dayNight.cycleLengthMs > 1_000_000_000_000) {
+    return { ok: false, path: "$.dayNight.cycleLengthMs" };
+  }
+  if (typeof dayNight.epochMs !== "number" || !Number.isFinite(dayNight.epochMs)
+    || Math.abs(dayNight.epochMs) > 10_000_000_000_000_000) {
+    return { ok: false, path: "$.dayNight.epochMs" };
+  }
+  if (typeof dayNight.epochPhase !== "number" || !Number.isFinite(dayNight.epochPhase)
+    || Math.abs(dayNight.epochPhase) > 1_000_000) {
+    return { ok: false, path: "$.dayNight.epochPhase" };
+  }
   return {
-    version: VOXEL_RUNTIME_SNAPSHOT_VERSION,
-    pose,
-    respawnPoint,
-    playerHealth: snapshot.playerHealth,
-    worldTimeMs: snapshot.worldTimeMs,
-    dayNight: {
-      cycleLengthMs: dayNight.cycleLengthMs,
-      epochMs: dayNight.epochMs,
-      epochPhase: dayNight.epochPhase,
+    ok: true,
+    snapshot: {
+      version: VOXEL_RUNTIME_SNAPSHOT_VERSION,
+      pose: pose.pose,
+      respawnPoint: respawnPoint.pose,
+      playerHealth: snapshot.playerHealth,
+      worldTimeMs: snapshot.worldTimeMs,
+      dayNight: {
+        cycleLengthMs: dayNight.cycleLengthMs,
+        epochMs: dayNight.epochMs,
+        epochPhase: dayNight.epochPhase,
+      },
+      mobAccumulatorSeconds: snapshot.mobAccumulatorSeconds,
+      mobSimulation,
     },
-    mobAccumulatorSeconds: snapshot.mobAccumulatorSeconds,
-    mobSimulation,
   };
+}
+
+/** Compatibility wrapper for call sites that only need the detached validated snapshot. */
+export function validateVoxelRuntimeSnapshot(value: unknown): VoxelRuntimeSnapshot | null {
+  const validated = validateVoxelRuntimeSnapshotDetailed(value);
+  return validated.ok ? validated.snapshot : null;
 }
 
 /** Frame-bounded clock step shared by the live engine and pause regression tests. */
