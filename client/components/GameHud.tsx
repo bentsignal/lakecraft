@@ -12,6 +12,7 @@ import { Hotbar } from "./Hotbar";
 import { HudStyles } from "./HudStyles";
 import { DeathScreen } from "./DeathScreen";
 import { InventoryCraftingDrawer } from "./InventoryDrawer";
+import { ItemTooltip } from "./ItemTooltip";
 import { MobileUnsupportedOverlay } from "./MobileUnsupportedOverlay";
 import { OptionsDialog } from "./OptionsDialog";
 import { PauseMenu } from "./PauseMenu";
@@ -141,6 +142,7 @@ export function GameHud({
   return (
     <>
       <HudStyles />
+      <ItemTooltip />
       <div className="lc-hud">
         {!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null}
         {!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen ? (

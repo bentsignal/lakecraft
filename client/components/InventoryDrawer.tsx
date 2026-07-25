@@ -39,6 +39,7 @@ import {
 import { CraftingGridView } from "./CraftingGrid";
 import { ItemGlyph } from "./ItemGlyph";
 import * as BS from "../../shared/bundleStrings.ts";
+import { itemTooltipAttributes } from "./itemTooltipModel";
 
 export type InventoryCraftingDrawerProps = {
   open: boolean;
@@ -220,6 +221,7 @@ export function InventoryCraftingDrawer({
                 const durabilityLabel = stack && maximumDurability ? `${stack.durability}/${maximumDurability} durability` : "";
                 return (
                   <button
+                    {...itemTooltipAttributes(stack ? { ...stack, count: 1 } : null)}
                     aria-label={itemId ? `${ITEMS[itemId].label}, ${durabilityLabel}; ${slot} slot` : `Empty ${slot} armor slot`}
                     className={`lc-slot lc-armor-slot${itemId ? " is-equipped" : ""}`}
                     key={slot}
@@ -227,7 +229,6 @@ export function InventoryCraftingDrawer({
                       ? shiftClickArmorSlot(stateRef.current, slot)
                       : leftClickArmorSlot(stateRef.current, slot))}
                     onContextMenu={(event) => { event.preventDefault(); apply(rightClickArmorSlot(stateRef.current, slot)); }}
-                    title={itemId ? `${ITEMS[itemId].label} · ${durabilityLabel}` : `${slot} armor slot`}
                     type="button"
                   >
                     <span className="lc-armor-slot__label">{slot.slice(0, 1).toUpperCase()}</span>
@@ -273,6 +274,7 @@ export function InventoryCraftingDrawer({
               const durabilityLabel = maximumDurability && durability !== null ? ` · ${durability}/${maximumDurability} durability` : "";
               return (
                 <button
+                  {...itemTooltipAttributes(stack)}
                   aria-label={`${index + 1}: ${stack ? `${ITEMS[stack.itemId].label}, ${stack.count}${durabilityLabel}` : "Empty"}`}
                   className={`lc-slot lc-inventory-grid__slot${index === selectedIndex ? " is-selected" : ""}${isHotbar ? " is-hotbar" : ""}`}
                   key={index}
@@ -293,7 +295,6 @@ export function InventoryCraftingDrawer({
                   }}
                   onContextMenu={(event) => { event.preventDefault(); apply(rightClickInventorySlot(stateRef.current, index)); }}
                   role="gridcell"
-                  title={stack ? `${ITEMS[stack.itemId].description}${durabilityLabel}` : "Empty slot"}
                   type="button"
                 >
                   <ItemGlyph stack={stack} compact />

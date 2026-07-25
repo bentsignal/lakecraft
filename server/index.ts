@@ -483,14 +483,14 @@ async function maintainWorldBlockOperationReceipts(
   now: number,
 ): Promise<void> {
   const newestReceipts = await db.worldBlockOperationReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(MAX_WORLD_BLOCK_OPERATION_RECEIPTS_PER_USER + WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT);
   const overflowIds = selectWorldBlockOperationReceiptOverflow(newestReceipts, committedReceiptId);
   for (const receiptId of overflowIds) await db.worldBlockOperationReceipts.delete(receiptId);
   const staleBefore = String(now - WORLD_BLOCK_OPERATION_RECEIPT_TTL_MS);
   const staleReceipts = await db.worldBlockOperationReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId).lt(BS.receiptCreatedAt, staleBefore))
     .order("asc")
     .take(WORLD_BLOCK_OPERATION_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.worldBlockOperationReceipts.delete(receipt.id);
@@ -503,14 +503,14 @@ async function maintainTreeGrowthReceipts(
   now: number,
 ): Promise<void> {
   const newestReceipts = await db.treeGrowthReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(MAX_TREE_GROWTH_RECEIPTS_PER_USER + TREE_GROWTH_RECEIPT_PRUNE_LIMIT);
   const overflowIds = selectTreeGrowthReceiptOverflow(newestReceipts, committedReceiptId);
   for (const receiptId of overflowIds) await db.treeGrowthReceipts.delete(receiptId);
   const staleBefore = String(now - TREE_GROWTH_RECEIPT_TTL_MS);
   const staleReceipts = await db.treeGrowthReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId).lt(BS.receiptCreatedAt, staleBefore))
     .order("asc")
     .take(TREE_GROWTH_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.treeGrowthReceipts.delete(receipt.id);
@@ -523,7 +523,7 @@ async function maintainDroppedItemReceipts(
   now: number,
 ): Promise<void> {
   const newestReceipts = await db.droppedItemReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(MAX_DROPPED_ITEM_RECEIPTS_PER_USER + DROPPED_ITEM_RECEIPT_PRUNE_LIMIT);
   const overflowIds = selectDroppedItemReceiptOverflow(newestReceipts, committedReceiptId);
@@ -531,7 +531,7 @@ async function maintainDroppedItemReceipts(
 
   const staleBefore = String(now - DROPPED_ITEM_RECEIPT_TTL_MS);
   const staleReceipts = await db.droppedItemReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId).lt(BS.receiptCreatedAt, staleBefore))
     .order("asc")
     .take(DROPPED_ITEM_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.droppedItemReceipts.delete(receipt.id);
@@ -552,14 +552,14 @@ async function maintainPlayerCombatReceipts(
   now: number,
 ): Promise<void> {
   const newestReceipts = await db.playerCombatReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(MAX_PLAYER_COMBAT_RECEIPTS_PER_USER + PLAYER_COMBAT_RECEIPT_PRUNE_LIMIT);
   const overflowIds = selectPlayerCombatReceiptOverflow(newestReceipts, committedReceiptId);
   for (const receiptId of overflowIds) await db.playerCombatReceipts.delete(receiptId);
   const staleBefore = String(now - PLAYER_COMBAT_RECEIPT_TTL_MS);
   const staleReceipts = await db.playerCombatReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId).lt(BS.receiptCreatedAt, staleBefore))
     .order("asc")
     .take(PLAYER_COMBAT_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.playerCombatReceipts.delete(receipt.id);
@@ -572,14 +572,14 @@ async function maintainInventoryActionReceipts(
   now: number,
 ): Promise<void> {
   const newestReceipts = await db.inventoryActionReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(MAX_INVENTORY_ACTION_RECEIPTS_PER_USER + INVENTORY_ACTION_RECEIPT_PRUNE_LIMIT);
   const overflowIds = selectInventoryActionReceiptOverflow(newestReceipts, committedReceiptId);
   for (const receiptId of overflowIds) await db.inventoryActionReceipts.delete(receiptId);
   const staleBefore = String(now - INVENTORY_ACTION_RECEIPT_TTL_MS);
   const staleReceipts = await db.inventoryActionReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", staleBefore))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId).lt(BS.receiptCreatedAt, staleBefore))
     .order("asc")
     .take(INVENTORY_ACTION_RECEIPT_PRUNE_LIMIT);
   for (const receipt of staleReceipts) await db.inventoryActionReceipts.delete(receipt.id);
@@ -592,16 +592,16 @@ async function maintainRangedCombatReceipts(
   now: number,
 ): Promise<void> {
   const newest = await db.rangedCombatReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(MAX_RANGED_COMBAT_RECEIPTS_PER_USER + RANGED_COMBAT_RECEIPT_PRUNE_LIMIT);
   for (const receiptId of selectRangedCombatReceiptOverflow(newest, committedReceiptId)) {
     await db.rangedCombatReceipts.delete(receiptId);
   }
   const stale = await db.rangedCombatReceipts
-    .withIndex("by_user_created", (q) => q
-      .eq("userId", userId)
-      .lt("receiptCreatedAt", String(now - RANGED_COMBAT_RECEIPT_TTL_MS)))
+    .withIndex(BS.byUserCreated, (q) => q
+      .eq(BS.userId, userId)
+      .lt(BS.receiptCreatedAt, String(now - RANGED_COMBAT_RECEIPT_TTL_MS)))
     .order("asc")
     .take(RANGED_COMBAT_RECEIPT_PRUNE_LIMIT);
   for (const receipt of stale) await db.rangedCombatReceipts.delete(receipt.id);
@@ -614,14 +614,14 @@ async function maintainTntIgnitionReceipts(
   now: number,
 ): Promise<void> {
   const newest = await db.tntIgnitionReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(TNT_MAX_RECEIPTS + 8);
   for (const row of newest.slice(TNT_MAX_RECEIPTS)) {
     if (row.id !== committedId) await db.tntIgnitionReceipts.delete(row.id);
   }
   const stale = await db.tntIgnitionReceipts
-    .withIndex("by_user_created", (q) => q.eq("userId", userId).lt("receiptCreatedAt", String(now - TNT_RECEIPT_TTL_MS)))
+    .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, userId).lt(BS.receiptCreatedAt, String(now - TNT_RECEIPT_TTL_MS)))
     .order("asc")
     .take(8);
   for (const row of stale) if (row.id !== committedId) await db.tntIgnitionReceipts.delete(row.id);
@@ -633,7 +633,7 @@ async function maintainTntExplosionReceipts(db: WriteDatabase, committedId: stri
     if (row.id !== committedId) await db.tntExplosionReceipts.delete(row.id);
   }
   const stale = await db.tntExplosionReceipts
-    .withIndex("by_created", (q) => q.lt("receiptCreatedAt", String(now - TNT_RECEIPT_TTL_MS)))
+    .withIndex("by_created", (q) => q.lt(BS.receiptCreatedAt, String(now - TNT_RECEIPT_TTL_MS)))
     .order("asc")
     .take(8);
   for (const row of stale) if (row.id !== committedId) await db.tntExplosionReceipts.delete(row.id);
@@ -905,7 +905,7 @@ async function applyAuthoritativeWorldExplosion(
   const authoritativeCells: AuthoritativeTntBlastCell[] = [];
   const existingEdits = new Map<string, Record<string, unknown> | null>();
   for (const cell of plannedDestruction) {
-    const rows = await db.worldEdits.withIndex("by_coord", (q) => q.eq(BS.coordKey, cell.coordKey)).order("desc").take(2);
+    const rows = await db.worldEdits.withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, cell.coordKey)).order("desc").take(2);
     if (rows.length > 1) return { ok: false, reason: "duplicate_world_state" };
     const existing = rows[0] ?? null;
     existingEdits.set(cell.coordKey, existing);
@@ -946,8 +946,8 @@ async function applyAuthoritativeWorldExplosion(
     const exposure = sampleCreeperExplosionExposure(authority, candidate.pose, (cell) => blocks.get(cell.coordKey) ?? "air");
     const rawDamage = resolveCreeperExplosionDamage(authority, candidate.pose, exposure);
     if (rawDamage <= 0) continue;
-    const combatRows = await db.playerCombat.withIndex("by_user", (q) => q.eq("userId", candidate.row.userId)).order("desc").take(2);
-    const inventoryRows = await db.inventories.withIndex("by_user", (q) => q.eq("userId", candidate.row.userId)).order("desc").take(2);
+    const combatRows = await db.playerCombat.withIndex(BS.byUser, (q) => q.eq(BS.userId, candidate.row.userId)).order("desc").take(2);
+    const inventoryRows = await db.inventories.withIndex(BS.byUser, (q) => q.eq(BS.userId, candidate.row.userId)).order("desc").take(2);
     if (combatRows.length > 1 || inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
     if (inventoryRows.length !== 1) continue;
     const inventoryState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
@@ -1183,7 +1183,7 @@ async function authorizeInventoryCraftingTable(
   const coordinate = parseInventoryWorkstationCoordinate(coordKey);
   if (!coordinate) return "crafting_table_required";
   const presenceRows = await db.playerPresence
-    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .withIndex(BS.byUser, (q) => q.eq(BS.userId, userId))
     .order("desc")
     .take(2);
   if (presenceRows.length !== 1) return BS.outOfReach;
@@ -1702,7 +1702,7 @@ export default capsule({
       let activePlayers: Array<{ userId: string; x: number; y: number; z: number; active: true }> = [];
       if (fuses.length > 0) {
         const presenceRows = await ctx.db.playerPresence
-          .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+          .withIndex(BS.byHeartbeat, (q) => q.gte(BS.heartbeatAt, String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
           .order("desc")
           .take(64);
         activePlayers = presenceRows.flatMap((row) => {
@@ -1753,7 +1753,7 @@ export default capsule({
 
     worldEditsAt: query(async (ctx, coordKey: string) =>
       ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey.trim().slice(0, 96)))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordKey.trim().slice(0, 96)))
         .order("asc")
         .collect()
     ),
@@ -1766,7 +1766,7 @@ export default capsule({
       const request = parseMotionCompositeRequest(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow, nearbyPlayers: [] };
       const callerRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (callerRows.length !== 1) {
@@ -1782,7 +1782,7 @@ export default capsule({
       }
 
       const activeRows = await ctx.db.playerPresence
-        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .withIndex(BS.byHeartbeat, (q) => q.gte(BS.heartbeatAt, String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
         .order("desc")
         .take(128);
       const peers = activeRows.flatMap((row) => {
@@ -1803,7 +1803,7 @@ export default capsule({
 
       for (const peer of peers) {
         const segmentRows = await ctx.db.motionSegments
-          .withIndex("by_user_accepted", (q) => q.eq("userId", peer.row.userId))
+          .withIndex("by_user_accepted", (q) => q.eq(BS.userId, peer.row.userId))
           .order("asc")
           .take(MOTION_ROWS_PER_PLAYER + 1);
         if (segmentRows.length > MOTION_ROWS_PER_PLAYER) {
@@ -1933,14 +1933,14 @@ export default capsule({
 
     myPresence: query(async (ctx) =>
       (await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first()) ?? null
     ),
 
     myInventory: query(async (ctx) =>
       (await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first()) ?? null
     ),
@@ -1949,7 +1949,7 @@ export default capsule({
       const coordinate = validateChestCoordinate(rawCoordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
       const chest = await ctx.db.chests
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .first();
       return { ok: true, chest: chest ?? null };
@@ -1966,15 +1966,15 @@ export default capsule({
         : { ok: false as const, reason: BS.invalidCoordinate as const };
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const furnaceRows = await ctx.db.furnaces
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
@@ -1996,7 +1996,7 @@ export default capsule({
 
     myProfile: query(async (ctx) =>
       (await ctx.db.profiles
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first()) ?? null
     ),
@@ -2108,7 +2108,7 @@ export default capsule({
         // Subscribe the empty-world query to this caller's presence so the first
         // accepted heartbeat retriggers lease initialization without polling.
         await ctx.db.playerPresence
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .first();
         return { ok: true, ...empty, needsCheckpoint: true };
@@ -2165,7 +2165,7 @@ export default capsule({
       const states = [];
       for (const userId of validation.userIds) {
         const row = await ctx.db.playerCombat
-          .withIndex("by_user", (q) => q.eq("userId", userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, userId))
           .order("desc")
           .first();
         states.push(materializePlayerCombatState(databaseRowToStoredPlayerCombat(row), userId, serverNow));
@@ -2203,7 +2203,7 @@ export default capsule({
       }
       const candidate = raw as Record<string, unknown>;
       const keys = Object.keys(candidate).sort();
-      if (keys.length !== 4 || keys[0] !== "operationId" || keys[1] !== "x" || keys[2] !== "y" || keys[3] !== "z"
+      if (keys.length !== 4 || keys[0] !== BS.operationId || keys[1] !== "x" || keys[2] !== "y" || keys[3] !== "z"
         || !isValidTreeGrowthOperationId(candidate.operationId)
         || !Number.isSafeInteger(candidate.x) || !Number.isSafeInteger(candidate.y) || !Number.isSafeInteger(candidate.z)) {
         return { ok: false, reason: BS.invalidRequest, serverNow };
@@ -2223,9 +2223,9 @@ export default capsule({
 
       // Exact retry settles before presence, player state, tree, edit, or chunk authority reads.
       const receiptRows = await ctx.db.treeGrowthReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, operationId))
         .order("desc")
         .take(2);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
@@ -2236,7 +2236,7 @@ export default capsule({
         const replay = decodeTreeGrowthReceipt(receiptRows[0].resultJson);
         if (!replay || replay.operationId !== operationId) return { ok: false, reason: BS.invalidReceipt, serverNow };
         const inventoryRows = await ctx.db.inventories
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .take(2);
         if (inventoryRows.length !== 1 || !validatePlayerStateJson(inventoryRows[0].inventoryJson).ok
@@ -2257,13 +2257,13 @@ export default capsule({
       }
 
       const presence = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const poseAuthority = validateWorldBlockActionPose(presence, ctx.auth.userId, pose, { x, y, z }, serverNow);
       if (!poseAuthority.ok) return { ok: false, reason: poseAuthority.reason, serverNow };
       const combatRow = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const combat = materializePlayerCombatState(
@@ -2274,7 +2274,7 @@ export default capsule({
       if (combat.health === 0) return { ok: false, reason: "player_dead", serverNow };
 
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
@@ -2370,7 +2370,7 @@ export default capsule({
       for (const edit of edits) {
         const coordKey = `${edit.x}:${edit.y}:${edit.z}`;
         const rows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
+          .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
           .order("desc")
           .take(2);
         if (rows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
@@ -2502,9 +2502,9 @@ export default capsule({
       // Receipt lookup intentionally precedes every mutable-state read. An exact
       // replay returns before any profile, presence, inventory, chunk, or edit write.
       const existingReceipts = await ctx.db.worldBlockOperationReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .take(2);
       if (existingReceipts.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -2516,7 +2516,7 @@ export default capsule({
         const replay = decodeWorldBlockOperationReceipt(existingReceipt.resultJson);
         if (!replay) return { ok: false, reason: BS.conservationFailure };
         const replayInventories = await ctx.db.inventories
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .take(2);
         const replayChunks = await ctx.db.worldChunks
@@ -2535,7 +2535,7 @@ export default capsule({
 
       const serverNow = Date.now();
       const presence = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const poseAuthority = validateWorldBlockActionPose(
@@ -2548,7 +2548,7 @@ export default capsule({
       if (!poseAuthority.ok) return { ok: false, reason: poseAuthority.reason };
 
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -2572,13 +2572,13 @@ export default capsule({
 
       const coordKey = `${request.x}:${request.y}:${request.z}`;
       const currentEdits = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
       if (currentEdits.length > 1) return { ok: false, reason: BS.duplicateState };
       const currentEdit = currentEdits[0] ?? null;
       const primedRows = await ctx.db.primedTnt
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
       if (primedRows.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -2653,7 +2653,7 @@ export default capsule({
       const furnaceRecoveryDrops: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
       if (effect.kind === "mine" && effect.previousBlock === "furnace") {
         const furnaceRows = await ctx.db.furnaces
-          .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
+          .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
           .order("desc")
           .take(2);
         if (furnaceRows.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -2732,7 +2732,7 @@ export default capsule({
       for (const value of authoritativeWorldEdits) {
         if (value.coordKey === coordKey) continue;
         const rows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq(BS.coordKey, value.coordKey)).order("desc").take(2);
+          .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, value.coordKey)).order("desc").take(2);
         if (rows.length > 1) return { ok: false, reason: BS.duplicateState };
         existingEditsByCoord.set(value.coordKey, rows[0] ?? null);
       }
@@ -2820,7 +2820,7 @@ export default capsule({
       }
       if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: "invalid_session" };
       const rows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(64);
       const keeper = rows.find((row) => row.userId === ctx.auth.userId && validatePresencePoseFields(
@@ -2916,7 +2916,7 @@ export default capsule({
       // Exact replay is checked before liveness, cadence, or quota gates so a
       // lost successful response can always be recovered without another write.
       const matchingReceipts = await ctx.db.motionSegmentReceipts
-        .withIndex("by_user_batch", (q) => q.eq("userId", ctx.auth.userId).eq("batchId", batch.batchId))
+        .withIndex("by_user_batch", (q) => q.eq(BS.userId, ctx.auth.userId).eq("batchId", batch.batchId))
         .order("desc")
         .take(2);
       if (matchingReceipts.length > 1) return { ok: false, reason: BS.invalidServerState, serverNow };
@@ -2937,7 +2937,7 @@ export default capsule({
       }
 
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (presenceRows.length !== 1) return { ok: false, reason: "active_presence_required", serverNow };
@@ -2960,7 +2960,7 @@ export default capsule({
       // Honest clients already stop publishing without peers. This server gate
       // prevents a modified solo client from consuming the shared mutation day.
       const activeRows = await ctx.db.playerPresence
-        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .withIndex(BS.byHeartbeat, (q) => q.gte(BS.heartbeatAt, String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
         .order("desc")
         .take(128);
       const hasNearbyPeer = activeRows.some((row) => {
@@ -2975,7 +2975,7 @@ export default capsule({
       if (!hasNearbyPeer) return { ok: false, reason: "no_peers", serverNow };
 
       const acceptanceRows = await ctx.db.motionAcceptance
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (acceptanceRows.length > 1) return { ok: false, reason: BS.invalidServerState, serverNow };
@@ -3031,11 +3031,11 @@ export default capsule({
       }
 
       const receiptRows = await ctx.db.motionSegmentReceipts
-        .withIndex("by_user_accepted", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex("by_user_accepted", (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(MOTION_RECEIPT_LIMIT + 1);
       const segmentRows = await ctx.db.motionSegments
-        .withIndex("by_user_accepted", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex("by_user_accepted", (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(MOTION_ROWS_PER_PLAYER + 1);
       if (receiptRows.length > MOTION_RECEIPT_LIMIT || segmentRows.length > MOTION_ROWS_PER_PLAYER) {
@@ -3111,19 +3111,19 @@ export default capsule({
       if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: "invalid_session" };
       const serverNow = Date.now();
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const respawnRows = await ctx.db.playerRespawns
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const combatRows = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (presenceRows.length !== 1 || respawnRows.length > 1 || combatRows.length > 1 || inventoryRows.length !== 1) {
@@ -3244,7 +3244,7 @@ export default capsule({
       const bedRespawn = storedBedRespawnPose(existingRespawn);
       if (bedRespawn) {
         const bedRows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq(BS.coordKey, bedRespawn.coordKey))
+          .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, bedRespawn.coordKey))
           .order("desc")
           .take(2);
         if (bedRows.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -3375,7 +3375,7 @@ export default capsule({
         );
         const safeColor = /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : "#8fbf79";
         const existingRows = await ctx.db.playerPresence
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .take(2);
         if (existingRows.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -3398,7 +3398,7 @@ export default capsule({
         let activeGrant: PresenceRelocationGrant | null = null;
         if (relocationEpoch) {
           const respawnRows = await ctx.db.playerRespawns
-            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
             .order("desc")
             .take(2);
           if (respawnRows.length !== 1) return { ok: false, reason: "relocation_missing" };
@@ -3427,11 +3427,11 @@ export default capsule({
         const previousPose = validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch);
         if (!previousPose) return { ok: false, reason: "invalid_persisted_pose" };
         const inventoryRows = await ctx.db.inventories
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .take(2);
         const combatRows = await ctx.db.playerCombat
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .take(2);
         if (inventoryRows.length !== 1 || combatRows.length > 1) {
@@ -3509,7 +3509,7 @@ export default capsule({
           };
         }
         const profile = await ctx.db.profiles
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .first();
         if (!profile) throw new Error("Choose a username before joining the shared world.");
@@ -3584,7 +3584,7 @@ export default capsule({
     leavePlayer: mutation(async (ctx, rawSessionId: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to leave the shared world.");
       const existingRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (existingRows.length > 1) return null;
@@ -3610,9 +3610,9 @@ export default capsule({
       };
       const request = validation.request;
       const receiptRows = await ctx.db.inventoryActionReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .take(2);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -3623,7 +3623,7 @@ export default capsule({
         const payload = decodeInventoryActionReceipt(receipt.resultJson);
         if (!payload) return { ok: false, reason: "invalid_state" };
         const currentRows = await ctx.db.inventories
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .take(2);
         if (currentRows.length !== 1 || storedRevision(currentRows[0].revision) === null) {
@@ -3633,7 +3633,7 @@ export default capsule({
       }
 
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
@@ -3707,9 +3707,9 @@ export default capsule({
       if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason };
       const request = validation.request;
       const existingReceipt = await ctx.db.droppedItemReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .first();
       const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
@@ -3721,14 +3721,14 @@ export default capsule({
 
       const serverNow = Date.now();
       const presence = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const position = authoritativeDroppedItemPosition(presence, ctx.auth.userId, serverNow);
       if (!position) return { ok: false, reason: "active_presence_required" };
 
       const playerRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (playerRows.length !== 1) return { ok: false, reason: "inventory_required" };
@@ -3804,9 +3804,9 @@ export default capsule({
       if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason };
       const request = validation.request;
       const existingReceipt = await ctx.db.droppedItemReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .first();
       const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
@@ -3818,13 +3818,13 @@ export default capsule({
 
       const serverNow = Date.now();
       const presence = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const position = authoritativeDroppedItemPosition(presence, ctx.auth.userId, serverNow);
       if (!position) return { ok: false, reason: "active_presence_required" };
       const existingPlayer = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       if (!existingPlayer) return { ok: false, reason: "inventory_required" };
@@ -3913,9 +3913,9 @@ export default capsule({
       const request = validateFurnaceTransferRequestJson(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const receiptRows = await ctx.db.furnaceTransferReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .take(2);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
@@ -3930,15 +3930,15 @@ export default capsule({
         const saved = decodeFurnaceReceipt(receiptRows[0].resultJson);
         if (!saved) return { ok: false, reason: BS.invalidReceipt, serverNow };
         const replayInventoryRows = await ctx.db.inventories
-          .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
           .order("desc")
           .take(2);
         const replayWorldRows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
+          .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
           .order("desc")
           .take(2);
         const replayFurnaceRows = await ctx.db.furnaces
-          .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
+          .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
           .order("desc")
           .take(2);
         const replayBlockInstanceToken = replayWorldRows.length === 1
@@ -3969,19 +3969,19 @@ export default capsule({
       const coordinate = validateFurnaceCoordinate(request.coordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const furnaceRows = await ctx.db.furnaces
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
@@ -4068,16 +4068,16 @@ export default capsule({
         receiptCreatedAt: String(serverNow),
       });
       const newestReceipts = await ctx.db.furnaceTransferReceipts
-        .withIndex("by_user_created", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(MAX_FURNACE_TRANSFER_RECEIPTS_PER_USER + FURNACE_RECEIPT_OVERFLOW_PRUNE_LIMIT);
       for (const receiptId of selectFurnaceReceiptOverflow(newestReceipts, receipt.id)) {
         await ctx.db.furnaceTransferReceipts.delete(receiptId);
       }
       const staleReceipts = await ctx.db.furnaceTransferReceipts
-        .withIndex("by_user_created", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .lt("receiptCreatedAt", String(serverNow - FURNACE_RECEIPT_TTL_MS)))
+        .withIndex(BS.byUserCreated, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .lt(BS.receiptCreatedAt, String(serverNow - FURNACE_RECEIPT_TTL_MS)))
         .order("asc")
         .take(FURNACE_RECEIPT_OVERFLOW_PRUNE_LIMIT);
       for (const staleReceipt of staleReceipts) await ctx.db.furnaceTransferReceipts.delete(staleReceipt.id);
@@ -4098,9 +4098,9 @@ export default capsule({
       }
       const request = validation.request;
       const existingReceipt = await ctx.db.chestTransferReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .first();
       const replayDecision = decideChestTransferReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
@@ -4113,7 +4113,7 @@ export default capsule({
       }
 
       const worldBlock = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
         .order("desc")
         .first();
       if (!worldBlock || worldBlock.blockType !== "chest") {
@@ -4121,13 +4121,13 @@ export default capsule({
       }
 
       const playerRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (playerRows.length !== 1) return { ok: false, reason: "inventory_required" };
       const existingPlayer = playerRows[0];
       const existingChest = await ctx.db.chests
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
         .order("desc")
         .first();
       const cas = decideChestTransferCas(
@@ -4190,7 +4190,7 @@ export default capsule({
         receiptCreatedAt
       });
       const newestReceipts = await ctx.db.chestTransferReceipts
-        .withIndex("by_user_created", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUserCreated, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(MAX_CHEST_TRANSFER_RECEIPTS_PER_USER + CHEST_RECEIPT_OVERFLOW_PRUNE_LIMIT);
       const overflowReceiptIds = selectChestTransferReceiptOverflow(newestReceipts, receipt.id);
@@ -4198,9 +4198,9 @@ export default capsule({
 
       const staleBefore = String(Number(receiptCreatedAt) - CHEST_RECEIPT_TTL_MS);
       const staleReceipts = await ctx.db.chestTransferReceipts
-        .withIndex("by_user_created", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .lt("receiptCreatedAt", staleBefore))
+        .withIndex(BS.byUserCreated, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .lt(BS.receiptCreatedAt, staleBefore))
         .order("asc")
         .take(CHEST_RECEIPT_PRUNE_LIMIT);
       for (const staleReceipt of staleReceipts) await ctx.db.chestTransferReceipts.delete(staleReceipt.id);
@@ -4214,7 +4214,7 @@ export default capsule({
       const coordinate = validateSleepCoordinate(rawCoordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
       const bedRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       const bed = bedRows.length === 1 ? bedRows[0] : null;
@@ -4223,7 +4223,7 @@ export default capsule({
       const serverNow = Date.now();
       const activeSince = String(serverNow - ACTIVE_PLAYER_WINDOW_MS);
       const presences = await ctx.db.playerPresence
-        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", activeSince))
+        .withIndex(BS.byHeartbeat, (q) => q.gte(BS.heartbeatAt, activeSince))
         .order("desc")
         .take(MAX_SLEEP_PARTICIPANTS);
       const preVoteStatus = sleepVoteStatus(presences, [], serverNow);
@@ -4245,7 +4245,7 @@ export default capsule({
         bedPose.z - (coordinate.z + 0.5),
       ) > 6) return { ok: false, reason: "active_presence_required" };
       const respawnRows = await ctx.db.playerRespawns
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (respawnRows.length > 1) return { ok: false, reason: "active_presence_required" };
@@ -4281,7 +4281,7 @@ export default capsule({
       for (const staleVote of staleVotes) await ctx.db.sleepVotes.delete(staleVote.id);
 
       const existingVote = await ctx.db.sleepVotes
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const voteValue = {
@@ -4338,7 +4338,7 @@ export default capsule({
       const request = validateMobWorldCheckpointRequestJson(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const presenceRow = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       if (!authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow)
@@ -4354,7 +4354,7 @@ export default capsule({
       const stored = databaseRowToStoredMobWorld(existing);
       const readCurrentReplayInput = async () => {
         const presenceRows = await ctx.db.playerPresence
-          .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+          .withIndex(BS.byHeartbeat, (q) => q.gte(BS.heartbeatAt, String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
           .order("desc")
           .take(64);
         const targets = presenceRows.flatMap((row) => {
@@ -4477,9 +4477,9 @@ export default capsule({
         request.tick,
       ]);
       const receipt = await ctx.db.playerCombatReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(receipt?.fingerprint ?? null, fingerprint);
@@ -4488,7 +4488,7 @@ export default capsule({
         try {
           const parsed = JSON.parse(receipt.resultJson) as Record<string, unknown>;
           const replayInventoryRows = await ctx.db.inventories
-            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
             .order("desc")
             .take(2);
           if (parsed?.ok === true && parsed.state && typeof parsed.state === "object"
@@ -4517,7 +4517,7 @@ export default capsule({
       const storedReplayInput = parseMobWorldReplayInputJson(storedWorld.inputJson);
       if (!storedReplayInput) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .withIndex(BS.byHeartbeat, (q) => q.gte(BS.heartbeatAt, String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
         .order("desc")
         .take(64);
       const targets = presenceRows.flatMap((row) => {
@@ -4550,11 +4550,11 @@ export default capsule({
       );
       if (mobCombatState.health <= 0) return { ok: false, reason: "mob_dead", serverNow };
       const combatRow = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
@@ -4662,9 +4662,9 @@ export default capsule({
 
       // Exact retries settle before any mutable authority read.
       const receiptRows = await ctx.db.tntIgnitionReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .take(2);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
@@ -4677,7 +4677,7 @@ export default capsule({
           const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
           if (replay?.ok !== true) return { ok: false, reason: BS.invalidReceipt, serverNow };
           const replayInventoryRows = await ctx.db.inventories
-            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId)).order("desc").take(2);
+            .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId)).order("desc").take(2);
           if (replayInventoryRows.length !== 1 || !validatePlayerStateJson(replayInventoryRows[0].inventoryJson).ok) {
             return { ok: false, reason: BS.replayStateUnavailable, serverNow };
           }
@@ -4688,7 +4688,7 @@ export default capsule({
       }
 
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (presenceRows.length !== 1) return { ok: false, reason: "active_presence_required", serverNow };
@@ -4696,7 +4696,7 @@ export default capsule({
       if (!pose) return { ok: false, reason: "active_presence_required", serverNow };
 
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
@@ -4706,12 +4706,12 @@ export default capsule({
 
       const coordKey = `${request.x}:${request.y}:${request.z}`;
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1) return { ok: false, reason: "tnt_required", serverNow };
       const activeAtCoordinate = await ctx.db.primedTnt
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
       if (activeAtCoordinate.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
@@ -4820,7 +4820,7 @@ export default capsule({
       if (!authorization.ok) return { ok: false, reason: authorization.reason, retryAfterMs: authorization.retryAfterMs, serverNow };
 
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
+        .withIndex(BS.byHeartbeat, (q) => q.gte(BS.heartbeatAt, String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
         .order("desc")
         .take(64);
       const activePlayers = presenceRows.flatMap((row) => {
@@ -4836,7 +4836,7 @@ export default capsule({
       }
 
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq(BS.coordKey, fuse.coordKey))
+        .withIndex(BS.byCoord, (q) => q.eq(BS.coordKey, fuse.coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "tnt"
@@ -4984,7 +4984,7 @@ export default capsule({
       if (mobState.health <= 0) return { ok: false, reason: "mob_dead", serverNow };
 
       const callerRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const caller = callerRows.length === 1
@@ -5062,7 +5062,7 @@ export default capsule({
       const request = validation.request;
 
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
@@ -5079,9 +5079,9 @@ export default capsule({
 
       if (request.kind === "release") {
         const receiptRows = await ctx.db.rangedCombatReceipts
-          .withIndex("by_user_operation", (q) => q
-            .eq("userId", ctx.auth.userId)
-            .eq("operationId", request.operationId))
+          .withIndex(BS.byUserOperation, (q) => q
+            .eq(BS.userId, ctx.auth.userId)
+            .eq(BS.operationId, request.operationId))
           .order("desc")
           .take(2);
         if (receiptRows.length > 1) return { ok: false, reason: "duplicate_receipt", serverNow };
@@ -5104,14 +5104,14 @@ export default capsule({
       }
 
       const presenceRows = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       const presence = presenceRows.length === 1
         ? authoritativeCombatPose(presenceRows[0], ctx.auth.userId, serverNow)
         : null;
       const attackerCombatRows = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (attackerCombatRows.length > 1) return { ok: false, reason: "attacker_state_invalid", serverNow };
@@ -5121,7 +5121,7 @@ export default capsule({
         serverNow,
       );
       const chargeRows = await ctx.db.rangedCharges
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (chargeRows.length > 1) return { ok: false, reason: "charge_state_invalid", serverNow };
@@ -5215,13 +5215,13 @@ export default capsule({
       let targetMobKind: MobAuthorityKind | null = null;
       if (request.targetKind === "player" && request.targetId !== ctx.auth.userId) {
         const targetPresenceRows = await ctx.db.playerPresence
-          .withIndex("by_user", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, request.targetId)).order("desc").take(2);
         const targetInventoryRows = await ctx.db.inventories
-          .withIndex("by_user", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, request.targetId)).order("desc").take(2);
         const targetCombatRows = await ctx.db.playerCombat
-          .withIndex("by_user", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+          .withIndex(BS.byUser, (q) => q.eq(BS.userId, request.targetId)).order("desc").take(2);
         const targetMotionRows = await ctx.db.motionSegments
-          .withIndex("by_user_accepted", (q) => q.eq("userId", request.targetId)).order("desc").take(2);
+          .withIndex("by_user_accepted", (q) => q.eq(BS.userId, request.targetId)).order("desc").take(2);
         if (targetPresenceRows.length === 1 && targetInventoryRows.length === 1
           && targetCombatRows.length <= 1 && targetMotionRows.length <= 1) {
           const targetPresence = motionBackedCombatPose(
@@ -5402,9 +5402,9 @@ export default capsule({
       }
       const fingerprint = JSON.stringify(["mob_shear", identity.mobId, identity.kind]);
       const existingReceipt = await ctx.db.playerCombatReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, operationId))
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
@@ -5413,7 +5413,7 @@ export default capsule({
         try {
           const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
           const inventoryRows = await ctx.db.inventories
-            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
             .order("desc")
             .take(2);
           if (result.ok === true && inventoryRows.length === 1
@@ -5427,13 +5427,13 @@ export default capsule({
       }
 
       const presenceRow = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const playerPose = authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow);
       if (!playerPose) return { ok: false, reason: "active_presence_required", serverNow };
       const combatRow = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const playerCombat = materializePlayerCombatState(
@@ -5446,7 +5446,7 @@ export default capsule({
       }
 
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
@@ -5559,9 +5559,9 @@ export default capsule({
       }
       const fingerprint = JSON.stringify([identity.mobId, identity.kind, rawDamage]);
       const existingReceipt = await ctx.db.playerCombatReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, operationId))
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
@@ -5570,7 +5570,7 @@ export default capsule({
         try {
           const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
           const inventoryRows = await ctx.db.inventories
-            .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+            .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
             .order("desc")
             .take(2);
           if (result.ok === true && inventoryRows.length === 1
@@ -5584,13 +5584,13 @@ export default capsule({
       }
 
       const presenceRow = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const attackerPresence = authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow);
       if (!attackerPresence) return { ok: false, reason: "active_presence_required", serverNow };
       const attackerCombatRow = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const attackerCombat = materializePlayerCombatState(
@@ -5602,7 +5602,7 @@ export default capsule({
         return { ok: false, reason: "attacker_dead", retryAfterMs: attackerCombat.deadUntil - serverNow, serverNow };
       }
       const inventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
@@ -5708,9 +5708,9 @@ export default capsule({
       if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason, serverNow };
       const request = validation.request;
       const existingReceipt = await ctx.db.playerCombatReceipts
-        .withIndex("by_user_operation", (q) => q
-          .eq("userId", ctx.auth.userId)
-          .eq("operationId", request.operationId))
+        .withIndex(BS.byUserOperation, (q) => q
+          .eq(BS.userId, ctx.auth.userId)
+          .eq(BS.operationId, request.operationId))
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
@@ -5721,15 +5721,15 @@ export default capsule({
       }
 
       const attackerPresenceRow = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const targetPresenceRow = await ctx.db.playerPresence
-        .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, request.targetUserId))
         .order("desc")
         .first();
       const targetMotionRow = await ctx.db.motionSegments
-        .withIndex("by_user_accepted", (q) => q.eq("userId", request.targetUserId))
+        .withIndex("by_user_accepted", (q) => q.eq(BS.userId, request.targetUserId))
         .order("desc")
         .first();
       const attackerPresence = authoritativeCombatPose(attackerPresenceRow, ctx.auth.userId, serverNow);
@@ -5738,7 +5738,7 @@ export default capsule({
       );
 
       const attackerInventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .take(2);
       if (attackerInventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
@@ -5746,7 +5746,7 @@ export default capsule({
       const attackerPlayerState = validatePlayerStateJson(attackerInventoryRow.inventoryJson);
       if (!attackerPlayerState.ok) return { ok: false, reason: "attacker_state_invalid", serverNow };
       const targetInventoryRows = await ctx.db.inventories
-        .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, request.targetUserId))
         .order("desc")
         .take(2);
       if (targetInventoryRows.length !== 1) return { ok: false, reason: "target_state_invalid", serverNow };
@@ -5755,11 +5755,11 @@ export default capsule({
       if (!targetPlayerState.ok) return { ok: false, reason: "target_state_invalid", serverNow };
 
       const attackerCombatRow = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const targetCombatRow = await ctx.db.playerCombat
-        .withIndex("by_user", (q) => q.eq("userId", request.targetUserId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, request.targetUserId))
         .order("desc")
         .first();
       if (request.targetUserId === ctx.auth.userId) return { ok: false, reason: "self_target", serverNow };
@@ -5871,7 +5871,7 @@ export default capsule({
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
       const existingProfile = await ctx.db.profiles
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       if (existingProfile) {
@@ -5905,13 +5905,13 @@ export default capsule({
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
       const profile = await ctx.db.profiles
-        .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       if (!profile) return { ok: false, reason: "profile_required" };
 
       const previous = await ctx.db.chatMessages
-        .withIndex("by_user_sent_at", (q) => q.eq("userId", ctx.auth.userId))
+        .withIndex("by_user_sent_at", (q) => q.eq(BS.userId, ctx.auth.userId))
         .order("desc")
         .first();
       const now = Date.now();

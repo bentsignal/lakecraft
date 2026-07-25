@@ -8,6 +8,8 @@ export { PauseMenu, type PauseMenuProps } from "./PauseMenu";
 export { OptionsDialog, type OptionsDialogProps } from "./OptionsDialog";
 export { PlayerList, type PlayerListEntry, type PlayerListProps } from "./PlayerList";
 export { IngredientGlyph, ItemGlyph, ItemIcon, type ItemGlyphProps } from "./ItemGlyph";
+export { ItemTooltip } from "./ItemTooltip";
+export { activeItemTooltipTarget, itemTooltipAttributes, itemTooltipContent, itemTooltipDescribedBy, positionItemTooltip, setItemTooltipSource } from "./itemTooltipModel";
 export { CraftingGridView, type CraftingGridViewProps } from "./CraftingGrid";
 export { InventoryCraftingDrawer, type InventoryCraftingDrawerProps } from "./InventoryDrawer";
 export { ChestDrawer, type ChestDrawerProps, type ChestTransferDirection } from "./ChestDrawer";
