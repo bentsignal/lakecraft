@@ -903,7 +903,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           now: performance.now(),
           uiBlocked: pointerUiBlockedRef.current,
         });
-        if (locked) setPointerCaptureNeeded(false);
+        setPointerCaptureNeeded(!locked);
       },
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
       getMiningDuration: (block) => {
@@ -1316,6 +1316,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       inventoryOpen,
       worldModalOpen,
       deathScreenOpen,
+      pointerCaptureNeeded,
       documentVisible: document.visibilityState === "visible",
     });
     engine.setPaused(initiallyPaused);
@@ -1361,11 +1362,12 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       inventoryOpen,
       worldModalOpen,
       deathScreenOpen,
+      pointerCaptureNeeded,
       documentVisible: document.visibilityState === "visible",
     });
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
-  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, pointerCaptureNeeded]);
 
   useEffect(() => {
     if (deathScreenOpen) setOptionsOpen(false);
@@ -1374,7 +1376,14 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   useEffect(() => {
     const sample = () => {
       pruneLocalDrops(Date.now());
-      const active = !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen && document.visibilityState === "visible";
+      const active = !singlePlayerGameplayPaused({
+        pauseOpen,
+        inventoryOpen,
+        worldModalOpen,
+        deathScreenOpen,
+        pointerCaptureNeeded,
+        documentVisible: document.visibilityState === "visible",
+      });
       const now = performance.now();
       const elapsedSeconds = active ? Math.max(0, now - survivalSampledAtRef.current) / 1_000 : 0;
       survivalSampledAtRef.current = now;
@@ -1406,6 +1415,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         inventoryOpen,
         worldModalOpen,
         deathScreenOpen,
+        pointerCaptureNeeded,
         documentVisible: document.visibilityState === "visible",
       });
       engineRef.current?.setPaused(paused);
@@ -1418,7 +1428,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, pointerCaptureNeeded]);
 
   useEffect(() => {
     if (!sleepingBed) return;

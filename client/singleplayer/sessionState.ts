@@ -6,6 +6,7 @@ export interface SinglePlayerPauseState {
   inventoryOpen: boolean;
   worldModalOpen: boolean;
   deathScreenOpen: boolean;
+  pointerCaptureNeeded: boolean;
   documentVisible: boolean;
 }
 
@@ -15,6 +16,7 @@ export function singlePlayerGameplayPaused(state: Readonly<SinglePlayerPauseStat
     || state.inventoryOpen
     || state.worldModalOpen
     || state.deathScreenOpen
+    || state.pointerCaptureNeeded
     || !state.documentVisible;
 }
 

@@ -182,8 +182,8 @@ assert.equal(frames.size, 0, "pause calls after destroy cannot restart the loop"
 assert.deepEqual(glCalls, destroyedCalls, "destroyed engines remain render-inert");
 
 const appSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-assert.equal(appSource.match(/singlePlayerGameplayPaused\(\{/g)?.length, 3,
-  "startup, UI transitions, and visibility transitions share one pause predicate");
+assert.equal(appSource.match(/singlePlayerGameplayPaused\(\{/g)?.length, 4,
+  "startup, UI, visibility, and active-play accounting share one pause predicate");
 assert.equal(appSource.match(/engineRef\.current\?\.setPaused\(paused\)/g)?.length, 2,
   "both UI-state and visibility transitions preserve the pause contract");
 

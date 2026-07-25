@@ -100,5 +100,29 @@ assert.ok(
   singlePlayerSource.includes("onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}"),
   "Back to Game recaptures directly from its click callback",
 );
+const initialPause = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("const initiallyPaused = singlePlayerGameplayPaused"),
+  singlePlayerSource.indexOf("engine.start();"),
+);
+assert.ok(initialPause.includes("pointerCaptureNeeded"), "the initial Click to Play fallback freezes the engine and local fuses");
+const ongoingPause = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("const paused = singlePlayerGameplayPaused", singlePlayerSource.indexOf("engine.start();")),
+  singlePlayerSource.indexOf("if (deathScreenOpen) setOptionsOpen(false)"),
+);
+assert.ok(ongoingPause.includes("pointerCaptureNeeded"), "denied capture remains an ongoing engine and fuse pause input");
+assert.ok(
+  ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, pointerCaptureNeeded]"),
+  "successful capture reruns the ongoing pause effect immediately",
+);
+const survivalSample = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("const sample = () =>"),
+  singlePlayerSource.indexOf("const onVisibilityChange"),
+);
+assert.ok(
+  survivalSample.includes("const active = !singlePlayerGameplayPaused({")
+    && survivalSample.includes("pointerCaptureNeeded")
+    && survivalSample.includes("sampleSaveCadence(saveCadenceRef.current, now, active)"),
+  "Click to Play fallback cannot advance survival or the active autosave cadence",
+);
 
 console.log("single-player pointer-lock ordering and input-release tests passed");
