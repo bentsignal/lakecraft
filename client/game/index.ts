@@ -9,13 +9,16 @@ export {
   STANDING_BODY_HEIGHT,
   STANDING_EYE_HEIGHT,
   WALK_SPEED,
+  advanceHeadBob,
   clampSneakAxisMovement,
+  createHeadBobState,
+  headBobProfileForMovement,
   movementActivityMultiplier,
   normalizeMovementInput,
   postureTargetsForMovement,
   resolvePlayerMovement,
   resolveSneakIntent,
-  sampleHeadBob,
+  resetHeadBob,
   smoothMovementValue,
   smoothPlayerPosture,
   writeHorizontalMovementDelta,
@@ -94,7 +97,7 @@ export type {
 } from "./types.ts";
 export type { LocalMobShearResult, MobBehavior, MobCombatApplyResult, MobCombatStateSnapshot, MobDamageResult, MobDefinition, MobDrop, MobKind, MobPoseSnapshot, MobRayTarget, MobSimulation, MobSimulationSnapshot, MobState } from "./mobs.ts";
 export type { DayNightConfig, DayNightState, TimeOfDayLabel } from "./dayNight.ts";
-export type { HeadBobOffsets, HorizontalMovementDelta, NormalizedMovementInput, PlayerEye, PlayerMovementInput, PlayerMovementMode, PlayerPostureTargets, ResolvedPlayerMovement } from "./playerMovement.ts";
+export type { HeadBobOffsets, HeadBobProfile, HeadBobState, HorizontalMovementDelta, NormalizedMovementInput, PlayerEye, PlayerMovementInput, PlayerMovementMode, PlayerPostureTargets, ResolvedPlayerMovement } from "./playerMovement.ts";
 export type { DroppedItemGeometryStats, DroppedItemRenderItem, DroppedItemRenderer, DroppedItemRenderStats } from "./droppedItemRenderer.ts";
 export type { BallisticSample, PlayerProjectileRenderer, PlayerProjectileRenderStats, PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
 export type { PrimedTntVisualSample } from "./mobRenderer.ts";

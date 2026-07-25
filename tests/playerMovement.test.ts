@@ -10,14 +10,17 @@ import {
   STANDING_BODY_HEIGHT,
   STANDING_EYE_HEIGHT,
   WALK_SPEED,
+  advanceHeadBob,
   clampSneakAxisMovement,
+  createHeadBobState,
+  headBobProfileForMovement,
   movementActivityMultiplier,
   normalizeMovementInput,
   postureTargetsForMovement,
   resolvePlayerMovement,
   resolveSneakIntent,
   RELEASED_SPRINT_CONTROLS,
-  sampleHeadBob,
+  resetHeadBob,
   sprintControlHeld,
   smoothMovementValue,
   smoothPlayerPosture,
@@ -153,19 +156,36 @@ assert.equal(smoothPlayerPosture(current, target, 1 / 60, output), output, "call
 assert.ok(output.eyeHeight < current.eyeHeight && output.eyeHeight >= target.eyeHeight);
 assert.ok(output.bodyHeight < current.bodyHeight && output.bodyHeight >= target.bodyHeight);
 
-const reusedBob = { x: 99, y: 99 };
-assert.equal(sampleHeadBob("walk", 1, true, reusedBob), reusedBob, "caller output is reused");
-for (const mode of ["walk", "sprint", "sneak", "ladder"] as const) {
-  for (let step = -1_000; step <= 1_000; step += 7) {
-    const bob = sampleHeadBob(mode, step / 13, true);
-    assert.ok(Number.isFinite(bob.x) && Number.isFinite(bob.y));
-    assert.ok(Math.abs(bob.x) <= 0.032 + Number.EPSILON, "horizontal bob is globally bounded");
-    assert.ok(bob.y <= 0 && bob.y >= -0.05 - Number.EPSILON, "vertical bob is globally bounded");
-  }
+assert.deepEqual(headBobProfileForMovement("walk"), {
+  strideLength: 2.7,
+  horizontalAmplitude: 0.012,
+  verticalAmplitude: 0.02,
+});
+assert.deepEqual(headBobProfileForMovement("sprint"), {
+  strideLength: 3.1,
+  horizontalAmplitude: 0.016,
+  verticalAmplitude: 0.026,
+});
+assert.deepEqual(headBobProfileForMovement("sneak"), {
+  strideLength: 2.4,
+  horizontalAmplitude: 0.005,
+  verticalAmplitude: 0.008,
+});
+assert.equal(headBobProfileForMovement("idle"), null);
+assert.equal(headBobProfileForMovement("ladder"), null);
+
+const reusedBob = createHeadBobState();
+assert.equal(advanceHeadBob(reusedBob, "walk", WALK_SPEED / 60, true, 1 / 60, true, reusedBob), reusedBob,
+  "caller state is reused");
+for (let frame = 0; frame < 600; frame += 1) {
+  advanceHeadBob(reusedBob, "sprint", SPRINT_SPEED / 60, true, 1 / 60, true, reusedBob);
+  assert.ok(Number.isFinite(reusedBob.x) && Number.isFinite(reusedBob.y));
+  assert.ok(Math.abs(reusedBob.x) <= 0.016 + Number.EPSILON, "horizontal bob is globally bounded");
+  assert.ok(reusedBob.y <= 0 && reusedBob.y >= -0.026 - Number.EPSILON, "vertical bob is globally bounded");
 }
-assert.deepEqual(sampleHeadBob("idle", 4, true), { x: 0, y: 0 });
-assert.deepEqual(sampleHeadBob("sprint", 4, false), { x: 0, y: 0 });
-assert.deepEqual(sampleHeadBob("sprint", Number.NaN, true), { x: 0, y: 0 });
+const resetBob = resetHeadBob(reusedBob);
+assert.equal(resetBob, reusedBob);
+assert.deepEqual(resetBob, createHeadBobState());
 
 assert.equal(clampSneakAxisMovement(0.08, () => true), 0.08, "supported walking keeps its full step");
 const positiveEdge = clampSneakAxisMovement(0.08, (offset) => offset <= 0.03);

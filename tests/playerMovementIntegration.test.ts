@@ -26,7 +26,18 @@ assert.ok(engine.includes("const eye = cameraEye(renderEye);"), "rendering consu
 assert.ok(engine.includes("interactionEye(raycastEye)"), "block targeting uses the posture eye without cosmetic bob or allocation");
 assert.ok(engine.includes("const eye = interactionEye();"), "combat uses the same Lakebed-valid posture eye");
 assert.ok(engine.includes("postureTargetsForMovement(movementMode).eyeHeight"), "interaction rays use one of Lakebed's discrete accepted posture heights");
-assert.ok(engine.includes("bobEnvelope = smoothMovementValue("), "head bob starts and stops through a bounded envelope");
+assert.ok(engine.includes("advanceHeadBob("), "grounded displacement advances the smoothed head-bob state");
+assert.ok(engine.includes("reducedMotionQuery?.matches !== true"), "reduced-motion preference suppresses camera gait");
+const bobAdvance = engine.slice(engine.indexOf("advanceHeadBob("), engine.indexOf("if (grounded && movedHorizontally", engine.indexOf("advanceHeadBob(")));
+assert.ok(bobAdvance.includes("movedHorizontally"), "bob phase consumes collision-accepted displacement, not requested speed or wall time");
+assert.ok(bobAdvance.includes("grounded"), "airborne movement cannot advance the ground gait");
+assert.ok(bobAdvance.includes("movementMode"), "walk, sprint, and sneak keep independent gait profiles");
+assert.ok(bobAdvance.includes("cameraBob,") && bobAdvance.trimEnd().endsWith(");"),
+  "the frame loop updates caller-owned bob state without transient allocation");
+assert.equal(engine.match(/const interactionBob: HeadBobOffsets = \{ x: 0, y: 0 \};/g)?.length, 1,
+  "interaction rays retain one immutable zero-bob origin for crosshair and multiplayer envelopes");
+assert.ok(engine.includes("writePlayerEye(pose.x, pose.y, pose.z, pose.yaw, cameraPosture.eyeHeight, cameraBob"),
+  "visual camera translation and view direction still share the retained camera eye");
 assert.ok(engine.includes("resetMovementView();"), "pointer loss and reconciliation reset transient camera state");
 assert.ok(engine.includes("const mustRemainSneaking = collides"), "resets preserve crouch under a low ceiling");
 assert.ok(engine.includes("playerViewSuspended = true"), "death resets transient view state exactly once");
@@ -37,6 +48,7 @@ const pauseReset = engine.slice(engine.indexOf("setPaused(nextPaused)"), engine.
 assert.ok(deathReset.includes("clearHeldMovementInput();"), "death releases sprint before another movement frame");
 assert.ok(pointerReset.includes("releaseTransientInput();"), "pointer-lock loss releases sprint and every other held action");
 assert.ok(pauseReset.includes("clearHeldMovementInput();"), "opening a menu releases sprint");
+assert.ok(pauseReset.includes("resetMovementView();"), "opening a menu hard-resets residual camera gait");
 assert.ok(!engine.includes("pose.y + 1.62"), "no stale fixed interaction eye remains in the engine");
 assert.ok(client.includes("canSprint: () => hungerRef.current > 6"), "survival hunger gates Ctrl sprint");
 assert.ok(client.includes("activityHalfUnitsForDisplacement") === false, "the client cannot author survival exertion");

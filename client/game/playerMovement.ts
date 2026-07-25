@@ -43,6 +43,20 @@ export interface HeadBobOffsets {
   y: number;
 }
 
+export interface HeadBobState extends HeadBobOffsets {
+  phase: number;
+  envelope: number;
+  horizontalAmplitude: number;
+  verticalAmplitude: number;
+}
+
+export interface HeadBobProfile {
+  /** Ground distance covered by one complete left/right gait cycle. */
+  strideLength: number;
+  horizontalAmplitude: number;
+  verticalAmplitude: number;
+}
+
 export interface HorizontalMovementDelta {
   x: number;
   z: number;
@@ -66,6 +80,7 @@ const MOVEMENT_EPSILON = 1e-4;
 const FORWARD_SPRINT_THRESHOLD = 0.1;
 const DEFAULT_POSTURE_SMOOTHING = 14;
 const MAX_SMOOTHING_SECONDS = 0.1;
+const HEAD_BOB_SMOOTHING = 10;
 export const SNEAK_LEDGE_SEARCH_ITERATIONS = 8;
 
 const IDLE_POSTURE: Readonly<PlayerPostureTargets> = Object.freeze({
@@ -84,6 +99,24 @@ const SNEAK_POSTURE: Readonly<PlayerPostureTargets> = Object.freeze({
   eyeHeight: SNEAKING_EYE_HEIGHT,
   bodyHeight: SNEAKING_BODY_HEIGHT,
   fovRadians: DEFAULT_FOV_RADIANS,
+});
+
+const WALK_HEAD_BOB: Readonly<HeadBobProfile> = Object.freeze({
+  strideLength: 2.7,
+  horizontalAmplitude: 0.012,
+  verticalAmplitude: 0.02,
+});
+
+const SPRINT_HEAD_BOB: Readonly<HeadBobProfile> = Object.freeze({
+  strideLength: 3.1,
+  horizontalAmplitude: 0.016,
+  verticalAmplitude: 0.026,
+});
+
+const SNEAK_HEAD_BOB: Readonly<HeadBobProfile> = Object.freeze({
+  strideLength: 2.4,
+  horizontalAmplitude: 0.005,
+  verticalAmplitude: 0.008,
 });
 
 function finiteClamp(value: number, minimum: number, maximum: number, fallback = 0): number {
@@ -257,38 +290,76 @@ export function smoothPlayerPosture(
   return out;
 }
 
-/**
- * Samples a restrained, distance-driven head bob. Distance instead of wall time
- * keeps the phase stable across frame rates, while fixed amplitudes make the
- * returned camera offsets provably bounded.
- */
-export function sampleHeadBob(
-  mode: PlayerMovementMode,
-  distanceTravelled: number,
-  grounded: boolean,
-  out: HeadBobOffsets = { x: 0, y: 0 },
-): HeadBobOffsets {
-  if (!grounded || mode === "idle" || !Number.isFinite(distanceTravelled)) {
-    out.x = 0;
-    out.y = 0;
-    return out;
-  }
+/** Returns the independently tuned ground gait, or null when bob is forbidden. */
+export function headBobProfileForMovement(mode: PlayerMovementMode): Readonly<HeadBobProfile> | null {
+  if (mode === "sprint") return SPRINT_HEAD_BOB;
+  if (mode === "sneak") return SNEAK_HEAD_BOB;
+  if (mode === "walk") return WALK_HEAD_BOB;
+  return null;
+}
 
-  let horizontalAmplitude = 0.022;
-  let verticalAmplitude = 0.035;
-  if (mode === "sprint") {
-    horizontalAmplitude = 0.032;
-    verticalAmplitude = 0.05;
-  } else if (mode === "sneak") {
-    horizontalAmplitude = 0.009;
-    verticalAmplitude = 0.014;
-  } else if (mode === "ladder") {
-    horizontalAmplitude = 0.012;
-    verticalAmplitude = 0.018;
+export function createHeadBobState(): HeadBobState {
+  return {
+    x: 0,
+    y: 0,
+    phase: 0,
+    envelope: 0,
+    horizontalAmplitude: 0,
+    verticalAmplitude: 0,
+  };
+}
+
+export function resetHeadBob(state: HeadBobState): HeadBobState {
+  state.x = 0;
+  state.y = 0;
+  state.phase = 0;
+  state.envelope = 0;
+  state.horizontalAmplitude = 0;
+  state.verticalAmplitude = 0;
+  return state;
+}
+
+/**
+ * Advances one allocation-free, distance-driven gait sample. Only accepted
+ * grounded displacement advances phase. Exponential profile/envelope smoothing
+ * keeps start, stop, and posture changes continuous and frame-rate independent.
+ */
+export function advanceHeadBob(
+  state: Readonly<HeadBobState>,
+  mode: PlayerMovementMode,
+  horizontalDistance: number,
+  grounded: boolean,
+  deltaSeconds: number,
+  motionAllowed = true,
+  out: HeadBobState = createHeadBobState(),
+): HeadBobState {
+  const profile = headBobProfileForMovement(mode);
+  const targetProfile = motionAllowed ? profile : null;
+  const distance = finiteClamp(horizontalDistance, 0, SPRINT_SPEED * MAX_SMOOTHING_SECONDS);
+  const active = motionAllowed && grounded && profile !== null && distance > MOVEMENT_EPSILON;
+  let phase = Number.isFinite(state.phase) ? state.phase : 0;
+  if (active && profile) {
+    phase = (phase + distance * Math.PI * 2 / profile.strideLength) % (Math.PI * 2);
   }
-  const phase = distanceTravelled * Math.PI * 2 / 1.2;
-  out.x = Math.sin(phase) * horizontalAmplitude;
-  out.y = -Math.abs(Math.cos(phase)) * verticalAmplitude;
+  const envelope = smoothMovementValue(state.envelope, active ? 1 : 0, deltaSeconds, HEAD_BOB_SMOOTHING);
+  const horizontalAmplitude = smoothMovementValue(
+    state.horizontalAmplitude,
+    targetProfile?.horizontalAmplitude ?? 0,
+    deltaSeconds,
+    HEAD_BOB_SMOOTHING,
+  );
+  const verticalAmplitude = smoothMovementValue(
+    state.verticalAmplitude,
+    targetProfile?.verticalAmplitude ?? 0,
+    deltaSeconds,
+    HEAD_BOB_SMOOTHING,
+  );
+  out.phase = phase;
+  out.envelope = envelope;
+  out.horizontalAmplitude = horizontalAmplitude;
+  out.verticalAmplitude = verticalAmplitude;
+  out.x = envelope ? Math.sin(phase) * horizontalAmplitude * envelope : 0;
+  out.y = envelope ? -Math.abs(Math.cos(phase)) * verticalAmplitude * envelope : 0;
   return out;
 }
 
