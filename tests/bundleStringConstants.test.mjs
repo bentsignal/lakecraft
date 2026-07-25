@@ -1,41 +1,52 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const constantsSource = readFileSync(join(repositoryRoot, "shared/bundleStrings.ts"), "utf8");
 const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");
-const constants = new Map(
-  [...constantsSource.matchAll(/^export const (\w+) = ("[^"\r\n]*");$/gm)]
-    .map(([, name, literal]) => [name, JSON.parse(literal)]),
-);
+const declarations = [...constantsSource.matchAll(/^export const (\w+) = ("[^"\r\n]*");$/gm)];
+const constants = new Map(declarations.map(([, name, literal]) => [name, JSON.parse(literal)]));
 
-assert.ok(constants.size >= 70, "the source-level dictionary retains the audited repeated runtime strings");
 assert.equal(constants.get("invalidState"), "invalid_state");
 assert.equal(constants.get("operationIdReused"), "operation_id_reused");
 assert.equal(constants.get("craftingTable"), "crafting_table");
 assert.equal(new Set(constants.values()).size, constants.size, "dictionary values stay unique");
+for (const [, name, literal] of declarations) {
+  assert.equal(JSON.stringify(constants.get(name)), literal, `${name} reconstructs its source literal byte-for-byte`);
+}
 assert.equal(prepareSource.includes("bundle-string-hoisting"), false, "compact staging has no post-minify string lexer");
 assert.equal(prepareSource.includes("hoistRepeatedBundleStrings"), false, "compact staging never rewrites inferred bundle tokens");
 
-const sourcePaths = [
-  "client/singleplayer/localContainers.ts",
-  "shared/chestTransfers.ts",
-  "shared/droppedItems.ts",
-  "shared/inventoryActions.ts",
-  "shared/worldBlockOperations.ts",
-];
-let referenceCount = 0;
+function runtimeSourcePaths(directory) {
+  return readdirSync(join(repositoryRoot, directory), { withFileTypes: true })
+    .flatMap((entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) return runtimeSourcePaths(path);
+      return /\.[tj]sx?$/.test(entry.name) && path !== "shared/bundleStrings.ts" ? [path] : [];
+    });
+}
+
+const referenceCounts = new Map();
+const sourcePaths = ["client", "server", "shared"].flatMap(runtimeSourcePaths);
 for (const sourcePath of sourcePaths) {
   const source = readFileSync(join(repositoryRoot, sourcePath), "utf8");
-  assert.match(source, /import \* as BS from ["'][^"']*bundleStrings(?:\.ts)?["'];/);
-  for (const [, name] of source.matchAll(/\bBS\.(\w+)/g)) {
-    assert.ok(constants.has(name), `${relative(repositoryRoot, sourcePath)} references a declared bundle string`);
-    referenceCount += 1;
+  const references = [...source.matchAll(/\bBS\.(\w+)/g)];
+  if (references.length) assert.match(source, /import \* as BS from ["'][^"']*bundleStrings(?:\.ts)?["'];/);
+  for (const [, name] of references) {
+    assert.ok(constants.has(name), `${sourcePath} references a declared bundle string`);
+    referenceCounts.set(name, (referenceCounts.get(name) ?? 0) + 1);
   }
 }
-assert.ok(referenceCount >= 120, "high-frequency client and shared model paths use explicit source constants");
+assert.deepEqual(
+  [...referenceCounts.keys()].sort(),
+  [...constants.keys()].sort(),
+  "runtime references and source-level dictionary exports have exact set equality",
+);
+for (const name of constants.keys()) {
+  assert.ok(referenceCounts.get(name) >= 1, `${name} has at least one runtime reference`);
+}
 
 function execute(source) {
   return Function(`"use strict";${source}`)();
