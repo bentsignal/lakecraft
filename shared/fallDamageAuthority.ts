@@ -1,5 +1,6 @@
 import { MAX_HEALTH } from "./game.ts";
 import { PRESENCE_MAX_Y, PRESENCE_MIN_Y } from "./presenceMotion.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const FALL_DAMAGE_SAFE_DISTANCE = 3;
 
@@ -113,9 +114,9 @@ export function advanceAuthoritativeFall(
   let grounded = true;
   let peakY = input.previousY;
   if (input.state !== null && input.state !== undefined) {
-    if (typeof input.state.grounded !== "boolean") return { ok: false, reason: "invalid_state" };
+    if (typeof input.state.grounded !== "boolean") return { ok: false, reason: BS.invalidState };
     const storedPeakY = parseStoredHeight(input.state.fallPeakY);
-    if (storedPeakY === null) return { ok: false, reason: "invalid_state" };
+    if (storedPeakY === null) return { ok: false, reason: BS.invalidState };
     grounded = input.state.grounded;
     peakY = storedPeakY;
   }

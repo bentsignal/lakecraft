@@ -1,4 +1,5 @@
 import { ITEMS, RECIPES, createItemStack, maxItemDurability, type ItemId, type ItemQuantity, type ItemStack, type Recipe } from "./game.ts";
+import * as BS from "./bundleStrings.ts";
 
 export type CraftingGridSize = 2 | 3;
 export type CraftingGrid = ReadonlyArray<ItemStack | null>;
@@ -44,7 +45,7 @@ type RecipePatternEntry = readonly [id: string, shape: RecipeShape];
 
 const P = "planks" as const;
 const S = "stick" as const;
-const C = "cobblestone" as const;
+const C = BS.cobblestone as const;
 const K = "coal" as const;
 const H = "charcoal" as const;
 const W = "wool" as const;
@@ -74,12 +75,12 @@ function equipmentPatternEntries(prefix: string, material: ItemId, armor: boolea
 const GENERATED_EQUIPMENT_PATTERNS = Object.fromEntries(([
   ["wooden", P, false],
   ["stone", C, false],
-  ["iron", "iron_ingot", false],
-  ["golden", "gold_ingot", false],
+  ["iron", BS.ironIngot, false],
+  ["golden", BS.goldIngot, false],
   ["diamond", "diamond", false],
   ["leather", "leather", true],
-  ["iron", "iron_ingot", true],
-  ["golden", "gold_ingot", true],
+  ["iron", BS.ironIngot, true],
+  ["golden", BS.goldIngot, true],
   ["diamond", "diamond", true],
 ] as const).flatMap(([prefix, material, armor]) => equipmentPatternEntries(prefix, material, armor)));
 
@@ -98,16 +99,16 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   stone_bricks: { kind: "shaped", pattern: [["stone", "stone"], ["stone", "stone"]] },
   oak_fence: { kind: "shaped", pattern: [[P, S, P], [P, S, P]] },
   oak_fence_gate: { kind: "shaped", pattern: [[S, P, S], [S, P, S]] },
-  stone_brick_slab: { kind: "shaped", pattern: [["stone_bricks", "stone_bricks", "stone_bricks"]] },
+  stone_brick_slab: { kind: "shaped", pattern: [[BS.stoneBricks, BS.stoneBricks, BS.stoneBricks]] },
   bricks: { kind: "shaped", pattern: [["brick", "brick"], ["brick", "brick"]] },
   furnace: { kind: "shaped", pattern: [[C, C, C], [C, null, C], [C, C, C]] },
   ladder: { kind: "shaped", pattern: [[S, null, S], [S, S, S], [S, null, S]] },
   chest: { kind: "shaped", pattern: [[P, P, P], [P, null, P], [P, P, P]] },
   door: { kind: "shaped", pattern: [[P, P], [P, P], [P, P]] },
   bed: { kind: "shaped", pattern: [[W, W, W], [P, P, P]] },
-  tnt: { kind: "shaped", pattern: [["gunpowder", "sand", "gunpowder"], ["sand", "gunpowder", "sand"], ["gunpowder", "sand", "gunpowder"]] },
-  flint_and_steel: { kind: "shaped", pattern: [["iron_ingot", null], [null, "flint"]], allowHorizontalMirror: true },
-  shears: { kind: "shaped", pattern: [["iron_ingot", null], [null, "iron_ingot"]], allowHorizontalMirror: true },
+  tnt: { kind: "shaped", pattern: [[BS.gunpowder, "sand", BS.gunpowder], ["sand", BS.gunpowder, "sand"], [BS.gunpowder, "sand", BS.gunpowder]] },
+  flint_and_steel: { kind: "shaped", pattern: [[BS.ironIngot, null], [null, "flint"]], allowHorizontalMirror: true },
+  shears: { kind: "shaped", pattern: [[BS.ironIngot, null], [null, BS.ironIngot]], allowHorizontalMirror: true },
   bow: { kind: "shaped", pattern: [[null, S, "string"], [S, null, "string"], [null, S, "string"]], allowHorizontalMirror: true },
   arrows: { kind: "shaped", pattern: [["flint"], [S], ["feather"]] },
   ...GENERATED_EQUIPMENT_PATTERNS,
@@ -190,7 +191,7 @@ export function rightClickCraftingSlot(state: CraftingGridState, slot: number, s
     grid[slot] = withCount(cursor, 1);
     return success(grid, cursor.count === 1 ? null : withCount(cursor, cursor.count - 1));
   }
-  if (!areStacksCompatible(cursor, target)) return failure(grid, cursor, "incompatible_stack");
+  if (!areStacksCompatible(cursor, target)) return failure(grid, cursor, BS.incompatibleStack);
   if (target.count >= ITEMS[target.itemId].maxStack) return failure(grid, cursor, "stack_full");
   grid[slot] = withCount(target, target.count + 1);
   return success(grid, cursor.count === 1 ? null : withCount(cursor, cursor.count - 1));
@@ -312,7 +313,7 @@ function matchShapeless(grid: CraftingGrid, recipe: ShapelessCraftingRecipe): nu
 function validateInteraction(state: CraftingGridState, slot: number, size: CraftingGridSize): CraftingClickResult | null {
   const original = cloneState(state);
   if (state.grid.length !== size * size) return { ok: false, state: original, reason: "invalid_grid" };
-  if (!Number.isInteger(slot) || slot < 0 || slot >= state.grid.length) return { ok: false, state: original, reason: "invalid_slot" };
+  if (!Number.isInteger(slot) || slot < 0 || slot >= state.grid.length) return { ok: false, state: original, reason: BS.invalidSlot };
   if (!state.grid.every(isValidCraftingStack) || !isValidCraftingStack(state.cursor)) {
     return { ok: false, state: original, reason: "invalid_stack" };
   }

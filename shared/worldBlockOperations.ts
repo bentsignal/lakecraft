@@ -23,6 +23,7 @@ import {
   WORLD_EDIT_MIN_Y,
   type WorldChunkBlockType,
 } from "./worldChunks.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const MIN_WORLD_BLOCK_OPERATION_ID_LENGTH = 16;
 export const MAX_WORLD_BLOCK_OPERATION_ID_LENGTH = 64;
@@ -150,19 +151,19 @@ export type WorldBlockOperationResolution =
 const WORLD_BLOCK_SET = new Set<string>(WORLD_CHUNK_BLOCK_TYPES);
 const ITEM_SET = new Set<string>(Object.keys(ITEMS));
 const TOGGLED_WORLD_BLOCKS: Readonly<Record<ToggleableWorldBlock, ToggleableWorldBlock>> = {
-  door_closed: "door_open",
-  door_open: "door_closed",
-  oak_fence_gate_closed: "oak_fence_gate_open",
-  oak_fence_gate_open: "oak_fence_gate_closed",
+  door_closed: BS.doorOpen,
+  door_open: BS.doorClosed,
+  oak_fence_gate_closed: BS.oakFenceGateOpen,
+  oak_fence_gate_open: BS.oakFenceGateClosed,
 };
 const REVISION_PATTERN = /^(0|[1-9]\d{0,15})$/;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-const COMMON_KEYS = ["operationId", "kind", "x", "y", "z"] as const;
+const COMMON_KEYS = [BS.operationId, "kind", "x", "y", "z"] as const;
 const INVENTORY_KEYS = [
   ...COMMON_KEYS,
   "expectedBlock",
-  "selectedHotbar",
+  BS.selectedHotbar,
   "expectedHeldItem",
   "expectedInventoryRevision",
   "expectedChunkRevision",
@@ -240,7 +241,7 @@ function isCanonicalInventory(value: unknown): value is readonly (ItemStack | nu
       && stack.durability >= 1
       && stack.durability <= maximum
       && keys.length === 3
-      && hasExactKeys(stack, ["itemId", "count", "durability"]);
+      && hasExactKeys(stack, ["itemId", "count", BS.durability]);
   });
 }
 
@@ -264,20 +265,20 @@ export function worldBlockOperationFingerprint(request: WorldBlockOperationReque
 }
 
 export function parseWorldBlockOperation(value: unknown): WorldBlockOperationParseResult {
-  if (!isRecord(value)) return { ok: false, reason: "invalid_request" };
+  if (!isRecord(value)) return { ok: false, reason: BS.invalidRequest };
   const byteLength = requestByteLength(value);
-  if (byteLength === null) return { ok: false, reason: "invalid_request" };
+  if (byteLength === null) return { ok: false, reason: BS.invalidRequest };
   if (byteLength > MAX_WORLD_BLOCK_OPERATION_REQUEST_BYTES) return { ok: false, reason: "request_too_large" };
-  if (!isValidWorldBlockOperationId(value.operationId)) return { ok: false, reason: "invalid_operation_id" };
+  if (!isValidWorldBlockOperationId(value.operationId)) return { ok: false, reason: BS.invalidOperationId };
   if (value.kind !== "mine" && value.kind !== "place" && value.kind !== "toggle") {
     return { ok: false, reason: "invalid_kind" };
   }
   const expectedKeys = value.kind === "mine" ? MINE_KEYS : value.kind === "place" ? PLACE_KEYS : TOGGLE_KEYS;
-  if (!hasExactKeys(value, expectedKeys)) return { ok: false, reason: "invalid_request" };
+  if (!hasExactKeys(value, expectedKeys)) return { ok: false, reason: BS.invalidRequest };
   if (!isCoordinate(value.x, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ)
     || !isCoordinate(value.z, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ)
     || !isCoordinate(value.y, WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y)) {
-    return { ok: false, reason: "invalid_coordinate" };
+    return { ok: false, reason: BS.invalidCoordinate };
   }
   if (parseWorldBlockRevision(value.expectedChunkRevision) === null) {
     return { ok: false, reason: "invalid_revision" };
@@ -351,8 +352,8 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
 export function gameBlockForWorldBlock(block: WorldChunkBlockType): BlockId | null {
   if (block === "air") return null;
   if (block === "wood") return "log";
-  if (block === "door_closed" || block === "door_open") return "door";
-  if (block === "oak_fence_gate_closed" || block === "oak_fence_gate_open") return "oak_fence_gate";
+  if (block === BS.doorClosed || block === BS.doorOpen) return "door";
+  if (block === BS.oakFenceGateClosed || block === BS.oakFenceGateOpen) return BS.oakFenceGate;
   return block;
 }
 
@@ -360,8 +361,8 @@ export function placedWorldBlockForItem(itemId: ItemId): Exclude<WorldChunkBlock
   const block = ITEMS[itemId].placesBlock;
   if (!block) return null;
   if (block === "log") return "wood";
-  if (block === "door") return "door_closed";
-  if (block === "oak_fence_gate") return "oak_fence_gate_closed";
+  if (block === "door") return BS.doorClosed;
+  if (block === BS.oakFenceGate) return BS.oakFenceGateClosed;
   return block;
 }
 
@@ -393,13 +394,13 @@ export function resolveWorldBlockOperation(
   state: WorldBlockOperationState,
 ): WorldBlockOperationResolution {
   const parsed = parseWorldBlockOperation(request);
-  if (!parsed.ok) return { ok: false, reason: "invalid_request" };
+  if (!parsed.ok) return { ok: false, reason: BS.invalidRequest };
   request = parsed.request;
   if (!isWorldBlock(state.currentBlock)
     || !isCanonicalInventory(state.inventory)
     || normalizeWorldBlockRevision(state.inventoryRevision) === null
     || normalizeWorldBlockRevision(state.chunkRevision) === null) {
-    return { ok: false, reason: "invalid_state" };
+    return { ok: false, reason: BS.invalidState };
   }
   if (request.expectedChunkRevision !== state.chunkRevision) {
     return { ok: false, reason: "stale_chunk_revision" };
@@ -468,7 +469,7 @@ export function resolveWorldBlockOperation(
   }
 
   const gameBlock = gameBlockForWorldBlock(request.expectedBlock);
-  if (!gameBlock) return { ok: false, reason: "invalid_state" };
+  if (!gameBlock) return { ok: false, reason: BS.invalidState };
   // Shears are a durable utility, not an axe-shaped tool. Spend their one
   // durability only inside this confirmed mining resolution; every rejected
   // operation returns before the immutable result can be persisted.

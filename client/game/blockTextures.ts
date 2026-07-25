@@ -6,6 +6,7 @@ import {
   type TextureAtlasName,
 } from "./generated/textureAtlas.ts";
 import { BLOCK, type BlockId } from "./types.ts";
+import * as BS from "../../shared/bundleStrings.ts";
 
 export type BlockFace = "east" | "west" | "top" | "bottom" | "south" | "north";
 
@@ -24,19 +25,19 @@ const UNIFORM_BLOCK_TEXTURES: Readonly<Partial<Record<BlockId, TextureAtlasName>
   [BLOCK.STONE]: "stone",
   [BLOCK.LEAVES]: "leaves",
   [BLOCK.PLANKS]: "oak_planks",
-  [BLOCK.COAL_ORE]: "coal_ore",
-  [BLOCK.IRON_ORE]: "iron_ore",
-  [BLOCK.COBBLESTONE]: "cobblestone",
-  [BLOCK.STONE_BRICKS]: "stone_bricks",
-  [BLOCK.STONE_BRICK_SLAB]: "stone_bricks",
+  [BLOCK.COAL_ORE]: BS.coalOre,
+  [BLOCK.IRON_ORE]: BS.ironOre,
+  [BLOCK.COBBLESTONE]: BS.cobblestone,
+  [BLOCK.STONE_BRICKS]: BS.stoneBricks,
+  [BLOCK.STONE_BRICK_SLAB]: BS.stoneBricks,
   [BLOCK.CLAY]: "clay",
   [BLOCK.BRICKS]: "bricks",
   [BLOCK.SAND]: "sand",
   [BLOCK.GRAVEL]: "gravel",
   [BLOCK.WOOL]: "wool",
   [BLOCK.GLASS]: "glass",
-  [BLOCK.GOLD_ORE]: "gold_ore",
-  [BLOCK.DIAMOND_ORE]: "diamond_ore",
+  [BLOCK.GOLD_ORE]: BS.goldOre,
+  [BLOCK.DIAMOND_ORE]: BS.diamondOre,
 };
 
 const ATLAS_WIDTH = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;

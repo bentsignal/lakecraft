@@ -5,6 +5,7 @@ import {
   WORLD_EDIT_MIN_XZ,
   WORLD_EDIT_MIN_Y,
 } from "./worldChunks.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const OAK_TREE_MAX_EDITS = 70;
 export const OAK_TREE_MAX_PROBE_CELLS = OAK_TREE_MAX_EDITS + 1;
@@ -106,7 +107,7 @@ export function oakTreeGrowthProbeCells(x: number, y: number, z: number): readon
 export function planOakTreeGrowth(input: Readonly<OakTreeGrowthInput>): OakTreeGrowthResult {
   const probes = oakTreeGrowthProbeCells(input.x, input.y, input.z);
   if (probes.length === 0 || typeof input.blockAt !== "function") {
-    return { ok: false, reason: "invalid_coordinate" };
+    return { ok: false, reason: BS.invalidCoordinate };
   }
 
   let sapling: BlockId | "air";

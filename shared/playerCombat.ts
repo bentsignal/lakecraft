@@ -14,6 +14,7 @@ import {
   MIN_OPERATION_ID_LENGTH,
   type CanonicalPlayerState,
 } from "./chestTransfers.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const PLAYER_MELEE_REACH = 4.5;
 export const PLAYER_ATTACK_COOLDOWN_MS = 500;
@@ -129,7 +130,7 @@ export type PlayerCombatReceiptLike = {
   receiptCreatedAt: string;
 };
 
-const REQUEST_KEYS = ["operationId", "targetUserId", "selectedHotbar", "weaponItemId"] as const;
+const REQUEST_KEYS = [BS.operationId, "targetUserId", BS.selectedHotbar, "weaponItemId"] as const;
 
 function hasExactKeys(record: Record<string, unknown>): boolean {
   const keys = Object.keys(record);
@@ -161,13 +162,13 @@ export function validatePlayerAttackRequestJson(rawJson: string):
   } catch {
     return { ok: false, reason: "invalid_json" };
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: "invalid_shape" };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
-  if (!hasExactKeys(record)) return { ok: false, reason: "invalid_shape" };
+  if (!hasExactKeys(record)) return { ok: false, reason: BS.invalidShape };
   if (typeof record.operationId !== "string"
     || record.operationId.length < MIN_OPERATION_ID_LENGTH
     || record.operationId.length > MAX_OPERATION_ID_LENGTH
-    || !/^[A-Za-z0-9_-]+$/.test(record.operationId)) return { ok: false, reason: "invalid_operation_id" };
+    || !/^[A-Za-z0-9_-]+$/.test(record.operationId)) return { ok: false, reason: BS.invalidOperationId };
   if (!validUserId(record.targetUserId)) return { ok: false, reason: "invalid_target" };
   if (typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
     || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) {
@@ -280,7 +281,7 @@ export function validatePlayerMeleeSpatialAuthority(
   ] as const;
   const horizontalDistance = Math.hypot(target.x - attacker.x, target.z - attacker.z);
   if (horizontalDistance > PLAYER_MELEE_REACH + 0.4 || Math.abs(target.y - attacker.y) > 3) {
-    return { ok: false, reason: "out_of_reach" };
+    return { ok: false, reason: BS.outOfReach };
   }
   let closestProjection = Number.POSITIVE_INFINITY;
   let closestRayDistance = Number.POSITIVE_INFINITY;
@@ -298,7 +299,7 @@ export function validatePlayerMeleeSpatialAuthority(
       }
     }
   }
-  if (closestProjection > PLAYER_MELEE_REACH) return { ok: false, reason: "out_of_reach" };
+  if (closestProjection > PLAYER_MELEE_REACH) return { ok: false, reason: BS.outOfReach };
   return closestRayDistance <= 0.72 ? { ok: true } : { ok: false, reason: "not_aimed" };
 }
 
@@ -410,7 +411,7 @@ export function decidePlayerCombatReplay(
   requestFingerprint: string,
 ): "new" | "replay" | "operation_id_reused" {
   if (existingFingerprint === null) return "new";
-  return existingFingerprint === requestFingerprint ? "replay" : "operation_id_reused";
+  return existingFingerprint === requestFingerprint ? "replay" : BS.operationIdReused;
 }
 
 /** Newest-first bounded retention that always keeps the just-committed receipt. */

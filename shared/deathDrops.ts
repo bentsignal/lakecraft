@@ -11,6 +11,7 @@ import {
   type ItemId,
   type ItemStack,
 } from "./game.ts";
+import * as BS from "./bundleStrings.ts";
 
 /** A canonical player can carry at most 36 inventory rows plus four armor rows. */
 export const DEATH_DROP_MAX_ROWS = 48;
@@ -118,7 +119,7 @@ function canonicalStack(value: unknown): ItemStack | null {
   const record = value as Record<string, unknown>;
   if (!hasExactKeys(record, record.durability === undefined
     ? ["itemId", "count"]
-    : ["itemId", "count", "durability"])) return null;
+    : ["itemId", "count", BS.durability])) return null;
   if (typeof record.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)) return null;
   const itemId = record.itemId as ItemId;
   const maximum = maxItemDurability(itemId);
@@ -160,7 +161,7 @@ function canonicalEquipment(value: Equipment): Equipment | null {
     if (candidate === null) continue;
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
     const armor = candidate as Record<string, unknown>;
-    if (!hasExactKeys(armor, ["itemId", "durability"])
+    if (!hasExactKeys(armor, ["itemId", BS.durability])
       || typeof armor.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, armor.itemId)) return null;
     const definition = ITEMS[armor.itemId as ItemId].armor;
     if (!definition || definition.slot !== slot || typeof armor.durability !== "number"
@@ -312,14 +313,14 @@ export function planDeathDrops(input: {
   const deathPose = canonicalPose(input.deathPose);
   if (!deathPose) return { ok: false, reason: "invalid_death_pose" };
   const inventory = canonicalInventory(input.inventory);
-  if (!inventory) return { ok: false, reason: "invalid_inventory" };
+  if (!inventory) return { ok: false, reason: BS.invalidInventory };
   const equipment = canonicalEquipment(input.equipment);
   if (!equipment) return { ok: false, reason: "invalid_equipment" };
 
   const stacks = coalesceStacks(carriedStacks(inventory, equipment));
   if (stacks.length > DEATH_DROP_MAX_ROWS) return { ok: false, reason: "row_cap_exceeded" };
   const conservation = validateDeathDropConservation(inventory, equipment, stacks);
-  if (!conservation.ok) return { ok: false, reason: "conservation_failure" };
+  if (!conservation.ok) return { ok: false, reason: BS.conservationFailure };
 
   const identityKey = JSON.stringify([identity.userId, identity.eventId]);
   const settlementId = `death_${compactHash(identityKey)}`;

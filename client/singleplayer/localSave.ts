@@ -21,6 +21,7 @@ import {
   type WorldEdit,
 } from "../game/types.ts";
 import { validateFurnaceState, type FurnaceState } from "../../shared/furnaces.ts";
+import type { LocalGameMode } from "./localCommands.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
 export const SINGLEPLAYER_SAVE_VERSION = 1 as const;
@@ -102,6 +103,8 @@ export interface SinglePlayerSnapshot {
     seed: number;
     createdAt: number;
     activePlayMs: number;
+    /** Missing only on saves written before local commands/game modes were added. */
+    gameMode?: LocalGameMode;
     weather: SinglePlayerWeatherState;
     edits: WorldEdit[];
   };
@@ -347,12 +350,17 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
   if (!isRecord(value) || !exactKeys(value, ["world", "player", "progression", "drops", "chests", "furnaces", "primedTnt", "runtime"])) {
     return { ok: false, reason: "invalid_snapshot", path: "$" };
   }
-  if (!isRecord(value.world) || !exactKeys(value.world, ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "weather", "edits"])
+  const worldKeys = ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "weather", "edits"];
+  const worldHasGameMode = isRecord(value.world) && Object.prototype.hasOwnProperty.call(value.world, "gameMode");
+  if (!isRecord(value.world) || !exactKeys(value.world, worldHasGameMode ? [...worldKeys, "gameMode"] : worldKeys)
     || !identifier(value.world.worldId)
     || !safeInteger(value.world.generatorVersion, 1, 1_000_000)
     || !safeInteger(value.world.seed, -2_147_483_648, 2_147_483_647)
     || !safeInteger(value.world.createdAt, 0, MAX_TIMESTAMP)
-    || !safeInteger(value.world.activePlayMs, 0, MAX_TIMESTAMP)) return { ok: false, reason: "invalid_snapshot", path: "$.world" };
+    || !safeInteger(value.world.activePlayMs, 0, MAX_TIMESTAMP)
+    || (worldHasGameMode && value.world.gameMode !== "survival" && value.world.gameMode !== "creative")) {
+    return { ok: false, reason: "invalid_snapshot", path: "$.world" };
+  }
   if (!isRecord(value.world.weather) || !exactKeys(value.world.weather, ["kind", "remainingMs"])
     || typeof value.world.weather.kind !== "string" || !WEATHER_KINDS.has(value.world.weather.kind)
     || !safeInteger(value.world.weather.remainingMs, 0, MAX_WEATHER_MS)) return { ok: false, reason: "invalid_snapshot", path: "$.world.weather" };
@@ -393,6 +401,7 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
       world: {
         worldId: value.world.worldId, generatorVersion: value.world.generatorVersion, seed: value.world.seed,
         createdAt: value.world.createdAt, activePlayMs: value.world.activePlayMs,
+        ...(worldHasGameMode ? { gameMode: value.world.gameMode as LocalGameMode } : {}),
         weather: { kind: value.world.weather.kind as SinglePlayerWeatherState["kind"], remainingMs: value.world.weather.remainingMs }, edits,
       },
       player: { inventory, equipment, selectedHotbar: value.player.selectedHotbar, hunger: value.player.hunger },
@@ -404,7 +413,16 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
 
 export function createDefaultSinglePlayerSnapshot(seed = 7_319, createdAt = 0, worldId = "local-default"): SinglePlayerSnapshot {
   return {
-    world: { worldId, generatorVersion: 1, seed, createdAt, activePlayMs: 0, weather: { kind: "clear", remainingMs: 0 }, edits: [] },
+    world: {
+      worldId,
+      generatorVersion: 1,
+      seed,
+      createdAt,
+      activePlayMs: 0,
+      gameMode: "survival",
+      weather: { kind: "clear", remainingMs: 0 },
+      edits: [],
+    },
     player: {
       inventory: createStarterInventory(),
       equipment: createEmptyEquipment(),

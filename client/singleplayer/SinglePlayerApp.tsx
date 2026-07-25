@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
+import { ChatOverlay, type LakecraftChatMessage } from "../chat";
 import {
   BLOCK,
   MORNING_PHASE,
@@ -106,6 +107,15 @@ import {
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
 } from "./sessionState.ts";
+import {
+  LOCAL_COMMAND_HELP,
+  SINGLE_PLAYER_COMMAND_PERMISSIONS,
+  canonicalLocalItemIds,
+  giveLocalItem,
+  parseLocalCommand,
+  transitionLocalGameMode,
+  type LocalGameMode,
+} from "./localCommands.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -210,7 +220,10 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   const initial = useRef<InitialLocalWorld | null>(null);
   if (!initial.current) initial.current = loadInitialLocalWorld();
   const initialSnapshot = initial.current.snapshot;
-  const initialPlayerHealth = initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH;
+  const initialGameMode: LocalGameMode = initialSnapshot.world.gameMode ?? "survival";
+  const initialPlayerHealth = initialGameMode === "creative"
+    ? MAX_HEALTH
+    : initialSnapshot.runtime?.playerHealth ?? MAX_HEALTH;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
   const audioRef = useRef<GameAudio | null>(null);
@@ -221,13 +234,18 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   const selectedRef = useRef(initialSnapshot.player.selectedHotbar);
   const editsRef = useRef(createLocalWorldEditIndex(initialSnapshot.world.edits));
   const editCapacityWarningRef = useRef(false);
-  const hungerRef = useRef(initialSnapshot.player.hunger);
+  const hungerRef = useRef(initialGameMode === "creative" ? MAX_HUNGER : initialSnapshot.player.hunger);
   const healthRef = useRef(initialPlayerHealth);
   const survivalStateRef = useRef(createSurvivalTickState(hungerRef.current, healthRef.current));
   const survivalActivityRef = useRef(0.5);
   const survivalSampledAtRef = useRef(performance.now());
   const dropsRef = useRef<DroppedItemRenderItem[]>(initialSnapshot.drops);
-  const worldRef = useRef({ ...initialSnapshot.world, weather: { ...initialSnapshot.world.weather } });
+  const worldRef = useRef({
+    ...initialSnapshot.world,
+    gameMode: initialGameMode,
+    weather: { ...initialSnapshot.world.weather },
+  });
+  const gameModeRef = useRef<LocalGameMode>(initialGameMode);
   const progressionRef = useRef({
     experience: initialSnapshot.progression.experience,
     recipes: [...initialSnapshot.progression.recipes],
@@ -247,12 +265,16 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   const pendingDeathCauseRef = useRef<SinglePlayerDeathCause>("unknown");
   const localDropSequenceRef = useRef(0);
   const localArrowSequenceRef = useRef(0);
+  const commandMessageSequenceRef = useRef(0);
+  const commandHistoryRef = useRef<string[]>([]);
+  const commandHistoryIndexRef = useRef(0);
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
   const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
   const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
-  const [hunger, setHunger] = useState(initialSnapshot.player.hunger);
+  const [hunger, setHunger] = useState(initialGameMode === "creative" ? MAX_HUNGER : initialSnapshot.player.hunger);
   const [health, setHealth] = useState(initialPlayerHealth);
+  const [gameMode, setGameMode] = useState<LocalGameMode>(initialGameMode);
   const [deathScreenOpen, setDeathScreenOpen] = useState(() => singlePlayerStartsDead(initialSnapshot.runtime?.playerHealth));
   const [deathCause, setDeathCause] = useState(() => singlePlayerDeathMessage("unknown"));
   const [deathStatus, setDeathStatus] = useState("");
@@ -272,7 +294,10 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   const [containerStatus, setContainerStatus] = useState("");
   const [containerError, setContainerError] = useState("");
   const containerOpen = activeChestKey !== null || activeFurnaceKey !== null;
-  const worldModalOpen = containerOpen || sleepingBed !== null;
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandDraft, setCommandDraft] = useState("");
+  const [commandMessages, setCommandMessages] = useState<LakecraftChatMessage[]>([]);
+  const worldModalOpen = containerOpen || sleepingBed !== null || commandOpen;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
@@ -423,7 +448,11 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
       return false;
     }
-    worldRef.current = { ...snapshot.world, weather: { ...snapshot.world.weather } };
+    worldRef.current = {
+      ...snapshot.world,
+      gameMode: snapshot.world.gameMode ?? "survival",
+      weather: { ...snapshot.world.weather },
+    };
     initialRuntimeRef.current = snapshot.runtime;
     saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
     setLastSavedAt(now);
@@ -452,6 +481,90 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     inventoryRef.current = next;
     setInventory(next);
     markWorldDirty();
+  }
+
+  function appendCommandMessage(
+    body: string,
+    tone: "player" | "system" | "warning",
+  ): void {
+    const sequence = ++commandMessageSequenceRef.current;
+    setCommandMessages((current) => [...current.slice(-59), {
+      id: `local-command-${sequence}`,
+      username: tone === "player" ? "Command" : tone === "warning" ? "Error" : "Game",
+      body,
+      sentAt: Date.now(),
+      own: tone === "player",
+      tone,
+      delivery: "sent",
+    }]);
+  }
+
+  function changeLocalGameMode(mode: LocalGameMode): void {
+    const next = transitionLocalGameMode({
+      mode: gameModeRef.current,
+      health: healthRef.current,
+      hunger: hungerRef.current,
+      inventory: inventoryRef.current,
+      equipment: equipmentRef.current,
+    }, mode);
+    gameModeRef.current = mode;
+    worldRef.current = { ...worldRef.current, gameMode: mode };
+    healthRef.current = next.health;
+    hungerRef.current = next.hunger;
+    survivalStateRef.current = createSurvivalTickState(next.hunger, next.health);
+    inventoryRef.current = next.inventory;
+    equipmentRef.current = next.equipment;
+    setGameMode(mode);
+    setHealth(next.health);
+    setHunger(next.hunger);
+    setInventory(next.inventory);
+    setEquipment(next.equipment);
+    engineRef.current?.setPlayerHealth(next.health);
+    if (mode === "creative") {
+      pendingDeathCauseRef.current = "unknown";
+      setDeathScreenOpen(false);
+      setDeathStatus("");
+    }
+    markWorldDirty();
+  }
+
+  function submitLocalCommand(source: string): void {
+    const normalized = source.trim();
+    const history = commandHistoryRef.current;
+    if (history[history.length - 1] !== normalized) {
+      commandHistoryRef.current = [...history.slice(-49), normalized];
+    }
+    commandHistoryIndexRef.current = commandHistoryRef.current.length;
+    appendCommandMessage(normalized, "player");
+    setCommandDraft("");
+    const parsed = parseLocalCommand(normalized, SINGLE_PLAYER_COMMAND_PERMISSIONS);
+    if (!parsed.ok) {
+      appendCommandMessage(parsed.message, "warning");
+      return;
+    }
+    if (parsed.command.kind === "help") {
+      appendCommandMessage(`Commands: ${LOCAL_COMMAND_HELP.join(" · ")}`, "system");
+      appendCommandMessage(`Item IDs: ${canonicalLocalItemIds().join(", ")}`, "system");
+      return;
+    }
+    if (parsed.command.kind === "gamemode") {
+      changeLocalGameMode(parsed.command.mode);
+      appendCommandMessage(`Game mode set to ${parsed.command.mode}.`, "system");
+      return;
+    }
+    const granted = giveLocalItem(inventoryRef.current, parsed.command.itemId, parsed.command.count);
+    if (!granted.ok) {
+      appendCommandMessage(granted.message, "warning");
+      return;
+    }
+    updateInventory(granted.inventory);
+    appendCommandMessage(`Gave ${parsed.command.count} ${ITEMS[parsed.command.itemId].label}.`, "system");
+  }
+
+  function closeCommandConsole(): void {
+    setCommandOpen(false);
+    commandHistoryIndexRef.current = commandHistoryRef.current.length;
+    requestGameplayPointerLock();
   }
 
   function selectHotbar(index: number) {
@@ -810,7 +923,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         }];
         markWorldDirty();
       }
-      if (spendTool) {
+      if (spendTool && gameModeRef.current === "survival") {
         const toolUse = applyConfirmedDurableItemUse(inventoryRef.current, selectedRef.current, "flint_and_steel");
         if (!toolUse.used) {
           engineRef.current.setPrimedTnt(x, y, z, false);
@@ -902,22 +1015,27 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
       selectedItem: inventoryRef.current[selectedRef.current]?.itemId ?? null,
       getMiningDuration: (block) => {
+        if (gameModeRef.current === "creative") return 0;
         const gameBlock = ENGINE_TO_GAME[block];
         return gameBlock ? miningSeconds(gameBlock, inventoryRef.current[selectedRef.current]?.itemId) : 0.2;
       },
       getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
       isRangedWeaponSelected: () => inventoryRef.current[selectedRef.current]?.itemId === "bow"
-        && countItem(inventoryRef.current, "arrow") > 0,
+        && (gameModeRef.current === "creative" || countItem(inventoryRef.current, "arrow") > 0),
       onRangedRelease: (intent) => {
         const profile = rangedChargeProfile(intent.chargeMs);
         const slot = selectedRef.current;
         if (!profile || inventoryRef.current[slot]?.itemId !== "bow") return;
-        const bowUse = applyConfirmedDurableItemUse(inventoryRef.current, slot, "bow");
+        const creative = gameModeRef.current === "creative";
+        const bowUse = creative
+          ? { inventory: inventoryRef.current, used: true, broke: false }
+          : applyConfirmedDurableItemUse(inventoryRef.current, slot, "bow");
         if (!bowUse.used) return;
-        const arrowUse = removeItem(bowUse.inventory, "arrow", 1);
-        if (arrowUse.remainder !== 0) return;
-
-        updateInventory(arrowUse.inventory);
+        if (!creative) {
+          const arrowUse = removeItem(bowUse.inventory, "arrow", 1);
+          if (arrowUse.remainder !== 0) return;
+          updateInventory(arrowUse.inventory);
+        }
         const launchedAt = performance.now();
         const flightMs = Math.max(80, Math.min(5_000, intent.target.distance / profile.speed * 1_000));
         const projectile: PlayerProjectileVisual = {
@@ -950,13 +1068,15 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         }]);
       },
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
-      canSprint: () => hungerRef.current > 6,
+      canTakePlayerDamage: () => gameModeRef.current === "survival",
+      canSprint: () => hungerRef.current > 6 || gameModeRef.current === "creative",
       continuousBlockPlacement: true,
       canPlaceSelectedBlock: (block) => {
         const stack = inventoryRef.current[selectedRef.current];
         return Boolean(stack && stack.count > 0 && ITEM_TO_ENGINE[stack.itemId] === block);
       },
       canMineBlock: (block) => {
+        if (gameModeRef.current === "creative") return true;
         pruneLocalDrops();
         const gameBlock = ENGINE_TO_GAME[block.block];
         const drop = gameBlock ? getDeterministicMiningDrop(
@@ -988,7 +1108,8 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           || (previousBlock === BLOCK.DOOR_OPEN && edit.block === BLOCK.DOOR_CLOSED)
           || (previousBlock === BLOCK.OAK_FENCE_GATE_CLOSED && edit.block === BLOCK.OAK_FENCE_GATE_OPEN)
           || (previousBlock === BLOCK.OAK_FENCE_GATE_OPEN && edit.block === BLOCK.OAK_FENCE_GATE_CLOSED);
-        if (!toggledBlock && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
+        const creative = gameModeRef.current === "creative";
+        if (!creative && !toggledBlock && edit.block === BLOCK.AIR && previousBlock !== BLOCK.AIR) {
           const gameBlock = ENGINE_TO_GAME[previousBlock];
           const drop = gameBlock ? getDeterministicMiningDrop(gameBlock, held, edit.x, edit.y, edit.z) : null;
           const wear = held === "shears" && gameBlock === "leaves"
@@ -1007,7 +1128,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
             }];
             engine.setDroppedItems(dropsRef.current);
           }
-        } else if (!toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR) {
+        } else if (!creative && !toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR) {
           const placedItem = ENGINE_TO_GAME[edit.block];
           const selectedSlot = selectedRef.current;
           const selectedStack = next[selectedSlot];
@@ -1060,6 +1181,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         markWorldDirty();
       },
       onLocalMobHit: () => {
+        if (gameModeRef.current === "creative") return;
         const slot = selectedRef.current;
         const held = inventoryRef.current[slot]?.itemId ?? null;
         const wear = applyConfirmedToolUse(inventoryRef.current, slot, "attack", held);
@@ -1079,7 +1201,9 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         let acceptedInventory: Inventory | null = null;
         let broke = false;
         const result = engine.shearMob(target.id, (woolCount) => {
-          const wear = applyConfirmedDurableItemUse(inventoryRef.current, selectedRef.current, "shears");
+          const wear = gameModeRef.current === "creative"
+            ? { inventory: inventoryRef.current, used: true, broke: false }
+            : applyConfirmedDurableItemUse(inventoryRef.current, selectedRef.current, "shears");
           if (!wear.used) return false;
           const added = addItem(wear.inventory, "wool", woolCount);
           if (added.remainder !== 0) return false;
@@ -1161,6 +1285,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         survivalActivityRef.current = activityMultiplier;
       },
       onUseSelectedItem: () => {
+        if (gameModeRef.current === "creative") return false;
         const result = consumeFood(inventoryRef.current, selectedRef.current, hungerRef.current);
         if (!result.ok) return false;
         hungerRef.current = result.hunger;
@@ -1236,7 +1361,8 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
 
           const selectedStack = inventoryRef.current[selectedRef.current];
           if (!selectedStack || selectedStack.itemId !== "bone_meal") return true;
-          const nextInventory = inventoryRef.current.map((stack, index) => {
+          const creative = gameModeRef.current === "creative";
+          const nextInventory = creative ? inventoryRef.current : inventoryRef.current.map((stack, index) => {
             if (index !== selectedRef.current || !stack) return stack ? { ...stack } : null;
             return stack.count > 1 ? { ...stack, count: stack.count - 1 } : null;
           }) as Inventory;
@@ -1254,7 +1380,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           setMessages((current) => [...current.slice(-2), {
             id: `oak-grown-${x}:${y}:${z}`,
             text: "Oak tree grown",
-            detail: "Used one bone meal.",
+            detail: creative ? "Bone meal is unlimited in Creative." : "Used one bone meal.",
             tone: "success",
           }]);
           return true;
@@ -1287,6 +1413,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       setSaveStatusText("The saved player runtime was invalid; world state was left untouched.");
       saveLockedRef.current = true;
     }
+    if (gameModeRef.current === "creative") engine.setPlayerHealth(MAX_HEALTH);
     engine.setDroppedItems(dropsRef.current);
     const respawn = engine.getRespawnPoint();
     const possibleBed = {
@@ -1375,7 +1502,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       const now = performance.now();
       const elapsedSeconds = active ? Math.max(0, now - survivalSampledAtRef.current) / 1_000 : 0;
       survivalSampledAtRef.current = now;
-      if (active && elapsedSeconds > 0) {
+      if (active && elapsedSeconds > 0 && gameModeRef.current === "survival") {
         const survival = tickSurvival(survivalStateRef.current, elapsedSeconds, survivalActivityRef.current);
         const hungerChanged = survival.state.hunger !== hungerRef.current;
         const healthChanged = survival.state.health !== healthRef.current;
@@ -1462,6 +1589,22 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (commandOpen) {
+        if (event.code === "Escape" && !event.repeat) {
+          event.preventDefault();
+          closeCommandConsole();
+          return;
+        }
+        if ((event.code === "ArrowUp" || event.code === "ArrowDown") && !event.repeat) {
+          event.preventDefault();
+          const history = commandHistoryRef.current;
+          const offset = event.code === "ArrowUp" ? -1 : 1;
+          const nextIndex = Math.max(0, Math.min(history.length, commandHistoryIndexRef.current + offset));
+          commandHistoryIndexRef.current = nextIndex;
+          setCommandDraft(nextIndex === history.length ? "" : history[nextIndex] ?? "");
+        }
+        return;
+      }
       if (optionsOpen) {
         if (event.code === "Escape" && !event.repeat) {
           event.preventDefault();
@@ -1479,6 +1622,17 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
             uiBlocked: false,
           });
         }
+        return;
+      }
+      if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat) {
+        if (inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
+        event.preventDefault();
+        if (commandMessages.length === 0) {
+          appendCommandMessage("Local command console. Type /help to list commands and item IDs.", "system");
+        }
+        commandHistoryIndexRef.current = commandHistoryRef.current.length;
+        setCommandOpen(true);
+        releasePointerLockForUi();
         return;
       }
       if (event.code === "KeyQ" && !event.repeat) {
@@ -1512,7 +1666,17 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [optionsOpen, pauseOpen, inventoryOpen, worldModalOpen, containerOpen, deathScreenOpen, activeFurnaceKey]);
+  }, [
+    optionsOpen,
+    pauseOpen,
+    inventoryOpen,
+    worldModalOpen,
+    containerOpen,
+    deathScreenOpen,
+    activeFurnaceKey,
+    commandOpen,
+    commandMessages.length,
+  ]);
 
   const lastSavedText = lastSavedAt === null ? "Not saved yet"
     : `Last saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
@@ -1525,7 +1689,12 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     <main className="lc-singleplayer">
       <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}`}</style>
       <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
-      <span aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}`} className="lc-singleplayer-coordinates">XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z}</span>
+      <span
+        aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}. ${gameMode} mode`}
+        className="lc-singleplayer-coordinates"
+      >
+        XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z} · {gameMode === "creative" ? "Creative" : "Survival"}
+      </span>
       {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen ? (
         <div className="lc-pointer-capture" role="presentation">
           <button autoFocus onClick={requestGameplayPointerLock} type="button">
@@ -1595,6 +1764,28 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           }
         }}
         worldName="Local World"
+      />
+      <ChatOverlay
+        connected
+        draft={commandDraft}
+        historyLabel="Command history"
+        inputLabel="Local command"
+        maxLength={240}
+        messages={commandMessages}
+        onClose={closeCommandConsole}
+        onDraftChange={(value) => {
+          commandHistoryIndexRef.current = commandHistoryRef.current.length;
+          setCommandDraft(value);
+        }}
+        onSubmit={submitLocalCommand}
+        open={commandOpen}
+        placeholder="/help"
+        playerSender="[Command]"
+        submitLabel="Run local command"
+        submitText="Run"
+        surfaceLabel="Local command console"
+        systemSender="[Game]"
+        warningSender="[Error]"
       />
       <FurnaceDrawer
         busy={false}

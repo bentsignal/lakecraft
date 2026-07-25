@@ -11,6 +11,7 @@ import {
   validatePlayerStateJson,
   type CanonicalPlayerState,
 } from "./chestTransfers.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const DROPPED_ITEM_TTL_MS = 5 * 60 * 1_000;
 export const DROPPED_ITEM_OWNER_PICKUP_DELAY_MS = 500;
@@ -153,7 +154,7 @@ function cloneExactInventory(inventory: readonly (ItemStack | null)[]): Inventor
 export function validateDroppedItemStack(value: unknown): ItemStack | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (!hasOnlyKeys(record, ["itemId", "count", "durability"], ["itemId", "count"])) return null;
+  if (!hasOnlyKeys(record, ["itemId", "count", BS.durability], ["itemId", "count"])) return null;
   if (!isItemId(record.itemId) || typeof record.count !== "number" || !Number.isInteger(record.count)
     || record.count < 1 || record.count > ITEMS[record.itemId].maxStack) return null;
   const limit = maxItemDurability(record.itemId);
@@ -194,19 +195,19 @@ export function droppedItemChunkKey(x: number, z: number): string | null {
 }
 
 export function validateVisibleDroppedItemChunkKeys(value: unknown): VisibleDroppedItemChunkKeysValidation {
-  if (!Array.isArray(value)) return { ok: false, reason: "invalid_chunk_keys" };
+  if (!Array.isArray(value)) return { ok: false, reason: BS.invalidChunkKeys };
   if (value.length > MAX_VISIBLE_DROPPED_ITEM_CHUNKS) return { ok: false, reason: "too_many_chunks" };
   const minimumChunk = Math.floor(MIN_WORLD_XZ / DROPPED_ITEM_CHUNK_SIZE);
   const maximumChunk = Math.floor(MAX_WORLD_XZ / DROPPED_ITEM_CHUNK_SIZE);
   const chunks = new Set<string>();
   for (const raw of value) {
-    if (typeof raw !== "string") return { ok: false, reason: "invalid_chunk_keys" };
+    if (typeof raw !== "string") return { ok: false, reason: BS.invalidChunkKeys };
     const match = /^(-?\d{1,5}):(-?\d{1,5})$/.exec(raw.trim());
-    if (!match) return { ok: false, reason: "invalid_chunk_keys" };
+    if (!match) return { ok: false, reason: BS.invalidChunkKeys };
     const chunkX = Number(match[1]);
     const chunkZ = Number(match[2]);
     if (chunkX < minimumChunk || chunkX > maximumChunk || chunkZ < minimumChunk || chunkZ > maximumChunk) {
-      return { ok: false, reason: "invalid_chunk_keys" };
+      return { ok: false, reason: BS.invalidChunkKeys };
     }
     chunks.add(`${chunkX}:${chunkZ}`);
   }
@@ -315,7 +316,7 @@ function parseRequest(rawJson: string): Record<string, unknown> | DroppedItemReq
     const parsed: unknown = JSON.parse(rawJson);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? parsed as Record<string, unknown>
-      : "invalid_shape";
+      : BS.invalidShape;
   } catch {
     return "invalid_json";
   }
@@ -342,9 +343,9 @@ export function droppedItemOperationFingerprint(
 export function validateDropItemRequestJson(rawJson: string): DropItemRequestValidation {
   const parsed = parseRequest(rawJson);
   if (typeof parsed === "string") return { ok: false, reason: parsed };
-  const keys = ["operationId", "sourceSlot", "count", "expectedInventoryUpdatedAt", "playerStateJson"] as const;
-  if (!hasOnlyKeys(parsed, keys)) return { ok: false, reason: "invalid_shape" };
-  if (!validateOperationId(parsed.operationId)) return { ok: false, reason: "invalid_operation_id" };
+  const keys = [BS.operationId, BS.sourceSlot, "count", BS.expectedInventoryUpdatedAt, BS.playerStateJson] as const;
+  if (!hasOnlyKeys(parsed, keys)) return { ok: false, reason: BS.invalidShape };
+  if (!validateOperationId(parsed.operationId)) return { ok: false, reason: BS.invalidOperationId };
   if (typeof parsed.sourceSlot !== "number" || !Number.isInteger(parsed.sourceSlot)
     || parsed.sourceSlot < 0 || parsed.sourceSlot >= INVENTORY_SIZE) return { ok: false, reason: "invalid_source_slot" };
   if (typeof parsed.count !== "number" || !Number.isInteger(parsed.count)
@@ -353,7 +354,7 @@ export function validateDropItemRequestJson(rawJson: string): DropItemRequestVal
   const expectedInventoryUpdatedAt = normalizeChestToken(parsed.expectedInventoryUpdatedAt);
   if (expectedInventoryUpdatedAt === null) return { ok: false, reason: "invalid_token" };
   const playerState = canonicalPlayerState(parsed.playerStateJson);
-  if (!playerState) return { ok: false, reason: "invalid_player_state" };
+  if (!playerState) return { ok: false, reason: BS.invalidPlayerState };
   const request: DropItemRequest = {
     operationId: parsed.operationId,
     sourceSlot: parsed.sourceSlot,
@@ -372,15 +373,15 @@ export function validateDropItemRequestJson(rawJson: string): DropItemRequestVal
 export function validatePickupDroppedItemRequestJson(rawJson: string): PickupDroppedItemRequestValidation {
   const parsed = parseRequest(rawJson);
   if (typeof parsed === "string") return { ok: false, reason: parsed };
-  const keys = ["operationId", "dropId", "expectedInventoryUpdatedAt", "playerStateJson"] as const;
-  if (!hasOnlyKeys(parsed, keys)) return { ok: false, reason: "invalid_shape" };
-  if (!validateOperationId(parsed.operationId)) return { ok: false, reason: "invalid_operation_id" };
+  const keys = [BS.operationId, "dropId", BS.expectedInventoryUpdatedAt, BS.playerStateJson] as const;
+  if (!hasOnlyKeys(parsed, keys)) return { ok: false, reason: BS.invalidShape };
+  if (!validateOperationId(parsed.operationId)) return { ok: false, reason: BS.invalidOperationId };
   if (!isDroppedItemId(parsed.dropId)) return { ok: false, reason: "invalid_drop_id" };
   if (typeof parsed.expectedInventoryUpdatedAt !== "string") return { ok: false, reason: "invalid_token" };
   const expectedInventoryUpdatedAt = normalizeChestToken(parsed.expectedInventoryUpdatedAt);
   if (expectedInventoryUpdatedAt === null) return { ok: false, reason: "invalid_token" };
   const playerState = canonicalPlayerState(parsed.playerStateJson);
-  if (!playerState) return { ok: false, reason: "invalid_player_state" };
+  if (!playerState) return { ok: false, reason: BS.invalidPlayerState };
   const request: PickupDroppedItemRequest = {
     operationId: parsed.operationId,
     dropId: parsed.dropId,
@@ -415,7 +416,7 @@ export function applyDropItemToInventory(request: Pick<ValidatedDropItemRequest,
   const inventory = cloneExactInventory(request.playerState.inventory);
   const before = inventoryTotals(request.playerState.inventory);
   const source = inventory[request.sourceSlot];
-  if (!source) return { ok: false, reason: "empty_source" };
+  if (!source) return { ok: false, reason: BS.emptySource };
   const droppedCount = Math.min(request.count, source.count);
   const dropped = cloneStack(source, droppedCount);
   if (droppedCount === source.count) inventory[request.sourceSlot] = null;
@@ -424,7 +425,7 @@ export function applyDropItemToInventory(request: Pick<ValidatedDropItemRequest,
   after.set(stackIdentity(dropped), (after.get(stackIdentity(dropped)) ?? 0) + dropped.count);
   return totalsEqual(before, after)
     ? { ok: true, inventory, dropped }
-    : { ok: false, reason: "conservation_failure" };
+    : { ok: false, reason: BS.conservationFailure };
 }
 
 function addExactStack(inventory: readonly (ItemStack | null)[], item: ItemStack): { inventory: Inventory; remainder: number } {
@@ -462,7 +463,7 @@ export function applyPickupDroppedItem(
   const before = inventoryTotals(playerInventory);
   const added = addExactStack(playerInventory, dropped.item);
   const pickedCount = dropped.item.count - added.remainder;
-  if (pickedCount <= 0) return { ok: false, reason: "no_capacity" };
+  if (pickedCount <= 0) return { ok: false, reason: BS.noCapacity };
   const picked = cloneStack(dropped.item, pickedCount);
   const remaining = added.remainder > 0 ? cloneStack(dropped.item, added.remainder) : null;
   const after = inventoryTotals(added.inventory);
@@ -471,5 +472,5 @@ export function applyPickupDroppedItem(
   combinedBefore.set(stackIdentity(dropped.item), (combinedBefore.get(stackIdentity(dropped.item)) ?? 0) + dropped.item.count);
   return totalsEqual(combinedBefore, after)
     ? { ok: true, inventory: added.inventory, picked, remaining }
-    : { ok: false, reason: "conservation_failure" };
+    : { ok: false, reason: BS.conservationFailure };
 }

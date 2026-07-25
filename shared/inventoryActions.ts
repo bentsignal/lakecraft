@@ -18,6 +18,7 @@ import {
   type PersistedInventoryState,
   type PlayerStateValidationIssue,
 } from "./chestTransfers.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const MAX_INVENTORY_ACTION_REQUEST_BYTES = 8_191;
 export const MAX_INVENTORY_ACTION_RECIPE_BATCHES = 32;
@@ -155,48 +156,48 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
   } catch {
     return { ok: false, reason: "invalid_json" };
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: "invalid_shape" };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
   if (typeof record.operationId !== "string" || !OPERATION_ID.test(record.operationId)) {
-    return { ok: false, reason: "invalid_operation_id" };
+    return { ok: false, reason: BS.invalidOperationId };
   }
   if (typeof record.expectedRevision !== "string" || !REVISION.test(record.expectedRevision)) {
     return { ok: false, reason: "invalid_revision" };
   }
-  if (typeof record.kind !== "string") return { ok: false, reason: "invalid_action" };
+  if (typeof record.kind !== "string") return { ok: false, reason: BS.invalidAction };
   let action: InventoryAction;
   if (record.kind === "initialize") {
-    if (!hasOnlyKeys(record, ["operationId", "expectedRevision", "kind"], ["operationId", "expectedRevision", "kind"])) {
-      return { ok: false, reason: "invalid_shape" };
+    if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind"], [BS.operationId, BS.expectedRevision, "kind"])) {
+      return { ok: false, reason: BS.invalidShape };
     }
     action = { kind: "initialize" };
   } else if (record.kind === "select_hotbar") {
-    if (!hasOnlyKeys(record, ["operationId", "expectedRevision", "kind", "selectedHotbar"], ["operationId", "expectedRevision", "kind", "selectedHotbar"])
+    if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", BS.selectedHotbar], [BS.operationId, BS.expectedRevision, "kind", BS.selectedHotbar])
       || typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
       || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) {
-      return { ok: false, reason: "invalid_action" };
+      return { ok: false, reason: BS.invalidAction };
     }
     action = { kind: "select_hotbar", selectedHotbar: record.selectedHotbar };
   } else if (record.kind === "eat") {
-    if (!hasOnlyKeys(record, ["operationId", "expectedRevision", "kind", "sourceSlot", "expectedItemId"], ["operationId", "expectedRevision", "kind", "sourceSlot", "expectedItemId"])
+    if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "expectedItemId"], [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "expectedItemId"])
       || typeof record.sourceSlot !== "number" || !Number.isInteger(record.sourceSlot)
       || record.sourceSlot < 0 || record.sourceSlot >= 36
       || typeof record.expectedItemId !== "string"
       || !Object.prototype.hasOwnProperty.call(ITEMS, record.expectedItemId)) {
-      return { ok: false, reason: "invalid_action" };
+      return { ok: false, reason: BS.invalidAction };
     }
     action = { kind: "eat", sourceSlot: record.sourceSlot, expectedItemId: record.expectedItemId as ItemId };
   } else if (record.kind === "workspace_commit") {
     if (!hasOnlyKeys(
       record,
-      ["operationId", "expectedRevision", "kind", "playerStateJson", "recipes", "craftingContext", "workstationCoordKey"],
-      ["operationId", "expectedRevision", "kind", "playerStateJson", "recipes", "craftingContext", "workstationCoordKey"],
-    ) || typeof record.playerStateJson !== "string") return { ok: false, reason: "invalid_shape" };
+      [BS.operationId, BS.expectedRevision, "kind", BS.playerStateJson, "recipes", "craftingContext", "workstationCoordKey"],
+      [BS.operationId, BS.expectedRevision, "kind", BS.playerStateJson, "recipes", "craftingContext", "workstationCoordKey"],
+    ) || typeof record.playerStateJson !== "string") return { ok: false, reason: BS.invalidShape };
     const state = validatePlayerStateJson(record.playerStateJson);
-    if (!state.ok) return { ok: false, reason: "invalid_player_state", playerStateIssue: state.reason };
+    if (!state.ok) return { ok: false, reason: BS.invalidPlayerState, playerStateIssue: state.reason };
     // This pre-launch capsule accepts only its one current canonical envelope.
     if (record.playerStateJson !== state.playerStateJson || state.state.version !== PLAYER_STATE_VERSION) {
-      return { ok: false, reason: "invalid_player_state" };
+      return { ok: false, reason: BS.invalidPlayerState };
     }
     if (!Array.isArray(record.recipes) || record.recipes.length > MAX_INVENTORY_ACTION_RECIPE_BATCHES) {
       return { ok: false, reason: "invalid_recipe_batches" };
@@ -215,14 +216,14 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
       if (craftTotal > MAX_INVENTORY_ACTION_CRAFTS) return { ok: false, reason: "invalid_recipe_batches" };
       recipes.push({ recipeId: batch.recipeId, crafts: batch.crafts });
     }
-    if (record.craftingContext !== "field" && record.craftingContext !== "crafting_table") {
-      return { ok: false, reason: "invalid_action" };
+    if (record.craftingContext !== "field" && record.craftingContext !== BS.craftingTable) {
+      return { ok: false, reason: BS.invalidAction };
     }
     if (typeof record.workstationCoordKey !== "string"
       || (record.craftingContext === "field"
         ? record.workstationCoordKey !== ""
         : !COORDINATE.test(record.workstationCoordKey))) {
-      return { ok: false, reason: "invalid_coordinate" };
+      return { ok: false, reason: BS.invalidCoordinate };
     }
     action = {
       kind: "workspace_commit",
@@ -233,7 +234,7 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
       workstationCoordKey: record.workstationCoordKey,
     };
   } else {
-    return { ok: false, reason: "invalid_action" };
+    return { ok: false, reason: BS.invalidAction };
   }
   return {
     ok: true,
@@ -313,7 +314,7 @@ export function applyInventoryAction(
   for (const batch of action.recipes) {
     const recipe = RECIPES.find(({ id }) => id === batch.recipeId);
     if (!recipe) return { ok: false, reason: "unknown_recipe" };
-    if (recipe.craftingContext === "crafting_table" && action.craftingContext !== "crafting_table") {
+    if (recipe.craftingContext === BS.craftingTable && action.craftingContext !== BS.craftingTable) {
       return { ok: false, reason: "requires_crafting_table" };
     }
     for (let count = 0; count < batch.crafts; count += 1) {
@@ -358,7 +359,7 @@ export function decideInventoryActionReplay(
   storedFingerprint: string | null,
   requestFingerprint: string,
 ): "new" | "replay" | "operation_id_reused" {
-  return storedFingerprint === null ? "new" : storedFingerprint === requestFingerprint ? "replay" : "operation_id_reused";
+  return storedFingerprint === null ? "new" : storedFingerprint === requestFingerprint ? "replay" : BS.operationIdReused;
 }
 
 export type InventoryActionReceiptPayload = {

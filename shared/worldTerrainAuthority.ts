@@ -1,4 +1,5 @@
 import type { BlockType } from "./protocol.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const WORLD_TERRAIN_SEED = 7319;
 export const WORLD_TERRAIN_MIN_Y = -24;
@@ -29,10 +30,10 @@ interface OreVeinConfig {
 }
 
 const ORE_VEINS: readonly OreVeinConfig[] = [
-  { block: "diamond_ore", minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
-  { block: "gold_ore", minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
-  { block: "iron_ore", minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
-  { block: "coal_ore", minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
+  { block: BS.diamondOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
+  { block: BS.goldOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
+  { block: BS.ironOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
+  { block: BS.coalOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
 ];
 
 function hash2(x: number, z: number, seed: number): number {
@@ -292,8 +293,8 @@ function caveCarvesBlock(x: number, y: number, z: number, seed: number): boolean
 
 function groundAfterCaves(x: number, y: number, z: number, seed: number): BlockType {
   const block = strataBlockAt(x, y, z, seed);
-  const carvable = block === "stone" || block === "coal_ore" || block === "iron_ore"
-    || block === "gold_ore" || block === "diamond_ore" || block === "clay";
+  const carvable = block === "stone" || block === BS.coalOre || block === BS.ironOre
+    || block === BS.goldOre || block === BS.diamondOre || block === "clay";
   return carvable && caveCarvesBlock(x, y, z, seed) ? "air" : block;
 }
 

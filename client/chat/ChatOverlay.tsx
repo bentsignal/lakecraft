@@ -24,6 +24,14 @@ export interface ChatOverlayProps {
   error?: string;
   maxLength?: number;
   placeholder?: string;
+  surfaceLabel?: string;
+  historyLabel?: string;
+  inputLabel?: string;
+  submitLabel?: string;
+  submitText?: string;
+  playerSender?: string;
+  systemSender?: string;
+  warningSender?: string;
   onDraftChange: (value: string) => void;
   onSubmit: (value: string) => void;
   onOpen?: () => void;
@@ -31,9 +39,28 @@ export interface ChatOverlayProps {
   onRetryMessage?: (message: LakecraftChatMessage) => void;
 }
 
-function ChatMessageRow({ message, onRetry }: { message: LakecraftChatMessage; onRetry?: (message: LakecraftChatMessage) => void }) {
+interface ChatSenderLabels {
+  player?: string;
+  system: string;
+  warning: string;
+}
+
+function senderForMessage(message: LakecraftChatMessage, labels: ChatSenderLabels): string {
   const tone = message.tone ?? "player";
-  const sender = tone === "player" ? `<${message.username}>` : tone === "warning" ? "[Warning]" : "[Server]";
+  return tone === "player" ? labels.player ?? `<${message.username}>` : tone === "warning" ? labels.warning : labels.system;
+}
+
+function ChatMessageRow({
+  message,
+  onRetry,
+  senderLabels,
+}: {
+  message: LakecraftChatMessage;
+  onRetry?: (message: LakecraftChatMessage) => void;
+  senderLabels: ChatSenderLabels;
+}) {
+  const tone = message.tone ?? "player";
+  const sender = senderForMessage(message, senderLabels);
   return (
     <li className={`lc-chat-message is-${tone}${message.own ? " is-own" : ""}${message.delivery ? ` is-${message.delivery}` : ""}`}>
       <p><strong>{sender}</strong> <span>{message.body}</span></p>
@@ -55,6 +82,14 @@ export function ChatOverlay({
   error,
   maxLength = 240,
   placeholder = "Message everyone…",
+  surfaceLabel = "Multiplayer chat",
+  historyLabel = "Chat messages",
+  inputLabel = "Chat message",
+  submitLabel = "Send chat message",
+  submitText = "Send",
+  playerSender,
+  systemSender = "[Server]",
+  warningSender = "[Warning]",
   onDraftChange,
   onSubmit,
   onClose,
@@ -62,6 +97,7 @@ export function ChatOverlay({
 }: ChatOverlayProps) {
   const historyRef = useRef<HTMLUListElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const senderLabels = { player: playerSender, system: systemSender, warning: warningSender };
 
   useEffect(() => {
     if (!open) return;
@@ -85,12 +121,12 @@ export function ChatOverlay({
   if (!open) {
     const recent = messages.slice(-3);
     return (
-      <aside className="lc-chat-peek" aria-label="Multiplayer chat">
+      <aside className="lc-chat-peek" aria-label={surfaceLabel}>
         <ChatStyles />
         <ol aria-live="polite" aria-relevant="additions">
           {recent.map((message) => (
             <li className={`is-${message.tone ?? "player"}`} key={message.id}>
-              <strong>{message.tone === "player" || !message.tone ? `<${message.username}>` : message.tone === "warning" ? "[Warning]" : "[Server]"}</strong>
+              <strong>{senderForMessage(message, senderLabels)}</strong>
               <span>{message.body}</span>
             </li>
           ))}
@@ -101,14 +137,16 @@ export function ChatOverlay({
   }
 
   return (
-    <section className="lc-chat-dialog" role="dialog" aria-label="Multiplayer chat" aria-modal="false">
+    <section className="lc-chat-dialog" role="dialog" aria-label={surfaceLabel} aria-modal="false">
       <ChatStyles />
-      <ul className="lc-chat-history" ref={historyRef} role="log" aria-live="polite" aria-relevant="additions text" aria-label="Chat messages">
-        {messages.map((message) => <ChatMessageRow key={message.id} message={message} onRetry={onRetryMessage} />)}
+      <ul className="lc-chat-history" ref={historyRef} role="log" aria-live="polite" aria-relevant="additions text" aria-label={historyLabel}>
+        {messages.map((message) => (
+          <ChatMessageRow key={message.id} message={message} onRetry={onRetryMessage} senderLabels={senderLabels} />
+        ))}
       </ul>
 
       <form className="lc-chat-compose" onSubmit={submit}>
-        <label htmlFor="lc-chat-input">Chat message</label>
+        <label htmlFor="lc-chat-input">{inputLabel}</label>
         <div>
           <input
             id="lc-chat-input"
@@ -121,7 +159,7 @@ export function ChatOverlay({
             value={draft}
           />
           <small className={draft.length >= maxLength ? "is-limit" : ""}>{draft.length > maxLength - 24 ? `${draft.length}/${maxLength}` : ""}</small>
-          <button aria-label="Send chat message" disabled={!draft.trim() || sending || !connected} type="submit">Send</button>
+          <button aria-label={submitLabel} disabled={!draft.trim() || sending || !connected} type="submit">{submitText}</button>
         </div>
         {error ? <p role="alert">{error}</p> : null}
       </form>

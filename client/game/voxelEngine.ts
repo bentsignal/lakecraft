@@ -2116,7 +2116,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const projectileDamage = consumeMobProjectileDamage(mobSimulation);
       if (playerHealth > 0) {
         const incomingDamage = contactDamage + projectileDamage;
-        if (incomingDamage > 0) {
+        if (incomingDamage > 0 && options.canTakePlayerDamage?.() !== false) {
           const mitigatedDamage = mitigatedPlayerDamage(incomingDamage, options.getPlayerProtection?.() ?? 0);
           const appliedDamage = Math.min(playerHealth, mitigatedDamage);
           playerHealth -= appliedDamage;
@@ -2144,7 +2144,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         ? mitigatedPlayerDamage(rawDamage, options.getPlayerProtection?.() ?? 0)
         : 0;
       const appliedDamage = Math.min(playerHealth, damage);
-      if (appliedDamage > 0) {
+      if (appliedDamage > 0 && options.canTakePlayerDamage?.() !== false) {
         playerHealth -= appliedDamage;
         options.onPlayerDamage?.(appliedDamage, "creeper");
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
@@ -2247,7 +2247,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallPeakY = pose.y;
       const floorBlock = getBlock(Math.floor(pose.x), Math.floor(pose.y - 0.08), Math.floor(pose.z));
       if (fallDistance > 0.25 && floorBlock !== BLOCK.AIR) options.onFootstep?.(floorBlock);
-      if (damage > 0 && playerHealth > 0) {
+      if (damage > 0 && playerHealth > 0 && options.canTakePlayerDamage?.() !== false) {
         const appliedDamage = Math.min(playerHealth, damage);
         playerHealth -= appliedDamage;
         options.onPlayerDamage?.(appliedDamage, "fall");
@@ -3300,7 +3300,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         ? mitigatedPlayerDamage(rawDamage, options.getPlayerProtection?.() ?? 0)
         : 0;
       const appliedDamage = Math.min(playerHealth, damage);
-      if (appliedDamage > 0) {
+      if (appliedDamage > 0 && options.canTakePlayerDamage?.() !== false) {
         playerHealth -= appliedDamage;
         options.onPlayerDamage?.(appliedDamage, "tnt");
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);

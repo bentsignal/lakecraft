@@ -23,6 +23,7 @@ import {
   normalizeChestToken,
   validateChestCoordinate,
 } from "./chests.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const MAX_CHEST_TRANSFER_REQUEST_LENGTH = 8_191;
 export const MAX_PLAYER_STATE_JSON_LENGTH = 7_000;
@@ -143,16 +144,16 @@ export type ChestTransferApplyResult =
     }
   | { ok: false; reason: "empty_source" | "no_capacity" | "conservation_failure" };
 
-const PLAYER_STATE_KEYS = ["version", "inventory", "selectedHotbar", "equipment", "respawnPoint", "hunger"] as const;
+const PLAYER_STATE_KEYS = ["version", BS.inventory, BS.selectedHotbar, "equipment", "respawnPoint", "hunger"] as const;
 const REQUEST_KEYS = [
-  "operationId",
-  "coordKey",
+  BS.operationId,
+  BS.coordKey,
   "direction",
-  "sourceSlot",
+  BS.sourceSlot,
   "count",
   "expectedChestUpdatedAt",
-  "expectedInventoryUpdatedAt",
-  "playerStateJson",
+  BS.expectedInventoryUpdatedAt,
+  BS.playerStateJson,
 ] as const;
 const ARMOR_SLOTS: readonly ArmorSlot[] = ["head", "chest", "legs", "feet"];
 
@@ -174,7 +175,7 @@ function strictInventory(
     if (slot === null) continue;
     if (!slot || typeof slot !== "object" || Array.isArray(slot)) return null;
     const record = slot as Record<string, unknown>;
-    if (!hasOnlyKeys(record, ["itemId", "count", "durability"], ["itemId", "count"])) return null;
+    if (!hasOnlyKeys(record, ["itemId", "count", BS.durability], ["itemId", "count"])) return null;
     if (typeof record.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)) return null;
     const itemId = record.itemId as ItemId;
     if (typeof record.count !== "number" || !Number.isInteger(record.count)
@@ -218,7 +219,7 @@ function strictEquipment(value: unknown, allowLegacyArmorIds: boolean): Equipmen
     }
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
     const stack = candidate as Record<string, unknown>;
-    if (!hasOnlyKeys(stack, ["itemId", "durability"], ["itemId", "durability"])
+    if (!hasOnlyKeys(stack, ["itemId", BS.durability], ["itemId", BS.durability])
       || typeof stack.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, stack.itemId)) return null;
     const armor = ITEMS[stack.itemId as ItemId].armor;
     if (!armor || armor.slot !== slot || typeof stack.durability !== "number"
@@ -261,9 +262,9 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
   if (Array.isArray(parsed)) {
     inventory = strictInventory(parsed, INVENTORY_SIZE, true, true);
   } else {
-    if (!parsed || typeof parsed !== "object") return { ok: false, reason: "invalid_shape" };
+    if (!parsed || typeof parsed !== "object") return { ok: false, reason: BS.invalidShape };
     const record = parsed as Record<string, unknown>;
-    if (!hasOnlyKeys(record, PLAYER_STATE_KEYS, ["inventory"])) return { ok: false, reason: "invalid_shape" };
+    if (!hasOnlyKeys(record, PLAYER_STATE_KEYS, [BS.inventory])) return { ok: false, reason: BS.invalidShape };
     if (record.version !== undefined && record.version !== 1 && record.version !== 2
       && record.version !== 3 && record.version !== PLAYER_STATE_VERSION) {
       return { ok: false, reason: "invalid_version" };
@@ -293,7 +294,7 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
       hunger = record.hunger;
     }
   }
-  if (!inventory) return { ok: false, reason: "invalid_inventory" };
+  if (!inventory) return { ok: false, reason: BS.invalidInventory };
   const state: CanonicalPlayerState = {
     version: PLAYER_STATE_VERSION,
     inventory,
@@ -366,16 +367,16 @@ export function validateChestTransferRequestJson(rawJson: string): ChestTransfer
   } catch {
     return { ok: false, reason: "invalid_json" };
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: "invalid_shape" };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
-  if (!hasOnlyKeys(record, REQUEST_KEYS, REQUEST_KEYS)) return { ok: false, reason: "invalid_shape" };
+  if (!hasOnlyKeys(record, REQUEST_KEYS, REQUEST_KEYS)) return { ok: false, reason: BS.invalidShape };
   if (typeof record.operationId !== "string"
     || record.operationId.length < MIN_OPERATION_ID_LENGTH
     || record.operationId.length > MAX_OPERATION_ID_LENGTH
-    || !/^[A-Za-z0-9_-]+$/.test(record.operationId)) return { ok: false, reason: "invalid_operation_id" };
-  if (typeof record.coordKey !== "string") return { ok: false, reason: "invalid_coordinate" };
+    || !/^[A-Za-z0-9_-]+$/.test(record.operationId)) return { ok: false, reason: BS.invalidOperationId };
+  if (typeof record.coordKey !== "string") return { ok: false, reason: BS.invalidCoordinate };
   const coordinate = validateChestCoordinate(record.coordKey);
-  if (!coordinate.ok) return { ok: false, reason: "invalid_coordinate" };
+  if (!coordinate.ok) return { ok: false, reason: BS.invalidCoordinate };
   if (record.direction !== "to_chest" && record.direction !== "from_chest") return { ok: false, reason: "invalid_direction" };
   if (typeof record.sourceSlot !== "number" || !Number.isInteger(record.sourceSlot)
     || record.sourceSlot < 0 || record.sourceSlot >= CHEST_SLOT_COUNT) return { ok: false, reason: "invalid_source_slot" };
@@ -387,9 +388,9 @@ export function validateChestTransferRequestJson(rawJson: string): ChestTransfer
   const expectedChestUpdatedAt = normalizeChestToken(record.expectedChestUpdatedAt);
   const expectedInventoryUpdatedAt = normalizeChestToken(record.expectedInventoryUpdatedAt);
   if (expectedChestUpdatedAt === null || expectedInventoryUpdatedAt === null) return { ok: false, reason: "invalid_token" };
-  if (typeof record.playerStateJson !== "string") return { ok: false, reason: "invalid_player_state" };
+  if (typeof record.playerStateJson !== "string") return { ok: false, reason: BS.invalidPlayerState };
   const playerState = validatePlayerStateJson(record.playerStateJson);
-  if (!playerState.ok) return { ok: false, reason: "invalid_player_state", playerStateIssue: playerState.reason };
+  if (!playerState.ok) return { ok: false, reason: BS.invalidPlayerState, playerStateIssue: playerState.reason };
   const request: ChestTransferRequest = {
     operationId: record.operationId,
     coordKey: coordinate.coordKey,
@@ -433,7 +434,7 @@ export function decideChestTransferReplay(
   requestFingerprint: string,
 ): ChestTransferReplayDecision {
   if (existingFingerprint === null) return "new";
-  return existingFingerprint === requestFingerprint ? "replay" : "operation_id_reused";
+  return existingFingerprint === requestFingerprint ? "replay" : BS.operationIdReused;
 }
 
 function stackConservationKey(stack: ItemStack): string {
@@ -468,18 +469,18 @@ export function applyChestTransfer(
   const source = request.direction === "to_chest" ? player : chest;
   const target = request.direction === "to_chest" ? chest : player;
   const sourceStack = source[request.sourceSlot];
-  if (!sourceStack) return { ok: false, reason: "empty_source" };
+  if (!sourceStack) return { ok: false, reason: BS.emptySource };
   const requested = Math.min(request.count, sourceStack.count);
   const added = addItemStack(target, sourceStack, requested);
   const movedCount = requested - added.remainder;
-  if (movedCount <= 0) return { ok: false, reason: "no_capacity" };
+  if (movedCount <= 0) return { ok: false, reason: BS.noCapacity };
   if (movedCount === sourceStack.count) source[request.sourceSlot] = null;
   else source[request.sourceSlot] = { ...sourceStack, count: sourceStack.count - movedCount };
   const nextPlayer = request.direction === "to_chest" ? source : added.inventory;
   const nextChest = request.direction === "to_chest" ? added.inventory : source;
   const before = combinedItemTotals(playerInventory, chestInventory);
   const after = combinedItemTotals(nextPlayer, nextChest);
-  if (!totalsEqual(before, after)) return { ok: false, reason: "conservation_failure" };
+  if (!totalsEqual(before, after)) return { ok: false, reason: BS.conservationFailure };
   return {
     ok: true,
     playerInventory: nextPlayer,

@@ -1,4 +1,5 @@
 import { BLOCKS, ITEMS, type ArmorSlot, type BlockId, type ItemId, type ToolKind, type ToolTier } from "../../shared/game.ts";
+import * as BS from "../../shared/bundleStrings.ts";
 
 export const ITEM_ICON_SIZE = 16;
 export type ItemIconFamily = "block" | "material" | "tool" | "armor" | "food";
@@ -18,13 +19,13 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   let palette: Palette;
   let variant = itemId;
   if (itemId === "sapling") palette = sapling(grid);
-  else if (itemId === "oak_fence") palette = oakFence(grid);
-  else if (itemId === "oak_fence_gate") palette = oakFenceGate(grid);
-  else if (itemId === "stone_brick_slab") palette = stoneBrickSlab(grid);
+  else if (itemId === BS.oakFence) palette = oakFence(grid);
+  else if (itemId === BS.oakFenceGate) palette = oakFenceGate(grid);
+  else if (itemId === BS.stoneBrickSlab) palette = stoneBrickSlab(grid);
   else if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
     palette = bow(grid);
-  } else if (itemId === "flint_and_steel") {
+  } else if (itemId === BS.flintAndSteel) {
     palette = flintAndSteel(grid);
   } else if (itemId === "shears") {
     palette = shears(grid);
@@ -73,7 +74,7 @@ function block(g: Grid, id: BlockId): Palette {
 }
 
 function decorateBlock(g: Grid, id: BlockId): void {
-  if (["coal_ore", "iron_ore", "gold_ore", "diamond_ore"].includes(id)) {
+  if ([BS.coalOre, BS.ironOre, BS.goldOre, BS.diamondOre].includes(id)) {
     dots(g, "a", [[7,3],[10,5],[5,6],[4,9],[6,11],[10,9],[12,8],[9,12]]); dots(g, "h", [[8,3],[5,9],[11,8]]); return;
   }
   switch (id) {
@@ -88,8 +89,8 @@ function decorateBlock(g: Grid, id: BlockId): void {
       dots(g,"h",[[7,3],[11,4],[5,6],[9,7],[4,10],[8,11],[11,10]]);
       dots(g,"a",[[6,2],[10,3],[3,6],[8,5],[12,7],[5,9],[9,10],[6,12]]);
       break;
-    case "cobblestone": box(g,4,4,4,1,"d"); box(g,8,7,4,1,"d"); dots(g,"a",[[3,6],[7,5],[5,10],[11,10],[8,12]]); break;
-    case "stone_bricks":
+    case BS.cobblestone: box(g,4,4,4,1,"d"); box(g,8,7,4,1,"d"); dots(g,"a",[[3,6],[7,5],[5,10],[11,10],[8,12]]); break;
+    case BS.stoneBricks:
       box(g,3,5,10,1,"d"); box(g,3,9,10,1,"d");
       box(g,7,2,1,4,"d"); box(g,5,6,1,4,"d"); box(g,9,6,1,4,"d"); box(g,7,10,1,3,"d");
       dots(g,"h",[[4,4],[8,3],[10,7],[6,8],[4,11],[9,11]]);
@@ -104,7 +105,7 @@ function decorateBlock(g: Grid, id: BlockId): void {
     case "log": box(g,5,4,6,1,"d"); dots(g,"a",[[7,2],[6,3],[9,3],[8,5],[4,8],[5,10],[11,9]]); break;
     case "leaves": dots(g,"a",[[6,2],[9,2],[4,5],[7,5],[11,5],[3,8],[6,9],[11,8],[9,11]]); dots(g,"d",[[8,3],[5,6],[10,7],[5,11]]); break;
     case "planks": box(g,3,6,10,1,"d"); box(g,3,10,4,1,"d"); box(g,9,8,4,1,"d"); break;
-    case "crafting_table": box(g,4,4,3,2,"d"); box(g,9,4,3,2,"d"); box(g,4,9,3,2,"a"); box(g,10,9,2,2,"a"); break;
+    case BS.craftingTable: box(g,4,4,3,2,"d"); box(g,9,4,3,2,"d"); box(g,4,9,3,2,"a"); box(g,10,9,2,2,"a"); break;
     case "furnace": box(g,4,8,4,3,"d"); box(g,9,7,3,3,"o"); dots(g,"h",[[5,8],[6,8]]); break;
     case "chest": box(g,3,8,10,1,"d"); box(g,7,7,2,4,"h"); break;
     case "tnt": box(g,3,7,10,3,"h"); box(g,4,8,8,1,"o"); dots(g,"a",[[5,2],[10,3],[4,5],[11,11],[6,12]]); break;
@@ -306,10 +307,10 @@ function material(g: Grid, id: ItemId): Palette {
     dots(g,"l",[[5,4],[6,4],[9,4],[10,4],[5,5],[8,6],[9,6],[7,7],[8,7],[6,8],[7,8],[6,9]]);
     dots(g,"d",[[10,5],[11,6],[10,8],[9,9],[10,10],[5,10]]);
   }
-  else if (["coal","raw_iron","raw_gold"].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }
+  else if (["coal",BS.rawIron,BS.rawGold].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }
   else if (id === "flint") { dots(g,"o",[[7,1],[8,1],[6,2],[9,2],[5,3],[10,3],[4,4],[11,4],[3,6],[10,6],[2,8],[9,8],[3,10],[8,10],[4,12],[7,12],[5,14],[6,14]]); box(g,4,4,6,7,"m"); box(g,3,6,5,4,"m"); dots(g,"l",[[6,3],[5,5],[4,7],[6,6]]); dots(g,"d",[[9,4],[8,7],[7,10],[6,12]]); }
-  else if (id === "gunpowder") { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[3,7],[13,7],[4,11],[11,12],[7,14],[9,14]]); box(g,5,4,6,9,"m"); box(g,3,7,10,4,"m"); dots(g,"l",[[6,4],[9,5],[4,7],[7,9],[11,8],[6,12]]); dots(g,"d",[[8,3],[5,6],[10,10],[8,13],[12,7]]); }
-  else if (id === "iron_ingot" || id === "gold_ingot") { box(g,3,5,10,7,"o"); box(g,5,3,6,2,"o"); box(g,4,5,8,5,"m"); box(g,5,4,6,2,"l"); box(g,5,9,7,2,"d"); }
+  else if (id === BS.gunpowder) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[3,7],[13,7],[4,11],[11,12],[7,14],[9,14]]); box(g,5,4,6,9,"m"); box(g,3,7,10,4,"m"); dots(g,"l",[[6,4],[9,5],[4,7],[7,9],[11,8],[6,12]]); dots(g,"d",[[8,3],[5,6],[10,10],[8,13],[12,7]]); }
+  else if (id === BS.ironIngot || id === BS.goldIngot) { box(g,3,5,10,7,"o"); box(g,5,3,6,2,"o"); box(g,4,5,8,5,"m"); box(g,5,4,6,2,"l"); box(g,5,9,7,2,"d"); }
   else if (id === "diamond") { box(g,5,2,6,2,"o"); box(g,3,4,10,4,"o"); box(g,5,8,6,3,"o"); box(g,7,11,2,3,"o"); box(g,5,4,6,3,"m"); box(g,6,7,4,4,"m"); dots(g,"l",[[6,3],[7,3],[5,5],[6,5],[7,7]]); dots(g,"d",[[10,6],[9,9],[8,12]]); }
   else { box(g,4,4,8,8,"o"); box(g,5,5,6,6,"m"); dots(g,"l",[[6,5],[7,5]]); dots(g,"d",[[10,9],[9,10]]); }
   return p;
@@ -333,7 +334,7 @@ function food(g: Grid, id: ItemId): Palette {
     box(g,7,1,2,3,"s"); dots(g,"g",[[9,1],[10,1],[11,1],[9,2],[10,2]]); dots(g,"h",[[9,1],[10,1]]);
     return applePalette;
   }
-  if (id === "raw_chicken" || id === "cooked_chicken") {
+  if (id === "raw_chicken" || id === BS.cookedChicken) {
     // A compact diagonal drumstick: broad meat at the upper left, narrow bone
     // and two knuckles at the lower right. Cooked meat gains a crisp edge and
     // char pixels while raw meat keeps pale highlights, so both sprites read

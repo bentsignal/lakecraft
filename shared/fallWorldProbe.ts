@@ -1,4 +1,5 @@
 import { BLOCK_TYPES, type BlockType } from "./protocol.ts";
+import * as BS from "./bundleStrings.ts";
 
 export const FALL_PLAYER_HALF_WIDTH = 0.29;
 export const FALL_SUPPORT_INSET = 0.26;
@@ -79,6 +80,6 @@ export function validFallProbeBlock(value: unknown): value is BlockType {
 
 /** Matches the current client collision rule; ladders reset falls separately. */
 export function fallSupportBlockHasCollision(block: BlockType): boolean {
-  return block !== "air" && block !== "torch" && block !== "door_open"
-    && block !== "oak_fence_gate_open" && block !== "ladder" && block !== "stone_brick_slab";
+  return block !== "air" && block !== "torch" && block !== BS.doorOpen
+    && block !== BS.oakFenceGateOpen && block !== "ladder" && block !== BS.stoneBrickSlab;
 }

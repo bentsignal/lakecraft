@@ -21,6 +21,7 @@ import {
 } from "../shared/mobCombat.ts";
 import { MAX_HEALTH } from "../shared/game.ts";
 import { mitigatedPlayerDamage } from "../shared/playerCombat.ts";
+import * as BS from "../shared/bundleStrings.ts";
 
 export const MOB_WORLD_AUTHORITY_KEY = "main";
 export const MOB_WORLD_SEED = 7_319;
@@ -70,8 +71,8 @@ export interface MobWorldReplayInput {
   targets: MobMotionTargetSnapshot[];
 }
 
-const CHECKPOINT_REQUEST_KEYS = ["leaseId", "expectedRevision"] as const;
-const DAMAGE_REQUEST_KEYS = ["operationId", "mobId", "checkpointRevision", "tick"] as const;
+const CHECKPOINT_REQUEST_KEYS = ["leaseId", BS.expectedRevision] as const;
+const DAMAGE_REQUEST_KEYS = [BS.operationId, "mobId", "checkpointRevision", "tick"] as const;
 
 function exactKeys(record: Record<string, unknown>, expected: readonly string[]): boolean {
   const keys = Object.keys(record);

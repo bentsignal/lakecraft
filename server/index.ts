@@ -319,13 +319,14 @@ import {
   utcQuotaWindowStartedAt,
   type MotionBatchV1,
 } from "../shared/multiplayerSegments.ts";
+import * as BS from "../shared/bundleStrings.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 
 function treePlannerBlockId(block: BlockType): BlockId | "air" {
   if (block === "air") return "air";
   if (block === "wood") return "log";
-  if (block === "door_closed" || block === "door_open") return "door";
+  if (block === BS.doorClosed || block === "door_open") return "door";
   if (block === "oak_fence_gate_closed" || block === "oak_fence_gate_open") return "oak_fence_gate";
   return block as BlockId;
 }
@@ -718,7 +719,7 @@ async function authoritativeRangedOccluders(
       continue;
     }
     const sampled = sampleWorldChunkSnapshot(chunkKey, rows[0].snapshotJson, group);
-    if (!sampled.ok || sampled.blocks.length !== group.length) return { ok: false, reason: "invalid_world_state" };
+    if (!sampled.ok || sampled.blocks.length !== group.length) return { ok: false, reason: BS.invalidWorldState };
     for (let index = 0; index < group.length; index += 1) {
       const cell = group[index];
       blocks.set(cell.coordKey, sampled.blocks[index] ?? naturalWorldBlockAt(cell.x, cell.y, cell.z));
@@ -891,7 +892,7 @@ async function applyAuthoritativeWorldExplosion(
       continue;
     }
     const sampled = sampleWorldChunkSnapshot(chunkKey, rows[0].snapshotJson, group);
-    if (!sampled.ok || sampled.blocks.length !== group.length) return { ok: false, reason: "invalid_world_state" };
+    if (!sampled.ok || sampled.blocks.length !== group.length) return { ok: false, reason: BS.invalidWorldState };
     for (let index = 0; index < group.length; index += 1) {
       const cell = group[index];
       blocks.set(cell.coordKey, sampled.blocks[index] ?? naturalWorldBlockAt(cell.x, cell.y, cell.z));
@@ -904,12 +905,12 @@ async function applyAuthoritativeWorldExplosion(
   const authoritativeCells: AuthoritativeTntBlastCell[] = [];
   const existingEdits = new Map<string, Record<string, unknown> | null>();
   for (const cell of plannedDestruction) {
-    const rows = await db.worldEdits.withIndex("by_coord", (q) => q.eq("coordKey", cell.coordKey)).order("desc").take(2);
+    const rows = await db.worldEdits.withIndex("by_coord", (q) => q.eq(BS.coordKey, cell.coordKey)).order("desc").take(2);
     if (rows.length > 1) return { ok: false, reason: "duplicate_world_state" };
     const existing = rows[0] ?? null;
     existingEdits.set(cell.coordKey, existing);
     const blockInstanceToken = cell.previousBlock === "tnt" && existing ? furnaceBlockInstanceToken(existing) : null;
-    if (cell.previousBlock === "tnt" && !blockInstanceToken) return { ok: false, reason: "invalid_world_state" };
+    if (cell.previousBlock === "tnt" && !blockInstanceToken) return { ok: false, reason: BS.invalidWorldState };
     authoritativeCells.push({ ...cell, blockInstanceToken });
   }
   const dropPlan = planCreeperBlockDrops(input.eventId, destruction);
@@ -947,7 +948,7 @@ async function applyAuthoritativeWorldExplosion(
     if (rawDamage <= 0) continue;
     const combatRows = await db.playerCombat.withIndex("by_user", (q) => q.eq("userId", candidate.row.userId)).order("desc").take(2);
     const inventoryRows = await db.inventories.withIndex("by_user", (q) => q.eq("userId", candidate.row.userId)).order("desc").take(2);
-    if (combatRows.length > 1 || inventoryRows.length > 1) return { ok: false, reason: "duplicate_state" };
+    if (combatRows.length > 1 || inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
     if (inventoryRows.length !== 1) continue;
     const inventoryState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
     if (!inventoryState.ok) return { ok: false, reason: "target_state_invalid" };
@@ -966,7 +967,7 @@ async function applyAuthoritativeWorldExplosion(
       activityHalfUnits: storedPresenceActivityHalfUnits(candidate.row),
     });
     if (survival.revisionExhausted || survival.revision >= Number.MAX_SAFE_INTEGER) {
-      return { ok: false, reason: "combat_revision_exhausted" };
+      return { ok: false, reason: BS.combatRevisionExhausted };
     }
     const damage = mitigatedPlayerDamage(rawDamage, equippedArmorProtection(inventoryState.state.equipment));
     const health = Math.max(0, survival.health - damage);
@@ -1139,10 +1140,10 @@ async function authoritativeFallWorldFacts(
       for (const cell of group) blocks.set(cell.coordKey, naturalFallProbeBlock(cell));
       continue;
     }
-    if (typeof chunkRow.snapshotJson !== "string") return { ok: false, reason: "invalid_world_state" };
+    if (typeof chunkRow.snapshotJson !== "string") return { ok: false, reason: BS.invalidWorldState };
     const sampled = sampleWorldChunkSnapshot(chunkKey, chunkRow.snapshotJson, group);
     if (!sampled.ok || sampled.blocks.length !== group.length) {
-      return { ok: false, reason: "invalid_world_state" };
+      return { ok: false, reason: BS.invalidWorldState };
     }
     for (let index = 0; index < group.length; index += 1) {
       blocks.set(group[index].coordKey, sampled.blocks[index] ?? naturalFallProbeBlock(group[index]));
@@ -1153,10 +1154,10 @@ async function authoritativeFallWorldFacts(
   let onLadder = false;
   for (const cell of cells) {
     const block = blocks.get(cell.coordKey);
-    if (!block) return { ok: false, reason: "invalid_world_state" };
+    if (!block) return { ok: false, reason: BS.invalidWorldState };
     if (cell.support && fallSupportBlockHasCollision(block)) supported = true;
     if (cell.slabSupport && block === "stone_brick_slab") supported = true;
-    if (cell.doorTop && cell.y + 1 > 0 && block === "door_closed") supported = true;
+    if (cell.doorTop && cell.y + 1 > 0 && block === BS.doorClosed) supported = true;
     if (cell.ladder && block === "ladder") onLadder = true;
   }
   return { ok: true, supported, onLadder, chunkReads };
@@ -1185,14 +1186,14 @@ async function authorizeInventoryCraftingTable(
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .order("desc")
     .take(2);
-  if (presenceRows.length !== 1) return "out_of_reach";
+  if (presenceRows.length !== 1) return BS.outOfReach;
   const presence = presenceRows[0];
   const pose = validatePresencePoseFields(presence.x, presence.y, presence.z, presence.yaw, presence.pitch);
   const heartbeatAt = /^\d{1,16}$/.test(presence.heartbeatAt ?? "") ? Number(presence.heartbeatAt) : Number.NaN;
   if (!pose || !presence.online || !Number.isFinite(heartbeatAt) || serverNow - heartbeatAt < 0
     || serverNow - heartbeatAt > ACTIVE_PLAYER_WINDOW_MS
     || Math.hypot(pose.x - (coordinate.x + 0.5), pose.y - (coordinate.y + 0.5), pose.z - (coordinate.z + 0.5)) > 6) {
-    return "out_of_reach";
+    return BS.outOfReach;
   }
   const chunkKey = worldEditChunkKey(coordinate.x, coordinate.z);
   const chunkRows = await db.worldChunks
@@ -1206,7 +1207,7 @@ async function authorizeInventoryCraftingTable(
     if (!sampled.ok) return "invalid_state";
     block = sampled.blocks[0] ?? block;
   }
-  return block === "crafting_table" ? "ok" : "crafting_table_required";
+  return block === BS.craftingTable ? "ok" : "crafting_table_required";
 }
 
 type FurnaceAuthorityView = {
@@ -1302,7 +1303,7 @@ export default capsule({
       actorId: string(),
       editedAt: string().default("0")
     })
-      .index("by_coord", ["coordKey"])
+      .index("by_coord", [BS.coordKey])
       .index("by_edited", ["editedAt"]),
 
     /** Compact authoritative renderer snapshots, one row per 8x8 x/z column. */
@@ -1475,7 +1476,7 @@ export default capsule({
       coordKey: string(),
       inventoryJson: string(),
       lastActorId: string()
-    }).index("by_coord", ["coordKey"]),
+    }).index("by_coord", [BS.coordKey]),
 
     /** One deterministic three-slot furnace state per placed block instance. */
     furnaces: table({
@@ -1484,7 +1485,7 @@ export default capsule({
       stateJson: string(),
       revision: string().default("1"),
       lastActorId: string()
-    }).index("by_coord", ["coordKey"]),
+    }).index("by_coord", [BS.coordKey]),
 
     /** Bounded exact-replay window for atomic player/furnace transfers. */
     furnaceTransferReceipts: table({
@@ -1644,7 +1645,7 @@ export default capsule({
       cascadeDepth: string()
     })
       .index("by_event", ["eventId"])
-      .index("by_coord", ["coordKey"])
+      .index("by_coord", [BS.coordKey])
       .index("by_due", ["dueAt"]),
 
     /** User-scoped ignition retries cannot create two fuses for one action. */
@@ -1730,7 +1731,7 @@ export default capsule({
     droppedItems: query(async (ctx, rawChunkKeys: string[]) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", items: [], serverNow };
+        return { ok: false, reason: BS.authenticationRequired, items: [], serverNow };
       }
       const validation = validateVisibleDroppedItemChunkKeys(rawChunkKeys);
       if (!validation.ok) return { ok: false, reason: validation.reason, items: [], serverNow };
@@ -1752,7 +1753,7 @@ export default capsule({
 
     worldEditsAt: query(async (ctx, coordKey: string) =>
       ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey.trim().slice(0, 96)))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey.trim().slice(0, 96)))
         .order("asc")
         .collect()
     ),
@@ -1760,10 +1761,10 @@ export default capsule({
     multiplayerComposite: query(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow, nearbyPlayers: [] };
+        return { ok: false, reason: BS.authenticationRequired, serverNow, nearbyPlayers: [] };
       }
       const request = parseMotionCompositeRequest(requestJson);
-      if (!request) return { ok: false, reason: "invalid_request", serverNow, nearbyPlayers: [] };
+      if (!request) return { ok: false, reason: BS.invalidRequest, serverNow, nearbyPlayers: [] };
       const callerRows = await ctx.db.playerPresence
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
@@ -1806,7 +1807,7 @@ export default capsule({
           .order("asc")
           .take(MOTION_ROWS_PER_PLAYER + 1);
         if (segmentRows.length > MOTION_ROWS_PER_PLAYER) {
-          return { ok: false, reason: "invalid_server_state", serverNow, nearbyPlayers: [] };
+          return { ok: false, reason: BS.invalidServerState, serverNow, nearbyPlayers: [] };
         }
         const validSegments: Array<{ batch: MotionBatchV1; acceptedAt: number }> = [];
         for (const segment of segmentRows) {
@@ -1816,14 +1817,14 @@ export default capsule({
           try {
             parsed = JSON.parse(segment.batchJson);
           } catch {
-            return { ok: false, reason: "invalid_server_state", serverNow, nearbyPlayers: [] };
+            return { ok: false, reason: BS.invalidServerState, serverNow, nearbyPlayers: [] };
           }
           const decoded = decodeMotionBatch(parsed);
           if (!decoded.ok || decoded.batch.sessionId !== segment.sessionId
             || decoded.batch.batchId !== segment.batchId
             || String(decoded.batch.firstSequence) !== segment.firstSequence
             || String(decoded.batch.lastSequence) !== segment.lastSequence) {
-            return { ok: false, reason: "invalid_server_state", serverNow, nearbyPlayers: [] };
+            return { ok: false, reason: BS.invalidServerState, serverNow, nearbyPlayers: [] };
           }
           if (decoded.batch.sessionId === peer.row.sessionId) validSegments.push({ batch: decoded.batch, acceptedAt });
         }
@@ -1878,14 +1879,14 @@ export default capsule({
           .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
           .order("desc")
           .take(2);
-        if (rows.length > 1) return { ok: false, reason: "duplicate_state", ...emptyMobWorld };
+        if (rows.length > 1) return { ok: false, reason: BS.duplicateState, ...emptyMobWorld };
         const stored = databaseRowToStoredMobWorld(rows[0] ?? null);
         if (!stored) return { ok: true, ...emptyMobWorld, needsCheckpoint: true };
 
         const replayInput = parseMobWorldReplayInputJson(stored.inputJson);
         if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...emptyMobWorld };
         const advanced = advanceMobWorldState(stored, serverNow, replayInput);
-        if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...emptyMobWorld };
+        if (!advanced) return { ok: false, reason: BS.invalidCheckpoint, ...emptyMobWorld };
         const needsCurrentMobTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider")
           || !advanced.state.mobs.some((mob) => mob.kind === "chicken");
         const requested = new Set(request.mobIds);
@@ -1948,7 +1949,7 @@ export default capsule({
       const coordinate = validateChestCoordinate(rawCoordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
       const chest = await ctx.db.chests
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .first();
       return { ok: true, chest: chest ?? null };
@@ -1957,15 +1958,15 @@ export default capsule({
     furnaceAt: query(async (ctx, request: { coordKey: string; sample: string }) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const coordinate = request && typeof request.coordKey === "string"
         && typeof request.sample === "string" && request.sample.length <= 16
         ? validateFurnaceCoordinate(request.coordKey)
-        : { ok: false as const, reason: "invalid_coordinate" as const };
+        : { ok: false as const, reason: BS.invalidCoordinate as const };
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       const presenceRows = await ctx.db.playerPresence
@@ -1973,7 +1974,7 @@ export default capsule({
         .order("desc")
         .take(2);
       const furnaceRows = await ctx.db.furnaces
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
@@ -1981,9 +1982,9 @@ export default capsule({
       }
       if (presenceRows.length !== 1
         || !furnaceWithinReach(presenceRows[0], ctx.auth.userId, coordinate, serverNow)) {
-        return { ok: false, reason: "out_of_reach", serverNow };
+        return { ok: false, reason: BS.outOfReach, serverNow };
       }
-      if (furnaceRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (furnaceRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const blockInstanceToken = furnaceBlockInstanceToken(worldRows[0]);
       const furnace = blockInstanceToken
         ? materializedFurnaceView(furnaceRows[0] ?? null, coordinate.coordKey, blockInstanceToken, serverNow)
@@ -2050,7 +2051,7 @@ export default capsule({
     mobAuthority: query(async (ctx, rawMobIds: string[]) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", states: [], serverNow };
+        return { ok: false, reason: BS.authenticationRequired, states: [], serverNow };
       }
       const validation = validateMobIdList(rawMobIds, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!validation.ok) return { ok: false, reason: validation.reason, states: [], serverNow };
@@ -2088,20 +2089,20 @@ export default capsule({
         serverNow,
       };
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", ...empty };
+        return { ok: false, reason: BS.authenticationRequired, ...empty };
       }
       const rawMobIds = request && Array.isArray(request.mobIds) && typeof request.sample === "string"
         && request.sample.length <= 16
         ? request.mobIds
         : null;
-      if (!rawMobIds) return { ok: false, reason: "invalid_request", ...empty };
+      if (!rawMobIds) return { ok: false, reason: BS.invalidRequest, ...empty };
       const validation = validateMobIdList(rawMobIds, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!validation.ok) return { ok: false, reason: validation.reason, ...empty };
       const rows = await ctx.db.mobWorldAuthority
         .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
         .order("desc")
         .take(2);
-      if (rows.length > 1) return { ok: false, reason: "duplicate_state", ...empty };
+      if (rows.length > 1) return { ok: false, reason: BS.duplicateState, ...empty };
       const stored = databaseRowToStoredMobWorld(rows[0] ?? null);
       if (!stored) {
         // Subscribe the empty-world query to this caller's presence so the first
@@ -2116,7 +2117,7 @@ export default capsule({
       const replayInput = parseMobWorldReplayInputJson(stored.inputJson);
       if (!replayInput) return { ok: false, reason: "invalid_replay_input", ...empty };
       const advanced = advanceMobWorldState(stored, serverNow, replayInput);
-      if (!advanced) return { ok: false, reason: "invalid_checkpoint", ...empty };
+      if (!advanced) return { ok: false, reason: BS.invalidCheckpoint, ...empty };
       const needsCurrentMobTopology = !advanced.state.mobs.some((mob) => mob.kind === "spider")
         || !advanced.state.mobs.some((mob) => mob.kind === "chicken");
       const requested = new Set(validation.mobIds);
@@ -2157,7 +2158,7 @@ export default capsule({
     playerCombatStates: query(async (ctx, rawUserIds: string[]) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", states: [], serverNow };
+        return { ok: false, reason: BS.authenticationRequired, states: [], serverNow };
       }
       const validation = validatePlayerCombatUserIds(rawUserIds);
       if (!validation.ok) return { ok: false, reason: validation.reason, states: [], serverNow };
@@ -2186,26 +2187,26 @@ export default capsule({
     ) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       if (typeof requestJson !== "string" || requestJson.length > 1_024) {
-        return { ok: false, reason: "invalid_request", serverNow };
+        return { ok: false, reason: BS.invalidRequest, serverNow };
       }
       let raw: unknown;
       try {
         raw = JSON.parse(requestJson);
       } catch {
-        return { ok: false, reason: "invalid_request", serverNow };
+        return { ok: false, reason: BS.invalidRequest, serverNow };
       }
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return { ok: false, reason: "invalid_request", serverNow };
+        return { ok: false, reason: BS.invalidRequest, serverNow };
       }
       const candidate = raw as Record<string, unknown>;
       const keys = Object.keys(candidate).sort();
       if (keys.length !== 4 || keys[0] !== "operationId" || keys[1] !== "x" || keys[2] !== "y" || keys[3] !== "z"
         || !isValidTreeGrowthOperationId(candidate.operationId)
         || !Number.isSafeInteger(candidate.x) || !Number.isSafeInteger(candidate.y) || !Number.isSafeInteger(candidate.z)) {
-        return { ok: false, reason: "invalid_request", serverNow };
+        return { ok: false, reason: BS.invalidRequest, serverNow };
       }
       const operationId = candidate.operationId;
       const x = candidate.x as number;
@@ -2213,7 +2214,7 @@ export default capsule({
       const z = candidate.z as number;
       if (x < WORLD_EDIT_MIN_XZ || x > WORLD_EDIT_MAX_XZ || z < WORLD_EDIT_MIN_XZ || z > WORLD_EDIT_MAX_XZ
         || y < WORLD_EDIT_MIN_Y || y > WORLD_EDIT_MAX_Y) {
-        return { ok: false, reason: "invalid_coordinate", serverNow };
+        return { ok: false, reason: BS.invalidCoordinate, serverNow };
       }
       const pose = validatePresencePoseFields(poseX, poseY, poseZ, poseYaw, posePitch);
       if (!pose) return { ok: false, reason: "invalid_pose", serverNow };
@@ -2227,20 +2228,20 @@ export default capsule({
           .eq("operationId", operationId))
         .order("desc")
         .take(2);
-      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       if (receiptRows.length === 1) {
         if (receiptRows[0].fingerprint !== fingerprint) {
-          return { ok: false, reason: "operation_id_reused", serverNow };
+          return { ok: false, reason: BS.operationIdReused, serverNow };
         }
         const replay = decodeTreeGrowthReceipt(receiptRows[0].resultJson);
-        if (!replay || replay.operationId !== operationId) return { ok: false, reason: "invalid_receipt", serverNow };
+        if (!replay || replay.operationId !== operationId) return { ok: false, reason: BS.invalidReceipt, serverNow };
         const inventoryRows = await ctx.db.inventories
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
           .take(2);
         if (inventoryRows.length !== 1 || !validatePlayerStateJson(inventoryRows[0].inventoryJson).ok
           || storedRevision(inventoryRows[0].revision) === null) {
-          return { ok: false, reason: "replay_state_unavailable", serverNow };
+          return { ok: false, reason: BS.replayStateUnavailable, serverNow };
         }
         const currentChunks = [] as Array<{ chunkKey: string; revision: string }>;
         for (const committed of replay.chunks) {
@@ -2249,7 +2250,7 @@ export default capsule({
             .order("desc")
             .take(2);
           const revision = rows.length === 1 ? storedRevision(rows[0].revision) : null;
-          if (revision === null) return { ok: false, reason: "replay_state_unavailable", serverNow };
+          if (revision === null) return { ok: false, reason: BS.replayStateUnavailable, serverNow };
           currentChunks.push({ chunkKey: committed.chunkKey, revision });
         }
         return { ...replay, replayed: true, inventory: inventoryRows[0], currentChunks, serverNow };
@@ -2280,7 +2281,7 @@ export default capsule({
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
       if (!playerState.ok || storedRevision(inventoryRow.revision) === null) {
-        return { ok: false, reason: "inventory_invalid", serverNow };
+        return { ok: false, reason: BS.inventoryInvalid, serverNow };
       }
       const selectedSlot = playerState.state.selectedHotbar;
       const selectedStack = playerState.state.inventory[selectedSlot] ?? null;
@@ -2290,7 +2291,7 @@ export default capsule({
 
       const probeCells = oakTreeGrowthProbeCells(x, y, z);
       if (probeCells.length === 0 || probeCells.length > 256) {
-        return { ok: false, reason: "invalid_growth_plan", serverNow };
+        return { ok: false, reason: BS.invalidGrowthPlan, serverNow };
       }
       const probeGroups = new Map<string, Array<{ x: number; y: number; z: number }>>();
       for (const cell of probeCells) {
@@ -2300,7 +2301,7 @@ export default capsule({
         else probeGroups.set(chunkKey, [cell]);
       }
       if (probeGroups.size === 0 || probeGroups.size > MAX_TREE_GROWTH_CHUNKS) {
-        return { ok: false, reason: "invalid_growth_plan", serverNow };
+        return { ok: false, reason: BS.invalidGrowthPlan, serverNow };
       }
       const chunkAuthority = new Map<string, {
         row: Record<string, unknown> | null;
@@ -2313,12 +2314,12 @@ export default capsule({
           .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
           .order("desc")
           .take(2);
-        if (rows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+        if (rows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
         const row = rows[0] ?? null;
         const revision = storedRevision(row?.revision);
-        if (revision === null) return { ok: false, reason: "invalid_world_state", serverNow };
+        if (revision === null) return { ok: false, reason: BS.invalidWorldState, serverNow };
         const sampled = row ? sampleWorldChunkSnapshot(chunkKey, row.snapshotJson, cells) : null;
-        if (sampled && !sampled.ok) return { ok: false, reason: "invalid_world_state", serverNow };
+        if (sampled && !sampled.ok) return { ok: false, reason: BS.invalidWorldState, serverNow };
         chunkAuthority.set(chunkKey, {
           row: row as Record<string, unknown> | null,
           revision,
@@ -2341,14 +2342,14 @@ export default capsule({
       });
       if (!growth.ok) return { ok: false, reason: growth.reason, serverNow };
       if (growth.edits.length === 0 || growth.edits.length > OAK_TREE_MAX_EDITS) {
-        return { ok: false, reason: "invalid_growth_plan", serverNow };
+        return { ok: false, reason: BS.invalidGrowthPlan, serverNow };
       }
       const edits = growth.edits.map(treeGrowthProtocolEdit);
       const uniqueCoordinates = new Set(edits.map((edit) => `${edit.x}:${edit.y}:${edit.z}`));
       if (uniqueCoordinates.size !== edits.length || edits.some((edit) => !PLACEABLE_BLOCKS.has(edit.blockType)
         || edit.x < WORLD_EDIT_MIN_XZ || edit.x > WORLD_EDIT_MAX_XZ || edit.z < WORLD_EDIT_MIN_XZ || edit.z > WORLD_EDIT_MAX_XZ
         || edit.y < WORLD_EDIT_MIN_Y || edit.y > WORLD_EDIT_MAX_Y)) {
-        return { ok: false, reason: "invalid_growth_plan", serverNow };
+        return { ok: false, reason: BS.invalidGrowthPlan, serverNow };
       }
       const editGroups = new Map<string, typeof edits>();
       for (const edit of edits) {
@@ -2359,7 +2360,7 @@ export default capsule({
       }
       if (editGroups.size === 0 || editGroups.size > MAX_TREE_GROWTH_CHUNKS
         || [...editGroups.keys()].some((chunkKey) => !chunkAuthority.has(chunkKey))) {
-        return { ok: false, reason: "invalid_growth_plan", serverNow };
+        return { ok: false, reason: BS.invalidGrowthPlan, serverNow };
       }
 
       const worldEditPlans = [] as Array<{
@@ -2369,10 +2370,10 @@ export default capsule({
       for (const edit of edits) {
         const coordKey = `${edit.x}:${edit.y}:${edit.z}`;
         const rows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+          .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
           .order("desc")
           .take(2);
-        if (rows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+        if (rows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
         worldEditPlans.push({
           existing: (rows[0] ?? null) as Record<string, unknown> | null,
           value: {
@@ -2406,7 +2407,7 @@ export default capsule({
         const snapshot = authority.snapshotJson
           ? applyWorldChunkEdits(chunkKey, authority.snapshotJson, snapshotEdits)
           : createWorldChunkSnapshot(chunkKey, snapshotEdits);
-        if (!snapshot.ok) return { ok: false, reason: "invalid_world_state", serverNow };
+        if (!snapshot.ok) return { ok: false, reason: BS.invalidWorldState, serverNow };
         chunkPlans.push({
           existing: authority.row,
           chunkKey,
@@ -2421,7 +2422,7 @@ export default capsule({
         : { ...selectedStack, count: selectedStack.count - 1 };
       const inventoryJson = JSON.stringify({ ...playerState.state, inventory: nextInventory });
       if (!validatePlayerStateJson(inventoryJson).ok) {
-        return { ok: false, reason: "inventory_invalid", serverNow };
+        return { ok: false, reason: BS.inventoryInvalid, serverNow };
       }
 
       for (const plan of worldEditPlans) {
@@ -2480,19 +2481,19 @@ export default capsule({
       posePitch: string,
     ) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       if (typeof requestJson !== "string" || requestJson.length > MAX_WORLD_BLOCK_OPERATION_REQUEST_BYTES) {
-        return { ok: false, reason: "invalid_request" };
+        return { ok: false, reason: BS.invalidRequest };
       }
       let rawRequest: unknown;
       try {
         rawRequest = JSON.parse(requestJson);
       } catch {
-        return { ok: false, reason: "invalid_request" };
+        return { ok: false, reason: BS.invalidRequest };
       }
       const validation = parseWorldBlockOperation(rawRequest);
-      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason };
+      if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason };
       const pose = validatePresencePoseFields(poseX, poseY, poseZ, poseYaw, posePitch);
       if (!pose) return { ok: false, reason: "invalid_pose" };
       const request = validation.request;
@@ -2506,14 +2507,14 @@ export default capsule({
           .eq("operationId", request.operationId))
         .order("desc")
         .take(2);
-      if (existingReceipts.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (existingReceipts.length > 1) return { ok: false, reason: BS.duplicateState };
       const existingReceipt = existingReceipts[0] ?? null;
       if (existingReceipt) {
         if (existingReceipt.fingerprint !== fingerprint) {
-          return { ok: false, reason: "operation_id_reused" };
+          return { ok: false, reason: BS.operationIdReused };
         }
         const replay = decodeWorldBlockOperationReceipt(existingReceipt.resultJson);
-        if (!replay) return { ok: false, reason: "conservation_failure" };
+        if (!replay) return { ok: false, reason: BS.conservationFailure };
         const replayInventories = await ctx.db.inventories
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
@@ -2527,7 +2528,7 @@ export default capsule({
         }
         const currentChunkRevision = storedRevision(replayChunks[0].revision);
         if (storedRevision(replayInventories[0].revision) === null || currentChunkRevision === null) {
-          return { ok: false, reason: "conservation_failure" };
+          return { ok: false, reason: BS.conservationFailure };
         }
         return { ...replay, inventory: replayInventories[0], currentChunkRevision };
       }
@@ -2550,13 +2551,13 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .take(2);
-      if (inventoryRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const inventoryRow = inventoryRows[0] ?? null;
       if (!inventoryRow) return { ok: false, reason: "inventory_required" };
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
       const inventoryRevision = storedRevision(inventoryRow.revision);
       if (!playerState.ok || inventoryRevision === null) {
-        return { ok: false, reason: "conservation_failure" };
+        return { ok: false, reason: BS.conservationFailure };
       }
 
       const chunkKey = worldEditChunkKey(request.x, request.z);
@@ -2564,29 +2565,29 @@ export default capsule({
         .withIndex("by_chunk", (q) => q.eq("chunkKey", chunkKey))
         .order("desc")
         .take(2);
-      if (chunkRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (chunkRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const chunkRow = chunkRows[0] ?? null;
       const chunkRevision = storedRevision(chunkRow?.revision);
-      if (chunkRevision === null) return { ok: false, reason: "conservation_failure" };
+      if (chunkRevision === null) return { ok: false, reason: BS.conservationFailure };
 
       const coordKey = `${request.x}:${request.y}:${request.z}`;
       const currentEdits = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
-      if (currentEdits.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (currentEdits.length > 1) return { ok: false, reason: BS.duplicateState };
       const currentEdit = currentEdits[0] ?? null;
       const primedRows = await ctx.db.primedTnt
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
-      if (primedRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (primedRows.length > 1) return { ok: false, reason: BS.duplicateState };
       if (primedRows.length === 1) return { ok: false, reason: "block_primed" };
       const currentBlock = currentEdit
         ? currentEdit.blockType
         : naturalWorldBlockAt(request.x, request.y, request.z);
       if (currentBlock !== "air" && !PLACEABLE_BLOCKS.has(currentBlock)) {
-        return { ok: false, reason: "conservation_failure" };
+        return { ok: false, reason: BS.conservationFailure };
       }
 
       const resolution = resolveWorldBlockOperation(request, {
@@ -2604,7 +2605,7 @@ export default capsule({
           ? sampleWorldChunkSnapshot(chunkKey, chunkRow.snapshotJson, [supportCoordinate])
           : null;
         if (sampledSupport && !sampledSupport.ok) {
-          return { ok: false, reason: "conservation_failure", detail: sampledSupport.reason };
+          return { ok: false, reason: BS.conservationFailure, detail: sampledSupport.reason };
         }
         const supportBlock = sampledSupport?.ok
           ? sampledSupport.blocks[0] ?? naturalWorldBlockAt(supportCoordinate.x, supportCoordinate.y, supportCoordinate.z)
@@ -2623,7 +2624,7 @@ export default capsule({
         ? sampleWorldChunkSnapshot(chunkKey, chunkRow.snapshotJson, fallingCoordinates)
         : null;
       if (sampledFalling && !sampledFalling.ok) {
-        return { ok: false, reason: "conservation_failure", detail: sampledFalling.reason };
+        return { ok: false, reason: BS.conservationFailure, detail: sampledFalling.reason };
       }
       const falling = resolveFallingBlocks({
         trigger: {
@@ -2652,13 +2653,13 @@ export default capsule({
       const furnaceRecoveryDrops: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
       if (effect.kind === "mine" && effect.previousBlock === "furnace") {
         const furnaceRows = await ctx.db.furnaces
-          .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+          .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
           .order("desc")
           .take(2);
-        if (furnaceRows.length > 1) return { ok: false, reason: "duplicate_state" };
+        if (furnaceRows.length > 1) return { ok: false, reason: BS.duplicateState };
         minedFurnaceRow = furnaceRows[0] ?? null;
         const blockInstanceToken = currentEdit ? furnaceBlockInstanceToken(currentEdit) : null;
-        if (!blockInstanceToken) return { ok: false, reason: "conservation_failure" };
+        if (!blockInstanceToken) return { ok: false, reason: BS.conservationFailure };
         let recoveryStacks: ItemStack[] = [];
         if (minedFurnaceRow && minedFurnaceRow.blockInstanceToken !== blockInstanceToken) {
           return { ok: false, reason: "invalid_state" };
@@ -2670,7 +2671,7 @@ export default capsule({
             blockInstanceToken,
             serverNow,
           );
-          if (!furnace) return { ok: false, reason: "conservation_failure" };
+          if (!furnace) return { ok: false, reason: BS.conservationFailure };
           recoveryStacks = [furnace.state.input, furnace.state.fuel, furnace.state.output]
             .filter((stack): stack is ItemStack => stack !== null);
         }
@@ -2694,7 +2695,7 @@ export default capsule({
               pose.yaw,
               serverNow,
             );
-            if (!droppedValue) return { ok: false, reason: "conservation_failure" };
+            if (!droppedValue) return { ok: false, reason: BS.conservationFailure };
             const collision = await ctx.db.droppedItems
               .withIndex("by_drop", (q) => q.eq("dropId", droppedValue.dropId))
               .order("desc")
@@ -2725,14 +2726,14 @@ export default capsule({
       const snapshot = chunkRow
         ? applyWorldChunkEdits(chunkKey, chunkRow.snapshotJson, authoritativeWorldEdits)
         : createWorldChunkSnapshot(chunkKey, authoritativeWorldEdits);
-      if (!snapshot.ok) return { ok: false, reason: "conservation_failure", detail: snapshot.reason };
+      if (!snapshot.ok) return { ok: false, reason: BS.conservationFailure, detail: snapshot.reason };
 
       const existingEditsByCoord = new Map<string, Record<string, unknown> | null>([[coordKey, currentEdit]]);
       for (const value of authoritativeWorldEdits) {
         if (value.coordKey === coordKey) continue;
         const rows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq("coordKey", value.coordKey)).order("desc").take(2);
-        if (rows.length > 1) return { ok: false, reason: "duplicate_state" };
+          .withIndex("by_coord", (q) => q.eq(BS.coordKey, value.coordKey)).order("desc").take(2);
+        if (rows.length > 1) return { ok: false, reason: BS.duplicateState };
         existingEditsByCoord.set(value.coordKey, rows[0] ?? null);
       }
       const persistedWorldEdits = [];
@@ -2815,7 +2816,7 @@ export default capsule({
 
     startPresenceSession: mutation(async (ctx, rawSessionId: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: "invalid_session" };
       const rows = await ctx.db.playerPresence
@@ -2894,17 +2895,17 @@ export default capsule({
     publishMotionSegments: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       if (typeof requestJson !== "string" || requestJson.length < 2
         || requestJson.length > MOTION_MAX_BATCH_CHARS) {
-        return { ok: false, reason: "invalid_request", serverNow };
+        return { ok: false, reason: BS.invalidRequest, serverNow };
       }
       let rawBatch: unknown;
       try {
         rawBatch = JSON.parse(requestJson);
       } catch {
-        return { ok: false, reason: "invalid_request", serverNow };
+        return { ok: false, reason: BS.invalidRequest, serverNow };
       }
       const decoded = decodeMotionBatch(rawBatch);
       if (!decoded.ok) return { ok: false, reason: `invalid_batch:${decoded.reason}`, serverNow };
@@ -2918,13 +2919,13 @@ export default capsule({
         .withIndex("by_user_batch", (q) => q.eq("userId", ctx.auth.userId).eq("batchId", batch.batchId))
         .order("desc")
         .take(2);
-      if (matchingReceipts.length > 1) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (matchingReceipts.length > 1) return { ok: false, reason: BS.invalidServerState, serverNow };
       const existingReceipt = matchingReceipts[0] ?? null;
       if (existingReceipt) {
         const acceptedThrough = storedMotionInteger(existingReceipt.acceptedThrough, 0, 2_147_483_647);
         const acceptedAt = storedMotionInteger(existingReceipt.acceptedAt, 0, Number.MAX_SAFE_INTEGER);
         if (acceptedThrough === null || acceptedAt === null) {
-          return { ok: false, reason: "invalid_server_state", serverNow };
+          return { ok: false, reason: BS.invalidServerState, serverNow };
         }
         if (serverNow - acceptedAt >= 0 && serverNow - acceptedAt <= MOTION_RECEIPT_RETENTION_MS) {
           if (existingReceipt.fingerprint !== fingerprint || existingReceipt.canonicalPayload !== canonicalPayload) {
@@ -2977,13 +2978,13 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .take(2);
-      if (acceptanceRows.length > 1) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (acceptanceRows.length > 1) return { ok: false, reason: BS.invalidServerState, serverNow };
       const acceptance = acceptanceRows[0] ?? null;
       const switchingSession = !acceptance || acceptance.sessionId !== batch.sessionId;
       const acceptedThrough = switchingSession
         ? -1
         : storedMotionInteger(acceptance.acceptedThrough, 0, 2_147_483_647);
-      if (acceptedThrough === null) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (acceptedThrough === null) return { ok: false, reason: BS.invalidServerState, serverNow };
       if (batch.lastSequence <= acceptedThrough) return {
         ok: false,
         reason: "stale_sequence",
@@ -2999,7 +3000,7 @@ export default capsule({
       const lastAcceptedAt = acceptance
         ? storedMotionInteger(acceptance.lastAcceptedAt, 0, Number.MAX_SAFE_INTEGER)
         : null;
-      if (acceptance && lastAcceptedAt === null) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (acceptance && lastAcceptedAt === null) return { ok: false, reason: BS.invalidServerState, serverNow };
       if (lastAcceptedAt !== null && serverNow - lastAcceptedAt < MOTION_SERVER_MIN_PUBLISH_INTERVAL_MS) {
         return {
           ok: false,
@@ -3013,13 +3014,13 @@ export default capsule({
         .withIndex("by_key", (q) => q.eq("budgetKey", "motion"))
         .order("desc")
         .take(2);
-      if (budgetRows.length > 1) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (budgetRows.length > 1) return { ok: false, reason: BS.invalidServerState, serverNow };
       const budget = budgetRows[0] ?? null;
       const dayKey = String(utcQuotaWindowStartedAt(serverNow));
       const priorAcceptedCount = budget?.dayKey === dayKey
         ? storedMotionInteger(budget.acceptedCount, 0, SEGMENT_MOTION_MUTATION_BUDGET)
         : 0;
-      if (priorAcceptedCount === null) return { ok: false, reason: "invalid_server_state", serverNow };
+      if (priorAcceptedCount === null) return { ok: false, reason: BS.invalidServerState, serverNow };
       if (priorAcceptedCount >= SEGMENT_MOTION_MUTATION_BUDGET) {
         return {
           ok: false,
@@ -3038,7 +3039,7 @@ export default capsule({
         .order("desc")
         .take(MOTION_ROWS_PER_PLAYER + 1);
       if (receiptRows.length > MOTION_RECEIPT_LIMIT || segmentRows.length > MOTION_ROWS_PER_PLAYER) {
-        return { ok: false, reason: "invalid_server_state", serverNow };
+        return { ok: false, reason: BS.invalidServerState, serverNow };
       }
 
       let retainedReceiptCount = 0;
@@ -3105,7 +3106,7 @@ export default capsule({
 
     authorizeRespawn: mutation(async (ctx, rawSessionId: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: "invalid_session" };
       const serverNow = Date.now();
@@ -3243,10 +3244,10 @@ export default capsule({
       const bedRespawn = storedBedRespawnPose(existingRespawn);
       if (bedRespawn) {
         const bedRows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq("coordKey", bedRespawn.coordKey))
+          .withIndex("by_coord", (q) => q.eq(BS.coordKey, bedRespawn.coordKey))
           .order("desc")
           .take(2);
-        if (bedRows.length > 1) return { ok: false, reason: "duplicate_state" };
+        if (bedRows.length > 1) return { ok: false, reason: BS.duplicateState };
         if (bedRows[0]?.blockType === "bed") destination = bedRespawn.pose;
       }
       const previousEpoch = storedRevision(existingRespawn?.grantEpoch ?? "0");
@@ -3364,7 +3365,7 @@ export default capsule({
         const pose = validatePresencePoseFields(x, y, z, yaw, pitch);
         const velocity = validatePresenceVelocityFields(rawVx ?? "0", rawVy ?? "0", rawVz ?? "0");
         const sessionId = validPresenceSessionId(rawSessionId) ? rawSessionId : null;
-        if (!pose || !velocity || !sessionId) return { ok: false, reason: "invalid_request" };
+        if (!pose || !velocity || !sessionId) return { ok: false, reason: BS.invalidRequest };
         const appearance = normalizeAvatarAppearance(
           rawHeldItem,
           rawArmorHead,
@@ -3377,7 +3378,7 @@ export default capsule({
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
           .take(2);
-        if (existingRows.length > 1) return { ok: false, reason: "duplicate_state" };
+        if (existingRows.length > 1) return { ok: false, reason: BS.duplicateState };
         const existing = existingRows[0] ?? null;
         if (!existing) return { ok: false, reason: "session_required" };
         const sequence = decidePresenceSequence(existing.sessionId, existing.poseSequence, sessionId, rawPoseSequence);
@@ -3486,7 +3487,7 @@ export default capsule({
             Math.max(0, serverNow - previousSurvivalAt),
           ),
         });
-        if (survival.revisionExhausted) return { ok: false, reason: "combat_revision_exhausted" };
+        if (survival.revisionExhausted) return { ok: false, reason: BS.combatRevisionExhausted };
         const fall = advanceAuthoritativeFall({
           state: {
             grounded: existing.fallGrounded,
@@ -3504,7 +3505,7 @@ export default capsule({
         if (!fall.ok) {
           return {
             ok: false,
-            reason: fall.reason === "revision_exhausted" ? "combat_revision_exhausted" : "invalid_fall_state",
+            reason: fall.reason === "revision_exhausted" ? BS.combatRevisionExhausted : "invalid_fall_state",
           };
         }
         const profile = await ctx.db.profiles
@@ -3599,12 +3600,12 @@ export default capsule({
 
     applyInventoryAction: mutation(async (ctx, requestJson: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateInventoryActionRequestJson(requestJson);
       if (!validation.ok) return {
         ok: false,
-        reason: "invalid_request",
+        reason: BS.invalidRequest,
         detail: validation.playerStateIssue ?? validation.reason,
       };
       const request = validation.request;
@@ -3614,10 +3615,10 @@ export default capsule({
           .eq("operationId", request.operationId))
         .order("desc")
         .take(2);
-      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const receipt = receiptRows[0] ?? null;
       const replay = decideInventoryActionReplay(receipt?.fingerprint ?? null, request.fingerprint);
-      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused" };
+      if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused };
       if (replay === "replay" && receipt) {
         const payload = decodeInventoryActionReceipt(receipt.resultJson);
         if (!payload) return { ok: false, reason: "invalid_state" };
@@ -3635,7 +3636,7 @@ export default capsule({
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
         .take(2);
-      if (inventoryRows.length > 1) return { ok: false, reason: "duplicate_state" };
+      if (inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const existing = inventoryRows[0] ?? null;
       const currentRevision = storedRevision(existing?.revision);
       if (currentRevision === null) return { ok: false, reason: "invalid_state" };
@@ -3658,7 +3659,7 @@ export default capsule({
         const previous = validatePlayerStateJson(existing.inventoryJson);
         if (!previous.ok) return { ok: false, reason: "invalid_state" };
         if (request.action.kind === "workspace_commit" && request.action.recipes.length > 0
-          && request.action.craftingContext === "crafting_table") {
+          && request.action.craftingContext === BS.craftingTable) {
           const tableAuthority = await authorizeInventoryCraftingTable(
             ctx.db,
             ctx.auth.userId,
@@ -3700,10 +3701,10 @@ export default capsule({
 
     dropItem: mutation(async (ctx, requestJson: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateDropItemRequestJson(requestJson);
-      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason };
+      if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason };
       const request = validation.request;
       const existingReceipt = await ctx.db.droppedItemReceipts
         .withIndex("by_user_operation", (q) => q
@@ -3712,10 +3713,10 @@ export default capsule({
         .order("desc")
         .first();
       const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
-      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused" };
+      if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused };
       if (replay === "replay" && existingReceipt) {
         return decodeDroppedItemReceipt(existingReceipt.resultJson)
-          ?? { ok: false, reason: "conservation_failure" };
+          ?? { ok: false, reason: BS.conservationFailure };
       }
 
       const serverNow = Date.now();
@@ -3740,7 +3741,7 @@ export default capsule({
         existingPlayer.inventoryJson,
         request.canonicalPlayerStateJson
       );
-      if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
+      if (playerStateDecision === "invalid") return { ok: false, reason: BS.conservationFailure };
       if (playerStateDecision === "mismatch") return { ok: false, reason: "conflict", inventory: existingPlayer };
 
       const activeOwnedDrops = await ctx.db.droppedItems
@@ -3797,10 +3798,10 @@ export default capsule({
 
     pickupDroppedItem: mutation(async (ctx, requestJson: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validatePickupDroppedItemRequestJson(requestJson);
-      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason };
+      if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason };
       const request = validation.request;
       const existingReceipt = await ctx.db.droppedItemReceipts
         .withIndex("by_user_operation", (q) => q
@@ -3809,10 +3810,10 @@ export default capsule({
         .order("desc")
         .first();
       const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
-      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused" };
+      if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused };
       if (replay === "replay" && existingReceipt) {
         return decodeDroppedItemReceipt(existingReceipt.resultJson)
-          ?? { ok: false, reason: "conservation_failure" };
+          ?? { ok: false, reason: BS.conservationFailure };
       }
 
       const serverNow = Date.now();
@@ -3834,7 +3835,7 @@ export default capsule({
         existingPlayer.inventoryJson,
         request.canonicalPlayerStateJson
       );
-      if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
+      if (playerStateDecision === "invalid") return { ok: false, reason: BS.conservationFailure };
       if (playerStateDecision === "mismatch") return { ok: false, reason: "conflict", inventory: existingPlayer };
 
       const storedDrop = await ctx.db.droppedItems
@@ -3899,7 +3900,7 @@ export default capsule({
 
     saveChest: mutation(async (ctx, _rawCoordKey: string, _rawInventoryJson: string, _rawExpectedUpdatedAt: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       return { ok: false, reason: "atomic_transfer_required" };
     }),
@@ -3907,37 +3908,37 @@ export default capsule({
     operateFurnace: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateFurnaceTransferRequestJson(requestJson);
-      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const receiptRows = await ctx.db.furnaceTransferReceipts
         .withIndex("by_user_operation", (q) => q
           .eq("userId", ctx.auth.userId)
           .eq("operationId", request.operationId))
         .order("desc")
         .take(2);
-      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const receiptDecision = decideFurnaceReceiptReplay(
         receiptRows[0]?.fingerprint ?? null,
         request.fingerprint,
       );
-      if (receiptDecision === "operation_id_reused") {
-        return { ok: false, reason: "operation_id_reused", serverNow };
+      if (receiptDecision === BS.operationIdReused) {
+        return { ok: false, reason: BS.operationIdReused, serverNow };
       }
       if (receiptDecision === "replay") {
         const saved = decodeFurnaceReceipt(receiptRows[0].resultJson);
-        if (!saved) return { ok: false, reason: "invalid_receipt", serverNow };
+        if (!saved) return { ok: false, reason: BS.invalidReceipt, serverNow };
         const replayInventoryRows = await ctx.db.inventories
           .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
           .order("desc")
           .take(2);
         const replayWorldRows = await ctx.db.worldEdits
-          .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+          .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
           .order("desc")
           .take(2);
         const replayFurnaceRows = await ctx.db.furnaces
-          .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+          .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
           .order("desc")
           .take(2);
         const replayBlockInstanceToken = replayWorldRows.length === 1
@@ -3954,7 +3955,7 @@ export default capsule({
           : null;
         if (replayInventoryRows.length !== 1 || !validatePlayerStateJson(replayInventoryRows[0].inventoryJson).ok
           || !replayFurnace) {
-          return { ok: false, reason: "replay_state_unavailable", serverNow };
+          return { ok: false, reason: BS.replayStateUnavailable, serverNow };
         }
         return {
           ...saved,
@@ -3968,7 +3969,7 @@ export default capsule({
       const coordinate = validateFurnaceCoordinate(request.coordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       const presenceRows = await ctx.db.playerPresence
@@ -3980,7 +3981,7 @@ export default capsule({
         .order("desc")
         .take(2);
       const furnaceRows = await ctx.db.furnaces
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
@@ -3988,12 +3989,12 @@ export default capsule({
       }
       if (presenceRows.length !== 1
         || !furnaceWithinReach(presenceRows[0], ctx.auth.userId, coordinate, serverNow)) {
-        return { ok: false, reason: "out_of_reach", serverNow };
+        return { ok: false, reason: BS.outOfReach, serverNow };
       }
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
-      if (furnaceRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (furnaceRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const playerState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
-      if (!playerState.ok) return { ok: false, reason: "invalid_inventory", serverNow };
+      if (!playerState.ok) return { ok: false, reason: BS.invalidInventory, serverNow };
       const blockInstanceToken = furnaceBlockInstanceToken(worldRows[0]);
       const furnace = blockInstanceToken
         ? materializedFurnaceView(furnaceRows[0] ?? null, coordinate.coordKey, blockInstanceToken, serverNow)
@@ -4025,7 +4026,7 @@ export default capsule({
       );
       if (!applied.ok) return { ok: false, reason: applied.reason, furnace, serverNow };
       const serialized = serializeFurnaceState(applied.state);
-      if (!serialized.ok) return { ok: false, reason: "conservation_failure", serverNow };
+      if (!serialized.ok) return { ok: false, reason: BS.conservationFailure, serverNow };
       const nextRevision = incrementStoredRevision(furnace.revision);
       const player = await ctx.db.inventories.update(inventoryRows[0].id, {
         userId: ctx.auth.userId,
@@ -4042,7 +4043,7 @@ export default capsule({
       const persistedFurnace = furnaceRows[0]
         ? await ctx.db.furnaces.update(furnaceRows[0].id, furnaceValue)
         : await ctx.db.furnaces.insert(furnaceValue);
-      if (!player || !persistedFurnace) return { ok: false, reason: "conservation_failure", serverNow };
+      if (!player || !persistedFurnace) return { ok: false, reason: BS.conservationFailure, serverNow };
       const furnaceResult = {
         state: serialized.state,
         revision: nextRevision,
@@ -4085,13 +4086,13 @@ export default capsule({
 
     transferChest: mutation(async (ctx, requestJson: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateChestTransferRequestJson(requestJson);
       if (!validation.ok) {
         return {
           ok: false,
-          reason: "invalid_request",
+          reason: BS.invalidRequest,
           detail: validation.playerStateIssue ?? validation.reason
         };
       }
@@ -4103,16 +4104,16 @@ export default capsule({
         .order("desc")
         .first();
       const replayDecision = decideChestTransferReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
-      if (replayDecision === "operation_id_reused") {
-        return { ok: false, reason: "operation_id_reused" };
+      if (replayDecision === BS.operationIdReused) {
+        return { ok: false, reason: BS.operationIdReused };
       }
       if (replayDecision === "replay" && existingReceipt) {
         const savedResult = decodeChestTransferReceipt(existingReceipt.resultJson);
-        return savedResult ?? { ok: false, reason: "conservation_failure" };
+        return savedResult ?? { ok: false, reason: BS.conservationFailure };
       }
 
       const worldBlock = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
         .order("desc")
         .first();
       if (!worldBlock || worldBlock.blockType !== "chest") {
@@ -4126,7 +4127,7 @@ export default capsule({
       if (playerRows.length !== 1) return { ok: false, reason: "inventory_required" };
       const existingPlayer = playerRows[0];
       const existingChest = await ctx.db.chests
-        .withIndex("by_coord", (q) => q.eq("coordKey", request.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, request.coordKey))
         .order("desc")
         .first();
       const cas = decideChestTransferCas(
@@ -4137,7 +4138,7 @@ export default capsule({
       );
       if (cas !== "apply") {
         const conflict = cas === "inventory_conflict"
-          ? "inventory"
+          ? BS.inventory
           : cas === "chest_conflict" ? "chest" : "both";
         return { ok: false, reason: "conflict", conflict, player: existingPlayer, chest: existingChest ?? null };
       }
@@ -4146,19 +4147,19 @@ export default capsule({
         existingPlayer.inventoryJson,
         request.canonicalPlayerStateJson
       );
-      if (playerStateDecision === "invalid") return { ok: false, reason: "conservation_failure" };
+      if (playerStateDecision === "invalid") return { ok: false, reason: BS.conservationFailure };
       if (playerStateDecision === "mismatch") {
         return {
           ok: false,
           reason: "conflict",
-          conflict: "inventory",
+          conflict: BS.inventory,
           player: existingPlayer,
           chest: existingChest ?? null
         };
       }
 
       const chestValidation = validateChestInventoryJson(existingChest?.inventoryJson ?? "[]");
-      if (!chestValidation.ok) return { ok: false, reason: "conservation_failure" };
+      if (!chestValidation.ok) return { ok: false, reason: BS.conservationFailure };
       const applied = applyChestTransfer(request, request.playerState.inventory, chestValidation.inventory);
       if (!applied.ok) return { ok: false, reason: applied.reason };
       const nextPlayerJson = JSON.stringify({ ...request.playerState, inventory: applied.playerInventory });
@@ -4177,7 +4178,7 @@ export default capsule({
       const chest = existingChest
         ? await ctx.db.chests.update(existingChest.id, chestValue)
         : await ctx.db.chests.insert(chestValue);
-      if (!player || !chest) return { ok: false, reason: "conservation_failure" };
+      if (!player || !chest) return { ok: false, reason: BS.conservationFailure };
 
       const receiptCreatedAt = String(Date.now());
       const result = { ok: true, replayed: false, moved: applied.moved, player, chest };
@@ -4208,12 +4209,12 @@ export default capsule({
 
     sleepInBed: mutation(async (ctx, rawCoordKey: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       const coordinate = validateSleepCoordinate(rawCoordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
       const bedRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordinate.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordinate.coordKey))
         .order("desc")
         .take(2);
       const bed = bedRows.length === 1 ? bedRows[0] : null;
@@ -4332,10 +4333,10 @@ export default capsule({
     checkpointMobWorld: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateMobWorldCheckpointRequestJson(requestJson);
-      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const presenceRow = await ctx.db.playerPresence
         .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId))
         .order("desc")
@@ -4348,7 +4349,7 @@ export default capsule({
         .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
         .order("desc")
         .take(2);
-      if (rows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (rows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const existing = rows[0] ?? null;
       const stored = databaseRowToStoredMobWorld(existing);
       const readCurrentReplayInput = async () => {
@@ -4374,7 +4375,7 @@ export default capsule({
       };
       if (!stored) {
         if (existing || request.expectedRevision !== 0) {
-          return { ok: false, reason: existing ? "invalid_checkpoint" : "revision_conflict", serverNow };
+          return { ok: false, reason: existing ? BS.invalidCheckpoint : "revision_conflict", serverNow };
         }
         const state = createCanonicalMobWorldState(
           serverNow,
@@ -4411,7 +4412,7 @@ export default capsule({
       const storedCheckpoint = parseMobWorldCheckpointJson(stored.checkpointJson);
       if (revision === null || checkpointAt === null || leaseExpiresAt === null
         || !storedCheckpoint || !storedReplayInput) {
-        return { ok: false, reason: "invalid_checkpoint", serverNow };
+        return { ok: false, reason: BS.invalidCheckpoint, serverNow };
       }
       if (request.expectedRevision !== revision) {
         return { ok: false, reason: "revision_conflict", checkpointRevision: revision, serverNow };
@@ -4441,7 +4442,7 @@ export default capsule({
               && naturalWorldBlockAt(x, y + 1, z) === "air",
           )
         : advanceMobWorldState(stored, serverNow, storedReplayInput)?.state ?? null;
-      if (!nextState) return { ok: false, reason: "invalid_checkpoint", serverNow };
+      if (!nextState) return { ok: false, reason: BS.invalidCheckpoint, serverNow };
       const nextRevision = revision + 1;
       const nextLeaseExpiresAt = serverNow + MOB_WORLD_LEASE_MS;
       await ctx.db.mobWorldAuthority.update(existing.id, {
@@ -4466,10 +4467,10 @@ export default capsule({
     claimMobPlayerDamage: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateMobDamageRequestJson(requestJson);
-      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const fingerprint = JSON.stringify([
         request.operationId,
         request.mobId,
@@ -4482,7 +4483,7 @@ export default capsule({
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(receipt?.fingerprint ?? null, fingerprint);
-      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && receipt) {
         try {
           const parsed = JSON.parse(receipt.resultJson) as Record<string, unknown>;
@@ -4504,7 +4505,7 @@ export default capsule({
         } catch {
           // Corrupt server-authored receipts are rejected below.
         }
-        return { ok: false, reason: "invalid_receipt", serverNow };
+        return { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
       const authorityRow = await ctx.db.mobWorldAuthority
@@ -4512,9 +4513,9 @@ export default capsule({
         .order("desc")
         .first();
       const storedWorld = databaseRowToStoredMobWorld(authorityRow);
-      if (!storedWorld) return { ok: false, reason: "authority_unavailable", serverNow };
+      if (!storedWorld) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const storedReplayInput = parseMobWorldReplayInputJson(storedWorld.inputJson);
-      if (!storedReplayInput) return { ok: false, reason: "authority_unavailable", serverNow };
+      if (!storedReplayInput) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const presenceRows = await ctx.db.playerPresence
         .withIndex("by_heartbeat", (q) => q.gte("heartbeatAt", String(serverNow - ACTIVE_PLAYER_WINDOW_MS)))
         .order("desc")
@@ -4534,7 +4535,7 @@ export default capsule({
       const callerTarget = targets.find((target) => target.userId === ctx.auth.userId);
       if (!callerTarget) return { ok: false, reason: "active_presence_required", serverNow };
       const advanced = advanceMobWorldState(storedWorld, serverNow, storedReplayInput);
-      if (!advanced) return { ok: false, reason: "authority_unavailable", serverNow };
+      if (!advanced) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const mobIdentity = validateMobIdentity(request.mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!mobIdentity.ok) return { ok: false, reason: "unknown_mob", serverNow };
       const mobCombatRow = await ctx.db.mobAuthority
@@ -4579,7 +4580,7 @@ export default capsule({
         activityHalfUnits: storedPresenceActivityHalfUnits(callerPresenceRow),
       });
       if (survival.revisionExhausted || survival.revision >= Number.MAX_SAFE_INTEGER) {
-        return { ok: false, reason: "combat_revision_exhausted", serverNow };
+        return { ok: false, reason: BS.combatRevisionExhausted, serverNow };
       }
       const combatAtEvent = {
         ...previousState,
@@ -4653,10 +4654,10 @@ export default capsule({
     igniteTnt: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateTntIgnitionRequestJson(requestJson);
-      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const fingerprint = tntIgnitionFingerprint(request);
 
       // Exact retries settle before any mutable authority read.
@@ -4666,23 +4667,23 @@ export default capsule({
           .eq("operationId", request.operationId))
         .order("desc")
         .take(2);
-      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const receiptDecision = decideTntReceipt(receiptRows[0]?.fingerprint ?? null, fingerprint);
-      if (receiptDecision === "operation_id_reused") {
-        return { ok: false, reason: "operation_id_reused", serverNow };
+      if (receiptDecision === BS.operationIdReused) {
+        return { ok: false, reason: BS.operationIdReused, serverNow };
       }
       if (receiptDecision === "replay") {
         try {
           const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
-          if (replay?.ok !== true) return { ok: false, reason: "invalid_receipt", serverNow };
+          if (replay?.ok !== true) return { ok: false, reason: BS.invalidReceipt, serverNow };
           const replayInventoryRows = await ctx.db.inventories
             .withIndex("by_user", (q) => q.eq("userId", ctx.auth.userId)).order("desc").take(2);
           if (replayInventoryRows.length !== 1 || !validatePlayerStateJson(replayInventoryRows[0].inventoryJson).ok) {
-            return { ok: false, reason: "replay_state_unavailable", serverNow };
+            return { ok: false, reason: BS.replayStateUnavailable, serverNow };
           }
           return { ...replay, replayed: true, inventory: replayInventoryRows[0], serverNow };
         } catch {
-          return { ok: false, reason: "invalid_receipt", serverNow };
+          return { ok: false, reason: BS.invalidReceipt, serverNow };
         }
       }
 
@@ -4700,26 +4701,26 @@ export default capsule({
         .take(2);
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
       const playerState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
-      if (!playerState.ok) return { ok: false, reason: "invalid_inventory", serverNow };
+      if (!playerState.ok) return { ok: false, reason: BS.invalidInventory, serverNow };
       const heldItem = playerState.state.inventory[playerState.state.selectedHotbar]?.itemId ?? null;
 
       const coordKey = `${request.x}:${request.y}:${request.z}`;
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1) return { ok: false, reason: "tnt_required", serverNow };
       const activeAtCoordinate = await ctx.db.primedTnt
-        .withIndex("by_coord", (q) => q.eq("coordKey", coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, coordKey))
         .order("desc")
         .take(2);
-      if (activeAtCoordinate.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (activeAtCoordinate.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const activeFuses = await ctx.db.primedTnt.withIndex("by_due").order("asc").take(TNT_MAX_ACTIVE_FUSES + 1);
       if (activeFuses.length >= TNT_MAX_ACTIVE_FUSES && activeAtCoordinate.length === 0) {
         return { ok: false, reason: "fuse_capacity", serverNow };
       }
       const blockInstanceToken = furnaceBlockInstanceToken(worldRows[0]);
-      if (!blockInstanceToken) return { ok: false, reason: "invalid_world_state", serverNow };
+      if (!blockInstanceToken) return { ok: false, reason: BS.invalidWorldState, serverNow };
       const authorization = authorizeTntIgnition(request, {
         currentBlock: worldRows[0].blockType as BlockType,
         blockInstanceToken,
@@ -4785,26 +4786,26 @@ export default capsule({
     claimTntExplosion: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateTntExplosionRequestJson(requestJson);
-      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const fingerprint = tntExplosionFingerprint(request);
       const receiptRows = await ctx.db.tntExplosionReceipts
         .withIndex("by_event", (q) => q.eq("eventId", request.eventId))
         .order("desc")
         .take(2);
-      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const receiptDecision = decideTntReceipt(receiptRows[0]?.fingerprint ?? null, fingerprint);
-      if (receiptDecision === "operation_id_reused") {
-        return { ok: false, reason: "operation_id_reused", serverNow };
+      if (receiptDecision === BS.operationIdReused) {
+        return { ok: false, reason: BS.operationIdReused, serverNow };
       }
       if (receiptDecision === "replay") {
         try {
           const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
-          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: "invalid_receipt", serverNow };
+          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: BS.invalidReceipt, serverNow };
         } catch {
-          return { ok: false, reason: "invalid_receipt", serverNow };
+          return { ok: false, reason: BS.invalidReceipt, serverNow };
         }
       }
 
@@ -4835,7 +4836,7 @@ export default capsule({
       }
 
       const worldRows = await ctx.db.worldEdits
-        .withIndex("by_coord", (q) => q.eq("coordKey", fuse.coordKey))
+        .withIndex("by_coord", (q) => q.eq(BS.coordKey, fuse.coordKey))
         .order("desc")
         .take(2);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "tnt"
@@ -4912,16 +4913,16 @@ export default capsule({
     claimCreeperExplosion: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateCreeperExplosionRequestJson(requestJson);
-      if (!request) return { ok: false, reason: "invalid_request", serverNow };
+      if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
 
       const receiptRows = await ctx.db.creeperExplosionReceipts
         .withIndex("by_event", (q) => q.eq("eventId", request.operationId))
         .order("desc")
         .take(2);
-      if (receiptRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const requestFingerprint = JSON.stringify([
         request.operationId,
         request.mobId,
@@ -4933,13 +4934,13 @@ export default capsule({
         receiptRows[0]?.fingerprint ?? null,
         requestFingerprint,
       );
-      if (commitDecision === "event_collision") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (commitDecision === "event_collision") return { ok: false, reason: BS.operationIdReused, serverNow };
       if (commitDecision === "replay") {
         try {
           const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
-          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: "invalid_receipt", serverNow };
+          return replay?.ok === true ? { ...replay, replayed: true } : { ok: false, reason: BS.invalidReceipt, serverNow };
         } catch {
-          return { ok: false, reason: "invalid_receipt", serverNow };
+          return { ok: false, reason: BS.invalidReceipt, serverNow };
         }
       }
 
@@ -4947,12 +4948,12 @@ export default capsule({
         .withIndex("by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
         .order("desc")
         .take(2);
-      if (authorityRows.length !== 1) return { ok: false, reason: "authority_unavailable", serverNow };
+      if (authorityRows.length !== 1) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const authorityRow = authorityRows[0];
       const storedWorld = databaseRowToStoredMobWorld(authorityRow);
       const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
       const advanced = storedWorld && replayInput ? advanceMobWorldState(storedWorld, serverNow, replayInput) : null;
-      if (!advanced) return { ok: false, reason: "authority_unavailable", serverNow };
+      if (!advanced) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const pose = writeMobMotionPoses(advanced.state).find((candidate) => candidate.mobId === request.mobId);
       const motionMob = advanced.state.mobs.find((candidate) => candidate.mobId === request.mobId);
       if (!pose || !motionMob || pose.kind !== "creeper") return { ok: false, reason: "unknown_mob", serverNow };
@@ -4973,7 +4974,7 @@ export default capsule({
         .withIndex("by_mob", (q) => q.eq("mobId", request.mobId))
         .order("desc")
         .take(2);
-      if (mobRows.length > 1) return { ok: false, reason: "duplicate_state", serverNow };
+      if (mobRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const mobState = materializeMobAuthorityState(
         databaseRowToStoredMobAuthority(mobRows[0] ?? null),
         request.mobId,
@@ -5054,10 +5055,10 @@ export default capsule({
     rangedCombat: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const validation = validateRangedCombatRequestJson(requestJson);
-      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason, serverNow };
+      if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason, serverNow };
       const request = validation.request;
 
       const inventoryRows = await ctx.db.inventories
@@ -5067,7 +5068,7 @@ export default capsule({
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
-      if (!playerState.ok) return { ok: false, reason: "inventory_invalid", serverNow };
+      if (!playerState.ok) return { ok: false, reason: BS.inventoryInvalid, serverNow };
       const selectedStack = playerState.state.inventory[playerState.state.selectedHotbar] ?? null;
       const inventoryAuthority: RangedInventoryAuthority = {
         revision: inventoryRow.revision,
@@ -5086,9 +5087,9 @@ export default capsule({
         if (receiptRows.length > 1) return { ok: false, reason: "duplicate_receipt", serverNow };
         if (receiptRows.length === 1) {
           const receipt = decodeRangedCombatReceipt(receiptRows[0].resultJson);
-          if (!receipt) return { ok: false, reason: "invalid_receipt", serverNow };
-          if (decideRangedCombatReplay(receipt.fingerprint, request.fingerprint) === "operation_id_reused") {
-            return { ok: false, reason: "operation_id_reused", serverNow };
+          if (!receipt) return { ok: false, reason: BS.invalidReceipt, serverNow };
+          if (decideRangedCombatReplay(receipt.fingerprint, request.fingerprint) === BS.operationIdReused) {
+            return { ok: false, reason: BS.operationIdReused, serverNow };
           }
           return {
             ok: true,
@@ -5153,7 +5154,7 @@ export default capsule({
       if (request.kind === "begin_charge") {
         if (charge.active && chargeRow?.beginOperationId === request.operationId) {
           if (chargeRow.beginFingerprint !== request.fingerprint) {
-            return { ok: false, reason: "operation_id_reused", serverNow };
+            return { ok: false, reason: BS.operationIdReused, serverNow };
           }
           return { ok: true, kind: "begin_charge", replayed: true, charge, serverNow };
         }
@@ -5284,7 +5285,7 @@ export default capsule({
       const worldAuthority = trajectory ? await authoritativeRangedOccluders(ctx.db, trajectory, target) : null;
       if (trajectory && (!worldAuthority || !worldAuthority.ok)) {
         await clearRejectedCharge();
-        return { ok: false, reason: worldAuthority?.reason ?? "invalid_world_state", serverNow };
+        return { ok: false, reason: worldAuthority?.reason ?? BS.invalidWorldState, serverNow };
       }
       const resolution = resolveRangedReleaseIdempotently(null, {
         request,
@@ -5392,7 +5393,7 @@ export default capsule({
     ) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const identity = validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!identity.ok) return { ok: false, reason: identity.reason, serverNow };
@@ -5407,7 +5408,7 @@ export default capsule({
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
-      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && existingReceipt) {
         try {
           const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
@@ -5422,7 +5423,7 @@ export default capsule({
         } catch {
           // Corrupt server-authored receipts fail closed.
         }
-        return { ok: false, reason: "invalid_receipt", serverNow };
+        return { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
       const presenceRow = await ctx.db.playerPresence
@@ -5451,7 +5452,7 @@ export default capsule({
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
-      if (!playerState.ok) return { ok: false, reason: "inventory_invalid", serverNow };
+      if (!playerState.ok) return { ok: false, reason: BS.inventoryInvalid, serverNow };
       const selectedSlot = playerState.state.selectedHotbar;
       const selectedStack = playerState.state.inventory[selectedSlot] ?? null;
       const selectedItemId = selectedStack?.itemId ?? null;
@@ -5468,7 +5469,7 @@ export default capsule({
       const mobPose = advancedWorld
         ? writeMobMotionPoses(advancedWorld.state).find((pose) => pose.mobId === identity.mobId)
         : null;
-      if (!mobPose) return { ok: false, reason: "authority_unavailable", serverNow };
+      if (!mobPose) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const spatial = validatePlayerMeleeSpatialAuthority(playerPose, {
         userId: mobPose.mobId,
         x: mobPose.x,
@@ -5549,7 +5550,7 @@ export default capsule({
     ) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const identity = validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!identity.ok) return { ok: false, reason: identity.reason, serverNow };
@@ -5564,7 +5565,7 @@ export default capsule({
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
-      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && existingReceipt) {
         try {
           const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
@@ -5579,7 +5580,7 @@ export default capsule({
         } catch {
           // Corrupt server-authored receipts fail closed.
         }
-        return { ok: false, reason: "invalid_receipt", serverNow };
+        return { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
       const presenceRow = await ctx.db.playerPresence
@@ -5607,7 +5608,7 @@ export default capsule({
       if (inventoryRows.length !== 1) return { ok: false, reason: "inventory_required", serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
-      if (!playerState.ok) return { ok: false, reason: "inventory_invalid", serverNow };
+      if (!playerState.ok) return { ok: false, reason: BS.inventoryInvalid, serverNow };
       const selectedStack = playerState.state.inventory[playerState.state.selectedHotbar] ?? null;
       const selectedItemId = selectedStack?.itemId ?? null;
       if (Number(rawDamage) !== attackDamage(selectedItemId)) {
@@ -5626,7 +5627,7 @@ export default capsule({
       const mobPose = advancedWorld
         ? writeMobMotionPoses(advancedWorld.state).find((pose) => pose.mobId === identity.mobId)
         : null;
-      if (!mobPose) return { ok: false, reason: "authority_unavailable", serverNow };
+      if (!mobPose) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const spatial = validatePlayerMeleeSpatialAuthority(attackerPresence, {
         userId: mobPose.mobId,
         x: mobPose.x,
@@ -5701,10 +5702,10 @@ export default capsule({
     attackPlayer: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required", serverNow };
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const validation = validatePlayerAttackRequestJson(requestJson);
-      if (!validation.ok) return { ok: false, reason: "invalid_request", detail: validation.reason, serverNow };
+      if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason, serverNow };
       const request = validation.request;
       const existingReceipt = await ctx.db.playerCombatReceipts
         .withIndex("by_user_operation", (q) => q
@@ -5713,10 +5714,10 @@ export default capsule({
         .order("desc")
         .first();
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
-      if (replay === "operation_id_reused") return { ok: false, reason: "operation_id_reused", serverNow };
+      if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && existingReceipt) {
         return decodePlayerCombatReceipt(existingReceipt.resultJson)
-          ?? { ok: false, reason: "invalid_receipt", serverNow };
+          ?? { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
       const attackerPresenceRow = await ctx.db.playerPresence
@@ -5778,7 +5779,7 @@ export default capsule({
         activityHalfUnits: storedPresenceActivityHalfUnits(targetPresenceRow),
       });
       if (targetSurvival.revisionExhausted || targetSurvival.revision >= Number.MAX_SAFE_INTEGER) {
-        return { ok: false, reason: "combat_revision_exhausted", serverNow };
+        return { ok: false, reason: BS.combatRevisionExhausted, serverNow };
       }
       const targetCombatAtEvent = {
         ...targetCombatBefore,
@@ -5864,7 +5865,7 @@ export default capsule({
 
     claimUsername: mutation(async (ctx, requestedUsername: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateUsername(requestedUsername);
       if (!validation.ok) return { ok: false, reason: validation.reason };
@@ -5898,7 +5899,7 @@ export default capsule({
 
     sendChat: mutation(async (ctx, rawMessage: string) => {
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: "authentication_required" };
+        return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateChatMessage(rawMessage);
       if (!validation.ok) return { ok: false, reason: validation.reason };
