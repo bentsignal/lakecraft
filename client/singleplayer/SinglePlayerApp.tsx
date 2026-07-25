@@ -128,6 +128,8 @@ import {
   transitionLocalGameMode,
   type LocalGameMode,
 } from "./localCommands.ts";
+import { LocalWorldBrowser } from "./LocalWorldBrowser.tsx";
+import type { LocalWorldRecord } from "./localWorldRegistry.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -191,7 +193,7 @@ type InitialLocalWorld = {
   prunedDropCount: number;
 };
 
-function loadInitialLocalWorld(): InitialLocalWorld {
+function loadInitialLocalWorld(world: LocalWorldRecord): InitialLocalWorld {
   const now = Date.now();
   const finish = (snapshot: SinglePlayerSnapshot, load: SinglePlayerLoadResult, saveLocked: boolean): InitialLocalWorld => {
     const pruned = pruneExpiredLocalDroppedItems(snapshot.drops, now);
@@ -206,10 +208,12 @@ function loadInitialLocalWorld(): InitialLocalWorld {
     };
   };
   try {
-    const load = loadSinglePlayerSave(localStorage, { now: () => now });
+    const load = loadSinglePlayerSave(localStorage, { now: () => now, migrateLegacy: false, worldId: world.id });
     if (load.snapshot) return finish(load.snapshot, load, false);
     if (load.status === "empty") {
-      return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, false);
+      const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
+      snapshot.world.gameMode = world.initialGameMode;
+      return finish(snapshot, load, false);
     }
     // Never overwrite corrupt or future-format data with a permissive reset.
     console.error("[Lakecraft save] Local world could not be loaded safely.", {
@@ -218,19 +222,31 @@ function loadInitialLocalWorld(): InitialLocalWorld {
       ...("reason" in load ? { reason: load.reason } : {}),
       ...("versions" in load ? { versions: load.versions } : {}),
     });
-    return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, true);
+    const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
+    snapshot.world.gameMode = world.initialGameMode;
+    return finish(snapshot, load, true);
   } catch (error) {
     console.error("[Lakecraft save] Browser storage could not be read.", error);
     const load: SinglePlayerLoadResult = {
       status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: ["storage:unavailable"],
     };
-    return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, true);
+    const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
+    snapshot.world.gameMode = world.initialGameMode;
+    return finish(snapshot, load, true);
   }
 }
 
-export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPointerLockHandoff?: boolean } = {}) {
+function SinglePlayerWorld({
+  entryPointerLockHandoff = false,
+  world,
+  onExit,
+}: {
+  entryPointerLockHandoff?: boolean;
+  world: LocalWorldRecord;
+  onExit: () => void;
+}) {
   const initial = useRef<InitialLocalWorld | null>(null);
-  if (!initial.current) initial.current = loadInitialLocalWorld();
+  if (!initial.current) initial.current = loadInitialLocalWorld(world);
   const initialSnapshot = initial.current.snapshot;
   const initialGameMode: LocalGameMode = initialSnapshot.world.gameMode ?? "survival";
   const initialPlayerHealth = initialGameMode === "creative"
@@ -275,6 +291,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     : createSaveCadenceState(performance.now()));
   const saveLockedRef = useRef(initial.current.saveLocked);
   const saveInProgressRef = useRef(false);
+  const quitSavedRef = useRef(false);
   const performSaveRef = useRef<(reason: "manual" | "autosave" | "quit") => boolean>(() => false);
   const setLocalFusesPausedRef = useRef<(paused: boolean) => void>(() => undefined);
   const localRespawnBusyRef = useRef(false);
@@ -462,7 +479,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     saveInProgressRef.current = true;
     setSaveInProgress(true);
     const now = Date.now();
-    const result = saveSinglePlayerSnapshot(localStorage, snapshot, now);
+    const result = saveSinglePlayerSnapshot(localStorage, snapshot, now, { worldId: world.id });
     saveInProgressRef.current = false;
     setSaveInProgress(false);
     if (!result.ok) {
@@ -496,7 +513,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       "Reset this local world? This permanently deletes its saved blocks, inventory, and progress. This cannot be undone.",
     );
     if (!confirmed) return;
-    const result = resetSinglePlayerSave(localStorage);
+    const result = resetSinglePlayerSave(localStorage, { worldId: world.id });
     if (!result.ok) {
       console.error("[Lakecraft save] Explicit local world reset failed.", result);
       setSaveStatusText(result.mutationStarted
@@ -1557,7 +1574,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       setLocalFusesPausedRef.current = () => undefined;
       window.removeEventListener("pointerdown", unlockAudio, true);
       window.removeEventListener("keydown", unlockAudio, true);
-      performSaveRef.current("quit");
+      if (!quitSavedRef.current) performSaveRef.current("quit");
       audio.destroy();
       if (audioRef.current === audio) audioRef.current = null;
       engine.destroy();
@@ -1777,7 +1794,9 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     : `Last saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
   const returnToTitle = () => {
     if (!saveLockedRef.current && !persist("quit")) return;
-    window.location.href = window.location.pathname;
+    quitSavedRef.current = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    onExit();
   };
 
   return (
@@ -1858,7 +1877,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
             void audioRef.current?.unlock().then(() => audioRef.current?.play("uiConfirm", { seed: "local-sound-on", intensity: 0.52 }));
           }
         }}
-        worldName="Local World"
+        worldName={world.name}
       />
       <ChatOverlay
         connected
@@ -1911,5 +1930,25 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         </div>
       ) : null}
     </main>
+  );
+}
+
+export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPointerLockHandoff?: boolean } = {}) {
+  const [activeWorld, setActiveWorld] = useState<{
+    world: LocalWorldRecord;
+    pointerLockHandoff: boolean;
+  } | null>(null);
+
+  return activeWorld ? (
+    <SinglePlayerWorld
+      entryPointerLockHandoff={activeWorld.pointerLockHandoff}
+      key={activeWorld.world.id}
+      onExit={() => setActiveWorld(null)}
+      world={activeWorld.world}
+    />
+  ) : (
+    <LocalWorldBrowser
+      onPlay={(world, pointerLockHandoff) => setActiveWorld({ world, pointerLockHandoff })}
+    />
   );
 }

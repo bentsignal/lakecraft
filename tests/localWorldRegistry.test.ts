@@ -80,6 +80,15 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
         ? { itemId: index === 0 ? "stick" : index === 1 ? "brick" : "feather", count: index + 1 }
         : null),
     }];
+    snapshot.furnaces = [{
+      coordKey: `${index + 10}:63:${-index}`,
+      input: { itemId: "raw_iron", count: index + 1 },
+      fuel: { itemId: "coal", count: 1 },
+      output: index === 0 ? null : { itemId: "iron_ingot", count: index },
+      burnRemainingMs: index * 1_000,
+      cookProgressMs: index * 500,
+      lastMaterializedAtMs: 9_000 + index,
+    }];
     assert.equal(saveSinglePlayerSnapshot(storage, snapshot, 10_000 + index, { worldId: worlds[index].id }).ok, true);
   }
 
@@ -87,6 +96,8 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   assert.deepEqual(snapshots.map(({ world }) => world.edits[0].x), [0, 1, 2]);
   assert.deepEqual(snapshots.map(({ player }) => player.inventory[0]?.itemId), ["apple", "diamond", "coal"]);
   assert.deepEqual(snapshots.map(({ chests }) => chests[0].inventory[0]?.itemId), ["stick", "brick", "feather"]);
+  assert.deepEqual(snapshots.map(({ furnaces }) => furnaces[0].input?.count), [1, 2, 3]);
+  assert.deepEqual(snapshots.map(({ furnaces }) => furnaces[0].output?.count ?? 0), [0, 1, 2]);
   assert.deepEqual(snapshots.map(({ world }) => world.gameMode), ["survival", "creative", "survival"]);
 
   // Corrupt and oversize one world without affecting either sibling.

@@ -21,7 +21,6 @@ export const LOCAL_WORLD_REGISTRY_FORMAT = "lakecraft.local-world-registry" as c
 export const LOCAL_WORLD_REGISTRY_VERSION = 1 as const;
 export const LOCAL_WORLD_REGISTRY_SLOT_A_KEY = "lakecraft.singleplayer.worlds.a";
 export const LOCAL_WORLD_REGISTRY_SLOT_B_KEY = "lakecraft.singleplayer.worlds.b";
-export const LOCAL_WORLD_REGISTRY_HEAD_KEY = "lakecraft.singleplayer.worlds.head";
 export const LOCAL_WORLD_REGISTRY_MAX_WORLDS = 12;
 export const LOCAL_WORLD_REGISTRY_MAX_CHARS = 32_000;
 export const LOCAL_WORLD_NAME_MAX_CHARS = 48;
@@ -130,7 +129,7 @@ function validateWorldRecord(value: unknown): LocalWorldRecord | null {
     || !safeInteger(value.seed, -2_147_483_648, 2_147_483_647)
     || (value.initialGameMode !== "survival" && value.initialGameMode !== "creative")
     || !safeInteger(value.createdAt, 0, MAX_TIMESTAMP)
-    || !safeInteger(value.lastPlayedAt, value.createdAt, MAX_TIMESTAMP)
+    || (!safeInteger(value.lastPlayedAt, value.createdAt, MAX_TIMESTAMP) && value.lastPlayedAt !== 0)
     || typeof value.importedLegacy !== "boolean") return null;
   return {
     id: value.id,
@@ -242,20 +241,6 @@ function highestRegistrySlot(slots: readonly ParsedRegistrySlot[]): Extract<Pars
     .sort((left, right) => right.envelope.sequence - left.envelope.sequence || left.slot.localeCompare(right.slot))[0] ?? null;
 }
 
-function readRegistryHead(storage: SinglePlayerStorageAdapter): { slot: "a" | "b"; sequence: number } | null {
-  try {
-    const raw = storage.getItem(LOCAL_WORLD_REGISTRY_HEAD_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    return isRecord(parsed) && exactKeys(parsed, ["sequence", "slot"])
-      && (parsed.slot === "a" || parsed.slot === "b") && safeInteger(parsed.sequence, 1, Number.MAX_SAFE_INTEGER)
-      ? { slot: parsed.slot, sequence: parsed.sequence }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
   const scanned = readRegistrySlots(storage);
   const issues = scanned.slots.flatMap((slot) => slot.kind === "corrupt" ? [`${slot.slot}:${slot.reason}`]
@@ -272,11 +257,8 @@ export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): Loc
   }
   const selected = highestRegistrySlot(scanned.slots);
   if (selected) {
-    const head = readRegistryHead(storage);
-    const recovered = issues.length > 0 || Boolean(head
-      && (head.slot !== selected.slot || head.sequence !== selected.envelope.sequence));
     return {
-      status: recovered ? "recovered" : "loaded",
+      status: issues.length > 0 ? "recovered" : "loaded",
       registry: selected.envelope.payload,
       sequence: selected.envelope.sequence,
       issues,
@@ -318,15 +300,6 @@ export function saveLocalWorldRegistry(
   if (readback !== serialized.raw || verified.kind !== "valid"
     || verified.envelope.sequence !== serialized.envelope.sequence) {
     return { ok: false, reason: "readback_failed" };
-  }
-  try {
-    storage.setItem(LOCAL_WORLD_REGISTRY_HEAD_KEY, canonicalSinglePlayerJson({
-      sequence: serialized.envelope.sequence,
-      slot: target,
-    }));
-  } catch {
-    // The two verified slots remain authoritative; a stale head only reports
-    // recovery on the next read.
   }
   return {
     ok: true,
@@ -384,7 +357,7 @@ function createWorldFromSnapshot(
     seed: input.seed,
     initialGameMode: input.gameMode,
     createdAt: input.createdAt,
-    lastPlayedAt: input.createdAt,
+    lastPlayedAt: 0,
     importedLegacy: input.importedLegacy,
   };
   const snapshot = sourceSnapshot
@@ -481,7 +454,10 @@ export function touchLocalWorld(
   if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
   const world = loaded.registry.worlds.find(({ id }) => id === worldId);
   if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
-  const nextWorld = { ...world, lastPlayedAt: Math.max(world.lastPlayedAt, Math.min(MAX_TIMESTAMP, Math.floor(playedAt))) };
+  const nextWorld = {
+    ...world,
+    lastPlayedAt: Math.max(world.createdAt, world.lastPlayedAt, Math.min(MAX_TIMESTAMP, Math.floor(playedAt))),
+  };
   const nextRegistry = {
     worlds: loaded.registry.worlds.map((candidate) => candidate.id === worldId ? nextWorld : candidate),
   };
