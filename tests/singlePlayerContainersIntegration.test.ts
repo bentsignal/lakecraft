@@ -17,6 +17,7 @@ assert.ok(interaction.indexOf("BLOCK.CHEST") < interaction.indexOf("BLOCK.CRAFTI
 assert.ok(app.includes("transferLocalChestFullStack("), "chest clicks use atomic full-stack local authority");
 assert.ok(app.includes("transferLocalFurnaceFullStack("), "furnace clicks reuse shared smelting transfer rules");
 assert.ok(app.includes("materializeLocalFurnace(containersRef.current, activeFurnaceKey, Date.now())"), "closing a furnace commits its elapsed local progress");
+assert.ok(app.includes("exportLocalContainersSnapshot(containersRef.current, Date.now())"), "saving commits every elapsed local furnace without a timer");
 assert.ok(app.includes("recoverLocalContainerContents("), "breaking a container preflights conserved pack/drop recovery");
 assert.ok(app.includes("SINGLEPLAYER_SAVE_LIMITS.drops - dropsRef.current.length"), "world-drop capacity is proven before container removal");
 assert.ok(app.includes("containersRef.current = recovered.containers"), "successful recovery removes the container only after all contents have a destination");

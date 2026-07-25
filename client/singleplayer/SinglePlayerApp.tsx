@@ -362,8 +362,9 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   }
 
   function buildSnapshot(): SinglePlayerSnapshot | null {
-    const containers = exportLocalContainersSnapshot(containersRef.current);
+    const containers = exportLocalContainersSnapshot(containersRef.current, Date.now());
     if (!containers.ok) return null;
+    containersRef.current = containers.containers;
     const activePlayMs = Math.floor(Math.min(
       Number.MAX_SAFE_INTEGER,
       worldRef.current.activePlayMs + saveCadenceRef.current.activePlayMsSinceSave,
@@ -469,7 +470,6 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       const materialized = materializeLocalFurnace(containersRef.current, activeFurnaceKey, Date.now());
       if (materialized.ok) {
         containersRef.current = materialized.containers;
-        setFurnaceState(materialized.furnace);
         markWorldDirty();
       }
     }
@@ -532,15 +532,12 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   function settleBrokenContainerContents(x: number, y: number, z: number, block: EngineBlockId): void {
     pruneLocalDrops();
     const coordKey = `${x}:${y}:${z}`;
-    if (block === BLOCK.FURNACE) {
-      const materialized = materializeLocalFurnace(containersRef.current, coordKey, Date.now());
-      if (materialized.ok) containersRef.current = materialized.containers;
-    }
     const recovered = recoverLocalContainerContents(
       containersRef.current,
       coordKey,
       inventoryRef.current,
       SINGLEPLAYER_SAVE_LIMITS.drops - dropsRef.current.length,
+      Date.now(),
     );
     if (!recovered.ok) {
       setMessages((current) => [...current.slice(-2), {

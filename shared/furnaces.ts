@@ -259,8 +259,7 @@ export function validateFurnaceJson(rawFurnaceJson: string, expectedCoordKey?: s
 }
 
 export function serializeFurnaceState(state: FurnaceState): FurnaceSerializationResult {
-  const validation = validateFurnaceState(state);
-  return validation.ok ? validation : validation;
+  return validateFurnaceState(state);
 }
 
 function canAcceptOutput(output: ItemStack | null, recipe: SmeltingRecipe): boolean {

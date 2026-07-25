@@ -112,13 +112,6 @@ function cloneFurnace(state: FurnaceState): FurnaceState {
   };
 }
 
-function cloneContainers(containers: LocalContainers): LocalContainers {
-  return {
-    chests: new Map([...containers.chests].map(([key, inventory]) => [key, cloneInventory(inventory)])),
-    furnaces: new Map([...containers.furnaces].map(([key, state]) => [key, cloneFurnace(state)])),
-  };
-}
-
 function strictPlayerInventory(value: readonly (ItemStack | null)[]): Inventory | null {
   if (!Array.isArray(value) || value.length !== INVENTORY_SIZE) return null;
   const inventory: Inventory = [];
@@ -232,21 +225,34 @@ export function transferLocalChestFullStack(
   };
 }
 
-/** Opens an existing furnace or creates one at the caller's trusted local clock. */
+/** Opens and materializes an existing furnace, or creates one at the caller's trusted local clock. */
 export function openLocalFurnace(
   containers: LocalContainers,
   rawCoordKey: string,
   trustedNowMs: number,
-): { ok: true; containers: LocalContainers; furnace: FurnaceState; created: boolean }
+): { ok: true; containers: LocalContainers; furnace: FurnaceState; created: boolean; cooked: number; fuelConsumed: number }
   | { ok: false; reason: LocalContainerIssue; containers: LocalContainers } {
   const coordKey = canonicalCoordinate(rawCoordKey);
   if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers };
   const existing = containers.furnaces.get(coordKey);
   if (existing) {
-    const validation = validateFurnaceState(existing, coordKey);
-    return validation.ok
-      ? { ok: true, containers, furnace: cloneFurnace(validation.state), created: false }
-      : { ok: false, reason: "invalid_state", containers };
+    if (existing.coordKey !== coordKey) return { ok: false, reason: "invalid_state", containers };
+    const materialized = materializeFurnace(existing, trustedNowMs);
+    if (!materialized.ok) {
+      return {
+        ok: false,
+        reason: materialized.reason === "invalid_time" ? "invalid_time" : "invalid_state",
+        containers,
+      };
+    }
+    return {
+      ok: true,
+      containers: withFurnace(containers, coordKey, materialized.state),
+      furnace: materialized.state,
+      created: false,
+      cooked: materialized.cooked,
+      fuelConsumed: materialized.fuelConsumed,
+    };
   }
   if (containers.furnaces.size >= MAX_LOCAL_FURNACES) return { ok: false, reason: "furnace_limit", containers };
   const created = createEmptyFurnace(coordKey, trustedNowMs);
@@ -254,26 +260,14 @@ export function openLocalFurnace(
   return {
     ok: true,
     containers: withFurnace(containers, coordKey, created.state),
-    furnace: cloneFurnace(created.state),
+    furnace: created.state,
     created: true,
+    cooked: 0,
+    fuelConsumed: 0,
   };
 }
 
-export function materializeLocalFurnace(
-  containers: LocalContainers,
-  rawCoordKey: string,
-  trustedNowMs: number,
-): { ok: true; containers: LocalContainers; furnace: FurnaceState; cooked: number; fuelConsumed: number }
-  | { ok: false; reason: LocalContainerIssue; containers: LocalContainers } {
-  const opened = openLocalFurnace(containers, rawCoordKey, trustedNowMs);
-  if (!opened.ok) return opened;
-  const materialized = materializeFurnace(opened.furnace, trustedNowMs);
-  if (!materialized.ok) {
-    return { ok: false, reason: materialized.reason === "invalid_time" ? "invalid_time" : "invalid_state", containers: opened.containers };
-  }
-  const next = withFurnace(opened.containers, materialized.state.coordKey, materialized.state);
-  return { ok: true, containers: next, furnace: materialized.state, cooked: materialized.cooked, fuelConsumed: materialized.fuelConsumed };
-}
+export const materializeLocalFurnace = openLocalFurnace;
 
 /** Materializes elapsed cook time and then moves exactly one complete source stack. */
 export function transferLocalFurnaceFullStack(
@@ -374,14 +368,21 @@ export function recoverLocalContainerContents(
   rawCoordKey: string,
   playerInventory: readonly (ItemStack | null)[],
   maximumOverflowStacks: number,
+  trustedNowMs: number,
 ): { ok: true; containers: LocalContainers; inventory: Inventory; overflow: ItemStack[]; recovered: ItemStack[] }
-  | { ok: false; reason: "invalid_coordinate" | "invalid_inventory" | "no_capacity"; containers: LocalContainers; inventory: Inventory } {
+  | { ok: false; reason: LocalContainerIssue; containers: LocalContainers; inventory: Inventory } {
   const coordKey = canonicalCoordinate(rawCoordKey);
   const player = strictPlayerInventory(playerInventory);
   if (!coordKey) return { ok: false, reason: "invalid_coordinate", containers, inventory: player ?? cloneInventory(playerInventory) };
   if (!player) return { ok: false, reason: "invalid_inventory", containers, inventory: cloneInventory(playerInventory) };
-  const chest = containers.chests.get(coordKey);
-  const furnace = containers.furnaces.get(coordKey);
+  let working = containers;
+  if (containers.furnaces.has(coordKey)) {
+    const materialized = materializeLocalFurnace(containers, coordKey, trustedNowMs);
+    if (!materialized.ok) return { ...materialized, inventory: player };
+    working = materialized.containers;
+  }
+  const chest = working.chests.get(coordKey);
+  const furnace = working.furnaces.get(coordKey);
   const recovered = [
     ...(chest ? chest.filter((stack): stack is ItemStack => stack !== null) : []),
     ...[furnace?.input, furnace?.fuel, furnace?.output].filter((stack): stack is ItemStack => Boolean(stack)),
@@ -396,14 +397,17 @@ export function recoverLocalContainerContents(
   if (!Number.isSafeInteger(maximumOverflowStacks) || maximumOverflowStacks < 0 || overflow.length > maximumOverflowStacks) {
     return { ok: false, reason: "no_capacity", containers, inventory: player };
   }
-  const removed = removeLocalContainersAt(containers, coordKey);
+  const removed = removeLocalContainersAt(working, coordKey);
   return removed.ok
     ? { ok: true, containers: removed.containers, inventory, overflow, recovered }
     : { ok: false, reason: "invalid_coordinate", containers, inventory: player };
 }
 
-/** Validates, clones and sorts all rows; oversized maps fail instead of truncating. */
-export function exportLocalContainersSnapshot(containers: LocalContainers): LocalContainersImportResult {
+/** Validates, optionally materializes, clones and sorts every row without truncating. */
+export function exportLocalContainersSnapshot(
+  containers: LocalContainers,
+  trustedNowMs?: number,
+): LocalContainersImportResult {
   if (containers.chests.size > MAX_LOCAL_CHESTS) return { ok: false, reason: "chest_limit", path: "$.chests" };
   if (containers.furnaces.size > MAX_LOCAL_FURNACES) return { ok: false, reason: "furnace_limit", path: "$.furnaces" };
   const chests: LocalChestSnapshot[] = [];
@@ -417,15 +421,30 @@ export function exportLocalContainersSnapshot(containers: LocalContainers): Loca
   const furnaces: FurnaceState[] = [];
   for (const [key, value] of containers.furnaces) {
     const validation = validateFurnaceState(value, key);
-    if (!validation.ok || validation.state.coordKey !== key) {
+    if (!validation.ok) {
       return { ok: false, reason: "invalid_state", path: `$.furnaces[${JSON.stringify(key)}]` };
     }
-    furnaces.push(cloneFurnace(validation.state));
+    let state = validation.state;
+    if (trustedNowMs !== undefined) {
+      const materialized = materializeFurnace(state, trustedNowMs);
+      if (!materialized.ok) {
+        return { ok: false, reason: "invalid_time", path: `$.furnaces[${JSON.stringify(key)}]` };
+      }
+      state = materialized.state;
+    }
+    furnaces.push(cloneFurnace(state));
   }
   chests.sort((left, right) => left.coordKey.localeCompare(right.coordKey));
   furnaces.sort((left, right) => left.coordKey.localeCompare(right.coordKey));
   const snapshot = { chests, furnaces };
-  return { ok: true, containers: cloneContainers(containers), snapshot };
+  return {
+    ok: true,
+    containers: {
+      chests: new Map(chests.map(({ coordKey, inventory }) => [coordKey, cloneInventory(inventory)])),
+      furnaces: new Map(furnaces.map((state) => [state.coordKey, cloneFurnace(state)])),
+    },
+    snapshot,
+  };
 }
 
 /** Strict canonical snapshot import. Duplicate, extra, invalid or excessive rows fail closed. */
