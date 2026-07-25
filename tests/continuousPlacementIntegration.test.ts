@@ -46,7 +46,7 @@ assert.match(engine, /function onMouseUp[\s\S]{0,180}event\.button === 2[\s\S]{0
   "right-button release disarms placement");
 assert.match(engine, /function releaseTransientInput[\s\S]{0,180}cancelSecondaryPlacementHold\(true\)/,
   "blur and visibility cleanup disarm placement");
-assert.match(engine, /function onPointerLockChange[\s\S]{0,220}cancelSecondaryPlacementHold\(true\)/,
+assert.match(engine, /function onPointerLockChange[\s\S]{0,220}releaseTransientInput\(\)/,
   "pointer-lock loss disarms placement");
 assert.ok(teardown.includes("cancelSecondaryPlacementHold(true);"), "teardown cannot retain a physical button state");
 assert.ok(pause.includes("cancelSecondaryPlacementHold(true);"), "pause disarms held placement");

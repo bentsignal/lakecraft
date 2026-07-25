@@ -101,7 +101,10 @@ import {
 import { consumeSelectedPlacementStack } from "./localPlacement.ts";
 import {
   SINGLE_PLAYER_INITIAL_PAUSE_OPEN,
+  createSinglePlayerPointerSessionState,
   singlePlayerGameplayPaused,
+  transitionSinglePlayerPointerSession,
+  type SinglePlayerPointerSessionEvent,
 } from "./sessionState.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
@@ -203,7 +206,7 @@ function loadInitialLocalWorld(): InitialLocalWorld {
   }
 }
 
-export function SinglePlayerApp() {
+export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPointerLockHandoff?: boolean } = {}) {
   const initial = useRef<InitialLocalWorld | null>(null);
   if (!initial.current) initial.current = loadInitialLocalWorld();
   const initialSnapshot = initial.current.snapshot;
@@ -211,6 +214,8 @@ export function SinglePlayerApp() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
   const audioRef = useRef<GameAudio | null>(null);
+  const entryPointerLockHandoffRef = useRef(entryPointerLockHandoff);
+  const pointerSessionRef = useRef(createSinglePlayerPointerSessionState(false));
   const inventoryRef = useRef(initialSnapshot.player.inventory);
   const equipmentRef = useRef(initialSnapshot.player.equipment);
   const selectedRef = useRef(initialSnapshot.player.selectedHotbar);
@@ -254,6 +259,7 @@ export function SinglePlayerApp() {
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN);
+  const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [clientSettings, setClientSettings] = useState(() => loadClientSettings(window.localStorage));
   const clientSettingsRef = useRef(clientSettings);
@@ -284,6 +290,42 @@ export function SinglePlayerApp() {
   const [saveStatusText, setSaveStatusText] = useState(initialSaveText);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialSavedAt);
   const [saveInProgress, setSaveInProgress] = useState(false);
+  const pointerUiBlockedRef = useRef(false);
+  pointerUiBlockedRef.current = inventoryOpen || worldModalOpen || deathScreenOpen
+    || document.visibilityState !== "visible";
+
+  function applyPointerSessionEvent(event: SinglePlayerPointerSessionEvent): void {
+    const transition = transitionSinglePlayerPointerSession(pointerSessionRef.current, event);
+    pointerSessionRef.current = transition.state;
+    if (transition.openPause) {
+      setOptionsOpen(false);
+      setPauseOpen(true);
+      setPointerCaptureNeeded(false);
+    }
+    if (transition.closePause) setPauseOpen(false);
+    if (transition.showCaptureAffordance) setPointerCaptureNeeded(true);
+    if (transition.requestPointerLock) {
+      setPointerCaptureNeeded(true);
+      engineRef.current?.requestPointerLock();
+    }
+  }
+
+  function setGamePauseOpen(open: boolean): void {
+    applyPointerSessionEvent({ type: "set_pause", open });
+    setPauseOpen(open);
+    if (open) setPointerCaptureNeeded(false);
+  }
+
+  function releasePointerLockForUi(): void {
+    entryPointerLockHandoffRef.current = false;
+    applyPointerSessionEvent({ type: "intentional_release" });
+    setPointerCaptureNeeded(false);
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  function requestGameplayPointerLock(): void {
+    applyPointerSessionEvent({ type: "resume" });
+  }
 
   function warnWorldEditCapacity(): void {
     if (editCapacityWarningRef.current) return;
@@ -435,7 +477,7 @@ export function SinglePlayerApp() {
     setActiveFurnaceKey(null);
     setContainerError("");
     setContainerStatus("");
-    if (requestPointerLock) engineRef.current?.requestPointerLock();
+    if (requestPointerLock) requestGameplayPointerLock();
   }
 
   function transferChestStack(direction: ChestTransferDirection, index: number): void {
@@ -567,7 +609,7 @@ export function SinglePlayerApp() {
       tone: "success",
     }]);
     setSleepingBed({ x, y, z });
-    document.exitPointerLock();
+    releasePointerLockForUi();
     return true;
   }
 
@@ -686,6 +728,7 @@ export function SinglePlayerApp() {
     setDeathScreenOpen(false);
     localRespawnBusyRef.current = false;
     setRespawning(false);
+    requestGameplayPointerLock();
   }
 
   useEffect(() => {
@@ -844,6 +887,24 @@ export function SinglePlayerApp() {
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
       getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
+      onPointerLockChange: (locked) => {
+        const entryHandoffActive = entryPointerLockHandoffRef.current
+          && document.pointerLockElement === document.documentElement
+          && !pointerUiBlockedRef.current;
+        if (entryHandoffActive) {
+          entryPointerLockHandoffRef.current = false;
+          setPointerCaptureNeeded(true);
+          engineRef.current?.requestPointerLock();
+          return;
+        }
+        applyPointerSessionEvent({
+          type: "lock_change",
+          locked,
+          now: performance.now(),
+          uiBlocked: pointerUiBlockedRef.current,
+        });
+        if (locked) setPointerCaptureNeeded(false);
+      },
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
       getMiningDuration: (block) => {
         const gameBlock = ENGINE_TO_GAME[block];
@@ -1071,11 +1132,11 @@ export function SinglePlayerApp() {
         pendingDeathCauseRef.current = "unknown";
         setDeathStatus("");
         setDeathScreenOpen(true);
-        setPauseOpen(false);
+        setGamePauseOpen(false);
         setInventoryOpen(false);
         setActiveChestKey(null);
         setActiveFurnaceKey(null);
-        document.exitPointerLock();
+        releasePointerLockForUi();
       },
       onPlayerDamage: (amount, cause) => {
         if (amount > 0) pendingDeathCauseRef.current = cause;
@@ -1141,7 +1202,7 @@ export function SinglePlayerApp() {
           setContainerError("");
           setContainerStatus(opened.created ? "New local chest." : "Local chest opened.");
           if (opened.created) markWorldDirty();
-          document.exitPointerLock();
+          releasePointerLockForUi();
           return true;
         }
         if (target.block.block === BLOCK.FURNACE) {
@@ -1157,7 +1218,7 @@ export function SinglePlayerApp() {
           setContainerError("");
           setContainerStatus(opened.created ? "New local furnace." : "Local furnace opened.");
           if (opened.created) markWorldDirty();
-          document.exitPointerLock();
+          releasePointerLockForUi();
           return true;
         }
         if (target.block.block === BLOCK.SAPLING
@@ -1215,7 +1276,7 @@ export function SinglePlayerApp() {
         if (target.block.block === BLOCK.CRAFTING_TABLE) {
           setCraftingContext("crafting_table");
           setInventoryOpen(true);
-          document.exitPointerLock();
+          releasePointerLockForUi();
           return true;
         }
         if (target.block.block !== BLOCK.TNT
@@ -1260,6 +1321,18 @@ export function SinglePlayerApp() {
     engine.setPaused(initiallyPaused);
     setLocalFusesPausedRef.current(initiallyPaused);
     engine.start();
+    if (entryPointerLockHandoffRef.current && document.pointerLockElement === document.documentElement) {
+      entryPointerLockHandoffRef.current = false;
+      engine.requestPointerLock();
+    } else if (document.pointerLockElement === canvas) {
+      applyPointerSessionEvent({
+        type: "lock_change",
+        locked: true,
+        now: performance.now(),
+        uiBlocked: false,
+      });
+      setPointerCaptureNeeded(false);
+    }
     for (const fuse of [...primedTntRef.current]) {
       if (!primeLocalTnt(fuse.x, fuse.y, fuse.z, Math.max(0, fuse.dueAt - Date.now()), 0, false)) {
         primedTntRef.current = primedTntRef.current.filter((candidate) => candidate.eventId !== fuse.eventId);
@@ -1337,6 +1410,7 @@ export function SinglePlayerApp() {
       });
       engineRef.current?.setPaused(paused);
       setLocalFusesPausedRef.current(paused);
+      if (!paused && document.pointerLockElement !== canvasRef.current) setPointerCaptureNeeded(true);
       sample();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -1361,6 +1435,7 @@ export function SinglePlayerApp() {
       );
       markWorldDirty();
       setSleepingBed(null);
+      setPointerCaptureNeeded(true);
       setMessages((current) => [...current.slice(-2), {
         id: `wake-${Date.now()}`,
         text: "Good morning",
@@ -1395,11 +1470,15 @@ export function SinglePlayerApp() {
         }
         return;
       }
-      if (pauseOpen) {
-        if (event.code === "Escape" && !event.repeat) {
+      if (pointerSessionRef.current.pauseOpen) {
+        if (event.code === "Escape") {
           event.preventDefault();
-          setPauseOpen(false);
-          engineRef.current?.requestPointerLock();
+          applyPointerSessionEvent({
+            type: "escape",
+            now: performance.now(),
+            repeat: event.repeat,
+            uiBlocked: false,
+          });
         }
         return;
       }
@@ -1418,9 +1497,19 @@ export function SinglePlayerApp() {
         event.preventDefault();
         setInventoryOpen(true);
         setCraftingContext("field");
-        document.exitPointerLock();
+        releasePointerLockForUi();
+        return;
       }
-      if (event.code === "Escape" && !inventoryOpen) setPauseOpen(true);
+      if (event.code === "Escape") {
+        event.preventDefault();
+        applyPointerSessionEvent({
+          type: "escape",
+          now: performance.now(),
+          repeat: event.repeat,
+          uiBlocked: inventoryOpen || worldModalOpen || deathScreenOpen,
+        });
+        if (!event.repeat && document.pointerLockElement) document.exitPointerLock();
+      }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -1435,9 +1524,17 @@ export function SinglePlayerApp() {
 
   return (
     <main className="lc-singleplayer">
-      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}`}</style>
+      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}`}</style>
       <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
       <span aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}`} className="lc-singleplayer-coordinates">XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z}</span>
+      {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen ? (
+        <div className="lc-pointer-capture" role="presentation">
+          <button autoFocus onClick={requestGameplayPointerLock} type="button">
+            Click to Play
+            <small>Capture the mouse · Escape opens Game Menu</small>
+          </button>
+        </div>
+      ) : null}
       {inventory[selected]?.itemId === "bow" ? (
         <FirstPersonBow
           actionToken={handActionToken}
@@ -1459,9 +1556,9 @@ export function SinglePlayerApp() {
         inventory={inventory}
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
-        modalOpen={worldModalOpen}
+        modalOpen={worldModalOpen || pointerCaptureNeeded}
         messages={messages}
-        onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); engineRef.current?.requestPointerLock(); }}
+        onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); requestGameplayPointerLock(); }}
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         disconnectLabel="Save and Quit to Title"
@@ -1486,7 +1583,7 @@ export function SinglePlayerApp() {
         onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
         optionsOpen={optionsOpen}
         onRespawn={respawnLocally}
-        onResume={() => { setOptionsOpen(false); setPauseOpen(false); engineRef.current?.requestPointerLock(); }}
+        onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}
         onSave={() => { persist("manual"); }}
         onResetWorld={saveLockedRef.current ? resetUnreadableWorld : undefined}
         onSelectHotbar={selectHotbar}

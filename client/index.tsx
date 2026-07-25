@@ -717,7 +717,15 @@ function LakebedQueryRecovery({ error, retry }: { error: Error; retry: () => voi
   );
 }
 
-function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWorld: boolean) => void }) {
+function GameApp({
+  inWorld,
+  setInWorld,
+  onJoinSingleplayer,
+}: {
+  inWorld: boolean;
+  setInWorld: (inWorld: boolean) => void;
+  onJoinSingleplayer: () => void;
+}) {
   const auth = useAuth();
   const [clientSettings, setClientSettings] = useState(() => loadClientSettings(window.localStorage));
   const clientSettingsRef = useRef(clientSettings);
@@ -3308,7 +3316,7 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
         joinPhase={joinPhase}
         settings={clientSettings}
         onJoinWorld={enterWorld}
-        onJoinSingleplayer={() => { window.location.search = "?singleplayer=1"; }}
+        onJoinSingleplayer={onJoinSingleplayer}
         onSettingsChange={updateClientSettings}
         onSignInWithGoogle={() => {
           setUsernameError("");
@@ -3578,17 +3586,39 @@ function GameApp({ inWorld, setInWorld }: { inWorld: boolean; setInWorld: (inWor
   );
 }
 
-function LakebedMultiplayerApp() {
+function LakebedMultiplayerApp({ onJoinSingleplayer }: { onJoinSingleplayer: () => void }) {
   const [inWorld, setInWorld] = useState(false);
   return (
     <ErrorBoundary fallback={(error, retry) => <LakebedQueryRecovery error={error} retry={retry} />}>
-      <GameApp inWorld={inWorld} setInWorld={setInWorld} />
+      <GameApp inWorld={inWorld} setInWorld={setInWorld} onJoinSingleplayer={onJoinSingleplayer} />
     </ErrorBoundary>
   );
 }
 
 export function App() {
-  return shouldRunSinglePlayer(window.location.hostname, window.location.search)
-    ? <SinglePlayerApp />
-    : <LakebedMultiplayerApp />;
+  const [singlePlayer, setSinglePlayer] = useState(
+    () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
+  );
+  const [entryPointerLockHandoff, setEntryPointerLockHandoff] = useState(false);
+
+  function joinSingleplayer(): void {
+    let handoffRequested = false;
+    if (typeof document.documentElement.requestPointerLock === "function") {
+      try {
+        handoffRequested = true;
+        void Promise.resolve(document.documentElement.requestPointerLock()).catch(() => undefined);
+      } catch {
+        handoffRequested = false;
+      }
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("singleplayer", "1");
+    window.history.replaceState(window.history.state, "", url);
+    setEntryPointerLockHandoff(handoffRequested);
+    setSinglePlayer(true);
+  }
+
+  return singlePlayer
+    ? <SinglePlayerApp entryPointerLockHandoff={entryPointerLockHandoff} />
+    : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />;
 }

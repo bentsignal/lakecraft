@@ -39,9 +39,9 @@ assert.equal(shouldRunSinglePlayer("localhost", "?%73ingleplayer=%31"), true,
 
 const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const appRoute = app.slice(app.indexOf("export function App()"));
-assert.ok(appRoute.indexOf("shouldRunSinglePlayer") < appRoute.indexOf("<LakebedMultiplayerApp />"),
+assert.ok(appRoute.indexOf("shouldRunSinglePlayer") < appRoute.indexOf("<LakebedMultiplayerApp"),
   "the host policy runs before the Lakebed multiplayer tree can mount");
-assert.equal(appRoute.match(/<LakebedMultiplayerApp \/>/g)?.length, 1,
+assert.equal(appRoute.match(/<LakebedMultiplayerApp\b/g)?.length, 1,
   "multiplayer remains implemented behind one unreachable hosted branch");
 
 console.log("production single-player access policy tests passed");

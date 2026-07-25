@@ -2974,10 +2974,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onPointerLockChange(): void {
     if (document.pointerLockElement !== canvas) {
-      clearHeldMovementInput();
-      cancelPrimaryActionHold();
-      cancelSecondaryPlacementHold(true);
-      clearRangedCharge(true);
+      releaseTransientInput();
       resetMovementView();
     }
     options.onPointerLockChange?.(document.pointerLockElement === canvas);

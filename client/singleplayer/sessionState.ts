@@ -1,4 +1,5 @@
 export const SINGLE_PLAYER_INITIAL_PAUSE_OPEN = false;
+export const POINTER_LOCK_ESCAPE_DEDUP_MS = 160;
 
 export interface SinglePlayerPauseState {
   pauseOpen: boolean;
@@ -15,4 +16,142 @@ export function singlePlayerGameplayPaused(state: Readonly<SinglePlayerPauseStat
     || state.worldModalOpen
     || state.deathScreenOpen
     || !state.documentVisible;
+}
+
+export interface SinglePlayerPointerSessionState {
+  locked: boolean;
+  pauseOpen: boolean;
+  intentionalReleasePending: boolean;
+  ignoreEscapeUntil: number;
+}
+
+export type SinglePlayerPointerSessionEvent =
+  | { type: "escape"; now: number; repeat?: boolean; uiBlocked: boolean }
+  | { type: "intentional_release" }
+  | { type: "lock_change"; locked: boolean; now: number; uiBlocked: boolean }
+  | { type: "resume" }
+  | { type: "set_pause"; open: boolean };
+
+export interface SinglePlayerPointerSessionTransition {
+  state: SinglePlayerPointerSessionState;
+  openPause: boolean;
+  closePause: boolean;
+  requestPointerLock: boolean;
+  showCaptureAffordance: boolean;
+}
+
+export function createSinglePlayerPointerSessionState(
+  locked = false,
+  pauseOpen = SINGLE_PLAYER_INITIAL_PAUSE_OPEN,
+): SinglePlayerPointerSessionState {
+  return {
+    locked,
+    pauseOpen,
+    intentionalReleasePending: false,
+    ignoreEscapeUntil: Number.NEGATIVE_INFINITY,
+  };
+}
+
+/**
+ * Coordinates the two browser signals produced by Escape. Chromium commonly
+ * reports keydown before pointerlockchange, while Firefox can report the lock
+ * loss first. Both orderings must produce one pause transition.
+ */
+export function transitionSinglePlayerPointerSession(
+  current: Readonly<SinglePlayerPointerSessionState>,
+  event: Readonly<SinglePlayerPointerSessionEvent>,
+): SinglePlayerPointerSessionTransition {
+  const unchanged = (state: SinglePlayerPointerSessionState = { ...current }): SinglePlayerPointerSessionTransition => ({
+    state,
+    openPause: false,
+    closePause: false,
+    requestPointerLock: false,
+    showCaptureAffordance: false,
+  });
+
+  if (event.type === "intentional_release") {
+    return unchanged({
+      ...current,
+      intentionalReleasePending: current.locked,
+    });
+  }
+
+  if (event.type === "set_pause") {
+    return unchanged({
+      ...current,
+      pauseOpen: event.open,
+      ignoreEscapeUntil: event.open ? current.ignoreEscapeUntil : Number.NEGATIVE_INFINITY,
+    });
+  }
+
+  if (event.type === "resume") {
+    return {
+      ...unchanged({
+        ...current,
+        pauseOpen: false,
+        intentionalReleasePending: false,
+        ignoreEscapeUntil: Number.NEGATIVE_INFINITY,
+      }),
+      closePause: current.pauseOpen,
+      requestPointerLock: true,
+    };
+  }
+
+  if (event.type === "escape") {
+    if (event.repeat || event.uiBlocked) return unchanged();
+    if (current.pauseOpen) {
+      if (event.now <= current.ignoreEscapeUntil) return unchanged();
+      return {
+        ...unchanged({
+          ...current,
+          pauseOpen: false,
+          intentionalReleasePending: false,
+          ignoreEscapeUntil: Number.NEGATIVE_INFINITY,
+        }),
+        closePause: true,
+        requestPointerLock: true,
+      };
+    }
+    return {
+      ...unchanged({
+        ...current,
+        pauseOpen: true,
+        intentionalReleasePending: current.locked,
+        ignoreEscapeUntil: Number.NEGATIVE_INFINITY,
+      }),
+      openPause: true,
+    };
+  }
+
+  if (event.locked) {
+    return unchanged({
+      ...current,
+      locked: true,
+      intentionalReleasePending: false,
+      ignoreEscapeUntil: Number.NEGATIVE_INFINITY,
+    });
+  }
+
+  const wasLocked = current.locked;
+  const intentional = current.intentionalReleasePending;
+  const next = {
+    ...current,
+    locked: false,
+    intentionalReleasePending: false,
+  };
+  if (!wasLocked) {
+    return {
+      ...unchanged(next),
+      showCaptureAffordance: !event.uiBlocked && !current.pauseOpen,
+    };
+  }
+  if (intentional || event.uiBlocked || current.pauseOpen) return unchanged(next);
+  return {
+    ...unchanged({
+      ...next,
+      pauseOpen: true,
+      ignoreEscapeUntil: event.now + POINTER_LOCK_ESCAPE_DEDUP_MS,
+    }),
+    openPause: true,
+  };
 }
