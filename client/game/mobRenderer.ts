@@ -6,21 +6,26 @@ import {
   type MobProjectileSnapshot,
 } from "./mobs.ts";
 import { TNT_FUSE_MS, TNT_MAX_ACTIVE_FUSES } from "../../shared/tntAuthority.ts";
+import { decodeStaticBytes } from "../staticData.ts";
 import type { PrimedTntVisualFuse } from "./types.ts";
 import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeometry.ts";
 
 type Vec3 = readonly [number, number, number];
 
-const BOXES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
-  pig: 9,
-  cow: 9,
-  sheep: 7,
-  chicken: 9,
-  zombie: 6,
-  skeleton: 9,
-  creeper: 9,
-  spider: 12,
+const VERTICES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
+  pig: 348,
+  cow: 354,
+  sheep: 282,
+  chicken: 348,
+  zombie: 252,
+  skeleton: 342,
+  creeper: 252,
+  spider: 432,
 });
+
+// Quantized [minX,minY,maxX,maxY,z,r,g,b] quads add pixel-scale face and
+// surface marks without paying a complete 36-vertex box per mark.
+const MOB_GEOMETRY_BYTES = decodeStaticBytes("AGxIeFBbCgQECIhIlCAIczd7PYBmEAYGhTeNIAgAamJ2bGwEAwIIimKWIAhxSnlQgHgMBwWHSo8gCABYTHZjPgwHBABsWHdiaQMCAgiJWJQgCHJGekyAcgYFBIZGjiAIAHVAi0RyBAMDAGxbd2UtBQQCCIlblCAIZDBzQoAIRkZAjTCcIAggbKh4sxsAKIioApQgCHOVjZwbCAAEA2JcfHESBAAeH4RPnmMSBAAhImW1m74bCAAWCGunebYcCCAIB4enlSAIcZUAj5wcICAdZJYAdqYoAwUCipZCnCAIdHiMlBAQaABJfWAXCR8IhgAtmEQXHUgXYQB6c4woDCsKWgAjSaZSt1w1OgBkK7CcVttiPgBCbTDYk0PmVgAqMWdTt3hgxoBUJi2IU7eZIAkAUjc+rnC+IhYADGJBtp517B0AEgpoQuaYWfgASDoqVm7CZ4QA0k5GMpluwqoBIAllPLabbekaABgVa0DklVTyABQSEF4eU6JTAIhYWFJlPX6bAGytXl5YbEutAJRbwls9CHc7AK2JS7pLCQZoIDZAmFVWABteRABuooqSBSsrZQCKZZu+myA6HABlRHObUI0+QAA6eUx4h4yITgBQSV5bd6JniUEACWJzeJ5/EBJkAIpknMKcVFZPAFAePLBIlA0JAAddH4qjRsAKAAcGZyvAeTrDgFgDAocrwJkgCQ==", 516);
 
 const FLOATS_PER_VERTEX = 6;
 const VERTICES_PER_BOX = 36;
@@ -91,7 +96,7 @@ export interface MobRenderer {
 }
 
 export function mobVertexCountForKind(kind: MobKind): number {
-  return BOXES_PER_KIND[kind] * VERTICES_PER_BOX;
+  return VERTICES_PER_KIND[kind];
 }
 
 function shortestAngle(from: number, to: number): number {
@@ -154,6 +159,68 @@ function appendBox(
   }
 }
 
+function appendMobPatches(
+  writer: VertexWriter,
+  originX: number,
+  originY: number,
+  originZ: number,
+  yaw: number,
+  start: number,
+  end: number,
+): void {
+  const cosYaw = Math.cos(yaw);
+  const sinYaw = Math.sin(yaw);
+  const unit = 0.01;
+  for (let patch = start; patch < end; patch += 8) {
+    const minX = (MOB_GEOMETRY_BYTES[patch] - 128) * unit;
+    const minY = MOB_GEOMETRY_BYTES[patch + 1] * unit;
+    const width = (MOB_GEOMETRY_BYTES[patch + 2] - MOB_GEOMETRY_BYTES[patch]) * unit;
+    const height = (MOB_GEOMETRY_BYTES[patch + 3] - MOB_GEOMETRY_BYTES[patch + 1]) * unit;
+    const localZ = MOB_GEOMETRY_BYTES[patch + 4] * unit + 0.002;
+    const red = MOB_GEOMETRY_BYTES[patch + 5] * unit;
+    const green = MOB_GEOMETRY_BYTES[patch + 6] * unit;
+    const blue = MOB_GEOMETRY_BYTES[patch + 7] * unit;
+    for (let point = 0; point < 6; point += 1) {
+      const corner = point === 1 || point === 2 || point === 4 ? 1 : 0;
+      const top = point >= 2 && point <= 4 ? 1 : 0;
+      const localX = minX + corner * width;
+      writer.data[writer.offset++] = originX + localX * cosYaw - localZ * sinYaw;
+      writer.data[writer.offset++] = originY + minY + top * height;
+      writer.data[writer.offset++] = originZ + localX * sinYaw + localZ * cosYaw;
+      const hurtMix = writer.hurtMix;
+      writer.data[writer.offset++] = red + (1 - red) * hurtMix;
+      writer.data[writer.offset++] = green + (0.06 - green) * hurtMix;
+      writer.data[writer.offset++] = blue + (0.06 - blue) * hurtMix;
+    }
+  }
+}
+
+function appendStaticBoxes(
+  writer: VertexWriter,
+  x: number,
+  y: number,
+  z: number,
+  yaw: number,
+  start: number,
+  end: number,
+): void {
+  const unit = 0.01;
+  for (let box = start; box < end; box += 9) {
+    appendBox(
+      writer,x,y,z,yaw,0,0,0,
+      (MOB_GEOMETRY_BYTES[box] - 128) * unit,
+      MOB_GEOMETRY_BYTES[box + 1] * unit,
+      (MOB_GEOMETRY_BYTES[box + 2] - 128) * unit,
+      (MOB_GEOMETRY_BYTES[box + 3] - 128) * unit,
+      MOB_GEOMETRY_BYTES[box + 4] * unit,
+      (MOB_GEOMETRY_BYTES[box + 5] - 128) * unit,
+      MOB_GEOMETRY_BYTES[box + 6] * unit,
+      MOB_GEOMETRY_BYTES[box + 7] * unit,
+      MOB_GEOMETRY_BYTES[box + 8] * unit,
+    );
+  }
+}
+
 function mixWhite(value: number, amount: number): number {
   return value + (1 - value) * amount;
 }
@@ -213,52 +280,45 @@ function appendQuadrupedLegs(
 
 function appendPig(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   appendQuadrupedLegs(writer,x,y,z,yaw,swing,0.18,0.42,-0.38,0.43,0.13,0.72,0.38,0.43);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.38,0.35,-0.55,0.38,0.82,0.55,0.92,0.53,0.58);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.28,0.43,0.48,0.28,0.86,0.91,0.98,0.62,0.66);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.19,0.48,0.88,0.19,0.67,1.02,0.86,0.42,0.49);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.25,0.83,0.55,-0.08,0.96,0.7,0.84,0.38,0.45);
-  appendBox(writer,x,y,z,yaw,0,0,0,0.08,0.83,0.55,0.25,0.96,0.7,0.84,0.38,0.45);
+  appendStaticBoxes(writer,x,y,z,yaw,264,309);
+  appendMobPatches(writer,x,y,z,yaw,0,32);
 }
 
 function appendCow(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   appendQuadrupedLegs(writer,x,y,z,yaw,swing,0.24,0.46,-0.43,0.63,0.14,0.24,0.16,0.08);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.46,0.55,-0.66,0.46,1.12,0.62,0.34,0.22,0.12);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.3,0.65,0.54,0.3,1.17,1.08,0.29,0.18,0.1);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.24,0.66,1.02,0.24,0.89,1.2,0.72,0.58,0.42);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.42,1.1,0.66,-0.25,1.32,0.82,0.78,0.7,0.5);
-  appendBox(writer,x,y,z,yaw,0,0,0,0.25,1.1,0.66,0.42,1.32,0.82,0.78,0.7,0.5);
+  appendStaticBoxes(writer,x,y,z,yaw,309,354);
+  appendMobPatches(writer,x,y,z,yaw,32,72);
 }
 
 function appendSheep(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number, sheared: boolean): void {
   appendQuadrupedLegs(writer,x,y,z,yaw,swing,0.2,0.42,-0.4,0.58,0.12,0.19,0.16,0.13);
   if (sheared) appendBox(writer,x,y,z,yaw,0,0,0,-0.36,0.52,-0.57,0.36,1.06,0.54,0.78,0.56,0.52);
   else appendBox(writer,x,y,z,yaw,0,0,0,-0.47,0.48,-0.66,0.47,1.17,0.61,0.86,0.84,0.72);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.6,0.54,0.27,1.09,1.05,0.26,0.24,0.21);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.21,0.64,1,0.21,0.84,1.14,0.2,0.18,0.16);
+  appendStaticBoxes(writer,x,y,z,yaw,354,372);
+  appendMobPatches(writer,x,y,z,yaw,72,112);
 }
 
 function appendChicken(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   // The white body/head, tiny beak and dangling red wattle follow the classic
   // chicken silhouette. Narrow yellow legs and side wings animate without
   // leaving the shared mob batch or allocating any per-frame objects.
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.34,0.3,-0.45,0.34,0.83,0.08,0.88,0.88,0.82);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.61,-0.02,0.27,1.08,0.45,0.94,0.94,0.88);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.2,0.75,0.451,0.2,0.91,0.66,0.91,0.61,0.08);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.09,0.59,0.452,0.09,0.75,0.58,0.75,0.09,0.055);
+  appendStaticBoxes(writer,x,y,z,yaw,372,408);
   appendBox(writer,x,y,z,yaw,swing,0.34,-0.04,-0.23,0,-0.12,-0.11,0.38,0.1,0.86,0.57,0.09);
   appendBox(writer,x,y,z,yaw,-swing,0.34,-0.04,0.11,0,-0.12,0.23,0.38,0.1,0.86,0.57,0.09);
   appendBox(writer,x,y,z,yaw,-swing*0.42,0.68,-0.08,-0.45,0.4,-0.34,-0.34,0.76,0.03,0.79,0.79,0.73);
   appendBox(writer,x,y,z,yaw,swing*0.42,0.68,-0.08,0.34,0.4,-0.34,0.45,0.76,0.03,0.79,0.79,0.73);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.24,0.54,-0.64,0.24,0.85,-0.42,0.94,0.94,0.88);
+  appendStaticBoxes(writer,x,y,z,yaw,408,417);
+  appendMobPatches(writer,x,y,z,yaw,112,144);
 }
 
 function appendZombie(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   appendBox(writer,x,y,z,yaw,swing,0.68,0,-0.24,0,-0.15,-0.02,0.72,0.15,0.18,0.22,0.43);
   appendBox(writer,x,y,z,yaw,-swing,0.68,0,0.02,0,-0.15,0.24,0.72,0.15,0.18,0.22,0.43);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.34,0.68,-0.18,0.34,1.38,0.18,0.05,0.43,0.43);
+  appendStaticBoxes(writer,x,y,z,yaw,417,426);
   appendBox(writer,x,y,z,yaw,-swing*0.8,1.32,0,-0.55,0.77,-0.13,-0.34,1.36,0.13,0.3,0.58,0.27);
   appendBox(writer,x,y,z,yaw,swing*0.8,1.32,0,0.34,0.77,-0.13,0.55,1.36,0.13,0.3,0.58,0.27);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.27,1.38,-0.27,0.27,1.9,0.27,0.32,0.58,0.28);
+  appendStaticBoxes(writer,x,y,z,yaw,426,435);
+  appendMobPatches(writer,x,y,z,yaw,144,192);
 }
 
 function appendSkeleton(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
@@ -268,13 +328,11 @@ function appendSkeleton(writer: VertexWriter, x: number, y: number, z: number, y
   // Two narrow legs, pelvis, spine, crossed ribs, bow arms, and a square skull.
   appendBox(writer,x,y,z,yaw,swing,0.7,0,-0.19,0,-0.11,-0.04,0.72,0.11,boneR,boneG,boneB);
   appendBox(writer,x,y,z,yaw,-swing,0.7,0,0.04,0,-0.11,0.19,0.72,0.11,boneR,boneG,boneB);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.68,-0.13,0.27,0.8,0.13,0.62,0.64,0.58);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.07,0.76,-0.08,0.07,1.4,0.08,boneR,boneG,boneB);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.34,0.91,-0.09,0.34,1.03,0.09,boneR,boneG,boneB);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.3,1.15,-0.08,0.3,1.27,0.08,boneR,boneG,boneB);
+  appendStaticBoxes(writer,x,y,z,yaw,435,471);
   appendBox(writer,x,y,z,yaw,-0.48,1.34,0,-0.52,0.82,-0.1,-0.3,1.37,0.1,boneR,boneG,boneB);
   appendBox(writer,x,y,z,yaw,0.48,1.34,0,0.3,0.82,-0.1,0.52,1.37,0.1,boneR,boneG,boneB);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.28,1.38,-0.28,0.28,1.94,0.28,0.84,0.86,0.79);
+  appendStaticBoxes(writer,x,y,z,yaw,471,480);
+  appendMobPatches(writer,x,y,z,yaw,192,216);
 }
 
 function appendCreeper(
@@ -302,9 +360,7 @@ function appendCreeper(
   appendBox(writer,x,y,z,yaw,swing,0.38,0,0.04,0,0.04,0.34,0.42,0.34,darkR,darkG,darkB);
   appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.34,-0.23,0.27,1.19,0.23,greenR,greenG,greenB);
   appendBox(writer,x,y,z,yaw,0,0,0,-0.4,1.08,-0.4,0.4,1.79,0.4,greenR,greenG,greenB);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.28,1.5,0.401,-0.1,1.66,0.425,0.025,0.045,0.02);
-  appendBox(writer,x,y,z,yaw,0,0,0,0.1,1.5,0.401,0.28,1.66,0.425,0.025,0.045,0.02);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.12,1.2,0.401,0.12,1.48,0.425,0.025,0.045,0.02);
+  appendMobPatches(writer,x,y,z,yaw,216,264);
 }
 
 function appendSpiderLeg(
@@ -358,10 +414,7 @@ function appendSpiderLeg(
 function appendSpider(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   // A broad abdomen and forward head keep the body recognizably low while the
   // eight individually phased legs produce the iconic two-block-wide outline.
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.48,0.3,-0.68,0.48,0.72,0.2,0.13,0.09,0.065);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.35,0.31,0.1,0.35,0.7,0.64,0.095,0.07,0.055);
-  appendBox(writer,x,y,z,yaw,0,0,0,-0.25,0.43,0.641,-0.07,0.58,0.67,0.88,0.025,0.018);
-  appendBox(writer,x,y,z,yaw,0,0,0,0.07,0.43,0.641,0.25,0.58,0.67,0.88,0.025,0.018);
+  appendStaticBoxes(writer,x,y,z,yaw,480,516);
   for (let row = 0; row < 4; row += 1) {
     appendSpiderLeg(writer, x, y, z, yaw, -1, row, swing);
     appendSpiderLeg(writer, x, y, z, yaw, 1, row, swing);
