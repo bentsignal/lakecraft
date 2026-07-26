@@ -101,6 +101,44 @@ test("ownership, lifecycle, target, inspection, and artifact mismatches fail clo
   ]);
 });
 
+test("any additional non-archived or incompletely archived deployment fails closed", () => {
+  const variants = [
+    deploy({ deployId: "dep_active", ownerId: "github:other" }),
+    deploy({ deployId: "dep_pending", status: "pending", archivedAt: null }),
+    deploy({ deployId: "dep_unknown", status: "unknown", archivedAt: "2026-07-25T00:00:00.000Z" }),
+    deploy({ deployId: "dep_incomplete_archive", status: "archived", archivedAt: null }),
+    deploy({ deployId: "dep_invalid_archive", status: "archived", archivedAt: "not-a-date" }),
+  ];
+  for (const unexpected of variants) {
+    const report = auditProductionDeploy(
+      { deploys: [deploy(), unexpected], user: { token: "must-not-leak" } },
+      target,
+      { capturedAt: "2026-07-26T12:00:00.000Z" },
+    );
+    assert.equal(report.ok, false);
+    assert.deepEqual(report.failures, ["noUnexpectedActiveDeploy"]);
+    assert.equal(JSON.stringify(report).includes(unexpected.deployId), false);
+    assert.equal(JSON.stringify(report).includes("must-not-leak"), false);
+  }
+});
+
+test("explicitly archived historical deployments are allowed", () => {
+  const report = auditProductionDeploy({
+    deploys: [
+      deploy(),
+      deploy({
+        archivedAt: "2026-07-25T00:00:00.000Z",
+        deployId: "dep_historical",
+        ownerId: "github:former-owner",
+        status: "archived",
+      }),
+    ],
+  }, target, { capturedAt: "2026-07-26T12:00:00.000Z" });
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.failures, []);
+  assert.equal(JSON.stringify(report).includes("dep_historical"), false);
+});
+
 test("an unclaimed deployment is reported as a failed gate without hiding the audit", () => {
   const report = auditProductionDeploy({
     deploys: [deploy({ claimedAt: null, ownerId: null })],

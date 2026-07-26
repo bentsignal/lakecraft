@@ -20,12 +20,16 @@ prints a sanitized report; it never deploys, archives, claims, or changes state.
 node scripts/audit-lakebed-production.mjs
 ```
 
-The report verifies one active deployment, the claimed owner, private
-inspection, the public/canonical target mapping, documented platform limits,
-and at least 1,000 requests plus 100 mutations remaining. Preserve its UTC
-timestamp, artifact hashes, usage, limits, gates, and failures. Do not preserve
-claim tokens, cookies, `.lakebed/deploy.json`, `.env.lakebed.server`, raw
-identity rows, or full database dumps in git.
+The report verifies that the configured target is the only non-archived
+deployment, plus its claimed owner, private inspection, public/canonical target
+mapping, documented platform limits, and at least 1,000 requests plus 100
+mutations remaining. Explicitly archived historical entries with valid archive
+timestamps are allowed. Every other extra entry—including active, pending,
+unknown, incompletely archived, or malformed lifecycle state—fails the
+`noUnexpectedActiveDeploy` gate. Preserve the report's UTC timestamp, artifact
+hashes, usage, limits, gates, and failures. Do not preserve claim tokens,
+cookies, `.lakebed/deploy.json`, `.env.lakebed.server`, raw identity rows, or
+full database dumps in git.
 
 To audit a previously captured control-plane response without another hosted
 request:

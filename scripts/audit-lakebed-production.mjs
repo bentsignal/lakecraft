@@ -54,6 +54,13 @@ function hash(value, label) {
   return text;
 }
 
+function isArchivedHistoricalDeploy(value) {
+  const deploy = record(value, "deploy");
+  return deploy.status === "archived"
+    && typeof deploy.archivedAt === "string"
+    && Number.isFinite(Date.parse(deploy.archivedAt));
+}
+
 export function validateProductionTarget(value) {
   const target = record(value, "production target");
   if (target.schemaVersion !== 1) throw new Error("production target schemaVersion must be 1.");
@@ -86,6 +93,10 @@ export function auditProductionDeploy(payloadValue, targetValue, options = {}) {
     throw new Error(`Expected exactly one ${target.deployId} deployment; received ${matches.length}.`);
   }
   const deploy = record(matches[0], "production deploy");
+  const unexpectedActiveDeploy = deploys.some((entry) => {
+    const candidate = record(entry, "deploy");
+    return candidate.deployId !== target.deployId && !isArchivedHistoricalDeploy(candidate);
+  });
   const limits = record(deploy.limits, "production deploy limits");
   const usage = record(deploy.usage, "production deploy usage");
   const requestsPerDay = integer(limits.requestsPerDay, "limits.requestsPerDay", 1);
@@ -107,6 +118,7 @@ export function auditProductionDeploy(payloadValue, targetValue, options = {}) {
   const claimedAt = deploy.claimedAt === null ? null : isoDate(deploy.claimedAt, "production deploy claimedAt");
   const gates = Object.freeze({
     active: deploy.status === "active" && deploy.archivedAt === null,
+    noUnexpectedActiveDeploy: !unexpectedActiveDeploy,
     claimedOwner: deploy.ownerId === target.ownerId && claimedAt !== null,
     currentTarget: deploy.name === target.name && canonicalUrl === target.canonicalUrl,
     privateInspection: deploy.inspectPolicy === "private",
