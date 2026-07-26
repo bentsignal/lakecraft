@@ -8,7 +8,11 @@ import {
   minifyCssText,
 } from "../scripts/css-template-compression.mjs";
 
-const MAXIMUM_FASTEST_PACK_MS = 500;
+// Ten isolated trials put the production-corpus median at 3.6–4.2 ms; ten more
+// with eight CPU burners stayed at or below 11.5 ms. A 40 ms ceiling rejects a
+// sustained order-of-magnitude regression while retaining shared-runner margin.
+// Median-of-five requires three samples to regress instead of one lucky pass.
+const MAXIMUM_MEDIAN_PACK_MS = 40;
 const SAMPLE_COUNT = 5;
 
 async function clientSourceUrls(directory) {
@@ -49,10 +53,10 @@ for (let sample = 0; sample < SAMPLE_COUNT; sample += 1) {
   assert.deepEqual(packed, warmup, "timed packing must remain deterministic");
 }
 
-const fastestMs = Math.min(...samples);
+const medianMs = [...samples].sort((left, right) => left - right)[Math.floor(SAMPLE_COUNT / 2)];
 assert.ok(
-  fastestMs < MAXIMUM_FASTEST_PACK_MS,
-  `shared CSS packing best-of-${SAMPLE_COUNT} took ${fastestMs.toFixed(1)}ms`,
+  medianMs < MAXIMUM_MEDIAN_PACK_MS,
+  `shared CSS packing median-of-${SAMPLE_COUNT} took ${medianMs.toFixed(1)}ms`,
 );
 
 console.log(JSON.stringify({
@@ -60,6 +64,6 @@ console.log(JSON.stringify({
   sourceBytes: Buffer.byteLength(css),
   templateCount: templates.length,
   samplesMs: samples.map((sample) => Number(sample.toFixed(2))),
-  fastestMs: Number(fastestMs.toFixed(2)),
-  maximumFastestMs: MAXIMUM_FASTEST_PACK_MS,
+  medianMs: Number(medianMs.toFixed(2)),
+  maximumMedianMs: MAXIMUM_MEDIAN_PACK_MS,
 }));
