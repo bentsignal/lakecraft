@@ -60,11 +60,9 @@ export type GameHudProps = {
   onCloseOptions?: () => void;
   soundMuted?: boolean;
   onToggleSound?: () => void;
-  onSave?: () => void;
-  saveStatusText?: string;
-  lastSavedText?: string;
-  saveDisabled?: boolean;
-  saveInProgress?: boolean;
+  autosaveStatusText?: string;
+  lastAutosavedText?: string;
+  disconnectDisabled?: boolean;
   onResetWorld?: () => void;
   onDisconnect?: () => void;
   pauseTitle?: string;
@@ -124,11 +122,9 @@ export function GameHud({
   onCloseOptions,
   soundMuted = false,
   onToggleSound,
-  onSave,
-  saveStatusText,
-  lastSavedText,
-  saveDisabled = false,
-  saveInProgress = false,
+  autosaveStatusText,
+  lastAutosavedText,
+  disconnectDisabled = false,
   onResetWorld,
   onDisconnect,
   pauseTitle,
@@ -155,17 +151,15 @@ export function GameHud({
         {!deathScreenOpen ? <ToastSurface messages={messages} onDismiss={onDismissMessage} /> : null}
       </div>
       <PauseMenu
+        autosaveStatusText={autosaveStatusText}
+        disconnectDisabled={disconnectDisabled}
         onBack={onResume}
         onDisconnect={onDisconnect}
         onOptions={onOptions}
         onResetWorld={onResetWorld}
-        onSave={onSave}
         disconnectLabel={disconnectLabel}
-        lastSavedText={lastSavedText}
+        lastAutosavedText={lastAutosavedText}
         open={pauseOpen && !optionsOpen && !deathScreenOpen}
-        saveDisabled={saveDisabled}
-        saveInProgress={saveInProgress}
-        saveStatusText={saveStatusText}
         title={pauseTitle}
       />
       {onCloseOptions && onSensitivityChange && onToggleSound ? (

@@ -19,7 +19,7 @@ for (let elapsed = SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS;
 }
 assert.equal(sample.autosaveDue, false);
 sample = sampleSaveCadence(sample.state, 1_000 + SINGLEPLAYER_AUTOSAVE_ACTIVE_MS, true);
-assert.equal(sample.autosaveDue, true, "five minutes of active dirty play requests one autosave");
+assert.equal(sample.autosaveDue, true, "one minute of active dirty play requests one autosave");
 
 state = commitSaveCadence(sample.state, 1_000 + SINGLEPLAYER_AUTOSAVE_ACTIVE_MS, true);
 assert.equal(state.activePlayMsSinceSave, 0);
@@ -29,21 +29,32 @@ assert.equal(sampleSaveCadence(state, 1_000 + 2 * SINGLEPLAYER_AUTOSAVE_ACTIVE_M
 state = createSaveCadenceState(0);
 state = markSaveCadenceDirty(state);
 state = sampleSaveCadence(state, 0, true).state;
-for (let elapsed = SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS; elapsed < 60_000; elapsed += SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS) {
+const halfWindow = SINGLEPLAYER_AUTOSAVE_ACTIVE_MS / 2;
+for (let elapsed = SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS; elapsed <= halfWindow; elapsed += SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS) {
   state = sampleSaveCadence(state, elapsed, true).state;
 }
-state = sampleSaveCadence(state, 60_000, false).state;
+assert.equal(state.activePlayMsSinceSave, halfWindow);
+state = sampleSaveCadence(state, halfWindow, false).state;
 state = sampleSaveCadence(state, 9_000_000, false).state;
-assert.equal(state.activePlayMsSinceSave, 60_000, "paused/background wall time is not active play");
+assert.equal(state.activePlayMsSinceSave, halfWindow, "paused/background wall time is not active play");
 state = sampleSaveCadence(state, 9_000_001, true).state;
-sample = sampleSaveCadence(state, 9_000_001 + 239_999, true);
+sample = sampleSaveCadence(state, 9_000_001 + halfWindow, true);
 assert.equal(sample.autosaveDue, false);
-sample = sampleSaveCadence(sample.state, 9_000_001 + 240_000, true);
-assert.equal(sample.autosaveDue, false, "a suspended timer cannot turn one huge wall-clock jump into active play");
-for (let elapsed = SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS; elapsed <= 240_000; elapsed += SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS) {
-  sample = sampleSaveCadence(sample.state, 9_000_001 + 240_000 + elapsed, true);
+assert.equal(sample.state.activePlayMsSinceSave, halfWindow + SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS,
+  "one huge wall-clock jump contributes only the bounded active sample gap");
+for (let elapsed = SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS;
+  sample.state.activePlayMsSinceSave < SINGLEPLAYER_AUTOSAVE_ACTIVE_MS;
+  elapsed += SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS) {
+  sample = sampleSaveCadence(sample.state, 9_000_001 + halfWindow + elapsed, true);
 }
-assert.equal(sample.autosaveDue, true, "regular active samples eventually complete the retained five-minute window");
+assert.equal(sample.autosaveDue, true, "regular active samples eventually complete the one-minute window");
+
+state = sample.state;
+sample = sampleSaveCadence(state, 10_000_000, false);
+assert.equal(sample.autosaveDue, true, "a failed due save remains due while inactive");
+assert.equal(false && sample.autosaveDue, false, "the caller gate suppresses pause/background retries");
+sample = sampleSaveCadence(sample.state, 10_000_001, true);
+assert.equal(sample.autosaveDue, true, "the due save retries immediately when active play resumes");
 
 state = createSaveCadenceState(100);
 state = markSaveCadenceDirty(state);
