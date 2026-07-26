@@ -42,15 +42,38 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   failReadsFor: string | null = null;
   failWritesFor: string | null = null;
   failDeletesFor: string | null = null;
+  failReadAfterWriteFor: string | null = null;
+  throwAfterWritesFor: string | null = null;
+  replaceWritesFor = new Map<string, (value: string) => string>();
+  failNextReadsFor = new Map<string, number>();
 
   getItem(key: string): string | null {
     if (key === this.failReadsFor) throw new Error("read failed");
+    const remaining = this.failNextReadsFor.get(key) ?? 0;
+    if (remaining > 0) {
+      if (remaining === 1) this.failNextReadsFor.delete(key);
+      else this.failNextReadsFor.set(key, remaining - 1);
+      throw new Error("one-shot read failed");
+    }
     return this.values.get(key) ?? null;
   }
 
   setItem(key: string, value: string): void {
     if (key === this.failWritesFor) throw new Error("write failed");
     this.values.set(key, value);
+    const replace = this.replaceWritesFor.get(key);
+    if (replace) {
+      this.replaceWritesFor.delete(key);
+      this.values.set(key, replace(value));
+    }
+    if (key === this.failReadAfterWriteFor) {
+      this.failReadAfterWriteFor = null;
+      this.failNextReadsFor.set(key, 1);
+    }
+    if (key === this.throwAfterWritesFor) {
+      this.throwAfterWritesFor = null;
+      throw new Error("write result lost after durable commit");
+    }
   }
 
   removeItem(key: string): void {
@@ -75,6 +98,24 @@ class QuotaStorage extends MemoryStorage {
     if (used > this.quotaChars) throw new Error("quota exceeded");
     super.setItem(key, value);
   }
+}
+
+function nextRegistryWriteKey(storage: MemoryStorage): string {
+  const slots = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .flatMap((key) => {
+      const raw = storage.values.get(key);
+      if (!raw) return [];
+      try {
+        const sequence = (JSON.parse(raw) as { sequence?: unknown }).sequence;
+        return typeof sequence === "number" ? [{ key, sequence }] : [];
+      } catch {
+        return [];
+      }
+    })
+    .sort((left, right) => right.sequence - left.sequence);
+  return slots[0]?.key === LOCAL_WORLD_REGISTRY_SLOT_A_KEY
+    ? LOCAL_WORLD_REGISTRY_SLOT_B_KEY
+    : LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
 }
 
 assert.equal(normalizeLocalWorldName("  Fern   Hollow  "), "Fern Hollow");
@@ -329,6 +370,183 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   assert.deepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
   assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
   assert.ok(recovered.issues.includes("delete:cleanup_completed"));
+}
+
+// A registry write can commit durably even when its immediate result is
+// unknowable. Preserve the complete tombstone until a later authoritative
+// registry read decides rollback versus roll-forward, across both journal slots.
+for (const siblingCount of [0, 1]) {
+  const storage = new MemoryStorage();
+  const deleted = createLocalWorld(storage, {
+    name: `Ambiguous Delete ${siblingCount}`,
+    seedText: `delete-${siblingCount}`,
+    gameMode: "survival",
+    now: 10 + siblingCount,
+  });
+  assert.ok(deleted.ok);
+  const siblings = siblingCount
+    ? [createLocalWorld(storage, { name: "Untouched Sibling", seedText: "sibling", gameMode: "creative", now: 20 })]
+    : [];
+  assert.ok(siblings.every((world) => world.ok));
+  const deletedKeys = singlePlayerWorldStorageKeys(deleted.world.id);
+  const sibling = siblings[0]?.ok ? siblings[0].world : null;
+  const siblingKeys = sibling ? singlePlayerWorldStorageKeys(sibling.id) : [];
+  const siblingValues = siblingKeys.map((key) => storage.values.get(key) ?? null);
+  const targetRegistryKey = nextRegistryWriteKey(storage);
+  assert.equal(targetRegistryKey, siblingCount === 0 ? LOCAL_WORLD_REGISTRY_SLOT_B_KEY : LOCAL_WORLD_REGISTRY_SLOT_A_KEY,
+    "the injected ambiguity covers both alternating registry slots");
+  storage.failReadAfterWriteFor = targetRegistryKey;
+
+  const ambiguous = deleteLocalWorld(storage, deleted.world.id, 30 + siblingCount);
+  assert.deepEqual(ambiguous, {
+    ok: false,
+    reason: "registry_readback_failed_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true,
+    "an ambiguous registry commit retains the complete cleanup transaction");
+  assert.ok(deletedKeys.some((key) => storage.values.has(key)),
+    "primary namespace cleanup cannot begin before the ambiguous commit is resolved");
+
+  if (siblingCount === 1) {
+    storage.failDeletesFor = deletedKeys[1];
+    for (let retry = 0; retry < 2; retry += 1) {
+      const pending = loadLocalWorldRegistry(storage);
+      assert.ok(pending.registry && !pending.registry.worlds.some(({ id }) => id === deleted.world.id));
+      assert.ok(pending.issues.includes("delete:recovery_pending"));
+      assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+      assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues,
+        "repeated cleanup failure cannot touch a sibling namespace");
+    }
+    storage.failDeletesFor = null;
+  }
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.ok(recovered.registry && !recovered.registry.worlds.some(({ id }) => id === deleted.world.id),
+    "the next authoritative registry read observes the committed deletion");
+  assert.ok(recovered.issues.includes("delete:cleanup_completed"));
+  assert.deepEqual(deletedKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues,
+    "roll-forward cleanup never touches a sibling namespace");
+}
+
+// A setItem exception is also ambiguous because an adapter may throw after its
+// durable write. The transaction remains retryable and rolls forward exactly.
+{
+  const storage = new MemoryStorage();
+  const deleted = createLocalWorld(storage, { name: "Durable Throw", seedText: "throw", gameMode: "survival", now: 1 });
+  assert.ok(deleted.ok);
+  const keys = singlePlayerWorldStorageKeys(deleted.world.id);
+  storage.throwAfterWritesFor = nextRegistryWriteKey(storage);
+  assert.deepEqual(deleteLocalWorld(storage, deleted.world.id, 2), {
+    ok: false,
+    reason: "registry_storage_write_failed_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("delete:cleanup_completed"));
+  assert.deepEqual(keys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
+}
+
+// A competing tab or corrupt target slot can replace the attempted registry
+// value before readback. The still-authoritative registry keeps the world, so
+// recovery restores the exact original namespace rather than guessing delete.
+for (const replacement of ["valid_interleaving", "checksum_corruption"] as const) {
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, { name: `Keep ${replacement}`, seedText: replacement, gameMode: "survival", now: 1 });
+  const sibling = createLocalWorld(storage, { name: `Sibling ${replacement}`, seedText: `${replacement}-2`, gameMode: "creative", now: 2 });
+  assert.ok(kept.ok && sibling.ok);
+  const keptKeys = singlePlayerWorldStorageKeys(kept.world.id);
+  const keptValues = keptKeys.map((key) => storage.values.get(key) ?? null);
+  const siblingKeys = singlePlayerWorldStorageKeys(sibling.world.id);
+  const siblingValues = siblingKeys.map((key) => storage.values.get(key) ?? null);
+  const targetRegistryKey = nextRegistryWriteKey(storage);
+  const authoritativeKey = targetRegistryKey === LOCAL_WORLD_REGISTRY_SLOT_A_KEY
+    ? LOCAL_WORLD_REGISTRY_SLOT_B_KEY
+    : LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
+  const authoritativeRaw = storage.values.get(authoritativeKey);
+  assert.ok(authoritativeRaw);
+  storage.replaceWritesFor.set(targetRegistryKey, (attempted) => replacement === "valid_interleaving"
+    ? authoritativeRaw
+    : `${attempted.slice(0, -1)}!`);
+
+  const ambiguous = deleteLocalWorld(storage, kept.world.id, 3);
+  assert.equal(ambiguous.ok, false);
+  assert.ok(!ambiguous.ok && ambiguous.mutationStarted);
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.ok(recovered.registry?.worlds.some(({ id }) => id === kept.world.id));
+  assert.ok(recovered.registry?.worlds.some(({ id }) => id === sibling.world.id));
+  assert.ok(recovered.issues.includes("delete:rollback_completed"));
+  assert.deepEqual(keptKeys.map((key) => storage.values.get(key) ?? null), keptValues,
+    "pre-commit recovery conserves every target-world save slot");
+  assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues,
+    "interleaving or corruption cannot mutate a sibling namespace");
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+}
+
+// Marker write/readback failures happen before the registry commit. They still
+// report a mutation attempt and retain any durable marker for verified rollback.
+for (const failure of ["readback", "throw_after_write"] as const) {
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, { name: `Marker ${failure}`, seedText: failure, gameMode: "survival", now: 1 });
+  assert.ok(kept.ok);
+  const keys = singlePlayerWorldStorageKeys(kept.world.id);
+  const values = keys.map((key) => storage.values.get(key) ?? null);
+  if (failure === "readback") storage.failReadAfterWriteFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  else storage.throwAfterWritesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.deepEqual(deleteLocalWorld(storage, kept.world.id, 2), {
+    ok: false,
+    reason: "world_delete_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.ok(recovered.registry?.worlds.some(({ id }) => id === kept.world.id));
+  assert.ok(recovered.issues.includes("delete:rollback_completed"));
+  assert.deepEqual(keys.map((key) => storage.values.get(key) ?? null), values);
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+}
+
+// A competing tab replacing the marker between write and readback cannot make
+// this delete trust a different transaction or advance the registry commit.
+{
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, { name: "Marker Interleave", seedText: "marker-tab", gameMode: "survival", now: 1 });
+  const sibling = createLocalWorld(storage, { name: "Marker Sibling", seedText: "marker-sibling", gameMode: "creative", now: 2 });
+  assert.ok(kept.ok && sibling.ok);
+  const keptKeys = singlePlayerWorldStorageKeys(kept.world.id);
+  const keptValues = keptKeys.map((key) => storage.values.get(key) ?? null);
+  const siblingKeys = singlePlayerWorldStorageKeys(sibling.world.id);
+  const siblingValues = siblingKeys.map((key) => storage.values.get(key) ?? null);
+  storage.replaceWritesFor.set(LOCAL_WORLD_DELETE_TRANSACTION_KEY, () => "{");
+  assert.deepEqual(deleteLocalWorld(storage, kept.world.id, 3), {
+    ok: false,
+    reason: "world_delete_transaction_pending",
+    mutationStarted: true,
+  });
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.ok(recovered.registry?.worlds.some(({ id }) => id === kept.world.id));
+  assert.ok(recovered.registry?.worlds.some(({ id }) => id === sibling.world.id));
+  assert.ok(recovered.issues.includes("delete:invalid_transaction_cleared"));
+  assert.deepEqual(keptKeys.map((key) => storage.values.get(key) ?? null), keptValues);
+  assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
+}
+
+// Failure while reading the source namespace is definitely pre-write.
+{
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, { name: "Preflight Read", seedText: "preflight", gameMode: "survival", now: 1 });
+  assert.ok(kept.ok);
+  storage.failReadsFor = singlePlayerWorldStorageKeys(kept.world.id)[0];
+  assert.deepEqual(deleteLocalWorld(storage, kept.world.id, 2), {
+    ok: false,
+    reason: "world_delete_transaction_failed",
+    mutationStarted: false,
+  });
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  storage.failReadsFor = null;
+  assert.ok(loadLocalWorldRegistry(storage).registry?.worlds.some(({ id }) => id === kept.world.id));
 }
 
 // An unreadable or checksum-invalid global tombstone is never trusted for a

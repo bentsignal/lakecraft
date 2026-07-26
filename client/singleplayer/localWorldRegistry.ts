@@ -70,7 +70,12 @@ export type LocalWorldRegistryLoadResult =
 
 export type LocalWorldRegistrySaveResult =
   | { ok: true; registry: LocalWorldRegistry; sequence: number; slot: "a" | "b" }
-  | { ok: false; reason: "invalid_registry" | "too_large" | "storage_read_failed" | "storage_write_failed" | "readback_failed" | "unsafe_existing_data" };
+  | {
+    ok: false;
+    /** True once setItem was attempted; a thrown result or failed readback may still be durable. */
+    mutationStarted: boolean;
+    reason: "invalid_registry" | "too_large" | "storage_read_failed" | "storage_write_failed" | "readback_failed" | "unsafe_existing_data";
+  };
 
 export type LocalWorldMutationResult =
   | { ok: true; world: LocalWorldRecord; registry: LocalWorldRegistry }
@@ -337,15 +342,7 @@ function deleteTransactionBody(
   return { deletedAt, format: "lakecraft.local-world-delete", values, version: 1, worldId };
 }
 
-function readDeleteTransaction(
-  storage: SinglePlayerStorageAdapter,
-): DeleteTransactionReadResult {
-  let raw: string | null;
-  try {
-    raw = storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
-  } catch {
-    return { status: "unreadable" };
-  }
+function parseDeleteTransaction(raw: string | null): DeleteTransactionReadResult {
   if (raw === null) return { status: "none" };
   if (raw.length === 0 || raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) {
     return { status: "invalid", reason: "invalid_size" };
@@ -370,6 +367,14 @@ function readDeleteTransaction(
   if (singlePlayerSaveChecksum(body) !== parsed.checksum) return { status: "invalid", reason: "checksum_mismatch" };
   if (canonicalSinglePlayerJson(transaction) !== raw) return { status: "invalid", reason: "noncanonical_envelope" };
   return { status: "valid", transaction };
+}
+
+function readDeleteTransaction(storage: SinglePlayerStorageAdapter): DeleteTransactionReadResult {
+  try {
+    return parseDeleteTransaction(storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY));
+  } catch {
+    return { status: "unreadable" };
+  }
 }
 
 function storageRemover(storage: SinglePlayerStorageAdapter): ((key: string) => void) | null {
@@ -468,29 +473,29 @@ export function saveLocalWorldRegistry(
 ): LocalWorldRegistrySaveResult {
   const scanned = readRegistrySlots(storage);
   const current = highestRegistrySlot(scanned.slots);
-  if (scanned.readFailed) return { ok: false, reason: "storage_read_failed" };
+  if (scanned.readFailed) return { ok: false, reason: "storage_read_failed", mutationStarted: false };
   if (scanned.slots.some((slot) => slot.kind === "unsupported")
     || (!current && scanned.slots.some((slot) => slot.kind !== "empty"))) {
-    return { ok: false, reason: "unsafe_existing_data" };
+    return { ok: false, reason: "unsafe_existing_data", mutationStarted: false };
   }
   const serialized = serializeRegistry(registry, (current?.envelope.sequence ?? 0) + 1, savedAt);
-  if (!serialized.ok) return serialized;
+  if (!serialized.ok) return { ...serialized, mutationStarted: false };
   const target = current ? (current.slot === "a" ? "b" : "a") : "a";
   try {
     storage.setItem(registrySlotKey(target), serialized.raw);
   } catch {
-    return { ok: false, reason: "storage_write_failed" };
+    return { ok: false, reason: "storage_write_failed", mutationStarted: true };
   }
   let readback: string | null;
   try {
     readback = storage.getItem(registrySlotKey(target));
   } catch {
-    return { ok: false, reason: "readback_failed" };
+    return { ok: false, reason: "readback_failed", mutationStarted: true };
   }
   const verified = parseRegistrySlot(target, readback);
   if (readback !== serialized.raw || verified.kind !== "valid"
     || verified.envelope.sequence !== serialized.envelope.sequence) {
-    return { ok: false, reason: "readback_failed" };
+    return { ok: false, reason: "readback_failed", mutationStarted: true };
   }
   return {
     ok: true,
@@ -569,7 +574,7 @@ function createWorldFromSnapshot(
   const nextRegistry = { worlds: [...registry.worlds, world] };
   const registryWrite = saveLocalWorldRegistry(storage, nextRegistry, input.createdAt);
   if (!registryWrite.ok) {
-    resetSinglePlayerSave(storage, { worldId: id });
+    if (!registryWrite.mutationStarted) resetSinglePlayerSave(storage, { worldId: id });
     return { ok: false, reason: `registry_${registryWrite.reason}`, mutationStarted: true };
   }
   return { ok: true, world, registry: registryWrite.registry };
@@ -674,7 +679,7 @@ export function touchLocalWorld(
   const saved = saveLocalWorldRegistry(storage, nextRegistry, nextWorld.lastPlayedAt);
   return saved.ok
     ? { ok: true, world: nextWorld, registry: saved.registry }
-    : { ok: false, reason: `registry_${saved.reason}`, mutationStarted: false };
+    : { ok: false, reason: `registry_${saved.reason}`, mutationStarted: saved.mutationStarted };
 }
 
 export function resetLocalWorldData(
@@ -699,19 +704,23 @@ function beginLocalWorldDelete(
   storage: SinglePlayerStorageAdapter,
   worldId: string,
   deletedAt: number,
-): boolean {
+): { ok: true } | { ok: false; mutationStarted: boolean } {
   const values: Array<string | null> = [];
+  let mutationStarted = false;
   try {
     for (const key of singlePlayerWorldStorageKeys(worldId)) values.push(storage.getItem(key));
     const body = deleteTransactionBody(worldId, values, deletedAt);
     const transaction = { checksum: singlePlayerSaveChecksum(body), ...body };
     const raw = canonicalSinglePlayerJson(transaction);
-    if (raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) return false;
+    if (raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) return { ok: false, mutationStarted };
+    mutationStarted = true;
     storage.setItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY, raw);
-    return storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY) === raw
-      && readDeleteTransaction(storage).status === "valid";
+    const readback = storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+    return readback === raw && parseDeleteTransaction(readback).status === "valid"
+      ? { ok: true }
+      : { ok: false, mutationStarted };
   } catch {
-    return false;
+    return { ok: false, mutationStarted };
   }
 }
 
@@ -727,12 +736,24 @@ export function deleteLocalWorld(
     return { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false };
   }
   const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(deletedAt)));
-  if (!beginLocalWorldDelete(storage, worldId, committedAt)) {
-    return { ok: false, reason: "world_delete_transaction_failed", mutationStarted: false };
+  const begun = beginLocalWorldDelete(storage, worldId, committedAt);
+  if (!begun.ok) {
+    return {
+      ok: false,
+      reason: begun.mutationStarted ? "world_delete_transaction_pending" : "world_delete_transaction_failed",
+      mutationStarted: begun.mutationStarted,
+    };
   }
   const nextRegistry = { worlds: loaded.registry.worlds.filter(({ id }) => id !== worldId) };
   const saved = saveLocalWorldRegistry(storage, nextRegistry, committedAt);
   if (!saved.ok) {
+    if (saved.mutationStarted) {
+      return {
+        ok: false,
+        reason: `registry_${saved.reason}_transaction_pending`,
+        mutationStarted: true,
+      };
+    }
     const cleared = clearDeleteTransaction(storage);
     return {
       ok: false,
