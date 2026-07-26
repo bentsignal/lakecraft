@@ -266,6 +266,85 @@ function namespaceValues(storage: MemoryStorage, worldId: string): Array<string 
   return singlePlayerWorldStorageKeys(worldId).map((key) => storage.values.get(key) ?? null);
 }
 
+type BrowserEnumerationFault =
+  | { kind: "key-duplicate" | "key-null" | "key-non-string" | "key-throw"
+    | "length-drift" | "length-throw"; scan: number }
+  | { kind: "key-getter-throw" | "key-missing" };
+
+function faultingBrowserStorage(
+  values: Map<string, string>,
+  fault: BrowserEnumerationFault,
+): Storage {
+  let lengthReads = 0;
+  const storage = {
+    get length(): number {
+      lengthReads += 1;
+      const scan = Math.ceil(lengthReads / 2);
+      if (fault.kind === "length-throw" && (fault.scan === 0 || fault.scan === scan)) {
+        throw new Error("length getter failed");
+      }
+      return fault.kind === "length-drift"
+        && (fault.scan === 0 || fault.scan === scan) && lengthReads % 2 === 0
+        ? values.size + 1
+        : values.size;
+    },
+    getItem(key: string): string | null {
+      return values.get(key) ?? null;
+    },
+    key(index: number): string | null {
+      const scan = Math.ceil(lengthReads / 2);
+      if (fault.kind === "key-throw" && (fault.scan === 0 || fault.scan === scan)) {
+        throw new Error("key failed");
+      }
+      if (index === 0 && fault.kind === "key-null"
+        && (fault.scan === 0 || fault.scan === scan)) return null;
+      if (index === 0 && fault.kind === "key-non-string"
+        && (fault.scan === 0 || fault.scan === scan)) {
+        return 42 as unknown as string;
+      }
+      if (index === 1 && fault.kind === "key-duplicate"
+        && (fault.scan === 0 || fault.scan === scan)) {
+        return [...values.keys()][0] ?? null;
+      }
+      return [...values.keys()][index] ?? null;
+    },
+    removeItem(key: string): void {
+      values.delete(key);
+    },
+    setItem(key: string, value: string): void {
+      values.set(key, value);
+    },
+  };
+  if (fault.kind === "key-getter-throw") {
+    Object.defineProperty(storage, "key", {
+      configurable: true,
+      get() {
+        throw new Error("key getter failed");
+      },
+    });
+  } else if (fault.kind === "key-missing") {
+    Object.defineProperty(storage, "key", {
+      configurable: true,
+      value: undefined,
+    });
+  }
+  return storage as unknown as Storage;
+}
+
+function withBrowserStorage<T>(storage: Storage, operation: () => T): T {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage: storage },
+  });
+  try {
+    return operation();
+  } finally {
+    if (original) Object.defineProperty(globalThis, "window", original);
+    else delete (globalThis as { window?: unknown }).window;
+  }
+}
+
 function makePendingCreate(
   source: MemoryStorage,
   input: Parameters<typeof createLocalWorld>[1],
@@ -501,6 +580,136 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
     deletedAt + LOCAL_WORLD_TRANSACTION_LEASE_MS,
   ).issues.includes("transaction:recovery_pending"));
   assert.deepEqual(namespaceValues(deleteMarker, kept.world.id), deleteBytes);
+}
+
+// The browser adapter must never turn an ambiguous Storage enumeration into
+// "no legacy markers." In particular, the approved v2 writer can be paused
+// with its sole content-addressed marker while a same-ID create is attempted.
+{
+  const collisionInput = {
+    name: "Browser Collision",
+    seedText: "browser-legacy-collision",
+    gameMode: "creative" as const,
+    now: 50,
+  };
+  const probe = createLocalWorld(new MemoryStorage(), collisionInput);
+  assert.ok(probe.ok);
+  const intended: LocalWorldRecord = {
+    ...probe.world,
+    name: "Paused Browser Writer",
+    initialGameMode: "survival",
+  };
+  const raw = encodeLegacyMarker(0, intended, 12);
+  const key = legacyTransactionKey(0, 12, raw);
+  const values = new Map([[key, raw]]);
+  const before = new Map(values);
+  const result = withBrowserStorage(
+    faultingBrowserStorage(values, { kind: "key-null", scan: 0 }),
+    () => createLocalWorld(browserSinglePlayerStorage(), collisionInput),
+  );
+  assert.deepEqual(result, {
+    ok: false,
+    reason: "world_create_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.deepEqual(values, before);
+  assert.equal(values.size, 1);
+  assert.equal(values.get(key), raw);
+
+  // The paused writer may safely resume because the blocked candidate did not
+  // create a registry record or creative-mode save under its deterministic ID.
+  const resumed = new MemoryStorage();
+  resumed.values = values;
+  const snapshot = createDefaultSinglePlayerSnapshot(intended.seed, intended.createdAt, intended.id);
+  snapshot.world.gameMode = "survival";
+  assert.ok(saveSinglePlayerSnapshot(resumed, snapshot, 51, { worldId: intended.id }).ok);
+  assert.equal(loadLocalWorldRegistry(resumed, 51).registry?.worlds.length, 0);
+  assert.equal(
+    loadSinglePlayerSave(resumed, { worldId: intended.id }).snapshot?.world.gameMode,
+    "survival",
+  );
+}
+
+// Every one of the registry's three browser enumeration passes fails read-only
+// on a null/non-string key, length drift, or a throwing length/key operation.
+// Missing or throwing key properties also block every exported mutation.
+{
+  const faults: BrowserEnumerationFault[] = [
+    ...([1, 2, 3] as const).flatMap((scan) => [
+      { kind: "key-null" as const, scan },
+      { kind: "key-non-string" as const, scan },
+      { kind: "key-duplicate" as const, scan },
+      { kind: "key-throw" as const, scan },
+      { kind: "length-drift" as const, scan },
+      { kind: "length-throw" as const, scan },
+    ]),
+    { kind: "key-getter-throw" },
+    { kind: "key-missing" },
+  ];
+  const makeSource = () => {
+    const source = new MemoryStorage();
+    const kept = createLocalWorld(source, {
+      name: "Browser Enumeration Kept",
+      seedText: "browser-enumeration-kept",
+      gameMode: "survival",
+      now: 40,
+    });
+    assert.ok(kept.ok);
+    const legacy = createDefaultSinglePlayerSnapshot(99, 40);
+    assert.ok(saveSinglePlayerSnapshot(source, legacy, 40).ok);
+    const collisionInput = {
+      name: "Browser Enumeration Collision",
+      seedText: "browser-enumeration-collision",
+      gameMode: "creative" as const,
+      now: 50,
+    };
+    const probe = createLocalWorld(new MemoryStorage(), collisionInput);
+    assert.ok(probe.ok);
+    const intended: LocalWorldRecord = {
+      ...probe.world,
+      name: "Paused Enumeration Writer",
+      initialGameMode: "survival",
+    };
+    const raw = encodeLegacyMarker(0, intended, 13);
+    source.values.set(legacyTransactionKey(0, 13, raw), raw);
+    const loaded = loadLocalWorldRegistry(source, 50);
+    assert.ok(loaded.registry);
+    return {
+      collisionInput,
+      kept: kept.world,
+      registry: loaded.registry,
+      sequence: loaded.sequence,
+      values: new Map(source.values),
+    };
+  };
+  const mutations = [
+    (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
+      createLocalWorld(storage, source.collisionInput),
+    (storage: SinglePlayerStorageAdapter) =>
+      importLegacyLocalWorld(storage, { name: "Blocked Browser Import", now: 50 }),
+    (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
+      resetLocalWorldData(storage, source.kept.id, 50),
+    (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
+      deleteLocalWorld(storage, source.kept.id, 50),
+    (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
+      touchLocalWorld(storage, source.kept.id, 50),
+    (storage: SinglePlayerStorageAdapter) => resetLegacyLocalWorld(storage, 50),
+    (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
+      saveLocalWorldRegistry(storage, source.registry, 50, source.sequence),
+  ];
+  for (const fault of faults) {
+    for (const mutation of mutations) {
+      const source = makeSource();
+      const before = new Map(source.values);
+      const result = withBrowserStorage(
+        faultingBrowserStorage(source.values, fault),
+        () => mutation(browserSinglePlayerStorage(), source),
+      );
+      assert.equal(result.ok, false, JSON.stringify(fault));
+      assert.equal(result.mutationStarted, false, JSON.stringify(fault));
+      assert.deepEqual(source.values, before, JSON.stringify(fault));
+    }
+  }
 }
 
 // Every prefix-enumeration ambiguity is fail-closed. Getter/read/remove failures and a

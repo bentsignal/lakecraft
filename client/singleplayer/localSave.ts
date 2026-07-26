@@ -88,8 +88,15 @@ export function browserSinglePlayerStorage(): SinglePlayerStorageAdapter {
     return {
       getItem: (key) => getItem.call(storage, key),
       ...(typeof key === "function"
-        ? { listKeys: () => Array.from({ length: storage.length }, (_, index) => key.call(storage, index))
-          .filter((value): value is string => value !== null) }
+        ? { listKeys: () => {
+          const length = storage.length;
+          const keys = Array.from({ length }, (_, index) => key.call(storage, index));
+          if (storage.length !== length || keys.some((value) => typeof value !== "string")
+            || new Set(keys).size !== length) {
+            throw new Error("Browser storage enumeration changed.");
+          }
+          return keys as string[];
+        } }
         : {}),
       setItem: (key, value) => setItem.call(storage, key, value),
       ...(typeof removeItem === "function"
