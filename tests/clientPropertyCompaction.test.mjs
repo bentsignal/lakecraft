@@ -1,19 +1,26 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
-  accessSync,
+  mkdirSync,
+  mkdtempSync,
   readFileSync,
-  readdirSync,
-  statSync,
+  realpathSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   COMPACT_CLIENT_PROPERTY_MANGLE_CACHE,
   COMPACT_CLIENT_PROPERTY_PATTERN,
   compactClientPropertyCache,
 } from "../scripts/client-property-compaction.mjs";
+import {
+  loadLakebedCompilerRuntime,
+  resolveLakebedCompilerRuntime,
+} from "../scripts/lakebed-compiler-runtime.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const analysis = JSON.parse(execFileSync(
@@ -76,6 +83,8 @@ assert.deepEqual(
 
 const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");
 assert.match(prepareSource, /server \? \{\} : \{\s*mangleCache:/, "property mangling is client-stage-only");
+assert.match(prepareSource, /loadLakebedCompilerRuntime\(\)/, "staging uses the shared Lakebed compiler resolver");
+assert.equal(prepareSource.includes("findLakebedEsbuild"), false, "staging has no divergent compiler lookup");
 assert.match(prepareSource, /mangleQuoted: false/, "quoted keys are never rewritten");
 assert.match(prepareSource, /Compact client property live set changed/, "staging fails closed on cache drift");
 assert.equal(prepareSource.includes("mangleProps: COMPACT_CLIENT_PROPERTY_PATTERN"), true);
@@ -88,26 +97,49 @@ assert.deepEqual(
   "the bundled browser entrypoint exports only its zero-prop Lakebed App component",
 );
 
-function newestCachedPackagePath(suffix) {
-  const cacheRoot = join(homedir(), ".npm", "_npx");
-  const paths = readdirSync(cacheRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((entry) => {
-      const path = join(cacheRoot, entry.name, "node_modules", suffix);
-      try {
-        accessSync(path);
-        return [{ path, modifiedAt: statSync(path).mtimeMs }];
-      } catch {
-        return [];
-      }
-    })
-    .sort((left, right) => right.modifiedAt - left.modifiedAt);
-  if (!paths[0]) throw new Error(`Run npx lakebed build once so ${suffix} is cached.`);
-  return paths[0].path;
+function writeFixturePackage(cacheEntryRoot, name, version, files = {}, packageFields = {}) {
+  const packageRoot = join(cacheEntryRoot, "node_modules", name);
+  mkdirSync(packageRoot, { recursive: true });
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name, version, ...packageFields }));
+  for (const [relativePath, source] of Object.entries(files)) {
+    const path = join(packageRoot, relativePath);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, source);
+  }
 }
 
-const esbuildPath = newestCachedPackagePath(join("esbuild", "lib", "main.js"));
-const { build } = await import(pathToFileURL(esbuildPath).href);
+const resolverFixtureRoot = mkdtempSync(join(tmpdir(), "lakecraft-compiler-resolver-"));
+try {
+  const coupledRoot = join(resolverFixtureRoot, "coupled");
+  writeFixturePackage(coupledRoot, "lakebed", "1.2.3", {
+    "dist/cli/build.js": "export {};\n",
+  }, { dependencies: { esbuild: "^0.27.1" } });
+  writeFixturePackage(coupledRoot, "esbuild", "0.27.7", {
+    "lib/main.js": 'export const version="0.27.7";export async function build(){}\n',
+  });
+  const decoyRoot = join(resolverFixtureRoot, "newer-standalone-decoy");
+  writeFixturePackage(decoyRoot, "esbuild", "99.0.0", {
+    "lib/main.js": 'export const version="99.0.0";export async function build(){}\n',
+  });
+  const future = new Date(Date.now() + 86_400_000);
+  utimesSync(join(decoyRoot, "node_modules/esbuild/lib/main.js"), future, future);
+  const resolvedFixture = await resolveLakebedCompilerRuntime({ cacheRoot: resolverFixtureRoot });
+  assert.equal(resolvedFixture.cacheEntryRoot, realpathSync(coupledRoot), "newer standalone esbuild cache is ineligible");
+  assert.equal(resolvedFixture.esbuildVersion, "0.27.7", "resolver selects Lakebed's compiler package");
+  assert.ok(
+    resolvedFixture.esbuildPath.startsWith(`${realpathSync(coupledRoot)}/node_modules/esbuild/`),
+    "compiler resolves through Lakebed's install tree",
+  );
+} finally {
+  rmSync(resolverFixtureRoot, { recursive: true, force: true });
+}
+
+const resolvedCompiler = await resolveLakebedCompilerRuntime();
+const loadedCompiler = await loadLakebedCompilerRuntime();
+assert.equal(loadedCompiler.esbuildPath, resolvedCompiler.esbuildPath, "test and staging resolve one compiler path");
+assert.equal(loadedCompiler.esbuildVersion, resolvedCompiler.esbuildVersion, "test and staging resolve one package version");
+assert.equal(loadedCompiler.compilerVersion, resolvedCompiler.esbuildVersion, "loaded module version matches its package");
+const { build } = loadedCompiler;
 const commonBuildOptions = {
   absWorkingDir: repositoryRoot,
   bundle: true,

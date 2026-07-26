@@ -1,7 +1,5 @@
-import { access, cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   assertNoServerGamePresentationUse,
   stripServerGamePresentation,
@@ -19,34 +17,12 @@ import {
   COMPACT_CLIENT_PROPERTY_PATTERN,
   compactClientPropertyCache,
 } from "./client-property-compaction.mjs";
+import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
 
 const sourceRoot = resolve(process.cwd());
 const stageRoot = resolve(process.argv[2] ?? "");
 if (!process.argv[2] || stageRoot === sourceRoot) {
   throw new Error("Pass an empty staging directory outside the capsule.");
-}
-
-async function findLakebedEsbuild() {
-  const cacheRoot = join(homedir(), ".npm", "_npx");
-  const candidates = [];
-  for (const entry of await readdir(cacheRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const esbuildPath = join(cacheRoot, entry.name, "node_modules", "esbuild", "lib", "main.js");
-    const lakebedPath = join(cacheRoot, entry.name, "node_modules", "lakebed", "package.json");
-    try {
-      await access(lakebedPath);
-      candidates.push({
-        esbuildPath,
-        lakebedBuildPath: join(cacheRoot, entry.name, "node_modules", "lakebed", "dist", "cli", "build.js"),
-        modifiedAt: (await stat(esbuildPath)).mtimeMs,
-      });
-    } catch {
-      // This npx cache entry is unrelated or incomplete.
-    }
-  }
-  candidates.sort((left, right) => right.modifiedAt - left.modifiedAt);
-  if (!candidates[0]) throw new Error("Run `npx lakebed build` once so Lakebed's bundled compiler is available.");
-  return candidates[0];
 }
 
 async function enableCompactLakebedBuild(buildPath) {
@@ -62,9 +38,9 @@ async function enableCompactLakebedBuild(buildPath) {
   ));
 }
 
-const lakebedRuntime = await findLakebedEsbuild();
+const lakebedRuntime = await loadLakebedCompilerRuntime();
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
-const { build } = await import(pathToFileURL(lakebedRuntime.esbuildPath).href);
+const { build } = lakebedRuntime;
 
 async function clientSourcePaths(directory = join(sourceRoot, "client")) {
   const paths = [];
