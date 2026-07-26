@@ -309,7 +309,7 @@ function material(g: Grid, id: ItemId): Palette {
     dots(g,"l",[[5,4],[6,4],[9,4],[10,4],[5,5],[8,6],[9,6],[7,7],[8,7],[6,8],[7,8],[6,9]]);
     dots(g,"d",[[10,5],[11,6],[10,8],[9,9],[10,10],[5,10]]);
   }
-  else if (["coal",BS.rawIron,BS.rawGold].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }
+  else if (["coal","raw_iron","raw_gold"].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }
   else if (id === "flint") { dots(g,"o",[[7,1],[8,1],[6,2],[9,2],[5,3],[10,3],[4,4],[11,4],[3,6],[10,6],[2,8],[9,8],[3,10],[8,10],[4,12],[7,12],[5,14],[6,14]]); box(g,4,4,6,7,"m"); box(g,3,6,5,4,"m"); dots(g,"l",[[6,3],[5,5],[4,7],[6,6]]); dots(g,"d",[[9,4],[8,7],[7,10],[6,12]]); }
   else if (id === BS.gunpowder) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[3,7],[13,7],[4,11],[11,12],[7,14],[9,14]]); box(g,5,4,6,9,"m"); box(g,3,7,10,4,"m"); dots(g,"l",[[6,4],[9,5],[4,7],[7,9],[11,8],[6,12]]); dots(g,"d",[[8,3],[5,6],[10,10],[8,13],[12,7]]); }
   else if (id === BS.ironIngot || id === BS.goldIngot) { box(g,3,5,10,7,"o"); box(g,5,3,6,2,"o"); box(g,4,5,8,5,"m"); box(g,5,4,6,2,"l"); box(g,5,9,7,2,"d"); }
@@ -336,7 +336,7 @@ function food(g: Grid, id: ItemId): Palette {
     box(g,7,1,2,3,"s"); dots(g,"g",[[9,1],[10,1],[11,1],[9,2],[10,2]]); dots(g,"h",[[9,1],[10,1]]);
     return applePalette;
   }
-  if (id === "raw_chicken" || id === BS.cookedChicken) {
+  if (id === "raw_chicken" || id === "cooked_chicken") {
     // A compact diagonal drumstick: broad meat at the upper left, narrow bone
     // and two knuckles at the lower right. Cooked meat gains a crisp edge and
     // char pixels while raw meat keeps pale highlights, so both sprites read
