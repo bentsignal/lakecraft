@@ -140,7 +140,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
     : transactionReadOnly
       ? `!${READ_ONLY} Play and changes are disabled until recovery.`
       : deleteRecoveryPending
-        ? "!Deletion recovery pending; nothing deleted. Healthy worlds remain available."
+        ? "!Deletion committed; cleanup pending."
         : invalidDeleteIgnored
           ? "!Invalid deletion ignored. Worlds remain available; orphaned data may remain."
           : deleteRecoveryCompleted

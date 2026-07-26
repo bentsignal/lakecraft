@@ -48,11 +48,11 @@ assert.equal(browser.includes("trapDialogFocus"), false,
 assert.ok(browser.includes("Confirm deletion/reset") && browser.includes("This cannot be undone."),
   "delete and reset require explicit confirmation");
 assert.ok(
-  browser.includes("Deletion recovery pending; nothing deleted. Healthy worlds remain available.")
+  browser.includes("Deletion committed; cleanup pending.")
   && browser.includes("Invalid deletion ignored. Worlds remain available; orphaned data may remain.")
   && browser.includes("Deletion recovered; other worlds unchanged.")
   && browser.includes('["Delete World…", !selected || deleteRecoveryPending || transactionReadOnly'),
-  "delete recovery remains visible without blocking access to healthy worlds",
+  "delete recovery accurately reports a committed deletion awaiting namespace cleanup",
 );
 assert.ok(
   browser.includes("const transactionReadOnly = isLocalWorldRegistryTransactionReadOnly(registryLoad)")
