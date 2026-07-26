@@ -47,6 +47,8 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   failReadAfterWriteFor: string | null = null;
   throwAfterWritesFor: string | null = null;
   replaceWritesFor = new Map<string, (value: string) => string>();
+  afterWritesFor = new Map<string, () => void>();
+  replaceDeletesFor = new Map<string, () => string>();
   failNextReadsFor = new Map<string, number>();
 
   getItem(key: string): string | null {
@@ -68,6 +70,11 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
       this.replaceWritesFor.delete(key);
       this.values.set(key, replace(value));
     }
+    const afterWrite = this.afterWritesFor.get(key);
+    if (afterWrite) {
+      this.afterWritesFor.delete(key);
+      afterWrite();
+    }
     if (key === this.failReadAfterWriteFor) {
       this.failReadAfterWriteFor = null;
       this.failNextReadsFor.set(key, 1);
@@ -80,6 +87,12 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
 
   removeItem(key: string): void {
     if (key === this.failDeletesFor) throw new Error("delete failed");
+    const replacement = this.replaceDeletesFor.get(key);
+    if (replacement) {
+      this.replaceDeletesFor.delete(key);
+      this.values.set(key, replacement());
+      return;
+    }
     this.values.delete(key);
   }
 }
@@ -519,6 +532,61 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds
     .find(({ id }) => id === oldId)?.initialGameMode, "creative");
   assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+}
+
+// Finalization is conditional on the exact marker snapshot. If another tab
+// installs a valid create after this tab's marker readback, successful commit
+// cannot erase the replacement or its namespace; the next load reconciles it.
+{
+  const other = new MemoryStorage();
+  other.failWritesFor = nextRegistryWriteKey(other);
+  assert.equal(createLocalWorld(other, {
+    name: "Concurrent B",
+    seedText: "concurrent-b",
+    gameMode: "creative",
+    now: 151,
+  }).ok, false);
+  const otherRaw = other.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  assert.ok(otherRaw);
+  const otherId = (JSON.parse(otherRaw) as { world: { id: string } }).world.id;
+  const otherKeys = singlePlayerWorldStorageKeys(otherId);
+
+  const storage = new MemoryStorage();
+  storage.afterWritesFor.set(LOCAL_WORLD_REGISTRY_SLOT_A_KEY, () => {
+    storage.values.set(LOCAL_WORLD_CREATE_TRANSACTION_KEY, otherRaw);
+    for (const key of otherKeys) {
+      const value = other.values.get(key);
+      if (value !== undefined) storage.values.set(key, value);
+    }
+  });
+  const first = createLocalWorld(storage, {
+    name: "Concurrent A",
+    seedText: "concurrent-a",
+    gameMode: "survival",
+    now: 150,
+  });
+  assert.ok(first.ok);
+  assert.equal(storage.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY), otherRaw,
+    "A cannot blindly clear B's later marker");
+  assert.ok(otherKeys.some((key) => storage.values.has(key)));
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.ok(recovered.issues.includes("create:cleanup_completed"));
+  assert.ok(recovered.registry?.worlds.some(({ id }) => id === first.world.id));
+  assert.deepEqual(otherKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
+}
+
+// Even quarantine and remove/readback ambiguity preserve a replacement marker.
+// Both create and delete use this same identity-conditional clear primitive.
+for (const key of [LOCAL_WORLD_CREATE_TRANSACTION_KEY, LOCAL_WORLD_DELETE_TRANSACTION_KEY]) {
+  const storage = new MemoryStorage();
+  storage.values.set(key, "{");
+  storage.replaceDeletesFor.set(key, () => "[");
+  const first = loadLocalWorldRegistry(storage);
+  assert.ok(first.issues.some((issue) => issue.includes("invalid_transaction_pending")));
+  assert.equal(storage.values.get(key), "[");
+  const second = loadLocalWorldRegistry(storage);
+  assert.ok(second.issues.some((issue) => issue.includes("invalid_transaction_cleared")));
+  assert.equal(storage.values.has(key), false);
 }
 
 // Capacity is a deterministic per-namespace calculation. Unrelated origin

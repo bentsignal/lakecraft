@@ -125,7 +125,7 @@ interface LocalWorldCreateTransaction {
 type CreateTransactionReadResult =
   | { status: "none" }
   | { status: "valid"; transaction: LocalWorldCreateTransaction; raw: string }
-  | { status: "invalid" }
+  | { status: "invalid"; raw: string }
   | { status: "unreadable" };
 
 type LocalWorldCreateRecovery =
@@ -144,8 +144,8 @@ type LocalWorldCreateRecovery =
 
 type DeleteTransactionReadResult =
   | { status: "none" }
-  | { status: "valid"; transaction: LocalWorldDeleteTransaction }
-  | { status: "invalid"; reason: "invalid_size" | "invalid_json" | "invalid_envelope" | "checksum_mismatch" | "noncanonical_envelope" }
+  | { status: "valid"; transaction: LocalWorldDeleteTransaction; raw: string }
+  | { status: "invalid"; raw: string; reason: "invalid_size" | "invalid_json" | "invalid_envelope" | "checksum_mismatch" | "noncanonical_envelope" }
   | { status: "unreadable" };
 
 type LocalWorldDeleteRecovery =
@@ -370,25 +370,25 @@ function createTransactionBody(
 
 function parseCreateTransaction(raw: string | null): CreateTransactionReadResult {
   if (raw === null) return { status: "none" };
-  if (raw.length === 0 || raw.length > LOCAL_WORLD_REGISTRY_MAX_CHARS) return { status: "invalid" };
+  if (raw.length === 0 || raw.length > LOCAL_WORLD_REGISTRY_MAX_CHARS) return { status: "invalid", raw };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { status: "invalid" };
+    return { status: "invalid", raw };
   }
   if (!isRecord(parsed)
     || !exactKeys(parsed, ["checksum", "format", "version", "world"])
     || parsed.format !== "lakecraft.local-world-create" || parsed.version !== 1
     || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)) {
-    return { status: "invalid" };
+    return { status: "invalid", raw };
   }
   const world = validateWorldRecord(parsed.world);
-  if (!world) return { status: "invalid" };
+  if (!world) return { status: "invalid", raw };
   const body = createTransactionBody(world);
   const transaction = { checksum: parsed.checksum, ...body };
   if (singlePlayerSaveChecksum(body) !== parsed.checksum
-    || canonicalSinglePlayerJson(transaction) !== raw) return { status: "invalid" };
+    || canonicalSinglePlayerJson(transaction) !== raw) return { status: "invalid", raw };
   return { status: "valid", transaction, raw };
 }
 
@@ -411,13 +411,13 @@ function deleteTransactionBody(
 function parseDeleteTransaction(raw: string | null): DeleteTransactionReadResult {
   if (raw === null) return { status: "none" };
   if (raw.length === 0 || raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) {
-    return { status: "invalid", reason: "invalid_size" };
+    return { status: "invalid", reason: "invalid_size", raw };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { status: "invalid", reason: "invalid_json" };
+    return { status: "invalid", reason: "invalid_json", raw };
   }
   if (!isRecord(parsed)
     || !exactKeys(parsed, ["checksum", "deletedAt", "format", "values", "version", "worldId"])
@@ -426,13 +426,13 @@ function parseDeleteTransaction(raw: string | null): DeleteTransactionReadResult
     || !validWorldId(parsed.worldId) || !safeInteger(parsed.deletedAt, 0, MAX_TIMESTAMP)
     || !Array.isArray(parsed.values) || parsed.values.length !== 4
     || !parsed.values.every((value) => value === null || typeof value === "string")) {
-    return { status: "invalid", reason: "invalid_envelope" };
+    return { status: "invalid", reason: "invalid_envelope", raw };
   }
   const body = deleteTransactionBody(parsed.worldId, parsed.values as Array<string | null>, parsed.deletedAt);
   const transaction = { checksum: parsed.checksum, ...body };
-  if (singlePlayerSaveChecksum(body) !== parsed.checksum) return { status: "invalid", reason: "checksum_mismatch" };
-  if (canonicalSinglePlayerJson(transaction) !== raw) return { status: "invalid", reason: "noncanonical_envelope" };
-  return { status: "valid", transaction };
+  if (singlePlayerSaveChecksum(body) !== parsed.checksum) return { status: "invalid", reason: "checksum_mismatch", raw };
+  if (canonicalSinglePlayerJson(transaction) !== raw) return { status: "invalid", reason: "noncanonical_envelope", raw };
+  return { status: "valid", transaction, raw };
 }
 
 function readDeleteTransaction(storage: SinglePlayerStorageAdapter): DeleteTransactionReadResult {
@@ -452,26 +452,24 @@ function storageRemover(storage: SinglePlayerStorageAdapter): ((key: string) => 
   }
 }
 
-function clearDeleteTransaction(storage: SinglePlayerStorageAdapter): boolean {
+function clearTransaction(storage: SinglePlayerStorageAdapter, key: string, expectedRaw: string): boolean {
   const removeItem = storageRemover(storage);
   if (!removeItem) return false;
   try {
-    removeItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
-    return storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY) === null;
+    if (storage.getItem(key) !== expectedRaw) return false;
+    removeItem(key);
+    return storage.getItem(key) === null;
   } catch {
     return false;
   }
 }
 
-function clearCreateTransaction(storage: SinglePlayerStorageAdapter): boolean {
-  const removeItem = storageRemover(storage);
-  if (!removeItem) return false;
-  try {
-    removeItem(LOCAL_WORLD_CREATE_TRANSACTION_KEY);
-    return storage.getItem(LOCAL_WORLD_CREATE_TRANSACTION_KEY) === null;
-  } catch {
-    return false;
-  }
+function clearDeleteTransaction(storage: SinglePlayerStorageAdapter, expectedRaw: string): boolean {
+  return clearTransaction(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY, expectedRaw);
+}
+
+function clearCreateTransaction(storage: SinglePlayerStorageAdapter, expectedRaw: string): boolean {
+  return clearTransaction(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY, expectedRaw);
 }
 
 function sameWorld(left: LocalWorldRecord, right: LocalWorldRecord): boolean {
@@ -495,7 +493,7 @@ function recoverLocalWorldCreate(
   if (pending.status === "invalid") {
     return {
       status: "warning",
-      issue: clearCreateTransaction(storage)
+      issue: clearCreateTransaction(storage, pending.raw)
         ? "create:invalid_transaction_cleared"
         : "create:invalid_transaction_pending",
     };
@@ -508,7 +506,7 @@ function recoverLocalWorldCreate(
   if (registered && !sameWorld(registered, transaction.world)) {
     return {
       status: "warning",
-      issue: clearCreateTransaction(storage)
+      issue: clearCreateTransaction(storage, pending.raw)
         ? "create:invalid_transaction_cleared"
         : "create:invalid_transaction_pending",
     };
@@ -530,7 +528,7 @@ function recoverLocalWorldCreate(
     }
   }
   const issue = registered ? "create:commit_completed" : "create:cleanup_completed";
-  return clearCreateTransaction(storage)
+  return clearCreateTransaction(storage, pending.raw)
     ? { status: "completed", issue, transaction }
     : { status: "warning", issue: "create:recovery_pending", transaction };
 }
@@ -552,7 +550,7 @@ function recoverLocalWorldDelete(
   if (pending.status === "invalid") {
     return {
       status: "warning",
-      issue: clearDeleteTransaction(storage)
+      issue: clearDeleteTransaction(storage, pending.raw)
         ? "delete:invalid_transaction_cleared"
         : "delete:invalid_transaction_pending",
     };
@@ -578,7 +576,7 @@ function recoverLocalWorldDelete(
   } catch {
     return { status: "warning", issue: "delete:recovery_pending" };
   }
-  return clearDeleteTransaction(storage)
+  return clearDeleteTransaction(storage, pending.raw)
     ? { status: "completed", issue: restore ? "delete:rollback_completed" : "delete:cleanup_completed" }
     : { status: "warning", issue: "delete:recovery_pending" };
 }
@@ -752,7 +750,7 @@ function createWorldFromSnapshot(
   if (!registryWrite.ok) {
     return { ok: false, reason: `registry_${registryWrite.reason}_transaction_pending`, mutationStarted: true };
   }
-  clearCreateTransaction(storage);
+  clearCreateTransaction(storage, transactionRaw);
   return { ok: true, world, registry: registryWrite.registry };
 }
 
@@ -887,7 +885,7 @@ function beginLocalWorldDelete(
   storage: SinglePlayerStorageAdapter,
   worldId: string,
   deletedAt: number,
-): { ok: true } | { ok: false; mutationStarted: boolean } {
+): { ok: true; raw: string } | { ok: false; mutationStarted: boolean } {
   const values: Array<string | null> = [];
   let mutationStarted = false;
   try {
@@ -900,7 +898,7 @@ function beginLocalWorldDelete(
     storage.setItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY, raw);
     const readback = storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
     return readback === raw && parseDeleteTransaction(readback).status === "valid"
-      ? { ok: true }
+      ? { ok: true, raw }
       : { ok: false, mutationStarted };
   } catch {
     return { ok: false, mutationStarted };
@@ -938,7 +936,7 @@ export function deleteLocalWorld(
         mutationStarted: true,
       };
     }
-    const cleared = clearDeleteTransaction(storage);
+    const cleared = clearDeleteTransaction(storage, begun.raw);
     return {
       ok: false,
       reason: cleared ? `registry_${saved.reason}` : `registry_${saved.reason}_transaction_pending`,
