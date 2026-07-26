@@ -17,6 +17,8 @@ export const LOCAL_DROP_TERMINAL_VELOCITY = -24;
 const SUPPORT_EPSILON = 0.0001;
 const MAX_SUPPORT_READS_PER_STEP = 12;
 const FENCE_SUPPORT_HEIGHT = 1.5;
+const DOOR_SUPPORT_HEIGHT = 1.9;
+const MAX_PARTIAL_SUPPORT_HEIGHT = DOOR_SUPPORT_HEIGHT;
 
 export type LocalDroppedItem = DroppedItemRenderItem & {
   velocityY: number;
@@ -46,6 +48,7 @@ export function localDropBlockSupportHeight(block: BlockId): number {
   if (block === BLOCK.AIR || block === BLOCK.TORCH || block === BLOCK.DOOR_OPEN
     || block === BLOCK.OAK_FENCE_GATE_OPEN || block === BLOCK.LADDER || block === BLOCK.SAPLING) return 0;
   if (block === BLOCK.OAK_FENCE || block === BLOCK.OAK_FENCE_GATE_CLOSED) return FENCE_SUPPORT_HEIGHT;
+  if (block === BLOCK.DOOR_CLOSED) return DOOR_SUPPORT_HEIGHT;
   return blockCollisionHeight(block);
 }
 
@@ -77,7 +80,7 @@ function sweptSupport(
   const blockZ = Math.floor(drop.z);
   const highest = Math.max(fromY, toY);
   const lowest = Math.min(fromY, toY);
-  const minimumBlockY = Math.floor(lowest - FENCE_SUPPORT_HEIGHT);
+  const minimumBlockY = Math.floor(lowest - MAX_PARTIAL_SUPPORT_HEIGHT);
   let supportY = -Infinity;
   let reads = 0;
   for (let blockY = Math.floor(highest); blockY >= minimumBlockY && reads < MAX_SUPPORT_READS_PER_STEP; blockY -= 1) {
@@ -135,7 +138,9 @@ export function advanceLocalDropGravity(
   clock: LocalDropGravityClock,
   elapsedSeconds: number,
   readBlock: LocalDropBlockLookup,
+  movedIndices?: Set<number>,
 ): LocalDropGravityStats {
+  movedIndices?.clear();
   const stats: LocalDropGravityStats = {
     changed: false, movedSteps: 0, processedSteps: 0, blockReads: 0, substeps: 0,
   };
@@ -167,6 +172,7 @@ export function advanceLocalDropGravity(
       stats.movedSteps += 1;
       stats.processedSteps += 1;
       stats.blockReads += result.blockReads;
+      movedIndices?.add(index);
       if (result.drop.settled) activeIndices.delete(index);
     }
   }

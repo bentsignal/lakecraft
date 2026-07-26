@@ -87,7 +87,12 @@ import {
 } from "./localBed.ts";
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
-import { appendLocalMobDeathDrops, collectLocalDroppedItems, pruneExpiredLocalDroppedItems } from "./localDroppedItems.ts";
+import {
+  appendLocalMobDeathDrops,
+  collectLocalDroppedItems,
+  collectMovedLocalDroppedItems,
+  pruneExpiredLocalDroppedItems,
+} from "./localDroppedItems.ts";
 import {
   advanceLocalDropGravity,
   createLocalDropGravityClock,
@@ -248,6 +253,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   const survivalSampledAtRef = useRef(performance.now());
   const dropsRef = useRef<LocalDroppedItem[]>(initialSnapshot.drops);
   const activeDropIndicesRef = useRef(new Set<number>());
+  const movedDropIndicesRef = useRef(new Set<number>());
   const dropGravityClockRef = useRef(createLocalDropGravityClock());
   const dropGravityChunkRef = useRef("");
   const worldRef = useRef({
@@ -1049,8 +1055,21 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           dropGravityClockRef.current,
           elapsedSeconds,
           (x, y, z) => localEngine.getBlockAt(x, y, z),
+          movedDropIndicesRef.current,
         );
         if (!gravity.changed) return;
+        const collected = collectMovedLocalDroppedItems(
+          inventoryRef.current,
+          dropsRef.current,
+          movedDropIndicesRef.current,
+          pose,
+        );
+        if (collected.changed) {
+          inventoryRef.current = collected.inventory;
+          dropsRef.current = collected.drops;
+          syncLocalDropGravity(localEngine);
+          setInventory(collected.inventory);
+        }
         localEngine.setDroppedItems(dropsRef.current);
         markWorldDirty();
       },

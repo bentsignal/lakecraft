@@ -15,7 +15,9 @@ import {
   createDefaultSinglePlayerSnapshot,
   validateSinglePlayerSnapshot,
 } from "../client/singleplayer/localSave.ts";
+import { collectMovedLocalDroppedItems } from "../client/singleplayer/localDroppedItems.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
+import { createEmptyInventory, type Inventory } from "../shared/game.ts";
 
 function drop(id: string, y: number, settled = false): LocalDroppedItem {
   return {
@@ -58,6 +60,31 @@ function simulate(
   return drops[0];
 }
 
+function simulateStationaryPickup(
+  sourceInventory: Inventory,
+  sourceDrops: LocalDroppedItem[],
+  frames: number,
+  readBlock: (x: number, y: number, z: number) => BlockId,
+): { inventory: Inventory; drops: LocalDroppedItem[] } {
+  let inventory = sourceInventory;
+  let drops = sourceDrops.map((item) => ({ ...item, item: { ...item.item } }));
+  const active = new Set<number>();
+  const moved = new Set<number>();
+  const clock = createLocalDropGravityClock();
+  const pose = { x: 0.5, y: 1, z: 0.5 };
+  rebuildActiveLocalDropIndices(drops, active, pose.x, pose.z, readBlock);
+  for (let frame = 0; frame < frames; frame += 1) {
+    const gravity = advanceLocalDropGravity(drops, active, clock, 1 / 60, readBlock, moved);
+    if (!gravity.changed) continue;
+    const collected = collectMovedLocalDroppedItems(inventory, drops, moved, pose);
+    if (!collected.changed) continue;
+    inventory = collected.inventory;
+    drops = collected.drops;
+    rebuildActiveLocalDropIndices(drops, active, pose.x, pose.z, readBlock);
+  }
+  return { inventory, drops };
+}
+
 const ground = blockWorld([[0, BLOCK.GRASS]]);
 const fallenLog = simulate(drop("tree-top-log", 12), 60, 3, ground.read.bind(ground));
 assert.equal(fallenLog.settled, true, "a mined top-of-tree log reaches ground");
@@ -87,6 +114,11 @@ const settledSlabStats = advanceLocalDropGravity(
 assert.equal(settledSlabDrops[0].y, settledSlabY, "a settled partial-block drop does not jitter");
 assert.equal(settledSlabStats.processedSteps, 0);
 
+const closedDoor = blockWorld([[0, BLOCK.DOOR_CLOSED]]);
+const doorDrop = simulate(drop("closed-door", 5), 60, 2, closedDoor.read.bind(closedDoor));
+assert.equal(localDropBlockSupportHeight(BLOCK.DOOR_CLOSED), 1.9, "drop support matches the authored 1.9-block door mesh");
+assert.equal(doorDrop.y, 1.9);
+
 const tunnelWorld = blockWorld([[2, BLOCK.STONE]]);
 const fastDrop = { ...drop("fast", 3.2), velocityY: -24 };
 const tunneled = stepLocalDroppedItemGravity(fastDrop, 1 / 60, tunnelWorld.read.bind(tunnelWorld)).drop;
@@ -101,6 +133,52 @@ for (const fps of [30, 60, 144]) {
   assert.ok(Math.abs(result.y - reference.y) < 1e-9, `${fps} Hz uses the same fixed gravity trajectory`);
   assert.ok(Math.abs(result.velocityY - reference.velocityY) < 1e-9);
 }
+
+const stationaryPickup = simulateStationaryPickup(
+  createEmptyInventory(),
+  [{ ...drop("stationary-fall", 5), item: { itemId: "diamond", count: 3 } }],
+  90,
+  ground.read.bind(ground),
+);
+assert.equal(stationaryPickup.drops.length, 0, "a falling active drop is collected without a pose-change callback");
+assert.equal(stationaryPickup.inventory.reduce((count, stack) =>
+  count + (stack?.itemId === "diamond" ? stack.count : 0), 0), 3);
+
+const fullInventory: Inventory = createEmptyInventory().map((): Inventory[number] => ({ itemId: "stone", count: 64 }));
+const fullPickup = simulateStationaryPickup(
+  fullInventory,
+  [{ ...drop("full-fall", 5), item: { itemId: "diamond", count: 3 } }],
+  90,
+  ground.read.bind(ground),
+);
+assert.equal(fullPickup.drops[0].item.count, 3, "a full inventory leaves the complete moving stack in-world");
+assert.deepEqual(fullPickup.inventory, fullInventory);
+
+const partialInventory: Inventory = fullInventory.map((stack) => stack ? { ...stack } : null);
+partialInventory[0] = { itemId: "diamond", count: 63 };
+const partialPickup = simulateStationaryPickup(
+  partialInventory,
+  [{ ...drop("partial-fall", 5), item: { itemId: "diamond", count: 3 } }],
+  90,
+  ground.read.bind(ground),
+);
+assert.equal(partialPickup.inventory[0]?.count, 64);
+assert.equal(partialPickup.drops[0].item.count, 2, "partial pickup retains the exact uncollected remainder");
+assert.equal((partialPickup.inventory[0]?.count ?? 0) + partialPickup.drops[0].item.count, 66);
+
+const multiplePickup = simulateStationaryPickup(
+  createEmptyInventory(),
+  [
+    { ...drop("multi-a", 5), item: { itemId: "log", count: 2 } },
+    { ...drop("multi-b", 5.5), x: 0.75, item: { itemId: "log", count: 3 } },
+  ],
+  120,
+  ground.read.bind(ground),
+);
+assert.equal(multiplePickup.drops.length, 0);
+assert.equal(multiplePickup.inventory.reduce((count, stack) =>
+  count + (stack?.itemId === "log" ? stack.count : 0), 0), 5,
+  "multiple moved drops are collected once with exact conservation");
 
 const removedSupport = blockWorld([[0, BLOCK.STONE], [-4, BLOCK.STONE]]);
 const unsupportedDrops = [drop("support-removal", 1, true)];
@@ -209,6 +287,9 @@ for (const sourceMarker of [
 assert.ok((singlePlayer.match(/velocityY: 0/g) ?? []).length >= 4, "direct local drop creation starts with bounded zero velocity");
 assert.ok((singlePlayer.match(/settled: false/g) ?? []).length >= 4, "direct local drop creation starts active");
 assert.ok(singlePlayer.includes("onSimulationStep: (elapsedSeconds)"), "single-player owns the optional gravity clock");
+assert.ok(singlePlayer.includes("collectMovedLocalDroppedItems(")
+  && singlePlayer.indexOf("collectMovedLocalDroppedItems(") < singlePlayer.indexOf("onPointerLockChange:"),
+  "the gravity tick checks moved drops even when stationary pose callbacks are idle");
 assert.ok(singlePlayer.includes("wakeUnsupportedLocalDroppedItems"), "terrain edits and explosions can wake unsupported drops");
 assert.equal(multiplayer.includes("localDropGravity"), false, "Lakebed multiplayer authority is unchanged");
 assert.equal(multiplayer.includes("onSimulationStep:"), false, "multiplayer installs no local drop simulation");

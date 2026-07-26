@@ -133,3 +133,43 @@ export function collectLocalDroppedItems(
   }
   return { inventory: nextInventory, drops: remaining, changed };
 }
+
+/**
+ * Gravity-tick pickup for a stationary player. Only indices that moved during
+ * the fixed step are distance/capacity checked; the full array is copied only
+ * after at least one stack is actually collected.
+ */
+export function collectMovedLocalDroppedItems(
+  inventory: Inventory,
+  drops: LocalDroppedItem[],
+  movedIndices: ReadonlySet<number>,
+  pose: Readonly<{ x: number; y: number; z: number }>,
+  pickupRadius = DROPPED_ITEM_PICKUP_RADIUS,
+): LocalDropCollectionResult {
+  let nextInventory = inventory;
+  const changes: Array<{ index: number; remainder: number }> = [];
+  const radiusSquared = Math.max(0, pickupRadius) ** 2;
+  for (const index of movedIndices) {
+    const drop = drops[index];
+    if (!drop) continue;
+    const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
+    if (distanceSquared > radiusSquared) continue;
+    const added = addItemStack(nextInventory, drop.item);
+    const picked = drop.item.count - added.remainder;
+    if (picked <= 0) continue;
+    nextInventory = added.inventory;
+    changes.push({ index, remainder: added.remainder });
+  }
+  if (changes.length === 0) return { inventory, drops, changed: false };
+  const nextDrops = drops.slice();
+  changes.sort((left, right) => right.index - left.index);
+  for (const { index, remainder } of changes) {
+    if (remainder > 0) {
+      const drop = nextDrops[index];
+      nextDrops[index] = { ...drop, item: { ...drop.item, count: remainder } };
+    } else {
+      nextDrops.splice(index, 1);
+    }
+  }
+  return { inventory: nextInventory, drops: nextDrops, changed: true };
+}
