@@ -9,13 +9,13 @@ const browser = readFileSync(new URL("../client/singleplayer/LocalWorldBrowser.t
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const save = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const registry = readFileSync(new URL("../client/singleplayer/localWorldRegistry.ts", import.meta.url), "utf8");
-const menuButton = readFileSync(new URL("../client/lobby/menuButton.tsx", import.meta.url), "utf8");
 
 function functionSource(name: string): string {
   const start = browser.indexOf(`  function ${name}`);
   const nextFunction = browser.indexOf("\n  function ", start + 1);
   const componentReturn = browser.indexOf("\n  return (", start + 1);
-  const end = [nextFunction, componentReturn].filter((index) => index >= 0).sort((left, right) => left - right)[0];
+  const end = [nextFunction, componentReturn].filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0];
   return browser.slice(start, end);
 }
 
@@ -23,35 +23,96 @@ assert.equal(browser.includes("lakebed/client"), false, "the world list stays en
 assert.equal(app.includes("lakebed/client"), false, "selecting a world cannot mount Lakebed transport");
 assert.ok(browser.includes('aria-label="Local world browser"'));
 assert.ok(browser.includes('aria-label="Search worlds"'));
-assert.ok(browser.includes('<select\n          aria-label="Local worlds"')
-  && browser.includes("size={Math.max(3, Math.min(8, filtered.length || 3))}")
-  && browser.includes('value={entry.world.id}'),
-  "world selection uses a visible native multi-row select with native keyboard semantics");
-assert.equal(browser.includes("moveLocalWorldSelection"), false,
-  "native select owns Arrow, Home, End, focus, and selected-option behavior");
-assert.ok(browser.includes("`Last saved ${dateText(entry.lastSavedAt)}`")
-  && browser.includes('entry.health === "unsupported"')
-  && browser.includes("parts.push(health, `Storage ${capacity}`)")
-  && browser.includes('return parts.join(" · ")'),
-  "each native option exposes mode, last-save, health, and capacity context");
-assert.ok(browser.includes('role={error ? "alert" : "status"}')
-  && browser.includes('hint(notice || "Local worlds · no Lakebed traffic")'),
-  "create/import/reset feedback is announced");
-assert.ok(browser.includes('role={creating ? undefined : "alertdialog"}')
-  && browser.includes("localWorldDialogRef(restoreFocusRef"),
-  "destructive confirmation uses the browser's focus-trapping modal dialog");
-assert.ok(browser.includes('onClose={() => setModal(0)}')
-  && browser.includes('method="dialog"')
-  && browser.includes("autoFocus")
-  && browser.includes("restoreFocusRef")
+assert.ok(browser.includes('aria-label="Local worlds"'));
+assert.ok(browser.includes("const [modal, setModal] = useState<Modal>(0)"),
+  "the create dialog is closed whenever the browser first opens");
+
+const header = browser.slice(
+  browser.indexOf('<div className="lc-local-world-header">'),
+  browser.indexOf("</div>", browser.indexOf('<div className="lc-local-world-header">')) + 6,
+);
+assert.ok(header.indexOf('aria-label="Search worlds"') >= 0
+  && header.indexOf('aria-label="Search worlds"') < header.indexOf("{CREATE_LABEL}"),
+  "search is left of Create New World in the header");
+assert.ok(browser.includes("grid-template-columns:minmax(0,1fr) minmax(240px,auto)")
+  && browser.includes(".lc-local-world-header>.lc-menu-button{min-width:240px;white-space:nowrap}")
+  && browser.includes("@media(max-width:560px)")
+  && browser.includes(".lc-local-world-header{align-items:stretch;grid-template-columns:1fr}")
+  && browser.includes(".lc-local-world-header>.lc-menu-button{min-width:0;width:100%}"),
+  "Create New World stays on one line beside search and expands safely below 560px");
+assert.ok(browser.includes(".lc-local-world-search input{background:#111;border:2px solid;")
+  && browser.includes("height:46px")
+  && browser.includes(".lc-local-world-search input:focus-visible{border-color:#fff;"),
+  "search has an intentional, visible input surface and keyboard focus treatment");
+
+const rowMarkup = browser.slice(browser.indexOf("<ul aria-label="), browser.indexOf("</ul>"));
+assert.ok(rowMarkup.includes("<strong>{entry.world.name}</strong>")
+  && rowMarkup.includes("<small>Last played {dateText(entry.world.lastPlayedAt)}</small>"),
+  "world rows expose only their name and last-played metadata");
+for (const removedMetadata of ["Last saved", "Game Mode", "Storage ", "entry.health", "entry.gameMode", "world.seed"]) {
+  assert.equal(rowMarkup.includes(removedMetadata), false, `world rows omit ${removedMetadata}`);
+}
+assert.ok(rowMarkup.includes('className="lc-local-world-delete"')
+  && rowMarkup.includes("aria-label={`Delete ${entry.world.name}`}")
+  && browser.includes("grid-template-columns:minmax(0,1fr) auto"),
+  "each row owns a right-aligned Delete control");
+assert.ok(rowMarkup.includes("onDblClick={() => play(entry)}"),
+  "double-clicking a world row plays that exact world");
+assert.ok(rowMarkup.includes('if (event.key === "Enter")')
+  && rowMarkup.includes("play(entry)"),
+  "keyboard users can play the focused world with Enter");
+assert.ok(browser.includes("overflow-x:hidden")
+  && browser.includes("min-width:0")
+  && browser.includes("text-overflow:ellipsis"),
+  "the list and long names cannot create horizontal scrolling");
+assert.ok(browser.includes("text-shadow:none")
+  && browser.includes(".lc-local-world-browser *")
+  && browser.includes(".lc-local-world-dialog *"),
+  "the world browser and dialogs override the inherited offset text shadow");
+
+for (const removed of [
+  "Reset World",
+  "Import Legacy",
+  "Legacy World",
+  "resetLocalWorldData",
+  "resetLegacyLocalWorld",
+  "inspectLegacyLocalWorld",
+  "importLegacyLocalWorld",
+]) {
+  assert.equal(browser.includes(removed), false, `browser removes obsolete ${removed} code`);
+  assert.equal(registry.includes(removed), false, `registry removes dead ${removed} support`);
+}
+assert.equal(registry.includes("migrateLegacy: true"), false,
+  "the registry no longer contains an explicit legacy backfill path");
+
+const deletePhrase = "yes, I want to delete this world";
+assert.ok(browser.includes(`const DELETE_PHRASE = "${deletePhrase}"`));
+assert.ok(browser.includes('aria-label="Delete confirmation phrase"')
+  && browser.includes("deletePhrase === DELETE_PHRASE")
+  && browser.includes("disabled={deleting && !deleteConfirmed}"),
+  "destructive confirmation remains disabled until the exact phrase is entered");
+const removeSource = functionSource("removeConfirmedWorld");
+assert.ok(removeSource.indexOf("if (!deleteConfirmed) return") >= 0
+  && removeSource.indexOf("if (!deleteConfirmed) return") < removeSource.indexOf("deleteLocalWorld(storage"),
+  "the delete handler independently rejects an unmatched phrase");
+assert.ok(browser.includes('role={deleting ? "alertdialog" : undefined}')
   && browser.includes("localWorldDialogRef(restoreFocusRef")
-  && browser.includes('const TITLE_ID = "lc-world-browser-title"')
-  && browser.includes("document.getElementById(TITLE_ID)"),
-  "native modal behavior handles inertness, Escape, Tab order, a safe initial action, and explicit fallback restoration");
+  && browser.includes('onClose={closeDialog}')
+  && browser.includes('method="dialog"'),
+  "native modal behavior provides inertness, focus trapping, Escape, and restoration");
+assert.ok(browser.includes(".lc-local-world-dialog{background:transparent;border:0;box-sizing:border-box;height:100vh;height:100dvh;"
+  + "margin:0;max-height:none;max-width:none;overflow-y:auto;"
+  + "padding:clamp(16px,5vh,48px) 16px;width:100vw}")
+  && browser.includes(".lc-local-world-dialog::backdrop{background:rgba(0,0,0,.72)}")
+  && browser.includes(".lc-local-world-dialog .lc-username-menu{margin:auto;"),
+  "the native dialog owns the full viewport, shades its backdrop, and centers both modal forms");
+assert.ok(browser.includes('aria-label="World Name" autoFocus')
+  && browser.includes('aria-label="Delete confirmation phrase"')
+  && browser.indexOf('aria-label="Delete confirmation phrase"') < browser.indexOf("autoComplete=", browser.indexOf('aria-label="Delete confirmation phrase"')) + 200,
+  "each dialog focuses its first useful, non-destructive field");
 assert.equal(browser.includes("trapDialogFocus"), false,
-  "the browser dialog owns focus trapping instead of a partial custom Tab implementation");
-assert.ok(browser.includes("Confirm deletion/reset") && browser.includes("This cannot be undone."),
-  "delete and reset require explicit confirmation");
+  "the native dialog owns focus trapping");
+
 assert.deepEqual(
   localWorldDeleteState(["delete:recovery_pending"]),
   ["!Deletion committed; cleanup pending.", true],
@@ -91,7 +152,7 @@ function focusTarget(events: string[], name: string, isConnected = true, disable
   return { isConnected, disabled, focus: () => events.push(`${name}.focus`) };
 }
 
-for (const completion of ["Cancel", "successful Create", "successful Reset"]) {
+for (const completion of ["Cancel", "successful Create"]) {
   const events: string[] = [];
   const dialog = new FakeDialog(events);
   const restoreRef = { current: focusTarget(events, "opener") };
@@ -104,7 +165,7 @@ for (const completion of ["Cancel", "successful Create", "successful Reset"]) {
   assert.equal(restoreRef.current, null, `${completion} clears its saved opener`);
 }
 for (const [condition, restore] of [
-  ["disconnected", { isConnected: false, disabled: false }],
+  ["deleted", { isConnected: false, disabled: false }],
   ["disabled", { isConnected: true, disabled: true }],
 ] as const) {
   const events: string[] = [];
@@ -114,99 +175,25 @@ for (const [condition, restore] of [
   lifecycle(null);
   assert.deepEqual(events, ["showModal", "close", "title.focus"], `${condition} opener falls back to the title`);
 }
+
 assert.ok(
-  browser.includes("localWorldDeleteState(issues)")
-  && browser.includes('["Delete World…", !selected || deleteBlocked || transactionReadOnly'),
-  "the browser renders the tested exact issue mapping and retains pending-delete guards",
+  browser.includes("localWorldDeleteState(registryLoad.issues)")
+  && rowMarkup.includes("disabled={deleteBlocked || transactionReadOnly}"),
+  "per-row delete controls retain pending-delete guards",
 );
 assert.ok(
   browser.includes("const transactionReadOnly = isLocalWorldRegistryTransactionReadOnly(registryLoad)")
-  && browser.includes("Unverified transactions: storage is read-only.")
   && browser.includes("Play and changes are disabled until recovery.")
-  && browser.includes("Unverified transactions: storage is read-only.")
   && browser.includes("Retry Storage"),
-  "opaque transaction state is presented as retryable read-only storage without a healthy-world availability claim",
-);
-assert.ok(
-  browser.includes("const selectedPlayable = Boolean(selected && !transactionReadOnly && canPlayLocalWorld(selected))")
-  && browser.includes('["Play World", !selectedPlayable, ACTION.PLAY]')
-  && browser.includes("if (!selected || !selectedPlayable)"),
-  "native Play disabled behavior and its handler fail closed while transaction visibility is opaque",
-);
-assert.ok(
-  browser.includes('["Reset World…", !selected || transactionReadOnly')
-  && browser.includes('legacy.status !== "available" || blocked || transactionReadOnly || imported'),
-  "native reset and legacy import controls enforce registry read-only state",
-);
-assert.ok(
-  browser.includes("[`Reset ${LEGACY}Data…`, transactionReadOnly, ACTION.LEGACY_RESET]"),
-  "legacy reset is removed from keyboard and click activation while transaction state is opaque",
-);
-const performSource = functionSource("perform");
-for (const guardedCall of [
-  "setModal(action",
-  "createLocalWorld(storage",
-  "resetLegacyLocalWorld(storage)",
-  "importLegacyLocalWorld(storage",
-] as const) {
-  assert.ok(performSource.indexOf("if (transactionReadOnly)") >= 0
-    && performSource.indexOf("if (transactionReadOnly)") < performSource.indexOf(guardedCall),
-  `read-only handler guard precedes ${guardedCall}`);
-}
+  "opaque transaction state is presented as retryable read-only storage");
 const playSource = functionSource("play");
-assert.ok(playSource.indexOf("if (!selected || !selectedPlayable)") >= 0
-  && playSource.indexOf("if (!selected || !selectedPlayable)") < playSource.indexOf("touchLocalWorld(storage"),
+assert.ok(playSource.indexOf("transactionReadOnly || !canPlayLocalWorld(entry)") >= 0
+  && playSource.indexOf("transactionReadOnly || !canPlayLocalWorld(entry)")
+    < playSource.indexOf("touchLocalWorld(storage"),
   "Play's handler guard precedes its world-list mutation");
-
-for (const label of [
-  "Select World",
-  "Create New World",
-  "Play World",
-  "Delete World…",
-  "Reset World…",
-  "Last played",
-  "Last saved",
-]) {
-  assert.ok(browser.includes(label), `world browser exposes ${label}`);
-}
-assert.ok(browser.includes('const LEGACY = "Legacy "')
-  && browser.includes("`${LEGACY}world found.")
-  && browser.includes("`Import ${LEGACY}World`")
-  && browser.includes("`Reset ${LEGACY}Data…`"),
-  "legacy controls and guidance retain their complete labels");
-assert.ok(browser.includes("capitalize(entry.health)")
-  && browser.includes('entry.capacity === "warning" ? "low"')
-  && browser.includes('entry.capacity === "exceeded" ? "full"'),
-  "world rows derive the same readable health and storage-capacity labels");
-
-assert.ok(browser.includes("world.name.toLocaleLowerCase().includes"),
-  "search filters by normalized world name without mutating the registry");
-assert.ok(browser.includes("filtered.find(({ world }) => world.id === selectedId) ?? filtered[0] ?? null")
-  && browser.includes('value={selected?.world.id ?? ""}'),
-  "a search resolves every action and the controlled native select to a visible option");
-assert.ok(browser.includes('const confirmedName = confirmedWorld?.name ?? "this world"')
-  && browser.includes("? selected?.world"),
-  "destructive confirmation identifies its exact selected target");
-assert.ok(browser.includes("form?.elements")
-  && browser.includes('value="New World"')
-  && browser.includes("<option>Survival</option><option>Creative</option>")
-  && browser.includes("fields[0].value")
-  && browser.includes("fields[1].value")
-  && browser.includes('fields[2].selectedIndex ? "creative" : "survival"'),
-  "native create fields preserve the default name and fail-closed Survival/Creative mode parsing");
-const createFieldsSource = browser.slice(
-  browser.indexOf("const CREATE_FIELDS"),
-  browser.indexOf("function dateText"),
-);
-assert.equal(createFieldsSource.includes("${"), false,
-  "the compact native create markup is a fixed authored literal with no injection seam");
-assert.ok(browser.includes("dangerouslySetInnerHTML={{ __html: CREATE_FIELDS }}")
-  && menuButton.includes("id?: string | number")
-  && browser.includes("menuButton(text, undefined, disabled, 0, action)"),
-  "delegated world actions retain native disabled buttons and fixed create controls");
-assert.ok(browser.includes("touchLocalWorld(storage, selected.world.id, Date.now(), selected.world)"),
-  "Play records last-played against the exact selected registry record before mounting the world");
-assert.ok(browser.includes("resolveLocalWorldPlay(storage, selected, result)")
+assert.ok(browser.includes("touchLocalWorld(storage, entry.world.id, Date.now(), entry.world)"),
+  "Play records last-played against the exact activated registry record");
+assert.ok(browser.includes("resolveLocalWorldPlay(storage, entry, result)")
   && registry.includes('touch.reason !== "world_touch_recovery_pending"')
   && registry.includes("touch.mutationStarted !== false")
   && registry.includes("const before = scanRegistryState(storage)")
@@ -214,17 +201,26 @@ assert.ok(browser.includes("resolveLocalWorldPlay(storage, selected, result)")
   && registry.includes("after[2] !== before[2]")
   && registry.includes("pendingDeletesWorld"),
   "Play fallback requires two stable registry scans around snapshot revalidation");
-assert.ok(browser.includes("requestDocumentPointerLockHandoff()"), "Play reuses its user gesture for pointer capture");
+assert.ok(browser.includes("requestDocumentPointerLockHandoff()"),
+  "Play reuses its user gesture for pointer capture");
 assert.ok(browser.includes("if (document.pointerLockElement) document.exitPointerLock()"),
   "the browser releases any title-screen pointer handoff while showing UI");
-assert.ok(browser.includes("legacy.status !== \"none\""), "legacy choice is shown only when old data exists");
-assert.ok(browser.includes("reset source separately."),
-  "import never implies that legacy data was deleted");
+
+assert.ok(browser.includes("world.name.toLocaleLowerCase().includes"),
+  "search filters only by normalized world name without mutating the registry");
+assert.ok(browser.includes("filtered.find(({ world }) => world.id === selectedId) ?? filtered[0] ?? null"),
+  "search resolves actions to a visible world");
+assert.ok(browser.includes('name="world-title"')
+  && browser.includes('defaultValue="New World"')
+  && browser.includes('<option value="survival">Survival</option>')
+  && browser.includes('<option value="creative">Creative</option>')
+  && browser.includes('mode.value === "creative" ? "creative" : "survival"'),
+  "native create fields retain fail-closed Survival/Creative parsing");
 assert.ok(browser.includes("browserSinglePlayerStorage()") && browser.includes("storage: suppliedStorage"),
   "the browser consumes the guarded storage boundary and accepts the root's shared adapter");
 
 assert.ok(app.includes("<LocalWorldBrowser"), "single-player enters the world browser before constructing gameplay");
-assert.ok(app.includes("<SinglePlayerWorld"), "only a selected world mounts the voxel engine");
+assert.ok(app.includes("<SinglePlayerWorld"), "only an activated world mounts the voxel engine");
 assert.ok(app.includes("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })"),
   "manual/autosave/quit commits stay in the active world namespace");
 assert.ok(app.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),
@@ -246,8 +242,6 @@ assert.ok(registry.includes("LOCAL_WORLD_REGISTRY_SLOT_A_KEY")
   && registry.includes("LOCAL_WORLD_REGISTRY_SLOT_B_KEY")
   && registry.includes("checksum"),
   "the world list has its own strict two-slot checksum journal");
-assert.ok(registry.includes("migrateLegacy: true") && registry.includes("explicit Import action"),
-  "legacy migration exists only behind the explicit import API");
 assert.ok(registry.includes("type LocalWorldPendingTransaction")
   && registry.includes("saveRegistryState")
   && registry.includes('pending[0] ? "delete" : "create"')
@@ -256,6 +250,6 @@ assert.ok(registry.includes("type LocalWorldPendingTransaction")
 assert.ok(registry.includes("registryShare")
   && registry.includes("singlePlayerWorldStorageKeys(world.id)")
   && registry.includes("LOCAL_WORLD_NAMESPACE_BUDGET_CHARS"),
-  "capacity uses the selected namespace plus apportioned registry overhead");
+  "capacity accounting still protects the selected namespace");
 
-console.log("local world browser UI, accessibility, namespace, and legacy-choice tests passed");
+console.log("local world browser cleanup, accessibility, and namespace tests passed");

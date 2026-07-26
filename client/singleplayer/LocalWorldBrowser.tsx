@@ -1,18 +1,13 @@
 import { useRef, useState } from "preact/hooks";
 import { LobbyStyles } from "../lobby/LobbyStyles.tsx";
-import { menuButton } from "../lobby/menuButton.tsx";
 import { requestDocumentPointerLockHandoff } from "../pointerLockHandoff.ts";
 import {
   LOCAL_WORLD_REGISTRY_MAX_WORLDS,
   canPlayLocalWorld,
   createLocalWorld,
   deleteLocalWorld,
-  importLegacyLocalWorld,
-  inspectLegacyLocalWorld,
   isLocalWorldRegistryTransactionReadOnly,
   listLocalWorlds,
-  resetLegacyLocalWorld,
-  resetLocalWorldData,
   resolveLocalWorldPlay,
   touchLocalWorld,
   type LocalWorldInspection,
@@ -29,53 +24,54 @@ interface LocalWorldBrowserProps {
   storage?: SinglePlayerStorageAdapter;
 }
 
-const enum ACTION {
+const enum MODAL {
   CREATE = 1,
   DELETE,
-  RESET,
-  LEGACY_RESET,
-  PLAY,
-  IMPORT,
-  RETRY,
 }
-type Modal = 0 | ACTION.CREATE | ACTION.DELETE | ACTION.RESET | ACTION.LEGACY_RESET;
-type Action = readonly [label: string, disabled: boolean, action: number];
+type Modal = 0 | MODAL.CREATE | MODAL.DELETE;
 
 const READ_ONLY = "Unverified transactions: storage is read-only.";
 const TITLE_ID = "lc-world-browser-title";
 const DIALOG_TITLE_ID = "lc-world-dialog-title";
 const CREATE_LABEL = "Create New World";
-const LEGACY = "Legacy ";
-const CREATE_FIELDS = '<input aria-label="World Name" value="New World" maxlength=48>'
-  + '<input aria-label=Seed placeholder="Seed (blank: Lakecraft)">'
-  + '<select aria-label="Game Mode" class=lc-menu-button>'
-  + "<option>Survival</option><option>Creative</option></select>";
+const DELETE_PHRASE = "yes, I want to delete this world";
 
-function dateText(value: number | null): string {
+const WORLD_BROWSER_CSS = `
+.lc-local-world-browser,.lc-local-world-browser *,.lc-local-world-dialog,.lc-local-world-dialog *{text-shadow:none}
+.lc-local-world-browser{overflow:hidden}
+.lc-local-world-browser .lc-server-browser__content{box-sizing:border-box;display:flex;flex-direction:column;height:100dvh;min-height:0;overflow:hidden}
+.lc-local-world-header{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(240px,auto);width:100%}
+.lc-local-world-search{display:grid;gap:5px;min-width:0}
+.lc-local-world-search span{font-size:13px}
+.lc-local-world-search input,.lc-local-world-dialog input,.lc-local-world-dialog select{box-sizing:border-box;min-width:0;width:100%}
+.lc-local-world-search input{background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font:18px/1 var(--lc-pixel-font,monospace);height:46px;outline:0;padding:5px 9px}
+.lc-local-world-search input:focus-visible{border-color:#fff;outline:2px solid #fff;outline-offset:2px}
+.lc-local-world-header>.lc-menu-button{min-width:240px;white-space:nowrap}
+.lc-local-world-list{list-style:none;margin:14px 0 0;min-height:0;overflow-x:hidden;overflow-y:auto;padding:0;width:100%}
+.lc-local-world-row{align-items:stretch;background:#312f2b;border:2px solid #111;box-shadow:inset 0 0 0 1px #67625a;display:grid;gap:8px;grid-template-columns:minmax(0,1fr) auto;margin:0 0 8px;min-width:0;padding:6px}
+.lc-local-world-row.is-selected{border-color:#fff;box-shadow:inset 0 0 0 1px #979188}
+.lc-local-world-select{appearance:none;background:transparent;border:0;color:#fff;cursor:pointer;display:grid;gap:5px;min-width:0;padding:7px 9px;text-align:left}
+.lc-local-world-select strong,.lc-local-world-select small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lc-local-world-select small{color:#c7c7c7}
+.lc-local-world-delete{align-self:center;background:#6d2525;border:2px solid #170707;box-shadow:inset 0 0 0 1px #b75b5b;color:#fff;cursor:pointer;min-width:88px;padding:10px 12px}
+.lc-local-world-delete:disabled{cursor:not-allowed;filter:grayscale(1);opacity:.55}
+.lc-local-world-select:focus-visible,.lc-local-world-delete:focus-visible,.lc-local-world-header button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.lc-local-world-empty{margin:auto 0}
+.lc-local-world-retry{margin-top:10px}
+.lc-local-world-dialog{background:transparent;border:0;box-sizing:border-box;height:100vh;height:100dvh;margin:0;max-height:none;max-width:none;overflow-y:auto;padding:clamp(16px,5vh,48px) 16px;width:100vw}
+.lc-local-world-dialog::backdrop{background:rgba(0,0,0,.72)}
+.lc-local-world-dialog .lc-username-menu{margin:auto;width:min(520px,calc(100vw - 32px))}
+.lc-local-world-delete-copy{overflow-wrap:anywhere}
+.lc-local-world-dialog label{display:grid;gap:7px;text-align:left}
+@media(max-width:560px){
+  .lc-local-world-header{align-items:stretch;grid-template-columns:1fr}
+  .lc-local-world-header>.lc-menu-button{min-width:0;width:100%}
+  .lc-local-world-row{grid-template-columns:minmax(0,1fr) auto}
+  .lc-local-world-delete{min-width:72px;padding-inline:8px}
+}`;
+
+function dateText(value: number): string {
   return value ? new Date(value).toLocaleString() : "Never";
-}
-
-function capitalize(value: string): string {
-  return value[0].toUpperCase() + value.slice(1);
-}
-
-function worldText(entry: LocalWorldInspection): string {
-  const { world } = entry;
-  const parts = [
-    world.name,
-    capitalize(entry.gameMode),
-    `Last played ${dateText(world.lastPlayedAt)}`,
-    `Last saved ${dateText(entry.lastSavedAt)}`,
-    `seed ${world.seed}`,
-  ];
-  const health = entry.health === "unsupported"
-    ? "Newer version"
-    : capitalize(entry.health);
-  const capacity = entry.capacity === "ok" ? "OK"
-    : entry.capacity === "warning" ? "low"
-      : entry.capacity === "exceeded" ? "full" : "unavailable";
-  parts.push(health, `Storage ${capacity}`);
-  return parts.join(" · ");
 }
 
 function hint(text: string) {
@@ -93,59 +89,65 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
     if (document.pointerLockElement) document.exitPointerLock();
     return suppliedStorage ?? browserSinglePlayerStorage();
   });
-  const [[listing, legacy], setListing] = useState(
-    () => [listLocalWorlds(storage), inspectLegacyLocalWorld(storage)] as const,
-  );
+  const [listing, setListing] = useState(() => listLocalWorlds(storage));
   const { registryLoad, worlds } = listing;
   const transactionReadOnly = isLocalWorldRegistryTransactionReadOnly(registryLoad);
   const [selectedId, setSelectedId] = useState<string | null>(worlds[0]?.world.id ?? null);
   const [search, setSearch] = useState("");
-  const [modal, setModal] = useState<Modal>(
-    worlds.length === 0 && registryLoad.registry !== null && !transactionReadOnly
-      ? ACTION.CREATE
-      : 0,
-  );
+  const [modal, setModal] = useState<Modal>(0);
+  const [deletePhrase, setDeletePhrase] = useState("");
   const [notice, setNotice] = useState("");
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [mountDialog] = useState(() =>
     localWorldDialogRef(restoreFocusRef, () => document.getElementById(TITLE_ID)));
-  const creating = modal === ACTION.CREATE;
-  const deleting = modal === ACTION.DELETE;
 
   const filtered = worlds.filter(({ world }) =>
     world.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const selected = filtered.find(({ world }) => world.id === selectedId) ?? filtered[0] ?? null;
-
-  const issues = registryLoad.issues;
   const blocked = registryLoad.registry === null;
-  const [deleteWarning, deleteBlocked] = localWorldDeleteState(issues);
-  const imported = worlds.some(({ world }) => world.importedLegacy);
-  const selectedPlayable = Boolean(selected && !transactionReadOnly && canPlayLocalWorld(selected));
-  const confirmedWorld = modal > ACTION.CREATE && modal < ACTION.LEGACY_RESET ? selected?.world : null;
-  const confirmedName = confirmedWorld?.name ?? "this world";
+  const [deleteWarning, deleteBlocked] = localWorldDeleteState(registryLoad.issues);
   const warning = blocked
     ? "!Corrupt/newer list; no data changed."
     : transactionReadOnly
       ? `!${READ_ONLY} Play and changes are disabled until recovery.`
       : deleteWarning;
+  const deleting = modal === MODAL.DELETE;
+  const confirmedWorld = deleting ? selected?.world ?? null : null;
+  const deleteConfirmed = deletePhrase === DELETE_PHRASE;
 
   function fail(text: string): void {
     setNotice(`!${text}`);
   }
 
-  function refresh(text: string): void {
-    setListing([listLocalWorlds(storage), inspectLegacyLocalWorld(storage)]);
-    setNotice(text);
+  function closeDialog(): void {
+    setDeletePhrase("");
     setModal(0);
   }
 
-  function play(): void {
-    if (!selected || !selectedPlayable) {
+  function refresh(text: string): void {
+    setListing(listLocalWorlds(storage));
+    setNotice(text);
+    closeDialog();
+  }
+
+  function openModal(next: Exclude<Modal, 0>, opener: HTMLElement): void {
+    if (transactionReadOnly) {
+      fail(READ_ONLY);
+      return;
+    }
+    restoreFocusRef.current = opener;
+    setDeletePhrase("");
+    setNotice("");
+    setModal(next);
+  }
+
+  function play(entry: LocalWorldInspection | null): void {
+    if (!entry || transactionReadOnly || !canPlayLocalWorld(entry)) {
       if (transactionReadOnly) fail(READ_ONLY);
       return;
     }
-    const result = touchLocalWorld(storage, selected.world.id, Date.now(), selected.world);
-    const playable = resolveLocalWorldPlay(storage, selected, result);
+    const result = touchLocalWorld(storage, entry.world.id, Date.now(), entry.world);
+    const playable = resolveLocalWorldPlay(storage, entry, result);
     if (!playable) {
       fail("Unsafe world update blocked.");
       return;
@@ -153,162 +155,181 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
     onPlay(playable, requestDocumentPointerLockHandoff());
   }
 
-  function perform(action: number, form?: HTMLFormElement): void {
-    if (action === ACTION.RETRY) {
-      refresh("Storage checked.");
-      return;
-    }
-    if (action === ACTION.PLAY) {
-      play();
-      return;
-    }
+  function create(form: HTMLFormElement): void {
     if (transactionReadOnly) {
       fail(READ_ONLY);
-      if (modal) setModal(0);
+      closeDialog();
       return;
     }
-    if (action <= ACTION.LEGACY_RESET && modal !== action) {
-      restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setNotice("");
-      setModal(action as Exclude<Modal, 0>);
+    const name = form.elements.namedItem("world-title") as HTMLInputElement | null;
+    const seed = form.elements.namedItem("world-seed") as HTMLInputElement | null;
+    const mode = form.elements.namedItem("world-mode") as HTMLSelectElement | null;
+    if (!name || !seed || !mode) {
+      fail("Create failed safely.");
       return;
     }
-    if (action === ACTION.CREATE || action === ACTION.IMPORT) {
-      const fields = form?.elements as (HTMLFormControlsCollection & {
-        0: HTMLInputElement;
-        1: HTMLInputElement;
-        2: HTMLSelectElement;
-      }) | undefined;
-      const result = fields
-        ? createLocalWorld(storage, {
-          name: fields[0].value,
-          seedText: fields[1].value,
-          gameMode: fields[2].selectedIndex ? "creative" : "survival",
-        })
-        : importLegacyLocalWorld(storage, { name: "Imported World" });
-      if (!result.ok) {
-        fail(fields
-          ? result.reason === "world_limit_reached"
-            ? `World limit (${LOCAL_WORLD_REGISTRY_MAX_WORLDS}) reached.`
-            : "Create failed; storage full/unavailable."
-          : `${LEGACY}import failed; source remains.`);
-        return;
-      }
-      setSelectedId(result.world.id);
-      refresh(fields ? `Created ${result.world.name}.` : `${LEGACY}imported; reset source separately.`);
+    const result = createLocalWorld(storage, {
+      name: name.value,
+      seedText: seed.value,
+      gameMode: mode.value === "creative" ? "creative" : "survival",
+    });
+    if (!result.ok) {
+      fail(result.reason === "world_limit_reached"
+        ? `World limit (${LOCAL_WORLD_REGISTRY_MAX_WORLDS}) reached.`
+        : "Create failed; storage full/unavailable.");
       return;
     }
-    if (action === ACTION.LEGACY_RESET) {
-      const result = resetLegacyLocalWorld(storage);
-      if (!result.ok) fail(`${LEGACY}reset failed; data kept.`);
-      else refresh(`${LEGACY}reset.`);
+    setSelectedId(result.world.id);
+    refresh(`Created ${result.world.name}.`);
+  }
+
+  function removeConfirmedWorld(): void {
+    if (!deleteConfirmed) return;
+    if (transactionReadOnly) {
+      fail(READ_ONLY);
+      closeDialog();
       return;
     }
     if (!confirmedWorld) {
       fail("World no longer listed.");
       return;
     }
-    const result = deleting
-      ? deleteLocalWorld(storage, confirmedWorld.id)
-      : resetLocalWorldData(storage, confirmedWorld.id);
-    const verb = deleting ? "Delete" : "Reset";
-    if (!result.ok) fail(`${verb} failed safely.`);
-    else {
-      if (deleting) restoreFocusRef.current = null;
-      refresh(`${deleting ? "Deleted" : verb} ${confirmedWorld.name}.`);
+    const result = deleteLocalWorld(storage, confirmedWorld.id);
+    if (!result.ok) {
+      fail("Delete failed safely.");
+      return;
     }
-  }
-
-  const actions: Action[] = [
-    ["Play World", !selectedPlayable, ACTION.PLAY],
-    [CREATE_LABEL, blocked || transactionReadOnly || worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS,
-      ACTION.CREATE],
-    ["Reset World…", !selected || transactionReadOnly, ACTION.RESET],
-    ["Delete World…", !selected || deleteBlocked || transactionReadOnly, ACTION.DELETE],
-  ];
-  if (transactionReadOnly) actions.push(["Retry Storage", false, ACTION.RETRY]);
-  if (legacy.status !== "none") {
-    actions.push(
-      [imported ? `${LEGACY}Imported` : `Import ${LEGACY}World`,
-        legacy.status !== "available" || blocked || transactionReadOnly || imported, ACTION.IMPORT],
-      [`Reset ${LEGACY}Data…`, transactionReadOnly, ACTION.LEGACY_RESET],
-    );
+    restoreFocusRef.current = null;
+    setSelectedId(result.registry.worlds[0]?.id ?? null);
+    refresh(`Deleted ${confirmedWorld.name}.`);
   }
 
   return (
-    <main className="lc-server-browser">
+    <main className="lc-server-browser lc-local-world-browser">
       <LobbyStyles />
+      <style>{WORLD_BROWSER_CSS}</style>
       <div className="lc-dirt-background" aria-hidden="true" />
-      <section
-        className="lc-server-browser__content"
-        aria-label="Local world browser"
-        onClick={(event) => {
-          const action = +(event.target as HTMLElement).id;
-          if (action) perform(action);
-        }}
-      >
+      <section className="lc-server-browser__content" aria-label="Local world browser">
         <h1 id={TITLE_ID} tabIndex={-1}>Select World</h1>
-        <div className="lc-username-menu">
-          <input
-            aria-label="Search worlds"
-            onInput={(event) => setSearch(event.currentTarget.value)}
-            placeholder="Search"
-            type="search"
-          />
+        <div className="lc-local-world-header">
+          <label className="lc-local-world-search">
+            <span>Search worlds</span>
+            <input
+              aria-label="Search worlds"
+              onInput={(event) => setSearch(event.currentTarget.value)}
+              placeholder="Search"
+              type="search"
+            />
+          </label>
+          <button
+            className="lc-menu-button"
+            disabled={blocked || transactionReadOnly || worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS}
+            onClick={(event) => openModal(MODAL.CREATE, event.currentTarget)}
+            type="button"
+          >{CREATE_LABEL}</button>
         </div>
-        <select
-          aria-label="Local worlds"
-          className="lc-server-list lc-server-row"
-          onChange={(event) => setSelectedId(event.currentTarget.value)}
-          size={Math.max(3, Math.min(8, filtered.length || 3))}
-          value={selected?.world.id ?? ""}
-        >
-          {filtered.map((entry) => (
-            <option key={entry.world.id} value={entry.world.id}>
-              {worldText(entry)}
-            </option>
-          ))}
-        </select>
-        {!filtered.length ? hint(search ? "No worlds match." : "Create a world to start.") : null}
+
+        <ul aria-label="Local worlds" className="lc-local-world-list">
+          {filtered.map((entry) => {
+            const active = entry.world.id === selected?.world.id;
+            return (
+              <li className={`lc-local-world-row${active ? " is-selected" : ""}`} key={entry.world.id}>
+                <button
+                  aria-pressed={active}
+                  className="lc-local-world-select"
+                  onClick={() => setSelectedId(entry.world.id)}
+                  onDblClick={() => play(entry)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      play(entry);
+                    }
+                  }}
+                  type="button"
+                >
+                  <strong>{entry.world.name}</strong>
+                  <small>Last played {dateText(entry.world.lastPlayedAt)}</small>
+                </button>
+                <button
+                  aria-label={`Delete ${entry.world.name}`}
+                  className="lc-local-world-delete"
+                  disabled={deleteBlocked || transactionReadOnly}
+                  onClick={(event) => {
+                    setSelectedId(entry.world.id);
+                    openModal(MODAL.DELETE, event.currentTarget);
+                  }}
+                  type="button"
+                >Delete</button>
+              </li>
+            );
+          })}
+        </ul>
+
+        {!filtered.length
+          ? <div className="lc-local-world-empty">{hint(search ? "No worlds match." : "Create a world to start.")}</div>
+          : null}
         {warning ? hint(warning) : null}
-        {legacy.status !== "none"
-          ? hint(`${LEGACY}world found. Import or reset manually; never automatic.`) : null}
-        <div className="lc-server-actions">
-          {actions.map(([text, disabled, action]) =>
-            menuButton(text, undefined, disabled, 0, action))}
-        </div>
+        {transactionReadOnly ? (
+          <button
+            className="lc-menu-button lc-local-world-retry"
+            onClick={() => refresh("Storage checked.")}
+            type="button"
+          >Retry Storage</button>
+        ) : null}
         {hint(notice || "Local worlds · no Lakebed traffic")}
       </section>
 
       {modal ? (
         <dialog
           aria-labelledby={DIALOG_TITLE_ID}
-          className="lc-username-layer"
-          onClose={() => setModal(0)}
+          className="lc-username-layer lc-local-world-dialog"
+          onClose={closeDialog}
           ref={mountDialog}
-          role={creating ? undefined : "alertdialog"}
+          role={deleting ? "alertdialog" : undefined}
         >
           <form
             className="lc-username-menu"
             method="dialog"
             onSubmit={(event) => {
               event.preventDefault();
-              perform(modal, event.currentTarget);
+              if (deleting) removeConfirmedWorld();
+              else create(event.currentTarget);
             }}
           >
-            <h2 id={DIALOG_TITLE_ID}>{creating ? CREATE_LABEL : "Confirm deletion/reset"}</h2>
-            {creating ? (
-              <div dangerouslySetInnerHTML={{ __html: CREATE_FIELDS }} />
+            <h2 id={DIALOG_TITLE_ID}>{deleting ? "Delete World" : CREATE_LABEL}</h2>
+            {deleting ? (
+              <>
+                <p>Delete {confirmedWorld?.name ?? "this world"} and all local progress? This cannot be undone.</p>
+                <label>
+                  <span className="lc-local-world-delete-copy">
+                    Type <strong>{DELETE_PHRASE}</strong> to confirm
+                  </span>
+                  <input
+                    aria-label="Delete confirmation phrase"
+                    autoComplete="off"
+                    autoFocus
+                    onInput={(event) => setDeletePhrase(event.currentTarget.value)}
+                    value={deletePhrase}
+                  />
+                </label>
+              </>
             ) : (
-              <p>
-                {deleting ? `Delete ${confirmedName} and local progress?`
-                  : modal === ACTION.RESET ? `Reset ${confirmedName} to original seed/mode?`
-                    : "Reset legacy data?"} This cannot be undone.
-              </p>
+              <>
+                <input aria-label="World Name" autoFocus defaultValue="New World" maxLength={48} name="world-title" />
+                <input aria-label="Seed" name="world-seed" placeholder="Seed (blank: Lakecraft)" />
+                <select aria-label="Game Mode" className="lc-menu-button" name="world-mode">
+                  <option value="survival">Survival</option>
+                  <option value="creative">Creative</option>
+                </select>
+              </>
             )}
             {notice[0] === "!" ? hint(notice) : null}
-            {menuButton(creating ? "Create World" : `Confirm ${deleting ? "Delete" : "Reset"}`, undefined, false, 1)}
-            <button autoFocus className="lc-menu-link" onClick={() => setModal(0)} type="button">Cancel</button>
+            <button
+              className="lc-menu-button"
+              disabled={deleting && !deleteConfirmed}
+              type="submit"
+            >{deleting ? "Delete World" : "Create World"}</button>
+            <button className="lc-menu-link" onClick={closeDialog} type="button">Cancel</button>
           </form>
         </dialog>
       ) : null}

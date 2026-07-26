@@ -251,12 +251,14 @@ markers remain associated only with their owning world.
 Run these checks first at 1280 × 720, then repeat the viewport-dependent
 interactions at 800 × 720 without browser zoom.
 
-1. On **Select World**, verify the list, search field, selected-row treatment,
-   **Play World**, **Create New World**, **Reset World…**, and
-   **Delete World…** fit without horizontal clipping.
+1. On **Select World**, verify the search field sits left of
+   **Create New World**, every compact row shows only its world name and
+   last-played time, and each right-aligned **Delete** button fits without
+   horizontal clipping or offset text shadows.
 2. Search separately for `Survival`, `Creative`, and `Fault`. Each query must
-   produce the expected world only. Clear search, use Home/End and arrow keys
-   to move selection, and activate the selected world from the keyboard.
+   produce the expected world only. Clear search, single-click a row to select
+   it, press Enter on a focused row to play it, then return and double-click
+   another row to play it.
 3. Enter QA Survival. Verify Survival restrictions, then use the command
    console to switch to Creative and back to Survival. Enter QA Creative and
    verify its initial mode, then switch to Survival and back to Creative.
@@ -337,35 +339,36 @@ lakecraft.singleplayer.world.<QA_FAULT_ID>.save.a
 lakecraft.singleplayer.world.<QA_FAULT_ID>.save.b
 ```
 
-Reload. QA Fault must show a corrupt-save health state and be unable to damage
-or hide QA Survival and QA Creative. Open both healthy worlds and prove their
-six surviving markers still match. Never save the corrupt values themselves
-or overwrite the earlier bound healthy storage summary. Reset QA Fault through
-the UI before continuing.
+Reload. QA Fault must remain isolated and be unable to damage or hide QA
+Survival and QA Creative. Open both healthy worlds and prove their six
+surviving markers still match. Never save the corrupt values themselves or
+overwrite the earlier bound healthy storage summary. Delete QA Fault through
+the typed-confirmation flow, then recreate it with the original seed and mode
+before continuing.
 
 ### Capacity boundary
 
 After QA Fault is healthy again, replace one target save-slot value with more
-than 150,000 characters and reload. Do not export that injected value. The
-fault world must show the storage-limit state and its unsafe **Play World**
-action must be disabled; the other two worlds must remain searchable and
-playable. Reset QA Fault through the UI and confirm storage returns to a
-healthy state. Do not fill the entire origin quota, because that would
-invalidate the isolation check.
+than 150,000 characters and reload. Do not export that injected value.
+Double-click and Enter must not open the unsafe fault world; the other two
+worlds must remain searchable and playable. Delete and recreate QA Fault, then
+confirm storage returns to a healthy state. Do not fill the entire origin
+quota, because that would invalidate the isolation check.
 
-### Reset/delete modal keyboard and focus
+### Delete modal keyboard, phrase, and focus
 
 With QA Fault selected:
 
-1. Open **Reset World…**. Initial focus must be on **Cancel**. Tab and
-   Shift+Tab must remain trapped inside the modal; Escape must cancel and
-   restore focus to the reset trigger.
-2. Reopen it and choose **Confirm Reset**. The world remains listed with fresh
-   state, and its former three markers are absent.
-3. Open **Delete World…**. Repeat initial-focus, Tab-trap, Escape, and
-   focus-restoration checks.
-4. Reopen and choose **Confirm Delete**. QA Fault disappears while the other
-   two rows, saves, and selection behavior remain healthy.
+1. Open its right-aligned **Delete** control. The dialog must name QA Fault and
+   initial focus must be in the confirmation input. Tab and Shift+Tab must
+   remain trapped inside the modal; Escape must cancel and restore focus to
+   that row's Delete trigger.
+2. Reopen it. Enter near-matches, capitalization changes, leading/trailing
+   whitespace, and partial text; **Delete World** must remain disabled.
+3. Type exactly `yes, I want to delete this world`. **Delete World** must
+   become enabled. Submit it and confirm QA Fault disappears while the other
+   two rows and saves remain healthy; focus must fall back to the
+   **Select World** heading because the opener was removed.
 
 Use a continuous recording for these keyboard/focus checks at each viewport.
 
