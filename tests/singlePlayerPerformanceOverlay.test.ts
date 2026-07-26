@@ -22,10 +22,10 @@ const stats: VoxelPerformanceStats = {
   avatarDrawCalls: 0,
   avatarVertexCount: 0,
   nameplateVertexCount: 0,
-  remoteMeshMs: 0,
-  remoteUploadBytes: 0,
+  remoteMeshMs: 2.25,
+  remoteUploadBytes: 4_096,
   remoteMeshUpdates: 0,
-  remoteVisiblePlayers: 0,
+  remoteVisiblePlayers: 2,
   mobDrawCalls: 1,
   mobVertexCount: 9_000,
   mobVisibleCount: 7,
@@ -56,18 +56,32 @@ const stats: VoxelPerformanceStats = {
 };
 
 assert.equal(performanceHudCoreText(stats), `FPS 60  p95 21.3ms
-CHUNK 13/25  DRAW 8
-MEM 1536K  UP 8K
-ENTITY M 7/12  I 2/3  P 16`);
+DRAW 8  CHUNKS 13/25
+PLAYERS 2  REMOTE 2.25ms / 4KB
+DROPS 2/3  0.10ms / 2KB
+MOBS 7/12  AI 0.40ms
+PFX 16  DRAW 1  1KB
+LIGHT 2/3 torches
+VERT 42,000  MESH 1.5ms`);
+assert.equal(performanceHudCoreText(stats, [12.25, 64, -8.75, "healthy"]), `FPS 60  p95 21.3ms
+XYZ 12.3 / 64.0 / -8.8
+DRAW 8  CHUNKS 13/25
+PLAYERS 2  REMOTE 2.25ms / 4KB
+SYNC healthy
+DROPS 2/3  0.10ms / 2KB
+MOBS 7/12  AI 0.40ms
+PFX 16  DRAW 1  1KB
+LIGHT 2/3 torches
+VERT 42,000  MESH 1.5ms`);
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 assert.ok(app.includes('if (event.code === "F3" && !event.repeat)'), "held F3 cannot repeatedly flip the overlay");
 assert.ok(app.indexOf('if (event.code === "F3"') < app.indexOf("if (commandOpen)"),
   "the debug toggle is independent of pause, inventory, and command focus handling");
-assert.ok(app.includes("if (showPerformanceRef.current && performanceOutputRef.current)"),
+assert.ok(app.includes("if (performanceOutputRef.current && !performanceOutputRef.current.hidden)"),
   "hidden performance sampling causes no DOM or React churn");
-assert.ok(app.includes("performanceOutputRef.current.hidden = !showPerformanceRef.current"),
+assert.ok(app.includes("performanceOutputRef.current.hidden = !performanceOutputRef.current.hidden"),
   "the stable output node hides and shows without frame-loop React renders");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.match(styles, /\.lakecraft-perf,.lc-local-perf \{[^}]*font: 11px\/1\.4[^}]*position: fixed;[^}]*top: 12px;/);
@@ -75,7 +89,7 @@ assert.ok(styles.includes(".lc-local-perf { right: 8px; }"),
   "local overlay stays in the upper-right, away from crosshair and hotbar at both target widths");
 assert.equal(app.includes("useQuery") || app.includes("useMutation"), false,
   "the single-player path adds no Lakebed query or mutation");
-assert.equal(multiplayer.match(/performanceHudCoreText\(performanceStats\)/g)?.length, 1,
-  "multiplayer reuses the same core counter rendering");
+assert.equal(multiplayer.match(/performanceHudCoreText\(/g)?.length, 1,
+  "multiplayer preserves its complete detail surface through the shared formatter");
 
 console.log("single-player F3 performance overlay tests passed");

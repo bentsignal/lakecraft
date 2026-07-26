@@ -307,7 +307,6 @@ function SinglePlayerWorld({
   const commandHistoryRef = useRef<string[]>([]);
   const commandHistoryIndexRef = useRef(0);
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
-  const showPerformanceRef = useRef(false);
   const performanceOutputRef = useRef<HTMLOutputElement | null>(null);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
   const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
@@ -1522,7 +1521,7 @@ function SinglePlayerWorld({
         collectLocalDrops(pose);
       },
       onPerformanceStats: (stats) => {
-        if (showPerformanceRef.current && performanceOutputRef.current) {
+        if (performanceOutputRef.current && !performanceOutputRef.current.hidden) {
           performanceOutputRef.current.textContent = performanceHudCoreText(stats);
         }
       },
@@ -1712,8 +1711,9 @@ function SinglePlayerWorld({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "F3" && !event.repeat) {
         event.preventDefault();
-        showPerformanceRef.current = !showPerformanceRef.current;
-        if (performanceOutputRef.current) performanceOutputRef.current.hidden = !showPerformanceRef.current;
+        if (performanceOutputRef.current) {
+          performanceOutputRef.current.hidden = !performanceOutputRef.current.hidden;
+        }
         return;
       }
       if (commandOpen) {

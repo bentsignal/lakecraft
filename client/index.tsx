@@ -3572,7 +3572,10 @@ function GameApp({
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`${performanceHudCoreText(performanceStats)}\nSYNC ${segmentSyncTelemetry}`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{performanceHudCoreText(
+          performanceStats,
+          [poseRef.current.x, poseRef.current.y, poseRef.current.z, segmentSyncTelemetry],
+        )}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}
