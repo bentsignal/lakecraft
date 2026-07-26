@@ -105,18 +105,42 @@ export function canPlayLocalWorld(world: LocalWorldInspection): boolean {
 /**
  * Updating last-played metadata is useful but not a prerequisite for reading an
  * already verified world. Only the exact pre-mutation recovery gate may fall
- * back to the inspected record; ambiguous or started writes remain blocking.
+ * back after stable read-only registry and namespace revalidation.
  */
 export function resolveLocalWorldPlay(
+  storage: SinglePlayerStorageAdapter,
   selected: LocalWorldInspection,
   touch: LocalWorldMutationResult,
 ): LocalWorldRecord | null {
   if (touch.ok) return touch.world;
-  return touch.reason === "world_touch_recovery_pending"
-    && touch.mutationStarted === false
-    && canPlayLocalWorld(selected)
-    ? selected.world
-    : null;
+  if (touch.reason !== "world_touch_recovery_pending"
+    || touch.mutationStarted !== false
+    || !canPlayLocalWorld(selected)) return null;
+  const transactions = scanLocalWorldTransactions(storage);
+  if (transactions.status === "stable" && transactions.entries.some((entry) =>
+    entry.status === "valid"
+    && entry.type === "delete"
+    && entry.transaction.worldId === selected.world.id)) return null;
+  const before = loadLocalWorldRegistryRaw(storage);
+  const current = before.registry?.worlds.find(({ id }) => id === selected.world.id);
+  if (!current || !sameWorld(current, selected.world)) return null;
+  const firstInspection = inspectLocalWorld(storage, current);
+  if (!isReadOnlyFallbackPlayable(firstInspection)) return null;
+  const after = loadLocalWorldRegistryRaw(storage);
+  const verified = after.registry?.worlds.find(({ id }) => id === selected.world.id);
+  if (!verified || after.sequence !== before.sequence || !sameWorld(verified, current)) return null;
+  const secondInspection = inspectLocalWorld(storage, verified);
+  if (!isReadOnlyFallbackPlayable(secondInspection)
+    || firstInspection.load.sequence !== secondInspection.load.sequence
+    || canonicalSinglePlayerJson(firstInspection.load.snapshot)
+      !== canonicalSinglePlayerJson(secondInspection.load.snapshot)) return null;
+  return verified;
+}
+
+function isReadOnlyFallbackPlayable(world: LocalWorldInspection): boolean {
+  return (world.health === "healthy" || world.health === "recovered")
+    && (world.capacity === "ok" || world.capacity === "warning")
+    && world.load.snapshot?.world.worldId === world.world.id;
 }
 
 export type LegacyLocalWorldInspection =
@@ -1041,15 +1065,19 @@ export function touchLocalWorld(
   storage: SinglePlayerStorageAdapter,
   worldId: string,
   playedAt = Date.now(),
+  expectedWorld?: LocalWorldRecord,
 ): LocalWorldMutationResult {
   const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(playedAt)));
   const loaded = loadLocalWorldRegistry(storage, committedAt);
   if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
+  const world = loaded.registry.worlds.find(({ id }) => id === worldId);
+  if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (expectedWorld && !sameWorld(world, expectedWorld)) {
+    return { ok: false, reason: "world_changed", mutationStarted: false };
+  }
   if (hasPendingNamespaceRecovery(loaded.issues)) {
     return { ok: false, reason: "world_touch_recovery_pending", mutationStarted: false };
   }
-  const world = loaded.registry.worlds.find(({ id }) => id === worldId);
-  if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
   const nextWorld = {
     ...world,
     lastPlayedAt: Math.max(world.createdAt, world.lastPlayedAt, committedAt),

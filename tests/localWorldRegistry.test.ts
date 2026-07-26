@@ -679,13 +679,13 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
   assert.ok(selected && selected.health === "healthy");
   const registryBefore = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
     .map((key) => storage.values.get(key) ?? null);
-  const touched = touchLocalWorld(storage, created.world.id, 60_001);
+  const touched = touchLocalWorld(storage, created.world.id, 60_001, selected.world);
   assert.deepEqual(touched, {
     ok: false,
     reason: "world_touch_recovery_pending",
     mutationStarted: false,
   });
-  const playable = resolveLocalWorldPlay(selected, touched);
+  const playable = resolveLocalWorldPlay(storage, selected, touched);
   let mounted = 0;
   if (playable) mounted += 1;
   assert.equal(mounted, 1);
@@ -707,11 +707,189 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
   }), { ok: false, reason: "world_create_recovery_pending", mutationStarted: false });
   assert.deepEqual(importLegacyLocalWorld(storage, { name: "Blocked Import", now: 60_001 }),
     { ok: false, reason: "world_import_recovery_pending", mutationStarted: false });
-  assert.equal(resolveLocalWorldPlay(selected, {
+  assert.equal(resolveLocalWorldPlay(storage, selected, {
     ok: false,
     reason: "registry_readback_failed",
     mutationStarted: true,
   }), null);
+}
+
+// A stale selection from before a committed delete cannot use the read-only
+// fallback merely because deletion-marker cleanup is still active.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "Deleted Before Play",
+    seedText: "deleted-before-play",
+    gameMode: "survival",
+    now: 70_000,
+  });
+  assert.ok(created.ok);
+  const selected = listLocalWorlds(storage).worlds[0];
+  assert.equal(selected.world.id, created.world.id);
+  storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.deepEqual(deleteLocalWorld(storage, created.world.id, 70_010), {
+    ok: false,
+    reason: "world_delete_cleanup_pending",
+    mutationStarted: true,
+  });
+  const touched = touchLocalWorld(storage, created.world.id, 70_011, selected.world);
+  assert.deepEqual(touched, { ok: false, reason: "world_not_found", mutationStarted: false });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+  assert.deepEqual(singlePlayerWorldStorageKeys(created.world.id).map((key) => storage.values.has(key)),
+    [false, false, false, false]);
+  assert.equal(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: created.world.id }).status, "empty");
+}
+
+// A selected world's live pre-commit delete marker is also unsafe: its owner
+// can still resume and commit after Play returns, so healthy bytes alone are
+// not sufficient fallback proof.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "Delete Owner Before Play",
+    seedText: "delete-owner-before-play",
+    gameMode: "survival",
+    now: 70_100,
+  });
+  assert.ok(created.ok);
+  const selected = listLocalWorlds(storage).worlds[0];
+  storage.failWritesFor = nextRegistryWriteKey(storage);
+  storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.deepEqual(deleteLocalWorld(storage, created.world.id, 70_110), {
+    ok: false,
+    reason: "registry_storage_write_failed_transaction_pending",
+    mutationStarted: true,
+  });
+  storage.failWritesFor = null;
+  const touched = touchLocalWorld(storage, created.world.id, 70_111, selected.world);
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+  assert.ok(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: created.world.id }).snapshot);
+}
+
+// A delete-cleanup marker for another world does not unnecessarily hide an
+// unchanged registered healthy sibling.
+{
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, {
+    name: "Sibling Play During Delete",
+    seedText: "sibling-play-during-delete",
+    gameMode: "creative",
+    now: 70_200,
+  });
+  const deleted = createLocalWorld(storage, {
+    name: "Other Delete During Play",
+    seedText: "other-delete-during-play",
+    gameMode: "survival",
+    now: 70_201,
+  });
+  assert.ok(kept.ok && deleted.ok);
+  const selected = listLocalWorlds(storage).worlds.find(({ world }) => world.id === kept.world.id);
+  assert.ok(selected);
+  storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.deepEqual(deleteLocalWorld(storage, deleted.world.id, 70_210), {
+    ok: false,
+    reason: "world_delete_cleanup_pending",
+    mutationStarted: true,
+  });
+  const touched = touchLocalWorld(storage, kept.world.id, 70_211, selected.world);
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  const before = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .map((key) => storage.values.get(key) ?? null);
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched)?.id, kept.world.id);
+  assert.deepEqual([LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .map((key) => storage.values.get(key) ?? null), before);
+}
+
+// A stale record with the same ID is also rejected before the recovery gate,
+// so old metadata cannot authorize mounting a replaced registry generation.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "Changed Before Play",
+    seedText: "changed-before-play",
+    gameMode: "creative",
+    now: 71_000,
+  });
+  assert.ok(created.ok);
+  const selected = listLocalWorlds(storage).worlds[0];
+  assert.ok(touchLocalWorld(storage, created.world.id, 71_010).ok);
+  storage.failListKeys = true;
+  const touched = touchLocalWorld(storage, created.world.id, 71_011, selected.world);
+  assert.deepEqual(touched, { ok: false, reason: "world_changed", mutationStarted: false });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+}
+
+// Even with an exact pre-mutation enumeration failure, current missing or
+// corrupt save bytes invalidate the stale healthy inspection.
+for (const damage of ["missing", "corrupt"] as const) {
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: `Damaged Before Play ${damage}`,
+    seedText: `damaged-before-play-${damage}`,
+    gameMode: "survival",
+    now: damage === "missing" ? 72_000 : 73_000,
+  });
+  assert.ok(created.ok);
+  const selected = listLocalWorlds(storage).worlds[0];
+  const keys = singlePlayerWorldStorageKeys(created.world.id);
+  if (damage === "missing") {
+    for (const key of keys) storage.values.delete(key);
+  } else {
+    storage.values.set(singlePlayerWorldStorageKey(created.world.id, SINGLEPLAYER_SAVE_SLOT_A_KEY), "{");
+    storage.values.set(singlePlayerWorldStorageKey(created.world.id, SINGLEPLAYER_SAVE_SLOT_B_KEY), "[");
+  }
+  storage.failListKeys = true;
+  const touched = touchLocalWorld(
+    storage,
+    created.world.id,
+    damage === "missing" ? 72_001 : 73_001,
+    selected.world,
+  );
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+}
+
+// Marker-clear failure after a committed create leaves a registered healthy
+// world. This is the positive pending-cleanup case: Play mounts read-only
+// without changing registry bytes.
+{
+  const storage = new MemoryStorage();
+  const now = Date.now();
+  storage.failDeletesFor = LOCAL_WORLD_CREATE_TRANSACTION_KEY;
+  const created = createLocalWorld(storage, {
+    name: "Create Marker Play",
+    seedText: "create-marker-play",
+    gameMode: "survival",
+    now,
+  });
+  assert.ok(created.ok);
+  const selected = listLocalWorlds(storage).worlds[0];
+  assert.equal(selected.health, "healthy");
+  const before = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .map((key) => storage.values.get(key) ?? null);
+  const touched = touchLocalWorld(storage, created.world.id, now + 1, selected.world);
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched)?.id, created.world.id);
+  assert.deepEqual([LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .map((key) => storage.values.get(key) ?? null), before);
 }
 
 // Three worlds keep every snapshot-owned state family isolated.

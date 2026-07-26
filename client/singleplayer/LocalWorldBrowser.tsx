@@ -195,8 +195,8 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
 
   function play(): void {
     if (!selected || !canPlayLocalWorld(selected)) return;
-    const result = touchLocalWorld(storage, selected.world.id);
-    const playable = resolveLocalWorldPlay(selected, result);
+    const result = touchLocalWorld(storage, selected.world.id, Date.now(), selected.world);
+    const playable = resolveLocalWorldPlay(storage, selected, result);
     if (!playable) {
       setError("Could not safely update the world list.");
       return;

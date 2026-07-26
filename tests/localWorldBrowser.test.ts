@@ -64,10 +64,12 @@ assert.ok(browser.includes("reconcileLocalWorldSelection(selectedId, visibleWorl
   && browser.includes("const selected = filtered.find(({ world }) => world.id === reconciledSelectedId)"),
   "a search clears hidden selection before any world action can resolve a target");
 assert.ok(browser.includes("confirmedWorld?.name"), "destructive confirmation identifies its exact target");
-assert.ok(browser.includes("touchLocalWorld(storage"), "Play records last-played before mounting the world");
-assert.ok(browser.includes("resolveLocalWorldPlay(selected, result)")
-  && registry.includes('touch.reason === "world_touch_recovery_pending"')
-  && registry.includes("touch.mutationStarted === false"),
+assert.ok(browser.includes("touchLocalWorld(storage, selected.world.id, Date.now(), selected.world)"),
+  "Play records last-played against the exact selected registry record before mounting the world");
+assert.ok(browser.includes("resolveLocalWorldPlay(storage, selected, result)")
+  && registry.includes('touch.reason !== "world_touch_recovery_pending"')
+  && registry.includes("touch.mutationStarted !== false")
+  && registry.includes("loadLocalWorldRegistryRaw(storage)"),
   "Play alone may use a healthy read-only fallback when touch was blocked before mutation");
 assert.ok(browser.includes("requestPointerLockHandoff()"), "Play reuses its user gesture for pointer capture");
 assert.ok(browser.includes("if (document.pointerLockElement) document.exitPointerLock()"),
