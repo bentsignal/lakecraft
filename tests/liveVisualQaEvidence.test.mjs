@@ -24,6 +24,7 @@ import {
   TASK41_INTERACTION_GAP_KINDS,
   TASK41_MIN_INTERACTION_SEGMENTS,
   TASK41_MULTIPLAYER_CHECKS,
+  TASK41_MULTIPLAYER_DEFERRED_REASONS,
   TASK41_MULTIPLAYER_INTERACTIONS,
   TASK41_PERFORMANCE_SCENES,
   TASK41_TASK_ID,
@@ -717,11 +718,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
       hostedRoute: passed ? "enabled" : "disabled",
       identities,
       interactions,
-      reasonCodes: passed ? [] : [
-        "hosted-route-disabled",
-        "authorized-identities-unavailable",
-        "quota-observation-unavailable",
-      ],
+      reasonCodes: passed ? [] : [...TASK41_MULTIPLAYER_DEFERRED_REASONS],
       quotaStatus: "healthy",
       quotaObserved: passed,
       checks: passed
@@ -1668,12 +1665,45 @@ test("passed multiplayer requires two active reciprocal identities and bidirecti
 test("deferred multiplayer remains valid-partial and cannot claim completion", () => {
   const deferred = createFixture({ multiplayerStatus: "deferred" });
   try {
+    const template = createTask41EvidenceTemplate();
+    const raw = JSON.parse(readFileSync(
+      join(deferred.root, deferred.evidence.multiplayer.evidencePath),
+      "utf8",
+    ));
+    assert.deepEqual(
+      template.multiplayer.reasonCodes,
+      [...TASK41_MULTIPLAYER_DEFERRED_REASONS],
+    );
+    assert.deepEqual(
+      deferred.evidence.multiplayer.reasonCodes,
+      [...TASK41_MULTIPLAYER_DEFERRED_REASONS],
+    );
+    assert.deepEqual(raw.reasonCodes, [...TASK41_MULTIPLAYER_DEFERRED_REASONS]);
+
     const falseComplete = clone(deferred.evidence);
     falseComplete.completionEligible = true;
     assert.throws(
       () => validateTask41Evidence(falseComplete, { expectedCommit: COMMIT, nowMs: deferred.nowMs }),
       /completionEligible|deferred/,
     );
+    const invalidReasons = [
+      ...TASK41_MULTIPLAYER_DEFERRED_REASONS.map((omitted) =>
+        TASK41_MULTIPLAYER_DEFERRED_REASONS.filter((reason) => reason !== omitted)),
+      [TASK41_MULTIPLAYER_DEFERRED_REASONS[0]],
+      [...TASK41_MULTIPLAYER_DEFERRED_REASONS].reverse(),
+      [...TASK41_MULTIPLAYER_DEFERRED_REASONS, "unapproved-deferral"],
+    ];
+    invalidReasons.forEach((reasonCodes) => {
+      const candidate = clone(deferred.evidence);
+      candidate.multiplayer.reasonCodes = reasonCodes;
+      assert.throws(
+        () => validateTask41Evidence(candidate, {
+          expectedCommit: COMMIT,
+          nowMs: deferred.nowMs,
+        }),
+        /reasonCodes|reason|deferred/,
+      );
+    });
   } finally {
     deferred.cleanup();
   }
