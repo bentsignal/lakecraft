@@ -18,6 +18,7 @@ import {
   compactClientPropertyCache,
 } from "../scripts/client-property-compaction.mjs";
 import {
+  lakebedCompilerVersionSatisfiesRange,
   loadLakebedCompilerRuntime,
   resolveLakebedCompilerRuntime,
 } from "../scripts/lakebed-compiler-runtime.mjs";
@@ -108,6 +109,49 @@ function writeFixturePackage(cacheEntryRoot, name, version, files = {}, packageF
   }
 }
 
+for (const [version, range, expected] of [
+  ["0.27.1", "0.27.1", true],
+  ["0.27.1+lakebed.1", "=0.27.1+other.2", true],
+  ["0.27.2", "0.27.1", false],
+  ["0.27.7", "~0.27.1", true],
+  ["0.28.0", "~0.27.1", false],
+  ["0.27.7", "^0.27.1", true],
+  ["0.28.0", "^0.27.1", false],
+  ["0.0.6", "^0.0.6", true],
+  ["0.0.7", "^0.0.6", false],
+  ["1.9.9", "^1.2.3", true],
+  ["2.0.0", "^1.2.3", false],
+  ["0.27.1-beta.1", "0.27.1-beta.1", true],
+  ["0.27.1", "0.27.1-beta.1", false],
+  ["0.27.1-1alpha", "~0.27.1-1alpha", true],
+  ["0.27.1-beta.2", "^0.27.1-beta.1", true],
+  ["0.27.1", "^0.27.1-beta.1", true],
+  ["0.27.2-beta.1", "^0.27.1-beta.1", false],
+  ["0.27.1-beta.1", "^0.27.1", false],
+]) {
+  assert.equal(
+    lakebedCompilerVersionSatisfiesRange(version, range),
+    expected,
+    `${version} ${expected ? "satisfies" : "does not satisfy"} ${range}`,
+  );
+}
+for (const unsupportedRange of [
+  "",
+  "0.27",
+  "^0.27",
+  ">=0.27.1",
+  "^0.27.1 || ^0.28.0",
+  "workspace:*",
+  "^0.27.1-01",
+  "^9007199254740991.0.0",
+]) {
+  assert.throws(
+    () => lakebedCompilerVersionSatisfiesRange("0.27.7", unsupportedRange),
+    /complete SemVer|malformed|supported SemVer bounds/,
+    `${unsupportedRange || "empty range"} fails closed`,
+  );
+}
+
 const resolverFixtureRoot = mkdtempSync(join(tmpdir(), "lakecraft-compiler-resolver-"));
 try {
   const coupledRoot = join(resolverFixtureRoot, "coupled");
@@ -121,10 +165,23 @@ try {
   writeFixturePackage(decoyRoot, "esbuild", "99.0.0", {
     "lib/main.js": 'export const version="99.0.0";export async function build(){}\n',
   });
+  const mismatchedRoot = join(resolverFixtureRoot, "mismatched-coupled");
+  writeFixturePackage(mismatchedRoot, "lakebed", "1.2.3", {
+    "dist/cli/build.js": "export {};\n",
+  }, { dependencies: { esbuild: "^0.27.1" } });
+  writeFixturePackage(mismatchedRoot, "esbuild", "99.0.0", {
+    "lib/main.js": 'export const version="99.0.0";export async function build(){}\n',
+  });
   const future = new Date(Date.now() + 86_400_000);
   utimesSync(join(decoyRoot, "node_modules/esbuild/lib/main.js"), future, future);
+  utimesSync(join(mismatchedRoot, "node_modules/esbuild/lib/main.js"), future, future);
   const resolvedFixture = await resolveLakebedCompilerRuntime({ cacheRoot: resolverFixtureRoot });
-  assert.equal(resolvedFixture.cacheEntryRoot, realpathSync(coupledRoot), "newer standalone esbuild cache is ineligible");
+  assert.equal(
+    resolvedFixture.cacheEntryRoot,
+    realpathSync(coupledRoot),
+    "newer standalone and range-mismatched cache entries are ineligible",
+  );
+  assert.equal(resolvedFixture.declaredEsbuildRange, "^0.27.1", "resolver records Lakebed's compiler range");
   assert.equal(resolvedFixture.esbuildVersion, "0.27.7", "resolver selects Lakebed's compiler package");
   assert.ok(
     resolvedFixture.esbuildPath.startsWith(`${realpathSync(coupledRoot)}/node_modules/esbuild/`),

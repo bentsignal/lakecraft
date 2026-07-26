@@ -12,6 +12,104 @@ async function packageJson(path, expectedName) {
   return parsed;
 }
 
+const COMPLETE_SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+function parseCompleteSemver(value, label) {
+  const match = COMPLETE_SEMVER_PATTERN.exec(value);
+  const prerelease = match?.[4]?.split(".") ?? [];
+  if (
+    !match
+    || [match[1], match[2], match[3]].some((identifier) => !Number.isSafeInteger(Number(identifier)))
+    || prerelease.some((identifier) => /^\d+$/.test(identifier) && identifier.length > 1 && identifier[0] === "0")
+  ) {
+    throw new Error(`${label} must be a complete SemVer version.`);
+  }
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease,
+  };
+}
+
+function compareSemver(left, right) {
+  for (const field of ["major", "minor", "patch"]) {
+    if (left[field] !== right[field]) return left[field] < right[field] ? -1 : 1;
+  }
+  if (!left.prerelease.length || !right.prerelease.length) {
+    return left.prerelease.length === right.prerelease.length
+      ? 0
+      : left.prerelease.length ? -1 : 1;
+  }
+  const length = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftIdentifier = left.prerelease[index];
+    const rightIdentifier = right.prerelease[index];
+    if (leftIdentifier === undefined || rightIdentifier === undefined) {
+      return leftIdentifier === rightIdentifier ? 0 : leftIdentifier === undefined ? -1 : 1;
+    }
+    if (leftIdentifier === rightIdentifier) continue;
+    const leftNumeric = /^\d+$/.test(leftIdentifier);
+    const rightNumeric = /^\d+$/.test(rightIdentifier);
+    if (leftNumeric && rightNumeric) {
+      return leftIdentifier.length === rightIdentifier.length
+        ? leftIdentifier < rightIdentifier ? -1 : 1
+        : leftIdentifier.length < rightIdentifier.length ? -1 : 1;
+    }
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return leftIdentifier < rightIdentifier ? -1 : 1;
+  }
+  return 0;
+}
+
+function stableVersion(major, minor, patch) {
+  if (![major, minor, patch].every(Number.isSafeInteger)) {
+    throw new Error("Lakebed's esbuild dependency range exceeds supported SemVer bounds.");
+  }
+  return { major, minor, patch, prerelease: [] };
+}
+
+/**
+ * Implements only the complete exact, tilde, and caret npm ranges Lakebed may
+ * declare. Unsupported range syntax is rejected instead of being approximated.
+ */
+export function lakebedCompilerVersionSatisfiesRange(version, declaredRange) {
+  if (typeof version !== "string" || typeof declaredRange !== "string") {
+    throw new Error("Lakebed's compiler version and dependency range must be strings.");
+  }
+  const rangeMatch = /^(=|~|\^)?(.+)$/.exec(declaredRange);
+  if (!rangeMatch) {
+    throw new Error("Lakebed's esbuild dependency range is malformed.");
+  }
+  const operator = rangeMatch[1] ?? "=";
+  const minimum = parseCompleteSemver(rangeMatch[2], "Lakebed's esbuild dependency range");
+  const candidate = parseCompleteSemver(version, "Lakebed's resolved esbuild version");
+  if (operator === "=") return compareSemver(candidate, minimum) === 0;
+
+  let maximum;
+  if (operator === "~") {
+    maximum = stableVersion(minimum.major, minimum.minor + 1, 0);
+  } else if (minimum.major > 0) {
+    maximum = stableVersion(minimum.major + 1, 0, 0);
+  } else if (minimum.minor > 0) {
+    maximum = stableVersion(0, minimum.minor + 1, 0);
+  } else {
+    maximum = stableVersion(0, 0, minimum.patch + 1);
+  }
+  const prereleaseAllowed = !candidate.prerelease.length || (
+    minimum.prerelease.length > 0
+    && candidate.major === minimum.major
+    && candidate.minor === minimum.minor
+    && candidate.patch === minimum.patch
+  );
+  return (
+    prereleaseAllowed
+    && compareSemver(candidate, minimum) >= 0
+    && compareSemver(candidate, maximum) < 0
+  );
+}
+
 /**
  * Resolves esbuild through the same npm install tree as Lakebed. Standalone
  * esbuild cache entries are deliberately ineligible even when they are newer.
@@ -49,17 +147,24 @@ export async function resolveLakebedCompilerRuntime({
         packageJson(canonicalEsbuildPackagePath, "esbuild"),
       ]);
       const resolvedEsbuildRelativePath = relative(canonicalCacheEntryRoot, canonicalEsbuildPath);
+      const declaredEsbuildRange = lakebedPackage.dependencies?.esbuild;
       if (
-        typeof lakebedPackage.dependencies?.esbuild !== "string"
-        || !lakebedPackage.dependencies.esbuild
+        typeof declaredEsbuildRange !== "string"
+        || !declaredEsbuildRange
         || isAbsolute(resolvedEsbuildRelativePath)
         || resolvedEsbuildRelativePath === ".."
         || resolvedEsbuildRelativePath.startsWith(`..${sep}`)
       ) {
         throw new Error("Lakebed's compiler must resolve from its declared npx install tree.");
       }
+      if (!lakebedCompilerVersionSatisfiesRange(esbuildPackage.version, declaredEsbuildRange)) {
+        throw new Error(
+          `Lakebed declares esbuild ${declaredEsbuildRange}, but resolved ${esbuildPackage.version}.`,
+        );
+      }
       candidates.push({
         cacheEntryRoot: canonicalCacheEntryRoot,
+        declaredEsbuildRange,
         esbuildPackagePath: canonicalEsbuildPackagePath,
         esbuildPath: canonicalEsbuildPath,
         esbuildVersion: esbuildPackage.version,
