@@ -79,32 +79,64 @@ valid-partial state. Do not relabel deferred scope as passed.
    Every measured segment must have zero app requests and zero newly opened
    WebSockets. Tooling traffic and the development-server WebSocket opened
    before a measured segment belong to its preceding gap, but any request or
-   socket opened during a measured interaction segment fails the run. After
-   the last browser interaction, keep the final measured segment open while
-   completing the paired builds. End that segment and use its exact
-   `completedAt` as `runCompletedAt`
+   socket opened during a measured interaction segment fails the run.
+   Immediately after the final world interaction, end the final measured
+   browser segment and use its exact `completedAt` as `runCompletedAt`
    (`segments.at(-1).completedAt === runCompletedAt`), leaving no unmeasured
-   suffix.
+   suffix in the live route. Do not hold the browser segment open for report
+   serialization, artifact builds, or validation.
 6. Keep every screenshot, recording, transcript, JSON snapshot, console
    report, CDP network report, build report, artifact, and staged bundle
    beneath the one evidence root. Every regular file there must be referenced
    by the manifest (except the manifest and requested validator output); the
    validator rejects extra or missing files.
 7. Re-run `git rev-parse HEAD` after interaction and after both builds. If it
-   differs from the trusted expected commit, or any evidence timestamp is
-   outside `runStartedAt` through `runCompletedAt`, restart the route. The run
-   must last at least five minutes and no more than six hours; validate it no
-   later than six hours after `runCompletedAt`.
+   differs from the trusted expected commit, restart the route. Also restart if
+   any live evidence timestamp falls outside `runStartedAt` through
+   `runCompletedAt`; post-run derived timestamps follow the packaging rules
+   below instead. The run must last at least five minutes and no more than six
+   hours. Finish evidence packaging within six hours after `runCompletedAt`.
+   At validation, `packagedCompletedAt` may be no more than 60 seconds in the
+   future and no more than six hours old.
 
-Every screenshot, video, transcript, performance capture, storage summary,
-multiplayer report, identity proof, and interaction proof interval from
+Every live screenshot, video, transcript, performance capture, storage event,
+multiplayer event, identity proof, and interaction proof interval from
 `capturedAt` through `completedAt` must fall inside one measured segment. No
-such evidence may be captured in a navigation/reload gap or outside the
-first/last segment boundaries. Artifact build captures occur before the final
-segment closes, as described above. Every bounded proof window and every
-nested action, frame, telemetry, or event timestamp must also remain wholly
-inside a measured segment; a proof may not span or land in a gap.
-Every measured segment must contain at least one bound evidence capture.
+live evidence may be captured in a navigation/reload gap or outside the
+first/last segment boundaries. Every bounded proof window and every nested
+action, frame, telemetry, or event timestamp must also remain wholly inside a
+measured segment; a proof may not span or land in a gap. Every measured segment
+must contain at least one bound live evidence capture.
+
+After `runCompletedAt`, serialize the complete Console and Network reports from
+the frozen collectors. Their timelines still cover exactly
+`runStartedAt` through `runCompletedAt`; only their report-generation
+timestamps are post-run. Then perform both deterministic artifact builds,
+package the remaining evidence in order, and validate before the freshness
+deadline. Derived Console/Network reports and build artifacts bind the same run
+ID and expected commit, but their post-run generation/package times are not
+live capture intervals and must not be placed inside a measured segment.
+
+All evidence files retain `capturedAt` and `completedAt`, with
+`completedAt >= capturedAt`. For live evidence, those fields are the
+segment-bound capture interval. For derived Console, Network, and artifact
+files, they are the post-run generation interval. Set manifest
+`packagedCompletedAt` after build B and all packaging finish. Derived intervals
+are nonoverlapping and ordered:
+
+1. Console report
+2. Network report
+3. artifact build A
+4. artifact build B
+
+Console starts no earlier than `runCompletedAt`; each next derived
+`capturedAt` is greater than or equal to the preceding derived `completedAt`;
+and every derived interval ends no later than `packagedCompletedAt`. Require
+`packagedCompletedAt >= runCompletedAt` and
+`packagedCompletedAt - runCompletedAt` of at most six hours. Preserve the
+canonical manifest sequence chronology: observations, performance captures,
+storage, multiplayer, Console, Network, build A, then build B. Do not backdate
+a generated report or build.
 
 Generate the strict evidence manifest before testing. The marked block is
 parsed by `tests/liveVisualQaEvidence.test.mjs`; do not add another command or
@@ -481,6 +513,14 @@ segments and gaps. Network treatment is intentionally different only for the
 gap's local document navigation; no gap may contain app traffic or a newly
 opened app socket.
 
+At the final interaction boundary, stop both collectors before setting
+`runCompletedAt`; their last segment must end at that same instant. Serialize
+the complete reports afterward. Each report's post-run generation interval
+(`capturedAt` through `completedAt`) starts no earlier than `runCompletedAt`,
+while its embedded coverage still begins at `runStartedAt` and ends at
+`runCompletedAt`. Serialization must not add, omit, stretch, or retime a
+segment or gap.
+
 Development-server WebSocket traffic is outside the cleared Singleplayer
 capture segment only when opened before that segment.
 A Vite/Lakebed dev-server WebSocket opened before the boundary of a measured
@@ -494,12 +534,12 @@ reports.
 
 ## Deterministic compact artifact
 
-After the last integrated live interaction, keep the final measured segment
-open and build from two independent archives of the trusted expected commit.
-Do not stage from the mutable current filesystem. Retain both full Lakebed JSON
-reports, artifacts, and staged client/server entrypoints in the evidence root,
-then close the final segment and set `runCompletedAt` to that exact completion
-timestamp:
+After the last integrated live interaction has closed the final measured
+segment and fixed `runCompletedAt`, build from two independent archives of the
+trusted expected commit. These are post-run derived artifacts; do not extend or
+rewrite the browser timeline around them, and do not stage from the mutable
+current filesystem. Retain both full Lakebed JSON reports, artifacts, and
+staged client/server entrypoints in the evidence root:
 
 ```sh
 repo_root="$(git rev-parse --show-toplevel)"
@@ -536,6 +576,10 @@ fabricated wrapper report.
 
 Finally, place the completed manifest in the evidence root and validate it
 against the trusted commit captured before testing:
+
+After build B and manifest assembly are complete, set
+`packagedCompletedAt` to that packaging-completion instant. Do not mutate the
+evidence package afterward except for the validator output path.
 
 ```sh
 node scripts/validate-live-qa-evidence.mjs \
