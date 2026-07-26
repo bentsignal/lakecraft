@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { localWorldDeleteState } from "../client/singleplayer/localWorldBrowserIssue.ts";
+import {
+  localWorldDeleteState,
+  localWorldDialogRef,
+} from "../client/singleplayer/localWorldBrowserIssue.ts";
 
 const browser = readFileSync(new URL("../client/singleplayer/LocalWorldBrowser.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
@@ -34,13 +37,14 @@ assert.ok(browser.includes("`Last saved ${dateText(entry.lastSavedAt)}`")
 assert.ok(browser.includes('role={error ? "alert" : "status"}')
   && browser.includes('hint(notice || "Local worlds · no Lakebed traffic")'),
   "create/import/reset feedback is announced");
-assert.ok(browser.includes('role={creating ? undefined : "alertdialog"}') && browser.includes("dialog.showModal()"),
+assert.ok(browser.includes('role={creating ? undefined : "alertdialog"}')
+  && browser.includes("localWorldDialogRef(restoreFocusRef"),
   "destructive confirmation uses the browser's focus-trapping modal dialog");
 assert.ok(browser.includes('onClose={() => setModal(0)}')
   && browser.includes('method="dialog"')
   && browser.includes("autoFocus")
   && browser.includes("restoreFocusRef")
-  && browser.includes("restore?.isConnected")
+  && browser.includes("localWorldDialogRef(restoreFocusRef")
   && browser.includes('const TITLE_ID = "lc-world-browser-title"')
   && browser.includes("document.getElementById(TITLE_ID)"),
   "native modal behavior handles inertness, Escape, Tab order, a safe initial action, and explicit fallback restoration");
@@ -65,6 +69,50 @@ assert.deepEqual(localWorldDeleteState(["delete:cleanup_completed"]),
 for (const issue of ["transaction:active", "delete:active", "delete:future_issue"]) {
   assert.deepEqual(localWorldDeleteState([issue]), ["", false],
     `${issue} does not impersonate a known delete recovery state`);
+}
+
+class FakeDialog {
+  open = false;
+  private readonly events: string[];
+  constructor(events: string[]) {
+    this.events = events;
+  }
+  close(): void {
+    this.events.push("close");
+    this.open = false;
+  }
+  showModal(): void {
+    this.events.push("showModal");
+    this.open = true;
+  }
+}
+
+function focusTarget(events: string[], name: string, isConnected = true, disabled = false) {
+  return { isConnected, disabled, focus: () => events.push(`${name}.focus`) };
+}
+
+for (const completion of ["Cancel", "successful Create", "successful Reset"]) {
+  const events: string[] = [];
+  const dialog = new FakeDialog(events);
+  const restoreRef = { current: focusTarget(events, "opener") };
+  const lifecycle = localWorldDialogRef(restoreRef, () => focusTarget(events, "title"));
+  lifecycle(dialog);
+  lifecycle(null);
+  assert.deepEqual(events, ["showModal", "close", "opener.focus"],
+    `${completion} closes before restoring its valid opener`);
+  assert.equal(dialog.open, false, `${completion} leaves no native modal open`);
+  assert.equal(restoreRef.current, null, `${completion} clears its saved opener`);
+}
+for (const [condition, restore] of [
+  ["disconnected", { isConnected: false, disabled: false }],
+  ["disabled", { isConnected: true, disabled: true }],
+] as const) {
+  const events: string[] = [];
+  const restoreRef = { current: { ...restore, focus: () => events.push("opener.focus") } };
+  const lifecycle = localWorldDialogRef(restoreRef, () => focusTarget(events, "title"));
+  lifecycle(new FakeDialog(events));
+  lifecycle(null);
+  assert.deepEqual(events, ["showModal", "close", "title.focus"], `${condition} opener falls back to the title`);
 }
 assert.ok(
   browser.includes("localWorldDeleteState(issues)")

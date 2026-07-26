@@ -22,7 +22,7 @@ import {
   browserSinglePlayerStorage,
   type SinglePlayerStorageAdapter,
 } from "./localSave.ts";
-import { localWorldDeleteState } from "./localWorldBrowserIssue.ts";
+import { localWorldDeleteState, localWorldDialogRef } from "./localWorldBrowserIssue.ts";
 
 interface LocalWorldBrowserProps {
   onPlay: (world: LocalWorldRecord, pointerLockHandoff: boolean) => void;
@@ -107,17 +107,8 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
   );
   const [notice, setNotice] = useState("");
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const mountDialog = useRef((dialog: HTMLDialogElement | null) => {
-    if (dialog) {
-      dialog.showModal();
-      return;
-    }
-    const restore = restoreFocusRef.current;
-    restoreFocusRef.current = null;
-    if (!restore?.isConnected || (restore as HTMLButtonElement).disabled) {
-      document.getElementById(TITLE_ID)?.focus();
-    }
-  }).current;
+  const [mountDialog] = useState(() =>
+    localWorldDialogRef(restoreFocusRef, () => document.getElementById(TITLE_ID)));
   const creating = modal === ACTION.CREATE;
   const deleting = modal === ACTION.DELETE;
 
