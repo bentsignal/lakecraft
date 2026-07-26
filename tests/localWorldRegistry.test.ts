@@ -19,6 +19,7 @@ import {
   LOCAL_WORLD_CAPACITY_WARNING_CHARS,
   LOCAL_WORLD_CREATE_TRANSACTION_KEY,
   LOCAL_WORLD_DELETE_TRANSACTION_KEY,
+  LOCAL_WORLD_TRANSACTION_LEASE_MS,
   LOCAL_WORLD_NAMESPACE_BUDGET_CHARS,
   LOCAL_WORLD_REGISTRY_SLOT_A_KEY,
   LOCAL_WORLD_REGISTRY_SLOT_B_KEY,
@@ -35,6 +36,7 @@ import {
   reconcileLocalWorldSelection,
   resetLegacyLocalWorld,
   resetLocalWorldData,
+  resolveLocalWorldPlay,
   touchLocalWorld,
 } from "../client/singleplayer/localWorldRegistry.ts";
 import { BLOCK } from "../client/game/types.ts";
@@ -48,6 +50,7 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   throwAfterWritesFor: string | null = null;
   replaceWritesFor = new Map<string, (value: string) => string>();
   afterWritesFor = new Map<string, () => void>();
+  afterDeletesFor = new Map<string, () => void>();
   replaceDeletesFor = new Map<string, () => string>();
   failNextReadsFor = new Map<string, number>();
   failListKeys = false;
@@ -117,6 +120,11 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
       return;
     }
     this.values.delete(key);
+    const afterDelete = this.matchingHook(this.afterDeletesFor, key);
+    if (afterDelete) {
+      this.afterDeletesFor.delete(afterDelete[0]);
+      afterDelete[1]();
+    }
   }
 }
 
@@ -407,6 +415,303 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   assert.equal(moveLocalWorldSelection("world-b", ids, "Home"), "world-a");
   assert.equal(moveLocalWorldSelection("world-b", ids, "End"), "world-c");
   assert.equal(moveLocalWorldSelection("world-b", [], "End"), null);
+}
+
+// An elected transaction owns its commit window. Re-entrant create/delete
+// calls from every create namespace/registry write must remain pre-mutation,
+// while the elected writer completes as the only successful operation.
+for (const [index, nestedKind] of ["create", "delete", "create"].entries()) {
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, {
+    name: `Lease Create Sibling ${index}`,
+    seedText: `lease-create-sibling-${index}`,
+    gameMode: "survival",
+    now: 9_000 + index,
+  });
+  assert.ok(sibling.ok);
+  const outerInput = {
+    name: `Lease Outer Create ${index}`,
+    seedText: `lease-outer-create-${index}`,
+    gameMode: "creative" as const,
+    now: 10_000 + index * 10,
+  };
+  const intended = pendingCreateEntry(storage, outerInput);
+  const intendedId = (JSON.parse(intended[1]) as { world: { id: string } }).world.id;
+  const targets = [
+    singlePlayerWorldStorageKey(intendedId, SINGLEPLAYER_SAVE_SLOT_A_KEY),
+    singlePlayerWorldStorageKey(intendedId, SINGLEPLAYER_SAVE_HEAD_KEY),
+    nextRegistryWriteKey(storage),
+  ];
+  let nested: ReturnType<typeof createLocalWorld> | ReturnType<typeof deleteLocalWorld> | null = null;
+  storage.afterWritesFor.set(targets[index], () => {
+    nested = nestedKind === "create"
+      ? createLocalWorld(storage, {
+        name: `Lease Nested Create ${index}`,
+        seedText: `lease-nested-create-${index}`,
+        gameMode: "survival",
+        now: outerInput.now + 1,
+      })
+      : deleteLocalWorld(storage, sibling.world.id, outerInput.now + 1);
+  });
+  const outer = createLocalWorld(storage, outerInput);
+  assert.ok(outer.ok);
+  assert.deepEqual(nested, {
+    ok: false,
+    reason: nestedKind === "create" ? "world_create_recovery_pending" : "world_delete_recovery_pending",
+    mutationStarted: false,
+  });
+  const listed = loadLocalWorldRegistry(storage, outerInput.now + 1);
+  assert.deepEqual(
+    listed.registry?.worlds.map(({ id }) => id).sort(),
+    [sibling.world.id, outer.world.id].sort(),
+  );
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 0);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
+}
+
+// Delete holds the same lease through its registry commit and each namespace
+// removal. Nested create/delete attempts cannot both report success or leave an
+// unlisted save behind.
+for (const [index, nestedKind] of ["create", "delete", "create", "delete", "create"].entries()) {
+  const storage = new MemoryStorage();
+  const deleted = createLocalWorld(storage, {
+    name: `Lease Delete Target ${index}`,
+    seedText: `lease-delete-target-${index}`,
+    gameMode: "survival",
+    now: 19_000 + index,
+  });
+  const sibling = createLocalWorld(storage, {
+    name: `Lease Delete Sibling ${index}`,
+    seedText: `lease-delete-sibling-${index}`,
+    gameMode: "creative",
+    now: 19_100 + index,
+  });
+  assert.ok(deleted.ok && sibling.ok);
+  const targets = [nextRegistryWriteKey(storage), ...singlePlayerWorldStorageKeys(deleted.world.id)];
+  let nested: ReturnType<typeof createLocalWorld> | ReturnType<typeof deleteLocalWorld> | null = null;
+  const hook = () => {
+    nested = nestedKind === "create"
+      ? createLocalWorld(storage, {
+        name: `Lease Delete Nested Create ${index}`,
+        seedText: `lease-delete-nested-${index}`,
+        gameMode: "survival",
+        now: 20_001 + index * 10,
+      })
+      : deleteLocalWorld(storage, sibling.world.id, 20_001 + index * 10);
+  };
+  if (index === 0) storage.afterWritesFor.set(targets[index], hook);
+  else storage.afterDeletesFor.set(targets[index], hook);
+  const outer = deleteLocalWorld(storage, deleted.world.id, 20_000 + index * 10);
+  assert.ok(outer.ok);
+  assert.deepEqual(nested, {
+    ok: false,
+    reason: nestedKind === "create" ? "world_create_recovery_pending" : "world_delete_recovery_pending",
+    mutationStarted: false,
+  });
+  const listed = loadLocalWorldRegistry(storage, 20_001 + index * 10);
+  assert.deepEqual(listed.registry?.worlds.map(({ id }) => id), [sibling.world.id]);
+  assert.deepEqual(singlePlayerWorldStorageKeys(deleted.world.id).map((key) => storage.values.get(key) ?? null),
+    [null, null, null, null]);
+  assert.ok(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: sibling.world.id }).snapshot);
+}
+
+// A restart treats a lease as live until its exact bounded deadline, then
+// recovers it as abandoned. A malformed lease is opaque and can only have its
+// marker cleared.
+{
+  const storage = new MemoryStorage();
+  storage.failWritesFor = nextRegistryWriteKey(storage);
+  const startedAt = 30_000;
+  const failed = createLocalWorld(storage, {
+    name: "Lease Restart",
+    seedText: "lease-restart",
+    gameMode: "survival",
+    now: startedAt,
+  });
+  assert.ok(!failed.ok);
+  storage.failWritesFor = null;
+  const entry = transactionEntry(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  assert.ok(entry);
+  const envelope = JSON.parse(entry[1]) as { recoverAfter: number; world: { id: string } };
+  assert.equal(envelope.recoverAfter, startedAt + LOCAL_WORLD_TRANSACTION_LEASE_MS);
+  const keys = singlePlayerWorldStorageKeys(envelope.world.id);
+  const before = keys.map((key) => storage.values.get(key) ?? null);
+  const live = loadLocalWorldRegistry(storage, envelope.recoverAfter - 1);
+  assert.ok(live.issues.includes("transaction:active"));
+  assert.deepEqual(keys.map((key) => storage.values.get(key) ?? null), before);
+  assert.equal(storage.values.get(entry[0]), entry[1]);
+  const expired = loadLocalWorldRegistry(storage, envelope.recoverAfter);
+  assert.ok(expired.issues.includes("create:cleanup_completed"));
+  assert.deepEqual(keys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
+
+  const malformed = pendingCreateEntry(storage, {
+    name: "Malformed Lease",
+    seedText: "malformed-lease",
+    gameMode: "creative",
+    now: 40_000,
+  });
+  const malformedRaw = malformed[1].replace(
+    `"recoverAfter":${40_000 + LOCAL_WORLD_TRANSACTION_LEASE_MS}`,
+    `"recoverAfter":${40_001 + LOCAL_WORLD_TRANSACTION_LEASE_MS}`,
+  );
+  assert.notEqual(malformedRaw, malformed[1]);
+  storage.values.set(malformed[0], malformedRaw);
+  const malformedWorld = (JSON.parse(malformed[1]) as { world: { id: string } }).world;
+  const unrelatedBefore = singlePlayerWorldStorageKeys(malformedWorld.id)
+    .map((key) => storage.values.get(key) ?? null);
+  const cleared = loadLocalWorldRegistry(storage, 40_000);
+  assert.ok(cleared.issues.includes("create:invalid_transaction_cleared"));
+  assert.deepEqual(singlePlayerWorldStorageKeys(malformedWorld.id).map((key) => storage.values.get(key) ?? null),
+    unrelatedBefore);
+}
+
+// A registry generation changed after election is never overwritten from a
+// stale snapshot. The exact intent remains pending until expiry decides its
+// namespace against the newer authoritative registry.
+{
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, {
+    name: "Generation Authority",
+    seedText: "generation-authority",
+    gameMode: "survival",
+    now: 50_000,
+  });
+  assert.ok(sibling.ok);
+  const competitor = cloneStorage(storage);
+  const advanced = touchLocalWorld(competitor, sibling.world.id, 50_010);
+  assert.ok(advanced.ok);
+  const target = nextRegistryWriteKey(storage);
+  const competingRaw = competitor.values.get(target);
+  assert.ok(competingRaw);
+  const outerInput = {
+    name: "Stale Generation Create",
+    seedText: "stale-generation-create",
+    gameMode: "creative" as const,
+    now: 50_020,
+  };
+  const intended = pendingCreateEntry(storage, outerInput);
+  const intendedWorld = (JSON.parse(intended[1]) as { world: { id: string } }).world;
+  storage.afterWritesFor.set(
+    singlePlayerWorldStorageKey(intendedWorld.id, SINGLEPLAYER_SAVE_SLOT_A_KEY),
+    () => storage.values.set(target, competingRaw),
+  );
+  const stale = createLocalWorld(storage, outerInput);
+  assert.deepEqual(stale, {
+    ok: false,
+    reason: "registry_stale_registry_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.equal(loadLocalWorldRegistry(storage, outerInput.now + 1).issues.includes("transaction:active"), true);
+  assert.equal(storage.values.get(target), competingRaw);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 1);
+  const recovered = loadLocalWorldRegistry(
+    storage,
+    outerInput.now + LOCAL_WORLD_TRANSACTION_LEASE_MS,
+  );
+  assert.ok(recovered.issues.includes("create:cleanup_completed"));
+  assert.equal(recovered.registry?.worlds.some(({ id }) => id === intendedWorld.id), false);
+  assert.deepEqual(singlePlayerWorldStorageKeys(intendedWorld.id).map((key) => storage.values.get(key) ?? null),
+    [null, null, null, null]);
+}
+
+// If a peer publishes a different payload at the same next generation during
+// readback, neither slot wins by name. The writer reports pending and restart
+// exposes the conflict without clearing the intent or either namespace.
+{
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, {
+    name: "Equal Generation Authority",
+    seedText: "equal-generation-authority",
+    gameMode: "survival",
+    now: 55_000,
+  });
+  assert.ok(sibling.ok);
+  const competitor = cloneStorage(storage);
+  assert.ok(touchLocalWorld(competitor, sibling.world.id, 55_010).ok);
+  const target = nextRegistryWriteKey(storage);
+  const previous = target === LOCAL_WORLD_REGISTRY_SLOT_A_KEY
+    ? LOCAL_WORLD_REGISTRY_SLOT_B_KEY
+    : LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
+  const competingRaw = competitor.values.get(target);
+  assert.ok(competingRaw);
+  storage.afterWritesFor.set(target, () => storage.values.set(previous, competingRaw));
+  const outer = createLocalWorld(storage, {
+    name: "Equal Generation Create",
+    seedText: "equal-generation-create",
+    gameMode: "creative",
+    now: 55_020,
+  });
+  assert.deepEqual(outer, {
+    ok: false,
+    reason: "registry_stale_registry_transaction_pending",
+    mutationStarted: true,
+  });
+  const marker = transactionEntry(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  assert.ok(marker);
+  const intendedId = (JSON.parse(marker[1]) as { world: { id: string } }).world.id;
+  const restarted = loadLocalWorldRegistry(
+    storage,
+    55_020 + LOCAL_WORLD_TRANSACTION_LEASE_MS,
+  );
+  assert.equal(restarted.status, "corrupt");
+  assert.ok(restarted.issues.includes("registry:generation_conflict"));
+  assert.ok(restarted.issues.includes("create:recovery_pending"));
+  assert.equal(storage.values.get(marker[0]), marker[1]);
+  assert.ok(singlePlayerWorldStorageKeys(intendedId).some((key) => storage.values.has(key)));
+  assert.ok(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: sibling.world.id }).snapshot);
+}
+
+// A healthy world remains playable when touch is rejected before mutation by
+// failed transaction enumeration. No registry byte changes, while all
+// mutating create/import/reset/delete paths stay blocked.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "Read Only Play",
+    seedText: "read-only-play",
+    gameMode: "survival",
+    now: 60_000,
+  });
+  assert.ok(created.ok);
+  storage.failListKeys = true;
+  const listing = listLocalWorlds(storage);
+  const selected = listing.worlds.find(({ world }) => world.id === created.world.id);
+  assert.ok(selected && selected.health === "healthy");
+  const registryBefore = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .map((key) => storage.values.get(key) ?? null);
+  const touched = touchLocalWorld(storage, created.world.id, 60_001);
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  const playable = resolveLocalWorldPlay(selected, touched);
+  let mounted = 0;
+  if (playable) mounted += 1;
+  assert.equal(mounted, 1);
+  assert.equal(playable?.id, created.world.id);
+  assert.deepEqual(
+    [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+      .map((key) => storage.values.get(key) ?? null),
+    registryBefore,
+  );
+  assert.deepEqual(deleteLocalWorld(storage, created.world.id, 60_001),
+    { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false });
+  assert.deepEqual(resetLocalWorldData(storage, created.world.id, 60_001),
+    { ok: false, reason: "world_reset_recovery_pending", mutationStarted: false });
+  assert.deepEqual(createLocalWorld(storage, {
+    name: "Blocked Create",
+    seedText: "blocked-create",
+    gameMode: "creative",
+    now: 60_001,
+  }), { ok: false, reason: "world_create_recovery_pending", mutationStarted: false });
+  assert.deepEqual(importLegacyLocalWorld(storage, { name: "Blocked Import", now: 60_001 }),
+    { ok: false, reason: "world_import_recovery_pending", mutationStarted: false });
+  assert.equal(resolveLocalWorldPlay(selected, {
+    ok: false,
+    reason: "registry_readback_failed",
+    mutationStarted: true,
+  }), null);
 }
 
 // Three worlds keep every snapshot-owned state family isolated.

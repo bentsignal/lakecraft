@@ -3,6 +3,7 @@ import { LobbyStyles } from "../lobby/LobbyStyles.tsx";
 import type { LocalGameMode } from "./localCommands.ts";
 import {
   LOCAL_WORLD_REGISTRY_MAX_WORLDS,
+  canPlayLocalWorld,
   createLocalWorld,
   deleteLocalWorld,
   importLegacyLocalWorld,
@@ -12,8 +13,8 @@ import {
   reconcileLocalWorldSelection,
   resetLegacyLocalWorld,
   resetLocalWorldData,
+  resolveLocalWorldPlay,
   touchLocalWorld,
-  type LocalWorldInspection,
   type LocalWorldRecord,
 } from "./localWorldRegistry.ts";
 import {
@@ -53,10 +54,6 @@ function requestPointerLockHandoff(): boolean {
 
 function dateText(value: number | null): string {
   return value ? new Date(value).toLocaleString() : "Never";
-}
-
-function canPlay(world: LocalWorldInspection): boolean {
-  return world.health !== "corrupt" && world.health !== "unsupported" && world.capacity !== "exceeded";
 }
 
 export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWorldBrowserProps) {
@@ -197,13 +194,14 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
   }
 
   function play(): void {
-    if (!selected || !canPlay(selected)) return;
+    if (!selected || !canPlayLocalWorld(selected)) return;
     const result = touchLocalWorld(storage, selected.world.id);
-    if (!result.ok) {
+    const playable = resolveLocalWorldPlay(selected, result);
+    if (!playable) {
       setError("Could not safely update the world list.");
       return;
     }
-    onPlay(result.world, requestPointerLockHandoff());
+    onPlay(playable, requestPointerLockHandoff());
   }
 
   function runConfirmed(): void {
@@ -279,7 +277,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
                 <small>{CAPACITY_LABELS[entry.capacity]}</small>
               </span>
               <span className="lc-server-population">
-                <i className={canPlay(entry) ? "is-online" : "is-offline"} aria-hidden="true" />
+                <i className={canPlayLocalWorld(entry) ? "is-online" : "is-offline"} aria-hidden="true" />
                 <small>{HEALTH_LABELS[entry.health]}</small>
               </span>
             </button>
@@ -287,7 +285,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
           {!filtered.length ? <p className="lc-server-hint">{search ? "No worlds match." : "Create a world to begin."}</p> : null}
         </div>
         {selected ? (
-          <p className={`lc-server-hint${canPlay(selected) ? "" : " is-error"}`} role="status">
+          <p className={`lc-server-hint${canPlayLocalWorld(selected) ? "" : " is-error"}`} role="status">
             {selected.world.name} · seed {selected.world.seed} · {HEALTH_LABELS[selected.health]} · {CAPACITY_LABELS[selected.capacity]}
           </p>
         ) : <p className="lc-server-hint">Select a world.</p>}
@@ -304,7 +302,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
           <p className="lc-server-hint" role="status">Recovered an interrupted world deletion. Other worlds remain unchanged.</p>
         ) : null}
         <div className="lc-server-actions">
-          <button className="lc-menu-button" disabled={!selected || !canPlay(selected)} onClick={play} type="button">Play Selected World</button>
+          <button className="lc-menu-button" disabled={!selected || !canPlayLocalWorld(selected)} onClick={play} type="button">Play Selected World</button>
           <button
             className="lc-menu-button"
             disabled={blocked || listing.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS}

@@ -24,6 +24,7 @@ export const LOCAL_WORLD_REGISTRY_SLOT_A_KEY = "lakecraft.singleplayer.worlds.a"
 export const LOCAL_WORLD_REGISTRY_SLOT_B_KEY = "lakecraft.singleplayer.worlds.b";
 export const LOCAL_WORLD_CREATE_TRANSACTION_KEY = "lakecraft.singleplayer.worlds.create";
 export const LOCAL_WORLD_DELETE_TRANSACTION_KEY = "lakecraft.singleplayer.worlds.delete";
+export const LOCAL_WORLD_TRANSACTION_LEASE_MS = 5_000;
 export const LOCAL_WORLD_REGISTRY_MAX_WORLDS = 6;
 export const LOCAL_WORLD_REGISTRY_MAX_CHARS = 32_000;
 export const LOCAL_WORLD_NAME_MAX_CHARS = 48;
@@ -75,7 +76,7 @@ export type LocalWorldRegistrySaveResult =
     ok: false;
     /** True once setItem was attempted; a thrown result or failed readback may still be durable. */
     mutationStarted: boolean;
-    reason: "invalid_registry" | "too_large" | "storage_read_failed" | "storage_write_failed" | "readback_failed" | "unsafe_existing_data";
+    reason: "invalid_registry" | "too_large" | "storage_read_failed" | "storage_write_failed" | "readback_failed" | "stale_registry" | "unsafe_existing_data";
   };
 
 export type LocalWorldMutationResult =
@@ -95,6 +96,29 @@ export interface LocalWorldInspection {
   load: SinglePlayerLoadResult;
 }
 
+export function canPlayLocalWorld(world: LocalWorldInspection): boolean {
+  return world.health !== "corrupt"
+    && world.health !== "unsupported"
+    && world.capacity !== "exceeded";
+}
+
+/**
+ * Updating last-played metadata is useful but not a prerequisite for reading an
+ * already verified world. Only the exact pre-mutation recovery gate may fall
+ * back to the inspected record; ambiguous or started writes remain blocking.
+ */
+export function resolveLocalWorldPlay(
+  selected: LocalWorldInspection,
+  touch: LocalWorldMutationResult,
+): LocalWorldRecord | null {
+  if (touch.ok) return touch.world;
+  return touch.reason === "world_touch_recovery_pending"
+    && touch.mutationStarted === false
+    && canPlayLocalWorld(selected)
+    ? selected.world
+    : null;
+}
+
 export type LegacyLocalWorldInspection =
   | { status: "none" }
   | { status: "available"; load: SinglePlayerLoadResult }
@@ -111,6 +135,7 @@ interface LocalWorldDeleteTransaction {
   deletedAt: number;
   format: "lakecraft.local-world-delete";
   generation: number;
+  recoverAfter: number;
   values: Array<string | null>;
   version: 2;
   world: LocalWorldRecord;
@@ -121,6 +146,7 @@ interface LocalWorldCreateTransaction {
   checksum: string;
   format: "lakecraft.local-world-create";
   generation: number;
+  recoverAfter: number;
   version: 2;
   world: LocalWorldRecord;
 }
@@ -341,6 +367,15 @@ function highestRegistrySlot(slots: readonly ParsedRegistrySlot[]): Extract<Pars
     .sort((left, right) => right.envelope.sequence - left.envelope.sequence || left.slot.localeCompare(right.slot))[0] ?? null;
 }
 
+function hasRegistryGenerationConflict(slots: readonly ParsedRegistrySlot[]): boolean {
+  const valid = slots
+    .filter((slot): slot is Extract<ParsedRegistrySlot, { kind: "valid" }> => slot.kind === "valid")
+    .sort((left, right) => right.envelope.sequence - left.envelope.sequence);
+  return valid.length > 1
+    && valid[0].envelope.sequence === valid[1].envelope.sequence
+    && valid[0].raw !== valid[1].raw;
+}
+
 function loadLocalWorldRegistryRaw(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
   const scanned = readRegistrySlots(storage);
   const issues = scanned.slots.flatMap((slot) => slot.kind === "corrupt" ? [`${slot.slot}:${slot.reason}`]
@@ -353,6 +388,14 @@ function loadLocalWorldRegistryRaw(storage: SinglePlayerStorageAdapter): LocalWo
       sequence: 0,
       versions: [...new Set(unsupported.map(({ version }) => version))].sort((a, b) => a - b),
       issues,
+    };
+  }
+  if (hasRegistryGenerationConflict(scanned.slots)) {
+    return {
+      status: "corrupt",
+      registry: null,
+      sequence: 0,
+      issues: [...issues, "registry:generation_conflict"],
     };
   }
   const selected = highestRegistrySlot(scanned.slots);
@@ -374,7 +417,13 @@ function createTransactionBody(
   world: LocalWorldRecord,
   generation: number,
 ): Omit<LocalWorldCreateTransaction, "checksum"> {
-  return { format: "lakecraft.local-world-create", generation, version: 2, world };
+  return {
+    format: "lakecraft.local-world-create",
+    generation,
+    recoverAfter: Math.min(MAX_TIMESTAMP, world.createdAt + LOCAL_WORLD_TRANSACTION_LEASE_MS),
+    version: 2,
+    world,
+  };
 }
 
 function deleteTransactionBody(
@@ -387,6 +436,7 @@ function deleteTransactionBody(
     deletedAt,
     format: "lakecraft.local-world-delete",
     generation,
+    recoverAfter: Math.min(MAX_TIMESTAMP, deletedAt + LOCAL_WORLD_TRANSACTION_LEASE_MS),
     values,
     version: 2,
     world,
@@ -434,15 +484,17 @@ function parseCreateTransaction(key: string, raw: string): LocalWorldTransaction
     return invalid();
   }
   if (!isRecord(parsed)
-    || !exactKeys(parsed, ["checksum", "format", "generation", "version", "world"])
+    || !exactKeys(parsed, ["checksum", "format", "generation", "recoverAfter", "version", "world"])
     || parsed.format !== "lakecraft.local-world-create" || parsed.version !== 2
     || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)
-    || !safeInteger(parsed.generation, 1, Number.MAX_SAFE_INTEGER)) {
+    || !safeInteger(parsed.generation, 1, Number.MAX_SAFE_INTEGER)
+    || !safeInteger(parsed.recoverAfter, 0, MAX_TIMESTAMP)) {
     return invalid();
   }
   const world = validateWorldRecord(parsed.world);
   if (!world) return invalid();
   const body = createTransactionBody(world, parsed.generation);
+  if (parsed.recoverAfter !== body.recoverAfter) return invalid();
   const transaction = { checksum: parsed.checksum, ...body };
   if (singlePlayerSaveChecksum(body) !== parsed.checksum
     || canonicalSinglePlayerJson(transaction) !== raw
@@ -462,10 +514,11 @@ function parseDeleteTransaction(key: string, raw: string): LocalWorldTransaction
     return invalid();
   }
   if (!isRecord(parsed)
-    || !exactKeys(parsed, ["checksum", "deletedAt", "format", "generation", "values", "version", "world", "worldId"])
+    || !exactKeys(parsed, ["checksum", "deletedAt", "format", "generation", "recoverAfter", "values", "version", "world", "worldId"])
     || parsed.format !== "lakecraft.local-world-delete" || parsed.version !== 2
     || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)
     || !safeInteger(parsed.generation, 1, Number.MAX_SAFE_INTEGER)
+    || !safeInteger(parsed.recoverAfter, 0, MAX_TIMESTAMP)
     || !validWorldId(parsed.worldId) || !safeInteger(parsed.deletedAt, 0, MAX_TIMESTAMP)
     || !Array.isArray(parsed.values) || parsed.values.length !== 4
     || !parsed.values.every((value) => value === null || typeof value === "string")) {
@@ -479,6 +532,7 @@ function parseDeleteTransaction(key: string, raw: string): LocalWorldTransaction
     parsed.deletedAt,
     parsed.generation,
   );
+  if (parsed.recoverAfter !== body.recoverAfter) return invalid();
   const transaction = { checksum: parsed.checksum, ...body };
   if (singlePlayerSaveChecksum(body) !== parsed.checksum
     || canonicalSinglePlayerJson(transaction) !== raw
@@ -698,11 +752,16 @@ function hasPendingCreateRecovery(issues: readonly string[]): boolean {
 
 function hasPendingNamespaceRecovery(issues: readonly string[]): boolean {
   return issues.includes("transaction:recovery_pending")
+    || issues.includes("transaction:active")
     || hasPendingDeleteRecovery(issues)
     || hasPendingCreateRecovery(issues);
 }
 
-export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
+export function loadLocalWorldRegistry(
+  storage: SinglePlayerStorageAdapter,
+  observedAt = Date.now(),
+): LocalWorldRegistryLoadResult {
+  const recoveryAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(observedAt)));
   let loaded = loadLocalWorldRegistryRaw(storage);
   for (let step = 0; step < LOCAL_WORLD_REGISTRY_MAX_WORLDS * 2 + 4; step += 1) {
     const scan = scanLocalWorldTransactions(storage);
@@ -717,6 +776,9 @@ export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): Loc
       );
       if (!cleared) return loaded;
       continue;
+    }
+    if (recoveryAt < pending.transaction.recoverAfter) {
+      return withRecoveryIssue(loaded, "transaction:active");
     }
     const recovery = pending.type === "create"
       ? recoverLocalWorldCreate(storage, loaded, pending)
@@ -735,13 +797,18 @@ export function saveLocalWorldRegistry(
   storage: SinglePlayerStorageAdapter,
   registry: LocalWorldRegistry,
   savedAt = Date.now(),
+  expectedSequence?: number,
 ): LocalWorldRegistrySaveResult {
   const scanned = readRegistrySlots(storage);
   const current = highestRegistrySlot(scanned.slots);
   if (scanned.readFailed) return { ok: false, reason: "storage_read_failed", mutationStarted: false };
   if (scanned.slots.some((slot) => slot.kind === "unsupported")
+    || hasRegistryGenerationConflict(scanned.slots)
     || (!current && scanned.slots.some((slot) => slot.kind !== "empty"))) {
     return { ok: false, reason: "unsafe_existing_data", mutationStarted: false };
+  }
+  if (expectedSequence !== undefined && (current?.envelope.sequence ?? 0) !== expectedSequence) {
+    return { ok: false, reason: "stale_registry", mutationStarted: false };
   }
   const serialized = serializeRegistry(registry, (current?.envelope.sequence ?? 0) + 1, savedAt);
   if (!serialized.ok) return { ...serialized, mutationStarted: false };
@@ -761,6 +828,15 @@ export function saveLocalWorldRegistry(
   if (readback !== serialized.raw || verified.kind !== "valid"
     || verified.envelope.sequence !== serialized.envelope.sequence) {
     return { ok: false, reason: "readback_failed", mutationStarted: true };
+  }
+  const committed = readRegistrySlots(storage);
+  const selected = highestRegistrySlot(committed.slots);
+  const conflict = committed.slots.some((slot) => slot.kind === "valid"
+    && slot.envelope.sequence >= serialized.envelope.sequence
+    && slot.raw !== serialized.raw);
+  if (committed.readFailed || conflict || !selected
+    || selected.slot !== target || selected.raw !== serialized.raw) {
+    return { ok: false, reason: "stale_registry", mutationStarted: true };
   }
   return {
     ok: true,
@@ -861,7 +937,7 @@ function createWorldFromSnapshot(
   const saved = saveSinglePlayerSnapshot(storage, snapshot, input.createdAt, { worldId: id });
   if (!saved.ok) return { ok: false, reason: `world_save_${saved.reason}_transaction_pending`, mutationStarted: true };
   const nextRegistry = { worlds: [...registry.worlds, world] };
-  const registryWrite = saveLocalWorldRegistry(storage, nextRegistry, input.createdAt);
+  const registryWrite = saveLocalWorldRegistry(storage, nextRegistry, input.createdAt, generation - 1);
   if (!registryWrite.ok) {
     return { ok: false, reason: `registry_${registryWrite.reason}_transaction_pending`, mutationStarted: true };
   }
@@ -873,9 +949,9 @@ export function createLocalWorld(
   storage: SinglePlayerStorageAdapter,
   input: { name: string; seedText: string; gameMode: LocalGameMode; now?: number },
 ): LocalWorldMutationResult {
-  const loaded = loadLocalWorldRegistry(storage);
-  if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
   const createdAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(input.now ?? Date.now())));
+  const loaded = loadLocalWorldRegistry(storage, createdAt);
+  if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
   const name = normalizeLocalWorldName(input.name);
   const seed = deterministicLocalWorldSeed(input.seedText);
   const replayed = name ? loaded.registry.worlds.find((candidate) =>
@@ -966,7 +1042,8 @@ export function touchLocalWorld(
   worldId: string,
   playedAt = Date.now(),
 ): LocalWorldMutationResult {
-  const loaded = loadLocalWorldRegistry(storage);
+  const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(playedAt)));
+  const loaded = loadLocalWorldRegistry(storage, committedAt);
   if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
   if (hasPendingNamespaceRecovery(loaded.issues)) {
     return { ok: false, reason: "world_touch_recovery_pending", mutationStarted: false };
@@ -975,12 +1052,12 @@ export function touchLocalWorld(
   if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
   const nextWorld = {
     ...world,
-    lastPlayedAt: Math.max(world.createdAt, world.lastPlayedAt, Math.min(MAX_TIMESTAMP, Math.floor(playedAt))),
+    lastPlayedAt: Math.max(world.createdAt, world.lastPlayedAt, committedAt),
   };
   const nextRegistry = {
     worlds: loaded.registry.worlds.map((candidate) => candidate.id === worldId ? nextWorld : candidate),
   };
-  const saved = saveLocalWorldRegistry(storage, nextRegistry, nextWorld.lastPlayedAt);
+  const saved = saveLocalWorldRegistry(storage, nextRegistry, nextWorld.lastPlayedAt, loaded.sequence);
   return saved.ok
     ? { ok: true, world: nextWorld, registry: saved.registry }
     : { ok: false, reason: `registry_${saved.reason}`, mutationStarted: saved.mutationStarted };
@@ -991,7 +1068,8 @@ export function resetLocalWorldData(
   worldId: string,
   resetAt = Date.now(),
 ): LocalWorldMutationResult {
-  const loaded = loadLocalWorldRegistry(storage);
+  const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(resetAt)));
+  const loaded = loadLocalWorldRegistry(storage, committedAt);
   if (!loaded.registry) return { ok: false, reason: "world_not_found", mutationStarted: false };
   if (hasPendingNamespaceRecovery(loaded.issues)) {
     return { ok: false, reason: "world_reset_recovery_pending", mutationStarted: false };
@@ -1002,7 +1080,7 @@ export function resetLocalWorldData(
   if (!reset.ok) return { ok: false, reason: `world_reset_${reset.reason}`, mutationStarted: reset.mutationStarted };
   const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
   snapshot.world.gameMode = world.initialGameMode;
-  const saved = saveSinglePlayerSnapshot(storage, snapshot, Math.max(0, Math.floor(resetAt)), { worldId });
+  const saved = saveSinglePlayerSnapshot(storage, snapshot, committedAt, { worldId });
   return saved.ok
     ? { ok: true, world, registry: loaded.registry }
     : { ok: false, reason: `world_save_${saved.reason}`, mutationStarted: true };
@@ -1042,14 +1120,14 @@ export function deleteLocalWorld(
   worldId: string,
   deletedAt = Date.now(),
 ): LocalWorldMutationResult {
-  const loaded = loadLocalWorldRegistry(storage);
+  const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(deletedAt)));
+  const loaded = loadLocalWorldRegistry(storage, committedAt);
   if (!loaded.registry) return { ok: false, reason: "world_not_found", mutationStarted: false };
   if (hasPendingNamespaceRecovery(loaded.issues)) {
     return { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false };
   }
   const world = loaded.registry.worlds.find(({ id }) => id === worldId);
   if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
-  const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(deletedAt)));
   const begun = beginLocalWorldDelete(storage, world, committedAt, loaded.sequence + 1);
   if (!begun.ok) {
     return {
@@ -1059,9 +1137,9 @@ export function deleteLocalWorld(
     };
   }
   const nextRegistry = { worlds: loaded.registry.worlds.filter(({ id }) => id !== worldId) };
-  const saved = saveLocalWorldRegistry(storage, nextRegistry, committedAt);
+  const saved = saveLocalWorldRegistry(storage, nextRegistry, committedAt, loaded.sequence);
   if (!saved.ok) {
-    if (saved.mutationStarted) {
+    if (saved.mutationStarted || saved.reason === "stale_registry") {
       return {
         ok: false,
         reason: `registry_${saved.reason}_transaction_pending`,
@@ -1075,11 +1153,17 @@ export function deleteLocalWorld(
       mutationStarted: !cleared,
     };
   }
-  const recovered = loadLocalWorldRegistry(storage);
-  if (recovered.registry
-    && !recovered.registry.worlds.some(({ id }) => id === worldId)
-    && !recovered.issues.includes("delete:recovery_pending")) {
-    return { ok: true, world, registry: recovered.registry };
+  const entry = parseDeleteTransaction(begun.key, begun.raw);
+  if (entry.status === "valid" && entry.type === "delete") {
+    const recovered = recoverLocalWorldDelete(storage, {
+      status: "loaded",
+      registry: saved.registry,
+      sequence: saved.sequence,
+      issues: [],
+    }, entry);
+    if (recovered.status === "completed") {
+      return { ok: true, world, registry: saved.registry };
+    }
   }
   return { ok: false, reason: "world_delete_cleanup_pending", mutationStarted: true };
 }
@@ -1105,12 +1189,12 @@ export function importLegacyLocalWorld(
   storage: SinglePlayerStorageAdapter,
   input: { name: string; now?: number },
 ): LocalWorldMutationResult {
-  const loadedRegistry = loadLocalWorldRegistry(storage);
+  const now = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(input.now ?? Date.now())));
+  const loadedRegistry = loadLocalWorldRegistry(storage, now);
   if (!loadedRegistry.registry) return { ok: false, reason: `registry_${loadedRegistry.status}`, mutationStarted: false };
   if (hasPendingNamespaceRecovery(loadedRegistry.issues)) {
     return { ok: false, reason: "world_import_recovery_pending", mutationStarted: false };
   }
-  const now = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(input.now ?? Date.now())));
   // This is the only path that enables the old one-key migration, and it is
   // called solely from the user's explicit Import action.
   const legacy = loadSinglePlayerSave(storage, {
@@ -1128,8 +1212,12 @@ export function importLegacyLocalWorld(
   }, legacy.snapshot);
 }
 
-export function resetLegacyLocalWorld(storage: SinglePlayerStorageAdapter): LocalWorldMutationResult {
-  const loaded = loadLocalWorldRegistry(storage);
+export function resetLegacyLocalWorld(
+  storage: SinglePlayerStorageAdapter,
+  resetAt = Date.now(),
+): LocalWorldMutationResult {
+  const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(resetAt)));
+  const loaded = loadLocalWorldRegistry(storage, committedAt);
   if (hasPendingNamespaceRecovery(loaded.issues)) {
     return { ok: false, reason: "legacy_reset_recovery_pending", mutationStarted: false };
   }
