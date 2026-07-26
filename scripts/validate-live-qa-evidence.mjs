@@ -572,25 +572,26 @@ function validateMultiplayer(value, context) {
   ) {
     throw new Error("multiplayer reasons, identities, and interactions must be arrays.");
   }
-  const orderedReasons = TASK41_MULTIPLAYER_DEFERRED_REASONS
-    .filter((reason) => summary.reasonCodes.includes(reason));
-  exactArray(summary.reasonCodes, orderedReasons, "multiplayer.reasonCodes");
   if (summary.status === "deferred") {
+    exactArray(
+      summary.reasonCodes,
+      TASK41_MULTIPLAYER_DEFERRED_REASONS,
+      "multiplayer.reasonCodes",
+    );
     if (summary.completionEligible !== false
       || summary.hostedRoute !== "disabled"
       || summary.quotaStatus !== "healthy"
       || summary.quotaObserved !== false
       || summary.identities.length !== 0
-      || summary.interactions.length !== 0
-      || summary.reasonCodes.length === 0) {
+      || summary.interactions.length !== 0) {
       throw new Error("deferred multiplayer must record route disabled, identities unavailable, and healthy unobserved quota.");
     }
   } else if (summary.status === "passed") {
+    exactArray(summary.reasonCodes, [], "multiplayer.reasonCodes");
     if (summary.completionEligible !== true
       || summary.hostedRoute !== "enabled"
       || summary.quotaStatus !== "healthy"
       || summary.quotaObserved !== true
-      || summary.reasonCodes.length !== 0
       || summary.identities.length !== 2
       || summary.interactions.length !== 2) {
       throw new Error("passed multiplayer must be fully eligible with observed healthy quota.");
@@ -851,6 +852,7 @@ export function createTask41EvidenceTemplate() {
       reasonCodes: [
         "hosted-route-disabled",
         "authorized-identities-unavailable",
+        "quota-observation-unavailable",
       ],
       evidencePath: "PENDING/multiplayer.json",
       evidenceSha256: "PENDING_SHA256",
