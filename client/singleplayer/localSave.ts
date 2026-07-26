@@ -60,6 +60,7 @@ export type SinglePlayerSaveSlot = "a" | "b";
 
 export interface SinglePlayerStorageAdapter {
   getItem(key: string): string | null;
+  listKeys?(): string[];
   setItem(key: string, value: string): void;
   removeItem?(key: string): void;
 }
@@ -80,11 +81,16 @@ export function browserSinglePlayerStorage(): SinglePlayerStorageAdapter {
     const getItem = storage.getItem;
     const setItem = storage.setItem;
     const removeItem = storage.removeItem;
+    const key = storage.key;
     if (typeof getItem !== "function" || typeof setItem !== "function") {
       return UNAVAILABLE_SINGLEPLAYER_STORAGE;
     }
     return {
       getItem: (key) => getItem.call(storage, key),
+      ...(typeof key === "function"
+        ? { listKeys: () => Array.from({ length: storage.length }, (_, index) => key.call(storage, index))
+          .filter((value): value is string => value !== null) }
+        : {}),
       setItem: (key, value) => setItem.call(storage, key, value),
       ...(typeof removeItem === "function"
         ? { removeItem: (key: string) => removeItem.call(storage, key) }
@@ -681,7 +687,7 @@ function legacySnapshot(raw: string): SinglePlayerSnapshot | null {
 
 export function loadSinglePlayerSave(
   storage: SinglePlayerStorageAdapter,
-  options: { now?: () => number; migrateLegacy?: boolean; worldId?: string } = {},
+  options: { now?: () => number; migrateLegacy?: boolean; persistMigration?: boolean; worldId?: string } = {},
 ): SinglePlayerLoadResult {
   const targetStorage = selectedStorage(storage, options);
   const scanned = readSlots(targetStorage, options.worldId);
@@ -723,6 +729,17 @@ export function loadSinglePlayerSave(
       migrated = { ...migrated, world: { ...migrated.world, worldId: options.worldId } };
     }
     const savedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor((options.now ?? Date.now)())));
+    if (options.persistMigration === false) {
+      return {
+        status: "migrated",
+        snapshot: migrated,
+        sequence: 0,
+        savedAt,
+        slot: null,
+        persisted: false,
+        issues,
+      };
+    }
     const write = saveSinglePlayerSnapshot(storage, migrated, savedAt, options);
     return write.ok
       ? { status: "migrated", snapshot: write.envelope.payload, sequence: write.sequence, savedAt, slot: write.slot, persisted: true, issues }

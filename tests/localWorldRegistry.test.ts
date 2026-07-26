@@ -50,9 +50,20 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   afterWritesFor = new Map<string, () => void>();
   replaceDeletesFor = new Map<string, () => string>();
   failNextReadsFor = new Map<string, number>();
+  failListKeys = false;
+  listKeysCalls = 0;
+  afterListKeysFor = new Map<number, () => void>();
+
+  private matches(key: string, configured: string | null): boolean {
+    return configured !== null && (key === configured || key.startsWith(`${configured}.`));
+  }
+
+  private matchingHook<T>(hooks: Map<string, T>, key: string): [string, T] | null {
+    return [...hooks.entries()].find(([configured]) => this.matches(key, configured)) ?? null;
+  }
 
   getItem(key: string): string | null {
-    if (key === this.failReadsFor) throw new Error("read failed");
+    if (this.matches(key, this.failReadsFor)) throw new Error("read failed");
     const remaining = this.failNextReadsFor.get(key) ?? 0;
     if (remaining > 0) {
       if (remaining === 1) this.failNextReadsFor.delete(key);
@@ -62,35 +73,47 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
     return this.values.get(key) ?? null;
   }
 
+  listKeys(): string[] {
+    if (this.failListKeys) throw new Error("enumeration failed");
+    const keys = [...this.values.keys()];
+    this.listKeysCalls += 1;
+    const afterList = this.afterListKeysFor.get(this.listKeysCalls);
+    if (afterList) {
+      this.afterListKeysFor.delete(this.listKeysCalls);
+      afterList();
+    }
+    return keys;
+  }
+
   setItem(key: string, value: string): void {
-    if (key === this.failWritesFor) throw new Error("write failed");
+    if (this.matches(key, this.failWritesFor)) throw new Error("write failed");
     this.values.set(key, value);
-    const replace = this.replaceWritesFor.get(key);
-    if (replace) {
-      this.replaceWritesFor.delete(key);
-      this.values.set(key, replace(value));
+    const replacementHook = this.matchingHook(this.replaceWritesFor, key);
+    if (replacementHook) {
+      this.replaceWritesFor.delete(replacementHook[0]);
+      this.values.set(key, replacementHook[1](value));
     }
-    const afterWrite = this.afterWritesFor.get(key);
+    const afterWrite = this.matchingHook(this.afterWritesFor, key);
     if (afterWrite) {
-      this.afterWritesFor.delete(key);
-      afterWrite();
+      this.afterWritesFor.delete(afterWrite[0]);
+      afterWrite[1]();
     }
-    if (key === this.failReadAfterWriteFor) {
+    if (this.matches(key, this.failReadAfterWriteFor)) {
       this.failReadAfterWriteFor = null;
       this.failNextReadsFor.set(key, 1);
     }
-    if (key === this.throwAfterWritesFor) {
+    if (this.matches(key, this.throwAfterWritesFor)) {
       this.throwAfterWritesFor = null;
       throw new Error("write result lost after durable commit");
     }
   }
 
   removeItem(key: string): void {
-    if (key === this.failDeletesFor) throw new Error("delete failed");
-    const replacement = this.replaceDeletesFor.get(key);
+    if (this.matches(key, this.failDeletesFor)) throw new Error("delete failed");
+    const replacement = this.matchingHook(this.replaceDeletesFor, key);
     if (replacement) {
-      this.replaceDeletesFor.delete(key);
-      this.values.set(key, replacement());
+      this.replaceDeletesFor.delete(replacement[0]);
+      this.values.set(key, replacement[1]());
       return;
     }
     this.values.delete(key);
@@ -133,12 +156,241 @@ function nextRegistryWriteKey(storage: MemoryStorage): string {
     : LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
 }
 
+function transactionEntries(storage: MemoryStorage, prefix: string): Array<[string, string]> {
+  return [...storage.values.entries()]
+    .filter(([key]) => key === prefix || key.startsWith(`${prefix}.`))
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
+function transactionRaw(storage: MemoryStorage, prefix: string): string | undefined {
+  return transactionEntries(storage, prefix)[0]?.[1];
+}
+
+function transactionEntry(storage: MemoryStorage, prefix: string): [string, string] | undefined {
+  return transactionEntries(storage, prefix)[0];
+}
+
+function cloneStorage(source: MemoryStorage): MemoryStorage {
+  const clone = new MemoryStorage();
+  clone.values = new Map(source.values);
+  return clone;
+}
+
+function pendingCreateEntry(
+  source: MemoryStorage,
+  input: Parameters<typeof createLocalWorld>[1],
+): [string, string] {
+  const donor = cloneStorage(source);
+  donor.failWritesFor = nextRegistryWriteKey(donor);
+  assert.equal(createLocalWorld(donor, input).ok, false);
+  const entry = transactionEntry(donor, LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  assert.ok(entry);
+  return entry;
+}
+
+function pendingDeleteEntry(source: MemoryStorage, worldId: string, deletedAt: number): [string, string] {
+  const donor = cloneStorage(source);
+  donor.failWritesFor = nextRegistryWriteKey(donor);
+  donor.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.equal(deleteLocalWorld(donor, worldId, deletedAt).ok, false);
+  const entry = transactionEntry(donor, LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+  assert.ok(entry);
+  return entry;
+}
+
 assert.equal(normalizeLocalWorldName("  Fern   Hollow  "), "Fern Hollow");
 assert.equal(normalizeLocalWorldName(""), null);
 assert.equal(normalizeLocalWorldName("x".repeat(49)), null);
 assert.equal(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWorldSeed("Fern Hollow"));
 assert.equal(deterministicLocalWorldSeed("-42"), -42);
 assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWorldSeed("Fern Valley"));
+
+// Transaction keys bind the canonical envelope type, generation, digest, and
+// length. Identical raw retries share one semantic key; distinct valid creates
+// cannot share the key that recovery is allowed to remove.
+{
+  const storage = new MemoryStorage();
+  const firstInput = { name: "Address A", seedText: "address-a", gameMode: "survival" as const, now: 10 };
+  const secondInput = { name: "Address B", seedText: "address-b", gameMode: "creative" as const, now: 10 };
+  const first = pendingCreateEntry(storage, firstInput);
+  const replay = pendingCreateEntry(storage, firstInput);
+  const second = pendingCreateEntry(storage, secondInput);
+  assert.deepEqual(replay, first, "same canonical create bytes are the same ABA transaction");
+  assert.notEqual(second[0], first[0], "distinct valid create envelopes have distinct deletable keys");
+  assert.notEqual(second[1], first[1]);
+  const envelope = JSON.parse(first[1]) as { format: string; generation: number; version: number };
+  const suffix = first[0].slice(LOCAL_WORLD_CREATE_TRANSACTION_KEY.length + 1).split(".");
+  assert.equal(envelope.format, "lakecraft.local-world-create");
+  assert.equal(envelope.version, 2);
+  assert.equal(Number.parseInt(suffix[0], 36), envelope.generation);
+  assert.match(suffix.slice(1).join("."), /^[0-9a-z]+-[0-9a-f]{8}-[0-9a-f]{8}$/);
+
+  const aba = new MemoryStorage();
+  aba.values.set(first[0], first[1]);
+  aba.replaceDeletesFor.set(first[0], () => first[1]);
+  const pending = loadLocalWorldRegistry(aba);
+  assert.ok(pending.issues.includes("create:recovery_pending"));
+  assert.equal(aba.values.get(first[0]), first[1], "same-raw replacement remains the same pending transaction");
+  assert.ok(loadLocalWorldRegistry(aba).issues.includes("create:cleanup_completed"));
+  assert.equal(aba.values.has(first[0]), false);
+}
+
+// Two simultaneous creates retain independent immutable markers. Only the
+// stable lexicographic winner is eligible; the losing call touches no namespace
+// or registry and returns a retryable pending result.
+{
+  const storage = new MemoryStorage();
+  const candidates = [
+    {
+      input: { name: "Concurrent Create A", seedText: "cc-a", gameMode: "survival" as const, now: 20 },
+    },
+    {
+      input: { name: "Concurrent Create B", seedText: "cc-b", gameMode: "creative" as const, now: 20 },
+    },
+  ].map((candidate) => ({ ...candidate, entry: pendingCreateEntry(storage, candidate.input) }))
+    .sort((left, right) => left.entry[0].localeCompare(right.entry[0]));
+  const [winner, loser] = candidates;
+  storage.afterWritesFor.set(LOCAL_WORLD_CREATE_TRANSACTION_KEY, () => {
+    storage.values.set(winner.entry[0], winner.entry[1]);
+  });
+  assert.deepEqual(createLocalWorld(storage, loser.input), {
+    ok: false,
+    reason: "world_create_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 2);
+  assert.equal([...storage.values.keys()].some((key) => key.includes(".save.")), false);
+  assert.equal(storage.values.has(LOCAL_WORLD_REGISTRY_SLOT_A_KEY), false);
+  assert.equal(storage.values.has(LOCAL_WORLD_REGISTRY_SLOT_B_KEY), false);
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.equal(recovered.registry?.worlds.length, 0);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 0);
+  assert.ok(createLocalWorld(storage, loser.input).ok);
+}
+
+// A concurrent create sorts ahead of a delete but cannot make the losing
+// delete remove or rewrite anything before election. Restart recovery handles
+// both immutable keys in deterministic order.
+{
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, { name: "Create Delete Kept", seedText: "cd-kept", gameMode: "survival", now: 30 });
+  assert.ok(kept.ok);
+  const keptKeys = singlePlayerWorldStorageKeys(kept.world.id);
+  const keptValues = keptKeys.map((key) => storage.values.get(key) ?? null);
+  const registryValues = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .map((key) => storage.values.get(key) ?? null);
+  const createEntry = pendingCreateEntry(storage, {
+    name: "Create Delete New",
+    seedText: "cd-new",
+    gameMode: "creative",
+    now: 31,
+  });
+  storage.afterWritesFor.set(LOCAL_WORLD_DELETE_TRANSACTION_KEY, () => {
+    storage.values.set(createEntry[0], createEntry[1]);
+  });
+  assert.deepEqual(deleteLocalWorld(storage, kept.world.id, 31), {
+    ok: false,
+    reason: "world_delete_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.deepEqual(keptKeys.map((key) => storage.values.get(key) ?? null), keptValues);
+  assert.deepEqual(
+    [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY].map((key) => storage.values.get(key) ?? null),
+    registryValues,
+  );
+  assert.equal(
+    transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length
+      + transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length,
+    2,
+  );
+  const restarted = loadLocalWorldRegistry(storage);
+  assert.ok(restarted.registry?.worlds.some(({ id }) => id === kept.world.id));
+  assert.deepEqual(keptKeys.map((key) => storage.values.get(key) ?? null), keptValues);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 0);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
+}
+
+// Simultaneous deletes for different IDs also receive distinct immutable keys.
+// The stable loser cannot advance the registry or either world namespace.
+{
+  const storage = new MemoryStorage();
+  const first = createLocalWorld(storage, { name: "Delete Race A", seedText: "dd-a", gameMode: "survival", now: 40 });
+  const second = createLocalWorld(storage, { name: "Delete Race B", seedText: "dd-b", gameMode: "creative", now: 41 });
+  assert.ok(first.ok && second.ok);
+  const candidates = [first.world, second.world]
+    .map((world) => ({ world, entry: pendingDeleteEntry(storage, world.id, 42) }))
+    .sort((left, right) => left.entry[0].localeCompare(right.entry[0]));
+  assert.notEqual(candidates[0].entry[0], candidates[1].entry[0]);
+  assert.deepEqual(
+    pendingDeleteEntry(storage, candidates[0].world.id, 42),
+    candidates[0].entry,
+    "same delete bytes replay to the same semantic key",
+  );
+  const [winner, loser] = candidates;
+  const worldKeys = [first.world, second.world].flatMap(({ id }) => singlePlayerWorldStorageKeys(id));
+  const worldValues = worldKeys.map((key) => storage.values.get(key) ?? null);
+  const registryValues = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .map((key) => storage.values.get(key) ?? null);
+  storage.afterWritesFor.set(LOCAL_WORLD_DELETE_TRANSACTION_KEY, () => {
+    storage.values.set(winner.entry[0], winner.entry[1]);
+  });
+  assert.deepEqual(deleteLocalWorld(storage, loser.world.id, 42), {
+    ok: false,
+    reason: "world_delete_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.deepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), worldValues);
+  assert.deepEqual(
+    [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY].map((key) => storage.values.get(key) ?? null),
+    registryValues,
+  );
+  const restarted = loadLocalWorldRegistry(storage);
+  assert.equal(restarted.registry?.worlds.length, 2);
+  assert.deepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), worldValues);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
+}
+
+// Prefix enumeration is a guarded compatibility boundary. Throws and a key
+// appearing between scan passes fail closed while healthy worlds stay readable.
+{
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, { name: "Enumeration Kept", seedText: "enum", gameMode: "survival", now: 50 });
+  assert.ok(kept.ok);
+  const keptKeys = singlePlayerWorldStorageKeys(kept.world.id);
+  const keptValues = keptKeys.map((key) => storage.values.get(key) ?? null);
+  storage.failListKeys = true;
+  const readable = listLocalWorlds(storage);
+  assert.equal(readable.worlds.length, 1);
+  assert.ok(readable.registryLoad.issues.includes("transaction:enumeration_failed"));
+  assert.deepEqual(createLocalWorld(storage, {
+    name: "Enumeration Blocked",
+    seedText: "blocked",
+    gameMode: "creative",
+    now: 51,
+  }), { ok: false, reason: "world_create_recovery_pending", mutationStarted: false });
+  assert.deepEqual(deleteLocalWorld(storage, kept.world.id, 51),
+    { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false });
+  assert.deepEqual(resetLocalWorldData(storage, kept.world.id, 51),
+    { ok: false, reason: "world_reset_recovery_pending", mutationStarted: false });
+  assert.deepEqual(keptKeys.map((key) => storage.values.get(key) ?? null), keptValues);
+
+  storage.failListKeys = false;
+  const inserted = pendingCreateEntry(storage, {
+    name: "Enumeration Drift",
+    seedText: "drift",
+    gameMode: "creative",
+    now: 52,
+  });
+  storage.afterListKeysFor.set(storage.listKeysCalls + 1, () => {
+    storage.values.set(inserted[0], inserted[1]);
+  });
+  const drifted = loadLocalWorldRegistry(storage);
+  assert.ok(drifted.issues.includes("transaction:enumeration_failed"));
+  assert.equal(storage.values.get(inserted[0]), inserted[1]);
+  assert.deepEqual(keptKeys.map((key) => storage.values.get(key) ?? null), keptValues);
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:cleanup_completed"));
+  assert.equal(storage.values.has(inserted[0]), false);
+}
 
 // Filtering clears hidden selection, and the roving listbox model implements
 // the complete non-wrapping Arrow/Home/End keyboard contract.
@@ -263,10 +515,10 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
     reason: "world_create_transaction_pending",
     mutationStarted: true,
   });
-  assert.equal(markerStorage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+  assert.equal(transactionEntries(markerStorage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 1);
   assert.equal([...markerStorage.values.keys()].some((key) => key.includes(".save.")), false);
   assert.ok(loadLocalWorldRegistry(markerStorage).issues.includes("create:cleanup_completed"));
-  assert.equal(markerStorage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(markerStorage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 0);
 
   const registryStorage = new MemoryStorage();
   const registryInput = { name: "Registry Durable", seedText: "registry-durable", gameMode: "creative" as const, now: 103 };
@@ -277,7 +529,7 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
     reason: "registry_storage_write_failed_transaction_pending",
     mutationStarted: true,
   });
-  assert.equal(registryStorage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+  assert.equal(transactionEntries(registryStorage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 1);
   const recovered = loadLocalWorldRegistry(registryStorage);
   assert.ok(recovered.issues.includes("create:commit_completed"));
   assert.equal(recovered.registry?.worlds.length, 1);
@@ -314,7 +566,7 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   const input = { name: `Ambiguous ${mode}`, seedText: mode, gameMode: "creative" as const, now: 111 };
   const ambiguous = createLocalWorld(storage, input);
   assert.ok(!ambiguous.ok && ambiguous.reason === "registry_readback_failed_transaction_pending");
-  const pendingRaw = storage.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  const pendingRaw = transactionRaw(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY);
   assert.ok(pendingRaw);
   const intendedId = (JSON.parse(pendingRaw) as { world: { id: string } }).world.id;
   assert.ok(singlePlayerWorldStorageKeys(intendedId).some((key) => storage.values.has(key)));
@@ -368,7 +620,7 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
     gameMode: "creative",
     now: 125,
   }).ok, false);
-  const otherIntent = donor.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  const otherIntent = transactionRaw(donor, LOCAL_WORLD_CREATE_TRANSACTION_KEY);
   assert.ok(otherIntent);
 
   const storage = new MemoryStorage();
@@ -386,7 +638,7 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   const siblingKeySet = new Set(siblingKeys);
   assert.ok([...storage.values.keys()].filter((key) => key.includes(".save."))
     .every((key) => siblingKeySet.has(key)));
-  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:cleanup_completed"));
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:invalid_transaction_cleared"));
   assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
 }
 
@@ -404,13 +656,13 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   const input = { name: "Cleanup Retry", seedText: "cleanup-retry", gameMode: "creative" as const, now: 131 };
   const failed = createLocalWorld(storage, input);
   assert.ok(!failed.ok && failed.reason === "registry_storage_write_failed_transaction_pending");
-  const transaction = JSON.parse(storage.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY)!) as { world: { id: string } };
+  const transaction = JSON.parse(transactionRaw(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY)!) as { world: { id: string } };
   const intendedKeys = singlePlayerWorldStorageKeys(transaction.world.id);
   storage.failWritesFor = null;
   storage.failDeletesFor = intendedKeys[1];
   for (let retry = 0; retry < 2; retry += 1) {
     assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:recovery_pending"));
-    assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+    assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 1);
     assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
   }
   storage.failDeletesFor = null;
@@ -419,7 +671,7 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   const retried = createLocalWorld(storage, input);
   assert.ok(retried.ok);
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 2);
-  assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 0);
   assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
 }
 
@@ -431,7 +683,7 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   const input = { name: "Clear Pending", seedText: "clear-pending", gameMode: "survival" as const, now: 132 };
   const created = createLocalWorld(storage, input);
   assert.ok(created.ok);
-  assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 1);
   assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:recovery_pending"));
   assert.deepEqual(resetLocalWorldData(storage, created.world.id, 133), {
     ok: false,
@@ -454,7 +706,7 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 1);
   storage.failDeletesFor = null;
   assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:commit_completed"));
-  assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_CREATE_TRANSACTION_KEY).length, 0);
 }
 
 // An unresolved delete owns its world ID generation until cleanup verifies.
@@ -531,7 +783,39 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   assert.equal(replacementSave.snapshot?.world.gameMode, "creative");
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds
     .find(({ id }) => id === oldId)?.initialGameMode, "creative");
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
+}
+
+// A valid but stale delete key recovered after its ID has been deliberately
+// reused is bound to the old exact world record. It is garbage-collected without
+// restoring or deleting a byte from the replacement generation.
+{
+  const storage = new MemoryStorage();
+  const old = createLocalWorld(storage, {
+    name: "Stale Delete Old",
+    seedText: "stale-delete",
+    gameMode: "survival",
+    now: 145,
+  });
+  assert.ok(old.ok);
+  const stale = pendingDeleteEntry(storage, old.world.id, 146);
+  assert.ok(deleteLocalWorld(storage, old.world.id, 147).ok);
+  const replacement = createLocalWorld(storage, {
+    name: "Stale Delete Replacement",
+    seedText: "stale-delete",
+    gameMode: "creative",
+    now: 145,
+  });
+  assert.ok(replacement.ok);
+  assert.equal(replacement.world.id, old.world.id);
+  const replacementKeys = singlePlayerWorldStorageKeys(replacement.world.id);
+  const replacementValues = replacementKeys.map((key) => storage.values.get(key) ?? null);
+  storage.values.set(stale[0], stale[1]);
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.ok(recovered.issues.includes("delete:invalid_transaction_cleared"));
+  assert.equal(recovered.registry?.worlds.find(({ id }) => id === replacement.world.id)?.initialGameMode, "creative");
+  assert.deepEqual(replacementKeys.map((key) => storage.values.get(key) ?? null), replacementValues);
+  assert.equal(storage.values.has(stale[0]), false);
 }
 
 // Finalization is conditional on the exact marker snapshot. If another tab
@@ -546,14 +830,15 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
     gameMode: "creative",
     now: 151,
   }).ok, false);
-  const otherRaw = other.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY);
-  assert.ok(otherRaw);
+  const otherTransaction = transactionEntry(other, LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  assert.ok(otherTransaction);
+  const [otherTransactionKey, otherRaw] = otherTransaction;
   const otherId = (JSON.parse(otherRaw) as { world: { id: string } }).world.id;
   const otherKeys = singlePlayerWorldStorageKeys(otherId);
 
   const storage = new MemoryStorage();
   storage.afterWritesFor.set(LOCAL_WORLD_REGISTRY_SLOT_A_KEY, () => {
-    storage.values.set(LOCAL_WORLD_CREATE_TRANSACTION_KEY, otherRaw);
+    storage.values.set(otherTransactionKey, otherRaw);
     for (const key of otherKeys) {
       const value = other.values.get(key);
       if (value !== undefined) storage.values.set(key, value);
@@ -566,7 +851,7 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
     now: 150,
   });
   assert.ok(first.ok);
-  assert.equal(storage.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY), otherRaw,
+  assert.equal(storage.values.get(otherTransactionKey), otherRaw,
     "A cannot blindly clear B's later marker");
   assert.ok(otherKeys.some((key) => storage.values.has(key)));
   const recovered = loadLocalWorldRegistry(storage);
@@ -577,8 +862,9 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
 
 // Even quarantine and remove/readback ambiguity preserve a replacement marker.
 // Both create and delete use this same identity-conditional clear primitive.
-for (const key of [LOCAL_WORLD_CREATE_TRANSACTION_KEY, LOCAL_WORLD_DELETE_TRANSACTION_KEY]) {
+for (const prefix of [LOCAL_WORLD_CREATE_TRANSACTION_KEY, LOCAL_WORLD_DELETE_TRANSACTION_KEY]) {
   const storage = new MemoryStorage();
+  const key = `${prefix}.corrupt`;
   storage.values.set(key, "{");
   storage.replaceDeletesFor.set(key, () => "[");
   const first = loadLocalWorldRegistry(storage);
@@ -712,14 +998,14 @@ for (const key of [LOCAL_WORLD_CREATE_TRANSACTION_KEY, LOCAL_WORLD_DELETE_TRANSA
   storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
   const blocked = deleteLocalWorld(storage, created.world.id, 2);
   assert.equal(blocked.ok, false);
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 1);
   storage.values.set(initialWorldKeys[1], "interrupted-primary");
   storage.failWritesFor = null;
   storage.failDeletesFor = null;
   assert.ok(loadLocalWorldRegistry(storage).registry);
   assert.deepEqual(initialWorldKeys.map((key) => storage.values.get(key) ?? null), initialJournal,
     "a pre-commit transaction restores the complete original journal");
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
   assert.ok(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: created.world.id }).snapshot);
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.some(({ id }) => id === created.world.id), true);
 
@@ -731,8 +1017,8 @@ for (const key of [LOCAL_WORLD_CREATE_TRANSACTION_KEY, LOCAL_WORLD_DELETE_TRANSA
   storage.failDeletesFor = singlePlayerWorldStorageKey(created.world.id, SINGLEPLAYER_SAVE_SLOT_A_KEY);
   const interrupted = deleteLocalWorld(storage, created.world.id, 4);
   assert.equal(interrupted.ok, false);
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
-  assert.ok(storage.values.get(LOCAL_WORLD_DELETE_TRANSACTION_KEY)?.includes('"checksum"'));
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 1);
+  assert.ok(transactionRaw(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY)?.includes('"checksum"'));
   assert.notDeepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), completeJournal,
     "the injected interruption occurs after at least one primary key is removed");
   const pending = loadLocalWorldRegistry(storage);
@@ -745,7 +1031,7 @@ for (const key of [LOCAL_WORLD_CREATE_TRANSACTION_KEY, LOCAL_WORLD_DELETE_TRANSA
   assert.ok(recovered.registry);
   assert.equal(recovered.registry.worlds.some(({ id }) => id === created.world.id), false);
   assert.deepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
   assert.ok(recovered.issues.includes("delete:cleanup_completed"));
 }
 
@@ -780,7 +1066,7 @@ for (const siblingCount of [0, 1]) {
     reason: "registry_readback_failed_transaction_pending",
     mutationStarted: true,
   });
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true,
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 1,
     "an ambiguous registry commit retains the complete cleanup transaction");
   assert.ok(deletedKeys.some((key) => storage.values.has(key)),
     "primary namespace cleanup cannot begin before the ambiguous commit is resolved");
@@ -791,7 +1077,7 @@ for (const siblingCount of [0, 1]) {
       const pending = loadLocalWorldRegistry(storage);
       assert.ok(pending.registry && !pending.registry.worlds.some(({ id }) => id === deleted.world.id));
       assert.ok(pending.issues.includes("delete:recovery_pending"));
-      assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+      assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 1);
       assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues,
         "repeated cleanup failure cannot touch a sibling namespace");
     }
@@ -802,7 +1088,7 @@ for (const siblingCount of [0, 1]) {
     "the next authoritative registry read observes the committed deletion");
   assert.ok(recovered.issues.includes("delete:cleanup_completed"));
   assert.deepEqual(deletedKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
   assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues,
     "roll-forward cleanup never touches a sibling namespace");
 }
@@ -820,7 +1106,7 @@ for (const siblingCount of [0, 1]) {
     reason: "registry_storage_write_failed_transaction_pending",
     mutationStarted: true,
   });
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 1);
   assert.ok(loadLocalWorldRegistry(storage).issues.includes("delete:cleanup_completed"));
   assert.deepEqual(keys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
 }
@@ -850,7 +1136,7 @@ for (const replacement of ["valid_interleaving", "checksum_corruption"] as const
   const ambiguous = deleteLocalWorld(storage, kept.world.id, 3);
   assert.equal(ambiguous.ok, false);
   assert.ok(!ambiguous.ok && ambiguous.mutationStarted);
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 1);
   const recovered = loadLocalWorldRegistry(storage);
   assert.ok(recovered.registry?.worlds.some(({ id }) => id === kept.world.id));
   assert.ok(recovered.registry?.worlds.some(({ id }) => id === sibling.world.id));
@@ -859,7 +1145,7 @@ for (const replacement of ["valid_interleaving", "checksum_corruption"] as const
     "pre-commit recovery conserves every target-world save slot");
   assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues,
     "interleaving or corruption cannot mutate a sibling namespace");
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
 }
 
 // Marker write/readback failures happen before the registry commit. They still
@@ -877,12 +1163,12 @@ for (const failure of ["readback", "throw_after_write"] as const) {
     reason: "world_delete_transaction_pending",
     mutationStarted: true,
   });
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 1);
   const recovered = loadLocalWorldRegistry(storage);
   assert.ok(recovered.registry?.worlds.some(({ id }) => id === kept.world.id));
   assert.ok(recovered.issues.includes("delete:rollback_completed"));
   assert.deepEqual(keys.map((key) => storage.values.get(key) ?? null), values);
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
 }
 
 // A competing tab replacing the marker between write and readback cannot make
@@ -921,7 +1207,7 @@ for (const failure of ["readback", "throw_after_write"] as const) {
     reason: "world_delete_transaction_failed",
     mutationStarted: false,
   });
-  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.equal(transactionEntries(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY).length, 0);
   storage.failReadsFor = null;
   assert.ok(loadLocalWorldRegistry(storage).registry?.worlds.some(({ id }) => id === kept.world.id));
 }
@@ -951,11 +1237,12 @@ for (const failure of ["readback", "throw_after_write"] as const) {
   storage.failWritesFor = LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
   storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
   assert.equal(deleteLocalWorld(storage, first.world.id, 3).ok, false);
-  const validRaw = storage.values.get(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
-  assert.ok(validRaw);
+  const validTransaction = transactionEntry(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+  assert.ok(validTransaction);
+  const [validKey, validRaw] = validTransaction;
   const tamperedRaw = validRaw.replace(`"worldId":"${first.world.id}"`, `"worldId":"${second.world.id}"`);
   assert.notEqual(tamperedRaw, validRaw);
-  storage.values.set(LOCAL_WORLD_DELETE_TRANSACTION_KEY, tamperedRaw);
+  storage.values.set(validKey, tamperedRaw);
   storage.failWritesFor = null;
   storage.failDeletesFor = null;
   const tampered = listLocalWorlds(storage);
@@ -983,10 +1270,11 @@ for (const failure of ["readback", "throw_after_write"] as const) {
   assert.ok(cleared.registryLoad.issues.includes("delete:invalid_transaction_cleared"));
   assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
 
+  storage.values.set(`${LOCAL_WORLD_DELETE_TRANSACTION_KEY}.unreadable`, "{");
   storage.failReadsFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
   const unreadable = listLocalWorlds(storage);
   assert.deepEqual(unreadable.worlds.map(({ world }) => world.id).sort(), healthyIds);
-  assert.ok(unreadable.registryLoad.issues.includes("delete:transaction_read_failed"));
+  assert.ok(unreadable.registryLoad.issues.includes("transaction:enumeration_failed"));
   storage.failReadsFor = null;
 }
 
@@ -1063,6 +1351,16 @@ for (const failure of ["readback", "throw_after_write"] as const) {
   }) as SinglePlayerStorageAdapter;
   assert.doesNotThrow(() => loadLocalWorldRegistry(throwingGet));
   assert.equal(loadLocalWorldRegistry(throwingGet).status, "corrupt");
+
+  const throwingList = Object.defineProperties({
+    getItem: () => null,
+    setItem: () => undefined,
+  }, {
+    listKeys: { get: () => { throw new Error("enumeration getter denied"); } },
+  }) as SinglePlayerStorageAdapter;
+  const guardedEnumeration = loadLocalWorldRegistry(throwingList);
+  assert.ok(guardedEnumeration.issues.includes("transaction:enumeration_failed"));
+  assert.equal(guardedEnumeration.registry?.worlds.length, 0);
 
   const values = new Map<string, string>();
   const throwingRemove = Object.defineProperties({}, {
