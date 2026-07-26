@@ -25,6 +25,8 @@
   const patchedContexts = new Set();
   const usedSequences = new Set();
   let binding = null;
+  let sampleContract = null;
+  let samplingFailure = null;
   let animationFrame = 0;
   let frameDrawCalls = 0;
   let lastFrameAt = null;
@@ -54,14 +56,78 @@
     patchMethod(contextName, constructor?.prototype, "drawElements");
   }
 
+  function currentSampleState() {
+    const viewport = Object.entries(VIEWPORTS)
+      .find(([, dimensions]) =>
+        window.innerWidth === dimensions.width && window.innerHeight === dimensions.height)?.[0] ?? null;
+    const devicePixelRatio = window.devicePixelRatio;
+    return {
+      visible: window.document?.visibilityState === "visible",
+      hasFocus: window.document?.hasFocus?.() === true,
+      viewport,
+      devicePixelRatio,
+    };
+  }
+
+  function validSampleState(state) {
+    return state.visible
+      && state.hasFocus
+      && state.viewport !== null
+      && Number.isFinite(state.devicePixelRatio)
+      && state.devicePixelRatio >= 1
+      && state.devicePixelRatio <= 4;
+  }
+
+  function sameSampleState(left, right) {
+    return left.visible === right.visible
+      && left.hasFocus === right.hasFocus
+      && left.viewport === right.viewport
+      && left.devicePixelRatio === right.devicePixelRatio;
+  }
+
+  function inspectSampleState(recordFailure = true) {
+    const state = currentSampleState();
+    let failure = null;
+    if (!validSampleState(state)) {
+      failure = "The document must remain visible and focused at an exact Task 41 viewport/DPR.";
+    } else if (sampleContract && !sameSampleState(state, sampleContract)) {
+      failure = "Visibility, focus, viewport, or device-pixel ratio changed during sampling.";
+    }
+    if (recordFailure && failure) samplingFailure ??= failure;
+    return { state, failure };
+  }
+
+  function noteStateChange() {
+    if (sampleContract) inspectSampleState();
+  }
+
+  for (const [target, eventName] of [
+    [window.document, "visibilitychange"],
+    [window, "focus"],
+    [window, "blur"],
+    [window, "resize"],
+  ]) {
+    if (typeof target?.addEventListener !== "function"
+      || typeof target?.removeEventListener !== "function") continue;
+    target.addEventListener(eventName, noteStateChange);
+    restorers.push(() => target.removeEventListener(eventName, noteStateChange));
+  }
+
   function frame(now) {
     if (stopped) return;
+    const { state } = inspectSampleState();
     if (lastFrameAt !== null && now > lastFrameAt) {
-      samples.push({
-        frameMs: Number((now - lastFrameAt).toFixed(3)),
-        drawCalls: frameDrawCalls,
-      });
-      if (samples.length > 3_600) samples.shift();
+      if (samples.length < 3_600) {
+        samples.push({
+          sequence: samples.length + 1,
+          frameMs: Number((now - lastFrameAt).toFixed(3)),
+          drawCalls: frameDrawCalls,
+          visible: state.visible,
+          hasFocus: state.hasFocus,
+          viewport: state.viewport,
+          devicePixelRatio: state.devicePixelRatio,
+        });
+      }
     }
     frameDrawCalls = 0;
     lastFrameAt = now;
@@ -113,6 +179,7 @@
 
   function snapshot(label, sequence) {
     if (!binding) throw new Error("Bind the probe to the run ID and trusted commit before capture.");
+    if (!sampleContract) throw new Error("Reset the probe to bind a visible, focused viewport before capture.");
     if (typeof label !== "string") throw new TypeError("A viewport/scene label is required.");
     const [viewportName, scene, extra] = label.split("/");
     const viewport = VIEWPORTS[viewportName];
@@ -122,6 +189,12 @@
     if ((Number.isFinite(window.innerWidth) && window.innerWidth !== viewport.width)
       || (Number.isFinite(window.innerHeight) && window.innerHeight !== viewport.height)) {
       throw new Error(`Browser viewport does not match ${viewportName} (${viewport.width}x${viewport.height}).`);
+    }
+    const { failure } = inspectSampleState(false);
+    if (failure || samplingFailure || sampleContract.viewport !== viewportName) {
+      throw new Error(
+        failure ?? samplingFailure ?? "The capture label does not match the reset viewport.",
+      );
     }
     if (!Number.isSafeInteger(sequence) || sequence < 1 || usedSequences.has(sequence)) {
       throw new TypeError("sequence must be a unique positive integer for this probe installation.");
@@ -135,12 +208,21 @@
       capturedAt: new Date().toISOString(),
       sequence,
       label,
+      viewport: viewportName,
+      devicePixelRatio: sampleContract.devicePixelRatio,
       patchedContexts: patchedContexts.size,
-      frames: samples.map(({ frameMs, drawCalls }) => ({ frameMs, drawCalls })),
+      frames: samples.map((sample) => ({ ...sample })),
     };
   }
 
   function reset() {
+    if (!binding) throw new Error("Bind the probe before resetting its capture contract.");
+    samplingFailure = null;
+    const state = currentSampleState();
+    if (!validSampleState(state)) {
+      throw new Error("The document must be visible and focused at an exact Task 41 viewport/DPR.");
+    }
+    sampleContract = Object.freeze({ ...state });
     samples.length = 0;
     frameDrawCalls = 0;
     lastFrameAt = null;

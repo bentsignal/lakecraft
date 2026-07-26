@@ -50,18 +50,35 @@ valid-partial state. Do not relabel deferred scope as passed.
    route. Record its anonymous local target URL and start time. Do not sign in,
    deploy, mutate production, or point the route at a hosted capsule.
 4. Use one Chromium-family browser profile with extensions disabled. Record
-   its name and full version.
+   its name and full version. Verify that `ffprobe` and `ffmpeg` are available
+   on the validation host:
+
+   ```sh
+   command -v ffprobe
+   command -v ffmpeg
+   ```
+
+   The validator uses `ffprobe` to identify the real video stream, dimensions,
+   and duration, then uses `ffmpeg` to decode at least one frame. Container
+   magic, padding, renamed files, and metadata-only stubs are rejected.
 5. In DevTools, disable cache and enable Preserve log. Load the title screen.
-   Tooling traffic used to load the page and install the probe is outside the
-   measured Singleplayer boundary. Immediately before choosing
-   **Singleplayer**, clear Console and Network, start the structured combined
-   Console/CDP and Network/WebSocket reports, and record that instant as
-   `runStartedAt`. Do not clear or restart them again. Stop the captures after
-   the final world interaction, then finish the paired builds and record
-   `runCompletedAt`. The zero-network claim applies only from the cleared
-   Singleplayer boundary through the stopped capture; the dev-server WebSocket
-   or other tooling traffic before that boundary must not be counted as
-   Singleplayer app traffic.
+   Record `runStartedAt`, then capture an ordered series of measured
+   Singleplayer interaction segments. Immediately before each segment, clear
+   Console and Network and start fresh structured combined Console/CDP and
+   Network/WebSocket collection. End and export that segment before any
+   required navigation or reload. Treat the navigation/reload as an explicit
+   unmeasured gap, then clear and start the next segment after the new page is
+   ready. A gap may contain its local document navigation request, but it must
+   contain no app request or newly opened app socket. Use 4–32 uniquely named,
+   descriptive segments. Between every adjacent pair, record exactly one
+   `navigation` or `reload` gap whose `afterSegmentId` and `beforeSegmentId`
+   name those exact neighbors.
+
+   Every measured segment must have zero app requests and zero newly opened
+   WebSockets. Tooling traffic and the development-server WebSocket opened
+   before a measured segment belong to its preceding gap, but any request or
+   socket opened during a measured interaction segment fails the run. Finish
+   the paired builds after the final segment and record `runCompletedAt`.
 6. Keep every screenshot, recording, transcript, JSON snapshot, console
    report, CDP network report, build report, artifact, and staged bundle
    beneath the one evidence root. Every regular file there must be referenced
@@ -69,8 +86,9 @@ valid-partial state. Do not relabel deferred scope as passed.
    validator rejects extra or missing files.
 7. Re-run `git rev-parse HEAD` after interaction and after both builds. If it
    differs from the trusted expected commit, or any evidence timestamp is
-   outside `runStartedAt` through `runCompletedAt`, restart the route. Finish
-   within eight hours and validate within 24 hours.
+   outside `runStartedAt` through `runCompletedAt`, restart the route. The run
+   must last at least five minutes and no more than six hours; validate it no
+   later than six hours after `runCompletedAt`.
 
 Generate the strict evidence manifest before testing. The marked block is
 parsed by `tests/liveVisualQaEvidence.test.mjs`; do not add another command or
@@ -100,13 +118,20 @@ reordered, duplicated, extra, mislabeled, or media-spoofed evidence.
 
 ## Browser probe
 
-Create a DevTools Snippet from
-`scripts/task41-browser-probe.js` and run it once on the title screen before
-opening Singleplayer. It wraps the existing WebGL draw methods without
-short-circuiting them and samples animation frames; it does not alter app
-source or the deploy artifact. The Console info message must report one or two
-patched context prototypes. Bind the probe once, using the run ID and trusted
-Git commit captured during setup:
+Create a DevTools Snippet from `scripts/task41-browser-probe.js`. Because a
+reload destroys the page and its probe, install and bind it after the final
+required world-browser reload and before the first performance capture. Do so
+in the gap before starting the next measured interaction segment, so its
+informational installation message is outside that segment. If another reload
+becomes necessary, end/export the current segment, preserve the next run-wide
+capture sequence externally, then reinstall and rebind the probe during the
+gap before resuming.
+
+The probe wraps the existing WebGL draw methods without short-circuiting them
+and samples animation frames; it does not alter app source or the deploy
+artifact. Its Console info message must report one or two patched context
+prototypes. Bind each installation using the same run ID and trusted Git
+commit:
 
 ```js
 window.__lakecraftTask41Probe.bind({
@@ -116,7 +141,13 @@ window.__lakecraftTask41Probe.bind({
 ```
 
 The probe refuses an unbound capture, a different later binding, an unknown
-scene, a mismatched CSS viewport, or a reused capture sequence.
+scene, a mismatched CSS viewport/device-pixel ratio, a hidden or unfocused
+document, or a reused capture sequence. `reset()` records the current visible,
+focused viewport contract. Every animation-frame sample includes its sequence,
+visibility, focus state, exact viewport ID (`desktop` = 1280 × 720 or `narrow`
+= 800 × 720), and DPR. Sampling fails rather than silently accepting a
+backgrounded tab or a viewport change, and `snapshot()` rechecks the same
+invariants.
 
 For each performance scene:
 
@@ -357,13 +388,43 @@ report must contain these ordered passing checks:
 
 Passed evidence must use exactly two distinct SHA-256 identity hashes; never
 store account names, email addresses, tokens, cookies, or other identity data.
-It must also prove the hosted route is enabled and the quota was observed
-healthy. The behavior transcripts may include the sustained cadence,
-remote-pose percentiles, quota reconciliation, retry suppression, and recovery
-details.
+Each hash must be derived from a run-salted proof record and stored in its own
+unique evidence file. The two proof records must demonstrate:
 
-For this commit, set the whole scope to `deferred`, keep `checks` and
-`identityHashes` empty, and use the ordered reason codes
+- overlapping active session windows;
+- each identity seeing the other's hashed peer identity;
+- reciprocal peer visibility;
+- at least one successful interaction in each direction;
+- positive quota attempts and positive granted operations while not paused;
+  and
+- all attempts and grants remaining within the documented quota.
+
+The hosted route must be enabled and quota must be observed healthy. Behavior
+transcripts may add sustained cadence, remote-pose percentiles, quota
+reconciliation, retry suppression, and recovery details. Identity proof from
+non-overlapping sessions, a one-way observer, paused/background samples, zero
+attempts, or zero grants is not a pass.
+
+Use the fixed ordered identity IDs `identity-a` and `identity-b`. Each manifest
+identity includes `identityCommitment`, `runSaltedIdentityHash`,
+`windowStartedAt`, `windowCompletedAt`, `proofPath`, and `proofSha256`.
+`runSaltedIdentityHash` is the `sha256:` hash of the UTF-8 string
+`<runId>:<identityCommitment>`. Each active window lasts 60 seconds through 30
+minutes, and the two windows overlap for at least 60 seconds. Its
+schema-version 1 proof repeats that binding, names only the other fixed ID in
+`peerVisibilityIds`, and contains 2–3,600 ordered `quotaTelemetry` rows with
+`sequence`, `timestamp`, monotonic `attempts`, monotonic `grants`, and
+`paused: false`. Attempts may not exceed grants; final attempts and grants are
+positive and the session observes a positive delta.
+
+Use exactly two manifest interaction summaries:
+`identity-a-to-b` and `identity-b-to-a`, each with fixed actor/target IDs and a
+unique proof path/hash. Each schema-version 1 interaction proof is bound to the
+run and both identity windows and contains these ordered passing event kinds:
+`movement-nameplate`, `chat`, `item-sharing`, `pvp`, and `reconnect`.
+
+For this commit, set the whole scope to `deferred`, keep `identities` and
+`interactions` empty, and use the ordered reason codes
 `hosted-route-disabled`, `authorized-identities-unavailable`, and
 `quota-observation-unavailable`. Report the independently checked production
 quota as healthy context with `quotaObserved: false`: a quota snapshot is not
@@ -372,41 +433,57 @@ mutations merely to turn this partial run into a pass.
 
 ## Console and network
 
-At the end of the route:
+At the end of every measured interaction segment:
 
-- The structured combined Console/CDP report must show zero errors, warnings,
-  uncaught exceptions, and unhandled rejections. Keep its ordered entries with
-  explicit `console` or `cdp` sources and levels so the validator can recompute
-  all four counts. Informational messages are allowed. Because probe
-  installation occurs before the measured boundary, its installation message
-  belongs in preflight, not the cleared report.
-- The structured Network/WebSocket report must show zero HTTP requests, zero
-  Lakebed requests, and zero opened WebSockets from the first Singleplayer
-  click through the final world interaction. Keep the raw ordered CDP events
-  in that JSON report so the validator can recompute all three manifest counts.
-- If pre-boundary tooling traffic is useful for diagnosis, keep it outside the
-  strict evidence root. A Vite/Lakebed dev-server WebSocket opened before the
-  boundary does not invalidate the Singleplayer claim, but any request or
-  socket opened by the app after the boundary starts does.
+- End and export that segment before the next navigation/reload gap.
+- Its structured combined Console/CDP entries must show zero errors, warnings,
+  uncaught exceptions, and unhandled rejections. Entries remain ordered and
+  identify `console` or `cdp` source and level so the validator can recompute
+  all four counts.
+- Its structured Network/WebSocket events must show zero app HTTP requests,
+  zero Lakebed requests, and zero newly opened WebSockets. Keep the raw ordered
+  CDP events so the validator can recompute every segment and aggregate.
+
+The reports list measured segments and explicit intervening navigation/reload
+gaps in chronological, contiguous order: each gap starts exactly when the
+preceding segment completes, and the next segment starts exactly when that gap
+completes. No unclassified time may hide traffic. Console and Network reports
+must use identical IDs, kinds, and timestamps for the full timeline. Every gap
+contains one or more ordered local `document` navigation requests and zero
+`appRequests` or `newSockets`; this allowed navigation is not smuggled into a
+measured segment. Clear and restart both collectors only after the new page is
+ready. Probe installation/reinstallation also occurs in a gap, so its
+informational Console message may appear in the ordered gap entries but not in
+a cleared measured segment.
 
 Development-server WebSocket traffic is outside the cleared Singleplayer
-capture boundary only when opened before that boundary.
+capture segment only when opened before that segment.
+A Vite/Lakebed dev-server WebSocket opened before the boundary of a measured
+segment is pre-boundary tooling and does not invalidate that segment or count
+as an app `newSocket`; a new app socket opened after the boundary does.
 
-Any in-boundary request, socket, uncaught error, page error, or warning fails
-the run. Bind each structured report to the same run ID, expected commit, and
-run interval; record counts in the manifest and hash the reports.
+Any measured-segment request, new socket, uncaught error, page error, or warning
+fails the run. Bind every segment and aggregate report to the same run ID,
+expected commit, and run interval; record counts in the manifest and hash the
+reports.
 
 ## Deterministic compact artifact
 
-After the integrated live route, build from the same recorded commit twice.
-Use two fresh staging directories and retain both artifacts plus both staged
-client and server entrypoints in the evidence root:
+After the integrated live route, build from two independent archives of the
+trusted expected commit. Do not stage from the mutable current filesystem.
+Retain both full Lakebed JSON reports, artifacts, and staged client/server
+entrypoints in the evidence root:
 
 ```sh
+repo_root="$(git rev-parse --show-toplevel)"
+archive_a="$(mktemp -d)"
+archive_b="$(mktemp -d)"
 stage_a="$(mktemp -d)"
 stage_b="$(mktemp -d)"
-node scripts/prepare-lakebed-deploy.mjs "$stage_a"
-node scripts/prepare-lakebed-deploy.mjs "$stage_b"
+git -C "$repo_root" archive "$expected_commit" | tar -x -C "$archive_a"
+git -C "$repo_root" archive "$expected_commit" | tar -x -C "$archive_b"
+(cd "$archive_a" && node scripts/prepare-lakebed-deploy.mjs "$stage_a")
+(cd "$archive_b" && node scripts/prepare-lakebed-deploy.mjs "$stage_b")
 (cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
   > /absolute/path/to/evidence/build-a.json
 (cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
@@ -421,9 +498,14 @@ hashes from the JSON output, plus ordinary file SHA-256 values.
 
 The two retained `--json` outputs are the structured build reports. The
 manifest binds their paths and hashes to the run ID and expected commit, and
-the validator independently parses both reports and recomputes the anonymous
-artifact target and hashes. Do not replace them with prose or a fabricated
-wrapper report.
+the validator requires the complete Lakebed `source.files` set, independently
+recomputes the anonymous artifact target and hashes, creates its own
+deterministic `git archive` of the exact expected commit beneath the trusted
+repository root, runs the repository's prepare step, and compares that rebuild
+with the captured artifacts and full staged sources. Dirty working-tree files,
+current-filesystem substitution, a partial `source.files` report, and staged
+source drift all fail. Do not replace the Lakebed reports with prose or a
+fabricated wrapper report.
 
 Finally, place the completed manifest in the evidence root and validate it
 against the trusted commit captured before testing:
@@ -432,6 +514,7 @@ against the trusted commit captured before testing:
 node scripts/validate-live-qa-evidence.mjs \
   /absolute/path/to/evidence/task41-evidence.json \
   --root /absolute/path/to/evidence \
+  --repo-root "$repo_root" \
   --expected-commit "$expected_commit" \
   --validator-output /absolute/path/to/evidence/validator-output.json
 ```
