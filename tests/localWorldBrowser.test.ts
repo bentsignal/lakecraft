@@ -18,32 +18,35 @@ assert.equal(browser.includes("lakebed/client"), false, "the world list stays en
 assert.equal(app.includes("lakebed/client"), false, "selecting a world cannot mount Lakebed transport");
 assert.ok(browser.includes('aria-label="Local world browser"'));
 assert.ok(browser.includes('aria-label="Search worlds"'));
-assert.ok(browser.includes('role="listbox"') && browser.includes('role="option"') && browser.includes("aria-selected="),
-  "world selection exposes complete listbox and option semantics");
-assert.ok(browser.includes('event.key !== "ArrowDown"') && browser.includes('event.key !== "ArrowUp"')
-  && browser.includes('event.key !== "Home"') && browser.includes('event.key !== "End"')
-  && browser.includes("moveLocalWorldSelection"),
-  "the roving listbox implements Arrow, Home, and End navigation");
-assert.ok(browser.includes("tabIndex={entry.world.id === reconciledSelectedId")
-  && browser.includes("document.getElementById(`lc-local-world-${next}`)?.focus()"),
-  "keyboard navigation maintains one tabbable option and moves DOM focus");
-assert.ok(browser.includes('role={error ? "alert" : "status"}'), "create/import/reset feedback is announced");
-assert.ok(browser.includes('role="alertdialog"') && browser.includes("dialog.showModal()"),
+assert.ok(browser.includes('<select\n          aria-label="Local worlds"')
+  && browser.includes("size={Math.max(3, Math.min(8, filtered.length || 3))}")
+  && browser.includes('value={entry.world.id}'),
+  "world selection uses a visible native multi-row select with native keyboard semantics");
+assert.equal(browser.includes("moveLocalWorldSelection"), false,
+  "native select owns Arrow, Home, End, focus, and selected-option behavior");
+assert.ok(browser.includes('" · Last saved "')
+  && browser.includes("HEALTH_LABELS[entry.health]")
+  && browser.includes("CAPACITY_LABELS[entry.capacity]"),
+  "each native option exposes mode, last-save, health, and capacity context");
+assert.ok(browser.includes('role={notice[1] ? "alert" : "status"}'), "create/import/reset feedback is announced");
+assert.ok(browser.includes('role={modal === CREATE ? undefined : "alertdialog"}') && browser.includes("dialog.showModal()"),
   "destructive confirmation uses the browser's focus-trapping modal dialog");
-assert.ok(browser.includes("inert={modalOpen}")
-  && browser.includes("onCancel={(event)")
-  && browser.includes("data-safe-action")
-  && browser.includes("trapDialogFocus")
+assert.ok(browser.includes('onClose={() => setModal(0)}')
+  && browser.includes('method="dialog"')
+  && browser.includes("autoFocus")
   && browser.includes("restoreFocusRef")
-  && browser.includes("restore?.isConnected"),
-  "modal backgrounds are inert, Escape cancels, and initial focus is on the safe action");
+  && browser.includes("restore?.isConnected")
+  && browser.includes('document.getElementById("lc-world-browser-title")'),
+  "native modal behavior handles inertness, Escape, Tab order, a safe initial action, and explicit fallback restoration");
+assert.equal(browser.includes("trapDialogFocus"), false,
+  "the browser dialog owns focus trapping instead of a partial custom Tab implementation");
 assert.ok(browser.includes("Confirm destructive action") && browser.includes("This cannot be undone."),
   "delete and reset require explicit confirmation");
 assert.ok(
   browser.includes("World deletion cleanup is pending. Healthy worlds remain available; no unverified deletion was applied.")
   && browser.includes("Ignored an invalid world-deletion marker. Healthy worlds remain available; orphaned storage may remain.")
   && browser.includes("Recovered an interrupted world deletion. Other worlds remain unchanged.")
-  && browser.includes("disabled={!selected || deleteRecoveryPending || transactionReadOnly}"),
+  && browser.includes('["Delete World…", !selected || deleteRecoveryPending || transactionReadOnly'),
   "delete recovery remains visible without blocking access to healthy worlds",
 );
 assert.ok(
@@ -51,37 +54,34 @@ assert.ok(
   && browser.includes("World storage is read-only because pending transaction state could not be verified.")
   && browser.includes("Play and world changes are disabled until browser storage recovers.")
   && browser.includes("World storage is read-only until pending transaction state can be verified.")
-  && browser.includes(">Retry World Storage</button>"),
+  && browser.includes("Retry World Storage"),
   "opaque transaction state is presented as retryable read-only storage without a healthy-world availability claim",
 );
 assert.ok(
   browser.includes("const selectedPlayable = Boolean(selected && !transactionReadOnly && canPlayLocalWorld(selected))")
-  && browser.includes("aria-disabled={!selectedPlayable}")
-  && browser.includes("disabled={!selectedPlayable}")
+  && browser.includes('["Play Selected World", !selectedPlayable, play]')
   && browser.includes("if (!selected || !selectedPlayable)"),
-  "Play behavior and accessibility state fail closed while transaction visibility is opaque",
+  "native Play disabled behavior and its handler fail closed while transaction visibility is opaque",
 );
 assert.ok(
-  browser.includes("aria-disabled={!selected || transactionReadOnly}")
-  && browser.includes("disabled={!selected || transactionReadOnly}")
-  && browser.includes("aria-disabled={legacy.status !== \"available\" || blocked || transactionReadOnly || imported}"),
-  "reset and legacy import controls expose and enforce registry read-only state",
+  browser.includes('["Reset World…", !selected || transactionReadOnly')
+  && browser.includes('disabled={legacy.status !== "available" || blocked || transactionReadOnly || imported}'),
+  "native reset and legacy import controls enforce registry read-only state",
 );
 assert.ok(
-  browser.includes("aria-disabled={transactionReadOnly}")
-  && browser.includes("disabled={transactionReadOnly}")
-  && browser.includes('onClick={() => openConfirmation({ kind: "legacy_reset" })}'),
+  browser.includes("disabled={transactionReadOnly}")
+  && browser.includes("onClick={() => openDialog(LEGACY_RESET)}"),
   "legacy reset is removed from keyboard and click activation while transaction state is opaque",
 );
-const openCreateSource = functionSource("openCreateDialog");
-const openConfirmationSource = functionSource("openConfirmation");
+const openSource = functionSource("openDialog");
 const createSource = functionSource("create");
+const playSource = functionSource("play");
 const confirmedSource = functionSource("runConfirmed");
 const importSource = functionSource("importLegacy");
 for (const [source, guardedCall] of [
-  [openCreateSource, "setCreateOpen(true)"],
-  [openConfirmationSource, "setConfirm(action)"],
+  [openSource, "setModal(next)"],
   [createSource, "createLocalWorld(storage"],
+  [playSource, "touchLocalWorld(storage"],
   [confirmedSource, "resetLegacyLocalWorld(storage)"],
   [importSource, "importLegacyLocalWorld(storage"],
 ] as const) {
@@ -111,10 +111,16 @@ for (const label of [
 
 assert.ok(browser.includes("world.name.toLocaleLowerCase().includes"),
   "search filters by normalized world name without mutating the registry");
-assert.ok(browser.includes("reconcileLocalWorldSelection(selectedId, visibleWorldIds)")
-  && browser.includes("const selected = filtered.find(({ world }) => world.id === reconciledSelectedId)"),
-  "a search clears hidden selection before any world action can resolve a target");
-assert.ok(browser.includes("confirmedWorld?.name"), "destructive confirmation identifies its exact target");
+assert.ok(browser.includes("filtered.find(({ world }) => world.id === selectedId) ?? filtered[0] ?? null")
+  && browser.includes('value={selected?.world.id ?? ""}'),
+  "a search resolves every action and the controlled native select to a visible option");
+assert.ok(browser.includes("confirmedWorld?.name") && browser.includes("? selected?.world"),
+  "destructive confirmation identifies its exact selected target");
+assert.ok(browser.includes("new FormData(form)")
+  && browser.includes('defaultValue="New World"')
+  && browser.includes('defaultValue="survival"')
+  && browser.includes('data.get("m") === "creative" ? "creative" : "survival"'),
+  "native create fields preserve the default name and fail-closed Survival/Creative mode parsing");
 assert.ok(browser.includes("touchLocalWorld(storage, selected.world.id, Date.now(), selected.world)"),
   "Play records last-played against the exact selected registry record before mounting the world");
 assert.ok(browser.includes("resolveLocalWorldPlay(storage, selected, result)")
