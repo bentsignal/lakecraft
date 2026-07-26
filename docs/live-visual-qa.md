@@ -62,14 +62,16 @@ valid-partial state. Do not relabel deferred scope as passed.
    and duration, then uses `ffmpeg` to decode at least one frame. Container
    magic, padding, renamed files, and metadata-only stubs are rejected.
 5. In DevTools, disable cache and enable Preserve log. Load the title screen.
-   Record `runStartedAt`, then capture an ordered series of measured
-   Singleplayer interaction segments. Immediately before each segment, clear
-   Console and Network and start fresh structured combined Console/CDP and
-   Network/WebSocket collection. End and export that segment before any
-   required navigation or reload. Treat the navigation/reload as an explicit
-   unmeasured gap, then clear and start the next segment after the new page is
-   ready. A gap may contain its local document navigation request, but it must
-   contain no app request or newly opened app socket. Use 4–32 uniquely named,
+   Immediately before the first **Singleplayer** action, clear Console and
+   Network and use that one timestamp for both `runStartedAt` and the first
+   measured segment's `startedAt`
+   (`segments[0].startedAt === runStartedAt`). There is no unmeasured prefix.
+   Capture an ordered series of measured Singleplayer interaction segments.
+   End and export a segment before every required navigation or reload. The
+   navigation/reload alone forms the intervening gap; after the new page is
+   ready, clear and start the next segment at the exact gap completion time.
+   A gap may contain its local document navigation request, but it must contain
+   no app request or newly opened app socket. Use 4–32 uniquely named,
    descriptive segments. Between every adjacent pair, record exactly one
    `navigation` or `reload` gap whose `afterSegmentId` and `beforeSegmentId`
    name those exact neighbors.
@@ -77,8 +79,12 @@ valid-partial state. Do not relabel deferred scope as passed.
    Every measured segment must have zero app requests and zero newly opened
    WebSockets. Tooling traffic and the development-server WebSocket opened
    before a measured segment belong to its preceding gap, but any request or
-   socket opened during a measured interaction segment fails the run. Finish
-   the paired builds after the final segment and record `runCompletedAt`.
+   socket opened during a measured interaction segment fails the run. After
+   the last browser interaction, keep the final measured segment open while
+   completing the paired builds. End that segment and use its exact
+   `completedAt` as `runCompletedAt`
+   (`segments.at(-1).completedAt === runCompletedAt`), leaving no unmeasured
+   suffix.
 6. Keep every screenshot, recording, transcript, JSON snapshot, console
    report, CDP network report, build report, artifact, and staged bundle
    beneath the one evidence root. Every regular file there must be referenced
@@ -89,6 +95,16 @@ valid-partial state. Do not relabel deferred scope as passed.
    outside `runStartedAt` through `runCompletedAt`, restart the route. The run
    must last at least five minutes and no more than six hours; validate it no
    later than six hours after `runCompletedAt`.
+
+Every screenshot, video, transcript, performance capture, storage summary,
+multiplayer report, identity proof, and interaction proof interval from
+`capturedAt` through `completedAt` must fall inside one measured segment. No
+such evidence may be captured in a navigation/reload gap or outside the
+first/last segment boundaries. Artifact build captures occur before the final
+segment closes, as described above. Every bounded proof window and every
+nested action, frame, telemetry, or event timestamp must also remain wholly
+inside a measured segment; a proof may not span or land in a gap.
+Every measured segment must contain at least one bound evidence capture.
 
 Generate the strict evidence manifest before testing. The marked block is
 parsed by `tests/liveVisualQaEvidence.test.mjs`; do not add another command or
@@ -144,10 +160,10 @@ The probe refuses an unbound capture, a different later binding, an unknown
 scene, a mismatched CSS viewport/device-pixel ratio, a hidden or unfocused
 document, or a reused capture sequence. `reset()` records the current visible,
 focused viewport contract. Every animation-frame sample includes its sequence,
-visibility, focus state, exact viewport ID (`desktop` = 1280 × 720 or `narrow`
-= 800 × 720), and DPR. Sampling fails rather than silently accepting a
-backgrounded tab or a viewport change, and `snapshot()` rechecks the same
-invariants.
+canonical timestamp, visibility, focus state, exact viewport ID (`desktop` =
+1280 × 720 or `narrow` = 800 × 720), and DPR. Sampling fails rather than
+silently accepting a backgrounded tab or a viewport change, and `snapshot()`
+rechecks the same invariants.
 
 For each performance scene:
 
@@ -165,7 +181,9 @@ For each performance scene:
    ```
 
    Replace the label with the current viewport and scene. The saved JSON is the
-   immutable raw-frame evidence; do not save only a Console preview.
+   immutable raw-frame evidence. Its top-level `capturedAt` and `completedAt`
+   bound the sample window, and every frame timestamp must remain within that
+   same measured interaction segment. Do not save only a Console preview.
 5. Run `window.__lakecraftTask41Probe.summarize(capture)` on that saved capture
    and copy the returned aggregates into its manifest performance row. The
    validator recomputes those aggregates from the raw frames.
@@ -447,7 +465,8 @@ At the end of every measured interaction segment:
 The reports list measured segments and explicit intervening navigation/reload
 gaps in chronological, contiguous order: each gap starts exactly when the
 preceding segment completes, and the next segment starts exactly when that gap
-completes. No unclassified time may hide traffic. Console and Network reports
+completes. No unclassified time may hide traffic. Only gaps may contain a
+reload or navigation; measured segments may not. Console and Network reports
 must use identical IDs, kinds, and timestamps for the full timeline. Every gap
 contains one or more ordered local `document` navigation requests and zero
 `appRequests` or `newSockets`; this allowed navigation is not smuggled into a
@@ -455,6 +474,12 @@ measured segment. Clear and restart both collectors only after the new page is
 ready. Probe installation/reinstallation also occurs in a gap, so its
 informational Console message may appear in the ordered gap entries but not in
 a cleared measured segment.
+
+Console cleanliness covers the whole contiguous route, including gap entries:
+warnings, errors, exceptions, and unhandled rejections are all zero in both
+segments and gaps. Network treatment is intentionally different only for the
+gap's local document navigation; no gap may contain app traffic or a newly
+opened app socket.
 
 Development-server WebSocket traffic is outside the cleared Singleplayer
 capture segment only when opened before that segment.
@@ -469,10 +494,12 @@ reports.
 
 ## Deterministic compact artifact
 
-After the integrated live route, build from two independent archives of the
-trusted expected commit. Do not stage from the mutable current filesystem.
-Retain both full Lakebed JSON reports, artifacts, and staged client/server
-entrypoints in the evidence root:
+After the last integrated live interaction, keep the final measured segment
+open and build from two independent archives of the trusted expected commit.
+Do not stage from the mutable current filesystem. Retain both full Lakebed JSON
+reports, artifacts, and staged client/server entrypoints in the evidence root,
+then close the final segment and set `runCompletedAt` to that exact completion
+timestamp:
 
 ```sh
 repo_root="$(git rev-parse --show-toplevel)"

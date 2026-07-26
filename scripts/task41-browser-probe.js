@@ -27,6 +27,9 @@
   let binding = null;
   let sampleContract = null;
   let samplingFailure = null;
+  let captureStartedAtMs = null;
+  let frameClockStartedAt = null;
+  let lastFrameCapturedAtMs = null;
   let animationFrame = 0;
   let frameDrawCalls = 0;
   let lastFrameAt = null;
@@ -116,10 +119,13 @@
   function frame(now) {
     if (stopped) return;
     const { state } = inspectSampleState();
-    if (lastFrameAt !== null && now > lastFrameAt) {
+    if (sampleContract && frameClockStartedAt === null) frameClockStartedAt = now;
+    if (sampleContract && lastFrameAt !== null && now > lastFrameAt) {
       if (samples.length < 3_600) {
+        const timestampMs = captureStartedAtMs + (now - frameClockStartedAt);
         samples.push({
           sequence: samples.length + 1,
+          timestamp: new Date(timestampMs).toISOString(),
           frameMs: Number((now - lastFrameAt).toFixed(3)),
           drawCalls: frameDrawCalls,
           visible: state.visible,
@@ -127,6 +133,7 @@
           viewport: state.viewport,
           devicePixelRatio: state.devicePixelRatio,
         });
+        lastFrameCapturedAtMs = timestampMs;
       }
     }
     frameDrawCalls = 0;
@@ -200,12 +207,17 @@
       throw new TypeError("sequence must be a unique positive integer for this probe installation.");
     }
     usedSequences.add(sequence);
+    const completedAtMs = Math.max(
+      Date.now(),
+      lastFrameCapturedAtMs ?? captureStartedAtMs,
+    );
     return {
       schemaVersion: 2,
       taskId: TASK_ID,
       runId: binding.runId,
       appCommit: binding.appCommit,
-      capturedAt: new Date().toISOString(),
+      capturedAt: new Date(captureStartedAtMs).toISOString(),
+      completedAt: new Date(completedAtMs).toISOString(),
       sequence,
       label,
       viewport: viewportName,
@@ -223,6 +235,9 @@
       throw new Error("The document must be visible and focused at an exact Task 41 viewport/DPR.");
     }
     sampleContract = Object.freeze({ ...state });
+    captureStartedAtMs = Date.now();
+    frameClockStartedAt = null;
+    lastFrameCapturedAtMs = null;
     samples.length = 0;
     frameDrawCalls = 0;
     lastFrameAt = null;
