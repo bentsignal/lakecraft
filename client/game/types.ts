@@ -417,6 +417,8 @@ export interface VoxelEngineOptions {
   onPoseChange?: (pose: PlayerPose) => void;
   onTargetChange?: (target: BlockTarget | null) => void;
   onPointerLockChange?: (locked: boolean) => void;
+  /** Offline-only bounded simulation hook; omitted by Lakebed multiplayer. */
+  onSimulationStep?: (elapsedSeconds: number) => void;
   /** Emitted at most twice per second for an optional performance HUD/logger. */
   onPerformanceStats?: (stats: VoxelPerformanceStats) => void;
 }

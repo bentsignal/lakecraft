@@ -281,6 +281,7 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "onSettingsChange": "Vo",
   "onSignIn": "Uo",
   "onSignOut": "zo",
+  "onSimulationStep": "aK",
   "onTakeOutput": "la",
   "onTargetChange": "ui",
   "onTitleScreen": "wt",

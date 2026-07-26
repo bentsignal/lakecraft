@@ -8,7 +8,6 @@ import {
   phaseAtTime,
   planLocalTntExplosion,
   type BlockId as EngineBlockId,
-  type DroppedItemRenderItem,
   type LocalExplosionEdit,
   type PlayerProjectileVisual,
   type VoxelEngine,
@@ -88,7 +87,20 @@ import {
 } from "./localBed.ts";
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
-import { appendLocalMobDeathDrops, collectLocalDroppedItems, pruneExpiredLocalDroppedItems } from "./localDroppedItems.ts";
+import {
+  appendLocalMobDeathDrops,
+  collectLocalDroppedItems,
+  collectMovedLocalDroppedItems,
+  pruneExpiredLocalDroppedItems,
+} from "./localDroppedItems.ts";
+import {
+  advanceLocalDropGravity,
+  createLocalDropGravityClock,
+  localDropSimulationChunkKey,
+  rebuildActiveLocalDropIndices,
+  wakeUnsupportedLocalDroppedItems,
+  type LocalDroppedItem,
+} from "./localDropGravity.ts";
 import {
   canCommitLocalWorldEdits,
   createLocalWorldEditIndex,
@@ -239,7 +251,11 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
   const survivalStateRef = useRef(createSurvivalTickState(hungerRef.current, healthRef.current));
   const survivalActivityRef = useRef(0.5);
   const survivalSampledAtRef = useRef(performance.now());
-  const dropsRef = useRef<DroppedItemRenderItem[]>(initialSnapshot.drops);
+  const dropsRef = useRef<LocalDroppedItem[]>(initialSnapshot.drops);
+  const activeDropIndicesRef = useRef(new Set<number>());
+  const movedDropIndicesRef = useRef(new Set<number>());
+  const dropGravityClockRef = useRef(createLocalDropGravityClock());
+  const dropGravityChunkRef = useRef("");
   const worldRef = useRef({
     ...initialSnapshot.world,
     gameMode: initialGameMode,
@@ -381,6 +397,20 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     if (cadence.dirtyRevision === cadence.savedRevision) {
       saveCadenceRef.current = markSaveCadenceDirty(cadence);
     }
+  }
+
+  function syncLocalDropGravity(engine = engineRef.current): void {
+    if (!engine) return;
+    const pose = engine.getPose();
+    dropGravityChunkRef.current = localDropSimulationChunkKey(pose.x, pose.z);
+    const rebuilt = rebuildActiveLocalDropIndices(
+      dropsRef.current,
+      activeDropIndicesRef.current,
+      pose.x,
+      pose.z,
+      (x, y, z) => engine.getBlockAt(x, y, z),
+    );
+    if (rebuilt.woken > 0) markWorldDirty();
   }
 
   function buildSnapshot(): SinglePlayerSnapshot | null {
@@ -659,16 +689,19 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       return;
     }
     const droppedAt = Date.now();
-    const recoveredDrops = recovered.overflow.map((stack, index): DroppedItemRenderItem => ({
+    const recoveredDrops = recovered.overflow.map((stack, index): LocalDroppedItem => ({
       dropId: `local_container_${droppedAt}_${x}_${y}_${z}_${index}`.slice(0, 96),
       item: { ...stack },
       x: x + 0.35 + (index % 3) * 0.15,
       y: y + 0.45,
       z: z + 0.35 + (Math.floor(index / 3) % 3) * 0.15,
       droppedAt,
+      velocityY: 0,
+      settled: false,
     }));
     inventoryRef.current = recovered.inventory;
     dropsRef.current = [...dropsRef.current, ...recoveredDrops];
+    syncLocalDropGravity();
     engineRef.current?.setDroppedItems(dropsRef.current);
     containersRef.current = recovered.containers;
     setMessages((current) => [...current.slice(-2), {
@@ -726,6 +759,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     if (!collected.changed) return;
     inventoryRef.current = collected.inventory;
     dropsRef.current = collected.drops;
+    syncLocalDropGravity();
     setInventory(collected.inventory);
     engineRef.current?.setDroppedItems(collected.drops);
     markWorldDirty();
@@ -735,6 +769,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     const pruned = pruneExpiredLocalDroppedItems(dropsRef.current, now);
     if (pruned.removed === 0) return false;
     dropsRef.current = pruned.drops;
+    syncLocalDropGravity();
     engineRef.current?.setDroppedItems(pruned.drops);
     markWorldDirty();
     return true;
@@ -752,16 +787,19 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
     const pose = engine.getPose();
     const droppedAt = Date.now();
     localDropSequenceRef.current += 1;
-    const dropped: DroppedItemRenderItem = {
+    const dropped: LocalDroppedItem = {
       dropId: `local_drop_${droppedAt}_${localDropSequenceRef.current}`.slice(0, 96),
       item: { ...source, count },
       x: pose.x + Math.sin(pose.yaw) * 2.25,
       y: pose.y + 1.1,
       z: pose.z - Math.cos(pose.yaw) * 2.25,
       droppedAt,
+      velocityY: 0,
+      settled: false,
     };
     inventoryRef.current = next;
     dropsRef.current = [...dropsRef.current, dropped];
+    syncLocalDropGravity(engine);
     setInventory(next);
     engine.setDroppedItems(dropsRef.current);
     setMessages((current) => [...current.slice(-2), {
@@ -800,15 +838,18 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       setRespawning(false);
       return;
     }
-    const drops = plan.drops.map((drop): DroppedItemRenderItem => ({
+    const drops = plan.drops.map((drop): LocalDroppedItem => ({
       dropId: drop.operationId,
       item: drop.stack,
       x: drop.position.x,
       y: drop.position.y,
       z: drop.position.z,
       droppedAt: deathAt,
+      velocityY: 0,
+      settled: false,
     }));
     dropsRef.current = [...dropsRef.current, ...drops];
+    syncLocalDropGravity(engine);
     inventoryRef.current = plan.carriedState.inventory;
     equipmentRef.current = plan.carriedState.equipment;
     hungerRef.current = MAX_HUNGER;
@@ -972,6 +1013,14 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       }
       if (destruction.length) {
         markWorldDirty();
+        if (wakeUnsupportedLocalDroppedItems(
+          dropsRef.current,
+          destruction,
+          (x, y, z) => engineRef.current?.getBlockAt(x, y, z) ?? BLOCK.AIR,
+        ) > 0) {
+          syncLocalDropGravity();
+          engineRef.current?.setDroppedItems(dropsRef.current);
+        }
       }
       audio.play("explosion", { seed: key, intensity: 1 });
       if (cascadeDepth < 8) {
@@ -994,6 +1043,36 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
       getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
+      onSimulationStep: (elapsedSeconds) => {
+        const localEngine = engineRef.current;
+        if (!localEngine || dropsRef.current.length === 0) return;
+        const pose = localEngine.getPose();
+        const chunk = localDropSimulationChunkKey(pose.x, pose.z);
+        if (chunk !== dropGravityChunkRef.current) syncLocalDropGravity(localEngine);
+        const gravity = advanceLocalDropGravity(
+          dropsRef.current,
+          activeDropIndicesRef.current,
+          dropGravityClockRef.current,
+          elapsedSeconds,
+          (x, y, z) => localEngine.getBlockAt(x, y, z),
+          movedDropIndicesRef.current,
+        );
+        if (!gravity.changed) return;
+        const collected = collectMovedLocalDroppedItems(
+          inventoryRef.current,
+          dropsRef.current,
+          movedDropIndicesRef.current,
+          pose,
+        );
+        if (collected.changed) {
+          inventoryRef.current = collected.inventory;
+          dropsRef.current = collected.drops;
+          syncLocalDropGravity(localEngine);
+          setInventory(collected.inventory);
+        }
+        localEngine.setDroppedItems(dropsRef.current);
+        markWorldDirty();
+      },
       onPointerLockChange: (locked) => {
         const entryHandoffActive = entryPointerLockHandoffRef.current
           && document.pointerLockElement === document.documentElement
@@ -1094,7 +1173,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
         surface: audioSurfaceForBlock(block),
         intensity: 0.5,
       }),
-      onBlockEdit: (edit, previousBlock) => {
+      onBlockEdit: (edit, previousBlock, settledEdits) => {
         if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
           settleBrokenContainerContents(edit.x, edit.y, edit.z, previousBlock);
         }
@@ -1102,6 +1181,11 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           invalidateBrokenBed(edit.x, edit.y, edit.z);
         }
         markWorldDirty();
+        const supportWoken = wakeUnsupportedLocalDroppedItems(
+          dropsRef.current,
+          [edit, ...settledEdits],
+          (x, y, z) => engine.getBlockAt(x, y, z),
+        );
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
         let next = inventoryRef.current;
         const toggledBlock = (previousBlock === BLOCK.DOOR_CLOSED && edit.block === BLOCK.DOOR_OPEN)
@@ -1125,7 +1209,10 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
               y: edit.y + 0.45,
               z: edit.z + 0.5,
               droppedAt,
+              velocityY: 0,
+              settled: false,
             }];
+            syncLocalDropGravity(engine);
             engine.setDroppedItems(dropsRef.current);
           }
         } else if (!creative && !toggledBlock && previousBlock === BLOCK.AIR && edit.block !== BLOCK.AIR) {
@@ -1142,6 +1229,10 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           engine.setSelectedBlock(nextSelected ? ITEM_TO_ENGINE[nextSelected.itemId] ?? BLOCK.AIR : BLOCK.AIR);
         }
         updateInventory(next);
+        if (supportWoken > 0) {
+          syncLocalDropGravity(engine);
+          engine.setDroppedItems(dropsRef.current);
+        }
         const seed = `local:${edit.x},${edit.y},${edit.z}:${performance.now().toFixed(0)}`;
         if (toggledBlock) {
           const opened = edit.block === BLOCK.DOOR_OPEN || edit.block === BLOCK.OAK_FENCE_GATE_OPEN;
@@ -1172,7 +1263,10 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
           return false;
         }
         dropsRef.current = appended.drops;
-        if (appended.added > 0) engine.setDroppedItems(appended.drops);
+        if (appended.added > 0) {
+          syncLocalDropGravity(engine);
+          engine.setDroppedItems(appended.drops);
+        }
         markWorldDirty();
         return true;
       },
@@ -1414,6 +1508,7 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       saveLockedRef.current = true;
     }
     if (gameModeRef.current === "creative") engine.setPlayerHealth(MAX_HEALTH);
+    syncLocalDropGravity(engine);
     engine.setDroppedItems(dropsRef.current);
     const respawn = engine.getRespawnPoint();
     const possibleBed = {

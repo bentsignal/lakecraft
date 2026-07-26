@@ -57,7 +57,16 @@ function richSnapshot(): SinglePlayerSnapshot {
   snapshot.player.selectedHotbar = 0;
   snapshot.player.hunger = 8;
   snapshot.progression = { experience: 123, recipes: ["crafting_table", "torch"], advancements: ["stone_age"] };
-  snapshot.drops = [{ dropId: "local-drop-1", item: { itemId: "diamond", count: 2 }, x: 2, y: 9, z: 3, droppedAt: 100 }];
+  snapshot.drops = [{
+    dropId: "local-drop-1",
+    item: { itemId: "diamond", count: 2 },
+    x: 2,
+    y: 9,
+    z: 3,
+    droppedAt: 100,
+    velocityY: -3.5,
+    settled: false,
+  }];
   snapshot.chests = [{ coordKey: "2:8:3", inventory: new Array(27).fill(null) }];
   snapshot.chests[0]!.inventory[4] = { itemId: "brick", count: 17 };
   snapshot.furnaces = [{

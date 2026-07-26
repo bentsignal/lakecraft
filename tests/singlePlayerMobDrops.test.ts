@@ -114,6 +114,8 @@ const saturatedPool = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.drops }, (_,
   y: 4,
   z: 0,
   droppedAt: 1,
+  velocityY: 0,
+  settled: true,
 }));
 assert.deepEqual(
   appendLocalMobDeathDrops(saturatedPool, syntheticEvent, 12_000, SINGLEPLAYER_SAVE_LIMITS.drops),
