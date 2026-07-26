@@ -34,7 +34,7 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 434, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 436, "reviewed compatibility boundary changes only intentionally");
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
 assert.equal(new Set(compactNames).size, compactNames.length, "compact property names stay unique");
 assert.ok(manifestNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "source names are identifiers");
@@ -49,11 +49,17 @@ assert.ok(COMPACT_CLIENT_PROPERTY_PATTERN.test("firstPersonTotalUploadBytes"), "
 assert.ok(COMPACT_CLIENT_PROPERTY_PATTERN.test("onInventoryWorkspaceChange"), "bundle-internal component props compact");
 assert.ok(COMPACT_CLIENT_PROPERTY_PATTERN.test("transparentDistanceSquared"), "renderer-only fields compact");
 assert.deepEqual(
-  Object.fromEntries(["emissive", "exposureLevel", "faceShade"].map(
+  Object.fromEntries(["emissive", "exposureLevel", "faceShade", "onExit", "pointerLockHandoff"].map(
     (name) => [name, COMPACT_CLIENT_PROPERTY_MANGLE_CACHE[name]],
   )),
-  { emissive: "aL", exposureLevel: "aM", faceShade: "aN" },
-  "cave-light renderer records use fixed collision-reviewed mappings",
+  {
+    emissive: "aL",
+    exposureLevel: "aM",
+    faceShade: "aN",
+    onExit: "aO",
+    pointerLockHandoff: "aP",
+  },
+  "new client-internal records use fixed collision-reviewed mappings",
 );
 
 const expectedCandidateNames = [

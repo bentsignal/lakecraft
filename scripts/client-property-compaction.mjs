@@ -251,6 +251,8 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "onDismiss": "fa",
   "onDismissMessage": "Rr",
   "onDraftChange": "yr",
+  // Single-player component callbacks; bundle-internal only, never persisted or transported.
+  "onExit": "aO",
   "onFootstep": "ir",
   "onHandAction": "fo",
   "onHotbarCycle": "So",
@@ -312,6 +314,7 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "playerAlive": "ri",
   "playerName": "es",
   "playerSender": "ea",
+  "pointerLockHandoff": "aP",
   "pointerLocked": "ni",
   "preserveInitialPose": "wo",
   "primedTntUploadBytes": "_s",
