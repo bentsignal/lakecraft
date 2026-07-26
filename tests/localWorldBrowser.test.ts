@@ -31,6 +31,13 @@ assert.ok(browser.includes("inert={modalOpen}")
   "modal backgrounds are inert, Escape cancels, and initial focus is on the safe action");
 assert.ok(browser.includes("Confirm destructive action") && browser.includes("This cannot be undone."),
   "delete and reset require explicit confirmation");
+assert.ok(
+  browser.includes("World deletion cleanup is pending. Healthy worlds remain available; no unverified deletion was applied.")
+  && browser.includes("Ignored an invalid world-deletion marker. Healthy worlds remain available; orphaned storage may remain.")
+  && browser.includes("Recovered an interrupted world deletion. Other worlds remain unchanged.")
+  && browser.includes("disabled={!selected || deleteRecoveryPending}"),
+  "delete recovery remains visible without blocking access to healthy worlds",
+);
 
 for (const label of [
   "Select World",

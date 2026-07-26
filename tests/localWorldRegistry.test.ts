@@ -317,7 +317,10 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   assert.ok(storage.values.get(LOCAL_WORLD_DELETE_TRANSACTION_KEY)?.includes('"checksum"'));
   assert.notDeepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), completeJournal,
     "the injected interruption occurs after at least one primary key is removed");
-  assert.equal(loadLocalWorldRegistry(storage).status, "corrupt", "pending cleanup fails closed while deletion remains blocked");
+  const pending = loadLocalWorldRegistry(storage);
+  assert.equal(pending.status, "recovered", "pending cleanup preserves access to the committed registry");
+  assert.ok(pending.registry && !pending.registry.worlds.some(({ id }) => id === created.world.id));
+  assert.ok(pending.issues.includes("delete:recovery_pending"));
 
   storage.failDeletesFor = null;
   const recovered = loadLocalWorldRegistry(storage);
@@ -325,6 +328,71 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   assert.equal(recovered.registry.worlds.some(({ id }) => id === created.world.id), false);
   assert.deepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
   assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.ok(recovered.issues.includes("delete:cleanup_completed"));
+}
+
+// An unreadable or checksum-invalid global tombstone is never trusted for a
+// namespace mutation. Healthy registries stay usable even when marker removal
+// is denied, and a later load can clear only the opaque marker.
+{
+  const storage = new MemoryStorage();
+  const first = createLocalWorld(storage, { name: "Healthy One", seedText: "one", gameMode: "survival", now: 1 });
+  const second = createLocalWorld(storage, { name: "Healthy Two", seedText: "two", gameMode: "creative", now: 2 });
+  assert.ok(first.ok && second.ok);
+  const healthyIds = [first.world.id, second.world.id].sort();
+  const secondKeys = singlePlayerWorldStorageKeys(second.world.id);
+  const secondValues = secondKeys.map((key) => storage.values.get(key) ?? null);
+
+  storage.values.set(LOCAL_WORLD_DELETE_TRANSACTION_KEY, "{");
+  const malformed = listLocalWorlds(storage);
+  assert.equal(malformed.registryLoad.status, "recovered");
+  assert.deepEqual(malformed.worlds.map(({ world }) => world.id).sort(), healthyIds);
+  assert.ok(malformed.registryLoad.issues.includes("delete:invalid_transaction_cleared"));
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+
+  // Leave a valid pre-commit marker, then change its bound ID without updating
+  // the checksum. Recovery may clear the opaque marker but cannot touch either
+  // world namespace.
+  storage.failWritesFor = LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
+  storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.equal(deleteLocalWorld(storage, first.world.id, 3).ok, false);
+  const validRaw = storage.values.get(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+  assert.ok(validRaw);
+  const tamperedRaw = validRaw.replace(`"worldId":"${first.world.id}"`, `"worldId":"${second.world.id}"`);
+  assert.notEqual(tamperedRaw, validRaw);
+  storage.values.set(LOCAL_WORLD_DELETE_TRANSACTION_KEY, tamperedRaw);
+  storage.failWritesFor = null;
+  storage.failDeletesFor = null;
+  const tampered = listLocalWorlds(storage);
+  assert.deepEqual(tampered.worlds.map(({ world }) => world.id).sort(), healthyIds);
+  assert.ok(tampered.registryLoad.issues.includes("delete:invalid_transaction_cleared"));
+  assert.deepEqual(secondKeys.map((key) => storage.values.get(key) ?? null), secondValues,
+    "a checksum-invalid worldId cannot mutate the named healthy namespace");
+
+  storage.values.set(LOCAL_WORLD_DELETE_TRANSACTION_KEY, "{");
+  storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  for (let retry = 0; retry < 2; retry += 1) {
+    const removalDenied = listLocalWorlds(storage);
+    assert.equal(removalDenied.registryLoad.status, "recovered");
+    assert.deepEqual(removalDenied.worlds.map(({ world }) => world.id).sort(), healthyIds);
+    assert.ok(removalDenied.registryLoad.issues.includes("delete:invalid_transaction_pending"));
+    assert.equal(storage.values.get(LOCAL_WORLD_DELETE_TRANSACTION_KEY), "{");
+  }
+  const nestedDelete = deleteLocalWorld(storage, first.world.id, 4);
+  assert.deepEqual(nestedDelete, { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false });
+  assert.equal(storage.values.get(LOCAL_WORLD_DELETE_TRANSACTION_KEY), "{",
+    "another delete cannot overwrite a pending recovery marker");
+  storage.failDeletesFor = null;
+  const cleared = listLocalWorlds(storage);
+  assert.deepEqual(cleared.worlds.map(({ world }) => world.id).sort(), healthyIds);
+  assert.ok(cleared.registryLoad.issues.includes("delete:invalid_transaction_cleared"));
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+
+  storage.failReadsFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  const unreadable = listLocalWorlds(storage);
+  assert.deepEqual(unreadable.worlds.map(({ world }) => world.id).sort(), healthyIds);
+  assert.ok(unreadable.registryLoad.issues.includes("delete:transaction_read_failed"));
+  storage.failReadsFor = null;
 }
 
 // The registry itself recovers from an interrupted newest-slot write.

@@ -110,6 +110,15 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
     ? listing.worlds.find(({ world }) => world.id === confirm.worldId)?.world ?? null
     : null;
   const blocked = listing.registryLoad.registry === null;
+  const deleteRecoveryPending = !blocked && listing.registryLoad.issues.some((issue) =>
+    issue === "delete:transaction_read_failed"
+    || issue === "delete:invalid_transaction_pending"
+    || issue === "delete:recovery_pending");
+  const invalidDeleteIgnored = !blocked
+    && listing.registryLoad.issues.includes("delete:invalid_transaction_cleared");
+  const deleteRecoveryCompleted = !blocked && !deleteRecoveryPending && !invalidDeleteIgnored
+    && listing.registryLoad.issues.some((issue) => issue === "delete:rollback_completed"
+      || issue === "delete:cleanup_completed");
   const imported = listing.worlds.some(({ world }) => world.importedLegacy);
 
   function rememberDialogTrigger(): void {
@@ -283,6 +292,17 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
           </p>
         ) : <p className="lc-server-hint">Select a world.</p>}
         {blocked ? <p className="lc-server-hint is-error" role="alert">World list corrupt or from a newer version. No data changed.</p> : null}
+        {deleteRecoveryPending ? (
+          <p className="lc-server-hint is-error" role="alert">
+            World deletion cleanup is pending. Healthy worlds remain available; no unverified deletion was applied.
+          </p>
+        ) : invalidDeleteIgnored ? (
+          <p className="lc-server-hint is-error" role="alert">
+            Ignored an invalid world-deletion marker. Healthy worlds remain available; orphaned storage may remain.
+          </p>
+        ) : deleteRecoveryCompleted ? (
+          <p className="lc-server-hint" role="status">Recovered an interrupted world deletion. Other worlds remain unchanged.</p>
+        ) : null}
         <div className="lc-server-actions">
           <button className="lc-menu-button" disabled={!selected || !canPlay(selected)} onClick={play} type="button">Play Selected World</button>
           <button
@@ -299,7 +319,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
           >Reset World…</button>
           <button
             className="lc-menu-button"
-            disabled={!selected}
+            disabled={!selected || deleteRecoveryPending}
             onClick={() => selected && openConfirmation({ kind: "delete", worldId: selected.world.id })}
             type="button"
           >Delete World…</button>
