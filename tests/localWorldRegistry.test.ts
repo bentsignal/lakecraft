@@ -772,6 +772,49 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
   assert.ok(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: created.world.id }).snapshot);
 }
 
+// A selected-world delete that publishes its marker immediately after the
+// opening transaction scan must still be observed by the closing scan. This is
+// the exact cross-tab window between transaction and registry revalidation.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "Delete Published During Play",
+    seedText: "delete-published-during-play",
+    gameMode: "survival",
+    now: 70_150,
+  });
+  assert.ok(created.ok);
+  const selected = listLocalWorlds(storage).worlds[0];
+  const pausedOwner = new MemoryStorage();
+  pausedOwner.values = new Map(storage.values);
+  pausedOwner.failWritesFor = nextRegistryWriteKey(pausedOwner);
+  pausedOwner.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.deepEqual(deleteLocalWorld(pausedOwner, created.world.id, 70_160), {
+    ok: false,
+    reason: "registry_storage_write_failed_transaction_pending",
+    mutationStarted: true,
+  });
+  const marker = transactionEntry(pausedOwner, LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+  assert.ok(marker);
+
+  storage.failListKeys = true;
+  const touched = touchLocalWorld(storage, created.world.id, 70_161, selected.world);
+  storage.failListKeys = false;
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  const before = new Map(storage.values);
+  storage.afterListKeysFor.set(storage.listKeysCalls + 3, () => {
+    storage.values.set(marker[0], marker[1]);
+  });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+  assert.equal(storage.values.get(marker[0]), marker[1]);
+  for (const [key, value] of before) assert.equal(storage.values.get(key), value);
+  assert.equal(storage.values.size, before.size + 1);
+}
+
 // A delete-cleanup marker for another world does not unnecessarily hide an
 // unchanged registered healthy sibling.
 {
@@ -808,6 +851,63 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
   assert.equal(resolveLocalWorldPlay(storage, selected, touched)?.id, kept.world.id);
   assert.deepEqual([LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
     .map((key) => storage.values.get(key) ?? null), before);
+}
+
+// An unchanged unrelated transaction is safe, but an error or any transaction
+// drift inside the closing scan fails the read-only fallback closed.
+for (const closingChange of ["throw", "appear", "replace"] as const) {
+  const storage = new MemoryStorage();
+  const kept = createLocalWorld(storage, {
+    name: `Closing Scan ${closingChange}`,
+    seedText: `closing-scan-${closingChange}`,
+    gameMode: "creative",
+    now: 70_300,
+  });
+  const other = createLocalWorld(storage, {
+    name: `Closing Scan Other ${closingChange}`,
+    seedText: `closing-scan-other-${closingChange}`,
+    gameMode: "survival",
+    now: 70_301,
+  });
+  assert.ok(kept.ok && other.ok);
+  const selected = listLocalWorlds(storage).worlds.find(({ world }) => world.id === kept.world.id);
+  assert.ok(selected);
+  storage.failWritesFor = nextRegistryWriteKey(storage);
+  storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.deepEqual(deleteLocalWorld(storage, other.world.id, 70_310), {
+    ok: false,
+    reason: "registry_storage_write_failed_transaction_pending",
+    mutationStarted: true,
+  });
+  storage.failWritesFor = null;
+  const existingMarker = transactionEntry(storage, LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+  assert.ok(existingMarker);
+  const touched = touchLocalWorld(storage, kept.world.id, 70_311, selected.world);
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  const before = new Map(storage.values);
+  const closingFirstList = storage.listKeysCalls + 4;
+  storage.afterListKeysFor.set(closingFirstList, () => {
+    if (closingChange === "throw") {
+      storage.failListKeys = true;
+    } else if (closingChange === "appear") {
+      storage.values.set(`${LOCAL_WORLD_CREATE_TRANSACTION_KEY}.appeared`, "{}");
+    } else {
+      storage.values.set(existingMarker[0], `${existingMarker[1]} `);
+    }
+  });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+  storage.failListKeys = false;
+  if (closingChange === "throw") assert.deepEqual(storage.values, before);
+  else {
+    for (const [key, value] of before) {
+      if (closingChange === "replace" && key === existingMarker[0]) continue;
+      assert.equal(storage.values.get(key), value);
+    }
+  }
 }
 
 // A stale record with the same ID is also rejected before the recovery gate,

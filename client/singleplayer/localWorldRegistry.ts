@@ -134,6 +134,12 @@ export function resolveLocalWorldPlay(
     || firstInspection.load.sequence !== secondInspection.load.sequence
     || canonicalSinglePlayerJson(firstInspection.load.snapshot)
       !== canonicalSinglePlayerJson(secondInspection.load.snapshot)) return null;
+  const closingTransactions = scanLocalWorldTransactions(storage);
+  if (!sameTransactionScan(transactions, closingTransactions)
+    || (closingTransactions.status === "stable" && closingTransactions.entries.some((entry) =>
+      entry.status === "valid"
+      && entry.type === "delete"
+      && entry.transaction.worldId === selected.world.id))) return null;
   return verified;
 }
 
@@ -141,6 +147,24 @@ function isReadOnlyFallbackPlayable(world: LocalWorldInspection): boolean {
   return (world.health === "healthy" || world.health === "recovered")
     && (world.capacity === "ok" || world.capacity === "warning")
     && world.load.snapshot?.world.worldId === world.world.id;
+}
+
+function sameTransactionScan(
+  left: LocalWorldTransactionScan,
+  right: LocalWorldTransactionScan,
+): boolean {
+  if (left.status === "failed" || right.status === "failed") {
+    return left.status === "failed" && right.status === "failed";
+  }
+  return left.entries.length === right.entries.length
+    && left.entries.every((entry, index) => {
+      const candidate = right.entries[index];
+      return candidate !== undefined
+        && entry.status === candidate.status
+        && entry.type === candidate.type
+        && entry.key === candidate.key
+        && entry.raw === candidate.raw;
+    });
 }
 
 export type LegacyLocalWorldInspection =
