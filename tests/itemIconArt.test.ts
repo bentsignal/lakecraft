@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { ITEM_ICON_SIZE, getItemIconArt } from "../client/components/itemIconArt.ts";
+import { decodeStaticBytes } from "../client/staticData.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 
 const itemIds = Object.keys(ITEMS) as ItemId[];
@@ -47,11 +48,14 @@ const canonicalArt = JSON.stringify(itemIds.map((itemId) => [itemId, getItemIcon
 assert.equal(fnv1a32(canonicalArt), "d425b5a3", "the complete 97-icon run/color/variant fixture changed unexpectedly");
 const generatedPath = new URL("../client/components/itemIconArt.ts", import.meta.url);
 const generatedSource = readFileSync(generatedPath, "utf8");
-const packedPayload = generatedSource.match(/const packed = atob\("([^"]+)"\)/)?.[1];
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10250\)/)?.[1];
 assert.ok(packedPayload);
 assert.equal(Buffer.from(packedPayload, "base64").length, 5_698,
   "item icons retain the reviewed deterministic LZSS fixture");
-assert.ok(generatedSource.includes("new Uint8Array(10250)") && generatedSource.includes("const cache = (() => {"),
+assert.deepEqual([...decodeStaticBytes(Buffer.from([2, 65, 32, 1]).toString("base64"), 6)],
+  [65, 65, 65, 65, 65, 65], "the shared decoder preserves overlapping backward-copy semantics");
+assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../staticData.ts";')
+    && generatedSource.includes("const cache = (() => {"),
   "packed and decoded bytes are scoped to the one-time cache initializer");
 
 const regenerationDirectory = mkdtempSync(join(tmpdir(), "lakecraft-item-icons-"));

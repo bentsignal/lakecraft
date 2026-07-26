@@ -125,12 +125,12 @@ assert.ok((saplingAlphaCounts.get(255) ?? 0) >= 45, "sapling foliage remains rea
 // Intentional atlas regeneration should update this fingerprint in the same change.
 assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "7fd3debd", "generated RGBA atlas changed unexpectedly");
 const generatedSource = readFileSync(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
-const packedIndexes = generatedSource.match(/const packed = atob\("([^"]+)"\)/)?.[1];
+const packedIndexes = generatedSource.match(/decodeStaticBytes\("([^"]+)", 7680\)/)?.[1];
 assert.ok(packedIndexes);
 assert.equal(Buffer.from(packedIndexes, "base64").length, 4_465,
   "atlas indexes retain the reviewed deterministic LZSS fixture");
-assert.ok(generatedSource.includes("const TEXTURE_ATLAS_INDEXES = (() => {")
-    && generatedSource.includes("new Uint8Array(7680)")
+assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../../staticData.ts";')
+    && generatedSource.includes("const TEXTURE_ATLAS_INDEXES = decodeStaticBytes(")
     && !generatedSource.includes("number[]"),
   "one-time decode releases packed data and uses one fixed index buffer without transient boxed-number storage");
 

@@ -1,5 +1,6 @@
 import { ITEMS, type ItemId } from "../../shared/game.ts";
 import type { NormalizedDroppedItem } from "../../shared/droppedItems.ts";
+import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeometry.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -12,15 +13,6 @@ const FLOATS_PER_VERTEX = 6;
 const CUBE_SIZE = 0.30;
 const HALF_CUBE_SIZE = CUBE_SIZE * 0.5;
 const RENDER_DISTANCE_SQUARED = DROPPED_ITEM_RENDER_DISTANCE * DROPPED_ITEM_RENDER_DISTANCE;
-
-const BOX_FACES: ReadonlyArray<{ shade: number; vertices: ReadonlyArray<Vec3> }> = [
-  { shade: 0.79, vertices: [[1,0,0],[1,1,0],[1,1,1],[1,0,0],[1,1,1],[1,0,1]] },
-  { shade: 0.68, vertices: [[0,0,1],[0,1,1],[0,1,0],[0,0,1],[0,1,0],[0,0,0]] },
-  { shade: 1, vertices: [[0,1,0],[0,1,1],[1,1,1],[0,1,0],[1,1,1],[1,1,0]] },
-  { shade: 0.52, vertices: [[0,0,1],[0,0,0],[1,0,0],[0,0,1],[1,0,0],[1,0,1]] },
-  { shade: 0.88, vertices: [[1,0,1],[1,1,1],[0,1,1],[1,0,1],[0,1,1],[0,0,1]] },
-  { shade: 0.73, vertices: [[0,0,0],[0,1,0],[1,1,0],[0,0,0],[1,1,0],[1,0,0]] },
-];
 
 /** Only the normalized fields that the renderer consumes. */
 export type DroppedItemRenderItem = Pick<
@@ -100,19 +92,18 @@ function appendSpinningCube(
 ): number {
   const cosYaw = Math.cos(yaw);
   const sinYaw = Math.sin(yaw);
-  for (let faceIndex = 0; faceIndex < BOX_FACES.length; faceIndex += 1) {
-    const face = BOX_FACES[faceIndex];
-    for (let vertexIndex = 0; vertexIndex < face.vertices.length; vertexIndex += 1) {
-      const point = face.vertices[vertexIndex];
-      const localX = point[0] * CUBE_SIZE - HALF_CUBE_SIZE;
-      const localY = point[1] * CUBE_SIZE - HALF_CUBE_SIZE;
-      const localZ = point[2] * CUBE_SIZE - HALF_CUBE_SIZE;
+  for (let faceIndex = 0, point = 0; faceIndex < BOX_FACE_SHADES.length; faceIndex += 1) {
+    const shade = BOX_FACE_SHADES[faceIndex];
+    for (let vertexIndex = 0; vertexIndex < 6; vertexIndex += 1) {
+      const localX = BOX_VERTEX_COORDINATES[point++] * CUBE_SIZE - HALF_CUBE_SIZE;
+      const localY = BOX_VERTEX_COORDINATES[point++] * CUBE_SIZE - HALF_CUBE_SIZE;
+      const localZ = BOX_VERTEX_COORDINATES[point++] * CUBE_SIZE - HALF_CUBE_SIZE;
       data[offset++] = centerX + localX * cosYaw - localZ * sinYaw;
       data[offset++] = centerY + localY;
       data[offset++] = centerZ + localX * sinYaw + localZ * cosYaw;
-      data[offset++] = red * face.shade;
-      data[offset++] = green * face.shade;
-      data[offset++] = blue * face.shade;
+      data[offset++] = red * shade;
+      data[offset++] = green * shade;
+      data[offset++] = blue * shade;
     }
   }
   return offset;

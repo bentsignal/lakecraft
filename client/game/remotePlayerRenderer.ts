@@ -5,6 +5,7 @@ import {
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import { ITEMS, type ArmorId, type ItemId } from "../../shared/game.ts";
+import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES, NAMEPLATE_FONT } from "./generated/renderGeometry.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -25,29 +26,6 @@ export const AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER
   + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
 export const MAX_NAMEPLATE_VERTICES_PER_PLAYER = 6 + MAX_PLAYER_NAME_LENGTH * MAX_GLYPH_PIXELS * 6;
-
-const BOX_FACES: ReadonlyArray<{ shade: number; vertices: ReadonlyArray<Vec3> }> = [
-  { shade: 0.79, vertices: [[1,0,0],[1,1,0],[1,1,1],[1,0,0],[1,1,1],[1,0,1]] },
-  { shade: 0.68, vertices: [[0,0,1],[0,1,1],[0,1,0],[0,0,1],[0,1,0],[0,0,0]] },
-  { shade: 1, vertices: [[0,1,0],[0,1,1],[1,1,1],[0,1,0],[1,1,1],[1,1,0]] },
-  { shade: 0.52, vertices: [[0,0,1],[0,0,0],[1,0,0],[0,0,1],[1,0,0],[1,0,1]] },
-  { shade: 0.88, vertices: [[1,0,1],[1,1,1],[0,1,1],[1,0,1],[0,1,1],[0,0,1]] },
-  { shade: 0.73, vertices: [[0,0,0],[0,1,0],[1,1,0],[0,0,0],[1,1,0],[1,0,0]] },
-];
-
-const FONT: Readonly<Record<string, string>> = {
-  A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110",
-  E: "111100110100111", F: "111100110100100", G: "011100101101011", H: "101101111101101",
-  I: "111010010010111", J: "001001001101010", K: "101101110101101", L: "100100100100111",
-  M: "101111111101101", N: "101111111111101", O: "010101101101010", P: "110101110100100",
-  Q: "010101101111011", R: "110101110101101", S: "011100010001110", T: "111010010010010",
-  U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101",
-  Y: "101101010010010", Z: "111001010100111",
-  "0": "111101101101111", "1": "010110010010111", "2": "110001111100111", "3": "110001011001110",
-  "4": "101101111001001", "5": "111100110001110", "6": "011100111101111", "7": "111001010010010",
-  "8": "111101111101111", "9": "111101111001110", "?": "110001010000010", "-": "000000111000000",
-  "_": "000000000000111", ".": "000000000000010", " ": "000000000000000",
-};
 
 const COLORS = {
   skin: [0.72, 0.50, 0.34] as Vec3,
@@ -153,13 +131,12 @@ function appendBox(
   const sinPitch = Math.sin(pitch);
   const cosYaw = Math.cos(yaw);
   const sinYaw = Math.sin(yaw);
-  for (let faceIndex = 0; faceIndex < BOX_FACES.length; faceIndex += 1) {
-    const face = BOX_FACES[faceIndex];
-    for (let vertexIndex = 0; vertexIndex < face.vertices.length; vertexIndex += 1) {
-      const point = face.vertices[vertexIndex];
-      const localX = minX + point[0] * (maxX - minX);
-      const unrotatedY = minY + point[1] * (maxY - minY);
-      const unrotatedZ = minZ + point[2] * (maxZ - minZ);
+  for (let faceIndex = 0, point = 0; faceIndex < BOX_FACE_SHADES.length; faceIndex += 1) {
+    const shade = BOX_FACE_SHADES[faceIndex];
+    for (let vertexIndex = 0; vertexIndex < 6; vertexIndex += 1) {
+      const localX = minX + BOX_VERTEX_COORDINATES[point++] * (maxX - minX);
+      const unrotatedY = minY + BOX_VERTEX_COORDINATES[point++] * (maxY - minY);
+      const unrotatedZ = minZ + BOX_VERTEX_COORDINATES[point++] * (maxZ - minZ);
       const offsetY = unrotatedY - pivotY;
       const offsetZ = unrotatedZ - pivotZ;
       const localY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
@@ -170,7 +147,7 @@ function appendBox(
         state.rendered.y + localY,
         state.rendered.z + localX * sinYaw + localZ * cosYaw,
         color,
-        face.shade,
+        shade,
       );
     }
   }
@@ -362,10 +339,11 @@ function appendNameplate(writer: VertexWriter, state: RemoteAvatarMotion, camera
   appendBillboardQuad(writer,centerX,centerY,centerZ,rightX,rightZ,normalX,normalZ,-textWidth/2-0.055,-0.045,textWidth+0.11,0.225,0,COLORS.nameBackground);
   const startX = -textWidth / 2;
   for (let characterIndex = 0; characterIndex < state.name.length; characterIndex += 1) {
-    const glyph = FONT[state.name[characterIndex].toUpperCase()] ?? FONT["?"];
+    const character = state.name[characterIndex].toUpperCase();
+    const glyph = character.length === 1 ? NAMEPLATE_FONT[character.charCodeAt(0)] ?? NAMEPLATE_FONT[63] : NAMEPLATE_FONT[63];
     for (let row = 0; row < 5; row += 1) {
       for (let column = 0; column < 3; column += 1) {
-        if (glyph[row * 3 + column] !== "1") continue;
+        if (!(glyph & 1 << (14 - row * 3 - column))) continue;
         appendBillboardQuad(
           writer, centerX, centerY, centerZ, rightX, rightZ, normalX, normalZ,
           startX + characterIndex * advance + column * pixel,
