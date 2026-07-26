@@ -102,6 +102,14 @@ export function canPlayLocalWorld(world: LocalWorldInspection): boolean {
     && world.capacity !== "exceeded";
 }
 
+export function isLocalWorldRegistryTransactionReadOnly(load: LocalWorldRegistryLoadResult): boolean {
+  return load.issues.some((issue) =>
+    issue === "transaction:enumeration_failed"
+    || issue === "transaction:recovery_pending"
+    || issue === "create:transaction_read_failed"
+    || issue === "delete:transaction_read_failed");
+}
+
 /**
  * Updating last-played metadata is useful but not a prerequisite for reading an
  * already verified world. Only the exact pre-mutation recovery gate may fall
@@ -153,9 +161,7 @@ function sameTransactionScan(
   left: LocalWorldTransactionScan,
   right: LocalWorldTransactionScan,
 ): boolean {
-  if (left.status === "failed" || right.status === "failed") {
-    return left.status === "failed" && right.status === "failed";
-  }
+  if (left.status !== "stable" || right.status !== "stable") return false;
   return left.entries.length === right.entries.length
     && left.entries.every((entry, index) => {
       const candidate = right.entries[index];

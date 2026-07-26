@@ -29,6 +29,7 @@ import {
   importLegacyLocalWorld,
   inspectLegacyLocalWorld,
   inspectLocalWorld,
+  isLocalWorldRegistryTransactionReadOnly,
   listLocalWorlds,
   loadLocalWorldRegistry,
   moveLocalWorldSelection,
@@ -56,6 +57,7 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   failListKeys = false;
   listKeysCalls = 0;
   afterListKeysFor = new Map<number, () => void>();
+  failListKeysFor = new Map<number, () => void>();
 
   private matches(key: string, configured: string | null): boolean {
     return configured !== null && (key === configured || key.startsWith(`${configured}.`));
@@ -77,9 +79,15 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   }
 
   listKeys(): string[] {
+    this.listKeysCalls += 1;
+    const failList = this.failListKeysFor.get(this.listKeysCalls);
+    if (failList) {
+      this.failListKeysFor.delete(this.listKeysCalls);
+      failList();
+      throw new Error("one-shot enumeration failed");
+    }
     if (this.failListKeys) throw new Error("enumeration failed");
     const keys = [...this.values.keys()];
-    this.listKeysCalls += 1;
     const afterList = this.afterListKeysFor.get(this.listKeysCalls);
     if (afterList) {
       this.afterListKeysFor.delete(this.listKeysCalls);
@@ -661,9 +669,8 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
   assert.ok(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: sibling.world.id }).snapshot);
 }
 
-// A healthy world remains playable when touch is rejected before mutation by
-// failed transaction enumeration. No registry byte changes, while all
-// mutating create/import/reset/delete paths stay blocked.
+// Opaque transaction enumeration makes even a healthy listing read-only.
+// Play and every mutation fail before writing until enumeration recovers.
 {
   const storage = new MemoryStorage();
   const created = createLocalWorld(storage, {
@@ -677,8 +684,8 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
   const listing = listLocalWorlds(storage);
   const selected = listing.worlds.find(({ world }) => world.id === created.world.id);
   assert.ok(selected && selected.health === "healthy");
-  const registryBefore = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
-    .map((key) => storage.values.get(key) ?? null);
+  assert.equal(isLocalWorldRegistryTransactionReadOnly(listing.registryLoad), true);
+  const storageBefore = new Map(storage.values);
   const touched = touchLocalWorld(storage, created.world.id, 60_001, selected.world);
   assert.deepEqual(touched, {
     ok: false,
@@ -688,13 +695,9 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
   const playable = resolveLocalWorldPlay(storage, selected, touched);
   let mounted = 0;
   if (playable) mounted += 1;
-  assert.equal(mounted, 1);
-  assert.equal(playable?.id, created.world.id);
-  assert.deepEqual(
-    [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
-      .map((key) => storage.values.get(key) ?? null),
-    registryBefore,
-  );
+  assert.equal(mounted, 0);
+  assert.equal(playable, null);
+  assert.deepEqual(storage.values, storageBefore);
   assert.deepEqual(deleteLocalWorld(storage, created.world.id, 60_001),
     { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false });
   assert.deepEqual(resetLocalWorldData(storage, created.world.id, 60_001),
@@ -712,6 +715,10 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
     reason: "registry_readback_failed",
     mutationStarted: true,
   }), null);
+  assert.deepEqual(storage.values, storageBefore);
+  storage.failListKeys = false;
+  assert.equal(isLocalWorldRegistryTransactionReadOnly(listLocalWorlds(storage).registryLoad), false);
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched)?.id, created.world.id);
 }
 
 // A stale selection from before a committed delete cannot use the read-only
@@ -810,6 +817,53 @@ for (const [index, nestedKind] of ["create", "delete", "create", "delete", "crea
     storage.values.set(marker[0], marker[1]);
   });
   assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+  assert.equal(storage.values.get(marker[0]), marker[1]);
+  for (const [key, value] of before) assert.equal(storage.values.get(key), value);
+  assert.equal(storage.values.size, before.size + 1);
+}
+
+// Failed scans are never comparable. In the exact reviewer bypass, the opening
+// list throws while publishing a selected-world delete marker, then the closing
+// list sees its key while the marker body read throws. Both opaque results must
+// block Play without changing any pre-existing byte.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "Opaque Delete During Play",
+    seedText: "opaque-delete-during-play",
+    gameMode: "survival",
+    now: 70_170,
+  });
+  assert.ok(created.ok);
+  const selected = listLocalWorlds(storage).worlds[0];
+  const pausedOwner = new MemoryStorage();
+  pausedOwner.values = new Map(storage.values);
+  pausedOwner.failWritesFor = nextRegistryWriteKey(pausedOwner);
+  pausedOwner.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  assert.deepEqual(deleteLocalWorld(pausedOwner, created.world.id, 70_180), {
+    ok: false,
+    reason: "registry_storage_write_failed_transaction_pending",
+    mutationStarted: true,
+  });
+  const marker = transactionEntry(pausedOwner, LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+  assert.ok(marker);
+
+  storage.failListKeys = true;
+  const touched = touchLocalWorld(storage, created.world.id, 70_181, selected.world);
+  storage.failListKeys = false;
+  assert.deepEqual(touched, {
+    ok: false,
+    reason: "world_touch_recovery_pending",
+    mutationStarted: false,
+  });
+  const before = new Map(storage.values);
+  const openingList = storage.listKeysCalls + 1;
+  storage.failListKeysFor.set(openingList, () => storage.values.set(marker[0], marker[1]));
+  storage.afterListKeysFor.set(openingList + 1, () => {
+    storage.failReadsFor = marker[0];
+  });
+  assert.equal(resolveLocalWorldPlay(storage, selected, touched), null);
+  storage.failReadsFor = null;
   assert.equal(storage.values.get(marker[0]), marker[1]);
   for (const [key, value] of before) assert.equal(storage.values.get(key), value);
   assert.equal(storage.values.size, before.size + 1);

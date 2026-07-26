@@ -8,6 +8,7 @@ import {
   deleteLocalWorld,
   importLegacyLocalWorld,
   inspectLegacyLocalWorld,
+  isLocalWorldRegistryTransactionReadOnly,
   listLocalWorlds,
   moveLocalWorldSelection,
   reconcileLocalWorldSelection,
@@ -61,9 +62,12 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
   const [revision, setRevision] = useState(0);
   const listing = useMemo(() => listLocalWorlds(storage), [revision, storage]);
   const legacy = useMemo(() => inspectLegacyLocalWorld(storage), [revision, storage]);
+  const transactionReadOnly = isLocalWorldRegistryTransactionReadOnly(listing.registryLoad);
   const [selectedId, setSelectedId] = useState<string | null>(listing.worlds[0]?.world.id ?? null);
   const [search, setSearch] = useState("");
-  const [createOpen, setCreateOpen] = useState(listing.worlds.length === 0 && listing.registryLoad.registry !== null);
+  const [createOpen, setCreateOpen] = useState(
+    listing.worlds.length === 0 && listing.registryLoad.registry !== null && !transactionReadOnly,
+  );
   const [newName, setNewName] = useState("New World");
   const [newSeed, setNewSeed] = useState("");
   const [newMode, setNewMode] = useState<LocalGameMode>("survival");
@@ -117,6 +121,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
     && listing.registryLoad.issues.some((issue) => issue === "delete:rollback_completed"
       || issue === "delete:cleanup_completed");
   const imported = listing.worlds.some(({ world }) => world.importedLegacy);
+  const selectedPlayable = Boolean(selected && !transactionReadOnly && canPlayLocalWorld(selected));
 
   function rememberDialogTrigger(): void {
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -194,7 +199,12 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
   }
 
   function play(): void {
-    if (!selected || !canPlayLocalWorld(selected)) return;
+    if (!selected || !selectedPlayable) {
+      if (transactionReadOnly) {
+        setError("World storage is read-only until pending transaction state can be verified.");
+      }
+      return;
+    }
     const result = touchLocalWorld(storage, selected.world.id, Date.now(), selected.world);
     const playable = resolveLocalWorldPlay(storage, selected, result);
     if (!playable) {
@@ -277,7 +287,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
                 <small>{CAPACITY_LABELS[entry.capacity]}</small>
               </span>
               <span className="lc-server-population">
-                <i className={canPlayLocalWorld(entry) ? "is-online" : "is-offline"} aria-hidden="true" />
+                <i className={!transactionReadOnly && canPlayLocalWorld(entry) ? "is-online" : "is-offline"} aria-hidden="true" />
                 <small>{HEALTH_LABELS[entry.health]}</small>
               </span>
             </button>
@@ -285,12 +295,17 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
           {!filtered.length ? <p className="lc-server-hint">{search ? "No worlds match." : "Create a world to begin."}</p> : null}
         </div>
         {selected ? (
-          <p className={`lc-server-hint${canPlayLocalWorld(selected) ? "" : " is-error"}`} role="status">
+          <p className={`lc-server-hint${selectedPlayable ? "" : " is-error"}`} role="status">
             {selected.world.name} · seed {selected.world.seed} · {HEALTH_LABELS[selected.health]} · {CAPACITY_LABELS[selected.capacity]}
           </p>
         ) : <p className="lc-server-hint">Select a world.</p>}
         {blocked ? <p className="lc-server-hint is-error" role="alert">World list corrupt or from a newer version. No data changed.</p> : null}
-        {deleteRecoveryPending ? (
+        {transactionReadOnly ? (
+          <p className="lc-server-hint is-error" role="alert">
+            World storage is read-only because pending transaction state could not be verified.
+            Play and world changes are disabled until browser storage recovers.
+          </p>
+        ) : deleteRecoveryPending ? (
           <p className="lc-server-hint is-error" role="alert">
             World deletion cleanup is pending. Healthy worlds remain available; no unverified deletion was applied.
           </p>
@@ -302,31 +317,53 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
           <p className="lc-server-hint" role="status">Recovered an interrupted world deletion. Other worlds remain unchanged.</p>
         ) : null}
         <div className="lc-server-actions">
-          <button className="lc-menu-button" disabled={!selected || !canPlayLocalWorld(selected)} onClick={play} type="button">Play Selected World</button>
           <button
+            aria-disabled={!selectedPlayable}
             className="lc-menu-button"
-            disabled={blocked || listing.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS}
+            disabled={!selectedPlayable}
+            onClick={play}
+            type="button"
+          >Play Selected World</button>
+          <button
+            aria-disabled={blocked || transactionReadOnly || listing.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS}
+            className="lc-menu-button"
+            disabled={blocked || transactionReadOnly || listing.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS}
             onClick={openCreateDialog}
             type="button"
           >Create New World</button>
           <button
+            aria-disabled={!selected || transactionReadOnly}
             className="lc-menu-button"
-            disabled={!selected}
+            disabled={!selected || transactionReadOnly}
             onClick={() => selected && openConfirmation({ kind: "reset", worldId: selected.world.id })}
             type="button"
           >Reset World…</button>
           <button
+            aria-disabled={!selected || deleteRecoveryPending || transactionReadOnly}
             className="lc-menu-button"
-            disabled={!selected || deleteRecoveryPending}
+            disabled={!selected || deleteRecoveryPending || transactionReadOnly}
             onClick={() => selected && openConfirmation({ kind: "delete", worldId: selected.world.id })}
             type="button"
           >Delete World…</button>
+          {transactionReadOnly ? (
+            <button
+              className="lc-menu-button"
+              onClick={() => refresh("World storage rechecked.")}
+              type="button"
+            >Retry World Storage</button>
+          ) : null}
         </div>
         {legacy.status !== "none" ? (
           <>
             <p className="lc-server-hint">Legacy single world detected. Import or explicitly reset it; migration is never automatic.</p>
             <div className="lc-server-actions">
-              <button className="lc-menu-button" disabled={legacy.status !== "available" || blocked || imported} onClick={importLegacy} type="button">
+              <button
+                aria-disabled={legacy.status !== "available" || blocked || transactionReadOnly || imported}
+                className="lc-menu-button"
+                disabled={legacy.status !== "available" || blocked || transactionReadOnly || imported}
+                onClick={importLegacy}
+                type="button"
+              >
                 {imported ? "Legacy World Imported" : "Import Legacy World"}
               </button>
               <button className="lc-menu-button" onClick={() => openConfirmation({ kind: "legacy_reset" })} type="button">Reset Legacy Data…</button>

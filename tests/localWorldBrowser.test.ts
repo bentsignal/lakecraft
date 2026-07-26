@@ -35,8 +35,29 @@ assert.ok(
   browser.includes("World deletion cleanup is pending. Healthy worlds remain available; no unverified deletion was applied.")
   && browser.includes("Ignored an invalid world-deletion marker. Healthy worlds remain available; orphaned storage may remain.")
   && browser.includes("Recovered an interrupted world deletion. Other worlds remain unchanged.")
-  && browser.includes("disabled={!selected || deleteRecoveryPending}"),
+  && browser.includes("disabled={!selected || deleteRecoveryPending || transactionReadOnly}"),
   "delete recovery remains visible without blocking access to healthy worlds",
+);
+assert.ok(
+  browser.includes("const transactionReadOnly = isLocalWorldRegistryTransactionReadOnly(listing.registryLoad)")
+  && browser.includes("World storage is read-only because pending transaction state could not be verified.")
+  && browser.includes("Play and world changes are disabled until browser storage recovers.")
+  && browser.includes("World storage is read-only until pending transaction state can be verified.")
+  && browser.includes(">Retry World Storage</button>"),
+  "opaque transaction state is presented as retryable read-only storage without a healthy-world availability claim",
+);
+assert.ok(
+  browser.includes("const selectedPlayable = Boolean(selected && !transactionReadOnly && canPlayLocalWorld(selected))")
+  && browser.includes("aria-disabled={!selectedPlayable}")
+  && browser.includes("disabled={!selectedPlayable}")
+  && browser.includes("if (!selected || !selectedPlayable)"),
+  "Play behavior and accessibility state fail closed while transaction visibility is opaque",
+);
+assert.ok(
+  browser.includes("aria-disabled={!selected || transactionReadOnly}")
+  && browser.includes("disabled={!selected || transactionReadOnly}")
+  && browser.includes("aria-disabled={legacy.status !== \"available\" || blocked || transactionReadOnly || imported}"),
+  "reset and legacy import controls expose and enforce registry read-only state",
 );
 
 for (const label of [
@@ -69,8 +90,9 @@ assert.ok(browser.includes("touchLocalWorld(storage, selected.world.id, Date.now
 assert.ok(browser.includes("resolveLocalWorldPlay(storage, selected, result)")
   && registry.includes('touch.reason !== "world_touch_recovery_pending"')
   && registry.includes("touch.mutationStarted !== false")
-  && registry.includes("loadLocalWorldRegistryRaw(storage)"),
-  "Play alone may use a healthy read-only fallback when touch was blocked before mutation");
+  && registry.includes("loadLocalWorldRegistryRaw(storage)")
+  && registry.includes('left.status !== "stable" || right.status !== "stable"'),
+  "Play fallback requires two stable transaction scans around registry and snapshot revalidation");
 assert.ok(browser.includes("requestPointerLockHandoff()"), "Play reuses its user gesture for pointer capture");
 assert.ok(browser.includes("if (document.pointerLockElement) document.exitPointerLock()"),
   "the browser releases any title-screen pointer handoff while showing UI");
