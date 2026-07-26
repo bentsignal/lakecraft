@@ -598,6 +598,16 @@ function hasPendingDeleteRecovery(issues: readonly string[]): boolean {
     || issues.includes("delete:recovery_pending");
 }
 
+function hasPendingCreateRecovery(issues: readonly string[]): boolean {
+  return issues.includes("create:transaction_read_failed")
+    || issues.includes("create:invalid_transaction_pending")
+    || issues.includes("create:recovery_pending");
+}
+
+function hasPendingNamespaceRecovery(issues: readonly string[]): boolean {
+  return hasPendingDeleteRecovery(issues) || hasPendingCreateRecovery(issues);
+}
+
 export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
   let loaded = loadLocalWorldRegistryRaw(storage);
   const deleteRecovery = recoverLocalWorldDelete(storage, loaded);
@@ -752,6 +762,9 @@ export function createLocalWorld(
 ): LocalWorldMutationResult {
   const loaded = loadLocalWorldRegistry(storage);
   if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
+  if (hasPendingDeleteRecovery(loaded.issues)) {
+    return { ok: false, reason: "world_create_recovery_pending", mutationStarted: false };
+  }
   const createdAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(input.now ?? Date.now())));
   return createWorldFromSnapshot(storage, loaded.registry, {
     name: input.name,
@@ -854,8 +867,12 @@ export function resetLocalWorldData(
   resetAt = Date.now(),
 ): LocalWorldMutationResult {
   const loaded = loadLocalWorldRegistry(storage);
-  const world = loaded.registry?.worlds.find(({ id }) => id === worldId);
-  if (!loaded.registry || !world) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (!loaded.registry) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (hasPendingNamespaceRecovery(loaded.issues)) {
+    return { ok: false, reason: "world_reset_recovery_pending", mutationStarted: false };
+  }
+  const world = loaded.registry.worlds.find(({ id }) => id === worldId);
+  if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
   const reset = resetSinglePlayerSave(storage, { worldId });
   if (!reset.ok) return { ok: false, reason: `world_reset_${reset.reason}`, mutationStarted: reset.mutationStarted };
   const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
@@ -896,11 +913,12 @@ export function deleteLocalWorld(
   deletedAt = Date.now(),
 ): LocalWorldMutationResult {
   const loaded = loadLocalWorldRegistry(storage);
-  const world = loaded.registry?.worlds.find(({ id }) => id === worldId);
-  if (!loaded.registry || !world) return { ok: false, reason: "world_not_found", mutationStarted: false };
-  if (hasPendingDeleteRecovery(loaded.issues)) {
+  if (!loaded.registry) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (hasPendingNamespaceRecovery(loaded.issues)) {
     return { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false };
   }
+  const world = loaded.registry.worlds.find(({ id }) => id === worldId);
+  if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
   const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(deletedAt)));
   const begun = beginLocalWorldDelete(storage, worldId, committedAt);
   if (!begun.ok) {
@@ -959,6 +977,9 @@ export function importLegacyLocalWorld(
 ): LocalWorldMutationResult {
   const loadedRegistry = loadLocalWorldRegistry(storage);
   if (!loadedRegistry.registry) return { ok: false, reason: `registry_${loadedRegistry.status}`, mutationStarted: false };
+  if (hasPendingNamespaceRecovery(loadedRegistry.issues)) {
+    return { ok: false, reason: "world_import_recovery_pending", mutationStarted: false };
+  }
   const now = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(input.now ?? Date.now())));
   // This is the only path that enables the old one-key migration, and it is
   // called solely from the user's explicit Import action.

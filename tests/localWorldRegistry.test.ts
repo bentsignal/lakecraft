@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   SINGLEPLAYER_LEGACY_SAVE_KEY,
+  SINGLEPLAYER_SAVE_HEAD_KEY,
   SINGLEPLAYER_SAVE_MAX_SLOT_CHARS,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
   SINGLEPLAYER_SAVE_SLOT_B_KEY,
@@ -419,6 +420,21 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   assert.ok(created.ok);
   assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
   assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:recovery_pending"));
+  assert.deepEqual(resetLocalWorldData(storage, created.world.id, 133), {
+    ok: false,
+    reason: "world_reset_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.deepEqual(deleteLocalWorld(storage, created.world.id, 133), {
+    ok: false,
+    reason: "world_delete_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.deepEqual(importLegacyLocalWorld(storage, { name: "Blocked By Create", now: 133 }), {
+    ok: false,
+    reason: "world_import_recovery_pending",
+    mutationStarted: false,
+  });
   const replayed = createLocalWorld(storage, input);
   assert.ok(replayed.ok);
   assert.equal(replayed.world.id, created.world.id);
@@ -426,6 +442,83 @@ for (const mode of ["read_throw", "tab_replace"] as const) {
   storage.failDeletesFor = null;
   assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:commit_completed"));
   assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), false);
+}
+
+// An unresolved delete owns its world ID generation until cleanup verifies.
+// A replacement with the same deterministic ID, plus reset/delete/import from
+// sibling flows, must wait so old journal bytes can never overwrite new state.
+{
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, {
+    name: "Generation Sibling",
+    seedText: "generation-sibling",
+    gameMode: "creative",
+    now: 139,
+  });
+  const old = createLocalWorld(storage, {
+    name: "Old Generation",
+    seedText: "reused-generation",
+    gameMode: "survival",
+    now: 140,
+  });
+  assert.ok(sibling.ok && old.ok);
+  const oldId = old.world.id;
+  const oldHead = singlePlayerWorldStorageKey(oldId, SINGLEPLAYER_SAVE_HEAD_KEY);
+  const siblingBefore = loadSinglePlayerSave(storage, {
+    migrateLegacy: false,
+    worldId: sibling.world.id,
+  }).snapshot;
+  storage.failDeletesFor = oldHead;
+  assert.deepEqual(deleteLocalWorld(storage, oldId, 141), {
+    ok: false,
+    reason: "world_delete_cleanup_pending",
+    mutationStarted: true,
+  });
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("delete:recovery_pending"));
+  const replacementInput = {
+    name: "Replacement Generation",
+    seedText: "reused-generation",
+    gameMode: "creative" as const,
+    now: 140,
+  };
+  assert.deepEqual(createLocalWorld(storage, replacementInput), {
+    ok: false,
+    reason: "world_create_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.deepEqual(resetLocalWorldData(storage, sibling.world.id, 142), {
+    ok: false,
+    reason: "world_reset_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.deepEqual(deleteLocalWorld(storage, sibling.world.id, 142), {
+    ok: false,
+    reason: "world_delete_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.deepEqual(importLegacyLocalWorld(storage, { name: "Blocked Import", now: 142 }), {
+    ok: false,
+    reason: "world_import_recovery_pending",
+    mutationStarted: false,
+  });
+  assert.deepEqual(loadSinglePlayerSave(storage, {
+    migrateLegacy: false,
+    worldId: sibling.world.id,
+  }).snapshot, siblingBefore, "pending cleanup leaves sibling play state readable and byte-equivalent");
+
+  // Simulate a later restart after the transient deletion fault clears.
+  storage.failDeletesFor = null;
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("delete:cleanup_completed"));
+  const replacement = createLocalWorld(storage, replacementInput);
+  assert.ok(replacement.ok);
+  assert.equal(replacement.world.id, oldId);
+  assert.equal(replacement.world.initialGameMode, "creative");
+  const replacementSave = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: oldId });
+  assert.equal(replacementSave.snapshot?.world.worldId, oldId);
+  assert.equal(replacementSave.snapshot?.world.gameMode, "creative");
+  assert.equal(loadLocalWorldRegistry(storage).registry?.worlds
+    .find(({ id }) => id === oldId)?.initialGameMode, "creative");
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
 }
 
 // Capacity is a deterministic per-namespace calculation. Unrelated origin
