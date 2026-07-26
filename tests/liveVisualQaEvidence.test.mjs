@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { deflateSync } from "node:zlib";
 
@@ -20,7 +21,10 @@ import {
   TASK41_CASES,
   TASK41_CASES_END,
   TASK41_CASES_START,
+  TASK41_INTERACTION_GAP_KINDS,
+  TASK41_MIN_INTERACTION_SEGMENTS,
   TASK41_MULTIPLAYER_CHECKS,
+  TASK41_MULTIPLAYER_INTERACTIONS,
   TASK41_PERFORMANCE_SCENES,
   TASK41_TASK_ID,
   TASK41_TEMPLATE_COMMAND,
@@ -39,10 +43,40 @@ const repositoryRoot = new URL("../", import.meta.url);
 const validatorPath = new URL("../scripts/validate-live-qa-evidence.mjs", import.meta.url);
 const runbook = readFileSync(new URL("../docs/live-visual-qa.md", import.meta.url), "utf8");
 const probeSource = readFileSync(new URL("../scripts/task41-browser-probe.js", import.meta.url), "utf8");
-const COMMIT = "b".repeat(40);
+const PROJECT_ROOT = process.env.TASK41_TEST_REPO_ROOT ?? fileURLToPath(repositoryRoot);
+const commitResult = spawnSync("git", ["-C", PROJECT_ROOT, "rev-parse", "HEAD"], { encoding: "utf8" });
+assert.equal(commitResult.status, 0, commitResult.stderr);
+const COMMIT = commitResult.stdout.trim();
+assert.match(COMMIT, /^[0-9a-f]{40}$/);
 const RUN_ID = "c".repeat(32);
 const MAXIMUM_BYTES = 1_048_576;
 const MINIMUM_HEADROOM_BYTES = 32_768;
+const INTERACTION_SEGMENTS = [
+  "desktop-before-reload",
+  "desktop-after-reload",
+  "narrow-before-reload",
+  "narrow-after-reload",
+];
+const INTERACTION_GAPS = [
+  {
+    id: "reload-desktop",
+    kind: "reload",
+    afterSegmentId: "desktop-before-reload",
+    beforeSegmentId: "desktop-after-reload",
+  },
+  {
+    id: "navigation-to-narrow",
+    kind: "navigation",
+    afterSegmentId: "desktop-after-reload",
+    beforeSegmentId: "narrow-before-reload",
+  },
+  {
+    id: "reload-narrow",
+    kind: "reload",
+    afterSegmentId: "narrow-before-reload",
+    beforeSegmentId: "narrow-after-reload",
+  },
+];
 
 function digest(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -133,7 +167,7 @@ function unsignedBytes(value) {
   return Buffer.from(bytes);
 }
 
-function makeWebm(width, height, durationMs, tag) {
+function makeStructuralWebm(width, height, durationMs, tag) {
   const docType = ebmlElement([0x42, 0x82], Buffer.from("webm"));
   const header = ebmlElement([0x1a, 0x45, 0xdf, 0xa3], docType);
   const timecodeScale = ebmlElement([0x2a, 0xd7, 0xb1], unsignedBytes(1_000_000));
@@ -174,7 +208,7 @@ function mp4Box(type, body) {
   return box;
 }
 
-function makeMp4(width, height, durationMs, tag) {
+function makeStructuralMp4(width, height, durationMs, tag) {
   const movieHeader = Buffer.alloc(20);
   movieHeader.writeUInt32BE(1_000, 12);
   movieHeader.writeUInt32BE(durationMs, 16);
@@ -194,6 +228,103 @@ function makeMp4(width, height, durationMs, tag) {
   return Buffer.concat([ftyp, moov, mp4Box("mdat", media)]);
 }
 
+const realVideoCache = new Map();
+const realVideoRoot = mkdtempSync(join(tmpdir(), "lakecraft-task41-real-video-"));
+process.on("exit", () => rmSync(realVideoRoot, { recursive: true, force: true }));
+
+function makeRealVideo(format, width, height, durationMs, tag) {
+  const key = `${format}/${width}/${height}/${durationMs}/${tag}`;
+  const cached = realVideoCache.get(key);
+  if (cached) return cached;
+  const extension = format === "webm" ? "webm" : "mp4";
+  const outputPath = join(realVideoRoot, `${digest(key)}.${extension}`);
+  const codec = format === "webm"
+    ? ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "800k"]
+    : ["-c:v", "mpeg4", "-q:v", "3"];
+  const result = spawnSync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=${width}x${height}:rate=2:duration=${durationMs / 1_000}`,
+    "-an",
+    ...codec,
+    "-metadata",
+    `comment=${tag}`,
+    outputPath,
+  ], { encoding: "utf8" });
+  assert.equal(result.status, 0, `ffmpeg fixture generation failed: ${result.stderr}`);
+  const buffer = readFileSync(outputPath);
+  assert.ok(buffer.length >= 64 * 1_024, "real video fixture must be substantive");
+  realVideoCache.set(key, buffer);
+  return buffer;
+}
+
+const artifactFixtureRoot = mkdtempSync(join(tmpdir(), "lakecraft-task41-real-artifact-"));
+process.on("exit", () => rmSync(artifactFixtureRoot, { recursive: true, force: true }));
+let artifactFixtureCache;
+
+function checkedCommand(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    ...options,
+  });
+  assert.equal(
+    result.status,
+    0,
+    `${command} ${args.join(" ")} failed:\n${result.stderr || result.stdout}`,
+  );
+  return result.stdout;
+}
+
+function realArtifactFixture() {
+  if (artifactFixtureCache) return artifactFixtureCache;
+  const archivePath = join(artifactFixtureRoot, "source.tar");
+  const sourceRoot = join(artifactFixtureRoot, "source");
+  mkdirSync(sourceRoot);
+  checkedCommand("git", [
+    "-C",
+    PROJECT_ROOT,
+    "archive",
+    "--format=tar",
+    `--output=${archivePath}`,
+    COMMIT,
+  ]);
+  checkedCommand("tar", ["-xf", archivePath, "-C", sourceRoot]);
+  const builds = ["a", "b"].map((name) => {
+    const stageRoot = join(artifactFixtureRoot, `stage-${name}`);
+    checkedCommand(
+      process.execPath,
+      [join(sourceRoot, "scripts", "prepare-lakebed-deploy.mjs"), stageRoot],
+      { cwd: sourceRoot },
+    );
+    const reportText = checkedCommand(
+      "npx",
+      ["lakebed", "build", "--json"],
+      {
+        cwd: stageRoot,
+        env: { ...process.env, LAKEBED_COMPACT_BUNDLE: "1" },
+      },
+    );
+    const report = JSON.parse(reportText);
+    return {
+      report,
+      reportBuffer: Buffer.from(reportText),
+      artifactBuffer: readFileSync(report.artifactPath),
+      clientBuffer: readFileSync(join(stageRoot, "client/index.tsx")),
+      serverBuffer: readFileSync(join(stageRoot, "server/index.ts")),
+    };
+  });
+  assert.deepEqual(builds[0].artifactBuffer, builds[1].artifactBuffer);
+  assert.deepEqual(builds[0].clientBuffer, builds[1].clientBuffer);
+  assert.deepEqual(builds[0].serverBuffer, builds[1].serverBuffer);
+  artifactFixtureCache = builds;
+  return builds;
+}
+
 function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}) {
   const root = mkdtempSync(join(tmpdir(), "lakecraft-task41-evidence-"));
   const evidence = createTask41EvidenceTemplate();
@@ -208,7 +339,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
       taskId: TASK41_TASK_ID,
       runId: RUN_ID,
       appCommit: COMMIT,
-      capturedAt: new Date(runStartedAtMs + sequence * 1_000).toISOString(),
+      capturedAt: new Date(runStartedAtMs + sequence * 5_000).toISOString(),
       sequence,
     };
   };
@@ -260,9 +391,13 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
         const mp4 = sequence % 2 === 0;
         const viewport = TASK41_VIEWPORTS[entry.viewport];
         const path = `observations/${slug}.${mp4 ? "mp4" : "webm"}`;
-        const buffer = mp4
-          ? makeMp4(viewport.width, viewport.height, 5_000, slug)
-          : makeWebm(viewport.width, viewport.height, 5_000, slug);
+        const buffer = makeRealVideo(
+          mp4 ? "mp4" : "webm",
+          viewport.width,
+          viewport.height,
+          5_000,
+          slug,
+        );
         Object.assign(entry, {
           path,
           sha256: write(root, path, buffer),
@@ -277,7 +412,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
         const actions = TASK41_TRANSCRIPT_ACTIONS.map((id, actionIndex) => ({
           id,
           status: "pass",
-          at: new Date(runStartedAtMs + sequence * 1_000 + actionIndex + 1).toISOString(),
+          at: new Date(runStartedAtMs + sequence * 5_000 + actionIndex + 1).toISOString(),
           detail: `${id} visibly produced the expected state.`,
         }));
         const transcript = writeBoundJson(path, binding, {
@@ -300,16 +435,27 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
 
   for (const metric of evidence.performance) {
     const binding = nextBinding();
-    const frames = Array.from({ length: 320 }, () => ({ frameMs: 16, drawCalls: 2 }));
+    const frames = Array.from({ length: 320 }, (_, index) => ({
+      sequence: index + 1,
+      frameMs: 16,
+      drawCalls: 2,
+      visible: true,
+      hasFocus: true,
+      viewport: metric.viewport,
+      devicePixelRatio: 1,
+    }));
     const path = `performance/${metric.viewport}-${metric.scene}.json`;
     const capture = {
       schemaVersion: 2,
       ...binding,
       label: `${metric.viewport}/${metric.scene}`,
+      viewport: metric.viewport,
+      devicePixelRatio: 1,
       patchedContexts: 2,
       frames,
     };
     Object.assign(metric, {
+      devicePixelRatio: 1,
       sampleCount: 320,
       fps: 62.5,
       p95FrameMs: 16,
@@ -327,16 +473,36 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   {
     const binding = nextBinding();
     const path = "structured/console.json";
+    const timelineStart = runStartedAtMs + 2 * 60_000;
+    const segments = INTERACTION_SEGMENTS.map((id, index) => {
+      const startedAt = timelineStart + index * 20_000;
+      return {
+        id,
+        startedAt: new Date(startedAt).toISOString(),
+        completedAt: new Date(startedAt + 10_000).toISOString(),
+        entries: index === 0 ? [{
+          sequence: 1,
+          timestamp: new Date(startedAt + 1_000).toISOString(),
+          source: "console",
+          level: "info",
+          text: "Task 41 browser probe installed.",
+        }] : [],
+      };
+    });
+    const gaps = INTERACTION_GAPS.map((gap, index) => ({
+      ...gap,
+      startedAt: new Date(timelineStart + index * 20_000 + 10_000).toISOString(),
+      completedAt: new Date(timelineStart + index * 20_000 + 20_000).toISOString(),
+      entries: [],
+    }));
     const capture = writeBoundJson(path, binding, {
-      entries: [{
-        sequence: 1,
-        timestamp: binding.capturedAt,
-        source: "console",
-        level: "info",
-        text: "Task 41 browser probe installed.",
-      }],
+      schemaVersion: 2,
+      segments,
+      gaps,
     });
     evidence.console = {
+      segmentCount: INTERACTION_SEGMENTS.length,
+      gapCount: INTERACTION_GAPS.length,
       warningCount: 0,
       errorCount: 0,
       exceptionCount: 0,
@@ -349,11 +515,41 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   {
     const binding = nextBinding();
     const path = "structured/network.json";
-    const capture = writeBoundJson(path, binding, { events: [] });
+    const timelineStart = runStartedAtMs + 2 * 60_000;
+    const segments = INTERACTION_SEGMENTS.map((id, index) => {
+      const startedAt = timelineStart + index * 20_000;
+      return {
+        id,
+        startedAt: new Date(startedAt).toISOString(),
+        completedAt: new Date(startedAt + 10_000).toISOString(),
+        requests: [],
+        newSockets: [],
+      };
+    });
+    const gaps = INTERACTION_GAPS.map((gap, index) => {
+      const startedAt = timelineStart + index * 20_000 + 10_000;
+      return {
+        ...gap,
+        startedAt: new Date(startedAt).toISOString(),
+        completedAt: new Date(startedAt + 10_000).toISOString(),
+        navigationRequests: [{
+          sequence: 1,
+          timestamp: new Date(startedAt + 1_000).toISOString(),
+          url: "http://localhost:3000/",
+          resourceType: "document",
+        }],
+        appRequests: [],
+        newSockets: [],
+      };
+    });
+    const capture = writeBoundJson(path, binding, { schemaVersion: 2, segments, gaps });
     evidence.network = {
+      segmentCount: INTERACTION_SEGMENTS.length,
+      gapCount: INTERACTION_GAPS.length,
       requestCount: 0,
       websocketCount: 0,
       lakebedRequestCount: 0,
+      navigationRequestCount: INTERACTION_GAPS.length,
       evidencePath: path,
       evidenceSha256: capture.sha256,
       ...binding,
@@ -399,12 +595,98 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     const binding = nextBinding();
     const path = "structured/multiplayer.json";
     const passed = multiplayerStatus === "passed";
+    const identities = [];
+    const interactions = [];
+    if (passed) {
+      const windows = [
+        [runStartedAtMs + 120_000, runStartedAtMs + 300_000],
+        [runStartedAtMs + 150_000, runStartedAtMs + 330_000],
+      ];
+      for (const [index, id] of ["identity-a", "identity-b"].entries()) {
+        const identityCommitment = `sha256:${digest(`authorized-account-${index + 1}`)}`;
+        const runSaltedIdentityHash =
+          `sha256:${digest(Buffer.from(`${RUN_ID}:${identityCommitment}`))}`;
+        const proofPath = `multiplayer/${id}.json`;
+        const proof = {
+          schemaVersion: 1,
+          taskId: TASK41_TASK_ID,
+          runId: RUN_ID,
+          appCommit: COMMIT,
+          identityId: id,
+          identityCommitment,
+          runSaltedIdentityHash,
+          windowStartedAt: new Date(windows[index][0]).toISOString(),
+          windowCompletedAt: new Date(windows[index][1]).toISOString(),
+          peerVisibilityIds: [index === 0 ? "identity-b" : "identity-a"],
+          quotaTelemetry: [
+            {
+              sequence: 1,
+              timestamp: new Date(windows[index][0] + 5_000).toISOString(),
+              attempts: 1,
+              grants: 10,
+              paused: false,
+            },
+            {
+              sequence: 2,
+              timestamp: new Date(windows[index][1] - 5_000).toISOString(),
+              attempts: 5,
+              grants: 10,
+              paused: false,
+            },
+          ],
+        };
+        identities.push({
+          id,
+          identityCommitment,
+          runSaltedIdentityHash,
+          windowStartedAt: proof.windowStartedAt,
+          windowCompletedAt: proof.windowCompletedAt,
+          proofPath,
+          proofSha256: write(root, proofPath, `${JSON.stringify(proof)}\n`),
+        });
+      }
+      const overlapStartedAt = runStartedAtMs + 180_000;
+      const overlapCompletedAt = runStartedAtMs + 270_000;
+      for (const [index, [id, actorId, targetId]] of [
+        ["identity-a-to-b", "identity-a", "identity-b"],
+        ["identity-b-to-a", "identity-b", "identity-a"],
+      ].entries()) {
+        const proofPath = `multiplayer/${id}.json`;
+        const proof = {
+          schemaVersion: 1,
+          taskId: TASK41_TASK_ID,
+          runId: RUN_ID,
+          appCommit: COMMIT,
+          interactionId: id,
+          actorId,
+          targetId,
+          windowStartedAt: new Date(overlapStartedAt).toISOString(),
+          windowCompletedAt: new Date(overlapCompletedAt).toISOString(),
+          events: TASK41_MULTIPLAYER_INTERACTIONS.map((kind, eventIndex) => ({
+            sequence: eventIndex + 1,
+            timestamp: new Date(
+              overlapStartedAt + (index * TASK41_MULTIPLAYER_INTERACTIONS.length + eventIndex + 1) * 2_000,
+            ).toISOString(),
+            kind,
+            status: "pass",
+          })),
+        };
+        interactions.push({
+          id,
+          actorId,
+          targetId,
+          proofPath,
+          proofSha256: write(root, proofPath, `${JSON.stringify(proof)}\n`),
+        });
+      }
+    }
     const fields = {
+      schemaVersion: 2,
       status: passed ? "passed" : "deferred",
       completionEligible: passed,
       hostedRoute: passed ? "enabled" : "disabled",
-      identities: passed ? "available" : "unavailable",
-      identityHashes: passed ? [`sha256:${digest("identity-a")}`, `sha256:${digest("identity-b")}`] : [],
+      identities,
+      interactions,
       reasonCodes: passed ? [] : [
         "hosted-route-disabled",
         "authorized-identities-unavailable",
@@ -422,7 +704,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
       completionEligible: fields.completionEligible,
       hostedRoute: fields.hostedRoute,
       identities: fields.identities,
-      identityHashes: fields.identityHashes,
+      interactions: fields.interactions,
       reasonCodes: fields.reasonCodes,
       quotaStatus: fields.quotaStatus,
       quotaObserved: fields.quotaObserved,
@@ -435,45 +717,22 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   {
     const buildA = nextBinding();
     const buildB = nextBinding();
-    const client = Buffer.from("export default function LakecraftClient() { return 'task41'; }\n");
-    const clientBundleHash = `sha256:${digest(client)}`;
-    const artifactObject = {
-      format: "lakebed.capsule.artifact.v1",
-      deployTarget: "anonymous-source",
-      client: { bytes: client.length, bundleHash: clientBundleHash },
-      server: { bytes: 42 },
-    };
-    const artifactHash = `sha256:${digest(Buffer.from(JSON.stringify(artifactObject)))}`;
-    const outer = {
-      artifact: artifactObject,
-      artifactHash,
-      clientBundle: client.toString("base64"),
-      clientBundleHash,
-      mediaType: "application/vnd.lakebed.artifact+json",
-    };
-    const artifactBuffer = Buffer.from(`${JSON.stringify(outer)}\n`);
+    const [realBuildA, realBuildB] = realArtifactFixture();
+    const outer = JSON.parse(realBuildA.artifactBuffer);
+    const artifactBuffer = realBuildA.artifactBuffer;
+    const artifactHash = outer.artifactHash;
+    const clientBundleHash = outer.clientBundleHash;
     const artifactFileSha256 = write(root, "build/a/capsule.anonymous.json", artifactBuffer);
-    write(root, "build/b/capsule.anonymous.json", artifactBuffer);
-    const reportA = {
-      artifactHash,
-      artifactPath: "build/a/capsule.anonymous.json",
-      clientBundleHash,
-      format: "lakebed.capsule.artifact.v1",
-    };
-    const reportB = {
-      ...reportA,
-      artifactPath: "build/b/capsule.anonymous.json",
-    };
-    const reportSha256 = write(root, "build/a/report.json", `${JSON.stringify(reportA)}\n`);
-    const pairedReportSha256 = write(root, "build/b/report.json", `${JSON.stringify(reportB)}\n`);
-    const stagedClientSha256 = write(root, "build/a/client/index.tsx", client);
-    write(root, "build/b/client/index.tsx", client);
-    const server = Buffer.from("export const schema = {};\n");
-    const stagedServerSha256 = write(root, "build/a/server/index.ts", server);
-    write(root, "build/b/server/index.ts", server);
+    write(root, "build/b/capsule.anonymous.json", realBuildB.artifactBuffer);
+    const reportSha256 = write(root, "build/a/report.json", realBuildA.reportBuffer);
+    const pairedReportSha256 = write(root, "build/b/report.json", realBuildB.reportBuffer);
+    const stagedClientSha256 = write(root, "build/a/client/index.tsx", realBuildA.clientBuffer);
+    write(root, "build/b/client/index.tsx", realBuildB.clientBuffer);
+    const stagedServerSha256 = write(root, "build/a/server/index.ts", realBuildA.serverBuffer);
+    write(root, "build/b/server/index.ts", realBuildB.serverBuffer);
     evidence.artifact = {
-      format: "lakebed.capsule.artifact.v1",
-      deployTarget: "anonymous-source",
+      format: outer.artifact.format,
+      deployTarget: outer.artifact.deployTarget,
       reportPath: "build/a/report.json",
       reportSha256,
       pairedReportPath: "build/b/report.json",
@@ -512,6 +771,7 @@ async function assertFileInvalid(fixture, pattern) {
   await assert.rejects(
     verifyTask41EvidenceFiles(fixture.evidence, fixture.root, {
       expectedCommit: COMMIT,
+      repoRoot: PROJECT_ROOT,
       nowMs: fixture.nowMs,
     }),
     pattern,
@@ -530,6 +790,32 @@ function replaceBoundJson(fixture, summary, value) {
   );
 }
 
+function rewriteArtifactPair(fixture, mutator) {
+  const artifact = fixture.evidence.artifact;
+  const artifactPath = join(fixture.root, artifact.artifactPath);
+  const outer = JSON.parse(readFileSync(artifactPath, "utf8"));
+  mutator(outer);
+  outer.artifactHash = `sha256:${digest(Buffer.from(JSON.stringify(outer.artifact)))}`;
+  artifact.artifactHash = outer.artifactHash;
+  const buffer = Buffer.from(`${JSON.stringify(outer)}\n`);
+  artifact.artifactFileSha256 = write(fixture.root, artifact.artifactPath, buffer);
+  write(fixture.root, artifact.pairedArtifactPath, buffer);
+  artifact.artifactBytes = buffer.length;
+  artifact.headroomBytes = artifact.maximumBytes - buffer.length;
+  for (const [pathKey, hashKey] of [
+    ["reportPath", "reportSha256"],
+    ["pairedReportPath", "pairedReportSha256"],
+  ]) {
+    const report = JSON.parse(readFileSync(join(fixture.root, artifact[pathKey]), "utf8"));
+    report.artifactHash = outer.artifactHash;
+    artifact[hashKey] = write(
+      fixture.root,
+      artifact[pathKey],
+      `${JSON.stringify(report, null, 2)}\n`,
+    );
+  }
+}
+
 test("runbook exposes one canonical template command and the ordered case ledger", () => {
   assert.equal(extractTask41TemplateCommand(runbook), TASK41_TEMPLATE_COMMAND);
   assert.deepEqual(extractTask41RunbookCases(runbook), TASK41_CASES.map(({ id }) => id));
@@ -539,6 +825,8 @@ test("runbook exposes one canonical template command and the ordered case ledger
     { width: 800, height: 720 },
   ]);
   assert.equal(TASK41_PERFORMANCE_SCENES.length, 6);
+  assert.equal(TASK41_MIN_INTERACTION_SEGMENTS, 4);
+  assert.deepEqual(TASK41_INTERACTION_GAP_KINDS, ["navigation", "reload"]);
   assert.equal(repositoryRoot.protocol, "file:");
 });
 
@@ -580,6 +868,14 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
     "both compact build commands pin the anonymous target",
   );
   assert.match(runbook, /--expected-commit "\$expected_commit"/);
+  assert.match(runbook, /--repo-root "\$repo_root"/);
+  assert.match(runbook, /command -v ffprobe[\s\S]{0,80}command -v ffmpeg/);
+  assert.match(runbook, /ffprobe[\s\S]{0,120}real video stream[\s\S]{0,180}ffmpeg[\s\S]{0,100}decode at least one frame/i);
+  assert.match(runbook, /4–32 uniquely named[\s\S]{0,180}`navigation` or `reload` gap/i);
+  assert.match(runbook, /No unclassified time may hide traffic/i);
+  assert.match(runbook, /Console and Network reports[\s\S]{0,100}identical IDs, kinds, and timestamps/i);
+  assert.match(runbook, /git -C "\$repo_root" archive "\$expected_commit"/);
+  assert.match(runbook, /mismatched CSS viewport\/device-pixel ratio[\s\S]{0,100}hidden or unfocused/i);
   assert.match(runbook, /valid-partial[\s\S]{0,100}process exit 2/i);
   assert.match(
     runbook,
@@ -596,6 +892,7 @@ test("a complete, freshly bound manifest with substantive generated files verifi
     );
     await verifyTask41EvidenceFiles(fixture.evidence, fixture.root, {
       expectedCommit: COMMIT,
+      repoRoot: PROJECT_ROOT,
       nowMs: fixture.nowMs,
     });
   } finally {
@@ -620,6 +917,8 @@ test("the CLI returns exit 0 only for complete proof and exit 2 for valid deferr
         fixture.root,
         "--expected-commit",
         COMMIT,
+        "--repo-root",
+        PROJECT_ROOT,
         "--validator-output",
         validatorOutputPath,
       ], { encoding: "utf8" });
@@ -671,6 +970,33 @@ test("manifest provenance rejects wrong identity, commit, run, timing, and captu
   }
 });
 
+test("performance proof rejects hidden, unfocused, reordered, or viewport/DPR-mismatched frames", async () => {
+  for (const mutate of [
+    (value) => { value.frames[0].visible = false; },
+    (value) => { value.frames[0].hasFocus = false; },
+    (value) => { value.frames[0].viewport = "narrow"; },
+    (value) => { value.frames[0].devicePixelRatio = 2; },
+    (value) => { value.frames[1].sequence = value.frames[0].sequence; },
+    (value) => { value.viewport = "narrow"; },
+    (value) => { value.devicePixelRatio = 2; },
+  ]) {
+    const fixture = createFixture();
+    try {
+      const metric = fixture.evidence.performance[0];
+      const value = JSON.parse(readFileSync(join(fixture.root, metric.evidencePath), "utf8"));
+      mutate(value);
+      metric.evidenceSha256 = write(
+        fixture.root,
+        metric.evidencePath,
+        `${JSON.stringify(value)}\n`,
+      );
+      await assertFileInvalid(fixture, /performance|frames|visible|focused|viewport|devicePixelRatio|order/);
+    } finally {
+      fixture.cleanup();
+    }
+  }
+});
+
 test("media verification rejects text files, wrong PNG dimensions, and invalid or undersized containers", async () => {
   for (const mutation of [
     (fixture, entry) => replaceEntryFile(fixture, entry, Buffer.from(`not a PNG${"x".repeat(2_000)}`)),
@@ -700,6 +1026,25 @@ test("media verification rejects text files, wrong PNG dimensions, and invalid o
       fixture.cleanup();
     }
   }
+  for (const [mimeType, makeStructural] of [
+    ["video/webm", makeStructuralWebm],
+    ["video/mp4", makeStructuralMp4],
+  ]) {
+    const fixture = createFixture();
+    try {
+      const video = fixture.evidence.observations
+        .flatMap(({ evidence }) => evidence)
+        .find((entry) => entry.mimeType === mimeType);
+      replaceEntryFile(
+        fixture,
+        video,
+        makeStructural(video.width, video.height, video.durationMs, "padding-only"),
+      );
+      await assertFileInvalid(fixture, /decode|ffmpeg|ffprobe|video frame|stream/);
+    } finally {
+      fixture.cleanup();
+    }
+  }
   for (const mutate of [
     (entry) => { entry.width -= 1; },
     (entry) => { entry.durationMs = 0; },
@@ -717,6 +1062,59 @@ test("media verification rejects text files, wrong PNG dimensions, and invalid o
         }),
         /video|dimensions|durationMs/,
       );
+    } finally {
+      fixture.cleanup();
+    }
+  }
+});
+
+test("the CLI fails closed when ffprobe or ffmpeg is unavailable", () => {
+  const ffprobeResult = spawnSync("/usr/bin/which", ["ffprobe"], { encoding: "utf8" });
+  assert.equal(ffprobeResult.status, 0, ffprobeResult.stderr);
+  const ffprobePath = ffprobeResult.stdout.trim();
+
+  for (const [missingTool, pathSetup, pattern] of [
+    ["ffprobe", () => "/nonexistent-task41-tool-path", /ffprobe.*could not start|ENOENT/i],
+    ["ffmpeg", (fixture) => {
+      const toolPath = join(fixture.root, "ffprobe-only");
+      mkdirSync(toolPath);
+      symlinkSync(ffprobePath, join(toolPath, "ffprobe"));
+      return toolPath;
+    }, /ffmpeg.*could not start|ENOENT/i],
+  ]) {
+    const fixture = createFixture();
+    try {
+      const video = fixture.evidence.observations
+        .flatMap(({ evidence }) => evidence)
+        .find(({ kind }) => kind === "video");
+      replaceEntryFile(
+        fixture,
+        video,
+        makeRealVideo(
+          video.mimeType === "video/webm" ? "webm" : "mp4",
+          video.width,
+          video.height,
+          video.durationMs,
+          `missing-${missingTool}`,
+        ),
+      );
+      const manifestPath = join(fixture.root, "task41-evidence.json");
+      writeFileSync(manifestPath, `${JSON.stringify(fixture.evidence, null, 2)}\n`);
+      const result = spawnSync(process.execPath, [
+        validatorPath.pathname,
+        manifestPath,
+        "--root",
+        fixture.root,
+        "--expected-commit",
+        COMMIT,
+        "--repo-root",
+        PROJECT_ROOT,
+      ], {
+        encoding: "utf8",
+        env: { ...process.env, PATH: pathSetup(fixture) },
+      });
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, pattern);
     } finally {
       fixture.cleanup();
     }
@@ -809,34 +1207,39 @@ test("structured transcripts reject missing, failed, reordered, or cross-bound a
   }
 });
 
-test("console and CDP network summaries must exactly recompute clean zero-traffic counts", async () => {
+test("segmented console and network proof allows navigation gaps but rejects in-segment activity", async () => {
   for (const [summaryName, mutate, pattern] of [
-    ["console", (value) => value.entries.push({
-      sequence: 2,
-      timestamp: value.capturedAt,
+    ["console", (value) => value.segments[0].entries.push({
+      sequence: value.segments[0].entries.length + 1,
+      timestamp: new Date(Date.parse(value.segments[0].startedAt) + 2_000).toISOString(),
       source: "cdp",
       level: "warning",
       text: "warning",
     }), /console|counts/],
-    ["console", (value) => value.entries.push({
-      sequence: 2,
-      timestamp: value.capturedAt,
+    ["console", (value) => value.segments[1].entries.push({
+      sequence: 1,
+      timestamp: new Date(Date.parse(value.segments[1].startedAt) + 2_000).toISOString(),
       source: "cdp",
       level: "error",
       text: "error",
     }), /console|counts/],
-    ["network", (value) => value.events.push({
-      sequence: 1,
-      timestamp: value.capturedAt,
-      type: "request",
+    ["network", (value) => value.segments[0].requests.push({
+      timestamp: value.segments[0].startedAt,
       url: "https://craft.lakebed.app/query",
-    }), /request|counts|network/],
-    ["network", (value) => value.events.push({
-      sequence: 1,
-      timestamp: value.capturedAt,
-      type: "websocket",
+    }), /request|segment|network/],
+    ["network", (value) => value.segments[3].newSockets.push({
+      timestamp: value.segments[3].startedAt,
       url: "wss://craft.lakebed.app/socket",
-    }), /request|counts|network/],
+    }), /socket|segment|network/],
+    ["network", (value) => value.gaps[1].appRequests.push({
+      timestamp: value.gaps[1].startedAt,
+      url: "https://craft.lakebed.app/query",
+    }), /gap|app traffic|network/],
+    ["network", (value) => value.gaps[0].newSockets.push({
+      timestamp: value.gaps[0].startedAt,
+      url: "wss://localhost:3000/socket",
+    }), /gap|socket|network/],
+    ["network", (value) => { [value.gaps[0], value.gaps[1]] = [value.gaps[1], value.gaps[0]]; }, /gap|order/],
   ]) {
     const fixture = createFixture();
     try {
@@ -886,29 +1289,112 @@ test("Lakebed reports are parsed and hashes, format, target, and independent A/B
       value.clientBundle = Buffer.from("different client").toString("base64");
       writeFileSync(path, `${JSON.stringify(value)}\n`);
     },
+    (fixture) => rewriteArtifactPair(fixture, (outer) => {
+      delete outer.artifact.createdWith;
+    }),
+    (fixture) => rewriteArtifactPair(fixture, (outer) => {
+      outer.artifact.source.files[0].hash = `sha256:${"d".repeat(64)}`;
+      outer.artifact.source.snapshotHash =
+        `sha256:${digest(Buffer.from(JSON.stringify(outer.artifact.source.files)))}`;
+    }),
+    (fixture) => {
+      const oldStage = Buffer.from("/* staged from a different commit */\n");
+      const artifact = fixture.evidence.artifact;
+      artifact.stagedClientSha256 = write(fixture.root, artifact.stagedClientPath, oldStage);
+      write(fixture.root, artifact.pairedStagedClientPath, oldStage);
+    },
   ]) {
     const fixture = createFixture();
     try {
       mutate(fixture);
-      await assertFileInvalid(fixture, /artifact|anonymous|paired|hash|A\/B|distinct|SHA-256/);
+      await assertFileInvalid(
+        fixture,
+        /artifact|anonymous|paired|hash|A\/B|distinct|SHA-256|descriptor|source\.files|expected-commit|stage/,
+      );
     } finally {
       fixture.cleanup();
     }
   }
 });
 
-test("multiplayer completion requires two distinct sanitized identities and deferred proof cannot claim completion", () => {
-  const fixture = createFixture();
-  try {
-    const sameIdentity = clone(fixture.evidence);
-    sameIdentity.multiplayer.identityHashes[1] = sameIdentity.multiplayer.identityHashes[0];
-    assert.throws(
-      () => validateTask41Evidence(sameIdentity, { expectedCommit: COMMIT, nowMs: fixture.nowMs }),
-      /distinct|identit/,
-    );
-  } finally {
-    fixture.cleanup();
+test("passed multiplayer requires two active reciprocal identities and bidirectional proof", async () => {
+  for (const [mutate, pattern] of [
+    [(value) => { value.multiplayer.identities.pop(); }, /multiplayer|identity/],
+    [(value) => {
+      value.multiplayer.identities[1].runSaltedIdentityHash =
+        value.multiplayer.identities[0].runSaltedIdentityHash;
+    }, /salted|identity|distinct/],
+    [(value) => {
+      value.multiplayer.identities[1].runSaltedIdentityHash = `sha256:${"d".repeat(64)}`;
+    }, /salted|identity/],
+    [(value) => {
+      value.multiplayer.identities[1].windowStartedAt =
+        new Date(Date.parse(value.multiplayer.identities[0].windowCompletedAt) + 1_000).toISOString();
+      value.multiplayer.identities[1].windowCompletedAt =
+        new Date(Date.parse(value.multiplayer.identities[1].windowStartedAt) + 120_000).toISOString();
+    }, /overlap|window/],
+    [(value) => {
+      value.multiplayer.identities[1].proofPath = value.multiplayer.identities[0].proofPath;
+      value.multiplayer.identities[1].proofSha256 = value.multiplayer.identities[0].proofSha256;
+    }, /reuses|path|identity/],
+    [(value) => { value.multiplayer.interactions.pop(); }, /multiplayer|interaction/],
+    [(value) => {
+      value.multiplayer.interactions[1].actorId = "identity-a";
+      value.multiplayer.interactions[1].targetId = "identity-b";
+    }, /direction|interaction/],
+  ]) {
+    const fixture = createFixture();
+    try {
+      const candidate = clone(fixture.evidence);
+      mutate(candidate);
+      assert.throws(
+        () => validateTask41Evidence(candidate, { expectedCommit: COMMIT, nowMs: fixture.nowMs }),
+        pattern,
+      );
+    } finally {
+      fixture.cleanup();
+    }
   }
+  for (const [recordName, mutate, pattern] of [
+    ["identities", (value) => { value.peerVisibilityIds = []; }, /peerVisibility|peer/],
+    ["identities", (value) => { value.quotaTelemetry[1].paused = true; }, /paused|quota|active/],
+    ["identities", (value) => {
+      value.quotaTelemetry[1].attempts = 11;
+      value.quotaTelemetry[1].grants = 10;
+    }, /quota|grants/],
+    ["identities", (value) => {
+      value.quotaTelemetry.forEach((item) => {
+        item.attempts = 0;
+        item.grants = 0;
+      });
+    }, /positive|quota|attempt|grant/],
+    ["interactions", (value) => { value.events.pop(); }, /interaction|bidirectional|every/],
+    ["interactions", (value) => { value.events[0].status = "fail"; }, /interaction|pass/],
+  ]) {
+    const fixture = createFixture();
+    try {
+      const record = fixture.evidence.multiplayer[recordName][0];
+      const value = JSON.parse(readFileSync(join(fixture.root, record.proofPath), "utf8"));
+      mutate(value);
+      record.proofSha256 = write(
+        fixture.root,
+        record.proofPath,
+        `${JSON.stringify(value)}\n`,
+      );
+      const multiplayerCapture = JSON.parse(readFileSync(
+        join(fixture.root, fixture.evidence.multiplayer.evidencePath),
+        "utf8",
+      ));
+      multiplayerCapture[recordName][0].proofSha256 = record.proofSha256;
+      replaceBoundJson(fixture, fixture.evidence.multiplayer, multiplayerCapture);
+      await assertFileInvalid(fixture, pattern);
+    } finally {
+      fixture.cleanup();
+    }
+  }
+});
+
+test("deferred multiplayer remains valid-partial and cannot claim completion", () => {
   const deferred = createFixture({ multiplayerStatus: "deferred" });
   try {
     const falseComplete = clone(deferred.evidence);
@@ -950,12 +1436,18 @@ test("browser probe binds raw frame captures to this run and restores WebGL prot
   let nextAnimationFrame = 1;
   const callbacks = new Map();
   const messages = [];
+  let focused = true;
+  const document = {
+    visibilityState: "visible",
+    hasFocus: () => focused,
+  };
   const window = {
     WebGLRenderingContext,
     WebGL2RenderingContext,
     innerWidth: 1280,
     innerHeight: 720,
     devicePixelRatio: 1,
+    document,
     console: { info: (...args) => messages.push(args) },
     requestAnimationFrame(callback) {
       const id = nextAnimationFrame;
@@ -978,6 +1470,14 @@ test("browser probe binds raw frame captures to this run and restores WebGL prot
     /runId|128 bits/i,
   );
   probe.bind({ runId: RUN_ID, appCommit: COMMIT });
+  assert.throws(() => probe.snapshot("desktop/surface-day", 1), /reset|capture/i);
+  document.visibilityState = "hidden";
+  assert.throws(() => probe.reset(), /visible|hidden/i);
+  document.visibilityState = "visible";
+  focused = false;
+  assert.throws(() => probe.reset(), /focus/i);
+  focused = true;
+  probe.reset();
   const tick = (now) => {
     const [id, callback] = callbacks.entries().next().value;
     callbacks.delete(id);
@@ -993,6 +1493,18 @@ test("browser probe binds raw frame captures to this run and restores WebGL prot
   }
   assert.throws(() => probe.snapshot("wide/surface-day", 1), /label|viewport/i);
   assert.throws(() => probe.snapshot("narrow/surface-day", 1), /viewport|800/i);
+  document.visibilityState = "hidden";
+  assert.throws(() => probe.snapshot("desktop/surface-day", 1), /visible|hidden/i);
+  document.visibilityState = "visible";
+  focused = false;
+  assert.throws(() => probe.snapshot("desktop/surface-day", 1), /focus/i);
+  focused = true;
+  window.devicePixelRatio = 2;
+  assert.throws(() => probe.snapshot("desktop/surface-day", 1), /DPR|pixel/i);
+  window.devicePixelRatio = 1;
+  window.innerWidth = 1279;
+  assert.throws(() => probe.snapshot("desktop/surface-day", 1), /viewport|1280/i);
+  window.innerWidth = 1280;
   const capture = probe.snapshot("desktop/surface-day", 1);
   assert.equal(capture.schemaVersion, 2);
   assert.equal(capture.taskId, TASK41_TASK_ID);
@@ -1001,10 +1513,23 @@ test("browser probe binds raw frame captures to this run and restores WebGL prot
   assert.match(capture.capturedAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
   assert.equal(capture.sequence, 1);
   assert.equal(capture.label, "desktop/surface-day");
+  assert.equal(capture.viewport, "desktop");
+  assert.equal(capture.devicePixelRatio, 1);
   assert.equal(capture.patchedContexts, 2);
   assert.equal(capture.frames.length, 130);
-  assert.deepEqual({ ...capture.frames[0] }, { frameMs: 16, drawCalls: 2 });
-  assert.deepEqual({ ...capture.frames.at(-1) }, { frameMs: 16, drawCalls: 2 });
+  assert.deepEqual(
+    { ...capture.frames[0] },
+    {
+      sequence: 1,
+      frameMs: 16,
+      drawCalls: 2,
+      visible: true,
+      hasFocus: true,
+      viewport: "desktop",
+      devicePixelRatio: 1,
+    },
+  );
+  assert.equal(capture.frames.at(-1).sequence, 130);
   assert.deepEqual(
     { ...probe.summarize(capture) },
     {
