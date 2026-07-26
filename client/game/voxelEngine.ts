@@ -2546,6 +2546,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     writeCelestialDirection(dayNightState.sunAngle, atmosphereSunDirection);
     writeCelestialDirection(dayNightState.moonAngle, atmosphereMoonDirection);
     updateActiveTorchLights(now, eye);
+    firstPersonTorchUniforms[3] = activeTorchUniforms[3] / 2;
     const mobStats = mobRenderer.rebuild(
       mobSnapshots,
       eye[0],
@@ -2765,10 +2766,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.uniformMatrix4fv(terrainMvpLocation, false, firstPersonMvpMatrix);
         gl.uniform3f(terrainCameraLocation, 0, 0, 0);
         gl.uniform1f(terrainFogLocation, 0);
-        gl.uniform3f(terrainAmbientColorLocation, 1, 1, 1);
-        gl.uniform3f(terrainDirectionalColorLocation, 0, 0, 0);
-        gl.uniform1f(terrainAmbientIntensityLocation, 1.12);
-        gl.uniform1f(terrainDirectionalIntensityLocation, 0);
         gl.uniform4fv(terrainTorchLightsLocation, firstPersonTorchUniforms);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
@@ -2786,7 +2783,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.uniformMatrix4fv(mvpLocation, false, firstPersonMvpMatrix);
         gl.uniform3f(cameraLocation, 0, 0, 0);
         gl.uniform1f(fogLocation, 0);
-        gl.uniform1f(lightingLocation, 0);
+        gl.uniform4fv(torchLightsLocation, firstPersonTorchUniforms);
+        gl.uniform1f(lightingLocation, 1);
         bindBuffer(firstPersonColorBuffer);
         gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[0]);
         drawCalls += 1;

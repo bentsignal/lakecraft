@@ -10,6 +10,7 @@ const FLOATS_PER_COLOR_VERTEX = 6;
 export const FIRST_PERSON_MAX_COLOR_VERTICES = 648;
 export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
+export const FIRST_PERSON_MODEL_SCALE = 0.48;
 
 const SKIN: Vec3 = [0.74, 0.50, 0.34];
 const SLEEVE: Vec3 = [0.05, 0.54, 0.56];
@@ -326,7 +327,10 @@ export function sampleFirstPersonAction(
   return output;
 }
 
-function writeModelMatrix(output: Float32Array, pose: FirstPersonActionPose): void {
+export function writeFirstPersonModelMatrix(
+  output: Float32Array,
+  pose: Readonly<FirstPersonActionPose>,
+): Float32Array {
   const cx = Math.cos(pose[3]);
   const sx = Math.sin(pose[3]);
   const cz = Math.cos(pose[4]);
@@ -334,13 +338,15 @@ function writeModelMatrix(output: Float32Array, pose: FirstPersonActionPose): vo
   const pivotX = 0.66;
   const pivotY = -0.82;
   const pivotZ = -1.20;
-  output[0] = cz; output[1] = sz; output[2] = 0; output[3] = 0;
-  output[4] = -sz * cx; output[5] = cz * cx; output[6] = sx; output[7] = 0;
-  output[8] = sz * sx; output[9] = -cz * sx; output[10] = cx; output[11] = 0;
+  const scale = FIRST_PERSON_MODEL_SCALE;
+  output[0] = cz * scale; output[1] = sz * scale; output[2] = 0; output[3] = 0;
+  output[4] = -sz * cx * scale; output[5] = cz * cx * scale; output[6] = sx * scale; output[7] = 0;
+  output[8] = sz * sx * scale; output[9] = -cz * sx * scale; output[10] = cx * scale; output[11] = 0;
   output[12] = pivotX + pose[0] - (output[0] * pivotX + output[4] * pivotY + output[8] * pivotZ);
   output[13] = pivotY + pose[1] - (output[1] * pivotX + output[5] * pivotY + output[9] * pivotZ);
   output[14] = pivotZ + pose[2] - (output[2] * pivotX + output[6] * pivotY + output[10] * pivotZ);
   output[15] = 1;
+  return output;
 }
 
 export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPersonRenderer {
@@ -438,7 +444,7 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
         Boolean(itemId && ITEMS[itemId].category === "food"),
         reducedMotion,
       );
-      writeModelMatrix(modelMatrix, actionPose);
+      writeFirstPersonModelMatrix(modelMatrix, actionPose);
       return writeMatrixProduct(output, projection, modelMatrix);
     },
     () => {
