@@ -60,6 +60,7 @@ Singleplayer requires no account and saves only in that browser. The title scree
 - `shared/` — pure item, recipe, furnace, and wire-protocol types
 
 The original pixel-art workflow and exact regeneration command live in [TEXTURE_PIPELINE.md](./TEXTURE_PIPELINE.md).
+The repeatable single-player combat smoke route lives in [docs/creative-combat-qa.md](./docs/creative-combat-qa.md); its Creative command preset takes under one minute and stages melee, armor, hostile-cover, TNT, bow, death-drop, and respawn checks without Lakebed traffic.
 
 ## Build and deploy
 
