@@ -129,11 +129,19 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
   }
 
   function openCreateDialog(): void {
+    if (transactionReadOnly) {
+      setError("World storage is read-only until pending transaction state can be verified.");
+      return;
+    }
     rememberDialogTrigger();
     setCreateOpen(true);
   }
 
   function openConfirmation(action: Exclude<ConfirmAction, null>): void {
+    if (transactionReadOnly) {
+      setError("World storage is read-only until pending transaction state can be verified.");
+      return;
+    }
     rememberDialogTrigger();
     setConfirm(action);
   }
@@ -183,6 +191,10 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
   }
 
   function create(): void {
+    if (transactionReadOnly) {
+      setError("World storage is read-only until pending transaction state can be verified.");
+      return;
+    }
     const result = createLocalWorld(storage, { name: newName, seedText: newSeed, gameMode: newMode });
     if (!result.ok) {
       setError(result.reason === "world_limit_reached"
@@ -216,6 +228,11 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
 
   function runConfirmed(): void {
     if (!confirm) return;
+    if (transactionReadOnly) {
+      setError("World storage is read-only until pending transaction state can be verified.");
+      setConfirm(null);
+      return;
+    }
     if (confirm.kind === "legacy_reset") {
       const result = resetLegacyLocalWorld(storage);
       if (!result.ok) setError("Legacy reset failed; the old data remains visible.");
@@ -238,6 +255,10 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
   }
 
   function importLegacy(): void {
+    if (transactionReadOnly) {
+      setError("World storage is read-only until pending transaction state can be verified.");
+      return;
+    }
     const result = importLegacyLocalWorld(storage, { name: "Imported World" });
     if (!result.ok) {
       setError("Legacy import failed; the original data remains unchanged.");
@@ -366,7 +387,13 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
               >
                 {imported ? "Legacy World Imported" : "Import Legacy World"}
               </button>
-              <button className="lc-menu-button" onClick={() => openConfirmation({ kind: "legacy_reset" })} type="button">Reset Legacy Data…</button>
+              <button
+                aria-disabled={transactionReadOnly}
+                className="lc-menu-button"
+                disabled={transactionReadOnly}
+                onClick={() => openConfirmation({ kind: "legacy_reset" })}
+                type="button"
+              >Reset Legacy Data…</button>
             </div>
           </>
         ) : null}

@@ -6,6 +6,14 @@ const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", i
 const save = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const registry = readFileSync(new URL("../client/singleplayer/localWorldRegistry.ts", import.meta.url), "utf8");
 
+function functionSource(name: string): string {
+  const start = browser.indexOf(`  function ${name}`);
+  const nextFunction = browser.indexOf("\n  function ", start + 1);
+  const componentReturn = browser.indexOf("\n  return (", start + 1);
+  const end = [nextFunction, componentReturn].filter((index) => index >= 0).sort((left, right) => left - right)[0];
+  return browser.slice(start, end);
+}
+
 assert.equal(browser.includes("lakebed/client"), false, "the world list stays entirely browser-local");
 assert.equal(app.includes("lakebed/client"), false, "selecting a world cannot mount Lakebed transport");
 assert.ok(browser.includes('aria-label="Local world browser"'));
@@ -59,6 +67,28 @@ assert.ok(
   && browser.includes("aria-disabled={legacy.status !== \"available\" || blocked || transactionReadOnly || imported}"),
   "reset and legacy import controls expose and enforce registry read-only state",
 );
+assert.ok(
+  browser.includes("aria-disabled={transactionReadOnly}")
+  && browser.includes("disabled={transactionReadOnly}")
+  && browser.includes('onClick={() => openConfirmation({ kind: "legacy_reset" })}'),
+  "legacy reset is removed from keyboard and click activation while transaction state is opaque",
+);
+const openCreateSource = functionSource("openCreateDialog");
+const openConfirmationSource = functionSource("openConfirmation");
+const createSource = functionSource("create");
+const confirmedSource = functionSource("runConfirmed");
+const importSource = functionSource("importLegacy");
+for (const [source, guardedCall] of [
+  [openCreateSource, "setCreateOpen(true)"],
+  [openConfirmationSource, "setConfirm(action)"],
+  [createSource, "createLocalWorld(storage"],
+  [confirmedSource, "resetLegacyLocalWorld(storage)"],
+  [importSource, "importLegacyLocalWorld(storage"],
+] as const) {
+  assert.ok(source.indexOf("if (transactionReadOnly)") >= 0
+    && source.indexOf("if (transactionReadOnly)") < source.indexOf(guardedCall),
+  `read-only handler guard precedes ${guardedCall}`);
+}
 
 for (const label of [
   "Select World",
