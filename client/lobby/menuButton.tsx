@@ -5,7 +5,7 @@ export function menuButton(
   onClick?: () => void,
   disabled = false,
   style = 0,
-  id?: string,
+  id?: string | number,
 ) {
   return (
     <button
