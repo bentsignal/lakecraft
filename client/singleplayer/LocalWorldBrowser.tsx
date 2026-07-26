@@ -22,6 +22,7 @@ import {
   browserSinglePlayerStorage,
   type SinglePlayerStorageAdapter,
 } from "./localSave.ts";
+import { localWorldDeleteState } from "./localWorldBrowserIssue.ts";
 
 interface LocalWorldBrowserProps {
   onPlay: (world: LocalWorldRecord, pointerLockHandoff: boolean) => void;
@@ -126,11 +127,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
 
   const issues = registryLoad.issues;
   const blocked = registryLoad.registry === null;
-  const deleteRecoveryPending = !blocked
-    && issues.some((issue) => /^delete:(transaction_read_failed|invalid_transaction_pending|recovery_pending)$/.test(issue));
-  const invalidDeleteIgnored = !blocked && issues.includes("delete:invalid_transaction_cleared");
-  const deleteRecoveryCompleted = !blocked && !deleteRecoveryPending && !invalidDeleteIgnored
-    && issues.some((issue) => /^delete:(rollback|cleanup)_completed$/.test(issue));
+  const [deleteWarning, deleteBlocked] = localWorldDeleteState(issues);
   const imported = worlds.some(({ world }) => world.importedLegacy);
   const selectedPlayable = Boolean(selected && !transactionReadOnly && canPlayLocalWorld(selected));
   const confirmedWorld = modal > ACTION.CREATE && modal < ACTION.LEGACY_RESET ? selected?.world : null;
@@ -139,13 +136,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
     ? "!Corrupt/newer list; no data changed."
     : transactionReadOnly
       ? `!${READ_ONLY} Play and changes are disabled until recovery.`
-      : deleteRecoveryPending
-        ? "!Deletion committed; cleanup pending."
-        : invalidDeleteIgnored
-          ? "!Invalid deletion ignored. Worlds remain available; orphaned data may remain."
-          : deleteRecoveryCompleted
-            ? "Deletion recovered; other worlds unchanged."
-            : "";
+      : deleteWarning;
 
   function fail(text: string): void {
     setNotice(`!${text}`);
@@ -242,7 +233,7 @@ export function LocalWorldBrowser({ onPlay, storage: suppliedStorage }: LocalWor
     [CREATE_LABEL, blocked || transactionReadOnly || worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS,
       ACTION.CREATE],
     ["Reset World…", !selected || transactionReadOnly, ACTION.RESET],
-    ["Delete World…", !selected || deleteRecoveryPending || transactionReadOnly, ACTION.DELETE],
+    ["Delete World…", !selected || deleteBlocked || transactionReadOnly, ACTION.DELETE],
   ];
   if (transactionReadOnly) actions.push(["Retry Storage", false, ACTION.RETRY]);
   if (legacy.status !== "none") {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { localWorldDeleteState } from "../client/singleplayer/localWorldBrowserIssue.ts";
 
 const browser = readFileSync(new URL("../client/singleplayer/LocalWorldBrowser.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
@@ -47,12 +48,28 @@ assert.equal(browser.includes("trapDialogFocus"), false,
   "the browser dialog owns focus trapping instead of a partial custom Tab implementation");
 assert.ok(browser.includes("Confirm deletion/reset") && browser.includes("This cannot be undone."),
   "delete and reset require explicit confirmation");
+assert.deepEqual(
+  localWorldDeleteState(["delete:recovery_pending"]),
+  ["!Deletion committed; cleanup pending.", true],
+  "committed deletion recovery reports its unfinished namespace cleanup",
+);
+assert.deepEqual(
+  localWorldDeleteState(["delete:invalid_transaction_pending"]),
+  ["!Invalid deletion marker; worlds unchanged.", true],
+  "a malformed pending marker does not claim that a deletion committed",
+);
+assert.deepEqual(localWorldDeleteState(["delete:invalid_transaction_cleared"]),
+  ["!Invalid deletion ignored. Worlds remain available; orphaned data may remain.", false]);
+assert.deepEqual(localWorldDeleteState(["delete:cleanup_completed"]),
+  ["Deletion recovered; other worlds unchanged.", false]);
+for (const issue of ["transaction:active", "delete:active", "delete:future_issue"]) {
+  assert.deepEqual(localWorldDeleteState([issue]), ["", false],
+    `${issue} does not impersonate a known delete recovery state`);
+}
 assert.ok(
-  browser.includes("Deletion committed; cleanup pending.")
-  && browser.includes("Invalid deletion ignored. Worlds remain available; orphaned data may remain.")
-  && browser.includes("Deletion recovered; other worlds unchanged.")
-  && browser.includes('["Delete World…", !selected || deleteRecoveryPending || transactionReadOnly'),
-  "delete recovery accurately reports a committed deletion awaiting namespace cleanup",
+  browser.includes("localWorldDeleteState(issues)")
+  && browser.includes('["Delete World…", !selected || deleteBlocked || transactionReadOnly'),
+  "the browser renders the tested exact issue mapping and retains pending-delete guards",
 );
 assert.ok(
   browser.includes("const transactionReadOnly = isLocalWorldRegistryTransactionReadOnly(registryLoad)")
