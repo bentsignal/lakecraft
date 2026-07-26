@@ -18,15 +18,85 @@ import {
   maxItemDurability,
 } from "../shared/game.ts";
 
+const SETUP_START = "<!-- creative-qa-setup:start -->";
+const SETUP_END = "<!-- creative-qa-setup:end -->";
+const SETUP_HEADING = "## Under-one-minute setup";
+const CHECKLIST_HEADING = "## Subjective checklist";
+const SURVIVAL_COMMAND = "/gamemode survival";
+const SURVIVAL_STEP = "5. Press `T`, run `/gamemode survival`, then press `Escape`.";
+const EXPECTED_SETUP_COMMANDS = [
+  "/gamemode creative",
+  "/give diamond_sword",
+  "/give diamond_chestplate",
+  "/give cobblestone 64",
+  "/give tnt 8",
+  "/give flint_and_steel",
+  "/give bow",
+  "/give arrow 16",
+] as const;
+
+function countOccurrences(source: string, needle: string) {
+  return source.split(needle).length - 1;
+}
+
+function parseRunbookRoute(source: string) {
+  assert.equal(countOccurrences(source, SETUP_START), 1, "the runbook has exactly one setup start marker");
+  assert.equal(countOccurrences(source, SETUP_END), 1, "the runbook has exactly one setup end marker");
+  assert.equal(countOccurrences(source, SETUP_HEADING), 1, "the runbook has exactly one setup section");
+  assert.equal(countOccurrences(source, CHECKLIST_HEADING), 1, "the runbook has exactly one checklist boundary");
+
+  const sectionStart = source.indexOf(SETUP_HEADING);
+  const sectionEnd = source.indexOf(CHECKLIST_HEADING);
+  const markerStart = source.indexOf(SETUP_START);
+  const markerEnd = source.indexOf(SETUP_END);
+  assert.ok(sectionStart < markerStart, "the setup preset starts inside the setup section");
+  assert.ok(markerStart < markerEnd, "the setup markers are in start/end order");
+  assert.ok(markerEnd < sectionEnd, "the setup preset ends before the subjective checklist");
+
+  const boundedPreset = source.slice(markerStart + SETUP_START.length, markerEnd).trim();
+  const fencedPreset = boundedPreset.match(/^```text\n([\s\S]*?)\n```$/);
+  assert.ok(fencedPreset, "the bounded setup marker contains only one text command fence");
+  const setupCommands = fencedPreset[1].split("\n").map((line) => line.trim()).filter(Boolean);
+  assert.deepEqual(setupCommands, EXPECTED_SETUP_COMMANDS, "the setup command sequence is exact and ordered");
+  assert.ok(setupCommands.length <= 8, "the setup stays short enough to enter in under one minute");
+
+  assert.equal(countOccurrences(source, SURVIVAL_COMMAND), 1, "the runbook has exactly one Survival handoff command");
+  assert.equal(countOccurrences(source, SURVIVAL_STEP), 1, "the runbook has exactly one ordered Survival handoff step");
+  const survivalPosition = source.indexOf(SURVIVAL_STEP);
+  assert.ok(markerEnd < survivalPosition, "the Survival handoff follows the Creative setup preset");
+  assert.ok(survivalPosition < sectionEnd, "the Survival handoff occurs before the subjective checklist");
+
+  const actualSurvivalStep = source.slice(survivalPosition, survivalPosition + SURVIVAL_STEP.length);
+  const handoffSource = actualSurvivalStep.match(/run `([^`]+)`/)?.[1];
+  assert.equal(handoffSource, SURVIVAL_COMMAND, "the ordered handoff step contains the exact Survival command");
+  const parsedHandoff = parseLocalCommand(handoffSource);
+  assert.equal(parsedHandoff.ok, true, "the bounded handoff command parses");
+  if (!parsedHandoff.ok) throw new Error(parsedHandoff.message);
+  assert.deepEqual(parsedHandoff.command, { kind: "gamemode", mode: "survival" });
+  if (parsedHandoff.command.kind !== "gamemode") throw new Error("Survival handoff must be a gamemode command");
+  return { setupCommands, handoff: parsedHandoff.command };
+}
+
 const runbook = readFileSync(new URL("../docs/creative-combat-qa.md", import.meta.url), "utf8");
-const setup = runbook.match(
-  /<!-- creative-qa-setup:start -->[\s\S]*?```text\n([\s\S]*?)```[\s\S]*?<!-- creative-qa-setup:end -->/,
-);
-assert.ok(setup, "the runbook exposes one machine-checkable setup preset");
-const commands = setup[1].split("\n").map((line) => line.trim()).filter(Boolean);
-assert.ok(commands.length <= 8, "the setup stays short enough to enter in under one minute");
-assert.equal(commands[0], "/gamemode creative");
-assert.ok(runbook.includes("run `/gamemode survival`"), "the guide returns to Survival before damage and wear checks");
+const route = parseRunbookRoute(runbook);
+const commands = route.setupCommands;
+
+for (const invalidRunbook of [
+  runbook.replace(SETUP_START, `${SETUP_START}\n${SETUP_START}`),
+  runbook.replace(SETUP_START, ""),
+  runbook.replace(SETUP_END, ""),
+  runbook
+    .replace(SETUP_START, "__CREATIVE_QA_SETUP_START__")
+    .replace(SETUP_END, SETUP_START)
+    .replace("__CREATIVE_QA_SETUP_START__", SETUP_END),
+  runbook.replace("/give diamond_sword\n/give diamond_chestplate", "/give diamond_chestplate\n/give diamond_sword"),
+  runbook.replace("/give arrow 16", "/give arrow 16\n/give tnt"),
+  runbook.replace(SURVIVAL_STEP, `${SURVIVAL_STEP}\n${SURVIVAL_STEP}`),
+  runbook.replace(SURVIVAL_STEP, "").replace(SETUP_START, `${SURVIVAL_STEP}\n${SETUP_START}`),
+  `${runbook}\n${SETUP_START}\n\`\`\`text\n/gamemode creative\n\`\`\`\n${SETUP_END}\n`,
+]) {
+  assert.throws(() => parseRunbookRoute(invalidRunbook), "stale or structurally ambiguous runbook content is rejected");
+}
 
 let state: LocalModeState = {
   mode: "survival",
@@ -74,11 +144,12 @@ const chestplateIndex = state.inventory.findIndex((stack) => stack?.itemId === "
 const equipped = equipArmorFromInventory(state.inventory, state.equipment, chestplateIndex);
 assert.equal(equipped.ok, true, "the documented shift-click target is valid armor");
 if (!equipped.ok) throw new Error(equipped.reason);
+assert.equal(route.handoff.kind, "gamemode");
 state = transitionLocalGameMode({
   ...state,
   inventory: equipped.inventory,
   equipment: equipped.equipment,
-}, "survival");
+}, route.handoff.mode);
 assert.equal(state.mode, "survival");
 assert.equal(state.equipment.chest?.itemId, "diamond_chestplate");
 assert.equal(countItem(state.inventory, "diamond_chestplate"), 0);
