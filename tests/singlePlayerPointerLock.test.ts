@@ -117,7 +117,7 @@ const playHandler = browserSource.slice(
 );
 assertSourceOrder(
   playHandler,
-  "resolveLocalWorldPlay(storage, selected, result)",
+  "resolveLocalWorldPlay(storage, entry, result)",
   "onPlay(playable, requestDocumentPointerLockHandoff())",
   "Play validates the exact world before requesting pointer capture in its click handler",
 );

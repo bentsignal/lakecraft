@@ -23,8 +23,6 @@ import {
   createLocalWorld,
   deleteLocalWorld,
   deterministicLocalWorldSeed,
-  importLegacyLocalWorld,
-  inspectLegacyLocalWorld,
   inspectLocalWorld,
   isLocalWorldRegistryTransactionReadOnly,
   listLocalWorlds,
@@ -32,8 +30,6 @@ import {
   moveLocalWorldSelection,
   normalizeLocalWorldName,
   reconcileLocalWorldSelection,
-  resetLegacyLocalWorld,
-  resetLocalWorldData,
   resolveLocalWorldPlay,
   saveLocalWorldRegistry,
   touchLocalWorld,
@@ -735,15 +731,10 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   const mutations = [
     (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
       createLocalWorld(storage, source.collisionInput),
-    (storage: SinglePlayerStorageAdapter) =>
-      importLegacyLocalWorld(storage, { name: "Blocked Browser Import", now: 50 }),
-    (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
-      resetLocalWorldData(storage, source.kept.id, 50),
     (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
       deleteLocalWorld(storage, source.kept.id, 50),
     (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
       touchLocalWorld(storage, source.kept.id, 50),
-    (storage: SinglePlayerStorageAdapter) => resetLegacyLocalWorld(storage, 50),
     (storage: SinglePlayerStorageAdapter, source: ReturnType<typeof makeSource>) =>
       saveLocalWorldRegistry(storage, source.registry, 50, source.sequence),
   ];
@@ -782,9 +773,6 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
       gameMode: "creative",
       now: 200,
     }), "world_create_recovery_pending"],
-    [() => importLegacyLocalWorld(source, { name: "Blocked Import", now: 200 }),
-      "world_import_recovery_pending"],
-    [() => resetLocalWorldData(source, kept.world.id, 200), "world_reset_recovery_pending"],
     [() => deleteLocalWorld(source, kept.world.id, 200), "world_delete_recovery_pending"],
     [() => touchLocalWorld(source, kept.world.id, 200), "world_touch_recovery_pending"],
   ];
@@ -909,7 +897,7 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   assert.deepEqual(namespaceValues(malformedKey, kept.world.id), before);
 }
 
-// Healthy create/touch/reset/delete uses only the crash-safe A/B registry and
+// Healthy create/touch/delete uses only the crash-safe A/B registry and
 // four world keys; pending is protected in both slots before namespace mutation.
 {
   const storage = new MemoryStorage();
@@ -926,7 +914,6 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   const touched = touchLocalWorld(storage, created.world.id, 200, created.world);
   assert.ok(touched.ok);
   assert.equal(touched.world.lastPlayedAt, 200);
-  assert.ok(resetLocalWorldData(storage, created.world.id, 300).ok);
   assert.ok(deleteLocalWorld(storage, created.world.id, 400).ok);
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 0);
   assert.deepEqual(namespaceValues(storage, created.world.id), [null, null, null, null]);
@@ -1053,7 +1040,6 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
         gameMode: "creative",
         now: 652,
       }));
-      nestedDelete.push(resetLocalWorldData(deleteStorage, kept.world.id, 652));
     });
   });
   assert.ok(deleteLocalWorld(
@@ -1063,7 +1049,6 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   ).ok);
   assert.deepEqual(nestedDelete, [
     { ok: false, reason: "world_create_recovery_pending", mutationStarted: false },
-    { ok: false, reason: "world_reset_recovery_pending", mutationStarted: false },
   ]);
   assert.equal(keptBytes.some((value) => value !== null), true);
   assert.deepEqual(namespaceValues(deleteStorage, kept.world.id), [null, null, null, null]);
@@ -1836,18 +1821,13 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   assert.deepEqual(new Set(storage.values.keys()), keysBefore);
 }
 
-// Legacy bytes remain inert until explicit import/reset, and browser getter
-// failures are reported without writes.
+// Legacy bytes remain inert, and browser getter failures are reported without writes.
 {
   const storage = new MemoryStorage();
   const legacy = createDefaultSinglePlayerSnapshot(55, 1_600);
   assert.ok(saveSinglePlayerSnapshot(storage, legacy, 1_600).ok);
-  assert.equal(inspectLegacyLocalWorld(storage).status, "available");
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 0);
-  const imported = importLegacyLocalWorld(storage, { name: "Imported", now: 1_601 });
-  assert.ok(imported.ok);
-  assert.equal(imported.world.importedLegacy, true);
-  assert.ok(resetLegacyLocalWorld(storage, 1_602).ok);
+  assert.equal(loadSinglePlayerSave(storage, { migrateLegacy: false }).snapshot?.world.seed, 55);
 
   const original = Object.getOwnPropertyDescriptor(globalThis, "window");
   Object.defineProperty(globalThis, "window", {
@@ -1918,4 +1898,4 @@ assert.equal(isLocalWorldRegistryTransactionReadOnly({
 }), true);
 assert.equal(listLocalWorlds(new MemoryStorage()).worlds.length, 0);
 
-console.log("local world registry integrated pending, recovery, isolation, capacity, and legacy tests passed");
+console.log("local world registry integrated pending, recovery, isolation, and capacity tests passed");

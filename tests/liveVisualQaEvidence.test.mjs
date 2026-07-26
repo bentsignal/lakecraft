@@ -900,8 +900,12 @@ test("runbook marker parsers reject ambiguity, reordering, and command drift", (
 });
 
 test("runbook documents trusted validation, sanitized storage, current UI labels, and capture boundaries", () => {
-  assert.match(runbook, /\*\*Play World\*\*/);
+  assert.match(runbook, /double-click[\s\S]{0,80}play it/i);
+  assert.match(runbook, /\*\*Create New World\*\*/);
+  assert.match(runbook, /\*\*Delete World\*\*/);
+  assert.match(runbook, /yes, I want to delete this world/);
   assert.doesNotMatch(runbook, /Play Selected World/);
+  assert.doesNotMatch(runbook, /\*\*Reset World/);
   assert.doesNotMatch(runbook, /copy all keys/i);
   assert.doesNotMatch(runbook, /localStorage\.key\(\)|Object\.keys\(localStorage\)/);
   assert.match(

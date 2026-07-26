@@ -1,20 +1,13 @@
 import type { LocalGameMode } from "./localCommands.ts";
 import {
-  SINGLEPLAYER_LEGACY_SAVE_KEY,
-  SINGLEPLAYER_SAVE_HEAD_KEY,
-  SINGLEPLAYER_SAVE_SLOT_A_KEY,
-  SINGLEPLAYER_SAVE_SLOT_B_KEY,
   SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS,
   canonicalSinglePlayerJson,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
-  resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
   singlePlayerSaveChecksum,
   singlePlayerWorldStorageKey,
   singlePlayerWorldStorageKeys,
-  type SinglePlayerLoadResult,
-  type SinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
 } from "./localSave.ts";
 
@@ -34,12 +27,6 @@ export const LOCAL_WORLD_NAMESPACE_BUDGET_CHARS = SINGLEPLAYER_WORLD_SAVE_MAX_SL
 export const LOCAL_WORLD_CAPACITY_WARNING_CHARS = Math.floor(LOCAL_WORLD_NAMESPACE_BUDGET_CHARS * 0.8);
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
-const LEGACY_KEYS = [
-  SINGLEPLAYER_LEGACY_SAVE_KEY,
-  SINGLEPLAYER_SAVE_HEAD_KEY,
-  SINGLEPLAYER_SAVE_SLOT_A_KEY,
-  SINGLEPLAYER_SAVE_SLOT_B_KEY,
-] as const;
 const LEGACY_TRANSACTION_PENDING = "transaction:recovery_pending";
 const LEGACY_TRANSACTION_KEYS = [
   LOCAL_WORLD_CREATE_TRANSACTION_KEY,
@@ -159,11 +146,6 @@ function readWorldValues(storage: SinglePlayerStorageAdapter, worldId: string): 
     return null;
   }
 }
-
-export type LegacyLocalWorldInspection =
-  | { status: "none" }
-  | { status: "available"; load: SinglePlayerLoadResult }
-  | { status: "corrupt" | "unsupported"; load: SinglePlayerLoadResult };
 
 type ParsedRegistrySlot =
   | [0, 0 | 1]
@@ -838,12 +820,11 @@ function nextWorldId(registry: LocalWorldRegistry, seed: number, createdAt: numb
   return null;
 }
 
-function createWorldFromSnapshot(
+function persistNewLocalWorld(
   storage: SinglePlayerStorageAdapter,
   registry: LocalWorldRegistry,
   generation: number,
-  input: { name: string; seed: number; gameMode: LocalGameMode; createdAt: number; importedLegacy: boolean },
-  sourceSnapshot?: SinglePlayerSnapshot,
+  input: { name: string; seed: number; gameMode: LocalGameMode; createdAt: number },
 ): LocalWorldMutationResult {
   const name = normalizeLocalWorldName(input.name);
   if (!name || !safeInteger(input.seed, -2_147_483_648, 2_147_483_647)
@@ -856,7 +837,7 @@ function createWorldFromSnapshot(
     && candidate.seed === input.seed
     && candidate.initialGameMode === input.gameMode
     && candidate.createdAt === input.createdAt
-    && candidate.importedLegacy === input.importedLegacy);
+    && !candidate.importedLegacy);
   if (replayed) return { ok: true, world: replayed, registry };
   if (registry.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS) {
     return failure("world_limit_reached");
@@ -870,7 +851,7 @@ function createWorldFromSnapshot(
     initialGameMode: input.gameMode,
     createdAt: input.createdAt,
     lastPlayedAt: 0,
-    importedLegacy: input.importedLegacy,
+    importedLegacy: false,
   };
   const pending = makePending(0, generation, world);
   const begun = saveRegistryState(storage, registry, input.createdAt, generation - 1, pending, null);
@@ -888,18 +869,7 @@ function createWorldFromSnapshot(
   if (!mirrorPending(storage, begun.sequence, pending)) {
     return failure("world_create_transaction_pending", true);
   }
-  const snapshot = sourceSnapshot
-    ? {
-      ...sourceSnapshot,
-      world: {
-        ...sourceSnapshot.world,
-        worldId: id,
-        gameMode: sourceSnapshot.world.gameMode ?? input.gameMode,
-        weather: { ...sourceSnapshot.world.weather },
-        edits: sourceSnapshot.world.edits.map((edit) => ({ ...edit })),
-      },
-    }
-    : createDefaultSinglePlayerSnapshot(input.seed, input.createdAt, id);
+  const snapshot = createDefaultSinglePlayerSnapshot(input.seed, input.createdAt, id);
   snapshot.world.gameMode = input.gameMode;
   const saved = saveSinglePlayerSnapshot(storage, snapshot, input.createdAt, { worldId: id });
   if (!saved.ok) return failure(`world_save_${saved.reason}_transaction_pending`, true);
@@ -952,12 +922,11 @@ export function createLocalWorld(
     && candidate.createdAt === createdAt
     && !candidate.importedLegacy) : null;
   if (replayed) return { ok: true, world: replayed, registry: loaded.registry };
-  return createWorldFromSnapshot(storage, loaded.registry, loaded.sequence + 1, {
+  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1, {
     name: input.name,
     seed,
     gameMode: input.gameMode,
     createdAt,
-    importedLegacy: false,
   });
 }
 
@@ -1055,30 +1024,6 @@ export function touchLocalWorld(
     : failure(`registry_${saved.reason}`, saved.mutationStarted);
 }
 
-export function resetLocalWorldData(
-  storage: SinglePlayerStorageAdapter,
-  worldId: string,
-  resetAt = Date.now(),
-): LocalWorldMutationResult {
-  const committedAt = timestamp(resetAt);
-  const loaded = loadLocalWorldRegistry(storage, committedAt);
-  if (!loaded.registry) return failure("world_not_found");
-  if (hasPendingNamespaceRecovery(loaded.issues)
-    || preflightLegacyTransactions(storage, committedAt)) {
-    return failure("world_reset_recovery_pending");
-  }
-  const world = loaded.registry.worlds.find(({ id }) => id === worldId);
-  if (!world) return failure("world_not_found");
-  const reset = resetSinglePlayerSave(storage, { worldId });
-  if (!reset.ok) return failure(`world_reset_${reset.reason}`, reset.mutationStarted);
-  const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
-  snapshot.world.gameMode = world.initialGameMode;
-  const saved = saveSinglePlayerSnapshot(storage, snapshot, committedAt, { worldId });
-  return saved.ok
-    ? { ok: true, world, registry: loaded.registry }
-    : failure(`world_save_${saved.reason}`, true);
-}
-
 export function deleteLocalWorld(
   storage: SinglePlayerStorageAdapter,
   worldId: string,
@@ -1135,72 +1080,4 @@ export function deleteLocalWorld(
   return cleared.ok
     ? { ok: true, world, registry: cleared.registry }
     : failure("world_delete_cleanup_pending", true);
-}
-
-export function inspectLegacyLocalWorld(storage: SinglePlayerStorageAdapter): LegacyLocalWorldInspection {
-  let present = false;
-  try {
-    present = LEGACY_KEYS.some((key) => storage.getItem(key) !== null);
-  } catch {
-    return {
-      status: "corrupt",
-      load: { status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: ["legacy:storage_read_failed"] },
-    };
-  }
-  if (!present) return { status: "none" };
-  const load = loadSinglePlayerSave(storage, { migrateLegacy: false });
-  if (load.status === "unsupported") return { status: "unsupported", load };
-  if (load.status === "corrupt") return { status: "corrupt", load };
-  return { status: "available", load };
-}
-
-export function importLegacyLocalWorld(
-  storage: SinglePlayerStorageAdapter,
-  input: { name: string; now?: number },
-): LocalWorldMutationResult {
-  const now = timestamp(input.now ?? Date.now());
-  const loadedRegistry = loadLocalWorldRegistry(storage, now);
-  if (!loadedRegistry.registry) return failure(`registry_${loadedRegistry.status}`);
-  if (hasPendingNamespaceRecovery(loadedRegistry.issues)) {
-    return failure("world_import_recovery_pending");
-  }
-  // This is the only path that enables the old one-key migration, and it is
-  // called solely from the user's explicit Import action.
-  const legacy = loadSinglePlayerSave(storage, {
-    migrateLegacy: true,
-    persistMigration: false,
-    now: () => now,
-  });
-  if (!legacy.snapshot) return failure(`legacy_${legacy.status}`);
-  return createWorldFromSnapshot(storage, loadedRegistry.registry, loadedRegistry.sequence + 1, {
-    name: input.name,
-    seed: legacy.snapshot.world.seed,
-    gameMode: legacy.snapshot.world.gameMode ?? "survival",
-    createdAt: now,
-    importedLegacy: true,
-  }, legacy.snapshot);
-}
-
-export function resetLegacyLocalWorld(
-  storage: SinglePlayerStorageAdapter,
-  resetAt = Date.now(),
-): LocalWorldMutationResult {
-  const committedAt = timestamp(resetAt);
-  const loaded = loadLocalWorldRegistry(storage, committedAt);
-  if (hasPendingNamespaceRecovery(loaded.issues)
-    || preflightLegacyTransactions(storage, committedAt)) {
-    return failure("legacy_reset_recovery_pending");
-  }
-  const reset = resetSinglePlayerSave(storage);
-  if (!reset.ok) return failure(`legacy_reset_${reset.reason}`, reset.mutationStarted);
-  const placeholder: LocalWorldRecord = {
-    id: "legacy-reset",
-    name: "Legacy World",
-    seed: 0,
-    initialGameMode: "survival",
-    createdAt: 0,
-    lastPlayedAt: 0,
-    importedLegacy: true,
-  };
-  return { ok: true, world: placeholder, registry: loaded.registry ?? { worlds: [] } };
 }
