@@ -158,6 +158,20 @@ import {
   shouldRepeatSecondaryPlacement,
   type SecondaryPlacementHoldState,
 } from "./continuousPlacement.ts";
+import {
+  CAVE_LIGHT_FLOOR,
+  SKY_EXPOSURE_LEVELS,
+  SKY_SHADE_EMISSIVE_MARKER,
+  SKY_SHADE_PACK_MARKER,
+  blockStopsSky,
+  packSkyExposureShade,
+  refreshEditedSkyColumns,
+  removeChunkSkyOccluders,
+  skyExposureDirtyChunkKeysForEdits,
+  skyExposureLevel,
+  writeChunkSkyOccluders,
+  type SkyOccluderColumns,
+} from "./skyExposure.ts";
 
 type Vec3 = [number, number, number];
 
@@ -446,9 +460,17 @@ varying vec3 vLight;
 varying float vFog;
 void main() {
   gl_Position = uMvp * vec4(aPosition, 1.0);
-  vec3 lighting = vec3(0.16)
+  float packedExposure = step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)}, aShade);
+  float emissive = step(${(SKY_SHADE_PACK_MARKER + SKY_SHADE_EMISSIVE_MARKER - 0.5).toFixed(1)}, aShade);
+  float encodedShade = aShade
+    - packedExposure * ${SKY_SHADE_PACK_MARKER.toFixed(1)}
+    - emissive * ${SKY_SHADE_EMISSIVE_MARKER.toFixed(1)};
+  float faceShade = mix(aShade, mod(encodedShade, 2.0), packedExposure);
+  float skyExposure = mix(1.0, floor(encodedShade / 2.0) / ${SKY_EXPOSURE_LEVELS.toFixed(1)}, packedExposure);
+  vec3 surfaceLighting = vec3(0.16)
     + uAmbientColor * uAmbientIntensity * 0.75
     + uDirectionalColor * uDirectionalIntensity * 0.30;
+  vec3 lighting = mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}), surfaceLighting, skyExposure);
   vec3 torchLight = vec3(0.0);
   for (int lightIndex = 0; lightIndex < 8; lightIndex++) {
     vec4 light = uTorchLights[lightIndex];
@@ -456,7 +478,8 @@ void main() {
     torchLight += vec3(1.0, 0.43, 0.12) * attenuation * attenuation * 0.95;
   }
   vUv = aUv;
-  vLight = (lighting + torchLight) * aShade;
+  vec3 emissiveLight = vec3(0.22, 0.07, 0.015) * emissive;
+  vLight = (lighting + torchLight + emissiveLight) * faceShade;
   float distanceFromCamera = length(aPosition - uCamera);
   vFog = uFogEnabled * smoothstep(18.0, 42.0, distanceFromCamera);
 }`;
@@ -555,16 +578,7 @@ export function selectNearestTorchLights(
 }
 
 export function blockOccludesFaces(block: BlockId): boolean {
-  return block !== BLOCK.AIR
-    && block !== BLOCK.TORCH
-    && block !== BLOCK.DOOR_OPEN
-    && block !== BLOCK.LADDER
-    && block !== BLOCK.GLASS
-    && block !== BLOCK.SAPLING
-    && block !== BLOCK.OAK_FENCE
-    && block !== BLOCK.OAK_FENCE_GATE_CLOSED
-    && block !== BLOCK.OAK_FENCE_GATE_OPEN
-    && block !== BLOCK.STONE_BRICK_SLAB;
+  return blockStopsSky(block);
 }
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
@@ -914,6 +928,10 @@ function pushTexturedVertex(
   output.push(position[0], position[1], position[2], u, v, shade);
 }
 
+function retainedTerrainShade(faceShade: number, exposureLevel?: number, emissive = false): number {
+  return exposureLevel === undefined ? faceShade : packSkyExposureShade(faceShade, exposureLevel, emissive);
+}
+
 function appendTexturedBlockFace(
   output: number[],
   x: number,
@@ -922,6 +940,8 @@ function appendTexturedBlockFace(
   face: (typeof FACE_DEFS)[number],
   textureName: Parameters<typeof textureAtlasUv>[0],
   shade: number,
+  exposureLevel: number,
+  emissive = false,
 ): void {
   const uv = textureAtlasUv(textureName);
   for (const point of face[5]) {
@@ -932,7 +952,7 @@ function appendTexturedBlockFace(
       [x + point[0], y + point[1], z + point[2]],
       uv.left + (uv.right - uv.left) * horizontal,
       uv.bottom + (uv.top - uv.bottom) * vertical,
-      shade,
+      retainedTerrainShade(shade, exposureLevel, emissive),
     );
   }
 }
@@ -943,6 +963,7 @@ function appendTexturedAxisAlignedBox(
   max: Vec3,
   textureName: Parameters<typeof textureAtlasUv>[0],
   shade = 1,
+  exposureLevel?: number,
 ): void {
   const uv = textureAtlasUv(textureName);
   for (const face of FACE_DEFS) {
@@ -958,7 +979,7 @@ function appendTexturedAxisAlignedBox(
         ],
         uv.left + (uv.right - uv.left) * horizontal,
         uv.bottom + (uv.top - uv.bottom) * vertical,
-        face[4] * shade,
+        retainedTerrainShade(face[4] * shade, exposureLevel),
       );
     }
   }
@@ -978,6 +999,7 @@ export function appendStoneBrickSlabMesh(
   z: number,
   shade = 1,
   getBlock?: (x: number, y: number, z: number) => BlockId,
+  exposureLevel?: number,
 ): void {
   const uv = textureAtlasUv("stone_bricks");
   for (const face of FACE_DEFS) {
@@ -995,7 +1017,7 @@ export function appendStoneBrickSlabMesh(
         [x + point[0], y + point[1] * STONE_BRICK_SLAB_HEIGHT, z + point[2]],
         uv.left + (uv.right - uv.left) * horizontal,
         uv.bottom + (uv.top - uv.bottom) * vertical,
-        face[4] * shade,
+        retainedTerrainShade(face[4] * shade, exposureLevel),
       );
     }
   }
@@ -1004,7 +1026,14 @@ export function appendStoneBrickSlabMesh(
 export const SAPLING_MESH_VERTEX_COUNT = 12;
 
 /** Two diagonal quads form the classic crossed-plant silhouette at a fixed vertex cost. */
-export function appendSaplingMesh(output: number[], x: number, y: number, z: number, shade = 1): void {
+export function appendSaplingMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  shade = 1,
+  exposureLevel?: number,
+): void {
   const uv = textureAtlasUv("sapling");
   const left = x + 0.12;
   const right = x + 0.88;
@@ -1013,7 +1042,7 @@ export function appendSaplingMesh(output: number[], x: number, y: number, z: num
   const bottom = y;
   const top = y + 1;
   const vertex = (px: number, py: number, pz: number, u: number, v: number): void => {
-    pushTexturedVertex(output, [px, py, pz], u, v, shade);
+    pushTexturedVertex(output, [px, py, pz], u, v, retainedTerrainShade(shade, exposureLevel));
   };
   vertex(left, bottom, near, uv.left, uv.bottom);
   vertex(left, top, near, uv.left, uv.top);
@@ -1045,6 +1074,7 @@ export function appendOakFenceMesh(
   z: number,
   connections: OakFenceConnections,
   shade = 1,
+  exposureLevel?: number,
 ): void {
   const texture = "oak_planks" as const;
   appendTexturedAxisAlignedBox(
@@ -1053,10 +1083,15 @@ export function appendOakFenceMesh(
     [x + 0.625, y + OAK_FENCE_HEIGHT, z + 0.625],
     texture,
     shade,
+    exposureLevel,
   );
   const addRails = (minX: number, maxX: number, minZ: number, maxZ: number): void => {
-    appendTexturedAxisAlignedBox(output, [minX, y + 0.50, minZ], [maxX, y + 0.75, maxZ], texture, shade);
-    appendTexturedAxisAlignedBox(output, [minX, y + 1.00, minZ], [maxX, y + 1.25, maxZ], texture, shade);
+    appendTexturedAxisAlignedBox(
+      output, [minX, y + 0.50, minZ], [maxX, y + 0.75, maxZ], texture, shade, exposureLevel,
+    );
+    appendTexturedAxisAlignedBox(
+      output, [minX, y + 1.00, minZ], [maxX, y + 1.25, maxZ], texture, shade, exposureLevel,
+    );
   };
   if (connections.east) addRails(x + 0.5, x + 1, z + 0.4375, z + 0.5625);
   if (connections.west) addRails(x, x + 0.5, z + 0.4375, z + 0.5625);
@@ -1074,6 +1109,7 @@ export function appendOakFenceGateMesh(
   z: number,
   open: boolean,
   shade = 1,
+  exposureLevel?: number,
 ): void {
   const texture = "oak_planks" as const;
   appendTexturedAxisAlignedBox(
@@ -1082,6 +1118,7 @@ export function appendOakFenceGateMesh(
     [x + 0.1875, y + OAK_FENCE_HEIGHT, z + 0.625],
     texture,
     shade,
+    exposureLevel,
   );
   appendTexturedAxisAlignedBox(
     output,
@@ -1089,6 +1126,7 @@ export function appendOakFenceGateMesh(
     [x + 0.9375, y + OAK_FENCE_HEIGHT, z + 0.625],
     texture,
     shade,
+    exposureLevel,
   );
   const appendRail = (minimumY: number, maximumY: number): void => {
     appendTexturedAxisAlignedBox(
@@ -1101,6 +1139,7 @@ export function appendOakFenceGateMesh(
         : [x + 0.875, y + maximumY, z + 0.5625],
       texture,
       shade,
+      exposureLevel,
     );
   };
   appendRail(0.50, 0.75);
@@ -1109,6 +1148,16 @@ export function appendOakFenceGateMesh(
 
 function tint(color: Vec3, shade: number, variation = 1): Vec3 {
   return [color[0] * shade * variation, color[1] * shade * variation, color[2] * shade * variation];
+}
+
+function attenuateColorVerticesForSky(output: number[], start: number, exposureLevel: number): void {
+  const exposure = Math.max(0, Math.min(SKY_EXPOSURE_LEVELS, exposureLevel)) / SKY_EXPOSURE_LEVELS;
+  const scale = 0.25 + exposure * 0.75;
+  for (let offset = start + 3; offset < output.length; offset += 6) {
+    output[offset] *= scale;
+    output[offset + 1] *= scale;
+    output[offset + 2] *= scale;
+  }
 }
 
 function appendAxisAlignedBox(output: number[], min: Vec3, max: Vec3, color: Vec3): void {
@@ -1391,6 +1440,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     pitch: -0.08,
   };
   const blocks = new Map<string, BlockId>();
+  const skyOccluderColumns: SkyOccluderColumns = new Map();
   const primedTnt = new Set<string>();
   const torchLights = new Map<string, TorchLightPosition>();
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
@@ -1422,6 +1472,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       coordinate.z,
       rememberedEditsByChunk.get(owner)?.values() ?? [],
     );
+    writeChunkSkyOccluders(skyOccluderColumns, coordinate.x, coordinate.z, materialized);
     const owned = new Set<string>();
     for (const [key, block] of materialized) {
       blocks.set(key, block);
@@ -1656,6 +1707,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       chunkZ,
       rememberedEditsByChunk.get(owner)?.values() ?? [],
     );
+    writeChunkSkyOccluders(skyOccluderColumns, chunkX, chunkZ, materialized);
     const owned = new Set<string>();
     for (const [key, block] of materialized) {
       blocks.set(key, block);
@@ -1685,15 +1737,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       torchLights.delete(key);
     }
     chunkBlocks.delete(owner);
+    removeChunkSkyOccluders(skyOccluderColumns, chunkX, chunkZ);
     loadedChunkKeys.delete(owner);
   }
 
   function markChunkAndNeighbors(target: Set<string>, chunkX: number, chunkZ: number): void {
-    target.add(chunkKey(chunkX, chunkZ));
-    target.add(chunkKey(chunkX - 1, chunkZ));
-    target.add(chunkKey(chunkX + 1, chunkZ));
-    target.add(chunkKey(chunkX, chunkZ - 1));
-    target.add(chunkKey(chunkX, chunkZ + 1));
+    // The face pass only needs cardinal seams, while the two-column exposure
+    // fringe can cross a corner. The fixed 3x3 chunk neighborhood covers both.
+    for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dz = -1; dz <= 1; dz += 1) target.add(chunkKey(chunkX + dx, chunkZ + dz));
+    }
   }
 
   function updateStreamingWindow(force = false): void {
@@ -1710,6 +1763,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
     const dirty = new Set<string>();
     for (const coordinate of plan.unload) {
+      markChunkAndNeighbors(dirty, coordinate.x, coordinate.z);
       unloadTerrainChunk(coordinate.x, coordinate.z);
     }
     for (const coordinate of plan.load) {
@@ -1726,7 +1780,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
   };
 
-  function setBlock(x: number, y: number, z: number, block: BlockId): void {
+  function setBlock(x: number, y: number, z: number, block: BlockId): boolean {
     const key = blockKey(x, y, z);
     const owner = chunkKeyForBlock(x, z);
     const previous = blocks.get(key) ?? BLOCK.AIR;
@@ -1750,6 +1804,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         owned.add(key);
       }
     }
+    return previous !== block && blockStopsSky(previous) !== blockStopsSky(block);
+  }
+
+  function rebuildEditedWorldChunks(
+    faceEdits: readonly WorldEdit[],
+    skyEdits: readonly WorldEdit[],
+  ): void {
+    const dirty = new Set(dirtyChunkKeysForEdits(faceEdits));
+    if (skyEdits.length) {
+      refreshEditedSkyColumns(skyOccluderColumns, skyEdits, getBlock);
+      for (const key of skyExposureDirtyChunkKeysForEdits(skyEdits)) dirty.add(key);
+    }
+    rebuildWorldChunks([...dirty].filter((key) => loadedChunkKeys.has(key)));
   }
 
   function rebuildChunkMesh(chunkKey: string): void {
@@ -1780,23 +1847,40 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         continue;
       }
       if (block === BLOCK.CHEST) {
+        const start = colorVertices.length;
         appendChestMesh(colorVertices, x, y, z);
+        attenuateColorVerticesForSky(
+          colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+        );
         continue;
       }
       if (isDoorBlock(block)) {
+        const start = colorVertices.length;
         appendDoorMesh(colorVertices, x, y, z, block === BLOCK.DOOR_OPEN);
+        attenuateColorVerticesForSky(
+          colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+        );
         continue;
       }
       if (block === BLOCK.BED) {
+        const start = colorVertices.length;
         appendBedMesh(colorVertices, x, y, z);
+        attenuateColorVerticesForSky(
+          colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+        );
         continue;
       }
       if (block === BLOCK.LADDER) {
+        const start = colorVertices.length;
         appendLadderMesh(colorVertices, x, y, z);
+        attenuateColorVerticesForSky(
+          colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+        );
         continue;
       }
       if (block === BLOCK.SAPLING) {
-        appendSaplingMesh(textureVertices, x, y, z, blockMaterialVariation(x, y, z));
+        const exposure = skyExposureLevel(skyOccluderColumns, x, y + 1, z);
+        appendSaplingMesh(textureVertices, x, y, z, blockMaterialVariation(x, y, z), exposure);
         continue;
       }
       if (block === BLOCK.OAK_FENCE) {
@@ -1807,6 +1891,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           z,
           oakFenceConnections(x, y, z, getBlock),
           blockMaterialVariation(x, y, z),
+          skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
       }
@@ -1818,6 +1903,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           z,
           block === BLOCK.OAK_FENCE_GATE_OPEN,
           blockMaterialVariation(x, y, z),
+          skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
       }
@@ -1829,6 +1915,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           z,
           blockMaterialVariation(x, y, z),
           getBlock,
+          skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
       }
@@ -1847,6 +1934,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
             face,
             textureName,
             face[4] * variation,
+            skyExposureLevel(
+              skyOccluderColumns,
+              x + face[1],
+              y + face[2],
+              z + face[3],
+            ),
+            textureName === "furnace_front",
           );
           continue;
         }
@@ -2059,12 +2153,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function applyLocalExplosionEdits(edits: readonly LocalExplosionEdit[]): boolean {
     const destruction = edits.filter((edit) => !edit.chainPrimed);
     if (destruction.length && options.acceptWorldEdits?.(destruction) === false) return false;
+    const skyEdits: WorldEdit[] = [];
     for (const edit of destruction) {
       rememberWorldEdit(edit);
-      setBlock(edit.x, edit.y, edit.z, BLOCK.AIR);
+      if (setBlock(edit.x, edit.y, edit.z, BLOCK.AIR)) skyEdits.push(edit);
     }
     if (!destruction.length) return true;
-    rebuildWorldChunks(dirtyChunkKeysForEdits(destruction).filter((key) => loadedChunkKeys.has(key)));
+    rebuildEditedWorldChunks(destruction, skyEdits);
     for (const edit of destruction.slice(0, 12)) {
       blockParticles.spawn({ action: "break", block: edit.previousBlock, x: edit.x, y: edit.y, z: edit.z });
     }
@@ -2749,11 +2844,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     ) : [];
     const batch = settledEdits.length ? [edit, ...settledEdits] : [edit];
     if (options.acceptWorldEdits?.(batch) === false) return false;
+    const skyEdits: WorldEdit[] = [];
     for (const next of batch) {
       rememberWorldEdit(next);
-      setBlock(next.x, next.y, next.z, next.block);
+      if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
     }
-    rebuildWorldChunks(dirtyChunkKeysForEdits(batch).filter((key) => loadedChunkKeys.has(key)));
+    rebuildEditedWorldChunks(batch, skyEdits);
     options.onBlockEdit?.(edit, previousBlock, settledEdits);
     return true;
   }
@@ -3104,16 +3200,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     applyWorldEdits(edits) {
       if (edits.length && options.acceptWorldEdits?.(edits) === false) return false;
       const loadedEdits: WorldEdit[] = [];
+      const skyEdits: WorldEdit[] = [];
       for (const edit of edits) {
         rememberWorldEdit(edit);
         if (!loadedChunkKeys.has(chunkKeyForBlock(edit.x, edit.z))) continue;
-        setBlock(edit.x, edit.y, edit.z, edit.block);
+        if (setBlock(edit.x, edit.y, edit.z, edit.block)) skyEdits.push(edit);
         loadedEdits.push(edit);
       }
       if (loadedEdits.length) {
-        rebuildWorldChunks(
-          dirtyChunkKeysForEdits(loadedEdits).filter((key) => loadedChunkKeys.has(key)),
-        );
+        rebuildEditedWorldChunks(loadedEdits, skyEdits);
       }
       return true;
     },
@@ -3303,11 +3398,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const settled = planLocalFallingBlockSettlement(edit, previousBlock, getBlock);
       if (settled.length === 0) return [];
       if (options.acceptWorldEdits?.(settled) === false) return [];
+      const skyEdits: WorldEdit[] = [];
       for (const next of settled) {
         rememberWorldEdit(next);
-        setBlock(next.x, next.y, next.z, next.block);
+        if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
       }
-      rebuildWorldChunks(dirtyChunkKeysForEdits(settled).filter((key) => loadedChunkKeys.has(key)));
+      rebuildEditedWorldChunks(settled, skyEdits);
       return settled;
     },
     setDayNightClock(config, nextServerTimeOffsetMs) {
