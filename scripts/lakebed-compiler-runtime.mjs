@@ -70,6 +70,16 @@ function stableVersion(major, minor, patch) {
   return { major, minor, patch, prerelease: [] };
 }
 
+function isCanonicalCacheChild(cacheEntryRoot, path) {
+  const relativePath = relative(cacheEntryRoot, path);
+  return (
+    relativePath !== ""
+    && !isAbsolute(relativePath)
+    && relativePath !== ".."
+    && !relativePath.startsWith(`..${sep}`)
+  );
+}
+
 /**
  * Implements only the complete exact, tilde, and caret npm ranges Lakebed may
  * declare. Unsupported range syntax is rejected instead of being approximated.
@@ -146,16 +156,18 @@ export async function resolveLakebedCompilerRuntime({
         packageJson(canonicalLakebedPackagePath, "lakebed"),
         packageJson(canonicalEsbuildPackagePath, "esbuild"),
       ]);
-      const resolvedEsbuildRelativePath = relative(canonicalCacheEntryRoot, canonicalEsbuildPath);
       const declaredEsbuildRange = lakebedPackage.dependencies?.esbuild;
       if (
         typeof declaredEsbuildRange !== "string"
         || !declaredEsbuildRange
-        || isAbsolute(resolvedEsbuildRelativePath)
-        || resolvedEsbuildRelativePath === ".."
-        || resolvedEsbuildRelativePath.startsWith(`..${sep}`)
+        || ![
+          canonicalLakebedPackagePath,
+          canonicalLakebedBuildPath,
+          canonicalEsbuildPackagePath,
+          canonicalEsbuildPath,
+        ].every((path) => isCanonicalCacheChild(canonicalCacheEntryRoot, path))
       ) {
-        throw new Error("Lakebed's compiler must resolve from its declared npx install tree.");
+        throw new Error("Lakebed's compiler paths must resolve within its declared npx install tree.");
       }
       if (!lakebedCompilerVersionSatisfiesRange(esbuildPackage.version, declaredEsbuildRange)) {
         throw new Error(

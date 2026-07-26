@@ -6,6 +6,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -109,6 +110,18 @@ function writeFixturePackage(cacheEntryRoot, name, version, files = {}, packageF
   }
 }
 
+function writeCoupledCompilerFixture(
+  cacheEntryRoot,
+  { esbuildVersion = "0.27.7", declaredEsbuildRange = "^0.27.1" } = {},
+) {
+  writeFixturePackage(cacheEntryRoot, "lakebed", "1.2.3", {
+    "dist/cli/build.js": "export {};\n",
+  }, { dependencies: { esbuild: declaredEsbuildRange } });
+  writeFixturePackage(cacheEntryRoot, "esbuild", esbuildVersion, {
+    "lib/main.js": `export const version=${JSON.stringify(esbuildVersion)};export async function build(){}\n`,
+  });
+}
+
 for (const [version, range, expected] of [
   ["0.27.1", "0.27.1", true],
   ["0.27.1+lakebed.1", "=0.27.1+other.2", true],
@@ -155,23 +168,13 @@ for (const unsupportedRange of [
 const resolverFixtureRoot = mkdtempSync(join(tmpdir(), "lakecraft-compiler-resolver-"));
 try {
   const coupledRoot = join(resolverFixtureRoot, "coupled");
-  writeFixturePackage(coupledRoot, "lakebed", "1.2.3", {
-    "dist/cli/build.js": "export {};\n",
-  }, { dependencies: { esbuild: "^0.27.1" } });
-  writeFixturePackage(coupledRoot, "esbuild", "0.27.7", {
-    "lib/main.js": 'export const version="0.27.7";export async function build(){}\n',
-  });
+  writeCoupledCompilerFixture(coupledRoot);
   const decoyRoot = join(resolverFixtureRoot, "newer-standalone-decoy");
   writeFixturePackage(decoyRoot, "esbuild", "99.0.0", {
     "lib/main.js": 'export const version="99.0.0";export async function build(){}\n',
   });
   const mismatchedRoot = join(resolverFixtureRoot, "mismatched-coupled");
-  writeFixturePackage(mismatchedRoot, "lakebed", "1.2.3", {
-    "dist/cli/build.js": "export {};\n",
-  }, { dependencies: { esbuild: "^0.27.1" } });
-  writeFixturePackage(mismatchedRoot, "esbuild", "99.0.0", {
-    "lib/main.js": 'export const version="99.0.0";export async function build(){}\n',
-  });
+  writeCoupledCompilerFixture(mismatchedRoot, { esbuildVersion: "99.0.0" });
   const future = new Date(Date.now() + 86_400_000);
   utimesSync(join(decoyRoot, "node_modules/esbuild/lib/main.js"), future, future);
   utimesSync(join(mismatchedRoot, "node_modules/esbuild/lib/main.js"), future, future);
@@ -183,12 +186,52 @@ try {
   );
   assert.equal(resolvedFixture.declaredEsbuildRange, "^0.27.1", "resolver records Lakebed's compiler range");
   assert.equal(resolvedFixture.esbuildVersion, "0.27.7", "resolver selects Lakebed's compiler package");
-  assert.ok(
-    resolvedFixture.esbuildPath.startsWith(`${realpathSync(coupledRoot)}/node_modules/esbuild/`),
-    "compiler resolves through Lakebed's install tree",
-  );
+  for (const [field, relativePath] of [
+    ["lakebedPackagePath", "node_modules/lakebed/package.json"],
+    ["lakebedBuildPath", "node_modules/lakebed/dist/cli/build.js"],
+    ["esbuildPackagePath", "node_modules/esbuild/package.json"],
+    ["esbuildPath", "node_modules/esbuild/lib/main.js"],
+  ]) {
+    assert.equal(
+      resolvedFixture[field],
+      realpathSync(join(coupledRoot, relativePath)),
+      `${field} resolves canonically within Lakebed's install tree`,
+    );
+  }
 } finally {
   rmSync(resolverFixtureRoot, { recursive: true, force: true });
+}
+
+for (const [escapedField, escapedRelativePath] of [
+  ["lakebed package", "node_modules/lakebed/package.json"],
+  ["Lakebed build", "node_modules/lakebed/dist/cli/build.js"],
+  ["esbuild package", "node_modules/esbuild/package.json"],
+  ["esbuild module", "node_modules/esbuild/lib/main.js"],
+]) {
+  const escapeFixtureRoot = mkdtempSync(join(tmpdir(), "lakecraft-compiler-escape-"));
+  const outsideRoot = mkdtempSync(join(tmpdir(), "lakecraft-outside-compiler-"));
+  try {
+    const validRoot = join(escapeFixtureRoot, "valid");
+    const escapedRoot = join(escapeFixtureRoot, `escaped-${escapedField.replaceAll(" ", "-")}`);
+    writeCoupledCompilerFixture(validRoot);
+    writeCoupledCompilerFixture(escapedRoot);
+    const escapedPath = join(escapedRoot, escapedRelativePath);
+    const outsidePath = join(outsideRoot, escapedField.replaceAll(" ", "-"));
+    writeFileSync(outsidePath, readFileSync(escapedPath));
+    rmSync(escapedPath);
+    symlinkSync(outsidePath, escapedPath);
+    const future = new Date(Date.now() + 86_400_000);
+    utimesSync(join(escapedRoot, "node_modules/esbuild/lib/main.js"), future, future);
+    const resolvedFixture = await resolveLakebedCompilerRuntime({ cacheRoot: escapeFixtureRoot });
+    assert.equal(
+      resolvedFixture.cacheEntryRoot,
+      realpathSync(validRoot),
+      `${escapedField} symlink escape is ineligible`,
+    );
+  } finally {
+    rmSync(escapeFixtureRoot, { recursive: true, force: true });
+    rmSync(outsideRoot, { recursive: true, force: true });
+  }
 }
 
 const resolvedCompiler = await resolveLakebedCompilerRuntime();
