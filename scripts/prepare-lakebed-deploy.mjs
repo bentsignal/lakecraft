@@ -14,6 +14,11 @@ import {
   cssBundleRuntimeExpression,
   minifyCssText,
 } from "./css-template-compression.mjs";
+import {
+  COMPACT_CLIENT_PROPERTY_MANGLE_CACHE,
+  COMPACT_CLIENT_PROPERTY_PATTERN,
+  compactClientPropertyCache,
+} from "./client-property-compaction.mjs";
 
 const sourceRoot = resolve(process.cwd());
 const stageRoot = resolve(process.argv[2] ?? "");
@@ -172,7 +177,7 @@ function appendClientSourceMapBoundary(source) {
 }
 
 async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {}) {
-  const result = await build({
+  const options = {
     absWorkingDir: sourceRoot,
     bundle: true,
     charset: "utf8",
@@ -184,13 +189,40 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
     legalComments: "none",
     metafile: server,
     minify: true,
+    ...(server ? {} : {
+      mangleCache: compactClientPropertyCache(),
+      mangleProps: COMPACT_CLIENT_PROPERTY_PATTERN,
+      mangleQuoted: false,
+    }),
     platform: "browser",
     plugins: server ? [serverGameCatalogStripper, cssTemplateMinifier] : [cssTemplateMinifier],
     sourcemap: false,
     target: "es2022",
     treeShaking: true,
     write: false,
-  });
+  };
+  if (!server) {
+    const liveSetAudit = await build({ ...options, mangleCache: {} });
+    const actualNames = Object.keys(liveSetAudit.mangleCache ?? {}).sort();
+    const expectedNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE).sort();
+    if (
+      actualNames.length !== expectedNames.length
+      || expectedNames.some((name, index) => actualNames[index] !== name)
+    ) {
+      throw new Error("Compact client property live set changed; review the fixed compatibility manifest.");
+    }
+  }
+  const result = await build(options);
+  if (!server) {
+    const actualCache = result.mangleCache ?? {};
+    const expectedEntries = Object.entries(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
+    if (
+      Object.keys(actualCache).length !== expectedEntries.length
+      || expectedEntries.some(([name, compactName]) => actualCache[name] !== compactName)
+    ) {
+      throw new Error("Compact client property mapping changed; review the fixed compatibility manifest.");
+    }
+  }
   if (server) {
     const inputPaths = Object.keys(result.metafile?.inputs ?? {})
       .filter((path) => !path.includes("node_modules"))
