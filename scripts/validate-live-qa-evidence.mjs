@@ -902,8 +902,8 @@ function runCommand(command, args, label, { cwd } = {}) {
       }
       chunks.push(chunk);
     };
-    child.stdout.on("data", collect(stdout));
-    child.stderr.on("data", collect(stderr));
+    child.stdout.addListener("data", collect(stdout));
+    child.stderr.addListener("data", collect(stderr));
     child.once("error", (error) =>
       fail(new Error(`${label} could not start: ${error instanceof Error ? error.message : error}`)));
     child.once("close", (code, signal) => {

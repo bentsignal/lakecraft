@@ -230,7 +230,7 @@ function makeStructuralMp4(width, height, durationMs, tag) {
 
 const realVideoCache = new Map();
 const realVideoRoot = mkdtempSync(join(tmpdir(), "lakecraft-task41-real-video-"));
-process.on("exit", () => rmSync(realVideoRoot, { recursive: true, force: true }));
+process.addListener("exit", () => rmSync(realVideoRoot, { recursive: true, force: true }));
 
 function makeRealVideo(format, width, height, durationMs, tag) {
   const key = `${format}/${width}/${height}/${durationMs}/${tag}`;
@@ -263,7 +263,7 @@ function makeRealVideo(format, width, height, durationMs, tag) {
 }
 
 const artifactFixtureRoot = mkdtempSync(join(tmpdir(), "lakecraft-task41-real-artifact-"));
-process.on("exit", () => rmSync(artifactFixtureRoot, { recursive: true, force: true }));
+process.addListener("exit", () => rmSync(artifactFixtureRoot, { recursive: true, force: true }));
 let artifactFixtureCache;
 
 function checkedCommand(command, args, options = {}) {
