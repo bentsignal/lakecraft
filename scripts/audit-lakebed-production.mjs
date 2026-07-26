@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const CANONICAL_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const DEPLOY_ID_PATTERN = /^dep_[A-Za-z0-9]+$/;
 const HASH_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const REQUIRED_LIMITS = [
   "artifactBytes",
@@ -33,10 +35,30 @@ function integer(value, label, minimum = 0) {
   return value;
 }
 
-function isoDate(value, label) {
+function canonicalUtcTimestamp(value, label) {
   const text = string(value, label);
-  if (!Number.isFinite(Date.parse(text))) throw new Error(`${label} must be an ISO timestamp.`);
+  const date = new Date(text);
+  if (
+    !CANONICAL_UTC_PATTERN.test(text)
+    || !Number.isFinite(date.getTime())
+    || date.toISOString() !== text
+  ) {
+    throw new Error(`${label} must be a canonical UTC timestamp.`);
+  }
   return text;
+}
+
+function isCanonicalUtcTimestamp(value) {
+  if (typeof value !== "string" || !CANONICAL_UTC_PATTERN.test(value)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+
+function deployId(value, label) {
+  if (typeof value !== "string" || !DEPLOY_ID_PATTERN.test(value)) {
+    throw new Error(`${label} must be a valid Lakebed deploy ID.`);
+  }
+  return value;
 }
 
 function httpsUrl(value, label) {
@@ -57,8 +79,7 @@ function hash(value, label) {
 function isArchivedHistoricalDeploy(value) {
   const deploy = record(value, "deploy");
   return deploy.status === "archived"
-    && typeof deploy.archivedAt === "string"
-    && Number.isFinite(Date.parse(deploy.archivedAt));
+    && isCanonicalUtcTimestamp(deploy.archivedAt);
 }
 
 export function validateProductionTarget(value) {
@@ -71,7 +92,7 @@ export function validateProductionTarget(value) {
   return Object.freeze({
     schemaVersion: 1,
     name: string(target.name, "production target name"),
-    deployId: string(target.deployId, "production target deployId"),
+    deployId: deployId(target.deployId, "production target deployId"),
     ownerId: string(target.ownerId, "production target ownerId"),
     publicUrl: httpsUrl(target.publicUrl, "production target publicUrl"),
     canonicalUrl: httpsUrl(target.canonicalUrl, "production target canonicalUrl"),
@@ -88,14 +109,21 @@ export function auditProductionDeploy(payloadValue, targetValue, options = {}) {
   const target = validateProductionTarget(targetValue);
   const deploys = payload.deploys;
   if (!Array.isArray(deploys)) throw new Error("Lakebed deploy list deploys must be an array.");
-  const matches = deploys.filter((entry) => record(entry, "deploy").deployId === target.deployId);
+  const normalizedDeploys = deploys.map((entry) => {
+    const deploy = record(entry, "deploy");
+    return { deploy, deployId: deployId(deploy.deployId, "deploy ID") };
+  });
+  const deployIds = new Set(normalizedDeploys.map((entry) => entry.deployId));
+  if (deployIds.size !== normalizedDeploys.length) {
+    throw new Error("Lakebed deploy list deploy IDs must be unique.");
+  }
+  const matches = normalizedDeploys.filter((entry) => entry.deployId === target.deployId);
   if (matches.length !== 1) {
     throw new Error(`Expected exactly one ${target.deployId} deployment; received ${matches.length}.`);
   }
-  const deploy = record(matches[0], "production deploy");
-  const unexpectedActiveDeploy = deploys.some((entry) => {
-    const candidate = record(entry, "deploy");
-    return candidate.deployId !== target.deployId && !isArchivedHistoricalDeploy(candidate);
+  const deploy = matches[0].deploy;
+  const unexpectedActiveDeploy = normalizedDeploys.some((entry) => {
+    return entry.deployId !== target.deployId && !isArchivedHistoricalDeploy(entry.deploy);
   });
   const limits = record(deploy.limits, "production deploy limits");
   const usage = record(deploy.usage, "production deploy usage");
@@ -115,11 +143,14 @@ export function auditProductionDeploy(payloadValue, targetValue, options = {}) {
   const artifactHash = hash(deploy.artifactHash, "production deploy artifactHash");
   const clientBundleHash = hash(deploy.clientBundleHash, "production deploy clientBundleHash");
   const canonicalUrl = httpsUrl(deploy.url, "production deploy url");
-  const claimedAt = deploy.claimedAt === null ? null : isoDate(deploy.claimedAt, "production deploy claimedAt");
+  const claimedAt = deploy.claimedAt === null
+    ? null
+    : canonicalUtcTimestamp(deploy.claimedAt, "production deploy claimedAt");
   const gates = Object.freeze({
     active: deploy.status === "active" && deploy.archivedAt === null,
     noUnexpectedActiveDeploy: !unexpectedActiveDeploy,
     claimedOwner: deploy.ownerId === target.ownerId && claimedAt !== null,
+    nonExpiringTarget: Object.hasOwn(deploy, "expiresAt") && deploy.expiresAt === null,
     currentTarget: deploy.name === target.name && canonicalUrl === target.canonicalUrl,
     privateInspection: deploy.inspectPolicy === "private",
     limitsMeetFloor,
@@ -131,7 +162,7 @@ export function auditProductionDeploy(payloadValue, targetValue, options = {}) {
   const failures = Object.entries(gates).filter(([, passed]) => !passed).map(([name]) => name);
   const capturedAt = options.capturedAt === undefined
     ? new Date().toISOString()
-    : isoDate(options.capturedAt, "capturedAt");
+    : canonicalUtcTimestamp(options.capturedAt, "capturedAt");
   return Object.freeze({
     schemaVersion: 1,
     ok: failures.length === 0,
@@ -140,15 +171,16 @@ export function auditProductionDeploy(payloadValue, targetValue, options = {}) {
       name: target.name,
       deployId: target.deployId,
       ownerId: target.ownerId,
-      publicUrl: target.publicUrl,
-      canonicalUrl,
+      configuredPublicUrl: target.publicUrl,
+      observedCanonicalUrl: canonicalUrl,
     }),
     release: Object.freeze({
       artifactHash,
       clientBundleHash,
-      createdAt: isoDate(deploy.createdAt, "production deploy createdAt"),
-      updatedAt: isoDate(deploy.updatedAt, "production deploy updatedAt"),
+      createdAt: canonicalUtcTimestamp(deploy.createdAt, "production deploy createdAt"),
+      updatedAt: canonicalUtcTimestamp(deploy.updatedAt, "production deploy updatedAt"),
       claimedAt,
+      expiresAt: deploy.expiresAt,
     }),
     quota: Object.freeze({
       requestsToday,

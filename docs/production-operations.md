@@ -21,13 +21,15 @@ node scripts/audit-lakebed-production.mjs
 ```
 
 The report verifies that the configured target is the only non-archived
-deployment, plus its claimed owner, private inspection, public/canonical target
-mapping, documented platform limits, and at least 1,000 requests plus 100
-mutations remaining. Explicitly archived historical entries with valid archive
-timestamps are allowed. Every other extra entry—including active, pending,
-unknown, incompletely archived, or malformed lifecycle state—fails the
-`noUnexpectedActiveDeploy` gate. Preserve the report's UTC timestamp, artifact
-hashes, usage, limits, gates, and failures. Do not preserve claim tokens,
+deployment, plus its claimed owner, non-expiring target state, private
+inspection, live canonical target, documented platform limits, and at least
+1,000 requests plus 100 mutations remaining. The public player URL is trusted
+checked-in configuration; `deploy list` does not prove that the public alias
+maps to the canonical target. Explicitly archived historical entries with
+unique valid deploy IDs and canonical UTC archive timestamps are allowed. Every
+other extra entry—including active, pending, unknown, incompletely archived, or
+malformed lifecycle state—fails closed. Preserve the report's UTC timestamp,
+artifact hashes, usage, limits, gates, and failures. Do not preserve claim tokens,
 cookies, `.lakebed/deploy.json`, `.env.lakebed.server`, raw identity rows, or
 full database dumps in git.
 
@@ -89,17 +91,18 @@ node scripts/audit-lakebed-production.mjs \
 ```
 
 Probe <https://craft.lakebed.app> once after the audit and record the HTTP
-result; that probe consumes hosted request quota. With authorized private
-inspection, capture the manifest/schema, bounded table counts, quota snapshot,
-and logs once. Redact identity data and secrets. Do not loop on logs, database
-dumps, or a quota error.
+result; that probe consumes hosted request quota and is the step that verifies
+the configured public alias, independently of the control-plane canonical URL.
+With authorized private inspection, capture the manifest/schema, bounded table
+counts, quota snapshot, and logs once. Redact identity data and secrets. Do not
+loop on logs, database dumps, or a quota error.
 
 ## Failure and recovery
 
 | Failure | Required response |
 | --- | --- |
 | Artifact reserve below 32 KiB | Do not deploy. Reduce the staged artifact and rebuild twice. |
-| Deploy ID, owner, URL, status, or limits differ | Do not deploy. Reconcile `production-target.json`, `lakebed.json`, and the Lakebed control plane with the owner. |
+| Deploy ID, owner, expiry, canonical URL, status, or limits differ | Do not deploy. Reconcile `production-target.json`, `lakebed.json`, and the Lakebed control plane with the owner. |
 | Private inspection unauthorized | Stop. Recover the approved ignored claim binding; never weaken the inspection policy. |
 | Request or mutation reserve fails | Stop production QA and deployment verification until the UTC quota reset. Do not retry-loop or change backend. |
 | Deploy returns an unknown result | Do not issue a second deploy blindly. Run the read-only audit and compare the artifact hash first. |

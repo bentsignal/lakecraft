@@ -32,6 +32,7 @@ function deploy(overrides = {}) {
     clientBundleHash: "sha256:" + "b".repeat(64),
     createdAt: "2026-07-14T11:03:24.680Z",
     deployId: target.deployId,
+    expiresAt: null,
     inspectPolicy: "private",
     limits: {
       artifactBytes: 1_048_576,
@@ -60,6 +61,9 @@ test("valid production control-plane state yields an exact sanitized report", ()
   assert.deepEqual(report.failures, []);
   assert.equal(report.quota.requestsRemaining, 9_600);
   assert.equal(report.quota.mutationsRemaining, 980);
+  assert.equal(report.target.configuredPublicUrl, target.publicUrl);
+  assert.equal(report.target.observedCanonicalUrl, target.canonicalUrl);
+  assert.equal(report.release.expiresAt, null);
   assert.equal(JSON.stringify(report).includes("must-not-leak"), false);
   assert.equal(Object.isFrozen(report), true);
 });
@@ -68,7 +72,7 @@ test("identity is singular and structurally bound to checked-in configuration", 
   assert.throws(() => auditProductionDeploy({ deploys: [] }, target), /exactly one/);
   assert.throws(
     () => auditProductionDeploy({ deploys: [deploy(), deploy()] }, target),
-    /exactly one/,
+    /unique/,
   );
   assert.throws(
     () => validateProductionTarget({ ...target, publicUrl: "http://craft.lakebed.app" }),
@@ -106,8 +110,8 @@ test("any additional non-archived or incompletely archived deployment fails clos
     deploy({ deployId: "dep_active", ownerId: "github:other" }),
     deploy({ deployId: "dep_pending", status: "pending", archivedAt: null }),
     deploy({ deployId: "dep_unknown", status: "unknown", archivedAt: "2026-07-25T00:00:00.000Z" }),
-    deploy({ deployId: "dep_incomplete_archive", status: "archived", archivedAt: null }),
-    deploy({ deployId: "dep_invalid_archive", status: "archived", archivedAt: "not-a-date" }),
+    deploy({ deployId: "dep_incompletearchive", status: "archived", archivedAt: null }),
+    deploy({ deployId: "dep_invalidarchive", status: "archived", archivedAt: "not-a-date" }),
   ];
   for (const unexpected of variants) {
     const report = auditProductionDeploy(
@@ -137,6 +141,62 @@ test("explicitly archived historical deployments are allowed", () => {
   assert.equal(report.ok, true);
   assert.deepEqual(report.failures, []);
   assert.equal(JSON.stringify(report).includes("dep_historical"), false);
+});
+
+test("archived history requires valid unique deploy IDs without leaking rejected values", () => {
+  const invalidIds = [undefined, null, "", " ", "not-a-deploy", "dep_invalid-id"];
+  for (const invalidId of invalidIds) {
+    const historical = deploy({
+      archivedAt: "2026-07-25T00:00:00.000Z",
+      deployId: invalidId,
+      status: "archived",
+    });
+    if (invalidId === undefined) delete historical.deployId;
+    assert.throws(
+      () => auditProductionDeploy({ deploys: [deploy(), historical] }, target),
+      (error) => {
+        assert.match(error.message, /deploy ID/);
+        if (typeof invalidId === "string" && invalidId.trim()) {
+          assert.equal(error.message.includes(invalidId), false);
+        }
+        return true;
+      },
+    );
+  }
+  assert.throws(
+    () => auditProductionDeploy({
+      deploys: [
+        deploy(),
+        deploy({
+          archivedAt: "2026-07-24T00:00:00.000Z",
+          deployId: "dep_duplicate",
+          status: "archived",
+        }),
+        deploy({
+          archivedAt: "2026-07-25T00:00:00.000Z",
+          deployId: "dep_duplicate",
+          status: "archived",
+        }),
+      ],
+    }, target),
+    /unique/,
+  );
+});
+
+test("production target must explicitly remain non-expiring", () => {
+  const variants = [
+    { label: "missing", value: undefined },
+    { label: "past", value: "2026-07-25T00:00:00.000Z" },
+    { label: "future", value: "2027-07-25T00:00:00.000Z" },
+    { label: "malformed", value: "not-a-date" },
+  ];
+  for (const variant of variants) {
+    const candidate = deploy({ expiresAt: variant.value });
+    if (variant.label === "missing") delete candidate.expiresAt;
+    const report = auditProductionDeploy({ deploys: [candidate] }, target);
+    assert.equal(report.ok, false);
+    assert.deepEqual(report.failures, ["nonExpiringTarget"]);
+  }
 });
 
 test("an unclaimed deployment is reported as a failed gate without hiding the audit", () => {
@@ -179,7 +239,7 @@ test("quota reserve, usage bounds, and platform limit floors are independent gat
   ]);
 });
 
-test("malformed counters, timestamps, and hashes are rejected", () => {
+test("malformed counters, non-canonical timestamps, and hashes are rejected", () => {
   assert.throws(
     () => auditProductionDeploy({ deploys: [deploy({ usage: { requestsToday: 1.5, mutationsToday: 0 } })] }, target),
     /integer/,
@@ -188,10 +248,34 @@ test("malformed counters, timestamps, and hashes are rejected", () => {
     () => auditProductionDeploy({ deploys: [deploy({ artifactHash: "nope" })] }, target),
     /sha256/,
   );
-  assert.throws(
-    () => auditProductionDeploy({ deploys: [deploy({ claimedAt: "not-a-date" })] }, target),
-    /ISO timestamp/,
-  );
+  const invalidTimestamps = [
+    "not-a-date",
+    "0",
+    "July 25, 2026",
+    "2026-02-30T00:00:00.000Z",
+    "2026-07-25T00:00:00Z",
+    "2026-07-25T00:00:00.000+00:00",
+  ];
+  for (const timestamp of invalidTimestamps) {
+    assert.throws(
+      () => auditProductionDeploy({ deploys: [deploy({ claimedAt: timestamp })] }, target),
+      /canonical UTC timestamp/,
+    );
+    const historical = deploy({
+      archivedAt: timestamp,
+      deployId: "dep_badarchive",
+      status: "archived",
+    });
+    const report = auditProductionDeploy({ deploys: [deploy(), historical] }, target);
+    assert.equal(report.ok, false);
+    assert.deepEqual(report.failures, ["noUnexpectedActiveDeploy"]);
+  }
+  for (const field of ["createdAt", "updatedAt"]) {
+    assert.throws(
+      () => auditProductionDeploy({ deploys: [deploy({ [field]: "2026-02-30T00:00:00.000Z" })] }, target),
+      /canonical UTC timestamp/,
+    );
+  }
 });
 
 test("CLI arguments reject ambiguity and missing values", () => {
@@ -224,6 +308,7 @@ test("checked-in target, Lakebed binding, README, and runbook remain aligned", a
   assert.ok(readme.includes(checkedIn.publicUrl));
   assert.ok(runbook.includes(checkedIn.publicUrl));
   assert.ok(runbook.includes("32,768 bytes"));
+  assert.ok(runbook.includes("does not prove that the public alias"));
   assert.match(script, /\["lakebed", "deploy", "list", "--json"\]/);
   assert.doesNotMatch(script, /\["lakebed", "deploy", "[^l]/);
 });
