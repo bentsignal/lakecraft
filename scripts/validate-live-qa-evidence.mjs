@@ -1,15 +1,21 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import {
   lstat,
+  mkdir,
+  mkdtemp,
   open,
   opendir,
   readFile,
   realpath,
+  rm,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { inflateSync } from "node:zlib";
 import {
   extname,
   isAbsolute,
+  join,
   normalize,
   relative,
   resolve,
@@ -17,7 +23,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const TASK41_EVIDENCE_VERSION = 2;
+export const TASK41_EVIDENCE_VERSION = 3;
 export const TASK41_TASK_ID = "jx7a5mshjv8ktdk1922wnm0xq58akz0w";
 export const TASK41_TEMPLATE_COMMAND =
   "node scripts/validate-live-qa-evidence.mjs --template > /tmp/lakecraft-task41-evidence.json";
@@ -92,6 +98,15 @@ export const TASK41_MULTIPLAYER_DEFERRED_REASONS = Object.freeze([
   "authorized-identities-unavailable",
   "quota-observation-unavailable",
 ]);
+export const TASK41_MIN_INTERACTION_SEGMENTS = 4;
+export const TASK41_INTERACTION_GAP_KINDS = Object.freeze(["navigation", "reload"]);
+export const TASK41_MULTIPLAYER_INTERACTIONS = Object.freeze([
+  "movement-nameplate",
+  "chat",
+  "item-sharing",
+  "pvp",
+  "reconnect",
+]);
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
@@ -108,12 +123,18 @@ const MIN_VIDEO_BYTES = 64 * 1_024;
 const MAX_VIDEO_BYTES = 512 * 1_024 * 1_024;
 const MAX_EVIDENCE_FILE_BYTES = MAX_VIDEO_BYTES;
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
+const MAX_TOOL_OUTPUT_BYTES = 2 * 1024 * 1024;
+const TOOL_TIMEOUT_MS = 30_000;
+const MULTIPLAYER_MIN_WINDOW_MS = 60 * 1_000;
+const MULTIPLAYER_MAX_WINDOW_MS = 30 * 60 * 1_000;
 const MAX_EVIDENCE_FILES = 256;
 const MAX_PATH_COMPONENTS = 16;
 const MAX_EVIDENCE_PATH_CHARS = 320;
 const CAPTURE_KEYS = ["taskId", "runId", "appCommit", "capturedAt", "sequence"];
 const COMMON_ENTRY_KEYS = ["kind", "viewport", "path", "sha256", ...CAPTURE_KEYS];
 const EVIDENCE_KINDS = new Set(TASK41_CASES.flatMap(({ kinds }) => kinds));
+const STAGE_REBUILD_CACHE = new Map();
+const VIDEO_DECODE_CACHE = new Map();
 
 function occurrences(source, token) {
   return source.split(token).length - 1;
@@ -428,13 +449,14 @@ function validatePerformance(performance, context) {
     const value = record(metric);
     if (!value) throw new Error(`performance[${index}] must be an object.`);
     exactKeys(value, [
-      "viewport", "scene", "sampleCount", "fps", "p95FrameMs", "drawCallsPerFrameP95",
+      "viewport", "scene", "devicePixelRatio", "sampleCount", "fps", "p95FrameMs", "drawCallsPerFrameP95",
       "drawCallsPerFrameMax", "totalDrawCalls", "durationMs", "patchedContexts",
       "evidencePath", "evidenceSha256", ...CAPTURE_KEYS,
     ], `performance[${index}]`);
     if (value.viewport !== wanted[index].viewport || value.scene !== wanted[index].scene) {
       throw new Error(`performance[${index}] must be ${wanted[index].viewport}/${wanted[index].scene}.`);
     }
+    finiteNumber(value.devicePixelRatio, `performance[${index}].devicePixelRatio`, 1, 4);
     integer(value.sampleCount, `performance[${index}].sampleCount`, 120, 3_600);
     finiteNumber(value.fps, `performance[${index}].fps`, 45, 240);
     finiteNumber(value.p95FrameMs, `performance[${index}].p95FrameMs`, 0.001, 33.4);
@@ -461,8 +483,14 @@ function validateStructuredSummary(value, label, keys, context) {
 
 function validateConsole(value, context) {
   const summary = validateStructuredSummary(value, "console", [
-    "warningCount", "errorCount", "exceptionCount", "unhandledRejectionCount",
+    "segmentCount", "gapCount", "warningCount", "errorCount", "exceptionCount",
+    "unhandledRejectionCount",
   ], context);
+  if (integer(summary.segmentCount, "console.segmentCount", TASK41_MIN_INTERACTION_SEGMENTS, 32)
+    < TASK41_MIN_INTERACTION_SEGMENTS
+    || summary.gapCount !== summary.segmentCount - 1) {
+    throw new Error("console must cover at least four measured segments with one gap between each pair.");
+  }
   for (const key of ["warningCount", "errorCount", "exceptionCount", "unhandledRejectionCount"]) {
     if (integer(summary[key], `console.${key}`) !== 0) {
       throw new Error("console/CDP evidence must remain clean.");
@@ -472,11 +500,18 @@ function validateConsole(value, context) {
 
 function validateNetwork(value, context) {
   const summary = validateStructuredSummary(value, "network", [
-    "requestCount", "websocketCount", "lakebedRequestCount",
+    "segmentCount", "gapCount", "requestCount", "websocketCount",
+    "lakebedRequestCount", "navigationRequestCount",
   ], context);
+  if (integer(summary.segmentCount, "network.segmentCount", TASK41_MIN_INTERACTION_SEGMENTS, 32)
+    < TASK41_MIN_INTERACTION_SEGMENTS
+    || summary.gapCount !== summary.segmentCount - 1) {
+    throw new Error("network must cover at least four measured segments with one gap between each pair.");
+  }
   if (integer(summary.requestCount, "network.requestCount") !== 0
     || integer(summary.websocketCount, "network.websocketCount") !== 0
-    || integer(summary.lakebedRequestCount, "network.lakebedRequestCount") !== 0) {
+    || integer(summary.lakebedRequestCount, "network.lakebedRequestCount") !== 0
+    || integer(summary.navigationRequestCount, "network.navigationRequestCount") < summary.gapCount) {
     throw new Error("the cleared Singleplayer CDP capture must contain zero requests and websockets.");
   }
 }
@@ -488,14 +523,15 @@ function validateStorage(value, context) {
 
 function validateMultiplayer(value, context) {
   const summary = validateStructuredSummary(value, "multiplayer", [
-    "status", "completionEligible", "hostedRoute", "identities", "identityHashes",
+    "status", "completionEligible", "hostedRoute", "identities", "interactions",
     "quotaStatus", "quotaObserved", "reasonCodes",
   ], context);
   if (!Array.isArray(summary.reasonCodes)
-    || !Array.isArray(summary.identityHashes)
+    || !Array.isArray(summary.identities)
+    || !Array.isArray(summary.interactions)
     || new Set(summary.reasonCodes).size !== summary.reasonCodes.length
-    || new Set(summary.identityHashes).size !== summary.identityHashes.length) {
-    throw new Error("multiplayer reasonCodes and identityHashes must be unique arrays.");
+  ) {
+    throw new Error("multiplayer reasons, identities, and interactions must be arrays.");
   }
   const orderedReasons = TASK41_MULTIPLAYER_DEFERRED_REASONS
     .filter((reason) => summary.reasonCodes.includes(reason));
@@ -503,25 +539,76 @@ function validateMultiplayer(value, context) {
   if (summary.status === "deferred") {
     if (summary.completionEligible !== false
       || summary.hostedRoute !== "disabled"
-      || summary.identities !== "unavailable"
       || summary.quotaStatus !== "healthy"
       || summary.quotaObserved !== false
-      || summary.identityHashes.length !== 0
+      || summary.identities.length !== 0
+      || summary.interactions.length !== 0
       || summary.reasonCodes.length === 0) {
       throw new Error("deferred multiplayer must record route disabled, identities unavailable, and healthy unobserved quota.");
     }
   } else if (summary.status === "passed") {
     if (summary.completionEligible !== true
       || summary.hostedRoute !== "enabled"
-      || summary.identities !== "available"
       || summary.quotaStatus !== "healthy"
       || summary.quotaObserved !== true
       || summary.reasonCodes.length !== 0
-      || summary.identityHashes.length !== 2) {
+      || summary.identities.length !== 2
+      || summary.interactions.length !== 2) {
       throw new Error("passed multiplayer must be fully eligible with observed healthy quota.");
     }
-    summary.identityHashes.forEach((hash, index) =>
-      lakebedHash(hash, `multiplayer.identityHashes[${index}]`));
+    const identityIds = ["identity-a", "identity-b"];
+    const commitments = new Set();
+    const windows = [];
+    summary.identities.forEach((identity, index) => {
+      const item = record(identity);
+      if (!item) throw new Error(`multiplayer.identities[${index}] must be an object.`);
+      exactKeys(item, [
+        "id", "identityCommitment", "runSaltedIdentityHash", "windowStartedAt",
+        "windowCompletedAt", "proofPath", "proofSha256",
+      ], `multiplayer.identities[${index}]`);
+      if (item.id !== identityIds[index]) throw new Error("multiplayer identity records must use fixed ordered IDs.");
+      lakebedHash(item.identityCommitment, `multiplayer.identities[${index}].identityCommitment`);
+      lakebedHash(item.runSaltedIdentityHash, `multiplayer.identities[${index}].runSaltedIdentityHash`);
+      const expectedSalted = `sha256:${digest(Buffer.from(`${context.runId}:${item.identityCommitment}`))}`;
+      if (item.runSaltedIdentityHash !== expectedSalted || commitments.has(item.identityCommitment)) {
+        throw new Error("multiplayer identities must have distinct run-salted commitments.");
+      }
+      commitments.add(item.identityCommitment);
+      const startedAt = exactTimestamp(item.windowStartedAt, `multiplayer.identities[${index}].windowStartedAt`);
+      const completedAt = exactTimestamp(item.windowCompletedAt, `multiplayer.identities[${index}].windowCompletedAt`);
+      if (startedAt < context.startedAt || completedAt > context.completedAt
+        || completedAt - startedAt < MULTIPLAYER_MIN_WINDOW_MS
+        || completedAt - startedAt > MULTIPLAYER_MAX_WINDOW_MS) {
+        throw new Error("multiplayer identity windows must be bounded within the run.");
+      }
+      evidencePath(item.proofPath, `multiplayer.identities[${index}].proofPath`);
+      sha256(item.proofSha256, `multiplayer.identities[${index}].proofSha256`);
+      registerReference(context, item.proofPath, item.proofSha256, `multiplayer identity ${item.id}`);
+      windows.push({ startedAt, completedAt });
+    });
+    if (Math.min(...windows.map(({ completedAt }) => completedAt))
+      - Math.max(...windows.map(({ startedAt }) => startedAt)) < MULTIPLAYER_MIN_WINDOW_MS) {
+      throw new Error("multiplayer identity session windows must overlap for at least sixty seconds.");
+    }
+    const directions = [
+      ["identity-a-to-b", "identity-a", "identity-b"],
+      ["identity-b-to-a", "identity-b", "identity-a"],
+    ];
+    summary.interactions.forEach((interaction, index) => {
+      const item = record(interaction);
+      if (!item) throw new Error(`multiplayer.interactions[${index}] must be an object.`);
+      exactKeys(item, [
+        "id", "actorId", "targetId", "proofPath", "proofSha256",
+      ], `multiplayer.interactions[${index}]`);
+      if (item.id !== directions[index][0]
+        || item.actorId !== directions[index][1]
+        || item.targetId !== directions[index][2]) {
+        throw new Error("multiplayer interactions must prove both fixed identity directions.");
+      }
+      evidencePath(item.proofPath, `multiplayer.interactions[${index}].proofPath`);
+      sha256(item.proofSha256, `multiplayer.interactions[${index}].proofSha256`);
+      registerReference(context, item.proofPath, item.proofSha256, `multiplayer interaction ${item.id}`);
+    });
   } else {
     throw new Error("multiplayer.status must be passed or deferred.");
   }
@@ -662,6 +749,7 @@ export function createTask41EvidenceTemplate() {
       TASK41_PERFORMANCE_SCENES.map((scene) => ({
         viewport,
         scene,
+        devicePixelRatio: 0,
         sampleCount: 0,
         fps: 0,
         p95FrameMs: 0,
@@ -675,6 +763,8 @@ export function createTask41EvidenceTemplate() {
         ...binding(),
       }))),
     console: {
+      segmentCount: TASK41_MIN_INTERACTION_SEGMENTS,
+      gapCount: TASK41_MIN_INTERACTION_SEGMENTS - 1,
       warningCount: -1,
       errorCount: -1,
       exceptionCount: -1,
@@ -684,9 +774,12 @@ export function createTask41EvidenceTemplate() {
       ...binding(),
     },
     network: {
+      segmentCount: TASK41_MIN_INTERACTION_SEGMENTS,
+      gapCount: TASK41_MIN_INTERACTION_SEGMENTS - 1,
       requestCount: -1,
       websocketCount: -1,
       lakebedRequestCount: -1,
+      navigationRequestCount: -1,
       evidencePath: "PENDING/network.json",
       evidenceSha256: "PENDING_SHA256",
       ...binding(),
@@ -701,8 +794,8 @@ export function createTask41EvidenceTemplate() {
       status: "deferred",
       completionEligible: false,
       hostedRoute: "disabled",
-      identities: "unavailable",
-      identityHashes: [],
+      identities: [],
+      interactions: [],
       quotaStatus: "healthy",
       quotaObserved: false,
       reasonCodes: [
@@ -779,6 +872,52 @@ export function validateTask41Evidence(value, {
 
 function digest(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
+}
+
+function runCommand(command, args, label, { cwd } = {}) {
+  return new Promise((resolveCommand, rejectCommand) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout = [];
+    const stderr = [];
+    let outputBytes = 0;
+    let settled = false;
+    let timer;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      child.kill("SIGKILL");
+      rejectCommand(error);
+    };
+    timer = setTimeout(() => fail(new Error(`${label} timed out.`)), TOOL_TIMEOUT_MS);
+    const collect = (chunks) => (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > MAX_TOOL_OUTPUT_BYTES) {
+        fail(new Error(`${label} emitted too much output.`));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    child.stdout.on("data", collect(stdout));
+    child.stderr.on("data", collect(stderr));
+    child.once("error", (error) =>
+      fail(new Error(`${label} could not start: ${error instanceof Error ? error.message : error}`)));
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0) {
+        const detail = Buffer.concat(stderr).toString("utf8").trim().slice(0, 500);
+        rejectCommand(new Error(`${label} failed (${signal ?? code})${detail ? `: ${detail}` : "."}`));
+        return;
+      }
+      resolveCommand(Buffer.concat(stdout));
+    });
+  });
 }
 
 function crc32(buffer) {
@@ -1041,7 +1180,7 @@ function inspectWebm(buffer, label) {
   return { ...dimensions[0], durationMs };
 }
 
-function inspectVideo(buffer, entry, label) {
+function inspectVideoStructure(buffer, entry, label) {
   if (buffer.length < MIN_VIDEO_BYTES || buffer.length > MAX_VIDEO_BYTES) {
     throw new Error(`${label} is too small or large to be a bounded substantive video.`);
   }
@@ -1063,6 +1202,59 @@ function inspectVideo(buffer, entry, label) {
     || metadata.height !== entry.height
     || roundedDuration !== entry.durationMs) {
     throw new Error(`${label} container dimensions or duration do not match its manifest.`);
+  }
+}
+
+async function inspectVideo(buffer, entry, label, canonicalPath) {
+  inspectVideoStructure(buffer, entry, label);
+  const cacheKey = [
+    entry.sha256, entry.mimeType, entry.width, entry.height, entry.durationMs,
+  ].join("\0");
+  if (VIDEO_DECODE_CACHE.has(cacheKey)) return VIDEO_DECODE_CACHE.get(cacheKey);
+  const verification = (async () => {
+    const probeBuffer = await runCommand("ffprobe", [
+    "-v", "error",
+    "-count_frames",
+    "-read_intervals", "0%+10",
+    "-show_entries", "stream=index,codec_type,width,height,duration,nb_read_frames:format=duration",
+    "-of", "json",
+    canonicalPath,
+  ], `${label} ffprobe`);
+    const probe = record(parseStrictJson(probeBuffer, `${label} ffprobe output`));
+    if (!probe || !Array.isArray(probe.streams)) throw new Error(`${label} ffprobe output is incomplete.`);
+    const streams = probe.streams.filter(({ codec_type: codecType }) => codecType === "video");
+    if (streams.length !== 1) throw new Error(`${label} must contain exactly one real video stream.`);
+    const stream = record(streams[0]);
+    const width = integer(stream?.width, `${label} ffprobe width`, 1, 16_384);
+    const height = integer(stream?.height, `${label} ffprobe height`, 1, 16_384);
+    const frames = Number(stream?.nb_read_frames);
+    const streamDuration = Number(stream?.duration);
+    const formatDuration = Number(probe.format?.duration);
+    const duration = Number.isFinite(streamDuration) ? streamDuration : formatDuration;
+    if (!Number.isSafeInteger(frames) || frames < 1
+      || !Number.isFinite(duration)
+      || duration * 1_000 < 1_000
+      || duration * 1_000 > MAX_RUN_MS
+      || width !== entry.width
+      || height !== entry.height
+      || Number((duration * 1_000).toFixed(3)) !== entry.durationMs) {
+      throw new Error(`${label} ffprobe stream dimensions, duration, or decoded frame count do not match.`);
+    }
+    await runCommand("ffmpeg", [
+    "-v", "error",
+    "-i", canonicalPath,
+    "-map", "0:v:0",
+    "-frames:v", "1",
+    "-f", "null",
+    "-",
+    ], `${label} ffmpeg frame decode`);
+  })();
+  VIDEO_DECODE_CACHE.set(cacheKey, verification);
+  try {
+    await verification;
+  } catch (error) {
+    VIDEO_DECODE_CACHE.delete(cacheKey);
+    throw error;
   }
 }
 
@@ -1120,10 +1312,14 @@ function recomputePerformance(buffer, metric) {
   const value = record(parseStrictJson(buffer, metric.evidencePath));
   if (!value) throw new Error(`${metric.evidencePath} must contain a performance capture.`);
   exactKeys(value, [
-    "schemaVersion", ...CAPTURE_KEYS, "label", "patchedContexts", "frames",
+    "schemaVersion", ...CAPTURE_KEYS, "label", "viewport", "devicePixelRatio",
+    "patchedContexts", "frames",
   ], metric.evidencePath);
   verifyBindingFile(value, { schemaVersion: 2, ...metric }, metric.evidencePath);
-  if (value.schemaVersion !== 2 || value.label !== `${metric.viewport}/${metric.scene}`) {
+  if (value.schemaVersion !== 2
+    || value.label !== `${metric.viewport}/${metric.scene}`
+    || value.viewport !== metric.viewport
+    || value.devicePixelRatio !== metric.devicePixelRatio) {
     throw new Error(`${metric.evidencePath} performance identity is invalid.`);
   }
   integer(value.patchedContexts, `${metric.evidencePath}.patchedContexts`, 1, 2);
@@ -1135,7 +1331,16 @@ function recomputePerformance(buffer, metric) {
   for (const [index, frame] of value.frames.entries()) {
     const item = record(frame);
     if (!item) throw new Error(`${metric.evidencePath}.frames[${index}] must be an object.`);
-    exactKeys(item, ["frameMs", "drawCalls"], `${metric.evidencePath}.frames[${index}]`);
+    exactKeys(item, [
+      "sequence", "frameMs", "drawCalls", "visible", "hasFocus", "viewport", "devicePixelRatio",
+    ], `${metric.evidencePath}.frames[${index}]`);
+    if (integer(item.sequence, `${metric.evidencePath}.frames[${index}].sequence`, 1) !== index + 1
+      || item.visible !== true
+      || item.hasFocus !== true
+      || item.viewport !== metric.viewport
+      || item.devicePixelRatio !== metric.devicePixelRatio) {
+      throw new Error(`${metric.evidencePath} frames must bind visible focused viewport samples in order.`);
+    }
     frameTimes.push(finiteNumber(item.frameMs, `${metric.evidencePath}.frames[${index}].frameMs`, 0.001, 1_000));
     drawCalls.push(integer(item.drawCalls, `${metric.evidencePath}.frames[${index}].drawCalls`, 0, 1_000_000));
   }
@@ -1157,72 +1362,206 @@ function recomputePerformance(buffer, metric) {
   }
 }
 
-function recomputeConsole(buffer, summary, context) {
-  const value = record(parseStrictJson(buffer, summary.evidencePath));
-  if (!value) throw new Error("console evidence must be structured JSON.");
-  exactKeys(value, ["schemaVersion", ...CAPTURE_KEYS, "entries"], summary.evidencePath);
-  verifyBindingFile(value, { schemaVersion: 1, ...summary }, summary.evidencePath);
-  if (!Array.isArray(value.entries)) throw new Error("console entries must be an array.");
-  const counts = { warningCount: 0, errorCount: 0, exceptionCount: 0, unhandledRejectionCount: 0 };
+function validateSegmentTimeline(segments, gaps, context, label) {
+  if (!Array.isArray(segments)
+    || segments.length < TASK41_MIN_INTERACTION_SEGMENTS
+    || segments.length > 32
+    || !Array.isArray(gaps)
+    || gaps.length !== segments.length - 1) {
+    throw new Error(`${label} must contain at least four bounded segments and one gap between each pair.`);
+  }
+  const timeline = [];
+  const ids = new Set();
+  segments.forEach((segment, index) => {
+    if (typeof segment.id !== "string"
+      || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(segment.id)
+      || ids.has(segment.id)) {
+      throw new Error(`${label} interaction segment IDs must be unique storage-safe names.`);
+    }
+    ids.add(segment.id);
+    const startedAt = exactTimestamp(segment.startedAt, `${label}.segments[${index}].startedAt`);
+    const completedAt = exactTimestamp(segment.completedAt, `${label}.segments[${index}].completedAt`);
+    if (completedAt - startedAt < 1_000
+      || startedAt < context.startedAt
+      || completedAt > context.completedAt) {
+      throw new Error(`${label} interaction segment windows must last at least one second within the run.`);
+    }
+    timeline.push({ type: "segment", id: segment.id, startedAt, completedAt });
+    if (index < gaps.length) {
+      const gap = gaps[index];
+      if (typeof gap.id !== "string"
+        || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(gap.id)
+        || ids.has(gap.id)
+        || !TASK41_INTERACTION_GAP_KINDS.includes(gap.kind)
+        || gap.afterSegmentId !== segment.id
+        || gap.beforeSegmentId !== segments[index + 1]?.id) {
+        throw new Error(`${label} gaps must uniquely bind each adjacent segment pair.`);
+      }
+      ids.add(gap.id);
+      const gapStartedAt = exactTimestamp(gap.startedAt, `${label}.gaps[${index}].startedAt`);
+      const gapCompletedAt = exactTimestamp(gap.completedAt, `${label}.gaps[${index}].completedAt`);
+      if (gapStartedAt !== completedAt || gapCompletedAt <= gapStartedAt) {
+        throw new Error(`${label} gaps must start exactly when their preceding segment ends.`);
+      }
+      timeline.push({
+        type: "gap",
+        id: gap.id,
+        kind: gap.kind,
+        startedAt: gapStartedAt,
+        completedAt: gapCompletedAt,
+      });
+    }
+  });
+  for (let index = 1; index < segments.length; index += 1) {
+    const precedingGap = timeline[index * 2 - 1];
+    const segment = timeline[index * 2];
+    if (segment.startedAt !== precedingGap.completedAt) {
+      throw new Error(`${label} interaction segments must start exactly when the preceding gap ends.`);
+    }
+  }
+  return timeline;
+}
+
+function countConsoleEntries(entries, window, label, counts) {
+  if (!Array.isArray(entries)) throw new Error(`${label} entries must be an array.`);
   const allowed = new Set(["debug", "info", "log", "warning", "error", "exception", "unhandled-rejection"]);
-  let priorAt = context.startedAt - 1;
-  value.entries.forEach((entry, index) => {
+  let priorAt = window.startedAt - 1;
+  entries.forEach((entry, index) => {
     const item = record(entry);
-    if (!item) throw new Error(`console.entries[${index}] must be an object.`);
-    exactKeys(item, ["sequence", "timestamp", "source", "level", "text"], `console.entries[${index}]`);
-    const sequence = integer(item.sequence, `console.entries[${index}].sequence`, 1);
+    if (!item) throw new Error(`${label}.entries[${index}] must be an object.`);
+    exactKeys(item, ["sequence", "timestamp", "source", "level", "text"], `${label}.entries[${index}]`);
+    const sequence = integer(item.sequence, `${label}.entries[${index}].sequence`, 1);
     if (sequence !== index + 1) throw new Error("console entry sequences must be contiguous.");
-    const at = exactTimestamp(item.timestamp, `console.entries[${index}].timestamp`);
-    if (at <= priorAt || at < context.startedAt || at > context.completedAt) {
-      throw new Error("console entry timestamps must be ordered within the run.");
+    const at = exactTimestamp(item.timestamp, `${label}.entries[${index}].timestamp`);
+    if (at <= priorAt || at < window.startedAt || at > window.completedAt) {
+      throw new Error("console entry timestamps must be ordered within their measured window.");
     }
     priorAt = at;
     if (!["console", "cdp"].includes(item.source) || !allowed.has(item.level)) {
       throw new Error("console evidence contains an unknown source or level.");
     }
-    nonemptyString(item.text, `console.entries[${index}].text`);
+    nonemptyString(item.text, `${label}.entries[${index}].text`);
     if (item.level === "warning") counts.warningCount += 1;
     if (item.level === "error") counts.errorCount += 1;
     if (item.level === "exception") counts.exceptionCount += 1;
     if (item.level === "unhandled-rejection") counts.unhandledRejectionCount += 1;
   });
+}
+
+function recomputeConsole(buffer, summary, context) {
+  const value = record(parseStrictJson(buffer, summary.evidencePath));
+  if (!value) throw new Error("console evidence must be structured JSON.");
+  exactKeys(value, ["schemaVersion", ...CAPTURE_KEYS, "segments", "gaps"], summary.evidencePath);
+  verifyBindingFile(value, { schemaVersion: 2, ...summary }, summary.evidencePath);
+  if (!Array.isArray(value.segments) || !Array.isArray(value.gaps)) {
+    throw new Error("console segments and gaps must be arrays.");
+  }
+  value.segments.forEach((segment, index) => {
+    const item = record(segment);
+    if (!item) throw new Error(`console.segments[${index}] must be an object.`);
+    exactKeys(item, ["id", "startedAt", "completedAt", "entries"], `console.segments[${index}]`);
+  });
+  value.gaps.forEach((gap, index) => {
+    const item = record(gap);
+    if (!item) throw new Error(`console.gaps[${index}] must be an object.`);
+    exactKeys(item, [
+      "id", "kind", "afterSegmentId", "beforeSegmentId", "startedAt", "completedAt", "entries",
+    ], `console.gaps[${index}]`);
+  });
+  const timeline = validateSegmentTimeline(value.segments, value.gaps, context, "console");
+  if (summary.segmentCount !== value.segments.length || summary.gapCount !== value.gaps.length) {
+    throw new Error("console segment/gap counts do not match structured evidence.");
+  }
+  const counts = { warningCount: 0, errorCount: 0, exceptionCount: 0, unhandledRejectionCount: 0 };
+  value.segments.forEach((segment, index) =>
+    countConsoleEntries(segment.entries, timeline[index * 2], `console.segments[${index}]`, counts));
+  value.gaps.forEach((gap, index) =>
+    countConsoleEntries(gap.entries, timeline[index * 2 + 1], `console.gaps[${index}]`, counts));
   if (Object.entries(counts).some(([key, count]) => summary[key] !== count)) {
     throw new Error("console/CDP counts do not match structured entries.");
   }
+  return timeline;
 }
 
 function recomputeNetwork(buffer, summary, context) {
   const value = record(parseStrictJson(buffer, summary.evidencePath));
   if (!value) throw new Error("network evidence must be structured JSON.");
-  exactKeys(value, ["schemaVersion", ...CAPTURE_KEYS, "events"], summary.evidencePath);
-  verifyBindingFile(value, { schemaVersion: 1, ...summary }, summary.evidencePath);
-  if (!Array.isArray(value.events)) throw new Error("network events must be an array.");
-  let requestCount = 0;
-  let websocketCount = 0;
-  let lakebedRequestCount = 0;
-  let priorAt = context.startedAt - 1;
-  value.events.forEach((event, index) => {
-    const item = record(event);
-    if (!item) throw new Error(`network.events[${index}] must be an object.`);
-    exactKeys(item, ["sequence", "timestamp", "type", "url"], `network.events[${index}]`);
-    const sequence = integer(item.sequence, `network.events[${index}].sequence`, 1);
-    if (sequence !== index + 1) throw new Error("network event sequences must be contiguous.");
-    const at = exactTimestamp(item.timestamp, `network.events[${index}].timestamp`);
-    if (at <= priorAt || at < context.startedAt || at > context.completedAt) {
-      throw new Error("network event timestamps must be ordered within the run.");
-    }
-    priorAt = at;
-    nonemptyString(item.url, `network.events[${index}].url`);
-    if (item.type === "request") requestCount += 1;
-    else if (item.type === "websocket") websocketCount += 1;
-    else throw new Error("network evidence contains an unknown event type.");
-    if (/^https?:\/\/[^/]*lakebed\.app(?:\/|$)/i.test(item.url)) lakebedRequestCount += 1;
-  });
-  if (summary.requestCount !== requestCount
-    || summary.websocketCount !== websocketCount
-    || summary.lakebedRequestCount !== lakebedRequestCount) {
-    throw new Error("request/websocket counts do not match structured CDP events.");
+  exactKeys(value, ["schemaVersion", ...CAPTURE_KEYS, "segments", "gaps"], summary.evidencePath);
+  verifyBindingFile(value, { schemaVersion: 2, ...summary }, summary.evidencePath);
+  if (!Array.isArray(value.segments) || !Array.isArray(value.gaps)) {
+    throw new Error("network segments and gaps must be arrays.");
   }
+  value.segments.forEach((segment, index) => {
+    const item = record(segment);
+    if (!item) throw new Error(`network.segments[${index}] must be an object.`);
+    exactKeys(item, [
+      "id", "startedAt", "completedAt", "requests", "newSockets",
+    ], `network.segments[${index}]`);
+    if (!Array.isArray(item.requests) || item.requests.length !== 0
+      || !Array.isArray(item.newSockets) || item.newSockets.length !== 0) {
+      throw new Error("every measured interaction segment must have zero requests and new sockets.");
+    }
+  });
+  value.gaps.forEach((gap, index) => {
+    const item = record(gap);
+    if (!item) throw new Error(`network.gaps[${index}] must be an object.`);
+    exactKeys(item, [
+      "id", "kind", "afterSegmentId", "beforeSegmentId", "startedAt", "completedAt",
+      "navigationRequests", "appRequests", "newSockets",
+    ], `network.gaps[${index}]`);
+    if (!Array.isArray(item.navigationRequests) || item.navigationRequests.length < 1
+      || !Array.isArray(item.appRequests) || item.appRequests.length !== 0
+      || !Array.isArray(item.newSockets) || item.newSockets.length !== 0) {
+      throw new Error("navigation/reload gaps may contain document navigation only, never app traffic or sockets.");
+    }
+  });
+  const timeline = validateSegmentTimeline(value.segments, value.gaps, context, "network");
+  if (summary.segmentCount !== value.segments.length || summary.gapCount !== value.gaps.length) {
+    throw new Error("network segment/gap counts do not match structured evidence.");
+  }
+  let navigationRequestCount = 0;
+  value.gaps.forEach((gap, gapIndex) => {
+    let priorAt = timeline[gapIndex * 2 + 1].startedAt - 1;
+    gap.navigationRequests.forEach((request, requestIndex) => {
+      const item = record(request);
+      if (!item) throw new Error(`network.gaps[${gapIndex}].navigationRequests[${requestIndex}] must be an object.`);
+      exactKeys(item, [
+        "sequence", "timestamp", "url", "resourceType",
+      ], `network.gaps[${gapIndex}].navigationRequests[${requestIndex}]`);
+      if (integer(item.sequence, "navigation request sequence", 1) !== requestIndex + 1
+        || item.resourceType !== "document") {
+        throw new Error("gap navigation requests must be ordered document requests.");
+      }
+      const at = exactTimestamp(item.timestamp, "navigation request timestamp");
+      if (at <= priorAt || at < timeline[gapIndex * 2 + 1].startedAt
+        || at > timeline[gapIndex * 2 + 1].completedAt) {
+        throw new Error("gap navigation requests must remain inside their explicit gap.");
+      }
+      priorAt = at;
+      let url;
+      try {
+        url = new URL(item.url);
+      } catch {
+        throw new Error("gap navigation request URL must be absolute.");
+      }
+      if (!["http:", "https:"].includes(url.protocol)
+        || !["localhost", "127.0.0.1"].includes(url.hostname)
+        || url.pathname !== "/"
+        || url.search !== ""
+        || url.username !== ""
+        || url.password !== "") {
+        throw new Error("gap navigation requests must target the local dev origin only.");
+      }
+      navigationRequestCount += 1;
+    });
+  });
+  if (summary.requestCount !== 0
+    || summary.websocketCount !== 0
+    || summary.lakebedRequestCount !== 0
+    || summary.navigationRequestCount !== navigationRequestCount) {
+    throw new Error("request/websocket counts do not match segmented CDP evidence.");
+  }
+  return timeline;
 }
 
 function verifyStorage(buffer, summary, evidence) {
@@ -1285,17 +1624,17 @@ function verifyStorage(buffer, summary, evidence) {
   });
 }
 
-function verifyMultiplayer(buffer, summary) {
+function verifyMultiplayer(buffer, summary, files, evidence) {
   const value = record(parseStrictJson(buffer, summary.evidencePath));
   if (!value) throw new Error("multiplayer evidence must be structured JSON.");
   const baseKeys = [
     "schemaVersion", ...CAPTURE_KEYS, "status", "completionEligible", "hostedRoute",
-    "identities", "identityHashes", "quotaStatus", "quotaObserved", "reasonCodes", "checks",
+    "identities", "interactions", "quotaStatus", "quotaObserved", "reasonCodes", "checks",
   ];
   exactKeys(value, baseKeys, summary.evidencePath);
-  verifyBindingFile(value, { schemaVersion: 1, ...summary }, summary.evidencePath);
+  verifyBindingFile(value, { schemaVersion: 2, ...summary }, summary.evidencePath);
   for (const key of [
-    "status", "completionEligible", "hostedRoute", "identities", "identityHashes",
+    "status", "completionEligible", "hostedRoute", "identities", "interactions",
     "quotaStatus", "quotaObserved", "reasonCodes",
   ]) {
     if (JSON.stringify(value[key]) !== JSON.stringify(summary[key])) {
@@ -1318,6 +1657,108 @@ function verifyMultiplayer(buffer, summary) {
         throw new Error("multiplayer checks are missing, failed, or out of order.");
       }
     });
+    const identityById = new Map(summary.identities.map((identity) => [identity.id, identity]));
+    for (const identity of summary.identities) {
+      const proof = record(parseStrictJson(files.get(identity.proofPath), identity.proofPath));
+      if (!proof) throw new Error(`${identity.proofPath} must be a structured identity proof.`);
+      exactKeys(proof, [
+        "schemaVersion", "taskId", "runId", "appCommit", "identityId", "identityCommitment",
+        "runSaltedIdentityHash", "windowStartedAt", "windowCompletedAt", "peerVisibilityIds",
+        "quotaTelemetry",
+      ], identity.proofPath);
+      if (proof.schemaVersion !== 1
+        || proof.taskId !== TASK41_TASK_ID
+        || proof.runId !== evidence.runId
+        || proof.appCommit !== evidence.appCommit
+        || proof.identityId !== identity.id
+        || proof.identityCommitment !== identity.identityCommitment
+        || proof.runSaltedIdentityHash !== identity.runSaltedIdentityHash
+        || proof.windowStartedAt !== identity.windowStartedAt
+        || proof.windowCompletedAt !== identity.windowCompletedAt) {
+        throw new Error(`${identity.proofPath} is not bound to its run-salted identity summary.`);
+      }
+      const peerId = identity.id === "identity-a" ? "identity-b" : "identity-a";
+      exactArray(proof.peerVisibilityIds, [peerId], `${identity.proofPath}.peerVisibilityIds`);
+      if (!Array.isArray(proof.quotaTelemetry)
+        || proof.quotaTelemetry.length < 2
+        || proof.quotaTelemetry.length > 3_600) {
+        throw new Error(`${identity.proofPath} needs bounded per-identity quota telemetry.`);
+      }
+      let priorAt = Date.parse(identity.windowStartedAt) - 1;
+      let priorAttempts = -1;
+      let priorGrants = -1;
+      let observedDelta = false;
+      proof.quotaTelemetry.forEach((telemetry, index) => {
+        const item = record(telemetry);
+        if (!item) throw new Error(`${identity.proofPath}.quotaTelemetry[${index}] must be an object.`);
+        exactKeys(item, [
+          "sequence", "timestamp", "attempts", "grants", "paused",
+        ], `${identity.proofPath}.quotaTelemetry[${index}]`);
+        const attempts = integer(item.attempts, "quota attempts", 0);
+        const grants = integer(item.grants, "quota grants", 0);
+        const at = exactTimestamp(item.timestamp, "quota telemetry timestamp");
+        if (item.sequence !== index + 1
+          || item.paused !== false
+          || attempts > grants
+          || attempts < priorAttempts
+          || grants < priorGrants
+          || at <= priorAt
+          || at < Date.parse(identity.windowStartedAt)
+          || at > Date.parse(identity.windowCompletedAt)) {
+          throw new Error("quota telemetry must be ordered, active, monotonic, and remain within grants.");
+        }
+        if (index > 0 && (attempts > priorAttempts || grants > priorGrants)) observedDelta = true;
+        priorAt = at;
+        priorAttempts = attempts;
+        priorGrants = grants;
+      });
+      if (priorAttempts < 1 || priorGrants < 1 || !observedDelta) {
+        throw new Error("quota telemetry must observe nonzero attempts/grants and a positive session delta.");
+      }
+    }
+    for (const interaction of summary.interactions) {
+      const proof = record(parseStrictJson(files.get(interaction.proofPath), interaction.proofPath));
+      if (!proof) throw new Error(`${interaction.proofPath} must be a structured interaction proof.`);
+      exactKeys(proof, [
+        "schemaVersion", "taskId", "runId", "appCommit", "interactionId", "actorId",
+        "targetId", "windowStartedAt", "windowCompletedAt", "events",
+      ], interaction.proofPath);
+      const actor = identityById.get(interaction.actorId);
+      const target = identityById.get(interaction.targetId);
+      const startedAt = exactTimestamp(proof.windowStartedAt, `${interaction.proofPath}.windowStartedAt`);
+      const completedAt = exactTimestamp(proof.windowCompletedAt, `${interaction.proofPath}.windowCompletedAt`);
+      if (proof.schemaVersion !== 1
+        || proof.taskId !== TASK41_TASK_ID
+        || proof.runId !== evidence.runId
+        || proof.appCommit !== evidence.appCommit
+        || proof.interactionId !== interaction.id
+        || proof.actorId !== interaction.actorId
+        || proof.targetId !== interaction.targetId
+        || startedAt < Math.max(Date.parse(actor.windowStartedAt), Date.parse(target.windowStartedAt))
+        || completedAt > Math.min(Date.parse(actor.windowCompletedAt), Date.parse(target.windowCompletedAt))
+        || completedAt <= startedAt) {
+        throw new Error(`${interaction.proofPath} is not bound to the identities' overlapping session.`);
+      }
+      if (!Array.isArray(proof.events) || proof.events.length !== TASK41_MULTIPLAYER_INTERACTIONS.length) {
+        throw new Error(`${interaction.proofPath} must prove every bidirectional interaction kind.`);
+      }
+      let priorAt = startedAt - 1;
+      proof.events.forEach((event, index) => {
+        const item = record(event);
+        if (!item) throw new Error(`${interaction.proofPath}.events[${index}] must be an object.`);
+        exactKeys(item, ["sequence", "timestamp", "kind", "status"], `${interaction.proofPath}.events[${index}]`);
+        const at = exactTimestamp(item.timestamp, "interaction event timestamp");
+        if (item.sequence !== index + 1
+          || item.kind !== TASK41_MULTIPLAYER_INTERACTIONS[index]
+          || item.status !== "pass"
+          || at <= priorAt
+          || at < startedAt
+          || at > completedAt) {
+          throw new Error("multiplayer interaction events must pass in order inside the overlap window.");
+        }
+        priorAt = at;
+      });
+    }
   }
 }
 
@@ -1327,11 +1768,88 @@ function recomputeArtifact(artifactBuffer, reportBuffer, summary, label) {
   if (!report || !outer) throw new Error(`${label} Lakebed output must be JSON objects.`);
   exactKeys(report, ["artifactHash", "artifactPath", "clientBundleHash", "format"], `${label} report`);
   exactKeys(outer, ["artifact", "artifactHash", "clientBundle", "clientBundleHash", "mediaType"], `${label} artifact`);
-  if (report.format !== summary.format || outer.artifact?.format !== summary.format
-    || outer.artifact?.deployTarget !== summary.deployTarget
+  const capsule = record(outer.artifact);
+  if (!capsule) throw new Error(`${label} capsule artifact must be an object.`);
+  exactKeys(capsule, [
+    "client", "createdWith", "database", "deployTarget", "favicon", "format",
+    "limits", "name", "server", "source",
+  ], `${label} capsule artifact`);
+  const clientDescriptor = record(capsule.client);
+  const createdWith = record(capsule.createdWith);
+  const database = record(capsule.database);
+  const server = record(capsule.server);
+  const serverSource = record(server?.source);
+  const source = record(capsule.source);
+  const limits = record(capsule.limits);
+  const favicon = record(capsule.favicon);
+  if (!clientDescriptor || !createdWith || !database || !server || !serverSource
+    || !source || !limits || !favicon) {
+    throw new Error(`${label} capsule artifact is missing full Lakebed descriptors.`);
+  }
+  exactKeys(clientDescriptor, ["bundleHash", "bytes", "entry"], `${label} client descriptor`);
+  exactKeys(createdWith, ["compiler", "lakebed"], `${label} createdWith`);
+  exactKeys(database, ["apiVersion", "indexCodecVersion", "schemaHash"], `${label} database`);
+  exactKeys(server, [
+    "actions", "endpoints", "helpers", "imports", "mutations", "queries", "schema", "source",
+  ], `${label} server`);
+  exactKeys(serverSource, ["bundle", "bundleHash", "bytes", "entry"], `${label} server source`);
+  exactKeys(source, ["files", "snapshotHash"], `${label} source`);
+  exactKeys(favicon, [
+    "bodyBase64", "bytes", "contentType", "hash", "routePath", "sourcePath",
+  ], `${label} favicon`);
+  exactKeys(limits, [
+    "instructionBudget", "maxBytesRead", "maxDirectGets", "maxIndexKeyBytes",
+    "maxRowsRead", "maxRowsReturned", "maxScanCalls", "maxValueBytes", "maxWrites",
+  ], `${label} limits`);
+  if (report.format !== summary.format || capsule.format !== summary.format
+    || capsule.deployTarget !== summary.deployTarget
     || outer.mediaType !== "application/vnd.lakebed.artifact+json"
-    || !String(report.artifactPath).endsWith(".anonymous.json")) {
+    || !String(report.artifactPath).endsWith(".anonymous.json")
+    || clientDescriptor.entry !== "/client.js"
+    || serverSource.entry !== "/server.mjs"
+    || !Array.isArray(server.imports)
+    || typeof createdWith.compiler !== "string"
+    || typeof createdWith.lakebed !== "string"
+    || typeof capsule.name !== "string"
+    || !capsule.name) {
     throw new Error(`${label} is not an anonymous Lakebed artifact report.`);
+  }
+  if (database.apiVersion !== 1
+    || database.indexCodecVersion !== 1
+    || lakebedHash(database.schemaHash, `${label} database.schemaHash`) !== database.schemaHash
+    || lakebedHash(source.snapshotHash, `${label} source.snapshotHash`) !== source.snapshotHash
+    || lakebedHash(clientDescriptor.bundleHash, `${label} client.bundleHash`) !== clientDescriptor.bundleHash
+    || clientDescriptor.bytes < 1
+    || favicon.sourcePath !== "favicon.svg"
+    || favicon.routePath !== "/favicon.svg") {
+    throw new Error(`${label} has invalid Lakebed database, source, client, or favicon metadata.`);
+  }
+  const faviconBody = Buffer.from(favicon.bodyBase64, "base64");
+  if (faviconBody.toString("base64") !== favicon.bodyBase64
+    || faviconBody.length !== favicon.bytes
+    || `sha256:${digest(faviconBody)}` !== favicon.hash) {
+    throw new Error(`${label} favicon content does not recompute.`);
+  }
+  Object.entries(limits).forEach(([key, value]) => integer(value, `${label} limits.${key}`, 1));
+  if (!Array.isArray(source.files) || source.files.length < 2 || source.files.length > 16) {
+    throw new Error(`${label} must contain a bounded full Lakebed source file manifest.`);
+  }
+  const sourcePaths = new Set();
+  source.files.forEach((file, index) => {
+    const item = record(file);
+    if (!item) throw new Error(`${label} source.files[${index}] must be an object.`);
+    exactKeys(item, ["bytes", "hash", "path"], `${label} source.files[${index}]`);
+    evidencePath(item.path, `${label} source.files[${index}].path`);
+    integer(item.bytes, `${label} source.files[${index}].bytes`, 1, MAX_EVIDENCE_FILE_BYTES);
+    lakebedHash(item.hash, `${label} source.files[${index}].hash`);
+    if (sourcePaths.has(item.path)) throw new Error(`${label} source file paths must be unique.`);
+    sourcePaths.add(item.path);
+  });
+  if (!sourcePaths.has("client/index.tsx") || !sourcePaths.has("server/index.ts")) {
+    throw new Error(`${label} source manifest must include staged client and server entrypoints.`);
+  }
+  if (`sha256:${digest(Buffer.from(JSON.stringify(source.files)))}` !== source.snapshotHash) {
+    throw new Error(`${label} source snapshot hash does not recompute.`);
   }
   const computedArtifactHash = `sha256:${digest(Buffer.from(JSON.stringify(outer.artifact)))}`;
   let client;
@@ -1342,13 +1860,136 @@ function recomputeArtifact(artifactBuffer, reportBuffer, summary, label) {
   }
   if (client.toString("base64") !== outer.clientBundle) throw new Error(`${label} client bundle base64 is not canonical.`);
   const computedClientHash = `sha256:${digest(client)}`;
+  let serverBundle;
+  try {
+    serverBundle = Buffer.from(serverSource.bundle, "base64");
+  } catch {
+    throw new Error(`${label} server bundle is not base64.`);
+  }
+  if (serverBundle.toString("base64") !== serverSource.bundle
+    || `sha256:${digest(serverBundle)}` !== serverSource.bundleHash
+    || serverBundle.length !== serverSource.bytes) {
+    throw new Error(`${label} server bundle hash/bytes do not recompute.`);
+  }
   if (computedArtifactHash !== outer.artifactHash || computedArtifactHash !== report.artifactHash
     || computedArtifactHash !== summary.artifactHash
     || computedClientHash !== outer.clientBundleHash || computedClientHash !== report.clientBundleHash
-    || computedClientHash !== outer.artifact?.client?.bundleHash
+    || computedClientHash !== clientDescriptor.bundleHash
     || computedClientHash !== summary.clientBundleHash
     || client.length !== outer.artifact?.client?.bytes) {
     throw new Error(`${label} Lakebed artifact/client hashes do not recompute.`);
+  }
+  return outer;
+}
+
+async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
+  if (typeof repoRoot !== "string" || !repoRoot) throw new Error("A trusted --repo-root is required.");
+  const info = await lstat(repoRoot);
+  if (info.isSymbolicLink() || !info.isDirectory()) throw new Error("--repo-root must be a real directory.");
+  const canonicalRepo = await realpath(repoRoot);
+  const topLevel = (await runCommand(
+    "git",
+    ["-C", canonicalRepo, "rev-parse", "--show-toplevel"],
+    "git repository verification",
+  )).toString("utf8").trim();
+  if (await realpath(topLevel) !== canonicalRepo) {
+    throw new Error("--repo-root must be the exact Git worktree root.");
+  }
+  await runCommand(
+    "git",
+    ["-C", canonicalRepo, "cat-file", "-e", `${expectedCommit}^{commit}`],
+    "expected commit verification",
+  );
+  const cacheKey = `${canonicalRepo}\0${expectedCommit}`;
+  if (STAGE_REBUILD_CACHE.has(cacheKey)) return STAGE_REBUILD_CACHE.get(cacheKey);
+  const rebuild = (async () => {
+    const temporary = await mkdtemp(join(tmpdir(), "lakecraft-task41-commit-"));
+    try {
+      const sourceRoot = join(temporary, "source");
+      const stageRoot = join(temporary, "stage");
+      const archivePath = join(temporary, "source.tar");
+      await mkdir(sourceRoot);
+      await runCommand(
+        "git",
+        ["-C", canonicalRepo, "archive", "--format=tar", `--output=${archivePath}`, expectedCommit],
+        "expected commit archive",
+      );
+      await runCommand("tar", ["-xf", archivePath, "-C", sourceRoot], "expected commit extraction");
+      const preparePath = join(sourceRoot, "scripts", "prepare-lakebed-deploy.mjs");
+      const prepareInfo = await lstat(preparePath);
+      if (prepareInfo.isSymbolicLink() || !prepareInfo.isFile()) {
+        throw new Error("expected commit prepare-lakebed-deploy.mjs must be a regular file.");
+      }
+      await runCommand(
+        process.execPath,
+        [preparePath, stageRoot],
+        "expected commit Lakebed staging",
+        { cwd: sourceRoot },
+      );
+      const stagePaths = await listEvidenceFiles(stageRoot);
+      const files = new Map();
+      for (const path of stagePaths) {
+        const absolute = join(stageRoot, ...path.split("/"));
+        const stageInfo = await lstat(absolute);
+        if (stageInfo.isSymbolicLink() || !stageInfo.isFile()
+          || stageInfo.size < 1 || stageInfo.size > MAX_EVIDENCE_FILE_BYTES) {
+          throw new Error(`rebuilt stage ${path} is not a bounded regular file.`);
+        }
+        const buffer = await readFile(absolute);
+        files.set(path, {
+          buffer,
+          bytes: buffer.length,
+          hash: `sha256:${digest(buffer)}`,
+        });
+      }
+      if (!files.has("client/index.tsx") || !files.has("server/index.ts") || !files.has("lakebed.json")) {
+        throw new Error("rebuilt expected commit stage is incomplete.");
+      }
+      return { repoRoot: canonicalRepo, expectedCommit, files };
+    } finally {
+      await rm(temporary, { recursive: true, force: true });
+    }
+  })();
+  STAGE_REBUILD_CACHE.set(cacheKey, rebuild);
+  try {
+    return await rebuild;
+  } catch (error) {
+    STAGE_REBUILD_CACHE.delete(cacheKey);
+    throw error;
+  }
+}
+
+function verifyArtifactStageBinding(outer, stage, artifact, evidenceFiles) {
+  const sourceFiles = outer.artifact.source.files;
+  const expectedPaths = [...stage.files.keys()]
+    .filter((path) => path !== "lakebed.json" && path !== ".env.lakebed.server")
+    .sort();
+  exactArray(sourceFiles.map(({ path }) => path), expectedPaths, "Lakebed source.files paths");
+  sourceFiles.forEach((sourceFile) => {
+    const rebuilt = stage.files.get(sourceFile.path);
+    if (!rebuilt
+      || sourceFile.bytes !== rebuilt.bytes
+      || sourceFile.hash !== rebuilt.hash) {
+      throw new Error(`Lakebed source.files does not bind rebuilt ${sourceFile.path}.`);
+    }
+  });
+  const rebuiltFavicon = stage.files.get("favicon.svg");
+  if (!rebuiltFavicon
+    || !Buffer.from(outer.artifact.favicon.bodyBase64, "base64").equals(rebuiltFavicon.buffer)
+    || outer.artifact.favicon.hash !== rebuiltFavicon.hash) {
+    throw new Error("Lakebed favicon decoded content does not equal the expected-commit stage.");
+  }
+  for (const [evidencePathKey, stagePath] of [
+    ["stagedClientPath", "client/index.tsx"],
+    ["pairedStagedClientPath", "client/index.tsx"],
+    ["stagedServerPath", "server/index.ts"],
+    ["pairedStagedServerPath", "server/index.ts"],
+  ]) {
+    const evidenceBuffer = evidenceFiles.get(artifact[evidencePathKey]);
+    const rebuilt = stage.files.get(stagePath);
+    if (!rebuilt || !evidenceBuffer.equals(rebuilt.buffer)) {
+      throw new Error(`${evidencePathKey} does not equal the exact expected-commit stage.`);
+    }
   }
 }
 
@@ -1433,11 +2074,13 @@ async function controlPath(root, absolutePath, label, mustExist) {
 
 export async function verifyTask41EvidenceFiles(evidence, root, {
   expectedCommit,
+  repoRoot,
   nowMs = Date.now(),
   manifestPath,
   validatorOutputPath,
 } = {}) {
   validateTask41Evidence(evidence, { expectedCommit, nowMs });
+  if (typeof repoRoot !== "string" || !repoRoot) throw new Error("A trusted --repo-root is required.");
   const rootInfo = await lstat(root);
   if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new Error("evidence root must be a real directory.");
   const references = new Map();
@@ -1453,6 +2096,8 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
   for (const summary of [evidence.console, evidence.network, evidence.storage, evidence.multiplayer]) {
     add(summary.evidencePath, summary.evidenceSha256);
   }
+  for (const identity of evidence.multiplayer.identities) add(identity.proofPath, identity.proofSha256);
+  for (const interaction of evidence.multiplayer.interactions) add(interaction.proofPath, interaction.proofSha256);
   const artifact = evidence.artifact;
   for (const [pathKey, hashKey] of [
     ["reportPath", "reportSha256"],
@@ -1466,6 +2111,7 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
   ]) add(artifact[pathKey], artifact[hashKey]);
 
   const files = new Map();
+  const canonicalPaths = new Map();
   const realpaths = new Map();
   const inodes = new Map();
   for (const [path, hash] of references) {
@@ -1477,6 +2123,7 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
       throw new Error(`${path} hard-links ${inodes.get(file.inode)}.`);
     }
     realpaths.set(file.canonical, path);
+    canonicalPaths.set(path, file.canonical);
     inodes.set(file.inode, path);
     files.set(path, file.buffer);
   }
@@ -1490,7 +2137,7 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
           throw new Error(`${entry.path} real PNG dimensions do not match its manifest.`);
         }
       } else if (entry.kind === "video") {
-        inspectVideo(buffer, entry, entry.path);
+        await inspectVideo(buffer, entry, entry.path, canonicalPaths.get(entry.path));
       } else if (entry.kind === "transcript") {
         verifyTranscript(buffer, entry, {
           startedAt: Date.parse(evidence.runStartedAt),
@@ -1504,10 +2151,13 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
     startedAt: Date.parse(evidence.runStartedAt),
     completedAt: Date.parse(evidence.runCompletedAt),
   };
-  recomputeConsole(files.get(evidence.console.evidencePath), evidence.console, runContext);
-  recomputeNetwork(files.get(evidence.network.evidencePath), evidence.network, runContext);
+  const consoleTimeline = recomputeConsole(files.get(evidence.console.evidencePath), evidence.console, runContext);
+  const networkTimeline = recomputeNetwork(files.get(evidence.network.evidencePath), evidence.network, runContext);
+  if (JSON.stringify(consoleTimeline) !== JSON.stringify(networkTimeline)) {
+    throw new Error("console and network measured segment/gap timelines must match exactly.");
+  }
   verifyStorage(files.get(evidence.storage.evidencePath), evidence.storage, evidence);
-  verifyMultiplayer(files.get(evidence.multiplayer.evidencePath), evidence.multiplayer);
+  verifyMultiplayer(files.get(evidence.multiplayer.evidencePath), evidence.multiplayer, files, evidence);
 
   const artifactA = files.get(artifact.artifactPath);
   const artifactB = files.get(artifact.pairedArtifactPath);
@@ -1515,7 +2165,7 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
     || digest(artifactA) !== artifact.artifactFileSha256) {
     throw new Error("paired artifact bytes do not match the evidence.");
   }
-  recomputeArtifact(artifactA, files.get(artifact.reportPath), artifact, "build A");
+  const outerArtifact = recomputeArtifact(artifactA, files.get(artifact.reportPath), artifact, "build A");
   recomputeArtifact(artifactB, files.get(artifact.pairedReportPath), artifact, "build B");
   for (const [leftKey, rightKey, hashKey] of [
     ["stagedClientPath", "pairedStagedClientPath", "stagedClientSha256"],
@@ -1527,6 +2177,8 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
       throw new Error(`${leftKey} pair does not match the evidence.`);
     }
   }
+  const rebuiltStage = await rebuildExpectedCommitStage(repoRoot, expectedCommit);
+  verifyArtifactStageBinding(outerArtifact, rebuiltStage, artifact, files);
 
   const allowedControl = new Set();
   if (manifestPath) {
@@ -1563,18 +2215,19 @@ function parseCli(args) {
   for (let index = 1; index < args.length; index += 2) {
     const flag = args[index];
     const value = args[index + 1];
-    if (!value || !["--root", "--expected-commit", "--validator-output"].includes(flag)) {
-      throw new Error("Usage: <evidence.json> --root <evidence-root> --expected-commit <commit> [--validator-output <path>]");
+    if (!value || !["--root", "--repo-root", "--expected-commit", "--validator-output"].includes(flag)) {
+      throw new Error("Usage: <evidence.json> --root <evidence-root> --repo-root <git-worktree> --expected-commit <commit> [--validator-output <path>]");
     }
     if (options[flag]) throw new Error(`${flag} may only be supplied once.`);
     options[flag] = value;
   }
-  if (!options["--root"] || !options["--expected-commit"]) {
-    throw new Error("--root and --expected-commit are required.");
+  if (!options["--root"] || !options["--repo-root"] || !options["--expected-commit"]) {
+    throw new Error("--root, --repo-root, and --expected-commit are required.");
   }
   return {
     evidencePath: resolve(evidencePath),
     root: resolve(options["--root"]),
+    repoRoot: resolve(options["--repo-root"]),
     expectedCommit: options["--expected-commit"],
     validatorOutputPath: options["--validator-output"] ? resolve(options["--validator-output"]) : undefined,
   };
@@ -1594,6 +2247,7 @@ async function main() {
   const evidence = parseStrictJson(await readFile(command.evidencePath), command.evidencePath);
   await verifyTask41EvidenceFiles(evidence, command.root, {
     expectedCommit: command.expectedCommit,
+    repoRoot: command.repoRoot,
     manifestPath: command.evidencePath,
     validatorOutputPath: command.validatorOutputPath,
   });
