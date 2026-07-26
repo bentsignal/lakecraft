@@ -22,6 +22,7 @@ import {
 } from "../game/types.ts";
 import { validateFurnaceState, type FurnaceState } from "../../shared/furnaces.ts";
 import type { LocalGameMode } from "./localCommands.ts";
+import { LOCAL_DROP_TERMINAL_VELOCITY } from "./localDropGravity.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
 export const SINGLEPLAYER_SAVE_VERSION = 1 as const;
@@ -78,6 +79,8 @@ export interface SinglePlayerDropState {
   y: number;
   z: number;
   droppedAt: number;
+  velocityY: number;
+  settled: boolean;
 }
 
 export interface SinglePlayerChestState {
@@ -267,15 +270,33 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
   const drops: SinglePlayerDropState[] = [];
   const ids = new Set<string>();
   for (const candidate of value) {
-    if (!isRecord(candidate) || !exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt"]) || !identifier(candidate.dropId)
+    if (!isRecord(candidate)) return null;
+    const legacyKeys = ["dropId", "item", "x", "y", "z", "droppedAt"];
+    const hasMotion = Object.prototype.hasOwnProperty.call(candidate, "velocityY")
+      || Object.prototype.hasOwnProperty.call(candidate, "settled");
+    if (!exactKeys(candidate, hasMotion ? [...legacyKeys, "velocityY", "settled"] : legacyKeys) || !identifier(candidate.dropId)
       || !finiteNumber(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || !finiteNumber(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
       || !finiteNumber(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || ids.has(candidate.dropId) || !safeInteger(candidate.droppedAt, 0, MAX_TIMESTAMP)) return null;
+      || ids.has(candidate.dropId) || !safeInteger(candidate.droppedAt, 0, MAX_TIMESTAMP)
+      || (hasMotion && (
+        !finiteNumber(candidate.velocityY, LOCAL_DROP_TERMINAL_VELOCITY, 0)
+        || typeof candidate.settled !== "boolean"
+        || (candidate.settled && candidate.velocityY !== 0)
+      ))) return null;
     const item = validateStack(candidate.item);
     if (!item) return null;
     ids.add(candidate.dropId);
-    drops.push({ dropId: candidate.dropId, item, x: candidate.x, y: candidate.y, z: candidate.z, droppedAt: candidate.droppedAt });
+    drops.push({
+      dropId: candidate.dropId,
+      item,
+      x: candidate.x,
+      y: candidate.y,
+      z: candidate.z,
+      droppedAt: candidate.droppedAt,
+      velocityY: hasMotion ? candidate.velocityY as number : 0,
+      settled: hasMotion ? candidate.settled as boolean : false,
+    });
   }
   return drops.sort((left, right) => left.dropId.localeCompare(right.dropId));
 }

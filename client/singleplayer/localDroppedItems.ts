@@ -1,18 +1,18 @@
-import type { DroppedItemRenderItem } from "../game/droppedItemRenderer.ts";
 import type { LocalMobDeathDropEvent } from "../game/mobs.ts";
 import {
   DROPPED_ITEM_PICKUP_RADIUS,
   DROPPED_ITEM_TTL_MS,
 } from "../../shared/droppedItems.ts";
 import { addItemStack, type Inventory } from "../../shared/game.ts";
+import type { LocalDroppedItem } from "./localDropGravity.ts";
 
 export type AppendLocalMobDropsResult =
-  | { ok: true; drops: DroppedItemRenderItem[]; added: number; replayed: boolean }
+  | { ok: true; drops: LocalDroppedItem[]; added: number; replayed: boolean }
   | { ok: false; reason: "drop_capacity" | "drop_id_collision" };
 
 export interface LocalDropCollectionResult {
   inventory: Inventory;
-  drops: DroppedItemRenderItem[];
+  drops: LocalDroppedItem[];
   changed: boolean;
 }
 
@@ -21,7 +21,7 @@ export interface LocalDropCollectionResult {
  * Survivors retain their original order and object identity; when nothing has
  * expired, the original array is returned without allocating or mutating it.
  */
-export function pruneExpiredLocalDroppedItems<T extends DroppedItemRenderItem>(
+export function pruneExpiredLocalDroppedItems<T extends LocalDroppedItem>(
   drops: T[],
   now: number,
 ): { drops: T[]; removed: number } {
@@ -59,14 +59,14 @@ function dropIdForEvent(eventId: string, index: number): string {
  * returns the original array untouched so the engine can preserve the mob.
  */
 export function appendLocalMobDeathDrops(
-  current: readonly DroppedItemRenderItem[],
+  current: readonly LocalDroppedItem[],
   event: Readonly<LocalMobDeathDropEvent>,
   droppedAt: number,
   maximumDrops: number,
 ): AppendLocalMobDropsResult {
   const maximum = Number.isSafeInteger(maximumDrops) ? Math.max(0, maximumDrops) : 0;
   const byId = new Map(current.map((drop) => [drop.dropId, drop] as const));
-  const additions: DroppedItemRenderItem[] = [];
+  const additions: LocalDroppedItem[] = [];
   let replayed = event.drops.length > 0;
   const phase = hashText(event.eventId) / 0xffff_ffff * Math.PI * 2;
 
@@ -74,13 +74,15 @@ export function appendLocalMobDeathDrops(
     const reward = event.drops[index];
     const dropId = dropIdForEvent(event.eventId, index);
     const angle = phase + index * 2.399963229728653;
-    const candidate: DroppedItemRenderItem = {
+    const candidate: LocalDroppedItem = {
       dropId,
       item: { itemId: reward.itemId, count: reward.count },
       x: event.x + Math.cos(angle) * 0.22,
       y: event.y + 0.35,
       z: event.z + Math.sin(angle) * 0.22,
       droppedAt,
+      velocityY: 0,
+      settled: false,
     };
     const existing = byId.get(dropId);
     if (existing) {
@@ -105,13 +107,13 @@ export function appendLocalMobDeathDrops(
 /** Capacity-safe pickup shared by mined, manually dropped, death, and mob loot. */
 export function collectLocalDroppedItems(
   inventory: Inventory,
-  drops: readonly DroppedItemRenderItem[],
+  drops: readonly LocalDroppedItem[],
   pose: Readonly<{ x: number; y: number; z: number }>,
   pickupRadius = DROPPED_ITEM_PICKUP_RADIUS,
 ): LocalDropCollectionResult {
   let nextInventory = inventory;
   let changed = false;
-  const remaining: DroppedItemRenderItem[] = [];
+  const remaining: LocalDroppedItem[] = [];
   const radiusSquared = Math.max(0, pickupRadius) ** 2;
   for (const drop of drops) {
     const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;

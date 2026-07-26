@@ -2149,6 +2149,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function update(dt: number, now: number): void {
+    options.onSimulationStep?.(dt);
     if (playerHealth <= 0) {
       if (!playerViewSuspended) {
         resetMovementView();

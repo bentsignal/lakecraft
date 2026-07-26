@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { DroppedItemRenderItem } from "../client/game/droppedItemRenderer.ts";
+import type { LocalDroppedItem } from "../client/singleplayer/localDropGravity.ts";
 import {
   collectLocalDroppedItems,
   pruneExpiredLocalDroppedItems,
@@ -9,37 +9,45 @@ import { DROPPED_ITEM_TTL_MS } from "../shared/droppedItems.ts";
 import { createEmptyInventory } from "../shared/game.ts";
 
 const now = 1_000_000;
-const expiredBeforeBoundary: DroppedItemRenderItem = {
+const expiredBeforeBoundary: LocalDroppedItem = {
   dropId: "expired-before-boundary",
   item: { itemId: "diamond", count: 3 },
   x: 1,
   y: 2,
   z: 3,
   droppedAt: now - DROPPED_ITEM_TTL_MS - 1,
+  velocityY: 0,
+  settled: true,
 };
-const survivorAtLastMillisecond: DroppedItemRenderItem = {
+const survivorAtLastMillisecond: LocalDroppedItem = {
   dropId: "survivor-last-millisecond",
   item: { itemId: "iron_pickaxe", count: 1, durability: 137 },
   x: -4.25,
   y: 18.5,
   z: 7.75,
   droppedAt: now - DROPPED_ITEM_TTL_MS + 1,
+  velocityY: -2,
+  settled: false,
 };
-const expiredAtBoundary: DroppedItemRenderItem = {
+const expiredAtBoundary: LocalDroppedItem = {
   dropId: "expired-at-boundary",
   item: { itemId: "coal", count: 12 },
   x: 9,
   y: 10,
   z: 11,
   droppedAt: now - DROPPED_ITEM_TTL_MS,
+  velocityY: 0,
+  settled: true,
 };
-const futureSurvivor: DroppedItemRenderItem = {
+const futureSurvivor: LocalDroppedItem = {
   dropId: "future-survivor",
   item: { itemId: "apple", count: 2 },
   x: 12,
   y: 13,
   z: 14,
   droppedAt: now + 25,
+  velocityY: 0,
+  settled: true,
 };
 const mixed = [expiredBeforeBoundary, survivorAtLastMillisecond, expiredAtBoundary, futureSurvivor];
 const mixedSnapshot = structuredClone(mixed);
@@ -66,13 +74,15 @@ assert.deepEqual(pickupAfterExpiry.inventory, emptyInventory, "expiry cannot min
 
 const saturatedStalePool = Array.from(
   { length: SINGLEPLAYER_SAVE_LIMITS.drops },
-  (_, index): DroppedItemRenderItem => ({
+  (_, index): LocalDroppedItem => ({
     dropId: `stale-${index}`,
     item: { itemId: "stone", count: 1 },
     x: index,
     y: 4,
     z: 0,
     droppedAt: now - DROPPED_ITEM_TTL_MS,
+    velocityY: 0,
+    settled: true,
   }),
 );
 const recovered = pruneExpiredLocalDroppedItems(saturatedStalePool, now);
