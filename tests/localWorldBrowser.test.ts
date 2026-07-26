@@ -126,9 +126,11 @@ assert.ok(browser.includes("touchLocalWorld(storage, selected.world.id, Date.now
 assert.ok(browser.includes("resolveLocalWorldPlay(storage, selected, result)")
   && registry.includes('touch.reason !== "world_touch_recovery_pending"')
   && registry.includes("touch.mutationStarted !== false")
-  && registry.includes("loadLocalWorldRegistryRaw(storage)")
-  && registry.includes('left.status !== "stable" || right.status !== "stable"'),
-  "Play fallback requires two stable transaction scans around registry and snapshot revalidation");
+  && registry.includes("const before = scanRegistryState(storage)")
+  && registry.includes("const after = scanRegistryState(storage)")
+  && registry.includes("after[2] !== before[2]")
+  && registry.includes("pendingDeletesWorld"),
+  "Play fallback requires two stable registry scans around snapshot revalidation");
 assert.ok(browser.includes("requestPointerLockHandoff()"), "Play reuses its user gesture for pointer capture");
 assert.ok(browser.includes("if (document.pointerLockElement) document.exitPointerLock()"),
   "the browser releases any title-screen pointer handoff while showing UI");
@@ -163,10 +165,11 @@ assert.ok(registry.includes("LOCAL_WORLD_REGISTRY_SLOT_A_KEY")
   "the world list has its own strict two-slot checksum journal");
 assert.ok(registry.includes("migrateLegacy: true") && registry.includes("explicit Import action"),
   "legacy migration exists only behind the explicit import API");
-assert.ok(registry.includes("LOCAL_WORLD_DELETE_TRANSACTION_KEY")
-  && registry.includes("recoverLocalWorldDelete")
-  && registry.includes("checksummed transaction"),
-  "delete cleanup is recoverable across the registry commit point");
+assert.ok(registry.includes("type LocalWorldPendingTransaction")
+  && registry.includes("saveRegistryState")
+  && registry.includes('pending[0] ? "delete" : "create"')
+  && registry.includes('completed = "cleanup_completed"'),
+  "delete cleanup is recoverable from the pending tuple inside the registry commit point");
 assert.ok(registry.includes("registryShare")
   && registry.includes("singlePlayerWorldStorageKeys(world.id)")
   && registry.includes("LOCAL_WORLD_NAMESPACE_BUDGET_CHARS"),

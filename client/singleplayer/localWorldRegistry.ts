@@ -19,7 +19,7 @@ import {
 } from "./localSave.ts";
 
 export const LOCAL_WORLD_REGISTRY_FORMAT = "lakecraft.local-world-registry" as const;
-export const LOCAL_WORLD_REGISTRY_VERSION = 1 as const;
+export const LOCAL_WORLD_REGISTRY_VERSION = 3 as const;
 export const LOCAL_WORLD_REGISTRY_SLOT_A_KEY = "lakecraft.singleplayer.worlds.a";
 export const LOCAL_WORLD_REGISTRY_SLOT_B_KEY = "lakecraft.singleplayer.worlds.b";
 export const LOCAL_WORLD_CREATE_TRANSACTION_KEY = "lakecraft.singleplayer.worlds.create";
@@ -83,6 +83,10 @@ export type LocalWorldMutationResult =
   | { ok: true; world: LocalWorldRecord; registry: LocalWorldRegistry }
   | { ok: false; reason: string; mutationStarted: boolean };
 
+function failure<R extends string>(reason: R, mutationStarted = false) {
+  return { ok: false as const, reason, mutationStarted };
+}
+
 export type LocalWorldHealth = "ready" | "healthy" | "recovered" | "corrupt" | "unsupported";
 export type LocalWorldCapacity = "ok" | "warning" | "exceeded" | "unavailable";
 
@@ -103,11 +107,7 @@ export function canPlayLocalWorld(world: LocalWorldInspection): boolean {
 }
 
 export function isLocalWorldRegistryTransactionReadOnly(load: LocalWorldRegistryLoadResult): boolean {
-  return load.issues.some((issue) =>
-    issue === "transaction:enumeration_failed"
-    || issue === "transaction:recovery_pending"
-    || issue === "create:transaction_read_failed"
-    || issue === "delete:transaction_read_failed");
+  return hasPendingNamespaceRecovery(load.issues);
 }
 
 /**
@@ -124,30 +124,20 @@ export function resolveLocalWorldPlay(
   if (touch.reason !== "world_touch_recovery_pending"
     || touch.mutationStarted !== false
     || !canPlayLocalWorld(selected)) return null;
-  const transactions = scanLocalWorldTransactions(storage);
-  if (transactions.status === "stable" && transactions.entries.some((entry) =>
-    entry.status === "valid"
-    && entry.type === "delete"
-    && entry.transaction.worldId === selected.world.id)) return null;
-  const before = loadLocalWorldRegistryRaw(storage);
-  const current = before.registry?.worlds.find(({ id }) => id === selected.world.id);
+  const before = scanRegistryState(storage);
+  if (!before || pendingDeletesWorld(before[5], selected.world.id)) return null;
+  const current = before[3].worlds.find(({ id }) => id === selected.world.id);
   if (!current || !sameWorld(current, selected.world)) return null;
+  const firstValues = readWorldValues(storage, current.id);
+  if (!firstValues) return null;
   const firstInspection = inspectLocalWorld(storage, current);
   if (!isReadOnlyFallbackPlayable(firstInspection)) return null;
-  const after = loadLocalWorldRegistryRaw(storage);
-  const verified = after.registry?.worlds.find(({ id }) => id === selected.world.id);
-  if (!verified || after.sequence !== before.sequence || !sameWorld(verified, current)) return null;
-  const secondInspection = inspectLocalWorld(storage, verified);
-  if (!isReadOnlyFallbackPlayable(secondInspection)
-    || firstInspection.load.sequence !== secondInspection.load.sequence
-    || canonicalSinglePlayerJson(firstInspection.load.snapshot)
-      !== canonicalSinglePlayerJson(secondInspection.load.snapshot)) return null;
-  const closingTransactions = scanLocalWorldTransactions(storage);
-  if (!sameTransactionScan(transactions, closingTransactions)
-    || (closingTransactions.status === "stable" && closingTransactions.entries.some((entry) =>
-      entry.status === "valid"
-      && entry.type === "delete"
-      && entry.transaction.worldId === selected.world.id))) return null;
+  const after = scanRegistryState(storage);
+  if (!after || after[2] !== before[2] || pendingDeletesWorld(after[5], current.id)) return null;
+  const verified = after[3].worlds.find(({ id }) => id === current.id);
+  if (!verified || !sameWorld(verified, current)) return null;
+  const secondValues = readWorldValues(storage, verified.id);
+  if (!secondValues || !sameStrings(firstValues, secondValues)) return null;
   return verified;
 }
 
@@ -157,20 +147,12 @@ function isReadOnlyFallbackPlayable(world: LocalWorldInspection): boolean {
     && world.load.snapshot?.world.worldId === world.world.id;
 }
 
-function sameTransactionScan(
-  left: LocalWorldTransactionScan,
-  right: LocalWorldTransactionScan,
-): boolean {
-  if (left.status !== "stable" || right.status !== "stable") return false;
-  return left.entries.length === right.entries.length
-    && left.entries.every((entry, index) => {
-      const candidate = right.entries[index];
-      return candidate !== undefined
-        && entry.status === candidate.status
-        && entry.type === candidate.type
-        && entry.key === candidate.key
-        && entry.raw === candidate.raw;
-    });
+function readWorldValues(storage: SinglePlayerStorageAdapter, worldId: string): Array<string | null> | null {
+  try {
+    return singlePlayerWorldStorageKeys(worldId).map((key) => storage.getItem(key));
+  } catch {
+    return null;
+  }
 }
 
 export type LegacyLocalWorldInspection =
@@ -179,75 +161,14 @@ export type LegacyLocalWorldInspection =
   | { status: "corrupt" | "unsupported"; load: SinglePlayerLoadResult };
 
 type ParsedRegistrySlot =
-  | { kind: "empty"; slot: "a" | "b" }
-  | { kind: "valid"; slot: "a" | "b"; envelope: LocalWorldRegistryEnvelope; raw: string }
-  | { kind: "corrupt"; slot: "a" | "b"; reason: string }
-  | { kind: "unsupported"; slot: "a" | "b"; version: number };
+  | [0, 0 | 1]
+  | [1, 0 | 1, string, LocalWorldRegistry, number, LocalWorldPendingTransaction | null]
+  | [2, 0 | 1, string]
+  | [3, 0 | 1, number];
 
-interface LocalWorldDeleteTransaction {
-  checksum: string;
-  deletedAt: number;
-  format: "lakecraft.local-world-delete";
-  generation: number;
-  recoverAfter: number;
-  values: Array<string | null>;
-  version: 2;
-  world: LocalWorldRecord;
-  worldId: string;
-}
-
-interface LocalWorldCreateTransaction {
-  checksum: string;
-  format: "lakecraft.local-world-create";
-  generation: number;
-  recoverAfter: number;
-  version: 2;
-  world: LocalWorldRecord;
-}
-
-type LocalWorldTransactionEntry =
-  | {
-    status: "valid";
-    key: string;
-    raw: string;
-    type: "create";
-    transaction: LocalWorldCreateTransaction;
-  }
-  | {
-    status: "valid";
-    key: string;
-    raw: string;
-    type: "delete";
-    transaction: LocalWorldDeleteTransaction;
-  }
-  | { status: "invalid"; key: string; raw: string; type: "create" | "delete" };
-
-type LocalWorldCreateRecovery = {
-  status: "completed" | "warning";
-  issue:
-    | "create:commit_completed"
-    | "create:cleanup_completed"
-    | "create:transaction_read_failed"
-    | "create:invalid_transaction_cleared"
-    | "create:invalid_transaction_pending"
-    | "create:recovery_pending";
-  transaction?: LocalWorldCreateTransaction;
-};
-
-type LocalWorldDeleteRecovery =
-  { status: "completed"; issue: "delete:rollback_completed" | "delete:cleanup_completed" }
-  | {
-    status: "warning";
-    issue:
-      | "delete:transaction_read_failed"
-      | "delete:invalid_transaction_cleared"
-      | "delete:invalid_transaction_pending"
-      | "delete:recovery_pending";
-  };
-
-type LocalWorldTransactionScan =
-  | { status: "stable"; entries: LocalWorldTransactionEntry[] }
-  | { status: "failed" };
+type LocalWorldPendingTransaction =
+  | [0, number, string, number, LocalWorldRecord]
+  | [1, number, string, number, number, LocalWorldRecord, Array<string | null>];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -340,162 +261,204 @@ function registryBody(
   payload: LocalWorldRegistry,
   sequence: number,
   savedAt: number,
-): Omit<LocalWorldRegistryEnvelope, "checksum"> {
-  return {
-    format: LOCAL_WORLD_REGISTRY_FORMAT,
-    payload,
-    savedAt,
-    sequence,
-    version: LOCAL_WORLD_REGISTRY_VERSION,
-  };
+  pending: LocalWorldPendingTransaction | null,
+): [typeof LOCAL_WORLD_REGISTRY_VERSION, number, number, LocalWorldRecord[], LocalWorldPendingTransaction | null] {
+  return [LOCAL_WORLD_REGISTRY_VERSION, sequence, savedAt, payload.worlds, pending];
 }
 
 function serializeRegistry(
   value: LocalWorldRegistry,
   sequence: number,
   savedAt: number,
-): { ok: true; envelope: LocalWorldRegistryEnvelope; raw: string } | { ok: false; reason: "invalid_registry" | "too_large" } {
+  pending: LocalWorldPendingTransaction | null,
+): [LocalWorldRegistry, number, string] | "invalid_registry" | "too_large" {
   const registry = validateLocalWorldRegistry(value);
   if (!registry || !safeInteger(sequence, 1, Number.MAX_SAFE_INTEGER) || !safeInteger(savedAt, 0, MAX_TIMESTAMP)) {
-    return { ok: false, reason: "invalid_registry" };
+    return "invalid_registry";
   }
-  const body = registryBody(registry, sequence, savedAt);
-  const envelope = { checksum: singlePlayerSaveChecksum(body), ...body };
-  const raw = canonicalSinglePlayerJson(envelope);
-  return raw.length <= LOCAL_WORLD_REGISTRY_MAX_CHARS
-    ? { ok: true, envelope, raw }
-    : { ok: false, reason: "too_large" };
+  const body = registryBody(registry, sequence, savedAt, pending);
+  const checksum = singlePlayerSaveChecksum(body);
+  const raw = canonicalSinglePlayerJson([body[0], checksum, ...body.slice(1)]);
+  return raw.length <= (pending ? SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10 : LOCAL_WORLD_REGISTRY_MAX_CHARS)
+    ? [registry, sequence, raw]
+    : "too_large";
 }
 
-function registrySlotKey(slot: "a" | "b"): string {
-  return slot === "a" ? LOCAL_WORLD_REGISTRY_SLOT_A_KEY : LOCAL_WORLD_REGISTRY_SLOT_B_KEY;
+function registrySlotKey(slot: 0 | 1): string {
+  return slot ? LOCAL_WORLD_REGISTRY_SLOT_B_KEY : LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
 }
 
-function parseRegistrySlot(slot: "a" | "b", raw: string | null): ParsedRegistrySlot {
-  if (raw === null) return { kind: "empty", slot };
-  if (raw.length === 0 || raw.length > LOCAL_WORLD_REGISTRY_MAX_CHARS) return { kind: "corrupt", slot, reason: "invalid_size" };
-  let parsed: unknown;
+function pendingBody(
+  type: 0 | 1,
+  generation: number,
+  recoverAfter: number,
+  world: LocalWorldRecord,
+  deletedAt?: number,
+  values?: Array<string | null>,
+): unknown[] {
+  return type
+    ? [1, generation, recoverAfter, deletedAt, world, values]
+    : [0, generation, recoverAfter, world];
+}
+
+function parsePending(value: unknown): LocalWorldPendingTransaction | null {
+  if (!Array.isArray(value) || (value.length !== 5 && value.length !== 7)
+    || (value[0] !== 0 && value[0] !== 1)
+    || !safeInteger(value[1], 1, Number.MAX_SAFE_INTEGER)
+    || typeof value[2] !== "string"
+    || !safeInteger(value[3], 0, MAX_TIMESTAMP)) return null;
+  const type = value[0];
+  const deletedAt = value[4];
+  const world = validateWorldRecord(value[type ? 5 : 4]);
+  const values = value[6];
+  if (!world || (type
+    ? value.length !== 7 || !safeInteger(deletedAt, 0, MAX_TIMESTAMP)
+      || !Array.isArray(values) || values.length !== 4
+      || !values.every((entry) => entry === null || typeof entry === "string")
+    : value.length !== 5)) return null;
+  const recoverAfter = Math.min(
+    MAX_TIMESTAMP,
+    (type ? deletedAt as number : world.createdAt) + LOCAL_WORLD_TRANSACTION_LEASE_MS,
+  );
+  const body = pendingBody(type, value[1], recoverAfter, world, deletedAt as number, values as Array<string | null>);
+  if (value[3] !== recoverAfter || transactionAddress(canonicalSinglePlayerJson(body)) !== value[2]) return null;
+  return type
+    ? [1, value[1], value[2], recoverAfter, deletedAt as number, world, values as Array<string | null>]
+    : [0, value[1], value[2], recoverAfter, world];
+}
+
+function makePending(
+  type: 0 | 1,
+  generation: number,
+  world: LocalWorldRecord,
+  deletedAt?: number,
+  values?: Array<string | null>,
+): LocalWorldPendingTransaction {
+  const recoverAfter = Math.min(
+    MAX_TIMESTAMP,
+    (type ? deletedAt! : world.createdAt) + LOCAL_WORLD_TRANSACTION_LEASE_MS,
+  );
+  const body = pendingBody(type, generation, recoverAfter, world, deletedAt, values);
+  const digest = transactionAddress(canonicalSinglePlayerJson(body));
+  return type
+    ? [1, generation, digest, recoverAfter, deletedAt!, world, values!]
+    : [0, generation, digest, recoverAfter, world];
+}
+
+function parseRegistrySlot(slot: 0 | 1, raw: string | null): ParsedRegistrySlot {
+  if (raw === null) return [0, slot];
+  if (raw.length === 0 || raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) return [2, slot, "invalid_size"];
+  let value: unknown;
   try {
-    parsed = JSON.parse(raw);
+    value = JSON.parse(raw);
   } catch {
-    return { kind: "corrupt", slot, reason: "invalid_json" };
+    return [2, slot, "invalid_json"];
   }
-  if (!isRecord(parsed)) return { kind: "corrupt", slot, reason: "invalid_envelope" };
-  if (parsed.format === LOCAL_WORLD_REGISTRY_FORMAT && typeof parsed.version === "number"
-    && Number.isSafeInteger(parsed.version) && parsed.version !== LOCAL_WORLD_REGISTRY_VERSION) {
-    return { kind: "unsupported", slot, version: parsed.version };
+  if (Array.isArray(value) && typeof value[0] === "number"
+    && Number.isSafeInteger(value[0]) && value[0] !== LOCAL_WORLD_REGISTRY_VERSION) {
+    return [3, slot, value[0]];
   }
-  if (!exactKeys(parsed, ["checksum", "format", "payload", "savedAt", "sequence", "version"])
-    || parsed.format !== LOCAL_WORLD_REGISTRY_FORMAT || parsed.version !== LOCAL_WORLD_REGISTRY_VERSION
-    || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)
-    || !safeInteger(parsed.savedAt, 0, MAX_TIMESTAMP)
-    || !safeInteger(parsed.sequence, 1, Number.MAX_SAFE_INTEGER)) {
-    return { kind: "corrupt", slot, reason: "invalid_envelope" };
+  if (!Array.isArray(value) || value.length !== 6 || value[0] !== LOCAL_WORLD_REGISTRY_VERSION
+    || typeof value[1] !== "string" || !/^[0-9a-f]{8}$/.test(value[1])
+    || !safeInteger(value[2], 1, Number.MAX_SAFE_INTEGER)
+    || !safeInteger(value[3], 0, MAX_TIMESTAMP)) {
+    return [2, slot, "invalid_envelope"];
   }
-  const registry = validateLocalWorldRegistry(parsed.payload);
-  if (!registry) return { kind: "corrupt", slot, reason: "invalid_registry" };
-  const body = registryBody(registry, parsed.sequence, parsed.savedAt);
-  const envelope = { checksum: parsed.checksum, ...body };
-  if (singlePlayerSaveChecksum(body) !== parsed.checksum) return { kind: "corrupt", slot, reason: "checksum_mismatch" };
-  if (canonicalSinglePlayerJson(envelope) !== raw) return { kind: "corrupt", slot, reason: "noncanonical_envelope" };
-  return { kind: "valid", slot, envelope, raw };
+  const registry = validateLocalWorldRegistry({ worlds: value[4] });
+  if (!registry) return [2, slot, "invalid_registry"];
+  const pending = value[5] === null ? null : parsePending(value[5]);
+  if (value[5] !== null && (!pending || pending[1] !== value[2])) return [2, slot, "invalid_registry"];
+  const body = registryBody(registry, value[2], value[3], pending);
+  if (singlePlayerSaveChecksum(body) !== value[1]) return [2, slot, "checksum_mismatch"];
+  if (canonicalSinglePlayerJson([body[0], value[1], ...body.slice(1)]) !== raw) {
+    return [2, slot, "noncanonical_envelope"];
+  }
+  return [1, slot, raw, registry, value[2], pending];
 }
 
-function readRegistrySlots(storage: SinglePlayerStorageAdapter): { slots: ParsedRegistrySlot[]; readFailed: boolean } {
+function readRegistrySlots(storage: SinglePlayerStorageAdapter): [ParsedRegistrySlot[], boolean] {
   const slots: ParsedRegistrySlot[] = [];
   let readFailed = false;
-  for (const slot of ["a", "b"] as const) {
+  for (const slot of [0, 1] as const) {
     try {
       slots.push(parseRegistrySlot(slot, storage.getItem(registrySlotKey(slot))));
     } catch {
       readFailed = true;
-      slots.push({ kind: "corrupt", slot, reason: "storage_read_failed" });
+      slots.push([2, slot, "storage_read_failed"]);
     }
   }
-  return { slots, readFailed };
+  return [slots, readFailed];
 }
 
-function highestRegistrySlot(slots: readonly ParsedRegistrySlot[]): Extract<ParsedRegistrySlot, { kind: "valid" }> | null {
+function highestRegistrySlot(slots: readonly ParsedRegistrySlot[]): Extract<ParsedRegistrySlot, [1, ...unknown[]]> | null {
   return slots
-    .filter((slot): slot is Extract<ParsedRegistrySlot, { kind: "valid" }> => slot.kind === "valid")
-    .sort((left, right) => right.envelope.sequence - left.envelope.sequence || left.slot.localeCompare(right.slot))[0] ?? null;
+    .filter((slot): slot is Extract<ParsedRegistrySlot, [1, ...unknown[]]> => slot[0] === 1)
+    .sort((left, right) => right[4] - left[4] || left[1] - right[1])[0] ?? null;
 }
 
 function hasRegistryGenerationConflict(slots: readonly ParsedRegistrySlot[]): boolean {
   const valid = slots
-    .filter((slot): slot is Extract<ParsedRegistrySlot, { kind: "valid" }> => slot.kind === "valid")
-    .sort((left, right) => right.envelope.sequence - left.envelope.sequence);
+    .filter((slot): slot is Extract<ParsedRegistrySlot, [1, ...unknown[]]> => slot[0] === 1)
+    .sort((left, right) => right[4] - left[4]);
   return valid.length > 1
-    && valid[0].envelope.sequence === valid[1].envelope.sequence
-    && valid[0].raw !== valid[1].raw;
+    && valid[0][4] === valid[1][4]
+    && valid[0][2] !== valid[1][2];
 }
 
-function loadLocalWorldRegistryRaw(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
+type ValidRegistrySlot = Extract<ParsedRegistrySlot, [1, ...unknown[]]>;
+
+function loadRegistryState(
+  storage: SinglePlayerStorageAdapter,
+): [LocalWorldRegistryLoadResult, ValidRegistrySlot | null] {
   const scanned = readRegistrySlots(storage);
-  const issues = scanned.slots.flatMap((slot) => slot.kind === "corrupt" ? [`${slot.slot}:${slot.reason}`]
-    : slot.kind === "unsupported" ? [`${slot.slot}:unsupported_v${slot.version}`] : []);
-  const unsupported = scanned.slots.filter((slot): slot is Extract<ParsedRegistrySlot, { kind: "unsupported" }> => slot.kind === "unsupported");
+  const issues = scanned[0].flatMap((slot) => slot[0] === 2 ? [`${slot[1] ? "b" : "a"}:${slot[2]}`]
+    : slot[0] === 3 ? [`${slot[1] ? "b" : "a"}:unsupported_v${slot[2]}`] : []);
+  const unsupported = scanned[0].filter((slot): slot is Extract<ParsedRegistrySlot, [3, ...unknown[]]> => slot[0] === 3);
   if (unsupported.length) {
-    return {
+    return [{
       status: "unsupported",
       registry: null,
       sequence: 0,
-      versions: [...new Set(unsupported.map(({ version }) => version))].sort((a, b) => a - b),
+      versions: [...new Set(unsupported.map((slot) => slot[2]))].sort((a, b) => a - b),
       issues,
-    };
+    }, null];
   }
-  if (hasRegistryGenerationConflict(scanned.slots)) {
-    return {
+  if (hasRegistryGenerationConflict(scanned[0])) {
+    return [{
       status: "corrupt",
       registry: null,
       sequence: 0,
       issues: [...issues, "registry:generation_conflict"],
-    };
+    }, null];
   }
-  const selected = highestRegistrySlot(scanned.slots);
+  const selected = highestRegistrySlot(scanned[0]);
   if (selected) {
-    return {
+    return [{
       status: issues.length > 0 ? "recovered" : "loaded",
-      registry: selected.envelope.payload,
-      sequence: selected.envelope.sequence,
+      registry: selected[3],
+      sequence: selected[4],
       issues,
-    };
+    }, selected];
   }
-  if (scanned.readFailed || scanned.slots.some((slot) => slot.kind === "corrupt")) {
-    return { status: "corrupt", registry: null, sequence: 0, issues };
+  if (scanned[1] || scanned[0].some((slot) => slot[0] === 2)) {
+    return [{ status: "corrupt", registry: null, sequence: 0, issues }, null];
   }
-  return { status: "empty", registry: { worlds: [] }, sequence: 0, issues: [] };
+  return [{ status: "empty", registry: { worlds: [] }, sequence: 0, issues: [] }, null];
 }
 
-function createTransactionBody(
-  world: LocalWorldRecord,
-  generation: number,
-): Omit<LocalWorldCreateTransaction, "checksum"> {
-  return {
-    format: "lakecraft.local-world-create",
-    generation,
-    recoverAfter: Math.min(MAX_TIMESTAMP, world.createdAt + LOCAL_WORLD_TRANSACTION_LEASE_MS),
-    version: 2,
-    world,
-  };
-}
-
-function deleteTransactionBody(
-  world: LocalWorldRecord,
-  values: Array<string | null>,
-  deletedAt: number,
-  generation: number,
-): Omit<LocalWorldDeleteTransaction, "checksum"> {
-  return {
-    deletedAt,
-    format: "lakecraft.local-world-delete",
-    generation,
-    recoverAfter: Math.min(MAX_TIMESTAMP, deletedAt + LOCAL_WORLD_TRANSACTION_LEASE_MS),
-    values,
-    version: 2,
-    world,
-    worldId: world.id,
-  };
+function scanRegistryState(storage: SinglePlayerStorageAdapter): ValidRegistrySlot | null {
+  const first = readRegistrySlots(storage);
+  if (first[1] || hasRegistryGenerationConflict(first[0])
+    || first[0].some((slot) => slot[0] === 2 || slot[0] === 3)) return null;
+  const selected = highestRegistrySlot(first[0]);
+  if (!selected) return null;
+  const second = readRegistrySlots(storage);
+  const verified = highestRegistrySlot(second[0]);
+  return !second[1] && !hasRegistryGenerationConflict(second[0])
+    && !second[0].some((slot) => slot[0] === 2 || slot[0] === 3)
+    && verified?.[1] === selected[1] && verified[2] === selected[2]
+    ? verified
+    : null;
 }
 
 function transactionAddress(raw: string): string {
@@ -509,161 +472,8 @@ function transactionAddress(raw: string): string {
   return `${raw.length.toString(36)}-${(first >>> 0).toString(16).padStart(8, "0")}-${(second >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-function transactionKey(
-  type: "create" | "delete",
-  generation: number,
-  raw: string,
-): string {
-  const prefix = type === "create" ? LOCAL_WORLD_CREATE_TRANSACTION_KEY : LOCAL_WORLD_DELETE_TRANSACTION_KEY;
-  return `${prefix}.${generation.toString(36).padStart(11, "0")}.${transactionAddress(raw)}`;
-}
-
-function transactionTypeForKey(key: string): "create" | "delete" | null {
-  if (key === LOCAL_WORLD_CREATE_TRANSACTION_KEY || key.startsWith(`${LOCAL_WORLD_CREATE_TRANSACTION_KEY}.`)) {
-    return "create";
-  }
-  if (key === LOCAL_WORLD_DELETE_TRANSACTION_KEY || key.startsWith(`${LOCAL_WORLD_DELETE_TRANSACTION_KEY}.`)) {
-    return "delete";
-  }
-  return null;
-}
-
-function parseCreateTransaction(key: string, raw: string): LocalWorldTransactionEntry {
-  const invalid = (): LocalWorldTransactionEntry => ({ status: "invalid", key, raw, type: "create" });
-  if (raw.length === 0 || raw.length > LOCAL_WORLD_REGISTRY_MAX_CHARS) return invalid();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return invalid();
-  }
-  if (!isRecord(parsed)
-    || !exactKeys(parsed, ["checksum", "format", "generation", "recoverAfter", "version", "world"])
-    || parsed.format !== "lakecraft.local-world-create" || parsed.version !== 2
-    || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)
-    || !safeInteger(parsed.generation, 1, Number.MAX_SAFE_INTEGER)
-    || !safeInteger(parsed.recoverAfter, 0, MAX_TIMESTAMP)) {
-    return invalid();
-  }
-  const world = validateWorldRecord(parsed.world);
-  if (!world) return invalid();
-  const body = createTransactionBody(world, parsed.generation);
-  if (parsed.recoverAfter !== body.recoverAfter) return invalid();
-  const transaction = { checksum: parsed.checksum, ...body };
-  if (singlePlayerSaveChecksum(body) !== parsed.checksum
-    || canonicalSinglePlayerJson(transaction) !== raw
-    || transactionKey("create", transaction.generation, raw) !== key) return invalid();
-  return { status: "valid", key, raw, type: "create", transaction };
-}
-
-function parseDeleteTransaction(key: string, raw: string): LocalWorldTransactionEntry {
-  const invalid = (): LocalWorldTransactionEntry => ({ status: "invalid", key, raw, type: "delete" });
-  if (raw.length === 0 || raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) {
-    return invalid();
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return invalid();
-  }
-  if (!isRecord(parsed)
-    || !exactKeys(parsed, ["checksum", "deletedAt", "format", "generation", "recoverAfter", "values", "version", "world", "worldId"])
-    || parsed.format !== "lakecraft.local-world-delete" || parsed.version !== 2
-    || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)
-    || !safeInteger(parsed.generation, 1, Number.MAX_SAFE_INTEGER)
-    || !safeInteger(parsed.recoverAfter, 0, MAX_TIMESTAMP)
-    || !validWorldId(parsed.worldId) || !safeInteger(parsed.deletedAt, 0, MAX_TIMESTAMP)
-    || !Array.isArray(parsed.values) || parsed.values.length !== 4
-    || !parsed.values.every((value) => value === null || typeof value === "string")) {
-    return invalid();
-  }
-  const world = validateWorldRecord(parsed.world);
-  if (!world || world.id !== parsed.worldId) return invalid();
-  const body = deleteTransactionBody(
-    world,
-    parsed.values as Array<string | null>,
-    parsed.deletedAt,
-    parsed.generation,
-  );
-  if (parsed.recoverAfter !== body.recoverAfter) return invalid();
-  const transaction = { checksum: parsed.checksum, ...body };
-  if (singlePlayerSaveChecksum(body) !== parsed.checksum
-    || canonicalSinglePlayerJson(transaction) !== raw
-    || transactionKey("delete", transaction.generation, raw) !== key) return invalid();
-  return { status: "valid", key, raw, type: "delete", transaction };
-}
-
-function listTransactionKeys(storage: SinglePlayerStorageAdapter): string[] | null {
-  try {
-    const listKeys = storage.listKeys;
-    if (typeof listKeys !== "function") return null;
-    const keys = listKeys.call(storage)
-      .filter((key) => typeof key === "string" && transactionTypeForKey(key) !== null)
-      .sort();
-    return keys.length === new Set(keys).size ? keys : null;
-  } catch {
-    return null;
-  }
-}
-
-function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+function sameStrings(left: readonly (string | null)[], right: readonly (string | null)[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function scanLocalWorldTransactions(storage: SinglePlayerStorageAdapter): LocalWorldTransactionScan {
-  const firstKeys = listTransactionKeys(storage);
-  if (!firstKeys) return { status: "failed" };
-  const raws = new Map<string, string>();
-  try {
-    for (const key of firstKeys) {
-      const raw = storage.getItem(key);
-      if (raw === null) return { status: "failed" };
-      raws.set(key, raw);
-    }
-  } catch {
-    return { status: "failed" };
-  }
-  const secondKeys = listTransactionKeys(storage);
-  if (!secondKeys || !sameStrings(firstKeys, secondKeys)) return { status: "failed" };
-  try {
-    for (const key of firstKeys) {
-      if (storage.getItem(key) !== raws.get(key)) return { status: "failed" };
-    }
-  } catch {
-    return { status: "failed" };
-  }
-  const thirdKeys = listTransactionKeys(storage);
-  if (!thirdKeys || !sameStrings(firstKeys, thirdKeys)) return { status: "failed" };
-  return {
-    status: "stable",
-    entries: firstKeys.map((key) => {
-      const raw = raws.get(key)!;
-      return transactionTypeForKey(key) === "create"
-        ? parseCreateTransaction(key, raw)
-        : parseDeleteTransaction(key, raw);
-    }),
-  };
-}
-
-function writeAndElectTransaction(
-  storage: SinglePlayerStorageAdapter,
-  entry: Extract<LocalWorldTransactionEntry, { status: "valid" }>,
-): "elected" | "failed" | "pending" {
-  try {
-    storage.setItem(entry.key, entry.raw);
-    if (storage.getItem(entry.key) !== entry.raw) return "pending";
-  } catch {
-    const scan = scanLocalWorldTransactions(storage);
-    return scan.status === "stable" && scan.entries.length === 0 ? "failed" : "pending";
-  }
-  const scan = scanLocalWorldTransactions(storage);
-  return scan.status === "stable"
-    && scan.entries[0]?.status === "valid"
-    && scan.entries[0].key === entry.key
-    && scan.entries[0].raw === entry.raw
-    ? "elected"
-    : "pending";
 }
 
 function storageRemover(storage: SinglePlayerStorageAdapter): ((key: string) => void) | null {
@@ -675,110 +485,19 @@ function storageRemover(storage: SinglePlayerStorageAdapter): ((key: string) => 
   }
 }
 
-function clearTransaction(storage: SinglePlayerStorageAdapter, key: string, expectedRaw: string): boolean {
-  const removeItem = storageRemover(storage);
-  if (!removeItem) return false;
-  try {
-    if (storage.getItem(key) !== expectedRaw) return false;
-    removeItem(key);
-    return storage.getItem(key) === null;
-  } catch {
-    return false;
-  }
-}
-
 function sameWorld(left: LocalWorldRecord, right: LocalWorldRecord): boolean {
   return canonicalSinglePlayerJson(left) === canonicalSinglePlayerJson(right);
 }
 
-/**
- * Resolves a create at its registry commit point. A matching registry record
- * proves the create committed. Its absence proves that only the exact
- * checksummed namespace may be removed.
- */
-function recoverLocalWorldCreate(
-  storage: SinglePlayerStorageAdapter,
-  registryLoad: LocalWorldRegistryLoadResult,
-  pending: Extract<LocalWorldTransactionEntry, { status: "valid"; type: "create" }>,
-): LocalWorldCreateRecovery {
-  if (!registryLoad.registry) {
-    return { status: "warning", issue: "create:recovery_pending", transaction: pending.transaction };
-  }
-  const { transaction } = pending;
-  const registered = registryLoad.registry.worlds.find(({ id }) => id === transaction.world.id);
-  if (registered && !sameWorld(registered, transaction.world)) {
-    return {
-      status: "warning",
-      issue: clearTransaction(storage, pending.key, pending.raw)
-        ? "create:invalid_transaction_cleared"
-        : "create:invalid_transaction_pending",
-    };
-  }
-  if (!registered) {
-    const removeItem = storageRemover(storage);
-    if (!removeItem) {
-      return { status: "warning", issue: "create:recovery_pending", transaction };
-    }
-    try {
-      for (const key of singlePlayerWorldStorageKeys(transaction.world.id)) removeItem(key);
-      for (const key of singlePlayerWorldStorageKeys(transaction.world.id)) {
-        if (storage.getItem(key) !== null) {
-          return { status: "warning", issue: "create:recovery_pending", transaction };
-        }
-      }
-    } catch {
-      return { status: "warning", issue: "create:recovery_pending", transaction };
-    }
-  }
-  const issue = registered ? "create:commit_completed" : "create:cleanup_completed";
-  return clearTransaction(storage, pending.key, pending.raw)
-    ? { status: "completed", issue, transaction }
-    : { status: "warning", issue: "create:recovery_pending", transaction };
+function pendingDeletesWorld(pending: LocalWorldPendingTransaction | null, worldId: string): boolean {
+  return pending?.[0] === 1 && pending[5].id === worldId;
 }
 
-/**
- * Completes an interrupted delete at its registry commit point. Before that
- * point the complete journal is restored; after it, all primary keys are
- * removed. The checksummed transaction remains until either state verifies.
- */
-function recoverLocalWorldDelete(
-  storage: SinglePlayerStorageAdapter,
-  registryLoad: LocalWorldRegistryLoadResult,
-  pending: Extract<LocalWorldTransactionEntry, { status: "valid"; type: "delete" }>,
-): LocalWorldDeleteRecovery {
-  if (!registryLoad.registry) return { status: "warning", issue: "delete:recovery_pending" };
-  const removeItem = storageRemover(storage);
-  if (!removeItem) return { status: "warning", issue: "delete:recovery_pending" };
-  const { transaction } = pending;
-  const keys = singlePlayerWorldStorageKeys(transaction.worldId);
-  const registered = registryLoad.registry.worlds.find(({ id }) => id === transaction.worldId);
-  if (registered && !sameWorld(registered, transaction.world)) {
-    return {
-      status: "warning",
-      issue: clearTransaction(storage, pending.key, pending.raw)
-        ? "delete:invalid_transaction_cleared"
-        : "delete:invalid_transaction_pending",
-    };
-  }
-  const restore = Boolean(registered);
-  try {
-    for (let index = 0; index < keys.length; index += 1) {
-      const value = transaction.values[index];
-      if (restore && value !== null) storage.setItem(keys[index], value);
-      else removeItem(keys[index]);
-    }
-    for (let index = 0; index < keys.length; index += 1) {
-      const expected = restore ? transaction.values[index] : null;
-      if (storage.getItem(keys[index]) !== expected) {
-        return { status: "warning", issue: "delete:recovery_pending" };
-      }
-    }
-  } catch {
-    return { status: "warning", issue: "delete:recovery_pending" };
-  }
-  return clearTransaction(storage, pending.key, pending.raw)
-    ? { status: "completed", issue: restore ? "delete:rollback_completed" : "delete:cleanup_completed" }
-    : { status: "warning", issue: "delete:recovery_pending" };
+function samePending(
+  left: LocalWorldPendingTransaction | null,
+  right: LocalWorldPendingTransaction | null,
+): boolean {
+  return canonicalSinglePlayerJson(left) === canonicalSinglePlayerJson(right);
 }
 
 function withRecoveryIssue(
@@ -790,25 +509,10 @@ function withRecoveryIssue(
   return { status: "recovered", registry: loaded.registry, sequence: loaded.sequence, issues };
 }
 
-function hasPendingDeleteRecovery(issues: readonly string[]): boolean {
-  return issues.includes("delete:transaction_read_failed")
-    || issues.includes("delete:invalid_transaction_pending")
-    || issues.includes("delete:recovery_pending")
-    || issues.includes("transaction:enumeration_failed");
-}
-
-function hasPendingCreateRecovery(issues: readonly string[]): boolean {
-  return issues.includes("create:transaction_read_failed")
-    || issues.includes("create:invalid_transaction_pending")
-    || issues.includes("create:recovery_pending")
-    || issues.includes("transaction:enumeration_failed");
-}
-
 function hasPendingNamespaceRecovery(issues: readonly string[]): boolean {
-  return issues.includes("transaction:recovery_pending")
-    || issues.includes("transaction:active")
-    || hasPendingDeleteRecovery(issues)
-    || hasPendingCreateRecovery(issues);
+  return issues.some((issue) => issue === "transaction:recovery_pending"
+    || issue === "transaction:active"
+    || /^(?:create|delete):(?:transaction_read_failed|invalid_transaction_pending|recovery_pending)$/.test(issue));
 }
 
 export function loadLocalWorldRegistry(
@@ -816,35 +520,120 @@ export function loadLocalWorldRegistry(
   observedAt = Date.now(),
 ): LocalWorldRegistryLoadResult {
   const recoveryAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(observedAt)));
-  let loaded = loadLocalWorldRegistryRaw(storage);
-  for (let step = 0; step < LOCAL_WORLD_REGISTRY_MAX_WORLDS * 2 + 4; step += 1) {
-    const scan = scanLocalWorldTransactions(storage);
-    if (scan.status === "failed") return withRecoveryIssue(loaded, "transaction:enumeration_failed");
-    const pending = scan.entries[0];
-    if (!pending) return loaded;
-    if (pending.status === "invalid") {
-      const cleared = clearTransaction(storage, pending.key, pending.raw);
-      loaded = withRecoveryIssue(
-        loaded,
-        `${pending.type}:invalid_transaction_${cleared ? "cleared" : "pending"}`,
-      );
-      if (!cleared) return loaded;
-      continue;
+  const [loaded, slot] = loadRegistryState(storage);
+  const pending = slot?.[5];
+  if (!pending) return loaded;
+  if (recoveryAt < pending[3]) return withRecoveryIssue(loaded, "transaction:active");
+  if (!loaded.registry || !slot) return withRecoveryIssue(loaded, "transaction:recovery_pending");
+
+  const type = pending[0] ? "delete" : "create";
+  const world = pending[pending[0] ? 5 : 4] as LocalWorldRecord;
+  const registered = loaded.registry.worlds.find(({ id }) => id === world.id);
+  let completed = "invalid_transaction_cleared";
+  const removeItem = storageRemover(storage);
+  try {
+    if (!pending[0]) {
+      if (!registered) {
+        if (!removeItem) throw new Error();
+        for (const key of singlePlayerWorldStorageKeys(world.id)) removeItem(key);
+        const values = readWorldValues(storage, world.id);
+        if (!values || values.some((value) => value !== null)) throw new Error();
+        completed = "cleanup_completed";
+      } else if (sameWorld(registered, world)) {
+        completed = "commit_completed";
+      }
+    } else if (!registered) {
+      if (!removeItem) throw new Error();
+      for (const key of singlePlayerWorldStorageKeys(world.id)) removeItem(key);
+      const values = readWorldValues(storage, world.id);
+      if (!values || values.some((value) => value !== null)) throw new Error();
+      completed = "cleanup_completed";
+    } else if (sameWorld(registered, world)) {
+      const values = pending[6];
+      const keys = singlePlayerWorldStorageKeys(world.id);
+      if (!removeItem) throw new Error();
+      for (let index = 0; index < keys.length; index += 1) {
+        if (values[index] === null) removeItem(keys[index]);
+        else storage.setItem(keys[index], values[index]!);
+      }
+      if (!sameStrings(readWorldValues(storage, world.id) ?? [], values)) throw new Error();
+      completed = "rollback_completed";
     }
-    if (recoveryAt < pending.transaction.recoverAfter) {
-      return withRecoveryIssue(loaded, "transaction:active");
-    }
-    const recovery = pending.type === "create"
-      ? recoverLocalWorldCreate(storage, loaded, pending)
-      : recoverLocalWorldDelete(storage, loaded, pending);
-    loaded = withRecoveryIssue(loaded, recovery.issue);
-    if (recovery.status === "warning"
-      && (recovery.issue.endsWith("_pending") || recovery.issue.endsWith("_failed"))) return loaded;
+  } catch {
+    return withRecoveryIssue(loaded, `${type}:recovery_pending`);
   }
-  const remaining = scanLocalWorldTransactions(storage);
-  return remaining.status === "stable" && remaining.entries.length === 0
-    ? loaded
-    : withRecoveryIssue(loaded, "transaction:recovery_pending");
+  const cleared = saveRegistryState(
+    storage,
+    loaded.registry,
+    recoveryAt,
+    slot[4],
+    null,
+    pending,
+  );
+  return cleared.ok
+    ? {
+      status: "recovered",
+      registry: cleared.registry,
+      sequence: cleared.sequence,
+      issues: [...loaded.issues, `${type}:${completed}`],
+    }
+    : withRecoveryIssue(loaded, `${type}:recovery_pending`);
+}
+
+function saveRegistryState(
+  storage: SinglePlayerStorageAdapter,
+  registry: LocalWorldRegistry,
+  savedAt: number,
+  expectedSequence: number | undefined,
+  pending: LocalWorldPendingTransaction | null,
+  expectedPending: LocalWorldPendingTransaction | null,
+): LocalWorldRegistrySaveResult {
+  const scanned = readRegistrySlots(storage);
+  const current = highestRegistrySlot(scanned[0]);
+  if (scanned[1]) return failure("storage_read_failed");
+  if (scanned[0].some((slot) => slot[0] === 3)
+    || hasRegistryGenerationConflict(scanned[0])
+    || (!current && scanned[0].some((slot) => slot[0]))) {
+    return failure("unsafe_existing_data");
+  }
+  if (expectedSequence !== undefined && (current?.[4] ?? 0) !== expectedSequence) {
+    return failure("stale_registry");
+  }
+  if (!samePending(current?.[5] ?? null, expectedPending)) return failure("stale_registry");
+  const serialized = serializeRegistry(registry, (current?.[4] ?? 0) + 1, savedAt, pending);
+  if (typeof serialized === "string") return failure(serialized);
+  const target: 0 | 1 = current ? (current[1] ? 0 : 1) : 0;
+  try {
+    storage.setItem(registrySlotKey(target), serialized[2]);
+  } catch {
+    return failure("storage_write_failed", true);
+  }
+  let readback: string | null;
+  try {
+    readback = storage.getItem(registrySlotKey(target));
+  } catch {
+    return failure("readback_failed", true);
+  }
+  const verified = parseRegistrySlot(target, readback);
+  if (readback !== serialized[2] || verified[0] !== 1
+    || verified[4] !== serialized[1]) {
+    return failure("readback_failed", true);
+  }
+  const committed = readRegistrySlots(storage);
+  const selected = highestRegistrySlot(committed[0]);
+  const conflict = committed[0].some((slot) => slot[0] === 1
+    && slot[4] >= serialized[1]
+    && slot[2] !== serialized[2]);
+  if (committed[1] || conflict || !selected
+    || selected[1] !== target || selected[2] !== serialized[2]) {
+    return failure("stale_registry", true);
+  }
+  return {
+    ok: true,
+    registry: serialized[0],
+    sequence: serialized[1],
+    slot: target ? "b" : "a",
+  };
 }
 
 export function saveLocalWorldRegistry(
@@ -853,51 +642,16 @@ export function saveLocalWorldRegistry(
   savedAt = Date.now(),
   expectedSequence?: number,
 ): LocalWorldRegistrySaveResult {
-  const scanned = readRegistrySlots(storage);
-  const current = highestRegistrySlot(scanned.slots);
-  if (scanned.readFailed) return { ok: false, reason: "storage_read_failed", mutationStarted: false };
-  if (scanned.slots.some((slot) => slot.kind === "unsupported")
-    || hasRegistryGenerationConflict(scanned.slots)
-    || (!current && scanned.slots.some((slot) => slot.kind !== "empty"))) {
-    return { ok: false, reason: "unsafe_existing_data", mutationStarted: false };
-  }
-  if (expectedSequence !== undefined && (current?.envelope.sequence ?? 0) !== expectedSequence) {
-    return { ok: false, reason: "stale_registry", mutationStarted: false };
-  }
-  const serialized = serializeRegistry(registry, (current?.envelope.sequence ?? 0) + 1, savedAt);
-  if (!serialized.ok) return { ...serialized, mutationStarted: false };
-  const target = current ? (current.slot === "a" ? "b" : "a") : "a";
-  try {
-    storage.setItem(registrySlotKey(target), serialized.raw);
-  } catch {
-    return { ok: false, reason: "storage_write_failed", mutationStarted: true };
-  }
-  let readback: string | null;
-  try {
-    readback = storage.getItem(registrySlotKey(target));
-  } catch {
-    return { ok: false, reason: "readback_failed", mutationStarted: true };
-  }
-  const verified = parseRegistrySlot(target, readback);
-  if (readback !== serialized.raw || verified.kind !== "valid"
-    || verified.envelope.sequence !== serialized.envelope.sequence) {
-    return { ok: false, reason: "readback_failed", mutationStarted: true };
-  }
-  const committed = readRegistrySlots(storage);
-  const selected = highestRegistrySlot(committed.slots);
-  const conflict = committed.slots.some((slot) => slot.kind === "valid"
-    && slot.envelope.sequence >= serialized.envelope.sequence
-    && slot.raw !== serialized.raw);
-  if (committed.readFailed || conflict || !selected
-    || selected.slot !== target || selected.raw !== serialized.raw) {
-    return { ok: false, reason: "stale_registry", mutationStarted: true };
-  }
-  return {
-    ok: true,
-    registry: serialized.envelope.payload,
-    sequence: serialized.envelope.sequence,
-    slot: target,
-  };
+  return saveRegistryState(storage, registry, savedAt, expectedSequence, null, null);
+}
+
+function ownsPending(
+  storage: SinglePlayerStorageAdapter,
+  sequence: number,
+  pending: LocalWorldPendingTransaction,
+): boolean {
+  const selected = scanRegistryState(storage);
+  return selected?.[4] === sequence && samePending(selected[5], pending);
 }
 
 export function deterministicLocalWorldSeed(value: string): number {
@@ -936,7 +690,7 @@ function createWorldFromSnapshot(
   if (!name || !safeInteger(input.seed, -2_147_483_648, 2_147_483_647)
     || (input.gameMode !== "survival" && input.gameMode !== "creative")
     || !safeInteger(input.createdAt, 0, MAX_TIMESTAMP)) {
-    return { ok: false, reason: "invalid_world", mutationStarted: false };
+    return failure("invalid_world");
   }
   const replayed = registry.worlds.find((candidate) =>
     candidate.name === name
@@ -946,10 +700,10 @@ function createWorldFromSnapshot(
     && candidate.importedLegacy === input.importedLegacy);
   if (replayed) return { ok: true, world: replayed, registry };
   if (registry.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS) {
-    return { ok: false, reason: "world_limit_reached", mutationStarted: false };
+    return failure("world_limit_reached");
   }
   const id = nextWorldId(registry, input.seed, input.createdAt);
-  if (!id) return { ok: false, reason: "world_id_unavailable", mutationStarted: false };
+  if (!id) return failure("world_id_unavailable");
   const world: LocalWorldRecord = {
     id,
     name,
@@ -959,21 +713,18 @@ function createWorldFromSnapshot(
     lastPlayedAt: 0,
     importedLegacy: input.importedLegacy,
   };
-  const transactionBody = createTransactionBody(world, generation);
-  const transaction = { checksum: singlePlayerSaveChecksum(transactionBody), ...transactionBody };
-  const transactionRaw = canonicalSinglePlayerJson(transaction);
-  const key = transactionKey("create", generation, transactionRaw);
-  const entry = parseCreateTransaction(key, transactionRaw);
-  if (entry.status !== "valid" || entry.type !== "create") {
-    return { ok: false, reason: "world_create_transaction_failed", mutationStarted: false };
+  const pending = makePending(0, generation, world);
+  const begun = saveRegistryState(storage, registry, input.createdAt, generation - 1, pending, null);
+  if (!begun.ok) {
+    return failure(
+      begun.mutationStarted
+        ? `registry_${begun.reason}_transaction_pending`
+        : `registry_${begun.reason}`,
+      begun.mutationStarted,
+    );
   }
-  const election = writeAndElectTransaction(storage, entry);
-  if (election !== "elected") {
-    return {
-      ok: false,
-      reason: election === "failed" ? "world_create_transaction_failed" : "world_create_transaction_pending",
-      mutationStarted: true,
-    };
+  if (!ownsPending(storage, begun.sequence, pending)) {
+    return failure("world_create_transaction_pending", true);
   }
   const snapshot = sourceSnapshot
     ? {
@@ -989,13 +740,19 @@ function createWorldFromSnapshot(
     : createDefaultSinglePlayerSnapshot(input.seed, input.createdAt, id);
   snapshot.world.gameMode = input.gameMode;
   const saved = saveSinglePlayerSnapshot(storage, snapshot, input.createdAt, { worldId: id });
-  if (!saved.ok) return { ok: false, reason: `world_save_${saved.reason}_transaction_pending`, mutationStarted: true };
+  if (!saved.ok) return failure(`world_save_${saved.reason}_transaction_pending`, true);
   const nextRegistry = { worlds: [...registry.worlds, world] };
-  const registryWrite = saveLocalWorldRegistry(storage, nextRegistry, input.createdAt, generation - 1);
+  const registryWrite = saveRegistryState(
+    storage,
+    nextRegistry,
+    input.createdAt,
+    begun.sequence,
+    null,
+    pending,
+  );
   if (!registryWrite.ok) {
-    return { ok: false, reason: `registry_${registryWrite.reason}_transaction_pending`, mutationStarted: true };
+    return failure(`registry_${registryWrite.reason}_transaction_pending`, true);
   }
-  clearTransaction(storage, key, transactionRaw);
   return { ok: true, world, registry: registryWrite.registry };
 }
 
@@ -1005,7 +762,7 @@ export function createLocalWorld(
 ): LocalWorldMutationResult {
   const createdAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(input.now ?? Date.now())));
   const loaded = loadLocalWorldRegistry(storage, createdAt);
-  if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
+  if (!loaded.registry) return failure(`registry_${loaded.status}`);
   const name = normalizeLocalWorldName(input.name);
   const seed = deterministicLocalWorldSeed(input.seedText);
   const replayed = name ? loaded.registry.worlds.find((candidate) =>
@@ -1016,7 +773,7 @@ export function createLocalWorld(
     && !candidate.importedLegacy) : null;
   if (replayed) return { ok: true, world: replayed, registry: loaded.registry };
   if (hasPendingNamespaceRecovery(loaded.issues)) {
-    return { ok: false, reason: "world_create_recovery_pending", mutationStarted: false };
+    return failure("world_create_recovery_pending");
   }
   return createWorldFromSnapshot(storage, loaded.registry, loaded.sequence + 1, {
     name: input.name,
@@ -1099,14 +856,14 @@ export function touchLocalWorld(
 ): LocalWorldMutationResult {
   const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(playedAt)));
   const loaded = loadLocalWorldRegistry(storage, committedAt);
-  if (!loaded.registry) return { ok: false, reason: `registry_${loaded.status}`, mutationStarted: false };
+  if (!loaded.registry) return failure(`registry_${loaded.status}`);
   const world = loaded.registry.worlds.find(({ id }) => id === worldId);
-  if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (!world) return failure("world_not_found");
   if (expectedWorld && !sameWorld(world, expectedWorld)) {
-    return { ok: false, reason: "world_changed", mutationStarted: false };
+    return failure("world_changed");
   }
   if (hasPendingNamespaceRecovery(loaded.issues)) {
-    return { ok: false, reason: "world_touch_recovery_pending", mutationStarted: false };
+    return failure("world_touch_recovery_pending");
   }
   const nextWorld = {
     ...world,
@@ -1118,7 +875,7 @@ export function touchLocalWorld(
   const saved = saveLocalWorldRegistry(storage, nextRegistry, nextWorld.lastPlayedAt, loaded.sequence);
   return saved.ok
     ? { ok: true, world: nextWorld, registry: saved.registry }
-    : { ok: false, reason: `registry_${saved.reason}`, mutationStarted: saved.mutationStarted };
+    : failure(`registry_${saved.reason}`, saved.mutationStarted);
 }
 
 export function resetLocalWorldData(
@@ -1128,49 +885,20 @@ export function resetLocalWorldData(
 ): LocalWorldMutationResult {
   const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(resetAt)));
   const loaded = loadLocalWorldRegistry(storage, committedAt);
-  if (!loaded.registry) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (!loaded.registry) return failure("world_not_found");
   if (hasPendingNamespaceRecovery(loaded.issues)) {
-    return { ok: false, reason: "world_reset_recovery_pending", mutationStarted: false };
+    return failure("world_reset_recovery_pending");
   }
   const world = loaded.registry.worlds.find(({ id }) => id === worldId);
-  if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (!world) return failure("world_not_found");
   const reset = resetSinglePlayerSave(storage, { worldId });
-  if (!reset.ok) return { ok: false, reason: `world_reset_${reset.reason}`, mutationStarted: reset.mutationStarted };
+  if (!reset.ok) return failure(`world_reset_${reset.reason}`, reset.mutationStarted);
   const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
   snapshot.world.gameMode = world.initialGameMode;
   const saved = saveSinglePlayerSnapshot(storage, snapshot, committedAt, { worldId });
   return saved.ok
     ? { ok: true, world, registry: loaded.registry }
-    : { ok: false, reason: `world_save_${saved.reason}`, mutationStarted: true };
-}
-
-function beginLocalWorldDelete(
-  storage: SinglePlayerStorageAdapter,
-  world: LocalWorldRecord,
-  deletedAt: number,
-  generation: number,
-): { ok: true; key: string; raw: string } | { ok: false; mutationStarted: boolean } {
-  const values: Array<string | null> = [];
-  try {
-    for (const key of singlePlayerWorldStorageKeys(world.id)) values.push(storage.getItem(key));
-    const body = deleteTransactionBody(world, values, deletedAt, generation);
-    const transaction = { checksum: singlePlayerSaveChecksum(body), ...body };
-    const raw = canonicalSinglePlayerJson(transaction);
-    if (raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) {
-      return { ok: false, mutationStarted: false };
-    }
-    const key = transactionKey("delete", generation, raw);
-    const entry = parseDeleteTransaction(key, raw);
-    if (entry.status !== "valid" || entry.type !== "delete") {
-      return { ok: false, mutationStarted: false };
-    }
-    const election = writeAndElectTransaction(storage, entry);
-    return election === "elected"
-      ? { ok: true, key, raw }
-      : { ok: false, mutationStarted: election === "pending" };
-  } catch {
-    return { ok: false, mutationStarted: false };
-  }
+    : failure(`world_save_${saved.reason}`, true);
 }
 
 export function deleteLocalWorld(
@@ -1180,50 +908,41 @@ export function deleteLocalWorld(
 ): LocalWorldMutationResult {
   const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(deletedAt)));
   const loaded = loadLocalWorldRegistry(storage, committedAt);
-  if (!loaded.registry) return { ok: false, reason: "world_not_found", mutationStarted: false };
+  if (!loaded.registry) return failure("world_not_found");
   if (hasPendingNamespaceRecovery(loaded.issues)) {
-    return { ok: false, reason: "world_delete_recovery_pending", mutationStarted: false };
+    return failure("world_delete_recovery_pending");
   }
   const world = loaded.registry.worlds.find(({ id }) => id === worldId);
-  if (!world) return { ok: false, reason: "world_not_found", mutationStarted: false };
-  const begun = beginLocalWorldDelete(storage, world, committedAt, loaded.sequence + 1);
-  if (!begun.ok) {
-    return {
-      ok: false,
-      reason: begun.mutationStarted ? "world_delete_transaction_pending" : "world_delete_transaction_failed",
-      mutationStarted: begun.mutationStarted,
-    };
-  }
+  if (!world) return failure("world_not_found");
+  const values = readWorldValues(storage, world.id);
+  if (!values) return failure("world_delete_transaction_failed");
+  const pending = makePending(1, loaded.sequence + 1, world, committedAt, values);
   const nextRegistry = { worlds: loaded.registry.worlds.filter(({ id }) => id !== worldId) };
-  const saved = saveLocalWorldRegistry(storage, nextRegistry, committedAt, loaded.sequence);
+  const saved = saveRegistryState(storage, nextRegistry, committedAt, loaded.sequence, pending, null);
   if (!saved.ok) {
-    if (saved.mutationStarted || saved.reason === "stale_registry") {
-      return {
-        ok: false,
-        reason: `registry_${saved.reason}_transaction_pending`,
-        mutationStarted: true,
-      };
-    }
-    const cleared = clearTransaction(storage, begun.key, begun.raw);
-    return {
-      ok: false,
-      reason: cleared ? `registry_${saved.reason}` : `registry_${saved.reason}_transaction_pending`,
-      mutationStarted: !cleared,
-    };
+    return failure(
+      saved.mutationStarted || saved.reason === "stale_registry"
+        ? `registry_${saved.reason}_transaction_pending`
+        : `registry_${saved.reason}`,
+      saved.mutationStarted,
+    );
   }
-  const entry = parseDeleteTransaction(begun.key, begun.raw);
-  if (entry.status === "valid" && entry.type === "delete") {
-    const recovered = recoverLocalWorldDelete(storage, {
-      status: "loaded",
-      registry: saved.registry,
-      sequence: saved.sequence,
-      issues: [],
-    }, entry);
-    if (recovered.status === "completed") {
-      return { ok: true, world, registry: saved.registry };
-    }
+  if (!ownsPending(storage, saved.sequence, pending)) {
+    return failure("world_delete_transaction_pending", true);
   }
-  return { ok: false, reason: "world_delete_cleanup_pending", mutationStarted: true };
+  const removeItem = storageRemover(storage);
+  try {
+    if (!removeItem) throw new Error();
+    for (const key of singlePlayerWorldStorageKeys(world.id)) removeItem(key);
+    const remaining = readWorldValues(storage, world.id);
+    if (!remaining || remaining.some((value) => value !== null)) throw new Error();
+  } catch {
+    return failure("world_delete_cleanup_pending", true);
+  }
+  const cleared = saveRegistryState(storage, saved.registry, committedAt, saved.sequence, null, pending);
+  return cleared.ok
+    ? { ok: true, world, registry: cleared.registry }
+    : failure("world_delete_cleanup_pending", true);
 }
 
 export function inspectLegacyLocalWorld(storage: SinglePlayerStorageAdapter): LegacyLocalWorldInspection {
@@ -1249,9 +968,9 @@ export function importLegacyLocalWorld(
 ): LocalWorldMutationResult {
   const now = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(input.now ?? Date.now())));
   const loadedRegistry = loadLocalWorldRegistry(storage, now);
-  if (!loadedRegistry.registry) return { ok: false, reason: `registry_${loadedRegistry.status}`, mutationStarted: false };
+  if (!loadedRegistry.registry) return failure(`registry_${loadedRegistry.status}`);
   if (hasPendingNamespaceRecovery(loadedRegistry.issues)) {
-    return { ok: false, reason: "world_import_recovery_pending", mutationStarted: false };
+    return failure("world_import_recovery_pending");
   }
   // This is the only path that enables the old one-key migration, and it is
   // called solely from the user's explicit Import action.
@@ -1260,7 +979,7 @@ export function importLegacyLocalWorld(
     persistMigration: false,
     now: () => now,
   });
-  if (!legacy.snapshot) return { ok: false, reason: `legacy_${legacy.status}`, mutationStarted: false };
+  if (!legacy.snapshot) return failure(`legacy_${legacy.status}`);
   return createWorldFromSnapshot(storage, loadedRegistry.registry, loadedRegistry.sequence + 1, {
     name: input.name,
     seed: legacy.snapshot.world.seed,
@@ -1277,10 +996,10 @@ export function resetLegacyLocalWorld(
   const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(resetAt)));
   const loaded = loadLocalWorldRegistry(storage, committedAt);
   if (hasPendingNamespaceRecovery(loaded.issues)) {
-    return { ok: false, reason: "legacy_reset_recovery_pending", mutationStarted: false };
+    return failure("legacy_reset_recovery_pending");
   }
   const reset = resetSinglePlayerSave(storage);
-  if (!reset.ok) return { ok: false, reason: `legacy_reset_${reset.reason}`, mutationStarted: reset.mutationStarted };
+  if (!reset.ok) return failure(`legacy_reset_${reset.reason}`, reset.mutationStarted);
   const placeholder: LocalWorldRecord = {
     id: "legacy-reset",
     name: "Legacy World",
