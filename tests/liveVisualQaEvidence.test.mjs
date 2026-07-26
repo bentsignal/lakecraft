@@ -574,6 +574,11 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
     /Never[\s\S]{0,180}browser-storage enumeration\s+APIs[\s\S]{0,100}copy a storage prefix[\s\S]{0,100}foreign origin data/i,
   );
   assert.match(runbook, /Never record or export a raw localStorage value/i);
+  assert.equal(
+    [...runbook.matchAll(/LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json/g)].length,
+    2,
+    "both compact build commands pin the anonymous target",
+  );
   assert.match(runbook, /--expected-commit "\$expected_commit"/);
   assert.match(runbook, /valid-partial[\s\S]{0,100}process exit 2/i);
   assert.match(

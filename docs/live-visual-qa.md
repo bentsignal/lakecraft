@@ -407,9 +407,9 @@ stage_a="$(mktemp -d)"
 stage_b="$(mktemp -d)"
 node scripts/prepare-lakebed-deploy.mjs "$stage_a"
 node scripts/prepare-lakebed-deploy.mjs "$stage_b"
-(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json) \
+(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
   > /absolute/path/to/evidence/build-a.json
-(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json) \
+(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
   > /absolute/path/to/evidence/build-b.json
 ```
 
