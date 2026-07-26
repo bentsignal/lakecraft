@@ -77,6 +77,19 @@ const INTERACTION_GAPS = [
     beforeSegmentId: "narrow-after-reload",
   },
 ];
+const ROUTE_SEGMENTS = [
+  { startedAtOffsetMs: 0, completedAtOffsetMs: 120_000 },
+  { startedAtOffsetMs: 130_000, completedAtOffsetMs: 250_000 },
+  { startedAtOffsetMs: 260_000, completedAtOffsetMs: 380_000 },
+  { startedAtOffsetMs: 390_000, completedAtOffsetMs: 540_000 },
+];
+const ROUTE_GAPS = [
+  { startedAtOffsetMs: 120_000, completedAtOffsetMs: 130_000 },
+  { startedAtOffsetMs: 250_000, completedAtOffsetMs: 260_000 },
+  { startedAtOffsetMs: 380_000, completedAtOffsetMs: 390_000 },
+];
+const CAPTURE_OFFSETS_MS = ROUTE_SEGMENTS.flatMap(({ startedAtOffsetMs }) =>
+  Array.from({ length: 13 }, (_, index) => startedAtOffsetMs + 5_000 + index * 8_000));
 
 function digest(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -333,13 +346,16 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   const runStartedAt = new Date(runStartedAtMs).toISOString();
   const runCompletedAt = new Date(runCompletedAtMs).toISOString();
   let sequence = 0;
-  const nextBinding = () => {
+  const nextBinding = (durationMs = 1_000) => {
     sequence += 1;
+    const capturedAtMs = runStartedAtMs + CAPTURE_OFFSETS_MS[sequence - 1];
+    assert.ok(Number.isFinite(capturedAtMs), "capture fixture exceeds its planned measured segments");
     return {
       taskId: TASK41_TASK_ID,
       runId: RUN_ID,
       appCommit: COMMIT,
-      capturedAt: new Date(runStartedAtMs + sequence * 5_000).toISOString(),
+      capturedAt: new Date(capturedAtMs).toISOString(),
+      completedAt: new Date(capturedAtMs + durationMs).toISOString(),
       sequence,
     };
   };
@@ -372,7 +388,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     observation.status = "pass";
     observation.notes = `Observed ${observation.id}.`;
     for (const [index, entry] of observation.evidence.entries()) {
-      const binding = nextBinding();
+      const binding = nextBinding(entry.kind === "video" ? 5_000 : 1_000);
       Object.assign(entry, binding);
       const slug = `${observation.id}-${entry.viewport ?? "global"}-${index}`;
       if (entry.kind === "screenshot") {
@@ -412,7 +428,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
         const actions = TASK41_TRANSCRIPT_ACTIONS.map((id, actionIndex) => ({
           id,
           status: "pass",
-          at: new Date(runStartedAtMs + sequence * 5_000 + actionIndex + 1).toISOString(),
+          at: new Date(Date.parse(binding.capturedAt) + actionIndex + 1).toISOString(),
           detail: `${id} visibly produced the expected state.`,
         }));
         const transcript = writeBoundJson(path, binding, {
@@ -434,9 +450,10 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   }
 
   for (const metric of evidence.performance) {
-    const binding = nextBinding();
+    const binding = nextBinding(5_120);
     const frames = Array.from({ length: 320 }, (_, index) => ({
       sequence: index + 1,
+      timestamp: new Date(Date.parse(binding.capturedAt) + (index + 1) * 16).toISOString(),
       frameMs: 16,
       drawCalls: 2,
       visible: true,
@@ -473,28 +490,30 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   {
     const binding = nextBinding();
     const path = "structured/console.json";
-    const timelineStart = runStartedAtMs + 2 * 60_000;
     const segments = INTERACTION_SEGMENTS.map((id, index) => {
-      const startedAt = timelineStart + index * 20_000;
+      const route = ROUTE_SEGMENTS[index];
       return {
         id,
-        startedAt: new Date(startedAt).toISOString(),
-        completedAt: new Date(startedAt + 10_000).toISOString(),
+        startedAt: new Date(runStartedAtMs + route.startedAtOffsetMs).toISOString(),
+        completedAt: new Date(runStartedAtMs + route.completedAtOffsetMs).toISOString(),
         entries: index === 0 ? [{
           sequence: 1,
-          timestamp: new Date(startedAt + 1_000).toISOString(),
+          timestamp: new Date(runStartedAtMs + route.startedAtOffsetMs + 1_000).toISOString(),
           source: "console",
           level: "info",
           text: "Task 41 browser probe installed.",
         }] : [],
       };
     });
-    const gaps = INTERACTION_GAPS.map((gap, index) => ({
-      ...gap,
-      startedAt: new Date(timelineStart + index * 20_000 + 10_000).toISOString(),
-      completedAt: new Date(timelineStart + index * 20_000 + 20_000).toISOString(),
-      entries: [],
-    }));
+    const gaps = INTERACTION_GAPS.map((gap, index) => {
+      const route = ROUTE_GAPS[index];
+      return {
+        ...gap,
+        startedAt: new Date(runStartedAtMs + route.startedAtOffsetMs).toISOString(),
+        completedAt: new Date(runStartedAtMs + route.completedAtOffsetMs).toISOString(),
+        entries: [],
+      };
+    });
     const capture = writeBoundJson(path, binding, {
       schemaVersion: 2,
       segments,
@@ -515,23 +534,23 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   {
     const binding = nextBinding();
     const path = "structured/network.json";
-    const timelineStart = runStartedAtMs + 2 * 60_000;
     const segments = INTERACTION_SEGMENTS.map((id, index) => {
-      const startedAt = timelineStart + index * 20_000;
+      const route = ROUTE_SEGMENTS[index];
       return {
         id,
-        startedAt: new Date(startedAt).toISOString(),
-        completedAt: new Date(startedAt + 10_000).toISOString(),
+        startedAt: new Date(runStartedAtMs + route.startedAtOffsetMs).toISOString(),
+        completedAt: new Date(runStartedAtMs + route.completedAtOffsetMs).toISOString(),
         requests: [],
         newSockets: [],
       };
     });
     const gaps = INTERACTION_GAPS.map((gap, index) => {
-      const startedAt = timelineStart + index * 20_000 + 10_000;
+      const route = ROUTE_GAPS[index];
+      const startedAt = runStartedAtMs + route.startedAtOffsetMs;
       return {
         ...gap,
         startedAt: new Date(startedAt).toISOString(),
-        completedAt: new Date(startedAt + 10_000).toISOString(),
+        completedAt: new Date(runStartedAtMs + route.completedAtOffsetMs).toISOString(),
         navigationRequests: [{
           sequence: 1,
           timestamp: new Date(startedAt + 1_000).toISOString(),
@@ -599,8 +618,8 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     const interactions = [];
     if (passed) {
       const windows = [
-        [runStartedAtMs + 120_000, runStartedAtMs + 300_000],
-        [runStartedAtMs + 150_000, runStartedAtMs + 330_000],
+        [runStartedAtMs + 400_000, runStartedAtMs + 520_000],
+        [runStartedAtMs + 410_000, runStartedAtMs + 530_000],
       ];
       for (const [index, id] of ["identity-a", "identity-b"].entries()) {
         const identityCommitment = `sha256:${digest(`authorized-account-${index + 1}`)}`;
@@ -612,6 +631,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
           taskId: TASK41_TASK_ID,
           runId: RUN_ID,
           appCommit: COMMIT,
+          capturedAt: binding.capturedAt,
           identityId: id,
           identityCommitment,
           runSaltedIdentityHash,
@@ -645,8 +665,8 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
           proofSha256: write(root, proofPath, `${JSON.stringify(proof)}\n`),
         });
       }
-      const overlapStartedAt = runStartedAtMs + 180_000;
-      const overlapCompletedAt = runStartedAtMs + 270_000;
+      const overlapStartedAt = runStartedAtMs + 430_000;
+      const overlapCompletedAt = runStartedAtMs + 490_000;
       for (const [index, [id, actorId, targetId]] of [
         ["identity-a-to-b", "identity-a", "identity-b"],
         ["identity-b-to-a", "identity-b", "identity-a"],
@@ -657,6 +677,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
           taskId: TASK41_TASK_ID,
           runId: RUN_ID,
           appCommit: COMMIT,
+          capturedAt: binding.capturedAt,
           interactionId: id,
           actorId,
           targetId,
@@ -754,6 +775,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
       pairedStagedServerPath: "build/b/server/index.ts",
       stagedServerSha256,
       pairedCapturedAt: buildB.capturedAt,
+      pairedCompletedAt: buildB.completedAt,
       pairedSequence: buildB.sequence,
       ...buildA,
     };
@@ -788,6 +810,15 @@ function replaceBoundJson(fixture, summary, value) {
     summary.evidencePath,
     `${JSON.stringify(value)}\n`,
   );
+}
+
+function mutateStructuredTimelines(fixture, mutator) {
+  for (const summaryName of ["console", "network"]) {
+    const summary = fixture.evidence[summaryName];
+    const value = JSON.parse(readFileSync(join(fixture.root, summary.evidencePath), "utf8"));
+    mutator(value, summaryName);
+    replaceBoundJson(fixture, summary, value);
+  }
 }
 
 function rewriteArtifactPair(fixture, mutator) {
@@ -874,6 +905,14 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
   assert.match(runbook, /4–32 uniquely named[\s\S]{0,180}`navigation` or `reload` gap/i);
   assert.match(runbook, /No unclassified time may hide traffic/i);
   assert.match(runbook, /Console and Network reports[\s\S]{0,100}identical IDs, kinds, and timestamps/i);
+  assert.match(runbook, /segments\[0\]\.startedAt === runStartedAt[\s\S]{0,80}no unmeasured prefix/i);
+  assert.match(runbook, /segments\.at\(-1\)\.completedAt === runCompletedAt[\s\S]{0,140}no unmeasured[\s\S]{0,20}suffix/i);
+  assert.match(
+    runbook,
+    /Every screenshot, video, transcript, performance capture,[\s\S]{0,240}capturedAt[\s\S]{0,40}completedAt[\s\S]{0,120}one measured segment/i,
+  );
+  assert.match(runbook, /nested action, frame, telemetry, or event timestamp[\s\S]{0,100}inside a measured segment/i);
+  assert.match(runbook, /Every measured segment must contain at least one bound evidence capture/i);
   assert.match(runbook, /git -C "\$repo_root" archive "\$expected_commit"/);
   assert.match(runbook, /mismatched CSS viewport\/device-pixel ratio[\s\S]{0,100}hidden or unfocused/i);
   assert.match(runbook, /valid-partial[\s\S]{0,100}process exit 2/i);
@@ -979,18 +1018,29 @@ test("performance proof rejects hidden, unfocused, reordered, or viewport/DPR-mi
     (value) => { value.frames[1].sequence = value.frames[0].sequence; },
     (value) => { value.viewport = "narrow"; },
     (value) => { value.devicePixelRatio = 2; },
+    (value, fixture) => {
+      value.frames.at(-1).timestamp =
+        new Date(Date.parse(fixture.evidence.runStartedAt) + 385_000).toISOString();
+    },
+    (value, fixture) => {
+      value.frames.at(-1).timestamp =
+        new Date(Date.parse(fixture.evidence.runCompletedAt) + 1_000).toISOString();
+    },
   ]) {
     const fixture = createFixture();
     try {
       const metric = fixture.evidence.performance[0];
       const value = JSON.parse(readFileSync(join(fixture.root, metric.evidencePath), "utf8"));
-      mutate(value);
+      mutate(value, fixture);
       metric.evidenceSha256 = write(
         fixture.root,
         metric.evidencePath,
         `${JSON.stringify(value)}\n`,
       );
-      await assertFileInvalid(fixture, /performance|frames|visible|focused|viewport|devicePixelRatio|order/);
+      await assertFileInvalid(
+        fixture,
+        /performance|frames|visible|focused|viewport|devicePixelRatio|order|timestamp|measured interaction segment/,
+      );
     } finally {
       fixture.cleanup();
     }
@@ -1191,6 +1241,14 @@ test("structured transcripts reject missing, failed, reordered, or cross-bound a
     (value) => { value.actions[4].status = "fail"; },
     (value) => { [value.actions[0], value.actions[1]] = [value.actions[1], value.actions[0]]; },
     (value) => { value.actions[2].at = value.actions[1].at; },
+    (value, fixture) => {
+      value.actions.at(-1).at =
+        new Date(Date.parse(fixture.evidence.runStartedAt) + 125_000).toISOString();
+    },
+    (value, fixture) => {
+      value.actions.at(-1).at =
+        new Date(Date.parse(fixture.evidence.runCompletedAt) + 1_000).toISOString();
+    },
   ]) {
     const fixture = createFixture();
     try {
@@ -1198,9 +1256,9 @@ test("structured transcripts reject missing, failed, reordered, or cross-bound a
         .flatMap(({ evidence }) => evidence)
         .find(({ kind }) => kind === "transcript");
       const value = JSON.parse(readFileSync(join(fixture.root, entry.path), "utf8"));
-      mutate(value);
+      mutate(value, fixture);
       replaceEntryFile(fixture, entry, Buffer.from(`${JSON.stringify(value)}\n`));
-      await assertFileInvalid(fixture, /transcript|actions|timestamps|ordered/);
+      await assertFileInvalid(fixture, /transcript|actions|timestamps|ordered|measured interaction segment/);
     } finally {
       fixture.cleanup();
     }
@@ -1248,6 +1306,70 @@ test("segmented console and network proof allows navigation gaps but rejects in-
       mutate(value);
       replaceBoundJson(fixture, summary, value);
       await assertFileInvalid(fixture, pattern);
+    } finally {
+      fixture.cleanup();
+    }
+  }
+  for (const [mutate, pattern] of [
+    [(value) => {
+      value.segments[0].startedAt =
+        new Date(Date.parse(value.segments[0].startedAt) + 1_000).toISOString();
+    }, /full run|prefix|timeline/],
+    [(value) => {
+      value.segments.at(-1).completedAt =
+        new Date(Date.parse(value.segments.at(-1).completedAt) - 1_000).toISOString();
+    }, /full run|suffix|timeline/],
+    [(value, summaryName) => {
+      const routeStartedAt = Date.parse(value.segments[0].startedAt) + 100_000;
+      const segmentOffsets = [[0, 10_000], [20_000, 30_000], [40_000, 50_000], [60_000, 80_000]];
+      const gapOffsets = [[10_000, 20_000], [30_000, 40_000], [50_000, 60_000]];
+      value.segments.forEach((segment, index) => {
+        segment.startedAt = new Date(routeStartedAt + segmentOffsets[index][0]).toISOString();
+        segment.completedAt = new Date(routeStartedAt + segmentOffsets[index][1]).toISOString();
+        if (summaryName === "console") {
+          segment.entries = index === 0 ? [{
+            sequence: 1,
+            timestamp: new Date(routeStartedAt + 1_000).toISOString(),
+            source: "console",
+            level: "info",
+            text: "Generic sliced capture.",
+          }] : [];
+        }
+      });
+      value.gaps.forEach((gap, index) => {
+        gap.startedAt = new Date(routeStartedAt + gapOffsets[index][0]).toISOString();
+        gap.completedAt = new Date(routeStartedAt + gapOffsets[index][1]).toISOString();
+        if (summaryName === "network") {
+          gap.navigationRequests[0].timestamp =
+            new Date(routeStartedAt + gapOffsets[index][0] + 1_000).toISOString();
+        }
+      });
+    }, /full run|prefix|suffix|timeline|evidence capture/],
+  ]) {
+    const fixture = createFixture();
+    try {
+      mutateStructuredTimelines(fixture, mutate);
+      await assertFileInvalid(fixture, pattern);
+    } finally {
+      fixture.cleanup();
+    }
+  }
+  for (const [location, offsetMs] of [
+    ["gap", 125_000],
+    ["outside", 541_000],
+  ]) {
+    const fixture = createFixture();
+    try {
+      const entry = fixture.evidence.observations
+        .flatMap(({ evidence }) => evidence)[12];
+      entry.capturedAt =
+        new Date(Date.parse(fixture.evidence.runStartedAt) + offsetMs).toISOString();
+      entry.completedAt =
+        new Date(Date.parse(entry.capturedAt) + entry.durationMs).toISOString();
+      await assertFileInvalid(
+        fixture,
+        /capture window|measured interaction segment|outside the run|canonical manifest order/,
+      );
     } finally {
       fixture.cleanup();
     }
@@ -1370,12 +1492,24 @@ test("passed multiplayer requires two active reciprocal identities and bidirecti
     }, /positive|quota|attempt|grant/],
     ["interactions", (value) => { value.events.pop(); }, /interaction|bidirectional|every/],
     ["interactions", (value) => { value.events[0].status = "fail"; }, /interaction|pass/],
+    ["identities", (value, fixture) => {
+      const identity = fixture.evidence.multiplayer.identities[0];
+      identity.windowStartedAt =
+        new Date(Date.parse(fixture.evidence.runStartedAt) + 350_000).toISOString();
+      value.windowStartedAt = identity.windowStartedAt;
+      value.capturedAt =
+        new Date(Date.parse(fixture.evidence.runStartedAt) + 385_000).toISOString();
+    }, /measured interaction segment/],
+    ["identities", (value, fixture) => {
+      value.capturedAt =
+        new Date(Date.parse(fixture.evidence.runCompletedAt) + 1_000).toISOString();
+    }, /identity session|measured interaction segment|outside/],
   ]) {
     const fixture = createFixture();
     try {
       const record = fixture.evidence.multiplayer[recordName][0];
       const value = JSON.parse(readFileSync(join(fixture.root, record.proofPath), "utf8"));
-      mutate(value);
+      mutate(value, fixture);
       record.proofSha256 = write(
         fixture.root,
         record.proofPath,
@@ -1385,7 +1519,7 @@ test("passed multiplayer requires two active reciprocal identities and bidirecti
         join(fixture.root, fixture.evidence.multiplayer.evidencePath),
         "utf8",
       ));
-      multiplayerCapture[recordName][0].proofSha256 = record.proofSha256;
+      multiplayerCapture[recordName][0] = clone(record);
       replaceBoundJson(fixture, fixture.evidence.multiplayer, multiplayerCapture);
       await assertFileInvalid(fixture, pattern);
     } finally {
@@ -1511,14 +1645,20 @@ test("browser probe binds raw frame captures to this run and restores WebGL prot
   assert.equal(capture.runId, RUN_ID);
   assert.equal(capture.appCommit, COMMIT);
   assert.match(capture.capturedAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+  assert.match(capture.completedAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+  assert.ok(Date.parse(capture.completedAt) >= Date.parse(capture.capturedAt));
   assert.equal(capture.sequence, 1);
   assert.equal(capture.label, "desktop/surface-day");
   assert.equal(capture.viewport, "desktop");
   assert.equal(capture.devicePixelRatio, 1);
   assert.equal(capture.patchedContexts, 2);
   assert.equal(capture.frames.length, 130);
+  const { timestamp: firstFrameTimestamp, ...firstFrame } = { ...capture.frames[0] };
+  assert.match(firstFrameTimestamp, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+  assert.ok(Date.parse(firstFrameTimestamp) >= Date.parse(capture.capturedAt));
+  assert.ok(Date.parse(firstFrameTimestamp) <= Date.parse(capture.completedAt));
   assert.deepEqual(
-    { ...capture.frames[0] },
+    firstFrame,
     {
       sequence: 1,
       frameMs: 16,
