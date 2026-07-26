@@ -132,20 +132,24 @@ export function skyExposureLevel(
   return 0;
 }
 
-/** Mesh invalidation is limited to chunks touched by the same two-column fringe. */
+/**
+ * Mesh invalidation includes one cell beyond the sampled light fringe because
+ * a cube face reads sky exposure from its adjacent coordinate.
+ */
 export function skyExposureDirtyChunkKeysForEdits(
   edits: ReadonlyArray<Readonly<{ x: number; z: number }>>,
 ): string[] {
   const dirty = new Set<string>();
   const visitedColumns = new Set<string>();
+  const meshRadius = SKY_EXPOSURE_SPILL_RADIUS + 1;
   for (const edit of edits) {
     const x = Math.floor(edit.x);
     const z = Math.floor(edit.z);
     const column = skyColumnKey(x, z);
     if (visitedColumns.has(column)) continue;
     visitedColumns.add(column);
-    for (let dx = -SKY_EXPOSURE_SPILL_RADIUS; dx <= SKY_EXPOSURE_SPILL_RADIUS; dx += 1) {
-      const remaining = SKY_EXPOSURE_SPILL_RADIUS - Math.abs(dx);
+    for (let dx = -meshRadius; dx <= meshRadius; dx += 1) {
+      const remaining = meshRadius - Math.abs(dx);
       for (let dz = -remaining; dz <= remaining; dz += 1) {
         dirty.add(chunkKeyForBlock(x + dx, z + dz, WORLD_CHUNK_SIZE));
       }

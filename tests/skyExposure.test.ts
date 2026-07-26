@@ -159,15 +159,70 @@ for (const transmitting of [
 
 assert.deepEqual(skyExposureDirtyChunkKeysForEdits([{ x: 3, z: 3 }]), ["0,0"]);
 assert.deepEqual(
+  skyExposureDirtyChunkKeysForEdits([{ x: 5, z: 3 }]).sort(),
+  ["0,0", "1,0"],
+  "an entrance two cells inside a positive-X seam invalidates the block whose west face samples its fringe",
+);
+assert.deepEqual(
+  skyExposureDirtyChunkKeysForEdits([{ x: -3, z: 3 }]).sort(),
+  ["-1,0", "0,0"],
+  "negative-X ownership uses the same face-coordinate fringe",
+);
+assert.deepEqual(
+  skyExposureDirtyChunkKeysForEdits([{ x: 3, z: 5 }]).sort(),
+  ["0,0", "0,1"],
+  "an entrance two cells inside a positive-Z seam reaches the adjacent block owner",
+);
+assert.deepEqual(
+  skyExposureDirtyChunkKeysForEdits([{ x: 3, z: -3 }]).sort(),
+  ["0,-1", "0,0"],
+  "negative-Z face sampling remains globally anchored",
+);
+assert.deepEqual(
   skyExposureDirtyChunkKeysForEdits([{ x: 7, z: 7 }, { x: 7, z: 7 }]).sort(),
   ["0,0", "0,1", "1,0", "1,1"],
-  "a seam edit invalidates only the four chunks touched by the two-column fringe",
+  "a seam edit invalidates only the four chunks touched by the face-expanded fringe",
 );
 assert.deepEqual(
   skyExposureDirtyChunkKeysForEdits([{ x: -8, z: 2 }]).sort(),
-  ["-1,0", "-2,0"],
+  ["-1,-1", "-1,0", "-2,0"],
   "negative-coordinate seam invalidation stays globally anchored",
 );
+
+const seamRoof = new Map<string, BlockId>();
+for (let x = 0; x < 16; x += 1) {
+  for (let z = 0; z < 8; z += 1) seamRoof.set(blockKey(x, 5, z), BLOCK.STONE);
+}
+const seamColumns: SkyOccluderColumns = new Map();
+writeChunkSkyOccluders(seamColumns, 0, 0, seamRoof);
+writeChunkSkyOccluders(seamColumns, 1, 0, seamRoof);
+assert.equal(skyExposureLevel(seamColumns, 7, 0, 3), 0);
+seamRoof.delete(blockKey(5, 5, 3));
+refreshEditedSkyColumns(
+  seamColumns,
+  [{ x: 5, z: 3 }],
+  (x, y, z) => seamRoof.get(blockKey(x, y, z)) ?? BLOCK.AIR,
+);
+assert.equal(
+  skyExposureLevel(seamColumns, 7, 0, 3),
+  1,
+  "the west-face sample of the block at x=8 changes when the two-inside roof entrance opens",
+);
+assert.ok(skyExposureDirtyChunkKeysForEdits([{ x: 5, z: 3 }]).includes("1,0"),
+  "the changed face's owning chunk is rebuilt");
+
+const batchEdits = Array.from({ length: 4_096 }, (_, index) => ({
+  x: index % 8,
+  z: Math.floor(index / 8) % 8,
+}));
+const uniqueBatchEdits = batchEdits.slice(0, 64);
+const batchStartedAt = performance.now();
+const batchDirty = skyExposureDirtyChunkKeysForEdits(batchEdits).sort();
+const batchMs = performance.now() - batchStartedAt;
+assert.deepEqual(batchDirty, skyExposureDirtyChunkKeysForEdits(uniqueBatchEdits).sort(),
+  "large edit batches perform the same bounded work as their unique columns");
+assert.ok(batchDirty.length <= 9, "one edited chunk can invalidate only its bounded 3×3 neighborhood");
+assert.ok(batchMs < 100, `4,096 batched seam invalidations took ${batchMs.toFixed(1)}ms`);
 
 const benchmarkStartedAt = performance.now();
 let exposureChecksum = 0;
