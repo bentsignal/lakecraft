@@ -266,11 +266,18 @@ function captureContext(evidence, expectedCommit, nowMs) {
   }
   const startedAt = exactTimestamp(evidence.runStartedAt, "runStartedAt");
   const completedAt = exactTimestamp(evidence.runCompletedAt, "runCompletedAt");
+  const packagedCompletedAt = exactTimestamp(evidence.packagedCompletedAt, "packagedCompletedAt");
   if (completedAt - startedAt < MIN_RUN_MS || completedAt - startedAt > MAX_RUN_MS) {
     throw new Error("run duration must be between five minutes and six hours.");
   }
-  if (completedAt > nowMs + CLOCK_SKEW_MS || nowMs - completedAt > MAX_EVIDENCE_AGE_MS) {
-    throw new Error("the evidence run is stale or implausibly in the future.");
+  if (packagedCompletedAt < completedAt
+    || packagedCompletedAt - completedAt > MAX_EVIDENCE_AGE_MS) {
+    throw new Error("evidence packaging must finish within six hours after the run.");
+  }
+  if (completedAt > nowMs + CLOCK_SKEW_MS
+    || packagedCompletedAt > nowMs + CLOCK_SKEW_MS
+    || nowMs - packagedCompletedAt > MAX_EVIDENCE_AGE_MS) {
+    throw new Error("the evidence package is stale or implausibly in the future.");
   }
   return {
     taskId: TASK41_TASK_ID,
@@ -278,11 +285,13 @@ function captureContext(evidence, expectedCommit, nowMs) {
     appCommit: expectedCommit,
     startedAt,
     completedAt,
+    packagedCompletedAt,
     captures: new Map(),
     hashes: new Map(),
     paths: new Map(),
     lastSequence: 0,
     lastCapturedAt: startedAt - 1,
+    lastDerivedCompletedAt: completedAt,
     captureWindows: [],
   };
 }
@@ -308,14 +317,30 @@ function validateCapture(
   path = undefined,
   hash = undefined,
   duplicateHashOf = undefined,
+  phase = "live",
 ) {
   if (value.taskId !== context.taskId || value.runId !== context.runId || value.appCommit !== context.appCommit) {
     throw new Error(`${label} is not bound to this Task 41 run and commit.`);
   }
   const capturedAt = exactTimestamp(value.capturedAt, `${label}.capturedAt`);
   const completedAt = exactTimestamp(value.completedAt, `${label}.completedAt`);
-  if (capturedAt < context.startedAt || completedAt > context.completedAt || completedAt < capturedAt) {
-    throw new Error(`${label} capture window falls outside the run.`);
+  if (completedAt < capturedAt) {
+    throw new Error(`${label} capture window completes before it starts.`);
+  }
+  if (phase === "live") {
+    if (capturedAt < context.startedAt || completedAt > context.completedAt) {
+      throw new Error(`${label} live capture window falls outside the run.`);
+    }
+  } else if (phase === "derived") {
+    if (capturedAt < context.completedAt || completedAt > context.packagedCompletedAt) {
+      throw new Error(`${label} derived capture window falls outside post-run packaging.`);
+    }
+    if (capturedAt < context.lastDerivedCompletedAt) {
+      throw new Error(`${label} derived capture must start after the prior report or build completes.`);
+    }
+    context.lastDerivedCompletedAt = completedAt;
+  } else {
+    throw new Error(`${label} has an unknown capture phase.`);
   }
   if (capturedAt <= context.lastCapturedAt) {
     throw new Error(`${label}.capturedAt must increase in canonical manifest order.`);
@@ -328,7 +353,7 @@ function validateCapture(
   context.lastSequence = sequence;
   const identity = path === undefined ? label : `${path}\0${hash}`;
   context.captures.set(sequence, identity);
-  context.captureWindows.push({ label, startedAt: capturedAt, completedAt });
+  context.captureWindows.push({ label, phase, startedAt: capturedAt, completedAt });
   if (path !== undefined) registerReference(context, path, hash, label, duplicateHashOf);
 }
 
@@ -477,13 +502,21 @@ function validatePerformance(performance, context) {
   });
 }
 
-function validateStructuredSummary(value, label, keys, context) {
+function validateStructuredSummary(value, label, keys, context, phase = "live") {
   const summary = record(value);
   if (!summary) throw new Error(`${label} must be an object.`);
   exactKeys(summary, [...keys, "evidencePath", "evidenceSha256", ...CAPTURE_KEYS], label);
   evidencePath(summary.evidencePath, `${label}.evidencePath`);
   sha256(summary.evidenceSha256, `${label}.evidenceSha256`);
-  validateCapture(summary, label, context, summary.evidencePath, summary.evidenceSha256);
+  validateCapture(
+    summary,
+    label,
+    context,
+    summary.evidencePath,
+    summary.evidenceSha256,
+    undefined,
+    phase,
+  );
   return summary;
 }
 
@@ -491,7 +524,7 @@ function validateConsole(value, context) {
   const summary = validateStructuredSummary(value, "console", [
     "segmentCount", "gapCount", "warningCount", "errorCount", "exceptionCount",
     "unhandledRejectionCount",
-  ], context);
+  ], context, "derived");
   if (integer(summary.segmentCount, "console.segmentCount", TASK41_MIN_INTERACTION_SEGMENTS, 32)
     < TASK41_MIN_INTERACTION_SEGMENTS
     || summary.gapCount !== summary.segmentCount - 1) {
@@ -508,7 +541,7 @@ function validateNetwork(value, context) {
   const summary = validateStructuredSummary(value, "network", [
     "segmentCount", "gapCount", "requestCount", "websocketCount",
     "lakebedRequestCount", "navigationRequestCount",
-  ], context);
+  ], context, "derived");
   if (integer(summary.segmentCount, "network.segmentCount", TASK41_MIN_INTERACTION_SEGMENTS, 32)
     < TASK41_MIN_INTERACTION_SEGMENTS
     || summary.gapCount !== summary.segmentCount - 1) {
@@ -660,7 +693,15 @@ function validateArtifact(value, context) {
   ]) {
     if (artifact[left] === artifact[right]) throw new Error(`${label} must use distinct A/B paths.`);
   }
-  validateCapture(artifact, "artifact build A", context, artifact.reportPath, artifact.reportSha256);
+  validateCapture(
+    artifact,
+    "artifact build A",
+    context,
+    artifact.reportPath,
+    artifact.reportSha256,
+    undefined,
+    "derived",
+  );
   validateCapture({
     taskId: artifact.taskId,
     runId: artifact.runId,
@@ -668,7 +709,7 @@ function validateArtifact(value, context) {
     capturedAt: artifact.pairedCapturedAt,
     completedAt: artifact.pairedCompletedAt,
     sequence: artifact.pairedSequence,
-  }, "artifact build B", context, artifact.pairedReportPath, artifact.pairedReportSha256);
+  }, "artifact build B", context, artifact.pairedReportPath, artifact.pairedReportSha256, undefined, "derived");
   if (Date.parse(artifact.pairedCapturedAt) < Date.parse(artifact.completedAt)) {
     throw new Error("artifact build B must start after build A completes.");
   }
@@ -734,6 +775,7 @@ export function createTask41EvidenceTemplate() {
     appCommit: "PENDING_COMMIT",
     runStartedAt: "PENDING_ISO_DATE",
     runCompletedAt: "PENDING_ISO_DATE",
+    packagedCompletedAt: "PENDING_ISO_DATE",
     completionEligible: false,
     browser: { name: "PENDING", version: "PENDING" },
     worlds: TASK41_WORLD_ROLES.map((world) => ({
@@ -853,6 +895,7 @@ export function validateTask41Evidence(value, {
   if (!evidence) throw new Error("Task 41 evidence must be an object.");
   exactKeys(evidence, [
     "schemaVersion", "taskId", "runId", "appCommit", "runStartedAt", "runCompletedAt",
+    "packagedCompletedAt",
     "completionEligible", "browser", "worlds", "observations", "performance", "console",
     "network", "storage", "multiplayer", "artifact",
   ], "evidence");
@@ -868,13 +911,13 @@ export function validateTask41Evidence(value, {
   validateWorlds(evidence.worlds);
   validateObservations(evidence.observations, context);
   validatePerformance(evidence.performance, context);
-  validateConsole(evidence.console, context);
-  validateNetwork(evidence.network, context);
   validateStorage(evidence.storage, context);
   const multiplayer = validateMultiplayer(evidence.multiplayer, context);
   if (evidence.completionEligible !== multiplayer.completionEligible) {
     throw new Error("top-level completionEligible must match multiplayer evidence.");
   }
+  validateConsole(evidence.console, context);
+  validateNetwork(evidence.network, context);
   validateArtifact(evidence.artifact, context);
   return evidence;
 }
@@ -1472,16 +1515,9 @@ function bindManifestCapturesToTimeline(evidence, timeline) {
     observation.evidence.forEach((entry) => captures.push([`${observation.id}:${entry.path}`, entry])));
   evidence.performance.forEach((metric) => captures.push([`performance:${metric.evidencePath}`, metric]));
   for (const [label, summary] of [
-    ["console", evidence.console],
-    ["network", evidence.network],
     ["storage", evidence.storage],
     ["multiplayer", evidence.multiplayer],
-    ["artifact build A", evidence.artifact],
   ]) captures.push([label, summary]);
-  captures.push(["artifact build B", {
-    capturedAt: evidence.artifact.pairedCapturedAt,
-    completedAt: evidence.artifact.pairedCompletedAt,
-  }]);
   const hitSegments = new Set();
   captures.forEach(([label, capture]) => {
     const segment = measuredSegmentForWindow(
@@ -1760,6 +1796,12 @@ function verifyMultiplayer(buffer, summary, files, evidence, timeline) {
         || proofCapturedAt > Date.parse(identity.windowCompletedAt)) {
         throw new Error(`${identity.proofPath} capture must occur within its identity session.`);
       }
+      measuredSegmentForWindow(
+        timeline,
+        Date.parse(identity.windowStartedAt),
+        Date.parse(identity.windowCompletedAt),
+        `${identity.proofPath} identity session`,
+      );
       measuredSegmentForWindow(timeline, proofCapturedAt, proofCapturedAt, `${identity.proofPath} capture`);
       if (!Array.isArray(proof.quotaTelemetry)
         || proof.quotaTelemetry.length < 2
@@ -1826,6 +1868,12 @@ function verifyMultiplayer(buffer, summary, files, evidence, timeline) {
       if (proofCapturedAt < startedAt || proofCapturedAt > completedAt) {
         throw new Error(`${interaction.proofPath} capture must occur within its interaction window.`);
       }
+      measuredSegmentForWindow(
+        timeline,
+        startedAt,
+        completedAt,
+        `${interaction.proofPath} interaction window`,
+      );
       measuredSegmentForWindow(timeline, proofCapturedAt, proofCapturedAt, `${interaction.proofPath} capture`);
       if (!Array.isArray(proof.events) || proof.events.length !== TASK41_MULTIPLAYER_INTERACTIONS.length) {
         throw new Error(`${interaction.proofPath} must prove every bidirectional interaction kind.`);
