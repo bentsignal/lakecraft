@@ -296,7 +296,7 @@ function SinglePlayerWorld({
   const saveLockedRef = useRef(initial.current.saveLocked);
   const saveInProgressRef = useRef(false);
   const quitSavedRef = useRef(false);
-  const performSaveRef = useRef<(reason: "manual" | "autosave" | "quit") => boolean>(() => false);
+  const performSaveRef = useRef<(reason: "autosave" | "quit") => boolean>(() => false);
   const setLocalFusesPausedRef = useRef<(paused: boolean) => void>(() => undefined);
   const localRespawnBusyRef = useRef(false);
   const pendingDeathCauseRef = useRef<SinglePlayerDeathCause>("unknown");
@@ -346,9 +346,8 @@ function SinglePlayerWorld({
           ? "This local world could not be read. Saving is disabled; reset it to start fresh."
           : "";
   const initialSavedAt = "savedAt" in initial.current.load ? initial.current.load.savedAt : null;
-  const [saveStatusText, setSaveStatusText] = useState(initialSaveText);
-  const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialSavedAt);
-  const [saveInProgress, setSaveInProgress] = useState(false);
+  const [autosaveStatusText, setAutosaveStatusText] = useState(initialSaveText);
+  const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(initialSavedAt);
   const pointerUiBlockedRef = useRef(false);
   pointerUiBlockedRef.current = inventoryOpen || worldModalOpen || deathScreenOpen
     || document.visibilityState !== "visible";
@@ -473,29 +472,28 @@ function SinglePlayerWorld({
     };
   }
 
-  function persist(reason: "manual" | "autosave" | "quit" = "manual"): boolean {
+  function persist(reason: "autosave" | "quit"): boolean {
     if (saveLockedRef.current || saveInProgressRef.current) return false;
+    const action = reason === "quit" ? "Save and Quit" : "Autosave";
     const snapshot = buildSnapshot();
     if (!snapshot) {
-      setSaveStatusText("Save failed: invalid local container state.");
+      setAutosaveStatusText(`${action} failed: invalid local container state.`);
       return false;
     }
     saveInProgressRef.current = true;
-    setSaveInProgress(true);
     const now = Date.now();
     const result = saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id });
     saveInProgressRef.current = false;
-    setSaveInProgress(false);
     if (!result.ok) {
       console.error("[Lakecraft save] Snapshot commit rejected.", {
         reason: result.reason,
         path: result.path,
         previousSequence: result.previousSequence,
       });
-      setSaveStatusText(result.reason === "too_large" ? "Save failed: this world exceeds browser storage limits."
-        : result.reason === "unsafe_existing_data" ? "Save blocked to protect existing world data."
-          : result.path?.startsWith("$.runtime") ? "Save failed: player state could not be validated. Your previous save is safe."
-            : "Save failed. Your previous save is safe.");
+      setAutosaveStatusText(result.reason === "too_large" ? `${action} failed: this world exceeds browser storage limits.`
+        : result.reason === "unsafe_existing_data" ? `${action} blocked to protect existing world data.`
+          : result.path?.startsWith("$.runtime") ? `${action} failed: player state could not be validated. Your previous save is safe.`
+            : `${action} failed. Your previous save is safe.`);
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
       return false;
     }
@@ -506,8 +504,8 @@ function SinglePlayerWorld({
     };
     initialRuntimeRef.current = snapshot.runtime;
     saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
-    setLastSavedAt(now);
-    setSaveStatusText(reason === "autosave" ? "World autosaved." : reason === "quit" ? "World saved." : "World saved.");
+    setLastAutosavedAt(now);
+    setAutosaveStatusText("");
     return true;
   }
   performSaveRef.current = persist;
@@ -520,7 +518,7 @@ function SinglePlayerWorld({
     const result = resetSinglePlayerSave(storage, { worldId: world.id });
     if (!result.ok) {
       console.error("[Lakecraft save] Explicit local world reset failed.", result);
-      setSaveStatusText(result.mutationStarted
+      setAutosaveStatusText(result.mutationStarted
         ? "Reset stopped partway. Saving remains disabled; reload before trying again."
         : "Reset did not start. Your saved world data was left unchanged.");
       return;
@@ -1525,7 +1523,7 @@ function SinglePlayerWorld({
     engineRef.current = engine;
     engine.setFirstPersonFeedbackHidden(pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen);
     if (initialRuntimeRef.current && !engine.importRuntimeSnapshot(initialRuntimeRef.current)) {
-      setSaveStatusText("The saved player runtime was invalid; world state was left untouched.");
+      setAutosaveStatusText("The saved player runtime was invalid; world state was left untouched.");
       saveLockedRef.current = true;
     }
     if (gameModeRef.current === "creative") engine.setPlayerHealth(MAX_HEALTH);
@@ -1794,10 +1792,10 @@ function SinglePlayerWorld({
     commandMessages.length,
   ]);
 
-  const lastSavedText = lastSavedAt === null ? "Not saved yet"
-    : `Last saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
+  const lastAutosavedText = lastAutosavedAt === null ? "Last autosaved —"
+    : `Last autosaved ${new Date(lastAutosavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
   const returnToTitle = () => {
-    if (!saveLockedRef.current && !persist("quit")) return;
+    if (!persist("quit")) return;
     quitSavedRef.current = true;
     if (document.pointerLockElement) document.exitPointerLock();
     onExit();
@@ -1838,7 +1836,9 @@ function SinglePlayerWorld({
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         disconnectLabel="Save and Quit to Title"
-        lastSavedText={lastSavedText}
+        lastAutosavedText={lastAutosavedText}
+        autosaveStatusText={autosaveStatusText}
+        disconnectDisabled={saveLockedRef.current}
         onDisconnect={returnToTitle}
         onInventoryWorkspaceChange={(snapshot: StowedInventorySnapshot, _epoch: number, _recipes: readonly InventoryRecipeBatch[]) => {
           inventoryRef.current = snapshot.inventory;
@@ -1860,7 +1860,6 @@ function SinglePlayerWorld({
         optionsOpen={optionsOpen}
         onRespawn={respawnLocally}
         onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}
-        onSave={() => { persist("manual"); }}
         onResetWorld={saveLockedRef.current ? resetUnreadableWorld : undefined}
         onSelectHotbar={selectHotbar}
         onTitleScreen={returnToTitle}
@@ -1868,9 +1867,6 @@ function SinglePlayerWorld({
         pauseOpen={pauseOpen}
         playerName="Player"
         selectedIndex={selected}
-        saveDisabled={saveLockedRef.current}
-        saveInProgress={saveInProgress}
-        saveStatusText={saveStatusText}
         respawnError={deathStatus}
         respawning={respawning}
         soundMuted={clientSettings.soundMuted}

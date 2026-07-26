@@ -48,14 +48,14 @@ Singleplayer requires no account and saves only in that browser. The title scree
 - `T` or `Enter` opens world chat in multiplayer or the local command console in single-player
 - Single-player commands include `/help`, `/gamemode <survival|creative>`, and `/give <item> [count]`; Up/Down recalls command history
 - Hold `Tab` for the live player list; `Esc` opens the game menu
-- In single-player, the game menu can save immediately; dirty worlds also autosave after five minutes of active play and save before leaving
+- Single-player worlds autosave after each minute of active play and force a verified save before Save and Quit leaves the world
 - `F3` toggles live frame, mesh, chunk, and draw-call counters
 
 ## Project shape
 
 - `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered original 16×16 texture atlas, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
 - `client/components/` — Minecraft-style survival HUD, 93 original pixel item sprites, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
-- `client/singleplayer/` — offline world integration plus a checksummed two-slot browser journal for inventory, edits, drops, containers, TNT, pose, health, time, and deterministic mob state
+- `client/singleplayer/` — offline world integration plus a checksummed two-slot browser-local journal for inventory, edits, drops, containers, TNT, pose, health, time, and deterministic mob state; signing in does not currently upload these worlds
 - `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, quota-batched multiplayer history/chat, CAS-safe inventories, atomic world item drops/pickups, persistent furnaces and shared-chest transfers, a leased deterministic mob authority, and the synchronized sleep clock
 - `shared/` — pure item, recipe, furnace, and wire-protocol types
 

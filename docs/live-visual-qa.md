@@ -260,9 +260,11 @@ interactions at 800 × 720 without browser zoom.
 3. Enter QA Survival. Verify Survival restrictions, then use the command
    console to switch to Creative and back to Survival. Enter QA Creative and
    verify its initial mode, then switch to Survival and back to Creative.
-4. Build and store that world's three markers. Use **Save World**, then
-   **Save and Quit to Title**. The latter must return to **Select World**, not
-   the multiplayer directory or an empty gameplay shell.
+4. Build and store that world's three markers. Continue active play until the
+   pause menu's **Last autosaved** time advances, then use
+   **Save and Quit to Title**. It must finalize another verified save and
+   return to **Select World**, not the multiplayer directory or an empty
+   gameplay shell.
 5. Reopen every world and compare its edit, carried inventory, and container
    contents with the manifest. No marker from either sibling may appear.
 6. Reload the browser between saves and repeat the three-world check. This is
