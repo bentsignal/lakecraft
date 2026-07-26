@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { chunkWindow } from "../client/game/chunks.ts";
+import { sampleDayNight, type DayNightState } from "../client/game/dayNight.ts";
 import { blockKey, createTerrainChunk, TERRAIN_MIN_Y } from "../client/game/terrain.ts";
 import {
   CAVE_LIGHT_FLOOR,
@@ -71,6 +72,80 @@ const emissiveShade = unpackSkyExposureShade(packSkyExposureShade(0.73, 0, true)
 assert.ok(Math.abs(emissiveShade.faceShade - 0.73) < 1e-12);
 assert.equal(emissiveShade.exposureLevel, 0);
 assert.equal(emissiveShade.emissive, true, "the furnace-front emissive bit is independent of sky exposure");
+
+for (const red of [0, 0.123456, 0.57, 1]) {
+  for (let exposure = 0; exposure <= SKY_EXPOSURE_LEVELS; exposure += 1) {
+    const retained = new Float32Array([packSkyExposureShade(red, exposure)])[0];
+    const unpacked = unpackSkyExposureShade(retained);
+    assert.equal(unpacked.exposureLevel, exposure);
+    assert.ok(Math.abs(unpacked.faceShade - red) < 0.000002, "Float32 color packing preserves authored tint");
+  }
+}
+
+function skyLitColorChannel(
+  channel: number,
+  surfaceIntensity: number,
+  exposureLevel: number,
+  torchIntensity = 0,
+  lightingEnabled = true,
+): number {
+  return lightingEnabled ? channel * (skyLitIntensity(surfaceIntensity, exposureLevel) + torchIntensity) : channel;
+}
+
+function surfaceLighting(state: Readonly<DayNightState>): readonly [number, number, number] {
+  return [
+    0.16 + state.ambientR * state.ambientIntensity * 0.75
+      + state.directionalR * state.directionalIntensity * 0.30,
+    0.16 + state.ambientG * state.ambientIntensity * 0.75
+      + state.directionalG * state.directionalIntensity * 0.30,
+    0.16 + state.ambientB * state.ambientIntensity * 0.75
+      + state.directionalB * state.directionalIntensity * 0.30,
+  ];
+}
+
+const cycle = { cycleLengthMs: 1_000, epochMs: 10_000, epochPhase: 0 };
+const midnightSurface = surfaceLighting(sampleDayNight(10_000, cycle));
+const noonSurface = surfaceLighting(sampleDayNight(10_500, cycle));
+const white = [1, 1, 1] as const;
+const roofedAtMidnight = white.map((channel, index) =>
+  skyLitColorChannel(channel, midnightSurface[index], 0));
+const roofedAtNoon = white.map((channel, index) =>
+  skyLitColorChannel(channel, noonSurface[index], 0));
+assert.deepEqual(roofedAtMidnight, [CAVE_LIGHT_FLOOR, CAVE_LIGHT_FLOOR, CAVE_LIGHT_FLOOR]);
+assert.deepEqual(roofedAtNoon, roofedAtMidnight,
+  "fully roofed colored vertices remain on the same cave floor from midnight through noon");
+
+const doorTint = [0.57, 0.34, 0.14] as const;
+const roofedDoor = doorTint.map((channel, index) =>
+  skyLitColorChannel(channel, noonSurface[index], 0));
+for (let index = 0; index < doorTint.length; index += 1) {
+  assert.ok(Math.abs(roofedDoor[index] - doorTint[index] * CAVE_LIGHT_FLOOR) < 1e-12,
+    "cave lighting scales rather than discards authored special-mesh tint");
+}
+const surfaceAtMidnight = doorTint.map((channel, index) =>
+  skyLitColorChannel(channel, midnightSurface[index], 3));
+const surfaceAtNoon = doorTint.map((channel, index) =>
+  skyLitColorChannel(channel, noonSurface[index], 3));
+assert.ok(surfaceAtNoon[0] > surfaceAtMidnight[0] * 3,
+  "fully exposed colored meshes preserve the existing day/night response");
+for (let exposure = 1; exposure < SKY_EXPOSURE_LEVELS; exposure += 1) {
+  const entrance = skyLitColorChannel(doorTint[0], noonSurface[0], exposure);
+  assert.ok(entrance > roofedDoor[0] && entrance < surfaceAtNoon[0],
+    "entrance exposure levels stay between the cave floor and surface light");
+}
+const torchContribution = [0.18, 0.08, 0.02] as const;
+const torchLitMidnight = doorTint.map((channel, index) =>
+  skyLitColorChannel(channel, midnightSurface[index], 0, torchContribution[index]));
+const torchLitNoon = doorTint.map((channel, index) =>
+  skyLitColorChannel(channel, noonSurface[index], 0, torchContribution[index]));
+assert.deepEqual(torchLitNoon, torchLitMidnight,
+  "torch contribution remains exposure-independent inside fully roofed caves");
+assert.ok(torchLitNoon.every((channel, index) => channel > roofedDoor[index]));
+assert.deepEqual(
+  doorTint.map((channel, index) => skyLitColorChannel(channel, noonSurface[index], 0, 1, false)),
+  doorTint,
+  "lighting-disabled first-person colors bypass both packed daylight and torch math",
+);
 
 for (const opaque of [BLOCK.STONE, BLOCK.FURNACE, BLOCK.CHEST, BLOCK.LEAVES]) {
   assert.equal(blockStopsSky(opaque), true);

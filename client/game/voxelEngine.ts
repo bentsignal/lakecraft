@@ -419,9 +419,14 @@ varying vec3 vColor;
 varying float vFog;
 void main() {
   gl_Position = uMvp * vec4(aPosition, 1.0);
-  vec3 lighting = vec3(0.16)
+  float packedExposure = step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)}, aColor.r);
+  float encodedRed = aColor.r - packedExposure * ${SKY_SHADE_PACK_MARKER.toFixed(1)};
+  vec3 baseColor = vec3(mix(aColor.r, mod(encodedRed, 2.0), packedExposure), aColor.g, aColor.b);
+  float skyExposure = mix(1.0, floor(encodedRed / 2.0) / ${SKY_EXPOSURE_LEVELS.toFixed(1)}, packedExposure);
+  vec3 surfaceLighting = vec3(0.16)
     + uAmbientColor * uAmbientIntensity * 0.75
     + uDirectionalColor * uDirectionalIntensity * 0.30;
+  vec3 lighting = mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}), surfaceLighting, skyExposure);
   vec3 torchLight = vec3(0.0);
   for (int lightIndex = 0; lightIndex < 8; lightIndex++) {
     vec4 light = uTorchLights[lightIndex];
@@ -429,7 +434,7 @@ void main() {
     torchLight += vec3(1.0, 0.43, 0.12) * attenuation * attenuation * 0.95;
   }
   lighting += torchLight;
-  vColor = aColor * mix(vec3(1.0), lighting, uLightingEnabled);
+  vColor = baseColor * mix(vec3(1.0), lighting, uLightingEnabled);
   float distanceFromCamera = length(aPosition - uCamera);
   vFog = uFogEnabled * smoothstep(18.0, 42.0, distanceFromCamera);
 }`;
@@ -1150,13 +1155,9 @@ function tint(color: Vec3, shade: number, variation = 1): Vec3 {
   return [color[0] * shade * variation, color[1] * shade * variation, color[2] * shade * variation];
 }
 
-function attenuateColorVerticesForSky(output: number[], start: number, exposureLevel: number): void {
-  const exposure = Math.max(0, Math.min(SKY_EXPOSURE_LEVELS, exposureLevel)) / SKY_EXPOSURE_LEVELS;
-  const scale = 0.25 + exposure * 0.75;
+function packColorVerticesForSky(output: number[], start: number, exposureLevel: number): void {
   for (let offset = start + 3; offset < output.length; offset += 6) {
-    output[offset] *= scale;
-    output[offset + 1] *= scale;
-    output[offset + 2] *= scale;
+    output[offset] = packSkyExposureShade(output[offset], exposureLevel);
   }
 }
 
@@ -1849,7 +1850,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (block === BLOCK.CHEST) {
         const start = colorVertices.length;
         appendChestMesh(colorVertices, x, y, z);
-        attenuateColorVerticesForSky(
+        packColorVerticesForSky(
           colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
@@ -1857,7 +1858,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (isDoorBlock(block)) {
         const start = colorVertices.length;
         appendDoorMesh(colorVertices, x, y, z, block === BLOCK.DOOR_OPEN);
-        attenuateColorVerticesForSky(
+        packColorVerticesForSky(
           colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
@@ -1865,7 +1866,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (block === BLOCK.BED) {
         const start = colorVertices.length;
         appendBedMesh(colorVertices, x, y, z);
-        attenuateColorVerticesForSky(
+        packColorVerticesForSky(
           colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
@@ -1873,7 +1874,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (block === BLOCK.LADDER) {
         const start = colorVertices.length;
         appendLadderMesh(colorVertices, x, y, z);
-        attenuateColorVerticesForSky(
+        packColorVerticesForSky(
           colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;

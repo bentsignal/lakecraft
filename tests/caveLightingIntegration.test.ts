@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { TEXTURED_WORLD_VERTEX_FLOATS, blockTextureForFace } from "../client/game/blockTextures.ts";
-import { unpackSkyExposureShade } from "../client/game/skyExposure.ts";
+import { packSkyExposureShade, unpackSkyExposureShade } from "../client/game/skyExposure.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { appendSaplingMesh } from "../client/game/voxelEngine.ts";
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const colorShader = engine.slice(engine.indexOf("const VERTEX_SHADER"), engine.indexOf("const FRAGMENT_SHADER"));
+assert.ok(colorShader.includes("vec3 lighting = mix(vec3("));
+assert.ok(colorShader.includes("surfaceLighting, skyExposure)"));
+assert.ok(colorShader.includes("vColor = baseColor * mix(vec3(1.0), lighting, uLightingEnabled)"));
+for (const [red, exposure] of [[0.57, 0], [0.57, 1], [0.57, 2], [0.57, 3]] as const) {
+  const unpacked = unpackSkyExposureShade(packSkyExposureShade(red, exposure));
+  assert.equal(unpacked.exposureLevel, exposure);
+  assert.ok(Math.abs(unpacked.faceShade - red) < 1e-12);
+}
 const shader = engine.slice(
   engine.indexOf("const TERRAIN_VERTEX_SHADER"),
   engine.indexOf("const TERRAIN_FRAGMENT_SHADER"),
