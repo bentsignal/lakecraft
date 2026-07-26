@@ -124,6 +124,15 @@ assert.ok((saplingAlphaCounts.get(255) ?? 0) >= 45, "sapling foliage remains rea
 
 // Intentional atlas regeneration should update this fingerprint in the same change.
 assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "7fd3debd", "generated RGBA atlas changed unexpectedly");
+const generatedSource = readFileSync(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
+const packedIndexes = generatedSource.match(/const packed = atob\("([^"]+)"\)/)?.[1];
+assert.ok(packedIndexes);
+assert.equal(Buffer.from(packedIndexes, "base64").length, 4_465,
+  "atlas indexes retain the reviewed deterministic LZSS fixture");
+assert.ok(generatedSource.includes("const TEXTURE_ATLAS_INDEXES = (() => {")
+    && generatedSource.includes("new Uint8Array(7680)")
+    && !generatedSource.includes("number[]"),
+  "one-time decode releases packed data and uses one fixed index buffer without transient boxed-number storage");
 
 const png = readFileSync(new URL("../client/game/generated/texture-atlas-v1.png", import.meta.url));
 assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
@@ -157,8 +166,8 @@ try {
   assert.equal(regeneration.status, 0, regeneration.stderr || regeneration.stdout);
   assert.deepEqual(readFileSync(regeneratedPngPath), png, "the concept sheet deterministically regenerates the PNG atlas");
   assert.deepEqual(
-    readFileSync(regeneratedTsPath),
-    readFileSync(new URL("../client/game/generated/textureAtlas.ts", import.meta.url)),
+    readFileSync(regeneratedTsPath, "utf8"),
+    generatedSource,
     "the concept sheet deterministically regenerates the embedded RGBA source",
   );
 } finally {
