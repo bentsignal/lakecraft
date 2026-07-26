@@ -16,6 +16,7 @@ import {
 } from "../client/singleplayer/localSave.ts";
 import {
   LOCAL_WORLD_CAPACITY_WARNING_CHARS,
+  LOCAL_WORLD_CREATE_TRANSACTION_KEY,
   LOCAL_WORLD_DELETE_TRANSACTION_KEY,
   LOCAL_WORLD_NAMESPACE_BUDGET_CHARS,
   LOCAL_WORLD_REGISTRY_SLOT_A_KEY,
@@ -210,6 +211,221 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   assert.equal(deleteLocalWorld(storage, third.world.id, 40_000).ok, true);
   assert.equal(listLocalWorlds(storage).worlds.length, 2);
   assert.equal(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: third.world.id }).status, "empty");
+}
+
+// Create establishes a checksummed intent before touching a world namespace.
+// A definite prewrite exception leaves no orphan, and retry keeps the exact
+// requested identity without consuming an extra registry slot.
+{
+  const storage = new MemoryStorage();
+  storage.failWritesFor = LOCAL_WORLD_CREATE_TRANSACTION_KEY;
+  const input = { name: "Prewrite Create", seedText: "prewrite", gameMode: "creative" as const, now: 101 };
+  const failed = createLocalWorld(storage, input);
+  assert.deepEqual(failed, {
+    ok: false,
+    reason: "world_create_transaction_failed",
+    mutationStarted: true,
+  });
+  assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 0);
+  assert.equal([...storage.values.keys()].some((key) => key.includes(".save.")), false);
+  storage.failWritesFor = null;
+  const retried = createLocalWorld(storage, input);
+  assert.ok(retried.ok);
+  assert.equal(retried.world.name, input.name);
+  assert.equal(retried.world.seed, deterministicLocalWorldSeed(input.seedText));
+  assert.equal(retried.world.initialGameMode, input.gameMode);
+  assert.equal(retried.world.createdAt, input.now);
+}
+
+// Both a lost marker acknowledgement and a lost registry acknowledgement are
+// reconciled at the registry commit point. The former never reaches namespace
+// writes; the latter returns the already-created world on an identical retry.
+{
+  const markerStorage = new MemoryStorage();
+  markerStorage.throwAfterWritesFor = LOCAL_WORLD_CREATE_TRANSACTION_KEY;
+  const markerInput = { name: "Marker Durable", seedText: "marker-durable", gameMode: "survival" as const, now: 102 };
+  assert.deepEqual(createLocalWorld(markerStorage, markerInput), {
+    ok: false,
+    reason: "world_create_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.equal(markerStorage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+  assert.equal([...markerStorage.values.keys()].some((key) => key.includes(".save.")), false);
+  assert.ok(loadLocalWorldRegistry(markerStorage).issues.includes("create:cleanup_completed"));
+  assert.equal(markerStorage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), false);
+
+  const registryStorage = new MemoryStorage();
+  const registryInput = { name: "Registry Durable", seedText: "registry-durable", gameMode: "creative" as const, now: 103 };
+  registryStorage.throwAfterWritesFor = nextRegistryWriteKey(registryStorage);
+  const ambiguous = createLocalWorld(registryStorage, registryInput);
+  assert.deepEqual(ambiguous, {
+    ok: false,
+    reason: "registry_storage_write_failed_transaction_pending",
+    mutationStarted: true,
+  });
+  assert.equal(registryStorage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+  const recovered = loadLocalWorldRegistry(registryStorage);
+  assert.ok(recovered.issues.includes("create:commit_completed"));
+  assert.equal(recovered.registry?.worlds.length, 1);
+  const replayed = createLocalWorld(registryStorage, registryInput);
+  assert.ok(replayed.ok);
+  assert.equal(replayed.world.id, recovered.registry?.worlds[0].id);
+  assert.equal(loadLocalWorldRegistry(registryStorage).registry?.worlds.length, 1);
+}
+
+// Registry readback loss covers both alternating slots. A durable write rolls
+// forward, while a competing-tab replacement rolls back only the intended
+// namespace and conserves every sibling byte.
+for (const mode of ["read_throw", "tab_replace"] as const) {
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, {
+    name: `Create Sibling ${mode}`,
+    seedText: `sibling-${mode}`,
+    gameMode: "survival",
+    now: 110,
+  });
+  assert.ok(sibling.ok);
+  const siblingKeys = singlePlayerWorldStorageKeys(sibling.world.id);
+  const siblingValues = siblingKeys.map((key) => storage.values.get(key) ?? null);
+  const target = nextRegistryWriteKey(storage);
+  if (mode === "read_throw") {
+    storage.failReadAfterWriteFor = target;
+  } else {
+    const authoritative = target === LOCAL_WORLD_REGISTRY_SLOT_A_KEY
+      ? storage.values.get(LOCAL_WORLD_REGISTRY_SLOT_B_KEY)
+      : storage.values.get(LOCAL_WORLD_REGISTRY_SLOT_A_KEY);
+    assert.ok(authoritative);
+    storage.replaceWritesFor.set(target, () => authoritative);
+  }
+  const input = { name: `Ambiguous ${mode}`, seedText: mode, gameMode: "creative" as const, now: 111 };
+  const ambiguous = createLocalWorld(storage, input);
+  assert.ok(!ambiguous.ok && ambiguous.reason === "registry_readback_failed_transaction_pending");
+  const pendingRaw = storage.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  assert.ok(pendingRaw);
+  const intendedId = (JSON.parse(pendingRaw) as { world: { id: string } }).world.id;
+  assert.ok(singlePlayerWorldStorageKeys(intendedId).some((key) => storage.values.has(key)));
+  const recovered = loadLocalWorldRegistry(storage);
+  if (mode === "read_throw") {
+    assert.ok(recovered.issues.includes("create:commit_completed"));
+    assert.ok(recovered.registry?.worlds.some(({ id }) => id === intendedId));
+  } else {
+    assert.ok(recovered.issues.includes("create:cleanup_completed"));
+    assert.deepEqual(singlePlayerWorldStorageKeys(intendedId).map((key) => storage.values.get(key) ?? null),
+      [null, null, null, null]);
+  }
+  assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
+}
+
+// Corrupt or interleaved markers are opaque: recovery may clear the global
+// marker but can never derive a namespace mutation from untrusted identity.
+{
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, { name: "Marker Guard", seedText: "guard", gameMode: "survival", now: 120 });
+  assert.ok(sibling.ok);
+  const siblingKeys = singlePlayerWorldStorageKeys(sibling.world.id);
+  const siblingValues = siblingKeys.map((key) => storage.values.get(key) ?? null);
+  storage.values.set(LOCAL_WORLD_CREATE_TRANSACTION_KEY, `{"world":{"id":"${sibling.world.id}"}}`);
+  storage.failDeletesFor = LOCAL_WORLD_CREATE_TRANSACTION_KEY;
+  for (let retry = 0; retry < 2; retry += 1) {
+    const pending = loadLocalWorldRegistry(storage);
+    assert.ok(pending.issues.includes("create:invalid_transaction_pending"));
+    assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
+    assert.deepEqual(createLocalWorld(storage, {
+      name: "Blocked Nested Create",
+      seedText: "blocked",
+      gameMode: "creative",
+      now: 121,
+    }), { ok: false, reason: "world_create_recovery_pending", mutationStarted: false });
+  }
+  storage.failDeletesFor = null;
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:invalid_transaction_cleared"));
+  assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
+}
+
+// A second tab can replace the marker between setItem and readback. Because the
+// attempted create has not written its namespace yet, recovery follows only
+// the replacement's valid identity and leaves existing worlds byte-exact.
+{
+  const donor = new MemoryStorage();
+  donor.failWritesFor = nextRegistryWriteKey(donor);
+  assert.equal(createLocalWorld(donor, {
+    name: "Other Tab Intent",
+    seedText: "other-tab",
+    gameMode: "creative",
+    now: 125,
+  }).ok, false);
+  const otherIntent = donor.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY);
+  assert.ok(otherIntent);
+
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, { name: "Tab Sibling", seedText: "tab-sibling", gameMode: "survival", now: 124 });
+  assert.ok(sibling.ok);
+  const siblingKeys = singlePlayerWorldStorageKeys(sibling.world.id);
+  const siblingValues = siblingKeys.map((key) => storage.values.get(key) ?? null);
+  storage.replaceWritesFor.set(LOCAL_WORLD_CREATE_TRANSACTION_KEY, () => otherIntent);
+  assert.deepEqual(createLocalWorld(storage, {
+    name: "Losing Tab",
+    seedText: "losing-tab",
+    gameMode: "survival",
+    now: 126,
+  }), { ok: false, reason: "world_create_transaction_pending", mutationStarted: true });
+  const siblingKeySet = new Set(siblingKeys);
+  assert.ok([...storage.values.keys()].filter((key) => key.includes(".save."))
+    .every((key) => siblingKeySet.has(key)));
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:cleanup_completed"));
+  assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
+}
+
+// A definitely uncommitted registry write leaves a complete namespace only
+// while its valid intent is pending. Repeated failed cleanup is bounded to that
+// namespace; successful recovery restores capacity and permits one exact retry.
+{
+  const storage = new MemoryStorage();
+  const sibling = createLocalWorld(storage, { name: "Capacity Sibling", seedText: "capacity-sibling", gameMode: "survival", now: 130 });
+  assert.ok(sibling.ok);
+  const siblingKeys = singlePlayerWorldStorageKeys(sibling.world.id);
+  const siblingValues = siblingKeys.map((key) => storage.values.get(key) ?? null);
+  const target = nextRegistryWriteKey(storage);
+  storage.failWritesFor = target;
+  const input = { name: "Cleanup Retry", seedText: "cleanup-retry", gameMode: "creative" as const, now: 131 };
+  const failed = createLocalWorld(storage, input);
+  assert.ok(!failed.ok && failed.reason === "registry_storage_write_failed_transaction_pending");
+  const transaction = JSON.parse(storage.values.get(LOCAL_WORLD_CREATE_TRANSACTION_KEY)!) as { world: { id: string } };
+  const intendedKeys = singlePlayerWorldStorageKeys(transaction.world.id);
+  storage.failWritesFor = null;
+  storage.failDeletesFor = intendedKeys[1];
+  for (let retry = 0; retry < 2; retry += 1) {
+    assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:recovery_pending"));
+    assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+    assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
+  }
+  storage.failDeletesFor = null;
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:cleanup_completed"));
+  assert.deepEqual(intendedKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
+  const retried = createLocalWorld(storage, input);
+  assert.ok(retried.ok);
+  assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 2);
+  assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), false);
+  assert.deepEqual(siblingKeys.map((key) => storage.values.get(key) ?? null), siblingValues);
+}
+
+// Failure to clear a committed marker never turns a successful create into a
+// duplicate-prone error. Loads remain fail-closed until removal verifies.
+{
+  const storage = new MemoryStorage();
+  storage.failDeletesFor = LOCAL_WORLD_CREATE_TRANSACTION_KEY;
+  const input = { name: "Clear Pending", seedText: "clear-pending", gameMode: "survival" as const, now: 132 };
+  const created = createLocalWorld(storage, input);
+  assert.ok(created.ok);
+  assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), true);
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:recovery_pending"));
+  const replayed = createLocalWorld(storage, input);
+  assert.ok(replayed.ok);
+  assert.equal(replayed.world.id, created.world.id);
+  assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 1);
+  storage.failDeletesFor = null;
+  assert.ok(loadLocalWorldRegistry(storage).issues.includes("create:commit_completed"));
+  assert.equal(storage.values.has(LOCAL_WORLD_CREATE_TRANSACTION_KEY), false);
 }
 
 // Capacity is a deterministic per-namespace calculation. Unrelated origin
