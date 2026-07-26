@@ -433,7 +433,6 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "walkPhase": "Sn",
   "warningSender": "na",
   "wave": "te",
-  "wide": "Jt",
   "woodItem": "Xr",
   "woolCount": "Pr",
   "woolItem": "La",

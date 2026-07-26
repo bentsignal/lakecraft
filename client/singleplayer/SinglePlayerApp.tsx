@@ -1937,7 +1937,7 @@ function SinglePlayerWorld({
   );
 }
 
-export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPointerLockHandoff?: boolean } = {}) {
+export function SinglePlayerApp() {
   const storage = useMemo(browserSinglePlayerStorage, []);
   const [activeWorld, setActiveWorld] = useState<{
     world: LocalWorldRecord;

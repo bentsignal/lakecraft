@@ -1,10 +1,10 @@
-import type { ComponentChildren } from "preact";
 import { useMemo, useState } from "preact/hooks";
 import { useQuery } from "lakebed/client";
 import type { FernHollowServerStatus } from "../../shared/multiplayer";
 import { OptionsDialog } from "../components/OptionsDialog";
 import type { ClientSettings } from "../settings";
 import { LobbyStyles } from "./LobbyStyles";
+import { menuButton } from "./menuButton.tsx";
 
 export type LobbyAuthState = "loading" | "signed_out" | "needs_username" | "ready";
 export type UsernameClaimState = "idle" | "checking" | "available" | "saving" | "claimed" | "taken" | "error";
@@ -75,10 +75,6 @@ function Panorama() {
   );
 }
 
-function MenuButton({ children, disabled, id, onClick, type = "button", wide = false }: { children: ComponentChildren; disabled?: boolean; id?: string; onClick?: () => void; type?: "button" | "submit"; wide?: boolean }) {
-  return <button className={`lc-menu-button${wide ? " is-wide" : ""}`} disabled={disabled} id={id} onClick={onClick} type={type}>{children}</button>;
-}
-
 function UsernameMenu(props: LobbyScreenProps & { onCancel?: () => void }) {
   const [localError, setLocalError] = useState("");
   const validation = useMemo(() => validateLakecraftUsername(props.username), [props.username]);
@@ -116,7 +112,7 @@ function UsernameMenu(props: LobbyScreenProps & { onCancel?: () => void }) {
         value={props.username}
       />
       <p className={`lc-username-help${localError || state === "taken" || state === "error" ? " is-error" : ""}`} id="lc-username-help">{error}</p>
-      <MenuButton disabled={busy || !validation.valid} type="submit" wide>{busy ? "Please wait…" : "Done"}</MenuButton>
+      {menuButton(busy ? "Please wait…" : "Done", undefined, busy || !validation.valid, 3)}
       {props.onCancel ? <button className="lc-menu-link" onClick={props.onCancel} type="button">Back</button> : null}
     </form>
   );
@@ -195,8 +191,8 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
         </div>
         <p className={`lc-server-hint${phase === "error" ? " is-error" : ""}`} role={phase === "error" ? "alert" : "status"}>{phase === "error" && props.joinError ? props.joinError : accountHint}</p>
         <div className="lc-server-actions">
-          <MenuButton disabled={!canJoin} onClick={props.onJoinWorld}><JoinLabel {...props} /></MenuButton>
-          <MenuButton onClick={onBack}>Back</MenuButton>
+          {menuButton(<JoinLabel {...props} />, props.onJoinWorld, !canJoin)}
+          {menuButton("Back", onBack)}
         </div>
       </section>
       <footer className="lc-title-footer"><span>Lakecraft {props.buildLabel || "Alpha"}</span><span>craft.lakebed.app</span></footer>
@@ -232,9 +228,9 @@ export function LobbyScreen(props: LobbyScreenProps) {
         </header>
 
         <div className="lc-title-menu">
-          <MenuButton onClick={props.onJoinSingleplayer} wide>Singleplayer</MenuButton>
-          <MenuButton onClick={() => setPage("multiplayer")} wide>Multiplayer</MenuButton>
-          <MenuButton id="lc-title-options" onClick={() => setOptionsOpen(true)} wide>Options…</MenuButton>
+          {menuButton("Singleplayer", props.onJoinSingleplayer, false, 2)}
+          {menuButton("Multiplayer", () => setPage("multiplayer"), false, 2)}
+          {menuButton("Options…", () => setOptionsOpen(true), false, 2, "lc-title-options")}
         </div>
       </section>
       {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
