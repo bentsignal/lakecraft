@@ -16,6 +16,7 @@ import {
   type VoxelPerformanceStats,
   type WorldEdit as EngineWorldEdit,
 } from "./game";
+import { performanceHudCoreText } from "./game/performanceHud.ts";
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
 import { shouldRunSinglePlayer } from "./runtimeMode.ts";
@@ -153,7 +154,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .lakecraft-world { cursor: none; display: block; height: 100%; outline: none; width: 100%; }
 .lakecraft-error { background: #171a16; color: #e6dcc1; display: grid; inset: 0; padding: 40px; place-content: center; position: absolute; z-index: 120; }
 .lakecraft-error strong { color: #d49a45; font: 700 16px "Courier New", monospace; }.lakecraft-error p { max-width: 560px; }
-.lakecraft-perf { background: rgba(9,12,9,.88); border-left: 3px solid #91ae58; color: #dce7c4; font: 11px/1.45 "Courier New", monospace; left: 14px; padding: 9px 11px; pointer-events: none; position: absolute; top: 14px; white-space: pre; z-index: 70; }
 .lakecraft-sleep-layer { align-items: center; background: rgba(7,10,17,.76); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 67; }
 .lakecraft-sleep { background: #d9cfb3; border-top: 7px solid #8f3e3e; box-shadow: 12px 14px 0 rgba(42,49,66,.5), 0 28px 90px rgba(0,0,0,.58); color: #24261f; max-width: 430px; padding: 30px; width: 100%; }
 .lakecraft-sleep small { color: #8f3e3e; font: 10px "Courier New", monospace; letter-spacing: .12em; text-transform: uppercase; }
@@ -3572,7 +3572,7 @@ function GameApp({
       />
 
       {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{`FPS ${performanceStats.fps.toFixed(0)}  p95 ${performanceStats.p95FrameTimeMs.toFixed(1)}ms\nXYZ ${poseRef.current.x.toFixed(1)} / ${poseRef.current.y.toFixed(1)} / ${poseRef.current.z.toFixed(1)}\nDRAW ${performanceStats.drawCalls}  CHUNKS ${performanceStats.visibleChunkCount}/${performanceStats.chunkCount}\nPLAYERS ${performanceStats.remoteVisiblePlayers}  REMOTE ${performanceStats.remoteMeshMs.toFixed(2)}ms / ${(performanceStats.remoteUploadBytes / 1024).toFixed(0)}KB\nSYNC ${segmentSyncTelemetry}\nDROPS ${performanceStats.droppedItemVisibleCount}/${performanceStats.droppedItemCount}  ${performanceStats.droppedItemMeshMs.toFixed(2)}ms / ${(performanceStats.droppedItemUploadBytes / 1024).toFixed(0)}KB\nMOBS ${performanceStats.mobVisibleCount}/${performanceStats.mobCount}  AI ${performanceStats.mobSimulationMs.toFixed(2)}ms\nPFX ${performanceStats.activeParticleCount}  DRAW ${performanceStats.particleDrawCalls}  ${(performanceStats.particleUploadBytes / 1024).toFixed(0)}KB\nLIGHT ${performanceStats.activeTorchLights}/${performanceStats.torchCount} torches\nVERT ${performanceStats.worldVertexCount.toLocaleString()}  MESH ${performanceStats.lastMeshRebuildMs.toFixed(1)}ms`}</output>
+        <output className="lakecraft-perf" aria-label="Performance statistics">{`${performanceHudCoreText(performanceStats)}\nSYNC ${segmentSyncTelemetry}`}</output>
       ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}

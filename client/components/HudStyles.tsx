@@ -16,6 +16,7 @@ const HUD_CSS = `
 }
 .lc-hud, .lc-drawer-layer, .lc-unsupported, .lc-menu-layer, .lc-death-layer { color: var(--lc-paper); font-family: var(--lc-pixel-font); image-rendering: pixelated; }
 .lc-hud { height: 100vh; height: 100dvh; inset: 0 auto auto 0; overflow: hidden; pointer-events: none; position: fixed; width: 100vw; z-index: 20; }
+.lakecraft-perf,.lc-local-perf { background: #000c; color: #fff; font: 11px/1.4 var(--lc-pixel-font); padding: 8px; pointer-events: none; position: fixed; top: 12px; white-space: pre; z-index: 70; }.lakecraft-perf { left: 12px; }.lc-local-perf { right: 8px; }
 .lc-hud button, .lc-drawer-layer button, .lc-unsupported button, .lc-menu-layer button, .lc-death-layer button { font: inherit; }
 .lc-kicker { color: var(--lc-amber); font: 9px/1.2 var(--lc-note); letter-spacing: .14em; text-transform: uppercase; }
 .lc-crosshair { height: 16px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 16px; z-index: 3; }
