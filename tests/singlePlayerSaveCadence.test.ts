@@ -49,6 +49,13 @@ for (let elapsed = SINGLEPLAYER_MAX_ACTIVE_SAMPLE_GAP_MS;
 }
 assert.equal(sample.autosaveDue, true, "regular active samples eventually complete the one-minute window");
 
+state = sample.state;
+sample = sampleSaveCadence(state, 10_000_000, false);
+assert.equal(sample.autosaveDue, true, "a failed due save remains due while inactive");
+assert.equal(false && sample.autosaveDue, false, "the caller gate suppresses pause/background retries");
+sample = sampleSaveCadence(sample.state, 10_000_001, true);
+assert.equal(sample.autosaveDue, true, "the due save retries immediately when active play resumes");
+
 state = createSaveCadenceState(100);
 state = markSaveCadenceDirty(state);
 state = sampleSaveCadence(state, 100, true).state;

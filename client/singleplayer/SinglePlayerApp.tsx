@@ -345,9 +345,8 @@ function SinglePlayerWorld({
         : initial.current.saveLocked
           ? "This local world could not be read. Saving is disabled; reset it to start fresh."
           : "";
-  const initialSavedAt = "savedAt" in initial.current.load ? initial.current.load.savedAt : null;
   const [autosaveStatusText, setAutosaveStatusText] = useState(initialSaveText);
-  const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(initialSavedAt);
+  const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null);
   const pointerUiBlockedRef = useRef(false);
   pointerUiBlockedRef.current = inventoryOpen || worldModalOpen || deathScreenOpen
     || document.visibilityState !== "visible";
@@ -504,7 +503,7 @@ function SinglePlayerWorld({
     };
     initialRuntimeRef.current = snapshot.runtime;
     saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
-    setLastAutosavedAt(now);
+    if (reason === "autosave") setLastAutosavedAt(now);
     setAutosaveStatusText("");
     return true;
   }
@@ -1634,7 +1633,7 @@ function SinglePlayerWorld({
       if (active) markWorldDirty();
       const next = sampleSaveCadence(saveCadenceRef.current, now, active);
       saveCadenceRef.current = next.state;
-      if (next.autosaveDue) performSaveRef.current("autosave");
+      if (active && next.autosaveDue) performSaveRef.current("autosave");
     };
     sample();
     const interval = window.setInterval(sample, 1_000);

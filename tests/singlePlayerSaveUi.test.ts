@@ -49,7 +49,12 @@ assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(storage"), "autosave a
 assert.ok(singlePlayer.includes("engine.importRuntimeSnapshot(initialRuntimeRef.current)"), "pose, health, time, and mobs resume through the strict engine importer");
 assert.ok(singlePlayer.includes("runtime: engineRef.current?.exportRuntimeSnapshot()"), "each committed snapshot captures current engine-owned state");
 assert.ok(singlePlayer.includes("sampleSaveCadence"), "autosaves use active-play cadence instead of a wall-clock write loop");
-assert.ok(singlePlayer.includes('performSaveRef.current("autosave")'), "a due cadence sample executes one autosave");
+assert.ok(singlePlayer.includes('if (active && next.autosaveDue) performSaveRef.current("autosave")'),
+  "a due autosave is never invoked while pause, death, inventory, or background makes play inactive");
+assert.ok(singlePlayer.includes("useState<number | null>(null)"),
+  "creation and loaded journal saves do not masquerade as periodic autosaves");
+assert.ok(singlePlayer.includes('if (reason === "autosave") setLastAutosavedAt(now)'),
+  "only a successful periodic autosave advances the displayed autosave timestamp");
 assert.match(singlePlayer, /const returnToTitle = \(\) => \{\s+if \(!persist\("quit"\)\) return;\s+quitSavedRef\.current = true;[\s\S]*?onExit\(\);/,
   "Save and Quit cannot navigate until the synchronous verified journal commit succeeds");
 assert.ok(singlePlayer.includes('disconnectDisabled={saveLockedRef.current}'),
