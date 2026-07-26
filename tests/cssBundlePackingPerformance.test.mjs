@@ -8,12 +8,27 @@ import {
   minifyCssText,
 } from "../scripts/css-template-compression.mjs";
 
-// Ten isolated trials put the production-corpus median at 3.6–4.2 ms; ten more
-// with eight CPU burners stayed at or below 11.5 ms. A 40 ms ceiling rejects a
-// sustained order-of-magnitude regression while retaining shared-runner margin.
+// Ten isolated trials put the production-corpus median at 3.6–4.2 ms; eight CPU
+// burners stayed at or below 11.5 ms, while independent full-suite contention
+// reached about 40 ms. A 100 ms ceiling retains 2.5x margin over that contended
+// sample while still rejecting a sustained 20–25x regression from the baseline.
 // Median-of-five requires three samples to regress instead of one lucky pass.
-const MAXIMUM_MEDIAN_PACK_MS = 40;
+const MAXIMUM_MEDIAN_PACK_MS = 100;
 const SAMPLE_COUNT = 5;
+
+function medianOfFive(samples) {
+  assert.equal(samples.length, SAMPLE_COUNT, "the guard requires exactly five timing samples");
+  return [...samples].sort((left, right) => left - right)[Math.floor(SAMPLE_COUNT / 2)];
+}
+
+assert.ok(
+  medianOfFive([101, 101, 101, 101, 1]) >= MAXIMUM_MEDIAN_PACK_MS,
+  "one lucky fast sample cannot hide four sustained slow samples",
+);
+assert.ok(
+  medianOfFive([101, 101, 101, 101, 101]) >= MAXIMUM_MEDIAN_PACK_MS,
+  "five sustained slow samples must exceed the timing budget",
+);
 
 async function clientSourceUrls(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -53,7 +68,7 @@ for (let sample = 0; sample < SAMPLE_COUNT; sample += 1) {
   assert.deepEqual(packed, warmup, "timed packing must remain deterministic");
 }
 
-const medianMs = [...samples].sort((left, right) => left - right)[Math.floor(SAMPLE_COUNT / 2)];
+const medianMs = medianOfFive(samples);
 assert.ok(
   medianMs < MAXIMUM_MEDIAN_PACK_MS,
   `shared CSS packing median-of-${SAMPLE_COUNT} took ${medianMs.toFixed(1)}ms`,
