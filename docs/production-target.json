@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "lakecraft",
+  "deployId": "dep_GeGTYPSk0TrcWk9E",
+  "ownerId": "github:54612739",
+  "publicUrl": "https://craft.lakebed.app",
+  "canonicalUrl": "https://quiet-garden-75f6fe48fb.lakebed.app",
+  "minimumLimits": {
+    "artifactBytes": 1048576,
+    "stateBytes": 1048576,
+    "stateRows": 16384,
+    "requestsPerDay": 10000,
+    "mutationsPerDay": 1000
+  },
+  "minimumRemaining": {
+    "requests": 1000,
+    "mutations": 100
+  }
+}
