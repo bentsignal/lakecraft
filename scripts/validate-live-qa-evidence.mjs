@@ -130,7 +130,7 @@ const MULTIPLAYER_MAX_WINDOW_MS = 30 * 60 * 1_000;
 const MAX_EVIDENCE_FILES = 256;
 const MAX_PATH_COMPONENTS = 16;
 const MAX_EVIDENCE_PATH_CHARS = 320;
-const CAPTURE_KEYS = ["taskId", "runId", "appCommit", "capturedAt", "sequence"];
+const CAPTURE_KEYS = ["taskId", "runId", "appCommit", "capturedAt", "completedAt", "sequence"];
 const COMMON_ENTRY_KEYS = ["kind", "viewport", "path", "sha256", ...CAPTURE_KEYS];
 const EVIDENCE_KINDS = new Set(TASK41_CASES.flatMap(({ kinds }) => kinds));
 const STAGE_REBUILD_CACHE = new Map();
@@ -283,6 +283,7 @@ function captureContext(evidence, expectedCommit, nowMs) {
     paths: new Map(),
     lastSequence: 0,
     lastCapturedAt: startedAt - 1,
+    captureWindows: [],
   };
 }
 
@@ -312,8 +313,9 @@ function validateCapture(
     throw new Error(`${label} is not bound to this Task 41 run and commit.`);
   }
   const capturedAt = exactTimestamp(value.capturedAt, `${label}.capturedAt`);
-  if (capturedAt < context.startedAt || capturedAt > context.completedAt) {
-    throw new Error(`${label}.capturedAt falls outside the run.`);
+  const completedAt = exactTimestamp(value.completedAt, `${label}.completedAt`);
+  if (capturedAt < context.startedAt || completedAt > context.completedAt || completedAt < capturedAt) {
+    throw new Error(`${label} capture window falls outside the run.`);
   }
   if (capturedAt <= context.lastCapturedAt) {
     throw new Error(`${label}.capturedAt must increase in canonical manifest order.`);
@@ -326,6 +328,7 @@ function validateCapture(
   context.lastSequence = sequence;
   const identity = path === undefined ? label : `${path}\0${hash}`;
   context.captures.set(sequence, identity);
+  context.captureWindows.push({ label, startedAt: capturedAt, completedAt });
   if (path !== undefined) registerReference(context, path, hash, label, duplicateHashOf);
 }
 
@@ -395,6 +398,9 @@ function validateEvidenceEntry(entry, label, expected, context) {
       throw new Error(`${label} video dimensions do not match its viewport and DPR.`);
     }
     finiteNumber(value.durationMs, `${label}.durationMs`, 1_000, MAX_RUN_MS);
+    if (Date.parse(value.completedAt) - Date.parse(value.capturedAt) !== value.durationMs) {
+      throw new Error(`${label} video duration must equal its capture window.`);
+    }
   }
   return value;
 }
@@ -624,7 +630,7 @@ function validateArtifact(value, context) {
     "minimumHeadroomBytes", "artifactHash", "clientBundleHash", "pairedArtifactsEqual",
     "artifactFileSha256", "stagedClientPath", "pairedStagedClientPath", "stagedClientSha256",
     "stagedServerPath", "pairedStagedServerPath", "stagedServerSha256",
-    "pairedCapturedAt", "pairedSequence", ...CAPTURE_KEYS,
+    "pairedCapturedAt", "pairedCompletedAt", "pairedSequence", ...CAPTURE_KEYS,
   ], "artifact");
   for (const key of [
     "reportPath", "pairedReportPath", "artifactPath", "pairedArtifactPath",
@@ -660,10 +666,11 @@ function validateArtifact(value, context) {
     runId: artifact.runId,
     appCommit: artifact.appCommit,
     capturedAt: artifact.pairedCapturedAt,
+    completedAt: artifact.pairedCompletedAt,
     sequence: artifact.pairedSequence,
   }, "artifact build B", context, artifact.pairedReportPath, artifact.pairedReportSha256);
-  if (Date.parse(artifact.pairedCapturedAt) <= Date.parse(artifact.capturedAt)) {
-    throw new Error("artifact build B must be captured after build A.");
+  if (Date.parse(artifact.pairedCapturedAt) < Date.parse(artifact.completedAt)) {
+    throw new Error("artifact build B must start after build A completes.");
   }
   registerReference(context, artifact.artifactPath, artifact.artifactFileSha256, "artifact file A");
   registerReference(
@@ -697,6 +704,7 @@ export function createTask41EvidenceTemplate() {
     runId: "PENDING_RUN_ID",
     appCommit: "PENDING_COMMIT",
     capturedAt: "PENDING_ISO_DATE",
+    completedAt: "PENDING_ISO_DATE",
     sequence: 0,
   });
   const pendingEvidence = (kind, viewport = null) => ({
@@ -830,6 +838,7 @@ export function createTask41EvidenceTemplate() {
       pairedStagedServerPath: "PENDING/stage-b-server.ts",
       stagedServerSha256: "PENDING_SHA256",
       pairedCapturedAt: "PENDING_ISO_DATE",
+      pairedCompletedAt: "PENDING_ISO_DATE",
       pairedSequence: 0,
       ...binding(),
     },
@@ -1280,7 +1289,7 @@ function verifyBindingFile(value, expected, label) {
   }
 }
 
-function verifyTranscript(buffer, entry, context, caseId) {
+function verifyTranscript(buffer, entry, context, caseId, timeline) {
   const value = record(parseStrictJson(buffer, entry.path));
   if (!value) throw new Error(`${entry.path} must contain a structured transcript.`);
   exactKeys(value, ["schemaVersion", ...CAPTURE_KEYS, "caseId", "viewport", "actions"], entry.path);
@@ -1291,7 +1300,9 @@ function verifyTranscript(buffer, entry, context, caseId) {
   if (!Array.isArray(value.actions) || value.actions.length !== TASK41_TRANSCRIPT_ACTIONS.length) {
     throw new Error(`${entry.path} must contain every required transcript action.`);
   }
-  let priorAt = context.startedAt - 1;
+  const captureStartedAt = Date.parse(entry.capturedAt);
+  const captureCompletedAt = Date.parse(entry.completedAt);
+  let priorAt = captureStartedAt - 1;
   value.actions.forEach((action, index) => {
     const item = record(action);
     if (!item) throw new Error(`${entry.path} actions must be objects.`);
@@ -1300,15 +1311,16 @@ function verifyTranscript(buffer, entry, context, caseId) {
       throw new Error(`${entry.path} transcript actions are missing, failed, or out of order.`);
     }
     const at = exactTimestamp(item.at, `${entry.path}.actions[${index}].at`);
-    if (at <= priorAt || at < context.startedAt || at > context.completedAt) {
-      throw new Error(`${entry.path} transcript action timestamps are not ordered within the run.`);
+    if (at <= priorAt || at < captureStartedAt || at > captureCompletedAt) {
+      throw new Error(`${entry.path} transcript action timestamps are not ordered within its capture.`);
     }
+    measuredSegmentForWindow(timeline, at, at, `${entry.path} transcript action ${item.id}`);
     priorAt = at;
     nonemptyString(item.detail, `${entry.path}.actions[${index}].detail`);
   });
 }
 
-function recomputePerformance(buffer, metric) {
+function recomputePerformance(buffer, metric, timeline) {
   const value = record(parseStrictJson(buffer, metric.evidencePath));
   if (!value) throw new Error(`${metric.evidencePath} must contain a performance capture.`);
   exactKeys(value, [
@@ -1328,11 +1340,13 @@ function recomputePerformance(buffer, metric) {
   }
   const frameTimes = [];
   const drawCalls = [];
+  let priorTimestamp = Date.parse(metric.capturedAt) - 1;
   for (const [index, frame] of value.frames.entries()) {
     const item = record(frame);
     if (!item) throw new Error(`${metric.evidencePath}.frames[${index}] must be an object.`);
     exactKeys(item, [
-      "sequence", "frameMs", "drawCalls", "visible", "hasFocus", "viewport", "devicePixelRatio",
+      "sequence", "timestamp", "frameMs", "drawCalls", "visible", "hasFocus",
+      "viewport", "devicePixelRatio",
     ], `${metric.evidencePath}.frames[${index}]`);
     if (integer(item.sequence, `${metric.evidencePath}.frames[${index}].sequence`, 1) !== index + 1
       || item.visible !== true
@@ -1341,6 +1355,19 @@ function recomputePerformance(buffer, metric) {
       || item.devicePixelRatio !== metric.devicePixelRatio) {
       throw new Error(`${metric.evidencePath} frames must bind visible focused viewport samples in order.`);
     }
+    const timestamp = exactTimestamp(item.timestamp, `${metric.evidencePath}.frames[${index}].timestamp`);
+    if (timestamp <= priorTimestamp
+      || timestamp < Date.parse(metric.capturedAt)
+      || timestamp > Date.parse(metric.completedAt)) {
+      throw new Error(`${metric.evidencePath} frame timestamps must be ordered within the capture.`);
+    }
+    measuredSegmentForWindow(
+      timeline,
+      timestamp,
+      timestamp,
+      `${metric.evidencePath}.frames[${index}]`,
+    );
+    priorTimestamp = timestamp;
     frameTimes.push(finiteNumber(item.frameMs, `${metric.evidencePath}.frames[${index}].frameMs`, 0.001, 1_000));
     drawCalls.push(integer(item.drawCalls, `${metric.evidencePath}.frames[${index}].drawCalls`, 0, 1_000_000));
   }
@@ -1357,6 +1384,10 @@ function recomputePerformance(buffer, metric) {
     durationMs,
     patchedContexts: value.patchedContexts,
   };
+  const wallDuration = Date.parse(metric.completedAt) - Date.parse(metric.capturedAt);
+  if (wallDuration < durationMs || wallDuration > durationMs + 1_000) {
+    throw new Error(`${metric.evidencePath} capture window does not bind its raw frame duration.`);
+  }
   if (Object.entries(expected).some(([key, expectedValue]) => metric[key] !== expectedValue)) {
     throw new Error(`${metric.evidencePath} aggregates do not match its raw frame samples.`);
   }
@@ -1419,7 +1450,52 @@ function validateSegmentTimeline(segments, gaps, context, label) {
       throw new Error(`${label} interaction segments must start exactly when the preceding gap ends.`);
     }
   }
+  if (timeline[0].startedAt !== context.startedAt
+    || timeline.at(-1).completedAt !== context.completedAt) {
+    throw new Error(`${label} timeline must cover the full run without an omitted prefix or suffix.`);
+  }
   return timeline;
+}
+
+function measuredSegmentForWindow(timeline, startedAt, completedAt, label) {
+  const segment = timeline.find((window) =>
+    window.type === "segment"
+    && startedAt >= window.startedAt
+    && completedAt <= window.completedAt);
+  if (!segment) throw new Error(`${label} must fall wholly within one measured interaction segment.`);
+  return segment;
+}
+
+function bindManifestCapturesToTimeline(evidence, timeline) {
+  const captures = [];
+  evidence.observations.forEach((observation) =>
+    observation.evidence.forEach((entry) => captures.push([`${observation.id}:${entry.path}`, entry])));
+  evidence.performance.forEach((metric) => captures.push([`performance:${metric.evidencePath}`, metric]));
+  for (const [label, summary] of [
+    ["console", evidence.console],
+    ["network", evidence.network],
+    ["storage", evidence.storage],
+    ["multiplayer", evidence.multiplayer],
+    ["artifact build A", evidence.artifact],
+  ]) captures.push([label, summary]);
+  captures.push(["artifact build B", {
+    capturedAt: evidence.artifact.pairedCapturedAt,
+    completedAt: evidence.artifact.pairedCompletedAt,
+  }]);
+  const hitSegments = new Set();
+  captures.forEach(([label, capture]) => {
+    const segment = measuredSegmentForWindow(
+      timeline,
+      Date.parse(capture.capturedAt),
+      Date.parse(capture.completedAt),
+      label,
+    );
+    hitSegments.add(segment.id);
+  });
+  const segments = timeline.filter(({ type }) => type === "segment");
+  if (segments.some(({ id }) => !hitSegments.has(id))) {
+    throw new Error("every measured interaction segment must contain at least one bound evidence capture.");
+  }
 }
 
 function countConsoleEntries(entries, window, label, counts) {
@@ -1624,7 +1700,7 @@ function verifyStorage(buffer, summary, evidence) {
   });
 }
 
-function verifyMultiplayer(buffer, summary, files, evidence) {
+function verifyMultiplayer(buffer, summary, files, evidence, timeline) {
   const value = record(parseStrictJson(buffer, summary.evidencePath));
   if (!value) throw new Error("multiplayer evidence must be structured JSON.");
   const baseKeys = [
@@ -1664,7 +1740,7 @@ function verifyMultiplayer(buffer, summary, files, evidence) {
       exactKeys(proof, [
         "schemaVersion", "taskId", "runId", "appCommit", "identityId", "identityCommitment",
         "runSaltedIdentityHash", "windowStartedAt", "windowCompletedAt", "peerVisibilityIds",
-        "quotaTelemetry",
+        "capturedAt", "quotaTelemetry",
       ], identity.proofPath);
       if (proof.schemaVersion !== 1
         || proof.taskId !== TASK41_TASK_ID
@@ -1679,6 +1755,12 @@ function verifyMultiplayer(buffer, summary, files, evidence) {
       }
       const peerId = identity.id === "identity-a" ? "identity-b" : "identity-a";
       exactArray(proof.peerVisibilityIds, [peerId], `${identity.proofPath}.peerVisibilityIds`);
+      const proofCapturedAt = exactTimestamp(proof.capturedAt, `${identity.proofPath}.capturedAt`);
+      if (proofCapturedAt < Date.parse(identity.windowStartedAt)
+        || proofCapturedAt > Date.parse(identity.windowCompletedAt)) {
+        throw new Error(`${identity.proofPath} capture must occur within its identity session.`);
+      }
+      measuredSegmentForWindow(timeline, proofCapturedAt, proofCapturedAt, `${identity.proofPath} capture`);
       if (!Array.isArray(proof.quotaTelemetry)
         || proof.quotaTelemetry.length < 2
         || proof.quotaTelemetry.length > 3_600) {
@@ -1707,6 +1789,7 @@ function verifyMultiplayer(buffer, summary, files, evidence) {
           || at > Date.parse(identity.windowCompletedAt)) {
           throw new Error("quota telemetry must be ordered, active, monotonic, and remain within grants.");
         }
+        measuredSegmentForWindow(timeline, at, at, `${identity.proofPath} quota telemetry`);
         if (index > 0 && (attempts > priorAttempts || grants > priorGrants)) observedDelta = true;
         priorAt = at;
         priorAttempts = attempts;
@@ -1721,12 +1804,13 @@ function verifyMultiplayer(buffer, summary, files, evidence) {
       if (!proof) throw new Error(`${interaction.proofPath} must be a structured interaction proof.`);
       exactKeys(proof, [
         "schemaVersion", "taskId", "runId", "appCommit", "interactionId", "actorId",
-        "targetId", "windowStartedAt", "windowCompletedAt", "events",
+        "targetId", "windowStartedAt", "windowCompletedAt", "capturedAt", "events",
       ], interaction.proofPath);
       const actor = identityById.get(interaction.actorId);
       const target = identityById.get(interaction.targetId);
       const startedAt = exactTimestamp(proof.windowStartedAt, `${interaction.proofPath}.windowStartedAt`);
       const completedAt = exactTimestamp(proof.windowCompletedAt, `${interaction.proofPath}.windowCompletedAt`);
+      const proofCapturedAt = exactTimestamp(proof.capturedAt, `${interaction.proofPath}.capturedAt`);
       if (proof.schemaVersion !== 1
         || proof.taskId !== TASK41_TASK_ID
         || proof.runId !== evidence.runId
@@ -1739,6 +1823,10 @@ function verifyMultiplayer(buffer, summary, files, evidence) {
         || completedAt <= startedAt) {
         throw new Error(`${interaction.proofPath} is not bound to the identities' overlapping session.`);
       }
+      if (proofCapturedAt < startedAt || proofCapturedAt > completedAt) {
+        throw new Error(`${interaction.proofPath} capture must occur within its interaction window.`);
+      }
+      measuredSegmentForWindow(timeline, proofCapturedAt, proofCapturedAt, `${interaction.proofPath} capture`);
       if (!Array.isArray(proof.events) || proof.events.length !== TASK41_MULTIPLAYER_INTERACTIONS.length) {
         throw new Error(`${interaction.proofPath} must prove every bidirectional interaction kind.`);
       }
@@ -1756,6 +1844,7 @@ function verifyMultiplayer(buffer, summary, files, evidence) {
           || at > completedAt) {
           throw new Error("multiplayer interaction events must pass in order inside the overlap window.");
         }
+        measuredSegmentForWindow(timeline, at, at, `${interaction.proofPath} interaction event`);
         priorAt = at;
       });
     }
@@ -2128,6 +2217,17 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
     files.set(path, file.buffer);
   }
 
+  const runContext = {
+    startedAt: Date.parse(evidence.runStartedAt),
+    completedAt: Date.parse(evidence.runCompletedAt),
+  };
+  const consoleTimeline = recomputeConsole(files.get(evidence.console.evidencePath), evidence.console, runContext);
+  const networkTimeline = recomputeNetwork(files.get(evidence.network.evidencePath), evidence.network, runContext);
+  if (JSON.stringify(consoleTimeline) !== JSON.stringify(networkTimeline)) {
+    throw new Error("console and network measured segment/gap timelines must match exactly.");
+  }
+  bindManifestCapturesToTimeline(evidence, consoleTimeline);
+
   for (const observation of evidence.observations) {
     for (const entry of observation.evidence) {
       const buffer = files.get(entry.path);
@@ -2142,22 +2242,21 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
         verifyTranscript(buffer, entry, {
           startedAt: Date.parse(evidence.runStartedAt),
           completedAt: Date.parse(evidence.runCompletedAt),
-        }, observation.id);
+        }, observation.id, consoleTimeline);
       }
     }
   }
-  for (const metric of evidence.performance) recomputePerformance(files.get(metric.evidencePath), metric);
-  const runContext = {
-    startedAt: Date.parse(evidence.runStartedAt),
-    completedAt: Date.parse(evidence.runCompletedAt),
-  };
-  const consoleTimeline = recomputeConsole(files.get(evidence.console.evidencePath), evidence.console, runContext);
-  const networkTimeline = recomputeNetwork(files.get(evidence.network.evidencePath), evidence.network, runContext);
-  if (JSON.stringify(consoleTimeline) !== JSON.stringify(networkTimeline)) {
-    throw new Error("console and network measured segment/gap timelines must match exactly.");
+  for (const metric of evidence.performance) {
+    recomputePerformance(files.get(metric.evidencePath), metric, consoleTimeline);
   }
   verifyStorage(files.get(evidence.storage.evidencePath), evidence.storage, evidence);
-  verifyMultiplayer(files.get(evidence.multiplayer.evidencePath), evidence.multiplayer, files, evidence);
+  verifyMultiplayer(
+    files.get(evidence.multiplayer.evidencePath),
+    evidence.multiplayer,
+    files,
+    evidence,
+    consoleTimeline,
+  );
 
   const artifactA = files.get(artifact.artifactPath);
   const artifactB = files.get(artifact.pairedArtifactPath);
