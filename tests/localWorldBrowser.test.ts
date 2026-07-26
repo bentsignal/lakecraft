@@ -34,9 +34,16 @@ const header = browser.slice(
 assert.ok(header.indexOf('aria-label="Search worlds"') >= 0
   && header.indexOf('aria-label="Search worlds"') < header.indexOf("{CREATE_LABEL}"),
   "search is left of Create New World in the header");
-assert.ok(browser.includes("grid-template-columns:minmax(0,1fr) 220px")
-  && browser.includes("@media(max-width:560px)"),
-  "the compact header has stable desktop/tablet columns and a narrow-screen fallback");
+assert.ok(browser.includes("grid-template-columns:minmax(0,1fr) minmax(240px,auto)")
+  && browser.includes(".lc-local-world-header>.lc-menu-button{min-width:240px;white-space:nowrap}")
+  && browser.includes("@media(max-width:560px)")
+  && browser.includes(".lc-local-world-header{align-items:stretch;grid-template-columns:1fr}")
+  && browser.includes(".lc-local-world-header>.lc-menu-button{min-width:0;width:100%}"),
+  "Create New World stays on one line beside search and expands safely below 560px");
+assert.ok(browser.includes(".lc-local-world-search input{background:#111;border:2px solid;")
+  && browser.includes("height:46px")
+  && browser.includes(".lc-local-world-search input:focus-visible{border-color:#fff;"),
+  "search has an intentional, visible input surface and keyboard focus treatment");
 
 const rowMarkup = browser.slice(browser.indexOf("<ul aria-label="), browser.indexOf("</ul>"));
 assert.ok(rowMarkup.includes("<strong>{entry.world.name}</strong>")
@@ -93,6 +100,12 @@ assert.ok(browser.includes('role={deleting ? "alertdialog" : undefined}')
   && browser.includes('onClose={closeDialog}')
   && browser.includes('method="dialog"'),
   "native modal behavior provides inertness, focus trapping, Escape, and restoration");
+assert.ok(browser.includes(".lc-local-world-dialog{background:transparent;border:0;box-sizing:border-box;height:100vh;height:100dvh;"
+  + "margin:0;max-height:none;max-width:none;overflow-y:auto;"
+  + "padding:clamp(16px,5vh,48px) 16px;width:100vw}")
+  && browser.includes(".lc-local-world-dialog::backdrop{background:rgba(0,0,0,.72)}")
+  && browser.includes(".lc-local-world-dialog .lc-username-menu{margin:auto;"),
+  "the native dialog owns the full viewport, shades its backdrop, and centers both modal forms");
 assert.ok(browser.includes('aria-label="World Name" autoFocus')
   && browser.includes('aria-label="Delete confirmation phrase"')
   && browser.indexOf('aria-label="Delete confirmation phrase"') < browser.indexOf("autoComplete=", browser.indexOf('aria-label="Delete confirmation phrase"')) + 200,

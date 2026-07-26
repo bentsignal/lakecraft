@@ -40,10 +40,13 @@ const WORLD_BROWSER_CSS = `
 .lc-local-world-browser,.lc-local-world-browser *,.lc-local-world-dialog,.lc-local-world-dialog *{text-shadow:none}
 .lc-local-world-browser{overflow:hidden}
 .lc-local-world-browser .lc-server-browser__content{box-sizing:border-box;display:flex;flex-direction:column;height:100dvh;min-height:0;overflow:hidden}
-.lc-local-world-header{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) 220px;width:100%}
+.lc-local-world-header{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(240px,auto);width:100%}
 .lc-local-world-search{display:grid;gap:5px;min-width:0}
 .lc-local-world-search span{font-size:13px}
 .lc-local-world-search input,.lc-local-world-dialog input,.lc-local-world-dialog select{box-sizing:border-box;min-width:0;width:100%}
+.lc-local-world-search input{background:#111;border:2px solid;border-color:#333 #aaa #aaa #333;color:#fff;font:18px/1 var(--lc-pixel-font,monospace);height:46px;outline:0;padding:5px 9px}
+.lc-local-world-search input:focus-visible{border-color:#fff;outline:2px solid #fff;outline-offset:2px}
+.lc-local-world-header>.lc-menu-button{min-width:240px;white-space:nowrap}
 .lc-local-world-list{list-style:none;margin:14px 0 0;min-height:0;overflow-x:hidden;overflow-y:auto;padding:0;width:100%}
 .lc-local-world-row{align-items:stretch;background:#312f2b;border:2px solid #111;box-shadow:inset 0 0 0 1px #67625a;display:grid;gap:8px;grid-template-columns:minmax(0,1fr) auto;margin:0 0 8px;min-width:0;padding:6px}
 .lc-local-world-row.is-selected{border-color:#fff;box-shadow:inset 0 0 0 1px #979188}
@@ -55,12 +58,14 @@ const WORLD_BROWSER_CSS = `
 .lc-local-world-select:focus-visible,.lc-local-world-delete:focus-visible,.lc-local-world-header button:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .lc-local-world-empty{margin:auto 0}
 .lc-local-world-retry{margin-top:10px}
-.lc-local-world-dialog .lc-username-menu{width:min(520px,calc(100vw - 40px))}
+.lc-local-world-dialog{background:transparent;border:0;box-sizing:border-box;height:100vh;height:100dvh;margin:0;max-height:none;max-width:none;overflow-y:auto;padding:clamp(16px,5vh,48px) 16px;width:100vw}
+.lc-local-world-dialog::backdrop{background:rgba(0,0,0,.72)}
+.lc-local-world-dialog .lc-username-menu{margin:auto;width:min(520px,calc(100vw - 32px))}
 .lc-local-world-delete-copy{overflow-wrap:anywhere}
 .lc-local-world-dialog label{display:grid;gap:7px;text-align:left}
 @media(max-width:560px){
   .lc-local-world-header{align-items:stretch;grid-template-columns:1fr}
-  .lc-local-world-header button{width:100%}
+  .lc-local-world-header>.lc-menu-button{min-width:0;width:100%}
   .lc-local-world-row{grid-template-columns:minmax(0,1fr) auto}
   .lc-local-world-delete{min-width:72px;padding-inline:8px}
 }`;
