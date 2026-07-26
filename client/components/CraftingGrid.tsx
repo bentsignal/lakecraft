@@ -1,6 +1,7 @@
 import { ITEMS, type ItemStack } from "../../shared/game";
 import type { CraftingGridSize } from "../../shared/craftingGrid";
 import { ItemGlyph } from "./ItemGlyph";
+import { itemTooltipAttributes } from "./itemTooltipModel";
 
 export type CraftingGridViewProps = {
   size: CraftingGridSize;
@@ -28,6 +29,7 @@ export function CraftingGridView({
       <div className="lc-crafting-grid" style={{ "--craft-grid-size": size }} role="grid" aria-label={`${size} by ${size} crafting grid`}>
         {grid.map((stack, index) => (
           <button
+            {...itemTooltipAttributes(stack)}
             aria-label={`Crafting slot ${index + 1}: ${stack ? `${ITEMS[stack.itemId].label}, ${stack.count}` : "Empty"}`}
             className="lc-slot lc-crafting-slot"
             key={index}
@@ -37,7 +39,6 @@ export function CraftingGridView({
               onRightClickSlot(index);
             }}
             role="gridcell"
-            title={stack ? ITEMS[stack.itemId].label : "Crafting slot"}
             type="button"
           >
             <ItemGlyph stack={stack} compact />
@@ -46,15 +47,16 @@ export function CraftingGridView({
       </div>
       <span className="lc-crafting-arrow" aria-hidden="true">→</span>
       <button
+        {...itemTooltipAttributes(output)}
         aria-label={output ? `Craft ${outputLabel ?? ITEMS[output.itemId].label}, ${output.count}` : "No matching recipe"}
+        aria-disabled={outputDisabled || undefined}
         className={`lc-slot lc-crafting-result${output ? " is-ready" : ""}`}
-        disabled={!output || outputDisabled}
-        onClick={(event) => onTakeOutput(event.shiftKey)}
+        disabled={!output}
+        onClick={(event) => { if (!outputDisabled) onTakeOutput(event.shiftKey); }}
         onContextMenu={(event) => {
           event.preventDefault();
           if (output && !outputDisabled) onTakeOutput(false);
         }}
-        title={output ? `Take ${output.count} ${outputLabel ?? ITEMS[output.itemId].label}` : "Arrange a valid recipe"}
         type="button"
       >
         <ItemGlyph stack={output} compact />

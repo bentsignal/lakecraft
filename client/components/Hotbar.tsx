@@ -1,5 +1,6 @@
 import { HOTBAR_SIZE, ITEMS, maxItemDurability, remainingItemDurability, type Inventory } from "../../shared/game";
 import { ItemGlyph } from "./ItemGlyph";
+import { itemTooltipAttributes } from "./itemTooltipModel";
 
 export type HotbarProps = {
   inventory: Inventory;
@@ -26,13 +27,13 @@ export function Hotbar({ inventory, selectedIndex, onSelect, disabled = false }:
           const selected = index === selectedIndex;
           return (
             <button
-              aria-label={`${index + 1}: ${item?.label ?? "Empty"}${durabilityLabel}${selected ? ", selected" : ""}`}
+              {...itemTooltipAttributes(stack)}
+              aria-label={`${index + 1}: ${item ? `${item.label}, ${stack!.count}` : "Empty"}${durabilityLabel}${selected ? ", selected" : ""}`}
               aria-pressed={selected}
               className={`lc-slot lc-hotbar__slot${selected ? " is-selected" : ""}`}
               disabled={disabled}
               key={index}
               onClick={() => onSelect(index)}
-              title={item ? `${item.label}${durabilityLabel}` : "Empty slot"}
               type="button"
             >
               <ItemGlyph stack={stack} compact />

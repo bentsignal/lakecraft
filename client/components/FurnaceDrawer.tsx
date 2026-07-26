@@ -9,6 +9,7 @@ import {
 import { ITEMS, SMELTING_RECIPES, type Inventory, type ItemStack } from "../../shared/game";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ItemGlyph } from "./ItemGlyph";
+import { itemTooltipAttributes } from "./itemTooltipModel";
 
 const FURNACE_INPUTS = new Set(SMELTING_RECIPES.map(({ input }) => input));
 const MAIN_INVENTORY_SLOTS = 27;
@@ -51,11 +52,12 @@ function FurnaceSlot({
   const label = kind === "input" ? "Furnace input" : kind === "fuel" ? "Furnace fuel" : "Furnace output";
   return (
     <button
+      {...itemTooltipAttributes(stack)}
       aria-label={stack ? `${label}: ${ITEMS[stack.itemId].label}, ${stack.count}; take stack` : `${label}: empty`}
-      className={`lc-furnace-slot lc-furnace-slot--${kind}`}
-      disabled={busy || !stack}
-      onClick={() => stack && onTransfer(furnaceAction(kind, stack))}
-      title={stack ? `Take ${stack.count} ${ITEMS[stack.itemId].label}` : label}
+      aria-disabled={Boolean(stack && busy) || undefined}
+      className={`lc-furnace-slot lc-furnace-slot--${kind}${stack && busy ? " is-disabled" : ""}`}
+      disabled={!stack}
+      onClick={() => stack && !busy && onTransfer(furnaceAction(kind, stack))}
       type="button"
     >
       <ItemGlyph stack={stack} compact />
@@ -92,18 +94,14 @@ function InventorySlot({
     ? ITEMS[stack.itemId].maxStack - (target?.itemId === stack.itemId ? target.count : target ? ITEMS[stack.itemId].maxStack : 0)
     : 0;
   const eligible = Boolean(action && furnace && capacity >= (stack?.count ?? 0));
-  const title = stack
-    ? action
-      ? eligible ? `Move ${stack.count} ${ITEMS[stack.itemId].label} into the furnace` : "Furnace slot cannot hold this full stack"
-      : `${ITEMS[stack.itemId].label} cannot be smelted or used as fuel`
-    : "Empty inventory slot";
   return (
     <button
+      {...itemTooltipAttributes(stack)}
       aria-label={stack ? `${ITEMS[stack.itemId].label}, ${stack.count}${eligible ? "; place in furnace" : ""}` : "Empty inventory slot"}
-      className={`lc-furnace-inventory-slot${eligible ? " is-eligible" : ""}`}
-      disabled={busy || !eligible}
-      onClick={() => action && eligible && onTransfer(action)}
-      title={title}
+      aria-disabled={Boolean(stack && (busy || !eligible)) || undefined}
+      className={`lc-furnace-inventory-slot${eligible ? " is-eligible" : ""}${stack && (busy || !eligible) ? " is-disabled" : ""}`}
+      disabled={!stack}
+      onClick={() => action && eligible && !busy && onTransfer(action)}
       type="button"
     >
       <ItemGlyph stack={stack} compact />

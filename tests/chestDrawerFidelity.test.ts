@@ -22,7 +22,7 @@ assert.deepEqual(
   Array.from({ length: 27 }, (_, index) => index),
   "chest display keeps its canonical 3x9 order",
 );
-assert.ok(source.includes("onClick={() => onTransfer(direction, index)}"), "visual slots submit their mapped canonical index");
+assert.ok(source.includes("if (!busy) onTransfer(direction, index)"), "enabled visual slots submit their mapped canonical index");
 assert.ok(source.includes('className={`lc-chest-grid${playerGrid ? " lc-chest-grid--player" : ""}`}'), "player grid receives its hotbar separator modifier");
 
 for (const token of [
