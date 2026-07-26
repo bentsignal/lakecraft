@@ -41,6 +41,10 @@ const LEGACY_KEYS = [
   SINGLEPLAYER_SAVE_SLOT_B_KEY,
 ] as const;
 const LEGACY_TRANSACTION_PENDING = "transaction:recovery_pending";
+const LEGACY_TRANSACTION_KEYS = [
+  LOCAL_WORLD_CREATE_TRANSACTION_KEY,
+  LOCAL_WORLD_DELETE_TRANSACTION_KEY,
+] as const;
 
 export interface LocalWorldRecord {
   id: string;
@@ -496,25 +500,58 @@ function legacyTransactionDeadline(raw: string): number | null {
     ? value.recoverAfter : null;
 }
 
+function legacyTransactionKeys(storage: SinglePlayerStorageAdapter): string[] | null {
+  try {
+    const listKeys = storage.listKeys;
+    if (typeof listKeys !== "function") return null;
+    const listed: unknown = listKeys.call(storage);
+    if (!Array.isArray(listed) || !listed.every((key) => typeof key === "string")) return null;
+    const keys = (listed as string[]).filter((key) =>
+      LEGACY_TRANSACTION_KEYS.some((prefix) => key === prefix || key.startsWith(`${prefix}.`)));
+    return keys.length === new Set(keys).size && keys.every((key) => key.length <= 128)
+      ? keys : null;
+  } catch {
+    return null;
+  }
+}
+
+function scanLegacyTransactions(
+  storage: SinglePlayerStorageAdapter,
+): Array<[string, string, number | null]> | null {
+  const keys = legacyTransactionKeys(storage);
+  if (!keys) return null;
+  const entries: Array<[string, string, number | null]> = [];
+  try {
+    for (const key of keys) {
+      const raw = storage.getItem(key);
+      if (raw === null) return null;
+      entries.push([key, raw, legacyTransactionDeadline(raw)]);
+    }
+  } catch {
+    return null;
+  }
+  const verify = legacyTransactionKeys(storage);
+  if (!verify || !sameStrings(keys, verify)) return null;
+  try {
+    for (const [key, raw] of entries) if (storage.getItem(key) !== raw) return null;
+  } catch {
+    return null;
+  }
+  const closing = legacyTransactionKeys(storage);
+  return closing && sameStrings(keys, closing) ? entries : null;
+}
+
 function preflightLegacyTransactions(
   storage: SinglePlayerStorageAdapter,
   observedAt: number,
 ): string | null {
-  const entries: Array<[string, string, number | null]> = [];
-  for (const key of [LOCAL_WORLD_CREATE_TRANSACTION_KEY, LOCAL_WORLD_DELETE_TRANSACTION_KEY]) {
-    try {
-      const raw = storage.getItem(key);
-      if (raw !== null) entries.push([key, raw, legacyTransactionDeadline(raw)]);
-    } catch {
-      return LEGACY_TRANSACTION_PENDING;
-    }
-  }
+  const entries = scanLegacyTransactions(storage);
+  if (!entries) return LEGACY_TRANSACTION_PENDING;
   if (entries.some((entry) => entry[2] !== null
     && observedAt < entry[2]! && entry[2]! - observedAt <= LOCAL_WORLD_TRANSACTION_LEASE_MS)) {
     return "transaction:active";
   }
-  if (!entries.length) return fixedLegacyTransactionsAbsent(storage)
-    ? null : LEGACY_TRANSACTION_PENDING;
+  if (!entries.length) return null;
   const removeItem = storageRemover(storage);
   if (!removeItem) return LEGACY_TRANSACTION_PENDING;
   try {
@@ -530,12 +567,7 @@ function preflightLegacyTransactions(
 }
 
 function fixedLegacyTransactionsAbsent(storage: SinglePlayerStorageAdapter): boolean {
-  try {
-    return storage.getItem(LOCAL_WORLD_CREATE_TRANSACTION_KEY) === null
-      && storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY) === null;
-  } catch {
-    return false;
-  }
+  return scanLegacyTransactions(storage)?.length === 0;
 }
 
 function sameWorld(left: LocalWorldRecord, right: LocalWorldRecord): boolean {
