@@ -345,20 +345,28 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   const runCompletedAtMs = nowMs - 60_000;
   const runStartedAt = new Date(runStartedAtMs).toISOString();
   const runCompletedAt = new Date(runCompletedAtMs).toISOString();
+  const packagedCompletedAt = new Date(runCompletedAtMs + 25_000).toISOString();
   let sequence = 0;
+  const bindingForSequence = (captureSequence, capturedAtMs, durationMs = 1_000) => ({
+    taskId: TASK41_TASK_ID,
+    runId: RUN_ID,
+    appCommit: COMMIT,
+    capturedAt: new Date(capturedAtMs).toISOString(),
+    completedAt: new Date(capturedAtMs + durationMs).toISOString(),
+    sequence: captureSequence,
+  });
   const nextBinding = (durationMs = 1_000) => {
     sequence += 1;
     const capturedAtMs = runStartedAtMs + CAPTURE_OFFSETS_MS[sequence - 1];
     assert.ok(Number.isFinite(capturedAtMs), "capture fixture exceeds its planned measured segments");
-    return {
-      taskId: TASK41_TASK_ID,
-      runId: RUN_ID,
-      appCommit: COMMIT,
-      capturedAt: new Date(capturedAtMs).toISOString(),
-      completedAt: new Date(capturedAtMs + durationMs).toISOString(),
-      sequence,
-    };
+    return bindingForSequence(sequence, capturedAtMs, durationMs);
   };
+  const fixedLiveBinding = (captureSequence) => bindingForSequence(
+    captureSequence,
+    runStartedAtMs + CAPTURE_OFFSETS_MS[captureSequence - 1],
+  );
+  const derivedBinding = (captureSequence, offsetMs) =>
+    bindingForSequence(captureSequence, runCompletedAtMs + offsetMs);
   const writeBoundJson = (path, binding, fields) => {
     const value = { schemaVersion: 1, ...binding, ...fields };
     return {
@@ -372,6 +380,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     appCommit: COMMIT,
     runStartedAt,
     runCompletedAt,
+    packagedCompletedAt,
     completionEligible: multiplayerStatus === "passed",
     browser: { name: "Chromium", version: "140.0.7339.0" },
   });
@@ -488,7 +497,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   }
 
   {
-    const binding = nextBinding();
+    const binding = derivedBinding(49, 5_000);
     const path = "structured/console.json";
     const segments = INTERACTION_SEGMENTS.map((id, index) => {
       const route = ROUTE_SEGMENTS[index];
@@ -532,7 +541,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     };
   }
   {
-    const binding = nextBinding();
+    const binding = derivedBinding(50, 10_000);
     const path = "structured/network.json";
     const segments = INTERACTION_SEGMENTS.map((id, index) => {
       const route = ROUTE_SEGMENTS[index];
@@ -575,7 +584,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     };
   }
   {
-    const binding = nextBinding();
+    const binding = fixedLiveBinding(47);
     const path = "structured/storage.json";
     const worlds = evidence.worlds.map((world, index) => {
       const prefix = `lakecraft.singleplayer.world.${world.worldId}.`;
@@ -611,7 +620,7 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     };
   }
   {
-    const binding = nextBinding();
+    const binding = fixedLiveBinding(48);
     const path = "structured/multiplayer.json";
     const passed = multiplayerStatus === "passed";
     const identities = [];
@@ -736,8 +745,8 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
   }
 
   {
-    const buildA = nextBinding();
-    const buildB = nextBinding();
+    const buildA = derivedBinding(51, 15_000);
+    const buildB = derivedBinding(52, 20_000);
     const [realBuildA, realBuildB] = realArtifactFixture();
     const outer = JSON.parse(realBuildA.artifactBuffer);
     const artifactBuffer = realBuildA.artifactBuffer;
@@ -819,6 +828,16 @@ function mutateStructuredTimelines(fixture, mutator) {
     mutator(value, summaryName);
     replaceBoundJson(fixture, summary, value);
   }
+}
+
+function rewriteStructuredCaptureWindow(fixture, summaryName, capturedAt, completedAt) {
+  const summary = fixture.evidence[summaryName];
+  const value = JSON.parse(readFileSync(join(fixture.root, summary.evidencePath), "utf8"));
+  summary.capturedAt = capturedAt;
+  summary.completedAt = completedAt;
+  value.capturedAt = capturedAt;
+  value.completedAt = completedAt;
+  replaceBoundJson(fixture, summary, value);
 }
 
 function rewriteArtifactPair(fixture, mutator) {
@@ -909,10 +928,23 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
   assert.match(runbook, /segments\.at\(-1\)\.completedAt === runCompletedAt[\s\S]{0,140}no unmeasured[\s\S]{0,20}suffix/i);
   assert.match(
     runbook,
-    /Every screenshot, video, transcript, performance capture,[\s\S]{0,240}capturedAt[\s\S]{0,40}completedAt[\s\S]{0,120}one measured segment/i,
+    /Every live screenshot, video, transcript, performance capture,[\s\S]{0,240}capturedAt[\s\S]{0,40}completedAt[\s\S]{0,120}one measured segment/i,
   );
-  assert.match(runbook, /nested action, frame, telemetry, or event timestamp[\s\S]{0,100}inside a measured segment/i);
-  assert.match(runbook, /Every measured segment must contain at least one bound evidence capture/i);
+  assert.match(
+    runbook,
+    /nested[\s\S]{0,30}action, frame, telemetry, or event timestamp[\s\S]{0,100}(?:wholly )?inside a[\s\S]{0,20}measured segment/i,
+  );
+  assert.match(runbook, /Every measured segment[\s\S]{0,30}contain at least one bound live evidence capture/i);
+  assert.match(
+    runbook,
+    /After `runCompletedAt`, serialize the complete Console and Network reports[\s\S]{0,180}timelines still cover exactly[\s\S]{0,100}`runStartedAt` through `runCompletedAt`/i,
+  );
+  assert.match(runbook, /manifest[\s\S]{0,20}`packagedCompletedAt` after build B and all packaging finish/i);
+  assert.match(
+    runbook,
+    /Derived intervals[\s\S]{0,30}nonoverlapping and ordered:[\s\S]{0,100}Console report[\s\S]{0,80}Network report[\s\S]{0,80}artifact build A[\s\S]{0,80}artifact build B/i,
+  );
+  assert.match(runbook, /packagedCompletedAt - runCompletedAt` (?:is |of )?at most six hours/i);
   assert.match(runbook, /git -C "\$repo_root" archive "\$expected_commit"/);
   assert.match(runbook, /mismatched CSS viewport\/device-pixel ratio[\s\S]{0,100}hidden or unfocused/i);
   assert.match(runbook, /valid-partial[\s\S]{0,100}process exit 2/i);
@@ -925,6 +957,34 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
 test("a complete, freshly bound manifest with substantive generated files verifies", async () => {
   const fixture = createFixture();
   try {
+    const runCompletedAt = Date.parse(fixture.evidence.runCompletedAt);
+    const packagedCompletedAt = Date.parse(fixture.evidence.packagedCompletedAt);
+    const derivedWindows = [
+      [fixture.evidence.console.capturedAt, fixture.evidence.console.completedAt],
+      [fixture.evidence.network.capturedAt, fixture.evidence.network.completedAt],
+      [fixture.evidence.artifact.capturedAt, fixture.evidence.artifact.completedAt],
+      [fixture.evidence.artifact.pairedCapturedAt, fixture.evidence.artifact.pairedCompletedAt],
+    ].map(([startedAt, completedAt]) => [Date.parse(startedAt), Date.parse(completedAt)]);
+    assert.equal(
+      Date.parse(JSON.parse(readFileSync(
+        join(fixture.root, fixture.evidence.console.evidencePath),
+        "utf8",
+      )).segments.at(-1).completedAt),
+      runCompletedAt,
+    );
+    assert.equal(
+      Date.parse(JSON.parse(readFileSync(
+        join(fixture.root, fixture.evidence.network.evidencePath),
+        "utf8",
+      )).segments.at(-1).completedAt),
+      runCompletedAt,
+    );
+    assert.ok(derivedWindows[0][0] >= runCompletedAt);
+    derivedWindows.forEach(([startedAt, completedAt], index) => {
+      assert.ok(completedAt >= startedAt);
+      assert.ok(completedAt <= packagedCompletedAt);
+      if (index > 0) assert.ok(startedAt >= derivedWindows[index - 1][1]);
+    });
     assert.equal(
       validateTask41Evidence(fixture.evidence, { expectedCommit: COMMIT, nowMs: fixture.nowMs }),
       fixture.evidence,
@@ -994,16 +1054,24 @@ test("manifest provenance rejects wrong identity, commit, run, timing, and captu
     invalid((value) => {
       value.runCompletedAt = new Date(fixture.nowMs - 25 * 60 * 60_000).toISOString();
       value.runStartedAt = new Date(fixture.nowMs - 26 * 60 * 60_000).toISOString();
-    }, /stale/);
+    }, /stale|packaging|six hours/);
     invalid((value) => {
       value.runStartedAt = new Date(fixture.nowMs + 6 * 60_000).toISOString();
       value.runCompletedAt = new Date(fixture.nowMs + 16 * 60_000).toISOString();
-    }, /future/);
+    }, /future|packaging|runCompletedAt/);
     invalid((value) => {
       const first = value.observations[0].evidence[0];
       const second = value.observations[0].evidence[1];
       [first.sequence, second.sequence] = [second.sequence, first.sequence];
     }, /sequence|order/);
+    invalid((value) => {
+      value.packagedCompletedAt =
+        new Date(Date.parse(value.runCompletedAt) - 1_000).toISOString();
+    }, /packaging|packagedCompletedAt|runCompletedAt/);
+    invalid((value) => {
+      value.packagedCompletedAt =
+        new Date(Date.parse(value.runCompletedAt) + 6 * 60 * 60_000 + 1).toISOString();
+    }, /packaging|packagedCompletedAt|future|six hours/);
   } finally {
     fixture.cleanup();
   }
@@ -1374,6 +1442,42 @@ test("segmented console and network proof allows navigation gaps but rejects in-
       fixture.cleanup();
     }
   }
+  for (const [summaryName, startedAt, completedAt] of [
+    ["console", 450_000, 451_000],
+    ["network", 538_000, 539_000],
+  ]) {
+    const fixture = createFixture();
+    try {
+      const runStartedAt = Date.parse(fixture.evidence.runStartedAt);
+      rewriteStructuredCaptureWindow(
+        fixture,
+        summaryName,
+        new Date(runStartedAt + startedAt).toISOString(),
+        new Date(runStartedAt + completedAt).toISOString(),
+      );
+      await assertFileInvalid(
+        fixture,
+        /derived capture|runCompletedAt|post-run|packaging|order/,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  }
+  {
+    const fixture = createFixture();
+    try {
+      const packagedCompletedAt = Date.parse(fixture.evidence.packagedCompletedAt);
+      rewriteStructuredCaptureWindow(
+        fixture,
+        "network",
+        new Date(packagedCompletedAt + 1_000).toISOString(),
+        new Date(packagedCompletedAt + 2_000).toISOString(),
+      );
+      await assertFileInvalid(fixture, /packaging|derived capture|order/);
+    } finally {
+      fixture.cleanup();
+    }
+  }
 });
 
 test("raw storage values, base64 payloads, and foreign key inventories are rejected", async () => {
@@ -1425,13 +1529,29 @@ test("Lakebed reports are parsed and hashes, format, target, and independent A/B
       artifact.stagedClientSha256 = write(fixture.root, artifact.stagedClientPath, oldStage);
       write(fixture.root, artifact.pairedStagedClientPath, oldStage);
     },
+    (fixture) => {
+      const artifact = fixture.evidence.artifact;
+      artifact.capturedAt =
+        new Date(Date.parse(fixture.evidence.runCompletedAt) - 1_000).toISOString();
+      artifact.completedAt = fixture.evidence.runCompletedAt;
+    },
+    (fixture) => {
+      const artifact = fixture.evidence.artifact;
+      artifact.pairedCapturedAt = artifact.capturedAt;
+      artifact.pairedCompletedAt = artifact.completedAt;
+    },
+    (fixture) => {
+      const artifact = fixture.evidence.artifact;
+      artifact.pairedCompletedAt =
+        new Date(Date.parse(fixture.evidence.packagedCompletedAt) + 1_000).toISOString();
+    },
   ]) {
     const fixture = createFixture();
     try {
       mutate(fixture);
       await assertFileInvalid(
         fixture,
-        /artifact|anonymous|paired|hash|A\/B|distinct|SHA-256|descriptor|source\.files|expected-commit|stage/,
+        /artifact|anonymous|paired|hash|A\/B|distinct|SHA-256|descriptor|source\.files|expected-commit|stage|derived capture|packaging|order/,
       );
     } finally {
       fixture.cleanup();
@@ -1504,6 +1624,23 @@ test("passed multiplayer requires two active reciprocal identities and bidirecti
       value.capturedAt =
         new Date(Date.parse(fixture.evidence.runCompletedAt) + 1_000).toISOString();
     }, /identity session|measured interaction segment|outside/],
+    ["identities", (value, fixture) => {
+      const identity = fixture.evidence.multiplayer.identities[0];
+      const runStartedAt = Date.parse(fixture.evidence.runStartedAt);
+      identity.windowStartedAt = new Date(runStartedAt + 370_000).toISOString();
+      value.windowStartedAt = identity.windowStartedAt;
+      assert.equal(value.windowStartedAt, identity.windowStartedAt);
+      assert.ok(Date.parse(value.capturedAt) >= runStartedAt + 390_000);
+      assert.ok(value.quotaTelemetry.every(({ timestamp }) =>
+        Date.parse(timestamp) >= runStartedAt + 390_000));
+    }, /identity session.*wholly within one measured interaction segment/],
+    ["interactions", (value, fixture) => {
+      const runStartedAt = Date.parse(fixture.evidence.runStartedAt);
+      value.windowStartedAt = new Date(runStartedAt + 370_000).toISOString();
+      assert.ok(Date.parse(value.capturedAt) >= runStartedAt + 390_000);
+      assert.ok(value.events.every(({ timestamp }) =>
+        Date.parse(timestamp) >= runStartedAt + 390_000));
+    }, /interaction window.*wholly within one measured interaction segment|overlapping session/],
   ]) {
     const fixture = createFixture();
     try {
