@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const lobby = readFileSync(new URL("../client/lobby/LobbyScreen.tsx", import.meta.url), "utf8");
+const menuButton = readFileSync(new URL("../client/lobby/menuButton.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/lobby/LobbyStyles.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
@@ -20,7 +21,8 @@ assert.ok(styles.includes(".lc-dirt-background") && styles.includes("image-rende
 assert.ok(styles.includes(".lc-server-actions{display:grid;gap:8px;grid-template-columns:1fr 1fr}"), "Join and Back share the server action row");
 assert.ok(app.includes('worldDescription="Survival · Lakebed shared world"'), "the server description stays concise and player-facing");
 assert.ok((app.match(/setInWorld\(true\);[\s\S]{0,100}?setPauseOpen\(false\)/g) ?? []).length >= 2, "both multiplayer join paths enter without an artificial pause dialog");
-assert.ok(lobby.includes("<OptionsDialog") && lobby.includes('id="lc-title-options"'), "title Options opens the shared accessible settings screen");
+assert.ok(lobby.includes("<OptionsDialog") && lobby.includes('"lc-title-options"')
+  && menuButton.includes("id={id}"), "title Options opens the shared accessible settings screen");
 assert.equal(lobby.includes(">About<"), false, "the inert About action is removed from the title screen");
 assert.ok(lobby.includes('<AccountPanel onSignIn={() => setPage("multiplayer")}'),
   "signed-out home identity routes its small Sign In action into multiplayer context");

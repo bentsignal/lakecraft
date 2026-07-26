@@ -10,6 +10,7 @@ const hud = source("../client/components/GameHud.tsx");
 const pause = source("../client/components/PauseMenu.tsx");
 const dialog = source("../client/components/OptionsDialog.tsx");
 const lobby = source("../client/lobby/LobbyScreen.tsx");
+const menuButton = source("../client/lobby/menuButton.tsx");
 const settings = source("../client/settings.ts");
 
 assert.ok(lobby.includes("<OptionsDialog") && hud.includes("<OptionsDialog"), "title and Game Menu share one Options component");
@@ -30,7 +31,9 @@ assert.ok(singlePlayerKeys.indexOf("if (optionsOpen)") < singlePlayerKeys.indexO
 assert.ok(dialog.includes('role="dialog"') && dialog.includes('aria-modal="true"'), "Options exposes modal dialog semantics");
 assert.ok(dialog.includes('aria-label="Mouse sensitivity"') && dialog.includes("aria-valuetext"), "the sensitivity range has a stable accessible value");
 assert.ok(dialog.includes('event.key !== "Tab"') && dialog.includes("event.shiftKey"), "keyboard focus is trapped in either tab direction");
-assert.ok(dialog.includes("returnFocusId") && pause.includes('id="lc-game-menu-options"') && lobby.includes('id="lc-title-options"'), "closing Options restores its originating control");
+assert.ok(dialog.includes("returnFocusId") && pause.includes('id="lc-game-menu-options"')
+  && lobby.includes('"lc-title-options"') && menuButton.includes("id={id}"),
+  "closing Options restores its originating control");
 
 assert.ok(engineTypes.includes("getMouseLookSensitivity?: () => number"), "the engine exposes a local live sensitivity seam");
 assert.ok(engine.includes("options.getMouseLookSensitivity?.()"), "pointer movement samples the current sensitivity without recreating the engine");

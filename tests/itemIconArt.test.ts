@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { ITEM_ICON_SIZE, getItemIconArt } from "../client/components/itemIconArt.ts";
+import { decodeStaticBytes } from "../client/staticData.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 
 const itemIds = Object.keys(ITEMS) as ItemId[];
 assert.ok(itemIds.length >= 70, "coverage includes the complete progression catalog");
+const fnv1a32 = (value: string): string => {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+};
 
 for (const itemId of itemIds) {
   const art = getItemIconArt(itemId);
@@ -30,5 +43,34 @@ assert.notDeepEqual(getItemIconArt("charcoal").runs, getItemIconArt("coal").runs
 assert.notDeepEqual(getItemIconArt("raw_iron").runs, getItemIconArt("iron_ingot").runs, "raw and smelted materials differ");
 assert.notDeepEqual(getItemIconArt("gunpowder").runs, getItemIconArt("coal").runs, "gunpowder has its own loose-grain silhouette");
 assert.equal(getItemIconArt("tnt").variant, "tnt", "TNT retains its block identity in hotbars and inventory grids");
+
+const canonicalArt = JSON.stringify(itemIds.map((itemId) => [itemId, getItemIconArt(itemId)]));
+assert.equal(fnv1a32(canonicalArt), "d425b5a3", "the complete 97-icon run/color/variant fixture changed unexpectedly");
+const generatedPath = new URL("../client/components/itemIconArt.ts", import.meta.url);
+const generatedSource = readFileSync(generatedPath, "utf8");
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10250\)/)?.[1];
+assert.ok(packedPayload);
+assert.equal(Buffer.from(packedPayload, "base64").length, 5_698,
+  "item icons retain the reviewed deterministic LZSS fixture");
+assert.deepEqual([...decodeStaticBytes(Buffer.from([2, 65, 32, 1]).toString("base64"), 6)],
+  [65, 65, 65, 65, 65, 65], "the shared decoder preserves overlapping backward-copy semantics");
+assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../staticData.ts";')
+    && generatedSource.includes("const cache = (() => {"),
+  "packed and decoded bytes are scoped to the one-time cache initializer");
+
+const regenerationDirectory = mkdtempSync(join(tmpdir(), "lakecraft-item-icons-"));
+try {
+  const regeneratedPath = join(regenerationDirectory, "itemIconArt.ts");
+  const regeneration = spawnSync(process.execPath, [
+    "--experimental-strip-types",
+    new URL("../scripts/generate-item-icon-art.ts", import.meta.url).pathname,
+    regeneratedPath,
+  ], { encoding: "utf8" });
+  assert.equal(regeneration.status, 0, regeneration.stderr || regeneration.stdout);
+  assert.equal(readFileSync(regeneratedPath, "utf8"), generatedSource,
+    "the reviewed icon procedures deterministically regenerate the compact client module");
+} finally {
+  rmSync(regenerationDirectory, { recursive: true, force: true });
+}
 
 console.log(`item icon art tests passed (${itemIds.length} original 16x16 sprites)`);

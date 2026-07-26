@@ -7,17 +7,9 @@ import {
 } from "./mobs.ts";
 import { TNT_FUSE_MS, TNT_MAX_ACTIVE_FUSES } from "../../shared/tntAuthority.ts";
 import type { PrimedTntVisualFuse } from "./types.ts";
+import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeometry.ts";
 
 type Vec3 = readonly [number, number, number];
-
-const BOX_FACES: ReadonlyArray<{ shade: number; vertices: ReadonlyArray<Vec3> }> = [
-  { shade: 0.79, vertices: [[1,0,0],[1,1,0],[1,1,1],[1,0,0],[1,1,1],[1,0,1]] },
-  { shade: 0.68, vertices: [[0,0,1],[0,1,1],[0,1,0],[0,0,1],[0,1,0],[0,0,0]] },
-  { shade: 1, vertices: [[0,1,0],[0,1,1],[1,1,1],[0,1,0],[1,1,1],[1,1,0]] },
-  { shade: 0.52, vertices: [[0,0,1],[0,0,0],[1,0,0],[0,0,1],[1,0,0],[1,0,1]] },
-  { shade: 0.88, vertices: [[1,0,1],[1,1,1],[0,1,1],[1,0,1],[0,1,1],[0,0,1]] },
-  { shade: 0.73, vertices: [[0,0,0],[0,1,0],[1,1,0],[0,0,0],[1,1,0],[1,0,0]] },
-];
 
 const BOXES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
   pig: 9,
@@ -138,13 +130,12 @@ function appendBox(
   const sinYaw = Math.sin(yaw);
   const cosPitch = Math.cos(pitch);
   const sinPitch = Math.sin(pitch);
-  for (let faceIndex = 0; faceIndex < BOX_FACES.length; faceIndex += 1) {
-    const face = BOX_FACES[faceIndex];
-    for (let vertexIndex = 0; vertexIndex < face.vertices.length; vertexIndex += 1) {
-      const point = face.vertices[vertexIndex];
-      const localX = minX + point[0] * (maxX - minX);
-      const unrotatedY = minY + point[1] * (maxY - minY);
-      const unrotatedZ = minZ + point[2] * (maxZ - minZ);
+  for (let faceIndex = 0, point = 0; faceIndex < BOX_FACE_SHADES.length; faceIndex += 1) {
+    const shade = BOX_FACE_SHADES[faceIndex];
+    for (let vertexIndex = 0; vertexIndex < 6; vertexIndex += 1) {
+      const localX = minX + BOX_VERTEX_COORDINATES[point++] * (maxX - minX);
+      const unrotatedY = minY + BOX_VERTEX_COORDINATES[point++] * (maxY - minY);
+      const unrotatedZ = minZ + BOX_VERTEX_COORDINATES[point++] * (maxZ - minZ);
       const offsetY = unrotatedY - pivotY;
       const offsetZ = unrotatedZ - pivotZ;
       const localY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
@@ -152,13 +143,13 @@ function appendBox(
       writer.data[writer.offset++] = originX + localX * cosYaw - localZ * sinYaw;
       writer.data[writer.offset++] = originY + localY;
       writer.data[writer.offset++] = originZ + localX * sinYaw + localZ * cosYaw;
-      const baseRed = red * face.shade;
-      const baseGreen = green * face.shade;
-      const baseBlue = blue * face.shade;
+      const baseRed = red * shade;
+      const baseGreen = green * shade;
+      const baseBlue = blue * shade;
       const hurtMix = writer.hurtMix;
-      writer.data[writer.offset++] = baseRed + (face.shade - baseRed) * hurtMix;
-      writer.data[writer.offset++] = baseGreen + (face.shade * 0.06 - baseGreen) * hurtMix;
-      writer.data[writer.offset++] = baseBlue + (face.shade * 0.06 - baseBlue) * hurtMix;
+      writer.data[writer.offset++] = baseRed + (shade - baseRed) * hurtMix;
+      writer.data[writer.offset++] = baseGreen + (shade * 0.06 - baseGreen) * hurtMix;
+      writer.data[writer.offset++] = baseBlue + (shade * 0.06 - baseBlue) * hurtMix;
     }
   }
 }

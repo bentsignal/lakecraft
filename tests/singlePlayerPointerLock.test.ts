@@ -15,6 +15,25 @@ function run(
   return transitionSinglePlayerPointerSession(state, event);
 }
 
+function assertSourceOrder(source: string, before: string, after: string, message: string): void {
+  const beforeIndex = source.indexOf(before);
+  const afterIndex = source.indexOf(after);
+  assert.ok(beforeIndex >= 0, `${message}: missing ${before}`);
+  assert.ok(afterIndex >= 0, `${message}: missing ${after}`);
+  assert.ok(beforeIndex < afterIndex, message);
+}
+
+assert.throws(
+  () => assertSourceOrder(
+    "setSinglePlayer(true);",
+    "requestDocumentPointerLockHandoff()",
+    "setSinglePlayer(true)",
+    "negative missing-request fixture",
+  ),
+  /missing requestDocumentPointerLockHandoff/,
+  "an absent pointer request cannot satisfy an ordering assertion through -1 indexes",
+);
+
 const active = createSinglePlayerPointerSessionState(true);
 const keyFirst = run(active, { type: "escape", now: 100, uiBlocked: false });
 assert.equal(keyFirst.openPause, true, "keydown-first Escape opens Game Menu once");
@@ -87,12 +106,44 @@ const entryHandler = appSource.slice(
   appSource.indexOf("function joinSingleplayer"),
   appSource.indexOf("return singlePlayer", appSource.indexOf("function joinSingleplayer")),
 );
-assert.ok(
-  entryHandler.indexOf("document.documentElement.requestPointerLock()")
-    < entryHandler.indexOf("setSinglePlayer(true)"),
-  "Singleplayer uses the originating click before mounting the world",
-);
+assert.equal(entryHandler.includes("requestPointerLock"), false,
+  "opening the world browser does not transiently capture the pointer");
 assert.equal(entryHandler.includes("window.location.search ="), false, "entry no longer discards user activation through navigation");
+
+const browserSource = readFileSync(new URL("../client/singleplayer/LocalWorldBrowser.tsx", import.meta.url), "utf8");
+const playHandler = browserSource.slice(
+  browserSource.indexOf("  function play"),
+  browserSource.indexOf("\n  function ", browserSource.indexOf("  function play") + 1),
+);
+assertSourceOrder(
+  playHandler,
+  "resolveLocalWorldPlay(storage, selected, result)",
+  "onPlay(playable, requestDocumentPointerLockHandoff())",
+  "Play validates the exact world before requesting pointer capture in its click handler",
+);
+
+const handoffSource = readFileSync(new URL("../client/pointerLockHandoff.ts", import.meta.url), "utf8");
+assertSourceOrder(
+  handoffSource,
+  'typeof document.documentElement.requestPointerLock !== "function"',
+  "try {",
+  "pointer capture checks browser support before its guarded request",
+);
+const guardedRequest = handoffSource.slice(handoffSource.indexOf("try {"), handoffSource.indexOf("catch {"));
+assertSourceOrder(
+  guardedRequest,
+  "document.documentElement.requestPointerLock()",
+  ".catch(() => undefined)",
+  "the Play-gesture request handles asynchronous rejection before reporting handoff",
+);
+assertSourceOrder(
+  handoffSource,
+  "return true;",
+  "catch {",
+  "a successful synchronous request reports handoff before the failure branch",
+);
+assert.ok(handoffSource.includes("catch {\n    return false;"),
+  "synchronous request failures report a false handoff without mounting an optimistic capture");
 
 const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 assert.ok(singlePlayerSource.includes("Click to Play"), "failed handoff has one explicit pointer-capture affordance");

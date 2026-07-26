@@ -1,3 +1,5 @@
+import { BOX_VERTEX_COORDINATES } from "./generated/renderGeometry.ts";
+
 type Vec3 = readonly [number, number, number];
 
 export const MAX_RENDERED_PLAYER_PROJECTILES = 96;
@@ -11,27 +13,7 @@ const FLOATS_PER_VERTEX = 6;
 const BOX_VERTICES = 36;
 const RENDER_DISTANCE_SQUARED = PLAYER_PROJECTILE_RENDER_DISTANCE * PLAYER_PROJECTILE_RENDER_DISTANCE;
 
-const BOX_FACES: ReadonlyArray<ReadonlyArray<Vec3>> = [
-  [[1,0,0],[1,1,0],[1,1,1],[1,0,0],[1,1,1],[1,0,1]],
-  [[0,0,1],[0,1,1],[0,1,0],[0,0,1],[0,1,0],[0,0,0]],
-  [[0,1,0],[0,1,1],[1,1,1],[0,1,0],[1,1,1],[1,1,0]],
-  [[0,0,1],[0,0,0],[1,0,0],[0,0,1],[1,0,0],[1,0,1]],
-  [[1,0,1],[1,1,1],[0,1,1],[1,0,1],[0,1,1],[0,0,1]],
-  [[0,0,0],[0,1,0],[1,1,0],[0,0,0],[1,1,0],[1,0,0]],
-];
-
 const FACE_SHADE = [0.82, 0.66, 1, 0.5, 0.9, 0.72] as const;
-const BOX_POINTS = new Uint8Array(BOX_VERTICES * 3);
-for (let faceIndex = 0, offset = 0; faceIndex < BOX_FACES.length; faceIndex += 1) {
-  const face = BOX_FACES[faceIndex];
-  for (let vertexIndex = 0; vertexIndex < face.length; vertexIndex += 1) {
-    const point = face[vertexIndex];
-    BOX_POINTS[offset++] = point[0];
-    BOX_POINTS[offset++] = point[1];
-    BOX_POINTS[offset++] = point[2];
-  }
-}
-
 const ARROW_PARTS = [
   [-0.025, -0.025, -0.34, 0.025, 0.025, 0.32, 0.49, 0.31, 0.14],
   [-0.065, -0.065, 0.30, 0.065, 0.065, 0.43, 0.68, 0.69, 0.66],
@@ -46,11 +28,11 @@ for (let partIndex = 0, outputOffset = 0; partIndex < ARROW_PARTS.length; partIn
   const depth = maxZ - minZ;
   for (let vertexIndex = 0, pointOffset = 0; vertexIndex < BOX_VERTICES; vertexIndex += 1) {
     const shade = FACE_SHADE[(vertexIndex / 6) | 0];
-    ARROW_LOCAL_POINTS[outputOffset] = minX + width * BOX_POINTS[pointOffset++];
+    ARROW_LOCAL_POINTS[outputOffset] = minX + width * BOX_VERTEX_COORDINATES[pointOffset++];
     ARROW_VERTEX_COLORS[outputOffset++] = red * shade;
-    ARROW_LOCAL_POINTS[outputOffset] = minY + height * BOX_POINTS[pointOffset++];
+    ARROW_LOCAL_POINTS[outputOffset] = minY + height * BOX_VERTEX_COORDINATES[pointOffset++];
     ARROW_VERTEX_COLORS[outputOffset++] = green * shade;
-    ARROW_LOCAL_POINTS[outputOffset] = minZ + depth * BOX_POINTS[pointOffset++];
+    ARROW_LOCAL_POINTS[outputOffset] = minZ + depth * BOX_VERTEX_COORDINATES[pointOffset++];
     ARROW_VERTEX_COLORS[outputOffset++] = blue * shade;
   }
 }

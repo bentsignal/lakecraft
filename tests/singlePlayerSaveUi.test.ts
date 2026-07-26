@@ -41,8 +41,8 @@ assert.ok(styles.includes('min-height: 16px'), "status feedback reserves space i
 assert.ok(styles.includes('.lc-game-menu__last-saved { color: #aaa; }'), "secondary timestamp text stays visually subordinate");
 assert.ok(styles.includes('overflow-y: auto'), "the taller pause menu remains reachable on short viewports");
 
-assert.ok(singlePlayer.includes("loadSinglePlayerSave(localStorage"), "the journal is loaded before local engine state is created");
-assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(localStorage"), "manual, autosave, and exit saves share the verified journal writer");
+assert.ok(singlePlayer.includes("loadSinglePlayerSave(storage"), "the journal is loaded before local engine state is created");
+assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(storage"), "manual, autosave, and exit saves share the verified journal writer");
 assert.ok(singlePlayer.includes("engine.importRuntimeSnapshot(initialRuntimeRef.current)"), "pose, health, time, and mobs resume through the strict engine importer");
 assert.ok(singlePlayer.includes("runtime: engineRef.current?.exportRuntimeSnapshot()"), "each committed snapshot captures current engine-owned state");
 assert.ok(singlePlayer.includes("sampleSaveCadence"), "autosaves use active-play cadence instead of a wall-clock write loop");
@@ -51,9 +51,15 @@ assert.ok(singlePlayer.includes("engineRef.current?.setPaused(paused)"), "menus 
 assert.ok(singlePlayer.includes("setLocalFusesPausedRef.current(paused)"), "the same pause boundary freezes local TNT fuses");
 assert.ok(singlePlayer.includes("timer.remainingMs = Math.max(0"), "paused TNT retains bounded remaining fuse time");
 assert.ok(singlePlayer.includes('window.addEventListener("pagehide", saveBeforeLeaving)'), "page exit gets a final synchronous save attempt");
-assert.ok(singlePlayer.includes("return finish(createDefaultSinglePlayerSnapshot(7_319, now), load, true)"), "corrupt or future data is protected from permissive overwrite");
+assert.ok(singlePlayer.includes("createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id)"),
+  "corrupt or future data falls back only to the selected world's immutable creation metadata");
+assert.ok(singlePlayer.includes("snapshot.world.gameMode = world.initialGameMode"),
+  "a locked fallback retains the selected world's explicit initial mode");
+assert.ok(singlePlayer.includes("migrateLegacy: false, worldId: world.id"),
+  "ordinary world loading is namespaced and never performs a silent legacy migration");
 assert.ok(singlePlayer.includes("window.confirm("), "destructive world recovery requires explicit confirmation");
-assert.ok(singlePlayer.includes("resetSinglePlayerSave(localStorage)"), "confirmed recovery uses the verified journal reset helper");
+assert.ok(singlePlayer.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),
+  "confirmed recovery uses the verified journal reset helper for only the active world");
 assert.ok(singlePlayer.includes('console.error("[Lakecraft save] Snapshot commit rejected."'), "exact save diagnostics remain available to developers");
 assert.ok(singlePlayer.includes("result.mutationStarted"), "reset feedback distinguishes unchanged preflight failures from partial resets");
 assert.ok(singlePlayer.includes("Your saved world data was left unchanged."), "failed preflight never falsely implies destructive recovery");

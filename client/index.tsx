@@ -3593,26 +3593,15 @@ export function App() {
   const [singlePlayer, setSinglePlayer] = useState(
     () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
   );
-  const [entryPointerLockHandoff, setEntryPointerLockHandoff] = useState(false);
 
   function joinSingleplayer(): void {
-    let handoffRequested = false;
-    if (typeof document.documentElement.requestPointerLock === "function") {
-      try {
-        handoffRequested = true;
-        void Promise.resolve(document.documentElement.requestPointerLock()).catch(() => undefined);
-      } catch {
-        handoffRequested = false;
-      }
-    }
     const url = new URL(window.location.href);
     url.searchParams.set("singleplayer", "1");
     window.history.replaceState(window.history.state, "", url);
-    setEntryPointerLockHandoff(handoffRequested);
     setSinglePlayer(true);
   }
 
   return singlePlayer
-    ? <SinglePlayerApp entryPointerLockHandoff={entryPointerLockHandoff} />
+    ? <SinglePlayerApp />
     : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />;
 }
