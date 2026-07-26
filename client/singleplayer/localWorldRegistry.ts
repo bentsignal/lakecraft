@@ -2,9 +2,9 @@ import type { LocalGameMode } from "./localCommands.ts";
 import {
   SINGLEPLAYER_LEGACY_SAVE_KEY,
   SINGLEPLAYER_SAVE_HEAD_KEY,
-  SINGLEPLAYER_SAVE_MAX_SLOT_CHARS,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
   SINGLEPLAYER_SAVE_SLOT_B_KEY,
+  SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS,
   canonicalSinglePlayerJson,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
@@ -12,6 +12,7 @@ import {
   saveSinglePlayerSnapshot,
   singlePlayerSaveChecksum,
   singlePlayerWorldStorageKey,
+  singlePlayerWorldStorageKeys,
   type SinglePlayerLoadResult,
   type SinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
@@ -21,10 +22,14 @@ export const LOCAL_WORLD_REGISTRY_FORMAT = "lakecraft.local-world-registry" as c
 export const LOCAL_WORLD_REGISTRY_VERSION = 1 as const;
 export const LOCAL_WORLD_REGISTRY_SLOT_A_KEY = "lakecraft.singleplayer.worlds.a";
 export const LOCAL_WORLD_REGISTRY_SLOT_B_KEY = "lakecraft.singleplayer.worlds.b";
-export const LOCAL_WORLD_REGISTRY_MAX_WORLDS = 12;
+export const LOCAL_WORLD_DELETE_TRANSACTION_KEY = "lakecraft.singleplayer.worlds.delete";
+export const LOCAL_WORLD_REGISTRY_MAX_WORLDS = 6;
 export const LOCAL_WORLD_REGISTRY_MAX_CHARS = 32_000;
 export const LOCAL_WORLD_NAME_MAX_CHARS = 48;
-export const LOCAL_WORLD_CAPACITY_WARNING_CHARS = Math.floor(SINGLEPLAYER_SAVE_MAX_SLOT_CHARS * 0.8);
+export const LOCAL_WORLD_NAMESPACE_BUDGET_CHARS = SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 2
+  + Math.ceil(LOCAL_WORLD_REGISTRY_MAX_CHARS * 2 / LOCAL_WORLD_REGISTRY_MAX_WORLDS)
+  + 2_048;
+export const LOCAL_WORLD_CAPACITY_WARNING_CHARS = Math.floor(LOCAL_WORLD_NAMESPACE_BUDGET_CHARS * 0.8);
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const LEGACY_KEYS = [
@@ -95,6 +100,15 @@ type ParsedRegistrySlot =
   | { kind: "corrupt"; slot: "a" | "b"; reason: string }
   | { kind: "unsupported"; slot: "a" | "b"; version: number };
 
+interface LocalWorldDeleteTransaction {
+  checksum: string;
+  deletedAt: number;
+  format: "lakecraft.local-world-delete";
+  values: Array<string | null>;
+  version: 1;
+  worldId: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -114,6 +128,32 @@ export function normalizeLocalWorldName(value: string): string | null {
     && !/[\u0000-\u001f\u007f]/.test(normalized)
     ? normalized
     : null;
+}
+
+export type LocalWorldListNavigationKey = "ArrowDown" | "ArrowUp" | "Home" | "End";
+
+export function reconcileLocalWorldSelection(
+  selectedId: string | null,
+  visibleWorldIds: readonly string[],
+): string | null {
+  return selectedId && visibleWorldIds.includes(selectedId) ? selectedId : null;
+}
+
+export function moveLocalWorldSelection(
+  selectedId: string | null,
+  visibleWorldIds: readonly string[],
+  key: LocalWorldListNavigationKey,
+): string | null {
+  if (visibleWorldIds.length === 0) return null;
+  if (key === "Home") return visibleWorldIds[0];
+  if (key === "End") return visibleWorldIds[visibleWorldIds.length - 1];
+  const index = selectedId ? visibleWorldIds.indexOf(selectedId) : -1;
+  if (key === "ArrowDown") return index < 0
+    ? visibleWorldIds[0]
+    : visibleWorldIds[Math.min(visibleWorldIds.length - 1, index + 1)];
+  return index < 0
+    ? visibleWorldIds[visibleWorldIds.length - 1]
+    : visibleWorldIds[Math.max(0, index - 1)];
 }
 
 function validWorldId(value: unknown): value is string {
@@ -241,7 +281,7 @@ function highestRegistrySlot(slots: readonly ParsedRegistrySlot[]): Extract<Pars
     .sort((left, right) => right.envelope.sequence - left.envelope.sequence || left.slot.localeCompare(right.slot))[0] ?? null;
 }
 
-export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
+function loadLocalWorldRegistryRaw(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
   const scanned = readRegistrySlots(storage);
   const issues = scanned.slots.flatMap((slot) => slot.kind === "corrupt" ? [`${slot.slot}:${slot.reason}`]
     : slot.kind === "unsupported" ? [`${slot.slot}:unsupported_v${slot.version}`] : []);
@@ -268,6 +308,115 @@ export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): Loc
     return { status: "corrupt", registry: null, sequence: 0, issues };
   }
   return { status: "empty", registry: { worlds: [] }, sequence: 0, issues: [] };
+}
+
+function deleteTransactionBody(
+  worldId: string,
+  values: Array<string | null>,
+  deletedAt: number,
+): Omit<LocalWorldDeleteTransaction, "checksum"> {
+  return { deletedAt, format: "lakecraft.local-world-delete", values, version: 1, worldId };
+}
+
+function readDeleteTransaction(
+  storage: SinglePlayerStorageAdapter,
+): { status: "none" } | { status: "valid"; transaction: LocalWorldDeleteTransaction } | { status: "corrupt" } {
+  let raw: string | null;
+  try {
+    raw = storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+  } catch {
+    return { status: "corrupt" };
+  }
+  if (raw === null) return { status: "none" };
+  if (raw.length === 0 || raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) return { status: "corrupt" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { status: "corrupt" };
+  }
+  if (!isRecord(parsed)
+    || !exactKeys(parsed, ["checksum", "deletedAt", "format", "values", "version", "worldId"])
+    || parsed.format !== "lakecraft.local-world-delete" || parsed.version !== 1
+    || typeof parsed.checksum !== "string" || !/^[0-9a-f]{8}$/.test(parsed.checksum)
+    || !validWorldId(parsed.worldId) || !safeInteger(parsed.deletedAt, 0, MAX_TIMESTAMP)
+    || !Array.isArray(parsed.values) || parsed.values.length !== 4
+    || !parsed.values.every((value) => value === null || typeof value === "string")) {
+    return { status: "corrupt" };
+  }
+  const body = deleteTransactionBody(parsed.worldId, parsed.values as Array<string | null>, parsed.deletedAt);
+  const transaction = { checksum: parsed.checksum, ...body };
+  if (singlePlayerSaveChecksum(body) !== parsed.checksum || canonicalSinglePlayerJson(transaction) !== raw) {
+    return { status: "corrupt" };
+  }
+  return { status: "valid", transaction };
+}
+
+function storageRemover(storage: SinglePlayerStorageAdapter): ((key: string) => void) | null {
+  try {
+    const removeItem = storage.removeItem;
+    return typeof removeItem === "function" ? removeItem.bind(storage) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDeleteTransaction(storage: SinglePlayerStorageAdapter): boolean {
+  const removeItem = storageRemover(storage);
+  if (!removeItem) return false;
+  try {
+    removeItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY);
+    return storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY) === null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Completes an interrupted delete at its registry commit point. Before that
+ * point the complete journal is restored; after it, all primary keys are
+ * removed. The checksummed transaction remains until either state verifies.
+ */
+function recoverLocalWorldDelete(
+  storage: SinglePlayerStorageAdapter,
+  registryLoad: LocalWorldRegistryLoadResult,
+): "none" | "recovered" | false {
+  const pending = readDeleteTransaction(storage);
+  if (pending.status === "none") return "none";
+  if (pending.status !== "valid" || !registryLoad.registry) return false;
+  const removeItem = storageRemover(storage);
+  if (!removeItem) return false;
+  const { transaction } = pending;
+  const keys = singlePlayerWorldStorageKeys(transaction.worldId);
+  const restore = registryLoad.registry.worlds.some(({ id }) => id === transaction.worldId);
+  try {
+    for (let index = 0; index < keys.length; index += 1) {
+      const value = transaction.values[index];
+      if (restore && value !== null) storage.setItem(keys[index], value);
+      else removeItem(keys[index]);
+    }
+    for (let index = 0; index < keys.length; index += 1) {
+      const expected = restore ? transaction.values[index] : null;
+      if (storage.getItem(keys[index]) !== expected) return false;
+    }
+  } catch {
+    return false;
+  }
+  return clearDeleteTransaction(storage) ? "recovered" : false;
+}
+
+export function loadLocalWorldRegistry(storage: SinglePlayerStorageAdapter): LocalWorldRegistryLoadResult {
+  const loaded = loadLocalWorldRegistryRaw(storage);
+  const recovery = recoverLocalWorldDelete(storage, loaded);
+  if (recovery === false) {
+    return {
+      status: "corrupt",
+      registry: null,
+      sequence: 0,
+      issues: [...loaded.issues, "delete:recovery_failed"],
+    };
+  }
+  return recovery === "recovered" ? loadLocalWorldRegistryRaw(storage) : loaded;
 }
 
 export function saveLocalWorldRegistry(
@@ -403,15 +552,23 @@ export function createLocalWorld(
 export function inspectLocalWorld(
   storage: SinglePlayerStorageAdapter,
   world: LocalWorldRecord,
+  registryOverheadChars = 0,
 ): LocalWorldInspection {
   const load = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: world.id });
-  let usedChars = 0;
+  let usedChars = Math.max(0, Math.floor(registryOverheadChars));
+  let largestSlotChars = 0;
   let capacity: LocalWorldCapacity = "ok";
   try {
-    for (const key of [SINGLEPLAYER_SAVE_SLOT_A_KEY, SINGLEPLAYER_SAVE_SLOT_B_KEY]) {
-      usedChars = Math.max(usedChars, storage.getItem(singlePlayerWorldStorageKey(world.id, key))?.length ?? 0);
+    for (const key of singlePlayerWorldStorageKeys(world.id)) {
+      const raw = storage.getItem(key);
+      if (raw === null) continue;
+      usedChars += key.length + raw.length;
+      if (key.endsWith(".save.a") || key.endsWith(".save.b")) {
+        largestSlotChars = Math.max(largestSlotChars, raw.length);
+      }
     }
-    if (usedChars > SINGLEPLAYER_SAVE_MAX_SLOT_CHARS) capacity = "exceeded";
+    if (largestSlotChars > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS
+      || usedChars > LOCAL_WORLD_NAMESPACE_BUDGET_CHARS) capacity = "exceeded";
     else if (usedChars >= LOCAL_WORLD_CAPACITY_WARNING_CHARS) capacity = "warning";
   } catch {
     capacity = "unavailable";
@@ -439,8 +596,19 @@ export function listLocalWorlds(storage: SinglePlayerStorageAdapter): {
 } {
   const registryLoad = loadLocalWorldRegistry(storage);
   if (!registryLoad.registry) return { registryLoad, worlds: [] };
+  let registryChars = 0;
+  try {
+    for (const key of [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]) {
+      const raw = storage.getItem(key);
+      if (raw !== null) registryChars += key.length + raw.length;
+    }
+  } catch {
+    // The registry load already reports read failures; keep this presentation
+    // calculation local to the registry rather than coupling it to origin use.
+  }
+  const registryShare = Math.ceil(registryChars / Math.max(1, registryLoad.registry.worlds.length));
   const worlds = registryLoad.registry.worlds
-    .map((world) => inspectLocalWorld(storage, world))
+    .map((world) => inspectLocalWorld(storage, world, registryShare))
     .sort((left, right) => right.world.lastPlayedAt - left.world.lastPlayedAt || left.world.name.localeCompare(right.world.name));
   return { registryLoad, worlds };
 }
@@ -485,6 +653,26 @@ export function resetLocalWorldData(
     : { ok: false, reason: `world_save_${saved.reason}`, mutationStarted: true };
 }
 
+function beginLocalWorldDelete(
+  storage: SinglePlayerStorageAdapter,
+  worldId: string,
+  deletedAt: number,
+): boolean {
+  const values: Array<string | null> = [];
+  try {
+    for (const key of singlePlayerWorldStorageKeys(worldId)) values.push(storage.getItem(key));
+    const body = deleteTransactionBody(worldId, values, deletedAt);
+    const transaction = { checksum: singlePlayerSaveChecksum(body), ...body };
+    const raw = canonicalSinglePlayerJson(transaction);
+    if (raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) return false;
+    storage.setItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY, raw);
+    return storage.getItem(LOCAL_WORLD_DELETE_TRANSACTION_KEY) === raw
+      && readDeleteTransaction(storage).status === "valid";
+  } catch {
+    return false;
+  }
+}
+
 export function deleteLocalWorld(
   storage: SinglePlayerStorageAdapter,
   worldId: string,
@@ -493,13 +681,25 @@ export function deleteLocalWorld(
   const loaded = loadLocalWorldRegistry(storage);
   const world = loaded.registry?.worlds.find(({ id }) => id === worldId);
   if (!loaded.registry || !world) return { ok: false, reason: "world_not_found", mutationStarted: false };
-  const reset = resetSinglePlayerSave(storage, { worldId });
-  if (!reset.ok) return { ok: false, reason: `world_delete_${reset.reason}`, mutationStarted: reset.mutationStarted };
+  const committedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor(deletedAt)));
+  if (!beginLocalWorldDelete(storage, worldId, committedAt)) {
+    return { ok: false, reason: "world_delete_transaction_failed", mutationStarted: false };
+  }
   const nextRegistry = { worlds: loaded.registry.worlds.filter(({ id }) => id !== worldId) };
-  const saved = saveLocalWorldRegistry(storage, nextRegistry, Math.max(0, Math.floor(deletedAt)));
-  return saved.ok
-    ? { ok: true, world, registry: saved.registry }
-    : { ok: false, reason: `registry_${saved.reason}`, mutationStarted: true };
+  const saved = saveLocalWorldRegistry(storage, nextRegistry, committedAt);
+  if (!saved.ok) {
+    const cleared = clearDeleteTransaction(storage);
+    return {
+      ok: false,
+      reason: cleared ? `registry_${saved.reason}` : `registry_${saved.reason}_transaction_pending`,
+      mutationStarted: !cleared,
+    };
+  }
+  const recovered = loadLocalWorldRegistry(storage);
+  if (recovered.registry && !recovered.registry.worlds.some(({ id }) => id === worldId)) {
+    return { ok: true, world, registry: recovered.registry };
+  }
+  return { ok: false, reason: "world_delete_cleanup_pending", mutationStarted: true };
 }
 
 export function inspectLegacyLocalWorld(storage: SinglePlayerStorageAdapter): LegacyLocalWorldInspection {

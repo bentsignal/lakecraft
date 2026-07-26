@@ -33,6 +33,10 @@ export const SINGLEPLAYER_LEGACY_SAVE_KEY = "lakecraft.singleplayer.v1";
 export const SINGLEPLAYER_WORLD_STORAGE_PREFIX = "lakecraft.singleplayer.world.";
 /** localStorage is commonly quota-limited to a few MiB; leave room for the second slot and other app data. */
 export const SINGLEPLAYER_SAVE_MAX_SLOT_CHARS = 900_000;
+// Namespaced world journals share one synchronous localStorage origin. Keep
+// each of the six registry worlds below a fixed per-slot budget so one world
+// cannot consume the origin before its siblings can save.
+export const SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS = 150_000;
 
 export const SINGLEPLAYER_SAVE_LIMITS = Object.freeze({
   worldCoordinate: 30_000_000,
@@ -58,6 +62,37 @@ export interface SinglePlayerStorageAdapter {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem?(key: string): void;
+}
+
+const UNAVAILABLE_SINGLEPLAYER_STORAGE: SinglePlayerStorageAdapter = {
+  getItem: () => { throw new Error("Browser storage is unavailable."); },
+  setItem: () => { throw new Error("Browser storage is unavailable."); },
+};
+
+/**
+ * Captures the browser storage getter and its methods behind one guarded
+ * boundary. Privacy modes may throw while reading `window.localStorage` or a
+ * method property, before an ordinary storage call can enter its own try/catch.
+ */
+export function browserSinglePlayerStorage(): SinglePlayerStorageAdapter {
+  try {
+    const storage = window.localStorage;
+    const getItem = storage.getItem;
+    const setItem = storage.setItem;
+    const removeItem = storage.removeItem;
+    if (typeof getItem !== "function" || typeof setItem !== "function") {
+      return UNAVAILABLE_SINGLEPLAYER_STORAGE;
+    }
+    return {
+      getItem: (key) => getItem.call(storage, key),
+      setItem: (key, value) => setItem.call(storage, key, value),
+      ...(typeof removeItem === "function"
+        ? { removeItem: (key: string) => removeItem.call(storage, key) }
+        : {}),
+    };
+  } catch {
+    return UNAVAILABLE_SINGLEPLAYER_STORAGE;
+  }
 }
 
 export interface SinglePlayerWorldStorageOptions {
@@ -225,12 +260,19 @@ export function createSinglePlayerWorldStorage(
   // Validate before returning an adapter so an invalid registry entry can never
   // escape its namespace and touch another world's journal.
   singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_HEAD_KEY);
+  let removeItem: ((key: string) => void) | undefined;
+  try {
+    const candidate = storage.removeItem;
+    if (typeof candidate === "function") {
+      removeItem = (key) => candidate.call(storage, singlePlayerWorldStorageKey(worldId, key));
+    }
+  } catch {
+    // A throwing optional-method getter means deletion is unavailable.
+  }
   return {
     getItem: (key) => storage.getItem(singlePlayerWorldStorageKey(worldId, key)),
     setItem: (key, value) => storage.setItem(singlePlayerWorldStorageKey(worldId, key), value),
-    ...(storage.removeItem
-      ? { removeItem: (key: string) => storage.removeItem!(singlePlayerWorldStorageKey(worldId, key)) }
-      : {}),
+    ...(removeItem ? { removeItem } : {}),
   };
 }
 
@@ -542,7 +584,7 @@ export function serializeSinglePlayerSave(payload: SinglePlayerSnapshot, sequenc
     : { ok: false, reason: "too_large" };
 }
 
-function parseSlotRaw(slot: SinglePlayerSaveSlot, raw: string | null): ParsedSlot {
+function parseSlotRaw(slot: SinglePlayerSaveSlot, raw: string | null, expectedWorldId?: string): ParsedSlot {
   if (raw === null) return { kind: "empty", slot };
   if (raw.length === 0 || raw.length > SINGLEPLAYER_SAVE_MAX_SLOT_CHARS) return { kind: "corrupt", slot, reason: "invalid_size" };
   let parsed: unknown;
@@ -564,6 +606,9 @@ function parseSlotRaw(slot: SinglePlayerSaveSlot, raw: string | null): ParsedSlo
   }
   const validated = validateSinglePlayerSnapshot(parsed.payload);
   if (!validated.ok) return { kind: "corrupt", slot, reason: validated.path };
+  if (expectedWorldId && validated.snapshot.world.worldId !== expectedWorldId) {
+    return { kind: "corrupt", slot, reason: "$.world.worldId" };
+  }
   const body = envelopeBody(validated.snapshot, parsed.sequence, parsed.savedAt);
   if (singlePlayerSaveChecksum(body) !== parsed.checksum) return { kind: "corrupt", slot, reason: "checksum_mismatch" };
   const envelope: SinglePlayerSaveEnvelope = { checksum: parsed.checksum, ...body };
@@ -575,12 +620,12 @@ function slotKey(slot: SinglePlayerSaveSlot): string {
   return slot === "a" ? SINGLEPLAYER_SAVE_SLOT_A_KEY : SINGLEPLAYER_SAVE_SLOT_B_KEY;
 }
 
-function readSlots(storage: SinglePlayerStorageAdapter): { slots: ParsedSlot[]; readFailed: boolean } {
+function readSlots(storage: SinglePlayerStorageAdapter, expectedWorldId?: string): { slots: ParsedSlot[]; readFailed: boolean } {
   const slots: ParsedSlot[] = [];
   let readFailed = false;
   for (const slot of ["a", "b"] as const) {
     try {
-      slots.push(parseSlotRaw(slot, storage.getItem(slotKey(slot))));
+      slots.push(parseSlotRaw(slot, storage.getItem(slotKey(slot)), expectedWorldId));
     } catch {
       readFailed = true;
       slots.push({ kind: "corrupt", slot, reason: "storage_read_failed" });
@@ -639,7 +684,7 @@ export function loadSinglePlayerSave(
   options: { now?: () => number; migrateLegacy?: boolean; worldId?: string } = {},
 ): SinglePlayerLoadResult {
   const targetStorage = selectedStorage(storage, options);
-  const scanned = readSlots(targetStorage);
+  const scanned = readSlots(targetStorage, options.worldId);
   const issues = scanned.slots.flatMap((slot) => slot.kind === "corrupt" ? [`${slot.slot}:${slot.reason}`]
     : slot.kind === "unsupported" ? [`${slot.slot}:unsupported_v${slot.version}`] : []);
   const unsupported = scanned.slots.filter((slot): slot is Extract<ParsedSlot, { kind: "unsupported" }> => slot.kind === "unsupported");
@@ -672,10 +717,13 @@ export function loadSinglePlayerSave(
     return { status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: [...issues, "legacy:storage_read_failed"] };
   }
   if (legacyRaw !== null && options.migrateLegacy !== false) {
-    const migrated = legacySnapshot(legacyRaw);
+    let migrated = legacySnapshot(legacyRaw);
     if (!migrated) return { status: "corrupt", snapshot: null, sequence: 0, reason: "legacy_invalid", issues: [...issues, "legacy:invalid"] };
+    if (options.worldId) {
+      migrated = { ...migrated, world: { ...migrated.world, worldId: options.worldId } };
+    }
     const savedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor((options.now ?? Date.now)())));
-    const write = saveSinglePlayerSnapshot(targetStorage, migrated, savedAt);
+    const write = saveSinglePlayerSnapshot(storage, migrated, savedAt, options);
     return write.ok
       ? { status: "migrated", snapshot: write.envelope.payload, sequence: write.sequence, savedAt, slot: write.slot, persisted: true, issues }
       : { status: "migrated", snapshot: migrated, sequence: 0, savedAt, slot: null, persisted: false, issues: [...issues, `migration:${write.reason}`] };
@@ -690,7 +738,10 @@ export function saveSinglePlayerSnapshot(
   options: SinglePlayerWorldStorageOptions = {},
 ): SinglePlayerSaveResult {
   const targetStorage = selectedStorage(storage, options);
-  const scanned = readSlots(targetStorage);
+  if (options.worldId && snapshot.world.worldId !== options.worldId) {
+    return { ok: false, reason: "invalid_snapshot", path: "$.world.worldId", previousSequence: 0 };
+  }
+  const scanned = readSlots(targetStorage, options.worldId);
   const current = highestValid(scanned.slots);
   const previousSequence = current?.envelope.sequence ?? 0;
   if (scanned.readFailed) return { ok: false, reason: "storage_read_failed", previousSequence };
@@ -701,6 +752,9 @@ export function saveSinglePlayerSnapshot(
   if (previousSequence >= Number.MAX_SAFE_INTEGER) return { ok: false, reason: "invalid_snapshot", path: "$.envelope.sequence", previousSequence };
   const serialized = serializeSinglePlayerSave(snapshot, previousSequence + 1, savedAt);
   if (!serialized.ok) return { ok: false, reason: serialized.reason, path: serialized.path, previousSequence };
+  if (options.worldId && serialized.raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS) {
+    return { ok: false, reason: "too_large", previousSequence };
+  }
   const target: SinglePlayerSaveSlot = current ? (current.slot === "a" ? "b" : "a") : "a";
   try {
     targetStorage.setItem(slotKey(target), serialized.raw);
@@ -713,7 +767,7 @@ export function saveSinglePlayerSnapshot(
   } catch {
     return { ok: false, reason: "readback_failed", previousSequence };
   }
-  const verified = parseSlotRaw(target, readback);
+  const verified = parseSlotRaw(target, readback, options.worldId);
   if (readback !== serialized.raw || verified.kind !== "valid" || verified.envelope.sequence !== previousSequence + 1) {
     return { ok: false, reason: "readback_failed", previousSequence };
   }
@@ -736,10 +790,17 @@ export function resetSinglePlayerSave(
   options: SinglePlayerWorldStorageOptions = {},
 ): SinglePlayerResetResult {
   const targetStorage = selectedStorage(storage, options);
-  if (!targetStorage.removeItem) {
+  let removeItem: ((key: string) => void) | null = null;
+  try {
+    const candidate = targetStorage.removeItem;
+    if (typeof candidate === "function") removeItem = candidate.bind(targetStorage);
+  } catch {
+    // Treat a throwing optional-method getter as deletion being unavailable.
+  }
+  if (!removeItem) {
     return { ok: false, reason: "storage_delete_unavailable", mutationStarted: false };
   }
-  const scanned = readSlots(targetStorage);
+  const scanned = readSlots(targetStorage, options.worldId);
   const completeSlotScan = scanned.slots.length === 2
     && scanned.slots.some(({ slot }) => slot === "a")
     && scanned.slots.some(({ slot }) => slot === "b");
@@ -761,7 +822,7 @@ export function resetSinglePlayerSave(
   const removedKeys: string[] = [];
   for (const key of orderedKeys) {
     try {
-      targetStorage.removeItem(key);
+      removeItem(key);
     } catch {
       return { ok: false, reason: "storage_delete_failed", key, mutationStarted: true };
     }

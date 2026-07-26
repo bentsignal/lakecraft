@@ -41,8 +41,8 @@ assert.ok(styles.includes('min-height: 16px'), "status feedback reserves space i
 assert.ok(styles.includes('.lc-game-menu__last-saved { color: #aaa; }'), "secondary timestamp text stays visually subordinate");
 assert.ok(styles.includes('overflow-y: auto'), "the taller pause menu remains reachable on short viewports");
 
-assert.ok(singlePlayer.includes("loadSinglePlayerSave(localStorage"), "the journal is loaded before local engine state is created");
-assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(localStorage"), "manual, autosave, and exit saves share the verified journal writer");
+assert.ok(singlePlayer.includes("loadSinglePlayerSave(storage"), "the journal is loaded before local engine state is created");
+assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(storage"), "manual, autosave, and exit saves share the verified journal writer");
 assert.ok(singlePlayer.includes("engine.importRuntimeSnapshot(initialRuntimeRef.current)"), "pose, health, time, and mobs resume through the strict engine importer");
 assert.ok(singlePlayer.includes("runtime: engineRef.current?.exportRuntimeSnapshot()"), "each committed snapshot captures current engine-owned state");
 assert.ok(singlePlayer.includes("sampleSaveCadence"), "autosaves use active-play cadence instead of a wall-clock write loop");
@@ -58,7 +58,7 @@ assert.ok(singlePlayer.includes("snapshot.world.gameMode = world.initialGameMode
 assert.ok(singlePlayer.includes("migrateLegacy: false, worldId: world.id"),
   "ordinary world loading is namespaced and never performs a silent legacy migration");
 assert.ok(singlePlayer.includes("window.confirm("), "destructive world recovery requires explicit confirmation");
-assert.ok(singlePlayer.includes("resetSinglePlayerSave(localStorage, { worldId: world.id })"),
+assert.ok(singlePlayer.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),
   "confirmed recovery uses the verified journal reset helper for only the active world");
 assert.ok(singlePlayer.includes('console.error("[Lakecraft save] Snapshot commit rejected."'), "exact save diagnostics remain available to developers");
 assert.ok(singlePlayer.includes("result.mutationStarted"), "reset feedback distinguishes unchanged preflight failures from partial resets");

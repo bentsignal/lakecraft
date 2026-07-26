@@ -4,13 +4,20 @@ import {
   SINGLEPLAYER_SAVE_MAX_SLOT_CHARS,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
   SINGLEPLAYER_SAVE_SLOT_B_KEY,
+  SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS,
+  browserSinglePlayerStorage,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
+  resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
   singlePlayerWorldStorageKey,
+  singlePlayerWorldStorageKeys,
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
 import {
+  LOCAL_WORLD_CAPACITY_WARNING_CHARS,
+  LOCAL_WORLD_DELETE_TRANSACTION_KEY,
+  LOCAL_WORLD_NAMESPACE_BUDGET_CHARS,
   LOCAL_WORLD_REGISTRY_SLOT_A_KEY,
   LOCAL_WORLD_REGISTRY_SLOT_B_KEY,
   createLocalWorld,
@@ -21,7 +28,9 @@ import {
   inspectLocalWorld,
   listLocalWorlds,
   loadLocalWorldRegistry,
+  moveLocalWorldSelection,
   normalizeLocalWorldName,
+  reconcileLocalWorldSelection,
   resetLegacyLocalWorld,
   resetLocalWorldData,
   touchLocalWorld,
@@ -50,12 +59,47 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
   }
 }
 
+class QuotaStorage extends MemoryStorage {
+  private readonly quotaChars: number;
+
+  constructor(quotaChars: number) {
+    super();
+    this.quotaChars = quotaChars;
+  }
+
+  override setItem(key: string, value: string): void {
+    const used = [...this.values.entries()].reduce(
+      (total, [storedKey, storedValue]) => total + (storedKey === key ? 0 : storedKey.length + storedValue.length),
+      key.length + value.length,
+    );
+    if (used > this.quotaChars) throw new Error("quota exceeded");
+    super.setItem(key, value);
+  }
+}
+
 assert.equal(normalizeLocalWorldName("  Fern   Hollow  "), "Fern Hollow");
 assert.equal(normalizeLocalWorldName(""), null);
 assert.equal(normalizeLocalWorldName("x".repeat(49)), null);
 assert.equal(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWorldSeed("Fern Hollow"));
 assert.equal(deterministicLocalWorldSeed("-42"), -42);
 assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWorldSeed("Fern Valley"));
+
+// Filtering clears hidden selection, and the roving listbox model implements
+// the complete non-wrapping Arrow/Home/End keyboard contract.
+{
+  const ids = ["world-a", "world-b", "world-c"];
+  assert.equal(reconcileLocalWorldSelection("world-b", ids), "world-b");
+  assert.equal(reconcileLocalWorldSelection("world-a", ["world-b"]), null);
+  assert.equal(moveLocalWorldSelection(null, ids, "ArrowDown"), "world-a");
+  assert.equal(moveLocalWorldSelection(null, ids, "ArrowUp"), "world-c");
+  assert.equal(moveLocalWorldSelection("world-b", ids, "ArrowDown"), "world-c");
+  assert.equal(moveLocalWorldSelection("world-c", ids, "ArrowDown"), "world-c");
+  assert.equal(moveLocalWorldSelection("world-b", ids, "ArrowUp"), "world-a");
+  assert.equal(moveLocalWorldSelection("world-a", ids, "ArrowUp"), "world-a");
+  assert.equal(moveLocalWorldSelection("world-b", ids, "Home"), "world-a");
+  assert.equal(moveLocalWorldSelection("world-b", ids, "End"), "world-c");
+  assert.equal(moveLocalWorldSelection("world-b", [], "End"), null);
+}
 
 // Three worlds keep every snapshot-owned state family isolated.
 {
@@ -127,6 +171,162 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   assert.equal(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: third.world.id }).status, "empty");
 }
 
+// Capacity is a deterministic per-namespace calculation. Unrelated origin
+// data and sibling saves cannot taint a world's status, while the registry's
+// own two-slot footprint is apportioned across the listed worlds.
+{
+  const storage = new MemoryStorage();
+  const first = createLocalWorld(storage, { name: "Capacity A", seedText: "a", gameMode: "survival", now: 1 });
+  const second = createLocalWorld(storage, { name: "Capacity B", seedText: "b", gameMode: "creative", now: 2 });
+  assert.ok(first.ok && second.ok);
+  const before = listLocalWorlds(storage);
+  const firstBefore = before.worlds.find(({ world }) => world.id === first.world.id)!;
+  storage.values.set("unrelated.application.payload", "x".repeat(LOCAL_WORLD_NAMESPACE_BUDGET_CHARS * 4));
+  const afterUnrelated = listLocalWorlds(storage);
+  const firstAfterUnrelated = afterUnrelated.worlds.find(({ world }) => world.id === first.world.id)!;
+  assert.equal(firstAfterUnrelated.usedChars, firstBefore.usedChars);
+  assert.equal(firstAfterUnrelated.capacity, firstBefore.capacity);
+
+  const registryChars = [LOCAL_WORLD_REGISTRY_SLOT_A_KEY, LOCAL_WORLD_REGISTRY_SLOT_B_KEY]
+    .reduce((total, key) => total + (storage.values.has(key) ? key.length + storage.values.get(key)!.length : 0), 0);
+  const namespaceChars = singlePlayerWorldStorageKeys(first.world.id)
+    .reduce((total, key) => total + (storage.values.has(key) ? key.length + storage.values.get(key)!.length : 0), 0);
+  assert.equal(firstAfterUnrelated.usedChars, namespaceChars + Math.ceil(registryChars / 2));
+
+  const firstLegacyKey = singlePlayerWorldStorageKey(first.world.id, SINGLEPLAYER_LEGACY_SAVE_KEY);
+  storage.values.set(firstLegacyKey, "x".repeat(LOCAL_WORLD_CAPACITY_WARNING_CHARS));
+  const warningList = listLocalWorlds(storage);
+  assert.equal(warningList.worlds.find(({ world }) => world.id === first.world.id)?.capacity, "warning");
+  assert.equal(warningList.worlds.find(({ world }) => world.id === second.world.id)?.capacity, "ok");
+  storage.values.set(firstLegacyKey, "x".repeat(LOCAL_WORLD_NAMESPACE_BUDGET_CHARS));
+  assert.equal(
+    listLocalWorlds(storage).worlds.find(({ world }) => world.id === first.world.id)?.capacity,
+    "exceeded",
+  );
+}
+
+// Namespaced saves enforce a per-world budget before touching a quota-backed
+// origin, so one oversized world cannot consume the space needed by siblings.
+{
+  const storage = new QuotaStorage(SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 2);
+  const worlds = [
+    createLocalWorld(storage, { name: "One", seedText: "one", gameMode: "survival", now: 1 }),
+    createLocalWorld(storage, { name: "Two", seedText: "two", gameMode: "creative", now: 2 }),
+    createLocalWorld(storage, { name: "Three", seedText: "three", gameMode: "survival", now: 3 }),
+  ];
+  assert.ok(worlds.every((world) => world.ok));
+  const first = worlds[0].ok ? worlds[0].world : null;
+  const second = worlds[1].ok ? worlds[1].world : null;
+  const third = worlds[2].ok ? worlds[2].world : null;
+  assert.ok(first && second && third);
+  const oversized = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: first.id }).snapshot!;
+  oversized.world.edits = Array.from({ length: 8_000 }, (_, index) => ({
+    x: index - 4_000,
+    y: 63,
+    z: 0,
+    block: BLOCK.BRICKS,
+  }));
+  const before = [...storage.values.entries()];
+  const rejected = saveSinglePlayerSnapshot(storage, oversized, 4, { worldId: first.id });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.ok ? "" : rejected.reason, "too_large");
+  assert.deepEqual([...storage.values.entries()], before, "oversize rejection consumes no origin capacity");
+
+  for (const world of [second, third]) {
+    const snapshot = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: world.id }).snapshot!;
+    snapshot.player.inventory[0] = { itemId: "apple", count: 1 };
+    assert.equal(saveSinglePlayerSnapshot(storage, snapshot, 5, { worldId: world.id }).ok, true);
+  }
+}
+
+// A storage namespace is cryptographically checked and bound to the embedded
+// world identity. Cross-world writes fail closed and a copied journal cannot be
+// loaded under another registry entry.
+{
+  const storage = new MemoryStorage();
+  const first = createLocalWorld(storage, { name: "World A", seedText: "a", gameMode: "survival", now: 1 });
+  const second = createLocalWorld(storage, { name: "World B", seedText: "b", gameMode: "creative", now: 2 });
+  assert.ok(first.ok && second.ok);
+  const snapshot = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: first.world.id }).snapshot!;
+  const rejected = saveSinglePlayerSnapshot(storage, snapshot, 3, { worldId: second.world.id });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.ok ? "" : rejected.reason, "invalid_snapshot");
+  assert.equal(rejected.ok ? "" : rejected.path, "$.world.worldId");
+
+  for (const key of [SINGLEPLAYER_SAVE_SLOT_A_KEY, SINGLEPLAYER_SAVE_SLOT_B_KEY]) {
+    const source = storage.values.get(singlePlayerWorldStorageKey(first.world.id, key));
+    if (source) storage.values.set(singlePlayerWorldStorageKey(second.world.id, key), source);
+  }
+  const copied = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: second.world.id });
+  assert.equal(copied.status, "corrupt");
+  assert.ok(copied.status === "corrupt" && copied.issues.some((issue) => issue.includes("$.world.worldId")));
+}
+
+// Even the optional old-format migration is rebound before it enters a
+// namespace; a later strict load observes the same embedded identity.
+{
+  const storage = new MemoryStorage();
+  const worldId = "world-namespaced-migration";
+  storage.values.set(singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_LEGACY_SAVE_KEY), JSON.stringify({
+    inventory: createDefaultSinglePlayerSnapshot().player.inventory,
+    equipment: createDefaultSinglePlayerSnapshot().player.equipment,
+    selected: 2,
+    hunger: 20,
+    edits: [],
+    drops: [],
+  }));
+  const migrated = loadSinglePlayerSave(storage, { worldId, migrateLegacy: true, now: () => 123 });
+  assert.equal(migrated.status, "migrated");
+  assert.equal(migrated.snapshot?.world.worldId, worldId);
+  assert.equal(loadSinglePlayerSave(storage, { worldId, migrateLegacy: false }).snapshot?.world.worldId, worldId);
+}
+
+// Delete commits registry visibility first. A registry write failure preserves
+// the journal. An interrupted post-commit cleanup retains a complete recovery
+// transaction and deterministically rolls forward on the next successful read.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, { name: "Keep Me", seedText: "keep", gameMode: "survival", now: 1 });
+  assert.ok(created.ok);
+  const initialWorldKeys = singlePlayerWorldStorageKeys(created.world.id);
+  const initialJournal = initialWorldKeys.map((key) => storage.values.get(key) ?? null);
+  storage.failWritesFor = LOCAL_WORLD_REGISTRY_SLOT_B_KEY;
+  storage.failDeletesFor = LOCAL_WORLD_DELETE_TRANSACTION_KEY;
+  const blocked = deleteLocalWorld(storage, created.world.id, 2);
+  assert.equal(blocked.ok, false);
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  storage.values.set(initialWorldKeys[1], "interrupted-primary");
+  storage.failWritesFor = null;
+  storage.failDeletesFor = null;
+  assert.ok(loadLocalWorldRegistry(storage).registry);
+  assert.deepEqual(initialWorldKeys.map((key) => storage.values.get(key) ?? null), initialJournal,
+    "a pre-commit transaction restores the complete original journal");
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+  assert.ok(loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: created.world.id }).snapshot);
+  assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.some(({ id }) => id === created.world.id), true);
+
+  const current = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: created.world.id }).snapshot!;
+  current.player.inventory[0] = { itemId: "diamond", count: 2 };
+  assert.equal(saveSinglePlayerSnapshot(storage, current, 3, { worldId: created.world.id }).ok, true);
+  const worldKeys = singlePlayerWorldStorageKeys(created.world.id);
+  const completeJournal = worldKeys.map((key) => storage.values.get(key) ?? null);
+  storage.failDeletesFor = singlePlayerWorldStorageKey(created.world.id, SINGLEPLAYER_SAVE_SLOT_A_KEY);
+  const interrupted = deleteLocalWorld(storage, created.world.id, 4);
+  assert.equal(interrupted.ok, false);
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), true);
+  assert.ok(storage.values.get(LOCAL_WORLD_DELETE_TRANSACTION_KEY)?.includes('"checksum"'));
+  assert.notDeepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), completeJournal,
+    "the injected interruption occurs after at least one primary key is removed");
+  assert.equal(loadLocalWorldRegistry(storage).status, "corrupt", "pending cleanup fails closed while deletion remains blocked");
+
+  storage.failDeletesFor = null;
+  const recovered = loadLocalWorldRegistry(storage);
+  assert.ok(recovered.registry);
+  assert.equal(recovered.registry.worlds.some(({ id }) => id === created.world.id), false);
+  assert.deepEqual(worldKeys.map((key) => storage.values.get(key) ?? null), [null, null, null, null]);
+  assert.equal(storage.values.has(LOCAL_WORLD_DELETE_TRANSACTION_KEY), false);
+}
+
 // The registry itself recovers from an interrupted newest-slot write.
 {
   const storage = new MemoryStorage();
@@ -174,6 +374,43 @@ assert.notEqual(deterministicLocalWorldSeed("Fern Hollow"), deterministicLocalWo
   const imported = importLegacyLocalWorld(storage, { name: "Old World", now: 500 });
   assert.ok(imported.ok);
   assert.equal(imported.world.importedLegacy, true);
+}
+
+// Storage can fail while resolving the browser getter or an adapter method
+// property, before a method body is called. Both boundaries fail closed.
+{
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  try {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      get: () => { throw new Error("localStorage getter denied"); },
+    });
+    const guarded = browserSinglePlayerStorage();
+    assert.doesNotThrow(() => listLocalWorlds(guarded));
+    assert.equal(loadLocalWorldRegistry(guarded).status, "corrupt");
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+
+  const throwingGet = Object.defineProperty({
+    setItem: () => undefined,
+  }, "getItem", {
+    get: () => { throw new Error("method getter denied"); },
+  }) as SinglePlayerStorageAdapter;
+  assert.doesNotThrow(() => loadLocalWorldRegistry(throwingGet));
+  assert.equal(loadLocalWorldRegistry(throwingGet).status, "corrupt");
+
+  const values = new Map<string, string>();
+  const throwingRemove = Object.defineProperties({}, {
+    getItem: { value: (key: string) => values.get(key) ?? null },
+    setItem: { value: (key: string, value: string) => values.set(key, value) },
+    removeItem: { get: () => { throw new Error("remove getter denied"); } },
+  }) as SinglePlayerStorageAdapter;
+  assert.deepEqual(
+    resetSinglePlayerSave(throwingRemove),
+    { ok: false, reason: "storage_delete_unavailable", mutationStarted: false },
+  );
 }
 
 // Seeded create/touch/reset/delete histories preserve uniqueness and bounds.

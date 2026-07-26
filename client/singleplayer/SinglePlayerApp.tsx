@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
 import { ChatOverlay, type LakecraftChatMessage } from "../chat";
 import {
@@ -54,12 +54,14 @@ import {
 } from "../settings";
 import {
   SINGLEPLAYER_SAVE_LIMITS,
+  browserSinglePlayerStorage,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
   resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
   type SinglePlayerLoadResult,
   type SinglePlayerSnapshot,
+  type SinglePlayerStorageAdapter,
 } from "./localSave.ts";
 import {
   commitSaveCadence,
@@ -193,7 +195,7 @@ type InitialLocalWorld = {
   prunedDropCount: number;
 };
 
-function loadInitialLocalWorld(world: LocalWorldRecord): InitialLocalWorld {
+function loadInitialLocalWorld(world: LocalWorldRecord, storage: SinglePlayerStorageAdapter): InitialLocalWorld {
   const now = Date.now();
   const finish = (snapshot: SinglePlayerSnapshot, load: SinglePlayerLoadResult, saveLocked: boolean): InitialLocalWorld => {
     const pruned = pruneExpiredLocalDroppedItems(snapshot.drops, now);
@@ -208,7 +210,7 @@ function loadInitialLocalWorld(world: LocalWorldRecord): InitialLocalWorld {
     };
   };
   try {
-    const load = loadSinglePlayerSave(localStorage, { now: () => now, migrateLegacy: false, worldId: world.id });
+    const load = loadSinglePlayerSave(storage, { now: () => now, migrateLegacy: false, worldId: world.id });
     if (load.snapshot) return finish(load.snapshot, load, false);
     if (load.status === "empty") {
       const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
@@ -240,13 +242,15 @@ function SinglePlayerWorld({
   entryPointerLockHandoff = false,
   world,
   onExit,
+  storage,
 }: {
   entryPointerLockHandoff?: boolean;
   world: LocalWorldRecord;
   onExit: () => void;
+  storage: SinglePlayerStorageAdapter;
 }) {
   const initial = useRef<InitialLocalWorld | null>(null);
-  if (!initial.current) initial.current = loadInitialLocalWorld(world);
+  if (!initial.current) initial.current = loadInitialLocalWorld(world, storage);
   const initialSnapshot = initial.current.snapshot;
   const initialGameMode: LocalGameMode = initialSnapshot.world.gameMode ?? "survival";
   const initialPlayerHealth = initialGameMode === "creative"
@@ -316,7 +320,7 @@ function SinglePlayerWorld({
   const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN);
   const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [clientSettings, setClientSettings] = useState(() => loadClientSettings(window.localStorage));
+  const [clientSettings, setClientSettings] = useState(() => loadClientSettings(storage));
   const clientSettingsRef = useRef(clientSettings);
   clientSettingsRef.current = clientSettings;
   const [activeChestKey, setActiveChestKey] = useState<string | null>(null);
@@ -405,7 +409,7 @@ function SinglePlayerWorld({
     const soundChanged = clientSettingsRef.current.soundMuted !== next.soundMuted;
     clientSettingsRef.current = next;
     setClientSettings(next);
-    saveClientSettings(window.localStorage, next);
+    saveClientSettings(storage, next);
     if (soundChanged) audioRef.current?.setMuted(next.soundMuted);
   }
 
@@ -479,7 +483,7 @@ function SinglePlayerWorld({
     saveInProgressRef.current = true;
     setSaveInProgress(true);
     const now = Date.now();
-    const result = saveSinglePlayerSnapshot(localStorage, snapshot, now, { worldId: world.id });
+    const result = saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id });
     saveInProgressRef.current = false;
     setSaveInProgress(false);
     if (!result.ok) {
@@ -513,7 +517,7 @@ function SinglePlayerWorld({
       "Reset this local world? This permanently deletes its saved blocks, inventory, and progress. This cannot be undone.",
     );
     if (!confirmed) return;
-    const result = resetSinglePlayerSave(localStorage, { worldId: world.id });
+    const result = resetSinglePlayerSave(storage, { worldId: world.id });
     if (!result.ok) {
       console.error("[Lakecraft save] Explicit local world reset failed.", result);
       setSaveStatusText(result.mutationStarted
@@ -1934,6 +1938,7 @@ function SinglePlayerWorld({
 }
 
 export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPointerLockHandoff?: boolean } = {}) {
+  const storage = useMemo(browserSinglePlayerStorage, []);
   const [activeWorld, setActiveWorld] = useState<{
     world: LocalWorldRecord;
     pointerLockHandoff: boolean;
@@ -1944,11 +1949,13 @@ export function SinglePlayerApp({ entryPointerLockHandoff = false }: { entryPoin
       entryPointerLockHandoff={activeWorld.pointerLockHandoff}
       key={activeWorld.world.id}
       onExit={() => setActiveWorld(null)}
+      storage={storage}
       world={activeWorld.world}
     />
   ) : (
     <LocalWorldBrowser
       onPlay={(world, pointerLockHandoff) => setActiveWorld({ world, pointerLockHandoff })}
+      storage={storage}
     />
   );
 }
