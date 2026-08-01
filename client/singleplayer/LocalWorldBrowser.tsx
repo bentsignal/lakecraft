@@ -4,7 +4,6 @@ import { requestDocumentPointerLockHandoff } from "../pointerLockHandoff.ts";
 import {
   LOCAL_WORLD_REGISTRY_MAX_WORLDS,
   canPlayLocalWorld,
-  createLocalWorld,
   deleteLocalWorld,
   isLocalWorldRegistryTransactionReadOnly,
   listLocalWorlds,
@@ -17,7 +16,12 @@ import {
   browserSinglePlayerStorage,
   type SinglePlayerStorageAdapter,
 } from "./localSave.ts";
-import { localWorldDeleteState, localWorldDialogRef } from "./localWorldBrowserIssue.ts";
+import {
+  createLocalWorldForImmediatePlay,
+  enterVerifiedCreatedLocalWorld,
+  localWorldDeleteState,
+  localWorldDialogRef,
+} from "./localWorldBrowserIssue.ts";
 
 interface LocalWorldBrowserProps {
   onBack: () => void;
@@ -82,6 +86,41 @@ const WORLD_BROWSER_CSS = `
   .lc-local-world-row{grid-template-columns:minmax(0,1fr) auto}
   .lc-local-world-delete{min-width:72px;padding-inline:8px}
 }`;
+
+function SinglePlayerPanorama() {
+  return (
+    <div className="lc-title-panorama" aria-hidden="true">
+      <span className="lc-title-sun" />
+      <span className="lc-title-cloud cloud-one" />
+      <span className="lc-title-cloud cloud-two" />
+      <span className="lc-title-hills hills-back" />
+      <span className="lc-title-hills hills-front" />
+      <span className="lc-title-ground" />
+      <span className="lc-title-tree tree-one" />
+      <span className="lc-title-tree tree-two" />
+    </div>
+  );
+}
+
+export function SinglePlayerTitleScreen({ onJoinSingleplayer }: { onJoinSingleplayer: () => void }) {
+  return (
+    <main className="lc-title-screen">
+      <LobbyStyles />
+      <SinglePlayerPanorama />
+      <div className="lc-title-shade" aria-hidden="true" />
+      <section className="lc-title-content" aria-label="Lakecraft main menu">
+        <header className="lc-title-logo">
+          <h1>LAKECRAFT</h1>
+          <span>Build worlds that stay in this browser</span>
+        </header>
+        <div className="lc-title-menu">
+          <button className="lc-menu-button is-wide" onClick={onJoinSingleplayer} type="button">Singleplayer</button>
+        </div>
+      </section>
+      <footer className="lc-title-footer"><span>Lakecraft Singleplayer Alpha</span><span>Local worlds</span></footer>
+    </main>
+  );
+}
 
 function dateText(value: number): string {
   return value ? new Date(value).toLocaleString() : "Never";
@@ -181,31 +220,32 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
       fail("Create failed safely.");
       return;
     }
-    const result = createLocalWorld(storage, {
+    const attempt = createLocalWorldForImmediatePlay(storage, {
       name: name.value,
       seedText: seed.value,
       gameMode: mode.value === "creative" ? "creative" : "survival",
     });
+    const result = attempt.creation;
     if (!result.ok) {
       fail(result.reason === "world_limit_reached"
         ? `World limit (${LOCAL_WORLD_REGISTRY_MAX_WORLDS}) reached.`
         : "Create failed; storage full/unavailable.");
       return;
     }
-    const nextListing = listLocalWorlds(storage);
-    const created = nextListing.worlds.find(({ world }) => world.id === result.world.id) ?? null;
     setSelectedId(result.world.id);
-    setListing(nextListing);
+    setListing(attempt.listing!);
     closeDialog();
-    if (!created) {
+    if (!enterVerifiedCreatedLocalWorld(
+      attempt.playable,
+      requestDocumentPointerLockHandoff,
+      onPlay,
+    )) {
       fail("Created world could not be safely opened.");
-      return;
     }
-    play(created);
   }
 
-  function removeConfirmedWorld(): void {
-    if (!deleteConfirmed) return;
+  function removeConfirmedWorld(confirmed = deleteConfirmed): void {
+    if (!confirmed) return;
     if (transactionReadOnly) {
       fail(READ_ONLY);
       closeDialog();
@@ -345,6 +385,11 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
                     autoComplete="off"
                     autoFocus
                     onInput={(event) => setDeletePhrase(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      removeConfirmedWorld(event.currentTarget.value === DELETE_PHRASE);
+                    }}
                     value={deletePhrase}
                   />
                 </label>

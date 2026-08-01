@@ -10,3 +10,11 @@ export function shouldRunSinglePlayer(hostname: string, search: string): boolean
   if (isHostedLakebedHostname(hostname)) return true;
   return new URLSearchParams(search).get("singleplayer") === "1";
 }
+
+/** Returns the clean title URL without discarding unrelated local query flags. */
+export function singlePlayerTitleUrl(value: string): string {
+  const url = new URL(value);
+  url.searchParams.delete("singleplayer");
+  url.hash = "";
+  return url.href;
+}
