@@ -4,7 +4,9 @@ import {
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
   parseSinglePlayerSaveEnvelope,
+  SINGLEPLAYER_SAVE_SLOT_A_KEY,
   serializeSinglePlayerSave,
+  singlePlayerWorldStorageKey,
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
 import {
@@ -32,6 +34,7 @@ import {
   parseSinglePlayerCloudBackupDeleteRequest,
   splitSinglePlayerCloudBackupSnapshot,
   utcCloudBackupDay,
+  validUtcCloudBackupDay,
   validStoredSinglePlayerCloudBackupManifest,
   type SinglePlayerCloudBackupCandidate,
   type StoredSinglePlayerCloudBackupManifest,
@@ -85,9 +88,9 @@ assert.equal(isRestorableSinglePlayerSnapshot(withDrops), false);
 assert.equal(validateSinglePlayerSnapshot(withDrops).ok, false);
 
 const ordered = structuredClone(snapshot);
-ordered.progression.recipes = ["A.recipe", "a:recipe"];
+ordered.progression.recipes = ["A.recipe", "a:recipe"].sort((left, right) => left.localeCompare(right));
 ordered.world.edits = [{ x: -2, y: 0, z: 0, block: 1 }, { x: -1, y: 0, z: 0, block: 1 }];
-assert.equal(isRestorableSinglePlayerSnapshot(ordered), true, "code-unit progression and numeric edit ordering match local normalization");
+assert.equal(isRestorableSinglePlayerSnapshot(ordered), true, "locale progression and numeric edit ordering match local normalization");
 assert.equal(validateSinglePlayerSnapshot(ordered).ok, true);
 ordered.progression.recipes.reverse();
 assert.equal(isRestorableSinglePlayerSnapshot(ordered), false);
@@ -104,6 +107,16 @@ const invalidRaw = canonicalCloudBackupJson({ checksum: cloudBackupHash(invalidB
 assert.deepEqual(parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
   1, worldId, "Cloud World", 42, "survival", createdAt, "0", invalidRaw,
 ])), { ok: false, reason: "invalid_snapshot" }, "caller-recomputed checksums cannot bypass the complete portable schema gate");
+
+const punctuationSnapshot = structuredClone(snapshot);
+punctuationSnapshot.progression.recipes = ["A.recipe", "a.recipe", "_recipe", ":recipe"];
+punctuationSnapshot.progression.advancements = ["Z:done", "z:done", ".done", "_done"];
+const punctuationSave = serializeSinglePlayerSave(punctuationSnapshot, 8, savedAt + 1);
+assert.equal(punctuationSave.ok, true);
+if (!punctuationSave.ok) throw new Error("punctuation fixture failed local serialization");
+assert.equal(parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, worldId, "Cloud World", 42, "survival", createdAt, "0", punctuationSave.raw,
+])).ok, true, "every locale-sorted punctuation/case fixture emitted locally passes cloud admission");
 
 const ascii = "a".repeat(150_000);
 const asciiChunks = splitSinglePlayerCloudBackupSnapshot(ascii);
@@ -244,6 +257,15 @@ assert.deepEqual(decide(null, candidate, {
   globalAcceptedToday: SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES,
 }), { ok: false, reason: "cloud_capacity" });
 assert.equal(utcCloudBackupDay(Date.UTC(2026, 6, 31, 23, 59)), "2026-07-31");
+for (const value of ["2026-02-29", "2026-13-01", "2026-00-10", "2026-04-31", "2026-1-01", "not-a-day"]) {
+  assert.equal(validUtcCloudBackupDay(value), false, `${value} is not a canonical real UTC day`);
+}
+assert.equal(validUtcCloudBackupDay("2024-02-29"), true);
+assert.deepEqual(decide({ ...manifest, revision: String(Number.MAX_SAFE_INTEGER) }, {
+  ...candidate, expectedRevision: String(Number.MAX_SAFE_INTEGER),
+}, { currentSnapshotJson: candidate.snapshotJson, userWorldCount: 1,
+  userStateBytes: candidate.stateBytes, globalStateBytes: candidate.stateBytes }),
+{ ok: false, reason: "server_state" }, "an exhausted stored revision is corrupt server state, not user capacity");
 
 const storage = new MemoryStorage();
 const restored = restoreMissingLocalWorld(storage, {
@@ -293,6 +315,29 @@ assert.deepEqual(restoreMissingLocalWorld(full, {
 assert.deepEqual(full.values, beforeFullRestore, "capacity rejection must not mutate browser storage");
 assert.equal(listLocalWorlds(full).worlds.length, LOCAL_WORLD_REGISTRY_MAX_WORLDS);
 
+for (const kind of ["valid", "corrupt", "unsupported"] as const) {
+  const orphanStorage = new MemoryStorage();
+  const orphanId = `orphan-${kind}`;
+  const orphanSnapshot = createDefaultSinglePlayerSnapshot(77, 7_700, orphanId);
+  const orphanSave = serializeSinglePlayerSave(orphanSnapshot, 1, 7_701);
+  assert.equal(orphanSave.ok, true);
+  if (!orphanSave.ok) throw new Error("orphan fixture failed serialization");
+  let raw = orphanSave.raw;
+  if (kind === "corrupt") raw = "{corrupt";
+  if (kind === "unsupported") {
+    const future = JSON.parse(raw);
+    future.version = 2;
+    raw = JSON.stringify(future);
+  }
+  orphanStorage.setItem(singlePlayerWorldStorageKey(orphanId, SINGLEPLAYER_SAVE_SLOT_A_KEY), raw);
+  const before = new Map(orphanStorage.values);
+  assert.deepEqual(restoreMissingLocalWorld(orphanStorage, {
+    worldId: orphanId, name: "Orphan", seed: 77, gameMode: "survival", createdAt: 7_700,
+    snapshot: orphanSnapshot, snapshotSavedAt: 7_702,
+  }), { ok: false, reason: "world_namespace_occupied", mutationStarted: false });
+  assert.deepEqual(orphanStorage.values, before, `${kind} orphan namespace rejection mutates nothing`);
+}
+
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 assert.match(serverSource, /\.index\("by_cleanup", \["activeBackup", "cleanupAfter"\]\)/,
   "dormant budgets use an explicit eligibility index instead of a starvation-prone creation prefix");
@@ -306,5 +351,9 @@ assert.match(serverSource, /activeBackup: "0", cleanupAfter:/,
   "last-world permanent deletion retains cadence state only until its indexed cleanup deadline");
 assert.match(serverSource, /userId\.length > 520/,
   "the server accepts the exact provider-prefixed maximum identity but rejects unbounded auth state");
+assert.match(serverSource, /row\.userId === userId && \(!deleting \|\| current\)/,
+  "an eligible dormant caller budget is reclaimed by its own repeated permanent-delete traffic");
+assert.match(serverSource, /validUtcCloudBackupDay\(row\.dayKey\)[\s\S]*?validUtcCloudBackupDay\(quota\.dayKey\)/,
+  "budget and quota day keys require canonical real UTC dates before mutation");
 
 console.log("single-player cloud backup protocol and explicit restore foundation tests passed");

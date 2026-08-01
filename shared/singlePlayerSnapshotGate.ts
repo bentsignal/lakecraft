@@ -30,9 +30,6 @@ function identifier(value: unknown): value is string {
 function sortedUnique(values: readonly string[]): boolean {
   return values.every((value, index) => index === 0 || values[index - 1].localeCompare(value) < 0);
 }
-function codeUnitSortedUnique(values: readonly string[]): boolean {
-  return values.every((value, index) => index === 0 || values[index - 1] < value);
-}
 function coordinate(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const match = /^(-?\d+):(-?\d+):(-?\d+)$/.exec(value);
@@ -143,7 +140,7 @@ export function isRestorableSinglePlayerSnapshot(value: unknown): boolean {
   if (!progression || !exact(progression, ["experience", "recipes", "advancements"]) || !integer(progression.experience, 0, Number.MAX_SAFE_INTEGER)) return false;
   for (const key of ["recipes", "advancements"] as const) {
     const list = progression[key];
-    if (!Array.isArray(list) || list.length > 512 || !list.every(identifier) || !codeUnitSortedUnique(list)) return false;
+    if (!Array.isArray(list) || list.length > 512 || !list.every(identifier) || !sortedUnique(list)) return false;
   }
   if (!Array.isArray(root.drops) || root.drops.length > 512 || !Array.isArray(root.chests) || root.chests.length > 512
     || !Array.isArray(root.furnaces) || root.furnaces.length > 512 || !Array.isArray(root.primedTnt) || root.primedTnt.length > 64) return false;
