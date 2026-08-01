@@ -5,10 +5,12 @@ import {
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
   saveSinglePlayerSnapshot,
+  serializeSinglePlayerSave,
   singlePlayerSaveChecksum,
   singlePlayerWorldStorageKey,
   singlePlayerWorldStorageKeys,
   type SinglePlayerStorageAdapter,
+  type SinglePlayerSnapshot,
 } from "./localSave.ts";
 
 export const LOCAL_WORLD_REGISTRY_FORMAT = "lakecraft.local-world-registry" as const;
@@ -824,7 +826,15 @@ function persistNewLocalWorld(
   storage: SinglePlayerStorageAdapter,
   registry: LocalWorldRegistry,
   generation: number,
-  input: { name: string; seed: number; gameMode: LocalGameMode; createdAt: number },
+  input: {
+    name: string;
+    seed: number;
+    gameMode: LocalGameMode;
+    createdAt: number;
+    worldId?: string;
+    snapshot?: SinglePlayerSnapshot;
+    snapshotSavedAt?: number;
+  },
 ): LocalWorldMutationResult {
   const name = normalizeLocalWorldName(input.name);
   if (!name || !safeInteger(input.seed, -2_147_483_648, 2_147_483_647)
@@ -833,7 +843,8 @@ function persistNewLocalWorld(
     return failure("invalid_world");
   }
   const replayed = registry.worlds.find((candidate) =>
-    candidate.name === name
+    (input.worldId === undefined || candidate.id === input.worldId)
+    && candidate.name === name
     && candidate.seed === input.seed
     && candidate.initialGameMode === input.gameMode
     && candidate.createdAt === input.createdAt
@@ -842,8 +853,10 @@ function persistNewLocalWorld(
   if (registry.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS) {
     return failure("world_limit_reached");
   }
-  const id = nextWorldId(registry, input.seed, input.createdAt);
-  if (!id) return failure("world_id_unavailable");
+  const id = input.worldId ?? nextWorldId(registry, input.seed, input.createdAt);
+  if (!id || !validWorldId(id) || registry.worlds.some((world) => world.id === id)) {
+    return failure("world_id_unavailable");
+  }
   const world: LocalWorldRecord = {
     id,
     name,
@@ -853,6 +866,20 @@ function persistNewLocalWorld(
     lastPlayedAt: 0,
     importedLegacy: false,
   };
+  if (input.snapshot?.world.gameMode !== undefined && input.snapshot.world.gameMode !== input.gameMode) {
+    return failure("invalid_world_snapshot");
+  }
+  const snapshot = input.snapshot
+    ? { ...input.snapshot, world: { ...input.snapshot.world, gameMode: input.gameMode } }
+    : createDefaultSinglePlayerSnapshot(input.seed, input.createdAt, id);
+  snapshot.world.gameMode = input.gameMode;
+  if (snapshot.world.worldId !== id || snapshot.world.seed !== input.seed
+    || snapshot.world.createdAt !== input.createdAt) return failure("invalid_world_snapshot");
+  const snapshotSavedAt = timestamp(input.snapshotSavedAt ?? input.createdAt);
+  const preflight = serializeSinglePlayerSave(snapshot, 1, snapshotSavedAt);
+  if (!preflight.ok || preflight.raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS) {
+    return failure("invalid_world_snapshot");
+  }
   const pending = makePending(0, generation, world);
   const begun = saveRegistryState(storage, registry, input.createdAt, generation - 1, pending, null);
   if (!begun.ok) {
@@ -869,9 +896,7 @@ function persistNewLocalWorld(
   if (!mirrorPending(storage, begun.sequence, pending)) {
     return failure("world_create_transaction_pending", true);
   }
-  const snapshot = createDefaultSinglePlayerSnapshot(input.seed, input.createdAt, id);
-  snapshot.world.gameMode = input.gameMode;
-  const saved = saveSinglePlayerSnapshot(storage, snapshot, input.createdAt, { worldId: id });
+  const saved = saveSinglePlayerSnapshot(storage, snapshot, snapshotSavedAt, { worldId: id });
   if (!saved.ok) return failure(`world_save_${saved.reason}_transaction_pending`, true);
   const nextRegistry = { worlds: [...registry.worlds, world] };
   const protectedPending = makePending(0, begun.sequence + 1, world);
@@ -928,6 +953,26 @@ export function createLocalWorld(
     gameMode: input.gameMode,
     createdAt,
   });
+}
+
+/** Adds a missing cloud world through the same crash-recoverable namespace transaction as local creation. */
+export function restoreMissingLocalWorld(
+  storage: SinglePlayerStorageAdapter,
+  input: {
+    worldId: string;
+    name: string;
+    seed: number;
+    gameMode: LocalGameMode;
+    createdAt: number;
+    snapshot: SinglePlayerSnapshot;
+    snapshotSavedAt: number;
+  },
+): LocalWorldMutationResult {
+  const loaded = loadLocalWorldRegistry(storage);
+  if (!loaded.registry) return failure(`registry_${loaded.status}`);
+  if (hasPendingNamespaceRecovery(loaded.issues)) return failure("world_create_recovery_pending");
+  if (loaded.registry.worlds.some(({ id }) => id === input.worldId)) return failure("world_exists");
+  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1, input);
 }
 
 export function inspectLocalWorld(

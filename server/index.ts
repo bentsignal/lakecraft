@@ -322,6 +322,20 @@ import {
   type MotionBatchV1,
 } from "../shared/multiplayerSegments.ts";
 import * as BS from "../shared/bundleStrings.ts";
+import {
+  SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS,
+  SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES,
+  SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES,
+  SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS,
+  candidateMatchesManifest,
+  cloudBackupStoredChunkBytes,
+  cloudBackupUtf8Bytes,
+  decideSinglePlayerCloudBackupCommit,
+  parseSinglePlayerCloudBackupCommitRequest,
+  parseSinglePlayerCloudBackupDeleteRequest,
+  singlePlayerCloudBackupWire,
+  utcCloudBackupDay,
+} from "../shared/singlePlayerCloudBackups.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
 
@@ -346,6 +360,7 @@ const MOTION_COMPOSITE_MAX_RADIUS = 256;
 const MOTION_COMPOSITE_MAX_REQUEST_CHARS = 8_192;
 const MOTION_COMBAT_POSE_FRESH_MS = 15_000;
 const DIRECT_COMBAT_POSE_FRESH_MS = 5_000;
+const SINGLE_PLAYER_CLOUD_QUOTA_KEY = "v1";
 
 interface MotionCompositeRequest {
   radius: number;
@@ -1590,18 +1605,42 @@ export default capsule({
       .index("by_event", ["eventId"])
       .index("by_created", ["receiptCreatedAt"]),
 
-    /** INCIDENT-CONTAINMENT-SCHEMA-BEGIN
-     * Preserves rows written by accidental deploy dep_GeGTYPSk0TrcWk9E.
-     * These tables are intentionally inert: no query, mutation, endpoint, or client transport may use them.
-     */
-    singlePlayerCloudBackupParts: table({
+    /** One active chunk revision per signed-in user/world. */
+    singlePlayerCloudBackups: table({
       userId: string(),
       worldId: string(),
-      part: string(),
-      data: string(),
+      name: string(),
+      seed: string(),
+      gameMode: string(),
+      worldCreatedAt: string(),
+      snapshotHash: string(),
+      snapshotChars: string(),
+      snapshotUtf8Bytes: string(),
+      stateBytes: string(),
+      chunkCount: string(),
+      uploadId: string(),
+      revision: string(),
+      uploadedAt: string(),
+      protocolVersion: string().default("1"),
     })
-      .index(BS.byUser, ["userId"]),
+      .index("by_user_world", ["userId", "worldId"])
+      .index("by_user_uploaded", ["userId", "uploadedAt"]),
 
+    /** Active payload chunks; replacement happens in the manifest mutation transaction. */
+    singlePlayerCloudBackupChunks: table({
+      userId: string(),
+      worldId: string(),
+      uploadId: string(),
+      chunkIndex: string(),
+      chunkData: string(),
+      chunkBytes: string(),
+      chunkStateBytes: string(),
+      protocolVersion: string().default("1"),
+    })
+      .index("by_user_world", ["userId", "worldId"])
+      .index("by_user_world_upload", ["userId", "worldId", "uploadId", "chunkIndex"]),
+
+    /** Transaction-serialized deployment accounting and cloud mutation grant. */
     singlePlayerCloudBackupQuota: table({
       quotaKey: string(),
       activeStateBytes: string(),
@@ -1611,17 +1650,13 @@ export default capsule({
       revision: string(),
     }).index("by_key", ["quotaKey"]),
 
+    /** Cross-tab/device per-user cadence and daily grant. */
     singlePlayerCloudBackupBudgets: table({
       userId: string(),
       dayKey: string(),
       acceptedToday: string(),
       lastAcceptedAt: string(),
-      activeBackup: string(),
-      cleanupAfter: string(),
-    })
-      .index("by_user", ["userId"])
-      .index("by_cleanup", ["activeBackup", "cleanupAfter"])
-    /** INCIDENT-CONTAINMENT-SCHEMA-END */
+    }).index("by_user", ["userId"])
   },
 
   queries: {
@@ -2075,10 +2110,158 @@ export default capsule({
         states.push(materializePlayerCombatState(databaseRowToStoredPlayerCombat(row), userId, serverNow));
       }
       return { ok: true, states, serverNow };
+    }),
+
+    singlePlayerCloudBackups: query(async (ctx) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: BS.authenticationRequired, backups: [], serverNow };
+      }
+      const rows = await ctx.db.singlePlayerCloudBackups
+        .withIndex("by_user_uploaded", (q) => q.eq(BS.userId, ctx.auth.userId))
+        .order("desc")
+        .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS + 1);
+      if (rows.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS
+        || rows.some((row) => row.userId !== ctx.auth.userId || row.protocolVersion !== "1")) {
+        return { ok: false, reason: BS.invalidServerState, backups: [], serverNow };
+      }
+      const backups = [];
+      let stateBytes = 0;
+      for (const row of rows) {
+        const rowBytes = /^\d{1,6}$/.test(row.stateBytes) ? Number(row.stateBytes) : Number.NaN;
+        const chunkCount = /^[1-4]$/.test(row.chunkCount) ? Number(row.chunkCount) : 0;
+        if (!Number.isSafeInteger(rowBytes) || stateBytes + rowBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES
+          || chunkCount < 1 || chunkCount > SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS) {
+          return { ok: false, reason: BS.invalidServerState, backups: [], serverNow };
+        }
+        const chunks = await ctx.db.singlePlayerCloudBackupChunks
+          .withIndex("by_user_world_upload", (q) => q.eq(BS.userId, ctx.auth.userId)
+            .eq("worldId", row.worldId).eq("uploadId", row.uploadId))
+          .order("asc")
+          .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1);
+        if (chunks.length !== chunkCount || chunks.some((chunk, index) => chunk.userId !== ctx.auth.userId
+          || chunk.worldId !== row.worldId || chunk.uploadId !== row.uploadId || chunk.chunkIndex !== String(index)
+          || chunk.protocolVersion !== "1" || chunk.chunkBytes !== String(cloudBackupUtf8Bytes(chunk.chunkData))
+          || chunk.chunkStateBytes !== String(cloudBackupStoredChunkBytes(chunk.chunkData)))) {
+          return { ok: false, reason: BS.invalidServerState, backups: [], serverNow };
+        }
+        const snapshotJson = chunks.map(({ chunkData }) => chunkData).join("");
+        const parsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([1, row.worldId, row.name,
+          Number(row.seed), row.gameMode, Number(row.worldCreatedAt), String(Number(row.revision) - 1), snapshotJson]));
+        if (!parsed.ok || !candidateMatchesManifest(parsed.candidate, row)) {
+          return { ok: false, reason: BS.invalidServerState, backups: [], serverNow };
+        }
+        stateBytes += rowBytes;
+        backups.push(singlePlayerCloudBackupWire(row, snapshotJson));
+      }
+      backups.sort((left, right) => left[1].localeCompare(right[1]));
+      return { ok: true, backups, serverNow };
     })
   },
 
   mutations: {
+
+    mutateSinglePlayerCloudBackup: mutation(async (ctx, requestJson: string) => {
+      const serverNow = Date.now();
+      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
+      }
+      const deleting = parseSinglePlayerCloudBackupDeleteRequest(requestJson);
+      const parsed = deleting ? null : parseSinglePlayerCloudBackupCommitRequest(requestJson);
+      if (!deleting && !parsed?.ok) return { ok: false, reason: parsed?.reason ?? BS.invalidRequest, serverNow };
+      const worldId = deleting?.[1] ?? parsed!.candidate.worldId;
+      const expectedRevision = deleting?.[2] ?? parsed!.candidate.expectedRevision;
+      const worldRows = await ctx.db.singlePlayerCloudBackups
+        .withIndex("by_user_world", (q) => q.eq(BS.userId, ctx.auth.userId).eq("worldId", worldId))
+        .order("desc").take(2);
+      const userManifests = await ctx.db.singlePlayerCloudBackups
+        .withIndex("by_user_uploaded", (q) => q.eq(BS.userId, ctx.auth.userId)).order("desc")
+        .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS + 1);
+      const userBudgetRows = await ctx.db.singlePlayerCloudBackupBudgets
+        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId)).order("desc").take(2);
+      const quotaRows = await ctx.db.singlePlayerCloudBackupQuota
+        .withIndex("by_key", (q) => q.eq("quotaKey", SINGLE_PLAYER_CLOUD_QUOTA_KEY)).order("desc").take(2);
+      if (worldRows.length > 1 || userManifests.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS
+        || userBudgetRows.length > 1 || quotaRows.length > 1
+        || userManifests.some((row) => row.userId !== ctx.auth.userId || row.protocolVersion !== "1")) {
+        return { ok: false, reason: BS.invalidServerState, serverNow };
+      }
+      const current = worldRows[0] ?? null;
+      const currentChunks = current ? await ctx.db.singlePlayerCloudBackupChunks
+        .withIndex("by_user_world_upload", (q) => q.eq(BS.userId, ctx.auth.userId)
+          .eq("worldId", worldId).eq("uploadId", current.uploadId))
+        .order("asc").take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1) : [];
+      if (current && (currentChunks.length !== Number(current.chunkCount)
+        || currentChunks.some((row, index) => row.userId !== ctx.auth.userId || row.worldId !== worldId
+          || row.uploadId !== current.uploadId || row.chunkIndex !== String(index) || row.protocolVersion !== "1"))) {
+        return { ok: false, reason: BS.invalidServerState, serverNow };
+      }
+      const currentSnapshotJson = currentChunks.map(({ chunkData }) => chunkData).join("");
+      const dayKey = utcCloudBackupDay(serverNow);
+      const quota = quotaRows[0];
+      const globalStateBytes = quota && /^\d{1,6}$/.test(quota.activeStateBytes) ? Number(quota.activeStateBytes) : 0;
+      const globalAcceptedToday = quota?.dayKey === dayKey && /^\d{1,3}$/.test(quota.acceptedToday)
+        ? Number(quota.acceptedToday) : 0;
+      const userBudget = userBudgetRows[0];
+      const userAcceptedToday = userBudget?.dayKey === dayKey && /^\d{1,2}$/.test(userBudget.acceptedToday)
+        ? Number(userBudget.acceptedToday) : 0;
+      const userLastAcceptedAt = userBudget && /^\d{1,16}$/.test(userBudget.lastAcceptedAt)
+        ? Number(userBudget.lastAcceptedAt) : 0;
+      const userStateBytes = userManifests.reduce((sum, row) => sum + Number(row.stateBytes), 0);
+      if (!Number.isSafeInteger(globalStateBytes) || globalStateBytes < 0
+        || globalStateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES
+        || !Number.isSafeInteger(userStateBytes) || userStateBytes < 0
+        || userStateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES
+        || (!quota && userManifests.length > 0)) {
+        return { ok: false, reason: BS.invalidServerState, serverNow };
+      }
+      if (deleting) {
+        if (!current) return { ok: true, kind: "delete_deduped", serverNow };
+        if (expectedRevision !== current.revision) return { ok: false, reason: "conflict", serverNow };
+        for (const row of currentChunks) await ctx.db.singlePlayerCloudBackupChunks.delete(row.id);
+        await ctx.db.singlePlayerCloudBackups.delete(current.id);
+        const nextQuota = { quotaKey: SINGLE_PLAYER_CLOUD_QUOTA_KEY,
+          activeStateBytes: String(globalStateBytes - Number(current.stateBytes)), dayKey: quota?.dayKey ?? dayKey,
+          acceptedToday: quota?.acceptedToday ?? "0", lastAcceptedAt: quota?.lastAcceptedAt ?? "0",
+          revision: String(Number(quota?.revision ?? "0") + 1) };
+        if (quota) await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
+        else await ctx.db.singlePlayerCloudBackupQuota.insert(nextQuota);
+        return { ok: true, kind: "deleted", serverNow };
+      }
+      const candidate = parsed!.candidate;
+      const decision = decideSinglePlayerCloudBackupCommit(current, current ? currentSnapshotJson : null, candidate,
+        userManifests.length, userStateBytes, globalStateBytes, userLastAcceptedAt,
+        userAcceptedToday, globalAcceptedToday, serverNow);
+      if (!decision.ok) return { ...decision, serverNow };
+      if (decision.kind === "deduped") {
+        return { ok: true, kind: "deduped", backup: singlePlayerCloudBackupWire(decision.manifest, currentSnapshotJson), serverNow };
+      }
+      for (const row of currentChunks) await ctx.db.singlePlayerCloudBackupChunks.delete(row.id);
+      for (let index = 0; index < candidate.chunks.length; index += 1) {
+        const chunkData = candidate.chunks[index];
+        await ctx.db.singlePlayerCloudBackupChunks.insert({
+          userId: ctx.auth.userId, worldId, uploadId: candidate.uploadId, chunkIndex: String(index), chunkData,
+          chunkBytes: String(cloudBackupUtf8Bytes(chunkData)), chunkStateBytes: String(cloudBackupStoredChunkBytes(chunkData)),
+          protocolVersion: "1",
+        });
+      }
+      const manifestValue = { ...decision.manifest, userId: ctx.auth.userId, protocolVersion: "1" };
+      if (current) await ctx.db.singlePlayerCloudBackups.update(current.id, manifestValue);
+      else await ctx.db.singlePlayerCloudBackups.insert(manifestValue);
+      const oldStateBytes = current ? Number(current.stateBytes) : 0;
+      const nextQuota = { quotaKey: SINGLE_PLAYER_CLOUD_QUOTA_KEY,
+        activeStateBytes: String(globalStateBytes - oldStateBytes + candidate.stateBytes), dayKey,
+        acceptedToday: String(globalAcceptedToday + 1), lastAcceptedAt: String(serverNow),
+        revision: String(Number(quota?.revision ?? "0") + 1) };
+      if (quota) await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
+      else await ctx.db.singlePlayerCloudBackupQuota.insert(nextQuota);
+      const nextUserBudget = { userId: ctx.auth.userId, dayKey,
+        acceptedToday: String(userAcceptedToday + 1), lastAcceptedAt: String(serverNow) };
+      if (userBudget) await ctx.db.singlePlayerCloudBackupBudgets.update(userBudget.id, nextUserBudget);
+      else await ctx.db.singlePlayerCloudBackupBudgets.insert(nextUserBudget);
+      return { ok: true, kind: "write", backup: singlePlayerCloudBackupWire(decision.manifest, candidate.snapshotJson), serverNow };
+    }),
+
     /** One explicit bone-meal interaction grows one bounded oak without background traffic. */
     growOakTree: mutation(async (
       ctx,
