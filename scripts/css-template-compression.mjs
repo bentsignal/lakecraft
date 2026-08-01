@@ -63,7 +63,7 @@ xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|6 xpointer-capture|
 xe-titlebar|7 xcrosshair|6 xq-browser|6 xp-footer|7 xs-layer|7 xlocal-world-browser|5
 xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|5
 xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|7 xq-copy|5 xq-row|5 xlocal-world-titlebar|5
-xingredient__icon|4 xlocal-world-row|4 xcursor-stack|4 xs__heading|4 xf__output|4
+xingredient__icon|4 xlocal-world-row|8 xcursor-stack|4 xs__heading|4 xf__output|4
 xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|5 xk-layer|4 xw-layer|4
 xm-rack|4 xp-menu|5 xq-hint|6 yerror|4 xhud|4 xlocal-world-back|4 xc-inventory-grid|3
 xk-screen__status|3 xdirt-background|3 xequipment-panel|3 xk-screen__score|3
