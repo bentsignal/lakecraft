@@ -1,27 +1,30 @@
-# Incident containment schema
+# Incident-preserved cloud backup schema
 
-This branch is a non-destructive containment target for accidental deployment
-`dep_GeGTYPSk0TrcWk9E`. It starts from exact main commit
-`e245f0ba0a4b4654eb03e720d071bcd16b941c43` and preserves main client and
-runtime behavior.
-
-The accidental deployment introduced three tables that may contain signed-in
-users' single-player backup data. Removing those declarations before the
-hosted row state and Lakebed's schema-removal behavior are explicitly reviewed
-could either reject rollback or destroy data. This containment target therefore
-retains only the exact deployed table fields and indexes:
+The three single-player cloud tables retained during incident containment are
+now intentionally activated by the reviewed signed-in backup protocol. Their
+field and index topology remains exactly preserved:
 
 - `singlePlayerCloudBackupParts`
 - `singlePlayerCloudBackupQuota`
 - `singlePlayerCloudBackupBudgets`
 
-The tables are inert. There is no cloud client, auth hook, query, mutation,
-endpoint, automatic upload, restore, delete, migration, or cleanup path. A
-regression test proves that removing the marked declarations reproduces the
-exact main server source and that every other client, shared, and server runtime
-source remains byte-for-byte equal to main.
+Activation is deliberately narrow. The server exposes one authenticated query
+and one authenticated mutation; guest and signed-out calls are rejected before
+database access. Ownership always comes from `ctx.auth.userId`, part reads use
+the exact owner index, writes re-check that owner, and no external cloud-backup
+endpoint exists.
 
-Existing rows are intentionally neither read nor changed. Export, retention,
-deletion, schema removal, or any hosted inspection requires separate explicit
-authorization. This branch must not be used to infer consent for any of those
-actions.
+The protocol bounds owner rows, payload chunks, aggregate bytes, daily writes,
+and global storage. A global generation supplies compare-and-swap revisions.
+Permanent deletion replaces payload with a durable owner/world tombstone, and
+malformed owner state can only be disposed in bounded owner-scoped batches that
+finish behind an explicit account fence. Cross-owner cleanup candidates are
+validated independently and skipped when malformed or still associated with
+parts.
+
+This activation does not authorize operational action against the earlier
+incident. During development there was no hosted data inspection and no deployment.
+There was also no export, retention change, deletion, schema removal, or
+control-plane action.
+Any such action still requires separate explicit authorization and a reviewed
+operations plan.
