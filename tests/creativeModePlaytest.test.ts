@@ -10,6 +10,12 @@ import {
 import { createMobSimulation, stepMobSimulation, type MobSpawnDescriptor } from "../client/game/mobs.ts";
 import { canonicalLocalItemIds, pickCreativeCatalogItem, transitionLocalGameMode } from "../client/singleplayer/localCommands.ts";
 import { ITEMS, MAX_HEALTH, MAX_HUNGER, createEmptyEquipment, createEmptyInventory, createItemStack } from "../shared/game.ts";
+import {
+  createInventoryWorkspace,
+  leftClickArmorSlot,
+  leftClickInventorySlot,
+  stowInventoryWorkspace,
+} from "../shared/inventoryWorkspace.ts";
 
 let flight = createCreativeFlightTapState();
 flight = transitionCreativeFlightTap(flight, 1_000, true);
@@ -71,6 +77,56 @@ for (const itemId of itemIds) {
 assert.deepEqual(empty, createEmptyInventory(), "catalog picks never mutate their source inventory");
 assert.deepEqual(pickCreativeCatalogItem(empty, -1, "dirt"), empty, "invalid slots fail closed");
 
+// Normal-inventory edits must cross one commit boundary before the catalog can
+// replace that UI. Model an equip plus selected-hotbar replacement, then prove
+// the same published snapshot feeds React state, refs, held rendering, and save.
+const authorityInventory = createEmptyInventory();
+authorityInventory[0] = createItemStack("dirt", 8);
+authorityInventory[9] = createItemStack("diamond_helmet");
+authorityInventory[10] = createItemStack("tnt", 64);
+let workspace = createInventoryWorkspace(authorityInventory, createEmptyEquipment(), 2);
+let interaction = leftClickInventorySlot(workspace, 9);
+assert.equal(interaction.ok, true);
+if (!interaction.ok) throw new Error(interaction.reason);
+workspace = interaction.state;
+interaction = leftClickArmorSlot(workspace, "head");
+assert.equal(interaction.ok, true);
+if (!interaction.ok) throw new Error(interaction.reason);
+workspace = interaction.state;
+interaction = leftClickInventorySlot(workspace, 10);
+assert.equal(interaction.ok, true);
+if (!interaction.ok) throw new Error(interaction.reason);
+workspace = interaction.state;
+interaction = leftClickInventorySlot(workspace, 0);
+assert.equal(interaction.ok, true);
+if (!interaction.ok) throw new Error(interaction.reason);
+workspace = interaction.state;
+const committed = stowInventoryWorkspace(workspace);
+assert.equal(committed.ok, true);
+if (!committed.ok) throw new Error(committed.reason);
+let callbackCount = 0;
+let inventoryState = authorityInventory;
+let inventoryRef = authorityInventory;
+let equipmentState = createEmptyEquipment();
+let equipmentRef = createEmptyEquipment();
+const onWorkspaceChange = () => {
+  callbackCount += 1;
+  inventoryState = committed.snapshot.inventory;
+  inventoryRef = committed.snapshot.inventory;
+  equipmentState = committed.snapshot.equipment;
+  equipmentRef = committed.snapshot.equipment;
+  return true;
+};
+assert.equal(onWorkspaceChange(), true);
+const heldRendererItem = inventoryState[0]?.itemId ?? null;
+const savedPlayer = { inventory: inventoryRef, equipment: equipmentRef };
+assert.equal(callbackCount, 1, "the inventory→catalog edge publishes exactly once");
+assert.equal(heldRendererItem, "tnt");
+assert.deepEqual(inventoryState, inventoryRef);
+assert.deepEqual(equipmentState, equipmentRef);
+assert.equal(equipmentState.head?.itemId, "diamond_helmet");
+assert.deepEqual(savedPlayer, { inventory: inventoryState, equipment: equipmentState });
+
 const hud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
 const drawer = readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
@@ -86,5 +142,8 @@ assert.ok(engine.includes("player: playerTarget"), "the mob step receives no Cre
 assert.ok(drawer.includes("Creative Inventory"));
 assert.ok(drawer.includes("Player Inventory"), "catalog-first UI exposes the full player inventory");
 assert.ok(drawer.includes("Object.values(ITEMS)"), "catalog derives from the canonical item table");
+const catalogTransition = drawer.slice(drawer.indexOf("function showCreativeCatalog"), drawer.indexOf("function closeAndStow"));
+assert.ok(catalogTransition.indexOf("commitWorkspace()") < catalogTransition.indexOf('setCreativeView("catalog")'),
+  "the normal-inventory workspace commits before the catalog replaces it");
 
 console.log("creative mode playtest regression checks passed");

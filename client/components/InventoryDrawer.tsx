@@ -182,21 +182,32 @@ export function InventoryCraftingDrawer({
     if (result.ok) publish(result.state);
   }
 
+  function commitWorkspace(): boolean {
+    const stowed = stowInventoryWorkspace(stateRef.current);
+    if (!stowed.ok) {
+      setInteractionError("No room to stow the held items. Clear a slot first.");
+      return false;
+    }
+    if (!onWorkspaceChange(stowed.snapshot, authorityEpochRef.current, recipeBatchesRef.current)) {
+      resetFromAuthority("Your Lakebed inventory changed. The latest pack was reloaded.");
+      return false;
+    }
+    recipeBatchesRef.current = [];
+    setInteractionError("");
+    return true;
+  }
+
+  function showCreativeCatalog(): void {
+    if (!commitWorkspace()) return;
+    setCreativeView("catalog");
+  }
+
   function closeAndStow() {
     if (creative && creativeView === "catalog") {
       onClose();
       return;
     }
-    const stowed = stowInventoryWorkspace(stateRef.current);
-    if (!stowed.ok) {
-      setInteractionError("No room to stow the held items. Clear a slot first.");
-      return;
-    }
-    if (!onWorkspaceChange(stowed.snapshot, authorityEpochRef.current, recipeBatchesRef.current)) {
-      resetFromAuthority("Your Lakebed inventory changed. The latest pack was reloaded.");
-      return;
-    }
-    recipeBatchesRef.current = [];
+    if (!commitWorkspace()) return;
     onClose();
   }
 
@@ -374,7 +385,7 @@ export function InventoryCraftingDrawer({
           </div>
         </section>
         {interactionError ? <span className="lc-inventory-error" role="status">{interactionError}</span> : null}
-        {creative ? <div className="lc-creative-footer"><span /><button onClick={() => setCreativeView("catalog")} type="button">Creative Catalog</button></div> : null}
+        {creative ? <div className="lc-creative-footer"><span /><button onClick={showCreativeCatalog} type="button">Creative Catalog</button></div> : null}
       </aside>
       {workspace.cursor ? (
         <span className="lc-cursor-stack" style={{ left: pointer.x + 8, top: pointer.y + 8 }} aria-live="polite">
