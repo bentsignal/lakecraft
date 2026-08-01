@@ -2103,8 +2103,8 @@ export default capsule({
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
         return { ok: false, reason: BS.authenticationRequired, backups: [], quarantined: [], serverNow };
       }
-      const rows = await ctx.db.singlePlayerCloudBackupParts
-        .withIndex(BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId)).order("asc")
+      const rows = await oldestByIndex(ctx.db.singlePlayerCloudBackupParts,
+        BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS * (SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1) + 1);
       const inventory = inventorySinglePlayerCloudBackupParts(ctx.auth.userId, rows);
       if (!inventory.ok || inventory.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) {
@@ -2148,16 +2148,16 @@ export default capsule({
       if (!deleting && !parsed?.ok) return { ok: false, reason: parsed?.reason ?? BS.invalidRequest, serverNow };
       const worldId = deleting?.[1] ?? parsed!.candidate.worldId;
       const expectedRevision = deleting?.[2] ?? parsed!.candidate.expectedRevision;
-      const userParts = await ctx.db.singlePlayerCloudBackupParts
-        .withIndex(BS.byUser, (q) => q.eq(BS.userId, userId)).order("asc")
+      const userParts = await oldestByIndex(ctx.db.singlePlayerCloudBackupParts,
+        BS.byUser, (q) => q.eq(BS.userId, userId))
         .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS * (SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1) + 1);
-      const userBudgetRows = await ctx.db.singlePlayerCloudBackupBudgets
-        .withIndex(BS.byUser, (q) => q.eq(BS.userId, userId)).order("desc").take(2);
-      const quotaRows = await ctx.db.singlePlayerCloudBackupQuota
-        .withIndex("by_key", (q) => q.eq("quotaKey", SINGLE_PLAYER_CLOUD_QUOTA_KEY)).order("desc").take(2);
-      const cleanupCandidates = await ctx.db.singlePlayerCloudBackupBudgets
-        .withIndex("by_cleanup", (q) => q.eq("activeBackup", "0")
-          .lt("cleanupAfter", String(serverNow + 1).padStart(16, "0"))).order("asc").take(5);
+      const userBudgetRows = await newestByIndex(ctx.db.singlePlayerCloudBackupBudgets,
+        BS.byUser, (q) => q.eq(BS.userId, userId)).take(2);
+      const quotaRows = await newestByIndex(ctx.db.singlePlayerCloudBackupQuota,
+        "by_key", (q) => q.eq("quotaKey", SINGLE_PLAYER_CLOUD_QUOTA_KEY)).take(2);
+      const cleanupCandidates = await oldestByIndex(ctx.db.singlePlayerCloudBackupBudgets,
+        "by_cleanup", (q) => q.eq("activeBackup", "0")
+          .lt("cleanupAfter", String(serverNow + 1).padStart(16, "0"))).take(5);
       const inventory = inventorySinglePlayerCloudBackupParts(userId, userParts);
       if (!inventory.ok || userBudgetRows.length > 1 || quotaRows.length > 1) {
         return { ok: false, reason: BS.invalidServerState, serverNow };
@@ -2207,8 +2207,8 @@ export default capsule({
       const cleanupRows = [];
       for (const row of cleanupCandidates) {
         if (row.userId === userId && (!deleting || current)) continue;
-        const ownerBackup = await ctx.db.singlePlayerCloudBackupParts
-          .withIndex(BS.byUser, (q) => q.eq(BS.userId, row.userId)).order("desc").take(1);
+        const ownerBackup = await newestByIndex(ctx.db.singlePlayerCloudBackupParts,
+          BS.byUser, (q) => q.eq(BS.userId, row.userId)).take(1);
         if (ownerBackup.length !== 0) return { ok: false, reason: BS.invalidServerState, serverNow };
         cleanupRows.push(row);
         cleanupCharge += SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES;
