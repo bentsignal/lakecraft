@@ -22,7 +22,7 @@ assert.match(transport, /type Controller = \[[\s\S]*?Map<string, Marker>[\s\S]*?
 assert.match(transport, /controller\[4\] = true[\s\S]*?mutate\(request\)/,
   "automatic and manual calls acquire the same mutation fence");
 assert.match(transport, /if \(controller\[4\]\) return/);
-assert.match(transport, /if \(state\[3\]\) \{ setStatus\(STATUS\.QUARANTINE\); return schedule\(300_000\); \}[\s\S]*?const candidates/,
+assert.match(transport, /if \(state\[3\]\) \{ setStatus\(STATUS\.QUARANTINE\); return schedule\(RETRY\); \}[\s\S]*?const candidates/,
   "semantic quarantine returns before automatic candidate mutation");
 assert.match(transport, /isLocalWorldRegistryTransactionReadOnly/);
 assert.match(transport, /controller\[1\] \? controller\[1\]\[0\] \+ Date\.now\(\) - controller\[1\]\[1\]/);
@@ -30,23 +30,24 @@ assert.match(transport, /<SignedInCloud key=\{auth\.userId\}/);
 
 const deleteStart = transport.indexOf("if (frozen[0] === ACTION.DELETE)");
 const durableWrite = transport.indexOf("store(storage, key(userId, worldId), durable)", deleteStart);
-const deleteDispatch = transport.indexOf("sendDelete([frozen, JSON.stringify([1, worldId", deleteStart);
+const deleteDispatch = transport.indexOf("sendDelete([frozen, deleteRequest(worldId", deleteStart);
 assert.ok(deleteStart >= 0 && durableWrite > deleteStart && deleteDispatch > durableWrite,
   "permanent delete read-back persistence precedes remote mutation");
 assert.match(transport, /type DeletePending = readonly \[Frozen, string, number\]/);
 assert.match(transport, /controller\[9\] = pending[\s\S]*?call\(pending\[1\]/,
   "the exact frozen request and operation id remain pending across unknown outcomes");
-assert.match(transport, /const retry = \(\) =>[\s\S]*?Math\.min\(300_000, 60_000 \* count\)/,
+assert.match(transport, /const retry = \(\) =>[\s\S]*?Math\.min\(RETRY, SHORT_RETRY \* count\)/,
   "permanent-delete retry backoff is bounded");
-assert.match(transport, /JSON\.stringify\(\[1, remote\[1\], deletion\[0\], deletion\[1\]\]\)/,
+assert.match(transport, /deleteRequest\(remote\[1\], deletion\[0\], deletion\[1\]\)/,
   "reload reconstructs the identical request from the durable D marker");
 assert.match(transport, /revision !== frozen\[2\][\s\S]*?remote\[6\] !== frozen\[3\]\?\.\[6\][\s\S]*?remote\[9\] !== frozen\[3\]\?\.\[9\]/,
   "submit revalidates revision, hash, and upload time from the frozen wire");
 assert.match(transport, /prepareSinglePlayerCloudBackup\(storage, restored\.world, frozen\[2\]\)[\s\S]*?\[frozen\[2\], prepared\.backup\[2\], prepared\.backup\[3\], prepared\.backup\[4\]\]/);
 
-for (const label of ["Checking cloud backups…", "Cloud backup ready", "Cloud backups up to date",
-  "Uploading cloud backup…", "Cloud backups offline", "Cloud backup paused until its quota resets",
-  "Cloud storage capacity reached", "Cloud backup needs attention", "Sign in again for cloud backups"]) {
+assert.match(transport, /const CLOUD = "Cloud backup";\s*const cloud = "cloud backup";/);
+for (const label of ["Checking ${cloud}s…", "${CLOUD} ready", "${CLOUD}s up to date",
+  "Uploading ${cloud}…", "${CLOUD}s offline", "${CLOUD} paused until its quota resets",
+  "Cloud storage capacity reached", "${CLOUD} needs attention", "Sign in again for ${cloud}s"]) {
   assert.ok(transport.includes(label), `cloud status matrix retains ${label}`);
 }
 assert.match(transport, /role=\{status === STATUS\.OFFLINE \|\| status === STATUS\.QUARANTINE \? "alert" : "status"\}/);

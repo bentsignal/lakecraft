@@ -5,7 +5,9 @@ import { isLocalWorldRegistryTransactionReadOnly, listLocalWorlds, type LocalWor
 import { localWorldDialogRef } from "./localWorldBrowserIssue.ts";
 import { parseRestorableSinglePlayerCloudBackupWire, parseSinglePlayerCloudDescriptor,
   parseSinglePlayerCloudMutationWire, parseSinglePlayerCloudQueryWire, prepareSinglePlayerCloudBackup,
-  restoreSinglePlayerCloudBackup, singlePlayerCloudNumber, type PreparedSinglePlayerCloudBackup,
+  restoreSinglePlayerCloudBackup, singlePlayerCloudNumber, SINGLE_PLAYER_CLOUD_MAX_REVISION,
+  SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP, SINGLE_PLAYER_CLOUD_WORLD_ID, SINGLE_PLAYER_CLOUD_HASH,
+  type PreparedSinglePlayerCloudBackup,
   type SinglePlayerCloudBackupWire, type SinglePlayerCloudLineage, type SinglePlayerCloudQueryWire,
 } from "./cloudBackupClient.ts";
 
@@ -20,6 +22,13 @@ type Controller = [SinglePlayerCloudQueryWire | null, readonly [number, number] 
   DeletePending | null];
 type RemoteState = readonly [Map<string, SinglePlayerCloudBackupWire>, Map<string, string>, string | null, boolean];
 const INTERVAL = 7_500_000;
+const RETRY = 300_000;
+const SHORT_RETRY = 60_000;
+const DAY = 86_400_000;
+const CLOUD = "Cloud backup";
+const cloud = "cloud backup";
+const TITLE_ID = "lc-cloud-title";
+const DIALOG_ID = "lc-cloud-dialog-title";
 const DELETE_PHRASE = "yes, I want to delete this world";
 const read = (storage: SinglePlayerStorageAdapter, key: string, maximum = 96) => {
   try { const value = storage.getItem(key); return value && value.length <= maximum ? value : null; } catch { return null; }
@@ -35,15 +44,17 @@ const key = (userId: string, worldId?: string) => `lakecraft:cloud-backup:v1:${w
   + `:${JSON.stringify(userId)}${worldId === undefined ? "" : `:${worldId}`}`;
 const parts = (value: string | null, length: number) => { const split = value?.split("|"); return split?.length === length ? split : null; };
 const operationId = () => `delete_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+const deleteRequest = (worldId: string, revision: string, operation: string) =>
+  JSON.stringify([1, worldId, revision, operation]);
 const marker = (storage: SinglePlayerStorageAdapter, userId: string, worldId: string): Marker => {
   const raw = read(storage, key(userId, worldId));
   const deletion = parts(raw, 3);
-  if (deletion?.[0] === "D" && singlePlayerCloudNumber(deletion[1], 0, Number.MAX_SAFE_INTEGER)
+  if (deletion?.[0] === "D" && singlePlayerCloudNumber(deletion[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     && /^[A-Za-z0-9_-]{8,80}$/.test(deletion[2])) return [null, [deletion[1], deletion[2]]];
   const value = parts(raw, 4);
-  const lineage = value && singlePlayerCloudNumber(value[0], 1, Number.MAX_SAFE_INTEGER)
-    && singlePlayerCloudNumber(value[1], 1, Number.MAX_SAFE_INTEGER)
-    && singlePlayerCloudNumber(value[2], 0, 8_640_000_000_000_000) && /^[0-9a-f]{8}$/.test(value[3])
+  const lineage = value && singlePlayerCloudNumber(value[0], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    && singlePlayerCloudNumber(value[1], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    && singlePlayerCloudNumber(value[2], 0, SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP) && SINGLE_PLAYER_CLOUD_HASH.test(value[3])
     ? [value[0], Number(value[1]), Number(value[2]), value[3]] as SinglePlayerCloudLineage : null;
   return [lineage, null];
 };
@@ -62,7 +73,7 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
   const [dialog, setDialog] = useState<Frozen | null>(null);
   const [phrase, setPhrase] = useState("");
   const restoreFocus = useRef<HTMLElement | null>(null);
-  const [mountDialog] = useState(() => localWorldDialogRef(restoreFocus, () => document.getElementById("lc-cloud-title")));
+  const [mountDialog] = useState(() => localWorldDialogRef(restoreFocus, () => document.getElementById(TITLE_ID)));
   const accountKey = key(userId);
   const controller = useRef<Controller>([query, null, null, new Map(), false, 0, true, null, () => {}, null]).current;
   controller[0] = query;
@@ -115,20 +126,20 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
         const time = now(controller);
         controller[2] = [time, pending[0].id, 0]; store(storage, accountKey, controller[2].join("|"));
         setStatus(STATUS.CURRENT); schedule(INTERVAL);
-      } else if (response?.[0] === 3) { setStatus(response[1] === "cloud_capacity" ? STATUS.CAPACITY : STATUS.QUOTA); schedule(300_000); }
+      } else if (response?.[0] === 3) { setStatus(response[1] === "cloud_capacity" ? STATUS.CAPACITY : STATUS.QUOTA); schedule(RETRY); }
       else if (response?.[0] === 6) { setStatus(STATUS.QUOTA); schedule(response[1]); }
       else if (response?.[0] === 4) setStatus(STATUS.AUTH);
-      else { controller[7] = null; setStatus(STATUS.QUARANTINE); schedule(300_000); }
+      else { controller[7] = null; setStatus(STATUS.QUARANTINE); schedule(RETRY); }
     }, () => {
       setStatus(STATUS.OFFLINE);
-      schedule(!retry && controller[6] ? 60_000 : 300_000);
+      schedule(!retry && controller[6] ? SHORT_RETRY : RETRY);
     });
   };
   const sendDelete = (pending: DeletePending) => {
     controller[9] = pending;
     const retry = () => {
       const count = Math.min(5, pending[2] + 1);
-      controller[9] = [pending[0], pending[1], count]; schedule(Math.min(300_000, 60_000 * count));
+      controller[9] = [pending[0], pending[1], count]; schedule(Math.min(RETRY, SHORT_RETRY * count));
     };
     call(pending[1], (response) => {
       if (response?.[0] === 2) { controller[9] = null; setStatus(STATUS.CURRENT); schedule(1_000); }
@@ -148,11 +159,11 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
     const listing = listLocalWorlds(storage);
     const worlds = listing.registryLoad.registry?.worlds;
     if (!worlds || isLocalWorldRegistryTransactionReadOnly(listing.registryLoad)) {
-      setStatus(STATUS.QUARANTINE); return schedule(300_000);
+      setStatus(STATUS.QUARANTINE); return schedule(RETRY);
     }
     const state = remoteState();
     if (state[2]) { setStatus(STATUS.QUARANTINE); return; }
-    if (state[3]) { setStatus(STATUS.QUARANTINE); return schedule(300_000); }
+    if (state[3]) { setStatus(STATUS.QUARANTINE); return schedule(RETRY); }
     if (controller[9]) {
       const frozen = controller[9][0];
       const worldId = frozen[3]?.[1] ?? frozen[4];
@@ -167,7 +178,7 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
       if (!deletion) continue;
       if (deletion[0] !== remote[8]) { setStatus(STATUS.QUARANTINE); return; }
       const frozen: Frozen = [ACTION.DELETE, userId, remote[8], remote, "", "", deletion[1]];
-      return sendDelete([frozen, JSON.stringify([1, remote[1], deletion[0], deletion[1]]), 0]);
+      return sendDelete([frozen, deleteRequest(remote[1], deletion[0], deletion[1]), 0]);
     }
     const candidates: Pending[] = [];
     for (const world of worlds) {
@@ -183,16 +194,16 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
         && prepared.backup[2] > mark[0][1] && prepared.backup[3] >= mark[0][2]) candidates.push([world, prepared.backup]);
     }
     if (controller[7]) return sendUpload(controller[7], true);
-    if (!candidates.length) { setStatus(STATUS.CURRENT); return schedule(300_000); }
+    if (!candidates.length) { setStatus(STATUS.CURRENT); return schedule(RETRY); }
     const time = now(controller);
-    const day = Math.floor(time / 86_400_000);
+    const day = Math.floor(time / DAY);
     if (!controller[2]) {
       const value = parts(read(storage, accountKey), 3);
       controller[2] = value && singlePlayerCloudNumber(value[0], 0, time)
-        && (value[1] === "" || /^[a-z0-9][a-z0-9-]{0,63}$/.test(value[1]))
+        && (value[1] === "" || SINGLE_PLAYER_CLOUD_WORLD_ID.test(value[1]))
         && singlePlayerCloudNumber(value[2], 0, 100_000) ? [Number(value[0]), value[1], Number(value[2])] : [0, "", 0];
     }
-    if (controller[2][2] === day) { setStatus(STATUS.QUOTA); return schedule((day + 1) * 86_400_000 - time); }
+    if (controller[2][2] === day) { setStatus(STATUS.QUOTA); return schedule((day + 1) * DAY - time); }
     const due = controller[2][0] + INTERVAL;
     if (time < due) { setStatus(STATUS.READY); return schedule(due - time); }
     candidates.sort((a, b) => a[0].id < b[0].id ? -1 : 1);
@@ -203,7 +214,7 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
   }; }, [query, storage, userId]);
 
   const open = (kind: ACTION, opener: HTMLElement, wire: SinglePlayerCloudBackupWire | null,
-    revision: string, worldId = "~", name = "Cloud backups") => {
+    revision: string, worldId = "~", name = `${CLOUD}s`) => {
     if (controller[4]) return;
     controller[4] = true; restoreFocus.current = opener; setPhrase("");
     setDialog([kind, userId, revision, wire, worldId, name, operationId()]);
@@ -243,7 +254,7 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
       if (!store(storage, key(userId, worldId), durable)) return close(STATUS.OFFLINE);
       controller[3].set(worldId, [null, [frozen[2], frozen[6]]]);
       setDialog(null);
-      sendDelete([frozen, JSON.stringify([1, worldId, frozen[2], frozen[6]]), 0]);
+      sendDelete([frozen, deleteRequest(worldId, frozen[2], frozen[6]), 0]);
       return;
     }
     if (frozen[0] === ACTION.RESUME) {
@@ -269,9 +280,9 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
   const listing = listLocalWorlds(storage);
   const worlds = listing.registryLoad.registry?.worlds ?? [];
   const state = remoteState();
-  const statusText = ["Checking cloud backups…", "Cloud backup ready", "Cloud backups up to date",
-    "Uploading cloud backup…", "Cloud backups offline", "Cloud backup paused until its quota resets",
-    "Cloud storage capacity reached", "Cloud backup needs attention", "Sign in again for cloud backups"];
+  const statusText = [`Checking ${cloud}s…`, `${CLOUD} ready`, `${CLOUD}s up to date`, `Uploading ${cloud}…`,
+    `${CLOUD}s offline`, `${CLOUD} paused until its quota resets`, "Cloud storage capacity reached",
+    `${CLOUD} needs attention`, `Sign in again for ${cloud}s`];
   const download = (wire: SinglePlayerCloudBackupWire) => {
     const blob = new Blob([wire[7]], { type: "application/json" }); const url = URL.createObjectURL(blob);
     const link = document.createElement("a"); link.href = url; link.download = `${wire[2].replace(/[^a-z0-9]+/gi, "-") || "world"}.json`;
@@ -282,16 +293,16 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
   const row = (name: string, detail: any, actions: any, rowKey?: string) => <div className="lc-local-world-row" key={rowKey}>
     <span className="lc-local-world-select"><strong>{name}</strong><small>{detail}</small></span>{actions}</div>;
   const dialogName = dialog?.[3]?.[2] ?? dialog?.[5];
-  return <section aria-labelledby="lc-cloud-title" className="lc-cloud">
-    <h2 id="lc-cloud-title" tabIndex={-1}>Cloud Backups</h2>
+  return <section aria-labelledby={TITLE_ID} className="lc-cloud">
+    <h2 id={TITLE_ID} tabIndex={-1}>Cloud Backups</h2>
     <p aria-live="polite" className="lc-server-hint" role={status === STATUS.OFFLINE || status === STATUS.QUARANTINE ? "alert" : "status"}>
       {statusText[status]}</p>
     {query?.[0] === 3 ? button("Repair Cloud Backups", (e) => open(ACTION.RECOVER, e.currentTarget, null, query[2]), true) : null}
-    {state[2] ? row("Cloud backups paused", "Recovery is complete. Resume when this device is ready.",
+    {state[2] ? row(`${CLOUD}s paused`, "Recovery is complete. Resume when this device is ready.",
       button("Resume", (e) => open(ACTION.RESUME_ALL, e.currentTarget, null, state[2]!), true)) : null}
     {[...state[0].values()].map((remote) => {
       const local = worlds.some((world) => world.id === remote[1]);
-      return row(remote[2], [local ? "Backed up on this device" : "Cloud backup", " · ", date(remote[9])],
+      return row(remote[2], [local ? "Backed up on this device" : CLOUD, " · ", date(remote[9])],
         <span className="lc-cloud-actions">
           {!local ? button("Restore", (e) => open(ACTION.RESTORE, e.currentTarget, remote, remote[8], remote[1], remote[2])) : null}
           {button("Download", () => download(remote))}
@@ -300,13 +311,13 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
     })}
     {[...state[1]].map(([worldId, revision]) => {
       const local = worlds.find((world) => world.id === worldId);
-      return row(local?.name ?? "Deleted cloud backup", "Cloud backup paused", local
+      return row(local?.name ?? "Deleted cloud backup", `${CLOUD} paused`, local
         ? button("Resume", (e) => open(ACTION.RESUME, e.currentTarget, null, revision, worldId, local.name), true) : null, worldId);
     })}
-    {dialog ? <dialog aria-labelledby="lc-cloud-dialog-title" className="lc-username-layer lc-local-world-dialog"
+    {dialog ? <dialog aria-labelledby={DIALOG_ID} className="lc-username-layer lc-local-world-dialog"
       onClose={close} ref={mountDialog} role="alertdialog"><form className="lc-username-menu" method="dialog"
         onSubmit={(event) => { event.preventDefault(); void submit().catch(() => close(STATUS.OFFLINE)); }}>
-        <h2 id="lc-cloud-dialog-title">{dialog[0] === ACTION.DELETE ? "Delete Cloud Backup" : dialog[0] === ACTION.RESTORE ? "Restore Cloud Backup" : "Resume Cloud Backups"}</h2>
+        <h2 id={DIALOG_ID}>{dialog[0] === ACTION.DELETE ? "Delete Cloud Backup" : dialog[0] === ACTION.RESTORE ? "Restore Cloud Backup" : "Resume Cloud Backups"}</h2>
         <p>{dialog[0] === ACTION.DELETE ? `Permanently delete the cloud backup for ${dialogName}? Local progress stays on this device.`
           : dialog[0] === ACTION.RESTORE ? `Restore ${dialogName} into an empty local world namespace?` : "Allow this device to upload cloud backups again?"}</p>
         {dialog[0] === ACTION.DELETE ? <label><span>Type <strong>{DELETE_PHRASE}</strong> to confirm</span><input autoFocus
