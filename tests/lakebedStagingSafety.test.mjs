@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import {
   RELEASE_STAGING_FLAG,
+  cleanupStagingSafetyPlan,
   createStagingSafetyPlan,
+  finalizeStagingSafetyPlan,
   parseLakebedConfig,
   parseStagingArguments,
   writeStagingControlFiles,
@@ -49,10 +51,12 @@ test("default staging strips a deploy-only binding and never copies the server e
   );
   const plan = await createStagingSafetyPlan({ args: [stageRoot], sourceRoot });
   await writeStagingControlFiles(plan);
+  await finalizeStagingSafetyPlan(plan);
 
   assert.deepEqual(JSON.parse(await readFile(join(stageRoot, "lakebed.json"), "utf8")), {});
   assert.equal(existsSync(join(stageRoot, ".env.lakebed.server")), false);
   assert.equal(existsSync(join(stageRoot, ".lakebed")), false);
+  assert.equal(existsSync(join(stageRoot, ".lakecraft-stage-owner")), false);
 });
 
 test("default staging preserves every non-sensitive Lakebed configuration key", async (t) => {
@@ -64,6 +68,7 @@ test("default staging preserves every non-sensitive Lakebed configuration key", 
   const { sourceRoot, stageRoot } = await fixture(t, `${JSON.stringify(config, null, 2)}\n`);
   const plan = await createStagingSafetyPlan({ args: [stageRoot], sourceRoot });
   await writeStagingControlFiles(plan);
+  await finalizeStagingSafetyPlan(plan);
 
   assert.deepEqual(JSON.parse(await readFile(join(stageRoot, "lakebed.json"), "utf8")), {
     name: config.name,
@@ -80,10 +85,12 @@ test("explicit release staging preserves the exact binding and server environmen
     sourceRoot,
   });
   await writeStagingControlFiles(plan);
+  await finalizeStagingSafetyPlan(plan);
 
   assert.equal(await readFile(join(stageRoot, "lakebed.json"), "utf8"), configSource);
   assert.deepEqual(await readFile(join(stageRoot, ".env.lakebed.server")), serverEnv);
   assert.equal(existsSync(join(stageRoot, ".lakebed")), false);
+  assert.equal(existsSync(join(stageRoot, ".lakecraft-stage-owner")), false);
 });
 
 test("malformed configuration and invalid modes fail before creating a partial stage", async (t) => {
@@ -152,6 +159,70 @@ test("credential-like config fields cannot survive the default scrub", () => {
   );
   assert.throws(() => parseLakebedConfig("[]"), /JSON object/);
   assert.throws(() => parseLakebedConfig('{ "deployId": "production" }'), /valid Lakebed deployment ID/);
+});
+
+test("canonical destination resolution rejects an outside symlink ancestor that re-enters source", async (t) => {
+  const escaped = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  const outsideAlias = join(escaped.root, "outside-alias");
+  await symlink(escaped.sourceRoot, outsideAlias);
+  const requestedStage = join(outsideAlias, "nested-stage");
+
+  await assert.rejects(
+    createStagingSafetyPlan({ args: [requestedStage], sourceRoot: escaped.sourceRoot }),
+    /outside the capsule after canonical path resolution/,
+  );
+  assert.equal(existsSync(join(escaped.sourceRoot, "nested-stage")), false);
+  assert.equal(
+    await readFile(join(escaped.sourceRoot, "lakebed.json"), "utf8"),
+    '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n',
+  );
+});
+
+test("post-plan stage replacement with a symlink is refused without writing through it", async (t) => {
+  const swapped = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  const plan = await createStagingSafetyPlan({ args: [swapped.stageRoot], sourceRoot: swapped.sourceRoot });
+  const parked = `${swapped.stageRoot}-parked`;
+  const victim = join(swapped.root, "victim");
+  await mkdir(victim);
+  await rename(swapped.stageRoot, parked);
+  await symlink(victim, swapped.stageRoot);
+
+  await assert.rejects(writeStagingControlFiles(plan), /staging directory identity changed/i);
+  assert.equal(existsSync(join(victim, "lakebed.json")), false);
+  assert.equal(await cleanupStagingSafetyPlan(plan), false, "cleanup refuses a replaced root");
+});
+
+test("late credential injection is rejected before control writes and owned partials are cleaned", async (t) => {
+  for (const relativePath of [
+    ".lakebed/deploy.json",
+    ".env.lakebed.server",
+    ".env.lakebed.server.local",
+  ]) {
+    const injected = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+    const plan = await createStagingSafetyPlan({ args: [injected.stageRoot], sourceRoot: injected.sourceRoot });
+    const path = join(injected.stageRoot, ...relativePath.split("/"));
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, "INJECTED=1\n");
+
+    await assert.rejects(writeStagingControlFiles(plan), /Unexpected credential path/);
+    assert.equal(existsSync(join(injected.stageRoot, "lakebed.json")), false);
+    assert.equal(await cleanupStagingSafetyPlan(plan), true);
+    assert.equal(existsSync(path), true, "cleanup preserves the unexpected injected path");
+  }
+});
+
+test("finalization catches credentials injected after safe control output and removes owned files", async (t) => {
+  const injected = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  const plan = await createStagingSafetyPlan({ args: [injected.stageRoot], sourceRoot: injected.sourceRoot });
+  await writeStagingControlFiles(plan);
+  const lateEnv = join(injected.stageRoot, ".env.lakebed.server");
+  await writeFile(lateEnv, "LATE=1\n");
+
+  await assert.rejects(finalizeStagingSafetyPlan(plan), /Unexpected credential path/);
+  assert.equal(await cleanupStagingSafetyPlan(plan), true);
+  assert.equal(existsSync(join(injected.stageRoot, "lakebed.json")), false);
+  assert.equal(existsSync(join(injected.stageRoot, ".lakecraft-stage-owner")), false);
+  assert.equal(existsSync(lateEnv), true, "cleanup never deletes an injected credential");
 });
 
 test("the executable preflights staging safety before loading or patching the compiler", async () => {

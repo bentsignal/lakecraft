@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import {
   assertNoServerGamePresentationUse,
@@ -21,16 +21,22 @@ import {
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
 import {
+  assertStagingPhase,
+  cleanupStagingSafetyPlan,
+  copyOwnedStageFile,
+  createOwnedStageDirectory,
   createStagingSafetyPlan,
+  finalizeStagingSafetyPlan,
+  writeOwnedStageFile,
   writeStagingControlFiles,
 } from "./lakebed-staging-safety.mjs";
 
-const sourceRoot = resolve(process.cwd());
+const requestedSourceRoot = resolve(process.cwd());
 const stagingPlan = await createStagingSafetyPlan({
   args: process.argv.slice(2),
-  sourceRoot,
+  sourceRoot: requestedSourceRoot,
 });
-const { stageRoot } = stagingPlan;
+const { sourceRoot, stageRoot } = stagingPlan;
 
 async function enableCompactLakebedBuild(buildPath) {
   const source = await readFile(buildPath, "utf8");
@@ -45,6 +51,8 @@ async function enableCompactLakebedBuild(buildPath) {
   ));
 }
 
+try {
+await assertStagingPhase(stagingPlan, "before compiler preparation");
 const lakebedRuntime = await loadLakebedCompilerRuntime();
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
 const { build } = lakebedRuntime;
@@ -231,19 +239,25 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
   }
   const output = result.outputFiles?.[0];
   if (!output) throw new Error(`Bundling ${sourcePath} produced no output.`);
-  const absoluteTarget = join(stageRoot, targetPath);
-  await mkdir(dirname(absoluteTarget), { recursive: true });
-  await writeFile(
-    absoluteTarget,
+  await createOwnedStageDirectory(stagingPlan, dirname(targetPath));
+  await writeOwnedStageFile(
+    stagingPlan,
+    targetPath,
     server ? appendServerSourceMapBoundary(output.text) : appendClientSourceMapBoundary(output.text),
   );
 }
 
-await Promise.all([
-  bundleEntrypoint("client/index.tsx", "client/index.tsx"),
-  bundleEntrypoint("server/index.ts", "server/index.ts", { server: true }),
-]);
-await cp(join(sourceRoot, "favicon.svg"), join(stageRoot, "favicon.svg"));
+await bundleEntrypoint("client/index.tsx", "client/index.tsx");
+await bundleEntrypoint("server/index.ts", "server/index.ts", { server: true });
+await copyOwnedStageFile(stagingPlan, join(sourceRoot, "favicon.svg"), "favicon.svg");
 await writeStagingControlFiles(stagingPlan);
+await finalizeStagingSafetyPlan(stagingPlan);
 
 console.log(stageRoot);
+} catch (error) {
+  const cleaned = await cleanupStagingSafetyPlan(stagingPlan);
+  if (!cleaned) {
+    throw new AggregateError([error], "Staging failed and cleanup refused because stage ownership changed.");
+  }
+  throw error;
+}
