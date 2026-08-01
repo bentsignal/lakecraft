@@ -16,8 +16,6 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-export const RELEASE_STAGING_FLAG = "--release-with-binding-and-server-env";
-
 const LAKEBED_CONFIG = "lakebed.json";
 const SERVER_ENV = ".env.lakebed.server";
 const STAGE_SENTINEL = ".lakecraft-stage-owner";
@@ -32,7 +30,7 @@ const LEGACY_CREDENTIAL_PATHS = [
 const CREDENTIAL_KEY = /(?:deployId|token|secret|password|credential|apiKey|privateKey|accessKey)/i;
 
 function usage() {
-  return `Usage: <owned-empty-stage-directory> [${RELEASE_STAGING_FLAG}]`;
+  return "Usage: <owned-empty-stage-directory>";
 }
 
 function sha256(buffer) {
@@ -53,12 +51,8 @@ function mode(info) {
 export function parseStagingArguments(args) {
   if (!Array.isArray(args)) throw new Error("Staging arguments must be an array.");
   const positional = [];
-  let release = false;
   for (const argument of args) {
-    if (argument === RELEASE_STAGING_FLAG) {
-      if (release) throw new Error(`${RELEASE_STAGING_FLAG} may be passed only once.`);
-      release = true;
-    } else if (typeof argument === "string" && argument.startsWith("-")) {
+    if (typeof argument === "string" && argument.startsWith("-")) {
       throw new Error(`Unknown staging option: ${argument}. ${usage()}`);
     } else {
       positional.push(argument);
@@ -67,7 +61,7 @@ export function parseStagingArguments(args) {
   if (positional.length !== 1 || typeof positional[0] !== "string" || !positional[0]) {
     throw new Error(usage());
   }
-  return { release, stagePath: positional[0] };
+  return { stagePath: positional[0] };
 }
 
 async function regularFileIfPresent(path, label) {
@@ -379,23 +373,16 @@ export async function createStagingSafetyPlan({ args, sourceRoot }) {
   const configPath = join(canonicalSource, LAKEBED_CONFIG);
   if (!await regularFileIfPresent(configPath, LAKEBED_CONFIG)) throw new Error(`${LAKEBED_CONFIG} is required for staging.`);
   const configSource = await readFile(configPath, "utf8");
-  const { config, safeConfig } = parseLakebedConfig(configSource);
-  if (parsed.release && !Object.hasOwn(config, "deployId")) {
-    throw new Error(`${RELEASE_STAGING_FLAG} requires an explicit deployId in ${LAKEBED_CONFIG}.`);
-  }
-  const serverEnvPath = join(canonicalSource, SERVER_ENV);
-  const hasServerEnv = await regularFileIfPresent(serverEnvPath, SERVER_ENV);
+  const { safeConfig } = parseLakebedConfig(configSource);
+  await regularFileIfPresent(join(canonicalSource, SERVER_ENV), SERVER_ENV);
   const plan = {
     configSource,
     capsuleRoot: join(stageRoot, CAPSULE_PAYLOAD),
     createdStage: false,
-    hasServerEnv,
     mutableRoots: new Set(),
     ownedEntries: new Map(),
-    release: parsed.release,
     safeConfigSource: `${JSON.stringify(safeConfig, null, 2)}\n`,
     sealed: false,
-    serverEnvSource: parsed.release && hasServerEnv ? await readFile(serverEnvPath) : undefined,
     sentinelIdentity: undefined,
     sourceRoot: canonicalSource,
     stageIdentity: undefined,
@@ -442,8 +429,7 @@ export async function copyOwnedStageFile(plan, sourcePath, relativePath) {
 }
 
 export async function writeStagingControlFiles(plan) {
-  await writeOwnedStageFile(plan, LAKEBED_CONFIG, plan.release ? plan.configSource : plan.safeConfigSource);
-  if (plan.release && plan.hasServerEnv) await writeOwnedStageFile(plan, SERVER_ENV, plan.serverEnvSource);
+  await writeOwnedStageFile(plan, LAKEBED_CONFIG, plan.safeConfigSource);
 }
 
 export async function createLakebedWorkspace(plan) {
@@ -485,13 +471,6 @@ export async function assertSealedStagingPlan(plan, phase = "payload consumption
   const inventory = await stageInventory(plan.stageRoot);
   const unexpected = inventory.find((path) => path !== STAGE_SENTINEL && !pathAllowed(plan, path));
   if (unexpected) throw new Error(`Unexpected staging path ${unexpected} during ${phase}.`);
-}
-
-// Compatibility helper for tests and old callers. A finalized stage is evidence only;
-// production scripts consume and delete the deployable stage inside one transaction.
-export async function finalizeStagingSafetyPlan(plan) {
-  await createLakebedWorkspace(plan);
-  await sealStagingSafetyPlan(plan);
 }
 
 export async function cleanupStagingSafetyPlan(plan) {

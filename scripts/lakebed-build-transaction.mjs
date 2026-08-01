@@ -229,9 +229,25 @@ export async function runAuditBuild({ outputRoot, sourceRoot, stageParent, runBu
           });
         await assertSealedStagingPlan(plan, "before build-output verification");
         const verified = await verifyLakebedBuild(plan, reportBuffer);
+        const outer = parseJson(verified.artifactBuffer, "verified Lakebed artifact");
         await mkdir(join(evidenceRoot, "staged"), { mode: 0o700 });
-        await writeFile(join(evidenceRoot, "artifact.json"), verified.artifactBuffer, { flag: "wx", mode: 0o600 });
         await writeFile(join(evidenceRoot, "build-report.json"), verified.reportBuffer, { flag: "wx", mode: 0o600 });
+        const artifactMetadata = {
+          artifactBytes: verified.artifactBuffer.length,
+          artifactFileSha256: digest(verified.artifactBuffer),
+          artifactHash: verified.artifactHash,
+          clientBundleHash: verified.clientBundleHash,
+          deployTarget: "anonymous-source",
+          format: "lakecraft.audit-artifact-metadata.v1",
+          lakebedFormat: verified.report.format,
+          serverBundleHash: outer.artifact.server.source.bundleHash,
+          sourceSnapshotHash: outer.artifact.source.snapshotHash,
+        };
+        await writeFile(
+          join(evidenceRoot, "artifact-metadata.json"),
+          `${JSON.stringify(artifactMetadata, null, 2)}\n`,
+          { flag: "wx", mode: 0o600 },
+        );
         const files = {};
         for (const [sourcePath, evidencePath] of [
           ["client/index.tsx", "staged/client-index.tsx"],
@@ -246,9 +262,10 @@ export async function runAuditBuild({ outputRoot, sourceRoot, stageParent, runBu
         await writeFile(join(evidenceRoot, "staged", "lakebed.audit.json"), auditConfig, { flag: "wx", mode: 0o600 });
         files["staged/lakebed.audit.json"] = { bytes: auditConfig.length, sha256: digest(auditConfig) };
         const summary = {
+          artifactBytes: artifactMetadata.artifactBytes,
           artifactHash: verified.artifactHash,
-          artifactPath: join(evidenceRoot, "artifact.json"),
-          artifactSha256: digest(verified.artifactBuffer),
+          artifactMetadataPath: join(evidenceRoot, "artifact-metadata.json"),
+          artifactSha256: artifactMetadata.artifactFileSha256,
           clientBundleHash: verified.clientBundleHash,
           files,
           format: verified.report.format,

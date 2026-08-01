@@ -72,13 +72,15 @@ other `lakebed.json` key, and exports only non-deployable evidence:
 npx lakebed build . --target anonymous --json
 evidence_parent="$(mktemp -d)"
 node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
-node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact.json"
+node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact-metadata.json"
 ```
 
 The wrapper owns an unpredictable private transaction, seals the generated
 capsule, runs and verifies the anonymous build itself, deletes the capsule, and
 never returns a runnable stage. Exported sources use non-capsule filenames, so
-the evidence directory has no canonical client/server entrypoint pair. Direct staging is disabled. Production release
+the evidence directory has no canonical client/server entrypoint pair. The full
+artifact envelope and client bundle never leave the private transaction; only
+redacted hashes and byte counts are exported. Direct staging is disabled. Production release
 is a separate operator-only concern and is intentionally unsupported by this
 helper.
 

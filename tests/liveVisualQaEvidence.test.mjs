@@ -317,15 +317,16 @@ function realArtifactFixture() {
     );
     const reportText = readFileSync(join(stageRoot, "build-report.json"), "utf8");
     const report = JSON.parse(reportText);
+    const metadataBuffer = readFileSync(join(stageRoot, "artifact-metadata.json"));
     return {
       report,
       reportBuffer: Buffer.from(reportText),
-      artifactBuffer: readFileSync(join(stageRoot, "artifact.json")),
+      metadataBuffer,
       clientBuffer: readFileSync(join(stageRoot, "staged/client-index.tsx")),
       serverBuffer: readFileSync(join(stageRoot, "staged/server-index.ts")),
     };
   });
-  assert.deepEqual(builds[0].artifactBuffer, builds[1].artifactBuffer);
+  assert.deepEqual(builds[0].metadataBuffer, builds[1].metadataBuffer);
   assert.deepEqual(builds[0].clientBuffer, builds[1].clientBuffer);
   assert.deepEqual(builds[0].serverBuffer, builds[1].serverBuffer);
   artifactFixtureCache = builds;
@@ -738,12 +739,11 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     const buildA = derivedBinding(51, 15_000);
     const buildB = derivedBinding(52, 20_000);
     const [realBuildA, realBuildB] = realArtifactFixture();
-    const outer = JSON.parse(realBuildA.artifactBuffer);
-    const artifactBuffer = realBuildA.artifactBuffer;
-    const artifactHash = outer.artifactHash;
-    const clientBundleHash = outer.clientBundleHash;
-    const artifactFileSha256 = write(root, "build/a/capsule.anonymous.json", artifactBuffer);
-    write(root, "build/b/capsule.anonymous.json", realBuildB.artifactBuffer);
+    const metadata = JSON.parse(realBuildA.metadataBuffer);
+    const artifactHash = metadata.artifactHash;
+    const clientBundleHash = metadata.clientBundleHash;
+    const artifactFileSha256 = write(root, "build/a/artifact-metadata.json", realBuildA.metadataBuffer);
+    write(root, "build/b/artifact-metadata.json", realBuildB.metadataBuffer);
     const reportSha256 = write(root, "build/a/report.json", realBuildA.reportBuffer);
     const pairedReportSha256 = write(root, "build/b/report.json", realBuildB.reportBuffer);
     const stagedClientSha256 = write(root, "build/a/client/index.tsx", realBuildA.clientBuffer);
@@ -751,17 +751,17 @@ function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}
     const stagedServerSha256 = write(root, "build/a/server/index.ts", realBuildA.serverBuffer);
     write(root, "build/b/server/index.ts", realBuildB.serverBuffer);
     evidence.artifact = {
-      format: outer.artifact.format,
-      deployTarget: outer.artifact.deployTarget,
+      format: metadata.lakebedFormat,
+      deployTarget: metadata.deployTarget,
       reportPath: "build/a/report.json",
       reportSha256,
       pairedReportPath: "build/b/report.json",
       pairedReportSha256,
-      artifactPath: "build/a/capsule.anonymous.json",
-      pairedArtifactPath: "build/b/capsule.anonymous.json",
-      artifactBytes: artifactBuffer.length,
+      artifactPath: "build/a/artifact-metadata.json",
+      pairedArtifactPath: "build/b/artifact-metadata.json",
+      artifactBytes: metadata.artifactBytes,
       maximumBytes: MAXIMUM_BYTES,
-      headroomBytes: MAXIMUM_BYTES - artifactBuffer.length,
+      headroomBytes: MAXIMUM_BYTES - metadata.artifactBytes,
       minimumHeadroomBytes: MINIMUM_HEADROOM_BYTES,
       artifactHash,
       clientBundleHash,
@@ -830,24 +830,26 @@ function rewriteStructuredCaptureWindow(fixture, summaryName, capturedAt, comple
   replaceBoundJson(fixture, summary, value);
 }
 
-function rewriteArtifactPair(fixture, mutator) {
+function rewriteArtifactMetadataPair(fixture, mutator) {
   const artifact = fixture.evidence.artifact;
   const artifactPath = join(fixture.root, artifact.artifactPath);
-  const outer = JSON.parse(readFileSync(artifactPath, "utf8"));
-  mutator(outer);
-  outer.artifactHash = `sha256:${digest(Buffer.from(JSON.stringify(outer.artifact)))}`;
-  artifact.artifactHash = outer.artifactHash;
-  const buffer = Buffer.from(`${JSON.stringify(outer)}\n`);
+  const metadata = JSON.parse(readFileSync(artifactPath, "utf8"));
+  mutator(metadata);
+  if (typeof metadata.artifactHash === "string") artifact.artifactHash = metadata.artifactHash;
+  if (typeof metadata.clientBundleHash === "string") artifact.clientBundleHash = metadata.clientBundleHash;
+  if (Number.isInteger(metadata.artifactBytes)) {
+    artifact.artifactBytes = metadata.artifactBytes;
+    artifact.headroomBytes = artifact.maximumBytes - metadata.artifactBytes;
+  }
+  const buffer = Buffer.from(`${JSON.stringify(metadata, null, 2)}\n`);
   artifact.artifactFileSha256 = write(fixture.root, artifact.artifactPath, buffer);
   write(fixture.root, artifact.pairedArtifactPath, buffer);
-  artifact.artifactBytes = buffer.length;
-  artifact.headroomBytes = artifact.maximumBytes - buffer.length;
   for (const [pathKey, hashKey] of [
     ["reportPath", "reportSha256"],
     ["pairedReportPath", "pairedReportSha256"],
   ]) {
     const report = JSON.parse(readFileSync(join(fixture.root, artifact[pathKey]), "utf8"));
-    report.artifactHash = outer.artifactHash;
+    report.artifactHash = artifact.artifactHash;
     artifact[hashKey] = write(
       fixture.root,
       artifact[pathKey],
@@ -1509,13 +1511,11 @@ test("Lakebed reports are parsed and hashes, format, target, and independent A/B
       value.clientBundle = Buffer.from("different client").toString("base64");
       writeFileSync(path, `${JSON.stringify(value)}\n`);
     },
-    (fixture) => rewriteArtifactPair(fixture, (outer) => {
-      delete outer.artifact.createdWith;
+    (fixture) => rewriteArtifactMetadataPair(fixture, (metadata) => {
+      delete metadata.serverBundleHash;
     }),
-    (fixture) => rewriteArtifactPair(fixture, (outer) => {
-      outer.artifact.source.files[0].hash = `sha256:${"d".repeat(64)}`;
-      outer.artifact.source.snapshotHash =
-        `sha256:${digest(Buffer.from(JSON.stringify(outer.artifact.source.files)))}`;
+    (fixture) => rewriteArtifactMetadataPair(fixture, (metadata) => {
+      metadata.sourceSnapshotHash = `sha256:${"d".repeat(64)}`;
     }),
     (fixture) => {
       const oldStage = Buffer.from("/* staged from a different commit */\n");

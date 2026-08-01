@@ -1901,124 +1901,36 @@ function verifyMultiplayer(buffer, summary, files, evidence, timeline) {
   }
 }
 
-function recomputeArtifact(artifactBuffer, reportBuffer, summary, label) {
+function validateArtifactMetadata(metadataBuffer, reportBuffer, summary, label) {
   const report = record(parseStrictJson(reportBuffer, `${label} report`));
-  const outer = record(parseStrictJson(artifactBuffer, `${label} artifact`));
-  if (!report || !outer) throw new Error(`${label} Lakebed output must be JSON objects.`);
+  const metadata = record(parseStrictJson(metadataBuffer, `${label} artifact metadata`));
+  if (!report || !metadata) throw new Error(`${label} Lakebed audit output must be JSON objects.`);
   exactKeys(report, ["artifactHash", "artifactPath", "clientBundleHash", "format"], `${label} report`);
-  exactKeys(outer, ["artifact", "artifactHash", "clientBundle", "clientBundleHash", "mediaType"], `${label} artifact`);
-  const capsule = record(outer.artifact);
-  if (!capsule) throw new Error(`${label} capsule artifact must be an object.`);
-  exactKeys(capsule, [
-    "client", "createdWith", "database", "deployTarget", "favicon", "format",
-    "limits", "name", "server", "source",
-  ], `${label} capsule artifact`);
-  const clientDescriptor = record(capsule.client);
-  const createdWith = record(capsule.createdWith);
-  const database = record(capsule.database);
-  const server = record(capsule.server);
-  const serverSource = record(server?.source);
-  const source = record(capsule.source);
-  const limits = record(capsule.limits);
-  const favicon = record(capsule.favicon);
-  if (!clientDescriptor || !createdWith || !database || !server || !serverSource
-    || !source || !limits || !favicon) {
-    throw new Error(`${label} capsule artifact is missing full Lakebed descriptors.`);
+  exactKeys(metadata, [
+    "artifactBytes", "artifactFileSha256", "artifactHash", "clientBundleHash",
+    "deployTarget", "format", "lakebedFormat", "serverBundleHash", "sourceSnapshotHash",
+  ], `${label} artifact metadata`);
+  if (metadata.format !== "lakecraft.audit-artifact-metadata.v1"
+    || metadata.lakebedFormat !== summary.format
+    || metadata.deployTarget !== summary.deployTarget
+    || report.format !== summary.format
+    || !String(report.artifactPath).endsWith(".anonymous.json")) {
+    throw new Error(`${label} is not redacted anonymous Lakebed audit metadata.`);
   }
-  exactKeys(clientDescriptor, ["bundleHash", "bytes", "entry"], `${label} client descriptor`);
-  exactKeys(createdWith, ["compiler", "lakebed"], `${label} createdWith`);
-  exactKeys(database, ["apiVersion", "indexCodecVersion", "schemaHash"], `${label} database`);
-  exactKeys(server, [
-    "actions", "endpoints", "helpers", "imports", "mutations", "queries", "schema", "source",
-  ], `${label} server`);
-  exactKeys(serverSource, ["bundle", "bundleHash", "bytes", "entry"], `${label} server source`);
-  exactKeys(source, ["files", "snapshotHash"], `${label} source`);
-  exactKeys(favicon, [
-    "bodyBase64", "bytes", "contentType", "hash", "routePath", "sourcePath",
-  ], `${label} favicon`);
-  exactKeys(limits, [
-    "instructionBudget", "maxBytesRead", "maxDirectGets", "maxIndexKeyBytes",
-    "maxRowsRead", "maxRowsReturned", "maxScanCalls", "maxValueBytes", "maxWrites",
-  ], `${label} limits`);
-  if (report.format !== summary.format || capsule.format !== summary.format
-    || capsule.deployTarget !== summary.deployTarget
-    || outer.mediaType !== "application/vnd.lakebed.artifact+json"
-    || !String(report.artifactPath).endsWith(".anonymous.json")
-    || clientDescriptor.entry !== "/client.js"
-    || serverSource.entry !== "/server.mjs"
-    || !Array.isArray(server.imports)
-    || typeof createdWith.compiler !== "string"
-    || typeof createdWith.lakebed !== "string"
-    || typeof capsule.name !== "string"
-    || !capsule.name) {
-    throw new Error(`${label} is not an anonymous Lakebed artifact report.`);
+  integer(metadata.artifactBytes, `${label} artifactBytes`, 1, MAX_EVIDENCE_FILE_BYTES);
+  sha256(metadata.artifactFileSha256, `${label} artifactFileSha256`);
+  lakebedHash(metadata.artifactHash, `${label} artifactHash`);
+  lakebedHash(metadata.clientBundleHash, `${label} clientBundleHash`);
+  lakebedHash(metadata.serverBundleHash, `${label} serverBundleHash`);
+  lakebedHash(metadata.sourceSnapshotHash, `${label} sourceSnapshotHash`);
+  if (metadata.artifactBytes !== summary.artifactBytes
+    || metadata.artifactHash !== summary.artifactHash
+    || metadata.clientBundleHash !== summary.clientBundleHash
+    || report.artifactHash !== summary.artifactHash
+    || report.clientBundleHash !== summary.clientBundleHash) {
+    throw new Error(`${label} redacted artifact metadata does not match its report or manifest.`);
   }
-  if (database.apiVersion !== 1
-    || database.indexCodecVersion !== 1
-    || lakebedHash(database.schemaHash, `${label} database.schemaHash`) !== database.schemaHash
-    || lakebedHash(source.snapshotHash, `${label} source.snapshotHash`) !== source.snapshotHash
-    || lakebedHash(clientDescriptor.bundleHash, `${label} client.bundleHash`) !== clientDescriptor.bundleHash
-    || clientDescriptor.bytes < 1
-    || favicon.sourcePath !== "favicon.svg"
-    || favicon.routePath !== "/favicon.svg") {
-    throw new Error(`${label} has invalid Lakebed database, source, client, or favicon metadata.`);
-  }
-  const faviconBody = Buffer.from(favicon.bodyBase64, "base64");
-  if (faviconBody.toString("base64") !== favicon.bodyBase64
-    || faviconBody.length !== favicon.bytes
-    || `sha256:${digest(faviconBody)}` !== favicon.hash) {
-    throw new Error(`${label} favicon content does not recompute.`);
-  }
-  Object.entries(limits).forEach(([key, value]) => integer(value, `${label} limits.${key}`, 1));
-  if (!Array.isArray(source.files) || source.files.length < 2 || source.files.length > 16) {
-    throw new Error(`${label} must contain a bounded full Lakebed source file manifest.`);
-  }
-  const sourcePaths = new Set();
-  source.files.forEach((file, index) => {
-    const item = record(file);
-    if (!item) throw new Error(`${label} source.files[${index}] must be an object.`);
-    exactKeys(item, ["bytes", "hash", "path"], `${label} source.files[${index}]`);
-    evidencePath(item.path, `${label} source.files[${index}].path`);
-    integer(item.bytes, `${label} source.files[${index}].bytes`, 1, MAX_EVIDENCE_FILE_BYTES);
-    lakebedHash(item.hash, `${label} source.files[${index}].hash`);
-    if (sourcePaths.has(item.path)) throw new Error(`${label} source file paths must be unique.`);
-    sourcePaths.add(item.path);
-  });
-  if (!sourcePaths.has("client/index.tsx") || !sourcePaths.has("server/index.ts")) {
-    throw new Error(`${label} source manifest must include staged client and server entrypoints.`);
-  }
-  if (`sha256:${digest(Buffer.from(JSON.stringify(source.files)))}` !== source.snapshotHash) {
-    throw new Error(`${label} source snapshot hash does not recompute.`);
-  }
-  const computedArtifactHash = `sha256:${digest(Buffer.from(JSON.stringify(outer.artifact)))}`;
-  let client;
-  try {
-    client = Buffer.from(outer.clientBundle, "base64");
-  } catch {
-    throw new Error(`${label} client bundle is not base64.`);
-  }
-  if (client.toString("base64") !== outer.clientBundle) throw new Error(`${label} client bundle base64 is not canonical.`);
-  const computedClientHash = `sha256:${digest(client)}`;
-  let serverBundle;
-  try {
-    serverBundle = Buffer.from(serverSource.bundle, "base64");
-  } catch {
-    throw new Error(`${label} server bundle is not base64.`);
-  }
-  if (serverBundle.toString("base64") !== serverSource.bundle
-    || `sha256:${digest(serverBundle)}` !== serverSource.bundleHash
-    || serverBundle.length !== serverSource.bytes) {
-    throw new Error(`${label} server bundle hash/bytes do not recompute.`);
-  }
-  if (computedArtifactHash !== outer.artifactHash || computedArtifactHash !== report.artifactHash
-    || computedArtifactHash !== summary.artifactHash
-    || computedClientHash !== outer.clientBundleHash || computedClientHash !== report.clientBundleHash
-    || computedClientHash !== clientDescriptor.bundleHash
-    || computedClientHash !== summary.clientBundleHash
-    || client.length !== outer.artifact?.client?.bytes) {
-    throw new Error(`${label} Lakebed artifact/client hashes do not recompute.`);
-  }
-  return outer;
+  return metadata;
 }
 
 async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
@@ -2095,7 +2007,18 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
       if (!files.has("client/index.tsx") || !files.has("server/index.ts") || !files.has("lakebed.json")) {
         throw new Error("rebuilt expected commit stage is incomplete.");
       }
-      return { repoRoot: canonicalRepo, expectedCommit, files };
+      const metadataBuffer = await readFile(join(stageRoot, "artifact-metadata.json"));
+      const reportBuffer = await readFile(join(stageRoot, "build-report.json"));
+      const metadataValue = record(parseStrictJson(metadataBuffer, "rebuilt artifact metadata"));
+      if (!metadataValue) throw new Error("rebuilt artifact metadata must be an object.");
+      const metadata = validateArtifactMetadata(metadataBuffer, reportBuffer, {
+        artifactBytes: metadataValue.artifactBytes,
+        artifactHash: metadataValue.artifactHash,
+        clientBundleHash: metadataValue.clientBundleHash,
+        deployTarget: "anonymous-source",
+        format: "lakebed.capsule.artifact.v1",
+      }, "rebuilt expected commit");
+      return { repoRoot: canonicalRepo, expectedCommit, files, metadata };
     } finally {
       await rm(temporary, { recursive: true, force: true });
     }
@@ -2109,25 +2032,14 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
   }
 }
 
-function verifyArtifactStageBinding(outer, stage, artifact, evidenceFiles) {
-  const sourceFiles = outer.artifact.source.files;
-  const expectedPaths = [...stage.files.keys()]
-    .filter((path) => path !== "lakebed.json" && path !== ".env.lakebed.server")
-    .sort();
-  exactArray(sourceFiles.map(({ path }) => path), expectedPaths, "Lakebed source.files paths");
-  sourceFiles.forEach((sourceFile) => {
-    const rebuilt = stage.files.get(sourceFile.path);
-    if (!rebuilt
-      || sourceFile.bytes !== rebuilt.bytes
-      || sourceFile.hash !== rebuilt.hash) {
-      throw new Error(`Lakebed source.files does not bind rebuilt ${sourceFile.path}.`);
+function verifyArtifactStageBinding(metadata, stage, artifact, evidenceFiles) {
+  for (const key of [
+    "artifactBytes", "artifactHash", "clientBundleHash", "deployTarget",
+    "lakebedFormat", "serverBundleHash", "sourceSnapshotHash",
+  ]) {
+    if (metadata[key] !== stage.metadata[key]) {
+      throw new Error(`Captured artifact metadata ${key} does not match the exact expected-commit rebuild.`);
     }
-  });
-  const rebuiltFavicon = stage.files.get("favicon.svg");
-  if (!rebuiltFavicon
-    || !Buffer.from(outer.artifact.favicon.bodyBase64, "base64").equals(rebuiltFavicon.buffer)
-    || outer.artifact.favicon.hash !== rebuiltFavicon.hash) {
-    throw new Error("Lakebed favicon decoded content does not equal the expected-commit stage.");
   }
   for (const [evidencePathKey, stagePath] of [
     ["stagedClientPath", "client/index.tsx"],
@@ -2321,12 +2233,11 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
 
   const artifactA = files.get(artifact.artifactPath);
   const artifactB = files.get(artifact.pairedArtifactPath);
-  if (artifactA.length !== artifact.artifactBytes || !artifactA.equals(artifactB)
-    || digest(artifactA) !== artifact.artifactFileSha256) {
-    throw new Error("paired artifact bytes do not match the evidence.");
+  if (!artifactA.equals(artifactB) || digest(artifactA) !== artifact.artifactFileSha256) {
+    throw new Error("paired redacted artifact metadata does not match the evidence.");
   }
-  const outerArtifact = recomputeArtifact(artifactA, files.get(artifact.reportPath), artifact, "build A");
-  recomputeArtifact(artifactB, files.get(artifact.pairedReportPath), artifact, "build B");
+  const metadata = validateArtifactMetadata(artifactA, files.get(artifact.reportPath), artifact, "build A");
+  validateArtifactMetadata(artifactB, files.get(artifact.pairedReportPath), artifact, "build B");
   for (const [leftKey, rightKey, hashKey] of [
     ["stagedClientPath", "pairedStagedClientPath", "stagedClientSha256"],
     ["stagedServerPath", "pairedStagedServerPath", "stagedServerSha256"],
@@ -2338,7 +2249,7 @@ export async function verifyTask41EvidenceFiles(evidence, root, {
     }
   }
   const rebuiltStage = await rebuildExpectedCommitStage(repoRoot, expectedCommit);
-  verifyArtifactStageBinding(outerArtifact, rebuiltStage, artifact, files);
+  verifyArtifactStageBinding(metadata, rebuiltStage, artifact, files);
 
   const allowedControl = new Set();
   if (manifestPath) {

@@ -6,14 +6,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import {
-  RELEASE_STAGING_FLAG,
   cleanupStagingSafetyPlan,
   createLakebedWorkspace,
   createOwnedStageDirectory,
   createStagingSafetyPlan,
-  finalizeStagingSafetyPlan,
   parseLakebedConfig,
   parseStagingArguments,
+  sealStagingSafetyPlan,
   writeOwnedStageFile,
   writeStagingControlFiles,
 } from "../scripts/lakebed-staging-safety.mjs";
@@ -33,22 +32,14 @@ async function fixture(t, configSource, { serverEnv } = {}) {
   return { root, sourceRoot, stageRoot };
 }
 
-test("staging mode is safe by default and release intent is explicit and unambiguous", () => {
+test("staging arguments expose audit-only destination selection", () => {
   assert.deepEqual(parseStagingArguments(["/tmp/stage"]), {
-    release: false,
-    stagePath: "/tmp/stage",
-  });
-  assert.deepEqual(parseStagingArguments(["/tmp/stage", RELEASE_STAGING_FLAG]), {
-    release: true,
     stagePath: "/tmp/stage",
   });
   assert.throws(() => parseStagingArguments([]), /Usage/);
   assert.throws(() => parseStagingArguments(["a", "b"]), /Usage/);
   assert.throws(() => parseStagingArguments(["a", "--release"]), /Unknown staging option/);
-  assert.throws(
-    () => parseStagingArguments(["a", RELEASE_STAGING_FLAG, RELEASE_STAGING_FLAG]),
-    /only once/,
-  );
+  assert.throws(() => parseStagingArguments(["a", "--release-with-binding-and-server-env"]), /Unknown/);
 });
 
 test("default staging strips a deploy-only binding and never copies the server environment", async (t) => {
@@ -59,7 +50,8 @@ test("default staging strips a deploy-only binding and never copies the server e
   );
   const plan = await createStagingSafetyPlan({ args: [stageRoot], sourceRoot });
   await writeStagingControlFiles(plan);
-  await finalizeStagingSafetyPlan(plan);
+  await createLakebedWorkspace(plan);
+  await sealStagingSafetyPlan(plan);
 
   assert.deepEqual(JSON.parse(await readFile(payload(stageRoot, "lakebed.json"), "utf8")), {});
   assert.equal(existsSync(payload(stageRoot, ".env.lakebed.server")), false);
@@ -77,30 +69,13 @@ test("default staging preserves every non-sensitive Lakebed configuration key", 
   const { sourceRoot, stageRoot } = await fixture(t, `${JSON.stringify(config, null, 2)}\n`);
   const plan = await createStagingSafetyPlan({ args: [stageRoot], sourceRoot });
   await writeStagingControlFiles(plan);
-  await finalizeStagingSafetyPlan(plan);
+  await createLakebedWorkspace(plan);
+  await sealStagingSafetyPlan(plan);
 
   assert.deepEqual(JSON.parse(await readFile(payload(stageRoot, "lakebed.json"), "utf8")), {
     name: config.name,
     runtime: config.runtime,
   });
-  assert.equal(await cleanupStagingSafetyPlan(plan), true);
-});
-
-test("explicit release staging preserves the exact binding and server environment bytes", async (t) => {
-  const configSource = '{ "name": "lakecraft", "deployId": "dep_GeGTYPSk0TrcWk9E" }\n';
-  const serverEnv = Buffer.from("PRIVATE_TOKEN=release-only\nBINARY_SAFE=\u00e9\n", "utf8");
-  const { sourceRoot, stageRoot } = await fixture(t, configSource, { serverEnv });
-  const plan = await createStagingSafetyPlan({
-    args: [stageRoot, RELEASE_STAGING_FLAG],
-    sourceRoot,
-  });
-  await writeStagingControlFiles(plan);
-  await finalizeStagingSafetyPlan(plan);
-
-  assert.equal(await readFile(payload(stageRoot, "lakebed.json"), "utf8"), configSource);
-  assert.deepEqual(await readFile(payload(stageRoot, ".env.lakebed.server")), serverEnv);
-  assert.equal(existsSync(join(stageRoot, ".lakebed")), true);
-  assert.equal(existsSync(join(stageRoot, ".lakecraft-stage-owner")), true);
   assert.equal(await cleanupStagingSafetyPlan(plan), true);
 });
 
@@ -112,18 +87,7 @@ test("malformed configuration and invalid modes fail before creating a partial s
   );
   assert.equal(existsSync(malformed.stageRoot), false);
 
-  const anonymous = await fixture(t, '{ "name": "anonymous" }\n');
-  await assert.rejects(
-    createStagingSafetyPlan({
-      args: [anonymous.stageRoot, RELEASE_STAGING_FLAG],
-      sourceRoot: anonymous.sourceRoot,
-    }),
-    /requires an explicit deployId/,
-  );
-  assert.equal(existsSync(anonymous.stageRoot), false);
-
-  assert.throws(() => parseStagingArguments([anonymous.stageRoot, "--unexpected-mode"]), /Unknown/);
-  assert.equal(existsSync(anonymous.stageRoot), false);
+  assert.throws(() => parseStagingArguments([malformed.stageRoot, "--unexpected-mode"]), /Unknown/);
 });
 
 test("unsafe source, destination, and credential paths fail closed", async (t) => {
@@ -222,14 +186,14 @@ test("late credential injection is rejected before control writes and owned part
   }
 });
 
-test("finalization catches credentials injected after safe control output without deleting them", async (t) => {
+test("sealing catches credentials injected after safe control output without deleting them", async (t) => {
   const injected = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
   const plan = await createStagingSafetyPlan({ args: [injected.stageRoot], sourceRoot: injected.sourceRoot });
   await writeStagingControlFiles(plan);
   const lateEnv = payload(injected.stageRoot, ".env.lakebed.server");
   await writeFile(lateEnv, "LATE=1\n");
 
-  await assert.rejects(finalizeStagingSafetyPlan(plan), /Unexpected credential path/);
+  await assert.rejects(createLakebedWorkspace(plan), /Unexpected credential path/);
   assert.equal(await cleanupStagingSafetyPlan(plan), false);
   assert.equal(existsSync(payload(injected.stageRoot, "lakebed.json")), false);
   assert.equal(existsSync(join(injected.stageRoot, ".lakecraft-stage-owner")), true);
@@ -448,14 +412,17 @@ test("artifact verification rejects alternate targets even when every hash is re
 });
 
 test("public audit helper cannot stage or deploy a production binding", async () => {
-  const [prepareSource, auditSource, transactionSource] = await Promise.all([
+  const [prepareSource, auditSource, transactionSource, safetySource] = await Promise.all([
     readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/build-lakebed-audit.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/lakebed-build-transaction.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/lakebed-staging-safety.mjs", import.meta.url), "utf8"),
   ]);
   assert.match(prepareSource, /Direct staging is disabled/);
+  assert.doesNotMatch(prepareSource, /LAKECRAFT_BUNDLE_METAFILE_DIR/);
   assert.match(auditSource, /runAuditBuild/);
   assert.doesNotMatch(auditSource, /deploy/);
   assert.doesNotMatch(transactionSource, /lakebed",\s*"deploy/);
   assert.doesNotMatch(transactionSource, /RELEASE_STAGING_FLAG/);
+  assert.doesNotMatch(safetySource, /RELEASE_STAGING_FLAG|finalizeStagingSafetyPlan|serverEnvSource/);
 });

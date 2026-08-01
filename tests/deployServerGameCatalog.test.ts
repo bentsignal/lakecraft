@@ -128,11 +128,14 @@ assert.match(prepareSource, /LAKEBED_COMPACT_BUNDLE/);
 assert.match(prepareSource, /minify: process\.env\.LAKEBED_COMPACT_BUNDLE === "1"/);
 const stageParent = mkdtempSync(join(tmpdir(), "lakecraft-server-stage-"));
 const stage = join(stageParent, "audit-evidence");
+const escapedMetafileRoot = join(stageParent, "escaped-metafiles");
 try {
   execFileSync(process.execPath, [join(repositoryRoot, "scripts/build-lakebed-audit.mjs"), stage], {
     cwd: repositoryRoot,
+    env: { ...process.env, LAKECRAFT_BUNDLE_METAFILE_DIR: escapedMetafileRoot },
     stdio: "pipe",
   });
+  assert.equal(existsSync(escapedMetafileRoot), false, "ambient metafile output cannot escape the transaction");
   assert.deepEqual(
     JSON.parse(readFileSync(join(stage, "staged/lakebed.audit.json"), "utf8")),
     {},
@@ -141,6 +144,21 @@ try {
   assert.equal(existsSync(join(stage, ".env.lakebed.server")), false, "the audit evidence omits server secrets");
   assert.equal(existsSync(join(stage, "client/index.tsx")), false);
   assert.equal(existsSync(join(stage, "server/index.ts")), false);
+  assert.equal(existsSync(join(stage, "artifact.json")), false);
+  for (const name of ["artifact-metadata.json", "build-report.json", "summary.json"]) {
+    const json = JSON.parse(readFileSync(join(stage, name), "utf8"));
+    const pending = [json];
+    while (pending.length > 0) {
+      const value = pending.pop();
+      if (!value || typeof value !== "object") continue;
+      assert.equal(Object.hasOwn(value, "artifact"), false, `${name} must not export an artifact envelope`);
+      assert.equal(Object.hasOwn(value, "clientBundle"), false, `${name} must not export client bundle bytes`);
+      pending.push(...Object.values(value));
+    }
+  }
+  const metadata = JSON.parse(readFileSync(join(stage, "artifact-metadata.json"), "utf8"));
+  assert.equal(metadata.deployTarget, "anonymous-source");
+  assert.equal(metadata.format, "lakecraft.audit-artifact-metadata.v1");
   const rebuild = spawnSync("npx", ["lakebed", "build", stage, "--target", "anonymous", "--json"], {
     cwd: repositoryRoot,
     encoding: "utf8",

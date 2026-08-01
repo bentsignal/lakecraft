@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -201,13 +201,6 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
     }
   }
   const result = await build(options);
-  if (process.env.LAKECRAFT_BUNDLE_METAFILE_DIR) {
-    await mkdir(resolve(process.env.LAKECRAFT_BUNDLE_METAFILE_DIR), { recursive: true });
-    await writeFile(
-      join(resolve(process.env.LAKECRAFT_BUNDLE_METAFILE_DIR), server ? "server.json" : "client.json"),
-      JSON.stringify(result.metafile, null, 2),
-    );
-  }
   if (!server) {
     const actualCache = result.mangleCache ?? {};
     const expectedEntries = Object.entries(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
