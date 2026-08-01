@@ -630,6 +630,16 @@ function parseSlotRaw(slot: SinglePlayerSaveSlot, raw: string | null, expectedWo
   return { kind: "valid", slot, envelope, raw };
 }
 
+/** Strictly validates a cloud-carried journal envelope without touching local storage. */
+export function parseSinglePlayerSaveEnvelope(raw: string, expectedWorldId?: string):
+  | { ok: true; envelope: SinglePlayerSaveEnvelope }
+  | { ok: false; reason: "invalid" | "unsupported" } {
+  const parsed = parseSlotRaw("a", raw, expectedWorldId);
+  return parsed.kind === "valid"
+    ? { ok: true, envelope: parsed.envelope }
+    : { ok: false, reason: parsed.kind === "unsupported" ? "unsupported" : "invalid" };
+}
+
 function slotKey(slot: SinglePlayerSaveSlot): string {
   return slot === "a" ? SINGLEPLAYER_SAVE_SLOT_A_KEY : SINGLEPLAYER_SAVE_SLOT_B_KEY;
 }
