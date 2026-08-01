@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import {
+  auditCompactClientIdentifierCorpus,
   bundleCompressCss,
   bundleDecompressCss,
   COMPACT_CLIENT_IDENTIFIER_FAMILIES,
+  COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES,
+  COMPACT_CLIENT_PRIVATE_IDENTIFIERS,
   compactClientIdentifiers,
   CSS_BUNDLE_MAX_DISTANCE,
   CSS_BUNDLE_SEPARATOR,
@@ -22,6 +25,16 @@ import {
   lzCompressCss,
   lzDecompressCss,
 } from "../scripts/css-lz-compression.mjs";
+
+async function clientSourcePaths(directory = new URL("../client/", import.meta.url)) {
+  const paths = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const url = new URL(entry.name + (entry.isDirectory() ? "/" : ""), directory);
+    if (entry.isDirectory()) paths.push(...await clientSourcePaths(url));
+    else if (/\.[tj]sx?$/.test(entry.name)) paths.push(url);
+  }
+  return paths.sort((left, right) => left.href.localeCompare(right.href));
+}
 
 const files = [
   "client/index.tsx",
@@ -130,7 +143,7 @@ assert.equal(
 );
 assert.equal(
   compactClientIdentifiers('.lc-inventory-window .lc-meter--health .lc-player-preview__head .lc-unmapped'),
-  '.xe-window .xl--health .xd__head .xunmapped',
+  '.Z0 .Yq2health .ZV0 .xunmapped',
   "frequent client-only identifier families must compact before the generic namespace",
 );
 assert.equal(
@@ -141,6 +154,44 @@ assert.equal(
 assert.ok(
   COMPACT_CLIENT_IDENTIFIER_FAMILIES.every(([readable, compact]) => readable.startsWith("lc-") && /^x[a-z]$/.test(compact)),
   "family rewrites must stay inside the private client namespace",
+);
+const allClientSources = await Promise.all((await clientSourcePaths()).map((path) => readFile(path, "utf8")));
+assert.equal(auditCompactClientIdentifierCorpus(allClientSources), true, "the reviewed private identifier corpus must stay exact");
+for (const [, compact] of COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES) {
+  assert.throws(
+    () => auditCompactClientIdentifierCorpus([...allClientSources, `const exactCollision = "${compact}";`]),
+    new RegExp(`prefix target already exists.*${compact}`),
+    `${compact} exact target collisions must fail closed`,
+  );
+  assert.throws(
+    () => auditCompactClientIdentifierCorpus([...allClientSources, `const concreteCollision = "${compact}health";`]),
+    new RegExp(`prefix target already exists.*${compact}`),
+    `${compact} concrete modifier collisions must fail closed`,
+  );
+}
+assert.equal(
+  new Set(COMPACT_CLIENT_PRIVATE_IDENTIFIERS.map(([, compact]) => compact)).size,
+  COMPACT_CLIENT_PRIVATE_IDENTIFIERS.length,
+  "private identifier targets must remain unique",
+);
+assert.ok(
+  COMPACT_CLIENT_PRIVATE_IDENTIFIERS.every(([readable, compact, expectedCount]) => (
+    /^(?:--)?[xy]/.test(readable)
+    && /^(?:--)?Z[0-9A-Za-z_]+$/.test(compact)
+    && Number.isInteger(expectedCount)
+    && expectedCount > 0
+  )),
+  "private identifiers must stay in reviewed namespaces with fixed positive occurrence counts",
+);
+assert.deepEqual(
+  COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES.map(([readable, compact, count]) => [readable, compact, count]),
+  [["xc-slot--", "Yq0", 1], ["xj-glyph--", "Yq1", 3], ["xl--", "Yq2", 7], ["xt--", "Yq3", 3]],
+  "only the four reviewed runtime-composed modifier families may use prefix compaction",
+);
+assert.equal(
+  compactClientIdentifiers('className={`lc-furnace-slot--${kind} lc-item-glyph--${category} lc-meter--${meter} lc-toast--${tone}`}'),
+  'className={`Yq0${kind} Yq1${category} Yq2${meter} Yq3${tone}`}',
+  "runtime-composed private modifiers must retain matching stable prefixes",
 );
 
 console.log(JSON.stringify({

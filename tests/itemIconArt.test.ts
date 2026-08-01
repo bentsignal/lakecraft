@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { ITEM_ICON_SIZE, getItemIconArt } from "../client/components/itemIconArt.ts";
 import { decodeStaticBytes } from "../client/staticData.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
+import { encodeStaticBytes } from "../scripts/static-byte-encoding.mjs";
 
 const itemIds = Object.keys(ITEMS) as ItemId[];
 assert.ok(itemIds.length >= 70, "coverage includes the complete progression catalog");
@@ -50,9 +51,9 @@ const generatedPath = new URL("../client/components/itemIconArt.ts", import.meta
 const generatedSource = readFileSync(generatedPath, "utf8");
 const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10250\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(Buffer.from(packedPayload, "base64").length, 5_698,
+assert.equal(packedPayload.length, 7_125,
   "item icons retain the reviewed deterministic LZSS fixture");
-assert.deepEqual([...decodeStaticBytes(Buffer.from([2, 65, 32, 1]).toString("base64"), 6)],
+assert.deepEqual([...decodeStaticBytes(encodeStaticBytes([2, 65, 32, 1]), 6)],
   [65, 65, 65, 65, 65, 65], "the shared decoder preserves overlapping backward-copy semantics");
 assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../staticData.ts";')
     && generatedSource.includes("const cache = (() => {"),

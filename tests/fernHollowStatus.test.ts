@@ -49,7 +49,7 @@ const query = server.slice(
   server.indexOf("fernHollowStatus: query(async"),
   server.indexOf("currentProfiles: query(async", server.indexOf("fernHollowStatus: query(async")),
 );
-assert.match(query, /playerPresence[\s\S]*withIndex\("by_heartbeat"/);
+assert.match(query, /newestByIndex\(ctx\.db\.playerPresence, "by_heartbeat"/);
 assert.match(query, /gte\("heartbeatAt", String\(serverNow - ACTIVE_PLAYER_WINDOW_MS\)\)/);
 assert.match(query, /take\(MAX_SLEEP_PARTICIPANTS\)/,
   "the reactive query performs one bounded indexed read rather than an unbounded presence scan");

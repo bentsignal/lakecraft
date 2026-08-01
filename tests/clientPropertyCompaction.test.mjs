@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   COMPACT_CLIENT_PROPERTY_MANGLE_CACHE,
   COMPACT_CLIENT_PROPERTY_PATTERN,
+  COMPACT_CLIENT_TEST_QUOTED_PROPERTIES,
   compactClientPropertyCache,
 } from "../scripts/client-property-compaction.mjs";
 import {
@@ -34,7 +35,7 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 431, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 456, "reviewed compatibility boundary changes only intentionally");
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
 assert.equal(new Set(compactNames).size, compactNames.length, "compact property names stay unique");
 assert.ok(manifestNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "source names are identifiers");
@@ -62,8 +63,12 @@ assert.deepEqual(
   "new client-internal records use fixed collision-reviewed mappings",
 );
 
+const testQuotedNames = [...COMPACT_CLIENT_TEST_QUOTED_PROPERTIES];
+assert.deepEqual(testQuotedNames, [...testQuotedNames].sort(), "test-quoted allowlist stays sorted");
+assert.equal(new Set(testQuotedNames).size, testQuotedNames.length, "test-quoted allowlist stays unique");
+const testQuotedSet = new Set(testQuotedNames);
 const expectedCandidateNames = [
-  ...manifestNames,
+  ...manifestNames.filter((name) => !testQuotedSet.has(name)),
   // These remain source-live but are tree-shaken from the final client entry.
   "onDismissControls",
   "onOpenHelp",
@@ -74,6 +79,57 @@ assert.deepEqual(
   expectedCandidateNames,
   "AST audit and fixed manifest have exact set equality apart from reviewed dead exports",
 );
+assert.deepEqual(
+  testQuotedNames.filter((name) => analysis.jsonStringifyPropertyNames.includes(name)),
+  [],
+  "test-only quoted additions never enter an explicit JSON payload key",
+);
+assert.deepEqual(
+  testQuotedNames.filter((name) => analysis.externalPropertyNames.includes(name)),
+  [],
+  "test-only quoted additions never collide with platform or Preact properties",
+);
+for (const name of testQuotedNames) {
+  const runtimeQuotedPaths = (analysis.quotedPropertyPaths[name] ?? [])
+    .filter((path) => !path.startsWith("tests/"));
+  assert.deepEqual(runtimeQuotedPaths, [], `${name} has no runtime quoted or reflective spelling`);
+  const quotedTestPaths = (analysis.quotedPropertyPaths[name] ?? [])
+    .filter((path) => path.startsWith("tests/"));
+  assert.ok(quotedTestPaths.length > 0, `${name} remains allowlisted only for test source assertions`);
+}
+const reviewedRuntimePaths = {
+  acceptWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  applyMobCombatStates: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
+  applyWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  deathScreenOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+  inventoryOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+  isRangedWeaponSelected: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  messages: ["client/chat/ChatOverlay.tsx", "client/components/GameHud.tsx", "client/components/ToastSurface.tsx"],
+  normalized: ["client/lobby/LobbyScreen.tsx"],
+  onLocalCreeperExplosion: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  onLocalMobHit: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  onPlayerDamage: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  onPoseChange: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  onRangedCancel: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
+  onSignInWithGoogle: ["client/lobby/LobbyScreen.tsx"],
+  onUseSelectedItem: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  pauseOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+  pointerCaptureNeeded: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+  realtime: ["client/index.tsx"],
+  returnFocusId: ["client/components/OptionsDialog.tsx"],
+  setDayNightClock: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  setFirstPersonFeedbackHidden: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  setRespawnPoint: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  setSelectedBlock: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  settleFallingBlocks: ["client/game/types.ts", "client/game/voxelEngine.ts"],
+  worldModalOpen: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+};
+assert.deepEqual(Object.keys(reviewedRuntimePaths), testQuotedNames, "each test-quoted property has an exact path review");
+for (const [name, expectedPaths] of Object.entries(reviewedRuntimePaths)) {
+  const runtimePaths = (analysis.propertyUsePaths[name] ?? [])
+    .filter((path) => !path.startsWith("tests/"));
+  assert.deepEqual(runtimePaths, expectedPaths, `${name} cannot drift into persistence, shared, server, or platform code`);
+}
 
 const manifestSet = new Set(manifestNames);
 const forbiddenCompactNames = new Set([

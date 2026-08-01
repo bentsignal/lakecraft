@@ -36,6 +36,7 @@ function itemMechanics(items: GameModule["ITEMS"]) {
     placesBlock: item.placesBlock,
     tool: item.tool,
     armor: item.armor,
+    ranged: item.ranged,
     utility: item.utility,
     food: item.food,
   }]));
@@ -52,6 +53,11 @@ function smeltingMechanics(recipes: GameModule["SMELTING_RECIPES"]) {
 async function run() {
 const source = readFileSync(new URL("../shared/game.ts", import.meta.url), "utf8");
 const transformed = stripServerGamePresentation(source);
+assert.throws(
+  () => stripServerGamePresentation(source.replace("pickaxe: 2", "pickaxe: 20")),
+  /item mechanics builders body changed/,
+  "server mechanics builders must fail closed instead of restoring stale frozen mechanics",
+);
 
 for (const [kind, sentinel] of Object.entries(SERVER_PRESENTATION_SENTINELS)) {
   assert.equal(source.includes(sentinel), true, `${kind} sentinel must remain in local/client source`);
@@ -69,23 +75,22 @@ try {
   assert.deepEqual(smeltingMechanics(serverGame.SMELTING_RECIPES), smeltingMechanics(clientSmeltingRecipes));
 
   for (const block of Object.values(serverGame.BLOCKS)) {
-    assert.equal(block.label, "");
-    assert.equal(block.description, "");
-    assert.equal(block.color, "");
-    assert.equal(block.accent, "");
+    for (const field of ["label", "description", "color", "accent"]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(block, field), false, `server block omits ${field}`);
+    }
   }
   for (const item of Object.values(serverGame.ITEMS)) {
-    assert.equal(item.label, "");
-    assert.equal(item.shortLabel, "");
-    assert.equal(item.description, "");
-    assert.equal(item.glyph, "");
-    assert.equal(item.color, "");
+    for (const field of ["label", "shortLabel", "description", "glyph", "color"]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(item, field), false, `server item omits ${field}`);
+    }
   }
   for (const recipe of serverGame.RECIPES) {
-    assert.equal(recipe.label, "");
-    assert.equal(recipe.note, "");
+    assert.equal(Object.prototype.hasOwnProperty.call(recipe, "label"), false, "server recipe omits label");
+    assert.equal(Object.prototype.hasOwnProperty.call(recipe, "note"), false, "server recipe omits note");
   }
-  for (const recipe of serverGame.SMELTING_RECIPES) assert.equal(recipe.label, "");
+  for (const recipe of serverGame.SMELTING_RECIPES) {
+    assert.equal(Object.prototype.hasOwnProperty.call(recipe, "label"), false, "server smelting recipe omits label");
+  }
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }
@@ -102,6 +107,20 @@ assert.throws(() => assertNoServerGamePresentationUse([{
   path: "/capsule/shared/example.ts",
   source: 'import * as game from "./game.ts"; export const item = game.ITEMS.wooden_pickaxe;',
 }]), /namespace import/);
+assert.throws(() => assertNoServerGamePresentationUse([{
+  path: "/capsule/shared/example.ts",
+  source: 'import { RECIPES } from "./game.ts"; export const name = RECIPES[0].label;',
+}]), /names presentation field "label"/);
+for (const access of ["RECIPES[0].note", 'RECIPES[0]["note"]']) {
+  assert.throws(() => assertNoServerGamePresentationUse([{
+    path: "/capsule/shared/example.ts",
+    source: `import { RECIPES } from "./game.ts"; export const note = ${access};`,
+  }]), /names presentation field "note"/);
+}
+assert.throws(() => assertNoServerGamePresentationUse([{
+  path: "/capsule/shared/example.ts",
+  source: 'import { SMELTING_RECIPES } from "./game.ts"; export const name = SMELTING_RECIPES[0].label;',
+}]), /names presentation field "label"/);
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");

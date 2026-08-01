@@ -214,5 +214,15 @@ console.log(JSON.stringify({
   jsonStringifyPropertyPaths: Object.fromEntries(
     [...jsonStringifyProperties].map(([name, paths]) => [name, [...paths].sort()]),
   ),
+  quotedPropertyNames: [...quotedNames.keys()].sort(),
+  quotedPropertyPaths: Object.fromEntries(
+    [...quotedNames].map(([name, paths]) => [name, [...paths].sort()]),
+  ),
   dynamicElementAccessFiles: [...dynamicElementAccessFiles].sort(),
+  declarationPaths: Object.fromEntries(
+    [...declarations].map(([name, paths]) => [name, [...paths].sort()]),
+  ),
+  propertyUsePaths: Object.fromEntries(
+    [...propertyUses].map(([name, paths]) => [name, [...paths].sort()]),
+  ),
 }, null, 2));

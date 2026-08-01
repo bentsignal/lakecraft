@@ -7,6 +7,7 @@ import {
 import {
   bundleCompressCss,
   bundleDecompressCss,
+  auditCompactClientIdentifierCorpus,
   compactClientIdentifiers,
   CSS_BUNDLE_SEPARATOR,
   cssBundleRuntimeExpression,
@@ -55,8 +56,12 @@ async function clientSourcePaths(directory = join(sourceRoot, "client")) {
 async function createCssBundlePlan() {
   const templates = [];
   const indexes = new Map();
-  for (const path of await clientSourcePaths()) {
-    const source = compactClientIdentifiers(await readFile(path, "utf8"));
+  const paths = await clientSourcePaths();
+  const rawSources = await Promise.all(paths.map((path) => readFile(path, "utf8")));
+  auditCompactClientIdentifierCorpus(rawSources);
+  for (let pathIndex = 0; pathIndex < paths.length; pathIndex += 1) {
+    const path = paths[pathIndex];
+    const source = compactClientIdentifiers(rawSources[pathIndex]);
     for (const match of source.matchAll(/const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g)) {
       const index = templates.length;
       templates.push(minifyCssText(match[2]));
@@ -163,7 +168,7 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
     jsx: "automatic",
     jsxImportSource: "preact",
     legalComments: "none",
-    metafile: server,
+    metafile: true,
     minify: true,
     ...(server ? {} : {
       mangleCache: compactClientPropertyCache(),
@@ -189,6 +194,13 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
     }
   }
   const result = await build(options);
+  if (process.env.LAKECRAFT_BUNDLE_METAFILE_DIR) {
+    await mkdir(resolve(process.env.LAKECRAFT_BUNDLE_METAFILE_DIR), { recursive: true });
+    await writeFile(
+      join(resolve(process.env.LAKECRAFT_BUNDLE_METAFILE_DIR), server ? "server.json" : "client.json"),
+      JSON.stringify(result.metafile, null, 2),
+    );
+  }
   if (!server) {
     const actualCache = result.mangleCache ?? {};
     const expectedEntries = Object.entries(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);

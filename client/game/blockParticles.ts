@@ -1,4 +1,5 @@
 import type { BlockId } from "./types.ts";
+import { BLOCK_MATERIAL_COLORS } from "./blockColors.ts";
 
 export type BlockParticleAction = "hit" | "break" | "place";
 
@@ -73,42 +74,7 @@ const BOUNCE = 0.28;
 const MAX_BLOCK_ID = 32;
 const UINT32_SCALE = 1 / 4_294_967_296;
 
-/** Palette follows the numeric block IDs in client/game/types.ts. */
-const BLOCK_COLORS = new Float32Array([
-  0.00, 0.00, 0.00, // air
-  0.31, 0.66, 0.23, // grass
-  0.48, 0.31, 0.17, // dirt
-  0.48, 0.51, 0.53, // stone
-  0.49, 0.31, 0.14, // wood
-  0.18, 0.48, 0.19, // leaves
-  0.69, 0.48, 0.25, // planks
-  0.55, 0.35, 0.16, // crafting table
-  0.76, 0.46, 0.14, // torch
-  0.57, 0.31, 0.10, // chest
-  0.57, 0.34, 0.14, // closed door
-  0.57, 0.34, 0.14, // open door
-  0.72, 0.08, 0.07, // bed
-  0.25, 0.27, 0.28, // coal ore
-  0.66, 0.49, 0.35, // iron ore
-  0.42, 0.44, 0.45, // furnace
-  0.67, 0.43, 0.19, // ladder
-  0.36, 0.39, 0.40, // cobblestone
-  0.78, 0.69, 0.45, // sand
-  0.63, 0.84, 0.86, // glass
-  0.78, 0.64, 0.17, // gold ore
-  0.24, 0.78, 0.76, // diamond ore
-  0.72, 0.16, 0.12, // TNT
-  0.47, 0.45, 0.42, // gravel
-  0.86, 0.84, 0.78, // wool
-  0.28, 0.55, 0.18, // sapling
-  0.43, 0.45, 0.43, // stone bricks
-  0.69, 0.48, 0.25, // oak fence
-  0.69, 0.48, 0.25, // closed oak fence gate
-  0.69, 0.48, 0.25, // open oak fence gate
-  0.43, 0.45, 0.43, // stone brick slab
-  0.58, 0.64, 0.70, // clay
-  0.68, 0.28, 0.20, // bricks
-]);
+const BLOCK_COLORS = new Float32Array(BLOCK_MATERIAL_COLORS.flat());
 
 function boundedParticleCount(value: number): number {
   if (!Number.isFinite(value)) return MAX_BLOCK_PARTICLES;

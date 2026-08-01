@@ -132,7 +132,7 @@ for (const marker of [
   'effect.previousBlock === "furnace"',
   "materializedFurnaceView(",
   'minedFurnaceRow.blockInstanceToken !== blockInstanceToken',
-  'reason: "invalid_state"',
+  "reason: BS.invalidState",
   "furnaceRecoveryDrops",
   "canCreateDroppedItem(activeOwnedDrops.length + index)",
   "ctx.db.droppedItems.insert",
