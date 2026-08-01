@@ -37,16 +37,16 @@ assert.equal(singlePlayerCloudUploadRevision(local("next", 2, 20), remote("basel
   "durable delete opt-out suppresses later autosaves");
 
 assert.deepEqual(parseSinglePlayerCloudQueryWire([]), []);
-for (const wire of [[1, 10, [], []], [2, 10], [3, 10]]) assert.deepEqual(parseSinglePlayerCloudQueryWire(wire), wire);
+for (const wire of [[1, 10, [], []], [2, 10], [3, 10, "0"]]) assert.deepEqual(parseSinglePlayerCloudQueryWire(wire), wire);
 for (const wire of [[1, 10, []], [1, 10, [], [], 0], [4, 10], [2, "10"], [1, 8_640_000_000_000_001, [], []],
-  [1, 10, new Array(1), []], {}, null]) assert.equal(parseSinglePlayerCloudQueryWire(wire), null);
-const mutationWires = [[1, "1", 10], [2, 10], [3, "cloud_capacity", 10], [3, "world_limit", 10],
-  [4, 10], [5, "conflict", 10], [6, 1, 10]];
+  [1, 10, new Array(1), []], [3, 10], {}, null]) assert.equal(parseSinglePlayerCloudQueryWire(wire), null);
+const mutationWires = [[1, "1", 10], [2, "1", 10], [8, "2", 10], [7, "2", 0, 10], [7, "2", 1, 10],
+  [3, "cloud_capacity", 10], [3, "world_limit", 10], [4, 10], [5, "conflict", 10], [6, 1, 10]];
 for (const wire of mutationWires) assert.deepEqual(parseSinglePlayerCloudMutationWire(wire), wire);
 const sparse = new Array(3); sparse[0] = 1; sparse[2] = 10;
-for (const wire of [[1, "1"], [1, "1", 10, 0], [7, "conflict", 10], [1, "0", 10],
-  [1, String(Number.MAX_SAFE_INTEGER), 10], [3, "conflict", 10], [5, "", 10], [6, 0, 10],
-  [6, 8_640_000_000_000_001, 10], [2, 8_640_000_000_000_001], sparse, {}, null]) {
+for (const wire of [[1, "1"], [1, "1", 10, 0], [2, 10], [7, "2", 2, 10], [7, "0", 1, 10],
+  [7, "2", 1, 8_640_000_000_000_001], [1, String(Number.MAX_SAFE_INTEGER), 10], [3, "conflict", 10],
+  [5, "", 10], [6, 0, 10], [6, 8_640_000_000_000_001, 10], [2, 8_640_000_000_000_001], sparse, {}, null]) {
   assert.equal(parseSinglePlayerCloudMutationWire(wire), null);
 }
 

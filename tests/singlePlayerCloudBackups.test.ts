@@ -37,35 +37,103 @@ import {
   SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS,
   SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES,
-  candidateMatchesManifest,
+  candidateMatchesManifest as tupleCandidateMatchesManifest,
   cloudBackupHash,
   cloudBackupStoredChunkBytes,
   cloudBackupStoredPartBytes,
   cloudBackupUtf8Bytes,
-  decideSinglePlayerCloudBackupCommit,
+  decideSinglePlayerCloudBackupCommit as tupleDecideSinglePlayerCloudBackupCommit,
   decideSinglePlayerCloudBackupDeleteRevision,
-  inventorySinglePlayerCloudBackupParts,
-  loadSinglePlayerCloudBackupParts,
+  inventorySinglePlayerCloudBackupParts as tupleInventorySinglePlayerCloudBackupParts,
+  loadSinglePlayerCloudBackupParts as tupleLoadSinglePlayerCloudBackupParts,
   nextSinglePlayerCloudGeneration,
-  parseSinglePlayerCloudBackupCommitRequest,
+  parseSinglePlayerCloudBackupCommitRequest as tupleParseSinglePlayerCloudBackupCommitRequest,
   parseSinglePlayerCloudBackupDeleteRequest,
-  parseSinglePlayerCloudBackupWire,
+  parseSinglePlayerCloudBackupWire as tupleParseSinglePlayerCloudBackupWire,
   splitSinglePlayerCloudBackupSnapshot,
-  singlePlayerCloudBackupHeader,
+  singlePlayerCloudBackupHeader as tupleSinglePlayerCloudBackupHeader,
   singlePlayerCloudBackupDeleteActiveState,
-  singlePlayerCloudBackupWire,
+  singlePlayerCloudBackupWire as tupleSinglePlayerCloudBackupWire,
   singlePlayerCloudBudgetCleanupAfter,
   utcCloudBackupDay,
   validUtcCloudBackupDay,
-  validStoredSinglePlayerCloudBackupManifest,
+  validStoredSinglePlayerCloudBackupManifest as tupleValidStoredSinglePlayerCloudBackupManifest,
   validSinglePlayerCloudQuotaState,
-  type SinglePlayerCloudBackupCandidate,
+  type SinglePlayerCloudBackupCandidate as TupleCandidate,
   type StoredSinglePlayerCloudBackupPart,
-  type StoredSinglePlayerCloudBackupManifest,
+  type StoredSinglePlayerCloudBackupManifest as TupleManifest,
 } from "../shared/singlePlayerCloudBackups.ts";
 import { validateSinglePlayerSnapshot } from "../client/singleplayer/localSave.ts";
 import { createEmptyFurnace } from "../shared/furnaces.ts";
 import { compareSinglePlayerCanonicalText } from "../shared/singlePlayerCanonicalOrder.ts";
+
+type SinglePlayerCloudBackupCandidate = {
+  worldId: string; name: string; seed: number; gameMode: "survival" | "creative"; worldCreatedAt: number;
+  expectedRevision: string; snapshotHash: string; snapshotJson: string; snapshotUtf8Bytes: number;
+  stateBytes: number; chunks: string[];
+};
+type StoredSinglePlayerCloudBackupManifest = {
+  worldId: string; name: string; seed: string; gameMode: string; worldCreatedAt: string; snapshotHash: string;
+  snapshotUtf8Bytes: string; stateBytes: string; count: string; revision: string; uploadedAt: string;
+};
+const candidateFromTuple = (value: TupleCandidate): SinglePlayerCloudBackupCandidate => ({
+  worldId: value[0], name: value[1], seed: value[2], gameMode: value[3], worldCreatedAt: value[4],
+  expectedRevision: value[5], snapshotHash: value[6], snapshotJson: value[7], snapshotUtf8Bytes: value[8],
+  stateBytes: value[9], chunks: value[10],
+});
+const candidateToTuple = (value: SinglePlayerCloudBackupCandidate): TupleCandidate => [value.worldId, value.name,
+  value.seed, value.gameMode, value.worldCreatedAt, value.expectedRevision, value.snapshotHash, value.snapshotJson,
+  value.snapshotUtf8Bytes, value.stateBytes, value.chunks];
+const manifestFromTuple = (value: TupleManifest): StoredSinglePlayerCloudBackupManifest => ({
+  worldId: value[0], name: value[1], seed: value[2], gameMode: value[3], worldCreatedAt: value[4],
+  snapshotHash: value[5], snapshotUtf8Bytes: value[6], stateBytes: value[7], count: value[8],
+  revision: value[9], uploadedAt: value[10],
+});
+const manifestToTuple = (value: StoredSinglePlayerCloudBackupManifest): TupleManifest => [value.worldId, value.name,
+  value.seed, value.gameMode, value.worldCreatedAt, value.snapshotHash, value.snapshotUtf8Bytes, value.stateBytes,
+  value.count, value.revision, value.uploadedAt];
+const parseSinglePlayerCloudBackupCommitRequest = (raw: string) => {
+  const value = tupleParseSinglePlayerCloudBackupCommitRequest(raw);
+  return value[0] ? { ok: true as const, candidate: candidateFromTuple(value[1]) }
+    : { ok: false as const, reason: value[1] };
+};
+const parseSinglePlayerCloudBackupWire = (raw: unknown) => {
+  const value = tupleParseSinglePlayerCloudBackupWire(raw);
+  return value[0] ? { ok: true as const, wire: value[1], candidate: candidateFromTuple(value[2]) }
+    : { ok: false as const, reason: value[1] };
+};
+const decideSinglePlayerCloudBackupCommit = (current: StoredSinglePlayerCloudBackupManifest | null,
+  raw: string | null, candidate: SinglePlayerCloudBackupCandidate, ...rest: Parameters<typeof tupleDecideSinglePlayerCloudBackupCommit> extends
+    readonly [unknown, unknown, unknown, ...infer Tail] ? Tail : never) => {
+  const value = tupleDecideSinglePlayerCloudBackupCommit(current ? manifestToTuple(current) : null, raw,
+    candidateToTuple(candidate), ...rest);
+  return value[0] ? { ok: true as const, kind: value[1], manifest: manifestFromTuple(value[2]) }
+    : { ok: false as const, reason: value[1], ...(value[2] === undefined ? {} : { retryAfterMs: value[2] }) };
+};
+const inventorySinglePlayerCloudBackupParts = (userId: string, rows: readonly StoredSinglePlayerCloudBackupPart[]) => {
+  const value = tupleInventorySinglePlayerCloudBackupParts(userId, rows);
+  return value[0] ? { ok: true as const,
+    worlds: value[1].map((world) => ({ worldId: world[0], parts: world[1], stateBytes: world[2] })), stateBytes: value[2] }
+    : { ok: false as const, reason: value[1] };
+};
+const loadSinglePlayerCloudBackupParts = (userId: string, rows: readonly StoredSinglePlayerCloudBackupPart[]) => {
+  const value = tupleLoadSinglePlayerCloudBackupParts(userId, rows);
+  return value[0] ? { ok: true as const,
+    backups: value[1].map((backup) => ({ manifest: manifestFromTuple(backup[0]), snapshotJson: backup[1], parts: backup[2] })),
+    tombstones: value[2].map((row) => ({ worldId: row[0], revision: row[1], deletedRevision: row[2],
+      deletedAt: row[3], operationId: row[4] })),
+    accountFence: value[3] ? { worldId: value[3][0], revision: value[3][1], deletedRevision: value[3][2],
+      deletedAt: value[3][3], operationId: value[3][4] } : null, stateBytes: value[4] }
+    : { ok: false as const, reason: value[1] };
+};
+const candidateMatchesManifest = (candidate: SinglePlayerCloudBackupCandidate, manifest: StoredSinglePlayerCloudBackupManifest) =>
+  tupleCandidateMatchesManifest(candidateToTuple(candidate), manifestToTuple(manifest));
+const singlePlayerCloudBackupHeader = (manifest: StoredSinglePlayerCloudBackupManifest) =>
+  tupleSinglePlayerCloudBackupHeader(manifestToTuple(manifest));
+const singlePlayerCloudBackupWire = (manifest: StoredSinglePlayerCloudBackupManifest, snapshotJson: string) =>
+  tupleSinglePlayerCloudBackupWire(manifestToTuple(manifest), snapshotJson);
+const validStoredSinglePlayerCloudBackupManifest = (value: unknown) => Boolean(value && typeof value === "object"
+  && !Array.isArray(value) && tupleValidStoredSinglePlayerCloudBackupManifest(manifestToTuple(value as StoredSinglePlayerCloudBackupManifest)));
 
 class MemoryStorage implements SinglePlayerStorageAdapter {
   readonly values = new Map<string, string>();
@@ -238,8 +306,9 @@ const invalidWorldRequest = JSON.stringify([
 ]);
 assert.equal(parseSinglePlayerCloudBackupCommitRequest(invalidWorldRequest).ok, true,
   "server admission deliberately does not classify opaque local-world semantics");
-assert.deepEqual(parseSinglePlayerCloudBackupDeleteRequest('[1,"cloud-world-alpha","3"]'), [1, worldId, "3"]);
-assert.equal(parseSinglePlayerCloudBackupDeleteRequest('[1,"Cloud World","3"]'), null);
+assert.deepEqual(parseSinglePlayerCloudBackupDeleteRequest('[1,"cloud-world-alpha","3","delete_op_123"]'),
+  [1, worldId, "3", "delete_op_123"]);
+assert.equal(parseSinglePlayerCloudBackupDeleteRequest('[1,"Cloud World","3","delete_op_123"]'), null);
 
 function decide(
   current: StoredSinglePlayerCloudBackupManifest | null,
@@ -731,14 +800,12 @@ assert.doesNotMatch(serverSource, /ctx\.db\.singlePlayerCloudBackup(?:Chunks|s)\
   "legacy split manifest/chunk tables have no remaining runtime path");
 assert.match(cloudSource, /parts\.some\(\(part, index\) => part\.part !== String\(index\)\)/,
   "the shared loader rejects missing, duplicate, or orphan part topology");
-assert.match(cloudSource, /candidate\.candidate\.chunks\.some\(\(chunk, index\) => chunk !== parts\[index \+ 1\]\.data\)/,
+assert.match(cloudSource, /candidate\[1\]\[10\]\.some\(\(chunk, index\) => chunk !== parts\[index \+ 1\]\.data\)/,
   "the shared loader recomputes exact chunk boundaries and contents before quota arithmetic");
-assert.match(serverSource, /activeBackup: "0", cleanupAfter:/,
-  "last-world permanent deletion retains cadence state only until its indexed cleanup deadline");
 assert.match(serverSource, /userId\.length > 520/,
   "the server accepts the exact provider-prefixed maximum identity but rejects unbounded auth state");
-assert.match(serverSource, /row\.userId === userId && \(!deleting \|\| current\)/,
-  "an eligible dormant caller budget is reclaimed by its own repeated permanent-delete traffic");
+assert.match(serverSource, /row\.userId === userId && \(!deleting \|\| current \|\| currentTombstone\)/,
+  "cleanup cannot erase the caller cadence row while a backup or durable tombstone remains");
 assert.match(serverSource, /singlePlayerCloudBudgetCleanupAfter\(row\.dayKey, Number\(row\.lastAcceptedAt\)\)[\s\S]*?validUtcCloudBackupDay\(quota\.dayKey\)/,
   "budget day/timestamp pairs and quota day keys require canonical real UTC dates before mutation");
 const cloudMutation = serverSource.slice(serverSource.indexOf("mutateSinglePlayerCloudBackup"), serverSource.indexOf("growOakTree"));
@@ -746,33 +813,33 @@ const undercountGuard = cloudMutation.indexOf("!recoveringDelete && quota");
 const destructiveDelete = cloudMutation.indexOf("for (const row of currentParts) await ctx.db.singlePlayerCloudBackupParts.delete");
 assert.ok(undercountGuard >= 0 && undercountGuard < cloudMutation.indexOf("if (deleting)") && undercountGuard < destructiveDelete,
   "strict full-current quota validation remains before commit and dedupe paths");
-assert.match(cloudMutation, /const remainingMinimum = [\s\S]*?singlePlayerCloudBackupDeleteActiveState\(globalStateBytes,[\s\S]*?if \(nextActiveStateBytes === null\)[\s\S]*?if \(!nextQuota\)[\s\S]*?for \(const row of currentParts\)/,
-  "corrupt delete validates the post-delete remainder and releases only quota-covered target bytes before mutation");
-assert.match(cloudMutation, /if \(!deleting && \(!allHealthy/,
+assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return invalid\(\);[\s\S]*?for \(const row of currentParts\)/,
+  "delete and replacement validate quota state before destructive writes");
+assert.match(cloudMutation, /accountFence \|\| \(!deleting && \(!allHealthy/,
   "commits refuse any bounded-unhealthy current owner state while deletes classify one target independently");
-assert.match(serverSource, /quarantined\.push\(\[world\.worldId, "0"\]\)/,
-  "query surfaces bounded unreconstructable worlds with the explicit permanent-delete sentinel");
-assert.match(serverSource, /Number\(manifest\.uploadedAt\) > serverNow[\s\S]*?quarantined\.push\(\[world\.worldId, manifest\.revision\]\)/,
-  "future upload metadata is quarantined with its healthy transport revision instead of presented as valid");
-assert.match(serverSource, /inventory\.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES/,
+assert.match(serverSource, /descriptors\.push\(\[3, world\[0\], "0"\]\)/,
+  "query surfaces bounded unreconstructable worlds without exposing payload bytes");
+assert.match(serverSource, /inventory\[2\] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES/,
   "query rejects a multi-world aggregate that exceeds the owner storage cap");
-assert.match(cloudMutation, /const nextQuota = nextQuotaValue[\s\S]*?if \(!nextQuota\) return \[5, BS\.invalidServerState, serverNow\][\s\S]*?await applyCleanup\(\)/,
-  "deduped cleanup validates its complete next quota before deleting a budget");
-assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return \[5, BS\.invalidServerState, serverNow\][\s\S]*?for \(const row of currentParts\)/,
-  "write replacement validates next quota bytes/revision before replacing parts");
 assert.match(cloudMutation, /const proposedRevision = nextSinglePlayerCloudGeneration\(quotaRevision\)[\s\S]*?const proposedHeader = singlePlayerCloudBackupHeader/,
   "the global successor is validated before header byte accounting");
-assert.match(cloudMutation, /revision: proposedRevision[\s\S]*?decideSinglePlayerCloudBackupCommit\([\s\S]*?proposedRevision, serverNow\)/,
+assert.match(cloudMutation, /proposedRevision, String\(serverNow\)\]\);[\s\S]*?decideSinglePlayerCloudBackupCommit\([\s\S]*?proposedRevision, serverNow\)/,
   "one canonical global generation flows through quota, header, decision, persistence, wire, and response");
-assert.match(cloudMutation, /healthyBackups\.some\(\(\{ manifest \}\) => Number\(manifest\.revision\) > quotaRevision\)/,
+assert.match(cloudMutation, /healthyBackups\.some\(\(\[manifest\]\) => Number\(manifest\[9\]\) > quotaRevision\)/,
   "a healthy manifest ahead of the permanent global quota generation fails closed");
-assert.doesNotMatch(cloudMutation, /String\(Number\(current\?\.revision \?\? "0"\) \+ 1\)/,
+assert.match(cloudMutation, /currentTombstone\[2\] === expectedRevision[\s\S]*?currentTombstone\[4\] === deleting\[3\]/,
+  "permanent delete retries require the exact predecessor and operation id");
+assert.match(cloudMutation, /parseSinglePlayerCloudDispositionRequest[\s\S]*?SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD/,
+  "malformed-owner recovery is fenced by an explicit account disposition generation");
+assert.match(cloudMutation, /if \(!validBudget\(row\)[\s\S]*?continue;[\s\S]*?if \(ownerBackup\.length !== 0\) continue;/,
+  "malformed or active cross-owner cleanup candidates are isolated instead of failing the caller");
+assert.doesNotMatch(cloudMutation, /String\(Number\(current\?\.\[9\] \?\? "0"\) \+ 1\)/,
   "server manifests never mint a reusable per-world successor");
 assert.doesNotMatch(cloudMutation, /singlePlayerCloudBackupQuota\.delete/,
   "the global generation row is permanent after creation");
-assert.match(cloudMutation, /if \(decision\.kind === "deduped"\) \{[\s\S]*?if \(cleanupRows\.length && quota\)[\s\S]*?update\(quota\.id, nextQuota\)[\s\S]*?return \[1, decision\.manifest\.revision, serverNow\]/,
+assert.match(cloudMutation, /if \(decision\[1\] === "deduped"\) \{[\s\S]*?if \(cleanupRows\.length && quota\)[\s\S]*?update\(quota\.id, nextQuota\)[\s\S]*?response\(1, decision\[2\]\[9\]\)/,
   "plain dedupe retains the quota generation while cleanup dedupe advances it exactly once");
-assert.doesNotMatch(cloudSource, /revision: String\(currentRevision \+ 1\)/,
+assert.doesNotMatch(cloudSource, /String\(currentRevision \+ 1\)/,
   "shared admission consumes an explicit opaque generation instead of deriving a per-world revision");
 
 console.log("single-player cloud backup protocol and explicit restore foundation tests passed");
