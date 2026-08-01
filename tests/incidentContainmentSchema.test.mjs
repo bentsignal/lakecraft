@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,57 +44,27 @@ const expectedSchema = `singlePlayerCloudBackupParts: table({
       .index("by_cleanup", ["activeBackup", "cleanupAfter"])`;
 const executableSchema = containment
   .replace(/^.*INCIDENT-CONTAINMENT-SCHEMA-BEGIN[\s\S]*?\*\/\n    /, "")
-  .replace(/\n    \/\*\* INCIDENT-CONTAINMENT-SCHEMA-END \*\/$/, "");
+  .replace(/\n    \/\*\* INCIDENT-CONTAINMENT-SCHEMA-END \*\/$/, "")
+  .replace(/\n    \/\*\* (?:Transaction-serialized|Cross-tab\/device)[\s\S]*?\*\//g, "");
 assert.equal(executableSchema, expectedSchema,
-  "inert table fields and indexes stay byte-for-byte equal to the deployed checkpoint");
+  "activated table fields and indexes stay byte-for-byte equal to the preserved incident schema");
 
-const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end.length)}`
-  .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
-assert.equal(
-  createHash("sha256").update(withoutContainment).digest("hex"),
-  "90bf64e6017b2dae763c47b0f569dfbadb63c661dcfc29b8bf00a530ed9586c9",
-  "removing containment declarations reproduces exact e245f0b server behavior source",
-);
-
-assert.doesNotMatch(server, /\bsinglePlayerCloudBackups\s*:/,
-  "containment must not expose a cloud query");
-assert.doesNotMatch(server, /\bmutateSinglePlayerCloudBackup\s*:/,
-  "containment must not expose a cloud mutation");
+assert.match(server, /singlePlayerCloudBackups: query\(async \(ctx\) => \{[\s\S]*?if \(!ctx\.auth\.isAuthenticated \|\| ctx\.auth\.isGuest\)/,
+  "the activated read surface is signed-in-only");
+assert.match(server, /mutateSinglePlayerCloudBackup: mutation\(async \(ctx, requestJson: string\) => \{[\s\S]*?if \(!ctx\.auth\.isAuthenticated \|\| ctx\.auth\.isGuest\)/,
+  "the activated write surface is signed-in-only");
 assert.doesNotMatch(server, /\bendpoint\([^)]*singlePlayerCloud/i,
-  "containment must not expose a cloud endpoint");
+  "cloud backup remains an authenticated Lakebed query/mutation protocol, never an external endpoint");
+assert.match(server, /oldestByIndex\(ctx\.db\.singlePlayerCloudBackupParts,\s*BS\.byUser, \(q\) => q\.eq\(BS\.userId, ctx\.auth\.userId\)\)/,
+  "query reads only the authenticated owner's exact index partition");
+assert.match(server, /const userId = ctx\.auth\.userId[\s\S]*?q\.eq\(BS\.userId, userId\)/,
+  "mutation derives ownership only from ctx.auth and never accepts an owner argument");
+assert.doesNotMatch(server, /mutateSinglePlayerCloudBackup: mutation\(async \(ctx,\s*(?:userId|ownerId)/,
+  "the mutation signature exposes no caller-forged owner selector");
 
-const runtimeFiles = [];
-function collect(directory) {
-  for (const entry of readdirSync(join(root, directory), { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) collect(path);
-    else if (/\.[tj]sx?$/.test(entry.name) && path !== "server/index.ts") runtimeFiles.push(path);
-  }
-}
-collect("client");
-collect("shared");
-collect("server");
-runtimeFiles.sort();
-const runtimeHash = createHash("sha256");
-for (const path of runtimeFiles) {
-  const contents = readFileSync(join(root, path));
-  runtimeHash.update(relative(".", path));
-  runtimeHash.update("\0");
-  runtimeHash.update(String(contents.length));
-  runtimeHash.update("\0");
-  runtimeHash.update(contents);
-}
-assert.equal(runtimeFiles.length, 128, "reviewed main runtime file set changed");
-assert.equal(runtimeHash.digest("hex"),
-  "bee6169e68196e0135a234bab132a0b45d9f373bd5ce8e8752e1c77d35b5d01e",
-  "runtime sources match the reviewed renderer, server, and client headroom checkpoint");
+const docs = read("docs/incident-containment.md");
+assert.match(docs, /intentionally activated/i);
+assert.match(docs, /no hosted data inspection/i);
+assert.match(docs, /no deployment/i);
 
-const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
-  .map((path) => read(path)).join("\n");
-assert.doesNotMatch(clientSource,
-  /SinglePlayerCloud|singlePlayerCloud|cloudBackupClient|mutateSinglePlayerCloudBackup|getIdentity/,
-  "main client contains no cloud hook, transport, query, mutation, or identity seam");
-assert.equal(existsSync(join(root, "client/singleplayer/SinglePlayerCloudTransport.tsx")), false);
-assert.equal(existsSync(join(root, "client/singleplayer/cloudBackupClient.ts")), false);
-
-console.log("incident containment schema is exact, inert, and reviewed-runtime preserving: ok");
+console.log("incident-preserved cloud schema is exact and its activated auth boundary is reviewed: ok");
