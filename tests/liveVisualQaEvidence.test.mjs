@@ -321,8 +321,8 @@ function realArtifactFixture() {
       report,
       reportBuffer: Buffer.from(reportText),
       artifactBuffer: readFileSync(join(stageRoot, "artifact.json")),
-      clientBuffer: readFileSync(join(stageRoot, "client/index.tsx")),
-      serverBuffer: readFileSync(join(stageRoot, "server/index.ts")),
+      clientBuffer: readFileSync(join(stageRoot, "staged/client-index.tsx")),
+      serverBuffer: readFileSync(join(stageRoot, "staged/server-index.ts")),
     };
   });
   assert.deepEqual(builds[0].artifactBuffer, builds[1].artifactBuffer);

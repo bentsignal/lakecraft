@@ -77,7 +77,8 @@ node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact.
 
 The wrapper owns an unpredictable private transaction, seals the generated
 capsule, runs and verifies the anonymous build itself, deletes the capsule, and
-never returns a runnable stage. Direct staging is disabled. Production release
+never returns a runnable stage. Exported sources use non-capsule filenames, so
+the evidence directory has no canonical client/server entrypoint pair. Direct staging is disabled. Production release
 is a separate operator-only concern and is intentionally unsupported by this
 helper.
 

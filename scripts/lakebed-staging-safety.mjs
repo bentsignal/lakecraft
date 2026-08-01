@@ -212,7 +212,7 @@ async function assertStageRoot(plan, { sealed = plan.sealed } = {}) {
     throw new Error("Owned staging directory identity changed after preflight.");
   }
   if (Number(info.uid) !== currentUid()) throw new Error("Owned staging directory ownership changed.");
-  if (sealed && mode(info) !== 0o700) throw new Error("Transactional staging root permissions changed.");
+  if (sealed && mode(info) !== 0o500) throw new Error("Sealed transaction root permissions changed.");
   if (await realpath(plan.stageRoot) !== plan.stageRoot) {
     throw new Error("Owned staging directory canonical path changed after preflight.");
   }
@@ -465,6 +465,7 @@ export async function sealStagingSafetyPlan(plan) {
     await chmod(join(plan.stageRoot, ...path.split("/")), expected.kind === "file" ? 0o400 : 0o500);
   }
   await chmod(join(plan.stageRoot, STAGE_SENTINEL), 0o400);
+  await chmod(plan.stageRoot, 0o500);
   plan.sealed = true;
   await assertSealedStagingPlan(plan, "payload sealing");
 }
@@ -502,6 +503,7 @@ export async function cleanupStagingSafetyPlan(plan) {
     return false;
   }
   try {
+    plan.sealed = false;
     await chmod(plan.stageRoot, 0o700);
     for (const [path, expected] of [...plan.ownedEntries.entries()].sort(([a], [b]) => a.length - b.length)) {
       await chmod(join(plan.stageRoot, ...path.split("/")), expected.kind === "directory" ? 0o700 : 0o600);

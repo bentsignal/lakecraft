@@ -558,13 +558,15 @@ git -C "$repo_root" archive "$expected_commit" | tar -x -C "$archive_b"
 ```
 
 Run `scripts/check-lakebed-artifact-size.mjs` on each artifact. Both artifacts,
-both staged `client/index.tsx` files, and both staged `server/index.ts` files
+both staged `staged/client-index.tsx` files, and both staged
+`staged/server-index.ts` files
 must be byte-identical. The artifact must remain below 1,048,576 bytes with at
 least 32,768 bytes of headroom. Record the Lakebed artifact and client-bundle
 hashes from the JSON output, plus ordinary file SHA-256 values.
 
 Each output contains the raw `build-report.json`, verified `artifact.json`,
-staged client/server entrypoints, sanitized `lakebed.audit.json`, and wrapper
+staged sources under non-capsule filenames, sanitized
+`staged/lakebed.audit.json`, and wrapper
 `summary.json`. The raw reports remain the structured Lakebed build reports. The
 manifest binds their paths and hashes to the run ID and expected commit, and
 the validator requires the complete Lakebed `source.files` set, independently

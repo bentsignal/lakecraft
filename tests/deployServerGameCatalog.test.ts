@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -134,13 +134,20 @@ try {
     stdio: "pipe",
   });
   assert.deepEqual(
-    JSON.parse(readFileSync(join(stage, "lakebed.audit.json"), "utf8")),
+    JSON.parse(readFileSync(join(stage, "staged/lakebed.audit.json"), "utf8")),
     {},
     "the executable's default stage strips the checked-in production deployId",
   );
   assert.equal(existsSync(join(stage, ".env.lakebed.server")), false, "the audit evidence omits server secrets");
-  const clientBundle = readFileSync(join(stage, "client/index.tsx"), "utf8");
-  const serverBundle = readFileSync(join(stage, "server/index.ts"), "utf8");
+  assert.equal(existsSync(join(stage, "client/index.tsx")), false);
+  assert.equal(existsSync(join(stage, "server/index.ts")), false);
+  const rebuild = spawnSync("npx", ["lakebed", "build", stage, "--target", "anonymous", "--json"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  assert.notEqual(rebuild.status, 0, "exported evidence must not be accepted as a Lakebed capsule");
+  const clientBundle = readFileSync(join(stage, "staged/client-index.tsx"), "utf8");
+  const serverBundle = readFileSync(join(stage, "staged/server-index.ts"), "utf8");
   const sourceMapPrefix = "//# sourceMappingURL=data:application/json;base64,";
   const clientSourceMapOffset = clientBundle.lastIndexOf(sourceMapPrefix);
   assert.notEqual(clientSourceMapOffset, -1, "client stage declares an upstream source-map boundary");

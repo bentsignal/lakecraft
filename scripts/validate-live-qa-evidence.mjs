@@ -2065,7 +2065,12 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
         "expected commit transactional Lakebed audit build",
         { cwd: sourceRoot },
       );
-      const stagePaths = ["client/index.tsx", "server/index.ts", "favicon.svg", "lakebed.audit.json"];
+      const stagePaths = [
+        "staged/client-index.tsx",
+        "staged/server-index.ts",
+        "staged/favicon.svg",
+        "staged/lakebed.audit.json",
+      ];
       const files = new Map();
       for (const path of stagePaths) {
         const absolute = join(stageRoot, ...path.split("/"));
@@ -2075,7 +2080,13 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
           throw new Error(`rebuilt stage ${path} is not a bounded regular file.`);
         }
         const buffer = await readFile(absolute);
-        files.set(path === "lakebed.audit.json" ? "lakebed.json" : path, {
+        const canonicalPath = ({
+          "staged/client-index.tsx": "client/index.tsx",
+          "staged/server-index.ts": "server/index.ts",
+          "staged/favicon.svg": "favicon.svg",
+          "staged/lakebed.audit.json": "lakebed.json",
+        })[path];
+        files.set(canonicalPath, {
           buffer,
           bytes: buffer.length,
           hash: `sha256:${digest(buffer)}`,

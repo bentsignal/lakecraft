@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -16,9 +17,10 @@ import {
   writeOwnedStageFile,
   writeStagingControlFiles,
 } from "../scripts/lakebed-staging-safety.mjs";
-import { runStagedTransaction } from "../scripts/lakebed-build-transaction.mjs";
+import { runStagedTransaction, verifyLakebedBuild } from "../scripts/lakebed-build-transaction.mjs";
 
 const payload = (stageRoot, ...parts) => join(stageRoot, "payload", ...parts);
+const lakebedHash = (buffer) => `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
 
 async function fixture(t, configSource, { serverEnv } = {}) {
   const root = await mkdtemp(join(tmpdir(), "lakecraft-stage-safety-"));
@@ -316,18 +318,51 @@ test("transaction owns a fresh private root, seals only the payload, consumes it
     },
     consume: async (plan) => {
       observedRoot = plan.stageRoot;
-      assert.equal((await stat(plan.stageRoot)).mode & 0o777, 0o700);
+      assert.equal((await stat(plan.stageRoot)).mode & 0o777, 0o500);
       assert.equal((await stat(plan.capsuleRoot)).mode & 0o777, 0o500);
       assert.equal((await stat(payload(plan.stageRoot, "client"))).mode & 0o777, 0o500);
       assert.equal((await stat(payload(plan.stageRoot, "client/index.tsx"))).mode & 0o777, 0o400);
       assert.equal((await stat(join(plan.stageRoot, ".lakebed"))).mode & 0o777, 0o700);
       assert.equal(existsSync(payload(plan.stageRoot, ".lakecraft-stage-owner")), false);
+      await assert.rejects(
+        writeFile(join(plan.stageRoot, "unexpected-root-sibling"), "blocked\n"),
+        /EACCES|permission denied/,
+      );
       return "consumed";
     },
   });
   assert.equal(result, "consumed");
   assert.match(observedRoot, /lakecraft-audit-/);
   assert.equal(existsSync(observedRoot), false);
+});
+
+test("transaction rejects an unprotected shared-writable parent before acquisition", async (t) => {
+  const unsafe = await fixture(t, '{ "name": "audit" }\n');
+  const sharedParent = join(unsafe.root, "shared-parent");
+  await mkdir(sharedParent, { mode: 0o777 });
+  await chmod(sharedParent, 0o777);
+  await assert.rejects(runStagedTransaction({
+    sourceRoot: unsafe.sourceRoot,
+    stageParent: sharedParent,
+    prepare: writeStagingControlFiles,
+    consume: async () => assert.fail("unsafe parent must fail before consumption"),
+  }), /must not be group- or other-writable unless sticky-bit protected/);
+  assert.deepEqual(await readdir(sharedParent), []);
+});
+
+test("transaction permits a sticky shared temporary parent and still owns cleanup", async (t) => {
+  const safe = await fixture(t, '{ "name": "audit" }\n');
+  const stickyParent = join(safe.root, "sticky-parent");
+  await mkdir(stickyParent, { mode: 0o700 });
+  await chmod(stickyParent, 0o1777);
+  const result = await runStagedTransaction({
+    sourceRoot: safe.sourceRoot,
+    stageParent: stickyParent,
+    prepare: writeStagingControlFiles,
+    consume: async () => "consumed",
+  });
+  assert.equal(result, "consumed");
+  assert.deepEqual(await readdir(stickyParent), []);
 });
 
 test("transaction rejects credentials injected into the writable Lakebed workspace", async (t) => {
@@ -343,6 +378,73 @@ test("transaction rejects credentials injected into the writable Lakebed workspa
     },
   }), /Unexpected staging path \.lakebed\/deploy\.json/);
   assert.equal(existsSync(observedRoot), false);
+});
+
+test("artifact verification rejects alternate targets even when every hash is recomputed", async (t) => {
+  for (const target of ["claimed-production", "anonymous", "preview-source"]) {
+    const forged = await fixture(t, '{ "name": "audit" }\n');
+    const transaction = runStagedTransaction({
+      sourceRoot: forged.sourceRoot,
+      stageParent: forged.root,
+      prepare: async (plan) => {
+        await createOwnedStageDirectory(plan, "client");
+        await createOwnedStageDirectory(plan, "server");
+        await writeOwnedStageFile(plan, "client/index.tsx", "export default 1;\n");
+        await writeOwnedStageFile(plan, "server/index.ts", "export default 2;\n");
+        await writeOwnedStageFile(plan, "favicon.svg", "<svg/>\n");
+        await writeStagingControlFiles(plan);
+      },
+      consume: async (plan) => {
+        const sourceFiles = [...plan.ownedEntries.entries()]
+          .filter(([path, entry]) => entry.kind === "file"
+            && path.startsWith("payload/") && path !== "payload/lakebed.json")
+          .map(([path, entry]) => ({
+            bytes: entry.bytes,
+            hash: `sha256:${entry.digest}`,
+            path: path.slice("payload/".length),
+          }))
+          .sort((a, b) => a.path.localeCompare(b.path));
+        const clientBundle = Buffer.from("client bundle\n");
+        const serverBundle = Buffer.from("server bundle\n");
+        const artifact = {
+          client: {
+            bundleHash: lakebedHash(clientBundle),
+            bytes: clientBundle.length,
+          },
+          deployTarget: target,
+          format: "lakebed.capsule.artifact.v1",
+          server: {
+            source: {
+              bundle: serverBundle.toString("base64"),
+              bundleHash: lakebedHash(serverBundle),
+              bytes: serverBundle.length,
+            },
+          },
+          source: {
+            files: sourceFiles,
+            snapshotHash: lakebedHash(Buffer.from(JSON.stringify(sourceFiles))),
+          },
+        };
+        const artifactHash = lakebedHash(Buffer.from(JSON.stringify(artifact)));
+        const artifactPath = join(plan.stageRoot, ".lakebed", "artifacts", "audit.anonymous.json");
+        await mkdir(dirname(artifactPath));
+        await writeFile(artifactPath, JSON.stringify({
+          artifact,
+          artifactHash,
+          clientBundle: clientBundle.toString("base64"),
+          clientBundleHash: lakebedHash(clientBundle),
+          mediaType: "application/vnd.lakebed.artifact+json",
+        }));
+        return verifyLakebedBuild(plan, Buffer.from(JSON.stringify({
+          artifactHash,
+          artifactPath,
+          clientBundleHash: lakebedHash(clientBundle),
+          format: "lakebed.capsule.artifact.v1",
+        })));
+      },
+    });
+    await assert.rejects(transaction, /not an anonymous-source audit artifact/);
+  }
 });
 
 test("public audit helper cannot stage or deploy a production binding", async () => {

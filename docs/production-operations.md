@@ -63,8 +63,8 @@ evidence_parent="$(mktemp -d)"
 node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
 node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b"
 cmp "$evidence_parent/build-a/artifact.json" "$evidence_parent/build-b/artifact.json"
-cmp "$evidence_parent/build-a/client/index.tsx" "$evidence_parent/build-b/client/index.tsx"
-cmp "$evidence_parent/build-a/server/index.ts" "$evidence_parent/build-b/server/index.ts"
+cmp "$evidence_parent/build-a/staged/client-index.tsx" "$evidence_parent/build-b/staged/client-index.tsx"
+cmp "$evidence_parent/build-a/staged/server-index.ts" "$evidence_parent/build-b/staged/server-index.ts"
 node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact.json"
 node scripts/audit-lakebed-production.mjs
 ```
@@ -73,8 +73,10 @@ The audit command owns a fresh private transaction, keeps its sentinel outside
 the capsule, writes a safe `lakebed.json` without `deployId`, omits
 `.env.lakebed.server`, seals payload files to `0400` and directories to `0500`,
 and leaves only a sibling `.lakebed` workspace writable. It invokes and verifies
-the anonymous build before exporting non-deployable evidence and deleting the
-transaction. A `.lakebed/deploy.json` file is an unexpected legacy
+the anonymous build before exporting evidence under deliberately non-capsule
+filenames and deleting the transaction. The evidence has neither canonical
+client/server entrypoints nor a runnable capsule layout. A `.lakebed/deploy.json`
+file is an unexpected legacy
 credential path, not the production binding; staging fails closed if it or an
 unrecognized `.env.lakebed*` path exists. Never copy credentials into the
 repository, a PR, an evidence bundle, or another user's worktree. If hosted

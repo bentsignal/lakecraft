@@ -62,6 +62,21 @@ function inside(parent, candidate) {
   return child !== "" && !isAbsolute(child) && child !== ".." && !child.startsWith("../");
 }
 
+function assertTrustedStageParent(info) {
+  if (typeof process.getuid !== "function") {
+    throw new Error("Transactional Lakebed staging requires an operating system user ID.");
+  }
+  const parentMode = info.mode & 0o7777;
+  const sticky = (parentMode & 0o1000) !== 0;
+  const sharedWritable = (parentMode & 0o022) !== 0;
+  if (sharedWritable && !sticky) {
+    throw new Error("Stage parent must not be group- or other-writable unless sticky-bit protected.");
+  }
+  if (info.uid !== process.getuid() && !(info.uid === 0 && sticky)) {
+    throw new Error("Stage parent must be current-user owned or a root-owned sticky directory.");
+  }
+}
+
 async function assertRegularFile(path, label) {
   const info = await lstat(path);
   if (info.isSymbolicLink() || !info.isFile()) throw new Error(`${label} must be a regular, non-symlink file.`);
@@ -90,6 +105,9 @@ export async function verifyLakebedBuild(plan, reportBuffer) {
     || !outer.artifact || typeof outer.artifact !== "object"
     || typeof outer.clientBundle !== "string") {
     throw new Error("Lakebed artifact has an unexpected structure.");
+  }
+  if (outer.artifact.format !== report.format || outer.artifact.deployTarget !== "anonymous-source") {
+    throw new Error("Lakebed artifact is not an anonymous-source audit artifact.");
   }
   const artifactHash = lakebedHash(Buffer.from(JSON.stringify(outer.artifact)));
   const clientBundle = Buffer.from(outer.clientBundle, "base64");
@@ -140,6 +158,7 @@ export async function runStagedTransaction({
   const canonicalParent = await realpath(resolve(stageParent));
   const parentInfo = await lstat(canonicalParent);
   if (parentInfo.isSymbolicLink() || !parentInfo.isDirectory()) throw new Error("Stage parent must be a real directory.");
+  assertTrustedStageParent(parentInfo);
   const stageRoot = await mkdtemp(join(canonicalParent, "lakecraft-audit-"));
   let plan;
   try {
@@ -210,19 +229,22 @@ export async function runAuditBuild({ outputRoot, sourceRoot, stageParent, runBu
           });
         await assertSealedStagingPlan(plan, "before build-output verification");
         const verified = await verifyLakebedBuild(plan, reportBuffer);
-        await mkdir(join(evidenceRoot, "client"), { mode: 0o700 });
-        await mkdir(join(evidenceRoot, "server"), { mode: 0o700 });
+        await mkdir(join(evidenceRoot, "staged"), { mode: 0o700 });
         await writeFile(join(evidenceRoot, "artifact.json"), verified.artifactBuffer, { flag: "wx", mode: 0o600 });
         await writeFile(join(evidenceRoot, "build-report.json"), verified.reportBuffer, { flag: "wx", mode: 0o600 });
         const files = {};
-        for (const path of ["client/index.tsx", "server/index.ts", "favicon.svg"]) {
-          const contents = await readFile(join(plan.capsuleRoot, ...path.split("/")));
-          await writeFile(join(evidenceRoot, ...path.split("/")), contents, { flag: "wx", mode: 0o600 });
-          files[path] = { bytes: contents.length, sha256: digest(contents) };
+        for (const [sourcePath, evidencePath] of [
+          ["client/index.tsx", "staged/client-index.tsx"],
+          ["server/index.ts", "staged/server-index.ts"],
+          ["favicon.svg", "staged/favicon.svg"],
+        ]) {
+          const contents = await readFile(join(plan.capsuleRoot, ...sourcePath.split("/")));
+          await writeFile(join(evidenceRoot, ...evidencePath.split("/")), contents, { flag: "wx", mode: 0o600 });
+          files[evidencePath] = { bytes: contents.length, sha256: digest(contents) };
         }
         const auditConfig = await readFile(join(plan.capsuleRoot, "lakebed.json"));
-        await writeFile(join(evidenceRoot, "lakebed.audit.json"), auditConfig, { flag: "wx", mode: 0o600 });
-        files["lakebed.audit.json"] = { bytes: auditConfig.length, sha256: digest(auditConfig) };
+        await writeFile(join(evidenceRoot, "staged", "lakebed.audit.json"), auditConfig, { flag: "wx", mode: 0o600 });
+        files["staged/lakebed.audit.json"] = { bytes: auditConfig.length, sha256: digest(auditConfig) };
         const summary = {
           artifactHash: verified.artifactHash,
           artifactPath: join(evidenceRoot, "artifact.json"),
