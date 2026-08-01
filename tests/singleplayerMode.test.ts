@@ -7,7 +7,7 @@ const lobby = readFileSync(new URL("../client/lobby/LobbyScreen.tsx", import.met
 
 assert.ok(app.includes("shouldRunSinglePlayer(window.location.hostname, window.location.search)"),
   "the route must apply the tested host policy before choosing an app tree");
-assert.ok(app.includes("? <SinglePlayerApp />\n    : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />"),
+assert.ok(app.includes("? <SinglePlayerApp onExit={leaveSingleplayer} />\n    : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />"),
   "the route must choose exactly one app tree");
 assert.equal(app.includes("requestDocumentPointerLockHandoff"), false,
   "entering the world browser does not transiently capture the pointer before Play");

@@ -18,8 +18,12 @@ import {
 } from "./game";
 import { performanceHudCoreText } from "./game/performanceHud.ts";
 import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
-import { SinglePlayerApp } from "./singleplayer";
-import { shouldRunSinglePlayer } from "./runtimeMode.ts";
+import { SinglePlayerApp, SinglePlayerTitleScreen } from "./singleplayer";
+import {
+  isHostedLakebedHostname,
+  shouldRunSinglePlayer,
+  singlePlayerTitleUrl,
+} from "./runtimeMode.ts";
 import { cycleHotbarIndex } from "./game/hotbarInput";
 import { MultiplayerSegmentTransport } from "./MultiplayerSegmentTransport.tsx";
 import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
@@ -3593,18 +3597,30 @@ function LakebedMultiplayerApp({ onJoinSingleplayer }: { onJoinSingleplayer: () 
 }
 
 export function App() {
+  const hostedSinglePlayer = isHostedLakebedHostname(window.location.hostname);
   const [singlePlayer, setSinglePlayer] = useState(
     () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
   );
+  const [singlePlayerTitle, setSinglePlayerTitle] = useState(false);
 
   function joinSingleplayer(): void {
     const url = new URL(window.location.href);
     url.searchParams.set("singleplayer", "1");
     window.history.replaceState(window.history.state, "", url);
+    setSinglePlayerTitle(false);
     setSinglePlayer(true);
   }
 
+  function leaveSingleplayer(): void {
+    window.history.replaceState(window.history.state, "", singlePlayerTitleUrl(window.location.href));
+    if (hostedSinglePlayer) setSinglePlayerTitle(true);
+    else setSinglePlayer(false);
+  }
+
+  if (hostedSinglePlayer) return singlePlayerTitle
+    ? <SinglePlayerTitleScreen onJoinSingleplayer={joinSingleplayer} />
+    : <SinglePlayerApp onExit={leaveSingleplayer} />;
   return singlePlayer
-    ? <SinglePlayerApp />
+    ? <SinglePlayerApp onExit={leaveSingleplayer} />
     : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />;
 }

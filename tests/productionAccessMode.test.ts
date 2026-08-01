@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   isHostedLakebedHostname,
   shouldRunSinglePlayer,
+  singlePlayerTitleUrl,
 } from "../client/runtimeMode.ts";
 
 for (const hostname of [
@@ -36,6 +37,16 @@ for (const hostname of [
 
 assert.equal(shouldRunSinglePlayer("localhost", "?%73ingleplayer=%31"), true,
   "the local opt-in follows URLSearchParams decoding rather than a fragile substring check");
+assert.equal(
+  singlePlayerTitleUrl("http://localhost:3000/?singleplayer=1&debug=chunks#world-browser"),
+  "http://localhost:3000/?debug=chunks",
+  "local Back removes only the route flag plus stale UI hash state",
+);
+assert.equal(
+  singlePlayerTitleUrl("http://localhost:3000/?singleplayer=0&singleplayer=1#delete-world"),
+  "http://localhost:3000/",
+  "local Back removes duplicate route flags and the hash deterministically",
+);
 
 const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const appRoute = app.slice(app.indexOf("export function App()"));
@@ -43,5 +54,14 @@ assert.ok(appRoute.indexOf("shouldRunSinglePlayer") < appRoute.indexOf("<Lakebed
   "the host policy runs before the Lakebed multiplayer tree can mount");
 assert.equal(appRoute.match(/<LakebedMultiplayerApp\b/g)?.length, 1,
   "multiplayer remains implemented behind one unreachable hosted branch");
+assert.ok(appRoute.includes("if (hostedSinglePlayer) return singlePlayerTitle")
+  && appRoute.includes("<SinglePlayerTitleScreen onJoinSingleplayer={joinSingleplayer} />"),
+  "hosted Back returns to a local-only title surface instead of mounting Lakebed multiplayer");
+assert.ok(appRoute.indexOf("if (hostedSinglePlayer) return singlePlayerTitle")
+  < appRoute.indexOf("return singlePlayer\n"),
+  "the hosted gate dominates every render path that can reach multiplayer");
+assert.ok(appRoute.includes("if (hostedSinglePlayer) setSinglePlayerTitle(true);")
+  && appRoute.includes("else setSinglePlayer(false);"),
+  "only non-hosted Back can leave the single-player tree");
 
 console.log("production single-player access policy tests passed");
