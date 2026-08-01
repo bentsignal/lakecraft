@@ -4,6 +4,7 @@ import {
   type CraftingContext,
   type Equipment,
   type Inventory,
+  type ItemId,
   type Recipe,
 } from "../../shared/game";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
@@ -32,6 +33,7 @@ export type GameHudProps = {
   maxHealth?: number;
   hunger?: number;
   maxHunger?: number;
+  showSurvivalStatus?: boolean;
   mobileUnsupported?: boolean;
   pauseOpen?: boolean;
   deathScreenOpen?: boolean;
@@ -50,6 +52,8 @@ export type GameHudProps = {
     recipes: readonly InventoryRecipeBatch[],
   ) => boolean;
   onInventoryWorkspacePreview?: (snapshot: StowedInventorySnapshot) => void;
+  creativeInventory?: boolean;
+  onCreativePick?: (itemId: ItemId) => void;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
   onCloseInventory: () => void;
   onResume?: () => void;
@@ -98,6 +102,7 @@ export function GameHud({
   maxHealth = 20,
   hunger = 20,
   maxHunger = 20,
+  showSurvivalStatus = true,
   mobileUnsupported = false,
   pauseOpen = false,
   deathScreenOpen = false,
@@ -112,6 +117,8 @@ export function GameHud({
   inventoryAuthorityEpoch,
   onInventoryWorkspaceChange,
   onInventoryWorkspacePreview,
+  creativeInventory = false,
+  onCreativePick,
   onCrafted,
   onCloseInventory,
   onResume,
@@ -143,7 +150,7 @@ export function GameHud({
         {!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null}
         {!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen ? (
           <div className="lc-survival-wrap">
-            <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} />
+            {showSurvivalStatus ? <SurvivalHud armor={armor} health={health} hunger={hunger} maxHealth={maxHealth} maxHunger={maxHunger} /> : null}
             <Hotbar inventory={inventory} selectedIndex={selectedIndex} onSelect={onSelectHotbar} />
           </div>
         ) : null}
@@ -174,7 +181,7 @@ export function GameHud({
         />
       ) : null}
       <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawnError={respawnError} respawning={respawning} respawnStatus={respawnStatus} score={deathScore} />
-      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} creative={creativeInventory} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onCreativePick={onCreativePick} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );
