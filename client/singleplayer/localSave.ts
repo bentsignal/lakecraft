@@ -24,6 +24,7 @@ import {
 import { validateFurnaceState, type FurnaceState } from "../../shared/furnaces.ts";
 import type { LocalGameMode } from "./localCommands.ts";
 import { LOCAL_DROP_TERMINAL_VELOCITY } from "./localDropGravity.ts";
+import { compareSinglePlayerCanonicalText } from "../../shared/singlePlayerCanonicalOrder.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
 export const SINGLEPLAYER_SAVE_VERSION = 1 as const;
@@ -403,7 +404,7 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
       settled: hasMotion ? candidate.settled as boolean : false,
     });
   }
-  return drops.sort((left, right) => left.dropId.localeCompare(right.dropId));
+  return drops.sort((left, right) => compareSinglePlayerCanonicalText(left.dropId, right.dropId));
 }
 
 function validateChests(value: unknown): SinglePlayerChestState[] | null {
@@ -418,7 +419,7 @@ function validateChests(value: unknown): SinglePlayerChestState[] | null {
     coordinates.add(candidate.coordKey);
     chests.push({ coordKey: candidate.coordKey, inventory });
   }
-  return chests.sort((left, right) => left.coordKey.localeCompare(right.coordKey));
+  return chests.sort((left, right) => compareSinglePlayerCanonicalText(left.coordKey, right.coordKey));
 }
 
 function validateFurnaces(value: unknown): SinglePlayerFurnaceState[] | null {
@@ -433,7 +434,7 @@ function validateFurnaces(value: unknown): SinglePlayerFurnaceState[] | null {
     coordinates.add(validation.state.coordKey);
     furnaces.push(validation.state);
   }
-  return furnaces.sort((left, right) => left.coordKey.localeCompare(right.coordKey));
+  return furnaces.sort((left, right) => compareSinglePlayerCanonicalText(left.coordKey, right.coordKey));
 }
 
 function validatePrimedTnt(value: unknown): SinglePlayerPrimedTntState[] | null {
@@ -450,7 +451,7 @@ function validatePrimedTnt(value: unknown): SinglePlayerPrimedTntState[] | null 
     ids.add(candidate.eventId);
     fuses.push({ eventId: candidate.eventId, x: candidate.x, y: candidate.y, z: candidate.z, ignitedAt: candidate.ignitedAt, dueAt: candidate.dueAt });
   }
-  return fuses.sort((left, right) => left.eventId.localeCompare(right.eventId));
+  return fuses.sort((left, right) => compareSinglePlayerCanonicalText(left.eventId, right.eventId));
 }
 
 function validateProgression(value: unknown): SinglePlayerSnapshot["progression"] | null {
@@ -465,7 +466,7 @@ function validateProgression(value: unknown): SinglePlayerSnapshot["progression"
       unique.add(entry);
       output.push(entry);
     }
-    return output.sort((left, right) => left.localeCompare(right));
+    return output.sort(compareSinglePlayerCanonicalText);
   };
   const recipes = validateList(value.recipes);
   const advancements = validateList(value.advancements);

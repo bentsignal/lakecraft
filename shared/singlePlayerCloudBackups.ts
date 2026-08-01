@@ -303,6 +303,21 @@ export function validUtcCloudBackupDay(value: unknown): value is string {
   return Number.isFinite(timestamp) && utcCloudBackupDay(timestamp) === value;
 }
 
+export function singlePlayerCloudBudgetCleanupAfter(dayKey: unknown, lastAcceptedAt: unknown): number | null {
+  if (!validUtcCloudBackupDay(dayKey) || !integer(lastAcceptedAt, 0, MAX_TIMESTAMP)
+    || utcCloudBackupDay(lastAcceptedAt) !== dayKey) return null;
+  const dayEnd = Date.parse(`${dayKey}T00:00:00Z`) + 86_400_000;
+  const cadenceEnd = lastAcceptedAt + SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS;
+  const cleanupAfter = Math.max(dayEnd, cadenceEnd);
+  return integer(cleanupAfter, 0, MAX_TIMESTAMP) ? cleanupAfter : null;
+}
+
+export function validSinglePlayerCloudQuotaState(activeStateBytes: unknown, minimumStateBytes: number, revision: unknown): boolean {
+  return integer(minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    && integer(activeStateBytes, minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    && integer(revision, 1, Number.MAX_SAFE_INTEGER - 1);
+}
+
 export function singlePlayerCloudBackupWire(
   manifest: StoredSinglePlayerCloudBackupManifest,
   snapshotJson: string,
