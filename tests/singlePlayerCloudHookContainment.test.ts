@@ -12,23 +12,26 @@ assert.doesNotMatch(app, /\b(?:useAuth|useQuery|useMutation)\b/,
   "the single-player parent stays hook/transport free for guests");
 assert.equal((transport.match(/\buseQuery</g) ?? []).length, 1, "signed-in child owns one reactive query");
 assert.equal((transport.match(/\buseMutation</g) ?? []).length, 1, "signed-in child owns one mutation hook");
-assert.match(transport, /controller\[6\] = \(\) => \{[\s\S]*?void mutation\(/,
+assert.match(transport, /controller\.run = \(\) => \{[\s\S]*?sendUpload/,
   "the current scheduler closure owns mutation while its deadline lifecycle remains stable");
-assert.match(transport, /!auth\.isLoading && \(!auth\.isAuthenticated \|\| auth\.isGuest\)[\s\S]*?reload/,
-  "auth loss tears down through sign-out and hard reload");
-assert.match(transport, /result\[3\]\.length/, "any server quarantine suppresses automatic upload");
-assert.match(transport, /parseRestorableSinglePlayerCloudBackupWire\(value\);[\s\S]*?if \(!remote\) return schedule\(300_000\);[\s\S]*?candidates/,
-  "any client-semantic quarantine returns before candidate selection or mutation");
+assert.match(transport, /auth\.isAuthenticated && !auth\.isGuest[\s\S]*?<SignedInCloud/,
+  "only authenticated non-guest identities mount the hook-bearing transport");
+assert.match(transport, /const remoteState = \(\) => \{[\s\S]*?parseRestorableSinglePlayerCloudBackupWire[\s\S]*?parseSinglePlayerCloudDescriptor/,
+  "the transport validates every backup and descriptor before candidate selection");
+assert.match(transport, /if \(state\.fence\) \{ setStatus\("quarantine"\); return; \}/,
+  "an account fence suppresses automatic upload");
+assert.match(transport, /if \(mark\.deletion \|\| state\.tombstones\.has\(world\.id\)\) continue;/,
+  "local delete markers and server tombstones suppress automatic recreation");
 assert.match(transport, /isLocalWorldRegistryTransactionReadOnly/, "uncertain local registry state suppresses upload");
 assert.match(transport, /type Controller = [\s\S]*?Map<string, Marker>[\s\S]*?useRef<Controller>/,
   "mounted-session refs remain authoritative when durable storage writes fail");
-assert.match(transport, /anchor \? anchor\[0\] \+ Date\.now\(\) - anchor\[1\]/,
+assert.match(transport, /controller\.anchor \? controller\.anchor\[0\] \+ Date\.now\(\) - controller\.anchor\[1\]/,
   "server time is anchored to elapsed client time instead of freezing at the query timestamp");
 assert.match(transport, /<SignedInCloud key=\{auth\.userId\}/,
   "identity changes remount and isolate every per-user session cache");
 assert.match(transport, /candidates\.push\(\[world, prepared\.backup\]\)/,
   "the exact stable tuple checked for ancestry is dispatched without a TOCTOU reread");
-assert.match(transport, /if \(!disabled && remote\?\.\[7\] === prepared\.backup\[1\]\)/,
+assert.match(transport, /if \(remote\?\.\[7\] === prepared\.backup\[1\]\)/,
   "an exact stale remote cannot overwrite the durable delete tombstone with fresh lineage");
 assert.doesNotMatch(transport, /signInWithGoogle|SignInWithGoogle/,
   "single-player guests never see a sign-in prompt from cloud backup code");
