@@ -47,6 +47,7 @@ export {
   listMobIds,
   mobTargetHasClickPriority,
   raycastMobs,
+  reconcileLocalMobStreaming,
   shearLocalMob,
   respawnExpiredAuthoritativeMobs,
   restoreMobSimulationSnapshot,
