@@ -4,11 +4,19 @@ import {
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
   parseSinglePlayerSaveEnvelope,
+  SINGLEPLAYER_SAVE_HEAD_KEY,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
+  SINGLEPLAYER_SAVE_SLOT_B_KEY,
   serializeSinglePlayerSave,
   singlePlayerWorldStorageKey,
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
+import {
+  parseRestorableSinglePlayerCloudBackup,
+  parseServerQuarantinedSinglePlayerCloudBackup,
+  prepareSinglePlayerCloudBackup,
+  restoreSinglePlayerCloudBackup,
+} from "../client/singleplayer/cloudBackupClient.ts";
 import {
   LOCAL_WORLD_REGISTRY_MAX_WORLDS,
   createLocalWorld,
@@ -18,6 +26,7 @@ import {
 import {
   SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES,
+  SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS,
   SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES,
@@ -27,23 +36,30 @@ import {
   SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES,
   candidateMatchesManifest,
-  canonicalCloudBackupJson,
   cloudBackupHash,
   cloudBackupStoredChunkBytes,
+  cloudBackupStoredPartBytes,
   cloudBackupUtf8Bytes,
   decideSinglePlayerCloudBackupCommit,
+  decideSinglePlayerCloudBackupDeleteRevision,
+  inventorySinglePlayerCloudBackupParts,
+  loadSinglePlayerCloudBackupParts,
   parseSinglePlayerCloudBackupCommitRequest,
   parseSinglePlayerCloudBackupDeleteRequest,
+  parseSinglePlayerCloudBackupWire,
   splitSinglePlayerCloudBackupSnapshot,
+  singlePlayerCloudBackupHeader,
+  singlePlayerCloudBackupDeleteActiveState,
+  singlePlayerCloudBackupWire,
   singlePlayerCloudBudgetCleanupAfter,
   utcCloudBackupDay,
   validUtcCloudBackupDay,
   validStoredSinglePlayerCloudBackupManifest,
   validSinglePlayerCloudQuotaState,
   type SinglePlayerCloudBackupCandidate,
+  type StoredSinglePlayerCloudBackupPart,
   type StoredSinglePlayerCloudBackupManifest,
 } from "../shared/singlePlayerCloudBackups.ts";
-import { isRestorableSinglePlayerSnapshot } from "../shared/singlePlayerSnapshotGate.ts";
 import { validateSinglePlayerSnapshot } from "../client/singleplayer/localSave.ts";
 import { createEmptyFurnace } from "../shared/furnaces.ts";
 import { compareSinglePlayerCanonicalText } from "../shared/singlePlayerCanonicalOrder.ts";
@@ -82,37 +98,35 @@ const parsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
 assert.equal(parsed.ok, true);
 if (!parsed.ok) throw new Error("fixture failed cloud validation");
 const candidate = parsed.candidate;
-assert.equal(isRestorableSinglePlayerSnapshot(snapshot), true, "the server portable gate accepts the canonical local fixture");
 
 const withDrops = structuredClone(snapshot);
 withDrops.drops = [{ dropId: "drop_A.1:test", item: { itemId: "dirt", count: 1 }, x: 0, y: 1, z: 2,
   droppedAt: 1, velocityY: -24, settled: false }];
-assert.equal(isRestorableSinglePlayerSnapshot(withDrops), true, "entity IDs and the terminal-velocity boundary match local saves");
 assert.equal(validateSinglePlayerSnapshot(withDrops).ok, true);
 withDrops.drops[0].velocityY = -24.000_001;
-assert.equal(isRestorableSinglePlayerSnapshot(withDrops), false);
 assert.equal(validateSinglePlayerSnapshot(withDrops).ok, false);
 
 const ordered = structuredClone(snapshot);
 ordered.progression.recipes = ["A.recipe", "a:recipe"].sort(compareSinglePlayerCanonicalText);
 ordered.world.edits = [{ x: -2, y: 0, z: 0, block: 1 }, { x: -1, y: 0, z: 0, block: 1 }];
-assert.equal(isRestorableSinglePlayerSnapshot(ordered), true, "shared deterministic progression and numeric edit ordering match local normalization");
 assert.equal(validateSinglePlayerSnapshot(ordered).ok, true);
-ordered.progression.recipes.reverse();
-assert.equal(isRestorableSinglePlayerSnapshot(ordered), false);
-ordered.progression.recipes.reverse();
-ordered.world.edits.reverse();
-assert.equal(isRestorableSinglePlayerSnapshot(ordered), false);
 
 const invalidNested = structuredClone(snapshot);
 invalidNested.player.inventory[0] = { itemId: "dirt", count: 65 };
-assert.equal(isRestorableSinglePlayerSnapshot(invalidNested), false);
 assert.equal(validateSinglePlayerSnapshot(invalidNested).ok, false);
-const invalidBody = { format: "lakecraft.singleplayer", payload: invalidNested, savedAt, sequence: 7, version: 1 };
-const invalidRaw = canonicalCloudBackupJson({ checksum: cloudBackupHash(invalidBody), ...invalidBody });
-assert.deepEqual(parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+const invalidRaw = JSON.stringify({ checksum: "00000000", format: "lakecraft.singleplayer",
+  payload: invalidNested, savedAt, sequence: 7, version: 1 });
+assert.equal(parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
   1, worldId, "Cloud World", 42, "survival", createdAt, "0", invalidRaw,
-])), { ok: false, reason: "invalid_snapshot" }, "caller-recomputed checksums cannot bypass the complete portable schema gate");
+] )).ok, true, "the server admits bounded opaque bytes without duplicating the client schema");
+assert.equal(parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, worldId, "Cloud World", 42, "survival", createdAt, "0", "{garbage",
+])).ok, true, "arbitrary bounded payload bytes remain transportable for quarantine and deletion");
+let deeplyNested = "0";
+for (let depth = 0; depth < 2_000; depth += 1) deeplyNested = `[${deeplyNested}]`;
+assert.equal(parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, worldId, "Cloud World", 42, "survival", createdAt, "0", deeplyNested,
+])).ok, true, "deep JSON is never recursively interpreted by server admission");
 
 const punctuationSnapshot = structuredClone(snapshot);
 punctuationSnapshot.progression.recipes = ["A.recipe", "a.recipe", "_recipe", ":recipe"];
@@ -161,29 +175,37 @@ assert.equal(asciiChunks?.join(""), ascii);
 assert.ok(asciiChunks?.every((chunk) => cloudBackupUtf8Bytes(chunk) <= SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES));
 assert.equal(
   asciiChunks!.reduce((sum, chunk) => sum + cloudBackupStoredChunkBytes(chunk), SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES),
-  161_352,
+  171_116,
   "the charged maximum ASCII payload must remain below the explicit per-user state cap",
 );
 
 const maximumUserId = `google:usr_${"a".repeat(509)}`;
 assert.equal(maximumUserId.length, 520);
-const actualChunkRow = JSON.stringify({ userId: maximumUserId, worldId: "w".repeat(64), uploadId: "f".repeat(64),
-  chunkIndex: "3", chunkData: candidate.chunks[0], chunkBytes: "48000", chunkStateBytes: "999999", protocolVersion: "1" });
+const actualChunkRow = JSON.stringify({ userId: maximumUserId, worldId: "w".repeat(64),
+  part: "4", data: candidate.chunks[0] });
 assert.ok(cloudBackupStoredChunkBytes(candidate.chunks[0]) >= cloudBackupUtf8Bytes(actualChunkRow) + 1_024,
   "the provider-prefixed maximum auth subject and complete chunk row stay conservatively charged");
-assert.ok(SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES >= cloudBackupUtf8Bytes(JSON.stringify({
-  userId: maximumUserId, worldId, name: "x".repeat(48), seed: "-2147483648", gameMode: "survival",
-  worldCreatedAt: "8640000000000000", snapshotHash: "ffffffff", snapshotChars: "150000",
-  snapshotUtf8Bytes: "192000", stateBytes: "192000", chunkCount: "4",
-  uploadId: "ffffffff-ffffffff-zzzzzz", revision: "9007199254740991",
-  uploadedAt: "8640000000000000", protocolVersion: "1",
-})) + 1_024, "manifest charge covers the maximum auth subject, fields, and container/index margin");
+for (const adversarialUserId of ['"'.repeat(520), "\u0000".repeat(520), "😀".repeat(260)]) {
+  const exact = cloudBackupStoredPartBytes(adversarialUserId, worldId, "1", candidate.chunks[0]);
+  assert.equal(exact, cloudBackupUtf8Bytes(JSON.stringify({
+    userId: adversarialUserId, worldId, part: "1", data: candidate.chunks[0],
+  })) + 1_024, "server charge is derived from the exact persisted row and escaped identity bytes");
+  assert.ok(cloudBackupStoredChunkBytes(candidate.chunks[0]) >= exact,
+    "pre-auth admission remains conservative for quote, NUL, and multibyte maximum-length identities");
+}
+const maximumHeader = JSON.stringify([1, "x".repeat(48), "-2147483648", "survival", "8640000000000000",
+  "ffffffff", "9007199254740991", "8640000000000000"]);
+assert.equal(cloudBackupStoredPartBytes(maximumUserId, "w".repeat(64), "0", maximumHeader),
+  cloudBackupUtf8Bytes(JSON.stringify({ userId: maximumUserId, worldId: "w".repeat(64), part: "0", data: maximumHeader })) + 1_024,
+  "header accounting uses the exact persisted owner, metadata bytes, and row margin");
 
 const unicode = `${"😀".repeat(12_000)}x${"😀".repeat(12_000)}`;
 const unicodeChunks = splitSinglePlayerCloudBackupSnapshot(unicode);
 assert.ok(unicodeChunks && unicodeChunks.length === 3);
 assert.equal(unicodeChunks.join(""), unicode);
 assert.ok(unicodeChunks.every((chunk) => cloudBackupUtf8Bytes(chunk) <= SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES));
+assert.equal(cloudBackupHash(serialized.raw), candidate.snapshotHash,
+  "the stored transport hash is always recomputed from the exact raw snapshot bytes");
 assert.equal(splitSinglePlayerCloudBackupSnapshot("😀".repeat(48_001)), null,
   "a character-valid but byte-oversized payload must fail the four-chunk bound");
 
@@ -202,10 +224,8 @@ assert.deepEqual(parseSinglePlayerSaveEnvelope(JSON.stringify(futureEnvelope), w
 const invalidWorldRequest = JSON.stringify([
   1, "different-world", "Cloud World", 42, "survival", createdAt, "0", serialized.raw,
 ]);
-assert.deepEqual(parseSinglePlayerCloudBackupCommitRequest(invalidWorldRequest), {
-  ok: false,
-  reason: "invalid_snapshot",
-});
+assert.equal(parseSinglePlayerCloudBackupCommitRequest(invalidWorldRequest).ok, true,
+  "server admission deliberately does not classify opaque local-world semantics");
 assert.deepEqual(parseSinglePlayerCloudBackupDeleteRequest('[1,"cloud-world-alpha","3"]'), [1, worldId, "3"]);
 assert.equal(parseSinglePlayerCloudBackupDeleteRequest('[1,"Cloud World","3"]'), null);
 
@@ -248,6 +268,114 @@ assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, stateByte
 assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, revision: "0" }), false);
 assert.equal(candidateMatchesManifest(candidate, manifest), true);
 
+const storedParts: StoredSinglePlayerCloudBackupPart[] = [
+  { userId: "user-a", worldId, part: "0", data: singlePlayerCloudBackupHeader(manifest) },
+  ...candidate.chunks.map((data, index) => ({ userId: "user-a", worldId, part: String(index + 1), data })),
+];
+const loadedParts = loadSinglePlayerCloudBackupParts("user-a", [...storedParts].reverse());
+assert.equal(loadedParts.ok, true, "database row order is irrelevant after exact contiguous-part reconstruction");
+assert.equal(loadedParts.ok && loadedParts.backups[0].snapshotJson, candidate.snapshotJson);
+if (!loadedParts.ok) throw new Error("ordinary owner fixture failed exact reconstruction");
+const ordinaryManifest = loadedParts.backups[0].manifest;
+const ordinaryStateBytes = inventorySinglePlayerCloudBackupParts("user-a", storedParts);
+assert.equal(ordinaryStateBytes.ok, true);
+if (!ordinaryStateBytes.ok) throw new Error("ordinary owner fixture failed inventory");
+assert.equal(Number(ordinaryManifest.stateBytes), ordinaryStateBytes.stateBytes,
+  "reconstructed manifest charge is the exact ordinary-owner row charge");
+const ordinaryDedupe = decide(ordinaryManifest, { ...candidate, stateBytes: ordinaryStateBytes.stateBytes }, {
+  currentSnapshotJson: candidate.snapshotJson, userWorldCount: 1,
+  userStateBytes: ordinaryStateBytes.stateBytes, globalStateBytes: ordinaryStateBytes.stateBytes,
+});
+assert.equal(ordinaryDedupe.ok && ordinaryDedupe.kind, "deduped",
+  "exact ordinary-owner retry remains eligible for byte dedupe");
+const replacementParsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, worldId, "Cloud World", 42, "survival", createdAt, ordinaryManifest.revision, `${candidate.snapshotJson}x`,
+]));
+assert.equal(replacementParsed.ok, true);
+if (!replacementParsed.ok) throw new Error("replacement fixture failed admission");
+const replacementAt = Number(ordinaryManifest.uploadedAt) + SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS;
+const replacementHeader = singlePlayerCloudBackupHeader({ ...ordinaryManifest,
+  snapshotHash: replacementParsed.candidate.snapshotHash, revision: "2", uploadedAt: String(replacementAt) });
+const replacementStateBytes = replacementParsed.candidate.chunks.reduce((sum, data, index) => sum
+  + cloudBackupStoredPartBytes("user-a", worldId, String(index + 1), data),
+cloudBackupStoredPartBytes("user-a", worldId, "0", replacementHeader));
+const replacement = decide(ordinaryManifest, { ...replacementParsed.candidate, stateBytes: replacementStateBytes }, {
+  currentSnapshotJson: candidate.snapshotJson, userWorldCount: 1,
+  userStateBytes: ordinaryStateBytes.stateBytes, globalStateBytes: ordinaryStateBytes.stateBytes,
+  userLastAcceptedAt: Number(ordinaryManifest.uploadedAt), now: replacementAt,
+});
+assert.equal(replacement.ok && replacement.kind, "write",
+  "replacement subtracts the exact current-owner charge and adds the exact next-owner charge without underflow");
+assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a", storedParts.slice(0, -1)), {
+  ok: false, reason: "server_state",
+}, "a truncated payload is corrupt server state");
+assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a", [
+  storedParts[0], { ...storedParts[1], userId: "user-b" },
+]), { ok: false, reason: "server_state" }, "cross-user parts can never enter another owner's backup set");
+assert.equal(decideSinglePlayerCloudBackupDeleteRevision(true, "1", "0"), "conflict",
+  "a healthy target always rejects the corrupt-target sentinel");
+assert.equal(decideSinglePlayerCloudBackupDeleteRevision(true, null, "0"), "delete",
+  "a bounded-unhealthy target accepts only the explicit corrupt-target sentinel");
+assert.equal(decideSinglePlayerCloudBackupDeleteRevision(true, null, "1"), "conflict");
+assert.equal(decideSinglePlayerCloudBackupDeleteRevision(false, null, "0"), "deduped",
+  "a missing target treats sentinel delete as an idempotent retry");
+assert.equal(decideSinglePlayerCloudBackupDeleteRevision(false, null, "1"), "conflict");
+assert.equal(decideSinglePlayerCloudBackupDeleteRevision(true, "2", "0"), "conflict",
+  "a concurrently repaired healthy target rejects a stale corrupt-target sentinel");
+assert.equal(singlePlayerCloudBackupDeleteActiveState(12_000, 10_000, 8_000, 0), 10_000,
+  "a corruption-expanded target releases only the 2,000 bytes actually covered by global accounting");
+assert.equal(singlePlayerCloudBackupDeleteActiveState(9_999, 10_000, 8_000, 0), null,
+  "delete never hides undercount in the state that remains after target removal");
+
+const boundedUnhealthySibling: StoredSinglePlayerCloudBackupPart[] = [
+  ...storedParts,
+  { userId: "user-a", worldId: "broken-sibling", part: "0", data: "not-json" },
+  { userId: "user-a", worldId: "broken-sibling", part: "1", data: "opaque" },
+];
+const siblingInventory = inventorySinglePlayerCloudBackupParts("user-a", boundedUnhealthySibling);
+assert.equal(siblingInventory.ok, true);
+if (!siblingInventory.ok) throw new Error("bounded sibling inventory failed");
+assert.equal(loadSinglePlayerCloudBackupParts("user-a",
+  siblingInventory.worlds.find(({ worldId: id }) => id === worldId)!.parts).ok, true,
+"a bounded unhealthy sibling cannot block target-specific healthy reconstruction");
+assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a",
+  siblingInventory.worlds.find(({ worldId: id }) => id === "broken-sibling")!.parts),
+{ ok: false, reason: "server_state" });
+assert.deepEqual(inventorySinglePlayerCloudBackupParts("user-a", [
+  { userId: "user-a", worldId, part: "0", data: "x".repeat(SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS + 1) },
+]), { ok: false, reason: "server_state" }, "oversized headers fail before JSON parsing");
+assert.deepEqual(inventorySinglePlayerCloudBackupParts("user-a", [
+  { userId: "user-a", worldId, part: "1", data: "x".repeat(SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES + 1) },
+]), { ok: false, reason: "server_state" }, "oversized payload parts fail before joining");
+const aggregateRows: StoredSinglePlayerCloudBackupPart[] = ["aggregate-a", "aggregate-b"].flatMap((id) => [
+  { userId: "user-a", worldId: id, part: "0", data: "[]" },
+  { userId: "user-a", worldId: id, part: "1", data: "x".repeat(48_000) },
+  { userId: "user-a", worldId: id, part: "2", data: "y".repeat(48_000) },
+  { userId: "user-a", worldId: id, part: "3", data: "z".repeat(4_000) },
+]);
+const aggregateInventory = inventorySinglePlayerCloudBackupParts("user-a", aggregateRows);
+assert.equal(aggregateInventory.ok, true);
+assert.ok(aggregateInventory.ok && aggregateInventory.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES,
+  "bounded per-world parts can still exceed the aggregate owner cap and must be rejected by query/commit admission");
+
+const largeOpaque = "a".repeat(48_000) + "b".repeat(48_000) + "c".repeat(48_000) + "d".repeat(6_000);
+const largeParsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, "large-world", "Large", 1, "creative", 2, "0", largeOpaque,
+]));
+assert.equal(largeParsed.ok, true);
+if (!largeParsed.ok) throw new Error("large opaque fixture failed admission");
+const largeDecision = decide(null, largeParsed.candidate, { now: SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS });
+assert.equal(largeDecision.ok, true);
+if (!largeDecision.ok) throw new Error("large opaque fixture failed decision");
+const reorderedParts: StoredSinglePlayerCloudBackupPart[] = [
+  { userId: "user-a", worldId: "large-world", part: "0", data: singlePlayerCloudBackupHeader(largeDecision.manifest) },
+  ...largeParsed.candidate.chunks.map((data, index) => ({ userId: "user-a", worldId: "large-world", part: String(index + 1), data })),
+];
+[reorderedParts[1].data, reorderedParts[2].data] = [reorderedParts[2].data, reorderedParts[1].data];
+assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a", reorderedParts), {
+  ok: false, reason: "server_state",
+}, "payload chunks swapped under otherwise valid part numbers fail the recomputed hash/topology check");
+
 const staleExact = { ...candidate, expectedRevision: "0" };
 const deduped = decide(manifest, staleExact, {
   currentSnapshotJson: candidate.snapshotJson,
@@ -258,13 +386,14 @@ const deduped = decide(manifest, staleExact, {
 assert.equal(deduped.ok && deduped.kind, "deduped",
   "byte-identical retries dedupe before compare-and-swap conflict handling");
 
-const sameHashDifferentBytes = { ...candidate, snapshotJson: `${candidate.snapshotJson} ` };
+const sameHashDifferentBytes = { ...candidate, snapshotJson: `${candidate.snapshotJson} `,
+  snapshotHash: manifest.snapshotHash };
 assert.deepEqual(decide(manifest, sameHashDifferentBytes, {
   currentSnapshotJson: candidate.snapshotJson,
   userWorldCount: 1,
   userStateBytes: candidate.stateBytes,
   globalStateBytes: candidate.stateBytes,
-}), { ok: false, reason: "conflict" });
+}), { ok: false, reason: "conflict" }, "an alleged hash collision with unequal bytes never exact-dedupes");
 
 assert.deepEqual(decide(null, candidate, { userWorldCount: SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS }), {
   ok: false,
@@ -333,6 +462,116 @@ assert.equal(restored.ok && restored.world.id, worldId,
 const loaded = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId });
 assert.equal(loaded.status, "loaded");
 assert.deepEqual(loaded.snapshot, snapshot);
+if (!restored.ok) throw new Error("restore fixture unexpectedly failed");
+const prepared = prepareSinglePlayerCloudBackup(storage, restored.world, "0");
+assert.equal(prepared.ok, true, "upload preparation rereads and validates the exact committed local journal bytes");
+if (!prepared.ok) throw new Error("upload fixture unexpectedly failed");
+assert.equal(parseSinglePlayerSaveEnvelope(prepared.backup.snapshotJson, worldId).ok, true);
+assert.equal(prepared.backup.sequence, loaded.sequence);
+
+const validWire = singlePlayerCloudBackupWire(manifest, candidate.snapshotJson);
+assert.equal(parseSinglePlayerCloudBackupWire(validWire).ok, true);
+assert.equal(parseRestorableSinglePlayerCloudBackup(validWire).ok, true,
+  "only a complete locally valid journal envelope leaves download quarantine");
+const outerMismatchWire = [...validWire];
+outerMismatchWire[3] = "43";
+assert.equal(parseSinglePlayerCloudBackupWire(outerMismatchWire).ok, true,
+  "transport validation intentionally does not interpret world metadata inside opaque bytes");
+const outerMismatch = parseRestorableSinglePlayerCloudBackup(outerMismatchWire);
+assert.equal(outerMismatch.ok, false, "outer metadata disagreement remains quarantined on the client");
+assert.deepEqual(!outerMismatch.ok && outerMismatch.quarantine, {
+  worldId, name: "Cloud World", seed: 43, gameMode: "survival", worldCreatedAt: createdAt,
+  revision: "1", uploadedAt: SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS,
+  deleteRequestJson: JSON.stringify([1, worldId, "1"]),
+}, "semantic quarantine preserves only safe outer metadata and the exact revision delete request");
+
+const garbageParsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, "opaque-world", "Opaque", 7, "creative", 4_000, "0", "{garbage",
+]));
+assert.equal(garbageParsed.ok, true);
+if (!garbageParsed.ok) throw new Error("garbage transport fixture failed admission");
+const garbageDecision = decide(null, garbageParsed.candidate);
+assert.equal(garbageDecision.ok, true);
+if (!garbageDecision.ok) throw new Error("garbage transport fixture failed decision");
+const garbageWire = singlePlayerCloudBackupWire(garbageDecision.manifest, garbageParsed.candidate.snapshotJson);
+assert.equal(parseSinglePlayerCloudBackupWire(garbageWire).ok, true,
+  "opaque garbage remains readable at the transport layer so it can be permanently deleted");
+const garbageQuarantine = parseRestorableSinglePlayerCloudBackup(garbageWire);
+assert.equal(garbageQuarantine.ok, false);
+assert.equal(!garbageQuarantine.ok && garbageQuarantine.quarantine?.deleteRequestJson,
+  JSON.stringify([1, "opaque-world", garbageDecision.manifest.revision]));
+assert.deepEqual(parseServerQuarantinedSinglePlayerCloudBackup({
+  worldId: "broken-sibling", status: "corrupt", expectedRevision: "0",
+  deleteRequestJson: JSON.stringify([1, "broken-sibling", "0"]),
+}), { worldId: "broken-sibling", status: "corrupt", expectedRevision: "0",
+  deleteRequestJson: JSON.stringify([1, "broken-sibling", "0"]) },
+"client preserves the server's payload-free corrupt-target delete descriptor");
+const quarantineStorage = new MemoryStorage();
+const beforeQuarantinedRestore = new Map(quarantineStorage.values);
+assert.deepEqual(restoreSinglePlayerCloudBackup(quarantineStorage, garbageWire), {
+  ok: false, reason: "backup_quarantined", mutationStarted: false,
+});
+assert.deepEqual(quarantineStorage.values, beforeQuarantinedRestore,
+  "quarantined restore rejection mutates no registry or world namespace key");
+
+class ReadbackDriftStorage extends MemoryStorage {
+  private reads = 0;
+  private readonly target: string;
+  constructor(source: MemoryStorage, target: string) {
+    super();
+    this.target = target;
+    for (const [key, value] of source.values) this.values.set(key, value);
+  }
+  override getItem(key: string): string | null {
+    const value = super.getItem(key);
+    if (key !== this.target || value === null) return value;
+    this.reads += 1;
+    return this.reads >= 3 ? `${value} ` : value;
+  }
+}
+if (loaded.status !== "loaded" && loaded.status !== "recovered") throw new Error("loaded fixture lost its slot");
+const driftKey = singlePlayerWorldStorageKey(worldId,
+  loaded.slot === "a" ? SINGLEPLAYER_SAVE_SLOT_A_KEY : SINGLEPLAYER_SAVE_SLOT_B_KEY);
+assert.deepEqual(prepareSinglePlayerCloudBackup(new ReadbackDriftStorage(storage, driftKey), restored.world, "0"), {
+  ok: false, reason: "readback_drift",
+}, "upload aborts when the selected journal slot changes between its exact rereads");
+
+class AlternateSlotCommitStorage extends MemoryStorage {
+  private reads = 0;
+  constructor(source: MemoryStorage, privateTarget: string, privateAlternate: string,
+    privateHead: string, privateRaw: string, privateSequence: number) {
+    super();
+    this.target = privateTarget;
+    this.alternate = privateAlternate;
+    this.head = privateHead;
+    this.raw = privateRaw;
+    this.sequence = privateSequence;
+    for (const [key, value] of source.values) this.values.set(key, value);
+  }
+  private readonly target: string;
+  private readonly alternate: string;
+  private readonly head: string;
+  private readonly raw: string;
+  private readonly sequence: number;
+  override getItem(key: string): string | null {
+    const value = super.getItem(key);
+    if (key === this.target && ++this.reads === 3) {
+      this.values.set(this.alternate, this.raw);
+      this.values.set(this.head, JSON.stringify({ sequence: this.sequence, slot: this.alternate.endsWith(".a") ? "a" : "b" }));
+    }
+    return value;
+  }
+}
+const nextSave = serializeSinglePlayerSave(snapshot, loaded.sequence + 1, loaded.savedAt + 1);
+assert.equal(nextSave.ok, true);
+if (!nextSave.ok) throw new Error("alternate autosave fixture failed");
+const alternateKey = singlePlayerWorldStorageKey(worldId,
+  loaded.slot === "a" ? SINGLEPLAYER_SAVE_SLOT_B_KEY : SINGLEPLAYER_SAVE_SLOT_A_KEY);
+const headKey = singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_HEAD_KEY);
+assert.deepEqual(prepareSinglePlayerCloudBackup(new AlternateSlotCommitStorage(storage, driftKey, alternateKey,
+  headKey, nextSave.raw, loaded.sequence + 1), restored.world, "0"), {
+  ok: false, reason: "readback_drift",
+}, "a newly committed higher-sequence alternate slot prevents stale cloud overwrite");
 assert.deepEqual(restoreMissingLocalWorld(storage, {
   worldId,
   name: "Cloud World",
@@ -389,14 +628,19 @@ for (const kind of ["valid", "corrupt", "unsupported"] as const) {
 }
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+const cloudSource = readFileSync(new URL("../shared/singlePlayerCloudBackups.ts", import.meta.url), "utf8");
 assert.match(serverSource, /\.index\("by_cleanup", \["activeBackup", "cleanupAfter"\]\)/,
   "dormant budgets use an explicit eligibility index instead of a starvation-prone creation prefix");
 assert.match(serverSource, /q\.eq\("activeBackup", "0"\)[\s\S]*?\.lt\("cleanupAfter"/,
   "cleanup selects only eligible dormant rows");
-assert.match(serverSource, /userChunks\.length !== userManifests\.reduce/,
-  "all per-user chunks must map one-for-one to active manifest chunk counts, rejecting orphans");
-assert.match(serverSource, /row\.chunkStateBytes !== String\(cloudBackupStoredChunkBytes\(row\.chunkData\)\)/,
-  "mutations re-derive conservative persisted-row charges before quota arithmetic");
+assert.match(serverSource, /singlePlayerCloudBackupParts: table\(\{[\s\S]*?part: string\(\),[\s\S]*?data: string\(\),[\s\S]*?\.index\(BS\.byUser, \["userId"\]\)/,
+  "one owner-indexed parts table is the complete cloud backup storage surface");
+assert.doesNotMatch(serverSource, /ctx\.db\.singlePlayerCloudBackup(?:Chunks|s)\b/,
+  "legacy split manifest/chunk tables have no remaining runtime path");
+assert.match(cloudSource, /parts\.some\(\(part, index\) => part\.part !== String\(index\)\)/,
+  "the shared loader rejects missing, duplicate, or orphan part topology");
+assert.match(cloudSource, /candidate\.candidate\.chunks\.some\(\(chunk, index\) => chunk !== parts\[index \+ 1\]\.data\)/,
+  "the shared loader recomputes exact chunk boundaries and contents before quota arithmetic");
 assert.match(serverSource, /activeBackup: "0", cleanupAfter:/,
   "last-world permanent deletion retains cadence state only until its indexed cleanup deadline");
 assert.match(serverSource, /userId\.length > 520/,
@@ -406,13 +650,23 @@ assert.match(serverSource, /row\.userId === userId && \(!deleting \|\| current\)
 assert.match(serverSource, /singlePlayerCloudBudgetCleanupAfter\(row\.dayKey, Number\(row\.lastAcceptedAt\)\)[\s\S]*?validUtcCloudBackupDay\(quota\.dayKey\)/,
   "budget day/timestamp pairs and quota day keys require canonical real UTC dates before mutation");
 const cloudMutation = serverSource.slice(serverSource.indexOf("mutateSinglePlayerCloudBackup"), serverSource.indexOf("growOakTree"));
-const undercountGuard = cloudMutation.indexOf("quota && !validSinglePlayerCloudQuotaState(globalStateBytes");
-const destructiveDelete = cloudMutation.indexOf("for (const row of currentChunks) await ctx.db.singlePlayerCloudBackupChunks.delete");
+const undercountGuard = cloudMutation.indexOf("!recoveringDelete && quota");
+const destructiveDelete = cloudMutation.indexOf("for (const row of currentParts) await ctx.db.singlePlayerCloudBackupParts.delete");
 assert.ok(undercountGuard >= 0 && undercountGuard < cloudMutation.indexOf("if (deleting)") && undercountGuard < destructiveDelete,
-  "quota undercount and exhausted revision reject before delete, dedupe cleanup, or write mutation");
+  "strict full-current quota validation remains before commit and dedupe paths");
+assert.match(cloudMutation, /const remainingMinimum = [\s\S]*?singlePlayerCloudBackupDeleteActiveState\(globalStateBytes,[\s\S]*?if \(nextActiveStateBytes === null\)[\s\S]*?if \(!nextQuota\)[\s\S]*?for \(const row of currentParts\)/,
+  "corrupt delete validates the post-delete remainder and releases only quota-covered target bytes before mutation");
+assert.match(cloudMutation, /if \(!deleting && \(!allHealthy/,
+  "commits refuse any bounded-unhealthy current owner state while deletes classify one target independently");
+assert.match(serverSource, /quarantined\.push\(\{ worldId: world\.worldId, status: "corrupt", expectedRevision: "0"/,
+  "query surfaces bounded unreconstructable worlds with the explicit permanent-delete sentinel");
+assert.match(serverSource, /Number\(manifest\.uploadedAt\) > serverNow[\s\S]*?expectedRevision: manifest\.revision/,
+  "future upload metadata is quarantined with its healthy transport revision instead of presented as valid");
+assert.match(serverSource, /inventory\.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES/,
+  "query rejects a multi-world aggregate that exceeds the owner storage cap");
 assert.match(cloudMutation, /const nextQuota = nextQuotaValue[\s\S]*?if \(!nextQuota\) return \{ ok: false, reason: BS\.invalidServerState, serverNow \};[\s\S]*?await applyCleanup\(\)/,
   "deduped cleanup validates its complete next quota before deleting a budget");
-assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return \{ ok: false, reason: BS\.invalidServerState, serverNow \};[\s\S]*?for \(const row of currentChunks\)/,
-  "write replacement validates next quota bytes/revision before replacing chunks");
+assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return \{ ok: false, reason: BS\.invalidServerState, serverNow \};[\s\S]*?for \(const row of currentParts\)/,
+  "write replacement validates next quota bytes/revision before replacing parts");
 
 console.log("single-player cloud backup protocol and explicit restore foundation tests passed");
