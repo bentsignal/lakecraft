@@ -11,6 +11,8 @@ export const SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES = 2_048;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS = 30 * 60_000;
 export const SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES = 12;
 export const SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES = 120;
+export const SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS = 512;
+export const SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_UTF8_BYTES = 1_024;
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const WORLD_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -56,10 +58,8 @@ export interface SinglePlayerCloudBackupCandidate {
   expectedRevision: string;
   snapshotHash: string;
   snapshotJson: string;
-  snapshotChars: number;
   snapshotUtf8Bytes: number;
   stateBytes: number;
-  uploadId: string;
   chunks: string[];
 }
 
@@ -70,13 +70,71 @@ export interface StoredSinglePlayerCloudBackupManifest {
   gameMode: string;
   worldCreatedAt: string;
   snapshotHash: string;
-  snapshotChars: string;
   snapshotUtf8Bytes: string;
   stateBytes: string;
   chunkCount: string;
-  uploadId: string;
   revision: string;
   uploadedAt: string;
+}
+
+export interface StoredSinglePlayerCloudBackupPart {
+  userId: string;
+  worldId: string;
+  part: string;
+  data: string;
+}
+
+export interface LoadedSinglePlayerCloudBackup<TPart extends StoredSinglePlayerCloudBackupPart> {
+  manifest: StoredSinglePlayerCloudBackupManifest;
+  snapshotJson: string;
+  parts: TPart[];
+}
+
+export interface InventoriedSinglePlayerCloudBackup<TPart extends StoredSinglePlayerCloudBackupPart> {
+  worldId: string;
+  parts: TPart[];
+  stateBytes: number;
+}
+
+/** Bounds every persisted string before any header parse, payload join, or integrity reconstruction. */
+export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSinglePlayerCloudBackupPart>(
+  userId: string,
+  rows: readonly TPart[],
+): { ok: true; worlds: InventoriedSinglePlayerCloudBackup<TPart>[]; stateBytes: number }
+  | { ok: false; reason: "server_state" } {
+  if (typeof userId !== "string" || userId.length < 1 || userId.length > 520
+    || rows.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS * (SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1)
+    || rows.some((row) => !row || typeof row !== "object" || row.userId !== userId
+      || typeof row.worldId !== "string" || !WORLD_ID.test(row.worldId)
+      || typeof row.part !== "string" || row.part.length < 1 || row.part.length > 8
+      || typeof row.data !== "string"
+      || (row.part === "0" ? row.data.length > SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS
+        || cloudBackupUtf8Bytes(row.data) > SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_UTF8_BYTES
+        : row.data.length < 1 || row.data.length > SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES
+          || cloudBackupUtf8Bytes(row.data) > SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES))) {
+    return { ok: false, reason: "server_state" };
+  }
+  const worldIds = [...new Set(rows.map((row) => row.worldId))].sort();
+  if (worldIds.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS) return { ok: false, reason: "server_state" };
+  const worlds: InventoriedSinglePlayerCloudBackup<TPart>[] = [];
+  let stateBytes = 0;
+  for (const worldId of worldIds) {
+    const parts = rows.filter((row) => row.worldId === worldId);
+    const payload = parts.filter((part) => part.part !== "0");
+    if (payload.reduce((sum, part) => sum + part.data.length, 0) > SINGLE_PLAYER_CLOUD_BACKUP_MAX_SNAPSHOT_CHARS
+      || payload.reduce((sum, part) => sum + cloudBackupUtf8Bytes(part.data), 0)
+        > SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES * SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS) {
+      return { ok: false, reason: "server_state" };
+    }
+    const worldStateBytes = parts.reduce((sum, part) => sum
+      + cloudBackupStoredPartBytes(userId, worldId, part.part, part.data), 0);
+    stateBytes += worldStateBytes;
+    if (!Number.isSafeInteger(stateBytes) || stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES) {
+      return { ok: false, reason: "server_state" };
+    }
+    worlds.push({ worldId, parts, stateBytes: worldStateBytes });
+  }
+  return { ok: true, worlds, stateBytes };
 }
 
 export function validStoredSinglePlayerCloudBackupManifest(value: unknown): value is StoredSinglePlayerCloudBackupManifest {
@@ -86,22 +144,68 @@ export function validStoredSinglePlayerCloudBackupManifest(value: unknown): valu
     && (value.gameMode === "survival" || value.gameMode === "creative")
     && typeof value.worldCreatedAt === "string" && /^\d{1,16}$/.test(value.worldCreatedAt) && integer(Number(value.worldCreatedAt), 0, MAX_TIMESTAMP)
     && typeof value.snapshotHash === "string" && HASH.test(value.snapshotHash)
-    && typeof value.snapshotChars === "string" && /^\d{1,6}$/.test(value.snapshotChars) && integer(Number(value.snapshotChars), 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_SNAPSHOT_CHARS)
     && typeof value.snapshotUtf8Bytes === "string" && /^\d{1,6}$/.test(value.snapshotUtf8Bytes) && integer(Number(value.snapshotUtf8Bytes), 1, SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES * SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS)
     && typeof value.stateBytes === "string" && /^\d{1,6}$/.test(value.stateBytes) && integer(Number(value.stateBytes), 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES)
     && typeof value.chunkCount === "string" && /^[1-4]$/.test(value.chunkCount)
-    && typeof value.uploadId === "string" && /^[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-z]{1,6}$/.test(value.uploadId)
     && typeof value.revision === "string" && REVISION.test(value.revision) && integer(Number(value.revision), 1, Number.MAX_SAFE_INTEGER)
     && typeof value.uploadedAt === "string" && /^\d{1,16}$/.test(value.uploadedAt) && integer(Number(value.uploadedAt), 0, MAX_TIMESTAMP);
 }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+export function singlePlayerCloudBackupHeader(manifest: StoredSinglePlayerCloudBackupManifest): string {
+  return JSON.stringify([1, manifest.name, manifest.seed, manifest.gameMode, manifest.worldCreatedAt,
+    manifest.snapshotHash, manifest.revision, manifest.uploadedAt]);
 }
 
-function exact(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const actual = Object.keys(value);
-  return actual.length === keys.length && actual.every((key) => keys.includes(key));
+export function loadSinglePlayerCloudBackupParts<TPart extends StoredSinglePlayerCloudBackupPart>(
+  userId: string,
+  rows: readonly TPart[],
+): { ok: true; backups: LoadedSinglePlayerCloudBackup<TPart>[]; stateBytes: number }
+  | { ok: false; reason: "server_state" } {
+  const inventory = inventorySinglePlayerCloudBackupParts(userId, rows);
+  if (!inventory.ok) return inventory;
+  const backups: LoadedSinglePlayerCloudBackup<TPart>[] = [];
+  let stateBytes = 0;
+  for (const world of inventory.worlds) {
+    const { worldId } = world;
+    const parts = [...world.parts]
+      .sort((left, right) => Number(left.part) - Number(right.part));
+    if (parts.length < 2 || parts.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1
+      || parts.some((part, index) => part.part !== String(index))) return { ok: false, reason: "server_state" };
+    let header: unknown;
+    try { header = JSON.parse(parts[0].data); } catch { return { ok: false, reason: "server_state" }; }
+    if (!Array.isArray(header) || header.length !== 8 || header[0] !== 1 || !validName(header[1])
+      || typeof header[2] !== "string" || !/^-?\d{1,10}$/.test(header[2]) || String(Number(header[2])) !== header[2]
+      || !integer(Number(header[2]), -2_147_483_648, 2_147_483_647)
+      || (header[3] !== "survival" && header[3] !== "creative")
+      || typeof header[4] !== "string" || !/^\d{1,16}$/.test(header[4]) || String(Number(header[4])) !== header[4]
+      || !integer(Number(header[4]), 0, MAX_TIMESTAMP)
+      || typeof header[5] !== "string" || !HASH.test(header[5])
+      || typeof header[6] !== "string" || !REVISION.test(header[6]) || !integer(Number(header[6]), 1, Number.MAX_SAFE_INTEGER)
+      || typeof header[7] !== "string" || !/^\d{1,16}$/.test(header[7]) || String(Number(header[7])) !== header[7]
+      || !integer(Number(header[7]), 0, MAX_TIMESTAMP)
+      || parts[0].data !== JSON.stringify(header)) return { ok: false, reason: "server_state" };
+    const snapshotJson = parts.slice(1).map((part) => part.data).join("");
+    const candidate = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([1, worldId, header[1],
+      Number(header[2]), header[3], Number(header[4]), String(Number(header[6]) - 1), snapshotJson]));
+    if (!candidate.ok || candidate.candidate.snapshotHash !== header[5]
+      || candidate.candidate.chunks.length !== parts.length - 1
+      || candidate.candidate.chunks.some((chunk, index) => chunk !== parts[index + 1].data)) {
+      return { ok: false, reason: "server_state" };
+    }
+    const manifest: StoredSinglePlayerCloudBackupManifest = {
+      worldId, name: header[1], seed: header[2], gameMode: header[3], worldCreatedAt: header[4], snapshotHash: header[5],
+      snapshotUtf8Bytes: String(candidate.candidate.snapshotUtf8Bytes), stateBytes: String(world.stateBytes),
+      chunkCount: String(candidate.candidate.chunks.length), revision: header[6], uploadedAt: header[7],
+    };
+    stateBytes += world.stateBytes;
+    if (stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) return { ok: false, reason: "server_state" };
+    backups.push({ manifest, snapshotJson, parts });
+  }
+  return { ok: true, backups, stateBytes };
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function integer(value: unknown, minimum: number, maximum: number): value is number {
@@ -128,11 +232,13 @@ export function cloudBackupUtf8Bytes(value: string): number {
   return bytes;
 }
 
+export function cloudBackupStoredPartBytes(userId: string, worldId: string, part: string, data: string): number {
+  return cloudBackupUtf8Bytes(JSON.stringify({ userId, worldId, part, data })) + 1_024;
+}
+
+/** Worst-case admission estimate; authenticated server accounting always uses the exact row values. */
 export function cloudBackupStoredChunkBytes(value: string): number {
-  return cloudBackupUtf8Bytes(JSON.stringify({
-    userId: "u".repeat(520), worldId: "w".repeat(64), uploadId: "f".repeat(64), chunkIndex: "3",
-    chunkData: value, chunkBytes: "48000", chunkStateBytes: "999999", protocolVersion: "1",
-  })) + 1_024;
+  return cloudBackupStoredPartBytes("\u0000".repeat(520), "w".repeat(64), "4", value);
 }
 
 export function splitSinglePlayerCloudBackupSnapshot(value: string): string[] | null {
@@ -158,44 +264,46 @@ export function splitSinglePlayerCloudBackupSnapshot(value: string): string[] | 
   return chunks.length <= SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS ? chunks : null;
 }
 
-export function canonicalCloudBackupJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalCloudBackupJson).join(",")}]`;
-  const object = value as Record<string, unknown>;
-  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonicalCloudBackupJson(object[key])}`).join(",")}}`;
-}
-
-export function cloudBackupHash(value: unknown): string {
-  const text = typeof value === "string" ? value : canonicalCloudBackupJson(value);
+export function cloudBackupHash(text: string): string {
   let hash = 0x811c9dc5;
+  const add = (byte: number) => { hash = Math.imul(hash ^ byte, 0x01000193); };
   for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
+    let code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
+      const low = text.charCodeAt(index + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        code = 0x10000 + ((code - 0xd800) << 10) + low - 0xdc00;
+        index += 1;
+      } else code = 0xfffd;
+    } else if (code >= 0xd800 && code <= 0xdfff) code = 0xfffd;
+    if (code < 0x80) add(code);
+    else if (code < 0x800) { add(0xc0 | code >> 6); add(0x80 | code & 63); }
+    else if (code < 0x10000) { add(0xe0 | code >> 12); add(0x80 | code >> 6 & 63); add(0x80 | code & 63); }
+    else { add(0xf0 | code >> 18); add(0x80 | code >> 12 & 63); add(0x80 | code >> 6 & 63); add(0x80 | code & 63); }
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function parseEnvelope(
-  worldId: string,
-  seed: number,
-  gameMode: "survival" | "creative",
-  worldCreatedAt: number,
-  snapshotJson: string,
-): { hash: string; checksum: string } | null {
-  let envelope: unknown;
-  try { envelope = JSON.parse(snapshotJson); } catch { return null; }
-  if (!record(envelope) || !exact(envelope, ["checksum", "format", "payload", "savedAt", "sequence", "version"])
-    || envelope.format !== "lakecraft.singleplayer" || envelope.version !== 1
-    || typeof envelope.checksum !== "string" || !HASH.test(envelope.checksum)
-    || !integer(envelope.savedAt, 0, MAX_TIMESTAMP) || !integer(envelope.sequence, 1, Number.MAX_SAFE_INTEGER)
-    || !record(envelope.payload) || !isRestorableSinglePlayerSnapshot(envelope.payload) || !record(envelope.payload.world)
-    || envelope.payload.world.worldId !== worldId || envelope.payload.world.seed !== seed
-    || envelope.payload.world.createdAt !== worldCreatedAt
-    || (envelope.payload.world.gameMode !== undefined && envelope.payload.world.gameMode !== gameMode)) return null;
-  const body = { format: envelope.format, payload: envelope.payload, savedAt: envelope.savedAt,
-    sequence: envelope.sequence, version: envelope.version };
-  return canonicalCloudBackupJson(envelope) === snapshotJson && cloudBackupHash(body) === envelope.checksum
-    ? { hash: cloudBackupHash(envelope.payload), checksum: envelope.checksum } : null;
+export function parseSinglePlayerCloudBackupWire(value: unknown):
+  | { ok: true; wire: SinglePlayerCloudBackupWire; candidate: SinglePlayerCloudBackupCandidate }
+  | { ok: false; reason: "invalid_backup" } {
+  if (!Array.isArray(value) || value.length !== 10 || value[0] !== 1
+    || typeof value[1] !== "string" || !WORLD_ID.test(value[1]) || !validName(value[2])
+    || typeof value[3] !== "string" || !/^-?\d{1,10}$/.test(value[3])
+    || String(Number(value[3])) !== value[3] || !integer(Number(value[3]), -2_147_483_648, 2_147_483_647)
+    || (value[4] !== "survival" && value[4] !== "creative")
+    || typeof value[5] !== "string" || !/^\d{1,16}$/.test(value[5])
+    || String(Number(value[5])) !== value[5] || !integer(Number(value[5]), 0, MAX_TIMESTAMP)
+    || typeof value[6] !== "string" || !HASH.test(value[6]) || typeof value[7] !== "string"
+    || typeof value[8] !== "string" || !REVISION.test(value[8]) || !integer(Number(value[8]), 1, Number.MAX_SAFE_INTEGER)
+    || typeof value[9] !== "string" || !/^\d{1,16}$/.test(value[9])
+    || String(Number(value[9])) !== value[9] || !integer(Number(value[9]), 0, MAX_TIMESTAMP)) {
+    return { ok: false, reason: "invalid_backup" };
+  }
+  const parsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([1, value[1], value[2], Number(value[3]),
+    value[4], Number(value[5]), String(Number(value[8]) - 1), value[7]]));
+  if (!parsed.ok || parsed.candidate.snapshotHash !== value[6]) return { ok: false, reason: "invalid_backup" };
+  return { ok: true, wire: value as unknown as SinglePlayerCloudBackupWire, candidate: parsed.candidate };
 }
 
 export function parseSinglePlayerCloudBackupCommitRequest(raw: string):
@@ -217,13 +325,10 @@ export function parseSinglePlayerCloudBackupCommitRequest(raw: string):
   const snapshotUtf8Bytes = cloudBackupUtf8Bytes(value[7]);
   const stateBytes = chunks.reduce((sum, chunk) => sum + cloudBackupStoredChunkBytes(chunk), SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES);
   if (stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) return { ok: false, reason: "cloud_capacity" };
-  const parsed = parseEnvelope(value[1], value[3], value[4], value[5], value[7]);
-  if (!parsed) return { ok: false, reason: "invalid_snapshot" };
   return { ok: true, candidate: {
     worldId: value[1], name: value[2], seed: value[3], gameMode: value[4], worldCreatedAt: value[5],
-    expectedRevision: value[6], snapshotHash: parsed.hash, snapshotJson: value[7],
-    snapshotChars: value[7].length, snapshotUtf8Bytes, stateBytes,
-    uploadId: `${parsed.hash}-${parsed.checksum}-${snapshotUtf8Bytes.toString(36)}`, chunks,
+    expectedRevision: value[6], snapshotHash: cloudBackupHash(value[7]), snapshotJson: value[7],
+    snapshotUtf8Bytes, stateBytes, chunks,
   } };
 }
 
@@ -237,12 +342,38 @@ export function parseSinglePlayerCloudBackupDeleteRequest(raw: string): SinglePl
     ? value as unknown as SinglePlayerCloudBackupDeleteRequest : null;
 }
 
+export function decideSinglePlayerCloudBackupDeleteRevision(
+  targetExists: boolean,
+  healthyRevision: string | null,
+  expectedRevision: string,
+): "delete" | "deduped" | "conflict" {
+  if (!targetExists) return expectedRevision === "0" ? "deduped" : "conflict";
+  const requiredRevision = healthyRevision ?? "0";
+  return expectedRevision === requiredRevision ? "delete" : "conflict";
+}
+
+export function singlePlayerCloudBackupDeleteActiveState(
+  globalStateBytes: number,
+  remainingMinimum: number,
+  targetRawCharge: number,
+  removableBudgetCharge: number,
+): number | null {
+  if (!integer(globalStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    || !integer(remainingMinimum, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES, globalStateBytes)
+    || !integer(targetRawCharge, 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    || !integer(removableBudgetCharge, 0, SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES)) return null;
+  let releaseSlack = globalStateBytes - remainingMinimum;
+  const targetRelease = Math.min(targetRawCharge, releaseSlack);
+  releaseSlack -= targetRelease;
+  const budgetRelease = Math.min(removableBudgetCharge, releaseSlack);
+  return globalStateBytes - targetRelease - budgetRelease;
+}
+
 export function candidateMatchesManifest(candidate: SinglePlayerCloudBackupCandidate, manifest: StoredSinglePlayerCloudBackupManifest): boolean {
   return candidate.worldId === manifest.worldId && candidate.name === manifest.name && String(candidate.seed) === manifest.seed
     && candidate.gameMode === manifest.gameMode && String(candidate.worldCreatedAt) === manifest.worldCreatedAt
-    && candidate.snapshotHash === manifest.snapshotHash && String(candidate.snapshotChars) === manifest.snapshotChars
-    && String(candidate.snapshotUtf8Bytes) === manifest.snapshotUtf8Bytes && String(candidate.stateBytes) === manifest.stateBytes
-    && String(candidate.chunks.length) === manifest.chunkCount && candidate.uploadId === manifest.uploadId;
+    && candidate.snapshotHash === manifest.snapshotHash && String(candidate.snapshotUtf8Bytes) === manifest.snapshotUtf8Bytes
+    && String(candidate.chunks.length) === manifest.chunkCount;
 }
 
 export function decideSinglePlayerCloudBackupCommit(
@@ -287,8 +418,8 @@ export function decideSinglePlayerCloudBackupCommit(
   return { ok: true, kind: "write", manifest: {
     worldId: candidate.worldId, name: candidate.name, seed: String(candidate.seed), gameMode: candidate.gameMode,
     worldCreatedAt: String(candidate.worldCreatedAt), snapshotHash: candidate.snapshotHash,
-    snapshotChars: String(candidate.snapshotChars), snapshotUtf8Bytes: String(candidate.snapshotUtf8Bytes),
-    stateBytes: String(candidate.stateBytes), chunkCount: String(candidate.chunks.length), uploadId: candidate.uploadId,
+    snapshotUtf8Bytes: String(candidate.snapshotUtf8Bytes), stateBytes: String(candidate.stateBytes),
+    chunkCount: String(candidate.chunks.length),
     revision: String(currentRevision + 1), uploadedAt: String(now),
   } };
 }
@@ -325,4 +456,3 @@ export function singlePlayerCloudBackupWire(
   return [1, manifest.worldId, manifest.name, manifest.seed, manifest.gameMode as "survival" | "creative",
     manifest.worldCreatedAt, manifest.snapshotHash, snapshotJson, manifest.revision, manifest.uploadedAt];
 }
-import { isRestorableSinglePlayerSnapshot } from "./singlePlayerSnapshotGate.ts";
