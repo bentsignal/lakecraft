@@ -126,18 +126,19 @@ const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");
 assert.match(prepareSource, /LAKEBED_COMPACT_BUNDLE/);
 assert.match(prepareSource, /minify: process\.env\.LAKEBED_COMPACT_BUNDLE === "1"/);
-const stage = mkdtempSync(join(tmpdir(), "lakecraft-server-stage-"));
+const stageParent = mkdtempSync(join(tmpdir(), "lakecraft-server-stage-"));
+const stage = join(stageParent, "audit-evidence");
 try {
-  execFileSync(process.execPath, [join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), stage], {
+  execFileSync(process.execPath, [join(repositoryRoot, "scripts/build-lakebed-audit.mjs"), stage], {
     cwd: repositoryRoot,
     stdio: "pipe",
   });
   assert.deepEqual(
-    JSON.parse(readFileSync(join(stage, "lakebed.json"), "utf8")),
+    JSON.parse(readFileSync(join(stage, "lakebed.audit.json"), "utf8")),
     {},
     "the executable's default stage strips the checked-in production deployId",
   );
-  assert.equal(existsSync(join(stage, ".env.lakebed.server")), false, "the default stage omits server secrets");
+  assert.equal(existsSync(join(stage, ".env.lakebed.server")), false, "the audit evidence omits server secrets");
   const clientBundle = readFileSync(join(stage, "client/index.tsx"), "utf8");
   const serverBundle = readFileSync(join(stage, "server/index.ts"), "utf8");
   const sourceMapPrefix = "//# sourceMappingURL=data:application/json;base64,";
@@ -177,7 +178,7 @@ try {
     "head:11,chest:16,legs:15,feet:13",
   ]) assert.equal(serverBundle.includes(mechanics), true, `server retains mechanical table ${mechanics}`);
 } finally {
-  rmSync(stage, { recursive: true, force: true });
+  rmSync(stageParent, { recursive: true, force: true });
 }
 
 console.log("server game catalog deploy transform checks passed");

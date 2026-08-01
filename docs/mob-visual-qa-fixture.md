@@ -97,12 +97,11 @@ worktree with a `.git` file instead of a `.git` directory) legitimately changes
 its bytes. An ordinary raw-artifact delta does not prove production leakage.
 
 For byte-identical shipping proof, archive the exact `main` and head commits
-into clean source directories, run each source tree's
-`scripts/prepare-lakebed-deploy.mjs` into a distinct empty staging directory,
-then run this command in each canonical stage:
+into clean source directories, then run each source tree's transactional audit
+wrapper into a distinct absent evidence directory:
 
 ```sh
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json
+node scripts/build-lakebed-audit.mjs /absolute/absent/evidence-directory
 ```
 
 Compare the raw anonymous artifact plus the staged `client/index.tsx` and

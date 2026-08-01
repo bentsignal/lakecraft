@@ -155,7 +155,7 @@ test("shipping proof distinguishes ordinary source artifacts from canonical stag
   const runbook = await readFile("docs/mob-visual-qa-fixture.md", "utf8");
   assert.match(runbook, /both builds must succeed/);
   assert.match(runbook, /Do \*\*not\*\* require the ordinary raw artifacts to be\nbyte-identical/);
-  assert.match(runbook, /scripts\/prepare-lakebed-deploy\.mjs/);
+  assert.match(runbook, /scripts\/build-lakebed-audit\.mjs/);
   assert.match(runbook, /Main, head A, and head B must be byte-identical/);
   assert.doesNotMatch(runbook, /Any delta is a blocker and indicates the tooling leaked/);
 });

@@ -2045,7 +2045,7 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
     const temporary = await mkdtemp(join(tmpdir(), "lakecraft-task41-commit-"));
     try {
       const sourceRoot = join(temporary, "source");
-      const stageRoot = join(temporary, "stage");
+      const stageRoot = join(temporary, "audit-evidence");
       const archivePath = join(temporary, "source.tar");
       await mkdir(sourceRoot);
       await runCommand(
@@ -2054,18 +2054,18 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
         "expected commit archive",
       );
       await runCommand("tar", ["-xf", archivePath, "-C", sourceRoot], "expected commit extraction");
-      const preparePath = join(sourceRoot, "scripts", "prepare-lakebed-deploy.mjs");
+      const preparePath = join(sourceRoot, "scripts", "build-lakebed-audit.mjs");
       const prepareInfo = await lstat(preparePath);
       if (prepareInfo.isSymbolicLink() || !prepareInfo.isFile()) {
-        throw new Error("expected commit prepare-lakebed-deploy.mjs must be a regular file.");
+        throw new Error("expected commit build-lakebed-audit.mjs must be a regular file.");
       }
       await runCommand(
         process.execPath,
         [preparePath, stageRoot],
-        "expected commit Lakebed staging",
+        "expected commit transactional Lakebed audit build",
         { cwd: sourceRoot },
       );
-      const stagePaths = await listEvidenceFiles(stageRoot);
+      const stagePaths = ["client/index.tsx", "server/index.ts", "favicon.svg", "lakebed.audit.json"];
       const files = new Map();
       for (const path of stagePaths) {
         const absolute = join(stageRoot, ...path.split("/"));
@@ -2075,7 +2075,7 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
           throw new Error(`rebuilt stage ${path} is not a bounded regular file.`);
         }
         const buffer = await readFile(absolute);
-        files.set(path, {
+        files.set(path === "lakebed.audit.json" ? "lakebed.json" : path, {
           buffer,
           bytes: buffer.length,
           hash: `sha256:${digest(buffer)}`,

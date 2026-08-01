@@ -312,22 +312,15 @@ function realArtifactFixture() {
     const stageRoot = join(artifactFixtureRoot, `stage-${name}`);
     checkedCommand(
       process.execPath,
-      [join(sourceRoot, "scripts", "prepare-lakebed-deploy.mjs"), stageRoot],
+      [join(sourceRoot, "scripts", "build-lakebed-audit.mjs"), stageRoot],
       { cwd: sourceRoot },
     );
-    const reportText = checkedCommand(
-      "npx",
-      ["lakebed", "build", "--json"],
-      {
-        cwd: stageRoot,
-        env: { ...process.env, LAKEBED_COMPACT_BUNDLE: "1" },
-      },
-    );
+    const reportText = readFileSync(join(stageRoot, "build-report.json"), "utf8");
     const report = JSON.parse(reportText);
     return {
       report,
       reportBuffer: Buffer.from(reportText),
-      artifactBuffer: readFileSync(report.artifactPath),
+      artifactBuffer: readFileSync(join(stageRoot, "artifact.json")),
       clientBuffer: readFileSync(join(stageRoot, "client/index.tsx")),
       serverBuffer: readFileSync(join(stageRoot, "server/index.ts")),
     };
@@ -914,9 +907,9 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
   );
   assert.match(runbook, /Never record or export a raw localStorage value/i);
   assert.equal(
-    [...runbook.matchAll(/LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json/g)].length,
+    [...runbook.matchAll(/node scripts\/build-lakebed-audit\.mjs/g)].length,
     2,
-    "both compact build commands pin the anonymous target",
+    "both compact builds use the anonymous-only transaction wrapper",
   );
   assert.match(runbook, /--expected-commit "\$expected_commit"/);
   assert.match(runbook, /--repo-root "\$repo_root"/);

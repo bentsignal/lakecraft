@@ -49,7 +49,7 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 2. Run focused tests and the full repository suite. Record pre-existing
    failures separately and prove they reproduce on the base commit.
 3. Build the ordinary anonymous capsule.
-4. Build the compact staged capsule twice in distinct empty directories. Both
+4. Run the transactional compact audit twice in distinct evidence directories. Both
    artifact files, staged client files, staged server files, artifact hashes,
    and client bundle hashes must match.
 5. Run `scripts/check-lakebed-artifact-size.mjs` on the artifact and require at
@@ -59,20 +59,22 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 
 ```sh
 npx lakebed build . --target anonymous --json
-stage_a="$(mktemp -d)"
-stage_b="$(mktemp -d)"
-node scripts/prepare-lakebed-deploy.mjs "$stage_a"
-node scripts/prepare-lakebed-deploy.mjs "$stage_b"
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed build "$stage_a" --target anonymous --json
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed build "$stage_b" --target anonymous --json
-node scripts/check-lakebed-artifact-size.mjs /absolute/path/to/artifact-a.json
+evidence_parent="$(mktemp -d)"
+node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
+node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b"
+cmp "$evidence_parent/build-a/artifact.json" "$evidence_parent/build-b/artifact.json"
+cmp "$evidence_parent/build-a/client/index.tsx" "$evidence_parent/build-b/client/index.tsx"
+cmp "$evidence_parent/build-a/server/index.ts" "$evidence_parent/build-b/server/index.ts"
+node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact.json"
 node scripts/audit-lakebed-production.mjs
 ```
 
-These default staging commands are audit-only: they write a safe
-`lakebed.json` without `deployId`, omit `.env.lakebed.server`, preserve any
-other non-sensitive Lakebed configuration, and must never be passed to
-`npx lakebed deploy`. A `.lakebed/deploy.json` file is an unexpected legacy
+The audit command owns a fresh private transaction, keeps its sentinel outside
+the capsule, writes a safe `lakebed.json` without `deployId`, omits
+`.env.lakebed.server`, seals payload files to `0400` and directories to `0500`,
+and leaves only a sibling `.lakebed` workspace writable. It invokes and verifies
+the anonymous build before exporting non-deployable evidence and deleting the
+transaction. A `.lakebed/deploy.json` file is an unexpected legacy
 credential path, not the production binding; staging fails closed if it or an
 unrecognized `.env.lakebed*` path exists. Never copy credentials into the
 repository, a PR, an evidence bundle, or another user's worktree. If hosted
@@ -80,27 +82,21 @@ inspection says authorization is required, stop and use an already-authorized
 operator checkout or an approved ephemeral credential mechanism. Do not make
 the inspection endpoint public.
 
+This contract protects against accidental contamination and other operating-
+system users, and detects persistent mutation. It cannot eliminate a malicious
+same-UID process that can chmod and transiently replace pathnames; Node does not
+expose the directory-descriptor isolation required for that claim.
+
 ## Deploy and verify
 
 Deployment is an explicit operator action after review approval; this runbook
-does not authorize an automated deploy. Create a fresh release-only stage,
-then prove its generated sources equal the two audited stages before using it.
-The verbose flag is the only mode that preserves the exact top-level
-`lakebed.json` production binding and, when present, the exact ignored server
-environment:
-
-```sh
-release_stage="$(mktemp -d)"
-node scripts/prepare-lakebed-deploy.mjs \
-  "$release_stage" --release-with-binding-and-server-env
-cmp "$stage_a/client/index.tsx" "$release_stage/client/index.tsx"
-cmp "$stage_a/server/index.ts" "$release_stage/server/index.ts"
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed deploy "$release_stage" --json
-```
-
-Stop if the release stage lacks the expected `deployId`, inherits any other
-credential path, or differs from either audited generated source. Never add the
-release flag to local evidence, artifact-size, or visual-QA staging commands.
+does not authorize an automated deploy. The audit helper has no release flag or
+deploy invocation and never exports a deployable capsule. Production deployment
+is blocked here until a separate reviewed operator transaction validates both
+audited manifests and safely handles Lakebed rewriting top-level `lakebed.json`
+after a successful network request. Do not reconstruct the removed manual
+stage-and-deploy handoff: a post-network local write failure could make the
+release result ambiguous.
 
 Record the returned deploy ID, artifact hash, client bundle hash, URL, and UTC
 completion time. Then require the control plane to report the exact artifact:

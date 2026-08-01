@@ -64,29 +64,24 @@ The repeatable single-player combat smoke route lives in [docs/creative-combat-q
 
 ## Build and deploy
 
-Ordinary and compact audit builds are local-only. The staging helper defaults
-to a safe audit mode that removes the checked-in production `deployId`, omits
-`.env.lakebed.server`, and preserves every other `lakebed.json` key:
+Ordinary and compact audit builds are local-only. The audit wrapper removes the
+checked-in production `deployId`, omits `.env.lakebed.server`, preserves every
+other `lakebed.json` key, and exports only non-deployable evidence:
 
 ```sh
 npx lakebed build . --target anonymous --json
-stage="$(mktemp -d)"
-node scripts/prepare-lakebed-deploy.mjs "$stage"
-(cd "$stage" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json)
+evidence_parent="$(mktemp -d)"
+node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
+node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact.json"
 ```
 
-Never run `npx lakebed deploy` against an audit stage. A production release is
-an explicit operator-only action after the reviewed preflight in
-`docs/production-operations.md`; its deliberately verbose staging command is:
+The wrapper owns an unpredictable private transaction, seals the generated
+capsule, runs and verifies the anonymous build itself, deletes the capsule, and
+never returns a runnable stage. Direct staging is disabled. Production release
+is a separate operator-only concern and is intentionally unsupported by this
+helper.
 
-```sh
-release_stage="$(mktemp -d)"
-node scripts/prepare-lakebed-deploy.mjs \
-  "$release_stage" --release-with-binding-and-server-env
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed deploy "$release_stage" --json
-```
-
-The staging step works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB. It uses Lakebed's bundled compiler to flatten the client and server into two minified entrypoints, minifies and safely dictionary-packs embedded CSS, shortens private client selector prefixes, shares audited repeated runtime strings through ordinary source-level constants, and enables Lakebed's opt-in compact production bundle, then still builds through `npx lakebed`. `tests/cssTemplateCompression.test.mjs` proves stylesheet round trips and the transform fails safe on its reserved delimiter; `tests/bundleStringConstants.test.mjs` verifies the explicit dictionary and exercises adversarial method, regex, label, and automatic-semicolon-insertion grammar without any post-minify JavaScript inference. Normal `npx lakebed dev` builds keep their source maps and unchanged source identifiers. Only the explicit release mode carries the exact `lakebed.json` binding and optional server environment into a release capsule. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
+The transaction works around the current Lakebed packager including repository metadata and inline source maps until the deploy request exceeds 2 MiB. It uses Lakebed's bundled compiler to flatten the client and server into two minified entrypoints, minifies and safely dictionary-packs embedded CSS, shortens private client selector prefixes, shares audited repeated runtime strings through ordinary source-level constants, and enables Lakebed's opt-in compact production bundle, then still builds through `npx lakebed`. `tests/cssTemplateCompression.test.mjs` proves stylesheet round trips and the transform fails safe on its reserved delimiter; `tests/bundleStringConstants.test.mjs` verifies the explicit dictionary and exercises adversarial method, regex, label, and automatic-semicolon-insertion grammar without any post-minify JavaScript inference. Normal `npx lakebed dev` builds keep their source maps and unchanged source identifiers. The transaction prevents accidental or other-user contamination and detects persistent payload drift; it does not claim isolation from a malicious process running as the same operating-system user. The hosted Lakebed database persists shared world edits and player state at [craft.lakebed.app](https://craft.lakebed.app). Local development data resets when the dev process restarts.
 
 The fail-closed production audit, quota/ownership gates, release evidence, and
 recovery procedure live in

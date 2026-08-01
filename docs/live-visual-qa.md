@@ -550,16 +550,11 @@ staged client/server entrypoints in the evidence root:
 repo_root="$(git rev-parse --show-toplevel)"
 archive_a="$(mktemp -d)"
 archive_b="$(mktemp -d)"
-stage_a="$(mktemp -d)"
-stage_b="$(mktemp -d)"
+evidence_parent="$(mktemp -d)"
 git -C "$repo_root" archive "$expected_commit" | tar -x -C "$archive_a"
 git -C "$repo_root" archive "$expected_commit" | tar -x -C "$archive_b"
-(cd "$archive_a" && node scripts/prepare-lakebed-deploy.mjs "$stage_a")
-(cd "$archive_b" && node scripts/prepare-lakebed-deploy.mjs "$stage_b")
-(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
-  > /absolute/path/to/evidence/build-a.json
-(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
-  > /absolute/path/to/evidence/build-b.json
+(cd "$archive_a" && node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a")
+(cd "$archive_b" && node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b")
 ```
 
 Run `scripts/check-lakebed-artifact-size.mjs` on each artifact. Both artifacts,
@@ -568,7 +563,9 @@ must be byte-identical. The artifact must remain below 1,048,576 bytes with at
 least 32,768 bytes of headroom. Record the Lakebed artifact and client-bundle
 hashes from the JSON output, plus ordinary file SHA-256 values.
 
-The two retained `--json` outputs are the structured build reports. The
+Each output contains the raw `build-report.json`, verified `artifact.json`,
+staged client/server entrypoints, sanitized `lakebed.audit.json`, and wrapper
+`summary.json`. The raw reports remain the structured Lakebed build reports. The
 manifest binds their paths and hashes to the run ID and expected commit, and
 the validator requires the complete Lakebed `source.files` set, independently
 recomputes the anonymous artifact target and hashes, creates its own

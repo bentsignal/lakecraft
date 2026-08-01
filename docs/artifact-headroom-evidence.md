@@ -9,12 +9,9 @@ Fresh sequential A/B builds produced a 985,256-byte compact artifact, leaving
 ## Fresh sequential paired build
 
 ```sh
-stage_a=$(mktemp -d /private/tmp/lakecraft-headroom2-final-a.XXXXXX)
-stage_b=$(mktemp -d /private/tmp/lakecraft-headroom2-final-b.XXXXXX)
-node scripts/prepare-lakebed-deploy.mjs "$stage_a"
-(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom2-final-report-a.json)
-node scripts/prepare-lakebed-deploy.mjs "$stage_b"
-(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom2-final-report-b.json)
+evidence_parent=$(mktemp -d /private/tmp/lakecraft-headroom2-final.XXXXXX)
+node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
+node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b"
 ```
 
 The candidate pair produced byte-identical outputs:

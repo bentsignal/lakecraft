@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import {
   RELEASE_STAGING_FLAG,
   cleanupStagingSafetyPlan,
+  createLakebedWorkspace,
   createOwnedStageDirectory,
   createStagingSafetyPlan,
   finalizeStagingSafetyPlan,
@@ -15,6 +16,9 @@ import {
   writeOwnedStageFile,
   writeStagingControlFiles,
 } from "../scripts/lakebed-staging-safety.mjs";
+import { runStagedTransaction } from "../scripts/lakebed-build-transaction.mjs";
+
+const payload = (stageRoot, ...parts) => join(stageRoot, "payload", ...parts);
 
 async function fixture(t, configSource, { serverEnv } = {}) {
   const root = await mkdtemp(join(tmpdir(), "lakecraft-stage-safety-"));
@@ -55,10 +59,11 @@ test("default staging strips a deploy-only binding and never copies the server e
   await writeStagingControlFiles(plan);
   await finalizeStagingSafetyPlan(plan);
 
-  assert.deepEqual(JSON.parse(await readFile(join(stageRoot, "lakebed.json"), "utf8")), {});
-  assert.equal(existsSync(join(stageRoot, ".env.lakebed.server")), false);
-  assert.equal(existsSync(join(stageRoot, ".lakebed")), false);
-  assert.equal(existsSync(join(stageRoot, ".lakecraft-stage-owner")), false);
+  assert.deepEqual(JSON.parse(await readFile(payload(stageRoot, "lakebed.json"), "utf8")), {});
+  assert.equal(existsSync(payload(stageRoot, ".env.lakebed.server")), false);
+  assert.equal(existsSync(join(stageRoot, ".lakebed")), true);
+  assert.equal(existsSync(join(stageRoot, ".lakecraft-stage-owner")), true);
+  assert.equal(await cleanupStagingSafetyPlan(plan), true);
 });
 
 test("default staging preserves every non-sensitive Lakebed configuration key", async (t) => {
@@ -72,10 +77,11 @@ test("default staging preserves every non-sensitive Lakebed configuration key", 
   await writeStagingControlFiles(plan);
   await finalizeStagingSafetyPlan(plan);
 
-  assert.deepEqual(JSON.parse(await readFile(join(stageRoot, "lakebed.json"), "utf8")), {
+  assert.deepEqual(JSON.parse(await readFile(payload(stageRoot, "lakebed.json"), "utf8")), {
     name: config.name,
     runtime: config.runtime,
   });
+  assert.equal(await cleanupStagingSafetyPlan(plan), true);
 });
 
 test("explicit release staging preserves the exact binding and server environment bytes", async (t) => {
@@ -89,10 +95,11 @@ test("explicit release staging preserves the exact binding and server environmen
   await writeStagingControlFiles(plan);
   await finalizeStagingSafetyPlan(plan);
 
-  assert.equal(await readFile(join(stageRoot, "lakebed.json"), "utf8"), configSource);
-  assert.deepEqual(await readFile(join(stageRoot, ".env.lakebed.server")), serverEnv);
-  assert.equal(existsSync(join(stageRoot, ".lakebed")), false);
-  assert.equal(existsSync(join(stageRoot, ".lakecraft-stage-owner")), false);
+  assert.equal(await readFile(payload(stageRoot, "lakebed.json"), "utf8"), configSource);
+  assert.deepEqual(await readFile(payload(stageRoot, ".env.lakebed.server")), serverEnv);
+  assert.equal(existsSync(join(stageRoot, ".lakebed")), true);
+  assert.equal(existsSync(join(stageRoot, ".lakecraft-stage-owner")), true);
+  assert.equal(await cleanupStagingSafetyPlan(plan), true);
 });
 
 test("malformed configuration and invalid modes fail before creating a partial stage", async (t) => {
@@ -202,28 +209,28 @@ test("late credential injection is rejected before control writes and owned part
   ]) {
     const injected = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
     const plan = await createStagingSafetyPlan({ args: [injected.stageRoot], sourceRoot: injected.sourceRoot });
-    const path = join(injected.stageRoot, ...relativePath.split("/"));
+    const path = payload(injected.stageRoot, ...relativePath.split("/"));
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, "INJECTED=1\n");
 
     await assert.rejects(writeStagingControlFiles(plan), /Unexpected credential path/);
-    assert.equal(existsSync(join(injected.stageRoot, "lakebed.json")), false);
-    assert.equal(await cleanupStagingSafetyPlan(plan), true);
+    assert.equal(existsSync(payload(injected.stageRoot, "lakebed.json")), false);
+    assert.equal(await cleanupStagingSafetyPlan(plan), false);
     assert.equal(existsSync(path), true, "cleanup preserves the unexpected injected path");
   }
 });
 
-test("finalization catches credentials injected after safe control output and removes owned files", async (t) => {
+test("finalization catches credentials injected after safe control output without deleting them", async (t) => {
   const injected = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
   const plan = await createStagingSafetyPlan({ args: [injected.stageRoot], sourceRoot: injected.sourceRoot });
   await writeStagingControlFiles(plan);
-  const lateEnv = join(injected.stageRoot, ".env.lakebed.server");
+  const lateEnv = payload(injected.stageRoot, ".env.lakebed.server");
   await writeFile(lateEnv, "LATE=1\n");
 
   await assert.rejects(finalizeStagingSafetyPlan(plan), /Unexpected credential path/);
-  assert.equal(await cleanupStagingSafetyPlan(plan), true);
-  assert.equal(existsSync(join(injected.stageRoot, "lakebed.json")), false);
-  assert.equal(existsSync(join(injected.stageRoot, ".lakecraft-stage-owner")), false);
+  assert.equal(await cleanupStagingSafetyPlan(plan), false);
+  assert.equal(existsSync(payload(injected.stageRoot, "lakebed.json")), false);
+  assert.equal(existsSync(join(injected.stageRoot, ".lakecraft-stage-owner")), true);
   assert.equal(existsSync(lateEnv), true, "cleanup never deletes an injected credential");
 });
 
@@ -236,8 +243,8 @@ test("cleanup never traverses a replaced owned directory into an external victim
   const victim = join(swapped.root, "victim-client");
   await mkdir(victim);
   await writeFile(join(victim, "index.tsx"), "external victim\n");
-  await rename(join(swapped.stageRoot, "client"), parked);
-  await symlink(victim, join(swapped.stageRoot, "client"));
+  await rename(payload(swapped.stageRoot, "client"), parked);
+  await symlink(victim, payload(swapped.stageRoot, "client"));
 
   assert.equal(await cleanupStagingSafetyPlan(plan), false);
   assert.equal(await readFile(join(victim, "index.tsx"), "utf8"), "external victim\n");
@@ -254,8 +261,8 @@ test("cleanup refuses nested owned-directory swaps before resolving their childr
   const victim = join(swapped.root, "victim-generated");
   await mkdir(victim);
   await writeFile(join(victim, "index.tsx"), "external nested victim\n");
-  await rename(join(swapped.stageRoot, "client/generated"), parked);
-  await symlink(victim, join(swapped.stageRoot, "client/generated"));
+  await rename(payload(swapped.stageRoot, "client/generated"), parked);
+  await symlink(victim, payload(swapped.stageRoot, "client/generated"));
 
   assert.equal(await cleanupStagingSafetyPlan(plan), false);
   assert.equal(await readFile(join(victim, "index.tsx"), "utf8"), "external nested victim\n");
@@ -266,8 +273,8 @@ test("cleanup refuses an owned file replacement and preserves both replacement a
   const replaced = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
   const plan = await createStagingSafetyPlan({ args: [replaced.stageRoot], sourceRoot: replaced.sourceRoot });
   await writeStagingControlFiles(plan);
-  const configPath = join(replaced.stageRoot, "lakebed.json");
-  const parked = join(replaced.stageRoot, "lakebed-owned.json");
+  const configPath = payload(replaced.stageRoot, "lakebed.json");
+  const parked = payload(replaced.stageRoot, "lakebed-owned.json");
   await rename(configPath, parked);
   await writeFile(configPath, '{ "replacement": true }\n');
 
@@ -276,9 +283,77 @@ test("cleanup refuses an owned file replacement and preserves both replacement a
   assert.deepEqual(JSON.parse(await readFile(parked, "utf8")), {});
 });
 
-test("the executable preflights staging safety before loading or patching the compiler", async () => {
-  const source = await readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8");
-  assert.ok(source.indexOf("await createStagingSafetyPlan") < source.indexOf("await loadLakebedCompilerRuntime"));
-  assert.doesNotMatch(source, /\.lakebed\/deploy\.json/);
-  assert.doesNotMatch(source, /for \(const relativePath of \["lakebed\.json"/);
+test("pre-existing stages must be current-user owned and not group- or other-writable", async (t) => {
+  const unsafe = await fixture(t, '{ "name": "audit" }\n');
+  await mkdir(unsafe.stageRoot, { mode: 0o777 });
+  await chmod(unsafe.stageRoot, 0o777);
+  await assert.rejects(
+    createStagingSafetyPlan({ args: [unsafe.stageRoot], sourceRoot: unsafe.sourceRoot }),
+    /must not be group- or other-writable/,
+  );
+  assert.deepEqual(await readFile(join(unsafe.sourceRoot, "lakebed.json"), "utf8"), '{ "name": "audit" }\n');
+});
+
+test("owned file bytes are revalidated before sealing even when inode identity is unchanged", async (t) => {
+  const changed = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  const plan = await createStagingSafetyPlan({ args: [changed.stageRoot], sourceRoot: changed.sourceRoot });
+  await writeStagingControlFiles(plan);
+  await writeFile(payload(changed.stageRoot, "lakebed.json"), '{ "deployId": "dep_injected" }\n');
+  await assert.rejects(createLakebedWorkspace(plan), /changed bytes/);
+  assert.equal(await cleanupStagingSafetyPlan(plan), false);
+});
+
+test("transaction owns a fresh private root, seals only the payload, consumes it once, and removes it", async (t) => {
+  const owned = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  let observedRoot;
+  const result = await runStagedTransaction({
+    sourceRoot: owned.sourceRoot,
+    stageParent: owned.root,
+    prepare: async (plan) => {
+      await createOwnedStageDirectory(plan, "client");
+      await writeOwnedStageFile(plan, "client/index.tsx", "export default 1;\n");
+      await writeStagingControlFiles(plan);
+    },
+    consume: async (plan) => {
+      observedRoot = plan.stageRoot;
+      assert.equal((await stat(plan.stageRoot)).mode & 0o777, 0o700);
+      assert.equal((await stat(plan.capsuleRoot)).mode & 0o777, 0o500);
+      assert.equal((await stat(payload(plan.stageRoot, "client"))).mode & 0o777, 0o500);
+      assert.equal((await stat(payload(plan.stageRoot, "client/index.tsx"))).mode & 0o777, 0o400);
+      assert.equal((await stat(join(plan.stageRoot, ".lakebed"))).mode & 0o777, 0o700);
+      assert.equal(existsSync(payload(plan.stageRoot, ".lakecraft-stage-owner")), false);
+      return "consumed";
+    },
+  });
+  assert.equal(result, "consumed");
+  assert.match(observedRoot, /lakecraft-audit-/);
+  assert.equal(existsSync(observedRoot), false);
+});
+
+test("transaction rejects credentials injected into the writable Lakebed workspace", async (t) => {
+  const injected = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  let observedRoot;
+  await assert.rejects(runStagedTransaction({
+    sourceRoot: injected.sourceRoot,
+    stageParent: injected.root,
+    prepare: writeStagingControlFiles,
+    consume: async (plan) => {
+      observedRoot = plan.stageRoot;
+      await writeFile(join(plan.stageRoot, ".lakebed", "deploy.json"), "{}\n");
+    },
+  }), /Unexpected staging path \.lakebed\/deploy\.json/);
+  assert.equal(existsSync(observedRoot), false);
+});
+
+test("public audit helper cannot stage or deploy a production binding", async () => {
+  const [prepareSource, auditSource, transactionSource] = await Promise.all([
+    readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/build-lakebed-audit.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/lakebed-build-transaction.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(prepareSource, /Direct staging is disabled/);
+  assert.match(auditSource, /runAuditBuild/);
+  assert.doesNotMatch(auditSource, /deploy/);
+  assert.doesNotMatch(transactionSource, /lakebed",\s*"deploy/);
+  assert.doesNotMatch(transactionSource, /RELEASE_STAGING_FLAG/);
 });
