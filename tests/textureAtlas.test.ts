@@ -125,8 +125,12 @@ assert.ok((saplingAlphaCounts.get(255) ?? 0) >= 45, "sapling foliage remains rea
 // Intentional atlas regeneration should update this fingerprint in the same change.
 assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "7fd3debd", "generated RGBA atlas changed unexpectedly");
 const generatedSource = readFileSync(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
+const packedPalette = generatedSource.match(/decodeStaticBytes\("([^"]+)", 1012\)/)?.[1];
 const packedIndexes = generatedSource.match(/decodeStaticBytes\("([^"]+)", 7680\)/)?.[1];
+assert.ok(packedPalette);
 assert.ok(packedIndexes);
+assert.equal(Buffer.from(packedPalette, "base64").length, 818,
+  "atlas palette retains the reviewed deterministic LZSS fixture");
 assert.equal(Buffer.from(packedIndexes, "base64").length, 4_465,
   "atlas indexes retain the reviewed deterministic LZSS fixture");
 assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../../staticData.ts";')

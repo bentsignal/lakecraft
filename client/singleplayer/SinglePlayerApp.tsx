@@ -45,6 +45,7 @@ import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
 import { planOakTreeGrowth } from "../../shared/treeGrowth";
 import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
+import { performanceHudCoreText } from "../game/performanceHud.ts";
 import {
   loadClientSettings,
   mouseLookScale,
@@ -306,6 +307,7 @@ function SinglePlayerWorld({
   const commandHistoryRef = useRef<string[]>([]);
   const commandHistoryIndexRef = useRef(0);
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
+  const performanceOutputRef = useRef<HTMLOutputElement | null>(null);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
   const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
   const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
@@ -1518,6 +1520,11 @@ function SinglePlayerWorld({
         });
         collectLocalDrops(pose);
       },
+      onPerformanceStats: (stats) => {
+        if (performanceOutputRef.current && !performanceOutputRef.current.hidden) {
+          performanceOutputRef.current.textContent = performanceHudCoreText(stats);
+        }
+      },
     });
     engineRef.current = engine;
     engine.setFirstPersonFeedbackHidden(pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen);
@@ -1702,6 +1709,13 @@ function SinglePlayerWorld({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "F3" && !event.repeat) {
+        event.preventDefault();
+        if (performanceOutputRef.current) {
+          performanceOutputRef.current.hidden = !performanceOutputRef.current.hidden;
+        }
+        return;
+      }
       if (commandOpen) {
         if (event.code === "Escape" && !event.repeat) {
           event.preventDefault();
@@ -1810,6 +1824,12 @@ function SinglePlayerWorld({
       >
         XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z} · {gameMode === "creative" ? "Creative" : "Survival"}
       </span>
+      <output
+        aria-label="Performance statistics"
+        className="lc-local-perf"
+        hidden
+        ref={performanceOutputRef}
+      />
       {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen ? (
         <div className="lc-pointer-capture" role="presentation">
           <button autoFocus onClick={requestGameplayPointerLock} type="button">
