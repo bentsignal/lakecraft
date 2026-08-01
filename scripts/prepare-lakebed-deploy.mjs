@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import {
   assertNoServerGamePresentationUse,
+  compactClientGameCatalog,
   stripServerGamePresentation,
 } from "./server-game-catalog-transform.mjs";
 import {
@@ -97,9 +98,12 @@ const cssTemplateMinifier = {
     }));
     esbuild.onLoad({ filter: /\.[tj]sx?$/ }, async ({ path }) => {
       const source = await readFile(path, "utf8");
-      const compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
+      let compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
         ? compactClientIdentifiers(source)
         : source;
+      if (path === join(sourceRoot, "shared", "game.ts")) {
+        compactedSource = compactClientGameCatalog(compactedSource);
+      }
       let usesCssBundle = false;
       const contents = compactedSource.replace(
         /const\s+([A-Z][A-Z0-9_]*_CSS)\s*=\s*`([\s\S]*?)`;/g,

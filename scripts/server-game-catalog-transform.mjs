@@ -1,3 +1,5 @@
+import { encodeStaticBytes } from "./static-byte-encoding.mjs";
+
 const PRESENTATION_FIELDS = ["label", "note", "description", "shortLabel", "glyph", "accent", "color"];
 
 const TUPLE_CATALOGS = [
@@ -282,6 +284,152 @@ const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, i
 }
 
 `;
+
+const CLIENT_CATALOG_IDENTIFIER = "__lakecraftGameCatalog";
+const CLIENT_CATALOG_FINGERPRINT = "546d1ba8";
+
+function compressStaticBytes(bytes) {
+  const packed = [];
+  for (let index = 0; index < bytes.length;) {
+    const control = packed.length;
+    packed.push(0);
+    let flags = 0;
+    for (let bit = 0; bit < 8 && index < bytes.length; bit += 1) {
+      let length = 0;
+      let distance = 0;
+      for (let source = Math.max(0, index - 4_095); source < index; source += 1) {
+        let candidate = 0;
+        while (candidate < 18 && index + candidate < bytes.length
+          && bytes[source + candidate] === bytes[index + candidate]) candidate += 1;
+        if (candidate > length) {
+          length = candidate;
+          distance = index - source;
+        }
+      }
+      if (length >= 3) {
+        flags |= 1 << bit;
+        const value = (length - 3) * 4_096 + distance;
+        packed.push(value >> 8, value & 255);
+        index += length;
+      } else packed.push(bytes[index++]);
+    }
+    packed[control] = flags;
+  }
+  return packed;
+}
+
+function decompressStaticBytes(packed, size) {
+  const data = new Uint8Array(size);
+  let target = 0;
+  for (let cursor = 0; cursor < packed.length && target < size;) {
+    const flags = packed[cursor++];
+    for (let bit = 0; bit < 8 && cursor < packed.length && target < size; bit += 1) {
+      if (flags & 1 << bit) {
+        const value = packed[cursor++] * 256 + packed[cursor++];
+        const length = (value >> 12) + 3;
+        const distance = value & 4_095;
+        if (distance < 1 || distance > target || target + length > size) fail("client presentation compression produced an invalid back-reference.");
+        for (let copy = 0; copy < length; copy += 1) data[target] = data[target++ - distance];
+      } else data[target++] = packed[cursor++];
+    }
+  }
+  if (target !== size) fail(`client presentation compression decoded ${target} of ${size} bytes.`);
+  return data;
+}
+
+/**
+ * Replace the reviewed literal tuple, base-recipe, and smelting catalogs with
+ * one compressed, fingerprinted UTF-8 table. Runtime catalog objects are
+ * reconstructed by the unchanged builders.
+ */
+export function compactClientGameCatalog(source) {
+  if (source.includes(CLIENT_CATALOG_IDENTIFIER)) {
+    fail("client catalog identifier collides with source text.");
+  }
+  const catalogs = [];
+  const replacements = [];
+  for (const catalog of TUPLE_CATALOGS) {
+    const range = catalogArrayRange(source, catalog);
+    const rows = parseLiteralArray(range.text, catalog.name);
+    if (!Array.isArray(rows) || rows.length !== catalog.rows) {
+      fail(`${catalog.name} expected ${catalog.rows} rows, received ${Array.isArray(rows) ? rows.length : "a non-array"}.`);
+    }
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex];
+      if (!Array.isArray(row) || !catalog.widths.includes(row.length)) {
+        fail(`${catalog.name}[${rowIndex}] expected width ${catalog.widths.join(" or ")}, received ${Array.isArray(row) ? row.length : "a non-array"}.`);
+      }
+      for (const index of catalog.scalarPresentationIndexes) {
+        if (typeof row[index] !== "string") fail(`${catalog.name}[${rowIndex}][${index}] is not a presentation string.`);
+      }
+      for (const { index, length } of catalog.arrayPresentationIndexes ?? []) {
+        if (!Array.isArray(row[index]) || row[index].length !== length || row[index].some((value) => typeof value !== "string")) {
+          fail(`${catalog.name}[${rowIndex}][${index}] changed shape.`);
+        }
+      }
+    }
+    const index = catalogs.length;
+    catalogs.push(rows);
+    replacements.push({ ...range, text: `[...${CLIENT_CATALOG_IDENTIFIER}[${index}]]` });
+  }
+
+  const parseObjectRows = (text, name, expectedRows) => {
+    const rows = [];
+    for (const match of text.matchAll(/^\s*(\{.*\}),\s*$/gm)) {
+      const json = match[1]
+        .replace(/([{,]\s*)([A-Za-z][A-Za-z0-9_]*)\s*:/g, '$1"$2":')
+        .replace(/,\s*([}\]])/g, "$1");
+      try {
+        rows.push(JSON.parse(json));
+      } catch (error) {
+        fail(`${name} row is no longer a JSON-compatible object (${error instanceof Error ? error.message : "parse error"}).`);
+      }
+    }
+    if (rows.length !== expectedRows || text.replace(/^\s*(\{.*\}),\s*$/gm, "").trim()) {
+      fail(`${name} expected exactly ${expectedRows} literal object rows.`);
+    }
+    return rows;
+  };
+
+  const recipeRange = catalogArrayRange(source, OBJECT_CATALOGS[0]);
+  const recipeSpread = recipeRange.text.indexOf("...GENERATED_TOOL_RECIPES");
+  if (recipeSpread < 0 || recipeRange.text.indexOf("...GENERATED_TOOL_RECIPES", recipeSpread + 1) >= 0) {
+    fail("RECIPES generated spread anchor changed.");
+  }
+  const literalRecipeText = recipeRange.text.slice(1, recipeSpread);
+  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 21);
+  const recipeIndex = catalogs.length;
+  catalogs.push(literalRecipes);
+  replacements.push({
+    ...recipeRange,
+    text: `[...${CLIENT_CATALOG_IDENTIFIER}[${recipeIndex}],${recipeRange.text.slice(recipeSpread)}`,
+  });
+
+  const smeltingRange = catalogArrayRange(source, OBJECT_CATALOGS[1]);
+  const smeltingRows = parseObjectRows(smeltingRange.text.slice(1, -1), "SMELTING_RECIPES", 10);
+  const smeltingIndex = catalogs.length;
+  catalogs.push(smeltingRows);
+  replacements.push({ ...smeltingRange, text: `[...${CLIENT_CATALOG_IDENTIFIER}[${smeltingIndex}]]` });
+
+  const serialized = JSON.stringify(catalogs);
+  const fingerprint = sourceFingerprint(serialized);
+  if (fingerprint !== CLIENT_CATALOG_FINGERPRINT) {
+    fail(`client catalog values changed (expected ${CLIENT_CATALOG_FINGERPRINT}, found ${fingerprint}).`);
+  }
+  const bytes = new TextEncoder().encode(serialized);
+  const packed = compressStaticBytes(bytes);
+  if (!Buffer.from(decompressStaticBytes(packed, bytes.length)).equals(Buffer.from(bytes))) {
+    fail("client presentation compression did not round-trip exactly.");
+  }
+  let contents = source;
+  for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
+    contents = `${contents.slice(0, replacement.start)}${replacement.text}${contents.slice(replacement.end)}`;
+  }
+  const payload = encodeStaticBytes(packed);
+  return `import{decodeStaticBytes as __lakecraftDecodeStaticBytes}from"../client/staticData.ts";`
+    + `const ${CLIENT_CATALOG_IDENTIFIER}=JSON.parse(new TextDecoder().decode(__lakecraftDecodeStaticBytes(${JSON.stringify(payload)},${bytes.length}))) as any[][];`
+    + contents;
+}
 
 export function stripServerGamePresentation(source) {
   const replacements = [
