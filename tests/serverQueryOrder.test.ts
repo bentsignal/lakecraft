@@ -43,8 +43,8 @@ assert.throws(
 );
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-assert.equal((serverSource.match(/\bnewestByIndex\(/g) ?? []).length, 154, "reviewed descending helper live set changed");
-assert.equal((serverSource.match(/\boldestByIndex\(/g) ?? []).length, 13, "reviewed ascending helper live set changed");
+assert.equal((serverSource.match(/\bnewestByIndex\(/g) ?? []).length, 157, "reviewed descending helper live set changed");
+assert.equal((serverSource.match(/\boldestByIndex\(/g) ?? []).length, 16, "reviewed ascending helper live set changed");
 assert.doesNotMatch(
   serverSource,
   /\b(?:const|let|var)\s+newestByIndex\s*=\s*[^;]*\bnewestByIndex\s*\(/,
@@ -58,8 +58,8 @@ assert.doesNotMatch(
 assert.equal((serverSource.match(/\.order\("desc"\)/g) ?? []).length, 13, "only reviewed complex descending chains remain direct");
 assert.equal((serverSource.match(/\.order\("asc"\)/g) ?? []).length, 5, "only reviewed complex ascending chains remain direct");
 assert.equal((serverSource.match(/\.first\(\)/g) ?? []).length, 57, "first terminals are untouched");
-assert.equal((serverSource.match(/\.take\(2\)/g) ?? []).length, 92, "take(2) terminals are untouched");
-assert.equal((serverSource.match(/\.take\(/g) ?? []).length, 127, "non-receipt take terminals are untouched");
+assert.equal((serverSource.match(/\.take\(2\)/g) ?? []).length, 94, "take(2) terminals are untouched");
+assert.equal((serverSource.match(/\.take\(/g) ?? []).length, 133, "non-receipt take terminals are untouched");
 assert.equal((serverSource.match(/\.collect\(\)/g) ?? []).length, 1, "collect terminals are untouched");
 assert.doesNotMatch(
   serverSource,
