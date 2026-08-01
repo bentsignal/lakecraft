@@ -19,7 +19,7 @@ assert.match(transport, /const enum ACTION \{ DELETE, RESTORE, RESUME, RECOVER, 
 assert.match(transport, /const enum STATUS \{ CHECKING, READY, CURRENT, UPLOADING, OFFLINE, QUOTA, CAPACITY, QUARANTINE, AUTH \}/);
 assert.match(transport, /type Controller = \[[\s\S]*?Map<string, Marker>[\s\S]*?DeletePending \| null\]/,
   "compact tagged controller retains mounted lineage and pending-delete authority");
-assert.match(transport, /controller\[4\] = true[\s\S]*?mutate\(request\)/,
+assert.match(transport, /controller\[4\] = 2[\s\S]*?mutate\(request\)/,
   "automatic and manual calls acquire the same mutation fence");
 assert.match(transport, /if \(controller\[4\]\) return/);
 assert.match(transport, /if \(state\[3\]\) \{ setStatus\(STATUS\.QUARANTINE\); return schedule\(RETRY\); \}[\s\S]*?const candidates/,
@@ -43,6 +43,19 @@ assert.match(transport, /deleteRequest\(remote\[1\], deletion\[0\], deletion\[1\
 assert.match(transport, /revision !== frozen\[2\][\s\S]*?remote\[6\] !== frozen\[3\]\?\.\[6\][\s\S]*?remote\[9\] !== frozen\[3\]\?\.\[9\]/,
   "submit revalidates revision, hash, and upload time from the frozen wire");
 assert.match(transport, /prepareSinglePlayerCloudBackup\(storage, restored\.world, frozen\[2\]\)[\s\S]*?\[frozen\[2\], prepared\.backup\[2\], prepared\.backup\[3\], prepared\.backup\[4\]\]/);
+assert.match(transport, /frozen\[0\] === ACTION\.RECOVER[\s\S]*?controller\[0\]\?\.\[0\] !== 3 \|\| controller\[0\]\[2\] !== frozen\[2\]/,
+  "account repair submits only the exact revision frozen from the code-3 query");
+assert.match(transport, /parseRestorableSinglePlayerCloudBackupWire\(raw\)[\s\S]*?parseSinglePlayerCloudBackupWire\(raw\)[\s\S]*?`!\$\{outer\[8\]\}`/,
+  "semantically quarantined backup wires retain their payload-free owner descriptor");
+assert.match(transport, /state\[1\]\]\.map\([\s\S]*?"Damaged cloud backup"[\s\S]*?button\("Delete"/,
+  "bounded per-world quarantine descriptors render an explicit deletion path");
+const uploadReconcile = transport.indexOf("if (controller[7])");
+const durableDeleteScan = transport.indexOf("for (const remote of state[0].values())");
+assert.ok(uploadReconcile >= 0 && uploadReconcile < durableDeleteScan
+  && transport.slice(uploadReconcile, durableDeleteScan).includes("acceptUpload(pending, remote[8])"),
+"a lost Resume response reconciles exact active bytes and generation before the D-marker scan");
+assert.match(transport, /if \(controller\[4\] !== 1\) return;[\s\S]*?controller\[4\] = 2[\s\S]*?disabled=\{controller\[4\] === 2 \|\|/,
+  "dialog-open and submit-in-flight are distinct, with a synchronous guard and disabled confirm button");
 
 assert.match(transport, /const CLOUD = "Cloud backup";\s*const cloud = "cloud backup";/);
 for (const label of ["Checking ${cloud}s…", "${CLOUD} ready", "${CLOUD}s up to date",
