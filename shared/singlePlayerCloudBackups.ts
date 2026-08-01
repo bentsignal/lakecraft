@@ -266,20 +266,8 @@ export function splitSinglePlayerCloudBackupSnapshot(value: string): string[] | 
 
 export function cloudBackupHash(text: string): string {
   let hash = 0x811c9dc5;
-  const add = (byte: number) => { hash = Math.imul(hash ^ byte, 0x01000193); };
   for (let index = 0; index < text.length; index += 1) {
-    let code = text.charCodeAt(index);
-    if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
-      const low = text.charCodeAt(index + 1);
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        code = 0x10000 + ((code - 0xd800) << 10) + low - 0xdc00;
-        index += 1;
-      } else code = 0xfffd;
-    } else if (code >= 0xd800 && code <= 0xdfff) code = 0xfffd;
-    if (code < 0x80) add(code);
-    else if (code < 0x800) { add(0xc0 | code >> 6); add(0x80 | code & 63); }
-    else if (code < 0x10000) { add(0xe0 | code >> 12); add(0x80 | code >> 6 & 63); add(0x80 | code & 63); }
-    else { add(0xf0 | code >> 18); add(0x80 | code >> 12 & 63); add(0x80 | code >> 6 & 63); add(0x80 | code & 63); }
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
@@ -386,6 +374,7 @@ export function decideSinglePlayerCloudBackupCommit(
   userLastAcceptedAt: number,
   userAcceptedToday: number,
   globalAcceptedToday: number,
+  generation: string,
   now: number,
 ): { ok: true; kind: "deduped" | "write"; manifest: StoredSinglePlayerCloudBackupManifest }
   | { ok: false; reason: "cadence" | "cloud_capacity" | "conflict" | "server_state" | "world_limit"; retryAfterMs?: number } {
@@ -394,10 +383,11 @@ export function decideSinglePlayerCloudBackupCommit(
     || !integer(globalStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
     || !integer(userLastAcceptedAt, 0, MAX_TIMESTAMP) || !integer(userAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES)
     || !integer(globalAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES)
+    || !REVISION.test(generation) || !integer(Number(generation), 1, Number.MAX_SAFE_INTEGER - 1)
     || !integer(now, 0, MAX_TIMESTAMP)) return { ok: false, reason: "server_state" };
   const currentRevision = current && REVISION.test(current.revision) ? Number(current.revision) : 0;
   const currentBytes = current && /^\d{1,6}$/.test(current.stateBytes) ? Number(current.stateBytes) : 0;
-  if (current && (currentRevision < 1 || currentRevision >= Number.MAX_SAFE_INTEGER)) {
+  if (current && (currentRevision < 1 || currentRevision >= Number(generation))) {
     return { ok: false, reason: "server_state" };
   }
   if (current && currentSnapshotJson === candidate.snapshotJson && candidateMatchesManifest(candidate, current)) {
@@ -420,7 +410,7 @@ export function decideSinglePlayerCloudBackupCommit(
     worldCreatedAt: String(candidate.worldCreatedAt), snapshotHash: candidate.snapshotHash,
     snapshotUtf8Bytes: String(candidate.snapshotUtf8Bytes), stateBytes: String(candidate.stateBytes),
     chunkCount: String(candidate.chunks.length),
-    revision: String(currentRevision + 1), uploadedAt: String(now),
+    revision: generation, uploadedAt: String(now),
   } };
 }
 
@@ -447,6 +437,10 @@ export function validSinglePlayerCloudQuotaState(activeStateBytes: unknown, mini
   return integer(minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
     && integer(activeStateBytes, minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
     && integer(revision, 1, Number.MAX_SAFE_INTEGER - 1);
+}
+
+export function nextSinglePlayerCloudGeneration(revision: number): string | null {
+  return integer(revision, 0, Number.MAX_SAFE_INTEGER - 2) ? String(revision + 1) : null;
 }
 
 export function singlePlayerCloudBackupWire(

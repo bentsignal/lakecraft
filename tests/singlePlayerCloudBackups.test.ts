@@ -8,11 +8,13 @@ import {
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
   SINGLEPLAYER_SAVE_SLOT_B_KEY,
   serializeSinglePlayerSave,
+  singlePlayerSaveChecksum,
   singlePlayerWorldStorageKey,
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
 import {
   parseRestorableSinglePlayerCloudBackup,
+  parseSinglePlayerCloudBackupWire as parseClientSinglePlayerCloudBackupWire,
   parseServerQuarantinedSinglePlayerCloudBackup,
   prepareSinglePlayerCloudBackup,
   restoreSinglePlayerCloudBackup,
@@ -44,6 +46,7 @@ import {
   decideSinglePlayerCloudBackupDeleteRevision,
   inventorySinglePlayerCloudBackupParts,
   loadSinglePlayerCloudBackupParts,
+  nextSinglePlayerCloudGeneration,
   parseSinglePlayerCloudBackupCommitRequest,
   parseSinglePlayerCloudBackupDeleteRequest,
   parseSinglePlayerCloudBackupWire,
@@ -206,6 +209,15 @@ assert.equal(unicodeChunks.join(""), unicode);
 assert.ok(unicodeChunks.every((chunk) => cloudBackupUtf8Bytes(chunk) <= SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES));
 assert.equal(cloudBackupHash(serialized.raw), candidate.snapshotHash,
   "the stored transport hash is always recomputed from the exact raw snapshot bytes");
+const oldUtf8Hash = (text: string) => {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(text)) hash = Math.imul(hash ^ byte, 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, "0");
+};
+for (const text of ["ascii", "é", "😀", "\ud800", "\udc00", "a😀é\ud800z"]) {
+  assert.equal(cloudBackupHash(text), singlePlayerSaveChecksum(text), "client/server code-unit FNV stays exact");
+}
+assert.notEqual(cloudBackupHash("😀"), oldUtf8Hash("😀"), "the former UTF-8-byte hash is not accepted as the new integrity hash");
 assert.equal(splitSinglePlayerCloudBackupSnapshot("😀".repeat(48_001)), null,
   "a character-valid but byte-oversized payload must fail the four-chunk bound");
 
@@ -240,6 +252,7 @@ function decide(
     userLastAcceptedAt: number;
     userAcceptedToday: number;
     globalAcceptedToday: number;
+    generation: string;
     now: number;
   }> = {},
 ) {
@@ -253,6 +266,7 @@ function decide(
     overrides.userLastAcceptedAt ?? 0,
     overrides.userAcceptedToday ?? 0,
     overrides.globalAcceptedToday ?? 0,
+    overrides.generation ?? String(Number(current?.revision ?? "0") + 1),
     overrides.now ?? SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS,
   );
 }
@@ -267,6 +281,63 @@ assert.equal(validStoredSinglePlayerCloudBackupManifest(manifest), true);
 assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, stateBytes: "NaN" }), false);
 assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, revision: "0" }), false);
 assert.equal(candidateMatchesManifest(candidate, manifest), true);
+const otherUserGeneration = decide(null, { ...candidate, worldId: "other-user-world" }, { generation: "2" });
+assert.equal(otherUserGeneration.ok && otherUserGeneration.manifest.revision, "2",
+  "global generations advance across owners instead of restarting per world");
+const noncontiguousReplacement = decide(manifest, { ...candidate, snapshotJson: `${candidate.snapshotJson}x`,
+  expectedRevision: manifest.revision }, { currentSnapshotJson: candidate.snapshotJson, userWorldCount: 1,
+  userStateBytes: candidate.stateBytes, globalStateBytes: candidate.stateBytes, generation: "3" });
+assert.equal(noncontiguousReplacement.ok && noncontiguousReplacement.manifest.revision, "3",
+  "a later replacement receives the next global generation even when its world skips a token");
+const recreatedGeneration = decide(null, candidate, { generation: "4" });
+assert.equal(recreatedGeneration.ok && recreatedGeneration.manifest.revision, "4",
+  "delete and recreate cannot reuse the deleted world's generation");
+assert.deepEqual(decide({ ...manifest, revision: "5" }, { ...candidate, expectedRevision: "5" }, {
+  currentSnapshotJson: `${candidate.snapshotJson}x`, userWorldCount: 1, userStateBytes: candidate.stateBytes,
+  globalStateBytes: candidate.stateBytes, generation: "5",
+}), { ok: false, reason: "server_state" }, "a manifest generation cannot exceed or equal the proposed global successor");
+assert.deepEqual(decide(null, candidate, { generation: String(Number.MAX_SAFE_INTEGER) }),
+  { ok: false, reason: "server_state" }, "global generation exhaustion fails closed");
+assert.equal(nextSinglePlayerCloudGeneration(Number.MAX_SAFE_INTEGER - 2), String(Number.MAX_SAFE_INTEGER - 1),
+  "the last non-exhausted quota generation is accepted and emitted exactly");
+assert.equal(nextSinglePlayerCloudGeneration(Number.MAX_SAFE_INTEGER - 1), null);
+const finalGeneration = decide(null, candidate, { generation: String(Number.MAX_SAFE_INTEGER - 1) });
+assert.equal(finalGeneration.ok && finalGeneration.manifest.revision, String(Number.MAX_SAFE_INTEGER - 1));
+
+let harnessQuotaRevision = 0;
+const harnessCommit = (current: StoredSinglePlayerCloudBackupManifest | null,
+  next: SinglePlayerCloudBackupCandidate, currentRaw: string | null, cleanup = false) => {
+  const generation = nextSinglePlayerCloudGeneration(harnessQuotaRevision);
+  if (!generation) return { ok: false as const, reason: "server_state" as const };
+  const decision = decide(current, next, { currentSnapshotJson: currentRaw, userWorldCount: current ? 1 : 0,
+    userStateBytes: current ? Number(current.stateBytes) : 0, globalStateBytes: current ? Number(current.stateBytes) : 0,
+    generation });
+  if (decision.ok && (decision.kind === "write" || cleanup)) harnessQuotaRevision = Number(generation);
+  return decision;
+};
+const harnessA = harnessCommit(null, candidate, null);
+assert.equal(harnessA.ok && harnessA.manifest.revision, "1");
+const harnessB = harnessCommit(null, { ...candidate, worldId: "world-b" }, null);
+assert.equal(harnessB.ok && harnessB.manifest.revision, "2", "a second owner receives the next serialized token");
+if (!harnessA.ok) throw new Error("generation harness A failed");
+const harnessReplacement = harnessCommit(harnessA.manifest,
+  { ...candidate, expectedRevision: "1", snapshotJson: `${candidate.snapshotJson}x` }, candidate.snapshotJson);
+assert.equal(harnessReplacement.ok && harnessReplacement.manifest.revision, "3");
+const beforeDedupe = harnessQuotaRevision;
+assert.equal(harnessCommit(harnessA.manifest, candidate, candidate.snapshotJson).ok, true);
+assert.equal(harnessQuotaRevision, beforeDedupe, "dedupe without cleanup does not spend a generation");
+const cleanupDedupe = harnessCommit(harnessA.manifest, candidate, candidate.snapshotJson, true);
+assert.equal(cleanupDedupe.ok && cleanupDedupe.manifest.revision, harnessA.manifest.revision);
+assert.equal(harnessQuotaRevision, beforeDedupe + 1, "dedupe with cleanup advances quota once but keeps the manifest token");
+const beforeFailure = harnessQuotaRevision;
+assert.equal(harnessCommit(harnessA.manifest, { ...candidate, expectedRevision: "999",
+  snapshotJson: `${candidate.snapshotJson}y` }, candidate.snapshotJson).ok, false);
+assert.equal(harnessQuotaRevision, beforeFailure, "failed commit leaves global generation unchanged");
+assert.equal(decideSinglePlayerCloudBackupDeleteRevision(false, null, "0"), "deduped");
+assert.equal(harnessQuotaRevision, beforeFailure, "missing delete without cleanup is a true no-op");
+const cleanupGeneration = nextSinglePlayerCloudGeneration(harnessQuotaRevision)!;
+harnessQuotaRevision = Number(cleanupGeneration);
+assert.equal(harnessQuotaRevision, beforeFailure + 1, "missing delete with cleanup advances exactly once");
 
 const storedParts: StoredSinglePlayerCloudBackupPart[] = [
   { userId: "user-a", worldId, part: "0", data: singlePlayerCloudBackupHeader(manifest) },
@@ -306,6 +377,11 @@ const replacement = decide(ordinaryManifest, { ...replacementParsed.candidate, s
 });
 assert.equal(replacement.ok && replacement.kind, "write",
   "replacement subtracts the exact current-owner charge and adds the exact next-owner charge without underflow");
+for (const [before, after] of [["9", "10"], ["99", "100"]] as const) {
+  assert.equal(singlePlayerCloudBackupHeader({ ...ordinaryManifest, revision: after }).length,
+    singlePlayerCloudBackupHeader({ ...ordinaryManifest, revision: before }).length + 1,
+    `${before}→${after} generation growth is included in exact header/state charging`);
+}
 assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a", storedParts.slice(0, -1)), {
   ok: false, reason: "server_state",
 }, "a truncated payload is corrupt server state");
@@ -466,24 +542,42 @@ if (!restored.ok) throw new Error("restore fixture unexpectedly failed");
 const prepared = prepareSinglePlayerCloudBackup(storage, restored.world, "0");
 assert.equal(prepared.ok, true, "upload preparation rereads and validates the exact committed local journal bytes");
 if (!prepared.ok) throw new Error("upload fixture unexpectedly failed");
-assert.equal(parseSinglePlayerSaveEnvelope(prepared.backup.snapshotJson, worldId).ok, true);
-assert.equal(prepared.backup.sequence, loaded.sequence);
+assert.equal(parseSinglePlayerSaveEnvelope(prepared.backup[1], worldId).ok, true);
+assert.equal(prepared.backup[2], loaded.sequence);
 
 const validWire = singlePlayerCloudBackupWire(manifest, candidate.snapshotJson);
 assert.equal(parseSinglePlayerCloudBackupWire(validWire).ok, true);
 assert.equal(parseRestorableSinglePlayerCloudBackup(validWire).ok, true,
   "only a complete locally valid journal envelope leaves download quarantine");
+const oldHashWire = [1, worldId, "Cloud World", "42", "survival", String(createdAt),
+  oldUtf8Hash("😀"), "😀", "1", String(savedAt)];
+assert.equal(parseClientSinglePlayerCloudBackupWire(oldHashWire), null,
+  "a previously accepted UTF-8-byte hash is rejected after checksum unification");
+const oldHashRequest = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, "unicode-opaque", "Unicode", 42, "survival", createdAt, "0", "😀",
+]));
+assert.equal(oldHashRequest.ok, true);
+if (!oldHashRequest.ok) throw new Error("old hash server fixture failed");
+const oldHashDecision = decide(null, oldHashRequest.candidate);
+assert.equal(oldHashDecision.ok, true);
+if (!oldHashDecision.ok) throw new Error("old hash decision fixture failed");
+const oldHashManifest = { ...oldHashDecision.manifest, snapshotHash: oldUtf8Hash("😀") };
+assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a", [
+  { userId: "user-a", worldId: "unicode-opaque", part: "0", data: singlePlayerCloudBackupHeader(oldHashManifest) },
+  { userId: "user-a", worldId: "unicode-opaque", part: "1", data: "😀" },
+]), { ok: false, reason: "server_state" }, "server reconstruction rejects a stored former UTF-8-byte hash");
+const hashMismatchWire = [...validWire];
+hashMismatchWire[6] = hashMismatchWire[6] === "00000000" ? "11111111" : "00000000";
+assert.deepEqual(parseRestorableSinglePlayerCloudBackup(hashMismatchWire), { ok: false, reason: "backup_quarantined" },
+  "a mismatched outer snapshot hash exposes no restore or delete metadata");
 const outerMismatchWire = [...validWire];
 outerMismatchWire[3] = "43";
 assert.equal(parseSinglePlayerCloudBackupWire(outerMismatchWire).ok, true,
   "transport validation intentionally does not interpret world metadata inside opaque bytes");
 const outerMismatch = parseRestorableSinglePlayerCloudBackup(outerMismatchWire);
 assert.equal(outerMismatch.ok, false, "outer metadata disagreement remains quarantined on the client");
-assert.deepEqual(!outerMismatch.ok && outerMismatch.quarantine, {
-  worldId, name: "Cloud World", seed: 43, gameMode: "survival", worldCreatedAt: createdAt,
-  revision: "1", uploadedAt: SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS,
-  deleteRequestJson: JSON.stringify([1, worldId, "1"]),
-}, "semantic quarantine preserves only safe outer metadata and the exact revision delete request");
+assert.deepEqual(!outerMismatch.ok && outerMismatch.quarantine, [worldId, "1"],
+  "semantic quarantine preserves only the validated outer world id and exact revision");
 
 const garbageParsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
   1, "opaque-world", "Opaque", 7, "creative", 4_000, "0", "{garbage",
@@ -498,14 +592,12 @@ assert.equal(parseSinglePlayerCloudBackupWire(garbageWire).ok, true,
   "opaque garbage remains readable at the transport layer so it can be permanently deleted");
 const garbageQuarantine = parseRestorableSinglePlayerCloudBackup(garbageWire);
 assert.equal(garbageQuarantine.ok, false);
-assert.equal(!garbageQuarantine.ok && garbageQuarantine.quarantine?.deleteRequestJson,
+assert.equal(JSON.stringify([1, ...(!garbageQuarantine.ok && garbageQuarantine.quarantine || [])]),
   JSON.stringify([1, "opaque-world", garbageDecision.manifest.revision]));
-assert.deepEqual(parseServerQuarantinedSinglePlayerCloudBackup({
-  worldId: "broken-sibling", status: "corrupt", expectedRevision: "0",
-  deleteRequestJson: JSON.stringify([1, "broken-sibling", "0"]),
-}), { worldId: "broken-sibling", status: "corrupt", expectedRevision: "0",
-  deleteRequestJson: JSON.stringify([1, "broken-sibling", "0"]) },
-"client preserves the server's payload-free corrupt-target delete descriptor");
+assert.deepEqual(parseServerQuarantinedSinglePlayerCloudBackup(["broken-sibling", "0"]),
+  ["broken-sibling", "0"], "client preserves the server's payload-free corrupt-target tuple");
+assert.equal(parseServerQuarantinedSinglePlayerCloudBackup(["broken-sibling", "0", "extra"]), null,
+  "server quarantine tuples reject extra fields");
 const quarantineStorage = new MemoryStorage();
 const beforeQuarantinedRestore = new Map(quarantineStorage.values);
 assert.deepEqual(restoreSinglePlayerCloudBackup(quarantineStorage, garbageWire), {
@@ -526,7 +618,7 @@ class ReadbackDriftStorage extends MemoryStorage {
     const value = super.getItem(key);
     if (key !== this.target || value === null) return value;
     this.reads += 1;
-    return this.reads >= 3 ? `${value} ` : value;
+    return this.reads >= 2 ? `${value} ` : value;
   }
 }
 if (loaded.status !== "loaded" && loaded.status !== "recovered") throw new Error("loaded fixture lost its slot");
@@ -555,7 +647,7 @@ class AlternateSlotCommitStorage extends MemoryStorage {
   private readonly sequence: number;
   override getItem(key: string): string | null {
     const value = super.getItem(key);
-    if (key === this.target && ++this.reads === 3) {
+    if (key === this.target && ++this.reads === 2) {
       this.values.set(this.alternate, this.raw);
       this.values.set(this.head, JSON.stringify({ sequence: this.sequence, slot: this.alternate.endsWith(".a") ? "a" : "b" }));
     }
@@ -658,15 +750,29 @@ assert.match(cloudMutation, /const remainingMinimum = [\s\S]*?singlePlayerCloudB
   "corrupt delete validates the post-delete remainder and releases only quota-covered target bytes before mutation");
 assert.match(cloudMutation, /if \(!deleting && \(!allHealthy/,
   "commits refuse any bounded-unhealthy current owner state while deletes classify one target independently");
-assert.match(serverSource, /quarantined\.push\(\{ worldId: world\.worldId, status: "corrupt", expectedRevision: "0"/,
+assert.match(serverSource, /quarantined\.push\(\[world\.worldId, "0"\]\)/,
   "query surfaces bounded unreconstructable worlds with the explicit permanent-delete sentinel");
-assert.match(serverSource, /Number\(manifest\.uploadedAt\) > serverNow[\s\S]*?expectedRevision: manifest\.revision/,
+assert.match(serverSource, /Number\(manifest\.uploadedAt\) > serverNow[\s\S]*?quarantined\.push\(\[world\.worldId, manifest\.revision\]\)/,
   "future upload metadata is quarantined with its healthy transport revision instead of presented as valid");
 assert.match(serverSource, /inventory\.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES/,
   "query rejects a multi-world aggregate that exceeds the owner storage cap");
-assert.match(cloudMutation, /const nextQuota = nextQuotaValue[\s\S]*?if \(!nextQuota\) return \{ ok: false, reason: BS\.invalidServerState, serverNow \};[\s\S]*?await applyCleanup\(\)/,
+assert.match(cloudMutation, /const nextQuota = nextQuotaValue[\s\S]*?if \(!nextQuota\) return \[5, BS\.invalidServerState, serverNow\][\s\S]*?await applyCleanup\(\)/,
   "deduped cleanup validates its complete next quota before deleting a budget");
-assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return \{ ok: false, reason: BS\.invalidServerState, serverNow \};[\s\S]*?for \(const row of currentParts\)/,
+assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return \[5, BS\.invalidServerState, serverNow\][\s\S]*?for \(const row of currentParts\)/,
   "write replacement validates next quota bytes/revision before replacing parts");
+assert.match(cloudMutation, /const proposedRevision = nextSinglePlayerCloudGeneration\(quotaRevision\)[\s\S]*?const proposedHeader = singlePlayerCloudBackupHeader/,
+  "the global successor is validated before header byte accounting");
+assert.match(cloudMutation, /revision: proposedRevision[\s\S]*?decideSinglePlayerCloudBackupCommit\([\s\S]*?proposedRevision, serverNow\)/,
+  "one canonical global generation flows through quota, header, decision, persistence, wire, and response");
+assert.match(cloudMutation, /healthyBackups\.some\(\(\{ manifest \}\) => Number\(manifest\.revision\) > quotaRevision\)/,
+  "a healthy manifest ahead of the permanent global quota generation fails closed");
+assert.doesNotMatch(cloudMutation, /String\(Number\(current\?\.revision \?\? "0"\) \+ 1\)/,
+  "server manifests never mint a reusable per-world successor");
+assert.doesNotMatch(cloudMutation, /singlePlayerCloudBackupQuota\.delete/,
+  "the global generation row is permanent after creation");
+assert.match(cloudMutation, /if \(decision\.kind === "deduped"\) \{[\s\S]*?if \(cleanupRows\.length && quota\)[\s\S]*?update\(quota\.id, nextQuota\)[\s\S]*?return \[1, decision\.manifest\.revision, serverNow\]/,
+  "plain dedupe retains the quota generation while cleanup dedupe advances it exactly once");
+assert.doesNotMatch(cloudSource, /revision: String\(currentRevision \+ 1\)/,
+  "shared admission consumes an explicit opaque generation instead of deriving a per-world revision");
 
 console.log("single-player cloud backup protocol and explicit restore foundation tests passed");
