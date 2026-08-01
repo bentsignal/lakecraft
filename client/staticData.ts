@@ -1,5 +1,11 @@
 export function decodeStaticBytes(source: string, size: number): Uint8Array {
-  const packed = atob(source);
+  const alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX.-:+=^!/*?&<>()[]{}@%$#_,";
+  let packed = "";
+  for (let cursor = 0; cursor < source.length; cursor += 5) {
+    let value = 0;
+    for (let digit = 0; digit < 5; digit += 1) value = value * 85 + alphabet.indexOf(source[cursor + digit]);
+    for (let shift = 24; shift >= 0; shift -= 8) packed += String.fromCharCode(value >>> shift & 255);
+  }
   const data = new Uint8Array(size);
   let target = 0;
   for (let cursor = 0; cursor < packed.length;) {

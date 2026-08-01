@@ -129,9 +129,9 @@ const packedPalette = generatedSource.match(/decodeStaticBytes\("([^"]+)", 1012\
 const packedIndexes = generatedSource.match(/decodeStaticBytes\("([^"]+)", 7680\)/)?.[1];
 assert.ok(packedPalette);
 assert.ok(packedIndexes);
-assert.equal(Buffer.from(packedPalette, "base64").length, 818,
+assert.equal(packedPalette.length, 1_025,
   "atlas palette retains the reviewed deterministic LZSS fixture");
-assert.equal(Buffer.from(packedIndexes, "base64").length, 4_465,
+assert.equal(packedIndexes.length, 5_585,
   "atlas indexes retain the reviewed deterministic LZSS fixture");
 assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../../staticData.ts";')
     && generatedSource.includes("const TEXTURE_ATLAS_INDEXES = decodeStaticBytes(")

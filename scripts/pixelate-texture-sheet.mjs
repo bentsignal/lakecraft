@@ -1,6 +1,7 @@
 import { deflateSync, inflateSync } from "node:zlib";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { encodeStaticBytes } from "./static-byte-encoding.mjs";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -648,7 +649,7 @@ function packStaticBytes(bytes) {
     }
     packed[control] = flags;
   }
-  return Buffer.from(packed).toString("base64");
+  return encodeStaticBytes(packed);
 }
 
 function textureSource(image, names, columns, rows, tileSize, inputName) {

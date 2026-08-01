@@ -171,7 +171,7 @@ for (const marker of [
   'reason: "authoritative_death_required"',
   "storedPlayerCombatRow({",
   ".filter((claim) => aliveMobIds.has(claim.mobId))",
-  'reason: "mob_dead"',
+  "reason: BS.mobDead",
   "parseMobWorldReplayInputJson(stored.inputJson)",
   'mob.kind === "spider"',
   'mob.kind === "chicken"',
@@ -204,7 +204,7 @@ const creeperMutation = server.slice(
 );
 for (const marker of [
   "validateCreeperExplosionRequestJson(requestJson)",
-  'withIndex("by_event"',
+  'newestByIndex(ctx.db.creeperExplosionReceipts, "by_event", (q) => q.eq("eventId", request.operationId))',
   "authorizeCreeperExplosionRequest(request, authority)",
   "applyAuthoritativeWorldExplosion(ctx.db",
   "checkpointRevision: String(advanced.revision + 1)",
@@ -234,7 +234,7 @@ assert.ok(attackMobMutation.includes("playerCombatReceipts"));
 assert.ok(attackMobMutation.includes("replayed: true"));
 assert.ok(attackMobMutation.includes("replayed: false"));
 assert.ok(attackMobMutation.includes("authoritativeCombatPose"));
-assert.ok(attackMobMutation.includes('reason: "attacker_dead"'));
+assert.ok(attackMobMutation.includes("reason: BS.attackerDead"));
 assert.ok(attackMobMutation.includes("validatePlayerMeleeSpatialAuthority"));
 assert.ok(attackMobMutation.includes("attackDamage(selectedItemId)"));
 assert.ok(attackMobMutation.includes("applyConfirmedToolUse"));

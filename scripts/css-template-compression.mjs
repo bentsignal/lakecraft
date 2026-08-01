@@ -40,6 +40,128 @@ export const COMPACT_CLIENT_IDENTIFIER_FAMILIES = Object.freeze([
   ["lc-menu", "xw"],
 ]);
 
+const CSS_PRIVATE_IDENTIFIER_ALPHABET = CSS_DICTIONARY_ALPHABET.replace("$", "");
+
+function parsePrivateIdentifierRows(rows) {
+  return Object.freeze(rows.trim().split(/\s+/).map((row) => {
+    const separator = row.lastIndexOf("|");
+    return Object.freeze([row.slice(0, separator), Number(row.slice(separator + 1))]);
+  }));
+}
+
+// This fixed, reviewed live set contains only Lakecraft-owned CSS/DOM names.
+// Order is stable and assigns the shortest outputs to the most frequent names.
+const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
+xe-window|20 xi-peek|15 xi-compose|14 xi-message|13 xw-button|13
+xc-inventory-slot|11 xj-glyph|11 xo-menu|11 xe-grid__slot|10 xj-icon__svg|10 xn-panel|10
+xlocal-world-dialog|9 xoptions|9 ysleep|9 xslot|9 xunsupported|8 xg__signal|8 xc-slot|8
+xm-slot|8 xp-logo|8 xq-icon|8 xr-slot|8 xclose|8 yquery-recovery|7 xq-population|7
+xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|7 xe-grid|7 xlocal-world-header|6
+xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|6 xpointer-capture|6
+xe-titlebar|6 xcrosshair|6 xq-browser|6 xp-footer|6 xs-layer|6 xlocal-world-browser|5
+xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|5
+xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|5 xq-copy|5 xq-row|5
+xingredient__icon|4 xlocal-world-row|4 xcursor-stack|4 xs__heading|4 xf__output|4
+xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|4 xk-layer|4 xw-layer|4
+xm-rack|4 xp-menu|4 xq-hint|4 yerror|4 xhud|4 xc-inventory-grid|3
+xk-screen__status|3 xdirt-background|3 xequipment-panel|3 xk-screen__score|3
+xoptions-dialog|3 xoptions__done|3 xoptions__grid|3 xc__inventory|3 xr-status-row|3
+xsection-rule|3 xsingleplayer|3 xv-workspace|3 ysleep-layer|3 xc__station|3 xdurability|3
+xingredient|3 xlocal-perf|3 xp-panorama|3 xc__status|3 xp-content|3 xc__flame|3
+xr-status|3 xc-layer|3 xd__head|3 xl__icon|3 xp-hills|3 xr-layer|3 xs__body|3
+xv-panel|3 xd__arm|3 xd__leg|3 xu-wrap|3 xv-slot|3 xw-link|3 yperf|3
+xc-inventory-grid--hotbar|2 xsingleplayer-coordinates|2 xlocal-world-delete-copy|2
+xh__autosave-status|2 xunsupported__stamp|2 xc-inventory-title|2 xh__last-autosaved|2
+xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|2 xlocal-world-retry|2
+xunsupported__card|2 xunsupported__icon|2 xunsupported__topo|2 xunsupported-title|2
+xlocal-world-list|2 xk-screen__cause|2 xf__ingredients|2 xj-glyph__count|2
+xr-grid--player|2 ysleep__actions|2 xd__arm--right|2 xd__leg--right|2 xl__fill-layer|2
+xm-slot__label|2 xoptions-layer|2 xoptions-title|2 xd__arm--left|2 xd__leg--left|2
+xl__highlight|2 ysleep-title|2 xh__buttons|2 xl__outline|2 xpack-panel|2 xpack-title|2
+xc__source|2 xf__action|2 xh-options|2 xi-history|2 xp-options|2 xi-unread|2
+xl__empty|2 xm-column|2 xp-ground|2 xc-title|2 xd__body|2 xe-title|2 xg__head|2
+xh-title|2 xi-input|2 xk-cause|2 xk-score|2 xk-title|2 xl__fill|2 xp-error|2
+xp-shade|2 xr-retry|2 xr-title|2 xv-arrow|2 xv-title|2 xkicker|2 xn-head|2
+xq-list|2 xr-grid|2 xv-grid|2 xp-sun|2 yshell|2 yworld|2 xt-in|2
+xworld-browser-title|1 xworld-dialog-title|1 xh__disconnect|1 xpencil-note|1
+xf__number|1 xp-loading|1 xf__arrow|1 xe-error|1 xf-list|1 xj-icon|1 xw-row|1
+`);
+
+const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
+xpixel-font|48 xnote|16 xc-slot|10 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
+xrust|5 xt-edge|4 xcharcoal|2 xdisplay|2 xmoss-bright|1 xpaper-deep|1 xshadow|1 xline|1
+`);
+
+function privateIdentifierCode(index) {
+  let remaining = index;
+  let code = "Z";
+  do {
+    code += CSS_PRIVATE_IDENTIFIER_ALPHABET[remaining % CSS_PRIVATE_IDENTIFIER_ALPHABET.length];
+    remaining = Math.floor(remaining / CSS_PRIVATE_IDENTIFIER_ALPHABET.length) - 1;
+  } while (remaining >= 0);
+  return code;
+}
+
+export const COMPACT_CLIENT_PRIVATE_IDENTIFIERS = Object.freeze([
+  ...COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS.map(([readable, expectedCount], index) => (
+    Object.freeze([readable, privateIdentifierCode(index), expectedCount])
+  )),
+  ...COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS.map(([readable, expectedCount], index) => (
+    Object.freeze([`--${readable}`, `--${privateIdentifierCode(index)}`, expectedCount])
+  )),
+]);
+
+// These are the only runtime-composed class prefixes in the client corpus.
+// Prefix replacement also covers their concrete stylesheet variants.
+export const COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES = Object.freeze([
+  Object.freeze(["xc-slot--", "Yq0", 1]),
+  Object.freeze(["xj-glyph--", "Yq1", 3]),
+  Object.freeze(["xl--", "Yq2", 7]),
+  Object.freeze(["xt--", "Yq3", 3]),
+]);
+
+const REVIEWED_COMPACT_IDENTIFIER_EXEMPTIONS = Object.freeze([
+  "xr", "xc", "xz", "xu", "xl", "xf", "xg", "xh", "xts", "xt", "xs", "xd",
+  // Generated texture-atlas provenance comment; never a DOM or CSS identifier.
+  "ymaterials-v1",
+]);
+
+function isCssIdentifierCharacter(character) {
+  return character !== undefined && /[A-Za-z0-9_-]/.test(character);
+}
+
+function replaceBoundedIdentifier(source, readable, compact, prefix = false) {
+  let cursor = 0;
+  let output = "";
+  let count = 0;
+  while (cursor < source.length) {
+    const index = source.indexOf(readable, cursor);
+    if (index < 0) {
+      output += source.slice(cursor);
+      break;
+    }
+    const before = source[index - 1];
+    const after = source[index + readable.length];
+    if (!isCssIdentifierCharacter(before) && (prefix || !isCssIdentifierCharacter(after))) {
+      output += source.slice(cursor, index) + compact;
+      cursor = index + readable.length;
+      count += 1;
+    } else {
+      output += source.slice(cursor, index + readable.length);
+      cursor = index + readable.length;
+    }
+  }
+  return { source: output, count };
+}
+
+function compactClientIdentifierNamespace(source) {
+  let compacted = source;
+  for (const [readable, compact] of COMPACT_CLIENT_IDENTIFIER_FAMILIES) {
+    compacted = compacted.replaceAll(readable, compact);
+  }
+  return compacted.replaceAll("lakecraft-", "y").replaceAll("lc-", "x");
+}
+
 export function cssDictionaryToken(index) {
   return `${CSS_DICTIONARY_PREFIX}${CSS_DICTIONARY_ALPHABET[index]}`;
 }
@@ -105,11 +227,72 @@ export function dictionaryDecompressCss(packed) {
 }
 
 export function compactClientIdentifiers(source) {
-  let compacted = source;
-  for (const [readable, compact] of COMPACT_CLIENT_IDENTIFIER_FAMILIES) {
-    compacted = compacted.replaceAll(readable, compact);
+  let compacted = compactClientIdentifierNamespace(source);
+  for (const [readable, compact] of COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES) {
+    compacted = replaceBoundedIdentifier(compacted, readable, compact, true).source;
   }
-  return compacted.replaceAll("lakecraft-", "y").replaceAll("lc-", "x");
+  for (const [readable, compact] of COMPACT_CLIENT_PRIVATE_IDENTIFIERS) {
+    compacted = replaceBoundedIdentifier(compacted, readable, compact).source;
+  }
+  return compacted;
+}
+
+export function auditCompactClientIdentifierCorpus(sources) {
+  if (!Array.isArray(sources) || sources.some((source) => typeof source !== "string")) {
+    throw new TypeError("Compact client identifier audit requires a source string array.");
+  }
+  const source = sources.map(compactClientIdentifierNamespace).join("\n");
+  const compactTargets = new Set();
+  for (const [readable, compact, expectedCount] of COMPACT_CLIENT_PRIVATE_IDENTIFIERS) {
+    const actualCount = replaceBoundedIdentifier(source, readable, compact).count;
+    if (actualCount !== expectedCount) {
+      throw new Error(`Compact client identifier live set changed for ${readable}: expected ${expectedCount}, found ${actualCount}.`);
+    }
+    if (compactTargets.has(compact)) throw new Error(`Duplicate compact client identifier target: ${compact}.`);
+    compactTargets.add(compact);
+    if (replaceBoundedIdentifier(source, compact, compact).count !== 0) {
+      throw new Error(`Compact client identifier target already exists in source: ${compact}.`);
+    }
+  }
+  for (const [readable, compact, expectedCount] of COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES) {
+    const actualCount = replaceBoundedIdentifier(source, readable, compact, true).count;
+    if (actualCount !== expectedCount) {
+      throw new Error(`Compact client identifier prefix live set changed for ${readable}: expected ${expectedCount}, found ${actualCount}.`);
+    }
+    if (compactTargets.has(compact)) throw new Error(`Duplicate compact client identifier target: ${compact}.`);
+    compactTargets.add(compact);
+    if (replaceBoundedIdentifier(source, compact, compact, true).count !== 0) {
+      throw new Error(`Compact client identifier prefix target already exists in source: ${compact}.`);
+    }
+  }
+
+  const reviewedNames = new Set([
+    ...COMPACT_CLIENT_PRIVATE_IDENTIFIERS.map(([readable]) => readable),
+    ...REVIEWED_COMPACT_IDENTIFIER_EXEMPTIONS,
+  ]);
+  for (const rawSource of sources) {
+    for (const match of rawSource.matchAll(/--(?:lc|lakecraft)-[A-Za-z0-9_-]+|(?:lc|lakecraft)-[A-Za-z0-9_-]+/g)) {
+      const readable = compactClientIdentifierNamespace(match[0]);
+      if (
+        reviewedNames.has(readable)
+        || COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES.some(([prefix]) => readable.startsWith(prefix))
+      ) continue;
+      throw new Error(`Unreviewed Lakecraft-private client identifier: ${match[0]}.`);
+    }
+  }
+
+  const compacted = compactClientIdentifiers(source);
+  for (const [readable] of COMPACT_CLIENT_PRIVATE_IDENTIFIERS) {
+    if (replaceBoundedIdentifier(compacted, readable, readable).count !== 0) {
+      throw new Error(`Readable client identifier survived compaction: ${readable}.`);
+    }
+  }
+  for (const [readable] of COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES) {
+    if (replaceBoundedIdentifier(compacted, readable, readable, true).count !== 0) {
+      throw new Error(`Readable client identifier prefix survived compaction: ${readable}.`);
+    }
+  }
+  return true;
 }
 
 function cssBundleTokenSize(distance) {

@@ -1,4 +1,4 @@
-const PRESENTATION_FIELDS = ["label", "description", "shortLabel", "glyph", "accent", "color"];
+const PRESENTATION_FIELDS = ["label", "note", "description", "shortLabel", "glyph", "accent", "color"];
 
 const TUPLE_CATALOGS = [
   {
@@ -79,13 +79,6 @@ const TUPLE_CATALOGS = [
 const OBJECT_CATALOGS = [
   { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 42 },
   { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 10 },
-];
-
-const GENERATED_PRESENTATION_EXPRESSIONS = [
-  "`${labelPrefix} ${kindLabel}`",
-  "`${shortPrefix}·${kindShort}`",
-  "`${labelPrefix} ${pieceLabels[index]}`",
-  "`${shortPrefix}·${pieceShort}`",
 ];
 
 function fail(message) {
@@ -177,44 +170,118 @@ function stripTupleCatalog(source, catalog) {
     ...catalog.scalarPresentationIndexes,
     ...(catalog.arrayPresentationIndexes ?? []).map(({ index }) => index),
   ]);
-  const strippedRows = rows.map((row, rowIndex) => {
+  const mechanicsRows = rows.map((row, rowIndex) => {
     if (!Array.isArray(row) || !catalog.widths.includes(row.length)) {
       fail(`${catalog.name}[${rowIndex}] expected width ${catalog.widths.join(" or ")}, received ${Array.isArray(row) ? row.length : "a non-array"}.`);
     }
-    const stripped = structuredClone(row);
     for (const index of catalog.scalarPresentationIndexes) {
       if (typeof row[index] !== "string") fail(`${catalog.name}[${rowIndex}][${index}] is not a presentation string.`);
-      stripped[index] = "";
     }
     for (const { index, length } of catalog.arrayPresentationIndexes ?? []) {
       if (!Array.isArray(row[index]) || row[index].length !== length || row[index].some((value) => typeof value !== "string")) {
         fail(`${catalog.name}[${rowIndex}][${index}] is not a ${length}-string presentation array.`);
       }
-      stripped[index] = new Array(length).fill("");
     }
-    const mechanicsBefore = row.filter((_value, index) => !presentationIndexes.has(index));
-    const mechanicsAfter = stripped.filter((_value, index) => !presentationIndexes.has(index));
-    if (JSON.stringify(mechanicsBefore) !== JSON.stringify(mechanicsAfter)) {
-      fail(`${catalog.name}[${rowIndex}] mechanical fields changed.`);
-    }
-    return stripped;
+    return row.filter((_value, index) => !presentationIndexes.has(index));
   });
-  return { ...range, text: JSON.stringify(strippedRows) };
+  return { ...range, text: JSON.stringify(mechanicsRows) };
 }
 
 function stripObjectCatalog(source, catalog) {
   const range = catalogArrayRange(source, catalog);
-  const propertyPattern = new RegExp(`\\b(${catalog.properties.join("|")}):\\s*("(?:\\\\.|[^"\\\\])*")`, "g");
+  const propertyPattern = new RegExp(`\\b(${catalog.properties.join("|")}):\\s*("(?:\\\\.|[^"\\\\])*")\\s*,\\s*`, "g");
   let matches = 0;
-  const text = range.text.replace(propertyPattern, (_match, property) => {
+  const text = range.text.replace(propertyPattern, () => {
     matches += 1;
-    return `${property}:""`;
+    return "";
   });
   if (matches !== catalog.expectedMatches) {
     fail(`${catalog.name} expected ${catalog.expectedMatches} presentation properties, received ${matches}.`);
   }
   return { ...range, text };
 }
+
+function sourceFingerprint(source) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function replaceAnchoredRange(source, startAnchor, endAnchor, replacement, name, expectedFingerprint) {
+  const start = uniqueAnchor(source, startAnchor, `${name} start`);
+  const end = uniqueAnchor(source, endAnchor, `${name} end`);
+  if (end <= start) fail(`${name} anchors are out of order.`);
+  const actualFingerprint = sourceFingerprint(source.slice(start, end));
+  if (actualFingerprint !== expectedFingerprint) {
+    fail(`${name} body changed (expected ${expectedFingerprint}, found ${actualFingerprint}).`);
+  }
+  return `${source.slice(0, start)}${replacement}${source.slice(end)}`;
+}
+
+const SERVER_DEFINE_BLOCKS = `function defineBlocks(specs: readonly (readonly any[])[]): Record<BlockId, BlockDefinition> {
+  return Object.fromEntries(specs.map(([id, hardness, preferredTool, drop, minimumTier]) => [id, {
+    id, hardness, preferredTool,
+    ...(minimumTier ? { requiredDropTool: { kind: "pickaxe" as const, minimumTier } } : {}),
+    drop,
+  }])) as Record<BlockId, BlockDefinition>;
+}
+
+`;
+
+const SERVER_ITEM_BUILDERS = `function blockItem(id: BlockId): ItemDefinition {
+  return { id, category: "block", maxStack: 64, placesBlock: id } as ItemDefinition;
+}
+
+function toolItem(id: ToolId, kind: Exclude<ToolKind, "hand">, tier: Exclude<ToolTier, "none">): ItemDefinition {
+  const tierBonus = tier === "diamond" ? 3 : tier === "iron" ? 2 : tier === "stone" ? 1 : 0;
+  const attackDamage = ({ pickaxe: 2, axe: 3, shovel: 1, sword: 4 } as const)[kind] + tierBonus;
+  const maxDurability = ({ wood: 59, gold: 32, stone: 131, iron: 250, diamond: 1561 } as const)[tier];
+  return { id, category: "tool", maxStack: 1, tool: { kind, tier, attackDamage, maxDurability } } as ItemDefinition;
+}
+
+function armorItem(id: ArmorId, slot: ArmorSlot, protection: number, material: "leather" | "iron" | "gold" | "diamond"): ItemDefinition {
+  const durabilityBase = ({ leather: 5, gold: 7, iron: 15, diamond: 33 } as const)[material];
+  const slotMultiplier = ({ head: 11, chest: 16, legs: 15, feet: 13 } as const)[slot];
+  return { id, category: "armor", maxStack: 1, armor: { slot, protection, maxDurability: durabilityBase * slotMultiplier } } as ItemDefinition;
+}
+
+function foodItem(id: ItemId, hunger: number): ItemDefinition {
+  return { id, category: "food", maxStack: 64, food: { hunger } } as ItemDefinition;
+}
+
+`;
+
+const SERVER_ITEM_ENTRIES = `const ITEM_ENTRIES: Array<readonly [ItemId, ItemDefinition]> = [
+  ...BLOCK_ITEM_SPECS.map(([id]) => [id, blockItem(id)] as const),
+  ...BASIC_ITEM_SPECS.map(([id]) => [id, { id, category: "material", maxStack: 64 } as ItemDefinition] as const),
+  ...UTILITY_ITEM_SPECS.map(([id, maxDurability]) => [id, { id, category: "tool", maxStack: 1, utility: { maxDurability } } as ItemDefinition] as const),
+  ...RANGED_ITEM_SPECS.map(([id, category, maxStack, maxDurability, maxChargeMs]) => [id, { id, category, maxStack, ranged: { maxDurability, maxChargeMs } } as ItemDefinition] as const),
+  ...FOOD_ITEM_SPECS.map(([id, hunger]) => [id, foodItem(id, hunger)] as const),
+  ...TOOL_TIER_SPECS.flatMap(([idPrefix, tier]) => TOOL_KIND_SPECS.map(([kind]) => {
+    const id = \`${"${idPrefix}_${kind}"}\` as ToolId;
+    return [id, toolItem(id, kind, tier)] as const;
+  })),
+  ...ARMOR_MATERIAL_SPECS.flatMap(([idPrefix, material, protections]) => ARMOR_PIECE_SPECS.map(([piece, slot], index) => {
+    const id = \`${"${idPrefix}_${piece}"}\` as ArmorId;
+    return [id, armorItem(id, slot, protections[index], material)] as const;
+  })),
+];
+
+`;
+
+const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, ingredients: readonly RecipeIngredientSpec[]): Recipe {
+  return {
+    id,
+    craftingContext: "crafting_table",
+    ingredients: ingredients.map(([itemId, count]) => ({ itemId, count })),
+    output: { itemId: id, count: 1 },
+  } as Recipe;
+}
+
+`;
 
 export function stripServerGamePresentation(source) {
   const replacements = [
@@ -225,14 +292,10 @@ export function stripServerGamePresentation(source) {
   for (const replacement of replacements) {
     contents = `${contents.slice(0, replacement.start)}${replacement.text}${contents.slice(replacement.end)}`;
   }
-  for (const expression of GENERATED_PRESENTATION_EXPRESSIONS) {
-    const first = contents.indexOf(expression);
-    if (first < 0) fail(`generated presentation expression ${expression} is missing.`);
-    if (contents.indexOf(expression, first + expression.length) >= 0) {
-      fail(`generated presentation expression ${expression} is ambiguous.`);
-    }
-    contents = `${contents.slice(0, first)}""${contents.slice(first + expression.length)}`;
-  }
+  contents = replaceAnchoredRange(contents, "function defineBlocks(", "export const BLOCKS = defineBlocks(", SERVER_DEFINE_BLOCKS, "block mechanics builder", "e45cb2fa");
+  contents = replaceAnchoredRange(contents, "function blockItem(", "type BasicItemSpec =", SERVER_ITEM_BUILDERS, "item mechanics builders", "0eb24b09");
+  contents = replaceAnchoredRange(contents, "const ITEM_ENTRIES:", "export const ITEMS =", SERVER_ITEM_ENTRIES, "item mechanics catalog", "f62069d2");
+  contents = replaceAnchoredRange(contents, "function craftingTableRecipe(", "const GENERATED_TOOL_RECIPES =", SERVER_CRAFTING_TABLE_RECIPE, "recipe mechanics builder", "6fb8bfa0");
   return contents;
 }
 
@@ -250,7 +313,7 @@ export function assertNoServerGamePresentationUse(inputs) {
     let importsCatalog = false;
     for (const match of source.matchAll(importPattern)) {
       if (namespacePattern.test(match[1])) fail(`${path} uses a namespace import from shared/game.ts.`);
-      if (/\b(?:ITEMS|BLOCKS)\b/.test(match[1])) importsCatalog = true;
+      if (/\b(?:ITEMS|BLOCKS|RECIPES|SMELTING_RECIPES)\b/.test(match[1])) importsCatalog = true;
     }
     if (importsCatalog) {
       const field = presentationPattern.exec(source)?.[1];

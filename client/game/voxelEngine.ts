@@ -25,6 +25,7 @@ import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
 import { createFirstPersonRenderer } from "./firstPersonRenderer.ts";
+import { BLOCK_MATERIAL_COLORS as BLOCK_COLORS } from "./blockColors.ts";
 import {
   blockParticleBufferCapacity,
   createBlockParticleSystem,
@@ -502,42 +503,6 @@ void main() {
   if (texel.a < uAlphaCutoff) discard;
   gl_FragColor = vec4(mix(texel.rgb * vLight, uFogColor, vFog), texel.a);
 }`;
-
-const BLOCK_COLORS: Record<BlockId, Vec3> = {
-  [BLOCK.AIR]: [0, 0, 0],
-  [BLOCK.GRASS]: [0.31, 0.66, 0.23],
-  [BLOCK.DIRT]: [0.48, 0.31, 0.17],
-  [BLOCK.STONE]: [0.48, 0.51, 0.53],
-  [BLOCK.WOOD]: [0.49, 0.31, 0.14],
-  [BLOCK.LEAVES]: [0.18, 0.48, 0.19],
-  [BLOCK.PLANKS]: [0.69, 0.48, 0.25],
-  [BLOCK.CRAFTING_TABLE]: [0.55, 0.35, 0.16],
-  [BLOCK.TORCH]: [0.76, 0.46, 0.14],
-  [BLOCK.CHEST]: [0.57, 0.31, 0.10],
-  [BLOCK.DOOR_CLOSED]: [0.57, 0.34, 0.14],
-  [BLOCK.DOOR_OPEN]: [0.57, 0.34, 0.14],
-  [BLOCK.BED]: [0.72, 0.08, 0.07],
-  [BLOCK.COAL_ORE]: [0.25, 0.27, 0.28],
-  [BLOCK.IRON_ORE]: [0.66, 0.49, 0.35],
-  [BLOCK.FURNACE]: [0.42, 0.44, 0.45],
-  [BLOCK.LADDER]: [0.67, 0.43, 0.19],
-  [BLOCK.COBBLESTONE]: [0.36, 0.39, 0.40],
-  [BLOCK.SAND]: [0.78, 0.69, 0.45],
-  [BLOCK.GLASS]: [0.63, 0.84, 0.86],
-  [BLOCK.GOLD_ORE]: [0.78, 0.64, 0.17],
-  [BLOCK.DIAMOND_ORE]: [0.24, 0.78, 0.76],
-  [BLOCK.TNT]: [0.72, 0.16, 0.12],
-  [BLOCK.GRAVEL]: [0.47, 0.45, 0.42],
-  [BLOCK.WOOL]: [0.86, 0.84, 0.78],
-  [BLOCK.SAPLING]: [0.28, 0.55, 0.18],
-  [BLOCK.STONE_BRICKS]: [0.43, 0.45, 0.43],
-  [BLOCK.OAK_FENCE]: [0.69, 0.48, 0.25],
-  [BLOCK.OAK_FENCE_GATE_CLOSED]: [0.69, 0.48, 0.25],
-  [BLOCK.OAK_FENCE_GATE_OPEN]: [0.69, 0.48, 0.25],
-  [BLOCK.STONE_BRICK_SLAB]: [0.43, 0.45, 0.43],
-  [BLOCK.CLAY]: [0.58, 0.64, 0.70],
-  [BLOCK.BRICKS]: [0.68, 0.28, 0.20],
-};
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
 export function blockMaterialColor(block: BlockId): readonly [number, number, number] {
