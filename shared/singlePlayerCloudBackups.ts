@@ -5,6 +5,9 @@ export const SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES = 48_000;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS = 4;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES = 192_000;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES = 384_000;
+export const SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES = 4_096;
+export const SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES = 2_048;
+export const SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES = 2_048;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS = 30 * 60_000;
 export const SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES = 12;
 export const SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES = 120;
@@ -76,6 +79,22 @@ export interface StoredSinglePlayerCloudBackupManifest {
   uploadedAt: string;
 }
 
+export function validStoredSinglePlayerCloudBackupManifest(value: unknown): value is StoredSinglePlayerCloudBackupManifest {
+  if (!record(value)) return false;
+  return typeof value.worldId === "string" && WORLD_ID.test(value.worldId) && validName(value.name)
+    && typeof value.seed === "string" && /^-?\d{1,10}$/.test(value.seed) && integer(Number(value.seed), -2_147_483_648, 2_147_483_647)
+    && (value.gameMode === "survival" || value.gameMode === "creative")
+    && typeof value.worldCreatedAt === "string" && /^\d{1,16}$/.test(value.worldCreatedAt) && integer(Number(value.worldCreatedAt), 0, MAX_TIMESTAMP)
+    && typeof value.snapshotHash === "string" && HASH.test(value.snapshotHash)
+    && typeof value.snapshotChars === "string" && /^\d{1,6}$/.test(value.snapshotChars) && integer(Number(value.snapshotChars), 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_SNAPSHOT_CHARS)
+    && typeof value.snapshotUtf8Bytes === "string" && /^\d{1,6}$/.test(value.snapshotUtf8Bytes) && integer(Number(value.snapshotUtf8Bytes), 1, SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES * SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS)
+    && typeof value.stateBytes === "string" && /^\d{1,6}$/.test(value.stateBytes) && integer(Number(value.stateBytes), 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES)
+    && typeof value.chunkCount === "string" && /^[1-4]$/.test(value.chunkCount)
+    && typeof value.uploadId === "string" && /^[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-z]{1,6}$/.test(value.uploadId)
+    && typeof value.revision === "string" && REVISION.test(value.revision) && integer(Number(value.revision), 1, Number.MAX_SAFE_INTEGER)
+    && typeof value.uploadedAt === "string" && /^\d{1,16}$/.test(value.uploadedAt) && integer(Number(value.uploadedAt), 0, MAX_TIMESTAMP);
+}
+
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -110,7 +129,10 @@ export function cloudBackupUtf8Bytes(value: string): number {
 }
 
 export function cloudBackupStoredChunkBytes(value: string): number {
-  return cloudBackupUtf8Bytes(JSON.stringify(value)) + 768;
+  return cloudBackupUtf8Bytes(JSON.stringify({
+    userId: "u".repeat(520), worldId: "w".repeat(64), uploadId: "f".repeat(64), chunkIndex: "3",
+    chunkData: value, chunkBytes: "48000", chunkStateBytes: "999999", protocolVersion: "1",
+  })) + 1_024;
 }
 
 export function splitSinglePlayerCloudBackupSnapshot(value: string): string[] | null {
@@ -166,7 +188,7 @@ function parseEnvelope(
     || envelope.format !== "lakecraft.singleplayer" || envelope.version !== 1
     || typeof envelope.checksum !== "string" || !HASH.test(envelope.checksum)
     || !integer(envelope.savedAt, 0, MAX_TIMESTAMP) || !integer(envelope.sequence, 1, Number.MAX_SAFE_INTEGER)
-    || !record(envelope.payload) || !record(envelope.payload.world)
+    || !record(envelope.payload) || !isRestorableSinglePlayerSnapshot(envelope.payload) || !record(envelope.payload.world)
     || envelope.payload.world.worldId !== worldId || envelope.payload.world.seed !== seed
     || envelope.payload.world.createdAt !== worldCreatedAt
     || (envelope.payload.world.gameMode !== undefined && envelope.payload.world.gameMode !== gameMode)) return null;
@@ -193,7 +215,7 @@ export function parseSinglePlayerCloudBackupCommitRequest(raw: string):
   const chunks = splitSinglePlayerCloudBackupSnapshot(value[7]);
   if (!chunks) return { ok: false, reason: "cloud_capacity" };
   const snapshotUtf8Bytes = cloudBackupUtf8Bytes(value[7]);
-  const stateBytes = chunks.reduce((sum, chunk) => sum + cloudBackupStoredChunkBytes(chunk), 1_024);
+  const stateBytes = chunks.reduce((sum, chunk) => sum + cloudBackupStoredChunkBytes(chunk), SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES);
   if (stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) return { ok: false, reason: "cloud_capacity" };
   const parsed = parseEnvelope(value[1], value[3], value[4], value[5], value[7]);
   if (!parsed) return { ok: false, reason: "invalid_snapshot" };
@@ -280,3 +302,4 @@ export function singlePlayerCloudBackupWire(
   return [1, manifest.worldId, manifest.name, manifest.seed, manifest.gameMode as "survival" | "creative",
     manifest.worldCreatedAt, manifest.snapshotHash, snapshotJson, manifest.revision, manifest.uploadedAt];
 }
+import { isRestorableSinglePlayerSnapshot } from "./singlePlayerSnapshotGate.ts";
