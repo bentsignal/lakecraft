@@ -3,28 +3,38 @@ import { readFileSync } from "node:fs";
 import { TEXTURED_WORLD_VERTEX_FLOATS, blockTextureForFace } from "../client/game/blockTextures.ts";
 import { packSkyExposureShade, unpackSkyExposureShade } from "../client/game/skyExposure.ts";
 import { BLOCK } from "../client/game/types.ts";
-import { appendSaplingMesh } from "../client/game/voxelEngine.ts";
+import {
+  TERRAIN_VERTEX_SHADER,
+  VERTEX_SHADER,
+  appendSaplingMesh,
+} from "../client/game/voxelEngine.ts";
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-const colorShader = engine.slice(engine.indexOf("const VERTEX_SHADER"), engine.indexOf("const FRAGMENT_SHADER"));
-assert.ok(colorShader.includes("vec3 lighting = mix(vec3("));
-assert.ok(colorShader.includes("surfaceLighting, skyExposure)"));
-assert.ok(colorShader.includes("vColor = baseColor * mix(vec3(1.0), lighting, uLightingEnabled)"));
+assert.equal(engine.match(/vec3 lightAt\(/g)?.length, 1,
+  "the client source stores one shared color/terrain lighting implementation");
+assert.equal(VERTEX_SHADER.includes("\n"), false, "the assembled color shader remains compact");
+assert.equal(TERRAIN_VERTEX_SHADER.includes("\n"), false, "the assembled terrain shader remains compact");
+assert.match(VERTEX_SHADER, /lightAt\(aPosition,e\)/);
+assert.match(VERTEX_SHADER, /vColor=c\*mix\(vec3\(1\.\),lightAt\(aPosition,e\),uLightingEnabled\)/);
 for (const [red, exposure] of [[0.57, 0], [0.57, 1], [0.57, 2], [0.57, 3]] as const) {
   const unpacked = unpackSkyExposureShade(packSkyExposureShade(red, exposure));
   assert.equal(unpacked.exposureLevel, exposure);
   assert.ok(Math.abs(unpacked.faceShade - red) < 1e-12);
 }
-const shader = engine.slice(
-  engine.indexOf("const TERRAIN_VERTEX_SHADER"),
-  engine.indexOf("const TERRAIN_FRAGMENT_SHADER"),
-);
-assert.ok(shader.includes("float packedExposure = step("));
-assert.ok(shader.includes("float skyExposure = mix(1.0, floor(encodedShade / 2.0) /"));
-assert.ok(shader.includes("vec3 lighting = mix(vec3("));
-assert.ok(shader.includes("surfaceLighting, skyExposure)"));
-assert.ok(shader.includes("vLight = (lighting + torchLight + emissiveLight) * faceShade"),
+assert.match(TERRAIN_VERTEX_SHADER, /p=step\(7\.5,aShade\)/);
+assert.match(TERRAIN_VERTEX_SHADER, /e=mix\(1\.,floor\(s\/2\.\)\/3\.0,p\)/);
+assert.match(TERRAIN_VERTEX_SHADER, /vLight=\(lightAt\(aPosition,e\)\+vec3\(\.22,\.07,\.015\)\*m\)\*f/,
   "torch emission is added after cave daylight attenuation");
+assert.equal(
+  VERTEX_SHADER.match(/vec3 lightAt\(/g)?.length,
+  1,
+  "the color shader assembles one shared lighting implementation",
+);
+assert.equal(
+  TERRAIN_VERTEX_SHADER.match(/vec3 lightAt\(/g)?.length,
+  1,
+  "the terrain shader assembles one shared lighting implementation",
+);
 assert.ok(engine.includes('textureName === "furnace_front"'),
   "the furnace front retains a small exposure-independent emissive term");
 assert.equal(TEXTURED_WORLD_VERTEX_FLOATS, 6, "exposure reuses the retained texture shade channel");
