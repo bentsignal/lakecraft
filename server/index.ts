@@ -1588,7 +1588,40 @@ export default capsule({
       receiptCreatedAt: string()
     })
       .index("by_event", ["eventId"])
-      .index("by_created", ["receiptCreatedAt"])
+      .index("by_created", ["receiptCreatedAt"]),
+
+    /** INCIDENT-CONTAINMENT-SCHEMA-BEGIN
+     * Preserves rows written by accidental deploy dep_GeGTYPSk0TrcWk9E.
+     * These tables are intentionally inert: no query, mutation, endpoint, or client transport may use them.
+     */
+    singlePlayerCloudBackupParts: table({
+      userId: string(),
+      worldId: string(),
+      part: string(),
+      data: string(),
+    })
+      .index(BS.byUser, ["userId"]),
+
+    singlePlayerCloudBackupQuota: table({
+      quotaKey: string(),
+      activeStateBytes: string(),
+      dayKey: string(),
+      acceptedToday: string(),
+      lastAcceptedAt: string(),
+      revision: string(),
+    }).index("by_key", ["quotaKey"]),
+
+    singlePlayerCloudBackupBudgets: table({
+      userId: string(),
+      dayKey: string(),
+      acceptedToday: string(),
+      lastAcceptedAt: string(),
+      activeBackup: string(),
+      cleanupAfter: string(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_cleanup", ["activeBackup", "cleanupAfter"])
+    /** INCIDENT-CONTAINMENT-SCHEMA-END */
   },
 
   queries: {
