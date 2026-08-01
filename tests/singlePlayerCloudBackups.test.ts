@@ -871,8 +871,10 @@ assert.match(serverSource, /row\[BS\.userId\] === userId && \(!deleting \|\| cur
 assert.match(serverSource, /singlePlayerCloudBudgetCleanupAfter\(row\[BS\.dayKey\], Number\(row\[BS\.lastAcceptedAt\]\)\)[\s\S]*?validUtcCloudBackupDay\(quotaState!\[1\]\)/,
   "budget day/timestamp pairs and quota day keys require canonical real UTC dates before mutation");
 const cloudMutation = serverSource.slice(serverSource.indexOf("mutateSinglePlayerCloudBackup"), serverSource.indexOf("growOakTree"));
+assert.match(cloudMutation, /singlePlayerCloudBackupParts: cloudParts,[\s\S]*?singlePlayerCloudBackupBudgets: cloudBudgets,[\s\S]*?singlePlayerCloudBackupQuota: cloudQuota \} = ctx\.db/,
+  "compact table handles remain bound to the exact cloud tables");
 const undercountGuard = cloudMutation.indexOf("!recoveringDelete && quota");
-const destructiveDelete = cloudMutation.indexOf("for (const row of currentParts) await ctx.db.singlePlayerCloudBackupParts.delete");
+const destructiveDelete = cloudMutation.indexOf("for (const row of currentParts) await cloudParts.delete");
 assert.ok(undercountGuard >= 0 && undercountGuard < cloudMutation.indexOf("if (deleting)") && undercountGuard < destructiveDelete,
   "strict full-current quota validation remains before commit and dedupe paths");
 assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return invalid\(\);[\s\S]*?for \(const row of currentParts\)/,
@@ -901,9 +903,9 @@ assert.match(cloudMutation, /if \(!validBudget\(row\)[\s\S]*?continue;[\s\S]*?if
   "malformed or active cross-owner cleanup candidates are isolated instead of failing the caller");
 assert.doesNotMatch(cloudMutation, /String\(Number\(current\?\.\[9\] \?\? "0"\) \+ 1\)/,
   "server manifests never mint a reusable per-world successor");
-assert.equal((cloudMutation.match(/singlePlayerCloudBackupQuota\.delete/g) ?? []).length, 1,
+assert.equal((cloudMutation.match(/cloudQuota\.delete/g) ?? []).length, 1,
   "only bounded account disposition may merge duplicate global quota rows");
-assert.match(cloudMutation, /if \(disposition\)[\s\S]*?for \(const row of quotaRows\) await ctx\.db\.singlePlayerCloudBackupQuota\.delete/,
+assert.match(cloudMutation, /if \(disposition\)[\s\S]*?for \(const row of quotaRows\) await cloudQuota\.delete/,
   "account disposition deterministically canonicalizes only the selected bounded quota rows");
 assert.match(cloudMutation, /const cleanupCandidates =[\s\S]*?if \(userBudgetRows\.length > 1/,
   "ordinary mutations retain strict bookkeeping rejection after the recovery-only branch");

@@ -2175,14 +2175,16 @@ export default capsule({
       if (!disposition && !deleting && !parsed?.[0]) {
         return invalid(parsed?.[1] ?? BS.invalidRequest);
       }
+      const { singlePlayerCloudBackupParts: cloudParts, singlePlayerCloudBackupBudgets: cloudBudgets,
+        singlePlayerCloudBackupQuota: cloudQuota } = ctx.db;
       const worldId = deleting?.[1] ?? parsed?.[1][0] ?? "";
       const expectedRevision = deleting?.[2] ?? parsed?.[1][5] ?? "0";
-      const userParts = await oldestByIndex(ctx.db.singlePlayerCloudBackupParts,
+      const userParts = await oldestByIndex(cloudParts,
         BS.byUser, (q) => q.eq(BS.userId, userId))
         .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1);
-      const userBudgetRows = await newestByIndex(ctx.db.singlePlayerCloudBackupBudgets,
+      const userBudgetRows = await newestByIndex(cloudBudgets,
         BS.byUser, (q) => q.eq(BS.userId, userId)).take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1);
-      const quotaRows = await newestByIndex(ctx.db.singlePlayerCloudBackupQuota,
+      const quotaRows = await newestByIndex(cloudQuota,
         "by_key", (q) => q.eq(BS.quotaKey, SINGLE_PLAYER_CLOUD_QUOTA_KEY))
         .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1);
       const dayKey = utcCloudBackupDay(serverNow);
@@ -2256,23 +2258,23 @@ export default capsule({
           [BS.dayKey]: exactAccounting ? quotaState![1] : dayKey,
           [BS.acceptedToday]: exactAccounting ? quotaState![2] : "120",
           [BS.lastAcceptedAt]: exactAccounting ? quotaState![3] : String(serverNow), [BS.revision]: proposedRevision };
-        if (quotaRows.length === 1) await ctx.db.singlePlayerCloudBackupQuota.update(quotaRows[0].id, quotaValue);
+        if (quotaRows.length === 1) await cloudQuota.update(quotaRows[0].id, quotaValue);
         else {
-          for (const row of quotaRows) await ctx.db.singlePlayerCloudBackupQuota.delete(row.id);
-          await ctx.db.singlePlayerCloudBackupQuota.insert(quotaValue);
+          for (const row of quotaRows) await cloudQuota.delete(row.id);
+          await cloudQuota.insert(quotaValue);
         }
-        for (const row of batch) await ctx.db.singlePlayerCloudBackupParts.delete(row.id);
-        for (const row of budgetBatch) await ctx.db.singlePlayerCloudBackupBudgets.delete(row.id);
-        if (fenceHeader) await ctx.db.singlePlayerCloudBackupParts.insert({
+        for (const row of batch) await cloudParts.delete(row.id);
+        for (const row of budgetBatch) await cloudBudgets.delete(row.id);
+        if (fenceHeader) await cloudParts.insert({
           userId, [BS.worldId]: SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD, [BS.part]: "0", [BS.data]: fenceHeader,
         });
-        if (resuming || !continuation) await ctx.db.singlePlayerCloudBackupBudgets.insert({ userId,
+        if (resuming || !continuation) await cloudBudgets.insert({ userId,
           [BS.dayKey]: "1970-01-01", [BS.acceptedToday]: "0", [BS.lastAcceptedAt]: "0",
           [BS.activeBackup]: "1", [BS.cleanupAfter]: SINGLE_PLAYER_CLOUD_ACTIVE });
         return resuming ? response(8, proposedRevision)
           : [7, proposedRevision, continuation ? 1 : 0, serverNow] as const;
       }
-      const cleanupCandidates = await oldestByIndex(ctx.db.singlePlayerCloudBackupBudgets,
+      const cleanupCandidates = await oldestByIndex(cloudBudgets,
         "by_cleanup", (q) => q.eq(BS.activeBackup, "0")
           .lt(BS.cleanupAfter, String(serverNow + 1).padStart(16, "0"))).take(5);
       if (userBudgetRows.length > 1 || quotaRows.length > 1 || !validBudget(userBudget)
@@ -2315,7 +2317,7 @@ export default capsule({
         if (!validBudget(row) || cleanupOwners.has(row[BS.userId])
           || row[BS.userId] === userId && (!deleting || current || currentTombstone)) continue;
         cleanupOwners.add(row[BS.userId]);
-        const ownerBackup = await newestByIndex(ctx.db.singlePlayerCloudBackupParts,
+        const ownerBackup = await newestByIndex(cloudParts,
           BS.byUser, (q) => q.eq(BS.userId, row[BS.userId])).take(1);
         if (ownerBackup.length !== 0) continue;
         cleanupRows.push(row);
@@ -2339,7 +2341,7 @@ export default capsule({
         return invalid();
       }
       const applyCleanup = async () => {
-        for (const row of cleanupRows) await ctx.db.singlePlayerCloudBackupBudgets.delete(row.id);
+        for (const row of cleanupRows) await cloudBudgets.delete(row.id);
       };
       const nextQuotaValue = (activeStateBytes: number, minimumBytes: number, nextDayKey: string,
         acceptedToday: number, lastAcceptedAt: number) => {
@@ -2367,7 +2369,7 @@ export default capsule({
               quotaState![1], Number(quotaState![2]), Number(quotaState![3]));
             if (!nextQuota) return invalid();
             await applyCleanup();
-            await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
+            await cloudQuota.update(quota.id, nextQuota);
           }
           return response(2, "0");
         }
@@ -2384,11 +2386,11 @@ export default capsule({
         const nextQuota = nextQuotaValue(nextActiveStateBytes, remainingMinimum,
           quotaState![1], Number(quotaState![2]), Number(quotaState![3]));
         if (!nextQuota) return invalid();
-        for (const row of currentParts) await ctx.db.singlePlayerCloudBackupParts.delete(row.id);
-        await ctx.db.singlePlayerCloudBackupParts.insert({ userId, [BS.worldId]: worldId,
+        for (const row of currentParts) await cloudParts.delete(row.id);
+        await cloudParts.insert({ userId, [BS.worldId]: worldId,
           [BS.part]: "0", [BS.data]: tombstoneHeader });
         await applyCleanup();
-        await ctx.db.singlePlayerCloudBackupQuota.update(quota!.id, nextQuota);
+        await cloudQuota.update(quota!.id, nextQuota);
         return response(2, proposedRevision);
       }
       const parsedCandidate = parsed![1];
@@ -2419,7 +2421,7 @@ export default capsule({
             Number(quotaState![2]), Number(quotaState![3]));
           if (!nextQuota) return invalid();
           await applyCleanup();
-          await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
+          await cloudQuota.update(quota.id, nextQuota);
         }
         return response(1, decision[2][9]);
       }
@@ -2430,23 +2432,23 @@ export default capsule({
         SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES + nextUserStateBytes + SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES,
         dayKey, globalAcceptedToday + 1, serverNow);
       if (!nextQuota) return invalid();
-      for (const row of currentParts) await ctx.db.singlePlayerCloudBackupParts.delete(row.id);
-      await ctx.db.singlePlayerCloudBackupParts.insert({
+      for (const row of currentParts) await cloudParts.delete(row.id);
+      await cloudParts.insert({
         userId, [BS.worldId]: worldId, [BS.part]: "0", [BS.data]: singlePlayerCloudBackupHeader(decision[2]),
       });
       for (let index = 0; index < candidate[10].length; index += 1) {
-        await ctx.db.singlePlayerCloudBackupParts.insert({
+        await cloudParts.insert({
           userId, [BS.worldId]: worldId, [BS.part]: String(index + 1), [BS.data]: candidate[10][index],
         });
       }
       await applyCleanup();
-      if (quota) await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
-      else await ctx.db.singlePlayerCloudBackupQuota.insert(nextQuota);
+      if (quota) await cloudQuota.update(quota.id, nextQuota);
+      else await cloudQuota.insert(nextQuota);
       const nextUserBudget = { userId, [BS.dayKey]: dayKey,
         [BS.acceptedToday]: String(userAcceptedToday + 1), [BS.lastAcceptedAt]: String(serverNow),
         [BS.activeBackup]: "1", [BS.cleanupAfter]: SINGLE_PLAYER_CLOUD_ACTIVE };
-      if (userBudget) await ctx.db.singlePlayerCloudBackupBudgets.update(userBudget.id, nextUserBudget);
-      else await ctx.db.singlePlayerCloudBackupBudgets.insert(nextUserBudget);
+      if (userBudget) await cloudBudgets.update(userBudget.id, nextUserBudget);
+      else await cloudBudgets.insert(nextUserBudget);
       return response(1, decision[2][9]);
     }),
 
