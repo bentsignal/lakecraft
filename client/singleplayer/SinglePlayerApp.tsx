@@ -131,6 +131,7 @@ import {
   localCommandShortcutDraft,
   localTimeClockUpdate,
   parseLocalCommand,
+  pickCreativeCatalogItem,
   transitionLocalGameMode,
   type LocalGameMode,
 } from "./localCommands.ts";
@@ -534,6 +535,11 @@ function SinglePlayerWorld({
     inventoryRef.current = next;
     setInventory(next);
     markWorldDirty();
+  }
+
+  function pickCreativeItem(itemId: ItemId): void {
+    if (gameModeRef.current !== "creative") return;
+    updateInventory(pickCreativeCatalogItem(inventoryRef.current, selectedRef.current, itemId));
   }
 
   function appendCommandMessage(
@@ -1183,6 +1189,8 @@ function SinglePlayerWorld({
       },
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
       canTakePlayerDamage: () => gameModeRef.current === "survival",
+      canCreativeFly: () => gameModeRef.current === "creative",
+      canMobsTargetPlayer: () => gameModeRef.current === "survival",
       canSprint: () => hungerRef.current > 6 || gameModeRef.current === "creative",
       continuousBlockPlacement: true,
       canPlaceSelectedBlock: (block) => {
@@ -1863,8 +1871,10 @@ function SinglePlayerWorld({
         deathCause={deathCause}
         deathScreenOpen={deathScreenOpen}
         equipment={equipment}
+        creativeInventory={gameMode === "creative"}
         health={health}
         hunger={hunger}
+        showSurvivalStatus={gameMode === "survival"}
         inventory={inventory}
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
@@ -1872,6 +1882,7 @@ function SinglePlayerWorld({
         messages={messages}
         onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); requestGameplayPointerLock(); }}
         onCrafted={() => undefined}
+        onCreativePick={pickCreativeItem}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         disconnectLabel="Save and Quit to Title"
         lastAutosavedText={lastAutosavedText}

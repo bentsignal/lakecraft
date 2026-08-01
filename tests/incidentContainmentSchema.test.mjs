@@ -87,7 +87,7 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 128, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "6955457cdd0b5fd7fe804af5f20487eb65078bd56b839d4c1f577e56fb14f40c",
+  "b82254be993198eca0f3d6a7fad4f40f8c6d75db4e240ba458c9f9c3eaeea425",
   "runtime sources match the reviewed renderer, server, and client headroom checkpoint");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

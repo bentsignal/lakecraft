@@ -4,6 +4,7 @@ import {
   MAX_HEALTH,
   MAX_HUNGER,
   addItem,
+  createItemStack,
   type Equipment,
   type Inventory,
   type ItemId,
@@ -152,6 +153,14 @@ export function giveLocalItem(inventory: Inventory, itemId: ItemId, count: numbe
   return { ok: true, inventory: added.inventory, itemId, count };
 }
 
+/** Creative catalog picks replace exactly one selected slot with one canonical full stack. */
+export function pickCreativeCatalogItem(inventory: Inventory, slot: number, itemId: ItemId): Inventory {
+  const next = cloneInventory(inventory);
+  if (!Number.isInteger(slot) || slot < 0 || slot >= next.length) return next;
+  next[slot] = createItemStack(itemId, ITEMS[itemId].maxStack);
+  return next;
+}
+
 export interface LocalModeState {
   mode: LocalGameMode;
   health: number;
@@ -165,10 +174,11 @@ export function transitionLocalGameMode(
   current: LocalModeState,
   mode: LocalGameMode,
 ): LocalModeState {
+  const restoreSurvival = current.mode === "creative" && mode === "survival";
   return {
     mode,
-    health: mode === "creative" ? MAX_HEALTH : Math.max(1, Math.min(MAX_HEALTH, current.health)),
-    hunger: mode === "creative" ? MAX_HUNGER : Math.max(0, Math.min(MAX_HUNGER, current.hunger)),
+    health: mode === "creative" || restoreSurvival ? MAX_HEALTH : Math.max(1, Math.min(MAX_HEALTH, current.health)),
+    hunger: mode === "creative" || restoreSurvival ? MAX_HUNGER : Math.max(0, Math.min(MAX_HUNGER, current.hunger)),
     inventory: cloneInventory(current.inventory),
     equipment: {
       head: current.equipment.head ? { ...current.equipment.head } : null,

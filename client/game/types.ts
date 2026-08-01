@@ -384,6 +384,10 @@ export interface VoxelEngineOptions {
   onFootstep?: (block: BlockId) => void;
   /** Current authoritative hunger gate for initiating a local sprint. */
   canSprint?: () => boolean;
+  /** Offline Creative-only movement gate, sampled every input/frame so mode changes fail closed. */
+  canCreativeFly?: () => boolean;
+  /** Offline Creative players are omitted from hostile AI acquisition and projectile collision. */
+  canMobsTargetPlayer?: () => boolean;
   /** Local posture feedback for survival exertion and UI; never adds a network write. */
   onMovementModeChange?: (mode: PlayerMovementMode, activityMultiplier: number) => void;
   /** Discrete first-person swing/use feedback; never emitted from the frame loop. */

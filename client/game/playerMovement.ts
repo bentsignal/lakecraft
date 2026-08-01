@@ -68,6 +68,38 @@ export const WALK_SPEED = 4.35;
 export const SPRINT_SPEED = 5.6;
 export const SNEAK_SPEED = 1.3;
 export const SPRINT_HUNGER_THRESHOLD = 6;
+export const CREATIVE_FLIGHT_SPEED = 7;
+export const CREATIVE_FLIGHT_DOUBLE_TAP_MS = 300;
+
+export interface CreativeFlightTapState {
+  flying: boolean;
+  lastSpaceTapAt: number;
+}
+
+export function createCreativeFlightTapState(): CreativeFlightTapState {
+  return { flying: false, lastSpaceTapAt: -Infinity };
+}
+
+/** Pointer-lock/modal guards live at the caller; this resolves one physical Space press. */
+export function transitionCreativeFlightTap(
+  state: Readonly<CreativeFlightTapState>,
+  now: number,
+  allowed: boolean,
+  repeat = false,
+): CreativeFlightTapState {
+  if (!allowed) return createCreativeFlightTapState();
+  if (repeat || !Number.isFinite(now)) return { ...state };
+  const elapsed = now - state.lastSpaceTapAt;
+  return elapsed >= 0 && elapsed <= CREATIVE_FLIGHT_DOUBLE_TAP_MS
+    ? { flying: !state.flying, lastSpaceTapAt: -Infinity }
+    : { flying: state.flying, lastSpaceTapAt: now };
+}
+
+/** Space and Shift cancel one another and never compound vertical speed. */
+export function creativeFlightVerticalVelocity(ascend: boolean, descend: boolean): number {
+  if (ascend === descend) return 0;
+  return ascend ? CREATIVE_FLIGHT_SPEED : -CREATIVE_FLIGHT_SPEED;
+}
 
 export const STANDING_EYE_HEIGHT = PLAYER_STANDING_EYE_HEIGHT;
 export const SNEAKING_EYE_HEIGHT = PLAYER_SNEAKING_EYE_HEIGHT;

@@ -131,11 +131,14 @@ import {
   RELEASED_SPRINT_CONTROLS,
   advanceHeadBob,
   createHeadBobState,
+  createCreativeFlightTapState,
+  creativeFlightVerticalVelocity,
   resetHeadBob,
   sprintControlHeld,
   smoothMovementValue,
   smoothPlayerPosture,
   updateSprintControl,
+  transitionCreativeFlightTap,
   writeHorizontalMovementDelta,
   writePlayerEye,
   type HeadBobOffsets,
@@ -1389,6 +1392,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const localCreeperExplosions: LocalCreeperExplosionEvent[] = [];
   const velocity: Vec3 = [0, 0, 0];
   const keys = new Set<string>();
+  let creativeFlight = createCreativeFlightTapState();
   let sprintControls: SprintControlState = RELEASED_SPRINT_CONTROLS;
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
   let selectedItem = options.selectedItem ?? null;
@@ -1499,6 +1503,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function clearHeldMovementInput(): void {
     keys.clear();
     sprintControls = RELEASED_SPRINT_CONTROLS;
+    creativeFlight.lastSpaceTapAt = -Infinity;
   }
 
   function updateMiningCrackGeometry(): void {
@@ -2058,11 +2063,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     let steps = 0;
     while (mobAccumulatorSeconds >= mobStepSeconds && steps < 3) {
       const isNight = dayNightState.label === "night" || dayNightState.label === "dusk";
+      const playerTarget = options.canMobsTargetPlayer?.() === false ? null : pose;
       stepMobSimulation(mobSimulation, {
         dtSeconds: mobStepSeconds,
         isNight,
         terrainHeight: (x, z) => terrainHeight(x, z, seed),
-        player: pose,
+        player: playerTarget,
         canOccupy: mobCanOccupy,
         isProjectileBlocked: (x, y, z) => {
           const blockY = Math.floor(y);
@@ -2073,12 +2079,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       });
       mobAccumulatorSeconds -= mobStepSeconds;
       steps += 1;
-      const contactDamage = consumeMobContactDamage(
-        mobSimulation,
-        pose,
-        mobSimulation.elapsedSeconds,
-        isNight,
-      );
+      const contactDamage = playerTarget ? consumeMobContactDamage(
+        mobSimulation, pose, mobSimulation.elapsedSeconds, isNight,
+      ) : 0;
       const projectileDamage = consumeMobProjectileDamage(mobSimulation);
       if (playerHealth > 0) {
         const incomingDamage = contactDamage + projectileDamage;
@@ -2143,14 +2146,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return;
     }
     playerViewSuspended = false;
+    if (options.canCreativeFly?.() !== true && creativeFlight.flying) {
+      creativeFlight = createCreativeFlightTapState();
+      velocity[1] = 0;
+      fallAirborne = true;
+      fallPeakY = pose.y;
+    }
+    const flying = creativeFlight.flying && options.canCreativeFly?.() === true;
     const forwardInput = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
     const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
-    const ladderAtFrameStart = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
+    const ladderAtFrameStart = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
     const shiftHeld = keys.has("ShiftLeft") || keys.has("ShiftRight");
     // Standing-clearance reads are only needed on the release edge. The mode
     // then stays sneaking until the full standing body fits again.
     const sneakHeld = resolveSneakIntent(
-      shiftHeld,
+      flying ? false : shiftHeld,
       movementMode,
       () => collides(pose.x, pose.y, pose.z, STANDING_BODY_HEIGHT),
     );
@@ -2180,26 +2190,31 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const dz = horizontalMovementDelta.z;
     const movementStartX = pose.x;
     const movementStartZ = pose.z;
-    const protectLedge = movementMode === "sneak" && grounded;
+    const protectLedge = !flying && movementMode === "sneak" && grounded;
     moveHorizontalAxis(0, dx, protectLedge);
     moveHorizontalAxis(2, dz, protectLedge);
     updateStreamingWindow();
-    const touchingLadder = playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
+    const touchingLadder = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
     const verticalStartY = pose.y;
-    velocity[1] = ladderVerticalVelocity(
-      velocity[1],
-      touchingLadder,
-      keys.has("KeyW") || keys.has("Space"),
-      keys.has("KeyS") || keys.has("ShiftLeft") || keys.has("ShiftRight"),
-      dt,
-    );
+    velocity[1] = flying
+      ? creativeFlightVerticalVelocity(keys.has("Space"), shiftHeld)
+      : ladderVerticalVelocity(
+        velocity[1],
+        touchingLadder,
+        keys.has("KeyW") || keys.has("Space"),
+        keys.has("KeyS") || shiftHeld,
+        dt,
+      );
     const verticalBlocked = moveAxis(1, velocity[1] * dt);
     if (verticalBlocked) {
       grounded = velocity[1] < 0;
       velocity[1] = 0;
     } else grounded = false;
 
-    if (touchingLadder) {
+    if (flying) {
+      fallAirborne = false;
+      fallPeakY = pose.y;
+    } else if (touchingLadder) {
       fallAirborne = false;
       fallPeakY = pose.y;
     } else if (!grounded) {
@@ -2747,9 +2762,23 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (controlKey) sprintControls = updateSprintControl(sprintControls, event.code as SprintControlCode, true);
     else keys.add(event.code);
     if (event.code === "Space") {
+      const wasFlying = creativeFlight.flying;
+      creativeFlight = transitionCreativeFlightTap(
+        creativeFlight,
+        performance.now(),
+        options.canCreativeFly?.() === true,
+        event.repeat,
+      );
+      if (creativeFlight.flying !== wasFlying) {
+        velocity[1] = 0;
+        grounded = false;
+        fallAirborne = false;
+        fallPeakY = pose.y;
+      }
       // Space is a climb command while touching a ladder; do not inject the
       // normal 8.25-block/s ground impulse before the next physics frame.
-      if (grounded && !playerTouchesLadder(pose.x, pose.y, pose.z, getBlock)) {
+      if (!creativeFlight.flying && !wasFlying && grounded
+        && !playerTouchesLadder(pose.x, pose.y, pose.z, getBlock)) {
         velocity[1] = PLAYER_JUMP_SPEED;
         grounded = false;
       }

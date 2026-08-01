@@ -3,12 +3,14 @@ import {
   ITEMS,
   RECIPES,
   availableRecipes,
+  createItemStack,
   maxItemDurability,
   remainingItemDurability,
   type ArmorSlot,
   type CraftingContext,
   type Equipment,
   type Inventory,
+  type ItemId,
   type Recipe,
 } from "../../shared/game";
 import { CRAFTING_GRID_RECIPES, previewCraftingResult, type CraftingGridSize } from "../../shared/craftingGrid";
@@ -41,6 +43,14 @@ import { ItemGlyph } from "./ItemGlyph";
 import * as BS from "../../shared/bundleStrings.ts";
 import { itemTooltipAttributes } from "./itemTooltipModel";
 
+const CATALOG_LABELS = {
+  block: "Blocks",
+  material: "Materials",
+  tool: "Tools",
+  armor: "Armor",
+  food: "Food",
+} as const;
+
 export type InventoryCraftingDrawerProps = {
   open: boolean;
   inventory: Inventory;
@@ -58,6 +68,8 @@ export type InventoryCraftingDrawerProps = {
   ) => boolean;
   /** Local worlds may retain a crash-safe stowed preview after every valid interaction. */
   onWorkspacePreview?: (snapshot: StowedInventorySnapshot) => void;
+  creative?: boolean;
+  onCreativePick?: (itemId: ItemId) => void;
 };
 
 export function InventoryCraftingDrawer({
@@ -72,11 +84,16 @@ export function InventoryCraftingDrawer({
   onCrafted,
   onWorkspaceChange,
   onWorkspacePreview,
+  creative = false,
+  onCreativePick,
 }: InventoryCraftingDrawerProps) {
   const size: CraftingGridSize = craftingContext === BS.craftingTable ? 3 : 2;
   const [workspace, setWorkspace] = useState<InventoryWorkspace>(() => createInventoryWorkspace(inventory, equipment, size));
   const [pointer, setPointer] = useState({ x: 0, y: 0 });
   const [interactionError, setInteractionError] = useState("");
+  const [creativeView, setCreativeView] = useState<"catalog" | "inventory">("catalog");
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogCategory, setCatalogCategory] = useState<"all" | keyof typeof CATALOG_LABELS>("all");
   const stateRef = useRef(workspace);
   const doubleClickBaseRef = useRef<InventoryWorkspace | null>(null);
   const recipeBatchesRef = useRef<InventoryRecipeBatch[]>([]);
@@ -104,6 +121,11 @@ export function InventoryCraftingDrawer({
     if (openedNow || authorityEpoch !== authorityEpochRef.current || stateRef.current.gridSize !== size) {
       resetFromAuthority();
     }
+    if (openedNow) {
+      setCreativeView("catalog");
+      setCatalogSearch("");
+      setCatalogCategory("all");
+    }
     wasOpenRef.current = open;
   }, [open, authorityEpoch, craftingContext]);
 
@@ -117,7 +139,7 @@ export function InventoryCraftingDrawer({
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [open, authorityEpoch, inventory, equipment, craftingContext]);
+  }, [open, authorityEpoch, inventory, equipment, craftingContext, creative, creativeView]);
 
   function publish(next: InventoryWorkspace): boolean {
     const stowed = stowInventoryWorkspace(next);
@@ -161,6 +183,10 @@ export function InventoryCraftingDrawer({
   }
 
   function closeAndStow() {
+    if (creative && creativeView === "catalog") {
+      onClose();
+      return;
+    }
     const stowed = stowInventoryWorkspace(stateRef.current);
     if (!stowed.ok) {
       setInteractionError("No room to stow the held items. Clear a slot first.");
@@ -192,6 +218,50 @@ export function InventoryCraftingDrawer({
   }
 
   if (!open) return null;
+  if (creative && creativeView === "catalog") {
+    const query = catalogSearch.trim().toLowerCase();
+    const items = (Object.values(ITEMS) as (typeof ITEMS)[ItemId][]).filter((item) => (
+      (catalogCategory === "all" || item.category === catalogCategory)
+      && (!query || item.label.toLowerCase().includes(query) || item.id.includes(query))
+    ));
+    return (
+      <div className="lc-drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAndStow(); }}>
+        <aside className="lc-drawer lc-inventory-window lc-creative-window" role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
+          <div className="lc-inventory-titlebar">
+            <h2 id="lc-inventory-title">Creative Inventory</h2>
+            <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
+          </div>
+          <input
+            aria-label="Search creative items"
+            autoFocus
+            className="lc-creative-search"
+            onInput={(event) => setCatalogSearch(event.currentTarget.value)}
+            placeholder="Search items..."
+            type="search"
+            value={catalogSearch}
+          />
+          <div className="lc-creative-tabs" role="tablist" aria-label="Creative item categories">
+            {(["all", ...Object.keys(CATALOG_LABELS)] as const).map((category) => (
+              <button aria-selected={catalogCategory === category} className={catalogCategory === category ? "is-active" : ""} key={category} onClick={() => setCatalogCategory(category)} role="tab" type="button">
+                {category === "all" ? "All" : CATALOG_LABELS[category]}
+              </button>
+            ))}
+          </div>
+          <div className="lc-creative-grid" role="grid" aria-label="Infinite creative item catalog">
+            {items.map((item) => {
+              const stack = createItemStack(item.id, item.maxStack);
+              return <button {...itemTooltipAttributes(stack)} aria-label={`${item.label}; put a full stack in selected hotbar slot`} className="lc-slot" key={item.id} onClick={() => onCreativePick?.(item.id)} role="gridcell" type="button"><ItemGlyph stack={stack} compact /></button>;
+            })}
+          </div>
+          {items.length === 0 ? <p className="lc-creative-empty">No matching items.</p> : null}
+          <div className="lc-creative-footer">
+            <small>Pick an item to fill the selected hotbar slot.</small>
+            <button onClick={() => { resetFromAuthority(); setCreativeView("inventory"); }} type="button">Player Inventory</button>
+          </div>
+        </aside>
+      </div>
+    );
+  }
   const preview = previewCraftingResult(workspace.grid, size, gridRecipes);
   const previewRecipe = preview ? displayedRecipes.find(({ id }) => id === preview.recipeId) : undefined;
   const inventoryOrder = [...workspace.inventory.slice(9).keys()].map((offset) => offset + 9)
@@ -304,6 +374,7 @@ export function InventoryCraftingDrawer({
           </div>
         </section>
         {interactionError ? <span className="lc-inventory-error" role="status">{interactionError}</span> : null}
+        {creative ? <div className="lc-creative-footer"><span /><button onClick={() => setCreativeView("catalog")} type="button">Creative Catalog</button></div> : null}
       </aside>
       {workspace.cursor ? (
         <span className="lc-cursor-stack" style={{ left: pointer.x + 8, top: pointer.y + 8 }} aria-live="polite">
