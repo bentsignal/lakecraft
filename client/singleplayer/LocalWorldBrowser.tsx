@@ -375,7 +375,8 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
             <h2 id={DIALOG_TITLE_ID}>{deleting ? "Delete World" : CREATE_LABEL}</h2>
             {deleting ? (
               <>
-                <p>Delete {confirmedWorld?.name ?? "this world"} and all local progress? This cannot be undone.</p>
+                <p>Delete {confirmedWorld?.name ?? "this world"} and all local progress? This cannot be undone.
+                  This does not delete any cloud backup.</p>
                 <label>
                   <span className="lc-local-world-delete-copy">
                     Type <strong>{DELETE_PHRASE}</strong> to confirm

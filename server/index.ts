@@ -337,6 +337,7 @@ import {
   parseSinglePlayerCloudBackupCommitRequest,
   parseSinglePlayerCloudBackupDeleteRequest,
   singlePlayerCloudBackupWire,
+  nextSinglePlayerCloudGeneration,
   singlePlayerCloudBackupHeader,
   singlePlayerCloudBackupDeleteActiveState,
   singlePlayerCloudBudgetCleanupAfter,
@@ -2101,34 +2102,32 @@ export default capsule({
     singlePlayerCloudBackups: query(async (ctx) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: BS.authenticationRequired, backups: [], quarantined: [], serverNow };
+        return [2, serverNow] as const;
       }
       const rows = await oldestByIndex(ctx.db.singlePlayerCloudBackupParts,
         BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS * (SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1) + 1);
       const inventory = inventorySinglePlayerCloudBackupParts(ctx.auth.userId, rows);
       if (!inventory.ok || inventory.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) {
-        return { ok: false, reason: BS.invalidServerState, backups: [], quarantined: [], serverNow };
+        return [3, serverNow] as const;
       }
       const backups = [];
       const quarantined = [];
       for (const world of inventory.worlds) {
         const loaded = loadSinglePlayerCloudBackupParts(ctx.auth.userId, world.parts);
         if (!loaded.ok) {
-          quarantined.push({ worldId: world.worldId, status: "corrupt", expectedRevision: "0",
-            deleteRequestJson: JSON.stringify([1, world.worldId, "0"]) });
+          quarantined.push([world.worldId, "0"]);
           continue;
         }
         const [{ manifest, snapshotJson }] = loaded.backups;
         if (Number(manifest.uploadedAt) > serverNow) {
-          quarantined.push({ worldId: world.worldId, status: "corrupt", expectedRevision: manifest.revision,
-            deleteRequestJson: JSON.stringify([1, world.worldId, manifest.revision]) });
+          quarantined.push([world.worldId, manifest.revision]);
           continue;
         }
         backups.push(singlePlayerCloudBackupWire(manifest, snapshotJson));
       }
       backups.sort((left, right) => left[1] < right[1] ? -1 : left[1] > right[1] ? 1 : 0);
-      return { ok: true, backups, quarantined, serverNow };
+      return [1, serverNow, backups, quarantined] as const;
     })
   },
 
@@ -2137,15 +2136,15 @@ export default capsule({
     mutateSinglePlayerCloudBackup: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
       if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
-        return { ok: false, reason: BS.authenticationRequired, serverNow };
+        return [4, serverNow] as const;
       }
       const userId = ctx.auth.userId;
       if (typeof userId !== "string" || userId.length < 1 || userId.length > 520) {
-        return { ok: false, reason: BS.invalidServerState, serverNow };
+        return [5, BS.invalidServerState, serverNow] as const;
       }
       const deleting = parseSinglePlayerCloudBackupDeleteRequest(requestJson);
       const parsed = deleting ? null : parseSinglePlayerCloudBackupCommitRequest(requestJson);
-      if (!deleting && !parsed?.ok) return { ok: false, reason: parsed?.reason ?? BS.invalidRequest, serverNow };
+      if (!deleting && !parsed?.ok) return [5, parsed?.reason ?? BS.invalidRequest, serverNow] as const;
       const worldId = deleting?.[1] ?? parsed!.candidate.worldId;
       const expectedRevision = deleting?.[2] ?? parsed!.candidate.expectedRevision;
       const userParts = await oldestByIndex(ctx.db.singlePlayerCloudBackupParts,
@@ -2160,14 +2159,14 @@ export default capsule({
           .lt("cleanupAfter", String(serverNow + 1).padStart(16, "0"))).take(5);
       const inventory = inventorySinglePlayerCloudBackupParts(userId, userParts);
       if (!inventory.ok || userBudgetRows.length > 1 || quotaRows.length > 1) {
-        return { ok: false, reason: BS.invalidServerState, serverNow };
+        return [5, BS.invalidServerState, serverNow] as const;
       }
       const reconstructed = inventory.worlds.map((world) => loadSinglePlayerCloudBackupParts(userId, world.parts));
       const healthyBackups = reconstructed.flatMap((result) => result.ok ? result.backups : []);
       const allHealthy = healthyBackups.length === inventory.worlds.length;
       if (!deleting && (!allHealthy
         || healthyBackups.some(({ manifest }) => Number(manifest.uploadedAt) > serverNow))) {
-        return { ok: false, reason: BS.invalidServerState, serverNow };
+        return [5, BS.invalidServerState, serverNow] as const;
       }
       const targetWorld = inventory.worlds.find((world) => world.worldId === worldId) ?? null;
       const currentBackup = healthyBackups.find(({ manifest }) => manifest.worldId === worldId) ?? null;
@@ -2191,7 +2190,7 @@ export default capsule({
       if (!validBudget(userBudget) || cleanupCandidates.some((row) => !validBudget(row))
         || Boolean(userBudget) !== (userWorldCount > 0 || userBudget?.activeBackup === "0")
         || (userWorldCount > 0 && userBudget?.activeBackup !== "1")) {
-        return { ok: false, reason: BS.invalidServerState, serverNow };
+        return [5, BS.invalidServerState, serverNow] as const;
       }
       const validQuota = !quota || (quota.quotaKey === SINGLE_PLAYER_CLOUD_QUOTA_KEY
         && /^\d{1,6}$/.test(quota.activeStateBytes) && validUtcCloudBackupDay(quota.dayKey) && /^\d{1,3}$/.test(quota.acceptedToday)
@@ -2201,7 +2200,15 @@ export default capsule({
         && validSinglePlayerCloudQuotaState(Number(quota.activeStateBytes), SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
           Number(quota.revision)));
       if (!validQuota || (!quota && (userWorldCount > 0 || userBudget || cleanupCandidates.length > 0))) {
-        return { ok: false, reason: BS.invalidServerState, serverNow };
+        return [5, BS.invalidServerState, serverNow] as const;
+      }
+      const quotaRevision = Number(quota?.revision ?? "0");
+      if (healthyBackups.some(({ manifest }) => Number(manifest.revision) > quotaRevision)) {
+        return [5, BS.invalidServerState, serverNow] as const;
+      }
+      const proposedRevision = nextSinglePlayerCloudGeneration(quotaRevision);
+      if (!proposedRevision) {
+        return [5, BS.invalidServerState, serverNow] as const;
       }
       let cleanupCharge = 0;
       const cleanupRows = [];
@@ -2209,7 +2216,7 @@ export default capsule({
         if (row.userId === userId && (!deleting || current)) continue;
         const ownerBackup = await newestByIndex(ctx.db.singlePlayerCloudBackupParts,
           BS.byUser, (q) => q.eq(BS.userId, row.userId)).take(1);
-        if (ownerBackup.length !== 0) return { ok: false, reason: BS.invalidServerState, serverNow };
+        if (ownerBackup.length !== 0) return [5, BS.invalidServerState, serverNow] as const;
         cleanupRows.push(row);
         cleanupCharge += SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES;
       }
@@ -2229,41 +2236,40 @@ export default capsule({
         || (!recoveringDelete && quota
           && !validSinglePlayerCloudQuotaState(globalStateBytes, minimumStateBytes, Number(quota.revision)))
         || (userWorldCount > 0 && !userBudget)) {
-        return { ok: false, reason: BS.invalidServerState, serverNow };
+        return [5, BS.invalidServerState, serverNow] as const;
       }
       const applyCleanup = async () => {
         for (const row of cleanupRows) await ctx.db.singlePlayerCloudBackupBudgets.delete(row.id);
       };
       const nextQuotaValue = (activeStateBytes: number, minimumBytes: number, nextDayKey: string,
         acceptedToday: number, lastAcceptedAt: number) => {
-        const revision = Number(quota?.revision ?? "0") + 1;
-        return validSinglePlayerCloudQuotaState(activeStateBytes, minimumBytes, revision)
+        return validSinglePlayerCloudQuotaState(activeStateBytes, minimumBytes, Number(proposedRevision))
           && validUtcCloudBackupDay(nextDayKey) && Number.isSafeInteger(acceptedToday) && acceptedToday >= 0
           && acceptedToday <= 120 && Number.isSafeInteger(lastAcceptedAt) && lastAcceptedAt >= 0
           && lastAcceptedAt <= serverNow && utcCloudBackupDay(lastAcceptedAt) === nextDayKey
           ? { quotaKey: SINGLE_PLAYER_CLOUD_QUOTA_KEY, activeStateBytes: String(activeStateBytes), dayKey: nextDayKey,
-            acceptedToday: String(acceptedToday), lastAcceptedAt: String(lastAcceptedAt), revision: String(revision) }
+            acceptedToday: String(acceptedToday), lastAcceptedAt: String(lastAcceptedAt), revision: proposedRevision }
           : null;
       };
       if (deleting) {
         const deleteDecision = decideSinglePlayerCloudBackupDeleteRevision(Boolean(targetWorld), current?.revision ?? null,
           expectedRevision);
-        if (deleteDecision === "conflict") return { ok: false, reason: "conflict", serverNow };
+        if (deleteDecision === "conflict") return [5, "conflict", serverNow] as const;
         if (!targetWorld) {
           if (cleanupRows.length && quota) {
             const nextQuota = nextQuotaValue(globalStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
               quota.dayKey, Number(quota.acceptedToday), Number(quota.lastAcceptedAt));
-            if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
+            if (!nextQuota) return [5, BS.invalidServerState, serverNow] as const;
             await applyCleanup();
             await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
           }
-          return { ok: true, kind: "delete_deduped", serverNow };
+          return [2, serverNow] as const;
         }
         let deleteBudgetCharge = 0;
         let dormantCleanupAfter = 0;
         if (userWorldCount === 1 && userBudget) {
           const cleanupAfter = singlePlayerCloudBudgetCleanupAfter(userBudget.dayKey, Number(userBudget.lastAcceptedAt));
-          if (cleanupAfter === null) return { ok: false, reason: BS.invalidServerState, serverNow };
+          if (cleanupAfter === null) return [5, BS.invalidServerState, serverNow] as const;
           if (cleanupAfter <= serverNow) {
             deleteBudgetCharge = SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES;
           } else {
@@ -2277,11 +2283,11 @@ export default capsule({
           + remainingUserStateBytes + remainingBudgetBytes;
         const nextActiveStateBytes = singlePlayerCloudBackupDeleteActiveState(globalStateBytes,
           remainingMinimum, targetWorld.stateBytes, deleteBudgetCharge);
-        if (nextActiveStateBytes === null) return { ok: false, reason: BS.invalidServerState, serverNow };
+        if (nextActiveStateBytes === null) return [5, BS.invalidServerState, serverNow] as const;
         const nextQuota = nextQuotaValue(nextActiveStateBytes,
           remainingMinimum,
           quota!.dayKey, Number(quota!.acceptedToday), Number(quota!.lastAcceptedAt));
-        if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
+        if (!nextQuota) return [5, BS.invalidServerState, serverNow] as const;
         for (const row of currentParts) await ctx.db.singlePlayerCloudBackupParts.delete(row.id);
         if (userWorldCount === 1 && userBudget) {
           if (deleteBudgetCharge) await ctx.db.singlePlayerCloudBackupBudgets.delete(userBudget.id);
@@ -2291,10 +2297,9 @@ export default capsule({
         }
         await applyCleanup();
         await ctx.db.singlePlayerCloudBackupQuota.update(quota!.id, nextQuota);
-        return { ok: true, kind: "deleted", serverNow };
+        return [2, serverNow] as const;
       }
       const parsedCandidate = parsed!.candidate;
-      const proposedRevision = String(Number(current?.revision ?? "0") + 1);
       const proposedHeader = singlePlayerCloudBackupHeader({
         worldId, name: parsedCandidate.name, seed: String(parsedCandidate.seed), gameMode: parsedCandidate.gameMode,
         worldCreatedAt: String(parsedCandidate.worldCreatedAt), snapshotHash: parsedCandidate.snapshotHash,
@@ -2309,17 +2314,20 @@ export default capsule({
         + (userBudget ? 0 : SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES);
       const decision = decideSinglePlayerCloudBackupCommit(current, current ? currentSnapshotJson : null, candidate,
         userWorldCount, userStateBytes, admissionStateBytes, userLastAcceptedAt,
-        userAcceptedToday, globalAcceptedToday, serverNow);
-      if (!decision.ok) return { ...decision, serverNow };
+        userAcceptedToday, globalAcceptedToday, proposedRevision, serverNow);
+      if (!decision.ok) return decision.reason === "cadence"
+        ? [6, decision.retryAfterMs!, serverNow] as const
+        : decision.reason === "cloud_capacity" || decision.reason === "world_limit"
+          ? [3, decision.reason, serverNow] as const : [5, decision.reason, serverNow] as const;
       if (decision.kind === "deduped") {
         if (cleanupRows.length && quota) {
           const nextQuota = nextQuotaValue(globalStateBytes, minimumStateBytes, quota.dayKey,
             Number(quota.acceptedToday), Number(quota.lastAcceptedAt));
-          if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
+          if (!nextQuota) return [5, BS.invalidServerState, serverNow] as const;
           await applyCleanup();
           await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
         }
-        return { ok: true, kind: "deduped", backup: singlePlayerCloudBackupWire(decision.manifest, currentSnapshotJson), serverNow };
+        return [1, decision.manifest.revision, serverNow] as const;
       }
       const oldStateBytes = current ? Number(current.stateBytes) : 0;
       const nextActiveStateBytes = admissionStateBytes - oldStateBytes + candidate.stateBytes;
@@ -2327,7 +2335,7 @@ export default capsule({
       const nextQuota = nextQuotaValue(nextActiveStateBytes,
         SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES + nextUserStateBytes + SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES,
         dayKey, globalAcceptedToday + 1, serverNow);
-      if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
+      if (!nextQuota) return [5, BS.invalidServerState, serverNow] as const;
       for (const row of currentParts) await ctx.db.singlePlayerCloudBackupParts.delete(row.id);
       await ctx.db.singlePlayerCloudBackupParts.insert({
         userId, worldId, part: "0", data: singlePlayerCloudBackupHeader(decision.manifest),
@@ -2345,7 +2353,7 @@ export default capsule({
         activeBackup: "1", cleanupAfter: "9999999999999999" };
       if (userBudget) await ctx.db.singlePlayerCloudBackupBudgets.update(userBudget.id, nextUserBudget);
       else await ctx.db.singlePlayerCloudBackupBudgets.insert(nextUserBudget);
-      return { ok: true, kind: "write", backup: singlePlayerCloudBackupWire(decision.manifest, candidate.snapshotJson), serverNow };
+      return [1, decision.manifest.revision, serverNow] as const;
     }),
 
     /** One explicit bone-meal interaction grows one bounded oak without background traffic. */

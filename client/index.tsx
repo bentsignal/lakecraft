@@ -1,4 +1,4 @@
-import { ErrorBoundary, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
+import { ErrorBoundary, getIdentity, signInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatOverlay, type LakecraftChatMessage } from "./chat";
 import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "./components";
@@ -3602,8 +3602,14 @@ export function App() {
     () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
   );
   const [singlePlayerTitle, setSinglePlayerTitle] = useState(false);
+  const [cloudIdentityCandidate, setCloudIdentityCandidate] = useState(() => {
+    const identity = getIdentity();
+    return Boolean(identity.userId || identity.expired);
+  });
 
   function joinSingleplayer(): void {
+    const identity = getIdentity();
+    setCloudIdentityCandidate(Boolean(identity.userId || identity.expired));
     const url = new URL(window.location.href);
     url.searchParams.set("singleplayer", "1");
     window.history.replaceState(window.history.state, "", url);
@@ -3619,8 +3625,8 @@ export function App() {
 
   if (hostedSinglePlayer) return singlePlayerTitle
     ? <SinglePlayerTitleScreen onJoinSingleplayer={joinSingleplayer} />
-    : <SinglePlayerApp onExit={leaveSingleplayer} />;
+    : <SinglePlayerApp authState={cloudIdentityCandidate} onExit={leaveSingleplayer} />;
   return singlePlayer
-    ? <SinglePlayerApp onExit={leaveSingleplayer} />
+    ? <SinglePlayerApp authState={cloudIdentityCandidate} onExit={leaveSingleplayer} />
     : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />;
 }

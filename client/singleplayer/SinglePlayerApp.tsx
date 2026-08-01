@@ -136,6 +136,7 @@ import {
   type LocalGameMode,
 } from "./localCommands.ts";
 import { LocalWorldBrowser } from "./LocalWorldBrowser.tsx";
+import { SinglePlayerCloudIdentityBoundary } from "./SinglePlayerCloudTransport.tsx";
 import type { LocalWorldRecord } from "./localWorldRegistry.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
@@ -1983,26 +1984,31 @@ function SinglePlayerWorld({
   );
 }
 
-export function SinglePlayerApp({ onExit }: { onExit: () => void }) {
+export function SinglePlayerApp({ authState = false, onExit }: { authState?: boolean; onExit: () => void }) {
   const storage = useMemo(browserSinglePlayerStorage, []);
   const [activeWorld, setActiveWorld] = useState<{
     world: LocalWorldRecord;
     pointerLockHandoff: boolean;
   } | null>(null);
 
-  return activeWorld ? (
-    <SinglePlayerWorld
-      entryPointerLockHandoff={activeWorld.pointerLockHandoff}
-      key={activeWorld.world.id}
-      onExit={() => setActiveWorld(null)}
-      storage={storage}
-      world={activeWorld.world}
-    />
-  ) : (
-    <LocalWorldBrowser
-      onBack={onExit}
-      onPlay={(world, pointerLockHandoff) => setActiveWorld({ world, pointerLockHandoff })}
-      storage={storage}
-    />
+  return (
+    <>
+      {authState ? <SinglePlayerCloudIdentityBoundary storage={storage} /> : null}
+      {activeWorld ? (
+        <SinglePlayerWorld
+          entryPointerLockHandoff={activeWorld.pointerLockHandoff}
+          key={activeWorld.world.id}
+          onExit={() => setActiveWorld(null)}
+          storage={storage}
+          world={activeWorld.world}
+        />
+      ) : (
+        <LocalWorldBrowser
+          onBack={onExit}
+          onPlay={(world, pointerLockHandoff) => setActiveWorld({ world, pointerLockHandoff })}
+          storage={storage}
+        />
+      )}
+    </>
   );
 }

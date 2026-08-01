@@ -26,6 +26,11 @@ function functionSource(name: string): string {
 
 assert.equal(browser.includes("lakebed/client"), false, "the world list stays entirely browser-local");
 assert.equal(app.includes("lakebed/client"), false, "selecting a world cannot mount Lakebed transport");
+assert.ok(browser.includes('hint(notice || "Local worlds")')
+  && !browser.includes("signed-in cloud backup enabled"),
+  "guest/loading title UI stays neutral and never claims authenticated cloud state");
+assert.ok(browser.includes("This does not delete any cloud backup."),
+  "local deletion always discloses that cloud data is a separate operation");
 assert.ok(browser.includes('aria-label="Local world browser"'));
 assert.ok(browser.includes('aria-label="Search worlds"'));
 assert.ok(browser.includes('aria-label="Local worlds"'));

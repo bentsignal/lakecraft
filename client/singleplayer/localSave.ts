@@ -200,7 +200,7 @@ export type SinglePlayerSnapshotValidation =
 
 export type SinglePlayerLoadResult =
   | { status: "empty"; snapshot: null; sequence: 0 }
-  | { status: "loaded" | "recovered"; snapshot: SinglePlayerSnapshot; sequence: number; savedAt: number; slot: SinglePlayerSaveSlot; issues: string[] }
+  | { status: "loaded" | "recovered"; snapshot: SinglePlayerSnapshot; sequence: number; savedAt: number; slot: SinglePlayerSaveSlot; raw: string; checksum: string; issues: string[] }
   | { status: "migrated"; snapshot: SinglePlayerSnapshot; sequence: number; savedAt: number; slot: SinglePlayerSaveSlot | null; persisted: boolean; issues: string[] }
   | { status: "corrupt"; snapshot: null; sequence: 0; reason: "storage_read_failed" | "no_valid_snapshot" | "legacy_invalid"; issues: string[] }
   | { status: "unsupported"; snapshot: null; sequence: 0; versions: number[]; issues: string[] };
@@ -728,6 +728,8 @@ export function loadSinglePlayerSave(
       sequence: selected.envelope.sequence,
       savedAt: selected.envelope.savedAt,
       slot: selected.slot,
+      raw: selected.raw,
+      checksum: selected.envelope.checksum,
       issues,
     };
   }
