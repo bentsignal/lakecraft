@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import {
   FIRST_PERSON_ACTION_MS,
   FIRST_PERSON_MAX_COLOR_VERTICES,
+  FIRST_PERSON_MODEL_PIVOT,
   createFirstPersonRenderer,
   firstPersonBufferCapacity,
   sampleFirstPersonAction,
+  writeFirstPersonModelMatrix,
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
@@ -56,13 +58,20 @@ renderer[4](true, 1);
 assert.equal(stats[0], 432, "full bow pose includes solid limbs, string, arrow, and arm under the 18-box ceiling");
 assert.equal(stats[3], 10_368, "largest staged pose upload remains below 11 KiB");
 
-const retainedPose = new Float32Array([9, 9, 9, 9, 9]);
+const retainedPose = new Float32Array([9, 9, 9, 9, 9, 9]);
 const idle = sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS, false, false);
 assert.strictEqual(idle, retainedPose, "idle action sampling reuses caller-owned pose storage");
-assert.deepEqual([...retainedPose], [0, 0, 0, 0, 0]);
+assert.deepEqual([...retainedPose], [0, 0, 0, 0, 0, 0]);
 const swing = sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS / 2, false, false);
 assert.strictEqual(swing, retainedPose, "active action sampling reuses the same pose object");
-assert.ok(retainedPose[0] < -0.4 && retainedPose[4] < -0.6, "attack reaches a clear down-left swing apex");
+assert.ok(
+  retainedPose[0] < -0.06
+    && retainedPose[2] < -0.07
+    && retainedPose[3] < -0.4
+    && retainedPose[4] < -0.1
+    && retainedPose[5] > 0.18,
+  "attack reaches a pitched, yawed, counter-leaning swing apex",
+);
 const eat = sampleFirstPersonAction(retainedPose, "use", FIRST_PERSON_ACTION_MS / 2, true, false);
 assert.strictEqual(eat, retainedPose, "food action sampling remains allocation-free");
 assert.ok(retainedPose[1] > 0.35 && retainedPose[0] < -0.29, "food rises toward the center/mouth at its use apex");
@@ -73,8 +82,32 @@ assert.strictEqual(
 );
 assert.deepEqual(
   [...retainedPose],
-  [0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0],
   "reduced-motion removes matrix motion without removing geometry",
+);
+
+function transformPoint(matrix: Float32Array, point: readonly [number, number, number]): [number, number, number] {
+  return [
+    matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12],
+    matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13],
+    matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14],
+  ];
+}
+
+const idleModel = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0]);
+sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS / 2, false, false);
+const attackModel = writeFirstPersonModelMatrix(new Float32Array(16), retainedPose);
+const heldCenter = [0.08, -0.04, -1.32] as const;
+const sleeveBase = [0.69, -0.75, -1.24] as const;
+const idleHeld = transformPoint(idleModel, heldCenter);
+const activeHeld = transformPoint(attackModel, heldCenter);
+const idleSleeve = transformPoint(idleModel, sleeveBase);
+const activeSleeve = transformPoint(attackModel, sleeveBase);
+assert.deepEqual(FIRST_PERSON_MODEL_PIVOT, [0.66, -0.82, -1.2], "the action rig pivots at the lower-right sleeve base");
+assert.ok(activeHeld[1] < idleHeld[1] && activeHeld[2] < idleHeld[2], "the held item dips and recedes instead of swelling across the view");
+assert.ok(
+  Math.abs(activeSleeve[0] - idleSleeve[0]) < Math.abs(activeHeld[0] - idleHeld[0]),
+  "the sleeve base stays more planted than the held item during the arc",
 );
 
 const projection = new Float32Array(16);

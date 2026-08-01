@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   FIRST_PERSON_MODEL_SCALE,
+  FIRST_PERSON_MODEL_PIVOT,
   createFirstPersonRenderer,
   firstPersonBufferCapacity,
   writeFirstPersonModelMatrix,
@@ -71,11 +72,11 @@ function ndcBounds(data: Float32Array, matrix: Float32Array) {
   return bounds;
 }
 
-const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0]);
+const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0]);
 assert.ok(Math.abs(model[0] - FIRST_PERSON_MODEL_SCALE) < 0.000001);
 assert.ok(Math.abs(model[5] - FIRST_PERSON_MODEL_SCALE) < 0.000001);
 assert.ok(Math.abs(model[10] - FIRST_PERSON_MODEL_SCALE) < 0.000001);
-const pivot = [0.66, -0.82, -1.20] as const;
+const pivot = FIRST_PERSON_MODEL_PIVOT;
 assert.deepEqual(
   [
     model[0] * pivot[0] + model[4] * pivot[1] + model[8] * pivot[2] + model[12],

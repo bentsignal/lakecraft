@@ -11,6 +11,7 @@ export const FIRST_PERSON_MAX_COLOR_VERTICES = 648;
 export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
 export const FIRST_PERSON_MODEL_SCALE = 0.48;
+export const FIRST_PERSON_MODEL_PIVOT: readonly [number, number, number] = [0.66, -0.82, -1.20];
 
 const SKIN: Vec3 = [0.74, 0.50, 0.34];
 const SLEEVE: Vec3 = [0.05, 0.54, 0.56];
@@ -319,11 +320,24 @@ export function sampleFirstPersonAction(
     output[4] = -0.20 * arc;
     return output;
   }
-  output[0] = -0.42 * arc;
-  output[1] = -0.16 * arc;
-  output[2] = 0.05 * arc;
-  output[3] = 0.18 * arc;
-  output[4] = -0.62 * arc;
+  // Follow the vanilla first-person cadence: the horizontal/roll sweep uses
+  // sqrt(progress), the vertical bob completes a full wave, and depth follows
+  // the direct half-wave. Lakecraft's authored mesh is already in camera space,
+  // so smaller rotations preserve the same silhouette without pushing it
+  // through the near plane. Positive Z is intentional in this right-handed
+  // basis: it counters the baked clockwise item lean on screen.
+  const rooted = Math.sqrt(progress);
+  const sweep = Math.sin(Math.PI * rooted);
+  const bob = Math.sin(Math.PI * 2 * rooted);
+  const depth = Math.sin(Math.PI * progress);
+  const turn = Math.sin(Math.PI * progress * progress);
+  const amount = kind === "place" ? 0.72 : kind === "use" ? 0.55 : 1;
+  output[0] = -0.08 * sweep * amount;
+  output[1] = 0.05 * bob * amount;
+  output[2] = -0.08 * depth * amount;
+  output[3] = -0.52 * sweep * amount;
+  output[4] = -0.16 * turn * amount;
+  output[5] = 0.24 * sweep * amount;
   return output;
 }
 
@@ -333,15 +347,18 @@ export function writeFirstPersonModelMatrix(
 ): Float32Array {
   const cx = Math.cos(pose[3]);
   const sx = Math.sin(pose[3]);
-  const cz = Math.cos(pose[4]);
-  const sz = Math.sin(pose[4]);
-  const pivotX = 0.66;
-  const pivotY = -0.82;
-  const pivotZ = -1.20;
+  const cy = Math.cos(pose[4]);
+  const sy = Math.sin(pose[4]);
+  const cz = Math.cos(pose[5] ?? 0);
+  const sz = Math.sin(pose[5] ?? 0);
+  const [pivotX, pivotY, pivotZ] = FIRST_PERSON_MODEL_PIVOT;
   const scale = FIRST_PERSON_MODEL_SCALE;
-  output[0] = cz * scale; output[1] = sz * scale; output[2] = 0; output[3] = 0;
-  output[4] = -sz * cx * scale; output[5] = cz * cx * scale; output[6] = sx * scale; output[7] = 0;
-  output[8] = sz * sx * scale; output[9] = -cz * sx * scale; output[10] = cx * scale; output[11] = 0;
+  // Rz * Ry * Rx keeps the authored local X/Y/Z rotation order. Scale and
+  // action rotations share the wrist pivot, so the sleeve base stays planted
+  // while the held item leads the arc instead of the arm orbiting the block.
+  output[0] = cz * cy * scale; output[1] = sz * cy * scale; output[2] = -sy * scale; output[3] = 0;
+  output[4] = (cz * sy * sx - sz * cx) * scale; output[5] = (sz * sy * sx + cz * cx) * scale; output[6] = cy * sx * scale; output[7] = 0;
+  output[8] = (cz * sy * cx + sz * sx) * scale; output[9] = (sz * sy * cx - cz * sx) * scale; output[10] = cy * cx * scale; output[11] = 0;
   output[12] = pivotX + pose[0] - (output[0] * pivotX + output[4] * pivotY + output[8] * pivotZ);
   output[13] = pivotY + pose[1] - (output[1] * pivotX + output[5] * pivotY + output[9] * pivotZ);
   output[14] = pivotZ + pose[2] - (output[2] * pivotX + output[6] * pivotY + output[10] * pivotZ);
@@ -373,7 +390,7 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   let chargeStage: 0 | 1 | 2 = 0;
   let actionKind: FirstPersonActionKind = "use";
   let actionStartedAt = -Infinity;
-  const actionPose: FirstPersonActionPose = [0, 0, 0, 0, 0];
+  const actionPose: FirstPersonActionPose = [0, 0, 0, 0, 0, 0];
   const modelMatrix = new Float32Array(16);
   const stats: FirstPersonRenderStats = [0, 0, 0, 0, 0, 0, capacity[2]];
 
