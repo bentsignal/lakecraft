@@ -903,6 +903,15 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
   assert.doesNotMatch(runbook, /\*\*Reset World/);
   assert.doesNotMatch(runbook, /copy all keys/i);
   assert.doesNotMatch(runbook, /localStorage\.key\(\)|Object\.keys\(localStorage\)/);
+  assert.doesNotMatch(runbook, /retain both full Lakebed JSON reports, artifacts/i);
+  assert.match(
+    runbook,
+    /Never[\s\S]{0,80}retain the full artifact envelope or client bundle/i,
+  );
+  assert.match(
+    runbook,
+    /transaction must delete each full artifact envelope[\s\S]{0,80}rather than export/i,
+  );
   assert.match(
     runbook,
     /Never[\s\S]{0,180}browser-storage enumeration\s+APIs[\s\S]{0,100}copy a storage prefix[\s\S]{0,100}foreign origin data/i,
@@ -1516,6 +1525,9 @@ test("Lakebed reports are parsed and hashes, format, target, and independent A/B
     }),
     (fixture) => rewriteArtifactMetadataPair(fixture, (metadata) => {
       metadata.sourceSnapshotHash = `sha256:${"d".repeat(64)}`;
+    }),
+    (fixture) => rewriteArtifactMetadataPair(fixture, (metadata) => {
+      metadata.artifactFileSha256 = "d".repeat(64);
     }),
     (fixture) => {
       const oldStage = Buffer.from("/* staged from a different commit */\n");

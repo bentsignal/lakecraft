@@ -2034,7 +2034,7 @@ async function rebuildExpectedCommitStage(repoRoot, expectedCommit) {
 
 function verifyArtifactStageBinding(metadata, stage, artifact, evidenceFiles) {
   for (const key of [
-    "artifactBytes", "artifactHash", "clientBundleHash", "deployTarget",
+    "artifactBytes", "artifactFileSha256", "artifactHash", "clientBundleHash", "deployTarget",
     "lakebedFormat", "serverBundleHash", "sourceSnapshotHash",
   ]) {
     if (metadata[key] !== stage.metadata[key]) {

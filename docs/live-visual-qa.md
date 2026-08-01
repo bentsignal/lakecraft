@@ -86,10 +86,11 @@ valid-partial state. Do not relabel deferred scope as passed.
    suffix in the live route. Do not hold the browser segment open for report
    serialization, artifact builds, or validation.
 6. Keep every screenshot, recording, transcript, JSON snapshot, console
-   report, CDP network report, build report, artifact, and staged bundle
-   beneath the one evidence root. Every regular file there must be referenced
-   by the manifest (except the manifest and requested validator output); the
-   validator rejects extra or missing files.
+   report, CDP network report, build report, redacted artifact-metadata record,
+   and noncanonical staged-source snapshot beneath the one evidence root. Never
+   retain the full artifact envelope or client bundle. Every regular file there
+   must be referenced by the manifest (except the manifest and requested
+   validator output); the validator rejects extra or missing files.
 7. Re-run `git rev-parse HEAD` after interaction and after both builds. If it
    differs from the trusted expected commit, restart the route. Also restart if
    any live evidence timestamp falls outside `runStartedAt` through
@@ -543,8 +544,10 @@ After the last integrated live interaction has closed the final measured
 segment and fixed `runCompletedAt`, build from two independent archives of the
 trusted expected commit. These are post-run derived artifacts; do not extend or
 rewrite the browser timeline around them, and do not stage from the mutable
-current filesystem. Retain both full Lakebed JSON reports, artifacts, and
-staged client/server entrypoints in the evidence root:
+current filesystem. Retain both Lakebed build reports, redacted artifact
+metadata records, noncanonical staged-source snapshots, and wrapper summaries
+in the evidence root. The transaction must delete each full artifact envelope
+and client bundle rather than export either as evidence:
 
 ```sh
 repo_root="$(git rev-parse --show-toplevel)"
