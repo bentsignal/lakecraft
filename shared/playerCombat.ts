@@ -138,7 +138,7 @@ function hasExactKeys(record: Record<string, unknown>): boolean {
 }
 
 function validUserId(value: unknown): value is string {
-  return typeof value === "string" && value.length >= 1 && value.length <= 128 && !/[\u0000-\u001f\u007f]/.test(value);
+  return BS.isString(value) && value.length >= 1 && value.length <= 128 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 export function playerAttackFingerprint(request: PlayerAttackRequest): string {
@@ -153,7 +153,7 @@ export function playerAttackFingerprint(request: PlayerAttackRequest): string {
 export function validatePlayerAttackRequestJson(rawJson: string):
   | { ok: true; request: ValidatedPlayerAttackRequest }
   | { ok: false; reason: PlayerAttackRequestIssue } {
-  if (typeof rawJson !== "string" || rawJson.length > MAX_PLAYER_COMBAT_REQUEST_LENGTH) {
+  if (!BS.isString(rawJson) || rawJson.length > MAX_PLAYER_COMBAT_REQUEST_LENGTH) {
     return { ok: false, reason: "too_large" };
   }
   let parsed: unknown;
@@ -165,7 +165,7 @@ export function validatePlayerAttackRequestJson(rawJson: string):
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
   if (!hasExactKeys(record)) return { ok: false, reason: BS.invalidShape };
-  if (typeof record.operationId !== "string"
+  if (!BS.isString(record.operationId)
     || record.operationId.length < MIN_OPERATION_ID_LENGTH
     || record.operationId.length > MAX_OPERATION_ID_LENGTH
     || !/^[A-Za-z0-9_-]+$/.test(record.operationId)) return { ok: false, reason: BS.invalidOperationId };
@@ -174,7 +174,7 @@ export function validatePlayerAttackRequestJson(rawJson: string):
     || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) {
     return { ok: false, reason: "invalid_selected_hotbar" };
   }
-  if (typeof record.weaponItemId !== "string"
+  if (!BS.isString(record.weaponItemId)
     || (record.weaponItemId !== "" && !Object.prototype.hasOwnProperty.call(ITEMS, record.weaponItemId))) {
     return { ok: false, reason: "invalid_weapon" };
   }
@@ -239,7 +239,7 @@ export function storedPlayerCombatRow(state: PlayerCombatState): StoredPlayerCom
 }
 
 function parsedField(value: unknown): number | null {
-  if (typeof value !== "string" || value.length > 32
+  if (!BS.isString(value) || value.length > 32
     || !/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -256,7 +256,7 @@ export function authoritativeCombatPose(
   const z = parsedField(stored.z);
   const yaw = parsedField(stored.yaw);
   const pitch = parsedField(stored.pitch);
-  const heartbeatAt = typeof stored.heartbeatAt === "string" && /^\d{1,16}$/.test(stored.heartbeatAt)
+  const heartbeatAt = BS.isString(stored.heartbeatAt) && /^\d{1,16}$/.test(stored.heartbeatAt)
     ? Number(stored.heartbeatAt)
     : Number.NaN;
   if ([x, y, z, yaw, pitch, heartbeatAt].some((value) => value === null || !Number.isFinite(value))) return null;

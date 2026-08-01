@@ -194,11 +194,11 @@ function exactKeys(record: Record<string, unknown>, expected: readonly string[])
 }
 
 function validRevision(value: unknown): value is string {
-  return typeof value === "string" && REVISION.test(value) && Number.isSafeInteger(Number(value));
+  return BS.isString(value) && REVISION.test(value) && Number.isSafeInteger(Number(value));
 }
 
 function validTargetId(kind: RangedTargetKind, id: unknown): id is string {
-  if (typeof id !== "string") return false;
+  if (!BS.isString(id)) return false;
   if (kind === "none") return id === "";
   if (id.length < 1 || id.length > 128 || /[\u0000-\u001f\u007f]/.test(id)) return false;
   if (kind === "mob") return /^(pig|cow|sheep|chicken|zombie|skeleton|creeper|spider)-[0-9a-z]{1,8}-[0-9a-z]{1,3}$/.test(id);
@@ -225,7 +225,7 @@ export function rangedCombatFingerprint(request: RangedCombatRequest): string {
 export function validateRangedCombatRequestJson(rawJson: string):
   | { ok: true; request: ValidatedRangedCombatRequest }
   | { ok: false; reason: RangedCombatRequestIssue } {
-  if (typeof rawJson !== "string" || rawJson.length > MAX_RANGED_COMBAT_REQUEST_BYTES) return { ok: false, reason: "too_large" };
+  if (!BS.isString(rawJson) || rawJson.length > MAX_RANGED_COMBAT_REQUEST_BYTES) return { ok: false, reason: "too_large" };
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawJson);
@@ -235,7 +235,7 @@ export function validateRangedCombatRequestJson(rawJson: string):
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
   if (record.version !== RANGED_COMBAT_PROTOCOL_VERSION) return { ok: false, reason: "invalid_version" };
-  if (typeof record.operationId !== "string" || !OPERATION_ID.test(record.operationId)) return { ok: false, reason: BS.invalidOperationId };
+  if (!BS.isString(record.operationId) || !OPERATION_ID.test(record.operationId)) return { ok: false, reason: BS.invalidOperationId };
   if (!validRevision(record.expectedInventoryRevision)) return { ok: false, reason: "invalid_revision" };
   if (typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
     || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) return { ok: false, reason: "invalid_selected_hotbar" };
@@ -251,7 +251,7 @@ export function validateRangedCombatRequestJson(rawJson: string):
     };
   } else if (record.kind === "cancel_charge") {
     if (!exactKeys(record, CANCEL_KEYS)
-      || typeof record.beginOperationId !== "string" || !OPERATION_ID.test(record.beginOperationId)) {
+      || !BS.isString(record.beginOperationId) || !OPERATION_ID.test(record.beginOperationId)) {
       return { ok: false, reason: BS.invalidShape };
     }
     request = {
@@ -769,26 +769,26 @@ function validReceiptCombat(value: unknown, targetKind: RangedTargetKind): value
   const playerKeys = ["userId", "health", "maxHealth", "revision", "deadUntil", "lastAttackAt", "lastAttackerId"];
   const mobKeys = ["mobId", "kind", "health", "maxHealth", "revision", "sheared", "deadUntil", "lastAttackAt", "lastAttackerId"];
   if (targetKind === "player") {
-    if (!exactKeys(record, playerKeys) || typeof record.userId !== "string") return false;
-  } else if (!exactKeys(record, mobKeys) || typeof record.mobId !== "string" || typeof record.kind !== "string"
+    if (!exactKeys(record, playerKeys) || !BS.isString(record.userId)) return false;
+  } else if (!exactKeys(record, mobKeys) || !BS.isString(record.mobId) || !BS.isString(record.kind)
     || typeof record.sheared !== "boolean") return false;
   return Number.isInteger(record.health) && (record.health as number) >= 0
     && Number.isInteger(record.maxHealth) && (record.maxHealth as number) >= 1 && (record.health as number) <= (record.maxHealth as number)
     && Number.isSafeInteger(record.revision) && (record.revision as number) >= 0
     && Number.isSafeInteger(record.deadUntil) && (record.deadUntil as number) >= 0
     && Number.isSafeInteger(record.lastAttackAt) && (record.lastAttackAt as number) >= 0
-    && typeof record.lastAttackerId === "string" && record.lastAttackerId.length <= 128;
+    && BS.isString(record.lastAttackerId) && record.lastAttackerId.length <= 128;
 }
 
 /** Current receipt envelope only; malformed server rows never replay. */
 export function decodeRangedCombatReceipt(rawJson: string): RangedCombatReceiptPayload | null {
   try {
-    if (typeof rawJson !== "string" || rawJson.length > MAX_RANGED_COMBAT_RECEIPT_BYTES) return null;
+    if (!BS.isString(rawJson) || rawJson.length > MAX_RANGED_COMBAT_RECEIPT_BYTES) return null;
     const parsed: unknown = JSON.parse(rawJson);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     const record = parsed as Record<string, unknown>;
     if (!exactKeys(record, ["version", "fingerprint", "result"]) || record.version !== RANGED_COMBAT_PROTOCOL_VERSION
-      || typeof record.fingerprint !== "string" || record.fingerprint.length < 2 || record.fingerprint.length > MAX_RANGED_COMBAT_REQUEST_BYTES
+      || !BS.isString(record.fingerprint) || record.fingerprint.length < 2 || record.fingerprint.length > MAX_RANGED_COMBAT_REQUEST_BYTES
       || !record.result || typeof record.result !== "object" || Array.isArray(record.result)) return null;
     const resultRecord = record.result as Record<string, unknown>;
     if (!allowedAndRequiredKeys(resultRecord, RELEASE_RESULT_KEYS, RELEASE_RESULT_REQUIRED_KEYS)) return null;

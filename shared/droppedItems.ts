@@ -130,7 +130,7 @@ function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[]
 }
 
 function isItemId(value: unknown): value is ItemId {
-  return typeof value === "string" && Object.prototype.hasOwnProperty.call(ITEMS, value);
+  return BS.isString(value) && Object.prototype.hasOwnProperty.call(ITEMS, value);
 }
 
 function stackDurability(stack: ItemStack): number | undefined {
@@ -201,7 +201,7 @@ export function validateVisibleDroppedItemChunkKeys(value: unknown): VisibleDrop
   const maximumChunk = Math.floor(MAX_WORLD_XZ / DROPPED_ITEM_CHUNK_SIZE);
   const chunks = new Set<string>();
   for (const raw of value) {
-    if (typeof raw !== "string") return { ok: false, reason: BS.invalidChunkKeys };
+    if (!BS.isString(raw)) return { ok: false, reason: BS.invalidChunkKeys };
     const match = /^(-?\d{1,5}):(-?\d{1,5})$/.exec(raw.trim());
     if (!match) return { ok: false, reason: BS.invalidChunkKeys };
     const chunkX = Number(match[1]);
@@ -235,11 +235,11 @@ export function createDroppedItemId(userId: string, operationId: string): string
 }
 
 export function isDroppedItemId(value: unknown): value is string {
-  return typeof value === "string" && DROP_ID_PATTERN.test(value);
+  return BS.isString(value) && DROP_ID_PATTERN.test(value);
 }
 
 function finiteTimestamp(value: unknown): number | null {
-  if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return null;
+  if (!BS.isString(value) || !/^\d{1,16}$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
@@ -248,10 +248,10 @@ function finiteTimestamp(value: unknown): number | null {
 export function normalizeDroppedItemRow(value: unknown, now = Date.now(), includeExpired = false): NormalizedDroppedItem | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
-  if (!isDroppedItemId(row.dropId) || typeof row.ownerUserId !== "string" || !row.ownerUserId
-    || typeof row.sourceUserId !== "string" || !row.sourceUserId || typeof row.itemJson !== "string") return null;
+  if (!isDroppedItemId(row.dropId) || !BS.isString(row.ownerUserId) || !row.ownerUserId
+    || !BS.isString(row.sourceUserId) || !row.sourceUserId || !BS.isString(row.itemJson)) return null;
   const item = validateDroppedItemStackJson(row.itemJson);
-  const numericField = (field: unknown): number => typeof field === "string" && String(Number(field)) === field ? Number(field) : NaN;
+  const numericField = (field: unknown): number => BS.isString(field) && String(Number(field)) === field ? Number(field) : NaN;
   const position = validateDroppedItemPosition({ x: numericField(row.x), y: numericField(row.y), z: numericField(row.z) });
   const droppedAt = finiteTimestamp(row.droppedAt);
   const ownerPickupAt = finiteTimestamp(row.ownerPickupAt);
@@ -304,7 +304,7 @@ export function createPersistedDroppedItem(
 }
 
 function validateOperationId(value: unknown): value is string {
-  return typeof value === "string"
+  return BS.isString(value)
     && value.length >= MIN_DROPPED_ITEM_OPERATION_ID_LENGTH
     && value.length <= MAX_DROPPED_ITEM_OPERATION_ID_LENGTH
     && OPERATION_ID_PATTERN.test(value);
@@ -323,7 +323,7 @@ function parseRequest(rawJson: string): Record<string, unknown> | DroppedItemReq
 }
 
 function canonicalPlayerState(raw: unknown): { state: CanonicalPlayerState; json: string } | null {
-  if (typeof raw !== "string") return null;
+  if (!BS.isString(raw)) return null;
   const validated = validatePlayerStateJson(raw);
   return validated.ok ? { state: validated.state, json: validated.playerStateJson } : null;
 }
@@ -342,7 +342,7 @@ export function droppedItemOperationFingerprint(
 
 export function validateDropItemRequestJson(rawJson: string): DropItemRequestValidation {
   const parsed = parseRequest(rawJson);
-  if (typeof parsed === "string") return { ok: false, reason: parsed };
+  if (BS.isString(parsed)) return { ok: false, reason: parsed };
   const keys = [BS.operationId, BS.sourceSlot, "count", BS.expectedInventoryUpdatedAt, BS.playerStateJson] as const;
   if (!hasOnlyKeys(parsed, keys)) return { ok: false, reason: BS.invalidShape };
   if (!validateOperationId(parsed.operationId)) return { ok: false, reason: BS.invalidOperationId };
@@ -350,7 +350,7 @@ export function validateDropItemRequestJson(rawJson: string): DropItemRequestVal
     || parsed.sourceSlot < 0 || parsed.sourceSlot >= INVENTORY_SIZE) return { ok: false, reason: "invalid_source_slot" };
   if (typeof parsed.count !== "number" || !Number.isInteger(parsed.count)
     || parsed.count < 1 || parsed.count > 64) return { ok: false, reason: "invalid_count" };
-  if (typeof parsed.expectedInventoryUpdatedAt !== "string") return { ok: false, reason: "invalid_token" };
+  if (!BS.isString(parsed.expectedInventoryUpdatedAt)) return { ok: false, reason: "invalid_token" };
   const expectedInventoryUpdatedAt = normalizeChestToken(parsed.expectedInventoryUpdatedAt);
   if (expectedInventoryUpdatedAt === null) return { ok: false, reason: "invalid_token" };
   const playerState = canonicalPlayerState(parsed.playerStateJson);
@@ -372,12 +372,12 @@ export function validateDropItemRequestJson(rawJson: string): DropItemRequestVal
 
 export function validatePickupDroppedItemRequestJson(rawJson: string): PickupDroppedItemRequestValidation {
   const parsed = parseRequest(rawJson);
-  if (typeof parsed === "string") return { ok: false, reason: parsed };
+  if (BS.isString(parsed)) return { ok: false, reason: parsed };
   const keys = [BS.operationId, "dropId", BS.expectedInventoryUpdatedAt, BS.playerStateJson] as const;
   if (!hasOnlyKeys(parsed, keys)) return { ok: false, reason: BS.invalidShape };
   if (!validateOperationId(parsed.operationId)) return { ok: false, reason: BS.invalidOperationId };
   if (!isDroppedItemId(parsed.dropId)) return { ok: false, reason: "invalid_drop_id" };
-  if (typeof parsed.expectedInventoryUpdatedAt !== "string") return { ok: false, reason: "invalid_token" };
+  if (!BS.isString(parsed.expectedInventoryUpdatedAt)) return { ok: false, reason: "invalid_token" };
   const expectedInventoryUpdatedAt = normalizeChestToken(parsed.expectedInventoryUpdatedAt);
   if (expectedInventoryUpdatedAt === null) return { ok: false, reason: "invalid_token" };
   const playerState = canonicalPlayerState(parsed.playerStateJson);

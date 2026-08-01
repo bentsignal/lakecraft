@@ -66,7 +66,7 @@ export type WorldBlockPoseAuthorityResult =
   | { ok: false; reason: "active_presence_required" | "implausible_pose" | "out_of_reach" };
 
 function parsedStoredNumber(value: unknown): number | null {
-  if (typeof value !== "string" || value.length > 32
+  if (!BS.isString(value) || value.length > 32
     || !/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -97,7 +97,7 @@ export function validateWorldBlockActionPose(
   const x = parsedStoredNumber(stored.x);
   const y = parsedStoredNumber(stored.y);
   const z = parsedStoredNumber(stored.z);
-  const heartbeatAt = typeof stored.heartbeatAt === "string" && /^\d{1,16}$/.test(stored.heartbeatAt)
+  const heartbeatAt = BS.isString(stored.heartbeatAt) && /^\d{1,16}$/.test(stored.heartbeatAt)
     ? Number(stored.heartbeatAt)
     : Number.NaN;
   if (x === null || y === null || z === null || !Number.isFinite(heartbeatAt)) {
@@ -131,16 +131,16 @@ export function encodeWorldBlockOperationReceipt(result: WorldBlockOperationRece
 }
 
 export function decodeWorldBlockOperationReceipt(raw: string): WorldBlockOperationReceiptResult | null {
-  if (typeof raw !== "string" || raw.length > MAX_RECEIPT_RESULT_BYTES) return null;
+  if (!BS.isString(raw) || raw.length > MAX_RECEIPT_RESULT_BYTES) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<WorldBlockOperationReceiptResult>;
     if (!parsed || parsed.ok !== true || parsed.replayed !== false
-      || typeof parsed.operationId !== "string"
+      || !BS.isString(parsed.operationId)
       || (parsed.kind !== "mine" && parsed.kind !== "place" && parsed.kind !== "toggle")
       || !Number.isSafeInteger(parsed.x) || !Number.isSafeInteger(parsed.y) || !Number.isSafeInteger(parsed.z)
-      || typeof parsed.previousBlock !== "string" || typeof parsed.nextBlock !== "string"
-      || typeof parsed.inventoryRevision !== "string" || typeof parsed.chunkKey !== "string"
-      || typeof parsed.chunkRevision !== "string" || typeof parsed.inventoryChanged !== "boolean"
+      || !BS.isString(parsed.previousBlock) || !BS.isString(parsed.nextBlock)
+      || !BS.isString(parsed.inventoryRevision) || !BS.isString(parsed.chunkKey)
+      || !BS.isString(parsed.chunkRevision) || typeof parsed.inventoryChanged !== "boolean"
       || !Array.isArray(parsed.settledEdits) || parsed.settledEdits.length > 16
       || parsed.settledEdits.some((edit) => !edit || !Number.isSafeInteger(edit.x)
         || !Number.isSafeInteger(edit.y) || !Number.isSafeInteger(edit.z)

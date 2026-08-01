@@ -80,7 +80,7 @@ function exactKeys(record: Record<string, unknown>, expected: readonly string[])
 }
 
 function parseRecord(rawJson: string, maxBytes = 1_024): Record<string, unknown> | null {
-  if (typeof rawJson !== "string" || rawJson.length > maxBytes) return null;
+  if (!BS.isString(rawJson) || rawJson.length > maxBytes) return null;
   try {
     const parsed = JSON.parse(rawJson);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
@@ -94,7 +94,7 @@ function parseRecord(rawJson: string, maxBytes = 1_024): Record<string, unknown>
 export function validateMobWorldCheckpointRequestJson(rawJson: string): MobWorldCheckpointRequest | null {
   const record = parseRecord(rawJson);
   if (!record || !exactKeys(record, CHECKPOINT_REQUEST_KEYS)
-    || typeof record.leaseId !== "string" || !/^[A-Za-z0-9_-]{20,64}$/.test(record.leaseId)
+    || !BS.isString(record.leaseId) || !/^[A-Za-z0-9_-]{20,64}$/.test(record.leaseId)
     || typeof record.expectedRevision !== "number" || !Number.isSafeInteger(record.expectedRevision)
     || record.expectedRevision < 0) return null;
   return { leaseId: record.leaseId, expectedRevision: record.expectedRevision };
@@ -103,8 +103,8 @@ export function validateMobWorldCheckpointRequestJson(rawJson: string): MobWorld
 export function validateMobDamageRequestJson(rawJson: string): MobDamageRequest | null {
   const record = parseRecord(rawJson);
   if (!record || !exactKeys(record, DAMAGE_REQUEST_KEYS)
-    || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(record.operationId)
-    || typeof record.mobId !== "string"
+    || !BS.isString(record.operationId) || !/^[A-Za-z0-9_-]{16,64}$/.test(record.operationId)
+    || !BS.isString(record.mobId)
     || typeof record.checkpointRevision !== "number" || !Number.isSafeInteger(record.checkpointRevision)
     || record.checkpointRevision < 0
     || typeof record.tick !== "number" || !Number.isSafeInteger(record.tick) || record.tick < 0) return null;
@@ -118,13 +118,13 @@ export function validateMobDamageRequestJson(rawJson: string): MobDamageRequest 
 }
 
 export function parseStoredInteger(value: unknown): number | null {
-  if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return null;
+  if (!BS.isString(value) || !/^\d{1,16}$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 export function parseMobWorldCheckpointJson(rawJson: string): MobMotionState | null {
-  if (typeof rawJson !== "string" || rawJson.length > MOB_WORLD_MAX_CHECKPOINT_BYTES) return null;
+  if (!BS.isString(rawJson) || rawJson.length > MOB_WORLD_MAX_CHECKPOINT_BYTES) return null;
   try {
     return restoreMobMotionCheckpoint(JSON.parse(rawJson) as MobMotionCheckpoint);
   } catch {
@@ -142,7 +142,7 @@ export function canonicalMobWorldReplayInput(
   if (snapshot.isNight !== true && snapshot.isNight !== false || !Array.isArray(snapshot.targets)) return null;
   const candidates: MobMotionTargetSnapshot[] = [];
   for (const raw of snapshot.targets) {
-    if (!raw || typeof raw.userId !== "string" || !raw.userId || raw.userId.length > 128
+    if (!raw || !BS.isString(raw.userId) || !raw.userId || raw.userId.length > 128
       || !Number.isFinite(raw.x) || !Number.isFinite(raw.y) || !Number.isFinite(raw.z)
       || Math.abs(raw.x) > 1_000_000 || Math.abs(raw.y) > 1_000_000 || Math.abs(raw.z) > 1_000_000
       || raw.active === false) continue;
@@ -171,7 +171,7 @@ export function encodeMobWorldReplayInput(snapshot: Readonly<MobMotionWorldSnaps
 }
 
 export function parseMobWorldReplayInputJson(rawJson: string): MobWorldReplayInput | null {
-  if (typeof rawJson !== "string" || rawJson.length > MOB_WORLD_MAX_INPUT_BYTES) return null;
+  if (!BS.isString(rawJson) || rawJson.length > MOB_WORLD_MAX_INPUT_BYTES) return null;
   try {
     const raw = JSON.parse(rawJson) as Record<string, unknown>;
     if (!raw || raw.version !== 1 || typeof raw.isNight !== "boolean" || !Array.isArray(raw.targets)) return null;

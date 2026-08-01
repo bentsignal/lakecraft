@@ -154,7 +154,7 @@ export function validateVisibleWorldChunkKeys(rawChunkKeys: unknown): VisibleWor
   if (rawChunkKeys.length > MAX_VISIBLE_WORLD_CHUNKS) return { ok: false, reason: "too_many_chunks" };
   const unique = new Set<string>();
   for (const raw of rawChunkKeys) {
-    if (typeof raw !== "string") return { ok: false, reason: BS.invalidChunkKeys };
+    if (!BS.isString(raw)) return { ok: false, reason: BS.invalidChunkKeys };
     const validation = validateWorldChunkKey(raw);
     if (!validation.ok) return { ok: false, reason: BS.invalidChunkKeys };
     unique.add(validation.chunkKey);
@@ -289,7 +289,7 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
   try {
     const parsed = JSON.parse(snapshotJson) as { v?: unknown; cells?: unknown; sections?: unknown };
     if (parsed.v === 1 || parsed.v === 2) {
-      if (typeof parsed.cells !== "string") return null;
+      if (!BS.isString(parsed.cells)) return null;
       const packed = decodeBase64(parsed.cells);
       const expectedLength = parsed.v === 1 ? LEGACY_PACKED_BYTE_COUNT : LEGACY_V2_PACKED_BYTE_COUNT;
       return packed?.length === expectedLength ? { version: parsed.v, packed } : null;
@@ -304,7 +304,7 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
       if (!rawSection || typeof rawSection !== "object") return null;
       const section = rawSection as { y?: unknown; cells?: unknown };
       if (!Number.isInteger(section.y) || Number(section.y) < MIN_SECTION_Y || Number(section.y) > MAX_SECTION_Y) return null;
-      if (typeof section.cells !== "string" || sections.has(Number(section.y))) return null;
+      if (!BS.isString(section.cells) || sections.has(Number(section.y))) return null;
       const packed = decodeBase64(section.cells);
       if (!packed || packed.length !== sectionPackedByteCount) return null;
       sections.set(Number(section.y), packed);

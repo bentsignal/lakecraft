@@ -43,7 +43,7 @@ export function validateChestCoordinate(rawCoordKey: string): ChestCoordinateVal
 }
 
 function isItemId(value: unknown): value is ItemId {
-  return typeof value === "string" && Object.prototype.hasOwnProperty.call(ITEMS, value);
+  return BS.isString(value) && Object.prototype.hasOwnProperty.call(ITEMS, value);
 }
 
 export function validateChestInventoryJson(rawInventoryJson: string): ChestInventoryValidation {

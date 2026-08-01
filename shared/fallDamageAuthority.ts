@@ -60,7 +60,7 @@ function validHeight(value: unknown): value is number {
 }
 
 function parseStoredHeight(value: unknown): number | null {
-  if (typeof value !== "string" || value.length < 1 || value.length > 32
+  if (!BS.isString(value) || value.length < 1 || value.length > 32
     || !STORED_HEIGHT_PATTERN.test(value)) return null;
   const parsed = Number(value);
   return validHeight(parsed) ? parsed : null;

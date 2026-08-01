@@ -39,7 +39,7 @@ export function authoritativeDroppedItemPosition(
   now: number,
 ): DroppedItemPosition | null {
   if (!presence || presence.userId !== userId || presence.online !== true) return null;
-  const heartbeatAt = typeof presence.heartbeatAt === "string" && /^\d{1,16}$/.test(presence.heartbeatAt)
+  const heartbeatAt = BS.isString(presence.heartbeatAt) && /^\d{1,16}$/.test(presence.heartbeatAt)
     ? Number(presence.heartbeatAt)
     : NaN;
   if (!Number.isSafeInteger(heartbeatAt) || heartbeatAt > now + 1_000 || now - heartbeatAt > DROPPED_ITEM_PRESENCE_FRESH_MS) return null;

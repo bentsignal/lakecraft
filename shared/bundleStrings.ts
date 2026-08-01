@@ -1,3 +1,7 @@
+export function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
 // Repeated runtime strings are shared at source level so compact builds do not
 // need to infer JavaScript grammar after bundling. Keep these as named literal
 // constants: esbuild tree-shakes unused exports and aliases repeated uses.

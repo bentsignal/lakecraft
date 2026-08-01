@@ -139,7 +139,7 @@ function validPlainStack(value: unknown, allowed: ReadonlySet<ItemId>): ItemStac
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
   if (keys.length !== 2 || !own(record, "itemId") || !own(record, "count")) return undefined;
-  if (typeof record.itemId !== "string" || !own(ITEMS, record.itemId)) return undefined;
+  if (!BS.isString(record.itemId) || !own(ITEMS, record.itemId)) return undefined;
   const itemId = record.itemId as ItemId;
   if (!allowed.has(itemId) || typeof record.count !== "number" || !Number.isInteger(record.count)
     || record.count < 1 || record.count > ITEMS[itemId].maxStack) return undefined;
@@ -175,7 +175,7 @@ function canonicalJson(state: FurnaceState): string {
 }
 
 export function validateFurnaceCoordinate(rawCoordKey: string): FurnaceCoordinateValidation {
-  if (typeof rawCoordKey !== "string") return { ok: false, reason: BS.invalidCoordinate };
+  if (!BS.isString(rawCoordKey)) return { ok: false, reason: BS.invalidCoordinate };
   const match = /^(-?\d{1,7}):(-?\d{1,3}):(-?\d{1,7})$/.exec(rawCoordKey.trim());
   if (!match) return { ok: false, reason: BS.invalidCoordinate };
   const x = Number(match[1]);
@@ -214,7 +214,7 @@ export function validateFurnaceState(value: unknown, expectedCoordKey?: string):
     || keys.some((key) => !(FURNACE_STATE_KEYS as readonly string[]).includes(key))) {
     return { ok: false, reason: BS.invalidShape };
   }
-  if (typeof record.coordKey !== "string") return { ok: false, reason: BS.invalidCoordinate };
+  if (!BS.isString(record.coordKey)) return { ok: false, reason: BS.invalidCoordinate };
   const coordinate = validateFurnaceCoordinate(record.coordKey);
   if (!coordinate.ok) return coordinate;
   if (expectedCoordKey !== undefined) {
@@ -247,7 +247,7 @@ export function validateFurnaceState(value: unknown, expectedCoordKey?: string):
 }
 
 export function validateFurnaceJson(rawFurnaceJson: string, expectedCoordKey?: string): FurnaceValidation {
-  if (typeof rawFurnaceJson !== "string" || rawFurnaceJson.length > MAX_FURNACE_JSON_LENGTH) {
+  if (!BS.isString(rawFurnaceJson) || rawFurnaceJson.length > MAX_FURNACE_JSON_LENGTH) {
     return { ok: false, reason: "too_large" };
   }
   let parsed: unknown;

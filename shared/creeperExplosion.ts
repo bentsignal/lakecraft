@@ -40,7 +40,7 @@ export type CreeperExplosionCell = {
 export type CreeperExplosionProbeCell = { x: number; y: number; z: number; coordKey: string };
 
 function record(raw: string): Record<string, unknown> | null {
-  if (typeof raw !== "string" || raw.length > 1_024) return null;
+  if (!BS.isString(raw) || raw.length > 1_024) return null;
   try {
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
@@ -84,8 +84,8 @@ export function validateCreeperExplosionRequestJson(rawJson: string): CreeperExp
   const keys = [BS.operationId, "mobId", "epoch", "checkpointRevision", "fuseStartedTick"];
   const actualKeys = Object.keys(parsed);
   if (actualKeys.length !== keys.length || actualKeys.some((key) => !keys.includes(key))
-    || typeof parsed.operationId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(parsed.operationId)
-    || typeof parsed.mobId !== "string"
+    || !BS.isString(parsed.operationId) || !/^[A-Za-z0-9_-]{16,64}$/.test(parsed.operationId)
+    || !BS.isString(parsed.mobId)
     || !safeInteger(parsed.epoch)
     || !safeInteger(parsed.checkpointRevision)
     || !safeInteger(parsed.fuseStartedTick, 1)) return null;

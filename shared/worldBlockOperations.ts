@@ -173,7 +173,7 @@ const PLACE_KEYS = [...INVENTORY_KEYS, "placedBlock"] as const;
 const TOGGLE_KEYS = [...COMMON_KEYS, "expectedBlock", "expectedChunkRevision"] as const;
 
 export function parseWorldBlockRevision(value: unknown): number | null {
-  if (typeof value !== "string" || !REVISION_PATTERN.test(value)) return null;
+  if (!BS.isString(value) || !REVISION_PATTERN.test(value)) return null;
   const revision = Number(value);
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
 }
@@ -189,7 +189,7 @@ export function nextWorldBlockRevision(value: string): string | null {
 }
 
 export function isValidWorldBlockOperationId(value: unknown): value is string {
-  return typeof value === "string"
+  return BS.isString(value)
     && value.length >= MIN_WORLD_BLOCK_OPERATION_ID_LENGTH
     && value.length <= MAX_WORLD_BLOCK_OPERATION_ID_LENGTH
     && OPERATION_ID_PATTERN.test(value);
@@ -209,11 +209,11 @@ function isCoordinate(value: unknown, minimum: number, maximum: number): value i
 }
 
 function isWorldBlock(value: unknown): value is WorldChunkBlockType {
-  return typeof value === "string" && WORLD_BLOCK_SET.has(value);
+  return BS.isString(value) && WORLD_BLOCK_SET.has(value);
 }
 
 export function isToggleableWorldBlock(value: unknown): value is ToggleableWorldBlock {
-  return typeof value === "string" && Object.prototype.hasOwnProperty.call(TOGGLED_WORLD_BLOCKS, value);
+  return BS.isString(value) && Object.prototype.hasOwnProperty.call(TOGGLED_WORLD_BLOCKS, value);
 }
 
 export function toggledWorldBlock(block: ToggleableWorldBlock): ToggleableWorldBlock {
@@ -221,7 +221,7 @@ export function toggledWorldBlock(block: ToggleableWorldBlock): ToggleableWorldB
 }
 
 function isItemId(value: unknown): value is ItemId {
-  return typeof value === "string" && ITEM_SET.has(value);
+  return BS.isString(value) && ITEM_SET.has(value);
 }
 
 function isCanonicalInventory(value: unknown): value is readonly (ItemStack | null)[] {
