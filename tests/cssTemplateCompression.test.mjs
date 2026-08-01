@@ -150,7 +150,7 @@ assert.equal(
 );
 assert.equal(
   compactClientIdentifiers('.lc-inventory-window .lc-meter--health .lc-player-preview__head .lc-unmapped'),
-  '.Z0 .Yq2health .ZV0 .xunmapped',
+  '.Z0 .Yq2health .ZX0 .xunmapped',
   "frequent client-only identifier families must compact before the generic namespace",
 );
 assert.equal(

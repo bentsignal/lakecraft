@@ -1983,7 +1983,7 @@ function SinglePlayerWorld({
   );
 }
 
-export function SinglePlayerApp() {
+export function SinglePlayerApp({ onExit }: { onExit: () => void }) {
   const storage = useMemo(browserSinglePlayerStorage, []);
   const [activeWorld, setActiveWorld] = useState<{
     world: LocalWorldRecord;
@@ -2000,6 +2000,7 @@ export function SinglePlayerApp() {
     />
   ) : (
     <LocalWorldBrowser
+      onBack={onExit}
       onPlay={(world, pointerLockHandoff) => setActiveWorld({ world, pointerLockHandoff })}
       storage={storage}
     />

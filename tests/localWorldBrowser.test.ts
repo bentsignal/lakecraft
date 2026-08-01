@@ -7,6 +7,7 @@ import {
 
 const browser = readFileSync(new URL("../client/singleplayer/LocalWorldBrowser.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const root = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const save = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const registry = readFileSync(new URL("../client/singleplayer/localWorldRegistry.ts", import.meta.url), "utf8");
 
@@ -26,6 +27,21 @@ assert.ok(browser.includes('aria-label="Search worlds"'));
 assert.ok(browser.includes('aria-label="Local worlds"'));
 assert.ok(browser.includes("const [modal, setModal] = useState<Modal>(0)"),
   "the create dialog is closed whenever the browser first opens");
+assert.ok(browser.includes('aria-label="Back to main menu"')
+  && browser.includes('onClick={onBack}')
+  && browser.includes('<h1 id={TITLE_ID} tabIndex={-1}>Select World</h1>'),
+  "the Select World heading has an obvious, keyboard-accessible Back action");
+assert.ok(app.includes("onExit: () => void")
+  && app.includes("onBack={onExit}"),
+  "the browser Back action crosses the isolated single-player root explicitly");
+const leaveSingleplayer = root.slice(
+  root.indexOf("  function leaveSingleplayer"),
+  root.indexOf("\n  return singlePlayer", root.indexOf("  function leaveSingleplayer")),
+);
+assert.ok(leaveSingleplayer.includes('url.searchParams.delete("singleplayer")')
+  && leaveSingleplayer.includes('window.history.replaceState(window.history.state, "", url)')
+  && leaveSingleplayer.includes("setSinglePlayer(false)"),
+  "Back removes only the single-player route flag before restoring the main menu");
 
 const header = browser.slice(
   browser.indexOf('<div className="lc-local-world-header">'),
@@ -69,6 +85,18 @@ assert.ok(browser.includes("text-shadow:none")
   && browser.includes(".lc-local-world-browser *")
   && browser.includes(".lc-local-world-dialog *"),
   "the world browser and dialogs override the inherited offset text shadow");
+const stageMarkup = browser.slice(
+  browser.indexOf('<div className="lc-local-world-stage">'),
+  browser.indexOf('<div className="lc-local-world-feedback">'),
+);
+assert.ok(stageMarkup.includes('<ul aria-label="Local worlds"')
+  && stageMarkup.includes('className="lc-local-world-empty"')
+  && stageMarkup.includes('search ? "No worlds match." : "Create a world to start."'),
+  "the world list and both empty states share one bounded content panel");
+assert.ok(browser.includes(".lc-local-world-stage{background:rgba(0,0,0,.68)")
+  && browser.includes(".lc-local-world-feedback{align-items:center;display:grid")
+  && browser.includes('hint(notice || "Worlds save locally in this browser")'),
+  "empty, success, storage, and local-state feedback occupy one coherent hierarchy");
 
 for (const removed of [
   "Reset World",
@@ -216,6 +244,14 @@ assert.ok(browser.includes('name="world-title"')
   && browser.includes('<option value="creative">Creative</option>')
   && browser.includes('mode.value === "creative" ? "creative" : "survival"'),
   "native create fields retain fail-closed Survival/Creative parsing");
+const createSource = functionSource("create");
+assert.ok(createSource.indexOf("createLocalWorld(storage") >= 0
+  && createSource.indexOf("listLocalWorlds(storage)") > createSource.indexOf("createLocalWorld(storage")
+  && createSource.indexOf("setSelectedId(result.world.id)") > createSource.indexOf("listLocalWorlds(storage)")
+  && createSource.indexOf("play(created)") > createSource.indexOf("setSelectedId(result.world.id)"),
+  "a committed new world is re-read, selected, and activated from the original submit gesture");
+assert.equal(createSource.includes("refresh(`Created"), false,
+  "successful creation no longer stops at the list and requires a second click");
 assert.ok(browser.includes("browserSinglePlayerStorage()") && browser.includes("storage: suppliedStorage"),
   "the browser consumes the guarded storage boundary and accepts the root's shared adapter");
 

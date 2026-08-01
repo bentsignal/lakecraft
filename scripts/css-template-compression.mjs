@@ -53,7 +53,7 @@ function parsePrivateIdentifierRows(rows) {
 // This fixed, reviewed live set contains only Lakecraft-owned CSS/DOM names.
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
-xe-window|21 xi-peek|18 xi-compose|14 xi-message|13 xw-button|13
+xe-window|21 xi-peek|18 xi-compose|14 xi-message|13 xw-button|14
 xc-inventory-slot|11 xj-glyph|12 xo-menu|11 xe-grid__slot|10 xj-icon__svg|10 xn-panel|10
 xlocal-world-dialog|9 xoptions|9 ysleep|9 xslot|13 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|8 xp-logo|8 xq-icon|8 xr-slot|8 xclose|9 yquery-recovery|7 xq-population|7
@@ -61,20 +61,20 @@ xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|7 xe-grid|7 xlocal-world-header|
 xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|6 xpointer-capture|6
 xe-titlebar|7 xcrosshair|6 xq-browser|6 xp-footer|6 xs-layer|7 xlocal-world-browser|5
 xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|5
-xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|5 xq-copy|5 xq-row|5
+xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|5 xq-copy|5 xq-row|5 xlocal-world-titlebar|5
 xingredient__icon|4 xlocal-world-row|4 xcursor-stack|4 xs__heading|4 xf__output|4
 xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|4 xk-layer|4 xw-layer|4
-xm-rack|4 xp-menu|4 xq-hint|4 yerror|4 xhud|4 xc-inventory-grid|3
+xm-rack|4 xp-menu|4 xq-hint|6 yerror|4 xhud|4 xlocal-world-back|4 xc-inventory-grid|3
 xk-screen__status|3 xdirt-background|3 xequipment-panel|3 xk-screen__score|3
 xoptions-dialog|3 xoptions__done|3 xoptions__grid|3 xc__inventory|3 xr-status-row|3
 xsection-rule|3 xsingleplayer|3 xv-workspace|3 ysleep-layer|3 xc__station|3 xdurability|3
 xingredient|3 xlocal-perf|3 xp-panorama|3 xc__status|3 xp-content|3 xc__flame|3
-xr-status|3 xc-layer|3 xd__head|3 xl__icon|3 xp-hills|3 xr-layer|3 xs__body|3
+xr-status|3 xc-layer|3 xd__head|3 xl__icon|3 xp-hills|3 xr-layer|3 xs__body|3 xlocal-world-feedback|3
 xv-panel|3 xd__arm|3 xd__leg|3 xu-wrap|3 xv-slot|3 xw-link|3 yperf|3
 xc-inventory-grid--hotbar|2 xsingleplayer-coordinates|2 xlocal-world-delete-copy|2
 xh__autosave-status|2 xunsupported__stamp|2 xc-inventory-title|2 xh__last-autosaved|2
-xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|2 xlocal-world-retry|2
-xunsupported__card|2 xunsupported__icon|2 xunsupported__topo|2 xunsupported-title|2
+xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|3 xlocal-world-retry|2
+xunsupported__card|2 xunsupported__icon|2 xunsupported__topo|2 xunsupported-title|2 xlocal-world-feedback-copy|2 xlocal-world-stage|2
 xlocal-world-list|2 xk-screen__cause|2 xf__ingredients|2 xj-glyph__count|2
 xr-grid--player|2 ysleep__actions|2 xd__arm--right|2 xd__leg--right|2 xl__fill-layer|2
 xm-slot__label|2 xoptions-layer|2 xoptions-title|2 xd__arm--left|2 xd__leg--left|2

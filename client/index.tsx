@@ -3604,7 +3604,14 @@ export function App() {
     setSinglePlayer(true);
   }
 
+  function leaveSingleplayer(): void {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("singleplayer");
+    window.history.replaceState(window.history.state, "", url);
+    setSinglePlayer(false);
+  }
+
   return singlePlayer
-    ? <SinglePlayerApp />
+    ? <SinglePlayerApp onExit={leaveSingleplayer} />
     : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />;
 }
