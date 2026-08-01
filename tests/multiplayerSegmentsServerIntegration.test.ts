@@ -38,7 +38,7 @@ const publishHandler = server.slice(
 );
 assert.ok(
   publishHandler.indexOf("const existingReceipt = matchingReceipts[0]")
-    < publishHandler.indexOf("const presenceRows = await ctx.db.playerPresence"),
+    < publishHandler.indexOf("const presenceRows = await newestByIndex(ctx.db.playerPresence"),
   "exact retry must resolve before liveness/quota gates",
 );
 assert.ok(

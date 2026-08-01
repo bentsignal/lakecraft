@@ -40,7 +40,7 @@ assert.ok(heartbeat.includes("existingRows.length > 1"), "duplicate presence row
 assert.ok(heartbeat.includes("decidePresenceSequence(existing.sessionId, existing.poseSequence"));
 assert.ok(heartbeat.indexOf("decidePresenceSequence(") < heartbeat.indexOf("decidePresenceWriteGate("), "sequence fencing precedes rate and survival work");
 assert.ok(heartbeat.indexOf("decidePresenceSequence(") < heartbeat.indexOf("advanceAuthoritativeSurvival("));
-assert.ok(heartbeat.includes('return { ok: true, applied: false, reason: "stale_sequence", poseSequence: existing.poseSequence }'));
+assert.ok(heartbeat.includes("return { ok: true, applied: false, reason: BS.staleSequence, poseSequence: existing.poseSequence }"));
 assert.ok(heartbeat.includes("if (relocationEpoch)"), "ordinary motion does not read relocation state");
 assert.ok(heartbeat.indexOf("decidePresenceTrajectory(") < heartbeat.indexOf("playerPresence.update"));
 assert.ok(heartbeat.indexOf("decidePresenceTrajectory(") < heartbeat.indexOf("authoritativeFallWorldFacts("));

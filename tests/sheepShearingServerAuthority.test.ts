@@ -22,7 +22,7 @@ for (const marker of [
   "decidePlayerCombatReplay",
   "authoritativeCombatPose",
   "materializePlayerCombatState",
-  'reason: "attacker_dead"',
+  "reason: BS.attackerDead",
   "validatePlayerStateJson(inventoryRow.inventoryJson)",
   "writeMobMotionPoses",
   "validatePlayerMeleeSpatialAuthority",

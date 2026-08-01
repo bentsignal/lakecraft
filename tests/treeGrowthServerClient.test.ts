@@ -64,7 +64,7 @@ assert.ok(
 assert.doesNotMatch(mutation, /setInterval|setTimeout|fetch\(/, "growth adds no background traffic or alternate backend");
 
 const worldMutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("sleepVote: mutation(async"));
-assert.match(worldMutation, /effect\.kind === "place" && effect\.nextBlock === "sapling"[\s\S]*?request\.y - 1[\s\S]*?sampleWorldChunkSnapshot[\s\S]*?supportBlock !== "grass" && supportBlock !== "dirt"[\s\S]*?reason: "invalid_support"/,
+assert.match(worldMutation, /effect\.kind === "place" && effect\.nextBlock === "sapling"[\s\S]*?request\.y - 1[\s\S]*?sampleWorldChunkSnapshot[\s\S]*?supportBlock !== "grass" && supportBlock !== "dirt"[\s\S]*?reason: BS\.invalidSupport/,
   "Lakebed rejects custom-client floating or wall saplings unless the placement cell is directly above authoritative soil");
 assert.ok(
   worldMutation.indexOf('effect.nextBlock === "sapling"') < worldMutation.indexOf("ctx.db.worldEdits.update"),

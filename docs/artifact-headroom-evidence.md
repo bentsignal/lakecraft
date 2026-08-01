@@ -1,36 +1,38 @@
 # Compact artifact headroom evidence
 
-This branch starts from exact `origin/main` commit
-`88ba5b3b1c94f73385101caffeb88783cf2ec479`. The exact-main compact artifact
-baseline was 1,014,192 bytes (34,384 bytes of the 1 MiB ceiling remained).
+This branch is rebased onto exact `origin/main` commit
+`53a4ee4c2cc6b5e659f67edb6b1d96fa5a602787`. Fresh sequential A/B builds of
+that commit produced a 1,014,160-byte compact artifact, leaving 34,416 bytes
+below Lakebed's 1 MiB ceiling.
 
 ## Fresh sequential paired build
 
-After the client property, private CSS/DOM identifier, and server mechanics-only
-catalog changes (including the `Yq0` through `Yq3` prefix-collision guard), run:
-
 ```sh
-stage_a=$(mktemp -d /private/tmp/lakecraft-headroom-review-a.XXXXXX)
-stage_b=$(mktemp -d /private/tmp/lakecraft-headroom-review-b.XXXXXX)
+stage_a=$(mktemp -d /private/tmp/lakecraft-headroom-rebased-a.XXXXXX)
+stage_b=$(mktemp -d /private/tmp/lakecraft-headroom-rebased-b.XXXXXX)
 node scripts/prepare-lakebed-deploy.mjs "$stage_a"
-(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom-review-report-a.json)
+(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom-rebased-report-a.json)
 node scripts/prepare-lakebed-deploy.mjs "$stage_b"
-(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom-review-report-b.json)
+(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom-rebased-report-b.json)
 ```
 
-The fresh review pair produced these byte-identical outputs:
+The rebased branch pair produced byte-identical outputs:
 
 | Output | A path | B path | Bytes | SHA-256 |
 | --- | --- | --- | ---: | --- |
-| Artifact | `/private/tmp/lakecraft-headroom-review-a.rkKwqd/.lakebed/artifacts/lakecraft-headroom-review-a.rkKwqd.anonymous.json` | `/private/tmp/lakecraft-headroom-review-b.9GGXbr/.lakebed/artifacts/lakecraft-headroom-review-b.9GGXbr.anonymous.json` | 1,004,392 | `7c26d0aafe114b3cf889108b44e7fc89afef84516136b8e4e427432631fd1f5e` |
-| Client stage | `/private/tmp/lakecraft-headroom-review-a.rkKwqd/client/index.tsx` | `/private/tmp/lakecraft-headroom-review-b.9GGXbr/client/index.tsx` | 443,887 | `ca92ea045583d32c0f695401273fe0ebabecc402a365240b61d4571119f81e24` |
-| Server stage | `/private/tmp/lakecraft-headroom-review-a.rkKwqd/server/index.ts` | `/private/tmp/lakecraft-headroom-review-b.9GGXbr/server/index.ts` | 260,432 | `a9f6156c4f4b3b187b44683335445b42a43ca8c3ab8c11b46607117de4fa7598` |
+| Artifact | `/private/tmp/lakecraft-headroom-rebased-a.VvA3ro/.lakebed/artifacts/lakecraft-headroom-rebased-a.VvA3ro.anonymous.json` | `/private/tmp/lakecraft-headroom-rebased-b.gc9AIM/.lakebed/artifacts/lakecraft-headroom-rebased-b.gc9AIM.anonymous.json` | 994,292 | `1addec07f00e90c52c21638c60e65fb947c9457be032983fb3aa40c0023a9d86` |
+| Client stage | `/private/tmp/lakecraft-headroom-rebased-a.VvA3ro/client/index.tsx` | `/private/tmp/lakecraft-headroom-rebased-b.gc9AIM/client/index.tsx` | 442,547 | `0d1b98d1ca7ea93744405acf383bbb027ed5a616dda667c1b303dd9d17753a37` |
+| Server stage | `/private/tmp/lakecraft-headroom-rebased-a.VvA3ro/server/index.ts` | `/private/tmp/lakecraft-headroom-rebased-b.gc9AIM/server/index.ts` | 254,210 | `c0fc95108cf80d170c27f7c4cc40c2ee4c071d563207e3722ab17977e30093d0` |
 
-Arithmetic at this checkpoint:
+Exact-main comparison:
 
-- `1,048,576 - 1,004,392 = 44,184` bytes of headroom.
-- `1,014,192 - 1,004,392 = 9,800` bytes recovered from exact main.
-- `1,004,392 - 990,000 = 14,392` bytes still required to reach the branch target.
+- `1,048,576 - 994,292 = 54,284` bytes of headroom.
+- `1,014,160 - 994,292 = 19,868` bytes recovered from exact main.
+- `994,292 - 990,000 = 4,292` bytes remain above the conservative branch target.
 
-Build reports are outside the stage directories so Lakebed cannot accidentally
-snapshot the report file into either artifact.
+The A/B reports remain outside the stage directories, so Lakebed cannot
+accidentally snapshot either report into its artifact. The broad local suite
+passed 238/238 after the rebase. The rebase also converted the newly merged mob
+detail payload from base64 to the same reviewed base85 representation: the mob
+renderer geometry test and static-data fingerprint/regeneration test prove the
+decoded geometry remains exact.
