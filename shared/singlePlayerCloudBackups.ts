@@ -264,6 +264,11 @@ export function decideSinglePlayerCloudBackupCommit(
     || !integer(userLastAcceptedAt, 0, MAX_TIMESTAMP) || !integer(userAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES)
     || !integer(globalAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES)
     || !integer(now, 0, MAX_TIMESTAMP)) return { ok: false, reason: "server_state" };
+  const currentRevision = current && REVISION.test(current.revision) ? Number(current.revision) : 0;
+  const currentBytes = current && /^\d{1,6}$/.test(current.stateBytes) ? Number(current.stateBytes) : 0;
+  if (current && (currentRevision < 1 || currentRevision >= Number.MAX_SAFE_INTEGER)) {
+    return { ok: false, reason: "server_state" };
+  }
   if (current && currentSnapshotJson === candidate.snapshotJson && candidateMatchesManifest(candidate, current)) {
     return { ok: true, kind: "deduped", manifest: current };
   }
@@ -271,12 +276,9 @@ export function decideSinglePlayerCloudBackupCommit(
     return { ok: false, reason: "conflict" };
   }
   if (!current && userWorldCount >= SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS) return { ok: false, reason: "world_limit" };
-  const currentRevision = current && REVISION.test(current.revision) ? Number(current.revision) : 0;
-  const currentBytes = current && /^\d{1,6}$/.test(current.stateBytes) ? Number(current.stateBytes) : 0;
-  if ((current && (currentRevision < 1 || currentRevision >= Number.MAX_SAFE_INTEGER))
-    || userStateBytes - currentBytes + candidate.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES
+  if (userStateBytes - currentBytes + candidate.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES
     || globalStateBytes - currentBytes + candidate.stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES) {
-    return { ok: false, reason: current && currentRevision < 1 ? "server_state" : "cloud_capacity" };
+    return { ok: false, reason: "cloud_capacity" };
   }
   const retryAfterMs = userLastAcceptedAt + SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS - now;
   if (retryAfterMs > 0) return { ok: false, reason: "cadence", retryAfterMs };
@@ -293,6 +295,12 @@ export function decideSinglePlayerCloudBackupCommit(
 
 export function utcCloudBackupDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
+}
+
+export function validUtcCloudBackupDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(timestamp) && utcCloudBackupDay(timestamp) === value;
 }
 
 export function singlePlayerCloudBackupWire(

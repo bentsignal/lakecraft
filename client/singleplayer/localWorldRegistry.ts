@@ -834,6 +834,7 @@ function persistNewLocalWorld(
     worldId?: string;
     snapshot?: SinglePlayerSnapshot;
     snapshotSavedAt?: number;
+    requireEmptyNamespace?: boolean;
   },
 ): LocalWorldMutationResult {
   const name = normalizeLocalWorldName(input.name);
@@ -856,6 +857,18 @@ function persistNewLocalWorld(
   const id = input.worldId ?? nextWorldId(registry, input.seed, input.createdAt);
   if (!id || !validWorldId(id) || registry.worlds.some((world) => world.id === id)) {
     return failure("world_id_unavailable");
+  }
+  const namespaceEmpty = () => {
+    try {
+      const keys = singlePlayerWorldStorageKeys(id);
+      const first = keys.map((key) => storage.getItem(key));
+      const second = keys.map((key) => storage.getItem(key));
+      return first.every((value) => value === null) && second.every((value) => value === null);
+    } catch { return null; }
+  };
+  if (input.requireEmptyNamespace) {
+    const empty = namespaceEmpty();
+    if (empty !== true) return failure(empty === null ? "world_namespace_read_failed" : "world_namespace_occupied");
   }
   const world: LocalWorldRecord = {
     id,
@@ -895,6 +908,9 @@ function persistNewLocalWorld(
   }
   if (!mirrorPending(storage, begun.sequence, pending)) {
     return failure("world_create_transaction_pending", true);
+  }
+  if (input.requireEmptyNamespace && namespaceEmpty() !== true) {
+    return failure("world_namespace_occupied_transaction_pending", true);
   }
   const saved = saveSinglePlayerSnapshot(storage, snapshot, snapshotSavedAt, { worldId: id });
   if (!saved.ok) return failure(`world_save_${saved.reason}_transaction_pending`, true);
@@ -972,7 +988,7 @@ export function restoreMissingLocalWorld(
   if (!loaded.registry) return failure(`registry_${loaded.status}`);
   if (hasPendingNamespaceRecovery(loaded.issues)) return failure("world_create_recovery_pending");
   if (loaded.registry.worlds.some(({ id }) => id === input.worldId)) return failure("world_exists");
-  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1, input);
+  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1, { ...input, requireEmptyNamespace: true });
 }
 
 export function inspectLocalWorld(
