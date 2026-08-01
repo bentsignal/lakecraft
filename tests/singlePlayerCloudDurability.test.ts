@@ -140,6 +140,45 @@ assert.equal(db.commit("damaged", "world", 0, "stale" ).ok, false, "account fenc
 assert.equal(db.resume("damaged", fenceRevision), true);
 assert.equal(db.commit("damaged", "world", 0, "explicit" ).ok, true, "exact resume removes the account fence");
 
+type RepairQuota = { revision: number; active: number; valid: boolean };
+const recoveryStep = (parts: number, budgets: readonly boolean[], quotas: readonly RepairQuota[], expected: number,
+  fence: number | null = null) => {
+  const limit = 37;
+  const exposed = quotas.length === 1 ? quotas[0].revision : 0;
+  if (fence === null ? expected !== exposed && !quotas.some((row) => row.revision === expected) : expected !== fence) {
+    return { ok: false as const };
+  }
+  const revision = Math.max(expected, ...quotas.map((row) => row.revision)) + 1;
+  const deletedParts = Math.min(parts, limit);
+  const deletedBudgets = Math.min(budgets.length, limit);
+  const continuation = parts > limit || budgets.length > limit || quotas.length > limit;
+  const exact = quotas.length === 1 && quotas[0].valid && budgets.length < 2 && budgets.every(Boolean);
+  const retainedCharge = (parts - deletedParts) * 100 + (budgets.length - deletedBudgets) * 20;
+  return { ok: true as const, revision, deletedParts, deletedBudgets, continuation,
+    active: exact ? Math.max(20, quotas[0].active - deletedParts * 100 - deletedBudgets * 20) : 384_000,
+    retainedCharge, fence: !continuation };
+};
+for (const quotas of [[], [{ revision: 0, active: 0, valid: false }],
+  [{ revision: 4, active: 2_000, valid: true }, { revision: 7, active: 1, valid: false }]] as const) {
+  const repaired = recoveryStep(3, [false, true], quotas, quotas.length === 1 ? quotas[0].revision : 0);
+  assert.equal(repaired.ok && repaired.active, 384_000,
+    "missing, malformed, or duplicate bookkeeping repairs with saturated accounting");
+  assert.equal(repaired.ok && repaired.fence, true, "bounded dirty bookkeeping repair leaves an owner fence");
+}
+const boundedRepair = recoveryStep(40, Array<boolean>(40).fill(false),
+  Array.from({ length: 38 }, (_, revision) => ({ revision, active: revision, valid: true })), 0);
+assert.equal(boundedRepair.ok && boundedRepair.deletedParts, 37);
+assert.equal(boundedRepair.ok && boundedRepair.deletedBudgets, 37);
+assert.equal(boundedRepair.ok && boundedRepair.continuation, true,
+  "malformed owner, budget, and quota excess is repaired only through bounded continuation batches");
+assert.ok(boundedRepair.ok && boundedRepair.active >= boundedRepair.retainedCharge,
+  "conservative recovery never undercharges actual retained rows");
+const resumedFence = recoveryStep(1, [true], [{ revision: 12, active: 10_000, valid: true }], 11, 11);
+assert.equal(resumedFence.ok && resumedFence.revision, 13,
+  "an exact owner fence at 11 resumes from an unrelated global head at 12");
+assert.equal(recoveryStep(1, [true], [{ revision: 12, active: 10_000, valid: true }], 10, 11).ok, false,
+  "Resume rejects any predecessor other than the exact owner fence");
+
 db.budgets.set("malformed", { active: false, cleanupAfter: "not-a-time" });
 db.budgets.set("dormant-with-parts", { active: false, cleanupAfter: 0 });
 db.owners.set("dormant-with-parts", new Map([["legacy", { kind: "corrupt" }]]));

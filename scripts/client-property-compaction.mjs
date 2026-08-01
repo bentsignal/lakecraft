@@ -88,6 +88,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "centerY": "Nr",
   "centerZ": "Et",
   "chaseSpeed": "Ne",
+  "chunkCount": "fi",
   "cleaned": "pr",
   "coalItem": "En",
   "collisionRadius": "ye",

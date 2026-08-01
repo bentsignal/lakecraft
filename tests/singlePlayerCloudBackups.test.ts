@@ -901,8 +901,16 @@ assert.match(cloudMutation, /if \(!validBudget\(row\)[\s\S]*?continue;[\s\S]*?if
   "malformed or active cross-owner cleanup candidates are isolated instead of failing the caller");
 assert.doesNotMatch(cloudMutation, /String\(Number\(current\?\.\[9\] \?\? "0"\) \+ 1\)/,
   "server manifests never mint a reusable per-world successor");
-assert.doesNotMatch(cloudMutation, /singlePlayerCloudBackupQuota\.delete/,
-  "the global generation row is permanent after creation");
+assert.equal((cloudMutation.match(/singlePlayerCloudBackupQuota\.delete/g) ?? []).length, 1,
+  "only bounded account disposition may merge duplicate global quota rows");
+assert.match(cloudMutation, /if \(disposition\)[\s\S]*?for \(const row of quotaRows\) await ctx\.db\.singlePlayerCloudBackupQuota\.delete/,
+  "account disposition deterministically canonicalizes only the selected bounded quota rows");
+assert.match(cloudMutation, /const cleanupCandidates =[\s\S]*?if \(userBudgetRows\.length > 1/,
+  "ordinary mutations retain strict bookkeeping rejection after the recovery-only branch");
+assert.match(cloudMutation, /const fenceRevision =[\s\S]*?disposition\[0\] === 3 \? disposition\[1\] !== fenceRevision[\s\S]*?Math\.max\(Number\(disposition\[1\]\), \.\.\.quotaRows\.map/,
+  "Resume CASes the exact owner fence while minting from the current global head");
+assert.match(cloudMutation, /currentActive < SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES[\s\S]*?: SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES/,
+  "uncertain recovery accounting saturates at the global cap instead of undercharging retained rows");
 assert.match(cloudMutation, /if \(decision\[1\] === "deduped"\) \{[\s\S]*?if \(cleanupRows\.length && quota\)[\s\S]*?update\(quota\.id, nextQuota\)[\s\S]*?response\(1, decision\[2\]\[9\]\)/,
   "plain dedupe retains the quota generation while cleanup dedupe advances it exactly once");
 assert.doesNotMatch(cloudSource, /String\(currentRevision \+ 1\)/,

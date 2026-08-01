@@ -2181,15 +2181,10 @@ export default capsule({
         BS.byUser, (q) => q.eq(BS.userId, userId))
         .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1);
       const userBudgetRows = await newestByIndex(ctx.db.singlePlayerCloudBackupBudgets,
-        BS.byUser, (q) => q.eq(BS.userId, userId)).take(2);
+        BS.byUser, (q) => q.eq(BS.userId, userId)).take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1);
       const quotaRows = await newestByIndex(ctx.db.singlePlayerCloudBackupQuota,
-        "by_key", (q) => q.eq(BS.quotaKey, SINGLE_PLAYER_CLOUD_QUOTA_KEY)).take(2);
-      const cleanupCandidates = await oldestByIndex(ctx.db.singlePlayerCloudBackupBudgets,
-        "by_cleanup", (q) => q.eq(BS.activeBackup, "0")
-          .lt(BS.cleanupAfter, String(serverNow + 1).padStart(16, "0"))).take(5);
-      if (userBudgetRows.length > 1 || quotaRows.length > 1) {
-        return invalid();
-      }
+        "by_key", (q) => q.eq(BS.quotaKey, SINGLE_PLAYER_CLOUD_QUOTA_KEY))
+        .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1);
       const dayKey = utcCloudBackupDay(serverNow);
       const quota = quotaRows[0];
       const quotaState = quota && [quota[BS.activeStateBytes], quota[BS.dayKey], quota[BS.acceptedToday],
@@ -2205,9 +2200,6 @@ export default capsule({
         return cleanupDue !== null && (row[BS.activeBackup] === "1" ? row[BS.cleanupAfter] === SINGLE_PLAYER_CLOUD_ACTIVE
           : singlePlayerCloudInteger(Number(row[BS.cleanupAfter]), cleanupDue, 8_640_000_000_000_000));
       };
-      if (!validBudget(userBudget)) {
-        return invalid();
-      }
       const validQuota = !quota || (quota[BS.quotaKey] === SINGLE_PLAYER_CLOUD_QUOTA_KEY
         && singlePlayerCloudUnsigned(quotaState![0], 0, 999_999, 6) && validUtcCloudBackupDay(quotaState![1])
         && singlePlayerCloudUnsigned(quotaState![2], 0, 120, 3)
@@ -2216,67 +2208,80 @@ export default capsule({
         && singlePlayerCloudUnsigned(quotaState![4], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1)
         && validSinglePlayerCloudQuotaState(Number(quotaState![0]), SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
           Number(quotaState![4])));
-      if (!validQuota || (!quota && (userParts.length > 0 || userBudget || cleanupCandidates.length > 0))) {
-        return invalid();
-      }
-      const quotaRevision = Number(quotaState?.[4] ?? "0");
-      const proposedRevision = nextSinglePlayerCloudGeneration(quotaRevision);
-      if (!proposedRevision) {
-        return invalid();
-      }
       if (disposition) {
-        if (!quota || disposition[1] !== quotaState![4]) return invalid("conflict");
         const loaded = loadSinglePlayerCloudBackupParts(userId, userParts);
-        if (disposition[0] === 3) {
-          if (!loaded[0] || !loaded[3] || loaded[3][1] !== disposition[1]
-            || loaded[1].length || loaded[2].length) return invalid("conflict");
-          const fenceRows = userParts.filter((row) => row[BS.worldId] === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD);
-          const floor = SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES
-            + (userBudget ? SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES : 0);
-          const nextActive = Math.max(floor, Number(quotaState![0])
-            - fenceRows.reduce((sum, row) => sum
-              + cloudBackupStoredPartBytes(userId, row[BS.worldId], row[BS.part], row[BS.data]), 0));
-          if (!validSinglePlayerCloudQuotaState(nextActive, floor, Number(proposedRevision))) {
-            return invalid();
-          }
-          for (const row of fenceRows) await ctx.db.singlePlayerCloudBackupParts.delete(row.id);
-          await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, { ...quota,
-            [BS.activeStateBytes]: String(nextActive), [BS.revision]: proposedRevision });
-          return response(8, proposedRevision);
+        const fenceRevision = loaded[0] && loaded[3] ? loaded[3][1] : null;
+        const exposedRevision = quotaRows.length === 1
+          && singlePlayerCloudUnsigned(quotaRows[0][BS.revision], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+          ? quotaRows[0][BS.revision] : "0";
+        if (disposition[0] === 3 ? disposition[1] !== fenceRevision
+          : disposition[1] !== exposedRevision && !quotaRows.some((row) => row[BS.revision] === disposition[1])) {
+          return invalid("conflict");
         }
-        const batch = userParts.slice(0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS);
-        const continuation = userParts.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS;
-        let removedCharge = 0;
-        for (const row of batch) {
-          removedCharge += row[BS.data].length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES
-            ? SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES
-            : cloudBackupStoredPartBytes(userId, row[BS.worldId], row[BS.part], row[BS.data]);
-        }
+        const quotaRevision = Math.max(Number(disposition[1]), ...quotaRows.map((row) =>
+          singlePlayerCloudUnsigned(row[BS.revision], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1)
+            ? Number(row[BS.revision]) : 0));
+        const proposedRevision = nextSinglePlayerCloudGeneration(quotaRevision);
+        if (!proposedRevision) return invalid();
+        const exactAccounting = quotaRows.length === 1 && validQuota
+          && userBudgetRows.length < 2 && validBudget(userBudget);
         const budgetCharge = SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES;
-        let addedCharge = userBudget ? 0 : budgetCharge;
+        const resuming = disposition[0] === 3;
+        if (resuming && (!loaded[0] || !loaded[3] || loaded[1].length || loaded[2].length)) {
+          return invalid("conflict");
+        }
+        const batch = resuming ? userParts.filter((row) => row[BS.worldId] === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD)
+          : userParts.slice(0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS);
+        const budgetBatch = resuming ? userBudgetRows : userBudgetRows.slice(0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS);
+        const continuation = !resuming && (userParts.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS
+          || userBudgetRows.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS
+          || quotaRows.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS);
+        const removedCharge = batch.reduce((sum, row) => sum
+          + cloudBackupStoredPartBytes(userId, row[BS.worldId], row[BS.part], row[BS.data]),
+        budgetBatch.length * budgetCharge);
         let fenceHeader = "";
-        if (!continuation) {
+        let addedCharge = resuming || !continuation ? budgetCharge : 0;
+        if (!resuming && !continuation) {
           fenceHeader = singlePlayerCloudTombstoneHeader([SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD,
             proposedRevision, disposition[1], String(serverNow), `recover_${proposedRevision}`]);
           addedCharge += cloudBackupStoredPartBytes(userId, SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD, "0", fenceHeader);
         }
-        const floor = SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES + budgetCharge + addedCharge
-          - (userBudget ? 0 : budgetCharge);
-        const nextActive = Math.max(floor, Number(quotaState![0]) - removedCharge + addedCharge);
-        if (!validSinglePlayerCloudQuotaState(nextActive, floor, Number(proposedRevision))) {
-          return invalid();
+        const floor = SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES + addedCharge;
+        const currentActive = Number(quotaState?.[0]);
+        const nextActive = exactAccounting && currentActive < SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES
+          ? Math.max(floor, currentActive - removedCharge + addedCharge)
+          : SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES;
+        if (!validSinglePlayerCloudQuotaState(nextActive, floor, Number(proposedRevision))) return invalid();
+        const quotaValue = { [BS.quotaKey]: SINGLE_PLAYER_CLOUD_QUOTA_KEY, [BS.activeStateBytes]: String(nextActive),
+          [BS.dayKey]: exactAccounting ? quotaState![1] : dayKey,
+          [BS.acceptedToday]: exactAccounting ? quotaState![2] : "120",
+          [BS.lastAcceptedAt]: exactAccounting ? quotaState![3] : String(serverNow), [BS.revision]: proposedRevision };
+        if (quotaRows.length === 1) await ctx.db.singlePlayerCloudBackupQuota.update(quotaRows[0].id, quotaValue);
+        else {
+          for (const row of quotaRows) await ctx.db.singlePlayerCloudBackupQuota.delete(row.id);
+          await ctx.db.singlePlayerCloudBackupQuota.insert(quotaValue);
         }
         for (const row of batch) await ctx.db.singlePlayerCloudBackupParts.delete(row.id);
-        if (!continuation) await ctx.db.singlePlayerCloudBackupParts.insert({
+        for (const row of budgetBatch) await ctx.db.singlePlayerCloudBackupBudgets.delete(row.id);
+        if (fenceHeader) await ctx.db.singlePlayerCloudBackupParts.insert({
           userId, [BS.worldId]: SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD, [BS.part]: "0", [BS.data]: fenceHeader,
         });
-        await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, { ...quota,
-          [BS.activeStateBytes]: String(nextActive), [BS.revision]: proposedRevision });
-        if (!userBudget) await ctx.db.singlePlayerCloudBackupBudgets.insert({ userId, [BS.dayKey]: "1970-01-01",
-          [BS.acceptedToday]: "0", [BS.lastAcceptedAt]: "0", [BS.activeBackup]: "1",
-          [BS.cleanupAfter]: SINGLE_PLAYER_CLOUD_ACTIVE });
-        return [7, proposedRevision, continuation ? 1 : 0, serverNow] as const;
+        if (resuming || !continuation) await ctx.db.singlePlayerCloudBackupBudgets.insert({ userId,
+          [BS.dayKey]: "1970-01-01", [BS.acceptedToday]: "0", [BS.lastAcceptedAt]: "0",
+          [BS.activeBackup]: "1", [BS.cleanupAfter]: SINGLE_PLAYER_CLOUD_ACTIVE });
+        return resuming ? response(8, proposedRevision)
+          : [7, proposedRevision, continuation ? 1 : 0, serverNow] as const;
       }
+      const cleanupCandidates = await oldestByIndex(ctx.db.singlePlayerCloudBackupBudgets,
+        "by_cleanup", (q) => q.eq(BS.activeBackup, "0")
+          .lt(BS.cleanupAfter, String(serverNow + 1).padStart(16, "0"))).take(5);
+      if (userBudgetRows.length > 1 || quotaRows.length > 1 || !validBudget(userBudget)
+        || !validQuota || (!quota && (userParts.length > 0 || userBudget || cleanupCandidates.length > 0))) {
+        return invalid();
+      }
+      const quotaRevision = Number(quotaState?.[4] ?? "0");
+      const proposedRevision = nextSinglePlayerCloudGeneration(quotaRevision);
+      if (!proposedRevision) return invalid();
       const inventory = inventorySinglePlayerCloudBackupParts(userId, userParts);
       if (!inventory[0]) return invalid();
       const reconstructed = inventory[1].map((world) => [world,
