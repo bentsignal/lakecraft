@@ -203,7 +203,7 @@ export async function assertStagingPhase(plan, phase, { finalized = false } = {}
   await assertStageRoot(plan);
   if (!finalized) await assertSentinel(plan);
   const inventory = await stageInventory(plan.stageRoot);
-  const allowed = new Set(plan.ownedPaths);
+  const allowed = new Set(plan.ownedEntries.keys());
   if (!finalized) allowed.add(STAGE_SENTINEL);
   const unexpected = inventory.find((path) => !allowed.has(path));
   if (unexpected) {
@@ -277,7 +277,7 @@ export async function createStagingSafetyPlan({ args, sourceRoot }) {
     configSource,
     createdStage: false,
     hasServerEnv,
-    ownedPaths: new Set(),
+    ownedEntries: new Map(),
     release: parsed.release,
     safeConfigSource: `${JSON.stringify(safeConfig, null, 2)}\n`,
     serverEnvSource: parsed.release && hasServerEnv ? await readFile(serverEnvPath) : undefined,
@@ -302,24 +302,27 @@ function normalizeStagePath(relativePath) {
 export async function createOwnedStageDirectory(plan, relativePath) {
   const normalized = normalizeStagePath(relativePath);
   await assertStagingPhase(plan, `before creating ${normalized}`);
+  await assertOwnedParentChain(plan, normalized);
   await mkdir(join(plan.stageRoot, ...normalized.split("/")), { mode: 0o700 });
-  plan.ownedPaths.add(normalized);
+  await recordOwnedEntry(plan, normalized, "directory");
   await assertStagingPhase(plan, `after creating ${normalized}`);
 }
 
 export async function writeOwnedStageFile(plan, relativePath, contents) {
   const normalized = normalizeStagePath(relativePath);
   await assertStagingPhase(plan, `before writing ${normalized}`);
+  await assertOwnedParentChain(plan, normalized);
   await writeFile(join(plan.stageRoot, ...normalized.split("/")), contents, { flag: "wx", mode: 0o600 });
-  plan.ownedPaths.add(normalized);
+  await recordOwnedEntry(plan, normalized, "file");
   await assertStagingPhase(plan, `after writing ${normalized}`);
 }
 
 export async function copyOwnedStageFile(plan, sourcePath, relativePath) {
   const normalized = normalizeStagePath(relativePath);
   await assertStagingPhase(plan, `before copying ${normalized}`);
+  await assertOwnedParentChain(plan, normalized);
   await copyFile(sourcePath, join(plan.stageRoot, ...normalized.split("/")), constants.COPYFILE_EXCL);
-  plan.ownedPaths.add(normalized);
+  await recordOwnedEntry(plan, normalized, "file");
   await assertStagingPhase(plan, `after copying ${normalized}`);
 }
 
@@ -340,14 +343,61 @@ export async function finalizeStagingSafetyPlan(plan) {
   await assertStagingPhase(plan, "finalization", { finalized: true });
 }
 
-async function removeOwnedPath(plan, relativePath) {
+async function assertOwnedParentChain(plan, relativePath) {
+  await assertStageRoot(plan);
+  const parts = relativePath.split("/");
+  for (let index = 1; index < parts.length; index += 1) {
+    const parentPath = parts.slice(0, index).join("/");
+    const expected = plan.ownedEntries.get(parentPath);
+    if (!expected || expected.kind !== "directory") {
+      throw new Error(`Staging parent ${parentPath} is not an owned directory.`);
+    }
+    const info = await lstat(join(plan.stageRoot, ...parts.slice(0, index)), { bigint: true });
+    if (info.isSymbolicLink() || !info.isDirectory() || !sameIdentity(info, expected)) {
+      throw new Error(`Owned staging directory ${parentPath} changed identity or type.`);
+    }
+  }
+}
+
+async function recordOwnedEntry(plan, relativePath, kind) {
+  await assertOwnedParentChain(plan, relativePath);
+  const info = await lstat(join(plan.stageRoot, ...relativePath.split("/")), { bigint: true });
+  const validType = kind === "directory"
+    ? info.isDirectory() && !info.isSymbolicLink()
+    : info.isFile() && !info.isSymbolicLink();
+  if (!validType) throw new Error(`New owned staging ${kind} ${relativePath} changed type.`);
+  plan.ownedEntries.set(relativePath, { dev: info.dev, ino: info.ino, kind });
+}
+
+async function assertOwnedEntry(plan, relativePath, expected) {
+  await assertStageRoot(plan);
+  await assertSentinel(plan);
+  await assertOwnedParentChain(plan, relativePath);
+  let info;
+  try {
+    info = await lstat(join(plan.stageRoot, ...relativePath.split("/")), { bigint: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") throw new Error(`Owned staging path ${relativePath} disappeared before cleanup.`);
+    throw error;
+  }
+  const validType = expected.kind === "directory"
+    ? info.isDirectory() && !info.isSymbolicLink()
+    : info.isFile() && !info.isSymbolicLink();
+  if (!validType || !sameIdentity(info, expected)) {
+    throw new Error(`Owned staging ${expected.kind} ${relativePath} changed identity or type before cleanup.`);
+  }
+}
+
+async function removeOwnedEntry(plan, relativePath, expected) {
+  await assertOwnedEntry(plan, relativePath, expected);
   const path = join(plan.stageRoot, ...relativePath.split("/"));
   try {
-    const info = await lstat(path);
-    if (info.isDirectory() && !info.isSymbolicLink()) await rmdir(path);
+    if (expected.kind === "directory") await rmdir(path);
     else await unlink(path);
+    return true;
   } catch (error) {
-    if (error?.code !== "ENOENT" && error?.code !== "ENOTEMPTY") throw error;
+    if (error?.code === "ENOTEMPTY") return false;
+    throw error;
   }
 }
 
@@ -358,8 +408,21 @@ export async function cleanupStagingSafetyPlan(plan) {
   } catch {
     return false;
   }
-  const owned = [...plan.ownedPaths].sort((a, b) => b.split("/").length - a.split("/").length);
-  for (const path of owned) await removeOwnedPath(plan, path);
+  const owned = [...plan.ownedEntries.entries()].sort(([pathA], [pathB]) => (
+    pathB.split("/").length - pathA.split("/").length
+  ));
+  try {
+    for (const [path, expected] of owned) await assertOwnedEntry(plan, path, expected);
+  } catch {
+    return false;
+  }
+  for (const [path, expected] of owned) {
+    try {
+      if (!await removeOwnedEntry(plan, path, expected)) return false;
+    } catch {
+      return false;
+    }
+  }
   try { await unlink(join(plan.stageRoot, STAGE_SENTINEL)); } catch { /* Best effort after identity validation. */ }
   if (plan.createdStage) {
     try { await rmdir(plan.stageRoot); } catch { /* Preserve unexpected injected paths. */ }

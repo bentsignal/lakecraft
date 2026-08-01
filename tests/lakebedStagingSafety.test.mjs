@@ -7,10 +7,12 @@ import test from "node:test";
 import {
   RELEASE_STAGING_FLAG,
   cleanupStagingSafetyPlan,
+  createOwnedStageDirectory,
   createStagingSafetyPlan,
   finalizeStagingSafetyPlan,
   parseLakebedConfig,
   parseStagingArguments,
+  writeOwnedStageFile,
   writeStagingControlFiles,
 } from "../scripts/lakebed-staging-safety.mjs";
 
@@ -223,6 +225,55 @@ test("finalization catches credentials injected after safe control output and re
   assert.equal(existsSync(join(injected.stageRoot, "lakebed.json")), false);
   assert.equal(existsSync(join(injected.stageRoot, ".lakecraft-stage-owner")), false);
   assert.equal(existsSync(lateEnv), true, "cleanup never deletes an injected credential");
+});
+
+test("cleanup never traverses a replaced owned directory into an external victim", async (t) => {
+  const swapped = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  const plan = await createStagingSafetyPlan({ args: [swapped.stageRoot], sourceRoot: swapped.sourceRoot });
+  await createOwnedStageDirectory(plan, "client");
+  await writeOwnedStageFile(plan, "client/index.tsx", "owned bundle\n");
+  const parked = join(swapped.root, "parked-client");
+  const victim = join(swapped.root, "victim-client");
+  await mkdir(victim);
+  await writeFile(join(victim, "index.tsx"), "external victim\n");
+  await rename(join(swapped.stageRoot, "client"), parked);
+  await symlink(victim, join(swapped.stageRoot, "client"));
+
+  assert.equal(await cleanupStagingSafetyPlan(plan), false);
+  assert.equal(await readFile(join(victim, "index.tsx"), "utf8"), "external victim\n");
+  assert.equal(await readFile(join(parked, "index.tsx"), "utf8"), "owned bundle\n");
+});
+
+test("cleanup refuses nested owned-directory swaps before resolving their children", async (t) => {
+  const swapped = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  const plan = await createStagingSafetyPlan({ args: [swapped.stageRoot], sourceRoot: swapped.sourceRoot });
+  await createOwnedStageDirectory(plan, "client");
+  await createOwnedStageDirectory(plan, "client/generated");
+  await writeOwnedStageFile(plan, "client/generated/index.tsx", "owned nested bundle\n");
+  const parked = join(swapped.root, "parked-generated");
+  const victim = join(swapped.root, "victim-generated");
+  await mkdir(victim);
+  await writeFile(join(victim, "index.tsx"), "external nested victim\n");
+  await rename(join(swapped.stageRoot, "client/generated"), parked);
+  await symlink(victim, join(swapped.stageRoot, "client/generated"));
+
+  assert.equal(await cleanupStagingSafetyPlan(plan), false);
+  assert.equal(await readFile(join(victim, "index.tsx"), "utf8"), "external nested victim\n");
+  assert.equal(await readFile(join(parked, "index.tsx"), "utf8"), "owned nested bundle\n");
+});
+
+test("cleanup refuses an owned file replacement and preserves both replacement and parked original", async (t) => {
+  const replaced = await fixture(t, '{ "deployId": "dep_GeGTYPSk0TrcWk9E" }\n');
+  const plan = await createStagingSafetyPlan({ args: [replaced.stageRoot], sourceRoot: replaced.sourceRoot });
+  await writeStagingControlFiles(plan);
+  const configPath = join(replaced.stageRoot, "lakebed.json");
+  const parked = join(replaced.stageRoot, "lakebed-owned.json");
+  await rename(configPath, parked);
+  await writeFile(configPath, '{ "replacement": true }\n');
+
+  assert.equal(await cleanupStagingSafetyPlan(plan), false);
+  assert.equal(await readFile(configPath, "utf8"), '{ "replacement": true }\n');
+  assert.deepEqual(JSON.parse(await readFile(parked, "utf8")), {});
 });
 
 test("the executable preflights staging safety before loading or patching the compiler", async () => {
