@@ -13,6 +13,10 @@ export const SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES = 12;
 export const SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES = 120;
 export const SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS = 512;
 export const SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_UTF8_BYTES = 1_024;
+export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_TOMBSTONES = 6;
+export const SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD = "~";
+export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS = SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS
+  * (SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 2) + 1;
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const WORLD_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -34,7 +38,17 @@ export type SinglePlayerCloudBackupDeleteRequest = readonly [
   version: typeof SINGLE_PLAYER_CLOUD_BACKUP_VERSION,
   worldId: string,
   expectedRevision: string,
+  operationId: string,
 ];
+
+export type SinglePlayerCloudDispositionRequest = readonly [2 | 3, expectedRevision: string];
+export type SinglePlayerCloudTombstone = {
+  worldId: string;
+  revision: string;
+  deletedRevision: string;
+  deletedAt: string;
+  operationId: string;
+};
 
 export type SinglePlayerCloudBackupWire = readonly [
   version: typeof SINGLE_PLAYER_CLOUD_BACKUP_VERSION,
@@ -103,9 +117,9 @@ export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSingle
 ): { ok: true; worlds: InventoriedSinglePlayerCloudBackup<TPart>[]; stateBytes: number }
   | { ok: false; reason: "server_state" } {
   if (typeof userId !== "string" || userId.length < 1 || userId.length > 520
-    || rows.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS * (SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1)
+    || rows.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS
     || rows.some((row) => !row || typeof row !== "object" || row.userId !== userId
-      || typeof row.worldId !== "string" || !WORLD_ID.test(row.worldId)
+      || typeof row.worldId !== "string" || row.worldId !== SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD && !WORLD_ID.test(row.worldId)
       || typeof row.part !== "string" || row.part.length < 1 || row.part.length > 8
       || typeof row.data !== "string"
       || (row.part === "0" ? row.data.length > SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS
@@ -115,7 +129,8 @@ export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSingle
     return { ok: false, reason: "server_state" };
   }
   const worldIds = [...new Set(rows.map((row) => row.worldId))].sort();
-  if (worldIds.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS) return { ok: false, reason: "server_state" };
+  if (worldIds.filter((id) => id !== SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD).length
+    > SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS * 2) return { ok: false, reason: "server_state" };
   const worlds: InventoriedSinglePlayerCloudBackup<TPart>[] = [];
   let stateBytes = 0;
   for (const worldId of worldIds) {
@@ -159,16 +174,31 @@ export function singlePlayerCloudBackupHeader(manifest: StoredSinglePlayerCloudB
 export function loadSinglePlayerCloudBackupParts<TPart extends StoredSinglePlayerCloudBackupPart>(
   userId: string,
   rows: readonly TPart[],
-): { ok: true; backups: LoadedSinglePlayerCloudBackup<TPart>[]; stateBytes: number }
+): { ok: true; backups: LoadedSinglePlayerCloudBackup<TPart>[]; tombstones: SinglePlayerCloudTombstone[];
+    accountFence: SinglePlayerCloudTombstone | null; stateBytes: number }
   | { ok: false; reason: "server_state" } {
   const inventory = inventorySinglePlayerCloudBackupParts(userId, rows);
   if (!inventory.ok) return inventory;
   const backups: LoadedSinglePlayerCloudBackup<TPart>[] = [];
+  const tombstones: SinglePlayerCloudTombstone[] = [];
+  let accountFence: SinglePlayerCloudTombstone | null = null;
   let stateBytes = 0;
   for (const world of inventory.worlds) {
     const { worldId } = world;
     const parts = [...world.parts]
       .sort((left, right) => Number(left.part) - Number(right.part));
+    if (parts.length === 1 && parts[0].part === "0") {
+      const tombstone = parseSinglePlayerCloudTombstone(worldId, parts[0].data);
+      if (!tombstone || worldId === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD && accountFence
+        || worldId !== SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD
+          && tombstones.length >= SINGLE_PLAYER_CLOUD_BACKUP_MAX_TOMBSTONES) {
+        return { ok: false, reason: "server_state" };
+      }
+      if (worldId === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD) accountFence = tombstone;
+      else tombstones.push(tombstone);
+      stateBytes += world.stateBytes;
+      continue;
+    }
     if (parts.length < 2 || parts.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1
       || parts.some((part, index) => part.part !== String(index))) return { ok: false, reason: "server_state" };
     let header: unknown;
@@ -201,7 +231,24 @@ export function loadSinglePlayerCloudBackupParts<TPart extends StoredSinglePlaye
     if (stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) return { ok: false, reason: "server_state" };
     backups.push({ manifest, snapshotJson, parts });
   }
-  return { ok: true, backups, stateBytes };
+  return { ok: true, backups, tombstones, accountFence, stateBytes };
+}
+
+const OPERATION_ID = /^[A-Za-z0-9_-]{8,80}$/;
+export function singlePlayerCloudTombstoneHeader(value: SinglePlayerCloudTombstone): string {
+  return JSON.stringify([0, value.revision, value.deletedRevision, value.deletedAt, value.operationId]);
+}
+
+export function parseSinglePlayerCloudTombstone(worldId: string, raw: string): SinglePlayerCloudTombstone | null {
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(value) || value.length !== 5 || value[0] !== 0
+    || typeof value[1] !== "string" || !REVISION.test(value[1]) || Number(value[1]) > Number.MAX_SAFE_INTEGER
+    || typeof value[2] !== "string" || !REVISION.test(value[2]) || Number(value[2]) > Number.MAX_SAFE_INTEGER
+    || typeof value[3] !== "string" || !/^\d{1,16}$/.test(value[3]) || !integer(Number(value[3]), 0, MAX_TIMESTAMP)
+    || typeof value[4] !== "string" || !OPERATION_ID.test(value[4])
+    || raw !== JSON.stringify(value)) return null;
+  return { worldId, revision: value[1], deletedRevision: value[2], deletedAt: value[3], operationId: value[4] };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -324,10 +371,20 @@ export function parseSinglePlayerCloudBackupDeleteRequest(raw: string): SinglePl
   if (typeof raw !== "string" || raw.length > 192) return null;
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
-  return Array.isArray(value) && value.length === 3 && value[0] === 1
+  return Array.isArray(value) && value.length === 4 && value[0] === 1
     && typeof value[1] === "string" && WORLD_ID.test(value[1])
     && typeof value[2] === "string" && REVISION.test(value[2]) && Number(value[2]) <= Number.MAX_SAFE_INTEGER
+    && typeof value[3] === "string" && OPERATION_ID.test(value[3])
     ? value as unknown as SinglePlayerCloudBackupDeleteRequest : null;
+}
+
+export function parseSinglePlayerCloudDispositionRequest(raw: string): SinglePlayerCloudDispositionRequest | null {
+  if (typeof raw !== "string" || raw.length > 64) return null;
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  return Array.isArray(value) && value.length === 2 && (value[0] === 2 || value[0] === 3)
+    && typeof value[1] === "string" && REVISION.test(value[1]) && Number(value[1]) <= Number.MAX_SAFE_INTEGER
+    ? value as SinglePlayerCloudDispositionRequest : null;
 }
 
 export function decideSinglePlayerCloudBackupDeleteRevision(

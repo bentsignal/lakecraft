@@ -14,9 +14,9 @@ import {
 export type SinglePlayerCloudBackupWire = readonly [1, string, string, string, "survival" | "creative",
   string, string, string, string, string];
 export type SinglePlayerCloudQueryWire = readonly [] | readonly [1, number, unknown[], unknown[]]
-  | readonly [2 | 3, number];
-export type SinglePlayerCloudMutationWire = readonly [1, string, number] | readonly [2 | 4, number]
-  | readonly [3 | 5, string, number] | readonly [6, number, number];
+  | readonly [2, number] | readonly [3, number, string];
+export type SinglePlayerCloudMutationWire = readonly [1 | 2 | 8, string, number] | readonly [4, number]
+  | readonly [3 | 5, string, number] | readonly [6, number, number] | readonly [7, string, 0 | 1, number];
 
 export type PreparedSinglePlayerCloudBackup = readonly [
   requestJson: string,
@@ -65,15 +65,20 @@ const timestamp = (value: unknown) => Number.isSafeInteger(value) && Number(valu
 export function parseSinglePlayerCloudQueryWire(value: unknown): SinglePlayerCloudQueryWire | null {
   if (!dense(value)) return null;
   if (value.length === 0) return value;
-  if (value.length === 2 && (value[0] === 2 || value[0] === 3) && timestamp(value[1])) return value as [2 | 3, number];
+  if (value.length === 2 && value[0] === 2 && timestamp(value[1])) return value as [2, number];
+  if (value.length === 3 && value[0] === 3 && timestamp(value[1])
+    && singlePlayerCloudNumber(value[2], 0, Number.MAX_SAFE_INTEGER)) return value as [3, number, string];
   return value.length === 4 && value[0] === 1 && timestamp(value[1]) && dense(value[2]) && dense(value[3])
     ? value as [1, number, unknown[], unknown[]] : null;
 }
 export function parseSinglePlayerCloudMutationWire(value: unknown): SinglePlayerCloudMutationWire | null {
   if (!dense(value)) return null;
-  if (value.length === 2 && (value[0] === 2 || value[0] === 4) && timestamp(value[1])) return value as [2 | 4, number];
+  if (value.length === 2 && value[0] === 4 && timestamp(value[1])) return value as [4, number];
+  if (value.length === 4 && value[0] === 7 && singlePlayerCloudNumber(value[1], 1, Number.MAX_SAFE_INTEGER)
+    && (value[2] === 0 || value[2] === 1) && timestamp(value[3])) return value as [7, string, 0 | 1, number];
   if (value.length !== 3 || !timestamp(value[2])) return null;
-  if (value[0] === 1 && singlePlayerCloudNumber(value[1], 1, Number.MAX_SAFE_INTEGER - 1)) return value as [1, string, number];
+  if ((value[0] === 1 || value[0] === 2 || value[0] === 8)
+    && singlePlayerCloudNumber(value[1], 0, Number.MAX_SAFE_INTEGER - 1)) return value as [1 | 2 | 8, string, number];
   if ((value[0] === 3 && (value[1] === "cloud_capacity" || value[1] === "world_limit"))
     || (value[0] === 5 && typeof value[1] === "string" && value[1].length > 0 && value[1].length <= 64)) {
     return value as [3 | 5, string, number];
@@ -114,6 +119,23 @@ export type RestorableSinglePlayerCloudBackup = {
 };
 
 export type QuarantinedSinglePlayerCloudBackup = readonly [worldId: string, revision: string];
+export type SinglePlayerCloudDescriptor = readonly [1, string, string, string, string]
+  | readonly [2, string] | readonly [3, string, string];
+
+export function parseSinglePlayerCloudDescriptor(value: unknown): SinglePlayerCloudDescriptor | null {
+  if (!dense(value)) return null;
+  if (value.length === 2 && value[0] === 2
+    && singlePlayerCloudNumber(value[1], 1, Number.MAX_SAFE_INTEGER)) return value as unknown as SinglePlayerCloudDescriptor;
+  if (value.length === 3 && value[0] === 3 && typeof value[1] === "string"
+    && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value[1])
+    && singlePlayerCloudNumber(value[2], 0, Number.MAX_SAFE_INTEGER)) return value as unknown as SinglePlayerCloudDescriptor;
+  return value.length === 5 && value[0] === 1 && typeof value[1] === "string"
+    && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value[1])
+    && singlePlayerCloudNumber(value[2], 1, Number.MAX_SAFE_INTEGER)
+    && singlePlayerCloudNumber(value[3], 0, Number.MAX_SAFE_INTEGER)
+    && singlePlayerCloudNumber(value[4], 0, 8_640_000_000_000_000)
+    ? value as unknown as SinglePlayerCloudDescriptor : null;
+}
 
 /** Preserves only the server's bounded delete descriptor for an unreconstructable world. */
 export function parseServerQuarantinedSinglePlayerCloudBackup(value: unknown):

@@ -37,6 +37,7 @@ export const COMPACT_CLIENT_IDENTIFIER_FAMILIES = Object.freeze([
   ["lc-toast", "xt"],
   ["lc-chat", "xi"],
   ["lc-item", "xj"],
+  ["lc-cloud", "xA"],
   ["lc-menu", "xw"],
   ["lc-creative", "xy"],
 ]);
@@ -86,7 +87,7 @@ xp-shade|3 xr-retry|2 xr-title|2 xv-arrow|2 xv-title|2 xkicker|2 xn-head|2
 xq-list|2 xr-grid|2 xv-grid|2 xp-sun|3 yshell|2 yworld|2 xt-in|2
 xworld-browser-title|1 xworld-dialog-title|1 xh__disconnect|1 xpencil-note|1
 xf__number|1 xp-loading|1 xf__arrow|1 xe-error|1 xf-list|1 xj-icon|1 xw-row|1
-xy-grid|7 xy-footer|6 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|2
+xA-grid|7 xA-footer|6 xA-tabs|4 xA-search|3 xA-empty|2 xA-window|2
 `);
 
 const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
@@ -124,6 +125,7 @@ export const COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES = Object.freeze([
 
 const REVIEWED_COMPACT_IDENTIFIER_EXEMPTIONS = Object.freeze([
   "xr", "xc", "xz", "xu", "xl", "xf", "xg", "xh", "xts", "xt", "xs", "xd",
+  "xy", "xy-actions", "xy-title", "xy-dialog-title",
   // Generated texture-atlas provenance comment; never a DOM or CSS identifier.
   "ymaterials-v1",
 ]);

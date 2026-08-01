@@ -1993,18 +1993,21 @@ export function SinglePlayerApp({ authState = false, onExit }: { authState?: boo
 
   return (
     <>
-      {authState ? <SinglePlayerCloudIdentityBoundary storage={storage} /> : null}
       {activeWorld ? (
-        <SinglePlayerWorld
-          entryPointerLockHandoff={activeWorld.pointerLockHandoff}
-          key={activeWorld.world.id}
-          onExit={() => setActiveWorld(null)}
-          storage={storage}
-          world={activeWorld.world}
-        />
+        <>
+          {authState ? <SinglePlayerCloudIdentityBoundary storage={storage} /> : null}
+          <SinglePlayerWorld
+            entryPointerLockHandoff={activeWorld.pointerLockHandoff}
+            key={activeWorld.world.id}
+            onExit={() => setActiveWorld(null)}
+            storage={storage}
+            world={activeWorld.world}
+          />
+        </>
       ) : (
         <LocalWorldBrowser
           onBack={onExit}
+          cloud={authState ? <SinglePlayerCloudIdentityBoundary storage={storage} title /> : null}
           onPlay={(world, pointerLockHandoff) => setActiveWorld({ world, pointerLockHandoff })}
           storage={storage}
         />

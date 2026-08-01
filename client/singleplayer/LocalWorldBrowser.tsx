@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { LobbyStyles } from "../lobby/LobbyStyles.tsx";
 import { requestDocumentPointerLockHandoff } from "../pointerLockHandoff.ts";
@@ -27,6 +28,7 @@ interface LocalWorldBrowserProps {
   onBack: () => void;
   onPlay: (world: LocalWorldRecord, pointerLockHandoff: boolean) => void;
   storage?: SinglePlayerStorageAdapter;
+  cloud?: ComponentChildren;
 }
 
 const enum MODAL {
@@ -72,6 +74,11 @@ const WORLD_BROWSER_CSS = `
 .lc-local-world-feedback-copy{min-width:0}
 .lc-local-world-feedback .lc-server-hint{height:auto;min-height:18px;padding:4px 3px}
 .lc-local-world-retry{min-width:150px}
+.lc-cloud{border-top:2px solid #777;max-height:42%;overflow:auto;padding-top:8px}
+.lc-cloud h2{font-size:20px;margin:0}
+.lc-cloud .lc-local-world-row{grid-template-columns:minmax(0,1fr) auto}
+.lc-cloud-actions{align-items:center;display:flex;gap:5px}
+.lc-cloud-actions button,.lc-cloud>.lc-local-world-row>button{background:#333;border:2px solid #111;color:#fff;padding:8px}
 .lc-local-world-dialog{background:transparent;border:0;box-sizing:border-box;height:100vh;height:100dvh;margin:0;max-height:none;max-width:none;overflow-y:auto;padding:clamp(16px,5vh,48px) 16px;width:100vw}
 .lc-local-world-dialog::backdrop{background:rgba(0,0,0,.72)}
 .lc-local-world-dialog .lc-username-menu{margin:auto;width:min(520px,calc(100vw - 32px))}
@@ -85,6 +92,7 @@ const WORLD_BROWSER_CSS = `
   .lc-local-world-header>.lc-menu-button{min-width:0;width:100%}
   .lc-local-world-row{grid-template-columns:minmax(0,1fr) auto}
   .lc-local-world-delete{min-width:72px;padding-inline:8px}
+  .lc-cloud{max-height:48%}.lc-cloud .lc-local-world-row{grid-template-columns:1fr}.lc-cloud-actions{flex-wrap:wrap}.lc-cloud-actions button{flex:1}
 }`;
 
 function SinglePlayerPanorama() {
@@ -136,7 +144,7 @@ function hint(text: string) {
   );
 }
 
-export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: LocalWorldBrowserProps) {
+export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage, cloud }: LocalWorldBrowserProps) {
   const [storage] = useState(() => {
     if (document.pointerLockElement) document.exitPointerLock();
     return suppliedStorage ?? browserSinglePlayerStorage();
@@ -340,6 +348,7 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
             <div className="lc-local-world-empty">{hint(search ? "No worlds match." : "Create a world to start.")}</div>
           )}
         </div>
+        {cloud}
 
         <div className="lc-local-world-feedback">
           <div className="lc-local-world-feedback-copy">
