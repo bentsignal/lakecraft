@@ -52,7 +52,7 @@ function parsePrivateIdentifierRows(rows) {
 // This fixed, reviewed live set contains only Lakecraft-owned CSS/DOM names.
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
-xe-window|20 xi-peek|15 xi-compose|14 xi-message|13 xw-button|13
+xe-window|20 xi-peek|18 xi-compose|14 xi-message|13 xw-button|13
 xc-inventory-slot|11 xj-glyph|11 xo-menu|11 xe-grid__slot|10 xj-icon__svg|10 xn-panel|10
 xlocal-world-dialog|9 xoptions|9 ysleep|9 xslot|9 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|8 xp-logo|8 xq-icon|8 xr-slot|8 xclose|8 yquery-recovery|7 xq-population|7

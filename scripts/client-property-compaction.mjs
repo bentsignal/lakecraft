@@ -328,6 +328,7 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "passivePopulation": "Sa",
   "pauseOpen": "M",
   "pauseTitle": "ga",
+  "peekMaxAgeMs": "aQ",
   "playerAlive": "ri",
   "playerName": "es",
   "playerSender": "ea",

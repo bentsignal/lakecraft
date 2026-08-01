@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatStyles } from "./ChatStyles";
+import { chatPeekMessageFading, nextChatPeekExpiryDelay, visibleChatPeekMessages } from "./chatPeek.ts";
 
 export type ChatMessageTone = "player" | "system" | "warning";
 export type ChatDeliveryState = "sending" | "sent" | "failed";
@@ -32,6 +33,7 @@ export interface ChatOverlayProps {
   playerSender?: string;
   systemSender?: string;
   warningSender?: string;
+  peekMaxAgeMs?: number;
   onDraftChange: (value: string) => void;
   onSubmit: (value: string) => void;
   onOpen?: () => void;
@@ -90,6 +92,7 @@ export function ChatOverlay({
   playerSender,
   systemSender = "[Server]",
   warningSender = "[Warning]",
+  peekMaxAgeMs = Number.POSITIVE_INFINITY,
   onDraftChange,
   onSubmit,
   onClose,
@@ -97,7 +100,21 @@ export function ChatOverlay({
 }: ChatOverlayProps) {
   const historyRef = useRef<HTMLUListElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [peekNow, setPeekNow] = useState(Date.now());
   const senderLabels = { player: playerSender, system: systemSender, warning: warningSender };
+
+  useEffect(() => {
+    if (open || !Number.isFinite(peekMaxAgeMs)) return;
+    let timer = 0;
+    const refresh = () => {
+      const now = Date.now();
+      setPeekNow(now);
+      const delay = nextChatPeekExpiryDelay(messages, now, peekMaxAgeMs);
+      if (delay !== null) timer = window.setTimeout(refresh, delay);
+    };
+    refresh();
+    return () => window.clearTimeout(timer);
+  }, [open, peekMaxAgeMs, messages.length, messages[messages.length - 1]?.id]);
 
   useEffect(() => {
     if (!open) return;
@@ -119,13 +136,13 @@ export function ChatOverlay({
   }
 
   if (!open) {
-    const recent = messages.slice(-3);
+    const recent = visibleChatPeekMessages(messages, peekNow, peekMaxAgeMs);
     return (
       <aside className="lc-chat-peek" aria-label={surfaceLabel}>
         <ChatStyles />
         <ol aria-live="polite" aria-relevant="additions">
           {recent.map((message) => (
-            <li className={`is-${message.tone ?? "player"}`} key={message.id}>
+            <li className={`is-${message.tone ?? "player"}${chatPeekMessageFading(message, peekNow, peekMaxAgeMs) ? " is-fading" : ""}`} key={message.id}>
               <strong>{senderForMessage(message, senderLabels)}</strong>
               <span>{message.body}</span>
             </li>

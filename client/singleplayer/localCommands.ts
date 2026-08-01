@@ -14,30 +14,56 @@ export type LocalGameMode = "survival" | "creative";
 export interface LocalCommandPermissions {
   changeGameMode: boolean;
   giveItems: boolean;
+  setTime: boolean;
 }
 
 export const SINGLE_PLAYER_COMMAND_PERMISSIONS: LocalCommandPermissions = Object.freeze({
   changeGameMode: true,
   giveItems: true,
+  setTime: true,
 });
 
 export const MAX_LOCAL_GIVE_COUNT = INVENTORY_SIZE * 64;
+export const LOCAL_COMMAND_PEEK_MS = 10_000;
+export const LOCAL_TIME_PHASES = Object.freeze({ day: 0.5, night: 0 });
 export const LOCAL_COMMAND_HELP = [
   "/help",
   "/gamemode <survival|creative>",
   "/give <item> [count]",
+  "/time set <day|night>",
 ] as const;
+
+export type LocalTimePreset = keyof typeof LOCAL_TIME_PHASES;
 
 export type ParsedLocalCommand =
   | { kind: "help" }
   | { kind: "gamemode"; mode: LocalGameMode }
-  | { kind: "give"; itemId: ItemId; count: number };
+  | { kind: "give"; itemId: ItemId; count: number }
+  | { kind: "time"; time: LocalTimePreset };
 
 export type LocalCommandParseResult =
   | { ok: true; command: ParsedLocalCommand }
   | { ok: false; code: "missing_slash" | "unknown_command" | "usage" | "unknown_item" | "invalid_count" | "permission"; message: string };
 
 const ITEM_IDS = Object.keys(ITEMS).sort() as ItemId[];
+
+/** Keyboard-layout-safe gameplay shortcut. Slash and its shifted ? key always seed a command. */
+export function localCommandShortcutDraft(
+  input: Readonly<Pick<KeyboardEvent, "code" | "key" | "repeat">>,
+): "" | "/" | null {
+  if (input.repeat) return null;
+  if (input.code === "Slash" || input.key === "/" || input.key === "?") return "/";
+  if (input.code === "KeyT" || input.code === "Enter") return "";
+  return null;
+}
+
+/** Pure clock mapping used by command execution and save/persistence tests. */
+export function localTimeClockUpdate(worldTimeMs: number, clientNowMs: number, time: LocalTimePreset) {
+  return {
+    config: { epochMs: worldTimeMs, epochPhase: LOCAL_TIME_PHASES[time] },
+    serverTimeOffsetMs: worldTimeMs - clientNowMs,
+  };
+}
 
 export function canonicalLocalItemIds(): readonly ItemId[] {
   return ITEM_IDS;
@@ -87,6 +113,15 @@ export function parseLocalCommand(
       return { ok: false, code: "invalid_count", message: `Count must be a whole number from 1 to ${MAX_LOCAL_GIVE_COUNT}.` };
     }
     return { ok: true, command: { kind: "give", itemId, count } };
+  }
+  if (name === "time") {
+    if (!permissions.setTime) {
+      return { ok: false, code: "permission", message: "You do not have permission to set the time." };
+    }
+    if (tokens.length !== 2 || tokens[0] !== "set" || (tokens[1] !== "day" && tokens[1] !== "night")) {
+      return { ok: false, code: "usage", message: "Usage: /time set <day|night>" };
+    }
+    return { ok: true, command: { kind: "time", time: tokens[1] } };
   }
   return {
     ok: false,

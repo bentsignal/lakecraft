@@ -124,9 +124,12 @@ import {
 } from "./sessionState.ts";
 import {
   LOCAL_COMMAND_HELP,
+  LOCAL_COMMAND_PEEK_MS,
   SINGLE_PLAYER_COMMAND_PERMISSIONS,
   canonicalLocalItemIds,
   giveLocalItem,
+  localCommandShortcutDraft,
+  localTimeClockUpdate,
   parseLocalCommand,
   transitionLocalGameMode,
   type LocalGameMode,
@@ -600,6 +603,18 @@ function SinglePlayerWorld({
     if (parsed.command.kind === "gamemode") {
       changeLocalGameMode(parsed.command.mode);
       appendCommandMessage(`Game mode set to ${parsed.command.mode}.`, "system");
+      return;
+    }
+    if (parsed.command.kind === "time") {
+      const engine = engineRef.current;
+      if (!engine) {
+        appendCommandMessage("The world clock is not ready.", "warning");
+        return;
+      }
+      const update = localTimeClockUpdate(engine.getWorldTimeMs(), Date.now(), parsed.command.time);
+      engine.setDayNightClock(update.config, update.serverTimeOffsetMs);
+      markWorldDirty();
+      appendCommandMessage(`Time set to ${parsed.command.time}.`, "system");
       return;
     }
     const granted = giveLocalItem(inventoryRef.current, parsed.command.itemId, parsed.command.count);
@@ -1717,9 +1732,10 @@ function SinglePlayerWorld({
         return;
       }
       if (commandOpen) {
-        if (event.code === "Escape" && !event.repeat) {
+        if (event.code === "Escape") {
           event.preventDefault();
-          closeCommandConsole();
+          event.stopImmediatePropagation();
+          if (!event.repeat) closeCommandConsole();
           return;
         }
         if ((event.code === "ArrowUp" || event.code === "ArrowDown") && !event.repeat) {
@@ -1751,13 +1767,16 @@ function SinglePlayerWorld({
         }
         return;
       }
-      if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat) {
+      const commandShortcutDraft = localCommandShortcutDraft(event);
+      if (commandShortcutDraft !== null) {
         if (inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
+        event.stopImmediatePropagation();
         if (commandMessages.length === 0) {
           appendCommandMessage("Local command console. Type /help to list commands and item IDs.", "system");
         }
         commandHistoryIndexRef.current = commandHistoryRef.current.length;
+        setCommandDraft(commandShortcutDraft);
         setCommandOpen(true);
         releasePointerLockForUi();
         return;
@@ -1905,6 +1924,7 @@ function SinglePlayerWorld({
         inputLabel="Local command"
         maxLength={240}
         messages={commandMessages}
+        peekMaxAgeMs={LOCAL_COMMAND_PEEK_MS}
         onClose={closeCommandConsole}
         onDraftChange={(value) => {
           commandHistoryIndexRef.current = commandHistoryRef.current.length;
