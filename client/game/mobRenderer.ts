@@ -25,7 +25,7 @@ const VERTICES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
 
 // Quantized [minX,minY,maxX,maxY,z,r,g,b] quads add pixel-scale face and
 // surface marks without paying a complete 36-vertex box per mark.
-const MOB_GEOMETRY_BYTES = decodeStaticBytes("0bLhJp&jnf1pf?OLPQlMh&W.rw*kdJG?s,l2MOQGC5g#_0#e=!vWnbxAy_HMFoRFc1!2-hap4#HoM(}f3(M{ny?)](x+*zr2+hVFap90SDq5(f1@Cc=mVFO#0cHL^l,>zj0#0dwCv+uf1oF(!tA&lowh56)FcXRlk+EE?ap69aScCS?04rV40&B?kBcR+P8WDAD17CI:As$xO9V@5hO]$xo03JK_Wvs[H2MLRCyO,D/90/U]2z.jxap8_L0frS>arRXnMh[99c(6ROIK3P0ap97lJfB)^xAgRLu[6a)2:>shM@:+hneCXmDuk2{3{zV&03^7jqN.]&iSJXvU=*^GvM(!Uz7#Ral?%zHdLUNmW#hr2Fk/(EH?p/Jape3Ch=jx+-9jr]3_qJhO}#xu01}SLlGTUr@.9>CdPQD7xm@okpdv1bzO>yOaphQwWWRc,8upP<yE3#CrpQ265*Fv(q)/g(H?/^SwJ^Hi0bO!zurz2pTPjO>:DPeeCrk?bIa^AM2]L5!hB9TfrSB7Bl>:b0IJOb{d%F-rwT&A6auyFxwKHQep[NU706ky0C::llp5{9-ur:SFxnF{O31v_2O@%p=wb%G_OwH/%r:>.[9-3U_LNN@02veBeQEJ3a00+-ve5lA):&)<)0?5qwNih*o", 516);
+const MOB_GEOMETRY_BYTES = decodeStaticBytes("0bLhJp&jnf1pf?OLPQlMh&W.rw*kdJG?s,l2MOQGC5g#_0#e=!vWnbxAy_HMFoRFc1!2-hap4#HoM(}f3(M{ny?)](x+*zr2+hVFap90SDq5(f1@Cc=mVFO#0cHL^l,>zj0#0dwCv+uf1oF(!tA&lowh56)FcXRlk+EE?ap69aScCS?04rV40&B?kBcR+P8WDAD17CI:As$xO9V@5hO]$xo03JK_Wvs[H2MLRCyO,D/90/U]2z.jxap8_L0frS>arRXnMh[99c(6ROIK3P0ap97lJfB)^xAgRLu[6a)2:>shM@:+hneCXmDuk2{3{zV&03^7jqN.]&iSJXvU=*^GvM(!Uz7#Ral?%zHdLUNmW#hr2Fk/(EH?p/Jape3Ch=jx+-9jr]3_qJhO}#xu01}SLlGTUr@.9>CdPQD7xm@okpdv1bzO>yOaphQwWWRc,8upP<yE3#CrpQ265*Fv(q)/g(H?/^SwJ^Hi0bO!zurz2pTPjO>:DPeeCrk?bIa^AM2]L5!hB9TfrSB7Bl>:b0IJOb{d%F-rwT&A6auyFxwKHQep[NU706ky0C::llp5{9-ur:SFxnF{O31v_2O@%p=wb%G_OwH/%r:>.[9-3U_LNN@02veBeQEJ3a00+-ve5lA):&)<)0?5qwNih*o", 516, 523);
 
 const FLOATS_PER_VERTEX = 6;
 const VERTICES_PER_BOX = 36;

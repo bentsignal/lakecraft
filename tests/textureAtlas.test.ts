@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
   TEXTURE_ATLAS_COLUMNS,
@@ -10,6 +11,8 @@ import {
   TEXTURE_ATLAS_ROWS,
   TEXTURE_TILE_SIZE,
 } from "../client/game/generated/textureAtlas.ts";
+import { decodeStaticBytes } from "../client/staticData.ts";
+import { decodeStaticEncoding, encodeStaticBytes } from "../scripts/static-byte-encoding.mjs";
 
 const EXPECTED_NAMES = [
   "grass_top",
@@ -125,18 +128,78 @@ assert.ok((saplingAlphaCounts.get(255) ?? 0) >= 45, "sapling foliage remains rea
 // Intentional atlas regeneration should update this fingerprint in the same change.
 assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), "7fd3debd", "generated RGBA atlas changed unexpectedly");
 const generatedSource = readFileSync(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
-const packedPalette = generatedSource.match(/decodeStaticBytes\("([^"]+)", 1012\)/)?.[1];
-const packedIndexes = generatedSource.match(/decodeStaticBytes\("([^"]+)", 7680\)/)?.[1];
+const packedPalette = generatedSource.match(/decodeStaticBytes\("([^"]+)", 1012, 818\)/)?.[1];
+const packedIndexes = generatedSource.match(/decodeStaticBytes\("([^"]+)", 4064, 3847, true\)/)?.[1];
 assert.ok(packedPalette);
 assert.ok(packedIndexes);
 assert.equal(packedPalette.length, 1_025,
   "atlas palette retains the reviewed deterministic LZSS fixture");
-assert.equal(packedIndexes.length, 5_585,
-  "atlas indexes retain the reviewed deterministic LZSS fixture");
+assert.equal(packedIndexes.length, 4_810,
+  "atlas indexes retain the reviewed local-palette bitpack fixture");
+const compactIndexes = decodeStaticBytes(packedIndexes, 4_064, 3_847, true);
+const generatedPath = new URL("../client/game/generated/textureAtlas.ts", import.meta.url);
+const atlasFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-atlas-"));
+let invalidAtlasFixture = 0;
+const rejectInvalidAtlasData = async (bytes: Uint8Array, label: string): Promise<void> => {
+  const fixturePath = join(atlasFixtureDirectory, `textureAtlas-${invalidAtlasFixture++}.ts`);
+  const fixtureSource = generatedSource
+    .replace('"../../staticData.ts"', JSON.stringify(new URL("../../staticData.ts", generatedPath).href))
+    .replace(/decodeStaticBytes\("[^"]+", 4064, 3847, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+  writeFileSync(fixturePath, fixtureSource);
+  await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid texture atlas data\.$/, label);
+};
+const rejectInvalidAtlasPayload = async (payload: string, label: string): Promise<void> => {
+  const fixturePath = join(atlasFixtureDirectory, `textureAtlas-${invalidAtlasFixture++}.ts`);
+  const fixtureSource = generatedSource
+    .replace('"../../staticData.ts"', JSON.stringify(new URL("../../staticData.ts", generatedPath).href))
+    .replace(packedIndexes, payload);
+  writeFileSync(fixturePath, fixtureSource);
+  await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid static data\.$/, label);
+};
+try {
+  const emptyPalette = compactIndexes.slice();
+  emptyPalette[0] = 0;
+  await rejectInvalidAtlasData(emptyPalette, "a tile with no local colors fails closed");
+  const invalidGlobalColor = compactIndexes.slice();
+  invalidGlobalColor[30] = 255;
+  await rejectInvalidAtlasData(invalidGlobalColor, "an out-of-range global palette index fails closed");
+  await rejectInvalidAtlasData(compactIndexes.subarray(0, compactIndexes.length - 1),
+    "a truncated tile index payload fails closed");
+  const trailingAtlasByte = new Uint8Array(compactIndexes.length + 1);
+  trailingAtlasByte.set(compactIndexes);
+  await rejectInvalidAtlasData(trailingAtlasByte, "trailing tile index bytes fail closed");
+  const noncanonicalAtlasPayload = decodeStaticEncoding(packedIndexes).subarray(0, 3_847);
+  assert.equal(noncanonicalAtlasPayload[3_835], 47, "reviewed atlas stream ends with four used token bits");
+  noncanonicalAtlasPayload[3_835] = 239;
+  await rejectInvalidAtlasPayload(encodeStaticBytes(noncanonicalAtlasPayload),
+    "the real atlas module rejects claimed nonexistent final tokens");
+} finally {
+  rmSync(atlasFixtureDirectory, { recursive: true, force: true });
+}
+const tileColorCounts = compactIndexes.subarray(0, 30);
+assert.deepEqual([...tileColorCounts], [
+  8, 30, 19, 10, 21, 15, 17, 19, 11, 17, 25, 44, 56, 3, 45,
+  46, 4, 4, 5, 5, 3, 5, 4, 3, 5, 5, 7, 5, 4, 5,
+], "each tile retains its reviewed local palette cardinality");
+assert.equal(tileColorCounts.reduce((sum, count) => sum + count, 0), 450,
+  "the 30 bounded local palettes retain their reviewed total size");
+assert.ok(Math.max(...tileColorCounts) <= 56,
+  "local palettes stay inside the one-byte format and six-bit startup decoder budget");
+assert.equal(compactIndexes.length - 30 - 450, 3_584,
+  "the atlas retains one bounded bitstream for exactly 30 16x16 tiles");
+let localPaletteCursor = 30;
+for (const colorCount of tileColorCounts) {
+  const localPalette = compactIndexes.subarray(localPaletteCursor, localPaletteCursor + colorCount);
+  assert.equal(new Set(localPalette).size, colorCount, "tile-local palettes contain no duplicate global indexes");
+  assert.ok(localPalette.every((index) => index < 253), "tile-local palettes reference the reviewed global palette");
+  localPaletteCursor += colorCount;
+}
+assert.equal(localPaletteCursor, 480, "all local palettes end at the reviewed bitstream boundary");
 assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../../staticData.ts";')
-    && generatedSource.includes("const TEXTURE_ATLAS_INDEXES = decodeStaticBytes(")
-    && !generatedSource.includes("number[]"),
-  "one-time decode releases packed data and uses one fixed index buffer without transient boxed-number storage");
+    && generatedSource.includes("export const TEXTURE_ATLAS_RGBA = new Uint8Array(30720)")
+    && !generatedSource.includes("TEXTURE_ATLAS_INDEXES")
+    && !generatedSource.includes("new Uint8Array(7680)"),
+  "one-time decode expands directly into the fixed RGBA buffer without a transient full-atlas index allocation");
 
 const png = readFileSync(new URL("../client/game/generated/texture-atlas-v1.png", import.meta.url));
 assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
