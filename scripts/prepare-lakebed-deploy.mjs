@@ -20,12 +20,17 @@ import {
   compactClientPropertyCache,
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
+import {
+  createStagingSafetyPlan,
+  writeStagingControlFiles,
+} from "./lakebed-staging-safety.mjs";
 
 const sourceRoot = resolve(process.cwd());
-const stageRoot = resolve(process.argv[2] ?? "");
-if (!process.argv[2] || stageRoot === sourceRoot) {
-  throw new Error("Pass an empty staging directory outside the capsule.");
-}
+const stagingPlan = await createStagingSafetyPlan({
+  args: process.argv.slice(2),
+  sourceRoot,
+});
+const { stageRoot } = stagingPlan;
 
 async function enableCompactLakebedBuild(buildPath) {
   const source = await readFile(buildPath, "utf8");
@@ -234,18 +239,11 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
   );
 }
 
-await mkdir(join(stageRoot, ".lakebed"), { recursive: true });
 await Promise.all([
   bundleEntrypoint("client/index.tsx", "client/index.tsx"),
   bundleEntrypoint("server/index.ts", "server/index.ts", { server: true }),
 ]);
 await cp(join(sourceRoot, "favicon.svg"), join(stageRoot, "favicon.svg"));
-for (const relativePath of ["lakebed.json", ".lakebed/deploy.json", ".env.lakebed.server"]) {
-  try {
-    await cp(join(sourceRoot, relativePath), join(stageRoot, relativePath));
-  } catch {
-    // Optional binding and environment files may not exist yet.
-  }
-}
+await writeStagingControlFiles(stagingPlan);
 
 console.log(stageRoot);

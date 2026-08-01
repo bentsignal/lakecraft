@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -132,6 +132,12 @@ try {
     cwd: repositoryRoot,
     stdio: "pipe",
   });
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(stage, "lakebed.json"), "utf8")),
+    {},
+    "the executable's default stage strips the checked-in production deployId",
+  );
+  assert.equal(existsSync(join(stage, ".env.lakebed.server")), false, "the default stage omits server secrets");
   const clientBundle = readFileSync(join(stage, "client/index.tsx"), "utf8");
   const serverBundle = readFileSync(join(stage, "server/index.ts"), "utf8");
   const sourceMapPrefix = "//# sourceMappingURL=data:application/json;base64,";

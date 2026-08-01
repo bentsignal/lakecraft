@@ -6,7 +6,9 @@ private-inspection authorization failure, quota shortage, unexpected deploy,
 artifact mismatch, or compact-size regression stops the release.
 
 The checked-in production identity is
-`docs/production-target.json`. `lakebed.json` must name the same deploy ID.
+`docs/production-target.json`. The top-level `lakebed.json` must name the same
+deploy ID; it is the production binding and must not enter ordinary audit
+stages.
 The public player URL is <https://craft.lakebed.app>; the canonical Lakebed URL
 is recorded separately because the public alias is the durable user-facing
 address.
@@ -67,20 +69,38 @@ node scripts/check-lakebed-artifact-size.mjs /absolute/path/to/artifact-a.json
 node scripts/audit-lakebed-production.mjs
 ```
 
-The ignored `.lakebed/deploy.json` contains the claim binding needed for
-private hosted inspection. Never copy it into the repository, a PR, an evidence
-bundle, or another user's worktree. If hosted inspection says authorization is
-required, stop and use an already-claimed operator checkout or an approved
-ephemeral credential mechanism. Do not make the inspection endpoint public.
+These default staging commands are audit-only: they write a safe
+`lakebed.json` without `deployId`, omit `.env.lakebed.server`, preserve any
+other non-sensitive Lakebed configuration, and must never be passed to
+`npx lakebed deploy`. A `.lakebed/deploy.json` file is an unexpected legacy
+credential path, not the production binding; staging fails closed if it or an
+unrecognized `.env.lakebed*` path exists. Never copy credentials into the
+repository, a PR, an evidence bundle, or another user's worktree. If hosted
+inspection says authorization is required, stop and use an already-authorized
+operator checkout or an approved ephemeral credential mechanism. Do not make
+the inspection endpoint public.
 
 ## Deploy and verify
 
 Deployment is an explicit operator action after review approval; this runbook
-does not authorize an automated deploy. From the exact staged tree:
+does not authorize an automated deploy. Create a fresh release-only stage,
+then prove its generated sources equal the two audited stages before using it.
+The verbose flag is the only mode that preserves the exact top-level
+`lakebed.json` production binding and, when present, the exact ignored server
+environment:
 
 ```sh
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed deploy "$stage_a" --json
+release_stage="$(mktemp -d)"
+node scripts/prepare-lakebed-deploy.mjs \
+  "$release_stage" --release-with-binding-and-server-env
+cmp "$stage_a/client/index.tsx" "$release_stage/client/index.tsx"
+cmp "$stage_a/server/index.ts" "$release_stage/server/index.ts"
+LAKEBED_COMPACT_BUNDLE=1 npx lakebed deploy "$release_stage" --json
 ```
+
+Stop if the release stage lacks the expected `deployId`, inherits any other
+credential path, or differs from either audited generated source. Never add the
+release flag to local evidence, artifact-size, or visual-QA staging commands.
 
 Record the returned deploy ID, artifact hash, client bundle hash, URL, and UTC
 completion time. Then require the control plane to report the exact artifact:

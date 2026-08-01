@@ -309,6 +309,12 @@ test("checked-in target, Lakebed binding, README, and runbook remain aligned", a
   assert.ok(runbook.includes(checkedIn.publicUrl));
   assert.ok(runbook.includes("32,768 bytes"));
   assert.ok(runbook.includes("does not prove that the public alias"));
+  assert.ok(readme.includes("--release-with-binding-and-server-env"));
+  assert.ok(runbook.includes("--release-with-binding-and-server-env"));
+  assert.match(readme, /Never run `npx lakebed deploy` against an audit stage/);
+  assert.match(runbook, /default staging commands are audit-only/);
+  assert.match(runbook, /top-level\s+`lakebed\.json` production binding/);
+  assert.doesNotMatch(runbook, /\.lakebed\/deploy\.json` contains the claim binding/);
   assert.match(script, /\["lakebed", "deploy", "list", "--json"\]/);
   assert.doesNotMatch(script, /\["lakebed", "deploy", "[^l]/);
 });
