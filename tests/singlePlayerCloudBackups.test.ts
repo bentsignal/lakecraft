@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
@@ -15,12 +16,15 @@ import {
 import {
   SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES,
+  SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS,
   SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS,
   SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES,
   candidateMatchesManifest,
+  canonicalCloudBackupJson,
+  cloudBackupHash,
   cloudBackupStoredChunkBytes,
   cloudBackupUtf8Bytes,
   decideSinglePlayerCloudBackupCommit,
@@ -28,9 +32,12 @@ import {
   parseSinglePlayerCloudBackupDeleteRequest,
   splitSinglePlayerCloudBackupSnapshot,
   utcCloudBackupDay,
+  validStoredSinglePlayerCloudBackupManifest,
   type SinglePlayerCloudBackupCandidate,
   type StoredSinglePlayerCloudBackupManifest,
 } from "../shared/singlePlayerCloudBackups.ts";
+import { isRestorableSinglePlayerSnapshot } from "../shared/singlePlayerSnapshotGate.ts";
+import { validateSinglePlayerSnapshot } from "../client/singleplayer/localSave.ts";
 
 class MemoryStorage implements SinglePlayerStorageAdapter {
   readonly values = new Map<string, string>();
@@ -66,6 +73,37 @@ const parsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
 assert.equal(parsed.ok, true);
 if (!parsed.ok) throw new Error("fixture failed cloud validation");
 const candidate = parsed.candidate;
+assert.equal(isRestorableSinglePlayerSnapshot(snapshot), true, "the server portable gate accepts the canonical local fixture");
+
+const withDrops = structuredClone(snapshot);
+withDrops.drops = [{ dropId: "drop_A.1:test", item: { itemId: "dirt", count: 1 }, x: 0, y: 1, z: 2,
+  droppedAt: 1, velocityY: -24, settled: false }];
+assert.equal(isRestorableSinglePlayerSnapshot(withDrops), true, "entity IDs and the terminal-velocity boundary match local saves");
+assert.equal(validateSinglePlayerSnapshot(withDrops).ok, true);
+withDrops.drops[0].velocityY = -24.000_001;
+assert.equal(isRestorableSinglePlayerSnapshot(withDrops), false);
+assert.equal(validateSinglePlayerSnapshot(withDrops).ok, false);
+
+const ordered = structuredClone(snapshot);
+ordered.progression.recipes = ["A.recipe", "a:recipe"];
+ordered.world.edits = [{ x: -2, y: 0, z: 0, block: 1 }, { x: -1, y: 0, z: 0, block: 1 }];
+assert.equal(isRestorableSinglePlayerSnapshot(ordered), true, "code-unit progression and numeric edit ordering match local normalization");
+assert.equal(validateSinglePlayerSnapshot(ordered).ok, true);
+ordered.progression.recipes.reverse();
+assert.equal(isRestorableSinglePlayerSnapshot(ordered), false);
+ordered.progression.recipes.reverse();
+ordered.world.edits.reverse();
+assert.equal(isRestorableSinglePlayerSnapshot(ordered), false);
+
+const invalidNested = structuredClone(snapshot);
+invalidNested.player.inventory[0] = { itemId: "dirt", count: 65 };
+assert.equal(isRestorableSinglePlayerSnapshot(invalidNested), false);
+assert.equal(validateSinglePlayerSnapshot(invalidNested).ok, false);
+const invalidBody = { format: "lakecraft.singleplayer", payload: invalidNested, savedAt, sequence: 7, version: 1 };
+const invalidRaw = canonicalCloudBackupJson({ checksum: cloudBackupHash(invalidBody), ...invalidBody });
+assert.deepEqual(parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
+  1, worldId, "Cloud World", 42, "survival", createdAt, "0", invalidRaw,
+])), { ok: false, reason: "invalid_snapshot" }, "caller-recomputed checksums cannot bypass the complete portable schema gate");
 
 const ascii = "a".repeat(150_000);
 const asciiChunks = splitSinglePlayerCloudBackupSnapshot(ascii);
@@ -73,10 +111,24 @@ assert.deepEqual(asciiChunks?.map((chunk) => chunk.length), [48_000, 48_000, 48_
 assert.equal(asciiChunks?.join(""), ascii);
 assert.ok(asciiChunks?.every((chunk) => cloudBackupUtf8Bytes(chunk) <= SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES));
 assert.equal(
-  asciiChunks!.reduce((sum, chunk) => sum + cloudBackupStoredChunkBytes(chunk), 1_024),
-  154_104,
+  asciiChunks!.reduce((sum, chunk) => sum + cloudBackupStoredChunkBytes(chunk), SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES),
+  161_352,
   "the charged maximum ASCII payload must remain below the explicit per-user state cap",
 );
+
+const maximumUserId = `google:usr_${"a".repeat(509)}`;
+assert.equal(maximumUserId.length, 520);
+const actualChunkRow = JSON.stringify({ userId: maximumUserId, worldId: "w".repeat(64), uploadId: "f".repeat(64),
+  chunkIndex: "3", chunkData: candidate.chunks[0], chunkBytes: "48000", chunkStateBytes: "999999", protocolVersion: "1" });
+assert.ok(cloudBackupStoredChunkBytes(candidate.chunks[0]) >= cloudBackupUtf8Bytes(actualChunkRow) + 1_024,
+  "the provider-prefixed maximum auth subject and complete chunk row stay conservatively charged");
+assert.ok(SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES >= cloudBackupUtf8Bytes(JSON.stringify({
+  userId: maximumUserId, worldId, name: "x".repeat(48), seed: "-2147483648", gameMode: "survival",
+  worldCreatedAt: "8640000000000000", snapshotHash: "ffffffff", snapshotChars: "150000",
+  snapshotUtf8Bytes: "192000", stateBytes: "192000", chunkCount: "4",
+  uploadId: "ffffffff-ffffffff-zzzzzz", revision: "9007199254740991",
+  uploadedAt: "8640000000000000", protocolVersion: "1",
+})) + 1_024, "manifest charge covers the maximum auth subject, fields, and container/index margin");
 
 const unicode = `${"😀".repeat(12_000)}x${"😀".repeat(12_000)}`;
 const unicodeChunks = splitSinglePlayerCloudBackupSnapshot(unicode);
@@ -142,6 +194,9 @@ assert.equal(first.ok && first.kind, "write");
 if (!first.ok) throw new Error("fixture failed initial decision");
 const manifest = first.manifest;
 assert.equal(manifest.revision, "1");
+assert.equal(validStoredSinglePlayerCloudBackupManifest(manifest), true);
+assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, stateBytes: "NaN" }), false);
+assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, revision: "0" }), false);
 assert.equal(candidateMatchesManifest(candidate, manifest), true);
 
 const staleExact = { ...candidate, expectedRevision: "0" };
@@ -237,5 +292,19 @@ assert.deepEqual(restoreMissingLocalWorld(full, {
 }), { ok: false, reason: "world_limit_reached", mutationStarted: false });
 assert.deepEqual(full.values, beforeFullRestore, "capacity rejection must not mutate browser storage");
 assert.equal(listLocalWorlds(full).worlds.length, LOCAL_WORLD_REGISTRY_MAX_WORLDS);
+
+const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+assert.match(serverSource, /\.index\("by_cleanup", \["activeBackup", "cleanupAfter"\]\)/,
+  "dormant budgets use an explicit eligibility index instead of a starvation-prone creation prefix");
+assert.match(serverSource, /q\.eq\("activeBackup", "0"\)[\s\S]*?\.lt\("cleanupAfter"/,
+  "cleanup selects only eligible dormant rows");
+assert.match(serverSource, /userChunks\.length !== userManifests\.reduce/,
+  "all per-user chunks must map one-for-one to active manifest chunk counts, rejecting orphans");
+assert.match(serverSource, /row\.chunkStateBytes !== String\(cloudBackupStoredChunkBytes\(row\.chunkData\)\)/,
+  "mutations re-derive conservative persisted-row charges before quota arithmetic");
+assert.match(serverSource, /activeBackup: "0", cleanupAfter:/,
+  "last-world permanent deletion retains cadence state only until its indexed cleanup deadline");
+assert.match(serverSource, /userId\.length > 520/,
+  "the server accepts the exact provider-prefixed maximum identity but rejects unbounded auth state");
 
 console.log("single-player cloud backup protocol and explicit restore foundation tests passed");
