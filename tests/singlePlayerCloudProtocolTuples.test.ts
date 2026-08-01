@@ -6,10 +6,14 @@ import {
   inventorySinglePlayerCloudBackupParts,
   loadSinglePlayerCloudBackupParts,
   parseSinglePlayerCloudBackupCommitRequest,
+  parseSinglePlayerCloudBackupDeleteRequest,
   parseSinglePlayerCloudTombstone,
+  SINGLE_PLAYER_CLOUD_MAX_REVISION,
   singlePlayerCloudBackupHeader,
   singlePlayerCloudBackupWire,
+  singlePlayerCloudInteger,
   singlePlayerCloudTombstoneHeader,
+  singlePlayerCloudUnsigned,
   type StoredSinglePlayerCloudBackupPart,
 } from "../shared/singlePlayerCloudBackups.ts";
 
@@ -21,6 +25,20 @@ assert.deepEqual(parsed[1].slice(0, 8), ["world-a", "World A", 7, "survival", 10
 assert.equal(parsed[1][8], 6);
 assert.equal(parsed[1][10].join(""), "opaque");
 assert.deepEqual(parseSinglePlayerCloudBackupCommitRequest("{}"), [0, "invalid_request"]);
+assert.equal(singlePlayerCloudUnsigned(Symbol("revision"), 0, 1), false,
+  "non-string validation is Symbol-safe");
+assert.equal(singlePlayerCloudUnsigned("0001", 0, 10), true,
+  "persisted noncanonical counters retain their prior acceptance semantics");
+assert.equal(singlePlayerCloudUnsigned(String(SINGLE_PLAYER_CLOUD_MAX_REVISION), 1,
+  SINGLE_PLAYER_CLOUD_MAX_REVISION), true);
+assert.equal(singlePlayerCloudUnsigned("9007199254740992", 1, SINGLE_PLAYER_CLOUD_MAX_REVISION), false);
+for (const value of ["-1", "1.0", "", "12345678901234567"]) {
+  assert.equal(singlePlayerCloudUnsigned(value, 0, SINGLE_PLAYER_CLOUD_MAX_REVISION), false);
+}
+for (const value of [NaN, Infinity, 1.5, -1, 11]) assert.equal(singlePlayerCloudInteger(value, 0, 10), false);
+assert.equal(singlePlayerCloudInteger(10, 0, 10), true);
+assert.equal(parseSinglePlayerCloudBackupDeleteRequest('[1,"world-a","01","delete_op_1"]'), null,
+  "wire revisions remain canonical even though persisted counters may contain leading zeroes");
 
 const headerForCharge = JSON.stringify([1, "World A", "7", "survival", "10", parsed[1][6], "1", "1800000"]);
 const stateBytes = cloudBackupStoredPartBytes("user-a", "world-a", "0", headerForCharge)

@@ -852,7 +852,7 @@ const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url)
 const cloudSource = readFileSync(new URL("../shared/singlePlayerCloudBackups.ts", import.meta.url), "utf8");
 assert.match(serverSource, /\.index\("by_cleanup", \["activeBackup", "cleanupAfter"\]\)/,
   "dormant budgets use an explicit eligibility index instead of a starvation-prone creation prefix");
-assert.match(serverSource, /q\.eq\("activeBackup", "0"\)[\s\S]*?\.lt\("cleanupAfter"/,
+assert.match(serverSource, /q\.eq\(BS\.activeBackup, "0"\)[\s\S]*?\.lt\(BS\.cleanupAfter/,
   "cleanup selects only eligible dormant rows");
 assert.match(serverSource, /singlePlayerCloudBackupParts: table\(\{[\s\S]*?part: string\(\),[\s\S]*?data: string\(\),[\s\S]*?\.index\(BS\.byUser, \["userId"\]\)/,
   "one owner-indexed parts table is the complete cloud backup storage surface");
@@ -862,13 +862,13 @@ assert.match(cloudSource, /parts\.some\(\(part, index\) => part\.part !== String
   "the shared loader rejects missing, duplicate, or orphan part topology");
 assert.match(cloudSource, /candidate\[1\]\[10\]\.some\(\(chunk, index\) => chunk !== parts\[index \+ 1\]\.data\)/,
   "the shared loader recomputes exact chunk boundaries and contents before quota arithmetic");
-assert.match(serverSource, /singlePlayerCloudTombstoneHeader\(tombstone\)[\s\S]*?activeBackup: "1"/,
+assert.match(serverSource, /singlePlayerCloudTombstoneHeader\(tombstone\)[\s\S]*?\[BS\.activeBackup\]: "1"/,
   "permanent deletion retains a durable cloud fence and its bounded owner accounting");
 assert.match(serverSource, /userId\.length > 520/,
   "the server accepts the exact provider-prefixed maximum identity but rejects unbounded auth state");
-assert.match(serverSource, /row\.userId === userId && \(!deleting \|\| current \|\| currentTombstone\)/,
+assert.match(serverSource, /row\[BS\.userId\] === userId && \(!deleting \|\| current \|\| currentTombstone\)/,
   "cleanup cannot remove the caller budget while an active backup or tombstone owns it");
-assert.match(serverSource, /singlePlayerCloudBudgetCleanupAfter\(row\.dayKey, Number\(row\.lastAcceptedAt\)\)[\s\S]*?validUtcCloudBackupDay\(quota\.dayKey\)/,
+assert.match(serverSource, /singlePlayerCloudBudgetCleanupAfter\(row\[BS\.dayKey\], Number\(row\[BS\.lastAcceptedAt\]\)\)[\s\S]*?validUtcCloudBackupDay\(quotaState!\[1\]\)/,
   "budget day/timestamp pairs and quota day keys require canonical real UTC dates before mutation");
 const cloudMutation = serverSource.slice(serverSource.indexOf("mutateSinglePlayerCloudBackup"), serverSource.indexOf("growOakTree"));
 const undercountGuard = cloudMutation.indexOf("!recoveringDelete && quota");

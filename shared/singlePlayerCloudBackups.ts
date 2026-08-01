@@ -15,13 +15,15 @@ export const SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS = 512;
 export const SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_UTF8_BYTES = 1_024;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_TOMBSTONES = 6;
 export const SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD = "~";
+export const SINGLE_PLAYER_CLOUD_MAX_REVISION = Number.MAX_SAFE_INTEGER;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS = SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS
   * (SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 2) + 1;
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
+const MIN_SEED = -2_147_483_648;
+const MAX_SEED = 2_147_483_647;
 const WORLD_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const HASH = /^[0-9a-f]{8}$/;
-const REVISION = /^(?:0|[1-9][0-9]{0,15})$/;
 
 export type SinglePlayerCloudBackupCommitRequest = readonly [
   version: typeof SINGLE_PLAYER_CLOUD_BACKUP_VERSION,
@@ -86,6 +88,14 @@ const INVALID_REQUEST = [0, "invalid_request"] as const;
 const CLOUD_CAPACITY = [0, "cloud_capacity"] as const;
 const INVALID_BACKUP = [0, "invalid_backup"] as const;
 
+export function singlePlayerCloudUnsigned(value: unknown, minimum: number, maximum: number,
+  digits = 16): value is string {
+  if (typeof value !== "string" || value.length < 1 || value.length > digits || !/^\d+$/.test(value)) return false;
+  return singlePlayerCloudInteger(Number(value), minimum, maximum);
+}
+const canonicalUnsigned = (value: unknown, minimum: number, maximum: number) =>
+  singlePlayerCloudUnsigned(value, minimum, maximum) && String(Number(value)) === value;
+
 /** Bounds every persisted string before any header parse, payload join, or integrity reconstruction. */
 export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSinglePlayerCloudBackupPart>(
   userId: string,
@@ -129,15 +139,15 @@ export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSingle
 
 export function validStoredSinglePlayerCloudBackupManifest(value: unknown): value is StoredSinglePlayerCloudBackupManifest {
   return Array.isArray(value) && value.length === 11 && typeof value[0] === "string" && WORLD_ID.test(value[0]) && validName(value[1])
-    && typeof value[2] === "string" && /^-?\d{1,10}$/.test(value[2]) && integer(Number(value[2]), -2_147_483_648, 2_147_483_647)
+    && typeof value[2] === "string" && /^-?\d{1,10}$/.test(value[2]) && singlePlayerCloudInteger(Number(value[2]), MIN_SEED, MAX_SEED)
     && (value[3] === "survival" || value[3] === "creative")
-    && typeof value[4] === "string" && /^\d{1,16}$/.test(value[4]) && integer(Number(value[4]), 0, MAX_TIMESTAMP)
+    && singlePlayerCloudUnsigned(value[4], 0, MAX_TIMESTAMP)
     && typeof value[5] === "string" && HASH.test(value[5])
-    && typeof value[6] === "string" && /^\d{1,6}$/.test(value[6]) && integer(Number(value[6]), 1, SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES * SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS)
-    && typeof value[7] === "string" && /^\d{1,6}$/.test(value[7]) && integer(Number(value[7]), 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES)
-    && typeof value[8] === "string" && /^[1-4]$/.test(value[8])
-    && typeof value[9] === "string" && REVISION.test(value[9]) && integer(Number(value[9]), 1, Number.MAX_SAFE_INTEGER)
-    && typeof value[10] === "string" && /^\d{1,16}$/.test(value[10]) && integer(Number(value[10]), 0, MAX_TIMESTAMP);
+    && singlePlayerCloudUnsigned(value[6], 1, SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES * SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS, 6)
+    && singlePlayerCloudUnsigned(value[7], 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES, 6)
+    && singlePlayerCloudUnsigned(value[8], 1, 4, 1)
+    && canonicalUnsigned(value[9], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    && singlePlayerCloudUnsigned(value[10], 0, MAX_TIMESTAMP);
 }
 
 export function singlePlayerCloudBackupHeader(manifest: StoredSinglePlayerCloudBackupManifest): string {
@@ -177,14 +187,12 @@ export function loadSinglePlayerCloudBackupParts<TPart extends StoredSinglePlaye
     try { header = JSON.parse(parts[0].data); } catch { return SERVER_STATE; }
     if (!Array.isArray(header) || header.length !== 8 || header[0] !== 1 || !validName(header[1])
       || typeof header[2] !== "string" || !/^-?\d{1,10}$/.test(header[2]) || String(Number(header[2])) !== header[2]
-      || !integer(Number(header[2]), -2_147_483_648, 2_147_483_647)
+      || !singlePlayerCloudInteger(Number(header[2]), MIN_SEED, MAX_SEED)
       || (header[3] !== "survival" && header[3] !== "creative")
-      || typeof header[4] !== "string" || !/^\d{1,16}$/.test(header[4]) || String(Number(header[4])) !== header[4]
-      || !integer(Number(header[4]), 0, MAX_TIMESTAMP)
+      || !canonicalUnsigned(header[4], 0, MAX_TIMESTAMP)
       || typeof header[5] !== "string" || !HASH.test(header[5])
-      || typeof header[6] !== "string" || !REVISION.test(header[6]) || !integer(Number(header[6]), 1, Number.MAX_SAFE_INTEGER)
-      || typeof header[7] !== "string" || !/^\d{1,16}$/.test(header[7]) || String(Number(header[7])) !== header[7]
-      || !integer(Number(header[7]), 0, MAX_TIMESTAMP)
+      || !canonicalUnsigned(header[6], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+      || !canonicalUnsigned(header[7], 0, MAX_TIMESTAMP)
       || parts[0].data !== JSON.stringify(header)) return SERVER_STATE;
     const snapshotJson = parts.slice(1).map((part) => part.data).join("");
     const candidate = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([1, worldId, header[1],
@@ -212,15 +220,15 @@ export function parseSinglePlayerCloudTombstone(worldId: string, raw: string): S
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   if (!Array.isArray(value) || value.length !== 5 || value[0] !== 0
-    || typeof value[1] !== "string" || !REVISION.test(value[1]) || Number(value[1]) > Number.MAX_SAFE_INTEGER
-    || typeof value[2] !== "string" || !REVISION.test(value[2]) || Number(value[2]) > Number.MAX_SAFE_INTEGER
-    || typeof value[3] !== "string" || !/^\d{1,16}$/.test(value[3]) || !integer(Number(value[3]), 0, MAX_TIMESTAMP)
+    || !canonicalUnsigned(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    || !canonicalUnsigned(value[2], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    || !singlePlayerCloudUnsigned(value[3], 0, MAX_TIMESTAMP)
     || typeof value[4] !== "string" || !OPERATION_ID.test(value[4])
     || raw !== JSON.stringify(value)) return null;
   return [worldId, value[1], value[2], value[3], value[4]];
 }
 
-function integer(value: unknown, minimum: number, maximum: number): value is number {
+export function singlePlayerCloudInteger(value: unknown, minimum: number, maximum: number): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
 }
 
@@ -290,14 +298,12 @@ export function parseSinglePlayerCloudBackupWire(value: unknown):
   if (!Array.isArray(value) || value.length !== 10 || value[0] !== 1
     || typeof value[1] !== "string" || !WORLD_ID.test(value[1]) || !validName(value[2])
     || typeof value[3] !== "string" || !/^-?\d{1,10}$/.test(value[3])
-    || String(Number(value[3])) !== value[3] || !integer(Number(value[3]), -2_147_483_648, 2_147_483_647)
+    || String(Number(value[3])) !== value[3] || !singlePlayerCloudInteger(Number(value[3]), MIN_SEED, MAX_SEED)
     || (value[4] !== "survival" && value[4] !== "creative")
-    || typeof value[5] !== "string" || !/^\d{1,16}$/.test(value[5])
-    || String(Number(value[5])) !== value[5] || !integer(Number(value[5]), 0, MAX_TIMESTAMP)
+    || !canonicalUnsigned(value[5], 0, MAX_TIMESTAMP)
     || typeof value[6] !== "string" || !HASH.test(value[6]) || typeof value[7] !== "string"
-    || typeof value[8] !== "string" || !REVISION.test(value[8]) || !integer(Number(value[8]), 1, Number.MAX_SAFE_INTEGER)
-    || typeof value[9] !== "string" || !/^\d{1,16}$/.test(value[9])
-    || String(Number(value[9])) !== value[9] || !integer(Number(value[9]), 0, MAX_TIMESTAMP)) {
+    || !canonicalUnsigned(value[8], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    || !canonicalUnsigned(value[9], 0, MAX_TIMESTAMP)) {
     return INVALID_BACKUP;
   }
   const parsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([1, value[1], value[2], Number(value[3]),
@@ -316,9 +322,9 @@ export function parseSinglePlayerCloudBackupCommitRequest(raw: string):
   try { value = JSON.parse(raw); } catch { return INVALID_REQUEST; }
   if (!Array.isArray(value) || value.length !== 8 || value[0] !== 1
     || typeof value[1] !== "string" || !WORLD_ID.test(value[1]) || !validName(value[2])
-    || !integer(value[3], -2_147_483_648, 2_147_483_647)
-    || (value[4] !== "survival" && value[4] !== "creative") || !integer(value[5], 0, MAX_TIMESTAMP)
-    || typeof value[6] !== "string" || !REVISION.test(value[6]) || Number(value[6]) > Number.MAX_SAFE_INTEGER
+    || !singlePlayerCloudInteger(value[3], MIN_SEED, MAX_SEED)
+    || (value[4] !== "survival" && value[4] !== "creative") || !singlePlayerCloudInteger(value[5], 0, MAX_TIMESTAMP)
+    || !canonicalUnsigned(value[6], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     || typeof value[7] !== "string") return INVALID_REQUEST;
   const chunks = splitSinglePlayerCloudBackupSnapshot(value[7]);
   if (!chunks) return CLOUD_CAPACITY;
@@ -335,7 +341,7 @@ export function parseSinglePlayerCloudBackupDeleteRequest(raw: string): SinglePl
   try { value = JSON.parse(raw); } catch { return null; }
   return Array.isArray(value) && value.length === 4 && value[0] === 1
     && typeof value[1] === "string" && WORLD_ID.test(value[1])
-    && typeof value[2] === "string" && REVISION.test(value[2]) && Number(value[2]) <= Number.MAX_SAFE_INTEGER
+    && canonicalUnsigned(value[2], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     && typeof value[3] === "string" && OPERATION_ID.test(value[3])
     ? value as unknown as SinglePlayerCloudBackupDeleteRequest : null;
 }
@@ -345,7 +351,7 @@ export function parseSinglePlayerCloudDispositionRequest(raw: string): SinglePla
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   return Array.isArray(value) && value.length === 2 && (value[0] === 2 || value[0] === 3)
-    && typeof value[1] === "string" && REVISION.test(value[1]) && Number(value[1]) <= Number.MAX_SAFE_INTEGER
+    && canonicalUnsigned(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     ? value as SinglePlayerCloudDispositionRequest : null;
 }
 
@@ -365,10 +371,10 @@ export function singlePlayerCloudBackupDeleteActiveState(
   targetRawCharge: number,
   removableBudgetCharge: number,
 ): number | null {
-  if (!integer(globalStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
-    || !integer(remainingMinimum, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES, globalStateBytes)
-    || !integer(targetRawCharge, 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
-    || !integer(removableBudgetCharge, 0, SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES)) return null;
+  if (!singlePlayerCloudInteger(globalStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    || !singlePlayerCloudInteger(remainingMinimum, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES, globalStateBytes)
+    || !singlePlayerCloudInteger(targetRawCharge, 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    || !singlePlayerCloudInteger(removableBudgetCharge, 0, SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES)) return null;
   let releaseSlack = globalStateBytes - remainingMinimum;
   const targetRelease = Math.min(targetRawCharge, releaseSlack);
   releaseSlack -= targetRelease;
@@ -396,15 +402,17 @@ export function decideSinglePlayerCloudBackupCommit(
   now: number,
 ): readonly [1, "deduped" | "write", StoredSinglePlayerCloudBackupManifest]
   | readonly [0, "cadence" | "cloud_capacity" | "conflict" | "server_state" | "world_limit", number?] {
-  if (!integer(userWorldCount, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS + 1)
-    || !integer(userStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
-    || !integer(globalStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
-    || !integer(userLastAcceptedAt, 0, MAX_TIMESTAMP) || !integer(userAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES)
-    || !integer(globalAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES)
-    || !REVISION.test(generation) || !integer(Number(generation), 1, Number.MAX_SAFE_INTEGER - 1)
-    || !integer(now, 0, MAX_TIMESTAMP)) return SERVER_STATE;
-  const currentRevision = current && REVISION.test(current[9]) ? Number(current[9]) : 0;
-  const currentBytes = current && /^\d{1,6}$/.test(current[7]) ? Number(current[7]) : 0;
+  if (!singlePlayerCloudInteger(userWorldCount, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS + 1)
+    || !singlePlayerCloudInteger(userStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    || !singlePlayerCloudInteger(globalStateBytes, 0, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    || !singlePlayerCloudInteger(userLastAcceptedAt, 0, MAX_TIMESTAMP)
+    || !singlePlayerCloudInteger(userAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES)
+    || !singlePlayerCloudInteger(globalAcceptedToday, 0, SINGLE_PLAYER_CLOUD_BACKUP_GLOBAL_DAILY_WRITES)
+    || !canonicalUnsigned(generation, 1, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1)
+    || !singlePlayerCloudInteger(now, 0, MAX_TIMESTAMP)) return SERVER_STATE;
+  const currentRevision = current && canonicalUnsigned(current[9], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    ? Number(current[9]) : 0;
+  const currentBytes = current && singlePlayerCloudUnsigned(current[7], 0, 999_999, 6) ? Number(current[7]) : 0;
   if (current && (currentRevision < 1 || currentRevision >= Number(generation))) {
     return SERVER_STATE;
   }
@@ -438,22 +446,22 @@ export function validUtcCloudBackupDay(value: unknown): value is string {
 }
 
 export function singlePlayerCloudBudgetCleanupAfter(dayKey: unknown, lastAcceptedAt: unknown): number | null {
-  if (!validUtcCloudBackupDay(dayKey) || !integer(lastAcceptedAt, 0, MAX_TIMESTAMP)
+  if (!validUtcCloudBackupDay(dayKey) || !singlePlayerCloudInteger(lastAcceptedAt, 0, MAX_TIMESTAMP)
     || utcCloudBackupDay(lastAcceptedAt) !== dayKey) return null;
   const dayEnd = Date.parse(`${dayKey}T00:00:00Z`) + 86_400_000;
   const cadenceEnd = lastAcceptedAt + SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS;
   const cleanupAfter = Math.max(dayEnd, cadenceEnd);
-  return integer(cleanupAfter, 0, MAX_TIMESTAMP) ? cleanupAfter : null;
+  return singlePlayerCloudInteger(cleanupAfter, 0, MAX_TIMESTAMP) ? cleanupAfter : null;
 }
 
 export function validSinglePlayerCloudQuotaState(activeStateBytes: unknown, minimumStateBytes: number, revision: unknown): boolean {
-  return integer(minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
-    && integer(activeStateBytes, minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
-    && integer(revision, 1, Number.MAX_SAFE_INTEGER - 1);
+  return singlePlayerCloudInteger(minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    && singlePlayerCloudInteger(activeStateBytes, minimumStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES)
+    && singlePlayerCloudInteger(revision, 1, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1);
 }
 
 export function nextSinglePlayerCloudGeneration(revision: number): string | null {
-  return integer(revision, 0, Number.MAX_SAFE_INTEGER - 2) ? String(revision + 1) : null;
+  return singlePlayerCloudInteger(revision, 0, SINGLE_PLAYER_CLOUD_MAX_REVISION - 2) ? String(revision + 1) : null;
 }
 
 export function singlePlayerCloudBackupWire(
