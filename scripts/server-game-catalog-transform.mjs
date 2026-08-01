@@ -427,7 +427,7 @@ export function compactClientGameCatalog(source) {
   }
   const payload = encodeStaticBytes(packed);
   return `import{decodeStaticBytes as __lakecraftDecodeStaticBytes}from"../client/staticData.ts";`
-    + `const ${CLIENT_CATALOG_IDENTIFIER}=JSON.parse(new TextDecoder().decode(__lakecraftDecodeStaticBytes(${JSON.stringify(payload)},${bytes.length}))) as any[][];`
+    + `const ${CLIENT_CATALOG_IDENTIFIER}=JSON.parse(new TextDecoder().decode(__lakecraftDecodeStaticBytes(${JSON.stringify(payload)},${bytes.length},${packed.length}))) as any[][];`
     + contents;
 }
 
@@ -474,7 +474,7 @@ export const SERVER_PRESENTATION_SENTINELS = Object.freeze({
   blockLabel: "Grass",
   blockDescription: "A living cap over packed earth.",
   blockColor: "#718447",
-  itemShortLabel: "GRS",
+  itemShortLabel: "D·OR",
   itemGlyph: "▨",
   toolDescription: "A light pick for fieldstone.",
   armorDescription: "A durable diamond helmet.",

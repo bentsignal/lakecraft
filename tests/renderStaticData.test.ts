@@ -40,9 +40,9 @@ assert.equal(fnv1a32(canonical), "f697727a",
 
 const generatedPath = new URL("../client/game/generated/renderGeometry.ts", import.meta.url);
 const generatedSource = readFileSync(generatedPath, "utf8");
-const payloads = [...generatedSource.matchAll(/decodeStaticBytes\("([^"]+)", (\d+)\)/g)];
-assert.deepEqual(payloads.map((match) => [match[1].length, Number(match[2])]),
-  [[65, 108], [140, 192]], "renderer fixtures retain their reviewed packed and decoded bounds");
+const payloads = [...generatedSource.matchAll(/decodeStaticBytes\("([^"]+)", (\d+), (\d+)\)/g)];
+assert.deepEqual(payloads.map((match) => [match[1].length, Number(match[2]), Number(match[3])]),
+  [[65, 108, 50], [140, 192, 111]], "renderer fixtures retain their reviewed packed and decoded bounds");
 assert.equal((generatedSource.match(/decodeStaticBytes\(/g) ?? []).length, 2,
   "renderer tables decode once at module initialization through the shared helper");
 
