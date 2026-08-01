@@ -35,6 +35,9 @@ import {
   SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS,
   SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS,
+  SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS,
+  SINGLE_PLAYER_CLOUD_BACKUP_MAX_TOMBSTONES,
+  SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD,
   SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
   SINGLE_PLAYER_CLOUD_BACKUP_USER_DAILY_WRITES,
   candidateMatchesManifest as tupleCandidateMatchesManifest,
@@ -49,9 +52,12 @@ import {
   nextSinglePlayerCloudGeneration,
   parseSinglePlayerCloudBackupCommitRequest as tupleParseSinglePlayerCloudBackupCommitRequest,
   parseSinglePlayerCloudBackupDeleteRequest,
+  parseSinglePlayerCloudDispositionRequest,
+  parseSinglePlayerCloudTombstone as tupleParseSinglePlayerCloudTombstone,
   parseSinglePlayerCloudBackupWire as tupleParseSinglePlayerCloudBackupWire,
   splitSinglePlayerCloudBackupSnapshot,
   singlePlayerCloudBackupHeader as tupleSinglePlayerCloudBackupHeader,
+  singlePlayerCloudTombstoneHeader as tupleSinglePlayerCloudTombstoneHeader,
   singlePlayerCloudBackupDeleteActiveState,
   singlePlayerCloudBackupWire as tupleSinglePlayerCloudBackupWire,
   singlePlayerCloudBudgetCleanupAfter,
@@ -75,6 +81,9 @@ type SinglePlayerCloudBackupCandidate = {
 type StoredSinglePlayerCloudBackupManifest = {
   worldId: string; name: string; seed: string; gameMode: string; worldCreatedAt: string; snapshotHash: string;
   snapshotUtf8Bytes: string; stateBytes: string; count: string; revision: string; uploadedAt: string;
+};
+type SinglePlayerCloudTombstone = {
+  worldId: string; revision: string; deletedRevision: string; deletedAt: string; operationId: string;
 };
 const candidateFromTuple = (value: TupleCandidate): SinglePlayerCloudBackupCandidate => ({
   worldId: value[0], name: value[1], seed: value[2], gameMode: value[3], worldCreatedAt: value[4],
@@ -132,6 +141,15 @@ const singlePlayerCloudBackupHeader = (manifest: StoredSinglePlayerCloudBackupMa
   tupleSinglePlayerCloudBackupHeader(manifestToTuple(manifest));
 const singlePlayerCloudBackupWire = (manifest: StoredSinglePlayerCloudBackupManifest, snapshotJson: string) =>
   tupleSinglePlayerCloudBackupWire(manifestToTuple(manifest), snapshotJson);
+const tombstoneToTuple = (value: SinglePlayerCloudTombstone) => [value.worldId, value.revision, value.deletedRevision,
+  value.deletedAt, value.operationId] as const;
+const singlePlayerCloudTombstoneHeader = (value: SinglePlayerCloudTombstone) =>
+  tupleSinglePlayerCloudTombstoneHeader(tombstoneToTuple(value));
+const parseSinglePlayerCloudTombstone = (worldId: string, raw: string): SinglePlayerCloudTombstone | null => {
+  const value = tupleParseSinglePlayerCloudTombstone(worldId, raw);
+  return value ? { worldId: value[0], revision: value[1], deletedRevision: value[2], deletedAt: value[3],
+    operationId: value[4] } : null;
+};
 const validStoredSinglePlayerCloudBackupManifest = (value: unknown) => Boolean(value && typeof value === "object"
   && !Array.isArray(value) && tupleValidStoredSinglePlayerCloudBackupManifest(manifestToTuple(value as StoredSinglePlayerCloudBackupManifest)));
 
@@ -306,9 +324,14 @@ const invalidWorldRequest = JSON.stringify([
 ]);
 assert.equal(parseSinglePlayerCloudBackupCommitRequest(invalidWorldRequest).ok, true,
   "server admission deliberately does not classify opaque local-world semantics");
-assert.deepEqual(parseSinglePlayerCloudBackupDeleteRequest('[1,"cloud-world-alpha","3","delete_op_123"]'),
-  [1, worldId, "3", "delete_op_123"]);
-assert.equal(parseSinglePlayerCloudBackupDeleteRequest('[1,"Cloud World","3","delete_op_123"]'), null);
+assert.deepEqual(parseSinglePlayerCloudBackupDeleteRequest('[1,"cloud-world-alpha","3","delete_123"]'),
+  [1, worldId, "3", "delete_123"]);
+assert.equal(parseSinglePlayerCloudBackupDeleteRequest('[1,"cloud-world-alpha","3"]'), null,
+  "delete retries require their stable operation id");
+assert.equal(parseSinglePlayerCloudBackupDeleteRequest('[1,"Cloud World","3","delete_123"]'), null);
+assert.deepEqual(parseSinglePlayerCloudDispositionRequest('[2,"3"]'), [2, "3"]);
+assert.deepEqual(parseSinglePlayerCloudDispositionRequest('[3,"4"]'), [3, "4"]);
+assert.equal(parseSinglePlayerCloudDispositionRequest('[2,"3","extra"]'), null);
 
 function decide(
   current: StoredSinglePlayerCloudBackupManifest | null,
@@ -428,6 +451,43 @@ const ordinaryDedupe = decide(ordinaryManifest, { ...candidate, stateBytes: ordi
 });
 assert.equal(ordinaryDedupe.ok && ordinaryDedupe.kind, "deduped",
   "exact ordinary-owner retry remains eligible for byte dedupe");
+const tombstone = { worldId, revision: "2", deletedRevision: ordinaryManifest.revision,
+  deletedAt: "3000", operationId: "delete_retry_1" };
+const tombstoneHeader = singlePlayerCloudTombstoneHeader(tombstone);
+assert.deepEqual(parseSinglePlayerCloudTombstone(worldId, tombstoneHeader), tombstone,
+  "a durable deletion fence round-trips its successor, predecessor, time, and stable operation id");
+const loadedTombstone = loadSinglePlayerCloudBackupParts("user-a", [
+  { userId: "user-a", worldId, part: "0", data: tombstoneHeader },
+]);
+assert.equal(loadedTombstone.ok, true);
+assert.deepEqual(loadedTombstone.ok && loadedTombstone.tombstones, [tombstone]);
+assert.equal(loadedTombstone.ok && loadedTombstone.backups.length, 0,
+  "a tombstone can never be reconstructed as restorable payload");
+assert.equal(tombstone.deletedRevision === ordinaryManifest.revision && tombstone.operationId === "delete_retry_1", true,
+  "the identical lost-response delete can dedupe without treating the tombstone as a conflict");
+assert.equal(tombstone.deletedRevision === "0", false,
+  "a stale device cannot reinterpret a durable delete fence as an empty cloud slot");
+assert.equal(parseSinglePlayerCloudTombstone(worldId,
+  singlePlayerCloudTombstoneHeader({ ...tombstone, revision: "4", deletedRevision: tombstone.revision } ))?.revision, "4",
+  "delete then explicit recreate then delete advances the global generation instead of reusing lineage");
+const ownerRowOverflow = Array.from({ length: SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1 }, (_, index) => ({
+  userId: "user-a", worldId: `overflow-${index}`, part: "0", data: tombstoneHeader,
+}));
+assert.deepEqual(inventorySinglePlayerCloudBackupParts("user-a", ownerRowOverflow),
+  { ok: false, reason: "server_state" }, "owner recovery stays bounded even for excess historical rows");
+const tombstoneRows = Array.from({ length: SINGLE_PLAYER_CLOUD_BACKUP_MAX_TOMBSTONES + 1 }, (_, index) => {
+  const id = `deleted-${index}`;
+  return { userId: "user-a", worldId: id, part: "0", data: singlePlayerCloudTombstoneHeader({ ...tombstone,
+    worldId: id, revision: String(index + 2), operationId: `delete_cap_${index}` }) };
+});
+assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a", tombstoneRows),
+  { ok: false, reason: "server_state" }, "durable tombstones have an explicit per-owner capacity");
+const fence = { ...tombstone, worldId: SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD,
+  revision: "20", operationId: "recover_20" };
+const loadedFence = loadSinglePlayerCloudBackupParts("user-a", [{ userId: "user-a",
+  worldId: SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD, part: "0", data: singlePlayerCloudTombstoneHeader(fence) }]);
+assert.equal(loadedFence.ok && loadedFence.accountFence?.revision, "20",
+  "owner recovery finishes behind a separate durable account fence");
 const replacementParsed = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([
   1, worldId, "Cloud World", 42, "survival", createdAt, ordinaryManifest.revision, `${candidate.snapshotJson}x`,
 ]));
@@ -802,10 +862,12 @@ assert.match(cloudSource, /parts\.some\(\(part, index\) => part\.part !== String
   "the shared loader rejects missing, duplicate, or orphan part topology");
 assert.match(cloudSource, /candidate\[1\]\[10\]\.some\(\(chunk, index\) => chunk !== parts\[index \+ 1\]\.data\)/,
   "the shared loader recomputes exact chunk boundaries and contents before quota arithmetic");
+assert.match(serverSource, /singlePlayerCloudTombstoneHeader\(tombstone\)[\s\S]*?activeBackup: "1"/,
+  "permanent deletion retains a durable cloud fence and its bounded owner accounting");
 assert.match(serverSource, /userId\.length > 520/,
   "the server accepts the exact provider-prefixed maximum identity but rejects unbounded auth state");
 assert.match(serverSource, /row\.userId === userId && \(!deleting \|\| current \|\| currentTombstone\)/,
-  "cleanup cannot erase the caller cadence row while a backup or durable tombstone remains");
+  "cleanup cannot remove the caller budget while an active backup or tombstone owns it");
 assert.match(serverSource, /singlePlayerCloudBudgetCleanupAfter\(row\.dayKey, Number\(row\.lastAcceptedAt\)\)[\s\S]*?validUtcCloudBackupDay\(quota\.dayKey\)/,
   "budget day/timestamp pairs and quota day keys require canonical real UTC dates before mutation");
 const cloudMutation = serverSource.slice(serverSource.indexOf("mutateSinglePlayerCloudBackup"), serverSource.indexOf("growOakTree"));
@@ -814,11 +876,13 @@ const destructiveDelete = cloudMutation.indexOf("for (const row of currentParts)
 assert.ok(undercountGuard >= 0 && undercountGuard < cloudMutation.indexOf("if (deleting)") && undercountGuard < destructiveDelete,
   "strict full-current quota validation remains before commit and dedupe paths");
 assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return invalid\(\);[\s\S]*?for \(const row of currentParts\)/,
-  "delete and replacement validate quota state before destructive writes");
+  "delete and replacement validate quota state before destructive writes, including tombstone replacement accounting");
 assert.match(cloudMutation, /accountFence \|\| \(!deleting && \(!allHealthy/,
   "commits refuse any bounded-unhealthy current owner state while deletes classify one target independently");
 assert.match(serverSource, /descriptors\.push\(\[3, world\[0\], "0"\]\)/,
   "query surfaces bounded unreconstructable worlds without exposing payload bytes");
+assert.match(serverSource, /Number\(manifest\[10\]\) > serverNow[\s\S]*?descriptors\.push\(\[3, world\[0\], manifest\?\.\[9\] \?\? "0"\]\)/,
+  "future upload metadata is quarantined with its healthy transport revision instead of presented as valid");
 assert.match(serverSource, /inventory\[2\] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES/,
   "query rejects a multi-world aggregate that exceeds the owner storage cap");
 assert.match(cloudMutation, /const proposedRevision = nextSinglePlayerCloudGeneration\(quotaRevision\)[\s\S]*?const proposedHeader = singlePlayerCloudBackupHeader/,
@@ -827,6 +891,8 @@ assert.match(cloudMutation, /proposedRevision, String\(serverNow\)\]\);[\s\S]*?d
   "one canonical global generation flows through quota, header, decision, persistence, wire, and response");
 assert.match(cloudMutation, /healthyBackups\.some\(\(\[manifest\]\) => Number\(manifest\[9\]\) > quotaRevision\)/,
   "a healthy manifest ahead of the permanent global quota generation fails closed");
+assert.match(cloudMutation, /tombstones\.some\(\(tombstone\) => Number\(tombstone\[1\]\) > quotaRevision\)/,
+  "a durable tombstone ahead of the permanent global quota generation fails closed");
 assert.match(cloudMutation, /currentTombstone\[2\] === expectedRevision[\s\S]*?currentTombstone\[4\] === deleting\[3\]/,
   "permanent delete retries require the exact predecessor and operation id");
 assert.match(cloudMutation, /parseSinglePlayerCloudDispositionRequest[\s\S]*?SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD/,
