@@ -88,8 +88,39 @@ installation is browser-local only and must produce zero Lakebed traffic.
 
 ## Shipping-byte proof
 
-Run the ordinary anonymous capsule build at exact `main` and at this branch,
-then compare the raw artifact and client-bundle SHA-256 values. Since this
-change only adds files under `scripts/`, `tests/`, and `docs/`, both artifacts
-must be byte-identical. Any delta is a blocker and indicates the tooling leaked
-into the production graph.
+Run the ordinary anonymous capsule build at exact `main` and at this branch;
+both builds must succeed. Their client bundles may be compared as an additional
+production-import check. Do **not** require the ordinary raw artifacts to be
+byte-identical: Lakebed includes a source/repository snapshot in that artifact,
+so adding these `scripts/`, `tests/`, and `docs/` files (and even checking out a
+worktree with a `.git` file instead of a `.git` directory) legitimately changes
+its bytes. An ordinary raw-artifact delta does not prove production leakage.
+
+For byte-identical shipping proof, archive the exact `main` and head commits
+into clean source directories, run each source tree's
+`scripts/prepare-lakebed-deploy.mjs` into a distinct empty staging directory,
+then run this command in each canonical stage:
+
+```sh
+LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json
+```
+
+Compare the raw anonymous artifact plus the staged `client/index.tsx` and
+`server/index.ts` bytes. Build head into a second clean stage as the
+determinism pair. Main, head A, and head B must be byte-identical because the
+canonical production stage contains only the shipping entrypoints and optional
+deployment bindings, not this QA tooling.
+
+For base `88ba5b3` and this fixture change, the independently reproduced
+canonical evidence is:
+
+- raw artifact: 1,014,192 bytes,
+  SHA-256 `29ace59bb975fdff5343769198da5cdbf49e4305fb18f9982e0f6a577973f514`;
+- staged client: 448,805 bytes,
+  SHA-256 `c5ca29a9738c0b5f71eb5a7a330869ee79851bedf2a49b00b3769ba60bb8e5f9`;
+- staged server: 262,862 bytes,
+  SHA-256 `a30750abee044ae609de016c4338725f948968d0acc889e7492fc42b924e7a21`;
+- Lakebed artifact hash
+  `sha256:8d543382c7c33847b789a76a9be1b6349df1a04654584d3bcd2f6e9328c53a26`;
+- Lakebed client-bundle hash
+  `sha256:28ca917976e3de3423005e65e840ff2e782a7dd316d0c870c9e3c33335ada255`.
