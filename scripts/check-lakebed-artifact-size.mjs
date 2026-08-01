@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 // Claimed Lakebed deploys currently report a 1 MiB source/artifact ceiling.
@@ -12,10 +12,24 @@ if (!artifactPath) {
 
 const absolutePath = resolve(artifactPath);
 const { size } = await stat(absolutePath);
-const headroomBytes = MAX_ARTIFACT_BYTES - size;
+let artifactBytes = size;
+try {
+  const metadata = JSON.parse(await readFile(absolutePath, "utf8"));
+  if (metadata?.format === "lakecraft.audit-artifact-metadata.v1") {
+    if (!Number.isInteger(metadata.artifactBytes) || metadata.artifactBytes < 1) {
+      throw new Error("Audit artifact metadata has an invalid artifactBytes value.");
+    }
+    artifactBytes = metadata.artifactBytes;
+  }
+} catch (error) {
+  if (error instanceof SyntaxError) {
+    // Backward-compatible raw artifact sizing.
+  } else throw error;
+}
+const headroomBytes = MAX_ARTIFACT_BYTES - artifactBytes;
 const result = {
   artifactPath: absolutePath,
-  artifactBytes: size,
+  artifactBytes,
   maximumBytes: MAX_ARTIFACT_BYTES,
   headroomBytes,
   minimumHeadroomBytes: MINIMUM_HEADROOM_BYTES,

@@ -1,5 +1,6 @@
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   assertNoServerGamePresentationUse,
   compactClientGameCatalog,
@@ -20,12 +21,12 @@ import {
   compactClientPropertyCache,
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
-
-const sourceRoot = resolve(process.cwd());
-const stageRoot = resolve(process.argv[2] ?? "");
-if (!process.argv[2] || stageRoot === sourceRoot) {
-  throw new Error("Pass an empty staging directory outside the capsule.");
-}
+import {
+  copyOwnedStageFile,
+  createOwnedStageDirectory,
+  writeOwnedStageFile,
+  writeStagingControlFiles,
+} from "./lakebed-staging-safety.mjs";
 
 async function enableCompactLakebedBuild(buildPath) {
   const source = await readFile(buildPath, "utf8");
@@ -40,6 +41,8 @@ async function enableCompactLakebedBuild(buildPath) {
   ));
 }
 
+export async function prepareLakebedStage(stagingPlan) {
+const { sourceRoot } = stagingPlan;
 const lakebedRuntime = await loadLakebedCompilerRuntime();
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
 const { build } = lakebedRuntime;
@@ -198,13 +201,6 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
     }
   }
   const result = await build(options);
-  if (process.env.LAKECRAFT_BUNDLE_METAFILE_DIR) {
-    await mkdir(resolve(process.env.LAKECRAFT_BUNDLE_METAFILE_DIR), { recursive: true });
-    await writeFile(
-      join(resolve(process.env.LAKECRAFT_BUNDLE_METAFILE_DIR), server ? "server.json" : "client.json"),
-      JSON.stringify(result.metafile, null, 2),
-    );
-  }
   if (!server) {
     const actualCache = result.mangleCache ?? {};
     const expectedEntries = Object.entries(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
@@ -226,26 +222,23 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
   }
   const output = result.outputFiles?.[0];
   if (!output) throw new Error(`Bundling ${sourcePath} produced no output.`);
-  const absoluteTarget = join(stageRoot, targetPath);
-  await mkdir(dirname(absoluteTarget), { recursive: true });
-  await writeFile(
-    absoluteTarget,
+  await createOwnedStageDirectory(stagingPlan, dirname(targetPath));
+  await writeOwnedStageFile(
+    stagingPlan,
+    targetPath,
     server ? appendServerSourceMapBoundary(output.text) : appendClientSourceMapBoundary(output.text),
   );
 }
 
-await mkdir(join(stageRoot, ".lakebed"), { recursive: true });
-await Promise.all([
-  bundleEntrypoint("client/index.tsx", "client/index.tsx"),
-  bundleEntrypoint("server/index.ts", "server/index.ts", { server: true }),
-]);
-await cp(join(sourceRoot, "favicon.svg"), join(stageRoot, "favicon.svg"));
-for (const relativePath of ["lakebed.json", ".lakebed/deploy.json", ".env.lakebed.server"]) {
-  try {
-    await cp(join(sourceRoot, relativePath), join(stageRoot, relativePath));
-  } catch {
-    // Optional binding and environment files may not exist yet.
-  }
+await bundleEntrypoint("client/index.tsx", "client/index.tsx");
+await bundleEntrypoint("server/index.ts", "server/index.ts", { server: true });
+await copyOwnedStageFile(stagingPlan, join(sourceRoot, "favicon.svg"), "favicon.svg");
+await writeStagingControlFiles(stagingPlan);
+return stagingPlan;
 }
 
-console.log(stageRoot);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  throw new Error(
+    "Direct staging is disabled. Use scripts/build-lakebed-audit.mjs; production release is intentionally unsupported.",
+  );
+}

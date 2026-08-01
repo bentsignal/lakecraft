@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -126,14 +126,46 @@ const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const prepareSource = readFileSync(join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), "utf8");
 assert.match(prepareSource, /LAKEBED_COMPACT_BUNDLE/);
 assert.match(prepareSource, /minify: process\.env\.LAKEBED_COMPACT_BUNDLE === "1"/);
-const stage = mkdtempSync(join(tmpdir(), "lakecraft-server-stage-"));
+const stageParent = mkdtempSync(join(tmpdir(), "lakecraft-server-stage-"));
+const stage = join(stageParent, "audit-evidence");
+const escapedMetafileRoot = join(stageParent, "escaped-metafiles");
 try {
-  execFileSync(process.execPath, [join(repositoryRoot, "scripts/prepare-lakebed-deploy.mjs"), stage], {
+  execFileSync(process.execPath, [join(repositoryRoot, "scripts/build-lakebed-audit.mjs"), stage], {
     cwd: repositoryRoot,
+    env: { ...process.env, LAKECRAFT_BUNDLE_METAFILE_DIR: escapedMetafileRoot },
     stdio: "pipe",
   });
-  const clientBundle = readFileSync(join(stage, "client/index.tsx"), "utf8");
-  const serverBundle = readFileSync(join(stage, "server/index.ts"), "utf8");
+  assert.equal(existsSync(escapedMetafileRoot), false, "ambient metafile output cannot escape the transaction");
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(stage, "staged/lakebed.audit.json"), "utf8")),
+    {},
+    "the executable's default stage strips the checked-in production deployId",
+  );
+  assert.equal(existsSync(join(stage, ".env.lakebed.server")), false, "the audit evidence omits server secrets");
+  assert.equal(existsSync(join(stage, "client/index.tsx")), false);
+  assert.equal(existsSync(join(stage, "server/index.ts")), false);
+  assert.equal(existsSync(join(stage, "artifact.json")), false);
+  for (const name of ["artifact-metadata.json", "build-report.json", "summary.json"]) {
+    const json = JSON.parse(readFileSync(join(stage, name), "utf8"));
+    const pending = [json];
+    while (pending.length > 0) {
+      const value = pending.pop();
+      if (!value || typeof value !== "object") continue;
+      assert.equal(Object.hasOwn(value, "artifact"), false, `${name} must not export an artifact envelope`);
+      assert.equal(Object.hasOwn(value, "clientBundle"), false, `${name} must not export client bundle bytes`);
+      pending.push(...Object.values(value));
+    }
+  }
+  const metadata = JSON.parse(readFileSync(join(stage, "artifact-metadata.json"), "utf8"));
+  assert.equal(metadata.deployTarget, "anonymous-source");
+  assert.equal(metadata.format, "lakecraft.audit-artifact-metadata.v1");
+  const rebuild = spawnSync("npx", ["lakebed", "build", stage, "--target", "anonymous", "--json"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  assert.notEqual(rebuild.status, 0, "exported evidence must not be accepted as a Lakebed capsule");
+  const clientBundle = readFileSync(join(stage, "staged/client-index.tsx"), "utf8");
+  const serverBundle = readFileSync(join(stage, "staged/server-index.ts"), "utf8");
   const sourceMapPrefix = "//# sourceMappingURL=data:application/json;base64,";
   const clientSourceMapOffset = clientBundle.lastIndexOf(sourceMapPrefix);
   assert.notEqual(clientSourceMapOffset, -1, "client stage declares an upstream source-map boundary");
@@ -171,7 +203,7 @@ try {
     "head:11,chest:16,legs:15,feet:13",
   ]) assert.equal(serverBundle.includes(mechanics), true, `server retains mechanical table ${mechanics}`);
 } finally {
-  rmSync(stage, { recursive: true, force: true });
+  rmSync(stageParent, { recursive: true, force: true });
 }
 
 console.log("server game catalog deploy transform checks passed");

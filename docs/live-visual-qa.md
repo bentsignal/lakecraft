@@ -86,10 +86,11 @@ valid-partial state. Do not relabel deferred scope as passed.
    suffix in the live route. Do not hold the browser segment open for report
    serialization, artifact builds, or validation.
 6. Keep every screenshot, recording, transcript, JSON snapshot, console
-   report, CDP network report, build report, artifact, and staged bundle
-   beneath the one evidence root. Every regular file there must be referenced
-   by the manifest (except the manifest and requested validator output); the
-   validator rejects extra or missing files.
+   report, CDP network report, build report, redacted artifact-metadata record,
+   and noncanonical staged-source snapshot beneath the one evidence root. Never
+   retain the full artifact envelope or client bundle. Every regular file there
+   must be referenced by the manifest (except the manifest and requested
+   validator output); the validator rejects extra or missing files.
 7. Re-run `git rev-parse HEAD` after interaction and after both builds. If it
    differs from the trusted expected commit, restart the route. Also restart if
    any live evidence timestamp falls outside `runStartedAt` through
@@ -543,41 +544,44 @@ After the last integrated live interaction has closed the final measured
 segment and fixed `runCompletedAt`, build from two independent archives of the
 trusted expected commit. These are post-run derived artifacts; do not extend or
 rewrite the browser timeline around them, and do not stage from the mutable
-current filesystem. Retain both full Lakebed JSON reports, artifacts, and
-staged client/server entrypoints in the evidence root:
+current filesystem. Retain both Lakebed build reports, redacted artifact
+metadata records, noncanonical staged-source snapshots, and wrapper summaries
+in the evidence root. The transaction must delete each full artifact envelope
+and client bundle rather than export either as evidence:
 
 ```sh
 repo_root="$(git rev-parse --show-toplevel)"
 archive_a="$(mktemp -d)"
 archive_b="$(mktemp -d)"
-stage_a="$(mktemp -d)"
-stage_b="$(mktemp -d)"
+evidence_parent="$(mktemp -d)"
 git -C "$repo_root" archive "$expected_commit" | tar -x -C "$archive_a"
 git -C "$repo_root" archive "$expected_commit" | tar -x -C "$archive_b"
-(cd "$archive_a" && node scripts/prepare-lakebed-deploy.mjs "$stage_a")
-(cd "$archive_b" && node scripts/prepare-lakebed-deploy.mjs "$stage_b")
-(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
-  > /absolute/path/to/evidence/build-a.json
-(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --target anonymous --json) \
-  > /absolute/path/to/evidence/build-b.json
+(cd "$archive_a" && node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a")
+(cd "$archive_b" && node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b")
 ```
 
-Run `scripts/check-lakebed-artifact-size.mjs` on each artifact. Both artifacts,
-both staged `client/index.tsx` files, and both staged `server/index.ts` files
+Run `scripts/check-lakebed-artifact-size.mjs` on each `artifact-metadata.json`.
+Both redacted artifact metadata records,
+both staged `staged/client-index.tsx` files, and both staged
+`staged/server-index.ts` files
 must be byte-identical. The artifact must remain below 1,048,576 bytes with at
 least 32,768 bytes of headroom. Record the Lakebed artifact and client-bundle
 hashes from the JSON output, plus ordinary file SHA-256 values.
 
-The two retained `--json` outputs are the structured build reports. The
+Each output contains the raw `build-report.json`, verified redacted
+`artifact-metadata.json`,
+staged sources under non-capsule filenames, sanitized
+`staged/lakebed.audit.json`, and wrapper
+`summary.json`. The raw reports remain the structured Lakebed build reports. The
 manifest binds their paths and hashes to the run ID and expected commit, and
-the validator requires the complete Lakebed `source.files` set, independently
-recomputes the anonymous artifact target and hashes, creates its own
-deterministic `git archive` of the exact expected commit beneath the trusted
-repository root, runs the repository's prepare step, and compares that rebuild
-with the captured artifacts and full staged sources. Dirty working-tree files,
-current-filesystem substitution, a partial `source.files` report, and staged
-source drift all fail. Do not replace the Lakebed reports with prose or a
-fabricated wrapper report.
+the transactional wrapper verifies the complete Lakebed `source.files` set and
+all bundle hashes before deleting the full envelope. The validator creates its
+own deterministic `git archive` of the exact expected commit beneath the
+trusted repository root, reruns that transaction, and compares the rebuilt
+redacted metadata and staged-source hashes with the captured evidence. Dirty
+working-tree substitution and staged-source drift fail without retaining a
+request-body-consumable artifact or client bundle. Do not replace the Lakebed
+reports with prose or a fabricated wrapper report.
 
 Finally, place the completed manifest in the evidence root and validate it
 against the trusted commit captured before testing:

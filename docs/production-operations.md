@@ -6,7 +6,9 @@ private-inspection authorization failure, quota shortage, unexpected deploy,
 artifact mismatch, or compact-size regression stops the release.
 
 The checked-in production identity is
-`docs/production-target.json`. `lakebed.json` must name the same deploy ID.
+`docs/production-target.json`. The top-level `lakebed.json` must name the same
+deploy ID; it is the production binding and must not enter ordinary audit
+stages.
 The public player URL is <https://craft.lakebed.app>; the canonical Lakebed URL
 is recorded separately because the public alias is the durable user-facing
 address.
@@ -47,7 +49,7 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 2. Run focused tests and the full repository suite. Record pre-existing
    failures separately and prove they reproduce on the base commit.
 3. Build the ordinary anonymous capsule.
-4. Build the compact staged capsule twice in distinct empty directories. Both
+4. Run the transactional compact audit twice in distinct evidence directories. Both
    artifact files, staged client files, staged server files, artifact hashes,
    and client bundle hashes must match.
 5. Run `scripts/check-lakebed-artifact-size.mjs` on the artifact and require at
@@ -57,30 +59,48 @@ node scripts/audit-lakebed-production.mjs --deploy-list /absolute/path/deploy-li
 
 ```sh
 npx lakebed build . --target anonymous --json
-stage_a="$(mktemp -d)"
-stage_b="$(mktemp -d)"
-node scripts/prepare-lakebed-deploy.mjs "$stage_a"
-node scripts/prepare-lakebed-deploy.mjs "$stage_b"
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed build "$stage_a" --target anonymous --json
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed build "$stage_b" --target anonymous --json
-node scripts/check-lakebed-artifact-size.mjs /absolute/path/to/artifact-a.json
+evidence_parent="$(mktemp -d)"
+node scripts/build-lakebed-audit.mjs "$evidence_parent/build-a"
+node scripts/build-lakebed-audit.mjs "$evidence_parent/build-b"
+cmp "$evidence_parent/build-a/artifact-metadata.json" "$evidence_parent/build-b/artifact-metadata.json"
+cmp "$evidence_parent/build-a/staged/client-index.tsx" "$evidence_parent/build-b/staged/client-index.tsx"
+cmp "$evidence_parent/build-a/staged/server-index.ts" "$evidence_parent/build-b/staged/server-index.ts"
+node scripts/check-lakebed-artifact-size.mjs "$evidence_parent/build-a/artifact-metadata.json"
 node scripts/audit-lakebed-production.mjs
 ```
 
-The ignored `.lakebed/deploy.json` contains the claim binding needed for
-private hosted inspection. Never copy it into the repository, a PR, an evidence
-bundle, or another user's worktree. If hosted inspection says authorization is
-required, stop and use an already-claimed operator checkout or an approved
-ephemeral credential mechanism. Do not make the inspection endpoint public.
+The audit command owns a fresh private transaction, keeps its sentinel outside
+the capsule, writes a safe `lakebed.json` without `deployId`, omits
+`.env.lakebed.server`, seals payload files to `0400` and directories to `0500`,
+and leaves only a sibling `.lakebed` workspace writable. It invokes and verifies
+the anonymous build before exporting evidence under deliberately non-capsule
+filenames and deleting the transaction. The evidence has neither canonical
+client/server entrypoints nor the full artifact/client-bundle envelope needed
+as a release request body. Only redacted hashes, target, and byte counts leave
+the private transaction. A `.lakebed/deploy.json`
+file is an unexpected legacy
+credential path, not the production binding; staging fails closed if it or an
+unrecognized `.env.lakebed*` path exists. Never copy credentials into the
+repository, a PR, an evidence bundle, or another user's worktree. If hosted
+inspection says authorization is required, stop and use an already-authorized
+operator checkout or an approved ephemeral credential mechanism. Do not make
+the inspection endpoint public.
+
+This contract protects against accidental contamination and other operating-
+system users, and detects persistent mutation. It cannot eliminate a malicious
+same-UID process that can chmod and transiently replace pathnames; Node does not
+expose the directory-descriptor isolation required for that claim.
 
 ## Deploy and verify
 
 Deployment is an explicit operator action after review approval; this runbook
-does not authorize an automated deploy. From the exact staged tree:
-
-```sh
-LAKEBED_COMPACT_BUNDLE=1 npx lakebed deploy "$stage_a" --json
-```
+does not authorize an automated deploy. The audit helper has no release flag or
+deploy invocation and never exports a deployable capsule. Production deployment
+is blocked here until a separate reviewed operator transaction validates both
+audited manifests and safely handles Lakebed rewriting top-level `lakebed.json`
+after a successful network request. Do not reconstruct the removed manual
+stage-and-deploy handoff: a post-network local write failure could make the
+release result ambiguous.
 
 Record the returned deploy ID, artifact hash, client bundle hash, URL, and UTC
 completion time. Then require the control plane to report the exact artifact:
