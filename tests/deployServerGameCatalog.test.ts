@@ -161,7 +161,7 @@ try {
     mappings: "AAAA",
   });
   for (const [kind, sentinel] of Object.entries(SERVER_PRESENTATION_SENTINELS)) {
-    assert.equal(clientBundle.includes(sentinel), true, `${kind} remains available to the staged client`);
+    assert.equal(clientBundle.includes(sentinel), false, `${kind} is packed rather than repeated in staged client source`);
     assert.equal(serverBundle.includes(sentinel), false, `${kind} is absent from the staged server`);
   }
   for (const mechanics of [

@@ -1,38 +1,47 @@
 # Compact artifact headroom evidence
 
-This branch is rebased onto exact `origin/main` commit
-`53a4ee4c2cc6b5e659f67edb6b1d96fa5a602787`. Fresh sequential A/B builds of
-that commit produced a 1,014,160-byte compact artifact, leaving 34,416 bytes
-below Lakebed's 1 MiB ceiling.
+This branch starts from exact `origin/main` commit
+`0935a0c3f23a93c7505c59c68d373c634a35992b`. Its compact client transform
+packs the reviewed literal game catalogs into one fingerprinted UTF-8 table.
+Fresh sequential A/B builds produced a 985,256-byte compact artifact, leaving
+63,320 bytes below Lakebed's 1 MiB ceiling.
 
 ## Fresh sequential paired build
 
 ```sh
-stage_a=$(mktemp -d /private/tmp/lakecraft-headroom-rebased-a.XXXXXX)
-stage_b=$(mktemp -d /private/tmp/lakecraft-headroom-rebased-b.XXXXXX)
+stage_a=$(mktemp -d /private/tmp/lakecraft-headroom2-final-a.XXXXXX)
+stage_b=$(mktemp -d /private/tmp/lakecraft-headroom2-final-b.XXXXXX)
 node scripts/prepare-lakebed-deploy.mjs "$stage_a"
-(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom-rebased-report-a.json)
+(cd "$stage_a" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom2-final-report-a.json)
 node scripts/prepare-lakebed-deploy.mjs "$stage_b"
-(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom-rebased-report-b.json)
+(cd "$stage_b" && LAKEBED_COMPACT_BUNDLE=1 npx lakebed build --json > /private/tmp/lakecraft-headroom2-final-report-b.json)
 ```
 
-The rebased branch pair produced byte-identical outputs:
+The candidate pair produced byte-identical outputs:
 
 | Output | A path | B path | Bytes | SHA-256 |
 | --- | --- | --- | ---: | --- |
-| Artifact | `/private/tmp/lakecraft-headroom-rebased-a.VvA3ro/.lakebed/artifacts/lakecraft-headroom-rebased-a.VvA3ro.anonymous.json` | `/private/tmp/lakecraft-headroom-rebased-b.gc9AIM/.lakebed/artifacts/lakecraft-headroom-rebased-b.gc9AIM.anonymous.json` | 994,292 | `1addec07f00e90c52c21638c60e65fb947c9457be032983fb3aa40c0023a9d86` |
-| Client stage | `/private/tmp/lakecraft-headroom-rebased-a.VvA3ro/client/index.tsx` | `/private/tmp/lakecraft-headroom-rebased-b.gc9AIM/client/index.tsx` | 442,547 | `0d1b98d1ca7ea93744405acf383bbb027ed5a616dda667c1b303dd9d17753a37` |
-| Server stage | `/private/tmp/lakecraft-headroom-rebased-a.VvA3ro/server/index.ts` | `/private/tmp/lakecraft-headroom-rebased-b.gc9AIM/server/index.ts` | 254,210 | `c0fc95108cf80d170c27f7c4cc40c2ee4c071d563207e3722ab17977e30093d0` |
+| Artifact | `/private/tmp/lakecraft-headroom2-final-a.xQY8wH/.lakebed/artifacts/lakecraft-headroom2-final-a.xQY8wH.anonymous.json` | `/private/tmp/lakecraft-headroom2-final-b.e5RotN/.lakebed/artifacts/lakecraft-headroom2-final-b.e5RotN.anonymous.json` | 985,256 | `2138de76f367a867e8059f868af7775253efcd6342f5d5a59b5d939210a62108` |
+| Client stage | `/private/tmp/lakecraft-headroom2-final-a.xQY8wH/client/index.tsx` | `/private/tmp/lakecraft-headroom2-final-b.e5RotN/client/index.tsx` | 436,002 | `716079add238e54f183220a5bce0a41e8380251c5a442c5d4030cdbc5d86ed44` |
+| Server stage | `/private/tmp/lakecraft-headroom2-final-a.xQY8wH/server/index.ts` | `/private/tmp/lakecraft-headroom2-final-b.e5RotN/server/index.ts` | 254,210 | `c0fc95108cf80d170c27f7c4cc40c2ee4c071d563207e3722ab17977e30093d0` |
 
 Exact-main comparison:
 
-- `1,048,576 - 994,292 = 54,284` bytes of headroom.
-- `1,014,160 - 994,292 = 19,868` bytes recovered from exact main.
-- `994,292 - 990,000 = 4,292` bytes remain above the conservative branch target.
+- `1,048,576 - 985,256 = 63,320` bytes of headroom.
+- `994,292 - 985,256 = 9,036` bytes recovered from exact main.
+- The client stage falls from 442,547 to 436,002 bytes; the server stage is
+  byte-identical to exact main.
 
 The A/B reports remain outside the stage directories, so Lakebed cannot
 accidentally snapshot either report into its artifact. The broad local suite
-passed 238/238 after the rebase. The rebase also converted the newly merged mob
-detail payload from base64 to the same reviewed base85 representation: the mob
-renderer geometry test and static-data fingerprint/regeneration test prove the
-decoded geometry remains exact.
+passed 239/239. A focused transform test additionally imports the transformed
+module and deep-compares every block, item, recipe, and smelting recipe against
+the source module, including explicit non-ASCII glyph checks. Source-shape and
+whole-catalog fingerprint guards fail closed before staging if any reviewed
+literal changes. The adversarial checks cover changed mechanical values,
+presentation text, recipe text, smelting labels, removed rows, and injected
+identifier collisions. An ordinary `npx lakebed build --json` also passed.
+
+This slice changes only deploy tooling, its evidence, and its tests. It does not
+touch `client/singleplayer/`, `shared/singlePlayerCloudBackups.ts`, or
+`server/index.ts`, so it has no source overlap with the cloud-backup feature.
