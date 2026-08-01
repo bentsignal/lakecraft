@@ -185,8 +185,9 @@ for (let offset = 0; offset < used.length; offset += 6) {
 }
 
 for (const kind of kinds) {
-  assert.equal(mobVertexCountForKind(kind) % 36, 0, `${kind} geometry should contain complete boxes`);
+  assert.equal(mobVertexCountForKind(kind) % 6, 0, `${kind} geometry should contain complete triangles`);
   assert.ok(mobVertexCountForKind(kind) >= 6 * 36, `${kind} should have a recognizable multipart silhouette`);
+  assert.ok(mobVertexCountForKind(kind) <= 12 * 36, `${kind} must stay inside the retained twelve-box allowance`);
 }
 
 const colorSignatures = new Set<string>();
@@ -205,6 +206,47 @@ for (let index = 0; index < kinds.length; index += 1) {
 }
 assert.equal(colorSignatures.size, kinds.length, "each mob kind should have a distinct color palette");
 
+const baseBoxes: Readonly<Partial<Record<MobKind, number>>> = {
+  pig: 9,
+  cow: 9,
+  sheep: 7,
+  chicken: 9,
+  zombie: 6,
+  skeleton: 9,
+  creeper: 6,
+};
+const detailQuads: Readonly<Partial<Record<MobKind, number>>> = {
+  pig: 4,
+  cow: 5,
+  sheep: 5,
+  chicken: 4,
+  zombie: 6,
+  skeleton: 3,
+  creeper: 6,
+};
+for (const kind of kinds.slice(0, -1)) {
+  const frontPose = pose(kind, 0, 4, 200);
+  frontPose.previousX = frontPose.x;
+  frontPose.previousY = frontPose.y;
+  frontPose.previousZ = frontPose.z;
+  frontPose.previousYaw = frontPose.yaw = 0;
+  const detailStats = renderer.rebuild([frontPose], 0, 0, 0, 1, 1, 0);
+  const boxCount = baseBoxes[kind]!;
+  const quadCount = detailQuads[kind]!;
+  assert.equal(detailStats.vertexCount, boxCount * 36 + quadCount * 6, `${kind} detail uses six-vertex quads`);
+  const detailGeometry = gl.uploaded!.slice(boxCount * 36 * 6, detailStats.vertexCount * 6);
+  for (let quad = 0; quad < quadCount; quad += 1) {
+    const start = quad * 6 * 6;
+    const z = detailGeometry[start + 2];
+    for (let vertex = 0; vertex < 6; vertex += 1) {
+      assert.equal(detailGeometry[start + vertex * 6 + 2], z, `${kind} patch ${quad} is a flat offset quad`);
+    }
+  }
+  const leftEye = Array.from({ length: 6 }, (_, vertex) => detailGeometry[vertex * 6]);
+  const rightEye = Array.from({ length: 6 }, (_, vertex) => detailGeometry[(6 + vertex) * 6]);
+  assert.ok(Math.max(...leftEye) < Math.min(...rightEye), `${kind} keeps two separated front-facing eye pixels`);
+}
+
 const chicken = pose("chicken", 0, 4, 0);
 chicken.previousX = chicken.x;
 chicken.previousZ = chicken.z;
@@ -222,7 +264,7 @@ for (let offset = 0; offset < stillChickenGeometry.length; offset += 6) {
   if (red > 0.55 && green > 0.3 && blue < 0.1) yellowChickenVertices += 1;
   if (red > 0.45 && green < 0.12 && blue < 0.1) redChickenVertices += 1;
 }
-assert.equal(stillChicken.vertexCount, 9 * 36, "a chicken uses nine bounded boxes including two wings and two legs");
+assert.equal(stillChicken.vertexCount, 9 * 36 + 4 * 6, "a chicken adds four flat face/feather pixels to nine bounded boxes");
 assert.ok(whiteChickenVertices >= 72, "the chicken has a recognizable white body and head");
 assert.ok(yellowChickenVertices >= 36, "the chicken has a visible yellow beak and legs");
 assert.ok(redChickenVertices >= 12, "the chicken has a visible red wattle below its beak");
