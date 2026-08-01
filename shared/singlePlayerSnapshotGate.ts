@@ -1,5 +1,6 @@
 import { HOTBAR_SIZE, INVENTORY_SIZE, ITEMS, MAX_HUNGER, maxItemDurability } from "./game.ts";
 import { validateFurnaceState } from "./furnaces.ts";
+import { compareSinglePlayerCanonicalText } from "./singlePlayerCanonicalOrder.ts";
 
 const T = 8_640_000_000_000_000;
 const W = 30_000_000;
@@ -28,7 +29,7 @@ function identifier(value: unknown): value is string {
   return typeof value === "string" && ID.test(value);
 }
 function sortedUnique(values: readonly string[]): boolean {
-  return values.every((value, index) => index === 0 || values[index - 1].localeCompare(value) < 0);
+  return values.every((value, index) => index === 0 || compareSinglePlayerCanonicalText(values[index - 1], value) < 0);
 }
 function coordinate(value: unknown): value is string {
   if (typeof value !== "string") return false;

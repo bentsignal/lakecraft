@@ -336,7 +336,9 @@ import {
   parseSinglePlayerCloudBackupCommitRequest,
   parseSinglePlayerCloudBackupDeleteRequest,
   singlePlayerCloudBackupWire,
+  singlePlayerCloudBudgetCleanupAfter,
   utcCloudBackupDay,
+  validSinglePlayerCloudQuotaState,
   validUtcCloudBackupDay,
   validStoredSinglePlayerCloudBackupManifest,
 } from "../shared/singlePlayerCloudBackups.ts";
@@ -2234,23 +2236,28 @@ export default capsule({
       const dayKey = utcCloudBackupDay(serverNow);
       const quota = quotaRows[0];
       const userBudget = userBudgetRows[0];
-      const validBudget = (row: typeof userBudget) => !row || (typeof row.userId === "string" && row.userId.length >= 1
-        && row.userId.length <= 520 && validUtcCloudBackupDay(row.dayKey) && /^\d{1,2}$/.test(row.acceptedToday)
-        && Number(row.acceptedToday) <= 12 && /^\d{1,16}$/.test(row.lastAcceptedAt) && Number(row.lastAcceptedAt) <= serverNow
-        && (row.activeBackup === "0" || row.activeBackup === "1") && /^\d{16}$/.test(row.cleanupAfter)
-        && (row.activeBackup === "1" ? row.cleanupAfter === "9999999999999999"
-          : Number.isSafeInteger(Number(row.cleanupAfter)) && Number(row.cleanupAfter) <= 8_640_000_000_000_000));
+      const validBudget = (row: typeof userBudget) => {
+        if (!row || typeof row.userId !== "string" || row.userId.length < 1 || row.userId.length > 520
+          || !/^\d{1,2}$/.test(row.acceptedToday) || Number(row.acceptedToday) > 12
+          || !/^\d{1,16}$/.test(row.lastAcceptedAt) || Number(row.lastAcceptedAt) > serverNow
+          || (row.activeBackup !== "0" && row.activeBackup !== "1") || !/^\d{16}$/.test(row.cleanupAfter)) return !row;
+        const cleanupDue = singlePlayerCloudBudgetCleanupAfter(row.dayKey, Number(row.lastAcceptedAt));
+        return cleanupDue !== null && (row.activeBackup === "1" ? row.cleanupAfter === "9999999999999999"
+          : Number.isSafeInteger(Number(row.cleanupAfter)) && Number(row.cleanupAfter) >= cleanupDue
+            && Number(row.cleanupAfter) <= 8_640_000_000_000_000);
+      };
       if (!validBudget(userBudget) || cleanupCandidates.some((row) => !validBudget(row))
         || Boolean(userBudget) !== (userManifests.length > 0 || userBudget?.activeBackup === "0")
         || (userManifests.length > 0 && userBudget?.activeBackup !== "1")) {
         return { ok: false, reason: BS.invalidServerState, serverNow };
       }
       const validQuota = !quota || (quota.quotaKey === SINGLE_PLAYER_CLOUD_QUOTA_KEY
-        && /^\d{1,6}$/.test(quota.activeStateBytes) && Number(quota.activeStateBytes) >= SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES
-        && Number(quota.activeStateBytes) <= SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES
-        && validUtcCloudBackupDay(quota.dayKey) && /^\d{1,3}$/.test(quota.acceptedToday)
+        && /^\d{1,6}$/.test(quota.activeStateBytes) && validUtcCloudBackupDay(quota.dayKey) && /^\d{1,3}$/.test(quota.acceptedToday)
         && Number(quota.acceptedToday) <= 120 && /^\d{1,16}$/.test(quota.lastAcceptedAt) && Number(quota.lastAcceptedAt) <= serverNow
-        && /^\d{1,16}$/.test(quota.revision) && Number.isSafeInteger(Number(quota.revision)) && Number(quota.revision) >= 1);
+        && utcCloudBackupDay(Number(quota.lastAcceptedAt)) === quota.dayKey
+        && /^\d{1,16}$/.test(quota.revision)
+        && validSinglePlayerCloudQuotaState(Number(quota.activeStateBytes), SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
+          Number(quota.revision)));
       if (!validQuota || (!quota && (userManifests.length > 0 || userBudget || cleanupCandidates.length > 0))) {
         return { ok: false, reason: BS.invalidServerState, serverNow };
       }
@@ -2264,54 +2271,76 @@ export default capsule({
         cleanupRows.push(row);
         cleanupCharge += SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES;
       }
+      const callerBudgetCleaned = Boolean(userBudget && cleanupRows.some((row) => row.id === userBudget.id));
       const globalStateBytes = (quota ? Number(quota.activeStateBytes) : 0) - cleanupCharge;
       const globalAcceptedToday = quota?.dayKey === dayKey ? Number(quota.acceptedToday) : 0;
       const userAcceptedToday = userBudget?.dayKey === dayKey ? Number(userBudget.acceptedToday) : 0;
       const userLastAcceptedAt = userBudget ? Number(userBudget.lastAcceptedAt) : 0;
       const userStateBytes = userManifests.reduce((sum, row) => sum + Number(row.stateBytes), 0);
+      const minimumStateBytes = SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES + userStateBytes
+        + (userBudget && !callerBudgetCleaned ? SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES : 0);
       if (!Number.isSafeInteger(globalStateBytes) || globalStateBytes < 0
         || globalStateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES
         || !Number.isSafeInteger(userStateBytes) || userStateBytes < 0
         || userStateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES
+        || (quota && !validSinglePlayerCloudQuotaState(globalStateBytes, minimumStateBytes, Number(quota.revision)))
         || (userManifests.length > 0 && !userBudget)) {
         return { ok: false, reason: BS.invalidServerState, serverNow };
       }
       const applyCleanup = async () => {
         for (const row of cleanupRows) await ctx.db.singlePlayerCloudBackupBudgets.delete(row.id);
       };
+      const nextQuotaValue = (activeStateBytes: number, minimumBytes: number, nextDayKey: string,
+        acceptedToday: number, lastAcceptedAt: number) => {
+        const revision = Number(quota?.revision ?? "0") + 1;
+        return validSinglePlayerCloudQuotaState(activeStateBytes, minimumBytes, revision)
+          && validUtcCloudBackupDay(nextDayKey) && Number.isSafeInteger(acceptedToday) && acceptedToday >= 0
+          && acceptedToday <= 120 && Number.isSafeInteger(lastAcceptedAt) && lastAcceptedAt >= 0
+          && lastAcceptedAt <= serverNow && utcCloudBackupDay(lastAcceptedAt) === nextDayKey
+          ? { quotaKey: SINGLE_PLAYER_CLOUD_QUOTA_KEY, activeStateBytes: String(activeStateBytes), dayKey: nextDayKey,
+            acceptedToday: String(acceptedToday), lastAcceptedAt: String(lastAcceptedAt), revision: String(revision) }
+          : null;
+      };
       if (deleting) {
         if (!current) {
           if (cleanupRows.length && quota) {
+            const nextQuota = nextQuotaValue(globalStateBytes, SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES,
+              quota.dayKey, Number(quota.acceptedToday), Number(quota.lastAcceptedAt));
+            if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
             await applyCleanup();
-            await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, { ...quota,
-              activeStateBytes: String(globalStateBytes), revision: String(Number(quota.revision) + 1) });
+            await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
           }
           return { ok: true, kind: "delete_deduped", serverNow };
         }
         if (expectedRevision !== current.revision) return { ok: false, reason: "conflict", serverNow };
-        for (const row of currentChunks) await ctx.db.singlePlayerCloudBackupChunks.delete(row.id);
-        await ctx.db.singlePlayerCloudBackups.delete(current.id);
         let deleteBudgetCharge = 0;
+        let dormantCleanupAfter = 0;
         if (userManifests.length === 1 && userBudget) {
-          const cleanupAfter = Math.max(Number(userBudget.lastAcceptedAt) + SINGLE_PLAYER_CLOUD_BACKUP_MIN_USER_UPLOAD_MS,
-            Date.parse(`${userBudget.dayKey}T00:00:00Z`) + 86_400_000);
-          if (!Number.isSafeInteger(cleanupAfter) || cleanupAfter < 0 || cleanupAfter > 8_640_000_000_000_000) {
-            return { ok: false, reason: BS.invalidServerState, serverNow };
-          }
+          const cleanupAfter = singlePlayerCloudBudgetCleanupAfter(userBudget.dayKey, Number(userBudget.lastAcceptedAt));
+          if (cleanupAfter === null) return { ok: false, reason: BS.invalidServerState, serverNow };
           if (cleanupAfter <= serverNow) {
-            await ctx.db.singlePlayerCloudBackupBudgets.delete(userBudget.id);
             deleteBudgetCharge = SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES;
           } else {
-            await ctx.db.singlePlayerCloudBackupBudgets.update(userBudget.id, {
-              ...userBudget, activeBackup: "0", cleanupAfter: String(cleanupAfter).padStart(16, "0"),
-            });
+            dormantCleanupAfter = cleanupAfter;
           }
         }
+        const nextActiveStateBytes = globalStateBytes - Number(current.stateBytes) - deleteBudgetCharge;
+        const remainingUserStateBytes = userStateBytes - Number(current.stateBytes);
+        const remainingBudgetBytes = userBudget && deleteBudgetCharge === 0
+          ? SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES : 0;
+        const nextQuota = nextQuotaValue(nextActiveStateBytes,
+          SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES + remainingUserStateBytes + remainingBudgetBytes,
+          quota!.dayKey, Number(quota!.acceptedToday), Number(quota!.lastAcceptedAt));
+        if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
+        for (const row of currentChunks) await ctx.db.singlePlayerCloudBackupChunks.delete(row.id);
+        await ctx.db.singlePlayerCloudBackups.delete(current.id);
+        if (userManifests.length === 1 && userBudget) {
+          if (deleteBudgetCharge) await ctx.db.singlePlayerCloudBackupBudgets.delete(userBudget.id);
+          else await ctx.db.singlePlayerCloudBackupBudgets.update(userBudget.id, {
+            ...userBudget, activeBackup: "0", cleanupAfter: String(dormantCleanupAfter).padStart(16, "0"),
+          });
+        }
         await applyCleanup();
-        const nextQuota = { quotaKey: SINGLE_PLAYER_CLOUD_QUOTA_KEY,
-          activeStateBytes: String(globalStateBytes - Number(current.stateBytes) - deleteBudgetCharge), dayKey: quota!.dayKey,
-          acceptedToday: quota!.acceptedToday, lastAcceptedAt: quota!.lastAcceptedAt,
-          revision: String(Number(quota!.revision) + 1) };
         await ctx.db.singlePlayerCloudBackupQuota.update(quota!.id, nextQuota);
         return { ok: true, kind: "deleted", serverNow };
       }
@@ -2324,12 +2353,21 @@ export default capsule({
       if (!decision.ok) return { ...decision, serverNow };
       if (decision.kind === "deduped") {
         if (cleanupRows.length && quota) {
+          const nextQuota = nextQuotaValue(globalStateBytes, minimumStateBytes, quota.dayKey,
+            Number(quota.acceptedToday), Number(quota.lastAcceptedAt));
+          if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
           await applyCleanup();
-          await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, { ...quota,
-            activeStateBytes: String(globalStateBytes), revision: String(Number(quota.revision) + 1) });
+          await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
         }
         return { ok: true, kind: "deduped", backup: singlePlayerCloudBackupWire(decision.manifest, currentSnapshotJson), serverNow };
       }
+      const oldStateBytes = current ? Number(current.stateBytes) : 0;
+      const nextActiveStateBytes = admissionStateBytes - oldStateBytes + candidate.stateBytes;
+      const nextUserStateBytes = userStateBytes - oldStateBytes + candidate.stateBytes;
+      const nextQuota = nextQuotaValue(nextActiveStateBytes,
+        SINGLE_PLAYER_CLOUD_BACKUP_QUOTA_STATE_BYTES + nextUserStateBytes + SINGLE_PLAYER_CLOUD_BACKUP_BUDGET_STATE_BYTES,
+        dayKey, globalAcceptedToday + 1, serverNow);
+      if (!nextQuota) return { ok: false, reason: BS.invalidServerState, serverNow };
       for (const row of currentChunks) await ctx.db.singlePlayerCloudBackupChunks.delete(row.id);
       for (let index = 0; index < candidate.chunks.length; index += 1) {
         const chunkData = candidate.chunks[index];
@@ -2342,12 +2380,7 @@ export default capsule({
       const manifestValue = { ...decision.manifest, userId, protocolVersion: "1" };
       if (current) await ctx.db.singlePlayerCloudBackups.update(current.id, manifestValue);
       else await ctx.db.singlePlayerCloudBackups.insert(manifestValue);
-      const oldStateBytes = current ? Number(current.stateBytes) : 0;
       await applyCleanup();
-      const nextQuota = { quotaKey: SINGLE_PLAYER_CLOUD_QUOTA_KEY,
-        activeStateBytes: String(admissionStateBytes - oldStateBytes + candidate.stateBytes), dayKey,
-        acceptedToday: String(globalAcceptedToday + 1), lastAcceptedAt: String(serverNow),
-        revision: String(Number(quota?.revision ?? "0") + 1) };
       if (quota) await ctx.db.singlePlayerCloudBackupQuota.update(quota.id, nextQuota);
       else await ctx.db.singlePlayerCloudBackupQuota.insert(nextQuota);
       const nextUserBudget = { userId, dayKey,
