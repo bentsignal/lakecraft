@@ -89,7 +89,7 @@ function hasExactKeys(record: Record<string, unknown>, allowed: readonly string[
 }
 
 function validIdentityPart(value: unknown): value is string {
-  return typeof value === "string"
+  return BS.isString(value)
     && value.length >= 1
     && value.length <= 128
     && !/[\u0000-\u001f\u007f]/.test(value);
@@ -120,7 +120,7 @@ function canonicalStack(value: unknown): ItemStack | null {
   if (!hasExactKeys(record, record.durability === undefined
     ? ["itemId", "count"]
     : ["itemId", "count", BS.durability])) return null;
-  if (typeof record.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)) return null;
+  if (!BS.isString(record.itemId) || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)) return null;
   const itemId = record.itemId as ItemId;
   const maximum = maxItemDurability(itemId);
   if (typeof record.count !== "number" || !Number.isInteger(record.count)
@@ -162,7 +162,7 @@ function canonicalEquipment(value: Equipment): Equipment | null {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
     const armor = candidate as Record<string, unknown>;
     if (!hasExactKeys(armor, ["itemId", BS.durability])
-      || typeof armor.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, armor.itemId)) return null;
+      || !BS.isString(armor.itemId) || !Object.prototype.hasOwnProperty.call(ITEMS, armor.itemId)) return null;
     const definition = ITEMS[armor.itemId as ItemId].armor;
     if (!definition || definition.slot !== slot || typeof armor.durability !== "number"
       || !Number.isInteger(armor.durability) || armor.durability < 1

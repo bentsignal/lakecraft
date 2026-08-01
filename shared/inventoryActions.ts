@@ -147,7 +147,7 @@ function canonicalFingerprint(
 }
 
 export function validateInventoryActionRequestJson(rawJson: string): InventoryActionRequestValidation {
-  if (typeof rawJson !== "string" || rawJson.length > MAX_INVENTORY_ACTION_REQUEST_BYTES) {
+  if (!BS.isString(rawJson) || rawJson.length > MAX_INVENTORY_ACTION_REQUEST_BYTES) {
     return { ok: false, reason: "too_large" };
   }
   let parsed: unknown;
@@ -158,13 +158,13 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
-  if (typeof record.operationId !== "string" || !OPERATION_ID.test(record.operationId)) {
+  if (!BS.isString(record.operationId) || !OPERATION_ID.test(record.operationId)) {
     return { ok: false, reason: BS.invalidOperationId };
   }
-  if (typeof record.expectedRevision !== "string" || !REVISION.test(record.expectedRevision)) {
+  if (!BS.isString(record.expectedRevision) || !REVISION.test(record.expectedRevision)) {
     return { ok: false, reason: "invalid_revision" };
   }
-  if (typeof record.kind !== "string") return { ok: false, reason: BS.invalidAction };
+  if (!BS.isString(record.kind)) return { ok: false, reason: BS.invalidAction };
   let action: InventoryAction;
   if (record.kind === "initialize") {
     if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind"], [BS.operationId, BS.expectedRevision, "kind"])) {
@@ -182,7 +182,7 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
     if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "expectedItemId"], [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "expectedItemId"])
       || typeof record.sourceSlot !== "number" || !Number.isInteger(record.sourceSlot)
       || record.sourceSlot < 0 || record.sourceSlot >= 36
-      || typeof record.expectedItemId !== "string"
+      || !BS.isString(record.expectedItemId)
       || !Object.prototype.hasOwnProperty.call(ITEMS, record.expectedItemId)) {
       return { ok: false, reason: BS.invalidAction };
     }
@@ -192,7 +192,7 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
       record,
       [BS.operationId, BS.expectedRevision, "kind", BS.playerStateJson, "recipes", "craftingContext", "workstationCoordKey"],
       [BS.operationId, BS.expectedRevision, "kind", BS.playerStateJson, "recipes", "craftingContext", "workstationCoordKey"],
-    ) || typeof record.playerStateJson !== "string") return { ok: false, reason: BS.invalidShape };
+    ) || !BS.isString(record.playerStateJson)) return { ok: false, reason: BS.invalidShape };
     const state = validatePlayerStateJson(record.playerStateJson);
     if (!state.ok) return { ok: false, reason: BS.invalidPlayerState, playerStateIssue: state.reason };
     // This pre-launch capsule accepts only its one current canonical envelope.
@@ -208,7 +208,7 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
       if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, reason: "invalid_recipe_batches" };
       const batch = value as Record<string, unknown>;
       if (!hasOnlyKeys(batch, ["recipeId", "crafts"], ["recipeId", "crafts"])
-        || typeof batch.recipeId !== "string" || batch.recipeId.length < 1 || batch.recipeId.length > 64
+        || !BS.isString(batch.recipeId) || batch.recipeId.length < 1 || batch.recipeId.length > 64
         || typeof batch.crafts !== "number" || !Number.isInteger(batch.crafts) || batch.crafts < 1) {
         return { ok: false, reason: "invalid_recipe_batches" };
       }
@@ -219,7 +219,7 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
     if (record.craftingContext !== "field" && record.craftingContext !== BS.craftingTable) {
       return { ok: false, reason: BS.invalidAction };
     }
-    if (typeof record.workstationCoordKey !== "string"
+    if (!BS.isString(record.workstationCoordKey)
       || (record.craftingContext === "field"
         ? record.workstationCoordKey !== ""
         : !COORDINATE.test(record.workstationCoordKey))) {
@@ -374,14 +374,14 @@ export function encodeInventoryActionReceipt(payload: InventoryActionReceiptPayl
 }
 
 export function decodeInventoryActionReceipt(rawJson: string): InventoryActionReceiptPayload | null {
-  if (typeof rawJson !== "string" || rawJson.length > 4_096) return null;
+  if (!BS.isString(rawJson) || rawJson.length > 4_096) return null;
   try {
     const value = JSON.parse(rawJson) as Record<string, unknown>;
     if (!value || !hasOnlyKeys(value, ["effect", "consumed", "restored", "crafted"], ["effect"])
       || !["initialized", "workspace_committed", "ate", "selected_hotbar"].includes(String(value.effect))) {
       return null;
     }
-    if (value.consumed !== undefined && (typeof value.consumed !== "string"
+    if (value.consumed !== undefined && (!BS.isString(value.consumed)
       || !Object.prototype.hasOwnProperty.call(ITEMS, value.consumed))) return null;
     if (value.restored !== undefined && (!Number.isInteger(value.restored)
       || Number(value.restored) < 0 || Number(value.restored) > MAX_HUNGER)) return null;
@@ -391,7 +391,7 @@ export function decodeInventoryActionReceipt(rawJson: string): InventoryActionRe
         if (!item || typeof item !== "object" || Array.isArray(item)) return null;
         const record = item as Record<string, unknown>;
         if (!hasOnlyKeys(record, ["itemId", "count"], ["itemId", "count"])
-          || typeof record.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)
+          || !BS.isString(record.itemId) || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)
           || !Number.isInteger(record.count) || Number(record.count) < 1 || Number(record.count) > 4_096) return null;
       }
     }

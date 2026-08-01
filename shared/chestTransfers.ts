@@ -176,7 +176,7 @@ function strictInventory(
     if (!slot || typeof slot !== "object" || Array.isArray(slot)) return null;
     const record = slot as Record<string, unknown>;
     if (!hasOnlyKeys(record, ["itemId", "count", BS.durability], ["itemId", "count"])) return null;
-    if (typeof record.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)) return null;
+    if (!BS.isString(record.itemId) || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)) return null;
     const itemId = record.itemId as ItemId;
     if (typeof record.count !== "number" || !Number.isInteger(record.count)
       || record.count < 1 || record.count > ITEMS[itemId].maxStack) return null;
@@ -210,7 +210,7 @@ function strictEquipment(value: unknown, allowLegacyArmorIds: boolean): Equipmen
   for (const slot of ARMOR_SLOTS) {
     const candidate = record[slot];
     if (candidate === null) continue;
-    if (typeof candidate === "string") {
+    if (BS.isString(candidate)) {
       if (!allowLegacyArmorIds || !Object.prototype.hasOwnProperty.call(ITEMS, candidate)) return null;
       const armor = ITEMS[candidate as ItemId].armor;
       if (!armor || armor.slot !== slot) return null;
@@ -220,7 +220,7 @@ function strictEquipment(value: unknown, allowLegacyArmorIds: boolean): Equipmen
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
     const stack = candidate as Record<string, unknown>;
     if (!hasOnlyKeys(stack, ["itemId", BS.durability], ["itemId", BS.durability])
-      || typeof stack.itemId !== "string" || !Object.prototype.hasOwnProperty.call(ITEMS, stack.itemId)) return null;
+      || !BS.isString(stack.itemId) || !Object.prototype.hasOwnProperty.call(ITEMS, stack.itemId)) return null;
     const armor = ITEMS[stack.itemId as ItemId].armor;
     if (!armor || armor.slot !== slot || typeof stack.durability !== "number"
       || !Number.isInteger(stack.durability) || stack.durability < 1
@@ -370,11 +370,11 @@ export function validateChestTransferRequestJson(rawJson: string): ChestTransfer
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
   const record = parsed as Record<string, unknown>;
   if (!hasOnlyKeys(record, REQUEST_KEYS, REQUEST_KEYS)) return { ok: false, reason: BS.invalidShape };
-  if (typeof record.operationId !== "string"
+  if (!BS.isString(record.operationId)
     || record.operationId.length < MIN_OPERATION_ID_LENGTH
     || record.operationId.length > MAX_OPERATION_ID_LENGTH
     || !/^[A-Za-z0-9_-]+$/.test(record.operationId)) return { ok: false, reason: BS.invalidOperationId };
-  if (typeof record.coordKey !== "string") return { ok: false, reason: BS.invalidCoordinate };
+  if (!BS.isString(record.coordKey)) return { ok: false, reason: BS.invalidCoordinate };
   const coordinate = validateChestCoordinate(record.coordKey);
   if (!coordinate.ok) return { ok: false, reason: BS.invalidCoordinate };
   if (record.direction !== "to_chest" && record.direction !== "from_chest") return { ok: false, reason: "invalid_direction" };
@@ -382,13 +382,13 @@ export function validateChestTransferRequestJson(rawJson: string): ChestTransfer
     || record.sourceSlot < 0 || record.sourceSlot >= CHEST_SLOT_COUNT) return { ok: false, reason: "invalid_source_slot" };
   if (typeof record.count !== "number" || !Number.isInteger(record.count)
     || record.count < 1 || record.count > 64) return { ok: false, reason: "invalid_count" };
-  if (typeof record.expectedChestUpdatedAt !== "string" || typeof record.expectedInventoryUpdatedAt !== "string") {
+  if (!BS.isString(record.expectedChestUpdatedAt) || !BS.isString(record.expectedInventoryUpdatedAt)) {
     return { ok: false, reason: "invalid_token" };
   }
   const expectedChestUpdatedAt = normalizeChestToken(record.expectedChestUpdatedAt);
   const expectedInventoryUpdatedAt = normalizeChestToken(record.expectedInventoryUpdatedAt);
   if (expectedChestUpdatedAt === null || expectedInventoryUpdatedAt === null) return { ok: false, reason: "invalid_token" };
-  if (typeof record.playerStateJson !== "string") return { ok: false, reason: BS.invalidPlayerState };
+  if (!BS.isString(record.playerStateJson)) return { ok: false, reason: BS.invalidPlayerState };
   const playerState = validatePlayerStateJson(record.playerStateJson);
   if (!playerState.ok) return { ok: false, reason: BS.invalidPlayerState, playerStateIssue: playerState.reason };
   const request: ChestTransferRequest = {

@@ -29,16 +29,22 @@ function runtimeSourcePaths(directory) {
 }
 
 const referenceCounts = new Map();
+let stringGuardReferences = 0;
 const sourcePaths = ["client", "server", "shared"].flatMap(runtimeSourcePaths);
 for (const sourcePath of sourcePaths) {
   const source = readFileSync(join(repositoryRoot, sourcePath), "utf8");
   const references = [...source.matchAll(/\bBS\.(\w+)/g)];
   if (references.length) assert.match(source, /import \* as BS from ["'][^"']*bundleStrings(?:\.ts)?["'];/);
   for (const [, name] of references) {
+    if (name === "isString") {
+      stringGuardReferences += 1;
+      continue;
+    }
     assert.ok(constants.has(name), `${sourcePath} references a declared bundle string`);
     referenceCounts.set(name, (referenceCounts.get(name) ?? 0) + 1);
   }
 }
+assert.ok(stringGuardReferences >= 100, "shared string guard keeps a material reviewed runtime live set");
 assert.deepEqual(
   [...referenceCounts.keys()].sort(),
   [...constants.keys()].sort(),

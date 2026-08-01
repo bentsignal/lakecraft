@@ -75,7 +75,7 @@ export function fallProbeCells(pose: { x: number; y: number; z: number }): FallP
 }
 
 export function validFallProbeBlock(value: unknown): value is BlockType {
-  return typeof value === "string" && (BLOCK_TYPES as readonly string[]).includes(value);
+  return BS.isString(value) && (BLOCK_TYPES as readonly string[]).includes(value);
 }
 
 /** Matches the current client collision rule; ladders reset falls separately. */

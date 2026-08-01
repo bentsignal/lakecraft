@@ -114,7 +114,7 @@ export function parseBlockCoordinateKey(key: string): [number, number, number] |
 }
 
 export function isBlockType(value: unknown): value is BlockType {
-  return typeof value === "string" && (BLOCK_TYPES as readonly string[]).includes(value);
+  return BS.isString(value) && (BLOCK_TYPES as readonly string[]).includes(value);
 }
 
 export function serializeInventory(inventory: InventoryCounts): string {
@@ -157,7 +157,7 @@ export function activePlayerPresences(
   staleAfterMs = PLAYER_STALE_AFTER_MS
 ): PlayerPresence[] {
   const orderedDecimal = (value: unknown): number => {
-    if (typeof value !== "string" || !/^\d{1,16}$/.test(value)) return Number.NEGATIVE_INFINITY;
+    if (!BS.isString(value) || !/^\d{1,16}$/.test(value)) return Number.NEGATIVE_INFINITY;
     const parsed = Number(value);
     return Number.isSafeInteger(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };

@@ -49,7 +49,7 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,160}:\d{1,16}$/;
 const EVENT_PATTERN = /^tnt_[0-9a-z]{1,16}_[0-9a-z]{1,16}$/;
 
 function parsedRecord(rawJson: string): Record<string, unknown> | null {
-  if (typeof rawJson !== "string" || rawJson.length > 1_024) return null;
+  if (!BS.isString(rawJson) || rawJson.length > 1_024) return null;
   try {
     const value = JSON.parse(rawJson);
     return value && typeof value === "object" && !Array.isArray(value)
@@ -81,11 +81,11 @@ function hashText(value: string): number {
 export function validateTntIgnitionRequestJson(rawJson: string): TntIgnitionRequest | null {
   const value = parsedRecord(rawJson);
   if (!value || !exactKeys(value, [BS.operationId, "x", "y", "z", "blockInstanceToken"])
-    || typeof value.operationId !== "string" || !OPERATION_PATTERN.test(value.operationId)
+    || !BS.isString(value.operationId) || !OPERATION_PATTERN.test(value.operationId)
     || !coordinate(value.x, -1_000_000, 1_000_000)
     || !coordinate(value.y, -24, 128)
     || !coordinate(value.z, -1_000_000, 1_000_000)
-    || typeof value.blockInstanceToken !== "string" || !TOKEN_PATTERN.test(value.blockInstanceToken)) return null;
+    || !BS.isString(value.blockInstanceToken) || !TOKEN_PATTERN.test(value.blockInstanceToken)) return null;
   return {
     operationId: value.operationId,
     x: value.x,
@@ -168,8 +168,8 @@ export function createTntFuse(
 export function validateTntExplosionRequestJson(rawJson: string): TntExplosionRequest | null {
   const value = parsedRecord(rawJson);
   if (!value || !exactKeys(value, ["eventId", "ignitionId"])
-    || typeof value.eventId !== "string" || !EVENT_PATTERN.test(value.eventId)
-    || typeof value.ignitionId !== "string" || !OPERATION_PATTERN.test(value.ignitionId)) return null;
+    || !BS.isString(value.eventId) || !EVENT_PATTERN.test(value.eventId)
+    || !BS.isString(value.ignitionId) || !OPERATION_PATTERN.test(value.ignitionId)) return null;
   return { eventId: value.eventId, ignitionId: value.ignitionId };
 }
 
@@ -213,15 +213,15 @@ export function electTntExplosionClaimer(
 }
 
 export function normalizeStoredTntFuse(row: Readonly<Record<string, unknown>>): TntFuse | null {
-  const signedInteger = (value: unknown) => typeof value === "string" && /^-?\d{1,16}$/.test(value) ? Number(value) : Number.NaN;
-  const unsignedInteger = (value: unknown) => typeof value === "string" && /^\d{1,16}$/.test(value) ? Number(value) : Number.NaN;
+  const signedInteger = (value: unknown) => BS.isString(value) && /^-?\d{1,16}$/.test(value) ? Number(value) : Number.NaN;
+  const unsignedInteger = (value: unknown) => BS.isString(value) && /^\d{1,16}$/.test(value) ? Number(value) : Number.NaN;
   const x = signedInteger(row.x); const y = signedInteger(row.y); const z = signedInteger(row.z);
   const ignitedAt = unsignedInteger(row.ignitedAt); const dueAt = unsignedInteger(row.dueAt);
-  if (typeof row.eventId !== "string" || !EVENT_PATTERN.test(row.eventId)
-    || typeof row.ignitionId !== "string" || !OPERATION_PATTERN.test(row.ignitionId)
-    || typeof row.coordKey !== "string" || row.coordKey !== `${x}:${y}:${z}`
-    || typeof row.blockInstanceToken !== "string" || !TOKEN_PATTERN.test(row.blockInstanceToken)
-    || typeof row.igniterUserId !== "string" || !row.igniterUserId
+  if (!BS.isString(row.eventId) || !EVENT_PATTERN.test(row.eventId)
+    || !BS.isString(row.ignitionId) || !OPERATION_PATTERN.test(row.ignitionId)
+    || !BS.isString(row.coordKey) || row.coordKey !== `${x}:${y}:${z}`
+    || !BS.isString(row.blockInstanceToken) || !TOKEN_PATTERN.test(row.blockInstanceToken)
+    || !BS.isString(row.igniterUserId) || !row.igniterUserId
     || !coordinate(x, -1_000_000, 1_000_000) || !coordinate(y, -24, 128) || !coordinate(z, -1_000_000, 1_000_000)
     || !Number.isSafeInteger(ignitedAt) || ignitedAt < 0 || dueAt !== ignitedAt + TNT_FUSE_MS) return null;
   return { eventId: row.eventId, ignitionId: row.ignitionId, coordKey: row.coordKey,

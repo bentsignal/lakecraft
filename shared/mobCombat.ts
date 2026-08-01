@@ -218,7 +218,7 @@ export function validateMobIdentity(
   rawKind?: string,
   requiredSeedToken?: string,
 ): MobIdentityValidation {
-  if (typeof rawMobId !== "string" || rawMobId.length > MAX_MOB_ID_LENGTH) {
+  if (!BS.isString(rawMobId) || rawMobId.length > MAX_MOB_ID_LENGTH) {
     return { ok: false, reason: "invalid_mob" };
   }
   const mobId = rawMobId.trim();
@@ -241,7 +241,7 @@ export function validateMobIdList(rawMobIds: unknown, requiredSeedToken?: string
   }
   const unique = new Set<string>();
   for (const rawMobId of rawMobIds) {
-    if (typeof rawMobId !== "string") return { ok: false, reason: "invalid_mob_ids" };
+    if (!BS.isString(rawMobId)) return { ok: false, reason: "invalid_mob_ids" };
     const validation = validateMobIdentity(rawMobId, undefined, requiredSeedToken);
     if (!validation.ok) return { ok: false, reason: "invalid_mob_ids" };
     unique.add(validation.mobId);

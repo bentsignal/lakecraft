@@ -34,17 +34,17 @@ function exactKeys(record: Record<string, unknown>, expected: readonly string[])
 }
 
 function token(value: unknown): string | null {
-  return typeof value === "string" && value.length <= 128 ? value : null;
+  return BS.isString(value) && value.length <= 128 ? value : null;
 }
 
 function revision(value: unknown): string | null {
-  return typeof value === "string" && /^\d{1,16}$/.test(value) && Number.isSafeInteger(Number(value))
+  return BS.isString(value) && /^\d{1,16}$/.test(value) && Number.isSafeInteger(Number(value))
     ? String(Number(value))
     : null;
 }
 
 function blockInstanceToken(value: unknown): string | null {
-  return typeof value === "string" && value.length >= 3 && value.length <= 256
+  return BS.isString(value) && value.length >= 3 && value.length <= 256
     && /^[A-Za-z0-9_:.+-]+$/.test(value)
     ? value
     : null;
@@ -73,7 +73,7 @@ function transferAction(value: unknown): FurnaceTransferAction | null {
 }
 
 export function validateFurnaceTransferRequestJson(rawJson: string): FurnaceTransferRequest | null {
-  if (typeof rawJson !== "string" || rawJson.length > MAX_FURNACE_REQUEST_BYTES) return null;
+  if (!BS.isString(rawJson) || rawJson.length > MAX_FURNACE_REQUEST_BYTES) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(rawJson);
@@ -89,8 +89,8 @@ export function validateFurnaceTransferRequestJson(rawJson: string): FurnaceTran
     BS.expectedInventoryUpdatedAt,
     "expectedFurnaceRevision",
     "expectedBlockInstanceToken",
-  ]) || typeof record.operationId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(record.operationId)) return null;
-  const coordinate = typeof record.coordKey === "string" ? validateFurnaceCoordinate(record.coordKey) : null;
+  ]) || !BS.isString(record.operationId) || !/^[A-Za-z0-9_-]{16,64}$/.test(record.operationId)) return null;
+  const coordinate = BS.isString(record.coordKey) ? validateFurnaceCoordinate(record.coordKey) : null;
   const action = transferAction(record.action);
   const expectedInventoryUpdatedAt = token(record.expectedInventoryUpdatedAt);
   const expectedFurnaceRevision = revision(record.expectedFurnaceRevision);
@@ -134,14 +134,14 @@ export function encodeFurnaceReceipt(result: Record<string, unknown>): string {
 }
 
 export function decodeFurnaceReceipt(rawJson: string): Record<string, unknown> | null {
-  if (typeof rawJson !== "string" || rawJson.length > MAX_FURNACE_RECEIPT_BYTES) return null;
+  if (!BS.isString(rawJson) || rawJson.length > MAX_FURNACE_RECEIPT_BYTES) return null;
   try {
     const parsed = JSON.parse(rawJson) as Record<string, unknown>;
     if (!parsed || parsed.ok !== true || parsed.replayed !== false
       || !parsed.moved || typeof parsed.moved !== "object" || Array.isArray(parsed.moved)) return null;
     const moved = parsed.moved as Record<string, unknown>;
     if ((moved.direction !== "to_furnace" && moved.direction !== "to_player")
-      || typeof moved.itemId !== "string" || !(moved.itemId in ITEMS)
+      || !BS.isString(moved.itemId) || !(moved.itemId in ITEMS)
       || !Number.isInteger(moved.count) || Number(moved.count) < 1 || Number(moved.count) > 64) return null;
     return parsed;
   } catch {

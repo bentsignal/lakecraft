@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import * as BS from "../shared/bundleStrings.ts";
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+assert.equal(BS.isString("lakecraft"), true, "shared guard accepts primitive strings");
+for (const value of [null, undefined, 0, false, {}, [], new String("lakecraft")]) {
+  assert.equal(BS.isString(value), false, "shared guard preserves exact typeof-string semantics");
+}
 const reviewed = [
   ["activePresenceRequired", "active_presence_required", 19],
   ["attackerDead", "attacker_dead", 2],
