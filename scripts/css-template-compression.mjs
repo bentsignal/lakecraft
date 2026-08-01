@@ -6,7 +6,7 @@ export const CSS_BUNDLE_SEPARATOR = "\u0001";
 export const CSS_BUNDLE_MAX_DISTANCE = 262_144;
 const CSS_BUNDLE_TOKEN_PREFIXES = "~^`";
 const CSS_BUNDLE_MIN_LENGTH = 5;
-const CSS_BUNDLE_MAX_LENGTH = 67;
+const CSS_BUNDLE_MAX_LENGTH = 68;
 const CSS_BUNDLE_MAX_CANDIDATES = 256;
 
 // These names exist only in Lakecraft-owned client markup and CSS. Rewriting
@@ -315,12 +315,9 @@ export function bundleCompressCss(css) {
     return null;
   }
   const positionsByPrefix = new Map();
-  let compressed = "";
-  let tokenCount = 0;
-  for (let cursor = 0; cursor < css.length;) {
-    let bestLength = 0;
-    let bestDistance = 0;
-    let bestGain = 0;
+  const matches = new Array(css.length);
+  for (let cursor = 0; cursor < css.length; cursor += 1) {
+    const bestByTokenSize = [];
     if (cursor + CSS_BUNDLE_MIN_LENGTH <= css.length) {
       const prefix = css.slice(cursor, cursor + CSS_BUNDLE_MIN_LENGTH);
       const positions = positionsByPrefix.get(prefix) ?? [];
@@ -333,33 +330,48 @@ export function bundleCompressCss(css) {
         let length = CSS_BUNDLE_MIN_LENGTH;
         const maximum = Math.min(CSS_BUNDLE_MAX_LENGTH, css.length - cursor);
         while (length < maximum && css[source + length] === css[cursor + length]) length += 1;
-        const gain = length - cssBundleTokenSize(distance);
-        if (gain > bestGain) {
-          bestLength = length;
-          bestDistance = distance;
-          bestGain = gain;
-          if (length === CSS_BUNDLE_MAX_LENGTH) break;
+        const tokenSize = cssBundleTokenSize(distance);
+        const prior = bestByTokenSize[tokenSize];
+        if (!prior || length > prior.length || (length === prior.length && distance < prior.distance)) {
+          bestByTokenSize[tokenSize] = { distance, length, tokenSize };
         }
         if (candidatesChecked >= CSS_BUNDLE_MAX_CANDIDATES) break;
       }
     }
-    const consumed = bestGain > 0 ? bestLength : 1;
-    if (bestGain > 0) {
-      compressed += cssBundleToken(bestDistance, bestLength);
+    matches[cursor] = bestByTokenSize.filter(Boolean);
+    if (cursor + CSS_BUNDLE_MIN_LENGTH > css.length) continue;
+    const prefix = css.slice(cursor, cursor + CSS_BUNDLE_MIN_LENGTH);
+    const positions = positionsByPrefix.get(prefix) ?? [];
+    positions.push(cursor);
+    while (positions.length && cursor - positions[0] > CSS_BUNDLE_MAX_DISTANCE) positions.shift();
+    positionsByPrefix.set(prefix, positions);
+  }
+
+  const costs = new Uint32Array(css.length + 1);
+  const choices = new Array(css.length);
+  for (let cursor = css.length - 1; cursor >= 0; cursor -= 1) {
+    let best = { cost: 1 + costs[cursor + 1], distance: 0, length: 1 };
+    for (const match of matches[cursor]) {
+      for (let length = CSS_BUNDLE_MIN_LENGTH; length <= match.length; length += 1) {
+        const cost = match.tokenSize + costs[cursor + length];
+        if (cost < best.cost || (cost === best.cost && length > best.length)) {
+          best = { cost, distance: match.distance, length };
+        }
+      }
+    }
+    costs[cursor] = best.cost;
+    choices[cursor] = best;
+  }
+
+  let compressed = "";
+  let tokenCount = 0;
+  for (let cursor = 0; cursor < css.length;) {
+    const choice = choices[cursor];
+    if (choice.distance) {
+      compressed += cssBundleToken(choice.distance, choice.length);
       tokenCount += 1;
-    } else {
-      compressed += css[cursor];
-    }
-    for (let offset = 0; offset < consumed; offset += 1) {
-      const position = cursor + offset;
-      if (position + CSS_BUNDLE_MIN_LENGTH > css.length) break;
-      const prefix = css.slice(position, position + CSS_BUNDLE_MIN_LENGTH);
-      const positions = positionsByPrefix.get(prefix) ?? [];
-      positions.push(position);
-      while (positions.length && position - positions[0] > CSS_BUNDLE_MAX_DISTANCE) positions.shift();
-      positionsByPrefix.set(prefix, positions);
-    }
-    cursor += consumed;
+    } else compressed += css[cursor];
+    cursor += choice.length;
   }
   return tokenCount ? { compressed, tokenCount } : null;
 }

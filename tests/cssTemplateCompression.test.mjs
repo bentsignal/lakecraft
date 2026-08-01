@@ -101,6 +101,13 @@ assert.equal(bundleCompressCss(".a^.b{color:red}"), null, "shared packing reject
 assert.equal(bundleCompressCss(".a`.b{color:red}"), null, "shared packing rejects its long token prefix");
 const separatorFixture = `.a{color:red}${CSS_BUNDLE_SEPARATOR}.b{color:red}`;
 assert.equal(bundleDecompressCss(bundleCompressCss(separatorFixture)), separatorFixture, "the joined payload preserves stylesheet separators");
+const optimalParseFixture = "abcdeXUVWXYZUVWXYZcdefgcdefgUVWXYZbcdefcdefgabcdeabcdeYUVWXYZbcdefabcdefmnopqrabcdecdefgcdefgabcde";
+const optimalParsePacked = bundleCompressCss(optimalParseFixture);
+assert.equal(optimalParsePacked.compressed.length, 63, "global CSS parsing avoids the 64-byte greedy encoding");
+assert.equal(bundleDecompressCss(optimalParsePacked), optimalParseFixture, "the non-greedy CSS fixture round-trips exactly");
+const maximumLengthPacked = bundleCompressCss("a".repeat(69));
+assert.equal(maximumLengthPacked.compressed, "a~0$", "the full 64-symbol length alphabet encodes a 68-byte match");
+assert.equal(bundleDecompressCss(maximumLengthPacked), "a".repeat(69), "the maximum shared match length round-trips");
 assert.throws(() => bundleDecompressCss({ compressed: "`" }), /Truncated/, "truncated shared tokens must be rejected");
 assert.throws(() => bundleDecompressCss({ compressed: "`000!" }), /Malformed/, "malformed shared tokens must be rejected");
 assert.throws(() => bundleDecompressCss({ compressed: "~00" }), /unavailable/, "forward shared references must be rejected");
