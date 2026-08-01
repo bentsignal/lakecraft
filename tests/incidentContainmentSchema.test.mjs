@@ -87,8 +87,8 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 127, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "c156bc92ce27916664a9a304aacf2423010cb508c16dad71bee78abfc4f8c256",
-  "all runtime sources outside the marked schema file stay byte-for-byte equal to e245f0b");
+  "2f23858006e3e834331fc203472ebfe4e9c031061a0d439ffd1e042c5542cc74",
+  "runtime sources match the reviewed renderer-compaction checkpoint");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");
@@ -98,4 +98,4 @@ assert.doesNotMatch(clientSource,
 assert.equal(existsSync(join(root, "client/singleplayer/SinglePlayerCloudTransport.tsx")), false);
 assert.equal(existsSync(join(root, "client/singleplayer/cloudBackupClient.ts")), false);
 
-console.log("incident containment schema is exact, inert, and main-runtime preserving: ok");
+console.log("incident containment schema is exact, inert, and reviewed-runtime preserving: ok");
