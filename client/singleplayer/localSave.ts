@@ -13,6 +13,7 @@ import {
   type ItemId,
   type ItemStack,
 } from "../../shared/game.ts";
+import * as BS from "../../shared/bundleStrings.ts";
 import {
   BLOCK,
   validateVoxelRuntimeSnapshotDetailed,
@@ -473,7 +474,7 @@ function validateProgression(value: unknown): SinglePlayerSnapshot["progression"
 
 export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapshotValidation {
   if (!isRecord(value) || !exactKeys(value, ["world", "player", "progression", "drops", "chests", "furnaces", "primedTnt", "runtime"])) {
-    return { ok: false, reason: "invalid_snapshot", path: "$" };
+    return { ok: false, reason: BS.invalidSnapshot, path: "$" };
   }
   const worldKeys = ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "weather", "edits"];
   const worldHasGameMode = isRecord(value.world) && Object.prototype.hasOwnProperty.call(value.world, "gameMode");
@@ -484,40 +485,40 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
     || !safeInteger(value.world.createdAt, 0, MAX_TIMESTAMP)
     || !safeInteger(value.world.activePlayMs, 0, MAX_TIMESTAMP)
     || (worldHasGameMode && value.world.gameMode !== "survival" && value.world.gameMode !== "creative")) {
-    return { ok: false, reason: "invalid_snapshot", path: "$.world" };
+    return { ok: false, reason: BS.invalidSnapshot, path: "$.world" };
   }
   if (!isRecord(value.world.weather) || !exactKeys(value.world.weather, ["kind", "remainingMs"])
     || typeof value.world.weather.kind !== "string" || !WEATHER_KINDS.has(value.world.weather.kind)
-    || !safeInteger(value.world.weather.remainingMs, 0, MAX_WEATHER_MS)) return { ok: false, reason: "invalid_snapshot", path: "$.world.weather" };
+    || !safeInteger(value.world.weather.remainingMs, 0, MAX_WEATHER_MS)) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.weather" };
   const edits = validateEdits(value.world.edits);
-  if (!edits) return { ok: false, reason: "invalid_snapshot", path: "$.world.edits" };
+  if (!edits) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.edits" };
 
   if (!isRecord(value.player) || !exactKeys(value.player, ["inventory", "equipment", "selectedHotbar", "hunger"])) {
-    return { ok: false, reason: "invalid_snapshot", path: "$.player" };
+    return { ok: false, reason: BS.invalidSnapshot, path: "$.player" };
   }
   const inventory = validateInventory(value.player.inventory);
   const equipment = validateEquipment(value.player.equipment);
-  if (!inventory) return { ok: false, reason: "invalid_snapshot", path: "$.player.inventory" };
-  if (!equipment) return { ok: false, reason: "invalid_snapshot", path: "$.player.equipment" };
+  if (!inventory) return { ok: false, reason: BS.invalidSnapshot, path: "$.player.inventory" };
+  if (!equipment) return { ok: false, reason: BS.invalidSnapshot, path: "$.player.equipment" };
   if (!safeInteger(value.player.selectedHotbar, 0, HOTBAR_SIZE - 1)
     || !safeInteger(value.player.hunger, 0, MAX_HUNGER)) {
-    return { ok: false, reason: "invalid_snapshot", path: "$.player.vitals" };
+    return { ok: false, reason: BS.invalidSnapshot, path: "$.player.vitals" };
   }
   const progression = validateProgression(value.progression);
-  if (!progression) return { ok: false, reason: "invalid_snapshot", path: "$.progression" };
+  if (!progression) return { ok: false, reason: BS.invalidSnapshot, path: "$.progression" };
   const drops = validateDrops(value.drops);
   const chests = validateChests(value.chests);
   const furnaces = validateFurnaces(value.furnaces);
   const primedTnt = validatePrimedTnt(value.primedTnt);
   const runtimeValidation = value.runtime === null ? null : validateVoxelRuntimeSnapshotDetailed(value.runtime);
   const runtime = runtimeValidation?.ok ? runtimeValidation.snapshot : null;
-  if (!drops) return { ok: false, reason: "invalid_snapshot", path: "$.drops" };
-  if (!chests) return { ok: false, reason: "invalid_snapshot", path: "$.chests" };
-  if (!furnaces) return { ok: false, reason: "invalid_snapshot", path: "$.furnaces" };
-  if (!primedTnt) return { ok: false, reason: "invalid_snapshot", path: "$.primedTnt" };
+  if (!drops) return { ok: false, reason: BS.invalidSnapshot, path: "$.drops" };
+  if (!chests) return { ok: false, reason: BS.invalidSnapshot, path: "$.chests" };
+  if (!furnaces) return { ok: false, reason: BS.invalidSnapshot, path: "$.furnaces" };
+  if (!primedTnt) return { ok: false, reason: BS.invalidSnapshot, path: "$.primedTnt" };
   if (value.runtime !== null && (!runtimeValidation || !runtimeValidation.ok)) {
     const runtimePath = runtimeValidation?.path === "$" ? "" : runtimeValidation?.path.slice(1);
-    return { ok: false, reason: "invalid_snapshot", path: `$.runtime${runtimePath ?? ""}` };
+    return { ok: false, reason: BS.invalidSnapshot, path: `$.runtime${runtimePath ?? ""}` };
   }
 
   return {
@@ -587,7 +588,7 @@ export function serializeSinglePlayerSave(payload: SinglePlayerSnapshot, sequenc
   const validated = validateSinglePlayerSnapshot(payload);
   if (!validated.ok) return validated;
   if (!safeInteger(sequence, 1, Number.MAX_SAFE_INTEGER) || !safeInteger(savedAt, 0, MAX_TIMESTAMP)) {
-    return { ok: false, reason: "invalid_snapshot", path: "$.envelope" };
+    return { ok: false, reason: BS.invalidSnapshot, path: "$.envelope" };
   }
   const body = envelopeBody(validated.snapshot, sequence, savedAt);
   const envelope: SinglePlayerSaveEnvelope = { checksum: singlePlayerSaveChecksum(body), ...body };
@@ -763,7 +764,7 @@ export function saveSinglePlayerSnapshot(
 ): SinglePlayerSaveResult {
   const targetStorage = selectedStorage(storage, options);
   if (options.worldId && snapshot.world.worldId !== options.worldId) {
-    return { ok: false, reason: "invalid_snapshot", path: "$.world.worldId", previousSequence: 0 };
+    return { ok: false, reason: BS.invalidSnapshot, path: "$.world.worldId", previousSequence: 0 };
   }
   const scanned = readSlots(targetStorage, options.worldId);
   const current = highestValid(scanned.slots);
@@ -773,7 +774,7 @@ export function saveSinglePlayerSnapshot(
     || (!current && scanned.slots.some((slot) => slot.kind !== "empty"))) {
     return { ok: false, reason: "unsafe_existing_data", previousSequence };
   }
-  if (previousSequence >= Number.MAX_SAFE_INTEGER) return { ok: false, reason: "invalid_snapshot", path: "$.envelope.sequence", previousSequence };
+  if (previousSequence >= Number.MAX_SAFE_INTEGER) return { ok: false, reason: BS.invalidSnapshot, path: "$.envelope.sequence", previousSequence };
   const serialized = serializeSinglePlayerSave(snapshot, previousSequence + 1, savedAt);
   if (!serialized.ok) return { ok: false, reason: serialized.reason, path: serialized.path, previousSequence };
   if (options.worldId && serialized.raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS) {
