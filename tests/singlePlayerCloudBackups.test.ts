@@ -62,6 +62,7 @@ import {
   singlePlayerCloudBackupDeleteActiveState,
   singlePlayerCloudBackupWire as tupleSinglePlayerCloudBackupWire,
   singlePlayerCloudBudgetCleanupAfter,
+  singlePlayerCloudUnsigned,
   utcCloudBackupDay,
   validUtcCloudBackupDay,
   validStoredSinglePlayerCloudBackupManifest as tupleValidStoredSinglePlayerCloudBackupManifest,
@@ -373,6 +374,8 @@ if (!first.ok) throw new Error("fixture failed initial decision");
 const manifest = first.manifest;
 assert.equal(manifest.revision, "1");
 assert.equal(validStoredSinglePlayerCloudBackupManifest(manifest), true);
+assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, seed: "00" }), true,
+  "stored manifests retain parent acceptance of bounded noncanonical seed strings");
 assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, stateBytes: "NaN" }), false);
 assert.equal(validStoredSinglePlayerCloudBackupManifest({ ...manifest, revision: "0" }), false);
 assert.equal(candidateMatchesManifest(candidate, manifest), true);
@@ -443,6 +446,12 @@ assert.equal(loadedParts.ok, true, "database row order is irrelevant after exact
 assert.equal(loadedParts.ok && loadedParts.backups[0].snapshotJson, candidate.snapshotJson);
 if (!loadedParts.ok) throw new Error("ordinary owner fixture failed exact reconstruction");
 const ordinaryManifest = loadedParts.backups[0].manifest;
+const unsafeRevisionHeader = singlePlayerCloudBackupHeader({ ...ordinaryManifest, revision: "9007199254740992" });
+assert.deepEqual(loadSinglePlayerCloudBackupParts("user-a", [
+  { userId: "user-a", worldId, part: "0", data: unsafeRevisionHeader },
+  ...candidate.chunks.map((data, index) => ({ userId: "user-a", worldId, part: String(index + 1), data })),
+]), { ok: false, reason: "server_state" },
+"stored headers above Number.MAX_SAFE_INTEGER fail closed before predecessor arithmetic");
 const tupleInventory = tupleInventorySinglePlayerCloudBackupParts("user-a", storedParts);
 assert.equal(tupleInventory[0], 1);
 if (!tupleInventory[0]) throw new Error("tuple owner fixture failed inventory");
@@ -689,6 +698,8 @@ assert.equal(prepared.backup[2], loaded.sequence);
 
 const validWire = singlePlayerCloudBackupWire(manifest, candidate.snapshotJson);
 assert.equal(parseSinglePlayerCloudBackupWire(validWire).ok, true);
+assert.deepEqual(tupleParseSinglePlayerCloudBackupWire([...validWire.slice(0, 8), "9007199254740992", validWire[9]]),
+  [0, "invalid_backup"], "wire revisions above Number.MAX_SAFE_INTEGER fail closed before predecessor arithmetic");
 assert.equal(parseRestorableSinglePlayerCloudBackup(validWire).ok, true,
   "only a complete locally valid journal envelope leaves download quarantine");
 const oldHashWire = [1, worldId, "Cloud World", "42", "survival", String(createdAt),
@@ -884,6 +895,10 @@ assert.match(serverSource, /row\[BS\.userId\] === userId && \(!deleting \|\| cur
 assert.match(serverSource, /validUtcCloudBackupDay\(row\[BS\.dayKey\]\)[\s\S]*?Date\.parse\(`\$\{row\[BS\.dayKey\]\}T00:00:00Z`\)[\s\S]*?validUtcCloudBackupDay\(quotaState!\[1\]\)/,
   "budget day/timestamp pairs and quota day keys require canonical real UTC dates before mutation");
 const cloudMutation = serverSource.slice(serverSource.indexOf("mutateSinglePlayerCloudBackup"), serverSource.indexOf("growOakTree"));
+assert.equal(singlePlayerCloudUnsigned("001", 0, 120, 3), true,
+  "zero-padded persisted quota counters remain valid stored state");
+assert.match(cloudMutation, /\[BS\.acceptedToday\]: exactAccounting \? quotaState!\[2\][\s\S]*?\[BS\.lastAcceptedAt\]: exactAccounting \? quotaState!\[3\]/,
+  "exact recovery accounting preserves valid persisted quota strings byte-for-byte");
 assert.match(cloudMutation, /singlePlayerCloudBackupParts: cloudParts,[\s\S]*?singlePlayerCloudBackupBudgets: cloudBudgets,[\s\S]*?singlePlayerCloudBackupQuota: cloudQuota \} = ctx\.db/,
   "compact table handles remain bound to the exact cloud tables");
 const undercountGuard = cloudMutation.indexOf("!recoveringDelete && quota");

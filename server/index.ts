@@ -2285,8 +2285,8 @@ export default capsule({
         if (!validSinglePlayerCloudQuotaState(nextActive, floor, number(proposedRevision))) return invalid();
         const quotaValue = { [BS.quotaKey]: SINGLE_PLAYER_CLOUD_QUOTA_KEY, [BS.activeStateBytes]: string(nextActive),
           [BS.dayKey]: exactAccounting ? quotaDay : dayKey,
-          [BS.acceptedToday]: exactAccounting ? string(quotaAccepted) : "120",
-          [BS.lastAcceptedAt]: exactAccounting ? string(quotaLast) : string(serverNow), [BS.revision]: proposedRevision };
+          [BS.acceptedToday]: exactAccounting ? quotaState![2] : "120",
+          [BS.lastAcceptedAt]: exactAccounting ? quotaState![3] : string(serverNow), [BS.revision]: proposedRevision };
         if (quotaRows.length === 1) await cloudQuota.update(quotaRows[0].id, quotaValue);
         else {
           for (const row of quotaRows) await cloudQuota.delete(row.id);
