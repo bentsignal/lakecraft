@@ -46,6 +46,27 @@ assert.ok(styles.includes('overflow-y: auto'), "the taller pause menu remains re
 
 assert.ok(singlePlayer.includes("loadSinglePlayerSave(storage"), "the journal is loaded before local engine state is created");
 assert.ok(singlePlayer.includes("saveSinglePlayerSnapshot(storage"), "autosave and exit saves share the verified journal writer");
+const snapshotCommit = singlePlayer.indexOf("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })");
+const firstPlayCommit = singlePlayer.indexOf("recordFirstLocalWorldPlay(storage, world, now)");
+assert.ok(snapshotCommit >= 0 && firstPlayCommit > snapshotCommit,
+  "first-play metadata is attempted only after the namespaced snapshot journal commit");
+assert.ok(singlePlayer.includes("const firstPlayRecordedRef = useRef(world.lastPlayedAt > 0)"),
+  "loaded worlds and successful first sessions skip all later first-play registry writes");
+assert.match(singlePlayer, /if \(!result\.ok\) \{[\s\S]*?return false;\s+\}\s+let firstPlayMetadataPending = false;/,
+  "a failed first snapshot cannot advance last-played metadata");
+const metadataFailure = singlePlayer.slice(
+  singlePlayer.indexOf("if (!recorded.ok)"),
+  singlePlayer.indexOf("firstPlayRecordedRef.current = true"),
+);
+assert.ok(metadataFailure.includes("firstPlayMetadataPending = true")
+  && !metadataFailure.includes("return false")
+  && !metadataFailure.includes("saveInProgressRef.current = false"),
+"secondary metadata failure cannot redefine a successful snapshot or trap Save and Quit in-world");
+assert.ok(singlePlayer.indexOf("commitSaveCadence(saveCadenceRef.current") > firstPlayCommit
+  && singlePlayer.indexOf("return true;", firstPlayCommit) > firstPlayCommit,
+"runtime/cadence commit and successful navigation remain downstream of best-effort metadata");
+assert.ok(singlePlayer.includes("World activity will update on the next save or entry."),
+  "best-effort metadata failure explains its durable retry path without claiming save failure");
 assert.ok(singlePlayer.includes("engine.importRuntimeSnapshot(initialRuntimeRef.current)"), "pose, health, time, and mobs resume through the strict engine importer");
 assert.ok(singlePlayer.includes("runtime: engineRef.current?.exportRuntimeSnapshot()"), "each committed snapshot captures current engine-owned state");
 assert.ok(singlePlayer.includes("sampleSaveCadence"), "autosaves use active-play cadence instead of a wall-clock write loop");

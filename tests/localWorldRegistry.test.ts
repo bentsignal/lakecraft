@@ -29,6 +29,7 @@ import {
   loadLocalWorldRegistry,
   moveLocalWorldSelection,
   normalizeLocalWorldName,
+  recordFirstLocalWorldPlay,
   reconcileLocalWorldSelection,
   resolveLocalWorldPlay,
   saveLocalWorldRegistry,
@@ -918,6 +919,136 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds.length, 0);
   assert.deepEqual(namespaceValues(storage, created.world.id), [null, null, null, null]);
   assertNoExternalMarkers(storage);
+}
+
+// Immediate create enters without touching last-played metadata. The first
+// verified in-world save finalizes it once, and exact retries are read-only.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "First Session",
+    seedText: "first-session",
+    gameMode: "creative",
+    now: 100,
+  });
+  assert.ok(created.ok);
+  assert.equal(created.world.lastPlayedAt, 0);
+  const before = loadLocalWorldRegistry(storage);
+  assert.equal(before.sequence, 3);
+
+  const loaded = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: created.world.id });
+  assert.ok(loaded.snapshot);
+  assert.ok(saveSinglePlayerSnapshot(storage, loaded.snapshot, 200, { worldId: created.world.id }).ok);
+  const recorded = recordFirstLocalWorldPlay(storage, created.world, 200);
+  assert.ok(recorded.ok);
+  assert.equal(recorded.world.lastPlayedAt, 200);
+  assert.equal(loadLocalWorldRegistry(storage).sequence, 4);
+
+  const replay = recordFirstLocalWorldPlay(storage, created.world, 300);
+  assert.ok(replay.ok);
+  assert.equal(replay.world.lastPlayedAt, 200);
+  assert.equal(loadLocalWorldRegistry(storage).sequence, 4);
+}
+
+// A definite registry failure after the snapshot commit keeps first-play
+// pending. Retry commits it, while a lost acknowledgement reconciles as success.
+{
+  const storage = new MemoryStorage();
+  const created = createLocalWorld(storage, {
+    name: "First Session Retry",
+    seedText: "first-session-retry",
+    gameMode: "survival",
+    now: 400,
+  });
+  assert.ok(created.ok);
+  const snapshot = loadSinglePlayerSave(storage, {
+    migrateLegacy: false,
+    worldId: created.world.id,
+  }).snapshot;
+  assert.ok(snapshot);
+  snapshot.world.activePlayMs = 123;
+  assert.ok(saveSinglePlayerSnapshot(storage, snapshot, 500, { worldId: created.world.id }).ok);
+  storage.failWritesFor = nextRegistryWriteKey(storage);
+  const failed = recordFirstLocalWorldPlay(storage, created.world, 500);
+  assert.deepEqual(failed, {
+    ok: false,
+    reason: "registry_storage_write_failed",
+    mutationStarted: true,
+  });
+  assert.equal(loadLocalWorldRegistry(storage).registry?.worlds[0]?.lastPlayedAt, 0);
+  const durableSnapshot = loadSinglePlayerSave(storage, {
+    migrateLegacy: false,
+    worldId: created.world.id,
+  });
+  assert.equal(durableSnapshot.savedAt, 500,
+    "secondary metadata failure does not redefine the authoritative snapshot commit");
+  assert.equal(durableSnapshot.snapshot?.world.activePlayMs, 123);
+
+  const entryRepair = cloneStorage(storage);
+  const entered = touchLocalWorld(entryRepair, created.world.id, 600, created.world);
+  assert.ok(entered.ok, "the next ordinary entry repairs metadata left pending by Save and Quit");
+  assert.equal(entered.world.lastPlayedAt, 600);
+
+  storage.failWritesFor = null;
+  assert.ok(recordFirstLocalWorldPlay(storage, created.world, 500).ok);
+  assert.equal(loadLocalWorldRegistry(storage).registry?.worlds[0]?.lastPlayedAt, 500);
+
+  const ambiguous = new MemoryStorage();
+  const ambiguousWorld = createLocalWorld(ambiguous, {
+    name: "First Session Lost Ack",
+    seedText: "first-session-lost-ack",
+    gameMode: "creative",
+    now: 600,
+  });
+  assert.ok(ambiguousWorld.ok);
+  ambiguous.throwAfterWritesFor = nextRegistryWriteKey(ambiguous);
+  const reconciled = recordFirstLocalWorldPlay(ambiguous, ambiguousWorld.world, 700);
+  assert.ok(reconciled.ok);
+  assert.equal(reconciled.world.lastPlayedAt, 700);
+  assert.equal(loadLocalWorldRegistry(ambiguous).sequence, 4);
+}
+
+// Same-world and unrelated concurrent writers cannot double-finalize or erase
+// first-play metadata. The outer stale acknowledgement reconciles by identity.
+{
+  const same = new MemoryStorage();
+  const created = createLocalWorld(same, {
+    name: "Concurrent First Session",
+    seedText: "concurrent-first-session",
+    gameMode: "creative",
+    now: 800,
+  });
+  assert.ok(created.ok);
+  const nested: unknown[] = [];
+  same.afterWritesFor.set(nextRegistryWriteKey(same), () => {
+    nested.push(recordFirstLocalWorldPlay(same, created.world, 900));
+  });
+  assert.ok(recordFirstLocalWorldPlay(same, created.world, 900).ok);
+  assert.equal((nested[0] as { ok: boolean }).ok, true);
+  assert.equal(loadLocalWorldRegistry(same).sequence, 4);
+
+  const unrelated = new MemoryStorage();
+  const first = createLocalWorld(unrelated, {
+    name: "Concurrent Target",
+    seedText: "concurrent-target",
+    gameMode: "creative",
+    now: 1_000,
+  });
+  const sibling = createLocalWorld(unrelated, {
+    name: "Concurrent Sibling",
+    seedText: "concurrent-sibling",
+    gameMode: "survival",
+    now: 1_001,
+  });
+  assert.ok(first.ok && sibling.ok);
+  unrelated.afterWritesFor.set(nextRegistryWriteKey(unrelated), () => {
+    assert.ok(touchLocalWorld(unrelated, sibling.world.id, 1_100, sibling.world).ok);
+  });
+  const outer = recordFirstLocalWorldPlay(unrelated, first.world, 1_100);
+  assert.ok(outer.ok);
+  const final = loadLocalWorldRegistry(unrelated);
+  assert.equal(final.registry?.worlds.find(({ id }) => id === first.world.id)?.lastPlayedAt, 1_100);
+  assert.equal(final.registry?.worlds.find(({ id }) => id === sibling.world.id)?.lastPlayedAt, 1_100);
 }
 
 // A pending create is the sole mutation owner. Re-entrant create and delete

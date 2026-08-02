@@ -136,7 +136,7 @@ import {
   type LocalGameMode,
 } from "./localCommands.ts";
 import { LocalWorldBrowser } from "./LocalWorldBrowser.tsx";
-import type { LocalWorldRecord } from "./localWorldRegistry.ts";
+import { recordFirstLocalWorldPlay, type LocalWorldRecord } from "./localWorldRegistry.ts";
 
 const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
@@ -300,6 +300,7 @@ function SinglePlayerWorld({
     : createSaveCadenceState(performance.now()));
   const saveLockedRef = useRef(initial.current.saveLocked);
   const saveInProgressRef = useRef(false);
+  const firstPlayRecordedRef = useRef(world.lastPlayedAt > 0);
   const quitSavedRef = useRef(false);
   const performSaveRef = useRef<(reason: "autosave" | "quit") => boolean>(() => false);
   const setLocalFusesPausedRef = useRef<(paused: boolean) => void>(() => undefined);
@@ -488,8 +489,8 @@ function SinglePlayerWorld({
     saveInProgressRef.current = true;
     const now = Date.now();
     const result = saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id });
-    saveInProgressRef.current = false;
     if (!result.ok) {
+      saveInProgressRef.current = false;
       console.error("[Lakecraft save] Snapshot commit rejected.", {
         reason: result.reason,
         path: result.path,
@@ -502,6 +503,17 @@ function SinglePlayerWorld({
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
       return false;
     }
+    let firstPlayMetadataPending = false;
+    if (!firstPlayRecordedRef.current) {
+      const recorded = recordFirstLocalWorldPlay(storage, world, now);
+      if (!recorded.ok) {
+        console.error("[Lakecraft save] First-play metadata commit rejected.", recorded);
+        firstPlayMetadataPending = true;
+      } else {
+        firstPlayRecordedRef.current = true;
+      }
+    }
+    saveInProgressRef.current = false;
     worldRef.current = {
       ...snapshot.world,
       gameMode: snapshot.world.gameMode ?? "survival",
@@ -510,7 +522,9 @@ function SinglePlayerWorld({
     initialRuntimeRef.current = snapshot.runtime;
     saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
     if (reason === "autosave") setLastAutosavedAt(now);
-    setAutosaveStatusText("");
+    setAutosaveStatusText(firstPlayMetadataPending
+      ? `${action} complete. World activity will update on the next save or entry.`
+      : "");
     return true;
   }
   performSaveRef.current = persist;
