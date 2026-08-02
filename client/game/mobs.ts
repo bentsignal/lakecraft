@@ -15,6 +15,10 @@ export type MobDropId = "pork" | "beef" | "leather" | "wool" | "mutton" | "raw_c
 /** Lakebed combat state is authoritative when supplied; local combat remains a development fallback. */
 export const MOB_COMBAT_AUTHORITY = "lakebed-optional" as const;
 
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
 export interface MobDropDefinition {
   itemId: MobDropId;
   minCount: number;
@@ -41,155 +45,51 @@ export interface MobDefinition {
   drops: readonly MobDropDefinition[];
 }
 
+function drop(itemId: MobDropId, minCount: number, maxCount: number, chance = 1): MobDropDefinition {
+  return { itemId, minCount, maxCount, chance };
+}
+
+function defineMob(
+  kind: MobKind,
+  passive: boolean,
+  maxHealth: number,
+  moveSpeed: number,
+  chaseSpeed: number,
+  collisionRadius: number,
+  targetRadius: number,
+  height: number,
+  contactDamage: number,
+  attackCooldownSeconds: number,
+  rangedDamage: number,
+  rangedCooldownSeconds: number,
+  rangedRange: number,
+  projectileSpeed: number,
+  drops: MobDropDefinition[],
+): MobDefinition {
+  return Object.freeze({
+    kind, passive, maxHealth, moveSpeed, chaseSpeed, collisionRadius, targetRadius, height,
+    contactDamage, attackCooldownSeconds, rangedDamage, rangedCooldownSeconds, rangedRange,
+    projectileSpeed, drops: Object.freeze(drops),
+  });
+}
+
 export const MOB_DEFINITIONS: Readonly<Record<MobKind, MobDefinition>> = Object.freeze({
-  pig: Object.freeze({
-    kind: "pig",
-    passive: true,
-    maxHealth: 10,
-    moveSpeed: 1.15,
-    chaseSpeed: 1.15,
-    collisionRadius: 0.45,
-    targetRadius: 1.05,
-    height: 1,
-    contactDamage: 0,
-    attackCooldownSeconds: 0,
-    rangedDamage: 0,
-    rangedCooldownSeconds: 0,
-    rangedRange: 0,
-    projectileSpeed: 0,
-    drops: Object.freeze([{ itemId: "pork", minCount: 1, maxCount: 3, chance: 1 }]),
-  }),
-  cow: Object.freeze({
-    kind: "cow",
-    passive: true,
-    maxHealth: 10,
-    moveSpeed: 1,
-    chaseSpeed: 1,
-    collisionRadius: 0.48,
-    targetRadius: 1.22,
-    height: 1.35,
-    contactDamage: 0,
-    attackCooldownSeconds: 0,
-    rangedDamage: 0,
-    rangedCooldownSeconds: 0,
-    rangedRange: 0,
-    projectileSpeed: 0,
-    drops: Object.freeze([
-      { itemId: "beef", minCount: 1, maxCount: 3, chance: 1 },
-      { itemId: "leather", minCount: 0, maxCount: 2, chance: 0.75 },
-    ]),
-  }),
-  sheep: Object.freeze({
-    kind: "sheep",
-    passive: true,
-    maxHealth: 8,
-    moveSpeed: 1.05,
-    chaseSpeed: 1.05,
-    collisionRadius: 0.44,
-    targetRadius: 1.16,
-    height: 1.25,
-    contactDamage: 0,
-    attackCooldownSeconds: 0,
-    rangedDamage: 0,
-    rangedCooldownSeconds: 0,
-    rangedRange: 0,
-    projectileSpeed: 0,
-    drops: Object.freeze([
-      { itemId: "wool", minCount: 1, maxCount: 1, chance: 1 },
-      { itemId: "mutton", minCount: 1, maxCount: 2, chance: 1 },
-    ]),
-  }),
-  chicken: Object.freeze({
-    kind: "chicken",
-    passive: true,
-    maxHealth: 4,
-    moveSpeed: 1.1,
-    chaseSpeed: 1.1,
-    collisionRadius: 0.3,
-    targetRadius: 0.78,
-    height: 1.1,
-    contactDamage: 0,
-    attackCooldownSeconds: 0,
-    rangedDamage: 0,
-    rangedCooldownSeconds: 0,
-    rangedRange: 0,
-    projectileSpeed: 0,
-    drops: Object.freeze([
-      { itemId: "raw_chicken", minCount: 1, maxCount: 1, chance: 1 },
-      { itemId: "feather", minCount: 0, maxCount: 2, chance: 1 },
-    ]),
-  }),
-  zombie: Object.freeze({
-    kind: "zombie",
-    passive: false,
-    maxHealth: 20,
-    moveSpeed: 0.9,
-    chaseSpeed: 1.45,
-    collisionRadius: 0.38,
-    targetRadius: 0.4,
-    height: 1.8,
-    contactDamage: 3,
-    attackCooldownSeconds: 1,
-    rangedDamage: 0,
-    rangedCooldownSeconds: 0,
-    rangedRange: 0,
-    projectileSpeed: 0,
-    drops: Object.freeze([{ itemId: "rotten_flesh", minCount: 0, maxCount: 2, chance: 0.85 }]),
-  }),
-  skeleton: Object.freeze({
-    kind: "skeleton",
-    passive: false,
-    maxHealth: 20,
-    moveSpeed: 0.82,
-    chaseSpeed: 1.15,
-    collisionRadius: 0.34,
-    targetRadius: 0.38,
-    height: 1.9,
-    contactDamage: 0,
-    attackCooldownSeconds: 0,
-    rangedDamage: 3,
-    rangedCooldownSeconds: 2.1,
-    rangedRange: 16,
-    projectileSpeed: 8.5,
-    drops: Object.freeze([
-      { itemId: "arrow", minCount: 0, maxCount: 2, chance: 1 },
-      { itemId: "bone", minCount: 0, maxCount: 2, chance: 1 },
-    ]),
-  }),
-  creeper: Object.freeze({
-    kind: "creeper",
-    passive: false,
-    maxHealth: 20,
-    moveSpeed: 0.84,
-    chaseSpeed: 1.1,
-    collisionRadius: 0.36,
-    targetRadius: 0.4,
-    height: 1.7,
-    contactDamage: 0,
-    attackCooldownSeconds: 0,
-    rangedDamage: 0,
-    rangedCooldownSeconds: 0,
-    rangedRange: 0,
-    projectileSpeed: 0,
-    drops: Object.freeze([{ itemId: BS.gunpowder, minCount: 0, maxCount: 2, chance: 1 }]),
-  }),
-  spider: Object.freeze({
-    kind: "spider",
-    passive: false,
-    maxHealth: 16,
-    moveSpeed: 1.02,
-    chaseSpeed: 1.55,
-    collisionRadius: 0.68,
-    targetRadius: 0.72,
-    height: 0.8,
-    contactDamage: 2,
-    attackCooldownSeconds: 1,
-    rangedDamage: 0,
-    rangedCooldownSeconds: 0,
-    rangedRange: 0,
-    projectileSpeed: 0,
-    drops: Object.freeze([{ itemId: "string", minCount: 0, maxCount: 2, chance: 1 }]),
-  }),
+  pig: defineMob("pig", true, 10, 1.15, 1.15, 0.45, 1.05, 1, 0, 0, 0, 0, 0, 0,
+    [drop("pork", 1, 3)]),
+  cow: defineMob("cow", true, 10, 1, 1, 0.48, 1.22, 1.35, 0, 0, 0, 0, 0, 0,
+    [drop("beef", 1, 3), drop("leather", 0, 2, 0.75)]),
+  sheep: defineMob("sheep", true, 8, 1.05, 1.05, 0.44, 1.16, 1.25, 0, 0, 0, 0, 0, 0,
+    [drop("wool", 1, 1), drop("mutton", 1, 2)]),
+  chicken: defineMob("chicken", true, 4, 1.1, 1.1, 0.3, 0.78, 1.1, 0, 0, 0, 0, 0, 0,
+    [drop("raw_chicken", 1, 1), drop("feather", 0, 2)]),
+  zombie: defineMob("zombie", false, 20, 0.9, 1.45, 0.38, 0.4, 1.8, 3, 1, 0, 0, 0, 0,
+    [drop("rotten_flesh", 0, 2, 0.85)]),
+  skeleton: defineMob("skeleton", false, 20, 0.82, 1.15, 0.34, 0.38, 1.9, 0, 0, 3, 2.1, 16, 8.5,
+    [drop("arrow", 0, 2), drop("bone", 0, 2)]),
+  creeper: defineMob("creeper", false, 20, 0.84, 1.1, 0.36, 0.4, 1.7, 0, 0, 0, 0, 0, 0,
+    [drop(BS.gunpowder, 0, 2)]),
+  spider: defineMob("spider", false, 16, 1.02, 1.55, 0.68, 0.72, 0.8, 2, 1, 0, 0, 0, 0,
+    [drop("string", 0, 2)]),
 });
 
 export const DEFAULT_MAX_MOB_POPULATION = 24;
@@ -216,7 +116,7 @@ export function localMobHasLineOfSight(
   const dz = player.z - mob.z;
   const distance = Math.hypot(dx, dy, dz);
   if (!Number.isFinite(distance)) return false;
-  const samples = Math.min(LOCAL_MOB_LINE_OF_SIGHT_MAX_SAMPLES, Math.max(1, Math.ceil(distance * 4)));
+  const samples = clamp(Math.ceil(distance * 4), 1, LOCAL_MOB_LINE_OF_SIGHT_MAX_SAMPLES);
   for (let sample = 1; sample < samples; sample += 1) {
     const ratio = sample / samples;
     if (isBlocked(mob.x + dx * ratio, mob.y + MOB_DEFINITIONS[mob.kind].height * 0.75 + dy * ratio, mob.z + dz * ratio)) {
@@ -339,11 +239,22 @@ const MOB_STATE_SNAPSHOT_KEYS = [
   "nextRangedAttackAtSeconds", "rangedSequence", "authoritativeRevision",
   "authoritativeDeadUntil", "sheared", "fuseStartedAtSeconds", "fuseUntilSeconds",
 ] as const;
-
 const MOB_PROJECTILE_SNAPSHOT_KEYS = [
   "id", "active", "ownerId", "x", "y", "z", BS.previousX, BS.previousY, BS.previousZ,
   "velocityX", "velocityY", "velocityZ", "yaw", "pitch", "remainingSeconds", "damage",
 ] as const;
+const MOB_POSITION_SNAPSHOT_KEYS = [
+  "x", "y", "z", "homeX", "homeY", "homeZ", BS.previousX, BS.previousY, BS.previousZ,
+  "desiredX", "desiredZ",
+] as const;
+const MOB_TIME_SNAPSHOT_KEYS = [
+  "behaviorUntilSeconds", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
+  "fuseStartedAtSeconds", "fuseUntilSeconds",
+] as const;
+const PROJECTILE_POSITION_SNAPSHOT_KEYS = [
+  "x", "y", "z", BS.previousX, BS.previousY, BS.previousZ,
+] as const;
+const PROJECTILE_VELOCITY_SNAPSHOT_KEYS = ["velocityX", "velocityY", "velocityZ"] as const;
 
 function snapshotRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -370,8 +281,7 @@ function validMobStateSnapshot(value: unknown): value is MobState {
   if (typeof mob.id !== "string" || mob.id.length < 1 || mob.id.length > 128) return false;
   if (typeof mob.kind !== "string" || !(mob.kind in MOB_DEFINITIONS)) return false;
   const kind = mob.kind as MobKind;
-  const positionFields = ["x", "y", "z", "homeX", "homeY", "homeZ", BS.previousX, BS.previousY, BS.previousZ, "desiredX", "desiredZ"] as const;
-  if (!positionFields.every((field) => finiteInRange(mob[field], -1_000_000, 1_000_000))) return false;
+  if (!MOB_POSITION_SNAPSHOT_KEYS.every((field) => finiteInRange(mob[field], -1_000_000, 1_000_000))) return false;
   if (!finiteInRange(mob.yaw, -Math.PI * 4, Math.PI * 4)
     || !finiteInRange(mob.previousYaw, -Math.PI * 4, Math.PI * 4)) return false;
   if (!safeIntegerInRange(mob.behaviorSeed, 0, 0xffff_ffff)
@@ -385,11 +295,7 @@ function validMobStateSnapshot(value: unknown): value is MobState {
   if ((mob.alive as boolean) !== ((mob.health as number) > 0)) return false;
   if ((mob.sheared as boolean) && kind !== "sheep") return false;
   if (!finiteInRange(mob.directionX, -1, 1) || !finiteInRange(mob.directionZ, -1, 1)) return false;
-  const timeFields = [
-    "behaviorUntilSeconds", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
-    "fuseStartedAtSeconds", "fuseUntilSeconds",
-  ] as const;
-  if (!timeFields.every((field) => finiteInRange(mob[field], 0, 1_000_000_000_000))) return false;
+  if (!MOB_TIME_SNAPSHOT_KEYS.every((field) => finiteInRange(mob[field], 0, 1_000_000_000_000))) return false;
   if (!finiteInRange(mob.authoritativeDeadUntil, 0, 10_000_000_000_000_000)) return false;
   if (kind !== "creeper" && ((mob.fuseStartedAtSeconds as number) !== 0 || (mob.fuseUntilSeconds as number) !== 0)) return false;
   if ((mob.fuseStartedAtSeconds as number) > (mob.fuseUntilSeconds as number)) return false;
@@ -401,10 +307,8 @@ function validMobProjectileSnapshot(value: unknown, expectedId: number): value i
   if (!projectile || !hasExactKeys(projectile, MOB_PROJECTILE_SNAPSHOT_KEYS)) return false;
   if (projectile.id !== expectedId || typeof projectile.active !== "boolean") return false;
   if (typeof projectile.ownerId !== "string" || projectile.ownerId.length > 128) return false;
-  const coordinates = ["x", "y", "z", BS.previousX, BS.previousY, BS.previousZ] as const;
-  if (!coordinates.every((field) => finiteInRange(projectile[field], -1_000_000, 1_000_000))) return false;
-  const velocities = ["velocityX", "velocityY", "velocityZ"] as const;
-  if (!velocities.every((field) => finiteInRange(projectile[field], -1_000, 1_000))) return false;
+  if (!PROJECTILE_POSITION_SNAPSHOT_KEYS.every((field) => finiteInRange(projectile[field], -1_000_000, 1_000_000))) return false;
+  if (!PROJECTILE_VELOCITY_SNAPSHOT_KEYS.every((field) => finiteInRange(projectile[field], -1_000, 1_000))) return false;
   if (!finiteInRange(projectile.yaw, -Math.PI * 4, Math.PI * 4)
     || !finiteInRange(projectile.pitch, -Math.PI * 2, Math.PI * 2)
     || !finiteInRange(projectile.remainingSeconds, -MOB_PROJECTILE_LIFETIME_SECONDS, MOB_PROJECTILE_LIFETIME_SECONDS)
@@ -640,10 +544,11 @@ function hasSafeSlope(heightAt: (x: number, z: number) => number, x: number, z: 
 
 /** Creates a bounded, stable spawn list from only seed and terrain callbacks. */
 export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDescriptor[] {
-  const maxPopulation = Math.max(0, Math.min(
-    HARD_MAX_MOB_POPULATION,
+  const maxPopulation = clamp(
     finiteInteger(options.maxPopulation ?? DEFAULT_MAX_MOB_POPULATION, DEFAULT_MAX_MOB_POPULATION),
-  ));
+    0,
+    HARD_MAX_MOB_POPULATION,
+  );
   const passiveTarget = Math.max(0, finiteInteger(options.passivePopulation ?? 15, 15));
   const hostileTarget = Math.max(0, finiteInteger(options.hostilePopulation ?? 6, 6));
   const target = Math.min(maxPopulation, passiveTarget + hostileTarget);
@@ -656,7 +561,7 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
   const radius = Math.max(1, Math.abs(finiteInteger(options.radius, 1)));
   const centerX = finiteInteger(options.centerX ?? 0, 0);
   const centerZ = finiteInteger(options.centerZ ?? 0, 0);
-  const clearRadius = Math.max(0, Math.min(radius - 1, finiteInteger(options.spawnClearRadius ?? 6, 6)));
+  const clearRadius = clamp(finiteInteger(options.spawnClearRadius ?? 6, 6), 0, radius - 1);
   const usableRange = Math.max(1, radius - clearRadius);
   const occupied = new Set<string>();
   const spawns: MobSpawnDescriptor[] = [];
@@ -669,8 +574,8 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
       : hostileKind(slot - passiveCount, options.seed);
     const angle = hash01(attempt, slot, options.seed + 101) * Math.PI * 2;
     const distance = clearRadius + 1 + Math.sqrt(hash01(slot, attempt, options.seed + 131)) * (usableRange - 1);
-    const x = centerX + Math.max(-radius, Math.min(radius, Math.round(Math.cos(angle) * distance)));
-    const z = centerZ + Math.max(-radius, Math.min(radius, Math.round(Math.sin(angle) * distance)));
+    const x = centerX + clamp(Math.round(Math.cos(angle) * distance), -radius, radius);
+    const z = centerZ + clamp(Math.round(Math.sin(angle) * distance), -radius, radius);
     if (Math.max(Math.abs(x - centerX), Math.abs(z - centerZ)) <= clearRadius) continue;
     const key = `${x},${z}`;
     if (occupied.has(key) || !hasSafeSlope(options.terrainHeight, x, z)) continue;
@@ -838,13 +743,23 @@ function choosePassiveBehavior(mob: MobState, elapsedSeconds: number): void {
   mob.behaviorUntilSeconds = elapsedSeconds + 1.4 + nextRandom(mob) * 3.8;
 }
 
+function insideWorldBounds(
+  x: number,
+  z: number,
+  radius: number,
+  centerX: number,
+  centerZ: number,
+  limit: number,
+): boolean {
+  return Math.abs(x - centerX) + radius <= limit && Math.abs(z - centerZ) + radius <= limit;
+}
+
 function canMoveTo(mob: MobState, x: number, z: number, input: Readonly<MobStepInput>): boolean {
   const definition = MOB_DEFINITIONS[mob.kind];
   const limit = Number.isFinite(input.worldRadius) ? Math.max(1, Math.abs(input.worldRadius as number)) : Infinity;
   const centerX = Number.isFinite(input.worldCenterX) ? input.worldCenterX as number : 0;
   const centerZ = Number.isFinite(input.worldCenterZ) ? input.worldCenterZ as number : 0;
-  if (Math.abs(x - centerX) + definition.collisionRadius > limit
-    || Math.abs(z - centerZ) + definition.collisionRadius > limit) return false;
+  if (!insideWorldBounds(x, z, definition.collisionRadius, centerX, centerZ, limit)) return false;
   const y = input.terrainHeight(Math.floor(x), Math.floor(z)) + 1;
   if (Math.abs(y - mob.y) > 1.01) return false;
   return input.canOccupy?.(mob.kind, x, y, z, definition.collisionRadius, definition.height) ?? true;
@@ -854,6 +769,13 @@ function applyMovement(mob: MobState, x: number, z: number, input: Readonly<MobS
   mob.x = x;
   mob.z = z;
   mob.y = input.terrainHeight(Math.floor(x), Math.floor(z)) + 1;
+}
+
+function stopMob(mob: MobState, behavior: MobBehavior): void {
+  mob.behavior = behavior;
+  mob.directionX = mob.directionZ = 0;
+  mob.desiredX = mob.x;
+  mob.desiredZ = mob.z;
 }
 
 function moveMob(mob: MobState, dx: number, dz: number, input: Readonly<MobStepInput>): void {
@@ -922,6 +844,29 @@ function spawnSkeletonProjectile(
   return true;
 }
 
+/** Clips one ray/segment axis into a caller-retained near/far pair. */
+function clipAxisInterval(
+  interval: [number, number],
+  origin: number,
+  direction: number,
+  minimum: number,
+  maximum: number,
+): boolean {
+  if (Math.abs(direction) < 1e-9) return origin >= minimum && origin <= maximum;
+  let first = (minimum - origin) / direction;
+  let second = (maximum - origin) / direction;
+  if (first > second) {
+    const swap = first;
+    first = second;
+    second = swap;
+  }
+  interval[0] = Math.max(interval[0], first);
+  interval[1] = Math.min(interval[1], second);
+  return interval[0] <= interval[1];
+}
+
+const PLAYER_SEGMENT_INTERVAL: [number, number] = [0, 1];
+
 function segmentIntersectsPlayer(
   fromX: number,
   fromY: number,
@@ -931,45 +876,14 @@ function segmentIntersectsPlayer(
   toZ: number,
   player: Readonly<MobTarget>,
 ): boolean {
-  let near = 0;
-  let far = 1;
-  const minX = player.x - 0.34;
-  const maxX = player.x + 0.34;
-  const minY = player.y;
-  const maxY = player.y + 1.78;
-  const minZ = player.z - 0.34;
-  const maxZ = player.z + 0.34;
+  PLAYER_SEGMENT_INTERVAL[0] = 0;
+  PLAYER_SEGMENT_INTERVAL[1] = 1;
   const dx = toX - fromX;
   const dy = toY - fromY;
   const dz = toZ - fromZ;
-  if (Math.abs(dx) < 1e-9) {
-    if (fromX < minX || fromX > maxX) return false;
-  } else {
-    let first = (minX - fromX) / dx;
-    let second = (maxX - fromX) / dx;
-    if (first > second) { const swap = first; first = second; second = swap; }
-    near = Math.max(near, first); far = Math.min(far, second);
-    if (near > far) return false;
-  }
-  if (Math.abs(dy) < 1e-9) {
-    if (fromY < minY || fromY > maxY) return false;
-  } else {
-    let first = (minY - fromY) / dy;
-    let second = (maxY - fromY) / dy;
-    if (first > second) { const swap = first; first = second; second = swap; }
-    near = Math.max(near, first); far = Math.min(far, second);
-    if (near > far) return false;
-  }
-  if (Math.abs(dz) < 1e-9) {
-    if (fromZ < minZ || fromZ > maxZ) return false;
-  } else {
-    let first = (minZ - fromZ) / dz;
-    let second = (maxZ - fromZ) / dz;
-    if (first > second) { const swap = first; first = second; second = swap; }
-    near = Math.max(near, first); far = Math.min(far, second);
-    if (near > far) return false;
-  }
-  return true;
+  return clipAxisInterval(PLAYER_SEGMENT_INTERVAL, fromX, dx, player.x - 0.34, player.x + 0.34)
+    && clipAxisInterval(PLAYER_SEGMENT_INTERVAL, fromY, dy, player.y, player.y + 1.78)
+    && clipAxisInterval(PLAYER_SEGMENT_INTERVAL, fromZ, dz, player.z - 0.34, player.z + 0.34);
 }
 
 function stepMobProjectiles(simulation: MobSimulation, input: Readonly<MobStepInput>, dt: number): void {
@@ -1024,7 +938,7 @@ function stepMobProjectiles(simulation: MobSimulation, input: Readonly<MobStepIn
 
 /** Advances simulation in place without allocating during ordinary movement ticks. */
 export function stepMobSimulation(simulation: MobSimulation, input: Readonly<MobStepInput>): MobSimulation {
-  const dt = Math.max(0, Math.min(0.1, Number.isFinite(input.dtSeconds) ? input.dtSeconds : 0));
+  const dt = clamp(Number.isFinite(input.dtSeconds) ? input.dtSeconds : 0, 0, 0.1);
   simulation.elapsedSeconds += dt;
   simulation.tick += 1;
 
@@ -1051,22 +965,13 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       && simulation.elapsedSeconds >= mob.fuseUntilSeconds) {
       // Remain visibly ready until a later authoritative explosion integration
       // consumes the latched event; do not silently restart a second fuse.
-      mob.behavior = "fuse";
-      mob.directionX = 0;
-      mob.directionZ = 0;
-      mob.desiredX = mob.x;
-      mob.desiredZ = mob.z;
+      stopMob(mob, "fuse");
       continue;
     }
 
     if (!definition.passive && !mob.hostileActive) {
-      mob.fuseStartedAtSeconds = 0;
-      mob.fuseUntilSeconds = 0;
-      mob.behavior = "dormant";
-      mob.directionX = 0;
-      mob.directionZ = 0;
-      mob.desiredX = mob.x;
-      mob.desiredZ = mob.z;
+      mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
+      stopMob(mob, "dormant");
       continue;
     }
 
@@ -1085,27 +990,18 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
           const fuseActive = mob.fuseStartedAtSeconds > 0 && mob.fuseUntilSeconds > mob.fuseStartedAtSeconds;
           if (fuseActive && (distance > CREEPER_FUSE_CANCEL_RANGE_BLOCKS
             || verticalDistance > CREEPER_FUSE_VERTICAL_RANGE_BLOCKS)) {
-            mob.fuseStartedAtSeconds = 0;
-            mob.fuseUntilSeconds = 0;
+            mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
             if (mob.behavior === "fuse") mob.behavior = "chase";
           }
           if (mob.fuseStartedAtSeconds > 0) {
-            mob.behavior = "fuse";
-            mob.directionX = 0;
-            mob.directionZ = 0;
-            mob.desiredX = mob.x;
-            mob.desiredZ = mob.z;
+            stopMob(mob, "fuse");
             mob.behaviorUntilSeconds = mob.fuseUntilSeconds;
             chasing = true;
           } else if (distance <= CREEPER_FUSE_START_RANGE_BLOCKS
             && verticalDistance <= CREEPER_FUSE_VERTICAL_RANGE_BLOCKS) {
             mob.fuseStartedAtSeconds = simulation.elapsedSeconds;
             mob.fuseUntilSeconds = simulation.elapsedSeconds + CREEPER_FUSE_TICKS / MOB_MOTION_TICKS_PER_SECOND;
-            mob.behavior = "fuse";
-            mob.directionX = 0;
-            mob.directionZ = 0;
-            mob.desiredX = mob.x;
-            mob.desiredZ = mob.z;
+            stopMob(mob, "fuse");
             mob.behaviorUntilSeconds = mob.fuseUntilSeconds;
             chasing = true;
           } else {
@@ -1147,8 +1043,7 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
     }
 
     if (mob.kind === "creeper" && mob.fuseStartedAtSeconds > 0 && !chasing) {
-      mob.fuseStartedAtSeconds = 0;
-      mob.fuseUntilSeconds = 0;
+      mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
       mob.behavior = "idle";
       mob.behaviorUntilSeconds = simulation.elapsedSeconds;
     }
@@ -1207,8 +1102,7 @@ export function consumeDueLocalCreeperExplosions(
     mob.alive = false;
     mob.health = 0;
     mob.behaviorUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_RESPAWN_DELAY_SECONDS;
-    mob.fuseStartedAtSeconds = 0;
-    mob.fuseUntilSeconds = 0;
+    mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
   }
   output.length = outputIndex;
   return output;
@@ -1241,9 +1135,12 @@ export function writeMobPoseSnapshots(
     snapshot.hostileActive = mob.hostileActive;
     snapshot.sheared = mob.sheared;
     snapshot.fuseProgress = mob.fuseStartedAtSeconds > 0
-      ? Math.max(0, Math.min(1,
+      ? clamp(
         (simulation.elapsedSeconds - mob.fuseStartedAtSeconds)
-          / (CREEPER_FUSE_TICKS / MOB_MOTION_TICKS_PER_SECOND)))
+          / (CREEPER_FUSE_TICKS / MOB_MOTION_TICKS_PER_SECOND),
+        0,
+        1,
+      )
       : 0;
     output[outputIndex] = snapshot;
     outputIndex += 1;
@@ -1301,6 +1198,16 @@ function rollDrops(mob: MobState, damageSequence = mob.damageSequence): MobDrop[
   return drops;
 }
 
+function mobDamageResult(
+  found: boolean,
+  applied: boolean,
+  killed: boolean,
+  remainingHealth: number,
+  drops: MobDrop[] = [],
+): MobDamageResult {
+  return { found, applied, killed, remainingHealth, drops };
+}
+
 export function damageMob(
   simulation: MobSimulation,
   id: string,
@@ -1308,15 +1215,15 @@ export function damageMob(
   acceptFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean,
 ): MobDamageResult {
   const mob = simulation.mobs.find((candidate) => candidate.id === id);
-  if (!mob || !mob.alive) return { found: Boolean(mob), applied: false, killed: false, remainingHealth: 0, drops: [] };
+  if (!mob || !mob.alive) return mobDamageResult(Boolean(mob), false, false, 0);
   const damage = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
-  if (damage === 0) return { found: true, applied: false, killed: false, remainingHealth: mob.health, drops: [] };
+  if (damage === 0) return mobDamageResult(true, false, false, mob.health);
   const damageSequence = mob.damageSequence + 1;
   const health = Math.max(0, mob.health - damage);
   if (health > 0) {
     mob.damageSequence = damageSequence;
     mob.health = health;
-    return { found: true, applied: true, killed: false, remainingHealth: mob.health, drops: [] };
+    return mobDamageResult(true, true, false, mob.health);
   }
   const drops = rollDrops(mob, damageSequence);
   if (acceptFatalDrops && !acceptFatalDrops({
@@ -1327,7 +1234,7 @@ export function damageMob(
     z: mob.z,
     drops,
   })) {
-    return { found: true, applied: false, killed: false, remainingHealth: mob.health, drops: [] };
+    return mobDamageResult(true, false, false, mob.health);
   }
   mob.damageSequence = damageSequence;
   mob.health = 0;
@@ -1336,7 +1243,7 @@ export function damageMob(
   if (mob.authoritativeRevision < 0) {
     mob.behaviorUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_RESPAWN_DELAY_SECONDS;
   }
-  return { found: true, applied: true, killed: true, remainingHealth: 0, drops };
+  return mobDamageResult(true, true, true, 0, drops);
 }
 
 /**
@@ -1359,18 +1266,14 @@ export function shearLocalMob(
 }
 
 function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
-  mob.x = mob.homeX;
-  mob.y = mob.homeY;
-  mob.z = mob.homeZ;
-  mob.previousX = mob.homeX;
-  mob.previousY = mob.homeY;
-  mob.previousZ = mob.homeZ;
+  mob.x = mob.previousX = mob.homeX;
+  mob.y = mob.previousY = mob.homeY;
+  mob.z = mob.previousZ = mob.homeZ;
   mob.health = MOB_DEFINITIONS[mob.kind].maxHealth;
   mob.alive = true;
   mob.behavior = MOB_DEFINITIONS[mob.kind].passive ? "idle" : "dormant";
   mob.behaviorUntilSeconds = 0;
-  mob.directionX = 0;
-  mob.directionZ = 0;
+  mob.directionX = mob.directionZ = 0;
   mob.desiredX = mob.homeX;
   mob.desiredZ = mob.homeZ;
   mob.hostileActive = false;
@@ -1378,8 +1281,7 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
   mob.nextContactDamageAtSeconds = 0;
   mob.nextRangedAttackAtSeconds = Math.max(0, elapsedSeconds) + 0.65 + (mob.behaviorSeed % 1_000) / 1_000;
   mob.rangedSequence = 0;
-  mob.fuseStartedAtSeconds = 0;
-  mob.fuseUntilSeconds = 0;
+  mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
 }
 
 function localMobHomeAvailable(
@@ -1391,10 +1293,8 @@ function localMobHomeAvailable(
   const limit = Number.isFinite(input.worldRadius) ? Math.max(1, Math.abs(input.worldRadius as number)) : Infinity;
   const centerX = Number.isFinite(input.worldCenterX) ? input.worldCenterX as number : 0;
   const centerZ = Number.isFinite(input.worldCenterZ) ? input.worldCenterZ as number : 0;
-  if (Math.abs(mob.x - centerX) + definition.collisionRadius > limit
-    || Math.abs(mob.z - centerZ) + definition.collisionRadius > limit) return false;
-  if (Math.abs(mob.homeX - centerX) + definition.collisionRadius > limit
-    || Math.abs(mob.homeZ - centerZ) + definition.collisionRadius > limit) {
+  if (!insideWorldBounds(mob.x, mob.z, definition.collisionRadius, centerX, centerZ, limit)) return false;
+  if (!insideWorldBounds(mob.homeX, mob.homeZ, definition.collisionRadius, centerX, centerZ, limit)) {
     // Older retained snapshots can carry a home from terrain that has since
     // unloaded. Rehome the same slot at its valid corpse position before the
     // ordinary distance, collision, and occupancy gates decide its respawn.
@@ -1480,7 +1380,7 @@ export function applyAuthoritativeMobCombatStates(
     } else if (!mob.alive || state.health <= 0) {
       resetMobAtHome(mob, simulation.elapsedSeconds);
     } else {
-      mob.health = Math.max(0, Math.min(MOB_DEFINITIONS[mob.kind].maxHealth, state.health));
+      mob.health = clamp(state.health, 0, MOB_DEFINITIONS[mob.kind].maxHealth);
       mob.alive = mob.health > 0;
     }
     result.applied += 1;
@@ -1501,27 +1401,6 @@ export function respawnExpiredAuthoritativeMobs(simulation: MobSimulation, serve
   return respawned;
 }
 
-function rayAxisInterval(
-  origin: number,
-  direction: number,
-  minimum: number,
-  maximum: number,
-  near: number,
-  far: number,
-): readonly [number, number] | null {
-  if (Math.abs(direction) < 1e-9) return origin >= minimum && origin <= maximum ? [near, far] : null;
-  let first = (minimum - origin) / direction;
-  let second = (maximum - origin) / direction;
-  if (first > second) {
-    const swap = first;
-    first = second;
-    second = swap;
-  }
-  const nextNear = Math.max(near, first);
-  const nextFar = Math.min(far, second);
-  return nextNear <= nextFar ? [nextNear, nextFar] : null;
-}
-
 /** Returns the nearest living mob intersected by a ray, without considering world-block occlusion. */
 export function raycastMobs(
   origin: readonly [number, number, number],
@@ -1537,23 +1416,19 @@ export function raycastMobs(
   const directionZ = rawDirection[2] / directionLength;
   let nearest: MobRayTarget | null = null;
   let nearestDistance = maximumDistance;
+  const interval: [number, number] = [0, maximumDistance];
 
   for (let index = 0; index < mobs.length; index += 1) {
     const mob = mobs[index];
     if (!mob.alive) continue;
     const definition = MOB_DEFINITIONS[mob.kind];
     const radius = definition.targetRadius;
-    let near = 0;
-    let far = nearestDistance;
-    const xInterval = rayAxisInterval(origin[0], directionX, mob.x - radius, mob.x + radius, near, far);
-    if (!xInterval) continue;
-    near = xInterval[0]; far = xInterval[1];
-    const yInterval = rayAxisInterval(origin[1], directionY, mob.y, mob.y + definition.height, near, far);
-    if (!yInterval) continue;
-    near = yInterval[0]; far = yInterval[1];
-    const zInterval = rayAxisInterval(origin[2], directionZ, mob.z - radius, mob.z + radius, near, far);
-    if (!zInterval) continue;
-    near = zInterval[0];
+    interval[0] = 0;
+    interval[1] = nearestDistance;
+    if (!clipAxisInterval(interval, origin[0], directionX, mob.x - radius, mob.x + radius)
+      || !clipAxisInterval(interval, origin[1], directionY, mob.y, mob.y + definition.height)
+      || !clipAxisInterval(interval, origin[2], directionZ, mob.z - radius, mob.z + radius)) continue;
+    const near = interval[0];
     if (near > nearestDistance) continue;
     nearestDistance = near;
     nearest = {

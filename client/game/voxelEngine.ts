@@ -189,6 +189,10 @@ import {
 
 type Vec3 = [number, number, number];
 
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
 export const PLAYER_MAX_HEALTH = 20;
 export const MOUSE_LOOK_SENSITIVITY = 0.0022;
 export const MAX_LOOK_PITCH = 1.52;
@@ -454,7 +458,7 @@ export function selectNearestTorchLights(
   limit = MAX_ACTIVE_TORCH_LIGHTS,
   radius = TORCH_LIGHT_RADIUS,
 ): TorchLightPosition[] {
-  const boundedLimit = Math.max(0, Math.min(MAX_ACTIVE_TORCH_LIGHTS, Math.floor(limit)));
+  const boundedLimit = clampNumber(Math.floor(limit), 0, MAX_ACTIVE_TORCH_LIGHTS);
   if (boundedLimit === 0 || radius <= 0) return [];
   const radiusSquared = radius * radius;
   const ranked: RankedTorchLight[] = [];
@@ -602,15 +606,15 @@ export function ladderVerticalVelocity(
   elapsedSeconds: number,
 ): number {
   const boundedVelocity = Number.isFinite(currentVelocity)
-    ? Math.max(PLAYER_TERMINAL_VELOCITY, Math.min(PLAYER_JUMP_SPEED, currentVelocity))
+    ? clampNumber(currentVelocity, PLAYER_TERMINAL_VELOCITY, PLAYER_JUMP_SPEED)
     : 0;
   if (touchingLadder === true) {
     if (ascend === true && descend !== true) return LADDER_CLIMB_SPEED;
     if (descend === true && ascend !== true) return LADDER_DESCEND_SPEED;
-    return Math.max(LADDER_IDLE_SLIDE_SPEED, Math.min(0, boundedVelocity));
+    return clampNumber(boundedVelocity, LADDER_IDLE_SLIDE_SPEED, 0);
   }
   const dt = Number.isFinite(elapsedSeconds)
-    ? Math.max(0, Math.min(0.05, elapsedSeconds))
+    ? clampNumber(elapsedSeconds, 0, 0.05)
     : 0;
   return Math.max(PLAYER_TERMINAL_VELOCITY, boundedVelocity - PLAYER_GRAVITY * dt);
 }
@@ -694,7 +698,7 @@ export function validateRespawnPoint(
     y: point.y,
     z: point.z,
     yaw,
-    pitch: Math.max(-1.52, Math.min(1.52, point.pitch ?? -0.08)),
+    pitch: clampNumber(point.pitch ?? -0.08, -1.52, 1.52),
   };
 }
 
@@ -1303,7 +1307,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   gl.bufferData(gl.ARRAY_BUFFER, particleGeometry.byteLength, gl.DYNAMIC_DRAW);
 
   const seed = options.seed ?? 7319;
-  const radius = Math.max(8, Math.min(40, options.worldRadius ?? 20));
+  const radius = clampNumber(options.worldRadius ?? 20, 8, 40);
   const dayNightConfig: DayNightConfig = {
     cycleLengthMs: options.dayNight?.cycleLengthMs ?? DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs,
     epochMs: options.dayNight?.epochMs ?? DEFAULT_DAY_NIGHT_CONFIG.epochMs,
@@ -1394,8 +1398,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     centerX: localMobStreaming ? mobStreamingCenterX : 0,
     centerZ: localMobStreaming ? mobStreamingCenterZ : 0,
     terrainHeight: (x, z) => terrainHeight(x, z, seed),
-    passivePopulation: Math.min(12, Math.max(6, Math.floor(radius / 2))),
-    hostilePopulation: Math.min(5, Math.max(2, Math.floor(radius / 5))),
+    passivePopulation: clampNumber(Math.floor(radius / 2), 6, 12),
+    hostilePopulation: clampNumber(Math.floor(radius / 5), 2, 5),
     maxPopulation: 17,
     spawnClearRadius: localMobStreaming ? LOCAL_MOB_STREAM_CLEAR_RADIUS : 6,
     isSpawnable: (_kind: unknown, x: number, y: number, z: number) => (!localMobStreaming || (
@@ -2024,6 +2028,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     options.onMovementModeChange?.(movementMode, 0.5);
   }
 
+  function clearPlayerMotion(resetView = true): void {
+    velocity[0] = velocity[1] = velocity[2] = 0;
+    knockbackVelocity[0] = knockbackVelocity[2] = 0;
+    clearHeldMovementInput();
+    if (resetView) resetMovementView();
+  }
+
   function moveAxis(axis: 0 | 1 | 2, amount: number): boolean {
     if (amount === 0) return false;
     const values: Vec3 = [pose.x, pose.y, pose.z];
@@ -2534,7 +2545,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       facing[0],
       facing[2],
       sharedMobMotionActive
-        ? Math.min(1, Math.max(0, (performance.now() - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs))
+        ? clampNumber((performance.now() - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs, 0, 1)
         : Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
       now / 1_000,
       mobProjectileSnapshots,
@@ -2729,7 +2740,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const bowCharging = selectedItem === "bow" && rangedChargeStartedAt > 0;
     setFirstPersonBowCharge(
       bowCharging,
-      bowCharging ? Math.min(1, Math.max(0, (frameNow - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS)) : 0,
+      bowCharging ? clampNumber((frameNow - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS, 0, 1) : 0,
     );
     if (!firstPersonFeedbackHidden && !paused && playerHealth > 0) {
       // The viewmodel owns a fresh depth plane but retains the world color buffer,
@@ -2785,7 +2796,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     worldTimeMs = advanceVoxelWorldTimeMs(worldTimeMs, dt, paused);
     if (!paused && miningTimer && miningDurationMs > 0 && now - lastMiningProgressAt >= 50) {
       lastMiningProgressAt = now;
-      miningProgress = Math.max(0.01, Math.min(0.99, (now - miningStartedAt) / miningDurationMs));
+      miningProgress = clampNumber((now - miningStartedAt) / miningDurationMs, 0.01, 0.99);
       updateMiningCrackGeometry();
       if (target && now - lastMiningHitAt >= 225) {
         lastMiningHitAt = now;
@@ -2797,7 +2808,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       lastRangedChargeFeedbackAt = now;
       options.onRangedChargeChange?.(
         true,
-        Math.min(1, Math.max(0, (now - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS)),
+        clampNumber((now - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS, 0, 1),
       );
     }
     if (frameTimeMs > 0) {
@@ -2961,7 +2972,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     // Solid voxels occlude both players and mobs.
     if (!Number.isFinite(nearestDistance) || !mobTargetHasClickPriority(nearestDistance, target?.distance ?? null)) return false;
     const rawDamage = options.getAttackDamage?.() ?? 1;
-    const attackDamage = Number.isFinite(rawDamage) ? Math.max(0, Math.min(100, rawDamage)) : 1;
+    const attackDamage = Number.isFinite(rawDamage) ? clampNumber(rawDamage, 0, 100) : 1;
     if (remoteTarget && remoteTarget.distance <= (mobTarget?.distance ?? Number.POSITIVE_INFINITY)) {
       clearMining();
       emitHandAction("attack");
@@ -3020,7 +3031,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           : { kind: "none" as const, id: "" as const, distance: occlusionDistance }
       : { kind: "none" as const, id: "" as const, distance: occlusionDistance };
     return {
-      chargeMs: Math.max(0, Math.min(PLAYER_BOW_FULL_CHARGE_MS, now - rangedChargeStartedAt)),
+      chargeMs: clampNumber(now - rangedChargeStartedAt, 0, PLAYER_BOW_FULL_CHARGE_MS),
       target,
       origin: [eye[0], eye[1], eye[2]],
       direction: [facing[0], facing[1], facing[2]],
@@ -3218,12 +3229,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
       const now = performance.now();
       const priorAlpha = sharedMobMotionActive
-        ? Math.min(1, Math.max(0, (now - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs))
+        ? clampNumber((now - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs, 0, 1)
         : 1;
       if (sharedMobMotionActive && sharedMobMotionAppliedAt > 0) {
         const observedInterval = now - sharedMobMotionAppliedAt;
         if (observedInterval >= 80 && observedInterval <= 2_000) {
-          sharedMobMotionIntervalMs = Math.max(100, Math.min(750, observedInterval));
+          sharedMobMotionIntervalMs = clampNumber(observedInterval, 100, 750);
         }
       }
       const byId = new Map(poses.map((pose) => [pose.mobId, pose] as const));
@@ -3247,7 +3258,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (mob.kind === "creeper" && authoritative.fuseProgress > 0) {
           const fuseDurationSeconds = 1.5;
           mob.fuseStartedAtSeconds = mobSimulation.elapsedSeconds
-            - Math.max(0, Math.min(1, authoritative.fuseProgress)) * fuseDurationSeconds;
+            - clampNumber(authoritative.fuseProgress, 0, 1) * fuseDurationSeconds;
           mob.fuseUntilSeconds = mob.fuseStartedAtSeconds + fuseDurationSeconds;
         } else if (mob.kind === "creeper") {
           mob.fuseStartedAtSeconds = 0;
@@ -3445,7 +3456,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     setPlayerHealth(health) {
       const nextHealth = Number.isFinite(health)
-        ? Math.max(0, Math.min(PLAYER_MAX_HEALTH, health))
+        ? clampNumber(health, 0, PLAYER_MAX_HEALTH)
         : playerHealth;
       if (nextHealth !== playerHealth) {
         playerHealth = nextHealth;
@@ -3455,7 +3466,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     adjustPlayerHealth(delta) {
       const change = Number.isFinite(delta) ? delta : 0;
-      const nextHealth = Math.max(0, Math.min(PLAYER_MAX_HEALTH, playerHealth + change));
+      const nextHealth = clampNumber(playerHealth + change, 0, PLAYER_MAX_HEALTH);
       if (nextHealth !== playerHealth) {
         playerHealth = nextHealth;
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
@@ -3470,13 +3481,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = nextPose.z;
       pose.yaw = nextPose.yaw;
       pose.pitch = nextPose.pitch;
-      velocity[0] = 0;
-      velocity[1] = 0;
-      velocity[2] = 0;
-      knockbackVelocity[0] = 0;
-      knockbackVelocity[2] = 0;
-      clearHeldMovementInput();
-      resetMovementView();
+      clearPlayerMotion();
       playerViewSuspended = false;
       fallAirborne = false;
       fallPeakY = pose.y;
@@ -3519,12 +3524,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       mobAccumulatorSeconds = snapshot.mobAccumulatorSeconds;
       mobIds = listMobIds(mobSimulation);
       sharedMobMotionActive = false;
-      velocity[0] = 0;
-      velocity[1] = 0;
-      velocity[2] = 0;
-      knockbackVelocity[0] = 0;
-      knockbackVelocity[2] = 0;
-      clearHeldMovementInput();
+      clearPlayerMotion(false);
       clearMining();
       cancelSecondaryPlacementHold(true);
       clearRangedCharge(true);
@@ -3560,13 +3560,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         respawnPoint.y,
         (candidateY) => collides(respawnPoint.x, candidateY, respawnPoint.z),
       );
-      velocity[0] = 0;
-      velocity[1] = 0;
-      velocity[2] = 0;
-      knockbackVelocity[0] = 0;
-      knockbackVelocity[2] = 0;
-      clearHeldMovementInput();
-      resetMovementView();
+      clearPlayerMotion();
       playerViewSuspended = false;
       fallAirborne = false;
       fallPeakY = pose.y;
