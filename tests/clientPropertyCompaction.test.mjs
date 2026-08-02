@@ -174,7 +174,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "73e99e371eed8d50b86ba3984221e4328b61b02d59cf91e0018eb919d1c05847",
+  "46098d71889f44465a85a48d36b17c4d0a7ca3d8c09f6a95596b1e1db71eb69c",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
