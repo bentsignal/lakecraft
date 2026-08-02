@@ -1,5 +1,6 @@
 export const SINGLE_PLAYER_INITIAL_PAUSE_OPEN = false;
 export const POINTER_LOCK_ESCAPE_DEDUP_MS = 160;
+export const COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS = 500;
 
 export interface SinglePlayerPauseState {
   pauseOpen: boolean;
@@ -29,6 +30,7 @@ export interface SinglePlayerPointerSessionState {
 
 export type SinglePlayerPointerSessionEvent =
   | { type: "escape"; now: number; repeat?: boolean; uiBlocked: boolean }
+  | { type: "close_command_escape"; now: number }
   | { type: "intentional_release" }
   | { type: "lock_change"; locked: boolean; now: number; uiBlocked: boolean }
   | { type: "resume" }
@@ -57,7 +59,10 @@ export function createSinglePlayerPointerSessionState(
 /**
  * Coordinates the two browser signals produced by Escape. Chromium commonly
  * reports keydown before pointerlockchange, while Firefox can report the lock
- * loss first. Both orderings must produce one pause transition.
+ * loss first. Both orderings must produce one pause transition. Escape from a
+ * focused command input is different: Chrome can apply its native Pointer Lock
+ * escape after the DOM key handler, so that one bounded UI action must suppress
+ * the matching lock loss without suppressing the next gameplay Escape.
  */
 export function transitionSinglePlayerPointerSession(
   current: Readonly<SinglePlayerPointerSessionState>,
@@ -75,7 +80,20 @@ export function transitionSinglePlayerPointerSession(
     return unchanged({
       ...current,
       intentionalReleasePending: current.locked,
+      ignoreEscapeUntil: Number.NEGATIVE_INFINITY,
     });
+  }
+
+  if (event.type === "close_command_escape") {
+    return {
+      ...unchanged({
+        ...current,
+        pauseOpen: false,
+        intentionalReleasePending: true,
+        ignoreEscapeUntil: event.now + COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
+      }),
+      showCaptureAffordance: true,
+    };
   }
 
   if (event.type === "set_pause") {
@@ -126,16 +144,20 @@ export function transitionSinglePlayerPointerSession(
   }
 
   if (event.locked) {
+    const commandEscapePending = current.intentionalReleasePending
+      && event.now <= current.ignoreEscapeUntil;
     return unchanged({
       ...current,
       locked: true,
-      intentionalReleasePending: false,
-      ignoreEscapeUntil: Number.NEGATIVE_INFINITY,
+      intentionalReleasePending: commandEscapePending,
+      ignoreEscapeUntil: commandEscapePending ? current.ignoreEscapeUntil : Number.NEGATIVE_INFINITY,
     });
   }
 
   const wasLocked = current.locked;
-  const intentional = current.intentionalReleasePending;
+  const expiringCommandEscape = Number.isFinite(current.ignoreEscapeUntil);
+  const intentional = current.intentionalReleasePending
+    && (!expiringCommandEscape || event.now <= current.ignoreEscapeUntil);
   const next = {
     ...current,
     locked: false,

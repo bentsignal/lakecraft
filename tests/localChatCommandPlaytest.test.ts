@@ -109,8 +109,9 @@ const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", i
 const commandOpenBranch = app.slice(app.indexOf("if (commandOpen)"), app.indexOf("if (optionsOpen)"));
 assert.ok(commandOpenBranch.includes('if (event.code === "Escape")'));
 assert.ok(commandOpenBranch.includes("event.stopImmediatePropagation();"), "chat Escape is consumed before sibling handlers");
-assert.ok(commandOpenBranch.indexOf("event.stopImmediatePropagation();") < commandOpenBranch.indexOf("closeCommandConsole();"));
-assert.ok(commandOpenBranch.includes("if (!event.repeat) closeCommandConsole();"), "Escape repeat is consumed without repeated close/recapture");
+assert.ok(commandOpenBranch.indexOf("event.stopImmediatePropagation();") < commandOpenBranch.indexOf("closeCommandConsoleFromEscape"));
+assert.ok(commandOpenBranch.includes("if (!event.repeat) closeCommandConsoleFromEscape(performance.now());"),
+  "Escape repeat is consumed without repeated close or pointer-lock requests");
 const shortcutBranch = app.slice(app.indexOf("const commandShortcutDraft"), app.indexOf('if (event.code === "KeyQ"'));
 assert.ok(shortcutBranch.includes("inventoryOpen || worldModalOpen || deathScreenOpen"), "higher-priority modals fence every chat shortcut");
 assert.ok(shortcutBranch.includes("setCommandDraft(commandShortcutDraft)"));
