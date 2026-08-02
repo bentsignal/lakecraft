@@ -116,8 +116,8 @@ const reviewedPrivatePropertyPaths = {
   publishIntervalMs: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/multiplayerSegmentClient.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/index.tsx", "client/multiplayerSegmentClient.ts"] },
   receivedAt: { declarations: ["client/components/FurnaceDrawer.tsx", "client/index.tsx"], uses: ["client/components/FurnaceDrawer.tsx", "client/index.tsx"] },
   registerActionSink: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
-  registry: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldRegistry.ts"] },
-  registryLoad: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/localWorldRegistry.ts"] },
+  registry: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/SinglePlayerCloudTransport.tsx", "client/singleplayer/localWorldRegistry.ts"] },
+  registryLoad: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/SinglePlayerCloudTransport.tsx", "client/singleplayer/localWorldRegistry.ts"] },
   removedChest: { declarations: ["client/singleplayer/localContainers.ts"], uses: ["client/singleplayer/localContainers.ts"] },
   removedFurnace: { declarations: ["client/singleplayer/localContainers.ts"], uses: ["client/singleplayer/localContainers.ts"] },
   requestJson: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
@@ -174,7 +174,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "bb550b79aef858e4c333eb1958eb01f1555213ece446a43ad65033f5eda5a54a",
+  "8ed895395a27ccacc4b56cde08519bfc6b3c82c1b4ab3b39a156d4f17ea998d9",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
