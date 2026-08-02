@@ -12,7 +12,7 @@ const reviewed = [
   ["attackerDead", "attacker_dead", 2],
   ["attackerStateInvalid", "attacker_state_invalid", 2],
   ["authorizationFailure", "authorization_failure", 2],
-  ["conflict", "conflict", 10],
+  ["conflict", "conflict", 15],
   ["craftingTableRequired", "crafting_table_required", 2],
   ["dropIdCollision", "drop_id_collision", 3],
   ["dropLimit", "drop_limit", 3],

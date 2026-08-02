@@ -112,9 +112,12 @@ const parseJson = (raw: string): unknown => {
 const parseBoundedJson = (raw: unknown, maximum: number, minimum = 0) => boundedString(raw, maximum, minimum)
   ? parseJson(raw) : null;
 const validWorldFields = (value: unknown[], world: number, name: number, seed: number,
-  mode: number, created: number, encoded: boolean, canonicalCreated = encoded) => (world < 0
+  mode: number, created: number, encoded: boolean, canonicalCreated = encoded,
+  canonicalSeed = true) => (world < 0
   || matches(value[world], WORLD_ID)) && validName(value[name])
-  && (encoded ? validSeed(value[seed]) : singlePlayerCloudInteger(value[seed], MIN_SEED, MAX_SEED))
+  && (encoded ? canonicalSeed ? validSeed(value[seed])
+    : matches(value[seed], SEED) && singlePlayerCloudInteger(Number(value[seed]), MIN_SEED, MAX_SEED)
+    : singlePlayerCloudInteger(value[seed], MIN_SEED, MAX_SEED))
   && validGameMode(value[mode]) && (canonicalCreated
     ? canonicalUnsigned(value[created], 0, MAX_TIMESTAMP)
     : encoded ? singlePlayerCloudUnsigned(value[created], 0, MAX_TIMESTAMP)
@@ -162,7 +165,7 @@ export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSingle
 }
 
 export function validStoredSinglePlayerCloudBackupManifest(value: unknown): value is StoredSinglePlayerCloudBackupManifest {
-  return Array.isArray(value) && value.length === 11 && validWorldFields(value, 0, 1, 2, 3, 4, true, false)
+  return Array.isArray(value) && value.length === 11 && validWorldFields(value, 0, 1, 2, 3, 4, true, false, false)
     && validHash(value[5])
     && singlePlayerCloudUnsigned(value[6], 1, SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES * SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS, 6)
     && singlePlayerCloudUnsigned(value[7], 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES, 6)
@@ -214,8 +217,9 @@ export function loadSinglePlayerCloudBackupWorld<TPart extends StoredSinglePlaye
     || parts.some((part, index) => part.part !== String(index))) return SERVER_STATE;
   const header = parseJson(parts[0].data);
   if (!Array.isArray(header) || header.length !== 8 || header[0] !== 1
-    || ![header[2], header[4], header[6]].every((field) => typeof field === "string"
+    || ![header[2], header[4]].every((field) => typeof field === "string"
       && String(Number(field)) === field)
+    || !canonicalUnsigned(header[6], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     || !canonicalUnsigned(header[7], 0, MAX_TIMESTAMP)
     || parts[0].data !== JSON.stringify(header)) return SERVER_STATE;
   const snapshotJson = parts.slice(1).map((part) => part.data).join("");
@@ -300,9 +304,10 @@ export function parseSinglePlayerCloudBackupWire(value: unknown):
   | readonly [1, SinglePlayerCloudBackupWire, SinglePlayerCloudBackupCandidate]
   | typeof INVALID_BACKUP {
   if (!Array.isArray(value) || value.length !== 10 || value[0] !== 1
-    || ![value[3], value[5], value[8]].every((field) => typeof field === "string"
+    || ![value[3], value[5]].every((field) => typeof field === "string"
       && String(Number(field)) === field)
     || typeof value[7] !== "string"
+    || !canonicalUnsigned(value[8], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     || !canonicalUnsigned(value[9], 0, MAX_TIMESTAMP)) {
     return INVALID_BACKUP;
   }
