@@ -468,6 +468,8 @@ export interface VoxelEngine {
   /** Reconciles local prediction to one Lakebed-authoritative health value. */
   setPlayerHealth(health: number): number;
   adjustPlayerHealth(delta: number): number;
+  /** Applies motion only for one already-confirmed mob damage event; exact retries are ignored. */
+  applyConfirmedMobKnockback(eventId: string, attackerX: number, attackerZ: number, damage: number, eventTimeMs?: number): boolean;
   /** Snap to a Lakebed-authoritative pose without changing health or respawn state. */
   reconcilePose(pose: PlayerPose): void;
   getPose(): PlayerPose;

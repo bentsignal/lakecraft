@@ -35,7 +35,7 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 466, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 467, "reviewed compatibility boundary changes only intentionally");
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
 assert.equal(new Set(compactNames).size, compactNames.length, "compact property names stay unique");
 assert.ok(manifestNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "source names are identifiers");
@@ -106,6 +106,7 @@ for (const name of testQuotedNames) {
 }
 const reviewedRuntimePaths = {
   acceptWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  applyConfirmedMobKnockback: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
   applyMobCombatStates: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
   applyWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
   deathScreenOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],

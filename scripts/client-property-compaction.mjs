@@ -346,6 +346,7 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "primedTntVertexCount": "Wt",
   "primedTntVisibleCount": "Ss",
   "projectileCount": "Cn",
+  "projectileDamageSources": "qK",
   "projectileId": "av",
   "projectileSpeed": "De",
   "projectileVertexCount": "ja",
@@ -486,6 +487,7 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
  */
 export const COMPACT_CLIENT_TEST_QUOTED_PROPERTIES = Object.freeze([
   "acceptWorldEdits",
+  "applyConfirmedMobKnockback",
   "applyMobCombatStates",
   "applyWorldEdits",
   "deathScreenOpen",

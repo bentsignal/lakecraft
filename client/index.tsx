@@ -2323,6 +2323,16 @@ function GameApp({
             return;
           }
           audioRef.current?.play("mobAttack", { seed: claim.operationId, intensity: 0.82 });
+          if (!result.replayed) {
+            const attacker = mobWorldAuthority.poses.find((pose) => pose.mobId === claim.mobId);
+            if (attacker) engineRef.current?.applyConfirmedMobKnockback(
+              claim.operationId,
+              attacker.x,
+              attacker.z,
+              result.damage,
+              result.serverNow,
+            );
+          }
           notify(
             result.killed ? "You were overwhelmed" : "Monster hit",
             result.killed ? "Lakebed confirmed your death." : `${result.damage} health lost.`,
