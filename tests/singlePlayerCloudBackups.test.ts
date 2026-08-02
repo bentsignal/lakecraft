@@ -49,6 +49,7 @@ import {
   decideSinglePlayerCloudBackupDeleteRevision,
   inventorySinglePlayerCloudBackupParts as tupleInventorySinglePlayerCloudBackupParts,
   loadSinglePlayerCloudBackupParts as tupleLoadSinglePlayerCloudBackupParts,
+  loadSinglePlayerCloudBackupWorld as tupleLoadSinglePlayerCloudBackupWorld,
   nextSinglePlayerCloudGeneration,
   parseSinglePlayerCloudBackupCommitRequest as tupleParseSinglePlayerCloudBackupCommitRequest,
   parseSinglePlayerCloudBackupDeleteRequest,
@@ -302,6 +303,8 @@ const oldUtf8Hash = (text: string) => {
 };
 for (const text of ["ascii", "é", "😀", "\ud800", "\udc00", "a😀é\ud800z"]) {
   assert.equal(cloudBackupHash(text), singlePlayerSaveChecksum(text), "client/server code-unit FNV stays exact");
+  assert.equal(cloudBackupUtf8Bytes(text), new TextEncoder().encode(text).length,
+    "compact UTF-8 accounting preserves replacement-byte behavior for lone surrogates");
 }
 assert.notEqual(cloudBackupHash("😀"), oldUtf8Hash("😀"), "the former UTF-8-byte hash is not accepted as the new integrity hash");
 assert.equal(splitSinglePlayerCloudBackupSnapshot("😀".repeat(48_001)), null,
@@ -440,6 +443,16 @@ assert.equal(loadedParts.ok, true, "database row order is irrelevant after exact
 assert.equal(loadedParts.ok && loadedParts.backups[0].snapshotJson, candidate.snapshotJson);
 if (!loadedParts.ok) throw new Error("ordinary owner fixture failed exact reconstruction");
 const ordinaryManifest = loadedParts.backups[0].manifest;
+const tupleInventory = tupleInventorySinglePlayerCloudBackupParts("user-a", storedParts);
+assert.equal(tupleInventory[0], 1);
+if (!tupleInventory[0]) throw new Error("tuple owner fixture failed inventory");
+const directWorld = tupleLoadSinglePlayerCloudBackupWorld(tupleInventory[1][0]);
+assert.equal(directWorld[0], 1, "the compact server path reconstructs an already-inventoried world");
+assert.equal(directWorld[0] && directWorld[1][0][1], candidate.snapshotJson);
+const missingPartWorld = [tupleInventory[1][0][0],
+  tupleInventory[1][0][1].filter((part) => part.part !== "1"), tupleInventory[1][0][2]] as const;
+assert.deepEqual(tupleLoadSinglePlayerCloudBackupWorld(missingPartWorld), [0, "server_state"],
+  "the compact server path still fails closed on adversarial non-contiguous topology");
 const ordinaryStateBytes = inventorySinglePlayerCloudBackupParts("user-a", storedParts);
 assert.equal(ordinaryStateBytes.ok, true);
 if (!ordinaryStateBytes.ok) throw new Error("ordinary owner fixture failed inventory");
@@ -864,26 +877,26 @@ assert.match(cloudSource, /parts\.some\(\(part, index\) => part\.part !== String
   "the shared loader rejects missing, duplicate, or orphan part topology");
 assert.match(cloudSource, /candidate\[1\]\[10\]\.some\(\(chunk, index\) => chunk !== parts\[index \+ 1\]\.data\)/,
   "the shared loader recomputes exact chunk boundaries and contents before quota arithmetic");
-assert.match(serverSource, /singlePlayerCloudTombstoneHeader\(tombstone\)[\s\S]*?\[BS\.activeBackup\]: "1"/,
+assert.match(serverSource, /singlePlayerCloudTombstoneHeader\(tombstone\)[\s\S]*?partValue\(worldId, "0", tombstoneHeader\)[\s\S]*?cloudQuota\.update/,
   "permanent deletion retains a durable cloud fence and its bounded owner accounting");
 assert.match(serverSource, /userId\.length > 520/,
   "the server accepts the exact provider-prefixed maximum identity but rejects unbounded auth state");
 assert.match(serverSource, /row\[BS\.userId\] === userId && \(!deleting \|\| current \|\| currentTombstone\)/,
   "cleanup cannot remove the caller budget while an active backup or tombstone owns it");
-assert.match(serverSource, /singlePlayerCloudBudgetCleanupAfter\(row\[BS\.dayKey\], Number\(row\[BS\.lastAcceptedAt\]\)\)[\s\S]*?validUtcCloudBackupDay\(quotaState!\[1\]\)/,
+assert.match(serverSource, /validUtcCloudBackupDay\(row\[BS\.dayKey\]\)[\s\S]*?Date\.parse\(`\$\{row\[BS\.dayKey\]\}T00:00:00Z`\)[\s\S]*?validUtcCloudBackupDay\(quotaState!\[1\]\)/,
   "budget day/timestamp pairs and quota day keys require canonical real UTC dates before mutation");
 const cloudMutation = serverSource.slice(serverSource.indexOf("mutateSinglePlayerCloudBackup"), serverSource.indexOf("growOakTree"));
 assert.match(cloudMutation, /singlePlayerCloudBackupParts: cloudParts,[\s\S]*?singlePlayerCloudBackupBudgets: cloudBudgets,[\s\S]*?singlePlayerCloudBackupQuota: cloudQuota \} = ctx\.db/,
   "compact table handles remain bound to the exact cloud tables");
 const undercountGuard = cloudMutation.indexOf("!recoveringDelete && quota");
-const destructiveDelete = cloudMutation.indexOf("for (const row of currentParts) await cloudParts.delete");
+const destructiveDelete = cloudMutation.indexOf("await deleteParts(currentParts)");
 assert.ok(undercountGuard >= 0 && undercountGuard < cloudMutation.indexOf("if (deleting)") && undercountGuard < destructiveDelete,
   "strict full-current quota validation remains before commit and dedupe paths");
-assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return invalid\(\);[\s\S]*?for \(const row of currentParts\)/,
+assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return invalid\(\);[\s\S]*?deleteParts\(currentParts\)/,
   "delete and replacement validate quota state before destructive writes, including tombstone replacement accounting");
 assert.match(cloudMutation, /accountFence \|\| accountFenceRows \|\| !deleting && \(!allHealthy/,
   "commits refuse any bounded-unhealthy current owner state while deletes classify one target independently");
-assert.match(cloudMutation, /accountFenceRows = inventory\[1\]\.some[\s\S]*?SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD/,
+assert.match(cloudMutation, /accountFenceRows = Boolean\(inventory\[0\][\s\S]*?inventory\[1\]\.some[\s\S]*?SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD/,
   "even a malformed account-fence row blocks target deletion until owner-scoped account repair");
 assert.doesNotMatch(cloudMutation, /deleting && reconstructed\.some/,
   "one malformed sibling cannot block owner-scoped sequential deletion of another malformed target");
@@ -897,11 +910,11 @@ assert.match(serverSource, /inventory\[2\] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER
   "query rejects a multi-world aggregate that exceeds the owner storage cap");
 assert.match(cloudMutation, /const proposedRevision = nextSinglePlayerCloudGeneration\(quotaRevision\)[\s\S]*?const proposedHeader = singlePlayerCloudBackupHeader/,
   "the global successor is validated before header byte accounting");
-assert.match(cloudMutation, /proposedRevision, String\(serverNow\)\]\);[\s\S]*?decideSinglePlayerCloudBackupCommit\([\s\S]*?proposedRevision, serverNow\)/,
+assert.match(cloudMutation, /proposedRevision, string\(serverNow\)\]\);[\s\S]*?decideSinglePlayerCloudBackupCommit\([\s\S]*?proposedRevision, serverNow\)/,
   "one canonical global generation flows through quota, header, decision, persistence, wire, and response");
-assert.match(cloudMutation, /healthyBackups\.some\(\(\[manifest\]\) => Number\(manifest\[9\]\) > quotaRevision\)/,
+assert.match(cloudMutation, /healthyBackups\.some\(\(\[manifest\]\) => number\(manifest\[9\]\) > quotaRevision\)/,
   "a healthy manifest ahead of the permanent global quota generation fails closed");
-assert.match(cloudMutation, /tombstones\.some\(\(tombstone\) => Number\(tombstone\[1\]\) > quotaRevision\)/,
+assert.match(cloudMutation, /tombstones\.some\(\(tombstone\) => number\(tombstone\[1\]\) > quotaRevision\)/,
   "a durable tombstone ahead of the permanent global quota generation fails closed");
 assert.match(cloudMutation, /currentTombstone\[2\] === expectedRevision[\s\S]*?currentTombstone\[4\] === deleting\[3\]/,
   "permanent delete retries require the exact predecessor and operation id");
@@ -919,11 +932,11 @@ assert.match(cloudMutation, /if \(disposition\)[\s\S]*?for \(const row of quotaR
   "account disposition deterministically canonicalizes only the selected bounded quota rows");
 assert.match(cloudMutation, /const cleanupCandidates =[\s\S]*?if \(userBudgetRows\.length > 1/,
   "ordinary mutations retain strict bookkeeping rejection after the recovery-only branch");
-assert.match(cloudMutation, /const fenceRevision =[\s\S]*?disposition\[0\] === 3 \? disposition\[1\] !== fenceRevision[\s\S]*?Math\.max\(Number\(disposition\[1\]\), \.\.\.quotaRows\.map/,
+assert.match(cloudMutation, /const fenceRevision =[\s\S]*?disposition\[0\] === 3 \? disposition\[1\] !== fenceRevision[\s\S]*?Math\.max\(number\(disposition\[1\]\), \.\.\.quotaRows\.map/,
   "Resume CASes the exact owner fence while minting from the current global head");
-assert.match(cloudMutation, /currentActive < SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES[\s\S]*?: SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES/,
+assert.match(cloudMutation, /quotaActive < SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES[\s\S]*?: SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES/,
   "uncertain recovery accounting saturates at the global cap instead of undercharging retained rows");
-assert.match(cloudMutation, /if \(decision\[1\] === "deduped"\) \{[\s\S]*?if \(cleanupRows\.length && quota\)[\s\S]*?update\(quota\.id, nextQuota\)[\s\S]*?response\(1, decision\[2\]\[9\]\)/,
+assert.match(cloudMutation, /if \(decision\[1\] === BS\.deduped\) \{[\s\S]*?applyCleanupQuota\(minimumStateBytes\)[\s\S]*?response\(1, decision\[2\]\[9\]\)/,
   "plain dedupe retains the quota generation while cleanup dedupe advances it exactly once");
 assert.doesNotMatch(cloudSource, /String\(currentRevision \+ 1\)/,
   "shared admission consumes an explicit opaque generation instead of deriving a per-world revision");
