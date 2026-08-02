@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { SinglePlayerStorageAdapter } from "./localSave.ts";
 import { isLocalWorldRegistryTransactionReadOnly, listLocalWorlds, type LocalWorldRecord } from "./localWorldRegistry.ts";
 import { localWorldDialogRef } from "./localWorldBrowserIssue.ts";
-import { parseRestorableSinglePlayerCloudBackupWire, parseSinglePlayerCloudBackupWire, parseSinglePlayerCloudDescriptor,
+import { parseSinglePlayerCloudDescriptor,
   parseSinglePlayerCloudMutationWire, parseSinglePlayerCloudQueryWire, prepareSinglePlayerCloudBackup,
   restoreSinglePlayerCloudBackup, singlePlayerCloudNumber, singlePlayerCloudUploadRevision, SINGLE_PLAYER_CLOUD_MAX_REVISION,
   SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP, SINGLE_PLAYER_CLOUD_WORLD_ID, SINGLE_PLAYER_CLOUD_HASH,
+  validateRestorableSinglePlayerCloudBackup,
   type PreparedSinglePlayerCloudBackup,
   type SinglePlayerCloudBackupWire, type SinglePlayerCloudLineage, type SinglePlayerCloudQueryWire,
 } from "./cloudBackupClient.ts";
@@ -91,6 +92,10 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
       ? [3, prepared.backup] : [2, prepared.backup];
   };
   const now = () => controller[1] ? controller[1][0] + Date.now() - controller[1][1] : Date.now();
+  const localWorlds = () => {
+    const listing = listLocalWorlds(storage);
+    return isLocalWorldRegistryTransactionReadOnly(listing.registryLoad) ? null : listing.registryLoad.registry?.worlds ?? null;
+  };
   const remoteState = (): RemoteState => {
     const remotes = new Map<string, SinglePlayerCloudBackupWire>();
     const tombstones = new Map<string, string>();
@@ -98,8 +103,8 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
     let damaged = false;
     if (controller[0]?.[0] !== 1) return [remotes, tombstones, fence, true];
     for (const raw of controller[0][2]) {
-      const remote = parseRestorableSinglePlayerCloudBackupWire(raw);
-      const outer = remote ? null : parseSinglePlayerCloudBackupWire(raw);
+      const parsed = validateRestorableSinglePlayerCloudBackup(raw);
+      const outer = parsed?.[0], remote = parsed?.[1] ? outer : null;
       if (remote) remotes.set(remote[1], remote);
       else if (outer) tombstones.set(outer[1], `!${outer[8]}`); else damaged = true;
     }
@@ -176,9 +181,8 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
     if (!result?.length) return setStatus(STATUS.CHECKING);
     if (result[0] === 2) return setStatus(STATUS.AUTH);
     if (result[0] === 3) return setStatus(STATUS.QUARANTINE);
-    const listing = listLocalWorlds(storage);
-    const worlds = listing.registryLoad.registry?.worlds;
-    if (!worlds || isLocalWorldRegistryTransactionReadOnly(listing.registryLoad)) {
+    const worlds = localWorlds();
+    if (!worlds) {
       setStatus(STATUS.QUARANTINE); return schedule(RETRY);
     }
     const state = remoteState();
@@ -271,11 +275,8 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
     } else if (kind === ACTION.RECOVER) {
       if (controller[0]?.[0] !== 3 || controller[0][2] !== frozen[2]) return close(STATUS.QUARANTINE);
     } else {
-      const listing = listLocalWorlds(storage);
-      const worlds = listing.registryLoad.registry?.worlds;
-      if (!worlds || isLocalWorldRegistryTransactionReadOnly(listing.registryLoad)) {
-        return close(STATUS.QUARANTINE);
-      }
+      const worlds = localWorlds();
+      if (!worlds) return close(STATUS.QUARANTINE);
       local = worlds.find((world) => world.id === worldId) ?? null;
       remote = current[0].get(worldId) ?? null;
       const descriptor = current[1].get(worldId);
@@ -288,10 +289,17 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
       if (!frozen[3] || local) return close();
       const restored = restoreSinglePlayerCloudBackup(storage, frozen[3]);
       if (!restored.ok) return close(STATUS.QUARANTINE);
-      const prepared = prepareSinglePlayerCloudBackup(storage, restored.world, frozen[2]);
+      local = restored.world;
+    }
+    if (kind === ACTION.RESTORE || kind === ACTION.RESUME || kind === ACTION.KEEP_LOCAL) {
+      if (!local) return close();
+      const prepared = prepareSinglePlayerCloudBackup(storage, local, frozen[2]);
       if (!prepared.ok) return close(STATUS.QUARANTINE);
-      saveLineage(worldId, [frozen[2], prepared.backup[2], prepared.backup[3], prepared.backup[4]]);
-      return close(STATUS.CURRENT);
+      if (kind === ACTION.RESTORE) {
+        saveLineage(worldId, [frozen[2], prepared.backup[2], prepared.backup[3], prepared.backup[4]]);
+        return close(STATUS.CURRENT);
+      }
+      setDialog(null); controller[4] = 0; sendUpload([local, prepared.backup]); return;
     }
     if (kind === ACTION.DELETE) {
       if (phrase !== DELETE_PHRASE || !remote && current[1].get(worldId) !== `!${frozen[2]}`) return;
@@ -301,12 +309,6 @@ function SignedInCloud({ storage, userId, title }: { storage: SinglePlayerStorag
       setDialog(null);
       sendDelete([frozen, deleteRequest(worldId, frozen[2], frozen[6]), 0]);
       return;
-    }
-    if (kind === ACTION.RESUME || kind === ACTION.KEEP_LOCAL) {
-      if (!local) return close();
-      const prepared = prepareSinglePlayerCloudBackup(storage, local, frozen[2]);
-      if (!prepared.ok) return close(STATUS.QUARANTINE);
-      setDialog(null); controller[4] = 0; sendUpload([local, prepared.backup]); return;
     }
     let response = parseSinglePlayerCloudMutationWire(await mutate(JSON.stringify([kind === ACTION.RECOVER ? 2 : 3, frozen[2]])));
     while (response?.[0] === 7 && response[2] === 1) response = parseSinglePlayerCloudMutationWire(
