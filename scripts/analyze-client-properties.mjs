@@ -64,12 +64,21 @@ const typeDeclarations = new Map();
 const quotedNames = new Map();
 const jsonStringifyProperties = new Map();
 const dynamicElementAccessFiles = new Set();
+const propertyUseCounts = new Map();
+const declarationKinds = new Map();
 
 function add(map, name, path) {
   if (!name || !/^[A-Za-z_$][\w$]*$/.test(name)) return;
   const paths = map.get(name) ?? new Set();
   paths.add(path);
   map.set(name, paths);
+}
+
+function increment(map, name, key) {
+  if (!map || !name || !/^[A-Za-z_$][\w$]*$/.test(name)) return;
+  const counts = map.get(name) ?? new Map();
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+  map.set(name, counts);
 }
 
 function declaredPropertyName(node) {
@@ -83,6 +92,8 @@ function inspectSource(path, source, maps = {
   declarations,
   typeDeclarations,
   quotedNames,
+  propertyUseCounts,
+  declarationKinds,
 }) {
   const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const inspectQuotedContracts = path !== "tests/clientPropertyCompaction.test.mjs";
@@ -117,9 +128,11 @@ function inspectSource(path, source, maps = {
     }
     if (ts.isPropertyAccessExpression(node) || ts.isPropertyAccessChain(node)) {
       add(maps.propertyUses, node.name.text, path);
+      increment(maps.propertyUseCounts, node.name.text, path);
     } else if (ts.isElementAccessExpression(node) || ts.isElementAccessChain(node)) {
       if (ts.isStringLiteralLike(node.argumentExpression)) {
         add(maps.propertyUses, node.argumentExpression.text, path);
+        increment(maps.propertyUseCounts, node.argumentExpression.text, path);
         if (inspectQuotedContracts) add(maps.quotedNames, node.argumentExpression.text, path);
       } else {
         dynamicElementAccessFiles.add(path);
@@ -137,6 +150,8 @@ function inspectSource(path, source, maps = {
       const name = declaredPropertyName(node);
       add(maps.propertyUses, name, path);
       add(maps.declarations, name, path);
+      increment(maps.propertyUseCounts, name, path);
+      increment(maps.declarationKinds, name, `${path}:${ts.SyntaxKind[node.kind]}`);
       if (ts.isPropertySignature(node) || ts.isMethodSignature(node)) {
         add(maps.typeDeclarations, name, path);
       }
@@ -146,8 +161,11 @@ function inspectSource(path, source, maps = {
     } else if (ts.isShorthandPropertyAssignment(node)) {
       add(maps.propertyUses, node.name.text, path);
       add(maps.declarations, node.name.text, path);
+      increment(maps.propertyUseCounts, node.name.text, path);
+      increment(maps.declarationKinds, node.name.text, `${path}:${ts.SyntaxKind[node.kind]}`);
     } else if (ts.isBindingElement(node) && node.propertyName && ts.isIdentifier(node.propertyName)) {
       add(maps.propertyUses, node.propertyName.text, path);
+      increment(maps.propertyUseCounts, node.propertyName.text, path);
     }
     if (inspectQuotedContracts && ts.isStringLiteralLike(node) && /^[A-Za-z_$][\w$]*$/.test(node.text)) {
       add(maps.quotedNames, node.text, path);
@@ -224,5 +242,11 @@ console.log(JSON.stringify({
   ),
   propertyUsePaths: Object.fromEntries(
     [...propertyUses].map(([name, paths]) => [name, [...paths].sort()]),
+  ),
+  propertyUseCounts: Object.fromEntries(
+    [...propertyUseCounts].map(([name, counts]) => [name, Object.fromEntries([...counts].sort())]),
+  ),
+  declarationKinds: Object.fromEntries(
+    [...declarationKinds].map(([name, counts]) => [name, Object.fromEntries([...counts].sort())]),
   ),
 }, null, 2));

@@ -7,7 +7,7 @@
  * shortened after all of their producers and consumers have been bundled
  * together. Normal `lakebed dev` source and server staging stay untouched.
  */
-export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
+const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "CHEST": "ce",
   "CLAY": "ve",
   "COAL_ORE": "Me",
@@ -478,6 +478,81 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "writeGeometry": "Xa",
   "writtenParticleCount": "Ka",
 });
+
+/**
+ * Additional bundle-private records reviewed as one closed namespace. These
+ * names never cross persistence, JSON, Lakebed, shared/server, DOM, CSS, or
+ * platform boundaries; tests pin their exact declaration and use paths.
+ */
+export const COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE = Object.freeze({
+  "accumulatorSeconds": "aC",
+  "activePlayMsSinceSave": "aZ",
+  "appearances": "a$",
+  "applyConfirmedMobKnockback": "a_",
+  "autosaveDue": "bb",
+  "awaitingInventoryRevision": "bc",
+  "blockReads": "bd",
+  "captureIntervalMs": "bf",
+  "changeGameMode": "bg",
+  "chat": "bh",
+  "closePause": "bj",
+  "compositeIntervalMs": "bk",
+  "creation": "bl",
+  "cursors": "bm",
+  "death": "bp",
+  "decision": "bq",
+  "depleted": "bu",
+  "dirtyRevision": "bv",
+  "foreground": "bw",
+  "getPose": "bx",
+  "giveItems": "bz",
+  "ignoreEscapeUntil": "bA",
+  "inWorld": "bB",
+  "intentionalReleasePending": "bC",
+  "lastSavedAt": "bD",
+  "listing": "bE",
+  "movedSteps": "bF",
+  "nextSequence": "bG",
+  "onConnected": "bH",
+  "onJoinSingleplayer": "bI",
+  "onMobWorldAuthority": "bJ",
+  "onRemotePlayers": "bK",
+  "onResult": "bL",
+  "onTelemetry": "bM",
+  "openPause": "bN",
+  "optimisticEdit": "bO",
+  "pauseEpoch": "bP",
+  "plan": "bQ",
+  "playable": "bR",
+  "processedSteps": "bS",
+  "publishIntervalMs": "bT",
+  "receivedAt": "bU",
+  "registerActionSink": "bV",
+  "registry": "bW",
+  "registryLoad": "bX",
+  "removedChest": "bY",
+  "removedFurnace": "bZ",
+  "requestJson": "b$",
+  "savedRevision": "b_",
+  "seedText": "cb",
+  "setInWorld": "cc",
+  "showCaptureAffordance": "cd",
+  "stalePlayers": "cf",
+  "stalestRemoteMs": "cg",
+  "substeps": "cj",
+  "transportFailures": "ck",
+  "usedChars": "cl",
+  "visuals": "cm",
+  "wasActive": "cp",
+  "woken": "cq",
+});
+
+export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze(Object.fromEntries(
+  Object.entries({
+    ...COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE,
+    ...COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE,
+  }).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
+));
 
 /**
  * Bundle-internal properties whose only quoted spellings are source-inspection
