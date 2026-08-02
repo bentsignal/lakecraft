@@ -565,6 +565,15 @@ function sameWorld(left: LocalWorldRecord, right: LocalWorldRecord): boolean {
   return canonicalSinglePlayerJson(left) === canonicalSinglePlayerJson(right);
 }
 
+function sameWorldIdentity(left: LocalWorldRecord, right: LocalWorldRecord): boolean {
+  return left.id === right.id
+    && left.name === right.name
+    && left.seed === right.seed
+    && left.initialGameMode === right.initialGameMode
+    && left.createdAt === right.createdAt
+    && left.importedLegacy === right.importedLegacy;
+}
+
 function pendingDeletesWorld(pending: LocalWorldPendingTransaction | null, worldId: string): boolean {
   return pending?.[0] === 1 && pending[4].id === worldId;
 }
@@ -1022,6 +1031,57 @@ export function touchLocalWorld(
   return saved.ok
     ? { ok: true, world: nextWorld, registry: saved.registry }
     : failure(`registry_${saved.reason}`, saved.mutationStarted);
+}
+
+/**
+ * Finalizes a newly created world's first verified play session. Immediate
+ * creation intentionally enters the world without making this registry write;
+ * the caller must invoke this only after the world snapshot has committed.
+ * Exact retries and a concurrent winner are successful without another write.
+ */
+export function recordFirstLocalWorldPlay(
+  storage: SinglePlayerStorageAdapter,
+  expectedWorld: LocalWorldRecord,
+  playedAt = Date.now(),
+): LocalWorldMutationResult {
+  const committedAt = timestamp(playedAt);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const loaded = loadLocalWorldRegistry(storage, committedAt);
+    if (!loaded.registry) return failure(`registry_${loaded.status}`);
+    const world = loaded.registry.worlds.find(({ id }) => id === expectedWorld.id);
+    if (!world) return failure("world_not_found");
+    if (!sameWorldIdentity(world, expectedWorld)) return failure("world_changed");
+    if (world.lastPlayedAt > 0) return { ok: true, world, registry: loaded.registry };
+    if (hasPendingNamespaceRecovery(loaded.issues)) {
+      return failure("world_first_play_recovery_pending");
+    }
+    const nextWorld = {
+      ...world,
+      lastPlayedAt: Math.max(world.createdAt, committedAt),
+    };
+    const nextRegistry = {
+      worlds: loaded.registry.worlds.map((candidate) =>
+        candidate.id === world.id ? nextWorld : candidate),
+    };
+    const saved = saveLocalWorldRegistry(
+      storage,
+      nextRegistry,
+      nextWorld.lastPlayedAt,
+      loaded.sequence,
+    );
+    if (saved.ok) return { ok: true, world: nextWorld, registry: saved.registry };
+
+    // A lost acknowledgement or concurrent first-play writer can leave the
+    // intended metadata durably committed even though this attempt failed.
+    const reconciled = loadLocalWorldRegistry(storage, committedAt);
+    const current = reconciled.registry?.worlds.find(({ id }) => id === expectedWorld.id);
+    if (current && sameWorldIdentity(current, expectedWorld) && current.lastPlayedAt > 0) {
+      return { ok: true, world: current, registry: reconciled.registry! };
+    }
+    if (saved.reason === "stale_registry" && !saved.mutationStarted && attempt === 0) continue;
+    return failure(`registry_${saved.reason}`, saved.mutationStarted);
+  }
+  return failure("registry_stale_registry");
 }
 
 export function deleteLocalWorld(
