@@ -1,3 +1,5 @@
+import * as BS from "./bundleStrings.ts";
+
 export const SINGLE_PLAYER_CLOUD_BACKUP_VERSION = 1 as const;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS = 6;
 export const SINGLE_PLAYER_CLOUD_BACKUP_MAX_SNAPSHOT_CHARS = 150_000;
@@ -24,6 +26,11 @@ const MIN_SEED = -2_147_483_648;
 const MAX_SEED = 2_147_483_647;
 const WORLD_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const HASH = /^[0-9a-f]{8}$/;
+const SEED = /^-?\d{1,10}$/;
+const boundedString = (value: unknown, maximum: number, minimum = 1): value is string =>
+  typeof value === "string" && value.length >= minimum && value.length <= maximum;
+const matches = (value: unknown, pattern: RegExp): value is string =>
+  typeof value === "string" && pattern.test(value);
 
 export type SinglePlayerCloudBackupCommitRequest = readonly [
   version: typeof SINGLE_PLAYER_CLOUD_BACKUP_VERSION,
@@ -83,29 +90,46 @@ export type LoadedSinglePlayerCloudBackup<TPart extends StoredSinglePlayerCloudB
 export type InventoriedSinglePlayerCloudBackup<TPart extends StoredSinglePlayerCloudBackupPart> = readonly [
   worldId: string, parts: TPart[], stateBytes: number,
 ];
-const SERVER_STATE = [0, "server_state"] as const;
-const INVALID_REQUEST = [0, "invalid_request"] as const;
-const CLOUD_CAPACITY = [0, "cloud_capacity"] as const;
-const INVALID_BACKUP = [0, "invalid_backup"] as const;
+const SERVER_STATE = [0, BS.serverState] as const;
+const INVALID_REQUEST = [0, BS.invalidRequest] as const;
+const CLOUD_CAPACITY = [0, BS.cloudCapacity] as const;
+const INVALID_BACKUP = [0, BS.invalidBackup] as const;
 
 export function singlePlayerCloudUnsigned(value: unknown, minimum: number, maximum: number,
   digits = 16): value is string {
-  if (typeof value !== "string" || value.length < 1 || value.length > digits || !/^\d+$/.test(value)) return false;
+  if (!boundedString(value, digits) || !/^\d+$/.test(value)) return false;
   return singlePlayerCloudInteger(Number(value), minimum, maximum);
 }
 const canonicalUnsigned = (value: unknown, minimum: number, maximum: number) =>
   singlePlayerCloudUnsigned(value, minimum, maximum) && String(Number(value)) === value;
+const validSeed = (value: unknown) => matches(value, SEED)
+  && String(Number(value)) === value && singlePlayerCloudInteger(Number(value), MIN_SEED, MAX_SEED);
+const validGameMode = (value: unknown) => value === BS.survival || value === BS.creative;
+const validHash = (value: unknown) => matches(value, HASH);
+const parseJson = (raw: string): unknown => {
+  try { return JSON.parse(raw); } catch { return null; }
+};
+const parseBoundedJson = (raw: unknown, maximum: number, minimum = 0) => boundedString(raw, maximum, minimum)
+  ? parseJson(raw) : null;
+const validWorldFields = (value: unknown[], world: number, name: number, seed: number,
+  mode: number, created: number, encoded: boolean, canonicalCreated = encoded) => (world < 0
+  || matches(value[world], WORLD_ID)) && validName(value[name])
+  && (encoded ? validSeed(value[seed]) : singlePlayerCloudInteger(value[seed], MIN_SEED, MAX_SEED))
+  && validGameMode(value[mode]) && (canonicalCreated
+    ? canonicalUnsigned(value[created], 0, MAX_TIMESTAMP)
+    : encoded ? singlePlayerCloudUnsigned(value[created], 0, MAX_TIMESTAMP)
+      : singlePlayerCloudInteger(value[created], 0, MAX_TIMESTAMP));
 
 /** Bounds every persisted string before any header parse, payload join, or integrity reconstruction. */
 export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSinglePlayerCloudBackupPart>(
   userId: string,
   rows: readonly TPart[],
 ): readonly [1, InventoriedSinglePlayerCloudBackup<TPart>[], number] | typeof SERVER_STATE {
-  if (typeof userId !== "string" || userId.length < 1 || userId.length > 520
+  if (!boundedString(userId, 520)
     || rows.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS
     || rows.some((row) => !row || typeof row !== "object" || row.userId !== userId
-      || typeof row.worldId !== "string" || row.worldId !== SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD && !WORLD_ID.test(row.worldId)
-      || typeof row.part !== "string" || row.part.length < 1 || row.part.length > 8
+      || row.worldId !== SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD && !matches(row.worldId, WORLD_ID)
+      || !boundedString(row.part, 8)
       || typeof row.data !== "string"
       || (row.part === "0" ? row.data.length > SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_CHARS
         || cloudBackupUtf8Bytes(row.data) > SINGLE_PLAYER_CLOUD_BACKUP_HEADER_MAX_UTF8_BYTES
@@ -138,11 +162,8 @@ export function inventorySinglePlayerCloudBackupParts<TPart extends StoredSingle
 }
 
 export function validStoredSinglePlayerCloudBackupManifest(value: unknown): value is StoredSinglePlayerCloudBackupManifest {
-  return Array.isArray(value) && value.length === 11 && typeof value[0] === "string" && WORLD_ID.test(value[0]) && validName(value[1])
-    && typeof value[2] === "string" && /^-?\d{1,10}$/.test(value[2]) && singlePlayerCloudInteger(Number(value[2]), MIN_SEED, MAX_SEED)
-    && (value[3] === "survival" || value[3] === "creative")
-    && singlePlayerCloudUnsigned(value[4], 0, MAX_TIMESTAMP)
-    && typeof value[5] === "string" && HASH.test(value[5])
+  return Array.isArray(value) && value.length === 11 && validWorldFields(value, 0, 1, 2, 3, 4, true, false)
+    && validHash(value[5])
     && singlePlayerCloudUnsigned(value[6], 1, SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES * SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS, 6)
     && singlePlayerCloudUnsigned(value[7], 1, SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES, 6)
     && singlePlayerCloudUnsigned(value[8], 1, 4, 1)
@@ -166,49 +187,46 @@ export function loadSinglePlayerCloudBackupParts<TPart extends StoredSinglePlaye
   let accountFence: SinglePlayerCloudTombstone | null = null;
   let stateBytes = 0;
   for (const world of inventory[1]) {
-    const worldId = world[0];
-    const parts = [...world[1]]
-      .sort((left, right) => Number(left.part) - Number(right.part));
-    if (parts.length === 1 && parts[0].part === "0") {
-      const tombstone = parseSinglePlayerCloudTombstone(worldId, parts[0].data);
-      if (!tombstone || worldId === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD && accountFence
-        || worldId !== SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD
-          && tombstones.length >= SINGLE_PLAYER_CLOUD_BACKUP_MAX_TOMBSTONES) {
-        return SERVER_STATE;
-      }
-      if (worldId === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD) accountFence = tombstone;
-      else tombstones.push(tombstone);
-      stateBytes += world[2];
-      continue;
-    }
-    if (parts.length < 2 || parts.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1
-      || parts.some((part, index) => part.part !== String(index))) return SERVER_STATE;
-    let header: unknown;
-    try { header = JSON.parse(parts[0].data); } catch { return SERVER_STATE; }
-    if (!Array.isArray(header) || header.length !== 8 || header[0] !== 1 || !validName(header[1])
-      || typeof header[2] !== "string" || !/^-?\d{1,10}$/.test(header[2]) || String(Number(header[2])) !== header[2]
-      || !singlePlayerCloudInteger(Number(header[2]), MIN_SEED, MAX_SEED)
-      || (header[3] !== "survival" && header[3] !== "creative")
-      || !canonicalUnsigned(header[4], 0, MAX_TIMESTAMP)
-      || typeof header[5] !== "string" || !HASH.test(header[5])
-      || !canonicalUnsigned(header[6], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
-      || !canonicalUnsigned(header[7], 0, MAX_TIMESTAMP)
-      || parts[0].data !== JSON.stringify(header)) return SERVER_STATE;
-    const snapshotJson = parts.slice(1).map((part) => part.data).join("");
-    const candidate = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([1, worldId, header[1],
-      Number(header[2]), header[3], Number(header[4]), String(Number(header[6]) - 1), snapshotJson]));
-    if (!candidate[0] || candidate[1][6] !== header[5]
-      || candidate[1][10].length !== parts.length - 1
-      || candidate[1][10].some((chunk, index) => chunk !== parts[index + 1].data)) {
-      return SERVER_STATE;
-    }
-    const manifest: StoredSinglePlayerCloudBackupManifest = [worldId, header[1], header[2], header[3], header[4], header[5],
-      String(candidate[1][8]), String(world[2]), String(candidate[1][10].length), header[6], header[7]];
-    stateBytes += world[2];
-    if (stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) return SERVER_STATE;
-    backups.push([manifest, snapshotJson, parts]);
+    const loaded = loadSinglePlayerCloudBackupWorld(world);
+    if (!loaded[0] || loaded[3] && accountFence
+      || tombstones.length + loaded[2].length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_TOMBSTONES) return SERVER_STATE;
+    backups.push(...loaded[1]);
+    tombstones.push(...loaded[2]);
+    accountFence = loaded[3] ?? accountFence;
+    stateBytes += loaded[4];
+    if (loaded[1].length && stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) return SERVER_STATE;
   }
   return [1, backups, tombstones, accountFence, stateBytes];
+}
+
+export function loadSinglePlayerCloudBackupWorld<TPart extends StoredSinglePlayerCloudBackupPart>(
+  world: InventoriedSinglePlayerCloudBackup<TPart>,
+): readonly [1, LoadedSinglePlayerCloudBackup<TPart>[], SinglePlayerCloudTombstone[],
+    SinglePlayerCloudTombstone | null, number] | typeof SERVER_STATE {
+  const [worldId, sourceParts, stateBytes] = world;
+  const parts = [...sourceParts].sort((left, right) => Number(left.part) - Number(right.part));
+  if (parts.length === 1 && parts[0].part === "0") {
+    const tombstone = parseSinglePlayerCloudTombstone(worldId, parts[0].data);
+    return !tombstone ? SERVER_STATE : [1, [], worldId === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD ? [] : [tombstone],
+      worldId === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD ? tombstone : null, stateBytes];
+  }
+  if (parts.length < 2 || parts.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS + 1
+    || parts.some((part, index) => part.part !== String(index))) return SERVER_STATE;
+  const header = parseJson(parts[0].data);
+  if (!Array.isArray(header) || header.length !== 8 || header[0] !== 1
+    || ![header[2], header[4], header[6]].every((field) => typeof field === "string"
+      && String(Number(field)) === field)
+    || !canonicalUnsigned(header[7], 0, MAX_TIMESTAMP)
+    || parts[0].data !== JSON.stringify(header)) return SERVER_STATE;
+  const snapshotJson = parts.slice(1).map((part) => part.data).join("");
+  const candidate = parseSinglePlayerCloudBackupCommitRequest(JSON.stringify([1, worldId, header[1],
+    Number(header[2]), header[3], Number(header[4]), String(Number(header[6]) - 1), snapshotJson]));
+  if (!candidate[0] || candidate[1][6] !== header[5]
+    || candidate[1][10].length !== parts.length - 1
+    || candidate[1][10].some((chunk, index) => chunk !== parts[index + 1].data)) return SERVER_STATE;
+  const manifest: StoredSinglePlayerCloudBackupManifest = [worldId, header[1], header[2], header[3], header[4], header[5],
+    String(candidate[1][8]), String(stateBytes), String(candidate[1][10].length), header[6], header[7]];
+  return [1, [[manifest, snapshotJson, parts]], [], null, stateBytes];
 }
 
 const OPERATION_ID = /^[A-Za-z0-9_-]{8,80}$/;
@@ -217,13 +235,12 @@ export function singlePlayerCloudTombstoneHeader(value: SinglePlayerCloudTombsto
 }
 
 export function parseSinglePlayerCloudTombstone(worldId: string, raw: string): SinglePlayerCloudTombstone | null {
-  let value: unknown;
-  try { value = JSON.parse(raw); } catch { return null; }
+  const value = parseJson(raw);
   if (!Array.isArray(value) || value.length !== 5 || value[0] !== 0
     || !canonicalUnsigned(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     || !canonicalUnsigned(value[2], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     || !singlePlayerCloudUnsigned(value[3], 0, MAX_TIMESTAMP)
-    || typeof value[4] !== "string" || !OPERATION_ID.test(value[4])
+    || !matches(value[4], OPERATION_ID)
     || raw !== JSON.stringify(value)) return null;
   return [worldId, value[1], value[2], value[3], value[4]];
 }
@@ -233,23 +250,12 @@ export function singlePlayerCloudInteger(value: unknown, minimum: number, maximu
 }
 
 function validName(value: unknown): value is string {
-  return typeof value === "string" && value.length >= 1 && value.length <= 48
+  return boundedString(value, 48)
     && value === value.trim().replace(/\s+/g, " ") && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 export function cloudBackupUtf8Bytes(value: string): number {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code < 0x80) bytes += 1;
-    else if (code < 0x800) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length
-      && value.charCodeAt(index + 1) >= 0xdc00 && value.charCodeAt(index + 1) <= 0xdfff) {
-      bytes += 4;
-      index += 1;
-    } else bytes += 3;
-  }
-  return bytes;
+  return new TextEncoder().encode(value).length;
 }
 
 export function cloudBackupStoredPartBytes(userId: string, worldId: string, part: string, data: string): number {
@@ -266,19 +272,17 @@ export function splitSinglePlayerCloudBackupSnapshot(value: string): string[] | 
   const chunks: string[] = [];
   let start = 0;
   let bytes = 0;
-  for (let index = 0; index < value.length;) {
-    const code = value.charCodeAt(index);
-    const width = code < 0x80 ? 1 : code < 0x800 ? 2
-      : code >= 0xd800 && code <= 0xdbff && index + 1 < value.length
-        && value.charCodeAt(index + 1) >= 0xdc00 && value.charCodeAt(index + 1) <= 0xdfff ? 4 : 3;
-    const chars = width === 4 ? 2 : 1;
+  let index = 0;
+  for (const character of value) {
+    const code = character.codePointAt(0)!;
+    const width = code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
     if (bytes + width > SINGLE_PLAYER_CLOUD_BACKUP_CHUNK_BYTES) {
       chunks.push(value.slice(start, index));
       start = index;
       bytes = 0;
     }
     bytes += width;
-    index += chars;
+    index += character.length;
   }
   chunks.push(value.slice(start));
   return chunks.length <= SINGLE_PLAYER_CLOUD_BACKUP_MAX_CHUNKS ? chunks : null;
@@ -296,13 +300,9 @@ export function parseSinglePlayerCloudBackupWire(value: unknown):
   | readonly [1, SinglePlayerCloudBackupWire, SinglePlayerCloudBackupCandidate]
   | typeof INVALID_BACKUP {
   if (!Array.isArray(value) || value.length !== 10 || value[0] !== 1
-    || typeof value[1] !== "string" || !WORLD_ID.test(value[1]) || !validName(value[2])
-    || typeof value[3] !== "string" || !/^-?\d{1,10}$/.test(value[3])
-    || String(Number(value[3])) !== value[3] || !singlePlayerCloudInteger(Number(value[3]), MIN_SEED, MAX_SEED)
-    || (value[4] !== "survival" && value[4] !== "creative")
-    || !canonicalUnsigned(value[5], 0, MAX_TIMESTAMP)
-    || typeof value[6] !== "string" || !HASH.test(value[6]) || typeof value[7] !== "string"
-    || !canonicalUnsigned(value[8], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    || ![value[3], value[5], value[8]].every((field) => typeof field === "string"
+      && String(Number(field)) === field)
+    || typeof value[7] !== "string"
     || !canonicalUnsigned(value[9], 0, MAX_TIMESTAMP)) {
     return INVALID_BACKUP;
   }
@@ -315,41 +315,33 @@ export function parseSinglePlayerCloudBackupWire(value: unknown):
 export function parseSinglePlayerCloudBackupCommitRequest(raw: string):
   | readonly [1, SinglePlayerCloudBackupCandidate]
   | readonly [0, "cloud_capacity" | "invalid_request" | "invalid_snapshot"] {
-  if (typeof raw !== "string" || raw.length < 2 || raw.length > SINGLE_PLAYER_CLOUD_BACKUP_MAX_SNAPSHOT_CHARS * 2 + 1_024) {
-    return INVALID_REQUEST;
-  }
-  let value: unknown;
-  try { value = JSON.parse(raw); } catch { return INVALID_REQUEST; }
+  const value = parseBoundedJson(raw, SINGLE_PLAYER_CLOUD_BACKUP_MAX_SNAPSHOT_CHARS * 2 + 1_024, 2);
   if (!Array.isArray(value) || value.length !== 8 || value[0] !== 1
-    || typeof value[1] !== "string" || !WORLD_ID.test(value[1]) || !validName(value[2])
-    || !singlePlayerCloudInteger(value[3], MIN_SEED, MAX_SEED)
-    || (value[4] !== "survival" && value[4] !== "creative") || !singlePlayerCloudInteger(value[5], 0, MAX_TIMESTAMP)
+    || !validWorldFields(value, 1, 2, 3, 4, 5, false)
     || !canonicalUnsigned(value[6], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     || typeof value[7] !== "string") return INVALID_REQUEST;
   const chunks = splitSinglePlayerCloudBackupSnapshot(value[7]);
   if (!chunks) return CLOUD_CAPACITY;
   const snapshotUtf8Bytes = cloudBackupUtf8Bytes(value[7]);
-  const stateBytes = chunks.reduce((sum, chunk) => sum + cloudBackupStoredChunkBytes(chunk), SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES);
+  const stateBytes = chunks.reduce((sum, chunk) => sum
+    + cloudBackupStoredPartBytes("\u0000".repeat(520), "w".repeat(64), "4", chunk),
+  SINGLE_PLAYER_CLOUD_BACKUP_MANIFEST_STATE_BYTES);
   if (stateBytes > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) return CLOUD_CAPACITY;
   return [1, [value[1], value[2], value[3], value[4], value[5], value[6], cloudBackupHash(value[7]),
     value[7], snapshotUtf8Bytes, stateBytes, chunks]];
 }
 
 export function parseSinglePlayerCloudBackupDeleteRequest(raw: string): SinglePlayerCloudBackupDeleteRequest | null {
-  if (typeof raw !== "string" || raw.length > 192) return null;
-  let value: unknown;
-  try { value = JSON.parse(raw); } catch { return null; }
+  const value = parseBoundedJson(raw, 192);
   return Array.isArray(value) && value.length === 4 && value[0] === 1
-    && typeof value[1] === "string" && WORLD_ID.test(value[1])
+    && matches(value[1], WORLD_ID)
     && canonicalUnsigned(value[2], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
-    && typeof value[3] === "string" && OPERATION_ID.test(value[3])
+    && matches(value[3], OPERATION_ID)
     ? value as unknown as SinglePlayerCloudBackupDeleteRequest : null;
 }
 
 export function parseSinglePlayerCloudDispositionRequest(raw: string): SinglePlayerCloudDispositionRequest | null {
-  if (typeof raw !== "string" || raw.length > 64) return null;
-  let value: unknown;
-  try { value = JSON.parse(raw); } catch { return null; }
+  const value = parseBoundedJson(raw, 64);
   return Array.isArray(value) && value.length === 2 && (value[0] === 2 || value[0] === 3)
     && canonicalUnsigned(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     ? value as SinglePlayerCloudDispositionRequest : null;
@@ -360,9 +352,9 @@ export function decideSinglePlayerCloudBackupDeleteRevision(
   healthyRevision: string | null,
   expectedRevision: string,
 ): "delete" | "deduped" | "conflict" {
-  if (!targetExists) return expectedRevision === "0" ? "deduped" : "conflict";
+  if (!targetExists) return expectedRevision === "0" ? BS.deduped : BS.conflict;
   const requiredRevision = healthyRevision ?? "0";
-  return expectedRevision === requiredRevision ? "delete" : "conflict";
+  return expectedRevision === requiredRevision ? "delete" : BS.conflict;
 }
 
 export function singlePlayerCloudBackupDeleteActiveState(
@@ -417,12 +409,12 @@ export function decideSinglePlayerCloudBackupCommit(
     return SERVER_STATE;
   }
   if (current && currentSnapshotJson === candidate[7] && candidateMatchesManifest(candidate, current)) {
-    return [1, "deduped", current];
+    return [1, BS.deduped, current];
   }
   if ((!current && candidate[5] !== "0") || (current && candidate[5] !== current[9])) {
-    return [0, "conflict"];
+    return [0, BS.conflict];
   }
-  if (!current && userWorldCount >= SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS) return [0, "world_limit"];
+  if (!current && userWorldCount >= SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS) return [0, BS.worldLimit];
   if (userStateBytes - currentBytes + candidate[9] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES
     || globalStateBytes - currentBytes + candidate[9] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES) {
     return CLOUD_CAPACITY;
