@@ -113,6 +113,7 @@ const reviewedRuntimePaths = {
   inventoryOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
   isRangedWeaponSelected: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
   messages: ["client/chat/ChatOverlay.tsx", "client/components/GameHud.tsx", "client/components/ToastSurface.tsx"],
+  mobileUnsupported: ["client/components/GameHud.tsx", "client/index.tsx", "client/multiplayerGameplay.ts"],
   normalized: ["client/lobby/LobbyScreen.tsx"],
   onLocalCreeperExplosion: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   onLocalMobHit: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],

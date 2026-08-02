@@ -494,6 +494,7 @@ export const COMPACT_CLIENT_TEST_QUOTED_PROPERTIES = Object.freeze([
   "inventoryOpen",
   "isRangedWeaponSelected",
   "messages",
+  "mobileUnsupported",
   "normalized",
   "onLocalCreeperExplosion",
   "onLocalMobHit",
