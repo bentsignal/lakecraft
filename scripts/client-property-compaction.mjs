@@ -466,6 +466,8 @@ export const COMPACT_CLIENT_PROPERTY_MANGLE_CACHE = Object.freeze({
   "woodItem": "Xr",
   "woolCount": "Pr",
   "woolItem": "La",
+  "worldCenterX": "aX",
+  "worldCenterZ": "aY",
   "worldDescription": "Xi",
   "worldModalOpen": "W",
   "worldName": "dr",

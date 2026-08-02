@@ -76,8 +76,10 @@ import {
   damageMob,
   exportMobSimulationSnapshot,
   listMobIds,
+  isLocalMobSpawnOutsideView,
   mobTargetHasClickPriority,
   raycastMobs,
+  reconcileLocalMobStreaming,
   respawnExpiredAuthoritativeMobs,
   restoreMobSimulationSnapshot,
   shearLocalMob,
@@ -86,6 +88,7 @@ import {
   writeMobProjectileSnapshots,
   type MobPoseSnapshot,
   type MobProjectileSnapshot,
+  type MobSpawnOptions,
   type LocalCreeperExplosionEvent,
 } from "./mobs.ts";
 import {
@@ -183,6 +186,9 @@ export const PLAYER_MAX_HEALTH = 20;
 export const MOUSE_LOOK_SENSITIVITY = 0.0022;
 export const MAX_LOOK_PITCH = 1.52;
 export const STREAMING_MESH_REBUILDS_PER_FRAME = 1;
+export const LOCAL_MOB_STREAM_SPAWN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * WORLD_CHUNK_SIZE - 2;
+export const LOCAL_MOB_STREAM_CLEAR_RADIUS = LOCAL_MOB_STREAM_SPAWN_RADIUS - 2;
+export const LOCAL_MOB_STREAM_RETAIN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * WORLD_CHUNK_SIZE + WORLD_CHUNK_SIZE / 2;
 export const PLAYER_RANGED_REACH = 32;
 export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
 export const TARGET_OUTLINE_VERTEX_COUNT = 24;
@@ -1368,20 +1374,30 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     loadedChunkKeys.add(owner);
   }
   let streamingCenterKey = chunkKey(initialChunkPlan.center.x, initialChunkPlan.center.z);
+  let mobStreamingCenterX = (initialChunkPlan.center.x + 0.5) * WORLD_CHUNK_SIZE;
+  let mobStreamingCenterZ = (initialChunkPlan.center.z + 0.5) * WORLD_CHUNK_SIZE;
   const chunkMeshes = new Map<string, ChunkMesh>();
   const visibleMeshes: ChunkMesh[] = [];
   const transparentMeshes: ChunkMesh[] = [];
   const mobRenderer = createMobRenderer(gl);
-  const mobSimulation = createMobSimulation(createMobSpawns({
+  const localMobStreaming = !options.onMobAttack;
+  const mobPopulationOptions: MobSpawnOptions = {
     seed,
-    radius: Math.max(6, radius - 2),
+    radius: localMobStreaming ? LOCAL_MOB_STREAM_SPAWN_RADIUS : Math.max(6, radius - 2),
+    centerX: localMobStreaming ? mobStreamingCenterX : 0,
+    centerZ: localMobStreaming ? mobStreamingCenterZ : 0,
     terrainHeight: (x, z) => terrainHeight(x, z, seed),
     passivePopulation: Math.min(12, Math.max(6, Math.floor(radius / 2))),
     hostilePopulation: Math.min(5, Math.max(2, Math.floor(radius / 5))),
     maxPopulation: 17,
-    spawnClearRadius: 6,
-    isSpawnable: (_kind, x, y, z) => !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
-  }));
+    spawnClearRadius: localMobStreaming ? LOCAL_MOB_STREAM_CLEAR_RADIUS : 6,
+    isSpawnable: (_kind: unknown, x: number, y: number, z: number) => (!localMobStreaming || (
+      loadedChunkKeys.has(chunkKeyForBlock(x, z))
+      && isLocalMobSpawnOutsideView(pose.x, pose.z, pose.yaw, x, z)
+    ))
+      && !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
+  };
+  const mobSimulation = createMobSimulation(createMobSpawns(mobPopulationOptions));
   let mobIds = listMobIds(mobSimulation);
   let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
   let sharedMobMotionActive = false;
@@ -1656,6 +1672,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     for (const key of dirty) {
       if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+    }
+    if (localMobStreaming && !sharedMobMotionActive) {
+      mobStreamingCenterX = (plan.center.x + 0.5) * WORLD_CHUNK_SIZE;
+      mobStreamingCenterZ = (plan.center.z + 0.5) * WORLD_CHUNK_SIZE;
+      reconcileLocalMobStreaming(mobSimulation, createMobSpawns({
+        ...mobPopulationOptions,
+        centerX: mobStreamingCenterX,
+        centerZ: mobStreamingCenterZ,
+      }), mobStreamingCenterX, mobStreamingCenterZ, LOCAL_MOB_STREAM_RETAIN_RADIUS);
+      mobIds = listMobIds(mobSimulation);
     }
   }
 
@@ -2075,7 +2101,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           const block = getBlock(Math.floor(x), blockY, Math.floor(z));
           return blockHasCollision(block) && blockContainsSolidPoint(block, blockY, y);
         },
-        worldRadius: radius - 1,
+        worldRadius: localMobStreaming ? LOCAL_MOB_STREAM_RETAIN_RADIUS : radius - 1,
+        worldCenterX: localMobStreaming ? mobStreamingCenterX : 0,
+        worldCenterZ: localMobStreaming ? mobStreamingCenterZ : 0,
       });
       mobAccumulatorSeconds -= mobStepSeconds;
       steps += 1;

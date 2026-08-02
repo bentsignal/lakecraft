@@ -35,7 +35,7 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 464, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 466, "reviewed compatibility boundary changes only intentionally");
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
 assert.equal(new Set(compactNames).size, compactNames.length, "compact property names stay unique");
 assert.ok(manifestNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "source names are identifiers");
@@ -61,6 +61,13 @@ assert.deepEqual(
     pointerLockHandoff: "aP",
   },
   "new client-internal records use fixed collision-reviewed mappings",
+);
+assert.deepEqual(
+  Object.fromEntries(["worldCenterX", "worldCenterZ"].map(
+    (name) => [name, COMPACT_CLIENT_PROPERTY_MANGLE_CACHE[name]],
+  )),
+  { worldCenterX: "aX", worldCenterZ: "aY" },
+  "streaming simulation centers use fixed collision-reviewed mappings",
 );
 
 const testQuotedNames = [...COMPACT_CLIENT_TEST_QUOTED_PROPERTIES];

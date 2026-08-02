@@ -241,6 +241,8 @@ export interface MobSpawnDescriptor {
 export interface MobSpawnOptions {
   seed: number;
   radius: number;
+  centerX?: number;
+  centerZ?: number;
   terrainHeight: (x: number, z: number) => number;
   /** Final collision/ground veto supplied by the world implementation. */
   isSpawnable?: (kind: MobKind, x: number, y: number, z: number) => boolean;
@@ -504,6 +506,8 @@ export interface MobStepInput {
   /** Called for arrow world collision; movement and attacks remain client-only. */
   isProjectileBlocked?: (x: number, y: number, z: number) => boolean;
   worldRadius?: number;
+  worldCenterX?: number;
+  worldCenterZ?: number;
 }
 
 export interface MobPoseSnapshot {
@@ -640,6 +644,8 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
     ? 0
     : Math.min(passiveTarget, Math.round(target * passiveTarget / requestedPopulation));
   const radius = Math.max(1, Math.abs(finiteInteger(options.radius, 1)));
+  const centerX = finiteInteger(options.centerX ?? 0, 0);
+  const centerZ = finiteInteger(options.centerZ ?? 0, 0);
   const clearRadius = Math.max(0, Math.min(radius - 1, finiteInteger(options.spawnClearRadius ?? 6, 6)));
   const usableRange = Math.max(1, radius - clearRadius);
   const occupied = new Set<string>();
@@ -653,9 +659,9 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
       : hostileKind(slot - passiveCount, options.seed);
     const angle = hash01(attempt, slot, options.seed + 101) * Math.PI * 2;
     const distance = clearRadius + 1 + Math.sqrt(hash01(slot, attempt, options.seed + 131)) * (usableRange - 1);
-    const x = Math.max(-radius, Math.min(radius, Math.round(Math.cos(angle) * distance)));
-    const z = Math.max(-radius, Math.min(radius, Math.round(Math.sin(angle) * distance)));
-    if (Math.max(Math.abs(x), Math.abs(z)) <= clearRadius) continue;
+    const x = centerX + Math.max(-radius, Math.min(radius, Math.round(Math.cos(angle) * distance)));
+    const z = centerZ + Math.max(-radius, Math.min(radius, Math.round(Math.sin(angle) * distance)));
+    if (Math.max(Math.abs(x - centerX), Math.abs(z - centerZ)) <= clearRadius) continue;
     const key = `${x},${z}`;
     if (occupied.has(key) || !hasSafeSlope(options.terrainHeight, x, z)) continue;
     const y = options.terrainHeight(x, z) + 1;
@@ -678,38 +684,62 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
   return spawns;
 }
 
+/**
+ * Keeps recycled local mobs out of the player's immediate horizontal view.
+ * A dot-product test avoids square roots and remains deterministic for the
+ * persisted player pose that selected the streamed chunk.
+ */
+export function isLocalMobSpawnOutsideView(
+  playerX: number,
+  playerZ: number,
+  playerYaw: number,
+  spawnX: number,
+  spawnZ: number,
+): boolean {
+  const dx = spawnX - playerX;
+  const dz = spawnZ - playerZ;
+  const distanceSquared = dx * dx + dz * dz;
+  if (!Number.isFinite(distanceSquared) || distanceSquared < 1) return false;
+  const facingDot = dx * Math.sin(playerYaw) - dz * Math.cos(playerYaw);
+  // 0.75 is wider than the ordinary camera half-FOV, leaving a small margin.
+  return facingDot <= 0 || facingDot * facingDot < distanceSquared * 0.75 ** 2;
+}
+
+function mobStateForSpawn(spawn: Readonly<MobSpawnDescriptor>): MobState {
+  return {
+    ...spawn,
+    homeY: spawn.y,
+    previousX: spawn.x,
+    previousY: spawn.y,
+    previousZ: spawn.z,
+    previousYaw: spawn.yaw,
+    health: MOB_DEFINITIONS[spawn.kind].maxHealth,
+    alive: true,
+    behavior: MOB_DEFINITIONS[spawn.kind].passive ? "idle" : "dormant",
+    behaviorUntilSeconds: 0,
+    directionX: 0,
+    directionZ: 0,
+    desiredX: spawn.x,
+    desiredZ: spawn.z,
+    hostileActive: false,
+    randomState: spawn.behaviorSeed || 0x6d2b79f5,
+    damageSequence: 0,
+    nextContactDamageAtSeconds: 0,
+    nextRangedAttackAtSeconds: 0.65 + (spawn.behaviorSeed % 1_000) / 1_000,
+    rangedSequence: 0,
+    authoritativeRevision: -1,
+    authoritativeDeadUntil: 0,
+    sheared: false,
+    fuseStartedAtSeconds: 0,
+    fuseUntilSeconds: 0,
+  };
+}
+
 export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobSimulation {
   const count = Math.min(HARD_MAX_MOB_POPULATION, spawns.length);
   const mobs = new Array<MobState>(count);
   for (let index = 0; index < count; index += 1) {
-    const spawn = spawns[index];
-    mobs[index] = {
-      ...spawn,
-      homeY: spawn.y,
-      previousX: spawn.x,
-      previousY: spawn.y,
-      previousZ: spawn.z,
-      previousYaw: spawn.yaw,
-      health: MOB_DEFINITIONS[spawn.kind].maxHealth,
-      alive: true,
-      behavior: MOB_DEFINITIONS[spawn.kind].passive ? "idle" : "dormant",
-      behaviorUntilSeconds: 0,
-      directionX: 0,
-      directionZ: 0,
-      desiredX: spawn.x,
-      desiredZ: spawn.z,
-      hostileActive: false,
-      randomState: spawn.behaviorSeed || 0x6d2b79f5,
-      damageSequence: 0,
-      nextContactDamageAtSeconds: 0,
-      nextRangedAttackAtSeconds: 0.65 + (spawn.behaviorSeed % 1_000) / 1_000,
-      rangedSequence: 0,
-      authoritativeRevision: -1,
-      authoritativeDeadUntil: 0,
-      sheared: false,
-      fuseStartedAtSeconds: 0,
-      fuseUntilSeconds: 0,
-    };
+    mobs[index] = mobStateForSpawn(spawns[index]);
   }
   const projectiles = new Array<MobProjectile>(MAX_MOB_PROJECTILES);
   for (let index = 0; index < projectiles.length; index += 1) {
@@ -735,6 +765,49 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
   return { elapsedSeconds: 0, tick: 0, mobs, projectiles, pendingProjectileDamage: 0 };
 }
 
+/**
+ * Rehomes only local mobs that left the retained terrain square. Slots and
+ * damage sequences stay stable, while discarded objects and their projectiles
+ * immediately leave the fixed-size simulation.
+ */
+export function reconcileLocalMobStreaming(
+  simulation: MobSimulation,
+  spawns: readonly MobSpawnDescriptor[],
+  centerX: number,
+  centerZ: number,
+  retainRadius: number,
+): number {
+  const count = Math.min(HARD_MAX_MOB_POPULATION, spawns.length);
+  const radius = Math.max(0, Number.isFinite(retainRadius) ? retainRadius : 0);
+  let recycled = 0;
+  for (let index = 0; index < Math.max(simulation.mobs.length, count); index += 1) {
+    const previous = simulation.mobs[index];
+    const spawn = index < count ? spawns[index] : undefined;
+    if (previous && spawn && previous.id === spawn.id
+      && Math.max(Math.abs(previous.x - centerX), Math.abs(previous.z - centerZ)) <= radius) {
+      if (Math.max(Math.abs(previous.homeX - centerX), Math.abs(previous.homeZ - centerZ)) > radius) {
+        previous.homeX = previous.desiredX = previous.x;
+        previous.homeY = previous.y;
+        previous.homeZ = previous.desiredZ = previous.z;
+      }
+      continue;
+    }
+    if (previous) {
+      for (const projectile of simulation.projectiles) {
+        if (projectile.active && projectile.ownerId === previous.id) projectile.active = false;
+      }
+    }
+    if (spawn) {
+      const replacement = mobStateForSpawn(spawn);
+      if (previous?.id === spawn.id) replacement.damageSequence = previous.damageSequence;
+      simulation.mobs[index] = replacement;
+    }
+    recycled += 1;
+  }
+  simulation.mobs.length = count;
+  return recycled;
+}
+
 /** Returns a stable-order copy suitable for the bounded Lakebed authority query. */
 export function listMobIds(simulation: Readonly<MobSimulation>): string[] {
   return simulation.mobs.slice(0, HARD_MAX_MOB_POPULATION).map((mob) => mob.id);
@@ -758,7 +831,10 @@ function choosePassiveBehavior(mob: MobState, elapsedSeconds: number): void {
 function canMoveTo(mob: MobState, x: number, z: number, input: Readonly<MobStepInput>): boolean {
   const definition = MOB_DEFINITIONS[mob.kind];
   const limit = Number.isFinite(input.worldRadius) ? Math.max(1, Math.abs(input.worldRadius as number)) : Infinity;
-  if (Math.abs(x) + definition.collisionRadius > limit || Math.abs(z) + definition.collisionRadius > limit) return false;
+  const centerX = Number.isFinite(input.worldCenterX) ? input.worldCenterX as number : 0;
+  const centerZ = Number.isFinite(input.worldCenterZ) ? input.worldCenterZ as number : 0;
+  if (Math.abs(x - centerX) + definition.collisionRadius > limit
+    || Math.abs(z - centerZ) + definition.collisionRadius > limit) return false;
   const y = input.terrainHeight(Math.floor(x), Math.floor(z)) + 1;
   if (Math.abs(y - mob.y) > 1.01) return false;
   return input.canOccupy?.(mob.kind, x, y, z, definition.collisionRadius, definition.height) ?? true;
@@ -1287,15 +1363,29 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
 
 function localMobHomeAvailable(
   simulation: Readonly<MobSimulation>,
-  mob: Readonly<MobState>,
+  mob: MobState,
   input: Readonly<MobStepInput>,
 ): boolean {
+  const definition = MOB_DEFINITIONS[mob.kind];
+  const limit = Number.isFinite(input.worldRadius) ? Math.max(1, Math.abs(input.worldRadius as number)) : Infinity;
+  const centerX = Number.isFinite(input.worldCenterX) ? input.worldCenterX as number : 0;
+  const centerZ = Number.isFinite(input.worldCenterZ) ? input.worldCenterZ as number : 0;
+  if (Math.abs(mob.x - centerX) + definition.collisionRadius > limit
+    || Math.abs(mob.z - centerZ) + definition.collisionRadius > limit) return false;
+  if (Math.abs(mob.homeX - centerX) + definition.collisionRadius > limit
+    || Math.abs(mob.homeZ - centerZ) + definition.collisionRadius > limit) {
+    // Older retained snapshots can carry a home from terrain that has since
+    // unloaded. Rehome the same slot at its valid corpse position before the
+    // ordinary distance, collision, and occupancy gates decide its respawn.
+    mob.homeX = mob.desiredX = mob.x;
+    mob.homeY = mob.y;
+    mob.homeZ = mob.desiredZ = mob.z;
+  }
   if (input.player) {
     const playerDx = input.player.x - mob.homeX;
     const playerDz = input.player.z - mob.homeZ;
     if (playerDx * playerDx + playerDz * playerDz < LOCAL_MOB_RESPAWN_PLAYER_DISTANCE ** 2) return false;
   }
-  const definition = MOB_DEFINITIONS[mob.kind];
   if (input.canOccupy && !input.canOccupy(
     mob.kind,
     mob.homeX,
