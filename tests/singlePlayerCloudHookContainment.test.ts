@@ -5,10 +5,10 @@ const entry = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const transport = readFileSync(new URL("../client/singleplayer/SinglePlayerCloudTransport.tsx", import.meta.url), "utf8");
 
-assert.match(entry, /useState\(\(\) => \{\s*const identity = getIdentity\(\)/);
-assert.match(entry, /function joinSingleplayer[\s\S]*?getIdentity\(\)[\s\S]*?setCloudIdentityCandidate/);
-assert.match(app, /cloud=\{authState \? <SinglePlayerCloudIdentityBoundary storage=\{storage\} title \/>/);
-assert.match(app, /activeWorld[\s\S]*?authState \? <SinglePlayerCloudIdentityBoundary storage=\{storage\} \/>/);
+assert.match(entry, /const hasCloudIdentity = \(\) => \{ const identity = getIdentity\(\); return Boolean\(identity\.userId \|\| identity\.expired\); \};[\s\S]*?useState\(hasCloudIdentity\)/);
+assert.match(entry, /function joinSingleplayer[\s\S]*?setCloudIdentityCandidate\(hasCloudIdentity\(\)\)/);
+assert.match(app, /const cloud = authState \? <SinglePlayerCloudIdentityBoundary storage=\{storage\} title=\{!activeWorld\} \/>/);
+assert.match(app, /activeWorld[\s\S]*?\{cloud\}[\s\S]*?cloud=\{cloud\}/);
 assert.doesNotMatch(app, /\b(?:useAuth|useQuery|useMutation)\b/);
 assert.equal((transport.match(/\buseQuery</g) ?? []).length, 1);
 assert.equal((transport.match(/\buseMutation</g) ?? []).length, 1);
@@ -42,10 +42,10 @@ assert.match(transport, /const resumeDelete[\s\S]*?deleteRequest\(worldId, revis
   "reload reconstructs the identical request from the durable D marker");
 assert.match(transport, /revision !== frozen\[2\][\s\S]*?remote\[6\] !== frozen\[3\]\?\.\[6\][\s\S]*?remote\[9\] !== frozen\[3\]\?\.\[9\]/,
   "submit revalidates revision, hash, and upload time from the frozen wire");
-assert.match(transport, /prepareSinglePlayerCloudBackup\(storage, restored\.world, frozen\[2\]\)[\s\S]*?\[frozen\[2\], prepared\.backup\[2\], prepared\.backup\[3\], prepared\.backup\[4\]\]/);
+assert.match(transport, /restoreSinglePlayerCloudBackup\(storage, frozen\[3\]\)[\s\S]*?local = restored\.world[\s\S]*?prepareSinglePlayerCloudBackup\(storage, local, frozen\[2\]\)[\s\S]*?\[frozen\[2\], prepared\.backup\[2\], prepared\.backup\[3\], prepared\.backup\[4\]\]/);
 assert.match(transport, /kind === ACTION\.RECOVER[\s\S]*?controller\[0\]\?\.\[0\] !== 3 \|\| controller\[0\]\[2\] !== frozen\[2\]/,
   "account repair submits only the exact revision frozen from the code-3 query");
-assert.match(transport, /parseRestorableSinglePlayerCloudBackupWire\(raw\)[\s\S]*?parseSinglePlayerCloudBackupWire\(raw\)[\s\S]*?`!\$\{outer\[8\]\}`/,
+assert.match(transport, /validateRestorableSinglePlayerCloudBackup\(raw\)[\s\S]*?parsed\?\.\[1\] \? outer : null[\s\S]*?`!\$\{outer\[8\]\}`/,
   "semantically quarantined backup wires retain their payload-free owner descriptor");
 assert.match(transport, /const DAMAGED = "Damaged cloud backup"[\s\S]*?state\[1\]\]\.map\([\s\S]*?row\(DAMAGED[\s\S]*?action\("Delete"/,
   "bounded per-world quarantine descriptors render an explicit deletion path");

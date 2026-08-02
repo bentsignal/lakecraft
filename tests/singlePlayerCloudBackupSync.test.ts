@@ -42,7 +42,7 @@ for (const descriptor of [[1, "world-a", "3", "2", "10"], [2, "4"], [3, "world-a
   assert.deepEqual(parseSinglePlayerCloudDescriptor(descriptor), descriptor);
 }
 for (const descriptor of [[1, "world-a", "0", "2", "10"], [2, "0"], [3, "World A", "0"],
-  [3, "world-a", "0", "extra"]]) assert.equal(parseSinglePlayerCloudDescriptor(descriptor), null);
+  [3, "world-a", "0", "extra"], [3, Symbol("world"), "0"]]) assert.equal(parseSinglePlayerCloudDescriptor(descriptor), null);
 for (const wire of [[1, 10, [], []], [2, 10], [3, 10, "4"]]) assert.deepEqual(parseSinglePlayerCloudQueryWire(wire), wire);
 for (const wire of [[1, 10, []], [1, 10, [], [], 0], [4, 10], [2, "10"], [1, 8_640_000_000_000_001, [], []],
   [3, 10], [3, 10, "bad"], [1, 10, new Array(1), []], {}, null]) assert.equal(parseSinglePlayerCloudQueryWire(wire), null);
@@ -53,7 +53,7 @@ const sparse = new Array(3); sparse[0] = 1; sparse[2] = 10;
 for (const wire of [[1, "1"], [1, "1", 10, 0], [1, "0", 10], [8, "0", 10], [2, 10],
   [7, "conflict", 10], [7, "0", 1, 10], [7, "2", 2, 10],
   [7, "2", 1, 8_640_000_000_000_001],
-  [1, String(Number.MAX_SAFE_INTEGER), 10], [3, "conflict", 10], [5, "", 10], [6, 0, 10],
+    [1, String(Number.MAX_SAFE_INTEGER), 10], [3, "conflict", 10], [5, "", 10], [5, Symbol("reason"), 10], [6, 0, 10],
   [6, 8_640_000_000_000_001, 10], [2, 8_640_000_000_000_001], sparse, {}, null]) {
   assert.equal(parseSinglePlayerCloudMutationWire(wire), null);
 }

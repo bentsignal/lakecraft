@@ -3602,14 +3602,11 @@ export function App() {
     () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
   );
   const [singlePlayerTitle, setSinglePlayerTitle] = useState(false);
-  const [cloudIdentityCandidate, setCloudIdentityCandidate] = useState(() => {
-    const identity = getIdentity();
-    return Boolean(identity.userId || identity.expired);
-  });
+  const hasCloudIdentity = () => { const identity = getIdentity(); return Boolean(identity.userId || identity.expired); };
+  const [cloudIdentityCandidate, setCloudIdentityCandidate] = useState(hasCloudIdentity);
 
   function joinSingleplayer(): void {
-    const identity = getIdentity();
-    setCloudIdentityCandidate(Boolean(identity.userId || identity.expired));
+    setCloudIdentityCandidate(hasCloudIdentity());
     const url = new URL(window.location.href);
     url.searchParams.set("singleplayer", "1");
     window.history.replaceState(window.history.state, "", url);

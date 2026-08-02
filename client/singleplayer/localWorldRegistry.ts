@@ -822,79 +822,75 @@ function nextWorldId(registry: LocalWorldRegistry, seed: number, createdAt: numb
   return null;
 }
 
+type NewLocalWorld = readonly [string, number, LocalGameMode, number, string?, SinglePlayerSnapshot?, number?, boolean?];
+
 function persistNewLocalWorld(
   storage: SinglePlayerStorageAdapter,
   registry: LocalWorldRegistry,
   generation: number,
-  input: {
-    name: string;
-    seed: number;
-    gameMode: LocalGameMode;
-    createdAt: number;
-    worldId?: string;
-    snapshot?: SinglePlayerSnapshot;
-    snapshotSavedAt?: number;
-    requireEmptyNamespace?: boolean;
-  },
+  input: NewLocalWorld,
 ): LocalWorldMutationResult {
-  const name = normalizeLocalWorldName(input.name);
-  if (!name || !safeInteger(input.seed, -2_147_483_648, 2_147_483_647)
-    || (input.gameMode !== "survival" && input.gameMode !== "creative")
-    || !safeInteger(input.createdAt, 0, MAX_TIMESTAMP)) {
+  const [rawName, seed, gameMode, createdAt, worldId,
+    suppliedSnapshot, suppliedSavedAt, requireEmptyNamespace] = input;
+  const name = normalizeLocalWorldName(rawName);
+  if (!name || !safeInteger(seed, -2_147_483_648, 2_147_483_647)
+    || (gameMode !== "survival" && gameMode !== "creative")
+    || !safeInteger(createdAt, 0, MAX_TIMESTAMP)) {
     return failure("invalid_world");
   }
   const replayed = registry.worlds.find((candidate) =>
-    (input.worldId === undefined || candidate.id === input.worldId)
+    (worldId === undefined || candidate.id === worldId)
     && candidate.name === name
-    && candidate.seed === input.seed
-    && candidate.initialGameMode === input.gameMode
-    && candidate.createdAt === input.createdAt
+    && candidate.seed === seed
+    && candidate.initialGameMode === gameMode
+    && candidate.createdAt === createdAt
     && !candidate.importedLegacy);
   if (replayed) return { ok: true, world: replayed, registry };
   if (registry.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS) {
     return failure("world_limit_reached");
   }
-  const id = input.worldId ?? nextWorldId(registry, input.seed, input.createdAt);
+  const id = worldId ?? nextWorldId(registry, seed, createdAt);
   if (!id || !validWorldId(id) || registry.worlds.some((world) => world.id === id)) {
     return failure("world_id_unavailable");
   }
   const namespaceEmpty = () => {
     try {
       const keys = singlePlayerWorldStorageKeys(id);
-      const first = keys.map((key) => storage.getItem(key));
-      const second = keys.map((key) => storage.getItem(key));
-      return first.every((value) => value === null) && second.every((value) => value === null);
+      for (let pass = 0; pass < 2; pass += 1) {
+        for (const key of keys) if (storage.getItem(key) !== null) return false;
+      }
+      return true;
     } catch { return null; }
   };
-  if (input.requireEmptyNamespace) {
+  if (requireEmptyNamespace) {
     const empty = namespaceEmpty();
     if (empty !== true) return failure(empty === null ? "world_namespace_read_failed" : "world_namespace_occupied");
   }
   const world: LocalWorldRecord = {
     id,
     name,
-    seed: input.seed,
-    initialGameMode: input.gameMode,
-    createdAt: input.createdAt,
+    seed,
+    initialGameMode: gameMode,
+    createdAt,
     lastPlayedAt: 0,
     importedLegacy: false,
   };
-  if (input.snapshot?.world.gameMode !== undefined && input.snapshot.world.gameMode !== input.gameMode) {
+  if (suppliedSnapshot?.world.gameMode !== undefined && suppliedSnapshot.world.gameMode !== gameMode) {
     return failure("invalid_world_snapshot");
   }
-  const snapshot = input.snapshot
-    ? { ...input.snapshot, world: { ...input.snapshot.world, gameMode: input.gameMode } }
-    : createDefaultSinglePlayerSnapshot(input.seed, input.createdAt, id);
-  snapshot.world.gameMode = input.gameMode;
-  if (snapshot.world.worldId !== id || snapshot.world.seed !== input.seed
-    || snapshot.world.createdAt !== input.createdAt) return failure("invalid_world_snapshot");
-  const snapshotSavedAt = timestamp(input.snapshotSavedAt ?? input.createdAt);
+  const snapshot = suppliedSnapshot
+    ? { ...suppliedSnapshot, world: { ...suppliedSnapshot.world, gameMode } }
+    : createDefaultSinglePlayerSnapshot(seed, createdAt, id);
+  snapshot.world.gameMode = gameMode;
+  if (snapshot.world.worldId !== id || snapshot.world.seed !== seed
+    || snapshot.world.createdAt !== createdAt) return failure("invalid_world_snapshot");
+  const snapshotSavedAt = timestamp(suppliedSavedAt ?? createdAt);
   const preflight = serializeSinglePlayerSave(snapshot, 1, snapshotSavedAt);
   if (!preflight.ok || preflight.raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS) {
     return failure("invalid_world_snapshot");
   }
   const pending = makePending(0, generation, world);
-  const begun = saveRegistryState(storage, registry, input.createdAt, generation - 1, pending, null);
+  const begun = saveRegistryState(storage, registry, createdAt, generation - 1, pending, null);
   if (!begun.ok) {
     return failure(
       begun.mutationStarted
@@ -909,7 +905,7 @@ function persistNewLocalWorld(
   if (!mirrorPending(storage, begun.sequence, pending)) {
     return failure("world_create_transaction_pending", true);
   }
-  if (input.requireEmptyNamespace && namespaceEmpty() !== true) {
+  if (requireEmptyNamespace && namespaceEmpty() !== true) {
     return failure("world_namespace_occupied_transaction_pending", true);
   }
   const saved = saveSinglePlayerSnapshot(storage, snapshot, snapshotSavedAt, { worldId: id });
@@ -919,7 +915,7 @@ function persistNewLocalWorld(
   const protectedWrite = saveRegistryState(
     storage,
     nextRegistry,
-    input.createdAt,
+    createdAt,
     begun.sequence,
     protectedPending,
     pending,
@@ -933,7 +929,7 @@ function persistNewLocalWorld(
   const registryWrite = saveRegistryState(
     storage,
     nextRegistry,
-    input.createdAt,
+    createdAt,
     protectedWrite.sequence,
     null,
     protectedPending,
@@ -963,12 +959,8 @@ export function createLocalWorld(
     && candidate.createdAt === createdAt
     && !candidate.importedLegacy) : null;
   if (replayed) return { ok: true, world: replayed, registry: loaded.registry };
-  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1, {
-    name: input.name,
-    seed,
-    gameMode: input.gameMode,
-    createdAt,
-  });
+  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1,
+    [input.name, seed, input.gameMode, createdAt]);
 }
 
 /** Adds a missing cloud world through the same crash-recoverable namespace transaction as local creation. */
@@ -988,7 +980,8 @@ export function restoreMissingLocalWorld(
   if (!loaded.registry) return failure(`registry_${loaded.status}`);
   if (hasPendingNamespaceRecovery(loaded.issues)) return failure("world_create_recovery_pending");
   if (loaded.registry.worlds.some(({ id }) => id === input.worldId)) return failure("world_exists");
-  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1, { ...input, requireEmptyNamespace: true });
+  return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1,
+    [input.name, input.seed, input.gameMode, input.createdAt, input.worldId, input.snapshot, input.snapshotSavedAt, true]);
 }
 
 export function inspectLocalWorld(

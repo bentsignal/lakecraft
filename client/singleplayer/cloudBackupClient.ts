@@ -40,26 +40,27 @@ export function prepareSinglePlayerCloudBackup(
   expectedRevision: string,
 ): { ok: true; backup: PreparedSinglePlayerCloudBackup }
   | { ok: false; reason: "local_save_unavailable" | "readback_drift" | "invalid_local_save" } {
-  const loaded = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: world.id });
+  const { id, name, seed, initialGameMode, createdAt } = world;
+  const loaded = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: id });
   if (loaded.status !== "loaded" && loaded.status !== "recovered") {
     return { ok: false, reason: "local_save_unavailable" };
   }
-  if (loaded.snapshot.world.seed !== world.seed || loaded.snapshot.world.createdAt !== world.createdAt
-    || (loaded.snapshot.world.gameMode !== undefined && loaded.snapshot.world.gameMode !== world.initialGameMode)) {
+  const { snapshot, status, slot, sequence, savedAt, raw, checksum } = loaded;
+  if (snapshot.world.seed !== seed || snapshot.world.createdAt !== createdAt
+    || (snapshot.world.gameMode !== undefined && snapshot.world.gameMode !== initialGameMode)) {
     return { ok: false, reason: "invalid_local_save" };
   }
-  const confirmed = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: world.id });
-  if ((confirmed.status !== "loaded" && confirmed.status !== "recovered") || confirmed.status !== loaded.status || confirmed.slot !== loaded.slot
-    || confirmed.sequence !== loaded.sequence || confirmed.savedAt !== loaded.savedAt || confirmed.raw !== loaded.raw) {
+  const confirmed = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: id });
+  if ((confirmed.status !== "loaded" && confirmed.status !== "recovered") || confirmed.status !== status || confirmed.slot !== slot
+    || confirmed.sequence !== sequence || confirmed.savedAt !== savedAt || confirmed.raw !== raw) {
     return { ok: false, reason: "readback_drift" };
   }
   if (!/^(?:0|[1-9]\d{0,15})$/.test(expectedRevision)
-    || Number(expectedRevision) > SINGLE_PLAYER_CLOUD_MAX_REVISION || loaded.raw.length > MAX_SNAPSHOT) {
+    || Number(expectedRevision) > SINGLE_PLAYER_CLOUD_MAX_REVISION || raw.length > MAX_SNAPSHOT) {
     return { ok: false, reason: "invalid_local_save" };
   }
-  const requestJson = JSON.stringify([1, world.id, world.name, world.seed, world.initialGameMode,
-    world.createdAt, expectedRevision, loaded.raw]);
-  return { ok: true, backup: [requestJson, loaded.raw, loaded.sequence, loaded.savedAt, loaded.checksum] };
+  const requestJson = JSON.stringify([1, id, name, seed, initialGameMode, createdAt, expectedRevision, raw]);
+  return { ok: true, backup: [requestJson, raw, sequence, savedAt, checksum] };
 }
 
 export const singlePlayerCloudNumber = (value: unknown, minimum: number, maximum: number) => {
@@ -68,48 +69,53 @@ export const singlePlayerCloudNumber = (value: unknown, minimum: number, maximum
   return String(number) === value && Number.isSafeInteger(number) && number >= minimum && number <= maximum;
 };
 const dense = (value: unknown): value is unknown[] => Array.isArray(value) && Object.keys(value).length === value.length;
+const text = (value: unknown): value is string => typeof value === "string";
+const matches = (value: unknown, pattern: RegExp): value is string => text(value) && pattern.test(value);
 const timestamp = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0
   && (value as number) <= SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP;
 export function parseSinglePlayerCloudQueryWire(value: unknown): SinglePlayerCloudQueryWire | null {
   if (!dense(value)) return null;
   if (value.length === 0) return value;
-  if (value.length === 2 && value[0] === 2 && timestamp(value[1])) return value as [2, number];
-  if (value.length === 3 && value[0] === 3 && timestamp(value[1])
+  const tag = value[0];
+  if (value.length === 2 && tag === 2 && timestamp(value[1])) return value as [2, number];
+  if (value.length === 3 && tag === 3 && timestamp(value[1])
     && singlePlayerCloudNumber(value[2], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)) return value as [3, number, string];
-  return value.length === 4 && value[0] === 1 && timestamp(value[1]) && dense(value[2]) && dense(value[3])
+  return value.length === 4 && tag === 1 && timestamp(value[1]) && dense(value[2]) && dense(value[3])
     ? value as [1, number, unknown[], unknown[]] : null;
 }
 export function parseSinglePlayerCloudMutationWire(value: unknown): SinglePlayerCloudMutationWire | null {
   if (!dense(value)) return null;
-  if (value.length === 2 && value[0] === 4 && timestamp(value[1])) return value as [4, number];
-  if (value.length === 4 && value[0] === 7 && singlePlayerCloudNumber(value[1], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+  const tag = value[0];
+  if (value.length === 2 && tag === 4 && timestamp(value[1])) return value as [4, number];
+  if (value.length === 4 && tag === 7 && singlePlayerCloudNumber(value[1], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     && (value[2] === 0 || value[2] === 1) && timestamp(value[3])) return value as [7, string, 0 | 1, number];
   if (value.length !== 3 || !timestamp(value[2])) return null;
-  if ((value[0] === 1 || value[0] === 8)
+  if ((tag === 1 || tag === 8)
     && singlePlayerCloudNumber(value[1], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1)
-    || value[0] === 2 && singlePlayerCloudNumber(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1)) {
+    || tag === 2 && singlePlayerCloudNumber(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1)) {
     return value as [1 | 2 | 8, string, number];
   }
-  if ((value[0] === 3 && (value[1] === "cloud_capacity" || value[1] === "world_limit"))
-    || (value[0] === 5 && typeof value[1] === "string" && value[1].length > 0 && value[1].length <= 64)) {
+  if ((tag === 3 && (value[1] === "cloud_capacity" || value[1] === "world_limit"))
+    || (tag === 5 && text(value[1]) && value[1].length > 0 && value[1].length <= 64)) {
     return value as [3 | 5, string, number];
   }
-  return value[0] === 6 && Number.isSafeInteger(value[1]) && Number(value[1]) > 0
+  return tag === 6 && Number.isSafeInteger(value[1]) && Number(value[1]) > 0
     && Number(value[1]) <= SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP
     ? value as [6, number, number] : null;
 }
 export function parseSinglePlayerCloudBackupWire(value: unknown): SinglePlayerCloudBackupWire | null {
-  if (!Array.isArray(value) || value.length !== 10 || value[0] !== 1
-    || typeof value[1] !== "string" || !SINGLE_PLAYER_CLOUD_WORLD_ID.test(value[1])
-    || typeof value[2] !== "string" || value[2].length < 1 || value[2].length > 48
-    || value[2] !== value[2].trim().replace(/\s+/g, " ") || /[\u0000-\u001f\u007f]/.test(value[2])
-    || !singlePlayerCloudNumber(value[3], -2_147_483_648, 2_147_483_647)
-    || value[4] !== "survival" && value[4] !== "creative"
-    || !singlePlayerCloudNumber(value[5], 0, SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP)
-    || typeof value[6] !== "string" || !SINGLE_PLAYER_CLOUD_HASH.test(value[6])
-    || typeof value[7] !== "string" || value[7].length < 1 || value[7].length > MAX_SNAPSHOT || singlePlayerSaveChecksum(value[7]) !== value[6]
-    || !singlePlayerCloudNumber(value[8], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
-    || !singlePlayerCloudNumber(value[9], 0, SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP)) return null;
+  if (!Array.isArray(value) || value.length !== 10) return null;
+  const [tag, worldId, name, seed, mode, createdAt, hash, snapshot, revision, uploadedAt] = value;
+  if (tag !== 1 || !matches(worldId, SINGLE_PLAYER_CLOUD_WORLD_ID)
+    || !text(name) || name.length < 1 || name.length > 48
+    || name !== name.trim().replace(/\s+/g, " ") || /[\u0000-\u001f\u007f]/.test(name)
+    || !singlePlayerCloudNumber(seed, -2_147_483_648, 2_147_483_647)
+    || mode !== "survival" && mode !== "creative"
+    || !singlePlayerCloudNumber(createdAt, 0, SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP)
+    || !matches(hash, SINGLE_PLAYER_CLOUD_HASH)
+    || !text(snapshot) || snapshot.length < 1 || snapshot.length > MAX_SNAPSHOT || singlePlayerSaveChecksum(snapshot) !== hash
+    || !singlePlayerCloudNumber(revision, 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+    || !singlePlayerCloudNumber(uploadedAt, 0, SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP)) return null;
   return value as unknown as SinglePlayerCloudBackupWire;
 }
 
@@ -135,13 +141,12 @@ export type SinglePlayerCloudDescriptor = readonly [1, string, string, string, s
 
 export function parseSinglePlayerCloudDescriptor(value: unknown): SinglePlayerCloudDescriptor | null {
   if (!dense(value)) return null;
-  if (value.length === 2 && value[0] === 2
+  const tag = value[0];
+  if (value.length === 2 && tag === 2
     && singlePlayerCloudNumber(value[1], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)) return value as unknown as SinglePlayerCloudDescriptor;
-  if (value.length === 3 && value[0] === 3 && typeof value[1] === "string"
-    && SINGLE_PLAYER_CLOUD_WORLD_ID.test(value[1])
+  if (value.length === 3 && tag === 3 && matches(value[1], SINGLE_PLAYER_CLOUD_WORLD_ID)
     && singlePlayerCloudNumber(value[2], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)) return value as unknown as SinglePlayerCloudDescriptor;
-  return value.length === 5 && value[0] === 1 && typeof value[1] === "string"
-    && SINGLE_PLAYER_CLOUD_WORLD_ID.test(value[1])
+  return value.length === 5 && tag === 1 && matches(value[1], SINGLE_PLAYER_CLOUD_WORLD_ID)
     && singlePlayerCloudNumber(value[2], 1, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     && singlePlayerCloudNumber(value[3], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     && singlePlayerCloudNumber(value[4], 0, SINGLE_PLAYER_CLOUD_MAX_TIMESTAMP)
@@ -151,22 +156,22 @@ export function parseSinglePlayerCloudDescriptor(value: unknown): SinglePlayerCl
 /** Preserves only the server's bounded delete descriptor for an unreconstructable world. */
 export function parseServerQuarantinedSinglePlayerCloudBackup(value: unknown):
   QuarantinedSinglePlayerCloudBackup | null {
-  return dense(value) && value.length === 2 && typeof value[0] === "string"
-    && SINGLE_PLAYER_CLOUD_WORLD_ID.test(value[0])
+  return dense(value) && value.length === 2 && matches(value[0], SINGLE_PLAYER_CLOUD_WORLD_ID)
     && singlePlayerCloudNumber(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
     ? value as unknown as QuarantinedSinglePlayerCloudBackup : null;
 }
 
 /** Cloud bytes remain quarantined until both transport and the complete local journal schema validate. */
-function validateRestorableSinglePlayerCloudBackup(value: unknown):
+export function validateRestorableSinglePlayerCloudBackup(value: unknown):
   readonly [SinglePlayerCloudBackupWire, SinglePlayerSaveEnvelope | null] | null {
   const wire = parseSinglePlayerCloudBackupWire(value);
   if (!wire) return null;
   const parsed = parseSinglePlayerSaveEnvelope(wire[7], wire[1]);
-  return [wire, parsed.ok && parsed.envelope.payload.world.seed === Number(wire[3])
-    && parsed.envelope.payload.world.createdAt === Number(wire[5])
-    && (parsed.envelope.payload.world.gameMode === undefined || parsed.envelope.payload.world.gameMode === wire[4])
-    ? parsed.envelope : null];
+  const envelope = parsed[0];
+  return [wire, envelope && envelope.payload.world.seed === Number(wire[3])
+    && envelope.payload.world.createdAt === Number(wire[5])
+    && (envelope.payload.world.gameMode === undefined || envelope.payload.world.gameMode === wire[4])
+    ? envelope : null];
 }
 export function parseRestorableSinglePlayerCloudBackupWire(value: unknown): SinglePlayerCloudBackupWire | null {
   const parsed = validateRestorableSinglePlayerCloudBackup(value);

@@ -307,17 +307,14 @@ assert.notEqual(cloudBackupHash("😀"), oldUtf8Hash("😀"), "the former UTF-8-
 assert.equal(splitSinglePlayerCloudBackupSnapshot("😀".repeat(48_001)), null,
   "a character-valid but byte-oversized payload must fail the four-chunk bound");
 
-assert.equal(parseSinglePlayerSaveEnvelope(serialized.raw, worldId).ok, true);
-assert.equal(parseSinglePlayerSaveEnvelope(serialized.raw, "different-world").ok, false);
+assert.ok(parseSinglePlayerSaveEnvelope(serialized.raw, worldId)[0]);
+assert.equal(parseSinglePlayerSaveEnvelope(serialized.raw, "different-world")[0], null);
 const corruptEnvelope = JSON.parse(serialized.raw);
 corruptEnvelope.checksum = "00000000";
-assert.equal(parseSinglePlayerSaveEnvelope(JSON.stringify(corruptEnvelope), worldId).ok, false);
+assert.deepEqual(parseSinglePlayerSaveEnvelope(JSON.stringify(corruptEnvelope), worldId), [null, "invalid"]);
 const futureEnvelope = JSON.parse(serialized.raw);
 futureEnvelope.version = 2;
-assert.deepEqual(parseSinglePlayerSaveEnvelope(JSON.stringify(futureEnvelope), worldId), {
-  ok: false,
-  reason: "unsupported",
-});
+assert.deepEqual(parseSinglePlayerSaveEnvelope(JSON.stringify(futureEnvelope), worldId), [null, "unsupported"]);
 
 const invalidWorldRequest = JSON.stringify([
   1, "different-world", "Cloud World", 42, "survival", createdAt, "0", serialized.raw,
@@ -671,7 +668,7 @@ if (!restored.ok) throw new Error("restore fixture unexpectedly failed");
 const prepared = prepareSinglePlayerCloudBackup(storage, restored.world, "0");
 assert.equal(prepared.ok, true, "upload preparation rereads and validates the exact committed local journal bytes");
 if (!prepared.ok) throw new Error("upload fixture unexpectedly failed");
-assert.equal(parseSinglePlayerSaveEnvelope(prepared.backup[1], worldId).ok, true);
+assert.ok(parseSinglePlayerSaveEnvelope(prepared.backup[1], worldId)[0]);
 assert.equal(prepared.backup[2], loaded.sequence);
 
 const validWire = singlePlayerCloudBackupWire(manifest, candidate.snapshotJson);
