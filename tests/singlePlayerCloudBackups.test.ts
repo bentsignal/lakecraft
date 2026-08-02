@@ -926,6 +926,8 @@ assert.match(serverSource, /descriptors\.push\(\[3, world\[0\], "0"\]\)/,
   "query surfaces bounded unreconstructable worlds without exposing payload bytes");
 assert.match(cloudQuery, /q\.eq\(BS\.userId, ctx\.auth\.userId\)[\s\S]*?const repair = async[\s\S]*?quota\.length === 1[\s\S]*?if \(world\[0\] === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD\) return repair\(\);[\s\S]*?descriptors\.push/,
   "an owner-scoped malformed fence returns account repair with the current exposed quota revision before any invalid descriptor");
+assert.match(cloudQuery, /singlePlayerCloudUnsigned\(quota\[0\]\[BS\.revision\][\s\S]*?String\(Number\(quota\[0\]\[BS\.revision\]\)\)/,
+  "account repair exposes a canonical revision even when valid legacy quota storage is zero-padded");
 assert.match(serverSource, /Number\(manifest\[10\]\) > serverNow[\s\S]*?descriptors\.push\(\[3, world\[0\], manifest\?\.\[9\] \?\? "0"\]\)/,
   "future upload metadata is quarantined with its healthy transport revision instead of presented as valid");
 assert.match(serverSource, /inventory\[2\] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES/,
@@ -956,6 +958,20 @@ assert.match(cloudMutation, /const cleanupCandidates =[\s\S]*?if \(userBudgetRow
   "ordinary mutations retain strict bookkeeping rejection after the recovery-only branch");
 assert.match(cloudMutation, /const fenceRevision =[\s\S]*?disposition\[0\] === 3 \? disposition\[1\] !== fenceRevision[\s\S]*?Math\.max\(number\(disposition\[1\]\), \.\.\.quotaRows\.map/,
   "Resume CASes the exact owner fence while minting from the current global head");
+const repairRevisionMatches = (expected: string, rows: string[]) => {
+  const exposed = rows.length === 1 && singlePlayerCloudUnsigned(rows[0], 0, Number.MAX_SAFE_INTEGER)
+    ? String(Number(rows[0])) : "0";
+  return expected === exposed || rows.some((row) => singlePlayerCloudUnsigned(row, 0, Number.MAX_SAFE_INTEGER)
+    && Number(row) === Number(expected));
+};
+assert.equal(repairRevisionMatches("1", ["0001"]), true,
+  "canonical account repair accepts the numerically identical legacy quota revision");
+assert.equal(repairRevisionMatches("2", ["0001"]), false,
+  "canonical account repair still rejects a different quota generation");
+assert.equal("1" === "0001", false,
+  "Resume continues to require the exact canonical owner-fence revision");
+assert.match(cloudMutation, /singlePlayerCloudUnsigned\(row\[BS\.revision\][\s\S]*?number\(row\[BS\.revision\]\) === number\(disposition\[1\]\)/,
+  "account repair compares valid persisted quota revisions numerically after parsing the canonical request");
 assert.match(cloudMutation, /quotaActive < SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES[\s\S]*?: SINGLE_PLAYER_CLOUD_BACKUP_MAX_GLOBAL_STATE_BYTES/,
   "uncertain recovery accounting saturates at the global cap instead of undercharging retained rows");
 assert.match(cloudMutation, /if \(decision\[1\] === BS\.deduped\) \{[\s\S]*?applyCleanupQuota\(minimumStateBytes\)[\s\S]*?response\(1, decision\[2\]\[9\]\)/,

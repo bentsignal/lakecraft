@@ -2119,7 +2119,7 @@ export default capsule({
           "by_key", (q) => q.eq(BS.quotaKey, SINGLE_PLAYER_CLOUD_QUOTA_KEY)).take(2);
         const revision = quota.length === 1
           && singlePlayerCloudUnsigned(quota[0][BS.revision], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
-          ? quota[0][BS.revision] : "0";
+          ? String(Number(quota[0][BS.revision])) : "0";
         return [3, serverNow, revision] as const;
       };
       const inventory = inventorySinglePlayerCloudBackupParts(ctx.auth.userId, rows);
@@ -2251,9 +2251,11 @@ export default capsule({
         const fenceRevision = accountFence?.[1] ?? null;
         const exposedRevision = quotaRows.length === 1
           && singlePlayerCloudUnsigned(quotaRows[0][BS.revision], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
-          ? quotaRows[0][BS.revision] : "0";
+          ? string(number(quotaRows[0][BS.revision])) : "0";
         if (disposition[0] === 3 ? disposition[1] !== fenceRevision
-          : disposition[1] !== exposedRevision && !quotaRows.some((row) => row[BS.revision] === disposition[1])) {
+          : disposition[1] !== exposedRevision && !quotaRows.some((row) =>
+            singlePlayerCloudUnsigned(row[BS.revision], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
+              && number(row[BS.revision]) === number(disposition[1]))) {
           return invalid(BS.conflict);
         }
         const quotaRevision = Math.max(number(disposition[1]), ...quotaRows.map((row) =>
