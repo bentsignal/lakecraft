@@ -48,6 +48,9 @@ assert.match(transport, /ACTION\.CANCEL_DELETE[\s\S]*?store\(storage, key\(userI
   "pending deletion always has a local, non-mutating cancellation path");
 assert.match(transport, /revision !== frozen\[2\][\s\S]*?remote\[6\] !== frozen\[3\]\?\.\[6\][\s\S]*?remote\[9\] !== frozen\[3\]\?\.\[9\]/,
   "submit revalidates revision, hash, and upload time from the frozen wire");
+assert.equal((transport.match(/frozen\[3\]\?\.\[1\] \?\? frozen\[4\]/g) ?? []).length, 1,
+  "all delete reconciliation and submit paths share one frozen world identity projection");
+assert.match(transport, /const frozenWorldId = \(frozen: Frozen\) => frozen\[3\]\?\.\[1\] \?\? frozen\[4\]/);
 assert.match(transport, /restoreSinglePlayerCloudBackup\(storage, frozen\[3\]\)[\s\S]*?local = restored\.world[\s\S]*?prepareSinglePlayerCloudBackup\(storage, local, frozen\[2\]\)[\s\S]*?\[frozen\[2\], prepared\.backup\[2\], prepared\.backup\[3\], prepared\.backup\[4\]\]/);
 assert.match(transport, /kind === ACTION\.RECOVER[\s\S]*?controller\[0\]\?\.\[0\] !== 3 \|\| controller\[0\]\[2\] !== frozen\[2\]/,
   "account repair submits only the exact revision frozen from the code-3 query");
@@ -72,6 +75,10 @@ assert.match(transport, /if \(controller\[4\] !== 1\) return;[\s\S]*?controller\
   "dialog-open and submit-in-flight are distinct, with a synchronous guard and disabled confirm button");
 
 assert.match(transport, /const CLOUD = "Cloud backup";\s*const cloud = "cloud backup";/);
+assert.match(transport, /const CLOUDS = `\$\{CLOUD\}s`/,
+  "plural cloud copy is one immutable display token across defaults and recovery rows");
+assert.match(transport, /const CANCEL_DELETE = "Cancel Pending Delete"/,
+  "the terminal delete cancellation action and dialog retain one exact label");
 for (const label of ["Checking ${cloud}s…", "${CLOUD} ready", "${CLOUD}s up to date",
   "Uploading ${cloud}…", "${CLOUD}s offline", "${CLOUD} paused until its quota resets",
   "Cloud storage capacity reached", "Local and cloud versions need a choice", "Cloud deletion history is full",
