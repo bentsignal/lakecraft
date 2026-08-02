@@ -6,6 +6,7 @@ import {
   MOB_DEFINITIONS,
   createMobSimulation,
   createMobSpawns,
+  damageMob,
   isLocalMobSpawnOutsideView,
   exportMobSimulationSnapshot,
   reconcileLocalMobStreaming,
@@ -92,6 +93,61 @@ for (let tick = 0; tick < 100; tick += 1) {
   });
 }
 assert.deepEqual(retired, beforeRetirement, "objects retired with unloaded terrain receive no later simulation work");
+
+const retainedHome = createMobSimulation(populationAt(4, 4).slice(0, 1));
+const retainedHomeMob = retainedHome.mobs[0]!;
+retainedHomeMob.x = retainedHomeMob.previousX = 100;
+retainedHomeMob.y = retainedHomeMob.previousY = 7;
+retainedHomeMob.z = retainedHomeMob.previousZ = 100;
+assert.equal(reconcileLocalMobStreaming(
+  retainedHome, populationAt(100, 100).slice(0, 1), 100, 100, retainRadius,
+), 0);
+assert.equal(retainedHome.mobs[0], retainedHomeMob, "rehome keeps the retained object and combat identity");
+assert.deepEqual(
+  { x: retainedHomeMob.homeX, y: retainedHomeMob.homeY, z: retainedHomeMob.homeZ },
+  { x: 100, y: 7, z: 100 },
+  "a retained mob cannot keep a home in terrain the streaming window retired",
+);
+
+const staleHome = createMobSimulation(populationAt(4, 4).slice(0, 1));
+const staleHomeMob = staleHome.mobs[0]!;
+staleHomeMob.x = staleHomeMob.previousX = 100;
+staleHomeMob.y = staleHomeMob.previousY = 7;
+staleHomeMob.z = staleHomeMob.previousZ = 100;
+assert.equal(staleHomeMob.homeX, origin[0]!.homeX);
+assert.equal(staleHomeMob.homeZ, origin[0]!.homeZ);
+assert.equal(damageMob(staleHome, staleHomeMob.id, 100, () => true).killed, true);
+const stepStaleHome = (target: MobSimulation, ticks: number) => {
+  for (let tick = 0; tick < ticks; tick += 1) stepMobSimulation(target, {
+    dtSeconds: 0.1,
+    isNight: false,
+    terrainHeight: () => 6,
+    player: { x: 130, y: 7, z: 100 },
+    canOccupy: () => true,
+    worldRadius: retainRadius,
+    worldCenterX: 100,
+    worldCenterZ: 100,
+  });
+};
+stepStaleHome(staleHome, 150);
+const staleHomeRestored = createMobSimulation([]);
+assert.equal(restoreMobSimulationSnapshot(staleHomeRestored, exportMobSimulationSnapshot(staleHome)), true);
+stepStaleHome(staleHome, 150);
+stepStaleHome(staleHomeRestored, 150);
+assert.deepEqual(staleHomeRestored, staleHome,
+  "save/reload during an out-of-window-home delay reproduces the exact in-window respawn");
+assert.equal(staleHomeMob.alive, true, "a retained dead slot respawns without waiting for another chunk transition");
+assert.deepEqual(
+  { x: staleHomeMob.x, y: staleHomeMob.y, z: staleHomeMob.z },
+  { x: 100, y: 7, z: 100 },
+  "the slot cannot resurrect at its unloaded historical home",
+);
+assert.deepEqual(
+  { x: staleHomeMob.homeX, y: staleHomeMob.homeY, z: staleHomeMob.homeZ },
+  { x: 100, y: 7, z: 100 },
+  "the retained identity adopts its valid in-window corpse position as home",
+);
+assert.equal(staleHomeMob.damageSequence, 1, "rehome preserves the death/drop sequence");
 
 const saved = exportMobSimulationSnapshot(simulation);
 const restored = createMobSimulation([]);

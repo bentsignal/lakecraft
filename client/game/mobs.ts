@@ -784,7 +784,14 @@ export function reconcileLocalMobStreaming(
     const previous = simulation.mobs[index];
     const spawn = index < count ? spawns[index] : undefined;
     if (previous && spawn && previous.id === spawn.id
-      && Math.max(Math.abs(previous.x - centerX), Math.abs(previous.z - centerZ)) <= radius) continue;
+      && Math.max(Math.abs(previous.x - centerX), Math.abs(previous.z - centerZ)) <= radius) {
+      if (Math.max(Math.abs(previous.homeX - centerX), Math.abs(previous.homeZ - centerZ)) > radius) {
+        previous.homeX = previous.desiredX = previous.x;
+        previous.homeY = previous.y;
+        previous.homeZ = previous.desiredZ = previous.z;
+      }
+      continue;
+    }
     if (previous) {
       for (const projectile of simulation.projectiles) {
         if (projectile.active && projectile.ownerId === previous.id) projectile.active = false;
@@ -1356,15 +1363,29 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
 
 function localMobHomeAvailable(
   simulation: Readonly<MobSimulation>,
-  mob: Readonly<MobState>,
+  mob: MobState,
   input: Readonly<MobStepInput>,
 ): boolean {
+  const definition = MOB_DEFINITIONS[mob.kind];
+  const limit = Number.isFinite(input.worldRadius) ? Math.max(1, Math.abs(input.worldRadius as number)) : Infinity;
+  const centerX = Number.isFinite(input.worldCenterX) ? input.worldCenterX as number : 0;
+  const centerZ = Number.isFinite(input.worldCenterZ) ? input.worldCenterZ as number : 0;
+  if (Math.abs(mob.x - centerX) + definition.collisionRadius > limit
+    || Math.abs(mob.z - centerZ) + definition.collisionRadius > limit) return false;
+  if (Math.abs(mob.homeX - centerX) + definition.collisionRadius > limit
+    || Math.abs(mob.homeZ - centerZ) + definition.collisionRadius > limit) {
+    // Older retained snapshots can carry a home from terrain that has since
+    // unloaded. Rehome the same slot at its valid corpse position before the
+    // ordinary distance, collision, and occupancy gates decide its respawn.
+    mob.homeX = mob.desiredX = mob.x;
+    mob.homeY = mob.y;
+    mob.homeZ = mob.desiredZ = mob.z;
+  }
   if (input.player) {
     const playerDx = input.player.x - mob.homeX;
     const playerDz = input.player.z - mob.homeZ;
     if (playerDx * playerDx + playerDz * playerDz < LOCAL_MOB_RESPAWN_PLAYER_DISTANCE ** 2) return false;
   }
-  const definition = MOB_DEFINITIONS[mob.kind];
   if (input.canOccupy && !input.canOccupy(
     mob.kind,
     mob.homeX,
