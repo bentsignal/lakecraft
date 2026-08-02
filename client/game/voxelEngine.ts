@@ -90,7 +90,14 @@ import {
   type MobProjectileSnapshot,
   type MobSpawnOptions,
   type LocalCreeperExplosionEvent,
+  type MobDamageSource,
 } from "./mobs.ts";
+import {
+  PLAYER_KNOCKBACK_COOLDOWN_MS,
+  decidePlayerKnockback,
+  resolvePlayerKnockback,
+  stepPlayerKnockbackAxis,
+} from "./playerKnockback.ts";
 import {
   BLOCK,
   type BlockId,
@@ -1407,6 +1414,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobProjectileSnapshots: MobProjectileSnapshot[] = [];
   const localCreeperExplosions: LocalCreeperExplosionEvent[] = [];
   const velocity: Vec3 = [0, 0, 0];
+  const knockbackVelocity: Vec3 = [0, 0, 0];
+  const knockbackReceipts = new Set<string>();
+  const contactDamageSources: MobDamageSource[] = [];
+  const projectileDamageSources: MobDamageSource[] = [];
+  let knockbackReadyAtMs = 0;
   const keys = new Set<string>();
   let creativeFlight = createCreativeFlightTapState();
   let sprintControls: SprintControlState = RELEASED_SPRINT_CONTROLS;
@@ -2090,6 +2102,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     while (mobAccumulatorSeconds >= mobStepSeconds && steps < 3) {
       const isNight = dayNightState.label === "night" || dayNightState.label === "dusk";
       const playerTarget = options.canMobsTargetPlayer?.() === false ? null : pose;
+      projectileDamageSources.length = 0;
       stepMobSimulation(mobSimulation, {
         dtSeconds: mobStepSeconds,
         isNight,
@@ -2101,14 +2114,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           const block = getBlock(Math.floor(x), blockY, Math.floor(z));
           return blockHasCollision(block) && blockContainsSolidPoint(block, blockY, y);
         },
+        projectileDamageSources,
         worldRadius: localMobStreaming ? LOCAL_MOB_STREAM_RETAIN_RADIUS : radius - 1,
         worldCenterX: localMobStreaming ? mobStreamingCenterX : 0,
         worldCenterZ: localMobStreaming ? mobStreamingCenterZ : 0,
       });
       mobAccumulatorSeconds -= mobStepSeconds;
       steps += 1;
+      contactDamageSources.length = 0;
       const contactDamage = playerTarget ? consumeMobContactDamage(
-        mobSimulation, pose, mobSimulation.elapsedSeconds, isNight,
+        mobSimulation, pose, mobSimulation.elapsedSeconds, isNight, undefined, contactDamageSources,
       ) : 0;
       const projectileDamage = consumeMobProjectileDamage(mobSimulation);
       if (playerHealth > 0) {
@@ -2117,6 +2132,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           const mitigatedDamage = mitigatedPlayerDamage(incomingDamage, options.getPlayerProtection?.() ?? 0);
           const appliedDamage = Math.min(playerHealth, mitigatedDamage);
           playerHealth -= appliedDamage;
+          const source = contactDamageSources[0] ?? projectileDamageSources[0];
+          if (source) applyConfirmedMobKnockback(
+            source.eventId,
+            source.x,
+            source.z,
+            appliedDamage,
+            mobSimulation.elapsedSeconds * 1_000,
+          );
           options.onPlayerDamage?.(appliedDamage, "mob");
           options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
         }
@@ -2221,6 +2244,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const protectLedge = !flying && movementMode === "sneak" && grounded;
     moveHorizontalAxis(0, dx, protectLedge);
     moveHorizontalAxis(2, dz, protectLedge);
+    knockbackVelocity[0] = stepPlayerKnockbackAxis(knockbackVelocity[0], dt, (distance) => moveAxis(0, distance));
+    knockbackVelocity[2] = stepPlayerKnockbackAxis(knockbackVelocity[2], dt, (distance) => moveAxis(2, distance));
     updateStreamingWindow();
     const touchingLadder = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
     const verticalStartY = pose.y;
@@ -2310,6 +2335,40 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     processPendingChunkMeshes();
     updateMobs(dt);
+  }
+
+  function applyConfirmedMobKnockback(
+    eventId: string,
+    attackerX: number,
+    attackerZ: number,
+    damage: number,
+    eventTimeMs = performance.now(),
+  ): boolean {
+    const eligible = !paused && playerHealth > 0 && options.canTakePlayerDamage?.() !== false;
+    const decision = decidePlayerKnockback(
+      eventId,
+      eventTimeMs,
+      knockbackReadyAtMs,
+      knockbackReceipts.has(eventId),
+      eligible,
+    );
+    if (decision !== "accept") return false;
+    const impulse = resolvePlayerKnockback(attackerX, attackerZ, pose.x, pose.z, damage, grounded);
+    if (!impulse) return false;
+    if (knockbackReceipts.size >= 64) {
+      const oldest = knockbackReceipts.values().next().value;
+      if (typeof oldest === "string") knockbackReceipts.delete(oldest);
+    }
+    knockbackReceipts.add(eventId);
+    knockbackReadyAtMs = eventTimeMs + PLAYER_KNOCKBACK_COOLDOWN_MS;
+    knockbackVelocity[0] = impulse.x;
+    knockbackVelocity[2] = impulse.z;
+    if (!creativeFlight.flying && !playerTouchesLadder(pose.x, pose.y, pose.z, getBlock)) {
+      velocity[1] = Math.max(velocity[1], impulse.y);
+      grounded = false;
+    }
+    poseDirty = true;
+    return true;
   }
 
   function bindBuffer(buffer: WebGLBuffer): void {
@@ -3357,6 +3416,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
+      knockbackVelocity[0] = 0;
+      knockbackVelocity[2] = 0;
       cancelPrimaryActionHold();
       cancelSecondaryPlacementHold(true);
       clearRangedCharge(true);
@@ -3401,6 +3462,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       return playerHealth;
     },
+    applyConfirmedMobKnockback,
     reconcilePose(nextPose) {
       cancelSecondaryPlacementHold(true);
       pose.x = nextPose.x;
@@ -3411,6 +3473,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
+      knockbackVelocity[0] = 0;
+      knockbackVelocity[2] = 0;
       clearHeldMovementInput();
       resetMovementView();
       playerViewSuspended = false;
@@ -3458,6 +3522,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
+      knockbackVelocity[0] = 0;
+      knockbackVelocity[2] = 0;
       clearHeldMovementInput();
       clearMining();
       cancelSecondaryPlacementHold(true);
@@ -3497,6 +3563,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       velocity[0] = 0;
       velocity[1] = 0;
       velocity[2] = 0;
+      knockbackVelocity[0] = 0;
+      knockbackVelocity[2] = 0;
       clearHeldMovementInput();
       resetMovementView();
       playerViewSuspended = false;

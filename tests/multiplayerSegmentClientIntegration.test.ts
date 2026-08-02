@@ -6,7 +6,8 @@ const transport = readFileSync(new URL("../client/MultiplayerSegmentTransport.ts
 
 assert.match(app, /authorityLeaseTransportEnabled = true/);
 assert.match(app, /<MultiplayerSegmentTransport/);
-assert.match(app, /paused=\{!transportForeground \|\| deathScreenOpen \|\| pauseOpen \|\| inventoryOpen \|\| chatOpen/);
+assert.match(app, /paused=\{multiplayerPaused\}/);
+assert.match(app, /const multiplayerPaused = multiplayerGameplayPaused\(\{/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("jump"\)/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("swing"\)/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("slot", selectedHotbar\)/);

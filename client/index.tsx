@@ -28,6 +28,12 @@ import { cycleHotbarIndex } from "./game/hotbarInput";
 import { MultiplayerSegmentTransport } from "./MultiplayerSegmentTransport.tsx";
 import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
 import {
+  canApplyAuthoritativeKnockback,
+  multiplayerGameplayPaused,
+  updateAuthoritativeKnockbackGate,
+  type AuthoritativeKnockbackGate,
+} from "./multiplayerGameplay.ts";
+import {
   loadClientSettings,
   mouseLookScale,
   normalizeClientSettings,
@@ -921,6 +927,7 @@ function GameApp({
   const motionActionSinkRef = useRef<((kind: MotionVisualActionKind, value?: number) => void) | null>(null);
   const previousSegmentPoseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const authorityTrafficPausedRef = useRef(false);
+  const authoritativeKnockbackGateRef = useRef<AuthoritativeKnockbackGate | null>(null);
 
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
   if (!presenceBurstGuardRef.current) presenceBurstGuardRef.current = createPresenceBurstGuardState(Date.now());
@@ -968,6 +975,21 @@ function GameApp({
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
   const [activeBedKey, setActiveBedKey] = useState("");
+  const multiplayerPaused = multiplayerGameplayPaused({
+    foreground: transportForeground,
+    mobileUnsupported,
+    death: deathScreenOpen,
+    pause: pauseOpen,
+    inventory: inventoryOpen,
+    chat: chatOpen,
+    furnace: furnaceOpen,
+    chest: Boolean(activeChestKey),
+    bed: Boolean(activeBedKey),
+  });
+  if (!authoritativeKnockbackGateRef.current) {
+    authoritativeKnockbackGateRef.current = { paused: multiplayerPaused, pauseEpoch: multiplayerPaused ? 1 : 0 };
+  } else updateAuthoritativeKnockbackGate(authoritativeKnockbackGateRef.current, multiplayerPaused);
+  authorityTrafficPausedRef.current = multiplayerPaused;
 
   useEffect(() => {
     appliedOwnCombatHealthRef.current = null;
@@ -986,10 +1008,6 @@ function GameApp({
     };
   }, []);
 
-  useEffect(() => {
-    authorityTrafficPausedRef.current = !transportForeground || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen
-      || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey);
-  }, [transportForeground, deathScreenOpen, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
   useEffect(() => {
     if (!inWorld || deathScreenOpen) setOptionsOpen(false);
   }, [inWorld, deathScreenOpen]);
@@ -1649,11 +1667,9 @@ function GameApp({
   }, [inventory, selectedHotbar, equipment]);
 
   useEffect(() => {
-    engineRef.current?.setFirstPersonFeedbackHidden(
-      mobileUnsupported || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen
-      || Boolean(activeChestKey) || Boolean(activeBedKey),
-    );
-  }, [mobileUnsupported, deathScreenOpen, pauseOpen, inventoryOpen, chatOpen, furnaceOpen, activeChestKey, activeBedKey]);
+    engineRef.current?.setPaused(multiplayerPaused);
+    engineRef.current?.setFirstPersonFeedbackHidden(multiplayerPaused);
+  }, [multiplayerPaused]);
 
   useEffect(() => {
     chestInventoryRef.current = chestInventory;
@@ -2237,10 +2253,8 @@ function GameApp({
         onPerformanceStats: setPerformanceStats,
       });
       engineRef.current = engine;
-      engine.setFirstPersonFeedbackHidden(
-        mobileUnsupported || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen
-        || Boolean(activeChestKey) || Boolean(activeBedKey),
-      );
+      engine.setPaused(multiplayerPaused);
+      engine.setFirstPersonFeedbackHidden(multiplayerPaused);
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
       setMobIds(engine.getMobIds());
       engine.start();
@@ -2315,6 +2329,8 @@ function GameApp({
         if (typeof oldest === "string") mobDamageClaimsRef.current.delete(oldest);
       }
       mobDamageClaimsRef.current.add(claim.operationId);
+      const requestGate = authoritativeKnockbackGateRef.current;
+      const requestPauseEpoch = requestGate && !requestGate.paused ? requestGate.pauseEpoch : -1;
       void claimMobPlayerDamage(JSON.stringify(claim)).then((result) => {
         setConnected(result.ok);
         if (result.ok && result.damage > 0) {
@@ -2323,6 +2339,21 @@ function GameApp({
             return;
           }
           audioRef.current?.play("mobAttack", { seed: claim.operationId, intensity: 0.82 });
+          if (!result.replayed && !result.killed && authoritativeKnockbackGateRef.current
+            && canApplyAuthoritativeKnockback(
+              authoritativeKnockbackGateRef.current,
+              requestPauseEpoch,
+              document.pointerLockElement === canvasRef.current,
+            )) {
+            const attacker = mobWorldAuthority.poses.find((pose) => pose.mobId === claim.mobId);
+            if (attacker) engineRef.current?.applyConfirmedMobKnockback(
+              claim.operationId,
+              attacker.x,
+              attacker.z,
+              result.damage,
+              result.serverNow,
+            );
+          }
           notify(
             result.killed ? "You were overwhelmed" : "Monster hit",
             result.killed ? "Lakebed confirmed your death." : `${result.damage} health lost.`,
@@ -3394,7 +3425,7 @@ function GameApp({
         <MultiplayerSegmentTransport
           userId={auth.userId}
           sessionId={presenceSessionIdRef.current}
-          paused={!transportForeground || deathScreenOpen || pauseOpen || inventoryOpen || chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
+          paused={multiplayerPaused}
           getPose={() => engineRef.current?.getPose() ?? poseRef.current}
           mobIds={mobIds}
           onConnected={setConnected}

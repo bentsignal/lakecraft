@@ -17,8 +17,8 @@ assert.match(bow, /progress >= 0\.9 \? 2 : 1/,
   "the reference values match the retained three-stage bow geometry reducer");
 
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-assert.match(client, /setFirstPersonFeedbackHidden\([\s\S]{0,220}mobileUnsupported \|\| deathScreenOpen \|\| pauseOpen/,
-  "multiplayer forwards blocking UI state to the retained WebGL bow");
+assert.match(client, /setFirstPersonFeedbackHidden\(multiplayerPaused\)/,
+  "multiplayer forwards the shared blocking predicate to the retained WebGL bow");
 const chargeStart = client.indexOf("onRangedChargeChange:");
 const chargeEnd = client.indexOf("onRangedCancel:", chargeStart);
 const charge = client.slice(chargeStart, chargeEnd);

@@ -496,6 +496,14 @@ export interface MobTarget {
   z: number;
 }
 
+export interface MobDamageSource {
+  eventId: string;
+  mobId: string;
+  x: number;
+  z: number;
+  damage: number;
+}
+
 export interface MobStepInput {
   dtSeconds: number;
   isNight: boolean;
@@ -505,6 +513,8 @@ export interface MobStepInput {
   canOccupy?: (kind: MobKind, x: number, y: number, z: number, radius: number, height: number) => boolean;
   /** Called for arrow world collision; movement and attacks remain client-only. */
   isProjectileBlocked?: (x: number, y: number, z: number) => boolean;
+  /** Optional retained output for newly confirmed local projectile impacts. */
+  projectileDamageSources?: MobDamageSource[];
   worldRadius?: number;
   worldCenterX?: number;
   worldCenterZ?: number;
@@ -989,7 +999,18 @@ function stepMobProjectiles(simulation: MobSimulation, input: Readonly<MobStepIn
       nextZ,
       input.player,
     )) {
-      simulation.pendingProjectileDamage = Math.min(12, simulation.pendingProjectileDamage + projectile.damage);
+      const acceptedDamage = Math.min(projectile.damage, 12 - simulation.pendingProjectileDamage);
+      simulation.pendingProjectileDamage += acceptedDamage;
+      if (acceptedDamage > 0 && input.projectileDamageSources) {
+        const owner = simulation.mobs.find((mob) => mob.id === projectile.ownerId);
+        input.projectileDamageSources.push({
+          eventId: `projectile:${projectile.ownerId}:${projectile.id}:${simulation.tick}`,
+          mobId: projectile.ownerId,
+          x: owner?.x ?? projectile.previousX,
+          z: owner?.z ?? projectile.previousZ,
+          damage: acceptedDamage,
+        });
+      }
       projectile.active = false;
       continue;
     }
@@ -1563,6 +1584,7 @@ export function consumeMobContactDamage(
   nowSeconds: number,
   isNight: boolean,
   maximumDamage = MAX_CONTACT_DAMAGE_PER_TICK,
+  sources?: MobDamageSource[],
 ): number {
   if (!isNight || !Number.isFinite(nowSeconds)) return 0;
   const damageLimit = Number.isFinite(maximumDamage) ? Math.max(0, maximumDamage) : MAX_CONTACT_DAMAGE_PER_TICK;
@@ -1584,6 +1606,13 @@ export function consumeMobContactDamage(
       continue;
     }
     damage += definition.contactDamage;
+    sources?.push({
+      eventId: `contact:${mob.id}:${simulation.tick}`,
+      mobId: mob.id,
+      x: mob.x,
+      z: mob.z,
+      damage: definition.contactDamage,
+    });
     mob.nextContactDamageAtSeconds = nowSeconds + definition.attackCooldownSeconds;
   }
   return damage;
