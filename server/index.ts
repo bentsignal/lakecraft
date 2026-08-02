@@ -2292,6 +2292,7 @@ export default capsule({
       const tombstones = reconstructed.flatMap(([, loaded]) => loaded[0] ? loaded[2] : []);
       const accountFence = reconstructed.flatMap(([, loaded]) => loaded[0] && loaded[3]
         ? [loaded[3]] : [])[0] ?? null;
+      const accountFenceRows = inventory[1].some((world) => world[0] === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD);
       const targetWorld = inventory[1].find((world) => world[0] === worldId) ?? null;
       const currentBackup = healthyBackups.find(([manifest]) => manifest[0] === worldId) ?? null;
       const currentTombstone = tombstones.find((tombstone) => tombstone[0] === worldId) ?? null;
@@ -2300,9 +2301,8 @@ export default capsule({
       const currentSnapshotJson = currentBackup?.[1] ?? "";
       const activeWorldCount = healthyBackups.length;
       const allHealthy = reconstructed.every(([, loaded]) => Boolean(loaded[0]));
-      if (accountFence || (!deleting && (!allHealthy
-        || healthyBackups.some(([manifest]) => Number(manifest[10]) > serverNow)))
-        || deleting && reconstructed.some(([world, loaded]) => world[0] !== worldId && !loaded[0])) {
+      if (accountFence || accountFenceRows || !deleting && (!allHealthy
+        || healthyBackups.some(([manifest]) => Number(manifest[10]) > serverNow))) {
         return invalid();
       }
       if (healthyBackups.some(([manifest]) => Number(manifest[9]) > quotaRevision)
@@ -2374,7 +2374,7 @@ export default capsule({
           return response(2, "0");
         }
         if (tombstones.length >= SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS) {
-          return response(3, "cloud_capacity");
+          return response(3, "tombstone_capacity");
         }
         const tombstone = [worldId, proposedRevision, expectedRevision, String(serverNow), deleting[3]] as const;
         const tombstoneHeader = singlePlayerCloudTombstoneHeader(tombstone);

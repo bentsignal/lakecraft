@@ -65,11 +65,17 @@ class CloudDatabase {
   remove(userId: string, worldId: string, expected: number, operationId: string) {
     return this.transaction(() => {
       const rows = this.state(userId);
+      if ([...rows.values()].some((row) => row.kind === "fence")) return { ok: false as const, reason: "fence" };
       const current = rows.get(worldId);
       if (current?.kind === "tombstone") return current.deletedRevision === expected && current.operationId === operationId
         ? { ok: true as const, revision: current.revision, deduped: true }
         : { ok: false as const, reason: "conflict" };
-      if (current?.kind !== "active" || current.revision !== expected) return { ok: false as const, reason: "conflict" };
+      if (current?.kind === "corrupt" ? expected !== 0 : current?.kind !== "active" || current.revision !== expected) {
+        return { ok: false as const, reason: "conflict" };
+      }
+      if ([...rows.values()].filter((row) => row.kind === "tombstone").length >= 6) {
+        return { ok: false as const, reason: "tombstone_capacity" };
+      }
       this.generation += 1;
       rows.set(worldId, { kind: "tombstone", revision: this.generation,
         deletedRevision: expected, operationId });
@@ -128,9 +134,33 @@ assert.equal(recreated.ok && recreated.revision, 4);
 assert.deepEqual(db.remove("alice", "world", 1, "delete_retry_1"), { ok: false, reason: "conflict" },
   "a delayed old delete cannot erase the explicitly recreated generation");
 
+db.owners.set("two-damaged", new Map([["bad-a", { kind: "corrupt" }], ["bad-b", { kind: "corrupt" }]]));
+const firstDamagedDelete = db.remove("two-damaged", "bad-a", 0, "delete_bad_a");
+assert.equal(firstDamagedDelete.ok, true, "one bounded malformed target can be deleted while a malformed sibling remains");
+assert.equal(db.owners.get("two-damaged")!.get("bad-b")?.kind, "corrupt");
+assert.equal(db.remove("two-damaged", "bad-b", 0, "delete_bad_b").ok, true,
+  "two malformed worlds are repairable through bounded sequential target deletion");
+assert.deepEqual(db.remove("other-owner", "bad-b", 0, "forged"), { ok: false, reason: "conflict" },
+  "the corrupt-target sentinel never crosses the authenticated owner boundary");
+db.owners.set("fenced-damaged", new Map([["~", { kind: "fence", revision: db.generation }],
+  ["bad", { kind: "corrupt" }]]));
+assert.deepEqual(db.remove("fenced-damaged", "bad", 0, "delete_bad"), { ok: false, reason: "fence" },
+  "sequential malformed deletion cannot bypass an account fence");
+
+const cappedRows = new Map<string, CloudRow>();
+for (let index = 0; index < 6; index += 1) cappedRows.set(`gone-${index}`,
+  { kind: "tombstone", revision: index + 1, deletedRevision: index, operationId: `old_${index}` });
+cappedRows.set("kept", { kind: "active", revision: 50, raw: "still-present" });
+db.owners.set("capped", cappedRows);
+assert.deepEqual(db.remove("capped", "kept", 50, "delete_cap"), { ok: false, reason: "tombstone_capacity" },
+  "a seventh resurrection fence is a distinct permanent refusal");
+assert.deepEqual(db.owners.get("capped")!.get("kept"), { kind: "active", revision: 50, raw: "still-present" },
+  "tombstone capacity refusal changes no cloud row and is safe for the client to stop retrying");
+
 db.owners.set("damaged", new Map(Array.from({ length: 5 }, (_, index) => [`bad-${index}`, { kind: "corrupt" } as const])));
+const damagedStartRevision = db.generation;
 let disposition = db.dispose("damaged", db.generation, 2);
-assert.deepEqual(disposition, { ok: true, revision: 5, more: true });
+assert.deepEqual(disposition, { ok: true, revision: damagedStartRevision + 1, more: true });
 disposition = db.dispose("damaged", disposition.revision, 2);
 assert.equal(disposition.ok && disposition.more, true);
 disposition = db.dispose("damaged", disposition.ok ? disposition.revision : 0, 2);
@@ -250,6 +280,17 @@ assert.equal(prepared2.ok, true);
 if (!prepared2.ok) throw new Error("descendant prepare failed");
 assert.equal(singlePlayerCloudUploadRevision(prepared2.backup, wire, lineage, false), "9",
   "the first post-restore local seq2 save is an authorized descendant autosync");
+assert.equal(singlePlayerCloudUploadRevision(prepared2.backup, wire, null, false), null,
+  "same-id local and cloud bytes without lineage require an explicit user choice");
+assert.equal(singlePlayerCloudUploadRevision(prepared2.backup, wire, ["8", 1, 2_000, prepared1.backup[4]], false), null,
+  "a mismatched cloud generation cannot be silently reported current or overwritten");
+
+const pendingCapacityStorage = new MemoryStorage();
+const pendingCapacityKey = "lakecraft:cloud-backup:v1:world:alice:world";
+pendingCapacityStorage.setItem(pendingCapacityKey, "D|9|delete_capacity");
+pendingCapacityStorage.removeItem(pendingCapacityKey);
+assert.equal(pendingCapacityStorage.getItem(pendingCapacityKey), null,
+  "a permanent capacity response clears the local delete intent so uploads are no longer suppressed");
 
 const retryQueue: string[] = [];
 const exactRequest = "prepared-request";

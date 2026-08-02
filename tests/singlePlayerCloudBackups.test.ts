@@ -879,8 +879,12 @@ assert.ok(undercountGuard >= 0 && undercountGuard < cloudMutation.indexOf("if (d
   "strict full-current quota validation remains before commit and dedupe paths");
 assert.match(cloudMutation, /const nextQuota = nextQuotaValue\(nextActiveStateBytes,[\s\S]*?if \(!nextQuota\) return invalid\(\);[\s\S]*?for \(const row of currentParts\)/,
   "delete and replacement validate quota state before destructive writes, including tombstone replacement accounting");
-assert.match(cloudMutation, /accountFence \|\| \(!deleting && \(!allHealthy/,
+assert.match(cloudMutation, /accountFence \|\| accountFenceRows \|\| !deleting && \(!allHealthy/,
   "commits refuse any bounded-unhealthy current owner state while deletes classify one target independently");
+assert.match(cloudMutation, /accountFenceRows = inventory\[1\]\.some[\s\S]*?SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD/,
+  "even a malformed account-fence row blocks target deletion until owner-scoped account repair");
+assert.doesNotMatch(cloudMutation, /deleting && reconstructed\.some/,
+  "one malformed sibling cannot block owner-scoped sequential deletion of another malformed target");
 assert.match(serverSource, /descriptors\.push\(\[3, world\[0\], "0"\]\)/,
   "query surfaces bounded unreconstructable worlds without exposing payload bytes");
 assert.match(serverSource, /Number\(manifest\[10\]\) > serverNow[\s\S]*?descriptors\.push\(\[3, world\[0\], manifest\?\.\[9\] \?\? "0"\]\)/,
@@ -897,6 +901,8 @@ assert.match(cloudMutation, /tombstones\.some\(\(tombstone\) => Number\(tombston
   "a durable tombstone ahead of the permanent global quota generation fails closed");
 assert.match(cloudMutation, /currentTombstone\[2\] === expectedRevision[\s\S]*?currentTombstone\[4\] === deleting\[3\]/,
   "permanent delete retries require the exact predecessor and operation id");
+assert.match(cloudMutation, /tombstones\.length >= SINGLE_PLAYER_CLOUD_BACKUP_MAX_WORLDS[\s\S]*?response\(3, "tombstone_capacity"\)/,
+  "the bounded resurrection-fence policy has a distinct permanent capacity response");
 assert.match(cloudMutation, /parseSinglePlayerCloudDispositionRequest[\s\S]*?SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD/,
   "malformed-owner recovery is fenced by an explicit account disposition generation");
 assert.match(cloudMutation, /if \(!validBudget\(row\)[\s\S]*?continue;[\s\S]*?if \(ownerBackup\.length !== 0\) continue;/,

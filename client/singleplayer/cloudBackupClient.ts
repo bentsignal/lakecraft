@@ -90,7 +90,8 @@ export function parseSinglePlayerCloudMutationWire(value: unknown): SinglePlayer
     || value[0] === 2 && singlePlayerCloudNumber(value[1], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION - 1)) {
     return value as [1 | 2 | 8, string, number];
   }
-  if ((value[0] === 3 && (value[1] === "cloud_capacity" || value[1] === "world_limit"))
+  if ((value[0] === 3 && (value[1] === "cloud_capacity" || value[1] === "world_limit"
+    || value[1] === "tombstone_capacity"))
     || (value[0] === 5 && typeof value[1] === "string" && value[1].length > 0 && value[1].length <= 64)) {
     return value as [3 | 5, string, number];
   }
