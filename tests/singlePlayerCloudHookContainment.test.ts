@@ -51,6 +51,8 @@ assert.match(transport, /revision !== frozen\[2\][\s\S]*?remote\[6\] !== frozen\
 assert.match(transport, /prepareSinglePlayerCloudBackup\(storage, restored\.world, frozen\[2\]\)[\s\S]*?\[frozen\[2\], prepared\.backup\[2\], prepared\.backup\[3\], prepared\.backup\[4\]\]/);
 assert.match(transport, /kind === ACTION\.RECOVER[\s\S]*?controller\[0\]\?\.\[0\] !== 3 \|\| controller\[0\]\[2\] !== frozen\[2\]/,
   "account repair submits only the exact revision frozen from the code-3 query");
+assert.match(transport, /query\?\.\[0\] === 3 \? action\("Repair Cloud Backups"[\s\S]*?ACTION\.RECOVER[\s\S]*?query\[2\]/,
+  "a status-3 malformed-fence query makes account repair directly reachable");
 assert.match(transport, /parseRestorableSinglePlayerCloudBackupWire\(raw\)[\s\S]*?parseSinglePlayerCloudBackupWire\(raw\)[\s\S]*?`!\$\{outer\[8\]\}`/,
   "semantically quarantined backup wires retain their payload-free owner descriptor");
 assert.match(transport, /const DAMAGED = "Damaged cloud backup"[\s\S]*?state\[1\]\]\.map\([\s\S]*?row\(DAMAGED[\s\S]*?action\("Delete"/,

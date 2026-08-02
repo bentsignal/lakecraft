@@ -110,6 +110,12 @@ class CloudDatabase {
       if ((this.owners.get(owner)?.size ?? 0) === 0) this.budgets.delete(owner);
     }
   }
+
+  query(userId: string) {
+    const rows = this.owners.get(userId) ?? new Map<string, CloudRow>();
+    if (rows.get("~")?.kind === "corrupt") return { status: 3 as const, revision: this.generation };
+    return { status: 1 as const, worlds: [...rows.entries()].filter(([, row]) => row.kind === "active") };
+  }
 }
 
 const db = new CloudDatabase();
@@ -146,6 +152,12 @@ db.owners.set("fenced-damaged", new Map([["~", { kind: "fence", revision: db.gen
   ["bad", { kind: "corrupt" }]]));
 assert.deepEqual(db.remove("fenced-damaged", "bad", 0, "delete_bad"), { ok: false, reason: "fence" },
   "sequential malformed deletion cannot bypass an account fence");
+db.owners.set("malformed-fence-query", new Map([["~", { kind: "corrupt" }],
+  ["ordinary", { kind: "active", revision: 40, raw: "healthy" }]]));
+assert.deepEqual(db.query("malformed-fence-query"), { status: 3, revision: db.generation },
+  "a malformed fence plus ordinary worlds routes to account repair at the current exposed generation");
+assert.deepEqual(db.query("other-owner"), { status: 1, worlds: [] },
+  "account-repair reachability remains scoped to the authenticated owner");
 
 const cappedRows = new Map<string, CloudRow>();
 for (let index = 0; index < 6; index += 1) cappedRows.set(`gone-${index}`,

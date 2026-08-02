@@ -850,6 +850,8 @@ for (const kind of ["valid", "corrupt", "unsupported"] as const) {
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 const cloudSource = readFileSync(new URL("../shared/singlePlayerCloudBackups.ts", import.meta.url), "utf8");
+const cloudQuery = serverSource.slice(serverSource.indexOf("singlePlayerCloudBackups: query"),
+  serverSource.indexOf("mutations:", serverSource.indexOf("singlePlayerCloudBackups: query")));
 assert.match(serverSource, /\.index\("by_cleanup", \["activeBackup", "cleanupAfter"\]\)/,
   "dormant budgets use an explicit eligibility index instead of a starvation-prone creation prefix");
 assert.match(serverSource, /q\.eq\(BS\.activeBackup, "0"\)[\s\S]*?\.lt\(BS\.cleanupAfter/,
@@ -887,6 +889,8 @@ assert.doesNotMatch(cloudMutation, /deleting && reconstructed\.some/,
   "one malformed sibling cannot block owner-scoped sequential deletion of another malformed target");
 assert.match(serverSource, /descriptors\.push\(\[3, world\[0\], "0"\]\)/,
   "query surfaces bounded unreconstructable worlds without exposing payload bytes");
+assert.match(cloudQuery, /q\.eq\(BS\.userId, ctx\.auth\.userId\)[\s\S]*?const repair = async[\s\S]*?quota\.length === 1[\s\S]*?if \(world\[0\] === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD\) return repair\(\);[\s\S]*?descriptors\.push/,
+  "an owner-scoped malformed fence returns account repair with the current exposed quota revision before any invalid descriptor");
 assert.match(serverSource, /Number\(manifest\[10\]\) > serverNow[\s\S]*?descriptors\.push\(\[3, world\[0\], manifest\?\.\[9\] \?\? "0"\]\)/,
   "future upload metadata is quarantined with its healthy transport revision instead of presented as valid");
 assert.match(serverSource, /inventory\[2\] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES/,

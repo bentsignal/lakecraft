@@ -2117,20 +2117,24 @@ export default capsule({
       const rows = await oldestByIndex(ctx.db.singlePlayerCloudBackupParts,
         BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
         .take(SINGLE_PLAYER_CLOUD_BACKUP_MAX_OWNER_ROWS + 1);
-      const inventory = inventorySinglePlayerCloudBackupParts(ctx.auth.userId, rows);
-      if (!inventory[0] || inventory[2] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) {
+      const repair = async () => {
         const quota = await newestByIndex(ctx.db.singlePlayerCloudBackupQuota,
           "by_key", (q) => q.eq(BS.quotaKey, SINGLE_PLAYER_CLOUD_QUOTA_KEY)).take(2);
         const revision = quota.length === 1
           && singlePlayerCloudUnsigned(quota[0][BS.revision], 0, SINGLE_PLAYER_CLOUD_MAX_REVISION)
           ? quota[0][BS.revision] : "0";
         return [3, serverNow, revision] as const;
+      };
+      const inventory = inventorySinglePlayerCloudBackupParts(ctx.auth.userId, rows);
+      if (!inventory[0] || inventory[2] > SINGLE_PLAYER_CLOUD_BACKUP_MAX_USER_STATE_BYTES) {
+        return repair();
       }
       const backups = [];
       const descriptors = [];
       for (const world of inventory[1]) {
         const loaded = loadSinglePlayerCloudBackupParts(ctx.auth.userId, world[1]);
         if (!loaded[0]) {
+          if (world[0] === SINGLE_PLAYER_CLOUD_ACCOUNT_FENCE_WORLD) return repair();
           descriptors.push([3, world[0], "0"]);
           continue;
         }
