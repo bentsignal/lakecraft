@@ -961,6 +961,13 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
     now: 400,
   });
   assert.ok(created.ok);
+  const snapshot = loadSinglePlayerSave(storage, {
+    migrateLegacy: false,
+    worldId: created.world.id,
+  }).snapshot;
+  assert.ok(snapshot);
+  snapshot.world.activePlayMs = 123;
+  assert.ok(saveSinglePlayerSnapshot(storage, snapshot, 500, { worldId: created.world.id }).ok);
   storage.failWritesFor = nextRegistryWriteKey(storage);
   const failed = recordFirstLocalWorldPlay(storage, created.world, 500);
   assert.deepEqual(failed, {
@@ -969,6 +976,19 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
     mutationStarted: true,
   });
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds[0]?.lastPlayedAt, 0);
+  const durableSnapshot = loadSinglePlayerSave(storage, {
+    migrateLegacy: false,
+    worldId: created.world.id,
+  });
+  assert.equal(durableSnapshot.savedAt, 500,
+    "secondary metadata failure does not redefine the authoritative snapshot commit");
+  assert.equal(durableSnapshot.snapshot?.world.activePlayMs, 123);
+
+  const entryRepair = cloneStorage(storage);
+  const entered = touchLocalWorld(entryRepair, created.world.id, 600, created.world);
+  assert.ok(entered.ok, "the next ordinary entry repairs metadata left pending by Save and Quit");
+  assert.equal(entered.world.lastPlayedAt, 600);
+
   storage.failWritesFor = null;
   assert.ok(recordFirstLocalWorldPlay(storage, created.world, 500).ok);
   assert.equal(loadLocalWorldRegistry(storage).registry?.worlds[0]?.lastPlayedAt, 500);

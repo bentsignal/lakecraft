@@ -503,15 +503,15 @@ function SinglePlayerWorld({
       if (result.reason === "unsafe_existing_data") saveLockedRef.current = true;
       return false;
     }
+    let firstPlayMetadataPending = false;
     if (!firstPlayRecordedRef.current) {
       const recorded = recordFirstLocalWorldPlay(storage, world, now);
       if (!recorded.ok) {
-        saveInProgressRef.current = false;
         console.error("[Lakecraft save] First-play metadata commit rejected.", recorded);
-        setAutosaveStatusText(`${action} saved, but world activity could not be finalized. Try again.`);
-        return false;
+        firstPlayMetadataPending = true;
+      } else {
+        firstPlayRecordedRef.current = true;
       }
-      firstPlayRecordedRef.current = true;
     }
     saveInProgressRef.current = false;
     worldRef.current = {
@@ -522,7 +522,9 @@ function SinglePlayerWorld({
     initialRuntimeRef.current = snapshot.runtime;
     saveCadenceRef.current = commitSaveCadence(saveCadenceRef.current, performance.now(), !engineRef.current?.isPaused());
     if (reason === "autosave") setLastAutosavedAt(now);
-    setAutosaveStatusText("");
+    setAutosaveStatusText(firstPlayMetadataPending
+      ? `${action} complete. World activity will update on the next save or entry.`
+      : "");
     return true;
   }
   performSaveRef.current = persist;
