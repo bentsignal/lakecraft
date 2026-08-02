@@ -638,6 +638,12 @@ function SinglePlayerWorld({
     requestGameplayPointerLock();
   }
 
+  function closeCommandConsoleFromEscape(now: number): void {
+    setCommandOpen(false);
+    commandHistoryIndexRef.current = commandHistoryRef.current.length;
+    applyPointerSessionEvent({ type: "close_command_escape", now });
+  }
+
   function selectHotbar(index: number) {
     const next = clampHotbarIndex(index);
     if (next === selectedRef.current) return;
@@ -1743,7 +1749,7 @@ function SinglePlayerWorld({
         if (event.code === "Escape") {
           event.preventDefault();
           event.stopImmediatePropagation();
-          if (!event.repeat) closeCommandConsole();
+          if (!event.repeat) closeCommandConsoleFromEscape(performance.now());
           return;
         }
         if ((event.code === "ArrowUp" || event.code === "ArrowDown") && !event.repeat) {

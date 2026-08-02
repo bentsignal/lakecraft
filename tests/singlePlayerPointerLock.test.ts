@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
   POINTER_LOCK_ESCAPE_DEDUP_MS,
   createSinglePlayerPointerSessionState,
   transitionSinglePlayerPointerSession,
@@ -82,6 +83,64 @@ assert.equal(recaptured.showCaptureAffordance, false, "successful recapture remo
 const denied = run(resumeClick.state, { type: "lock_change", locked: false, now: 501, uiBlocked: false });
 assert.equal(denied.showCaptureAffordance, true, "denied or lost capture exposes one explicit recovery action");
 
+/**
+ * Real Chrome trace from the command input: keydown(Escape) closes Preact UI,
+ * a lock-acquired callback may land, then the same browser Escape action emits
+ * pointer-lock loss. DOM propagation cancellation cannot stop that browser
+ * lifecycle, so the state token must survive the intermediate locked callback.
+ */
+for (const commandResultRendered of [false, true]) {
+  const chatRelease = run(active, { type: "intentional_release" });
+  const chatUnlocked = run(chatRelease.state, {
+    type: "lock_change",
+    locked: false,
+    now: 1_000,
+    // React can still expose the previous render while pointerlockchange lands.
+    uiBlocked: false,
+  });
+  assert.equal(chatUnlocked.openPause, false, "opening focused chat never pauses");
+
+  // Rendering a command result changes chat data, not pointer-session state.
+  const beforeClose = commandResultRendered ? { ...chatUnlocked.state } : chatUnlocked.state;
+  const close = run(beforeClose, { type: "close_command_escape", now: 1_100 });
+  assert.equal(close.openPause, false, "one chat Escape closes without Game Menu");
+  assert.equal(close.requestPointerLock, false, "Escape returns to Click to Play instead of fighting Chrome's native unlock");
+  assert.equal(close.showCaptureAffordance, true);
+
+  const repeat = run(close.state, { type: "escape", now: 1_101, repeat: true, uiBlocked: false });
+  assert.equal(repeat.openPause, false, "the held Escape repeat cannot spend the suppression token or pause");
+  const transientLock = run(repeat.state, { type: "lock_change", locked: true, now: 1_102, uiBlocked: false });
+  assert.equal(transientLock.state.intentionalReleasePending, true, "the token survives Chrome's intermediate locked callback");
+  const sameEscapeLoss = run(transientLock.state, { type: "lock_change", locked: false, now: 1_103, uiBlocked: false });
+  assert.equal(sameEscapeLoss.openPause, false, "the same Escape's native unlock is consumed exactly once");
+  assert.equal(sameEscapeLoss.state.pauseOpen, false);
+  assert.equal(sameEscapeLoss.state.intentionalReleasePending, false);
+}
+
+const closeThenClick = run(createSinglePlayerPointerSessionState(false), { type: "close_command_escape", now: 2_000 });
+const clicked = run(closeThenClick.state, { type: "resume" });
+const clickedLock = run(clicked.state, { type: "lock_change", locked: true, now: 2_010, uiBlocked: false });
+const ordinaryGameplayEscape = run(clickedLock.state, { type: "escape", now: 2_100, uiBlocked: false });
+assert.equal(ordinaryGameplayEscape.openPause, true, "the next deliberate gameplay Escape still opens Game Menu");
+
+const rapidFirstClose = run(createSinglePlayerPointerSessionState(false), { type: "close_command_escape", now: 3_000 });
+const rapidReopen = run(rapidFirstClose.state, { type: "intentional_release" });
+assert.equal(rapidReopen.state.ignoreEscapeUntil, Number.NEGATIVE_INFINITY, "rapid reopen clears the prior close token");
+const rapidSecondClose = run(rapidReopen.state, { type: "close_command_escape", now: 3_010 });
+assert.equal(
+  rapidSecondClose.state.ignoreEscapeUntil,
+  3_010 + COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
+  "rapid close arms one fresh bounded token",
+);
+const expiredTransientLock = run(rapidSecondClose.state, { type: "lock_change", locked: true, now: 3_011, uiBlocked: false });
+const expiredLoss = run(expiredTransientLock.state, {
+  type: "lock_change",
+  locked: false,
+  now: 3_010 + COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS + 1,
+  uiBlocked: false,
+});
+assert.equal(expiredLoss.openPause, true, "a later unrelated lock loss cannot be hidden by a stale chat token");
+
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const pointerLossHandler = engineSource.slice(
   engineSource.indexOf("function onPointerLockChange"),
@@ -146,6 +205,13 @@ assert.ok(handoffSource.includes("catch {\n    return false;"),
   "synchronous request failures report a false handoff without mounting an optimistic capture");
 
 const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const chatEscapeClose = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("function closeCommandConsoleFromEscape"),
+  singlePlayerSource.indexOf("function selectHotbar"),
+);
+assert.ok(chatEscapeClose.includes('type: "close_command_escape"'));
+assert.equal(chatEscapeClose.includes("requestGameplayPointerLock"), false,
+  "chat Escape does not synchronously reacquire a lock that Chrome immediately tears down");
 assert.ok(singlePlayerSource.includes("Click to Play"), "failed handoff has one explicit pointer-capture affordance");
 assert.ok(
   singlePlayerSource.includes("onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}"),
