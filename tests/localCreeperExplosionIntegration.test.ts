@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { planLocalCreeperExplosion } from "../client/game/voxelEngine.ts";
+import { BLOCK } from "../client/game/types.ts";
+import { CREEPER_EXPLOSION_MAX_BLOCKS } from "../shared/creeperExplosion.ts";
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
@@ -14,5 +17,11 @@ assert.ok(singleplayer.includes("onLocalCreeperExplosion"), "single-player persi
 assert.ok(singleplayer.includes('recordLocalExplosion(`creeper:${mobId}`'), "creeper and TNT blasts share save, sound, particles, and chain handling");
 assert.ok(singleplayer.includes("getPlayerProtection: () => equippedArmorProtection(equipmentRef.current)"), "single-player combat reads equipped armor");
 assert.ok(singleplayer.includes('audio.play("mobHurt"'), "successful local attacks have audible hit confirmation");
+
+const localCrater = planLocalCreeperExplosion(0, 8, 0, () => BLOCK.STONE);
+assert.ok(localCrater.length > 0 && localCrater.length <= CREEPER_EXPLOSION_MAX_BLOCKS,
+  "local creeper terrain remains inside the shared 64-cell envelope");
+assert.ok(localCrater.every((edit) => Math.abs(edit.x) <= 3 && Math.abs(edit.y - 8) <= 3 && Math.abs(edit.z) <= 3),
+  "stronger TNT terrain does not expand local creeper craters");
 
 console.log("lakecraft local creeper explosion integration tests: ok");

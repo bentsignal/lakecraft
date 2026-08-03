@@ -136,7 +136,7 @@ assert.deepEqual(reconcileBedEditBatch([
 ], findBed(bed)), [[{ ...bed.foot, block: BLOCK.BED }], []],
 "a duplicate batch whose final value preserves both BED cells keeps the pair registered");
 
-const edgeBed = createBedStructure({ x: 1, y: 9, z: 0 }, "east");
+const edgeBed = createBedStructure({ x: 4, y: 9, z: 0 }, "east");
 const explosion = planLocalTntExplosion(0, 10, 0, (x, y, z) => {
   if (x === 0 && y === 10 && z === 0) return BLOCK.TNT;
   if (bedCellKey({ x, y, z }) === bedCellKey(edgeBed.foot)

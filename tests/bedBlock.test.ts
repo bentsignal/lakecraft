@@ -39,10 +39,18 @@ for (const direction of ["north", "south", "east", "west"] as const) {
   appendBedMesh(head, 0, 0, 0, "head", direction);
   assert.equal(foot.length / 6, BED_FOOT_MESH_VERTEX_COUNT);
   assert.equal(head.length / 6, BED_HEAD_MESH_VERTEX_COUNT);
-  assert.equal(foot.some((_, index) => index % 6 === 3 && foot[index] > 0.8 && foot[index + 1] > 0.8), false,
-    "the foot half has no pillow");
-  assert.equal(head.some((_, index) => index % 6 === 3 && head[index] > 0.8 && head[index + 1] > 0.8), true,
-    "the head half owns the pillow");
+  assert.equal(foot.some((_, index) => index % 6 === 3 && foot[index] > 0.8 && foot[index + 1] > 0.8), true,
+    "the one paired mesh includes the head pillow");
+  assert.equal(head.length, 0, "the head cell emits no duplicate body or center faces");
+  const lengthAxis = direction === "east" || direction === "west" ? 0 : 2;
+  const widthAxis = lengthAxis === 0 ? 2 : 0;
+  const seam = direction === "east" || direction === "south" ? 1 : 0;
+  const positions = foot.filter((_, index) => index % 6 === lengthAxis);
+  assert.equal(positions.some((value) => Math.abs(value - seam) < 1e-9), false,
+    `${direction} paired geometry has no face or vertex plane at its cell seam`);
+  const widths = foot.filter((_, index) => index % 6 === widthAxis);
+  assert.ok(Math.max(...widths) - Math.min(...widths) <= 0.84 + 1e-9,
+    `${direction} bed frame stays visibly narrower than a full block`);
 }
 
 const bedTarget: BlockTarget = {

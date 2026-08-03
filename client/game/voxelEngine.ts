@@ -271,6 +271,21 @@ const LOCAL_EXPLOSION_PROTECTED_BLOCKS = new Set<BlockId>([
   BLOCK.DOOR_OPEN,
 ]);
 
+export const LOCAL_TNT_TERRAIN_RADIUS = 4.5;
+export const LOCAL_TNT_TERRAIN_MAX_BLOCKS = 192;
+const LOCAL_TNT_DOWNWARD_RADIUS = 3.5;
+const LOCAL_TNT_UPWARD_RADIUS = 2.5;
+const LOCAL_TNT_DESTRUCTION_THRESHOLDS = [
+  0.96, 0.96, 0.96, 0.78, 0.9, 0.96, 0.9, 0.9, 0.96, 0.96, 0.96,
+  0.96, 0.96, 0.78, 0.78, 0.96, 0.96, 0.78, 0.96, 0.96, 0.78, 0.78,
+  0.96, 0.96, 0.96, 0.96, 0.78, 0.9, 0.9, 0.9, 0.78, 0.96, 0.68,
+] as const;
+
+/** Higher values let a material be destroyed farther toward the edge of a blast. */
+export function localTntDestructionThreshold(block: BlockId): number {
+  return LOCAL_TNT_DESTRUCTION_THRESHOLDS[block];
+}
+
 /** Pure, bounded local crater plan shared by the engine and focused tests. */
 export function planLocalTntExplosion(
   x: number,
@@ -279,19 +294,54 @@ export function planLocalTntExplosion(
   readBlock: (x: number, y: number, z: number) => BlockId,
 ): LocalExplosionEdit[] {
   if (![x, y, z].every(Number.isSafeInteger)) return [];
-  const cells = enumerateCreeperExplosionBlocks({
+  const candidates: Array<readonly [number, LocalExplosionEdit]> = [];
+  const horizontalRadius = Math.ceil(LOCAL_TNT_TERRAIN_RADIUS);
+  for (let blockY = y - Math.ceil(LOCAL_TNT_DOWNWARD_RADIUS); blockY <= y + Math.ceil(LOCAL_TNT_UPWARD_RADIUS); blockY += 1) {
+    if (blockY < WORLD_EDIT_MIN_Y || blockY > WORLD_EDIT_MAX_Y) continue;
+    for (let blockZ = z - horizontalRadius; blockZ <= z + horizontalRadius; blockZ += 1) {
+      for (let blockX = x - horizontalRadius; blockX <= x + horizontalRadius; blockX += 1) {
+        const dx = blockX - x;
+        const dy = blockY - y;
+        const dz = blockZ - z;
+        const verticalRadius = dy < 0 ? LOCAL_TNT_DOWNWARD_RADIUS : LOCAL_TNT_UPWARD_RADIUS;
+        const blastDistance = (dx * dx + dz * dz) / (LOCAL_TNT_TERRAIN_RADIUS ** 2)
+          + dy * dy / (verticalRadius ** 2);
+        if (blastDistance > 1) continue;
+        const previousBlock = readBlock(blockX, blockY, blockZ);
+        if (LOCAL_EXPLOSION_PROTECTED_BLOCKS.has(previousBlock)) continue;
+        if (previousBlock !== BLOCK.TNT && blastDistance > localTntDestructionThreshold(previousBlock)) continue;
+        if (previousBlock === BLOCK.TNT && (blockX !== x || blockY !== y || blockZ !== z)) {
+          candidates.push([blastDistance, { x: blockX, y: blockY, z: blockZ, block: BLOCK.TNT, previousBlock, chainPrimed: true }]);
+          continue;
+        }
+        candidates.push([blastDistance, { x: blockX, y: blockY, z: blockZ, block: BLOCK.AIR, previousBlock }]);
+      }
+    }
+  }
+  candidates.sort((left, right) => Number(Boolean(right[1].chainPrimed)) - Number(Boolean(left[1].chainPrimed))
+    || left[0] - right[0]
+    || left[1].y - right[1].y || left[1].x - right[1].x || left[1].z - right[1].z);
+  return candidates.slice(0, LOCAL_TNT_TERRAIN_MAX_BLOCKS).map(([, cell]) => cell);
+}
+
+/** Local creepers retain their smaller shared three-block/64-cell terrain envelope. */
+export function planLocalCreeperExplosion(
+  x: number,
+  y: number,
+  z: number,
+  readBlock: (x: number, y: number, z: number) => BlockId,
+): LocalExplosionEdit[] {
+  if (![x, y, z].every(Number.isSafeInteger)) return [];
+  const edits: LocalExplosionEdit[] = [];
+  for (const cell of enumerateCreeperExplosionBlocks({
     center: { x: x + 0.5, y, z: z + 0.5 },
     radius: CREEPER_EXPLOSION_RADIUS,
-  });
-  const edits: LocalExplosionEdit[] = [];
-  for (const cell of cells) {
+  })) {
     const previousBlock = readBlock(cell.x, cell.y, cell.z);
     if (LOCAL_EXPLOSION_PROTECTED_BLOCKS.has(previousBlock)) continue;
-    if (previousBlock === BLOCK.TNT && (cell.x !== x || cell.y !== y || cell.z !== z)) {
-      edits.push({ x: cell.x, y: cell.y, z: cell.z, block: BLOCK.TNT, previousBlock, chainPrimed: true });
-      continue;
-    }
-    edits.push({ x: cell.x, y: cell.y, z: cell.z, block: BLOCK.AIR, previousBlock });
+    edits.push(previousBlock === BLOCK.TNT
+      ? { x: cell.x, y: cell.y, z: cell.z, block: BLOCK.TNT, previousBlock, chainPrimed: true }
+      : { x: cell.x, y: cell.y, z: cell.z, block: BLOCK.AIR, previousBlock });
   }
   return edits;
 }
@@ -439,8 +489,8 @@ export const TORCH_MESH_VERTEX_COUNT = 72;
 export const CHEST_MESH_VERTEX_COUNT = 108;
 export const DOOR_MESH_VERTEX_COUNT = 144;
 export const BED_MESH_VERTEX_COUNT = 108;
-export const BED_FOOT_MESH_VERTEX_COUNT = 72;
-export const BED_HEAD_MESH_VERTEX_COUNT = 108;
+export const BED_FOOT_MESH_VERTEX_COUNT = 108;
+export const BED_HEAD_MESH_VERTEX_COUNT = 0;
 export const LADDER_MESH_VERTEX_COUNT = 252;
 /** The 7x7 streaming window bounds glass to one extra draw per visible chunk. */
 export const MAX_TRANSPARENT_CHUNK_DRAWS = (DEFAULT_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
@@ -1217,7 +1267,11 @@ export function appendDoorMesh(
   appendAxisAlignedBox(output, [x + 0.77, y + 0.90, z + 0.38], [x + 0.87, y + 1.0, z + 0.43], [0.84, 0.69, 0.22]);
 }
 
-/** One directional cell of a low two-block frame, red blanket, and head pillow. */
+/**
+ * A paired bed is emitted once from its foot cell as three continuous boxes.
+ * The head cell deliberately emits nothing, eliminating the duplicate internal
+ * faces and inset gap that made the two saved cells look like separate blocks.
+ */
 export function appendBedMesh(
   output: number[],
   x: number,
@@ -1226,17 +1280,26 @@ export function appendBedMesh(
   part: "single" | "foot" | "head" = "single",
   direction: BedDirection = "north",
 ): void {
-  appendAxisAlignedBox(output, [x + 0.03, y + 0.08, z + 0.03], [x + 0.97, y + 0.32, z + 0.97], [0.38, 0.20, 0.07]);
-  appendAxisAlignedBox(output, [x + 0.04, y + 0.32, z + 0.04], [x + 0.96, y + 0.53, z + 0.96], BLOCK_COLORS[BLOCK.BED]);
-  if (part === "foot") return;
-  const pillowMin: Vec3 = direction === "east" ? [x + 0.69, y + 0.32, z + 0.08]
-    : direction === "west" ? [x + 0.06, y + 0.32, z + 0.08]
-      : direction === "south" ? [x + 0.08, y + 0.32, z + 0.69]
-        : [x + 0.08, y + 0.32, z + 0.06];
-  const pillowMax: Vec3 = direction === "east" ? [x + 0.94, y + 0.55, z + 0.92]
-    : direction === "west" ? [x + 0.31, y + 0.55, z + 0.92]
-      : direction === "south" ? [x + 0.92, y + 0.55, z + 0.94]
-        : [x + 0.92, y + 0.55, z + 0.31];
+  if (part === "head") return;
+  const paired = part === "foot";
+  const dx = paired ? (direction === "east" ? 1 : direction === "west" ? -1 : 0) : 0;
+  const dz = paired ? (direction === "south" ? 1 : direction === "north" ? -1 : 0) : 0;
+  const headX = x + dx;
+  const headZ = z + dz;
+  const longX = dx !== 0;
+  const longZ = dz !== 0;
+  const minX = Math.min(x, headX);
+  const minZ = Math.min(z, headZ);
+  appendAxisAlignedBox(output, [minX + (longX ? 0.03 : 0.08), y + 0.08, minZ + (longZ ? 0.03 : 0.08)], [Math.max(x, headX) + (longX ? 0.97 : 0.92), y + 0.32, Math.max(z, headZ) + (longZ ? 0.97 : 0.92)], [0.38, 0.20, 0.07]);
+  appendAxisAlignedBox(output, [minX + (longX ? 0.04 : 0.09), y + 0.32, minZ + (longZ ? 0.04 : 0.09)], [Math.max(x, headX) + (longX ? 0.96 : 0.91), y + 0.53, Math.max(z, headZ) + (longZ ? 0.96 : 0.91)], BLOCK_COLORS[BLOCK.BED]);
+  const pillowMin: Vec3 = direction === "east" ? [headX + 0.66, y + 0.32, headZ + 0.11]
+    : direction === "west" ? [headX + 0.09, y + 0.32, headZ + 0.11]
+      : direction === "south" ? [headX + 0.11, y + 0.32, headZ + 0.66]
+        : [headX + 0.11, y + 0.32, headZ + 0.09];
+  const pillowMax: Vec3 = direction === "east" ? [headX + 0.91, y + 0.55, headZ + 0.89]
+    : direction === "west" ? [headX + 0.34, y + 0.55, headZ + 0.89]
+      : direction === "south" ? [headX + 0.89, y + 0.55, headZ + 0.91]
+        : [headX + 0.89, y + 0.55, headZ + 0.34];
   appendAxisAlignedBox(output, pillowMin, pillowMax, [0.91, 0.90, 0.84]);
 }
 
@@ -2111,12 +2174,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (block === BLOCK.BED) {
         const start = colorVertices.length;
         const bed = getStoredBedAt(x, y, z);
+        const isFoot = bed ? bedCellKey(bed.foot) === blockKey(x, y, z) : false;
+        const footLoaded = bed ? blocks.get(bedCellKey(bed.foot)) === BLOCK.BED : false;
         appendBedMesh(
           colorVertices,
-          x,
-          y,
-          z,
-          bed ? (bedCellKey(bed.foot) === blockKey(x, y, z) ? "foot" : "head") : "single",
+          bed && !isFoot && !footLoaded ? bed.foot.x : x,
+          bed && !isFoot && !footLoaded ? bed.foot.y : y,
+          bed && !isFoot && !footLoaded ? bed.foot.z : z,
+          bed ? (isFoot || !footLoaded ? "foot" : "head") : "single",
           bed?.direction ?? "north",
         );
         packColorVerticesForSky(
@@ -2598,7 +2663,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         center: { x: explosion.x, y: explosion.y, z: explosion.z },
         radius: CREEPER_EXPLOSION_RADIUS,
       };
-      const edits = planLocalTntExplosion(
+      const edits = planLocalCreeperExplosion(
         Math.floor(explosion.x),
         Math.floor(explosion.y),
         Math.floor(explosion.z),
