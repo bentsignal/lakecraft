@@ -132,6 +132,12 @@ for (let tick = 0; tick < 120; tick += 1) {
 assert.ok(authorityStandoff > MOB_MOTION_UNITS_PER_BLOCK * 0.9);
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+for (const internalProperty of [
+  "applyConfirmedPlayerHitMobKnockback",
+  "offsetZ",
+  "previousOffsetX",
+  "previousOffsetZ",
+]) assert.ok(engine.includes(internalProperty), `${internalProperty} remains in the reviewed retained reaction boundary`);
 assert.ok(engine.includes("decideMobKnockback(eventId, mobKnockbackReceipts.has(eventId), !paused)"),
   "pause and duplicate receipts reject hit reactions at the retained engine boundary");
 assert.ok(engine.includes("if (!result.killed) applyConfirmedPlayerHitMobKnockback"),
