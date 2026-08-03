@@ -142,8 +142,9 @@ assert.ok(engine.includes("player: playerTarget"), "the mob step receives no Cre
 assert.ok(drawer.includes("Creative Inventory"));
 assert.ok(drawer.includes("Player Inventory"), "catalog-first UI exposes the full player inventory");
 assert.ok(drawer.includes("Object.values(ITEMS)"), "catalog derives from the canonical item table");
-const catalogTransition = drawer.slice(drawer.indexOf("function showCreativeCatalog"), drawer.indexOf("function closeAndStow"));
-assert.ok(catalogTransition.indexOf("commitWorkspace()") < catalogTransition.indexOf('setCreativeView("catalog")'),
-  "the normal-inventory workspace commits before the catalog replaces it");
+assert.ok(drawer.includes("takeCreativeCatalogStack(stateRef.current"), "catalog clicks use the shared cursor workspace");
+assert.ok(drawer.includes("insertCreativeCatalogStack(stateRef.current"), "modifier clicks use the shared slot-addressed workspace");
+assert.equal(drawer.includes("onCreativePick"), false, "catalog picks never bypass the workspace to overwrite the selected hotbar slot");
+assert.ok(drawer.includes('if (!commitWorkspace()) return;\n    onClose();'), "Creative and Survival both commit one stowed workspace on close");
 
 console.log("creative mode playtest regression checks passed");

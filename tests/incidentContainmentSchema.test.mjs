@@ -87,8 +87,8 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 130, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "8670c3956285b6782c849df66ab130e74574bcc0b9046dbabed0494f7b9f7df2",
-  "runtime sources match the reviewed renderer, local mob streaming, first-play metadata, server, and client headroom checkpoint");
+  "10f2c80c19ff8528a18747dc7b5427ce59e34a3ded5a2540f626c54cb86008cf",
+  "runtime sources match the reviewed Creative inventory workspace and containment checkpoint");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

@@ -4,7 +4,6 @@ import {
   type CraftingContext,
   type Equipment,
   type Inventory,
-  type ItemId,
   type Recipe,
 } from "../../shared/game";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
@@ -53,7 +52,6 @@ export type GameHudProps = {
   ) => boolean;
   onInventoryWorkspacePreview?: (snapshot: StowedInventorySnapshot) => void;
   creativeInventory?: boolean;
-  onCreativePick?: (itemId: ItemId) => void;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
   onCloseInventory: () => void;
   onResume?: () => void;
@@ -118,7 +116,6 @@ export function GameHud({
   onInventoryWorkspaceChange,
   onInventoryWorkspacePreview,
   creativeInventory = false,
-  onCreativePick,
   onCrafted,
   onCloseInventory,
   onResume,
@@ -181,7 +178,7 @@ export function GameHud({
         />
       ) : null}
       <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawnError={respawnError} respawning={respawning} respawnStatus={respawnStatus} score={deathScore} />
-      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} creative={creativeInventory} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onCreativePick={onCreativePick} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} creative={creativeInventory} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );

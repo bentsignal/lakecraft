@@ -17,6 +17,7 @@ import { CRAFTING_GRID_RECIPES, previewCraftingResult, type CraftingGridSize } f
 import {
   createInventoryWorkspace,
   doubleClickGatherToCursor,
+  insertCreativeCatalogStack,
   leftClickArmorSlot,
   leftClickInventorySlot,
   leftClickWorkspaceCraftingSlot,
@@ -27,6 +28,7 @@ import {
   shiftClickInventorySlot,
   shiftClickWorkspaceCraftingSlot,
   stowInventoryWorkspace,
+  takeCreativeCatalogStack,
   takeAllWorkspaceCraftingResultsToInventory,
   takeWorkspaceCraftingResult,
   type InventoryWorkspace,
@@ -69,7 +71,6 @@ export type InventoryCraftingDrawerProps = {
   /** Local worlds may retain a crash-safe stowed preview after every valid interaction. */
   onWorkspacePreview?: (snapshot: StowedInventorySnapshot) => void;
   creative?: boolean;
-  onCreativePick?: (itemId: ItemId) => void;
 };
 
 export function InventoryCraftingDrawer({
@@ -85,7 +86,6 @@ export function InventoryCraftingDrawer({
   onWorkspaceChange,
   onWorkspacePreview,
   creative = false,
-  onCreativePick,
 }: InventoryCraftingDrawerProps) {
   const size: CraftingGridSize = craftingContext === BS.craftingTable ? 3 : 2;
   const [workspace, setWorkspace] = useState<InventoryWorkspace>(() => createInventoryWorkspace(inventory, equipment, size));
@@ -144,7 +144,7 @@ export function InventoryCraftingDrawer({
   function publish(next: InventoryWorkspace): boolean {
     const stowed = stowInventoryWorkspace(next);
     if (!stowed.ok) {
-      setInteractionError("No room for the crafted stack. Clear a slot first.");
+      setInteractionError("No room to stow the held stack. Clear a slot first.");
       return false;
     }
     setInteractionError("");
@@ -182,6 +182,37 @@ export function InventoryCraftingDrawer({
     if (result.ok) publish(result.state);
   }
 
+  function applyCreative(result: InventoryWorkspaceActionResult): boolean {
+    doubleClickBaseRef.current = null;
+    if (!result.ok) {
+      setInteractionError(result.reason === "cursor_blocked"
+        ? "Place the held stack before choosing another item."
+        : "Inventory full. Clear a slot before adding that stack.");
+      return false;
+    }
+    return publish(result.state);
+  }
+
+  function takeCreative(itemId: ItemId): boolean {
+    return applyCreative(takeCreativeCatalogStack(stateRef.current, itemId));
+  }
+
+  function handleInventoryClick(event: MouseEvent, index: number) {
+    if (event.shiftKey) apply(shiftClickInventorySlot(stateRef.current, index));
+    else if (event.detail >= 2) {
+      let base = doubleClickBaseRef.current ?? stateRef.current;
+      if (!base.cursor) {
+        const pickedUp = leftClickInventorySlot(base, index);
+        if (pickedUp.ok) base = pickedUp.state;
+      }
+      apply(doubleClickGatherToCursor(base));
+      doubleClickBaseRef.current = null;
+    } else {
+      doubleClickBaseRef.current = stateRef.current;
+      apply(leftClickInventorySlot(stateRef.current, index), true);
+    }
+  }
+
   function commitWorkspace(): boolean {
     const stowed = stowInventoryWorkspace(stateRef.current);
     if (!stowed.ok) {
@@ -197,16 +228,7 @@ export function InventoryCraftingDrawer({
     return true;
   }
 
-  function showCreativeCatalog(): void {
-    if (!commitWorkspace()) return;
-    setCreativeView("catalog");
-  }
-
   function closeAndStow() {
-    if (creative && creativeView === "catalog") {
-      onClose();
-      return;
-    }
     if (!commitWorkspace()) return;
     onClose();
   }
@@ -229,54 +251,134 @@ export function InventoryCraftingDrawer({
   }
 
   if (!open) return null;
-  if (creative && creativeView === "catalog") {
+  const inventoryOrder = [...workspace.inventory.slice(9).keys()].map((offset) => offset + 9)
+    .concat([...workspace.inventory.slice(0, 9).keys()]);
+  if (creative) {
     const query = catalogSearch.trim().toLowerCase();
     const items = (Object.values(ITEMS) as (typeof ITEMS)[ItemId][]).filter((item) => (
       (catalogCategory === "all" || item.category === catalogCategory)
       && (!query || item.label.toLowerCase().includes(query) || item.id.includes(query))
     ));
     return (
-      <div className="lc-drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAndStow(); }}>
+      <div
+        className="lc-drawer-layer"
+        role="presentation"
+        onMouseDown={(event) => { if (event.target === event.currentTarget) closeAndStow(); }}
+        onPointerDown={(event) => setPointer({ x: event.clientX, y: event.clientY })}
+        onPointerMove={(event) => setPointer({ x: event.clientX, y: event.clientY })}
+      >
         <aside className="lc-drawer lc-inventory-window lc-creative-window" role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
           <div className="lc-inventory-titlebar">
             <h2 id="lc-inventory-title">Creative Inventory</h2>
             <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
           </div>
-          <input
-            aria-label="Search creative items"
-            autoFocus
-            className="lc-creative-search"
-            onInput={(event) => setCatalogSearch(event.currentTarget.value)}
-            placeholder="Search items..."
-            type="search"
-            value={catalogSearch}
-          />
-          <div className="lc-creative-tabs" role="tablist" aria-label="Creative item categories">
-            {(["all", ...Object.keys(CATALOG_LABELS)] as const).map((category) => (
-              <button aria-selected={catalogCategory === category} className={catalogCategory === category ? "is-active" : ""} key={category} onClick={() => setCatalogCategory(category)} role="tab" type="button">
-                {category === "all" ? "All" : CATALOG_LABELS[category]}
-              </button>
-            ))}
+          <div className="lc-creative-switch" role="tablist" aria-label="Creative inventory view">
+            <button aria-controls="lc-creative-catalog" aria-selected={creativeView === "catalog"} className={creativeView === "catalog" ? "is-active" : ""} onClick={() => setCreativeView("catalog")} role="tab" type="button">Catalog</button>
+            <button aria-controls="lc-creative-player" aria-selected={creativeView === "inventory"} className={creativeView === "inventory" ? "is-active" : ""} onClick={() => setCreativeView("inventory")} role="tab" type="button">Player</button>
           </div>
-          <div className="lc-creative-grid" role="grid" aria-label="Infinite creative item catalog">
-            {items.map((item) => {
-              const stack = createItemStack(item.id, item.maxStack);
-              return <button {...itemTooltipAttributes(stack)} aria-label={`${item.label}; put a full stack in selected hotbar slot`} className="lc-slot" key={item.id} onClick={() => onCreativePick?.(item.id)} role="gridcell" type="button"><ItemGlyph stack={stack} compact /></button>;
-            })}
+          <div className="lc-creative-workspace">
+            <section className={`lc-creative-pane lc-creative-pane--catalog${creativeView === "catalog" ? " is-active" : ""}`} id="lc-creative-catalog" role="tabpanel">
+              <h3>Infinite Catalog</h3>
+              <input
+                aria-label="Search creative items"
+                autoFocus
+                className="lc-creative-search"
+                onInput={(event) => setCatalogSearch(event.currentTarget.value)}
+                placeholder="Search items..."
+                type="search"
+                value={catalogSearch}
+              />
+              <div className="lc-creative-tabs" role="tablist" aria-label="Creative item categories">
+                {(["all", ...Object.keys(CATALOG_LABELS)] as const).map((category) => (
+                  <button aria-selected={catalogCategory === category} className={catalogCategory === category ? "is-active" : ""} key={category} onClick={() => setCatalogCategory(category)} role="tab" type="button">
+                    {category === "all" ? "All" : CATALOG_LABELS[category]}
+                  </button>
+                ))}
+              </div>
+              <div className="lc-creative-grid-wrap">
+                <div className="lc-creative-grid" role="grid" aria-label="Infinite creative item catalog">
+                  {items.map((item) => {
+                    const stack = createItemStack(item.id, item.maxStack);
+                    return (
+                      <button
+                        {...itemTooltipAttributes(stack)}
+                        aria-describedby="lc-creative-help"
+                        aria-label={`${item.label}; take a full stack`}
+                        className="lc-slot"
+                        draggable
+                        key={item.id}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey) applyCreative(insertCreativeCatalogStack(stateRef.current, item.id));
+                          else takeCreative(item.id);
+                        }}
+                        onDragStart={(event) => {
+                          if (!takeCreative(item.id)) return event.preventDefault();
+                          event.dataTransfer.effectAllowed = "copy";
+                          event.dataTransfer.setData("text/plain", item.id);
+                        }}
+                        role="gridcell"
+                        type="button"
+                      ><ItemGlyph stack={stack} compact /></button>
+                    );
+                  })}
+                </div>
+                {items.length === 0 ? <p className="lc-creative-empty">No matching items.</p> : null}
+              </div>
+              <small id="lc-creative-help">Click then place, drag to a slot, or Ctrl/Cmd-click to quick-add.</small>
+            </section>
+
+            <section className={`lc-creative-pane lc-creative-pane--player${creativeView === "inventory" ? " is-active" : ""}`} id="lc-creative-player" role="tabpanel">
+              <h3>Player Inventory</h3>
+              <div className="lc-creative-armor" aria-label="Equipped armor">
+                {(Object.keys(workspace.equipment) as ArmorSlot[]).map((slot) => {
+                  const stack = workspace.equipment[slot];
+                  return (
+                    <button
+                      {...itemTooltipAttributes(stack ? { ...stack, count: 1 } : null)}
+                      aria-label={stack ? `${ITEMS[stack.itemId].label}; ${slot} armor slot` : `Empty ${slot} armor slot`}
+                      className="lc-slot lc-armor-slot"
+                      key={slot}
+                      onClick={() => apply(leftClickArmorSlot(stateRef.current, slot))}
+                      onContextMenu={(event) => { event.preventDefault(); apply(rightClickArmorSlot(stateRef.current, slot)); }}
+                      type="button"
+                    ><span className="lc-armor-slot__label">{slot.slice(0, 1).toUpperCase()}</span><ItemGlyph stack={stack ? { ...stack, count: 1 } : null} compact /></button>
+                  );
+                })}
+              </div>
+              <div className="lc-inventory-grid" role="grid" aria-label="Player inventory slots">
+                {inventoryOrder.map((index, displayIndex) => {
+                  const stack = workspace.inventory[index];
+                  const isHotbar = displayIndex >= workspace.inventory.length - 9;
+                  return (
+                    <button
+                      {...itemTooltipAttributes(stack)}
+                      aria-label={`${index + 1}: ${stack ? `${ITEMS[stack.itemId].label}, ${stack.count}` : "Empty"}`}
+                      className={`lc-slot lc-inventory-grid__slot${index === selectedIndex ? " is-selected" : ""}${isHotbar ? " is-hotbar" : ""}`}
+                      key={index}
+                      onClick={(event) => handleInventoryClick(event, index)}
+                      onContextMenu={(event) => { event.preventDefault(); apply(rightClickInventorySlot(stateRef.current, index)); }}
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                      onDrop={(event) => { event.preventDefault(); apply(leftClickInventorySlot(stateRef.current, index)); }}
+                      role="gridcell"
+                      type="button"
+                    ><ItemGlyph stack={stack} compact /></button>
+                  );
+                })}
+              </div>
+            </section>
           </div>
-          {items.length === 0 ? <p className="lc-creative-empty">No matching items.</p> : null}
-          <div className="lc-creative-footer">
-            <small>Pick an item to fill the selected hotbar slot.</small>
-            <button onClick={() => { resetFromAuthority(); setCreativeView("inventory"); }} type="button">Player Inventory</button>
-          </div>
+          <span className="lc-inventory-error" role="status" aria-live="polite">{interactionError}</span>
         </aside>
+        {workspace.cursor ? (
+          <span className="lc-cursor-stack" style={{ left: pointer.x + 8, top: pointer.y + 8 }} aria-live="polite">
+            <ItemGlyph stack={workspace.cursor} compact />
+          </span>
+        ) : null}
       </div>
     );
   }
   const preview = previewCraftingResult(workspace.grid, size, gridRecipes);
   const previewRecipe = preview ? displayedRecipes.find(({ id }) => id === preview.recipeId) : undefined;
-  const inventoryOrder = [...workspace.inventory.slice(9).keys()].map((offset) => offset + 9)
-    .concat([...workspace.inventory.slice(0, 9).keys()]);
 
   return (
     <div
@@ -359,21 +461,7 @@ export function InventoryCraftingDrawer({
                   aria-label={`${index + 1}: ${stack ? `${ITEMS[stack.itemId].label}, ${stack.count}${durabilityLabel}` : "Empty"}`}
                   className={`lc-slot lc-inventory-grid__slot${index === selectedIndex ? " is-selected" : ""}${isHotbar ? " is-hotbar" : ""}`}
                   key={index}
-                  onClick={(event) => {
-                    if (event.shiftKey) apply(shiftClickInventorySlot(stateRef.current, index));
-                    else if (event.detail >= 2) {
-                      let base = doubleClickBaseRef.current ?? stateRef.current;
-                      if (!base.cursor) {
-                        const pickedUp = leftClickInventorySlot(base, index);
-                        if (pickedUp.ok) base = pickedUp.state;
-                      }
-                      apply(doubleClickGatherToCursor(base));
-                      doubleClickBaseRef.current = null;
-                    } else {
-                      doubleClickBaseRef.current = stateRef.current;
-                      apply(leftClickInventorySlot(stateRef.current, index), true);
-                    }
-                  }}
+                  onClick={(event) => handleInventoryClick(event, index)}
                   onContextMenu={(event) => { event.preventDefault(); apply(rightClickInventorySlot(stateRef.current, index)); }}
                   role="gridcell"
                   type="button"
@@ -385,7 +473,6 @@ export function InventoryCraftingDrawer({
           </div>
         </section>
         {interactionError ? <span className="lc-inventory-error" role="status">{interactionError}</span> : null}
-        {creative ? <div className="lc-creative-footer"><span /><button onClick={showCreativeCatalog} type="button">Creative Catalog</button></div> : null}
       </aside>
       {workspace.cursor ? (
         <span className="lc-cursor-stack" style={{ left: pointer.x + 8, top: pointer.y + 8 }} aria-live="polite">
