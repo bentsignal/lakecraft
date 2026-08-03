@@ -21,8 +21,24 @@ const placement = engine.slice(engine.indexOf("function tryPlaceSelectedBlock"),
 assert.ok(placement.indexOf("planBedPlacement") < placement.indexOf("commitEditBatch"));
 assert.ok(placement.indexOf("commitEditBatch") < placement.indexOf('emitHandAction("place")'));
 const edit = engine.slice(engine.indexOf("function emitEdit"), engine.indexOf("function onKeyDown"));
-assert.ok(edit.includes("bedBreakEdits"));
 assert.ok(edit.includes("commitEditBatch"));
-assert.ok(edit.indexOf("bedBreakEdits") < edit.indexOf("commitEditBatch"));
+assert.ok(edit.includes("previousBlock === BLOCK.BED"));
+const worldCommit = engine.slice(engine.indexOf("function commitWorldEditBatch"), engine.indexOf("function rememberWorldEdit"));
+assert.ok(worldCommit.includes("reconcileBedEditBatch"));
+assert.ok(worldCommit.indexOf("reconcileBedEditBatch") < worldCommit.indexOf("options.acceptWorldEdits"));
+assert.ok(worldCommit.indexOf("options.acceptWorldEdits") < worldCommit.indexOf("unregisterBedStructure"));
+for (const boundary of ["applyLocalExplosionEdits", "applyWorldEdits(edits)", "settleFallingBlocks(edit"]) {
+  assert.ok(engine.slice(engine.indexOf(boundary), engine.indexOf("}", engine.indexOf(boundary)) + 1).includes("commitWorldEditBatch"),
+    `${boundary} routes through bed-aware atomic reconciliation`);
+}
+const explosionProtection = engine.slice(
+  engine.indexOf("const LOCAL_EXPLOSION_PROTECTED_BLOCKS"),
+  engine.indexOf("export function planLocalTntExplosion"),
+);
+assert.equal(explosionProtection.includes("BLOCK.BED"), false, "paired beds participate in TNT and creeper crater edits");
+const explosionApply = engine.slice(engine.indexOf("function applyLocalExplosionEdits"), engine.indexOf("function updateMobs"));
+assert.ok(explosionApply.includes("previousBlock: BLOCK.BED"), "an out-of-radius companion carries correct break metadata");
+assert.ok(engine.includes("edits: appliedEdits ?? []"), "creeper persistence receives the expanded accepted crater");
+assert.ok(engine.includes("return appliedEdits;"), "TNT persistence receives the expanded accepted crater");
 
 console.log("lakecraft single-player bed integration tests: ok");

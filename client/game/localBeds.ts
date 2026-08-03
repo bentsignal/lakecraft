@@ -20,6 +20,9 @@ export type BedPlacementPlan =
   | { ok: true; bed: BedStructure; edits: readonly [WorldEdit, WorldEdit] }
   | { ok: false; reason: BedPlacementFailure };
 
+/** Edits plus structures to unregister only after the complete batch is accepted. */
+export type BedEditReconciliation = readonly [edits: WorldEdit[], removedBeds: BedStructure[]];
+
 const DIRECTIONS: Record<BedDirection, readonly [number, number]> = {
   north: [0, -1],
   south: [0, 1],
@@ -142,6 +145,56 @@ export function bedStructureAt(
   const key = bedCellKey({ x, y, z });
   const found = beds.find((bed) => bedCellKey(bed.foot) === key || bedCellKey(bed.head) === key);
   return found ? createBedStructure(found.foot, found.direction) : null;
+}
+
+/**
+ * Expands one arbitrary local edit batch across existing bed pairs. A batch
+ * that leaves either half non-BED cannot retain the other half as an orphan:
+ * an omitted companion is appended as AIR, while an explicit BED no-op is
+ * rewritten to AIR when its pair is being removed. Duplicate coordinates use
+ * their final input value without changing the first occurrence's order.
+ */
+export function reconcileBedEditBatch(
+  edits: readonly WorldEdit[],
+  getBedAt: (x: number, y: number, z: number) => BedStructure | null,
+): BedEditReconciliation {
+  const orderedKeys: string[] = [];
+  const byCell = new Map<string, WorldEdit>();
+  for (const edit of edits) {
+    const key = bedCellKey(edit);
+    if (!byCell.has(key)) orderedKeys.push(key);
+    byCell.set(key, { ...edit });
+  }
+
+  const touchedBeds = new Map<string, BedStructure>();
+  for (const key of orderedKeys) {
+    const edit = byCell.get(key)!;
+    const bed = getBedAt(edit.x, edit.y, edit.z);
+    if (bed) touchedBeds.set(bedStructureKey(bed), createBedStructure(bed.foot, bed.direction));
+  }
+
+  const removedBeds: BedStructure[] = [];
+  for (const bed of [...touchedBeds.values()].sort((left, right) =>
+    bedStructureKey(left).localeCompare(bedStructureKey(right)))) {
+    const footKey = bedCellKey(bed.foot);
+    const headKey = bedCellKey(bed.head);
+    const footBlock = byCell.get(footKey)?.block ?? BLOCK.BED;
+    const headBlock = byCell.get(headKey)?.block ?? BLOCK.BED;
+    if (footBlock === BLOCK.BED && headBlock === BLOCK.BED) continue;
+    removedBeds.push(createBedStructure(bed.foot, bed.direction));
+    for (const cell of [bed.foot, bed.head]) {
+      const key = bedCellKey(cell);
+      const existing = byCell.get(key);
+      if (!existing) {
+        orderedKeys.push(key);
+        byCell.set(key, { ...cell, block: BLOCK.AIR });
+      } else if (existing.block === BLOCK.BED) {
+        byCell.set(key, { ...existing, block: BLOCK.AIR });
+      }
+    }
+  }
+
+  return [orderedKeys.map((key) => byCell.get(key)!), removedBeds];
 }
 
 /** Returns both AIR edits with the selected half first, so one mining callback pays/drops once. */

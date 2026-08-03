@@ -86,17 +86,23 @@ assert.match(app, /id: "local-world-edit-capacity"/, "capacity feedback is stabl
 assert.doesNotMatch(multiplayer, /acceptWorldEdits:/, "Lakebed multiplayer authority remains unchanged");
 
 const emit = engine.slice(engine.indexOf("function emitEdit"), engine.indexOf("function onKeyDown"));
-const commit = engine.slice(engine.indexOf("function commitEditBatch"), engine.indexOf("function emitEdit"));
+const commit = engine.slice(engine.indexOf("function commitWorldEditBatch"), engine.indexOf("function rememberWorldEdit"));
 assert.ok(emit.includes("planLocalFallingBlockSettlement"));
+assert.ok(commit.includes("acceptWorldEdits"));
+assert.ok(commit.indexOf("reconcileBedEditBatch") < commit.indexOf("options.acceptWorldEdits?.(batch)"),
+  "bed companions and duplicate coordinates are finalized before capacity reservation");
 assert.ok(commit.indexOf("options.acceptWorldEdits?.(batch)") < commit.indexOf("rememberWorldEdit(next)"),
-  "primary and falling edits reserve one exact batch before terrain changes");
+  "every local edit boundary reserves one exact reconciled batch before terrain changes");
+assert.ok(commit.indexOf("options.acceptWorldEdits?.(batch)") < commit.indexOf("unregisterBedStructure(bed)"),
+  "capacity rejection cannot unregister metadata before the journal accepts both halves");
 for (const [startToken, endToken] of [
   ["function applyLocalExplosionEdits", "function updateMobs"],
   ["applyWorldEdits(edits)", "applyMobCombatStates"],
   ["settleFallingBlocks(edit", "setDayNightClock"],
 ] as const) {
   const branch = engine.slice(engine.indexOf(startToken), engine.indexOf(endToken, engine.indexOf(startToken)));
-  assert.ok(branch.indexOf("acceptWorldEdits") < branch.indexOf("rememberWorldEdit"), `${startToken} reserves before mutation`);
+  assert.ok(branch.includes("commitWorldEditBatch"), `${startToken} uses the shared atomic reservation boundary`);
+  assert.equal(branch.includes("rememberWorldEdit"), false, `${startToken} cannot bypass shared bed reconciliation`);
 }
 
 console.log(JSON.stringify({ benchmark: "full single-player edit journal", storedEdits: limit, overwriteCommits: 50_000, elapsedMs: Number(elapsedMs.toFixed(2)) }));

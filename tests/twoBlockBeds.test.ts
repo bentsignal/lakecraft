@@ -7,11 +7,14 @@ import {
   blockSupportsBed,
   createBedStructure,
   planBedPlacement,
+  reconcileBedEditBatch,
   validateBedStructures,
 } from "../client/game/localBeds.ts";
 import { BED_COLLISION_HEIGHT, blockCollisionHeight, blockContainsSolidPoint } from "../client/game/blockGeometry.ts";
+import { planLocalFallingBlockSettlement, planLocalTntExplosion } from "../client/game/voxelEngine.ts";
 import { raycastVoxels } from "../client/game/terrain.ts";
 import { BLOCK, type BlockId, type WorldEdit } from "../client/game/types.ts";
+import { createLocalWorldEditIndex, tryCommitLocalWorldEdits } from "../client/singleplayer/localWorldEditJournal.ts";
 import {
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
@@ -98,6 +101,81 @@ assert.deepEqual(bedBreakEdits(bed, bed.head), [
 assert.equal(bedBreakEdits(bed, { x: 99, y: 7, z: 9 }), null);
 assert.deepEqual(bedStructureAt([bed], bed.head.x, bed.head.y, bed.head.z), bed);
 
+const findBed = (candidate: typeof bed) => (x: number, y: number, z: number) =>
+  bedStructureAt([candidate], x, y, z);
+const halfBreak = reconcileBedEditBatch([{ ...bed.head, block: BLOCK.AIR }], findBed(bed));
+assert.deepEqual(halfBreak[0], [
+  { ...bed.head, block: BLOCK.AIR },
+  { ...bed.foot, block: BLOCK.AIR },
+], "an edit of either half deterministically appends the missing companion");
+assert.deepEqual(halfBreak[1], [bed]);
+assert.deepEqual(reconcileBedEditBatch([
+  { ...bed.foot, block: BLOCK.AIR },
+  { ...bed.head, block: BLOCK.AIR },
+], findBed(bed))[0], [
+  { ...bed.foot, block: BLOCK.AIR },
+  { ...bed.head, block: BLOCK.AIR },
+], "an explicit both-half removal remains coordinate-unique");
+assert.deepEqual(reconcileBedEditBatch([
+  { ...bed.foot, block: BLOCK.BED },
+  { ...bed.head, block: BLOCK.AIR },
+], findBed(bed))[0], [
+  { ...bed.foot, block: BLOCK.AIR },
+  { ...bed.head, block: BLOCK.AIR },
+], "a BED no-op cannot leave an orphan after the other half is removed");
+assert.deepEqual(reconcileBedEditBatch([
+  { ...bed.foot, block: BLOCK.AIR },
+  { ...bed.foot, block: BLOCK.STONE },
+], findBed(bed))[0], [
+  { ...bed.foot, block: BLOCK.STONE },
+  { ...bed.head, block: BLOCK.AIR },
+], "duplicate external edits are last-write-wins without duplicate capacity rows");
+assert.deepEqual(reconcileBedEditBatch([
+  { ...bed.foot, block: BLOCK.AIR },
+  { ...bed.foot, block: BLOCK.BED },
+], findBed(bed)), [[{ ...bed.foot, block: BLOCK.BED }], []],
+"a duplicate batch whose final value preserves both BED cells keeps the pair registered");
+
+const edgeBed = createBedStructure({ x: 1, y: 9, z: 0 }, "east");
+const explosion = planLocalTntExplosion(0, 10, 0, (x, y, z) => {
+  if (x === 0 && y === 10 && z === 0) return BLOCK.TNT;
+  if (bedCellKey({ x, y, z }) === bedCellKey(edgeBed.foot)
+    || bedCellKey({ x, y, z }) === bedCellKey(edgeBed.head)) return BLOCK.BED;
+  return BLOCK.AIR;
+});
+assert.equal(explosion.some((edit) => bedCellKey(edit) === bedCellKey(edgeBed.foot)), true);
+assert.equal(explosion.some((edit) => bedCellKey(edit) === bedCellKey(edgeBed.head)), false,
+  "the reviewer regression has one bed half just outside the raw crater");
+const reconciledExplosion = reconcileBedEditBatch(explosion, findBed(edgeBed));
+assert.equal(reconciledExplosion[0].some((edit) => bedCellKey(edit) === bedCellKey(edgeBed.head)
+  && edit.block === BLOCK.AIR), true, "the accepted crater includes the out-of-radius companion removal");
+
+const fallingBed = createBedStructure({ x: 1, y: 9, z: 0 }, "east");
+const falling = planLocalFallingBlockSettlement(
+  { ...fallingBed.foot, block: BLOCK.AIR },
+  BLOCK.BED,
+  (_x, y) => y === 10 ? BLOCK.SAND : y === 8 ? BLOCK.STONE : BLOCK.AIR,
+);
+assert.equal(falling.some((edit) => bedCellKey(edit) === bedCellKey(fallingBed.foot)
+  && edit.block === BLOCK.SAND), true);
+assert.equal(reconcileBedEditBatch(falling, findBed(fallingBed))[0].some((edit) =>
+  bedCellKey(edit) === bedCellKey(fallingBed.head) && edit.block === BLOCK.AIR), true,
+"a falling settlement that replaces one half also removes the companion");
+
+const fullBedJournal = createLocalWorldEditIndex([
+  { ...bed.foot, block: BLOCK.BED },
+  { ...bed.head, block: BLOCK.BED },
+  { x: 100, y: 1, z: 100, block: BLOCK.STONE },
+]);
+const capacityPlan = reconcileBedEditBatch([
+  { ...bed.foot, block: BLOCK.AIR },
+  { x: 101, y: 1, z: 100, block: BLOCK.STONE },
+], findBed(bed));
+const capacityBefore = JSON.stringify([...fullBedJournal]);
+assert.equal(tryCommitLocalWorldEdits(fullBedJournal, capacityPlan[0], 3), false,
+  "one novel edit in a full batch rejects both existing-coordinate bed removals too");
+assert.equal(JSON.stringify([...fullBedJournal]), capacityBefore, "rejected mixed batch mutates no bed or journal row");
+
 const bedEdits: WorldEdit[] = [
   { ...bed.foot, block: BLOCK.BED },
   { ...bed.head, block: BLOCK.BED },
@@ -128,5 +206,18 @@ assert.equal(saveSinglePlayerSnapshot(storage, snapshot, 200).ok, true);
 const loaded = loadSinglePlayerSave(storage);
 assert.equal(loaded.status, "loaded");
 assert.deepEqual(loaded.snapshot?.world.beds, [bed], "direction metadata survives the verified A/B journal");
+
+const removedSnapshot = createDefaultSinglePlayerSnapshot(7319, 300, "removed-bed");
+const removedIndex = createLocalWorldEditIndex(bedEdits);
+assert.equal(tryCommitLocalWorldEdits(removedIndex, halfBreak[0], 10), true);
+removedSnapshot.world.edits = [...removedIndex.values()];
+removedSnapshot.world.beds = [];
+assert.equal(saveSinglePlayerSnapshot(storage, removedSnapshot, 400).ok, true);
+const removedLoaded = loadSinglePlayerSave(storage);
+assert.equal(removedLoaded.status, "loaded");
+assert.deepEqual(removedLoaded.snapshot?.world.beds, [], "an accepted paired removal serializes no stale metadata");
+assert.equal(removedLoaded.snapshot?.world.edits.filter((edit) =>
+  bedCellKey(edit) === bedCellKey(bed.foot) || bedCellKey(edit) === bedCellKey(bed.head))
+  .every((edit) => edit.block === BLOCK.AIR), true, "both removed halves survive the verified A/B reload");
 
 console.log("two-block bed placement, structure, break, collision, raycast, and save checks passed");

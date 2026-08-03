@@ -61,11 +61,11 @@ import {
   playerIntersectsBlockCollisionHeight,
 } from "./blockGeometry.ts";
 import {
-  bedBreakEdits,
   bedCellKey,
   bedStructureKey,
   createBedStructure,
   planBedPlacement,
+  reconcileBedEditBatch,
 } from "./localBeds.ts";
 import {
   TEXTURE_ATLAS_COLUMNS,
@@ -248,7 +248,6 @@ const LOCAL_EXPLOSION_PROTECTED_BLOCKS = new Set<BlockId>([
   BLOCK.AIR,
   BLOCK.CHEST,
   BLOCK.FURNACE,
-  BLOCK.BED,
   BLOCK.DOOR_CLOSED,
   BLOCK.DOOR_OPEN,
 ]);
@@ -1674,6 +1673,29 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     bedCellOwners.delete(bedCellKey(bed.head));
   }
 
+  function commitWorldEditBatch(
+    edits: readonly WorldEdit[],
+    loadedOnly = false,
+    afterAccepted?: () => void,
+  ): WorldEdit[] | null {
+    const [batch, removedBeds] = options.twoBlockBeds
+      ? reconcileBedEditBatch(edits, getStoredBedAt)
+      : [edits.map((edit) => ({ ...edit })), []] as const;
+    if (batch.length && options.acceptWorldEdits?.(batch) === false) return null;
+    const loadedEdits: WorldEdit[] = [];
+    const skyEdits: WorldEdit[] = [];
+    for (const next of batch) {
+      rememberWorldEdit(next);
+      if (loadedOnly && !loadedChunkKeys.has(chunkKeyForBlock(next.x, next.z))) continue;
+      if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
+      loadedEdits.push(next);
+    }
+    for (const bed of removedBeds) unregisterBedStructure(bed);
+    afterAccepted?.();
+    if (loadedEdits.length) rebuildEditedWorldChunks(loadedEdits, skyEdits);
+    return batch;
+  }
+
   function rememberWorldEdit(edit: WorldEdit): void {
     const owner = chunkKeyForBlock(edit.x, edit.z);
     let chunkEdits = rememberedEditsByChunk.get(owner);
@@ -2162,20 +2184,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return true;
   }
 
-  function applyLocalExplosionEdits(edits: readonly LocalExplosionEdit[]): boolean {
+  function applyLocalExplosionEdits(edits: readonly LocalExplosionEdit[]): LocalExplosionEdit[] | null {
     const destruction = edits.filter((edit) => !edit.chainPrimed);
-    if (destruction.length && options.acceptWorldEdits?.(destruction) === false) return false;
-    const skyEdits: WorldEdit[] = [];
-    for (const edit of destruction) {
-      rememberWorldEdit(edit);
-      if (setBlock(edit.x, edit.y, edit.z, BLOCK.AIR)) skyEdits.push(edit);
-    }
-    if (!destruction.length) return true;
-    rebuildEditedWorldChunks(destruction, skyEdits);
-    for (const edit of destruction.slice(0, 12)) {
+    const committed = commitWorldEditBatch(destruction);
+    if (!committed) return null;
+    const originals = new Map(destruction.map((edit) => [blockKey(edit.x, edit.y, edit.z), edit]));
+    const appliedDestruction: LocalExplosionEdit[] = committed.map((edit) => {
+      const original = originals.get(blockKey(edit.x, edit.y, edit.z));
+      return original ? { ...original, block: edit.block } : { ...edit, previousBlock: BLOCK.BED };
+    });
+    for (const edit of appliedDestruction.slice(0, 12)) {
       blockParticles.spawn({ action: "break", block: edit.previousBlock, x: edit.x, y: edit.y, z: edit.z });
     }
-    return true;
+    return [...appliedDestruction, ...edits.filter((edit) => edit.chainPrimed)];
   }
 
   function updateMobs(dt: number): void {
@@ -2248,7 +2269,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       );
       const exposure = sampleCreeperExplosionExposure(blast, pose, (cell) =>
         localCreeperExposureBlock(getBlock(cell.x, cell.y, cell.z)));
-      const terrainAccepted = applyLocalExplosionEdits(edits);
+      const appliedEdits = applyLocalExplosionEdits(edits);
       const rawDamage = resolveCreeperExplosionDamage(blast, pose, exposure);
       const damage = rawDamage > 0
         ? mitigatedPlayerDamage(rawDamage, options.getPlayerProtection?.() ?? 0)
@@ -2259,7 +2280,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         options.onPlayerDamage?.(appliedDamage, "creeper");
         options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       }
-      options.onLocalCreeperExplosion?.({ ...explosion, damage: appliedDamage, edits: terrainAccepted ? edits : [] });
+      options.onLocalCreeperExplosion?.({ ...explosion, damage: appliedDamage, edits: appliedEdits ?? [] });
     }
     writeMobPoseSnapshots(mobSimulation, mobSnapshots);
     writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
@@ -2934,32 +2955,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     updateBeds?: () => void,
   ): boolean {
     const batch = additionalEdits.length ? [edit, ...additionalEdits] : [edit];
-    if (options.acceptWorldEdits?.(batch) === false) return false;
-    const skyEdits: WorldEdit[] = [];
-    for (const next of batch) {
-      rememberWorldEdit(next);
-      if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
-    }
-    updateBeds?.();
-    rebuildEditedWorldChunks(batch, skyEdits);
-    options.onBlockEdit?.(edit, previousBlock, additionalEdits);
+    const committed = commitWorldEditBatch(batch, false, updateBeds);
+    if (!committed) return false;
+    options.onBlockEdit?.(committed[0], previousBlock, committed.slice(1));
     return true;
   }
 
   function emitEdit(edit: WorldEdit): boolean {
     const previousBlock = getBlock(edit.x, edit.y, edit.z);
     if (options.twoBlockBeds && previousBlock === BLOCK.BED && edit.block === BLOCK.AIR) {
-      const bed = getStoredBedAt(edit.x, edit.y, edit.z);
-      if (bed) {
-        const breakEdits = bedBreakEdits(bed, edit);
-        if (!breakEdits) return false;
-        return commitEditBatch(
-          breakEdits[0],
-          previousBlock,
-          [breakEdits[1]],
-          () => unregisterBedStructure(bed),
-        );
-      }
+      return commitEditBatch(edit, previousBlock, []);
     }
     const settledEdits = options.acceptWorldEdits ? planLocalFallingBlockSettlement(
       edit,
@@ -3380,19 +3385,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteTexture(terrainTexture);
     },
     applyWorldEdits(edits) {
-      if (edits.length && options.acceptWorldEdits?.(edits) === false) return false;
-      const loadedEdits: WorldEdit[] = [];
-      const skyEdits: WorldEdit[] = [];
-      for (const edit of edits) {
-        rememberWorldEdit(edit);
-        if (!loadedChunkKeys.has(chunkKeyForBlock(edit.x, edit.z))) continue;
-        if (setBlock(edit.x, edit.y, edit.z, edit.block)) skyEdits.push(edit);
-        loadedEdits.push(edit);
-      }
-      if (loadedEdits.length) {
-        rebuildEditedWorldChunks(loadedEdits, skyEdits);
-      }
-      return true;
+      return commitWorldEditBatch(edits, true) !== null;
     },
     applyMobCombatStates(states, nextServerTimeOffsetMs) {
       if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
@@ -3562,7 +3555,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           : localCreeperExposureBlock(getBlock(cell.x, cell.y, cell.z)));
       const rawDamage = resolveCreeperExplosionDamage(blast, pose, exposure);
       const edits = planLocalTntExplosion(x, y, z, getBlock);
-      if (!applyLocalExplosionEdits(edits)) return [];
+      const appliedEdits = applyLocalExplosionEdits(edits);
+      if (!appliedEdits) return [];
       const damage = rawDamage > 0
         ? mitigatedPlayerDamage(rawDamage, options.getPlayerProtection?.() ?? 0)
         : 0;
@@ -3574,19 +3568,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       primedTnt.delete(sourceKey);
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
-      return edits;
+      return appliedEdits;
     },
     settleFallingBlocks(edit, previousBlock) {
       const settled = planLocalFallingBlockSettlement(edit, previousBlock, getBlock);
       if (settled.length === 0) return [];
-      if (options.acceptWorldEdits?.(settled) === false) return [];
-      const skyEdits: WorldEdit[] = [];
-      for (const next of settled) {
-        rememberWorldEdit(next);
-        if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
-      }
-      rebuildEditedWorldChunks(settled, skyEdits);
-      return settled;
+      return commitWorldEditBatch(settled) ?? [];
     },
     setDayNightClock(config, nextServerTimeOffsetMs) {
       serverTimeOffsetMs = applyDayNightClockUpdate(
