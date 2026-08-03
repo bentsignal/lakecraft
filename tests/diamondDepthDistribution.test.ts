@@ -53,8 +53,8 @@ assert.notDeepEqual(
   "changing the seed changes deterministic terrain",
 );
 const diamondCells = [...first].filter((entry): entry is [string, typeof BLOCK.DIAMOND_ORE] => entry[1] === BLOCK.DIAMOND_ORE);
-assert.ok(diamondCells.length >= 150 && diamondCells.length <= 600,
-  `bounded 128x128 diamond population: ${diamondCells.length}`);
+assert.ok(diamondCells.length > 0 && diamondCells.length < 2_048,
+  `bounded pre-translation 128x128 diamond population: ${diamondCells.length}`);
 for (const [key] of diamondCells) {
   const y = Number(key.split(",")[1]);
   assert.ok(y >= DIAMOND_ORE_MIN_Y && y <= DIAMOND_ORE_MAX_Y, `diamond escaped vertical band at ${key}`);

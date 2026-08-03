@@ -95,7 +95,7 @@ const namedSamples = [
   [1_000, -21, -1_997, "air", "far mixed-sign cave"],
   [1_001, -3, -1_998, "gravel", "far mixed-sign gravel"],
   [-997, 5, 2_000, "sand", "far mixed-sign beach"],
-  [-987, 4, 1_999, "diamond_ore", "far mixed-sign diamond"],
+  [-999, 2, 2_041, "diamond_ore", "far mixed-sign diamond"],
   [65_536, -5, -65_536, "air", "large exact-boundary cave"],
   [65_536, -12, -65_536, "iron_ore", "large exact-boundary iron"],
   [-65_541, 9, 65_529, "sand", "large negative-boundary beach"],
