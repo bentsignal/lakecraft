@@ -450,6 +450,33 @@ export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
 
+/** Allocation-free CPU mirror used at the bounded mob spawn/simulation cadence. */
+export function sampleCachedMobLocalLight(
+  skyExposure: number,
+  sunlightIntensity: number,
+  torchUniforms: Float32Array,
+  torchCount: number,
+  x: number,
+  y: number,
+  z: number,
+): number {
+  let light = clampNumber(skyExposure, 0, SKY_EXPOSURE_LEVELS)
+    / SKY_EXPOSURE_LEVELS * clampNumber(sunlightIntensity, 0, 1);
+  const count = Math.min(MAX_ACTIVE_TORCH_LIGHTS, Math.max(0, Math.floor(torchCount)));
+  for (let index = 0; index < count; index += 1) {
+    const offset = index * 4;
+    const radius = torchUniforms[offset + 3];
+    if (!(radius > 0)) continue;
+    const dx = torchUniforms[offset] - x;
+    const dy = torchUniforms[offset + 1] - y;
+    const dz = torchUniforms[offset + 2] - z;
+    const distanceSquared = dx * dx + dy * dy + dz * dz;
+    if (distanceSquared >= radius * radius) continue;
+    light = Math.max(light, 1 - Math.sqrt(distanceSquared) / radius);
+  }
+  return light;
+}
+
 // The color and terrain programs intentionally share this source fragment at
 // runtime. Keeping one compact copy preserves the readable CPU-side lighting
 // mirrors while avoiding two near-identical GLSL payloads in the client bundle.
@@ -1388,6 +1415,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const torchLights = new Map<string, TorchLightPosition>();
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const firstPersonTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
+  let activeTorchLights = 0;
   const chunkBlocks = new Map<string, Set<string>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
@@ -1447,6 +1475,39 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let streamingCenterKey = chunkKey(initialChunkPlan.center.x, initialChunkPlan.center.z);
   let mobStreamingCenterX = (initialChunkPlan.center.x + 0.5) * WORLD_CHUNK_SIZE;
   let mobStreamingCenterZ = (initialChunkPlan.center.z + 0.5) * WORLD_CHUNK_SIZE;
+  sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
+  const initialMobTorchLights = selectNearestTorchLights(
+    torchLights.values(),
+    [pose.x, pose.y + 1.2, pose.z],
+    MAX_ACTIVE_TORCH_LIGHTS,
+    TORCH_LIGHT_RADIUS,
+  );
+  activeTorchLights = initialMobTorchLights.length;
+  for (let index = 0; index < initialMobTorchLights.length; index += 1) {
+    const light = initialMobTorchLights[index];
+    const offset = index * 4;
+    activeTorchUniforms[offset] = light.x;
+    activeTorchUniforms[offset + 1] = light.y;
+    activeTorchUniforms[offset + 2] = light.z;
+    activeTorchUniforms[offset + 3] = TORCH_LIGHT_RADIUS;
+  }
+
+  function cachedMobDirectSky(_kind: unknown, x: number, y: number, z: number): boolean {
+    return skyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z))
+      === SKY_EXPOSURE_LEVELS;
+  }
+
+  function cachedMobLocalLight(_kind: unknown, x: number, y: number, z: number): number {
+    return sampleCachedMobLocalLight(
+      skyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z)),
+      dayNightState.sunIntensity,
+      activeTorchUniforms,
+      activeTorchLights,
+      x,
+      y,
+      z,
+    );
+  }
   const chunkMeshes = new Map<string, ChunkMesh>();
   const visibleMeshes: ChunkMesh[] = [];
   const transparentMeshes: ChunkMesh[] = [];
@@ -1462,6 +1523,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     hostilePopulation: clampNumber(Math.floor(radius / 5), 2, 5),
     maxPopulation: 17,
     spawnClearRadius: localMobStreaming ? LOCAL_MOB_STREAM_CLEAR_RADIUS : 6,
+    localLight: cachedMobLocalLight,
     isSpawnable: (_kind: unknown, x: number, y: number, z: number) => (!localMobStreaming || (
       loadedChunkKeys.has(chunkKeyForBlock(x, z))
       && isLocalMobSpawnOutsideView(pose.x, pose.z, pose.yaw, x, z)
@@ -1562,7 +1624,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobStepSeconds = 0.1;
   let playerHealth = PLAYER_MAX_HEALTH;
   let lastPerformanceSent = 0;
-  let activeTorchLights = 0;
   let lastTorchSelectionAt = -Infinity;
   let lastTorchCameraX = Infinity;
   let lastTorchCameraY = Infinity;
@@ -2330,6 +2391,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           return blockHasCollision(block) && blockContainsSolidPoint(block, blockY, y);
         },
         projectileDamageSources,
+        localLight: cachedMobLocalLight,
+        directSky: cachedMobDirectSky,
+        sunlightIntensity: dayNightState.sunIntensity,
+        acceptFatalDrops: options.onMobDrops,
         worldRadius: localMobStreaming ? LOCAL_MOB_STREAM_RETAIN_RADIUS : radius - 1,
         worldCenterX: localMobStreaming ? mobStreamingCenterX : 0,
         worldCenterZ: localMobStreaming ? mobStreamingCenterZ : 0,

@@ -92,20 +92,20 @@ assert.equal(
   "the visible chicken head is included in its attack bounds",
 );
 
-// Zombies are dormant by day, then activate and close distance at night.
+// Spawn gating handles daylight ecology; an existing zombie remains dangerous.
 const zombieSimulation = createMobSimulation([descriptor("zombie", 0, 0, 101)]);
 const zombie = zombieSimulation.mobs[0];
 for (let tick = 0; tick < 60; tick += 1) {
   stepMobSimulation(zombieSimulation, { dtSeconds: 1 / 60, isNight: false, terrainHeight: () => 0, player: { x: 8, y: 1, z: 0 } });
 }
-assert.equal(zombie.behavior, "dormant");
-assert.equal(zombie.x, 0);
+assert.equal(zombie.behavior, "chase");
+assert.ok(zombie.x > 1.3, "an existing daylight zombie remains dangerous while shade controls burning");
 for (let tick = 0; tick < 120; tick += 1) {
   stepMobSimulation(zombieSimulation, { dtSeconds: 1 / 60, isNight: true, terrainHeight: () => 0, player: { x: 8, y: 1, z: 0 } });
 }
 assert.equal(zombie.behavior, "chase");
 assert.equal(zombie.hostileActive, true);
-assert.ok(zombie.x > 2.7 && zombie.x < 3, `zombie should chase at its configured speed, reached ${zombie.x}`);
+assert.ok(zombie.x > 4.2 && zombie.x < 4.5, `zombie should chase at its configured speed, reached ${zombie.x}`);
 
 // Blocked diagonal motion should slide along its unblocked axis and never enter solids.
 const collisionSimulation = createMobSimulation([descriptor("pig", 0, 0, 202)]);
@@ -139,7 +139,8 @@ damageMob(cowSimulationB, "cow-test", 4);
 const fatalB = damageMob(cowSimulationB, "cow-test", 10);
 assert.equal(fatalA.killed, true);
 assert.deepEqual(fatalB.drops, fatalA.drops, "drop rolls must be deterministic for the same mob and hit sequence");
-assert.equal(writeMobPoseSnapshots(cowSimulationA).length, 0, "dead mobs should disappear from pose snapshots");
+assert.equal(writeMobPoseSnapshots(cowSimulationA).length, 1, "a dead mob remains visible for its short fall-over");
+assert.equal(writeMobPoseSnapshots(cowSimulationA)[0]?.deathProgress, 0);
 
 const benchmarkSpawns = createMobSpawns({
   seed: 909,
