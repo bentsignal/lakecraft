@@ -6,6 +6,7 @@ import {
   beginSinglePlayerPointerLockAttempt,
   createSinglePlayerPointerSessionState,
   releaseBlockedSinglePlayerPointerLockGrant,
+  singlePlayerInventoryCloseUsesTrustedRecapture,
   singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
@@ -267,6 +268,13 @@ for (const code of ["Escape", "Slash", "KeyT", "Enter", "KeyE", "KeyQ"]) {
 }
 assert.equal(singlePlayerSilentRecaptureKey("KeyW", true), false, "key repeat cannot duplicate a lock request");
 
+assert.equal(singlePlayerInventoryCloseUsesTrustedRecapture("KeyE"), true,
+  "E is an ordinary trusted activation and closes inventory with an immediate capture request");
+assert.equal(singlePlayerInventoryCloseUsesTrustedRecapture(undefined), true,
+  "the inventory Done button closes with an immediate trusted capture request");
+assert.equal(singlePlayerInventoryCloseUsesTrustedRecapture("Escape"), false,
+  "Escape is the browser's reserved unlock gesture and must defer recapture");
+
 const closeThenGameplay = run(createSinglePlayerPointerSessionState(false), { type: "close_ui_escape", now: 2_000 });
 const gameplayLock = run(closeThenGameplay.state, { type: "lock_change", locked: true, now: 2_010, uiBlocked: false });
 const ordinaryGameplayEscape = run(gameplayLock.state, { type: "escape", now: 2_100, uiBlocked: false });
@@ -367,8 +375,26 @@ assert.match(singlePlayerSource, /silentPointerRecaptureRef\.current && singlePl
   "the next eligible gameplay key silently requests capture without consuming its engine event");
 assert.ok(singlePlayerSource.includes("allowUnlockedKeyboardInput: () => silentPointerRecaptureRef.current"),
   "the initiating movement key remains live while Chrome grants capture asynchronously");
-assert.ok(singlePlayerSource.includes('if (keyboardCode === "Escape") armGameplayResumeAfterEscape(performance.now())'),
-  "inventory Escape shares the same silent recapture state machine");
+const inventoryClose = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("function closeInventoryAndResume"),
+  singlePlayerSource.indexOf("function warnWorldEditCapacity"),
+);
+assertSourceOrder(
+  inventoryClose,
+  "pointerUiBlockedRef.current = uiModalOpen",
+  "requestGameplayPointerLock(closeInventoryUi)",
+  "inventory close updates the synchronous UI gate before a fast trusted capture grant",
+);
+assertSourceOrder(
+  inventoryClose,
+  "requestGameplayPointerLock(closeInventoryUi)",
+  "closeInventoryUi();",
+  "E and Done request capture before removing their trusted activation UI",
+);
+assert.ok(inventoryClose.includes("singlePlayerInventoryCloseUsesTrustedRecapture(keyboardCode)"),
+  "inventory close selects immediate versus deferred recapture from the actual close gesture");
+assert.ok(inventoryClose.includes("armGameplayResumeAfterEscape(performance.now())"),
+  "inventory Escape shares the no-overlay silent recapture state machine");
 assert.match(singlePlayerSource, /cancelRangedActionForEscape\(\)[\s\S]{0,300}armGameplayResumeAfterEscape/,
   "bow Escape cancels the draw before arming silent gameplay recapture");
 assert.ok(singlePlayerSource.includes("Click to Play"), "failed handoff has one explicit pointer-capture affordance");

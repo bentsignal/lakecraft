@@ -68,6 +68,18 @@ export function singlePlayerSilentRecaptureKey(code: string, repeat = false): bo
   ].includes(code);
 }
 
+/**
+ * Escape is the browser's reserved Pointer Lock release gesture, so Chrome does
+ * not let that same key activation reliably reacquire capture. E and pointer
+ * clicks are ordinary trusted activations and can reacquire before the
+ * inventory UI is removed.
+ */
+export function singlePlayerInventoryCloseUsesTrustedRecapture(
+  code?: "Escape" | "KeyE",
+): boolean {
+  return code !== "Escape";
+}
+
 export interface SinglePlayerPointerSessionTransition {
   state: SinglePlayerPointerSessionState;
   openPause: boolean;
