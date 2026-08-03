@@ -326,6 +326,20 @@ function canUseCanonicalCube(block: BlockId): boolean {
   return block !== BLOCK.AIR && blockTextureForFace(block, "east") !== null;
 }
 
+export type FirstPersonHeldItemTuningGroup = "block" | "bow" | "tool" | "otherItem" | null;
+
+/** The production pose-tuning group used when the held-item mesh is rebuilt. */
+export function firstPersonHeldItemTuningGroup(
+  itemId: ItemId | null,
+  block: BlockId,
+): FirstPersonHeldItemTuningGroup {
+  if (!itemId) return null;
+  if (ITEMS[itemId].category === "block" && canUseCanonicalCube(block)) return "block";
+  if (itemId === "bow") return "bow";
+  if (ITEMS[itemId].tool) return "tool";
+  return "otherItem";
+}
+
 function appendTexturedCube(output: number[], block: BlockId): void {
   const size = FIRST_PERSON_TUNING.block.size;
   const center = FIRST_PERSON_TUNING.block.center;
@@ -476,25 +490,26 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
 
   function rebuild(): void {
     const geometry: GeometryWriter = [[], []];
-    if (itemId && ITEMS[itemId].category === "block" && canUseCanonicalCube(block)) {
+    const tuningGroup = firstPersonHeldItemTuningGroup(itemId, block);
+    if (tuningGroup === "block") {
       appendTexturedCube(geometry[1], block);
-    } else if (itemId === "bow") {
+    } else if (tuningGroup === "bow") {
       const start = geometry[0].length;
       appendBow(geometry[0], chargeStage, charging);
       applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.bow);
-    } else if (itemId && ITEMS[itemId].tool) {
+    } else if (tuningGroup === "tool" && itemId) {
       const start = geometry[0].length;
       appendTool(geometry[0], itemId);
       applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.tool);
-    } else if (itemId && ITEMS[itemId].category === "food") {
+    } else if (tuningGroup === "otherItem" && itemId && ITEMS[itemId].category === "food") {
       const start = geometry[0].length;
       appendFood(geometry[0], itemId);
       applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
-    } else if (itemId && ITEMS[itemId].category === "block") {
+    } else if (tuningGroup === "otherItem" && itemId && ITEMS[itemId].category === "block") {
       const start = geometry[0].length;
       appendSpecialBlock(geometry[0], itemId);
       applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
-    } else if (itemId) {
+    } else if (tuningGroup === "otherItem" && itemId) {
       const start = geometry[0].length;
       appendMaterial(geometry[0], itemId);
       applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
