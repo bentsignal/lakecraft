@@ -233,6 +233,59 @@ export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
 export const TARGET_OUTLINE_VERTEX_COUNT = 24;
 export const PAUSED_RENDER_INTERVAL_MS = 100;
 
+interface PointerLockRequestDocument {
+  readonly pointerLockElement: unknown;
+  addEventListener(type: "pointerlockchange" | "pointerlockerror", listener: () => void): void;
+  removeEventListener(type: "pointerlockchange" | "pointerlockerror", listener: () => void): void;
+}
+
+interface PointerLockRequestWindow {
+  setTimeout(callback: () => void, timeoutMs: number): number;
+  clearTimeout(timer: number): void;
+}
+
+interface PointerLockRequestTarget {
+  requestPointerLock(): void | PromiseLike<void>;
+}
+
+/** A stale unlock change cannot reject a newer trusted pointer-lock request. */
+export function requestPointerLockForTarget(
+  target: PointerLockRequestTarget,
+  pointerDocument: PointerLockRequestDocument,
+  pointerWindow: PointerLockRequestWindow,
+  timeoutMs = 250,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let fallbackTimer = 0;
+    const finish = (locked: boolean) => {
+      if (settled) return;
+      settled = true;
+      pointerDocument.removeEventListener("pointerlockchange", onPointerLockSettled);
+      pointerDocument.removeEventListener("pointerlockerror", onPointerLockError);
+      pointerWindow.clearTimeout(fallbackTimer);
+      resolve(locked);
+    };
+    const onPointerLockSettled = () => {
+      if (pointerDocument.pointerLockElement === target) finish(true);
+    };
+    const onPointerLockError = () => finish(false);
+    pointerDocument.addEventListener("pointerlockchange", onPointerLockSettled);
+    pointerDocument.addEventListener("pointerlockerror", onPointerLockError);
+    fallbackTimer = pointerWindow.setTimeout(
+      () => finish(pointerDocument.pointerLockElement === target),
+      timeoutMs,
+    );
+    try {
+      const request = target.requestPointerLock();
+      if (pointerDocument.pointerLockElement === target) finish(true);
+      void Promise.resolve(request).catch(onPointerLockError);
+    } catch {
+      finish(false);
+    }
+  });
+}
+
 const TARGET_OUTLINE_CORNERS = [
   0, 1, 1, 3, 3, 2, 2, 0,
   4, 5, 5, 7, 7, 6, 6, 4,
@@ -3635,34 +3688,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function requestCanvasPointerLock(): Promise<boolean> {
-    return new Promise((resolve) => {
-      let settled = false;
-      let fallbackTimer = 0;
-      const finish = (locked: boolean) => {
-        if (settled) return;
-        settled = true;
-        document.removeEventListener("pointerlockchange", onPointerLockSettled);
-        document.removeEventListener("pointerlockerror", onPointerLockError);
-        window.clearTimeout(fallbackTimer);
-        resolve(locked);
-      };
-      const onPointerLockSettled = () => finish(document.pointerLockElement === canvas);
-      const onPointerLockError = () => finish(false);
-      document.addEventListener("pointerlockchange", onPointerLockSettled);
-      document.addEventListener("pointerlockerror", onPointerLockError);
-      fallbackTimer = window.setTimeout(
-        () => finish(document.pointerLockElement === canvas),
-        250,
-      );
-      try {
-        const request = canvas.requestPointerLock();
-        if (document.pointerLockElement === canvas) finish(true);
-        void Promise.resolve(request).catch(onPointerLockError);
-      } catch {
-        // A denied browser gesture must leave the menu usable without surfacing an unhandled error.
-        finish(false);
-      }
-    });
+    return requestPointerLockForTarget(canvas, document, window);
   }
 
   function applyCapturedMouseDown(button: number): void {

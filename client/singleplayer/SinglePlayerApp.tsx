@@ -118,6 +118,7 @@ import {
 import { consumeSelectedPlacementStack } from "./localPlacement.ts";
 import {
   SINGLE_PLAYER_INITIAL_PAUSE_OPEN,
+  beginSinglePlayerPointerLockAttempt,
   consumeSinglePlayerCommandSurfaceEscape,
   createSinglePlayerPointerSessionState,
   singlePlayerGameplayPaused,
@@ -270,6 +271,7 @@ function SinglePlayerWorld({
   const pointerSessionRef = useRef(createSinglePlayerPointerSessionState(false));
   const silentPointerRecaptureRef = useRef(false);
   const pointerLockRequestRef = useRef(0);
+  const pointerLockPendingRef = useRef(false);
   const inventoryRef = useRef(initialSnapshot.player.inventory);
   const equipmentRef = useRef(initialSnapshot.player.equipment);
   const selectedRef = useRef(initialSnapshot.player.selectedHotbar);
@@ -370,42 +372,51 @@ function SinglePlayerWorld({
     setSilentPointerRecaptureDenied(false);
   }
 
-  function requestEnginePointerLock(silent = false): void {
+  function requestEnginePointerLock(silent = false, onStarted = () => undefined): void {
     const requestId = ++pointerLockRequestRef.current;
-    setPointerCaptureNeeded(false);
     const engine = engineRef.current;
-    if (!engine) {
-      if (silent) setSilentPointerRecaptureDenied(true);
-      else setPointerCaptureNeeded(true);
-      return;
-    }
-    void engine.requestPointerLock().then((locked) => {
-      if (requestId !== pointerLockRequestRef.current) return;
-      if (locked) {
-        clearSilentPointerRecapture();
+    beginSinglePlayerPointerLockAttempt(
+      () => engine?.requestPointerLock() ?? false,
+      () => {
+        pointerLockPendingRef.current = Boolean(engine);
         setPointerCaptureNeeded(false);
-      } else if (silent) {
-        silentPointerRecaptureRef.current = true;
-        setSilentPointerRecaptureDenied(true);
-        setPointerCaptureNeeded(false);
-      } else {
-        setPointerCaptureNeeded(true);
-      }
-    });
+        onStarted();
+      },
+      (locked) => {
+        if (requestId !== pointerLockRequestRef.current) return;
+        pointerLockPendingRef.current = false;
+        if (locked) {
+          clearSilentPointerRecapture();
+          setPointerCaptureNeeded(false);
+        } else if (silent) {
+          silentPointerRecaptureRef.current = true;
+          setSilentPointerRecaptureDenied(true);
+          setPointerCaptureNeeded(false);
+        } else {
+          setPointerCaptureNeeded(true);
+        }
+      },
+    );
   }
 
   function applyPointerSessionEvent(event: SinglePlayerPointerSessionEvent): void {
     const transition = transitionSinglePlayerPointerSession(pointerSessionRef.current, event);
     pointerSessionRef.current = transition.state;
-    if (transition.openPause) {
-      clearSilentPointerRecapture();
-      setOptionsOpen(false);
-      setPauseOpen(true);
-      setPointerCaptureNeeded(false);
-    }
-    if (transition.closePause) setPauseOpen(false);
-    if (transition.showCaptureAffordance) setPointerCaptureNeeded(true);
-    if (transition.requestPointerLock) requestEnginePointerLock();
+    const applyUiTransition = () => {
+      if (transition.openPause) {
+        clearSilentPointerRecapture();
+        setOptionsOpen(false);
+        setPauseOpen(true);
+        setPointerCaptureNeeded(false);
+      }
+      if (transition.closePause) {
+        clearSilentPointerRecapture();
+        setPauseOpen(false);
+      }
+      if (transition.showCaptureAffordance) setPointerCaptureNeeded(true);
+    };
+    if (transition.requestPointerLock) requestEnginePointerLock(false, applyUiTransition);
+    else applyUiTransition();
   }
 
   function setGamePauseOpen(open: boolean): void {
@@ -418,6 +429,7 @@ function SinglePlayerWorld({
     entryPointerLockHandoffRef.current = false;
     clearSilentPointerRecapture();
     pointerLockRequestRef.current += 1;
+    pointerLockPendingRef.current = false;
     pointerUiBlockedRef.current = true;
     applyPointerSessionEvent({ type: "intentional_release" });
     setPointerCaptureNeeded(false);
@@ -425,7 +437,6 @@ function SinglePlayerWorld({
   }
 
   function requestGameplayPointerLock(): void {
-    clearSilentPointerRecapture();
     applyPointerSessionEvent({ type: "resume" });
   }
 
@@ -1175,6 +1186,11 @@ function SinglePlayerWorld({
           engineRef.current?.requestPointerLock();
           return;
         }
+        // The browser can deliver the tail of Escape's unlock after the user
+        // has clicked Back to Game. The in-flight request's own result owns
+        // denial; this stale unlocked notification must not mount Click to Play.
+        if (!locked && pointerLockPendingRef.current) return;
+        if (locked) pointerLockPendingRef.current = false;
         applyPointerSessionEvent({
           type: "lock_change",
           locked,

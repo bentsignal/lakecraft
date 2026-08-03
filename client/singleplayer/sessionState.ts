@@ -76,6 +76,28 @@ export interface SinglePlayerPointerSessionTransition {
   showCaptureAffordance: boolean;
 }
 
+/**
+ * Starts Pointer Lock before running any UI transition effects. Browser user
+ * activation is tied to the current input callback, so callers must not close
+ * or replace the activating button before invoking the browser request.
+ */
+export function beginSinglePlayerPointerLockAttempt(
+  request: () => PromiseLike<boolean> | boolean,
+  onStarted: () => void,
+  onSettled: (locked: boolean) => void,
+): void {
+  let result: PromiseLike<boolean> | boolean;
+  try {
+    result = request();
+  } catch {
+    onStarted();
+    onSettled(false);
+    return;
+  }
+  onStarted();
+  void Promise.resolve(result).then(onSettled, () => onSettled(false));
+}
+
 export function createSinglePlayerPointerSessionState(
   locked = false,
   pauseOpen = SINGLE_PLAYER_INITIAL_PAUSE_OPEN,

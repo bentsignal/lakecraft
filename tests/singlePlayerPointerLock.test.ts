@@ -3,12 +3,14 @@ import { readFileSync } from "node:fs";
 import {
   COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
   POINTER_LOCK_ESCAPE_DEDUP_MS,
+  beginSinglePlayerPointerLockAttempt,
   createSinglePlayerPointerSessionState,
   singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
   type SinglePlayerPointerSessionState,
 } from "../client/singleplayer/sessionState.ts";
+import { requestPointerLockForTarget } from "../client/game/voxelEngine.ts";
 
 function run(
   state: SinglePlayerPointerSessionState,
@@ -83,6 +85,78 @@ assert.equal(recaptured.state.locked, true);
 assert.equal(recaptured.showCaptureAffordance, false, "successful recapture removes the fallback affordance");
 const denied = run(resumeClick.state, { type: "lock_change", locked: false, now: 501, uiBlocked: false });
 assert.equal(denied.showCaptureAffordance, true, "denied or lost capture exposes one explicit recovery action");
+
+let settleTrustedRequest: ((locked: boolean) => void) | undefined;
+let pauseVisible = true;
+let pointerCaptureNeeded = true;
+const trustedRequestTrace: string[] = [];
+beginSinglePlayerPointerLockAttempt(
+  () => {
+    trustedRequestTrace.push("request");
+    return new Promise<boolean>((resolve) => { settleTrustedRequest = resolve; });
+  },
+  () => {
+    trustedRequestTrace.push("resume");
+    pauseVisible = false;
+    pointerCaptureNeeded = false;
+  },
+  (locked) => { pointerCaptureNeeded = !locked; },
+);
+assert.deepEqual(trustedRequestTrace, ["request", "resume"],
+  "Back to Game requests Pointer Lock before replacing the trusted-click UI");
+assert.equal(pauseVisible, false);
+assert.equal(pointerCaptureNeeded, false, "an in-flight trusted request never flashes Click to Play");
+settleTrustedRequest?.(true);
+await Promise.resolve();
+assert.equal(pointerCaptureNeeded, false, "a successful trusted request resumes without Click to Play");
+
+let rejectTrustedRequest: ((locked: boolean) => void) | undefined;
+beginSinglePlayerPointerLockAttempt(
+  () => new Promise<boolean>((resolve) => { rejectTrustedRequest = resolve; }),
+  () => { pointerCaptureNeeded = false; },
+  (locked) => { pointerCaptureNeeded = !locked; },
+);
+rejectTrustedRequest?.(false);
+await Promise.resolve();
+assert.equal(pointerCaptureNeeded, true, "a genuine denial exposes the recoverable Click to Play fallback");
+
+type PointerListener = () => void;
+const pointerListeners = new Map<string, Set<PointerListener>>();
+let pointerElement: unknown = null;
+let pointerRequestCount = 0;
+let fallback: (() => void) | undefined;
+const pointerDocument = {
+  get pointerLockElement() { return pointerElement; },
+  addEventListener(type: string, listener: PointerListener) {
+    const listeners = pointerListeners.get(type) ?? new Set<PointerListener>();
+    listeners.add(listener);
+    pointerListeners.set(type, listeners);
+  },
+  removeEventListener(type: string, listener: PointerListener) {
+    pointerListeners.get(type)?.delete(listener);
+  },
+};
+const pointerWindow = {
+  setTimeout(callback: () => void) { fallback = callback; return 1; },
+  clearTimeout() { fallback = undefined; },
+};
+const pointerTarget = { requestPointerLock() { pointerRequestCount += 1; } };
+let lifecycleSettled = false;
+const lifecycleRequest = requestPointerLockForTarget(pointerTarget, pointerDocument, pointerWindow)
+  .then((locked) => { lifecycleSettled = true; return locked; });
+assert.equal(pointerRequestCount, 1);
+for (const listener of pointerListeners.get("pointerlockchange") ?? []) listener();
+await Promise.resolve();
+assert.equal(lifecycleSettled, false, "the trailing Escape unlock cannot reject a newer request");
+pointerElement = pointerTarget;
+for (const listener of pointerListeners.get("pointerlockchange") ?? []) listener();
+assert.equal(await lifecycleRequest, true, "the later target lock settles the same request successfully");
+
+pointerElement = null;
+const denialRequest = requestPointerLockForTarget(pointerTarget, pointerDocument, pointerWindow);
+for (const listener of pointerListeners.get("pointerlockerror") ?? []) listener();
+assert.equal(await denialRequest, false, "pointerlockerror still provides an explicit recoverable denial");
+assert.equal(fallback, undefined, "settled attempts always remove their denial timer");
 
 /**
  * Real Chrome trace from the command input: keydown(Escape) closes Preact UI,
