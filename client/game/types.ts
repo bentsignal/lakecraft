@@ -463,7 +463,21 @@ export interface VoxelEngine {
   /** Local-only exact sheep clip; inventory acceptance runs before visual state changes. */
   shearMob(mobId: string, acceptWool: (count: number) => boolean): import("./mobs.ts").LocalMobShearResult;
   /** Resolves one already-paid offline arrow hit; never runs when Lakebed delegates combat. */
-  damageLocalMobWithRangedShot(mobId: string, damage: number): MobDamageResult;
+  damageLocalMobWithRangedShot(
+    mobId: string,
+    damage: number,
+    eventId: string,
+    sourceX: number,
+    sourceZ: number,
+  ): MobDamageResult;
+  /** Applies a bounded reaction only after an exact player-to-mob hit is confirmed. */
+  applyConfirmedPlayerHitMobKnockback(
+    eventId: string,
+    mobId: string,
+    sourceX: number,
+    sourceZ: number,
+    damage: number,
+  ): boolean;
   setSelectedBlock(block: BlockId): void;
   /** Updates the retained first-person arm/item model without touching world interaction state. */
   setSelectedItem(itemId: ItemId | null): void;

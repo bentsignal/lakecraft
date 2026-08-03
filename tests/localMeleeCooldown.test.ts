@@ -32,7 +32,7 @@ const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta
 const delegatedStart = engine.indexOf("if (options.onMobAttack)");
 const localGate = engine.indexOf("const attackNow = performance.now()", delegatedStart);
 const damageCall = engine.indexOf("const result = damageMob", localGate);
-const localEnd = engine.indexOf("writeMobPoseSnapshots", damageCall);
+const localEnd = engine.indexOf("writeReactiveMobPoseSnapshots", damageCall);
 assert.ok(delegatedStart > 0 && localGate > delegatedStart && damageCall > localGate && localEnd > damageCall);
 const delegatedBranch = engine.slice(delegatedStart, localGate);
 const localBranch = engine.slice(localGate, localEnd);

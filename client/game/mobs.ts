@@ -98,6 +98,22 @@ export const MAX_MOB_PROJECTILES = 24;
 export const MOB_PROJECTILE_LIFETIME_SECONDS = 3;
 export const MOB_PROJECTILE_GRAVITY = 2.4;
 export const LOCAL_MOB_LINE_OF_SIGHT_MAX_SAMPLES = 64;
+export const MOB_PLAYER_CONTACT_RADIUS = 0.32;
+
+export function meleeMobPlayerStandoff(kind: MobKind): number {
+  const definition = MOB_DEFINITIONS[kind];
+  return definition.contactDamage > 0 ? definition.collisionRadius + MOB_PLAYER_CONTACT_RADIUS : 0;
+}
+
+/** Stable zero-distance escape vector; it never consumes the mob's replay RNG. */
+export function stableMobSeparationDirection(behaviorSeed: number): readonly [number, number] {
+  switch ((Number.isSafeInteger(behaviorSeed) ? behaviorSeed : 0) & 3) {
+    case 0: return [1, 0];
+    case 1: return [0, 1];
+    case 2: return [-1, 0];
+    default: return [0, -1];
+  }
+}
 
 /** Creepers remain hostile in daylight; the other current hostiles do not. */
 export function localMobHostileActive(kind: MobKind, isNight: boolean): boolean {
@@ -778,23 +794,28 @@ function stopMob(mob: MobState, behavior: MobBehavior): void {
   mob.desiredZ = mob.z;
 }
 
-function moveMob(mob: MobState, dx: number, dz: number, input: Readonly<MobStepInput>): void {
+function tryMoveMob(mob: MobState, dx: number, dz: number, input: Readonly<MobStepInput>): boolean {
   const targetX = mob.x + dx;
   const targetZ = mob.z + dz;
   mob.desiredX = targetX;
   mob.desiredZ = targetZ;
   if (canMoveTo(mob, targetX, targetZ, input)) {
     applyMovement(mob, targetX, targetZ, input);
-    return;
+    return true;
   }
   if (dx !== 0 && canMoveTo(mob, targetX, mob.z, input)) {
     applyMovement(mob, targetX, mob.z, input);
-    return;
+    return true;
   }
   if (dz !== 0 && canMoveTo(mob, mob.x, targetZ, input)) {
     applyMovement(mob, mob.x, targetZ, input);
-    return;
+    return true;
   }
+  return false;
+}
+
+function moveMob(mob: MobState, dx: number, dz: number, input: Readonly<MobStepInput>): void {
+  if (tryMoveMob(mob, dx, dz, input)) return;
   mob.behavior = "idle";
   mob.directionX = 0;
   mob.directionZ = 0;
@@ -977,6 +998,9 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
 
     let speed = definition.moveSpeed;
     let chasing = false;
+    let chaseMovementLimit = Number.POSITIVE_INFINITY;
+    let separationX = 0;
+    let separationZ = 0;
     if (!definition.passive && input.player) {
       const playerDx = input.player.x - mob.x;
       const playerDz = input.player.z - mob.z;
@@ -1030,8 +1054,29 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
             mob.nextRangedAttackAtSeconds = simulation.elapsedSeconds + definition.rangedCooldownSeconds;
           }
         } else {
-          mob.directionX = playerDx * inverseDistance;
-          mob.directionZ = playerDz * inverseDistance;
+          const standoff = meleeMobPlayerStandoff(mob.kind);
+          if (standoff > 0 && distance <= standoff) {
+            if (distance > 0.0001) {
+              mob.directionX = playerDx * inverseDistance;
+              mob.directionZ = playerDz * inverseDistance;
+              separationX = -mob.directionX;
+              separationZ = -mob.directionZ;
+            } else {
+              const separation = stableMobSeparationDirection(mob.behaviorSeed);
+              separationX = separation[0];
+              separationZ = separation[1];
+              // Face back toward the player along the same stable axis while separating.
+              mob.directionX = -separationX;
+              mob.directionZ = -separationZ;
+            }
+            chaseMovementLimit = 0;
+            const correction = standoff - distance;
+            if (correction > 1e-7) tryMoveMob(mob, separationX * correction, separationZ * correction, input);
+          } else {
+            mob.directionX = playerDx * inverseDistance;
+            mob.directionZ = playerDz * inverseDistance;
+            if (standoff > 0) chaseMovementLimit = Math.max(0, distance - standoff);
+          }
           speed = definition.chaseSpeed;
         }
         if (mob.behavior !== "fuse") {
@@ -1075,7 +1120,13 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
     }
     if (mob.directionX !== 0 || mob.directionZ !== 0) {
       mob.yaw = Math.atan2(mob.directionX, mob.directionZ);
-      moveMob(mob, mob.directionX * speed * dt, mob.directionZ * speed * dt, input);
+      const movementDistance = Math.min(speed * dt, chaseMovementLimit);
+      if (movementDistance > 1e-7) {
+        moveMob(mob, mob.directionX * movementDistance, mob.directionZ * movementDistance, input);
+      } else {
+        mob.desiredX = mob.x;
+        mob.desiredZ = mob.z;
+      }
     }
   }
   stepMobProjectiles(simulation, input, dt);
@@ -1469,7 +1520,7 @@ export function consumeMobContactDamage(
     if (!mob.alive || MOB_DEFINITIONS[mob.kind].contactDamage <= 0
       || nowSeconds + 1e-9 < mob.nextContactDamageAtSeconds) continue;
     const definition = MOB_DEFINITIONS[mob.kind];
-    const horizontalReach = definition.collisionRadius + 0.32;
+    const horizontalReach = definition.collisionRadius + MOB_PLAYER_CONTACT_RADIUS;
     const dx = player.x - mob.x;
     const dz = player.z - mob.z;
     if (dx * dx + dz * dz > horizontalReach * horizontalReach) continue;

@@ -1248,7 +1248,13 @@ function SinglePlayerWorld({
         engine.setPlayerProjectiles(playerProjectilesRef.current);
         audio.play("playerAttack", { seed: projectile.projectileId, intensity: 0.62 });
         if (intent.target.kind === "mob") {
-          const hit = engine.damageLocalMobWithRangedShot(intent.target.id, profile.damage);
+          const hit = engine.damageLocalMobWithRangedShot(
+            intent.target.id,
+            profile.damage,
+            projectile.projectileId,
+            intent.origin[0],
+            intent.origin[2],
+          );
           if (hit.applied) audio.play("mobHurt", { seed: `${projectile.projectileId}:${intent.target.id}`, intensity: 0.7 });
         }
         if (bowUse.broke) setMessages((current) => [...current.slice(-2), {
