@@ -363,8 +363,8 @@ export interface VoxelEngineOptions {
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
   serverTimeOffsetMs?: number;
-  /** previousBlock distinguishes mining from placement; settledEdits are one accepted local falling batch. */
-  onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId, settledEdits: readonly WorldEdit[]) => void;
+  /** `edit` is the original semantic action; `journalEdits` are the remaining accepted LWW render/save batch. */
+  onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId, journalEdits: readonly WorldEdit[]) => void;
   /** Synchronously reserves a complete local edit batch before any terrain or callback side effect. */
   acceptWorldEdits?: (edits: readonly WorldEdit[]) => boolean;
   /** Prevent a second optimistic world edit while an authoritative one is pending. */

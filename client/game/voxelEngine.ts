@@ -62,6 +62,7 @@ import {
 } from "./blockGeometry.ts";
 import {
   bedCellKey,
+  bedBreakEdits,
   bedStructureKey,
   createBedStructure,
   planBedPlacement,
@@ -2949,22 +2950,51 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function commitEditBatch(
-    edit: WorldEdit,
+    semanticEdit: WorldEdit,
     previousBlock: BlockId,
     additionalEdits: readonly WorldEdit[],
     updateBeds?: () => void,
   ): boolean {
-    const batch = additionalEdits.length ? [edit, ...additionalEdits] : [edit];
+    const batch = additionalEdits.length ? [semanticEdit, ...additionalEdits] : [semanticEdit];
     const committed = commitWorldEditBatch(batch, false, updateBeds);
     if (!committed) return false;
-    options.onBlockEdit?.(committed[0], previousBlock, committed.slice(1));
+    const semanticKey = blockKey(semanticEdit.x, semanticEdit.y, semanticEdit.z);
+    const journalEdits = committed.filter((edit) =>
+      blockKey(edit.x, edit.y, edit.z) !== semanticKey || edit.block !== semanticEdit.block);
+    options.onBlockEdit?.({ ...semanticEdit }, previousBlock, journalEdits);
     return true;
+  }
+
+  function planBedBreakSettlement(edit: WorldEdit, bed: Readonly<BedStructure>): WorldEdit[] {
+    const bedEdits = bedBreakEdits(bed, edit);
+    if (!bedEdits) return [];
+    const [, companionEdit] = bedEdits;
+    const planned: WorldEdit[] = [companionEdit];
+    const virtualBlocks = new Map<string, BlockId>([
+      [blockKey(edit.x, edit.y, edit.z), BLOCK.AIR],
+      [blockKey(companionEdit.x, companionEdit.y, companionEdit.z), BLOCK.AIR],
+    ]);
+    const readPlannedBlock = (x: number, y: number, z: number): BlockId =>
+      virtualBlocks.get(blockKey(x, y, z)) ?? getBlock(x, y, z);
+    for (const cell of [bed.foot, bed.head]) {
+      const settlement = planLocalFallingBlockSettlement(
+        { ...cell, block: BLOCK.AIR },
+        BLOCK.BED,
+        readPlannedBlock,
+      );
+      for (const next of settlement) {
+        planned.push(next);
+        virtualBlocks.set(blockKey(next.x, next.y, next.z), next.block);
+      }
+    }
+    return planned;
   }
 
   function emitEdit(edit: WorldEdit): boolean {
     const previousBlock = getBlock(edit.x, edit.y, edit.z);
     if (options.twoBlockBeds && previousBlock === BLOCK.BED && edit.block === BLOCK.AIR) {
-      return commitEditBatch(edit, previousBlock, []);
+      const bed = getStoredBedAt(edit.x, edit.y, edit.z);
+      if (bed) return commitEditBatch(edit, previousBlock, planBedBreakSettlement(edit, bed));
     }
     const settledEdits = options.acceptWorldEdits ? planLocalFallingBlockSettlement(
       edit,

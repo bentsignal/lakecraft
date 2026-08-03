@@ -34,7 +34,9 @@ const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerAp
 const localRespawn = singleplayer.slice(singleplayer.indexOf("function respawnLocally"), singleplayer.indexOf("useEffect", singleplayer.indexOf("function respawnLocally")));
 assert.ok(localRespawn.indexOf("planDeathDrops") < localRespawn.indexOf("engine.respawn()"),
   "collision safety does not move or bypass conserved death settlement");
-assert.match(localRespawn, /engine\.getBlockAt\(bed\.x, bed\.y, bed\.z\) !== BLOCK\.BED[\s\S]*?singlePlayerWorldSpawn/,
-  "a broken bed still selects deterministic world spawn before the safe engine respawn");
+assert.match(localRespawn, /structuredBedForRespawnPoint\(respawn,[\s\S]*?engine\.getBedAt\(x, y, z\)[\s\S]*?singlePlayerWorldSpawn/,
+  "global pair metadata rejects a broken bed before the safe engine respawn");
+assert.equal(localRespawn.includes("engine.getBlockAt(bed.x, bed.y, bed.z)"), false,
+  "death validation cannot mistake an unloaded valid bed for air");
 
 console.log("lakecraft collision-safe local respawn integration tests: ok");

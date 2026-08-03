@@ -87,6 +87,7 @@ import {
   respawnPointForBed,
   respawnPointMatchesBed,
   singlePlayerWorldSpawn,
+  structuredBedForRespawnPoint,
 } from "./localBed.ts";
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
@@ -971,7 +972,7 @@ function SinglePlayerWorld({
       z: Math.round(respawn.z - 0.5),
     };
     if (respawnPointMatchesBed(respawn, bed.x, bed.y, bed.z)
-      && engine.getBlockAt(bed.x, bed.y, bed.z) !== BLOCK.BED) {
+      && !structuredBedForRespawnPoint(respawn, (x, y, z) => engine.getBedAt(x, y, z))) {
       engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
     }
     engine.respawn();
@@ -1286,20 +1287,20 @@ function SinglePlayerWorld({
         surface: audioSurfaceForBlock(block),
         intensity: 0.5,
       }),
-      onBlockEdit: (edit, previousBlock, settledEdits) => {
+      onBlockEdit: (edit, previousBlock, journalEdits) => {
         if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
           settleBrokenContainerContents(edit.x, edit.y, edit.z, previousBlock);
         }
         if (previousBlock === BLOCK.BED && edit.block !== BLOCK.BED) {
           invalidateBrokenBed(edit.x, edit.y, edit.z);
-          for (const pairedEdit of settledEdits) {
-            if (pairedEdit.block === BLOCK.AIR) invalidateBrokenBed(pairedEdit.x, pairedEdit.y, pairedEdit.z);
+          for (const pairedEdit of journalEdits) {
+            if (pairedEdit.block !== BLOCK.BED) invalidateBrokenBed(pairedEdit.x, pairedEdit.y, pairedEdit.z);
           }
         }
         markWorldDirty();
         const supportWoken = wakeUnsupportedLocalDroppedItems(
           dropsRef.current,
-          [edit, ...settledEdits],
+          [edit, ...journalEdits],
           (x, y, z) => engine.getBlockAt(x, y, z),
         );
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
@@ -1638,7 +1639,7 @@ function SinglePlayerWorld({
       z: Math.round(respawn.z - 0.5),
     };
     if (respawnPointMatchesBed(respawn, possibleBed.x, possibleBed.y, possibleBed.z)
-      && engine.getBlockAt(possibleBed.x, possibleBed.y, possibleBed.z) !== BLOCK.BED) {
+      && !structuredBedForRespawnPoint(respawn, (x, y, z) => engine.getBedAt(x, y, z))) {
       engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
     }
     const initiallyPaused = singlePlayerGameplayPaused({
