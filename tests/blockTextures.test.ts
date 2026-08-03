@@ -72,6 +72,8 @@ mappedTextureNames.add("furnace_side");
 mappedTextureNames.add("furnace_top");
 for (const face of ["east", "west", "south", "north"] as const) {
   assert.equal(blockTextureForFace(BLOCK.TNT, face), "tnt_side");
+  assert.equal(textureAtlasUv(blockTextureForFace(BLOCK.TNT, face)!), textureAtlasUv("tnt_side"),
+    `TNT ${face} reuses the exact labeled side-face UV tile`);
 }
 assert.equal(blockTextureForFace(BLOCK.TNT, "top"), "tnt_top");
 assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");

@@ -19,7 +19,7 @@ assert.ok(app.includes("mobDamageClaimsRef.current.has(claim.operationId)"));
 assert.ok(app.includes("expectedRevision: mobWorldAuthority.checkpointRevision"));
 const mobAttack = app.slice(app.indexOf("onMobAttack:"), app.indexOf("onRemotePlayerAttack:"));
 assert.ok(mobAttack.includes("loadCanonicalPlayer(result.inventory)"));
-assert.ok(mobAttack.includes("result.killed && result.drops.length"));
+assert.equal(mobAttack.includes("Mob drops collected"), false, "canonical mob drops do not produce a routine top-right toast");
 assert.ok(mobAttack.indexOf("!result.replayed && !result.killed") < mobAttack.indexOf("loadCanonicalPlayer(result.inventory)"),
   "receipt replay suppresses only the transient knockback reaction, not canonical inventory reconciliation");
 

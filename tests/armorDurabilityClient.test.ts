@@ -17,23 +17,21 @@ const canonicalLoad = client.slice(
 );
 assert.ok(canonicalLoad.includes("validatePlayerStateJson(row.inventoryJson)"), "canonical loads fail closed instead of clamping corrupt armor");
 assert.equal(canonicalLoad.includes("parseSerializablePlayerStateJson"), false);
-assert.ok(canonicalLoad.includes("previous && !saved.equipment[slot]"));
-assert.ok(canonicalLoad.includes("armor pieces broke"));
-assert.ok(canonicalLoad.includes('"warning"'));
+assert.equal(canonicalLoad.includes("notify("), false, "routine canonical armor changes do not produce top-right gameplay toasts");
 
 const mobDamage = client.slice(
   client.indexOf("void claimMobPlayerDamage("),
   client.indexOf("}, [mobWorldAuthority", client.indexOf("void claimMobPlayerDamage(")),
 );
-assert.ok(mobDamage.includes("loadCanonicalPlayer(result.inventory, true)"), "mob damage reconciles armor from the same Lakebed transaction");
+assert.ok(mobDamage.includes("loadCanonicalPlayer(result.inventory)"), "mob damage reconciles armor from the same Lakebed transaction");
 
 const savedInventoryReconciliation = client.slice(
   client.indexOf("latestSavedInventoryRef.current = savedInventory"),
   client.indexOf("}, [savedInventory, auth.userId]"),
 );
 assert.ok(
-  savedInventoryReconciliation.includes("loadCanonicalPlayer(savedInventory, true)"),
-  "authoritative PvP wear arriving through the existing inventory query can report armor breakage",
+  savedInventoryReconciliation.includes("loadCanonicalPlayer(savedInventory)"),
+  "authoritative PvP wear arriving through the existing inventory query still reconciles equipment",
 );
 
 const saveConflictReconciliation = client.slice(
@@ -41,8 +39,8 @@ const saveConflictReconciliation = client.slice(
   client.indexOf('result.reason === "authentication_required"'),
 );
 assert.ok(
-  saveConflictReconciliation.includes("loadCanonicalPlayer(result.inventory, true)"),
-  "a concurrent PvP break is still announced when it races a revisioned inventory action",
+  saveConflictReconciliation.includes("loadCanonicalPlayer(result.inventory)"),
+  "a concurrent PvP break is still reconciled when it races a revisioned inventory action",
 );
 
 const equipHandler = client.slice(

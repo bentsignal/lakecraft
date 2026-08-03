@@ -53,8 +53,9 @@ assert.ok(app.includes("applyConfirmedArmorDamage(equipmentRef.current)"));
 assert.ok(app.includes("equipmentRef.current = armorDamage.equipment"));
 assert.ok(app.includes("setEquipment(armorDamage.equipment)"));
 assert.ok(app.includes("markWorldDirty();"), "armor wear joins the existing crash-safe save cadence");
-assert.ok(app.includes("armorDamage.broken"), "breakage emits one event-edge notification");
-assert.ok(ITEMS.diamond_helmet.label.length > 0, "break notifications use the canonical item label");
+const damageFeedback = app.slice(app.indexOf("onPlayerDamage: (amount, cause)"), app.indexOf("onHotbarSelect:", app.indexOf("onPlayerDamage: (amount, cause)")));
+assert.equal(damageFeedback.includes("armorDamage.broken"), false, "routine armor breakage relies on equipment state instead of a top-right toast");
+assert.ok(ITEMS.diamond_helmet.label.length > 0, "armor labels remain canonical for the inventory UI");
 assert.equal(app.includes("lakebed/client"), false, "single-player armor remains entirely browser-local");
 
 console.log("single-player armor mitigation, wear, break, and persistence tests passed");

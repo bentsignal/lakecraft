@@ -143,6 +143,7 @@ import {
   CREEPER_EXPLOSION_RADIUS,
   enumerateCreeperExplosionBlocks,
   resolveCreeperExplosionDamage,
+  resolveLocalTntExplosionDamage,
   sampleCreeperExplosionExposure,
 } from "../../shared/creeperExplosion.ts";
 import { resolveFallingBlocks, type FallingBlockCellBlock } from "../../shared/fallingBlocks.ts";
@@ -3697,7 +3698,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         cell.x === x && cell.y === y && cell.z === z
           ? "air"
           : localCreeperExposureBlock(getBlock(cell.x, cell.y, cell.z)));
-      const rawDamage = resolveCreeperExplosionDamage(blast, pose, exposure);
+      const rawDamage = resolveLocalTntExplosionDamage(blast, pose, exposure);
       const edits = planLocalTntExplosion(x, y, z, getBlock);
       const appliedEdits = applyLocalExplosionEdits(edits);
       if (!appliedEdits) return [];

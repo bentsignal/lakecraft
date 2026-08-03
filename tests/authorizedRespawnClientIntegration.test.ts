@@ -34,7 +34,8 @@ const bedInteraction = client.slice(
 );
 assert.equal(bedInteraction.includes("setRespawnPoint"), false, "bed spawn metadata is never forged into the inventory envelope locally");
 assert.equal(bedInteraction.includes("respawnPointRef.current ="), false);
-assert.ok(client.includes("Lakebed confirmed this bed as your authoritative respawn point."));
+assert.ok(client.includes("void sleepInBed(coordKey).then"), "Lakebed remains authoritative for bed respawn metadata");
+assert.equal(client.includes('notify("Spawn point set"'), false, "successful bed use is routine gameplay, not a top-right toast");
 
 assert.equal(client.includes("pendingRespawnAuthorizationRef"), false);
 assert.equal(client.includes("scheduleAuthorizedRespawn"), false, "death waits for the player's Respawn click");

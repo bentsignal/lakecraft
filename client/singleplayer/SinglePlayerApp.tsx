@@ -848,12 +848,6 @@ function SinglePlayerWorld({
       }]);
       return true;
     }
-    setMessages((current) => [...current.slice(-2), {
-      id: `bed-night-${Date.now()}`,
-      text: "Respawn point set",
-      detail: "Sleeping through the night…",
-      tone: "success",
-    }]);
     setSleepingBed(anchor);
     releasePointerLockForUi();
     return true;
@@ -908,12 +902,6 @@ function SinglePlayerWorld({
     syncLocalDropGravity(engine);
     setInventory(next);
     engine.setDroppedItems(dropsRef.current);
-    setMessages((current) => [...current.slice(-2), {
-      id: dropped.dropId,
-      text: `Dropped ${ITEMS[source.itemId].label}`,
-      detail: count > 1 ? `${count} items` : "Walk over it to pick it back up.",
-      tone: "info",
-    }]);
     markWorldDirty();
   }
 
@@ -1082,12 +1070,6 @@ function SinglePlayerWorld({
       }
       audio.play("creeperFuse", { seed: key, intensity: 0.82 });
       engineRef.current.spawnBlockParticles({ action: "hit", block: BLOCK.TNT, x, y, z });
-      if (spendTool) setMessages((current) => [...current.slice(-2), {
-        id: `tnt-${key}`,
-        text: "TNT primed",
-        detail: "Four-second fuse — stand back.",
-        tone: "warning",
-      }]);
       const explode = () => {
         const timer = fuseTimers.get(key);
         if (timer) clearFuseSchedule(timer);
@@ -1136,12 +1118,6 @@ function SinglePlayerWorld({
           primeLocalTnt(edit.x, edit.y, edit.z, 500 + hash % 1_001, cascadeDepth + 1, false);
         }
       }
-      setMessages((current) => [...current.slice(-2), {
-        id: `boom-${key}`,
-        text: key.startsWith("creeper:") ? "Creeper exploded" : "Boom!",
-        detail: `${destruction.length} blocks destroyed locally.`,
-        tone: "warning",
-      }]);
     }
     const engine = createVoxelEngine(canvas, {
       seed: worldRef.current.seed,
@@ -1257,12 +1233,6 @@ function SinglePlayerWorld({
           );
           if (hit.applied) audio.play("mobHurt", { seed: `${projectile.projectileId}:${intent.target.id}`, intensity: 0.7 });
         }
-        if (bowUse.broke) setMessages((current) => [...current.slice(-2), {
-          id: `bow-break-${projectile.projectileId}`,
-          text: "Bow broke",
-          detail: "The last durability point was consumed by this shot.",
-          tone: "warning",
-        }]);
       },
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
       canTakePlayerDamage: () => gameModeRef.current === "survival",
@@ -1404,19 +1374,10 @@ function SinglePlayerWorld({
         const wear = applyConfirmedToolUse(inventoryRef.current, slot, "attack", held);
         if (!wear.used) return;
         updateInventory(wear.inventory);
-        if (wear.broke && wear.itemId) {
-          setMessages((current) => [...current.slice(-2), {
-            id: `weapon-break-${performance.now().toFixed(0)}`,
-            text: `${ITEMS[wear.itemId].label} broke`,
-            detail: "That was its final durability use.",
-            tone: "warning",
-          }]);
-        }
       },
       onMobUse: (target) => {
         if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
         let acceptedInventory: Inventory | null = null;
-        let broke = false;
         const result = engine.shearMob(target.id, (woolCount) => {
           const wear = gameModeRef.current === "creative"
             ? { inventory: inventoryRef.current, used: true, broke: false }
@@ -1425,18 +1386,11 @@ function SinglePlayerWorld({
           const added = addItem(wear.inventory, "wool", woolCount);
           if (added.remainder !== 0) return false;
           acceptedInventory = added.inventory;
-          broke = wear.broke;
           return true;
         });
         if (result.ok && acceptedInventory) {
           updateInventory(acceptedInventory);
           audio.play("pickup", { seed: `${target.id}:${result.woolCount}`, intensity: 0.58 });
-          setMessages((current) => [...current.slice(-2), {
-            id: `shear-${target.id}`,
-            text: `${result.woolCount} Wool`,
-            detail: broke ? "Sheep sheared · shears broke" : "Sheep sheared",
-            tone: "success",
-          }]);
         } else if (result.reason === "rejected") {
           setMessages((current) => [...current.slice(-2), {
             id: `shear-full-${target.id}`,
@@ -1474,15 +1428,6 @@ function SinglePlayerWorld({
             equipmentRef.current = armorDamage.equipment;
             setEquipment(armorDamage.equipment);
             markWorldDirty();
-          }
-          if (armorDamage.broken.length > 0) {
-            const labels = armorDamage.broken.map(({ itemId }) => ITEMS[itemId].label);
-            setMessages((current) => [...current.slice(-2), {
-              id: `armor-break-${performance.now().toFixed(0)}`,
-              text: labels.length === 1 ? `${labels[0]} broke` : `${labels.length} armor pieces broke`,
-              detail: labels.length === 1 ? "The final durability point was used." : labels.join(" · "),
-              tone: "warning",
-            }]);
           }
         }
         audio.play("playerHurt", {
@@ -1594,12 +1539,6 @@ function SinglePlayerWorld({
           updateInventory(nextInventory);
           localEngine.spawnBlockParticles({ action: "place", block: BLOCK.LEAVES, x, y: y + 1, z });
           audio.play("blockPlace", { seed: `grow:${x}:${y}:${z}`, surface: "grass", intensity: 0.72 });
-          setMessages((current) => [...current.slice(-2), {
-            id: `oak-grown-${x}:${y}:${z}`,
-            text: "Oak tree grown",
-            detail: creative ? "Bone meal is unlimited in Creative." : "Used one bone meal.",
-            tone: "success",
-          }]);
           return true;
         }
         if (target.block.block === BLOCK.CRAFTING_TABLE) {
@@ -1789,12 +1728,6 @@ function SinglePlayerWorld({
       markWorldDirty();
       setSleepingBed(null);
       setPointerCaptureNeeded(true);
-      setMessages((current) => [...current.slice(-2), {
-        id: `wake-${Date.now()}`,
-        text: "Good morning",
-        detail: "You slept through the night. Click the world to continue.",
-        tone: "success",
-      }]);
     }, 1_000);
     return () => window.clearTimeout(timer);
   }, [sleepingBed]);

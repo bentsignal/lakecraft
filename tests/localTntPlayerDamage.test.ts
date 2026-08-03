@@ -5,6 +5,7 @@ import { BLOCK } from "../client/game/types.ts";
 import {
   CREEPER_EXPLOSION_RADIUS,
   resolveCreeperExplosionDamage,
+  resolveLocalTntExplosionDamage,
   sampleCreeperExplosionExposure,
 } from "../shared/creeperExplosion.ts";
 import { mitigatedPlayerDamage } from "../shared/playerCombat.ts";
@@ -15,10 +16,14 @@ const coveredTarget = { x: 4, y: 1, z: 0.5 };
 const exposed = sampleCreeperExplosionExposure(blast, pointBlank, () => "air");
 const covered = sampleCreeperExplosionExposure(blast, coveredTarget, () => "stone");
 const raw = resolveCreeperExplosionDamage(blast, pointBlank, exposed);
+const tntRaw = resolveLocalTntExplosionDamage(blast, pointBlank, exposed);
 assert.equal(exposed, 1);
 assert.equal(covered, 0);
 assert.ok(raw > 0, "standing on an exposed TNT blast produces real raw damage");
+assert.equal(tntRaw, raw + Math.floor(raw / 5), "local TNT receives only the modest bounded blast bonus");
+assert.ok(tntRaw > raw && tntRaw <= 20, "point-blank TNT is stronger than a creeper without bypassing the health cap");
 assert.equal(resolveCreeperExplosionDamage(blast, coveredTarget, covered), 0, "solid cover suppresses TNT damage");
+assert.equal(resolveLocalTntExplosionDamage(blast, coveredTarget, covered), 0, "the TNT bonus cannot bypass solid cover");
 assert.ok(mitigatedPlayerDamage(raw, 20) < raw, "armor mitigation applies to the shared TNT damage curve");
 assert.equal(localCreeperExposureBlock(BLOCK.DOOR_OPEN), "door_open");
 assert.equal(localCreeperExposureBlock(BLOCK.DOOR_CLOSED), "stone");
@@ -37,6 +42,18 @@ assert.equal(adjacentCoverExposure, 1 / 3, "neighboring intact cover still shiel
 assert.ok(resolveCreeperExplosionDamage(blast, nearTarget, sourceOnlyExposure) > 0);
 assert.ok(resolveCreeperExplosionDamage(blast, nearTarget, adjacentCoverExposure)
   < resolveCreeperExplosionDamage(blast, nearTarget, sourceOnlyExposure));
+for (const target of [pointBlank, nearTarget, { x: 4, y: 1, z: 0.5 }, { x: 6, y: 1, z: 0.5 }]) {
+  const creeperDamage = resolveCreeperExplosionDamage(blast, target, 1);
+  const localTntDamage = resolveLocalTntExplosionDamage(blast, target, 1);
+  assert.ok(localTntDamage >= creeperDamage, "TNT preserves the monotonic shared distance curve");
+  assert.ok(localTntDamage - creeperDamage <= 3, "the local TNT increase remains modest at every sampled distance");
+}
+for (const exposure of [0, 1 / 3, 2 / 3, 1]) {
+  const creeperDamage = resolveCreeperExplosionDamage(blast, nearTarget, exposure);
+  const localTntDamage = resolveLocalTntExplosionDamage(blast, nearTarget, exposure);
+  assert.equal(localTntDamage, creeperDamage > 0 ? creeperDamage + Math.floor(creeperDamage / 5) : 0,
+    "TNT applies its bounded bonus after the existing exposure curve");
+}
 
 const source = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const start = source.indexOf("explodeTnt(x, y, z)");
@@ -61,6 +78,8 @@ assert.ok(healthChange < consumeFuse, "one accepted blast reconciles health befo
 assert.equal((explode.match(/onPlayerDamage/g) ?? []).length, 1);
 assert.equal((explode.match(/onPlayerHealthChange/g) ?? []).length, 1);
 assert.match(explode, /rawDamage > 0[\s\S]*?mitigatedPlayerDamage\(rawDamage, options\.getPlayerProtection\?\.\(\) \?\? 0\)/);
+assert.ok(explode.includes("resolveLocalTntExplosionDamage(blast, pose, exposure)"),
+  "only local TNT uses the tuned damage helper after intact-world cover sampling");
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 assert.ok(app.includes('if (amount > 0 && cause !== "fall")'), "accepted TNT damage reuses one armor-wear edge");

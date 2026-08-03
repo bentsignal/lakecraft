@@ -205,6 +205,20 @@ export function resolveCreeperExplosionDamage(
   return Math.max(1, Math.min(20, Math.floor((impact * impact + impact) * 7 + 1)));
 }
 
+/**
+ * Local TNT keeps the shared distance/exposure curve, with a modest bounded
+ * bonus over creepers. Small edge hits stay unchanged while meaningful blast
+ * hits gain one health point per five raw damage.
+ */
+export function resolveLocalTntExplosionDamage(
+  authority: Readonly<Pick<CreeperExplosionAuthority, "center" | "radius">>,
+  target: Readonly<{ x: number; y: number; z: number }>,
+  exposure = 1,
+): number {
+  const damage = resolveCreeperExplosionDamage(authority, target, exposure);
+  return damage > 0 ? Math.min(20, damage + Math.floor(damage / 5)) : 0;
+}
+
 function exposureRayCells(
   authority: Readonly<Pick<CreeperExplosionAuthority, "center" | "radius">>,
   target: Readonly<{ x: number; y: number; z: number }>,

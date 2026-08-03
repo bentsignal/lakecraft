@@ -83,7 +83,8 @@ assert.ok(app.includes("onLocalMobHit: () =>"));
 assert.ok(app.includes('applyConfirmedToolUse(inventoryRef.current, slot, "attack", held)'));
 assert.ok(app.includes("if (!wear.used) return;"));
 assert.ok(app.includes("updateInventory(wear.inventory);"), "confirmed weapon wear joins the existing dirty-save path");
-assert.ok(app.includes("ITEMS[wear.itemId].label"), "a final use announces the canonical broken tool label");
+const hitWear = app.slice(app.indexOf("onLocalMobHit: () =>"), app.indexOf("onMobUse:", app.indexOf("onLocalMobHit: () =>")));
+assert.equal(hitWear.includes("setMessages"), false, "routine weapon breakage relies on inventory state instead of a top-right toast");
 assert.equal(app.includes("lakebed/client"), false, "single-player weapon wear adds zero Lakebed traffic");
 
 console.log("single-player confirmed melee durability tests passed");
