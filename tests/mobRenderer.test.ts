@@ -63,8 +63,8 @@ assert.equal(gl.createBufferCalls, 1, "all mobs should share one WebGL buffer");
 assert.ok(gl.allocationBytes > 0);
 assert.equal(
   gl.allocationBytes,
-  794_880,
-  "64 mobs, 24 projectiles, and 32 primed TNT visuals share one fixed 776.25 KiB allocation",
+  808_704,
+  "64 mobs, 24 projectiles, and 32 four-side-labeled primed TNT visuals share one fixed 789.75 KiB allocation",
 );
 assert.ok(gl.allocationBytes <= 800 * 1024, "the complete 64-mob/projectile/TNT batch stays under 800 KiB");
 

@@ -36,7 +36,10 @@ const MOB_HURT_FLASH_SECONDS = 0.5;
 const MOB_HURT_FLASH_MIX = 0.62;
 
 export const MAX_PRIMED_TNT_VISUALS = TNT_MAX_ACTIVE_FUSES;
-export const PRIMED_TNT_VERTICES_PER_ENTITY = 4 * VERTICES_PER_BOX;
+const PRIMED_TNT_LABEL_TRIANGLES_PER_SIDE = 6;
+const PRIMED_TNT_SIDE_COUNT = 4;
+export const PRIMED_TNT_LABEL_VERTICES = PRIMED_TNT_SIDE_COUNT * PRIMED_TNT_LABEL_TRIANGLES_PER_SIDE * 3;
+export const PRIMED_TNT_VERTICES_PER_ENTITY = VERTICES_PER_BOX + 4 * 6 + PRIMED_TNT_LABEL_VERTICES + 5 * 6;
 export const MOB_MESH_INTERVAL_MS = 1_000 / 30;
 
 export interface PrimedTntVisualSample {
@@ -225,6 +228,122 @@ function mixWhite(value: number, amount: number): number {
   return value + (1 - value) * amount;
 }
 
+function appendColoredTriangle(
+  writer: VertexWriter,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cx: number, cy: number, cz: number,
+  red: number, green: number, blue: number,
+): void {
+  writer.data[writer.offset++] = ax; writer.data[writer.offset++] = ay; writer.data[writer.offset++] = az;
+  writer.data[writer.offset++] = red; writer.data[writer.offset++] = green; writer.data[writer.offset++] = blue;
+  writer.data[writer.offset++] = bx; writer.data[writer.offset++] = by; writer.data[writer.offset++] = bz;
+  writer.data[writer.offset++] = red; writer.data[writer.offset++] = green; writer.data[writer.offset++] = blue;
+  writer.data[writer.offset++] = cx; writer.data[writer.offset++] = cy; writer.data[writer.offset++] = cz;
+  writer.data[writer.offset++] = red; writer.data[writer.offset++] = green; writer.data[writer.offset++] = blue;
+}
+
+function appendColoredQuad(
+  writer: VertexWriter,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cx: number, cy: number, cz: number,
+  dx: number, dy: number, dz: number,
+  red: number, green: number, blue: number,
+): void {
+  appendColoredTriangle(writer, ax, ay, az, bx, by, bz, cx, cy, cz, red, green, blue);
+  appendColoredTriangle(writer, ax, ay, az, cx, cy, cz, dx, dy, dz, red, green, blue);
+}
+
+function appendPrimedTntSideQuad(
+  writer: VertexWriter,
+  side: number,
+  centerX: number,
+  minY: number,
+  centerZ: number,
+  half: number,
+  maxY: number,
+  offset: number,
+  red: number,
+  green: number,
+  blue: number,
+): void {
+  if (side === 0) appendColoredQuad(writer,
+    centerX + half + offset, minY, centerZ + half,
+    centerX + half + offset, minY, centerZ - half,
+    centerX + half + offset, maxY, centerZ - half,
+    centerX + half + offset, maxY, centerZ + half, red, green, blue);
+  else if (side === 1) appendColoredQuad(writer,
+    centerX - half - offset, minY, centerZ - half,
+    centerX - half - offset, minY, centerZ + half,
+    centerX - half - offset, maxY, centerZ + half,
+    centerX - half - offset, maxY, centerZ - half, red, green, blue);
+  else if (side === 2) appendColoredQuad(writer,
+    centerX - half, minY, centerZ + half + offset,
+    centerX + half, minY, centerZ + half + offset,
+    centerX + half, maxY, centerZ + half + offset,
+    centerX - half, maxY, centerZ + half + offset, red, green, blue);
+  else appendColoredQuad(writer,
+    centerX + half, minY, centerZ - half - offset,
+    centerX - half, minY, centerZ - half - offset,
+    centerX - half, maxY, centerZ - half - offset,
+    centerX + half, maxY, centerZ - half - offset, red, green, blue);
+}
+
+function appendPrimedTntGlyphTriangle(
+  writer: VertexWriter,
+  side: number,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  half: number,
+  scale: number,
+  au: number, av: number,
+  bu: number, bv: number,
+  cu: number, cv: number,
+  red: number, green: number, blue: number,
+): void {
+  const plane = half + 0.002;
+  const ax = centerX + (side === 0 ? plane : side === 1 ? -plane : side === 2 ? au * scale : -au * scale);
+  const ay = centerY + av * scale;
+  const az = centerZ + (side === 0 ? -au * scale : side === 1 ? au * scale : side === 2 ? plane : -plane);
+  const bx = centerX + (side === 0 ? plane : side === 1 ? -plane : side === 2 ? bu * scale : -bu * scale);
+  const by = centerY + bv * scale;
+  const bz = centerZ + (side === 0 ? -bu * scale : side === 1 ? bu * scale : side === 2 ? plane : -plane);
+  const cx = centerX + (side === 0 ? plane : side === 1 ? -plane : side === 2 ? cu * scale : -cu * scale);
+  const cy = centerY + cv * scale;
+  const cz = centerZ + (side === 0 ? -cu * scale : side === 1 ? cu * scale : side === 2 ? plane : -plane);
+  appendColoredTriangle(writer, ax, ay, az, bx, by, bz, cx, cy, cz, red, green, blue);
+}
+
+function appendPrimedTntSideLabel(
+  writer: VertexWriter,
+  side: number,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  half: number,
+  scale: number,
+  red: number,
+  green: number,
+  blue: number,
+): void {
+  // Six fixed triangles form a compact T·N·T silhouette. Keeping every side
+  // in one axis-aligned basis makes swelling a pure scale, never a rotation.
+  appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
+    -0.36, 0.12, -0.12, 0.12, -0.24, 0.035, red, green, blue);
+  appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
+    -0.285, 0.06, -0.195, 0.06, -0.24, -0.13, red, green, blue);
+  appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
+    -0.1, -0.13, -0.1, 0.12, 0.1, -0.13, red, green, blue);
+  appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
+    0.1, 0.12, 0.1, -0.13, -0.1, 0.12, red, green, blue);
+  appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
+    0.12, 0.12, 0.36, 0.12, 0.24, 0.035, red, green, blue);
+  appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
+    0.195, 0.06, 0.285, 0.06, 0.24, -0.13, red, green, blue);
+}
+
 function appendPrimedTnt(
   writer: VertexWriter,
   x: number,
@@ -245,15 +364,26 @@ function appendPrimedTnt(
   const bandRed = mixWhite(0.88, flash);
   const bandGreen = mixWhite(0.79, flash);
   const bandBlue = mixWhite(0.61, flash);
-  appendBox(writer, centerX, centerY, centerZ, 0, 0, 0, 0, -half, -half, -half, half, low, half, red, green, blue);
-  appendBox(writer, centerX, centerY, centerZ, 0, 0, 0, 0, -half, low, -half, half, high, half, bandRed, bandGreen, bandBlue);
-  appendBox(writer, centerX, centerY, centerZ, 0, 0, 0, 0, -half, high, -half, half, half, half, red, green, blue);
+  appendBox(writer, centerX, centerY, centerZ, 0, 0, 0, 0, -half, -half, -half, half, half, half, red, green, blue);
+  const ink = mixWhite(0.08, flash * 0.75);
+  for (let side = 0; side < PRIMED_TNT_SIDE_COUNT; side += 1) {
+    appendPrimedTntSideQuad(writer, side, centerX, centerY + low, centerZ, half, centerY + high, 0.001,
+      bandRed, bandGreen, bandBlue);
+    appendPrimedTntSideLabel(writer, side, centerX, centerY, centerZ, half, scale, ink, ink, ink);
+  }
   const cap = scale * 0.075;
   const dark = mixWhite(0.08, flash * 0.65);
-  appendBox(
-    writer, centerX, centerY, centerZ, 0, 0, 0, 0,
-    -cap, half + 0.002, -cap, cap, half + cap, cap, dark, dark, dark,
-  );
+  const capMinY = centerY + half + 0.002;
+  const capMaxY = centerY + half + cap;
+  for (let side = 0; side < PRIMED_TNT_SIDE_COUNT; side += 1) {
+    appendPrimedTntSideQuad(writer, side, centerX, capMinY, centerZ, cap, capMaxY, 0, dark, dark, dark);
+  }
+  appendColoredQuad(writer,
+    centerX - cap, capMaxY, centerZ - cap,
+    centerX - cap, capMaxY, centerZ + cap,
+    centerX + cap, capMaxY, centerZ + cap,
+    centerX + cap, capMaxY, centerZ - cap,
+    dark, dark, dark);
 }
 
 function appendQuadrupedLegs(
@@ -450,9 +580,9 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const buffer = gl.createBuffer();
   if (!buffer) throw new Error("Unable to allocate the mob batch buffer.");
   const vertices = new Float32Array(
-    (HARD_MAX_MOB_POPULATION * MAX_BOXES_PER_MOB + MAX_MOB_PROJECTILES
-      + MAX_PRIMED_TNT_VISUALS * 4)
-      * VERTICES_PER_BOX
+    (HARD_MAX_MOB_POPULATION * MAX_BOXES_PER_MOB * VERTICES_PER_BOX
+      + MAX_MOB_PROJECTILES * VERTICES_PER_BOX
+      + MAX_PRIMED_TNT_VISUALS * PRIMED_TNT_VERTICES_PER_ENTITY)
       * FLOATS_PER_VERTEX,
   );
   const primedPositions = new Int32Array(MAX_PRIMED_TNT_VISUALS * 3);

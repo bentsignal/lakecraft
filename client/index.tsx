@@ -56,7 +56,6 @@ import {
   equippedArmorProtection,
   miningSeconds,
   normalizeInventory,
-  type ArmorSlot,
   type BlockId,
   type CraftingContext,
   type Equipment,
@@ -1241,7 +1240,7 @@ function GameApp({
     return canonical.ok ? canonical.playerStateJson : raw;
   }
 
-  function loadCanonicalPlayer(row: PersistedInventoryState | null, announceArmorBreaks = false): boolean {
+  function loadCanonicalPlayer(row: PersistedInventoryState | null): boolean {
     if (!row) {
       inventoryTokenRef.current = "";
       inventoryRevisionRef.current = "0";
@@ -1253,12 +1252,6 @@ function GameApp({
     const canonical = validatePlayerStateJson(row.inventoryJson);
     if (!canonical.ok) return false;
     const saved = canonical.state;
-    const brokenArmor = announceArmorBreaks
-      ? (Object.keys(equipmentRef.current) as ArmorSlot[]).flatMap((slot) => {
-          const previous = equipmentRef.current[slot];
-          return previous && !saved.equipment[slot] ? [previous.itemId] : [];
-        })
-      : [];
     inventoryTokenRef.current = row.updatedAt;
     inventoryRevisionRef.current = row.revision;
     lastCommittedPlayerJsonRef.current = canonical.playerStateJson;
@@ -1272,14 +1265,6 @@ function GameApp({
     hungerRef.current = saved.hunger;
     setHunger(saved.hunger);
     advanceInventoryAuthorityEpoch();
-    if (brokenArmor.length > 0) {
-      const labels = brokenArmor.map((itemId) => ITEMS[itemId].label);
-      notify(
-        brokenArmor.length === 1 ? `${labels[0]} broke` : `${brokenArmor.length} armor pieces broke`,
-        `Lakebed confirmed the final durability use${labels.length > 1 ? `: ${labels.join(" · ")}` : "."}`,
-        "warning",
-      );
-    }
     return true;
   }
 
@@ -1339,9 +1324,9 @@ function GameApp({
           const returnedInventory = "inventory" in result ? result.inventory : undefined;
           const fallbackInventory = latestSavedInventoryRef.current;
           const reconciled = returnedInventory
-            ? loadCanonicalPlayer(returnedInventory, true)
+            ? loadCanonicalPlayer(returnedInventory)
             : fallbackInventory && fallbackInventory.userId === auth.userId
-              ? loadCanonicalPlayer(fallbackInventory, true)
+              ? loadCanonicalPlayer(fallbackInventory)
               : false;
           notify(
             result.reason === "conflict" ? "Pack reconciled" : "Pack action rejected",
@@ -1360,7 +1345,7 @@ function GameApp({
           inventoryRevisionRef.current = result.inventory.revision;
           lastCommittedPlayerJsonRef.current = result.inventory.inventoryJson;
         }
-        if (inventoryActionQueueRef.current.length === 0 && !loadCanonicalPlayer(result.inventory, true)) {
+        if (inventoryActionQueueRef.current.length === 0 && !loadCanonicalPlayer(result.inventory)) {
           notify("Pack reconciliation failed", "Lakebed returned a damaged canonical inventory.", "warning");
           return false;
         }
@@ -1394,7 +1379,6 @@ function GameApp({
         droppedPickupAttemptRef.current.set(result.dropId, Number.POSITIVE_INFINITY);
         if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
         audioRef.current?.play("blockPlace", { seed: result.dropId, intensity: 0.45, surface: "generic" });
-        notify(`Dropped ${ITEMS[result.moved.itemId].label}`, result.moved.count > 1 ? `${result.moved.count} items can be picked up by nearby players.` : "Nearby players can pick it up.");
       } else if (result.reason === "conflict" && result.inventory) {
         loadCanonicalPlayer(result.inventory);
         notify("Drop reconciled", "Lakebed had a newer inventory; try Q again.", "warning");
@@ -1424,7 +1408,6 @@ function GameApp({
       if (result.ok) {
         if (!loadCanonicalPlayer(result.inventory)) throw new Error("invalid_inventory");
         audioRef.current?.play("pickup", { seed: result.dropId, intensity: 0.72 });
-        notify(`Picked up ${ITEMS[result.moved.itemId].label}`, result.moved.count > 1 ? `${result.moved.count} added to inventory.` : undefined, "success");
       } else if (result.reason === "conflict" && result.inventory) {
         loadCanonicalPlayer(result.inventory);
       }
@@ -1485,17 +1468,12 @@ function GameApp({
 
   function notifyConfirmedWorldBlockEdit(result: Extract<WorldBlockEditMutationResult, { ok: true }>): void {
     if (result.kind === "mine") {
-      if (result.drop) {
-        notify(`Collected ${ITEMS[result.drop.itemId].label}`, "Lakebed added it to the field kit.", "success");
-      } else {
+      if (!result.drop) {
         const gameBlock = ENGINE_TO_GAME[PROTOCOL_TO_ENGINE[result.previousBlock]];
         if (gameBlock && BLOCKS[gameBlock].drop) {
           notify(`No ${ITEMS[BLOCKS[gameBlock].drop!].label} recovered`, miningRequirementDetail(gameBlock), "warning");
         }
       }
-    }
-    if (result.toolUse?.broke && result.toolUse.itemId && result.toolUse.itemId in ITEMS) {
-      notify(`${ITEMS[result.toolUse.itemId].label} broke`, "Lakebed confirmed the final durability use.", "warning");
     }
   }
 
@@ -1728,7 +1706,7 @@ function GameApp({
       && inventoryActionQueueRef.current.length === 0
       && savedInventory.revision !== inventoryRevisionRef.current
       && currentPlayerStateJson() === lastCommittedPlayerJsonRef.current
-      && loadCanonicalPlayer(savedInventory, true)) {
+      && loadCanonicalPlayer(savedInventory)) {
       return;
     }
     if (!pending && inventoryActionQueueRef.current.length === 0
@@ -1913,15 +1891,6 @@ function GameApp({
                 );
               }
             }
-            if (result.shot.bowBroken) notify("Bow broke", "The last durability point was consumed by this shot.", "warning");
-            if (result.drops?.length) notify(
-              "Mob drops collected",
-              result.drops.map((drop) => `${drop.count} ${ITEMS[drop.itemId].label}`).join(" · "),
-              "success",
-            );
-            if (result.shot.landed) {
-              notify(result.shot.killed ? "Arrow defeated the target" : "Arrow hit", `${result.shot.targetKind} · ${result.shot.targetId}`, result.shot.killed ? "success" : "info");
-            }
           }).catch(() => {
             setConnected(false);
             notify("Arrow lost contact", "Lakebed could not confirm the shot.", "warning");
@@ -1951,14 +1920,7 @@ function GameApp({
               notify("Shearing reconciliation failed", "Lakebed returned an invalid inventory snapshot.", "warning");
               return;
             }
-            if (!result.replayed) {
-              audioRef.current?.play("pickup", { seed: operationId, intensity: 0.58 });
-              notify(
-                "Sheep sheared",
-                result.drops.map((drop) => `${drop.count} ${ITEMS[drop.itemId].label}`).join(" · "),
-                "success",
-              );
-            }
+            if (!result.replayed) audioRef.current?.play("pickup", { seed: operationId, intensity: 0.58 });
           }).catch(() => {
             setConnected(false);
             notify("Shearing lost contact", "Lakebed could not confirm the interaction.", "warning");
@@ -1995,13 +1957,6 @@ function GameApp({
               }
               loadCanonicalPlayer(result.inventory);
               audioRef.current?.play("mobHurt", { seed: operationId, intensity: result.killed ? 0.9 : 0.68 });
-              if (result.killed && result.drops.length) {
-                notify(
-                  "Mob drops collected",
-                  result.drops.map((drop) => `${drop.count} ${ITEMS[drop.itemId].label}`).join(" · "),
-                  "success",
-                );
-              }
             }
           }).catch(() => {
             setConnected(false);
@@ -2026,15 +1981,7 @@ function GameApp({
             setConnected(true);
             if (result.ok) {
               if (result.attackerInventory) loadCanonicalPlayer(result.attackerInventory);
-              if (result.weaponBroken && result.weaponItemId) {
-                notify(`${ITEMS[result.weaponItemId].label} broke`, "The last durability point was consumed by a Lakebed-confirmed hit.", "warning");
-              }
               audioRef.current?.play("playerHurt", { seed: operationId, intensity: result.killed ? 0.9 : 0.65 });
-              notify(
-                result.killed ? `${target.name} was defeated` : `Hit ${target.name}`,
-                `${result.damage ?? 0} damage${result.replayed ? " · confirmed retry" : ""}`,
-                result.killed ? "success" : "info",
-              );
               return;
             }
             if (result.reason === "cooldown") return;
@@ -2080,7 +2027,6 @@ function GameApp({
         onPlayerDamage: (amount) => {
           audioRef.current?.play("mobAttack", { seed: `mob:${amount}:${performance.now().toFixed(0)}`, intensity: 0.7 });
           audioRef.current?.play("playerHurt", { seed: `${amount}:${performance.now().toFixed(0)}`, intensity: 0.78 });
-          notify("Zombie hit", `${amount} health lost.`, "warning");
         },
         onPlayerHealthChange: (health) => {
           setPlayerHealth(health);
@@ -2161,7 +2107,6 @@ function GameApp({
                 }
                 tntFuseCuesRef.current.add(result.fuse.eventId);
                 audioRef.current?.play("creeperFuse", { seed: result.fuse.eventId, intensity: 0.9 });
-                if (result.toolUse?.broke) notify("Flint and steel broke", "That was its final use.", "warning");
               } else {
                 const detail = result.reason === "already_primed" ? "That fuse is already burning."
                   : result.reason === "flint_and_steel_required" ? "Hold a usable flint and steel."
@@ -2226,11 +2171,6 @@ function GameApp({
                 y: target.block.y + 1,
                 z: target.block.z,
               });
-              notify(
-                result.replayed ? "Oak growth confirmed" : "Oak grew",
-                `${result.edits.length} blocks · one bone meal consumed${receiptStillCurrent ? "" : " · newer terrain already loaded"}`,
-                "success",
-              );
             }).catch(() => {
               setConnected(false);
               notify("Oak growth lost contact", "The exact operation can be retried safely; no background requests were started.", "warning");
@@ -2353,7 +2293,7 @@ function GameApp({
       void claimMobPlayerDamage(JSON.stringify(claim)).then((result) => {
         setConnected(result.ok);
         if (result.ok && result.damage > 0) {
-          if (!loadCanonicalPlayer(result.inventory, true)) {
+          if (!loadCanonicalPlayer(result.inventory)) {
             notify("Armor reconciliation failed", "Lakebed returned a damaged canonical equipment snapshot.", "warning");
             return;
           }
@@ -2373,11 +2313,6 @@ function GameApp({
               result.serverNow,
             );
           }
-          notify(
-            result.killed ? "You were overwhelmed" : "Monster hit",
-            result.killed ? "Lakebed confirmed your death." : `${result.damage} health lost.`,
-            "warning",
-          );
         }
       }).catch(() => {
         mobDamageClaimsRef.current.delete(claim.operationId);
@@ -2392,14 +2327,6 @@ function GameApp({
         setConnected(result.ok);
         if (!result.ok) return;
         audioRef.current?.play("explosion", { seed: claim.operationId, intensity: 1 });
-        const ownHit = result.victims?.find((victim) => victim.userId === auth.userId);
-        if (ownHit?.damage) {
-          notify(
-            ownHit.killed ? "You blew up" : "Creeper explosion",
-            ownHit.killed ? "Lakebed confirmed the blast was fatal." : `${ownHit.damage} health lost.`,
-            "warning",
-          );
-        }
       }).catch(() => {
         creeperExplosionClaimsRef.current.delete(claim.operationId);
         setConnected(false);
@@ -2456,14 +2383,6 @@ function GameApp({
             return;
           }
           audioRef.current?.play("explosion", { seed: fuse.eventId, intensity: 1 });
-          const ownHit = result.victims?.find((victim) => victim.userId === auth.userId);
-          if (ownHit?.damage) {
-            notify(
-              ownHit.killed ? "You blew up" : "TNT explosion",
-              ownHit.killed ? "Lakebed confirmed the blast was fatal." : `${ownHit.damage} health lost.`,
-              "warning",
-            );
-          }
         }).catch(() => {
           tntExplosionClaimsRef.current.delete(fuse.eventId);
           setConnected(false);
@@ -2979,7 +2898,6 @@ function GameApp({
 
   function handleCrafted(recipe: Recipe, craftedCount: number) {
     audioRef.current?.play("craft", { seed: `${recipe.id}:${craftedCount}`, intensity: 0.72, surface: "wood" });
-    notify(`Made ${ITEMS[recipe.output.itemId].label}`, `Crafted ${craftedCount}.`, "success");
   }
 
   async function handleFurnaceTransfer(action: FurnaceTransferAction): Promise<void> {
@@ -3061,7 +2979,6 @@ function GameApp({
       sourceSlot: inventoryIndex,
       expectedItemId: result.consumed,
     });
-    notify(`Ate ${ITEMS[result.consumed].label}`, `Restored ${result.restored} hunger.`, "success");
     return true;
   }
 
@@ -3113,8 +3030,8 @@ function GameApp({
         }
         setChestError("");
         audioRef.current?.play("uiConfirm", { seed: `${result.moved.itemId}:${result.moved.count}:${result.chest.updatedAt}`, intensity: 0.55, surface: "wood" });
-        notify(
-          result.replayed ? "Chest transfer reconciled" : "Chest transfer committed",
+        if (result.replayed) notify(
+          "Chest transfer reconciled",
           `${result.moved.count} ${ITEMS[result.moved.itemId].label} moved atomically through Lakebed.`,
           "success",
         );
@@ -3220,7 +3137,6 @@ function GameApp({
         setSleepStatus(detail);
         return;
       }
-      notify("Spawn point set", "Lakebed confirmed this bed as your authoritative respawn point.", "success");
       if (result.slept && result.clock) {
         engineRef.current?.setDayNightClock({
           cycleLengthMs: result.clock.cycleLengthMs,
@@ -3228,7 +3144,6 @@ function GameApp({
           epochPhase: result.clock.epochPhase,
         }, result.clock.serverNow - Date.now());
         setSleepStatus("Morning reached. Every connected explorer agreed to skip the night.");
-        notify("Dawn breaks over Fern Hollow", "The shared Lakebed clock advanced to morning.", "success");
       } else {
         setSleepStatus(`${result.sleepingPlayers} of ${result.requiredPlayers} active explorer${result.requiredPlayers === 1 ? "" : "s"} in bed. Waiting for the rest…`);
       }

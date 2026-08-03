@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   MAX_PRIMED_TNT_VISUALS,
+  PRIMED_TNT_LABEL_VERTICES,
   PRIMED_TNT_VERTICES_PER_ENTITY,
   createMobRenderer,
   primedTntBufferBytes,
@@ -17,8 +18,9 @@ samplePrimedTntVisual(1_000, 5_000, 4_950, late);
 assert.ok(late.progress > 0.98 && late.flashMix > 0.8, "the final fuse beat flashes close to white");
 assert.ok(late.scale > early.scale && late.scale <= 1.08, "the final beat swells subtly");
 assert.equal(MAX_PRIMED_TNT_VISUALS, TNT_MAX_ACTIVE_FUSES, "visual and Lakebed row ceilings cannot drift");
-assert.equal(PRIMED_TNT_VERTICES_PER_ENTITY, 4 * 36, "body, cream band, cap, and fuse use four boxes");
-assert.equal(primedTntBufferBytes(), 110_592, "the maximum fuse geometry stays near 100 KiB");
+assert.equal(PRIMED_TNT_LABEL_VERTICES, 4 * 6 * 3, "six compact glyph triangles label every TNT side");
+assert.equal(PRIMED_TNT_VERTICES_PER_ENTITY, 162, "body, four side bands and labels, and five-face fuse cap stay bounded");
+assert.equal(primedTntBufferBytes(), 124_416, "the labeled maximum fuse geometry stays near 120 KiB");
 
 let allocatedBytes = 0;
 let uploadCalls = 0;
@@ -57,7 +59,43 @@ assert.ok(uploaded && uploaded.byteLength <= allocatedBytes);
 
 renderer.setPrimedTntFuses([], base);
 assert.equal(renderer.setLocalPrimedTnt(2, 4, 2, true, base), true);
-assert.equal(renderer.rebuild([], 2, 2, 0, 1, 1, 0).primedTntVertexCount, PRIMED_TNT_VERTICES_PER_ENTITY);
+const originalDateNow = Date.now;
+const earlyNow = base + 10;
+const lateNow = base + 3_950;
+try {
+  Date.now = () => earlyNow;
+  assert.equal(renderer.rebuild([], 2, 2, 0, 1, 1, 0).primedTntVertexCount, PRIMED_TNT_VERTICES_PER_ENTITY);
+  const earlyGeometry = uploaded!.slice(0, PRIMED_TNT_VERTICES_PER_ENTITY * 6);
+  Date.now = () => lateNow;
+  renderer.rebuild([], 2, 2, 0, 1, 1, 0);
+  const lateGeometry = uploaded!.slice(0, PRIMED_TNT_VERTICES_PER_ENTITY * 6);
+  const earlyVisual = samplePrimedTntVisual(base, base + 4_000, earlyNow, { progress: 0, scale: 0, flashMix: 0 });
+  const lateVisual = samplePrimedTntVisual(base, base + 4_000, lateNow, { progress: 0, scale: 0, flashMix: 0 });
+  const center = [2.5, 4.5, 2.5] as const;
+  const labelStarts = [42, 66, 90, 114] as const;
+  for (let side = 0; side < 4; side += 1) {
+    const start = labelStarts[side];
+    for (let vertex = start; vertex < start + 18; vertex += 1) {
+      const offset = vertex * 6;
+      const tangent = side < 2 ? 2 : 0;
+      assert.ok(Math.abs((earlyGeometry[offset + 1] - center[1]) / earlyVisual.scale
+        - (lateGeometry[offset + 1] - center[1]) / lateVisual.scale) < 1e-5,
+      "fuse swelling preserves every label vertex's vertical orientation");
+      assert.ok(Math.abs((earlyGeometry[offset + tangent] - center[tangent]) / earlyVisual.scale
+        - (lateGeometry[offset + tangent] - center[tangent]) / lateVisual.scale) < 1e-5,
+      "fuse swelling preserves every label vertex's horizontal orientation");
+      const normal = side < 2 ? 0 : 2;
+      const direction = side === 0 || side === 2 ? 1 : -1;
+      assert.equal(Math.sign(earlyGeometry[offset + normal] - center[normal]), direction,
+        "each label remains on its original outward-facing side");
+      assert.equal(Math.sign(lateGeometry[offset + normal] - center[normal]), direction,
+        "flashing and swelling cannot rotate a label onto another side");
+    }
+  }
+  assert.notDeepEqual(lateGeometry, earlyGeometry, "late fuse flashing and swelling remain visibly animated");
+} finally {
+  Date.now = originalDateNow;
+}
 assert.equal(renderer.setLocalPrimedTnt(2, 4, 2, false), true);
 assert.equal(renderer.rebuild([], 2, 2, 0, 1, 1, 0).primedTntVertexCount, 0);
 
