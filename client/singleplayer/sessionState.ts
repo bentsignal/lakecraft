@@ -98,6 +98,19 @@ export function beginSinglePlayerPointerLockAttempt(
   void Promise.resolve(result).then(onSettled, () => onSettled(false));
 }
 
+/** Rejects a late browser grant without disturbing the UI that superseded it. */
+export function releaseBlockedSinglePlayerPointerLockGrant(
+  locked: boolean,
+  uiBlocked: boolean,
+  pauseOpen: boolean,
+  mounted: boolean,
+  release: () => void,
+): boolean {
+  if (!locked || (mounted && !uiBlocked && !pauseOpen)) return false;
+  release();
+  return true;
+}
+
 export function createSinglePlayerPointerSessionState(
   locked = false,
   pauseOpen = SINGLE_PLAYER_INITIAL_PAUSE_OPEN,

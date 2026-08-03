@@ -254,6 +254,8 @@ export function requestPointerLockForTarget(
   pointerDocument: PointerLockRequestDocument,
   pointerWindow: PointerLockRequestWindow,
   timeoutMs = 250,
+  acceptLock = () => true,
+  releaseLock = () => undefined,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
@@ -267,19 +269,27 @@ export function requestPointerLockForTarget(
       resolve(locked);
     };
     const onPointerLockSettled = () => {
-      if (pointerDocument.pointerLockElement === target) finish(true);
+      if (pointerDocument.pointerLockElement !== target) return;
+      if (acceptLock()) finish(true);
+      else {
+        releaseLock();
+        finish(false);
+      }
     };
     const onPointerLockError = () => finish(false);
     pointerDocument.addEventListener("pointerlockchange", onPointerLockSettled);
     pointerDocument.addEventListener("pointerlockerror", onPointerLockError);
     fallbackTimer = pointerWindow.setTimeout(
-      () => finish(pointerDocument.pointerLockElement === target),
+      () => {
+        if (pointerDocument.pointerLockElement === target) onPointerLockSettled();
+        else finish(false);
+      },
       timeoutMs,
     );
     try {
       const request = target.requestPointerLock();
-      if (pointerDocument.pointerLockElement === target) finish(true);
-      void Promise.resolve(request).catch(onPointerLockError);
+      onPointerLockSettled();
+      void Promise.resolve(request).then(onPointerLockSettled, onPointerLockError);
     } catch {
       finish(false);
     }
@@ -3688,7 +3698,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function requestCanvasPointerLock(): Promise<boolean> {
-    return requestPointerLockForTarget(canvas, document, window);
+    return requestPointerLockForTarget(
+      canvas,
+      document,
+      window,
+      250,
+      () => !destroyed,
+      () => document.exitPointerLock(),
+    );
   }
 
   function applyCapturedMouseDown(button: number): void {

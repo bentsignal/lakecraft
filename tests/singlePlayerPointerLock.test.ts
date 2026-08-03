@@ -5,6 +5,7 @@ import {
   POINTER_LOCK_ESCAPE_DEDUP_MS,
   beginSinglePlayerPointerLockAttempt,
   createSinglePlayerPointerSessionState,
+  releaseBlockedSinglePlayerPointerLockGrant,
   singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
@@ -120,6 +121,54 @@ rejectTrustedRequest?.(false);
 await Promise.resolve();
 assert.equal(pointerCaptureNeeded, true, "a genuine denial exposes the recoverable Click to Play fallback");
 
+for (const supersession of ["pause", "ui"] as const) {
+  let lateGrantReleased = false;
+  const released = releaseBlockedSinglePlayerPointerLockGrant(
+    true,
+    supersession === "ui",
+    supersession === "pause",
+    true,
+    () => { lateGrantReleased = true; },
+  );
+  assert.equal(released, true, `${supersession} supersession rejects the delayed browser grant`);
+  assert.equal(lateGrantReleased, true, `${supersession} supersession immediately releases delayed capture`);
+
+  let resolveDelayedGrant: ((locked: boolean) => void) | undefined;
+  let requestGeneration = 1;
+  const attemptGeneration = requestGeneration;
+  let delayedReleaseCount = 0;
+  let currentPauseOpen = false;
+  let currentUiBlocked = false;
+  beginSinglePlayerPointerLockAttempt(
+    () => new Promise<boolean>((resolve) => { resolveDelayedGrant = resolve; }),
+    () => { pointerCaptureNeeded = false; },
+    (locked) => {
+      if (attemptGeneration !== requestGeneration) {
+        releaseBlockedSinglePlayerPointerLockGrant(
+          locked,
+          currentUiBlocked,
+          currentPauseOpen,
+          true,
+          () => { delayedReleaseCount += 1; },
+        );
+      }
+    },
+  );
+  requestGeneration += 1;
+  currentPauseOpen = supersession === "pause";
+  currentUiBlocked = supersession === "ui";
+  resolveDelayedGrant?.(true);
+  await Promise.resolve();
+  assert.equal(delayedReleaseCount, 1, `${supersession} releases a promise grant delivered after supersession`);
+  assert.equal(currentPauseOpen, supersession === "pause", `${supersession} delayed grant preserves pause state`);
+  assert.equal(currentUiBlocked, supersession === "ui", `${supersession} delayed grant preserves UI state`);
+}
+assert.equal(
+  releaseBlockedSinglePlayerPointerLockGrant(true, false, false, true, () => assert.fail("active grant released")),
+  false,
+  "the original one-click grant remains captured while gameplay is active",
+);
+
 type PointerListener = () => void;
 const pointerListeners = new Map<string, Set<PointerListener>>();
 let pointerElement: unknown = null;
@@ -157,6 +206,26 @@ const denialRequest = requestPointerLockForTarget(pointerTarget, pointerDocument
 for (const listener of pointerListeners.get("pointerlockerror") ?? []) listener();
 assert.equal(await denialRequest, false, "pointerlockerror still provides an explicit recoverable denial");
 assert.equal(fallback, undefined, "settled attempts always remove their denial timer");
+
+pointerElement = null;
+let mounted = true;
+let unmountReleaseCount = 0;
+const unmountRequest = requestPointerLockForTarget(
+  pointerTarget,
+  pointerDocument,
+  pointerWindow,
+  250,
+  () => mounted,
+  () => {
+    unmountReleaseCount += 1;
+    pointerElement = null;
+  },
+);
+mounted = false;
+pointerElement = pointerTarget;
+for (const listener of pointerListeners.get("pointerlockchange") ?? []) listener();
+assert.equal(await unmountRequest, false, "a delayed grant after engine teardown is rejected");
+assert.equal(unmountReleaseCount, 1, "engine teardown releases a late native Pointer Lock grant");
 
 /**
  * Real Chrome trace from the command input: keydown(Escape) closes Preact UI,
@@ -314,6 +383,12 @@ assert.ok(
   singlePlayerSource.includes("onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}"),
   "Back to Game recaptures directly from its click callback",
 );
+assert.match(singlePlayerSource, /if \(transition\.openPause\) \{\s+supersedePointerLockRequest\(\);/,
+  "opening Game Menu invalidates an in-flight trusted request");
+assert.match(singlePlayerSource, /function releasePointerLockForUi[\s\S]{0,300}supersedePointerLockRequest\(\);/,
+  "inventory, chat, container, sleep, and death UI invalidate in-flight requests");
+assert.match(singlePlayerSource, /return \(\) => \{\s+pointerSessionMountedRef\.current = false;\s+supersedePointerLockRequest\(\);/,
+  "unmount invalidates the app-level pointer request before destroying the engine");
 const initialPause = singlePlayerSource.slice(
   singlePlayerSource.indexOf("const initiallyPaused = singlePlayerGameplayPaused"),
   singlePlayerSource.indexOf("engine.start();"),

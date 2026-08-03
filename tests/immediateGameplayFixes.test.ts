@@ -41,8 +41,8 @@ assert.equal(
   0,
   "the obsolete four-vertex crosshair draw is absent",
 );
-assert.match(engineSource, /addEventListener\("pointerlockchange"[\s\S]{0,1200}Promise\.resolve\(request\)\.catch/,
-  "pointer-lock requests wait for Chrome's grant event and absorb an explicit denial");
+assert.match(engineSource, /addEventListener\("pointerlockchange"[\s\S]{0,1600}Promise\.resolve\(request\)\.then\(onPointerLockSettled, onPointerLockError\)/,
+  "pointer-lock requests wait for Chrome's grant event, reject late teardown grants, and absorb denial");
 
 const hudSource = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
 assert.equal(
