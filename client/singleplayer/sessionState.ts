@@ -80,6 +80,32 @@ export function singlePlayerInventoryCloseUsesTrustedRecapture(
   return code !== "Escape";
 }
 
+export type SinglePlayerInventoryClosePath = "trusted" | "deferred_escape";
+
+/**
+ * Runs the inventory-close gesture in browser-safe order. E and pointer clicks
+ * prepare the synchronous UI gate and start Pointer Lock before closing the
+ * activating UI. Escape closes first and arms recovery for a later eligible
+ * activation because Escape itself is reserved by the browser.
+ */
+export function orchestrateSinglePlayerInventoryClose(
+  code: "Escape" | "KeyE" | undefined,
+  prepareTrustedRecapture: () => void,
+  requestTrustedRecapture: (onStarted: () => void) => void,
+  closeUi: () => void,
+  armDeferredEscapeRecapture: () => void,
+): SinglePlayerInventoryClosePath {
+  if (singlePlayerInventoryCloseUsesTrustedRecapture(code)) {
+    prepareTrustedRecapture();
+    requestTrustedRecapture(closeUi);
+    return "trusted";
+  }
+
+  closeUi();
+  armDeferredEscapeRecapture();
+  return "deferred_escape";
+}
+
 export interface SinglePlayerPointerSessionTransition {
   state: SinglePlayerPointerSessionState;
   openPause: boolean;

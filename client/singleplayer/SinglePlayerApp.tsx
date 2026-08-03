@@ -121,9 +121,9 @@ import {
   beginSinglePlayerPointerLockAttempt,
   consumeSinglePlayerCommandSurfaceEscape,
   createSinglePlayerPointerSessionState,
+  orchestrateSinglePlayerInventoryClose,
   releaseBlockedSinglePlayerPointerLockGrant,
   singlePlayerGameplayPaused,
-  singlePlayerInventoryCloseUsesTrustedRecapture,
   singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
@@ -477,20 +477,18 @@ function SinglePlayerWorld({
       setCraftingContext("field");
     };
 
-    // Keep the synchronous ref in step with the UI we are about to close. A
-    // fast pointerlockchange must not reject the trusted E/click grant merely
-    // because Preact has not committed the next render yet.
-    pointerUiBlockedRef.current = uiModalOpen || deathScreenOpen
-      || document.visibilityState !== "visible";
-
-    if (singlePlayerInventoryCloseUsesTrustedRecapture(keyboardCode)) {
-      // Request capture before removing the UI that owns the trusted E/click.
-      requestGameplayPointerLock(closeInventoryUi);
-      return;
-    }
-
-    closeInventoryUi();
-    armGameplayResumeAfterEscape(performance.now());
+    orchestrateSinglePlayerInventoryClose(
+      keyboardCode,
+      () => {
+        // A fast pointerlockchange must not reject the trusted E/click grant
+        // merely because Preact has not committed the next render yet.
+        pointerUiBlockedRef.current = uiModalOpen || deathScreenOpen
+          || document.visibilityState !== "visible";
+      },
+      (onStarted) => requestGameplayPointerLock(onStarted),
+      closeInventoryUi,
+      () => armGameplayResumeAfterEscape(performance.now()),
+    );
   }
 
   function warnWorldEditCapacity(): void {
