@@ -29,6 +29,9 @@ assert.deepEqual(
 );
 const chances = Array.from({ length: 20 }, (_, index) => diamondOreVeinChance(index + 1));
 const peak = Math.max(...chances);
+const activationMass = chances.reduce((total, chance) => total + chance, 0);
+assert.ok(Math.abs(activationMass - 0.055 * 12) < 0.03,
+  `depth redistribution changed the legacy diamond budget: ${activationMass}`);
 assert.deepEqual(
   chances.flatMap((chance, index) => chance === peak ? [index + 1] : []),
   Array.from({ length: DIAMOND_ORE_PEAK_MAX_Y - DIAMOND_ORE_PEAK_MIN_Y + 1 }, (_, index) => index + DIAMOND_ORE_PEAK_MIN_Y),
