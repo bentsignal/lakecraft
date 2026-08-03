@@ -19,6 +19,7 @@ import {
 import {
   MOB_MOTION_UNITS_PER_BLOCK,
   createMobMotionState,
+  mobFacingYaw,
   mobMotionMeleeStandoffUnits,
   stepMobMotion,
 } from "../shared/mobMotionAuthority.ts";
@@ -147,7 +148,7 @@ stepMobMotion(authority, authorityTarget);
 const authorityStandoff = mobMotionMeleeStandoffUnits("spider");
 assert.ok(Math.abs(Math.hypot(authority.mobs[0].x, authority.mobs[0].z) - authorityStandoff) <= 1,
   "shared fixed-tick authority resolves an exact overlap to the same collider standoff");
-assert.equal(authority.mobs[0].yaw, Math.round(Math.atan2(-authority.mobs[0].x, -authority.mobs[0].z) * 1_000_000),
+assert.equal(authority.mobs[0].yaw, Math.round(mobFacingYaw(-authority.mobs[0].x, -authority.mobs[0].z, 0) * 1_000_000),
   "the authority mob faces back toward the target instead of facing along its escape vector");
 for (let tick = 0; tick < 120; tick += 1) {
   stepMobMotion(authority, authorityTarget);
@@ -167,6 +168,8 @@ assert.ok(engine.includes("decideMobKnockback(eventId, mobKnockbackReceipts.has(
   "pause and duplicate receipts reject hit reactions at the retained engine boundary");
 assert.ok(engine.includes("if (!result.killed) applyConfirmedPlayerHitMobKnockback"),
   "only accepted nonfatal local damage produces a reaction");
+assert.ok(engine.includes("-Math.sin(mob.yaw),") && engine.includes("Math.cos(mob.yaw),"),
+  "coincident hit knockback follows the corrected local +Z mob-facing convention");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 assert.ok(multiplayer.includes("!result.replayed && !result.killed"),
   "Lakebed melee receipt replays never duplicate mob reactions");
