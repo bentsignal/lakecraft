@@ -104,7 +104,7 @@ for (let scenario = 0; scenario < 1_000; scenario += 1) {
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 for (const marker of [
   "furnaces: table({",
-  "furnaceTransferReceipts: table({",
+  "furnaceTransferReceipts: userOperationReceiptTable()",
   "furnaceAt: query(async",
   "operateFurnace: mutation(async",
   "furnaceWithinReach(",
@@ -132,7 +132,7 @@ for (const marker of [
   'effect.previousBlock === "furnace"',
   "materializedFurnaceView(",
   'minedFurnaceRow.blockInstanceToken !== blockInstanceToken',
-  "reason: BS.invalidState",
+  "failure(BS.invalidState)",
   "furnaceRecoveryDrops",
   "canCreateDroppedItem(activeOwnedDrops.length + index)",
   "ctx.db.droppedItems.insert",

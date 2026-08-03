@@ -5,9 +5,9 @@ const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
 for (const marker of [
-  "treeGrowthReceipts: table({",
-  '.index("by_user_operation", ["userId", "operationId"])',
-  '.index("by_user_created", ["userId", "receiptCreatedAt"])',
+  "treeGrowthReceipts: userOperationReceiptTable()",
+  '.index(BS.byUserOperation, [BS.userId, BS.operationId])',
+  '.index(BS.byUserCreated, [BS.userId, BS.receiptCreatedAt])',
   "maintainTreeGrowthReceipts",
   "MAX_TREE_GROWTH_RECEIPTS_PER_USER",
   "TREE_GROWTH_RECEIPT_TTL_MS",
@@ -15,8 +15,7 @@ for (const marker of [
 
 const mutation = server.slice(server.indexOf("growOakTree: mutation(async"), server.indexOf("editWorldBlock: mutation(async"));
 for (const marker of [
-  "ctx.auth.isAuthenticated",
-  "ctx.auth.isGuest",
+  "signedIn(ctx)",
   "isValidTreeGrowthOperationId",
   "worldBlockOperationPoseFingerprint",
   "ctx.db.treeGrowthReceipts",
@@ -25,7 +24,7 @@ for (const marker of [
   "currentChunks",
   "validateWorldBlockActionPose",
   "materializePlayerCombatState",
-  'reason: "player_dead"',
+  'failureAt("player_dead", serverNow)',
   "validatePlayerStateJson(inventoryRow.inventoryJson)",
   "playerState.state.selectedHotbar",
   'selectedStack?.itemId !== "bone_meal"',
@@ -64,7 +63,7 @@ assert.ok(
 assert.doesNotMatch(mutation, /setInterval|setTimeout|fetch\(/, "growth adds no background traffic or alternate backend");
 
 const worldMutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("sleepVote: mutation(async"));
-assert.match(worldMutation, /effect\.kind === "place" && effect\.nextBlock === "sapling"[\s\S]*?request\.y - 1[\s\S]*?sampleWorldChunkSnapshot[\s\S]*?supportBlock !== "grass" && supportBlock !== "dirt"[\s\S]*?reason: BS\.invalidSupport/,
+assert.match(worldMutation, /effect\.kind === "place" && effect\.nextBlock === "sapling"[\s\S]*?request\.y - 1[\s\S]*?sampleWorldChunkSnapshot[\s\S]*?supportBlock !== "grass" && supportBlock !== "dirt"[\s\S]*?failure\(BS\.invalidSupport\)/,
   "Lakebed rejects custom-client floating or wall saplings unless the placement cell is directly above authoritative soil");
 assert.ok(
   worldMutation.indexOf('effect.nextBlock === "sapling"') < worldMutation.indexOf("ctx.db.worldEdits.update"),

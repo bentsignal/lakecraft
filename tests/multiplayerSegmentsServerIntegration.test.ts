@@ -19,7 +19,7 @@ for (const required of [
   "decodeMotionBatch(rawBatch)",
   "canonicalMotionBatchPayload(batch)",
   'presence.sessionId !== batch.sessionId',
-  'reason: "no_peers"',
+  'failureAt("no_peers", serverNow)',
   "SEGMENT_MOTION_MUTATION_BUDGET",
   "MOTION_RECEIPT_LIMIT - 1",
   "MOTION_ROWS_PER_PLAYER - 1",
@@ -38,11 +38,11 @@ const publishHandler = server.slice(
 );
 assert.ok(
   publishHandler.indexOf("const existingReceipt = matchingReceipts[0]")
-    < publishHandler.indexOf("const presenceRows = await newestByIndex(ctx.db.playerPresence"),
+    < publishHandler.indexOf("const presenceRows = await newestUserRows(ctx.db.playerPresence"),
   "exact retry must resolve before liveness/quota gates",
 );
 assert.ok(
-  server.includes('if (!ctx.auth.isAuthenticated || ctx.auth.isGuest)'),
+  server.includes('if (!signedIn(ctx))'),
   "both APIs must reject guests",
 );
 assert.ok(

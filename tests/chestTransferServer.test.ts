@@ -16,7 +16,7 @@ const transferMutation = server.slice(
   server.indexOf("claimUsername: mutation"),
 );
 assert.ok(transferMutation.includes("playerRows.length !== 1"), "a chest transfer requires the server-owned initialized inventory row");
-assert.ok(transferMutation.includes("reason: BS.inventoryRequired"));
+assert.ok(transferMutation.includes("failure(BS.inventoryRequired)"));
 assert.equal(transferMutation.includes("ctx.db.inventories.insert"), false, "a forged client ledger can never bootstrap through a chest");
 
 const stored = JSON.stringify([{ itemId: "stone", count: 4 }]);

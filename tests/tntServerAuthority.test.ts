@@ -5,8 +5,8 @@ const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf
 
 for (const marker of [
   "primedTnt: table({",
-  "tntIgnitionReceipts: table({",
-  "tntExplosionReceipts: table({",
+  "tntIgnitionReceipts: userOperationReceiptTable()",
+  "tntExplosionReceipts: globalEventReceiptTable()",
   "igniteTnt: mutation(async",
   "claimTntExplosion: mutation(async",
   "applyAuthoritativeWorldExplosion",
@@ -57,7 +57,7 @@ const edit = server.slice(
   server.indexOf("editWorldBlock: mutation(async"),
   server.indexOf("startPresenceSession: mutation("),
 );
-assert.match(edit, /ctx\.db\.primedTnt[\s\S]*?reason: "block_primed"/, "a burning TNT block cannot be mined or replaced");
+assert.match(edit, /ctx\.db\.primedTnt[\s\S]*?failure\("block_primed"\)/, "a burning TNT block cannot be mined or replaced");
 
 const worldChunks = server.slice(
   server.indexOf("worldChunks: query(async"),
