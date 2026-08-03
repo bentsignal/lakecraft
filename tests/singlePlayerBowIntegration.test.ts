@@ -91,21 +91,21 @@ assert.doesNotMatch(app, /FirstPersonBow|setBowCharging|setBowChargeMs/,
   "single-player has no duplicate DOM/SVG bow or per-frame React charge state");
 assert.match(app, /onRangedRelease:[\s\S]{0,4000}applyConfirmedDurableItemUse\([^)]*"bow"\)[\s\S]{0,4000}removeItem\([^)]*"arrow"\s*,\s*1\)[\s\S]{0,4000}updateInventory/,
   "one local release atomically wears the bow, removes one arrow, and joins the dirty-save inventory path");
-assert.match(app, /onRangedRelease:[\s\S]{0,4000}damageLocalMobWithRangedShot\(intent\.target\.id/,
+assert.match(app, /onRangedRelease:[\s\S]{0,5000}damageLocalMobWithRangedShot\(\s*intent\.target\.id/,
   "a targeted local release delegates retained mob damage to the engine exactly once");
 assert.match(app, /onRangedRelease:[\s\S]{0,5000}setPlayerProjectiles\([^)]+\)/,
   "a local release reuses the retained bounded projectile renderer");
 assert.match(app, /playerProjectilesRef\.current =[\s\S]{0,500}\.slice\(-96\)/,
   "local arrow visuals retain the existing hard 96-projectile cap");
-assert.match(engineTypes, /damageLocalMobWithRangedShot\(mobId: string, damage: number\): [^;\n]*MobDamageResult;/,
+assert.match(engineTypes, /damageLocalMobWithRangedShot\([\s\S]{0,180}sourceZ: number,[\s\S]{0,80}\): MobDamageResult;/,
   "the local ranged-damage method is explicit on the public engine boundary");
 
-const localReleaseStart = engine.indexOf("damageLocalMobWithRangedShot(mobId, damage)");
+const localReleaseStart = engine.indexOf("damageLocalMobWithRangedShot(mobId, damage, eventId, sourceX, sourceZ)");
 const localRelease = engine.slice(localReleaseStart, engine.indexOf("setSelectedBlock", localReleaseStart));
 assert.ok(localReleaseStart > 0, "the engine implements the public local ranged-damage method");
 assert.ok(localRelease.includes("damageMob"), "the engine-owned local release applies damage to its retained mob simulation");
 assert.ok(localRelease.includes("options.onMobDrops"), "fatal local arrows retain bounded drop reservation");
-assert.ok(localRelease.includes("writeMobPoseSnapshots"), "hit and kill results reach the retained hurt/death renderer");
+assert.ok(localRelease.includes("writeReactiveMobPoseSnapshots"), "hit and kill results reach the retained hurt/death renderer");
 
 const clearCharge = engine.slice(engine.indexOf("function clearRangedCharge"), engine.indexOf("function rememberWorldEdit"));
 assert.ok(clearCharge.includes("onRangedCancel"), "pointer-lock and modal cancellation clear the active draw");

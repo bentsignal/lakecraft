@@ -22,6 +22,15 @@ const CHASE_RANGE_UNITS = 16 * MOB_MOTION_UNITS_PER_BLOCK;
 const HOME_RANGE_UNITS = 8 * MOB_MOTION_UNITS_PER_BLOCK;
 const MAX_HOME_RANGE_UNITS = 24 * MOB_MOTION_UNITS_PER_BLOCK;
 const DIRECTION_SCALE = 1_024;
+const PLAYER_CONTACT_RADIUS_UNITS = Math.round(0.32 * MOB_MOTION_UNITS_PER_BLOCK);
+const MELEE_STANDOFF_UNITS: Readonly<Partial<Record<MobAuthorityKind, number>>> = Object.freeze({
+  zombie: Math.round(0.38 * MOB_MOTION_UNITS_PER_BLOCK) + PLAYER_CONTACT_RADIUS_UNITS,
+  spider: Math.round(0.68 * MOB_MOTION_UNITS_PER_BLOCK) + PLAYER_CONTACT_RADIUS_UNITS,
+});
+
+export function mobMotionMeleeStandoffUnits(kind: MobAuthorityKind): number {
+  return MELEE_STANDOFF_UNITS[kind] ?? 0;
+}
 
 export type MobMotionBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
 
@@ -335,6 +344,11 @@ function setDirectionToward(mob: MobMotionMobState, dx: number, dz: number, mult
   mob.directionZ = Math.round(dz * DIRECTION_SCALE / distance) * multiplier;
 }
 
+function stableSeparationDirection(mob: Readonly<MobMotionMobState>): readonly [number, number] {
+  const direction = DIRECTIONS[mob.randomState % DIRECTIONS.length];
+  return direction ?? DIRECTIONS[0];
+}
+
 function chooseWander(mob: MobMotionMobState, tick: number): void {
   const decision = nextRandomUint(mob);
   if (decision % 100 < 42) {
@@ -351,9 +365,14 @@ function chooseWander(mob: MobMotionMobState, tick: number): void {
   mob.behaviorUntilTick = tick + 14 + (nextRandomUint(mob) % 39);
 }
 
-function moveMob(mob: MobMotionMobState, unitsPerTick: number): void {
-  const dx = Math.round(mob.directionX * unitsPerTick / DIRECTION_SCALE);
-  const dz = Math.round(mob.directionZ * unitsPerTick / DIRECTION_SCALE);
+function moveMob(
+  mob: MobMotionMobState,
+  unitsPerTick: number,
+  directionX = mob.directionX,
+  directionZ = mob.directionZ,
+): void {
+  const dx = Math.round(directionX * unitsPerTick / DIRECTION_SCALE);
+  const dz = Math.round(directionZ * unitsPerTick / DIRECTION_SCALE);
   const minimumX = Math.max(
     -MOB_MOTION_COORDINATE_LIMIT_BLOCKS * MOB_MOTION_UNITS_PER_BLOCK,
     mob.homeX - MAX_HOME_RANGE_UNITS,
@@ -400,6 +419,7 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
 
     const target = !definition.passive ? selectTarget(mob, targets) : null;
     let speed = definition.moveUnitsPerTick;
+    let chaseMovementLimit = Number.MAX_SAFE_INTEGER;
     if (target) {
       mob.targetUserId = target.userId;
       const dx = target.x - mob.x;
@@ -434,7 +454,29 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
         setDirectionToward(mob, dz * side, -dx * side);
         speed = definition.moveUnitsPerTick;
       } else {
-        setDirectionToward(mob, dx, dz);
+        const standoff = MELEE_STANDOFF_UNITS[mob.kind] ?? 0;
+        if (standoff > 0 && distance <= standoff) {
+          let separationX: number;
+          let separationZ: number;
+          if (distance > 0) {
+            setDirectionToward(mob, dx, dz);
+            separationX = -mob.directionX;
+            separationZ = -mob.directionZ;
+          } else {
+            const stable = stableSeparationDirection(mob);
+            separationX = stable[0];
+            separationZ = stable[1];
+            mob.directionX = -separationX;
+            mob.directionZ = -separationZ;
+          }
+          const correction = standoff - distance;
+          if (correction > 0) moveMob(mob, correction, separationX, separationZ);
+          mob.yaw = Math.round(Math.atan2(mob.directionX, mob.directionZ) * 1_000_000);
+          chaseMovementLimit = 0;
+        } else {
+          setDirectionToward(mob, dx, dz);
+          if (standoff > 0) chaseMovementLimit = Math.max(0, Math.floor(distance - standoff));
+        }
         speed = definition.chaseUnitsPerTick;
       }
       mob.behavior = "chase";
@@ -452,7 +494,7 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
         }
       }
     }
-    if (mob.behavior === "wander" || mob.behavior === "chase") moveMob(mob, speed);
+    if (mob.behavior === "wander" || mob.behavior === "chase") moveMob(mob, Math.min(speed, chaseMovementLimit));
   }
   return state;
 }

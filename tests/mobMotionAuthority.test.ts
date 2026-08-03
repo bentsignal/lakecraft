@@ -102,7 +102,7 @@ const bytesB = serializeMobMotionCheckpoint(checkpointB);
 const hashA = hashMobMotionCheckpoint(checkpointA);
 assert.equal(bytesB, bytesA, "two ten-minute replays produce byte-identical checkpoints");
 assert.equal(hashMobMotionCheckpoint(checkpointB), hashA, "two ten-minute replays produce the same hash");
-assert.equal(hashA, "7c65509b53510dc7", "the fixed ten-minute replay remains byte-for-byte stable across releases");
+assert.equal(hashA, "32bd86f409dd90e8", "the fixed ten-minute replay remains byte-for-byte stable across releases");
 
 const firstHalf = createMobMotionState({ seed, epoch, snapshot: spawns });
 assert.ok(firstHalf);

@@ -94,12 +94,25 @@ import {
   stepMobSimulation,
   writeMobPoseSnapshots,
   writeMobProjectileSnapshots,
+  MOB_DEFINITIONS,
   type MobPoseSnapshot,
   type MobProjectileSnapshot,
   type MobSpawnOptions,
   type LocalCreeperExplosionEvent,
   type MobDamageSource,
 } from "./mobs.ts";
+import {
+  MAX_ACTIVE_MOB_KNOCKBACK_REACTIONS,
+  MAX_MOB_KNOCKBACK_RECEIPTS,
+  applyMobKnockbackImpulse,
+  beginMobKnockbackStep,
+  createMobKnockbackReaction,
+  decideMobKnockback,
+  mobKnockbackReactionSettled,
+  resolveMobKnockback,
+  stepMobKnockbackAxis,
+  type MobKnockbackReaction,
+} from "./mobKnockback.ts";
 import {
   PLAYER_KNOCKBACK_COOLDOWN_MS,
   decidePlayerKnockback,
@@ -1466,6 +1479,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const velocity: Vec3 = [0, 0, 0];
   const knockbackVelocity: Vec3 = [0, 0, 0];
   const knockbackReceipts = new Set<string>();
+  const mobKnockbackReceipts = new Set<string>();
+  const mobKnockbackReactions = new Map<string, MobKnockbackReaction>();
   const contactDamageSources: MobDamageSource[] = [];
   const projectileDamageSources: MobDamageSource[] = [];
   let knockbackReadyAtMs = 0;
@@ -2201,11 +2216,97 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return [...appliedDestruction, ...edits.filter((edit) => edit.chainPrimed)];
   }
 
+  function writeReactiveMobPoseSnapshots(): void {
+    writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    for (const snapshot of mobSnapshots) {
+      const reaction = mobKnockbackReactions.get(snapshot.id);
+      if (!reaction) continue;
+      snapshot.x += reaction.offsetX;
+      snapshot.z += reaction.offsetZ;
+      snapshot.previousX += reaction.previousOffsetX;
+      snapshot.previousZ += reaction.previousOffsetZ;
+    }
+  }
+
+  function advanceMobKnockbackReactions(dt: number): void {
+    for (const [mobId, reaction] of mobKnockbackReactions) {
+      const mob = mobSimulation.mobs.find((candidate) => candidate.id === mobId);
+      if (!mob?.alive) {
+        mobKnockbackReactions.delete(mobId);
+        continue;
+      }
+      const definition = MOB_DEFINITIONS[mob.kind];
+      beginMobKnockbackStep(reaction);
+      const xStep = stepMobKnockbackAxis(reaction.offsetX, reaction.velocityX, dt, (distance) =>
+        !mobCanOccupy(
+          mob.kind,
+          mob.x + reaction.offsetX + distance,
+          mob.y,
+          mob.z + reaction.offsetZ,
+          definition.collisionRadius,
+          definition.height,
+        ));
+      reaction.offsetX = xStep.offset;
+      reaction.velocityX = xStep.velocity;
+      const zStep = stepMobKnockbackAxis(reaction.offsetZ, reaction.velocityZ, dt, (distance) =>
+        !mobCanOccupy(
+          mob.kind,
+          mob.x + reaction.offsetX,
+          mob.y,
+          mob.z + reaction.offsetZ + distance,
+          definition.collisionRadius,
+          definition.height,
+        ));
+      reaction.offsetZ = zStep.offset;
+      reaction.velocityZ = zStep.velocity;
+      if (mobKnockbackReactionSettled(reaction)) mobKnockbackReactions.delete(mobId);
+    }
+  }
+
+  function applyConfirmedPlayerHitMobKnockback(
+    eventId: string,
+    mobId: string,
+    sourceX: number,
+    sourceZ: number,
+    damage: number,
+  ): boolean {
+    if (decideMobKnockback(eventId, mobKnockbackReceipts.has(eventId), !paused) !== "accept") return false;
+    const mob = mobSimulation.mobs.find((candidate) => candidate.id === mobId);
+    if (!mob?.alive) return false;
+    const impulse = resolveMobKnockback(
+      sourceX,
+      sourceZ,
+      mob.x,
+      mob.z,
+      Math.sin(mob.yaw),
+      Math.cos(mob.yaw),
+      damage,
+    );
+    if (!impulse) return false;
+    if (mobKnockbackReceipts.size >= MAX_MOB_KNOCKBACK_RECEIPTS) {
+      const oldest = mobKnockbackReceipts.values().next().value;
+      if (typeof oldest === "string") mobKnockbackReceipts.delete(oldest);
+    }
+    mobKnockbackReceipts.add(eventId);
+    let reaction = mobKnockbackReactions.get(mobId);
+    if (!reaction) {
+      if (mobKnockbackReactions.size >= MAX_ACTIVE_MOB_KNOCKBACK_REACTIONS) {
+        const oldest = mobKnockbackReactions.keys().next().value;
+        if (typeof oldest === "string") mobKnockbackReactions.delete(oldest);
+      }
+      reaction = createMobKnockbackReaction();
+      mobKnockbackReactions.set(mobId, reaction);
+    }
+    applyMobKnockbackImpulse(reaction, impulse);
+    return true;
+  }
+
   function updateMobs(dt: number): void {
     const startedAt = performance.now();
     respawnExpiredAuthoritativeMobs(mobSimulation, Date.now() + mobCombatServerTimeOffsetMs);
     if (sharedMobMotionActive) {
-      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      advanceMobKnockbackReactions(dt);
+      writeReactiveMobPoseSnapshots();
       mobProjectileSnapshots.length = 0;
       lastMobSimulationMs = performance.now() - startedAt;
       return;
@@ -2284,7 +2385,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       options.onLocalCreeperExplosion?.({ ...explosion, damage: appliedDamage, edits: appliedEdits ?? [] });
     }
-    writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    advanceMobKnockbackReactions(dt);
+    writeReactiveMobPoseSnapshots();
     writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
     lastMobSimulationMs = performance.now() - startedAt;
   }
@@ -3167,10 +3269,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!result.found) return false;
     if (result.applied) {
       localMobAttackReadyAt = advanceLocalMobAttackReadyAt(localMobAttackReadyAt, attackNow, true);
+      if (!result.killed) applyConfirmedPlayerHitMobKnockback(
+        `local-melee:${mobTarget.id}:${attackNow}`,
+        mobTarget.id,
+        pose.x,
+        pose.z,
+        attackDamage,
+      );
       options.onLocalMobHit?.();
       emitHandAction("attack");
     }
-    writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+    writeReactiveMobPoseSnapshots();
     return true;
   }
 
@@ -3425,7 +3534,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         states,
         Date.now() + mobCombatServerTimeOffsetMs,
       );
-      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      writeReactiveMobPoseSnapshots();
     },
     applyMobMotionSnapshot(poses: readonly MobMotionPose[], nextServerTimeOffsetMs?: number) {
       if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
@@ -3470,21 +3579,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       sharedMobMotionActive = true;
       sharedMobMotionAppliedAt = now;
       mobProjectileSnapshots.length = 0;
-      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      writeReactiveMobPoseSnapshots();
     },
     getMobIds() {
       return mobIds.slice();
     },
     shearMob(mobId, acceptWool) {
       const result = shearLocalMob(mobSimulation, mobId, acceptWool);
-      if (result.ok) writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      if (result.ok) writeReactiveMobPoseSnapshots();
       return result;
     },
-    damageLocalMobWithRangedShot(mobId, damage) {
+    damageLocalMobWithRangedShot(mobId, damage, eventId, sourceX, sourceZ) {
       const result = damageMob(mobSimulation, mobId, damage, options.onMobDrops);
-      if (result.applied) writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      if (result.applied) {
+        if (!result.killed) applyConfirmedPlayerHitMobKnockback(eventId, mobId, sourceX, sourceZ, damage);
+        writeReactiveMobPoseSnapshots();
+      }
       return result;
     },
+    applyConfirmedPlayerHitMobKnockback,
     setSelectedBlock(block) {
       if (block !== selectedBlock) cancelSecondaryPlacementHold();
       selectedBlock = block;
@@ -3740,7 +3853,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallPeakY = pose.y;
       target = null;
       updateStreamingWindow(true);
-      writeMobPoseSnapshots(mobSimulation, mobSnapshots);
+      writeReactiveMobPoseSnapshots();
       writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
       poseDirty = true;
       options.onPoseChange?.({ ...pose });

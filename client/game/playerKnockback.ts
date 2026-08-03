@@ -1,9 +1,9 @@
 export const PLAYER_KNOCKBACK_COOLDOWN_MS = 450;
-export const PLAYER_KNOCKBACK_HORIZONTAL_SPEED = 5;
+export const PLAYER_KNOCKBACK_HORIZONTAL_SPEED = 5.6;
 export const PLAYER_KNOCKBACK_GROUNDED_LIFT = 3.8;
 export const PLAYER_KNOCKBACK_AIR_LIFT = 1.25;
 const PLAYER_KNOCKBACK_DRAG = 8;
-const PLAYER_KNOCKBACK_MAX_HORIZONTAL_SPEED = 6;
+const PLAYER_KNOCKBACK_MAX_HORIZONTAL_SPEED = 6.6;
 
 export type PlayerKnockbackDecision = "accept" | "duplicate" | "cooldown" | "ineligible" | "invalid";
 

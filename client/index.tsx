@@ -1903,6 +1903,15 @@ function GameApp({
             engineRef.current?.setPlayerProjectiles(playerProjectilesRef.current);
             if (result.shot.targetKind === "mob" && result.shot.targetCombat) {
               engineRef.current?.applyMobCombatStates([result.shot.targetCombat as MobAuthorityState], result.serverNow - Date.now());
+              if (!result.replayed && result.shot.landed && !result.shot.killed) {
+                engineRef.current?.applyConfirmedPlayerHitMobKnockback(
+                  operationId,
+                  result.shot.targetId,
+                  trajectory.origin.x,
+                  trajectory.origin.z,
+                  trajectory.damage,
+                );
+              }
             }
             if (result.shot.bowBroken) notify("Bow broke", "The last durability point was consumed by this shot.", "warning");
             if (result.drops?.length) notify(
@@ -1959,6 +1968,7 @@ function GameApp({
         onMobAttack: (target, damage) => {
           motionActionSinkRef.current?.("swing");
           const operationId = createCombatOperationId();
+          const attackPose = engineRef.current?.getPose();
           void flushInventoryActions().then(async (flushed) => {
             if (!flushed) throw new Error("inventory_action_pending");
             if (!await refreshAuthoritativePose()) throw new Error("presence_refresh_failed");
@@ -1974,6 +1984,15 @@ function GameApp({
               engineRef.current?.applyMobCombatStates([result.state], result.serverNow - Date.now());
             }
             if (result.ok) {
+              if (!result.replayed && !result.killed) {
+                engineRef.current?.applyConfirmedPlayerHitMobKnockback(
+                  operationId,
+                  target.id,
+                  attackPose?.x ?? 0,
+                  attackPose?.z ?? 0,
+                  damage,
+                );
+              }
               loadCanonicalPlayer(result.inventory);
               audioRef.current?.play("mobHurt", { seed: operationId, intensity: result.killed ? 0.9 : 0.68 });
               if (result.killed && result.drops.length) {

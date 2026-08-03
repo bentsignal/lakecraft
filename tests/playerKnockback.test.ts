@@ -17,7 +17,7 @@ assert.ok(east.x > 5 && Math.abs(east.z) < 1e-12, "an attacker west of the playe
 assert.equal(east.y, PLAYER_KNOCKBACK_GROUNDED_LIFT);
 const northwest = resolvePlayerKnockback(4, -4, 0, 0, 20, false)!;
 assert.ok(northwest.x < 0 && northwest.z > 0, "diagonal knockback points away from the attacker");
-assert.ok(Math.hypot(northwest.x, northwest.z) <= 6, "damage cannot produce an unbounded horizontal impulse");
+assert.ok(Math.hypot(northwest.x, northwest.z) <= 6.6, "damage cannot produce an unbounded horizontal impulse");
 assert.ok(northwest.y > 0 && northwest.y < east.y, "airborne hits get only a small lift");
 assert.equal(resolvePlayerKnockback(0, 0, 0, 0, 3, true), null, "coincident positions cannot invent a direction");
 assert.equal(resolvePlayerKnockback(0, 0, 1, 0, 0, true), null, "rejected zero-damage hits cannot move the player");
