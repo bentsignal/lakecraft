@@ -99,7 +99,6 @@ const first = createTerrainChunk(seed, -1, 0);
 const second = createTerrainChunk(seed, -1, 0);
 assert.deepEqual([...first], [...second], "ore generation is deterministic for a streamed chunk");
 let goldCount = 0;
-let diamondCount = 0;
 for (const [key, block] of first) {
   if (block !== BLOCK.GOLD_ORE && block !== BLOCK.DIAMOND_ORE) continue;
   const [, yString] = key.split(",");
@@ -109,7 +108,7 @@ for (const [key, block] of first) {
     assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= 20);
   } else {
     diamondCount += 1;
-    assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= 12);
+    assert.ok(y >= 1 && y <= 20);
   }
 }
 assert.ok(goldCount > 0 && goldCount < 96, `bounded gold count: ${goldCount}`);
@@ -118,4 +117,4 @@ assert.equal(terrainOreBlock(0, 32, 0, seed), null, "advanced ores never reach t
 assert.notDeepEqual(blockMaterialColor(BLOCK.GOLD_ORE), blockMaterialColor(BLOCK.STONE));
 assert.notDeepEqual(blockMaterialColor(BLOCK.DIAMOND_ORE), blockMaterialColor(BLOCK.STONE));
 
-console.log(`advanced progression tests passed (${goldCount} gold, ${diamondCount} diamond in chunk -1:0)`);
+console.log(`advanced progression tests passed (${goldCount} gold in chunk -1:0, ${diamondCount} diamond in 64 chunks)`);

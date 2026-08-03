@@ -1,6 +1,11 @@
 import { BLOCK, type BlockId, type BlockTarget } from "./types.ts";
 import { WORLD_CHUNK_SIZE, chunkBounds } from "./chunks.ts";
 import { blockCollisionHeight, blockContainsSolidPoint } from "./blockGeometry.ts";
+import {
+  DIAMOND_ORE_MAX_Y,
+  DIAMOND_ORE_MIN_Y,
+  diamondOreVeinChance,
+} from "../../shared/diamondTerrain.ts";
 
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
 
@@ -114,7 +119,7 @@ interface ClayColumnCache {
 const ORE_VEINS: readonly OreVeinConfig[] = [
   // Rarest/highest-tier deposits go first so overlap resolution always favors
   // the progression-gating ore. Every vein remains capped at seven blocks.
-  { block: BLOCK.DIAMOND_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 12, chance: 0.055, salt: 3_421 },
+  { block: BLOCK.DIAMOND_ORE, minimumY: DIAMOND_ORE_MIN_Y, maximumY: DIAMOND_ORE_MAX_Y, chance: 0, salt: 3_421 },
   { block: BLOCK.GOLD_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 20, chance: 0.11, salt: 2_863 },
   { block: BLOCK.IRON_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 28, chance: 0.17, salt: 2_137 },
   { block: BLOCK.COAL_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 30, chance: 0.43, salt: 1_619 },
@@ -403,11 +408,16 @@ function blockInOreVein(
     const index = configIndex * cache.cellsPerOre + localCell;
     let state = cache.state[index];
     if (state === 0) {
-      state = hash3(cellX, cellY, cellZ, seed + config.salt) >= config.chance ? 1 : 2;
+      const candidateAnchorY = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
+      const generationAnchorY = cellY * ORE_CELL_SIZE + candidateAnchorY;
+      const chance = config.block === BLOCK.DIAMOND_ORE
+        ? diamondOreVeinChance(generationAnchorY + TERRAIN_Y_OFFSET)
+        : config.chance;
+      state = hash3(cellX, cellY, cellZ, seed + config.salt) >= chance ? 1 : 2;
       cache.state[index] = state;
       if (state === 2) {
         cache.anchorX[index] = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 11) * ORE_CELL_SIZE);
-        cache.anchorY[index] = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
+        cache.anchorY[index] = candidateAnchorY;
         cache.anchorZ[index] = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 37) * ORE_CELL_SIZE);
       }
     }
@@ -416,10 +426,14 @@ function blockInOreVein(
     anchorY = cache.anchorY[index];
     anchorZ = cache.anchorZ[index];
   } else {
-    if (hash3(cellX, cellY, cellZ, seed + config.salt) >= config.chance) return false;
     anchorX = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 11) * ORE_CELL_SIZE);
     anchorY = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
     anchorZ = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 37) * ORE_CELL_SIZE);
+    const generationAnchorY = cellY * ORE_CELL_SIZE + anchorY;
+    const chance = config.block === BLOCK.DIAMOND_ORE
+      ? diamondOreVeinChance(generationAnchorY + TERRAIN_Y_OFFSET)
+      : config.chance;
+    if (hash3(cellX, cellY, cellZ, seed + config.salt) >= chance) return false;
   }
   const localX = x - cellX * ORE_CELL_SIZE;
   const localY = generationY - cellY * ORE_CELL_SIZE;
