@@ -711,9 +711,18 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         const distanceSquared = dx * dx + dz * dz;
         if (distanceSquared > RENDER_DISTANCE_SQUARED) continue;
         if (distanceSquared > 10 * 10 && dx * facingX + dz * facingZ < -2) continue;
-        const yaw = pose.previousYaw + shortestAngle(pose.previousYaw, pose.yaw) * alpha;
-        const moving = pose.behavior === "wander" || pose.behavior === "chase";
-        const swing = moving ? Math.sin(animationSeconds * (pose.behavior === "chase" ? 9 : 6) + index * 1.71) * 0.46 : 0;
+        const tickMovementX = pose.x - pose.previousX;
+        const tickMovementZ = pose.z - pose.previousZ;
+        const moving = tickMovementX * tickMovementX + tickMovementZ * tickMovementZ > 0.000001;
+        // Terrain collision may slide one axis or reject a requested step. Face
+        // and animate from the displacement that actually happened so mobs do
+        // not moonwalk or walk in place when their AI still says chase/wander.
+        const yaw = moving
+          ? Math.atan2(tickMovementX, tickMovementZ)
+          : pose.previousYaw + shortestAngle(pose.previousYaw, pose.yaw) * alpha;
+        const swing = moving
+          ? Math.sin(animationSeconds * (pose.behavior === "chase" ? 9 : 6) + index * 1.71) * 0.46
+          : 0;
         if (pose.kind === "pig") appendPig(writer, x, y, z, yaw, swing);
         else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
         else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing, pose.sheared);

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   consumeMobContactDamage,
   createMobSimulation,
+  meleeMobPlayerAttackReach,
   meleeMobPlayerStandoff,
   stableMobSeparationDirection,
   stepMobSimulation,
@@ -43,13 +44,15 @@ const spider = createMobSimulation([{
   behaviorSeed: 73,
 }]);
 const spiderStandoff = meleeMobPlayerStandoff("spider");
+assert.ok(meleeMobPlayerAttackReach("spider") > spiderStandoff,
+  "attack reach keeps a visible margin beyond the physical no-overlap boundary");
 for (let tick = 0; tick < 120; tick += 1) {
   stepMobSimulation(spider, flatStep);
   assert.ok(Math.hypot(spider.mobs[0].x, spider.mobs[0].z) >= spiderStandoff - 1e-9,
     "repeated spider charge cannot cross the player standoff");
 }
 assert.equal(consumeMobContactDamage(spider, flatStep.player, spider.elapsedSeconds, true), 2,
-  "the standoff remains inside the exact contact attack boundary");
+  "a stationary player inside the attack margin is hit without walking into the mob");
 
 const zero = createMobSimulation([{
   id: "zombie-zero",

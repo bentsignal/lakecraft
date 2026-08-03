@@ -8,6 +8,7 @@ import {
   writeFirstPersonModelMatrix,
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
+import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
 
 class CapturingWebGl {
   readonly ARRAY_BUFFER = 0x8892;
@@ -73,6 +74,8 @@ function ndcBounds(data: Float32Array, matrix: Float32Array) {
 }
 
 const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0]);
+assert.deepEqual(Object.keys(FIRST_PERSON_TUNING), ["rig", "arm", "tool", "bow", "otherItem", "block"],
+  "every first-person pose class has one obvious tuning entry point");
 assert.ok(Math.abs(model[0] - FIRST_PERSON_MODEL_SCALE) < 0.000001);
 assert.ok(Math.abs(model[5] - FIRST_PERSON_MODEL_SCALE) < 0.000001);
 assert.ok(Math.abs(model[10] - FIRST_PERSON_MODEL_SCALE) < 0.000001);

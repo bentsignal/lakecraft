@@ -99,10 +99,17 @@ export const MOB_PROJECTILE_LIFETIME_SECONDS = 3;
 export const MOB_PROJECTILE_GRAVITY = 2.4;
 export const LOCAL_MOB_LINE_OF_SIGHT_MAX_SAMPLES = 64;
 export const MOB_PLAYER_CONTACT_RADIUS = 0.32;
+export const MOB_PLAYER_MELEE_REACH_MARGIN = 0.22;
 
 export function meleeMobPlayerStandoff(kind: MobKind): number {
   const definition = MOB_DEFINITIONS[kind];
   return definition.contactDamage > 0 ? definition.collisionRadius + MOB_PLAYER_CONTACT_RADIUS : 0;
+}
+
+/** Melee reach extends slightly past the physical no-overlap boundary. */
+export function meleeMobPlayerAttackReach(kind: MobKind): number {
+  const standoff = meleeMobPlayerStandoff(kind);
+  return standoff > 0 ? standoff + MOB_PLAYER_MELEE_REACH_MARGIN : 0;
 }
 
 /** Stable zero-distance escape vector; it never consumes the mob's replay RNG. */
@@ -1205,11 +1212,17 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       }
     }
     if (mob.directionX !== 0 || mob.directionZ !== 0) {
-      mob.yaw = Math.atan2(mob.directionX, mob.directionZ);
+      const intendedYaw = Math.atan2(mob.directionX, mob.directionZ);
       const movementDistance = Math.min(speed * dt, chaseMovementLimit);
       if (movementDistance > 1e-7) {
+        const beforeX = mob.x;
+        const beforeZ = mob.z;
         moveMob(mob, mob.directionX * movementDistance, mob.directionZ * movementDistance, input);
+        const movedX = mob.x - beforeX;
+        const movedZ = mob.z - beforeZ;
+        mob.yaw = movedX !== 0 || movedZ !== 0 ? Math.atan2(movedX, movedZ) : intendedYaw;
       } else {
+        mob.yaw = intendedYaw;
         mob.desiredX = mob.x;
         mob.desiredZ = mob.z;
       }
@@ -1623,7 +1636,7 @@ export function consumeMobContactDamage(
       || MOB_DEFINITIONS[mob.kind].contactDamage <= 0
       || nowSeconds + 1e-9 < mob.nextContactDamageAtSeconds) continue;
     const definition = MOB_DEFINITIONS[mob.kind];
-    const horizontalReach = definition.collisionRadius + MOB_PLAYER_CONTACT_RADIUS;
+    const horizontalReach = meleeMobPlayerAttackReach(mob.kind);
     const dx = player.x - mob.x;
     const dz = player.z - mob.z;
     if (dx * dx + dz * dz > horizontalReach * horizontalReach) continue;

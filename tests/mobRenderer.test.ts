@@ -301,10 +301,17 @@ assert.ok(yellowChickenVertices >= 36, "the chicken has a visible yellow beak an
 assert.ok(redChickenVertices >= 12, "the chicken has a visible red wattle below its beak");
 renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0.1);
 const walkingChickenGeometry = gl.uploaded!.slice(0, stillChicken.vertexCount * 6);
-assert.notDeepEqual(
+assert.deepEqual(
   walkingChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
   stillChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
-  "both wing boxes animate inside the same mob batch",
+  "a wander label cannot animate stationary chicken wings",
+);
+chicken.previousZ = chicken.z - 0.1;
+renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0.2);
+assert.notDeepEqual(
+  gl.uploaded!.subarray(6 * 36 * 6, 8 * 36 * 6),
+  stillChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
+  "actual chicken displacement animates both wing boxes",
 );
 
 const spider = pose("spider", 0, 4, 0);
@@ -331,10 +338,17 @@ assert.ok(maximumY - minimumY < 0.7, "the spider stays recognizably low to the g
 assert.ok(brightRedVertices >= 12, "the forward face includes two visible bright-red eye blocks");
 renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.1);
 const walkingSpiderGeometry = gl.uploaded!.slice(0, stillSpider.vertexCount * 6);
-assert.notDeepEqual(
+assert.deepEqual(
   walkingSpiderGeometry.subarray(4 * 36 * 6),
   stillSpiderGeometry.subarray(4 * 36 * 6),
-  "all eight leg boxes animate inside the same mob batch",
+  "a chase label cannot animate stationary spider legs",
+);
+spider.previousX = spider.x - 0.1;
+renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.2);
+assert.notDeepEqual(
+  gl.uploaded!.subarray(4 * 36 * 6),
+  stillSpiderGeometry.subarray(4 * 36 * 6),
+  "actual spider displacement animates all eight leg boxes",
 );
 
 const calmCreeper = pose("creeper", 0, 4, 30);

@@ -3,6 +3,10 @@ import { TEXTURED_WORLD_VERTEX_FLOATS, blockTextureForFace, textureAtlasUv } fro
 import { CUBE_FACES } from "./cubeFaces.ts";
 import { writeMatrixProduct } from "./matrixProduct.ts";
 import { BLOCK, type BlockId } from "./types.ts";
+import {
+  FIRST_PERSON_TUNING,
+  type FirstPersonGroupTuning,
+} from "./firstPersonTuning.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -10,10 +14,14 @@ const FLOATS_PER_COLOR_VERTEX = 6;
 export const FIRST_PERSON_MAX_COLOR_VERTICES = 648;
 export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
-export const FIRST_PERSON_MODEL_SCALE = 0.48;
-export const FIRST_PERSON_MODEL_PIVOT: readonly [number, number, number] = [0.66, -0.82, -1.20];
+export const FIRST_PERSON_MODEL_SCALE = FIRST_PERSON_TUNING.rig.scale;
+export const FIRST_PERSON_MODEL_PIVOT: readonly [number, number, number] = FIRST_PERSON_TUNING.rig.pivot;
 /** Camera-space authored poses; action motion still pivots through the shared wrist rig below. */
-export const FIRST_PERSON_CUBE_ROTATION: readonly [number, number, number] = [0.50, -0.66, 0.04];
+export const FIRST_PERSON_CUBE_ROTATION: readonly [number, number, number] = [
+  FIRST_PERSON_TUNING.block.rotationDegrees[0] * Math.PI / 180,
+  FIRST_PERSON_TUNING.block.rotationDegrees[1] * Math.PI / 180,
+  FIRST_PERSON_TUNING.block.rotationDegrees[2] * Math.PI / 180,
+];
 // This authored point resolves to camera-space (0, 0) after the shared wrist
 // scale/pivot, so the visual arrow converges on the unchanged shot crosshair.
 export const FIRST_PERSON_BOW_ARROW_TIP: readonly [number, number, number] = [-0.72, 0.89, -1.70];
@@ -34,6 +42,45 @@ const COOKED_FOOD: Vec3 = [0.52, 0.22, 0.10];
 const RAW_FOOD: Vec3 = [0.72, 0.32, 0.28];
 
 type GeometryWriter = [color: number[], textured: number[]];
+
+function applyGroupTuning(
+  output: number[],
+  start: number,
+  stride: number,
+  tuning: FirstPersonGroupTuning,
+): void {
+  const [translateX, translateY, translateZ] = tuning.position;
+  const [pivotX, pivotY, pivotZ] = tuning.pivot;
+  const rx = tuning.rotationDegrees[0] * Math.PI / 180;
+  const ry = tuning.rotationDegrees[1] * Math.PI / 180;
+  const rz = tuning.rotationDegrees[2] * Math.PI / 180;
+  const cosineX = Math.cos(rx); const sineX = Math.sin(rx);
+  const cosineY = Math.cos(ry); const sineY = Math.sin(ry);
+  const cosineZ = Math.cos(rz); const sineZ = Math.sin(rz);
+  for (let offset = start; offset < output.length; offset += stride) {
+    let x = (output[offset] - pivotX) * tuning.scale;
+    let y = (output[offset + 1] - pivotY) * tuning.scale;
+    let z = (output[offset + 2] - pivotZ) * tuning.scale;
+    if (rx) {
+      const nextY = y * cosineX - z * sineX;
+      z = y * sineX + z * cosineX;
+      y = nextY;
+    }
+    if (ry) {
+      const nextX = x * cosineY + z * sineY;
+      z = -x * sineY + z * cosineY;
+      x = nextX;
+    }
+    if (rz) {
+      const nextX = x * cosineZ - y * sineZ;
+      y = x * sineZ + y * cosineZ;
+      x = nextX;
+    }
+    output[offset] = x + pivotX + translateX;
+    output[offset + 1] = y + pivotY + translateY;
+    output[offset + 2] = z + pivotZ + translateZ;
+  }
+}
 
 export type FirstPersonActionKind = "mine" | "attack" | "place" | "use";
 
@@ -280,7 +327,8 @@ function canUseCanonicalCube(block: BlockId): boolean {
 }
 
 function appendTexturedCube(output: number[], block: BlockId): void {
-  const size = 0.64;
+  const size = FIRST_PERSON_TUNING.block.size;
+  const center = FIRST_PERSON_TUNING.block.center;
   for (const face of CUBE_FACES) {
     const texture = blockTextureForFace(block, face[0]);
     if (!texture) continue;
@@ -297,9 +345,9 @@ function appendTexturedCube(output: number[], block: BlockId): void {
         (point[0] - 0.5) * size,
         (point[1] - 0.5) * size,
         (point[2] - 0.5) * size,
-        0.14,
-        -0.10,
-        -1.36,
+        center[0],
+        center[1],
+        center[2],
         FIRST_PERSON_CUBE_ROTATION[0],
         FIRST_PERSON_CUBE_ROTATION[1],
         FIRST_PERSON_CUBE_ROTATION[2],
@@ -371,23 +419,28 @@ export function writeFirstPersonModelMatrix(
   output: Float32Array,
   pose: Readonly<FirstPersonActionPose>,
 ): Float32Array {
-  const cx = Math.cos(pose[3]);
-  const sx = Math.sin(pose[3]);
-  const cy = Math.cos(pose[4]);
-  const sy = Math.sin(pose[4]);
-  const cz = Math.cos(pose[5] ?? 0);
-  const sz = Math.sin(pose[5] ?? 0);
+  const baseRotation = FIRST_PERSON_TUNING.rig.rotationDegrees;
+  const rx = pose[3] + baseRotation[0] * Math.PI / 180;
+  const ry = pose[4] + baseRotation[1] * Math.PI / 180;
+  const rz = (pose[5] ?? 0) + baseRotation[2] * Math.PI / 180;
+  const cx = Math.cos(rx);
+  const sx = Math.sin(rx);
+  const cy = Math.cos(ry);
+  const sy = Math.sin(ry);
+  const cz = Math.cos(rz);
+  const sz = Math.sin(rz);
   const [pivotX, pivotY, pivotZ] = FIRST_PERSON_MODEL_PIVOT;
   const scale = FIRST_PERSON_MODEL_SCALE;
+  const rigPosition = FIRST_PERSON_TUNING.rig.position;
   // Rz * Ry * Rx keeps the authored local X/Y/Z rotation order. Scale and
   // action rotations share the wrist pivot, so the sleeve base stays planted
   // while the held item leads the arc instead of the arm orbiting the block.
   output[0] = cz * cy * scale; output[1] = sz * cy * scale; output[2] = -sy * scale; output[3] = 0;
   output[4] = (cz * sy * sx - sz * cx) * scale; output[5] = (sz * sy * sx + cz * cx) * scale; output[6] = cy * sx * scale; output[7] = 0;
   output[8] = (cz * sy * cx + sz * sx) * scale; output[9] = (sz * sy * cx - cz * sx) * scale; output[10] = cy * cx * scale; output[11] = 0;
-  output[12] = pivotX + pose[0] - (output[0] * pivotX + output[4] * pivotY + output[8] * pivotZ);
-  output[13] = pivotY + pose[1] - (output[1] * pivotX + output[5] * pivotY + output[9] * pivotZ);
-  output[14] = pivotZ + pose[2] - (output[2] * pivotX + output[6] * pivotY + output[10] * pivotZ);
+  output[12] = pivotX + rigPosition[0] + pose[0] - (output[0] * pivotX + output[4] * pivotY + output[8] * pivotZ);
+  output[13] = pivotY + rigPosition[1] + pose[1] - (output[1] * pivotX + output[5] * pivotY + output[9] * pivotZ);
+  output[14] = pivotZ + rigPosition[2] + pose[2] - (output[2] * pivotX + output[6] * pivotY + output[10] * pivotZ);
   output[15] = 1;
   return output;
 }
@@ -426,21 +479,35 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
     if (itemId && ITEMS[itemId].category === "block" && canUseCanonicalCube(block)) {
       appendTexturedCube(geometry[1], block);
     } else if (itemId === "bow") {
+      const start = geometry[0].length;
       appendBow(geometry[0], chargeStage, charging);
+      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.bow);
     } else if (itemId && ITEMS[itemId].tool) {
+      const start = geometry[0].length;
       appendTool(geometry[0], itemId);
+      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.tool);
     } else if (itemId && ITEMS[itemId].category === "food") {
+      const start = geometry[0].length;
       appendFood(geometry[0], itemId);
+      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
     } else if (itemId && ITEMS[itemId].category === "block") {
+      const start = geometry[0].length;
       appendSpecialBlock(geometry[0], itemId);
+      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
     } else if (itemId) {
+      const start = geometry[0].length;
       appendMaterial(geometry[0], itemId);
+      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
     }
     // Vanilla's drawn bow is a large right-side item presentation. Keeping the
     // ordinary one-arm mesh here reads as an unrelated floating limb, so the
     // bow owns the complete staged silhouette while every other item retains
     // the same hand and wrist pivot.
-    if (itemId !== "bow") appendArm(geometry[0]);
+    if (itemId !== "bow") {
+      const start = geometry[0].length;
+      appendArm(geometry[0]);
+      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.arm);
+    }
     if (geometry[0].length > FIRST_PERSON_MAX_COLOR_VERTICES * FLOATS_PER_COLOR_VERTEX
       || geometry[1].length > FIRST_PERSON_MAX_TEXTURED_VERTICES * TEXTURED_WORLD_VERTEX_FLOATS) {
       throw new Error("First-person model exceeded its fixed geometry budget.");
