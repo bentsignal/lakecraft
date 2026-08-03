@@ -48,7 +48,7 @@ export const FIRST_PERSON_TUNING = {
     pivot: [0.56, -0.49, -1.23] as FirstPersonVector,
   },
 
-  // EDIT `tool` FOR A PICKAXE, AXE, SHOVEL, HOE, OR SWORD.
+  // EDIT `tool` FOR A PICKAXE, AXE, SHOVEL, OR SWORD.
   tool: {
     position: [0, 0, 0] as FirstPersonVector,
     rotationDegrees: [0, 0, 0] as FirstPersonVector,
@@ -64,7 +64,8 @@ export const FIRST_PERSON_TUNING = {
     pivot: [0.40, 0, -1.12] as FirstPersonVector,
   },
 
-  // EDIT `otherItem` FOR OTHER HELD ITEMS, SUCH AS FOOD.
+  // EDIT `otherItem` FOR FOOD, MATERIALS, AND SPECIAL HELD BLOCK ITEMS.
+  // Examples: torch, chest, bed, door, ladder, fence, fence gate, and sapling.
   otherItem: {
     position: [0, 0, 0] as FirstPersonVector,
     rotationDegrees: [0, 0, 0] as FirstPersonVector,
@@ -72,9 +73,10 @@ export const FIRST_PERSON_TUNING = {
     pivot: [0.08, -0.04, -1.18] as FirstPersonVector,
   },
 
-  // EDIT `block` FOR A BLOCK. Blocks use `center`, `rotationDegrees`, and `size`
-  // instead of the four knobs above. Use 0.02, 5 degrees, and 0.05 as the same
-  // safe first steps. Center is also [X, Y, Z].
+  // EDIT `block` FOR A FULL CUBE, such as dirt, stone, or planks. The stone
+  // brick slab also uses this box. These items use `center`, `rotationDegrees`,
+  // and `size` instead of the four knobs above. Use 0.02, 5 degrees, and 0.05
+  // as the same safe first steps. Center is also [X, Y, Z].
   block: {
     center: [0.14, -0.10, -1.36] as FirstPersonVector,
     rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,

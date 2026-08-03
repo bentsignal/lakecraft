@@ -15,11 +15,12 @@ If the browser tab is completely hidden, the redraw waits to save battery. Put t
 
 ## Pick the right box
 
-- Holding a block? Change `block`.
-- Holding a pickaxe, axe, shovel, hoe, or sword? Change `tool`.
+- Holding a normal full cube, such as dirt, stone, or planks? Change `block`. The stone-brick slab also uses `block`.
+- Holding a special held block item, such as a torch, chest, bed, door, ladder, fence, fence gate, or sapling? Change `otherItem`.
+- Holding a pickaxe, axe, shovel, or sword? Change `tool`.
 - Holding a bow? Change `bow`.
 - Fixing the arm or empty hand? Change `arm`.
-- Holding food or another ordinary item? Change `otherItem`.
+- Holding food, a material, or another ordinary item? Change `otherItem`.
 - Ignore `rig` at first. It moves everything and the swing animation together.
 
 ## Change one number

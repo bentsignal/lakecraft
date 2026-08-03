@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import {
+  firstPersonHeldItemTuningGroup,
+} from "../client/game/firstPersonRenderer.ts";
 import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
+import { BLOCK } from "../client/game/types.ts";
 
 const tuningSource = readFileSync(new URL("../client/game/firstPersonTuning.ts", import.meta.url), "utf8");
 const guide = readFileSync(new URL("../docs/first-person-pose-tuning.md", import.meta.url), "utf8");
@@ -25,6 +29,30 @@ assert.match(tuningSource, /X: bigger moves RIGHT; smaller moves LEFT/);
 assert.match(tuningSource, /position:[^\n]*change by 0\.02/);
 assert.match(tuningSource, /rotationDegrees: change by 5/);
 
+assert.equal(firstPersonHeldItemTuningGroup("dirt", BLOCK.DIRT), "block",
+  "a full atlas cube uses the block knobs");
+assert.equal(firstPersonHeldItemTuningGroup("planks", BLOCK.PLANKS), "block",
+  "another full cube uses the block knobs");
+for (const [itemId, block] of [
+  ["torch", BLOCK.TORCH],
+  ["chest", BLOCK.CHEST],
+  ["bed", BLOCK.BED],
+  ["door", BLOCK.DOOR_CLOSED],
+  ["ladder", BLOCK.LADDER],
+  ["oak_fence", BLOCK.OAK_FENCE],
+  ["oak_fence_gate", BLOCK.OAK_FENCE_GATE_CLOSED],
+  ["sapling", BLOCK.SAPLING],
+] as const) {
+  assert.equal(firstPersonHeldItemTuningGroup(itemId, block), "otherItem",
+    `${itemId} is a special-shaped block item and uses the otherItem knobs`);
+}
+assert.equal(firstPersonHeldItemTuningGroup("stone_brick_slab", BLOCK.STONE_BRICK_SLAB), "block",
+  "the current slab mesh uses the block knobs despite its non-cube world shape");
+assert.equal(firstPersonHeldItemTuningGroup("iron_pickaxe", BLOCK.AIR), "tool");
+assert.equal(firstPersonHeldItemTuningGroup("bow", BLOCK.AIR), "bow");
+assert.equal(firstPersonHeldItemTuningGroup("apple", BLOCK.AIR), "otherItem");
+assert.equal(firstPersonHeldItemTuningGroup(null, BLOCK.AIR), null);
+
 for (const target of ["block", "tool", "bow", "arm", "otherItem", "rig"]) {
   assert.match(guide, new RegExp(`\\b${target}\\b`), `the guide names ${target}`);
 }
@@ -32,6 +60,9 @@ assert.match(guide, /Save the file\. Look at the paused browser/);
 assert.match(guide, /press \*\*Undo\*\*/);
 assert.match(guide, /do not need to unpause, click the game, or refresh the browser/i);
 assert.match(guide, /tab is completely hidden[^\n]*redraw waits/i);
+assert.match(guide, /normal full cube[^\n]*dirt, stone, or planks[^\n]*stone-brick slab[^\n]*`block`/i);
+assert.match(guide, /special held block item[^\n]*torch, chest, bed, door/i);
+assert.equal(guide.includes("hoe"), false, "the guide lists only implemented tool kinds");
 
 assert.match(engine, /if \(paused && !firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
   "a paused HMR remount seeds a complete visible pose frame");
