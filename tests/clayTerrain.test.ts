@@ -82,11 +82,11 @@ const density = clayColumns / eligibleColumns;
 assert.equal(clayColumns, 605, "the deterministic clay footprint golden changed");
 assert.equal(twoDeepColumns, 311);
 assert.equal(threeDeepColumns, 294);
-assert.equal(candidateClayBlocks, 1_449);
-assert.equal(survivingClayBlocks, 1_352);
+assert.equal(candidateClayBlocks, 1_446);
+assert.equal(survivingClayBlocks, 1_349);
 assert.equal(caveCarvedClayBlocks, 97, "caves must continue to win over clay deposits");
 assert.equal(dirtReplacements, 1_293);
-assert.equal(stoneReplacements, 156);
+assert.equal(stoneReplacements, 153);
 assert.ok(density >= 0.015 && density <= 0.035,
   `clay column density ${(density * 100).toFixed(2)}% escaped its rare 1.5–3.5% budget`);
 assert.equal(clientClayBlock(-76, 5, -17, SEED), BLOCK.CLAY);

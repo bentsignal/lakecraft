@@ -14,11 +14,11 @@ function orderedMapDigest(blocks: ReadonlyMap<string, BlockId>): string {
 // Ordered-map fingerprints cover spawn blending, negative seams, far
 // coordinates, and every intentional deterministic material-layer change.
 const chunkSnapshots = [
-  { coordinate: [0, 0], size: 2_079, sha256: "26ca1b1f3662e5392b743398efda5bbe5bec4e9ae80c53015f4825ddd243775b" },
-  { coordinate: [1, -1], size: 2_165, sha256: "f325f858dbf82a5003cdfa5595d0b540ab9398a8dfb7dd513d1d16ecb2c8e0f1" },
+  { coordinate: [0, 0], size: 2_079, sha256: "b9b314842fcdc4daf5fff2b4bb0e4a6a537ae5684a7dd9a9896628f517ac63cc" },
+  { coordinate: [1, -1], size: 2_165, sha256: "34fce5781cf2202bb6aaa07b8ce04f1c4c9233d89ed7abef675684b652bace2a" },
   { coordinate: [-4, 3], size: 1_750, sha256: "9004f411e5e3eb6e66000ce55a609657089121f5789f6acae863439ab654aa03" },
   { coordinate: [25_000, -25_000], size: 1_839, sha256: "d192ff58101388cf9e815bc266f217487faec837c78a05ccf56affa3efc7171f" },
-  { coordinate: [-25_003, 24_998], size: 2_084, sha256: "4eb2eeceedb5b8d0c31ad3ef7c2a5041671350f2b63970d42d7a6402f2a681ea" },
+  { coordinate: [-25_003, 24_998], size: 2_084, sha256: "2aaf902b76e60def04258b3dac440e4eda429e7ef58fbdc4b0dbf246964ab2b4" },
 ] as const;
 
 for (const snapshot of chunkSnapshots) {
@@ -35,7 +35,7 @@ const eager = createTerrain(7_319, 20);
 assert.equal(eager.size, 16_005);
 assert.equal(
   orderedMapDigest(eager),
-  "95c9bd89d2fc0630e87029724428257d4aed62546132aaac0e3f694243e975d3",
+  "3ae8d5413b8742e38d056f507d79a35d0005906aa2113a79241c2ac5735d0777",
   "the eager compatibility generator preserves its complete expected ordered map",
 );
 

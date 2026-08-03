@@ -1,5 +1,10 @@
 import type { BlockType } from "./protocol.ts";
 import * as BS from "./bundleStrings.ts";
+import {
+  DIAMOND_ORE_MAX_Y,
+  DIAMOND_ORE_MIN_Y,
+  diamondOreVeinChance,
+} from "./diamondTerrain.ts";
 
 export const WORLD_TERRAIN_SEED = 7319;
 export const WORLD_TERRAIN_MIN_Y = -24;
@@ -30,7 +35,7 @@ interface OreVeinConfig {
 }
 
 const ORE_VEINS: readonly OreVeinConfig[] = [
-  { block: BS.diamondOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
+  { block: BS.diamondOre, minimumY: DIAMOND_ORE_MIN_Y, maximumY: DIAMOND_ORE_MAX_Y, chance: 0, salt: 3_421 },
   { block: BS.goldOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
   { block: BS.ironOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
   { block: BS.coalOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
@@ -116,13 +121,16 @@ function blockInOreVein(x: number, y: number, z: number, seed: number, config: O
   const cellX = Math.floor(x / ORE_CELL_SIZE);
   const cellY = Math.floor(y / ORE_CELL_SIZE);
   const cellZ = Math.floor(z / ORE_CELL_SIZE);
-  if (hash3(cellX, cellY, cellZ, seed + config.salt) >= config.chance) return false;
   const localX = x - cellX * ORE_CELL_SIZE;
   const localY = y - cellY * ORE_CELL_SIZE;
   const localZ = z - cellZ * ORE_CELL_SIZE;
   const anchorX = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 11) * ORE_CELL_SIZE);
   const anchorY = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
   const anchorZ = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 37) * ORE_CELL_SIZE);
+  const chance = config.block === BS.diamondOre
+    ? diamondOreVeinChance(cellY * ORE_CELL_SIZE + anchorY)
+    : config.chance;
+  if (hash3(cellX, cellY, cellZ, seed + config.salt) >= chance) return false;
   return Math.abs(localX - anchorX) + Math.abs(localY - anchorY) + Math.abs(localZ - anchorZ) <= 1;
 }
 
