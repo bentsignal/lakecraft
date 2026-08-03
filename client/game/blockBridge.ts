@@ -18,8 +18,13 @@ export const ENGINE_TO_GAME: readonly (GameBlockId | undefined)[] = [
   "oak_fence_gate", "oak_fence_gate", "stone_brick_slab", "clay", "bricks", undefined,
 ];
 
-export const reverseBlockMap = <T extends string>(blocks: readonly (T | undefined)[]) => Object.fromEntries(
-  blocks.flatMap((block, id) => block === undefined ? [] : [[block, id]]),
+export const reverseBlockMap = <T extends string>(blocks: readonly (T | undefined)[]) => blocks.reduce<Record<string, number>>(
+  (result, block, id) => {
+    if (!block) return result;
+    if (result[block] !== undefined) throw new Error(`Duplicate block bridge identity: ${block}`);
+    result[block] = id;
+    return result;
+  }, {},
 );
 
 export const PROTOCOL_TO_ENGINE = Object.assign(

@@ -64,12 +64,24 @@ assert.deepEqual(mined.effect.drop, { itemId: "stone_bricks", count: 1 });
 assert.deepEqual(mined.effect.inventory[0], { itemId: "stone_bricks", count: 2 }, "pickaxe mining returns exactly the placed block");
 assert.equal(mined.effect.toolUse.remainingDurability, ITEMS.wooden_pickaxe.tool!.maxDurability - 1);
 
+const bridgeSource = readFileSync(new URL("../client/game/blockBridge.ts", import.meta.url), "utf8");
+const multiplayerSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 assert.equal(ENGINE_TO_PROTOCOL[BLOCK.STONE_BRICKS], "stone_bricks");
 assert.equal(ENGINE_TO_GAME[BLOCK.STONE_BRICKS], "stone_bricks");
 assert.equal(ITEM_TO_ENGINE.stone_bricks, BLOCK.STONE_BRICKS);
 assert.equal(audioSurfaceForBlock(BLOCK.STONE_BRICKS), "stone");
+for (const [label, source, sharedImport] of [
+  ["multiplayer", multiplayerSource, /from "\.\/game\/blockBridge\.ts"/],
+  ["single-player", singlePlayerSource, /from "\.\.\/game\/blockBridge\.ts"/],
+] as const) {
+  assert.match(source, sharedImport, `${label} consumes the shared block bridge`);
+  assert.doesNotMatch(`${source}\n${bridgeSource}`,
+    /(?:setInterval|setTimeout|useMutation)[^\n]*stone_bricks|stone_bricks[^\n]*(?:setInterval|setTimeout|useMutation)/i,
+    `${label} stone-brick wiring adds no dedicated network or timer loop`);
+}
 assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "single-player saves retain stone bricks and every newer append-only block ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));
