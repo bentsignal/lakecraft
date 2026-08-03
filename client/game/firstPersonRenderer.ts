@@ -12,6 +12,11 @@ export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
 export const FIRST_PERSON_MODEL_SCALE = 0.48;
 export const FIRST_PERSON_MODEL_PIVOT: readonly [number, number, number] = [0.66, -0.82, -1.20];
+/** Camera-space authored poses; action motion still pivots through the shared wrist rig below. */
+export const FIRST_PERSON_CUBE_ROTATION: readonly [number, number, number] = [0.50, -0.66, 0.04];
+// This authored point resolves to camera-space (0, 0) after the shared wrist
+// scale/pivot, so the visual arrow converges on the unchanged shot crosshair.
+export const FIRST_PERSON_BOW_ARROW_TIP: readonly [number, number, number] = [-0.72, 0.89, -1.70];
 
 const SKIN: Vec3 = [0.74, 0.50, 0.34];
 const SLEEVE: Vec3 = [0.05, 0.54, 0.56];
@@ -180,14 +185,18 @@ function appendTool(output: number[], itemId: ItemId): void {
     appendColorBox(output, [0.43, -0.42, -1.14], [0.12, 0.38, 0.13], HANDLE, 0, 0, 0.62);
     return;
   }
-  appendColorBox(output, [0.23, -0.14, -1.16], [0.11, 1.02, 0.11], HANDLE, 0, 0, 0.61);
+  // The handle runs from the lower-right grip toward the upper-left head while
+  // pitching back into the scene. Giving the whole silhouette real depth keeps
+  // axes and picks recognizable instead of presenting a flat sideways glyph.
+  appendColorBox(output, [0.14, -0.18, -1.12], [0.12, 1.10, 0.12], HANDLE, -0.22, -0.26, 0.62);
   if (kind === "pickaxe") {
-    appendColorBox(output, [-0.09, 0.30, -1.16], [0.75, 0.16, 0.16], head, 0, 0, -0.04);
-    appendColorBox(output, [-0.43, 0.23, -1.16], [0.16, 0.30, 0.16], head, 0, 0, -0.35);
+    appendColorBox(output, [-0.17, 0.30, -1.24], [0.78, 0.16, 0.18], head, -0.12, -0.24, -0.06);
+    appendColorBox(output, [-0.52, 0.22, -1.18], [0.17, 0.31, 0.18], head, -0.12, -0.24, -0.36);
   } else if (kind === "axe") {
-    appendColorBox(output, [-0.13, 0.28, -1.16], [0.42, 0.42, 0.18], head, 0, 0, -0.18);
+    appendColorBox(output, [-0.13, 0.31, -1.24], [0.42, 0.17, 0.19], head, -0.14, -0.28, -0.10);
+    appendColorBox(output, [-0.34, 0.22, -1.20], [0.24, 0.38, 0.21], head, -0.14, -0.28, -0.22);
   } else {
-    appendColorBox(output, [-0.09, 0.31, -1.16], [0.32, 0.42, 0.16], head, 0, 0, 0.60);
+    appendColorBox(output, [-0.15, 0.30, -1.22], [0.33, 0.43, 0.18], head, -0.13, -0.26, 0.58);
   }
 }
 
@@ -207,18 +216,35 @@ function appendFood(output: number[], itemId: ItemId): void {
 }
 
 function appendBow(output: number[], chargeStage: 0 | 1 | 2, charging: boolean): void {
-  const points = [[0.52,-0.67],[0.65,-0.34],[0.60,0],[0.65,0.34],[0.52,0.67]] as const;
+  // A tall right-side bow follows the vanilla screen-space silhouette. The
+  // arrow itself advances through Z toward the crosshair instead of lying flat
+  // across X, which previously made a correctly aimed shot look sideways.
+  const points = [[0.28,-0.78],[0.50,-0.40],[0.56,0],[0.50,0.40],[0.28,0.78]] as const;
   for (let index = 0; index < points.length - 1; index += 1) {
-    appendSegment(output, points[index], points[index + 1], -1.30, 0.105, 0.13, index === 1 || index === 2 ? BOW_HIGHLIGHT : BOW);
+    appendSegment(output, points[index], points[index + 1], -1.12, 0.105, 0.13, index === 1 || index === 2 ? BOW_HIGHLIGHT : BOW);
   }
-  const nockX = 0.43 - chargeStage * 0.17;
-  appendSegment(output, points[0], [nockX, 0], -1.29, 0.025, 0.035, STRING);
-  appendSegment(output, [nockX, 0], points[4], -1.29, 0.025, 0.035, STRING);
+  const nockX = 0.26 - chargeStage * 0.10;
+  appendSegment(output, points[0], [nockX, 0], -1.11, 0.025, 0.035, STRING);
+  appendSegment(output, [nockX, 0], points[4], -1.11, 0.025, 0.035, STRING);
   if (!charging) return;
-  appendSegment(output, [-0.72, 0], [nockX + 0.06, 0], -1.27, 0.045, 0.045, ARROW);
-  appendColorBox(output, [-0.76, 0, -1.27], [0.16, 0.15, 0.11], ARROWHEAD, 0, 0, Math.PI / 4);
-  appendColorBox(output, [nockX + 0.03, 0.07, -1.27], [0.18, 0.08, 0.06], FLETCHING, 0, 0, -0.45);
-  appendColorBox(output, [nockX + 0.03, -0.07, -1.27], [0.18, 0.08, 0.06], FLETCHING, 0, 0, 0.45);
+  const arrowCenterX = (FIRST_PERSON_BOW_ARROW_TIP[0] + nockX) * 0.5;
+  const arrowCenterY = FIRST_PERSON_BOW_ARROW_TIP[1] * 0.5;
+  const arrowCenterZ = (FIRST_PERSON_BOW_ARROW_TIP[2] - 1.11) * 0.5;
+  const arrowDx = nockX - FIRST_PERSON_BOW_ARROW_TIP[0];
+  const arrowDy = -FIRST_PERSON_BOW_ARROW_TIP[1];
+  const arrowDz = -1.11 - FIRST_PERSON_BOW_ARROW_TIP[2];
+  const arrowLength = Math.hypot(arrowDx, arrowDy, arrowDz);
+  appendColorBox(
+    output,
+    [arrowCenterX, arrowCenterY, arrowCenterZ],
+    [0.045, 0.045, arrowLength],
+    ARROW,
+    Math.asin(-arrowDy / arrowLength),
+    Math.atan2(arrowDx, arrowDz),
+  );
+  appendColorBox(output, FIRST_PERSON_BOW_ARROW_TIP, [0.12, 0.12, 0.10], ARROWHEAD, 0, 0, Math.PI / 4);
+  appendColorBox(output, [nockX, 0.07, -1.11], [0.18, 0.08, 0.06], FLETCHING, 0, 0, -0.45);
+  appendColorBox(output, [nockX, -0.07, -1.11], [0.18, 0.08, 0.06], FLETCHING, 0, 0, 0.45);
 }
 
 function appendSpecialBlock(output: number[], itemId: ItemId): void {
@@ -274,9 +300,9 @@ function appendTexturedCube(output: number[], block: BlockId): void {
         0.08,
         -0.04,
         -1.32,
-        -0.38,
-        -0.55,
-        -0.06,
+        FIRST_PERSON_CUBE_ROTATION[0],
+        FIRST_PERSON_CUBE_ROTATION[1],
+        FIRST_PERSON_CUBE_ROTATION[2],
       );
       output.push(
         uv.left + (uv.right - uv.left) * horizontal,
@@ -392,6 +418,7 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   let actionStartedAt = -Infinity;
   const actionPose: FirstPersonActionPose = [0, 0, 0, 0, 0, 0];
   const modelMatrix = new Float32Array(16);
+  const viewProjection = new Float32Array(16);
   const stats: FirstPersonRenderStats = [0, 0, 0, 0, 0, 0, capacity[2]];
 
   function rebuild(): void {
@@ -409,7 +436,11 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
     } else if (itemId) {
       appendMaterial(geometry[0], itemId);
     }
-    appendArm(geometry[0]);
+    // Vanilla's drawn bow is a large right-side item presentation. Keeping the
+    // ordinary one-arm mesh here reads as an unrelated floating limb, so the
+    // bow owns the complete staged silhouette while every other item retains
+    // the same hand and wrist pivot.
+    if (itemId !== "bow") appendArm(geometry[0]);
     if (geometry[0].length > FIRST_PERSON_MAX_COLOR_VERTICES * FLOATS_PER_COLOR_VERTEX
       || geometry[1].length > FIRST_PERSON_MAX_TEXTURED_VERTICES * TEXTURED_WORLD_VERTEX_FLOATS) {
       throw new Error("First-person model exceeded its fixed geometry budget.");
@@ -462,7 +493,12 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
         reducedMotion,
       );
       writeFirstPersonModelMatrix(modelMatrix, actionPose);
-      return writeMatrixProduct(output, projection, modelMatrix);
+      viewProjection.set(projection);
+      // World FOV remains untouched. On portrait/narrow canvases only the
+      // viewmodel stops widening past a square aspect, keeping the item visible
+      // while the lower sleeve may still crop naturally against the viewport.
+      if (viewProjection[0] > viewProjection[5]) viewProjection[0] = viewProjection[5];
+      return writeMatrixProduct(output, viewProjection, modelMatrix);
     },
     () => {
       gl.deleteBuffer(colorBuffer);
