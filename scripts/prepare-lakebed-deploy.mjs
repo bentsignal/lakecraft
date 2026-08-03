@@ -20,6 +20,7 @@ import {
   COMPACT_CLIENT_PROPERTY_PATTERN,
   compactClientPropertyCache,
 } from "./client-property-compaction.mjs";
+import { compactClientStaticStrings } from "./client-static-string-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
 import {
   copyOwnedStageFile,
@@ -41,7 +42,13 @@ async function enableCompactLakebedBuild(buildPath) {
   ));
 }
 
-export async function prepareLakebedStage(stagingPlan) {
+export async function prepareLakebedStage(
+  stagingPlan,
+  { compactClientStrings = compactClientStaticStrings } = {},
+) {
+if (typeof compactClientStrings !== "function") {
+  throw new TypeError("Compact client staging requires a static-string transform.");
+}
 const { sourceRoot } = stagingPlan;
 const lakebedRuntime = await loadLakebedCompilerRuntime();
 await enableCompactLakebedBuild(lakebedRuntime.lakebedBuildPath);
@@ -226,7 +233,7 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
   await writeOwnedStageFile(
     stagingPlan,
     targetPath,
-    server ? appendServerSourceMapBoundary(output.text) : appendClientSourceMapBoundary(output.text),
+    server ? appendServerSourceMapBoundary(output.text) : appendClientSourceMapBoundary(compactClientStrings(output.text)),
   );
 }
 
