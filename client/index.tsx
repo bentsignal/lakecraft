@@ -390,6 +390,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
   clay: BLOCK.CLAY,
   bricks: BLOCK.BRICKS,
+  bedrock: BLOCK.BEDROCK,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,

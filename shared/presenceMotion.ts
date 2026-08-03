@@ -71,7 +71,8 @@ export const PRESENCE_MOTION_PAYLOAD_MAX_CHARS = 128;
 /** Keep the shared pose envelope aligned with persisted streamed-world edits. */
 export const PRESENCE_MIN_X = -1_000_000;
 export const PRESENCE_MAX_X = 1_000_000;
-export const PRESENCE_MIN_Y = -24;
+/** Player feet cannot enter the y=0 bedrock foundation. */
+export const PRESENCE_MIN_Y = 1;
 export const PRESENCE_MAX_Y = 128;
 export const PRESENCE_MIN_Z = -1_000_000;
 export const PRESENCE_MAX_Z = 1_000_000;

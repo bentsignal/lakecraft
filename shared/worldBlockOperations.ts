@@ -277,7 +277,7 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
   if (!hasExactKeys(value, expectedKeys)) return { ok: false, reason: BS.invalidRequest };
   if (!isCoordinate(value.x, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ)
     || !isCoordinate(value.z, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ)
-    || !isCoordinate(value.y, WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y)) {
+    || !isCoordinate(value.y, WORLD_EDIT_MIN_Y + 1, WORLD_EDIT_MAX_Y)) {
     return { ok: false, reason: BS.invalidCoordinate };
   }
   if (parseWorldBlockRevision(value.expectedChunkRevision) === null) {
@@ -312,7 +312,7 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
   }
 
   if (value.kind === "mine") {
-    if (!isWorldBlock(value.expectedBlock) || value.expectedBlock === "air") {
+    if (!isWorldBlock(value.expectedBlock) || value.expectedBlock === "air" || value.expectedBlock === "bedrock") {
       return { ok: false, reason: "invalid_block" };
     }
     const request: MineWorldBlockOperation = {
@@ -330,7 +330,8 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
     return { ok: true, request, fingerprint: worldBlockOperationFingerprint(request) };
   }
 
-  if (value.expectedBlock !== "air" || !isWorldBlock(value.placedBlock) || value.placedBlock === "air") {
+  if (value.expectedBlock !== "air" || !isWorldBlock(value.placedBlock)
+    || value.placedBlock === "air" || value.placedBlock === "bedrock") {
     return { ok: false, reason: "invalid_block" };
   }
   const request: PlaceWorldBlockOperation = {
@@ -350,7 +351,7 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
 }
 
 export function gameBlockForWorldBlock(block: WorldChunkBlockType): BlockId | null {
-  if (block === "air") return null;
+  if (block === "air" || block === "bedrock") return null;
   if (block === "wood") return "log";
   if (block === BS.doorClosed || block === BS.doorOpen) return "door";
   if (block === BS.oakFenceGateClosed || block === BS.oakFenceGateOpen) return BS.oakFenceGate;

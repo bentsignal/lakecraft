@@ -78,7 +78,7 @@ function validSource(source: Readonly<TntChainSource>): boolean {
 
 function validCell(cell: Readonly<AuthoritativeTntBlastCell>): boolean {
   return validCoordinate(cell.x, -1_000_000, 1_000_000)
-    && validCoordinate(cell.y, -24, 128)
+    && validCoordinate(cell.y, 1, 128)
     && validCoordinate(cell.z, -1_000_000, 1_000_000)
     && cell.coordKey === `${cell.x}:${cell.y}:${cell.z}`
     && Number.isFinite(cell.distanceSquared) && cell.distanceSquared >= 0
@@ -119,7 +119,7 @@ function activeFuseIsValid(fuse: Readonly<ActiveTntFuse>): boolean {
   return TNT_EVENT_PATTERN.test(fuse.eventId) && OPERATION_PATTERN.test(fuse.ignitionId)
     && fuse.coordKey === `${fuse.x}:${fuse.y}:${fuse.z}`
     && validCoordinate(fuse.x, -1_000_000, 1_000_000)
-    && validCoordinate(fuse.y, -24, 128) && validCoordinate(fuse.z, -1_000_000, 1_000_000)
+    && validCoordinate(fuse.y, 1, 128) && validCoordinate(fuse.z, -1_000_000, 1_000_000)
     && TOKEN_PATTERN.test(fuse.blockInstanceToken)
     && fuse.igniterUserId.length > 0 && fuse.igniterUserId.length <= 256
     && Number.isSafeInteger(fuse.ignitedAt) && fuse.ignitedAt >= 0 && Number.isSafeInteger(fuse.dueAt)

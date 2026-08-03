@@ -2,7 +2,8 @@ import type { BlockType } from "./protocol.ts";
 import * as BS from "./bundleStrings.ts";
 
 export const WORLD_TERRAIN_SEED = 7319;
-export const WORLD_TERRAIN_MIN_Y = -24;
+/** Inclusive natural foundation; y=0 is always bedrock. */
+export const WORLD_TERRAIN_MIN_Y = 0;
 
 const MIN_TERRAIN_HEIGHT = 3;
 const MAX_TERRAIN_HEIGHT = 11;
@@ -30,10 +31,10 @@ interface OreVeinConfig {
 }
 
 const ORE_VEINS: readonly OreVeinConfig[] = [
-  { block: BS.diamondOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
-  { block: BS.goldOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
-  { block: BS.ironOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
-  { block: BS.coalOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
+  { block: BS.diamondOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: WORLD_TERRAIN_MIN_Y, chance: 0.055, salt: 3_421 },
+  { block: BS.goldOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.11, salt: 2_863 },
+  { block: BS.ironOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 8, chance: 0.17, salt: 2_137 },
+  { block: BS.coalOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 10, chance: 0.43, salt: 1_619 },
 ];
 
 function hash2(x: number, z: number, seed: number): number {
@@ -197,6 +198,7 @@ function clayBlockAtResolvedStrata(
 function strataBlockAt(x: number, y: number, z: number, seed: number): BlockType {
   const top = terrainHeight(x, z, seed);
   if (y < WORLD_TERRAIN_MIN_Y || y > top) return "air";
+  if (y === WORLD_TERRAIN_MIN_Y) return "bedrock";
   const sandDepth = terrainSandDepth(x, z, seed);
   if (sandDepth > 0 && y > top - sandDepth) return "sand";
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);

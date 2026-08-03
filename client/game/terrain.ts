@@ -18,7 +18,8 @@ export interface TerrainRegionOptions {
 }
 
 /** Deep enough for tiered ore progression while remaining compact per chunk. */
-export const TERRAIN_MIN_Y = -24;
+/** Inclusive natural foundation; y=0 is an unbreakable bedrock layer. */
+export const TERRAIN_MIN_Y = 0;
 export const MAX_TERRAIN_REGION_COLUMNS = 16_384;
 
 const MIN_TERRAIN_HEIGHT = 3;
@@ -112,10 +113,10 @@ interface ClayColumnCache {
 const ORE_VEINS: readonly OreVeinConfig[] = [
   // Rarest/highest-tier deposits go first so overlap resolution always favors
   // the progression-gating ore. Every vein remains capped at seven blocks.
-  { block: BLOCK.DIAMOND_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
-  { block: BLOCK.GOLD_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
-  { block: BLOCK.IRON_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
-  { block: BLOCK.COAL_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
+  { block: BLOCK.DIAMOND_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: TERRAIN_MIN_Y, chance: 0.055, salt: 3_421 },
+  { block: BLOCK.GOLD_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.11, salt: 2_863 },
+  { block: BLOCK.IRON_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 8, chance: 0.17, salt: 2_137 },
+  { block: BLOCK.COAL_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 10, chance: 0.43, salt: 1_619 },
 ];
 
 function hash2(x: number, z: number, seed: number): number {
@@ -207,6 +208,7 @@ export function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 
 export function terrainBaseBlock(x: number, y: number, z: number, seed: number): BlockId {
   const top = terrainHeight(x, z, seed);
   if (y < TERRAIN_MIN_Y || y > top) return BLOCK.AIR;
+  if (y === TERRAIN_MIN_Y) return BLOCK.BEDROCK;
   const sandDepth = terrainSandDepth(x, z, seed);
   if (sandDepth > 0 && y > top - sandDepth) return BLOCK.SAND;
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
@@ -511,7 +513,9 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
       const clayDepth = cachedClayDepth(clayColumns, x, z);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
       for (let y = region.minY; y <= top; y += 1) {
-        const base = sandDepth > 0 && y > top - sandDepth
+        const base = y === TERRAIN_MIN_Y
+          ? BLOCK.BEDROCK
+          : sandDepth > 0 && y > top - sandDepth
           ? BLOCK.SAND
           : y === top
             ? BLOCK.GRASS

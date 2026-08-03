@@ -3,7 +3,8 @@ import * as BS from "./bundleStrings.ts";
 export const WORLD_EDIT_CHUNK_SIZE = 8;
 export const WORLD_EDIT_MIN_XZ = -1_000_000;
 export const WORLD_EDIT_MAX_XZ = 1_000_000;
-export const WORLD_EDIT_MIN_Y = -24;
+/** Natural bedrock occupies this layer; persisted edits must stay above it. */
+export const WORLD_EDIT_MIN_Y = 0;
 export const WORLD_EDIT_MAX_Y = 128;
 export const WORLD_CHUNK_SECTION_HEIGHT = 8;
 export const WORLD_CHUNK_CODEC_VERSION = 4;
@@ -48,6 +49,7 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   BS.stoneBrickSlab,
   "clay",
   "bricks",
+  "bedrock",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];
@@ -387,6 +389,7 @@ export function createWorldChunkSnapshot(
     const z = finiteInteger(edit.z);
     const code = BLOCK_CODE.get(edit.blockType);
     if (x === null || y === null || z === null || code === undefined) continue;
+    if (y === WORLD_EDIT_MIN_Y) continue;
     const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
     if (!address) continue;
     const previous = latest.get(address.absoluteIndex);
@@ -431,6 +434,7 @@ export function applyWorldChunkEdits(
     const z = finiteInteger(edit.z);
     const code = BLOCK_CODE.get(edit.blockType);
     if (x === null || y === null || z === null || code === undefined) return { ok: false, reason: "invalid_edit" };
+    if (y === WORLD_EDIT_MIN_Y) return { ok: false, reason: "invalid_edit" };
     const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
     if (!address) return { ok: false, reason: "invalid_edit" };
     const packed = sections.get(address.sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
@@ -493,6 +497,10 @@ export function sampleWorldChunkSnapshot(
       || !Number.isSafeInteger(sample.z)) return { ok: false, reason: "invalid_sample" };
     const address = cellAddress(sample.x, sample.y, sample.z, chunk.chunkX, chunk.chunkZ);
     if (!address) return { ok: false, reason: "invalid_sample" };
+    if (sample.y === WORLD_EDIT_MIN_Y) {
+      blocks.push(null);
+      continue;
+    }
     const section = snapshot.version === 3 || snapshot.version === 4
       ? snapshot.sections.get(address.sectionY)
       : null;

@@ -18,7 +18,7 @@ export const MAX_FURNACE_JSON_LENGTH = 1_024;
 export const MAX_FURNACE_TRUSTED_TIME_MS = 8_640_000_000_000_000;
 export const FURNACE_MIN_XZ = -1_000_000;
 export const FURNACE_MAX_XZ = 1_000_000;
-export const FURNACE_MIN_Y = -24;
+export const FURNACE_MIN_Y = 1;
 export const FURNACE_MAX_Y = 128;
 
 const INPUT_IDS = new Set<ItemId>(SMELTING_RECIPES.map(({ input }) => input));

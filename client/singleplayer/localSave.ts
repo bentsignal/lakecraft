@@ -26,6 +26,7 @@ import { validateBedStructures } from "../game/localBeds.ts";
 import { validateFurnaceState, type FurnaceState } from "../../shared/furnaces.ts";
 import type { LocalGameMode } from "./localCommands.ts";
 import { LOCAL_DROP_TERMINAL_VELOCITY } from "./localDropGravity.ts";
+import { WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
 export const SINGLEPLAYER_SAVE_VERSION = 1 as const;
@@ -366,6 +367,7 @@ function validateEdits(value: unknown): WorldEdit[] | null {
       || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || !safeInteger(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
       || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
+      || candidate.y <= WORLD_EDIT_MIN_Y
       || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.BRICKS)) return null;
     const key = `${candidate.x}:${candidate.y}:${candidate.z}`;
     if (coordinates.has(key)) return null;

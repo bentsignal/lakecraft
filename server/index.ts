@@ -323,10 +323,11 @@ import {
 } from "../shared/multiplayerSegments.ts";
 import * as BS from "../shared/bundleStrings.ts";
 
-const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air"));
+const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air" && block !== "bedrock"));
 
 function treePlannerBlockId(block: BlockType): BlockId | "air" {
   if (block === "air") return "air";
+  if (block === "bedrock") return "stone";
   if (block === "wood") return "log";
   if (block === BS.doorClosed || block === "door_open") return "door";
   if (block === "oak_fence_gate_closed" || block === "oak_fence_gate_open") return "oak_fence_gate";
@@ -636,7 +637,7 @@ async function authoritativeRangedOccluders(
     if (cell.x < WORLD_EDIT_MIN_XZ || cell.x > WORLD_EDIT_MAX_XZ
       || cell.z < WORLD_EDIT_MIN_XZ || cell.z > WORLD_EDIT_MAX_XZ
       || cell.y < WORLD_EDIT_MIN_Y || cell.y > WORLD_EDIT_MAX_Y) {
-      blocks.set(cell.coordKey, cell.y < WORLD_EDIT_MIN_Y ? "stone" : "air");
+      blocks.set(cell.coordKey, "air");
       continue;
     }
     const owner = worldEditChunkKey(cell.x, cell.z);
@@ -1014,7 +1015,7 @@ function databaseRowToStoredMobWorld(row: Record<string, unknown> | null): Store
 function serverTerrainHeight(x: number, z: number): number {
   const blockX = Math.floor(x);
   const blockZ = Math.floor(z);
-  for (let y = 20; y >= -24; y -= 1) {
+  for (let y = 20; y >= WORLD_EDIT_MIN_Y; y -= 1) {
     const block = naturalWorldBlockAt(blockX, y, blockZ);
     if (block === "grass" || block === "sand") return y;
   }
@@ -1026,7 +1027,7 @@ type AuthoritativeFallWorldFacts =
   | { ok: false; reason: "invalid_probe" | "duplicate_world_state" | "invalid_world_state" };
 
 function naturalFallProbeBlock(cell: FallProbeCell): BlockType {
-  if (cell.y < WORLD_EDIT_MIN_Y) return "stone";
+  if (cell.y < WORLD_EDIT_MIN_Y) return "air";
   if (cell.x < WORLD_EDIT_MIN_XZ || cell.x > WORLD_EDIT_MAX_XZ
     || cell.z < WORLD_EDIT_MIN_XZ || cell.z > WORLD_EDIT_MAX_XZ
     || cell.y > WORLD_EDIT_MAX_Y) return "air";

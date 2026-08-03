@@ -266,6 +266,7 @@ export function bypassBlockInteractionForPlacement(sneaking: boolean, selectedBl
 
 const LOCAL_EXPLOSION_PROTECTED_BLOCKS = new Set<BlockId>([
   BLOCK.AIR,
+  BLOCK.BEDROCK,
   BLOCK.CHEST,
   BLOCK.FURNACE,
   BLOCK.DOOR_CLOSED,
@@ -280,6 +281,7 @@ const LOCAL_TNT_DESTRUCTION_THRESHOLDS = [
   0.96, 0.96, 0.96, 0.78, 0.9, 0.96, 0.9, 0.9, 0.96, 0.96, 0.96,
   0.96, 0.96, 0.78, 0.78, 0.96, 0.96, 0.78, 0.96, 0.96, 0.78, 0.78,
   0.96, 0.96, 0.96, 0.96, 0.78, 0.9, 0.9, 0.9, 0.78, 0.96, 0.68,
+  0,
 ] as const;
 
 /** Higher values let a material be destroyed farther toward the edge of a blast. */
@@ -401,6 +403,8 @@ export function materializeTerrainChunk(
   const materialized = createTerrainChunk(seed, chunkX, chunkZ);
   for (const edit of edits) {
     if (chunkKeyForBlock(edit.x, edit.z) !== owner) continue;
+    // The generated foundation is canonical and never comes from a journal.
+    if (edit.y <= TERRAIN_MIN_Y || edit.block === BLOCK.BEDROCK) continue;
     const key = blockKey(edit.x, edit.y, edit.z);
     if (edit.block === BLOCK.AIR) materialized.delete(key);
     else materialized.set(key, edit.block);
@@ -820,7 +824,7 @@ export function validateRespawnPoint(
     !Number.isFinite(point.x)
     || !Number.isFinite(point.y)
     || !Number.isFinite(point.z)
-    || (point.y < -24 || point.y > MAX_RESPAWN_HEIGHT)
+    || (point.y < TERRAIN_MIN_Y + 1 || point.y > MAX_RESPAWN_HEIGHT)
     || !Number.isFinite(horizontalLimit)
     || horizontalLimit <= 0
     || Math.abs(point.x) > horizontalLimit
@@ -1557,6 +1561,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const rememberedEditsByChunk = new Map<string, Map<string, WorldEdit>>();
   const initialEditBlocks = new Map<string, BlockId>();
   for (const edit of options.initialEdits ?? []) {
+    if (edit.y <= TERRAIN_MIN_Y || edit.block === BLOCK.BEDROCK) continue;
     const owner = chunkKeyForBlock(edit.x, edit.z);
     let chunkEdits = rememberedEditsByChunk.get(owner);
     if (!chunkEdits) {
@@ -1639,7 +1644,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function getBlock(x: number, y: number, z: number): BlockId {
-    if (y < TERRAIN_MIN_Y) return BLOCK.STONE;
+    if (y < TERRAIN_MIN_Y) return BLOCK.AIR;
+    if (y === TERRAIN_MIN_Y) return BLOCK.BEDROCK;
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
   }
 
@@ -1898,7 +1904,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!primaryActionHold.held || !primaryActionHold.miningArmed || miningTimer || !target) return false;
     const mined = { ...target.block };
     const targetPrimed = primedTnt.has(blockKey(mined.x, mined.y, mined.z));
-    const editAllowed = options.canEditBlock?.() !== false && options.canMineBlock?.(mined) !== false;
+    const editAllowed = mined.block !== BLOCK.BEDROCK
+      && options.canEditBlock?.() !== false && options.canMineBlock?.(mined) !== false;
     if (!shouldStartHeldMining(primaryActionHold, {
       pointerLocked: document.pointerLockElement === canvas,
       playerAlive: playerHealth > 0,
@@ -1972,6 +1979,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     loadedOnly = false,
     afterAccepted?: () => void,
   ): WorldEdit[] | null {
+    if (edits.some((edit) => edit.y <= TERRAIN_MIN_Y || edit.block === BLOCK.BEDROCK)) return null;
     const [batch, removedBeds] = options.twoBlockBeds
       ? reconcileBedEditBatch(edits, getStoredBedAt)
       : [edits.map((edit) => ({ ...edit })), []] as const;
@@ -2091,6 +2099,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function setBlock(x: number, y: number, z: number, block: BlockId): boolean {
+    if (y <= TERRAIN_MIN_Y || block === BLOCK.BEDROCK) return false;
     const key = blockKey(x, y, z);
     const owner = chunkKeyForBlock(x, z);
     const previous = blocks.get(key) ?? BLOCK.AIR;
