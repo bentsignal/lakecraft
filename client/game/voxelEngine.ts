@@ -61,6 +61,13 @@ import {
   playerIntersectsBlockCollisionHeight,
 } from "./blockGeometry.ts";
 import {
+  bedBreakEdits,
+  bedCellKey,
+  bedStructureKey,
+  createBedStructure,
+  planBedPlacement,
+} from "./localBeds.ts";
+import {
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_RGBA,
   TEXTURE_ATLAS_ROWS,
@@ -100,6 +107,8 @@ import {
 } from "./playerKnockback.ts";
 import {
   BLOCK,
+  type BedDirection,
+  type BedStructure,
   type BlockId,
   type BlockTarget,
   type LocalExplosionEdit,
@@ -412,6 +421,8 @@ export const TORCH_MESH_VERTEX_COUNT = 72;
 export const CHEST_MESH_VERTEX_COUNT = 108;
 export const DOOR_MESH_VERTEX_COUNT = 144;
 export const BED_MESH_VERTEX_COUNT = 108;
+export const BED_FOOT_MESH_VERTEX_COUNT = 72;
+export const BED_HEAD_MESH_VERTEX_COUNT = 108;
 export const LADDER_MESH_VERTEX_COUNT = 252;
 /** The 7x7 streaming window bounds glass to one extra draw per visible chunk. */
 export const MAX_TRANSPARENT_CHUNK_DRAWS = (DEFAULT_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
@@ -481,7 +492,7 @@ export function selectNearestTorchLights(
 }
 
 export function blockOccludesFaces(block: BlockId): boolean {
-  return blockStopsSky(block);
+  return block !== BLOCK.BED && blockStopsSky(block);
 }
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
@@ -1131,11 +1142,27 @@ export function appendDoorMesh(
   appendAxisAlignedBox(output, [x + 0.77, y + 0.90, z + 0.38], [x + 0.87, y + 1.0, z + 0.43], [0.84, 0.69, 0.22]);
 }
 
-/** A low wooden frame with a red blanket and white pillow. */
-export function appendBedMesh(output: number[], x: number, y: number, z: number): void {
+/** One directional cell of a low two-block frame, red blanket, and head pillow. */
+export function appendBedMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  part: "single" | "foot" | "head" = "single",
+  direction: BedDirection = "north",
+): void {
   appendAxisAlignedBox(output, [x + 0.03, y + 0.08, z + 0.03], [x + 0.97, y + 0.32, z + 0.97], [0.38, 0.20, 0.07]);
-  appendAxisAlignedBox(output, [x + 0.04, y + 0.32, z + 0.04], [x + 0.96, y + 0.53, z + 0.69], BLOCK_COLORS[BLOCK.BED]);
-  appendAxisAlignedBox(output, [x + 0.08, y + 0.32, z + 0.69], [x + 0.92, y + 0.55, z + 0.94], [0.91, 0.90, 0.84]);
+  appendAxisAlignedBox(output, [x + 0.04, y + 0.32, z + 0.04], [x + 0.96, y + 0.53, z + 0.96], BLOCK_COLORS[BLOCK.BED]);
+  if (part === "foot") return;
+  const pillowMin: Vec3 = direction === "east" ? [x + 0.69, y + 0.32, z + 0.08]
+    : direction === "west" ? [x + 0.06, y + 0.32, z + 0.08]
+      : direction === "south" ? [x + 0.08, y + 0.32, z + 0.69]
+        : [x + 0.08, y + 0.32, z + 0.06];
+  const pillowMax: Vec3 = direction === "east" ? [x + 0.94, y + 0.55, z + 0.92]
+    : direction === "west" ? [x + 0.31, y + 0.55, z + 0.92]
+      : direction === "south" ? [x + 0.92, y + 0.55, z + 0.94]
+        : [x + 0.92, y + 0.55, z + 0.31];
+  appendAxisAlignedBox(output, pillowMin, pillowMax, [0.91, 0.90, 0.84]);
 }
 
 /** Two rails and five rungs form a thin wooden ladder facing fixed north (-Z). */
@@ -1350,6 +1377,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
   const rememberedEditsByChunk = new Map<string, Map<string, WorldEdit>>();
+  const initialEditBlocks = new Map<string, BlockId>();
   for (const edit of options.initialEdits ?? []) {
     const owner = chunkKeyForBlock(edit.x, edit.z);
     let chunkEdits = rememberedEditsByChunk.get(owner);
@@ -1358,6 +1386,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       rememberedEditsByChunk.set(owner, chunkEdits);
     }
     chunkEdits.set(blockKey(edit.x, edit.y, edit.z), { ...edit });
+    initialEditBlocks.set(blockKey(edit.x, edit.y, edit.z), edit.block);
+  }
+  const bedStructures = new Map<string, BedStructure>();
+  const bedCellOwners = new Map<string, string>();
+  for (const candidate of options.initialBedStructures ?? []) {
+    const canonical = createBedStructure(candidate.foot, candidate.direction);
+    const footKey = bedCellKey(canonical.foot);
+    const headKey = bedCellKey(canonical.head);
+    if (canonical.head.x !== candidate.head.x || canonical.head.y !== candidate.head.y || canonical.head.z !== candidate.head.z
+      || initialEditBlocks.get(footKey) !== BLOCK.BED || initialEditBlocks.get(headKey) !== BLOCK.BED
+      || bedCellOwners.has(footKey) || bedCellOwners.has(headKey)) continue;
+    const owner = bedStructureKey(canonical);
+    bedStructures.set(owner, canonical);
+    bedCellOwners.set(footKey, owner);
+    bedCellOwners.set(headKey, owner);
   }
   const initialChunkPlan = planChunkWindow(
     pose.x,
@@ -1611,6 +1654,26 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, targetOutlineGeometry);
   }
 
+  function getStoredBedAt(x: number, y: number, z: number): BedStructure | null {
+    const owner = bedCellOwners.get(bedCellKey({ x, y, z }));
+    const bed = owner ? bedStructures.get(owner) : null;
+    return bed ? createBedStructure(bed.foot, bed.direction) : null;
+  }
+
+  function registerBedStructure(bed: Readonly<BedStructure>): void {
+    const canonical = createBedStructure(bed.foot, bed.direction);
+    const owner = bedStructureKey(canonical);
+    bedStructures.set(owner, canonical);
+    bedCellOwners.set(bedCellKey(canonical.foot), owner);
+    bedCellOwners.set(bedCellKey(canonical.head), owner);
+  }
+
+  function unregisterBedStructure(bed: Readonly<BedStructure>): void {
+    bedStructures.delete(bedStructureKey(bed));
+    bedCellOwners.delete(bedCellKey(bed.foot));
+    bedCellOwners.delete(bedCellKey(bed.head));
+  }
+
   function rememberWorldEdit(edit: WorldEdit): void {
     const owner = chunkKeyForBlock(edit.x, edit.z);
     let chunkEdits = rememberedEditsByChunk.get(owner);
@@ -1798,7 +1861,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       if (block === BLOCK.BED) {
         const start = colorVertices.length;
-        appendBedMesh(colorVertices, x, y, z);
+        const bed = getStoredBedAt(x, y, z);
+        appendBedMesh(
+          colorVertices,
+          x,
+          y,
+          z,
+          bed ? (bedCellKey(bed.foot) === blockKey(x, y, z) ? "foot" : "head") : "single",
+          bed?.direction ?? "north",
+        );
         packColorVerticesForSky(
           colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
@@ -2856,23 +2927,46 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     frameId = requestAnimationFrame(frame);
   }
 
-  function emitEdit(edit: WorldEdit): boolean {
-    const previousBlock = getBlock(edit.x, edit.y, edit.z);
-    const settledEdits = options.acceptWorldEdits ? planLocalFallingBlockSettlement(
-      edit,
-      previousBlock,
-      (x, y, z) => x === edit.x && y === edit.y && z === edit.z ? edit.block : getBlock(x, y, z),
-    ) : [];
-    const batch = settledEdits.length ? [edit, ...settledEdits] : [edit];
+  function commitEditBatch(
+    edit: WorldEdit,
+    previousBlock: BlockId,
+    additionalEdits: readonly WorldEdit[],
+    updateBeds?: () => void,
+  ): boolean {
+    const batch = additionalEdits.length ? [edit, ...additionalEdits] : [edit];
     if (options.acceptWorldEdits?.(batch) === false) return false;
     const skyEdits: WorldEdit[] = [];
     for (const next of batch) {
       rememberWorldEdit(next);
       if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next);
     }
+    updateBeds?.();
     rebuildEditedWorldChunks(batch, skyEdits);
-    options.onBlockEdit?.(edit, previousBlock, settledEdits);
+    options.onBlockEdit?.(edit, previousBlock, additionalEdits);
     return true;
+  }
+
+  function emitEdit(edit: WorldEdit): boolean {
+    const previousBlock = getBlock(edit.x, edit.y, edit.z);
+    if (options.twoBlockBeds && previousBlock === BLOCK.BED && edit.block === BLOCK.AIR) {
+      const bed = getStoredBedAt(edit.x, edit.y, edit.z);
+      if (bed) {
+        const breakEdits = bedBreakEdits(bed, edit);
+        if (!breakEdits) return false;
+        return commitEditBatch(
+          breakEdits[0],
+          previousBlock,
+          [breakEdits[1]],
+          () => unregisterBedStructure(bed),
+        );
+      }
+    }
+    const settledEdits = options.acceptWorldEdits ? planLocalFallingBlockSettlement(
+      edit,
+      previousBlock,
+      (x, y, z) => x === edit.x && y === edit.y && z === edit.z ? edit.block : getBlock(x, y, z),
+    ) : [];
+    return commitEditBatch(edit, previousBlock, settledEdits);
   }
 
   function onKeyDown(event: KeyboardEvent): void {
@@ -2971,6 +3065,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!target || selectedBlock === BLOCK.AIR || options.canEditBlock?.() === false
       || options.canPlaceSelectedBlock?.(selectedBlock) === false) return false;
     const { x, y, z } = target.place;
+    if (options.twoBlockBeds && selectedBlock === BLOCK.BED) {
+      const plan = planBedPlacement({
+        foot: { x, y, z },
+        yaw: pose.yaw,
+        getBlock,
+        intersectsPlayer: (blockX, blockY, blockZ) => playerIntersectsBlock(blockX, blockY, blockZ, BLOCK.BED),
+      });
+      if (!plan.ok) return false;
+      if (!commitEditBatch(plan.edits[0], BLOCK.AIR, [plan.edits[1]], () => registerBedStructure(plan.bed))) return false;
+      emitHandAction("place");
+      return true;
+    }
     const saplingPlacement = selectedBlock === BLOCK.SAPLING;
     const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
     if (
@@ -3627,6 +3733,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     getBlockAt(x, y, z) {
       if (![x, y, z].every(Number.isSafeInteger)) return BLOCK.AIR;
       return getBlock(x, y, z);
+    },
+    getBedAt(x, y, z) {
+      if (![x, y, z].every(Number.isSafeInteger)) return null;
+      return getStoredBedAt(x, y, z);
+    },
+    exportBedStructures() {
+      return [...bedStructures.values()]
+        .sort((left, right) => bedStructureKey(left).localeCompare(bedStructureKey(right)))
+        .map((bed) => createBedStructure(bed.foot, bed.direction));
     },
     getPerformanceStats,
     requestPointerLock() { return requestCanvasPointerLock(); },

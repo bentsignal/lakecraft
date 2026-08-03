@@ -86,8 +86,9 @@ assert.match(app, /id: "local-world-edit-capacity"/, "capacity feedback is stabl
 assert.doesNotMatch(multiplayer, /acceptWorldEdits:/, "Lakebed multiplayer authority remains unchanged");
 
 const emit = engine.slice(engine.indexOf("function emitEdit"), engine.indexOf("function onKeyDown"));
-assert.ok(emit.indexOf("planLocalFallingBlockSettlement") < emit.indexOf("options.acceptWorldEdits?.(batch)"));
-assert.ok(emit.indexOf("options.acceptWorldEdits?.(batch)") < emit.indexOf("rememberWorldEdit(next)"),
+const commit = engine.slice(engine.indexOf("function commitEditBatch"), engine.indexOf("function emitEdit"));
+assert.ok(emit.includes("planLocalFallingBlockSettlement"));
+assert.ok(commit.indexOf("options.acceptWorldEdits?.(batch)") < commit.indexOf("rememberWorldEdit(next)"),
   "primary and falling edits reserve one exact batch before terrain changes");
 for (const [startToken, endToken] of [
   ["function applyLocalExplosionEdits", "function updateMobs"],

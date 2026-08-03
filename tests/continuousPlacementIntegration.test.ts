@@ -43,8 +43,12 @@ assert.ok(secondary.includes("selectedBlock === placementBlock")
   && secondary.includes("canPlaceSelectedBlock?.(placementBlock) !== false")
   && secondary.includes("accepted && stillPayable"),
 "an accepted final selected block cannot be re-armed after synchronous inventory settlement switches the engine to air");
-assert.ok(placement.indexOf("emitEdit(") < placement.indexOf('emitHandAction("place")'),
-  "rejected edits never consume the one visible place action");
+const bedPlacement = placement.slice(placement.indexOf("if (options.twoBlockBeds"), placement.indexOf("const saplingPlacement"));
+const ordinaryPlacement = placement.slice(placement.indexOf("const saplingPlacement"));
+assert.ok(bedPlacement.indexOf("commitEditBatch(") < bedPlacement.indexOf('emitHandAction("place")'),
+  "rejected two-cell bed batches never consume the one visible place action");
+assert.ok(ordinaryPlacement.indexOf("emitEdit(") < ordinaryPlacement.indexOf('emitHandAction("place")'),
+  "rejected ordinary edits never consume the one visible place action");
 assert.ok(placement.includes("canPlaceSelectedBlock?.(selectedBlock) === false"), "empty or stale selected stacks cannot place free blocks");
 assert.ok(update.indexOf("target = nextTarget") < update.indexOf("repeatHeldBlockPlacement(now)"), "each repeat uses the freshly raycast target");
 assert.doesNotMatch(placement, /setTimeout|setInterval/, "held placement adds no timer or polling loop");

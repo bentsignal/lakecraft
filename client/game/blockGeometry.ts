@@ -2,10 +2,13 @@ import { BLOCK, type BlockId } from "./types.ts";
 
 /** Stone-brick slabs occupy the lower half of their voxel cell. */
 export const STONE_BRICK_SLAB_HEIGHT = 0.5;
+export const BED_COLLISION_HEIGHT = 0.55;
 
 /** Physical vertical extent for authored partial blocks; ordinary voxels remain one block tall. */
 export function blockCollisionHeight(block: BlockId): number {
-  return block === BLOCK.STONE_BRICK_SLAB ? STONE_BRICK_SLAB_HEIGHT : 1;
+  return block === BLOCK.STONE_BRICK_SLAB ? STONE_BRICK_SLAB_HEIGHT
+    : block === BLOCK.BED ? BED_COLLISION_HEIGHT
+      : 1;
 }
 
 /**
@@ -15,8 +18,8 @@ export function blockCollisionHeight(block: BlockId): number {
  */
 export function blockContainsSolidPoint(block: BlockId, blockY: number, pointY: number): boolean {
   if (block === BLOCK.AIR || !Number.isFinite(blockY) || !Number.isFinite(pointY)) return false;
-  if (block !== BLOCK.STONE_BRICK_SLAB) return true;
-  return pointY >= blockY - 0.0001 && pointY <= blockY + STONE_BRICK_SLAB_HEIGHT + 0.0001;
+  if (block !== BLOCK.STONE_BRICK_SLAB && block !== BLOCK.BED) return true;
+  return pointY >= blockY - 0.0001 && pointY <= blockY + blockCollisionHeight(block) + 0.0001;
 }
 
 /** Exact vertical AABB overlap used by player and mob collision against partial blocks. */

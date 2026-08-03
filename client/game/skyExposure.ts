@@ -23,6 +23,7 @@ export function blockStopsSky(block: BlockId): boolean {
     && block !== BLOCK.DOOR_OPEN
     && block !== BLOCK.LADDER
     && block !== BLOCK.GLASS
+    && block !== BLOCK.BED
     && block !== BLOCK.SAPLING
     && block !== BLOCK.OAK_FENCE
     && block !== BLOCK.OAK_FENCE_GATE_CLOSED

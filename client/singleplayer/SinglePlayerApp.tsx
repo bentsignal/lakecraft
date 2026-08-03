@@ -497,6 +497,7 @@ function SinglePlayerWorld({
         activePlayMs,
         weather: { ...worldRef.current.weather },
         edits: [...editsRef.current.values()].map((edit) => ({ ...edit })),
+        beds: engineRef.current?.exportBedStructures() ?? worldRef.current.beds ?? [],
       },
       player: {
         inventory: inventoryRef.current.map((stack) => stack ? { ...stack } : null),
@@ -832,7 +833,9 @@ function SinglePlayerWorld({
   function interactWithLocalBed(x: number, y: number, z: number): boolean {
     const engine = engineRef.current;
     if (!engine) return true;
-    engine.setRespawnPoint(respawnPointForBed(x, y, z, engine.getPose().yaw));
+    const bed = engine.getBedAt(x, y, z);
+    const anchor = bed?.head ?? { x, y, z };
+    engine.setRespawnPoint(respawnPointForBed(anchor.x, anchor.y, anchor.z, engine.getPose().yaw));
     markWorldDirty();
     const runtime = engine.exportRuntimeSnapshot();
     if (!canSleepAtPhase(phaseAtTime(runtime.worldTimeMs, runtime.dayNight))) {
@@ -850,7 +853,7 @@ function SinglePlayerWorld({
       detail: "Sleeping through the night…",
       tone: "success",
     }]);
-    setSleepingBed({ x, y, z });
+    setSleepingBed(anchor);
     releasePointerLockForUi();
     return true;
   }
@@ -1142,6 +1145,8 @@ function SinglePlayerWorld({
     const engine = createVoxelEngine(canvas, {
       seed: worldRef.current.seed,
       initialEdits: [...editsRef.current.values()],
+      initialBedStructures: initialSnapshot.world.beds ?? [],
+      twoBlockBeds: true,
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
       getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
@@ -1287,6 +1292,9 @@ function SinglePlayerWorld({
         }
         if (previousBlock === BLOCK.BED && edit.block !== BLOCK.BED) {
           invalidateBrokenBed(edit.x, edit.y, edit.z);
+          for (const pairedEdit of settledEdits) {
+            if (pairedEdit.block === BLOCK.AIR) invalidateBrokenBed(pairedEdit.x, pairedEdit.y, pairedEdit.z);
+          }
         }
         markWorldDirty();
         const supportWoken = wakeUnsupportedLocalDroppedItems(
