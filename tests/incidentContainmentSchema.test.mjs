@@ -85,9 +85,9 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 134, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 135, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "4711060268fd50efcb82fbf38b990b72b605c832e7f243ebd2fa5566c97613a4",
+  "067ec8546277bb8da4c57f716966606014eda90fb642738ba2aaf8c830e56ec4",
   "runtime sources match the reviewed bedrock-floor, translated-terrain, diamond-depth, paused-pose, combat, and containment checkpoint");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

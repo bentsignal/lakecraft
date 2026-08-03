@@ -150,8 +150,14 @@ import {
 import {
   createGameAudio,
   type GameAudio,
-  type GameAudioSurface,
 } from "./game/audio.ts";
+import {
+  ENGINE_TO_GAME,
+  ENGINE_TO_PROTOCOL,
+  ITEM_TO_ENGINE,
+  PROTOCOL_TO_ENGINE,
+  audioSurfaceForBlock,
+} from "./game/blockBridge.ts";
 
 const APP_CSS = `
 @font-face { font-display: swap; font-family: "Pixelify Sans"; font-style: normal; font-weight: 400 700; src: url("https://fonts.gstatic.com/s/pixelifysans/v3/CHylV-3HFUT7aC4iv1TxGDR9Jn0Eiw.woff2") format("woff2"); }
@@ -184,22 +190,6 @@ const QUERY_RECOVERY_CSS = `
 const PRESENCE_BUDGET_STORAGE_PREFIX = "lakecraft:presence-budget:v1:";
 /** Browser-side guard matching the quota-honest persisted mob cadence. */
 const MOB_CHECKPOINT_ATTEMPT_MIN_MS = 30_000;
-
-function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
-  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED
-    || block === BLOCK.WOOL || block === BLOCK.SAPLING) return "grass";
-  if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
-    || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER
-    || block === BLOCK.OAK_FENCE || block === BLOCK.OAK_FENCE_GATE_CLOSED || block === BLOCK.OAK_FENCE_GATE_OPEN) return "wood";
-  if (block === BLOCK.SAND) return "sand";
-  if (block === BLOCK.GRAVEL) return "gravel";
-  if (block === BLOCK.GLASS) return "glass";
-  if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
-  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE
-    || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.BRICKS) return "stone";
-  if (block === BLOCK.CLAY) return "gravel";
-  return "generic";
-}
 
 function loadPresenceBurstGuard(userId: string, now: number): PresenceBurstGuardState {
   try {
@@ -336,148 +326,6 @@ function droppedItemOperationId(): string {
 function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
-
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate_closed" | "oak_fence_gate_open" | "stone_brick_slab" | "clay" | "bricks"> = {
-  [BLOCK.AIR]: "air",
-  [BLOCK.GRASS]: "grass",
-  [BLOCK.DIRT]: "dirt",
-  [BLOCK.STONE]: "stone",
-  [BLOCK.COBBLESTONE]: "cobblestone",
-  [BLOCK.SAND]: "sand",
-  [BLOCK.GRAVEL]: "gravel",
-  [BLOCK.WOOL]: "wool",
-  [BLOCK.SAPLING]: "sapling",
-  [BLOCK.STONE_BRICKS]: "stone_bricks",
-  [BLOCK.OAK_FENCE]: "oak_fence",
-  [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate_closed",
-  [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate_open",
-  [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
-  [BLOCK.CLAY]: "clay",
-  [BLOCK.BRICKS]: "bricks",
-  [BLOCK.GLASS]: "glass",
-  [BLOCK.COAL_ORE]: "coal_ore",
-  [BLOCK.IRON_ORE]: "iron_ore",
-  [BLOCK.GOLD_ORE]: "gold_ore",
-  [BLOCK.DIAMOND_ORE]: "diamond_ore",
-  [BLOCK.WOOD]: "wood",
-  [BLOCK.LEAVES]: "leaves",
-  [BLOCK.PLANKS]: "planks",
-  [BLOCK.CRAFTING_TABLE]: "crafting_table",
-  [BLOCK.FURNACE]: "furnace",
-  [BLOCK.TORCH]: "torch",
-  [BLOCK.CHEST]: "chest",
-  [BLOCK.DOOR_CLOSED]: "door_closed",
-  [BLOCK.DOOR_OPEN]: "door_open",
-  [BLOCK.BED]: "bed",
-  [BLOCK.LADDER]: "ladder",
-  [BLOCK.TNT]: "tnt",
-};
-
-const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
-  air: BLOCK.AIR,
-  grass: BLOCK.GRASS,
-  dirt: BLOCK.DIRT,
-  stone: BLOCK.STONE,
-  cobblestone: BLOCK.COBBLESTONE,
-  sand: BLOCK.SAND,
-  gravel: BLOCK.GRAVEL,
-  wool: BLOCK.WOOL,
-  sapling: BLOCK.SAPLING,
-  stone_bricks: BLOCK.STONE_BRICKS,
-  oak_fence: BLOCK.OAK_FENCE,
-  oak_fence_gate_closed: BLOCK.OAK_FENCE_GATE_CLOSED,
-  oak_fence_gate_open: BLOCK.OAK_FENCE_GATE_OPEN,
-  stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
-  clay: BLOCK.CLAY,
-  bricks: BLOCK.BRICKS,
-  bedrock: BLOCK.BEDROCK,
-  glass: BLOCK.GLASS,
-  coal_ore: BLOCK.COAL_ORE,
-  iron_ore: BLOCK.IRON_ORE,
-  gold_ore: BLOCK.GOLD_ORE,
-  diamond_ore: BLOCK.DIAMOND_ORE,
-  wood: BLOCK.WOOD,
-  log: BLOCK.WOOD,
-  leaves: BLOCK.LEAVES,
-  planks: BLOCK.PLANKS,
-  crafting_table: BLOCK.CRAFTING_TABLE,
-  furnace: BLOCK.FURNACE,
-  torch: BLOCK.TORCH,
-  chest: BLOCK.CHEST,
-  door_closed: BLOCK.DOOR_CLOSED,
-  door_open: BLOCK.DOOR_OPEN,
-  bed: BLOCK.BED,
-  ladder: BLOCK.LADDER,
-  tnt: BLOCK.TNT,
-};
-
-const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
-  [BLOCK.GRASS]: "grass",
-  [BLOCK.DIRT]: "dirt",
-  [BLOCK.STONE]: "stone",
-  [BLOCK.COBBLESTONE]: "cobblestone",
-  [BLOCK.SAND]: "sand",
-  [BLOCK.GRAVEL]: "gravel",
-  [BLOCK.GLASS]: "glass",
-  [BLOCK.COAL_ORE]: "coal_ore",
-  [BLOCK.IRON_ORE]: "iron_ore",
-  [BLOCK.GOLD_ORE]: "gold_ore",
-  [BLOCK.DIAMOND_ORE]: "diamond_ore",
-  [BLOCK.WOOD]: "log",
-  [BLOCK.LEAVES]: "leaves",
-  [BLOCK.PLANKS]: "planks",
-  [BLOCK.CRAFTING_TABLE]: "crafting_table",
-  [BLOCK.FURNACE]: "furnace",
-  [BLOCK.TORCH]: "torch",
-  [BLOCK.CHEST]: "chest",
-  [BLOCK.DOOR_CLOSED]: "door",
-  [BLOCK.DOOR_OPEN]: "door",
-  [BLOCK.BED]: "bed",
-  [BLOCK.LADDER]: "ladder",
-  [BLOCK.TNT]: "tnt",
-  [BLOCK.WOOL]: "wool",
-  [BLOCK.SAPLING]: "sapling",
-  [BLOCK.STONE_BRICKS]: "stone_bricks",
-  [BLOCK.OAK_FENCE]: "oak_fence",
-  [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate",
-  [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate",
-  [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
-  [BLOCK.CLAY]: "clay",
-  [BLOCK.BRICKS]: "bricks",
-};
-
-const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
-  grass: BLOCK.GRASS,
-  dirt: BLOCK.DIRT,
-  stone: BLOCK.STONE,
-  cobblestone: BLOCK.COBBLESTONE,
-  sand: BLOCK.SAND,
-  gravel: BLOCK.GRAVEL,
-  glass: BLOCK.GLASS,
-  coal_ore: BLOCK.COAL_ORE,
-  iron_ore: BLOCK.IRON_ORE,
-  gold_ore: BLOCK.GOLD_ORE,
-  diamond_ore: BLOCK.DIAMOND_ORE,
-  log: BLOCK.WOOD,
-  leaves: BLOCK.LEAVES,
-  planks: BLOCK.PLANKS,
-  crafting_table: BLOCK.CRAFTING_TABLE,
-  furnace: BLOCK.FURNACE,
-  torch: BLOCK.TORCH,
-  chest: BLOCK.CHEST,
-  door: BLOCK.DOOR_CLOSED,
-  bed: BLOCK.BED,
-  ladder: BLOCK.LADDER,
-  tnt: BLOCK.TNT,
-  wool: BLOCK.WOOL,
-  sapling: BLOCK.SAPLING,
-  stone_bricks: BLOCK.STONE_BRICKS,
-  oak_fence: BLOCK.OAK_FENCE,
-  oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
-  stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
-  clay: BLOCK.CLAY,
-  bricks: BLOCK.BRICKS,
-};
 
 type WorldChunksQueryResult =
   | {
