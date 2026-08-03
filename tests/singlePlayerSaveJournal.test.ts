@@ -282,7 +282,7 @@ function richSnapshot(): SinglePlayerSnapshot {
 {
   const huge = createDefaultSinglePlayerSnapshot();
   huge.world.edits = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.edits }, (_, index) => ({
-    x: index, y: 0, z: -index, block: 32 as const,
+    x: index, y: 1, z: -index, block: 32 as const,
   }));
   huge.chests = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.chests }, (_, index) => ({
     coordKey: `${index}:0:0`,

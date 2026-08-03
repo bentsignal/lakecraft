@@ -81,7 +81,7 @@ const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), 
 assert.ok(mutation.includes("parseWorldBlockOperation(rawRequest)"));
 assert.ok(mutation.includes("resolveWorldBlockOperation(request"));
 assert.ok(mutation.includes("blockType: effect.nextBlock"));
-assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air"\)\)/,
+assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air" && block !== "bedrock"\)\)/,
   "Lakebed derives stone-brick acceptance from the append-only shared protocol catalog");
 assert.doesNotMatch(mutation, /setInterval|setTimeout|fetch\(/, "stone bricks stay on the existing discrete exact-once world mutation");
 

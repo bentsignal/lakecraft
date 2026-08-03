@@ -89,9 +89,9 @@ assert.equal(dirtReplacements, 1_293);
 assert.equal(stoneReplacements, 156);
 assert.ok(density >= 0.015 && density <= 0.035,
   `clay column density ${(density * 100).toFixed(2)}% escaped its rare 1.5–3.5% budget`);
-assert.equal(clientClayBlock(-76, 5, -17, SEED), BLOCK.CLAY);
-assert.equal(authoritativeClayBlock(-76, 5, -17, SEED), "clay");
-assert.equal(naturalWorldBlockAt(-76, 5, -17, SEED), "clay", "known visible clay authority anchor drifted");
+assert.equal(clientClayBlock(-76, 29, -17, SEED), BLOCK.CLAY);
+assert.equal(authoritativeClayBlock(-76, 29, -17, SEED), "clay");
+assert.equal(naturalWorldBlockAt(-76, 29, -17, SEED), "clay", "known translated clay authority anchor drifted");
 
 // These two 2x2 chunk windows contain clay crossing x=16 and z=32. Each
 // independently generated chunk quartet must reproduce its whole region.

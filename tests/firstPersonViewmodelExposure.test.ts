@@ -108,12 +108,12 @@ function runExposureFixture(input: { roof: boolean; torch: boolean; phase: numbe
   const edits: WorldEdit[] = [];
   for (let x = -2; x <= 2; x += 1) {
     for (let z = -2; z <= 2; z += 1) {
-      edits.push({ x, y: 20, z, block: BLOCK.AIR }, { x, y: 21, z, block: BLOCK.AIR });
-      if (input.roof) edits.push({ x, y: 22, z, block: BLOCK.STONE });
+      edits.push({ x, y: 44, z, block: BLOCK.AIR }, { x, y: 45, z, block: BLOCK.AIR });
+      if (input.roof) edits.push({ x, y: 46, z, block: BLOCK.STONE });
     }
   }
-  edits.push({ x: 0, y: 19, z: 0, block: BLOCK.STONE });
-  if (input.torch) edits.push({ x: 1, y: 20, z: 0, block: BLOCK.TORCH });
+  edits.push({ x: 0, y: 43, z: 0, block: BLOCK.STONE });
+  if (input.torch) edits.push({ x: 1, y: 44, z: 0, block: BLOCK.TORCH });
   const canvas = {
     ...eventTarget,
     width: 0,
@@ -127,7 +127,7 @@ function runExposureFixture(input: { roof: boolean; torch: boolean; phase: numbe
   const engine = createVoxelEngine(canvas, {
     seed: 91,
     initialEdits: edits,
-    initialPose: { x: 0.5, y: 20.02, z: 0.5, yaw: 0, pitch: 0 },
+    initialPose: { x: 0.5, y: 44.02, z: 0.5, yaw: 0, pitch: 0 },
     preserveInitialPose: true,
     selectedItem: "dirt",
     selectedBlock: BLOCK.DIRT,

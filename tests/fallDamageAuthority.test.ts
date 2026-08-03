@@ -109,7 +109,7 @@ const relocationReset = accepted(transition({ grounded: false, fallPeakY: "100" 
 assert.deepEqual(relocationReset.state, { grounded: true, fallPeakY: "5" });
 assert.deepEqual([relocationReset.damage, relocationReset.reset], [0, "relocation"]);
 
-const respawnReset = accepted(transition({ grounded: false, fallPeakY: "80" }, 0, 32, true, {
+const respawnReset = accepted(transition({ grounded: false, fallPeakY: "80" }, 1, 32, true, {
   relocated: true,
   health: 20,
   revision: 9,

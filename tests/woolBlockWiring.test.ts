@@ -79,7 +79,7 @@ const editMutation = server.slice(server.indexOf("editWorldBlock: mutation(async
 assert.ok(editMutation.includes("parseWorldBlockOperation(rawRequest)"));
 assert.ok(editMutation.includes("resolveWorldBlockOperation(request"));
 assert.ok(editMutation.includes("blockType: effect.nextBlock"));
-assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air"\)\)/,
+assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air" && block !== "bedrock"\)\)/,
   "Lakebed derives its placeable catalog from the shared protocol, including wool");
 assert.doesNotMatch(editMutation, /setInterval|setTimeout|fetch\(/, "wool uses the existing discrete exact-once world mutation without another backend loop");
 

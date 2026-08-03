@@ -42,7 +42,7 @@ export const MOB_VISUAL_QA_FIXTURE_VERSION = 1 as const;
 export const MOB_VISUAL_QA_IMPORT_SENTINEL = "mob-visual-qa-fixture" as const;
 export const MOB_VISUAL_QA_SEED = 33;
 export const MOB_VISUAL_QA_TIMESTAMP = 1_800_000_000_000;
-export const MOB_VISUAL_QA_PLATFORM_Y = 6;
+export const MOB_VISUAL_QA_PLATFORM_Y = 30;
 
 export type MobVisualQaRole = "wide" | "narrow-animals" | "narrow-hostiles" | "states";
 

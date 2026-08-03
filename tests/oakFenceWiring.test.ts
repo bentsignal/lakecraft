@@ -98,7 +98,7 @@ assert.ok(mutation.indexOf("worldBlockOperationReceipts") < mutation.indexOf("pl
 assert.ok(mutation.indexOf("worldChunks.update") < mutation.indexOf("worldBlockOperationReceipts.insert"),
   "one transaction commits the authoritative chunk before recording its exact-once receipt");
 assert.match(server,
-  /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air"\)\)/,
+  /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air" && block !== "bedrock"\)\)/,
   "Lakebed derives fence acceptance from the append-only shared catalog");
 assert.doesNotMatch(mutation, /effect\.nextBlock === "oak_fence"|oakFence[^\n]*mutation|mutation[^\n]*oakFence/i,
   "the server needs no fence-specific mutation branch: shared authority drives the existing exact-once path");

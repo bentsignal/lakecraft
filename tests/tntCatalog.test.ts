@@ -19,8 +19,8 @@ assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("tnt"), 22, "the deployed TNT persi
 assert.deepEqual(BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "door_closed", "door_open", "bed", "coal_ore", "iron_ore",
-  "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks",
-], "network block identity appends clay and bricks without renumbering shipped blocks");
+  "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks", "bedrock",
+], "network block identity appends natural bedrock without renumbering shipped blocks");
 assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "bed", "door_closed", "door_open", "coal_ore", "iron_ore",

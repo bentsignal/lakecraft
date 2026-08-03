@@ -43,7 +43,7 @@ const explosionProtection = engine.slice(
   engine.indexOf("const LOCAL_EXPLOSION_PROTECTED_BLOCKS"),
   engine.indexOf("export function planLocalTntExplosion"),
 );
-assert.equal(explosionProtection.includes("BLOCK.BED"), false, "paired beds participate in TNT and creeper crater edits");
+assert.doesNotMatch(explosionProtection, /BLOCK\.BED(?:\s|,)/, "paired beds participate in TNT and creeper crater edits");
 const explosionApply = engine.slice(engine.indexOf("function applyLocalExplosionEdits"), engine.indexOf("function updateMobs"));
 assert.ok(explosionApply.includes("previousBlock: BLOCK.BED"), "an out-of-radius companion carries correct break metadata");
 assert.ok(engine.includes("edits: appliedEdits ?? []"), "creeper persistence receives the expanded accepted crater");
