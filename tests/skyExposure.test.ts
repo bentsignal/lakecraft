@@ -15,6 +15,7 @@ import {
   skyExposureDirtyChunkKeysForEdits,
   skyExposureLevel,
   skyLitIntensity,
+  skyOccluderClass,
   unpackSkyExposureShade,
   writeChunkSkyOccluders,
   type SkyOccluderColumns,
@@ -78,6 +79,39 @@ assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 0, 3)) > skyLitInt
   "canopy shade stays visibly brighter than an enclosed cave");
 assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 0, 3)) < skyLitIntensity(1, 3),
   "canopy shade remains visibly dimmer than open sky");
+
+const replacedColumn = new Map<string, BlockId>();
+for (let x = 0; x < 8; x += 1) {
+  for (let z = 0; z < 8; z += 1) replacedColumn.set(blockKey(x, 5, z), BLOCK.LEAVES);
+}
+replacedColumn.set(blockKey(3, 3, 3), BLOCK.STONE);
+const replacedColumns: SkyOccluderColumns = new Map();
+writeChunkSkyOccluders(replacedColumns, 0, 0, replacedColumn);
+assert.deepEqual(replacedColumns.get("3,3"), { opaqueY: 3, leafY: 5 });
+assert.equal(skyExposureLevel(replacedColumns, 3, 4, 3), 2);
+assert.equal(skyEcologyExposureLevel(replacedColumns, 3, 4, 3), 0);
+replacedColumn.set(blockKey(3, 5, 3), BLOCK.STONE);
+refreshEditedSkyColumns(replacedColumns, [{ x: 3, z: 3 }],
+  (x, y, z) => replacedColumn.get(blockKey(x, y, z)) ?? BLOCK.AIR);
+assert.deepEqual(replacedColumns.get("3,3"), { opaqueY: 5, leafY: TERRAIN_MIN_Y - 1 },
+  "LEAVES to STONE immediately moves the cached top from partial to opaque");
+assert.equal(skyExposureLevel(replacedColumns, 3, 4, 3), 1,
+  "LEAVES to STONE immediately replaces direct canopy light with weaker neighboring spill");
+assert.equal(skyEcologyExposureLevel(replacedColumns, 3, 4, 3), 0,
+  "LEAVES to STONE retains the correct ecology shelter result");
+replacedColumn.set(blockKey(3, 5, 3), BLOCK.LEAVES);
+refreshEditedSkyColumns(replacedColumns, [{ x: 3, z: 3 }],
+  (x, y, z) => replacedColumn.get(blockKey(x, y, z)) ?? BLOCK.AIR);
+assert.deepEqual(replacedColumns.get("3,3"), { opaqueY: 3, leafY: 5 },
+  "STONE to LEAVES immediately restores both cached occluder classes");
+assert.equal(skyExposureLevel(replacedColumns, 3, 4, 3), 2,
+  "STONE to LEAVES immediately restores partial visual skylight");
+assert.equal(skyEcologyExposureLevel(replacedColumns, 3, 4, 3), 0,
+  "STONE to LEAVES remains ecology-dark under the leaf shelter");
+
+assert.equal(skyOccluderClass(BLOCK.AIR), 0);
+assert.equal(skyOccluderClass(BLOCK.LEAVES), 1);
+assert.equal(skyOccluderClass(BLOCK.STONE), 2);
 
 for (const faceShade of [0.52, 0.68, 0.73, 0.79, 0.88, 1]) {
   for (let exposure = 0; exposure <= SKY_EXPOSURE_LEVELS; exposure += 1) {

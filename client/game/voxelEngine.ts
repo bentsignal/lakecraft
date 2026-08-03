@@ -210,6 +210,7 @@ import {
   refreshEditedSkyColumns,
   removeChunkSkyOccluders,
   skyColumnKey,
+  skyOccluderClass,
   skyExposureDirtyChunkKeysForEdits,
   skyEcologyExposureLevel,
   skyExposureLevel,
@@ -2188,7 +2189,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         owned.add(key);
       }
     }
-    return previous !== block && blockStopsSky(previous) !== blockStopsSky(block);
+    return previous !== block && skyOccluderClass(previous) !== skyOccluderClass(block);
   }
 
   function rebuildEditedWorldChunks(

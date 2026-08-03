@@ -21,12 +21,15 @@ export interface SkyOccluderColumn {
 export type SkyOccluderColumns = Map<string, SkyOccluderColumn>;
 export type SkyBlockLookup = (x: number, y: number, z: number) => BlockId;
 
+export type SkyOccluderClass = 0 | 1 | 2;
+
 export function skyColumnKey(x: number, z: number): string {
   return `${Math.floor(x)},${Math.floor(z)}`;
 }
 
 /** Thin, transparent, or explicitly open blocks do not stop the cheap vertical daylight test. */
-export function blockStopsSky(block: BlockId): boolean {
+export function skyOccluderClass(block: BlockId): SkyOccluderClass {
+  if (block === BLOCK.LEAVES) return 1;
   return block !== BLOCK.AIR
     && block !== BLOCK.TORCH
     && block !== BLOCK.DOOR_OPEN
@@ -37,7 +40,13 @@ export function blockStopsSky(block: BlockId): boolean {
     && block !== BLOCK.OAK_FENCE
     && block !== BLOCK.OAK_FENCE_GATE_CLOSED
     && block !== BLOCK.OAK_FENCE_GATE_OPEN
-    && block !== BLOCK.STONE_BRICK_SLAB;
+    && block !== BLOCK.STONE_BRICK_SLAB
+    ? 2
+    : 0;
+}
+
+export function blockStopsSky(block: BlockId): boolean {
+  return skyOccluderClass(block) !== 0;
 }
 
 /**
