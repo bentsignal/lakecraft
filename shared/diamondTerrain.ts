@@ -16,5 +16,7 @@ export function diamondOreVeinChance(anchorY: number): number {
     : anchorY > DIAMOND_ORE_PEAK_MAX_Y
       ? anchorY - DIAMOND_ORE_PEAK_MAX_Y
       : 0;
-  return 0.015 + 0.12 * Math.max(0, 1 - distance / 10);
+  // The integrated 1..20 activation mass is 0.685, close to the legacy
+  // twelve-layer 0.66 budget, so changing depth does not flood progression.
+  return 0.005 + 0.05 * Math.max(0, 1 - distance / 10);
 }

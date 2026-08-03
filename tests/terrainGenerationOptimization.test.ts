@@ -35,7 +35,7 @@ const eager = createTerrain(7_319, 20);
 assert.equal(eager.size, 16_005);
 assert.equal(
   orderedMapDigest(eager),
-  "3ae8d5413b8742e38d056f507d79a35d0005906aa2113a79241c2ac5735d0777",
+  "ac624ab0bbe9d2d99266bc34c2af5b4f74ce7d18f29d74227b516544b748787d",
   "the eager compatibility generator preserves its complete expected ordered map",
 );
 
