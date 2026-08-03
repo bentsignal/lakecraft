@@ -334,7 +334,7 @@ function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> |
         const absoluteY = y * WORLD_CHUNK_SECTION_HEIGHT + Math.floor(index / CELLS_PER_Y);
         if (code !== 0 && (absoluteY < WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
         if (absoluteY === WORLD_EDIT_MIN_Y) {
-          if (snapshot.version === 4 && code !== 0) setCurrentCode(nextPacked, index, 0);
+          if (snapshot.version === 4 && code !== 0) return null;
           continue;
         }
         if (snapshot.version === 3 && code !== 0) setCurrentCode(nextPacked, index, code);
@@ -498,6 +498,15 @@ export function sampleWorldChunkSnapshot(
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return { ok: false, reason: "snapshot_too_large" };
   const snapshot = parsePacked(snapshotJson);
   if (!snapshot) return { ok: false, reason: BS.invalidSnapshot };
+  if (snapshot.version === 4) {
+    const foundationSection = snapshot.sections.get(MIN_SECTION_Y);
+    if (foundationSection) {
+      const foundationOffset = (WORLD_EDIT_MIN_Y - MIN_SECTION_Y * WORLD_CHUNK_SECTION_HEIGHT) * CELLS_PER_Y;
+      for (let index = foundationOffset; index < foundationOffset + CELLS_PER_Y; index += 1) {
+        if (getCurrentCode(foundationSection, index) !== 0) return { ok: false, reason: BS.invalidSnapshot };
+      }
+    }
+  }
   const blocks: Array<WorldChunkBlockType | null> = [];
   for (const sample of samples) {
     if (!sample || !Number.isSafeInteger(sample.x) || !Number.isSafeInteger(sample.y)

@@ -13,6 +13,7 @@ import {
   applyWorldChunkEdit,
   createWorldChunkSnapshot,
   decodeWorldChunkSnapshot,
+  sampleWorldChunkSnapshot,
   validateVisibleWorldChunkKeys,
   validateWorldChunkKey,
   worldEditChunkKey,
@@ -148,6 +149,7 @@ if (migratedV2.ok) assert.equal(JSON.parse(migratedV2.snapshotJson).v, 4);
 // v3 introduced sparse vertical sections but retained five-bit palette codes.
 const legacyV3Section = new Uint8Array(Math.ceil(8 * 8 * 8 * 5 / 8));
 setFiveBit(legacyV3Section, 64, 31); // code 31 = stone brick slab at y=1
+setFiveBit(legacyV3Section, 0, 4); // legacy stone at y=0 is sanitized during migration
 const legacyV3Json = JSON.stringify({
   v: 3,
   sections: [{ y: 0, cells: Buffer.from(legacyV3Section).toString("base64") }],
@@ -163,6 +165,37 @@ if (migratedV3.ok) {
   assert.equal(decoded.ok, true);
   if (decoded.ok) assert.deepEqual(decoded.edits.map(({ blockType }) => blockType), ["stone_brick_slab", "torch"]);
 }
+
+function setSixBit(bytes: Uint8Array, index: number, code: number): void {
+  const bitIndex = index * 6;
+  for (let bit = 0; bit < 6; bit += 1) {
+    if ((code & (1 << bit)) !== 0) bytes[(bitIndex + bit) >> 3] |= 1 << ((bitIndex + bit) & 7);
+  }
+}
+const corruptV4Section = new Uint8Array(8 * 8 * 8 * 6 / 8);
+setSixBit(corruptV4Section, 0, 4); // current stone edit illegally replaces canonical y=0 bedrock
+const corruptV4Json = JSON.stringify({
+  v: 4,
+  sections: [{ y: 0, cells: Buffer.from(corruptV4Section).toString("base64") }],
+});
+assert.deepEqual(decodeWorldChunkSnapshot("0:0", corruptV4Json), {
+  ok: false,
+  reason: "invalid_snapshot",
+}, "current v4 decoding rejects a persisted foundation edit");
+assert.deepEqual(applyWorldChunkEdit("0:0", corruptV4Json, {
+  x: 1,
+  y: 1,
+  z: 0,
+  blockType: "torch",
+}), { ok: false, reason: "invalid_snapshot" }, "a valid edit cannot rewrite a corrupt current snapshot");
+assert.deepEqual(sampleWorldChunkSnapshot("0:0", corruptV4Json, [{ x: 0, y: 0, z: 0 }]), {
+  ok: false,
+  reason: "invalid_snapshot",
+}, "targeted sampling rejects a current snapshot with any persisted foundation edit");
+assert.deepEqual(sampleWorldChunkSnapshot("0:0", corruptV4Json, [{ x: 1, y: 1, z: 0 }]), {
+  ok: false,
+  reason: "invalid_snapshot",
+}, "sampling a different cell still fails the corrupt snapshot atomically");
 
 assert.equal(decodeWorldChunkSnapshot("0:0", JSON.stringify({
   v: 4,

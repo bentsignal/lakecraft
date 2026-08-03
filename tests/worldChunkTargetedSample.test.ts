@@ -61,4 +61,15 @@ assert.deepEqual(sampleWorldChunkSnapshot("0:0", legacyV2Json, [
   { x: 1, y: 65, z: 0 },
 ]), { ok: true, blocks: [null, null] });
 
+const legacyV3 = new Uint8Array(Math.ceil(8 * 8 * 8 * 5 / 8));
+setFiveBit(legacyV3, 0, 4); // code 4 = stone at y=0
+const legacyV3Json = JSON.stringify({
+  v: 3,
+  sections: [{ y: 0, cells: Buffer.from(legacyV3).toString("base64") }],
+});
+assert.deepEqual(sampleWorldChunkSnapshot("0:0", legacyV3Json, [{ x: 0, y: 0, z: 0 }]), {
+  ok: true,
+  blocks: [null],
+}, "explicitly legacy v3 foundation edits are sanitized during targeted migration reads");
+
 console.log("targeted authoritative world chunk sampling tests passed");
