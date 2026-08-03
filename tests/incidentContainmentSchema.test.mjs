@@ -53,8 +53,8 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "6a274c6f6a9e95b24ec1dcc7cfae6d05d7f6ba542d3d29faa9619af99f4be594",
-  "removing containment declarations reproduces the reviewed bedrock-floor server behavior source",
+  "8d16e16af75b6fe08cf3dabffafd24e47d05a8a61ffcd8398b3035dde8333867",
+  "removing containment declarations reproduces the reviewed compact server behavior source",
 );
 
 assert.doesNotMatch(server, /\bsinglePlayerCloudBackups\s*:/,
@@ -85,9 +85,9 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 134, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 135, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "4711060268fd50efcb82fbf38b990b72b605c832e7f243ebd2fa5566c97613a4",
+  "ff9404b78bb65d10f4428e4ed3315260269cb0125f9a655487654ef9fadb59fc",
   "runtime sources match the reviewed bedrock-floor, translated-terrain, diamond-depth, paused-pose, combat, and containment checkpoint");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

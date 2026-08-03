@@ -7,6 +7,8 @@ import {
   placedWorldBlockForItem,
   resolveWorldBlockOperation,
 } from "../shared/worldBlockOperations.ts";
+import { ENGINE_TO_GAME, ENGINE_TO_PROTOCOL, ITEM_TO_ENGINE, audioSurfaceForBlock } from "../client/game/blockBridge.ts";
+import { BLOCK } from "../client/game/types.ts";
 
 assert.equal(BLOCK_TYPES.indexOf("oak_fence"), 27,
   "oak fence appends without renumbering any deployed protocol identity");
@@ -69,23 +71,24 @@ assert.deepEqual(mined.effect.drop, { itemId: "oak_fence", count: 1 });
 assert.deepEqual(mined.effect.inventory[0], { itemId: "oak_fence", count: 2 },
   "mining returns the same fence and conserves the place/mine round trip");
 
-const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const bridgeSource = readFileSync(new URL("../client/game/blockBridge.ts", import.meta.url), "utf8");
+const multiplayerSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
-  assert.match(source, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"/,
-    `${label} maps engine fence 27 to the canonical shared identity`);
-  assert.match(source, /oak_fence:\s*BLOCK\.OAK_FENCE/,
-    `${label} maps held fence items back into engine block 27`);
-  assert.match(source, /BLOCK\.OAK_FENCE[\s\S]{0,80}return\s+"wood"/,
-    `${label} uses the existing wood break, place, mining, and footstep audio surface`);
-  assert.doesNotMatch(source,
+assert.equal(ENGINE_TO_PROTOCOL[BLOCK.OAK_FENCE], "oak_fence");
+assert.equal(ENGINE_TO_GAME[BLOCK.OAK_FENCE], "oak_fence");
+assert.equal(ITEM_TO_ENGINE.oak_fence, BLOCK.OAK_FENCE);
+assert.equal(audioSurfaceForBlock(BLOCK.OAK_FENCE), "wood");
+for (const [label, source, sharedImport] of [
+  ["multiplayer", multiplayerSource, /from "\.\/game\/blockBridge\.ts"/],
+  ["single-player", singlePlayerSource, /from "\.\.\/game\/blockBridge\.ts"/],
+] as const) {
+  assert.match(source, sharedImport, `${label} consumes the shared block bridge`);
+  assert.doesNotMatch(`${source}\n${bridgeSource}`,
     /(?:setInterval|setTimeout|useMutation)[^\n]*oak_fence|oak_fence[^\n]*(?:setInterval|setTimeout|useMutation)/i,
-    `${label} adds no fence-specific timer, polling loop, or mutation`);
+    `${label} fence wiring adds no dedicated network or timer loop`);
 }
-assert.match(client, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"[\s\S]*?oak_fence:\s*BLOCK\.OAK_FENCE/,
-  "multiplayer round-trips engine, protocol, game, and item identities");
 assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
   "single-player save validation retains oak fences and every newer append-only engine ID");
 

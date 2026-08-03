@@ -8,7 +8,7 @@ const remote = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", im
 
 for (const required of [
   "rangedCharges: table({",
-  "rangedCombatReceipts: table({",
+  "rangedCombatReceipts: userOperationReceiptTable()",
   "beginFingerprint: string().default",
   "beginInventoryRevision: string().default",
   'rangedCombat: mutation(async (ctx, requestJson: string)',

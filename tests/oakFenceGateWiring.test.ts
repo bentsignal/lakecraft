@@ -12,6 +12,8 @@ import {
   encodeWorldBlockOperationReceipt,
   type WorldBlockOperationReceiptResult,
 } from "../server/worldBlockOperationReceipts.ts";
+import { ENGINE_TO_GAME, ENGINE_TO_PROTOCOL, ITEM_TO_ENGINE, PROTOCOL_TO_ENGINE, audioSurfaceForBlock } from "../client/game/blockBridge.ts";
+import { BLOCK } from "../client/game/types.ts";
 
 const inventory: Inventory = Array.from({ length: INVENTORY_SIZE }, () => null);
 inventory[0] = { itemId: "oak_fence_gate", count: 2 };
@@ -119,26 +121,21 @@ assert.equal(minedOpen.ok, true);
 if (minedOpen.ok) assert.deepEqual(minedOpen.effect.drop, { itemId: "oak_fence_gate", count: 1 },
   "mining either gate state self-drops the one canonical gate item");
 
-const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const local = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const localSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const requestClient = readFileSync(new URL("../client/worldBlockEditClient.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 
-for (const [label, source] of [["multiplayer", client], ["single-player", local]] as const) {
-  assert.match(source, /\[BLOCK\.OAK_FENCE_GATE_CLOSED\]:\s*"oak_fence_gate"/,
-    `${label} maps the closed state to the canonical game block`);
-  assert.match(source, /\[BLOCK\.OAK_FENCE_GATE_OPEN\]:\s*"oak_fence_gate"/,
-    `${label} maps the open state to the same canonical game block`);
-  assert.match(source, /oak_fence_gate:\s*BLOCK\.OAK_FENCE_GATE_CLOSED/,
-    `${label} always places a held gate closed`);
-  assert.match(source, /BLOCK\.OAK_FENCE_GATE_CLOSED[^\n]*BLOCK\.OAK_FENCE_GATE_OPEN[^\n]*return\s+"wood"/,
-    `${label} gives both states wood interaction audio`);
-}
-assert.match(client, /\[BLOCK\.OAK_FENCE_GATE_CLOSED\]:\s*"oak_fence_gate_closed"/);
-assert.match(client, /\[BLOCK\.OAK_FENCE_GATE_OPEN\]:\s*"oak_fence_gate_open"/);
-assert.match(client, /oak_fence_gate_closed:\s*BLOCK\.OAK_FENCE_GATE_CLOSED/);
-assert.match(client, /oak_fence_gate_open:\s*BLOCK\.OAK_FENCE_GATE_OPEN/);
+assert.equal(ENGINE_TO_PROTOCOL[BLOCK.OAK_FENCE_GATE_CLOSED], "oak_fence_gate_closed");
+assert.equal(ENGINE_TO_PROTOCOL[BLOCK.OAK_FENCE_GATE_OPEN], "oak_fence_gate_open");
+assert.equal(PROTOCOL_TO_ENGINE.oak_fence_gate_closed, BLOCK.OAK_FENCE_GATE_CLOSED);
+assert.equal(PROTOCOL_TO_ENGINE.oak_fence_gate_open, BLOCK.OAK_FENCE_GATE_OPEN);
+assert.equal(ENGINE_TO_GAME[BLOCK.OAK_FENCE_GATE_CLOSED], "oak_fence_gate");
+assert.equal(ENGINE_TO_GAME[BLOCK.OAK_FENCE_GATE_OPEN], "oak_fence_gate");
+assert.equal(ITEM_TO_ENGINE.oak_fence_gate, BLOCK.OAK_FENCE_GATE_CLOSED, "held gates always place closed");
+assert.equal(audioSurfaceForBlock(BLOCK.OAK_FENCE_GATE_CLOSED), "wood");
+assert.equal(audioSurfaceForBlock(BLOCK.OAK_FENCE_GATE_OPEN), "wood");
+const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 assert.match(client, /onBlockEdit:\s*\(edit, previousBlock\)[\s\S]{0,140}handleBlockEdit\(edit, previousBlock\)/,
   "multiplayer preserves the prior state needed to serialize a toggle safely");
 assert.match(client, /next === BLOCK\.DOOR_OPEN \|\| next === BLOCK\.OAK_FENCE_GATE_OPEN/,

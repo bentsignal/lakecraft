@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { ENGINE_TO_GAME, ENGINE_TO_PROTOCOL, ITEM_TO_ENGINE } from "../client/game/blockBridge.ts";
+import { BLOCK } from "../client/game/types.ts";
 
 const source = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const saveSource = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
@@ -8,8 +10,9 @@ const craftingStart = source.indexOf("target.block.block === BLOCK.CRAFTING_TABL
 assert.ok(interactionStart >= 0 && craftingStart > interactionStart, "sapling use is dispatched before ordinary block UI interactions");
 const interaction = source.slice(interactionStart, craftingStart);
 
-assert.match(source, /\[BLOCK\.SAPLING\]:\s*"sapling"/);
-assert.match(source, /sapling:\s*BLOCK\.SAPLING/);
+assert.equal(ENGINE_TO_PROTOCOL[BLOCK.SAPLING], "sapling");
+assert.equal(ENGINE_TO_GAME[BLOCK.SAPLING], "sapling");
+assert.equal(ITEM_TO_ENGINE.sapling, BLOCK.SAPLING);
 assert.match(saveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "offline saves retain saplings and later append-only block edits");
 assert.match(interaction, /itemId === "bone_meal"/, "growth requires selected bone meal");
 assert.ok(

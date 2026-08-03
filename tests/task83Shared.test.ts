@@ -37,6 +37,8 @@ import {
   PRESENCE_SAMPLE_INTERVAL_MS,
   PRESENCE_SERVER_MIN_WRITE_INTERVAL_MS,
 } from "../shared/presenceMotion.ts";
+import { ENGINE_TO_GAME, ENGINE_TO_PROTOCOL, ITEM_TO_ENGINE, audioSurfaceForBlock } from "../client/game/blockBridge.ts";
+import { BLOCK } from "../client/game/types.ts";
 
 assert.deepEqual(BLOCKS.stone_brick_slab, {
   id: "stone_brick_slab",
@@ -223,19 +225,11 @@ assert.equal(engineSource.match(/gl\.drawArrays\(/g)?.length, 14,
 assert.doesNotMatch(engineSource, /STONE_BRICK_SLAB[\s\S]{0,180}gl\.drawArrays\(/,
   "slab geometry cannot draw itself outside the existing chunk batch");
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-const multiplayerSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const singlePlayerSaveSource = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
-for (const [label, source] of [["multiplayer", multiplayerSource], ["single-player", singlePlayerSource]] as const) {
-  assert.match(source, /\[BLOCK\.STONE_BRICK_SLAB\]:\s*"stone_brick_slab"/,
-    `${label} maps engine slab 30 back to its canonical game identity`);
-  assert.match(source, /stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
-    `${label} maps the held slab item into engine block 30`);
-  assert.match(source, /BLOCK\.STONE_BRICKS \|\| block === BLOCK\.STONE_BRICK_SLAB[^\n]*return "stone"/,
-    `${label} reuses the existing stone mining, placement, and footstep audio surface`);
-}
-assert.match(multiplayerSource, /\[BLOCK\.STONE_BRICK_SLAB\]:\s*"stone_brick_slab"[\s\S]*?stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
-  "multiplayer round-trips engine, protocol, item, and game slab identities");
+assert.equal(ENGINE_TO_PROTOCOL[BLOCK.STONE_BRICK_SLAB], "stone_brick_slab");
+assert.equal(ENGINE_TO_GAME[BLOCK.STONE_BRICK_SLAB], "stone_brick_slab");
+assert.equal(ITEM_TO_ENGINE.stone_brick_slab, BLOCK.STONE_BRICK_SLAB);
+assert.equal(audioSurfaceForBlock(BLOCK.STONE_BRICK_SLAB), "stone");
 assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
   "single-player persistence admits every later append-only engine ID");
 const worldMutation = serverSource.slice(

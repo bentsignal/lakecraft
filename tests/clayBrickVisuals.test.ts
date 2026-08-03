@@ -10,6 +10,7 @@ import {
 } from "../client/game/generated/textureAtlas.ts";
 import { blockHasCollision, blockMaterialColor, blockOccludesFaces } from "../client/game/voxelEngine.ts";
 import { BLOCK } from "../client/game/types.ts";
+import { ENGINE_TO_GAME, ENGINE_TO_PROTOCOL, ITEM_TO_ENGINE } from "../client/game/blockBridge.ts";
 
 const faces: readonly BlockFace[] = ["east", "west", "top", "bottom", "south", "north"];
 assert.equal(BLOCK.CLAY, 31, "clay appends after the deployed slab engine identity");
@@ -68,12 +69,10 @@ const heldRenderer = readFileSync(new URL("../client/game/firstPersonRenderer.ts
 assert.ok(heldRenderer.includes("blockTextureForFace(block, face[0])") && heldRenderer.includes("textureAtlasUv(texture)"),
   "held clay and bricks reuse their exact world-atlas surface tiles on solid cubes");
 
-for (const relative of ["../client/index.tsx", "../client/singleplayer/SinglePlayerApp.tsx"] as const) {
-  const source = readFileSync(new URL(relative, import.meta.url), "utf8");
-  assert.match(source, /\[BLOCK\.CLAY\]:\s*"clay"/);
-  assert.match(source, /\[BLOCK\.BRICKS\]:\s*"bricks"/);
-  assert.match(source, /clay:\s*BLOCK\.CLAY/);
-  assert.match(source, /bricks:\s*BLOCK\.BRICKS/);
+for (const [id, name] of [[BLOCK.CLAY, "clay"], [BLOCK.BRICKS, "bricks"]] as const) {
+  assert.equal(ENGINE_TO_PROTOCOL[id], name);
+  assert.equal(ENGINE_TO_GAME[id], name);
+  assert.equal(ITEM_TO_ENGINE[name], id);
 }
 const rendererSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(rendererSource, /block === BLOCK\.GLASS \? transparentVertices : textureVertices/,

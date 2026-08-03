@@ -7,6 +7,7 @@ import { INITIAL_RECIPE_PATTERNS, matchCraftingGrid } from "../shared/craftingGr
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace } from "../client/game/blockTextures.ts";
 import { BLOCK } from "../client/game/types.ts";
+import { ENGINE_TO_GAME, ENGINE_TO_PROTOCOL, ITEM_TO_ENGINE } from "../client/game/blockBridge.ts";
 
 assert.equal(ITEMS.gunpowder.category, "material");
 assert.equal(ITEMS.gunpowder.maxStack, 64);
@@ -55,13 +56,10 @@ assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");
 assert.ok(getItemIconArt("gunpowder").runs.length >= 8);
 assert.ok(getItemIconArt("tnt").runs.length >= 8);
 
-const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const remotePlayers = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", import.meta.url), "utf8");
-for (const [source, label] of [[multiplayer, "multiplayer"], [singleplayer, "single-player"]] as const) {
-  assert.match(source, /\[BLOCK\.TNT\]:\s*"tnt"/, `${label} maps engine TNT back to the shared item/block identity`);
-  assert.match(source, /tnt:\s*BLOCK\.TNT/, `${label} maps shared TNT into engine block 22`);
-}
+assert.equal(ENGINE_TO_PROTOCOL[BLOCK.TNT], "tnt", "engine TNT maps to its protocol identity");
+assert.equal(ENGINE_TO_GAME[BLOCK.TNT], "tnt", "engine TNT maps to its shared game identity");
+assert.equal(ITEM_TO_ENGINE.tnt, BLOCK.TNT, "held TNT maps into engine block 22");
 assert.match(remotePlayers, /case\s+"gunpowder":\s*return\s+COLORS\.coalItem/, "remote hands render loose gunpowder as a material");
 assert.match(remotePlayers, /case\s+"tnt":\s*return\s+COLORS\.redItem/, "remote hands render TNT as a recognizable red block");
 

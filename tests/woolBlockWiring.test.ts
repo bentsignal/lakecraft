@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 import { BLOCK_TYPES, isBlockType } from "../shared/protocol.ts";
 import { INVENTORY_SIZE, type Inventory } from "../shared/game.ts";
 import { parseWorldBlockOperation, placedWorldBlockForItem, resolveWorldBlockOperation } from "../shared/worldBlockOperations.ts";
+import {
+  ENGINE_TO_GAME,
+  ENGINE_TO_PROTOCOL,
+  ITEM_TO_ENGINE,
+  audioSurfaceForBlock,
+} from "../client/game/blockBridge.ts";
+import { BLOCK as ENGINE_BLOCK } from "../client/game/types.ts";
 
 assert.equal(BLOCK_TYPES.indexOf("wool"), 24, "the protocol appends wool without renumbering deployed blocks");
 assert.equal(isBlockType("wool"), true);
@@ -65,13 +72,13 @@ const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx"
 const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
-  assert.match(source, /\[BLOCK\.WOOL\]:\s*"wool"/, `${label} maps engine wool to the shared block/item identity`);
-  assert.match(source, /wool:\s*BLOCK\.WOOL/, `${label} maps held wool into engine block 24`);
-  assert.match(source, /BLOCK\.WOOL[^\n]*return\s+"grass"/, `${label} routes soft wool through the cloth-like grass audio surface`);
   assert.doesNotMatch(source, /(?:setInterval|setTimeout|useMutation)[^\n]*wool|wool[^\n]*(?:setInterval|setTimeout|useMutation)/i,
     `${label} wool placement adds no dedicated network or timer loop`);
 }
-assert.match(client, /wool:\s*BLOCK\.WOOL[\s\S]*?\[BLOCK\.WOOL\]:\s*"wool"/, "multiplayer has protocol, game, and item round-trip mappings");
+assert.equal(ENGINE_TO_PROTOCOL[ENGINE_BLOCK.WOOL], "wool", "multiplayer maps engine wool to protocol wool");
+assert.equal(ENGINE_TO_GAME[ENGINE_BLOCK.WOOL], "wool", "both clients map engine wool to the shared item identity");
+assert.equal(ITEM_TO_ENGINE.wool, ENGINE_BLOCK.WOOL, "both clients map held wool into engine block 24");
+assert.equal(audioSurfaceForBlock(ENGINE_BLOCK.WOOL), "grass", "soft wool uses the cloth-like grass audio surface");
 assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "single-player saves retain wool and every newer append-only block ID");
 assert.match(single, /action:\s*"break"[\s\S]*?audioSurfaceForBlock\(edit\.block\)/, "local edits emit bounded break/place particles and material audio");
 

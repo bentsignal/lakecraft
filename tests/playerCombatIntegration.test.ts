@@ -5,9 +5,9 @@ const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf
 
 for (const required of [
   "playerCombat: table({",
-  'playerCombatReceipts: table({',
-  '.index("by_user_operation", ["userId", "operationId"])',
-  '.index("by_user_created", ["userId", "receiptCreatedAt"])',
+  'playerCombatReceipts: userOperationReceiptTable()',
+  '.index(BS.byUserOperation, [BS.userId, BS.operationId])',
+  '.index(BS.byUserCreated, [BS.userId, BS.receiptCreatedAt])',
   "playerCombatStates: query(async",
   "attackPlayer: mutation(async",
   "validatePlayerAttackRequestJson(requestJson)",
