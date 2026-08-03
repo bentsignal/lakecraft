@@ -82,8 +82,8 @@ function step(
       player: options.player === undefined ? { x: 2, y: 1, z: 0 } : options.player,
       localLight: () => options.light ?? 0,
       directSky: () => options.sky ?? false,
-      sunlightIntensity: options.sun ?? 0,
-      acceptFatalDrops: options.drops,
+      sunIntensity: options.sun ?? 0,
+      onFatalDrops: options.drops,
     });
   }
 }
@@ -92,13 +92,13 @@ for (const kind of ["zombie", "skeleton"] as const) {
   const open = createMobSimulation([spawn(kind)]);
   step(open, 12, { light: 1, sky: true, sun: 1, player: null });
   assert.equal(open.mobs[0]!.health, MOB_DEFINITIONS[kind].maxHealth - 2, `${kind} burns in direct noon sky`);
-  assert.equal(open.mobs[0]!.sunlightBurning, true);
+  assert.equal(writeMobPoseSnapshots(open)[0]!.sunBurning, true);
 
   for (const shelter of ["tree shade", "cave", "roof"] as const) {
     const protectedMob = createMobSimulation([spawn(kind)]);
     step(protectedMob, 20, { light: shelter === "tree shade" ? 2 / 3 : 0, sky: false, sun: 1, player: null });
     assert.equal(protectedMob.mobs[0]!.health, MOB_DEFINITIONS[kind].maxHealth, `${shelter} protects ${kind}`);
-    assert.equal(protectedMob.mobs[0]!.sunlightBurning, false);
+    assert.equal(writeMobPoseSnapshots(protectedMob)[0]!.sunBurning, false);
   }
   const dawn = createMobSimulation([spawn(kind)]);
   step(dawn, 20, { light: 0.35, sky: true, sun: 0.35, player: null });
@@ -109,7 +109,7 @@ for (const kind of ["spider", "creeper"] as const) {
   const immune = createMobSimulation([spawn(kind)]);
   step(immune, 30, { light: 1, sky: true, sun: 1, player: null });
   assert.equal(immune.mobs[0]!.health, MOB_DEFINITIONS[kind].maxHealth, `${kind} never burns`);
-  assert.equal(immune.mobs[0]!.sunlightBurning, false);
+  assert.equal(writeMobPoseSnapshots(immune)[0]!.sunBurning, false);
 }
 
 const spider = createMobSimulation([spawn("spider")]);
@@ -141,7 +141,7 @@ assert.equal(writeMobPoseSnapshots(deaths).length, allKinds.length, "every mob k
 step(deaths, 3, { player: null });
 const midpoint = writeMobPoseSnapshots(deaths);
 assert.equal(midpoint.length, allKinds.length);
-assert.ok(midpoint.every((pose) => pose.deathProgress > 0 && pose.deathProgress < 1));
+assert.ok(midpoint.every((pose) => pose.deathFall > 0 && pose.deathFall < 1));
 const restored = createMobSimulation(allKinds.map((kind, index) => spawn(kind, index)));
 assert.equal(restoreMobSimulationSnapshot(restored, exportMobSimulationSnapshot(deaths)), true);
 assert.deepEqual(restored, deaths, "save/reload preserves exact burn, engagement, death, and respawn clocks");
@@ -175,7 +175,7 @@ for (let tick = 0; tick < 5_000; tick += 1) {
     player: null,
     localLight: () => { lightSamples += 1; return 0; },
     directSky: () => { skySamples += 1; return false; },
-    sunlightIntensity: 1,
+    sunIntensity: 1,
   });
 }
 assert.equal(lightSamples, bounded.mobs.length * 5_000, "cached light is sampled once per mob per fixed simulation step");

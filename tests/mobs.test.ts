@@ -140,7 +140,7 @@ const fatalB = damageMob(cowSimulationB, "cow-test", 10);
 assert.equal(fatalA.killed, true);
 assert.deepEqual(fatalB.drops, fatalA.drops, "drop rolls must be deterministic for the same mob and hit sequence");
 assert.equal(writeMobPoseSnapshots(cowSimulationA).length, 1, "a dead mob remains visible for its short fall-over");
-assert.equal(writeMobPoseSnapshots(cowSimulationA)[0]?.deathProgress, 0);
+assert.equal(writeMobPoseSnapshots(cowSimulationA)[0]?.deathFall, 0);
 
 const benchmarkSpawns = createMobSpawns({
   seed: 909,

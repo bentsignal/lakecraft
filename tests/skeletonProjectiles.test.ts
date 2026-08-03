@@ -42,7 +42,7 @@ for (let tick = 0; tick < 180; tick += 1) stepMobSimulation(daytime, {
   isNight: false,
   localLight: () => 1,
   directSky: () => true,
-  sunlightIntensity: 1,
+  sunIntensity: 1,
 });
 assert.equal(daytime.mobs[0].behavior, "chase", "an existing skeleton remains dangerous in daylight");
 assert.ok(daytime.mobs[0].rangedSequence > 0, "daylight spawn gating does not suppress existing skeleton attacks");

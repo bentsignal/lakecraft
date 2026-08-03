@@ -453,7 +453,7 @@ export const LADDER_IDLE_SLIDE_SPEED = -1.2;
 /** Allocation-free CPU mirror used at the bounded mob spawn/simulation cadence. */
 export function sampleCachedMobLocalLight(
   skyExposure: number,
-  sunlightIntensity: number,
+  sunIntensity: number,
   torchUniforms: Float32Array,
   torchCount: number,
   x: number,
@@ -461,7 +461,7 @@ export function sampleCachedMobLocalLight(
   z: number,
 ): number {
   let light = clampNumber(skyExposure, 0, SKY_EXPOSURE_LEVELS)
-    / SKY_EXPOSURE_LEVELS * clampNumber(sunlightIntensity, 0, 1);
+    / SKY_EXPOSURE_LEVELS * clampNumber(sunIntensity, 0, 1);
   const count = Math.min(MAX_ACTIVE_TORCH_LIGHTS, Math.max(0, Math.floor(torchCount)));
   for (let index = 0; index < count; index += 1) {
     const offset = index * 4;
@@ -1416,6 +1416,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const firstPersonTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   let activeTorchLights = 0;
+  let lastTorchSelectionAt = -Infinity;
+  let lastTorchCameraX = Infinity;
+  let lastTorchCameraY = Infinity;
+  let lastTorchCameraZ = Infinity;
   const chunkBlocks = new Map<string, Set<string>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
@@ -1476,21 +1480,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let mobStreamingCenterX = (initialChunkPlan.center.x + 0.5) * WORLD_CHUNK_SIZE;
   let mobStreamingCenterZ = (initialChunkPlan.center.z + 0.5) * WORLD_CHUNK_SIZE;
   sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
-  const initialMobTorchLights = selectNearestTorchLights(
-    torchLights.values(),
-    [pose.x, pose.y + 1.2, pose.z],
-    MAX_ACTIVE_TORCH_LIGHTS,
-    TORCH_LIGHT_RADIUS,
-  );
-  activeTorchLights = initialMobTorchLights.length;
-  for (let index = 0; index < initialMobTorchLights.length; index += 1) {
-    const light = initialMobTorchLights[index];
-    const offset = index * 4;
-    activeTorchUniforms[offset] = light.x;
-    activeTorchUniforms[offset + 1] = light.y;
-    activeTorchUniforms[offset + 2] = light.z;
-    activeTorchUniforms[offset + 3] = TORCH_LIGHT_RADIUS;
-  }
+  updateActiveTorchLights(0, [pose.x, pose.y + 1.2, pose.z]);
 
   function cachedMobDirectSky(_kind: unknown, x: number, y: number, z: number): boolean {
     return skyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z))
@@ -1624,10 +1614,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobStepSeconds = 0.1;
   let playerHealth = PLAYER_MAX_HEALTH;
   let lastPerformanceSent = 0;
-  let lastTorchSelectionAt = -Infinity;
-  let lastTorchCameraX = Infinity;
-  let lastTorchCameraY = Infinity;
-  let lastTorchCameraZ = Infinity;
   let firstPersonSkyExposure = 1;
   let firstPersonExposureBlockX = Infinity;
   let firstPersonExposureBlockY = Infinity;
@@ -2293,7 +2279,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function advanceMobKnockbackReactions(dt: number): void {
     for (const [mobId, reaction] of mobKnockbackReactions) {
       const mob = mobSimulation.mobs.find((candidate) => candidate.id === mobId);
-      if (!mob?.alive) {
+      if (!mob || (!mob.alive
+        && mobSimulation.elapsedSeconds + 1e-9 >= mob.deathUntil)) {
         mobKnockbackReactions.delete(mobId);
         continue;
       }
@@ -2393,8 +2380,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         projectileDamageSources,
         localLight: cachedMobLocalLight,
         directSky: cachedMobDirectSky,
-        sunlightIntensity: dayNightState.sunIntensity,
-        acceptFatalDrops: options.onMobDrops,
+        sunIntensity: dayNightState.sunIntensity,
+        onFatalDrops: options.onMobDrops,
         worldRadius: localMobStreaming ? LOCAL_MOB_STREAM_RETAIN_RADIUS : radius - 1,
         worldCenterX: localMobStreaming ? mobStreamingCenterX : 0,
         worldCenterZ: localMobStreaming ? mobStreamingCenterZ : 0,

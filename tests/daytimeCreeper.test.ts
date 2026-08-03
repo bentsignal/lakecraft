@@ -9,6 +9,7 @@ import {
   createMobSimulation,
   localMobHostileActive,
   stepMobSimulation,
+  writeMobPoseSnapshots,
   type MobKind,
   type MobSimulation,
   type MobSpawnDescriptor,
@@ -30,7 +31,7 @@ function step(
     player,
     localLight: () => light,
     directSky: () => false,
-    sunlightIntensity: 1,
+    sunIntensity: 1,
   });
 }
 
@@ -49,7 +50,7 @@ const daytime = createMobSimulation([spawn("creeper")]);
 step(daytime, 1);
 const daytimeCreeper = daytime.mobs[0]!;
 assert.equal(daytimeCreeper.hostileActive, true);
-assert.equal(daytimeCreeper.sunlightBurning, false, "creepers never burn");
+assert.equal(writeMobPoseSnapshots(daytime)[0]!.sunBurning, false, "creepers never burn");
 assert.equal(daytimeCreeper.behavior, "fuse", "a nearby daytime player starts the creeper fuse");
 assert.ok(daytimeCreeper.fuseStartedAtSeconds > 0);
 

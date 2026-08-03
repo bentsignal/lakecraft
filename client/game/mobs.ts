@@ -204,11 +204,9 @@ export interface MobState extends MobSpawnDescriptor {
   sheared: boolean;
   fuseStartedAtSeconds: number;
   fuseUntilSeconds: number;
-  spiderEngagedUntilSeconds: number;
-  nextSunlightDamageAtSeconds: number;
-  sunlightBurning: boolean;
-  deathStartedAtSeconds: number;
-  deathAnimationUntilSeconds: number;
+  spiderUntil: number;
+  sunDamageAt: number;
+  deathUntil: number;
 }
 
 export interface MobSimulation {
@@ -269,8 +267,7 @@ const MOB_STATE_SNAPSHOT_KEYS = [
   "hostileActive", "randomState", "damageSequence", "nextContactDamageAtSeconds",
   "nextRangedAttackAtSeconds", "rangedSequence", "authoritativeRevision",
   "authoritativeDeadUntil", "sheared", "fuseStartedAtSeconds", "fuseUntilSeconds",
-  "spiderEngagedUntilSeconds", "nextSunlightDamageAtSeconds", "sunlightBurning",
-  "deathStartedAtSeconds", "deathAnimationUntilSeconds",
+  "spiderUntil", "sunDamageAt", "deathUntil",
 ] as const;
 const MOB_PROJECTILE_SNAPSHOT_KEYS = [
   "id", "active", "ownerId", "x", "y", "z", BS.previousX, BS.previousY, BS.previousZ,
@@ -282,8 +279,8 @@ const MOB_POSITION_SNAPSHOT_KEYS = [
 ] as const;
 const MOB_TIME_SNAPSHOT_KEYS = [
   "behaviorUntilSeconds", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
-  "fuseStartedAtSeconds", "fuseUntilSeconds", "spiderEngagedUntilSeconds",
-  "nextSunlightDamageAtSeconds", "deathStartedAtSeconds", "deathAnimationUntilSeconds",
+  "fuseStartedAtSeconds", "fuseUntilSeconds", "spiderUntil",
+  "sunDamageAt", "deathUntil",
 ] as const;
 const PROJECTILE_POSITION_SNAPSHOT_KEYS = [
   "x", "y", "z", BS.previousX, BS.previousY, BS.previousZ,
@@ -324,8 +321,7 @@ function validMobStateSnapshot(value: unknown): value is MobState {
     || !safeIntegerInRange(mob.rangedSequence, 0, Number.MAX_SAFE_INTEGER)
     || !safeIntegerInRange(mob.authoritativeRevision, -1, Number.MAX_SAFE_INTEGER)) return false;
   if (typeof mob.behavior !== "string" || !(["dormant", "idle", "wander", "chase", "fuse"] as const).includes(mob.behavior as MobBehavior)) return false;
-  if (typeof mob.alive !== "boolean" || typeof mob.hostileActive !== "boolean"
-    || typeof mob.sheared !== "boolean" || typeof mob.sunlightBurning !== "boolean") return false;
+  if (typeof mob.alive !== "boolean" || typeof mob.hostileActive !== "boolean" || typeof mob.sheared !== "boolean") return false;
   if (!finiteInRange(mob.health, 0, MOB_DEFINITIONS[kind].maxHealth)) return false;
   if ((mob.alive as boolean) !== ((mob.health as number) > 0)) return false;
   if ((mob.sheared as boolean) && kind !== "sheep") return false;
@@ -334,11 +330,10 @@ function validMobStateSnapshot(value: unknown): value is MobState {
   if (!finiteInRange(mob.authoritativeDeadUntil, 0, 10_000_000_000_000_000)) return false;
   if (kind !== "creeper" && ((mob.fuseStartedAtSeconds as number) !== 0 || (mob.fuseUntilSeconds as number) !== 0)) return false;
   if ((mob.fuseStartedAtSeconds as number) > (mob.fuseUntilSeconds as number)) return false;
-  if (kind !== "spider" && (mob.spiderEngagedUntilSeconds as number) !== 0) return false;
+  if (kind !== "spider" && (mob.spiderUntil as number) !== 0) return false;
   if (kind !== "zombie" && kind !== "skeleton"
-    && ((mob.nextSunlightDamageAtSeconds as number) !== 0 || mob.sunlightBurning)) return false;
-  if ((mob.deathStartedAtSeconds as number) > (mob.deathAnimationUntilSeconds as number)) return false;
-  if (mob.alive && ((mob.deathStartedAtSeconds as number) !== 0 || (mob.deathAnimationUntilSeconds as number) !== 0)) return false;
+    && (mob.sunDamageAt as number) !== 0) return false;
+  if (mob.alive && (mob.deathUntil as number) !== 0) return false;
   return true;
 }
 
@@ -463,8 +458,8 @@ export interface MobStepInput {
   localLight?: (kind: MobKind, x: number, y: number, z: number) => number;
   /** Cached direct-sky lookup; neighboring sky spill does not count. */
   directSky?: (kind: MobKind, x: number, y: number, z: number) => boolean;
-  sunlightIntensity?: number;
-  acceptFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean;
+  sunIntensity?: number;
+  onFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean;
   worldRadius?: number;
   worldCenterX?: number;
   worldCenterZ?: number;
@@ -488,9 +483,9 @@ export interface MobPoseSnapshot {
   sheared: boolean;
   /** Stable 0..1 priming state; 1 means an authority explosion may be due. */
   fuseProgress: number;
-  sunlightBurning: boolean;
+  sunBurning: boolean;
   /** Stable 0..1 fall-over progress; live mobs are always zero. */
-  deathProgress: number;
+  deathFall: number;
 }
 
 export interface MobDrop {
@@ -699,11 +694,9 @@ function mobStateForSpawn(spawn: Readonly<MobSpawnDescriptor>): MobState {
     sheared: false,
     fuseStartedAtSeconds: 0,
     fuseUntilSeconds: 0,
-    spiderEngagedUntilSeconds: 0,
-    nextSunlightDamageAtSeconds: 0,
-    sunlightBurning: false,
-    deathStartedAtSeconds: 0,
-    deathAnimationUntilSeconds: 0,
+    spiderUntil: 0,
+    sunDamageAt: 0,
+    deathUntil: 0,
   };
 }
 
@@ -1005,12 +998,10 @@ function localLightAt(mob: Readonly<MobState>, input: Readonly<MobStepInput>, x 
 }
 
 function beginMobDeathAnimation(mob: MobState, elapsedSeconds: number): void {
-  mob.deathStartedAtSeconds = elapsedSeconds;
-  mob.deathAnimationUntilSeconds = elapsedSeconds + LOCAL_MOB_DEATH_ANIMATION_SECONDS;
+  mob.deathUntil = elapsedSeconds + LOCAL_MOB_DEATH_ANIMATION_SECONDS;
   mob.hostileActive = false;
-  mob.sunlightBurning = false;
-  mob.nextSunlightDamageAtSeconds = 0;
-  mob.spiderEngagedUntilSeconds = 0;
+  mob.sunDamageAt = 0;
+  mob.spiderUntil = 0;
   mob.directionX = mob.directionZ = 0;
 }
 
@@ -1045,36 +1036,36 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
         && localMobHasLineOfSight(mob, input.player, input.isProjectileBlocked);
     }
     let spiderEngaged = mob.kind === "spider"
-      && simulation.elapsedSeconds < mob.spiderEngagedUntilSeconds;
+      && simulation.elapsedSeconds < mob.spiderUntil;
     if (mob.kind === "spider" && targetVisible
       && (spiderEngaged || light < LOCAL_MOB_SPIDER_NEUTRAL_LIGHT_MIN)) {
-      mob.spiderEngagedUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_SPIDER_ENGAGEMENT_SECONDS;
+      mob.spiderUntil = simulation.elapsedSeconds + LOCAL_MOB_SPIDER_ENGAGEMENT_SECONDS;
       spiderEngaged = true;
     }
     mob.hostileActive = localMobHostileActive(mob.kind, light, spiderEngaged);
 
-    const sunlightIntensity = Number.isFinite(input.sunlightIntensity)
-      ? clamp(input.sunlightIntensity as number, 0, 1)
+    const sunIntensity = Number.isFinite(input.sunIntensity)
+      ? clamp(input.sunIntensity as number, 0, 1)
       : 0;
     const burnsInSunlight = mob.kind === "zombie" || mob.kind === "skeleton";
-    mob.sunlightBurning = burnsInSunlight
-      && sunlightIntensity >= LOCAL_MOB_SUNLIGHT_INTENSITY_MIN
+    const sunBurning = burnsInSunlight
+      && sunIntensity >= LOCAL_MOB_SUNLIGHT_INTENSITY_MIN
       && (input.directSky?.(
         mob.kind,
         mob.x,
         mob.y + definition.height * 0.75,
         mob.z,
       ) ?? false);
-    if (mob.sunlightBurning) {
-      if (mob.nextSunlightDamageAtSeconds <= 0) {
-        mob.nextSunlightDamageAtSeconds = simulation.elapsedSeconds + LOCAL_MOB_SUNLIGHT_DAMAGE_INTERVAL_SECONDS;
-      } else if (simulation.elapsedSeconds + 1e-9 >= mob.nextSunlightDamageAtSeconds) {
-        const result = damageMob(simulation, mob.id, LOCAL_MOB_SUNLIGHT_DAMAGE, input.acceptFatalDrops);
-        mob.nextSunlightDamageAtSeconds = simulation.elapsedSeconds + LOCAL_MOB_SUNLIGHT_DAMAGE_INTERVAL_SECONDS;
+    if (sunBurning) {
+      if (mob.sunDamageAt <= 0) {
+        mob.sunDamageAt = simulation.elapsedSeconds + LOCAL_MOB_SUNLIGHT_DAMAGE_INTERVAL_SECONDS;
+      } else if (simulation.elapsedSeconds + 1e-9 >= mob.sunDamageAt) {
+        const result = damageMob(simulation, mob.id, LOCAL_MOB_SUNLIGHT_DAMAGE, input.onFatalDrops);
+        mob.sunDamageAt = simulation.elapsedSeconds + LOCAL_MOB_SUNLIGHT_DAMAGE_INTERVAL_SECONDS;
         if (result.killed) continue;
       }
     } else {
-      mob.nextSunlightDamageAtSeconds = 0;
+      mob.sunDamageAt = 0;
     }
 
     if (mob.kind === "creeper" && mob.fuseStartedAtSeconds > 0
@@ -1263,8 +1254,8 @@ export function writeMobPoseSnapshots(
   let outputIndex = 0;
   for (let index = 0; index < simulation.mobs.length; index += 1) {
     const mob = simulation.mobs[index];
-    if (!mob.alive && (mob.deathAnimationUntilSeconds <= 0
-      || simulation.elapsedSeconds + 1e-9 >= mob.deathAnimationUntilSeconds)) continue;
+    if (!mob.alive && (mob.deathUntil <= 0
+      || simulation.elapsedSeconds + 1e-9 >= mob.deathUntil)) continue;
     const definition = MOB_DEFINITIONS[mob.kind];
     const snapshot = output[outputIndex] ?? {} as MobPoseSnapshot;
     snapshot.id = mob.id;
@@ -1290,9 +1281,10 @@ export function writeMobPoseSnapshots(
         1,
       )
       : 0;
-    snapshot.sunlightBurning = mob.sunlightBurning;
-    snapshot.deathProgress = mob.alive ? 0 : clamp(
-      (simulation.elapsedSeconds - mob.deathStartedAtSeconds) / LOCAL_MOB_DEATH_ANIMATION_SECONDS,
+    snapshot.sunBurning = mob.alive && mob.sunDamageAt > 0;
+    snapshot.deathFall = mob.alive ? 0 : clamp(
+      (simulation.elapsedSeconds - mob.deathUntil + LOCAL_MOB_DEATH_ANIMATION_SECONDS)
+        / LOCAL_MOB_DEATH_ANIMATION_SECONDS,
       0,
       1,
     );
@@ -1366,7 +1358,7 @@ export function damageMob(
   simulation: MobSimulation,
   id: string,
   rawDamage: number,
-  acceptFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean,
+  onFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean,
 ): MobDamageResult {
   const mob = simulation.mobs.find((candidate) => candidate.id === id);
   if (!mob || !mob.alive) return mobDamageResult(Boolean(mob), false, false, 0);
@@ -1380,7 +1372,7 @@ export function damageMob(
     return mobDamageResult(true, true, false, mob.health);
   }
   const drops = rollDrops(mob, damageSequence);
-  if (acceptFatalDrops && !acceptFatalDrops({
+  if (onFatalDrops && !onFatalDrops({
     eventId: `${mob.id}:${damageSequence}`,
     mobId: mob.id,
     x: mob.x,
@@ -1437,11 +1429,9 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
   mob.nextRangedAttackAtSeconds = Math.max(0, elapsedSeconds) + 0.65 + (mob.behaviorSeed % 1_000) / 1_000;
   mob.rangedSequence = 0;
   mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
-  mob.spiderEngagedUntilSeconds = 0;
-  mob.nextSunlightDamageAtSeconds = 0;
-  mob.sunlightBurning = false;
-  mob.deathStartedAtSeconds = 0;
-  mob.deathAnimationUntilSeconds = 0;
+  mob.spiderUntil = 0;
+  mob.sunDamageAt = 0;
+  mob.deathUntil = 0;
 }
 
 function localMobHomeAvailable(

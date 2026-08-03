@@ -54,8 +54,8 @@ function pose(kind: MobKind, x: number, z: number, index: number): MobPoseSnapsh
     hostileActive: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider",
     sheared: false,
     fuseProgress: kind === "creeper" ? 0.7 : 0,
-    sunlightBurning: false,
-    deathProgress: 0,
+    sunBurning: false,
+    deathFall: 0,
   };
 }
 
@@ -88,7 +88,7 @@ deathZombie.previousZ = deathZombie.z;
 deathZombie.previousYaw = deathZombie.yaw = 0;
 renderer.rebuild([deathZombie], 0, 0, 0, 1, 1, 2.1);
 const uprightDeathGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
-renderer.rebuild([{ ...deathZombie, health: 0, deathProgress: 1 }], 0, 0, 0, 1, 1, 2.2);
+renderer.rebuild([{ ...deathZombie, health: 0, deathFall: 1 }], 0, 0, 0, 1, 1, 2.2);
 const fallenDeathGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
 assert.notDeepEqual(fallenDeathGeometry, uprightDeathGeometry, "death progress rotates the retained whole-mob mesh");
 const verticalRange = (geometry: Float32Array) => {
@@ -105,7 +105,7 @@ assert.equal(gl.createBufferCalls, 1, "death animation reuses the original fixed
 
 renderer.rebuild([deathZombie], 0, 0, 0, 1, 1, 3);
 const ordinarySunGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
-renderer.rebuild([{ ...deathZombie, sunlightBurning: true }], 0, 0, 0, 1, 1, 3.1);
+renderer.rebuild([{ ...deathZombie, sunBurning: true }], 0, 0, 0, 1, 1, 3.1);
 const burningSunGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
 assert.notDeepEqual(burningSunGeometry, ordinarySunGeometry, "direct-sky burning receives retained warm visual feedback");
 
