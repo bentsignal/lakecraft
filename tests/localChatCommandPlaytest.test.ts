@@ -183,8 +183,8 @@ const ongoingPauseStart = app.indexOf("const paused = singlePlayerGameplayPaused
 const ongoingPausePredicate = app.slice(ongoingPauseStart, app.indexOf("});", ongoingPauseStart) + 3);
 assert.equal(ongoingPausePredicate.includes("commandOpen"), false,
   "open chat never freezes world time, mobs, TNT, or the retained render loop");
-assert.ok(app.includes("|| commandOpen || pointerCaptureNeeded"),
-  "chat can still hide the held viewmodel without pausing simulation");
+assert.ok(app.includes("inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen"),
+  "chat hides the held viewmodel while pointer recapture leaves the paused pose visible");
 const shortcutBranch = app.slice(app.indexOf("const commandShortcutDraft"), app.indexOf('if (event.code === "KeyQ"'));
 assert.ok(shortcutBranch.includes("inventoryOpen || worldModalOpen || deathScreenOpen"), "higher-priority modals fence every chat shortcut");
 assert.ok(shortcutBranch.indexOf("commandSurfaceOpenRef.current = true") < shortcutBranch.indexOf("setCommandOpen(true)"),

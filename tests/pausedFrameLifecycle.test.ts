@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createVoxelEngine } from "../client/game/voxelEngine.ts";
+import { PAUSED_RENDER_INTERVAL_MS, createVoxelEngine } from "../client/game/voxelEngine.ts";
 import { BLOCK } from "../client/game/types.ts";
 
 type Frame = (now: number) => void;
@@ -179,19 +179,53 @@ assert.ok(pausedSnapshot.worldTimeMs > activeSnapshot.worldTimeMs,
 const pausedCalls = { ...glCalls };
 const pausedPerformanceCallbacks = performanceCallbacks;
 
-for (let index = 1; index <= 600; index += 1) driveFrame(1_050 + index * 16);
-assert.deepEqual(glCalls, pausedCalls,
-  "600 paused heartbeats perform no resize, clear, draw, mob/TNT upload, or particle upload work");
+driveFrame(1_051);
+assert.ok(glCalls.clear > pausedCalls.clear && glCalls.drawArrays > pausedCalls.drawArrays,
+  "the first paused heartbeat redraws the retained world and held viewmodel after menu paint");
+assert.equal(glCalls.bufferSubData, pausedCalls.bufferSubData,
+  "paused redraws reuse retained mob, TNT, projectile, drop, and particle geometry");
+const firstPausedPreview = { ...glCalls };
+driveFrame(1_149);
+assert.deepEqual(glCalls, firstPausedPreview,
+  "paused heartbeats below the render interval do no WebGL work");
+driveFrame(1_151);
+assert.ok(glCalls.clear > firstPausedPreview.clear,
+  "the bounded paused cadence redraws after its interval");
+const boundedPreview = { ...glCalls };
+for (let index = 1; index <= 600; index += 1) driveFrame(1_151 + index * 16);
+const pausedRenderCount = (glCalls.clear - boundedPreview.clear) / 2;
+assert.ok(Number.isInteger(pausedRenderCount) && pausedRenderCount > 0 && pausedRenderCount <= 96,
+  "ten seconds of paused heartbeats redraw at no more than the 10 Hz compositor-safe cadence");
+assert.equal(PAUSED_RENDER_INTERVAL_MS, 100, "the paused preview cadence remains explicitly bounded at 10 Hz");
+assert.equal(glCalls.bufferSubData, pausedCalls.bufferSubData,
+  "the sustained paused cadence performs no dynamic geometry uploads");
 assert.equal(performanceCallbacks, pausedPerformanceCallbacks, "paused heartbeats emit no performance samples");
 assert.deepEqual(engine.exportRuntimeSnapshot(), pausedSnapshot,
   "world time, mobs, player state, and accumulators remain frozen while paused");
 
+engine.setFirstPersonFeedbackHidden(true);
+const hiddenPreview = { ...glCalls };
+driveFrame(11_000);
+assert.deepEqual(glCalls, hiddenPreview, "blocking UI performs zero paused GL work");
+engine.setFirstPersonFeedbackHidden(false);
+(document as unknown as { visibilityState: DocumentVisibilityState }).visibilityState = "hidden";
+const backgroundPreview = { ...glCalls };
+driveFrame(11_200);
+assert.deepEqual(glCalls, backgroundPreview, "a backgrounded tab performs zero paused GL work");
+(document as unknown as { visibilityState: DocumentVisibilityState }).visibilityState = "visible";
+driveFrame(11_201);
+assert.ok(glCalls.clear > backgroundPreview.clear,
+  "a visible unblocked paused scene resumes its bounded compositor refresh");
+assert.deepEqual(engine.exportRuntimeSnapshot(), pausedSnapshot,
+  "paused visibility and blocker transitions do not advance runtime state");
+
+const beforePauseToggles = { ...glCalls };
 for (let index = 0; index < 100; index += 1) {
   assert.equal(engine.setPaused(false), false);
   assert.equal(engine.setPaused(true), true);
   assert.equal(frames.size, 1, "pause toggles cannot duplicate the RAF loop");
 }
-assert.deepEqual(glCalls, pausedCalls, "pause toggles do not render synchronously");
+assert.deepEqual(glCalls, beforePauseToggles, "pause toggles do not render synchronously");
 
 clock = 40_000;
 assert.equal(engine.setPaused(false), false);

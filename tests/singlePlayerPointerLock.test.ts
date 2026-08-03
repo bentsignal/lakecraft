@@ -258,6 +258,8 @@ assert.ok(
   ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded]"),
   "successful capture reruns the ongoing pause effect immediately",
 );
+assert.match(singlePlayerSource, /setPointerCaptureNeeded\([\s\S]{0,160}!pointerSessionRef\.current\.pauseOpen,[\s\S]{0,20}\);/,
+  "the lock-loss callback cannot overwrite capture-needed after opening Game Menu");
 const survivalSample = singlePlayerSource.slice(
   singlePlayerSource.indexOf("const sample = () =>"),
   singlePlayerSource.indexOf("const onVisibilityChange"),

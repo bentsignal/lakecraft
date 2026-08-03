@@ -87,8 +87,8 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 133, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "ed4d3c0734224dba3b2bd9194cd8f8dc0327958f10d21b80e01087434c2a4802",
-  "runtime sources match the reviewed input, held-item, beds, flight, combat, TNT polish, ecology, and containment checkpoint");
+  "6e19e68d338e581329016bb8716c17ce1db35aafdeb2c87cc99f06c8d8a22d84",
+  "runtime sources match the reviewed paused-pose, input, beds, combat, TNT, ecology, and containment checkpoint");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

@@ -158,12 +158,19 @@ assert.equal(actionSamplerSource.includes("const idle"), false, "idle and reduce
 assert.ok(engine.includes("reducedMotionQuery?.matches === true"), "the OS motion preference reaches the WebGL pose sampler");
 assert.ok(engine.includes("!firstPersonFeedbackHidden && playerHealth > 0"),
   "blocking UI and death hide the viewmodel without making Game Menu hide the pose lab");
-assert.ok(engine.includes("if (paused && !firstPersonFeedbackHidden && playerHealth > 0)"),
-  "an HMR-remounted paused engine draws exactly one fresh pose preview");
+assert.match(engine, /if \(paused && !firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
+  "an HMR-remounted paused engine seeds a complete fresh pose preview");
+assert.ok(engine.includes("now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS")
+  && engine.includes("render(pausedVisualTime, 0, pausedVisualTime, false)"),
+  "paused engines keep the viewmodel composited at a bounded cadence without refreshing dynamic geometry");
+assert.match(engine, /if \(!firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"/,
+  "hidden, dead, and backgrounded paused engines perform no compositor redraw");
 const localFeedbackCalls = [...singlePlayer.matchAll(/setFirstPersonFeedbackHidden\(([\s\S]*?)\);/g)]
   .map((match) => match[1]);
 assert.ok(localFeedbackCalls.length >= 2 && localFeedbackCalls.every((predicate) => !predicate.includes("pauseOpen")),
   "Game Menu alone keeps the held pose visible while every other blocking surface may hide it");
+assert.ok(localFeedbackCalls.every((predicate) => !predicate.includes("pointerCaptureNeeded")),
+  "Click to Play keeps the held pose visible while pointer capture is recovered");
 assert.equal(gameHud.includes("FirstPersonHeldItem"), false, "the HUD no longer paints a duplicate DOM hand");
 assert.equal(styles.includes("lc-first-person"), false, "the rejected CSS 3D/sprite rig is absent from the artifact");
 

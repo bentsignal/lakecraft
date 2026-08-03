@@ -1183,7 +1183,8 @@ function SinglePlayerWorld({
         });
         if (locked) clearSilentPointerRecapture();
         setPointerCaptureNeeded(
-          !locked && !pointerUiBlockedRef.current && !silentPointerRecaptureRef.current,
+          !locked && !pointerUiBlockedRef.current && !silentPointerRecaptureRef.current
+            && !pointerSessionRef.current.pauseOpen,
         );
       },
       allowUnlockedKeyboardInput: () => silentPointerRecaptureRef.current,
@@ -1650,7 +1651,7 @@ function SinglePlayerWorld({
       documentVisible: document.visibilityState === "visible",
     });
     engineRef.current?.setFirstPersonFeedbackHidden(
-      inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen || pointerCaptureNeeded,
+      inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen,
     );
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);

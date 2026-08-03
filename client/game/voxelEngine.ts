@@ -231,6 +231,7 @@ export const LOCAL_MOB_STREAM_RETAIN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * W
 export const PLAYER_RANGED_REACH = 32;
 export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
 export const TARGET_OUTLINE_VERTEX_COUNT = 24;
+export const PAUSED_RENDER_INTERVAL_MS = 100;
 
 const TARGET_OUTLINE_CORNERS = [
   0, 1, 1, 3, 3, 2, 2, 0,
@@ -1781,6 +1782,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let paused = false;
   let pausedStartedAt = 0;
   let pausedVisualTime = 0;
+  let lastPausedRenderAt = Number.NEGATIVE_INFINITY;
   let frameId = 0;
   let lastFrame = 0;
   let localMobAttackReadyAt = 0;
@@ -3011,17 +3013,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     };
   }
 
-  function render(now: number, dt: number, frameNow: number): void {
+  function render(now: number, dt: number, frameNow: number, refreshDynamicGeometry = true): void {
     resize();
     const eye = cameraEye(renderEye);
-    const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
-    remoteVertexCount = remoteStats.avatarVertexCount;
-    nameplateVertexCount = remoteStats.nameplateVertexCount;
-    const droppedItemStats = droppedItemRenderer.update(now, eye);
-    droppedItemVertexCount = droppedItemStats.vertexCount;
-    droppedItemVisibleCount = droppedItemStats.visibleItemCount;
-    const playerProjectileStats = playerProjectileRenderer.update(now, eye);
-    playerProjectileVertexCount = playerProjectileStats.vertexCount;
+    if (refreshDynamicGeometry) {
+      const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
+      remoteVertexCount = remoteStats.avatarVertexCount;
+      nameplateVertexCount = remoteStats.nameplateVertexCount;
+      const droppedItemStats = droppedItemRenderer.update(now, eye);
+      droppedItemVertexCount = droppedItemStats.vertexCount;
+      droppedItemVisibleCount = droppedItemStats.visibleItemCount;
+      const playerProjectileStats = playerProjectileRenderer.update(now, eye);
+      playerProjectileVertexCount = playerProjectileStats.vertexCount;
+    }
     const facing = direction(renderFacing);
     const horizontalFacing = Math.hypot(facing[0], facing[2]) || 1;
     const rightX = -facing[2] / horizontalFacing;
@@ -3029,23 +3033,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const upX = -rightZ * facing[1];
     const upY = rightZ * facing[0] - rightX * facing[2];
     const upZ = rightX * facing[1];
-    blockParticles.update(dt);
-    particleCameraRight[0] = rightX;
-    particleCameraRight[1] = 0;
-    particleCameraRight[2] = rightZ;
-    particleCameraUp[0] = upX;
-    particleCameraUp[1] = upY;
-    particleCameraUp[2] = upZ;
-    blockParticles.writeGeometry(particleCameraRight, particleCameraUp, particleGeometry, particleGeometryStats);
-    particleVertexCount = particleGeometryStats.vertexCount;
-    if (particleUploadFloatCount !== particleGeometryStats.floatCount) {
-      particleUploadFloatCount = particleGeometryStats.floatCount;
-      particleUploadView = particleGeometry.subarray(0, particleUploadFloatCount);
-    }
-    particleUploadBytes = particleUploadView.byteLength;
-    if (particleVertexCount > 0) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleUploadView);
+    if (refreshDynamicGeometry) {
+      blockParticles.update(dt);
+      particleCameraRight[0] = rightX;
+      particleCameraRight[1] = 0;
+      particleCameraRight[2] = rightZ;
+      particleCameraUp[0] = upX;
+      particleCameraUp[1] = upY;
+      particleCameraUp[2] = upZ;
+      blockParticles.writeGeometry(particleCameraRight, particleCameraUp, particleGeometry, particleGeometryStats);
+      particleVertexCount = particleGeometryStats.vertexCount;
+      if (particleUploadFloatCount !== particleGeometryStats.floatCount) {
+        particleUploadFloatCount = particleGeometryStats.floatCount;
+        particleUploadView = particleGeometry.subarray(0, particleUploadFloatCount);
+      }
+      particleUploadBytes = particleUploadView.byteLength;
+      if (particleVertexCount > 0) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, particleUploadView);
+      }
     }
     renderCenter[0] = eye[0] + facing[0];
     renderCenter[1] = eye[1] + facing[1];
@@ -3060,24 +3066,26 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     updateActiveTorchLights(now, eye);
     firstPersonTorchUniforms[3] = activeTorchUniforms[3] / 2;
     const viewmodelSkyExposure = updateFirstPersonSkyExposure(eye);
-    const mobStats = mobRenderer.rebuild(
-      mobSnapshots,
-      eye[0],
-      eye[2],
-      facing[0],
-      facing[2],
-      sharedMobMotionActive
-        ? clampNumber((performance.now() - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs, 0, 1)
-        : Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
-      now / 1_000,
-      mobProjectileSnapshots,
-      frameNow,
-    );
-    mobVertexCount = mobStats.vertexCount;
-    visibleMobCount = mobStats.visibleMobCount;
-    primedTntVertexCount = mobStats.primedTntVertexCount;
-    primedTntVisibleCount = mobStats.visiblePrimedTntCount;
-    primedTntUploadBytes = mobStats.primedTntVertexCount * 6 * Float32Array.BYTES_PER_ELEMENT;
+    if (refreshDynamicGeometry) {
+      const mobStats = mobRenderer.rebuild(
+        mobSnapshots,
+        eye[0],
+        eye[2],
+        facing[0],
+        facing[2],
+        sharedMobMotionActive
+          ? clampNumber((now - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs, 0, 1)
+          : Math.min(1, mobAccumulatorSeconds / mobStepSeconds),
+        now / 1_000,
+        mobProjectileSnapshots,
+        frameNow,
+      );
+      mobVertexCount = mobStats.vertexCount;
+      visibleMobCount = mobStats.visibleMobCount;
+      primedTntVertexCount = mobStats.primedTntVertexCount;
+      primedTntVisibleCount = mobStats.visiblePrimedTntCount;
+      primedTntUploadBytes = mobStats.primedTntVertexCount * 6 * Float32Array.BYTES_PER_ELEMENT;
+    }
     gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     visibleChunkCount = 0;
@@ -3316,6 +3324,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
     if (paused) {
+      if (!firstPersonFeedbackHidden && playerHealth > 0
+        && document.visibilityState === "visible"
+        && now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS) {
+        lastPausedRenderAt = now;
+        render(pausedVisualTime, 0, pausedVisualTime, false);
+      }
       frameId = requestAnimationFrame(frame);
       return;
     }
@@ -3774,11 +3788,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       options.onPoseChange?.({ ...pose });
       options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       options.onMovementModeChange?.("idle", 0.5);
-      // Game Menu keeps the last active canvas untouched. When local HMR
-      // remounts an already-paused engine, draw exactly one fresh preview so
-      // firstPersonTuning.ts edits appear without resuming any simulation.
-      if (paused && !firstPersonFeedbackHidden && playerHealth > 0) {
-        render(pausedVisualTime, 0, performance.now());
+      // Seed a complete frozen frame for a paused HMR remount. The RAF heartbeat
+      // then refreshes that retained geometry at a bounded cadence so a menu or
+      // browser-compositor repaint cannot clear the pose preview.
+      if (paused && !firstPersonFeedbackHidden && playerHealth > 0
+        && document.visibilityState === "visible") {
+        render(pausedVisualTime, 0, pausedVisualTime);
+        lastPausedRenderAt = pausedVisualTime;
       }
       frameId = requestAnimationFrame(frame);
     },
@@ -3912,11 +3928,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     setSelectedItem(itemId) {
       selectedItem = itemId && itemId in ITEMS ? itemId : null;
       setFirstPersonHeldItem(selectedItem, selectedBlock);
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
     },
     setFirstPersonFeedbackHidden(hidden) {
       const nextHidden = hidden === true;
       if (firstPersonFeedbackHidden === nextHidden) return;
       firstPersonFeedbackHidden = nextHidden;
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
       if (nextHidden && running && !paused) {
         const now = performance.now();
         render(now, 0, now);
@@ -4062,6 +4080,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (paused) {
         pausedStartedAt = performance.now();
         pausedVisualTime = pausedStartedAt;
+        lastPausedRenderAt = Number.NEGATIVE_INFINITY;
       } else {
         const resumedAt = performance.now();
         if (sharedMobMotionAppliedAt > 0) {
@@ -4069,6 +4088,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         }
         pausedStartedAt = 0;
         pausedVisualTime = 0;
+        lastPausedRenderAt = Number.NEGATIVE_INFINITY;
         lastFrame = resumedAt;
       }
       return paused;
