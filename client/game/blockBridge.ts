@@ -4,22 +4,26 @@ import type { GameAudioSurface } from "./audio.ts";
 import { BLOCK, type BlockId as EngineBlockId } from "./types.ts";
 
 /** Contiguous engine IDs make the protocol bridge smaller and cheaper than keyed objects. */
-export const ENGINE_TO_PROTOCOL: readonly BlockType[] = [
+export const ENGINE_TO_PROTOCOL: readonly (BlockType | undefined)[] = [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest",
   "door_closed", "door_open", "bed", "coal_ore", "iron_ore", "furnace", "ladder", "cobblestone", "sand",
   "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence",
-  "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks",
+  "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks", undefined,
 ];
 
 export const ENGINE_TO_GAME: readonly (GameBlockId | undefined)[] = [
   undefined, "grass", "dirt", "stone", "log", "leaves", "planks", "crafting_table", "torch", "chest",
   "door", "door", "bed", "coal_ore", "iron_ore", "furnace", "ladder", "cobblestone", "sand", "glass",
   "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence",
-  "oak_fence_gate", "oak_fence_gate", "stone_brick_slab", "clay", "bricks",
+  "oak_fence_gate", "oak_fence_gate", "stone_brick_slab", "clay", "bricks", undefined,
 ];
 
+export const reverseBlockMap = <T extends string>(blocks: readonly (T | undefined)[]) => Object.fromEntries(
+  blocks.flatMap((block, id) => block === undefined ? [] : [[block, id]]),
+);
+
 export const PROTOCOL_TO_ENGINE = Object.assign(
-  Object.fromEntries(ENGINE_TO_PROTOCOL.map((block, id) => [block, id])),
+  reverseBlockMap(ENGINE_TO_PROTOCOL),
   { bedrock: BLOCK.BEDROCK, log: BLOCK.WOOD },
 ) as Record<string, EngineBlockId>;
 
