@@ -110,6 +110,15 @@ assert.ok(localRelease.includes("writeMobPoseSnapshots"), "hit and kill results 
 const clearCharge = engine.slice(engine.indexOf("function clearRangedCharge"), engine.indexOf("function rememberWorldEdit"));
 assert.ok(clearCharge.includes("onRangedCancel"), "pointer-lock and modal cancellation clear the active draw");
 assert.equal(clearCharge.includes("removeItem"), false, "canceling inside the engine cannot spend an arrow");
+const escapeCancelStart = engine.indexOf("cancelRangedActionForEscape()");
+const escapeCancel = engine.slice(escapeCancelStart, engine.indexOf("setRespawnPoint", escapeCancelStart));
+assert.ok(escapeCancelStart > 0, "the engine exposes one explicit Escape-only bow cancellation boundary");
+assert.ok(escapeCancel.includes("clearRangedCharge(true)"), "bow Escape clears retained charge and multiplayer intent");
+assert.ok(escapeCancel.includes("cancelSecondaryPlacementHold(true)"), "bow Escape releases the physical secondary hold");
+assert.equal(/removeItem|applyConfirmedDurableItemUse|onRangedRelease/.test(escapeCancel), false,
+  "bow Escape cannot spend arrows, durability, or emit a shot");
+assert.match(engineTypes, /cancelRangedActionForEscape\(\): boolean;/,
+  "the synchronous no-spend cancellation result is explicit on the engine boundary");
 
 assert.ok(engine.includes("options.onRangedRelease?.(intent)"), "delegated multiplayer release callback remains intact");
 assert.ok(engine.includes("setFirstPersonBowCharge"), "engine-owned charge selects retained bow geometry");

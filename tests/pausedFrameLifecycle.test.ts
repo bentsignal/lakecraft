@@ -105,10 +105,21 @@ Object.assign(globalThis, {
 });
 
 let performanceCallbacks = 0;
+let rangedChargeStarts = 0;
+let rangedChargeCancels = 0;
+let rangedReleases = 0;
+let allowUnlockedKeyboardInput = false;
 const engine = createVoxelEngine(canvas, {
   seed: 91,
   worldRadius: 8,
   onPerformanceStats: () => { performanceCallbacks += 1; },
+  isRangedWeaponSelected: () => true,
+  onRangedChargeChange: (charging) => {
+    if (charging) rangedChargeStarts += 1;
+  },
+  onRangedCancel: () => { rangedChargeCancels += 1; },
+  onRangedRelease: () => { rangedReleases += 1; },
+  allowUnlockedKeyboardInput: () => allowUnlockedKeyboardInput,
 });
 engine.start();
 assert.equal(frames.size, 1);
@@ -117,6 +128,34 @@ driveFrame(1_016);
 assert.ok(glCalls.clear > 0 && glCalls.drawArrays > 0 && glCalls.viewport > 0,
   "an active frame performs the real resize and WebGL render lifecycle");
 const activeSnapshot = engine.exportRuntimeSnapshot();
+
+(document as unknown as { pointerLockElement: Element | null }).pointerLockElement = canvas;
+for (const listener of listeners.get("mousedown") ?? []) {
+  listener({ button: 2, preventDefault: noop } as unknown as MouseEvent);
+}
+assert.equal(rangedChargeStarts, 1, "a locked secondary press begins exactly one bow draw");
+assert.equal(engine.cancelRangedActionForEscape(), true, "Escape cancels an active bow draw");
+assert.equal(engine.cancelRangedActionForEscape(), false, "the cancellation is idempotent after the draw clears");
+assert.equal(rangedChargeCancels, 1, "the active draw emits exactly one cancellation");
+for (const listener of listeners.get("mouseup") ?? []) {
+  listener({ button: 2, preventDefault: noop } as unknown as MouseEvent);
+}
+assert.equal(rangedReleases, 0, "the matching mouseup cannot fire a cancelled bow shot");
+(document as unknown as { pointerLockElement: Element | null }).pointerLockElement = null;
+
+const beforeSilentRecaptureMove = engine.getPose();
+allowUnlockedKeyboardInput = true;
+for (const listener of listeners.get("keydown") ?? []) {
+  listener({ code: "KeyW", repeat: false, preventDefault: noop } as unknown as KeyboardEvent);
+}
+driveFrame(1_032);
+driveFrame(1_048);
+for (const listener of listeners.get("keyup") ?? []) {
+  listener({ code: "KeyW" } as unknown as KeyboardEvent);
+}
+allowUnlockedKeyboardInput = false;
+assert.notDeepEqual(engine.getPose(), beforeSilentRecaptureMove,
+  "the gameplay key that silently requests pointer capture still moves immediately while unlocked");
 
 engine.spawnBlockParticles({ action: "break", block: BLOCK.DIAMOND_ORE, x: 0, y: 12, z: 0 });
 engine.applyWorldEdits([{ x: 1, y: 12, z: 1, block: BLOCK.TNT }]);

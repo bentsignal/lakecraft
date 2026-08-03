@@ -61,7 +61,7 @@ export type InventoryCraftingDrawerProps = {
   craftingContext?: CraftingContext;
   selectedIndex?: number;
   recipes?: readonly Recipe[];
-  onClose: () => void;
+  onClose: (keyboardCode?: "Escape" | "KeyE") => void;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
   onWorkspaceChange: (
     snapshot: StowedInventorySnapshot,
@@ -135,7 +135,7 @@ export function InventoryCraftingDrawer({
       if (event.code !== "KeyE" && event.code !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      closeAndStow();
+      closeAndStow(event.code);
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -228,9 +228,9 @@ export function InventoryCraftingDrawer({
     return true;
   }
 
-  function closeAndStow() {
+  function closeAndStow(keyboardCode?: "Escape" | "KeyE") {
     if (!commitWorkspace()) return;
-    onClose();
+    onClose(keyboardCode);
   }
 
   function takeOutput(shiftAll: boolean) {

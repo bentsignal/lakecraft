@@ -53,7 +53,7 @@ export type GameHudProps = {
   onInventoryWorkspacePreview?: (snapshot: StowedInventorySnapshot) => void;
   creativeInventory?: boolean;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
-  onCloseInventory: () => void;
+  onCloseInventory: (keyboardCode?: "Escape" | "KeyE") => void;
   onResume?: () => void;
   onOptions?: () => void;
   optionsOpen?: boolean;

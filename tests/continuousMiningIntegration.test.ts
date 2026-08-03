@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-const primaryHandler = source.slice(source.indexOf("function onMouseDown"), source.indexOf("function onMouseUp"));
+const primaryHandler = source.slice(
+  source.indexOf("if (button === 0)"),
+  source.indexOf("} else if (button === 2)"),
+);
+const primaryRelease = source.slice(
+  source.indexOf("function applyCapturedMouseUp"),
+  source.indexOf("function onMouseUp"),
+);
 const updateLoop = source.slice(source.indexOf("function update(dt"), source.indexOf("function bindBuffer"));
 const teardown = source.slice(source.indexOf("destroy()"), source.indexOf("applyWorldEdits"));
 const pauseHandler = source.slice(source.indexOf("setPaused(nextPaused)"), source.indexOf("isPaused()"));
@@ -12,7 +19,8 @@ assert.ok(primaryHandler.includes("beginHeldBlockMining()"), "a block-facing pre
 assert.ok(updateLoop.includes("beginHeldBlockMining();"), "the frame loop reacquires the next ray target while the button stays held");
 assert.ok(updateLoop.indexOf("target = nextTarget") < updateLoop.indexOf("beginHeldBlockMining();"), "continuous mining uses the freshly raycast target");
 assert.ok(source.includes('emitHandAction("mine");\n        options.onMiningHit?.'), "long digs replay the same arm swing at the bounded hit cadence");
-assert.match(source, /function onMouseUp[\s\S]+event\.button === 0\) cancelPrimaryActionHold\(\)/, "release cancels the timer and disarms chaining");
+assert.ok(primaryRelease.includes("if (button === 0) cancelPrimaryActionHold()"),
+  "release cancels the timer and disarms chaining");
 assert.match(source, /function onPointerLockChange[\s\S]+cancelPrimaryActionHold\(\)/, "pointer-lock loss cancels a held mine");
 assert.ok(teardown.includes("cancelPrimaryActionHold();"), "engine teardown cannot retain a physical-button state");
 assert.ok(pauseHandler.includes("cancelPrimaryActionHold();"), "pausing clears the held mine and its world-space crack buffer");

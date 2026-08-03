@@ -116,8 +116,10 @@ assert.ok(app.includes('event.code === "ArrowUp" || event.code === "ArrowDown"')
 assert.ok(app.includes('surfaceLabel="Local command console"'));
 assert.ok(app.includes('historyLabel="Command history"'));
 assert.ok(app.includes('warningSender="[Error]"'));
-assert.ok(app.includes("containerOpen || sleepingBed !== null || commandOpen"),
-  "the command console shares the pointer-safe local modal pause boundary");
+assert.ok(app.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
+  "the command console does not freeze the live local simulation");
+assert.ok(app.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+  "the command console remains a pointer-safe UI blocker");
 assert.ok(app.includes('canTakePlayerDamage: () => gameModeRef.current === "survival"'));
 assert.ok(app.includes('if (gameModeRef.current === "creative") return 0'));
 assert.ok(app.includes('(gameModeRef.current === "creative" || countItem(inventoryRef.current, "arrow") > 0)'),

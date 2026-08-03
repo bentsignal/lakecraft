@@ -117,8 +117,10 @@ import {
 import { consumeSelectedPlacementStack } from "./localPlacement.ts";
 import {
   SINGLE_PLAYER_INITIAL_PAUSE_OPEN,
+  consumeSinglePlayerCommandSurfaceEscape,
   createSinglePlayerPointerSessionState,
   singlePlayerGameplayPaused,
+  singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
 } from "./sessionState.ts";
@@ -265,6 +267,8 @@ function SinglePlayerWorld({
   const audioRef = useRef<GameAudio | null>(null);
   const entryPointerLockHandoffRef = useRef(entryPointerLockHandoff);
   const pointerSessionRef = useRef(createSinglePlayerPointerSessionState(false));
+  const silentPointerRecaptureRef = useRef(false);
+  const pointerLockRequestRef = useRef(0);
   const inventoryRef = useRef(initialSnapshot.player.inventory);
   const equipmentRef = useRef(initialSnapshot.player.equipment);
   const selectedRef = useRef(initialSnapshot.player.selectedHotbar);
@@ -310,6 +314,7 @@ function SinglePlayerWorld({
   const commandMessageSequenceRef = useRef(0);
   const commandHistoryRef = useRef<string[]>([]);
   const commandHistoryIndexRef = useRef(0);
+  const commandSurfaceOpenRef = useRef(false);
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
   const performanceOutputRef = useRef<HTMLOutputElement | null>(null);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
@@ -325,6 +330,7 @@ function SinglePlayerWorld({
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN);
   const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(true);
+  const [silentPointerRecaptureDenied, setSilentPointerRecaptureDenied] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [clientSettings, setClientSettings] = useState(() => loadClientSettings(storage));
   const clientSettingsRef = useRef(clientSettings);
@@ -340,7 +346,8 @@ function SinglePlayerWorld({
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandDraft, setCommandDraft] = useState("");
   const [commandMessages, setCommandMessages] = useState<LakecraftChatMessage[]>([]);
-  const worldModalOpen = containerOpen || sleepingBed !== null || commandOpen;
+  const worldModalOpen = containerOpen || sleepingBed !== null;
+  const uiModalOpen = worldModalOpen || commandOpen;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
@@ -354,23 +361,50 @@ function SinglePlayerWorld({
   const [autosaveStatusText, setAutosaveStatusText] = useState(initialSaveText);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null);
   const pointerUiBlockedRef = useRef(false);
-  pointerUiBlockedRef.current = inventoryOpen || worldModalOpen || deathScreenOpen
+  pointerUiBlockedRef.current = inventoryOpen || uiModalOpen || deathScreenOpen
     || document.visibilityState !== "visible";
+
+  function clearSilentPointerRecapture(): void {
+    silentPointerRecaptureRef.current = false;
+    setSilentPointerRecaptureDenied(false);
+  }
+
+  function requestEnginePointerLock(silent = false): void {
+    const requestId = ++pointerLockRequestRef.current;
+    setPointerCaptureNeeded(false);
+    const engine = engineRef.current;
+    if (!engine) {
+      if (silent) setSilentPointerRecaptureDenied(true);
+      else setPointerCaptureNeeded(true);
+      return;
+    }
+    void engine.requestPointerLock().then((locked) => {
+      if (requestId !== pointerLockRequestRef.current) return;
+      if (locked) {
+        clearSilentPointerRecapture();
+        setPointerCaptureNeeded(false);
+      } else if (silent) {
+        silentPointerRecaptureRef.current = true;
+        setSilentPointerRecaptureDenied(true);
+        setPointerCaptureNeeded(false);
+      } else {
+        setPointerCaptureNeeded(true);
+      }
+    });
+  }
 
   function applyPointerSessionEvent(event: SinglePlayerPointerSessionEvent): void {
     const transition = transitionSinglePlayerPointerSession(pointerSessionRef.current, event);
     pointerSessionRef.current = transition.state;
     if (transition.openPause) {
+      clearSilentPointerRecapture();
       setOptionsOpen(false);
       setPauseOpen(true);
       setPointerCaptureNeeded(false);
     }
     if (transition.closePause) setPauseOpen(false);
     if (transition.showCaptureAffordance) setPointerCaptureNeeded(true);
-    if (transition.requestPointerLock) {
-      setPointerCaptureNeeded(true);
-      engineRef.current?.requestPointerLock();
-    }
+    if (transition.requestPointerLock) requestEnginePointerLock();
   }
 
   function setGamePauseOpen(open: boolean): void {
@@ -381,13 +415,24 @@ function SinglePlayerWorld({
 
   function releasePointerLockForUi(): void {
     entryPointerLockHandoffRef.current = false;
+    clearSilentPointerRecapture();
+    pointerLockRequestRef.current += 1;
+    pointerUiBlockedRef.current = true;
     applyPointerSessionEvent({ type: "intentional_release" });
     setPointerCaptureNeeded(false);
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
   function requestGameplayPointerLock(): void {
+    clearSilentPointerRecapture();
     applyPointerSessionEvent({ type: "resume" });
+  }
+
+  function armGameplayResumeAfterEscape(now: number): void {
+    silentPointerRecaptureRef.current = true;
+    setSilentPointerRecaptureDenied(false);
+    setPointerCaptureNeeded(false);
+    applyPointerSessionEvent({ type: "close_ui_escape", now });
   }
 
   function warnWorldEditCapacity(): void {
@@ -641,15 +686,17 @@ function SinglePlayerWorld({
   }
 
   function closeCommandConsole(): void {
+    commandSurfaceOpenRef.current = false;
     setCommandOpen(false);
     commandHistoryIndexRef.current = commandHistoryRef.current.length;
     requestGameplayPointerLock();
   }
 
   function closeCommandConsoleFromEscape(now: number): void {
+    commandSurfaceOpenRef.current = false;
     setCommandOpen(false);
     commandHistoryIndexRef.current = commandHistoryRef.current.length;
-    applyPointerSessionEvent({ type: "close_command_escape", now });
+    armGameplayResumeAfterEscape(now);
   }
 
   function selectHotbar(index: number) {
@@ -1144,8 +1191,12 @@ function SinglePlayerWorld({
           now: performance.now(),
           uiBlocked: pointerUiBlockedRef.current,
         });
-        setPointerCaptureNeeded(!locked);
+        if (locked) clearSilentPointerRecapture();
+        setPointerCaptureNeeded(
+          !locked && !pointerUiBlockedRef.current && !silentPointerRecaptureRef.current,
+        );
       },
+      allowUnlockedKeyboardInput: () => silentPointerRecaptureRef.current,
       selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
       selectedItem: inventoryRef.current[selectedRef.current]?.itemId ?? null,
       getMiningDuration: (block) => {
@@ -1564,7 +1615,7 @@ function SinglePlayerWorld({
       },
     });
     engineRef.current = engine;
-    engine.setFirstPersonFeedbackHidden(pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen);
+    engine.setFirstPersonFeedbackHidden(pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen);
     if (initialRuntimeRef.current && !engine.importRuntimeSnapshot(initialRuntimeRef.current)) {
       setAutosaveStatusText("The saved player runtime was invalid; world state was left untouched.");
       saveLockedRef.current = true;
@@ -1636,10 +1687,12 @@ function SinglePlayerWorld({
       pointerCaptureNeeded,
       documentVisible: document.visibilityState === "visible",
     });
-    engineRef.current?.setFirstPersonFeedbackHidden(paused);
+    engineRef.current?.setFirstPersonFeedbackHidden(
+      pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen || pointerCaptureNeeded,
+    );
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
-  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, pointerCaptureNeeded]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded]);
 
   useEffect(() => {
     if (deathScreenOpen) setOptionsOpen(false);
@@ -1692,7 +1745,10 @@ function SinglePlayerWorld({
       });
       engineRef.current?.setPaused(paused);
       setLocalFusesPausedRef.current(paused);
-      if (!paused && document.pointerLockElement !== canvasRef.current) setPointerCaptureNeeded(true);
+      if (!paused && !pointerUiBlockedRef.current && !silentPointerRecaptureRef.current
+        && document.pointerLockElement !== canvasRef.current) {
+        setPointerCaptureNeeded(true);
+      }
       sample();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -1753,13 +1809,12 @@ function SinglePlayerWorld({
         }
         return;
       }
-      if (commandOpen) {
-        if (event.code === "Escape") {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          if (!event.repeat) closeCommandConsoleFromEscape(performance.now());
-          return;
-        }
+      if (consumeSinglePlayerCommandSurfaceEscape(
+        commandSurfaceOpenRef.current,
+        event,
+        () => closeCommandConsoleFromEscape(performance.now()),
+      )) return;
+      if (commandSurfaceOpenRef.current) {
         if ((event.code === "ArrowUp" || event.code === "ArrowDown") && !event.repeat) {
           event.preventDefault();
           const history = commandHistoryRef.current;
@@ -1789,15 +1844,19 @@ function SinglePlayerWorld({
         }
         return;
       }
+      if (silentPointerRecaptureRef.current && singlePlayerSilentRecaptureKey(event.code, event.repeat)) {
+        requestEnginePointerLock(true);
+      }
       const commandShortcutDraft = localCommandShortcutDraft(event);
       if (commandShortcutDraft !== null) {
         if (inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (commandMessages.length === 0) {
+        if (commandMessageSequenceRef.current === 0) {
           appendCommandMessage("Local command console. Type /help to list commands and item IDs.", "system");
         }
         commandHistoryIndexRef.current = commandHistoryRef.current.length;
+        commandSurfaceOpenRef.current = true;
         setCommandDraft(commandShortcutDraft);
         setCommandOpen(true);
         releasePointerLockForUi();
@@ -1812,6 +1871,13 @@ function SinglePlayerWorld({
       if ((event.code === "KeyE" || event.code === "Escape") && !event.repeat && containerOpen) {
         event.preventDefault();
         closeActiveContainer();
+        return;
+      }
+      if (event.code === "Escape" && !event.repeat && engineRef.current?.cancelRangedActionForEscape()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        armGameplayResumeAfterEscape(performance.now());
+        if (document.pointerLockElement) document.exitPointerLock();
         return;
       }
       if (event.code === "KeyE" && !event.repeat && !inventoryOpen) {
@@ -1842,8 +1908,6 @@ function SinglePlayerWorld({
     containerOpen,
     deathScreenOpen,
     activeFurnaceKey,
-    commandOpen,
-    commandMessages.length,
   ]);
 
   const lastAutosavedText = lastAutosavedAt === null ? "Last autosaved —"
@@ -1857,7 +1921,7 @@ function SinglePlayerWorld({
 
   return (
     <main className="lc-singleplayer">
-      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}`}</style>
+      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}</style>
       <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
       <span
         aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}. ${gameMode} mode`}
@@ -1871,13 +1935,16 @@ function SinglePlayerWorld({
         hidden
         ref={performanceOutputRef}
       />
-      {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen ? (
+      {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
         <div className="lc-pointer-capture" role="presentation">
           <button autoFocus onClick={requestGameplayPointerLock} type="button">
             Click to Play
             <small>Capture the mouse · Escape opens Game Menu</small>
           </button>
         </div>
+      ) : null}
+      {silentPointerRecaptureDenied && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
+        <small className="lc-silent-recapture">Press a movement key or click the world to recapture the mouse</small>
       ) : null}
       <GameHud
         connected={false}
@@ -1892,9 +1959,14 @@ function SinglePlayerWorld({
         inventory={inventory}
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
-        modalOpen={worldModalOpen || pointerCaptureNeeded}
+        modalOpen={uiModalOpen || pointerCaptureNeeded}
         messages={messages}
-        onCloseInventory={() => { setInventoryOpen(false); setCraftingContext("field"); requestGameplayPointerLock(); }}
+        onCloseInventory={(keyboardCode) => {
+          setInventoryOpen(false);
+          setCraftingContext("field");
+          if (keyboardCode === "Escape") armGameplayResumeAfterEscape(performance.now());
+          else requestGameplayPointerLock();
+        }}
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         disconnectLabel="Save and Quit to Title"

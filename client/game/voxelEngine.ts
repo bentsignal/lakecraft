@@ -2846,7 +2846,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function onKeyDown(event: KeyboardEvent): void {
     if (paused) return;
-    if (document.pointerLockElement !== canvas) return;
+    if (document.pointerLockElement !== canvas && options.allowUnlockedKeyboardInput?.() !== true) return;
     const hotbarIndex = hotbarIndexForDigitCode(event.code);
     if (hotbarIndex !== null) {
       event.preventDefault();
@@ -2890,6 +2890,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function releaseTransientInput(): void {
+    pressedMouseButtons.clear();
     clearHeldMovementInput();
     cancelPrimaryActionHold();
     cancelSecondaryPlacementHold(true);
@@ -3038,28 +3039,45 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     };
   }
 
-  function requestCanvasPointerLock(): void {
-    try {
-      void Promise.resolve(canvas.requestPointerLock()).catch(() => undefined);
-    } catch {
-      // A denied browser gesture must leave the menu usable without surfacing an unhandled error.
-    }
+  function requestCanvasPointerLock(): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let fallbackTimer = 0;
+      const finish = (locked: boolean) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener("pointerlockchange", onPointerLockSettled);
+        document.removeEventListener("pointerlockerror", onPointerLockError);
+        window.clearTimeout(fallbackTimer);
+        resolve(locked);
+      };
+      const onPointerLockSettled = () => finish(document.pointerLockElement === canvas);
+      const onPointerLockError = () => finish(false);
+      document.addEventListener("pointerlockchange", onPointerLockSettled);
+      document.addEventListener("pointerlockerror", onPointerLockError);
+      fallbackTimer = window.setTimeout(
+        () => finish(document.pointerLockElement === canvas),
+        250,
+      );
+      try {
+        const request = canvas.requestPointerLock();
+        if (document.pointerLockElement === canvas) finish(true);
+        void Promise.resolve(request).catch(onPointerLockError);
+      } catch {
+        // A denied browser gesture must leave the menu usable without surfacing an unhandled error.
+        finish(false);
+      }
+    });
   }
 
-  function onMouseDown(event: MouseEvent): void {
-    event.preventDefault();
-    if (paused) return;
-    if (document.pointerLockElement !== canvas) {
-      requestCanvasPointerLock();
-      return;
-    }
+  function applyCapturedMouseDown(button: number): void {
     if (playerHealth <= 0) return;
-    if (event.button === 0) {
+    if (button === 0) {
       if (primaryActionHold.held) return;
       const attackedEntity = attackEntityUnderCrosshair();
       primaryActionHold = pressPrimaryAction(attackedEntity);
       if (!attackedEntity) beginHeldBlockMining();
-    } else if (event.button === 2) {
+    } else if (button === 2) {
       if (secondaryButtonHeld) return;
       secondaryButtonHeld = true;
       if (useMobUnderCrosshair()) return;
@@ -3102,17 +3120,40 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
   }
 
-  function onMouseUp(event: MouseEvent): void {
-    if (event.button === 0) cancelPrimaryActionHold();
-    if (event.button === 2) {
+  const pressedMouseButtons = new Set<number>();
+
+  function onMouseDown(event: MouseEvent): void {
+    event.preventDefault();
+    if (paused) return;
+    pressedMouseButtons.add(event.button);
+    if (document.pointerLockElement !== canvas) {
+      const button = event.button;
+      void requestCanvasPointerLock().then((locked) => {
+        if (!locked || paused) return;
+        applyCapturedMouseDown(button);
+        if (!pressedMouseButtons.has(button)) applyCapturedMouseUp(button);
+      });
+      return;
+    }
+    applyCapturedMouseDown(event.button);
+  }
+
+  function applyCapturedMouseUp(button: number): void {
+    if (button === 0) cancelPrimaryActionHold();
+    if (button === 2) {
       cancelSecondaryPlacementHold(true);
     }
-    if (event.button === 2 && rangedChargeStartedAt > 0) {
+    if (button === 2 && rangedChargeStartedAt > 0) {
       const intent = rangedShotIntent(performance.now());
       clearRangedCharge();
       emitHandAction("use");
       void options.onRangedRelease?.(intent);
     }
+  }
+
+  function onMouseUp(event: MouseEvent): void {
+    pressedMouseButtons.delete(event.button);
+    applyCapturedMouseUp(event.button);
   }
 
   function onPointerLockChange(): void {
@@ -3418,6 +3459,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         nextServerTimeOffsetMs,
       );
       worldTimeMs = Date.now() + serverTimeOffsetMs;
+      if (running && !paused) {
+        const now = performance.now();
+        render(now, 0, now);
+      }
     },
     setPaused(nextPaused) {
       const next = nextPaused === true;
@@ -3449,6 +3494,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     isPaused() {
       return paused;
+    },
+    cancelRangedActionForEscape() {
+      if (rangedChargeStartedAt <= 0) return false;
+      cancelSecondaryPlacementHold(true);
+      clearRangedCharge(true);
+      return true;
     },
     setRespawnPoint(point) {
       const validated = validateRespawnPoint(point, Number.MAX_SAFE_INTEGER);
@@ -3547,7 +3598,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return getBlock(x, y, z);
     },
     getPerformanceStats,
-    requestPointerLock() { requestCanvasPointerLock(); },
+    requestPointerLock() { return requestCanvasPointerLock(); },
     respawn() {
       cancelSecondaryPlacementHold(true);
       pose.x = respawnPoint.x;

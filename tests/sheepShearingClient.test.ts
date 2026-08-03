@@ -6,7 +6,10 @@ const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url)
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const renderer = readFileSync(new URL("../client/game/mobRenderer.ts", import.meta.url), "utf8");
 
-const secondary = engine.slice(engine.indexOf("} else if (event.button === 2)"), engine.indexOf("function onMouseUp"));
+const secondary = engine.slice(
+  engine.indexOf("} else if (button === 2)"),
+  engine.indexOf("const pressedMouseButtons"),
+);
 assert.ok(secondary.indexOf("useMobUnderCrosshair()") < secondary.indexOf("createDoorToggleEdit"), "mob use precedes doors, block UI, food, and placement");
 assert.ok(secondary.includes("if (useMobUnderCrosshair()) return"), "a handled sheep click cannot also place a block");
 assert.match(engine, /mobTargetHasClickPriority\(mobTarget\.distance, target\?\.distance \?\? null\)/, "solid blocks still occlude secondary mob use");

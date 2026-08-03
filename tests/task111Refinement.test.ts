@@ -65,7 +65,10 @@ const outlineRender = source.slice(
 );
 assert.doesNotMatch(outlineRender, /bufferData|bufferSubData|new Float32Array|const corners|const lines/,
   "stable aim only binds and draws the retained outline");
-const secondaryAction = source.slice(source.indexOf("} else if (event.button === 2)"), source.indexOf("\n  function onMouseUp"));
+const secondaryAction = source.slice(
+  source.indexOf("} else if (button === 2)"),
+  source.indexOf("const pressedMouseButtons"),
+);
 assert.ok(secondaryAction.indexOf("useMobUnderCrosshair()") < secondaryAction.indexOf("bypassBlockInteractionForPlacement"),
   "mob use such as shearing keeps first priority");
 assert.match(secondaryAction, /if \(target && !bypassBlockInteraction\)/);

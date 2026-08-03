@@ -24,12 +24,13 @@ assert.ok(app.includes("containersRef.current = recovered.containers"), "success
 
 assert.ok(app.includes("worldModalOpen = containerOpen || sleepingBed !== null"), "containers and sleep share one local modal boundary");
 assert.ok(app.includes("pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen"), "open containers freeze world input through the existing local pause boundary");
-assert.ok(app.includes("!pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen"), "container UI time does not spend the active autosave interval");
+assert.ok(app.includes("const active = !singlePlayerGameplayPaused({") && app.includes("sampleSaveCadence(saveCadenceRef.current, now, active)"),
+  "container UI time does not spend the active autosave interval");
 assert.ok(app.includes("setLocalFusesPausedRef.current(paused)"), "container modal pause also freezes local TNT");
 
 assert.ok(app.includes("<FurnaceDrawer"));
 assert.ok(app.includes("<ChestDrawer"));
-assert.ok(app.includes("modalOpen={worldModalOpen || pointerCaptureNeeded}"), "containers and capture fallback hide the crosshair and survival hotbar behind the modal");
+assert.ok(app.includes("modalOpen={uiModalOpen || pointerCaptureNeeded}"), "containers, chat, and capture fallback hide the crosshair and survival hotbar behind the modal");
 assert.equal(app.includes("LOCAL SINGLE-PLAYER CONTAINER"), false, "local chest no longer exposes implementation/debug copy");
 assert.equal(chestDrawer.includes("SHARED LAKEBED CONTAINER"), false, "shared drawer no longer brands its storage backend");
 
