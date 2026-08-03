@@ -100,19 +100,25 @@ const second = createTerrainChunk(seed, -1, 0);
 assert.deepEqual([...first], [...second], "ore generation is deterministic for a streamed chunk");
 let goldCount = 0;
 for (const [key, block] of first) {
-  if (block !== BLOCK.GOLD_ORE && block !== BLOCK.DIAMOND_ORE) continue;
+  if (block !== BLOCK.GOLD_ORE) continue;
   const [, yString] = key.split(",");
   const y = Number(yString);
-  if (block === BLOCK.GOLD_ORE) {
-    goldCount += 1;
-    assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= 20);
-  } else {
-    diamondCount += 1;
-    assert.ok(y >= 1 && y <= 20);
+  goldCount += 1;
+  assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= 20);
+}
+let diamondCount = 0;
+for (let chunkX = -4; chunkX <= 3; chunkX += 1) {
+  for (let chunkZ = -4; chunkZ <= 3; chunkZ += 1) {
+    for (const [key, block] of createTerrainChunk(seed, chunkX, chunkZ)) {
+      if (block !== BLOCK.DIAMOND_ORE) continue;
+      diamondCount += 1;
+      const y = Number(key.split(",")[1]);
+      assert.ok(y >= 1 && y <= 20);
+    }
   }
 }
 assert.ok(goldCount > 0 && goldCount < 96, `bounded gold count: ${goldCount}`);
-assert.ok(diamondCount > 0 && diamondCount < 64, `bounded diamond count: ${diamondCount}`);
+assert.ok(diamondCount > 0 && diamondCount < 512, `bounded diamond count: ${diamondCount}`);
 assert.equal(terrainOreBlock(0, 32, 0, seed), null, "advanced ores never reach the surface");
 assert.notDeepEqual(blockMaterialColor(BLOCK.GOLD_ORE), blockMaterialColor(BLOCK.STONE));
 assert.notDeepEqual(blockMaterialColor(BLOCK.DIAMOND_ORE), blockMaterialColor(BLOCK.STONE));

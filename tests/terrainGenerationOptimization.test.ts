@@ -18,7 +18,7 @@ const chunkSnapshots = [
   { coordinate: [1, -1], size: 2_165, sha256: "5ebd39938ea206770c39b19d20fb1d8c330cad35cc0c700dc9353d1b1c50d114" },
   { coordinate: [-4, 3], size: 1_750, sha256: "5982e347526514903865cafb9f93cce489f5e0d798c9a2d7b92cbcf8f7f62208" },
   { coordinate: [25_000, -25_000], size: 1_839, sha256: "4713d3a78b76d2a20345a8cc38e54c35a95e5733a26e478714567ed178ac550b" },
-  { coordinate: [-25_003, 24_998], size: 2_084, sha256: "bfe64b35670a6ee68628faeffef8dbb03dc998563b06f27c6e1f265f8a0b8290" },
+  { coordinate: [-25_003, 24_998], size: 2_084, sha256: "2e333ed2e9bac4f28c8f7cdfd0e945ab353bd4d5933a3a9e41c99a9297a2f1ed" },
 ] as const;
 
 for (const snapshot of chunkSnapshots) {
@@ -35,7 +35,7 @@ const eager = createTerrain(7_319, 20);
 assert.equal(eager.size, 53_985);
 assert.equal(
   orderedMapDigest(eager),
-  "8d70f3c6b50db24c44673de104d84a76b456bc5d20e9fbbce3d68a635df88703",
+  "a7b4e73c1b9815d457a854136769f53f98bb30d05dca0597d1cdf5fc23553e1f",
   "the eager compatibility generator preserves its complete expected ordered map",
 );
 
