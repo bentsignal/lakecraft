@@ -71,12 +71,24 @@ assert.deepEqual(mined.effect.drop, { itemId: "oak_fence", count: 1 });
 assert.deepEqual(mined.effect.inventory[0], { itemId: "oak_fence", count: 2 },
   "mining returns the same fence and conserves the place/mine round trip");
 
+const bridgeSource = readFileSync(new URL("../client/game/blockBridge.ts", import.meta.url), "utf8");
+const multiplayerSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const singlePlayerSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 assert.equal(ENGINE_TO_PROTOCOL[BLOCK.OAK_FENCE], "oak_fence");
 assert.equal(ENGINE_TO_GAME[BLOCK.OAK_FENCE], "oak_fence");
 assert.equal(ITEM_TO_ENGINE.oak_fence, BLOCK.OAK_FENCE);
 assert.equal(audioSurfaceForBlock(BLOCK.OAK_FENCE), "wood");
+for (const [label, source, sharedImport] of [
+  ["multiplayer", multiplayerSource, /from "\.\/game\/blockBridge\.ts"/],
+  ["single-player", singlePlayerSource, /from "\.\.\/game\/blockBridge\.ts"/],
+] as const) {
+  assert.match(source, sharedImport, `${label} consumes the shared block bridge`);
+  assert.doesNotMatch(`${source}\n${bridgeSource}`,
+    /(?:setInterval|setTimeout|useMutation)[^\n]*oak_fence|oak_fence[^\n]*(?:setInterval|setTimeout|useMutation)/i,
+    `${label} fence wiring adds no dedicated network or timer loop`);
+}
 assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
   "single-player save validation retains oak fences and every newer append-only engine ID");
 
