@@ -54,6 +54,8 @@ assert.equal(
 );
 assert.ok(engine.includes("removeChunkSkyOccluders(skyOccluderColumns, chunkX, chunkZ)"));
 assert.ok(engine.includes("refreshEditedSkyColumns(skyOccluderColumns, skyEdits, getBlock)"));
+assert.ok(engine.includes("skyOccluderClass(previous) !== skyOccluderClass(block)"),
+  "leaf and opaque replacements invalidate the two-class skylight cache");
 assert.ok(engine.includes("skyExposureDirtyChunkKeysForEdits(skyEdits)"));
 assert.ok(engine.includes("if (setBlock(next.x, next.y, next.z, next.block)) skyEdits.push(next)"));
 

@@ -25,6 +25,14 @@ import {
   sampleCachedMobLocalLight,
   shouldRefreshLocalHostileHabitat,
 } from "../client/game/voxelEngine.ts";
+import {
+  skyEcologyExposureLevel,
+  skyExposureLevel,
+  writeChunkSkyOccluders,
+  type SkyOccluderColumns,
+} from "../client/game/skyExposure.ts";
+import { blockKey, TERRAIN_MIN_Y } from "../client/game/terrain.ts";
+import { BLOCK, type BlockId } from "../client/game/types.ts";
 
 function spawn(kind: MobKind, index = 0): MobSpawnDescriptor {
   return {
@@ -61,6 +69,31 @@ assert.equal(sampleCachedMobLocalLight(3, 1, noTorches, 0, emptyLightCache, 0, 1
 assert.equal(sampleCachedMobLocalLight(0, 1, noTorches, 0, emptyLightCache, 0, 1, 0), 0, "a cave or complete roof stays dark at noon");
 assert.equal(sampleCachedMobLocalLight(3, 0, noTorches, 0, emptyLightCache, 0, 1, 0), 0, "open night is dark");
 assert.equal(sampleCachedMobLocalLight(3, 0.35, noTorches, 0, emptyLightCache, 0, 1, 0), 0.35, "dawn follows cached sun intensity");
+
+const canopyBlocks = new Map<string, BlockId>();
+for (let x = 0; x < 8; x += 1) {
+  for (let z = 0; z < 8; z += 1) canopyBlocks.set(blockKey(x, 5, z), BLOCK.LEAVES);
+}
+const canopyColumns: SkyOccluderColumns = new Map();
+writeChunkSkyOccluders(canopyColumns, 0, 0, canopyBlocks);
+assert.equal(skyExposureLevel(canopyColumns, 3, 1, 3), 2,
+  "the visual renderer may brighten leaf shelter");
+const canopyEcologyExposure = skyEcologyExposureLevel(canopyColumns, 3, 1, 3);
+assert.equal(canopyEcologyExposure, 0, "hostile ecology still treats direct leaf shelter as dark");
+assert.ok(sampleCachedMobLocalLight(
+  canopyEcologyExposure,
+  1,
+  noTorches,
+  0,
+  createMobTorchLightCache(),
+  3,
+  1,
+  3,
+) < LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX, "visual readability cannot cross the hostile spawn threshold");
+assert.deepEqual(canopyColumns.get("0,0"), {
+  opaqueY: TERRAIN_MIN_Y - 1,
+  leafY: 5,
+}, "the ecology cache retains leaf shelter independently of opaque roofs");
 
 const offCameraTorchColumns = new Map<string, number[]>([["20,0", [1.76]]]);
 let torchColumnReads = 0;

@@ -7,19 +7,29 @@ export const SKY_EXPOSURE_LEVELS = 3;
 export const SKY_EXPOSURE_SPILL_RADIUS = 2;
 // Fully roofed terrain stays hostile-spawn dark, but is still barely readable
 // without a torch on ordinary displays.
-export const CAVE_LIGHT_FLOOR = 0.10;
+export const CAVE_LIGHT_FLOOR = 0.16;
 export const SKY_SHADE_PACK_MARKER = 8;
 export const SKY_SHADE_EMISSIVE_MARKER = 16;
 
-export type SkyOccluderColumns = Map<string, number>;
+export interface SkyOccluderColumn {
+  /** Highest stone-like block that fully stops both visual and ecological skylight. */
+  opaqueY: number;
+  /** Highest leaf block, which attenuates visual skylight but still shelters hostile mobs. */
+  leafY: number;
+}
+
+export type SkyOccluderColumns = Map<string, SkyOccluderColumn>;
 export type SkyBlockLookup = (x: number, y: number, z: number) => BlockId;
+
+export type SkyOccluderClass = 0 | 1 | 2;
 
 export function skyColumnKey(x: number, z: number): string {
   return `${Math.floor(x)},${Math.floor(z)}`;
 }
 
 /** Thin, transparent, or explicitly open blocks do not stop the cheap vertical daylight test. */
-export function blockStopsSky(block: BlockId): boolean {
+export function skyOccluderClass(block: BlockId): SkyOccluderClass {
+  if (block === BLOCK.LEAVES) return 1;
   return block !== BLOCK.AIR
     && block !== BLOCK.TORCH
     && block !== BLOCK.DOOR_OPEN
@@ -30,7 +40,13 @@ export function blockStopsSky(block: BlockId): boolean {
     && block !== BLOCK.OAK_FENCE
     && block !== BLOCK.OAK_FENCE_GATE_CLOSED
     && block !== BLOCK.OAK_FENCE_GATE_OPEN
-    && block !== BLOCK.STONE_BRICK_SLAB;
+    && block !== BLOCK.STONE_BRICK_SLAB
+    ? 2
+    : 0;
+}
+
+export function blockStopsSky(block: BlockId): boolean {
+  return skyOccluderClass(block) !== 0;
 }
 
 /**
@@ -46,7 +62,10 @@ export function writeChunkSkyOccluders(
   const bounds = chunkBounds(chunkX, chunkZ);
   for (let x = bounds.minX; x <= bounds.maxX; x += 1) {
     for (let z = bounds.minZ; z <= bounds.maxZ; z += 1) {
-      columns.set(skyColumnKey(x, z), TERRAIN_MIN_Y - 1);
+      columns.set(skyColumnKey(x, z), {
+        opaqueY: TERRAIN_MIN_Y - 1,
+        leafY: TERRAIN_MIN_Y - 1,
+      });
     }
   }
   for (const [key, block] of blocks) {
@@ -54,7 +73,10 @@ export function writeChunkSkyOccluders(
     const [x, y, z] = key.split(",").map(Number);
     if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) continue;
     const columnKey = skyColumnKey(x, z);
-    if (y > (columns.get(columnKey) ?? TERRAIN_MIN_Y - 1)) columns.set(columnKey, y);
+    const column = columns.get(columnKey);
+    if (!column) continue;
+    if (block === BLOCK.LEAVES) column.leafY = Math.max(column.leafY, y);
+    else column.opaqueY = Math.max(column.opaqueY, y);
   }
 }
 
@@ -76,14 +98,20 @@ export function refreshSkyOccluderColumn(
   z: number,
   readBlock: SkyBlockLookup,
 ): number {
-  let highest = TERRAIN_MIN_Y - 1;
+  let opaqueY = TERRAIN_MIN_Y - 1;
+  let leafY = TERRAIN_MIN_Y - 1;
   for (let y = WORLD_EDIT_MAX_Y; y >= TERRAIN_MIN_Y; y -= 1) {
-    if (!blockStopsSky(readBlock(x, y, z))) continue;
-    highest = y;
+    const block = readBlock(x, y, z);
+    if (block === BLOCK.LEAVES) {
+      leafY = Math.max(leafY, y);
+      continue;
+    }
+    if (!blockStopsSky(block)) continue;
+    opaqueY = y;
     break;
   }
-  columns.set(skyColumnKey(x, z), highest);
-  return highest;
+  columns.set(skyColumnKey(x, z), { opaqueY, leafY });
+  return Math.max(opaqueY, leafY);
 }
 
 /** Deduplicates explosion/tree batches so each changed column is scanned at most once. */
@@ -102,10 +130,27 @@ export function refreshEditedSkyColumns(
   return changedColumns.size;
 }
 
-function columnSeesSky(columns: ReadonlyMap<string, number>, x: number, y: number, z: number): boolean {
+function columnVisualExposure(
+  columns: ReadonlyMap<string, SkyOccluderColumn>,
+  x: number,
+  y: number,
+  z: number,
+): 0 | 2 | 3 {
   const key = skyColumnKey(x, z);
-  const highest = columns.get(key);
-  return highest !== undefined && highest < y;
+  const column = columns.get(key);
+  if (!column) return 0;
+  if (column.opaqueY >= y) return 0;
+  return column.leafY >= y ? 2 : 3;
+}
+
+function columnSeesEcologySky(
+  columns: ReadonlyMap<string, SkyOccluderColumn>,
+  x: number,
+  y: number,
+  z: number,
+): boolean {
+  const column = columns.get(skyColumnKey(x, z));
+  return column !== undefined && Math.max(column.opaqueY, column.leafY) < y;
 }
 
 /**
@@ -114,7 +159,7 @@ function columnSeesSky(columns: ReadonlyMap<string, number>, x: number, y: numbe
  * general light propagation.
  */
 export function skyExposureLevel(
-  columns: ReadonlyMap<string, number>,
+  columns: ReadonlyMap<string, SkyOccluderColumn>,
   x: number,
   y: number,
   z: number,
@@ -122,12 +167,41 @@ export function skyExposureLevel(
   const blockX = Math.floor(x);
   const blockY = Math.floor(y);
   const blockZ = Math.floor(z);
-  if (columnSeesSky(columns, blockX, blockY, blockZ)) return 3;
+  const direct = columnVisualExposure(columns, blockX, blockY, blockZ);
+  if (direct > 0) return direct;
+  let best = 0;
   for (let distance = 1; distance <= SKY_EXPOSURE_SPILL_RADIUS; distance += 1) {
     for (let dx = -distance; dx <= distance; dx += 1) {
       const dz = distance - Math.abs(dx);
-      if (columnSeesSky(columns, blockX + dx, blockY, blockZ + dz)
-        || (dz !== 0 && columnSeesSky(columns, blockX + dx, blockY, blockZ - dz))) {
+      const positive = columnVisualExposure(columns, blockX + dx, blockY, blockZ + dz);
+      const negative = dz === 0 ? 0 : columnVisualExposure(columns, blockX + dx, blockY, blockZ - dz);
+      best = Math.max(best, positive - distance, negative - distance);
+    }
+    if (best >= SKY_EXPOSURE_LEVELS - distance) break;
+  }
+  return Math.max(0, Math.min(2, best)) as 0 | 1 | 2;
+}
+
+/**
+ * Gameplay light deliberately treats leaves as complete shelter. Visual
+ * readability can therefore improve without changing spawning, burning, or
+ * torch-safe habitat rules.
+ */
+export function skyEcologyExposureLevel(
+  columns: ReadonlyMap<string, SkyOccluderColumn>,
+  x: number,
+  y: number,
+  z: number,
+): 0 | 1 | 2 | 3 {
+  const blockX = Math.floor(x);
+  const blockY = Math.floor(y);
+  const blockZ = Math.floor(z);
+  if (columnSeesEcologySky(columns, blockX, blockY, blockZ)) return 3;
+  for (let distance = 1; distance <= SKY_EXPOSURE_SPILL_RADIUS; distance += 1) {
+    for (let dx = -distance; dx <= distance; dx += 1) {
+      const dz = distance - Math.abs(dx);
+      if (columnSeesEcologySky(columns, blockX + dx, blockY, blockZ + dz)
+        || (dz !== 0 && columnSeesEcologySky(columns, blockX + dx, blockY, blockZ - dz))) {
         return (SKY_EXPOSURE_LEVELS - distance) as 1 | 2;
       }
     }
@@ -190,5 +264,6 @@ export function skyLitIntensity(surfaceIntensity: number, exposureLevel: number)
   const surface = Number.isFinite(surfaceIntensity) ? Math.max(0, surfaceIntensity) : CAVE_LIGHT_FLOOR;
   const exposure = Math.max(0, Math.min(SKY_EXPOSURE_LEVELS, Math.floor(exposureLevel)))
     / SKY_EXPOSURE_LEVELS;
-  return CAVE_LIGHT_FLOOR + (surface - CAVE_LIGHT_FLOOR) * exposure;
+  const readableExposure = exposure * (1.5 - 0.5 * exposure);
+  return CAVE_LIGHT_FLOOR + (surface - CAVE_LIGHT_FLOOR) * readableExposure;
 }

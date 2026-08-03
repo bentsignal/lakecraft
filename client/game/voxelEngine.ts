@@ -210,7 +210,9 @@ import {
   refreshEditedSkyColumns,
   removeChunkSkyOccluders,
   skyColumnKey,
+  skyOccluderClass,
   skyExposureDirtyChunkKeysForEdits,
+  skyEcologyExposureLevel,
   skyExposureLevel,
   writeChunkSkyOccluders,
   type SkyOccluderColumns,
@@ -637,7 +639,7 @@ export function shouldRefreshLocalHostileHabitat(
 // The color and terrain programs intentionally share this source fragment at
 // runtime. Keeping one compact copy preserves the readable CPU-side lighting
 // mirrors while avoiding two near-identical GLSL payloads in the client bundle.
-const LIGHTING_VERTEX_SHADER = `uniform vec3 uCamera,uAmbientColor,uDirectionalColor;uniform float uFogEnabled,uAmbientIntensity,uDirectionalIntensity,uSkyExposure;uniform vec4 uTorchLights[8];vec3 lightAt(vec3 p,float e){vec3 l=mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}),vec3(.16)+uAmbientColor*uAmbientIntensity*.75+uDirectionalColor*uDirectionalIntensity*.3,e*uSkyExposure),t=vec3(0.);for(int i=0;i<8;i++){vec4 q=uTorchLights[i];float a=step(.001,q.w)*clamp(1.-length(q.xyz-p)/max(q.w,.001),0.,1.);t+=vec3(1.,.43,.12)*a*a*.95;}return l+t;}float fogAt(vec3 p){return uFogEnabled*smoothstep(18.,42.,length(p-uCamera));}`;
+const LIGHTING_VERTEX_SHADER = `uniform vec3 uCamera,uAmbientColor,uDirectionalColor;uniform float uFogEnabled,uAmbientIntensity,uDirectionalIntensity,uSkyExposure;uniform vec4 uTorchLights[8];vec3 lightAt(vec3 p,float e){float v=e*uSkyExposure;v=v*(1.5-.5*v);vec3 l=mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}),vec3(.16)+uAmbientColor*uAmbientIntensity*.75+uDirectionalColor*uDirectionalIntensity*.3,v),t=vec3(0.);for(int i=0;i<8;i++){vec4 q=uTorchLights[i];float a=step(.001,q.w)*clamp(1.-length(q.xyz-p)/max(q.w,.001),0.,1.);t+=vec3(1.,.43,.12)*a*a*.95;}return l+t;}float fogAt(vec3 p){return uFogEnabled*smoothstep(18.,42.,length(p-uCamera));}`;
 
 export const VERTEX_SHADER = `attribute vec3 aPosition,aColor;uniform mat4 uMvp;uniform float uLightingEnabled;varying vec3 vColor;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);float p=step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)},aColor.r),r=aColor.r-p*${SKY_SHADE_PACK_MARKER.toFixed(1)};vec3 c=vec3(mix(aColor.r,mod(r,2.),p),aColor.g,aColor.b);float e=mix(1.,floor(r/2.)/${SKY_EXPOSURE_LEVELS.toFixed(1)},p);vColor=c*mix(vec3(1.),lightAt(aPosition,e),uLightingEnabled);vFog=fogAt(aPosition);}`;
 
@@ -1694,13 +1696,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   updateActiveTorchLights(0, [pose.x, pose.y + 1.2, pose.z]);
 
   function cachedMobDirectSky(_kind: unknown, x: number, y: number, z: number): boolean {
-    return skyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z))
+    return skyEcologyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z))
       === SKY_EXPOSURE_LEVELS;
   }
 
   function cachedMobLocalLight(_kind: unknown, x: number, y: number, z: number): number {
     return sampleCachedMobLocalLight(
-      skyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z)),
+      skyEcologyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z)),
       dayNightState.sunIntensity,
       mobTorchColumns,
       mobTorchRevision,
@@ -1777,7 +1779,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         for (let y = surfaceY - 2; y > TERRAIN_MIN_Y; y -= 1) {
           if (getBlock(x, y, z) !== BLOCK.AIR
             || !blockSupportsPlayerFeet(getBlock(x, y - 1, z))
-            || skyExposureLevel(skyOccluderColumns, x, y + 1, z) !== 0) continue;
+            || skyEcologyExposureLevel(skyOccluderColumns, x, y + 1, z) !== 0) continue;
           const distanceSquared = horizontalSquared + (y - originY) ** 2;
           if (distanceSquared < fallbackDistanceSquared) {
             fallbackDistanceSquared = distanceSquared;
@@ -2187,7 +2189,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         owned.add(key);
       }
     }
-    return previous !== block && blockStopsSky(previous) !== blockStopsSky(block);
+    return previous !== block && skyOccluderClass(previous) !== skyOccluderClass(block);
   }
 
   function rebuildEditedWorldChunks(

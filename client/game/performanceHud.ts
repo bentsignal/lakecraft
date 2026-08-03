@@ -2,6 +2,10 @@ import type { VoxelPerformanceStats } from "./types.ts";
 
 const fixed = (value: number, digits: number): string => value.toFixed(digits);
 
+export function performanceHudFpsText(stats: Pick<VoxelPerformanceStats, "fps">): string {
+  return `FPS ${fixed(stats.fps, 0)}`;
+}
+
 export function performanceHudCoreText(
   stats: VoxelPerformanceStats,
   multiplayer?: readonly [x: number, y: number, z: number, sync: string],

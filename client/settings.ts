@@ -23,7 +23,7 @@ export interface ClientSettingsStorage {
 export const DEFAULT_CLIENT_SETTINGS: Readonly<ClientSettings> = Object.freeze({
   soundMuted: false,
   mouseSensitivity: 100,
-  renderDistance: 3,
+  renderDistance: 6,
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
