@@ -20,7 +20,11 @@ import {
   type MobSimulation,
   type MobSpawnDescriptor,
 } from "../client/game/mobs.ts";
-import { createMobTorchLightCache, sampleCachedMobLocalLight } from "../client/game/voxelEngine.ts";
+import {
+  createMobTorchLightCache,
+  sampleCachedMobLocalLight,
+  shouldRefreshLocalHostileHabitat,
+} from "../client/game/voxelEngine.ts";
 
 function spawn(kind: MobKind, index = 0): MobSpawnDescriptor {
   return {
@@ -38,6 +42,21 @@ function spawn(kind: MobKind, index = 0): MobSpawnDescriptor {
 
 const noTorches = new Map<string, number[]>();
 const emptyLightCache = createMobTorchLightCache();
+assert.equal(
+  shouldRefreshLocalHostileHabitat(LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX, 20, 20),
+  true,
+  "the runtime habitat refresh retires a hostile at the shared bright-light threshold",
+);
+assert.equal(
+  shouldRefreshLocalHostileHabitat(LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX - 0.01, 20, 20),
+  false,
+  "the runtime habitat refresh retains an equally distant hostile in valid darkness",
+);
+assert.equal(
+  shouldRefreshLocalHostileHabitat(0, 20, 15),
+  true,
+  "the runtime habitat refresh can still replace a dark hostile with a meaningfully closer habitat",
+);
 assert.equal(sampleCachedMobLocalLight(3, 1, noTorches, 0, emptyLightCache, 0, 1, 0), 1, "open noon is fully lit");
 assert.equal(sampleCachedMobLocalLight(0, 1, noTorches, 0, emptyLightCache, 0, 1, 0), 0, "a cave or complete roof stays dark at noon");
 assert.equal(sampleCachedMobLocalLight(3, 0, noTorches, 0, emptyLightCache, 0, 1, 0), 0, "open night is dark");
