@@ -36,7 +36,7 @@ const MOB_HURT_FLASH_SECONDS = 0.5;
 const MOB_HURT_FLASH_MIX = 0.62;
 
 export const MAX_PRIMED_TNT_VISUALS = TNT_MAX_ACTIVE_FUSES;
-const PRIMED_TNT_LABEL_TRIANGLES_PER_SIDE = 6;
+const PRIMED_TNT_LABEL_TRIANGLES_PER_SIDE = 7;
 const PRIMED_TNT_SIDE_COUNT = 4;
 export const PRIMED_TNT_LABEL_VERTICES = PRIMED_TNT_SIDE_COUNT * PRIMED_TNT_LABEL_TRIANGLES_PER_SIDE * 3;
 export const PRIMED_TNT_VERTICES_PER_ENTITY = VERTICES_PER_BOX + 4 * 6 + PRIMED_TNT_LABEL_VERTICES + 5 * 6;
@@ -313,7 +313,11 @@ function appendPrimedTntGlyphTriangle(
   const cx = centerX + (side === 0 ? plane : side === 1 ? -plane : side === 2 ? cu * scale : -cu * scale);
   const cy = centerY + cv * scale;
   const cz = centerZ + (side === 0 ? -cu * scale : side === 1 ? cu * scale : side === 2 ? plane : -plane);
-  appendColoredTriangle(writer, ax, ay, az, bx, by, bz, cx, cy, cz, red, green, blue);
+  // Glyph coordinates prioritize a readable silhouette. Normalize their
+  // winding once here so every side remains visible under back-face culling.
+  const winding = (bu - au) * (cv - av) - (bv - av) * (cu - au);
+  if (winding > 0) appendColoredTriangle(writer, ax, ay, az, bx, by, bz, cx, cy, cz, red, green, blue);
+  else appendColoredTriangle(writer, ax, ay, az, cx, cy, cz, bx, by, bz, red, green, blue);
 }
 
 function appendPrimedTntSideLabel(
@@ -328,16 +332,18 @@ function appendPrimedTntSideLabel(
   green: number,
   blue: number,
 ): void {
-  // Six fixed triangles form a compact T·N·T silhouette. Keeping every side
+  // Seven fixed triangles form a compact T·N·T silhouette. Keeping every side
   // in one axis-aligned basis makes swelling a pure scale, never a rotation.
   appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
     -0.36, 0.12, -0.12, 0.12, -0.24, 0.035, red, green, blue);
   appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
     -0.285, 0.06, -0.195, 0.06, -0.24, -0.13, red, green, blue);
   appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
-    -0.1, -0.13, -0.1, 0.12, 0.1, -0.13, red, green, blue);
+    -0.1, -0.13, -0.1, 0.12, -0.055, -0.13, red, green, blue);
   appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
-    0.1, 0.12, 0.1, -0.13, -0.1, 0.12, red, green, blue);
+    -0.1, -0.13, -0.055, -0.13, 0.1, 0.12, red, green, blue);
+  appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
+    0.055, 0.12, 0.1, -0.13, 0.1, 0.12, red, green, blue);
   appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
     0.12, 0.12, 0.36, 0.12, 0.24, 0.035, red, green, blue);
   appendPrimedTntGlyphTriangle(writer, side, centerX, centerY, centerZ, half, scale,
