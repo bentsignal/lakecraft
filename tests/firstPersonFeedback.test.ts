@@ -141,6 +141,7 @@ for (const block of Object.values(BLOCK)) {
 }
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const singlePlayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const rendererSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
 const gameHud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
@@ -155,7 +156,14 @@ const actionSamplerSource = rendererSource.slice(
 assert.equal(actionSamplerSource.includes("return {"), false, "the per-frame action sampler creates no pose object literals");
 assert.equal(actionSamplerSource.includes("const idle"), false, "idle and reduced-motion frames allocate no fallback pose");
 assert.ok(engine.includes("reducedMotionQuery?.matches === true"), "the OS motion preference reaches the WebGL pose sampler");
-assert.ok(engine.includes("!firstPersonFeedbackHidden && !paused && playerHealth > 0"), "modal, pause, and death gates suppress every viewmodel draw");
+assert.ok(engine.includes("!firstPersonFeedbackHidden && playerHealth > 0"),
+  "blocking UI and death hide the viewmodel without making Game Menu hide the pose lab");
+assert.ok(engine.includes("if (paused && !firstPersonFeedbackHidden && playerHealth > 0)"),
+  "an HMR-remounted paused engine draws exactly one fresh pose preview");
+const localFeedbackCalls = [...singlePlayer.matchAll(/setFirstPersonFeedbackHidden\(([\s\S]*?)\);/g)]
+  .map((match) => match[1]);
+assert.ok(localFeedbackCalls.length >= 2 && localFeedbackCalls.every((predicate) => !predicate.includes("pauseOpen")),
+  "Game Menu alone keeps the held pose visible while every other blocking surface may hide it");
 assert.equal(gameHud.includes("FirstPersonHeldItem"), false, "the HUD no longer paints a duplicate DOM hand");
 assert.equal(styles.includes("lc-first-person"), false, "the rejected CSS 3D/sprite rig is absent from the artifact");
 

@@ -2867,7 +2867,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       particleUploadBytes,
       torchCount: torchLights.size,
       activeTorchLights,
-      firstPersonDrawCalls: firstPersonFeedbackHidden || paused || playerHealth <= 0 ? 0 : firstPersonStats[2],
+      firstPersonDrawCalls: firstPersonFeedbackHidden || playerHealth <= 0 ? 0 : firstPersonStats[2],
       firstPersonVertexCount: firstPersonStats[0] + firstPersonStats[1],
       firstPersonLastUploadBytes: firstPersonStats[3],
       firstPersonTotalUploadBytes: firstPersonStats[4],
@@ -3133,7 +3133,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       bowCharging,
       bowCharging ? clampNumber((frameNow - rangedChargeStartedAt) / PLAYER_BOW_FULL_CHARGE_MS, 0, 1) : 0,
     );
-    if (!firstPersonFeedbackHidden && !paused && playerHealth > 0) {
+    if (!firstPersonFeedbackHidden && playerHealth > 0) {
       // The viewmodel owns a fresh depth plane but retains the world color buffer,
       // so nearby terrain never clips the hand and the crosshair remains centered.
       gl.clear(gl.DEPTH_BUFFER_BIT);
@@ -3641,6 +3641,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       options.onPoseChange?.({ ...pose });
       options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
       options.onMovementModeChange?.("idle", 0.5);
+      // Game Menu keeps the last active canvas untouched. When local HMR
+      // remounts an already-paused engine, draw exactly one fresh preview so
+      // firstPersonTuning.ts edits appear without resuming any simulation.
+      if (paused && !firstPersonFeedbackHidden && playerHealth > 0) {
+        render(pausedVisualTime, 0, performance.now());
+      }
       frameId = requestAnimationFrame(frame);
     },
     destroy() {

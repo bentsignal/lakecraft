@@ -1576,7 +1576,7 @@ function SinglePlayerWorld({
       },
     });
     engineRef.current = engine;
-    engine.setFirstPersonFeedbackHidden(pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen);
+    engine.setFirstPersonFeedbackHidden(inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen);
     if (initialRuntimeRef.current && !engine.importRuntimeSnapshot(initialRuntimeRef.current)) {
       setAutosaveStatusText("The saved player runtime was invalid; world state was left untouched.");
       saveLockedRef.current = true;
@@ -1649,7 +1649,7 @@ function SinglePlayerWorld({
       documentVisible: document.visibilityState === "visible",
     });
     engineRef.current?.setFirstPersonFeedbackHidden(
-      pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen || pointerCaptureNeeded,
+      inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen || pointerCaptureNeeded,
     );
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);

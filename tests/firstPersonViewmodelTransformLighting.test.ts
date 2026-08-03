@@ -134,7 +134,7 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
 console.log(JSON.stringify({ benchmark: "held atlas cube NDC bounds", samples: viewportBounds }));
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-const viewmodelPassStart = engine.indexOf("if (!firstPersonFeedbackHidden && !paused && playerHealth > 0)");
+const viewmodelPassStart = engine.indexOf("if (!firstPersonFeedbackHidden && playerHealth > 0)");
 const viewmodelPass = engine.slice(
   viewmodelPassStart,
   engine.indexOf("\n    }\n\n  }\n\n  function frame", viewmodelPassStart),

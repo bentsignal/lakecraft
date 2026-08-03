@@ -89,7 +89,10 @@ const renderer = createFirstPersonRenderer(capture.gl);
 renderer[3]("dirt", BLOCK.DIRT);
 const cube = capture.uploads.get(2);
 if (!cube) throw new Error("textured cube upload missing");
-assert.deepEqual(FIRST_PERSON_CUBE_ROTATION, [0.5, -0.66, 0.04]);
+for (const [index, expected] of [0.5, -0.66, 0.04].entries()) {
+  assert.ok(Math.abs(FIRST_PERSON_CUBE_ROTATION[index] - expected) < 0.00001,
+    "human-readable tuning degrees preserve the reviewed authored radian pose");
+}
 const cubeCenters = Array.from({ length: 6 }, (_, face) => center(cube, face * 6, 6));
 assert.ok(cubeCenters[2][2] > cubeCenters[3][2] + 0.2, "the top face points visibly toward the camera");
 assert.ok(cubeCenters[0][2] > cubeCenters[1][2] + 0.35, "the right vertical face remains readable");
@@ -154,7 +157,7 @@ assert.ok(bowBounds[0] >= -1 && bowBounds[1] <= 1 && bowBounds[2] >= -1 && bowBo
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const viewmodelDraw = engine.slice(
-  engine.indexOf("if (!firstPersonFeedbackHidden && !paused && playerHealth > 0)"),
+  engine.indexOf("if (!firstPersonFeedbackHidden && playerHealth > 0)"),
   engine.indexOf("function frame(now"),
 );
 assert.ok(engine.indexOf("sampleDayNight(worldTimeMs") < engine.indexOf("if (!firstPersonFeedbackHidden"),
