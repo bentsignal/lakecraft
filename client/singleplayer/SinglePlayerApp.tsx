@@ -121,6 +121,7 @@ import {
   beginSinglePlayerPointerLockAttempt,
   consumeSinglePlayerCommandSurfaceEscape,
   createSinglePlayerPointerSessionState,
+  orchestrateSinglePlayerInventoryClose,
   releaseBlockedSinglePlayerPointerLockGrant,
   singlePlayerGameplayPaused,
   singlePlayerSilentRecaptureKey,
@@ -417,7 +418,10 @@ function SinglePlayerWorld({
     );
   }
 
-  function applyPointerSessionEvent(event: SinglePlayerPointerSessionEvent): void {
+  function applyPointerSessionEvent(
+    event: SinglePlayerPointerSessionEvent,
+    onStarted = () => undefined,
+  ): void {
     const transition = transitionSinglePlayerPointerSession(pointerSessionRef.current, event);
     pointerSessionRef.current = transition.state;
     const applyUiTransition = () => {
@@ -433,6 +437,7 @@ function SinglePlayerWorld({
         setPauseOpen(false);
       }
       if (transition.showCaptureAffordance) setPointerCaptureNeeded(true);
+      onStarted();
     };
     if (transition.requestPointerLock) requestEnginePointerLock(false, applyUiTransition);
     else applyUiTransition();
@@ -455,8 +460,8 @@ function SinglePlayerWorld({
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
-  function requestGameplayPointerLock(): void {
-    applyPointerSessionEvent({ type: "resume" });
+  function requestGameplayPointerLock(onStarted = () => undefined): void {
+    applyPointerSessionEvent({ type: "resume" }, onStarted);
   }
 
   function armGameplayResumeAfterEscape(now: number): void {
@@ -464,6 +469,26 @@ function SinglePlayerWorld({
     setSilentPointerRecaptureDenied(false);
     setPointerCaptureNeeded(false);
     applyPointerSessionEvent({ type: "close_ui_escape", now });
+  }
+
+  function closeInventoryAndResume(keyboardCode?: "Escape" | "KeyE"): void {
+    const closeInventoryUi = () => {
+      setInventoryOpen(false);
+      setCraftingContext("field");
+    };
+
+    orchestrateSinglePlayerInventoryClose(
+      keyboardCode,
+      () => {
+        // A fast pointerlockchange must not reject the trusted E/click grant
+        // merely because Preact has not committed the next render yet.
+        pointerUiBlockedRef.current = uiModalOpen || deathScreenOpen
+          || document.visibilityState !== "visible";
+      },
+      (onStarted) => requestGameplayPointerLock(onStarted),
+      closeInventoryUi,
+      () => armGameplayResumeAfterEscape(performance.now()),
+    );
   }
 
   function warnWorldEditCapacity(): void {
@@ -1943,7 +1968,7 @@ function SinglePlayerWorld({
       />
       {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
         <div className="lc-pointer-capture" role="presentation">
-          <button autoFocus onClick={requestGameplayPointerLock} type="button">
+          <button autoFocus onClick={() => requestGameplayPointerLock()} type="button">
             Click to Play
             <small>Capture the mouse · Escape opens Game Menu</small>
           </button>
@@ -1967,12 +1992,7 @@ function SinglePlayerWorld({
         inventoryOpen={inventoryOpen}
         modalOpen={uiModalOpen || pointerCaptureNeeded}
         messages={messages}
-        onCloseInventory={(keyboardCode) => {
-          setInventoryOpen(false);
-          setCraftingContext("field");
-          if (keyboardCode === "Escape") armGameplayResumeAfterEscape(performance.now());
-          else requestGameplayPointerLock();
-        }}
+        onCloseInventory={closeInventoryAndResume}
         onCrafted={() => undefined}
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         disconnectLabel="Save and Quit to Title"

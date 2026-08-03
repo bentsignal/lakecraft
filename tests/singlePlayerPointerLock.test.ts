@@ -5,7 +5,9 @@ import {
   POINTER_LOCK_ESCAPE_DEDUP_MS,
   beginSinglePlayerPointerLockAttempt,
   createSinglePlayerPointerSessionState,
+  orchestrateSinglePlayerInventoryClose,
   releaseBlockedSinglePlayerPointerLockGrant,
+  singlePlayerInventoryCloseUsesTrustedRecapture,
   singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
@@ -267,6 +269,127 @@ for (const code of ["Escape", "Slash", "KeyT", "Enter", "KeyE", "KeyQ"]) {
 }
 assert.equal(singlePlayerSilentRecaptureKey("KeyW", true), false, "key repeat cannot duplicate a lock request");
 
+assert.equal(singlePlayerInventoryCloseUsesTrustedRecapture("KeyE"), true,
+  "E is an ordinary trusted activation and closes inventory with an immediate capture request");
+assert.equal(singlePlayerInventoryCloseUsesTrustedRecapture(undefined), true,
+  "the inventory Done button closes with an immediate trusted capture request");
+assert.equal(singlePlayerInventoryCloseUsesTrustedRecapture("Escape"), false,
+  "Escape is the browser's reserved unlock gesture and must defer recapture");
+
+for (const closeGesture of ["KeyE", undefined] as const) {
+  let uiBlocked = true;
+  let inventoryVisible = true;
+  let fastGrantReleased = false;
+  let settled: boolean | undefined;
+  const trace: string[] = [];
+  const path = orchestrateSinglePlayerInventoryClose(
+    closeGesture,
+    () => {
+      trace.push("prepare");
+      uiBlocked = false;
+    },
+    (onStarted) => beginSinglePlayerPointerLockAttempt(
+      () => {
+        trace.push("request");
+        // Model a pointerlockchange delivered synchronously by the browser,
+        // before Preact can remove the inventory from the DOM.
+        fastGrantReleased = releaseBlockedSinglePlayerPointerLockGrant(
+          true,
+          uiBlocked,
+          false,
+          true,
+          () => { trace.push("release"); },
+        );
+        trace.push("fast-grant");
+        return true;
+      },
+      onStarted,
+      (locked) => { settled = locked; },
+    ),
+    () => {
+      trace.push("close");
+      inventoryVisible = false;
+    },
+    () => assert.fail("E/Done must not arm deferred Escape recovery"),
+  );
+  assert.equal(path, "trusted");
+  assert.deepEqual(trace, ["prepare", "request", "fast-grant", "close"],
+    `${closeGesture ?? "Done"} prepares the gate and requests capture before closing inventory`);
+  assert.equal(fastGrantReleased, false, `${closeGesture ?? "Done"} accepts a fast valid grant`);
+  assert.equal(inventoryVisible, false);
+  await Promise.resolve();
+  assert.equal(settled, true, `${closeGesture ?? "Done"} settles the immediate grant`);
+}
+
+let resolveInventoryDenial: ((locked: boolean) => void) | undefined;
+let denialInventoryVisible = true;
+let denialCaptureNeeded = false;
+orchestrateSinglePlayerInventoryClose(
+  "KeyE",
+  () => undefined,
+  (onStarted) => beginSinglePlayerPointerLockAttempt(
+    () => new Promise<boolean>((resolve) => { resolveInventoryDenial = resolve; }),
+    onStarted,
+    (locked) => { denialCaptureNeeded = !locked; },
+  ),
+  () => { denialInventoryVisible = false; },
+  () => assert.fail("E must not arm Escape recovery"),
+);
+assert.equal(denialInventoryVisible, false, "inventory closes while the E request is pending");
+assert.equal(denialCaptureNeeded, false, "pending E request does not flash the fallback");
+resolveInventoryDenial?.(false);
+await Promise.resolve();
+assert.equal(denialCaptureNeeded, true, "a genuine E denial exposes the recoverable fallback");
+
+for (const supersession of ["ui", "pause"] as const) {
+  let generation = 1;
+  let resolveInventoryGrant: ((locked: boolean) => void) | undefined;
+  let uiBlocked = false;
+  let pauseOpen = false;
+  let releaseCount = 0;
+  orchestrateSinglePlayerInventoryClose(
+    "KeyE",
+    () => { uiBlocked = false; },
+    (onStarted) => {
+      const requestGeneration = generation;
+      beginSinglePlayerPointerLockAttempt(
+        () => new Promise<boolean>((resolve) => { resolveInventoryGrant = resolve; }),
+        onStarted,
+        (locked) => {
+          if (requestGeneration !== generation) {
+            releaseBlockedSinglePlayerPointerLockGrant(
+              locked,
+              uiBlocked,
+              pauseOpen,
+              true,
+              () => { releaseCount += 1; },
+            );
+          }
+        },
+      );
+    },
+    () => undefined,
+    () => assert.fail("E must not arm Escape recovery"),
+  );
+  generation += 1;
+  uiBlocked = supersession === "ui";
+  pauseOpen = supersession === "pause";
+  resolveInventoryGrant?.(true);
+  await Promise.resolve();
+  assert.equal(releaseCount, 1, `${supersession} supersession releases the delayed inventory grant`);
+}
+
+const escapeTrace: string[] = [];
+const escapePath = orchestrateSinglePlayerInventoryClose(
+  "Escape",
+  () => assert.fail("Escape cannot prepare a trusted recapture"),
+  () => assert.fail("Escape cannot request immediate Pointer Lock"),
+  () => { escapeTrace.push("close"); },
+  () => { escapeTrace.push("arm"); },
+);
+assert.equal(escapePath, "deferred_escape");
+assert.deepEqual(escapeTrace, ["close", "arm"], "Escape closes before arming silent movement recapture");
+
 const closeThenGameplay = run(createSinglePlayerPointerSessionState(false), { type: "close_ui_escape", now: 2_000 });
 const gameplayLock = run(closeThenGameplay.state, { type: "lock_change", locked: true, now: 2_010, uiBlocked: false });
 const ordinaryGameplayEscape = run(gameplayLock.state, { type: "escape", now: 2_100, uiBlocked: false });
@@ -367,8 +490,14 @@ assert.match(singlePlayerSource, /silentPointerRecaptureRef\.current && singlePl
   "the next eligible gameplay key silently requests capture without consuming its engine event");
 assert.ok(singlePlayerSource.includes("allowUnlockedKeyboardInput: () => silentPointerRecaptureRef.current"),
   "the initiating movement key remains live while Chrome grants capture asynchronously");
-assert.ok(singlePlayerSource.includes('if (keyboardCode === "Escape") armGameplayResumeAfterEscape(performance.now())'),
-  "inventory Escape shares the same silent recapture state machine");
+const inventoryClose = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("function closeInventoryAndResume"),
+  singlePlayerSource.indexOf("function warnWorldEditCapacity"),
+);
+assert.ok(inventoryClose.includes("orchestrateSinglePlayerInventoryClose("),
+  "production inventory close uses the executable gesture orchestrator");
+assert.ok(inventoryClose.includes("armGameplayResumeAfterEscape(performance.now())"),
+  "inventory Escape shares the no-overlay silent recapture state machine");
 assert.match(singlePlayerSource, /cancelRangedActionForEscape\(\)[\s\S]{0,300}armGameplayResumeAfterEscape/,
   "bow Escape cancels the draw before arming silent gameplay recapture");
 assert.ok(singlePlayerSource.includes("Click to Play"), "failed handoff has one explicit pointer-capture affordance");

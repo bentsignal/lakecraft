@@ -68,6 +68,44 @@ export function singlePlayerSilentRecaptureKey(code: string, repeat = false): bo
   ].includes(code);
 }
 
+/**
+ * Escape is the browser's reserved Pointer Lock release gesture, so Chrome does
+ * not let that same key activation reliably reacquire capture. E and pointer
+ * clicks are ordinary trusted activations and can reacquire before the
+ * inventory UI is removed.
+ */
+export function singlePlayerInventoryCloseUsesTrustedRecapture(
+  code?: "Escape" | "KeyE",
+): boolean {
+  return code !== "Escape";
+}
+
+export type SinglePlayerInventoryClosePath = "trusted" | "deferred_escape";
+
+/**
+ * Runs the inventory-close gesture in browser-safe order. E and pointer clicks
+ * prepare the synchronous UI gate and start Pointer Lock before closing the
+ * activating UI. Escape closes first and arms recovery for a later eligible
+ * activation because Escape itself is reserved by the browser.
+ */
+export function orchestrateSinglePlayerInventoryClose(
+  code: "Escape" | "KeyE" | undefined,
+  prepareTrustedRecapture: () => void,
+  requestTrustedRecapture: (onStarted: () => void) => void,
+  closeUi: () => void,
+  armDeferredEscapeRecapture: () => void,
+): SinglePlayerInventoryClosePath {
+  if (singlePlayerInventoryCloseUsesTrustedRecapture(code)) {
+    prepareTrustedRecapture();
+    requestTrustedRecapture(closeUi);
+    return "trusted";
+  }
+
+  closeUi();
+  armDeferredEscapeRecapture();
+  return "deferred_escape";
+}
+
 export interface SinglePlayerPointerSessionTransition {
   state: SinglePlayerPointerSessionState;
   openPause: boolean;
