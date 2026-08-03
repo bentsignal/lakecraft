@@ -37,7 +37,7 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 526, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 528, "reviewed compatibility boundary changes only intentionally");
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
 assert.equal(new Set(compactNames).size, compactNames.length, "compact property names stay unique");
 assert.ok(manifestNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "source names are identifiers");
@@ -137,7 +137,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 466 + privateNames.length, "private names cannot shadow the legacy manifest");
+assert.equal(manifestNames.length, 468 + privateNames.length, "private names cannot shadow the legacy manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
@@ -174,7 +174,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "46098d71889f44465a85a48d36b17c4d0a7ca3d8c09f6a95596b1e1db71eb69c",
+  "53bcf97ba0ccc33668fbb151fb68b2f187f95428430d8e36b74079e5c1cf64c6",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [

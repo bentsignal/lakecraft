@@ -4,6 +4,7 @@ import {
   COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
   POINTER_LOCK_ESCAPE_DEDUP_MS,
   createSinglePlayerPointerSessionState,
+  singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
   type SinglePlayerPointerSessionEvent,
   type SinglePlayerPointerSessionState,
@@ -102,31 +103,36 @@ for (const commandResultRendered of [false, true]) {
 
   // Rendering a command result changes chat data, not pointer-session state.
   const beforeClose = commandResultRendered ? { ...chatUnlocked.state } : chatUnlocked.state;
-  const close = run(beforeClose, { type: "close_command_escape", now: 1_100 });
+  const close = run(beforeClose, { type: "close_ui_escape", now: 1_100 });
   assert.equal(close.openPause, false, "one chat Escape closes without Game Menu");
-  assert.equal(close.requestPointerLock, false, "Escape returns to Click to Play instead of fighting Chrome's native unlock");
-  assert.equal(close.showCaptureAffordance, true);
+  assert.equal(close.requestPointerLock, false, "keydown waits until Chrome finishes its native Escape processing");
+  assert.equal(close.showCaptureAffordance, false, "closing chat never flashes Click to Play");
 
   const repeat = run(close.state, { type: "escape", now: 1_101, repeat: true, uiBlocked: false });
   assert.equal(repeat.openPause, false, "the held Escape repeat cannot spend the suppression token or pause");
-  const transientLock = run(repeat.state, { type: "lock_change", locked: true, now: 1_102, uiBlocked: false });
-  assert.equal(transientLock.state.intentionalReleasePending, true, "the token survives Chrome's intermediate locked callback");
-  const sameEscapeLoss = run(transientLock.state, { type: "lock_change", locked: false, now: 1_103, uiBlocked: false });
-  assert.equal(sameEscapeLoss.openPause, false, "the same Escape's native unlock is consumed exactly once");
-  assert.equal(sameEscapeLoss.state.pauseOpen, false);
-  assert.equal(sameEscapeLoss.state.intentionalReleasePending, false);
+  const recapturedByGameplay = run(repeat.state, { type: "lock_change", locked: true, now: 1_102, uiBlocked: false });
+  assert.equal(recapturedByGameplay.state.locked, true);
+  assert.equal(recapturedByGameplay.state.intentionalReleasePending, true,
+    "the suppression token survives silent gameplay recapture until delayed native loss is absent");
 }
 
-const closeThenClick = run(createSinglePlayerPointerSessionState(false), { type: "close_command_escape", now: 2_000 });
-const clicked = run(closeThenClick.state, { type: "resume" });
-const clickedLock = run(clicked.state, { type: "lock_change", locked: true, now: 2_010, uiBlocked: false });
-const ordinaryGameplayEscape = run(clickedLock.state, { type: "escape", now: 2_100, uiBlocked: false });
+for (const code of ["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ControlRight"]) {
+  assert.equal(singlePlayerSilentRecaptureKey(code), true, `${code} is an eligible gameplay activation`);
+}
+for (const code of ["Escape", "Slash", "KeyT", "Enter", "KeyE", "KeyQ"]) {
+  assert.equal(singlePlayerSilentRecaptureKey(code), false, `${code} cannot spend silent gameplay recapture`);
+}
+assert.equal(singlePlayerSilentRecaptureKey("KeyW", true), false, "key repeat cannot duplicate a lock request");
+
+const closeThenGameplay = run(createSinglePlayerPointerSessionState(false), { type: "close_ui_escape", now: 2_000 });
+const gameplayLock = run(closeThenGameplay.state, { type: "lock_change", locked: true, now: 2_010, uiBlocked: false });
+const ordinaryGameplayEscape = run(gameplayLock.state, { type: "escape", now: 2_100, uiBlocked: false });
 assert.equal(ordinaryGameplayEscape.openPause, true, "the next deliberate gameplay Escape still opens Game Menu");
 
-const rapidFirstClose = run(createSinglePlayerPointerSessionState(false), { type: "close_command_escape", now: 3_000 });
+const rapidFirstClose = run(createSinglePlayerPointerSessionState(false), { type: "close_ui_escape", now: 3_000 });
 const rapidReopen = run(rapidFirstClose.state, { type: "intentional_release" });
 assert.equal(rapidReopen.state.ignoreEscapeUntil, Number.NEGATIVE_INFINITY, "rapid reopen clears the prior close token");
-const rapidSecondClose = run(rapidReopen.state, { type: "close_command_escape", now: 3_010 });
+const rapidSecondClose = run(rapidReopen.state, { type: "close_ui_escape", now: 3_010 });
 assert.equal(
   rapidSecondClose.state.ignoreEscapeUntil,
   3_010 + COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
@@ -209,10 +215,27 @@ const chatEscapeClose = singlePlayerSource.slice(
   singlePlayerSource.indexOf("function closeCommandConsoleFromEscape"),
   singlePlayerSource.indexOf("function selectHotbar"),
 );
-assert.ok(chatEscapeClose.includes('type: "close_command_escape"'));
+assert.ok(chatEscapeClose.includes("armGameplayResumeAfterEscape"));
 assert.equal(chatEscapeClose.includes("requestGameplayPointerLock"), false,
-  "chat Escape does not synchronously reacquire a lock that Chrome immediately tears down");
+  "chat Escape cannot race Chrome with an impossible direct recapture request");
+assert.equal(singlePlayerSource.includes('type: "resume_after_escape_keyup"'), false,
+  "Escape itself is never treated as a Pointer Lock user activation");
+assert.match(singlePlayerSource, /silentPointerRecaptureRef\.current && singlePlayerSilentRecaptureKey[\s\S]{0,180}requestEnginePointerLock\(true\)/,
+  "the next eligible gameplay key silently requests capture without consuming its engine event");
+assert.ok(singlePlayerSource.includes("allowUnlockedKeyboardInput: () => silentPointerRecaptureRef.current"),
+  "the initiating movement key remains live while Chrome grants capture asynchronously");
+assert.ok(singlePlayerSource.includes('if (keyboardCode === "Escape") armGameplayResumeAfterEscape(performance.now())'),
+  "inventory Escape shares the same silent recapture state machine");
+assert.match(singlePlayerSource, /cancelRangedActionForEscape\(\)[\s\S]{0,300}armGameplayResumeAfterEscape/,
+  "bow Escape cancels the draw before arming silent gameplay recapture");
 assert.ok(singlePlayerSource.includes("Click to Play"), "failed handoff has one explicit pointer-capture affordance");
+const escapeArm = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("function armGameplayResumeAfterEscape"),
+  singlePlayerSource.indexOf("function warnWorldEditCapacity"),
+);
+assert.equal(escapeArm.includes("setPointerCaptureNeeded(true)"), false,
+  "Escape-close never exposes the blocking Click to Play interstitial");
+assert.ok(escapeArm.includes("silentPointerRecaptureRef.current = true"));
 assert.ok(
   singlePlayerSource.includes("onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}"),
   "Back to Game recaptures directly from its click callback",
@@ -226,9 +249,13 @@ const ongoingPause = singlePlayerSource.slice(
   singlePlayerSource.indexOf("const paused = singlePlayerGameplayPaused", singlePlayerSource.indexOf("engine.start();")),
   singlePlayerSource.indexOf("if (deathScreenOpen) setOptionsOpen(false)"),
 );
+assert.ok(singlePlayerSource.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
+  "only simulation-blocking world modals feed the pause predicate");
+assert.ok(singlePlayerSource.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+  "chat remains a UI/input blocker without freezing the simulation");
 assert.ok(ongoingPause.includes("pointerCaptureNeeded"), "denied capture remains an ongoing engine and fuse pause input");
 assert.ok(
-  ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, pointerCaptureNeeded]"),
+  ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded]"),
   "successful capture reruns the ongoing pause effect immediately",
 );
 const survivalSample = singlePlayerSource.slice(

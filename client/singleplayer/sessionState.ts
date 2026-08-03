@@ -30,11 +30,19 @@ export interface SinglePlayerPointerSessionState {
 
 export type SinglePlayerPointerSessionEvent =
   | { type: "escape"; now: number; repeat?: boolean; uiBlocked: boolean }
-  | { type: "close_command_escape"; now: number }
+  | { type: "close_ui_escape"; now: number }
   | { type: "intentional_release" }
   | { type: "lock_change"; locked: boolean; now: number; uiBlocked: boolean }
   | { type: "resume" }
   | { type: "set_pause"; open: boolean };
+
+/** Escape cannot activate Pointer Lock in Chrome; these keys can silently recapture and still play. */
+export function singlePlayerSilentRecaptureKey(code: string, repeat = false): boolean {
+  return !repeat && [
+    "KeyW", "KeyA", "KeyS", "KeyD", "Space",
+    "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight",
+  ].includes(code);
+}
 
 export interface SinglePlayerPointerSessionTransition {
   state: SinglePlayerPointerSessionState;
@@ -60,9 +68,12 @@ export function createSinglePlayerPointerSessionState(
  * Coordinates the two browser signals produced by Escape. Chromium commonly
  * reports keydown before pointerlockchange, while Firefox can report the lock
  * loss first. Both orderings must produce one pause transition. Escape from a
- * focused command input is different: Chrome can apply its native Pointer Lock
- * escape after the DOM key handler, so that one bounded UI action must suppress
- * the matching lock loss without suppressing the next gameplay Escape.
+ * focused gameplay layer is different: Chrome explicitly excludes Escape from
+ * user activation, so it cannot re-enter Pointer Lock. The layer closes into a
+ * live silent-recapture state and the next eligible gameplay activation grants
+ * capture while still performing its movement or canvas action. The bounded
+ * suppression token absorbs either lock-change ordering without suppressing the
+ * next ordinary gameplay Escape.
  */
 export function transitionSinglePlayerPointerSession(
   current: Readonly<SinglePlayerPointerSessionState>,
@@ -84,16 +95,13 @@ export function transitionSinglePlayerPointerSession(
     });
   }
 
-  if (event.type === "close_command_escape") {
-    return {
-      ...unchanged({
-        ...current,
-        pauseOpen: false,
-        intentionalReleasePending: true,
-        ignoreEscapeUntil: event.now + COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
-      }),
-      showCaptureAffordance: true,
-    };
+  if (event.type === "close_ui_escape") {
+    return unchanged({
+      ...current,
+      pauseOpen: false,
+      intentionalReleasePending: true,
+      ignoreEscapeUntil: event.now + COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS,
+    });
   }
 
   if (event.type === "set_pause") {

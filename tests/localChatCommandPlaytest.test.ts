@@ -112,6 +112,16 @@ assert.ok(commandOpenBranch.includes("event.stopImmediatePropagation();"), "chat
 assert.ok(commandOpenBranch.indexOf("event.stopImmediatePropagation();") < commandOpenBranch.indexOf("closeCommandConsoleFromEscape"));
 assert.ok(commandOpenBranch.includes("if (!event.repeat) closeCommandConsoleFromEscape(performance.now());"),
   "Escape repeat is consumed without repeated close or pointer-lock requests");
+assert.ok(app.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
+  "chat is excluded from the true simulation-pause modal boundary");
+assert.ok(app.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+  "chat still hides gameplay UI and blocks pointer-session loss handling");
+const ongoingPauseStart = app.indexOf("const paused = singlePlayerGameplayPaused", app.indexOf("engine.start();"));
+const ongoingPausePredicate = app.slice(ongoingPauseStart, app.indexOf("});", ongoingPauseStart) + 3);
+assert.equal(ongoingPausePredicate.includes("commandOpen"), false,
+  "open chat never freezes world time, mobs, TNT, or the retained render loop");
+assert.ok(app.includes("|| commandOpen || pointerCaptureNeeded"),
+  "chat can still hide the held viewmodel without pausing simulation");
 const shortcutBranch = app.slice(app.indexOf("const commandShortcutDraft"), app.indexOf('if (event.code === "KeyQ"'));
 assert.ok(shortcutBranch.includes("inventoryOpen || worldModalOpen || deathScreenOpen"), "higher-priority modals fence every chat shortcut");
 assert.ok(shortcutBranch.includes("setCommandDraft(commandShortcutDraft)"));
@@ -120,5 +130,12 @@ const timeBranch = app.slice(app.indexOf('if (parsed.command.kind === "time")'),
 assert.ok(timeBranch.includes("engine.setDayNightClock"));
 assert.ok(timeBranch.includes("markWorldDirty()"));
 assert.equal(/useQuery|useMutation|client\.|fetch\(/.test(timeBranch), false, "local time execution adds zero Lakebed traffic");
+const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const clockSetter = engineSource.slice(
+  engineSource.indexOf("setDayNightClock(config"),
+  engineSource.indexOf("setPaused(nextPaused)"),
+);
+assert.match(clockSetter, /worldTimeMs = Date\.now\(\) \+ serverTimeOffsetMs;[\s\S]{0,180}render\(now, 0, now\)/,
+  "a successful /time command visibly renders its new clock phase while chat remains open");
 
 console.log("local chat/command playtest regression tests passed");

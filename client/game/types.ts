@@ -388,6 +388,8 @@ export interface VoxelEngineOptions {
   canCreativeFly?: () => boolean;
   /** Offline Creative players are omitted from hostile AI acquisition and projectile collision. */
   canMobsTargetPlayer?: () => boolean;
+  /** Browser-security fallback allowing movement keys while silent pointer recapture is armed. */
+  allowUnlockedKeyboardInput?: () => boolean;
   /** Local posture feedback for survival exertion and UI; never adds a network write. */
   onMovementModeChange?: (mode: PlayerMovementMode, activityMultiplier: number) => void;
   /** Discrete first-person swing/use feedback; never emitted from the frame loop. */
@@ -464,6 +466,8 @@ export interface VoxelEngine {
   /** Freezes local movement, simulation, combat, fuses, particles, and world time. */
   setPaused(paused: boolean): boolean;
   isPaused(): boolean;
+  /** Cancels an active bow draw without firing or spending inventory. */
+  cancelRangedActionForEscape(): boolean;
   setRespawnPoint(point: RespawnPoint): void;
   /** Reconciles local prediction to one Lakebed-authoritative health value. */
   setPlayerHealth(health: number): number;
@@ -484,6 +488,7 @@ export interface VoxelEngine {
   /** Read-only local material lookup for discrete offline authority checks. */
   getBlockAt(x: number, y: number, z: number): BlockId;
   getPerformanceStats(): VoxelPerformanceStats;
-  requestPointerLock(): void;
+  /** Resolves after the browser either grants or rejects canvas pointer capture. */
+  requestPointerLock(): Promise<boolean>;
   respawn(): void;
 }

@@ -145,6 +145,7 @@ assert.ok(drawer.includes("Object.values(ITEMS)"), "catalog derives from the can
 assert.ok(drawer.includes("takeCreativeCatalogStack(stateRef.current"), "catalog clicks use the shared cursor workspace");
 assert.ok(drawer.includes("insertCreativeCatalogStack(stateRef.current"), "modifier clicks use the shared slot-addressed workspace");
 assert.equal(drawer.includes("onCreativePick"), false, "catalog picks never bypass the workspace to overwrite the selected hotbar slot");
-assert.ok(drawer.includes('if (!commitWorkspace()) return;\n    onClose();'), "Creative and Survival both commit one stowed workspace on close");
+assert.ok(drawer.includes('if (!commitWorkspace()) return;\n    onClose(keyboardCode);'),
+  "Creative and Survival both commit one stowed workspace before reporting the close key");
 
 console.log("creative mode playtest regression checks passed");

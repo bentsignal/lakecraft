@@ -88,7 +88,7 @@ xworld-browser-title|1 xworld-dialog-title|1 xh__disconnect|1 xpencil-note|1
 xf__number|1 xp-loading|1 xf__arrow|1 xe-error|3 xf-list|1 xj-icon|1 xw-row|1
 xy-grid|8 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|11 xy-workspace|3 xy-pane|7
 xy-pane--player|3 xy-pane--catalog|1 xy-switch|6 xy-grid-wrap|3 xy-armor|3
-xy-catalog|2 xy-help|2 xy-player|2
+xy-catalog|2 xy-help|2 xy-player|2 xsilent-recapture|2
 `);
 
 const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
