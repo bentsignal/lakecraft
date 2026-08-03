@@ -96,6 +96,7 @@ import {
   stepMobSimulation,
   writeMobPoseSnapshots,
   writeMobProjectileSnapshots,
+  LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX,
   MOB_DEFINITIONS,
   type MobPoseSnapshot,
   type MobProjectileSnapshot,
@@ -559,6 +560,15 @@ export function sampleCachedMobLocalLight(
     clampNumber(skyExposure, 0, SKY_EXPOSURE_LEVELS) / SKY_EXPOSURE_LEVELS * clampNumber(sunIntensity, 0, 1),
     torchLight,
   );
+}
+
+export function shouldRefreshLocalHostileHabitat(
+  currentLight: number,
+  mobDistance: number,
+  replacementDistance: number,
+): boolean {
+  return currentLight >= LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX
+    || replacementDistance + 4 < mobDistance;
 }
 
 // The color and terrain programs intentionally share this source fragment at
@@ -2605,7 +2615,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           if (mobDistance < 12) return false;
           const currentLight = cachedMobLocalLight(mob.kind, mob.homeX, mob.homeY + 1, mob.homeZ);
           const replacementDistance = Math.hypot(replacement.x - pose.x, replacement.z - pose.z);
-          return currentLight >= LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX || replacementDistance + 4 < mobDistance;
+          return shouldRefreshLocalHostileHabitat(currentLight, mobDistance, replacementDistance);
         });
       }
     }
