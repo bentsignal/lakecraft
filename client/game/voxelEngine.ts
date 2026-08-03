@@ -1564,6 +1564,56 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       z,
     );
   }
+
+  function getBlock(x: number, y: number, z: number): BlockId {
+    if (y < TERRAIN_MIN_Y) return BLOCK.STONE;
+    return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
+  }
+
+  function localMobSpawnY(kind: keyof typeof MOB_DEFINITIONS, x: number, surfaceY: number, z: number, attempt: number): number {
+    if (MOB_DEFINITIONS[kind].passive || (attempt & 1) !== 0) return surfaceY;
+    const clearCells = Math.max(1, Math.ceil(MOB_DEFINITIONS[kind].height));
+    for (let y = surfaceY - 2; y > TERRAIN_MIN_Y; y -= 1) {
+      if (!blockSupportsPlayerFeet(getBlock(x, y - 1, z))) continue;
+      let clear = true;
+      for (let offset = 0; offset < clearCells; offset += 1) {
+        if (getBlock(x, y + offset, z) !== BLOCK.AIR) { clear = false; break; }
+      }
+      if (clear) return y;
+    }
+    return surfaceY;
+  }
+
+  function findNearestCave(): readonly [number, number, number] | null {
+    const originX = Math.floor(pose.x);
+    const originY = Math.floor(pose.y);
+    const originZ = Math.floor(pose.z);
+    let bestX = 0;
+    let bestY = 0;
+    let bestZ = 0;
+    let bestDistanceSquared = Infinity;
+    const radius = 32;
+    for (let x = originX - radius; x <= originX + radius; x += 1) {
+      for (let z = originZ - radius; z <= originZ + radius; z += 1) {
+        if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
+        const horizontalSquared = (x - originX) ** 2 + (z - originZ) ** 2;
+        if (horizontalSquared > radius * radius || horizontalSquared >= bestDistanceSquared) continue;
+        const surfaceY = terrainHeight(x, z, seed) + 1;
+        for (let y = surfaceY - 2; y > TERRAIN_MIN_Y; y -= 1) {
+          if (getBlock(x, y, z) !== BLOCK.AIR || getBlock(x, y + 1, z) !== BLOCK.AIR
+            || !blockSupportsPlayerFeet(getBlock(x, y - 1, z))
+            || skyExposureLevel(skyOccluderColumns, x, y + 1, z) !== 0) continue;
+          const distanceSquared = horizontalSquared + (y - originY) ** 2;
+          if (distanceSquared >= bestDistanceSquared) continue;
+          bestDistanceSquared = distanceSquared;
+          bestX = x;
+          bestY = y;
+          bestZ = z;
+        }
+      }
+    }
+    return Number.isFinite(bestDistanceSquared) ? [bestX, bestY, bestZ] : null;
+  }
   const chunkMeshes = new Map<string, ChunkMesh>();
   const visibleMeshes: ChunkMesh[] = [];
   const transparentMeshes: ChunkMesh[] = [];
@@ -1575,6 +1625,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     centerX: localMobStreaming ? mobStreamingCenterX : 0,
     centerZ: localMobStreaming ? mobStreamingCenterZ : 0,
     terrainHeight: (x, z) => terrainHeight(x, z, seed),
+    resolveSpawnY: localMobSpawnY,
     passivePopulation: clampNumber(Math.floor(radius / 2), 6, 12),
     hostilePopulation: clampNumber(Math.floor(radius / 5), 2, 5),
     maxPopulation: 17,
@@ -1924,11 +1975,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       mobIds = listMobIds(mobSimulation);
     }
   }
-
-  const getBlock = (x: number, y: number, z: number): BlockId => {
-    if (y < TERRAIN_MIN_Y) return BLOCK.STONE;
-    return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
-  };
 
   function setBlock(x: number, y: number, z: number, block: BlockId): boolean {
     const key = blockKey(x, y, z);
@@ -3986,6 +4032,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (![x, y, z].every(Number.isSafeInteger)) return BLOCK.AIR;
       return getBlock(x, y, z);
     },
+    findNearestCave,
     getBedAt(x, y, z) {
       if (![x, y, z].every(Number.isSafeInteger)) return null;
       return getStoredBedAt(x, y, z);

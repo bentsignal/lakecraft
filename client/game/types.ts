@@ -523,6 +523,8 @@ export interface VoxelEngine {
   getTarget(): BlockTarget | null;
   /** Read-only local material lookup for discrete offline authority checks. */
   getBlockAt(x: number, y: number, z: number): BlockId;
+  /** Bounded local scan used only by the creative cave-testing command. */
+  findNearestCave(): readonly [x: number, y: number, z: number] | null;
   /** Returns a detached directional structure when this cell belongs to a paired local bed. */
   getBedAt(x: number, y: number, z: number): BedStructure | null;
   /** Stable detached metadata written beside ordinary BED edits in the local save journal. */

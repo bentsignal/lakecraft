@@ -678,6 +678,13 @@ function SinglePlayerWorld({
       appendCommandMessage(`Time set to ${parsed.command.time}.`, "system");
       return;
     }
+    if (parsed.command.kind === "locate") {
+      const cave = engineRef.current?.findNearestCave() ?? null;
+      appendCommandMessage(cave
+        ? `Nearest loaded cave floor: ${cave[0]}, ${cave[1]}, ${cave[2]}.`
+        : "No cave was found within 32 blocks of the loaded world.", cave ? "system" : "warning");
+      return;
+    }
     const granted = giveLocalItem(inventoryRef.current, parsed.command.itemId, parsed.command.count);
     if (!granted.ok) {
       appendCommandMessage(granted.message, "warning");

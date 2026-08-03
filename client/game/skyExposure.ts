@@ -5,7 +5,9 @@ import { WORLD_EDIT_MAX_Y } from "../../shared/worldChunks.ts";
 
 export const SKY_EXPOSURE_LEVELS = 3;
 export const SKY_EXPOSURE_SPILL_RADIUS = 2;
-export const CAVE_LIGHT_FLOOR = 0.055;
+// Fully roofed terrain stays hostile-spawn dark, but is still barely readable
+// without a torch on ordinary displays.
+export const CAVE_LIGHT_FLOOR = 0.10;
 export const SKY_SHADE_PACK_MARKER = 8;
 export const SKY_SHADE_EMISSIVE_MARKER = 16;
 

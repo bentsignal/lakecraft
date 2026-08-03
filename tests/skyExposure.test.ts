@@ -56,7 +56,8 @@ assert.equal(skyLitIntensity(0.24, 0), CAVE_LIGHT_FLOOR,
 assert.equal(skyLitIntensity(1.0, 3), 1);
 assert.equal(skyLitIntensity(0.24, 3), 0.24);
 assert.ok(skyLitIntensity(1.0, 2) > skyLitIntensity(1.0, 1), "entrance levels transition monotonically");
-assert.ok(CAVE_LIGHT_FLOOR < 0.08, "the fixed cave floor remains substantially dark");
+assert.ok(CAVE_LIGHT_FLOOR >= 0.09 && CAVE_LIGHT_FLOOR <= 0.12,
+  "the fixed cave floor remains dark but does not collapse to pitch black");
 
 for (const faceShade of [0.52, 0.68, 0.73, 0.79, 0.88, 1]) {
   for (let exposure = 0; exposure <= SKY_EXPOSURE_LEVELS; exposure += 1) {

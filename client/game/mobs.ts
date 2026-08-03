@@ -175,6 +175,8 @@ export interface MobSpawnOptions {
   centerX?: number;
   centerZ?: number;
   terrainHeight: (x: number, z: number) => number;
+  /** Optional deterministic surface/cave floor selection for one candidate. */
+  resolveSpawnY?: (kind: MobKind, x: number, surfaceY: number, z: number, attempt: number) => number;
   /** Final collision/ground veto supplied by the world implementation. */
   isSpawnable?: (kind: MobKind, x: number, y: number, z: number) => boolean;
   /** Cached normalized local light sampled only while generating spawn candidates. */
@@ -630,7 +632,10 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
     if (Math.max(Math.abs(x - centerX), Math.abs(z - centerZ)) <= clearRadius) continue;
     const key = `${x},${z}`;
     if (occupied.has(key) || !hasSafeSlope(options.terrainHeight, x, z)) continue;
-    const y = options.terrainHeight(x, z) + 1;
+    const surfaceY = options.terrainHeight(x, z) + 1;
+    const resolvedY = options.resolveSpawnY?.(kind, x, surfaceY, z, attempt) ?? surfaceY;
+    if (!Number.isFinite(resolvedY)) continue;
+    const y = Math.floor(resolvedY);
     if (options.isSpawnable && !options.isSpawnable(kind, x, y, z)) continue;
     if (!MOB_DEFINITIONS[kind].passive && options.localLight
       && options.localLight(kind, x, y + MOB_DEFINITIONS[kind].height * 0.75, z)

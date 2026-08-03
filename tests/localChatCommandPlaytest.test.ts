@@ -98,6 +98,7 @@ const deniedTime = parseLocalCommand("/time set day", { changeGameMode: true, gi
 assert.equal(deniedTime.ok, false);
 if (!deniedTime.ok) assert.equal(deniedTime.code, "permission");
 assert.ok(LOCAL_COMMAND_HELP.includes("/time set <day|night>"));
+assert.ok(LOCAL_COMMAND_HELP.includes("/locate cave"));
 
 const worldTimeMs = 1_750_000_123_456;
 const clientNowMs = 1_750_000_000_000;
@@ -195,6 +196,7 @@ assert.ok(timeBranch.includes("engine.setDayNightClock"));
 assert.ok(timeBranch.includes("markWorldDirty()"));
 assert.equal(/useQuery|useMutation|client\.|fetch\(/.test(timeBranch), false, "local time execution adds zero Lakebed traffic");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+assert.ok(app.includes("engineRef.current?.findNearestCave()"), "the cave command uses a bounded local engine scan");
 const clockSetter = engineSource.slice(
   engineSource.indexOf("setDayNightClock(config"),
   engineSource.indexOf("setPaused(nextPaused)"),

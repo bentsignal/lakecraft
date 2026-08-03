@@ -38,6 +38,8 @@ assert.deepEqual(parseLocalCommand("/give bow"), {
   ok: true,
   command: { kind: "give", itemId: "bow", count: 1 },
 });
+assert.deepEqual(parseLocalCommand("/locate cave"), { ok: true, command: { kind: "locate", feature: "cave" } });
+assert.equal(parseLocalCommand("/locate village").ok, false);
 assert.equal(parseLocalCommand("give dirt").ok, false, "slash syntax is mandatory and deterministic");
 assert.equal(parseLocalCommand("/give not_an_item").ok, false, "the canonical item catalog rejects unknown IDs");
 assert.equal(parseLocalCommand("/give dirt 1.5").ok, false);

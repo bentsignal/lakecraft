@@ -95,6 +95,13 @@ const spawnOptions = {
 };
 const darkSpawns = createMobSpawns({ ...spawnOptions, localLight: () => LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX - 0.01 });
 assert.equal(darkSpawns.length, 4, "all four hostile slots can populate a valid dark area");
+const caveSpawns = createMobSpawns({
+  ...spawnOptions,
+  resolveSpawnY: (_kind, _x, surfaceY, _z, attempt) => (attempt & 1) === 0 ? surfaceY - 8 : surfaceY,
+  localLight: (_kind, _x, y) => y < -1 ? 0 : 1,
+});
+assert.equal(caveSpawns.length, 4, "bright daytime surfaces retry into deterministic dark cave floors");
+assert.ok(caveSpawns.every((candidate) => candidate.y === -7), "accepted daytime hostile homes stay underground");
 assert.equal(createMobSpawns({ ...spawnOptions, localLight: () => LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX }).length, 0,
   "the exact bright threshold rejects new surface hostiles");
 const streamed = createMobSimulation(darkSpawns);

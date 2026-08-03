@@ -32,6 +32,7 @@ export const LOCAL_COMMAND_HELP = [
   "/gamemode <survival|creative>",
   "/give <item> [count]",
   "/time set <day|night>",
+  "/locate cave",
 ] as const;
 
 export type LocalTimePreset = keyof typeof LOCAL_TIME_PHASES;
@@ -40,7 +41,8 @@ export type ParsedLocalCommand =
   | { kind: "help" }
   | { kind: "gamemode"; mode: LocalGameMode }
   | { kind: "give"; itemId: ItemId; count: number }
-  | { kind: "time"; time: LocalTimePreset };
+  | { kind: "time"; time: LocalTimePreset }
+  | { kind: "locate"; feature: "cave" };
 
 export type LocalCommandParseResult =
   | { ok: true; command: ParsedLocalCommand }
@@ -123,6 +125,11 @@ export function parseLocalCommand(
       return { ok: false, code: "usage", message: "Usage: /time set <day|night>" };
     }
     return { ok: true, command: { kind: "time", time: tokens[1] } };
+  }
+  if (name === "locate") {
+    return tokens.length === 1 && tokens[0] === "cave"
+      ? { ok: true, command: { kind: "locate", feature: "cave" } }
+      : { ok: false, code: "usage", message: "Usage: /locate cave" };
   }
   return {
     ok: false,
