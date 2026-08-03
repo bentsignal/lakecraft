@@ -69,6 +69,9 @@ export const SPRINT_SPEED = 5.6;
 export const SNEAK_SPEED = 1.3;
 export const SPRINT_HUNGER_THRESHOLD = 6;
 export const CREATIVE_FLIGHT_SPEED = 7;
+/** Ctrl-flight is deliberately faster than ordinary flight without becoming teleport-like. */
+export const CREATIVE_FLIGHT_SPRINT_RATIO = 1.6;
+export const CREATIVE_FLIGHT_SPRINT_SPEED = CREATIVE_FLIGHT_SPEED * CREATIVE_FLIGHT_SPRINT_RATIO;
 export const CREATIVE_FLIGHT_DOUBLE_TAP_MS = 300;
 
 export interface CreativeFlightTapState {
@@ -99,6 +102,23 @@ export function transitionCreativeFlightTap(
 export function creativeFlightVerticalVelocity(ascend: boolean, descend: boolean): number {
   if (ascend === descend) return 0;
   return ascend ? CREATIVE_FLIGHT_SPEED : -CREATIVE_FLIGHT_SPEED;
+}
+
+/** Resolves normalized horizontal Creative flight; every non-zero direction may accelerate. */
+export function resolveCreativeFlightMovement(
+  forward: number,
+  strafe: number,
+  sprintHeld: boolean,
+): ResolvedPlayerMovement {
+  const normalized = normalizeMovementInput(forward, strafe);
+  const accelerated = sprintHeld && normalized.magnitude > 0;
+  const mode: PlayerMovementMode = normalized.magnitude === 0 ? "idle" : accelerated ? "sprint" : "walk";
+  return {
+    ...normalized,
+    mode,
+    speed: accelerated ? CREATIVE_FLIGHT_SPRINT_SPEED : CREATIVE_FLIGHT_SPEED,
+    activityMultiplier: movementActivityMultiplier(mode, normalized.magnitude > 0),
+  };
 }
 
 export const STANDING_EYE_HEIGHT = PLAYER_STANDING_EYE_HEIGHT;
