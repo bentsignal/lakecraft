@@ -55,8 +55,8 @@ assert.equal(stats[0], 216, "apple/stem/leaf geometry remains compact and solid"
 
 renderer[3]("bow", BLOCK.AIR);
 renderer[4](true, 1);
-assert.equal(stats[0], 432, "full bow pose includes solid limbs, string, arrow, and arm under the 18-box ceiling");
-assert.equal(stats[3], 10_368, "largest staged pose upload remains below 11 KiB");
+assert.equal(stats[0], 360, "full bow pose is ten solid bow/string/arrow boxes without an unrelated arm");
+assert.equal(stats[3], 8_640, "largest staged bow upload remains below 9 KiB");
 
 const retainedPose = new Float32Array([9, 9, 9, 9, 9, 9]);
 const idle = sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS, false, false);
@@ -117,6 +117,13 @@ assert.strictEqual(renderer[6](retainedMvp, projection, 1_000, false), retainedM
   "visible-frame MVP sampling writes into caller-owned matrix storage");
 assert.strictEqual(renderer[6](retainedMvp, projection, 1_016, true), retainedMvp,
   "reduced-motion frames reuse the same matrix storage");
+
+const narrowProjection = new Float32Array(projection);
+narrowProjection[0] = 2;
+narrowProjection[5] = 1;
+renderer[6](retainedMvp, narrowProjection, 1_016, false);
+assert.ok(Math.abs(retainedMvp[0]) <= 0.49,
+  "portrait viewmodels clamp horizontal projection to a square aspect without changing world FOV");
 
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
   renderer[3](itemId, BLOCK.AIR);

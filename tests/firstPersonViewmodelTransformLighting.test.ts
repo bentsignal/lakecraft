@@ -99,7 +99,8 @@ assert.equal([...gl.allocations.values()].reduce((total, bytes) => total + bytes
 const colorBuffer = renderer[0] as unknown as object;
 const texturedBuffer = renderer[1] as unknown as object;
 const mvp = new Float32Array(16);
-for (const [width, height] of [[1_280, 720], [800, 720]] as const) {
+const viewportBounds: Array<{ viewport: string; width: number; height: number }> = [];
+for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const) {
   renderer[3](null, BLOCK.AIR);
   renderer[6](mvp, perspective(width / height), 0, false);
   const emptyBounds = ndcBounds(gl.uploads.get(colorBuffer)!, mvp);
@@ -116,10 +117,18 @@ for (const [width, height] of [[1_280, 720], [800, 720]] as const) {
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
   assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < -0.08,
     `${width}x${height} held block leaves the crosshair's horizontal lane clear`);
+  assert.ok(blockBounds.maxX < 0.82 && blockBounds.minY > -0.95,
+    `${width}x${height} held atlas cube stays clear of the right and bottom screen edges`);
   assert.ok(blockBounds.maxX - blockBounds.minX < 0.58
     && blockBounds.maxY - blockBounds.minY < 0.62,
-  `${width}x${height} held atlas cube cannot cover most of the world`);
+  `${width}x${height} held atlas cube cannot cover most of the world: ${JSON.stringify(blockBounds)}`);
+  viewportBounds.push({
+    viewport: `${width}x${height}`,
+    width: Number((blockBounds.maxX - blockBounds.minX).toFixed(6)),
+    height: Number((blockBounds.maxY - blockBounds.minY).toFixed(6)),
+  });
 }
+console.log(JSON.stringify({ benchmark: "held atlas cube NDC bounds", samples: viewportBounds }));
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const viewmodelPassStart = engine.indexOf("if (!firstPersonFeedbackHidden && !paused && playerHealth > 0)");
@@ -138,6 +147,21 @@ assert.ok(activeLightingPass.includes("dayNightState.ambientR")
   && activeLightingPass.includes("terrainAmbientIntensityLocation")
   && activeLightingPass.includes("ambientIntensityLocation"),
   "both programs retain the active world daylight uniforms into the viewmodel pass");
+assert.ok(activeLightingPass.includes("terrainSkyExposureLocation, 1")
+  && activeLightingPass.includes("skyExposureLocation, 1"),
+  "ordinary world geometry keeps its authored per-vertex exposure normalized");
+assert.ok(engine.includes("updateFirstPersonSkyExposure(eye)")
+  && engine.includes("skyExposureLevel(skyOccluderColumns, blockX, blockY, blockZ)"),
+  "the retained eye-cell signal comes from cached scene sky-occluder columns");
+const exposureUpdate = engine.slice(
+  engine.indexOf("function updateFirstPersonSkyExposure"),
+  engine.indexOf("function getPerformanceStats"),
+);
+assert.equal(exposureUpdate.includes("getBlock("), false, "viewmodel exposure never scans terrain blocks");
+assert.equal(exposureUpdate.includes("new "), false, "unchanged per-frame exposure sampling allocates no objects");
+assert.ok(viewmodelPass.includes("terrainSkyExposureLocation, viewmodelSkyExposure")
+  && viewmodelPass.includes("skyExposureLocation, viewmodelSkyExposure"),
+  "textured blocks and solid arms/tools receive the same bounded viewmodel exposure");
 assert.ok(viewmodelPass.includes("gl.uniform4fv(torchLightsLocation, firstPersonTorchUniforms)")
   && viewmodelPass.includes("gl.uniform1f(lightingLocation, 1)"),
   "solid arm and item geometry enables scene lighting with camera-local torches");
