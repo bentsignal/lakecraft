@@ -626,8 +626,10 @@ export function blockOccludesFaces(block: BlockId): boolean {
 }
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
-export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
-  return (block === BLOCK.GLASS && neighbor === BLOCK.GLASS) || blockOccludesFaces(neighbor);
+export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId, face?: BlockFace): boolean {
+  return (block === BLOCK.BEDROCK && face === "bottom")
+    || (block === BLOCK.GLASS && neighbor === BLOCK.GLASS)
+    || blockOccludesFaces(neighbor);
 }
 
 /** Stable far-to-near key order for the bounded per-chunk transparent pass. */
@@ -2253,7 +2255,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const variation = blockMaterialVariation(x, y, z);
       for (const face of FACE_DEFS) {
         const neighbor = getBlock(x + face[1], y + face[2], z + face[3]);
-        if (blockFaceIsOccluded(block, neighbor)) continue;
+        if (blockFaceIsOccluded(block, neighbor, face[0])) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
           appendTexturedBlockFace(
@@ -2365,6 +2367,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function collides(x: number, y: number, z: number, bodyHeight = cameraPosture.bodyHeight): boolean {
+    // Fail closed even if a corrupted/partial chunk ever omitted its generated bedrock cell.
+    if (y < TERRAIN_MIN_Y + 1) return true;
     const halfWidth = 0.29;
     const minX = Math.floor(x - halfWidth);
     const maxX = Math.floor(x + halfWidth);

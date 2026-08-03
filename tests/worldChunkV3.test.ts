@@ -21,7 +21,7 @@ import {
 
 assert.equal(WORLD_EDIT_MIN_XZ, -1_000_000);
 assert.equal(WORLD_EDIT_MAX_XZ, 1_000_000);
-assert.equal(WORLD_EDIT_MIN_Y, -24);
+assert.equal(WORLD_EDIT_MIN_Y, 0);
 assert.equal(WORLD_EDIT_MAX_Y, 128);
 assert.equal(WORLD_CHUNK_SECTION_HEIGHT, 8);
 assert.equal(WORLD_CHUNK_CODEC_VERSION, 4);
@@ -43,15 +43,15 @@ assert.deepEqual(validateVisibleWorldChunkKeys(["125000:-125000"]), {
 
 const farChunkKey = worldEditChunkKey(WORLD_EDIT_MAX_XZ, WORLD_EDIT_MIN_XZ);
 const sparseFar = createWorldChunkSnapshot(farChunkKey, [
-  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y, z: WORLD_EDIT_MIN_XZ, blockType: "diamond_ore" },
-  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y, z: WORLD_EDIT_MIN_XZ + 1, blockType: "gold_ore" },
+  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y + 1, z: WORLD_EDIT_MIN_XZ, blockType: "diamond_ore" },
+  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y + 1, z: WORLD_EDIT_MIN_XZ + 1, blockType: "gold_ore" },
   { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MAX_Y, z: WORLD_EDIT_MIN_XZ, blockType: "glass" },
 ]);
 assert.equal(sparseFar.ok, true);
 if (!sparseFar.ok) throw new Error(sparseFar.reason);
 const sparseJson = JSON.parse(sparseFar.snapshotJson) as { v: number; sections: Array<{ y: number; cells: string }> };
 assert.equal(sparseJson.v, 4);
-assert.deepEqual(sparseJson.sections.map((section) => section.y), [-3, 16]);
+assert.deepEqual(sparseJson.sections.map((section) => section.y), [0, 16]);
 assert.ok(sparseFar.snapshotJson.length < 1_200, `two sparse v4 sections were ${sparseFar.snapshotJson.length} bytes`);
 const sparseDecoded = decodeWorldChunkSnapshot(farChunkKey, sparseFar.snapshotJson);
 assert.equal(sparseDecoded.ok, true);
@@ -59,8 +59,8 @@ if (sparseDecoded.ok) {
   assert.deepEqual(
     sparseDecoded.edits.map(({ coordKey, blockType }) => [coordKey, blockType]),
     [
-      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y}:${WORLD_EDIT_MIN_XZ}`, "diamond_ore"],
-      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y}:${WORLD_EDIT_MIN_XZ + 1}`, "gold_ore"],
+      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y + 1}:${WORLD_EDIT_MIN_XZ}`, "diamond_ore"],
+      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y + 1}:${WORLD_EDIT_MIN_XZ + 1}`, "gold_ore"],
       [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MAX_Y}:${WORLD_EDIT_MIN_XZ}`, "glass"],
     ],
   );
@@ -68,7 +68,7 @@ if (sparseDecoded.ok) {
 
 const appended = applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
   x: WORLD_EDIT_MAX_XZ,
-  y: 0,
+  y: 2,
   z: WORLD_EDIT_MIN_XZ,
   blockType: "coal_ore",
 });
@@ -91,7 +91,7 @@ assert.equal(applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
 }).ok, false);
 
 const dense: WorldChunkEditInput[] = [];
-for (let y = WORLD_EDIT_MIN_Y; y <= WORLD_EDIT_MAX_Y; y += 1) {
+for (let y = WORLD_EDIT_MIN_Y + 1; y <= WORLD_EDIT_MAX_Y; y += 1) {
   for (let z = 0; z < 8; z += 1) {
     for (let x = 0; x < 8; x += 1) dense.push({ x, y, z, blockType: "stone" });
   }
@@ -102,7 +102,7 @@ const denseEncodeMs = performance.now() - denseStartedAt;
 assert.equal(denseSnapshot.ok, true);
 if (!denseSnapshot.ok) throw new Error(denseSnapshot.reason);
 const denseParsed = JSON.parse(denseSnapshot.snapshotJson) as { v: number; sections: Array<{ y: number }> };
-assert.equal(denseParsed.sections.length, 20, "the -24..128 envelope occupies twenty bounded vertical sections");
+assert.equal(denseParsed.sections.length, 17, "the writable y=1..128 envelope occupies seventeen bounded vertical sections");
 assert.ok(denseSnapshot.snapshotJson.length < MAX_WORLD_CHUNK_SNAPSHOT_BYTES);
 const denseDecodeStartedAt = performance.now();
 const denseDecoded = decodeWorldChunkSnapshot("0:0", denseSnapshot.snapshotJson);
@@ -118,13 +118,13 @@ const legacyYZeroIndex = 4 * 64;
 legacyV1[legacyYZeroIndex >> 1] = 4; // code 4 = stone
 const legacyV1Json = JSON.stringify({ v: 1, cells: Buffer.from(legacyV1).toString("base64") });
 assert.equal(decodeWorldChunkSnapshot("0:0", legacyV1Json).ok, true);
-const migratedV1 = applyWorldChunkEdit("0:0", legacyV1Json, { x: 1, y: -24, z: 0, blockType: "coal_ore" });
+const migratedV1 = applyWorldChunkEdit("0:0", legacyV1Json, { x: 1, y: 1, z: 0, blockType: "coal_ore" });
 assert.equal(migratedV1.ok, true);
 if (migratedV1.ok) {
   assert.equal(JSON.parse(migratedV1.snapshotJson).v, 4);
   const decoded = decodeWorldChunkSnapshot("0:0", migratedV1.snapshotJson);
   assert.equal(decoded.ok, true);
-  if (decoded.ok) assert.deepEqual(decoded.edits.map(({ coordKey }) => coordKey), ["1:-24:0", "0:0:0"]);
+  if (decoded.ok) assert.deepEqual(decoded.edits.map(({ coordKey }) => coordKey), ["1:1:0"]);
 }
 
 // v2 used the same fixed y range with five-bit palette codes.
@@ -140,14 +140,14 @@ setFiveBit(legacyV2, legacyYZeroIndex + 1, 20); // code 20 = glass
 const legacyV2Json = JSON.stringify({ v: 2, cells: Buffer.from(legacyV2).toString("base64") });
 const legacyV2Decoded = decodeWorldChunkSnapshot("0:0", legacyV2Json);
 assert.equal(legacyV2Decoded.ok, true);
-if (legacyV2Decoded.ok) assert.equal(legacyV2Decoded.edits[0]?.blockType, "glass");
+if (legacyV2Decoded.ok) assert.equal(legacyV2Decoded.edits.length, 0, "legacy y=0 edits are hidden by canonical bedrock");
 const migratedV2 = applyWorldChunkEdit("0:0", legacyV2Json, { x: 2, y: 128, z: 0, blockType: "torch" });
 assert.equal(migratedV2.ok, true);
 if (migratedV2.ok) assert.equal(JSON.parse(migratedV2.snapshotJson).v, 4);
 
 // v3 introduced sparse vertical sections but retained five-bit palette codes.
 const legacyV3Section = new Uint8Array(Math.ceil(8 * 8 * 8 * 5 / 8));
-setFiveBit(legacyV3Section, 0, 31); // code 31 = stone brick slab
+setFiveBit(legacyV3Section, 64, 31); // code 31 = stone brick slab at y=1
 const legacyV3Json = JSON.stringify({
   v: 3,
   sections: [{ y: 0, cells: Buffer.from(legacyV3Section).toString("base64") }],
@@ -155,7 +155,7 @@ const legacyV3Json = JSON.stringify({
 const legacyV3Decoded = decodeWorldChunkSnapshot("0:0", legacyV3Json);
 assert.equal(legacyV3Decoded.ok, true);
 if (legacyV3Decoded.ok) assert.equal(legacyV3Decoded.edits[0]?.blockType, "stone_brick_slab");
-const migratedV3 = applyWorldChunkEdit("0:0", legacyV3Json, { x: 1, y: 0, z: 0, blockType: "torch" });
+const migratedV3 = applyWorldChunkEdit("0:0", legacyV3Json, { x: 1, y: 2, z: 0, blockType: "torch" });
 assert.equal(migratedV3.ok, true);
 if (migratedV3.ok) {
   assert.equal(JSON.parse(migratedV3.snapshotJson).v, 4);

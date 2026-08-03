@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { blockHasCollision } from "../client/game/voxelEngine.ts";
+import { blockFaceIsOccluded, blockHasCollision } from "../client/game/voxelEngine.ts";
 import {
   materializeTerrainChunk,
   planLocalCreeperExplosion,
@@ -8,10 +8,12 @@ import {
 } from "../client/game/voxelEngine.ts";
 import {
   TERRAIN_MIN_Y,
+  TERRAIN_Y_OFFSET,
   blockKey,
   createTerrainChunk,
   raycastVoxels,
   terrainBaseBlock,
+  terrainHeight,
 } from "../client/game/terrain.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { creeperBlockIsProtected } from "../shared/creeperExplosion.ts";
@@ -27,6 +29,7 @@ import {
 import { parseWorldBlockOperation } from "../shared/worldBlockOperations.ts";
 import {
   WORLD_TERRAIN_MIN_Y,
+  WORLD_TERRAIN_Y_OFFSET,
   naturalWorldBlockAt,
 } from "../shared/worldTerrainAuthority.ts";
 
@@ -34,11 +37,45 @@ const SEED = 7319;
 
 assert.equal(BLOCK.BEDROCK, 33, "bedrock appends without renumbering saved engine block IDs");
 assert.equal(TERRAIN_MIN_Y, 0);
+assert.equal(TERRAIN_Y_OFFSET, 24);
 assert.equal(WORLD_TERRAIN_MIN_Y, 0);
+assert.equal(WORLD_TERRAIN_Y_OFFSET, 24);
 assert.equal(WORLD_EDIT_MIN_Y, 0);
 assert.equal(isBlockType("bedrock"), true);
 assert.equal(creeperBlockIsProtected("bedrock"), true);
 assert.equal(blockHasCollision(BLOCK.BEDROCK), true);
+assert.equal(blockFaceIsOccluded(BLOCK.BEDROCK, BLOCK.AIR, "bottom"), true,
+  "the invisible underside of the finite foundation is never meshed");
+assert.equal(blockFaceIsOccluded(BLOCK.BEDROCK, BLOCK.AIR, "top"), false);
+assert.equal(terrainHeight(0, 0, SEED), 30, "the legacy y=6 spawn plateau translates to y=30");
+for (let x = -16; x <= 16; x += 4) {
+  for (let z = -16; z <= 16; z += 4) {
+    assert.ok(terrainHeight(x, z, SEED) >= 27 && terrainHeight(x, z, SEED) <= 35,
+      "the complete legacy 3..11 surface range translates by exactly +24");
+  }
+}
+
+const translatedLegacyAnchors = [
+  [-64, -8, -64, "gold_ore"],
+  [-64, -19, -60, "iron_ore"],
+  [-63, -12, -64, "coal_ore"],
+  [-62, -12, -62, "diamond_ore"],
+  [-57, -23, -57, "air"],
+  [-64, 7, -53, "sand"],
+  [-64, -2, -37, "gravel"],
+  [-76, 5, -17, "clay"],
+  [-59, 9, -33, "wood"],
+  [-61, 10, -34, "leaves"],
+] as const;
+for (const [x, legacyY, z, expected] of translatedLegacyAnchors) {
+  const y = legacyY + TERRAIN_Y_OFFSET;
+  assert.equal(naturalWorldBlockAt(x, y, z, SEED), expected,
+    `legacy terrain anchor ${x},${legacyY},${z} must translate without shape mutation`);
+  assert.equal(createTerrainChunk(SEED, Math.floor(x / 8), Math.floor(z / 8)).get(blockKey(x, y, z)) ?? BLOCK.AIR,
+    ({ air: BLOCK.AIR, gold_ore: BLOCK.GOLD_ORE, iron_ore: BLOCK.IRON_ORE, coal_ore: BLOCK.COAL_ORE,
+      diamond_ore: BLOCK.DIAMOND_ORE, sand: BLOCK.SAND, gravel: BLOCK.GRAVEL, clay: BLOCK.CLAY,
+      wood: BLOCK.WOOD, leaves: BLOCK.LEAVES } as const)[expected]);
+}
 
 for (const [chunkX, chunkZ] of [[0, 0], [-7, 12], [1234, -4321]]) {
   const chunk = createTerrainChunk(SEED, chunkX, chunkZ);
@@ -90,13 +127,17 @@ const falling = resolveFallingBlocks({
 assert.equal(falling.ok, true);
 if (falling.ok) assert.equal(falling.moves[0]?.destination.y, 1, "falling blocks settle above bedrock, never into it");
 
-const snapshot = createWorldChunkSnapshot("0:0", [
+assert.deepEqual(createWorldChunkSnapshot("0:0", [
   { x: 0, y: 0, z: 0, blockType: "air" },
   { x: 0, y: 1, z: 0, blockType: "stone" },
-]);
+]), { ok: false, reason: "invalid_edit" }, "new snapshot writes reject the foundation atomically");
+assert.deepEqual(createWorldChunkSnapshot("0:0", [
+  { x: 0, y: 2, z: 0, blockType: "bedrock" },
+]), { ok: false, reason: "invalid_edit" }, "bedrock is unrepresentable in persisted edits");
+const snapshot = createWorldChunkSnapshot("0:0", [{ x: 0, y: 1, z: 0, blockType: "stone" }]);
 assert.equal(snapshot.ok, true);
 if (!snapshot.ok) throw new Error(snapshot.reason);
-assert.equal(snapshot.editCount, 1, "save snapshots do not persist edits over generated bedrock");
+assert.equal(snapshot.editCount, 1);
 const decoded = decodeWorldChunkSnapshot("0:0", snapshot.snapshotJson);
 assert.equal(decoded.ok, true);
 if (decoded.ok) assert.deepEqual(decoded.edits.map((edit) => edit.coordKey), ["0:1:0"]);
@@ -108,6 +149,10 @@ assert.deepEqual(applyWorldChunkEdit("0:0", snapshot.snapshotJson, { x: 0, y: 0,
   ok: false,
   reason: "invalid_edit",
 }, "authoritative edit batches reject the foundation atomically");
+assert.deepEqual(applyWorldChunkEdit("0:0", snapshot.snapshotJson, { x: 0, y: 2, z: 0, blockType: "bedrock" }), {
+  ok: false,
+  reason: "invalid_edit",
+}, "authoritative edit batches cannot manufacture bedrock away from the foundation");
 
 const operationBase = {
   operationId: "bedrock_floor_0001",
@@ -133,5 +178,7 @@ const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", impor
 assert.match(engineSource, /mined\.block !== BLOCK\.BEDROCK/, "Creative and Survival share the engine mining guard");
 assert.match(engineSource, /edits\.some\(\(edit\) => edit\.y <= TERRAIN_MIN_Y \|\| edit\.block === BLOCK\.BEDROCK\)/,
   "all live local/remote edit batches fail closed at the foundation boundary");
+assert.match(engineSource, /if \(y < TERRAIN_MIN_Y \+ 1\) return true/,
+  "player collision has a fail-closed floor even if chunk data is incomplete");
 
 console.log("lakecraft finite bedrock world-floor tests: ok");

@@ -337,7 +337,7 @@ for (let index = 0; index < 1_000; index += 1) {
     operationId: `toggle_request_${String(index).padStart(4, "0")}`,
     kind: "toggle" as const,
     x: 0,
-    y: 0,
+    y: 1,
     z: 0,
     expectedBlock: replayState.currentBlock,
     expectedChunkRevision: replayState.chunkRevision,

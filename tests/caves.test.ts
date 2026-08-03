@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import {
   CAVE_SPAWN_SANCTUARY_RADIUS,
   TERRAIN_MIN_Y,
+  TERRAIN_Y_OFFSET,
   blockKey,
   createTerrainChunk,
   createTerrainRegion,
@@ -96,7 +97,7 @@ let deepCarvedStone = 0;
 for (let x = -1_008; x <= -993; x += 1) {
   for (let z = 2_000; z <= 2_007; z += 1) {
     assert.notEqual(deepWhole.get(blockKey(x, TERRAIN_MIN_Y, z)), undefined, "true floor must remain solid");
-    for (let y = TERRAIN_MIN_Y + 1; y < 0; y += 1) {
+    for (let y = TERRAIN_MIN_Y + 1; y < TERRAIN_Y_OFFSET; y += 1) {
       if (terrainBaseBlock(x, y, z, SEED) === BLOCK.STONE && !deepWhole.has(blockKey(x, y, z))) {
         deepCarvedStone += 1;
       }

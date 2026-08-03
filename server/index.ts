@@ -1015,7 +1015,7 @@ function databaseRowToStoredMobWorld(row: Record<string, unknown> | null): Store
 function serverTerrainHeight(x: number, z: number): number {
   const blockX = Math.floor(x);
   const blockZ = Math.floor(z);
-  for (let y = 20; y >= WORLD_EDIT_MIN_Y; y -= 1) {
+  for (let y = 44; y >= WORLD_EDIT_MIN_Y; y -= 1) {
     const block = naturalWorldBlockAt(blockX, y, blockZ);
     if (block === "grass" || block === "sand") return y;
   }

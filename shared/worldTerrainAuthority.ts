@@ -2,6 +2,8 @@ import type { BlockType } from "./protocol.ts";
 import * as BS from "./bundleStrings.ts";
 
 export const WORLD_TERRAIN_SEED = 7319;
+/** Existing terrain is translated intact from its legacy -24 foundation to y=0. */
+export const WORLD_TERRAIN_Y_OFFSET = 24;
 /** Inclusive natural foundation; y=0 is always bedrock. */
 export const WORLD_TERRAIN_MIN_Y = 0;
 
@@ -31,10 +33,10 @@ interface OreVeinConfig {
 }
 
 const ORE_VEINS: readonly OreVeinConfig[] = [
-  { block: BS.diamondOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: WORLD_TERRAIN_MIN_Y, chance: 0.055, salt: 3_421 },
-  { block: BS.goldOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.11, salt: 2_863 },
-  { block: BS.ironOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 8, chance: 0.17, salt: 2_137 },
-  { block: BS.coalOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 10, chance: 0.43, salt: 1_619 },
+  { block: BS.diamondOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 12, chance: 0.055, salt: 3_421 },
+  { block: BS.goldOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 20, chance: 0.11, salt: 2_863 },
+  { block: BS.ironOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 28, chance: 0.17, salt: 2_137 },
+  { block: BS.coalOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 30, chance: 0.43, salt: 1_619 },
 ];
 
 function hash2(x: number, z: number, seed: number): number {
@@ -87,7 +89,7 @@ function terrainHeight(x: number, z: number, seed: number): number {
     Math.min(1, (spawnDistance - SPAWN_PLATEAU_RADIUS) / (SPAWN_BLEND_RADIUS - SPAWN_PLATEAU_RADIUS)),
   );
   const height = lerp(SPAWN_HEIGHT, naturalHeight, smoothstep(spawnBlend));
-  return Math.max(MIN_TERRAIN_HEIGHT, Math.min(MAX_TERRAIN_HEIGHT, Math.round(height)));
+  return Math.max(MIN_TERRAIN_HEIGHT, Math.min(MAX_TERRAIN_HEIGHT, Math.round(height))) + WORLD_TERRAIN_Y_OFFSET;
 }
 
 function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 {
@@ -115,11 +117,12 @@ function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 {
 function blockInOreVein(x: number, y: number, z: number, seed: number, config: OreVeinConfig): boolean {
   if (y < config.minimumY || y > config.maximumY) return false;
   const cellX = Math.floor(x / ORE_CELL_SIZE);
-  const cellY = Math.floor(y / ORE_CELL_SIZE);
+  const generationY = y - WORLD_TERRAIN_Y_OFFSET;
+  const cellY = Math.floor(generationY / ORE_CELL_SIZE);
   const cellZ = Math.floor(z / ORE_CELL_SIZE);
   if (hash3(cellX, cellY, cellZ, seed + config.salt) >= config.chance) return false;
   const localX = x - cellX * ORE_CELL_SIZE;
-  const localY = y - cellY * ORE_CELL_SIZE;
+  const localY = generationY - cellY * ORE_CELL_SIZE;
   const localZ = z - cellZ * ORE_CELL_SIZE;
   const anchorX = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 11) * ORE_CELL_SIZE);
   const anchorY = Math.floor(hash3(cellX, cellY, cellZ, seed + config.salt + 23) * ORE_CELL_SIZE);
@@ -136,11 +139,12 @@ export function terrainGravelBlock(x: number, y: number, z: number, seed: number
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
   if (y === top || y >= top - dirtDepth) return null;
   const cellX = Math.floor(x / GRAVEL_CELL_SIZE_XZ);
-  const cellY = Math.floor(y / GRAVEL_CELL_SIZE_Y);
+  const generationY = y - WORLD_TERRAIN_Y_OFFSET;
+  const cellY = Math.floor(generationY / GRAVEL_CELL_SIZE_Y);
   const cellZ = Math.floor(z / GRAVEL_CELL_SIZE_XZ);
   if (hash3(cellX, cellY, cellZ, seed + 4_789) >= GRAVEL_POCKET_CHANCE) return null;
   const localX = x - cellX * GRAVEL_CELL_SIZE_XZ;
-  const localY = y - cellY * GRAVEL_CELL_SIZE_Y;
+  const localY = generationY - cellY * GRAVEL_CELL_SIZE_Y;
   const localZ = z - cellZ * GRAVEL_CELL_SIZE_XZ;
   const centerX = 1.5 + hash3(cellX, cellY, cellZ, seed + 4_811) * (GRAVEL_CELL_SIZE_XZ - 3);
   const centerY = 1 + hash3(cellX, cellY, cellZ, seed + 4_837) * (GRAVEL_CELL_SIZE_Y - 2);
@@ -239,7 +243,7 @@ interface CaveNode {
 function caveNode(cellX: number, cellZ: number, seed: number): CaveNode {
   return {
     x: cellX * CAVE_CELL_SIZE + 2 + hash3(cellX, 0, cellZ, seed + 3_011) * 6,
-    y: 1.45 + hash3(cellX, 1, cellZ, seed + 3_037) * 3.9,
+    y: WORLD_TERRAIN_Y_OFFSET + 1.45 + hash3(cellX, 1, cellZ, seed + 3_037) * 3.9,
     z: cellZ * CAVE_CELL_SIZE + 2 + hash3(cellX, 2, cellZ, seed + 3_071) * 6,
   };
 }
@@ -270,7 +274,7 @@ function caveCarvesBlock(x: number, y: number, z: number, seed: number): boolean
   if (Math.max(Math.abs(x), Math.abs(z)) <= CAVE_SPAWN_SANCTUARY_RADIUS) return false;
   const ownerCellX = Math.floor(x / CAVE_CELL_SIZE);
   const ownerCellZ = Math.floor(z / CAVE_CELL_SIZE);
-  const minimumLayer = Math.floor(WORLD_TERRAIN_MIN_Y / 8);
+  const minimumLayer = Math.floor((WORLD_TERRAIN_MIN_Y - WORLD_TERRAIN_Y_OFFSET) / 8);
   for (let layer = minimumLayer; layer <= 0; layer += 1) {
     const layerOffset = layer * 8;
     for (let cellX = ownerCellX - 1; cellX <= ownerCellX + 1; cellX += 1) {

@@ -7,6 +7,7 @@ import type { BlockType } from "../shared/protocol.ts";
 import {
   WORLD_TERRAIN_MIN_Y,
   WORLD_TERRAIN_SEED,
+  WORLD_TERRAIN_Y_OFFSET,
   naturalWorldBlockAt,
 } from "../shared/worldTerrainAuthority.ts";
 
@@ -44,6 +45,7 @@ const ENGINE_TO_PROTOCOL: Readonly<Record<EngineBlockId, BlockType>> = {
   [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
   [BLOCK.CLAY]: "clay",
   [BLOCK.BRICKS]: "bricks",
+  [BLOCK.BEDROCK]: "bedrock",
 };
 
 const chunkCache = new Map<string, Map<string, EngineBlockId>>();
@@ -67,7 +69,8 @@ function assertParity(x: number, y: number, z: number, seed = WORLD_TERRAIN_SEED
   );
 }
 
-assert.equal(WORLD_TERRAIN_MIN_Y, -24);
+assert.equal(WORLD_TERRAIN_MIN_Y, 0);
+assert.equal(WORLD_TERRAIN_Y_OFFSET, 24);
 assert.equal(WORLD_TERRAIN_SEED, 7319);
 assert.equal(naturalWorldBlockAt(Number.NaN, 0, 0), "air");
 assert.equal(naturalWorldBlockAt(0.5, 0, 0), "air");
@@ -100,10 +103,13 @@ const namedSamples = [
 ] as const;
 const namedKinds = new Set<BlockType>();
 for (const [x, y, z, expected, label] of namedSamples) {
-  assert.equal(clientBlockAt(x, y, z, WORLD_TERRAIN_SEED), expected, `${label} client anchor drifted`);
-  assertParity(x, y, z);
+  const translatedY = y + WORLD_TERRAIN_Y_OFFSET;
+  assert.equal(clientBlockAt(x, translatedY, z, WORLD_TERRAIN_SEED), expected, `${label} client anchor drifted`);
+  assertParity(x, translatedY, z);
   namedKinds.add(expected);
 }
+assert.equal(naturalWorldBlockAt(0, 0, 0), "bedrock");
+assertParity(0, 0, 0);
 for (const expected of [
   "air", "sand", "gravel", "clay", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "wood", "leaves",
 ] as const) assert.equal(namedKinds.has(expected), true, `missing explicit ${expected} authority anchor`);
@@ -141,7 +147,7 @@ const startedAt = performance.now();
 for (const [chunkX, chunkZ] of [[1, 1], [125, -250]] as const) {
   for (let x = chunkX * 8; x < chunkX * 8 + 8; x += 1) {
     for (let z = chunkZ * 8; z < chunkZ * 8 + 8; z += 1) {
-      for (let y = WORLD_TERRAIN_MIN_Y - 2; y <= 24; y += 1) {
+      for (let y = WORLD_TERRAIN_MIN_Y - 2; y <= 48; y += 1) {
         assertParity(x, y, z);
         comparisons += 1;
       }
@@ -152,7 +158,7 @@ for (const seed of [WORLD_TERRAIN_SEED, 1, 987_654_321]) {
   for (const [chunkX, chunkZ] of chunkCoordinates) {
     for (let sample = 0; sample < 65; sample += 1) {
       const x = chunkX * 8 + Math.floor(random() * 8);
-      const y = WORLD_TERRAIN_MIN_Y - 2 + Math.floor(random() * 54);
+      const y = WORLD_TERRAIN_MIN_Y - 2 + Math.floor(random() * 78);
       const z = chunkZ * 8 + Math.floor(random() * 8);
       assertParity(x, y, z, seed);
       comparisons += 1;
@@ -163,7 +169,7 @@ for (const seed of [WORLD_TERRAIN_SEED, 1, 987_654_321]) {
 // Exercise both sides of negative, positive, near, and far chunk seams.
 for (const boundary of [-1_000_000, -65_536, -8, 0, 8, 65_536, 1_000_000]) {
   for (const offset of [-1, 0, 1]) {
-    for (let y = WORLD_TERRAIN_MIN_Y; y <= 24; y += 3) {
+    for (let y = WORLD_TERRAIN_MIN_Y; y <= 48; y += 3) {
       assertParity(boundary + offset, y, 17);
       assertParity(17, y, boundary + offset);
       comparisons += 2;

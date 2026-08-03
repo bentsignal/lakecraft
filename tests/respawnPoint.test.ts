@@ -16,8 +16,8 @@ assert.deepEqual(validateRespawnPoint({ x: 64, y: MAX_RESPAWN_HEIGHT, z: -64 }),
   pitch: -0.08,
 });
 assert.equal(validateRespawnPoint({ x: 64.001, y: 10, z: 0 }), null);
-assert.equal(validateRespawnPoint({ x: 0, y: -24, z: 0 })?.y, -24);
-assert.equal(validateRespawnPoint({ x: 0, y: -24.001, z: 0 }), null);
+assert.equal(validateRespawnPoint({ x: 0, y: 1, z: 0 })?.y, 1);
+assert.equal(validateRespawnPoint({ x: 0, y: 0.999, z: 0 }), null);
 assert.equal(validateRespawnPoint({ x: 0, y: MAX_RESPAWN_HEIGHT + 0.001, z: 0 }), null);
 assert.equal(validateRespawnPoint({ x: Number.NaN, y: 10, z: 0 }), null);
 assert.equal(validateRespawnPoint({ x: 0, y: 10, z: 0, yaw: Infinity }), null);

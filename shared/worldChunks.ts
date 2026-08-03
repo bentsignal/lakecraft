@@ -49,7 +49,6 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   BS.stoneBrickSlab,
   "clay",
   "bricks",
-  "bedrock",
 ] as const;
 
 export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];
@@ -318,6 +317,9 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
 }
 
 function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> | null {
+  // Migration-only sanitation: old packed rows may contain edits at the newly
+  // reserved y=0 foundation. Decoding hides those cells; all current writers
+  // reject the same coordinates before mutation.
   if (snapshot.version === 3 || snapshot.version === 4) {
     const sections = new Map<number, Uint8Array>();
     for (const [y, packed] of snapshot.sections) {
@@ -331,6 +333,10 @@ function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> |
         if (code > WORLD_CHUNK_BLOCK_TYPES.length) return null;
         const absoluteY = y * WORLD_CHUNK_SECTION_HEIGHT + Math.floor(index / CELLS_PER_Y);
         if (code !== 0 && (absoluteY < WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
+        if (absoluteY === WORLD_EDIT_MIN_Y) {
+          if (snapshot.version === 4 && code !== 0) setCurrentCode(nextPacked, index, 0);
+          continue;
+        }
         if (snapshot.version === 3 && code !== 0) setCurrentCode(nextPacked, index, code);
       }
       sections.set(y, nextPacked);
@@ -346,6 +352,7 @@ function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> |
     const yOffset = Math.floor(index / CELLS_PER_Y);
     const horizontal = index % CELLS_PER_Y;
     const y = LEGACY_MIN_Y + yOffset;
+    if (y <= WORLD_EDIT_MIN_Y || y > WORLD_EDIT_MAX_Y) continue;
     const sectionY = Math.floor(y / WORLD_CHUNK_SECTION_HEIGHT);
     const localY = y - sectionY * WORLD_CHUNK_SECTION_HEIGHT;
     const packed = sections.get(sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
@@ -388,8 +395,8 @@ export function createWorldChunkSnapshot(
     const y = finiteInteger(edit.y);
     const z = finiteInteger(edit.z);
     const code = BLOCK_CODE.get(edit.blockType);
+    if (y === WORLD_EDIT_MIN_Y || edit.blockType === "bedrock") return { ok: false, reason: "invalid_edit" };
     if (x === null || y === null || z === null || code === undefined) continue;
-    if (y === WORLD_EDIT_MIN_Y) continue;
     const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
     if (!address) continue;
     const previous = latest.get(address.absoluteIndex);
@@ -433,8 +440,8 @@ export function applyWorldChunkEdits(
     const y = finiteInteger(edit.y);
     const z = finiteInteger(edit.z);
     const code = BLOCK_CODE.get(edit.blockType);
-    if (x === null || y === null || z === null || code === undefined) return { ok: false, reason: "invalid_edit" };
-    if (y === WORLD_EDIT_MIN_Y) return { ok: false, reason: "invalid_edit" };
+    if (x === null || y === null || z === null || code === undefined
+      || y === WORLD_EDIT_MIN_Y || edit.blockType === "bedrock") return { ok: false, reason: "invalid_edit" };
     const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
     if (!address) return { ok: false, reason: "invalid_edit" };
     const packed = sections.get(address.sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
