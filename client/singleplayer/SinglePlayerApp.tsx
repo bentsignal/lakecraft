@@ -117,6 +117,7 @@ import {
 import { consumeSelectedPlacementStack } from "./localPlacement.ts";
 import {
   SINGLE_PLAYER_INITIAL_PAUSE_OPEN,
+  consumeSinglePlayerCommandSurfaceEscape,
   createSinglePlayerPointerSessionState,
   singlePlayerGameplayPaused,
   singlePlayerSilentRecaptureKey,
@@ -313,6 +314,7 @@ function SinglePlayerWorld({
   const commandMessageSequenceRef = useRef(0);
   const commandHistoryRef = useRef<string[]>([]);
   const commandHistoryIndexRef = useRef(0);
+  const commandSurfaceOpenRef = useRef(false);
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
   const performanceOutputRef = useRef<HTMLOutputElement | null>(null);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
@@ -684,12 +686,14 @@ function SinglePlayerWorld({
   }
 
   function closeCommandConsole(): void {
+    commandSurfaceOpenRef.current = false;
     setCommandOpen(false);
     commandHistoryIndexRef.current = commandHistoryRef.current.length;
     requestGameplayPointerLock();
   }
 
   function closeCommandConsoleFromEscape(now: number): void {
+    commandSurfaceOpenRef.current = false;
     setCommandOpen(false);
     commandHistoryIndexRef.current = commandHistoryRef.current.length;
     armGameplayResumeAfterEscape(now);
@@ -1805,13 +1809,12 @@ function SinglePlayerWorld({
         }
         return;
       }
-      if (commandOpen) {
-        if (event.code === "Escape") {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          if (!event.repeat) closeCommandConsoleFromEscape(performance.now());
-          return;
-        }
+      if (consumeSinglePlayerCommandSurfaceEscape(
+        commandSurfaceOpenRef.current,
+        event,
+        () => closeCommandConsoleFromEscape(performance.now()),
+      )) return;
+      if (commandSurfaceOpenRef.current) {
         if ((event.code === "ArrowUp" || event.code === "ArrowDown") && !event.repeat) {
           event.preventDefault();
           const history = commandHistoryRef.current;
@@ -1849,10 +1852,11 @@ function SinglePlayerWorld({
         if (inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (commandMessages.length === 0) {
+        if (commandMessageSequenceRef.current === 0) {
           appendCommandMessage("Local command console. Type /help to list commands and item IDs.", "system");
         }
         commandHistoryIndexRef.current = commandHistoryRef.current.length;
+        commandSurfaceOpenRef.current = true;
         setCommandDraft(commandShortcutDraft);
         setCommandOpen(true);
         releasePointerLockForUi();
@@ -1904,8 +1908,6 @@ function SinglePlayerWorld({
     containerOpen,
     deathScreenOpen,
     activeFurnaceKey,
-    commandOpen,
-    commandMessages.length,
   ]);
 
   const lastAutosavedText = lastAutosavedAt === null ? "Last autosaved —"

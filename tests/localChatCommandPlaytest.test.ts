@@ -18,6 +18,7 @@ import {
   saveSinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
+import { consumeSinglePlayerCommandSurfaceEscape } from "../client/singleplayer/sessionState.ts";
 
 const shortcut = (code: string, key: string, repeat = false) => localCommandShortcutDraft({ code, key, repeat });
 assert.equal(shortcut("Slash", "/"), "/", "the physical slash key seeds a command");
@@ -27,6 +28,64 @@ assert.equal(shortcut("KeyT", "t"), "", "T retains the ordinary empty-console sh
 assert.equal(shortcut("Enter", "Enter"), "", "Enter retains the ordinary empty-console shortcut");
 assert.equal(shortcut("Slash", "/", true), null, "key repeat cannot reopen or rewrite the console draft");
 assert.equal(shortcut("KeyQ", "q"), null);
+
+type DispatchedKeyEvent = Event & { code: string; key: string; repeat: boolean };
+const rapidKeys = new EventTarget();
+const commandSurfaceOpenRef = { current: false };
+let pendingRenderedOpen = false;
+let renderedOpen = false;
+let surfaceDepth = 0;
+let maximumSurfaceDepth = 0;
+let pauseOpenCount = 0;
+let pointerCaptureNeeded = false;
+rapidKeys.addEventListener("keydown", (rawEvent) => {
+  const event = rawEvent as DispatchedKeyEvent;
+  if (consumeSinglePlayerCommandSurfaceEscape(commandSurfaceOpenRef.current, event, () => {
+    commandSurfaceOpenRef.current = false;
+    pendingRenderedOpen = false;
+    surfaceDepth -= 1;
+  })) return;
+  if (commandSurfaceOpenRef.current) return;
+  const draft = localCommandShortcutDraft(event);
+  if (draft !== null) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    commandSurfaceOpenRef.current = true;
+    pendingRenderedOpen = true;
+    surfaceDepth += 1;
+    maximumSurfaceDepth = Math.max(maximumSurfaceDepth, surfaceDepth);
+    return;
+  }
+  if (event.code === "Escape" && !event.repeat) {
+    pauseOpenCount += 1;
+    pointerCaptureNeeded = true;
+  }
+});
+const dispatchRapidKey = (code: string, key: string, repeat = false): DispatchedKeyEvent => {
+  const event = new Event("keydown", { cancelable: true }) as DispatchedKeyEvent;
+  Object.defineProperties(event, {
+    code: { value: code },
+    key: { value: key },
+    repeat: { value: repeat },
+  });
+  rapidKeys.dispatchEvent(event);
+  return event;
+};
+for (let cycle = 0; cycle < 3; cycle += 1) {
+  const opened = dispatchRapidKey("Slash", "/");
+  assert.equal(opened.defaultPrevented, true, "the command shortcut is consumed synchronously");
+  assert.equal(commandSurfaceOpenRef.current, true, "the command surface opens before a render commit");
+  assert.equal(renderedOpen, false, "the regression keeps Preact's prior render deliberately stale");
+  const closed = dispatchRapidKey("Escape", "Escape");
+  assert.equal(closed.defaultPrevented, true, "the same-turn Escape belongs only to the command surface");
+  assert.equal(commandSurfaceOpenRef.current, false, "Escape closes the synchronous surface before commit");
+}
+renderedOpen = pendingRenderedOpen;
+assert.equal(renderedOpen, false, "rapid open-close cycles commit no chat surface");
+assert.equal(surfaceDepth, 0);
+assert.equal(maximumSurfaceDepth, 1, "rapid cycles never stack command surfaces");
+assert.equal(pauseOpenCount, 0, "same-turn chat Escape never opens Game Menu");
+assert.equal(pointerCaptureNeeded, false, "same-turn chat Escape never exposes Click to Play");
 
 assert.deepEqual(parseLocalCommand("/time set day"), { ok: true, command: { kind: "time", time: "day" } });
 assert.deepEqual(parseLocalCommand("/time set night"), { ok: true, command: { kind: "time", time: "night" } });
@@ -106,12 +165,15 @@ assert.equal(
 );
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-const commandOpenBranch = app.slice(app.indexOf("if (commandOpen)"), app.indexOf("if (optionsOpen)"));
-assert.ok(commandOpenBranch.includes('if (event.code === "Escape")'));
-assert.ok(commandOpenBranch.includes("event.stopImmediatePropagation();"), "chat Escape is consumed before sibling handlers");
-assert.ok(commandOpenBranch.indexOf("event.stopImmediatePropagation();") < commandOpenBranch.indexOf("closeCommandConsoleFromEscape"));
-assert.ok(commandOpenBranch.includes("if (!event.repeat) closeCommandConsoleFromEscape(performance.now());"),
-  "Escape repeat is consumed without repeated close or pointer-lock requests");
+const commandOpenBranch = app.slice(
+  app.indexOf("consumeSinglePlayerCommandSurfaceEscape("),
+  app.indexOf("if (optionsOpen)"),
+);
+assert.ok(commandOpenBranch.includes("commandSurfaceOpenRef.current"));
+assert.ok(commandOpenBranch.includes("() => closeCommandConsoleFromEscape(performance.now())"),
+  "the synchronous surface, not a render closure, owns Escape close");
+assert.ok(commandOpenBranch.includes("if (commandSurfaceOpenRef.current)"),
+  "other command input is also fenced before a Preact commit");
 assert.ok(app.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
   "chat is excluded from the true simulation-pause modal boundary");
 assert.ok(app.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
@@ -124,6 +186,8 @@ assert.ok(app.includes("|| commandOpen || pointerCaptureNeeded"),
   "chat can still hide the held viewmodel without pausing simulation");
 const shortcutBranch = app.slice(app.indexOf("const commandShortcutDraft"), app.indexOf('if (event.code === "KeyQ"'));
 assert.ok(shortcutBranch.includes("inventoryOpen || worldModalOpen || deathScreenOpen"), "higher-priority modals fence every chat shortcut");
+assert.ok(shortcutBranch.indexOf("commandSurfaceOpenRef.current = true") < shortcutBranch.indexOf("setCommandOpen(true)"),
+  "the opening ref is set before scheduling Preact state");
 assert.ok(shortcutBranch.includes("setCommandDraft(commandShortcutDraft)"));
 assert.ok(shortcutBranch.includes("releasePointerLockForUi()"));
 const timeBranch = app.slice(app.indexOf('if (parsed.command.kind === "time")'), app.indexOf("const granted ="));

@@ -2,6 +2,30 @@ export const SINGLE_PLAYER_INITIAL_PAUSE_OPEN = false;
 export const POINTER_LOCK_ESCAPE_DEDUP_MS = 160;
 export const COMMAND_ESCAPE_LOCK_LOSS_SUPPRESS_MS = 500;
 
+export interface SinglePlayerCommandSurfaceKeyEvent {
+  code: string;
+  repeat: boolean;
+  preventDefault(): void;
+  stopImmediatePropagation(): void;
+}
+
+/**
+ * Consumes Escape against the synchronously tracked command surface. The caller
+ * owns the mutable open ref so this boundary remains correct before Preact has
+ * committed the corresponding render state.
+ */
+export function consumeSinglePlayerCommandSurfaceEscape(
+  open: boolean,
+  event: SinglePlayerCommandSurfaceKeyEvent,
+  close: () => void,
+): boolean {
+  if (!open || event.code !== "Escape") return false;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (!event.repeat) close();
+  return true;
+}
+
 export interface SinglePlayerPauseState {
   pauseOpen: boolean;
   inventoryOpen: boolean;

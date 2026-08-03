@@ -5,7 +5,14 @@ const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta
 const types = readFileSync(new URL("../client/game/types.ts", import.meta.url), "utf8");
 const singlePlayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const secondary = engine.slice(engine.indexOf("} else if (event.button === 2)"), engine.indexOf("function onMouseUp"));
+const secondary = engine.slice(
+  engine.indexOf("} else if (button === 2)"),
+  engine.indexOf("const pressedMouseButtons"),
+);
+const secondaryRelease = engine.slice(
+  engine.indexOf("function applyCapturedMouseUp"),
+  engine.indexOf("function onMouseUp"),
+);
 const update = engine.slice(engine.indexOf("function update(dt"), engine.indexOf("function bindBuffer"));
 const placement = engine.slice(engine.indexOf("function tryPlaceSelectedBlock"), engine.indexOf("function attackEntityUnderCrosshair"));
 const teardown = engine.slice(engine.indexOf("destroy()"), engine.indexOf("applyWorldEdits"));
@@ -42,8 +49,8 @@ assert.ok(placement.includes("canPlaceSelectedBlock?.(selectedBlock) === false")
 assert.ok(update.indexOf("target = nextTarget") < update.indexOf("repeatHeldBlockPlacement(now)"), "each repeat uses the freshly raycast target");
 assert.doesNotMatch(placement, /setTimeout|setInterval/, "held placement adds no timer or polling loop");
 
-assert.match(engine, /function onMouseUp[\s\S]{0,180}event\.button === 2[\s\S]{0,100}cancelSecondaryPlacementHold\(true\)/,
-  "right-button release disarms placement");
+assert.match(secondaryRelease, /button === 2[\s\S]{0,100}cancelSecondaryPlacementHold\(true\)/,
+  "right-button release disarms placement before bow release handling");
 assert.match(engine, /function releaseTransientInput[\s\S]{0,180}cancelSecondaryPlacementHold\(true\)/,
   "blur and visibility cleanup disarm placement");
 assert.match(engine, /function onPointerLockChange[\s\S]{0,220}releaseTransientInput\(\)/,

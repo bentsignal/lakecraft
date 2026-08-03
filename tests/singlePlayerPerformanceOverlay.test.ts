@@ -77,7 +77,7 @@ VERT 42,000  MESH 1.5ms`);
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 assert.ok(app.includes('if (event.code === "F3" && !event.repeat)'), "held F3 cannot repeatedly flip the overlay");
-assert.ok(app.indexOf('if (event.code === "F3"') < app.indexOf("if (commandOpen)"),
+assert.ok(app.indexOf('if (event.code === "F3"') < app.indexOf("consumeSinglePlayerCommandSurfaceEscape("),
   "the debug toggle is independent of pause, inventory, and command focus handling");
 assert.ok(app.includes("if (performanceOutputRef.current && !performanceOutputRef.current.hidden)"),
   "hidden performance sampling causes no DOM or React churn");
