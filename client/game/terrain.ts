@@ -1,6 +1,6 @@
 import { BLOCK, type BlockId, type BlockTarget } from "./types.ts";
 import { WORLD_CHUNK_SIZE, chunkBounds } from "./chunks.ts";
-import { blockContainsSolidPoint } from "./blockGeometry.ts";
+import { blockCollisionHeight, blockContainsSolidPoint } from "./blockGeometry.ts";
 
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
 
@@ -836,7 +836,7 @@ export function raycastVoxels(
       // A descending ray may enter the empty upper half and later meet the slab
       // top without changing voxel coordinates. Its placement neighbor is the
       // cell above, not the already-occupied slab cell.
-      const place = !enteredVoxel && currentBlock === BLOCK.STONE_BRICK_SLAB
+      const place = !enteredVoxel && blockCollisionHeight(currentBlock) < 1
         ? { x, y: y + 1, z }
         : { x: previousX, y: previousY, z: previousZ };
       return {

@@ -45,16 +45,17 @@ const explode = source.slice(start, end);
 assert.ok(start >= 0 && end > start);
 const validation = explode.indexOf("if (!primedTnt.has(sourceKey)");
 const exposure = explode.indexOf("sampleCreeperExplosionExposure");
-const apply = explode.indexOf("if (!applyLocalExplosionEdits(edits)) return []");
+const apply = explode.indexOf("const appliedEdits = applyLocalExplosionEdits(edits)");
+const reject = explode.indexOf("if (!appliedEdits) return []");
 const damage = explode.indexOf("const appliedDamage");
 const playerDamage = explode.indexOf('options.onPlayerDamage?.(appliedDamage, "tnt")');
 const healthChange = explode.indexOf("options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH)");
 const consumeFuse = explode.indexOf("primedTnt.delete(sourceKey)");
 assert.ok(validation >= 0 && validation < exposure, "invalid and duplicate calls return before exposure or damage");
-assert.ok(exposure < apply, "cover samples the intact world before terrain mutation");
+assert.ok(exposure < apply && apply < reject, "cover samples the intact world before atomic terrain reconciliation");
 assert.match(explode, /cell\.x === x && cell\.y === y && cell\.z === z[\s\S]*?\? "air"[\s\S]*?: localCreeperExposureBlock/,
   "only the validated exploding source coordinate is transparent to its own exposure sample");
-assert.ok(apply < damage && damage < playerDamage && playerDamage < healthChange,
+assert.ok(reject < damage && damage < playerDamage && playerDamage < healthChange,
   "rejected edits return before mitigation, armor wear, health, or death callbacks");
 assert.ok(healthChange < consumeFuse, "one accepted blast reconciles health before consuming its exact fuse identity");
 assert.equal((explode.match(/onPlayerDamage/g) ?? []).length, 1);

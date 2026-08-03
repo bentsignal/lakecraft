@@ -1,4 +1,4 @@
-import { terrainHeight, type PlayerPose } from "../game/index.ts";
+import { terrainHeight, type BedStructure, type PlayerPose } from "../game/index.ts";
 
 export const SINGLEPLAYER_SLEEP_START_PHASE = 0.7;
 export const SINGLEPLAYER_SLEEP_END_PHASE = 0.18;
@@ -17,6 +17,22 @@ export function respawnPointMatchesBed(point: Readonly<PlayerPose>, x: number, y
   return Math.abs(point.x - (x + 0.5)) < 0.001
     && Math.abs(point.y - (y + 1.02)) < 0.001
     && Math.abs(point.z - (z + 0.5)) < 0.001;
+}
+
+/** Resolves a saved respawn against global bed metadata, even when its chunk is not rendered. */
+export function structuredBedForRespawnPoint(
+  point: Readonly<PlayerPose>,
+  getBedAt: (x: number, y: number, z: number) => BedStructure | null,
+): BedStructure | null {
+  const candidate = {
+    x: Math.round(point.x - 0.5),
+    y: Math.round(point.y - 1.02),
+    z: Math.round(point.z - 0.5),
+  };
+  if (!respawnPointMatchesBed(point, candidate.x, candidate.y, candidate.z)) return null;
+  const bed = getBedAt(candidate.x, candidate.y, candidate.z);
+  if (!bed || !respawnPointMatchesBed(point, bed.head.x, bed.head.y, bed.head.z)) return null;
+  return bed;
 }
 
 export function singlePlayerWorldSpawn(seed: number): PlayerPose {

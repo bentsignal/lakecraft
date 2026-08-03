@@ -17,10 +17,12 @@ import * as BS from "../../shared/bundleStrings.ts";
 import {
   BLOCK,
   validateVoxelRuntimeSnapshotDetailed,
+  type BedStructure,
   type BlockId,
   type VoxelRuntimeSnapshot,
   type WorldEdit,
 } from "../game/types.ts";
+import { validateBedStructures } from "../game/localBeds.ts";
 import { validateFurnaceState, type FurnaceState } from "../../shared/furnaces.ts";
 import type { LocalGameMode } from "./localCommands.ts";
 import { LOCAL_DROP_TERMINAL_VELOCITY } from "./localDropGravity.ts";
@@ -43,6 +45,7 @@ export const SINGLEPLAYER_SAVE_LIMITS = Object.freeze({
   worldCoordinate: 30_000_000,
   verticalCoordinate: 2_048,
   edits: 12_000,
+  beds: 6_000,
   drops: 512,
   chests: 512,
   furnaces: 512,
@@ -164,6 +167,8 @@ export interface SinglePlayerSnapshot {
     gameMode?: LocalGameMode;
     weather: SinglePlayerWeatherState;
     edits: WorldEdit[];
+    /** Directional pairing for ordinary BED edits. Missing only on older saves. */
+    beds?: BedStructure[];
   };
   player: {
     inventory: Inventory;
@@ -478,7 +483,13 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
   }
   const worldKeys = ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "weather", "edits"];
   const worldHasGameMode = isRecord(value.world) && Object.prototype.hasOwnProperty.call(value.world, "gameMode");
-  if (!isRecord(value.world) || !exactKeys(value.world, worldHasGameMode ? [...worldKeys, "gameMode"] : worldKeys)
+  const worldHasBeds = isRecord(value.world) && Object.prototype.hasOwnProperty.call(value.world, "beds");
+  const actualWorldKeys = [
+    ...worldKeys,
+    ...(worldHasGameMode ? ["gameMode"] : []),
+    ...(worldHasBeds ? ["beds"] : []),
+  ];
+  if (!isRecord(value.world) || !exactKeys(value.world, actualWorldKeys)
     || !identifier(value.world.worldId)
     || !safeInteger(value.world.generatorVersion, 1, 1_000_000)
     || !safeInteger(value.world.seed, -2_147_483_648, 2_147_483_647)
@@ -492,6 +503,8 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
     || !safeInteger(value.world.weather.remainingMs, 0, MAX_WEATHER_MS)) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.weather" };
   const edits = validateEdits(value.world.edits);
   if (!edits) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.edits" };
+  const beds = worldHasBeds ? validateBedStructures(value.world.beds, edits, SINGLEPLAYER_SAVE_LIMITS.beds) : [];
+  if (!beds) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.beds" };
 
   if (!isRecord(value.player) || !exactKeys(value.player, ["inventory", "equipment", "selectedHotbar", "hunger"])) {
     return { ok: false, reason: BS.invalidSnapshot, path: "$.player" };
@@ -528,6 +541,7 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
         worldId: value.world.worldId, generatorVersion: value.world.generatorVersion, seed: value.world.seed,
         createdAt: value.world.createdAt, activePlayMs: value.world.activePlayMs,
         ...(worldHasGameMode ? { gameMode: value.world.gameMode as LocalGameMode } : {}),
+        ...(worldHasBeds ? { beds } : {}),
         weather: { kind: value.world.weather.kind as SinglePlayerWeatherState["kind"], remainingMs: value.world.weather.remainingMs }, edits,
       },
       player: { inventory, equipment, selectedHotbar: value.player.selectedHotbar, hunger: value.player.hunger },
@@ -548,6 +562,7 @@ export function createDefaultSinglePlayerSnapshot(seed = 7_319, createdAt = 0, w
       gameMode: "survival",
       weather: { kind: "clear", remainingMs: 0 },
       edits: [],
+      beds: [],
     },
     player: {
       inventory: createStarterInventory(),

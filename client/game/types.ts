@@ -54,6 +54,24 @@ export const BLOCK = {
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
 
+export type BedDirection = "north" | "south" | "east" | "west";
+
+export interface BlockCoordinate {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Directional metadata for the two ordinary BED cells that make one local bed.
+ * The block palette remains append-only: neither half consumes a new block ID.
+ */
+export interface BedStructure {
+  foot: BlockCoordinate;
+  head: BlockCoordinate;
+  direction: BedDirection;
+}
+
 export interface WorldEdit {
   x: number;
   y: number;
@@ -328,6 +346,10 @@ export interface VoxelEngineOptions {
   seed?: number;
   worldRadius?: number;
   initialEdits?: readonly WorldEdit[];
+  /** Validated local-save metadata for paired BED cells; omitted by multiplayer. */
+  initialBedStructures?: readonly BedStructure[];
+  /** Explicit offline-only opt-in for atomic directional two-cell beds. */
+  twoBlockBeds?: boolean;
   initialPose?: Partial<PlayerPose>;
   /** Preserve a Lakebed-persisted reconnect pose exactly instead of lifting it to local safe-spawn height. */
   preserveInitialPose?: boolean;
@@ -341,8 +363,8 @@ export interface VoxelEngineOptions {
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
   serverTimeOffsetMs?: number;
-  /** previousBlock distinguishes mining from placement; settledEdits are one accepted local falling batch. */
-  onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId, settledEdits: readonly WorldEdit[]) => void;
+  /** `edit` is the original semantic action; `journalEdits` are the remaining accepted LWW render/save batch. */
+  onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId, journalEdits: readonly WorldEdit[]) => void;
   /** Synchronously reserves a complete local edit batch before any terrain or callback side effect. */
   acceptWorldEdits?: (edits: readonly WorldEdit[]) => boolean;
   /** Prevent a second optimistic world edit while an authoritative one is pending. */
@@ -487,6 +509,10 @@ export interface VoxelEngine {
   getTarget(): BlockTarget | null;
   /** Read-only local material lookup for discrete offline authority checks. */
   getBlockAt(x: number, y: number, z: number): BlockId;
+  /** Returns a detached directional structure when this cell belongs to a paired local bed. */
+  getBedAt(x: number, y: number, z: number): BedStructure | null;
+  /** Stable detached metadata written beside ordinary BED edits in the local save journal. */
+  exportBedStructures(): BedStructure[];
   getPerformanceStats(): VoxelPerformanceStats;
   /** Resolves after the browser either grants or rejects canvas pointer capture. */
   requestPointerLock(): Promise<boolean>;

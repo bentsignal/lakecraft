@@ -87,6 +87,7 @@ import {
   respawnPointForBed,
   respawnPointMatchesBed,
   singlePlayerWorldSpawn,
+  structuredBedForRespawnPoint,
 } from "./localBed.ts";
 import type { FurnaceState, FurnaceTransferAction } from "../../shared/furnaces.ts";
 import type { ChestInventory } from "../../shared/chests.ts";
@@ -497,6 +498,7 @@ function SinglePlayerWorld({
         activePlayMs,
         weather: { ...worldRef.current.weather },
         edits: [...editsRef.current.values()].map((edit) => ({ ...edit })),
+        beds: engineRef.current?.exportBedStructures() ?? worldRef.current.beds ?? [],
       },
       player: {
         inventory: inventoryRef.current.map((stack) => stack ? { ...stack } : null),
@@ -832,7 +834,9 @@ function SinglePlayerWorld({
   function interactWithLocalBed(x: number, y: number, z: number): boolean {
     const engine = engineRef.current;
     if (!engine) return true;
-    engine.setRespawnPoint(respawnPointForBed(x, y, z, engine.getPose().yaw));
+    const bed = engine.getBedAt(x, y, z);
+    const anchor = bed?.head ?? { x, y, z };
+    engine.setRespawnPoint(respawnPointForBed(anchor.x, anchor.y, anchor.z, engine.getPose().yaw));
     markWorldDirty();
     const runtime = engine.exportRuntimeSnapshot();
     if (!canSleepAtPhase(phaseAtTime(runtime.worldTimeMs, runtime.dayNight))) {
@@ -850,7 +854,7 @@ function SinglePlayerWorld({
       detail: "Sleeping through the night…",
       tone: "success",
     }]);
-    setSleepingBed({ x, y, z });
+    setSleepingBed(anchor);
     releasePointerLockForUi();
     return true;
   }
@@ -968,7 +972,7 @@ function SinglePlayerWorld({
       z: Math.round(respawn.z - 0.5),
     };
     if (respawnPointMatchesBed(respawn, bed.x, bed.y, bed.z)
-      && engine.getBlockAt(bed.x, bed.y, bed.z) !== BLOCK.BED) {
+      && !structuredBedForRespawnPoint(respawn, (x, y, z) => engine.getBedAt(x, y, z))) {
       engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
     }
     engine.respawn();
@@ -1142,6 +1146,8 @@ function SinglePlayerWorld({
     const engine = createVoxelEngine(canvas, {
       seed: worldRef.current.seed,
       initialEdits: [...editsRef.current.values()],
+      initialBedStructures: initialSnapshot.world.beds ?? [],
+      twoBlockBeds: true,
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
       getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
@@ -1281,17 +1287,20 @@ function SinglePlayerWorld({
         surface: audioSurfaceForBlock(block),
         intensity: 0.5,
       }),
-      onBlockEdit: (edit, previousBlock, settledEdits) => {
+      onBlockEdit: (edit, previousBlock, journalEdits) => {
         if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
           settleBrokenContainerContents(edit.x, edit.y, edit.z, previousBlock);
         }
         if (previousBlock === BLOCK.BED && edit.block !== BLOCK.BED) {
           invalidateBrokenBed(edit.x, edit.y, edit.z);
+          for (const pairedEdit of journalEdits) {
+            if (pairedEdit.block !== BLOCK.BED) invalidateBrokenBed(pairedEdit.x, pairedEdit.y, pairedEdit.z);
+          }
         }
         markWorldDirty();
         const supportWoken = wakeUnsupportedLocalDroppedItems(
           dropsRef.current,
-          [edit, ...settledEdits],
+          [edit, ...journalEdits],
           (x, y, z) => engine.getBlockAt(x, y, z),
         );
         const held = inventoryRef.current[selectedRef.current]?.itemId ?? null;
@@ -1630,7 +1639,7 @@ function SinglePlayerWorld({
       z: Math.round(respawn.z - 0.5),
     };
     if (respawnPointMatchesBed(respawn, possibleBed.x, possibleBed.y, possibleBed.z)
-      && engine.getBlockAt(possibleBed.x, possibleBed.y, possibleBed.z) !== BLOCK.BED) {
+      && !structuredBedForRespawnPoint(respawn, (x, y, z) => engine.getBedAt(x, y, z))) {
       engine.setRespawnPoint(singlePlayerWorldSpawn(worldRef.current.seed));
     }
     const initiallyPaused = singlePlayerGameplayPaused({

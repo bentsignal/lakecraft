@@ -27,9 +27,11 @@ assert.equal(TNT_FUSE_MS, 4_000, "single-player and authoritative multiplayer sh
 assert.ok(crater.length > 0 && crater.length <= CREEPER_EXPLOSION_MAX_BLOCKS, "local crater uses the shared 64-cell blast ceiling");
 assert.ok(crater.some((edit) => edit.x === source.x && edit.y === source.y && edit.z === source.z
   && edit.previousBlock === BLOCK.TNT && edit.block === BLOCK.AIR), "the primed source TNT is consumed by its own blast");
-for (const protectedBlock of [BLOCK.CHEST, BLOCK.FURNACE, BLOCK.BED, BLOCK.DOOR_CLOSED]) {
+for (const protectedBlock of [BLOCK.CHEST, BLOCK.FURNACE, BLOCK.DOOR_CLOSED]) {
   assert.ok(!crater.some((edit) => edit.previousBlock === protectedBlock), `interactive block ${protectedBlock} remains protected`);
 }
+assert.ok(crater.some((edit) => edit.previousBlock === BLOCK.BED && edit.block === BLOCK.AIR),
+  "beds enter the crater so the engine can atomically reconcile their paired metadata");
 assert.ok(crater.some((edit) => edit.previousBlock === BLOCK.TNT && edit.chainPrimed === true
   && edit.block === BLOCK.TNT), "neighboring TNT remains in terrain and receives a secondary fuse");
 assert.ok(crater.every((edit) => edit.block === BLOCK.AIR || edit.chainPrimed === true), "the local plan can only destroy blocks or prime neighboring TNT");

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   BED_MESH_VERTEX_COUNT,
+  BED_FOOT_MESH_VERTEX_COUNT,
+  BED_HEAD_MESH_VERTEX_COUNT,
   appendBedMesh,
   blockHasCollision,
   blockOccludesFaces,
@@ -10,7 +12,7 @@ import { BLOCK, type BlockTarget } from "../client/game/types.ts";
 
 assert.equal(BLOCK.BED, 12);
 assert.equal(blockHasCollision(BLOCK.BED), true);
-assert.equal(blockOccludesFaces(BLOCK.BED), true);
+assert.equal(blockOccludesFaces(BLOCK.BED), false, "a partial bed cannot hide the supporting block or neighboring terrain");
 
 const mesh: number[] = [];
 appendBedMesh(mesh, 0, 0, 0);
@@ -29,6 +31,19 @@ for (let offset = 0; offset < mesh.length; offset += 6) {
 assert.equal(maxY, 0.55);
 assert.ok(redVertices > 0, "bed should have a red blanket");
 assert.ok(whiteVertices > 0, "bed should have a white pillow");
+
+for (const direction of ["north", "south", "east", "west"] as const) {
+  const foot: number[] = [];
+  const head: number[] = [];
+  appendBedMesh(foot, 0, 0, 0, "foot", direction);
+  appendBedMesh(head, 0, 0, 0, "head", direction);
+  assert.equal(foot.length / 6, BED_FOOT_MESH_VERTEX_COUNT);
+  assert.equal(head.length / 6, BED_HEAD_MESH_VERTEX_COUNT);
+  assert.equal(foot.some((_, index) => index % 6 === 3 && foot[index] > 0.8 && foot[index + 1] > 0.8), false,
+    "the foot half has no pillow");
+  assert.equal(head.some((_, index) => index % 6 === 3 && head[index] > 0.8 && head[index + 1] > 0.8), true,
+    "the head half owns the pillow");
+}
 
 const bedTarget: BlockTarget = {
   block: { x: 1, y: 2, z: 3, block: BLOCK.BED },
