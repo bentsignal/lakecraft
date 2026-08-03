@@ -45,7 +45,7 @@ import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
 import { planOakTreeGrowth } from "../../shared/treeGrowth";
 import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
-import { performanceHudCoreText } from "../game/performanceHud.ts";
+import { performanceHudCoreText, performanceHudFpsText } from "../game/performanceHud.ts";
 import {
   loadClientSettings,
   mouseLookScale,
@@ -322,6 +322,7 @@ function SinglePlayerWorld({
   const commandSurfaceOpenRef = useRef(false);
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
   const performanceOutputRef = useRef<HTMLOutputElement | null>(null);
+  const fpsOutputRef = useRef<HTMLOutputElement | null>(null);
   const [inventory, setInventory] = useState<Inventory>(initialSnapshot.player.inventory);
   const [equipment, setEquipment] = useState<Equipment>(initialSnapshot.player.equipment);
   const [selected, setSelected] = useState(initialSnapshot.player.selectedHotbar);
@@ -1618,6 +1619,7 @@ function SinglePlayerWorld({
         collectLocalDrops(pose);
       },
       onPerformanceStats: (stats) => {
+        if (fpsOutputRef.current) fpsOutputRef.current.textContent = performanceHudFpsText(stats);
         if (performanceOutputRef.current && !performanceOutputRef.current.hidden) {
           performanceOutputRef.current.textContent = performanceHudCoreText(stats);
         }
@@ -1941,6 +1943,7 @@ function SinglePlayerWorld({
         hidden
         ref={performanceOutputRef}
       />
+      <output aria-label="Frames per second" className="lc-local-fps" ref={fpsOutputRef}>FPS --</output>
       {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
         <div className="lc-pointer-capture" role="presentation">
           <button autoFocus onClick={requestGameplayPointerLock} type="button">

@@ -11,6 +11,7 @@ import {
   packSkyExposureShade,
   refreshEditedSkyColumns,
   removeChunkSkyOccluders,
+  skyEcologyExposureLevel,
   skyExposureDirtyChunkKeysForEdits,
   skyExposureLevel,
   skyLitIntensity,
@@ -37,7 +38,8 @@ assert.equal(
   1,
   "duplicate block edits refresh their shared column once",
 );
-assert.equal(columns.get("0,3"), TERRAIN_MIN_Y - 1, "removing the roof refreshes the cached top");
+assert.deepEqual(columns.get("0,3"), { opaqueY: TERRAIN_MIN_Y - 1, leafY: TERRAIN_MIN_Y - 1 },
+  "removing the roof refreshes both cached occluder classes");
 assert.equal(skyExposureLevel(columns, 0, 0, 3), 3, "an open shaft receives daylight");
 assert.equal(skyExposureLevel(columns, 1, 0, 3), 2, "the first entrance column has bounded spill");
 assert.equal(skyExposureLevel(columns, 2, 0, 3), 1, "the second entrance column has weaker spill");
@@ -45,7 +47,8 @@ assert.equal(skyExposureLevel(columns, 3, 0, 3), 0, "the third roofed column is 
 
 roof.set(blockKey(0, 5, 3), BLOCK.STONE);
 refreshEditedSkyColumns(columns, [{ x: 0, z: 3 }], readRoof);
-assert.equal(columns.get("0,3"), 5, "replacing the roof closes the shaft deterministically");
+assert.deepEqual(columns.get("0,3"), { opaqueY: 5, leafY: TERRAIN_MIN_Y - 1 },
+  "replacing the roof closes the shaft deterministically");
 assert.equal(skyExposureLevel(columns, 0, 0, 3), 0);
 
 assert.equal(SKY_EXPOSURE_LEVELS, 3);
@@ -56,8 +59,25 @@ assert.equal(skyLitIntensity(0.24, 0), CAVE_LIGHT_FLOOR,
 assert.equal(skyLitIntensity(1.0, 3), 1);
 assert.equal(skyLitIntensity(0.24, 3), 0.24);
 assert.ok(skyLitIntensity(1.0, 2) > skyLitIntensity(1.0, 1), "entrance levels transition monotonically");
-assert.ok(CAVE_LIGHT_FLOOR >= 0.09 && CAVE_LIGHT_FLOOR <= 0.12,
-  "the fixed cave floor remains dark but does not collapse to pitch black");
+assert.ok(CAVE_LIGHT_FLOOR >= 0.15 && CAVE_LIGHT_FLOOR <= 0.18,
+  "the fixed visual cave floor remains dark but readable on ordinary displays");
+
+const leafRoof = new Map<string, BlockId>();
+for (let x = 0; x < 8; x += 1) {
+  for (let z = 0; z < 8; z += 1) leafRoof.set(blockKey(x, 5, z), BLOCK.LEAVES);
+}
+const leafColumns: SkyOccluderColumns = new Map();
+writeChunkSkyOccluders(leafColumns, 0, 0, leafRoof);
+assert.equal(skyExposureLevel(leafColumns, 3, 0, 3), 2,
+  "leaf cover transmits a bounded partial visual skylight band");
+assert.equal(skyEcologyExposureLevel(leafColumns, 3, 0, 3), 0,
+  "the same leaf cover remains full shelter for hostile ecology");
+assert.equal(skyEcologyExposureLevel(columns, 3, 0, 3), 0,
+  "an enclosed stone cave remains ecology-dark");
+assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 0, 3)) > skyLitIntensity(1, 0),
+  "canopy shade stays visibly brighter than an enclosed cave");
+assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 0, 3)) < skyLitIntensity(1, 3),
+  "canopy shade remains visibly dimmer than open sky");
 
 for (const faceShade of [0.52, 0.68, 0.73, 0.79, 0.88, 1]) {
   for (let exposure = 0; exposure <= SKY_EXPOSURE_LEVELS; exposure += 1) {
