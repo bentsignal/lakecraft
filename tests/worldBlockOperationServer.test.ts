@@ -21,7 +21,8 @@ const editMutation = server.slice(mutationStart, mutationEnd);
 
 assert.match(server, /worldChunks: table\(\{[\s\S]*?revision: string\(\)\.default\("0"\)/);
 assert.match(server, /inventories: table\(\{[\s\S]*?revision: string\(\)\.default\("0"\)/);
-assert.match(server, /worldBlockOperationReceipts: table\(\{[\s\S]*?\.index\("by_user_operation", \["userId", "operationId"\]\)[\s\S]*?\.index\("by_user_created", \["userId", "receiptCreatedAt"\]\)/);
+assert.match(server, /worldBlockOperationReceipts: userOperationReceiptTable\(\)/);
+assert.match(server, /function userOperationReceiptTable\(\)[\s\S]*?\.index\(BS\.byUserOperation, \[BS\.userId, BS\.operationId\]\)[\s\S]*?\.index\(BS\.byUserCreated, \[BS\.userId, BS\.receiptCreatedAt\]\)/);
 assert.match(server, /revision: storedRevision\(row\.revision\) \?\? "0"/);
 assert.doesNotMatch(server, /missingChunkKeys|legacyRows|legacyEdits/, "prelaunch capsule has no migration-only world fallback");
 

@@ -15,8 +15,7 @@ assert.ok(shearStart >= 0 && attackStart > shearStart, "Lakebed capsule exports 
 const mutation = server.slice(shearStart, attackStart);
 
 for (const marker of [
-  "ctx.auth.isAuthenticated",
-  "ctx.auth.isGuest",
+  "signedIn(ctx)",
   "validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN)",
   'JSON.stringify(["mob_shear", identity.mobId, identity.kind])',
   "decidePlayerCombatReplay",
@@ -30,7 +29,7 @@ for (const marker of [
   "applyConfirmedDurableItemUse",
   '"shears"',
   "addItem(nextInventory, drop.itemId, drop.count)",
-  'reason: "inventory_full"',
+  'failureAt("inventory_full", serverNow)',
   "ctx.db.mobAuthority.update",
   "ctx.db.mobAuthority.insert",
   "ctx.db.inventories.update",

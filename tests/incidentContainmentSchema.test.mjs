@@ -53,8 +53,8 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "6a274c6f6a9e95b24ec1dcc7cfae6d05d7f6ba542d3d29faa9619af99f4be594",
-  "removing containment declarations reproduces the reviewed bedrock-floor server behavior source",
+  "8d16e16af75b6fe08cf3dabffafd24e47d05a8a61ffcd8398b3035dde8333867",
+  "removing containment declarations reproduces the reviewed compact server behavior source",
 );
 
 assert.doesNotMatch(server, /\bsinglePlayerCloudBackups\s*:/,

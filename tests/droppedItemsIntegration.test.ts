@@ -9,7 +9,7 @@ for (const required of [
   '.index("by_chunk_expiry", ["chunkKey", "expiresAt"])',
   '.index("by_owner_expiry", ["ownerUserId", "expiresAt"])',
   '.index("by_expiry", ["expiresAt"])',
-  "droppedItemReceipts: table({",
+  "droppedItemReceipts: userOperationReceiptTable()",
   "droppedItems: query(async",
   "dropItem: mutation(async",
   "pickupDroppedItem: mutation(async",
