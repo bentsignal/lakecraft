@@ -3,11 +3,13 @@ import {
   ITEMS,
   addItemStack,
   areItemStacksCompatible,
+  createItemStack,
   maxItemDurability,
   normalizeEquipment,
   type ArmorSlot,
   type Equipment,
   type Inventory,
+  type ItemId,
   type ItemStack,
 } from "./game.ts";
 import {
@@ -36,7 +38,8 @@ export type InventoryWorkspaceActionReason =
   | "incompatible_stack"
   | "stack_full"
   | "no_capacity"
-  | "empty_slot";
+  | "empty_slot"
+  | "cursor_blocked";
 
 export type InventoryWorkspaceActionResult =
   | { ok: true; state: InventoryWorkspace }
@@ -111,6 +114,35 @@ export function leftClickInventorySlot(state: InventoryWorkspace, slot: number):
 
 export function rightClickInventorySlot(state: InventoryWorkspace, slot: number): InventoryWorkspaceActionResult {
   return clickInventorySlot(state, slot, true);
+}
+
+/** Takes one infinite canonical Creative stack onto the shared inventory cursor. */
+export function takeCreativeCatalogStack(
+  state: InventoryWorkspace,
+  itemId: ItemId,
+): InventoryWorkspaceActionResult {
+  const next = cloneInventoryWorkspaceStrict(state);
+  if (next.cursor && !areItemStacksCompatible(next.cursor, { itemId, count: 1 })) {
+    return failure(next, "cursor_blocked");
+  }
+  next.cursor = createCreativeStack(itemId);
+  return { ok: true, state: next };
+}
+
+/**
+ * Ctrl/Cmd-click inserts one full Creative stack into the first compatible or
+ * free player slot. The operation is atomic: partial capacity changes nothing.
+ */
+export function insertCreativeCatalogStack(
+  state: InventoryWorkspace,
+  itemId: ItemId,
+): InventoryWorkspaceActionResult {
+  const next = cloneInventoryWorkspaceStrict(state);
+  const source = createCreativeStack(itemId);
+  const added = addItemStack(next.inventory, source, source.count);
+  if (added.remainder > 0) return failure(next, BS.noCapacity);
+  next.inventory = added.inventory;
+  return { ok: true, state: next };
 }
 
 export function leftClickArmorSlot(state: InventoryWorkspace, slot: ArmorSlot): InventoryWorkspaceActionResult {
@@ -410,6 +442,10 @@ function range(start: number, end: number): number[] {
 
 function withCount(stack: ItemStack, count: number): ItemStack {
   return { ...stack, count };
+}
+
+function createCreativeStack(itemId: ItemId): ItemStack {
+  return createItemStack(itemId, ITEMS[itemId].maxStack);
 }
 
 function cloneStack(stack: ItemStack | null): ItemStack | null {

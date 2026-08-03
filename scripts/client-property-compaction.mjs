@@ -262,7 +262,6 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "onContinue": "pa",
   "onContinueMobile": "ka",
   "onCrafted": "Nt",
-  "onCreativePick": "aU",
   "onDisconnect": "Dt",
   "onDismiss": "fa",
   "onDismissMessage": "Rr",
