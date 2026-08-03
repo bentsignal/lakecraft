@@ -730,11 +730,7 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
   return { elapsedSeconds: 0, tick: 0, mobs, projectiles, pendingProjectileDamage: 0 };
 }
 
-/**
- * Rehomes only local mobs that left the retained terrain square. Slots and
- * damage sequences stay stable, while discarded objects and their projectiles
- * immediately leave the fixed-size simulation.
- */
+/** Retains in-range objects verbatim, evicts only out-of-range objects, then fills vacancies. */
 export function reconcileLocalMobStreaming(
   simulation: MobSimulation,
   spawns: readonly MobSpawnDescriptor[],
@@ -742,35 +738,39 @@ export function reconcileLocalMobStreaming(
   centerZ: number,
   retainRadius: number,
 ): number {
-  const count = Math.min(HARD_MAX_MOB_POPULATION, spawns.length);
   const radius = Math.max(0, Number.isFinite(retainRadius) ? retainRadius : 0);
-  let recycled = 0;
-  for (let index = 0; index < Math.max(simulation.mobs.length, count); index += 1) {
-    const previous = simulation.mobs[index];
-    const spawn = index < count ? spawns[index] : undefined;
-    if (previous && spawn && previous.id === spawn.id
-      && Math.max(Math.abs(previous.x - centerX), Math.abs(previous.z - centerZ)) <= radius) {
+  const target = Math.min(HARD_MAX_MOB_POPULATION, Math.max(simulation.mobs.length, spawns.length));
+  const retained: MobState[] = [];
+  const retainedIds = new Set<string>();
+  const retiredById = new Map<string, MobState>();
+  for (const previous of simulation.mobs) {
+    if (Math.max(Math.abs(previous.x - centerX), Math.abs(previous.z - centerZ)) <= radius) {
       if (Math.max(Math.abs(previous.homeX - centerX), Math.abs(previous.homeZ - centerZ)) > radius) {
         previous.homeX = previous.desiredX = previous.x;
         previous.homeY = previous.y;
         previous.homeZ = previous.desiredZ = previous.z;
       }
-      continue;
-    }
-    if (previous) {
+      retained.push(previous);
+      retainedIds.add(previous.id);
+    } else {
+      retiredById.set(previous.id, previous);
       for (const projectile of simulation.projectiles) {
         if (projectile.active && projectile.ownerId === previous.id) projectile.active = false;
       }
     }
-    if (spawn) {
-      const replacement = mobStateForSpawn(spawn);
-      if (previous?.id === spawn.id) replacement.damageSequence = previous.damageSequence;
-      simulation.mobs[index] = replacement;
-    }
-    recycled += 1;
   }
-  simulation.mobs.length = count;
-  return recycled;
+  let added = 0;
+  for (let index = 0; index < spawns.length && retained.length < target; index += 1) {
+    const spawn = spawns[index];
+    if (retainedIds.has(spawn.id)) continue;
+    const replacement = mobStateForSpawn(spawn);
+    replacement.damageSequence = retiredById.get(spawn.id)?.damageSequence ?? 0;
+    retained.push(replacement);
+    retainedIds.add(spawn.id);
+    added += 1;
+  }
+  simulation.mobs = retained;
+  return Math.max(retiredById.size, added);
 }
 
 /** Returns a stable-order copy suitable for the bounded Lakebed authority query. */

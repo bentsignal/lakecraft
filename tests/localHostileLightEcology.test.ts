@@ -12,17 +12,14 @@ import {
   reconcileLocalMobStreaming,
   restoreMobSimulationSnapshot,
   stepMobSimulation,
+  localMobHostileActive,
   writeMobPoseSnapshots,
   type LocalMobDeathDropEvent,
   type MobKind,
   type MobSimulation,
   type MobSpawnDescriptor,
 } from "../client/game/mobs.ts";
-import {
-  MAX_ACTIVE_TORCH_LIGHTS,
-  TORCH_LIGHT_RADIUS,
-  sampleCachedMobLocalLight,
-} from "../client/game/voxelEngine.ts";
+import { createMobTorchLightCache, sampleCachedMobLocalLight } from "../client/game/voxelEngine.ts";
 
 function spawn(kind: MobKind, index = 0): MobSpawnDescriptor {
   return {
@@ -38,17 +35,53 @@ function spawn(kind: MobKind, index = 0): MobSpawnDescriptor {
   };
 }
 
-const noTorches = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
-assert.equal(sampleCachedMobLocalLight(3, 1, noTorches, 0, 0, 1, 0), 1, "open noon is fully lit");
-assert.equal(sampleCachedMobLocalLight(0, 1, noTorches, 0, 0, 1, 0), 0, "a cave or complete roof stays dark at noon");
-assert.equal(sampleCachedMobLocalLight(3, 0, noTorches, 0, 0, 1, 0), 0, "open night is dark");
-assert.equal(sampleCachedMobLocalLight(3, 0.35, noTorches, 0, 0, 1, 0), 0.35, "dawn follows cached sun intensity");
-const caveTorch = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
-caveTorch[0] = 0;
-caveTorch[1] = 1;
-caveTorch[2] = 0;
-caveTorch[3] = TORCH_LIGHT_RADIUS;
-assert.equal(sampleCachedMobLocalLight(0, 0, caveTorch, 1, 0, 1, 0), 1, "a cached torch lights a cave without a ray");
+const noTorches = new Map<string, number[]>();
+const emptyLightCache = createMobTorchLightCache();
+assert.equal(sampleCachedMobLocalLight(3, 1, noTorches, 0, emptyLightCache, 0, 1, 0), 1, "open noon is fully lit");
+assert.equal(sampleCachedMobLocalLight(0, 1, noTorches, 0, emptyLightCache, 0, 1, 0), 0, "a cave or complete roof stays dark at noon");
+assert.equal(sampleCachedMobLocalLight(3, 0, noTorches, 0, emptyLightCache, 0, 1, 0), 0, "open night is dark");
+assert.equal(sampleCachedMobLocalLight(3, 0.35, noTorches, 0, emptyLightCache, 0, 1, 0), 0.35, "dawn follows cached sun intensity");
+
+const offCameraTorchColumns = new Map<string, number[]>([["20,0", [1.76]]]);
+let torchColumnReads = 0;
+const countedTorchColumns = {
+  get(key: string) { torchColumnReads += 1; return offCameraTorchColumns.get(key); },
+} as ReadonlyMap<string, readonly number[]>;
+const mobLightCache = createMobTorchLightCache(8);
+const litOffCameraMob = sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 20, 1.76, 0);
+assert.ok(litOffCameraMob > LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX,
+  "a torch around mob x=20 is sampled independently of the camera at x=0");
+assert.equal(localMobHostileActive("spider", litOffCameraMob), false, "an off-camera torch makes an unengaged spider neutral");
+assert.ok(Math.abs(sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 20, 1.76, 0)
+  - litOffCameraMob) < 1e-6);
+assert.ok(torchColumnReads <= 23 * 23, "one coordinate-local cache miss has a fixed column-read bound");
+const cachedReads = torchColumnReads;
+sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 20, 1.76, 0);
+assert.equal(torchColumnReads, cachedReads, "a fixed-AI sample in the same voxel reuses cached torch locality");
+const unlitAdjacentRegion = sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 8, 1.76, 0);
+assert.equal(unlitAdjacentRegion, 0, "an adjacent unlit region outside torch radius remains dark");
+offCameraTorchColumns.clear();
+assert.equal(sampleCachedMobLocalLight(0, 0, countedTorchColumns, 2, mobLightCache, 20, 1.76, 0), 0,
+  "a torch edit revision invalidates cached local light");
+const readsAfterEdit = torchColumnReads;
+offCameraTorchColumns.set("20,0", [1.76]);
+assert.ok(Math.abs(sampleCachedMobLocalLight(0, 0, countedTorchColumns, 3, mobLightCache, 20, 1.76, 0)
+  - litOffCameraMob) < 1e-6,
+  "a stream revision invalidates and repopulates the coordinate-local cache");
+assert.ok(torchColumnReads - readsAfterEdit <= 23 * 23, "stream invalidation remains bounded to one spatial neighborhood");
+assert.equal(createMobSpawns({
+  seed: 7319,
+  radius: 2,
+  centerX: 20,
+  centerZ: 0,
+  terrainHeight: () => 0,
+  passivePopulation: 0,
+  hostilePopulation: 4,
+  maxPopulation: 4,
+  spawnClearRadius: 0,
+  isSpawnable: () => true,
+  localLight: (kind, x, y, z) => sampleCachedMobLocalLight(0, 0, countedTorchColumns, 3, mobLightCache, x, y, z),
+}).length, 0, "the off-camera x=20 torch rejects genuinely new hostile spawn candidates");
 
 const spawnOptions = {
   seed: 7319,
@@ -65,8 +98,33 @@ assert.equal(darkSpawns.length, 4, "all four hostile slots can populate a valid 
 assert.equal(createMobSpawns({ ...spawnOptions, localLight: () => LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX }).length, 0,
   "the exact bright threshold rejects new surface hostiles");
 const streamed = createMobSimulation(darkSpawns);
-assert.ok(reconcileLocalMobStreaming(streamed, createMobSpawns({ ...spawnOptions, localLight: () => 1 }), 0, 0, 20) > 0);
-assert.equal(streamed.mobs.length, 0, "streaming cannot introduce a bright-surface hostile population");
+const retainedStreamedMobs = [...streamed.mobs];
+assert.equal(reconcileLocalMobStreaming(streamed, createMobSpawns({ ...spawnOptions, localLight: () => 1 }), 0, 0, 20), 0);
+assert.deepEqual(streamed.mobs, retainedStreamedMobs, "bright candidates cannot truncate retained dark-spawned hostiles");
+assert.equal(reconcileLocalMobStreaming(streamed, [], 100, 0, 20), 4, "only out-of-retain mobs are evicted");
+assert.equal(streamed.mobs.length, 0, "bright replacement candidates leave real vacancies");
+const laterDarkSpawns = createMobSpawns({ ...spawnOptions, centerX: 100, localLight: () => 0 });
+assert.equal(reconcileLocalMobStreaming(streamed, laterDarkSpawns, 100, 0, 20), 4,
+  "a later dark reconciliation fills the vacancies");
+assert.equal(new Set(streamed.mobs.map((mob) => mob.id)).size, streamed.mobs.length, "streamed mob IDs remain unique");
+
+const retainedEcology = createMobSimulation([spawn("zombie", 1), spawn("creeper", 2), spawn("skeleton", 3)]);
+const [shadedZombie, fusedCreeper, dyingSkeleton] = retainedEcology.mobs;
+shadedZombie.health = 7;
+fusedCreeper.behavior = "fuse";
+fusedCreeper.fuseStartedAtSeconds = 2;
+fusedCreeper.fuseUntilSeconds = 4;
+retainedEcology.elapsedSeconds = 2.5;
+damageMob(retainedEcology, dyingSkeleton.id, 100, () => true);
+const retainedProjectile = retainedEcology.projectiles[0];
+retainedProjectile.active = true;
+retainedProjectile.ownerId = shadedZombie.id;
+const retainedState = retainedEcology.mobs.map((mob) => ({ ...mob }));
+assert.equal(reconcileLocalMobStreaming(retainedEcology, [], 3, 0, 20), 0);
+assert.deepEqual(retainedEcology.mobs, retainedState,
+  "an in-radius shaded zombie, fused creeper, and dying mob keep every ecology/death clock across center changes");
+assert.equal(retainedEcology.projectiles[0], retainedProjectile, "in-radius projectile identity and activity remain intact");
+assert.equal(retainedProjectile.active, true);
 
 function step(
   simulation: MobSimulation,
