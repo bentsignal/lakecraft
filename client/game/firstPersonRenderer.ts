@@ -280,7 +280,7 @@ function canUseCanonicalCube(block: BlockId): boolean {
 }
 
 function appendTexturedCube(output: number[], block: BlockId): void {
-  const size = 0.72;
+  const size = 0.64;
   for (const face of CUBE_FACES) {
     const texture = blockTextureForFace(block, face[0]);
     if (!texture) continue;
@@ -297,9 +297,9 @@ function appendTexturedCube(output: number[], block: BlockId): void {
         (point[0] - 0.5) * size,
         (point[1] - 0.5) * size,
         (point[2] - 0.5) * size,
-        0.08,
-        -0.04,
-        -1.32,
+        0.14,
+        -0.10,
+        -1.36,
         FIRST_PERSON_CUBE_ROTATION[0],
         FIRST_PERSON_CUBE_ROTATION[1],
         FIRST_PERSON_CUBE_ROTATION[2],

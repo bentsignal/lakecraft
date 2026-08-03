@@ -91,9 +91,9 @@ const cube = capture.uploads.get(2);
 if (!cube) throw new Error("textured cube upload missing");
 assert.deepEqual(FIRST_PERSON_CUBE_ROTATION, [0.5, -0.66, 0.04]);
 const cubeCenters = Array.from({ length: 6 }, (_, face) => center(cube, face * 6, 6));
-assert.ok(cubeCenters[2][2] > cubeCenters[3][2] + 0.25, "the top face points visibly toward the camera");
-assert.ok(cubeCenters[0][2] > cubeCenters[1][2] + 0.4, "the right vertical face remains readable");
-assert.ok(cubeCenters[4][2] > cubeCenters[5][2] + 0.45, "the left vertical face remains readable");
+assert.ok(cubeCenters[2][2] > cubeCenters[3][2] + 0.2, "the top face points visibly toward the camera");
+assert.ok(cubeCenters[0][2] > cubeCenters[1][2] + 0.35, "the right vertical face remains readable");
+assert.ok(cubeCenters[4][2] > cubeCenters[5][2] + 0.4, "the left vertical face remains readable");
 const readableAreas = [0, 2, 4].map((face) => projectedFaceArea(cube, face));
 assert.ok(Math.min(...readableAreas) / Math.max(...readableAreas) > 0.5,
   "top, left, and right cube faces retain a balanced isometric silhouette");

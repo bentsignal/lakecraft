@@ -427,7 +427,7 @@ export const LADDER_IDLE_SLIDE_SPEED = -1.2;
 // The color and terrain programs intentionally share this source fragment at
 // runtime. Keeping one compact copy preserves the readable CPU-side lighting
 // mirrors while avoiding two near-identical GLSL payloads in the client bundle.
-const LIGHTING_VERTEX_SHADER = `uniform vec3 uCamera,uAmbientColor,uDirectionalColor;uniform float uFogEnabled,uAmbientIntensity,uDirectionalIntensity;uniform vec4 uTorchLights[8];vec3 lightAt(vec3 p,float e){vec3 l=mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}),vec3(.16)+uAmbientColor*uAmbientIntensity*.75+uDirectionalColor*uDirectionalIntensity*.3,e),t=vec3(0.);for(int i=0;i<8;i++){vec4 q=uTorchLights[i];float a=step(.001,q.w)*clamp(1.-length(q.xyz-p)/max(q.w,.001),0.,1.);t+=vec3(1.,.43,.12)*a*a*.95;}return l+t;}float fogAt(vec3 p){return uFogEnabled*smoothstep(18.,42.,length(p-uCamera));}`;
+const LIGHTING_VERTEX_SHADER = `uniform vec3 uCamera,uAmbientColor,uDirectionalColor;uniform float uFogEnabled,uAmbientIntensity,uDirectionalIntensity,uSkyExposure;uniform vec4 uTorchLights[8];vec3 lightAt(vec3 p,float e){vec3 l=mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}),vec3(.16)+uAmbientColor*uAmbientIntensity*.75+uDirectionalColor*uDirectionalIntensity*.3,e*uSkyExposure),t=vec3(0.);for(int i=0;i<8;i++){vec4 q=uTorchLights[i];float a=step(.001,q.w)*clamp(1.-length(q.xyz-p)/max(q.w,.001),0.,1.);t+=vec3(1.,.43,.12)*a*a*.95;}return l+t;}float fogAt(vec3 p){return uFogEnabled*smoothstep(18.,42.,length(p-uCamera));}`;
 
 export const VERTEX_SHADER = `attribute vec3 aPosition,aColor;uniform mat4 uMvp;uniform float uLightingEnabled;varying vec3 vColor;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);float p=step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)},aColor.r),r=aColor.r-p*${SKY_SHADE_PACK_MARKER.toFixed(1)};vec3 c=vec3(mix(aColor.r,mod(r,2.),p),aColor.g,aColor.b);float e=mix(1.,floor(r/2.)/${SKY_EXPOSURE_LEVELS.toFixed(1)},p);vColor=c*mix(vec3(1.),lightAt(aPosition,e),uLightingEnabled);vFog=fogAt(aPosition);}`;
 
@@ -1228,6 +1228,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const directionalColorLocation = gl.getUniformLocation(program, "uDirectionalColor");
   const ambientIntensityLocation = gl.getUniformLocation(program, "uAmbientIntensity");
   const directionalIntensityLocation = gl.getUniformLocation(program, "uDirectionalIntensity");
+  const skyExposureLocation = gl.getUniformLocation(program, "uSkyExposure");
   const torchLightsLocation = gl.getUniformLocation(program, "uTorchLights[0]");
   const terrainPositionLocation = gl.getAttribLocation(terrainProgram, "aPosition");
   const terrainUvLocation = gl.getAttribLocation(terrainProgram, "aUv");
@@ -1240,6 +1241,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const terrainDirectionalColorLocation = gl.getUniformLocation(terrainProgram, "uDirectionalColor");
   const terrainAmbientIntensityLocation = gl.getUniformLocation(terrainProgram, "uAmbientIntensity");
   const terrainDirectionalIntensityLocation = gl.getUniformLocation(terrainProgram, "uDirectionalIntensity");
+  const terrainSkyExposureLocation = gl.getUniformLocation(terrainProgram, "uSkyExposure");
   const terrainTorchLightsLocation = gl.getUniformLocation(terrainProgram, "uTorchLights[0]");
   const terrainAtlasLocation = gl.getUniformLocation(terrainProgram, "uAtlas");
   const terrainAlphaCutoffLocation = gl.getUniformLocation(terrainProgram, "uAlphaCutoff");
@@ -1505,6 +1507,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let lastTorchCameraX = Infinity;
   let lastTorchCameraY = Infinity;
   let lastTorchCameraZ = Infinity;
+  let firstPersonSkyExposure = 1;
+  let firstPersonExposureBlockX = Infinity;
+  let firstPersonExposureBlockY = Infinity;
+  let firstPersonExposureBlockZ = Infinity;
+  let firstPersonExposureDirty = true;
   const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
 
   function emitHandAction(action: "mine" | "attack" | "place" | "use"): void {
@@ -1740,6 +1747,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const dirty = new Set(dirtyChunkKeysForEdits(faceEdits));
     if (skyEdits.length) {
       refreshEditedSkyColumns(skyOccluderColumns, skyEdits, getBlock);
+      firstPersonExposureDirty = true;
       for (const key of skyExposureDirtyChunkKeysForEdits(skyEdits)) dirty.add(key);
     }
     rebuildWorldChunks([...dirty].filter((key) => loadedChunkKeys.has(key)));
@@ -2432,6 +2440,24 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
   }
 
+  function updateFirstPersonSkyExposure(eye: Vec3): number {
+    const blockX = Math.floor(eye[0]);
+    const blockY = Math.floor(eye[1]);
+    const blockZ = Math.floor(eye[2]);
+    if (firstPersonExposureDirty
+      || blockX !== firstPersonExposureBlockX
+      || blockY !== firstPersonExposureBlockY
+      || blockZ !== firstPersonExposureBlockZ) {
+      firstPersonExposureBlockX = blockX;
+      firstPersonExposureBlockY = blockY;
+      firstPersonExposureBlockZ = blockZ;
+      firstPersonSkyExposure = skyExposureLevel(skyOccluderColumns, blockX, blockY, blockZ)
+        / SKY_EXPOSURE_LEVELS;
+      firstPersonExposureDirty = false;
+    }
+    return firstPersonSkyExposure;
+  }
+
   function getPerformanceStats(): VoxelPerformanceStats {
     const sortedFrameTimes = [...frameTimes].sort((a, b) => a - b);
     const averageFrameTimeMs = frameTimes.length
@@ -2538,6 +2564,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     writeCelestialDirection(dayNightState.moonAngle, atmosphereMoonDirection);
     updateActiveTorchLights(now, eye);
     firstPersonTorchUniforms[3] = activeTorchUniforms[3] / 2;
+    const viewmodelSkyExposure = updateFirstPersonSkyExposure(eye);
     const mobStats = mobRenderer.rebuild(
       mobSnapshots,
       eye[0],
@@ -2608,6 +2635,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     );
     gl.uniform1f(terrainAmbientIntensityLocation, dayNightState.ambientIntensity);
     gl.uniform1f(terrainDirectionalIntensityLocation, dayNightState.directionalIntensity);
+    gl.uniform1f(terrainSkyExposureLocation, 1);
     gl.uniform4fv(terrainTorchLightsLocation, activeTorchUniforms);
     gl.uniform1f(terrainFogLocation, 1);
     gl.activeTexture(gl.TEXTURE0);
@@ -2650,6 +2678,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     );
     gl.uniform1f(ambientIntensityLocation, dayNightState.ambientIntensity);
     gl.uniform1f(directionalIntensityLocation, dayNightState.directionalIntensity);
+    gl.uniform1f(skyExposureLocation, 1);
     gl.uniform4fv(torchLightsLocation, activeTorchUniforms);
     gl.uniform1f(lightingLocation, 1);
     gl.uniform1f(fogLocation, 1);
@@ -2757,6 +2786,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.uniformMatrix4fv(terrainMvpLocation, false, firstPersonMvpMatrix);
         gl.uniform3f(terrainCameraLocation, 0, 0, 0);
         gl.uniform1f(terrainFogLocation, 0);
+        gl.uniform1f(terrainSkyExposureLocation, viewmodelSkyExposure);
         gl.uniform4fv(terrainTorchLightsLocation, firstPersonTorchUniforms);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
@@ -2774,6 +2804,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.uniformMatrix4fv(mvpLocation, false, firstPersonMvpMatrix);
         gl.uniform3f(cameraLocation, 0, 0, 0);
         gl.uniform1f(fogLocation, 0);
+        gl.uniform1f(skyExposureLocation, viewmodelSkyExposure);
         gl.uniform4fv(torchLightsLocation, firstPersonTorchUniforms);
         gl.uniform1f(lightingLocation, 1);
         bindBuffer(firstPersonColorBuffer);
