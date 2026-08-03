@@ -106,6 +106,8 @@ for (let tick = 0; tick < 120; tick += 1) {
 assert.equal(zombie.behavior, "chase");
 assert.equal(zombie.hostileActive, true);
 assert.ok(zombie.x > 4.2 && zombie.x < 4.5, `zombie should chase at its configured speed, reached ${zombie.x}`);
+assert.ok(Math.abs(zombie.yaw + Math.PI / 2) < 1e-9,
+  "an eastbound zombie's local +Z face points east instead of moonwalking west");
 
 // Blocked diagonal motion should slide along its unblocked axis and never enter solids.
 const collisionSimulation = createMobSimulation([descriptor("pig", 0, 0, 202)]);
@@ -124,6 +126,35 @@ for (let tick = 0; tick < 60; tick += 1) {
 }
 assert.ok(pig.x <= 0.2, "collision callback must prevent entry into a blocked space");
 assert.ok(pig.z > 0.5, "collision resolution should preserve safe axis sliding");
+assert.ok(Math.abs(pig.yaw) < 1e-9, "a diagonal request that slides south faces its actual +Z travel");
+
+// A turn updates facing from the displacement that actually survived collision,
+// while a fully blocked step stops gait-worthy behavior without inventing travel.
+pig.directionX = -1;
+pig.directionZ = 0;
+pig.behavior = "wander";
+pig.behaviorUntilSeconds = collisionSimulation.elapsedSeconds + 1;
+stepMobSimulation(collisionSimulation, {
+  dtSeconds: 0.1,
+  isNight: false,
+  terrainHeight: () => 0,
+  canOccupy: () => true,
+});
+assert.ok(Math.abs(pig.yaw - Math.PI / 2) < 1e-9, "a westbound turn rotates the model front toward -X");
+
+const blockedSimulation = createMobSimulation([descriptor("cow", 0, 0, 204)]);
+const blockedCow = blockedSimulation.mobs[0]!;
+blockedCow.behavior = "wander";
+blockedCow.behaviorUntilSeconds = 10;
+blockedCow.directionX = 1;
+stepMobSimulation(blockedSimulation, {
+  dtSeconds: 0.1,
+  isNight: false,
+  terrainHeight: () => 0,
+  canOccupy: () => false,
+});
+assert.deepEqual([blockedCow.x, blockedCow.z], [0, 0]);
+assert.equal(blockedCow.behavior, "idle", "fully blocked translation cannot leave a walk-in-place behavior label");
 
 // Snapshot arrays and objects can be retained by a renderer to avoid frame allocations.
 const reusedSnapshots = writeMobPoseSnapshots(collisionSimulation);

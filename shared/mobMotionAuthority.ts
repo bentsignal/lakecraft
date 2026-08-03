@@ -17,6 +17,17 @@ export const CREEPER_FUSE_START_RANGE_BLOCKS = 3;
 export const CREEPER_FUSE_CANCEL_RANGE_BLOCKS = 7;
 export const CREEPER_FUSE_VERTICAL_RANGE_BLOCKS = 3;
 
+/**
+ * Converts horizontal travel into the yaw convention used by mob geometry.
+ * Mob face details live on local +Z; the renderer's positive yaw rotates that
+ * axis toward world -X, so eastbound (+X) travel requires a negative yaw.
+ */
+export function mobFacingYaw(dx: number, dz: number, fallback: number): number {
+  return Number.isFinite(dx) && Number.isFinite(dz) && dx * dx + dz * dz > 0.000001
+    ? Math.atan2(-dx, dz)
+    : fallback;
+}
+
 const MAX_TARGET_ID_LENGTH = 128;
 const CHASE_RANGE_UNITS = 16 * MOB_MOTION_UNITS_PER_BLOCK;
 const HOME_RANGE_UNITS = 8 * MOB_MOTION_UNITS_PER_BLOCK;
@@ -391,7 +402,7 @@ function moveMob(
   );
   mob.x = Math.max(minimumX, Math.min(maximumX, mob.x + dx));
   mob.z = Math.max(minimumZ, Math.min(maximumZ, mob.z + dz));
-  if (dx !== 0 || dz !== 0) mob.yaw = Math.round(Math.atan2(dx, dz) * 1_000_000);
+  if (dx !== 0 || dz !== 0) mob.yaw = Math.round(mobFacingYaw(dx, dz, mob.yaw / 1_000_000) * 1_000_000);
 }
 
 /** Advances exactly one fixed authority tick in place. */
@@ -471,7 +482,7 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
           }
           const correction = standoff - distance;
           if (correction > 0) moveMob(mob, correction, separationX, separationZ);
-          mob.yaw = Math.round(Math.atan2(mob.directionX, mob.directionZ) * 1_000_000);
+          mob.yaw = Math.round(mobFacingYaw(mob.directionX, mob.directionZ, mob.yaw / 1_000_000) * 1_000_000);
           chaseMovementLimit = 0;
         } else {
           setDirectionToward(mob, dx, dz);

@@ -5,6 +5,7 @@ import {
   MOB_MOTION_MAX_TARGETS,
   createMobMotionState,
   hashMobMotionCheckpoint,
+  mobFacingYaw,
   replayMobMotion,
   restoreMobMotionCheckpoint,
   selectMobMotionTarget,
@@ -15,6 +16,45 @@ import {
   type MobMotionSpawnSnapshot,
   type MobMotionWorldSnapshot,
 } from "../shared/mobMotionAuthority.ts";
+
+for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1]] as const) {
+  const yaw = mobFacingYaw(dx, dz, 0.31);
+  const distance = Math.hypot(dx, dz);
+  assert.ok(Math.abs(-Math.sin(yaw) - dx / distance) < 1e-12
+    && Math.abs(Math.cos(yaw) - dz / distance) < 1e-12,
+  `shared yaw faces actual ${dx},${dz} travel in renderer coordinates`);
+}
+assert.equal(mobFacingYaw(0, 0, 0.31), 0.31, "blocked authority motion retains deliberate facing");
+
+const retreatingSkeleton = createMobMotionState({
+  seed: 7319,
+  epoch: 900,
+  snapshot: [{ mobId: "skeleton-5nb-0", kind: "skeleton", x: 2, y: 8, z: 0, yaw: 0 }],
+})!;
+const retreatStartX = retreatingSkeleton.mobs[0]!.x;
+stepMobMotion(retreatingSkeleton, { isNight: true, targets: [{ userId: "near", x: 0, y: 8, z: 0 }] });
+const retreatDx = retreatingSkeleton.mobs[0]!.x - retreatStartX;
+assert.ok(retreatDx > 0, "a close skeleton deliberately retreats away from its target");
+assert.equal(retreatingSkeleton.mobs[0]!.yaw,
+  Math.round(mobFacingYaw(retreatDx, 0, 0) * 1_000_000),
+  "retreating skeleton facing explicitly follows its actual travel");
+
+const strafingSkeleton = createMobMotionState({
+  seed: 7319,
+  epoch: 901,
+  snapshot: [{ mobId: "skeleton-5nb-0", kind: "skeleton", x: 7, y: 8, z: 0, yaw: 0 }],
+})!;
+const strafeStart = { x: strafingSkeleton.mobs[0]!.x, z: strafingSkeleton.mobs[0]!.z };
+stepMobMotion(strafingSkeleton, { isNight: true, targets: [{ userId: "mid", x: 0, y: 8, z: 0 }] });
+const strafeDx = strafingSkeleton.mobs[0]!.x - strafeStart.x;
+const strafeDz = strafingSkeleton.mobs[0]!.z - strafeStart.z;
+assert.ok(Math.hypot(strafeDx, strafeDz) > 0 && strafeDx === 0,
+  "a midrange skeleton deliberately strafes perpendicular to its target");
+const strafeYaw = strafingSkeleton.mobs[0]!.yaw / 1_000_000;
+const strafeDistance = Math.hypot(strafeDx, strafeDz);
+assert.ok(Math.abs(-Math.sin(strafeYaw) - strafeDx / strafeDistance) < 1e-6
+  && Math.abs(Math.cos(strafeYaw) - strafeDz / strafeDistance) < 1e-6,
+"strafing skeleton facing explicitly follows its actual travel");
 
 const seed = 7319;
 const epoch = 1_784_100_000_000;
@@ -102,7 +142,7 @@ const bytesB = serializeMobMotionCheckpoint(checkpointB);
 const hashA = hashMobMotionCheckpoint(checkpointA);
 assert.equal(bytesB, bytesA, "two ten-minute replays produce byte-identical checkpoints");
 assert.equal(hashMobMotionCheckpoint(checkpointB), hashA, "two ten-minute replays produce the same hash");
-assert.equal(hashA, "32bd86f409dd90e8", "the fixed ten-minute replay remains byte-for-byte stable across releases");
+assert.equal(hashA, "b9befe7a54c5424e", "the corrected-yaw ten-minute replay remains byte-for-byte stable across releases");
 
 const firstHalf = createMobMotionState({ seed, epoch, snapshot: spawns });
 assert.ok(firstHalf);

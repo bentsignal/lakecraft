@@ -2629,7 +2629,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       sourceZ,
       mob.x,
       mob.z,
-      Math.sin(mob.yaw),
+      -Math.sin(mob.yaw),
       Math.cos(mob.yaw),
       damage,
     );

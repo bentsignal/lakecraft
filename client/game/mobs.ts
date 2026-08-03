@@ -5,6 +5,7 @@ import {
   CREEPER_FUSE_TICKS,
   CREEPER_FUSE_VERTICAL_RANGE_BLOCKS,
   MOB_MOTION_TICKS_PER_SECOND,
+  mobFacingYaw,
 } from "../../shared/mobMotionAuthority.ts";
 import * as BS from "../../shared/bundleStrings.ts";
 
@@ -1280,7 +1281,7 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
       }
     }
     if (mob.directionX !== 0 || mob.directionZ !== 0) {
-      const intendedYaw = Math.atan2(mob.directionX, mob.directionZ);
+      const intendedYaw = mobFacingYaw(mob.directionX, mob.directionZ, mob.yaw);
       const movementDistance = Math.min(speed * dt, chaseMovementLimit);
       if (movementDistance > 1e-7) {
         const beforeX = mob.x;
@@ -1288,7 +1289,7 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
         moveMob(mob, mob.directionX * movementDistance, mob.directionZ * movementDistance, input);
         const movedX = mob.x - beforeX;
         const movedZ = mob.z - beforeZ;
-        mob.yaw = movedX !== 0 || movedZ !== 0 ? Math.atan2(movedX, movedZ) : intendedYaw;
+        mob.yaw = mobFacingYaw(movedX, movedZ, intendedYaw);
       } else {
         mob.yaw = intendedYaw;
         mob.desiredX = mob.x;

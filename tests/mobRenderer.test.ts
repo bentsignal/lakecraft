@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import {
   MOB_GAIT_RADIANS_PER_BLOCK,
+  MOB_FULL_GAIT_SPEED_BLOCKS_PER_SECOND,
   MOB_MESH_INTERVAL_MS,
   advanceMobGaitPhase,
   createMobRenderer,
   mobTravelYaw,
+  mobGaitAmplitude,
   mobVertexCountForKind,
 } from "../client/game/mobRenderer.ts";
 import type { MobKind, MobPoseSnapshot } from "../client/game/mobs.ts";
@@ -12,9 +14,27 @@ import type { MobKind, MobPoseSnapshot } from "../client/game/mobs.ts";
 assert.ok(Math.abs(advanceMobGaitPhase(0, 0.25) - MOB_GAIT_RADIANS_PER_BLOCK * 0.25) < 1e-12,
   "gait advances in direct proportion to actual distance");
 assert.equal(advanceMobGaitPhase(1.2, 0), 1.2, "stationary mobs retain their gait phase without animating");
-assert.ok(Math.abs(mobTravelYaw(1, 0, 0) - Math.PI / 2) < 1e-12, "eastbound travel faces east");
-assert.ok(Math.abs(mobTravelYaw(0, -1, 0) - Math.PI) < 1e-12, "northbound travel faces north");
+assert.ok(Math.abs(mobTravelYaw(1, 0, 0) + Math.PI / 2) < 1e-12, "eastbound travel faces east in the mesh yaw convention");
+assert.ok(Math.abs(mobTravelYaw(-1, 0, 0) - Math.PI / 2) < 1e-12, "westbound travel faces west in the mesh yaw convention");
+assert.ok(Math.abs(mobTravelYaw(0, 1, 0.7)) < 1e-12, "southbound travel faces local +Z");
+assert.ok(Math.abs(Math.abs(mobTravelYaw(0, -1, 0)) - Math.PI) < 1e-12, "northbound travel faces north");
 assert.equal(mobTravelYaw(0, 0, 0.7), 0.7, "zero displacement preserves stable authored facing");
+const slowGaitAdvance = advanceMobGaitPhase(0, 0.02);
+const fastGaitAdvance = advanceMobGaitPhase(0, 0.08);
+assert.ok(Math.abs(fastGaitAdvance - slowGaitAdvance * 4) < 1e-12,
+  "four-times-faster translation advances the gait exactly four times faster");
+assert.equal(mobGaitAmplitude(0), 0, "idle displacement has no gait amplitude");
+assert.ok(Math.abs(mobGaitAmplitude(0.5) * 2 - mobGaitAmplitude(1)) < 1e-12,
+  "gait amplitude scales linearly with actual slow and ordinary speeds");
+assert.equal(mobGaitAmplitude(MOB_FULL_GAIT_SPEED_BLOCKS_PER_SECOND * 2), 0.46,
+  "fast gait amplitude remains bounded at the authored joint range");
+for (const [dx, dz] of [[1, 1], [1, -1], [-1, -1], [-1, 1]] as const) {
+  const yaw = mobTravelYaw(dx, dz, 0);
+  const distance = Math.hypot(dx, dz);
+  assert.ok(Math.abs(-Math.sin(yaw) - dx / distance) < 1e-12
+    && Math.abs(Math.cos(yaw) - dz / distance) < 1e-12,
+  `diagonal ${dx},${dz} maps local +Z onto actual world travel`);
+}
 
 class FakeWebGl {
   readonly ARRAY_BUFFER = 0x8892;
@@ -269,6 +289,77 @@ const detailQuads: Readonly<Partial<Record<MobKind, number>>> = {
   skeleton: 3,
   creeper: 6,
 };
+
+// The first two cow detail quads are its eyes on local +Z. Prove against the
+// generated vertices—not just scalar yaw math—that every travel direction puts
+// those front pixels ahead of the body. This catches sign/convention regressions
+// that previously let east/west mobs moonwalk while unit yaw assertions passed.
+const facingGl = new FakeWebGl();
+const facingRenderer = createMobRenderer(facingGl as unknown as WebGLRenderingContext);
+for (const [index, [travelX, travelZ]] of ([
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [1, 1], [1, -1], [-1, -1], [-1, 1],
+] as const).entries()) {
+  const distance = Math.hypot(travelX, travelZ);
+  const currentX = travelX / distance * 0.2;
+  const currentZ = 4 + travelZ / distance * 0.2;
+  const movingCow = pose("cow", currentX, currentZ, 300 + index);
+  movingCow.previousX = 0;
+  movingCow.previousZ = 4;
+  // Conflict deliberately: render-facing must follow actual displacement.
+  movingCow.previousYaw = movingCow.yaw = Math.PI * 0.37;
+  facingRenderer.rebuild([movingCow], 0, 0, 0, 1, 1, index);
+  const eyeStart = 9 * 36 * 6;
+  let eyeX = 0;
+  let eyeZ = 0;
+  for (let vertex = 0; vertex < 12; vertex += 1) {
+    eyeX += facingGl.uploaded![eyeStart + vertex * 6];
+    eyeZ += facingGl.uploaded![eyeStart + vertex * 6 + 2];
+  }
+  eyeX = eyeX / 12 - currentX;
+  eyeZ = eyeZ / 12 - currentZ;
+  const forwardDot = eyeX * travelX / distance + eyeZ * travelZ / distance;
+  const lateral = eyeX * -travelZ / distance + eyeZ * travelX / distance;
+  assert.ok(forwardDot > 0.35, `cow front pixels lead ${travelX},${travelZ} travel`);
+  assert.ok(Math.abs(lateral) < 0.05, `cow front pixels do not mirror ${travelX},${travelZ} travel`);
+}
+
+const blockedWander = pose("cow", 0, 4, 390);
+blockedWander.previousX = blockedWander.x;
+blockedWander.previousY = blockedWander.y;
+blockedWander.previousZ = blockedWander.z;
+blockedWander.previousYaw = blockedWander.yaw = 0;
+facingRenderer.rebuild([blockedWander], 0, 0, 0, 1, 1, 20);
+const blockedGeometry = facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6);
+const idleCow = { ...blockedWander, id: "cow-idle-control", behavior: "idle" as const };
+facingRenderer.rebuild([idleCow], 0, 0, 0, 1, 1, 20.04);
+assert.deepEqual(facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6), blockedGeometry,
+  "a blocked wander label cannot animate a cow in place");
+
+const fallingCow = { ...blockedWander, id: "cow-vertical-fall", y: 6, previousY: 7 };
+facingRenderer.rebuild([fallingCow], 0, 0, 0, 1, 1, 20.08);
+const fallingGeometry = facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6);
+const landedCow = { ...fallingCow, id: "cow-landed-control", previousY: 6 };
+facingRenderer.rebuild([landedCow], 0, 0, 0, 1, 1, 20.12);
+assert.deepEqual(facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6), fallingGeometry,
+  "vertical falling alone cannot trigger horizontal gait");
+
+const turningCow = pose("cow", 0.2, 4, 391);
+turningCow.previousX = 0;
+turningCow.previousZ = 4;
+turningCow.previousYaw = turningCow.yaw = 0;
+facingRenderer.rebuild([turningCow], 0, 0, 0, 1, 1, 21);
+turningCow.previousX = turningCow.x;
+turningCow.previousZ = turningCow.z;
+turningCow.z -= 0.2;
+facingRenderer.rebuild([turningCow], 0, 0, 0, 1, 1, 21.04);
+const turnedEyeStart = 9 * 36 * 6;
+let turnedEyeZ = 0;
+for (let vertex = 0; vertex < 12; vertex += 1) turnedEyeZ += facingGl.uploaded![turnedEyeStart + vertex * 6 + 2];
+assert.ok(turnedEyeZ / 12 < turningCow.z - 0.35,
+  "a live east-to-north turn puts the cow's front pixels ahead of its new travel");
+facingRenderer.destroy();
+
 for (const kind of kinds.slice(0, -1)) {
   const frontPose = pose(kind, 0, 4, 200);
   frontPose.previousX = frontPose.x;

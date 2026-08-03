@@ -6,6 +6,7 @@ import {
   type MobProjectileSnapshot,
 } from "./mobs.ts";
 import { TNT_FUSE_MS, TNT_MAX_ACTIVE_FUSES } from "../../shared/tntAuthority.ts";
+import { mobFacingYaw } from "../../shared/mobMotionAuthority.ts";
 import { decodeStaticBytes } from "../staticData.ts";
 import type { PrimedTntVisualFuse } from "./types.ts";
 import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeometry.ts";
@@ -42,6 +43,7 @@ export const PRIMED_TNT_LABEL_VERTICES = PRIMED_TNT_SIDE_COUNT * PRIMED_TNT_LABE
 export const PRIMED_TNT_VERTICES_PER_ENTITY = VERTICES_PER_BOX + 4 * 6 + PRIMED_TNT_LABEL_VERTICES + 5 * 6;
 export const MOB_MESH_INTERVAL_MS = 1_000 / 30;
 export const MOB_GAIT_RADIANS_PER_BLOCK = 5.8;
+export const MOB_FULL_GAIT_SPEED_BLOCKS_PER_SECOND = 1.5;
 
 export function advanceMobGaitPhase(phase: number, distance: number): number {
   if (!Number.isFinite(phase)) phase = 0;
@@ -49,10 +51,13 @@ export function advanceMobGaitPhase(phase: number, distance: number): number {
   return (phase + distance * MOB_GAIT_RADIANS_PER_BLOCK) % (Math.PI * 2);
 }
 
+export function mobGaitAmplitude(horizontalSpeed: number): number {
+  if (!Number.isFinite(horizontalSpeed) || horizontalSpeed <= 0) return 0;
+  return 0.46 * Math.min(1, horizontalSpeed / MOB_FULL_GAIT_SPEED_BLOCKS_PER_SECOND);
+}
+
 export function mobTravelYaw(dx: number, dz: number, fallback: number): number {
-  return Number.isFinite(dx) && Number.isFinite(dz) && dx * dx + dz * dz > 0.000001
-    ? Math.atan2(dx, dz)
-    : fallback;
+  return mobFacingYaw(dx, dz, fallback);
 }
 
 export interface PrimedTntVisualSample {
@@ -619,7 +624,14 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const writer: VertexWriter = { data: vertices, offset: 0, hurtMix: 0, deathCos: 1, deathSin: 0 };
   const observedHealth = new Map<string, number>();
   const hurtUntilSeconds = new Map<string, number>();
-  const gait = new Map<string, { x: number; z: number; yaw: number; phase: number; generation: number }>();
+  const gait = new Map<string, {
+    x: number;
+    z: number;
+    yaw: number;
+    phase: number;
+    sampledAtSeconds: number;
+    generation: number;
+  }>();
   let gaitGeneration = 0;
   const stats: MobRenderStats = {
     totalMobCount: 0,
@@ -730,12 +742,23 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         const authoredYaw = pose.previousYaw + shortestAngle(pose.previousYaw, pose.yaw) * alpha;
         let gaitState = gait.get(pose.id);
         if (!gaitState) {
-          gaitState = { x: pose.previousX, z: pose.previousZ, yaw: authoredYaw, phase: 0, generation: gaitGeneration };
+          gaitState = {
+            x: pose.previousX,
+            z: pose.previousZ,
+            yaw: authoredYaw,
+            phase: 0,
+            sampledAtSeconds: visualSeconds - MOB_MESH_INTERVAL_MS / 1_000,
+            generation: gaitGeneration,
+          };
           gait.set(pose.id, gaitState);
         }
         const travelX = x - gaitState.x;
         const travelZ = z - gaitState.z;
         const travelDistance = Math.hypot(travelX, travelZ);
+        const sampleSeconds = Math.max(
+          MOB_MESH_INTERVAL_MS / 1_000,
+          Math.min(0.25, visualSeconds - gaitState.sampledAtSeconds),
+        );
         const locomoting = pose.deathFall <= 0
           && (pose.behavior === "wander" || pose.behavior === "chase")
           && travelDistance > 0.001 && travelDistance <= 2;
@@ -748,9 +771,12 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         }
         gaitState.x = x;
         gaitState.z = z;
+        gaitState.sampledAtSeconds = visualSeconds;
         gaitState.generation = gaitGeneration;
         const yaw = locomoting ? gaitState.yaw : authoredYaw;
-        const swing = locomoting ? Math.sin(gaitState.phase) * 0.46 : 0;
+        const swing = locomoting
+          ? Math.sin(gaitState.phase) * mobGaitAmplitude(travelDistance / sampleSeconds)
+          : 0;
         if (pose.kind === "pig") appendPig(writer, x, y, z, yaw, swing);
         else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
         else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing, pose.sheared);
