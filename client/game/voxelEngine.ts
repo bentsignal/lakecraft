@@ -146,6 +146,7 @@ import {
   STANDING_EYE_HEIGHT,
   clampSneakAxisMovement,
   postureTargetsForMovement,
+  resolveCreativeFlightMovement,
   resolvePlayerMovement,
   resolveSneakIntent,
   RELEASED_SPRINT_CONTROLS,
@@ -2331,7 +2332,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     // Once attached, W/S become vertical controls while strafing remains the
     // deliberate way to step off the non-solid ladder.
     const forward = ladderAtFrameStart ? 0 : forwardInput;
-    const movement = resolvePlayerMovement({
+    const movement = flying ? resolveCreativeFlightMovement(forward, strafe, sprintHeld) : resolvePlayerMovement({
       forward,
       strafe,
       sprintHeld,
