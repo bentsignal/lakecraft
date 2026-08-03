@@ -121,7 +121,7 @@ const killed = applyAuthoritativeMobCombatStates(authority, [{
 }], 10_000);
 assert.equal(killed.applied, 1);
 assert.equal(authoritativeCow.alive, false);
-assert.equal(writeMobPoseSnapshots(authority).length, 0);
+assert.equal(writeMobPoseSnapshots(authority).length, 1, "authoritative deaths share the local fall-over window");
 assert.equal(respawnExpiredAuthoritativeMobs(authority, 11_999), 0);
 assert.equal(respawnExpiredAuthoritativeMobs(authority, 12_000), 1);
 assert.equal(authoritativeCow.alive, true);

@@ -114,10 +114,18 @@ export function stableMobSeparationDirection(behaviorSeed: number): readonly [nu
     default: return [0, -1];
   }
 }
+export const LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX = 0.24;
+export const LOCAL_MOB_SPIDER_NEUTRAL_LIGHT_MIN = 0.52;
+export const LOCAL_MOB_SPIDER_ENGAGEMENT_SECONDS = 1.5;
+export const LOCAL_MOB_SUNLIGHT_DAMAGE_INTERVAL_SECONDS = 1;
+export const LOCAL_MOB_SUNLIGHT_DAMAGE = 2;
+export const LOCAL_MOB_SUNLIGHT_INTENSITY_MIN = 0.5;
+export const LOCAL_MOB_DEATH_ANIMATION_SECONDS = 0.7;
 
-/** Creepers remain hostile in daylight; the other current hostiles do not. */
-export function localMobHostileActive(kind: MobKind, isNight: boolean): boolean {
-  return !MOB_DEFINITIONS[kind].passive && (isNight || kind === "creeper");
+/** Light affects spider temperament; other hostiles remain dangerous after spawning. */
+export function localMobHostileActive(kind: MobKind, localLight: number, spiderEngaged = false): boolean {
+  if (MOB_DEFINITIONS[kind].passive) return false;
+  return kind !== "spider" || spiderEngaged || localLight < LOCAL_MOB_SPIDER_NEUTRAL_LIGHT_MIN;
 }
 
 /** Bounded allocation-free eye ray used only by the local hostile simulation. */
@@ -162,6 +170,8 @@ export interface MobSpawnOptions {
   terrainHeight: (x: number, z: number) => number;
   /** Final collision/ground veto supplied by the world implementation. */
   isSpawnable?: (kind: MobKind, x: number, y: number, z: number) => boolean;
+  /** Cached normalized local light sampled only while generating spawn candidates. */
+  localLight?: (kind: MobKind, x: number, y: number, z: number) => number;
   maxPopulation?: number;
   passivePopulation?: number;
   hostilePopulation?: number;
@@ -194,6 +204,9 @@ export interface MobState extends MobSpawnDescriptor {
   sheared: boolean;
   fuseStartedAtSeconds: number;
   fuseUntilSeconds: number;
+  spiderUntil: number;
+  sunDamageAt: number;
+  deathUntil: number;
 }
 
 export interface MobSimulation {
@@ -211,7 +224,7 @@ export interface LocalCreeperExplosionEvent {
   z: number;
 }
 
-export const MOB_SIMULATION_SNAPSHOT_VERSION = 1 as const;
+export const MOB_SIMULATION_SNAPSHOT_VERSION = 2 as const;
 export const LOCAL_MOB_RESPAWN_DELAY_SECONDS = 30;
 export const LOCAL_MOB_RESPAWN_PLAYER_DISTANCE = 16;
 
@@ -254,6 +267,7 @@ const MOB_STATE_SNAPSHOT_KEYS = [
   "hostileActive", "randomState", "damageSequence", "nextContactDamageAtSeconds",
   "nextRangedAttackAtSeconds", "rangedSequence", "authoritativeRevision",
   "authoritativeDeadUntil", "sheared", "fuseStartedAtSeconds", "fuseUntilSeconds",
+  "spiderUntil", "sunDamageAt", "deathUntil",
 ] as const;
 const MOB_PROJECTILE_SNAPSHOT_KEYS = [
   "id", "active", "ownerId", "x", "y", "z", BS.previousX, BS.previousY, BS.previousZ,
@@ -265,7 +279,8 @@ const MOB_POSITION_SNAPSHOT_KEYS = [
 ] as const;
 const MOB_TIME_SNAPSHOT_KEYS = [
   "behaviorUntilSeconds", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
-  "fuseStartedAtSeconds", "fuseUntilSeconds",
+  "fuseStartedAtSeconds", "fuseUntilSeconds", "spiderUntil",
+  "sunDamageAt", "deathUntil",
 ] as const;
 const PROJECTILE_POSITION_SNAPSHOT_KEYS = [
   "x", "y", "z", BS.previousX, BS.previousY, BS.previousZ,
@@ -315,6 +330,10 @@ function validMobStateSnapshot(value: unknown): value is MobState {
   if (!finiteInRange(mob.authoritativeDeadUntil, 0, 10_000_000_000_000_000)) return false;
   if (kind !== "creeper" && ((mob.fuseStartedAtSeconds as number) !== 0 || (mob.fuseUntilSeconds as number) !== 0)) return false;
   if ((mob.fuseStartedAtSeconds as number) > (mob.fuseUntilSeconds as number)) return false;
+  if (kind !== "spider" && (mob.spiderUntil as number) !== 0) return false;
+  if (kind !== "zombie" && kind !== "skeleton"
+    && (mob.sunDamageAt as number) !== 0) return false;
+  if (mob.alive && (mob.deathUntil as number) !== 0) return false;
   return true;
 }
 
@@ -435,6 +454,12 @@ export interface MobStepInput {
   isProjectileBlocked?: (x: number, y: number, z: number) => boolean;
   /** Optional retained output for newly confirmed local projectile impacts. */
   projectileDamageSources?: MobDamageSource[];
+  /** Cached normalized light lookup; called at the fixed mob simulation cadence. */
+  localLight?: (kind: MobKind, x: number, y: number, z: number) => number;
+  /** Cached direct-sky lookup; neighboring sky spill does not count. */
+  directSky?: (kind: MobKind, x: number, y: number, z: number) => boolean;
+  sunIntensity?: number;
+  onFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean;
   worldRadius?: number;
   worldCenterX?: number;
   worldCenterZ?: number;
@@ -458,6 +483,9 @@ export interface MobPoseSnapshot {
   sheared: boolean;
   /** Stable 0..1 priming state; 1 means an authority explosion may be due. */
   fuseProgress: number;
+  sunBurning: boolean;
+  /** Stable 0..1 fall-over progress; live mobs are always zero. */
+  deathFall: number;
 }
 
 export interface MobDrop {
@@ -597,6 +625,9 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
     if (occupied.has(key) || !hasSafeSlope(options.terrainHeight, x, z)) continue;
     const y = options.terrainHeight(x, z) + 1;
     if (options.isSpawnable && !options.isSpawnable(kind, x, y, z)) continue;
+    if (!MOB_DEFINITIONS[kind].passive && options.localLight
+      && options.localLight(kind, x, y + MOB_DEFINITIONS[kind].height * 0.75, z)
+        >= LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX) continue;
 
     const behaviorSeed = hashUint(x, z, options.seed + slot * 97 + 401) || 0x6d2b79f5;
     spawns.push({
@@ -663,6 +694,9 @@ function mobStateForSpawn(spawn: Readonly<MobSpawnDescriptor>): MobState {
     sheared: false,
     fuseStartedAtSeconds: 0,
     fuseUntilSeconds: 0,
+    spiderUntil: 0,
+    sunDamageAt: 0,
+    deathUntil: 0,
   };
 }
 
@@ -696,11 +730,7 @@ export function createMobSimulation(spawns: readonly MobSpawnDescriptor[]): MobS
   return { elapsedSeconds: 0, tick: 0, mobs, projectiles, pendingProjectileDamage: 0 };
 }
 
-/**
- * Rehomes only local mobs that left the retained terrain square. Slots and
- * damage sequences stay stable, while discarded objects and their projectiles
- * immediately leave the fixed-size simulation.
- */
+/** Retains in-range objects verbatim, evicts only out-of-range objects, then fills vacancies. */
 export function reconcileLocalMobStreaming(
   simulation: MobSimulation,
   spawns: readonly MobSpawnDescriptor[],
@@ -708,35 +738,39 @@ export function reconcileLocalMobStreaming(
   centerZ: number,
   retainRadius: number,
 ): number {
-  const count = Math.min(HARD_MAX_MOB_POPULATION, spawns.length);
   const radius = Math.max(0, Number.isFinite(retainRadius) ? retainRadius : 0);
-  let recycled = 0;
-  for (let index = 0; index < Math.max(simulation.mobs.length, count); index += 1) {
-    const previous = simulation.mobs[index];
-    const spawn = index < count ? spawns[index] : undefined;
-    if (previous && spawn && previous.id === spawn.id
-      && Math.max(Math.abs(previous.x - centerX), Math.abs(previous.z - centerZ)) <= radius) {
+  const target = Math.min(HARD_MAX_MOB_POPULATION, Math.max(simulation.mobs.length, spawns.length));
+  const retained: MobState[] = [];
+  const retainedIds = new Set<string>();
+  const retiredById = new Map<string, MobState>();
+  for (const previous of simulation.mobs) {
+    if (Math.max(Math.abs(previous.x - centerX), Math.abs(previous.z - centerZ)) <= radius) {
       if (Math.max(Math.abs(previous.homeX - centerX), Math.abs(previous.homeZ - centerZ)) > radius) {
         previous.homeX = previous.desiredX = previous.x;
         previous.homeY = previous.y;
         previous.homeZ = previous.desiredZ = previous.z;
       }
-      continue;
-    }
-    if (previous) {
+      retained.push(previous);
+      retainedIds.add(previous.id);
+    } else {
+      retiredById.set(previous.id, previous);
       for (const projectile of simulation.projectiles) {
         if (projectile.active && projectile.ownerId === previous.id) projectile.active = false;
       }
     }
-    if (spawn) {
-      const replacement = mobStateForSpawn(spawn);
-      if (previous?.id === spawn.id) replacement.damageSequence = previous.damageSequence;
-      simulation.mobs[index] = replacement;
-    }
-    recycled += 1;
   }
-  simulation.mobs.length = count;
-  return recycled;
+  let added = 0;
+  for (let index = 0; index < spawns.length && retained.length < target; index += 1) {
+    const spawn = spawns[index];
+    if (retainedIds.has(spawn.id)) continue;
+    const replacement = mobStateForSpawn(spawn);
+    replacement.damageSequence = retiredById.get(spawn.id)?.damageSequence ?? 0;
+    retained.push(replacement);
+    retainedIds.add(spawn.id);
+    added += 1;
+  }
+  simulation.mobs = retained;
+  return Math.max(retiredById.size, added);
 }
 
 /** Returns a stable-order copy suitable for the bounded Lakebed authority query. */
@@ -957,6 +991,20 @@ function stepMobProjectiles(simulation: MobSimulation, input: Readonly<MobStepIn
   }
 }
 
+function localLightAt(mob: Readonly<MobState>, input: Readonly<MobStepInput>, x = mob.x, y = mob.y, z = mob.z): number {
+  const sampled = input.localLight?.(mob.kind, x, y + MOB_DEFINITIONS[mob.kind].height * 0.75, z);
+  if (Number.isFinite(sampled)) return clamp(sampled as number, 0, 1);
+  return input.isNight ? 0 : 1;
+}
+
+function beginMobDeathAnimation(mob: MobState, elapsedSeconds: number): void {
+  mob.deathUntil = elapsedSeconds + LOCAL_MOB_DEATH_ANIMATION_SECONDS;
+  mob.hostileActive = false;
+  mob.sunDamageAt = 0;
+  mob.spiderUntil = 0;
+  mob.directionX = mob.directionZ = 0;
+}
+
 /** Advances simulation in place without allocating during ordinary movement ticks. */
 export function stepMobSimulation(simulation: MobSimulation, input: Readonly<MobStepInput>): MobSimulation {
   const dt = clamp(Number.isFinite(input.dtSeconds) ? input.dtSeconds : 0, 0, 0.1);
@@ -979,7 +1027,46 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
     mob.previousY = mob.y;
     mob.previousZ = mob.z;
     mob.previousYaw = mob.yaw;
-    mob.hostileActive = localMobHostileActive(mob.kind, input.isNight);
+    const light = localLightAt(mob, input);
+    let targetVisible = false;
+    if (!definition.passive && input.player) {
+      const playerDx = input.player.x - mob.x;
+      const playerDz = input.player.z - mob.z;
+      targetVisible = playerDx * playerDx + playerDz * playerDz <= 16 * 16
+        && localMobHasLineOfSight(mob, input.player, input.isProjectileBlocked);
+    }
+    let spiderEngaged = mob.kind === "spider"
+      && simulation.elapsedSeconds < mob.spiderUntil;
+    if (mob.kind === "spider" && targetVisible
+      && (spiderEngaged || light < LOCAL_MOB_SPIDER_NEUTRAL_LIGHT_MIN)) {
+      mob.spiderUntil = simulation.elapsedSeconds + LOCAL_MOB_SPIDER_ENGAGEMENT_SECONDS;
+      spiderEngaged = true;
+    }
+    mob.hostileActive = localMobHostileActive(mob.kind, light, spiderEngaged);
+
+    const sunIntensity = Number.isFinite(input.sunIntensity)
+      ? clamp(input.sunIntensity as number, 0, 1)
+      : 0;
+    const burnsInSunlight = mob.kind === "zombie" || mob.kind === "skeleton";
+    const sunBurning = burnsInSunlight
+      && sunIntensity >= LOCAL_MOB_SUNLIGHT_INTENSITY_MIN
+      && (input.directSky?.(
+        mob.kind,
+        mob.x,
+        mob.y + definition.height * 0.75,
+        mob.z,
+      ) ?? false);
+    if (sunBurning) {
+      if (mob.sunDamageAt <= 0) {
+        mob.sunDamageAt = simulation.elapsedSeconds + LOCAL_MOB_SUNLIGHT_DAMAGE_INTERVAL_SECONDS;
+      } else if (simulation.elapsedSeconds + 1e-9 >= mob.sunDamageAt) {
+        const result = damageMob(simulation, mob.id, LOCAL_MOB_SUNLIGHT_DAMAGE, input.onFatalDrops);
+        mob.sunDamageAt = simulation.elapsedSeconds + LOCAL_MOB_SUNLIGHT_DAMAGE_INTERVAL_SECONDS;
+        if (result.killed) continue;
+      }
+    } else {
+      mob.sunDamageAt = 0;
+    }
 
     if (mob.kind === "creeper" && mob.fuseStartedAtSeconds > 0
       && mob.fuseUntilSeconds > mob.fuseStartedAtSeconds
@@ -1001,12 +1088,11 @@ export function stepMobSimulation(simulation: MobSimulation, input: Readonly<Mob
     let chaseMovementLimit = Number.POSITIVE_INFINITY;
     let separationX = 0;
     let separationZ = 0;
-    if (!definition.passive && input.player) {
+    if (!definition.passive && input.player && targetVisible) {
       const playerDx = input.player.x - mob.x;
       const playerDz = input.player.z - mob.z;
       const distanceSquared = playerDx * playerDx + playerDz * playerDz;
-      if (distanceSquared <= 16 * 16
-        && localMobHasLineOfSight(mob, input.player, input.isProjectileBlocked)) {
+      if (distanceSquared <= 16 * 16) {
         const distance = Math.sqrt(distanceSquared);
         const inverseDistance = distance > 0.0001 ? 1 / distance : 0;
         if (mob.kind === "creeper") {
@@ -1154,12 +1240,13 @@ export function consumeDueLocalCreeperExplosions(
     mob.health = 0;
     mob.behaviorUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_RESPAWN_DELAY_SECONDS;
     mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
+    beginMobDeathAnimation(mob, simulation.elapsedSeconds);
   }
   output.length = outputIndex;
   return output;
 }
 
-/** Writes live poses into a reusable array for rendering or network snapshots. */
+/** Writes live and briefly dying poses into a reusable retained array. */
 export function writeMobPoseSnapshots(
   simulation: Readonly<MobSimulation>,
   output: MobPoseSnapshot[] = [],
@@ -1167,7 +1254,8 @@ export function writeMobPoseSnapshots(
   let outputIndex = 0;
   for (let index = 0; index < simulation.mobs.length; index += 1) {
     const mob = simulation.mobs[index];
-    if (!mob.alive) continue;
+    if (!mob.alive && (mob.deathUntil <= 0
+      || simulation.elapsedSeconds + 1e-9 >= mob.deathUntil)) continue;
     const definition = MOB_DEFINITIONS[mob.kind];
     const snapshot = output[outputIndex] ?? {} as MobPoseSnapshot;
     snapshot.id = mob.id;
@@ -1193,6 +1281,13 @@ export function writeMobPoseSnapshots(
         1,
       )
       : 0;
+    snapshot.sunBurning = mob.alive && mob.sunDamageAt > 0;
+    snapshot.deathFall = mob.alive ? 0 : clamp(
+      (simulation.elapsedSeconds - mob.deathUntil + LOCAL_MOB_DEATH_ANIMATION_SECONDS)
+        / LOCAL_MOB_DEATH_ANIMATION_SECONDS,
+      0,
+      1,
+    );
     output[outputIndex] = snapshot;
     outputIndex += 1;
   }
@@ -1263,7 +1358,7 @@ export function damageMob(
   simulation: MobSimulation,
   id: string,
   rawDamage: number,
-  acceptFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean,
+  onFatalDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean,
 ): MobDamageResult {
   const mob = simulation.mobs.find((candidate) => candidate.id === id);
   if (!mob || !mob.alive) return mobDamageResult(Boolean(mob), false, false, 0);
@@ -1277,7 +1372,7 @@ export function damageMob(
     return mobDamageResult(true, true, false, mob.health);
   }
   const drops = rollDrops(mob, damageSequence);
-  if (acceptFatalDrops && !acceptFatalDrops({
+  if (onFatalDrops && !onFatalDrops({
     eventId: `${mob.id}:${damageSequence}`,
     mobId: mob.id,
     x: mob.x,
@@ -1291,6 +1386,7 @@ export function damageMob(
   mob.health = 0;
   mob.alive = false;
   mob.sheared = false;
+  beginMobDeathAnimation(mob, simulation.elapsedSeconds);
   if (mob.authoritativeRevision < 0) {
     mob.behaviorUntilSeconds = simulation.elapsedSeconds + LOCAL_MOB_RESPAWN_DELAY_SECONDS;
   }
@@ -1333,6 +1429,9 @@ function resetMobAtHome(mob: MobState, elapsedSeconds: number): void {
   mob.nextRangedAttackAtSeconds = Math.max(0, elapsedSeconds) + 0.65 + (mob.behaviorSeed % 1_000) / 1_000;
   mob.rangedSequence = 0;
   mob.fuseStartedAtSeconds = mob.fuseUntilSeconds = 0;
+  mob.spiderUntil = 0;
+  mob.sunDamageAt = 0;
+  mob.deathUntil = 0;
 }
 
 function localMobHomeAvailable(
@@ -1366,6 +1465,9 @@ function localMobHomeAvailable(
     definition.collisionRadius,
     definition.height,
   )) return false;
+  if (!definition.passive && input.localLight
+    && localLightAt(mob, input, mob.homeX, mob.homeY, mob.homeZ)
+    >= LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX) return false;
   for (const other of simulation.mobs) {
     if (!other.alive || other.id === mob.id) continue;
     const otherDefinition = MOB_DEFINITIONS[other.kind];
@@ -1425,9 +1527,7 @@ export function applyAuthoritativeMobCombatStates(
     if (dead) {
       mob.health = 0;
       mob.alive = false;
-      mob.hostileActive = false;
-      mob.directionX = 0;
-      mob.directionZ = 0;
+      beginMobDeathAnimation(mob, simulation.elapsedSeconds);
     } else if (!mob.alive || state.health <= 0) {
       resetMobAtHome(mob, simulation.elapsedSeconds);
     } else {
@@ -1512,12 +1612,15 @@ export function consumeMobContactDamage(
   maximumDamage = MAX_CONTACT_DAMAGE_PER_TICK,
   sources?: MobDamageSource[],
 ): number {
-  if (!isNight || !Number.isFinite(nowSeconds)) return 0;
+  if (!Number.isFinite(nowSeconds)) return 0;
   const damageLimit = Number.isFinite(maximumDamage) ? Math.max(0, maximumDamage) : MAX_CONTACT_DAMAGE_PER_TICK;
   let damage = 0;
   for (let index = 0; index < simulation.mobs.length; index += 1) {
     const mob = simulation.mobs[index];
-    if (!mob.alive || MOB_DEFINITIONS[mob.kind].contactDamage <= 0
+    // The tick-zero night fallback preserves direct unit consumers that have
+    // not stepped AI yet; ordinary engine ticks use the light-aware flag.
+    if (!mob.alive || (!mob.hostileActive && !(simulation.tick === 0 && isNight))
+      || MOB_DEFINITIONS[mob.kind].contactDamage <= 0
       || nowSeconds + 1e-9 < mob.nextContactDamageAtSeconds) continue;
     const definition = MOB_DEFINITIONS[mob.kind];
     const horizontalReach = definition.collisionRadius + MOB_PLAYER_CONTACT_RADIUS;

@@ -54,6 +54,8 @@ function pose(kind: MobKind, x: number, z: number, index: number): MobPoseSnapsh
     hostileActive: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider",
     sheared: false,
     fuseProgress: kind === "creeper" ? 0.7 : 0,
+    sunBurning: false,
+    deathFall: 0,
   };
 }
 
@@ -77,6 +79,35 @@ assert.equal(stats.visibleMobCount, 8);
 assert.equal(stats.vertexCount, expectedVertexCount);
 assert.equal(gl.uploadCalls, 1, "one rebuild should issue one batched geometry upload");
 assert.ok(gl.uploaded);
+
+const deathZombie = pose("zombie", 0, 6, 44);
+deathZombie.behavior = "idle";
+deathZombie.previousX = deathZombie.x;
+deathZombie.previousY = deathZombie.y;
+deathZombie.previousZ = deathZombie.z;
+deathZombie.previousYaw = deathZombie.yaw = 0;
+renderer.rebuild([deathZombie], 0, 0, 0, 1, 1, 2.1);
+const uprightDeathGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
+renderer.rebuild([{ ...deathZombie, health: 0, deathFall: 1 }], 0, 0, 0, 1, 1, 2.2);
+const fallenDeathGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
+assert.notDeepEqual(fallenDeathGeometry, uprightDeathGeometry, "death progress rotates the retained whole-mob mesh");
+const verticalRange = (geometry: Float32Array) => {
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  for (let offset = 1; offset < geometry.length; offset += 6) {
+    minimum = Math.min(minimum, geometry[offset]);
+    maximum = Math.max(maximum, geometry[offset]);
+  }
+  return maximum - minimum;
+};
+assert.ok(verticalRange(fallenDeathGeometry) < verticalRange(uprightDeathGeometry), "the completed pose lies flatter on the ground");
+assert.equal(gl.createBufferCalls, 1, "death animation reuses the original fixed GPU buffer");
+
+renderer.rebuild([deathZombie], 0, 0, 0, 1, 1, 3);
+const ordinarySunGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
+renderer.rebuild([{ ...deathZombie, sunBurning: true }], 0, 0, 0, 1, 1, 3.1);
+const burningSunGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
+assert.notDeepEqual(burningSunGeometry, ordinarySunGeometry, "direct-sky burning receives retained warm visual feedback");
 
 const woollySheep = pose("sheep", 0, 8, 50);
 renderer.rebuild([woollySheep], 0, 0, 0, 1, 1, 3);

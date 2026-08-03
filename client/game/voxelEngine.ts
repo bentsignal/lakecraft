@@ -206,6 +206,7 @@ import {
   packSkyExposureShade,
   refreshEditedSkyColumns,
   removeChunkSkyOccluders,
+  skyColumnKey,
   skyExposureDirtyChunkKeysForEdits,
   skyExposureLevel,
   writeChunkSkyOccluders,
@@ -449,6 +450,63 @@ const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
 export const LADDER_IDLE_SLIDE_SPEED = -1.2;
+
+export type MobTorchLightCache = Float64Array;
+
+/** Fixed storage; samples allocate only when a torch edit rebuilds its spatial column. */
+export function createMobTorchLightCache(capacity = 64): MobTorchLightCache {
+  const size = Math.max(1, Math.floor(capacity));
+  const cache = new Float64Array(size * 5);
+  for (let index = 3; index < cache.length; index += 5) cache[index] = -1;
+  return cache;
+}
+
+/** Coordinate-local CPU light query used only at spawn/fixed mob-AI cadence. */
+export function sampleCachedMobLocalLight(
+  skyExposure: number,
+  sunIntensity: number,
+  torchColumns: ReadonlyMap<string, readonly number[]>,
+  torchRevision: number,
+  cache: MobTorchLightCache,
+  x: number,
+  y: number,
+  z: number,
+): number {
+  const blockX = Math.floor(x);
+  const blockY = Math.floor(y);
+  const blockZ = Math.floor(z);
+  const slot = (((blockX * 73856093 ^ blockY * 19349663 ^ blockZ * 83492791) >>> 0)
+    % (cache.length / 5)) * 5;
+  let torchLight = cache[slot + 4];
+  if (cache[slot + 3] !== torchRevision || cache[slot] !== blockX
+    || cache[slot + 1] !== blockY || cache[slot + 2] !== blockZ) {
+    torchLight = 0;
+    const reach = Math.ceil(TORCH_LIGHT_RADIUS);
+    for (let columnX = blockX - reach; columnX <= blockX + reach; columnX += 1) {
+      for (let columnZ = blockZ - reach; columnZ <= blockZ + reach; columnZ += 1) {
+        const heights = torchColumns.get(skyColumnKey(columnX, columnZ));
+        if (!heights) continue;
+        for (let index = 0; index < heights.length; index += 1) {
+          const dx = columnX - blockX;
+          const dy = heights[index] - blockY - 0.5;
+          const dz = columnZ - blockZ;
+          const distanceSquared = dx * dx + dy * dy + dz * dz;
+          if (distanceSquared >= TORCH_LIGHT_RADIUS * TORCH_LIGHT_RADIUS) continue;
+          torchLight = Math.max(torchLight, 1 - Math.sqrt(distanceSquared) / TORCH_LIGHT_RADIUS);
+        }
+      }
+    }
+    cache[slot] = blockX;
+    cache[slot + 1] = blockY;
+    cache[slot + 2] = blockZ;
+    cache[slot + 3] = torchRevision;
+    cache[slot + 4] = torchLight;
+  }
+  return Math.max(
+    clampNumber(skyExposure, 0, SKY_EXPOSURE_LEVELS) / SKY_EXPOSURE_LEVELS * clampNumber(sunIntensity, 0, 1),
+    torchLight,
+  );
+}
 
 // The color and terrain programs intentionally share this source fragment at
 // runtime. Keeping one compact copy preserves the readable CPU-side lighting
@@ -1386,8 +1444,47 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const skyOccluderColumns: SkyOccluderColumns = new Map();
   const primedTnt = new Set<string>();
   const torchLights = new Map<string, TorchLightPosition>();
+  const mobTorchColumns = new Map<string, number[]>();
+  const mobTorchCache = createMobTorchLightCache();
+  let mobTorchRevision = 0;
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const firstPersonTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
+  let activeTorchLights = 0;
+  let lastTorchSelectionAt = -Infinity;
+  let lastTorchCameraX = Infinity;
+  let lastTorchCameraY = Infinity;
+  let lastTorchCameraZ = Infinity;
+
+  function invalidateMobTorchLightCache(): void {
+    mobTorchRevision = (mobTorchRevision + 1) & 0x7fffffff;
+  }
+
+  function addTorchLight(key: string, x: number, y: number, z: number): void {
+    const light = { x: x + 0.5, y: y + 0.76, z: z + 0.5 };
+    torchLights.set(key, light);
+    const columnKey = skyColumnKey(x, z);
+    const column = mobTorchColumns.get(columnKey);
+    if (column) column.push(light.y);
+    else mobTorchColumns.set(columnKey, [light.y]);
+    invalidateMobTorchLightCache();
+  }
+
+  function removeTorchLight(key: string): void {
+    const light = torchLights.get(key);
+    if (!light) return;
+    torchLights.delete(key);
+    const columnKey = skyColumnKey(Math.floor(light.x), Math.floor(light.z));
+    const column = mobTorchColumns.get(columnKey);
+    if (column) {
+      for (let index = 0; index < column.length; index += 1) {
+        if (column[index] !== light.y) continue;
+        column.splice(index, 1);
+        break;
+      }
+      if (!column.length) mobTorchColumns.delete(columnKey);
+    }
+    invalidateMobTorchLightCache();
+  }
   const chunkBlocks = new Map<string, Set<string>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
@@ -1438,7 +1535,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       owned.add(key);
       if (block === BLOCK.TORCH) {
         const [x, y, z] = key.split(",").map(Number);
-        torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
+        addTorchLight(key, x, y, z);
       }
     }
     chunkBlocks.set(owner, owned);
@@ -1447,6 +1544,26 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let streamingCenterKey = chunkKey(initialChunkPlan.center.x, initialChunkPlan.center.z);
   let mobStreamingCenterX = (initialChunkPlan.center.x + 0.5) * WORLD_CHUNK_SIZE;
   let mobStreamingCenterZ = (initialChunkPlan.center.z + 0.5) * WORLD_CHUNK_SIZE;
+  sampleDayNight(worldTimeMs, dayNightConfig, dayNightState);
+  updateActiveTorchLights(0, [pose.x, pose.y + 1.2, pose.z]);
+
+  function cachedMobDirectSky(_kind: unknown, x: number, y: number, z: number): boolean {
+    return skyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z))
+      === SKY_EXPOSURE_LEVELS;
+  }
+
+  function cachedMobLocalLight(_kind: unknown, x: number, y: number, z: number): number {
+    return sampleCachedMobLocalLight(
+      skyExposureLevel(skyOccluderColumns, Math.floor(x), Math.floor(y), Math.floor(z)),
+      dayNightState.sunIntensity,
+      mobTorchColumns,
+      mobTorchRevision,
+      mobTorchCache,
+      x,
+      y,
+      z,
+    );
+  }
   const chunkMeshes = new Map<string, ChunkMesh>();
   const visibleMeshes: ChunkMesh[] = [];
   const transparentMeshes: ChunkMesh[] = [];
@@ -1462,6 +1579,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     hostilePopulation: clampNumber(Math.floor(radius / 5), 2, 5),
     maxPopulation: 17,
     spawnClearRadius: localMobStreaming ? LOCAL_MOB_STREAM_CLEAR_RADIUS : 6,
+    localLight: cachedMobLocalLight,
     isSpawnable: (_kind: unknown, x: number, y: number, z: number) => (!localMobStreaming || (
       loadedChunkKeys.has(chunkKeyForBlock(x, z))
       && isLocalMobSpawnOutsideView(pose.x, pose.z, pose.yaw, x, z)
@@ -1562,11 +1680,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobStepSeconds = 0.1;
   let playerHealth = PLAYER_MAX_HEALTH;
   let lastPerformanceSent = 0;
-  let activeTorchLights = 0;
-  let lastTorchSelectionAt = -Infinity;
-  let lastTorchCameraX = Infinity;
-  let lastTorchCameraY = Infinity;
-  let lastTorchCameraZ = Infinity;
   let firstPersonSkyExposure = 1;
   let firstPersonExposureBlockX = Infinity;
   let firstPersonExposureBlockY = Infinity;
@@ -1740,7 +1853,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       owned.add(key);
       if (block === BLOCK.TORCH) {
         const [x, y, z] = key.split(",").map(Number);
-        torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
+        addTorchLight(key, x, y, z);
       }
     }
     chunkBlocks.set(owner, owned);
@@ -1760,7 +1873,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     for (const key of chunkBlocks.get(owner) ?? []) {
       blocks.delete(key);
-      torchLights.delete(key);
+      removeTorchLight(key);
     }
     chunkBlocks.delete(owner);
     removeChunkSkyOccluders(skyOccluderColumns, chunkX, chunkZ);
@@ -1799,6 +1912,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const key of dirty) {
       if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
     }
+    invalidateMobTorchLightCache();
     if (localMobStreaming && !sharedMobMotionActive) {
       mobStreamingCenterX = (plan.center.x + 0.5) * WORLD_CHUNK_SIZE;
       mobStreamingCenterZ = (plan.center.z + 0.5) * WORLD_CHUNK_SIZE;
@@ -1823,14 +1937,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (previous === BLOCK.TNT && block !== BLOCK.TNT && primedTnt.delete(key)) {
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
     }
-    if (previous === BLOCK.TORCH) torchLights.delete(key);
+    if (previous === BLOCK.TORCH) removeTorchLight(key);
     if (block === BLOCK.AIR) {
       blocks.delete(key);
       const owned = chunkBlocks.get(owner);
       owned?.delete(key);
     } else {
       blocks.set(key, block);
-      if (block === BLOCK.TORCH) torchLights.set(key, { x: x + 0.5, y: y + 0.76, z: z + 0.5 });
+      if (block === BLOCK.TORCH) addTorchLight(key, x, y, z);
       if (previous === BLOCK.AIR) {
         let owned = chunkBlocks.get(owner);
         if (!owned) {
@@ -2232,7 +2346,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function advanceMobKnockbackReactions(dt: number): void {
     for (const [mobId, reaction] of mobKnockbackReactions) {
       const mob = mobSimulation.mobs.find((candidate) => candidate.id === mobId);
-      if (!mob?.alive) {
+      if (!mob || (!mob.alive
+        && mobSimulation.elapsedSeconds + 1e-9 >= mob.deathUntil)) {
         mobKnockbackReactions.delete(mobId);
         continue;
       }
@@ -2330,6 +2445,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           return blockHasCollision(block) && blockContainsSolidPoint(block, blockY, y);
         },
         projectileDamageSources,
+        localLight: cachedMobLocalLight,
+        directSky: cachedMobDirectSky,
+        sunIntensity: dayNightState.sunIntensity,
+        onFatalDrops: options.onMobDrops,
         worldRadius: localMobStreaming ? LOCAL_MOB_STREAM_RETAIN_RADIUS : radius - 1,
         worldCenterX: localMobStreaming ? mobStreamingCenterX : 0,
         worldCenterZ: localMobStreaming ? mobStreamingCenterZ : 0,
@@ -3510,6 +3629,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       blocks.clear();
       primedTnt.clear();
       torchLights.clear();
+      mobTorchColumns.clear();
       remotePlayerRenderer.destroy();
       droppedItemRenderer.destroy();
       playerProjectileRenderer.destroy();

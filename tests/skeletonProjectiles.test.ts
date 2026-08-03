@@ -37,9 +37,16 @@ assert.equal(MOB_DEFINITIONS.skeleton.contactDamage, 0, "skeletons should use ar
 assert.ok(MOB_DEFINITIONS.skeleton.rangedCooldownSeconds >= 1.5);
 
 const daytime = createMobSimulation([skeleton(0)]);
-for (let tick = 0; tick < 180; tick += 1) stepMobSimulation(daytime, { ...input, isNight: false });
-assert.equal(daytime.mobs[0].behavior, "dormant");
-assert.equal(writeMobProjectileSnapshots(daytime).length, 0, "daytime skeletons must not fire");
+for (let tick = 0; tick < 180; tick += 1) stepMobSimulation(daytime, {
+  ...input,
+  isNight: false,
+  localLight: () => 1,
+  directSky: () => true,
+  sunIntensity: 1,
+});
+assert.equal(daytime.mobs[0].behavior, "chase", "an existing skeleton remains dangerous in daylight");
+assert.ok(daytime.mobs[0].rangedSequence > 0, "daylight spawn gating does not suppress existing skeleton attacks");
+assert.ok(daytime.mobs[0].health < MOB_DEFINITIONS.skeleton.maxHealth, "direct sky burns the attacking skeleton");
 
 // Fixed seed and fixed steps produce identical attacks and projectile paths.
 const deterministicA = createMobSimulation([skeleton(0)]);

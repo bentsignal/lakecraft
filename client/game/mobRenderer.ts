@@ -113,6 +113,8 @@ interface VertexWriter {
   data: Float32Array;
   offset: number;
   hurtMix: number;
+  deathCos: number;
+  deathSin: number;
 }
 
 function appendBox(
@@ -146,11 +148,13 @@ function appendBox(
       const unrotatedZ = minZ + BOX_VERTEX_COORDINATES[point++] * (maxZ - minZ);
       const offsetY = unrotatedY - pivotY;
       const offsetZ = unrotatedZ - pivotZ;
-      const localY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
-      const localZ = pivotZ + offsetY * sinPitch + offsetZ * cosPitch;
-      writer.data[writer.offset++] = originX + localX * cosYaw - localZ * sinYaw;
-      writer.data[writer.offset++] = originY + localY;
-      writer.data[writer.offset++] = originZ + localX * sinYaw + localZ * cosYaw;
+      const pitchedY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
+      const pitchedZ = pivotZ + offsetY * sinPitch + offsetZ * cosPitch;
+      const deathY = 0.72 + (pitchedY - 0.72) * writer.deathCos - pitchedZ * writer.deathSin;
+      const deathZ = (pitchedY - 0.72) * writer.deathSin + pitchedZ * writer.deathCos;
+      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      writer.data[writer.offset++] = originY + deathY;
+      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
       const baseRed = red * shade;
       const baseGreen = green * shade;
       const baseBlue = blue * shade;
@@ -187,9 +191,12 @@ function appendMobPatches(
       const corner = point === 1 || point === 2 || point === 4 ? 1 : 0;
       const top = point >= 2 && point <= 4 ? 1 : 0;
       const localX = minX + corner * width;
-      writer.data[writer.offset++] = originX + localX * cosYaw - localZ * sinYaw;
-      writer.data[writer.offset++] = originY + minY + top * height;
-      writer.data[writer.offset++] = originZ + localX * sinYaw + localZ * cosYaw;
+      const localY = minY + top * height;
+      const deathY = 0.72 + (localY - 0.72) * writer.deathCos - localZ * writer.deathSin;
+      const deathZ = (localY - 0.72) * writer.deathSin + localZ * writer.deathCos;
+      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      writer.data[writer.offset++] = originY + deathY;
+      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
       const hurtMix = writer.hurtMix;
       writer.data[writer.offset++] = red + (1 - red) * hurtMix;
       writer.data[writer.offset++] = green + (0.06 - green) * hurtMix;
@@ -596,7 +603,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const primedSample: PrimedTntVisualSample = { progress: 0, scale: 0.98, flashMix: 0 };
   let primedCount = 0;
   let primedClockOffset = 0;
-  const writer: VertexWriter = { data: vertices, offset: 0, hurtMix: 0 };
+  const writer: VertexWriter = { data: vertices, offset: 0, hurtMix: 0, deathCos: 1, deathSin: 0 };
   const observedHealth = new Map<string, number>();
   const hurtUntilSeconds = new Map<string, number>();
   const stats: MobRenderStats = {
@@ -687,7 +694,14 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         }
         observedHealth.set(pose.id, currentHealth);
         const hurtUntil = hurtUntilSeconds.get(pose.id) ?? 0;
-        writer.hurtMix = visualSeconds < hurtUntil ? MOB_HURT_FLASH_MIX : 0;
+        writer.hurtMix = pose.sunBurning ? 0.38
+          : visualSeconds < hurtUntil ? MOB_HURT_FLASH_MIX : 0;
+        const deathFall = Number.isFinite(pose.deathFall)
+          ? Math.max(0, Math.min(1, pose.deathFall))
+          : 0;
+        const deathAngle = deathFall * Math.PI * 0.5;
+        writer.deathCos = Math.cos(deathAngle);
+        writer.deathSin = Math.sin(deathAngle);
         if (hurtUntil > 0 && visualSeconds >= hurtUntil) hurtUntilSeconds.delete(pose.id);
         const x = pose.previousX + (pose.x - pose.previousX) * alpha;
         const y = pose.previousY + (pose.y - pose.previousY) * alpha;
@@ -713,6 +727,8 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
       // Hurt color is entity-local. Projectiles and primed TNT share this
       // writer but must retain their own palettes.
       writer.hurtMix = 0;
+      writer.deathCos = 1;
+      writer.deathSin = 0;
       const mobFloatCount = writer.offset;
       stats.projectileCount = Math.min(projectiles.length, MAX_MOB_PROJECTILES);
       for (let index = 0; index < stats.projectileCount; index += 1) {
