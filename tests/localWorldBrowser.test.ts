@@ -119,6 +119,17 @@ assert.equal(registry.includes("migrateLegacy: true"), false,
 
 const deletePhrase = "yes, I want to delete this world";
 assert.ok(browser.includes(`const DELETE_PHRASE = "${deletePhrase}"`));
+assert.ok(browser.includes('className={deleting ? "lc-local-world-delete-copy" : undefined}')
+  && browser.includes('className="lc-local-world-delete-copy"'),
+  "the destructive title and exact confirmation phrase share the readable red treatment");
+const channel = (hex: string) => {
+  const value = Number.parseInt(hex, 16) / 255;
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+};
+const luminance = (hex: string) => 0.2126 * channel(hex.slice(1, 3))
+  + 0.7152 * channel(hex.slice(3, 5)) + 0.0722 * channel(hex.slice(5, 7));
+const redContrast = (luminance("#ff8f8f") + 0.05) / (luminance("#3c3c3c") + 0.05);
+assert.ok(redContrast >= 4.5, `destructive red contrast must meet WCAG AA for normal text (${redContrast})`);
 assert.ok(browser.includes('aria-label="Delete confirmation phrase"')
   && browser.includes("deletePhrase === DELETE_PHRASE")
   && browser.includes("disabled={deleting && !deleteConfirmed}"),

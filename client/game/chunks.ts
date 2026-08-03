@@ -2,6 +2,8 @@ export const WORLD_CHUNK_SIZE = 8;
 /** A 7x7 window matches the Lakebed visible-chunk query ceiling (49 rows). */
 export const DEFAULT_STREAMING_CHUNK_RADIUS = 3;
 export const MAX_STREAMING_CHUNK_RADIUS = 3;
+/** Offline worlds may opt into a larger bounded window without expanding Lakebed query limits. */
+export const MAX_LOCAL_STREAMING_CHUNK_RADIUS = 6;
 export const MAX_STREAMING_CHUNK_COUNT = (MAX_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
 
 export interface ChunkCoordinate {
@@ -63,9 +65,9 @@ export function chunkBounds(x: number, z: number, size = WORLD_CHUNK_SIZE): Chun
   };
 }
 
-function boundedWindowRadius(radius: number): number {
+function boundedWindowRadius(radius: number, maximumRadius: number): number {
   if (!Number.isFinite(radius)) return DEFAULT_STREAMING_CHUNK_RADIUS;
-  return Math.max(0, Math.min(MAX_STREAMING_CHUNK_RADIUS, Math.floor(radius)));
+  return Math.max(0, Math.min(maximumRadius, Math.floor(radius)));
 }
 
 /**
@@ -78,12 +80,13 @@ export function chunkWindow(
   blockZ: number,
   radius = DEFAULT_STREAMING_CHUNK_RADIUS,
   size = WORLD_CHUNK_SIZE,
+  maximumRadius = MAX_STREAMING_CHUNK_RADIUS,
 ): ChunkCoordinate[] {
   const center = {
     x: chunkCoordinate(Number.isFinite(blockX) ? blockX : 0, size),
     z: chunkCoordinate(Number.isFinite(blockZ) ? blockZ : 0, size),
   };
-  const boundedRadius = boundedWindowRadius(radius);
+  const boundedRadius = boundedWindowRadius(radius, maximumRadius);
   const chunks: ChunkCoordinate[] = [];
   for (let dz = -boundedRadius; dz <= boundedRadius; dz += 1) {
     for (let dx = -boundedRadius; dx <= boundedRadius; dx += 1) {
@@ -105,8 +108,9 @@ export function planChunkWindow(
   currentKeys: ReadonlySet<string>,
   radius = DEFAULT_STREAMING_CHUNK_RADIUS,
   size = WORLD_CHUNK_SIZE,
+  maximumRadius = MAX_STREAMING_CHUNK_RADIUS,
 ): ChunkWindowPlan {
-  const active = chunkWindow(blockX, blockZ, radius, size);
+  const active = chunkWindow(blockX, blockZ, radius, size, maximumRadius);
   const activeKeys = new Set(active.map(({ x, z }) => chunkKey(x, z)));
   return {
     center: {

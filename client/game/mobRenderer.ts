@@ -41,6 +41,19 @@ const PRIMED_TNT_SIDE_COUNT = 4;
 export const PRIMED_TNT_LABEL_VERTICES = PRIMED_TNT_SIDE_COUNT * PRIMED_TNT_LABEL_TRIANGLES_PER_SIDE * 3;
 export const PRIMED_TNT_VERTICES_PER_ENTITY = VERTICES_PER_BOX + 4 * 6 + PRIMED_TNT_LABEL_VERTICES + 5 * 6;
 export const MOB_MESH_INTERVAL_MS = 1_000 / 30;
+export const MOB_GAIT_RADIANS_PER_BLOCK = 5.8;
+
+export function advanceMobGaitPhase(phase: number, distance: number): number {
+  if (!Number.isFinite(phase)) phase = 0;
+  if (!Number.isFinite(distance) || distance <= 0 || distance > 2) return phase;
+  return (phase + distance * MOB_GAIT_RADIANS_PER_BLOCK) % (Math.PI * 2);
+}
+
+export function mobTravelYaw(dx: number, dz: number, fallback: number): number {
+  return Number.isFinite(dx) && Number.isFinite(dz) && dx * dx + dz * dz > 0.000001
+    ? Math.atan2(dx, dz)
+    : fallback;
+}
 
 export interface PrimedTntVisualSample {
   progress: number;
@@ -606,6 +619,8 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const writer: VertexWriter = { data: vertices, offset: 0, hurtMix: 0, deathCos: 1, deathSin: 0 };
   const observedHealth = new Map<string, number>();
   const hurtUntilSeconds = new Map<string, number>();
+  const gait = new Map<string, { x: number; z: number; yaw: number; phase: number; generation: number }>();
+  let gaitGeneration = 0;
   const stats: MobRenderStats = {
     totalMobCount: 0,
     visibleMobCount: 0,
@@ -681,6 +696,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
       stats.visibleMobCount = 0;
       const alpha = Math.max(0, Math.min(1, interpolation));
       const visualSeconds = Number.isFinite(animationSeconds) ? animationSeconds : 0;
+      gaitGeneration += 1;
       for (let index = 0; index < poses.length; index += 1) {
         const pose = poses[index];
         const currentHealth = Number.isFinite(pose.health) ? Math.max(0, pose.health) : 0;
@@ -711,18 +727,30 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         const distanceSquared = dx * dx + dz * dz;
         if (distanceSquared > RENDER_DISTANCE_SQUARED) continue;
         if (distanceSquared > 10 * 10 && dx * facingX + dz * facingZ < -2) continue;
-        const tickMovementX = pose.x - pose.previousX;
-        const tickMovementZ = pose.z - pose.previousZ;
-        const moving = tickMovementX * tickMovementX + tickMovementZ * tickMovementZ > 0.000001;
-        // Terrain collision may slide one axis or reject a requested step. Face
-        // and animate from the displacement that actually happened so mobs do
-        // not moonwalk or walk in place when their AI still says chase/wander.
-        const yaw = moving
-          ? Math.atan2(tickMovementX, tickMovementZ)
-          : pose.previousYaw + shortestAngle(pose.previousYaw, pose.yaw) * alpha;
-        const swing = moving
-          ? Math.sin(animationSeconds * (pose.behavior === "chase" ? 9 : 6) + index * 1.71) * 0.46
-          : 0;
+        const authoredYaw = pose.previousYaw + shortestAngle(pose.previousYaw, pose.yaw) * alpha;
+        let gaitState = gait.get(pose.id);
+        if (!gaitState) {
+          gaitState = { x: pose.previousX, z: pose.previousZ, yaw: authoredYaw, phase: 0, generation: gaitGeneration };
+          gait.set(pose.id, gaitState);
+        }
+        const travelX = x - gaitState.x;
+        const travelZ = z - gaitState.z;
+        const travelDistance = Math.hypot(travelX, travelZ);
+        const locomoting = pose.deathFall <= 0
+          && (pose.behavior === "wander" || pose.behavior === "chase")
+          && travelDistance > 0.001 && travelDistance <= 2;
+        if (locomoting) {
+          gaitState.phase = advanceMobGaitPhase(gaitState.phase, travelDistance);
+          gaitState.yaw = mobTravelYaw(travelX, travelZ, gaitState.yaw);
+        } else if (travelDistance > 2) {
+          gaitState.phase = 0;
+          gaitState.yaw = authoredYaw;
+        }
+        gaitState.x = x;
+        gaitState.z = z;
+        gaitState.generation = gaitGeneration;
+        const yaw = locomoting ? gaitState.yaw : authoredYaw;
+        const swing = locomoting ? Math.sin(gaitState.phase) * 0.46 : 0;
         if (pose.kind === "pig") appendPig(writer, x, y, z, yaw, swing);
         else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
         else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing, pose.sheared);
@@ -765,6 +793,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         stats.visiblePrimedTntCount += 1;
       }
       stats.primedTntVertexCount = (writer.offset - primedFloatStart) / FLOATS_PER_VERTEX;
+      for (const [id, state] of gait) if (state.generation !== gaitGeneration) gait.delete(id);
       stats.vertexCount = writer.offset / FLOATS_PER_VERTEX;
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       if (uploadFloatCount !== writer.offset) {
@@ -777,6 +806,7 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
     destroy() {
       observedHealth.clear();
       hurtUntilSeconds.clear();
+      gait.clear();
       gl.deleteBuffer(buffer);
     },
   };

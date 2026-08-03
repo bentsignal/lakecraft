@@ -177,6 +177,14 @@ export interface MobSpawnOptions {
   terrainHeight: (x: number, z: number) => number;
   /** Optional deterministic surface/cave floor selection for one candidate. */
   resolveSpawnY?: (kind: MobKind, x: number, surfaceY: number, z: number, attempt: number) => number;
+  /** Optional deterministic relocation to a nearby valid surface/cave floor. */
+  resolveSpawnPosition?: (
+    kind: MobKind,
+    x: number,
+    surfaceY: number,
+    z: number,
+    attempt: number,
+  ) => readonly [x: number, y: number, z: number];
   /** Final collision/ground veto supplied by the world implementation. */
   isSpawnable?: (kind: MobKind, x: number, y: number, z: number) => boolean;
   /** Cached normalized local light sampled only while generating spawn candidates. */
@@ -627,15 +635,22 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
       : hostileKind(slot - passiveCount, options.seed);
     const angle = hash01(attempt, slot, options.seed + 101) * Math.PI * 2;
     const distance = clearRadius + 1 + Math.sqrt(hash01(slot, attempt, options.seed + 131)) * (usableRange - 1);
-    const x = centerX + clamp(Math.round(Math.cos(angle) * distance), -radius, radius);
-    const z = centerZ + clamp(Math.round(Math.sin(angle) * distance), -radius, radius);
+    const candidateX = centerX + clamp(Math.round(Math.cos(angle) * distance), -radius, radius);
+    const candidateZ = centerZ + clamp(Math.round(Math.sin(angle) * distance), -radius, radius);
+    if (Math.max(Math.abs(candidateX - centerX), Math.abs(candidateZ - centerZ)) <= clearRadius) continue;
+    if (!hasSafeSlope(options.terrainHeight, candidateX, candidateZ)) continue;
+    const surfaceY = options.terrainHeight(candidateX, candidateZ) + 1;
+    const resolved = options.resolveSpawnPosition?.(kind, candidateX, surfaceY, candidateZ, attempt);
+    const x = Math.floor(resolved?.[0] ?? candidateX);
+    const z = Math.floor(resolved?.[2] ?? candidateZ);
+    const resolvedY = resolved?.[1]
+      ?? options.resolveSpawnY?.(kind, x, surfaceY, z, attempt)
+      ?? surfaceY;
+    if (!Number.isFinite(x) || !Number.isFinite(resolvedY) || !Number.isFinite(z)) continue;
+    const y = Math.floor(resolvedY);
     if (Math.max(Math.abs(x - centerX), Math.abs(z - centerZ)) <= clearRadius) continue;
     const key = `${x},${z}`;
-    if (occupied.has(key) || !hasSafeSlope(options.terrainHeight, x, z)) continue;
-    const surfaceY = options.terrainHeight(x, z) + 1;
-    const resolvedY = options.resolveSpawnY?.(kind, x, surfaceY, z, attempt) ?? surfaceY;
-    if (!Number.isFinite(resolvedY)) continue;
-    const y = Math.floor(resolvedY);
+    if (occupied.has(key)) continue;
     if (options.isSpawnable && !options.isSpawnable(kind, x, y, z)) continue;
     if (!MOB_DEFINITIONS[kind].passive && options.localLight
       && options.localLight(kind, x, y + MOB_DEFINITIONS[kind].height * 0.75, z)
@@ -785,6 +800,42 @@ export function reconcileLocalMobStreaming(
   return Math.max(retiredById.size, added);
 }
 
+/**
+ * Rehomes a bounded number of inactive hostile slots when the streamed habitat
+ * changes (for example, after loading an older surface-only save near caves).
+ * Active, dying, fused, or otherwise protected mobs remain untouched.
+ */
+export function refreshLocalHostileHabitats(
+  simulation: MobSimulation,
+  spawns: readonly MobSpawnDescriptor[],
+  canRetire: (mob: Readonly<MobState>, replacement: Readonly<MobSpawnDescriptor>) => boolean,
+  maximumReplacements = 1,
+): number {
+  const limit = clamp(finiteInteger(maximumReplacements, 1), 0, 4);
+  if (limit === 0) return 0;
+  const byId = new Map<string, MobSpawnDescriptor>();
+  for (const spawn of spawns) {
+    if (!MOB_DEFINITIONS[spawn.kind].passive) byId.set(spawn.id, spawn);
+  }
+  let replaced = 0;
+  for (let index = 0; index < simulation.mobs.length && replaced < limit; index += 1) {
+    const previous = simulation.mobs[index];
+    const replacement = byId.get(previous.id);
+    if (!replacement || MOB_DEFINITIONS[previous.kind].passive
+      || previous.kind !== replacement.kind
+      || previous.homeX === replacement.x && previous.homeY === replacement.y && previous.homeZ === replacement.z
+      || !canRetire(previous, replacement)) continue;
+    for (const projectile of simulation.projectiles) {
+      if (projectile.active && projectile.ownerId === previous.id) projectile.active = false;
+    }
+    const next = mobStateForSpawn(replacement);
+    next.damageSequence = previous.damageSequence;
+    simulation.mobs[index] = next;
+    replaced += 1;
+  }
+  return replaced;
+}
+
 /** Returns a stable-order copy suitable for the bounded Lakebed authority query. */
 export function listMobIds(simulation: Readonly<MobSimulation>): string[] {
   return simulation.mobs.slice(0, HARD_MAX_MOB_POPULATION).map((mob) => mob.id);
@@ -816,21 +867,30 @@ function insideWorldBounds(
   return Math.abs(x - centerX) + radius <= limit && Math.abs(z - centerZ) + radius <= limit;
 }
 
-function canMoveTo(mob: MobState, x: number, z: number, input: Readonly<MobStepInput>): boolean {
+function moveHeightAt(mob: MobState, x: number, z: number, input: Readonly<MobStepInput>): number | null {
   const definition = MOB_DEFINITIONS[mob.kind];
   const limit = Number.isFinite(input.worldRadius) ? Math.max(1, Math.abs(input.worldRadius as number)) : Infinity;
   const centerX = Number.isFinite(input.worldCenterX) ? input.worldCenterX as number : 0;
   const centerZ = Number.isFinite(input.worldCenterZ) ? input.worldCenterZ as number : 0;
-  if (!insideWorldBounds(x, z, definition.collisionRadius, centerX, centerZ, limit)) return false;
+  if (!insideWorldBounds(x, z, definition.collisionRadius, centerX, centerZ, limit)) return null;
   const y = input.terrainHeight(Math.floor(x), Math.floor(z)) + 1;
-  if (Math.abs(y - mob.y) > 1.01) return false;
-  return input.canOccupy?.(mob.kind, x, y, z, definition.collisionRadius, definition.height) ?? true;
+  if (Math.abs(y - mob.y) > 1.01) return null;
+  if (input.canOccupy?.(mob.kind, x, y, z, definition.collisionRadius, definition.height) ?? true) return y;
+  // While crossing a one-block ledge, the rear of the collision footprint can
+  // still overlap the upper block. Continue horizontally at the current foot
+  // height until the whole body clears the edge, then settle onto the lower
+  // floor. Snapping down immediately makes the ledge look like a solid wall.
+  if (y < mob.y
+    && (input.canOccupy?.(mob.kind, x, mob.y, z, definition.collisionRadius, definition.height) ?? true)) {
+    return mob.y;
+  }
+  return null;
 }
 
-function applyMovement(mob: MobState, x: number, z: number, input: Readonly<MobStepInput>): void {
+function applyMovement(mob: MobState, x: number, y: number, z: number): void {
   mob.x = x;
   mob.z = z;
-  mob.y = input.terrainHeight(Math.floor(x), Math.floor(z)) + 1;
+  mob.y = y;
 }
 
 function stopMob(mob: MobState, behavior: MobBehavior): void {
@@ -845,16 +905,19 @@ function tryMoveMob(mob: MobState, dx: number, dz: number, input: Readonly<MobSt
   const targetZ = mob.z + dz;
   mob.desiredX = targetX;
   mob.desiredZ = targetZ;
-  if (canMoveTo(mob, targetX, targetZ, input)) {
-    applyMovement(mob, targetX, targetZ, input);
+  const diagonalY = moveHeightAt(mob, targetX, targetZ, input);
+  if (diagonalY !== null) {
+    applyMovement(mob, targetX, diagonalY, targetZ);
     return true;
   }
-  if (dx !== 0 && canMoveTo(mob, targetX, mob.z, input)) {
-    applyMovement(mob, targetX, mob.z, input);
+  const xY = dx !== 0 ? moveHeightAt(mob, targetX, mob.z, input) : null;
+  if (xY !== null) {
+    applyMovement(mob, targetX, xY, mob.z);
     return true;
   }
-  if (dz !== 0 && canMoveTo(mob, mob.x, targetZ, input)) {
-    applyMovement(mob, mob.x, targetZ, input);
+  const zY = dz !== 0 ? moveHeightAt(mob, mob.x, targetZ, input) : null;
+  if (zY !== null) {
+    applyMovement(mob, mob.x, zY, targetZ);
     return true;
   }
   return false;

@@ -10,6 +10,7 @@ import {
   damageMob,
   exportMobSimulationSnapshot,
   reconcileLocalMobStreaming,
+  refreshLocalHostileHabitats,
   restoreMobSimulationSnapshot,
   stepMobSimulation,
   localMobHostileActive,
@@ -102,6 +103,15 @@ const caveSpawns = createMobSpawns({
 });
 assert.equal(caveSpawns.length, 4, "bright daytime surfaces retry into deterministic dark cave floors");
 assert.ok(caveSpawns.every((candidate) => candidate.y === -7), "accepted daytime hostile homes stay underground");
+const relocatedCaveSpawns = createMobSpawns({
+  ...spawnOptions,
+  resolveSpawnPosition: (_kind, x, surfaceY, z, attempt) => (attempt & 1) === 0
+    ? [x + 1, surfaceY - 8, z + 1] as const
+    : [x, surfaceY, z] as const,
+  localLight: (_kind, _x, y) => y < -1 ? 0 : 1,
+});
+assert.equal(relocatedCaveSpawns.length, 4, "daytime hostile attempts can relocate into nearby dark cave columns");
+assert.ok(relocatedCaveSpawns.every((candidate) => candidate.y === -7), "bright fallback surfaces never leak into cave population");
 assert.equal(createMobSpawns({ ...spawnOptions, localLight: () => LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX }).length, 0,
   "the exact bright threshold rejects new surface hostiles");
 const streamed = createMobSimulation(darkSpawns);
@@ -114,6 +124,20 @@ const laterDarkSpawns = createMobSpawns({ ...spawnOptions, centerX: 100, localLi
 assert.equal(reconcileLocalMobStreaming(streamed, laterDarkSpawns, 100, 0, 20), 4,
   "a later dark reconciliation fills the vacancies");
 assert.equal(new Set(streamed.mobs.map((mob) => mob.id)).size, streamed.mobs.length, "streamed mob IDs remain unique");
+
+const legacySurface = createMobSimulation([spawn("zombie", 1)]);
+legacySurface.mobs[0].x = legacySurface.mobs[0].homeX = 18;
+const caveReplacement = { ...spawn("zombie", 1), x: 7, y: -7, z: 2, homeX: 7, homeZ: 2 };
+assert.equal(refreshLocalHostileHabitats(legacySurface, [caveReplacement], () => true), 1,
+  "one inactive legacy surface slot can move to a newly discovered dark cave habitat");
+assert.deepEqual(
+  [legacySurface.mobs[0].x, legacySurface.mobs[0].y, legacySurface.mobs[0].z],
+  [7, -7, 2],
+  "the refreshed hostile uses the cave collision floor selected by the current world ecology",
+);
+legacySurface.mobs[0].behavior = "chase";
+assert.equal(refreshLocalHostileHabitats(legacySurface, [{ ...caveReplacement, x: 9 }], () => false), 0,
+  "the engine retirement veto protects an active or visible hostile from habitat teleporting");
 
 const retainedEcology = createMobSimulation([spawn("zombie", 1), spawn("creeper", 2), spawn("skeleton", 3)]);
 const [shadedZombie, fusedCreeper, dyingSkeleton] = retainedEcology.mobs;

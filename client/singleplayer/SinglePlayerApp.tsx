@@ -1128,6 +1128,7 @@ function SinglePlayerWorld({
     }
     const engine = createVoxelEngine(canvas, {
       seed: worldRef.current.seed,
+      streamingChunkRadius: clientSettingsRef.current.renderDistance,
       initialEdits: [...editsRef.current.values()],
       initialBedStructures: initialSnapshot.world.beds ?? [],
       twoBlockBeds: true,
@@ -1943,9 +1944,14 @@ function SinglePlayerWorld({
           markWorldDirty();
         }}
         mouseSensitivity={clientSettings.mouseSensitivity}
+        renderDistance={clientSettings.renderDistance}
         onCloseOptions={() => setOptionsOpen(false)}
         onOptions={() => setOptionsOpen(true)}
         onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
+        onRenderDistanceChange={(renderDistance) => {
+          updateClientSettings({ ...clientSettingsRef.current, renderDistance });
+          engineRef.current?.setRenderDistance(renderDistance);
+        }}
         optionsOpen={optionsOpen}
         onRespawn={respawnLocally}
         onResume={() => { setOptionsOpen(false); requestGameplayPointerLock(); }}

@@ -345,6 +345,8 @@ export interface VoxelPerformanceStats {
 export interface VoxelEngineOptions {
   seed?: number;
   worldRadius?: number;
+  /** Offline-only bounded horizontal chunk radius; omitted callers retain the 7x7 default. */
+  streamingChunkRadius?: number;
   initialEdits?: readonly WorldEdit[];
   /** Validated local-save metadata for paired BED cells; omitted by multiplayer. */
   initialBedStructures?: readonly BedStructure[];
@@ -499,6 +501,8 @@ export interface VoxelEngine {
   /** Settles sand/gravel after one explicit offline edit; never creates network traffic. */
   settleFallingBlocks(edit: Readonly<WorldEdit>, previousBlock: BlockId): WorldEdit[];
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
+  /** Reconciles the offline terrain window immediately and returns the bounded radius. */
+  setRenderDistance(radius: number): number;
   /** Freezes local movement, simulation, combat, fuses, particles, and world time. */
   setPaused(paused: boolean): boolean;
   isPaused(): boolean;

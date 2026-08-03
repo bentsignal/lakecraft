@@ -89,6 +89,28 @@ for (let tick = 0; tick < 8; tick += 1) stepMobSimulation(blocked, { ...flatStep
 assert.equal(blocked.mobs[0].x, 0, "terrain rejection wins over overlap correction");
 assert.ok(Number.isFinite(blocked.mobs[0].yaw), "a blocked zero-distance mob still has stable finite facing");
 
+const downhill = createMobSimulation([{
+  id: "zombie-downhill",
+  kind: "zombie",
+  x: -0.7,
+  y: 2,
+  z: 0,
+  yaw: Math.PI / 2,
+  homeX: -0.7,
+  homeZ: 0,
+  behaviorSeed: 41,
+}]);
+for (let tick = 0; tick < 50; tick += 1) {
+  stepMobSimulation(downhill, {
+    ...flatStep,
+    player: { x: 5, y: 1, z: 0 },
+    terrainHeight: (x) => x < 0 ? 1 : 0,
+    canOccupy: (_kind, x, y, _z, radius) => y >= 2 || x - radius >= 0,
+  });
+}
+assert.ok(downhill.mobs[0].x > 0.35, "a chasing zombie clears a one-block downhill ledge instead of stopping on it");
+assert.equal(downhill.mobs[0].y, 1, "the zombie settles onto the lower floor after its full collider clears the ledge");
+
 const meleeImpulse = resolveMobKnockback(0, 0, 2, 0, 0, 1, 4)!;
 assert.ok(meleeImpulse.x > 0 && Math.abs(meleeImpulse.z) < 1e-12, "player melee pushes the mob away from the player");
 const projectileImpulse = resolveMobKnockback(3, -4, 0, 0, 1, 0, 8)!;

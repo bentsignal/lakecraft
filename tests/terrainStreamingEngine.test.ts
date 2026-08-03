@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import {
   DEFAULT_STREAMING_CHUNK_RADIUS,
+  MAX_LOCAL_STREAMING_CHUNK_RADIUS,
   MAX_STREAMING_CHUNK_COUNT,
   chunkKey,
   planChunkWindow,
@@ -44,6 +45,16 @@ assert.ok(initialBlockCount > 70_000, "the active window should include deep min
 const oneChunkTravel = planChunkWindow(8.5, 0.5, loaded, DEFAULT_STREAMING_CHUNK_RADIUS);
 assert.equal(oneChunkTravel.load.length, 7, "crossing one chunk should load one new edge only");
 assert.equal(oneChunkTravel.unload.length, 7, "crossing one chunk should unload one old edge only");
+const expandedLocalPlan = planChunkWindow(
+  0.5,
+  0.5,
+  loaded,
+  MAX_LOCAL_STREAMING_CHUNK_RADIUS,
+  8,
+  MAX_LOCAL_STREAMING_CHUNK_RADIUS,
+);
+assert.equal(expandedLocalPlan.active.length, 169, "the explicit offline ceiling exposes a bounded 13x13 window");
+assert.equal(expandedLocalPlan.load.length, 120, "expanding from the default window loads only the additional ring");
 const incrementalStartedAt = performance.now();
 let incrementalBlockCount = 0;
 for (const coordinate of oneChunkTravel.load) {

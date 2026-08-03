@@ -59,6 +59,8 @@ export type GameHudProps = {
   optionsOpen?: boolean;
   mouseSensitivity?: number;
   onSensitivityChange?: (value: number) => void;
+  renderDistance?: number;
+  onRenderDistanceChange?: (value: number) => void;
   onCloseOptions?: () => void;
   soundMuted?: boolean;
   onToggleSound?: () => void;
@@ -123,6 +125,8 @@ export function GameHud({
   optionsOpen = false,
   mouseSensitivity = 100,
   onSensitivityChange,
+  renderDistance,
+  onRenderDistanceChange,
   onCloseOptions,
   soundMuted = false,
   onToggleSound,
@@ -171,10 +175,12 @@ export function GameHud({
           mouseSensitivity={mouseSensitivity}
           onBack={onCloseOptions}
           onSensitivityChange={onSensitivityChange}
+          onRenderDistanceChange={onRenderDistanceChange}
           onToggleSound={onToggleSound}
           open={optionsOpen && pauseOpen && !deathScreenOpen}
           returnFocusId="lc-game-menu-options"
           soundMuted={soundMuted}
+          renderDistance={renderDistance}
         />
       ) : null}
       <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawnError={respawnError} respawning={respawning} respawnStatus={respawnStatus} score={deathScore} />

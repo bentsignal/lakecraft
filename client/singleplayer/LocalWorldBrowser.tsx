@@ -75,7 +75,7 @@ const WORLD_BROWSER_CSS = `
 .lc-local-world-dialog{background:transparent;border:0;box-sizing:border-box;height:100vh;height:100dvh;margin:0;max-height:none;max-width:none;overflow-y:auto;padding:clamp(16px,5vh,48px) 16px;width:100vw}
 .lc-local-world-dialog::backdrop{background:rgba(0,0,0,.72)}
 .lc-local-world-dialog .lc-username-menu{margin:auto;width:min(520px,calc(100vw - 32px))}
-.lc-local-world-delete-copy{overflow-wrap:anywhere}
+.lc-local-world-delete-copy{color:#ff8f8f;overflow-wrap:anywhere}
 .lc-local-world-dialog label{display:grid;gap:7px;text-align:left}
 @media(max-width:560px){
   .lc-local-world-titlebar{grid-template-columns:104px minmax(0,1fr);margin-bottom:14px}
@@ -372,7 +372,9 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
               else create(event.currentTarget);
             }}
           >
-            <h2 id={DIALOG_TITLE_ID}>{deleting ? "Delete World" : CREATE_LABEL}</h2>
+            <h2 className={deleting ? "lc-local-world-delete-copy" : undefined} id={DIALOG_TITLE_ID}>
+              {deleting ? "Delete World" : CREATE_LABEL}
+            </h2>
             {deleting ? (
               <>
                 <p>Delete {confirmedWorld?.name ?? "this world"} and all local progress? This cannot be undone.</p>

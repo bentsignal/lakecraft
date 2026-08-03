@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
-import { MOB_MESH_INTERVAL_MS, createMobRenderer, mobVertexCountForKind } from "../client/game/mobRenderer.ts";
+import {
+  MOB_GAIT_RADIANS_PER_BLOCK,
+  MOB_MESH_INTERVAL_MS,
+  advanceMobGaitPhase,
+  createMobRenderer,
+  mobTravelYaw,
+  mobVertexCountForKind,
+} from "../client/game/mobRenderer.ts";
 import type { MobKind, MobPoseSnapshot } from "../client/game/mobs.ts";
+
+assert.ok(Math.abs(advanceMobGaitPhase(0, 0.25) - MOB_GAIT_RADIANS_PER_BLOCK * 0.25) < 1e-12,
+  "gait advances in direct proportion to actual distance");
+assert.equal(advanceMobGaitPhase(1.2, 0), 1.2, "stationary mobs retain their gait phase without animating");
+assert.ok(Math.abs(mobTravelYaw(1, 0, 0) - Math.PI / 2) < 1e-12, "eastbound travel faces east");
+assert.ok(Math.abs(mobTravelYaw(0, -1, 0) - Math.PI) < 1e-12, "northbound travel faces north");
+assert.equal(mobTravelYaw(0, 0, 0.7), 0.7, "zero displacement preserves stable authored facing");
 
 class FakeWebGl {
   readonly ARRAY_BUFFER = 0x8892;
@@ -306,7 +320,8 @@ assert.deepEqual(
   stillChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
   "a wander label cannot animate stationary chicken wings",
 );
-chicken.previousZ = chicken.z - 0.1;
+chicken.previousZ = chicken.z;
+chicken.z += 0.1;
 renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0.2);
 assert.notDeepEqual(
   gl.uploaded!.subarray(6 * 36 * 6, 8 * 36 * 6),
@@ -343,7 +358,8 @@ assert.deepEqual(
   stillSpiderGeometry.subarray(4 * 36 * 6),
   "a chase label cannot animate stationary spider legs",
 );
-spider.previousX = spider.x - 0.1;
+spider.previousX = spider.x;
+spider.x += 0.1;
 renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.2);
 assert.notDeepEqual(
   gl.uploaded!.subarray(4 * 36 * 6),

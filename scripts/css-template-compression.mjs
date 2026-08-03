@@ -58,7 +58,7 @@ xc-inventory-slot|11 xj-glyph|12 xo-menu|11 xe-grid__slot|13 xj-icon__svg|10 xn-
 xlocal-world-dialog|9 xoptions|9 ysleep|9 xslot|15 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|10 xp-logo|9 xq-icon|8 xr-slot|8 xclose|9 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|9 xe-grid|11 xlocal-world-header|6
-xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|6 xpointer-capture|6
+xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|7 xpointer-capture|6
 xe-titlebar|7 xcrosshair|6 xq-browser|6 xp-footer|7 xs-layer|7 xlocal-world-browser|5
 xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|5
 xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|7 xq-copy|5 xq-row|5 xlocal-world-titlebar|5
@@ -71,7 +71,7 @@ xsection-rule|3 xsingleplayer|3 xv-workspace|3 ysleep-layer|3 xc__station|3 xdur
 xingredient|3 xlocal-perf|3 xp-panorama|4 xc__status|3 xp-content|4 xc__flame|3
 xr-status|3 xc-layer|3 xd__head|3 xl__icon|3 xp-hills|5 xr-layer|3 xs__body|3 xlocal-world-feedback|3
 xv-panel|3 xd__arm|3 xd__leg|3 xu-wrap|3 xv-slot|3 xw-link|3 yperf|3
-xc-inventory-grid--hotbar|2 xsingleplayer-coordinates|2 xlocal-world-delete-copy|2
+xc-inventory-grid--hotbar|2 xsingleplayer-coordinates|2 xlocal-world-delete-copy|3
 xh__autosave-status|2 xunsupported__stamp|2 xc-inventory-title|2 xh__last-autosaved|2
 xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|3 xlocal-world-retry|2
 xunsupported__card|2 xunsupported__icon|2 xunsupported__topo|2 xunsupported-title|2 xlocal-world-feedback-copy|2 xlocal-world-stage|2

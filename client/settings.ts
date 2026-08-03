@@ -4,11 +4,15 @@ export const LEGACY_AUDIO_MUTED_STORAGE_KEY = "lakecraft:audio-muted:v1";
 export const MOUSE_SENSITIVITY_MIN = 10;
 export const MOUSE_SENSITIVITY_MAX = 200;
 export const DEFAULT_MOUSE_LOOK_SCALE = 0.0022;
+export const RENDER_DISTANCE_MIN = 2;
+export const RENDER_DISTANCE_MAX = 6;
 
 export interface ClientSettings {
   soundMuted: boolean;
   /** Mouse-look speed as a percentage; 100 preserves Lakecraft's original speed. */
   mouseSensitivity: number;
+  /** Offline horizontal chunk radius. Multiplayer retains its server-bounded window. */
+  renderDistance: number;
 }
 
 export interface ClientSettingsStorage {
@@ -19,6 +23,7 @@ export interface ClientSettingsStorage {
 export const DEFAULT_CLIENT_SETTINGS: Readonly<ClientSettings> = Object.freeze({
   soundMuted: false,
   mouseSensitivity: 100,
+  renderDistance: 3,
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,11 +35,17 @@ function normalizeSensitivity(value: unknown): number {
   return Math.min(MOUSE_SENSITIVITY_MAX, Math.max(MOUSE_SENSITIVITY_MIN, value));
 }
 
+function normalizeRenderDistance(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_CLIENT_SETTINGS.renderDistance;
+  return Math.min(RENDER_DISTANCE_MAX, Math.max(RENDER_DISTANCE_MIN, Math.floor(value)));
+}
+
 export function normalizeClientSettings(value: unknown): ClientSettings {
   const candidate = isRecord(value) ? value : {};
   return {
     soundMuted: typeof candidate.soundMuted === "boolean" ? candidate.soundMuted : DEFAULT_CLIENT_SETTINGS.soundMuted,
     mouseSensitivity: normalizeSensitivity(candidate.mouseSensitivity),
+    renderDistance: normalizeRenderDistance(candidate.renderDistance),
   };
 }
 

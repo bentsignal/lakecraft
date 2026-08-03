@@ -7,6 +7,7 @@ import {
 } from "./terrain.ts";
 import {
   DEFAULT_STREAMING_CHUNK_RADIUS,
+  MAX_LOCAL_STREAMING_CHUNK_RADIUS,
   WORLD_CHUNK_SIZE,
   chunkKey,
   chunkKeyForBlock,
@@ -88,6 +89,7 @@ import {
   mobTargetHasClickPriority,
   raycastMobs,
   reconcileLocalMobStreaming,
+  refreshLocalHostileHabitats,
   respawnExpiredAuthoritativeMobs,
   restoreMobSimulationSnapshot,
   shearLocalMob,
@@ -1514,11 +1516,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     bedCellOwners.set(footKey, owner);
     bedCellOwners.set(headKey, owner);
   }
+  let streamingChunkRadius = clampNumber(
+    Math.floor(options.streamingChunkRadius ?? DEFAULT_STREAMING_CHUNK_RADIUS),
+    1,
+    MAX_LOCAL_STREAMING_CHUNK_RADIUS,
+  );
   const initialChunkPlan = planChunkWindow(
     pose.x,
     pose.z,
     loadedChunkKeys,
-    DEFAULT_STREAMING_CHUNK_RADIUS,
+    streamingChunkRadius,
+    WORLD_CHUNK_SIZE,
+    MAX_LOCAL_STREAMING_CHUNK_RADIUS,
   );
   for (const coordinate of initialChunkPlan.load) {
     const owner = chunkKey(coordinate.x, coordinate.z);
@@ -1570,8 +1579,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
   }
 
-  function localMobSpawnY(kind: keyof typeof MOB_DEFINITIONS, x: number, surfaceY: number, z: number, attempt: number): number {
-    if (MOB_DEFINITIONS[kind].passive || (attempt & 1) !== 0) return surfaceY;
+  function caveSpawnY(kind: keyof typeof MOB_DEFINITIONS, x: number, surfaceY: number, z: number): number | null {
     const clearCells = Math.max(1, Math.ceil(MOB_DEFINITIONS[kind].height));
     for (let y = surfaceY - 2; y > TERRAIN_MIN_Y; y -= 1) {
       if (!blockSupportsPlayerFeet(getBlock(x, y - 1, z))) continue;
@@ -1581,7 +1589,33 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       if (clear) return y;
     }
-    return surfaceY;
+    return null;
+  }
+
+  function localMobSpawnPosition(
+    kind: keyof typeof MOB_DEFINITIONS,
+    x: number,
+    surfaceY: number,
+    z: number,
+    attempt: number,
+  ): readonly [number, number, number] {
+    if (MOB_DEFINITIONS[kind].passive || (attempt & 1) !== 0) return [x, surfaceY, z];
+    // Hostile surface candidates remain useful at night, but every other
+    // attempt searches a bounded neighborhood for an enclosed floor. Searching
+    // nearby columns matters because a cave seldom sits under the exact random
+    // surface coordinate chosen by the population sampler.
+    const offsetSeed = attempt % 9;
+    for (let sample = 0; sample < 25; sample += 1) {
+      const index = (sample + offsetSeed) % 25;
+      const dx = index % 5 - 2;
+      const dz = Math.floor(index / 5) - 2;
+      const caveX = x + dx;
+      const caveZ = z + dz;
+      if (!loadedChunkKeys.has(chunkKeyForBlock(caveX, caveZ))) continue;
+      const caveY = caveSpawnY(kind, caveX, terrainHeight(caveX, caveZ, seed) + 1, caveZ);
+      if (caveY !== null) return [caveX, caveY, caveZ];
+    }
+    return [x, surfaceY, z];
   }
 
   function findNearestCave(): readonly [number, number, number] | null {
@@ -1592,7 +1626,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     let bestY = 0;
     let bestZ = 0;
     let bestDistanceSquared = Infinity;
-    const radius = 32;
+    let fallbackX = 0;
+    let fallbackY = 0;
+    let fallbackZ = 0;
+    let fallbackDistanceSquared = Infinity;
+    const radius = Math.max(32, streamingChunkRadius * WORLD_CHUNK_SIZE);
     for (let x = originX - radius; x <= originX + radius; x += 1) {
       for (let z = originZ - radius; z <= originZ + radius; z += 1) {
         if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
@@ -1600,10 +1638,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (horizontalSquared > radius * radius || horizontalSquared >= bestDistanceSquared) continue;
         const surfaceY = terrainHeight(x, z, seed) + 1;
         for (let y = surfaceY - 2; y > TERRAIN_MIN_Y; y -= 1) {
-          if (getBlock(x, y, z) !== BLOCK.AIR || getBlock(x, y + 1, z) !== BLOCK.AIR
+          if (getBlock(x, y, z) !== BLOCK.AIR
             || !blockSupportsPlayerFeet(getBlock(x, y - 1, z))
             || skyExposureLevel(skyOccluderColumns, x, y + 1, z) !== 0) continue;
           const distanceSquared = horizontalSquared + (y - originY) ** 2;
+          if (distanceSquared < fallbackDistanceSquared) {
+            fallbackDistanceSquared = distanceSquared;
+            fallbackX = x;
+            fallbackY = y;
+            fallbackZ = z;
+          }
+          if (getBlock(x, y + 1, z) !== BLOCK.AIR) continue;
           if (distanceSquared >= bestDistanceSquared) continue;
           bestDistanceSquared = distanceSquared;
           bestX = x;
@@ -1612,7 +1657,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         }
       }
     }
-    return Number.isFinite(bestDistanceSquared) ? [bestX, bestY, bestZ] : null;
+    if (Number.isFinite(bestDistanceSquared)) return [bestX, bestY, bestZ];
+    return Number.isFinite(fallbackDistanceSquared) ? [fallbackX, fallbackY, fallbackZ] : null;
   }
   const chunkMeshes = new Map<string, ChunkMesh>();
   const visibleMeshes: ChunkMesh[] = [];
@@ -1625,7 +1671,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     centerX: localMobStreaming ? mobStreamingCenterX : 0,
     centerZ: localMobStreaming ? mobStreamingCenterZ : 0,
     terrainHeight: (x, z) => terrainHeight(x, z, seed),
-    resolveSpawnY: localMobSpawnY,
+    resolveSpawnPosition: localMobSpawnPosition,
     passivePopulation: clampNumber(Math.floor(radius / 2), 6, 12),
     hostilePopulation: clampNumber(Math.floor(radius / 5), 2, 5),
     maxPopulation: 17,
@@ -1728,6 +1774,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let visibleMobCount = 0;
   let lastMobSimulationMs = 0;
   let mobAccumulatorSeconds = 0;
+  let localMobHabitatRefreshSeconds = 0;
   const mobStepSeconds = 0.1;
   let playerHealth = PLAYER_MAX_HEALTH;
   let lastPerformanceSent = 0;
@@ -1946,7 +1993,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.x,
       pose.z,
       loadedChunkKeys,
-      DEFAULT_STREAMING_CHUNK_RADIUS,
+      streamingChunkRadius,
+      WORLD_CHUNK_SIZE,
+      MAX_LOCAL_STREAMING_CHUNK_RADIUS,
     );
     streamingCenterKey = chunkKey(plan.center.x, plan.center.z);
     if (!plan.load.length && !plan.unload.length) return;
@@ -2474,6 +2523,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return;
     }
     mobAccumulatorSeconds = Math.min(0.3, mobAccumulatorSeconds + dt);
+    if (localMobStreaming) {
+      localMobHabitatRefreshSeconds += dt;
+      if (localMobHabitatRefreshSeconds >= 5) {
+        localMobHabitatRefreshSeconds %= 5;
+        const replacements = createMobSpawns({
+          ...mobPopulationOptions,
+          centerX: mobStreamingCenterX,
+          centerZ: mobStreamingCenterZ,
+        });
+        refreshLocalHostileHabitats(mobSimulation, replacements, (mob, replacement) => {
+          if (!mob.alive || mob.deathUntil > 0 || mob.behavior === "chase" || mob.behavior === "fuse") return false;
+          const mobDistance = Math.hypot(mob.x - pose.x, mob.z - pose.z);
+          if (mobDistance < 12) return false;
+          const currentLight = cachedMobLocalLight(mob.kind, mob.homeX, mob.homeY + 1, mob.homeZ);
+          const replacementDistance = Math.hypot(replacement.x - pose.x, replacement.z - pose.z);
+          return currentLight >= LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX || replacementDistance + 4 < mobDistance;
+        });
+      }
+    }
     let steps = 0;
     while (mobAccumulatorSeconds >= mobStepSeconds && steps < 3) {
       const isNight = dayNightState.label === "night" || dayNightState.label === "dusk";
@@ -3904,6 +3972,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         const now = performance.now();
         render(now, 0, now);
       }
+    },
+    setRenderDistance(radius) {
+      const next = clampNumber(Math.floor(radius), 1, MAX_LOCAL_STREAMING_CHUNK_RADIUS);
+      if (next === streamingChunkRadius) return streamingChunkRadius;
+      streamingChunkRadius = next;
+      updateStreamingWindow(true);
+      return streamingChunkRadius;
     },
     setPaused(nextPaused) {
       const next = nextPaused === true;
