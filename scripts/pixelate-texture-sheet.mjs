@@ -218,6 +218,47 @@ function copyTile(source, sourceIndex, output, outputIndex, sourceColumns, outpu
   }
 }
 
+// Small connected silhouettes keep ore embedded in the host stone instead of
+// reading as evenly spaced dots. Each tuple is x, y, and palette-tone index.
+const ORE_CLUSTER_SHAPES = [
+  [[0,0,0],[1,0,1],[0,1,1],[1,1,2],[2,1,1],[1,2,0]],
+  [[0,0,0],[1,0,1],[1,1,2],[2,1,1],[2,2,2],[3,2,1],[2,3,0]],
+  [[1,0,0],[0,1,1],[1,1,2],[2,1,1],[1,2,0]],
+];
+
+const ORE_RECIPES = Object.freeze({
+  coal_ore: {
+    tones: [[34,34,34,255],[51,51,51,255],[85,85,85,255]],
+    clusters: [[1,1,0],[9,2,1],[4,7,2],[10,10,0],[1,11,1]],
+  },
+  iron_ore: {
+    tones: [[119,68,51,255],[187,119,85,255],[221,170,119,255]],
+    clusters: [[3,1,1],[10,4,0],[1,8,2],[8,11,1]],
+  },
+  gold_ore: {
+    tones: [[170,102,17,255],[238,187,34,255],[255,221,85,255]],
+    clusters: [[1,2,2],[9,1,0],[5,8,1],[11,11,2]],
+  },
+  diamond_ore: {
+    tones: [[17,119,136,255],[34,187,204,255],[119,238,238,255]],
+    clusters: [[3,1,2],[10,5,0],[2,10,0],[9,12,2]],
+  },
+});
+
+function paintOreTile(output, outputIndex, columns, tileSize, stoneIndex, name) {
+  const recipe = ORE_RECIPES[name];
+  if (!recipe || stoneIndex < 0) fail(`cannot derive ${name} without the canonical stone tile.`);
+  copyTile(output, stoneIndex, output, outputIndex, columns, columns, tileSize);
+  const originX = (outputIndex % columns) * tileSize;
+  const originY = Math.floor(outputIndex / columns) * tileSize;
+  for (const [clusterX, clusterY, shapeIndex] of recipe.clusters) {
+    const shape = ORE_CLUSTER_SHAPES[shapeIndex];
+    for (const [x, y, tone] of shape) {
+      setPixel(output, originX + clusterX + x, originY + clusterY + y, recipe.tones[tone]);
+    }
+  }
+}
+
 function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
   const originX = (outputIndex % columns) * tileSize;
   const originY = Math.floor(outputIndex / columns) * tileSize;
@@ -347,23 +388,33 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
   }
 
   if (name === "tnt_side") {
-    const dark = [102, 17, 17, 255];
+    const dark = [85, 17, 17, 255];
+    const shadow = [136, 34, 34, 255];
     const red = [187, 51, 34, 255];
     const lightRed = [221, 68, 51, 255];
+    const paperShadow = [204, 187, 153, 255];
     const paper = [238, 221, 187, 255];
+    const paperLight = [255, 238, 204, 255];
     const ink = [34, 34, 34, 255];
     fill(red);
     for (let y = 0; y < tileSize; y += 1) {
       for (let x = 0; x < tileSize; x += 1) {
-        if (((x * 5 + y * 3) & 15) === 0) paint(x, y, lightRed);
+        if ((y < 5 || y > 10) && ((x * 5 + y * 3) & 15) === 0) paint(x, y, lightRed);
         if (x === 0 || x === 15) paint(x, y, dark);
       }
     }
-    for (let y = 5; y <= 10; y += 1) for (let x = 0; x < tileSize; x += 1) paint(x, y, paper);
-    // Chunky, legible T N T mark across the paper band.
+    for (let x = 1; x < 15; x += 1) {
+      paint(x, 4, shadow);
+      paint(x, 5, paperShadow);
+      for (let y = 6; y <= 9; y += 1) paint(x, y, paper);
+      paint(x, 10, paperLight);
+      paint(x, 11, shadow);
+    }
+    // A hand-authored 3×4 T-N-T wordmark. The open center N and generous
+    // paper negative space keep it readable on placed, held, and inventory cubes.
     for (const [x, y] of [
       [1,6],[2,6],[3,6],[2,7],[2,8],[2,9],
-      [6,6],[6,7],[6,8],[6,9],[7,7],[8,8],[9,6],[9,7],[9,8],[9,9],
+      [6,6],[9,6],[6,7],[7,7],[9,7],[6,8],[8,8],[9,8],[6,9],[9,9],
       [12,6],[13,6],[14,6],[13,7],[13,8],[13,9],
     ]) paint(x, y, ink);
     return;
@@ -371,32 +422,41 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
 
   if (name === "tnt_top") {
     const dark = [85, 17, 17, 255];
+    const shadow = [136, 34, 34, 255];
     const red = [187, 51, 34, 255];
     const light = [238, 85, 51, 255];
+    const cord = [204, 170, 102, 255];
     const fuse = [34, 34, 34, 255];
+    const ember = [255, 170, 34, 255];
     fill(red);
     for (let y = 0; y < tileSize; y += 1) {
       for (let x = 0; x < tileSize; x += 1) {
-        const radius = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
-        if (radius > 6) paint(x, y, dark);
-        else if (radius > 4 && ((x + y) & 1) === 0) paint(x, y, light);
+        if (x === 0 || x === 15 || y === 0 || y === 15) paint(x, y, dark);
+        else if (x === 5 || x === 10 || y === 5 || y === 10) paint(x, y, shadow);
+        else if (((x + 2 * y) % 7) === 0) paint(x, y, light);
       }
     }
-    for (const [x, y] of [[7,6],[8,6],[6,7],[7,7],[8,7],[9,7],[7,8],[8,8],[8,9]]) paint(x, y, fuse);
+    for (const [x, y] of [[6,7],[6,8],[7,6],[7,9],[8,6],[8,9],[9,7],[9,8]]) paint(x, y, cord);
+    for (const [x, y] of [[7,7],[8,7],[7,8],[8,8],[8,6],[9,6],[9,5],[10,5],[10,4]]) paint(x, y, fuse);
+    paint(11, 3, ember); paint(10, 3, [238, 85, 34, 255]);
     return;
   }
 
   if (name === "tnt_bottom") {
-    const dark = [102, 17, 17, 255];
+    const dark = [68, 17, 17, 255];
+    const strap = [102, 51, 34, 255];
     const red = [170, 34, 34, 255];
     const light = [204, 68, 51, 255];
+    const fastener = [170, 136, 85, 255];
     fill(red);
     for (let y = 0; y < tileSize; y += 1) {
       for (let x = 0; x < tileSize; x += 1) {
         if (x < 2 || x > 13 || y < 2 || y > 13) paint(x, y, dark);
-        else if (((x >> 1) + (y >> 1)) % 3 === 0) paint(x, y, light);
+        else if ((x === 6 || x === 9 || y === 6 || y === 9)) paint(x, y, strap);
+        else if (((x * 3 + y * 5) & 15) === 0) paint(x, y, light);
       }
     }
+    for (const [x, y] of [[3,3],[12,3],[3,12],[12,12]]) paint(x, y, fastener);
     return;
   }
 
@@ -568,6 +628,10 @@ function expandNamedAtlas(source, names, columns, rows, sourceColumns, sourceRow
     copyTile(source, index, output, index, sourceColumns, columns, tileSize);
     if (names[index] === "furnace_side") paintDerivedTile(output, index, columns, tileSize, names[index]);
   }
+  const stoneIndex = names.indexOf("stone");
+  for (let index = 0; index < sourceTileCount; index += 1) {
+    if (ORE_RECIPES[names[index]]) paintOreTile(output, index, columns, tileSize, stoneIndex, names[index]);
+  }
   for (let index = sourceTileCount; index < names.length; index += 1) {
     paintDerivedTile(output, index, columns, tileSize, names[index]);
   }
@@ -733,7 +797,7 @@ function textureSource(image, names, columns, rows, tileSize, inputName) {
   const paletteOffset = tileColorCounts.length;
   const pixelOffset = paletteOffset + tilePalettes.length;
   return `// Generated by scripts/pixelate-texture-sheet.mjs from ${JSON.stringify(inputName)}.\n`
-    + `// Do not hand-edit; regenerate from an original concept sheet.\n`
+    + `// Do not hand-edit; regenerate from the original concept sheet and named procedural recipes.\n`
     + `import { decodeStaticBytes } from "../../staticData.ts";\n`
     + `export const TEXTURE_TILE_SIZE = ${tileSize};\n`
     + `export const TEXTURE_ATLAS_COLUMNS = ${columns};\n`

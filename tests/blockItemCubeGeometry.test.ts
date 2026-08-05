@@ -9,6 +9,11 @@ import {
 
 const cubeItems = (Object.keys(ITEMS) as ItemId[]).filter((itemId) => blockIdForCubeItem(itemId) !== null);
 assert.ok(cubeItems.length >= 20, "canonical full blocks share the real held-cube path");
+for (const [itemId, block] of [
+  ["coal_ore", 13], ["iron_ore", 14], ["gold_ore", 20], ["diamond_ore", 21], ["tnt", 22],
+] as const) {
+  assert.equal(blockIdForCubeItem(itemId), block, `${itemId} keeps its existing atlas-backed inventory cube ID`);
+}
 for (const itemId of cubeItems) {
   const output: number[] = [];
   const vertices = appendBlockItemCubeGeometry(output, itemId, {

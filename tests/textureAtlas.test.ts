@@ -77,6 +77,44 @@ function atlasTile(index: number): Uint8Array {
   return tile;
 }
 
+function tilePixel(tile: Uint8Array, x: number, y: number): readonly [number, number, number, number] {
+  const offset = (y * TEXTURE_TILE_SIZE + x) * 4;
+  return [tile[offset], tile[offset + 1], tile[offset + 2], tile[offset + 3]];
+}
+
+function changedPixelKeys(tile: Uint8Array, base: Uint8Array): Set<string> {
+  const changed = new Set<string>();
+  for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
+    const offset = (y * TEXTURE_TILE_SIZE + x) * 4;
+    if (tile.subarray(offset, offset + 4).some((channel, index) => channel !== base[offset + index])) {
+      changed.add(`${x},${y}`);
+    }
+  }
+  return changed;
+}
+
+function connectedComponentSizes(points: ReadonlySet<string>): number[] {
+  const remaining = new Set(points);
+  const sizes: number[] = [];
+  while (remaining.size) {
+    const first = remaining.values().next().value;
+    assert.ok(first);
+    const pending = [first];
+    remaining.delete(first);
+    let size = 0;
+    while (pending.length) {
+      const point = pending.pop()!;
+      const [x, y] = point.split(",").map(Number);
+      size += 1;
+      for (const neighbor of [`${x - 1},${y}`, `${x + 1},${y}`, `${x},${y - 1}`, `${x},${y + 1}`]) {
+        if (remaining.delete(neighbor)) pending.push(neighbor);
+      }
+    }
+    sizes.push(size);
+  }
+  return sizes.sort((left, right) => left - right);
+}
+
 assert.equal(TEXTURE_TILE_SIZE, 16, "world textures stay at Minecraft-scale 16px resolution");
 assert.equal(TEXTURE_ATLAS_COLUMNS, 5);
 assert.equal(TEXTURE_ATLAS_ROWS, 6);
@@ -103,6 +141,38 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   tileFingerprints.add(fnv1a32(tile));
 }
 assert.equal(tileFingerprints.size, 30, "every named atlas tile must be visually distinct");
+
+const stoneTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("stone"));
+const oreExpectations = Object.freeze({
+  coal_ore: { changed: 31, components: [5, 6, 6, 7, 7], hue: (r: number, g: number, b: number) => r === g && g === b && r <= 85 },
+  iron_ore: { changed: 25, components: [5, 6, 7, 7], hue: (r: number, g: number, b: number) => r > g && g > b },
+  gold_ore: { changed: 23, components: [5, 5, 6, 7], hue: (r: number, g: number, b: number) => r > g && g > b },
+  diamond_ore: { changed: 22, components: [5, 5, 6, 6], hue: (r: number, g: number, b: number) => b >= g && g > r },
+});
+const oreDistributionFingerprints = new Set<string>();
+for (const [name, expectation] of Object.entries(oreExpectations)) {
+  const ore = atlasTile(TEXTURE_ATLAS_NAMES.indexOf(name as typeof TEXTURE_ATLAS_NAMES[number]));
+  const changed = changedPixelKeys(ore, stoneTile);
+  assert.equal(changed.size, expectation.changed, `${name} keeps a sparse reviewed mineral coverage`);
+  assert.deepEqual(connectedComponentSizes(changed), expectation.components,
+    `${name} uses connected irregular mineral clusters instead of singleton dots`);
+  const distribution = new Uint8Array(TEXTURE_TILE_SIZE * TEXTURE_TILE_SIZE);
+  for (const key of changed) {
+    const [x, y] = key.split(",").map(Number);
+    distribution[y * TEXTURE_TILE_SIZE + x] = 1;
+    const [r, g, b, alpha] = tilePixel(ore, x, y);
+    assert.equal(alpha, 255);
+    assert.ok(expectation.hue(r, g, b), `${name} mineral pixel ${key} stays in its identifying palette`);
+  }
+  oreDistributionFingerprints.add(fnv1a32(distribution));
+  for (let edge = 0; edge < TEXTURE_TILE_SIZE; edge += 1) {
+    assert.deepEqual(tilePixel(ore, edge, 0), tilePixel(stoneTile, edge, 0), `${name} top edge inherits stone`);
+    assert.deepEqual(tilePixel(ore, edge, 15), tilePixel(stoneTile, edge, 15), `${name} bottom edge inherits stone`);
+    assert.deepEqual(tilePixel(ore, 0, edge), tilePixel(stoneTile, 0, edge), `${name} left edge inherits stone`);
+    assert.deepEqual(tilePixel(ore, 15, edge), tilePixel(stoneTile, 15, edge), `${name} right edge inherits stone`);
+  }
+}
+assert.equal(oreDistributionFingerprints.size, 4, "each ore has an independently recognizable cluster distribution");
 
 for (let index = TEXTURE_ATLAS_NAMES.length; index < TEXTURE_ATLAS_COLUMNS * TEXTURE_ATLAS_ROWS; index += 1) {
   assert.equal(atlasTile(index).every((channel) => channel === 0), true, "unused atlas capacity stays transparent and inert");
@@ -139,19 +209,50 @@ const darkOpeningPixels = (tile: Uint8Array): number => {
 assert.ok(darkOpeningPixels(furnaceFrontTile) >= 50, "the furnace front keeps one unmistakable dark opening");
 assert.ok(darkOpeningPixels(furnaceSideTile) <= 30, "neutral furnace masonry never repeats the front opening");
 
+const tntSideTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("tnt_side"));
+const tntTopTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("tnt_top"));
+const tntBottomTile = atlasTile(TEXTURE_ATLAS_NAMES.indexOf("tnt_bottom"));
+assert.equal(new Set([tntSideTile, tntTopTile, tntBottomTile].map(fnv1a32)).size, 3,
+  "TNT side, fuse top, and strapped bottom remain face-distinct");
+for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) {
+  assert.deepEqual(tilePixel(tntSideTile, 0, y), tilePixel(tntSideTile, 15, y),
+    "TNT side label tile has matching dark vertical bundle edges");
+}
+const expectedTntInk = new Set([
+  "1,6","2,6","3,6","2,7","2,8","2,9",
+  "6,6","9,6","6,7","7,7","9,7","6,8","8,8","9,8","6,9","9,9",
+  "12,6","13,6","14,6","13,7","13,8","13,9",
+]);
+const actualTntInk = new Set<string>();
+for (let y = 6; y <= 9; y += 1) for (let x = 1; x < 15; x += 1) {
+  const pixel = tilePixel(tntSideTile, x, y);
+  assert.ok(pixel.join(",") === "34,34,34,255" || pixel.join(",") === "238,221,187,255",
+    "the TNT wordmark sits only on a clean high-contrast paper band");
+  if (pixel.join(",") === "34,34,34,255") actualTntInk.add(`${x},${y}`);
+}
+assert.deepEqual(actualTntInk, expectedTntInk, "the side tile retains the reviewed open T-N-T pixel lettering");
+assert.equal([...tntTopTile].filter((_, offset) => offset % 4 === 0
+  && tntTopTile[offset] === 255 && tntTopTile[offset + 1] === 170 && tntTopTile[offset + 2] === 34).length, 1,
+"the top face keeps one unmistakable fuse ember");
+let bottomFasteners = 0;
+for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
+  if (tilePixel(tntBottomTile, x, y).join(",") === "170,136,85,255") bottomFasteners += 1;
+}
+assert.equal(bottomFasteners, 4, "the TNT bottom keeps four visible packing fasteners and no fuse");
+
 // Intentional atlas regeneration should update this fingerprint in the same change.
 assert.equal(fnv1a32(TEXTURE_ATLAS_RGBA), VISUAL_ASSET_MANIFEST.blockAtlas.fingerprint,
   "generated RGBA atlas changed unexpectedly");
 const generatedSource = readFileSync(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
-const packedPalette = generatedSource.match(/decodeStaticBytes\("([^"]+)", 908, 743\)/)?.[1];
-const packedIndexes = generatedSource.match(/decodeStaticBytes\("([^"]+)", 3894, 3647, true\)/)?.[1];
+const packedPalette = generatedSource.match(/decodeStaticBytes\("([^"]+)", 632, 547\)/)?.[1];
+const packedIndexes = generatedSource.match(/decodeStaticBytes\("([^"]+)", 3683, 3130, true\)/)?.[1];
 assert.ok(packedPalette);
 assert.ok(packedIndexes);
-assert.equal(packedPalette.length, 930,
+assert.equal(packedPalette.length, 685,
   "atlas palette retains the reviewed deterministic LZSS fixture");
-assert.equal(packedIndexes.length, 4_560,
+assert.equal(packedIndexes.length, 3_915,
   "atlas indexes retain the reviewed local-palette bitpack fixture");
-const compactIndexes = decodeStaticBytes(packedIndexes, 3_894, 3_647, true);
+const compactIndexes = decodeStaticBytes(packedIndexes, 3_683, 3_130, true);
 const generatedPath = new URL("../client/game/generated/textureAtlas.ts", import.meta.url);
 const atlasFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-atlas-"));
 let invalidAtlasFixture = 0;
@@ -159,7 +260,7 @@ const rejectInvalidAtlasData = async (bytes: Uint8Array, label: string): Promise
   const fixturePath = join(atlasFixtureDirectory, `textureAtlas-${invalidAtlasFixture++}.ts`);
   const fixtureSource = generatedSource
     .replace('"../../staticData.ts"', JSON.stringify(new URL("../../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 3894, 3647, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 3683, 3130, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid texture atlas data\.$/, label);
 };
@@ -184,8 +285,8 @@ try {
   trailingAtlasByte.set(compactIndexes);
   await rejectInvalidAtlasData(trailingAtlasByte, "trailing tile index bytes fail closed");
   const noncanonicalAtlasPayload = decodeStaticEncoding(packedIndexes);
-  assert.equal(noncanonicalAtlasPayload[3_647], 0, "reviewed atlas stream has canonical zero Base85 padding");
-  noncanonicalAtlasPayload[3_647] = 1;
+  assert.equal(noncanonicalAtlasPayload[3_130], 0, "reviewed atlas stream has canonical zero Base85 padding");
+  noncanonicalAtlasPayload[3_130] = 1;
   await rejectInvalidAtlasPayload(encodeStaticBytes(noncanonicalAtlasPayload),
     "the real atlas module rejects nonzero encoded padding");
 } finally {
@@ -193,23 +294,23 @@ try {
 }
 const tileColorCounts = compactIndexes.subarray(0, 30);
 assert.deepEqual([...tileColorCounts], [
-  8, 30, 19, 10, 21, 15, 17, 19, 11, 17, 25, 44, 56, 3, 45,
-  4, 4, 4, 5, 5, 3, 5, 4, 3, 5, 5, 7, 5, 4, 5,
+  8, 30, 19, 10, 21, 15, 17, 19, 11, 12, 13, 12, 13, 3, 45,
+  4, 4, 4, 5, 5, 3, 8, 8, 5, 5, 5, 7, 5, 4, 5,
 ], "each tile retains its reviewed local palette cardinality");
-assert.equal(tileColorCounts.reduce((sum, count) => sum + count, 0), 408,
+assert.equal(tileColorCounts.reduce((sum, count) => sum + count, 0), 325,
   "the 30 bounded local palettes retain their reviewed total size");
-assert.ok(Math.max(...tileColorCounts) <= 56,
+assert.ok(Math.max(...tileColorCounts) <= 45,
   "local palettes stay inside the one-byte format and six-bit startup decoder budget");
-assert.equal(compactIndexes.length - 30 - 408, 3_456,
+assert.equal(compactIndexes.length - 30 - 325, 3_328,
   "the atlas retains one bounded bitstream for exactly 30 16x16 tiles");
 let localPaletteCursor = 30;
 for (const colorCount of tileColorCounts) {
   const localPalette = compactIndexes.subarray(localPaletteCursor, localPaletteCursor + colorCount);
   assert.equal(new Set(localPalette).size, colorCount, "tile-local palettes contain no duplicate global indexes");
-  assert.ok(localPalette.every((index) => index < 253), "tile-local palettes reference the reviewed global palette");
+  assert.ok(localPalette.every((index) => index < 158), "tile-local palettes reference the reviewed global palette");
   localPaletteCursor += colorCount;
 }
-assert.equal(localPaletteCursor, 438, "all local palettes end at the reviewed bitstream boundary");
+assert.equal(localPaletteCursor, 355, "all local palettes end at the reviewed bitstream boundary");
 assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../../staticData.ts";')
     && generatedSource.includes("export const TEXTURE_ATLAS_RGBA = new Uint8Array(30720)")
     && !generatedSource.includes("TEXTURE_ATLAS_INDEXES")

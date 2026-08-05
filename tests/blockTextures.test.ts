@@ -4,6 +4,7 @@ import {
   blockTextureForFace,
   textureAtlasUv,
   type BlockFace,
+  type TextureUvBounds,
 } from "../client/game/blockTextures.ts";
 import {
   TEXTURE_ATLAS_COLUMNS,
@@ -70,11 +71,16 @@ for (const face of ["east", "west", "south", "bottom"] as const) {
 mappedTextureNames.add("furnace_front");
 mappedTextureNames.add("furnace_side");
 mappedTextureNames.add("furnace_top");
-for (const face of ["east", "west", "south", "north"] as const) {
+const tntSideFaces = ["east", "west", "south", "north"] as const;
+const tntSideUvs = new Set<TextureUvBounds>();
+for (const face of tntSideFaces) {
   assert.equal(blockTextureForFace(BLOCK.TNT, face), "tnt_side");
-  assert.equal(textureAtlasUv(blockTextureForFace(BLOCK.TNT, face)!), textureAtlasUv("tnt_side"),
+  const sideUv = textureAtlasUv(blockTextureForFace(BLOCK.TNT, face)!);
+  tntSideUvs.add(sideUv);
+  assert.equal(sideUv, textureAtlasUv("tnt_side"),
     `TNT ${face} reuses the exact labeled side-face UV tile`);
 }
+assert.equal(tntSideUvs.size, 1, "all four TNT sides retain byte-identical labeled texture parity");
 assert.equal(blockTextureForFace(BLOCK.TNT, "top"), "tnt_top");
 assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");
 mappedTextureNames.add("tnt_side");
