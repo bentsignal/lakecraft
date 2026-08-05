@@ -5,8 +5,10 @@ import {
   FIRST_PERSON_MODEL_PIVOT,
   createFirstPersonRenderer,
   firstPersonBufferCapacity,
+  sampleFirstPersonAction,
   writeFirstPersonModelMatrix,
 } from "../client/game/firstPersonRenderer.ts";
+import { writeMatrixProduct } from "../client/game/matrixProduct.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
 import {
@@ -151,6 +153,10 @@ const skinArm = buildFirstPersonSkinArmGeometry("wide", FIRST_PERSON_TUNING.arm)
 const sourceSkinArm = buildPlayerSkinPartGeometry("rightArm", "wide", FIRST_PERSON_SKIN_SLEEVE_INFLATE);
 const mvp = new Float32Array(16);
 const skinMvp = new Float32Array(16);
+const attackMvp = new Float32Array(16);
+const attackSkinMvp = new Float32Array(16);
+const attackPose = sampleFirstPersonAction([0, 0, 0, 0, 0, 0], "attack", 110, false, false);
+const attackModel = writeFirstPersonModelMatrix(new Float32Array(16), attackPose);
 const viewportBounds: Array<{ viewport: string; width: number; height: number }> = [];
 for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const) {
   renderer[3](null, BLOCK.AIR);
@@ -165,13 +171,27 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   assert.ok(armScreen.right >= 93.25 && armScreen.right <= 94.75,
     `${width}x${height} arm remains visible inside the right edge: ${JSON.stringify(armScreen)}`);
   assert.ok(armScreen.top >= 65.5 && armScreen.top <= 67,
-    `${width}x${height} shoulder begins near two-thirds viewport height: ${JSON.stringify(armScreen)}`);
+    `${width}x${height} visible hand begins near two-thirds viewport height: ${JSON.stringify(armScreen)}`);
   assert.ok(armScreen.bottom >= 99 && armScreen.bottom <= 100.75,
-    `${width}x${height} hand exits cleanly through the bottom edge: ${JSON.stringify(armScreen)}`);
+    `${width}x${height} shoulder exits cleanly through the bottom edge: ${JSON.stringify(armScreen)}`);
   const shoulder = jointCentroid(skinArm, sourceSkinArm, skinMvp, 1.5);
   const hand = jointCentroid(skinArm, sourceSkinArm, skinMvp, 0.75);
-  assert.ok(shoulder[0] + 5 < hand[0] && shoulder[1] + 15 < hand[1],
-    `${width}x${height} arm runs from an upper-left shoulder to a lower-right hand: ${JSON.stringify({ shoulder, hand })}`);
+  assert.ok(shoulder[0] > hand[0] + 7 && shoulder[1] > hand[1] + 15,
+    `${width}x${height} idle arm enters at the lower-right shoulder and reaches the upper-left hand: ${JSON.stringify({ shoulder, hand })}`);
+
+  writeMatrixProduct(attackMvp, perspective(width / height), attackModel);
+  writeResponsiveFirstPersonSkinMvp(attackSkinMvp, attackMvp);
+  const attackScreen = screenPercent(ndcBounds(skinArm, attackSkinMvp));
+  assert.ok(attackScreen.left >= 67.5 && attackScreen.left <= 69.25
+    && attackScreen.right >= 87 && attackScreen.right <= 89,
+  `${width}x${height} mid-attack arm remains horizontally visible: ${JSON.stringify(attackScreen)}`);
+  assert.ok(attackScreen.top >= 65 && attackScreen.top <= 67
+    && attackScreen.bottom >= 93 && attackScreen.bottom <= 95,
+  `${width}x${height} mid-attack arm remains vertically visible: ${JSON.stringify(attackScreen)}`);
+  const attackShoulder = jointCentroid(skinArm, sourceSkinArm, attackSkinMvp, 1.5);
+  const attackHand = jointCentroid(skinArm, sourceSkinArm, attackSkinMvp, 0.75);
+  assert.ok(attackShoulder[0] > attackHand[0] + 7 && attackShoulder[1] > attackHand[1] + 15,
+    `${width}x${height} mid-attack preserves lower-right shoulder to upper-left hand order: ${JSON.stringify({ attackShoulder, attackHand })}`);
 
   renderer[3]("dirt", BLOCK.DIRT);
   renderer[6](mvp, perspective(width / height), 0, false);

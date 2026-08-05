@@ -50,14 +50,14 @@ export function buildFirstPersonSkinArmGeometry(
   const pivotY = model === "slim" ? 1.46875 : 1.5;
   // From the lower-right camera edge toward the center, matching the authored
   // shoulder-to-hand direction rather than mirroring the whole arm broadside.
-  const angle = 35 * Math.PI / 180;
+  const angle = 217 * Math.PI / 180;
   const cosine = Math.cos(angle); const sine = Math.sin(angle);
   for (let offset = 0; offset < output.length; offset += PLAYER_SKIN_VERTEX_STRIDE) {
-    const x = (output[offset] - pivotX) * 1.28;
-    const y = (output[offset + 1] - pivotY) * 1.28;
-    const z = output[offset + 2] * 1.28;
-    output[offset] = x * cosine - y * sine + 1.14;
-    output[offset + 1] = x * sine + y * cosine + 0.16;
+    const x = (output[offset] - pivotX) * 1.3;
+    const y = (output[offset + 1] - pivotY) * 1.3;
+    const z = output[offset + 2] * 1.3;
+    output[offset] = x * cosine - y * sine + 1.7;
+    output[offset + 1] = x * sine + y * cosine - 0.62;
     output[offset + 2] = z - 1.22;
   }
   applyTuning(output, tuning);
