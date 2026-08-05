@@ -184,17 +184,23 @@ const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.
 for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
   assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
 }
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10306, 6636, true\)/)?.[1];
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 8791, 5500, true\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(packedPayload.length, 8_295,
-  "item icons and drawn bow states retain the reviewed geometry-deduplicated extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 10_306, 6_636, true);
+assert.equal(packedPayload.length, 6_875,
+  "item icons and drawn bow states retain the reviewed row-packed extended LZSS fixture");
+const compactArt = decodeStaticBytes(packedPayload, 8_791, 5_500, true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
-  const runCount = compactArt[compactCursor];
+  const rows = (compactArt[compactCursor++] & 15) + 1;
+  const counts = compactCursor;
+  compactCursor += Math.ceil(rows / 2);
+  let runCount = 0;
+  for (let row = 0; row < rows; row += 1) {
+    runCount += (compactArt[counts + (row >> 1)] >> (row % 2 ? 0 : 4) & 15) + 1;
+  }
   shapeRuns.push(runCount);
-  compactCursor += 1 + runCount + Math.ceil(runCount / 2);
+  compactCursor += runCount;
 }
 assert.equal(shapeRuns.length, 71, "shared item and bow geometry table remains bounded well below its one-byte limit");
 let decodedRunCount = 0;
@@ -218,7 +224,7 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 10306, 6636, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 8791, 5500, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
@@ -235,12 +241,19 @@ try {
   const missingShapes = compactArt.slice();
   missingShapes[0] = 0;
   await rejectInvalidItemData(missingShapes, "an empty shared-shape table fails closed");
+  const outOfCanvasRows = compactArt.slice();
+  outOfCanvasRows[1] = 0xff;
+  await rejectInvalidItemData(outOfCanvasRows, "shape rows extending beyond the 16px canvas fail closed");
   const invalidShape = compactArt.slice();
   const itemStart = (() => {
     let cursor = 1;
     for (let remaining = compactArt[0]; remaining > 0; remaining -= 1) {
-      const runs = compactArt[cursor];
-      cursor += 1 + runs + Math.ceil(runs / 2);
+      const rows = (compactArt[cursor++] & 15) + 1;
+      const counts = cursor;
+      cursor += Math.ceil(rows / 2);
+      for (let row = 0; row < rows; row += 1) {
+        cursor += (compactArt[counts + (row >> 1)] >> (row % 2 ? 0 : 4) & 15) + 1;
+      }
     }
     return cursor;
   })();
@@ -251,9 +264,9 @@ try {
   await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
     "a truncated item payload fails closed");
-  const noncanonicalItemPayload = new Uint8Array(6_637);
-  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_636));
-  noncanonicalItemPayload[6_636] = 1;
+  const noncanonicalItemPayload = new Uint8Array(5_501);
+  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 5_500));
+  noncanonicalItemPayload[5_500] = 1;
   await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
     "the real item module rejects nonzero bytes after its declared packed payload");
 } finally {
@@ -291,8 +304,8 @@ invalidStaticData(() => decodeStaticBytes(`${encodeStaticBytes([2, 65, 32, 1])}0
   "excess compressed groups fail closed");
 assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../staticData.ts";')
     && generatedSource.includes("const cache = (() => {")
-    && generatedSource.includes("const shapes: number[] = []"),
-  "packed bytes and bounded shape offsets stay scoped to the one-time cache initializer");
+    && generatedSource.includes("const shapes: number[][] = []"),
+  "packed bytes and decoded row geometry stay scoped to the one-time cache initializer");
 
 const regenerationDirectory = mkdtempSync(join(tmpdir(), "lakecraft-item-icons-"));
 try {
