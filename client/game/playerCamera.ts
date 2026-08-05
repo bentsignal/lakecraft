@@ -67,4 +67,3 @@ export function writePlayerCamera(
   const length = Math.hypot(dx, dy, dz) || 1;
   facing[0] = dx / length; facing[1] = dy / length; facing[2] = dz / length;
 }
-
