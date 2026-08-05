@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
-import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
 import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import {
   SAPLING_MESH_VERTEX_COUNT,
@@ -64,12 +64,11 @@ assert.ok(boneMealArt.runs.length >= 12, "bone meal has an original pale granula
 
 assert.equal(itemVisual("sapling").parent, "block", "oak sapling retains its shared block-item visual definition");
 const expectedHeldGeometry: number[] = [];
-const expectedHeldVertices = appendItemSpriteGeometry(expectedHeldGeometry, saplingArt, {
-  center: [0.10, -0.02, -1.17],
-  size: 0.76,
-  depth: 0.06,
-  rotationDegrees: [0, -24, 0],
-});
+const expectedHeldVertices = appendItemSpriteGeometry(
+  expectedHeldGeometry,
+  saplingArt,
+  firstPersonSpritePresentation("sapling"),
+);
 let nextBufferId = 0;
 let boundBuffer: WebGLBuffer | null = null;
 const uploads = new Map<WebGLBuffer, Float32Array>();
@@ -100,7 +99,7 @@ for (let offset = 3; offset < heldUpload.length; offset += 6) {
 assert.equal(heldRenderer[2][1], 0, "oak sapling never falls through to textured full-cube output");
 heldRenderer[7]();
 const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-for (const sharedPath of ["itemVisual(itemId)", "getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
   assert.ok(held.includes(sharedPath), `held saplings use the shared visual pipeline through ${sharedPath}`);
 }
 assert.equal(held.includes("appendColorBox"), false,

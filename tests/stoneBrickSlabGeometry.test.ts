@@ -15,7 +15,7 @@ import { appendWorldBlockCrackLines } from "../client/game/blockCracks.ts";
 import { BLOCK_PARTICLES_PER_ACTION, createBlockParticleSystem } from "../client/game/blockParticles.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
 import { writeDroppedItemGeometry, droppedBlockCubeVertexCount, type DroppedItemGeometryStats } from "../client/game/droppedItemRenderer.ts";
-import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
 import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import { remoteHeldItemRects, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
 import {
@@ -113,12 +113,11 @@ assert.equal(blockIdForCubeItem("stone_brick_slab"), null,
   "a partial-height slab cannot enter any full-cube held or dropped path");
 
 const expectedHeldGeometry: number[] = [];
-const expectedHeldVertices = appendItemSpriteGeometry(expectedHeldGeometry, slabArt, {
-  center: [0.10, -0.02, -1.17],
-  size: 0.76,
-  depth: 0.06,
-  rotationDegrees: [0, -24, 0],
-});
+const expectedHeldVertices = appendItemSpriteGeometry(
+  expectedHeldGeometry,
+  slabArt,
+  firstPersonSpritePresentation("stone_brick_slab"),
+);
 let nextBufferId = 0;
 let boundBuffer: WebGLBuffer | null = null;
 const uploads = new Map<WebGLBuffer, Float32Array>();
@@ -174,7 +173,7 @@ for (const rectangle of remoteRects) {
 }
 
 const heldSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-for (const sharedPath of ["itemVisual(itemId)", "getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
   assert.ok(heldSource.includes(sharedPath), `held slabs use the shared visual pipeline through ${sharedPath}`);
 }
 assert.equal(heldSource.includes("appendColorBox"), false,

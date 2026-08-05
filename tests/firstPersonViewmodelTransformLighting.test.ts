@@ -198,14 +198,15 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   writeResponsiveFirstPersonSkinMvp(skinMvp, mvp);
   const armBounds = ndcBounds(skinArm, skinMvp);
   const blockBounds = ndcBounds(gl.uploads.get(texturedBuffer)!, mvp);
-  assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.06,
+  assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.3,
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
-  assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < -0.08,
+  assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < -0.2,
     `${width}x${height} held block leaves the crosshair's horizontal lane clear`);
-  assert.ok(blockBounds.maxX < 0.82 && blockBounds.minY > -0.95,
-    `${width}x${height} held atlas cube stays clear of the right and bottom screen edges`);
-  assert.ok(blockBounds.maxX - blockBounds.minX < 0.58
-    && blockBounds.maxY - blockBounds.minY < 0.62,
+  assert.ok(blockBounds.maxX > 0.84 && blockBounds.maxX < 0.92
+    && blockBounds.minY < -0.88 && blockBounds.minY > -0.96,
+  `${width}x${height} held atlas cube occupies the reviewed lower-right socket`);
+  assert.ok(blockBounds.maxX - blockBounds.minX < 0.55
+    && blockBounds.maxY - blockBounds.minY < 0.64,
   `${width}x${height} held atlas cube cannot cover most of the world: ${JSON.stringify(blockBounds)}`);
   viewportBounds.push({
     viewport: `${width}x${height}`,
@@ -213,6 +214,8 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
     height: Number((blockBounds.maxY - blockBounds.minY).toFixed(6)),
   });
 }
+assert.equal(new Set(viewportBounds.map(({ width, height }) => `${width}:${height}`)).size, 1,
+  "the HUD-like viewmodel projection preserves reviewed screen occupancy at every viewport aspect");
 console.log(JSON.stringify({ benchmark: "held atlas cube NDC bounds", samples: viewportBounds }));
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");

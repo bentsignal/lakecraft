@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
-import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
 import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import {
   OAK_FENCE_GATE_MESH_VERTEX_COUNT,
@@ -108,12 +108,11 @@ for (const [itemId, block] of [
 ] as const) {
   assert.equal(itemVisual(itemId).parent, "block", `${itemId} retains the shared block-item visual definition`);
   const expectedGeometry: number[] = [];
-  const expectedVertices = appendItemSpriteGeometry(expectedGeometry, getItemIconArt(itemId), {
-    center: [0.10, -0.02, -1.17],
-    size: 0.76,
-    depth: 0.06,
-    rotationDegrees: [0, -24, 0],
-  });
+  const expectedVertices = appendItemSpriteGeometry(
+    expectedGeometry,
+    getItemIconArt(itemId),
+    firstPersonSpritePresentation(itemId),
+  );
   heldRenderer[3](itemId, block);
   const uploaded = uploads.get(heldRenderer[0]);
   assert.ok(uploaded, `${itemId} uploads shared item-sprite color geometry`);
@@ -129,7 +128,7 @@ for (const [itemId, block] of [
 }
 heldRenderer[7]();
 const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-for (const sharedPath of ["itemVisual(itemId)", "getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
   assert.ok(held.includes(sharedPath), `held fences use the shared visual pipeline through ${sharedPath}`);
 }
 assert.equal(held.includes("appendColorBox"), false,

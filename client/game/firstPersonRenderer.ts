@@ -1,5 +1,4 @@
 import { ITEMS, type ItemId } from "../../shared/game.ts";
-import { itemVisual } from "../../shared/visualCatalog.ts";
 import { getBowIconArt, getItemIconArt } from "../components/itemIconArt.ts";
 import { TEXTURED_WORLD_VERTEX_FLOATS, blockTextureForFace, textureAtlasUv } from "./blockTextures.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
@@ -153,32 +152,81 @@ export function firstPersonHeldItemTuningGroup(
   return "otherItem";
 }
 
+export type FirstPersonSpritePresentation = Readonly<{
+  center: Vec3;
+  size: number;
+  depth: number;
+  rotationDegrees: Vec3;
+  pivotPixels: readonly [number, number];
+}>;
+
+type FirstPersonSpritePose = readonly [
+  number, number, number,
+  number, number,
+  number, number, number,
+  number, number,
+];
+
+function spritePresentation(pose: FirstPersonSpritePose): FirstPersonSpritePresentation {
+  return {
+    center: pose.slice(0, 3) as Vec3,
+    size: pose[3],
+    depth: pose[4],
+    rotationDegrees: pose.slice(5, 8) as Vec3,
+    pivotPixels: pose.slice(8) as [number, number],
+  };
+}
+
 /**
  * Camera-space presentation for the shared inventory pickaxe sprite. The 16x16
  * art runs grip→head from lower-left to upper-right; a near-180° Y turn puts
  * the grip in the lower-right hand while a shallow pitch/roll and thin depth
  * keep the stepped silhouette face-readable instead of edge-on.
  */
-export const FIRST_PERSON_PICKAXE_PRESENTATION = Object.freeze({
+export const FIRST_PERSON_PICKAXE_PRESENTATION = spritePresentation([
   // Calibrated from the supplied 16:9 Java first-person reference: the head
   // occupies the middle/right of the view while the lower grip exits through
   // the bottom-right edge.  This is deliberately not an inventory-style
   // centered beauty shot of the complete sprite.
-  center: [0.74, -0.56, -1.12] as Vec3,
-  size: 1.45,
-  depth: 0.03,
-  rotationDegrees: [12, 180, -22] as Vec3,
+  0.74, -0.53, -1.12,
+  1.50, 0.03,
+  12, 180, -22,
   /** Lower wooden handle; the hand should read as gripping this pixel. */
-  pivotPixels: [3, 13] as const,
-});
+  3, 13,
+]);
 
-/** Shared presentation for non-pickaxe handheld tools (axe, shovel, sword). */
-export const FIRST_PERSON_TOOL_PRESENTATION = Object.freeze({
-  center: [0.22, 0.16, -1.15] as Vec3,
-  size: 1.02,
-  depth: 0.07,
-  rotationDegrees: [0, 156, 0] as Vec3,
-});
+export function firstPersonSpriteFamily(itemId: ItemId, bowDrawn = false): string {
+  const item = ITEMS[itemId];
+  return item.tool?.kind ?? (itemId === "bow" ? bowDrawn ? "bowDraw" : "bowIdle"
+    : itemId === "shears" ? "shears" : itemId === "flint_and_steel" ? "flintSteel"
+      : item.category === "food" ? "food" : item.category === "block" ? "specialBlock" : "material");
+}
+
+/** Reference-calibrated camera-space sprite pose, independent of inventory art. */
+export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn = false): FirstPersonSpritePresentation {
+  const kind = ITEMS[itemId].tool?.kind;
+  if (kind === "pickaxe") return FIRST_PERSON_PICKAXE_PRESENTATION;
+  let pose: FirstPersonSpritePose;
+  if (kind) {
+    const sword = kind === "sword";
+    pose = [
+      sword ? 1.34 : kind === "shovel" ? 0.91 : 0.82, sword ? -0.52 : -0.55, -1.12,
+      sword ? 1.9 : kind === "axe" ? 1.35 : 1.3, 0.035,
+      10, 180, -22,
+      2, sword ? 13 : 14,
+    ];
+  } else if (itemId === "bow") {
+    pose = [
+      bowDrawn ? 0.82 : 0.84, bowDrawn ? -0.01 : -0.03, -1.12,
+      bowDrawn ? 1.55 : 1.6, 0.035,
+      0, 180, 0,
+      3, 8,
+    ];
+  } else {
+    pose = [0.86, -0.5, -1.14, 1, 0.04, 8, 180, -18, 6, 11];
+  }
+  return spritePresentation(pose);
+}
 
 export function isPickaxeItem(itemId: ItemId | null): boolean {
   return Boolean(itemId && ITEMS[itemId].tool?.kind === "pickaxe");
@@ -347,17 +395,7 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       appendTexturedCube(geometry[1], block, activeTuning);
     } else if (tuningGroup && itemId) {
       const start = geometry[0].length;
-      const visual = itemVisual(itemId);
-      const presentation = visual.parent === "bow"
-        ? { center: [0.36, 0, -1.13] as Vec3, size: 1.12, depth: 0.075, rotationDegrees: [0, -22, 0] as Vec3 }
-        : visual.parent === "handheld"
-          ? (isPickaxeItem(itemId)
-            // Pickaxe-only: thin extrusion, grip pivot on the lower stick, and a
-            // face-readable cant so the stepped head sits upper-right of the hand.
-            ? { ...FIRST_PERSON_PICKAXE_PRESENTATION }
-            // Other tools keep the reviewed shared handheld presentation.
-            : { ...FIRST_PERSON_TOOL_PRESENTATION })
-          : { center: [0.10, -0.02, -1.17] as Vec3, size: 0.76, depth: 0.06, rotationDegrees: [0, -24, 0] as Vec3 };
+      const presentation = firstPersonSpritePresentation(itemId, charging);
       appendItemSpriteGeometry(
         geometry[0],
         itemId === "bow" ? getBowIconArt(charging ? chargeStage + 1 as 1 | 2 | 3 : 0) : getItemIconArt(itemId),
@@ -434,14 +472,10 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       );
       writeFirstPersonModelMatrix(modelMatrix, actionPose, activeTuning);
       viewProjection.set(projection);
-      // World FOV remains untouched. Pickaxes use the screenshot-calibrated
-      // square viewmodel projection at every aspect so the lower-right grip and
-      // cropped silhouette do not slide toward screen center on wide canvases.
-      // Other families retain their existing projection until reviewed in
-      // their own reference pass.
-      if (isPickaxeItem(itemId) || viewProjection[0] > viewProjection[5]) {
-        viewProjection[0] = viewProjection[5];
-      }
+      // World FOV remains untouched. Held items use a square viewmodel
+      // projection so their reviewed socket does not slide on wide displays;
+      // the independently calibrated empty arm keeps the ordinary projection.
+      if (itemId || viewProjection[0] > viewProjection[5]) viewProjection[0] = viewProjection[5];
       return writeMatrixProduct(output, viewProjection, modelMatrix);
     },
     () => {

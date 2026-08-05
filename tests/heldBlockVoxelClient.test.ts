@@ -6,7 +6,7 @@ import {
   type BlockFace,
 } from "../client/game/blockTextures.ts";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
-import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
 import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { itemVisual } from "../shared/visualCatalog.ts";
@@ -79,12 +79,11 @@ for (const [itemId, block] of [
 ] as const) {
   assert.equal(itemVisual(itemId).parent, "block", `${itemId} retains its shared block visual definition`);
   assert.equal(blockTextureForFace(block, "east"), null, `${itemId} is not misclassified as a full atlas cube`);
-  const expectedVertices = appendItemSpriteGeometry([], getItemIconArt(itemId), {
-    center: [0.10, -0.02, -1.17],
-    size: 0.76,
-    depth: 0.06,
-    rotationDegrees: [0, -24, 0],
-  });
+  const expectedVertices = appendItemSpriteGeometry(
+    [],
+    getItemIconArt(itemId),
+    firstPersonSpritePresentation(itemId),
+  );
   heldRenderer[3](itemId, block);
   const uploaded = captured.uploadFor(heldRenderer[0]);
   assert.ok(uploaded, `${itemId} uploads canonical item-sprite geometry`);
@@ -100,7 +99,7 @@ assert.ok(renderer.includes("blockTextureForFace(block, face[0])"), "held blocks
 assert.ok(renderer.includes("textureAtlasUv(texture)"), "held blocks use the canonical half-texel atlas UV resolver");
 assert.equal((cubeFaces.match(/\["(east|west|top|bottom|south|north)"/g) ?? []).length, 6,
   "one canonical cube basis has six complete solid faces");
-for (const sharedPath of ["itemVisual(itemId)", "getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
   assert.ok(renderer.includes(sharedPath), `thin placeables use the shared canonical sprite path through ${sharedPath}`);
 }
 assert.equal(renderer.includes("appendSpecialBlock"), false,

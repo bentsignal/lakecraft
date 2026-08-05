@@ -7,11 +7,10 @@ import { readFileSync } from "node:fs";
 import { getItemIconArt, ITEM_ICON_SIZE } from "../client/components/itemIconArt.ts";
 import {
   FIRST_PERSON_PICKAXE_PRESENTATION,
-  FIRST_PERSON_TOOL_PRESENTATION,
   createFirstPersonRenderer,
+  firstPersonSpritePresentation,
   isPickaxeItem,
   sampleFirstPersonAction,
-  writeFirstPersonModelMatrix,
 } from "../client/game/firstPersonRenderer.ts";
 import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
 import { appendItemSpriteGeometry, ITEM_SPRITE_VERTEX_FLOATS } from "../client/game/itemSpriteGeometry.ts";
@@ -161,13 +160,14 @@ assert.equal(isPickaxeItem(null), false);
 
 assert.deepEqual(FIRST_PERSON_PICKAXE_PRESENTATION.pivotPixels, [3, 13],
   "held pickaxe pivots on the lower wooden grip");
-assert.ok(FIRST_PERSON_PICKAXE_PRESENTATION.depth < FIRST_PERSON_TOOL_PRESENTATION.depth,
-  "pickaxe extrusion is thinner than the shared non-pickaxe tool depth");
+const axePresentation = firstPersonSpritePresentation("iron_axe");
+assert.ok(FIRST_PERSON_PICKAXE_PRESENTATION.depth < axePresentation.depth,
+  "pickaxe extrusion is thinner than the independently authored axe depth");
 assert.ok(Math.abs(FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees[1] - 180) <= 8,
   "pickaxe Y rotation mirrors grip into the lower-right hand near 180°");
 assert.notDeepEqual(
   [...FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees],
-  [...FIRST_PERSON_TOOL_PRESENTATION.rotationDegrees],
+  [...axePresentation.rotationDegrees],
   "pickaxe pose is distinct from axe/shovel/sword presentation",
 );
 
@@ -306,13 +306,10 @@ assert.ok(axe.depth > 0.2, "axe retains the thicker shared tool cant");
 assert.equal(renderer[2][0], appendItemSpriteGeometry([], getItemIconArt("iron_axe")),
   "axe held geometry still matches its inventory sprite topology");
 const axeMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
-const baselineMvp = writeFirstPersonModelMatrix(
-  new Float32Array(16),
-  [0, 0, 0, 0, 0, 0],
-  FIRST_PERSON_TUNING,
-);
-assert.ok(Math.abs(axeMvp[0] - wideProjection[0] * baselineMvp[0]) < 0.000001,
-  "pickaxe viewport anchoring does not alter the non-picked axe projection");
+const axeViewport = ndcBounds(axeUpload, renderer[2][0], axeMvp);
+assert.ok(axeViewport.minX > 0.4 && axeViewport.maxX > 0.97
+  && axeViewport.minY < -0.92 && axeViewport.maxY < 0.05,
+"the independently authored axe enters from the same lower-right socket without inheriting pickaxe geometry");
 
 renderer[3]("iron_sword", BLOCK.AIR);
 assert.equal(renderer[2][0], appendItemSpriteGeometry([], getItemIconArt("iron_sword")),
@@ -324,8 +321,8 @@ assert.ok(rendererSource.includes("FIRST_PERSON_PICKAXE_PRESENTATION"),
   "first-person path references the pickaxe-specific presentation");
 assert.ok(rendererSource.includes("isPickaxeItem"),
   "pickaxe detection is explicit rather than retuning every handheld tool");
-assert.ok(rendererSource.includes("FIRST_PERSON_TOOL_PRESENTATION"),
-  "non-pickaxe tools keep a named shared presentation");
+assert.ok(rendererSource.includes("firstPersonSpritePresentation"),
+  "non-pickaxe families use explicit presentation routing rather than one shared tool guess");
 
 // Every catalogued pickaxe item id is a tool with kind pickaxe
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {

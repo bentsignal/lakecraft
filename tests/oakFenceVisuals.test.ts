@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
-import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
 import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import {
   OAK_FENCE_BOX_VERTEX_COUNT,
@@ -91,12 +91,11 @@ assert.notDeepEqual(art.runs, getItemIconArt("planks").runs);
 
 assert.equal(itemVisual("oak_fence").parent, "block", "oak fence retains its shared block-item visual definition");
 const expectedHeldGeometry: number[] = [];
-const expectedHeldVertices = appendItemSpriteGeometry(expectedHeldGeometry, art, {
-  center: [0.10, -0.02, -1.17],
-  size: 0.76,
-  depth: 0.06,
-  rotationDegrees: [0, -24, 0],
-});
+const expectedHeldVertices = appendItemSpriteGeometry(
+  expectedHeldGeometry,
+  art,
+  firstPersonSpritePresentation("oak_fence"),
+);
 let nextBufferId = 0;
 let boundBuffer: WebGLBuffer | null = null;
 const uploads = new Map<WebGLBuffer, Float32Array>();
@@ -127,7 +126,7 @@ for (let offset = 3; offset < heldUpload.length; offset += 6) {
 assert.equal(heldRenderer[2][1], 0, "oak fence never falls through to textured full-cube output");
 heldRenderer[7]();
 const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-for (const sharedPath of ["itemVisual(itemId)", "getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
   assert.ok(held.includes(sharedPath), `held fences use the shared visual pipeline through ${sharedPath}`);
 }
 assert.equal(held.includes("appendColorBox"), false,

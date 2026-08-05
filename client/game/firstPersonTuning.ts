@@ -78,7 +78,7 @@ export const FIRST_PERSON_TUNING = {
   // and `size` instead of the four knobs above. Use 0.02, 5 degrees, and 0.05
   // as the same safe first steps. Center is also [X, Y, Z].
   block: {
-    center: [0.14, -0.1, -1.36] as FirstPersonVector,
+    center: [0.48, -0.18, -1.36] as FirstPersonVector,
     rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,
     size: 0.64,
   },
