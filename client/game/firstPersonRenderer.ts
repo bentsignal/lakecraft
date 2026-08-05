@@ -203,16 +203,17 @@ export function firstPersonSpriteFamily(itemId: ItemId, bowDrawn = false): strin
 }
 
 /** Reference-calibrated camera-space sprite pose, independent of inventory art. */
-export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn = false): FirstPersonSpritePresentation {
+export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean): FirstPersonSpritePresentation {
   const kind = ITEMS[itemId].tool?.kind;
   if (kind === "pickaxe") return FIRST_PERSON_PICKAXE_PRESENTATION;
   let pose: FirstPersonSpritePose;
   if (kind) {
     const sword = kind === "sword";
+    const shovel = kind === "shovel";
     pose = [
-      sword ? 1.34 : kind === "shovel" ? 0.91 : 0.82, sword ? -0.52 : -0.55, -1.12,
+      sword ? 1.34 : shovel ? 0.69 : 0.82, sword ? -0.52 : -0.55, -1.12,
       sword ? 1.9 : kind === "axe" ? 1.35 : 1.3, 0.035,
-      10, 180, -22,
+      10, 180, shovel ? -50 : -22,
       2, sword ? 13 : 14,
     ];
   } else if (itemId === "bow") {
@@ -222,8 +223,20 @@ export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn = false):
       0, 180, 0,
       3, 8,
     ];
+  } else if (itemId === "shears") {
+    pose = [0.86, -0.48, -1.14, 1, 0.04, 8, 180, -18, 13, 12];
+  } else if (itemId === "flint_and_steel") {
+    pose = [0.84, -0.5, -1.14, 1, 0.04, 8, 180, -18, 8, 11];
   } else {
-    pose = [0.86, -0.5, -1.14, 1, 0.04, 8, 180, -18, 6, 11];
+    const category = ITEMS[itemId].category;
+    const food = category === "food";
+    const special = category === "block";
+    pose = [
+      special ? 0.82 : food ? 0.83 : 0.86, special ? -0.5 : -0.52, -1.15,
+      food || special ? 0.92 : 0.9, 0.04,
+      8, 180, -18,
+      itemId === "stick" ? 4 : 8, special || itemId === "stick" ? 13 : 12,
+    ];
   }
   return spritePresentation(pose);
 }

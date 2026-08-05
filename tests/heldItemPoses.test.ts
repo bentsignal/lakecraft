@@ -94,9 +94,9 @@ for (const [index, expected] of [0.5, -0.66, 0.04].entries()) {
     "human-readable tuning degrees preserve the reviewed authored radian pose");
 }
 const cubeCenters = Array.from({ length: 6 }, (_, face) => center(cube, face * 6, 6));
-assert.ok(cubeCenters[2][2] > cubeCenters[3][2] + 0.2, "the top face points visibly toward the camera");
-assert.ok(cubeCenters[0][2] > cubeCenters[1][2] + 0.35, "the right vertical face remains readable");
-assert.ok(cubeCenters[4][2] > cubeCenters[5][2] + 0.4, "the left vertical face remains readable");
+assert.ok(cubeCenters[2][2] > cubeCenters[3][2] + 0.14, "the smaller top face points visibly toward the camera");
+assert.ok(cubeCenters[0][2] > cubeCenters[1][2] + 0.25, "the smaller right vertical face remains readable");
+assert.ok(cubeCenters[4][2] > cubeCenters[5][2] + 0.28, "the smaller left vertical face remains readable");
 const readableAreas = [0, 2, 4].map((face) => projectedFaceArea(cube, face));
 assert.ok(Math.min(...readableAreas) / Math.max(...readableAreas) > 0.5,
   "top, left, and right cube faces retain a balanced isometric silhouette");

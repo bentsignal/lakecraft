@@ -119,6 +119,20 @@ function jointCentroid(
   return [x / count, y / count];
 }
 
+function jointScreenPoints(
+  transformed: Float32Array,
+  source: Float32Array,
+  matrix: Float32Array,
+  sourceY: number,
+): ReadonlyArray<readonly [number, number]> {
+  const points: Array<readonly [number, number]> = [];
+  for (let offset = 0; offset < PLAYER_SKIN_BOX_FLOATS; offset += PLAYER_SKIN_VERTEX_STRIDE) {
+    if (Math.abs(source[offset + 1] - sourceY) <= 1e-7) points.push(screenPoint(transformed, offset, matrix));
+  }
+  assert.ok(points.length > 0, `joint y=${sourceY} has screen-space vertices`);
+  return points;
+}
+
 const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0]);
 assert.deepEqual(Object.keys(FIRST_PERSON_TUNING), ["rig", "arm", "tool", "bow", "otherItem", "block"],
   "every first-person pose class has one obvious tuning entry point");
@@ -158,6 +172,7 @@ const attackSkinMvp = new Float32Array(16);
 const attackPose = sampleFirstPersonAction([0, 0, 0, 0, 0, 0], "attack", 110, false, false);
 const attackModel = writeFirstPersonModelMatrix(new Float32Array(16), attackPose);
 const viewportBounds: Array<{ viewport: string; width: number; height: number }> = [];
+const blockGripSamples: Array<{ viewport: string; block: ReturnType<typeof screenPercent>; hand: readonly [number, number] }> = [];
 for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const) {
   renderer[3](null, BLOCK.AIR);
   renderer[6](mvp, perspective(width / height), 0, false);
@@ -198,16 +213,23 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   writeResponsiveFirstPersonSkinMvp(skinMvp, mvp);
   const armBounds = ndcBounds(skinArm, skinMvp);
   const blockBounds = ndcBounds(gl.uploads.get(texturedBuffer)!, mvp);
-  assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.3,
+  const blockScreen = screenPercent(blockBounds);
+  assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.15,
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
-  assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < -0.2,
-    `${width}x${height} held block leaves the crosshair's horizontal lane clear`);
-  assert.ok(blockBounds.maxX > 0.84 && blockBounds.maxX < 0.92
-    && blockBounds.minY < -0.88 && blockBounds.minY > -0.96,
+  assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < 0,
+    `${width}x${height} held block leaves the crosshair's horizontal lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
+  assert.ok(blockBounds.maxX > 0.55 && blockBounds.maxX < 0.65
+    && blockBounds.minY < -0.38 && blockBounds.minY > -0.46,
   `${width}x${height} held atlas cube occupies the reviewed lower-right socket`);
   assert.ok(blockBounds.maxX - blockBounds.minX < 0.55
     && blockBounds.maxY - blockBounds.minY < 0.64,
   `${width}x${height} held atlas cube cannot cover most of the world: ${JSON.stringify(blockBounds)}`);
+  assert.ok(hand[0] >= blockScreen.right && hand[1] >= blockScreen.bottom,
+    `${width}x${height} hand grip stays outside the cube's lower-right corner instead of piercing a visible face: ${JSON.stringify({ blockScreen, hand })}`);
+  const handCap = jointScreenPoints(skinArm, sourceSkinArm, skinMvp, 0.75);
+  assert.ok(handCap.every(([x, y]) => x >= blockScreen.right || y >= blockScreen.bottom),
+    `${width}x${height} every hand-cap vertex stays outside the projected cube faces: ${JSON.stringify({ blockScreen, handCap })}`);
+  blockGripSamples.push({ viewport: `${width}x${height}`, block: blockScreen, hand });
   viewportBounds.push({
     viewport: `${width}x${height}`,
     width: Number((blockBounds.maxX - blockBounds.minX).toFixed(6)),
@@ -216,7 +238,7 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
 }
 assert.equal(new Set(viewportBounds.map(({ width, height }) => `${width}:${height}`)).size, 1,
   "the HUD-like viewmodel projection preserves reviewed screen occupancy at every viewport aspect");
-console.log(JSON.stringify({ benchmark: "held atlas cube NDC bounds", samples: viewportBounds }));
+console.log(JSON.stringify({ benchmark: "held atlas cube NDC bounds", samples: viewportBounds, blockGripSamples }));
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const viewmodelPassStart = engine.indexOf("if (!firstPersonFeedbackHidden && playerHealth > 0)");

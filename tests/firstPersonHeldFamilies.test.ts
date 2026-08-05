@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import {
   createFirstPersonRenderer,
   firstPersonSpriteFamily,
@@ -40,10 +41,16 @@ function perspective(aspect: number): Float32Array {
 }
 
 type Bounds = Readonly<{ minX: number; maxX: number; minY: number; maxY: number }>;
-function projectedBounds(data: Float32Array, vertexCount: number, mvp: Float32Array): Bounds {
+function projectedBounds(
+  data: Float32Array,
+  vertexCount: number,
+  mvp: Float32Array,
+  include: (offset: number) => boolean = () => true,
+): Bounds {
   let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
   for (let vertex = 0; vertex < vertexCount; vertex += 1) {
     const offset = vertex * 6;
+    if (!include(offset)) continue;
     const x = data[offset]; const y = data[offset + 1]; const z = data[offset + 2];
     const w = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
     assert.ok(w > 0, "held geometry remains in front of the camera");
@@ -81,15 +88,26 @@ assert.equal(firstPersonSpriteFamily("torch"), "specialBlock");
 const pickaxe = render("iron_pickaxe");
 const axe = render("iron_axe");
 const shovel = render("iron_shovel");
+const shovelUpload = capture.uploads.get(1)!;
+const shovelHead = projectedBounds(
+  shovelUpload,
+  renderer[2][0],
+  renderer[6](new Float32Array(16), projection, 0, false),
+  (offset) => shovelUpload[offset + 3] > 0.35
+    && shovelUpload[offset + 4] > shovelUpload[offset + 3] * 0.9
+    && shovelUpload[offset + 5] > shovelUpload[offset + 3] * 0.9,
+);
 const sword = render("iron_sword");
 assert.ok(pickaxe.minX > 0.3 && pickaxe.maxX >= 0.98 && pickaxe.minY <= -0.98 && pickaxe.maxY > -0.1,
   "pickaxe matches the supplied middle-right head and cropped lower-right grip envelope");
 assert.ok(axe.minX > 0.4 && axe.minX < 0.5 && axe.maxX > 0.97
   && axe.minY < -0.92 && axe.maxY < 0.05,
 "axe enters from the right 28% of the viewport and crops at the hand socket");
-assert.ok(shovel.minX > 0.48 && shovel.minX < 0.58 && shovel.maxX > 0.98
+assert.ok(shovel.minX > 0.65 && shovel.minX < 0.8 && shovel.maxX > 0.95
   && shovel.minY < -0.92 && shovel.maxY < 0.05,
-"shovel keeps its narrow head in the right quarter without becoming a centered icon");
+`shovel keeps its narrow head in the right quarter without becoming a centered icon: ${JSON.stringify(shovel)}`);
+assert.ok(shovelHead.maxY - shovelHead.minY >= (shovelHead.maxX - shovelHead.minX) * 1.02,
+  `shovel head retains enough vertical taper to read as a spade rather than a hammer: ${JSON.stringify(shovelHead)}`);
 assert.ok(sword.minX > 0.5 && sword.maxX > 1.15 && sword.minY < -0.98 && sword.maxY > 0.18,
   "sword blade rises from a cropped grip through the reviewed upper-right combat envelope");
 
@@ -114,7 +132,15 @@ for (const [itemId, expectedFamily] of [
   assert.equal(firstPersonSpriteFamily(itemId), expectedFamily);
   assert.ok(bounds.minX > 0.58 && bounds.maxX > 0.95 && bounds.minY < -0.85 && bounds.maxY < -0.3,
     `${itemId} stays compact at the lower-right hand instead of displaying broadside at center: ${JSON.stringify(bounds)}`);
+  const [pivotX, pivotY] = firstPersonSpritePresentation(itemId).pivotPixels;
+  assert.ok(getItemIconArt(itemId).runs.some((run) => run.y === Math.floor(pivotY)
+    && pivotX >= run.x && pivotX < run.x + run.width),
+  `${itemId} uses an opaque grip pixel instead of attaching the hand through transparency`);
 }
+
+assert.equal(new Set(["shears", "flint_and_steel", "apple", "stick", "torch"]
+  .map((itemId) => JSON.stringify(firstPersonSpritePresentation(itemId as ItemId)))).size, 5,
+"utility, food, material, and special-item families keep distinct visible hand sockets");
 
 const axeBefore = render("iron_axe");
 render("bow", true);
@@ -127,5 +153,5 @@ assert.notDeepEqual(firstPersonSpritePresentation("iron_axe"), firstPersonSprite
 assert.notDeepEqual(firstPersonSpritePresentation("bow"), firstPersonSpritePresentation("bow", true),
   "idle and drawn bows expose distinct reference-driven presentations");
 
-console.log(JSON.stringify({ benchmark: "first-person held family NDC envelopes", pickaxe, axe, shovel, sword, bowIdle, bowDraw }));
+console.log(JSON.stringify({ benchmark: "first-person held family NDC envelopes", pickaxe, axe, shovel, shovelHead, sword, bowIdle, bowDraw }));
 renderer[7]();
