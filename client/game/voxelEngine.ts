@@ -25,7 +25,7 @@ import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
-import { createFirstPersonRenderer } from "./firstPersonRenderer.ts";
+import { createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
 import {
   createFirstPersonSkinRenderer,
   FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
@@ -3533,7 +3533,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           + dayNightState.directionalG * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
         firstPersonSkinLight[2] = clampNumber((dayNightState.ambientB * dayNightState.ambientIntensity
           + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
-        firstPersonSkinRenderer.draw(firstPersonMvpMatrix, firstPersonSkinLight);
+        firstPersonSkinRenderer.draw(
+          firstPersonMvpMatrix,
+          firstPersonSkinLight,
+          usesCanonicalHeldBlock(selectedItem, selectedBlock),
+        );
         drawCalls += 1;
       }
     }

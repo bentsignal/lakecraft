@@ -152,6 +152,10 @@ export function firstPersonHeldItemTuningGroup(
   return "otherItem";
 }
 
+export function usesCanonicalHeldBlock(itemId: ItemId | null, block: BlockId): boolean {
+  return firstPersonHeldItemTuningGroup(itemId, block) === "block";
+}
+
 export type FirstPersonSpritePresentation = Readonly<{
   center: Vec3;
   size: number;
@@ -504,10 +508,13 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       );
       writeFirstPersonModelMatrix(modelMatrix, actionPose, activeTuning);
       viewProjection.set(projection);
-      // World FOV remains untouched. Held items use a square viewmodel
-      // projection so their reviewed socket does not slide on wide displays;
-      // the independently calibrated empty arm keeps the ordinary projection.
-      if (itemId || viewProjection[0] > viewProjection[5]) viewProjection[0] = viewProjection[5];
+      // Sprite poses retain their authored square viewmodel projection, but a
+      // real cube must keep the camera's horizontal perspective scale. Applying
+      // the square sprite projection to a cube widens it by the viewport aspect
+      // ratio (1.78x at 16:9), which is the held-block stretch regression.
+      if ((itemId && !usesCanonicalHeldBlock(itemId, block)) || viewProjection[0] > viewProjection[5]) {
+        viewProjection[0] = viewProjection[5];
+      }
       return writeMatrixProduct(output, viewProjection, modelMatrix);
     },
     () => {

@@ -23,6 +23,7 @@ import {
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_DELTA,
   COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA,
@@ -302,14 +303,40 @@ assert.deepEqual(
 assert.equal(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA.previousOccurrences
     + COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
+  COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.previousOccurrences,
   "the computed skin-storage codec removes only the redundant version occurrence",
 );
 assert.equal(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA.previousUniqueValues
     + COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.previousUniqueValues,
   "the computed codec preserves the repeated value inventory",
+);
+assert.equal(
+  COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.previousOccurrences
+    + COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
+  "the held-block restoration accounts for the exact repeated occurrence increase",
+);
+assert.equal(
+  COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.previousUniqueValues
+    + COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  "the held-block restoration accounts for the exact repeated value increase",
+);
+assert.deepEqual(
+  COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
+  {
+    previousOccurrences: 1_078,
+    previousUniqueValues: 97,
+    previousSourceFingerprint: "feb7d603973a269e0cef296a611046e0efed301e1ec2b91ad9c70c10afcd4aa7",
+    occurrenceDelta: 5,
+    uniqueValueDelta: 1,
+    promotedThresholdValue: "rightArm",
+    source: "client/game/firstPersonSkinRenderer.ts#buildFirstPersonSkinArmGeometry",
+    exclusionChanges: 0,
+  },
+  "the held-block string-pool boundary changes only through the reviewed visual fix",
 );
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,

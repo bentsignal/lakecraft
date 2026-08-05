@@ -19,7 +19,7 @@ import {
   fullPlayerArmorAppearance,
   type PlayerArmorMaterial,
 } from "./playerArmorGeometry.ts";
-import { createFirstPersonRenderer } from "./firstPersonRenderer.ts";
+import { createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import {
   createFirstPersonSkinRenderer,
@@ -242,6 +242,7 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
   let specialColorVertexCount = 0;
   let mode: "item" | "player" | "block" | "mob" | "viewmodel" | "dropped" = "item";
   let viewmodelBow = false;
+  let viewmodelBlockArm = false;
   const light: [number, number, number] = [1, 1, 1];
   let yaw = -22;
   let pitch = 12;
@@ -293,7 +294,9 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
         gl.uniform3f(lightLocation, light[0], light[1], light[2]);
         gl.drawArrays(gl.TRIANGLES, 0, viewmodelStats[0]);
       }
-      if (!viewmodelBow) viewmodelSkinRenderer.draw(viewmodelMvp, light);
+      if (!viewmodelBow) {
+        viewmodelSkinRenderer.draw(viewmodelMvp, light, viewmodelBlockArm);
+      }
       return;
     }
     writeModelView(modelView, yaw, pitch, zoom, mode === "player" ? -1 : mode === "mob" ? -0.72 : 0);
@@ -420,6 +423,7 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
       specialColorVertexCount = 0;
       const block = blockIdForCubeItem(itemId) ?? SPECIAL_VISUAL_BLOCKS[itemId] ?? BLOCK.AIR;
       viewmodelBow = itemId === "bow";
+      viewmodelBlockArm = usesCanonicalHeldBlock(itemId, block);
       setViewmodelHeldItem(itemId, block);
       setViewmodelBowCharge(viewmodelBow && variantIndex > 0,
         variantIndex <= 1 ? 0 : variantIndex === 2 ? 0.6 : 1);

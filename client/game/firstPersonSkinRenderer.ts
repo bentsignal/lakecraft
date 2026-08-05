@@ -15,7 +15,11 @@ export const FIRST_PERSON_SKIN_ARM_BUFFER_BYTES = FIRST_PERSON_SKIN_ARM_VERTICES
 export const FIRST_PERSON_SKIN_REFERENCE_ASPECT = 16 / 9;
 
 export type FirstPersonSkinRenderer = Readonly<{
-  draw(mvp: Float32Array, light: readonly [number, number, number]): void;
+  draw(
+    mvp: Float32Array,
+    light: readonly [number, number, number],
+    blockMode?: boolean,
+  ): void;
   setSkin(source: TexImageSource | null, model: PlayerSkinModel): void;
   destroy(): void;
 }>;
@@ -44,10 +48,30 @@ function applyTuning(output: Float32Array, tuning: FirstPersonGroupTuning): void
 export function buildFirstPersonSkinArmGeometry(
   model: PlayerSkinModel,
   tuning: FirstPersonGroupTuning = currentFirstPersonTuning().tuning.arm,
+  blockMode = false,
 ): Float32Array {
-  const output = buildPlayerSkinPartGeometry("rightArm", model, FIRST_PERSON_SKIN_SLEEVE_INFLATE);
+  // Canonical cubes deliberately retain the exact pre-overhaul arm transform.
+  // Sprite/tool work uses the newer anatomical arm, so restoring blocks cannot
+  // move the pickaxe, bow, or any other held-item presentation.
+  const output = blockMode
+    ? buildPlayerSkinPartGeometry("rightArm", model)
+    : buildPlayerSkinPartGeometry("rightArm", model, FIRST_PERSON_SKIN_SLEEVE_INFLATE);
   const pivotX = model === "slim" ? 0.34375 : 0.375;
   const pivotY = model === "slim" ? 1.46875 : 1.5;
+  if (blockMode) {
+    const angle = -150 * Math.PI / 180;
+    const cosine = Math.cos(angle); const sine = Math.sin(angle);
+    for (let offset = 0; offset < output.length; offset += PLAYER_SKIN_VERTEX_STRIDE) {
+      const x = (output[offset] - pivotX) * 0.92;
+      const y = (output[offset + 1] - 1.5) * 0.92;
+      const z = output[offset + 2] * 0.92;
+      output[offset] = x * cosine - y * sine + 0.82;
+      output[offset + 1] = x * sine + y * cosine - 0.82;
+      output[offset + 2] = z - 1.22;
+    }
+    applyTuning(output, tuning);
+    return output;
+  }
   // From the lower-right camera edge toward the center, matching the authored
   // shoulder-to-hand direction rather than mirroring the whole arm broadside.
   const angle = 217 * Math.PI / 180;
@@ -96,9 +120,10 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
     throw new Error("First-person skin bindings are incomplete.");
   }
   let model: PlayerSkinModel = "wide";
+  let blockMode = false;
   let tuningSnapshot = currentFirstPersonTuning();
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm), gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm, blockMode), gl.STATIC_DRAW);
   gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -106,15 +131,21 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
   const finalMvp = new Float32Array(16);
 
   return Object.freeze({
-    draw(mvp, light) {
+    draw(mvp, light, nextBlockMode = false) {
       const nextTuning = currentFirstPersonTuning();
-      if (nextTuning.revision !== tuningSnapshot.revision) {
+      if (nextTuning.revision !== tuningSnapshot.revision || nextBlockMode !== blockMode) {
         tuningSnapshot = nextTuning;
+        blockMode = nextBlockMode;
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm), gl.STATIC_DRAW);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm, blockMode),
+          gl.STATIC_DRAW,
+        );
       }
       // Keep a distinct retained matrix so caller-owned viewmodel state is never mutated.
-      writeResponsiveFirstPersonSkinMvp(finalMvp, mvp);
+      if (blockMode) finalMvp.set(mvp);
+      else writeResponsiveFirstPersonSkinMvp(finalMvp, mvp);
       gl.useProgram(program); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       const stride = PLAYER_SKIN_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
       gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position, 3, gl.FLOAT, false, stride, 0);
@@ -129,7 +160,11 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
       if (model !== nextModel) {
         model = nextModel;
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm), gl.STATIC_DRAW);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm, blockMode),
+          gl.STATIC_DRAW,
+        );
       }
       gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
       if (source) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);

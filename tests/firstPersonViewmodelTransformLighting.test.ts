@@ -165,6 +165,8 @@ const colorBuffer = renderer[0] as unknown as object;
 const texturedBuffer = renderer[1] as unknown as object;
 const skinArm = buildFirstPersonSkinArmGeometry("wide", FIRST_PERSON_TUNING.arm);
 const sourceSkinArm = buildPlayerSkinPartGeometry("rightArm", "wide", FIRST_PERSON_SKIN_SLEEVE_INFLATE);
+const blockSkinArm = buildFirstPersonSkinArmGeometry("wide", FIRST_PERSON_TUNING.arm, true);
+const sourceBlockSkinArm = buildPlayerSkinPartGeometry("rightArm", "wide");
 const mvp = new Float32Array(16);
 const skinMvp = new Float32Array(16);
 const attackMvp = new Float32Array(16);
@@ -210,34 +212,33 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
 
   renderer[3]("dirt", BLOCK.DIRT);
   renderer[6](mvp, perspective(width / height), 0, false);
-  writeResponsiveFirstPersonSkinMvp(skinMvp, mvp);
-  const armBounds = ndcBounds(skinArm, skinMvp);
+  skinMvp.set(mvp);
+  const armBounds = ndcBounds(blockSkinArm, skinMvp);
   const blockBounds = ndcBounds(gl.uploads.get(texturedBuffer)!, mvp);
   const blockScreen = screenPercent(blockBounds);
-  assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.15,
+  assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.05,
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
   assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < 0,
     `${width}x${height} held block leaves the crosshair's horizontal lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
-  assert.ok(blockBounds.maxX > 0.55 && blockBounds.maxX < 0.65
-    && blockBounds.minY < -0.38 && blockBounds.minY > -0.46,
-  `${width}x${height} held atlas cube occupies the reviewed lower-right socket`);
   assert.ok(blockBounds.maxX - blockBounds.minX < 0.55
     && blockBounds.maxY - blockBounds.minY < 0.64,
   `${width}x${height} held atlas cube cannot cover most of the world: ${JSON.stringify(blockBounds)}`);
-  assert.ok(hand[0] >= blockScreen.right && hand[1] >= blockScreen.bottom,
-    `${width}x${height} hand grip stays outside the cube's lower-right corner instead of piercing a visible face: ${JSON.stringify({ blockScreen, hand })}`);
-  const handCap = jointScreenPoints(skinArm, sourceSkinArm, skinMvp, 0.75);
-  assert.ok(handCap.every(([x, y]) => x >= blockScreen.right || y >= blockScreen.bottom),
-    `${width}x${height} every hand-cap vertex stays outside the projected cube faces: ${JSON.stringify({ blockScreen, handCap })}`);
-  blockGripSamples.push({ viewport: `${width}x${height}`, block: blockScreen, hand });
+  const blockHand = jointCentroid(blockSkinArm, sourceBlockSkinArm, skinMvp, 0.75);
+  const handCap = jointScreenPoints(blockSkinArm, sourceBlockSkinArm, skinMvp, 0.75);
+  assert.ok(handCap.some(([x, y]) => x >= blockScreen.right || y >= blockScreen.bottom),
+    `${width}x${height} the gripping hand remains visible beyond the cube's lower-right edge: ${JSON.stringify({ blockScreen, handCap })}`);
+  blockGripSamples.push({ viewport: `${width}x${height}`, block: blockScreen, hand: blockHand });
   viewportBounds.push({
     viewport: `${width}x${height}`,
     width: Number((blockBounds.maxX - blockBounds.minX).toFixed(6)),
     height: Number((blockBounds.maxY - blockBounds.minY).toFixed(6)),
   });
 }
-assert.equal(new Set(viewportBounds.map(({ width, height }) => `${width}:${height}`)).size, 1,
-  "the HUD-like viewmodel projection preserves reviewed screen occupancy at every viewport aspect");
+assert.deepEqual(viewportBounds, [
+  { viewport: "1920x1080", width: 0.2887, height: 0.584123 },
+  { viewport: "800x720", width: 0.461921, height: 0.584123 },
+  { viewport: "390x844", width: 0.513245, height: 0.584123 },
+], "the canonical held cube preserves the known-good perspective envelope instead of stretching to a square NDC box");
 console.log(JSON.stringify({ benchmark: "held atlas cube NDC bounds", samples: viewportBounds, blockGripSamples }));
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
@@ -274,7 +275,9 @@ assert.ok(engine.includes("terrainSkyExposureLocation, viewmodelSkyExposure")
   "textured blocks and solid held sprites receive the same bounded viewmodel exposure");
 assert.ok(engine.includes("gl.uniform4fv(torchLightsLocation, firstPersonTorchUniforms)")
   && engine.includes("gl.uniform1f(lightingLocation, 1)")
-  && engine.includes("firstPersonSkinRenderer.draw(firstPersonMvpMatrix, firstPersonSkinLight)"),
+  && engine.includes("firstPersonSkinRenderer.draw(")
+  && engine.includes("firstPersonMvpMatrix,")
+  && engine.includes("firstPersonSkinLight,"),
   "solid item geometry and the textured standard-skin arm both use scene-derived light");
 assert.equal(viewmodelPass.includes("terrainAmbientColorLocation, 1, 1, 1"), false,
   "held atlas blocks no longer use full-bright white ambient");

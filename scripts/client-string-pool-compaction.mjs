@@ -11,9 +11,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 590;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 522;
 export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "12cd584cd05581a5b6bfa1422e9f18a8ee6224a957335a23d16c3d0af8e0b9e4";
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_078;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 97;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "feb7d603973a269e0cef296a611046e0efed301e1ec2b91ad9c70c10afcd4aa7";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_083;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 98;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "18001eb156d188c7dfec1c677d8d17eb8a5ec6ed0c4e0d4977681fd7f689d950";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -51,9 +51,23 @@ export const COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA = Object.freeze({
   source: "client/game/playerSkin.ts#PLAYER_SKIN_STORAGE_KEYS",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 376;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 110;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "b640809780cfba2884fa09a1dbc4fee0e0e056cf83d0b7cbc5919ec3bebe7822";
+// Restoring the canonical held-block projection and its isolated legacy arm
+// path adds one reviewed repeated value and five eligible occurrences. This is
+// pinned separately so the visual regression fix cannot silently broaden the
+// production string-pool transform in a later refactor.
+export const COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA = Object.freeze({
+  previousOccurrences: 1_078,
+  previousUniqueValues: 97,
+  previousSourceFingerprint: "feb7d603973a269e0cef296a611046e0efed301e1ec2b91ad9c70c10afcd4aa7",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 1,
+  promotedThresholdValue: "rightArm",
+  source: "client/game/firstPersonSkinRenderer.ts#buildFirstPersonSkinArmGeometry",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 372;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 109;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "6c506645556eb113e83a9cadd6a7201414f481d9a95927fcdc743c1747132dc8";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "1.2..21.",
   "2.1..2",
