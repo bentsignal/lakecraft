@@ -45,21 +45,47 @@ function colorAt(itemId: ItemId, x: number, y: number): string | null {
   return null;
 }
 
+function fourNeighborComponents(cells: ReadonlySet<string>): number {
+  const remaining = new Set(cells);
+  let components = 0;
+  while (remaining.size) {
+    components += 1;
+    const first = remaining.values().next().value as string;
+    remaining.delete(first);
+    const queue = [first];
+    while (queue.length) {
+      const [x, y] = queue.pop()!.split(":").map(Number);
+      for (const neighbor of [`${x - 1}:${y}`, `${x + 1}:${y}`, `${x}:${y - 1}`, `${x}:${y + 1}`]) {
+        if (remaining.delete(neighbor)) queue.push(neighbor);
+      }
+    }
+  }
+  return components;
+}
+
 // --- Silhouette: thin stepped pickaxe, shared across tiers ---
 const ironMask = occupancy("iron_pickaxe");
-assert.equal(ironMask.size, 72, "pickaxe silhouette stays compact (not a filled blob)");
+assert.equal(ironMask.size, 69, "pickaxe silhouette stays compact (not a filled blob)");
+assert.equal(fourNeighborComponents(ironMask), 1,
+  "handle, socket, crown, and right tine form one 4-neighbor silhouette");
 for (const tier of PICKAXE_TIERS) {
   assert.deepEqual([...occupancy(`${tier}_pickaxe` as ItemId)].sort(), [...ironMask].sort(),
     `${tier} pickaxe shares the iron silhouette mask`);
 }
 
-// Crown, twin tips, neck, lower grip
-for (const cell of ["5:1", "11:1", "8:2", "2:5", "14:5", "9:7", "2:14", "3:14"] as const) {
+// Shallow crown, solid socket, right tine, and lower grip.
+for (const cell of ["4:1", "10:1", "3:2", "8:3", "8:4", "7:5", "6:6", "14:5", "13:7", "1:14"] as const) {
   assert.ok(ironMask.has(cell), `landmark ${cell} occupied`);
 }
-// Transparent arch under the head + canvas corners (negative space)
-for (const cell of ["6:3", "7:3", "6:4", "7:4", "10:3", "5:4", "11:4", "0:0", "15:0", "0:15", "15:15"] as const) {
+// Transparent canvas padding and concave space below the asymmetric head.
+for (const cell of ["3:3", "4:3", "5:4", "10:5", "11:6", "11:7", "0:0", "15:0", "0:15", "15:15"] as const) {
   assert.equal(ironMask.has(cell), false, `negative space ${cell} stays empty`);
+}
+
+// The old defect was a free-standing horizontal bar over an open U. These
+// exact socket/handle joins make that topology impossible to reintroduce.
+for (const cell of ["8:3", "8:4", "7:5", "6:6", "6:7", "5:8"] as const) {
+  assert.ok(ironMask.has(cell), `continuous handle-to-head path retains ${cell}`);
 }
 
 // Handle stays narrow: at most four occupied cells on the lower grip rows
@@ -81,14 +107,14 @@ for (const tier of PICKAXE_TIERS) {
   const headPlate = colorAt(itemId, 8, 2);
   assert.ok(headPlate && headPlate !== HANDLE_WOOD && headPlate !== HANDLE_HIGHLIGHT,
     `${tier} head plate is material, not wood`);
-  assert.equal(colorAt(itemId, 2, 14), HANDLE_WOOD, `${tier} grip core is wood`);
-  assert.equal(colorAt(itemId, 1, 14), OUTLINE, `${tier} grip keeps outer outline`);
+  assert.equal(colorAt(itemId, 2, 13), HANDLE_WOOD, `${tier} grip core is wood`);
+  assert.equal(colorAt(itemId, 4, 13), OUTLINE, `${tier} grip keeps outer outline`);
 }
 
 // Highlight / shade remain distinct from midtone on iron
-assert.ok(colorAt("iron_pickaxe", 5, 2) === "#e2e6e3" || colorAt("iron_pickaxe", 6, 2) === "#e2e6e3",
+assert.ok(colorAt("iron_pickaxe", 4, 2) === "#e2e6e3" || colorAt("iron_pickaxe", 5, 2) === "#e2e6e3",
   "iron head keeps a light ridge");
-assert.ok(colorAt("iron_pickaxe", 3, 4) === "#929693" || colorAt("iron_pickaxe", 3, 5) === "#929693",
+assert.ok(colorAt("iron_pickaxe", 9, 2) === "#929693" || colorAt("iron_pickaxe", 10, 4) === "#929693",
   "iron tips keep a shaded edge");
 
 // --- Non-pickaxe silhouettes preserved ---
@@ -121,7 +147,7 @@ assert.ok(glyphSource.includes("getItemIconArt"),
 // Sprite geometry keeps integer pixel faces (no fractional bleed)
 const sprite: number[] = [];
 const verts = appendItemSpriteGeometry(sprite, getItemIconArt("iron_pickaxe"));
-assert.ok(verts > 0 && verts === 1_104, "pickaxe extrudes to the reviewed vertex fixture");
+assert.ok(verts > 0 && verts === 1_008, "pickaxe extrudes to the reviewed vertex fixture");
 for (let offset = 0; offset < sprite.length; offset += ITEM_SPRITE_VERTEX_FLOATS) {
   assert.ok(Number.isFinite(sprite[offset]) && Number.isFinite(sprite[offset + 1]));
 }
@@ -228,7 +254,7 @@ const renderer = createFirstPersonRenderer(capture.gl);
 renderer[3]("iron_pickaxe", BLOCK.AIR);
 const pickUpload = capture.uploads.get(1);
 assert.ok(pickUpload, "pickaxe color buffer uploaded");
-assert.equal(renderer[2][0], 1_104, "held pickaxe vertex count matches inventory extrusion");
+assert.equal(renderer[2][0], 1_008, "held pickaxe vertex count matches inventory extrusion");
 const pick = spatialBounds(pickUpload, renderer[2][0]);
 assert.ok(pick.width > 0.55 && pick.height > 0.8, "held pickaxe keeps tall handle + broad head");
 assert.ok(pick.depth > 0.12 && pick.depth < 0.32, "held pickaxe depth is thin, not a cube sculpture");

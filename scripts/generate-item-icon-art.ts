@@ -86,6 +86,15 @@ function line(g: Grid, fromX: number, fromY: number, toX: number, toY: number, t
   }
 }
 
+/** Stamp a reviewed 16×16 pixel plan. Dots are transparent; letters are palette tones. */
+function stamp(g: Grid, rows: readonly string[]): void {
+  for (let y = 0; y < Math.min(ITEM_ICON_SIZE, rows.length); y += 1) {
+    for (let x = 0; x < Math.min(ITEM_ICON_SIZE, rows[y].length); x += 1) {
+      if (rows[y][x] !== ".") px(g, x, y, rows[y][x]);
+    }
+  }
+}
+
 type TexturePoint = readonly [x: number, y: number, u: number, v: number];
 
 function atlasPixel(name: TextureAtlasName, u: number, v: number): readonly [number, number, number, number] {
@@ -346,47 +355,29 @@ function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"n
   }
 
   if (kind === "pickaxe") {
-    // Classic thin stepped pickaxe (original Lakecraft pixels): a narrow
-    // diagonal wooden stick, a transverse material head with mirrored
-    // descending tips, open negative space under the crown, and a short neck
-    // where the stick meets the head. Inventory and held views share this
-    // silhouette; only the material palette changes by tier.
-    dots(g, "o", [
-      // Crown + head plate
-      [5,1],[6,1],[7,1],[8,1],[9,1],[10,1],[11,1],
-      [3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[11,2],[12,2],[13,2],
-      // Mirrored stepped tips with open arch under the crown
-      [2,3],[3,3],[4,3],[12,3],[13,3],[14,3],
-      [2,4],[3,4],[13,4],[14,4],
-      [2,5],[3,5],[13,5],[14,5],
-      // Socket / neck joining the stick
-      [8,3],[9,3],
-      [8,4],[9,4],
-      [8,5],[9,5],
-      [8,6],[9,6],
-      [8,7],[9,7],
+    // Reference-driven mining silhouette, independently authored at 16×16:
+    // a continuous stair-step wooden grip enters a solid socket, the shallow
+    // crown reaches farther left, and the shorter right end turns into one
+    // downward tine. Every occupied pixel belongs to one 4-neighbor component;
+    // there is no floating bar or open U-shaped arch.
+    stamp(g, [
+      "................",
+      "....ooooooo.....",
+      "...olllmmdoo....",
+      ".....omwddoo....",
+      "......omwdddoo..",
+      "......owo..oddo.",
+      ".....owo....odo.",
+      ".....wo.....oo..",
+      "....owo.........",
+      "....who.........",
+      "...owo..........",
+      "...who..........",
+      "..owo...........",
+      "..who...........",
+      ".ooo............",
+      "................",
     ]);
-    dots(g, "m", [
-      [5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[11,2],
-      [3,3],[4,3],[12,3],[13,3],
-      [3,4],[13,4],
-      [9,4],[9,5],[9,6],
-    ]);
-    dots(g, "l", [[5,2],[6,2],[7,2],[8,2],[9,2],[12,3],[13,3]]);
-    dots(g, "d", [[3,3],[3,4],[3,5],[13,4],[13,5],[9,6]]);
-    // Thin 2-wide wood core with outer outline only (not the thicker shared shaft).
-    for (let index = 0; index < 7; index += 1) {
-      const x = 2 + index;
-      const y = 14 - index;
-      dots(g, "o", [[x - 1, y], [x, y + 1], [x + 2, y], [x + 1, y + 1]]);
-    }
-    for (let index = 0; index < 7; index += 1) {
-      const x = 2 + index;
-      const y = 14 - index;
-      dots(g, "w", [[x, y], [x + 1, y]]);
-    }
-    for (let index = 1; index < 7; index += 3) px(g, 2 + index + 1, 14 - index, "h");
-    dots(g, "o", [[1,14],[2,15],[3,15]]);
   } else if (kind === "axe") {
     shaft(8);
     // A haft-through-head construction with a straight cutting edge and a

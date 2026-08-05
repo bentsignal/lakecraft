@@ -41,7 +41,7 @@ const canonicalHeldSpriteVertices = {
   bow_full_draw: appendItemSpriteGeometry([], getBowIconArt(3)),
 };
 assert.deepEqual(canonicalHeldSpriteVertices, {
-  iron_pickaxe: 1_104,
+  iron_pickaxe: 1_008,
   iron_sword: 900,
   apple: 732,
   bow_full_draw: 1_212,

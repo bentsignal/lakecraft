@@ -68,16 +68,17 @@ assert.equal(new Set(["pickaxe", "axe", "shovel", "sword"]
 "all four progression tools remain recognizable by shape rather than color alone");
 
 const pickaxeCells = occupiedCells("iron_pickaxe");
-for (const cell of ["2:5", "14:5", "5:1", "11:1", "2:14", "3:14", "8:2", "9:7"] as const) {
-  assert.ok(pickaxeCells.has(cell), `pickaxe retains crown, twin tips, neck, and long grip at ${cell}`);
+for (const cell of ["4:1", "10:1", "3:2", "8:3", "8:4", "7:5", "6:6", "14:5", "13:7", "1:14"] as const) {
+  assert.ok(pickaxeCells.has(cell), `pickaxe retains crown, socket, right tine, and long grip at ${cell}`);
 }
-// Open arch under the transverse head + transparent canvas padding
-for (const cell of ["6:3", "7:3", "6:4", "7:4", "10:3", "0:0", "15:0", "0:15", "15:15"] as const) {
+// Concave head space + transparent canvas padding.
+for (const cell of ["3:3", "4:3", "5:4", "10:5", "11:6", "11:7", "0:0", "15:0", "0:15", "15:15"] as const) {
   assert.equal(pickaxeCells.has(cell), false,
     `pickaxe keeps transparent negative space at ${cell}`);
 }
-assert.equal(pickaxeCells.has("7:4"), false,
-  "pickaxe crown stays shallow instead of collapsing into a filled hook/blob");
+for (const cell of ["8:3", "8:4", "7:5", "6:6", "6:7", "5:8"] as const) {
+  assert.ok(pickaxeCells.has(cell), `pickaxe handle remains physically joined through ${cell}`);
+}
 const axeCells = occupiedCells("iron_axe");
 for (const cell of ["15:2", "15:3", "15:4", "15:5", "8:7", "2:14"] as const) {
   assert.ok(axeCells.has(cell), `axe retains a straight cutting edge, socket, and long grip at ${cell}`);
@@ -110,11 +111,11 @@ const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.
 for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
   assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
 }
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10271, 6591, true\)/)?.[1];
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10271, 6612, true\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(packedPayload.length, 8_240,
+assert.equal(packedPayload.length, 8_265,
   "item icons and drawn bow states retain the reviewed geometry-deduplicated extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 10_271, 6_591, true);
+const compactArt = decodeStaticBytes(packedPayload, 10_271, 6_612, true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
@@ -144,7 +145,7 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 10271, 6591, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 10271, 6612, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
@@ -177,11 +178,11 @@ try {
   await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
     "a truncated item payload fails closed");
-  const noncanonicalItemPayload = decodeStaticEncoding(packedPayload).subarray(0, 6_591);
-  assert.equal(noncanonicalItemPayload[6_587], 1, "reviewed shared stream ends with one used token bit");
-  noncanonicalItemPayload[6_587] = 3;
+  const noncanonicalItemPayload = new Uint8Array(6_613);
+  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_612));
+  noncanonicalItemPayload[6_612] = 1;
   await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
-    "the real item module rejects claimed nonexistent final tokens");
+    "the real item module rejects nonzero bytes after its declared packed payload");
 } finally {
   rmSync(itemFixtureDirectory, { recursive: true, force: true });
 }
