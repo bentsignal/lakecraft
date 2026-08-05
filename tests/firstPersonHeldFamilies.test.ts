@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { getItemIconArt } from "../client/components/itemIconArt.ts";
+import { getBowIconArt, getItemIconArt } from "../client/components/itemIconArt.ts";
 import {
   createFirstPersonRenderer,
   firstPersonSpriteFamily,
   firstPersonSpritePresentation,
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
-import type { ItemId } from "../shared/game.ts";
+import { ITEMS, type ItemId } from "../shared/game.ts";
 
 type CapturedBuffer = { id: number };
 function captureGl(): { gl: WebGLRenderingContext; uploads: Map<number, Float32Array> } {
@@ -41,6 +41,12 @@ function perspective(aspect: number): Float32Array {
 }
 
 type Bounds = Readonly<{ minX: number; maxX: number; minY: number; maxY: number }>;
+function visibleFraction(bounds: Bounds): number {
+  const visibleWidth = Math.max(0, Math.min(1, bounds.maxX) - Math.max(-1, bounds.minX));
+  const visibleHeight = Math.max(0, Math.min(1, bounds.maxY) - Math.max(-1, bounds.minY));
+  return visibleWidth * visibleHeight
+    / ((bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY));
+}
 function projectedBounds(
   data: Float32Array,
   vertexCount: number,
@@ -115,7 +121,7 @@ const bowIdle = render("bow");
 const bowDraw = render("bow", true);
 assert.ok(bowIdle.minX > 0.58 && bowIdle.maxX > 0.96
   && bowIdle.minY < -0.96 && bowIdle.maxY > -0.14,
-"idle bow remains a tall lower-right silhouette");
+`idle bow remains a tall lower-right silhouette: ${JSON.stringify(bowIdle)}`);
 assert.ok(bowDraw.minX < bowIdle.minX - 0.35 && bowDraw.maxX > 0.95,
   "drawing the bow visibly extends the arrow from the right-hand bow toward screen center");
 assert.ok(bowDraw.maxY - bowDraw.minY > 0.8,
@@ -130,17 +136,37 @@ for (const [itemId, expectedFamily] of [
 ] as const) {
   const bounds = render(itemId);
   assert.equal(firstPersonSpriteFamily(itemId), expectedFamily);
-  assert.ok(bounds.minX > 0.58 && bounds.maxX > 0.95 && bounds.minY < -0.85 && bounds.maxY < -0.3,
+  assert.ok(bounds.minX > 0.45 && bounds.maxX > 0.95 && bounds.minY < -0.85 && bounds.maxY < -0.3,
     `${itemId} stays compact at the lower-right hand instead of displaying broadside at center: ${JSON.stringify(bounds)}`);
-  const [pivotX, pivotY] = firstPersonSpritePresentation(itemId).pivotPixels;
-  assert.ok(getItemIconArt(itemId).runs.some((run) => run.y === Math.floor(pivotY)
-    && pivotX >= run.x && pivotX < run.x + run.width),
-  `${itemId} uses an opaque grip pixel instead of attaching the hand through transparency`);
 }
 
 assert.equal(new Set(["shears", "flint_and_steel", "apple", "stick", "torch"]
   .map((itemId) => JSON.stringify(firstPersonSpritePresentation(itemId as ItemId)))).size, 5,
 "utility, food, material, and special-item families keep distinct visible hand sockets");
+
+const heldSpriteIds = Object.keys(ITEMS) as ItemId[];
+assert.equal(heldSpriteIds.length, 97, "every selectable item participates in attachment QA, including armor");
+for (const itemId of heldSpriteIds) {
+  const presentation = firstPersonSpritePresentation(itemId);
+  const [pivotX, pivotY] = presentation.pivotPixels;
+  assert.ok(getItemIconArt(itemId).runs.some((run) => run.y === Math.floor(pivotY)
+    && pivotX >= run.x && pivotX < run.x + run.width),
+  `${itemId} uses an opaque grip pixel instead of attaching the hand through transparency`);
+  const bounds = render(itemId);
+  const visibleWidth = Math.min(1, bounds.maxX) - Math.max(-1, bounds.minX);
+  const visibleHeight = Math.min(1, bounds.maxY) - Math.max(-1, bounds.minY);
+  assert.ok(visibleWidth > 0.08 && visibleHeight > 0.08 && visibleFraction(bounds) > 0.3,
+    `${itemId} keeps a meaningful final-MVP silhouette onscreen: ${JSON.stringify({ bounds, visibleFraction: visibleFraction(bounds) })}`);
+}
+const shearsBounds = render("shears");
+assert.ok(shearsBounds.minX < 0.8 && shearsBounds.maxX <= 1.15 && visibleFraction(shearsBounds) > 0.72,
+  `shears keep recognizable blades and both handles onscreen at the lower-right grip: ${JSON.stringify(shearsBounds)}`);
+const bowGrip = firstPersonSpritePresentation("bow", true).pivotPixels;
+for (const stage of [1, 2, 3] as const) {
+  assert.ok(getBowIconArt(stage).runs.some((run) => run.y === bowGrip[1]
+    && bowGrip[0] >= run.x && bowGrip[0] < run.x + run.width),
+  `drawn bow stage ${stage} keeps its compensated opaque grip socket`);
+}
 
 const axeBefore = render("iron_axe");
 render("bow", true);

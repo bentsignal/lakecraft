@@ -160,12 +160,29 @@ export type FirstPersonSpritePresentation = Readonly<{
   pivotPixels: readonly [number, number];
 }>;
 
-type FirstPersonSpritePose = readonly [
+type FirstPersonSpritePose = [
   number, number, number,
   number, number,
   number, number, number,
   number, number,
 ];
+
+/** Snap an authored hand socket to the nearest real sprite pixel. Rebuilds run
+ * only when the held item changes, so this catalog scan never enters a frame loop. */
+function attachOpaqueGrip(itemId: ItemId, pose: FirstPersonSpritePose): FirstPersonSpritePose {
+  let bestDistance = Infinity;
+  const preferredX = pose[8];
+  const preferredY = pose[9];
+  for (const run of getItemIconArt(itemId).runs) {
+    const x = Math.max(run.x, Math.min(preferredX, run.x + run.width - 1));
+    const distance = (x - preferredX) ** 2 + (run.y - preferredY) ** 2;
+    if (distance >= bestDistance) continue;
+    bestDistance = distance;
+    pose[8] = x;
+    pose[9] = run.y;
+  }
+  return pose;
+}
 
 function spritePresentation(pose: FirstPersonSpritePose): FirstPersonSpritePresentation {
   return {
@@ -217,14 +234,16 @@ export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean
       2, sword ? 13 : 14,
     ];
   } else if (itemId === "bow") {
+    // The nearest opaque socket is one 16px cell left of the old transparent
+    // pivot; offset center by the matching world-space cell to preserve frame.
     pose = [
-      bowDrawn ? 0.82 : 0.84, bowDrawn ? -0.01 : -0.03, -1.12,
+      bowDrawn ? 0.916875 : 0.94, bowDrawn ? -0.01 : -0.03, -1.12,
       bowDrawn ? 1.55 : 1.6, 0.035,
       0, 180, 0,
       3, 8,
     ];
   } else if (itemId === "shears") {
-    pose = [0.86, -0.48, -1.14, 1, 0.04, 8, 180, -18, 13, 12];
+    pose = [0.78, -0.48, -1.14, 1, 0.04, 8, 180, -18, 6, 11];
   } else if (itemId === "flint_and_steel") {
     pose = [0.84, -0.5, -1.14, 1, 0.04, 8, 180, -18, 8, 11];
   } else {
@@ -235,10 +254,10 @@ export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean
       special ? 0.82 : food ? 0.83 : 0.86, special ? -0.5 : -0.52, -1.15,
       food || special ? 0.92 : 0.9, 0.04,
       8, 180, -18,
-      itemId === "stick" ? 4 : 8, special || itemId === "stick" ? 13 : 12,
+      8, special ? 13 : 12,
     ];
   }
-  return spritePresentation(pose);
+  return spritePresentation(attachOpaqueGrip(itemId, pose));
 }
 
 export function isPickaxeItem(itemId: ItemId | null): boolean {
