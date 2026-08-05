@@ -11,8 +11,15 @@ import { BLOCK } from "../client/game/types.ts";
 import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
 import {
   FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
+  FIRST_PERSON_SKIN_SLEEVE_INFLATE,
   buildFirstPersonSkinArmGeometry,
+  writeResponsiveFirstPersonSkinMvp,
 } from "../client/game/firstPersonSkinRenderer.ts";
+import {
+  PLAYER_SKIN_BOX_FLOATS,
+  PLAYER_SKIN_VERTEX_STRIDE,
+  buildPlayerSkinPartGeometry,
+} from "../client/game/playerSkinGeometry.ts";
 
 class CapturingWebGl {
   readonly ARRAY_BUFFER = 0x8892;
@@ -86,6 +93,30 @@ function screenPercent(bounds: ReturnType<typeof ndcBounds>) {
   };
 }
 
+function screenPoint(data: Float32Array, offset: number, matrix: Float32Array): readonly [number, number] {
+  const x = data[offset]; const y = data[offset + 1]; const z = data[offset + 2];
+  const clipX = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+  const clipY = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+  const clipW = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+  return [(clipX / clipW + 1) * 50, (1 - clipY / clipW) * 50];
+}
+
+function jointCentroid(
+  transformed: Float32Array,
+  source: Float32Array,
+  matrix: Float32Array,
+  sourceY: number,
+): readonly [number, number] {
+  let x = 0; let y = 0; let count = 0;
+  for (let offset = 0; offset < PLAYER_SKIN_BOX_FLOATS; offset += PLAYER_SKIN_VERTEX_STRIDE) {
+    if (Math.abs(source[offset + 1] - sourceY) > 1e-7) continue;
+    const point = screenPoint(transformed, offset, matrix);
+    x += point[0]; y += point[1]; count += 1;
+  }
+  assert.ok(count > 0, `joint y=${sourceY} has representative vertices`);
+  return [x / count, y / count];
+}
+
 const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0]);
 assert.deepEqual(Object.keys(FIRST_PERSON_TUNING), ["rig", "arm", "tool", "bow", "otherItem", "block"],
   "every first-person pose class has one obvious tuning entry point");
@@ -117,31 +148,35 @@ assert.ok(capacity[2] + FIRST_PERSON_SKIN_ARM_BUFFER_BYTES < 120 * 1_024,
 const colorBuffer = renderer[0] as unknown as object;
 const texturedBuffer = renderer[1] as unknown as object;
 const skinArm = buildFirstPersonSkinArmGeometry("wide", FIRST_PERSON_TUNING.arm);
+const sourceSkinArm = buildPlayerSkinPartGeometry("rightArm", "wide", FIRST_PERSON_SKIN_SLEEVE_INFLATE);
 const mvp = new Float32Array(16);
+const skinMvp = new Float32Array(16);
 const viewportBounds: Array<{ viewport: string; width: number; height: number }> = [];
 for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const) {
   renderer[3](null, BLOCK.AIR);
   renderer[6](mvp, perspective(width / height), 0, false);
-  const emptyBounds = ndcBounds(skinArm, mvp);
+  writeResponsiveFirstPersonSkinMvp(skinMvp, mvp);
+  const emptyBounds = ndcBounds(skinArm, skinMvp);
+  const armScreen = screenPercent(emptyBounds);
   assert.ok(emptyBounds.minX > 0.25 && emptyBounds.maxY < -0.25,
     `${width}x${height} empty hand stays wholly below/right of the crosshair`);
-  assert.ok(emptyBounds.minY > -1.35,
-    `${width}x${height} empty hand exits cleanly through the bottom edge: ${JSON.stringify(emptyBounds)}`);
-  if (width === 1_920 && height === 1_080) {
-    const armScreen = screenPercent(emptyBounds);
-    assert.ok(armScreen.left >= 74.5 && armScreen.left <= 75.5,
-      `wide arm begins at the reviewed lower-right anchor: ${JSON.stringify(armScreen)}`);
-    assert.ok(armScreen.right >= 93.5 && armScreen.right <= 95,
-      `wide arm reaches the reviewed right edge: ${JSON.stringify(armScreen)}`);
-    assert.ok(armScreen.top >= 65.5 && armScreen.top <= 67,
-      `wide arm begins near two-thirds viewport height: ${JSON.stringify(armScreen)}`);
-    assert.ok(armScreen.bottom >= 99 && armScreen.bottom <= 101,
-      `wide arm exits through the bottom edge: ${JSON.stringify(armScreen)}`);
-  }
+  assert.ok(armScreen.left >= 74.5 && armScreen.left <= 75.75,
+    `${width}x${height} arm begins at the reviewed lower-right anchor: ${JSON.stringify(armScreen)}`);
+  assert.ok(armScreen.right >= 93.25 && armScreen.right <= 94.75,
+    `${width}x${height} arm remains visible inside the right edge: ${JSON.stringify(armScreen)}`);
+  assert.ok(armScreen.top >= 65.5 && armScreen.top <= 67,
+    `${width}x${height} shoulder begins near two-thirds viewport height: ${JSON.stringify(armScreen)}`);
+  assert.ok(armScreen.bottom >= 99 && armScreen.bottom <= 100.75,
+    `${width}x${height} hand exits cleanly through the bottom edge: ${JSON.stringify(armScreen)}`);
+  const shoulder = jointCentroid(skinArm, sourceSkinArm, skinMvp, 1.5);
+  const hand = jointCentroid(skinArm, sourceSkinArm, skinMvp, 0.75);
+  assert.ok(shoulder[0] + 5 < hand[0] && shoulder[1] + 15 < hand[1],
+    `${width}x${height} arm runs from an upper-left shoulder to a lower-right hand: ${JSON.stringify({ shoulder, hand })}`);
 
   renderer[3]("dirt", BLOCK.DIRT);
   renderer[6](mvp, perspective(width / height), 0, false);
-  const armBounds = ndcBounds(skinArm, mvp);
+  writeResponsiveFirstPersonSkinMvp(skinMvp, mvp);
+  const armBounds = ndcBounds(skinArm, skinMvp);
   const blockBounds = ndcBounds(gl.uploads.get(texturedBuffer)!, mvp);
   assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.06,
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);

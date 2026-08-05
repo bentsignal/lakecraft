@@ -1,4 +1,3 @@
-import { writeMatrixProduct } from "./matrixProduct.ts";
 import { createLakecraftDefaultSkinPixels, type PlayerSkinModel } from "./playerSkin.ts";
 import {
   buildPlayerSkinPartGeometry,
@@ -13,6 +12,7 @@ export const FIRST_PERSON_SKIN_SLEEVE_INFLATE = 0.25 / 16;
 export const FIRST_PERSON_SKIN_ARM_VERTICES = ARM_BOXES * 36;
 export const FIRST_PERSON_SKIN_ARM_BUFFER_BYTES = FIRST_PERSON_SKIN_ARM_VERTICES
   * PLAYER_SKIN_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
+export const FIRST_PERSON_SKIN_REFERENCE_ASPECT = 16 / 9;
 
 export type FirstPersonSkinRenderer = Readonly<{
   draw(mvp: Float32Array, light: readonly [number, number, number]): void;
@@ -50,17 +50,38 @@ export function buildFirstPersonSkinArmGeometry(
   const pivotY = model === "slim" ? 1.46875 : 1.5;
   // From the lower-right camera edge toward the center, matching the authored
   // shoulder-to-hand direction rather than mirroring the whole arm broadside.
-  const angle = 145 * Math.PI / 180;
+  const angle = 35 * Math.PI / 180;
   const cosine = Math.cos(angle); const sine = Math.sin(angle);
   for (let offset = 0; offset < output.length; offset += PLAYER_SKIN_VERTEX_STRIDE) {
-    const x = (output[offset] - pivotX) * 1.29;
-    const y = (output[offset + 1] - pivotY) * 1.29;
-    const z = output[offset + 2] * 1.29;
-    output[offset] = x * cosine - y * sine + 1.13;
-    output[offset + 1] = x * sine + y * cosine - 0.63;
+    const x = (output[offset] - pivotX) * 1.28;
+    const y = (output[offset + 1] - pivotY) * 1.28;
+    const z = output[offset + 2] * 1.28;
+    output[offset] = x * cosine - y * sine + 1.14;
+    output[offset + 1] = x * sine + y * cosine + 0.16;
     output[offset + 2] = z - 1.22;
   }
   applyTuning(output, tuning);
+  return output;
+}
+
+/**
+ * Keeps the camera arm at a stable screen-space width without changing the
+ * world/held-item projection. Perspective makes horizontal NDC scale inversely
+ * proportional to aspect ratio; row norms recover that ratio even while the
+ * shared wrist matrix is rotating during an action.
+ */
+export function writeResponsiveFirstPersonSkinMvp(
+  output: Float32Array,
+  input: Float32Array,
+): Float32Array {
+  output.set(input);
+  const horizontal = Math.hypot(input[0], input[4], input[8]);
+  const vertical = Math.hypot(input[1], input[5], input[9]);
+  if (horizontal > 0 && vertical > 0 && Number.isFinite(horizontal) && Number.isFinite(vertical)) {
+    const compensation = vertical / horizontal / FIRST_PERSON_SKIN_REFERENCE_ASPECT;
+    output[0] *= compensation; output[4] *= compensation;
+    output[8] *= compensation; output[12] *= compensation;
+  }
   return output;
 }
 
@@ -82,7 +103,6 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, createLakecraftDefaultSkinPixels());
-  const identity = new Float32Array(16); identity[0] = identity[5] = identity[10] = identity[15] = 1;
   const finalMvp = new Float32Array(16);
 
   return Object.freeze({
@@ -94,7 +114,7 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
         gl.bufferData(gl.ARRAY_BUFFER, buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm), gl.STATIC_DRAW);
       }
       // Keep a distinct retained matrix so caller-owned viewmodel state is never mutated.
-      writeMatrixProduct(finalMvp, mvp, identity);
+      writeResponsiveFirstPersonSkinMvp(finalMvp, mvp);
       gl.useProgram(program); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       const stride = PLAYER_SKIN_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
       gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position, 3, gl.FLOAT, false, stride, 0);
