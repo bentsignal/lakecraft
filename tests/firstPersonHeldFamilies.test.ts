@@ -47,6 +47,13 @@ function visibleFraction(bounds: Bounds): number {
   return visibleWidth * visibleHeight
     / ((bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY));
 }
+function projectedScreenPoint(point: readonly [number, number, number], mvp: Float32Array): readonly [number, number] {
+  const [x, y, z] = point;
+  const w = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
+  const screenX = (mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12]) / w;
+  const screenY = (mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13]) / w;
+  return [(screenX + 1) * 50, (1 - screenY) * 50];
+}
 function projectedBounds(
   data: Float32Array,
   vertexCount: number,
@@ -136,8 +143,13 @@ for (const [itemId, expectedFamily] of [
 ] as const) {
   const bounds = render(itemId);
   assert.equal(firstPersonSpriteFamily(itemId), expectedFamily);
-  assert.ok(bounds.minX > 0.45 && bounds.maxX > 0.95 && bounds.minY < -0.85 && bounds.maxY < -0.3,
-    `${itemId} stays compact at the lower-right hand instead of displaying broadside at center: ${JSON.stringify(bounds)}`);
+  if (ITEMS[itemId].category === "tool") {
+    assert.ok(bounds.minX > 0.45 && bounds.maxX > 0.95 && bounds.minY < -0.85 && bounds.maxY < -0.3,
+      `${itemId} stays compact at the lower-right tool socket: ${JSON.stringify(bounds)}`);
+  } else {
+    assert.ok(bounds.minX > 0.25 && bounds.maxX < 0.95 && bounds.minY < -0.45 && bounds.maxY < 0,
+      `${itemId} stays fully visible above-left of its lower-right hand contact: ${JSON.stringify(bounds)}`);
+  }
 }
 
 assert.equal(new Set(["shears", "flint_and_steel", "apple", "stick", "torch"]
@@ -161,6 +173,25 @@ for (const itemId of heldSpriteIds) {
 const shearsBounds = render("shears");
 assert.ok(shearsBounds.minX < 0.8 && shearsBounds.maxX <= 1.15 && visibleFraction(shearsBounds) > 0.72,
   `shears keep recognizable blades and both handles onscreen at the lower-right grip: ${JSON.stringify(shearsBounds)}`);
+const liveQaBounds: Partial<Record<ItemId, { bounds: Bounds; visibleFraction: number }>> = {};
+for (const itemId of heldSpriteIds.filter((id) => ITEMS[id].category !== "tool")) {
+  const bounds = render(itemId);
+  const presentation = firstPersonSpritePresentation(itemId);
+  const socket = projectedScreenPoint(
+    presentation.center,
+    renderer[6](new Float32Array(16), projection, 0, false),
+  );
+  assert.ok(socket[0] >= 79 && socket[0] <= 79.6 && socket[1] >= 70.3 && socket[1] <= 71,
+    `${itemId} opaque item socket meets the production hand cap: ${JSON.stringify(socket)}`);
+  assert.ok(visibleFraction(bounds) > 0.78 && bounds.minX < 0.8 && bounds.maxX < 1.05,
+    `${itemId} keeps a recognizable non-tool silhouette in frame: ${JSON.stringify({ bounds, visibleFraction: visibleFraction(bounds) })}`);
+}
+for (const itemId of ["bed", "string", "raw_chicken"] as const) {
+  const bounds = render(itemId);
+  liveQaBounds[itemId] = { bounds, visibleFraction: visibleFraction(bounds) };
+  assert.ok(visibleFraction(bounds) > 0.9 && bounds.minX < 0.55 && bounds.maxX < 0.95,
+    `${itemId} live-QA regression stays substantially visible at its hand contact: ${JSON.stringify({ bounds, visibleFraction: visibleFraction(bounds) })}`);
+}
 const bowGrip = firstPersonSpritePresentation("bow", true).pivotPixels;
 for (const stage of [1, 2, 3] as const) {
   assert.ok(getBowIconArt(stage).runs.some((run) => run.y === bowGrip[1]
@@ -179,5 +210,5 @@ assert.notDeepEqual(firstPersonSpritePresentation("iron_axe"), firstPersonSprite
 assert.notDeepEqual(firstPersonSpritePresentation("bow"), firstPersonSpritePresentation("bow", true),
   "idle and drawn bows expose distinct reference-driven presentations");
 
-console.log(JSON.stringify({ benchmark: "first-person held family NDC envelopes", pickaxe, axe, shovel, shovelHead, sword, bowIdle, bowDraw }));
+console.log(JSON.stringify({ benchmark: "first-person held family NDC envelopes", pickaxe, axe, shovel, shovelHead, sword, bowIdle, bowDraw, liveQaBounds }));
 renderer[7]();

@@ -251,7 +251,7 @@ export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean
     const food = category === "food";
     const special = category === "block";
     pose = [
-      special ? 0.82 : food ? 0.83 : 0.86, special ? -0.5 : -0.52, -1.15,
+      0.29, 0.18, -1.15,
       food || special ? 0.92 : 0.9, 0.04,
       8, 180, -18,
       8, special ? 13 : 12,
