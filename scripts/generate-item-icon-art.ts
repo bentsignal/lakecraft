@@ -86,6 +86,24 @@ function line(g: Grid, fromX: number, fromY: number, toX: number, toY: number, t
   }
 }
 
+/** Bresenham line with an orthogonal bridge at every diagonal step. */
+function connectedLine(g: Grid, fromX: number, fromY: number, toX: number, toY: number, tone: string): void {
+  let x = fromX; let y = fromY;
+  const dx = Math.abs(toX - fromX); const sx = fromX < toX ? 1 : -1;
+  const dy = -Math.abs(toY - fromY); const sy = fromY < toY ? 1 : -1;
+  let error = dx + dy;
+  while (true) {
+    px(g, x, y, tone);
+    if (x === toX && y === toY) return;
+    const doubled = error * 2;
+    let nextX = x; let nextY = y;
+    if (doubled >= dy) { error += dy; nextX += sx; }
+    if (doubled <= dx) { error += dx; nextY += sy; }
+    if (nextX !== x && nextY !== y) px(g, nextX, y, tone);
+    x = nextX; y = nextY;
+  }
+}
+
 /** Stamp a reviewed 16×16 pixel plan. Dots are transparent; letters are palette tones. */
 function stamp(g: Grid, rows: readonly string[]): void {
   for (let y = 0; y < Math.min(ITEM_ICON_SIZE, rows.length); y += 1) {
@@ -323,34 +341,28 @@ function stoneBrickSlab(g: Grid): Palette {
 function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"none">): Palette {
   const color = ({ wood:"#a86f38", gold:"#f2c93d", stone:"#858a83", iron:"#d1d6d2", diamond:"#35cfc6" } as const)[tier];
   const p = { o:"#29241e", w:"#7b4e28", h:"#ba8350", m:color, l:mix(color,"#ffffff",.38), d:mix(color,"#000000",.3) };
-  // A continuous, slim lower-left grip. The dark pixels sit on the two outer
-  // edges of the diagonal instead of wrapping every individual step, which
-  // keeps the handle readable as one shaft at native hotbar scale.
-  const shaft = (length: number): void => {
-    const core = Array.from({ length }, (_, index) => [2 + index, 14 - index] as const);
-    for (const [x, y] of core) dots(g, "o", [[x - 1, y], [x, y + 1], [x + 1, y + 1], [x + 2, y - 1]]);
-    for (const [x, y] of core) dots(g, "w", [[x, y], [x + 1, y]]);
-    for (let index = 1; index < core.length; index += 3) px(g, core[index][0] + 1, core[index][1], "h");
-  };
-
   if (kind === "sword") {
-    // The sword is its own construction rather than a tool head on the common
-    // shaft: long tapered blade, obvious perpendicular guard, leather grip,
-    // and a material pommel. Every feature survives at 16 logical pixels.
-    dots(g, "o", [
-      [13,1],[12,2],[13,2],[14,2],[11,3],[12,3],[13,3],
-      [10,4],[11,4],[12,4],[9,5],[10,5],[11,5],
-      [8,6],[9,6],[10,6],[7,7],[8,7],[9,7],
-      [6,8],[7,8],[8,8],[5,9],[6,9],[7,9],
-      [3,8],[4,8],[4,9],[5,10],[6,10],[7,10],[7,11],[8,11],[9,11],
-      [3,10],[4,10],[3,11],[4,11],[2,12],[3,12],[1,13],[2,13],[2,14],[3,14],
+    // One connected slash: tapered blade, attached crossguard, then a short
+    // leather grip and material pommel. The guard crosses the blade instead of
+    // reading as a second floating diagonal.
+    stamp(g, [
+      "................",
+      ".............o..",
+      "............olo.",
+      "...........olmo.",
+      "..........olmdo.",
+      ".........olmdo..",
+      "........olmdo...",
+      ".......olmdo....",
+      "...oo.olmdo.....",
+      "....oommmo......",
+      ".....owwooo.....",
+      "....owwo.oo.....",
+      "...owwo.........",
+      "..owwo..........",
+      ".ommo...........",
+      "................",
     ]);
-    dots(g, "m", [[13,2],[12,3],[11,4],[10,5],[9,6],[8,7],[7,8],[6,9]]);
-    dots(g, "l", [[13,1],[13,2],[12,3],[11,4],[10,5],[9,6]]);
-    dots(g, "d", [[12,4],[11,5],[10,6],[9,7],[8,8],[7,9]]);
-    dots(g, "m", [[4,8],[5,9],[6,10],[7,11],[2,14]]);
-    dots(g, "w", [[3,11],[2,12],[1,13]]);
-    dots(g, "h", [[3,10],[2,12]]);
     return p;
   }
 
@@ -379,61 +391,84 @@ function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"n
       "................",
     ]);
   } else if (kind === "axe") {
-    shaft(8);
-    // A haft-through-head construction with a straight cutting edge and a
-    // concave heel. The blade is deliberately asymmetric so it cannot be
-    // mistaken for the shovel's centered spade.
-    dots(g, "o", [
-      [12,1],[13,1],[14,1],[15,1],
-      [10,2],[11,2],[12,2],[13,2],[14,2],[15,2],
-      [9,3],[10,3],[11,3],[12,3],[13,3],[14,3],[15,3],
-      [10,4],[11,4],[12,4],[13,4],[14,4],[15,4],
-      [11,5],[12,5],[13,5],[14,5],[15,5],
-      [9,6],[10,6],[11,6],[12,6],[13,6],
-      [8,7],[9,7],[10,7],[11,7],
+    // Broad right blade, compact left poll, visible wooden eye, and a single
+    // lower-left-to-upper-right staircase haft. Every pixel is in one
+    // four-neighbor component.
+    stamp(g, [
+      "................",
+      ".........ooooo..",
+      ".......oowmmmmo.",
+      ".......owmlllmo.",
+      "........wmllldo.",
+      ".......owwmddo..",
+      "......owwwooo...",
+      "......owwo......",
+      ".....owwo.......",
+      "....owwo........",
+      "...owwo.........",
+      "..owwo..........",
+      ".owwo...........",
+      ".wwo............",
+      ".oo.............",
+      "................",
     ]);
-    dots(g, "m", [
-      [12,2],[13,2],[14,2],
-      [10,3],[11,3],[12,3],[13,3],[14,3],
-      [11,4],[12,4],[13,4],[14,4],
-      [12,5],[13,5],[14,5],[11,6],[12,6],
-    ]);
-    dots(g, "l", [[12,2],[13,2],[14,2],[10,3],[14,3],[14,4],[14,5]]);
-    dots(g, "d", [[10,3],[11,4],[12,5],[11,6],[12,6]]);
-    // Reassert the visible wooden eye through the metal head.
-    dots(g, "o", [[9,6],[10,5],[8,7],[11,7]]); dots(g, "w", [[10,6],[9,7],[10,7]]); px(g,10,6,"h");
   } else {
-    shaft(8);
-    // Centered faceted spade with a flat shoulder, bright ridge, tapered neck,
-    // and pointed heel. Its five-pixel face is visibly wider than the shaft.
-    dots(g, "o", [
-      [10,1],[11,1],[12,1],[13,1],
-      [9,2],[10,2],[11,2],[12,2],[13,2],[14,2],
-      [9,3],[10,3],[11,3],[12,3],[13,3],[14,3],
-      [9,4],[10,4],[11,4],[12,4],[13,4],[14,4],
-      [10,5],[11,5],[12,5],[13,5],
-      [11,6],[12,6],[11,7],
+    // A compact centered diamond spade, exactly twice the apparent shaft
+    // width, flows into the same connected staircase rhythm as the haft.
+    stamp(g, [
+      "................",
+      "..........oo....",
+      ".........ommmo..",
+      "........omllldo.",
+      ".........ommdo..",
+      "..........odo...",
+      ".........oww....",
+      "........oww.....",
+      ".......oww......",
+      "......oww.......",
+      ".....oww........",
+      "....oww.........",
+      "...oww..........",
+      "..oww...........",
+      ".oww............",
+      "................",
     ]);
-    dots(g, "m", [[10,2],[11,2],[12,2],[13,2],[10,3],[11,3],[12,3],[13,3],[10,4],[11,4],[12,4],[13,4],[11,5],[12,5],[11,6]]);
-    dots(g, "l", [[10,2],[11,2],[10,3],[11,3],[12,3]]);
-    dots(g, "d", [[13,3],[12,4],[13,4],[11,5],[12,5],[11,6]]);
   }
   return p;
 }
 
 function bow(g: Grid, drawStage = 0): Palette {
   const p = { o: "#322419", w: "#9b6837", h: "#d19a56", s: "#e8e3d7", a: "#8f7047", f: "#d7d2c4" };
-  dots(g, "o", [[5,1],[6,1],[4,2],[6,2],[3,3],[5,3],[3,4],[4,4],[2,5],[4,5],[2,6],[3,6],[2,7],[3,7],[2,8],[3,8],[2,9],[4,9],[2,10],[4,10],[3,11],[5,11],[3,12],[5,12],[4,13],[6,13],[5,14],[6,14]]);
-  dots(g, "w", [[5,2],[4,3],[3,5],[3,10],[4,12],[5,13]]);
-  dots(g, "h", [[5,1],[3,4],[2,8],[3,11],[5,14]]);
-  const nockX = 7 + Math.max(0, Math.min(3, drawStage)) * 2;
-  line(g, 6, 2, nockX, 8, "s");
-  line(g, nockX, 8, 6, 13, "s");
+  // The limb is a narrow, connected arc with transparent interior space. Draw
+  // stages keep that authored arc fixed while progressively pulling the nock;
+  // they are silhouette changes, never rigid rotations of the idle sprite.
+  stamp(g, [
+    "................",
+    "......o.........",
+    ".....ow.........",
+    "....ow..........",
+    "...oh...........",
+    "..ow............",
+    "..ow............",
+    ".ow.............",
+    ".oh.............",
+    ".ow.............",
+    "..ow............",
+    "...oh...........",
+    "....ow..........",
+    ".....ow.........",
+    "......o.........",
+    "................",
+  ]);
+  const stage = Math.max(0, Math.min(3, drawStage));
+  const nockX = [7, 8, 10, 12][stage];
   if (drawStage > 0) {
-    line(g, 6, 8, 14, 8, "a");
-    dots(g, "o", [[13,7],[14,7],[15,8],[14,9],[13,9]]);
-    dots(g, "f", [[13,8],[14,8]]);
+    line(g, 5, 8, 13, 8, "a");
+    dots(g, "o", [[12,7],[13,7],[14,8],[13,9],[12,9]]);
+    dots(g, "f", [[12,8],[13,8]]);
   }
+  connectedLine(g, 6, 1, nockX, 8, "s");
+  connectedLine(g, nockX, 8, 6, 14, "s");
   return p;
 }
 

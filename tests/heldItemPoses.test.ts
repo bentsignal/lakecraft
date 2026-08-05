@@ -124,7 +124,7 @@ renderer[3]("bow", BLOCK.AIR);
 renderer[4](true, 1);
 const bow = capture.uploads.get(1);
 if (!bow) throw new Error("bow upload missing");
-assert.equal(renderer[2][0], 1_212, "the full-draw bow is its canonical staged sprite without an unrelated arm");
+assert.equal(renderer[2][0], 1_116, "the full-draw bow is its canonical staged sprite without an unrelated arm");
 const bowSpatialBounds = spatialBounds(bow, renderer[2][0]);
 assert.ok(bowSpatialBounds[3] - bowSpatialBounds[2] > 0.95,
   "the full-draw bow retains its tall familiar silhouette");

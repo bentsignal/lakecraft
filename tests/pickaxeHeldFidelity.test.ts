@@ -117,18 +117,18 @@ assert.ok(colorAt("iron_pickaxe", 4, 2) === "#e2e6e3" || colorAt("iron_pickaxe",
 assert.ok(colorAt("iron_pickaxe", 9, 2) === "#929693" || colorAt("iron_pickaxe", 10, 4) === "#929693",
   "iron tips keep a shaded edge");
 
-// --- Non-pickaxe silhouettes preserved ---
+// --- Independently authored non-pickaxe silhouettes ---
 const axeCells = occupancy("iron_axe");
-for (const cell of ["15:2", "15:5", "8:7", "2:14"] as const) {
-  assert.ok(axeCells.has(cell), `axe landmark ${cell} unchanged`);
+for (const cell of ["7:2", "14:2", "8:5", "6:7", "1:14"] as const) {
+  assert.ok(axeCells.has(cell), `axe reference landmark ${cell} retained`);
 }
 const shovelCells = occupancy("iron_shovel");
-for (const cell of ["10:1", "14:2", "11:7", "2:14"] as const) {
-  assert.ok(shovelCells.has(cell), `shovel landmark ${cell} unchanged`);
+for (const cell of ["10:1", "14:3", "10:5", "9:6", "1:14"] as const) {
+  assert.ok(shovelCells.has(cell), `shovel reference landmark ${cell} retained`);
 }
 const swordCells = occupancy("iron_sword");
-for (const cell of ["13:1", "14:2", "3:8", "1:13"] as const) {
-  assert.ok(swordCells.has(cell), `sword landmark ${cell} unchanged`);
+for (const cell of ["13:1", "12:2", "3:8", "10:10", "1:14"] as const) {
+  assert.ok(swordCells.has(cell), `sword reference landmark ${cell} retained`);
 }
 assert.notDeepEqual([...ironMask].sort(), [...axeCells].sort(), "pickaxe ≠ axe");
 assert.notDeepEqual([...ironMask].sort(), [...shovelCells].sort(), "pickaxe ≠ shovel");
