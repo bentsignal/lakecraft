@@ -1,10 +1,15 @@
 import { writeMatrixProduct } from "./matrixProduct.ts";
 import { createLakecraftDefaultSkinPixels, type PlayerSkinModel } from "./playerSkin.ts";
-import { buildPlayerSkinPartGeometry, PLAYER_SKIN_VERTEX_STRIDE } from "./playerSkinGeometry.ts";
+import {
+  buildPlayerSkinPartGeometry,
+  PLAYER_SKIN_VERTEX_STRIDE,
+} from "./playerSkinGeometry.ts";
 import { currentFirstPersonTuning, type FirstPersonGroupTuning } from "./firstPersonTuning.ts";
 import { createVisualProgram, SKIN_FRAGMENT_SHADER, SKIN_VERTEX_SHADER } from "./visualShaders.ts";
 
 const ARM_BOXES = 2;
+/** Vanilla-style quarter-pixel sleeve shell: concentric, never a separate fist. */
+export const FIRST_PERSON_SKIN_SLEEVE_INFLATE = 0.25 / 16;
 export const FIRST_PERSON_SKIN_ARM_VERTICES = ARM_BOXES * 36;
 export const FIRST_PERSON_SKIN_ARM_BUFFER_BYTES = FIRST_PERSON_SKIN_ARM_VERTICES
   * PLAYER_SKIN_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
@@ -40,16 +45,18 @@ export function buildFirstPersonSkinArmGeometry(
   model: PlayerSkinModel,
   tuning: FirstPersonGroupTuning = currentFirstPersonTuning().tuning.arm,
 ): Float32Array {
-  const output = buildPlayerSkinPartGeometry("rightArm", model);
+  const output = buildPlayerSkinPartGeometry("rightArm", model, FIRST_PERSON_SKIN_SLEEVE_INFLATE);
   const pivotX = model === "slim" ? 0.34375 : 0.375;
-  const angle = -150 * Math.PI / 180;
+  // From the lower-right camera edge toward the center, matching the authored
+  // shoulder-to-hand direction rather than mirroring the whole arm broadside.
+  const angle = 145 * Math.PI / 180;
   const cosine = Math.cos(angle); const sine = Math.sin(angle);
   for (let offset = 0; offset < output.length; offset += PLAYER_SKIN_VERTEX_STRIDE) {
-    const x = (output[offset] - pivotX) * 0.92;
-    const y = (output[offset + 1] - 1.5) * 0.92;
-    const z = output[offset + 2] * 0.92;
-    output[offset] = x * cosine - y * sine + 0.82;
-    output[offset + 1] = x * sine + y * cosine - 0.82;
+    const x = (output[offset] - pivotX) * 1.29;
+    const y = (output[offset + 1] - 1.5) * 1.29;
+    const z = output[offset + 2] * 1.29;
+    output[offset] = x * cosine - y * sine + 1.13;
+    output[offset + 1] = x * sine + y * cosine - 0.63;
     output[offset + 2] = z - 1.22;
   }
   applyTuning(output, tuning);

@@ -77,6 +77,15 @@ function ndcBounds(data: Float32Array, matrix: Float32Array) {
   return bounds;
 }
 
+function screenPercent(bounds: ReturnType<typeof ndcBounds>) {
+  return {
+    left: (bounds.minX + 1) * 50,
+    right: (bounds.maxX + 1) * 50,
+    top: (1 - bounds.maxY) * 50,
+    bottom: (1 - bounds.minY) * 50,
+  };
+}
+
 const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0]);
 assert.deepEqual(Object.keys(FIRST_PERSON_TUNING), ["rig", "arm", "tool", "bow", "otherItem", "block"],
   "every first-person pose class has one obvious tuning entry point");
@@ -116,8 +125,19 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   const emptyBounds = ndcBounds(skinArm, mvp);
   assert.ok(emptyBounds.minX > 0.25 && emptyBounds.maxY < -0.25,
     `${width}x${height} empty hand stays wholly below/right of the crosshair`);
-  assert.ok(emptyBounds.maxX < 1.05 && emptyBounds.minY > -1.35,
-    `${width}x${height} empty hand remains mostly inside the viewport: ${JSON.stringify(emptyBounds)}`);
+  assert.ok(emptyBounds.minY > -1.35,
+    `${width}x${height} empty hand exits cleanly through the bottom edge: ${JSON.stringify(emptyBounds)}`);
+  if (width === 1_920 && height === 1_080) {
+    const armScreen = screenPercent(emptyBounds);
+    assert.ok(armScreen.left >= 74.5 && armScreen.left <= 75.5,
+      `wide arm begins at the reviewed lower-right anchor: ${JSON.stringify(armScreen)}`);
+    assert.ok(armScreen.right >= 93.5 && armScreen.right <= 95,
+      `wide arm reaches the reviewed right edge: ${JSON.stringify(armScreen)}`);
+    assert.ok(armScreen.top >= 65.5 && armScreen.top <= 67,
+      `wide arm begins near two-thirds viewport height: ${JSON.stringify(armScreen)}`);
+    assert.ok(armScreen.bottom >= 99 && armScreen.bottom <= 101,
+      `wide arm exits through the bottom edge: ${JSON.stringify(armScreen)}`);
+  }
 
   renderer[3]("dirt", BLOCK.DIRT);
   renderer[6](mvp, perspective(width / height), 0, false);

@@ -9,6 +9,7 @@ import {
 } from "../client/game/playerSkin.ts";
 import {
   PLAYER_SKIN_BOX_COUNT,
+  PLAYER_SKIN_BOX_FLOATS,
   PLAYER_SKIN_VERTEX_COUNT,
   PLAYER_SKIN_VERTEX_STRIDE,
   buildPlayerSkinGeometry,
@@ -103,6 +104,24 @@ for (const model of ["wide", "slim"] as const) {
   assert.ok(Math.max(...xs) > 0.43 && Math.min(...xs) < -0.43, "both arms extend from the torso");
 }
 assert.notDeepEqual(buildPlayerSkinGeometry("wide"), buildPlayerSkinGeometry("slim"));
+const wideArm = buildPlayerSkinPartGeometry("rightArm", "wide");
+const boxBounds = (data: Float32Array, box: 0 | 1) => {
+  const start = box * PLAYER_SKIN_BOX_FLOATS;
+  const end = start + PLAYER_SKIN_BOX_FLOATS;
+  const min = [Infinity, Infinity, Infinity]; const max = [-Infinity, -Infinity, -Infinity];
+  for (let offset = start; offset < end; offset += PLAYER_SKIN_VERTEX_STRIDE) for (let axis = 0; axis < 3; axis += 1) {
+    min[axis] = Math.min(min[axis], data[offset + axis]);
+    max[axis] = Math.max(max[axis], data[offset + axis]);
+  }
+  return { min, max };
+};
+const baseArmBounds = boxBounds(wideArm, 0); const sleeveBounds = boxBounds(wideArm, 1);
+for (let axis = 0; axis < 3; axis += 1) {
+  assert.ok(Math.abs(baseArmBounds.min[axis] - sleeveBounds.min[axis] - 0.015625) < 1e-7,
+    `sleeve axis ${axis} starts exactly one quarter-pixel outside the arm`);
+  assert.ok(Math.abs(sleeveBounds.max[axis] - baseArmBounds.max[axis] - 0.015625) < 1e-7,
+    `sleeve axis ${axis} ends exactly one quarter-pixel outside the arm`);
+}
 assert.deepEqual(Object.keys(PLAYER_SKIN_PART_BOX_RANGES), ["head", "body", "rightArm", "leftArm", "rightLeg", "leftLeg"]);
 for (const part of Object.keys(PLAYER_SKIN_PART_BOX_RANGES) as Array<keyof typeof PLAYER_SKIN_PART_BOX_RANGES>) {
   assert.equal(buildPlayerSkinPartGeometry(part, "wide").length, 72 * PLAYER_SKIN_VERTEX_STRIDE,

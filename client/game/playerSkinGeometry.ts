@@ -30,6 +30,8 @@ type SkinBoxPair = readonly [
 ];
 
 const PIXEL = 1 / 16;
+const STANDARD_HEAD_OUTER_LAYER_INFLATE = 0.5 * PIXEL;
+const STANDARD_CLOTHING_OUTER_LAYER_INFLATE = 0.25 * PIXEL;
 
 function appendQuad(output: number[], points: readonly [Point, Point, Point, Point], uv: Rect, shade: number): void {
   const [u0, v0, u1, v1] = uv.map((value) => value / 64) as [number, number, number, number];
@@ -71,12 +73,14 @@ function appendBoxPair(output: number[], pair: SkinBoxPair, inflate: number): vo
 }
 
 /** Standard 64×64 skin UVs; 128×128 skins work because their coordinates normalize identically. */
-export function buildPlayerSkinGeometry(model: PlayerSkinModel = "wide"): Float32Array {
+export function buildPlayerSkinGeometry(
+  model: PlayerSkinModel = "wide",
+  clothingOuterLayerInflate = STANDARD_CLOTHING_OUTER_LAYER_INFLATE,
+): Float32Array {
   const armWidth = model === "slim" ? 3 : 4;
   const halfArm = armWidth * PIXEL / 2;
   const torsoHalf = 4 * PIXEL;
   const armCenter = torsoHalf + halfArm;
-  const outer = 0.5 * PIXEL;
   const pairs: SkinBoxPair[] = [
     [0, 0, 32, 0, 8, 8, 8, [-4 * PIXEL, 24 * PIXEL, -4 * PIXEL], [4 * PIXEL, 32 * PIXEL, 4 * PIXEL]],
     [16, 16, 16, 32, 8, 12, 4, [-torsoHalf, 12 * PIXEL, -2 * PIXEL], [torsoHalf, 24 * PIXEL, 2 * PIXEL]],
@@ -86,7 +90,11 @@ export function buildPlayerSkinGeometry(model: PlayerSkinModel = "wide"): Float3
     [16, 48, 0, 48, 4, 12, 4, [-4 * PIXEL, 0, -2 * PIXEL], [0, 12 * PIXEL, 2 * PIXEL]],
   ];
   const output: number[] = [];
-  pairs.forEach((pair) => appendBoxPair(output, pair, outer));
+  pairs.forEach((pair, index) => appendBoxPair(
+    output,
+    pair,
+    index === 0 ? STANDARD_HEAD_OUTER_LAYER_INFLATE : clothingOuterLayerInflate,
+  ));
   return new Float32Array(output);
 }
 
@@ -94,7 +102,9 @@ export function buildPlayerSkinGeometry(model: PlayerSkinModel = "wide"): Float3
 export function buildPlayerSkinPartGeometry(
   part: PlayerSkinPart,
   model: PlayerSkinModel = "wide",
+  clothingOuterLayerInflate = STANDARD_CLOTHING_OUTER_LAYER_INFLATE,
 ): Float32Array {
   const [startBox, endBox] = PLAYER_SKIN_PART_BOX_RANGES[part];
-  return buildPlayerSkinGeometry(model).slice(startBox * PLAYER_SKIN_BOX_FLOATS, endBox * PLAYER_SKIN_BOX_FLOATS);
+  return buildPlayerSkinGeometry(model, clothingOuterLayerInflate)
+    .slice(startBox * PLAYER_SKIN_BOX_FLOATS, endBox * PLAYER_SKIN_BOX_FLOATS);
 }
