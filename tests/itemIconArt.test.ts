@@ -100,6 +100,37 @@ const bowDrawDepths = bowStages.map((art) => Math.max(...art.runs
 assert.deepEqual(bowDrawDepths, [7, 8, 10, 12],
   "idle through full draw monotonically pull the string nock deeper without rotating the bow");
 
+const planeCatalogIds = itemIds.filter((itemId) => ITEMS[itemId].category === "material" || ITEMS[itemId].category === "food");
+assert.equal(new Set(planeCatalogIds.map(occupancyMask)).size, planeCatalogIds.length,
+  "every food and material owns an item-specific silhouette instead of a palette-swapped blob");
+const intentionallyLooseParticles = new Set<ItemId>(["bone_meal", "gunpowder"]);
+for (const itemId of planeCatalogIds) {
+  if (intentionallyLooseParticles.has(itemId)) continue;
+  const cells = occupiedCells(itemId);
+  assert.equal(componentSize(cells), cells.size, `${itemId} is one four-neighbor-connected solid or thread silhouette`);
+}
+for (const [itemId, landmarks] of Object.entries({
+  stick: ["3:13", "12:4"], string: ["3:3", "7:7", "11:3", "7:14"],
+  bone: ["11:1", "2:10", "4:13"], arrow: ["12:1", "2:13"], leather: ["5:2", "1:5", "12:13"],
+  coal: ["6:2", "1:7", "5:12"], charcoal: ["5:2", "3:7", "10:12"],
+  raw_iron: ["7:2", "2:7", "5:12"], iron_ingot: ["5:3", "3:6", "10:10"],
+  raw_gold: ["8:2", "4:3", "1:7"], gold_ingot: ["4:4", "2:6", "8:10"],
+  diamond: ["5:2", "3:4", "7:13"], flint: ["7:1", "2:6", "6:13"],
+  clay_ball: ["6:2", "2:6", "8:14"], brick: ["5:2", "2:6", "10:12"],
+  apple: ["7:1", "9:1", "3:6", "8:12"], mutton: ["7:2", "3:5", "2:14"],
+  raw_chicken: ["4:2", "2:5", "13:11"], cooked_chicken: ["10:3", "2:5", "13:11"],
+} as const) as [ItemId, readonly string[]][]) {
+  const cells = occupiedCells(itemId);
+  for (const cell of landmarks) assert.ok(cells.has(cell), `${itemId} retains recognizable landmark ${cell}`);
+}
+for (const [itemId, openCells] of Object.entries({
+  string: ["7:4", "7:11"], leather: ["6:12", "8:13"], iron_ingot: ["2:6", "13:6"],
+  gold_ingot: ["2:5", "14:7"], flint: ["2:5", "9:7"], brick: ["2:4", "14:6"],
+} as const) as [ItemId, readonly string[]][]) {
+  const cells = occupiedCells(itemId);
+  for (const cell of openCells) assert.equal(cells.has(cell), false, `${itemId} preserves negative space at ${cell}`);
+}
+
 const pickaxeCells = occupiedCells("iron_pickaxe");
 for (const cell of ["4:1", "10:1", "3:2", "8:3", "8:4", "7:5", "6:6", "14:5", "13:7", "1:14"] as const) {
   assert.ok(pickaxeCells.has(cell), `pickaxe retains crown, socket, right tine, and long grip at ${cell}`);
@@ -153,11 +184,11 @@ const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.
 for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
   assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
 }
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10176, 6627, true\)/)?.[1];
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10330, 6698, true\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(packedPayload.length, 8_285,
+assert.equal(packedPayload.length, 8_375,
   "item icons and drawn bow states retain the reviewed geometry-deduplicated extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 10_176, 6_627, true);
+const compactArt = decodeStaticBytes(packedPayload, 10_330, 6_698, true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
@@ -165,7 +196,7 @@ for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1)
   shapeRuns.push(runCount);
   compactCursor += 1 + runCount + Math.ceil(runCount / 2);
 }
-assert.equal(shapeRuns.length, 68, "shared item and bow geometry table remains bounded well below its one-byte limit");
+assert.equal(shapeRuns.length, 71, "shared item and bow geometry table remains bounded well below its one-byte limit");
 let decodedRunCount = 0;
 const readCompactRecord = (label: string): void => {
   const shapeIndex = compactArt[compactCursor++];
@@ -176,9 +207,9 @@ const readCompactRecord = (label: string): void => {
   compactCursor += colorCount * 3 + Math.ceil(shapeRuns[shapeIndex] / 2);
 };
 for (const itemId of itemIds) readCompactRecord(itemId);
-assert.equal(decodedRunCount, 5_179, "geometry sharing preserves every reviewed icon run");
+assert.equal(decodedRunCount, 5_196, "geometry sharing preserves every reviewed icon run");
 for (let stage = 0; stage < 3; stage += 1) readCompactRecord(`bow draw stage ${stage}`);
-assert.equal(decodedRunCount, 5_306, "the shared stream preserves every reviewed item and bow-state run");
+assert.equal(decodedRunCount, 5_323, "the shared stream preserves every reviewed item and bow-state run");
 assert.equal(compactCursor, compactArt.length, "item and bow decoder consumes the compact stream exactly once");
 const itemFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-item-icons-"));
 let invalidItemFixture = 0;
@@ -187,7 +218,7 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 10176, 6627, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 10330, 6698, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
@@ -220,9 +251,9 @@ try {
   await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
     "a truncated item payload fails closed");
-  const noncanonicalItemPayload = new Uint8Array(6_628);
-  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_627));
-  noncanonicalItemPayload[6_627] = 1;
+  const noncanonicalItemPayload = new Uint8Array(6_699);
+  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_698));
+  noncanonicalItemPayload[6_698] = 1;
   await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
     "the real item module rejects nonzero bytes after its declared packed payload");
 } finally {

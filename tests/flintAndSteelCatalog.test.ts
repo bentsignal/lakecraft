@@ -93,11 +93,28 @@ assert.equal(applyConfirmedDurableItemUse(inventory, 2, "bow").used, false, "aut
 
 const flintArt = getItemIconArt("flint");
 const strikerArt = getItemIconArt("flint_and_steel");
+const strikerCells = new Set<string>();
+for (const run of strikerArt.runs) for (let x = run.x; x < run.x + run.width; x += 1) strikerCells.add(`${x}:${run.y}`);
+const pending = [strikerCells.values().next().value!];
+const connected = new Set(pending);
+while (pending.length > 0) {
+  const [x, y] = pending.pop()!.split(":").map(Number);
+  for (const next of [`${x - 1}:${y}`, `${x + 1}:${y}`, `${x}:${y - 1}`, `${x}:${y + 1}`]) {
+    if (strikerCells.has(next) && !connected.has(next)) { connected.add(next); pending.push(next); }
+  }
+}
 assert.ok(flintArt.runs.length >= 8);
 assert.ok(strikerArt.runs.length >= 8);
 assert.notDeepEqual(flintArt.runs, getItemIconArt("coal").runs);
 assert.notDeepEqual(strikerArt.runs, getItemIconArt("iron_ingot").runs);
 assert.equal(strikerArt.family, "tool", "held first-person presentation uses the tool-sized sprite rig");
+assert.equal(connected.size, strikerCells.size, "the steel hook touches one contiguous flint mass");
+for (const cell of ["5:2", "10:2", "3:5", "4:11", "8:6", "11:8"]) {
+  assert.ok(strikerCells.has(cell), `flint-and-steel retains hook or flint landmark ${cell}`);
+}
+for (const cell of ["6:5", "5:9", "2:7", "12:7", "15:15"]) {
+  assert.equal(strikerCells.has(cell), false, `flint-and-steel preserves compact C-notch negative space at ${cell}`);
+}
 
 const remoteStriker = remoteHeldItemRects("flint_and_steel");
 assert.equal(remoteHeldItemVertexCount("flint_and_steel"), remoteStriker.length * 6);

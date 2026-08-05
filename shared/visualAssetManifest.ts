@@ -7,7 +7,7 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     generator: "scripts/generate-item-icon-art.ts",
     output: "client/components/itemIconArt.ts",
     logicalResolution: 16,
-    fingerprint: "647eb293",
+    fingerprint: "9f6fc912",
   }),
   blockAtlas: Object.freeze({
     sourceKind: "original-concept-and-procedural" as const,

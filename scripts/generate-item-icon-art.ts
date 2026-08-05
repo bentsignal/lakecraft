@@ -474,25 +474,51 @@ function bow(g: Grid, drawStage = 0): Palette {
 
 function flintAndSteel(g: Grid): Palette {
   const p = { o: "#252927", s: "#9fa8a4", l: "#e0e4df", d: "#5f6965", f: "#343a38", h: "#717b77" };
-  // Open C-shaped steel striker crossing a jagged dark flint shard.
-  box(g, 7, 1, 7, 2, "o"); box(g, 6, 2, 3, 8, "o"); box(g, 7, 2, 5, 2, "s");
-  box(g, 7, 4, 2, 5, "s"); box(g, 8, 8, 5, 3, "o"); box(g, 8, 8, 4, 1, "l");
-  dots(g, "d", [[8,3],[7,7],[9,10],[10,10]]);
-  dots(g, "o", [[3,7],[4,6],[5,7],[2,9],[3,8],[4,9],[5,10],[4,11],[5,12],[6,11],[6,13],[7,12]]);
-  dots(g, "f", [[4,7],[3,9],[4,9],[5,10],[5,11],[6,12]]);
-  dots(g, "h", [[4,8],[5,9]]);
+  // A compact asymmetric steel C curls around and touches one angular flint
+  // mass. The inner notch stays transparent, avoiding a lighter or shaft read.
+  stamp(g, [
+    "................",
+    "................",
+    ".....oooooo.....",
+    "....olllllo.....",
+    "...olsso........",
+    "...ols.oooo.....",
+    "...olsomfffo....",
+    "...olofffffo....",
+    "...olofffdfo....",
+    "...ol.ffffo.....",
+    "...olooooo......",
+    "....olllo.......",
+    ".....ooo........",
+    "................",
+    "................",
+    "................",
+  ]);
   return p;
 }
 
 function shears(g: Grid): Palette {
   const p = { o: "#272b2a", s: "#aeb8b5", l: "#edf1ee", d: "#68716e", h: "#77513a", r: "#bd7652" };
-  // Crossed iron blades meeting at a warm pivot, with two open finger loops.
-  diagonal(g, 4, 3, 1, 1, 8, "o", 2); diagonal(g, 5, 3, 1, 1, 7, "s");
-  diagonal(g, 11, 2, -1, 1, 8, "o", 2); diagonal(g, 11, 3, -1, 1, 7, "s");
-  dots(g, "l", [[5,3],[6,4],[10,3],[9,4],[8,6]]); dots(g, "d", [[7,7],[9,7],[10,9]]);
-  box(g, 6, 8, 4, 4, "o"); box(g, 7, 9, 2, 2, "r");
-  dots(g, "o", [[3,10],[2,11],[2,12],[3,13],[4,13],[5,12],[5,11], [11,10],[10,11],[10,12],[11,13],[12,13],[13,12],[13,11]]);
-  dots(g, "h", [[3,11],[3,12],[4,12], [11,11],[11,12],[12,12]]);
+  // Two narrow gray blades converge at a warm pivot, then split into reddish
+  // finger rings. The two clear loop interiors prevent a solid V/pliers read.
+  stamp(g, [
+    "................",
+    "....o......o....",
+    "....ol....lo....",
+    ".....ol..lo.....",
+    "......ol.lo.....",
+    ".......ollo.....",
+    ".......oso......",
+    "......orro......",
+    ".....oh..ho.....",
+    "....oh....ho....",
+    "..oroo....ooro..",
+    ".or..o....o..ro.",
+    ".or..o....o..ro.",
+    "..oooo....oooo..",
+    "...oo......oo...",
+    "................",
+  ]);
   return p;
 }
 
@@ -519,12 +545,25 @@ function material(g: Grid, id: ItemId): Palette {
     dots(g,"d",[[11,5],[12,7],[10,9],[11,10],[8,12],[9,13],[5,11]]);
   }
   else if (id === "brick") {
-    // Single fired brick item, drawn as a chunky angled rectangular prism.
-    dots(g,"o",[[4,3],[5,2],[11,2],[12,3],[3,4],[13,4],[2,7],[13,7],[2,10],[11,12],
-      [3,11],[4,12],[10,13],[5,13],[6,14],[9,14]]);
-    box(g,4,4,9,7,"m"); box(g,3,6,9,5,"m");
-    box(g,5,3,7,2,"l"); dots(g,"l",[[4,5],[5,5],[6,5]]);
-    box(g,4,10,8,2,"d"); dots(g,"d",[[12,5],[12,6],[11,8],[10,11],[9,12]]);
+    // One skewed fired brick prism with no isolated corner pixels.
+    stamp(g, [
+      "................",
+      "................",
+      ".....ooooooo....",
+      "....ollllllmo...",
+      "...oommmmmmmmo..",
+      "..oommmmmmmmmo..",
+      "..ommmmmmmmmmo..",
+      "..ommmmmmmmmmo..",
+      "..ommmmmmmmmmo..",
+      "...ommmmmmmmo...",
+      "...odddddddo....",
+      "....odddddo.....",
+      ".....oooooo.....",
+      "................",
+      "................",
+      "................",
+    ]);
   }
   else if (id === "stick") { diagonal(g,3,13,1,-1,10,"o",2); diagonal(g,4,13,1,-1,9,"m"); dots(g,"l",[[5,11],[8,8],[11,5]]); }
   else if (id === "bone_meal") {
@@ -533,7 +572,14 @@ function material(g: Grid, id: ItemId): Palette {
     dots(g,"l",[[6,5],[8,5],[5,7],[7,7],[9,8],[6,9],[8,10],[5,11]]);
     dots(g,"d",[[9,6],[10,8],[7,11],[9,12],[4,9]]);
   }
-  else if (id === "string") { diagonal(g,3,3,1,1,5,"o"); diagonal(g,7,7,1,-1,5,"o"); diagonal(g,7,7,1,1,5,"o"); diagonal(g,11,11,-1,1,5,"o"); diagonal(g,3,3,1,1,5,"m"); diagonal(g,7,7,1,-1,5,"m"); diagonal(g,7,7,1,1,5,"m"); diagonal(g,11,11,-1,1,5,"m"); dots(g,"l",[[3,3],[7,7],[11,3],[11,11],[7,15]]); }
+  else if (id === "string") {
+    // One continuous loose coil. Orthogonal bridges keep the fine thread
+    // connected without filling the diamond-shaped openings.
+    for (const [fromX, fromY, toX, toY] of [
+      [3,3,7,7],[7,7,11,3],[7,7,11,11],[11,11,7,14],[7,14,3,11],[3,11,7,7],
+    ] as const) connectedLine(g, fromX, fromY, toX, toY, "m");
+    dots(g,"l",[[3,3],[7,7],[11,3],[11,11],[7,14]]);
+  }
   else if (id === "bone") {
     // Chunky diagonal shaft with the characteristic forked knuckles at both ends.
     diagonal(g,4,11,1,-1,8,"o",3); diagonal(g,5,11,1,-1,7,"m",2);
@@ -556,7 +602,28 @@ function material(g: Grid, id: ItemId): Palette {
     dots(g,"q",[[5,11],[6,12],[7,13],[7,14]]);
   }
   else if (id === "arrow") { diagonal(g,2,13,1,-1,11,"o",2); diagonal(g,3,13,1,-1,10,"m"); box(g,11,1,3,3,"o"); dots(g,"d",[[12,1],[13,1],[13,2]]); dots(g,"l",[[5,11],[8,8],[11,5]]); box(g,1,11,3,4,"o"); dots(g,"l",[[1,12],[2,13],[3,14]]); }
-  else if (id === "leather") { box(g,4,2,8,12,"o"); box(g,2,5,12,6,"o"); box(g,4,3,7,10,"m"); box(g,3,6,10,4,"m"); dots(g,"l",[[5,4],[6,4],[4,7],[9,5]]); dots(g,"d",[[10,10],[11,8],[6,12]]); }
+  else if (id === "leather") {
+    // Irregular stretched hide with clipped shoulders and two separated lower
+    // tabs; the deep center notch supplies the characteristic negative space.
+    stamp(g, [
+      "................",
+      "................",
+      ".....oooooo.....",
+      "...oommmmmoo....",
+      "..omllllmmmmo...",
+      ".ommmmmmmmmmo...",
+      ".ommmmmmmmmmo...",
+      "..ommmmmmmmo....",
+      ".ommmmmmmmmmo...",
+      ".ommmmmmmmmmo...",
+      "..ommmmmmmmo....",
+      "...ommdmmmo.....",
+      "..oo......oo....",
+      ".oo........oo...",
+      "................",
+      "................",
+    ]);
+  }
   else if (id === "wool") { for (const [x,y] of [[3,5],[6,3],[9,3],[11,6],[8,8],[4,9]] as const) box(g,x,y,4,4,"o"); for (const [x,y] of [[4,5],[7,4],[10,6],[7,8],[4,9]] as const) box(g,x,y,3,3,"m"); dots(g,"l",[[5,5],[8,4],[11,6],[5,9]]); }
   else if (id === "charcoal") {
     // A compact charred-log shard with a squared silhouette and pale ash cracks,
@@ -568,10 +635,55 @@ function material(g: Grid, id: ItemId): Palette {
     dots(g,"l",[[5,4],[6,4],[9,4],[10,4],[5,5],[8,6],[9,6],[7,7],[8,7],[6,8],[7,8],[6,9]]);
     dots(g,"d",[[10,5],[11,6],[10,8],[9,9],[10,10],[5,10]]);
   }
-  else if (["coal","raw_iron","raw_gold"].includes(id)) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[2,7],[13,7],[4,12],[11,12],[7,14],[9,14]]); box(g,4,4,8,9,"m"); box(g,3,6,10,5,"m"); dots(g,"l",[[5,5],[6,4],[10,6],[4,8]]); dots(g,"d",[[9,11],[11,9],[7,12]]); }
-  else if (id === "flint") { dots(g,"o",[[7,1],[8,1],[6,2],[9,2],[5,3],[10,3],[4,4],[11,4],[3,6],[10,6],[2,8],[9,8],[3,10],[8,10],[4,12],[7,12],[5,14],[6,14]]); box(g,4,4,6,7,"m"); box(g,3,6,5,4,"m"); dots(g,"l",[[6,3],[5,5],[4,7],[6,6]]); dots(g,"d",[[9,4],[8,7],[7,10],[6,12]]); }
+  else if (id === "coal") {
+    stamp(g, [
+      "................","................","......ooo.......","....oommmoo.....",
+      "...omllllmmo....","..ommmmmmmmo....","..ommmmmmmmmo...",".ommmmmmmmmmo...",
+      ".ommmmmmmmdo....","..ommmmmddo.....","...ommmmdo......","....omddo.......",
+      ".....oooo.......","................","................","................",
+    ]);
+  }
+  else if (id === "raw_iron") {
+    stamp(g, [
+      "................","................",".......oo.......",".....oommo......",
+      "....oomllmo.....","...omllllmmo....","...ommmmmmmo....","..ommmmmmmmmo...",
+      "...ommmmmmdo....","...ommmmmdo.....","....ommmdo......",".....omdo.......",
+      ".....ooo........","................","................","................",
+    ]);
+  }
+  else if (id === "raw_gold") {
+    stamp(g, [
+      "................","................","........oo......","....oo..ommo....",
+      "...ommoomllmo...","..ommmmmmmmmo...","..omllllmmmmo...",".ommmmmmmmmmo...",
+      "..ommmmmmmmdo...","...ommmmmddo....","....ommmmdo.....",".....omddo......",
+      "......ooo.......","................","................","................",
+    ]);
+  }
+  else if (id === "flint") {
+    stamp(g, [
+      "................",".......oo.......","......ommo......",".....omllmo.....",
+      "....ommmmmo.....","...ommmmmo......","..ommmmmo.......","...ommmmo.......",
+      "....ommmo.......","...ommmo........","....ommo........",".....omo........",
+      ".....oo.........","......o.........","................","................",
+    ]);
+  }
   else if (id === BS.gunpowder) { dots(g,"o",[[6,2],[9,2],[4,4],[11,4],[3,7],[13,7],[4,11],[11,12],[7,14],[9,14]]); box(g,5,4,6,9,"m"); box(g,3,7,10,4,"m"); dots(g,"l",[[6,4],[9,5],[4,7],[7,9],[11,8],[6,12]]); dots(g,"d",[[8,3],[5,6],[10,10],[8,13],[12,7]]); }
-  else if (id === BS.ironIngot || id === BS.goldIngot) { box(g,3,5,10,7,"o"); box(g,5,3,6,2,"o"); box(g,4,5,8,5,"m"); box(g,5,4,6,2,"l"); box(g,5,9,7,2,"d"); }
+  else if (id === BS.ironIngot) {
+    stamp(g, [
+      "................","................","................",".....oooooo.....",
+      "....ollllllo....","...oommmmmmoo...","...ommmmmmmmo...","...ommmmmmmmo...",
+      "....ommmmmmo....","....oddddddo....",".....oooooo.....","................",
+      "................","................","................","................",
+    ]);
+  }
+  else if (id === BS.goldIngot) {
+    stamp(g, [
+      "................","................","................","................",
+      "....ooooooo.....","...oollllloo....","..oommmmmmmmoo..","..ommmmmmmmmmo..",
+      "...ommmmmmmmo...","....odddddo.....",".....oooo.......","................",
+      "................","................","................","................",
+    ]);
+  }
   else if (id === "diamond") { box(g,5,2,6,2,"o"); box(g,3,4,10,4,"o"); box(g,5,8,6,3,"o"); box(g,7,11,2,3,"o"); box(g,5,4,6,3,"m"); box(g,6,7,4,4,"m"); dots(g,"l",[[6,3],[7,3],[5,5],[6,5],[7,7]]); dots(g,"d",[[10,6],[9,9],[8,12]]); }
   else { box(g,4,4,8,8,"o"); box(g,5,5,6,6,"m"); dots(g,"l",[[6,5],[7,5]]); dots(g,"d",[[10,9],[9,10]]); }
   return p;
@@ -608,7 +720,7 @@ function food(g: Grid, id: ItemId): Palette {
       [11,13],[12,13]]);
     box(g,4,3,5,5,"m"); box(g,3,4,7,3,"m"); box(g,4,7,5,1,"m");
     dots(g,"b",[[7,8],[8,9],[9,10],[10,11],[11,12],[12,11],[13,11],[11,13],[12,13]]);
-    if (cooked) dots(g,"d",[[4,4],[5,3],[8,4],[3,6],[6,7],[9,5]]);
+    if (cooked) dots(g,"d",[[4,4],[5,3],[8,4],[3,6],[6,7],[9,5],[10,3]]);
     else dots(g,"l",[[4,3],[5,3],[3,4],[4,4],[5,4],[3,5]]);
     return p;
   }
@@ -636,15 +748,28 @@ function food(g: Grid, id: ItemId): Palette {
     return p;
   }
   if (id === "mutton" || id === "cooked_mutton") {
-    // Compact chop on a diagonal bone; the open negative space between meat
-    // and knuckle keeps it distinct from both pork and beef at hotbar scale.
-    dots(g,"o",[[7,2],[8,2],[9,2],[10,2],[11,2],[5,3],[6,3],[12,3],[4,4],[13,4],
-      [3,5],[13,5],[3,6],[13,6],[4,7],[12,7],[5,8],[11,8],[6,9],[10,9],
-      [5,10],[6,10],[4,11],[5,11],[3,12],[4,12],[2,13],[3,13],[2,14],[3,14],[4,13]]);
-    box(g,5,4,8,3,"m"); box(g,6,3,6,5,"m"); box(g,6,7,5,2,"m");
-    dots(g,"l",[[6,4],[7,3],[5,5],[6,5]]); dots(g,"d",[[11,4],[12,5],[10,7],[8,8]]);
-    dots(g,"b",[[6,9],[5,10],[4,11],[3,12],[2,13],[2,14],[3,14],[4,13]]);
-    if (cooked) dots(g,"d",[[8,3],[10,3],[5,4],[12,4],[11,6],[9,8]]);
+    // One connected chop: compact meat cap, narrowing bone, then a forked
+    // knuckle. Cooked mutton gains a crisp protruding edge, so it is not a
+    // palette-only duplicate of the raw cut.
+    stamp(g, [
+      "................",
+      "................",
+      ".......ooooo....",
+      ".....oommmmmo...",
+      "....omllllmmo...",
+      "...ommmmmmmmo...",
+      "...ommmmmmmdo...",
+      "....ommmmmdo....",
+      ".....ommmdo.....",
+      "......obbbo.....",
+      ".....obbo.......",
+      "....obbo........",
+      "...obbo.........",
+      "..obboo.........",
+      "..oooo..........",
+      "................",
+    ]);
+    if (cooked) { dots(g,"d",[[8,3],[10,3],[5,4],[11,6],[9,8],[11,8]]); }
     return p;
   }
   if (rotten) {
