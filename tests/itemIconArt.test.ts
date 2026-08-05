@@ -184,11 +184,11 @@ const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.
 for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
   assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
 }
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10330, 6698, true\)/)?.[1];
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10306, 6636, true\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(packedPayload.length, 8_375,
+assert.equal(packedPayload.length, 8_295,
   "item icons and drawn bow states retain the reviewed geometry-deduplicated extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 10_330, 6_698, true);
+const compactArt = decodeStaticBytes(packedPayload, 10_306, 6_636, true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
@@ -207,9 +207,9 @@ const readCompactRecord = (label: string): void => {
   compactCursor += colorCount * 3 + Math.ceil(shapeRuns[shapeIndex] / 2);
 };
 for (const itemId of itemIds) readCompactRecord(itemId);
-assert.equal(decodedRunCount, 5_196, "geometry sharing preserves every reviewed icon run");
+assert.equal(decodedRunCount, 5_184, "geometry sharing preserves every reviewed icon run");
 for (let stage = 0; stage < 3; stage += 1) readCompactRecord(`bow draw stage ${stage}`);
-assert.equal(decodedRunCount, 5_323, "the shared stream preserves every reviewed item and bow-state run");
+assert.equal(decodedRunCount, 5_311, "the shared stream preserves every reviewed item and bow-state run");
 assert.equal(compactCursor, compactArt.length, "item and bow decoder consumes the compact stream exactly once");
 const itemFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-item-icons-"));
 let invalidItemFixture = 0;
@@ -218,7 +218,7 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 10330, 6698, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 10306, 6636, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
@@ -251,9 +251,9 @@ try {
   await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
     "a truncated item payload fails closed");
-  const noncanonicalItemPayload = new Uint8Array(6_699);
-  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_698));
-  noncanonicalItemPayload[6_698] = 1;
+  const noncanonicalItemPayload = new Uint8Array(6_637);
+  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_636));
+  noncanonicalItemPayload[6_636] = 1;
   await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
     "the real item module rejects nonzero bytes after its declared packed payload");
 } finally {
