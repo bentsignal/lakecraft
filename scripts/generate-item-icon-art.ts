@@ -345,27 +345,50 @@ function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"n
     return p;
   }
 
-  shaft(8);
   if (kind === "pickaxe") {
-    // A shallow, nearly symmetrical mining head: broad crown, two descending
-    // points, and a small centered socket. This replaces the old oversized
-    // right-hand hook that read as a bent pipe in extrusion.
+    // Classic thin stepped pickaxe (original Lakecraft pixels): a narrow
+    // diagonal wooden stick, a transverse material head with mirrored
+    // descending tips, open negative space under the crown, and a short neck
+    // where the stick meets the head. Inventory and held views share this
+    // silhouette; only the material palette changes by tier.
     dots(g, "o", [
+      // Crown + head plate
       [5,1],[6,1],[7,1],[8,1],[9,1],[10,1],[11,1],
       [3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[11,2],[12,2],[13,2],
-      [2,3],[3,3],[4,3],[5,3],[11,3],[12,3],[13,3],[14,3],
-      [2,4],[3,4],[4,4],[9,4],[10,4],[11,4],[12,4],[13,4],[14,4],
-      [2,5],[3,5],[9,5],[10,5],[13,5],[14,5],
-      [9,6],[10,6],[9,7],[10,7],
+      // Mirrored stepped tips with open arch under the crown
+      [2,3],[3,3],[4,3],[12,3],[13,3],[14,3],
+      [2,4],[3,4],[13,4],[14,4],
+      [2,5],[3,5],[13,5],[14,5],
+      // Socket / neck joining the stick
+      [8,3],[9,3],
+      [8,4],[9,4],
+      [8,5],[9,5],
+      [8,6],[9,6],
+      [8,7],[9,7],
     ]);
     dots(g, "m", [
       [5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[11,2],
-      [3,3],[4,3],[12,3],[13,3],[3,4],[10,4],[11,4],[12,4],[13,4],
-      [3,5],[10,5],[13,5],[10,6],
+      [3,3],[4,3],[12,3],[13,3],
+      [3,4],[13,4],
+      [9,4],[9,5],[9,6],
     ]);
     dots(g, "l", [[5,2],[6,2],[7,2],[8,2],[9,2],[12,3],[13,3]]);
-    dots(g, "d", [[3,4],[3,5],[10,5],[10,6],[13,4],[13,5]]);
+    dots(g, "d", [[3,3],[3,4],[3,5],[13,4],[13,5],[9,6]]);
+    // Thin 2-wide wood core with outer outline only (not the thicker shared shaft).
+    for (let index = 0; index < 7; index += 1) {
+      const x = 2 + index;
+      const y = 14 - index;
+      dots(g, "o", [[x - 1, y], [x, y + 1], [x + 2, y], [x + 1, y + 1]]);
+    }
+    for (let index = 0; index < 7; index += 1) {
+      const x = 2 + index;
+      const y = 14 - index;
+      dots(g, "w", [[x, y], [x + 1, y]]);
+    }
+    for (let index = 1; index < 7; index += 3) px(g, 2 + index + 1, 14 - index, "h");
+    dots(g, "o", [[1,14],[2,15],[3,15]]);
   } else if (kind === "axe") {
+    shaft(8);
     // A haft-through-head construction with a straight cutting edge and a
     // concave heel. The blade is deliberately asymmetric so it cannot be
     // mistaken for the shovel's centered spade.
@@ -389,6 +412,7 @@ function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"n
     // Reassert the visible wooden eye through the metal head.
     dots(g, "o", [[9,6],[10,5],[8,7],[11,7]]); dots(g, "w", [[10,6],[9,7],[10,7]]); px(g,10,6,"h");
   } else {
+    shaft(8);
     // Centered faceted spade with a flat shoulder, bright ridge, tapered neck,
     // and pointed heel. Its five-pixel face is visibly wider than the shaft.
     dots(g, "o", [

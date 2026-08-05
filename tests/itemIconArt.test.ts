@@ -68,11 +68,16 @@ assert.equal(new Set(["pickaxe", "axe", "shovel", "sword"]
 "all four progression tools remain recognizable by shape rather than color alone");
 
 const pickaxeCells = occupiedCells("iron_pickaxe");
-for (const cell of ["2:5", "14:5", "5:1", "11:1", "2:14"] as const) {
-  assert.ok(pickaxeCells.has(cell), `pickaxe retains crown, twin points, and long grip at ${cell}`);
+for (const cell of ["2:5", "14:5", "5:1", "11:1", "2:14", "3:14", "8:2", "9:7"] as const) {
+  assert.ok(pickaxeCells.has(cell), `pickaxe retains crown, twin tips, neck, and long grip at ${cell}`);
+}
+// Open arch under the transverse head + transparent canvas padding
+for (const cell of ["6:3", "7:3", "6:4", "7:4", "10:3", "0:0", "15:0", "0:15", "15:15"] as const) {
+  assert.equal(pickaxeCells.has(cell), false,
+    `pickaxe keeps transparent negative space at ${cell}`);
 }
 assert.equal(pickaxeCells.has("7:4"), false,
-  "pickaxe crown stays shallow instead of collapsing into the old filled hook/blob");
+  "pickaxe crown stays shallow instead of collapsing into a filled hook/blob");
 const axeCells = occupiedCells("iron_axe");
 for (const cell of ["15:2", "15:3", "15:4", "15:5", "8:7", "2:14"] as const) {
   assert.ok(axeCells.has(cell), `axe retains a straight cutting edge, socket, and long grip at ${cell}`);
@@ -105,11 +110,11 @@ const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.
 for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
   assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
 }
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10279, 6588, true\)/)?.[1];
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10271, 6591, true\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(packedPayload.length, 8_235,
+assert.equal(packedPayload.length, 8_240,
   "item icons and drawn bow states retain the reviewed geometry-deduplicated extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 10_279, 6_588, true);
+const compactArt = decodeStaticBytes(packedPayload, 10_271, 6_591, true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
@@ -128,9 +133,9 @@ const readCompactRecord = (label: string): void => {
   compactCursor += colorCount * 3 + Math.ceil(shapeRuns[shapeIndex] / 2);
 };
 for (const itemId of itemIds) readCompactRecord(itemId);
-assert.equal(decodedRunCount, 5_220, "geometry sharing preserves every reviewed icon run");
+assert.equal(decodedRunCount, 5_210, "geometry sharing preserves every reviewed icon run");
 for (let stage = 0; stage < 3; stage += 1) readCompactRecord(`bow draw stage ${stage}`);
-assert.equal(decodedRunCount, 5_358, "the shared stream preserves every reviewed item and bow-state run");
+assert.equal(decodedRunCount, 5_348, "the shared stream preserves every reviewed item and bow-state run");
 assert.equal(compactCursor, compactArt.length, "item and bow decoder consumes the compact stream exactly once");
 const itemFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-item-icons-"));
 let invalidItemFixture = 0;
@@ -139,7 +144,7 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 10279, 6588, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 10271, 6591, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
@@ -172,9 +177,9 @@ try {
   await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
     "a truncated item payload fails closed");
-  const noncanonicalItemPayload = decodeStaticEncoding(packedPayload).subarray(0, 6_588);
-  assert.equal(noncanonicalItemPayload[6_577], 21, "reviewed shared stream ends with five used token bits");
-  noncanonicalItemPayload[6_577] = 53;
+  const noncanonicalItemPayload = decodeStaticEncoding(packedPayload).subarray(0, 6_591);
+  assert.equal(noncanonicalItemPayload[6_587], 1, "reviewed shared stream ends with one used token bit");
+  noncanonicalItemPayload[6_587] = 3;
   await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
     "the real item module rejects claimed nonexistent final tokens");
 } finally {

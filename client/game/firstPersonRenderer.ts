@@ -153,6 +153,33 @@ export function firstPersonHeldItemTuningGroup(
   return "otherItem";
 }
 
+/**
+ * Camera-space presentation for the shared inventory pickaxe sprite. The 16x16
+ * art runs grip→head from lower-left to upper-right; a near-180° Y turn puts
+ * the grip in the lower-right hand while a shallow pitch/roll and thin depth
+ * keep the stepped silhouette face-readable instead of edge-on.
+ */
+export const FIRST_PERSON_PICKAXE_PRESENTATION = Object.freeze({
+  center: [0.36, 0.00, -1.10] as Vec3,
+  size: 1.02,
+  depth: 0.034,
+  rotationDegrees: [16, 180, -22] as Vec3,
+  /** Lower wooden handle; the hand should read as gripping this pixel. */
+  pivotPixels: [3, 13] as const,
+});
+
+/** Shared presentation for non-pickaxe handheld tools (axe, shovel, sword). */
+export const FIRST_PERSON_TOOL_PRESENTATION = Object.freeze({
+  center: [0.22, 0.16, -1.15] as Vec3,
+  size: 1.02,
+  depth: 0.07,
+  rotationDegrees: [0, 156, 0] as Vec3,
+});
+
+export function isPickaxeItem(itemId: ItemId | null): boolean {
+  return Boolean(itemId && ITEMS[itemId].tool?.kind === "pickaxe");
+}
+
 function appendTexturedCube(output: number[], block: BlockId, tuning: FirstPersonTuning): void {
   const size = tuning.block.size;
   const center = tuning.block.center;
@@ -320,10 +347,12 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       const presentation = visual.parent === "bow"
         ? { center: [0.36, 0, -1.13] as Vec3, size: 1.12, depth: 0.075, rotationDegrees: [0, -22, 0] as Vec3 }
         : visual.parent === "handheld"
-          // Source tool pixels run from a lower-left grip to an upper-right
-          // head. Turn the shallow extrusion around Y so the grip lands in the
-          // player's lower-right hand while preserving the authored silhouette.
-          ? { center: [0.22, 0.16, -1.15] as Vec3, size: 1.02, depth: 0.07, rotationDegrees: [0, 156, 0] as Vec3 }
+          ? (isPickaxeItem(itemId)
+            // Pickaxe-only: thin extrusion, grip pivot on the lower stick, and a
+            // face-readable cant so the stepped head sits upper-right of the hand.
+            ? { ...FIRST_PERSON_PICKAXE_PRESENTATION }
+            // Other tools keep the reviewed shared handheld presentation.
+            : { ...FIRST_PERSON_TOOL_PRESENTATION })
           : { center: [0.10, -0.02, -1.17] as Vec3, size: 0.76, depth: 0.06, rotationDegrees: [0, -24, 0] as Vec3 };
       appendItemSpriteGeometry(
         geometry[0],

@@ -107,8 +107,9 @@ if (!pickaxe) throw new Error("pickaxe upload missing");
 const pickBounds = spatialBounds(pickaxe, renderer[2][0]);
 assert.ok(pickBounds[1] - pickBounds[0] > 0.55 && pickBounds[3] - pickBounds[2] > 0.8,
   "the canonical pickaxe pixels retain a tall handle and broad head in hand");
-assert.ok(pickBounds[5] - pickBounds[4] > 0.25,
-  "the opaque-edge pickaxe pitches through readable depth rather than lying flat");
+const pickDepth = pickBounds[5] - pickBounds[4];
+assert.ok(pickDepth > 0.12 && pickDepth < 0.32,
+  "the pickaxe stays thin and face-readable instead of a chunky edge-on block sculpture");
 
 renderer[3]("iron_axe", BLOCK.AIR);
 const axe = capture.uploads.get(1);
