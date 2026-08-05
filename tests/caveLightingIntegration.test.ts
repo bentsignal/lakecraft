@@ -69,8 +69,9 @@ for (const forbidden of [
   assert.equal(render.includes(forbidden), false, `render loop avoids exposure scan: ${forbidden}`);
 }
 assert.equal(engine.match(/gl\.drawArrays/g)?.length, 14, "cave lighting adds no draw call");
-assert.ok(engine.includes("appendTorchMesh(colorVertices, x, y, z)"),
-  "the warm torch mesh remains on its established emissive color path");
+assert.ok(engine.includes("appendSpecialTorchMesh("));
+assert.ok(engine.includes("const specialVertices = { textured: textureVertices, color: colorVertices }"),
+  "the torch stem uses the retained atlas batch while its warm ember stays in the color batch");
 assert.equal(blockTextureForFace(BLOCK.FURNACE, "north"), "furnace_front",
   "furnaces retain their authored front texture and nearby torch contribution");
 

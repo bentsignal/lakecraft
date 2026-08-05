@@ -59,9 +59,15 @@ assert.equal(applyConfirmedToolUse(expectedMismatch, 0, "mine", "wooden_pickaxe"
 const legacy = normalizeInventory([{ itemId: "diamond_pickaxe", count: 1 }]);
 assert.equal(remainingItemDurability(legacy[0]!), ITEMS.diamond_pickaxe.tool!.maxDurability);
 
+const canonicalInventory = createEmptyInventory();
+canonicalInventory[0] = createItemStack("iron_pickaxe");
 const canonical = validatePlayerStateJson(JSON.stringify({
-  version: 2,
-  inventory: [{ itemId: "iron_pickaxe", count: 1 }],
+  version: PLAYER_STATE_VERSION,
+  inventory: canonicalInventory,
+  selectedHotbar: 0,
+  equipment: createEmptyEquipment(),
+  respawnPoint: null,
+  hunger: 20,
 }));
 assert.equal(canonical.ok, true);
 if (canonical.ok) {
@@ -73,29 +79,28 @@ if (canonical.ok) {
   });
 }
 
+const wornInventory = createEmptyInventory();
+wornInventory[0] = { itemId: "iron_pickaxe", count: 1, durability: 37 };
 const savedWorn = validatePlayerStateJson(JSON.stringify({
   version: PLAYER_STATE_VERSION,
-  inventory: [{ itemId: "iron_pickaxe", count: 1, durability: 37 }],
+  inventory: wornInventory,
+  selectedHotbar: 0,
   equipment: createEmptyEquipment(),
+  respawnPoint: null,
+  hunger: 20,
 }));
-const savedMoreWorn = validatePlayerStateJson(JSON.stringify({
-  version: PLAYER_STATE_VERSION,
-  inventory: [{ itemId: "iron_pickaxe", count: 1, durability: 36 }],
-  equipment: createEmptyEquipment(),
-}));
-const forgedRepair = validatePlayerStateJson(JSON.stringify({
-  version: PLAYER_STATE_VERSION,
-  inventory: [{ itemId: "iron_pickaxe", count: 1, durability: 250 }],
-  equipment: createEmptyEquipment(),
-}));
-const craftedAdditional = validatePlayerStateJson(JSON.stringify({
-  version: PLAYER_STATE_VERSION,
-  inventory: [
-    { itemId: "iron_pickaxe", count: 1, durability: 37 },
-    { itemId: "iron_pickaxe", count: 1, durability: 250 },
-  ],
-  equipment: createEmptyEquipment(),
-}));
+function validateToolInventory(...stacks: ItemStack[]) {
+  const inventory = createEmptyInventory();
+  inventory.splice(0, stacks.length, ...stacks);
+  return validatePlayerStateJson(JSON.stringify({ ...savedWorn.state, inventory }));
+}
+if (!savedWorn.ok) throw new Error("transition fixture must validate");
+const savedMoreWorn = validateToolInventory({ itemId: "iron_pickaxe", count: 1, durability: 36 });
+const forgedRepair = validateToolInventory({ itemId: "iron_pickaxe", count: 1, durability: 250 });
+const craftedAdditional = validateToolInventory(
+  { itemId: "iron_pickaxe", count: 1, durability: 37 },
+  { itemId: "iron_pickaxe", count: 1, durability: 250 },
+);
 if (!savedWorn.ok || !savedMoreWorn.ok || !forgedRepair.ok || !craftedAdditional.ok) throw new Error("transition fixtures must validate");
 assert.equal(isValidDurabilitySaveTransition(savedWorn.state, savedMoreWorn.state), true);
 assert.equal(isValidDurabilitySaveTransition(savedWorn.state, forgedRepair.state), false, "ordinary saves cannot repair tools");
@@ -113,9 +118,8 @@ for (const stack of [
 
 assert.deepEqual(
   validatePlayerStateJson(JSON.stringify({
-    version: PLAYER_STATE_VERSION,
-    inventory: [{ itemId: "iron_pickaxe", count: 1 }],
-    equipment: createEmptyEquipment(),
+    ...savedWorn.state,
+    inventory: [{ itemId: "iron_pickaxe", count: 1 }, ...createEmptyInventory().slice(1)],
   })),
   { ok: false, reason: "invalid_inventory" },
   "current-version payloads cannot omit durability to repair a worn tool",

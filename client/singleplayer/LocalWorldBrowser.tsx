@@ -159,7 +159,7 @@ export function LocalWorldBrowser({ onBack, onPlay, storage: suppliedStorage }: 
   const blocked = registryLoad.registry === null;
   const [deleteWarning, deleteBlocked] = localWorldDeleteState(registryLoad.issues);
   const warning = blocked
-    ? "!Corrupt/newer list; no data changed."
+    ? "!World list storage unavailable; no data changed."
     : transactionReadOnly
       ? `!${READ_ONLY} Play and changes are disabled until recovery.`
       : deleteWarning;

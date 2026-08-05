@@ -62,10 +62,10 @@ const glMethods: Record<string, (...args: any[]) => any> = {
 };
 for (const method of [
   "activeTexture", "attachShader", "bindBuffer", "bindTexture", "blendFunc", "bufferData", "bufferSubData",
-  "clear", "clearColor", "compileShader", "deleteBuffer", "deleteProgram", "deleteTexture", "depthMask",
+  "clear", "clearColor", "compileShader", "deleteBuffer", "deleteProgram", "deleteShader", "deleteTexture", "depthMask",
   "disable", "disableVertexAttribArray", "drawArrays", "enable", "enableVertexAttribArray", "lineWidth",
   "linkProgram", "pixelStorei", "shaderSource", "texImage2D", "texParameteri", "uniform1f", "uniform1i",
-  "uniform3f", "uniform3fv", "uniform4fv", "uniformMatrix4fv", "useProgram", "vertexAttribPointer", "viewport",
+  "uniform2fv", "uniform3f", "uniform3fv", "uniform4fv", "uniformMatrix4fv", "useProgram", "vertexAttribPointer", "viewport",
 ]) glMethods[method] = noop;
 
 let nextConstant = 1;

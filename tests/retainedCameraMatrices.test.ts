@@ -82,7 +82,7 @@ for (let sample = 0; sample < 256; sample += 1) {
 const source = await readFile(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const render = source.slice(source.indexOf("function render("), source.indexOf("\n  function frame("));
 for (const retainedCall of [
-  "cameraEye(renderEye)", "direction(renderFacing)", "writePerspectiveMatrix(projectionMatrix",
+  "cameraEye(renderEye)", "const facing = renderFacing", "writePerspectiveMatrix(projectionMatrix",
   "writeLookAtMatrix(viewMatrix, eye, renderCenter)", "writeMatrixProduct(mvpMatrix, projectionMatrix, viewMatrix)",
 ]) assert.ok(render.includes(retainedCall), `render uses retained camera state: ${retainedCall}`);
 assert.doesNotMatch(render, /cameraEye\(\)|direction\(\)|new Float32Array|lookAt\(eye, \[/);

@@ -6,12 +6,10 @@ This is the simple way to show the developer how the arm, block, tool, or bow sh
 
 1. Open Lakecraft at `http://localhost:3100`.
 2. Enter a world and hold the thing you want to fix.
-3. Press **Escape** so the game is paused. Keep the browser window visible.
-4. Open `client/game/firstPersonTuning.ts` in your code editor.
+3. Press **Escape** so the game is paused, or stay on **Click to Play**.
+4. Use the **POSE LAB** panel on the left side of the game.
 
-The held arm and item stay visible while **Game Menu** or **Click to Play** is on screen. Each time you save the tuning file, Lakebed reloads the changed code and redraws the paused pose. You do not need to unpause, click the game, or refresh the browser.
-
-If the browser tab is completely hidden, the redraw waits to save battery. Put the browser and editor side by side, or switch back to the visible browser after saving.
+The held arm and item stay visible while **Game Menu** or **Click to Play** is on screen. Every number in POSE LAB updates the retained WebGL model directly. You do not need to save a file, unpause, click the game, or refresh the browser.
 
 ## Pick the right box
 
@@ -50,11 +48,11 @@ to:
 position: [0.02, 0, 0]
 ```
 
-Save the file. Look at the paused browser. If it moved the wrong way, press **Undo** in the editor and save again. Change only one number at a time so it is always clear what that number did.
+Look at the paused pose immediately after changing a number. If it moved the wrong way, put the old number back or use **Reset this group**. Change only one number at a time so it is always clear what that number did.
 
 ## When it looks right
 
-Do not clean up or rewrite the file. Send the developer:
+Use **Copy values**, then send the developer:
 
 1. Which box you changed (`block`, `tool`, `bow`, `arm`, or `otherItem`).
 2. The finished `position`, `rotationDegrees`, and `scale` values—or `center`, `rotationDegrees`, and `size` for a block.

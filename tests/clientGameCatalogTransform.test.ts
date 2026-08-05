@@ -16,7 +16,7 @@ const transformed = compactClientGameCatalog(source);
 
 assert.doesNotMatch(transformed, /A living cap over packed earth|A durable diamond helmet|Split one log into four boards|Smelt iron/,
   "reviewed catalog presentation text is hidden inside the encoded payload");
-assert.match(transformed, /new TextDecoder\(\)\.decode\(__lakecraftDecodeStaticBytes\("[^"]+",15005,\d+\)\)/,
+assert.match(transformed, /new TextDecoder\(\)\.decode\(__lakecraftDecodeStaticBytes\("[^"]+",15005,\d+,true\)\)/,
   "one bounded UTF-8 payload reconstructs the reviewed catalogs");
 assert.equal((transformed.match(/__lakecraftGameCatalog\[/g) ?? []).length, 12,
   "ten tuple catalogs, base recipes, and smelting recipes each use one table reference");

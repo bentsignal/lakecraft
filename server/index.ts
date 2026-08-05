@@ -1,6 +1,6 @@
 import { boolean, capsule, endpoint, mutation, query, string, table, text, type WriteDatabase } from "lakebed/server";
-import { newestByIndex, oldestByIndex } from "./queryOrder.ts";
-import { maintainUserReceipts } from "./receiptMaintenance.ts";
+import { newestByIndex, newestMatchingRow, newestMatchingRows, newestUserRows, oldestByIndex } from "./queryOrder.ts";
+import { maintainUserReceipts, newestUserOperationReceipt, userOperationReceiptRows } from "./receiptMaintenance.ts";
 import {
   CHAT_RATE_LIMIT_MS,
   RECENT_CHAT_LIMIT,
@@ -476,6 +476,10 @@ function incrementStoredRevision(value: unknown): string {
   const next = revision === null ? null : nextWorldBlockRevision(revision);
   if (next === null) throw new Error("Stored revision is invalid or exhausted.");
   return next;
+}
+
+function hasAuthenticatedUser(ctx: { auth: { isAuthenticated: boolean; isGuest: boolean } }): boolean {
+  return ctx.auth.isAuthenticated && !ctx.auth.isGuest;
 }
 
 async function maintainWorldBlockOperationReceipts(
@@ -1635,8 +1639,7 @@ export default capsule({
       if (!validation.ok) return { ok: false, reason: validation.reason, chunks: [], tntFuses: [], serverNow };
       const chunks: Array<{ chunkKey: string; snapshotJson: string; revision: string; updatedAt: string }> = [];
       for (const chunkKey of validation.chunkKeys) {
-        const row = await newestByIndex(ctx.db.worldChunks, "by_chunk", (q) => q.eq("chunkKey", chunkKey))
-          .first();
+        const row = await newestMatchingRow(ctx.db.worldChunks, "by_chunk", "chunkKey", chunkKey);
         if (row) chunks.push({
           chunkKey: row.chunkKey,
           snapshotJson: row.snapshotJson,
@@ -1680,7 +1683,7 @@ export default capsule({
 
     droppedItems: query(async (ctx, rawChunkKeys: string[]) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, items: [], serverNow };
       }
       const validation = validateVisibleDroppedItemChunkKeys(rawChunkKeys);
@@ -1706,13 +1709,12 @@ export default capsule({
 
     multiplayerComposite: query(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow, nearbyPlayers: [] };
       }
       const request = parseMotionCompositeRequest(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow, nearbyPlayers: [] };
-      const callerRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const callerRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
       if (callerRows.length !== 1) {
         return { ok: false, reason: BS.activePresenceRequired, serverNow, nearbyPlayers: [] };
       }
@@ -1815,8 +1817,7 @@ export default capsule({
         serverNow,
       };
       const mobWorld = await (async () => {
-        const rows = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
-          .take(2);
+        const rows = await newestMatchingRows(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
         if (rows.length > 1) return { ok: false, reason: BS.duplicateState, ...emptyMobWorld };
         const stored = databaseRowToStoredMobWorld(rows[0] ?? null);
         if (!stored) return { ok: true, ...emptyMobWorld, needsCheckpoint: true };
@@ -1833,8 +1834,7 @@ export default capsule({
         for (const mobId of request.mobIds) {
           const identity = validateMobIdentity(mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
           if (!identity.ok) continue;
-          const row = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", mobId))
-            .first();
+          const row = await newestMatchingRow(ctx.db.mobAuthority, "by_mob", "mobId", mobId);
           states.push(materializeMobAuthorityState(
             databaseRowToStoredMobAuthority(row),
             identity.mobId,
@@ -1868,26 +1868,23 @@ export default capsule({
     }),
 
     myPresence: query(async (ctx) =>
-      (await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first()) ?? null
+      (await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
     ),
 
     myInventory: query(async (ctx) =>
-      (await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first()) ?? null
+      (await newestMatchingRow(ctx.db.inventories, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
     ),
 
     chestAt: query(async (ctx, rawCoordKey: string) => {
       const coordinate = validateChestCoordinate(rawCoordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
-      const chest = await newestByIndex(ctx.db.chests, BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
-        .first();
+      const chest = await newestMatchingRow(ctx.db.chests, BS.byCoord, BS.coordKey, coordinate.coordKey);
       return { ok: true, chest: chest ?? null };
     }),
 
     furnaceAt: query(async (ctx, request: { coordKey: string; sample: string }) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const coordinate = request && typeof request.coordKey === "string"
@@ -1895,12 +1892,9 @@ export default capsule({
         ? validateFurnaceCoordinate(request.coordKey)
         : { ok: false as const, reason: BS.invalidCoordinate as const };
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
-      const worldRows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
-        .take(2);
-      const presenceRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
-      const furnaceRows = await newestByIndex(ctx.db.furnaces, BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
-        .take(2);
+      const worldRows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, coordinate.coordKey);
+      const presenceRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
+      const furnaceRows = await newestMatchingRows(ctx.db.furnaces, BS.byCoord, BS.coordKey, coordinate.coordKey);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
         return { ok: false, reason: BS.furnaceRequired, serverNow };
       }
@@ -1919,8 +1913,7 @@ export default capsule({
     }),
 
     myProfile: query(async (ctx) =>
-      (await newestByIndex(ctx.db.profiles, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first()) ?? null
+      (await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
     ),
 
     /** One reactive server-list snapshot; presence writes invalidate it without a client poll loop. */
@@ -1957,14 +1950,13 @@ export default capsule({
 
     worldClock: query(async (ctx) => {
       const serverNow = Date.now();
-      const clock = await newestByIndex(ctx.db.worldClock, "by_key", (q) => q.eq("clockKey", WORLD_CLOCK_KEY))
-        .first();
+      const clock = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
       return worldClockSnapshot(clock, serverNow);
     }),
 
     mobAuthority: query(async (ctx, rawMobIds: string[]) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, states: [], serverNow };
       }
       const validation = validateMobIdList(rawMobIds, MOB_AUTHORITY_WORLD_SEED_TOKEN);
@@ -1973,8 +1965,7 @@ export default capsule({
       for (const mobId of validation.mobIds) {
         const identity = validateMobIdentity(mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
         if (!identity.ok) continue;
-        const row = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", mobId))
-          .first();
+        const row = await newestMatchingRow(ctx.db.mobAuthority, "by_mob", "mobId", mobId);
         states.push(materializeMobAuthorityState(
           databaseRowToStoredMobAuthority(row),
           identity.mobId,
@@ -2000,7 +1991,7 @@ export default capsule({
         needsCheckpoint: false,
         serverNow,
       };
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, ...empty };
       }
       const rawMobIds = request && Array.isArray(request.mobIds) && typeof request.sample === "string"
@@ -2010,15 +2001,13 @@ export default capsule({
       if (!rawMobIds) return { ok: false, reason: BS.invalidRequest, ...empty };
       const validation = validateMobIdList(rawMobIds, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!validation.ok) return { ok: false, reason: validation.reason, ...empty };
-      const rows = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
-        .take(2);
+      const rows = await newestMatchingRows(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
       if (rows.length > 1) return { ok: false, reason: BS.duplicateState, ...empty };
       const stored = databaseRowToStoredMobWorld(rows[0] ?? null);
       if (!stored) {
         // Subscribe the empty-world query to this caller's presence so the first
         // accepted heartbeat retriggers lease initialization without polling.
-        await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .first();
+        await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
         return { ok: true, ...empty, needsCheckpoint: true };
       }
 
@@ -2034,8 +2023,7 @@ export default capsule({
       for (const mobId of validation.mobIds) {
         const identity = validateMobIdentity(mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
         if (!identity.ok) continue;
-        const row = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", mobId))
-          .first();
+        const row = await newestMatchingRow(ctx.db.mobAuthority, "by_mob", "mobId", mobId);
         states.push(materializeMobAuthorityState(databaseRowToStoredMobAuthority(row), identity.mobId, identity.kind, serverNow));
       }
       const callerTarget = replayInput.targets.find((target) => target.userId === ctx.auth.userId);
@@ -2063,15 +2051,14 @@ export default capsule({
 
     playerCombatStates: query(async (ctx, rawUserIds: string[]) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, states: [], serverNow };
       }
       const validation = validatePlayerCombatUserIds(rawUserIds);
       if (!validation.ok) return { ok: false, reason: validation.reason, states: [], serverNow };
       const states = [];
       for (const userId of validation.userIds) {
-        const row = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, userId))
-          .first();
+        const row = await newestMatchingRow(ctx.db.playerCombat, BS.byUser, BS.userId, userId);
         states.push(materializePlayerCombatState(databaseRowToStoredPlayerCombat(row), userId, serverNow));
       }
       return { ok: true, states, serverNow };
@@ -2090,7 +2077,7 @@ export default capsule({
       posePitch: string,
     ) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       if (typeof requestJson !== "string" || requestJson.length > 1_024) {
@@ -2126,12 +2113,7 @@ export default capsule({
       const fingerprint = worldBlockOperationPoseFingerprint(requestFingerprint, pose);
 
       // Exact retry settles before presence, player state, tree, edit, or chunk authority reads.
-      const receiptRows = await ctx.db.treeGrowthReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, operationId))
-        .order("desc")
-        .take(2);
+      const receiptRows = await userOperationReceiptRows(ctx.db.treeGrowthReceipts, ctx.auth.userId, operationId);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       if (receiptRows.length === 1) {
         if (receiptRows[0].fingerprint !== fingerprint) {
@@ -2139,16 +2121,14 @@ export default capsule({
         }
         const replay = decodeTreeGrowthReceipt(receiptRows[0].resultJson);
         if (!replay || replay.operationId !== operationId) return { ok: false, reason: BS.invalidReceipt, serverNow };
-        const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .take(2);
+        const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
         if (inventoryRows.length !== 1 || !validatePlayerStateJson(inventoryRows[0].inventoryJson).ok
           || storedRevision(inventoryRows[0].revision) === null) {
           return { ok: false, reason: BS.replayStateUnavailable, serverNow };
         }
         const currentChunks = [] as Array<{ chunkKey: string; revision: string }>;
         for (const committed of replay.chunks) {
-          const rows = await newestByIndex(ctx.db.worldChunks, "by_chunk", (q) => q.eq("chunkKey", committed.chunkKey))
-            .take(2);
+          const rows = await newestMatchingRows(ctx.db.worldChunks, "by_chunk", "chunkKey", committed.chunkKey);
           const revision = rows.length === 1 ? storedRevision(rows[0].revision) : null;
           if (revision === null) return { ok: false, reason: BS.replayStateUnavailable, serverNow };
           currentChunks.push({ chunkKey: committed.chunkKey, revision });
@@ -2156,12 +2136,10 @@ export default capsule({
         return { ...replay, replayed: true, inventory: inventoryRows[0], currentChunks, serverNow };
       }
 
-      const presence = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const presence = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
       const poseAuthority = validateWorldBlockActionPose(presence, ctx.auth.userId, pose, { x, y, z }, serverNow);
       if (!poseAuthority.ok) return { ok: false, reason: poseAuthority.reason, serverNow };
-      const combatRow = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const combatRow = await newestMatchingRow(ctx.db.playerCombat, BS.byUser, BS.userId, ctx.auth.userId);
       const combat = materializePlayerCombatState(
         databaseRowToStoredPlayerCombat(combatRow),
         ctx.auth.userId,
@@ -2169,8 +2147,7 @@ export default capsule({
       );
       if (combat.health === 0) return { ok: false, reason: "player_dead", serverNow };
 
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length !== 1) return { ok: false, reason: BS.inventoryRequired, serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
@@ -2204,8 +2181,7 @@ export default capsule({
       }>();
       const authoritativeBlocks = new Map<string, BlockId | "air">();
       for (const [chunkKey, cells] of probeGroups) {
-        const rows = await newestByIndex(ctx.db.worldChunks, "by_chunk", (q) => q.eq("chunkKey", chunkKey))
-          .take(2);
+        const rows = await newestMatchingRows(ctx.db.worldChunks, "by_chunk", "chunkKey", chunkKey);
         if (rows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
         const row = rows[0] ?? null;
         const revision = storedRevision(row?.revision);
@@ -2261,8 +2237,7 @@ export default capsule({
       }>;
       for (const edit of edits) {
         const coordKey = `${edit.x}:${edit.y}:${edit.z}`;
-        const rows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
-          .take(2);
+        const rows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, coordKey);
         if (rows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
         worldEditPlans.push({
           existing: (rows[0] ?? null) as Record<string, unknown> | null,
@@ -2370,7 +2345,7 @@ export default capsule({
       poseYaw: string,
       posePitch: string,
     ) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       if (typeof requestJson !== "string" || requestJson.length > MAX_WORLD_BLOCK_OPERATION_REQUEST_BYTES) {
@@ -2391,12 +2366,11 @@ export default capsule({
 
       // Receipt lookup intentionally precedes every mutable-state read. An exact
       // replay returns before any profile, presence, inventory, chunk, or edit write.
-      const existingReceipts = await ctx.db.worldBlockOperationReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .take(2);
+      const existingReceipts = await userOperationReceiptRows(
+        ctx.db.worldBlockOperationReceipts,
+        ctx.auth.userId,
+        request.operationId,
+      );
       if (existingReceipts.length > 1) return { ok: false, reason: BS.duplicateState };
       const existingReceipt = existingReceipts[0] ?? null;
       if (existingReceipt) {
@@ -2405,10 +2379,8 @@ export default capsule({
         }
         const replay = decodeWorldBlockOperationReceipt(existingReceipt.resultJson);
         if (!replay) return { ok: false, reason: BS.conservationFailure };
-        const replayInventories = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .take(2);
-        const replayChunks = await newestByIndex(ctx.db.worldChunks, "by_chunk", (q) => q.eq("chunkKey", replay.chunkKey))
-          .take(2);
+        const replayInventories = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
+        const replayChunks = await newestMatchingRows(ctx.db.worldChunks, "by_chunk", "chunkKey", replay.chunkKey);
         if (replayInventories.length !== 1 || replayChunks.length !== 1) {
           return { ok: false, reason: BS.duplicateOrMissingState };
         }
@@ -2420,8 +2392,7 @@ export default capsule({
       }
 
       const serverNow = Date.now();
-      const presence = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const presence = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
       const poseAuthority = validateWorldBlockActionPose(
         presence,
         ctx.auth.userId,
@@ -2431,8 +2402,7 @@ export default capsule({
       );
       if (!poseAuthority.ok) return { ok: false, reason: poseAuthority.reason };
 
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const inventoryRow = inventoryRows[0] ?? null;
       if (!inventoryRow) return { ok: false, reason: BS.inventoryRequired };
@@ -2443,20 +2413,17 @@ export default capsule({
       }
 
       const chunkKey = worldEditChunkKey(request.x, request.z);
-      const chunkRows = await newestByIndex(ctx.db.worldChunks, "by_chunk", (q) => q.eq("chunkKey", chunkKey))
-        .take(2);
+      const chunkRows = await newestMatchingRows(ctx.db.worldChunks, "by_chunk", "chunkKey", chunkKey);
       if (chunkRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const chunkRow = chunkRows[0] ?? null;
       const chunkRevision = storedRevision(chunkRow?.revision);
       if (chunkRevision === null) return { ok: false, reason: BS.conservationFailure };
 
       const coordKey = `${request.x}:${request.y}:${request.z}`;
-      const currentEdits = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
-        .take(2);
+      const currentEdits = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, coordKey);
       if (currentEdits.length > 1) return { ok: false, reason: BS.duplicateState };
       const currentEdit = currentEdits[0] ?? null;
-      const primedRows = await newestByIndex(ctx.db.primedTnt, BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
-        .take(2);
+      const primedRows = await newestMatchingRows(ctx.db.primedTnt, BS.byCoord, BS.coordKey, coordKey);
       if (primedRows.length > 1) return { ok: false, reason: BS.duplicateState };
       if (primedRows.length === 1) return { ok: false, reason: "block_primed" };
       const currentBlock = currentEdit
@@ -2528,8 +2495,7 @@ export default capsule({
       let minedFurnaceRow: Record<string, unknown> | null = null;
       const furnaceRecoveryDrops: Array<NonNullable<ReturnType<typeof buildDroppedItemRow>>> = [];
       if (effect.kind === "mine" && effect.previousBlock === "furnace") {
-        const furnaceRows = await newestByIndex(ctx.db.furnaces, BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
-          .take(2);
+        const furnaceRows = await newestMatchingRows(ctx.db.furnaces, BS.byCoord, BS.coordKey, coordKey);
         if (furnaceRows.length > 1) return { ok: false, reason: BS.duplicateState };
         minedFurnaceRow = furnaceRows[0] ?? null;
         const blockInstanceToken = currentEdit ? furnaceBlockInstanceToken(currentEdit) : null;
@@ -2570,8 +2536,7 @@ export default capsule({
               serverNow,
             );
             if (!droppedValue) return { ok: false, reason: BS.conservationFailure };
-            const collision = await newestByIndex(ctx.db.droppedItems, "by_drop", (q) => q.eq("dropId", droppedValue.dropId))
-              .first();
+            const collision = await newestMatchingRow(ctx.db.droppedItems, "by_drop", "dropId", droppedValue.dropId);
             if (collision) return { ok: false, reason: BS.dropIdCollision };
             furnaceRecoveryDrops.push(droppedValue);
           }
@@ -2603,7 +2568,7 @@ export default capsule({
       const existingEditsByCoord = new Map<string, Record<string, unknown> | null>([[coordKey, currentEdit]]);
       for (const value of authoritativeWorldEdits) {
         if (value.coordKey === coordKey) continue;
-        const rows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, value.coordKey)).take(2);
+        const rows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, value.coordKey);
         if (rows.length > 1) return { ok: false, reason: BS.duplicateState };
         existingEditsByCoord.set(value.coordKey, rows[0] ?? null);
       }
@@ -2686,7 +2651,7 @@ export default capsule({
     }),
 
     startPresenceSession: mutation(async (ctx, rawSessionId: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: BS.invalidSession };
@@ -2763,7 +2728,7 @@ export default capsule({
 
     publishMotionSegments: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       if (typeof requestJson !== "string" || requestJson.length < 2
@@ -2803,8 +2768,7 @@ export default capsule({
         await ctx.db.motionSegmentReceipts.delete(existingReceipt.id);
       }
 
-      const presenceRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const presenceRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
       if (presenceRows.length !== 1) return { ok: false, reason: BS.activePresenceRequired, serverNow };
       const presence = presenceRows[0];
       const pose = validatePresencePoseFields(presence.x, presence.y, presence.z, presence.yaw, presence.pitch);
@@ -2837,8 +2801,7 @@ export default capsule({
       });
       if (!hasNearbyPeer) return { ok: false, reason: "no_peers", serverNow };
 
-      const acceptanceRows = await newestByIndex(ctx.db.motionAcceptance, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const acceptanceRows = await newestUserRows(ctx.db.motionAcceptance, ctx.auth.userId);
       if (acceptanceRows.length > 1) return { ok: false, reason: BS.invalidServerState, serverNow };
       const acceptance = acceptanceRows[0] ?? null;
       const switchingSession = !acceptance || acceptance.sessionId !== batch.sessionId;
@@ -2871,8 +2834,7 @@ export default capsule({
         };
       }
 
-      const budgetRows = await newestByIndex(ctx.db.motionDailyBudgets, "by_key", (q) => q.eq("budgetKey", "motion"))
-        .take(2);
+      const budgetRows = await newestMatchingRows(ctx.db.motionDailyBudgets, "by_key", "budgetKey", "motion");
       if (budgetRows.length > 1) return { ok: false, reason: BS.invalidServerState, serverNow };
       const budget = budgetRows[0] ?? null;
       const dayKey = String(utcQuotaWindowStartedAt(serverNow));
@@ -2960,19 +2922,15 @@ export default capsule({
     }),
 
     authorizeRespawn: mutation(async (ctx, rawSessionId: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       if (!validPresenceSessionId(rawSessionId)) return { ok: false, reason: BS.invalidSession };
       const serverNow = Date.now();
-      const presenceRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
-      const respawnRows = await newestByIndex(ctx.db.playerRespawns, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
-      const combatRows = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const presenceRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
+      const respawnRows = await newestUserRows(ctx.db.playerRespawns, ctx.auth.userId);
+      const combatRows = await newestUserRows(ctx.db.playerCombat, ctx.auth.userId);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (presenceRows.length !== 1 || respawnRows.length > 1 || combatRows.length > 1 || inventoryRows.length !== 1) {
         return { ok: false, reason: BS.duplicateOrMissingState };
       }
@@ -3081,15 +3039,13 @@ export default capsule({
       if (deathDropRows.some((row) => !row)) return { ok: false, reason: BS.invalidDeathSettlement };
       for (const row of deathDropRows) {
         if (!row) continue;
-        const collision = await newestByIndex(ctx.db.droppedItems, "by_drop", (q) => q.eq("dropId", row.dropId))
-          .first();
+        const collision = await newestMatchingRow(ctx.db.droppedItems, "by_drop", "dropId", row.dropId);
         if (collision) return { ok: false, reason: BS.dropIdCollision };
       }
       let destination = trailheadPoseForUser(ctx.auth.userId);
       const bedRespawn = storedBedRespawnPose(existingRespawn);
       if (bedRespawn) {
-        const bedRows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, bedRespawn.coordKey))
-          .take(2);
+        const bedRows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, bedRespawn.coordKey);
         if (bedRows.length > 1) return { ok: false, reason: BS.duplicateState };
         if (bedRows[0]?.blockType === "bed") destination = bedRespawn.pose;
       }
@@ -3204,7 +3160,7 @@ export default capsule({
         rawSessionId?: string,
         rawRelocationEpoch?: string
       ) => {
-        if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to join the shared world.");
+        if (!hasAuthenticatedUser(ctx)) throw new Error("Sign in to join the shared world.");
         const pose = validatePresencePoseFields(x, y, z, yaw, pitch);
         const velocity = validatePresenceVelocityFields(rawVx ?? "0", rawVy ?? "0", rawVz ?? "0");
         const sessionId = validPresenceSessionId(rawSessionId) ? rawSessionId : null;
@@ -3217,8 +3173,7 @@ export default capsule({
           rawArmorFeet,
         );
         const safeColor = /^#[0-9a-f]{6}$/i.test(color.trim()) ? color.trim() : "#8fbf79";
-        const existingRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .take(2);
+        const existingRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
         if (existingRows.length > 1) return { ok: false, reason: BS.duplicateState };
         const existing = existingRows[0] ?? null;
         if (!existing) return { ok: false, reason: "session_required" };
@@ -3238,8 +3193,7 @@ export default capsule({
         let respawnRow: Record<string, unknown> | null = null;
         let activeGrant: PresenceRelocationGrant | null = null;
         if (relocationEpoch) {
-          const respawnRows = await newestByIndex(ctx.db.playerRespawns, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-            .take(2);
+          const respawnRows = await newestUserRows(ctx.db.playerRespawns, ctx.auth.userId);
           if (respawnRows.length !== 1) return { ok: false, reason: "relocation_missing" };
           respawnRow = respawnRows[0];
           activeGrant = storedRespawnGrant(respawnRow);
@@ -3265,10 +3219,8 @@ export default capsule({
         }
         const previousPose = validatePresencePoseFields(existing.x, existing.y, existing.z, existing.yaw, existing.pitch);
         if (!previousPose) return { ok: false, reason: "invalid_persisted_pose" };
-        const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .take(2);
-        const combatRows = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .take(2);
+        const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
+        const combatRows = await newestUserRows(ctx.db.playerCombat, ctx.auth.userId);
         if (inventoryRows.length !== 1 || combatRows.length > 1) {
           return { ok: false, reason: "duplicate_or_missing_survival_state" };
         }
@@ -3343,8 +3295,7 @@ export default capsule({
             reason: fall.reason === "revision_exhausted" ? BS.combatRevisionExhausted : "invalid_fall_state",
           };
         }
-        const profile = await newestByIndex(ctx.db.profiles, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .first();
+        const profile = await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId);
         if (!profile) throw new Error("Choose a username before joining the shared world.");
         const value = {
           userId: ctx.auth.userId,
@@ -3415,9 +3366,8 @@ export default capsule({
     ),
 
     leavePlayer: mutation(async (ctx, rawSessionId: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) throw new Error("Sign in to leave the shared world.");
-      const existingRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      if (!hasAuthenticatedUser(ctx)) throw new Error("Sign in to leave the shared world.");
+      const existingRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
       if (existingRows.length > 1) return null;
       const existing = existingRows[0] ?? null;
       // A leave without a prior authoritative heartbeat must not manufacture a
@@ -3430,7 +3380,7 @@ export default capsule({
     }),
 
     applyInventoryAction: mutation(async (ctx, requestJson: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateInventoryActionRequestJson(requestJson);
@@ -3440,12 +3390,7 @@ export default capsule({
         detail: validation.playerStateIssue ?? validation.reason,
       };
       const request = validation.request;
-      const receiptRows = await ctx.db.inventoryActionReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .take(2);
+      const receiptRows = await userOperationReceiptRows(ctx.db.inventoryActionReceipts, ctx.auth.userId, request.operationId);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const receipt = receiptRows[0] ?? null;
       const replay = decideInventoryActionReplay(receipt?.fingerprint ?? null, request.fingerprint);
@@ -3453,16 +3398,14 @@ export default capsule({
       if (replay === "replay" && receipt) {
         const payload = decodeInventoryActionReceipt(receipt.resultJson);
         if (!payload) return { ok: false, reason: BS.invalidState };
-        const currentRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .take(2);
+        const currentRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
         if (currentRows.length !== 1 || storedRevision(currentRows[0].revision) === null) {
           return { ok: false, reason: BS.invalidState };
         }
         return { ok: true, replayed: true, ...payload, inventory: currentRows[0] };
       }
 
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length > 1) return { ok: false, reason: BS.duplicateState };
       const existing = inventoryRows[0] ?? null;
       const currentRevision = storedRevision(existing?.revision);
@@ -3527,18 +3470,13 @@ export default capsule({
     }),
 
     dropItem: mutation(async (ctx, requestJson: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateDropItemRequestJson(requestJson);
       if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason };
       const request = validation.request;
-      const existingReceipt = await ctx.db.droppedItemReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .first();
+      const existingReceipt = await newestUserOperationReceipt(ctx.db.droppedItemReceipts, ctx.auth.userId, request.operationId);
       const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
       if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused };
       if (replay === "replay" && existingReceipt) {
@@ -3547,13 +3485,11 @@ export default capsule({
       }
 
       const serverNow = Date.now();
-      const presence = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const presence = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
       const position = authoritativeDroppedItemPosition(presence, ctx.auth.userId, serverNow);
       if (!position) return { ok: false, reason: BS.activePresenceRequired };
 
-      const playerRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const playerRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (playerRows.length !== 1) return { ok: false, reason: BS.inventoryRequired };
       const existingPlayer = playerRows[0];
       if (!existingPlayer) return { ok: false, reason: BS.inventoryRequired };
@@ -3586,8 +3522,7 @@ export default capsule({
         serverNow
       );
       if (!droppedValue) return { ok: false, reason: "invalid_presence" };
-      const collision = await newestByIndex(ctx.db.droppedItems, "by_drop", (q) => q.eq("dropId", droppedValue.dropId))
-        .first();
+      const collision = await newestMatchingRow(ctx.db.droppedItems, "by_drop", "dropId", droppedValue.dropId);
       if (collision) return { ok: false, reason: BS.dropIdCollision };
 
       const player = await ctx.db.inventories.update(existingPlayer.id, {
@@ -3618,18 +3553,13 @@ export default capsule({
     }),
 
     pickupDroppedItem: mutation(async (ctx, requestJson: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validatePickupDroppedItemRequestJson(requestJson);
       if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason };
       const request = validation.request;
-      const existingReceipt = await ctx.db.droppedItemReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .first();
+      const existingReceipt = await newestUserOperationReceipt(ctx.db.droppedItemReceipts, ctx.auth.userId, request.operationId);
       const replay = decideDroppedItemReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
       if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused };
       if (replay === "replay" && existingReceipt) {
@@ -3638,12 +3568,10 @@ export default capsule({
       }
 
       const serverNow = Date.now();
-      const presence = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const presence = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
       const position = authoritativeDroppedItemPosition(presence, ctx.auth.userId, serverNow);
       if (!position) return { ok: false, reason: BS.activePresenceRequired };
-      const existingPlayer = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const existingPlayer = await newestMatchingRow(ctx.db.inventories, BS.byUser, BS.userId, ctx.auth.userId);
       if (!existingPlayer) return { ok: false, reason: BS.inventoryRequired };
       if (decideDroppedItemInventoryCas(existingPlayer.updatedAt, request.expectedInventoryUpdatedAt) !== "apply") {
         return { ok: false, reason: BS.conflict, inventory: existingPlayer };
@@ -3655,8 +3583,7 @@ export default capsule({
       if (playerStateDecision === "invalid") return { ok: false, reason: BS.conservationFailure };
       if (playerStateDecision === "mismatch") return { ok: false, reason: BS.conflict, inventory: existingPlayer };
 
-      const storedDrop = await newestByIndex(ctx.db.droppedItems, "by_drop", (q) => q.eq("dropId", request.dropId))
-        .first();
+      const storedDrop = await newestMatchingRow(ctx.db.droppedItems, "by_drop", "dropId", request.dropId);
       if (!storedDrop) return { ok: false, reason: "not_found" };
       const dropped = normalizeDroppedItemRow(storedDrop, serverNow, true);
       if (!dropped) return { ok: false, reason: "invalid_drop_state" };
@@ -3714,7 +3641,7 @@ export default capsule({
     }),
 
     saveChest: mutation(async (ctx, _rawCoordKey: string, _rawInventoryJson: string, _rawExpectedUpdatedAt: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       return { ok: false, reason: "atomic_transfer_required" };
@@ -3722,17 +3649,12 @@ export default capsule({
 
     operateFurnace: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateFurnaceTransferRequestJson(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
-      const receiptRows = await ctx.db.furnaceTransferReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .take(2);
+      const receiptRows = await userOperationReceiptRows(ctx.db.furnaceTransferReceipts, ctx.auth.userId, request.operationId);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const receiptDecision = decideFurnaceReceiptReplay(
         receiptRows[0]?.fingerprint ?? null,
@@ -3744,12 +3666,9 @@ export default capsule({
       if (receiptDecision === "replay") {
         const saved = decodeFurnaceReceipt(receiptRows[0].resultJson);
         if (!saved) return { ok: false, reason: BS.invalidReceipt, serverNow };
-        const replayInventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-          .take(2);
-        const replayWorldRows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
-          .take(2);
-        const replayFurnaceRows = await newestByIndex(ctx.db.furnaces, BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
-          .take(2);
+        const replayInventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
+        const replayWorldRows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, request.coordKey);
+        const replayFurnaceRows = await newestMatchingRows(ctx.db.furnaces, BS.byCoord, BS.coordKey, request.coordKey);
         const replayBlockInstanceToken = replayWorldRows.length === 1
           && replayWorldRows[0].blockType === "furnace"
           ? furnaceBlockInstanceToken(replayWorldRows[0])
@@ -3777,14 +3696,10 @@ export default capsule({
 
       const coordinate = validateFurnaceCoordinate(request.coordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason, serverNow };
-      const worldRows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
-        .take(2);
-      const presenceRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
-      const furnaceRows = await newestByIndex(ctx.db.furnaces, BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
-        .take(2);
+      const worldRows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, coordinate.coordKey);
+      const presenceRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
+      const furnaceRows = await newestMatchingRows(ctx.db.furnaces, BS.byCoord, BS.coordKey, coordinate.coordKey);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "furnace") {
         return { ok: false, reason: BS.furnaceRequired, serverNow };
       }
@@ -3884,7 +3799,7 @@ export default capsule({
     }),
 
     transferChest: mutation(async (ctx, requestJson: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateChestTransferRequestJson(requestJson);
@@ -3896,12 +3811,7 @@ export default capsule({
         };
       }
       const request = validation.request;
-      const existingReceipt = await ctx.db.chestTransferReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .first();
+      const existingReceipt = await newestUserOperationReceipt(ctx.db.chestTransferReceipts, ctx.auth.userId, request.operationId);
       const replayDecision = decideChestTransferReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
       if (replayDecision === BS.operationIdReused) {
         return { ok: false, reason: BS.operationIdReused };
@@ -3911,18 +3821,15 @@ export default capsule({
         return savedResult ?? { ok: false, reason: BS.conservationFailure };
       }
 
-      const worldBlock = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
-        .first();
+      const worldBlock = await newestMatchingRow(ctx.db.worldEdits, BS.byCoord, BS.coordKey, request.coordKey);
       if (!worldBlock || worldBlock.blockType !== "chest") {
         return { ok: false, reason: "chest_required" };
       }
 
-      const playerRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const playerRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (playerRows.length !== 1) return { ok: false, reason: BS.inventoryRequired };
       const existingPlayer = playerRows[0];
-      const existingChest = await newestByIndex(ctx.db.chests, BS.byCoord, (q) => q.eq(BS.coordKey, request.coordKey))
-        .first();
+      const existingChest = await newestMatchingRow(ctx.db.chests, BS.byCoord, BS.coordKey, request.coordKey);
       const cas = decideChestTransferCas(
         existingPlayer.updatedAt,
         existingChest?.updatedAt ?? null,
@@ -3999,13 +3906,12 @@ export default capsule({
     }),
 
     sleepInBed: mutation(async (ctx, rawCoordKey: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       const coordinate = validateSleepCoordinate(rawCoordKey);
       if (!coordinate.ok) return { ok: false, reason: coordinate.reason };
-      const bedRows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, coordinate.coordKey))
-        .take(2);
+      const bedRows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, coordinate.coordKey);
       const bed = bedRows.length === 1 ? bedRows[0] : null;
       if (!bed || bed.blockType !== "bed") return { ok: false, reason: "bed_required" };
 
@@ -4031,8 +3937,7 @@ export default capsule({
         bedPose.y + 1.62 - (coordinate.y + 0.5),
         bedPose.z - (coordinate.z + 0.5),
       ) > 6) return { ok: false, reason: BS.activePresenceRequired };
-      const respawnRows = await newestByIndex(ctx.db.playerRespawns, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const respawnRows = await newestUserRows(ctx.db.playerRespawns, ctx.auth.userId);
       if (respawnRows.length > 1) return { ok: false, reason: BS.activePresenceRequired };
       const existingRespawn = respawnRows[0] ?? null;
       const respawnValue = {
@@ -4063,8 +3968,7 @@ export default capsule({
         .take(MAX_SLEEP_PARTICIPANTS);
       for (const staleVote of staleVotes) await ctx.db.sleepVotes.delete(staleVote.id);
 
-      const existingVote = await newestByIndex(ctx.db.sleepVotes, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const existingVote = await newestMatchingRow(ctx.db.sleepVotes, BS.byUser, BS.userId, ctx.auth.userId);
       const voteValue = {
         userId: ctx.auth.userId,
         coordKey: coordinate.coordKey,
@@ -4086,8 +3990,7 @@ export default capsule({
         };
       }
 
-      const existingClock = await newestByIndex(ctx.db.worldClock, "by_key", (q) => q.eq("clockKey", WORLD_CLOCK_KEY))
-        .first();
+      const existingClock = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
       const clockValue = {
         clockKey: WORLD_CLOCK_KEY,
         epochMs: String(serverNow),
@@ -4109,19 +4012,17 @@ export default capsule({
 
     checkpointMobWorld: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateMobWorldCheckpointRequestJson(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
-      const presenceRow = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const presenceRow = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
       if (!authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow)
         || presenceRow?.sessionId !== request.leaseId) {
         return { ok: false, reason: BS.activePresenceRequired, serverNow };
       }
-      const rows = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
-        .take(2);
+      const rows = await newestMatchingRows(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
       if (rows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const existing = rows[0] ?? null;
       const stored = databaseRowToStoredMobWorld(existing);
@@ -4136,8 +4037,7 @@ export default capsule({
             ? [{ userId: row.userId, x: pose.x, y: pose.y, z: pose.z, active: true }]
             : [];
         });
-        const clock = await newestByIndex(ctx.db.worldClock, "by_key", (q) => q.eq("clockKey", WORLD_CLOCK_KEY))
-          .first();
+        const clock = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
         const snapshot = { isNight: mobWorldIsNight(clock, serverNow), targets };
         const inputJson = encodeMobWorldReplayInput(snapshot);
         return inputJson ? { snapshot, inputJson } : null;
@@ -4235,7 +4135,7 @@ export default capsule({
 
     claimMobPlayerDamage: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateMobDamageRequestJson(requestJson);
@@ -4245,19 +4145,13 @@ export default capsule({
         request.mobId,
         request.tick,
       ]);
-      const receipt = await ctx.db.playerCombatReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .first();
+      const receipt = await newestUserOperationReceipt(ctx.db.playerCombatReceipts, ctx.auth.userId, request.operationId);
       const replay = decidePlayerCombatReplay(receipt?.fingerprint ?? null, fingerprint);
       if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && receipt) {
         try {
           const parsed = JSON.parse(receipt.resultJson) as Record<string, unknown>;
-          const replayInventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-            .take(2);
+          const replayInventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
           if (parsed?.ok === true && parsed.state && typeof parsed.state === "object"
             && Array.isArray(parsed.armorDamaged) && Array.isArray(parsed.brokenArmor)
             && replayInventoryRows.length === 1
@@ -4275,8 +4169,7 @@ export default capsule({
         return { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
-      const authorityRow = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
-        .first();
+      const authorityRow = await newestMatchingRow(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
       const storedWorld = databaseRowToStoredMobWorld(authorityRow);
       if (!storedWorld) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const storedReplayInput = parseMobWorldReplayInputJson(storedWorld.inputJson);
@@ -4301,8 +4194,7 @@ export default capsule({
       if (!advanced) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const mobIdentity = validateMobIdentity(request.mobId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
       if (!mobIdentity.ok) return { ok: false, reason: BS.unknownMob, serverNow };
-      const mobCombatRow = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", request.mobId))
-        .first();
+      const mobCombatRow = await newestMatchingRow(ctx.db.mobAuthority, "by_mob", "mobId", request.mobId);
       const mobCombatState = materializeMobAuthorityState(
         databaseRowToStoredMobAuthority(mobCombatRow),
         mobIdentity.mobId,
@@ -4310,10 +4202,8 @@ export default capsule({
         serverNow,
       );
       if (mobCombatState.health <= 0) return { ok: false, reason: BS.mobDead, serverNow };
-      const combatRow = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const combatRow = await newestMatchingRow(ctx.db.playerCombat, BS.byUser, BS.userId, ctx.auth.userId);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length !== 1) return { ok: false, reason: BS.inventoryRequired, serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
@@ -4410,7 +4300,7 @@ export default capsule({
 
     igniteTnt: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateTntIgnitionRequestJson(requestJson);
@@ -4418,12 +4308,7 @@ export default capsule({
       const fingerprint = tntIgnitionFingerprint(request);
 
       // Exact retries settle before any mutable authority read.
-      const receiptRows = await ctx.db.tntIgnitionReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .take(2);
+      const receiptRows = await userOperationReceiptRows(ctx.db.tntIgnitionReceipts, ctx.auth.userId, request.operationId);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const receiptDecision = decideTntReceipt(receiptRows[0]?.fingerprint ?? null, fingerprint);
       if (receiptDecision === BS.operationIdReused) {
@@ -4433,7 +4318,7 @@ export default capsule({
         try {
           const replay = JSON.parse(receiptRows[0].resultJson) as Record<string, unknown>;
           if (replay?.ok !== true) return { ok: false, reason: BS.invalidReceipt, serverNow };
-          const replayInventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId)).take(2);
+          const replayInventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
           if (replayInventoryRows.length !== 1 || !validatePlayerStateJson(replayInventoryRows[0].inventoryJson).ok) {
             return { ok: false, reason: BS.replayStateUnavailable, serverNow };
           }
@@ -4443,25 +4328,21 @@ export default capsule({
         }
       }
 
-      const presenceRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const presenceRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
       if (presenceRows.length !== 1) return { ok: false, reason: BS.activePresenceRequired, serverNow };
       const pose = authoritativeCombatPose(presenceRows[0], ctx.auth.userId, serverNow);
       if (!pose) return { ok: false, reason: BS.activePresenceRequired, serverNow };
 
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length !== 1) return { ok: false, reason: BS.inventoryRequired, serverNow };
       const playerState = validatePlayerStateJson(inventoryRows[0].inventoryJson);
       if (!playerState.ok) return { ok: false, reason: BS.invalidInventory, serverNow };
       const heldItem = playerState.state.inventory[playerState.state.selectedHotbar]?.itemId ?? null;
 
       const coordKey = `${request.x}:${request.y}:${request.z}`;
-      const worldRows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
-        .take(2);
+      const worldRows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, coordKey);
       if (worldRows.length !== 1) return { ok: false, reason: "tnt_required", serverNow };
-      const activeAtCoordinate = await newestByIndex(ctx.db.primedTnt, BS.byCoord, (q) => q.eq(BS.coordKey, coordKey))
-        .take(2);
+      const activeAtCoordinate = await newestMatchingRows(ctx.db.primedTnt, BS.byCoord, BS.coordKey, coordKey);
       if (activeAtCoordinate.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const activeFuses = await oldestByIndex(ctx.db.primedTnt, "by_due").take(TNT_MAX_ACTIVE_FUSES + 1);
       if (activeFuses.length >= TNT_MAX_ACTIVE_FUSES && activeAtCoordinate.length === 0) {
@@ -4533,14 +4414,13 @@ export default capsule({
 
     claimTntExplosion: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateTntExplosionRequestJson(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
       const fingerprint = tntExplosionFingerprint(request);
-      const receiptRows = await newestByIndex(ctx.db.tntExplosionReceipts, "by_event", (q) => q.eq("eventId", request.eventId))
-        .take(2);
+      const receiptRows = await newestMatchingRows(ctx.db.tntExplosionReceipts, "by_event", "eventId", request.eventId);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const receiptDecision = decideTntReceipt(receiptRows[0]?.fingerprint ?? null, fingerprint);
       if (receiptDecision === BS.operationIdReused) {
@@ -4555,8 +4435,7 @@ export default capsule({
         }
       }
 
-      const fuseRows = await newestByIndex(ctx.db.primedTnt, "by_event", (q) => q.eq("eventId", request.eventId))
-        .take(2);
+      const fuseRows = await newestMatchingRows(ctx.db.primedTnt, "by_event", "eventId", request.eventId);
       if (fuseRows.length !== 1) return { ok: false, reason: "fuse_unavailable", serverNow };
       const fuse = normalizeStoredTntFuse(fuseRows[0]) ?? normalizeStoredTntChainFuse(fuseRows[0]);
       if (!fuse) return { ok: false, reason: BS.invalidFuse, serverNow };
@@ -4577,8 +4456,7 @@ export default capsule({
         return { ok: false, reason: "not_elected", serverNow };
       }
 
-      const worldRows = await newestByIndex(ctx.db.worldEdits, BS.byCoord, (q) => q.eq(BS.coordKey, fuse.coordKey))
-        .take(2);
+      const worldRows = await newestMatchingRows(ctx.db.worldEdits, BS.byCoord, BS.coordKey, fuse.coordKey);
       if (worldRows.length !== 1 || worldRows[0].blockType !== "tnt"
         || furnaceBlockInstanceToken(worldRows[0]) !== fuse.blockInstanceToken) {
         return { ok: false, reason: "block_replaced", serverNow };
@@ -4652,14 +4530,13 @@ export default capsule({
 
     claimCreeperExplosion: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const request = validateCreeperExplosionRequestJson(requestJson);
       if (!request) return { ok: false, reason: BS.invalidRequest, serverNow };
 
-      const receiptRows = await newestByIndex(ctx.db.creeperExplosionReceipts, "by_event", (q) => q.eq("eventId", request.operationId))
-        .take(2);
+      const receiptRows = await newestMatchingRows(ctx.db.creeperExplosionReceipts, "by_event", "eventId", request.operationId);
       if (receiptRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const requestFingerprint = JSON.stringify([
         request.operationId,
@@ -4682,8 +4559,7 @@ export default capsule({
         }
       }
 
-      const authorityRows = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
-        .take(2);
+      const authorityRows = await newestMatchingRows(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
       if (authorityRows.length !== 1) return { ok: false, reason: BS.authorityUnavailable, serverNow };
       const authorityRow = authorityRows[0];
       const storedWorld = databaseRowToStoredMobWorld(authorityRow);
@@ -4706,8 +4582,7 @@ export default capsule({
       const authorization = authorizeCreeperExplosionRequest(request, authority);
       if (!authorization.ok) return { ok: false, reason: authorization.reason, serverNow };
 
-      const mobRows = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", request.mobId))
-        .take(2);
+      const mobRows = await newestMatchingRows(ctx.db.mobAuthority, "by_mob", "mobId", request.mobId);
       if (mobRows.length > 1) return { ok: false, reason: BS.duplicateState, serverNow };
       const mobState = materializeMobAuthorityState(
         databaseRowToStoredMobAuthority(mobRows[0] ?? null),
@@ -4717,8 +4592,7 @@ export default capsule({
       );
       if (mobState.health <= 0) return { ok: false, reason: BS.mobDead, serverNow };
 
-      const callerRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const callerRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
       const caller = callerRows.length === 1
         ? authoritativeCombatPose(callerRows[0], ctx.auth.userId, serverNow)
         : null;
@@ -4786,15 +4660,14 @@ export default capsule({
 
     rangedCombat: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const validation = validateRangedCombatRequestJson(requestJson);
       if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason, serverNow };
       const request = validation.request;
 
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length !== 1) return { ok: false, reason: BS.inventoryRequired, serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
@@ -4808,12 +4681,7 @@ export default capsule({
       };
 
       if (request.kind === "release") {
-        const receiptRows = await ctx.db.rangedCombatReceipts
-          .withIndex(BS.byUserOperation, (q) => q
-            .eq(BS.userId, ctx.auth.userId)
-            .eq(BS.operationId, request.operationId))
-          .order("desc")
-          .take(2);
+        const receiptRows = await userOperationReceiptRows(ctx.db.rangedCombatReceipts, ctx.auth.userId, request.operationId);
         if (receiptRows.length > 1) return { ok: false, reason: "duplicate_receipt", serverNow };
         if (receiptRows.length === 1) {
           const receipt = decodeRangedCombatReceipt(receiptRows[0].resultJson);
@@ -4833,21 +4701,18 @@ export default capsule({
         }
       }
 
-      const presenceRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const presenceRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId);
       const presence = presenceRows.length === 1
         ? authoritativeCombatPose(presenceRows[0], ctx.auth.userId, serverNow)
         : null;
-      const attackerCombatRows = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const attackerCombatRows = await newestUserRows(ctx.db.playerCombat, ctx.auth.userId);
       if (attackerCombatRows.length > 1) return { ok: false, reason: BS.attackerStateInvalid, serverNow };
       const attackerCombat = materializePlayerCombatState(
         databaseRowToStoredPlayerCombat(attackerCombatRows[0] ?? null),
         ctx.auth.userId,
         serverNow,
       );
-      const chargeRows = await newestByIndex(ctx.db.rangedCharges, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const chargeRows = await newestUserRows(ctx.db.rangedCharges, ctx.auth.userId);
       if (chargeRows.length > 1) return { ok: false, reason: "charge_state_invalid", serverNow };
       const chargeRow = chargeRows[0] ?? null;
       let charge = rangedChargeFromRow(chargeRow);
@@ -4938,10 +4803,10 @@ export default capsule({
       let targetMobRow: Record<string, unknown> | null = null;
       let targetMobKind: MobAuthorityKind | null = null;
       if (request.targetKind === "player" && request.targetId !== ctx.auth.userId) {
-        const targetPresenceRows = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, request.targetId)).take(2);
-        const targetInventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, request.targetId)).take(2);
-        const targetCombatRows = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, request.targetId)).take(2);
-        const targetMotionRows = await newestByIndex(ctx.db.motionSegments, "by_user_accepted", (q) => q.eq(BS.userId, request.targetId)).take(2);
+        const targetPresenceRows = await newestUserRows(ctx.db.playerPresence, request.targetId);
+        const targetInventoryRows = await newestUserRows(ctx.db.inventories, request.targetId);
+        const targetCombatRows = await newestUserRows(ctx.db.playerCombat, request.targetId);
+        const targetMotionRows = await newestMatchingRows(ctx.db.motionSegments, "by_user_accepted", BS.userId, request.targetId);
         if (targetPresenceRows.length === 1 && targetInventoryRows.length === 1
           && targetCombatRows.length <= 1 && targetMotionRows.length <= 1) {
           const targetPresence = motionBackedCombatPose(
@@ -4969,8 +4834,8 @@ export default capsule({
       } else if (request.targetKind === "mob") {
         const identity = validateMobIdentity(request.targetId, undefined, MOB_AUTHORITY_WORLD_SEED_TOKEN);
         if (identity.ok) {
-          const worldRows = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY)).take(2);
-          const mobRows = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", identity.mobId)).take(2);
+          const worldRows = await newestMatchingRows(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
+          const mobRows = await newestMatchingRows(ctx.db.mobAuthority, "by_mob", "mobId", identity.mobId);
           const storedWorld = worldRows.length === 1 ? databaseRowToStoredMobWorld(worldRows[0]) : null;
           const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
           const advancedWorld = storedWorld && replayInput ? advanceMobWorldState(storedWorld, serverNow, replayInput) : null;
@@ -5110,7 +4975,7 @@ export default capsule({
       operationId: string,
     ) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const identity = validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN);
@@ -5119,19 +4984,13 @@ export default capsule({
         return { ok: false, reason: BS.invalidOperation, serverNow };
       }
       const fingerprint = JSON.stringify(["mob_shear", identity.mobId, identity.kind]);
-      const existingReceipt = await ctx.db.playerCombatReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, operationId))
-        .order("desc")
-        .first();
+      const existingReceipt = await newestUserOperationReceipt(ctx.db.playerCombatReceipts, ctx.auth.userId, operationId);
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
       if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && existingReceipt) {
         try {
           const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
-          const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-            .take(2);
+          const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
           if (result.ok === true && inventoryRows.length === 1
             && validatePlayerStateJson(inventoryRows[0].inventoryJson).ok) {
             return { ...result, replayed: true, inventory: inventoryRows[0], serverNow };
@@ -5142,12 +5001,10 @@ export default capsule({
         return { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
-      const presenceRow = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const presenceRow = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
       const playerPose = authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow);
       if (!playerPose) return { ok: false, reason: BS.activePresenceRequired, serverNow };
-      const combatRow = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const combatRow = await newestMatchingRow(ctx.db.playerCombat, BS.byUser, BS.userId, ctx.auth.userId);
       const playerCombat = materializePlayerCombatState(
         databaseRowToStoredPlayerCombat(combatRow),
         ctx.auth.userId,
@@ -5157,8 +5014,7 @@ export default capsule({
         return { ok: false, reason: BS.attackerDead, retryAfterMs: playerCombat.deadUntil - serverNow, serverNow };
       }
 
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length !== 1) return { ok: false, reason: BS.inventoryRequired, serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
@@ -5167,8 +5023,7 @@ export default capsule({
       const selectedStack = playerState.state.inventory[selectedSlot] ?? null;
       const selectedItemId = selectedStack?.itemId ?? null;
 
-      const authorityRow = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
-        .first();
+      const authorityRow = await newestMatchingRow(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
       const storedWorld = databaseRowToStoredMobWorld(authorityRow);
       const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
       const advancedWorld = storedWorld && replayInput
@@ -5190,8 +5045,7 @@ export default capsule({
       });
       if (!spatial.ok) return { ok: false, reason: spatial.reason, serverNow };
 
-      const existingMob = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", identity.mobId))
-        .first();
+      const existingMob = await newestMatchingRow(ctx.db.mobAuthority, "by_mob", "mobId", identity.mobId);
       const resolution = resolveMobShear({
         stored: databaseRowToStoredMobAuthority(existingMob),
         rawMobId: identity.mobId,
@@ -5255,7 +5109,7 @@ export default capsule({
       operationId: string,
     ) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const identity = validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN);
@@ -5264,19 +5118,13 @@ export default capsule({
         return { ok: false, reason: BS.invalidOperation, serverNow };
       }
       const fingerprint = JSON.stringify([identity.mobId, identity.kind, rawDamage]);
-      const existingReceipt = await ctx.db.playerCombatReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, operationId))
-        .order("desc")
-        .first();
+      const existingReceipt = await newestUserOperationReceipt(ctx.db.playerCombatReceipts, ctx.auth.userId, operationId);
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, fingerprint);
       if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && existingReceipt) {
         try {
           const result = JSON.parse(existingReceipt.resultJson) as Record<string, unknown>;
-          const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-            .take(2);
+          const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
           if (result.ok === true && inventoryRows.length === 1
             && validatePlayerStateJson(inventoryRows[0].inventoryJson).ok) {
             return { ...result, replayed: true, inventory: inventoryRows[0], serverNow };
@@ -5287,12 +5135,10 @@ export default capsule({
         return { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
-      const presenceRow = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const presenceRow = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
       const attackerPresence = authoritativeCombatPose(presenceRow, ctx.auth.userId, serverNow);
       if (!attackerPresence) return { ok: false, reason: BS.activePresenceRequired, serverNow };
-      const attackerCombatRow = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const attackerCombatRow = await newestMatchingRow(ctx.db.playerCombat, BS.byUser, BS.userId, ctx.auth.userId);
       const attackerCombat = materializePlayerCombatState(
         databaseRowToStoredPlayerCombat(attackerCombatRow),
         ctx.auth.userId,
@@ -5301,8 +5147,7 @@ export default capsule({
       if (attackerCombat.health === 0) {
         return { ok: false, reason: BS.attackerDead, retryAfterMs: attackerCombat.deadUntil - serverNow, serverNow };
       }
-      const inventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const inventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (inventoryRows.length !== 1) return { ok: false, reason: BS.inventoryRequired, serverNow };
       const inventoryRow = inventoryRows[0];
       const playerState = validatePlayerStateJson(inventoryRow.inventoryJson);
@@ -5313,8 +5158,7 @@ export default capsule({
         return { ok: false, reason: "weapon_mismatch", serverNow };
       }
 
-      const authorityRow = await newestByIndex(ctx.db.mobWorldAuthority, "by_key", (q) => q.eq("authorityKey", MOB_WORLD_AUTHORITY_KEY))
-        .first();
+      const authorityRow = await newestMatchingRow(ctx.db.mobWorldAuthority, "by_key", "authorityKey", MOB_WORLD_AUTHORITY_KEY);
       const storedWorld = databaseRowToStoredMobWorld(authorityRow);
       const replayInput = storedWorld ? parseMobWorldReplayInputJson(storedWorld.inputJson) : null;
       const advancedWorld = storedWorld && replayInput
@@ -5336,8 +5180,7 @@ export default capsule({
       });
       if (!spatial.ok) return { ok: false, reason: spatial.reason, serverNow };
 
-      const existing = await newestByIndex(ctx.db.mobAuthority, "by_mob", (q) => q.eq("mobId", identity.mobId))
-        .first();
+      const existing = await newestMatchingRow(ctx.db.mobAuthority, "by_mob", "mobId", identity.mobId);
       const resolution = resolveMobAttack({
         stored: databaseRowToStoredMobAuthority(existing),
         rawMobId: identity.mobId,
@@ -5395,18 +5238,13 @@ export default capsule({
 
     attackPlayer: mutation(async (ctx, requestJson: string) => {
       const serverNow = Date.now();
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired, serverNow };
       }
       const validation = validatePlayerAttackRequestJson(requestJson);
       if (!validation.ok) return { ok: false, reason: BS.invalidRequest, detail: validation.reason, serverNow };
       const request = validation.request;
-      const existingReceipt = await ctx.db.playerCombatReceipts
-        .withIndex(BS.byUserOperation, (q) => q
-          .eq(BS.userId, ctx.auth.userId)
-          .eq(BS.operationId, request.operationId))
-        .order("desc")
-        .first();
+      const existingReceipt = await newestUserOperationReceipt(ctx.db.playerCombatReceipts, ctx.auth.userId, request.operationId);
       const replay = decidePlayerCombatReplay(existingReceipt?.fingerprint ?? null, request.fingerprint);
       if (replay === BS.operationIdReused) return { ok: false, reason: BS.operationIdReused, serverNow };
       if (replay === "replay" && existingReceipt) {
@@ -5414,34 +5252,27 @@ export default capsule({
           ?? { ok: false, reason: BS.invalidReceipt, serverNow };
       }
 
-      const attackerPresenceRow = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
-      const targetPresenceRow = await newestByIndex(ctx.db.playerPresence, BS.byUser, (q) => q.eq(BS.userId, request.targetUserId))
-        .first();
-      const targetMotionRow = await newestByIndex(ctx.db.motionSegments, "by_user_accepted", (q) => q.eq(BS.userId, request.targetUserId))
-        .first();
+      const attackerPresenceRow = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId);
+      const targetPresenceRow = await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, request.targetUserId);
+      const targetMotionRow = await newestMatchingRow(ctx.db.motionSegments, "by_user_accepted", BS.userId, request.targetUserId);
       const attackerPresence = authoritativeCombatPose(attackerPresenceRow, ctx.auth.userId, serverNow);
       const targetPresence = motionBackedCombatPose(
         targetPresenceRow, targetMotionRow, request.targetUserId, serverNow,
       );
 
-      const attackerInventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .take(2);
+      const attackerInventoryRows = await newestUserRows(ctx.db.inventories, ctx.auth.userId);
       if (attackerInventoryRows.length !== 1) return { ok: false, reason: BS.inventoryRequired, serverNow };
       const attackerInventoryRow = attackerInventoryRows[0];
       const attackerPlayerState = validatePlayerStateJson(attackerInventoryRow.inventoryJson);
       if (!attackerPlayerState.ok) return { ok: false, reason: BS.attackerStateInvalid, serverNow };
-      const targetInventoryRows = await newestByIndex(ctx.db.inventories, BS.byUser, (q) => q.eq(BS.userId, request.targetUserId))
-        .take(2);
+      const targetInventoryRows = await newestUserRows(ctx.db.inventories, request.targetUserId);
       if (targetInventoryRows.length !== 1) return { ok: false, reason: BS.targetStateInvalid, serverNow };
       const targetInventoryRow = targetInventoryRows[0];
       const targetPlayerState = validatePlayerStateJson(targetInventoryRow.inventoryJson);
       if (!targetPlayerState.ok) return { ok: false, reason: BS.targetStateInvalid, serverNow };
 
-      const attackerCombatRow = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
-      const targetCombatRow = await newestByIndex(ctx.db.playerCombat, BS.byUser, (q) => q.eq(BS.userId, request.targetUserId))
-        .first();
+      const attackerCombatRow = await newestMatchingRow(ctx.db.playerCombat, BS.byUser, BS.userId, ctx.auth.userId);
+      const targetCombatRow = await newestMatchingRow(ctx.db.playerCombat, BS.byUser, BS.userId, request.targetUserId);
       if (request.targetUserId === ctx.auth.userId) return { ok: false, reason: "self_target", serverNow };
       if (!attackerPresence) return { ok: false, reason: "active_attacker_presence_required", serverNow };
       if (!targetPresence || !targetPresenceRow) return { ok: false, reason: "active_target_presence_required", serverNow };
@@ -5544,14 +5375,13 @@ export default capsule({
     }),
 
     claimUsername: mutation(async (ctx, requestedUsername: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateUsername(requestedUsername);
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
-      const existingProfile = await newestByIndex(ctx.db.profiles, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const existingProfile = await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId);
       if (existingProfile) {
         if (existingProfile.normalizedUsername === validation.username) {
           return { ok: true, profile: existingProfile };
@@ -5574,18 +5404,16 @@ export default capsule({
     }),
 
     sendChat: mutation(async (ctx, rawMessage: string) => {
-      if (!ctx.auth.isAuthenticated || ctx.auth.isGuest) {
+      if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
       }
       const validation = validateChatMessage(rawMessage);
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
-      const profile = await newestByIndex(ctx.db.profiles, BS.byUser, (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const profile = await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId);
       if (!profile) return { ok: false, reason: "profile_required" };
 
-      const previous = await newestByIndex(ctx.db.chatMessages, "by_user_sent_at", (q) => q.eq(BS.userId, ctx.auth.userId))
-        .first();
+      const previous = await newestMatchingRow(ctx.db.chatMessages, "by_user_sent_at", BS.userId, ctx.auth.userId);
       const now = Date.now();
       const elapsed = previous ? now - Number(previous.sentAt) : CHAT_RATE_LIMIT_MS;
       if (elapsed < CHAT_RATE_LIMIT_MS) {

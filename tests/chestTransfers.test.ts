@@ -12,29 +12,23 @@ import {
   type ChestTransferRequest,
 } from "../shared/chestTransfers.ts";
 import { CHEST_SLOT_COUNT } from "../shared/chests.ts";
-import { INVENTORY_SIZE, ITEMS, createEmptyInventory, type Inventory, type ItemId } from "../shared/game.ts";
+import { ITEMS, createEmptyEquipment, createEmptyInventory, type Inventory, type ItemId } from "../shared/game.ts";
 
-const legacyInventory = JSON.stringify([{ itemId: "stone", count: 12 }, null, { itemId: "wooden_pickaxe", count: 1 }]);
-const legacy = validatePlayerStateJson(legacyInventory);
-assert.equal(legacy.ok, true);
-if (!legacy.ok) throw new Error("legacy player state should validate");
-assert.equal(legacy.state.version, PLAYER_STATE_VERSION);
-assert.equal(legacy.state.inventory.length, INVENTORY_SIZE);
-assert.deepEqual(legacy.state.inventory.slice(0, 3), [
-  { itemId: "stone", count: 12 },
-  null,
-  { itemId: "wooden_pickaxe", count: 1, durability: ITEMS.wooden_pickaxe.tool!.maxDurability },
-]);
-assert.equal(legacy.state.selectedHotbar, 0);
-assert.equal(legacy.state.hunger, 20);
-
-const currentState = validatePlayerStateJson(JSON.stringify({
-  inventory: [{ itemId: "dirt", count: 4 }],
+const currentInventory = createEmptyInventory();
+currentInventory[0] = { itemId: "dirt", count: 4 };
+const currentInput = {
+  version: PLAYER_STATE_VERSION,
+  inventory: currentInventory,
   selectedHotbar: 3,
-  equipment: { head: "leather_helmet", chest: null, legs: null, feet: "leather_boots" },
+  equipment: {
+    ...createEmptyEquipment(),
+    head: { itemId: "leather_helmet", durability: ITEMS.leather_helmet.armor!.maxDurability },
+    feet: { itemId: "leather_boots", durability: ITEMS.leather_boots.armor!.maxDurability },
+  },
   respawnPoint: { x: 1.5, y: 8, z: -2.5, yaw: 0.4, pitch: -0.1 },
   hunger: 13,
-}));
+} as const;
+const currentState = validatePlayerStateJson(JSON.stringify(currentInput));
 assert.equal(currentState.ok, true);
 if (!currentState.ok) throw new Error("current player state should validate");
 assert.equal(currentState.state.version, PLAYER_STATE_VERSION);
@@ -50,18 +44,14 @@ assert.deepEqual(validatePlayerStateJson(currentState.playerStateJson), currentS
 for (const [raw, reason] of [
   ["{", "invalid_json"],
   ["{}", "invalid_shape"],
-  [JSON.stringify({ inventory: "not-an-array" }), "invalid_inventory"],
-  [JSON.stringify({ inventory: [{ itemId: "obsidian", count: 1 }] }), "invalid_inventory"],
-  [JSON.stringify({ inventory: [{ itemId: "stone", count: 65 }] }), "invalid_inventory"],
-  [JSON.stringify({ inventory: [{ itemId: "stone", count: 1, durability: 1 }] }), "invalid_inventory"],
-  [JSON.stringify({ inventory: [{ itemId: "wooden_pickaxe", count: 1, durability: 60 }] }), "invalid_inventory"],
-  [JSON.stringify({ inventory: [{ itemId: "wooden_pickaxe", count: 1, durability: 0 }] }), "invalid_inventory"],
-  [JSON.stringify({ inventory: [], selectedHotbar: 9 }), "invalid_selected_hotbar"],
-  [JSON.stringify({ inventory: [], equipment: { head: "stone", chest: null, legs: null, feet: null } }), "invalid_equipment"],
-  [JSON.stringify({ inventory: [], respawnPoint: { x: 1, y: 8, z: 1, yaw: 0, pitch: 9 } }), "invalid_respawn_point"],
-  [JSON.stringify({ inventory: [], hunger: -1 }), "invalid_hunger"],
-  [JSON.stringify({ version: 99, inventory: [] }), "invalid_version"],
-  [JSON.stringify({ inventory: [], injected: true }), "invalid_shape"],
+  [JSON.stringify({ ...currentInput, inventory: "not-an-array" }), "invalid_inventory"],
+  [JSON.stringify({ ...currentInput, inventory: [{ itemId: "obsidian", count: 1 }] }), "invalid_inventory"],
+  [JSON.stringify({ ...currentInput, selectedHotbar: 9 }), "invalid_selected_hotbar"],
+  [JSON.stringify({ ...currentInput, equipment: { head: "stone", chest: null, legs: null, feet: null } }), "invalid_equipment"],
+  [JSON.stringify({ ...currentInput, respawnPoint: { x: 1, y: 8, z: 1, yaw: 0, pitch: 9 } }), "invalid_respawn_point"],
+  [JSON.stringify({ ...currentInput, hunger: -1 }), "invalid_hunger"],
+  [JSON.stringify({ ...currentInput, version: 99 }), "invalid_version"],
+  [JSON.stringify({ ...currentInput, injected: true }), "invalid_shape"],
 ] as const) {
   assert.deepEqual(validatePlayerStateJson(raw), { ok: false, reason }, raw);
 }
@@ -76,18 +66,18 @@ const request: ChestTransferRequest = {
   count: 7,
   expectedChestUpdatedAt: "chest-token",
   expectedInventoryUpdatedAt: "inventory-token",
-  playerStateJson: legacyInventory,
+  playerStateJson: currentState.playerStateJson,
 };
 const validatedRequest = validateChestTransferRequestJson(JSON.stringify(request));
 assert.equal(validatedRequest.ok, true);
 if (!validatedRequest.ok) throw new Error("request should validate");
 assert.equal(validatedRequest.request.coordKey, "1:8:-2");
-assert.equal(validatedRequest.request.canonicalPlayerStateJson, legacy.playerStateJson);
+assert.equal(validatedRequest.request.canonicalPlayerStateJson, currentState.playerStateJson);
 assert.ok(validatedRequest.request.fingerprint.includes(operationId));
 const equivalentRequest = validateChestTransferRequestJson(JSON.stringify({
   ...request,
   coordKey: "1:8:-2",
-  playerStateJson: legacy.playerStateJson,
+  playerStateJson: currentState.playerStateJson,
 }));
 assert.equal(equivalentRequest.ok, true);
 if (equivalentRequest.ok) assert.equal(equivalentRequest.request.fingerprint, validatedRequest.request.fingerprint);

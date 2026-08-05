@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { getBowIconArt, getItemIconArt } from "../client/components/itemIconArt.ts";
 import {
   FIRST_PERSON_ACTION_MS,
   FIRST_PERSON_MAX_COLOR_VERTICES,
@@ -9,6 +10,7 @@ import {
   sampleFirstPersonAction,
   writeFirstPersonModelMatrix,
 } from "../client/game/firstPersonRenderer.ts";
+import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 
@@ -28,35 +30,52 @@ function fakeGl(): WebGLRenderingContext {
 const capacity = firstPersonBufferCapacity();
 assert.equal(capacity[0], FIRST_PERSON_MAX_COLOR_VERTICES);
 assert.equal(capacity[1], 36, "one held atlas cube is the complete textured budget");
-assert.equal(capacity[2], 16_416, "the retained first-person buffers stay below 17 KiB");
+assert.ok(capacity[2] < 120 * 1_024, "the retained original-sprite plus block buffers stay below 120 KiB");
 
 const renderer = createFirstPersonRenderer(fakeGl());
 const stats = renderer[2];
-assert.equal(stats[0], 72, "empty hand is exactly two solid six-face prisms");
+const canonicalHeldSpriteVertices = {
+  iron_pickaxe: appendItemSpriteGeometry([], getItemIconArt("iron_pickaxe")),
+  iron_sword: appendItemSpriteGeometry([], getItemIconArt("iron_sword")),
+  apple: appendItemSpriteGeometry([], getItemIconArt("apple")),
+  bow_full_draw: appendItemSpriteGeometry([], getBowIconArt(3)),
+};
+assert.deepEqual(canonicalHeldSpriteVertices, {
+  iron_pickaxe: 1_140,
+  iron_sword: 900,
+  apple: 732,
+  bow_full_draw: 1_212,
+}, "exact held-item fixtures are derived from the current reviewed canonical sprite art");
+assert.equal(stats[0], 0, "empty hand no longer uploads a synthetic solid-color arm");
 assert.equal(stats[1], 0);
-assert.equal(stats[2], 1);
+assert.equal(stats[2], 0);
 
 renderer[3]("dirt", BLOCK.DIRT);
 assert.deepEqual(
   [stats[0], stats[1], stats[2], stats[3]],
-  [72, 36, 2, 2_592],
-  "held full blocks reuse one atlas cube plus the two-prism arm in two fixed draws",
+  [0, 36, 1, 864],
+  "held full blocks reuse one atlas cube while the standard-skin arm owns its separate batch",
 );
 
 renderer[3]("iron_pickaxe", BLOCK.AIR);
-assert.equal(stats[0], 180, "pickaxe is three solid tool boxes plus the two-box arm");
-assert.equal(stats[3], 4_320);
+assert.equal(stats[0], canonicalHeldSpriteVertices.iron_pickaxe,
+  "pickaxe is exactly the canonical opaque-edge pixel sprite");
+assert.equal(stats[3], canonicalHeldSpriteVertices.iron_pickaxe * 6 * Float32Array.BYTES_PER_ELEMENT,
+  "pickaxe upload bytes stay exactly coupled to its canonical vertex fixture");
 
 renderer[3]("iron_sword", BLOCK.AIR);
-assert.equal(stats[0], 180, "sword is a solid blade, guard, grip, sleeve, and hand");
+assert.equal(stats[0], canonicalHeldSpriteVertices.iron_sword,
+  "sword reuses its canonical inventory pixels as held 3D geometry");
 
 renderer[3]("apple", BLOCK.AIR);
-assert.equal(stats[0], 216, "apple/stem/leaf geometry remains compact and solid");
+assert.equal(stats[0], canonicalHeldSpriteVertices.apple,
+  "apple reuses its canonical inventory pixels as held 3D geometry");
 
 renderer[3]("bow", BLOCK.AIR);
 renderer[4](true, 1);
-assert.equal(stats[0], 360, "full bow pose is ten solid bow/string/arrow boxes without an unrelated arm");
-assert.equal(stats[3], 8_640, "largest staged bow upload remains below 9 KiB");
+assert.equal(stats[0], canonicalHeldSpriteVertices.bow_full_draw,
+  "full-draw bow uses its canonical opaque-edge sprite without an unrelated arm");
+assert.ok(stats[3] < 30 * 1_024, "held sprite uploads remain below 30 KiB");
 
 const retainedPose = new Float32Array([9, 9, 9, 9, 9, 9]);
 const idle = sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS, false, false);
@@ -146,6 +165,7 @@ const rendererSource = readFileSync(new URL("../client/game/firstPersonRenderer.
 const gameHud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.ok(engine.includes("createFirstPersonRenderer(gl)"), "the retained viewmodel is created beside the world renderers");
+assert.ok(engine.includes("createFirstPersonSkinRenderer(gl)"), "the standard-skin arm owns a separate retained texture batch");
 assert.ok(engine.includes("gl.clear(gl.DEPTH_BUFFER_BIT)"), "viewmodel receives a fresh depth plane after world rendering");
 assert.ok(engine.includes("writeFirstPersonMvp"), "actions alter only the small model matrix during frames");
 assert.ok(rendererSource.includes("const actionPose: FirstPersonActionPose"), "the renderer retains one mutable action pose");
@@ -171,6 +191,8 @@ assert.ok(localFeedbackCalls.length >= 2 && localFeedbackCalls.every((predicate)
   "Game Menu alone keeps the held pose visible while every other blocking surface may hide it");
 assert.ok(localFeedbackCalls.every((predicate) => !predicate.includes("pointerCaptureNeeded")),
   "Click to Play keeps the held pose visible while pointer capture is recovered");
+assert.ok(localFeedbackCalls.every((predicate) => !predicate.includes("inventoryOpen")),
+  "the inventory keeps the held arm and item visible behind its workspace");
 assert.equal(gameHud.includes("FirstPersonHeldItem"), false, "the HUD no longer paints a duplicate DOM hand");
 assert.equal(styles.includes("lc-first-person"), false, "the rejected CSS 3D/sprite rig is absent from the artifact");
 

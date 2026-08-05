@@ -19,6 +19,7 @@ import {
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
 import { consumeSinglePlayerCommandSurfaceEscape } from "../client/singleplayer/sessionState.ts";
+import { stripClientDevelopmentSurfaces } from "../scripts/client-development-surface-transform.mjs";
 
 const shortcut = (code: string, key: string, repeat = false) => localCommandShortcutDraft({ code, key, repeat });
 assert.equal(shortcut("Slash", "/"), "/", "the physical slash key seeds a command");
@@ -177,14 +178,37 @@ assert.ok(commandOpenBranch.includes("if (commandSurfaceOpenRef.current)"),
   "other command input is also fenced before a Preact commit");
 assert.ok(app.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
   "chat is excluded from the true simulation-pause modal boundary");
-assert.ok(app.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+const uiModalDeclaration = app.match(/^\s*const uiModalOpen = [^\n]+;$/m)?.[0].trim();
+assert.ok(uiModalDeclaration, "the UI/input blocker declaration remains explicit");
+assert.ok(uiModalDeclaration.includes("worldModalOpen") && uiModalDeclaration.includes("commandOpen"),
   "chat still hides gameplay UI and blocks pointer-session loss handling");
+const visualLabModalTerm = "/* @lakecraft-development:modal:start */ || visualLabOpen"
+  + "/* @lakecraft-development:modal:end */";
+assert.equal(
+  uiModalDeclaration.replace(visualLabModalTerm, ""),
+  "const uiModalOpen = worldModalOpen || commandOpen;",
+  "the development-only Visual Lab blocker remains inside its paired compact-strip markers",
+);
+assert.ok(
+  stripClientDevelopmentSurfaces(app).includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+  "compact stripping retains chat as a production UI/input blocker",
+);
 const ongoingPauseStart = app.indexOf("const paused = singlePlayerGameplayPaused", app.indexOf("engine.start();"));
 const ongoingPausePredicate = app.slice(ongoingPauseStart, app.indexOf("});", ongoingPauseStart) + 3);
+assert.ok(ongoingPausePredicate.includes("worldModalOpen"),
+  "world modals continue to pause the local simulation");
 assert.equal(ongoingPausePredicate.includes("commandOpen"), false,
-  "open chat never freezes world time, mobs, TNT, or the retained render loop");
-assert.ok(app.includes("inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen"),
-  "chat hides the held viewmodel while pointer recapture leaves the paused pose visible");
+  "chat blocks input without freezing world time, mobs, TNT, or the retained render loop");
+const feedbackPredicates = [...app.matchAll(/setFirstPersonFeedbackHidden\(([\s\S]*?)\);/g)]
+  .map((match) => match[1]);
+assert.ok(feedbackPredicates.length >= 2, "initial and ongoing held-viewmodel visibility stay explicit");
+assert.ok(feedbackPredicates.every((predicate) => (
+  predicate.includes("worldModalOpen")
+  && predicate.includes("deathScreenOpen")
+  && predicate.includes("commandOpen")
+)), "world modals, death, and chat hide the held viewmodel");
+assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("inventoryOpen")),
+  "inventory deliberately keeps the held arm and item visible behind its workspace");
 const shortcutBranch = app.slice(app.indexOf("const commandShortcutDraft"), app.indexOf('if (event.code === "KeyQ"'));
 assert.ok(shortcutBranch.includes("inventoryOpen || worldModalOpen || deathScreenOpen"), "higher-priority modals fence every chat shortcut");
 assert.ok(shortcutBranch.indexOf("commandSurfaceOpenRef.current = true") < shortcutBranch.indexOf("setCommandOpen(true)"),

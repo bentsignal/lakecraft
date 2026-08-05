@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  FIRST_PERSON_BOW_ARROW_TIP,
   firstPersonBowChargeStage,
-  writeFirstPersonModelMatrix,
 } from "../client/game/firstPersonRenderer.ts";
+import { getBowIconArt } from "../client/components/itemIconArt.ts";
+import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 
 assert.deepEqual(
   [0, 0.54, 0.55, 0.89, 0.9, 1].map((progress) => firstPersonBowChargeStage(true, progress)),
@@ -14,24 +14,17 @@ assert.deepEqual(
 assert.equal(firstPersonBowChargeStage(false, 1), 0, "cancel/release returns the retained model to rest");
 
 const source = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.match(source, /const nockX = 0\.26 - chargeStage \* 0\.10/,
-  "each stage pulls the solid string nock monotonically toward screen center");
-assert.ok(source.includes("Math.hypot(arrowDx, arrowDy, arrowDz)")
-  && source.includes("Math.atan2(arrowDx, arrowDz)"),
-"the arrow is a depth-oriented shaft rather than a sideways screen-space segment");
-assert.ok(source.includes("ARROWHEAD") && source.includes("FLETCHING"),
-  "the charged projectile has a solid shaft, head, and fletching");
+const stageGeometry = [0, 1, 2, 3].map((stage) => {
+  const output: number[] = [];
+  appendItemSpriteGeometry(output, getBowIconArt(stage as 0 | 1 | 2 | 3));
+  return output;
+});
+assert.equal(new Set(stageGeometry.map((geometry) => JSON.stringify(geometry))).size, 4,
+  "idle and three draw states resolve to distinct canonical opaque-edge geometry");
+assert.ok(source.includes("getBowIconArt(charging ? chargeStage + 1")
+  && source.includes("appendItemSpriteGeometry"),
+"the monotonic charge stage selects the shared inventory/held bow artwork");
 assert.equal(source.includes("<svg"), false, "the bow no longer falls back to flat SVG presentation");
-
-const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0]);
-const tipX = model[0] * FIRST_PERSON_BOW_ARROW_TIP[0]
-  + model[4] * FIRST_PERSON_BOW_ARROW_TIP[1]
-  + model[8] * FIRST_PERSON_BOW_ARROW_TIP[2] + model[12];
-const tipY = model[1] * FIRST_PERSON_BOW_ARROW_TIP[0]
-  + model[5] * FIRST_PERSON_BOW_ARROW_TIP[1]
-  + model[9] * FIRST_PERSON_BOW_ARROW_TIP[2] + model[13];
-assert.ok(Math.abs(tipX) < 0.003 && Math.abs(tipY) < 0.001,
-  "the fully drawn visual arrow converges on the unchanged camera crosshair");
 assert.equal(source.includes("appendArm(geometry[0]);\n    if (itemId === \"bow\")"), false,
   "bow staging never composes the ordinary one-arm model underneath itself");
 

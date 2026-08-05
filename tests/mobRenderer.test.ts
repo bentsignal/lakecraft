@@ -279,15 +279,27 @@ const baseBoxes: Readonly<Partial<Record<MobKind, number>>> = {
   zombie: 6,
   skeleton: 9,
   creeper: 6,
+  spider: 10,
 };
 const detailQuads: Readonly<Partial<Record<MobKind, number>>> = {
-  pig: 4,
-  cow: 5,
-  sheep: 5,
-  chicken: 4,
-  zombie: 6,
-  skeleton: 3,
-  creeper: 6,
+  pig: 18,
+  cow: 18,
+  sheep: 30,
+  chicken: 18,
+  zombie: 36,
+  skeleton: 18,
+  creeper: 36,
+  spider: 12,
+};
+const detailPaletteSignatures: Readonly<Record<MobKind, string>> = {
+  pig: "13a218eb",
+  cow: "a4e678df",
+  sheep: "907fc375",
+  chicken: "46e9b79d",
+  zombie: "96c05b75",
+  skeleton: "688701b7",
+  creeper: "19cfced7",
+  spider: "bc9d60ef",
 };
 
 // The first two cow detail quads are its eyes on local +Z. Prove against the
@@ -360,7 +372,7 @@ assert.ok(turnedEyeZ / 12 < turningCow.z - 0.35,
   "a live east-to-north turn puts the cow's front pixels ahead of its new travel");
 facingRenderer.destroy();
 
-for (const kind of kinds.slice(0, -1)) {
+for (const kind of kinds) {
   const frontPose = pose(kind, 0, 4, 200);
   frontPose.previousX = frontPose.x;
   frontPose.previousY = frontPose.y;
@@ -370,17 +382,34 @@ for (const kind of kinds.slice(0, -1)) {
   const boxCount = baseBoxes[kind]!;
   const quadCount = detailQuads[kind]!;
   assert.equal(detailStats.vertexCount, boxCount * 36 + quadCount * 6, `${kind} detail uses six-vertex quads`);
+  assert.equal(detailStats.vertexCount, 12 * 36, `${kind} exactly fills, but never exceeds, the retained per-mob envelope`);
   const detailGeometry = gl.uploaded!.slice(boxCount * 36 * 6, detailStats.vertexCount * 6);
+  const surfaceAxes = new Set<number>();
   for (let quad = 0; quad < quadCount; quad += 1) {
     const start = quad * 6 * 6;
-    const z = detailGeometry[start + 2];
-    for (let vertex = 0; vertex < 6; vertex += 1) {
-      assert.equal(detailGeometry[start + vertex * 6 + 2], z, `${kind} patch ${quad} is a flat offset quad`);
-    }
+    const flatAxes = [0, 1, 2].filter((axis) => Array.from({ length: 6 }, (_, vertex) =>
+      detailGeometry[start + vertex * 6 + axis]).every((value) => Math.abs(value - detailGeometry[start + axis]) < 1e-6));
+    assert.ok(flatAxes.length >= 1, `${kind} patch ${quad} stays on one box face`);
+    surfaceAxes.add(flatAxes[0]!);
   }
+  assert.equal(surfaceAxes.size, 3, `${kind} authored pixels cover vertical sides and a horizontal surface`);
   const leftEye = Array.from({ length: 6 }, (_, vertex) => detailGeometry[vertex * 6]);
   const rightEye = Array.from({ length: 6 }, (_, vertex) => detailGeometry[(6 + vertex) * 6]);
   assert.ok(Math.max(...leftEye) < Math.min(...rightEye), `${kind} keeps two separated front-facing eye pixels`);
+  const detailPalette = new Set<string>();
+  for (let offset = 0; offset < detailGeometry.length; offset += 6) {
+    detailPalette.add(`${detailGeometry[offset + 3]!.toFixed(3)},${detailGeometry[offset + 4]!.toFixed(3)},${detailGeometry[offset + 5]!.toFixed(3)}`);
+  }
+  assert.ok(detailPalette.size >= 3, `${kind} has a multi-tone authored surface palette`);
+  let paletteHash = 2_166_136_261 >>> 0;
+  for (let offset = 0; offset < detailGeometry.length; offset += 6) {
+    for (let color = 3; color < 6; color += 1) {
+      paletteHash ^= Math.round(detailGeometry[offset + color]! * 255);
+      paletteHash = Math.imul(paletteHash, 16_777_619) >>> 0;
+    }
+  }
+  assert.equal(paletteHash.toString(16).padStart(8, "0"), detailPaletteSignatures[kind],
+    `${kind} keeps its deterministic original-art detail/palette signature`);
 }
 
 const chicken = pose("chicken", 0, 4, 0);
@@ -400,7 +429,8 @@ for (let offset = 0; offset < stillChickenGeometry.length; offset += 6) {
   if (red > 0.55 && green > 0.3 && blue < 0.1) yellowChickenVertices += 1;
   if (red > 0.45 && green < 0.12 && blue < 0.1) redChickenVertices += 1;
 }
-assert.equal(stillChicken.vertexCount, 9 * 36 + 4 * 6, "a chicken adds four flat face/feather pixels to nine bounded boxes");
+assert.equal(stillChicken.vertexCount, 9 * 36 + 18 * 6,
+  "a chicken adds front identity marks plus multi-face feather pixels to nine bounded boxes");
 assert.ok(whiteChickenVertices >= 72, "the chicken has a recognizable white body and head");
 assert.ok(yellowChickenVertices >= 36, "the chicken has a visible yellow beak and legs");
 assert.ok(redChickenVertices >= 12, "the chicken has a visible red wattle below its beak");
@@ -438,23 +468,23 @@ for (let offset = 0; offset < stillSpiderGeometry.length; offset += 6) {
   maximumY = Math.max(maximumY, stillSpiderGeometry[offset + 1]);
   if (stillSpiderGeometry[offset + 3] > 0.6 && stillSpiderGeometry[offset + 4] < 0.1) brightRedVertices += 1;
 }
-assert.equal(stillSpider.vertexCount, 12 * 36, "a spider is exactly two body boxes, two eyes, and eight legs");
+assert.equal(stillSpider.vertexCount, 12 * 36, "a spider is exactly two body boxes, eight legs, and twelve face-detail quads");
 assert.ok(maximumX - minimumX > 2, "spider legs create a wide silhouette");
 assert.ok(maximumY - minimumY < 0.7, "the spider stays recognizably low to the ground");
 assert.ok(brightRedVertices >= 12, "the forward face includes two visible bright-red eye blocks");
 renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.1);
 const walkingSpiderGeometry = gl.uploaded!.slice(0, stillSpider.vertexCount * 6);
 assert.deepEqual(
-  walkingSpiderGeometry.subarray(4 * 36 * 6),
-  stillSpiderGeometry.subarray(4 * 36 * 6),
+  walkingSpiderGeometry.subarray(2 * 36 * 6, 10 * 36 * 6),
+  stillSpiderGeometry.subarray(2 * 36 * 6, 10 * 36 * 6),
   "a chase label cannot animate stationary spider legs",
 );
 spider.previousX = spider.x;
 spider.x += 0.1;
 renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.2);
 assert.notDeepEqual(
-  gl.uploaded!.subarray(4 * 36 * 6),
-  stillSpiderGeometry.subarray(4 * 36 * 6),
+  gl.uploaded!.subarray(2 * 36 * 6, 10 * 36 * 6),
+  stillSpiderGeometry.subarray(2 * 36 * 6, 10 * 36 * 6),
   "actual spider displacement animates all eight leg boxes",
 );
 

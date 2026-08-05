@@ -15,7 +15,11 @@ import {
   listLocalWorlds,
 } from "../client/singleplayer/localWorldRegistry.ts";
 import {
+  SINGLEPLAYER_SAVE_HEAD_KEY,
+  SINGLEPLAYER_SAVE_SLOT_A_KEY,
+  SINGLEPLAYER_SAVE_SLOT_B_KEY,
   loadSinglePlayerSave,
+  singlePlayerWorldStorageKey,
   singlePlayerWorldStorageKeys,
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
@@ -63,7 +67,7 @@ test("fixture passes the strict registry, journal, runtime, and mob validators",
   assert.ok(listed.worlds.every(({ health, capacity }) => health === "healthy" && capacity === "ok"));
 
   for (const world of generated.manifest.worlds) {
-    const load = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: world.worldId });
+    const load = loadSinglePlayerSave(storage, { worldId: world.worldId });
     assert.ok(load.status === "loaded" || load.status === "recovered", `${world.role} journal must load`);
     assert.ok(load.snapshot?.runtime);
     assert.equal(load.snapshot.world.worldId, world.worldId);
@@ -71,11 +75,17 @@ test("fixture passes the strict registry, journal, runtime, and mob validators",
     const runtime = validateVoxelRuntimeSnapshotDetailed(load.snapshot.runtime);
     assert.equal(runtime.ok, true);
     assert.ok(validateMobSimulationSnapshot(load.snapshot.runtime.mobSimulation));
-    const values = singlePlayerWorldStorageKeys(world.worldId).map((key) => storage.getItem(key));
-    assert.equal(values[0], null, "legacy slot remains absent");
-    assert.ok(values[1], "head exists");
-    assert.ok(values[2], "slot A exists");
-    assert.ok(values[3], "slot B exists");
+    const keys = singlePlayerWorldStorageKeys(world.worldId);
+    assert.equal(keys.length, 3);
+    assert.deepEqual(keys, [
+      singlePlayerWorldStorageKey(world.worldId, SINGLEPLAYER_SAVE_HEAD_KEY),
+      singlePlayerWorldStorageKey(world.worldId, SINGLEPLAYER_SAVE_SLOT_A_KEY),
+      singlePlayerWorldStorageKey(world.worldId, SINGLEPLAYER_SAVE_SLOT_B_KEY),
+    ]);
+    const values = keys.map((key) => storage.getItem(key));
+    assert.ok(values[0], "head exists");
+    assert.ok(values[1], "slot A exists");
+    assert.ok(values[2], "slot B exists");
   }
 });
 
@@ -122,7 +132,7 @@ test("state fixture persists shearing, walking interpolation, and a delayed visi
   assert.ok(creeper.fuseProgress >= 0.5 && creeper.fuseProgress <= 0.55);
 
   const storage = fixtureStorage();
-  const loaded = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: states.worldId });
+  const loaded = loadSinglePlayerSave(storage, { worldId: states.worldId });
   assert.ok(loaded.snapshot?.runtime);
   const edits = new Map(loaded.snapshot.world.edits.map((edit) => [`${edit.x}:${edit.y}:${edit.z}`, edit.block]));
   for (const mob of states.mobs) {

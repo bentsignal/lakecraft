@@ -285,6 +285,30 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "furnace_side") {
+    // Neutral original masonry used on every non-front vertical face. It is
+    // intentionally free of an opening so a furnace keeps one readable
+    // orientation instead of appearing to have a mouth on every side.
+    const mortar = [68, 68, 68, 255];
+    const shadow = [102, 102, 102, 255];
+    const stone = [136, 136, 136, 255];
+    const highlight = [170, 170, 153, 255];
+    fill(stone);
+    for (const y of [0, 4, 8, 12, 15]) {
+      for (let x = 0; x < tileSize; x += 1) paint(x, y, mortar);
+    }
+    for (let course = 0; course < 4; course += 1) {
+      const seamA = course % 2 === 0 ? 6 : 2;
+      const seamB = course % 2 === 0 ? 14 : 10;
+      for (let y = course * 4 + 1; y < Math.min(course * 4 + 4, tileSize); y += 1) {
+        paint(seamA, y, mortar); paint(seamB, y, mortar);
+      }
+    }
+    for (const [x, y] of [[1,1],[2,1],[7,1],[8,1],[3,5],[4,5],[11,5],[12,5],[1,9],[6,9],[7,9],[13,9],[3,13],[9,13]]) paint(x, y, highlight);
+    for (const [x, y] of [[4,2],[11,3],[1,6],[8,6],[14,7],[4,10],[10,11],[1,14],[12,14]]) paint(x, y, shadow);
+    return;
+  }
+
   if (name === "furnace_front") {
     const mortar = [68, 68, 68, 255];
     const stone = [136, 136, 136, 255];
@@ -542,6 +566,7 @@ function expandNamedAtlas(source, names, columns, rows, sourceColumns, sourceRow
   const sourceTileCount = sourceColumns * sourceRows;
   for (let index = 0; index < sourceTileCount; index += 1) {
     copyTile(source, index, output, index, sourceColumns, columns, tileSize);
+    if (names[index] === "furnace_side") paintDerivedTile(output, index, columns, tileSize, names[index]);
   }
   for (let index = sourceTileCount; index < names.length; index += 1) {
     paintDerivedTile(output, index, columns, tileSize, names[index]);

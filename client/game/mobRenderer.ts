@@ -14,13 +14,13 @@ import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeome
 type Vec3 = readonly [number, number, number];
 
 const VERTICES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
-  pig: 348,
-  cow: 354,
-  sheep: 282,
-  chicken: 348,
-  zombie: 252,
-  skeleton: 342,
-  creeper: 252,
+  pig: 432,
+  cow: 432,
+  sheep: 432,
+  chicken: 432,
+  zombie: 432,
+  skeleton: 432,
+  creeper: 432,
   spider: 432,
 });
 
@@ -220,6 +220,156 @@ function appendMobPatches(
       writer.data[writer.offset++] = green + (0.06 - green) * hurtMix;
       writer.data[writer.offset++] = blue + (0.06 - blue) * hurtMix;
     }
+  }
+}
+
+const PIG_SURFACE: readonly [Vec3, Vec3] = [[0.64, 0.27, 0.33], [0.98, 0.58, 0.63]];
+const COW_SURFACE: readonly [Vec3, Vec3] = [[0.78, 0.66, 0.5], [0.09, 0.055, 0.035]];
+const SHEEP_SURFACE: readonly [Vec3, Vec3] = [[0.68, 0.66, 0.56], [0.97, 0.94, 0.82]];
+const SHEARED_SURFACE: readonly [Vec3, Vec3] = [[0.57, 0.39, 0.34], [0.83, 0.62, 0.56]];
+const CHICKEN_SURFACE: readonly [Vec3, Vec3] = [[0.68, 0.69, 0.65], [1, 0.96, 0.78]];
+const ZOMBIE_SURFACE: readonly [Vec3, Vec3] = [[0.11, 0.34, 0.31], [0.38, 0.55, 0.25]];
+const SKELETON_SURFACE: readonly [Vec3, Vec3] = [[0.55, 0.57, 0.52], [0.93, 0.91, 0.8]];
+const CREEPER_SURFACE: readonly [Vec3, Vec3] = [[0.08, 0.31, 0.08], [0.38, 0.75, 0.22]];
+const SPIDER_SURFACE: readonly [Vec3, Vec3] = [[0.04, 0.025, 0.02], [0.23, 0.12, 0.07]];
+const SPIDER_EYES: readonly [Vec3, Vec3] = [[0.92, 0.025, 0.015], [0.55, 0.01, 0.01]];
+
+type SurfaceFace = "front" | "back" | "left" | "right" | "top";
+const SURFACE_FACES = ["front", "back", "left", "right", "top"] as const;
+const SURFACE_PALETTES = [
+  PIG_SURFACE, COW_SURFACE, SHEEP_SURFACE, SHEARED_SURFACE, CHICKEN_SURFACE,
+  ZOMBIE_SURFACE, SKELETON_SURFACE, CREEPER_SURFACE, SPIDER_SURFACE, SPIDER_EYES,
+] as const;
+const SURFACE_PANEL_STRIDE = 9;
+const SURFACE_PANEL_DATA: readonly (number | string)[] = Object.freeze([
+  2,-0.382,-0.5,0.43,0.45,0.79,4,"1..2.21.",0, 3,0.382,-0.5,0.43,0.45,0.79,4,"2.1..1.2",0,
+  4,0.822,-0.34,-0.49,0.34,0.45,4,"1.2..21.",0, 1,-0.552,-0.34,0.43,0.34,0.79,4,"1..2",0,
+  2,-0.462,-0.58,0.62,0.54,1.08,4,"1.2..11.",1, 3,0.462,-0.58,0.62,0.54,1.08,4,"2..1.2..",1,
+  4,1.122,-0.42,-0.58,0.42,0.54,4,"1.2...1.",1, 1,-0.662,-0.42,0.62,0.42,1.08,4,"1.2.1...",1,
+  2,-0.342,-0.38,0.34,0.02,0.77,3,"1.2.1.",4, 3,0.342,-0.38,0.34,0.02,0.77,3,"2.1..2",4,
+  4,0.832,-0.29,-0.4,0.29,0.02,3,"1.2.1.",4, 1,-0.452,-0.29,0.36,0.29,0.77,3,"2.1.2.",4,
+  4,1.082,-0.18,-0.01,0.18,0.38,2,"12",4,
+  2,-0.272,-0.22,1.43,0.22,1.86,4,"1.....2..1.....2",5, 3,0.272,-0.22,1.43,0.22,1.86,4,"2......1..2..1..",5,
+  1,-0.272,-0.22,1.43,0.22,1.86,4,"1....2..2.....1.",5, 4,1.902,-0.22,-0.22,0.22,0.22,4,"2....1...1....2.",5,
+  2,-0.342,-0.13,0.75,0.13,1.31,3,"1....2..1",5, 3,0.342,-0.13,0.75,0.13,1.31,3,"2..1....2",5,
+  1,-0.182,-0.28,0.75,0.28,1.31,3,"1.2...2.1",5, 0,0.182,-0.28,0.75,0.28,1.31,3,"2.1...1.2",5,
+  2,-0.282,-0.22,1.44,0.22,1.88,3,"1.2.1.",6, 3,0.282,-0.22,1.44,0.22,1.88,3,"2.1..2",6,
+  1,-0.282,-0.22,1.44,0.22,1.88,3,"1.2..1",6, 4,1.942,-0.22,-0.22,0.22,0.22,3,"2.1.2.",6,
+  0,0.092,-0.28,0.94,0.28,1.25,3,"121",6,
+  2,-0.402,-0.34,1.15,0.34,1.73,4,"1.....2..1.....2",7, 3,0.402,-0.34,1.15,0.34,1.73,4,"2......1..2..1..",7,
+  1,-0.402,-0.34,1.15,0.34,1.73,4,"1....2..2.....1.",7, 4,1.792,-0.34,-0.34,0.34,0.34,4,"2....1...1....2.",7,
+  2,-0.272,-0.18,0.4,0.18,1.14,3,"1...2.1....2",7, 3,0.272,-0.18,0.4,0.18,1.14,3,"2...1.2....1",7,
+  1,-0.232,-0.22,0.4,0.22,1.14,3,"1....2..1",7, 0,0.232,-0.22,0.4,0.22,1.14,3,"2..1....2",7,
+  0,0.642,-0.25,0.43,0.25,0.58,4,"1..1",9, 4,0.722,-0.42,-0.58,0.42,0.1,4,"1.2..21.",8,
+  2,-0.482,-0.56,0.36,0.08,0.66,2,"1.2.",8, 3,0.482,-0.56,0.36,0.08,0.66,2,"2.1.",8,
+  1,-0.682,-0.38,0.38,0.38,0.65,2,"12",8,
+]);
+const SURFACE_PANEL_RANGES = Object.freeze({
+  pig: [0, 4], cow: [4, 8], chicken: [8, 13], zombie: [13, 21],
+  skeleton: [21, 26], creeper: [26, 34], spider: [34, 39],
+} as const);
+
+/**
+ * Writes a tiny authored pixel panel directly into the retained mob batch.
+ * Patterns are row-major from bottom to top; `1` and `2` select the two
+ * Lakecraft-authored palette colors and `.` leaves the underlying box visible.
+ */
+function appendSurfacePanel(
+  writer: VertexWriter,
+  originX: number,
+  originY: number,
+  originZ: number,
+  yaw: number,
+  face: SurfaceFace,
+  plane: number,
+  minU: number,
+  minV: number,
+  maxU: number,
+  maxV: number,
+  columns: number,
+  pattern: string,
+  palette: readonly [Vec3, Vec3],
+): void {
+  const rows = pattern.length / columns;
+  const cellU = (maxU - minU) / columns;
+  const cellV = (maxV - minV) / rows;
+  const cosYaw = Math.cos(yaw);
+  const sinYaw = Math.sin(yaw);
+  const epsilon = 0.002;
+  for (let cell = 0; cell < pattern.length; cell += 1) {
+    const colorIndex = pattern.charCodeAt(cell) - 49;
+    if (colorIndex < 0 || colorIndex > 1) continue;
+    const column = cell % columns;
+    const row = Math.floor(cell / columns);
+    const insetU = cellU * 0.12;
+    const insetV = cellV * 0.12;
+    const u0 = minU + column * cellU + insetU;
+    const u1 = minU + (column + 1) * cellU - insetU;
+    const v0 = minV + row * cellV + insetV;
+    const v1 = minV + (row + 1) * cellV - insetV;
+    const color = palette[colorIndex];
+    for (let point = 0; point < 6; point += 1) {
+      const right = point === 1 || point === 2 || point === 4;
+      const top = point >= 2 && point <= 4;
+      const u = right ? u1 : u0;
+      const v = top ? v1 : v0;
+      let localX = 0;
+      let localY = 0;
+      let localZ = 0;
+      if (face === "front") {
+        localX = u;
+        localY = v;
+        localZ = plane + epsilon;
+      } else if (face === "back") {
+        localX = -u;
+        localY = v;
+        localZ = plane - epsilon;
+      } else if (face === "right") {
+        localX = plane + epsilon;
+        localY = v;
+        localZ = -u;
+      } else if (face === "left") {
+        localX = plane - epsilon;
+        localY = v;
+        localZ = u;
+      } else {
+        localX = u;
+        localY = plane + epsilon;
+        localZ = -v;
+      }
+      const deathY = 0.72 + (localY - 0.72) * writer.deathCos - localZ * writer.deathSin;
+      const deathZ = (localY - 0.72) * writer.deathSin + localZ * writer.deathCos;
+      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      writer.data[writer.offset++] = originY + deathY;
+      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
+      const hurtMix = writer.hurtMix;
+      writer.data[writer.offset++] = color[0] + (1 - color[0]) * hurtMix;
+      writer.data[writer.offset++] = color[1] + (0.06 - color[1]) * hurtMix;
+      writer.data[writer.offset++] = color[2] + (0.06 - color[2]) * hurtMix;
+    }
+  }
+}
+
+function appendPackedSurfacePanels(
+  writer: VertexWriter,
+  originX: number,
+  originY: number,
+  originZ: number,
+  yaw: number,
+  range: readonly [number, number],
+): void {
+  for (let panel = range[0]; panel < range[1]; panel += 1) {
+    const offset = panel * SURFACE_PANEL_STRIDE;
+    appendSurfacePanel(writer, originX, originY, originZ, yaw,
+      SURFACE_FACES[SURFACE_PANEL_DATA[offset] as number],
+      SURFACE_PANEL_DATA[offset + 1] as number,
+      SURFACE_PANEL_DATA[offset + 2] as number,
+      SURFACE_PANEL_DATA[offset + 3] as number,
+      SURFACE_PANEL_DATA[offset + 4] as number,
+      SURFACE_PANEL_DATA[offset + 5] as number,
+      SURFACE_PANEL_DATA[offset + 6] as number,
+      SURFACE_PANEL_DATA[offset + 7] as string,
+      SURFACE_PALETTES[SURFACE_PANEL_DATA[offset + 8] as number]);
   }
 }
 
@@ -439,16 +589,63 @@ function appendQuadrupedLegs(
   appendBox(writer,x,y,z,yaw,swing,legTop,backZ,halfWidth,0,backZ-width,halfWidth+width,legTop,backZ+width,red,green,blue);
 }
 
+function appendPigSurface(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
+  appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.pig);
+}
+
+function appendCowSurface(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
+  appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.cow);
+}
+
+function appendSheepSurface(
+  writer: VertexWriter,
+  x: number,
+  y: number,
+  z: number,
+  yaw: number,
+  sheared: boolean,
+): void {
+  const side = sheared ? 0.362 : 0.472;
+  const bottom = sheared ? 0.54 : 0.51;
+  const top = sheared ? 1.06 : 1.17;
+  const back = sheared ? -0.572 : -0.662;
+  const front = sheared ? 0.542 : 0.612;
+  const palette = sheared ? SHEARED_SURFACE : SHEEP_SURFACE;
+  appendSurfacePanel(writer,x,y,z,yaw,"left",-side,back + 0.04,bottom,front - 0.04,top,3,"1.21.221.",palette);
+  appendSurfacePanel(writer,x,y,z,yaw,"right",side,back + 0.04,bottom,front - 0.04,top,3,"2.12.112.",palette);
+  appendSurfacePanel(writer,x,y,z,yaw,"top",top,-side + 0.03,back + 0.04,side - 0.03,front - 0.04,4,"1.2.21.1",palette);
+  appendSurfacePanel(writer,x,y,z,yaw,"back",back,-side + 0.03,bottom,side - 0.03,top,4,"1.2.12.2",palette);
+  appendSurfacePanel(writer,x,y,z,yaw,"left",-0.272,0.6,0.7,1,1.05,3,"121",palette);
+}
+
+function appendChickenSurface(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
+  appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.chicken);
+}
+
+function appendZombieSurface(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
+  appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.zombie);
+}
+
+function appendSkeletonSurface(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
+  appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.skeleton);
+}
+
+function appendCreeperSurface(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
+  appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.creeper);
+}
+
 function appendPig(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   appendQuadrupedLegs(writer,x,y,z,yaw,swing,0.18,0.42,-0.38,0.43,0.13,0.72,0.38,0.43);
   appendStaticBoxes(writer,x,y,z,yaw,264,309);
   appendMobPatches(writer,x,y,z,yaw,0,32);
+  appendPigSurface(writer,x,y,z,yaw);
 }
 
 function appendCow(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   appendQuadrupedLegs(writer,x,y,z,yaw,swing,0.24,0.46,-0.43,0.63,0.14,0.24,0.16,0.08);
   appendStaticBoxes(writer,x,y,z,yaw,309,354);
   appendMobPatches(writer,x,y,z,yaw,32,72);
+  appendCowSurface(writer,x,y,z,yaw);
 }
 
 function appendSheep(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number, sheared: boolean): void {
@@ -457,6 +654,7 @@ function appendSheep(writer: VertexWriter, x: number, y: number, z: number, yaw:
   else appendBox(writer,x,y,z,yaw,0,0,0,-0.47,0.48,-0.66,0.47,1.17,0.61,0.86,0.84,0.72);
   appendStaticBoxes(writer,x,y,z,yaw,354,372);
   appendMobPatches(writer,x,y,z,yaw,72,112);
+  appendSheepSurface(writer,x,y,z,yaw,sheared);
 }
 
 function appendChicken(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
@@ -470,6 +668,7 @@ function appendChicken(writer: VertexWriter, x: number, y: number, z: number, ya
   appendBox(writer,x,y,z,yaw,swing*0.42,0.68,-0.08,0.34,0.4,-0.34,0.45,0.76,0.03,0.79,0.79,0.73);
   appendStaticBoxes(writer,x,y,z,yaw,408,417);
   appendMobPatches(writer,x,y,z,yaw,112,144);
+  appendChickenSurface(writer,x,y,z,yaw);
 }
 
 function appendZombie(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
@@ -480,6 +679,7 @@ function appendZombie(writer: VertexWriter, x: number, y: number, z: number, yaw
   appendBox(writer,x,y,z,yaw,swing*0.8,1.32,0,0.34,0.77,-0.13,0.55,1.36,0.13,0.3,0.58,0.27);
   appendStaticBoxes(writer,x,y,z,yaw,426,435);
   appendMobPatches(writer,x,y,z,yaw,144,192);
+  appendZombieSurface(writer,x,y,z,yaw);
 }
 
 function appendSkeleton(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
@@ -494,6 +694,7 @@ function appendSkeleton(writer: VertexWriter, x: number, y: number, z: number, y
   appendBox(writer,x,y,z,yaw,0.48,1.34,0,0.3,0.82,-0.1,0.52,1.37,0.1,boneR,boneG,boneB);
   appendStaticBoxes(writer,x,y,z,yaw,471,480);
   appendMobPatches(writer,x,y,z,yaw,192,216);
+  appendSkeletonSurface(writer,x,y,z,yaw);
 }
 
 function appendCreeper(
@@ -522,6 +723,7 @@ function appendCreeper(
   appendBox(writer,x,y,z,yaw,0,0,0,-0.27,0.34,-0.23,0.27,1.19,0.23,greenR,greenG,greenB);
   appendBox(writer,x,y,z,yaw,0,0,0,-0.4,1.08,-0.4,0.4,1.79,0.4,greenR,greenG,greenB);
   appendMobPatches(writer,x,y,z,yaw,216,264);
+  appendCreeperSurface(writer,x,y,z,yaw);
 }
 
 function appendSpiderLeg(
@@ -575,11 +777,12 @@ function appendSpiderLeg(
 function appendSpider(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   // A broad abdomen and forward head keep the body recognizably low while the
   // eight individually phased legs produce the iconic two-block-wide outline.
-  appendStaticBoxes(writer,x,y,z,yaw,480,516);
+  appendStaticBoxes(writer,x,y,z,yaw,480,498);
   for (let row = 0; row < 4; row += 1) {
     appendSpiderLeg(writer, x, y, z, yaw, -1, row, swing);
     appendSpiderLeg(writer, x, y, z, yaw, 1, row, swing);
   }
+  appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.spider);
 }
 
 function appendArrow(writer: VertexWriter, projectile: Readonly<MobProjectileSnapshot>, interpolation: number): void {

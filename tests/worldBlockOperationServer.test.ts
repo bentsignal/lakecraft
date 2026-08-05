@@ -14,6 +14,8 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const server = fs.readFileSync(path.join(root, "server/index.ts"), "utf8");
+const receiptMaintenance = fs.readFileSync(path.join(root, "server/receiptMaintenance.ts"), "utf8");
+const queryOrder = fs.readFileSync(path.join(root, "server/queryOrder.ts"), "utf8");
 const mutationStart = server.indexOf("editWorldBlock: mutation(async");
 const mutationEnd = server.indexOf("startPresenceSession: mutation(", mutationStart);
 assert.ok(mutationStart >= 0 && mutationEnd > mutationStart, "authoritative mutation must be registered");
@@ -35,8 +37,8 @@ const replayBranch = editMutation.slice(
   editMutation.indexOf("const serverNow = Date.now()"),
 );
 assert.doesNotMatch(replayBranch, /\.insert\(|\.update\(|\.delete\(/, "receipt replay performs zero writes");
-assert.match(replayBranch, /replayInventories[\s\S]*?\.take\(2\)/);
-assert.match(replayBranch, /replayChunks[\s\S]*?\.take\(2\)/);
+assert.match(replayBranch, /replayInventories = await newestUserRows/);
+assert.match(replayBranch, /replayChunks = await newestMatchingRows/);
 assert.match(replayBranch, /inventory: replayInventories\[0\], currentChunkRevision/);
 assert.match(editMutation, /worldBlockOperationPoseFingerprint\(validation\.fingerprint, pose\)/);
 assert.match(editMutation, /validateWorldBlockActionPose\(/);
@@ -50,7 +52,14 @@ assert.doesNotMatch(editMutation, /ctx\.db\.playerPresence\.update\(/, "block ed
 assert.match(editMutation, /effect\.inventoryChanged[\s\S]*?ctx\.db\.inventories\.update/);
 assert.match(editMutation, /effect\.kind,[\s\S]*?effect\.nextBlock/);
 assert.match(editMutation, /inventory: persistedInventory,[\s\S]*?currentChunkRevision: effect\.chunkRevision/);
-assert.equal((editMutation.match(/\.take\(2\)/g) ?? []).length, 9,
+assert.match(receiptMaintenance, /userOperationReceiptRows[\s\S]*?\.take\(2\)/,
+  "shared receipt lookup fails closed on duplicate operation rows");
+assert.match(queryOrder, /newestMatchingRows[\s\S]*?\.take\(2\)/,
+  "shared user-owned singleton lookup fails closed on duplicate rows");
+assert.equal(
+  ["userOperationReceiptRows(", "newestUserRows(", "newestMatchingRows("]
+    .reduce((count, marker) => count + editMutation.split(marker).length - 1, 0),
+  9,
   "receipt/replay inventory/replay chunk/current inventory/current chunk/current edit/primed TNT/current furnace/falling coordinates fail closed on duplicates");
 
 // Every authoritative inventory/chunk writer, including multi-chunk oak growth,

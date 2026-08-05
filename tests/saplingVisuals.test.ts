@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
+import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
+import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import {
   SAPLING_MESH_VERTEX_COUNT,
   appendSaplingMesh,
@@ -12,6 +14,7 @@ import {
   tryInteractBlock,
 } from "../client/game/voxelEngine.ts";
 import { BLOCK, type BlockTarget } from "../client/game/types.ts";
+import { itemVisual } from "../shared/visualCatalog.ts";
 
 assert.equal(BLOCK.SAPLING, 25, "sapling appends after wool without renumbering deployed block IDs");
 assert.equal(blockHasCollision(BLOCK.SAPLING), false, "players can walk through crossed sapling quads");
@@ -59,9 +62,51 @@ assert.equal(boneMealArt.family, "material");
 assert.equal(boneMealArt.variant, "bone_meal");
 assert.ok(boneMealArt.runs.length >= 12, "bone meal has an original pale granular pile icon");
 
+assert.equal(itemVisual("sapling").parent, "block", "oak sapling retains its shared block-item visual definition");
+const expectedHeldGeometry: number[] = [];
+const expectedHeldVertices = appendItemSpriteGeometry(expectedHeldGeometry, saplingArt, {
+  center: [0.10, -0.02, -1.17],
+  size: 0.76,
+  depth: 0.06,
+  rotationDegrees: [0, -24, 0],
+});
+let nextBufferId = 0;
+let boundBuffer: WebGLBuffer | null = null;
+const uploads = new Map<WebGLBuffer, Float32Array>();
+const captureGl = {
+  ARRAY_BUFFER: 0x8892,
+  DYNAMIC_DRAW: 0x88e8,
+  createBuffer: () => ({ id: ++nextBufferId }),
+  bindBuffer: (_target: number, buffer: WebGLBuffer | null) => { boundBuffer = buffer; },
+  bufferData: () => undefined,
+  bufferSubData: (_target: number, _offset: number, data: Float32Array) => {
+    if (!boundBuffer) throw new Error("held sapling capture buffer was not bound");
+    uploads.set(boundBuffer, new Float32Array(data));
+  },
+  deleteBuffer: () => undefined,
+} as unknown as WebGLRenderingContext;
+const heldRenderer = createFirstPersonRenderer(captureGl);
+heldRenderer[3]("sapling", BLOCK.SAPLING);
+const heldUpload = uploads.get(heldRenderer[0]);
+assert.ok(heldUpload, "oak sapling uploads shared item-sprite color geometry");
+assert.equal(heldRenderer[2][0], expectedHeldVertices, "oak sapling keeps canonical sprite vertex parity");
+assert.equal(heldUpload.length, expectedHeldGeometry.length, "oak sapling uploads one complete six-float color stream");
+for (let offset = 3; offset < heldUpload.length; offset += 6) {
+  for (let channel = 0; channel < 3; channel += 1) {
+    assert.ok(Math.abs(heldUpload[offset + channel] - expectedHeldGeometry[offset + channel]) < 1e-6,
+      `oak sapling vertex color ${offset / 6}:${channel} retains canonical inventory-art parity`);
+  }
+}
+assert.equal(heldRenderer[2][1], 0, "oak sapling never falls through to textured full-cube output");
+heldRenderer[7]();
 const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.match(held, /itemId === "oak_fence" \|\| itemId === "oak_fence_gate" \|\| itemId === "sapling"[\s\S]{0,500}appendColorBox/,
-  "held saplings use a compact solid stem-and-branch model");
+for (const sharedPath of ["itemVisual(itemId)", "getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+  assert.ok(held.includes(sharedPath), `held saplings use the shared visual pipeline through ${sharedPath}`);
+}
+assert.equal(held.includes("appendColorBox"), false,
+  "the removed bespoke color-box held approximation cannot return");
+assert.equal(held.includes("appendSpecialBlock"), false,
+  "the removed special-block held approximation cannot bypass shared item art");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /if \(texel\.a < uAlphaCutoff\) discard;/, "sapling holes use alpha testing instead of costly sorted blending");
 assert.match(engine, /block === BLOCK\.SAPLING[\s\S]{0,160}appendSaplingMesh\(textureVertices/,

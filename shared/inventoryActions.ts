@@ -5,6 +5,7 @@ import {
   RECIPES,
   consumeFood,
   craftRecipe,
+  createEmptyInventory,
   createItemStack,
   type ArmorStack,
   type CraftingContext,
@@ -338,14 +339,16 @@ export function applyInventoryAction(
 }
 
 export function createInitializedPlayerState(): CanonicalPlayerState {
+  const inventory = createEmptyInventory();
+  inventory.splice(0, 4,
+    createItemStack("wooden_pickaxe"),
+    createItemStack("wooden_axe"),
+    { itemId: "dirt", count: 16 },
+    { itemId: "planks", count: 8 },
+  );
   const validation = validatePlayerStateJson(JSON.stringify({
     version: PLAYER_STATE_VERSION,
-    inventory: [
-      createItemStack("wooden_pickaxe"),
-      createItemStack("wooden_axe"),
-      { itemId: "dirt", count: 16 },
-      { itemId: "planks", count: 8 },
-    ],
+    inventory,
     selectedHotbar: 2,
     equipment: { head: null, chest: null, legs: null, feet: null },
     respawnPoint: null,

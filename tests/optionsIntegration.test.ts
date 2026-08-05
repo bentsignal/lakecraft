@@ -32,6 +32,7 @@ assert.ok(dialog.includes('role="dialog"') && dialog.includes('aria-modal="true"
 assert.ok(dialog.includes('aria-label="Mouse sensitivity"') && dialog.includes("aria-valuetext"), "the sensitivity range has a stable accessible value");
 assert.ok(dialog.includes('aria-label="Render distance"') && dialog.includes("renderDistance !== undefined"),
   "single-player can opt into a shared accessible render-distance slider without exposing it in multiplayer");
+assert.ok(dialog.includes('max="12"'), "the single-player slider exposes the twelve-chunk playtest ceiling");
 assert.ok(dialog.includes('event.key !== "Tab"') && dialog.includes("event.shiftKey"), "keyboard focus is trapped in either tab direction");
 assert.ok(dialog.includes("returnFocusId") && pause.includes('id="lc-game-menu-options"')
   && lobby.includes('"lc-title-options"') && menuButton.includes("id={id}"),

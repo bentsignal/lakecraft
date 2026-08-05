@@ -10,6 +10,7 @@ import {
   type CraftingGrid,
 } from "../shared/craftingGrid.ts";
 import { MOB_AUTHORITY_DEFINITIONS, deterministicMobDrops } from "../shared/mobCombat.ts";
+import { VISUAL_ASSET_MANIFEST } from "../shared/visualAssetManifest.ts";
 import {
   ITEMS,
   RECIPES,
@@ -114,10 +115,22 @@ const iconHashes = Object.fromEntries(["string", "arrow", "bow"].map((itemId) =>
   itemId,
   createHash("sha256").update(JSON.stringify(getItemIconArt(itemId as "string" | "arrow" | "bow").runs)).digest("hex"),
 ]));
+const canonicalIconArt = JSON.stringify(Object.keys(ITEMS).map((itemId) => [
+  itemId,
+  getItemIconArt(itemId as keyof typeof ITEMS),
+]));
+let canonicalIconFingerprint = 2_166_136_261;
+for (let index = 0; index < canonicalIconArt.length; index += 1) {
+  canonicalIconFingerprint ^= canonicalIconArt.charCodeAt(index);
+  canonicalIconFingerprint = Math.imul(canonicalIconFingerprint, 16_777_619);
+}
+assert.equal((canonicalIconFingerprint >>> 0).toString(16).padStart(8, "0"),
+  VISUAL_ASSET_MANIFEST.itemIcons.fingerprint,
+  "the reviewed bow is decoded through the canonical manifested item-art stream");
 assert.deepEqual(iconHashes, {
   string: "81f818befa9cb491f713a6693f0fe96a36a761d766cf2a02368f147cc524085f",
   arrow: "2b55a7d3abe7c73da29eb16b6c723f4a530d615377eae32ab702419aef52ce9e",
-  bow: "ff20adc3a65a9a9045bb294995ed54fb1c810b78293d2348b7b7a317ffbb1de8",
+  bow: "0ea4edb7fc3435e26115cc9ec0991f6aa4c941ba71ff3e733d4134568999f1dc",
 });
 assert.equal(new Set(Object.values(iconHashes)).size, 3, "each progression item has distinct original pixel art");
 

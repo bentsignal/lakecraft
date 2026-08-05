@@ -6,6 +6,26 @@ type ReceiptTable<Row extends ReceiptRow> = IndexedTable<Row> & {
   delete(id: string): Promise<unknown>;
 };
 
+export function userOperationReceiptRows<Row>(
+  table: IndexedTable<Row>,
+  userId: string,
+  operationId: string,
+): Promise<Row[]> {
+  return newestByIndex(table, BS.byUserOperation, (q) => q
+    .eq(BS.userId, userId)
+    .eq(BS.operationId, operationId)).take(2);
+}
+
+export function newestUserOperationReceipt<Row>(
+  table: IndexedTable<Row>,
+  userId: string,
+  operationId: string,
+): Promise<Row | null> {
+  return newestByIndex(table, BS.byUserOperation, (q) => q
+    .eq(BS.userId, userId)
+    .eq(BS.operationId, operationId)).first();
+}
+
 /** Shared mechanics for user-scoped receipts; policy stays explicit per caller. */
 export async function maintainUserReceipts<Row extends ReceiptRow>(
   table: ReceiptTable<Row>,

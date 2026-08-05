@@ -111,59 +111,6 @@ assert.equal(denseDecoded.ok && denseDecoded.edits.length, dense.length);
 assert.ok(denseEncodeMs < 100, `dense v4 encode took ${denseEncodeMs.toFixed(2)}ms`);
 assert.ok(denseDecodeMs < 100, `dense v4 decode took ${denseDecodeMs.toFixed(2)}ms`);
 
-// v1 used four-bit nibbles across the fixed production range y=-4..64.
-const legacyCellCount = 69 * 8 * 8;
-const legacyV1 = new Uint8Array(Math.ceil(legacyCellCount / 2));
-const legacyYZeroIndex = 4 * 64;
-legacyV1[legacyYZeroIndex >> 1] = 4; // code 4 = stone
-const legacyV1Json = JSON.stringify({ v: 1, cells: Buffer.from(legacyV1).toString("base64") });
-assert.equal(decodeWorldChunkSnapshot("0:0", legacyV1Json).ok, true);
-const migratedV1 = applyWorldChunkEdit("0:0", legacyV1Json, { x: 1, y: -24, z: 0, blockType: "coal_ore" });
-assert.equal(migratedV1.ok, true);
-if (migratedV1.ok) {
-  assert.equal(JSON.parse(migratedV1.snapshotJson).v, 4);
-  const decoded = decodeWorldChunkSnapshot("0:0", migratedV1.snapshotJson);
-  assert.equal(decoded.ok, true);
-  if (decoded.ok) assert.deepEqual(decoded.edits.map(({ coordKey }) => coordKey), ["1:-24:0", "0:0:0"]);
-}
-
-// v2 used the same fixed y range with five-bit palette codes.
-const legacyV2 = new Uint8Array(Math.ceil(legacyCellCount * 5 / 8));
-function setFiveBit(bytes: Uint8Array, index: number, code: number): void {
-  const bitIndex = index * 5;
-  const byteIndex = bitIndex >> 3;
-  const shift = bitIndex & 7;
-  bytes[byteIndex] |= (code << shift) & 0xff;
-  if (shift > 3) bytes[byteIndex + 1] |= code >> (8 - shift);
-}
-setFiveBit(legacyV2, legacyYZeroIndex + 1, 20); // code 20 = glass
-const legacyV2Json = JSON.stringify({ v: 2, cells: Buffer.from(legacyV2).toString("base64") });
-const legacyV2Decoded = decodeWorldChunkSnapshot("0:0", legacyV2Json);
-assert.equal(legacyV2Decoded.ok, true);
-if (legacyV2Decoded.ok) assert.equal(legacyV2Decoded.edits[0]?.blockType, "glass");
-const migratedV2 = applyWorldChunkEdit("0:0", legacyV2Json, { x: 2, y: 128, z: 0, blockType: "torch" });
-assert.equal(migratedV2.ok, true);
-if (migratedV2.ok) assert.equal(JSON.parse(migratedV2.snapshotJson).v, 4);
-
-// v3 introduced sparse vertical sections but retained five-bit palette codes.
-const legacyV3Section = new Uint8Array(Math.ceil(8 * 8 * 8 * 5 / 8));
-setFiveBit(legacyV3Section, 0, 31); // code 31 = stone brick slab
-const legacyV3Json = JSON.stringify({
-  v: 3,
-  sections: [{ y: 0, cells: Buffer.from(legacyV3Section).toString("base64") }],
-});
-const legacyV3Decoded = decodeWorldChunkSnapshot("0:0", legacyV3Json);
-assert.equal(legacyV3Decoded.ok, true);
-if (legacyV3Decoded.ok) assert.equal(legacyV3Decoded.edits[0]?.blockType, "stone_brick_slab");
-const migratedV3 = applyWorldChunkEdit("0:0", legacyV3Json, { x: 1, y: 0, z: 0, blockType: "torch" });
-assert.equal(migratedV3.ok, true);
-if (migratedV3.ok) {
-  assert.equal(JSON.parse(migratedV3.snapshotJson).v, 4);
-  const decoded = decodeWorldChunkSnapshot("0:0", migratedV3.snapshotJson);
-  assert.equal(decoded.ok, true);
-  if (decoded.ok) assert.deepEqual(decoded.edits.map(({ blockType }) => blockType), ["stone_brick_slab", "torch"]);
-}
-
 assert.equal(decodeWorldChunkSnapshot("0:0", JSON.stringify({
   v: 4,
   sections: [{ y: 17, cells: "" }],
@@ -183,4 +130,4 @@ console.log(JSON.stringify({
   denseEncodeMs: Number(denseEncodeMs.toFixed(2)),
   denseDecodeMs: Number(denseDecodeMs.toFixed(2)),
 }));
-console.log("lakecraft world chunk v1-v4 tests: ok");
+console.log("lakecraft world chunk v4 tests: ok");

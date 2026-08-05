@@ -14,6 +14,7 @@ import {
   type SinglePlayerPointerSessionState,
 } from "../client/singleplayer/sessionState.ts";
 import { requestPointerLockForTarget } from "../client/game/voxelEngine.ts";
+import { stripClientDevelopmentSurfaces } from "../scripts/client-development-surface-transform.mjs";
 
 function run(
   state: SinglePlayerPointerSessionState,
@@ -498,6 +499,15 @@ assert.ok(inventoryClose.includes("orchestrateSinglePlayerInventoryClose("),
   "production inventory close uses the executable gesture orchestrator");
 assert.ok(inventoryClose.includes("armGameplayResumeAfterEscape(performance.now())"),
   "inventory Escape shares the no-overlay silent recapture state machine");
+assert.ok(inventoryClose.includes("requestGameplayPointerLockAfterEscapeRelease()"),
+  "inventory Escape attempts quiet capture after the browser finishes its native Escape tail");
+const escapeReleaseRecapture = singlePlayerSource.slice(
+  singlePlayerSource.indexOf("function requestGameplayPointerLockAfterEscapeRelease"),
+  singlePlayerSource.indexOf("function closeInventoryAndResume"),
+);
+assert.ok(escapeReleaseRecapture.includes('window.addEventListener("keyup", onEscapeRelease, true)')
+  && escapeReleaseRecapture.includes("requestEnginePointerLock(true)"),
+"the post-Escape attempt waits for key release and retains the movement-key fallback");
 assert.match(singlePlayerSource, /cancelRangedActionForEscape\(\)[\s\S]{0,300}armGameplayResumeAfterEscape/,
   "bow Escape cancels the draw before arming silent gameplay recapture");
 assert.ok(singlePlayerSource.includes("Click to Play"), "failed handoff has one explicit pointer-capture affordance");
@@ -529,8 +539,25 @@ const ongoingPause = singlePlayerSource.slice(
 );
 assert.ok(singlePlayerSource.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
   "only simulation-blocking world modals feed the pause predicate");
-assert.ok(singlePlayerSource.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
-  "chat remains a UI/input blocker without freezing the simulation");
+const uiModalDeclaration = singlePlayerSource.match(/^\s*const uiModalOpen = [^\n]+;$/m)?.[0].trim();
+assert.ok(uiModalDeclaration, "the UI/input blocker declaration remains explicit");
+assert.ok(uiModalDeclaration.includes("worldModalOpen") && uiModalDeclaration.includes("commandOpen"),
+  "world modals and chat both remain UI/input blockers");
+const visualLabModalTerm = "/* @lakecraft-development:modal:start */ || visualLabOpen"
+  + "/* @lakecraft-development:modal:end */";
+assert.equal(
+  uiModalDeclaration.replace(visualLabModalTerm, ""),
+  "const uiModalOpen = worldModalOpen || commandOpen;",
+  "any Visual Lab UI blocker remains inside the correctly paired development-only marker span",
+);
+const ongoingPausePredicate = ongoingPause.slice(0, ongoingPause.indexOf("});") + 3);
+assert.ok(ongoingPausePredicate.includes("worldModalOpen"),
+  "world modals continue to freeze the simulation");
+assert.equal(ongoingPausePredicate.includes("commandOpen"), false,
+  "chat remains an input blocker without freezing the simulation");
+const compactSinglePlayerSource = stripClientDevelopmentSurfaces(singlePlayerSource);
+assert.ok(compactSinglePlayerSource.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+  "compact stripping removes the development-only Visual Lab blocker cleanly");
 assert.ok(ongoingPause.includes("pointerCaptureNeeded"), "denied capture remains an ongoing engine and fuse pause input");
 assert.ok(
   ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded]"),

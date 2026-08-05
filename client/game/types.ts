@@ -15,6 +15,9 @@ import type { MobMotionPose } from "../../shared/mobMotionAuthority.ts";
 import type { BlockParticleEvent } from "./blockParticles.ts";
 import type { PlayerMovementMode } from "./playerMovement.ts";
 import type { MotionVisualActionKind } from "../../shared/multiplayerSegments.ts";
+import type { PlayerCameraMode } from "./playerCamera.ts";
+import type { PlayerSkinModel } from "./playerSkin.ts";
+import type { PlayerArmorAppearance } from "./playerArmorGeometry.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -483,8 +486,17 @@ export interface VoxelEngine {
   setSelectedBlock(block: BlockId): void;
   /** Updates the retained first-person arm/item model without touching world interaction state. */
   setSelectedItem(itemId: ItemId | null): void;
+  /** Applies one browser-local standard skin to both first- and third-person rigs. */
+  setPlayerSkin(source: TexImageSource | null, model: PlayerSkinModel): void;
+  /** Updates the local third-person armor shells from canonical equipped slot IDs. */
+  setPlayerArmor(appearance: PlayerArmorAppearance): void;
+  /** Cycles first person, third person behind, then third person facing the player. */
+  cycleCameraMode(): PlayerCameraMode;
+  getCameraMode(): PlayerCameraMode;
   /** Removes the viewmodel for blocking UI, death, screenshots, or other cinematic surfaces. */
   setFirstPersonFeedbackHidden(hidden: boolean): void;
+  /** Paused Pose Lab visual override only; null restores ordinary gameplay charge rendering. */
+  setPoseLabDrawPreview(drawn: boolean | null): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
   setDroppedItems(items: readonly DroppedItemRenderItem[]): void;

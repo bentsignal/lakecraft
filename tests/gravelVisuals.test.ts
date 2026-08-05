@@ -4,6 +4,7 @@ import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, type BlockFace } from "../client/game/blockTextures.ts";
 import { TEXTURE_ATLAS_COLUMNS, TEXTURE_ATLAS_NAMES, TEXTURE_ATLAS_RGBA, TEXTURE_TILE_SIZE } from "../client/game/generated/textureAtlas.ts";
 import { BLOCK } from "../client/game/types.ts";
+import { REMOTE_HELD_ITEM_MAX_RECTS, remoteHeldItemRects } from "../client/game/remotePlayerRenderer.ts";
 
 const faces: readonly BlockFace[] = ["east", "west", "top", "bottom", "south", "north"];
 for (const face of faces) assert.equal(blockTextureForFace(BLOCK.GRAVEL, face), "gravel");
@@ -35,10 +36,16 @@ assert.notDeepEqual(gravelArt.runs, getItemIconArt("cobblestone").runs);
 const heldSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
 assert.ok(heldSource.includes("blockTextureForFace(block, face[0])") && heldSource.includes("textureAtlasUv(texture)"),
   "first-person gravel inherits the canonical six-face world-atlas cube");
-assert.equal(heldSource.includes("ItemIcon"), false, "gravel is never downgraded to a flat held sprite");
+assert.match(heldSource, /blockTextureForFace\(block, face\[0\]\)/,
+  "the block branch remains atlas-backed even though non-block items use canonical icon art");
 
-const remoteSource = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", import.meta.url), "utf8");
-assert.match(remoteSource, /gravelItem:\s*\[0\.47,\s*0\.45,\s*0\.42\]/);
-assert.match(remoteSource, /case\s+"gravel":\s*return\s+COLORS\.gravelItem/);
+const remoteGravel = remoteHeldItemRects("gravel");
+assert.ok(remoteGravel.length >= 16 && remoteGravel.length <= REMOTE_HELD_ITEM_MAX_RECTS,
+  "remote gravel keeps a dense but strictly bounded canonical pebble mip");
+const gravelPalette = new Set(gravelArt.runs.map((run) => run.color.toLowerCase()));
+for (const rect of remoteGravel) {
+  const color = `#${rect.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`;
+  assert.ok(gravelPalette.has(color), "remote gravel uses only canonical catalog colors");
+}
 
 console.log("lakecraft gravel visual tests: ok");

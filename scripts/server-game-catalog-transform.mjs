@@ -299,7 +299,7 @@ function compressStaticBytes(bytes) {
       let distance = 0;
       for (let source = Math.max(0, index - 4_095); source < index; source += 1) {
         let candidate = 0;
-        while (candidate < 18 && index + candidate < bytes.length
+        while (candidate < 273 && index + candidate < bytes.length
           && bytes[source + candidate] === bytes[index + candidate]) candidate += 1;
         if (candidate > length) {
           length = candidate;
@@ -308,8 +308,9 @@ function compressStaticBytes(bytes) {
       }
       if (length >= 3) {
         flags |= 1 << bit;
-        const value = (length - 3) * 4_096 + distance;
-        packed.push(value >> 8, value & 255);
+        const value = (Math.min(length, 18) - 3) * 4_096 + distance;
+        if (length >= 18) packed.push(value >> 8, value & 255, length - 18);
+        else packed.push(value >> 8, value & 255);
         index += length;
       } else packed.push(bytes[index++]);
     }
@@ -326,7 +327,8 @@ function decompressStaticBytes(packed, size) {
     for (let bit = 0; bit < 8 && cursor < packed.length && target < size; bit += 1) {
       if (flags & 1 << bit) {
         const value = packed[cursor++] * 256 + packed[cursor++];
-        const length = (value >> 12) + 3;
+        let length = (value >> 12) + 3;
+        if (length === 18) length += packed[cursor++];
         const distance = value & 4_095;
         if (distance < 1 || distance > target || target + length > size) fail("client presentation compression produced an invalid back-reference.");
         for (let copy = 0; copy < length; copy += 1) data[target] = data[target++ - distance];
@@ -427,7 +429,7 @@ export function compactClientGameCatalog(source) {
   }
   const payload = encodeStaticBytes(packed);
   return `import{decodeStaticBytes as __lakecraftDecodeStaticBytes}from"../client/staticData.ts";`
-    + `const ${CLIENT_CATALOG_IDENTIFIER}=JSON.parse(new TextDecoder().decode(__lakecraftDecodeStaticBytes(${JSON.stringify(payload)},${bytes.length},${packed.length}))) as any[][];`
+    + `const ${CLIENT_CATALOG_IDENTIFIER}=JSON.parse(new TextDecoder().decode(__lakecraftDecodeStaticBytes(${JSON.stringify(payload)},${bytes.length},${packed.length},true))) as any[][];`
     + contents;
 }
 

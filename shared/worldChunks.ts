@@ -34,7 +34,7 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   BS.cobblestone,
   "sand",
   "glass",
-  /** Append-only palette: v1/v2 and deployed v3 codes must never be renumbered. */
+  /** Append-only current-format palette; existing code points must never be renumbered. */
   BS.goldOre,
   BS.diamondOre,
   "tnt",
@@ -93,39 +93,22 @@ export type WorldChunkTargetedSampleResult =
   | { ok: true; blocks: Array<WorldChunkBlockType | null> }
   | { ok: false; reason: "invalid_chunk_key" | "invalid_sample" | "invalid_snapshot" | "snapshot_too_large" };
 
-/** Production v1/v2 rows covered this exact fixed-height column. */
-const LEGACY_MIN_Y = -4;
-const LEGACY_MAX_Y = 64;
-const LEGACY_Y_LEVELS = LEGACY_MAX_Y - LEGACY_MIN_Y + 1;
 const CELLS_PER_Y = WORLD_EDIT_CHUNK_SIZE * WORLD_EDIT_CHUNK_SIZE;
-const LEGACY_CELL_COUNT = LEGACY_Y_LEVELS * CELLS_PER_Y;
-const LEGACY_BLOCK_TYPE_COUNT = 13;
-const LEGACY_PACKED_BYTE_COUNT = Math.ceil(LEGACY_CELL_COUNT / 2);
-const LEGACY_V2_V3_BITS_PER_CELL = 5;
 const CURRENT_BITS_PER_CELL = WORLD_CHUNK_CODEC_BITS_PER_CELL;
-const LEGACY_V2_PACKED_BYTE_COUNT = Math.ceil(LEGACY_CELL_COUNT * LEGACY_V2_V3_BITS_PER_CELL / 8);
 const SECTION_CELL_COUNT = WORLD_CHUNK_SECTION_HEIGHT * CELLS_PER_Y;
 const SECTION_PACKED_BYTE_COUNT = Math.ceil(SECTION_CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
-const LEGACY_V3_SECTION_PACKED_BYTE_COUNT = Math.ceil(SECTION_CELL_COUNT * LEGACY_V2_V3_BITS_PER_CELL / 8);
 const MIN_SECTION_Y = Math.floor(WORLD_EDIT_MIN_Y / WORLD_CHUNK_SECTION_HEIGHT);
 const MAX_SECTION_Y = Math.floor(WORLD_EDIT_MAX_Y / WORLD_CHUNK_SECTION_HEIGHT);
 const MAX_SECTION_COUNT = MAX_SECTION_Y - MIN_SECTION_Y + 1;
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BLOCK_CODE = new Map<string, number>(WORLD_CHUNK_BLOCK_TYPES.map((block, index) => [block, index + 1]));
 
-type LegacyPackedSnapshot = { version: 1 | 2; packed: Uint8Array };
-type SectionedSnapshot = { version: 3 | 4; sections: Map<number, Uint8Array> };
-type PackedSnapshot = LegacyPackedSnapshot | SectionedSnapshot;
+type PackedSnapshot = { sections: Map<number, Uint8Array> };
 
 interface CellAddress {
   sectionY: number;
   sectionIndex: number;
   absoluteIndex: number;
-}
-
-/** Explicit fence: future writers must not accidentally make a deployed codec unreadable. */
-function isSectionedCodecVersion(value: unknown): value is SectionedSnapshot["version"] {
-  return value === 3 || value === 4;
 }
 
 export function worldEditChunkCoordinate(coordinate: number): number {
@@ -193,11 +176,6 @@ function cellAddress(x: number, y: number, z: number, chunkX: number, chunkZ: nu
   };
 }
 
-function getNibble(packed: Uint8Array, index: number): number {
-  const value = packed[index >> 1];
-  return (index & 1) === 0 ? value & 0x0f : value >> 4;
-}
-
 function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerCell: number): void {
   const codeMask = (1 << bitsPerCell) - 1;
   const bitIndex = index * bitsPerCell;
@@ -227,10 +205,6 @@ function setCurrentCode(packed: Uint8Array, index: number, code: number): void {
 
 function getCurrentCode(packed: Uint8Array, index: number): number {
   return getPackedCode(packed, index, CURRENT_BITS_PER_CELL);
-}
-
-function getLegacyFiveBitCode(packed: Uint8Array, index: number): number {
-  return getPackedCode(packed, index, LEGACY_V2_V3_BITS_PER_CELL);
 }
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -287,18 +261,9 @@ function serializeSections(sections: Map<number, Uint8Array>): string {
 function parsePacked(snapshotJson: string): PackedSnapshot | null {
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return null;
   try {
-    const parsed = JSON.parse(snapshotJson) as { v?: unknown; cells?: unknown; sections?: unknown };
-    if (parsed.v === 1 || parsed.v === 2) {
-      if (!BS.isString(parsed.cells)) return null;
-      const packed = decodeBase64(parsed.cells);
-      const expectedLength = parsed.v === 1 ? LEGACY_PACKED_BYTE_COUNT : LEGACY_V2_PACKED_BYTE_COUNT;
-      return packed?.length === expectedLength ? { version: parsed.v, packed } : null;
-    }
-    if (!isSectionedCodecVersion(parsed.v) || !Array.isArray(parsed.sections)) return null;
+    const parsed = JSON.parse(snapshotJson) as { v?: unknown; sections?: unknown };
+    if (parsed.v !== WORLD_CHUNK_CODEC_VERSION || !Array.isArray(parsed.sections)) return null;
     if (parsed.sections.length > MAX_SECTION_COUNT) return null;
-    const sectionPackedByteCount = parsed.v === 3
-      ? LEGACY_V3_SECTION_PACKED_BYTE_COUNT
-      : SECTION_PACKED_BYTE_COUNT;
     const sections = new Map<number, Uint8Array>();
     for (const rawSection of parsed.sections) {
       if (!rawSection || typeof rawSection !== "object") return null;
@@ -306,49 +271,25 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
       if (!Number.isInteger(section.y) || Number(section.y) < MIN_SECTION_Y || Number(section.y) > MAX_SECTION_Y) return null;
       if (!BS.isString(section.cells) || sections.has(Number(section.y))) return null;
       const packed = decodeBase64(section.cells);
-      if (!packed || packed.length !== sectionPackedByteCount) return null;
+      if (!packed || packed.length !== SECTION_PACKED_BYTE_COUNT) return null;
       sections.set(Number(section.y), packed);
     }
-    return { version: parsed.v, sections };
+    return { sections };
   } catch {
     return null;
   }
 }
 
 function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> | null {
-  if (snapshot.version === 3 || snapshot.version === 4) {
-    const sections = new Map<number, Uint8Array>();
-    for (const [y, packed] of snapshot.sections) {
-      const nextPacked = snapshot.version === 4
-        ? packed.slice()
-        : new Uint8Array(SECTION_PACKED_BYTE_COUNT);
-      for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
-        const code = snapshot.version === 3
-          ? getLegacyFiveBitCode(packed, index)
-          : getCurrentCode(packed, index);
-        if (code > WORLD_CHUNK_BLOCK_TYPES.length) return null;
-        const absoluteY = y * WORLD_CHUNK_SECTION_HEIGHT + Math.floor(index / CELLS_PER_Y);
-        if (code !== 0 && (absoluteY < WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
-        if (snapshot.version === 3 && code !== 0) setCurrentCode(nextPacked, index, code);
-      }
-      sections.set(y, nextPacked);
-    }
-    return sections;
-  }
   const sections = new Map<number, Uint8Array>();
-  for (let index = 0; index < LEGACY_CELL_COUNT; index += 1) {
-    const code = snapshot.version === 1 ? getNibble(snapshot.packed, index) : getLegacyFiveBitCode(snapshot.packed, index);
-    if (code === 0) continue;
-    if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) return null;
-    if (!WORLD_CHUNK_BLOCK_TYPES[code - 1]) return null;
-    const yOffset = Math.floor(index / CELLS_PER_Y);
-    const horizontal = index % CELLS_PER_Y;
-    const y = LEGACY_MIN_Y + yOffset;
-    const sectionY = Math.floor(y / WORLD_CHUNK_SECTION_HEIGHT);
-    const localY = y - sectionY * WORLD_CHUNK_SECTION_HEIGHT;
-    const packed = sections.get(sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);
-    setCurrentCode(packed, localY * CELLS_PER_Y + horizontal, code);
-    sections.set(sectionY, packed);
+  for (const [y, packed] of snapshot.sections) {
+    for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
+      const code = getCurrentCode(packed, index);
+      if (code > WORLD_CHUNK_BLOCK_TYPES.length) return null;
+      const absoluteY = y * WORLD_CHUNK_SECTION_HEIGHT + Math.floor(index / CELLS_PER_Y);
+      if (code !== 0 && (absoluteY < WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
+    }
+    sections.set(y, packed.slice());
   }
   return sections;
 }
@@ -493,28 +434,11 @@ export function sampleWorldChunkSnapshot(
       || !Number.isSafeInteger(sample.z)) return { ok: false, reason: "invalid_sample" };
     const address = cellAddress(sample.x, sample.y, sample.z, chunk.chunkX, chunk.chunkZ);
     if (!address) return { ok: false, reason: "invalid_sample" };
-    const section = snapshot.version === 3 || snapshot.version === 4
-      ? snapshot.sections.get(address.sectionY)
-      : null;
-    const horizontal = address.sectionIndex % CELLS_PER_Y;
-    const legacyIndex = sample.y >= LEGACY_MIN_Y && sample.y <= LEGACY_MAX_Y
-      ? (sample.y - LEGACY_MIN_Y) * CELLS_PER_Y + horizontal
-      : null;
-    const code = snapshot.version === 1
-      ? legacyIndex === null ? 0 : getNibble(snapshot.packed, legacyIndex)
-      : snapshot.version === 2
-        ? legacyIndex === null ? 0 : getLegacyFiveBitCode(snapshot.packed, legacyIndex)
-        : section
-          ? snapshot.version === 3
-            ? getLegacyFiveBitCode(section, address.sectionIndex)
-            : getCurrentCode(section, address.sectionIndex)
-          : 0;
+    const section = snapshot.sections.get(address.sectionY);
+    const code = section ? getCurrentCode(section, address.sectionIndex) : 0;
     if (code === 0) {
       blocks.push(null);
       continue;
-    }
-    if (snapshot.version === 1 && code > LEGACY_BLOCK_TYPE_COUNT) {
-      return { ok: false, reason: BS.invalidSnapshot };
     }
     const block = WORLD_CHUNK_BLOCK_TYPES[code - 1];
     if (!block) return { ok: false, reason: BS.invalidSnapshot };

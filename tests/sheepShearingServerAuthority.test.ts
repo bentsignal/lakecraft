@@ -5,6 +5,12 @@ const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf
 
 assert.match(
   server,
+  /function hasAuthenticatedUser\(ctx: \{ auth: \{ isAuthenticated: boolean; isGuest: boolean \} \}\): boolean \{\s*return ctx\.auth\.isAuthenticated && !ctx\.auth\.isGuest;\s*\}/,
+  "the shared auth guard requires an authenticated non-guest caller",
+);
+
+assert.match(
+  server,
   /mobAuthority: table\(\{[\s\S]*?sheared: string\(\)\.default\("false"\)[\s\S]*?\}\)\.index\("by_mob"/,
   "prelaunch mob authority schema defaults existing and new sheep to a full coat",
 );
@@ -15,14 +21,16 @@ assert.ok(shearStart >= 0 && attackStart > shearStart, "Lakebed capsule exports 
 const mutation = server.slice(shearStart, attackStart);
 
 for (const marker of [
-  "ctx.auth.isAuthenticated",
-  "ctx.auth.isGuest",
+  "hasAuthenticatedUser(ctx)",
   "validateMobIdentity(rawMobId, rawKind, MOB_AUTHORITY_WORLD_SEED_TOKEN)",
   'JSON.stringify(["mob_shear", identity.mobId, identity.kind])',
+  "newestUserOperationReceipt(ctx.db.playerCombatReceipts, ctx.auth.userId, operationId)",
   "decidePlayerCombatReplay",
+  "newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId)",
   "authoritativeCombatPose",
   "materializePlayerCombatState",
   "reason: BS.attackerDead",
+  "newestUserRows(ctx.db.inventories, ctx.auth.userId)",
   "validatePlayerStateJson(inventoryRow.inventoryJson)",
   "writeMobMotionPoses",
   "validatePlayerMeleeSpatialAuthority",

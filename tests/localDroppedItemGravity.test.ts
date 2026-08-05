@@ -204,25 +204,26 @@ assert.equal(validated.ok, true);
 if (!validated.ok) throw new Error(validated.path);
 assert.deepEqual(validated.snapshot.drops[0], snapshot.drops[0], "save/reload preserves position, velocity, settled state, and count");
 
-const legacySnapshot = createDefaultSinglePlayerSnapshot(42, 2_000, "legacy-gravity-save") as unknown as {
+const incompleteSnapshot = createDefaultSinglePlayerSnapshot(42, 2_000, "incomplete-gravity-save") as unknown as {
   drops: Array<Record<string, unknown>>;
 };
-legacySnapshot.drops = [{
-  dropId: "legacy-drop",
+incompleteSnapshot.drops = [{
+  dropId: "incomplete-drop",
   item: { itemId: "dirt", count: 7 },
   x: 8.5,
   y: 19.25,
   z: -2.5,
   droppedAt: 1_000,
 }];
-const legacy = validateSinglePlayerSnapshot(legacySnapshot);
-assert.equal(legacy.ok, true);
-if (!legacy.ok) throw new Error(legacy.path);
-assert.deepEqual(
-  legacy.snapshot.drops[0],
-  { ...legacySnapshot.drops[0], velocityY: 0, settled: false },
-  "legacy drops resume from their exact saved position without minting or teleporting",
-);
+assert.deepEqual(validateSinglePlayerSnapshot(incompleteSnapshot), {
+  ok: false,
+  reason: "invalid_snapshot",
+  path: "$.drops",
+});
+assert.equal(Object.hasOwn(incompleteSnapshot.drops[0], "velocityY"), false,
+  "current-format validation never synthesizes missing drop velocity");
+assert.equal(Object.hasOwn(incompleteSnapshot.drops[0], "settled"), false,
+  "current-format validation never synthesizes missing drop settled state");
 
 const settledWorld = blockWorld([[0, BLOCK.STONE]]);
 const settledDrops = Array.from({ length: 256 }, (_, index) => ({

@@ -9,6 +9,10 @@ import {
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
+import {
+  FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
+  buildFirstPersonSkinArmGeometry,
+} from "../client/game/firstPersonSkinRenderer.ts";
 
 class CapturingWebGl {
   readonly ARRAY_BUFFER = 0x8892;
@@ -97,16 +101,19 @@ assert.deepEqual([...gl.allocations.values()], [
   capacity[0] * 6 * Float32Array.BYTES_PER_ELEMENT,
   capacity[1] * 6 * Float32Array.BYTES_PER_ELEMENT,
 ]);
-assert.equal([...gl.allocations.values()].reduce((total, bytes) => total + bytes, 0), 16_416);
+assert.equal([...gl.allocations.values()].reduce((total, bytes) => total + bytes, 0), capacity[2]);
+assert.ok(capacity[2] + FIRST_PERSON_SKIN_ARM_BUFFER_BYTES < 120 * 1_024,
+  "the complete canonical-sprite and standard-skin viewmodel stays below 120 KiB");
 
 const colorBuffer = renderer[0] as unknown as object;
 const texturedBuffer = renderer[1] as unknown as object;
+const skinArm = buildFirstPersonSkinArmGeometry("wide", FIRST_PERSON_TUNING.arm);
 const mvp = new Float32Array(16);
 const viewportBounds: Array<{ viewport: string; width: number; height: number }> = [];
 for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const) {
   renderer[3](null, BLOCK.AIR);
   renderer[6](mvp, perspective(width / height), 0, false);
-  const emptyBounds = ndcBounds(gl.uploads.get(colorBuffer)!, mvp);
+  const emptyBounds = ndcBounds(skinArm, mvp);
   assert.ok(emptyBounds.minX > 0.25 && emptyBounds.maxY < -0.25,
     `${width}x${height} empty hand stays wholly below/right of the crosshair`);
   assert.ok(emptyBounds.maxX < 1.05 && emptyBounds.minY > -1.35,
@@ -114,7 +121,7 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
 
   renderer[3]("dirt", BLOCK.DIRT);
   renderer[6](mvp, perspective(width / height), 0, false);
-  const armBounds = ndcBounds(gl.uploads.get(colorBuffer)!, mvp);
+  const armBounds = ndcBounds(skinArm, mvp);
   const blockBounds = ndcBounds(gl.uploads.get(texturedBuffer)!, mvp);
   assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.06,
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
@@ -153,7 +160,7 @@ assert.ok(activeLightingPass.includes("dayNightState.ambientR")
 assert.ok(activeLightingPass.includes("terrainSkyExposureLocation, 1")
   && activeLightingPass.includes("skyExposureLocation, 1"),
   "ordinary world geometry keeps its authored per-vertex exposure normalized");
-assert.ok(engine.includes("updateFirstPersonSkyExposure(eye)")
+assert.ok(engine.includes("function updateFirstPersonSkyExposure(eye: Vec3)")
   && engine.includes("skyExposureLevel(skyOccluderColumns, blockX, blockY, blockZ)"),
   "the retained eye-cell signal comes from cached scene sky-occluder columns");
 const exposureUpdate = engine.slice(
@@ -162,12 +169,13 @@ const exposureUpdate = engine.slice(
 );
 assert.equal(exposureUpdate.includes("getBlock("), false, "viewmodel exposure never scans terrain blocks");
 assert.equal(exposureUpdate.includes("new "), false, "unchanged per-frame exposure sampling allocates no objects");
-assert.ok(viewmodelPass.includes("terrainSkyExposureLocation, viewmodelSkyExposure")
-  && viewmodelPass.includes("skyExposureLocation, viewmodelSkyExposure"),
-  "textured blocks and solid arms/tools receive the same bounded viewmodel exposure");
-assert.ok(viewmodelPass.includes("gl.uniform4fv(torchLightsLocation, firstPersonTorchUniforms)")
-  && viewmodelPass.includes("gl.uniform1f(lightingLocation, 1)"),
-  "solid arm and item geometry enables scene lighting with camera-local torches");
+assert.ok(engine.includes("terrainSkyExposureLocation, viewmodelSkyExposure")
+  && engine.includes("skyExposureLocation, viewmodelSkyExposure"),
+  "textured blocks and solid held sprites receive the same bounded viewmodel exposure");
+assert.ok(engine.includes("gl.uniform4fv(torchLightsLocation, firstPersonTorchUniforms)")
+  && engine.includes("gl.uniform1f(lightingLocation, 1)")
+  && engine.includes("firstPersonSkinRenderer.draw(firstPersonMvpMatrix, firstPersonSkinLight)"),
+  "solid item geometry and the textured standard-skin arm both use scene-derived light");
 assert.equal(viewmodelPass.includes("terrainAmbientColorLocation, 1, 1, 1"), false,
   "held atlas blocks no longer use full-bright white ambient");
 assert.equal(viewmodelPass.includes("gl.uniform1f(lightingLocation, 0)"), false,

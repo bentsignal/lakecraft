@@ -2,6 +2,15 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { BLOCKS, ITEMS, type ArmorSlot, type BlockId, type ItemId, type ToolKind, type ToolTier } from "../shared/game.ts";
 import * as BS from "../shared/bundleStrings.ts";
+import { blockTextureForFace } from "../client/game/blockTextures.ts";
+import {
+  TEXTURE_ATLAS_COLUMNS,
+  TEXTURE_ATLAS_NAMES,
+  TEXTURE_ATLAS_RGBA,
+  TEXTURE_TILE_SIZE,
+  type TextureAtlasName,
+} from "../client/game/generated/textureAtlas.ts";
+import { BLOCK, type BlockId as EngineBlockId } from "../client/game/types.ts";
 import { encodeStaticBytes } from "./static-byte-encoding.mjs";
 
 export const ITEM_ICON_SIZE = 16;
@@ -12,6 +21,15 @@ export type ItemIconArt = Readonly<{ family: ItemIconFamily; variant: string; ru
 type Grid = string[][];
 type Palette = Record<string, string>;
 const cache = new Map<ItemId, ItemIconArt>();
+
+const ENGINE_BLOCK_BY_ITEM: Readonly<Partial<Record<BlockId, EngineBlockId>>> = Object.freeze({
+  grass: BLOCK.GRASS, dirt: BLOCK.DIRT, stone: BLOCK.STONE, cobblestone: BLOCK.COBBLESTONE,
+  sand: BLOCK.SAND, gravel: BLOCK.GRAVEL, glass: BLOCK.GLASS, coal_ore: BLOCK.COAL_ORE,
+  iron_ore: BLOCK.IRON_ORE, gold_ore: BLOCK.GOLD_ORE, diamond_ore: BLOCK.DIAMOND_ORE,
+  log: BLOCK.WOOD, leaves: BLOCK.LEAVES, planks: BLOCK.PLANKS,
+  crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE, tnt: BLOCK.TNT,
+  wool: BLOCK.WOOL, stone_bricks: BLOCK.STONE_BRICKS, clay: BLOCK.CLAY, bricks: BLOCK.BRICKS,
+});
 
 /** Original deterministic 16x16 art shared by every inventory-like surface. */
 export function getItemIconArt(itemId: ItemId): ItemIconArt {
@@ -54,12 +72,111 @@ function dots(g: Grid, tone: string, cells: readonly (readonly [number, number])
 function diagonal(g: Grid, x: number, y: number, dx: number, dy: number, length: number, tone: string, thick = 1): void {
   for (let i = 0; i < length; i += 1) box(g, x + dx * i, y + dy * i, thick, thick, tone);
 }
+function line(g: Grid, fromX: number, fromY: number, toX: number, toY: number, tone: string): void {
+  let x = fromX; let y = fromY;
+  const dx = Math.abs(toX - fromX); const sx = fromX < toX ? 1 : -1;
+  const dy = -Math.abs(toY - fromY); const sy = fromY < toY ? 1 : -1;
+  let error = dx + dy;
+  while (true) {
+    px(g, x, y, tone);
+    if (x === toX && y === toY) return;
+    const doubled = error * 2;
+    if (doubled >= dy) { error += dy; x += sx; }
+    if (doubled <= dx) { error += dx; y += sy; }
+  }
+}
+
+type TexturePoint = readonly [x: number, y: number, u: number, v: number];
+
+function atlasPixel(name: TextureAtlasName, u: number, v: number): readonly [number, number, number, number] {
+  const index = TEXTURE_ATLAS_NAMES.indexOf(name);
+  const tileX = index % TEXTURE_ATLAS_COLUMNS;
+  const tileY = Math.floor(index / TEXTURE_ATLAS_COLUMNS);
+  const x = Math.max(0, Math.min(TEXTURE_TILE_SIZE - 1, Math.floor(u * TEXTURE_TILE_SIZE)));
+  const y = Math.max(0, Math.min(TEXTURE_TILE_SIZE - 1, Math.floor(v * TEXTURE_TILE_SIZE)));
+  const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
+  const offset = ((tileY * TEXTURE_TILE_SIZE + y) * atlasWidth + tileX * TEXTURE_TILE_SIZE + x) * 4;
+  return [TEXTURE_ATLAS_RGBA[offset], TEXTURE_ATLAS_RGBA[offset + 1], TEXTURE_ATLAS_RGBA[offset + 2], TEXTURE_ATLAS_RGBA[offset + 3]];
+}
+
+function nearestTone(palette: Palette, rgba: readonly [number, number, number, number], shade: number): string {
+  if (rgba[3] < 48) return "";
+  const source = [rgba[0] * shade, rgba[1] * shade, rgba[2] * shade];
+  let best = "t";
+  let bestDistance = Infinity;
+  for (const tone of ["t", "l", "r", "a", "h", "d"] as const) {
+    const candidate = parse(palette[tone]);
+    const distance = (source[0] - candidate[0]) ** 2 + (source[1] - candidate[1]) ** 2 + (source[2] - candidate[2]) ** 2;
+    if (distance < bestDistance) { best = tone; bestDistance = distance; }
+  }
+  return best;
+}
+
+function texturedTriangle(
+  g: Grid,
+  palette: Palette,
+  texture: TextureAtlasName,
+  a: TexturePoint,
+  b: TexturePoint,
+  c: TexturePoint,
+  shade: number,
+): void {
+  const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+  const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
+  const maxX = Math.min(15, Math.ceil(Math.max(a[0], b[0], c[0])));
+  const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
+  const maxY = Math.min(15, Math.ceil(Math.max(a[1], b[1], c[1])));
+  for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) {
+    const sampleX = x + 0.5; const sampleY = y + 0.5;
+    const wa = ((b[1] - c[1]) * (sampleX - c[0]) + (c[0] - b[0]) * (sampleY - c[1])) / denominator;
+    const wb = ((c[1] - a[1]) * (sampleX - c[0]) + (a[0] - c[0]) * (sampleY - c[1])) / denominator;
+    const wc = 1 - wa - wb;
+    if (wa < -0.001 || wb < -0.001 || wc < -0.001) continue;
+    const u = wa * a[2] + wb * b[2] + wc * c[2];
+    const v = wa * a[3] + wb * b[3] + wc * c[3];
+    const tone = nearestTone(palette, atlasPixel(texture, u, v), shade);
+    if (tone) px(g, x, y, tone);
+  }
+}
+
+function texturedQuad(
+  g: Grid,
+  palette: Palette,
+  texture: TextureAtlasName,
+  points: readonly [TexturePoint, TexturePoint, TexturePoint, TexturePoint],
+  shade: number,
+): void {
+  texturedTriangle(g, palette, texture, points[0], points[1], points[2], shade);
+  texturedTriangle(g, palette, texture, points[0], points[2], points[3], shade);
+}
+
+function atlasBlock(g: Grid, id: BlockId, engineBlock: EngineBlockId): Palette {
+  const b = BLOCKS[id];
+  const p = { o: mix(b.color, "#151817", .7), t: mix(b.color, "#ffffff", .3), l: mix(b.color, "#ffffff", .08), r: mix(b.color, "#000000", .25), a: b.accent, h: mix(b.accent, "#ffffff", .28), d: mix(b.accent, "#000000", .35) };
+  const top = blockTextureForFace(engineBlock, "top");
+  const left = blockTextureForFace(engineBlock, "north");
+  const right = blockTextureForFace(engineBlock, "east");
+  if (!top || !left || !right) return p;
+  const topPoints = [[8,1,0.5,0],[14,4,1,0.5],[8,8,0.5,1],[1,4,0,0.5]] as const;
+  const leftPoints = [[1,4,0,0],[8,8,1,0],[8,14,1,1],[1,10,0,1]] as const;
+  const rightPoints = [[8,8,0,0],[14,4,1,0],[14,10,1,1],[8,14,0,1]] as const;
+  texturedQuad(g, p, top, topPoints, 1.06);
+  texturedQuad(g, p, left, leftPoints, 0.9);
+  texturedQuad(g, p, right, rightPoints, 0.72);
+  for (const [fromX, fromY, toX, toY] of [
+    [8,1,14,4],[14,4,14,10],[14,10,8,14],[8,14,1,10],[1,10,1,4],[1,4,8,1],
+    [1,4,8,8],[14,4,8,8],[8,8,8,14],
+  ] as const) line(g, fromX, fromY, toX, toY, "o");
+  return p;
+}
 
 function block(g: Grid, id: BlockId): Palette {
   if (id === "torch") return torch(g);
   if (id === "door") return door(g);
   if (id === "bed") return bed(g);
   if (id === "ladder") return ladder(g);
+  const engineBlock = ENGINE_BLOCK_BY_ITEM[id];
+  if (engineBlock !== undefined) return atlasBlock(g, id, engineBlock);
   const b = BLOCKS[id];
   const p = { o: mix(b.color, "#151817", .7), t: mix(b.color, "#ffffff", .3), l: mix(b.color, "#ffffff", .08), r: mix(b.color, "#000000", .25), a: b.accent, h: mix(b.accent, "#ffffff", .28), d: mix(b.accent, "#000000", .35) };
   // Three-faced voxel silhouette: bright top, mid left, shaded right.
@@ -197,20 +314,111 @@ function stoneBrickSlab(g: Grid): Palette {
 function tool(g: Grid, kind: Exclude<ToolKind,"hand">, tier: Exclude<ToolTier,"none">): Palette {
   const color = ({ wood:"#a86f38", gold:"#f2c93d", stone:"#858a83", iron:"#d1d6d2", diamond:"#35cfc6" } as const)[tier];
   const p = { o:"#29241e", w:"#7b4e28", h:"#ba8350", m:color, l:mix(color,"#ffffff",.38), d:mix(color,"#000000",.3) };
-  diagonal(g,3,13,1,-1,9,"o",2); diagonal(g,4,13,1,-1,8,"w"); dots(g,"h",[[4,12],[6,10],[8,8]]);
-  if (kind === "pickaxe") { box(g,5,2,8,2,"o"); box(g,3,3,11,2,"o"); box(g,5,3,8,1,"m"); dots(g,"l",[[5,2],[6,2],[7,2],[12,3]]); }
-  else if (kind === "axe") { box(g,9,1,4,2,"o"); box(g,8,3,6,4,"o"); box(g,10,2,3,4,"m"); box(g,12,3,2,2,"l"); box(g,9,5,3,2,"d"); }
-  else if (kind === "shovel") { box(g,10,1,3,2,"o"); box(g,9,2,5,4,"o"); box(g,10,2,3,3,"m"); box(g,11,2,2,1,"l"); }
-  else { diagonal(g,7,8,1,-1,7,"o",3); diagonal(g,8,7,1,-1,6,"m",2); dots(g,"l",[[10,5],[11,4],[12,3],[13,2]]); diagonal(g,5,10,1,-1,4,"o",2); diagonal(g,7,12,-1,-1,4,"o",2); }
+  // A continuous, slim lower-left grip. The dark pixels sit on the two outer
+  // edges of the diagonal instead of wrapping every individual step, which
+  // keeps the handle readable as one shaft at native hotbar scale.
+  const shaft = (length: number): void => {
+    const core = Array.from({ length }, (_, index) => [2 + index, 14 - index] as const);
+    for (const [x, y] of core) dots(g, "o", [[x - 1, y], [x, y + 1], [x + 1, y + 1], [x + 2, y - 1]]);
+    for (const [x, y] of core) dots(g, "w", [[x, y], [x + 1, y]]);
+    for (let index = 1; index < core.length; index += 3) px(g, core[index][0] + 1, core[index][1], "h");
+  };
+
+  if (kind === "sword") {
+    // The sword is its own construction rather than a tool head on the common
+    // shaft: long tapered blade, obvious perpendicular guard, leather grip,
+    // and a material pommel. Every feature survives at 16 logical pixels.
+    dots(g, "o", [
+      [13,1],[12,2],[13,2],[14,2],[11,3],[12,3],[13,3],
+      [10,4],[11,4],[12,4],[9,5],[10,5],[11,5],
+      [8,6],[9,6],[10,6],[7,7],[8,7],[9,7],
+      [6,8],[7,8],[8,8],[5,9],[6,9],[7,9],
+      [3,8],[4,8],[4,9],[5,10],[6,10],[7,10],[7,11],[8,11],[9,11],
+      [3,10],[4,10],[3,11],[4,11],[2,12],[3,12],[1,13],[2,13],[2,14],[3,14],
+    ]);
+    dots(g, "m", [[13,2],[12,3],[11,4],[10,5],[9,6],[8,7],[7,8],[6,9]]);
+    dots(g, "l", [[13,1],[13,2],[12,3],[11,4],[10,5],[9,6]]);
+    dots(g, "d", [[12,4],[11,5],[10,6],[9,7],[8,8],[7,9]]);
+    dots(g, "m", [[4,8],[5,9],[6,10],[7,11],[2,14]]);
+    dots(g, "w", [[3,11],[2,12],[1,13]]);
+    dots(g, "h", [[3,10],[2,12]]);
+    return p;
+  }
+
+  shaft(8);
+  if (kind === "pickaxe") {
+    // A shallow, nearly symmetrical mining head: broad crown, two descending
+    // points, and a small centered socket. This replaces the old oversized
+    // right-hand hook that read as a bent pipe in extrusion.
+    dots(g, "o", [
+      [5,1],[6,1],[7,1],[8,1],[9,1],[10,1],[11,1],
+      [3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[11,2],[12,2],[13,2],
+      [2,3],[3,3],[4,3],[5,3],[11,3],[12,3],[13,3],[14,3],
+      [2,4],[3,4],[4,4],[9,4],[10,4],[11,4],[12,4],[13,4],[14,4],
+      [2,5],[3,5],[9,5],[10,5],[13,5],[14,5],
+      [9,6],[10,6],[9,7],[10,7],
+    ]);
+    dots(g, "m", [
+      [5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[11,2],
+      [3,3],[4,3],[12,3],[13,3],[3,4],[10,4],[11,4],[12,4],[13,4],
+      [3,5],[10,5],[13,5],[10,6],
+    ]);
+    dots(g, "l", [[5,2],[6,2],[7,2],[8,2],[9,2],[12,3],[13,3]]);
+    dots(g, "d", [[3,4],[3,5],[10,5],[10,6],[13,4],[13,5]]);
+  } else if (kind === "axe") {
+    // A haft-through-head construction with a straight cutting edge and a
+    // concave heel. The blade is deliberately asymmetric so it cannot be
+    // mistaken for the shovel's centered spade.
+    dots(g, "o", [
+      [12,1],[13,1],[14,1],[15,1],
+      [10,2],[11,2],[12,2],[13,2],[14,2],[15,2],
+      [9,3],[10,3],[11,3],[12,3],[13,3],[14,3],[15,3],
+      [10,4],[11,4],[12,4],[13,4],[14,4],[15,4],
+      [11,5],[12,5],[13,5],[14,5],[15,5],
+      [9,6],[10,6],[11,6],[12,6],[13,6],
+      [8,7],[9,7],[10,7],[11,7],
+    ]);
+    dots(g, "m", [
+      [12,2],[13,2],[14,2],
+      [10,3],[11,3],[12,3],[13,3],[14,3],
+      [11,4],[12,4],[13,4],[14,4],
+      [12,5],[13,5],[14,5],[11,6],[12,6],
+    ]);
+    dots(g, "l", [[12,2],[13,2],[14,2],[10,3],[14,3],[14,4],[14,5]]);
+    dots(g, "d", [[10,3],[11,4],[12,5],[11,6],[12,6]]);
+    // Reassert the visible wooden eye through the metal head.
+    dots(g, "o", [[9,6],[10,5],[8,7],[11,7]]); dots(g, "w", [[10,6],[9,7],[10,7]]); px(g,10,6,"h");
+  } else {
+    // Centered faceted spade with a flat shoulder, bright ridge, tapered neck,
+    // and pointed heel. Its five-pixel face is visibly wider than the shaft.
+    dots(g, "o", [
+      [10,1],[11,1],[12,1],[13,1],
+      [9,2],[10,2],[11,2],[12,2],[13,2],[14,2],
+      [9,3],[10,3],[11,3],[12,3],[13,3],[14,3],
+      [9,4],[10,4],[11,4],[12,4],[13,4],[14,4],
+      [10,5],[11,5],[12,5],[13,5],
+      [11,6],[12,6],[11,7],
+    ]);
+    dots(g, "m", [[10,2],[11,2],[12,2],[13,2],[10,3],[11,3],[12,3],[13,3],[10,4],[11,4],[12,4],[13,4],[11,5],[12,5],[11,6]]);
+    dots(g, "l", [[10,2],[11,2],[10,3],[11,3],[12,3]]);
+    dots(g, "d", [[13,3],[12,4],[13,4],[11,5],[12,5],[11,6]]);
+  }
   return p;
 }
 
-function bow(g: Grid): Palette {
-  const p = { o: "#322419", w: "#9b6837", h: "#d19a56", s: "#e8e3d7" };
+function bow(g: Grid, drawStage = 0): Palette {
+  const p = { o: "#322419", w: "#9b6837", h: "#d19a56", s: "#e8e3d7", a: "#8f7047", f: "#d7d2c4" };
   dots(g, "o", [[5,1],[6,1],[4,2],[6,2],[3,3],[5,3],[3,4],[4,4],[2,5],[4,5],[2,6],[3,6],[2,7],[3,7],[2,8],[3,8],[2,9],[4,9],[2,10],[4,10],[3,11],[5,11],[3,12],[5,12],[4,13],[6,13],[5,14],[6,14]]);
   dots(g, "w", [[5,2],[4,3],[3,5],[3,10],[4,12],[5,13]]);
   dots(g, "h", [[5,1],[3,4],[2,8],[3,11],[5,14]]);
-  diagonal(g, 7, 2, 0, 1, 12, "s");
+  const nockX = 7 + Math.max(0, Math.min(3, drawStage)) * 2;
+  line(g, 6, 2, nockX, 8, "s");
+  line(g, nockX, 8, 6, 13, "s");
+  if (drawStage > 0) {
+    line(g, 6, 8, 14, 8, "a");
+    dots(g, "o", [[13,7],[14,7],[15,8],[14,9],[13,9]]);
+    dots(g, "f", [[13,8],[14,8]]);
+  }
   return p;
 }
 
@@ -354,6 +562,51 @@ function food(g: Grid, id: ItemId): Palette {
     else dots(g,"l",[[4,3],[5,3],[3,4],[4,4],[5,4],[3,5]]);
     return p;
   }
+  if (id === "pork" || id === "cooked_pork") {
+    // Broad pork cut with a pale fat edge and a clipped lower tip. Cooked
+    // pixels deepen along the rim but retain the same immediately readable cut.
+    dots(g,"o",[[5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[3,3],[4,3],[11,3],[12,3],
+      [2,4],[13,4],[2,5],[13,5],[2,6],[13,6],[2,7],[13,7],[3,8],[12,8],[3,9],[12,9],
+      [4,10],[11,10],[5,11],[10,11],[6,12],[7,12],[8,12],[9,12]]);
+    box(g,3,4,10,4,"m"); box(g,4,8,8,2,"m"); box(g,5,10,6,1,"m"); box(g,6,11,4,1,"m");
+    dots(g,"b",[[4,3],[5,3],[3,4],[3,5],[4,5],[11,4],[12,5],[11,6],[10,7]]);
+    dots(g,"l",[[5,4],[6,4],[4,5],[5,5]]); dots(g,"d",[[11,7],[10,9],[8,11],[5,9]]);
+    if (cooked) dots(g,"d",[[6,3],[8,3],[12,4],[12,6],[11,9],[9,10]]);
+    return p;
+  }
+  if (id === "beef" || id === "cooked_beef") {
+    // Dense steak medallion with an inset fat eye and one squared outer edge.
+    dots(g,"o",[[5,2],[6,2],[7,2],[8,2],[9,2],[10,2],[3,3],[4,3],[11,3],[12,3],
+      [2,4],[13,4],[2,5],[14,5],[1,6],[14,6],[1,7],[14,7],[2,8],[14,8],[2,9],[13,9],
+      [3,10],[12,10],[4,11],[11,11],[5,12],[6,12],[7,12],[8,12],[9,12],[10,12]]);
+    box(g,3,4,10,7,"m"); box(g,2,6,12,3,"m"); box(g,5,3,6,2,"m"); box(g,5,11,6,1,"m");
+    box(g,5,5,4,3,"b"); box(g,6,6,2,2,"d");
+    dots(g,"l",[[4,4],[5,4],[3,5],[10,4]]); dots(g,"d",[[12,6],[13,7],[11,9],[9,11],[4,9]]);
+    if (cooked) dots(g,"d",[[6,3],[9,3],[3,4],[13,5],[2,8],[11,10]]);
+    return p;
+  }
+  if (id === "mutton" || id === "cooked_mutton") {
+    // Compact chop on a diagonal bone; the open negative space between meat
+    // and knuckle keeps it distinct from both pork and beef at hotbar scale.
+    dots(g,"o",[[7,2],[8,2],[9,2],[10,2],[11,2],[5,3],[6,3],[12,3],[4,4],[13,4],
+      [3,5],[13,5],[3,6],[13,6],[4,7],[12,7],[5,8],[11,8],[6,9],[10,9],
+      [5,10],[6,10],[4,11],[5,11],[3,12],[4,12],[2,13],[3,13],[2,14],[3,14],[4,13]]);
+    box(g,5,4,8,3,"m"); box(g,6,3,6,5,"m"); box(g,6,7,5,2,"m");
+    dots(g,"l",[[6,4],[7,3],[5,5],[6,5]]); dots(g,"d",[[11,4],[12,5],[10,7],[8,8]]);
+    dots(g,"b",[[6,9],[5,10],[4,11],[3,12],[2,13],[2,14],[3,14],[4,13]]);
+    if (cooked) dots(g,"d",[[8,3],[10,3],[5,4],[12,4],[11,6],[9,8]]);
+    return p;
+  }
+  if (rotten) {
+    // Torn, folded strip with missing corners and sickly connective patches.
+    dots(g,"o",[[5,2],[6,2],[7,2],[10,2],[11,2],[4,3],[8,3],[9,3],[12,3],
+      [3,4],[13,4],[3,5],[13,5],[2,6],[12,6],[2,7],[12,7],[3,8],[13,8],[3,9],[13,9],
+      [4,10],[12,10],[4,11],[11,11],[5,12],[6,12],[9,12],[10,12],[7,13],[8,13]]);
+    box(g,4,4,9,2,"m"); box(g,3,6,9,2,"m"); box(g,4,8,9,3,"m"); box(g,5,11,6,1,"m");
+    dots(g,"b",[[5,4],[8,4],[11,5],[4,7],[7,7],[10,8],[6,9],[9,10],[7,12]]);
+    dots(g,"l",[[6,3],[5,5],[4,6]]); dots(g,"d",[[10,3],[12,4],[11,7],[12,9],[10,11],[5,10]]);
+    return p;
+  }
   box(g,3,4,9,9,"o"); box(g,2,6,12,5,"o"); box(g,4,4,7,8,"m"); box(g,3,6,10,4,"m"); box(g,10,9,4,2,"b"); box(g,13,8,2,2,"b"); box(g,13,11,2,2,"b"); dots(g,"l",[[5,5],[6,5],[4,7]]); dots(g,"d",[[8,10],[10,7],[6,11]]); if (rotten) dots(g,"b",[[5,8],[8,5],[10,9]]); return p;
 }
 
@@ -376,6 +629,16 @@ function parse(value: string): readonly [number,number,number] { const h=value.s
 const outputPath = process.argv[2];
 if (!outputPath) throw new Error("Pass the generated client module path.");
 
+const bowDrawArt = ([1, 2, 3] as const).map((stage) => {
+  const grid = makeGrid();
+  const palette = bow(grid, stage);
+  return Object.freeze({
+    family: "tool" as const,
+    variant: `drawing-${stage - 1}`,
+    runs: Object.freeze(runs(grid, palette)),
+  });
+});
+
 const bytes: number[] = [];
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
   const art = getItemIconArt(itemId);
@@ -390,12 +653,14 @@ for (const itemId of Object.keys(ITEMS) as ItemId[]) {
     bytes.push(run.x << 4 | run.y, (run.width - 1) << 4 | colors.indexOf(run.color));
   }
 }
+const itemIds = Object.keys(ITEMS) as ItemId[];
+const encodedArt = [...itemIds.map((itemId) => getItemIconArt(itemId)), ...bowDrawArt];
 const shapes: number[][] = [];
 const shapeIndexes = new Map<string, number>();
 const compactBytes: number[] = [];
 const iconShapes: number[] = [];
-for (const itemId of Object.keys(ITEMS) as ItemId[]) {
-  const runs = getItemIconArt(itemId).runs;
+for (const art of encodedArt) {
+  const { runs } = art;
   const key = runs.map(({ x, y, width }) => `${x},${y},${width}`).join(";");
   let shapeIndex = shapeIndexes.get(key);
   if (shapeIndex === undefined) {
@@ -415,7 +680,7 @@ for (const shape of shapes) {
   }
 }
 for (let itemIndex = 0; itemIndex < iconShapes.length; itemIndex += 1) {
-  const art = getItemIconArt((Object.keys(ITEMS) as ItemId[])[itemIndex]);
+  const art = encodedArt[itemIndex];
   const colors = [...new Set(art.runs.map(({ color }) => color))];
   compactBytes.push(iconShapes[itemIndex], colors.length);
   for (const color of colors) {
@@ -463,15 +728,20 @@ const source = `// Generated by scripts/generate-item-icon-art.ts. Do not hand-e
   + `export type ItemIconFamily = "block" | "material" | "tool" | "armor" | "food";\n`
   + `export type ItemIconRun = Readonly<{ x: number; y: number; width: number; color: string }>;\n`
   + `export type ItemIconArt = Readonly<{ family: ItemIconFamily; variant: string; runs: readonly ItemIconRun[] }>;\n`
+  + `export type BowIconStage = 0 | 1 | 2 | 3;\n`
   + `const cache = (() => { const invalid = (): never => { throw new Error("Invalid item icon data."); }, data = decodeStaticBytes(${JSON.stringify(payload)}, ${compactBytes.length}, ${packed.length}, true); let cursor = 0;\n`
   + `const shapes: number[] = []; for (let shape = data[cursor++]; shape > 0; shape -= 1) { const count = data[cursor], end = cursor + count + Math.ceil(count / 2) + 1; if (!count || end > data.length) invalid(); shapes.push(cursor); cursor = end; }\n`
-  + `const result = new Map<ItemId, ItemIconArt>();\n`
-  + `for (const itemId of Object.keys(ITEMS) as ItemId[]) { const shape = shapes[data[cursor++]], colorCount = data[cursor++]; if (shape === undefined || !colorCount || colorCount > 16) invalid(); const count = data[shape], positions = shape + 1, widths = positions + count, end = cursor + colorCount * 3 + Math.ceil(count / 2); if (end > data.length) invalid(); const colors: string[] = [];\n`
+  + `const read = (): readonly ItemIconRun[] => { const shape = shapes[data[cursor++]], colorCount = data[cursor++]; if (shape === undefined || !colorCount || colorCount > 16) invalid(); const count = data[shape], positions = shape + 1, widths = positions + count, end = cursor + colorCount * 3 + Math.ceil(count / 2); if (end > data.length) invalid(); const colors: string[] = [];\n`
   + `  for (let index = 0; index < colorCount; index += 1) { const value = data[cursor++] * 65_536 + data[cursor++] * 256 + data[cursor++]; colors.push(\`#\${value.toString(16).padStart(6, "0")}\`); }\n`
   + `  const indexes = cursor; cursor += Math.ceil(count / 2); const runs = Array.from({ length: count }, (_, index) => { const position = data[positions + index], width = (data[widths + (index >> 1)] >> (index % 2 ? 0 : 4) & 15) + 1, color = data[indexes + (index >> 1)] >> (index % 2 ? 0 : 4) & 15; if ((position >> 4) + width > 16 || color >= colorCount) invalid(); return Object.freeze({ x: position >> 4, y: position & 15, width, color: colors[color] }); });\n`
+  + `  return Object.freeze(runs); };\n`
+  + `const result = new Map<ItemId, ItemIconArt>();\n`
+  + `for (const itemId of Object.keys(ITEMS) as ItemId[]) { const runs = read();\n`
   + `  const item = ITEMS[itemId], variant = item.category === "tool" && item.tool ? \`\${item.tool.tier}-\${item.tool.kind}\` : item.category === "armor" && item.armor ? \`\${itemId.startsWith("golden_") ? "gold" : itemId.startsWith("diamond_") ? "diamond" : itemId.startsWith("iron_") ? "iron" : "leather"}-\${item.armor.slot}\` : itemId;\n`
-  + `  result.set(itemId, Object.freeze({ family: item.category, variant, runs: Object.freeze(runs) })); }\n`
-  + `if (cursor !== data.length) invalid(); return result; })();\n`
-  + `export function getItemIconArt(itemId: ItemId): ItemIconArt { return cache.get(itemId)!; }\n`;
+  + `  result.set(itemId, Object.freeze({ family: item.category, variant, runs })); }\n`
+  + `const bowDrawArt: readonly ItemIconArt[] = Object.freeze([0, 1, 2].map((stage) => Object.freeze({ family: "tool", variant: \`drawing-\${stage}\`, runs: read() })));\n`
+  + `if (cursor !== data.length) invalid(); return { result, bowDrawArt }; })();\n`
+  + `export function getItemIconArt(itemId: ItemId): ItemIconArt { return cache.result.get(itemId)!; }\n`
+  + `export function getBowIconArt(stage: BowIconStage): ItemIconArt { return stage === 0 ? getItemIconArt("bow") : cache.bowDrawArt[stage - 1] ?? getItemIconArt("bow"); }\n`;
 await writeFile(resolve(outputPath), source);
 console.log(JSON.stringify({ items: Object.keys(ITEMS).length, decodedBytes: bytes.length, formatBytes: compactBytes.length, shapes: shapes.length, packedBytes: packed.length, sourceBytes: Buffer.byteLength(source) }));

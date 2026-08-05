@@ -90,8 +90,10 @@ assert.ok(singlePlayer.includes("createDefaultSinglePlayerSnapshot(world.seed, w
   "corrupt or future data falls back only to the selected world's immutable creation metadata");
 assert.ok(singlePlayer.includes("snapshot.world.gameMode = world.initialGameMode"),
   "a locked fallback retains the selected world's explicit initial mode");
-assert.ok(singlePlayer.includes("migrateLegacy: false, worldId: world.id"),
-  "ordinary world loading is namespaced and never performs a silent legacy migration");
+assert.ok(singlePlayer.includes("loadSinglePlayerSave(storage, { worldId: world.id })"),
+  "ordinary world loading uses the selected world's strict namespaced journal");
+assert.equal(singlePlayer.includes("migrateLegacy"), false,
+  "ordinary world loading exposes no legacy migration option");
 assert.ok(singlePlayer.includes("window.confirm("), "destructive world recovery requires explicit confirmation");
 assert.ok(singlePlayer.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),
   "confirmed recovery uses the verified journal reset helper for only the active world");

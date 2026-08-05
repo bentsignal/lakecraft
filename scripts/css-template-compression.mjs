@@ -14,6 +14,8 @@ const CSS_BUNDLE_MAX_CANDIDATES = 256;
 // suffixes in production without touching shared wire fields or development
 // builds. Keep longer families before their prefixes.
 export const COMPACT_CLIENT_IDENTIFIER_FAMILIES = Object.freeze([
+  ["lc-visual-lab", "x0"],
+  ["lc-pose-lab", "x1"],
   ["lc-player-preview", "xd"],
   ["lc-inventory", "xe"],
   ["lc-first-person", "xb"],
@@ -54,7 +56,7 @@ function parsePrivateIdentifierRows(rows) {
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
 xe-window|21 xi-peek|18 xi-compose|14 xi-message|13 xw-button|15
-xc-inventory-slot|11 xj-glyph|12 xo-menu|11 xe-grid__slot|13 xj-icon__svg|10 xn-panel|10
+xc-inventory-slot|11 xj-glyph|15 xo-menu|11 xe-grid__slot|13 xj-icon__svg|13 xn-panel|10
 xlocal-world-dialog|9 xoptions|9 ysleep|9 xslot|15 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|10 xp-logo|9 xq-icon|8 xr-slot|8 xclose|9 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|9 xe-grid|11 xlocal-world-header|6
@@ -89,10 +91,11 @@ xf__number|1 xp-loading|1 xf__arrow|1 xe-error|3 xf-list|1 xj-icon|1 xw-row|1
 xy-grid|8 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|11 xy-workspace|3 xy-pane|7
 xy-pane--player|3 xy-pane--catalog|1 xy-switch|6 xy-grid-wrap|3 xy-armor|3
 xy-catalog|2 xy-help|2 xy-player|2 xsilent-recapture|2
+xlocal-fps|2
 `);
 
 const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
-xpixel-font|52 xnote|16 xc-slot|10 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
+xpixel-font|70 xnote|16 xc-slot|10 xr-slot|6 xpaper|6 xmoss|6 xink|6 xamber|5
 xrust|5 xt-edge|4 xcharcoal|2 xdisplay|2 xmoss-bright|1 xpaper-deep|1 xshadow|1 xline|1 xy-slot|13
 `);
 
@@ -128,7 +131,12 @@ const REVIEWED_COMPACT_IDENTIFIER_EXEMPTIONS = Object.freeze([
   "xr", "xc", "xz", "xu", "xl", "xf", "xg", "xh", "xts", "xt", "xs", "xd",
   // Generated texture-atlas provenance comment; never a DOM or CSS identifier.
   "ymaterials-v1",
+  // Deterministic contact-sheet download filename prefix; never a DOM or CSS identifier.
+  "yproduction-catalog-",
+  // Compact-stage source marker; removed before bundling and never reaches the DOM or CSS.
+  "ydevelopment",
 ]);
+const REVIEWED_COMPACT_IDENTIFIER_FAMILY_PREFIXES = Object.freeze(["x0", "x1"]);
 
 function isCssIdentifierCharacter(character) {
   return character !== undefined && /[A-Za-z0-9_-]/.test(character);
@@ -279,6 +287,9 @@ export function auditCompactClientIdentifierCorpus(sources) {
       const readable = compactClientIdentifierNamespace(match[0]);
       if (
         reviewedNames.has(readable)
+        || REVIEWED_COMPACT_IDENTIFIER_FAMILY_PREFIXES.some((prefix) => (
+          readable === prefix || readable.startsWith(`${prefix}__`) || readable.startsWith(`${prefix}--`)
+        ))
         || COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES.some(([prefix]) => readable.startsWith(prefix))
       ) continue;
       throw new Error(`Unreviewed Lakecraft-private client identifier: ${match[0]}.`);

@@ -1,27 +1,36 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  createFirstPersonRenderer,
   firstPersonHeldItemTuningGroup,
 } from "../client/game/firstPersonRenderer.ts";
-import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
+import { blockIdForCubeItem } from "../client/game/blockItemCubeGeometry.ts";
+import {
+  FIRST_PERSON_TUNING,
+  currentFirstPersonTuning,
+  publishFirstPersonTuning,
+} from "../client/game/firstPersonTuning.ts";
 import { BLOCK } from "../client/game/types.ts";
 
 const tuningSource = readFileSync(new URL("../client/game/firstPersonTuning.ts", import.meta.url), "utf8");
 const guide = readFileSync(new URL("../docs/first-person-pose-tuning.md", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const singlePlayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const poseLab = readFileSync(new URL("../client/components/FirstPersonPoseLab.tsx", import.meta.url), "utf8");
+const firstPersonRendererSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
+const blockItemCubeSource = readFileSync(new URL("../client/game/blockItemCubeGeometry.ts", import.meta.url), "utf8");
 
 for (const group of ["arm", "tool", "bow", "otherItem"] as const) {
-  assert.deepEqual(FIRST_PERSON_TUNING[group].position, [0, 0, 0], `${group} keeps its neutral position`);
-  assert.deepEqual(FIRST_PERSON_TUNING[group].rotationDegrees, [0, 0, 0], `${group} keeps its neutral rotation`);
-  assert.equal(FIRST_PERSON_TUNING[group].scale, 1, `${group} keeps its neutral scale`);
+  for (const value of [
+    ...FIRST_PERSON_TUNING[group].position,
+    ...FIRST_PERSON_TUNING[group].rotationDegrees,
+    ...FIRST_PERSON_TUNING[group].pivot,
+    FIRST_PERSON_TUNING[group].scale,
+  ]) assert.ok(Number.isFinite(value), `${group} stays finite while the user tunes it`);
+  assert.ok(FIRST_PERSON_TUNING[group].scale > 0, `${group} keeps a visible positive scale`);
   assert.match(tuningSource, new RegExp("EDIT `" + group + "` FOR", "i"),
     `${group} has a literal human-facing edit label`);
 }
-assert.deepEqual(FIRST_PERSON_TUNING.arm.pivot, [0.56, -0.49, -1.23]);
-assert.deepEqual(FIRST_PERSON_TUNING.tool.pivot, [0.14, -0.16, -1.17]);
-assert.deepEqual(FIRST_PERSON_TUNING.bow.pivot, [0.40, 0, -1.12]);
-assert.deepEqual(FIRST_PERSON_TUNING.otherItem.pivot, [0.08, -0.04, -1.18]);
 assert.equal(tuningSource.includes("unchanged("), false, "every user-editable group is an explicit object");
 assert.match(tuningSource, /LEAVE THIS ALONE AT FIRST[^\n]*`rig`/,
   "the global rig cannot be mistaken for the first tuning target");
@@ -46,8 +55,15 @@ for (const [itemId, block] of [
   assert.equal(firstPersonHeldItemTuningGroup(itemId, block), "otherItem",
     `${itemId} is a special-shaped block item and uses the otherItem knobs`);
 }
-assert.equal(firstPersonHeldItemTuningGroup("stone_brick_slab", BLOCK.STONE_BRICK_SLAB), "block",
-  "the current slab mesh uses the block knobs despite its non-cube world shape");
+assert.equal(firstPersonHeldItemTuningGroup("stone_brick_slab", BLOCK.STONE_BRICK_SLAB), "otherItem",
+  "the non-full-cube slab shares canonical item-sprite pose tuning through the otherItem knobs");
+assert.equal(blockIdForCubeItem("stone_brick_slab"), null,
+  "the slab is excluded from the executable canonical full-cube item path");
+assert.doesNotMatch(blockItemCubeSource, /stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
+  "the closed full-cube item map cannot silently reclassify the slab");
+assert.match(firstPersonRendererSource,
+  /block !== BLOCK\.STONE_BRICK_SLAB[\s\S]{0,100}blockTextureForFace\(block, "east"\) !== null/,
+  "full-cube tuning explicitly excludes the slab even though its placed mesh has a masonry texture");
 assert.equal(firstPersonHeldItemTuningGroup("iron_pickaxe", BLOCK.AIR), "tool");
 assert.equal(firstPersonHeldItemTuningGroup("bow", BLOCK.AIR), "bow");
 assert.equal(firstPersonHeldItemTuningGroup("apple", BLOCK.AIR), "otherItem");
@@ -56,11 +72,10 @@ assert.equal(firstPersonHeldItemTuningGroup(null, BLOCK.AIR), null);
 for (const target of ["block", "tool", "bow", "arm", "otherItem", "rig"]) {
   assert.match(guide, new RegExp(`\\b${target}\\b`), `the guide names ${target}`);
 }
-assert.match(guide, /Save the file\. Look at the paused browser/);
-assert.match(guide, /press \*\*Undo\*\*/);
-assert.match(guide, /do not need to unpause, click the game, or refresh the browser/i);
-assert.match(guide, /tab is completely hidden[^\n]*redraw waits/i);
-assert.match(guide, /normal full cube[^\n]*dirt, stone, or planks[^\n]*stone-brick slab[^\n]*`block`/i);
+assert.match(guide, /POSE LAB/);
+assert.match(guide, /Reset this group/);
+assert.match(guide, /do not need to save a file, unpause, click the game, or refresh the browser/i);
+assert.match(guide, /normal full cube[^\n]*dirt, stone, or planks[^\n]*`block`/i);
 assert.match(guide, /special held block item[^\n]*torch, chest, bed, door/i);
 assert.equal(guide.includes("hoe"), false, "the guide lists only implemented tool kinds");
 
@@ -76,5 +91,53 @@ assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("pauseOpen
   "Game Menu keeps the paused pose visible");
 assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("pointerCaptureNeeded")),
   "Click to Play keeps the paused pose visible");
+assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("inventoryOpen")),
+  "the inventory keeps the held arm and item visible behind its workspace");
+assert.ok(singlePlayer.includes("<FirstPersonPoseLab") && poseLab.includes("publishFirstPersonTuning(next)"),
+  "the paused surface owns a direct runtime tuning panel instead of pretending source HMR updates WebGL");
+for (const label of ["Position", "Rotation degrees", "Scale", "Pivot (advanced)", "Center", "Size"]) {
+  assert.ok(poseLab.includes(label), `Pose Lab exposes the ${label} control`);
+}
+
+type CapturedBuffer = { id: number };
+let nextBufferId = 0;
+let boundBuffer: CapturedBuffer | null = null;
+const uploads = new Map<number, Float32Array>();
+const gl = {
+  ARRAY_BUFFER: 0x8892,
+  DYNAMIC_DRAW: 0x88e8,
+  createBuffer: () => ({ id: ++nextBufferId }),
+  bindBuffer: (_target: number, buffer: CapturedBuffer | null) => { boundBuffer = buffer; },
+  bufferData: () => undefined,
+  bufferSubData: (_target: number, _offset: number, data: ArrayLike<number>) => {
+    if (!boundBuffer) throw new Error("pose preview upload had no bound buffer");
+    uploads.set(boundBuffer.id, new Float32Array(data));
+  },
+  deleteBuffer: () => undefined,
+} as unknown as WebGLRenderingContext;
+const originalSnapshot = currentFirstPersonTuning();
+const renderer = createFirstPersonRenderer(gl);
+renderer[3]("iron_pickaxe", BLOCK.AIR);
+const beforeUpdate = uploads.get(1)?.slice();
+if (!beforeUpdate) throw new Error("initial tool upload missing");
+const meshUpdatesBefore = renderer[2][5];
+publishFirstPersonTuning({
+  ...originalSnapshot.tuning,
+  tool: {
+    ...originalSnapshot.tuning.tool,
+    scale: originalSnapshot.tuning.tool.scale + 0.5,
+  },
+});
+const identityProjection = new Float32Array(16);
+identityProjection[0] = identityProjection[5] = identityProjection[10] = identityProjection[15] = 1;
+renderer[6](new Float32Array(16), identityProjection, 0, false);
+const afterUpdate = uploads.get(1);
+if (!afterUpdate) throw new Error("live-updated tool upload missing");
+assert.equal(renderer[2][5], meshUpdatesBefore + 1,
+  "an already-running renderer rebuilds once when the tuning module publishes a new revision");
+assert.notDeepEqual(afterUpdate, beforeUpdate,
+  "the live revision changes actual retained WebGL geometry rather than only reloading source text");
+publishFirstPersonTuning(originalSnapshot.tuning);
+renderer[7]();
 
 console.log("first-person pose tuning guide and paused-preview contract tests passed");

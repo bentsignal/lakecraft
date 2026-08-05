@@ -53,8 +53,8 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "90bf64e6017b2dae763c47b0f569dfbadb63c661dcfc29b8bf00a530ed9586c9",
-  "removing containment declarations reproduces exact e245f0b server behavior source",
+  "18a5fb37f3c83205792e73637bc8b5034c529c02dc67c938b889524fc18ba877",
+  "removing containment declarations reproduces the reviewed auth/query/receipt-refactored server behavior source",
 );
 
 assert.doesNotMatch(server, /\bsinglePlayerCloudBackups\s*:/,
@@ -85,10 +85,10 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 133, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 152, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "6e19e68d338e581329016bb8716c17ce1db35aafdeb2c87cc99f06c8d8a22d84",
-  "runtime sources match the reviewed paused-pose, input, beds, combat, TNT, ecology, and containment checkpoint");
+  "0d961bab5c98629e643815f1d802b82bc29dd8dff9979a37028b47e4d3f70ad8",
+  "runtime sources match the reviewed checkpoint plus explicit import/recorder fields, slab item routing, and strict computed-key skin storage");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

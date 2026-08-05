@@ -12,16 +12,26 @@ import {
 } from "../client/game/chunks.ts";
 import { createTerrain, createTerrainChunk } from "../client/game/terrain.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
-import { MAX_REMOTE_PLAYERS, createRemoteAvatarMotion, type RemoteAvatarMotion } from "../client/game/avatar.ts";
+import {
+  MAX_PLAYER_NAME_LENGTH,
+  MAX_REMOTE_PLAYERS,
+  createRemoteAvatarMotion,
+  type RemoteAvatarMotion,
+} from "../client/game/avatar.ts";
+import { NAMEPLATE_FONT } from "../client/game/generated/renderGeometry.ts";
 import {
   AVATAR_VERTICES_PER_PLAYER,
   BASE_AVATAR_VERTICES_PER_PLAYER,
+  MAX_ARMOR_VERTICES_PER_PLAYER,
+  MAX_HELD_ITEM_VERTICES_PER_PLAYER,
   REMOTE_MESH_INTERVAL_MS,
   createRemotePlayerRenderer,
   remotePlayerBufferCapacity,
+  remoteHeldItemVertexCount,
   writeRemotePlayerGeometry,
   type RemoteGeometryStats,
 } from "../client/game/remotePlayerRenderer.ts";
+import { ITEMS, type ItemId } from "../shared/game.ts";
 
 assert.equal(chunkCoordinate(0), 0);
 assert.equal(chunkCoordinate(7), 0);
@@ -110,19 +120,24 @@ console.log(JSON.stringify({
   blockCount: deepWindowBlocks,
 }));
 
-function remoteStates(count: number, geared = false): Map<string, RemoteAvatarMotion> {
+function remoteStates(
+  count: number,
+  geared = false,
+  heldItem: ItemId = "iron_pickaxe",
+  name = "WWWWWWWWWWWWWWWW",
+): Map<string, RemoteAvatarMotion> {
   const states = new Map<string, RemoteAvatarMotion>();
   for (let index = 0; index < count; index += 1) {
     const id = `remote-${index}`;
     states.set(id, createRemoteAvatarMotion({
       id,
-      name: "WWWWWWWWWWWWWWWW",
+      name,
       x: (index % 8) + 1,
       y: 8,
       z: Math.floor(index / 8) + 1,
       yaw: index * 0.1,
       pitch: 0,
-      heldItem: geared ? "iron_pickaxe" : null,
+      heldItem: geared ? heldItem : null,
       armorHead: geared ? "iron_helmet" : null,
       armorChest: geared ? "iron_chestplate" : null,
       armorLegs: geared ? "iron_leggings" : null,
@@ -147,23 +162,53 @@ for (const playerCount of [1, 8, 32]) {
   remoteBenchmarks.push({ playerCount, uploadBytes, capacityBytes: capacity.totalBytes });
 }
 
+const maximalHeldItem = (Object.keys(ITEMS) as ItemId[])
+  .find((itemId) => remoteHeldItemVertexCount(itemId) === MAX_HELD_ITEM_VERTICES_PER_PLAYER);
+assert.ok(maximalHeldItem, "the catalog contains a true 24-rectangle remote held-item fixture");
+const printableGlyphs = Array.from({ length: 64 }, (_, index) => index + 32);
+const glyphPixels = (codePoint: number) => NAMEPLATE_FONT[codePoint].toString(2).replaceAll("0", "").length;
+const maximalGlyphCodePoint = printableGlyphs.reduce((best, codePoint) => (
+  glyphPixels(codePoint) > glyphPixels(best) ? codePoint : best
+));
+const maximalGlyphPixels = glyphPixels(maximalGlyphCodePoint);
+assert.equal(maximalGlyphPixels, 13, "the generated 3x5 font's true maximum-lit glyph has 13 pixels");
+const maximalName = String.fromCharCode(maximalGlyphCodePoint).repeat(MAX_PLAYER_NAME_LENGTH);
+assert.equal(maximalName.length, 16);
+
 const gearedCapacity = remotePlayerBufferCapacity(MAX_REMOTE_PLAYERS);
 const gearedAvatarData = new Float32Array(gearedCapacity.avatarFloats);
 const gearedNameplateData = new Float32Array(gearedCapacity.nameplateFloats);
 const gearedStats: RemoteGeometryStats = { avatarVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
-writeRemotePlayerGeometry(remoteStates(MAX_REMOTE_PLAYERS, true), [0, 9, 0], gearedAvatarData, gearedNameplateData, gearedStats);
+writeRemotePlayerGeometry(
+  remoteStates(MAX_REMOTE_PLAYERS, true, maximalHeldItem, maximalName),
+  [0, 9, 0],
+  gearedAvatarData,
+  gearedNameplateData,
+  gearedStats,
+);
 assert.equal(gearedStats.visiblePlayerCount, MAX_REMOTE_PLAYERS);
-assert.equal(gearedStats.avatarVertexCount, MAX_REMOTE_PLAYERS * AVATAR_VERTICES_PER_PLAYER);
-assert.equal(gearedStats.nameplateVertexCount, MAX_REMOTE_PLAYERS * 1_158);
+const gearedVerticesPerPlayer = BASE_AVATAR_VERTICES_PER_PLAYER
+  + MAX_ARMOR_VERTICES_PER_PLAYER + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
+assert.equal(gearedStats.avatarVertexCount, MAX_REMOTE_PLAYERS * gearedVerticesPerPlayer);
+assert.equal(gearedVerticesPerPlayer, AVATAR_VERTICES_PER_PLAYER);
+const maximalNameplateVerticesPerPlayer = 6 + MAX_PLAYER_NAME_LENGTH * maximalGlyphPixels * 6;
+assert.equal(gearedStats.nameplateVertexCount, MAX_REMOTE_PLAYERS * maximalNameplateVerticesPerPlayer);
 const gearedUploadBytes = (gearedStats.avatarVertexCount + gearedStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
 const base32UploadBytes = remoteBenchmarks[remoteBenchmarks.length - 1].uploadBytes;
-const gearDeltaBytes = gearedUploadBytes - base32UploadBytes;
+const fixtureDeltaBytes = gearedUploadBytes - base32UploadBytes;
+const gearDeltaBytes = MAX_REMOTE_PLAYERS
+  * (gearedVerticesPerPlayer - BASE_AVATAR_VERTICES_PER_PLAYER)
+  * 6 * Float32Array.BYTES_PER_ELEMENT;
+const nameDeltaBytes = MAX_REMOTE_PLAYERS
+  * (maximalNameplateVerticesPerPlayer - 1_158)
+  * 6 * Float32Array.BYTES_PER_ELEMENT;
 assert.equal(
-  gearDeltaBytes,
-  MAX_REMOTE_PLAYERS * (AVATAR_VERTICES_PER_PLAYER - BASE_AVATAR_VERTICES_PER_PLAYER) * 6 * Float32Array.BYTES_PER_ELEMENT,
+  fixtureDeltaBytes,
+  gearDeltaBytes + nameDeltaBytes,
 );
 assert.ok(gearedUploadBytes <= gearedCapacity.totalBytes, "32 fully geared players fit the one preallocated avatar buffer");
-assert.ok(gearedUploadBytes < 1_750_000, `worst-case remote upload ${gearedUploadBytes} exceeded 1.75MB`);
+assert.equal(gearedUploadBytes, 1_820_160, "true maximum catalog gear/name fixture remains deterministic");
+assert.ok(gearedUploadBytes < 2_000_000, `worst-case remote upload ${gearedUploadBytes} exceeded 2MB`);
 
 const glCalls = { bufferData: 0, bufferSubData: 0, deleteBuffer: 0 };
 let nextBufferId = 0;
@@ -202,6 +247,14 @@ assert.equal(glCalls.deleteBuffer, 2);
 console.log(JSON.stringify({
   benchmark: "remote player fixed-buffer scaling",
   samples: remoteBenchmarks,
-  fullyGeared32: { uploadBytes: gearedUploadBytes, capacityBytes: gearedCapacity.totalBytes, gearDeltaBytes },
+  maximalGeared32: {
+    heldItem: maximalHeldItem,
+    nameGlyph: maximalName[0],
+    uploadBytes: gearedUploadBytes,
+    capacityBytes: gearedCapacity.totalBytes,
+    gearDeltaBytes,
+    nameDeltaBytes,
+    fixtureDeltaBytes,
+  },
 }));
 console.log("lakecraft chunk performance tests: ok");

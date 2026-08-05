@@ -21,7 +21,11 @@ assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and l
 assert.ok(engine.includes('movementMode === "sneak" && grounded'), "ledge protection is limited to grounded sneaking");
 assert.ok(engine.includes("clampSneakAxisMovement(amount"), "sneak movement uses the deterministic support clamp");
 assert.ok(engine.includes("smoothPlayerPosture(cameraPosture"), "eye/body/FOV posture is smoothed in the physics loop");
-assert.ok(engine.includes("writePerspectiveMatrix(projectionMatrix, cameraPosture.fovRadians"), "rendering consumes the smoothed FOV");
+assert.match(
+  engine,
+  /writePerspectiveMatrix\(\s*projectionMatrix,\s*cameraPosture\.fovRadians,\s*canvas\.width \/ canvas\.height,\s*0\.05,\s*fogRange\[1\] \+ WORLD_CHUNK_SIZE,\s*\)/,
+  "rendering consumes the smoothed FOV with the render-distance fog-derived far plane",
+);
 assert.ok(engine.includes("const eye = cameraEye(renderEye);"), "rendering consumes the bobbed visual camera origin through retained scratch");
 assert.ok(engine.includes("interactionEye(raycastEye)"), "block targeting uses the posture eye without cosmetic bob or allocation");
 assert.ok(engine.includes("const eye = interactionEye();"), "combat uses the same Lakebed-valid posture eye");

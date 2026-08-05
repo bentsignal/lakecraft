@@ -58,7 +58,7 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, renderDistan
           {renderDistance !== undefined && onRenderDistanceChange ? (
             <label className="lc-options__slider">
               <span>Render Distance: {renderDistance} chunks</span>
-              <input aria-label="Render distance" aria-valuetext={`${renderDistance} chunks`} max="6" min="2" onInput={(event) => onRenderDistanceChange(Number(event.currentTarget.value))} step="1" type="range" value={renderDistance} />
+              <input aria-label="Render distance" aria-valuetext={`${renderDistance} chunks`} max="12" min="2" onInput={(event) => onRenderDistanceChange(Number(event.currentTarget.value))} step="1" type="range" value={renderDistance} />
             </label>
           ) : null}
           <button autoFocus className="lc-options__done" onClick={close} type="button">Done</button>

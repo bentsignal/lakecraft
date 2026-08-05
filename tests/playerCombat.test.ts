@@ -81,9 +81,13 @@ assert.equal(authoritativeCombatPose({ ...storedPresence, x: "NaN" }, "alice", n
 assert.equal(authoritativeCombatPose(storedPresence, "mallory", now), null, "a presence row cannot be relabeled as another user");
 
 const attackerInventory = createEmptyInventory();
-attackerInventory[0] = { itemId: "diamond_sword", count: 1 };
+attackerInventory[0] = {
+  itemId: "diamond_sword",
+  count: 1,
+  durability: ITEMS.diamond_sword.tool!.maxDurability,
+};
 const attackerStateValidation = validatePlayerStateJson(JSON.stringify({
-  version: 2,
+  version: PLAYER_STATE_VERSION,
   inventory: attackerInventory,
   selectedHotbar: 0,
   equipment: createEmptyEquipment(),
@@ -208,9 +212,16 @@ for (const [partial, reason] of [
   if (!result.ok) assert.equal(result.reason, reason);
 }
 
-const unarmoredState = validatePlayerStateJson("[]");
+const unarmoredState = validatePlayerStateJson(JSON.stringify({
+  version: PLAYER_STATE_VERSION,
+  inventory: createEmptyInventory(),
+  selectedHotbar: 0,
+  equipment: createEmptyEquipment(),
+  respawnPoint: null,
+  hunger: 20,
+}));
 assert.ok(unarmoredState.ok);
-if (!unarmoredState.ok) throw new Error("expected legacy empty state to validate");
+if (!unarmoredState.ok) throw new Error("expected empty state to validate");
 const nearlyDead: StoredPlayerCombatState = {
   userId: "bob",
   health: "5",

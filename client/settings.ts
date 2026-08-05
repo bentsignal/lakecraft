@@ -5,7 +5,7 @@ export const MOUSE_SENSITIVITY_MIN = 10;
 export const MOUSE_SENSITIVITY_MAX = 200;
 export const DEFAULT_MOUSE_LOOK_SCALE = 0.0022;
 export const RENDER_DISTANCE_MIN = 2;
-export const RENDER_DISTANCE_MAX = 6;
+export const RENDER_DISTANCE_MAX = 12;
 
 export interface ClientSettings {
   soundMuted: boolean;

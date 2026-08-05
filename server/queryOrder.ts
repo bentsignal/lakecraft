@@ -30,3 +30,29 @@ export function newestByIndex<Row>(
 export function oldestByIndex<Row>(table: IndexedTable<Row>, index: string, range?: (query: IndexRange) => IndexRange): OrderedIndexQuery<Row> {
   return table.withIndex(index, range).order("asc");
 }
+
+/** Exact duplicate detection for any one-field indexed singleton lookup. */
+export function newestMatchingRows<Row>(
+  table: IndexedTable<Row>,
+  index: string,
+  field: string,
+  value: unknown,
+): Promise<Row[]> {
+  return newestByIndex(table, index, (q) => q.eq(field, value)).take(2);
+}
+
+/** Latest-first lookup for a one-field index where callers intentionally accept one row. */
+export function newestMatchingRow<Row>(
+  table: IndexedTable<Row>,
+  index: string,
+  field: string,
+  value: unknown,
+): Promise<Row | null> {
+  return newestByIndex(table, index, (q) => q.eq(field, value)).first();
+}
+
+/** Exact duplicate detection for the common user-owned singleton row shape. */
+export function newestUserRows<Row>(table: IndexedTable<Row>, userId: string): Promise<Row[]> {
+  return newestMatchingRows(table, BS.byUser, BS.userId, userId);
+}
+import * as BS from "../shared/bundleStrings.ts";

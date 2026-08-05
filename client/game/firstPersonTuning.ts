@@ -1,9 +1,9 @@
 /**
  * FIRST-PERSON POSE LAB
  *
- * Edit only the numbers in this file while Lakebed dev is running. Save this
- * file, then look at the PAUSED game in the browser: the pose updates by itself.
- * You do not need to unpause, click the game, or refresh the page.
+ * These are the source defaults used when a world starts. For instant visual
+ * tuning, pause the game and use the on-screen POSE LAB. Lakebed does not hot
+ * replace this plain TypeScript module inside an already-running WebGL engine.
  *
  * Start with ONE small change:
  *   position:        change by 0.02 (example: 0 becomes 0.02)
@@ -37,7 +37,7 @@ export const FIRST_PERSON_TUNING = {
     position: [0, 0, 0] as FirstPersonVector,
     rotationDegrees: [0, 0, 0] as FirstPersonVector,
     scale: 0.48,
-    pivot: [0.66, -0.82, -1.20] as FirstPersonVector,
+    pivot: [0.66, -0.82, -1.2] as FirstPersonVector,
   },
 
   // EDIT `arm` FOR THE ARM AND EMPTY HAND.
@@ -61,7 +61,7 @@ export const FIRST_PERSON_TUNING = {
     position: [0, 0, 0] as FirstPersonVector,
     rotationDegrees: [0, 0, 0] as FirstPersonVector,
     scale: 1,
-    pivot: [0.40, 0, -1.12] as FirstPersonVector,
+    pivot: [0.4, 0, -1.12] as FirstPersonVector,
   },
 
   // EDIT `otherItem` FOR FOOD, MATERIALS, AND SPECIAL HELD BLOCK ITEMS.
@@ -78,8 +78,53 @@ export const FIRST_PERSON_TUNING = {
   // and `size` instead of the four knobs above. Use 0.02, 5 degrees, and 0.05
   // as the same safe first steps. Center is also [X, Y, Z].
   block: {
-    center: [0.14, -0.10, -1.36] as FirstPersonVector,
+    center: [0.14, -0.1, -1.36] as FirstPersonVector,
     rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,
     size: 0.64,
   },
 } as const;
+
+export interface FirstPersonTuning {
+  readonly rig: FirstPersonGroupTuning;
+  readonly arm: FirstPersonGroupTuning;
+  readonly tool: FirstPersonGroupTuning;
+  readonly bow: FirstPersonGroupTuning;
+  readonly otherItem: FirstPersonGroupTuning;
+  readonly block: {
+    readonly center: FirstPersonVector;
+    readonly rotationDegrees: FirstPersonVector;
+    readonly size: number;
+  };
+}
+
+export interface FirstPersonTuningSnapshot {
+  revision: number;
+  tuning: FirstPersonTuning;
+}
+
+const LIVE_TUNING_SLOT = "__lakecraftLiveFirstPersonTuning";
+const liveTuningHost = globalThis as typeof globalThis & {
+  [LIVE_TUNING_SLOT]?: FirstPersonTuningSnapshot;
+};
+
+/**
+ * The retained WebGL engine outlives ordinary Preact state changes. Keep the
+ * newest Pose Lab object in one stable browser-global slot so the renderer can
+ * observe it on its next active or paused frame.
+ */
+export function publishFirstPersonTuning(
+  tuning: FirstPersonTuning,
+): FirstPersonTuningSnapshot {
+  const snapshot = {
+    revision: (liveTuningHost[LIVE_TUNING_SLOT]?.revision ?? 0) + 1,
+    tuning,
+  };
+  liveTuningHost[LIVE_TUNING_SLOT] = snapshot;
+  return snapshot;
+}
+
+export function currentFirstPersonTuning(): FirstPersonTuningSnapshot {
+  return liveTuningHost[LIVE_TUNING_SLOT] ?? publishFirstPersonTuning(FIRST_PERSON_TUNING);
+}
+
+publishFirstPersonTuning(FIRST_PERSON_TUNING);

@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { ITEM_ICON_SIZE, getItemIconArt } from "../client/components/itemIconArt.ts";
+import { ITEM_ICON_SIZE, getBowIconArt, getItemIconArt } from "../client/components/itemIconArt.ts";
 import { decodeStaticBytes } from "../client/staticData.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
+import { VISUAL_ASSET_MANIFEST } from "../shared/visualAssetManifest.ts";
 import { decodeStaticEncoding, encodeStaticBytes } from "../scripts/static-byte-encoding.mjs";
 
 const itemIds = Object.keys(ITEMS) as ItemId[];
@@ -19,6 +20,12 @@ const fnv1a32 = (value: string): string => {
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
 };
+
+const bowStages = [0, 1, 2, 3].map((stage) => getBowIconArt(stage as 0 | 1 | 2 | 3));
+assert.strictEqual(bowStages[0], getItemIconArt("bow"), "idle bow is the canonical inventory sprite");
+assert.equal(new Set(bowStages.map((art) => JSON.stringify(art.runs))).size, 4,
+  "idle and three draw stages have distinct original silhouettes");
+assert.deepEqual(bowStages.slice(1).map((art) => art.variant), ["drawing-0", "drawing-1", "drawing-2"]);
 
 for (const itemId of itemIds) {
   const art = getItemIconArt(itemId);
@@ -45,16 +52,64 @@ assert.notDeepEqual(getItemIconArt("charcoal").runs, getItemIconArt("coal").runs
 assert.notDeepEqual(getItemIconArt("raw_iron").runs, getItemIconArt("iron_ingot").runs, "raw and smelted materials differ");
 assert.notDeepEqual(getItemIconArt("gunpowder").runs, getItemIconArt("coal").runs, "gunpowder has its own loose-grain silhouette");
 assert.equal(getItemIconArt("tnt").variant, "tnt", "TNT retains its block identity in hotbars and inventory grids");
+const occupancyMask = (itemId: ItemId): string => {
+  const cells: string[] = [];
+  for (const run of getItemIconArt(itemId).runs) for (let x = run.x; x < run.x + run.width; x += 1) cells.push(`${x}:${run.y}`);
+  return cells.sort().join("|");
+};
+const occupiedCells = (itemId: ItemId): ReadonlySet<string> => new Set(occupancyMask(itemId).split("|"));
+const toolTiers = ["wooden", "stone", "iron", "golden", "diamond"] as const;
+for (const kind of ["pickaxe", "axe", "shovel", "sword"] as const) {
+  assert.equal(new Set(toolTiers.map((tier) => occupancyMask(`${tier}_${kind}` as ItemId))).size, 1,
+    `${kind} keeps one reviewed silhouette while the material palette changes by tier`);
+}
+assert.equal(new Set(["pickaxe", "axe", "shovel", "sword"]
+  .map((kind) => occupancyMask(`iron_${kind}` as ItemId))).size, 4,
+"all four progression tools remain recognizable by shape rather than color alone");
+
+const pickaxeCells = occupiedCells("iron_pickaxe");
+for (const cell of ["2:5", "14:5", "5:1", "11:1", "2:14"] as const) {
+  assert.ok(pickaxeCells.has(cell), `pickaxe retains crown, twin points, and long grip at ${cell}`);
+}
+assert.equal(pickaxeCells.has("7:4"), false,
+  "pickaxe crown stays shallow instead of collapsing into the old filled hook/blob");
+const axeCells = occupiedCells("iron_axe");
+for (const cell of ["15:2", "15:3", "15:4", "15:5", "8:7", "2:14"] as const) {
+  assert.ok(axeCells.has(cell), `axe retains a straight cutting edge, socket, and long grip at ${cell}`);
+}
+const shovelCells = occupiedCells("iron_shovel");
+for (const cell of ["10:1", "14:2", "9:4", "11:7", "2:14"] as const) {
+  assert.ok(shovelCells.has(cell), `shovel retains its broad faceted spade, neck, and grip at ${cell}`);
+}
+const swordCells = occupiedCells("iron_sword");
+for (const cell of ["13:1", "14:2", "3:8", "9:11", "1:13", "2:14"] as const) {
+  assert.ok(swordCells.has(cell), `sword retains its tapered tip, crossguard, grip, and pommel at ${cell}`);
+}
+const ironPickaxeColors = new Set(getItemIconArt("iron_pickaxe").runs.map(({ color }) => color));
+assert.ok(ironPickaxeColors.has("#d1d6d2") && ironPickaxeColors.has("#7b4e28") && ironPickaxeColors.has("#ba8350"),
+  "pickaxe keeps a distance-readable iron head plus two-tone wooden handle for local and remote renderers");
+for (const family of [
+  ["pork", "beef", "mutton", "rotten_flesh"],
+  ["cooked_pork", "cooked_beef", "cooked_mutton", "rotten_flesh"],
+] as const) {
+  assert.equal(new Set(family.map((itemId) => occupancyMask(itemId))).size, family.length,
+    `${family.join(", ")} retain identity-specific silhouettes rather than palette-only swaps`);
+}
 
 const canonicalArt = JSON.stringify(itemIds.map((itemId) => [itemId, getItemIconArt(itemId)]));
-assert.equal(fnv1a32(canonicalArt), "d425b5a3", "the complete 97-icon run/color/variant fixture changed unexpectedly");
+assert.equal(fnv1a32(canonicalArt), VISUAL_ASSET_MANIFEST.itemIcons.fingerprint,
+  "the complete 97-icon run/color/variant fixture changed unexpectedly");
 const generatedPath = new URL("../client/components/itemIconArt.ts", import.meta.url);
 const generatedSource = readFileSync(generatedPath, "utf8");
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 7826, 5140, true\)/)?.[1];
+const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.ts", import.meta.url), "utf8");
+for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
+  assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
+}
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 10279, 6588, true\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(packedPayload.length, 6_425,
-  "item icons retain the reviewed geometry-deduplicated extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 7_826, 5_140, true);
+assert.equal(packedPayload.length, 8_235,
+  "item icons and drawn bow states retain the reviewed geometry-deduplicated extended LZSS fixture");
+const compactArt = decodeStaticBytes(packedPayload, 10_279, 6_588, true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
@@ -62,18 +117,21 @@ for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1)
   shapeRuns.push(runCount);
   compactCursor += 1 + runCount + Math.ceil(runCount / 2);
 }
-assert.equal(shapeRuns.length, 56, "shared geometry table remains bounded well below its one-byte limit");
+assert.equal(shapeRuns.length, 68, "shared item and bow geometry table remains bounded well below its one-byte limit");
 let decodedRunCount = 0;
-for (const itemId of itemIds) {
+const readCompactRecord = (label: string): void => {
   const shapeIndex = compactArt[compactCursor++];
   const colorCount = compactArt[compactCursor++];
-  assert.ok(shapeIndex < shapeRuns.length, `${itemId} references a known shared geometry`);
-  assert.ok(colorCount > 0 && colorCount <= 16, `${itemId} retains its nibble-sized local palette`);
+  assert.ok(shapeIndex < shapeRuns.length, `${label} references a known shared geometry`);
+  assert.ok(colorCount > 0 && colorCount <= 16, `${label} retains its nibble-sized local palette`);
   decodedRunCount += shapeRuns[shapeIndex];
   compactCursor += colorCount * 3 + Math.ceil(shapeRuns[shapeIndex] / 2);
-}
-assert.equal(decodedRunCount, 4_317, "geometry sharing preserves every reviewed icon run");
-assert.equal(compactCursor, compactArt.length, "item decoder consumes the compact stream exactly once");
+};
+for (const itemId of itemIds) readCompactRecord(itemId);
+assert.equal(decodedRunCount, 5_220, "geometry sharing preserves every reviewed icon run");
+for (let stage = 0; stage < 3; stage += 1) readCompactRecord(`bow draw stage ${stage}`);
+assert.equal(decodedRunCount, 5_358, "the shared stream preserves every reviewed item and bow-state run");
+assert.equal(compactCursor, compactArt.length, "item and bow decoder consumes the compact stream exactly once");
 const itemFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-item-icons-"));
 let invalidItemFixture = 0;
 const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<void> => {
@@ -81,7 +139,7 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 7826, 5140, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 10279, 6588, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
@@ -114,9 +172,9 @@ try {
   await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
     "a truncated item payload fails closed");
-  const noncanonicalItemPayload = decodeStaticEncoding(packedPayload).subarray(0, 5_140);
-  assert.equal(noncanonicalItemPayload[5_122], 127, "reviewed item stream ends with seven used token bits");
-  noncanonicalItemPayload[5_122] = 255;
+  const noncanonicalItemPayload = decodeStaticEncoding(packedPayload).subarray(0, 6_588);
+  assert.equal(noncanonicalItemPayload[6_577], 21, "reviewed shared stream ends with five used token bits");
+  noncanonicalItemPayload[6_577] = 53;
   await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
     "the real item module rejects claimed nonexistent final tokens");
 } finally {

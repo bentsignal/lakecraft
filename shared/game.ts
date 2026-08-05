@@ -175,6 +175,7 @@ export type SmeltResult =
   | { ok: false; inventory: Inventory; reason: "missing_input" | "missing_fuel" | "inventory_full" | "unknown_recipe" };
 
 export type SerializablePlayerState = {
+  version: 4;
   inventory: Inventory;
   selectedHotbar: number;
   equipment: Equipment;
@@ -1095,6 +1096,7 @@ export function createSerializablePlayerState(
   hunger = MAX_HUNGER,
 ): SerializablePlayerState {
   return {
+    version: 4,
     inventory: normalizeInventory(inventory),
     selectedHotbar: clampHotbarIndex(selectedHotbar),
     equipment: normalizeEquipment(equipment),

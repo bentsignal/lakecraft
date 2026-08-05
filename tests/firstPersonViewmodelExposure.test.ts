@@ -34,15 +34,19 @@ const glMethods: Record<string, (...args: any[]) => any> = {
   getProgramInfoLog: () => "",
   getShaderInfoLog: () => "",
   uniform1f: (location: UniformLocation, value: number) => scalarCalls.push({ location, value }),
+  uniform3f: (location: UniformLocation, x: number, y: number, z: number) =>
+    vectorCalls.push({ location, value: new Float32Array([x, y, z]) }),
+  uniform3fv: (location: UniformLocation, value: Float32Array) =>
+    vectorCalls.push({ location, value: new Float32Array(value) }),
   uniform4fv: (location: UniformLocation, value: Float32Array) =>
     vectorCalls.push({ location, value: new Float32Array(value) }),
   bufferSubData: (_target: number, _offset: number, value: Float32Array) => uploads.push(new Float32Array(value)),
 };
 for (const method of [
   "activeTexture", "attachShader", "bindBuffer", "bindTexture", "blendFunc", "bufferData", "clear",
-  "clearColor", "compileShader", "deleteBuffer", "deleteProgram", "deleteTexture", "depthMask", "disable",
+  "clearColor", "compileShader", "deleteBuffer", "deleteProgram", "deleteShader", "deleteTexture", "depthMask", "disable",
   "disableVertexAttribArray", "drawArrays", "enable", "enableVertexAttribArray", "lineWidth", "linkProgram",
-  "pixelStorei", "shaderSource", "texImage2D", "texParameteri", "uniform1i", "uniform3f", "uniform3fv",
+  "pixelStorei", "shaderSource", "texImage2D", "texParameteri", "uniform1i", "uniform2fv",
   "uniformMatrix4fv", "useProgram", "vertexAttribPointer", "viewport",
 ]) glMethods[method] = noop;
 
@@ -98,6 +102,7 @@ type ExposureFixture = {
   exposure: number[];
   ambient: number[];
   torchRadius: number[];
+  armLight: Float32Array[];
   heldCube: Float32Array;
 };
 
@@ -142,9 +147,17 @@ function runExposureFixture(input: { roof: boolean; torch: boolean; phase: numbe
   const ambient = scalarCalls.filter((call) => call.location.name === "uAmbientIntensity").map((call) => call.value);
   const torchRadius = vectorCalls.filter((call) => call.location.name === "uTorchLights[0]")
     .map((call) => call.value[3]);
+  const armLight = vectorCalls.filter((call) => call.location.name === "uLight").map((call) => call.value);
   engine.destroy();
   assert.equal(frames.size, 0);
-  return { exposure, ambient, torchRadius, heldCube };
+  return { exposure, ambient, torchRadius, armLight, heldCube };
+}
+
+function assertLight(actual: readonly Float32Array[], expected: readonly number[], message: string): void {
+  assert.equal(actual.length, 1, `${message}: one first-person skin draw`);
+  assert.equal(actual[0].length, expected.length, `${message}: vector width`);
+  expected.forEach((value, index) => assert.ok(Math.abs(actual[0][index] - value) < 1e-5,
+    `${message}: channel ${index} expected ${value}, received ${actual[0][index]}`));
 }
 
 assert.ok(TERRAIN_VERTEX_SHADER.includes("e*uSkyExposure"),
@@ -153,27 +166,36 @@ assert.ok(VERTEX_SHADER.includes("e*uSkyExposure"),
   "solid arms and tools use the same live eye-cell signal");
 
 const openDay = runExposureFixture({ roof: false, torch: false, phase: 0.5 });
-assert.deepEqual(openDay.exposure, [1, 1, 1, 1],
-  "world and viewmodel programs receive full exposure under open sky");
+assert.deepEqual(openDay.exposure, [1, 1, 1],
+  "world color/terrain and held-item terrain paths receive full exposure under open sky");
+assertLight(openDay.armLight, [1.12, 1.12, 1.12],
+  "the skin arm receives its separately clamped noon light");
 assert.equal(openDay.heldCube.length, 216, "the actual atlas cube remains one retained 36-vertex upload");
 assert.equal([...openDay.heldCube].filter((_value, index) => index % 6 === 5).every((shade) => shade > 0 && shade <= 1), true,
   "the actual textured vertex stream preserves six authored face shades for shader lighting");
 
 const openNight = runExposureFixture({ roof: false, torch: false, phase: 0 });
-assert.deepEqual(openNight.exposure, [1, 1, 1, 1], "night changes ambient light, not open-sky occlusion");
+assert.deepEqual(openNight.exposure, [1, 1, 1], "night changes ambient light, not open-sky occlusion");
+assertLight(openNight.armLight, [0.32, 0.32, 0.32],
+  "the open-sky skin arm retains the reviewed moonlit floor");
 assert.ok(Math.max(...openNight.ambient) < Math.min(...openDay.ambient),
   "exposed night retains its real lower day/night ambient signal");
 
 const caveDay = runExposureFixture({ roof: true, torch: false, phase: 0.5 });
-assert.deepEqual(caveDay.exposure, [1, 1, 0, 0],
-  "world draws stay normalized while both viewmodel programs receive zero cave exposure");
+assert.deepEqual(caveDay.exposure, [1, 1, 0],
+  "world draws stay normalized while the held-item terrain path receives zero cave exposure");
+assertLight(caveDay.armLight, [0.4484, 0.4522, 0.46018],
+  "the skin arm receives the reviewed reduced noon light beneath a roof");
 assert.deepEqual(caveDay.ambient, openDay.ambient,
   "cave darkness is supplied by occlusion rather than faked by changing day uniforms");
-assert.deepEqual(caveDay.torchRadius.slice(-2), [0, 0], "an unlit cave has no synthetic held-item torch");
+assert.deepEqual(caveDay.torchRadius, [0, 0, 0],
+  "an unlit cave has no synthetic torch in either world path or the held-item terrain path");
 
 const caveTorch = runExposureFixture({ roof: true, torch: true, phase: 0.5 });
-assert.deepEqual(caveTorch.exposure, [1, 1, 0, 0], "a cave torch does not erase roof occlusion");
-assert.deepEqual(caveTorch.torchRadius.slice(-2), [5.5, 5.5],
-  "both held geometry programs receive the bounded camera-local radius derived from the nearby scene torch");
+assert.deepEqual(caveTorch.exposure, [1, 1, 0], "a cave torch does not erase roof occlusion");
+assertLight(caveTorch.armLight, [0.4484, 0.4522, 0.46018],
+  "nearby torch uniforms do not replace the arm's bounded sky/day light vector");
+assert.deepEqual(caveTorch.torchRadius, [11, 11, 5.5],
+  "world paths receive the full torch radius while the held-item terrain path receives its bounded half-radius");
 
 console.log("live first-person sky, cave, night, and torch exposure uniforms passed");

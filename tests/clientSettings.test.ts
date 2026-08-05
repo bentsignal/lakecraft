@@ -64,7 +64,7 @@ assert.deepEqual(loadClientSettings(existing), { soundMuted: false, mouseSensiti
   "the new default does not overwrite a saved user's existing radius");
 
 const roundTrip = new MemoryStorage();
-assert.equal(saveClientSettings(roundTrip, { soundMuted: true, mouseSensitivity: 137.5, renderDistance: 9 }), true);
+assert.equal(saveClientSettings(roundTrip, { soundMuted: true, mouseSensitivity: 137.5, renderDistance: 99 }), true);
 assert.deepEqual(loadClientSettings(roundTrip), { soundMuted: true, mouseSensitivity: 137.5, renderDistance: RENDER_DISTANCE_MAX });
 assert.deepEqual(
   JSON.parse(roundTrip.values.get(CLIENT_SETTINGS_STORAGE_KEY) ?? "null"),
@@ -73,6 +73,8 @@ assert.deepEqual(
 );
 assert.equal(normalizeClientSettings({ renderDistance: -4 }).renderDistance, RENDER_DISTANCE_MIN,
   "render distance uses the bounded offline minimum");
+assert.equal(normalizeClientSettings({ renderDistance: 9 }).renderDistance, 9,
+  "intermediate offline radii remain selectable up to the twelve-chunk ceiling");
 
 assert.equal(mouseLookScale(100), 0.0022, "100% exactly preserves the original mouse-look coefficient");
 assert.ok(Math.abs(mouseLookScale(-100) - 0.00022) < 1e-12, "look scaling uses the same lower clamp as persistence");

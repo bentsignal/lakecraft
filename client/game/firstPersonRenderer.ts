@@ -1,17 +1,22 @@
 import { ITEMS, type ItemId } from "../../shared/game.ts";
+import { itemVisual } from "../../shared/visualCatalog.ts";
+import { getBowIconArt, getItemIconArt } from "../components/itemIconArt.ts";
 import { TEXTURED_WORLD_VERTEX_FLOATS, blockTextureForFace, textureAtlasUv } from "./blockTextures.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
+import { ITEM_SPRITE_MAX_VERTICES, appendItemSpriteGeometry } from "./itemSpriteGeometry.ts";
 import { writeMatrixProduct } from "./matrixProduct.ts";
 import { BLOCK, type BlockId } from "./types.ts";
 import {
   FIRST_PERSON_TUNING,
+  currentFirstPersonTuning,
   type FirstPersonGroupTuning,
+  type FirstPersonTuning,
 } from "./firstPersonTuning.ts";
 
 type Vec3 = readonly [number, number, number];
 
 const FLOATS_PER_COLOR_VERTEX = 6;
-export const FIRST_PERSON_MAX_COLOR_VERTICES = 648;
+export const FIRST_PERSON_MAX_COLOR_VERTICES = ITEM_SPRITE_MAX_VERTICES;
 export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
 export const FIRST_PERSON_MODEL_SCALE = FIRST_PERSON_TUNING.rig.scale;
@@ -22,24 +27,6 @@ export const FIRST_PERSON_CUBE_ROTATION: readonly [number, number, number] = [
   FIRST_PERSON_TUNING.block.rotationDegrees[1] * Math.PI / 180,
   FIRST_PERSON_TUNING.block.rotationDegrees[2] * Math.PI / 180,
 ];
-// This authored point resolves to camera-space (0, 0) after the shared wrist
-// scale/pivot, so the visual arrow converges on the unchanged shot crosshair.
-export const FIRST_PERSON_BOW_ARROW_TIP: readonly [number, number, number] = [-0.72, 0.89, -1.70];
-
-const SKIN: Vec3 = [0.74, 0.50, 0.34];
-const SLEEVE: Vec3 = [0.05, 0.54, 0.56];
-const HANDLE: Vec3 = [0.43, 0.27, 0.11];
-const STRING: Vec3 = [0.87, 0.85, 0.78];
-const ARROW: Vec3 = [0.48, 0.29, 0.12];
-const ARROWHEAD: Vec3 = [0.68, 0.70, 0.68];
-const FLETCHING: Vec3 = [0.91, 0.88, 0.80];
-const BOW: Vec3 = [0.48, 0.26, 0.10];
-const BOW_HIGHLIGHT: Vec3 = [0.70, 0.42, 0.18];
-const APPLE: Vec3 = [0.71, 0.12, 0.09];
-const APPLE_DARK: Vec3 = [0.48, 0.08, 0.06];
-const LEAF: Vec3 = [0.25, 0.48, 0.16];
-const COOKED_FOOD: Vec3 = [0.52, 0.22, 0.10];
-const RAW_FOOD: Vec3 = [0.72, 0.32, 0.28];
 
 type GeometryWriter = [color: number[], textured: number[]];
 
@@ -107,26 +94,6 @@ export type FirstPersonRenderer = readonly [
   destroy: () => void,
 ];
 
-function parseHexColor(value: string | undefined): Vec3 {
-  if (value && /^#[0-9a-f]{6}$/i.test(value)) {
-    return [
-      Number.parseInt(value.slice(1, 3), 16) / 255,
-      Number.parseInt(value.slice(3, 5), 16) / 255,
-      Number.parseInt(value.slice(5, 7), 16) / 255,
-    ];
-  }
-  return [0.53, 0.53, 0.53];
-}
-
-function toolHeadColor(itemId: ItemId): Vec3 {
-  const tier = ITEMS[itemId].tool?.tier;
-  if (tier === "diamond") return [0.20, 0.82, 0.79];
-  if (tier === "gold") return [0.94, 0.76, 0.16];
-  if (tier === "iron") return [0.76, 0.78, 0.76];
-  if (tier === "stone") return [0.43, 0.45, 0.44];
-  return [0.58, 0.36, 0.16];
-}
-
 function appendTransformedPoint(
   output: number[],
   x: number,
@@ -163,167 +130,13 @@ function appendTransformedPoint(
   output.push(x + centerX, y + centerY, z + centerZ);
 }
 
-function appendColorBox(
-  output: number[],
-  center: Vec3,
-  size: Vec3,
-  color: Vec3,
-  rx = 0,
-  ry = 0,
-  rz = 0,
-): void {
-  for (const face of CUBE_FACES) {
-    for (const point of face[5]) {
-      appendTransformedPoint(
-        output,
-        (point[0] - 0.5) * size[0],
-        (point[1] - 0.5) * size[1],
-        (point[2] - 0.5) * size[2],
-        center[0],
-        center[1],
-        center[2],
-        rx,
-        ry,
-        rz,
-      );
-      output.push(
-        color[0] * face[4],
-        color[1] * face[4],
-        color[2] * face[4],
-      );
-    }
-  }
-}
-
-function appendSegment(
-  output: number[],
-  from: readonly [number, number],
-  to: readonly [number, number],
-  z: number,
-  thickness: number,
-  depth: number,
-  color: Vec3,
-): void {
-  const dx = to[0] - from[0];
-  const dy = to[1] - from[1];
-  appendColorBox(
-    output,
-    [(from[0] + to[0]) * 0.5, (from[1] + to[1]) * 0.5, z],
-    [thickness, Math.hypot(dx, dy), depth],
-    color,
-    0,
-    0,
-    Math.atan2(-dx, dy),
-  );
-}
-
-function appendArm(output: number[]): void {
-  // A joined 4x4 sleeve and hand prism keeps the familiar lower-right silhouette.
-  appendColorBox(output, [0.69, -0.75, -1.24], [0.34, 0.80, 0.34], SLEEVE, -0.08, 0, 0.38);
-  appendColorBox(output, [0.49, -0.22, -1.22], [0.34, 0.39, 0.34], SKIN, -0.08, 0, 0.38);
-}
-
-function appendTool(output: number[], itemId: ItemId): void {
-  const kind = ITEMS[itemId].tool?.kind;
-  const head = toolHeadColor(itemId);
-  if (kind === "sword") {
-    appendColorBox(output, [0.05, 0.24, -1.17], [0.18, 0.88, 0.12], head, 0, -0.16, 0.62);
-    appendColorBox(output, [0.27, -0.20, -1.15], [0.48, 0.12, 0.16], head, 0, 0, 0.62);
-    appendColorBox(output, [0.43, -0.42, -1.14], [0.12, 0.38, 0.13], HANDLE, 0, 0, 0.62);
-    return;
-  }
-  // The handle runs from the lower-right grip toward the upper-left head while
-  // pitching back into the scene. Giving the whole silhouette real depth keeps
-  // axes and picks recognizable instead of presenting a flat sideways glyph.
-  appendColorBox(output, [0.14, -0.18, -1.12], [0.12, 1.10, 0.12], HANDLE, -0.22, -0.26, 0.62);
-  if (kind === "pickaxe") {
-    appendColorBox(output, [-0.17, 0.30, -1.24], [0.78, 0.16, 0.18], head, -0.12, -0.24, -0.06);
-    appendColorBox(output, [-0.52, 0.22, -1.18], [0.17, 0.31, 0.18], head, -0.12, -0.24, -0.36);
-  } else if (kind === "axe") {
-    appendColorBox(output, [-0.13, 0.31, -1.24], [0.42, 0.17, 0.19], head, -0.14, -0.28, -0.10);
-    appendColorBox(output, [-0.34, 0.22, -1.20], [0.24, 0.38, 0.21], head, -0.14, -0.28, -0.22);
-  } else {
-    appendColorBox(output, [-0.15, 0.30, -1.22], [0.33, 0.43, 0.18], head, -0.13, -0.26, 0.58);
-  }
-}
-
-function appendFood(output: number[], itemId: ItemId): void {
-  if (itemId === "apple") {
-    appendColorBox(output, [0.10, -0.02, -1.13], [0.46, 0.42, 0.36], APPLE, 0, -0.24, -0.08);
-    appendColorBox(output, [-0.05, 0.17, -1.12], [0.29, 0.20, 0.33], APPLE_DARK, 0, -0.24);
-    appendColorBox(output, [0.12, 0.28, -1.13], [0.08, 0.23, 0.08], HANDLE, 0, 0, 0.14);
-    appendColorBox(output, [0.23, 0.30, -1.13], [0.20, 0.09, 0.16], LEAF, 0, 0, -0.28);
-    return;
-  }
-  const cooked = itemId.startsWith("cooked_");
-  const flesh = itemId === "rotten_flesh" ? [0.34, 0.47, 0.17] as Vec3 : cooked ? COOKED_FOOD : RAW_FOOD;
-  appendColorBox(output, [0.08, -0.02, -1.13], [0.55, 0.35, 0.28], flesh, 0, -0.26, -0.16);
-  appendColorBox(output, [-0.17, 0.12, -1.12], [0.30, 0.28, 0.30], flesh, 0, -0.26, 0.08);
-  appendColorBox(output, [0.33, -0.12, -1.12], [0.32, 0.10, 0.12], [0.82, 0.72, 0.57], 0, 0, -0.16);
-}
-
-function appendBow(output: number[], chargeStage: 0 | 1 | 2, charging: boolean): void {
-  // A tall right-side bow follows the vanilla screen-space silhouette. The
-  // arrow itself advances through Z toward the crosshair instead of lying flat
-  // across X, which previously made a correctly aimed shot look sideways.
-  const points = [[0.28,-0.78],[0.50,-0.40],[0.56,0],[0.50,0.40],[0.28,0.78]] as const;
-  for (let index = 0; index < points.length - 1; index += 1) {
-    appendSegment(output, points[index], points[index + 1], -1.12, 0.105, 0.13, index === 1 || index === 2 ? BOW_HIGHLIGHT : BOW);
-  }
-  const nockX = 0.26 - chargeStage * 0.10;
-  appendSegment(output, points[0], [nockX, 0], -1.11, 0.025, 0.035, STRING);
-  appendSegment(output, [nockX, 0], points[4], -1.11, 0.025, 0.035, STRING);
-  if (!charging) return;
-  const arrowCenterX = (FIRST_PERSON_BOW_ARROW_TIP[0] + nockX) * 0.5;
-  const arrowCenterY = FIRST_PERSON_BOW_ARROW_TIP[1] * 0.5;
-  const arrowCenterZ = (FIRST_PERSON_BOW_ARROW_TIP[2] - 1.11) * 0.5;
-  const arrowDx = nockX - FIRST_PERSON_BOW_ARROW_TIP[0];
-  const arrowDy = -FIRST_PERSON_BOW_ARROW_TIP[1];
-  const arrowDz = -1.11 - FIRST_PERSON_BOW_ARROW_TIP[2];
-  const arrowLength = Math.hypot(arrowDx, arrowDy, arrowDz);
-  appendColorBox(
-    output,
-    [arrowCenterX, arrowCenterY, arrowCenterZ],
-    [0.045, 0.045, arrowLength],
-    ARROW,
-    Math.asin(-arrowDy / arrowLength),
-    Math.atan2(arrowDx, arrowDz),
-  );
-  appendColorBox(output, FIRST_PERSON_BOW_ARROW_TIP, [0.12, 0.12, 0.10], ARROWHEAD, 0, 0, Math.PI / 4);
-  appendColorBox(output, [nockX, 0.07, -1.11], [0.18, 0.08, 0.06], FLETCHING, 0, 0, -0.45);
-  appendColorBox(output, [nockX, -0.07, -1.11], [0.18, 0.08, 0.06], FLETCHING, 0, 0, 0.45);
-}
-
-function appendSpecialBlock(output: number[], itemId: ItemId): void {
-  const color = parseHexColor(ITEMS[itemId].color);
-  if (itemId === "torch") {
-    appendColorBox(output, [0.12, -0.06, -1.16], [0.12, 0.72, 0.12], HANDLE, 0, 0, 0.22);
-    appendColorBox(output, [0.03, 0.31, -1.16], [0.21, 0.22, 0.21], [0.95, 0.62, 0.16], 0, 0, 0.22);
-    return;
-  }
-  if (itemId === "door" || itemId === "bed" || itemId === "ladder" || itemId === "stone_brick_slab") {
-    appendColorBox(output, [0.09, -0.04, -1.20], itemId === "door" ? [0.55, 0.92, 0.12] : [0.68, 0.36, 0.18], color, -0.18, -0.38, -0.10);
-    return;
-  }
-  if (itemId === "oak_fence" || itemId === "oak_fence_gate" || itemId === "sapling") {
-    appendColorBox(output, [0.08, -0.05, -1.18], [0.16, 0.75, 0.16], color, 0, 0, 0.08);
-    appendColorBox(output, [0.08, 0.16, -1.18], [0.62, 0.12, 0.14], color, 0, 0, -0.08);
-    appendColorBox(output, [0.08, -0.14, -1.18], [0.56, 0.11, 0.14], color, 0, 0, 0.08);
-    return;
-  }
-  appendColorBox(output, [0.08, -0.04, -1.18], [0.54, 0.54, 0.42], color, -0.28, -0.50);
-}
-
-function appendMaterial(output: number[], itemId: ItemId): void {
-  const color = parseHexColor(ITEMS[itemId].color);
-  appendColorBox(output, [0.08, -0.02, -1.16], [0.38, 0.52, 0.24], color, -0.28, -0.46, 0.40);
-  appendColorBox(output, [-0.03, 0.13, -1.14], [0.24, 0.27, 0.26], color, 0.24, 0.38, -0.22);
-}
-
 function canUseCanonicalCube(block: BlockId): boolean {
   // Every special-shape block resolves every face to null; one side therefore
   // distinguishes the full atlas cubes without rebuilding a six-face probe.
-  return block !== BLOCK.AIR && blockTextureForFace(block, "east") !== null;
+  // The slab intentionally reuses the masonry tile for its placed half-height
+  // mesh, so texture presence alone must not promote its held item to a cube.
+  return block !== BLOCK.AIR && block !== BLOCK.STONE_BRICK_SLAB
+    && blockTextureForFace(block, "east") !== null;
 }
 
 export type FirstPersonHeldItemTuningGroup = "block" | "bow" | "tool" | "otherItem" | null;
@@ -340,9 +153,10 @@ export function firstPersonHeldItemTuningGroup(
   return "otherItem";
 }
 
-function appendTexturedCube(output: number[], block: BlockId): void {
-  const size = FIRST_PERSON_TUNING.block.size;
-  const center = FIRST_PERSON_TUNING.block.center;
+function appendTexturedCube(output: number[], block: BlockId, tuning: FirstPersonTuning): void {
+  const size = tuning.block.size;
+  const center = tuning.block.center;
+  const rotation = tuning.block.rotationDegrees;
   for (const face of CUBE_FACES) {
     const texture = blockTextureForFace(block, face[0]);
     if (!texture) continue;
@@ -362,9 +176,9 @@ function appendTexturedCube(output: number[], block: BlockId): void {
         center[0],
         center[1],
         center[2],
-        FIRST_PERSON_CUBE_ROTATION[0],
-        FIRST_PERSON_CUBE_ROTATION[1],
-        FIRST_PERSON_CUBE_ROTATION[2],
+        rotation[0] * Math.PI / 180,
+        rotation[1] * Math.PI / 180,
+        rotation[2] * Math.PI / 180,
       );
       output.push(
         uv.left + (uv.right - uv.left) * horizontal,
@@ -380,8 +194,12 @@ export function firstPersonBufferCapacity(): readonly [
   texturedVertexCount: number,
   totalBytes: number,
 ] {
-  // 648 color vertices + 36 textured vertices, both six float32 values wide.
-  return [FIRST_PERSON_MAX_COLOR_VERTICES, FIRST_PERSON_MAX_TEXTURED_VERTICES, 16_416];
+  const bytesPerVertex = FLOATS_PER_COLOR_VERTEX * Float32Array.BYTES_PER_ELEMENT;
+  return [
+    FIRST_PERSON_MAX_COLOR_VERTICES,
+    FIRST_PERSON_MAX_TEXTURED_VERTICES,
+    (FIRST_PERSON_MAX_COLOR_VERTICES + FIRST_PERSON_MAX_TEXTURED_VERTICES) * bytesPerVertex,
+  ];
 }
 
 export function firstPersonBowChargeStage(charging: boolean, progress: number): 0 | 1 | 2 {
@@ -432,8 +250,9 @@ export function sampleFirstPersonAction(
 export function writeFirstPersonModelMatrix(
   output: Float32Array,
   pose: Readonly<FirstPersonActionPose>,
+  tuning: FirstPersonTuning = FIRST_PERSON_TUNING,
 ): Float32Array {
-  const baseRotation = FIRST_PERSON_TUNING.rig.rotationDegrees;
+  const baseRotation = tuning.rig.rotationDegrees;
   const rx = pose[3] + baseRotation[0] * Math.PI / 180;
   const ry = pose[4] + baseRotation[1] * Math.PI / 180;
   const rz = (pose[5] ?? 0) + baseRotation[2] * Math.PI / 180;
@@ -443,9 +262,9 @@ export function writeFirstPersonModelMatrix(
   const sy = Math.sin(ry);
   const cz = Math.cos(rz);
   const sz = Math.sin(rz);
-  const [pivotX, pivotY, pivotZ] = FIRST_PERSON_MODEL_PIVOT;
-  const scale = FIRST_PERSON_MODEL_SCALE;
-  const rigPosition = FIRST_PERSON_TUNING.rig.position;
+  const [pivotX, pivotY, pivotZ] = tuning.rig.pivot;
+  const scale = tuning.rig.scale;
+  const rigPosition = tuning.rig.position;
   // Rz * Ry * Rx keeps the authored local X/Y/Z rotation order. Scale and
   // action rotations share the wrist pivot, so the sleeve base stays planted
   // while the held item leads the arc instead of the arm orbiting the block.
@@ -487,41 +306,38 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   const modelMatrix = new Float32Array(16);
   const viewProjection = new Float32Array(16);
   const stats: FirstPersonRenderStats = [0, 0, 0, 0, 0, 0, capacity[2]];
+  let tuningSnapshot = currentFirstPersonTuning();
+  let activeTuning: FirstPersonTuning = tuningSnapshot.tuning;
 
   function rebuild(): void {
     const geometry: GeometryWriter = [[], []];
     const tuningGroup = firstPersonHeldItemTuningGroup(itemId, block);
     if (tuningGroup === "block") {
-      appendTexturedCube(geometry[1], block);
-    } else if (tuningGroup === "bow") {
+      appendTexturedCube(geometry[1], block, activeTuning);
+    } else if (tuningGroup && itemId) {
       const start = geometry[0].length;
-      appendBow(geometry[0], chargeStage, charging);
-      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.bow);
-    } else if (tuningGroup === "tool" && itemId) {
-      const start = geometry[0].length;
-      appendTool(geometry[0], itemId);
-      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.tool);
-    } else if (tuningGroup === "otherItem" && itemId && ITEMS[itemId].category === "food") {
-      const start = geometry[0].length;
-      appendFood(geometry[0], itemId);
-      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
-    } else if (tuningGroup === "otherItem" && itemId && ITEMS[itemId].category === "block") {
-      const start = geometry[0].length;
-      appendSpecialBlock(geometry[0], itemId);
-      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
-    } else if (tuningGroup === "otherItem" && itemId) {
-      const start = geometry[0].length;
-      appendMaterial(geometry[0], itemId);
-      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.otherItem);
-    }
-    // Vanilla's drawn bow is a large right-side item presentation. Keeping the
-    // ordinary one-arm mesh here reads as an unrelated floating limb, so the
-    // bow owns the complete staged silhouette while every other item retains
-    // the same hand and wrist pivot.
-    if (itemId !== "bow") {
-      const start = geometry[0].length;
-      appendArm(geometry[0]);
-      applyGroupTuning(geometry[0], start, FLOATS_PER_COLOR_VERTEX, FIRST_PERSON_TUNING.arm);
+      const visual = itemVisual(itemId);
+      const presentation = visual.parent === "bow"
+        ? { center: [0.36, 0, -1.13] as Vec3, size: 1.12, depth: 0.075, rotationDegrees: [0, -22, 0] as Vec3 }
+        : visual.parent === "handheld"
+          // Source tool pixels run from a lower-left grip to an upper-right
+          // head. Turn the shallow extrusion around Y so the grip lands in the
+          // player's lower-right hand while preserving the authored silhouette.
+          ? { center: [0.22, 0.16, -1.15] as Vec3, size: 1.02, depth: 0.07, rotationDegrees: [0, 156, 0] as Vec3 }
+          : { center: [0.10, -0.02, -1.17] as Vec3, size: 0.76, depth: 0.06, rotationDegrees: [0, -24, 0] as Vec3 };
+      appendItemSpriteGeometry(
+        geometry[0],
+        itemId === "bow" ? getBowIconArt(charging ? chargeStage + 1 as 1 | 2 | 3 : 0) : getItemIconArt(itemId),
+        presentation,
+      );
+      applyGroupTuning(
+        geometry[0],
+        start,
+        FLOATS_PER_COLOR_VERTEX,
+        tuningGroup === "bow" ? activeTuning.bow
+          : tuningGroup === "tool" ? activeTuning.tool
+            : activeTuning.otherItem,
+      );
     }
     if (geometry[0].length > FIRST_PERSON_MAX_COLOR_VERTICES * FLOATS_PER_COLOR_VERTEX
       || geometry[1].length > FIRST_PERSON_MAX_TEXTURED_VERTICES * TEXTURED_WORLD_VERTEX_FLOATS) {
@@ -539,6 +355,14 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
     stats[3] = colorData.byteLength + texturedData.byteLength;
     stats[4] += stats[3];
     stats[5] += 1;
+  }
+
+  function refreshLiveTuning(): void {
+    const next = currentFirstPersonTuning();
+    if (next.revision === tuningSnapshot.revision) return;
+    tuningSnapshot = next;
+    activeTuning = next.tuning;
+    rebuild();
   }
 
   rebuild();
@@ -567,6 +391,7 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       actionStartedAt = Number.isFinite(now) ? now : 0;
     },
     (output, projection, now, reducedMotion) => {
+      refreshLiveTuning();
       sampleFirstPersonAction(
         actionPose,
         actionKind,
@@ -574,7 +399,7 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
         Boolean(itemId && ITEMS[itemId].category === "food"),
         reducedMotion,
       );
-      writeFirstPersonModelMatrix(modelMatrix, actionPose);
+      writeFirstPersonModelMatrix(modelMatrix, actionPose, activeTuning);
       viewProjection.set(projection);
       // World FOV remains untouched. On portrait/narrow canvases only the
       // viewmodel stops widening past a square aspect, keeping the item visible
