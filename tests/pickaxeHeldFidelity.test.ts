@@ -206,7 +206,37 @@ function spatialBounds(data: Float32Array, vertexCount: number) {
   return { minX, maxX, minY, maxY, minZ, maxZ, width: maxX - minX, height: maxY - minY, depth: maxZ - minZ };
 }
 
-function ndcOfPixel(pixX: number, pixY: number, presentation: typeof FIRST_PERSON_PICKAXE_PRESENTATION) {
+function perspective(aspect: number): Float32Array {
+  const f = 1 / Math.tan(70 * Math.PI / 360);
+  const projection = new Float32Array(16);
+  projection[0] = f / aspect;
+  projection[5] = f;
+  projection[10] = -(90 + 0.05) / (90 - 0.05);
+  projection[11] = -1;
+  projection[14] = -(2 * 90 * 0.05) / (90 - 0.05);
+  return projection;
+}
+
+function ndcBounds(data: Float32Array, vertexCount: number, mvp: Float32Array) {
+  const result = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const offset = vertex * 6;
+    const x = data[offset]; const y = data[offset + 1]; const z = data[offset + 2];
+    const clipW = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
+    const screenX = (mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12]) / clipW;
+    const screenY = (mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13]) / clipW;
+    result.minX = Math.min(result.minX, screenX); result.maxX = Math.max(result.maxX, screenX);
+    result.minY = Math.min(result.minY, screenY); result.maxY = Math.max(result.maxY, screenY);
+  }
+  return result;
+}
+
+function ndcOfPixel(
+  pixX: number,
+  pixY: number,
+  presentation: typeof FIRST_PERSON_PICKAXE_PRESENTATION,
+  mvp: Float32Array,
+) {
   const geom: number[] = [];
   appendItemSpriteGeometry(geom, {
     family: "tool",
@@ -219,24 +249,6 @@ function ndcOfPixel(pixX: number, pixY: number, presentation: typeof FIRST_PERSO
     const y = (geom[offset + 1] - tuning.pivot[1]) * tuning.scale + tuning.pivot[1] + tuning.position[1];
     const z = (geom[offset + 2] - tuning.pivot[2]) * tuning.scale + tuning.pivot[2] + tuning.position[2];
     geom[offset] = x; geom[offset + 1] = y; geom[offset + 2] = z;
-  }
-  const model = writeFirstPersonModelMatrix(new Float32Array(16), [0, 0, 0, 0, 0, 0], FIRST_PERSON_TUNING);
-  const fov = 70 * Math.PI / 180;
-  const f = 1 / Math.tan(fov / 2);
-  const aspect = 16 / 9;
-  const proj = new Float32Array(16);
-  proj[0] = f / aspect; proj[5] = f;
-  proj[10] = -(90 + 0.05) / (90 - 0.05); proj[11] = -1;
-  proj[14] = -(2 * 90 * 0.05) / (90 - 0.05);
-  const mvp = new Float32Array(16);
-  for (let column = 0; column < 4; column += 1) {
-    for (let row = 0; row < 4; row += 1) {
-      mvp[column * 4 + row] =
-        proj[row] * model[column * 4]
-        + proj[4 + row] * model[column * 4 + 1]
-        + proj[8 + row] * model[column * 4 + 2]
-        + proj[12 + row] * model[column * 4 + 3];
-    }
   }
   let sumX = 0; let sumY = 0; let count = 0;
   for (let offset = 0; offset < geom.length; offset += 6) {
@@ -259,12 +271,21 @@ const pick = spatialBounds(pickUpload, renderer[2][0]);
 assert.ok(pick.width > 0.55 && pick.height > 0.8, "held pickaxe keeps tall handle + broad head");
 assert.ok(pick.depth > 0.12 && pick.depth < 0.32, "held pickaxe depth is thin, not a cube sculpture");
 
-const gripNdc = ndcOfPixel(3, 13, FIRST_PERSON_PICKAXE_PRESENTATION);
-const crownNdc = ndcOfPixel(8, 2, FIRST_PERSON_PICKAXE_PRESENTATION);
-assert.ok(gripNdc[0] > 0.2 && gripNdc[0] < 0.55, "grip sits in the lower-right screen half");
-assert.ok(gripNdc[1] < -0.35, "grip sits low near the hand");
-assert.ok(crownNdc[1] > gripNdc[1] + 0.25, "head sits clearly above the grip");
-assert.ok(crownNdc[0] > 0.1 && crownNdc[0] < 0.55, "head occupies the expected upper-right area");
+const wideProjection = perspective(16 / 9);
+const pickMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
+const pickViewport = ndcBounds(pickUpload, renderer[2][0], pickMvp);
+const gripNdc = ndcOfPixel(3, 13, FIRST_PERSON_PICKAXE_PRESENTATION, pickMvp);
+const crownNdc = ndcOfPixel(8, 2, FIRST_PERSON_PICKAXE_PRESENTATION, pickMvp);
+console.log(JSON.stringify({ pickViewport, gripNdc, crownNdc }));
+assert.ok(pickViewport.minX > 0.2 && pickViewport.minX < 0.5,
+  "the visible pickaxe begins in the middle-right rather than centered broadside");
+assert.ok(pickViewport.maxX >= 0.98, "the pickaxe reaches or crops through the right viewport edge");
+assert.ok(pickViewport.minY <= -0.98, "the lower handle reaches or crops through the bottom viewport edge");
+assert.ok(pickViewport.maxY > -0.2 && pickViewport.maxY < 0.12,
+  "the head stays around the mid-right horizon instead of filling the screen");
+assert.ok(gripNdc[0] > 0.72 && gripNdc[1] < -0.62, "grip sits low/right at the hand socket");
+assert.ok(crownNdc[1] > gripNdc[1] + 0.35, "head sits clearly above the grip");
+assert.ok(crownNdc[0] < gripNdc[0] - 0.06, "the mirrored head extends leftward from the lower-right grip");
 
 // Swing still animates through the shared action matrix without reallocating geometry
 const swingPose = sampleFirstPersonAction([0, 0, 0, 0, 0, 0], "mine", 110, false, false);
@@ -284,6 +305,14 @@ const axe = spatialBounds(axeUpload, renderer[2][0]);
 assert.ok(axe.depth > 0.2, "axe retains the thicker shared tool cant");
 assert.equal(renderer[2][0], appendItemSpriteGeometry([], getItemIconArt("iron_axe")),
   "axe held geometry still matches its inventory sprite topology");
+const axeMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
+const baselineMvp = writeFirstPersonModelMatrix(
+  new Float32Array(16),
+  [0, 0, 0, 0, 0, 0],
+  FIRST_PERSON_TUNING,
+);
+assert.ok(Math.abs(axeMvp[0] - wideProjection[0] * baselineMvp[0]) < 0.000001,
+  "pickaxe viewport anchoring does not alter the non-picked axe projection");
 
 renderer[3]("iron_sword", BLOCK.AIR);
 assert.equal(renderer[2][0], appendItemSpriteGeometry([], getItemIconArt("iron_sword")),

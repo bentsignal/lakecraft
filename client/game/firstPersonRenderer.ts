@@ -160,10 +160,14 @@ export function firstPersonHeldItemTuningGroup(
  * keep the stepped silhouette face-readable instead of edge-on.
  */
 export const FIRST_PERSON_PICKAXE_PRESENTATION = Object.freeze({
-  center: [0.36, 0.00, -1.10] as Vec3,
-  size: 1.02,
-  depth: 0.034,
-  rotationDegrees: [16, 180, -22] as Vec3,
+  // Calibrated from the supplied 16:9 Java first-person reference: the head
+  // occupies the middle/right of the view while the lower grip exits through
+  // the bottom-right edge.  This is deliberately not an inventory-style
+  // centered beauty shot of the complete sprite.
+  center: [0.72, -0.48, -1.12] as Vec3,
+  size: 1.45,
+  depth: 0.03,
+  rotationDegrees: [12, 180, -22] as Vec3,
   /** Lower wooden handle; the hand should read as gripping this pixel. */
   pivotPixels: [3, 13] as const,
 });
@@ -430,10 +434,14 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
       );
       writeFirstPersonModelMatrix(modelMatrix, actionPose, activeTuning);
       viewProjection.set(projection);
-      // World FOV remains untouched. On portrait/narrow canvases only the
-      // viewmodel stops widening past a square aspect, keeping the item visible
-      // while the lower sleeve may still crop naturally against the viewport.
-      if (viewProjection[0] > viewProjection[5]) viewProjection[0] = viewProjection[5];
+      // World FOV remains untouched. Pickaxes use the screenshot-calibrated
+      // square viewmodel projection at every aspect so the lower-right grip and
+      // cropped silhouette do not slide toward screen center on wide canvases.
+      // Other families retain their existing projection until reviewed in
+      // their own reference pass.
+      if (isPickaxeItem(itemId) || viewProjection[0] > viewProjection[5]) {
+        viewProjection[0] = viewProjection[5];
+      }
       return writeMatrixProduct(output, viewProjection, modelMatrix);
     },
     () => {
