@@ -164,7 +164,7 @@ export const FIRST_PERSON_PICKAXE_PRESENTATION = Object.freeze({
   // occupies the middle/right of the view while the lower grip exits through
   // the bottom-right edge.  This is deliberately not an inventory-style
   // centered beauty shot of the complete sprite.
-  center: [0.72, -0.48, -1.12] as Vec3,
+  center: [0.74, -0.56, -1.12] as Vec3,
   size: 1.45,
   depth: 0.03,
   rotationDegrees: [12, 180, -22] as Vec3,
