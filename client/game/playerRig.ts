@@ -102,7 +102,7 @@ export function writePlayerRigPartMatrix(
       : part === "leftArm" ? 2 * armCenter
         : part === "rightLeg" ? -0.25
           : 0.25;
-  const pivotY = part === "rightArm" || part === "leftArm" ? 1.5
+  const pivotY = part === "rightArm" || part === "leftArm" ? model === "slim" ? 1.46875 : 1.5
     : part === "rightLeg" || part === "leftLeg" ? 0.75 : 0;
   output.set([
     1, 0, 0, 0,

@@ -105,7 +105,7 @@ for (const model of ["wide", "slim"] as const) {
 }
 assert.notDeepEqual(buildPlayerSkinGeometry("wide"), buildPlayerSkinGeometry("slim"));
 const wideArm = buildPlayerSkinPartGeometry("rightArm", "wide");
-const boxBounds = (data: Float32Array, box: 0 | 1) => {
+const boxBounds = (data: Float32Array, box: number) => {
   const start = box * PLAYER_SKIN_BOX_FLOATS;
   const end = start + PLAYER_SKIN_BOX_FLOATS;
   const min = [Infinity, Infinity, Infinity]; const max = [-Infinity, -Infinity, -Infinity];
@@ -115,6 +115,27 @@ const boxBounds = (data: Float32Array, box: 0 | 1) => {
   }
   return { min, max };
 };
+const assertBaseBox = (
+  model: "wide" | "slim",
+  box: number,
+  expectedMin: readonly [number, number, number],
+  expectedMax: readonly [number, number, number],
+  label: string,
+) => {
+  const bounds = boxBounds(buildPlayerSkinGeometry(model), box);
+  assert.deepEqual(bounds.min, [...expectedMin], `${label} minimum matches the standard 16-unit rig`);
+  assert.deepEqual(bounds.max, [...expectedMax], `${label} maximum matches the standard 16-unit rig`);
+};
+assertBaseBox("wide", 0, [-0.25, 1.5, -0.25], [0.25, 2, 0.25], "8×8×8 head");
+assertBaseBox("wide", 2, [-0.25, 0.75, -0.125], [0.25, 1.5, 0.125], "8×12×4 torso");
+assertBaseBox("wide", 4, [0.25, 0.75, -0.125], [0.5, 1.5, 0.125], "classic 4×12×4 right arm");
+assertBaseBox("wide", 6, [-0.5, 0.75, -0.125], [-0.25, 1.5, 0.125], "classic 4×12×4 left arm");
+assertBaseBox("wide", 8, [0, 0, -0.125], [0.25, 0.75, 0.125], "4×12×4 right leg");
+assertBaseBox("wide", 10, [-0.25, 0, -0.125], [0, 0.75, 0.125], "4×12×4 left leg");
+assertBaseBox("slim", 4, [0.25, 0.71875, -0.125], [0.4375, 1.46875, 0.125],
+  "slim 3×12×4 right arm with half-pixel-lower shoulder");
+assertBaseBox("slim", 6, [-0.4375, 0.71875, -0.125], [-0.25, 1.46875, 0.125],
+  "slim 3×12×4 left arm with half-pixel-lower shoulder");
 const baseArmBounds = boxBounds(wideArm, 0); const sleeveBounds = boxBounds(wideArm, 1);
 for (let axis = 0; axis < 3; axis += 1) {
   assert.ok(Math.abs(baseArmBounds.min[axis] - sleeveBounds.min[axis] - 0.015625) < 1e-7,

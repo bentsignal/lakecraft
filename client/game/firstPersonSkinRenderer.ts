@@ -47,13 +47,14 @@ export function buildFirstPersonSkinArmGeometry(
 ): Float32Array {
   const output = buildPlayerSkinPartGeometry("rightArm", model, FIRST_PERSON_SKIN_SLEEVE_INFLATE);
   const pivotX = model === "slim" ? 0.34375 : 0.375;
+  const pivotY = model === "slim" ? 1.46875 : 1.5;
   // From the lower-right camera edge toward the center, matching the authored
   // shoulder-to-hand direction rather than mirroring the whole arm broadside.
   const angle = 145 * Math.PI / 180;
   const cosine = Math.cos(angle); const sine = Math.sin(angle);
   for (let offset = 0; offset < output.length; offset += PLAYER_SKIN_VERTEX_STRIDE) {
     const x = (output[offset] - pivotX) * 1.29;
-    const y = (output[offset + 1] - 1.5) * 1.29;
+    const y = (output[offset + 1] - pivotY) * 1.29;
     const z = output[offset + 2] * 1.29;
     output[offset] = x * cosine - y * sine + 1.13;
     output[offset + 1] = x * sine + y * cosine - 0.63;

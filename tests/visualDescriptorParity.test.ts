@@ -13,7 +13,7 @@ function floatHash(values: Float32Array): string {
 
 const SKIN_HASHES = {
   wide: "9161d6ed4f976285499b83897a8cb85503b0eb5d893eba76218be7f5929e7be5",
-  slim: "1c237b522327cfc32e97cd516da2cd5899748f39ecee6a10f33fbfd5e2f654ef",
+  slim: "492c2c1603988223b0dcf9859d79878eed677f0d2c797422fd0e91825120afab",
 } as const;
 for (const model of ["wide", "slim"] as const) {
   assert.equal(floatHash(buildPlayerSkinGeometry(model)), SKIN_HASHES[model],

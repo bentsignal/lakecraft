@@ -54,11 +54,15 @@ export function thirdPersonHeldItemPresentation(itemId: ItemId): ItemSpriteGeome
   // Bow display translation is authored around its own centered grip while
   // generated/block/handheld parents are authored around the lower hand.
   const socketY = visual.parent === "bow" ? 0.875 : 0.53;
+  // The bow's catalog translation already brings its grip forward. Using the
+  // generic sprite socket as well left it visibly floating several skin pixels
+  // in front of the palm instead of intersecting the hand surface.
+  const socketZ = visual.parent === "bow" ? 0.05 : 0.17;
   return Object.freeze({
     center: [
       0.39 + display.translation[0] / 16,
       socketY + display.translation[1] / 16,
-      0.17 + display.translation[2] / 16,
+      socketZ + display.translation[2] / 16,
     ],
     size: baseSize * display.scale[0],
     depth: Math.max(0.028, 0.052 * display.scale[2]),

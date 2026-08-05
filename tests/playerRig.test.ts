@@ -44,6 +44,12 @@ writePlayerRigPartMatrix(matrix, "rightArm", walk, "wide", true);
 assert.equal(matrix[12], -0.75, "standard right-arm UV geometry moves to anatomical -X");
 writePlayerRigPartMatrix(matrix, "leftArm", walk, "slim", true);
 assert.equal(matrix[12], 0.6875, "slim left-arm UV geometry moves to anatomical +X");
+const slimShoulderY = 1.46875;
+const slimShoulderTransformedY = matrix[5] * slimShoulderY + matrix[13];
+const slimShoulderTransformedZ = matrix[6] * slimShoulderY + matrix[14];
+assert.ok(Math.abs(slimShoulderTransformedY - slimShoulderY) < 1e-7
+  && Math.abs(slimShoulderTransformedZ) < 1e-7,
+"the slim arm pivots at its half-pixel-lower shoulder instead of orbiting a gap above it");
 writePlayerRigPartMatrix(matrix, "rightLeg", walk, "wide", true);
 assert.equal(matrix[12], -0.25, "standard right-leg UV geometry moves to anatomical -X");
 writePlayerRigPartMatrix(matrix, "rightArm", walk, "wide", false);

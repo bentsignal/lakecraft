@@ -78,14 +78,15 @@ export function buildPlayerSkinGeometry(
   clothingOuterLayerInflate = STANDARD_CLOTHING_OUTER_LAYER_INFLATE,
 ): Float32Array {
   const armWidth = model === "slim" ? 3 : 4;
+  const armVerticalOffset = model === "slim" ? -0.5 * PIXEL : 0;
   const halfArm = armWidth * PIXEL / 2;
   const torsoHalf = 4 * PIXEL;
   const armCenter = torsoHalf + halfArm;
   const pairs: SkinBoxPair[] = [
     [0, 0, 32, 0, 8, 8, 8, [-4 * PIXEL, 24 * PIXEL, -4 * PIXEL], [4 * PIXEL, 32 * PIXEL, 4 * PIXEL]],
     [16, 16, 16, 32, 8, 12, 4, [-torsoHalf, 12 * PIXEL, -2 * PIXEL], [torsoHalf, 24 * PIXEL, 2 * PIXEL]],
-    [40, 16, 40, 32, armWidth, 12, 4, [armCenter - halfArm, 12 * PIXEL, -2 * PIXEL], [armCenter + halfArm, 24 * PIXEL, 2 * PIXEL]],
-    [32, 48, 48, 48, armWidth, 12, 4, [-armCenter - halfArm, 12 * PIXEL, -2 * PIXEL], [-armCenter + halfArm, 24 * PIXEL, 2 * PIXEL]],
+    [40, 16, 40, 32, armWidth, 12, 4, [armCenter - halfArm, 12 * PIXEL + armVerticalOffset, -2 * PIXEL], [armCenter + halfArm, 24 * PIXEL + armVerticalOffset, 2 * PIXEL]],
+    [32, 48, 48, 48, armWidth, 12, 4, [-armCenter - halfArm, 12 * PIXEL + armVerticalOffset, -2 * PIXEL], [-armCenter + halfArm, 24 * PIXEL + armVerticalOffset, 2 * PIXEL]],
     [0, 16, 0, 32, 4, 12, 4, [0, 0, -2 * PIXEL], [4 * PIXEL, 12 * PIXEL, 2 * PIXEL]],
     [16, 48, 0, 48, 4, 12, 4, [-4 * PIXEL, 0, -2 * PIXEL], [0, 12 * PIXEL, 2 * PIXEL]],
   ];
