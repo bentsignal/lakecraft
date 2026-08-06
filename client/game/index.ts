@@ -26,6 +26,7 @@ export {
   clampSneakAxisMovement,
   createHeadBobState,
   headBobProfileForMovement,
+  movementFovRadians,
   movementActivityMultiplier,
   normalizeMovementInput,
   postureTargetsForMovement,

@@ -5,6 +5,9 @@ import { createLakecraftDefaultSkinPixels } from "../client/game/playerSkin.ts";
 import { decodePng } from "../scripts/png-rgba.mjs";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 import {
+  CHEST_ATLAS_COLUMN,
+  CHEST_ATLAS_ROW,
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_RGBA,
@@ -19,6 +22,12 @@ type ImportedAssets = Readonly<{
   models: Readonly<Record<string, { display?: Record<string, unknown> }>>;
   entities: Readonly<Record<string, string>>;
   blocks: Readonly<Record<string, string>>;
+  blockItemTextures: Readonly<Record<string, string>>;
+  blockLayers: Readonly<Record<string, string>>;
+  blockItemModelChains: Readonly<Record<string, readonly Readonly<{
+    path: string;
+    model: Record<string, unknown>;
+  }> []>>;
 }>;
 const assets = JSON.parse(readFileSync(
   new URL("../scripts/generated/minecraft-visual-assets-v26.2.json", import.meta.url),
@@ -29,10 +38,52 @@ assert.equal(assets.format, 1);
 assert.equal(assets.source.version, "26.2");
 assert.equal(assets.source.jarSha256, "40896ee9f1e2bec3c934daac7e93d41e9e3d9c2f8ae0ca366d52ffbfd1afa290");
 assert.match(assets.source.notice, /locally installed, user-owned Minecraft client/);
+const importerSource = readFileSync(new URL("../scripts/import-minecraft-visual-assets.mjs", import.meta.url), "utf8");
+assert.ok(importerSource.includes(`EXPECTED_JAR_SHA256 = "${assets.source.jarSha256}"`)
+  && importerSource.includes("jarSha256 !== EXPECTED_JAR_SHA256"),
+"the importer fails before asset extraction unless the installed JAR matches the reviewed 26.2 hash");
 assert.equal(Object.keys(assets.itemTextures).length, 67);
 assert.equal(assets.bowStages.length, 3);
-assert.equal(Object.keys(assets.entities).length, 10);
-assert.equal(Object.keys(assets.blocks).length, 7);
+assert.equal(Object.keys(assets.entities).length, 11);
+assert.equal(Object.keys(assets.blocks).length, 30);
+assert.equal(Object.keys(assets.blockItemTextures).length, 4);
+assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
+assert.deepEqual(Object.keys(assets.blockItemModelChains), [
+  "chest", "oak_fence", "oak_fence_gate", "stone_brick_slab",
+]);
+assert.deepEqual(Object.fromEntries(Object.entries(assets.blockItemModelChains).map(([itemId, chain]) => [
+  itemId,
+  chain.map(({ path }) => path),
+])), {
+  chest: [
+    "assets/minecraft/items/chest.json",
+    "assets/minecraft/models/item/chest.json",
+    "assets/minecraft/models/item/template_chest.json",
+  ],
+  oak_fence: [
+    "assets/minecraft/items/oak_fence.json",
+    "assets/minecraft/models/block/oak_fence_inventory.json",
+    "assets/minecraft/models/block/fence_inventory.json",
+    "assets/minecraft/models/block/block.json",
+  ],
+  oak_fence_gate: [
+    "assets/minecraft/items/oak_fence_gate.json",
+    "assets/minecraft/models/block/oak_fence_gate.json",
+    "assets/minecraft/models/block/template_fence_gate.json",
+    "assets/minecraft/models/block/block.json",
+  ],
+  stone_brick_slab: [
+    "assets/minecraft/items/stone_brick_slab.json",
+    "assets/minecraft/models/block/stone_brick_slab.json",
+    "assets/minecraft/models/block/slab.json",
+    "assets/minecraft/models/block/block.json",
+  ],
+}, "every model-rendered catalog item retains its exact installed inheritance chain");
+assert.deepEqual(Object.fromEntries(["oak_fence", "oak_fence_gate", "stone_brick_slab"].map((itemId) => {
+  const parent = assets.blockItemModelChains[itemId].find(({ model }) => Array.isArray(model.elements));
+  return [itemId, (parent?.model.elements as unknown[] | undefined)?.length];
+})), { oak_fence: 8, oak_fence_gate: 8, stone_brick_slab: 1 },
+"installed parent elements remain the sole source of non-cube inventory geometry");
 
 assert.deepEqual(assets.models.handheld.display?.firstperson_righthand, {
   rotation: [0, -90, 25],
@@ -63,10 +114,13 @@ function assertExactPixels(art: ItemIconArt, payload: string, label: string): vo
 }
 
 const exactItems = Object.entries(ITEMS)
-  .filter(([itemId, item]) => Boolean(item.tool) || ["bow", "shears", "flint_and_steel"].includes(itemId))
+  .filter(([, item]) => item.category !== "block")
   .map(([itemId]) => itemId as ItemId);
-assert.equal(exactItems.length, 23);
+assert.equal(exactItems.length, 67);
 for (const itemId of exactItems) assertExactPixels(getItemIconArt(itemId), assets.itemTextures[itemId], itemId);
+for (const [itemId, payload] of Object.entries(assets.blockItemTextures)) {
+  assertExactPixels(getItemIconArt(itemId as ItemId), payload, itemId);
+}
 for (const stage of [1, 2, 3] as const) {
   assertExactPixels(getBowIconArt(stage), assets.bowStages[stage - 1], `bow_pulling_${stage - 1}`);
 }
@@ -76,17 +130,35 @@ for (const [name, payload] of Object.entries(assets.entities)) {
   assert.ok(image.width >= 32 && image.height >= 32, `${name} retains a complete installed entity texture`);
 }
 assert.deepEqual(
+  [decodePng(Buffer.from(assets.entities.chest_normal, "base64")).width,
+    decodePng(Buffer.from(assets.entities.chest_normal, "base64")).height],
+  [64, 64],
+  "the special chest renderer retains its complete installed normal entity texture",
+);
+const installedChest = decodePng(Buffer.from(assets.entities.chest_normal, "base64"));
+for (let sourceY = 0; sourceY < 64; sourceY += 1) for (let sourceX = 0; sourceX < 64; sourceX += 1) {
+  const atlas = (((CHEST_ATLAS_ROW * 16 + sourceY) * TEXTURE_ATLAS_COLUMNS * 16)
+    + CHEST_ATLAS_COLUMN * 16 + sourceX) * 4;
+  const source = (sourceY * 64 + sourceX) * 4;
+  assert.deepEqual([...TEXTURE_ATLAS_RGBA.subarray(atlas, atlas + 4)],
+    [...installedChest.rgba.subarray(source, source + 4)],
+    `normal chest texel ${sourceX},${sourceY} survives contiguous atlas packing without resampling`);
+}
+assert.deepEqual(
   createLakecraftDefaultSkinPixels(),
   decodePng(Buffer.from(assets.entities.player_wide, "base64")).rgba,
   "the production default player skin exactly preserves the installed standard 64x64 RGBA texture",
 );
+const tintedTiles = new Set(["grass_top", "grass_side", "leaves"]);
 for (const [name, payload] of Object.entries(assets.blocks)) {
   const image = decodePng(Buffer.from(payload, "base64"));
   assert.deepEqual([image.width, image.height], [16, 16], `${name} retains its exact block tile`);
   const tile = TEXTURE_ATLAS_NAMES.indexOf(name as typeof TEXTURE_ATLAS_NAMES[number]);
   assert.ok(tile >= 0, `${name} has a production atlas slot`);
-  const tileX = tile % TEXTURE_ATLAS_COLUMNS;
-  const tileY = Math.floor(tile / TEXTURE_ATLAS_COLUMNS);
+  const cell = TEXTURE_ATLAS_CELLS[tile];
+  const tileX = cell % TEXTURE_ATLAS_COLUMNS;
+  const tileY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
+  if (tintedTiles.has(name)) continue;
   for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
     const source = (y * TEXTURE_TILE_SIZE + x) * 4;
     const atlas = ((tileY * TEXTURE_TILE_SIZE + y) * TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE
@@ -99,4 +171,46 @@ for (const [name, payload] of Object.entries(assets.blocks)) {
   }
 }
 
-console.log(`Minecraft 26.2 visual import verified (${exactItems.length} exact production items + 3 bow stages + 7 block tiles + default player skin)`);
+const tint = (value: number, channel: number): number => Math.round(value * channel / 255);
+const plainsGrass = [0x91, 0xbd, 0x59] as const;
+const plainsFoliage = [0x77, 0xab, 0x2f] as const;
+const sourceTiles = Object.fromEntries(["grass_top", "grass_side", "leaves"].map((name) => [
+  name,
+  decodePng(Buffer.from(assets.blocks[name], "base64")),
+]));
+const grassOverlay = decodePng(Buffer.from(assets.blockLayers.grass_side_overlay, "base64"));
+for (const [name, channels] of [["grass_top", plainsGrass], ["leaves", plainsFoliage]] as const) {
+  const source = sourceTiles[name];
+  const tile = TEXTURE_ATLAS_NAMES.indexOf(name);
+  const cell = TEXTURE_ATLAS_CELLS[tile];
+  const tileX = cell % TEXTURE_ATLAS_COLUMNS;
+  const tileY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
+  for (let pixel = 0; pixel < 256; pixel += 1) {
+    const sourceOffset = pixel * 4;
+    const atlasOffset = ((tileY * 16 + Math.floor(pixel / 16)) * TEXTURE_ATLAS_COLUMNS * 16
+      + tileX * 16 + pixel % 16) * 4;
+    assert.deepEqual(
+      [...TEXTURE_ATLAS_RGBA.subarray(atlasOffset, atlasOffset + 4)],
+      [0, 1, 2].map((channel) => tint(source.rgba[sourceOffset + channel], channels[channel]))
+        .concat(source.rgba[sourceOffset + 3]),
+      `${name} pixel ${pixel} keeps the installed mask under the fixed plains tint`,
+    );
+  }
+}
+const grassSide = sourceTiles.grass_side;
+const grassSideTile = TEXTURE_ATLAS_NAMES.indexOf("grass_side");
+const grassSideCell = TEXTURE_ATLAS_CELLS[grassSideTile];
+for (let pixel = 0; pixel < 256; pixel += 1) {
+  const sourceOffset = pixel * 4;
+  const alpha = grassOverlay.rgba[sourceOffset + 3] / 255;
+  const atlasOffset = ((Math.floor(grassSideCell / TEXTURE_ATLAS_COLUMNS) * 16 + Math.floor(pixel / 16))
+    * TEXTURE_ATLAS_COLUMNS * 16 + grassSideCell % TEXTURE_ATLAS_COLUMNS * 16 + pixel % 16) * 4;
+  const expected = [0, 1, 2].map((channel) => Math.round(
+    tint(grassOverlay.rgba[sourceOffset + channel], plainsGrass[channel]) * alpha
+      + grassSide.rgba[sourceOffset + channel] * (1 - alpha),
+  )).concat(grassSide.rgba[sourceOffset + 3]);
+  assert.deepEqual([...TEXTURE_ATLAS_RGBA.subarray(atlasOffset, atlasOffset + 4)], expected,
+    `grass side pixel ${pixel} composites the installed tinted overlay over its installed base`);
+}
+
+console.log(`Minecraft 26.2 visual import verified (${exactItems.length + Object.keys(assets.blockItemTextures).length} exact production item sprites + 3 bow stages + 27 exact block tiles + 3 plains-tinted installed layers + default player skin)`);

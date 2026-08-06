@@ -17,7 +17,7 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const names = Object.keys(COMPACT_SERVER_KEY_COUNTS);
 assert.deepEqual(names, [...names].sort(), "server key manifest stays sorted");
-assert.equal(names.length, 84, "server key compatibility boundary changes only intentionally");
+assert.equal(names.length, 115, "server key compatibility boundary changes only intentionally");
 assert.deepEqual(names.filter((name) => COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS.includes(name)), [],
   "JavaScript, Lakebed auth, and database methods stay literal");
 for (const [name, counts] of Object.entries(COMPACT_SERVER_KEY_COUNTS)) {

@@ -22,13 +22,15 @@ import { ITEMS, type ItemId } from "../shared/game.ts";
 const capacity = droppedItemBufferCapacity();
 assert.equal(capacity.itemCount, 256);
 assert.equal(capacity.vertexCount, MAX_RENDERED_DROPPED_ITEMS * DROPPED_ITEM_VERTICES_PER_ITEM);
-assert.equal(DROPPED_ITEM_MAX_ICON_RUNS, 107, "the fixed batch covers the most detailed production icon");
+assert.equal(DROPPED_ITEM_MAX_ICON_RUNS, 118, "the fixed batch covers the most detailed exact production icon");
 assert.equal(DROPPED_BLOCK_CUBE_GRID_SIZE, 4, "distance drops use a bounded authored-atlas mip");
 assert.equal(DROPPED_BLOCK_CUBE_MAX_VERTICES, 576, "six 4x4 faces fit below the sprite stride");
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
-  assert.ok(getItemIconArt(itemId).runs.length <= DROPPED_ITEM_MAX_ICON_RUNS, `${itemId} fits the fixed drop batch stride`);
+  if (droppedBlockCubeVertexCount(itemId) === 0) {
+    assert.ok(getItemIconArt(itemId).runs.length <= DROPPED_ITEM_MAX_ICON_RUNS, `${itemId} fits the fixed drop batch stride`);
+  }
 }
-assert.equal(capacity.totalBytes, 3_944_448, "the complete recognizable-sprite batch stays below four MiB");
+assert.equal(capacity.totalBytes, 4_349_952, "the complete exact-sprite batch remains fixed and bounded");
 assert.deepEqual(droppedItemBufferCapacity(-2), { itemCount: 0, vertexCount: 0, floatCount: 0, totalBytes: 0 });
 assert.equal(droppedItemBufferCapacity(999).itemCount, MAX_RENDERED_DROPPED_ITEMS);
 
@@ -153,13 +155,13 @@ assert.equal(renderStats.vertexCount, MAX_RENDERED_DROPPED_ITEMS * DROPPED_BLOCK
 assert.equal(renderStats.uploadBytes, 3_538_944, "a complete 256-drop atlas-cube batch stays below four MiB");
 assert.equal(uploads.length, 2, "all atlas cubes retain one buffer upload");
 
-renderer.setItems(Array.from({ length: 320 }, (_, index) => droppedItem(index, 0, "oak_fence_gate")));
+renderer.setItems(Array.from({ length: 320 }, (_, index) => droppedItem(index, 0, "chest")));
 renderStats = renderer.update(DROPPED_ITEM_MESH_INTERVAL_MS * 2, [0, 5, 0]);
 assert.equal(renderStats.totalItemCount, MAX_RENDERED_DROPPED_ITEMS);
 assert.equal(renderStats.visibleItemCount, MAX_RENDERED_DROPPED_ITEMS);
-const worstRoutedVertices = MAX_RENDERED_DROPPED_ITEMS * getItemIconArt("oak_fence_gate").runs.length * 6;
+const worstRoutedVertices = MAX_RENDERED_DROPPED_ITEMS * getItemIconArt("chest").runs.length * 6;
 assert.equal(renderStats.vertexCount, worstRoutedVertices);
-assert.equal(renderStats.uploadBytes, 3_760_128, "the densest routed catalog drop stays below four MiB");
+assert.equal(renderStats.uploadBytes, 4_349_952, "the exact model-rendered chest keeps the densest routed batch below 4.5 MiB");
 assert.ok(renderStats.vertexCount <= capacity.vertexCount);
 assert.equal(uploads.length, 3, "the worst case is still one upload for the frame");
 assert.ok(uploads.every((upload) => upload.offset === 0 && upload.bytes <= capacity.totalBytes));

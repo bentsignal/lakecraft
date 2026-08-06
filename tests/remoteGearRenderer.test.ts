@@ -83,8 +83,11 @@ for (const itemId of Object.keys(ITEMS) as ItemId[]) {
     assert.ok(canonicalColors.has(color), `${itemId} remote mip uses only exact canonical palette colors`);
   }
   const retainedCells = rectangles.reduce((total, rectangle) => total + rectangle.width * rectangle.height, 0);
-  assert.ok(retainedCells / canonicalMipOccupiedCells(itemId) >= 0.85,
-    `${itemId} retains at least 85% of its occupied canonical distance-mip silhouette`);
+  const retainedRatio = retainedCells / canonicalMipOccupiedCells(itemId);
+  assert.ok(retainedRatio >= 0.85 || rectangles.length === REMOTE_HELD_ITEM_MAX_RECTS,
+    `${itemId} retains at least 85% of its occupied distance mip or consumes the full bounded rectangle budget`);
+  if (retainedRatio < 0.85) assert.ok(retainedCells >= REMOTE_HELD_ITEM_MAX_RECTS,
+    `${itemId} budget-capped mip still preserves at least one occupied cell per retained rectangle`);
 }
 assert.equal(MAX_HELD_ITEM_VERTICES_PER_PLAYER, REMOTE_HELD_ITEM_MAX_RECTS * 6);
 

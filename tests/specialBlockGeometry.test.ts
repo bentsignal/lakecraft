@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { textureAtlasUv } from "../client/game/blockTextures.ts";
+import { chestAtlasUv, textureAtlasUv } from "../client/game/blockTextures.ts";
 import {
   SPECIAL_BED_COLOR_VERTEX_COUNT,
   SPECIAL_BED_TEXTURED_VERTEX_COUNT,
@@ -62,11 +62,43 @@ assert.ok(torch.color.some((value, index) => index % 6 === 3 && value > 0.9),
 const chest = mesh();
 appendSpecialChestMesh(chest, 10, 20, 30, 1, 3);
 assertCounts(chest, SPECIAL_CHEST_TEXTURED_VERTEX_COUNT, SPECIAL_CHEST_COLOR_VERTEX_COUNT);
-assertUvRange(chest.textured, 0, SPECIAL_CHEST_TEXTURED_VERTEX_COUNT, "oak_planks");
-assert.ok(chest.color.some((value, index) => index % 6 === 3 && value > 0.8),
-  "the atlas-backed chest keeps its contrasting latch");
-assert.ok(chest.color.some((value, index) => index % 6 === 3 && value > 0.2 && value < 0.4),
-  "the atlas-backed chest keeps a dark wraparound band");
+const chestBottomLeft = chestAtlasUv(0, 63);
+const chestTopRight = chestAtlasUv(63, 0);
+for (let offset = 0; offset < chest.textured.length; offset += 6) {
+  assert.ok(chest.textured[offset + 3] >= chestBottomLeft[0] && chest.textured[offset + 3] <= chestTopRight[0]
+    && chest.textured[offset + 4] >= chestBottomLeft[1] && chest.textured[offset + 4] <= chestTopRight[1],
+  "every chest face samples the contiguous exact normal entity texture");
+}
+assert.equal(chest.color.length, 0, "the old synthetic band and latch colors are completely removed");
+assert.ok(chest.textured.some((value, index) => index % 6 === 5
+  && unpackSkyExposureShade(value).exposureLevel === 3),
+"chest entity-texture faces remain in the retained exposure-packed batch");
+const chestCoordinates = (axis: 0 | 1 | 2) => chest.textured.filter((_, index) => index % 6 === axis);
+assert.deepEqual(
+  [Math.min(...chestCoordinates(1)), Math.max(...chestCoordinates(1))],
+  [20, 20 + 14 / 16],
+  "closed chest geometry uses the installed model's exact y=0..10 bottom and y=9..14 lid bounds",
+);
+assert.deepEqual(
+  [Math.min(...chestCoordinates(0)), Math.max(...chestCoordinates(0)),
+    Math.min(...chestCoordinates(2)), Math.max(...chestCoordinates(2))],
+  [10 + 1 / 16, 10 + 15 / 16, 30 + 1 / 16, 31],
+  "closed chest body and front lock preserve the installed model's x/z bounds",
+);
+const bodyEastUv = Array.from({ length: 6 }, (_, vertex) =>
+  [chest.textured[vertex * 6 + 3], chest.textured[vertex * 6 + 4]] as const);
+assert.deepEqual(bodyEastUv, [
+  chestAtlasUv(41, 42), chestAtlasUv(41, 33), chestAtlasUv(28, 33),
+  chestAtlasUv(41, 42), chestAtlasUv(28, 33), chestAtlasUv(28, 42),
+], "the body-east [28,42)x[33,43) rectangle uses exact inclusive texel centers without split seams");
+assert.deepEqual(chest.textured.slice(0, 36).filter((_, index) => index % 6 < 3), [
+  10 + 15 / 16, 20, 30 + 1 / 16,
+  10 + 15 / 16, 20 + 10 / 16, 30 + 1 / 16,
+  10 + 15 / 16, 20 + 10 / 16, 30 + 15 / 16,
+  10 + 15 / 16, 20, 30 + 1 / 16,
+  10 + 15 / 16, 20 + 10 / 16, 30 + 15 / 16,
+  10 + 15 / 16, 20, 30 + 15 / 16,
+], "installed east-face UV corners map to the exact mirrored-z model corners");
 
 for (const open of [false, true]) {
   const door = mesh();

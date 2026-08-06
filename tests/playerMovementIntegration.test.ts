@@ -21,6 +21,10 @@ assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and l
 assert.ok(engine.includes('movementMode === "sneak" && grounded'), "ledge protection is limited to grounded sneaking");
 assert.ok(engine.includes("clampSneakAxisMovement(amount"), "sneak movement uses the deterministic support clamp");
 assert.ok(engine.includes("smoothPlayerPosture(cameraPosture"), "eye/body/FOV posture is smoothed in the physics loop");
+assert.ok(engine.includes("cameraPostureTarget.fovRadians = movementFovRadians(movementMode, options.getFieldOfViewRadians?.())"),
+  "the smoothed posture target combines live configured FOV with the resolved movement mode");
+assert.ok(engine.includes("cameraPosture.fovRadians = movementFovRadians(movementMode, options.getFieldOfViewRadians?.())"),
+  "camera resets discard sprint widening without discarding the configured base FOV");
 assert.match(
   engine,
   /writePerspectiveMatrix\(\s*projectionMatrix,\s*cameraPosture\.fovRadians,\s*canvas\.width \/ canvas\.height,\s*0\.05,\s*fogRange\[1\] \+ WORLD_CHUNK_SIZE,\s*\)/,

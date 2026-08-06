@@ -1,15 +1,19 @@
 # Lakecraft texture pipeline
 
-Lakecraft's texture art is original project material, not extracted game assets. The checked-in concept sheet was generated for Lakecraft with OpenAI ImageGen and then passed through a deterministic, dependency-free pixelation step. Runtime code imports only a compact palette-indexed RGBA module; Lakebed does not need an image loader or a static-asset pipeline.
+Lakecraft uses a deterministic two-source texture pipeline. The checked-in OpenAI ImageGen concept sheet supplies original fallback tiles. A hash-pinned importer then selects only compatibility assets for implemented content from the project owner's locally installed Minecraft Java 26.2 client. Runtime code imports compact palette-indexed RGBA modules; Lakebed does not need an image loader or loose static assets.
 
 ## Regenerate the block atlas
 
 ```sh
+node scripts/import-minecraft-visual-assets.mjs \
+  "/Users/shawn/Library/Application Support/minecraft/versions/26.2/26.2.jar" \
+  scripts/generated/minecraft-visual-assets-v26.2.json
+
 node scripts/pixelate-texture-sheet.mjs \
   design/texture-concepts/lakecraft-materials-v1.png \
   client/game/generated/texture-atlas-v1.png \
-  --columns 5 \
-  --rows 6 \
+  --columns 6 \
+  --rows 8 \
   --source-columns 4 \
   --source-rows 4 \
   --tile-size 16 \
@@ -18,9 +22,11 @@ node scripts/pixelate-texture-sheet.mjs \
   --ts client/game/generated/textureAtlas.ts
 ```
 
-The script decodes RGB/RGBA PNG files itself, area-averages the original 4×4 concept sheet into 16×16 tiles, and applies deterministic original pixel-art recipes where material grammar needs stricter control. Ore recipes copy the canonical stone texels before embedding sparse connected mineral clusters; TNT gets one labeled side tile shared by all four vertical faces plus distinct fuse-top and strapped-bottom tiles. Later materials and alpha-cutout plants are also procedural. The result is quantized to a stable palette, written as an 80×96 PNG for human inspection, and emitted as bit-packed per-tile local indexes into the global palette. The generated module expands those indexes directly into the exact RGBA bytes without allocating a second full-atlas index buffer. Re-running the command with the same input must produce byte-identical outputs.
+The importer enforces the reviewed 26.2 JAR SHA-256 before reading assets, then validates every selected path and required dimension. The atlas script decodes PNGs itself, prepares the original concept fallback, and replaces every implemented material from the installed sources. Twenty-seven atlas tiles preserve their source RGBA exactly. Minecraft stores grass top and oak leaves as grayscale tint masks, and stores the green edge of a grass side as a separate overlay, so those three production tiles deterministically apply fixed plains-biome colors (`#91bd59` grass and `#77ab2f` foliage) and composite the installed side overlay over the installed dirt-bearing base. The result is written as a 96×128 PNG for human inspection and emitted as bit-packed per-tile local indexes into a 16-bit-addressed global palette, with the exact 64×64 normal-chest texture occupying one contiguous 4×4-tile region. Re-running the commands with the same installed version must produce byte-identical outputs.
 
-At runtime WebGL uploads the reconstructed 80×96 RGBA array once with nearest-neighbor filtering. Blocks select a tile per face: logs expose growth rings, workbenches and furnaces have recognizable top, front, and side materials, and stone bricks use an original staggered five-tone masonry tile. Connected oak-fence posts, rails, and swinging gate bars reuse the existing oak-plank tile in the retained terrain batch, so they add no atlas cell or draw pass. Glass is kept out of the opaque terrain buffers and composited in a far-to-near, per-visible-chunk alpha pass with depth writes disabled. Oak saplings use a fixed 12-vertex crossed mesh in the ordinary chunk batch with a 0.5 alpha cutoff.
+At runtime WebGL uploads the reconstructed 96×128 RGBA array once with nearest-neighbor filtering. Blocks select a tile per face: logs expose installed growth rings, workbenches and furnaces have their installed top, front, and side materials, and stone bricks use the installed masonry tile. One contiguous 64×64 region preserves the complete installed normal-chest entity texture without resampling, allowing the retained three-part chest mesh to address native UVs directly without another texture, draw pass, or split-face seam. Connected oak-fence posts, rails, and swinging gate bars reuse the installed oak-plank tile in the retained terrain batch, so they add no atlas cell or draw pass. Glass is kept out of the opaque terrain buffers and composited in a far-to-near, per-visible-chunk alpha pass with depth writes disabled. Oak saplings use a fixed 12-vertex crossed mesh in the ordinary chunk batch with a 0.5 alpha cutoff.
+
+Minecraft renders chest, oak-fence, oak-fence-gate, and stone-brick-slab items from model or special-entity geometry rather than standalone 16×16 item PNGs. The importer therefore records each exact 26.2 item/model parent chain and the normal 64×64 chest entity texture. The item-art generator resolves inherited display transforms, elements, face UVs, and texture references, then deterministically rasterizes those sources into the bounded 16×16 inventory stream. First-person, dropped, and remote held views reuse that same generated catalog art; calibration of a live multi-cuboid first-person model remains a separate orientation task. The bed remains intentionally Lakecraft-authored.
 
 ## Check deployment headroom
 
@@ -35,7 +41,7 @@ The check exits non-zero when either the hard ceiling or the safety margin is ex
 
 ## Art constraints
 
-- every source sheet must be original and safe to redistribute
-- no Mojang/Minecraft texture, icon, font, logo, screenshot crop, or traced asset may enter the repository
+- imported compatibility files must come from the project owner's installed, user-owned client and remain limited to implemented content
+- record the exact version, JAR SHA-256, selected paths, and provenance notice in the generated manifest
 - atlas tiles remain power-of-two, seamless, front-facing, and legible at 16×16
-- generated artifacts are reviewed visually after deterministic reduction; ImageGen output is direction, not a runtime dependency
+- generated artifacts are verified byte-for-byte against imported RGBA and reviewed in the live Visual Lab

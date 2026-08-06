@@ -34,6 +34,7 @@ import {
   type AuthoritativeKnockbackGate,
 } from "./multiplayerGameplay.ts";
 import {
+  fieldOfViewRadians,
   loadClientSettings,
   mouseLookScale,
   normalizeClientSettings,
@@ -1750,6 +1751,7 @@ function GameApp({
         initialPose: resumedPresencePose ?? poseRef.current,
         preserveInitialPose: Boolean(resumedPresencePose),
         getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
+        getFieldOfViewRadians: () => fieldOfViewRadians(clientSettingsRef.current.fovDegrees),
         worldRadius: WORLD_RADIUS,
         dayNight: worldClock ? {
           cycleLengthMs: worldClock.cycleLengthMs,
@@ -3412,9 +3414,11 @@ function GameApp({
           setMobIds([]);
         }}
         onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
+        fovDegrees={clientSettings.fovDegrees}
         mouseSensitivity={clientSettings.mouseSensitivity}
         onCloseOptions={() => setOptionsOpen(false)}
         onOptions={() => setOptionsOpen(true)}
+        onFovChange={(fovDegrees) => updateClientSettings({ ...clientSettingsRef.current, fovDegrees })}
         onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
         optionsOpen={optionsOpen}
         onRespawn={requestAuthorizedRespawn}

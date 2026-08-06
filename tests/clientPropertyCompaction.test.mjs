@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 590, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 592, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "a0be550547fb26fe8df56f0686848724d979170ae7f424814bf60f1593d71c68",
+  "e9aa8c16ba7d8f95d0c28e3357c54458d27b74214110fbd22d4d560f694cb26b",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -147,7 +147,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 526 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 528 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
@@ -562,7 +562,7 @@ assert.deepEqual(
 
 const settingsBase = await importBundled(boundaryBundles.get("client/settings.ts").baseline);
 const settingsCompact = await importBundled(boundaryBundles.get("client/settings.ts").compact);
-const settingsInput = { soundMuted: true, mouseSensitivity: 137 };
+const settingsInput = { soundMuted: true, mouseSensitivity: 137, fovDegrees: 92 };
 assert.deepEqual(
   settingsCompact.normalizeClientSettings(settingsInput),
   settingsBase.normalizeClientSettings(settingsInput),

@@ -60,7 +60,7 @@ xc-inventory-slot|11 xj-glyph|15 xo-menu|11 xe-grid__slot|13 xj-icon__svg|13 xn-
 xlocal-world-dialog|9 xoptions|9 ysleep|9 xslot|15 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|10 xp-logo|9 xq-icon|8 xr-slot|8 xclose|9 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|9 xe-grid|11 xlocal-world-header|6
-xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|7 xpointer-capture|6
+xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|8 xpointer-capture|6
 xe-titlebar|7 xcrosshair|6 xq-browser|6 xp-footer|7 xs-layer|7 xlocal-world-browser|5
 xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|5
 xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|7 xq-copy|5 xq-row|5 xlocal-world-titlebar|5

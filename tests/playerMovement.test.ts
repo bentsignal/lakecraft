@@ -14,6 +14,7 @@ import {
   clampSneakAxisMovement,
   createHeadBobState,
   headBobProfileForMovement,
+  movementFovRadians,
   movementActivityMultiplier,
   normalizeMovementInput,
   postureTargetsForMovement,
@@ -138,6 +139,13 @@ assert.deepEqual(postureTargetsForMovement("sneak"), {
   fovRadians: DEFAULT_FOV_RADIANS,
 });
 assert.equal(postureTargetsForMovement("sprint").fovRadians, SPRINT_FOV_RADIANS);
+const configuredFov = 90 * Math.PI / 180;
+assert.equal(movementFovRadians("idle", configuredFov), configuredFov,
+  "ordinary movement preserves the configured base FOV");
+assert.ok(Math.abs(movementFovRadians("sprint", configuredFov) - configuredFov * 1.1) < 1e-12,
+  "sprinting widens any configured base FOV by the existing ten percent");
+assert.equal(movementFovRadians("idle", Number.NaN), DEFAULT_FOV_RADIANS,
+  "invalid live camera preferences fail closed to the default");
 
 let smoothed = DEFAULT_FOV_RADIANS;
 for (let frame = 0; frame < 600; frame += 1) {

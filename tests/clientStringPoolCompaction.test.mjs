@@ -23,6 +23,7 @@ import {
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_DELTA,
@@ -315,14 +316,14 @@ assert.equal(
 assert.equal(
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.previousOccurrences
     + COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
-  "the held-block restoration accounts for the exact repeated occurrence increase",
+  1_083,
+  "the historical held-block restoration retains its exact reviewed occurrence boundary",
 );
 assert.equal(
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.previousUniqueValues
     + COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
-  "the held-block restoration accounts for the exact repeated value increase",
+  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousUniqueValues,
+  "the held-block restoration remains the reviewed base for later visual compaction",
 );
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
@@ -337,6 +338,32 @@ assert.deepEqual(
     exclusionChanges: 0,
   },
   "the held-block string-pool boundary changes only through the reviewed visual fix",
+);
+assert.deepEqual(
+  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
+  {
+    previousOccurrences: 1_085,
+    previousUniqueValues: 98,
+    previousSourceFingerprint: "3b7a3dbfcd1bf6ff9dc1c4456f33ddfe9719d69da8c9f2949b574a62cf495699",
+    occurrenceDelta: 7,
+    uniqueValueDelta: 1,
+    promotedThresholdValue: "top",
+    source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
+    exclusionChanges: 0,
+  },
+  "runtime atlas icon reconstruction stays pinned to one reviewed helper",
+);
+assert.equal(
+  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousOccurrences
+    + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
+  "runtime atlas icon reconstruction accounts for the exact repeated occurrence increase",
+);
+assert.equal(
+  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousUniqueValues
+    + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  "runtime atlas icon reconstruction accounts for the promoted top value",
 );
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,

@@ -43,7 +43,7 @@ const canonicalHeldSpriteVertices = {
 assert.deepEqual(canonicalHeldSpriteVertices, {
   iron_pickaxe: 1_140,
   iron_sword: 1_356,
-  apple: 732,
+  apple: 1_320,
   bow_full_draw: 1_500,
 }, "exact held-item fixtures are derived from the current reviewed canonical sprite art");
 assert.equal(stats[0], 0, "empty hand no longer uploads a synthetic solid-color arm");

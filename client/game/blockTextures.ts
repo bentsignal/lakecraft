@@ -1,4 +1,7 @@
 import {
+  CHEST_ATLAS_COLUMN,
+  CHEST_ATLAS_ROW,
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_ROWS,
@@ -47,8 +50,9 @@ const HALF_TEXEL_V = 0.5 / ATLAS_HEIGHT;
 const TEXTURE_UV_BY_NAME = {} as Record<TextureAtlasName, TextureUvBounds>;
 for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   const name = TEXTURE_ATLAS_NAMES[index];
-  const column = index % TEXTURE_ATLAS_COLUMNS;
-  const row = Math.floor(index / TEXTURE_ATLAS_COLUMNS);
+  const cell = TEXTURE_ATLAS_CELLS[index];
+  const column = cell % TEXTURE_ATLAS_COLUMNS;
+  const row = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
   TEXTURE_UV_BY_NAME[name] = Object.freeze({
     left: column / TEXTURE_ATLAS_COLUMNS + HALF_TEXEL_U,
     right: (column + 1) / TEXTURE_ATLAS_COLUMNS - HALF_TEXEL_U,
@@ -94,4 +98,12 @@ export function textureAtlasUv(name: TextureAtlasName): TextureUvBounds {
   const uv = TEXTURE_UV_BY_NAME[name];
   if (!uv) throw new Error(`Unknown texture atlas tile: ${name}`);
   return uv;
+}
+
+/** Address one exact source texel in the contiguous 64x64 normal-chest region. */
+export function chestAtlasUv(sourceU: number, sourceV: number): readonly [number, number] {
+  return [
+    (CHEST_ATLAS_COLUMN * TEXTURE_TILE_SIZE + sourceU + 0.5) / ATLAS_WIDTH,
+    1 - (CHEST_ATLAS_ROW * TEXTURE_TILE_SIZE + sourceV + 0.5) / ATLAS_HEIGHT,
+  ];
 }

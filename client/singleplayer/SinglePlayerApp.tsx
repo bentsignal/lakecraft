@@ -51,6 +51,7 @@ import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/
 import { performanceHudCoreText, performanceHudFpsText } from "../game/performanceHud.ts";
 import { clearPersistedPlayerSkin, loadPersistedPlayerSkin } from "../game/playerSkin.ts";
 import {
+  fieldOfViewRadians,
   loadClientSettings,
   mouseLookScale,
   normalizeClientSettings,
@@ -1228,6 +1229,7 @@ function SinglePlayerWorld({
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
       getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
+      getFieldOfViewRadians: () => fieldOfViewRadians(clientSettingsRef.current.fovDegrees),
       onSimulationStep: (elapsedSeconds) => {
         const localEngine = engineRef.current;
         if (!localEngine || dropsRef.current.length === 0) return;
@@ -2106,10 +2108,12 @@ function SinglePlayerWorld({
           equipmentRef.current = snapshot.equipment;
           markWorldDirty();
         }}
+        fovDegrees={clientSettings.fovDegrees}
         mouseSensitivity={clientSettings.mouseSensitivity}
         renderDistance={clientSettings.renderDistance}
         onCloseOptions={() => setOptionsOpen(false)}
         onOptions={() => setOptionsOpen(true)}
+        onFovChange={(fovDegrees) => updateClientSettings({ ...clientSettingsRef.current, fovDegrees })}
         onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
         onRenderDistanceChange={(renderDistance) => {
           updateClientSettings({ ...clientSettingsRef.current, renderDistance });

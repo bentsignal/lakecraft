@@ -1,4 +1,4 @@
-import { textureAtlasUv, type TextureUvBounds } from "./blockTextures.ts";
+import { chestAtlasUv, textureAtlasUv, type TextureUvBounds } from "./blockTextures.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
 import { packSkyExposureShade } from "./skyExposure.ts";
 import type { BedDirection } from "./types.ts";
@@ -17,8 +17,8 @@ export type SpecialBlockMeshOutputs = Readonly<{
 
 export const SPECIAL_TORCH_TEXTURED_VERTEX_COUNT = 36;
 export const SPECIAL_TORCH_COLOR_VERTEX_COUNT = 36;
-export const SPECIAL_CHEST_TEXTURED_VERTEX_COUNT = 72;
-export const SPECIAL_CHEST_COLOR_VERTEX_COUNT = 72;
+export const SPECIAL_CHEST_TEXTURED_VERTEX_COUNT = 108;
+export const SPECIAL_CHEST_COLOR_VERTEX_COUNT = 0;
 export const SPECIAL_DOOR_TEXTURED_VERTEX_COUNT = 36;
 export const SPECIAL_DOOR_COLOR_VERTEX_COUNT = 216;
 export const SPECIAL_BED_TEXTURED_VERTEX_COUNT = 72;
@@ -55,6 +55,66 @@ function appendTexturedBox(
       );
     }
   }
+}
+
+type ChestFace = "east" | "west" | "top" | "bottom" | "south" | "north";
+
+function chestFacePoint(face: ChestFace, min: Vec3, max: Vec3, horizontal: number, vertical: number): Vec3 {
+  if (face === "east") return [max[0], min[1] + vertical * (max[1] - min[1]), max[2] - horizontal * (max[2] - min[2])];
+  if (face === "west") return [min[0], min[1] + vertical * (max[1] - min[1]), min[2] + horizontal * (max[2] - min[2])];
+  if (face === "top") return [min[0] + vertical * (max[0] - min[0]), max[1], min[2] + horizontal * (max[2] - min[2])];
+  if (face === "bottom") return [min[0] + vertical * (max[0] - min[0]), min[1], max[2] - horizontal * (max[2] - min[2])];
+  if (face === "south") return [min[0] + horizontal * (max[0] - min[0]), min[1] + vertical * (max[1] - min[1]), max[2]];
+  return [max[0] - horizontal * (max[0] - min[0]), min[1] + vertical * (max[1] - min[1]), min[2]];
+}
+
+function appendChestFace(
+  output: number[],
+  face: ChestFace,
+  min: Vec3,
+  max: Vec3,
+  sourceUv: readonly [number, number, number, number],
+  shade: number,
+  exposureLevel?: number,
+): void {
+  const [u0, v0, u1, v1] = sourceUv;
+  const winding = [3, 2, 1, 3, 1, 0];
+  const points = [
+    [0, 0, u0, v1 - 1],
+    [0, 1, u0, v0],
+    [1, 1, u1 - 1, v0],
+    [1, 0, u1 - 1, v1 - 1],
+  ] as const;
+  for (const pointIndex of winding) {
+      const point = points[pointIndex]; const uv = chestAtlasUv(point[2], point[3]);
+      output.push(
+        ...chestFacePoint(face, min, max, point[0], point[1]),
+        uv[0], uv[1], retainedShade(shade, exposureLevel),
+      );
+  }
+}
+
+function appendChestBox(
+  output: number[],
+  min: Vec3,
+  max: Vec3,
+  textureU: number,
+  textureV: number,
+  textureWidth: number,
+  textureHeight: number,
+  textureDepth: number,
+  shade: number,
+  exposureLevel?: number,
+): void {
+  const faces: Readonly<Record<ChestFace, readonly [number, number, number, number]>> = {
+    west: [textureU, textureV + textureDepth, textureU + textureDepth, textureV + textureDepth + textureHeight],
+    north: [textureU + textureDepth, textureV + textureDepth, textureU + textureDepth + textureWidth, textureV + textureDepth + textureHeight],
+    east: [textureU + textureDepth + textureWidth, textureV + textureDepth, textureU + textureDepth * 2 + textureWidth, textureV + textureDepth + textureHeight],
+    south: [textureU + textureDepth * 2 + textureWidth, textureV + textureDepth, textureU + textureDepth * 2 + textureWidth * 2, textureV + textureDepth + textureHeight],
+    top: [textureU + textureDepth, textureV, textureU + textureDepth + textureWidth, textureV + textureDepth],
+    bottom: [textureU + textureDepth + textureWidth, textureV, textureU + textureDepth + textureWidth * 2, textureV + textureDepth],
+  };
+  for (const face of CUBE_FACES) appendChestFace(output, face[0], min, max, faces[face[0]], face[4] * shade, exposureLevel);
 }
 
 function tint(color: Vec3, shade: number): [number, number, number] {
@@ -100,7 +160,7 @@ export function appendSpecialTorchMesh(
   );
 }
 
-/** Atlas-grained body and lid with a compact original gold latch. */
+/** Exact installed normal-chest entity texture on the standard body, lid, and latch boxes. */
 export function appendSpecialChestMesh(
   output: SpecialBlockMeshOutputs,
   x: number,
@@ -109,34 +169,18 @@ export function appendSpecialChestMesh(
   shade = 1,
   exposureLevel?: number,
 ): void {
-  appendTexturedBox(
-    output.textured,
-    [x + 0.04, y, z + 0.04],
-    [x + 0.96, y + 0.64, z + 0.96],
-    "oak_planks",
-    shade * 0.9,
-    exposureLevel,
-  );
-  appendTexturedBox(
-    output.textured,
-    [x + 0.02, y + 0.64, z + 0.02],
-    [x + 0.98, y + 0.92, z + 0.98],
-    "oak_planks",
-    shade,
-    exposureLevel,
-  );
-  appendColorBox(
-    output.color,
-    [x + 0.025, y + 0.53, z + 0.025],
-    [x + 0.975, y + 0.62, z + 0.975],
-    [0.34, 0.18, 0.065],
-  );
-  appendColorBox(
-    output.color,
-    [x + 0.43, y + 0.48, z + 0.92],
-    [x + 0.57, y + 0.70, z + 1.01],
-    [0.86, 0.68, 0.20],
-  );
+  // Exact closed single-chest cuboids from the installed client's
+  // ChestModel.createSingleBodyLayer(): bottom (1,0,1)+(14,10,14), lid
+  // (1,0,0)+(14,5,14) at (0,9,1), lock (7,-2,14)+(2,4,1) at (0,9,1).
+  appendChestBox(output.textured,
+    [x + 1 / 16, y, z + 1 / 16], [x + 15 / 16, y + 10 / 16, z + 15 / 16],
+    0, 19, 14, 10, 14, shade, exposureLevel);
+  appendChestBox(output.textured,
+    [x + 1 / 16, y + 9 / 16, z + 1 / 16], [x + 15 / 16, y + 14 / 16, z + 15 / 16],
+    0, 0, 14, 5, 14, shade, exposureLevel);
+  appendChestBox(output.textured,
+    [x + 7 / 16, y + 7 / 16, z + 15 / 16], [x + 9 / 16, y + 11 / 16, z + 1],
+    0, 0, 2, 4, 1, shade, exposureLevel);
 }
 
 /**

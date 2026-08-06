@@ -5,6 +5,7 @@ import { blockIdForCubeItem } from "./blockItemCubeGeometry.ts";
 import { blockTextureForFace, type BlockFace } from "./blockTextures.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
 import {
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_RGBA,
@@ -17,7 +18,7 @@ type Vec3 = readonly [number, number, number];
 export const MAX_RENDERED_DROPPED_ITEMS = 256;
 export const DROPPED_ITEM_RENDER_DISTANCE = 48;
 export const DROPPED_ITEM_MESH_INTERVAL_MS = 1_000 / 30;
-export const DROPPED_ITEM_MAX_ICON_RUNS = 107;
+export const DROPPED_ITEM_MAX_ICON_RUNS = 118;
 /** Four exact authored-atlas color samples per axis keep one six-face drop below the sprite stride. */
 export const DROPPED_BLOCK_CUBE_GRID_SIZE = 4;
 export const DROPPED_BLOCK_CUBE_MAX_VERTICES = 6 * DROPPED_BLOCK_CUBE_GRID_SIZE * DROPPED_BLOCK_CUBE_GRID_SIZE * 6;
@@ -99,8 +100,9 @@ function parseItemColor(value: string): readonly [number, number, number] {
 function atlasPixel(texture: TextureAtlasName, x: number, y: number): number {
   const textureIndex = TEXTURE_ATLAS_NAMES.indexOf(texture);
   if (textureIndex < 0) throw new Error(`Unknown dropped-block texture ${texture}.`);
-  const atlasX = textureIndex % TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE + x;
-  const atlasY = Math.floor(textureIndex / TEXTURE_ATLAS_COLUMNS) * TEXTURE_TILE_SIZE + y;
+  const cell = TEXTURE_ATLAS_CELLS[textureIndex];
+  const atlasX = cell % TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE + x;
+  const atlasY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS) * TEXTURE_TILE_SIZE + y;
   const offset = (atlasY * ATLAS_WIDTH + atlasX) * 4;
   return (
     (TEXTURE_ATLAS_RGBA[offset] << 24)

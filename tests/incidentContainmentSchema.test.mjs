@@ -85,9 +85,9 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 153, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 154, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "202588b046e07af904fadc5ea72856d3d7bd1d9621a8882d6bd0deb12fe9f0cc",
+  "71947631db6c78faf96f5f71dd79c4545537db69c977db1f34dee5bd10586219",
   "runtime sources match the reviewed installed-asset checkpoint plus the isolated dev-only visual lab");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

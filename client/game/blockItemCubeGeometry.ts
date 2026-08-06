@@ -2,6 +2,7 @@ import type { ItemId } from "../../shared/game.ts";
 import { blockTextureForFace, type BlockFace } from "./blockTextures.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
 import {
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_RGBA,
@@ -52,9 +53,10 @@ export function blockIdForCubeItem(itemId: ItemId): BlockId | null {
 function atlasPixel(texture: TextureAtlasName, x: number, y: number): readonly [number, number, number, number] {
   const index = TEXTURE_ATLAS_NAMES.indexOf(texture);
   if (index < 0) throw new Error(`Unknown block-item texture ${texture}.`);
+  const cell = TEXTURE_ATLAS_CELLS[index];
   const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
-  const atlasX = index % TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE + x;
-  const atlasY = Math.floor(index / TEXTURE_ATLAS_COLUMNS) * TEXTURE_TILE_SIZE + y;
+  const atlasX = cell % TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE + x;
+  const atlasY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS) * TEXTURE_TILE_SIZE + y;
   const offset = (atlasY * atlasWidth + atlasX) * 4;
   return [
     TEXTURE_ATLAS_RGBA[offset],

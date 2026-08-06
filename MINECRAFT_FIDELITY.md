@@ -1,6 +1,6 @@
 # Lakecraft Minecraft fidelity target
 
-Lakecraft should feel immediately familiar to a Minecraft Java Edition player. This is a functional and visual reference target, not permission to redistribute Mojang textures, fonts, sounds, or other proprietary files. Use original pixel art, permissively licensed fonts, and code-generated assets.
+Lakecraft should feel immediately familiar to a Minecraft Java Edition player. The project owner's locally installed, user-owned Java 26.2 client is the authoritative compatibility source for selected item, block, and standard-player visuals. Import only the files used by implemented Lakecraft content, retain deterministic provenance and regeneration, and do not import unrelated game data.
 
 ## In-world HUD
 
@@ -33,8 +33,8 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 
 ## Texture and type pipeline
 
-- World and item art use original 16×16 pixel tiles with nearest-neighbor sampling, deliberately limited palettes, readable edge contrast, and no smooth gradients.
-- ImageGen may produce concept sheets. A deterministic script must crop, quantize, downsample, and validate the final dimensions/palette before assets enter the renderer.
+- World and item art use the selected installed 16×16 compatibility files with nearest-neighbor sampling. Lakecraft's original concept atlas remains the deterministic fallback for content without an imported match.
+- The importer must validate source version/hash, paths, dimensions, and exact production RGBA parity before assets enter the renderer.
 - Because Lakebed capsules only serve the favicon as a loose static asset, final atlases/fonts must be embedded as compact source data or generated at runtime.
 - Use a permissively licensed pixel font (Pixelify Sans is the initial candidate) and preserve its license. Render at integer-ish pixel sizes with a dark one-pixel-style shadow.
 

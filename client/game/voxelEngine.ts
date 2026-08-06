@@ -173,7 +173,6 @@ import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts"
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
 import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
 import {
-  DEFAULT_FOV_RADIANS,
   STANDING_BODY_HEIGHT,
   STANDING_EYE_HEIGHT,
   clampSneakAxisMovement,
@@ -186,6 +185,7 @@ import {
   createHeadBobState,
   createCreativeFlightTapState,
   creativeFlightVerticalVelocity,
+  movementFovRadians,
   resetHeadBob,
   sprintControlHeld,
   smoothMovementValue,
@@ -1928,8 +1928,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const cameraPosture: PlayerPostureTargets = {
     eyeHeight: STANDING_EYE_HEIGHT,
     bodyHeight: STANDING_BODY_HEIGHT,
-    fovRadians: DEFAULT_FOV_RADIANS,
+    fovRadians: movementFovRadians("idle", options.getFieldOfViewRadians?.()),
   };
+  const cameraPostureTarget: PlayerPostureTargets = { ...cameraPosture };
   const cameraBob = createHeadBobState();
   const interactionBob: HeadBobOffsets = { x: 0, y: 0 };
   const horizontalMovementDelta = { x: 0, z: 0 };
@@ -2592,7 +2593,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     resetHeadBob(cameraBob);
     cameraPosture.eyeHeight = mustRemainSneaking ? postureTargetsForMovement("sneak").eyeHeight : STANDING_EYE_HEIGHT;
     cameraPosture.bodyHeight = mustRemainSneaking ? postureTargetsForMovement("sneak").bodyHeight : STANDING_BODY_HEIGHT;
-    cameraPosture.fovRadians = DEFAULT_FOV_RADIANS;
+    cameraPosture.fovRadians = movementFovRadians(movementMode, options.getFieldOfViewRadians?.());
     options.onMovementModeChange?.(movementMode, 0.5);
   }
 
@@ -2924,7 +2925,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       movementActivity = movement.activityMultiplier;
       options.onMovementModeChange?.(movementMode, movement.activityMultiplier);
     }
-    smoothPlayerPosture(cameraPosture, postureTargetsForMovement(movementMode), dt, cameraPosture);
+    const postureTarget = postureTargetsForMovement(movementMode);
+    cameraPostureTarget.eyeHeight = postureTarget.eyeHeight;
+    cameraPostureTarget.bodyHeight = postureTarget.bodyHeight;
+    cameraPostureTarget.fovRadians = movementFovRadians(movementMode, options.getFieldOfViewRadians?.());
+    smoothPlayerPosture(cameraPosture, cameraPostureTarget, dt, cameraPosture);
     writeHorizontalMovementDelta(pose.yaw, movement, dt, horizontalMovementDelta);
     const dx = horizontalMovementDelta.x;
     const dz = horizontalMovementDelta.z;

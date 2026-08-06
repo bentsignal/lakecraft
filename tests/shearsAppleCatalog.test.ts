@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { getItemIconArt, ITEM_ICON_SIZE } from "../client/components/itemIconArt.ts";
+import { readFileSync } from "node:fs";
+import { getItemIconArt, ITEM_ICON_SIZE, type ItemIconArt } from "../client/components/itemIconArt.ts";
+import { decodePng } from "../scripts/png-rgba.mjs";
 import {
   INITIAL_RECIPE_PATTERNS,
   matchCraftingGrid,
@@ -94,6 +95,26 @@ if (crafted.ok) {
 
 const appleArt = getItemIconArt("apple");
 const shearsArt = getItemIconArt("shears");
+const installedItems = (JSON.parse(readFileSync(
+  new URL("../scripts/generated/minecraft-visual-assets-v26.2.json", import.meta.url),
+  "utf8",
+)) as { itemTextures: Readonly<Record<string, string>> }).itemTextures;
+const exactInstalledPixels = (art: ItemIconArt): void => {
+  const installed = decodePng(Buffer.from(installedItems[art.variant], "base64"));
+  assert.deepEqual([installed.width, installed.height], [16, 16]);
+  const actual = new Map<string, string>();
+  for (const run of art.runs) for (let x = run.x; x < run.x + run.width; x += 1) {
+    actual.set(`${x}:${run.y}`, run.color.toLowerCase());
+  }
+  const expected = new Map<string, string>();
+  for (let y = 0; y < 16; y += 1) for (let x = 0; x < 16; x += 1) {
+    const offset = (y * 16 + x) * 4;
+    if (installed.rgba[offset + 3] < 128) continue;
+    expected.set(`${x}:${y}`, `#${[0, 1, 2]
+      .map((channel) => installed.rgba[offset + channel].toString(16).padStart(2, "0")).join("")}`);
+  }
+  assert.deepEqual(actual, expected, `${art.variant} exactly preserves its reviewed installed sprite`);
+};
 const occupied = (art: typeof appleArt): ReadonlySet<string> => {
   const cells = new Set<string>();
   for (const run of art.runs) for (let x = run.x; x < run.x + run.width; x += 1) cells.add(`${x}:${run.y}`);
@@ -125,15 +146,8 @@ for (const art of [appleArt, shearsArt]) {
 }
 const shearsCells = occupied(shearsArt);
 assert.equal(connectedSize(shearsCells), shearsCells.size, "exact blades, pivot, and handles form one eight-neighbor sprite");
-const appleCells = occupied(appleArt);
-for (const cell of ["7:1", "9:1", "3:6", "8:12"]) assert.ok(appleCells.has(cell), `apple landmark ${cell} remains recognizable`);
-const iconHashes = {
-  apple: createHash("sha256").update(JSON.stringify(appleArt.runs)).digest("hex"),
-  shears: createHash("sha256").update(JSON.stringify(shearsArt.runs)).digest("hex"),
-};
-assert.deepEqual(iconHashes, {
-  apple: "a1dd22d67a866d0f67c238b8e617c77dc8a04a0f50445af5fdc7aea3551383d2",
-  shears: "6d1b8920a8d8dc066ca291d5ee98859a748e679534faa4d31979d0ae24d136d1",
-});
+exactInstalledPixels(appleArt);
+exactInstalledPixels(shearsArt);
+assert.notDeepEqual(appleArt.runs, shearsArt.runs, "food and utility silhouettes stay distinct");
 
 console.log("apple food, durable shears, diagonal crafting, and original 16x16 icon tests passed");

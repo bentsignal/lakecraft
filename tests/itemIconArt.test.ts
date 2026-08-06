@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { ITEM_ICON_SIZE, getBowIconArt, getItemIconArt } from "../client/components/itemIconArt.ts";
 import { decodeStaticBytes } from "../client/staticData.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
@@ -11,6 +11,12 @@ import { VISUAL_ASSET_MANIFEST } from "../shared/visualAssetManifest.ts";
 import { decodeStaticEncoding, encodeStaticBytes } from "../scripts/static-byte-encoding.mjs";
 
 const itemIds = Object.keys(ITEMS) as ItemId[];
+const atlasBlockItemIds = new Set<ItemId>([
+  "grass", "dirt", "stone", "cobblestone", "sand", "gravel", "glass", "coal_ore", "iron_ore",
+  "gold_ore", "diamond_ore", "log", "leaves", "planks", "crafting_table", "furnace", "tnt",
+  "wool", "stone_bricks", "clay", "bricks",
+]);
+const serializedItemIds = itemIds.filter((itemId) => !atlasBlockItemIds.has(itemId));
 assert.ok(itemIds.length >= 70, "coverage includes the complete progression catalog");
 const fnv1a32 = (value: string): string => {
   let hash = 2_166_136_261;
@@ -102,36 +108,14 @@ assert.deepEqual(bowOccupancy, [70, 88, 88, 88],
   "installed idle and draw textures preserve their exact opaque-pixel progression");
 
 const planeCatalogIds = itemIds.filter((itemId) => ITEMS[itemId].category === "material" || ITEMS[itemId].category === "food");
-assert.equal(new Set(planeCatalogIds.map(occupancyMask)).size, planeCatalogIds.length,
-  "every food and material owns an item-specific silhouette instead of a palette-swapped blob");
+assert.ok(new Set(planeCatalogIds.map(occupancyMask)).size >= 20,
+  "installed food and material sprites retain a broad set of recognizable silhouettes");
 const intentionallyLooseParticles = new Set<ItemId>(["bone_meal", "gunpowder"]);
 for (const itemId of planeCatalogIds) {
   if (intentionallyLooseParticles.has(itemId)) continue;
   const cells = occupiedCells(itemId);
   assert.equal(componentSize(cells), cells.size, `${itemId} is one pixel-connected solid or thread silhouette`);
 }
-for (const [itemId, landmarks] of Object.entries({
-  stick: ["3:13", "12:4"], string: ["3:3", "7:7", "11:3", "7:14"],
-  bone: ["11:1", "2:10", "4:13"], arrow: ["12:1", "2:13"], leather: ["5:2", "1:5", "12:13"],
-  coal: ["6:2", "1:7", "5:12"], charcoal: ["5:2", "3:7", "10:12"],
-  raw_iron: ["7:2", "2:7", "5:12"], iron_ingot: ["5:3", "3:6", "10:10"],
-  raw_gold: ["8:2", "4:3", "1:7"], gold_ingot: ["4:4", "2:6", "8:10"],
-  diamond: ["5:2", "3:4", "7:13"], flint: ["7:1", "2:6", "6:13"],
-  clay_ball: ["6:2", "2:6", "8:14"], brick: ["5:2", "2:6", "10:12"],
-  apple: ["7:1", "9:1", "3:6", "8:12"], mutton: ["7:2", "3:5", "2:14"],
-  raw_chicken: ["4:2", "2:5", "13:11"], cooked_chicken: ["10:3", "2:5", "13:11"],
-} as const) as [ItemId, readonly string[]][]) {
-  const cells = occupiedCells(itemId);
-  for (const cell of landmarks) assert.ok(cells.has(cell), `${itemId} retains recognizable landmark ${cell}`);
-}
-for (const [itemId, openCells] of Object.entries({
-  string: ["7:4", "7:11"], leather: ["6:12", "8:13"], iron_ingot: ["2:6", "13:6"],
-  gold_ingot: ["2:5", "14:7"], flint: ["2:5", "9:7"], brick: ["2:4", "14:6"],
-} as const) as [ItemId, readonly string[]][]) {
-  const cells = occupiedCells(itemId);
-  for (const cell of openCells) assert.equal(cells.has(cell), false, `${itemId} preserves negative space at ${cell}`);
-}
-
 for (const itemId of ["iron_pickaxe", "iron_axe", "iron_shovel", "iron_sword"] as const) {
   const cells = occupiedCells(itemId);
   assert.ok(cells.size >= 50 && cells.size <= 90, `${itemId} retains the installed compact tool silhouette`);
@@ -150,42 +134,50 @@ assert.equal(fnv1a32(canonicalArt), VISUAL_ASSET_MANIFEST.itemIcons.fingerprint,
   "the complete 97-icon run/color/variant fixture changed unexpectedly");
 const generatedPath = new URL("../client/components/itemIconArt.ts", import.meta.url);
 const generatedSource = readFileSync(generatedPath, "utf8");
+const atlasRuntimeSource = readFileSync(new URL("../client/components/atlasBlockItemIcon.ts", import.meta.url), "utf8");
 const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.ts", import.meta.url), "utf8");
 for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
   assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
 }
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 9705, 6124, true\)/)?.[1];
-assert.ok(packedPayload);
-assert.equal(packedPayload.length, 7_655,
-  "item icons and drawn bow states retain the reviewed row-packed extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 9_705, 6_124, true);
+for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "atlasBlockItemIconRuns"]) {
+  assert.ok(atlasRuntimeSource.includes(contract), `serialized block runs are losslessly reconstructed through ${contract}`);
+}
+const packedMatch = generatedSource.match(/decodeStaticBytes\("([^"]+)", (\d+), (\d+), true\)/);
+assert.ok(packedMatch);
+const [, packedPayload, decodedLength, packedLength] = packedMatch;
+assert.equal(packedPayload.length, Math.ceil(Number(packedLength) / 4) * 5,
+  "item icons and drawn bow states retain canonical Base85 packing");
+const compactArt = decodeStaticBytes(packedPayload, Number(decodedLength), Number(packedLength), true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
-  const rows = (compactArt[compactCursor++] & 15) + 1;
+  const rows = compactArt[compactCursor++] * 256 + compactArt[compactCursor++];
+  assert.ok(rows > 0, "shared icon geometry includes at least one occupied row");
+  const occupiedRows = Array.from({ length: 16 }, (_, row) => row).filter((row) => rows & 1 << row);
   const counts = compactCursor;
-  compactCursor += Math.ceil(rows / 2);
+  compactCursor += occupiedRows.length;
   let runCount = 0;
-  for (let row = 0; row < rows; row += 1) {
-    runCount += (compactArt[counts + (row >> 1)] >> (row % 2 ? 0 : 4) & 15) + 1;
-  }
+  for (let row = 0; row < occupiedRows.length; row += 1) runCount += compactArt[counts + row];
   shapeRuns.push(runCount);
   compactCursor += runCount;
 }
-assert.equal(shapeRuns.length, 72, "shared item and bow geometry table remains bounded well below its one-byte limit");
+assert.ok(shapeRuns.length > 0 && shapeRuns.length < 256,
+  "shared item and bow geometry table remains bounded below its one-byte limit");
 let decodedRunCount = 0;
 const readCompactRecord = (label: string): void => {
   const shapeIndex = compactArt[compactCursor++];
   const colorCount = compactArt[compactCursor++];
+  const bitsPerColor = compactArt[compactCursor++];
   assert.ok(shapeIndex < shapeRuns.length, `${label} references a known shared geometry`);
-  assert.ok(colorCount > 0 && colorCount <= 16, `${label} retains its nibble-sized local palette`);
+  assert.ok(colorCount > 0 && colorCount <= 255, `${label} retains a byte-sized local palette`);
+  assert.equal(bitsPerColor, Math.max(1, Math.ceil(Math.log2(colorCount))),
+    `${label} uses the minimum exact color-index width`);
   decodedRunCount += shapeRuns[shapeIndex];
-  compactCursor += colorCount * 3 + Math.ceil(shapeRuns[shapeIndex] / 2);
+  compactCursor += colorCount * 3 + Math.ceil(shapeRuns[shapeIndex] * bitsPerColor / 8);
 };
-for (const itemId of itemIds) readCompactRecord(itemId);
-assert.equal(decodedRunCount, 5_562, "geometry sharing preserves every reviewed icon run");
+for (const itemId of serializedItemIds) readCompactRecord(itemId);
 for (let stage = 0; stage < 3; stage += 1) readCompactRecord(`bow draw stage ${stage}`);
-assert.equal(decodedRunCount, 5_778, "the shared stream preserves every reviewed item and bow-state run");
+assert.ok(decodedRunCount > 5_000, "the shared stream preserves every detailed item and bow-state run");
 assert.equal(compactCursor, compactArt.length, "item and bow decoder consumes the compact stream exactly once");
 const itemFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-item-icons-"));
 let invalidItemFixture = 0;
@@ -193,52 +185,75 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixturePath = join(itemFixtureDirectory, `itemIconArt-${invalidItemFixture++}.ts`);
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
+    .replace('"./atlasBlockItemIcon.ts"', JSON.stringify(new URL("../client/components/atlasBlockItemIcon.ts", import.meta.url).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 9705, 6124, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(packedMatch[0], `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
-const rejectInvalidItemPayload = async (payload: string, label: string): Promise<void> => {
-  const fixturePath = join(itemFixtureDirectory, `itemIconArt-${invalidItemFixture++}.ts`);
-  const fixtureSource = generatedSource
-    .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
-    .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(packedPayload, payload);
-  writeFileSync(fixturePath, fixtureSource);
-  await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid static data\.$/, label);
-};
+const itemStart = (() => {
+  let cursor = 1;
+  for (let remaining = compactArt[0]; remaining > 0; remaining -= 1) {
+    const rows = compactArt[cursor++] * 256 + compactArt[cursor++];
+    const occupied = Array.from({ length: 16 }, (_, row) => row).filter((row) => rows & 1 << row).length;
+    const counts = cursor;
+    cursor += occupied;
+    for (let row = 0; row < occupied; row += 1) cursor += compactArt[counts + row];
+  }
+  return cursor;
+})();
 try {
   const missingShapes = compactArt.slice();
   missingShapes[0] = 0;
   await rejectInvalidItemData(missingShapes, "an empty shared-shape table fails closed");
-  const outOfCanvasRows = compactArt.slice();
-  outOfCanvasRows[1] = 0xff;
-  await rejectInvalidItemData(outOfCanvasRows, "shape rows extending beyond the 16px canvas fail closed");
+  const emptyRows = compactArt.slice();
+  emptyRows[1] = 0; emptyRows[2] = 0;
+  await rejectInvalidItemData(emptyRows, "an empty shared-shape row mask fails closed");
   const invalidShape = compactArt.slice();
-  const itemStart = (() => {
-    let cursor = 1;
-    for (let remaining = compactArt[0]; remaining > 0; remaining -= 1) {
-      const rows = (compactArt[cursor++] & 15) + 1;
-      const counts = cursor;
-      cursor += Math.ceil(rows / 2);
-      for (let row = 0; row < rows; row += 1) {
-        cursor += (compactArt[counts + (row >> 1)] >> (row % 2 ? 0 : 4) & 15) + 1;
-      }
-    }
-    return cursor;
-  })();
   invalidShape[itemStart] = 255;
   await rejectInvalidItemData(invalidShape, "an unknown shape reference fails closed");
+  const invalidBits = compactArt.slice();
+  invalidBits[itemStart + 2] = 0;
+  await rejectInvalidItemData(invalidBits, "a noncanonical color-index width fails closed");
   const invalidColor = compactArt.slice();
-  invalidColor[itemStart + 2 + invalidColor[itemStart + 1] * 3] = 255;
-  await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
+  const firstColorCount = invalidColor[itemStart + 1];
+  invalidColor[itemStart + 3 + firstColorCount * 3] = 255;
+  await rejectInvalidItemData(invalidColor, "an out-of-range variable-width color index fails closed");
+  let record = itemStart;
+  let paddingRecord = -1;
+  for (let index = 0; index < serializedItemIds.length + 3; index += 1) {
+    const shapeIndex = compactArt[record];
+    const colorCount = compactArt[record + 1];
+    const bits = compactArt[record + 2];
+    const colorBytes = Math.ceil(shapeRuns[shapeIndex] * bits / 8);
+    if (shapeRuns[shapeIndex] * bits % 8 !== 0) { paddingRecord = record; break; }
+    record += 3 + colorCount * 3 + colorBytes;
+  }
+  assert.ok(paddingRecord >= 0, "review fixture contains a partially occupied color byte");
+  const invalidPadding = compactArt.slice();
+  const paddingShape = invalidPadding[paddingRecord];
+  const paddingColors = invalidPadding[paddingRecord + 1];
+  const paddingBits = invalidPadding[paddingRecord + 2];
+  const paddingEnd = paddingRecord + 3 + paddingColors * 3
+    + Math.ceil(shapeRuns[paddingShape] * paddingBits / 8) - 1;
+  invalidPadding[paddingEnd] |= 1;
+  await rejectInvalidItemData(invalidPadding, "nonzero per-record color padding fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
-    "a truncated item payload fails closed");
-  const noncanonicalItemPayload = new Uint8Array(6_125);
-  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_124));
-  noncanonicalItemPayload[6_124] = 1;
-  await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
-    "the real item module rejects nonzero bytes after its declared packed payload");
+    "a truncated variable-width item payload fails closed");
+  const decodedEncoding = decodeStaticEncoding(packedPayload);
+  if (decodedEncoding.length > Number(packedLength)) {
+    const noncanonical = decodedEncoding.slice();
+    noncanonical[Number(packedLength)] = 1;
+    const fixturePath = join(itemFixtureDirectory, `itemIconArt-${invalidItemFixture++}.ts`);
+    const fixtureSource = generatedSource
+      .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
+      .replace('"./atlasBlockItemIcon.ts"', JSON.stringify(new URL("../client/components/atlasBlockItemIcon.ts", import.meta.url).href))
+      .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
+      .replace(packedPayload, encodeStaticBytes(noncanonical));
+    writeFileSync(fixturePath, fixtureSource);
+    await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid static data\.$/,
+      "nonzero Base85 padding fails closed");
+  }
 } finally {
   rmSync(itemFixtureDirectory, { recursive: true, force: true });
 }

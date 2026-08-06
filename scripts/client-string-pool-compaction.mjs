@@ -8,12 +8,12 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 590;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 522;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "12cd584cd05581a5b6bfa1422e9f18a8ee6224a957335a23d16c3d0af8e0b9e4";
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_083;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 98;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "18001eb156d188c7dfec1c677d8d17eb8a5ec6ed0c4e0d4977681fd7f689d950";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 592;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 524;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4b95e42effbfeab45644df543a1117fe54b3b058de8d092b5467b72b836079e8";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_092;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -65,9 +65,22 @@ export const COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA = Object.freeze({
   source: "client/game/firstPersonSkinRenderer.ts#buildFirstPersonSkinArmGeometry",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 372;
+// Atlas-backed block icons now rebuild from the production atlas instead of
+// carrying redundant serialized runs. The runtime rasterizer promotes `top`
+// over the repeated-pool threshold and adds seven reviewed uses.
+export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
+  previousOccurrences: 1_085,
+  previousUniqueValues: 98,
+  previousSourceFingerprint: "3b7a3dbfcd1bf6ff9dc1c4456f33ddfe9719d69da8c9f2949b574a62cf495699",
+  occurrenceDelta: 7,
+  uniqueValueDelta: 1,
+  promotedThresholdValue: "top",
+  source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 371;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 109;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "6c506645556eb113e83a9cadd6a7201414f481d9a95927fcdc743c1747132dc8";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "1.2..21.",
   "2.1..2",

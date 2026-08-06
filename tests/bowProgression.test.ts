@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { getItemIconArt } from "../client/components/itemIconArt.ts";
+import { readFileSync } from "node:fs";
+import { getItemIconArt, type ItemIconArt } from "../client/components/itemIconArt.ts";
 import { MOB_DEFINITIONS } from "../client/game/mobs.ts";
+import { decodePng } from "../scripts/png-rgba.mjs";
 import {
   INITIAL_RECIPE_PATTERNS,
   createCraftingGrid,
@@ -111,10 +112,35 @@ for (let revision = 1; revision <= 64; revision += 1) {
 }
 assert.deepEqual([...observedSpiderStringCounts].sort(), [0, 1, 2]);
 
-const iconHashes = Object.fromEntries(["string", "arrow", "bow"].map((itemId) => [
-  itemId,
-  createHash("sha256").update(JSON.stringify(getItemIconArt(itemId as "string" | "arrow" | "bow").runs)).digest("hex"),
-]));
+const installedAssets = JSON.parse(readFileSync(
+  new URL("../scripts/generated/minecraft-visual-assets-v26.2.json", import.meta.url),
+  "utf8",
+)) as { itemTextures: Readonly<Record<string, string>> };
+function iconPixels(art: ItemIconArt): ReadonlyMap<string, string> {
+  const pixels = new Map<string, string>();
+  for (const run of art.runs) for (let x = run.x; x < run.x + run.width; x += 1) {
+    pixels.set(`${x}:${run.y}`, run.color.toLowerCase());
+  }
+  return pixels;
+}
+function installedPixels(payload: string): ReadonlyMap<string, string> {
+  const image = decodePng(Buffer.from(payload, "base64"));
+  assert.deepEqual([image.width, image.height], [16, 16]);
+  const pixels = new Map<string, string>();
+  for (let y = 0; y < 16; y += 1) for (let x = 0; x < 16; x += 1) {
+    const offset = (y * 16 + x) * 4;
+    if (image.rgba[offset + 3] < 128) continue;
+    pixels.set(`${x}:${y}`, `#${[0, 1, 2]
+      .map((channel) => image.rgba[offset + channel].toString(16).padStart(2, "0")).join("")}`);
+  }
+  return pixels;
+}
+const progressionArt = ["string", "arrow", "bow"].map((itemId) =>
+  getItemIconArt(itemId as "string" | "arrow" | "bow"));
+for (const art of progressionArt) {
+  assert.deepEqual(iconPixels(art), installedPixels(installedAssets.itemTextures[art.variant]),
+    `${art.variant} exactly preserves the reviewed installed 16x16 sprite`);
+}
 const canonicalIconArt = JSON.stringify(Object.keys(ITEMS).map((itemId) => [
   itemId,
   getItemIconArt(itemId as keyof typeof ITEMS),
@@ -127,11 +153,7 @@ for (let index = 0; index < canonicalIconArt.length; index += 1) {
 assert.equal((canonicalIconFingerprint >>> 0).toString(16).padStart(8, "0"),
   VISUAL_ASSET_MANIFEST.itemIcons.fingerprint,
   "the reviewed bow is decoded through the canonical manifested item-art stream");
-assert.deepEqual(iconHashes, {
-  string: "2668b3c95a850e42ce6c17e24b4efbfbe5823bd6a68f46b177ecfa351660d21c",
-  arrow: "2b55a7d3abe7c73da29eb16b6c723f4a530d615377eae32ab702419aef52ce9e",
-  bow: "9c942044895cf1c81423ff086fd7eb26c84059a863339159ec9fc7c0695b3972",
-});
-assert.equal(new Set(Object.values(iconHashes)).size, 3, "each progression item has distinct original pixel art");
+assert.equal(new Set(progressionArt.map((art) => JSON.stringify(art.runs))).size, 3,
+  "each progression item has distinct installed pixel art");
 
 console.log("lakecraft bow item, recipe, drop, and icon progression tests: ok");

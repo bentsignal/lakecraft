@@ -450,15 +450,1807 @@
     "cow": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAV1BMVEUAAAA1Kh8/MCRENiZZUEaBgYGhoaGzs7Pc3NyUaGgAAADJycnUl5f///+3hobTlpZUVFRwcHDExMRWVlZEREQzMzNgYGBJSUlmZmaWamrOkZH3r68XFBRdez+aAAAAAXRSTlMAQObYZgAAAnBJREFUeNrt08GKXAUUhOGvzr0zJhKCEBAS3//NNAGDG0FInO5TLhSmIURI1v3ta1PwB5hw5FIq2J8ePvq6XwC/cQJBSEvJm903f/iad6j3YABEA9Acia/KUsAJkCEtIP7XkAAnwKRyLJCP4EGi8aQeGxq6iwKcQENKUAFIuEio0DQSbTTAOUFppCtEPbabJnoR6mgIDZFIgTOPfEZxrf7A35LsVJpLiiQaoLz3bHx6fODli9bTi5c8HJ9wJfBEVI7Q7rWqbg1/Lh2umbJ/QS+77ApkZNvdVtu6kcNKAFhTAp0N9IFuVYxu69mRRDTQNIlGUA0wqQvaarl1kMAkKdESUiUospWiTd1KRHTAStXNUKiwvA36gXoWXxhntNpFqAFJ9KpmJNrdGr60JDIkSHahrYYQBJxw0HcX56+AXjqHlgbIRrQBCOaKExBupU9KCmSm14ZqpBUsDPTLX0oQYCIHEKSKCicoTjcaJQDRjAUOK1FJOScl9R4TXWkEclYXB5gWkWRDmmCQcDxIUhBUDHKg0B5ynMeEFAETKTOmRACa8xCqgEhC/stSC6cmQNzIEUq37EHTWEJKo4pTskGr0QASbZfSNGzUpgdlRWFqHti2VEoBrkuhe223i3ZtsdeCUy9nY1fJ4TMNm2zD21Afss0G7DUalHJqVruoo0WQK1R2NMDzLogWU11USZUooBgSpaq0GswkCae0KVSvLVM0LaBQEGjURKJXZ6QVJURF2rSgjQY0SpGJUOF858a/SafRAhIpUMAkQkE4wIL6VicdrJ/xu2+WMScuW6C+zXDO69dz+k5jfnyVvDLu7u7u7u7u8A9nrp110qSTUgAAAABJRU5ErkJggg==",
     "pig": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAJ1BMVEUAAAD////7vr7upaTxnpjmkYvmhYPmeXPkaGrGYVq+UE2JR0YCAAFAtN1CAAAAAXRSTlMAQObYZgAAAbxJREFUeNrt0kGSEyEUBmDKc3gLmBPwGA8QHrEq2wCjbtyERw6gvPYCaTyBuh6dtTcTmkw5iTWThdv8q67q73+P6kb0WK1NbRHPRWsNF4C8CNTLQEr1vxPUJfDCIb3VSmqltAKHLUJQT0LEOABaDc0owBPg0Q2ww2wRFJqCa4/oHkH4EQZIuP/02/nXbw8YB/hMRHfpffg1AOF+Z9Ga9QEpIIYGIqW78u5DyAuYd4S9ibSeUuhjSwghlxziALV47E3vcp2Jpl7B9TQTH6YBKsfeTFxrnafaK5hrLZSrGAF8eBDiFbzhjwLM8V0tFgC0hAbMAiyYjgHzgYn3BQFASak6sB1s0s/2rKxJmZlLtL0vtV1aHWzh9hFMPDdgof+DlYgeHHrvxBJpfcpceQHyRq5WgrZg+jceQHfwpX57ArzxcIvrdAQnE0wHzga0JvonK6Z6PEMDWiC0IOJfMFbgdgFKOH9/7/xmM4Cy7rjCN3DTwWkUurKsoAH0OQAfIn+t3zmHHcCNknAGTArEbQJT8BbMvwBDzDzxzCUFtKDAnAEXaWIm5pmSDxZMOAORuF8bmipTGjf7mmuuueaZ/AGJIf7F9pKBGAAAAABJRU5ErkJggg==",
     "sheep": "iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgBAMAAABQs2O3AAAAKlBMVEUAAAD////49vXs7Oze3t7S0tL/uLjmlJTAnoa3lHuviGtXRjoICAgAAADfBc7iAAAAAXRSTlMAQObYZgAAAd9JREFUeNp9kTGO2zAQRQXkHGlsBwhdLUQKMLc0JSByFUTUFZIbJEhru/jjUjSQGbl1IW1O4LjKzSKFq26tXwjQ5+Ofj2EyyvtCFy55rFR7bfwM4FaF18UMUOiV0W4uIR0izFxCbmo3N8JXhdNzCW7h86x6dHu7+mKW1YftyniXDYZCwJoJE6CzbwdGu/k+jCnywRAoaFaYAFf8Cn/x3v702uRjAqxNmdY8AYN/ZWp3TuvCmRFQEKaOJiDXlSm/Xl2mq7gsa/HJBpYJqHJT735ca5f7LPdjSV4zKdolbypIuuF++OxbEN4AxDCjOwiIaMvRq+v6dknq+GM1ExgNH0GwscOTL26X6ikCUtollaSUxdTzc+bN7fJuSkDgU1CEZ9WoZRKJytzvdRLFeJYdzgyFj20cYSpnTGWmBHpBAJpzYLb0umqjC525CJw1I2XqLfYWHEtq57QxOgJhbHcOciQFdDHBeB9fYVTTBKGGFDWCEBd1OrVdK0QRIJUaKATeHGRho8Vd31GPCEBE2yYQ1L7h6Al66k+nCShLWi+JUSqomNoTQ1pGBJgprPkojQjYRquVrn3pKQKCAwJDWbVmu4gdaGjQo51WLbQQNKWSXkkc0XfSSd8mj3T/rz+/H53/AxA52q8o5N+EAAAAAElFTkSuQmCC",
-    "sheep_wool": "iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgBAMAAABQs2O3AAAAElBMVEUAAAD////4+Pjv7+/f39/U1NS+A43/AAAAAXRSTlMAQObYZgAAATpJREFUeNqtktGRwzAIRK8FuAoANxDAFYAqCPTfyiWOleTDTn5uZ/SjebPLIv3cxMzd/XMuBPwCEHwGgL5EENBngOFTRFwIgRA9Kw4BYwUiURttxw6iiCjiPmpOBHdN4KoECMBr9thLIxHQCzBGIrR11AMgRhBinEC3AaF1Zz2KqDCaq56WtsUW94hTIDI9bzrZGZuPTlMmBjp+Fh+VSlvZGSrdr63/LlkpgARPB9UXgEiLtxEjAOAE3hwALNb2uAC+RdibA8k2JDHiDtimsN2BLasylACAt6uMSPVZmyyz6+p24TmksImqyh4hkdnXDIYZoaJ8P3tNdK8uUyQg3LcgwsY6FyU52oPo+SVyMU8P3wFkXzuU4SY6eYuuEGUG4gNAVHxUGSvjIcBmY3SFKTIeApLdXV2Pmv+iP9POUERdnCfHAAAAAElFTkSuQmCC"
+    "sheep_wool": "iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgBAMAAABQs2O3AAAAElBMVEUAAAD////4+Pjv7+/f39/U1NS+A43/AAAAAXRSTlMAQObYZgAAATpJREFUeNqtktGRwzAIRK8FuAoANxDAFYAqCPTfyiWOleTDTn5uZ/SjebPLIv3cxMzd/XMuBPwCEHwGgL5EENBngOFTRFwIgRA9Kw4BYwUiURttxw6iiCjiPmpOBHdN4KoECMBr9thLIxHQCzBGIrR11AMgRhBinEC3AaF1Zz2KqDCaq56WtsUW94hTIDI9bzrZGZuPTlMmBjp+Fh+VSlvZGSrdr63/LlkpgARPB9UXgEiLtxEjAOAE3hwALNb2uAC+RdibA8k2JDHiDtimsN2BLasylACAt6uMSPVZmyyz6+p24TmksImqyh4hkdnXDIYZoaJ8P3tNdK8uUyQg3LcgwsY6FyU52oPo+SVyMU8P3wFkXzuU4SY6eYuuEGUG4gNAVHxUGSvjIcBmY3SFKTIeApLdXV2Pmv+iP9POUERdnCfHAAAAAElFTkSuQmCC",
+    "chest_normal": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAt1BMVEUAAAAzLiU3MSc2LyWSYyOQZip/XyKVbC6EYi+RkZF2dnaGhoalpaXNzc3CwsKLYiSFXB9FPTF3UBxpUil1VClzVi6CWyZ5WCWIWRlUPhZhQRZFNRosJx4sJx9hSSdzTx5FPC9GPjJBOy8fHBcrJh8qJR0oJB0hHRcAAAAnIx4qJR4sJR1DJgBILABEKQA5JgBDJwAyLSY1LyY4LyVEPDCiayOreS2kciePaR2nbh+OYSZ3WjA2MCZfMx0AAAAAAXRSTlMAQObYZgAAAiJJREFUeNrt1Utv2kAUhuHvzIxtGiXqhV7CpW1MMSGERWqKTUz+/4ZNt131T3TX2qczkLE8khVGbhdZ8GBsvRsjjuRj4OL84hxWIldpukqllOnXlNxCu7OzF/qwJXphGEXmCKKecAutFCArSFh8DVEJaPwD4Lu6vqOdIDKHTVpJLpmMakVuoZUiMIFt8u6GIHQyxK6iXdootFK/nGTzYwwCUUlwq52Ag6iqJHHFXIHgVjsFB5WMP1DQJ5QCTpU+N2B1+MtQJeRvuOV1AwaBzYeIGU75zQBEDDCRYCa34CMt7g6Wy6WSaXF/sF6vlYQP0VNBEBpB2CO34GNKREI8kDBmbqHdF6IHjYQ+yUmzqK3G4/HHfcGaBoEKw/0jF4bx0RoMBx/2BSsxE7Kz+na0LgeDy33BmmX3eZZleb7R4mZlrfXy1aFgUWxMXuvvZBL7FxzdVpqr+0pzuUuMJ7B+woss6sGvCymLea2Q8CECPeiNlud5QCKY1wLyehqZSIAZIMGkC7WOKw1W15UGq+tKg9V5pdW6rTRnvPDhLrG0mNee8Uq7XtwskiRZ3C4Wt0niX7CmvSgII7u2mhU9WbCmUb4xsk2WZbF/wUqK9ePY9fWqWesnC9YsyA/70Oy+2L/wSIFYMsCAAMi/GjdABTCEKM3Fv6zkfVEUSqnCuGqWaqs3w+HnfcGabrfbt/1+X1/ebeOjNRqNPu3r39+NJycnJyf/318mHzQShLdV4AAAAABJRU5ErkJggg=="
+  },
+  "blockItemModelChains": {
+    "chest": [
+      {
+        "path": "assets/minecraft/items/chest.json",
+        "model": {
+          "model": {
+            "type": "minecraft:select",
+            "cases": [
+              {
+                "model": {
+                  "type": "minecraft:special",
+                  "base": "minecraft:item/chest",
+                  "model": {
+                    "type": "minecraft:chest",
+                    "texture": "minecraft:christmas"
+                  }
+                },
+                "when": [
+                  "12-24",
+                  "12-25",
+                  "12-26"
+                ]
+              }
+            ],
+            "fallback": {
+              "type": "minecraft:special",
+              "base": "minecraft:item/chest",
+              "model": {
+                "type": "minecraft:chest",
+                "texture": "minecraft:normal"
+              }
+            },
+            "pattern": "MM-dd",
+            "property": "minecraft:local_time"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/item/chest.json",
+        "model": {
+          "parent": "minecraft:item/template_chest",
+          "textures": {
+            "particle": "minecraft:block/oak_planks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/item/template_chest.json",
+        "model": {
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "head": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                315,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                315,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "oak_fence": [
+      {
+        "path": "assets/minecraft/items/oak_fence.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/oak_fence_inventory"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/oak_fence_inventory.json",
+        "model": {
+          "parent": "minecraft:block/fence_inventory",
+          "textures": {
+            "texture": "minecraft:block/oak_planks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/fence_inventory.json",
+        "model": {
+          "parent": "block/block",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                135,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                90,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            }
+          },
+          "textures": {
+            "particle": "#texture"
+          },
+          "elements": [
+            {
+              "from": [
+                6,
+                0,
+                0
+              ],
+              "to": [
+                10,
+                16,
+                4
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    6,
+                    0,
+                    10,
+                    4
+                  ],
+                  "texture": "#texture",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    6,
+                    0,
+                    10,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    6,
+                    0,
+                    10,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    6,
+                    0,
+                    10,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    0,
+                    4,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    0,
+                    4,
+                    16
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Left post"
+            },
+            {
+              "from": [
+                6,
+                0,
+                12
+              ],
+              "to": [
+                10,
+                16,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    6,
+                    12,
+                    10,
+                    16
+                  ],
+                  "texture": "#texture",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    6,
+                    12,
+                    10,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    6,
+                    0,
+                    10,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    6,
+                    0,
+                    10,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    12,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    12,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Right post"
+            },
+            {
+              "from": [
+                7,
+                12,
+                0
+              ],
+              "to": [
+                9,
+                15,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    1,
+                    16,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    1,
+                    16,
+                    4
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Top bar"
+            },
+            {
+              "from": [
+                7,
+                12,
+                -2
+              ],
+              "to": [
+                9,
+                15,
+                0
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    2
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    7,
+                    14,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    7,
+                    1,
+                    9,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    14,
+                    1,
+                    16,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    1,
+                    2,
+                    4
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Top bar left"
+            },
+            {
+              "from": [
+                7,
+                12,
+                16
+              ],
+              "to": [
+                9,
+                15,
+                18
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    7,
+                    14,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    2
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    7,
+                    1,
+                    9,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    1,
+                    2,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    14,
+                    1,
+                    16,
+                    4
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Top bar right"
+            },
+            {
+              "from": [
+                7,
+                6,
+                0
+              ],
+              "to": [
+                9,
+                9,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    7,
+                    16,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    7,
+                    16,
+                    10
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Lower bar"
+            },
+            {
+              "from": [
+                7,
+                6,
+                -2
+              ],
+              "to": [
+                9,
+                9,
+                0
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    2
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    7,
+                    14,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    7,
+                    7,
+                    9,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    14,
+                    7,
+                    16,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    7,
+                    2,
+                    10
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Lower bar left"
+            },
+            {
+              "from": [
+                7,
+                6,
+                16
+              ],
+              "to": [
+                9,
+                9,
+                18
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    7,
+                    14,
+                    9,
+                    16
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    2
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    7,
+                    7,
+                    9,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    7,
+                    2,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    14,
+                    7,
+                    16,
+                    10
+                  ],
+                  "texture": "#texture"
+                }
+              },
+              "__comment": "Lower bar right"
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "oak_fence_gate": [
+      {
+        "path": "assets/minecraft/items/oak_fence_gate.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/oak_fence_gate"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/oak_fence_gate.json",
+        "model": {
+          "parent": "minecraft:block/template_fence_gate",
+          "textures": {
+            "texture": "minecraft:block/oak_planks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/template_fence_gate.json",
+        "model": {
+          "parent": "block/block",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                -1,
+                0
+              ],
+              "scale": [
+                0.8,
+                0.8,
+                0.8
+              ]
+            },
+            "head": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                -3,
+                -6
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            }
+          },
+          "textures": {
+            "particle": "#texture"
+          },
+          "elements": [
+            {
+              "__comment": "Left-hand post",
+              "from": [
+                0,
+                5,
+                7
+              ],
+              "to": [
+                2,
+                16,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    7,
+                    2,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    7,
+                    2,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    0,
+                    2,
+                    11
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    0,
+                    2,
+                    11
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    11
+                  ],
+                  "texture": "#texture",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    11
+                  ],
+                  "texture": "#texture"
+                }
+              }
+            },
+            {
+              "__comment": "Right-hand post",
+              "from": [
+                14,
+                5,
+                7
+              ],
+              "to": [
+                16,
+                16,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    14,
+                    7,
+                    16,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    14,
+                    7,
+                    16,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    14,
+                    0,
+                    16,
+                    11
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    14,
+                    0,
+                    16,
+                    11
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    11
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    7,
+                    0,
+                    9,
+                    11
+                  ],
+                  "texture": "#texture",
+                  "cullface": "east"
+                }
+              }
+            },
+            {
+              "__comment": "Inner vertical post of left-hand gate door",
+              "from": [
+                6,
+                6,
+                7
+              ],
+              "to": [
+                8,
+                15,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    6,
+                    7,
+                    8,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    6,
+                    7,
+                    8,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    6,
+                    1,
+                    8,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    6,
+                    1,
+                    8,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    7,
+                    1,
+                    9,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    7,
+                    1,
+                    9,
+                    10
+                  ],
+                  "texture": "#texture"
+                }
+              }
+            },
+            {
+              "__comment": "Inner vertical post of right-hand gate door",
+              "from": [
+                8,
+                6,
+                7
+              ],
+              "to": [
+                10,
+                15,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    8,
+                    7,
+                    10,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    8,
+                    7,
+                    10,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    8,
+                    1,
+                    10,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    8,
+                    1,
+                    10,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "west": {
+                  "uv": [
+                    7,
+                    1,
+                    9,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "east": {
+                  "uv": [
+                    7,
+                    1,
+                    9,
+                    10
+                  ],
+                  "texture": "#texture"
+                }
+              }
+            },
+            {
+              "__comment": "Lower horizontal bar of left-hand gate door",
+              "from": [
+                2,
+                6,
+                7
+              ],
+              "to": [
+                6,
+                9,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    2,
+                    7,
+                    6,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    2,
+                    7,
+                    6,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    2,
+                    7,
+                    6,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    2,
+                    7,
+                    6,
+                    10
+                  ],
+                  "texture": "#texture"
+                }
+              }
+            },
+            {
+              "__comment": "Upper horizontal bar of left-hand gate door",
+              "from": [
+                2,
+                12,
+                7
+              ],
+              "to": [
+                6,
+                15,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    2,
+                    7,
+                    6,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    2,
+                    7,
+                    6,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    2,
+                    1,
+                    6,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    2,
+                    1,
+                    6,
+                    4
+                  ],
+                  "texture": "#texture"
+                }
+              }
+            },
+            {
+              "__comment": "Lower horizontal bar of right-hand gate door",
+              "from": [
+                10,
+                6,
+                7
+              ],
+              "to": [
+                14,
+                9,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    10,
+                    7,
+                    14,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    10,
+                    7,
+                    14,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    10,
+                    7,
+                    14,
+                    10
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    10,
+                    7,
+                    14,
+                    10
+                  ],
+                  "texture": "#texture"
+                }
+              }
+            },
+            {
+              "__comment": "Upper horizontal bar of right-hand gate door",
+              "from": [
+                10,
+                12,
+                7
+              ],
+              "to": [
+                14,
+                15,
+                9
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    10,
+                    7,
+                    14,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "up": {
+                  "uv": [
+                    10,
+                    7,
+                    14,
+                    9
+                  ],
+                  "texture": "#texture"
+                },
+                "north": {
+                  "uv": [
+                    10,
+                    1,
+                    14,
+                    4
+                  ],
+                  "texture": "#texture"
+                },
+                "south": {
+                  "uv": [
+                    10,
+                    1,
+                    14,
+                    4
+                  ],
+                  "texture": "#texture"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "stone_brick_slab": [
+      {
+        "path": "assets/minecraft/items/stone_brick_slab.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/stone_brick_slab"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/stone_brick_slab.json",
+        "model": {
+          "parent": "minecraft:block/slab",
+          "textures": {
+            "bottom": "minecraft:block/stone_bricks",
+            "side": "minecraft:block/stone_bricks",
+            "top": "minecraft:block/stone_bricks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/slab.json",
+        "model": {
+          "parent": "block/block",
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ]
   },
   "blocks": {
+    "grass_top": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAA8UlEQVR42gUAWW+CMPj7yXuZ0ylHOWwpR6EFC0ERh8gh+ELGEl9mwh8zEC9iv2eaVxwodpoPHxKvlJmeGVp3E4uHXah8xXJIGMbndsRf+gwrm8ooU7hm+pK5jQI/5mgODzI8P/XmrhIfsnR9Q4ckxwkx1ySIQT3WITepZuHfIWokA4ZPbri7WnLEiJVaB00+9wMaj1NvcFsUKkjjz/fSXscR74KJIcgLWRtzIF6bxmREMrDGfSUt7kjubSdNofCUiGaR/U0jqpzrjQTUrriSoeUi2rwk7QOqy2s73WOhJgnuTu4G7ANxrmksgv9dZ4WkeAPz+JNw8txdwAAAAABJRU5ErkJggg==",
+    "grass_side": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAeFBMVEV5VTqWbEq5hVyHh4dwsEZoqD5iojhsrEJhoTdpqT9npz1goDZXly1QkCZzs0l2tkyKuVp+vlRqqkCDslOBsFFmpjyQv2CSwWKTwmN/v1WXxmdvr0VkpDqcy2xrq0GNvF11tUttrUN0tEpfnzVxsUd0WERsbGxZPSmGrpghAAAAjElEQVR42gXBB0LCAAAEwd2LGkAFG3ZqIPf/HzLDebPebv+m8XXztlounk8cx5eP994/TN+f68W42nPo7n/Zu55/vn779Fg6t5e2U0+lBTEV2s5YoIptoUAIMEBCgggkClZBEUSKAgUstAAkCJIQm1QHEDQ4K5VCRQMAJCBcUZoSRRpKEwRFogwoKL0BxA0LD3lN79UAAAAASUVORK5CYII=",
+    "dirt": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAFVBMVEV5VTq5hVyHh4eWbEpsbGx0WERZPSk6VlZqAAAAa0lEQVR42gXBwQnDQAxFwSd+0FnLgs8+5SyjsA2kgZQgY9j+S8gMM61oM9R6W85NeBDs4BPLSpbk9bBeary02zGC02JIMIpVFCm5kkbtDUPIYt5HnaQuffNxPCuAgfiVH1bk7T5EkTPPovwPGbIOYwnMHcMAAAAASUVORK5CYII=",
+    "stone": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAAXklEQVR42gXBMQEAMAwEocqNgNuR8JYLb9uUruCRgLv0dFddBR6bsaF6Ucm2xTNAXddebGur4NVdV1R424xtoMewjW3zTuouUT2wgc2eyhR3XW9TVFR7CsC2PaBsxAdyLn2NNWHIVAAAAABJRU5ErkJggg==",
+    "cobblestone": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAElBMVEW1tbWmpqaIh4hubW1hYWFSUlLm8qFQAAAAcUlEQVR42gVAARGDMAz8MAMjh4CSLwIWIgDSIGAD/1p2iPk5pTfFOW3QLR3nGrrGQxSLTL1wp2TJ3PF6W/yaOjSV9eEB2y3a4omQPSerG4f6biMXkP0a8X2DMdpytQkuIWuY49CuziJmclhoIcsjUvgH41gVHD61kt4AAAAASUVORK5CYII=",
+    "oak_log": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAElBMVEV0WjaYeEmRcUJfSitMPSY4Kxi/mP6UAAAAaElEQVR42gXBwQ3DIBREwSd2/90SKWAl8B0lDRAqcPpvJjM4lWpHuFevtkV9qttb3LJUezBV6nLInu7TYe2xEof15M1Q8I+3xgh8WZp5oKnkPLiprro2L8bdi8W142Egh9s+kLOnOfoDKZ4L2kN8RTwAAAAASUVORK5CYII=",
+    "oak_planks": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAFVBMVEW4lF+vj1WfhE1nUCx+YjeWdEHCnWJT722OAAAAaUlEQVR42gXBgRHAMAyEMKCX339jVwLZtrFt4wH6ElAoBMQqhec75A45Dw/WtrUNDQSzlwJIifoArb6sT6++SmBDt23bCASwMusxtEq1yA/lDvQ4YLFB2xobCmWBqFhiD6zq+9KKL0P9AbiHDNWkCjANAAAAAElFTkSuQmCC",
+    "leaves": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAD1BMVEUAAAC5vLmYmZh3dXdoZGjJX6haAAAAAXRSTlMAQObYZgAAAGlJREFUeNoFgAERwyAMAD8pAtJ0AgIYaAEBbI1/TTtSNOaPiyCHDqkwtVvIia7tHzB6p1IatFtW8gazuB93e1j7tBwy8PJtR4+OkW+0cDR2exThSqQeASMalo9QZe2iV8XcmbgRp5W8Rf/WMg1MmmHulQAAAABJRU5ErkJggg==",
+    "sand": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAElBMVEXaz6Pt68vn5Lvj27DVxJbRuoo9qeK3AAAAZUlEQVR42gXBMQrCQABE0U9m0gtiH28wkNiP2bUXzP3P4ntscjI0qD2u7bGQ6wS76PCxD0NvQ6LC7OlBOf3u/NqY2nMxjT6jKVuZqzlYZZFLTNJ9tnQMPzNF8pJEke5JfpDsMskfw+0REW3/INgAAAAASUVORK5CYII=",
     "coal_ore": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAHlBMVEV/f3+Pj490dHRoaGhcXFxJSz85PDY2NjYuLi4lJSVYKuP9AAAAdklEQVR42gXBgQHAIAzDMMdkhf7/8CSSBMWjAIBIWzinCJ5jd27lXYAqb+73FlTcq/btVgVIkCTaHoPBqjhvCli78wqdj4TIzncfoiLEvltNoIVDbBG1OwdoLUirCt3v7ib9Zj2H2NmqvVsFVLgPCiSASiQB4Qdt9QKv63TjNgAAAABJRU5ErkJggg==",
     "iron_ore": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAG1BMVEV/f3+Pj4+IdFWvjnfYr5PiwKp3Z09oaGh0dHR2kUs9AAAAdElEQVR42gXBgQHAMAjDMBtYk/8vnoQALU3bKtAElDfzKHR2SlpmAZg9aZJCW6o2mdmdpIAwe/fd0lkpqHsnRaElqUoTAM1sUt7sKwXf7p24p0LQ+0xR2gKgCLwRoemsfbN3O8XZInXvWwWcVwBVAFBoQSn8xv0DBu+myPQAAAAASUVORK5CYII=",
     "gold_ore": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAHlBMVEV/f390dHRoaGiccCDrnQ5cXFz87kv//7WioqKPj48wUnvMAAAAfklEQVR42gXBgQHAQAgCsQN9C/sv3IS2lYQsAQBiwID9EMiu31h6bwZo8Zsd8WZHCPxmb9zuBijeu28lJyqCZm8nEgCSrWyCpB2oZ5tJCwaB9kJa3nsuuEll682sLcB2i2f3uzFoZsUoe5eIzt53jZiNVFD2CpC0W4AGiRYEP65HA2+xOYABAAAAAElFTkSuQmCC",
     "diamond_ore": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAHlBMVEV/f3+Pj4+NrbEjlpge0NaioqLV//Z359FnZ2d0dHTXUAaKAAAAeElEQVR42gXBgQHAIAzDMLvAmvz/8CQEaWlaVKBEFZoUaHIlabMHUBmzZ2RsKdDEoVgAab4N/baptH577xnuAcDEeTOJg++RvSPNtwUszBC695zxPQjlNs6YtAUA1WaPAjXB7rf3HovOnpR37owA7ajg0BYAoAKA/g9mA6MdO18tAAAAAElFTkSuQmCC",
+    "glass": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAWklEQVQ4y2O48Orlf3Lxigs3/zOAGA0NDQzkYKwGkGJg9brtqAaQ6hoUA0DOIdULGC4gFXcfPEuZAQPvguFiADnxD7OULBcgqyfbBSiZCUSAMMg0GE0MhukDAIj/+eJKhLbdAAAAAElFTkSuQmCC",
+    "crafting_table_side": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAANlBMVEXY2Ni1tbXCnWK4lF+vj1WfhE2WdEF+YjdnUCxzOSBLKxhBIw44IRYmIBIoHgsbFg0ZFAwRDggHqts1AAAAiUlEQVR42gXBAUpDURAEwe7ZDRhB8P7nFMlPzBur/P5p+XxL5xf8CjV7DcwjGgLtOY+ZS+SwLEVDrJTlNW8gvFAkeO5znyShPSzpdApFhGV6/V073AqV5cnZK+EJIEtqTZhaYaljgFI5LLcWvfGqOCzvUyS8mLf9WIqhQaqyaI8CKrAN0m7XCv0HAkhFdvdbsCMAAAAASUVORK5CYII=",
+    "furnace_side": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAJFBMVEVQTk5dW1t3d3doaGiFhYWRkZGdnZ2oqKjFxcWwsLB/f388OzssRTY3AAAAe0lEQVR42gXBQW7DMBAEMI6UFEX0/6f6UDjeKQkOzjnOIbI0mdCYLrr2tEmTROyQ7+quxncjhojhs4623Tt9rHnEXp5EWtXuc8dqzGyJz0tGRvoqkyt+UwD6Fz+xZoFnP++cWwCYe6m2Csq63lVVnfYttkpBeALn4uDCP1TkRnZGCC1gAAAAAElFTkSuQmCC",
+    "oak_log_end": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAG1BMVEVfSivCnWK4lF+vj1WfhE2WdEF+Yjd0WjZMPSZxHR9aAAAAbklEQVR42gXBgXHDQAwDMFD21dp/3CZ+BmA9lmdZZP+R5oziL+ZWTRHf3vgIUq70liYg2phtmUlmiI1rjuvFHPOeoVWJamMAIoRZoEeFjWvejLTa6XtTDiA1W6pte7AxkwbgPTFE44xyWCzPsg8/vNE4rPRQOg0AAAAASUVORK5CYII=",
+    "crafting_table_top": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAHlBMVEW8mGKuaTyeWTJzOSBVOCRLKxhBIw4aFQ0ZFAwOCwZHZAmgAAAAaElEQVR42nWPUQoDUQgDE9dEvf+FCy5vaSk7+OOAxKBn2tfimmoM4OASBgYD88EYtJnKTElKuuFgBpMUmQzj4m5HXytS9zzizKuQlPo+UVAMkSvuWK3e2PKm3ND1/3r9lit0TZ36PdMft8EDNpiNkFcAAAAASUVORK5CYII=",
+    "crafting_table_front": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAANlBMVEX////Y2Ni1tbXCnWK4lF+vj1WfhE2WdEF+YjdnUCxzOSBLKxhBIw44IRYoHgsbFg0ZFAwRDggy6vjwAAAAjklEQVR42gXBW1bDAAxDwSvZKSfAB/vfJtDmaXVGP/8Jn7dIPUHfJnLvBbVZMoZkZrN3IYamCZKxCi6as27AnHy91qHRrEdkDCtD4zgEwh80TQVLZskmTHPwGMYcABfG83vFdvkBxkTEgpAwNEuC1FRU+0JzTxDmpO4cH02QiRHRAo2UkQBJQMeIpNKKIG8DCkhY9AxuRwAAAABJRU5ErkJggg==",
+    "furnace_front": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAJ1BMVEXFxcWwsLCoqKidnZ2RkZGFhYV3d3doaGhdW1tQTk48OzshISERERGSYbg8AAAAdElEQVR42gXBwQHCMAwEMJ1jHt1/XGgOKQ9SQqPWVWkqTSeT9Lpp773NtW2zAf2KVZ8B8vklEzO0LXPZwoUOuvF+FcTcXbLJTdo06hEAzLNGmoO3abLS2RP0/V1dyeeAbN7XGIe25bwxuaOF1mnWOVdBuvEHfptGY6k/wX4AAAAASUVORK5CYII=",
+    "furnace_top": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAFVBMVEVQTk6RkZGFhYV3d3doaGhdW1s8OztCEpz6AAAAdklEQVR42k2PuQ0DARACh2/7L9nynQNHiE8CAA64O+4AttXO2rgDFimZ5doBKkuLJDcBYjlrJC09rmvntPHGwaxakje7cJFc6VVznL4Yv9yAJLl1Yxsgj/OoW49bnOrNKXDeuify60Rb1iS/6UvjsHZN+b9/AB9cpQKIH34ARQAAAABJRU5ErkJggg==",
     "tnt_side": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEWRLRH////d2dnOzs6+srPqQxjbLxqxFSc3NlYbGjzJVtJDAAAATElEQVR42mMITYdAhrQCCMTHEFYyVlI2UlJkEOqY1Gyp0WnIoGJp3GFh1KTEIKyh1NRhPNmJQcjSqNnSeJIhgwsUMJRDIT6TywsgEAB9NCyhE+tOxQAAAABJRU5ErkJggg==",
     "tnt_top": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAFVBMVEWOjo7qQxjbLxpWVlaRLRGxFScRER49pa71AAAAY0lEQVR42k3OwQ3EQBACQWaAzj/kk+w9eR/9pIR2Zu80Uu80ckYGK6CojUvSQptoZ+DdcxnUcjmGLQDFx0gN2C6vsQaA5TVsBPgzMggs7GOYPMD/h3dYGPsYfbKeNFK+jnH3A4Y6Av62IC04AAAAAElFTkSuQmCC",
-    "tnt_bottom": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAADFBMVEWRLRGOjo7bLxqxFSclFyjjAAAAFElEQVR42mN4DQQMU4AAQoABBWIAnkMhMW91pHgAAAAASUVORK5CYII="
+    "tnt_bottom": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAADFBMVEWRLRGOjo7bLxqxFSclFyjjAAAAFElEQVR42mN4DQQMU4AAQoABBWIAnkMhMW91pHgAAAAASUVORK5CYII=",
+    "gravel": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAGFBMVEWBf39ya2lkW1uWjo6xoqKwrq6Xl5eJgX4xLozLAAAAaklEQVR42gXBgQHDQBACILxvdP+NC24vqUaoKGGRs63ILVtZs2ImpTFkfi9BTsfJu2z1tcRyj69pd0E7XVlCp6uw5fQLlnyVGhmxdjmV6aFbP8mokEH3e2nVllPzkLLOlnhbbhW/F8xE/AGAXALc0uZRQgAAAABJRU5ErkJggg==",
+    "wool": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAeFBMVEX+/v79/f38/Pz6+/v6+vr5+vr4+fn3+Pj19/f19vbz9PXy9PTw8vLv8fLu8PHs7+/r7u7p7Ozo6+vm6erl6enk5+jj5ufh5ebh5OXg5OTe4uPc4eHb4OHa3+DZ3t/Y3d7X3N3W29zV2tvU2tvT2drS2NnR19jQ1tczQ8RuAAAAyUlEQVR42gXBCWKDIBAF0G8zUGVRREGZEgwu9P43zHt4p0/xfWaj7sO548RsAalCLCfH/5pWSIpLR1NUpHUHZTGngeLuKQeiOUHArnnuh7ux49r3x436/FFu75RbiheXDcDv4P3qJEwA1ISUAGVIFB7I2JeA0pWFyTtHvnz4VHDYZLvDmC2waADipRRImZeMzvpjxpHHMe29Lpnt82wWe2q36GrzvdOAvaBNB6FcbIumdSGg+5kDOTtAMk96LzizmMpO3ZqMKFnSF2NnEQpz7Q/MAAAAAElFTkSuQmCC",
+    "sapling": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAG1BMVEUAAAAfZRlwUy5aPx5MMhR/YTkQUhBXrT9Ajy+kPdBRAAAAAXRSTlMAQObYZgAAAGBJREFUeNoFwYEBwDAIAyCMrvr/xQMAAABwALBUQeA5fJMHSOre+9IN9rbiJV0L7OVrib0FSCbYBdTLnleATtfeVnrAVaXzTXrqcHd6k+lxB9ir3OIAt5M9ANCZBQDdA/zrxwHu1gEFbAAAAABJRU5ErkJggg==",
+    "stone_bricks": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAFVBMVEV/f394dnhqbWpaWVpjY2OcmZyLiYujkba6AAAAYklEQVR42lXOUQrEQAgE0Sob+/5HXjLDEvJQ8M+i+2obltIHj4Yt5WiFsEiLFNGwjlJQHEIdUD2XYb4yM/qsc8geTffC25At97pjFmtvDzhZESgPMVWKouOMuWnI+/9D/iE/bMYCbu05nvoAAAAASUVORK5CYII=",
+    "clay": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAElBMVEWhp7Gvudasrr2ao7OcoayUmaQyP0y5AAAAcElEQVR42gXBMQ6DMAxA0V/b7BXtAQxpd5eEPQJ3R4L7n4X3OCcXRQZkoMVGh96q21vIZRn57qAU8qCBXNVZK+vu3l8HeChDUtBnapOpY+mnhwXbUlax+LDpzzMEruYSNo9on4vPWjCp+bB/MKpD0G9g9Q+q82ZaXAAAAABJRU5ErkJggg==",
+    "bricks": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAG1BMVEV8RTaplI2ihn3GaFGxYk2LbmebVkOPUD9zPzGgdN/HAAAAbklEQVR42k2OQRLEIAzDRCBO/v/iHaelszkgLrLNOcq99zlH4RepgpKGkqB7dVfRHV1AZqzIzIyHWNf4w4TRCcpHQAlwDg4KPv/5LNzvHRq+O0o+hmDPOr1w7O2/e9Dbvx8GSPrPoQH7l3x+DNYPOiAEBGQstBIAAAAASUVORK5CYII="
+  },
+  "blockItemTextures": {
+    "torch": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAUElEQVR42mMYBYMd/L/B8P9/P8N/8g34P/0/EJBvwPz6gP+54WbkGzC11O1/qKseZS5wMlWiyACQCwbQC6AAtDWQpcwL1nrSlLnAXEscrwEAqjQsoSdmZ1wAAAAASUVORK5CYII=",
+    "door": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAT0lEQVR42mMYXCAzxPj//BZfgpigAchiePiYIDu/imQD6O8FuoQBVtzQPfU/VJ6wC+qSzGEYnU+8AdNKHEEYg0/bWAD6ceh6AWEAERjFAABL1AlkwhduNgAAAABJRU5ErkJggg==",
+    "ladder": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZklEQVQ4y2NggIJpJY7/A21V/jMQAFjV1SWZ/9/aG/AfRIMUgNgwGhnDxGDq4QakB+iABUE0yHQQjQ2D5GDqQBjFFSBJK305gl7AqY6iMID5ETkM0P0NokdqGOBKByA83MNg6OQFAO8/Kr6h1TyZAAAAAElFTkSuQmCC",
+    "sapling": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAG1BMVEUAAAAfZRlwUy5aPx5MMhR/YTkQUhBXrT9Ajy+kPdBRAAAAAXRSTlMAQObYZgAAAGBJREFUeNoFwYEBwDAIAyCMrvr/xQMAAABwALBUQeA5fJMHSOre+9IN9rbiJV0L7OVrib0FSCbYBdTLnleATtfeVnrAVaXzTXrqcHd6k+lxB9ir3OIAt5M9ANCZBQDdA/zrxwHu1gEFbAAAAABJRU5ErkJggg=="
+  },
+  "blockLayers": {
+    "grass_side_overlay": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAAAnRSTlMAAHaTzTgAAABASURBVHja3cMxCoBADETRubWlKHZGiAjTpv6FTU6o7DH2wRPpILGL6q0sgmyxt3kITll9oBTlV4s13P9Vl2bzASoXGyv77rzXAAAAAElFTkSuQmCC"
   }
 }

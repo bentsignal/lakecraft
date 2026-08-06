@@ -9,8 +9,16 @@ Lakecraft loads the Latin subset of **Pixelify Sans** from Google Fonts for its 
 - License: SIL Open Font License 1.1
 - License text: <https://openfontlicense.org/open-font-license-official-text/>
 
-No Minecraft/Mojang font or texture files are distributed by this project.
+## Minecraft visual compatibility assets
+
+This development branch contains the subset of Minecraft Java Edition 26.2
+visual assets needed for Lakecraft compatibility testing. They were imported
+from the project owner's locally installed, user-owned client by
+`scripts/import-minecraft-visual-assets.mjs`; the source JAR hash and selected
+files are recorded in the generated manifest. Minecraft and its assets are
+copyright Mojang Studios/Microsoft. Lakecraft is not affiliated with or
+endorsed by Mojang Studios or Microsoft.
 
 ## Original Lakecraft texture concepts
 
-The material concept sheets in `design/texture-concepts/` were generated specifically for Lakecraft with OpenAI ImageGen and are deterministically reduced by the checked-in texture pipeline. They do not incorporate Minecraft/Mojang texture files, screenshots, logos, or fonts.
+The material concept sheets in `design/texture-concepts/` were generated specifically for Lakecraft with OpenAI ImageGen. They remain the deterministic fallback source; the compatibility importer replaces matching production tiles with the selected locally installed Minecraft files.

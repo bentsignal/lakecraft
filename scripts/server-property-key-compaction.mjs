@@ -8,26 +8,33 @@ import { pathToFileURL } from "node:url";
 // minified output. Any drift fails before staging instead of broadening scope.
 export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   acceptedAt: [5, 7],
+  acceptedThrough: [2, 8],
+  authoritativeCells: [7, 2],
   beginOperationId: [8, 6],
+  behaviorUntilTick: [9, 1],
   blockInstanceToken: [33, 19],
   blockType: [23, 9],
   burnRemainingMs: [13, 4],
+  canonicalPlayerStateJson: [3, 3],
   cascadeDepth: [17, 6],
   charge: [25, 6],
   checkpointAt: [8, 12],
   checkpointRevision: [15, 19],
   chunkKey: [15, 14],
+  chunkRevision: [7, 5],
   consumed: [8, 8],
   cookProgressMs: [13, 4],
   // Interning keeps the serialized key spelling exact; it only avoids repeating
   // the same source literal throughout the closed server bundle.
   coordKey: [97, 42],
+  count: [135, 99],
   craftingContext: [10, 24],
   damage: [11, 15],
   deadUntil: [23, 20],
   direction: [14, 3],
   dropId: [13, 7],
   droppedItems: [18, 2],
+  durability: [54, 14],
   durationTicks: [6, 1],
   elapsedSeconds: [3, 4],
   equipment: [17, 10],
@@ -37,17 +44,25 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   expectedChunkRevision: [7, 3],
   expectedHeldItem: [13, 2],
   expectedInventoryRevision: [15, 5],
+  expectedInventoryUpdatedAt: [14, 4],
+  expectedRevision: [11, 2],
   expiresAt: [8, 8],
   fingerprint: [41, 42],
   firstSequence: [16, 3],
+  furnaces: [7, 1],
   fuseStartedTick: [25, 6],
   fuseUntilTick: [14, 2],
   health: [61, 39],
+  heartbeatAt: [36, 13],
+  heldBowDurability: [7, 2],
   hunger: [21, 23],
+  ignitedAt: [11, 8],
   igniterUserId: [15, 8],
   ignitionId: [19, 10],
   ingredients: [2, 22],
+  inputJson: [12, 5],
   inventories: [46, 1],
+  inventory: [73, 83],
   inventoryJson: [27, 22],
   inventoryRevision: [10, 8],
   inventorySlot: [9, 1],
@@ -61,37 +76,53 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   lastSequence: [15, 3],
   leaseExpiresAt: [5, 11],
   leaseId: [10, 5],
+  maxDurability: [9, 4],
   maxHealth: [7, 12],
   missReason: [4, 7],
   mobAuthority: [16, 2],
   mobId: [86, 19],
   mobWorldAuthority: [11, 2],
+  moveUnitsPerTick: [2, 8],
+  nearbyPlayers: [0, 8],
   online: [20, 12],
   operationId: [90, 43],
   output: [21, 36],
   ownerUserId: [11, 8],
+  parentEventId: [9, 5],
   playerCombat: [25, 1],
   playerCombatReceipts: [9, 1],
   playerPresence: [44, 1],
+  playerState: [8, 4],
+  playerStateJson: [20, 10],
+  poseSequence: [5, 9],
   previousBlock: [13, 6],
   radius: [23, 4],
   reason: [61, 735],
+  receiptCreatedAt: [0, 26],
   remainingDurability: [3, 13],
   replayed: [5, 35],
+  request: [22, 12],
   resultJson: [15, 26],
   retryAfterMs: [2, 25],
   revision: [129, 83],
+  selectedHotbar: [63, 12],
   serverNow: [48, 265],
   sessionId: [32, 14],
+  snapshot: [3, 2],
   snapshotJson: [19, 9],
+  sourceSlot: [25, 3],
+  state: [111, 30],
   targetCombat: [10, 1],
   targetId: [20, 2],
   targetKind: [20, 2],
   targetUserId: [20, 3],
   updatedAt: [12, 1],
+  userId: [286, 89],
+  username: [9, 8],
   version: [9, 11],
   weaponItemId: [7, 2],
   workstationCoordKey: [6, 2],
+  worldChunks: [16, 2],
   worldEdits: [20, 2],
 });
 
@@ -106,9 +137,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // canonical skin-storage codec added exactly the two source-shape deltas pinned
 // below; compact manifest keys, exclusions, runtime strings, and server records
 // stayed exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "6c6494809e2b0bfb76a042d77a5dd10ac601e64e02c6740424ac49cb30ee993b";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "e5c2c033245049d2730c7d1b0efdb25b60b0aca0adcb7ce63a5aa92360637267";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "33aff532a239440d25671bf4c9d8f1e0a07d99098984877a21147f5a63da5d9c";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "edb1a928cdc4de8429dc2d4099cf9054fd5e95eac67e6f1027c67183730df876";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "52fad98eebf0a2f15bf6dd555345fbcfc93b19db7d6b551986fce3c536124995";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "b055a528ddd8ba7b903bd5706adaf1ce3b2958079de2b2a9ee79d9ff542b39f6";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",
@@ -184,7 +215,13 @@ export async function compactServerPropertyKeys(source, manifest = COMPACT_SERVE
         replacements.push({ start: node.name.getStart(sourceFile), end: node.name.end, text: `[${keyReference(name)}]` });
       }
     } else if (ts.isShorthandPropertyAssignment(node) && indexes.has(node.name.text)) {
-      fail(`${node.name.text} unexpectedly became a shorthand property`);
+      const name = node.name.text;
+      counts[name][1] += 1;
+      replacements.push({
+        start: node.getStart(sourceFile),
+        end: node.end,
+        text: `[${keyReference(name)}]:${name}`,
+      });
     } else if (
       (ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)
         || ts.isPropertyDeclaration(node))
@@ -196,13 +233,15 @@ export async function compactServerPropertyKeys(source, manifest = COMPACT_SERVE
   }
   visit(sourceFile);
 
+  const drifts = [];
   for (const name of names) {
     const expected = manifest[name];
     const actual = counts[name];
     if (actual[0] !== expected[0] || actual[1] !== expected[1]) {
-      fail(`${name} live set changed; expected ${expected.join("/")}, received ${actual.join("/")}`);
+      drifts.push(`${name} live set changed; expected ${expected.join("/")}, received ${actual.join("/")}`);
     }
   }
+  if (drifts.length) fail(drifts.join("; "));
   replacements.sort((left, right) => right.start - left.start);
   for (let index = 1; index < replacements.length; index += 1) {
     if (replacements[index - 1].start < replacements[index].end) fail("replacement ranges overlap");

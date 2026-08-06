@@ -4,6 +4,7 @@ import { BLOCKS, ITEMS, type ArmorSlot, type BlockId, type ItemId, type ToolKind
 import * as BS from "../shared/bundleStrings.ts";
 import { blockTextureForFace } from "../client/game/blockTextures.ts";
 import {
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_RGBA,
@@ -22,13 +23,15 @@ export type ItemIconArt = Readonly<{ family: ItemIconFamily; variant: string; ru
 type Grid = string[][];
 type Palette = Record<string, string>;
 const cache = new Map<ItemId, ItemIconArt>();
-const EXACT_IMPORTED_ITEMS = new Set<ItemId>([
-  "bow", "shears", BS.flintAndSteel,
-  ...Object.entries(ITEMS).filter(([, item]) => item.tool).map(([itemId]) => itemId as ItemId),
-]);
 type ImportedVisualAssets = Readonly<{
   itemTextures: Readonly<Partial<Record<ItemId, string>>>;
+  blockItemTextures: Readonly<Partial<Record<ItemId, string>>>;
   bowStages: readonly string[];
+  entities: Readonly<Record<string, string>>;
+  blockItemModelChains: Readonly<Partial<Record<ItemId, readonly Readonly<{
+    path: string;
+    model: Record<string, unknown>;
+  }>[]> >>;
 }>;
 const importedVisualAssets = JSON.parse(await readFile(
   new URL("./generated/minecraft-visual-assets-v26.2.json", import.meta.url),
@@ -43,14 +46,16 @@ const ENGINE_BLOCK_BY_ITEM: Readonly<Partial<Record<BlockId, EngineBlockId>>> = 
   crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE, tnt: BLOCK.TNT,
   wool: BLOCK.WOOL, stone_bricks: BLOCK.STONE_BRICKS, clay: BLOCK.CLAY, bricks: BLOCK.BRICKS,
 });
+const RUNTIME_ATLAS_BLOCK_IDS = new Set<ItemId>(Object.keys(ENGINE_BLOCK_BY_ITEM) as ItemId[]);
 
 /** Original deterministic 16x16 art shared by every inventory-like surface. */
 export function getItemIconArt(itemId: ItemId): ItemIconArt {
   const cached = cache.get(itemId);
   if (cached) return cached;
   const item = ITEMS[itemId];
-  const importedTexture = importedVisualAssets.itemTextures[itemId];
-  if (importedTexture && EXACT_IMPORTED_ITEMS.has(itemId)) {
+  const importedTexture = importedVisualAssets.itemTextures[itemId]
+    ?? importedVisualAssets.blockItemTextures[itemId];
+  if (importedTexture) {
     const variant = item.category === "tool" && item.tool ? `${item.tool.tier}-${item.tool.kind}`
       : item.category === "armor" && item.armor ? `${armorMaterial(itemId)}-${item.armor.slot}` : itemId;
     const art = Object.freeze({
@@ -64,10 +69,9 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   const grid = makeGrid();
   let palette: Palette;
   let variant = itemId;
-  if (itemId === "sapling") palette = sapling(grid);
-  else if (itemId === BS.oakFence) palette = oakFence(grid);
-  else if (itemId === BS.oakFenceGate) palette = oakFenceGate(grid);
-  else if (itemId === BS.stoneBrickSlab) palette = stoneBrickSlab(grid);
+  if (["chest", BS.oakFence, BS.oakFenceGate, BS.stoneBrickSlab].includes(itemId)) {
+    palette = installedBlockItemModel(grid, itemId as "chest" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab");
+  } else if (itemId === "sapling") palette = sapling(grid);
   else if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
     palette = bow(grid);
@@ -167,8 +171,9 @@ type TexturePoint = readonly [x: number, y: number, u: number, v: number];
 
 function atlasPixel(name: TextureAtlasName, u: number, v: number): readonly [number, number, number, number] {
   const index = TEXTURE_ATLAS_NAMES.indexOf(name);
-  const tileX = index % TEXTURE_ATLAS_COLUMNS;
-  const tileY = Math.floor(index / TEXTURE_ATLAS_COLUMNS);
+  const cell = TEXTURE_ATLAS_CELLS[index];
+  const tileX = cell % TEXTURE_ATLAS_COLUMNS;
+  const tileY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
   const x = Math.max(0, Math.min(TEXTURE_TILE_SIZE - 1, Math.floor(u * TEXTURE_TILE_SIZE)));
   const y = Math.max(0, Math.min(TEXTURE_TILE_SIZE - 1, Math.floor(v * TEXTURE_TILE_SIZE)));
   const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
@@ -176,22 +181,15 @@ function atlasPixel(name: TextureAtlasName, u: number, v: number): readonly [num
   return [TEXTURE_ATLAS_RGBA[offset], TEXTURE_ATLAS_RGBA[offset + 1], TEXTURE_ATLAS_RGBA[offset + 2], TEXTURE_ATLAS_RGBA[offset + 3]];
 }
 
-function nearestTone(palette: Palette, rgba: readonly [number, number, number, number], shade: number): string {
+function shadedAtlasColor(rgba: readonly [number, number, number, number], shade: number): string {
   if (rgba[3] < 48) return "";
-  const source = [rgba[0] * shade, rgba[1] * shade, rgba[2] * shade];
-  let best = "t";
-  let bestDistance = Infinity;
-  for (const tone of ["t", "l", "r", "a", "h", "d"] as const) {
-    const candidate = parse(palette[tone]);
-    const distance = (source[0] - candidate[0]) ** 2 + (source[1] - candidate[1]) ** 2 + (source[2] - candidate[2]) ** 2;
-    if (distance < bestDistance) { best = tone; bestDistance = distance; }
-  }
-  return best;
+  const channel = (value: number) => Math.max(0, Math.min(255, Math.round(value * shade)))
+    .toString(16).padStart(2, "0");
+  return `#${channel(rgba[0])}${channel(rgba[1])}${channel(rgba[2])}`;
 }
 
 function texturedTriangle(
   g: Grid,
-  palette: Palette,
   texture: TextureAtlasName,
   a: TexturePoint,
   b: TexturePoint,
@@ -211,20 +209,206 @@ function texturedTriangle(
     if (wa < -0.001 || wb < -0.001 || wc < -0.001) continue;
     const u = wa * a[2] + wb * b[2] + wc * c[2];
     const v = wa * a[3] + wb * b[3] + wc * c[3];
-    const tone = nearestTone(palette, atlasPixel(texture, u, v), shade);
-    if (tone) px(g, x, y, tone);
+    const color = shadedAtlasColor(atlasPixel(texture, u, v), shade);
+    if (color) px(g, x, y, color);
   }
 }
 
 function texturedQuad(
   g: Grid,
-  palette: Palette,
   texture: TextureAtlasName,
   points: readonly [TexturePoint, TexturePoint, TexturePoint, TexturePoint],
   shade: number,
 ): void {
-  texturedTriangle(g, palette, texture, points[0], points[1], points[2], shade);
-  texturedTriangle(g, palette, texture, points[0], points[2], points[3], shade);
+  texturedTriangle(g, texture, points[0], points[1], points[2], shade);
+  texturedTriangle(g, texture, points[0], points[2], points[3], shade);
+}
+
+type ImportedModelFace = Readonly<{ uv?: readonly number[]; texture?: string }>;
+type ImportedModelElement = Readonly<{
+  from?: readonly number[];
+  to?: readonly number[];
+  faces?: Readonly<Record<string, ImportedModelFace>>;
+}>;
+type ResolvedBlockItemModel = Readonly<{
+  display: Readonly<{ rotation: readonly number[]; translation: readonly number[]; scale: readonly number[] }>;
+  elements: readonly ImportedModelElement[];
+  textures: Readonly<Record<string, string>>;
+}>;
+
+function resolvedBlockItemModel(itemId: "oak_fence" | "oak_fence_gate" | "stone_brick_slab"): ResolvedBlockItemModel {
+  const chain = importedVisualAssets.blockItemModelChains[itemId];
+  if (!chain?.length) throw new Error(`Missing installed model chain for ${itemId}.`);
+  const display: Record<string, unknown> = {};
+  const textures: Record<string, string> = {};
+  let elements: readonly ImportedModelElement[] = [];
+  for (const { model } of [...chain].reverse()) {
+    Object.assign(display, model.display as Record<string, unknown> | undefined);
+    Object.assign(textures, model.textures as Record<string, string> | undefined);
+    if (Array.isArray(model.elements)) elements = model.elements as readonly ImportedModelElement[];
+  }
+  const gui = display.gui as ResolvedBlockItemModel["display"] | undefined;
+  if (!gui || !elements.length) throw new Error(`Installed model chain for ${itemId} has no GUI geometry.`);
+  return { display: gui, elements, textures };
+}
+
+type ModelPoint = readonly [x: number, y: number, z: number, u: number, v: number];
+const MODEL_FACE_POINTS = Object.freeze({
+  down: [[0, 0, 1], [0, 0, 0], [1, 0, 0], [1, 0, 1]],
+  up: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]],
+  north: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]],
+  south: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+  west: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]],
+  east: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]],
+} satisfies Readonly<Record<string, readonly (readonly [number, number, number])[]>>);
+const MODEL_FACE_SHADE: Readonly<Record<string, number>> = Object.freeze({
+  down: 0.5, up: 1, north: 0.8, south: 0.8, west: 0.6, east: 0.6,
+});
+
+function rotateModelPoint(point: readonly [number, number, number], display: ResolvedBlockItemModel["display"]): readonly [number, number, number] {
+  let x = (point[0] - 8) * display.scale[0];
+  let y = (point[1] - 8) * display.scale[1];
+  let z = (point[2] - 8) * display.scale[2];
+  for (const [axis, angle] of display.rotation.entries()) {
+    if (!angle) continue;
+    const cosine = Math.cos(angle * Math.PI / 180);
+    const sine = Math.sin(angle * Math.PI / 180);
+    if (axis === 0) { const next = y * cosine - z * sine; z = y * sine + z * cosine; y = next; }
+    else if (axis === 1) { const next = x * cosine + z * sine; z = -x * sine + z * cosine; x = next; }
+    else { const next = x * cosine - y * sine; y = x * sine + y * cosine; x = next; }
+  }
+  return [x + 8 + display.translation[0], 8 - y - display.translation[1], z + display.translation[2]];
+}
+
+function atlasTextureName(reference: string, textures: Readonly<Record<string, string>>): TextureAtlasName {
+  let resolved = reference;
+  const visited = new Set<string>();
+  while (resolved.startsWith("#")) {
+    if (visited.has(resolved)) throw new Error(`Cyclic installed texture reference ${resolved}.`);
+    visited.add(resolved);
+    resolved = textures[resolved.slice(1)];
+    if (!resolved) throw new Error(`Missing installed texture reference ${reference}.`);
+  }
+  const name = resolved.replace(/^minecraft:block\//, "");
+  if (!TEXTURE_ATLAS_NAMES.includes(name as TextureAtlasName)) throw new Error(`Unsupported model texture ${resolved}.`);
+  return name as TextureAtlasName;
+}
+
+function renderModelTriangle(
+  pixels: Grid,
+  depths: Float64Array,
+  texture: (u: number, v: number) => readonly [number, number, number, number],
+  shade: number,
+  a: ModelPoint,
+  b: ModelPoint,
+  c: ModelPoint,
+): void {
+  const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+  if (Math.abs(denominator) < 1e-6) return;
+  const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
+  const maxX = Math.min(15, Math.ceil(Math.max(a[0], b[0], c[0])));
+  const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
+  const maxY = Math.min(15, Math.ceil(Math.max(a[1], b[1], c[1])));
+  for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) {
+    const sampleX = x + 0.5; const sampleY = y + 0.5;
+    const wa = ((b[1] - c[1]) * (sampleX - c[0]) + (c[0] - b[0]) * (sampleY - c[1])) / denominator;
+    const wb = ((c[1] - a[1]) * (sampleX - c[0]) + (a[0] - c[0]) * (sampleY - c[1])) / denominator;
+    const wc = 1 - wa - wb;
+    if (wa < -0.001 || wb < -0.001 || wc < -0.001) continue;
+    const depth = wa * a[2] + wb * b[2] + wc * c[2];
+    const index = y * 16 + x;
+    if (depth <= depths[index]) continue;
+    const rgba = texture(wa * a[3] + wb * b[3] + wc * c[3], wa * a[4] + wb * b[4] + wc * c[4]);
+    if (rgba[3] < 48) continue;
+    pixels[y][x] = shadedAtlasColor(rgba, shade);
+    depths[index] = depth;
+  }
+}
+
+function renderModelElements(
+  pixels: Grid,
+  elements: readonly ImportedModelElement[],
+  display: ResolvedBlockItemModel["display"],
+  textures: Readonly<Record<string, string>>,
+): void {
+  const depths = new Float64Array(256).fill(-Infinity);
+  for (const element of elements) {
+    if (!element.from || !element.to || element.from.length !== 3 || element.to.length !== 3 || !element.faces) continue;
+    for (const [faceName, face] of Object.entries(element.faces)) {
+      const unit = MODEL_FACE_POINTS[faceName];
+      if (!unit || !face.texture) continue;
+      const uv = face.uv?.length === 4 ? face.uv : [0, 0, 16, 16];
+      const transformed = unit.map(([x, y, z], index) => {
+        const position = rotateModelPoint([
+          element.from![0] + x * (element.to![0] - element.from![0]),
+          element.from![1] + y * (element.to![1] - element.from![1]),
+          element.from![2] + z * (element.to![2] - element.from![2]),
+        ], display);
+        const u = index === 0 || index === 3 ? uv[0] : uv[2];
+        const v = index < 2 ? uv[3] : uv[1];
+        return [position[0], position[1], position[2], u, v] as ModelPoint;
+      });
+      const textureName = atlasTextureName(face.texture, textures);
+      const sample = (u: number, v: number) => atlasPixel(textureName, u / 16, v / 16);
+      renderModelTriangle(pixels, depths, sample, MODEL_FACE_SHADE[faceName] ?? 0.8,
+        transformed[0], transformed[1], transformed[2]);
+      renderModelTriangle(pixels, depths, sample, MODEL_FACE_SHADE[faceName] ?? 0.8,
+        transformed[0], transformed[2], transformed[3]);
+    }
+  }
+}
+
+function chestElements(): readonly ImportedModelElement[] {
+  const box = (from: readonly number[], to: readonly number[], u: number, v: number): ImportedModelElement => {
+    const width = to[0] - from[0]; const height = to[1] - from[1]; const depth = to[2] - from[2];
+    return { from, to, faces: {
+      west: { uv: [u, v + depth, u + depth, v + depth + height], texture: "#chest" },
+      north: { uv: [u + depth, v + depth, u + depth + width, v + depth + height], texture: "#chest" },
+      east: { uv: [u + depth + width, v + depth, u + depth * 2 + width, v + depth + height], texture: "#chest" },
+      south: { uv: [u + depth * 2 + width, v + depth, u + depth * 2 + width * 2, v + depth + height], texture: "#chest" },
+      up: { uv: [u + depth, v, u + depth + width, v + depth], texture: "#chest" },
+      down: { uv: [u + depth + width, v, u + depth + width * 2, v + depth], texture: "#chest" },
+    } };
+  };
+  return [box([1, 0, 1], [15, 10, 15], 0, 19), box([1, 9, 1], [15, 14, 15], 0, 0), box([7, 7, 15], [9, 11, 16], 0, 0)];
+}
+
+function installedBlockItemModel(
+  grid: Grid,
+  itemId: "chest" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab",
+): Palette {
+  if (itemId === "chest") {
+    const chain = importedVisualAssets.blockItemModelChains.chest;
+    const template = chain?.find(({ path }) => path.endsWith("template_chest.json"))?.model;
+    const gui = (template?.display as Record<string, unknown> | undefined)?.gui as ResolvedBlockItemModel["display"] | undefined;
+    if (!gui) throw new Error("Installed chest model chain has no GUI transform.");
+    const image = decodePng(Buffer.from(importedVisualAssets.entities.chest_normal, "base64"));
+    if (image.width !== 64 || image.height !== 64) throw new Error("Installed normal chest texture must be 64x64.");
+    const depths = new Float64Array(256).fill(-Infinity);
+    const sample = (u: number, v: number): readonly [number, number, number, number] => {
+      const x = Math.max(0, Math.min(63, Math.floor(u)));
+      const y = Math.max(0, Math.min(63, Math.floor(v)));
+      const offset = (y * 64 + x) * 4;
+      return [image.rgba[offset], image.rgba[offset + 1], image.rgba[offset + 2], image.rgba[offset + 3]];
+    };
+    for (const element of chestElements()) for (const [faceName, face] of Object.entries(element.faces!)) {
+      const unit = MODEL_FACE_POINTS[faceName]; const uv = face.uv!;
+      const transformed = unit.map(([x, y, z], index) => {
+        const position = rotateModelPoint([
+          element.from![0] + x * (element.to![0] - element.from![0]),
+          element.from![1] + y * (element.to![1] - element.from![1]),
+          element.from![2] + z * (element.to![2] - element.from![2]),
+        ], gui);
+        return [position[0], position[1], position[2], index === 0 || index === 3 ? uv[0] : uv[2], index < 2 ? uv[3] : uv[1]] as ModelPoint;
+      });
+      renderModelTriangle(grid, depths, sample, MODEL_FACE_SHADE[faceName] ?? 0.8, transformed[0], transformed[1], transformed[2]);
+      renderModelTriangle(grid, depths, sample, MODEL_FACE_SHADE[faceName] ?? 0.8, transformed[0], transformed[2], transformed[3]);
+    }
+  } else {
+    const model = resolvedBlockItemModel(itemId);
+    renderModelElements(grid, model.elements, model.display, model.textures);
+  }
+  return {};
 }
 
 function atlasBlock(g: Grid, id: BlockId, engineBlock: EngineBlockId): Palette {
@@ -237,13 +421,9 @@ function atlasBlock(g: Grid, id: BlockId, engineBlock: EngineBlockId): Palette {
   const topPoints = [[8,1,0.5,0],[14,4,1,0.5],[8,8,0.5,1],[1,4,0,0.5]] as const;
   const leftPoints = [[1,4,0,0],[8,8,1,0],[8,14,1,1],[1,10,0,1]] as const;
   const rightPoints = [[8,8,0,0],[14,4,1,0],[14,10,1,1],[8,14,0,1]] as const;
-  texturedQuad(g, p, top, topPoints, 1.06);
-  texturedQuad(g, p, left, leftPoints, 0.9);
-  texturedQuad(g, p, right, rightPoints, 0.72);
-  for (const [fromX, fromY, toX, toY] of [
-    [8,1,14,4],[14,4,14,10],[14,10,8,14],[8,14,1,10],[1,10,1,4],[1,4,8,1],
-    [1,4,8,8],[14,4,8,8],[8,8,8,14],
-  ] as const) line(g, fromX, fromY, toX, toY, "o");
+  texturedQuad(g, top, topPoints, 1);
+  texturedQuad(g, left, leftPoints, 0.8);
+  texturedQuad(g, right, rightPoints, 0.6);
   return p;
 }
 
@@ -841,7 +1021,7 @@ function runs(g: Grid, palette: Palette): ItemIconRun[] {
   for (let y=0; y<16; y+=1) for (let x=0; x<16;) {
     const tone=g[y][x]; if (!tone) { x+=1; continue; }
     let end=x+1; while (end<16 && g[y][end]===tone) end+=1;
-    result.push(Object.freeze({x,y,width:end-x,color:palette[tone]??"#ff00ff"})); x=end;
+    result.push(Object.freeze({x,y,width:end-x,color:tone.startsWith("#") ? tone : palette[tone]??"#ff00ff"})); x=end;
   }
   return result;
 }
@@ -864,13 +1044,16 @@ const bowDrawArt = ([1, 2, 3] as const).map((stage) => {
 
 let decodedBytes = 0;
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
+  if (RUNTIME_ATLAS_BLOCK_IDS.has(itemId)) continue;
   const art = getItemIconArt(itemId);
   const colors = [...new Set(art.runs.map(({ color }) => color))];
-  if (colors.length > 16) throw new Error(`Icon ${itemId} exceeds the compact palette encoding.`);
-  decodedBytes += 2 + colors.length * 3 + art.runs.length * 2;
+  if (colors.length > 255) throw new Error(`Icon ${itemId} exceeds the compact palette encoding.`);
+  const bitsPerColor = Math.max(1, Math.ceil(Math.log2(colors.length)));
+  decodedBytes += 3 + colors.length * 3 + Math.ceil(art.runs.length * bitsPerColor / 8);
 }
 const itemIds = Object.keys(ITEMS) as ItemId[];
-const encodedArt = [...itemIds.map((itemId) => getItemIconArt(itemId)), ...bowDrawArt];
+const serializedItemIds = itemIds.filter((itemId) => !RUNTIME_ATLAS_BLOCK_IDS.has(itemId));
+const encodedArt = [...serializedItemIds.map((itemId) => getItemIconArt(itemId)), ...bowDrawArt];
 const shapes: number[][] = [];
 const shapeIndexes = new Map<string, number>();
 const compactBytes: number[] = [];
@@ -896,16 +1079,13 @@ for (const shape of shapes) {
     rows[y].push(shape[index] >> 4, shape[index + 1]);
   }
   const occupiedRows = rows.flatMap((runs, y) => runs ? [[y, runs] as const] : []);
-  const firstY = occupiedRows[0]?.[0];
-  if (firstY === undefined || occupiedRows.some(([y], index) => y !== firstY + index)) {
-    throw new Error("Item icon occupied rows must be contiguous.");
-  }
-  compactBytes.push(firstY << 4 | occupiedRows.length - 1);
-  for (let index = 0; index < occupiedRows.length; index += 2) {
-    const firstCount = occupiedRows[index][1].length / 2;
-    const secondCount = occupiedRows[index + 1]?.[1].length / 2 ?? 1;
-    if (firstCount > 16 || secondCount > 16) throw new Error("Item icon row exceeds the compact encoding.");
-    compactBytes.push((firstCount - 1) << 4 | secondCount - 1);
+  if (occupiedRows.length === 0) throw new Error("Item icon shape cannot be empty.");
+  const rowMask = occupiedRows.reduce((mask, [y]) => mask | 1 << y, 0);
+  compactBytes.push(rowMask >> 8, rowMask & 255);
+  for (const [, row] of occupiedRows) {
+    const count = row.length / 2;
+    if (count > 16) throw new Error("Item icon row exceeds the compact encoding.");
+    compactBytes.push(count);
   }
   for (const [, row] of occupiedRows) {
     const count = row.length / 2;
@@ -917,15 +1097,25 @@ for (const shape of shapes) {
 for (let itemIndex = 0; itemIndex < iconShapes.length; itemIndex += 1) {
   const art = encodedArt[itemIndex];
   const colors = [...new Set(art.runs.map(({ color }) => color))];
-  compactBytes.push(iconShapes[itemIndex], colors.length);
+  if (colors.length > 255) throw new Error(`Icon ${itemIndex} exceeds the compact palette encoding.`);
+  const bitsPerColor = Math.max(1, Math.ceil(Math.log2(colors.length)));
+  compactBytes.push(iconShapes[itemIndex], colors.length, bitsPerColor);
   for (const color of colors) {
     const value = Number.parseInt(color.slice(1), 16);
     compactBytes.push(value >> 16, value >> 8 & 255, value & 255);
   }
-  for (let index = 0; index < art.runs.length; index += 2) {
-    compactBytes.push(colors.indexOf(art.runs[index].color) << 4
-      | (art.runs[index + 1] ? colors.indexOf(art.runs[index + 1].color) : 0));
+  let colorBuffer = 0;
+  let availableColorBits = 0;
+  for (const run of art.runs) {
+    colorBuffer = colorBuffer * 2 ** bitsPerColor + colors.indexOf(run.color);
+    availableColorBits += bitsPerColor;
+    while (availableColorBits >= 8) {
+      availableColorBits -= 8;
+      compactBytes.push(colorBuffer >> availableColorBits & 255);
+      colorBuffer &= 2 ** availableColorBits - 1;
+    }
   }
+  if (availableColorBits > 0) compactBytes.push(colorBuffer << (8 - availableColorBits));
 }
 const packed: number[] = [];
 for (let index = 0; index < compactBytes.length;) {
@@ -958,6 +1148,7 @@ for (let index = 0; index < compactBytes.length;) {
 const payload = encodeStaticBytes(packed);
 const source = `// Generated by scripts/generate-item-icon-art.ts. Do not hand-edit.\n`
   + `import { ITEMS, type ItemId } from "../../shared/game.ts";\n`
+  + `import { atlasBlockItemIconRuns } from "./atlasBlockItemIcon.ts";\n`
   + `import { decodeStaticBytes } from "../staticData.ts";\n`
   + `export const ITEM_ICON_SIZE = 16;\n`
   + `export type ItemIconFamily = "block" | "material" | "tool" | "armor" | "food";\n`
@@ -965,13 +1156,13 @@ const source = `// Generated by scripts/generate-item-icon-art.ts. Do not hand-e
   + `export type ItemIconArt = Readonly<{ family: ItemIconFamily; variant: string; runs: readonly ItemIconRun[] }>;\n`
   + `export type BowIconStage = 0 | 1 | 2 | 3;\n`
   + `const cache = (() => { const invalid = (): never => { throw new Error("Invalid item icon data."); }, data = decodeStaticBytes(${JSON.stringify(payload)}, ${compactBytes.length}, ${packed.length}, true); let cursor = 0;\n`
-  + `const shapes: number[][] = []; for (let shape = data[cursor++]; shape > 0; shape -= 1) { const geometry: number[] = [], descriptor = data[cursor++], firstY = descriptor >> 4, rows = (descriptor & 15) + 1, counts = cursor; cursor += Math.ceil(rows / 2); if (cursor > data.length || firstY + rows > 16) invalid(); for (let row = 0; row < rows; row += 1) { const count = (data[counts + (row >> 1)] >> (row % 2 ? 0 : 4) & 15) + 1, end = cursor + count; if (end > data.length) invalid(); while (cursor < end) { const run = data[cursor++]; geometry.push((run >> 4) * 256 + (firstY + row) * 16 + (run & 15)); } } shapes.push(geometry); }\n`
-  + `const read = (): readonly ItemIconRun[] => { const shape = shapes[data[cursor++]], colorCount = data[cursor++]; if (!shape || !colorCount || colorCount > 16) invalid(); const count = shape.length, end = cursor + colorCount * 3 + Math.ceil(count / 2); if (end > data.length) invalid(); const colors: string[] = [];\n`
+  + `const shapes: number[][] = []; for (let shape = data[cursor++]; shape > 0; shape -= 1) { const geometry: number[] = [], rows = data[cursor++] * 256 + data[cursor++]; if (!rows) invalid(); const counts = cursor; cursor += rows.toString(2).replace(/0/g, "").length; if (cursor > data.length) invalid(); let countCursor = counts; for (let row = 0; row < 16; row += 1) { if (!(rows & 1 << row)) continue; const count = data[countCursor++], end = cursor + count; if (!count || count > 16 || end > data.length) invalid(); while (cursor < end) { const run = data[cursor++]; geometry.push((run >> 4) * 256 + row * 16 + (run & 15)); } } shapes.push(geometry); }\n`
+  + `const read = (): readonly ItemIconRun[] => { const shape = shapes[data[cursor++]], colorCount = data[cursor++], bits = data[cursor++]; if (!shape || !colorCount || bits !== Math.max(1, Math.ceil(Math.log2(colorCount)))) invalid(); const count = shape.length, end = cursor + colorCount * 3 + Math.ceil(count * bits / 8); if (end > data.length) invalid(); const colors: string[] = [];\n`
   + `  for (let index = 0; index < colorCount; index += 1) { const value = data[cursor++] * 65_536 + data[cursor++] * 256 + data[cursor++]; colors.push(\`#\${value.toString(16).padStart(6, "0")}\`); }\n`
-  + `  const indexes = cursor; cursor += Math.ceil(count / 2); const runs = shape.map((geometry, index) => { const x = geometry >> 8, width = (geometry & 15) + 1, color = data[indexes + (index >> 1)] >> (index % 2 ? 0 : 4) & 15; if (x + width > 16 || color >= colorCount) invalid(); return Object.freeze({ x, y: geometry >> 4 & 15, width, color: colors[color] }); });\n`
-  + `  return Object.freeze(runs); };\n`
+  + `  let buffer = 0, available = 0, indexCursor = cursor; cursor = end; const runs = shape.map((geometry) => { while (available < bits) { buffer = buffer * 256 + data[indexCursor++]; available += 8; } available -= bits; const color = buffer >> available & 2 ** bits - 1; buffer &= 2 ** available - 1; const x = geometry >> 8, width = (geometry & 15) + 1; if (x + width > 16 || color >= colorCount) invalid(); return Object.freeze({ x, y: geometry >> 4 & 15, width, color: colors[color] }); });\n`
+  + `  if (buffer || indexCursor !== end) invalid(); return Object.freeze(runs); };\n`
   + `const result = new Map<ItemId, ItemIconArt>();\n`
-  + `for (const itemId of Object.keys(ITEMS) as ItemId[]) { const runs = read();\n`
+  + `for (const itemId of Object.keys(ITEMS) as ItemId[]) { const runs = atlasBlockItemIconRuns(itemId) ?? read();\n`
   + `  const item = ITEMS[itemId], variant = item.category === "tool" && item.tool ? \`\${item.tool.tier}-\${item.tool.kind}\` : item.category === "armor" && item.armor ? \`\${itemId.startsWith("golden_") ? "gold" : itemId.startsWith("diamond_") ? "diamond" : itemId.startsWith("iron_") ? "iron" : "leather"}-\${item.armor.slot}\` : itemId;\n`
   + `  result.set(itemId, Object.freeze({ family: item.category, variant, runs })); }\n`
   + `const bowDrawArt: readonly ItemIconArt[] = Object.freeze([0, 1, 2].map((stage) => Object.freeze({ family: "tool", variant: \`drawing-\${stage}\`, runs: read() })));\n`

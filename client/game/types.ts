@@ -364,6 +364,8 @@ export interface VoxelEngineOptions {
   reach?: number;
   /** Local pointer-look coefficient, sampled for each event so Options apply immediately. */
   getMouseLookSensitivity?: () => number;
+  /** Vertical camera FOV in radians, sampled live so Options apply without recreating the engine. */
+  getFieldOfViewRadians?: () => number;
   /** Shared clock configuration. Defaults to an eight-minute alpha cycle. */
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
