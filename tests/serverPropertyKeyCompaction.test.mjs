@@ -7,6 +7,9 @@ import {
   COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS,
   COMPACT_SERVER_KEY_COUNTS,
   COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT,
+  COMPACT_SERVER_EXTENDED_KEY_COUNT,
+  COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT,
+  COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN,
   COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT,
   COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA,
   COMPACT_SERVER_KEY_SOURCE_FINGERPRINT,
@@ -18,6 +21,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const names = Object.keys(COMPACT_SERVER_KEY_COUNTS);
 assert.deepEqual(names, [...names].sort(), "server key manifest stays sorted");
 assert.equal(names.length, 115, "server key compatibility boundary changes only intentionally");
+assert.equal(COMPACT_SERVER_EXTENDED_KEY_COUNT, 277, "the reviewed extended interning boundary remains exact");
+assert.equal(COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN, 10, "extended keys remain above the conservative floor");
+assert.match(COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT, /^[0-9a-f]{64}$/);
 assert.deepEqual(names.filter((name) => COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS.includes(name)), [],
   "JavaScript, Lakebed auth, and database methods stay literal");
 for (const [name, counts] of Object.entries(COMPACT_SERVER_KEY_COUNTS)) {

@@ -18,9 +18,11 @@ import {
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA,
+  COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA,
@@ -29,6 +31,7 @@ import {
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA,
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
   COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA,
   COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA,
@@ -72,7 +75,7 @@ assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES,
 assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(
   COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT,
-  "4793d6cc11753985a1aa52bbb841ea02da5b5c77f0fc1994101cf85e5bef72fe",
+  "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b",
   "the exact retained uniform lookup order and kinds change only intentionally",
 );
 
@@ -278,10 +281,19 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA, {
   source: "client/singleplayer/localSave.ts#unsupportedSinglePlayerSaveMessage",
   exclusionChanges: 0,
 }, "the positive-coordinate save rejection adds exactly one reviewed user-facing message");
-assert.equal(COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.previousOccurrences
-  + COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
-assert.equal(COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.previousUniqueValues
-  + COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+assert.deepEqual(COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA, {
+  previousOccurrences: 593,
+  previousUniqueValues: 525,
+  previousSourceFingerprint: "c5e00c64ce79e2fcf4f817c84fd8c29c81edabf641c757702e7e97c29f053521",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 3,
+  sources: ["client/game/audio.ts", "client/game/mobRenderer.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
 
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");
@@ -367,7 +379,7 @@ assert.deepEqual(
     previousOccurrences: 1_085,
     previousUniqueValues: 98,
     previousSourceFingerprint: "3b7a3dbfcd1bf6ff9dc1c4456f33ddfe9719d69da8c9f2949b574a62cf495699",
-    occurrenceDelta: 9,
+    occurrenceDelta: 7,
     uniqueValueDelta: 1,
     promotedThresholdValue: "top",
     source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
@@ -381,25 +393,16 @@ assert.equal(
   COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA.previousOccurrences,
   "runtime atlas icon reconstruction accounts for the exact repeated occurrence increase",
 );
-assert.equal(
-  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousUniqueValues
-    + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
-  "runtime atlas icon reconstruction accounts for the promoted top value",
-);
 assert.deepEqual(COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA, {
-  previousOccurrences: 1_094,
+  previousOccurrences: 1_092,
   previousUniqueValues: 99,
-  previousSourceFingerprint: "e494fb343fbf765a79e5a6eb00d361fb851920bb5a06132ca9062e48b56fbbd2",
+  previousSourceFingerprint: "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9",
   occurrenceDelta: 1,
   uniqueValueDelta: 0,
   addedOccurrenceValue: "system",
   source: "client/singleplayer/SinglePlayerApp.tsx#submitLocalCommand",
   exclusionChanges: 0,
 });
-assert.equal(COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA.previousOccurrences
-  + COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA.occurrenceDelta,
-COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
 assert.deepEqual(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
   {
@@ -436,10 +439,6 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA, {
   source: "world-only terrain/protocol adapters",
   exclusionChanges: 0,
 }, "bedrock enters only the world-only low-frequency boundary");
-assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousOccurrences
-  + COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.occurrenceDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
-assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousUniqueValues
-  + COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.uniqueValueDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA, {
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -449,6 +448,19 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA, {
   source: "client/game/audio.ts#official sampled audio",
   exclusionChanges: 0,
 });
+assert.deepEqual(COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA, {
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9",
+  occurrenceDelta: 58,
+  uniqueValueDelta: 8,
+  sources: ["environment", "official-sounds", "exact-mobs"],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.occurrenceDelta, COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.uniqueValueDelta, COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA, {
   previousOccurrences: 371,
   previousUniqueValues: 109,
@@ -458,6 +470,19 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA, {
   source: "client/game/audio.ts#official sampled audio",
   exclusionChanges: 0,
 });
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA, {
+  previousOccurrences: 378,
+  previousUniqueValues: 111,
+  previousSourceFingerprint: "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144",
+  occurrenceDelta: 39,
+  uniqueValueDelta: 12,
+  sources: ["official-sounds", "exact-mobs", "mob-texture-lifecycle"],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.occurrenceDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.uniqueValueDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
   previousOccurrences: 1_092, previousUniqueValues: 99,
   previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",

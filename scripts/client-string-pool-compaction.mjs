@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 593;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 525;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c5e00c64ce79e2fcf4f817c84fd8c29c81edabf641c757702e7e97c29f053521";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 598;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 528;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "b71e72d778294cb8244918a141fb0b61f66e1cf798dc625c2eed21109d12e70f";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -21,9 +21,31 @@ export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   source: "client/singleplayer/localSave.ts#unsupportedSinglePlayerSaveMessage",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_092;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9";
+export const COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA = Object.freeze({
+  previousOccurrences: 593,
+  previousUniqueValues: 525,
+  previousSourceFingerprint: "c5e00c64ce79e2fcf4f817c84fd8c29c81edabf641c757702e7e97c29f053521",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 3,
+  sources: Object.freeze([
+    "client/game/audio.ts",
+    "client/game/mobRenderer.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_150;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "b25a1b70625b28b795219c82c9fa9fc12e50f8ad7290bbc9d6736ecc51d30c15";
+export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9",
+  occurrenceDelta: 58,
+  uniqueValueDelta: 8,
+  sources: Object.freeze(["environment", "official-sounds", "exact-mobs"]),
+  exclusionChanges: 0,
+});
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -89,9 +111,9 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA = Object.freeze({
-  previousOccurrences: 1_094,
+  previousOccurrences: 1_092,
   previousUniqueValues: 99,
-  previousSourceFingerprint: "e494fb343fbf765a79e5a6eb00d361fb851920bb5a06132ca9062e48b56fbbd2",
+  previousSourceFingerprint: "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9",
   occurrenceDelta: 1,
   uniqueValueDelta: 0,
   addedOccurrenceValue: "system",
@@ -127,9 +149,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 378;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 111;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 417;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "59a53008712a865933bf38cab63513e8e402063969b0a3c3c46a86bbf0f89aea";
+export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
+  previousOccurrences: 378,
+  previousUniqueValues: 111,
+  previousSourceFingerprint: "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144",
+  occurrenceDelta: 39,
+  uniqueValueDelta: 12,
+  sources: Object.freeze(["official-sounds", "exact-mobs", "mob-texture-lifecycle"]),
+  exclusionChanges: 0,
+});
 // Painting the cached GUI block raster introduces the client's third `2d`
 // context request. That existing API literal consequently enters the exact
 // three/four-use pool; no UI, wire, storage, or gameplay value is added.
@@ -224,6 +255,7 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "61866ec52b9b320
 export const COMPACT_CLIENT_WEBGL_UNIFORM_VALUES = Object.freeze([
   "uMvp",
   "uSkin",
+  "uAtlas",
   "uLight",
   "uCamera",
   "uFogEnabled",
@@ -236,45 +268,47 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_VALUES = Object.freeze([
   "uSkyExposure",
   "uTorchLights[0]",
 ]);
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 35;
-export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 30;
-export const COMPACT_CLIENT_WEBGL_UNIFORM_UNIQUE_VALUES = 13;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 51;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 43;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_UNIQUE_VALUES = 14;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_COUNTS = Object.freeze({
-  uMvp: 7,
+  uMvp: 9,
   uSkin: 3,
-  uLight: 5,
-  uCamera: 2,
-  uFogEnabled: 2,
-  uFogRange: 2,
-  uFogColor: 2,
-  uAmbientColor: 2,
-  uDirectionalColor: 2,
-  uAmbientIntensity: 2,
-  uDirectionalIntensity: 2,
-  uSkyExposure: 2,
-  "uTorchLights[0]": 2,
+  uAtlas: 3,
+  uLight: 6,
+  uCamera: 3,
+  uFogEnabled: 3,
+  uFogRange: 3,
+  uFogColor: 3,
+  uAmbientColor: 3,
+  uDirectionalColor: 3,
+  uAmbientIntensity: 3,
+  uDirectionalIntensity: 3,
+  uSkyExposure: 3,
+  "uTorchLights[0]": 3,
 });
 export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_COUNTS = Object.freeze({
-  uMvp: 5,
+  uMvp: 6,
   uSkin: 2,
+  uAtlas: 2,
   uLight: 3,
-  uCamera: 2,
-  uFogEnabled: 2,
-  uFogRange: 2,
-  uFogColor: 2,
-  uAmbientColor: 2,
-  uDirectionalColor: 2,
-  uAmbientIntensity: 2,
-  uDirectionalIntensity: 2,
-  uSkyExposure: 2,
-  "uTorchLights[0]": 2,
+  uCamera: 3,
+  uFogEnabled: 3,
+  uFogRange: 3,
+  uFogColor: 3,
+  uAmbientColor: 3,
+  uDirectionalColor: 3,
+  uAmbientIntensity: 3,
+  uDirectionalIntensity: 3,
+  uSkyExposure: 3,
+  "uTorchLights[0]": 3,
 });
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "4793d6cc11753985a1aa52bbb841ea02da5b5c77f0fc1994101cf85e5bef72fe";
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b";
 // uMvp and uLight already qualify for the generic pools. The category is
 // unioned by occurrence, preserving their existing indexes and adding only
 // the remaining 22 occurrences / 11 values.
-export const COMPACT_CLIENT_WEBGL_UNIFORM_INCREMENTAL_OCCURRENCES = 22;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_INCREMENTAL_OCCURRENCES = 32;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_INCREMENTAL_UNIQUE_VALUES = 11;
 export const COMPACT_CLIENT_STRING_OCCURRENCES = COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES
   + COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES + COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES

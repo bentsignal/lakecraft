@@ -16,7 +16,8 @@ assert.ok(engine.includes("options.onLocalCreeperExplosion?."), "the application
 assert.ok(singleplayer.includes("onLocalCreeperExplosion"), "single-player persists automatic creeper terrain edits");
 assert.ok(singleplayer.includes('recordLocalExplosion(`creeper:${mobId}`'), "creeper and TNT blasts share save, sound, particles, and chain handling");
 assert.ok(singleplayer.includes("getPlayerProtection: () => equippedArmorProtection(equipmentRef.current)"), "single-player combat reads equipped armor");
-assert.ok(singleplayer.includes('audio.play("mobHurt"'), "successful local attacks have audible hit confirmation");
+assert.ok(singleplayer.includes('audio.play(killed ? "mobDeath" : "mobHurt"'),
+  "successful local attacks distinguish audible hurt and death confirmation");
 
 const localCrater = planLocalCreeperExplosion(0, 8, 0, () => BLOCK.STONE);
 assert.ok(localCrater.length > 0 && localCrater.length <= CREEPER_EXPLOSION_MAX_BLOCKS,

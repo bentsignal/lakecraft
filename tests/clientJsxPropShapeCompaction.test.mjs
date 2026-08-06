@@ -112,14 +112,18 @@ await assert.rejects(
 );
 
 const prepareSource = await readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8");
-assert.match(prepareSource, /compactClientJsxPropShapes\(bundledText\)/,
+assert.match(prepareSource, /compactClientBuiltinAliases\(bundledText\)/,
+  "production compact staging applies the native-call alias boundary");
+assert.match(prepareSource, /compactClientJsxPropShapes\(aliased\)/,
   "production compact staging applies the JSX shape boundary");
 assert.match(prepareSource, /compactClientStringPool\(shaped\)/,
   "string pooling follows shape reconstruction while normal dev remains untouched");
 assert.ok(
-  prepareSource.indexOf("compactClientJsxPropShapes(bundledText)")
+  prepareSource.indexOf("compactClientBuiltinAliases(bundledText)")
+    < prepareSource.indexOf("compactClientJsxPropShapes(aliased)")
+    && prepareSource.indexOf("compactClientJsxPropShapes(aliased)")
     < prepareSource.indexOf("compactClientStringPool(shaped)"),
-  "production invokes fail-closed JSX compaction before client string pooling",
+  "production invokes builtin aliasing and fail-closed JSX compaction before client string pooling",
 );
 assert.doesNotMatch(prepareSource, /compactClientStringPool\(bundledText\)/,
   "production cannot bypass the reviewed raw pre-JSX transform boundary");

@@ -50,6 +50,19 @@ function smeltingMechanics(recipes: GameModule["SMELTING_RECIPES"]) {
   return recipes.map(({ id, input, output }) => ({ id, input, output }));
 }
 
+function restoreInternedServerProperties(source: string) {
+  const declaration = /^const\[([A-Za-z0-9_$,]+)\]=(\["[^;]+\]);import/.exec(source);
+  assert.ok(declaration, "staged server declares its exact property-key intern table first");
+  const identifiers = declaration[1].split(",");
+  const properties = JSON.parse(declaration[2]) as string[];
+  assert.equal(identifiers.length, properties.length, "property-key intern bindings remain one-to-one");
+  const propertyByIdentifier = new Map(identifiers.map((identifier, index) => [identifier, properties[index]]));
+  return source.replace(/\[([A-Za-z_$][A-Za-z0-9_$]*)\]/g, (match, identifier: string) => {
+    const property = propertyByIdentifier.get(identifier);
+    return property === undefined ? match : property;
+  });
+}
+
 async function run() {
 const source = readFileSync(new URL("../shared/game.ts", import.meta.url), "utf8");
 const transformed = stripServerGamePresentation(source);
@@ -166,6 +179,7 @@ try {
   assert.notEqual(rebuild.status, 0, "exported evidence must not be accepted as a Lakebed capsule");
   const clientBundle = readFileSync(join(stage, "staged/client-index.tsx"), "utf8");
   const serverBundle = readFileSync(join(stage, "staged/server-index.ts"), "utf8");
+  const restoredServerProperties = restoreInternedServerProperties(serverBundle);
   const sourceMapPrefix = "//# sourceMappingURL=data:application/json;base64,";
   const clientSourceMapOffset = clientBundle.lastIndexOf(sourceMapPrefix);
   assert.notEqual(clientSourceMapOffset, -1, "client stage declares an upstream source-map boundary");
@@ -201,7 +215,7 @@ try {
     "wood:59,gold:32,stone:131,iron:250,diamond:1561",
     "leather:5,gold:7,iron:15,diamond:33",
     "head:11,chest:16,legs:15,feet:13",
-  ]) assert.equal(serverBundle.includes(mechanics), true, `server retains mechanical table ${mechanics}`);
+  ]) assert.equal(restoredServerProperties.includes(mechanics), true, `server retains mechanical table ${mechanics}`);
 } finally {
   rmSync(stageParent, { recursive: true, force: true });
 }
