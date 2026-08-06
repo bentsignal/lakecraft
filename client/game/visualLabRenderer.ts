@@ -11,7 +11,7 @@ import { CUBE_FACES } from "./cubeFaces.ts";
 import {
   TEXTURE_ATLAS_COLUMNS, TEXTURE_ATLAS_RGBA, TEXTURE_ATLAS_ROWS, TEXTURE_TILE_SIZE,
 } from "./generated/textureAtlas.ts";
-import { MOB_VERTEX_STRIDE, createMobRenderer, createMobTexture } from "./mobRenderer.ts";
+import { MOB_VERTEX_STRIDE, createMobRenderer, createMobTexture, destroyMobTexture } from "./mobRenderer.ts";
 import { MOB_DEFINITIONS, type MobKind, type MobPoseSnapshot } from "./mobs.ts";
 import { createPlayerSkinRenderer } from "./playerSkinRenderer.ts";
 import type { PlayerRigInput, PlayerRigMotion } from "./playerRig.ts";
@@ -305,7 +305,7 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
     gl.deleteBuffer(comparisonTexturedBuffer);
     gl.deleteTexture(skinTexture);
     gl.deleteTexture(atlasTexture);
-    gl.deleteTexture(mobTexture);
+    destroyMobTexture(gl, mobTexture);
     gl.deleteProgram(program);
     gl.deleteProgram(skinProgram);
     gl.deleteProgram(mobProgram);
@@ -697,7 +697,7 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
       gl.deleteBuffer(comparisonTexturedBuffer);
       gl.deleteTexture(skinTexture);
       gl.deleteTexture(atlasTexture);
-      gl.deleteTexture(mobTexture);
+      destroyMobTexture(gl, mobTexture);
       gl.deleteProgram(program);
       gl.deleteProgram(skinProgram);
       gl.deleteProgram(mobProgram);

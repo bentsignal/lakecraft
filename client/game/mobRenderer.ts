@@ -118,10 +118,25 @@ export interface MobRenderer {
   destroy(): void;
 }
 
+interface PendingMobTextureLoad {
+  image: HTMLImageElement;
+  active: boolean;
+  onLoad: EventListener;
+  onError: EventListener;
+}
+
+const pendingMobTextureLoads = new WeakMap<WebGLTexture, PendingMobTextureLoad>();
+
 export function createMobTexture(gl: WebGLRenderingContext): WebGLTexture {
   const texture = gl.createTexture();
   if (!texture) throw new Error("Unable to allocate the installed mob texture atlas.");
   gl.bindTexture(gl.TEXTURE_2D, texture);
+  // A complete texture must exist before the asynchronous PNG can settle.
+  // White is neutral because mob vertex tinting supplies the fallback color.
+  gl.texImage2D(
+    gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0,
+    gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]),
+  );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -130,16 +145,50 @@ export function createMobTexture(gl: WebGLRenderingContext): WebGLTexture {
   // DOM image loader; gameplay browsers take the exact installed PNG path.
   if (!globalThis.Image) return texture;
   const image = new globalThis.Image();
-  image.addEventListener("load", () => {
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    // Model UVs intentionally use the Java texture files' top-left pixel
-    // coordinates. WebGL's unflipped HTML upload maps that first source row to
-    // v=0, so flipping here would sample the mob packed beneath it.
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-  }, { once: true });
+  const pending: PendingMobTextureLoad = {
+    image,
+    active: true,
+    onLoad: () => undefined,
+    onError: () => undefined,
+  };
+  const finish = () => {
+    pending.active = false;
+    image.removeEventListener("load", pending.onLoad);
+    image.removeEventListener("error", pending.onError);
+    pendingMobTextureLoads.delete(texture);
+  };
+  pending.onLoad = () => {
+    if (!pending.active) return;
+    try {
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      // Model UVs intentionally use the Java texture files' top-left pixel
+      // coordinates. WebGL's unflipped HTML upload maps that first source row
+      // to v=0, so flipping here would sample the mob packed beneath it.
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    } finally {
+      finish();
+    }
+  };
+  pending.onError = () => {
+    if (pending.active) finish();
+  };
+  pendingMobTextureLoads.set(texture, pending);
+  image.addEventListener("load", pending.onLoad, { once: true });
+  image.addEventListener("error", pending.onError, { once: true });
   image.src = `data:image/png;base64,${MOB_TEXTURE_ATLAS_PNG}`;
   return texture;
+}
+
+export function destroyMobTexture(gl: WebGLRenderingContext, texture: WebGLTexture): void {
+  const pending = pendingMobTextureLoads.get(texture);
+  if (pending) {
+    pending.active = false;
+    pending.image.removeEventListener("load", pending.onLoad);
+    pending.image.removeEventListener("error", pending.onError);
+    pendingMobTextureLoads.delete(texture);
+  }
+  gl.deleteTexture(texture);
 }
 
 export function mobVertexCountForKind(kind: MobKind): number {

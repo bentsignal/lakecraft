@@ -52,7 +52,7 @@ import {
   ATMOSPHERE_VERTEX_SHADER,
   writeCelestialDirection,
 } from "./atmosphere.ts";
-import { MOB_VERTEX_STRIDE, createMobRenderer, createMobTexture } from "./mobRenderer.ts";
+import { MOB_VERTEX_STRIDE, createMobRenderer, createMobTexture, destroyMobTexture } from "./mobRenderer.ts";
 import {
   TEXTURED_WORLD_VERTEX_FLOATS,
   blockTextureForFace,
@@ -4111,7 +4111,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteProgram(mobProgram);
       gl.deleteProgram(atmosphereProgram);
       gl.deleteTexture(terrainTexture);
-      gl.deleteTexture(mobTexture);
+      destroyMobTexture(gl, mobTexture);
     },
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;
