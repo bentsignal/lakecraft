@@ -25,6 +25,7 @@ import {
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_DELTA,
   COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA,
@@ -62,7 +63,7 @@ assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES,
 assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(
   COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT,
-  "4793d6cc11753985a1aa52bbb841ea02da5b5c77f0fc1994101cf85e5bef72fe",
+  "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b",
   "the exact retained uniform lookup order and kinds change only intentionally",
 );
 
@@ -108,17 +109,15 @@ for (const lookupName of webglUniformValues) {
 }
 
 const fixedFrequencyTwoValues = [...COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES];
-assert.deepEqual(fixedFrequencyTwoValues, [
-  "1.2..21.", "2.1..2", "2.1.2.", "1.....2..1.....2", "2......1..2..1..",
-  "1....2..2.....1.", "2....1...1....2.", "1....2..1", "2..1....2", "121",
-], "the frequency-two pool is one exact mesh-descriptor allowlist");
+assert.deepEqual(fixedFrequencyTwoValues, [],
+  "the exact texture-backed mobs retire the authored mesh-descriptor allowlist");
 assert.equal(new Set(fixedFrequencyTwoValues).size, COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES, fixedFrequencyTwoValues.length * 2);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "client/game/mobRenderer.ts");
 assert.equal(
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT,
-  "b38c44d8076339edd689f0a89bacdd179deb93977714e287ac89ad215b2653cb",
+  "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e",
   "the exact mesh-descriptor occurrence order and kinds change only intentionally",
 );
 const mobRendererSource = await readFile(new URL("../client/game/mobRenderer.ts", import.meta.url), "utf8");
@@ -354,17 +353,26 @@ assert.deepEqual(
   "runtime atlas icon reconstruction stays pinned to one reviewed helper",
 );
 assert.equal(
-  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousOccurrences
-    + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.previousOccurrences
+    + COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.occurrenceDelta,
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
-  "runtime atlas icon reconstruction accounts for the exact repeated occurrence increase",
+  "exact mob model dispatch accounts for the latest repeated occurrence increase",
 );
 assert.equal(
-  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousUniqueValues
-    + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.previousUniqueValues
+    + COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.uniqueValueDelta,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
-  "runtime atlas icon reconstruction accounts for the promoted top value",
+  "exact mob model dispatch accounts for the latest reviewed value promotion",
 );
+assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: 56,
+  uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#exact-textured-model-dispatch",
+  exclusionChanges: 0,
+}, "exact mob texture identities stay pinned to one reviewed renderer boundary");
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   {

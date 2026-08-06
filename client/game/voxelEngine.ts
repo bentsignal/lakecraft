@@ -52,7 +52,7 @@ import {
   ATMOSPHERE_VERTEX_SHADER,
   writeCelestialDirection,
 } from "./atmosphere.ts";
-import { createMobRenderer } from "./mobRenderer.ts";
+import { MOB_VERTEX_STRIDE, createMobRenderer, createMobTexture } from "./mobRenderer.ts";
 import {
   TEXTURED_WORLD_VERTEX_FLOATS,
   blockTextureForFace,
@@ -693,6 +693,9 @@ export const FRAGMENT_SHADER = `precision mediump float;uniform vec3 uFogColor;v
 export const TERRAIN_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute float aShade;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);float p=step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)},aShade),m=step(${(SKY_SHADE_PACK_MARKER + SKY_SHADE_EMISSIVE_MARKER - 0.5).toFixed(1)},aShade),s=aShade-p*${SKY_SHADE_PACK_MARKER.toFixed(1)}-m*${SKY_SHADE_EMISSIVE_MARKER.toFixed(1)},f=mix(aShade,mod(s,2.),p),e=mix(1.,floor(s/2.)/${SKY_EXPOSURE_LEVELS.toFixed(1)},p);vUv=aUv;vLight=(lightAt(aPosition,e)+vec3(.22,.07,.015)*m)*f;vFog=fogAt(aPosition);}`;
 
 export const TERRAIN_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;uniform float uAlphaCutoff;varying vec2 vUv;varying vec3 vLight;varying float vFog;void main(){vec4 texel=texture2D(uAtlas,vUv);if (texel.a < uAlphaCutoff) discard;gl_FragColor=vec4(mix(texel.rgb*vLight,uFogColor,vFog),texel.a);}`;
+
+export const MOB_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute vec3 aTint;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);vUv=aUv;vLight=aTint*lightAt(aPosition,1.);vFog=fogAt(aPosition);}`;
+export const MOB_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;varying vec2 vUv;varying vec3 vLight;varying float vFog;void main(){vec4 t=texture2D(uAtlas,vUv);if(t.a<.02)discard;gl_FragColor=vec4(mix(t.rgb*vLight,uFogColor,vFog),t.a);}`;
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
 export function blockMaterialColor(block: BlockId): readonly [number, number, number] {
@@ -1501,8 +1504,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   if (!gl) throw new Error("Lakecraft needs a browser with WebGL enabled.");
   const program = createProgram(gl);
   const terrainProgram = createProgram(gl, TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
+  const mobProgram = createProgram(gl, MOB_VERTEX_SHADER, MOB_FRAGMENT_SHADER);
   const atmosphereProgram = createProgram(gl, ATMOSPHERE_VERTEX_SHADER, ATMOSPHERE_FRAGMENT_SHADER);
   const terrainTexture = createTerrainTexture(gl);
+  const mobTexture = createMobTexture(gl);
   const positionLocation = gl.getAttribLocation(program, "aPosition");
   const colorLocation = gl.getAttribLocation(program, "aColor");
   const mvpLocation = gl.getUniformLocation(program, "uMvp");
@@ -1533,6 +1538,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const terrainTorchLightsLocation = gl.getUniformLocation(terrainProgram, "uTorchLights[0]");
   const terrainAtlasLocation = gl.getUniformLocation(terrainProgram, "uAtlas");
   const terrainAlphaCutoffLocation = gl.getUniformLocation(terrainProgram, "uAlphaCutoff");
+  const mobPositionLocation = gl.getAttribLocation(mobProgram, "aPosition");
+  const mobUvLocation = gl.getAttribLocation(mobProgram, "aUv");
+  const mobTintLocation = gl.getAttribLocation(mobProgram, "aTint");
+  const mobMvpLocation = gl.getUniformLocation(mobProgram, "uMvp");
+  const mobCameraLocation = gl.getUniformLocation(mobProgram, "uCamera");
+  const mobFogLocation = gl.getUniformLocation(mobProgram, "uFogEnabled");
+  const mobFogRangeLocation = gl.getUniformLocation(mobProgram, "uFogRange");
+  const mobFogColorLocation = gl.getUniformLocation(mobProgram, "uFogColor");
+  const mobAmbientColorLocation = gl.getUniformLocation(mobProgram, "uAmbientColor");
+  const mobDirectionalColorLocation = gl.getUniformLocation(mobProgram, "uDirectionalColor");
+  const mobAmbientIntensityLocation = gl.getUniformLocation(mobProgram, "uAmbientIntensity");
+  const mobDirectionalIntensityLocation = gl.getUniformLocation(mobProgram, "uDirectionalIntensity");
+  const mobSkyExposureLocation = gl.getUniformLocation(mobProgram, "uSkyExposure");
+  const mobTorchLightsLocation = gl.getUniformLocation(mobProgram, "uTorchLights[0]");
+  const mobAtlasLocation = gl.getUniformLocation(mobProgram, "uAtlas");
   const atmospherePositionLocation = gl.getAttribLocation(atmosphereProgram, "p");
   const atmosphereAspectLocation = gl.getUniformLocation(atmosphereProgram, "A");
   const atmosphereTimeLocation = gl.getUniformLocation(atmosphereProgram, "T");
@@ -3272,7 +3292,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       visibleMobCount = mobStats.visibleMobCount;
       primedTntVertexCount = mobStats.primedTntVertexCount;
       primedTntVisibleCount = mobStats.visiblePrimedTntCount;
-      primedTntUploadBytes = mobStats.primedTntVertexCount * 6 * Float32Array.BYTES_PER_ELEMENT;
+      primedTntUploadBytes = mobStats.primedTntVertexCount * MOB_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
     }
     gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -3399,10 +3419,36 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
     }
     if (mobVertexCount) {
-      bindBuffer(mobRenderer.buffer);
+      gl.useProgram(mobProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, mobRenderer.buffer);
+      gl.enableVertexAttribArray(mobPositionLocation);
+      gl.enableVertexAttribArray(mobUvLocation);
+      gl.enableVertexAttribArray(mobTintLocation);
+      gl.vertexAttribPointer(mobPositionLocation, 3, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 0);
+      gl.vertexAttribPointer(mobUvLocation, 2, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 12);
+      gl.vertexAttribPointer(mobTintLocation, 3, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 20);
+      gl.uniformMatrix4fv(mobMvpLocation, false, mvp);
+      gl.uniform3fv(mobCameraLocation, eye);
+      gl.uniform2fv(mobFogRangeLocation, fogRange);
+      gl.uniform3f(mobFogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+      gl.uniform3f(mobAmbientColorLocation, dayNightState.ambientR, dayNightState.ambientG, dayNightState.ambientB);
+      gl.uniform3f(mobDirectionalColorLocation, dayNightState.directionalR, dayNightState.directionalG, dayNightState.directionalB);
+      gl.uniform1f(mobAmbientIntensityLocation, dayNightState.ambientIntensity);
+      gl.uniform1f(mobDirectionalIntensityLocation, dayNightState.directionalIntensity);
+      gl.uniform1f(mobSkyExposureLocation, 1);
+      gl.uniform1f(mobFogLocation, 1);
+      gl.uniform4fv(mobTorchLightsLocation, activeTorchUniforms);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, mobTexture);
+      gl.uniform1i(mobAtlasLocation, 0);
       gl.drawArrays(gl.TRIANGLES, 0, mobVertexCount);
       drawCalls += 1;
       mobDrawCalls += 1;
+      gl.useProgram(program);
+      gl.uniformMatrix4fv(mvpLocation, false, mvp);
+      gl.uniform3fv(cameraLocation, eye);
+      gl.uniform2fv(fogRangeLocation, fogRange);
+      gl.uniform3f(fogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
     }
     if (particleVertexCount) {
       bindBuffer(particleBuffer);
@@ -4062,8 +4108,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       mobRenderer.destroy();
       gl.deleteProgram(program);
       gl.deleteProgram(terrainProgram);
+      gl.deleteProgram(mobProgram);
       gl.deleteProgram(atmosphereProgram);
       gl.deleteTexture(terrainTexture);
+      gl.deleteTexture(mobTexture);
     },
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;

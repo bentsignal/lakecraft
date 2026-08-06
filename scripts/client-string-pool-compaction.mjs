@@ -8,12 +8,17 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 592;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 524;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4b95e42effbfeab45644df543a1117fe54b3b058de8d092b5467b72b836079e8";
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_092;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad";
+// The installed-JAR mob atlas adds one reviewed allocation error for its
+// dedicated texture. It is one new human string and occurrence.
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 593;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 525;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "6c57df9d1e038c55730988deafe020fed0565dcc2e270dd430af4ed7d7ff5841";
+// Exact mob cuboids and atlas regions intentionally reuse the eight mob-kind
+// identities and their renderer branches. Review this boundary alongside the
+// generated texture parity test whenever the model catalog changes.
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_148;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 106;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "ce3b7181b6c75c183e201096398d2c62a4017a56fe092a659bb9fff645dd4c8b";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -78,26 +83,31 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 371;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 109;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f";
+// Exact model dispatch and atlas-region selection intentionally reuse the mob
+// kind identities throughout the retained gameplay renderer.
+export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA = Object.freeze({
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: 56,
+  uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#exact-textured-model-dispatch",
+  exclusionChanges: 0,
+});
+// The dedicated mob texture program adds reviewed low-frequency texture and
+// shader bindings shared by gameplay and the production Visual Lab renderer.
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 396;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 117;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
-  "1.2..21.",
-  "2.1..2",
-  "2.1.2.",
-  "1.....2..1.....2",
-  "2......1..2..1..",
-  "1....2..2.....1.",
-  "2....1...1....2.",
-  "1....2..1",
-  "2..1....2",
-  "121",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 20;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 10;
+// The exact texture-backed models retire the authored dot-pattern surface
+// vocabulary in full; no fixed-frequency-two values remain in production.
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 0;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 0;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "client/game/mobRenderer.ts";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "b38c44d8076339edd689f0a89bacdd179deb93977714e287ac89ad215b2653cb";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e";
 // Gameplay modes and local persistence outcomes form a closed internal
 // identity boundary. Only strict comparison operands and switch cases may
 // enter this pool: JSX/DOM values, object keys, payload strings, and UI copy
@@ -132,6 +142,7 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "61866ec52b9b320
 export const COMPACT_CLIENT_WEBGL_UNIFORM_VALUES = Object.freeze([
   "uMvp",
   "uSkin",
+  "uAtlas",
   "uLight",
   "uCamera",
   "uFogEnabled",
@@ -144,45 +155,49 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_VALUES = Object.freeze([
   "uSkyExposure",
   "uTorchLights[0]",
 ]);
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 35;
-export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 30;
-export const COMPACT_CLIENT_WEBGL_UNIFORM_UNIQUE_VALUES = 13;
+// The gameplay mob texture program intentionally reuses the terrain lighting
+// contract, adding eleven retained lookups without expanding the name set.
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 51;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 43;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_UNIQUE_VALUES = 14;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_COUNTS = Object.freeze({
-  uMvp: 7,
+  uMvp: 9,
   uSkin: 3,
-  uLight: 5,
-  uCamera: 2,
-  uFogEnabled: 2,
-  uFogRange: 2,
-  uFogColor: 2,
-  uAmbientColor: 2,
-  uDirectionalColor: 2,
-  uAmbientIntensity: 2,
-  uDirectionalIntensity: 2,
-  uSkyExposure: 2,
-  "uTorchLights[0]": 2,
+  uAtlas: 3,
+  uLight: 6,
+  uCamera: 3,
+  uFogEnabled: 3,
+  uFogRange: 3,
+  uFogColor: 3,
+  uAmbientColor: 3,
+  uDirectionalColor: 3,
+  uAmbientIntensity: 3,
+  uDirectionalIntensity: 3,
+  uSkyExposure: 3,
+  "uTorchLights[0]": 3,
 });
 export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_COUNTS = Object.freeze({
-  uMvp: 5,
+  uMvp: 6,
   uSkin: 2,
+  uAtlas: 2,
   uLight: 3,
-  uCamera: 2,
-  uFogEnabled: 2,
-  uFogRange: 2,
-  uFogColor: 2,
-  uAmbientColor: 2,
-  uDirectionalColor: 2,
-  uAmbientIntensity: 2,
-  uDirectionalIntensity: 2,
-  uSkyExposure: 2,
-  "uTorchLights[0]": 2,
+  uCamera: 3,
+  uFogEnabled: 3,
+  uFogRange: 3,
+  uFogColor: 3,
+  uAmbientColor: 3,
+  uDirectionalColor: 3,
+  uAmbientIntensity: 3,
+  uDirectionalIntensity: 3,
+  uSkyExposure: 3,
+  "uTorchLights[0]": 3,
 });
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "4793d6cc11753985a1aa52bbb841ea02da5b5c77f0fc1994101cf85e5bef72fe";
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b";
 // uMvp and uLight already qualify for the generic pools. The category is
 // unioned by occurrence, preserving their existing indexes and adding only
 // the remaining 22 occurrences / 11 values.
-export const COMPACT_CLIENT_WEBGL_UNIFORM_INCREMENTAL_OCCURRENCES = 22;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_INCREMENTAL_OCCURRENCES = 32;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_INCREMENTAL_UNIQUE_VALUES = 11;
 export const COMPACT_CLIENT_STRING_OCCURRENCES = COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES
   + COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES + COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES

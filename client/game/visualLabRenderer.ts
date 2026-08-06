@@ -11,7 +11,7 @@ import { CUBE_FACES } from "./cubeFaces.ts";
 import {
   TEXTURE_ATLAS_COLUMNS, TEXTURE_ATLAS_RGBA, TEXTURE_ATLAS_ROWS, TEXTURE_TILE_SIZE,
 } from "./generated/textureAtlas.ts";
-import { createMobRenderer } from "./mobRenderer.ts";
+import { MOB_VERTEX_STRIDE, createMobRenderer, createMobTexture } from "./mobRenderer.ts";
 import { MOB_DEFINITIONS, type MobKind, type MobPoseSnapshot } from "./mobs.ts";
 import { createPlayerSkinRenderer } from "./playerSkinRenderer.ts";
 import type { PlayerRigInput, PlayerRigMotion } from "./playerRig.ts";
@@ -47,6 +47,8 @@ import {
   COLOR_FRAGMENT_SHADER,
   COLOR_VERTEX_SHADER,
   createVisualProgram,
+  MOB_FRAGMENT_SHADER,
+  MOB_VERTEX_SHADER,
   SKIN_FRAGMENT_SHADER,
   SKIN_VERTEX_SHADER,
 } from "./visualShaders.ts";
@@ -254,7 +256,9 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
   if (!gl) throw new Error("Visual Lab requires WebGL.");
   const program = createVisualProgram(gl, COLOR_VERTEX_SHADER, COLOR_FRAGMENT_SHADER);
   const skinProgram = createVisualProgram(gl, SKIN_VERTEX_SHADER, SKIN_FRAGMENT_SHADER);
+  const mobProgram = createVisualProgram(gl, MOB_VERTEX_SHADER, MOB_FRAGMENT_SHADER);
   const mobRenderer = createMobRenderer(gl);
+  const mobTexture = createMobTexture(gl);
   const droppedItemRenderer = createDroppedItemRenderer(gl);
   const playerRenderer = createPlayerSkinRenderer(gl);
   const [
@@ -284,18 +288,27 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
   const skinMvpLocation = gl.getUniformLocation(skinProgram, "uMvp");
   const skinSamplerLocation = gl.getUniformLocation(skinProgram, "uSkin");
   const skinLightLocation = gl.getUniformLocation(skinProgram, "uLight");
+  const mobPosition = gl.getAttribLocation(mobProgram, "aPosition");
+  const mobUv = gl.getAttribLocation(mobProgram, "aUv");
+  const mobTint = gl.getAttribLocation(mobProgram, "aTint");
+  const mobMvpLocation = gl.getUniformLocation(mobProgram, "uMvp");
+  const mobLightLocation = gl.getUniformLocation(mobProgram, "uLight");
+  const mobAtlasLocation = gl.getUniformLocation(mobProgram, "uAtlas");
   if (!buffer || !skinBuffer || !comparisonColorBuffer || !comparisonTexturedBuffer
     || !skinTexture || !atlasTexture || position < 0 || color < 0 || !mvpLocation
     || !lightLocation || skinPosition < 0 || skinUv < 0 || skinShade < 0 || !skinMvpLocation
-    || !skinSamplerLocation || !skinLightLocation) {
+    || !skinSamplerLocation || !skinLightLocation || mobPosition < 0 || mobUv < 0 || mobTint < 0
+    || !mobMvpLocation || !mobLightLocation || !mobAtlasLocation) {
     gl.deleteBuffer(buffer);
     gl.deleteBuffer(skinBuffer);
     gl.deleteBuffer(comparisonColorBuffer);
     gl.deleteBuffer(comparisonTexturedBuffer);
     gl.deleteTexture(skinTexture);
     gl.deleteTexture(atlasTexture);
+    gl.deleteTexture(mobTexture);
     gl.deleteProgram(program);
     gl.deleteProgram(skinProgram);
+    gl.deleteProgram(mobProgram);
     throw new Error("Visual Lab shader bindings are incomplete.");
   }
 
@@ -490,6 +503,20 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
         gl.drawArrays(gl.TRIANGLES, 0, specialColorVertexCount);
       }
       return;
+    } else if (mode === "mob") {
+      gl.useProgram(mobProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, mobRenderer.buffer);
+      gl.enableVertexAttribArray(mobPosition);
+      gl.enableVertexAttribArray(mobUv);
+      gl.enableVertexAttribArray(mobTint);
+      gl.vertexAttribPointer(mobPosition, 3, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 0);
+      gl.vertexAttribPointer(mobUv, 2, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 12);
+      gl.vertexAttribPointer(mobTint, 3, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 20);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, mobTexture);
+      gl.uniform1i(mobAtlasLocation, 0);
+      gl.uniformMatrix4fv(mobMvpLocation, false, mvp);
+      gl.uniform3f(mobLightLocation, light[0], light[1], light[2]);
     } else {
       gl.useProgram(program);
       gl.bindBuffer(gl.ARRAY_BUFFER, mode === "mob" ? mobRenderer.buffer : mode === "dropped" ? droppedItemRenderer.buffer : buffer);
@@ -670,8 +697,10 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
       gl.deleteBuffer(comparisonTexturedBuffer);
       gl.deleteTexture(skinTexture);
       gl.deleteTexture(atlasTexture);
+      gl.deleteTexture(mobTexture);
       gl.deleteProgram(program);
       gl.deleteProgram(skinProgram);
+      gl.deleteProgram(mobProgram);
       mobRenderer.destroy();
       droppedItemRenderer.destroy();
       playerRenderer.destroy();

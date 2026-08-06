@@ -37,6 +37,7 @@ const ENTITY_PATHS = Object.freeze({
   spider: "assets/minecraft/textures/entity/spider/spider.png",
   cow: "assets/minecraft/textures/entity/cow/cow_temperate.png",
   pig: "assets/minecraft/textures/entity/pig/pig_temperate.png",
+  chicken: "assets/minecraft/textures/entity/chicken/chicken_temperate.png",
   sheep: "assets/minecraft/textures/entity/sheep/sheep.png",
   sheep_wool: "assets/minecraft/textures/entity/sheep/sheep_wool.png",
   chest_normal: "assets/minecraft/textures/entity/chest/normal.png",
