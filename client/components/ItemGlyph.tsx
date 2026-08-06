@@ -1,4 +1,5 @@
 import { ITEMS, maxItemDurability, remainingItemDurability, type ItemId, type ItemStack } from "../../shared/game";
+import { atlasBlockItemGuiIcon, type AtlasBlockGuiIcon } from "./atlasBlockItemIcon.ts";
 import { ITEM_ICON_SIZE, getItemIconArt } from "./itemIconArt";
 
 export type ItemGlyphProps = {
@@ -7,10 +8,23 @@ export type ItemGlyphProps = {
   muted?: boolean;
 };
 
+const paintedBlockCanvases = new WeakMap<HTMLCanvasElement, AtlasBlockGuiIcon>();
+
+function paintAtlasBlockIcon(canvas: HTMLCanvasElement | null, icon: AtlasBlockGuiIcon): void {
+  if (!canvas || paintedBlockCanvases.get(canvas) === icon) return;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const image = context.createImageData(icon.size, icon.size);
+  image.data.set(icon.rgba);
+  context.putImageData(image, 0, 0);
+  paintedBlockCanvases.set(canvas, icon);
+}
+
 export function ItemIcon({ stack, compact = false, muted = false }: ItemGlyphProps) {
   if (!stack) return <span className="lc-item-glyph lc-item-glyph--empty" aria-hidden="true" />;
   const item = ITEMS[stack.itemId];
   const art = getItemIconArt(stack.itemId);
+  const guiBlock = atlasBlockItemGuiIcon(stack.itemId);
   const maximumDurability = maxItemDurability(stack.itemId);
   const durability = remainingItemDurability(stack);
   const durabilityPercent = maximumDurability && durability !== null
@@ -23,11 +37,21 @@ export function ItemIcon({ stack, compact = false, muted = false }: ItemGlyphPro
       data-icon-variant={art.variant}
       aria-hidden="true"
     >
-      <svg className="lc-item-icon__svg" viewBox={`0 0 ${ITEM_ICON_SIZE} ${ITEM_ICON_SIZE}`} shape-rendering="crispEdges" focusable="false">
-        {art.runs.map((run, index) => (
-          <rect fill={run.color} height="1" key={`${run.x}:${run.y}:${index}`} width={run.width} x={run.x} y={run.y} />
-        ))}
-      </svg>
+      {guiBlock ? (
+        <canvas
+          className="lc-item-icon__svg"
+          data-source-resolution={guiBlock.size}
+          height={guiBlock.size}
+          ref={(canvas) => paintAtlasBlockIcon(canvas, guiBlock)}
+          width={guiBlock.size}
+        />
+      ) : (
+        <svg className="lc-item-icon__svg" viewBox={`0 0 ${ITEM_ICON_SIZE} ${ITEM_ICON_SIZE}`} shape-rendering="crispEdges" focusable="false">
+          {art.runs.map((run, index) => (
+            <rect fill={run.color} height="1" key={`${run.x}:${run.y}:${index}`} width={run.width} x={run.x} y={run.y} />
+          ))}
+        </svg>
+      )}
       {stack.count > 1 ? <span className="lc-item-glyph__count">{stack.count}</span> : null}
       {durabilityPercent !== null && durabilityPercent < 100 ? (
         <span className="lc-durability" data-remaining={durability} data-maximum={maximumDurability}>

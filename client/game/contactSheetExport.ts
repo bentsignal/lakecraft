@@ -1,5 +1,6 @@
 import { ITEMS, type ItemId } from "../../shared/game.ts";
 import { itemVisualIds } from "../../shared/visualCatalog.ts";
+import { atlasBlockItemGuiIcon } from "../components/atlasBlockItemIcon.ts";
 import {
   ITEM_ICON_SIZE,
   getItemIconArt,
@@ -197,13 +198,16 @@ export function renderProductionContactSheet(
     context.fillStyle = COLORS.card;
     context.fillRect(cell.x + 1, cell.y + 1, plan.cardWidth - 2, plan.cardHeight - 2);
     const art = getItemIconArt(cell.itemId);
-    for (const run of art.runs) {
+    const guiBlock = atlasBlockItemGuiIcon(cell.itemId);
+    const iconRuns = guiBlock?.runs ?? art.runs;
+    const pixelScale = plan.iconSize / (guiBlock?.size ?? ITEM_ICON_SIZE);
+    for (const run of iconRuns) {
       context.fillStyle = run.color;
       context.fillRect(
-        cell.iconX + run.x * plan.iconScale,
-        cell.iconY + run.y * plan.iconScale,
-        run.width * plan.iconScale,
-        plan.iconScale,
+        cell.iconX + run.x * pixelScale,
+        cell.iconY + run.y * pixelScale,
+        run.width * pixelScale,
+        pixelScale,
       );
     }
     const maximumCharacters = Math.max(1, Math.floor((plan.cardWidth - 16) / LABEL_GLYPH_STEP));

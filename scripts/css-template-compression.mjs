@@ -56,7 +56,7 @@ function parsePrivateIdentifierRows(rows) {
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
 xe-window|21 xi-peek|18 xi-compose|14 xi-message|13 xw-button|15
-xc-inventory-slot|11 xj-glyph|15 xo-menu|11 xe-grid__slot|13 xj-icon__svg|13 xn-panel|10
+xc-inventory-slot|11 xj-glyph|15 xo-menu|11 xe-grid__slot|13 xj-icon__svg|14 xn-panel|10
 xlocal-world-dialog|9 xoptions|9 ysleep|9 xslot|15 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|10 xp-logo|9 xq-icon|8 xr-slot|8 xclose|9 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|9 xe-grid|11 xlocal-world-header|6

@@ -78,9 +78,22 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 371;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 109;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 374;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 110;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "5ab990831e2285f9a25f656f49a082f9568bc162eacdd07f3414e81f92d742b1";
+// Painting the cached GUI block raster introduces the client's third `2d`
+// context request. That existing API literal consequently enters the exact
+// three/four-use pool; no UI, wire, storage, or gameplay value is added.
+export const COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA = Object.freeze({
+  previousOccurrences: 371,
+  previousUniqueValues: 109,
+  previousSourceFingerprint: "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  promotedValue: "2d",
+  source: "client/components/ItemGlyph.tsx#paintAtlasBlockIcon",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "1.2..21.",
   "2.1..2",
