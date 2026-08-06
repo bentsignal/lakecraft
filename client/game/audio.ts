@@ -1,4 +1,10 @@
-/** Dependency-free, gesture-gated procedural game audio. */
+/** Gesture-gated official samples with a dependency-free procedural fallback. */
+
+import {
+  OFFICIAL_SOUND_BASE,
+  OFFICIAL_SOUND_HASH_BYTES,
+  OFFICIAL_SOUND_INDEXES,
+} from "./generated/officialSoundAssets.ts";
 
 export const GAME_AUDIO_CUES = [
   "footstep",
@@ -14,7 +20,9 @@ export const GAME_AUDIO_CUES = [
   "playerAttack",
   "playerHurt",
   "mobAttack",
+  "mobIdle",
   "mobHurt",
+  "mobDeath",
   "creeperFuse",
   "explosion",
   "uiClick",
@@ -24,6 +32,7 @@ export const GAME_AUDIO_CUES = [
 
 export type GameAudioCue = (typeof GAME_AUDIO_CUES)[number];
 export type GameAudioSurface = "grass" | "stone" | "wood" | "sand" | "gravel" | "metal" | "glass" | "generic";
+export type GameAudioMob = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
 export type GameAudioWave = "sine" | "square" | "triangle" | "sawtooth";
 
 export interface GameAudioPlayOptions {
@@ -32,6 +41,7 @@ export interface GameAudioPlayOptions {
   /** Loudness and impact weight, clamped to 0..1. */
   intensity?: number;
   surface?: GameAudioSurface;
+  mob?: GameAudioMob;
   /** Optional left/right position, clamped to -1..1 when StereoPanner is available. */
   pan?: number;
 }
@@ -75,10 +85,16 @@ export interface CreateGameAudioOptions {
   masterGain?: number;
   /** Test/embedding seam. Returning null installs the safe no-audio behavior. */
   contextFactory?: () => AudioContext | null;
+  /** Test/embedding seam. Returning null keeps the procedural fallback. */
+  mediaFactory?: (url: string) => HTMLAudioElement | null;
 }
 
 const DEFAULT_MAX_VOICES = 18;
 const MIN_GAIN = 0.0001;
+const SAMPLE_RETRY_MS = 30_000;
+const OFFICIAL_SURFACES: GameAudioSurface[] = ["grass", "stone", "wood", "sand", "gravel", "metal", "glass"];
+const OFFICIAL_MOBS: GameAudioMob[] = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"];
+const OFFICIAL_SOUND_BYTES = atob(OFFICIAL_SOUND_HASH_BYTES);
 
 const clamp = (value: number, low: number, high: number): number =>
   Number.isFinite(value) ? Math.min(high, Math.max(low, value)) : low;
@@ -94,24 +110,25 @@ export function gameAudioSeed(value: number | string | undefined): number {
   return hash >>> 0;
 }
 
-function mixSeed(left: number, right: number): number {
-  let value = (left ^ right) >>> 0;
-  value ^= value << 13;
-  value ^= value >>> 17;
-  value ^= value << 5;
-  return value >>> 0;
+export function officialSoundAsset(cue: GameAudioCue, options: GameAudioPlayOptions = {}): string | null {
+  const surface = options.surface === "generic" || !options.surface ? "stone" : options.surface;
+  const blockCue = cue === "footstep" ? 0 : cue === "blockBreak" ? 1 : cue === "blockPlace" ? 2 : -1;
+  let index = blockCue < 0 ? -1 : OFFICIAL_SURFACES.indexOf(surface) * 3 + blockCue;
+  if (index < 0 && options.mob) {
+    const mob = OFFICIAL_MOBS.indexOf(options.mob);
+    const action = cue === "mobIdle" ? 0 : cue === "mobHurt" ? 1 : cue === "mobDeath" ? 2 : -1;
+    if (mob >= 0 && action >= 0 && !(options.mob === "creeper" && action === 0)) index = 21 + mob * 3 + action - (mob >= 6 ? 1 : 0);
+  }
+  if (index < 0) return null;
+  const offset = Number.parseInt(OFFICIAL_SOUND_INDEXES[index], 36) * 20;
+  let hash = "";
+  for (let byte = offset; byte < offset + 20; byte += 1) hash += OFFICIAL_SOUND_BYTES.charCodeAt(byte).toString(16).padStart(2, "0");
+  return hash;
 }
 
-function seededRandom(seed: number): () => number {
-  let state = seed || 0x6d2b79f5;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let value = Math.imul(state ^ (state >>> 15), 1 | state);
-    value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
+export function officialSoundUrl(hash: string): string {
+  return `${OFFICIAL_SOUND_BASE}/${hash.slice(0, 2)}/${hash}`;
 }
-
 const SURFACES: Record<GameAudioSurface, readonly [number, number, number]> = {
   grass: [950, 0.82, 0.82],
   stone: [1_900, 1.18, 155],
@@ -123,112 +140,30 @@ const SURFACES: Record<GameAudioSurface, readonly [number, number, number]> = {
   generic: [1_240, 1, 125],
 };
 
-/** Pure sound-recipe generation, useful for deterministic replay tests. */
+/** Compact deterministic synthesis used whenever an official object is unavailable. */
 export function createGameAudioPlan(cue: GameAudioCue, options: GameAudioPlayOptions = {}): GameAudioPlan {
-  const seed = mixSeed(gameAudioSeed(options.seed), gameAudioSeed(cue));
-  const random = seededRandom(seed);
-  const intensity = clamp(options.intensity ?? 0.72, 0, 1);
-  const [surfaceFilter, surfaceRate, surfaceTone] = SURFACES[options.surface ?? "generic"];
-  const layers: GameAudioLayer[] = [];
-  const vary = (center: number, spread: number): number => center * (1 + (random() * 2 - 1) * spread);
-  const layer = (kind: "noise" | "tone", values: Partial<GameAudioLayer>): void => {
-    const frequency = Math.max(24, values.frequency ?? 120);
-    layers.push({
-      kind,
-      delay: clamp(values.delay ?? 0, 0, 0.5),
-      duration: clamp(values.duration ?? 0.08, 0.015, 0.8),
-      gain: clamp((values.gain ?? 0.16) * intensity, 0, 0.5),
-      frequency,
-      frequencyEnd: Math.max(24, values.frequencyEnd ?? frequency),
-      filterHz: clamp(values.filterHz ?? 2_000, 80, 12_000),
-      filterQ: clamp(values.filterQ ?? 0.7, 0.1, 12),
-      playbackRate: clamp(values.playbackRate ?? 1, 0.35, 2.5),
-      noiseOffset: random() * 0.55,
-      wave: values.wave ?? "triangle",
-    });
+  const seed = gameAudioSeed(`${cue}:${options.seed ?? 0}`);
+  const intensity = clamp(options.intensity ?? .72, 0, 1);
+  const [filterHz, rate, surfaceTone] = SURFACES[options.surface ?? "generic"];
+  const variation = (seed % 1001 / 1000 - .5) * .16;
+  const ui = cue.startsWith("ui") || cue === "pickup" || cue === "craft";
+  const mob = cue.startsWith("mob");
+  const heavy = cue === "explosion" || cue === "creeperFuse" || cue === "mobDeath";
+  const duration = heavy ? .48 : mob ? .22 : ui ? .11 : .13;
+  const base = ui ? 520 + GAME_AUDIO_CUES.indexOf(cue) * 24 : mob ? 118 : surfaceTone;
+  const tone: GameAudioLayer = {
+    kind: "tone", delay: 0, duration, gain: clamp((heavy ? .22 : .12) * intensity, 0, .5),
+    frequency: Math.max(24, base * (1 + variation)), frequencyEnd: Math.max(24, base * (heavy ? .4 : .68)),
+    filterHz: clamp(ui ? 3_200 : filterHz, 80, 12_000), filterQ: .7, playbackRate: 1,
+    noiseOffset: seed % 997 / 997, wave: ui ? "sine" : mob ? "square" : "triangle",
   };
-
-  switch (cue) {
-    case "footstep":
-      layer("noise", { duration: vary(0.075, 0.12), gain: 0.18, filterHz: vary(surfaceFilter, 0.16), playbackRate: vary(surfaceRate, 0.08) });
-      layer("tone", { duration: 0.055, gain: 0.075, frequency: vary(surfaceTone, 0.1), frequencyEnd: vary(surfaceTone * 0.68, 0.06) });
-      break;
-    case "miningHit":
-      layer("noise", { duration: 0.065, gain: 0.19, filterHz: vary(surfaceFilter * 1.35, 0.14), playbackRate: vary(surfaceRate * 1.08, 0.08) });
-      layer("tone", { duration: 0.085, gain: 0.11, frequency: vary(surfaceTone * 1.2, 0.09), frequencyEnd: vary(surfaceTone * 0.72, 0.06), wave: "square" });
-      break;
-    case "blockBreak":
-      for (let fragment = 0; fragment < 3; fragment += 1) {
-        layer("noise", { delay: fragment * 0.027, duration: vary(0.105, 0.15), gain: 0.16 - fragment * 0.025, filterHz: vary(surfaceFilter * (1.25 - fragment * 0.15), 0.18), playbackRate: vary(surfaceRate, 0.13) });
-      }
-      layer("tone", { duration: 0.14, gain: 0.095, frequency: vary(surfaceTone, 0.08), frequencyEnd: surfaceTone * 0.48 });
-      break;
-    case "blockPlace":
-      layer("noise", { duration: 0.09, gain: 0.18, filterHz: vary(surfaceFilter * 0.86, 0.12), playbackRate: vary(surfaceRate * 0.86, 0.06) });
-      layer("tone", { duration: 0.11, gain: 0.12, frequency: vary(surfaceTone * 0.82, 0.07), frequencyEnd: surfaceTone * 0.5, wave: "square" });
-      break;
-    case "pickup":
-      layer("tone", { duration: 0.09, gain: 0.09, frequency: vary(620, 0.05), frequencyEnd: vary(760, 0.04), wave: "sine" });
-      layer("tone", { delay: 0.055, duration: 0.12, gain: 0.1, frequency: vary(930, 0.04), frequencyEnd: vary(1_160, 0.03), wave: "sine" });
-      break;
-    case "craft":
-      layer("noise", { duration: 0.045, gain: 0.13, filterHz: vary(1_450, 0.08), playbackRate: 0.9 });
-      layer("tone", { delay: 0.045, duration: 0.12, gain: 0.1, frequency: vary(520, 0.04), frequencyEnd: vary(780, 0.04), wave: "triangle" });
-      layer("tone", { delay: 0.105, duration: 0.13, gain: 0.085, frequency: vary(780, 0.04), frequencyEnd: vary(1_040, 0.03), wave: "sine" });
-      break;
-    case "doorOpen":
-    case "doorClose": {
-      const opening = cue === "doorOpen";
-      layer("tone", { duration: 0.28, gain: 0.13, frequency: opening ? 92 : 126, frequencyEnd: opening ? 142 : 74, filterHz: 820, filterQ: 2.4, wave: "sawtooth" });
-      layer("noise", { delay: opening ? 0.19 : 0, duration: 0.065, gain: 0.14, filterHz: 980, playbackRate: 0.72 });
-      break;
-    }
-    case "chestOpen":
-    case "chestClose": {
-      const opening = cue === "chestOpen";
-      layer("tone", { duration: 0.22, gain: 0.11, frequency: opening ? 138 : 178, frequencyEnd: opening ? 205 : 102, filterHz: 1_150, wave: "triangle" });
-      layer("noise", { delay: opening ? 0 : 0.145, duration: 0.052, gain: 0.15, filterHz: 1_380, playbackRate: 0.86 });
-      break;
-    }
-    case "playerAttack":
-      layer("noise", { duration: 0.095, gain: 0.18, filterHz: vary(2_900, 0.14), playbackRate: 1.32 });
-      layer("tone", { duration: 0.12, gain: 0.08, frequency: vary(180, 0.08), frequencyEnd: 78, wave: "sawtooth" });
-      break;
-    case "playerHurt":
-      layer("noise", { duration: 0.13, gain: 0.2, filterHz: vary(1_150, 0.12), playbackRate: 0.82 });
-      layer("tone", { duration: 0.19, gain: 0.13, frequency: vary(170, 0.08), frequencyEnd: 92, wave: "square" });
-      break;
-    case "mobAttack":
-      layer("noise", { duration: 0.12, gain: 0.19, filterHz: vary(1_700, 0.14), playbackRate: 0.94 });
-      layer("tone", { duration: 0.17, gain: 0.12, frequency: vary(125, 0.12), frequencyEnd: 68, wave: "sawtooth" });
-      break;
-    case "mobHurt":
-      layer("noise", { duration: 0.15, gain: 0.18, filterHz: vary(980, 0.14), playbackRate: 0.76 });
-      layer("tone", { duration: 0.2, gain: 0.14, frequency: vary(118, 0.12), frequencyEnd: 58, wave: "square" });
-      break;
-    case "creeperFuse":
-      layer("noise", { duration: 0.78, gain: 0.17, filterHz: vary(3_200, 0.08), playbackRate: 0.78 });
-      layer("noise", { delay: 0.48, duration: 0.78, gain: 0.2, filterHz: vary(3_700, 0.08), playbackRate: 0.86 });
-      layer("tone", { duration: 0.8, gain: 0.035, frequency: 78, frequencyEnd: 132, wave: "sawtooth" });
-      break;
-    case "explosion":
-      layer("noise", { duration: 0.72, gain: 0.38, filterHz: vary(1_050, 0.12), playbackRate: 0.62 });
-      layer("tone", { duration: 0.48, gain: 0.24, frequency: 82, frequencyEnd: 34, wave: "square" });
-      layer("noise", { delay: 0.08, duration: 0.8, gain: 0.16, filterHz: 420, playbackRate: 0.48 });
-      break;
-    case "uiClick":
-      layer("tone", { duration: 0.045, gain: 0.085, frequency: vary(650, 0.035), frequencyEnd: 520, wave: "square" });
-      break;
-    case "uiConfirm":
-      layer("tone", { duration: 0.07, gain: 0.085, frequency: vary(620, 0.025), frequencyEnd: 760, wave: "sine" });
-      layer("tone", { delay: 0.05, duration: 0.1, gain: 0.08, frequency: vary(880, 0.025), frequencyEnd: 1_020, wave: "sine" });
-      break;
-    case "uiBack":
-      layer("tone", { duration: 0.09, gain: 0.085, frequency: vary(590, 0.03), frequencyEnd: 360, wave: "triangle" });
-      break;
-  }
-
-  return { cue, seed, layers };
+  if (ui) return { cue, seed, layers: [tone] };
+  const noise: GameAudioLayer = {
+    ...tone, kind: "noise", duration: Math.min(.8, duration * (heavy ? 1.45 : .7)),
+    gain: clamp((heavy ? .32 : .16) * intensity, 0, .5), filterHz: clamp(filterHz * (1 + variation), 80, 12_000),
+    playbackRate: clamp(rate * (1 + variation), .35, 2.5), wave: "triangle",
+  };
+  return { cue, seed, layers: [noise, tone] };
 }
 
 function defaultContextFactory(): AudioContext | null {
@@ -239,6 +174,17 @@ function defaultContextFactory(): AudioContext | null {
   if (!Context) return null;
   try {
     return new Context();
+  } catch {
+    return null;
+  }
+}
+
+function defaultMediaFactory(url: string): HTMLAudioElement | null {
+  if (typeof Audio !== "function") return null;
+  try {
+    const media = new Audio(url);
+    media.preload = "auto";
+    return media;
   } catch {
     return null;
   }
@@ -268,6 +214,7 @@ function createNoiseBuffer(context: AudioContext): AudioBuffer {
 
 export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio {
   const contextFactory = options.contextFactory ?? defaultContextFactory;
+  const mediaFactory = options.mediaFactory ?? defaultMediaFactory;
   const maxVoices = Math.round(clamp(options.maxVoices ?? DEFAULT_MAX_VOICES, 1, 32));
   const masterLevel = clamp(options.masterGain ?? 0.62, 0, 1);
   let muted = Boolean(options.muted);
@@ -277,6 +224,10 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
   let unlocked = false;
   let destroyed = false;
   const voices: Voice[] = [];
+  const sampleVoices: HTMLAudioElement[] = [];
+  const lastSampleAt = new Map<GameAudioCue, number>();
+  let sampleUnlocked = false;
+  let sampleRetryAt = 0;
 
   const cleanup = (voice: Voice): void => {
     if (voice.cleaned) return;
@@ -296,10 +247,29 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
     cleanup(voice);
   };
 
+  const cleanupSample = (media: HTMLAudioElement, release = false): void => {
+    const index = sampleVoices.indexOf(media);
+    if (index < 0) return;
+    sampleVoices.splice(index, 1);
+    media.onended = null;
+    media.onerror = null;
+    if (release) try {
+      media.pause(); media.removeAttribute("src"); media.load();
+    } catch { /* best-effort media release */ }
+  };
+
   const pruneVoices = (): void => {
     if (!context) return;
     for (let index = voices.length - 1; index >= 0; index -= 1) {
       if (voices[index].endTime <= context.currentTime) cleanup(voices[index]);
+    }
+  };
+
+  const trimVoices = (): void => {
+    pruneVoices();
+    while (voices.length + sampleVoices.length >= maxVoices) {
+      if (sampleVoices.length) cleanupSample(sampleVoices[0], true);
+      else stopVoice(voices[0]);
     }
   };
 
@@ -310,12 +280,30 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
     master.gain.setTargetAtTime(value, context.currentTime, 0.012);
   };
 
+  const unlockSamples = (): boolean => {
+    if (destroyed || sampleUnlocked || Date.now() < sampleRetryAt) return sampleUnlocked;
+    const asset = officialSoundAsset("footstep", { surface: "grass", seed: 0 });
+    const media = asset ? mediaFactory(officialSoundUrl(asset)) : null;
+    if (!media) return false;
+    media.volume = 0; media.preload = "auto"; sampleUnlocked = true;
+    sampleVoices.push(media);
+    try { void media.play().then(() => cleanupSample(media, true)).catch(() => {
+      cleanupSample(media, true);
+      sampleUnlocked = false;
+      sampleRetryAt = Date.now() + SAMPLE_RETRY_MS;
+    }); } catch {
+      cleanupSample(media, true); sampleUnlocked = false; sampleRetryAt = Date.now() + SAMPLE_RETRY_MS;
+    }
+    return sampleUnlocked;
+  };
+
   const unlock = async (): Promise<boolean> => {
     if (destroyed) return false;
+    const samplesReady = unlockSamples();
     try {
       if (!context || context.state === "closed") {
         context = contextFactory();
-        if (!context) return false;
+        if (!context) return samplesReady;
         master = null;
         noise = null;
       }
@@ -327,19 +315,18 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
       }
       if (context.state === "suspended") await context.resume();
       unlocked = context.state === "running";
-      return unlocked;
+      return samplesReady || unlocked;
     } catch {
       unlocked = false;
-      return false;
+      return samplesReady;
     }
   };
 
-  const play = (cue: GameAudioCue, playOptions: GameAudioPlayOptions = {}): boolean => {
+  const playProcedural = (cue: GameAudioCue, playOptions: GameAudioPlayOptions = {}): boolean => {
     if (destroyed || muted || !unlocked || !context || context.state !== "running" || !master || !noise) return false;
     const plan = createGameAudioPlan(cue, playOptions);
     if (!plan.layers.some((entry) => entry.gain > 0)) return false;
-    pruneVoices();
-    while (voices.length >= maxVoices) stopVoice(voices[0]);
+    trimVoices();
 
     const now = context.currentTime + 0.003;
     const voice: Voice = { endTime: now, sources: [], nodes: [], cleaned: false };
@@ -403,6 +390,43 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
     return true;
   };
 
+  const play = (cue: GameAudioCue, playOptions: GameAudioPlayOptions = {}): boolean => {
+    if (destroyed || muted) return false;
+    const asset = sampleUnlocked && Date.now() >= sampleRetryAt ? officialSoundAsset(cue, playOptions) : null;
+    if (!asset) return playProcedural(cue, playOptions);
+    const now = performance.now();
+    const cooldown = cue === "footstep" ? 70 : cue.startsWith("mob") ? 90 : 35;
+    if (now - (lastSampleAt.get(cue) ?? Number.NEGATIVE_INFINITY) < cooldown) return false;
+    const media = mediaFactory(officialSoundUrl(asset));
+    if (!media) return playProcedural(cue, playOptions);
+    trimVoices();
+    const seed = gameAudioSeed(playOptions.seed);
+    const intensity = clamp(playOptions.intensity ?? 0.72, 0, 1);
+    media.preload = "auto";
+    media.volume = clamp(masterLevel * intensity, 0, 1);
+    media.playbackRate = 0.9 + seed % 21 / 100;
+    let failed = false;
+    const fail = (): void => {
+      if (failed || !sampleVoices.includes(media)) return;
+      failed = true;
+      cleanupSample(media, true);
+      sampleUnlocked = false;
+      sampleRetryAt = Date.now() + SAMPLE_RETRY_MS;
+      playProcedural(cue, playOptions);
+    };
+    media.onended = () => cleanupSample(media);
+    media.onerror = fail;
+    sampleVoices.push(media);
+    lastSampleAt.set(cue, now);
+    try {
+      void media.play().catch(fail);
+      return true;
+    } catch {
+      fail();
+      return false;
+    }
+  };
+
   return {
     unlock,
     play,
@@ -411,6 +435,7 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
       setMasterLevel();
       if (muted) {
         while (voices.length > 0) stopVoice(voices[voices.length - 1]);
+        while (sampleVoices.length > 0) cleanupSample(sampleVoices[sampleVoices.length - 1], true);
       }
     },
     toggleMuted(): boolean {
@@ -418,20 +443,23 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
       setMasterLevel();
       if (muted) {
         while (voices.length > 0) stopVoice(voices[voices.length - 1]);
+        while (sampleVoices.length > 0) cleanupSample(sampleVoices[sampleVoices.length - 1], true);
       }
       return muted;
     },
     isMuted: () => muted,
-    isUnlocked: () => unlocked && context?.state === "running",
+    isUnlocked: () => sampleUnlocked || unlocked && context?.state === "running",
     activeVoiceCount(): number {
       pruneVoices();
-      return voices.length;
+      return voices.length + sampleVoices.length;
     },
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
       unlocked = false;
+      sampleUnlocked = false;
       while (voices.length > 0) stopVoice(voices[voices.length - 1]);
+      while (sampleVoices.length > 0) cleanupSample(sampleVoices[sampleVoices.length - 1], true);
       try { master?.disconnect(); } catch { /* already disconnected */ }
       try { void context?.close(); } catch { /* best-effort shutdown */ }
       master = null;

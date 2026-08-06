@@ -517,6 +517,24 @@ export function applyMouseLookDelta(
   };
 }
 
+export function localMobAmbientMix(
+  offsetX: number,
+  offsetY: number,
+  offsetZ: number,
+  yaw: number,
+): { intensity: number; pan: number } | null {
+  const distance = Math.hypot(offsetX, offsetY, offsetZ);
+  if (distance > 16) return null;
+  return {
+    intensity: clampNumber(0.55 * (1 - distance / 20), 0.12, 0.55),
+    pan: clampNumber(
+      (offsetX * Math.cos(yaw) + offsetZ * Math.sin(yaw)) / Math.max(1, Math.hypot(offsetX, offsetZ)),
+      -1,
+      1,
+    ),
+  };
+}
+
 /** Lift a resumed player out of regenerated terrain or a newly placed block. */
 export function resolveSafeSpawnY(
   preferredY: number,
@@ -1880,6 +1898,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   };
   const mobSimulation = createMobSimulation(createMobSpawns(mobPopulationOptions));
   let mobIds = listMobIds(mobSimulation);
+  let nextMobIdleAt = performance.now() + 3_500;
+  let mobIdleSequence = 0;
   let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
   let sharedMobMotionActive = false;
   let sharedMobMotionAppliedAt = 0;
@@ -2759,6 +2779,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function updateMobs(dt: number): void {
     const startedAt = performance.now();
     respawnExpiredAuthoritativeMobs(mobSimulation, Date.now() + mobCombatServerTimeOffsetMs);
+    if (options.onMobIdle && startedAt >= nextMobIdleAt) {
+      const nearby = mobSimulation.mobs.filter((mob) => mob.alive && mob.deathUntil <= 0
+        && Math.hypot(mob.x - pose.x, mob.y - pose.y, mob.z - pose.z) <= 16);
+      if (nearby.length > 0) {
+        const mob = nearby[mobIdleSequence % nearby.length];
+        const mix = localMobAmbientMix(mob.x - pose.x, mob.y - pose.y, mob.z - pose.z, pose.yaw);
+        if (mix) options.onMobIdle(mob.kind, mob.id, mix.intensity, mix.pan);
+        mobIdleSequence += 1;
+      }
+      nextMobIdleAt = startedAt + 5_000 + mobIdleSequence % 4 * 900;
+    }
     if (sharedMobMotionActive) {
       advanceMobKnockbackReactions(dt);
       writeReactiveMobPoseSnapshots();
@@ -3829,7 +3860,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         pose.z,
         attackDamage,
       );
-      options.onLocalMobHit?.();
+      options.onLocalMobHit?.(mobTarget.kind, result.killed);
       emitHandAction("attack");
     }
     writeReactiveMobPoseSnapshots();

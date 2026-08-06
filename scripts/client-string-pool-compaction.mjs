@@ -98,6 +98,17 @@ export const COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA = Object.freeze
   source: "client/singleplayer/SinglePlayerApp.tsx#submitLocalCommand",
   exclusionChanges: 0,
 });
+// Retain the independently reviewed sampled-audio delta as provenance. The
+// integrated live-set checkpoint below is recomputed after all realism heads.
+export const COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA = Object.freeze({
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: -12,
+  uniqueValueDelta: 1,
+  source: "client/game/audio.ts#official sampled audio",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 378;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 111;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144";
@@ -125,6 +136,15 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA = Object.freeze({
   uniqueValueDelta: 1,
   promotedValue: "bedrock",
   source: "world-only terrain/protocol adapters",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA = Object.freeze({
+  previousOccurrences: 371,
+  previousUniqueValues: 109,
+  previousSourceFingerprint: "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f",
+  occurrenceDelta: 32,
+  uniqueValueDelta: 10,
+  source: "client/game/audio.ts#official sampled audio",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([

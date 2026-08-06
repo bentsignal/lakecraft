@@ -2,6 +2,7 @@ import type { DayNightConfig } from "./dayNight.ts";
 import {
   validateMobSimulationSnapshot,
   type MobDamageResult,
+  type MobKind,
   type MobCombatStateSnapshot,
   type LocalMobDeathDropEvent,
   type MobRayTarget,
@@ -281,7 +282,7 @@ export interface BlockTarget {
 
 export type RangedShotTarget =
   | { kind: "player"; id: string; name: string; distance: number }
-  | { kind: "mob"; id: string; mobKind: string; distance: number }
+  | { kind: "mob"; id: string; mobKind: MobKind; distance: number }
   | { kind: "none"; id: ""; distance: number };
 
 export interface RangedShotIntent {
@@ -432,7 +433,9 @@ export interface VoxelEngineOptions {
    */
   onMobDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean;
   /** One locally confirmed mob-health reduction; delegated Lakebed attacks never emit it. */
-  onLocalMobHit?: () => void;
+  onLocalMobHit?: (kind: MobKind, killed: boolean) => void;
+  /** Rate-limited ambient cue for one nearby living mob. */
+  onMobIdle?: (kind: MobKind, mobId: string, intensity: number, pan: number) => void;
   /** One completed offline fuse after terrain and player damage resolve locally. */
   onLocalCreeperExplosion?: (event: Readonly<{
     mobId: string;

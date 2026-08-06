@@ -19,6 +19,14 @@ files are recorded in the generated manifest. Minecraft and its assets are
 copyright Mojang Studios/Microsoft. Lakecraft is not affiliated with or
 endorsed by Mojang Studios or Microsoft.
 
+The basic compatibility sound set is resolved from the owner's installed
+Minecraft Java Edition 26.2 asset index. Lakecraft stores only the reviewed
+logical-event-to-SHA-1 manifest and asks Mojang's official content-addressed
+resource host for those OGG objects at runtime; the capsule does not redistribute
+the audio payloads. Browsers cache those immutable URLs under their normal HTTP
+cache policy, and Lakecraft falls back to its original procedural audio when a
+resource is unavailable.
+
 ## Original Lakecraft texture concepts
 
 The material concept sheets in `design/texture-concepts/` were generated specifically for Lakecraft with OpenAI ImageGen. They remain the deterministic fallback source; the compatibility importer replaces matching production tiles with the selected locally installed Minecraft files.

@@ -11,7 +11,7 @@ import {
 const expectedCues: GameAudioCue[] = [
   "footstep", "miningHit", "blockBreak", "blockPlace", "pickup", "craft",
   "doorOpen", "doorClose", "chestOpen", "chestClose",
-  "playerAttack", "playerHurt", "mobAttack", "mobHurt",
+  "playerAttack", "playerHurt", "mobAttack", "mobIdle", "mobHurt", "mobDeath",
   "creeperFuse", "explosion",
   "uiClick", "uiConfirm", "uiBack",
 ];
@@ -128,7 +128,8 @@ const source = readFileSync(new URL("../client/game/audio.ts", import.meta.url),
 assert.doesNotMatch(source, /from\s+["']lakebed\//, "audio has no Lakebed dependency");
 assert.doesNotMatch(source, /\bfetch\s*\(/, "audio cannot generate network traffic");
 assert.equal((source.match(/new Context\(\)/g) ?? []).length, 1, "there is one guarded context construction site");
-assert.ok(source.includes("while (voices.length >= maxVoices)"), "runtime polyphony is explicitly capped");
 assert.ok(source.includes("source.onended"), "native audio nodes have end-of-life cleanup");
+assert.ok(source.includes("while (voices.length + sampleVoices.length >= maxVoices)"), "sample and fallback voices share one hard cap");
+assert.ok(source.includes("sampleRetryAt = Date.now() + SAMPLE_RETRY_MS"), "failed official media enters a bounded retry cooldown");
 
 console.log("lakecraft procedural game audio tests: ok");
