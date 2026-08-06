@@ -1,5 +1,5 @@
 import type { ItemId } from "../../shared/game.ts";
-import { getBowIconArt, getItemIconArt } from "../components/itemIconArt.ts";
+import { getBowIconArt, getItemIconArt, type ItemIconArt } from "../components/itemIconArt.ts";
 import { blockIdForCubeItem } from "./blockItemCubeGeometry.ts";
 import { appendItemSpriteGeometry } from "./itemSpriteGeometry.ts";
 import { writeMatrixProduct } from "./matrixProduct.ts";
@@ -19,7 +19,12 @@ import {
   fullPlayerArmorAppearance,
   type PlayerArmorMaterial,
 } from "./playerArmorGeometry.ts";
-import { createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
+import {
+  createFirstPersonRenderer,
+  firstPersonSpritePresentation,
+  usesCanonicalHeldBlock,
+  type FirstPersonSpritePresentation,
+} from "./firstPersonRenderer.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import {
   createFirstPersonSkinRenderer,
@@ -52,26 +57,32 @@ export type VisualLabRenderer = Readonly<{
   setPlayerHeldItem(itemId: ItemId | null): void;
   setPlayerPose(motion: PlayerRigMotion, phase: number): void;
   setPlayerArmor(material: PlayerArmorMaterial | null): void;
-  setViewmodel(itemId: ItemId, variantIndex?: number): void;
+  setViewmodel(itemId: ItemId, variantIndex?: number, strategy?: VisualLabViewmodelStrategy): void;
   setDroppedItem(itemId: ItemId): void;
   setLighting(preset: VisualLabLighting): void;
   setMob(kind: MobKind, state?: VisualLabMobState): void;
   setOrbit(yawDegrees: number, pitchDegrees: number, zoom: number): void;
   resize(): void;
-  stats(): Readonly<{ vertices: number; drawCalls: number }>;
+  stats(): Readonly<{
+    vertices: number;
+    drawCalls: number;
+    states: VisualLabSilhouette | null;
+  }>;
   destroy(): void;
 }>;
 
 export type VisualLabMobState = "idle" | "walk" | "hurt" | "fallen" | "special";
 export type VisualLabLighting = "day" | "night" | "torch" | "unlit";
+export type VisualLabViewmodelStrategy = "production" | "transform" | "billboard" | "grip";
+export type VisualLabSilhouette = readonly [number, number, number, number, number];
 
-const SPECIAL_VISUAL_BLOCKS: Readonly<Partial<Record<ItemId, EngineBlockId>>> = Object.freeze({
+const SPECIAL_VISUAL_BLOCKS: Readonly<Partial<Record<ItemId, EngineBlockId>>> = {
   torch: BLOCK.TORCH,
   chest: BLOCK.CHEST, door: BLOCK.DOOR_CLOSED, bed: BLOCK.BED, ladder: BLOCK.LADDER,
   sapling: BLOCK.SAPLING,
   oak_fence: BLOCK.OAK_FENCE, oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
   stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
-});
+};
 
 function blockGeometry(block: EngineBlockId): Float32Array {
   const output: number[] = [];
@@ -91,6 +102,75 @@ function blockGeometry(block: EngineBlockId): Float32Array {
     }
   }
   return new Float32Array(output);
+}
+
+function mirroredItemArt(art: ItemIconArt): ItemIconArt {
+  return Object.freeze({
+    family: art.family,
+    variant: art.variant,
+    runs: Object.freeze(art.runs.map((run) => Object.freeze({
+      x: 16 - run.x - run.width,
+      y: run.y,
+      width: run.width,
+      color: run.color,
+    }))),
+  });
+}
+
+function experimentalSpritePresentation(
+  itemId: ItemId,
+  bowDrawn: boolean,
+  strategy: Exclude<VisualLabViewmodelStrategy, "production">,
+): FirstPersonSpritePresentation {
+  const source = firstPersonSpritePresentation(itemId, bowDrawn);
+  if (strategy === "transform") {
+    // Compose the published handheld item transform with the classic
+    // first-person camera turn instead of guessing a final Euler triple.
+    return Object.freeze({
+      center: [-0.2, -0.28, -1.12],
+      size: source.size * 0.94,
+      depth: 0.025,
+      rotationDegrees: [0, -45, 25],
+      pivotPixels: source.pivotPixels,
+    });
+  }
+  const mirroredPivot: readonly [number, number] = [15 - source.pivotPixels[0], source.pivotPixels[1]];
+  return Object.freeze({
+    center: strategy === "grip" ? [0.5, -0.28, -1.14] : [0.48, -0.28, -1.12],
+    size: source.size * (strategy === "grip" ? 0.78 : 0.9),
+    depth: 0.006,
+    rotationDegrees: strategy === "grip" ? [4, 0, -18] : [0, 0, -22],
+    pivotPixels: mirroredPivot,
+  });
+}
+
+function transformedBlockGeometry(
+  block: EngineBlockId,
+  strategy: Exclude<VisualLabViewmodelStrategy, "production">,
+): Float32Array {
+  const output = blockGeometry(block);
+  const center = strategy === "grip" ? [0.38, -0.28, -1.3] : [0.48, -0.42, -1.3];
+  const rotation = strategy === "transform" ? [30, 45, 0]
+    : strategy === "billboard" ? [24, -32, 0] : [28, -38, 2];
+  const size = strategy === "grip" ? 0.58 : 0.66;
+  const rx = rotation[0] * Math.PI / 180;
+  const ry = rotation[1] * Math.PI / 180;
+  const rz = rotation[2] * Math.PI / 180;
+  const cx = Math.cos(rx); const sx = Math.sin(rx);
+  const cy = Math.cos(ry); const sy = Math.sin(ry);
+  const cz = Math.cos(rz); const sz = Math.sin(rz);
+  for (let offset = 0; offset < output.length; offset += PLAYER_SKIN_VERTEX_STRIDE) {
+    let x = output[offset] * size;
+    let y = output[offset + 1] * size;
+    let z = output[offset + 2] * size;
+    let next = y * cx - z * sx; z = y * sx + z * cx; y = next;
+    next = x * cy + z * sy; z = -x * sy + z * cy; x = next;
+    next = x * cz - y * sz; y = x * sz + y * cz; x = next;
+    output[offset] = x + center[0];
+    output[offset + 1] = y + center[1];
+    output[offset + 2] = z + center[2];
+  }
+  return output;
 }
 
 function specialBlockGeometry(
@@ -192,6 +272,8 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
   const viewmodelSkinRenderer = createFirstPersonSkinRenderer(gl);
   const buffer = gl.createBuffer();
   const skinBuffer = gl.createBuffer();
+  const comparisonColorBuffer = gl.createBuffer();
+  const comparisonTexturedBuffer = gl.createBuffer();
   const skinTexture = gl.createTexture();
   const atlasTexture = gl.createTexture();
   const position = gl.getAttribLocation(program, "aPosition");
@@ -204,11 +286,14 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
   const skinMvpLocation = gl.getUniformLocation(skinProgram, "uMvp");
   const skinSamplerLocation = gl.getUniformLocation(skinProgram, "uSkin");
   const skinLightLocation = gl.getUniformLocation(skinProgram, "uLight");
-  if (!buffer || !skinBuffer || !skinTexture || !atlasTexture || position < 0 || color < 0 || !mvpLocation
+  if (!buffer || !skinBuffer || !comparisonColorBuffer || !comparisonTexturedBuffer
+    || !skinTexture || !atlasTexture || position < 0 || color < 0 || !mvpLocation
     || !lightLocation || skinPosition < 0 || skinUv < 0 || skinShade < 0 || !skinMvpLocation
     || !skinSamplerLocation || !skinLightLocation) {
     gl.deleteBuffer(buffer);
     gl.deleteBuffer(skinBuffer);
+    gl.deleteBuffer(comparisonColorBuffer);
+    gl.deleteBuffer(comparisonTexturedBuffer);
     gl.deleteTexture(skinTexture);
     gl.deleteTexture(atlasTexture);
     gl.deleteProgram(program);
@@ -243,11 +328,80 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
   let mode: "item" | "player" | "block" | "mob" | "viewmodel" | "dropped" = "item";
   let viewmodelBow = false;
   let viewmodelBlockArm = false;
+  let viewmodelItem: ItemId = "diamond_pickaxe";
+  let viewmodelVariant = 0;
+  let viewmodelStrategy: VisualLabViewmodelStrategy = "production";
+  let comparisonColorVertices = 0;
+  let comparisonTexturedVertices = 0;
   const light: [number, number, number] = [1, 1, 1];
   let yaw = -22;
   let pitch = 12;
   let zoom = 1.65;
   let playerRig: PlayerRigInput = Object.freeze({ motion: "idle", phase: 0.25 });
+  let silhouettePixels = new Uint8Array(0);
+
+  function measureSilhouette(): VisualLabSilhouette | null {
+    const width = canvas.width;
+    const height = canvas.height;
+    const pixelCount = width * height;
+    if (pixelCount <= 0) return null;
+    const required = pixelCount * 4;
+    if (silhouettePixels.length !== required) silhouettePixels = new Uint8Array(required);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, silhouettePixels);
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    let opaque = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (silhouettePixels[(y * width + x) * 4 + 3] === 0) continue;
+        opaque += 1;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (maxX < minX || maxY < minY) return null;
+    const rounded = (value: number) => Math.round(value * 10) / 10;
+    return Object.freeze([
+      rounded(minX / width * 100),
+      rounded((height - 1 - maxY) / height * 100),
+      rounded((maxX - minX + 1) / width * 100),
+      rounded((maxY - minY + 1) / height * 100),
+      rounded(opaque / pixelCount * 100),
+    ] as const);
+  }
+
+  function rebuildComparisonViewmodel(): void {
+    comparisonColorVertices = 0;
+    comparisonTexturedVertices = 0;
+    if (viewmodelStrategy === "production") return;
+    const block = blockIdForCubeItem(viewmodelItem) ?? SPECIAL_VISUAL_BLOCKS[viewmodelItem] ?? BLOCK.AIR;
+    if (usesCanonicalHeldBlock(viewmodelItem, block)) {
+      const data = transformedBlockGeometry(block, viewmodelStrategy);
+      comparisonTexturedVertices = data.length / PLAYER_SKIN_VERTEX_STRIDE;
+      gl.bindBuffer(gl.ARRAY_BUFFER, comparisonTexturedBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      return;
+    }
+    const bowDrawn = viewmodelItem === "bow" && viewmodelVariant > 0;
+    const sourceArt = viewmodelItem === "bow"
+      ? getBowIconArt(Math.max(0, Math.min(3, Math.floor(viewmodelVariant))) as 0 | 1 | 2 | 3)
+      : getItemIconArt(viewmodelItem);
+    const art = viewmodelStrategy === "transform" ? sourceArt : mirroredItemArt(sourceArt);
+    const geometry: number[] = [];
+    appendItemSpriteGeometry(
+      geometry,
+      art,
+      experimentalSpritePresentation(viewmodelItem, bowDrawn, viewmodelStrategy),
+    );
+    const data = new Float32Array(geometry);
+    comparisonColorVertices = data.length / 6;
+    gl.bindBuffer(gl.ARRAY_BUFFER, comparisonColorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  }
 
   function resize(): void {
     const ratio = Math.min(2, window.devicePixelRatio || 1);
@@ -271,9 +425,12 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
     writePerspective(projection, canvas.width / Math.max(1, canvas.height), mode === "viewmodel" ? 70 : 36);
     if (mode === "viewmodel") {
       writeViewmodelMvp(viewmodelMvp, projection, 0, false);
-      if (viewmodelStats[1] > 0) {
+      const production = viewmodelStrategy === "production";
+      const texturedVertices = production ? viewmodelStats[1] : comparisonTexturedVertices;
+      const colorVertices = production ? viewmodelStats[0] : comparisonColorVertices;
+      if (texturedVertices > 0) {
         gl.useProgram(skinProgram);
-        gl.bindBuffer(gl.ARRAY_BUFFER, viewmodelTexturedBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, production ? viewmodelTexturedBuffer : comparisonTexturedBuffer);
         gl.enableVertexAttribArray(skinPosition);
         gl.enableVertexAttribArray(skinUv);
         gl.enableVertexAttribArray(skinShade);
@@ -283,18 +440,19 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
         gl.uniform1i(skinSamplerLocation, 0); gl.uniformMatrix4fv(skinMvpLocation, false, viewmodelMvp);
         gl.uniform3f(skinLightLocation, light[0], light[1], light[2]);
-        gl.drawArrays(gl.TRIANGLES, 0, viewmodelStats[1]);
+        gl.drawArrays(gl.TRIANGLES, 0, texturedVertices);
       }
-      if (viewmodelStats[0] > 0) {
-        gl.useProgram(program); gl.bindBuffer(gl.ARRAY_BUFFER, viewmodelColorBuffer);
+      if (colorVertices > 0) {
+        gl.useProgram(program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, production ? viewmodelColorBuffer : comparisonColorBuffer);
         gl.enableVertexAttribArray(position); gl.enableVertexAttribArray(color);
         gl.vertexAttribPointer(position, 3, gl.FLOAT, false, 24, 0);
         gl.vertexAttribPointer(color, 3, gl.FLOAT, false, 24, 12);
         gl.uniformMatrix4fv(mvpLocation, false, viewmodelMvp);
         gl.uniform3f(lightLocation, light[0], light[1], light[2]);
-        gl.drawArrays(gl.TRIANGLES, 0, viewmodelStats[0]);
+        gl.drawArrays(gl.TRIANGLES, 0, colorVertices);
       }
-      if (!viewmodelBow) {
+      if (!viewmodelBow && (production || viewmodelStrategy === "grip")) {
         viewmodelSkinRenderer.draw(viewmodelMvp, light, viewmodelBlockArm);
       }
       return;
@@ -418,17 +576,23 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
       vertexCount = playerRenderer.vertexCount + playerRenderer.heldItemVertexCount + playerRenderer.armorVertexCount;
       if (mode === "player") draw();
     },
-    setViewmodel(itemId, variantIndex = 0) {
+    setViewmodel(itemId, variantIndex = 0, strategy = "production") {
       mode = "viewmodel";
       specialColorVertexCount = 0;
+      viewmodelItem = itemId;
+      viewmodelVariant = variantIndex;
+      viewmodelStrategy = strategy;
       const block = blockIdForCubeItem(itemId) ?? SPECIAL_VISUAL_BLOCKS[itemId] ?? BLOCK.AIR;
       viewmodelBow = itemId === "bow";
       viewmodelBlockArm = usesCanonicalHeldBlock(itemId, block);
       setViewmodelHeldItem(itemId, block);
       setViewmodelBowCharge(viewmodelBow && variantIndex > 0,
         variantIndex <= 1 ? 0 : variantIndex === 2 ? 0.6 : 1);
-      vertexCount = viewmodelStats[0] + viewmodelStats[1]
-        + (viewmodelBow ? 0 : FIRST_PERSON_SKIN_ARM_VERTICES);
+      rebuildComparisonViewmodel();
+      const production = viewmodelStrategy === "production";
+      vertexCount = (production ? viewmodelStats[0] + viewmodelStats[1]
+        : comparisonColorVertices + comparisonTexturedVertices)
+        + (!viewmodelBow && (production || viewmodelStrategy === "grip") ? FIRST_PERSON_SKIN_ARM_VERTICES : 0);
       draw();
     },
     setDroppedItem(itemId) {
@@ -491,16 +655,21 @@ export function createVisualLabRenderer(canvas: HTMLCanvasElement): VisualLabRen
     stats: () => Object.freeze({
       vertices: vertexCount,
       drawCalls: mode === "viewmodel"
-        ? viewmodelStats[2] + Number(!viewmodelBow)
+        ? Number((viewmodelStrategy === "production" ? viewmodelStats[0] : comparisonColorVertices) > 0)
+          + Number((viewmodelStrategy === "production" ? viewmodelStats[1] : comparisonTexturedVertices) > 0)
+          + Number(!viewmodelBow && (viewmodelStrategy === "production" || viewmodelStrategy === "grip"))
         : mode === "player"
           ? playerRenderer.drawCallCount
           : mode === "block"
             ? Number(vertexCount - specialColorVertexCount > 0) + Number(specialColorVertexCount > 0)
             : Number(vertexCount > 0),
+      states: measureSilhouette(),
     }),
     destroy() {
       gl.deleteBuffer(buffer);
       gl.deleteBuffer(skinBuffer);
+      gl.deleteBuffer(comparisonColorBuffer);
+      gl.deleteBuffer(comparisonTexturedBuffer);
       gl.deleteTexture(skinTexture);
       gl.deleteTexture(atlasTexture);
       gl.deleteProgram(program);
