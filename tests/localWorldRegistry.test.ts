@@ -1309,7 +1309,7 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   const snapshot = createDefaultSinglePlayerSnapshot(world.world.seed, 1_210, world.world.id);
   snapshot.world.edits = Array.from({ length: 12_000 }, (_, index) => ({
     x: index,
-    y: 1,
+    y: 2,
     z: index,
     block: BLOCK.STONE,
   }));
@@ -1331,7 +1331,7 @@ assert.equal(moveLocalWorldSelection("a", ["a", "b"], "End"), "b");
   );
   large.world.edits = Array.from({ length: 2_000 }, (_, index) => ({
     x: index,
-    y: 1,
+    y: 2,
     z: index,
     block: BLOCK.STONE,
   }));

@@ -53,6 +53,7 @@ export const BLOCK = {
   STONE_BRICK_SLAB: 30,
   CLAY: 31,
   BRICKS: 32,
+  BEDROCK: 33,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -162,7 +163,7 @@ function validateRuntimePose(value: unknown, path: string): RuntimePoseValidatio
     }
   }
   if (Math.abs(pose.x as number) > 1_000_000) return { ok: false, path: `${path}.x` };
-  if ((pose.y as number) < -24 || (pose.y as number) > 128) return { ok: false, path: `${path}.y` };
+  if ((pose.y as number) < 1 || (pose.y as number) > 192) return { ok: false, path: `${path}.y` };
   if (Math.abs(pose.z as number) > 1_000_000) return { ok: false, path: `${path}.z` };
   if (Math.abs(pose.yaw as number) > Math.PI * 4) return { ok: false, path: `${path}.yaw` };
   if (Math.abs(pose.pitch as number) > 1.52) return { ok: false, path: `${path}.pitch` };

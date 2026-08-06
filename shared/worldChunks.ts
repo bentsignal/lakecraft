@@ -3,10 +3,10 @@ import * as BS from "./bundleStrings.ts";
 export const WORLD_EDIT_CHUNK_SIZE = 8;
 export const WORLD_EDIT_MIN_XZ = -1_000_000;
 export const WORLD_EDIT_MAX_XZ = 1_000_000;
-export const WORLD_EDIT_MIN_Y = -24;
-export const WORLD_EDIT_MAX_Y = 128;
+export const WORLD_EDIT_MIN_Y = 1;
+export const WORLD_EDIT_MAX_Y = 192;
 export const WORLD_CHUNK_SECTION_HEIGHT = 8;
-export const WORLD_CHUNK_CODEC_VERSION = 4;
+export const WORLD_CHUNK_CODEC_VERSION = 5;
 export const MAX_VISIBLE_WORLD_CHUNKS = 49;
 export const MAX_WORLD_CHUNK_SNAPSHOT_BYTES = 16_384;
 /** Current snapshots reserve code zero for an untouched cell. */
@@ -287,7 +287,7 @@ function snapshotToSections(snapshot: PackedSnapshot): Map<number, Uint8Array> |
       const code = getCurrentCode(packed, index);
       if (code > WORLD_CHUNK_BLOCK_TYPES.length) return null;
       const absoluteY = y * WORLD_CHUNK_SECTION_HEIGHT + Math.floor(index / CELLS_PER_Y);
-      if (code !== 0 && (absoluteY < WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
+      if (code !== 0 && (absoluteY <= WORLD_EDIT_MIN_Y || absoluteY > WORLD_EDIT_MAX_Y)) return null;
     }
     sections.set(y, packed.slice());
   }
@@ -327,7 +327,7 @@ export function createWorldChunkSnapshot(
     const y = finiteInteger(edit.y);
     const z = finiteInteger(edit.z);
     const code = BLOCK_CODE.get(edit.blockType);
-    if (x === null || y === null || z === null || code === undefined) continue;
+    if (x === null || y === null || z === null || code === undefined || y <= WORLD_EDIT_MIN_Y) continue;
     const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
     if (!address) continue;
     const previous = latest.get(address.absoluteIndex);
@@ -371,7 +371,9 @@ export function applyWorldChunkEdits(
     const y = finiteInteger(edit.y);
     const z = finiteInteger(edit.z);
     const code = BLOCK_CODE.get(edit.blockType);
-    if (x === null || y === null || z === null || code === undefined) return { ok: false, reason: "invalid_edit" };
+    if (x === null || y === null || z === null || code === undefined || y <= WORLD_EDIT_MIN_Y) {
+      return { ok: false, reason: "invalid_edit" };
+    }
     const address = cellAddress(x, y, z, chunk.chunkX, chunk.chunkZ);
     if (!address) return { ok: false, reason: "invalid_edit" };
     const packed = sections.get(address.sectionY) ?? new Uint8Array(SECTION_PACKED_BYTE_COUNT);

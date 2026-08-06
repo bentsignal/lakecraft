@@ -23,7 +23,7 @@ assert.equal(BLOCK.LADDER, 16, "new block IDs must append without changing saved
 assert.equal(BLOCK.COBBLESTONE, 17, "new block IDs must append without changing saved IDs");
 assert.equal(BLOCK.SAND, 18, "new block IDs must append without changing saved IDs");
 assert.equal(BLOCK.GLASS, 19, "new block IDs must append without changing saved IDs");
-assert.equal(TERRAIN_MIN_Y, -24, "streamed chunks need substantially deeper mineable strata");
+assert.equal(TERRAIN_MIN_Y, 1, "y=0 is void and the natural world begins at y=1");
 assert.equal(createTerrainRegion(SEED, Number.NEGATIVE_INFINITY, 0, 0, 0).size, 0);
 assert.throws(() => createTerrainChunk(SEED, Number.POSITIVE_INFINITY, 0), RangeError);
 assert.throws(
@@ -47,9 +47,9 @@ for (const seed of [1, 42, SEED, 999_999]) {
   const terrain = createTerrain(seed, 18);
   for (let x = -3; x <= 3; x += 1) {
     for (let z = -3; z <= 3; z += 1) {
-      assert.equal(terrainHeight(x, z, seed), 6, `spawn should be flat at ${x},${z}`);
-      assert.equal(terrain.get(blockKey(x, 6, z)), BLOCK.GRASS);
-      assert.equal(terrain.has(blockKey(x, 7, z)), false, `spawn headroom should be empty at ${x},${z}`);
+      assert.equal(terrainHeight(x, z, seed), 68, `spawn should be flat at ${x},${z}`);
+      assert.equal(terrain.get(blockKey(x, 68, z)), BLOCK.GRASS);
+      assert.equal(terrain.has(blockKey(x, 69, z)), false, `spawn headroom should be empty at ${x},${z}`);
     }
   }
   for (const [key, block] of terrain) {
@@ -64,7 +64,7 @@ for (let x = -18; x <= 18; x += 1) {
   for (let z = -18; z <= 18; z += 1) {
     const top = terrainHeight(x, z, SEED);
     const sandDepth = terrainSandDepth(x, z, SEED);
-    assert.ok(top >= 3 && top <= 11, `height ${top} at ${x},${z} is outside generation bounds`);
+    assert.ok(top >= 63 && top <= 80, `height ${top} at ${x},${z} is outside generation bounds`);
     assert.equal(first.get(blockKey(x, top, z)), sandDepth ? BLOCK.SAND : BLOCK.GRASS);
     assert.equal(
       first.get(blockKey(x, top - 1, z)),
@@ -75,8 +75,9 @@ for (let x = -18; x <= 18; x += 1) {
       sandDepth === 3 ? BLOCK.SAND : terrainClayBlock(x, top - 2, z, SEED) ?? BLOCK.DIRT,
     );
     assert.ok(
-      [BLOCK.STONE, BLOCK.CLAY, BLOCK.GRAVEL, BLOCK.COAL_ORE, BLOCK.IRON_ORE].includes(first.get(blockKey(x, 0, z))!),
-      "the shallow stratum may contain deterministic clay, gravel, or ore",
+      first.get(blockKey(x, TERRAIN_MIN_Y, z)),
+      BLOCK.BEDROCK,
+      "every column begins with an indestructible bedrock foundation",
     );
   }
 }
@@ -130,7 +131,7 @@ assert.deepEqual(
   "far-coordinate chunks must merge without terrain, cave, ore, or tree seams",
 );
 const farDeepOre = [...farWhole].filter(([key, block]) => (
-  Number(key.split(",")[1]) < 0 && (block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE)
+  Number(key.split(",")[1]) <= 56 && (block === BLOCK.COAL_ORE || block === BLOCK.IRON_ORE)
 ));
 assert.ok(farDeepOre.some(([, block]) => block === BLOCK.COAL_ORE), "deep strata need mineable coal");
 assert.ok(farDeepOre.some(([, block]) => block === BLOCK.IRON_ORE), "deep strata need mineable iron");
@@ -150,7 +151,7 @@ assert.ok(ironBlocks.length < coalBlocks.length, "iron should be rarer than coal
 for (const [key, block] of oreBlocks) {
   const [x, y, z] = key.split(",").map(Number);
   assert.equal(terrainBaseBlock(x, y, z, SEED), BLOCK.STONE, `${key} replaced a non-stone block`);
-  assert.ok(y <= (block === BLOCK.IRON_ORE ? 4 : 6), `${key} exceeded its ore depth bound`);
+  assert.ok(y <= (block === BLOCK.IRON_ORE ? 56 : 66), `${key} exceeded its ore depth bound`);
 }
 
 const treeBlocks = [...first.values()].filter((block) => block === BLOCK.WOOD || block === BLOCK.LEAVES);

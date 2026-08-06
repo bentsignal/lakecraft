@@ -16,7 +16,7 @@ const player: RemotePlayer = {
   id: "default-skin-distance-rig",
   name: "Explorer",
   x: 0,
-  y: 0,
+  y: 1,
   z: 0,
   yaw: 0,
   pitch: 0,
@@ -75,8 +75,8 @@ for (let offset = 0; offset < body.length; offset += 6) {
 }
 assert.ok(Math.abs(minX + 0.505) < epsilon && Math.abs(maxX - 0.505) < epsilon,
   "wide default-skin arms preserve the standard 16-pixel body span");
-assert.equal(minY, 0);
-assert.ok(maxY >= REMOTE_DEFAULT_PLAYER_HEIGHT && maxY <= REMOTE_DEFAULT_PLAYER_HEIGHT + 0.006,
+assert.equal(minY, 1);
+assert.ok(maxY >= REMOTE_DEFAULT_PLAYER_HEIGHT + 1 && maxY <= REMOTE_DEFAULT_PLAYER_HEIGHT + 1.006,
   "the distance rig preserves the standard 32-pixel / two-block player height");
 
 const scarfOffsets = verticesWithColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.scarf);
@@ -84,7 +84,7 @@ const scarfX = scarfOffsets.map((offset) => body[offset]);
 const scarfY = scarfOffsets.map((offset) => body[offset + 1]);
 assert.ok(Math.min(...scarfX) < -0.12 && Math.max(...scarfX) > 0.12,
   "the standard shirt accent crosses the chest");
-assert.ok(Math.min(...scarfY) >= 1.36 && Math.max(...scarfY) <= 1.49,
+assert.ok(Math.min(...scarfY) >= 2.36 && Math.max(...scarfY) <= 2.49,
   "the scarf remains at the collar rather than becoming anonymous body color");
 
 const fullCapacity = remotePlayerBufferCapacity(32);

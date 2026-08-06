@@ -615,6 +615,13 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "bedrock") {
+    // Deterministic fallback only; the reviewed installed asset replaces this
+    // tile in production just below, as it does for every canonical material.
+    fill([53, 53, 53, 255]);
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 

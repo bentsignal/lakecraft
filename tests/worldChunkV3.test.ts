@@ -21,10 +21,10 @@ import {
 
 assert.equal(WORLD_EDIT_MIN_XZ, -1_000_000);
 assert.equal(WORLD_EDIT_MAX_XZ, 1_000_000);
-assert.equal(WORLD_EDIT_MIN_Y, -24);
-assert.equal(WORLD_EDIT_MAX_Y, 128);
+assert.equal(WORLD_EDIT_MIN_Y, 1);
+assert.equal(WORLD_EDIT_MAX_Y, 192);
 assert.equal(WORLD_CHUNK_SECTION_HEIGHT, 8);
-assert.equal(WORLD_CHUNK_CODEC_VERSION, 4);
+assert.equal(WORLD_CHUNK_CODEC_VERSION, 5);
 assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 6);
 assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 63);
 
@@ -43,24 +43,24 @@ assert.deepEqual(validateVisibleWorldChunkKeys(["125000:-125000"]), {
 
 const farChunkKey = worldEditChunkKey(WORLD_EDIT_MAX_XZ, WORLD_EDIT_MIN_XZ);
 const sparseFar = createWorldChunkSnapshot(farChunkKey, [
-  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y, z: WORLD_EDIT_MIN_XZ, blockType: "diamond_ore" },
-  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y, z: WORLD_EDIT_MIN_XZ + 1, blockType: "gold_ore" },
+  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y + 1, z: WORLD_EDIT_MIN_XZ, blockType: "diamond_ore" },
+  { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MIN_Y + 1, z: WORLD_EDIT_MIN_XZ + 1, blockType: "gold_ore" },
   { x: WORLD_EDIT_MAX_XZ, y: WORLD_EDIT_MAX_Y, z: WORLD_EDIT_MIN_XZ, blockType: "glass" },
 ]);
 assert.equal(sparseFar.ok, true);
 if (!sparseFar.ok) throw new Error(sparseFar.reason);
 const sparseJson = JSON.parse(sparseFar.snapshotJson) as { v: number; sections: Array<{ y: number; cells: string }> };
-assert.equal(sparseJson.v, 4);
-assert.deepEqual(sparseJson.sections.map((section) => section.y), [-3, 16]);
-assert.ok(sparseFar.snapshotJson.length < 1_200, `two sparse v4 sections were ${sparseFar.snapshotJson.length} bytes`);
+assert.equal(sparseJson.v, 5);
+assert.deepEqual(sparseJson.sections.map((section) => section.y), [0, 24]);
+assert.ok(sparseFar.snapshotJson.length < 1_200, `two sparse v5 sections were ${sparseFar.snapshotJson.length} bytes`);
 const sparseDecoded = decodeWorldChunkSnapshot(farChunkKey, sparseFar.snapshotJson);
 assert.equal(sparseDecoded.ok, true);
 if (sparseDecoded.ok) {
   assert.deepEqual(
     sparseDecoded.edits.map(({ coordKey, blockType }) => [coordKey, blockType]),
     [
-      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y}:${WORLD_EDIT_MIN_XZ}`, "diamond_ore"],
-      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y}:${WORLD_EDIT_MIN_XZ + 1}`, "gold_ore"],
+      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y + 1}:${WORLD_EDIT_MIN_XZ}`, "diamond_ore"],
+      [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MIN_Y + 1}:${WORLD_EDIT_MIN_XZ + 1}`, "gold_ore"],
       [`${WORLD_EDIT_MAX_XZ}:${WORLD_EDIT_MAX_Y}:${WORLD_EDIT_MIN_XZ}`, "glass"],
     ],
   );
@@ -68,18 +68,18 @@ if (sparseDecoded.ok) {
 
 const appended = applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
   x: WORLD_EDIT_MAX_XZ,
-  y: 0,
+  y: 2,
   z: WORLD_EDIT_MIN_XZ,
   blockType: "coal_ore",
 });
 assert.equal(appended.ok, true);
 if (appended.ok) {
-  assert.equal(JSON.parse(appended.snapshotJson).v, 4);
+  assert.equal(JSON.parse(appended.snapshotJson).v, 5);
   assert.equal(decodeWorldChunkSnapshot(farChunkKey, appended.snapshotJson).ok, true);
 }
 assert.equal(applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
   x: WORLD_EDIT_MAX_XZ + 1,
-  y: 0,
+  y: 2,
   z: WORLD_EDIT_MIN_XZ,
   blockType: "stone",
 }).ok, false, "the partially in-range edge chunk cannot persist x beyond the world envelope");
@@ -89,9 +89,15 @@ assert.equal(applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
   z: WORLD_EDIT_MIN_XZ,
   blockType: "stone",
 }).ok, false);
+assert.equal(applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
+  x: WORLD_EDIT_MAX_XZ,
+  y: WORLD_EDIT_MIN_Y,
+  z: WORLD_EDIT_MIN_XZ,
+  blockType: "air",
+}).ok, false, "the bedrock foundation cannot be edited in persisted multiplayer chunks");
 
 const dense: WorldChunkEditInput[] = [];
-for (let y = WORLD_EDIT_MIN_Y; y <= WORLD_EDIT_MAX_Y; y += 1) {
+for (let y = WORLD_EDIT_MIN_Y + 1; y <= WORLD_EDIT_MAX_Y; y += 1) {
   for (let z = 0; z < 8; z += 1) {
     for (let x = 0; x < 8; x += 1) dense.push({ x, y, z, blockType: "stone" });
   }
@@ -102,18 +108,18 @@ const denseEncodeMs = performance.now() - denseStartedAt;
 assert.equal(denseSnapshot.ok, true);
 if (!denseSnapshot.ok) throw new Error(denseSnapshot.reason);
 const denseParsed = JSON.parse(denseSnapshot.snapshotJson) as { v: number; sections: Array<{ y: number }> };
-assert.equal(denseParsed.sections.length, 20, "the -24..128 envelope occupies twenty bounded vertical sections");
+assert.equal(denseParsed.sections.length, 25, "the editable 2..192 envelope occupies twenty-five bounded vertical sections");
 assert.ok(denseSnapshot.snapshotJson.length < MAX_WORLD_CHUNK_SNAPSHOT_BYTES);
 const denseDecodeStartedAt = performance.now();
 const denseDecoded = decodeWorldChunkSnapshot("0:0", denseSnapshot.snapshotJson);
 const denseDecodeMs = performance.now() - denseDecodeStartedAt;
 assert.equal(denseDecoded.ok && denseDecoded.edits.length, dense.length);
-assert.ok(denseEncodeMs < 100, `dense v4 encode took ${denseEncodeMs.toFixed(2)}ms`);
-assert.ok(denseDecodeMs < 100, `dense v4 decode took ${denseDecodeMs.toFixed(2)}ms`);
+assert.ok(denseEncodeMs < 100, `dense v5 encode took ${denseEncodeMs.toFixed(2)}ms`);
+assert.ok(denseDecodeMs < 100, `dense v5 decode took ${denseDecodeMs.toFixed(2)}ms`);
 
 assert.equal(decodeWorldChunkSnapshot("0:0", JSON.stringify({
-  v: 4,
-  sections: [{ y: 17, cells: "" }],
+  v: 5,
+  sections: [{ y: 25, cells: "" }],
 })).ok, false, "out-of-envelope vertical sections are rejected");
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
@@ -122,7 +128,7 @@ assert.equal(serverSource.includes("removeBlock: mutation"), false, "legacy mini
 assert.ok(serverSource.includes("editWorldBlock: mutation"), "atomic authoritative world edit mutation exists");
 
 console.log(JSON.stringify({
-  benchmark: "v4 six-bit vertical-section world persistence",
+  benchmark: "v5 six-bit vertical-section world persistence",
   denseEdits: dense.length,
   denseSections: denseParsed.sections.length,
   denseSnapshotBytes: denseSnapshot.snapshotJson.length,
@@ -130,4 +136,4 @@ console.log(JSON.stringify({
   denseEncodeMs: Number(denseEncodeMs.toFixed(2)),
   denseDecodeMs: Number(denseDecodeMs.toFixed(2)),
 }));
-console.log("lakecraft world chunk v4 tests: ok");
+console.log("lakecraft world chunk v5 tests: ok");

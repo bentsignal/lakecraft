@@ -133,12 +133,11 @@ const BUILTIN_EXCLUSIONS = Object.freeze([
   "sort", "stringify", "take", "toString", "update", "withIndex",
 ]);
 export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
-// Reviewed 2026-08-04 after the explicit MotionSegmentRecorder field and the
-// canonical skin-storage codec added exactly the two source-shape deltas pinned
-// below; compact manifest keys, exclusions, runtime strings, and server records
-// stayed exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "edb1a928cdc4de8429dc2d4099cf9054fd5e95eac67e6f1027c67183730df876";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "52fad98eebf0a2f15bf6dd555345fbcfc93b19db7d6b551986fce3c536124995";
+// Reviewed through the canonical GUI block raster base. The explicit
+// MotionSegmentRecorder and skin-storage deltas remain pinned below; compact
+// manifest keys, exclusions, runtime strings, and server records stay exact.
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "1c27fa5091a45d849de3f7215dd4f691eebffa8a09983fd7da523d928aa9da48";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "1507012a18bcf742db8190a1ef102c8139d010c7c23895fe128726261c4aeb1c";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "b055a528ddd8ba7b903bd5706adaf1ce3b2958079de2b2a9ee79d9ff542b39f6";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({

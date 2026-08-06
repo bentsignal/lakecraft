@@ -75,13 +75,13 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
 }
 assert.match(client, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"[\s\S]*?stone_bricks:\s*BLOCK\.STONE_BRICKS/,
   "multiplayer round-trips engine, protocol, game, and item identities");
-assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "single-player saves retain stone bricks and every newer append-only block ID");
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/, "single-player saves retain stone bricks and every newer append-only block ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));
 assert.ok(mutation.includes("parseWorldBlockOperation(rawRequest)"));
 assert.ok(mutation.includes("resolveWorldBlockOperation(request"));
 assert.ok(mutation.includes("blockType: effect.nextBlock"));
-assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air"\)\)/,
+assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air" && block !== "bedrock"\)\)/,
   "Lakebed derives stone-brick acceptance from the append-only shared protocol catalog");
 assert.doesNotMatch(mutation, /setInterval|setTimeout|fetch\(/, "stone bricks stay on the existing discrete exact-once world mutation");
 

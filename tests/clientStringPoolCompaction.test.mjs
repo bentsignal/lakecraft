@@ -17,10 +17,12 @@ import {
   COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES,
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA,
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
@@ -262,6 +264,21 @@ delete globalThis.__lakecraftUniformLocations;
 delete globalThis.__lakecraftRejectedUniformContexts;
 delete globalThis.__lakecraftUnknownUniform;
 
+assert.deepEqual(COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA, {
+  previousOccurrences: 592,
+  previousUniqueValues: 524,
+  previousSourceFingerprint: "dae65329dae063fa8762ffc180ff6c580a576dd2c7a58aa0ecff97026d97b041",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  addedValue: "This world uses the retired terrain coordinate system and cannot be loaded. No data was changed; reset it to start fresh.",
+  source: "client/singleplayer/localSave.ts#unsupportedSinglePlayerSaveMessage",
+  exclusionChanges: 0,
+}, "the positive-coordinate save rejection adds exactly one reviewed user-facing message");
+assert.equal(COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");
 assert.equal(
@@ -383,15 +400,29 @@ assert.deepEqual(
 assert.equal(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousOccurrences
     + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
+  COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousOccurrences,
   "the block canvas accounts for the exact low-frequency occurrence increase",
 );
 assert.equal(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousUniqueValues
     + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousUniqueValues,
   "the block canvas accounts for the one newly promoted API value",
 );
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA, {
+  previousOccurrences: 374,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 4,
+  uniqueValueDelta: 1,
+  promotedValue: "bedrock",
+  source: "world-only terrain/protocol adapters",
+  exclusionChanges: 0,
+}, "bedrock enters only the world-only low-frequency boundary");
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.occurrenceDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.uniqueValueDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES);
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   {

@@ -236,7 +236,7 @@ for (const [label, source] of [["multiplayer", multiplayerSource], ["single-play
 }
 assert.match(multiplayerSource, /\[BLOCK\.STONE_BRICK_SLAB\]:\s*"stone_brick_slab"[\s\S]*?stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
   "multiplayer round-trips engine, protocol, item, and game slab identities");
-assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
+assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/,
   "single-player persistence admits every later append-only engine ID");
 const worldMutation = serverSource.slice(
   serverSource.indexOf("editWorldBlock: mutation(async"),

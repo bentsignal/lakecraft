@@ -28,8 +28,8 @@ export const MAX_VISIBLE_DROPPED_ITEMS_PER_CHUNK = 32;
 
 const MIN_WORLD_XZ = -1_000_000;
 const MAX_WORLD_XZ = 1_000_000;
-const MIN_WORLD_Y = -64;
-const MAX_WORLD_Y = 512;
+const MIN_WORLD_Y = 1;
+const MAX_WORLD_Y = 192;
 const DROP_ID_PATTERN = /^di_[a-z0-9]{14}$/;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -190,7 +190,7 @@ export function validateDroppedItemPosition(value: unknown): DroppedItemPosition
 }
 
 export function droppedItemChunkKey(x: number, z: number): string | null {
-  const position = validateDroppedItemPosition({ x, y: 0, z });
+  const position = validateDroppedItemPosition({ x, y: MIN_WORLD_Y, z });
   return position ? `${Math.floor(position.x / DROPPED_ITEM_CHUNK_SIZE)}:${Math.floor(position.z / DROPPED_ITEM_CHUNK_SIZE)}` : null;
 }
 

@@ -8,6 +8,7 @@
  * together. Normal `lakebed dev` source and server staging stay untouched.
  */
 const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
+  "BRICKS": "dZ",
   "CHEST": "ce",
   "CLAY": "ve",
   "COAL_ORE": "Me",

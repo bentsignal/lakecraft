@@ -111,7 +111,7 @@ const deepWindow = chunkWindow(8 * 25_000, 8 * -25_000)
 const windowGenerationMs = performance.now() - windowStartedAt;
 const deepWindowBlocks = deepWindow.reduce((total, chunk) => total + chunk.size, 0);
 assert.equal(deepWindow.length, MAX_STREAMING_CHUNK_COUNT);
-assert.ok(deepWindowBlocks > 70_000 && deepWindowBlocks < 160_000, `unexpected 7x7 deep-window size ${deepWindowBlocks}`);
+assert.ok(deepWindowBlocks > 180_000 && deepWindowBlocks < 230_000, `unexpected 7x7 deep-window size ${deepWindowBlocks}`);
 assert.ok(windowGenerationMs < 350, `far 7x7 deep window took ${windowGenerationMs.toFixed(1)}ms (budget: 350ms)`);
 console.log(JSON.stringify({
   benchmark: "far-coordinate 7x7 deep streaming window",

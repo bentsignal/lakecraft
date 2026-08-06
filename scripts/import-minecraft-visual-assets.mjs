@@ -97,6 +97,7 @@ const BLOCK_PATHS = Object.freeze({
   stone_bricks: "assets/minecraft/textures/block/stone_bricks.png",
   clay: "assets/minecraft/textures/block/clay.png",
   bricks: "assets/minecraft/textures/block/bricks.png",
+  bedrock: "assets/minecraft/textures/block/bedrock.png",
 });
 const BLOCK_ITEM_TEXTURE_PATHS = Object.freeze({
   torch: "assets/minecraft/textures/block/torch.png",

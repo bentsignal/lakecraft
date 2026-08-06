@@ -52,7 +52,9 @@ for (const invalid of [
 assert.equal(validateDroppedItemStackJson("{").ok, false);
 assert.equal(validateDroppedItemStackJson(JSON.stringify({ itemId: "dirt", count: 1 })).ok, true);
 
-assert.deepEqual(validateDroppedItemPosition({ x: -1_000_000, y: -64, z: 1_000_000 }), { x: -1_000_000, y: -64, z: 1_000_000 });
+assert.deepEqual(validateDroppedItemPosition({ x: -1_000_000, y: 1, z: 1_000_000 }), { x: -1_000_000, y: 1, z: 1_000_000 });
+assert.equal(validateDroppedItemPosition({ x: 0, y: 0, z: 0 }), null);
+assert.equal(validateDroppedItemPosition({ x: 0, y: 193, z: 0 }), null);
 assert.equal(validateDroppedItemPosition({ x: 1_000_001, y: 2, z: 3 }), null);
 assert.equal(validateDroppedItemPosition({ x: 1, y: Infinity, z: 3 }), null);
 assert.equal(droppedItemChunkKey(-1, -17), "-1:-2");

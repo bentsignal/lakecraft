@@ -65,6 +65,7 @@ import {
   loadSinglePlayerSave,
   resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
+  unsupportedSinglePlayerSaveMessage,
   type SinglePlayerLoadResult,
   type SinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
@@ -369,7 +370,7 @@ function SinglePlayerWorld({
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
     : initial.current.load.status === "unsupported"
-        ? "This world needs a newer Lakecraft version. Saving is disabled; reset it to start fresh."
+        ? unsupportedSinglePlayerSaveMessage(initial.current.load.versions)
         : initial.current.saveLocked
           ? "This local world could not be read. Saving is disabled; reset it to start fresh."
           : "";
