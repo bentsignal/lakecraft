@@ -99,6 +99,19 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA = Object.freeze({
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 396;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 117;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b";
+// Painting the cached GUI block raster introduces the client's third `2d`
+// context request. That existing API literal consequently enters the exact
+// three/four-use pool; no UI, wire, storage, or gameplay value is added.
+export const COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA = Object.freeze({
+  previousOccurrences: 371,
+  previousUniqueValues: 109,
+  previousSourceFingerprint: "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  promotedValue: "2d",
+  source: "client/components/ItemGlyph.tsx#paintAtlasBlockIcon",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
 ]);
 // The exact texture-backed models retire the authored dot-pattern surface
