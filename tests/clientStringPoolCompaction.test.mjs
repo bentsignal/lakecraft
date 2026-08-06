@@ -20,6 +20,7 @@ import {
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
@@ -364,6 +365,32 @@ assert.equal(
     + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.uniqueValueDelta,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
   "runtime atlas icon reconstruction accounts for the promoted top value",
+);
+assert.deepEqual(
+  COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
+  {
+    previousOccurrences: 371,
+    previousUniqueValues: 109,
+    previousSourceFingerprint: "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f",
+    occurrenceDelta: 3,
+    uniqueValueDelta: 1,
+    promotedValue: "2d",
+    source: "client/components/ItemGlyph.tsx#paintAtlasBlockIcon",
+    exclusionChanges: 0,
+  },
+  "the GUI block canvas promotes only the reviewed 2d context literal",
+);
+assert.equal(
+  COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousOccurrences
+    + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
+  "the block canvas accounts for the exact low-frequency occurrence increase",
+);
+assert.equal(
+  COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousUniqueValues
+    + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  "the block canvas accounts for the one newly promoted API value",
 );
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,

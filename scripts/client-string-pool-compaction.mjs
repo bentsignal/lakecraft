@@ -10,10 +10,10 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 592;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 524;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4b95e42effbfeab45644df543a1117fe54b3b058de8d092b5467b72b836079e8";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "dae65329dae063fa8762ffc180ff6c580a576dd2c7a58aa0ecff97026d97b041";
 export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_092;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -78,9 +78,22 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 371;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 109;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 374;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 110;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e";
+// Painting the cached GUI block raster introduces the client's third `2d`
+// context request. That existing API literal consequently enters the exact
+// three/four-use pool; no UI, wire, storage, or gameplay value is added.
+export const COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA = Object.freeze({
+  previousOccurrences: 371,
+  previousUniqueValues: 109,
+  previousSourceFingerprint: "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  promotedValue: "2d",
+  source: "client/components/ItemGlyph.tsx#paintAtlasBlockIcon",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "1.2..21.",
   "2.1..2",

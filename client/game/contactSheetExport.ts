@@ -1,5 +1,6 @@
 import { ITEMS, type ItemId } from "../../shared/game.ts";
 import { itemVisualIds } from "../../shared/visualCatalog.ts";
+import { atlasBlockItemGuiIcon, paintAtlasBlockGuiIcon } from "../components/atlasBlockItemIcon.ts";
 import {
   ITEM_ICON_SIZE,
   getItemIconArt,
@@ -176,6 +177,7 @@ function wrappedLabel(label: string, maximumCharacters: number): readonly string
 export function renderProductionContactSheet(
   canvas: HTMLCanvasElement,
   options: ProductionContactSheetOptions = {},
+  ownerDocument?: Pick<Document, "createElement">,
 ): ProductionContactSheetPlan {
   const plan = planProductionContactSheet(options);
   canvas.width = plan.width;
@@ -191,20 +193,30 @@ export function renderProductionContactSheet(
   const filterText = `${plan.cells.length} ASSETS / ${plan.category === "all" ? "ALL CATEGORIES" : plan.category.toUpperCase()}`;
   drawBitmapText(context, filterText, SHEET_MARGIN, 48, 1, COLORS.headerAccent);
 
+  let blockCanvas: HTMLCanvasElement | undefined;
   for (const cell of plan.cells) {
     context.fillStyle = COLORS.cardEdge;
     context.fillRect(cell.x, cell.y, plan.cardWidth, plan.cardHeight);
     context.fillStyle = COLORS.card;
     context.fillRect(cell.x + 1, cell.y + 1, plan.cardWidth - 2, plan.cardHeight - 2);
     const art = getItemIconArt(cell.itemId);
-    for (const run of art.runs) {
-      context.fillStyle = run.color;
-      context.fillRect(
-        cell.iconX + run.x * plan.iconScale,
-        cell.iconY + run.y * plan.iconScale,
-        run.width * plan.iconScale,
-        plan.iconScale,
-      );
+    const guiBlock = atlasBlockItemGuiIcon(cell.itemId);
+    if (guiBlock) {
+      const document = ownerDocument ?? canvas.ownerDocument;
+      blockCanvas ??= document.createElement("canvas");
+      paintAtlasBlockGuiIcon(blockCanvas, guiBlock);
+      context.imageSmoothingEnabled = false;
+      context.drawImage(blockCanvas, cell.iconX, cell.iconY, plan.iconSize, plan.iconSize);
+    } else {
+      for (const run of art.runs) {
+        context.fillStyle = run.color;
+        context.fillRect(
+          cell.iconX + run.x * plan.iconScale,
+          cell.iconY + run.y * plan.iconScale,
+          run.width * plan.iconScale,
+          plan.iconScale,
+        );
+      }
     }
     const maximumCharacters = Math.max(1, Math.floor((plan.cardWidth - 16) / LABEL_GLYPH_STEP));
     const labelLines = wrappedLabel(cell.label, maximumCharacters);
@@ -225,7 +237,7 @@ export function createProductionContactSheetExport(
   ownerDocument: Pick<Document, "createElement"> = document,
 ): ProductionContactSheetExport {
   const canvas = ownerDocument.createElement("canvas");
-  const plan = renderProductionContactSheet(canvas, options);
+  const plan = renderProductionContactSheet(canvas, options, ownerDocument);
   const categorySuffix = plan.category === "all" ? "all" : plan.category;
   return Object.freeze({
     canvas,
