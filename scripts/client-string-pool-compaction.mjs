@@ -11,9 +11,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 592;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 524;
 export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4b95e42effbfeab45644df543a1117fe54b3b058de8d092b5467b72b836079e8";
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_092;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_080;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 100;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "687da2fa42307e7da595d294d9c7ee6bff69b9e06aa5df139179092c15c5bb78";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -78,9 +78,29 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 371;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 109;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f";
+// The compact sampled-audio fallback replaces per-cue recipes while adding
+// media/provenance vocabulary. Its exact net delta stays reviewed here.
+export const COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA = Object.freeze({
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: -12,
+  uniqueValueDelta: 1,
+  source: "client/game/audio.ts#official sampled audio",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 403;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 119;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7708d56fc82c2024ce91207018731b6c89f9bd55760fcc1e4bcda1e78b617289";
+export const COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA = Object.freeze({
+  previousOccurrences: 371,
+  previousUniqueValues: 109,
+  previousSourceFingerprint: "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f",
+  occurrenceDelta: 32,
+  uniqueValueDelta: 10,
+  source: "client/game/audio.ts#official sampled audio",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "1.2..21.",
   "2.1..2",

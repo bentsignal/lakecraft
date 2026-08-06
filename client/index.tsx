@@ -1883,6 +1883,11 @@ function GameApp({
             engineRef.current?.setPlayerProjectiles(playerProjectilesRef.current);
             if (result.shot.targetKind === "mob" && result.shot.targetCombat) {
               engineRef.current?.applyMobCombatStates([result.shot.targetCombat as MobAuthorityState], result.serverNow - Date.now());
+              if (result.shot.landed) audioRef.current?.play(result.shot.killed ? "mobDeath" : "mobHurt", {
+                seed: operationId,
+                intensity: result.shot.killed ? 0.9 : 0.68,
+                mob: result.shot.targetCombat.kind,
+              });
               if (!result.replayed && result.shot.landed && !result.shot.killed) {
                 engineRef.current?.applyConfirmedPlayerHitMobKnockback(
                   operationId,
@@ -1958,7 +1963,11 @@ function GameApp({
                 );
               }
               loadCanonicalPlayer(result.inventory);
-              audioRef.current?.play("mobHurt", { seed: operationId, intensity: result.killed ? 0.9 : 0.68 });
+              audioRef.current?.play(result.killed ? "mobDeath" : "mobHurt", {
+                seed: operationId,
+                intensity: result.killed ? 0.9 : 0.68,
+                mob: target.kind,
+              });
             }
           }).catch(() => {
             setConnected(false);
@@ -2022,6 +2031,12 @@ function GameApp({
             intensity: 0.48,
           });
         },
+        onMobIdle: (kind, mobId, intensity, pan) => audioRef.current?.play("mobIdle", {
+          seed: mobId,
+          mob: kind,
+          intensity,
+          pan,
+        }),
         canSprint: () => hungerRef.current > 6,
         onHandAction: (action) => {
           if (action === "attack") audioRef.current?.play("playerAttack", { seed: performance.now().toFixed(0), intensity: 0.44 });

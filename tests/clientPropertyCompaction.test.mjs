@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 592, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 594, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "e9aa8c16ba7d8f95d0c28e3357c54458d27b74214110fbd22d4d560f694cb26b",
+  "d19e85f6e544ce6d5a81c45e6c24c47756e7829e6efb6321f6b7063f03b25ba8",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -147,7 +147,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 528 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 530 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
