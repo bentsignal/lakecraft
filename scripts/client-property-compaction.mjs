@@ -8,6 +8,7 @@
  * together. Normal `lakebed dev` source and server staging stay untouched.
  */
 const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
+  "BRICKS": "dZ",
   "CHEST": "ce",
   "CLAY": "ve",
   "COAL_ORE": "Me",
@@ -104,6 +105,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "contactDamage": "Oe",
   "containers": "ag",
   "contextFactory": "Bs",
+  "mediaFactory": "dc",
   "continuousBlockPlacement": "vo",
   "creativeInventory": "aR",
   "crouching": "Hr",
@@ -319,6 +321,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "onMiningHit": "Pi",
   "onMobAttack": "Ro",
   "onMobDrops": "Mo",
+  "onMobIdle": "df",
   "onMobUse": "sr",
   "onMovementModeChange": "ar",
   "onOpen": "qs",
@@ -425,6 +428,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "senderLabels": "Xo",
   "serverTimeOffsetMs": "uo",
   "setArmor": "cP",
+  "setDaylightCycle": "dg",
   "setDayNightClock": "R",
   "setDroppedItem": "cQ",
   "setDroppedItems": "Qe",
@@ -491,6 +495,9 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "textureBuffer": "$e",
   "textureVertexCount": "yo",
   "textured": "c4",
+  "tintB": "dC",
+  "tintG": "dB",
+  "tintR": "dA",
   "toggleMuted": "Us",
   "torchCount": "Ci",
   "totalBytes": "Rn",

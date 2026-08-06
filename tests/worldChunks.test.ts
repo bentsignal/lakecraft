@@ -25,7 +25,7 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
   }
 }
 
-assert.equal(WORLD_CHUNK_CODEC_VERSION, 4);
+assert.equal(WORLD_CHUNK_CODEC_VERSION, 5);
 assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 6);
 assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 63, "six-bit snapshots reserve zero and expose 63 block codes");
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 33, "clay and bricks append without changing the six-bit codec");
@@ -57,7 +57,7 @@ assert.deepEqual(
 
 const blockTypes = WORLD_CHUNK_BLOCK_TYPES.filter((block) => block !== "air");
 const edits: WorldChunkEditInput[] = [];
-for (let y = WORLD_EDIT_MIN_Y; y <= WORLD_EDIT_MAX_Y && edits.length < 1_500; y += 1) {
+for (let y = WORLD_EDIT_MIN_Y + 1; y <= WORLD_EDIT_MAX_Y && edits.length < 1_500; y += 1) {
   for (let z = -20; z <= 20 && edits.length < 1_500; z += 1) {
     for (let x = -20; x <= 20 && edits.length < 1_500; x += 1) {
       edits.push({
@@ -145,7 +145,7 @@ if (ordering.ok) {
 }
 
 const fullChunk: WorldChunkEditInput[] = [];
-for (let y = WORLD_EDIT_MIN_Y; y <= WORLD_EDIT_MAX_Y; y += 1) {
+for (let y = WORLD_EDIT_MIN_Y + 1; y <= WORLD_EDIT_MAX_Y; y += 1) {
   for (let z = 0; z < 8; z += 1) {
     for (let x = 0; x < 8; x += 1) fullChunk.push({ x, y, z, blockType: "stone" });
   }
@@ -154,19 +154,19 @@ const fullSnapshot = createWorldChunkSnapshot("0:0", fullChunk);
 assert.equal(fullSnapshot.ok, true);
 if (fullSnapshot.ok) {
   assert.ok(fullSnapshot.snapshotJson.length < MAX_WORLD_CHUNK_SNAPSHOT_BYTES, `dense snapshot was ${fullSnapshot.snapshotJson.length} bytes`);
-  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 4, "new snapshots use six-bit sparse vertical sections");
+  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 5, "new snapshots use six-bit sparse vertical sections");
   const decoded = decodeWorldChunkSnapshot("0:0", fullSnapshot.snapshotJson);
   assert.equal(decoded.ok && decoded.edits.length, fullChunk.length);
 }
 
 const highestCode = createWorldChunkSnapshot("0:0", [
-  { x: 0, y: 1, z: 0, blockType: "cobblestone" },
-  { x: 1, y: 1, z: 0, blockType: "sand" },
-  { x: 2, y: 1, z: 0, blockType: "glass" },
-  { x: 3, y: 1, z: 0, blockType: "gold_ore" },
-  { x: 4, y: 1, z: 0, blockType: "diamond_ore" },
-  { x: 5, y: 1, z: 0, blockType: "tnt" },
-  { x: 6, y: 1, z: 0, blockType: "gravel" },
+  { x: 0, y: 2, z: 0, blockType: "cobblestone" },
+  { x: 1, y: 2, z: 0, blockType: "sand" },
+  { x: 2, y: 2, z: 0, blockType: "glass" },
+  { x: 3, y: 2, z: 0, blockType: "gold_ore" },
+  { x: 4, y: 2, z: 0, blockType: "diamond_ore" },
+  { x: 5, y: 2, z: 0, blockType: "tnt" },
+  { x: 6, y: 2, z: 0, blockType: "gravel" },
 ]);
 assert.equal(highestCode.ok, true);
 if (highestCode.ok) {
@@ -179,7 +179,7 @@ if (highestCode.ok) {
 }
 
 const currentSectionProbe = createWorldChunkSnapshot("0:0", [
-  { x: 0, y: 0, z: 0, blockType: "bricks" },
+  { x: 0, y: 2, z: 0, blockType: "bricks" },
 ]);
 assert.equal(currentSectionProbe.ok, true);
 if (currentSectionProbe.ok) {
@@ -187,7 +187,7 @@ if (currentSectionProbe.ok) {
     v: number;
     sections: Array<{ y: number; cells: string }>;
   };
-  assert.equal(parsed.v, 4);
+  assert.equal(parsed.v, 5);
   assert.equal(parsed.sections.length, 1);
   assert.equal(Buffer.from(parsed.sections[0].cells, "base64").length, 384, "v4 sections allocate six bits for each of 512 cells");
 }
@@ -205,7 +205,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   decodeWorldChunkSnapshot("0:0", JSON.stringify({
-    v: 5,
+    v: 6,
     sections: [{ y: 0, cells: Buffer.from(new Uint8Array(384)).toString("base64") }],
   })),
   { ok: false, reason: "invalid_snapshot" },
@@ -213,14 +213,14 @@ assert.deepEqual(
 );
 
 const deterministicEdits: WorldChunkEditInput[] = [
-  { x: 7, y: 128, z: 7, blockType: "bricks" },
-  { x: 0, y: -24, z: 0, blockType: "air" },
+  { x: 7, y: 192, z: 7, blockType: "bricks" },
+  { x: 0, y: 2, z: 0, blockType: "air" },
   { x: 4, y: 17, z: 2, blockType: "diamond_ore" },
-  { x: 3, y: -1, z: 6, blockType: "torch" },
+  { x: 3, y: 3, z: 6, blockType: "torch" },
 ];
 const deterministicForward = createWorldChunkSnapshot("0:0", deterministicEdits);
 const deterministicReverse = createWorldChunkSnapshot("0:0", [...deterministicEdits].reverse());
-assert.deepEqual(deterministicForward, deterministicReverse, "v4 encoding is byte-for-byte deterministic across input order");
+assert.deepEqual(deterministicForward, deterministicReverse, "v5 encoding is byte-for-byte deterministic across input order");
 
 const empty = createWorldChunkSnapshot("0:0", []);
 assert.equal(empty.ok, true);

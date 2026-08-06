@@ -42,6 +42,14 @@ assert.deepEqual(parseLocalCommand("/give bow"), {
   command: { kind: "give", itemId: "bow", count: 1 },
 });
 assert.deepEqual(parseLocalCommand("/locate cave"), { ok: true, command: { kind: "locate", feature: "cave" } });
+assert.deepEqual(parseLocalCommand("/gamerule doDaylightCycle false"), {
+  ok: true, command: { kind: "gamerule", value: false },
+});
+const deniedDaylightCycle = parseLocalCommand("/gamerule doDaylightCycle false",
+  { changeGameMode: true, giveItems: true, setTime: false });
+assert.equal(deniedDaylightCycle.ok, false);
+if (!deniedDaylightCycle.ok) assert.equal(deniedDaylightCycle.code, "permission");
+assert.equal(parseLocalCommand("/gamerule doDaylightCycle").ok, false);
 assert.equal(parseLocalCommand("/locate village").ok, false);
 assert.equal(parseLocalCommand("give dirt").ok, false, "slash syntax is mandatory and deterministic");
 assert.equal(parseLocalCommand("/give not_an_item").ok, false, "the canonical item catalog rejects unknown IDs");

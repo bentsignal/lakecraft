@@ -111,14 +111,15 @@ function runExposureFixture(input: { roof: boolean; torch: boolean; phase: numbe
   vectorCalls.length = 0;
   uploads.length = 0;
   const edits: WorldEdit[] = [];
+  const fixtureY = 90;
   for (let x = -2; x <= 2; x += 1) {
     for (let z = -2; z <= 2; z += 1) {
-      edits.push({ x, y: 20, z, block: BLOCK.AIR }, { x, y: 21, z, block: BLOCK.AIR });
-      if (input.roof) edits.push({ x, y: 22, z, block: BLOCK.STONE });
+      edits.push({ x, y: fixtureY, z, block: BLOCK.AIR }, { x, y: fixtureY + 1, z, block: BLOCK.AIR });
+      if (input.roof) edits.push({ x, y: fixtureY + 2, z, block: BLOCK.STONE });
     }
   }
-  edits.push({ x: 0, y: 19, z: 0, block: BLOCK.STONE });
-  if (input.torch) edits.push({ x: 1, y: 20, z: 0, block: BLOCK.TORCH });
+  edits.push({ x: 0, y: fixtureY - 1, z: 0, block: BLOCK.STONE });
+  if (input.torch) edits.push({ x: 1, y: fixtureY, z: 0, block: BLOCK.TORCH });
   const canvas = {
     ...eventTarget,
     width: 0,
@@ -132,7 +133,7 @@ function runExposureFixture(input: { roof: boolean; torch: boolean; phase: numbe
   const engine = createVoxelEngine(canvas, {
     seed: 91,
     initialEdits: edits,
-    initialPose: { x: 0.5, y: 20.02, z: 0.5, yaw: 0, pitch: 0 },
+    initialPose: { x: 0.5, y: fixtureY + 0.02, z: 0.5, yaw: 0, pitch: 0 },
     preserveInitialPose: true,
     selectedItem: "dirt",
     selectedBlock: BLOCK.DIRT,
@@ -166,8 +167,8 @@ assert.ok(VERTEX_SHADER.includes("e*uSkyExposure"),
   "solid arms and tools use the same live eye-cell signal");
 
 const openDay = runExposureFixture({ roof: false, torch: false, phase: 0.5 });
-assert.deepEqual(openDay.exposure, [1, 1, 1],
-  "world color/terrain and held-item terrain paths receive full exposure under open sky");
+assert.deepEqual(openDay.exposure, [1, 1, 1, 1],
+  "world color/terrain, mob, and held-item terrain paths receive full exposure under open sky");
 assertLight(openDay.armLight, [1.12, 1.12, 1.12],
   "the skin arm receives its separately clamped noon light");
 assert.equal(openDay.heldCube.length, 216, "the actual atlas cube remains one retained 36-vertex upload");
@@ -175,27 +176,27 @@ assert.equal([...openDay.heldCube].filter((_value, index) => index % 6 === 5).ev
   "the actual textured vertex stream preserves six authored face shades for shader lighting");
 
 const openNight = runExposureFixture({ roof: false, torch: false, phase: 0 });
-assert.deepEqual(openNight.exposure, [1, 1, 1], "night changes ambient light, not open-sky occlusion");
+assert.deepEqual(openNight.exposure, [1, 1, 1, 1], "night changes ambient light, not open-sky occlusion");
 assertLight(openNight.armLight, [0.32, 0.32, 0.32],
   "the open-sky skin arm retains the reviewed moonlit floor");
 assert.ok(Math.max(...openNight.ambient) < Math.min(...openDay.ambient),
   "exposed night retains its real lower day/night ambient signal");
 
 const caveDay = runExposureFixture({ roof: true, torch: false, phase: 0.5 });
-assert.deepEqual(caveDay.exposure, [1, 1, 0],
-  "world draws stay normalized while the held-item terrain path receives zero cave exposure");
+assert.deepEqual(caveDay.exposure, [1, 1, 1, 0],
+  "world and mob draws stay normalized while the held-item terrain path receives zero cave exposure");
 assertLight(caveDay.armLight, [0.4484, 0.4522, 0.46018],
   "the skin arm receives the reviewed reduced noon light beneath a roof");
 assert.deepEqual(caveDay.ambient, openDay.ambient,
   "cave darkness is supplied by occlusion rather than faked by changing day uniforms");
-assert.deepEqual(caveDay.torchRadius, [0, 0, 0],
-  "an unlit cave has no synthetic torch in either world path or the held-item terrain path");
+assert.deepEqual(caveDay.torchRadius, [0, 0, 0, 0],
+  "an unlit cave has no synthetic torch in world, mob, or held-item terrain paths");
 
 const caveTorch = runExposureFixture({ roof: true, torch: true, phase: 0.5 });
-assert.deepEqual(caveTorch.exposure, [1, 1, 0], "a cave torch does not erase roof occlusion");
+assert.deepEqual(caveTorch.exposure, [1, 1, 1, 0], "a cave torch does not erase roof occlusion");
 assertLight(caveTorch.armLight, [0.4484, 0.4522, 0.46018],
   "nearby torch uniforms do not replace the arm's bounded sky/day light vector");
-assert.deepEqual(caveTorch.torchRadius, [11, 11, 5.5],
-  "world paths receive the full torch radius while the held-item terrain path receives its bounded half-radius");
+assert.deepEqual(caveTorch.torchRadius, [11, 11, 11, 5.5],
+  "world and mob paths receive the full torch radius while the held-item terrain path receives its bounded half-radius");
 
 console.log("live first-person sky, cave, night, and torch exposure uniforms passed");

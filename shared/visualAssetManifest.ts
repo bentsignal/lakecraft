@@ -8,7 +8,7 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     generator: "scripts/generate-item-icon-art.ts",
     output: "client/components/itemIconArt.ts",
     logicalResolution: 16,
-    fingerprint: "ae2c13e4",
+    fingerprint: "1ad7721e",
   }),
   blockAtlas: Object.freeze({
     sourceKind: "original-concept-plus-minecraft-26.2-local-import" as const,
@@ -17,7 +17,7 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     generator: "scripts/pixelate-texture-sheet.mjs",
     output: "client/game/generated/texture-atlas-v1.png",
     logicalResolution: 16,
-    fingerprint: "1acef111",
+    fingerprint: "5759e3bc",
   }),
   defaultPlayerSkin: Object.freeze({
     sourceKind: "minecraft-26.2-local-import" as const,
@@ -26,6 +26,15 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     output: "client/game/generated/defaultPlayerSkin.ts",
     logicalResolution: 64,
     fingerprint: "abf17456",
+  }),
+  mobs: Object.freeze({
+    sourceKind: "minecraft-26.2-local-import" as const,
+    importer: "scripts/import-minecraft-visual-assets.mjs",
+    generator: "scripts/generate-mob-texture-atlas.mjs",
+    output: "client/game/generated/mobTextureAtlas.ts",
+    atlasResolution: Object.freeze([208, 128] as const),
+    kinds: Object.freeze(["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"] as const),
+    fingerprint: "204e2b83",
   }),
   userSkin: Object.freeze({
     sourceKind: "user-supplied-local" as const,

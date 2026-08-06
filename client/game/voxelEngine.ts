@@ -43,6 +43,7 @@ import {
 import {
   DEFAULT_DAY_NIGHT_CONFIG,
   createDayNightState,
+  phaseAtTime,
   sampleDayNight,
   type DayNightConfig,
 } from "./dayNight.ts";
@@ -52,7 +53,7 @@ import {
   ATMOSPHERE_VERTEX_SHADER,
   writeCelestialDirection,
 } from "./atmosphere.ts";
-import { createMobRenderer } from "./mobRenderer.ts";
+import { MOB_VERTEX_STRIDE, createMobRenderer, createMobTexture, destroyMobTexture } from "./mobRenderer.ts";
 import {
   TEXTURED_WORLD_VERTEX_FLOATS,
   blockTextureForFace,
@@ -351,6 +352,7 @@ const LOCAL_EXPLOSION_PROTECTED_BLOCKS = new Set<BlockId>([
   BLOCK.FURNACE,
   BLOCK.DOOR_CLOSED,
   BLOCK.DOOR_OPEN,
+  BLOCK.BEDROCK,
 ]);
 
 export const LOCAL_TNT_TERRAIN_RADIUS = 4.5;
@@ -515,6 +517,24 @@ export function applyMouseLookDelta(
   };
 }
 
+export function localMobAmbientMix(
+  offsetX: number,
+  offsetY: number,
+  offsetZ: number,
+  yaw: number,
+): { intensity: number; pan: number } | null {
+  const distance = Math.hypot(offsetX, offsetY, offsetZ);
+  if (distance > 16) return null;
+  return {
+    intensity: clampNumber(0.55 * (1 - distance / 20), 0.12, 0.55),
+    pan: clampNumber(
+      (offsetX * Math.cos(yaw) + offsetZ * Math.sin(yaw)) / Math.max(1, Math.hypot(offsetX, offsetZ)),
+      -1,
+      1,
+    ),
+  };
+}
+
 /** Lift a resumed player out of regenerated terrain or a newly placed block. */
 export function resolveSafeSpawnY(
   preferredY: number,
@@ -576,7 +596,7 @@ export const BED_HEAD_MESH_VERTEX_COUNT = 0;
 export const LADDER_MESH_VERTEX_COUNT = 252;
 /** The 7x7 streaming window bounds glass to one extra draw per visible chunk. */
 export const MAX_TRANSPARENT_CHUNK_DRAWS = (MAX_LOCAL_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
-export const MAX_RESPAWN_HEIGHT = 128;
+export const MAX_RESPAWN_HEIGHT = 192;
 export const PLAYER_GRAVITY = 22;
 export const PLAYER_TERMINAL_VELOCITY = -18;
 export const PLAYER_JUMP_SPEED = 8.25;
@@ -693,6 +713,9 @@ export const FRAGMENT_SHADER = `precision mediump float;uniform vec3 uFogColor;v
 export const TERRAIN_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute float aShade;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);float p=step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)},aShade),m=step(${(SKY_SHADE_PACK_MARKER + SKY_SHADE_EMISSIVE_MARKER - 0.5).toFixed(1)},aShade),s=aShade-p*${SKY_SHADE_PACK_MARKER.toFixed(1)}-m*${SKY_SHADE_EMISSIVE_MARKER.toFixed(1)},f=mix(aShade,mod(s,2.),p),e=mix(1.,floor(s/2.)/${SKY_EXPOSURE_LEVELS.toFixed(1)},p);vUv=aUv;vLight=(lightAt(aPosition,e)+vec3(.22,.07,.015)*m)*f;vFog=fogAt(aPosition);}`;
 
 export const TERRAIN_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;uniform float uAlphaCutoff;varying vec2 vUv;varying vec3 vLight;varying float vFog;void main(){vec4 texel=texture2D(uAtlas,vUv);if (texel.a < uAlphaCutoff) discard;gl_FragColor=vec4(mix(texel.rgb*vLight,uFogColor,vFog),texel.a);}`;
+
+export const MOB_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute vec3 aTint;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);vUv=aUv;vLight=aTint*lightAt(aPosition,1.);vFog=fogAt(aPosition);}`;
+export const MOB_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;varying vec2 vUv;varying vec3 vLight;varying float vFog;void main(){vec4 t=texture2D(uAtlas,vUv);if(t.a<.02)discard;gl_FragColor=vec4(mix(t.rgb*vLight,uFogColor,vFog),t.a);}`;
 
 /** Stable material palette entry used by the dependency-free voxel renderer. */
 export function blockMaterialColor(block: BlockId): readonly [number, number, number] {
@@ -921,8 +944,8 @@ export function applyDayNightClockUpdate(
   currentServerTimeOffsetMs: number,
   nextServerTimeOffsetMs?: number,
 ): number {
-  if (Number.isFinite(update.cycleLengthMs) && (update.cycleLengthMs ?? 0) > 0) {
-    target.cycleLengthMs = update.cycleLengthMs as number;
+  if (update.cycleLengthMs && Number.isFinite(update.cycleLengthMs)) {
+    target.cycleLengthMs = update.cycleLengthMs;
   }
   if (Number.isFinite(update.epochMs)) target.epochMs = update.epochMs as number;
   if (Number.isFinite(update.epochPhase)) target.epochPhase = update.epochPhase as number;
@@ -940,7 +963,7 @@ export function validateRespawnPoint(
     !Number.isFinite(point.x)
     || !Number.isFinite(point.y)
     || !Number.isFinite(point.z)
-    || (point.y < -24 || point.y > MAX_RESPAWN_HEIGHT)
+    || (point.y < TERRAIN_MIN_Y || point.y > MAX_RESPAWN_HEIGHT)
     || !Number.isFinite(horizontalLimit)
     || horizontalLimit <= 0
     || Math.abs(point.x) > horizontalLimit
@@ -1501,8 +1524,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   if (!gl) throw new Error("Lakecraft needs a browser with WebGL enabled.");
   const program = createProgram(gl);
   const terrainProgram = createProgram(gl, TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
+  const mobProgram = createProgram(gl, MOB_VERTEX_SHADER, MOB_FRAGMENT_SHADER);
   const atmosphereProgram = createProgram(gl, ATMOSPHERE_VERTEX_SHADER, ATMOSPHERE_FRAGMENT_SHADER);
   const terrainTexture = createTerrainTexture(gl);
+  const mobTexture = createMobTexture(gl);
   const positionLocation = gl.getAttribLocation(program, "aPosition");
   const colorLocation = gl.getAttribLocation(program, "aColor");
   const mvpLocation = gl.getUniformLocation(program, "uMvp");
@@ -1533,6 +1558,21 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const terrainTorchLightsLocation = gl.getUniformLocation(terrainProgram, "uTorchLights[0]");
   const terrainAtlasLocation = gl.getUniformLocation(terrainProgram, "uAtlas");
   const terrainAlphaCutoffLocation = gl.getUniformLocation(terrainProgram, "uAlphaCutoff");
+  const mobPositionLocation = gl.getAttribLocation(mobProgram, "aPosition");
+  const mobUvLocation = gl.getAttribLocation(mobProgram, "aUv");
+  const mobTintLocation = gl.getAttribLocation(mobProgram, "aTint");
+  const mobMvpLocation = gl.getUniformLocation(mobProgram, "uMvp");
+  const mobCameraLocation = gl.getUniformLocation(mobProgram, "uCamera");
+  const mobFogLocation = gl.getUniformLocation(mobProgram, "uFogEnabled");
+  const mobFogRangeLocation = gl.getUniformLocation(mobProgram, "uFogRange");
+  const mobFogColorLocation = gl.getUniformLocation(mobProgram, "uFogColor");
+  const mobAmbientColorLocation = gl.getUniformLocation(mobProgram, "uAmbientColor");
+  const mobDirectionalColorLocation = gl.getUniformLocation(mobProgram, "uDirectionalColor");
+  const mobAmbientIntensityLocation = gl.getUniformLocation(mobProgram, "uAmbientIntensity");
+  const mobDirectionalIntensityLocation = gl.getUniformLocation(mobProgram, "uDirectionalIntensity");
+  const mobSkyExposureLocation = gl.getUniformLocation(mobProgram, "uSkyExposure");
+  const mobTorchLightsLocation = gl.getUniformLocation(mobProgram, "uTorchLights[0]");
+  const mobAtlasLocation = gl.getUniformLocation(mobProgram, "uAtlas");
   const atmospherePositionLocation = gl.getAttribLocation(atmosphereProgram, "p");
   const atmosphereAspectLocation = gl.getUniformLocation(atmosphereProgram, "A");
   const atmosphereTimeLocation = gl.getUniformLocation(atmosphereProgram, "T");
@@ -1768,7 +1808,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function getBlock(x: number, y: number, z: number): BlockId {
-    if (y < TERRAIN_MIN_Y) return BLOCK.STONE;
+    if (y < TERRAIN_MIN_Y) return BLOCK.AIR;
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
   }
 
@@ -1878,6 +1918,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   };
   const mobSimulation = createMobSimulation(createMobSpawns(mobPopulationOptions));
   let mobIds = listMobIds(mobSimulation);
+  let nextMobIdleAt = performance.now() + 3_500;
+  let mobIdleSequence = 0;
   let mobCombatServerTimeOffsetMs = serverTimeOffsetMs;
   let sharedMobMotionActive = false;
   let sharedMobMotionAppliedAt = 0;
@@ -2030,7 +2072,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!primaryActionHold.held || !primaryActionHold.miningArmed || miningTimer || !target) return false;
     const mined = { ...target.block };
     const targetPrimed = primedTnt.has(blockKey(mined.x, mined.y, mined.z));
-    const editAllowed = options.canEditBlock?.() !== false && options.canMineBlock?.(mined) !== false;
+    const editAllowed = mined.block !== BLOCK.BEDROCK
+      && options.canEditBlock?.() !== false && options.canMineBlock?.(mined) !== false;
     if (!shouldStartHeldMining(primaryActionHold, {
       pointerLocked: document.pointerLockElement === canvas,
       playerAlive: playerHealth > 0,
@@ -2756,6 +2799,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function updateMobs(dt: number): void {
     const startedAt = performance.now();
     respawnExpiredAuthoritativeMobs(mobSimulation, Date.now() + mobCombatServerTimeOffsetMs);
+    if (options.onMobIdle && startedAt >= nextMobIdleAt) {
+      const nearby = mobSimulation.mobs.filter((mob) => mob.alive && mob.deathUntil <= 0
+        && Math.hypot(mob.x - pose.x, mob.y - pose.y, mob.z - pose.z) <= 16);
+      if (nearby.length > 0) {
+        const mob = nearby[mobIdleSequence % nearby.length];
+        const mix = localMobAmbientMix(mob.x - pose.x, mob.y - pose.y, mob.z - pose.z, pose.yaw);
+        if (mix) options.onMobIdle(mob.kind, mob.id, mix.intensity, mix.pan);
+        mobIdleSequence += 1;
+      }
+      nextMobIdleAt = startedAt + 5_000 + mobIdleSequence % 4 * 900;
+    }
     if (sharedMobMotionActive) {
       advanceMobKnockbackReactions(dt);
       writeReactiveMobPoseSnapshots();
@@ -3272,7 +3326,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       visibleMobCount = mobStats.visibleMobCount;
       primedTntVertexCount = mobStats.primedTntVertexCount;
       primedTntVisibleCount = mobStats.visiblePrimedTntCount;
-      primedTntUploadBytes = mobStats.primedTntVertexCount * 6 * Float32Array.BYTES_PER_ELEMENT;
+      primedTntUploadBytes = mobStats.primedTntVertexCount * MOB_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
     }
     gl.clearColor(dayNightState.skyR, dayNightState.skyG, dayNightState.skyB, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -3399,10 +3453,36 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       drawCalls += 1;
     }
     if (mobVertexCount) {
-      bindBuffer(mobRenderer.buffer);
+      gl.useProgram(mobProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, mobRenderer.buffer);
+      gl.enableVertexAttribArray(mobPositionLocation);
+      gl.enableVertexAttribArray(mobUvLocation);
+      gl.enableVertexAttribArray(mobTintLocation);
+      gl.vertexAttribPointer(mobPositionLocation, 3, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 0);
+      gl.vertexAttribPointer(mobUvLocation, 2, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 12);
+      gl.vertexAttribPointer(mobTintLocation, 3, gl.FLOAT, false, MOB_VERTEX_STRIDE * 4, 20);
+      gl.uniformMatrix4fv(mobMvpLocation, false, mvp);
+      gl.uniform3fv(mobCameraLocation, eye);
+      gl.uniform2fv(mobFogRangeLocation, fogRange);
+      gl.uniform3f(mobFogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
+      gl.uniform3f(mobAmbientColorLocation, dayNightState.ambientR, dayNightState.ambientG, dayNightState.ambientB);
+      gl.uniform3f(mobDirectionalColorLocation, dayNightState.directionalR, dayNightState.directionalG, dayNightState.directionalB);
+      gl.uniform1f(mobAmbientIntensityLocation, dayNightState.ambientIntensity);
+      gl.uniform1f(mobDirectionalIntensityLocation, dayNightState.directionalIntensity);
+      gl.uniform1f(mobSkyExposureLocation, 1);
+      gl.uniform1f(mobFogLocation, 1);
+      gl.uniform4fv(mobTorchLightsLocation, activeTorchUniforms);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, mobTexture);
+      gl.uniform1i(mobAtlasLocation, 0);
       gl.drawArrays(gl.TRIANGLES, 0, mobVertexCount);
       drawCalls += 1;
       mobDrawCalls += 1;
+      gl.useProgram(program);
+      gl.uniformMatrix4fv(mvpLocation, false, mvp);
+      gl.uniform3fv(cameraLocation, eye);
+      gl.uniform2fv(fogRangeLocation, fogRange);
+      gl.uniform3f(fogColorLocation, dayNightState.fogR, dayNightState.fogG, dayNightState.fogB);
     }
     if (particleVertexCount) {
       bindBuffer(particleBuffer);
@@ -3826,7 +3906,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         pose.z,
         attackDamage,
       );
-      options.onLocalMobHit?.();
+      options.onLocalMobHit?.(mobTarget.kind, result.killed);
       emitHandAction("attack");
     }
     writeReactiveMobPoseSnapshots();
@@ -4062,8 +4142,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       mobRenderer.destroy();
       gl.deleteProgram(program);
       gl.deleteProgram(terrainProgram);
+      gl.deleteProgram(mobProgram);
       gl.deleteProgram(atmosphereProgram);
       gl.deleteTexture(terrainTexture);
+      destroyMobTexture(gl, mobTexture);
     },
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;
@@ -4297,6 +4379,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         const now = performance.now();
         render(now, 0, now);
       }
+    },
+    setDaylightCycle(enabled) {
+      const phase = phaseAtTime(worldTimeMs, dayNightConfig);
+      dayNightConfig.epochMs = worldTimeMs;
+      dayNightConfig.epochPhase = phase;
+      dayNightConfig.cycleLengthMs = Math.abs(dayNightConfig.cycleLengthMs) * (enabled ? 1 : -1);
+      return enabled;
     },
     setRenderDistance(radius) {
       const next = clampNumber(Math.floor(radius), 1, MAX_LOCAL_STREAMING_CHUNK_RADIUS);

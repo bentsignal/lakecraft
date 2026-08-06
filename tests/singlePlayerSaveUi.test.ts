@@ -101,5 +101,7 @@ assert.ok(singlePlayer.includes('console.error("[Lakecraft save] Snapshot commit
 assert.ok(singlePlayer.includes("result.mutationStarted"), "reset feedback distinguishes unchanged preflight failures from partial resets");
 assert.ok(singlePlayer.includes("Your saved world data was left unchanged."), "failed preflight never falsely implies destructive recovery");
 assert.equal(singlePlayer.includes('localStorage.setItem("lakecraft.singleplayer.v1"'), false, "the old unverified one-key writer is gone");
+assert.ok(singlePlayer.includes("unsupportedSinglePlayerSaveMessage(initial.current.load.versions)"),
+  "obsolete coordinate-system saves receive a deterministic fail-closed explanation instead of a migration guess");
 
 console.log("single-player save UI source tests passed");

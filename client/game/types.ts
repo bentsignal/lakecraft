@@ -2,6 +2,7 @@ import type { DayNightConfig } from "./dayNight.ts";
 import {
   validateMobSimulationSnapshot,
   type MobDamageResult,
+  type MobKind,
   type MobCombatStateSnapshot,
   type LocalMobDeathDropEvent,
   type MobRayTarget,
@@ -53,6 +54,7 @@ export const BLOCK = {
   STONE_BRICK_SLAB: 30,
   CLAY: 31,
   BRICKS: 32,
+  BEDROCK: 33,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
@@ -162,7 +164,7 @@ function validateRuntimePose(value: unknown, path: string): RuntimePoseValidatio
     }
   }
   if (Math.abs(pose.x as number) > 1_000_000) return { ok: false, path: `${path}.x` };
-  if ((pose.y as number) < -24 || (pose.y as number) > 128) return { ok: false, path: `${path}.y` };
+  if ((pose.y as number) < 1 || (pose.y as number) > 192) return { ok: false, path: `${path}.y` };
   if (Math.abs(pose.z as number) > 1_000_000) return { ok: false, path: `${path}.z` };
   if (Math.abs(pose.yaw as number) > Math.PI * 4) return { ok: false, path: `${path}.yaw` };
   if (Math.abs(pose.pitch as number) > 1.52) return { ok: false, path: `${path}.pitch` };
@@ -209,7 +211,7 @@ export function validateVoxelRuntimeSnapshotDetailed(value: unknown): VoxelRunti
     return { ok: false, path: "$.mobAccumulatorSeconds" };
   }
   if (typeof dayNight.cycleLengthMs !== "number" || !Number.isFinite(dayNight.cycleLengthMs)
-    || dayNight.cycleLengthMs <= 0 || dayNight.cycleLengthMs > 1_000_000_000_000) {
+    || dayNight.cycleLengthMs === 0 || Math.abs(dayNight.cycleLengthMs) > 1_000_000_000_000) {
     return { ok: false, path: "$.dayNight.cycleLengthMs" };
   }
   if (typeof dayNight.epochMs !== "number" || !Number.isFinite(dayNight.epochMs)
@@ -280,7 +282,7 @@ export interface BlockTarget {
 
 export type RangedShotTarget =
   | { kind: "player"; id: string; name: string; distance: number }
-  | { kind: "mob"; id: string; mobKind: string; distance: number }
+  | { kind: "mob"; id: string; mobKind: MobKind; distance: number }
   | { kind: "none"; id: ""; distance: number };
 
 export interface RangedShotIntent {
@@ -366,7 +368,7 @@ export interface VoxelEngineOptions {
   getMouseLookSensitivity?: () => number;
   /** Vertical camera FOV in radians, sampled live so Options apply without recreating the engine. */
   getFieldOfViewRadians?: () => number;
-  /** Shared clock configuration. Defaults to an eight-minute alpha cycle. */
+  /** Shared clock configuration. Defaults to Minecraft's twenty-minute cycle. */
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
   serverTimeOffsetMs?: number;
@@ -431,7 +433,9 @@ export interface VoxelEngineOptions {
    */
   onMobDrops?: (event: Readonly<LocalMobDeathDropEvent>) => boolean;
   /** One locally confirmed mob-health reduction; delegated Lakebed attacks never emit it. */
-  onLocalMobHit?: () => void;
+  onLocalMobHit?: (kind: MobKind, killed: boolean) => void;
+  /** Rate-limited ambient cue for one nearby living mob. */
+  onMobIdle?: (kind: MobKind, mobId: string, intensity: number, pan: number) => void;
   /** One completed offline fuse after terrain and player damage resolve locally. */
   onLocalCreeperExplosion?: (event: Readonly<{
     mobId: string;
@@ -515,6 +519,8 @@ export interface VoxelEngine {
   /** Settles sand/gravel after one explicit offline edit; never creates network traffic. */
   settleFallingBlocks(edit: Readonly<WorldEdit>, previousBlock: BlockId): WorldEdit[];
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
+  /** Toggles only sky-clock advancement; simulation time and gameplay continue. */
+  setDaylightCycle(enabled: boolean): boolean;
   /** Reconciles the offline terrain window immediately and returns the bounded radius. */
   setRenderDistance(radius: number): number;
   /** Freezes local movement, simulation, combat, fuses, particles, and world time. */

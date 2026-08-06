@@ -2,11 +2,11 @@ import type { BlockType } from "./protocol.ts";
 import * as BS from "./bundleStrings.ts";
 
 export const WORLD_TERRAIN_SEED = 7319;
-export const WORLD_TERRAIN_MIN_Y = -24;
+export const WORLD_TERRAIN_MIN_Y = 1;
 
-const MIN_TERRAIN_HEIGHT = 3;
-const MAX_TERRAIN_HEIGHT = 11;
-const SPAWN_HEIGHT = 6;
+const MIN_TERRAIN_HEIGHT = 63;
+const MAX_TERRAIN_HEIGHT = 80;
+const SPAWN_HEIGHT = 68;
 const SPAWN_PLATEAU_RADIUS = 3;
 const SPAWN_BLEND_RADIUS = 9;
 const ORE_CELL_SIZE = 4;
@@ -30,10 +30,10 @@ interface OreVeinConfig {
 }
 
 const ORE_VEINS: readonly OreVeinConfig[] = [
-  { block: BS.diamondOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
-  { block: BS.goldOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
-  { block: BS.ironOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
-  { block: BS.coalOre, minimumY: WORLD_TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
+  { block: BS.diamondOre, minimumY: 2, maximumY: 10, chance: 0.075, salt: 3_421 },
+  { block: BS.goldOre, minimumY: 2, maximumY: 32, chance: 0.11, salt: 2_863 },
+  { block: BS.ironOre, minimumY: 2, maximumY: 56, chance: 0.17, salt: 2_137 },
+  { block: BS.coalOre, minimumY: 12, maximumY: 66, chance: 0.43, salt: 1_619 },
 ];
 
 function hash2(x: number, z: number, seed: number): number {
@@ -75,7 +75,7 @@ function rawTerrainHeight(x: number, z: number, seed: number): number {
   const ridge = Math.max(0, 1 - Math.abs(ridgeNoise * 2 - 1) - 0.46);
   const ridgeLift = ridge * ridge * 10.5;
   const smallVariation = (valueNoise(x, z, seed + 307, 5) - 0.5) * 1.0;
-  return 5.9 + broadHills + rollingGround + ridgeLift + smallVariation;
+  return 68.9 + broadHills + rollingGround + ridgeLift + smallVariation;
 }
 
 function terrainHeight(x: number, z: number, seed: number): number {
@@ -197,6 +197,7 @@ function clayBlockAtResolvedStrata(
 function strataBlockAt(x: number, y: number, z: number, seed: number): BlockType {
   const top = terrainHeight(x, z, seed);
   if (y < WORLD_TERRAIN_MIN_Y || y > top) return "air";
+  if (y === WORLD_TERRAIN_MIN_Y) return "bedrock";
   const sandDepth = terrainSandDepth(x, z, seed);
   if (sandDepth > 0 && y > top - sandDepth) return "sand";
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
@@ -237,7 +238,7 @@ interface CaveNode {
 function caveNode(cellX: number, cellZ: number, seed: number): CaveNode {
   return {
     x: cellX * CAVE_CELL_SIZE + 2 + hash3(cellX, 0, cellZ, seed + 3_011) * 6,
-    y: 1.45 + hash3(cellX, 1, cellZ, seed + 3_037) * 3.9,
+    y: 5.45 + hash3(cellX, 1, cellZ, seed + 3_037) * 3.9,
     z: cellZ * CAVE_CELL_SIZE + 2 + hash3(cellX, 2, cellZ, seed + 3_071) * 6,
   };
 }
@@ -268,8 +269,7 @@ function caveCarvesBlock(x: number, y: number, z: number, seed: number): boolean
   if (Math.max(Math.abs(x), Math.abs(z)) <= CAVE_SPAWN_SANCTUARY_RADIUS) return false;
   const ownerCellX = Math.floor(x / CAVE_CELL_SIZE);
   const ownerCellZ = Math.floor(z / CAVE_CELL_SIZE);
-  const minimumLayer = Math.floor(WORLD_TERRAIN_MIN_Y / 8);
-  for (let layer = minimumLayer; layer <= 0; layer += 1) {
+  for (let layer = 0; layer <= 7; layer += 1) {
     const layerOffset = layer * 8;
     for (let cellX = ownerCellX - 1; cellX <= ownerCellX + 1; cellX += 1) {
       for (let cellZ = ownerCellZ - 1; cellZ <= ownerCellZ + 1; cellZ += 1) {
@@ -371,7 +371,7 @@ export function naturalWorldBlockAt(
 ): BlockType {
   if (![x, y, z, seed].every(Number.isFinite)
     || !Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) return "air";
-  if (y < WORLD_TERRAIN_MIN_Y || y > 128) return "air";
+  if (y < WORLD_TERRAIN_MIN_Y || y > 192) return "air";
   const terrainBlock = groundAfterCaves(x, y, z, seed);
   const sites = affectingTreeSites(x, z, seed);
   for (const site of sites) {

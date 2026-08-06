@@ -5,6 +5,10 @@ assert.equal(VISUAL_ASSET_MANIFEST.provenance, "mixed-original-and-user-authoriz
 assert.equal(VISUAL_ASSET_MANIFEST.itemIcons.importer, "scripts/import-minecraft-visual-assets.mjs");
 assert.equal(VISUAL_ASSET_MANIFEST.blockAtlas.importer, "scripts/import-minecraft-visual-assets.mjs");
 assert.equal(VISUAL_ASSET_MANIFEST.defaultPlayerSkin.importer, "scripts/import-minecraft-visual-assets.mjs");
+assert.equal(VISUAL_ASSET_MANIFEST.mobs.generator, "scripts/generate-mob-texture-atlas.mjs");
+assert.deepEqual(VISUAL_ASSET_MANIFEST.mobs.atlasResolution, [208, 128]);
+assert.deepEqual(VISUAL_ASSET_MANIFEST.mobs.kinds, ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"]);
+assert.equal(VISUAL_ASSET_MANIFEST.mobs.fingerprint, "204e2b83");
 assert.equal(VISUAL_ASSET_MANIFEST.itemIcons.logicalResolution, 16);
 assert.equal(VISUAL_ASSET_MANIFEST.blockAtlas.logicalResolution, 16);
 assert.match(VISUAL_ASSET_MANIFEST.itemIcons.fingerprint, /^[0-9a-f]{8}$/);

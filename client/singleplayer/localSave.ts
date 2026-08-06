@@ -28,7 +28,8 @@ import type { LocalGameMode } from "./localCommands.ts";
 import { LOCAL_DROP_TERMINAL_VELOCITY } from "./localDropGravity.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
-export const SINGLEPLAYER_SAVE_VERSION = 1 as const;
+export const SINGLEPLAYER_SAVE_VERSION = 2 as const;
+export const SINGLEPLAYER_GENERATOR_VERSION = 2 as const;
 export const SINGLEPLAYER_SAVE_SLOT_A_KEY = "lakecraft.singleplayer.save.a";
 export const SINGLEPLAYER_SAVE_SLOT_B_KEY = "lakecraft.singleplayer.save.b";
 export const SINGLEPLAYER_SAVE_HEAD_KEY = "lakecraft.singleplayer.save.head";
@@ -55,6 +56,8 @@ export const SINGLEPLAYER_SAVE_LIMITS = Object.freeze({
 });
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
+const SINGLEPLAYER_WORLD_MIN_Y = 1;
+const SINGLEPLAYER_WORLD_MAX_Y = 192;
 const MAX_WEATHER_MS = 7 * 24 * 60 * 60 * 1_000;
 const ARMOR_SLOTS: readonly ArmorSlot[] = ["head", "chest", "legs", "feet"];
 const WEATHER_KINDS = new Set(["clear", "rain", "thunder"]);
@@ -218,6 +221,12 @@ export type SinglePlayerResetResult =
     mutationStarted: boolean;
   };
 
+export function unsupportedSinglePlayerSaveMessage(versions: readonly number[]): string {
+  return versions.length > 0 && versions.every((version) => version < SINGLEPLAYER_SAVE_VERSION)
+    ? "This world uses the retired terrain coordinate system and cannot be loaded. No data was changed; reset it to start fresh."
+    : "This world needs a newer Lakecraft version. Saving is disabled; reset it to start fresh.";
+}
+
 type ParsedSlot =
   | { kind: "empty"; slot: SinglePlayerSaveSlot }
   | { kind: "valid"; slot: SinglePlayerSaveSlot; envelope: SinglePlayerSaveEnvelope; raw: string }
@@ -303,7 +312,7 @@ function coordinateKey(value: unknown): value is string {
   if (!match) return false;
   const [x, y, z] = match.slice(1).map(Number);
   return safeInteger(x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-    && safeInteger(y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+    && safeInteger(y, SINGLEPLAYER_WORLD_MIN_Y, SINGLEPLAYER_WORLD_MAX_Y)
     && safeInteger(z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
     && value === `${x}:${y}:${z}`;
 }
@@ -359,9 +368,10 @@ function validateEdits(value: unknown): WorldEdit[] | null {
   for (const candidate of value) {
     if (!isRecord(candidate) || !exactKeys(candidate, ["x", "y", "z", "block"])
       || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !safeInteger(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !safeInteger(candidate.y, SINGLEPLAYER_WORLD_MIN_Y + 1, SINGLEPLAYER_WORLD_MAX_Y)
       || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.BRICKS)) return null;
+      || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.BEDROCK)
+      || candidate.block === BLOCK.BEDROCK) return null;
     const key = `${candidate.x}:${candidate.y}:${candidate.z}`;
     if (coordinates.has(key)) return null;
     coordinates.add(key);
@@ -379,7 +389,7 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
       || !exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt", "velocityY", "settled"])
       || !identifier(candidate.dropId)
       || !finiteNumber(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !finiteNumber(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !finiteNumber(candidate.y, SINGLEPLAYER_WORLD_MIN_Y, SINGLEPLAYER_WORLD_MAX_Y)
       || !finiteNumber(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || ids.has(candidate.dropId) || !safeInteger(candidate.droppedAt, 0, MAX_TIMESTAMP)
       || !finiteNumber(candidate.velocityY, LOCAL_DROP_TERMINAL_VELOCITY, 0)
@@ -440,7 +450,7 @@ function validatePrimedTnt(value: unknown): SinglePlayerPrimedTntState[] | null 
     if (!isRecord(candidate) || !exactKeys(candidate, ["eventId", "x", "y", "z", "ignitedAt", "dueAt"])
       || !identifier(candidate.eventId) || ids.has(candidate.eventId)
       || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !safeInteger(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !safeInteger(candidate.y, SINGLEPLAYER_WORLD_MIN_Y + 1, SINGLEPLAYER_WORLD_MAX_Y)
       || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || !safeInteger(candidate.ignitedAt, 0, MAX_TIMESTAMP) || !safeInteger(candidate.dueAt, candidate.ignitedAt, MAX_TIMESTAMP)) return null;
     ids.add(candidate.eventId);
@@ -475,7 +485,7 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
   if (!isRecord(value.world)
     || !exactKeys(value.world, ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "gameMode", "weather", "edits", "beds"])
     || !identifier(value.world.worldId)
-    || !safeInteger(value.world.generatorVersion, 1, 1_000_000)
+    || value.world.generatorVersion !== SINGLEPLAYER_GENERATOR_VERSION
     || !safeInteger(value.world.seed, -2_147_483_648, 2_147_483_647)
     || !safeInteger(value.world.createdAt, 0, MAX_TIMESTAMP)
     || !safeInteger(value.world.activePlayMs, 0, MAX_TIMESTAMP)
@@ -538,7 +548,7 @@ export function createDefaultSinglePlayerSnapshot(seed = 7_319, createdAt = 0, w
   return {
     world: {
       worldId,
-      generatorVersion: 1,
+      generatorVersion: SINGLEPLAYER_GENERATOR_VERSION,
       seed,
       createdAt,
       activePlayMs: 0,

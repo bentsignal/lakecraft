@@ -99,6 +99,7 @@ const deniedTime = parseLocalCommand("/time set day", { changeGameMode: true, gi
 assert.equal(deniedTime.ok, false);
 if (!deniedTime.ok) assert.equal(deniedTime.code, "permission");
 assert.ok(LOCAL_COMMAND_HELP.includes("/time set <day|night>"));
+assert.ok(LOCAL_COMMAND_HELP.includes("/gamerule doDaylightCycle <true|false>"));
 assert.ok(LOCAL_COMMAND_HELP.includes("/locate cave"));
 
 const worldTimeMs = 1_750_000_123_456;

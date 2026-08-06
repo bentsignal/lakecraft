@@ -17,14 +17,26 @@ import {
   COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES,
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA,
+  COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA,
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA,
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
+  COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA,
+  COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA,
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_DELTA,
@@ -63,7 +75,7 @@ assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES,
 assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(
   COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT,
-  "4793d6cc11753985a1aa52bbb841ea02da5b5c77f0fc1994101cf85e5bef72fe",
+  "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b",
   "the exact retained uniform lookup order and kinds change only intentionally",
 );
 
@@ -109,17 +121,14 @@ for (const lookupName of webglUniformValues) {
 }
 
 const fixedFrequencyTwoValues = [...COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES];
-assert.deepEqual(fixedFrequencyTwoValues, [
-  "1.2..21.", "2.1..2", "2.1.2.", "1.....2..1.....2", "2......1..2..1..",
-  "1....2..2.....1.", "2....1...1....2.", "1....2..1", "2..1....2", "121",
-], "the frequency-two pool is one exact mesh-descriptor allowlist");
+assert.deepEqual(fixedFrequencyTwoValues, [], "exact mob models retire the authored dot-pattern descriptor vocabulary");
 assert.equal(new Set(fixedFrequencyTwoValues).size, COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES, fixedFrequencyTwoValues.length * 2);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "client/game/mobRenderer.ts");
 assert.equal(
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT,
-  "b38c44d8076339edd689f0a89bacdd179deb93977714e287ac89ad215b2653cb",
+  "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e",
   "the exact mesh-descriptor occurrence order and kinds change only intentionally",
 );
 const mobRendererSource = await readFile(new URL("../client/game/mobRenderer.ts", import.meta.url), "utf8");
@@ -262,6 +271,30 @@ delete globalThis.__lakecraftUniformLocations;
 delete globalThis.__lakecraftRejectedUniformContexts;
 delete globalThis.__lakecraftUnknownUniform;
 
+assert.deepEqual(COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA, {
+  previousOccurrences: 592,
+  previousUniqueValues: 524,
+  previousSourceFingerprint: "dae65329dae063fa8762ffc180ff6c580a576dd2c7a58aa0ecff97026d97b041",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  addedValue: "This world uses the retired terrain coordinate system and cannot be loaded. No data was changed; reset it to start fresh.",
+  source: "client/singleplayer/localSave.ts#unsupportedSinglePlayerSaveMessage",
+  exclusionChanges: 0,
+}, "the positive-coordinate save rejection adds exactly one reviewed user-facing message");
+assert.deepEqual(COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA, {
+  previousOccurrences: 593,
+  previousUniqueValues: 525,
+  previousSourceFingerprint: "c5e00c64ce79e2fcf4f817c84fd8c29c81edabf641c757702e7e97c29f053521",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 3,
+  sources: ["client/game/audio.ts", "client/game/mobRenderer.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");
 assert.equal(
@@ -357,15 +390,19 @@ assert.deepEqual(
 assert.equal(
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousOccurrences
     + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
+  COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA.previousOccurrences,
   "runtime atlas icon reconstruction accounts for the exact repeated occurrence increase",
 );
-assert.equal(
-  COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousUniqueValues
-    + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
-  "runtime atlas icon reconstruction accounts for the promoted top value",
-);
+assert.deepEqual(COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA, {
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  addedOccurrenceValue: "system",
+  source: "client/singleplayer/SinglePlayerApp.tsx#submitLocalCommand",
+  exclusionChanges: 0,
+});
 assert.deepEqual(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
   {
@@ -383,15 +420,93 @@ assert.deepEqual(
 assert.equal(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousOccurrences
     + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
+  COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousOccurrences,
   "the block canvas accounts for the exact low-frequency occurrence increase",
 );
 assert.equal(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousUniqueValues
     + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA.previousUniqueValues,
   "the block canvas accounts for the one newly promoted API value",
 );
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA, {
+  previousOccurrences: 374,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 4,
+  uniqueValueDelta: 1,
+  promotedValue: "bedrock",
+  source: "world-only terrain/protocol adapters",
+  exclusionChanges: 0,
+}, "bedrock enters only the world-only low-frequency boundary");
+assert.deepEqual(COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA, {
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: -12,
+  uniqueValueDelta: 1,
+  source: "client/game/audio.ts#official sampled audio",
+  exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA, {
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9",
+  occurrenceDelta: 58,
+  uniqueValueDelta: 8,
+  sources: ["environment", "official-sounds", "exact-mobs"],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.occurrenceDelta, COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA.uniqueValueDelta, COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES);
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA, {
+  previousOccurrences: 371,
+  previousUniqueValues: 109,
+  previousSourceFingerprint: "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f",
+  occurrenceDelta: 32,
+  uniqueValueDelta: 10,
+  source: "client/game/audio.ts#official sampled audio",
+  exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA, {
+  previousOccurrences: 378,
+  previousUniqueValues: 111,
+  previousSourceFingerprint: "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144",
+  occurrenceDelta: 39,
+  uniqueValueDelta: 12,
+  sources: ["official-sounds", "exact-mobs", "mob-texture-lifecycle"],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.occurrenceDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA.uniqueValueDelta, COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES);
+assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
+  previousOccurrences: 1_092, previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: 56, uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#exact-textured-model-dispatch", exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA, {
+  previousOccurrences: 1_148, previousUniqueValues: 106,
+  previousSourceFingerprint: "ce3b7181b6c75c183e201096398d2c62a4017a56fe092a659bb9fff645dd4c8b",
+  occurrenceDelta: 3, uniqueValueDelta: 0,
+  source: "client/game/mobRenderer.ts#mob-texture-lifecycle", exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA, {
+  previousOccurrences: 374, previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 22, uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#mob-texture-program", exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA, {
+  previousOccurrences: 396, previousUniqueValues: 117,
+  previousSourceFingerprint: "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b",
+  occurrenceDelta: 6, uniqueValueDelta: 2,
+  source: "client/game/mobRenderer.ts#createMobTexture", exclusionChanges: 0,
+});
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   {

@@ -49,6 +49,7 @@ const EXPECTED_NAMES = [
   "stone_bricks",
   "clay",
   "bricks",
+  "bedrock",
 ] as const;
 
 function fnv1a32(bytes: Iterable<number>): string {
@@ -126,9 +127,9 @@ assert.equal(TEXTURE_TILE_SIZE, 16, "world textures stay at Minecraft-scale 16px
 assert.equal(TEXTURE_ATLAS_COLUMNS, 6);
 assert.equal(TEXTURE_ATLAS_ROWS, 8);
 assert.deepEqual(TEXTURE_ATLAS_NAMES, EXPECTED_NAMES, "tile order is part of the renderer contract");
-assert.equal(TEXTURE_ATLAS_NAMES.length, 30);
+assert.equal(TEXTURE_ATLAS_NAMES.length, 31);
 assert.deepEqual(TEXTURE_ATLAS_CELLS,
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 30, 31, 36, 37],
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 30, 31, 36, 37, 42],
   "ordinary tiles route around one contiguous 4x4 chest region");
 assert.deepEqual([CHEST_ATLAS_COLUMN, CHEST_ATLAS_ROW], [2, 4]);
 
@@ -144,7 +145,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
     colors.add(`${tile[offset]},${tile[offset + 1]},${tile[offset + 2]},${tile[offset + 3]}`);
   }
   assert.ok(colors.size >= 3, `${TEXTURE_ATLAS_NAMES[index]} must retain readable pixel variation`);
-  if (!new Set(["leaves", "glass", "sapling"]).has(TEXTURE_ATLAS_NAMES[index])
+  if (!new Set(["glass", "sapling"]).has(TEXTURE_ATLAS_NAMES[index])
   ) {
     for (let offset = 3; offset < tile.length; offset += 4) {
       assert.equal(tile[offset], 255, `${TEXTURE_ATLAS_NAMES[index]} remains an opaque terrain material`);
@@ -152,7 +153,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   }
   tileFingerprints.add(fnv1a32(tile));
 }
-assert.equal(tileFingerprints.size, 30, "all ordinary material tiles remain distinct");
+assert.equal(tileFingerprints.size, 31, "all ordinary material tiles remain distinct");
 
 assert.equal(new Set(["coal_ore", "iron_ore", "gold_ore", "diamond_ore"]
   .map((name) => fnv1a32(atlasTile(TEXTURE_ATLAS_NAMES.indexOf(name as typeof TEXTURE_ATLAS_NAMES[number]))))).size, 4,
@@ -270,11 +271,11 @@ try {
 const tileColorCounts = compactIndexes.subarray(0, TEXTURE_ATLAS_NAMES.length);
 const localPaletteColors = tileColorCounts.reduce((sum, count) => sum + count, 0);
 assert.ok(localPaletteColors > 300 && localPaletteColors < 450,
-  "the 30 ordinary local palettes remain bounded after exact material import");
+  "the 31 ordinary local palettes remain bounded after exact material import");
 assert.ok(Math.max(...tileColorCounts) <= 255,
   "local palette color counts stay inside the one-byte format");
 assert.ok(compactIndexes.length - tileColorCounts.length - localPaletteColors * 2 >= 3_500,
-  "the atlas retains one bounded bitstream for exactly 30 ordinary 16x16 tiles");
+  "the atlas retains one bounded bitstream for exactly 31 ordinary 16x16 tiles");
 let localPaletteCursor = tileColorCounts.length;
 for (const colorCount of tileColorCounts) {
   const localPalette = Array.from({ length: colorCount }, (_, index) => (

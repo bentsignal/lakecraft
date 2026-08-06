@@ -13,17 +13,17 @@ interface TerrainRegion {
 }
 
 export interface TerrainRegionOptions {
-  /** Inclusive natural floor. The legacy eager-world path defaults to y=0. */
+  /** Inclusive natural floor. The canonical world begins with bedrock at y=1. */
   minimumY?: number;
 }
 
 /** Deep enough for tiered ore progression while remaining compact per chunk. */
-export const TERRAIN_MIN_Y = -24;
+export const TERRAIN_MIN_Y = 1;
 export const MAX_TERRAIN_REGION_COLUMNS = 16_384;
 
-const MIN_TERRAIN_HEIGHT = 3;
-const MAX_TERRAIN_HEIGHT = 11;
-const SPAWN_HEIGHT = 6;
+const MIN_TERRAIN_HEIGHT = 63;
+const MAX_TERRAIN_HEIGHT = 80;
+const SPAWN_HEIGHT = 68;
 const SPAWN_PLATEAU_RADIUS = 3;
 const SPAWN_BLEND_RADIUS = 9;
 const TREE_CELL_SIZE = 7;
@@ -112,10 +112,10 @@ interface ClayColumnCache {
 const ORE_VEINS: readonly OreVeinConfig[] = [
   // Rarest/highest-tier deposits go first so overlap resolution always favors
   // the progression-gating ore. Every vein remains capped at seven blocks.
-  { block: BLOCK.DIAMOND_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: -12, chance: 0.055, salt: 3_421 },
-  { block: BLOCK.GOLD_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: -4, chance: 0.11, salt: 2_863 },
-  { block: BLOCK.IRON_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 4, chance: 0.17, salt: 2_137 },
-  { block: BLOCK.COAL_ORE, minimumY: TERRAIN_MIN_Y + 1, maximumY: 6, chance: 0.43, salt: 1_619 },
+  { block: BLOCK.DIAMOND_ORE, minimumY: 2, maximumY: 10, chance: 0.075, salt: 3_421 },
+  { block: BLOCK.GOLD_ORE, minimumY: 2, maximumY: 32, chance: 0.11, salt: 2_863 },
+  { block: BLOCK.IRON_ORE, minimumY: 2, maximumY: 56, chance: 0.17, salt: 2_137 },
+  { block: BLOCK.COAL_ORE, minimumY: 12, maximumY: 66, chance: 0.43, salt: 1_619 },
 ];
 
 function hash2(x: number, z: number, seed: number): number {
@@ -160,7 +160,7 @@ function rawTerrainHeight(x: number, z: number, seed: number): number {
   const ridge = Math.max(0, 1 - Math.abs(ridgeNoise * 2 - 1) - 0.46);
   const ridgeLift = ridge * ridge * 10.5;
   const smallVariation = (valueNoise(x, z, seed + 307, 5) - 0.5) * 1.0;
-  return 5.9 + broadHills + rollingGround + ridgeLift + smallVariation;
+  return 68.9 + broadHills + rollingGround + ridgeLift + smallVariation;
 }
 
 export function terrainHeight(x: number, z: number, seed: number): number {
@@ -207,6 +207,7 @@ export function terrainSandDepth(x: number, z: number, seed: number): 0 | 2 | 3 
 export function terrainBaseBlock(x: number, y: number, z: number, seed: number): BlockId {
   const top = terrainHeight(x, z, seed);
   if (y < TERRAIN_MIN_Y || y > top) return BLOCK.AIR;
+  if (y === TERRAIN_MIN_Y) return BLOCK.BEDROCK;
   const sandDepth = terrainSandDepth(x, z, seed);
   if (sandDepth > 0 && y > top - sandDepth) return BLOCK.SAND;
   const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
@@ -511,7 +512,9 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
       const clayDepth = cachedClayDepth(clayColumns, x, z);
       const dirtDepth = Math.min(top - 1, hash2(x, z, seed + 401) > 0.62 ? 3 : 2);
       for (let y = region.minY; y <= top; y += 1) {
-        const base = sandDepth > 0 && y > top - sandDepth
+        const base = y === TERRAIN_MIN_Y
+          ? BLOCK.BEDROCK
+          : sandDepth > 0 && y > top - sandDepth
           ? BLOCK.SAND
           : y === top
             ? BLOCK.GRASS
@@ -540,7 +543,7 @@ function caveNode(cellX: number, cellZ: number, seed: number): CaveNode {
     // Nodes stay two blocks inside their owning cell. This bounds how far a
     // chamber can reach while leaving the connecting segments free to cross it.
     x: cellX * CAVE_CELL_SIZE + 2 + hash3(cellX, 0, cellZ, seed + 3_011) * 6,
-    y: 1.45 + hash3(cellX, 1, cellZ, seed + 3_037) * 3.9,
+    y: 5.45 + hash3(cellX, 1, cellZ, seed + 3_037) * 3.9,
     z: cellZ * CAVE_CELL_SIZE + 2 + hash3(cellX, 2, cellZ, seed + 3_071) * 6,
   };
 }
@@ -653,10 +656,9 @@ function carveCaves(blocks: Map<string, BlockId>, region: TerrainRegion, seed: n
   const maxCellX = Math.floor(region.maxX / CAVE_CELL_SIZE) + 1;
   const minCellZ = Math.floor(region.minZ / CAVE_CELL_SIZE) - 1;
   const maxCellZ = Math.floor(region.maxZ / CAVE_CELL_SIZE) + 1;
-  // Preserve the original shallow network and add globally anchored copies at
-  // eight-block intervals when a deep chunk asks for negative strata.
-  const minimumLayer = Math.floor(region.minY / 8);
-  for (let layer = minimumLayer; layer <= 0; layer += 1) {
+  // Globally anchored cave bands fill the deep stone while preserving the
+  // bedrock layer and the shallow surface cap.
+  for (let layer = 0; layer <= 7; layer += 1) {
     const layerOffset = layer * 8;
     for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
       for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {

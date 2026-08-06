@@ -32,7 +32,7 @@ function emptyFurnace(now = NOW): FurnaceState {
 assert.deepEqual(validateFurnaceCoordinate(" 00012:007:-0009 "), {
   ok: true, coordKey: "12:7:-9", x: 12, y: 7, z: -9,
 });
-for (const coord of ["", "1:2", "1:2:3:4", "1.5:2:3", "1000001:2:3", "1:-25:3", "1:129:3", "wat:2:3"]) {
+for (const coord of ["", "1:2", "1:2:3:4", "1.5:2:3", "1000001:2:3", "1:0:3", "1:193:3", "wat:2:3"]) {
   assert.deepEqual(validateFurnaceCoordinate(coord), { ok: false, reason: "invalid_coordinate" }, coord);
 }
 assert.equal(createEmptyFurnace("bad", NOW).ok, false);

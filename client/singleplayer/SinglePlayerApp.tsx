@@ -65,6 +65,7 @@ import {
   loadSinglePlayerSave,
   resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
+  unsupportedSinglePlayerSaveMessage,
   type SinglePlayerLoadResult,
   type SinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
@@ -369,7 +370,7 @@ function SinglePlayerWorld({
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
     : initial.current.load.status === "unsupported"
-        ? "This world needs a newer Lakecraft version. Saving is disabled; reset it to start fresh."
+        ? unsupportedSinglePlayerSaveMessage(initial.current.load.versions)
         : initial.current.saveLocked
           ? "This local world could not be read. Saving is disabled; reset it to start fresh."
           : "";
@@ -769,6 +770,17 @@ function SinglePlayerWorld({
       engine.setDayNightClock(update.config, update.serverTimeOffsetMs);
       markWorldDirty();
       appendCommandMessage(`Time set to ${parsed.command.time}.`, "system");
+      return;
+    }
+    if (parsed.command.kind === "gamerule") {
+      const engine = engineRef.current;
+      if (!engine) {
+        appendCommandMessage("The world clock is not ready.", "warning");
+        return;
+      }
+      engine.setDaylightCycle(parsed.command.value);
+      markWorldDirty();
+      appendCommandMessage(`Daylight cycle ${parsed.command.value ? "enabled" : "disabled"}.`, "system");
       return;
     }
     if (parsed.command.kind === "locate") {
@@ -1350,7 +1362,11 @@ function SinglePlayerWorld({
             intent.origin[0],
             intent.origin[2],
           );
-          if (hit.applied) audio.play("mobHurt", { seed: `${projectile.projectileId}:${intent.target.id}`, intensity: 0.7 });
+          if (hit.applied) audio.play(hit.killed ? "mobDeath" : "mobHurt", {
+            seed: `${projectile.projectileId}:${intent.target.id}`,
+            intensity: hit.killed ? 0.9 : 0.7,
+            mob: intent.target.mobKind,
+          });
         }
       },
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
@@ -1486,7 +1502,12 @@ function SinglePlayerWorld({
         recordLocalExplosion(`creeper:${mobId}`, edits, 0);
         markWorldDirty();
       },
-      onLocalMobHit: () => {
+      onLocalMobHit: (kind, killed) => {
+        audio.play(killed ? "mobDeath" : "mobHurt", {
+          seed: `local-mob-hit:${kind}:${performance.now().toFixed(0)}`,
+          intensity: killed ? 0.9 : 0.68,
+          mob: kind,
+        });
         if (gameModeRef.current === "creative") return;
         const slot = selectedRef.current;
         const held = inventoryRef.current[slot]?.itemId ?? null;
@@ -1494,6 +1515,7 @@ function SinglePlayerWorld({
         if (!wear.used) return;
         updateInventory(wear.inventory);
       },
+      onMobIdle: (kind, mobId, intensity, pan) => audio.play("mobIdle", { seed: mobId, mob: kind, intensity, pan }),
       onMobUse: (target) => {
         if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
         let acceptedInventory: Inventory | null = null;
@@ -1557,7 +1579,7 @@ function SinglePlayerWorld({
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: (action) => {
-        if (action === "attack") audio.play("mobHurt", {
+        if (action === "attack") audio.play("playerAttack", {
           seed: `local-mob-hit:${performance.now().toFixed(0)}`,
           intensity: 0.68,
         });

@@ -44,7 +44,7 @@ assert.deepEqual(
 assert.ok(Array.from({ length: 100 }, (_, x) => getDeterministicMiningDrop("sand", "diamond_shovel", x, 2, 5)?.itemId)
   .every((drop) => drop === "sand"), "the temporary flint-from-sand shortcut is gone");
 
-const knownPocket = [-64, -2, -37] as const;
+const knownPocket = [-63, 2, -63] as const;
 assert.equal(authoritativeGravelBlock(...knownPocket, WORLD_TERRAIN_SEED), "gravel");
 assert.equal(clientGravelBlock(...knownPocket, WORLD_TERRAIN_SEED), BLOCK.GRAVEL);
 assert.equal(naturalWorldBlockAt(...knownPocket), "gravel");
@@ -54,7 +54,7 @@ let gravelCount = 0;
 let stoneCount = 0;
 for (let x = -48; x <= 48; x += 1) {
   for (let z = -48; z <= 48; z += 1) {
-    for (let y = -23; y <= 5; y += 1) {
+    for (let y = 2; y <= 66; y += 1) {
       const authoritative = authoritativeGravelBlock(x, y, z, WORLD_TERRAIN_SEED);
       const client = clientGravelBlock(x, y, z, WORLD_TERRAIN_SEED);
       assert.equal(client === BLOCK.GRAVEL, authoritative === "gravel", `gravel authority drift at ${x},${y},${z}`);
@@ -67,12 +67,12 @@ const gravelDensity = gravelCount / (gravelCount + stoneCount);
 assert.ok(gravelCount >= 2_000, `expected useful underground gravel pockets, received ${gravelCount}`);
 assert.ok(gravelDensity >= 0.01 && gravelDensity <= 0.03, `gravel density ${(gravelDensity * 100).toFixed(2)}% escaped its 1–3% budget`);
 
-const chunk = createTerrainChunk(WORLD_TERRAIN_SEED, -8, -5);
+const chunk = createTerrainChunk(WORLD_TERRAIN_SEED, -8, -8);
 assert.equal(chunk.get(`${knownPocket[0]},${knownPocket[1]},${knownPocket[2]}`), BLOCK.GRAVEL);
 const snapshot = createWorldChunkSnapshot("0:0", [{
   id: "gravel-codec",
   x: 3,
-  y: -2,
+  y: 2,
   z: 6,
   blockType: "gravel",
   editedAt: "1",

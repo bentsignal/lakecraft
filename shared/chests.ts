@@ -36,7 +36,7 @@ export function validateChestCoordinate(rawCoordKey: string): ChestCoordinateVal
   }
   const [x, y, z] = parts.map(Number);
   if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)
-    || x < -64 || x > 64 || y < -4 || y > 64 || z < -64 || z > 64) {
+    || x < -64 || x > 64 || y < 1 || y > 192 || z < -64 || z > 64) {
     return { ok: false, reason: BS.invalidCoordinate };
   }
   return { ok: true, coordKey: `${x}:${y}:${z}`, x, y, z };

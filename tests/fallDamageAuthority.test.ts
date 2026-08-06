@@ -42,7 +42,7 @@ assert.equal(fallDamageForDistance(3.01), 1);
 assert.equal(fallDamageForDistance(10), 7);
 assert.equal(fallDamageForDistance(Number.NaN), 0);
 assert.deepEqual(resetAuthoritativeFallState(32), { grounded: true, fallPeakY: "32" });
-assert.equal(resetAuthoritativeFallState(129), null);
+assert.equal(resetAuthoritativeFallState(193), null);
 
 // A ten-block fall tracks its highest accepted airborne pose and applies seven
 // unarmored damage on the single airborne-to-supported transition.
@@ -109,7 +109,7 @@ const relocationReset = accepted(transition({ grounded: false, fallPeakY: "100" 
 assert.deepEqual(relocationReset.state, { grounded: true, fallPeakY: "5" });
 assert.deepEqual([relocationReset.damage, relocationReset.reset], [0, "relocation"]);
 
-const respawnReset = accepted(transition({ grounded: false, fallPeakY: "80" }, 0, 32, true, {
+const respawnReset = accepted(transition({ grounded: false, fallPeakY: "80" }, 1, 32, true, {
   relocated: true,
   health: 20,
   revision: 9,
@@ -132,7 +132,7 @@ assert.deepEqual(
 
 for (const [label, overrides, reason] of [
   ["NaN height", { nextY: Number.NaN }, "invalid_height"],
-  ["out-of-world height", { nextY: 129 }, "invalid_height"],
+  ["out-of-world height", { nextY: 193 }, "invalid_height"],
   ["numeric support claim", { supported: 1 }, "invalid_flags"],
   ["fractional health", { health: 19.5 }, "invalid_combat"],
   ["negative revision", { revision: -1 }, "invalid_combat"],

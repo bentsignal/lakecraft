@@ -125,8 +125,8 @@ export const STANDING_EYE_HEIGHT = PLAYER_STANDING_EYE_HEIGHT;
 export const SNEAKING_EYE_HEIGHT = PLAYER_SNEAKING_EYE_HEIGHT;
 export const STANDING_BODY_HEIGHT = 1.78;
 export const SNEAKING_BODY_HEIGHT = 1.5;
-export const DEFAULT_FOV_RADIANS = 70 * Math.PI / 180;
-export const SPRINT_FOV_RADIANS = 77 * Math.PI / 180;
+export const DEFAULT_FOV_RADIANS = 90 * Math.PI / 180;
+export const SPRINT_FOV_RADIANS = 99 * Math.PI / 180;
 const MIN_FOV_RADIANS = 30 * Math.PI / 180;
 const MAX_FOV_RADIANS = 110 * Math.PI / 180;
 

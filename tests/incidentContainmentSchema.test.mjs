@@ -53,8 +53,8 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "18a5fb37f3c83205792e73637bc8b5034c529c02dc67c938b889524fc18ba877",
-  "removing containment declarations reproduces the reviewed auth/query/receipt-refactored server behavior source",
+  "3dd8a36cfba1f5976987745473269c759fdc616586673b878c40f27ad2014c23",
+  "removing containment declarations reproduces the reviewed integrated server behavior source",
 );
 
 assert.doesNotMatch(server, /\bsinglePlayerCloudBackups\s*:/,
@@ -85,10 +85,10 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 154, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 156, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "71947631db6c78faf96f5f71dd79c4545537db69c977db1f34dee5bd10586219",
-  "runtime sources match the reviewed installed-asset checkpoint plus the isolated dev-only visual lab");
+  "f9f64a1f43ddbd6ec5f198f4e30bf4652e0a422c2bd4589f357d83bf2c98e90a",
+  "runtime sources match the reviewed integrated realism and world-only bedrock boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

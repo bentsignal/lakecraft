@@ -144,7 +144,7 @@ export function enumerateCreeperExplosionBlocks(
 }
 
 export function creeperBlockIsProtected(block: BlockType): boolean {
-  return block === "air" || block === "chest" || block === "furnace" || block === "bed"
+  return block === "air" || block === "bedrock" || block === "chest" || block === "furnace" || block === "bed"
     || block === BS.doorClosed || block === BS.doorOpen;
 }
 

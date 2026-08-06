@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { access, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -97,7 +98,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   poseSequence: [5, 9],
   previousBlock: [13, 6],
   radius: [23, 4],
-  reason: [61, 735],
+  reason: [61, 736],
   receiptCreatedAt: [0, 26],
   remainingDurability: [3, 13],
   replayed: [5, 35],
@@ -117,7 +118,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   targetKind: [20, 2],
   targetUserId: [20, 3],
   updatedAt: [12, 1],
-  userId: [286, 89],
+  userId: [288, 89],
   username: [9, 8],
   version: [9, 11],
   weaponItemId: [7, 2],
@@ -133,14 +134,21 @@ const BUILTIN_EXCLUSIONS = Object.freeze([
   "sort", "stringify", "take", "toString", "update", "withIndex",
 ]);
 export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
-// Reviewed 2026-08-04 after the explicit MotionSegmentRecorder field and the
-// canonical skin-storage codec added exactly the two source-shape deltas pinned
-// below; compact manifest keys, exclusions, runtime strings, and server records
-// stayed exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "edb1a928cdc4de8429dc2d4099cf9054fd5e95eac67e6f1027c67183730df876";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "52fad98eebf0a2f15bf6dd555345fbcfc93b19db7d6b551986fce3c536124995";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "b055a528ddd8ba7b903bd5706adaf1ce3b2958079de2b2a9ee79d9ff542b39f6";
+// Reviewed through the canonical GUI block raster base. The explicit
+// MotionSegmentRecorder and skin-storage deltas remain pinned below; compact
+// manifest keys, exclusions, runtime strings, and server records stay exact.
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "6afd444b734b0c7d645ae995bae006ee9db1b71bcd500b0c401c7d981f2b69b5";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "03eec1a241156d17f43d0f8e0d06b5376b7113f38173a27b68a6bcc7f369717d";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "2f571e4de8deab7142d35ecbf20638ace250366df0e60bc36ea3fb13ceecf21e";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
+// Beyond the original hand-curated record-key manifest, the closed server
+// bundle contains a larger set of ordinary property spellings that can be
+// interned without renaming any JavaScript, Lakebed, database, or wire key.
+// Derivation is deterministic, but the exact reviewed live set is hash-pinned
+// so source drift fails closed instead of silently broadening the transform.
+export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
+export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 277;
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "d78f889eb134e1c65675549ca23fd59f94b4f25853794f776a78b6bcf0c19774";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",
   sessionId: Object.freeze({
@@ -184,11 +192,59 @@ function fail(message) {
   throw new Error(`Unsafe compact server key transform: ${message}`);
 }
 
+function estimatedInterningGain(name, [accesses, objectKeys]) {
+  return (name.length - 2) * accesses + (name.length - 3) * objectKeys - (name.length + 5);
+}
+
+function analyzePropertyCounts(ts, sourceFile) {
+  const counts = new Map();
+  const methodNames = new Set();
+  function increment(name, kind) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return;
+    const count = counts.get(name) ?? [0, 0];
+    count[kind] += 1;
+    counts.set(name, count);
+  }
+  function visit(node) {
+    if (ts.isPropertyAccessExpression(node) || ts.isPropertyAccessChain(node)) {
+      increment(node.name.text, 0);
+    } else if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name)) {
+      increment(node.name.text, 1);
+    } else if (ts.isShorthandPropertyAssignment(node)) {
+      increment(node.name.text, 1);
+    } else if (
+      (ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)
+        || ts.isPropertyDeclaration(node))
+      && node.name && ts.isIdentifier(node.name)
+    ) {
+      methodNames.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return { counts, methodNames };
+}
+
 export async function compactServerPropertyKeys(source, manifest = COMPACT_SERVER_KEY_COUNTS) {
   const ts = await typescript();
   const sourceFile = ts.createSourceFile("lakecraft-server-stage.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  const names = Object.keys(manifest);
-  if (names.some((name) => BUILTIN_EXCLUSIONS.includes(name))) fail("manifest includes a reserved JavaScript or Lakebed property");
+  const manifestNames = Object.keys(manifest);
+  if (manifestNames.some((name) => BUILTIN_EXCLUSIONS.includes(name))) {
+    fail("primary manifest includes a reserved JavaScript or Lakebed property");
+  }
+  const analysis = analyzePropertyCounts(ts, sourceFile);
+  const extendedEntries = manifest === COMPACT_SERVER_KEY_COUNTS ? [...analysis.counts]
+    .filter(([name, count]) => !Object.hasOwn(manifest, name)
+      && !analysis.methodNames.has(name)
+      && estimatedInterningGain(name, count) >= COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN)
+    .sort(([left], [right]) => left.localeCompare(right)) : [];
+  const extendedFingerprint = createHash("sha256").update(JSON.stringify(extendedEntries)).digest("hex");
+  if (manifest === COMPACT_SERVER_KEY_COUNTS && (extendedEntries.length !== COMPACT_SERVER_EXTENDED_KEY_COUNT
+    || extendedFingerprint !== COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT)) {
+    fail(`extended key live set changed; expected ${COMPACT_SERVER_EXTENDED_KEY_COUNT}/${COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT}, received `
+      + `${extendedEntries.length}/${extendedFingerprint}`);
+  }
+  const names = [...manifestNames, ...extendedEntries.map(([name]) => name)];
   const indexes = new Map(names.map((name, index) => [name, index]));
   const counts = Object.fromEntries(names.map((name) => [name, [0, 0]]));
   const replacements = [];
@@ -234,8 +290,9 @@ export async function compactServerPropertyKeys(source, manifest = COMPACT_SERVE
   visit(sourceFile);
 
   const drifts = [];
+  const expectedCounts = Object.fromEntries([...Object.entries(manifest), ...extendedEntries]);
   for (const name of names) {
-    const expected = manifest[name];
+    const expected = expectedCounts[name];
     const actual = counts[name];
     if (actual[0] !== expected[0] || actual[1] !== expected[1]) {
       drifts.push(`${name} live set changed; expected ${expected.join("/")}, received ${actual.join("/")}`);

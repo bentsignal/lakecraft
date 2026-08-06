@@ -77,13 +77,13 @@ const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const delegated = engine.slice(engine.indexOf("if (options.onMobAttack)"), engine.indexOf("const result = damageMob"));
 assert.equal(delegated.includes("onLocalMobHit"), false, "Lakebed-delegated multiplayer attacks never use local durability authority");
-assert.match(engine, /if \(result\.applied\) \{[\s\S]*?onLocalMobHit\?\.\(\);/,
+assert.match(engine, /if \(result\.applied\) \{[\s\S]*?onLocalMobHit\?\.\(mobTarget\.kind, result\.killed\);/,
   "only a confirmed local health reduction spends one weapon use");
-assert.ok(app.includes("onLocalMobHit: () =>"));
+assert.ok(app.includes("onLocalMobHit: (kind, killed) =>"));
 assert.ok(app.includes('applyConfirmedToolUse(inventoryRef.current, slot, "attack", held)'));
 assert.ok(app.includes("if (!wear.used) return;"));
 assert.ok(app.includes("updateInventory(wear.inventory);"), "confirmed weapon wear joins the existing dirty-save path");
-const hitWear = app.slice(app.indexOf("onLocalMobHit: () =>"), app.indexOf("onMobUse:", app.indexOf("onLocalMobHit: () =>")));
+const hitWear = app.slice(app.indexOf("onLocalMobHit: (kind, killed) =>"), app.indexOf("onMobUse:", app.indexOf("onLocalMobHit: (kind, killed) =>")));
 assert.equal(hitWear.includes("setMessages"), false, "routine weapon breakage relies on inventory state instead of a top-right toast");
 assert.equal(app.includes("lakebed/client"), false, "single-player weapon wear adds zero Lakebed traffic");
 

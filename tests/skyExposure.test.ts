@@ -29,7 +29,7 @@ for (let x = 0; x < 8; x += 1) {
 const columns: SkyOccluderColumns = new Map();
 writeChunkSkyOccluders(columns, 0, 0, roof);
 assert.equal(columns.size, 64, "one streamed chunk caches exactly one top per column");
-assert.equal(skyExposureLevel(columns, 3, 0, 3), 0, "a fully roofed interior is dark");
+assert.equal(skyExposureLevel(columns, 3, 1, 3), 0, "a fully roofed interior is dark");
 assert.equal(skyExposureLevel(columns, 3, 6, 3), 3, "the surface above the roof sees full sky");
 
 const readRoof = (x: number, y: number, z: number) => roof.get(blockKey(x, y, z)) ?? BLOCK.AIR;
@@ -41,16 +41,16 @@ assert.equal(
 );
 assert.deepEqual(columns.get("0,3"), { opaqueY: TERRAIN_MIN_Y - 1, leafY: TERRAIN_MIN_Y - 1 },
   "removing the roof refreshes both cached occluder classes");
-assert.equal(skyExposureLevel(columns, 0, 0, 3), 3, "an open shaft receives daylight");
-assert.equal(skyExposureLevel(columns, 1, 0, 3), 2, "the first entrance column has bounded spill");
-assert.equal(skyExposureLevel(columns, 2, 0, 3), 1, "the second entrance column has weaker spill");
-assert.equal(skyExposureLevel(columns, 3, 0, 3), 0, "the third roofed column is outside the spill radius");
+assert.equal(skyExposureLevel(columns, 0, 1, 3), 3, "an open shaft receives daylight");
+assert.equal(skyExposureLevel(columns, 1, 1, 3), 2, "the first entrance column has bounded spill");
+assert.equal(skyExposureLevel(columns, 2, 1, 3), 1, "the second entrance column has weaker spill");
+assert.equal(skyExposureLevel(columns, 3, 1, 3), 0, "the third roofed column is outside the spill radius");
 
 roof.set(blockKey(0, 5, 3), BLOCK.STONE);
 refreshEditedSkyColumns(columns, [{ x: 0, z: 3 }], readRoof);
 assert.deepEqual(columns.get("0,3"), { opaqueY: 5, leafY: TERRAIN_MIN_Y - 1 },
   "replacing the roof closes the shaft deterministically");
-assert.equal(skyExposureLevel(columns, 0, 0, 3), 0);
+assert.equal(skyExposureLevel(columns, 0, 1, 3), 0);
 
 assert.equal(SKY_EXPOSURE_LEVELS, 3);
 assert.equal(SKY_EXPOSURE_SPILL_RADIUS, 2);
@@ -69,15 +69,15 @@ for (let x = 0; x < 8; x += 1) {
 }
 const leafColumns: SkyOccluderColumns = new Map();
 writeChunkSkyOccluders(leafColumns, 0, 0, leafRoof);
-assert.equal(skyExposureLevel(leafColumns, 3, 0, 3), 2,
+assert.equal(skyExposureLevel(leafColumns, 3, 1, 3), 2,
   "leaf cover transmits a bounded partial visual skylight band");
-assert.equal(skyEcologyExposureLevel(leafColumns, 3, 0, 3), 0,
+assert.equal(skyEcologyExposureLevel(leafColumns, 3, 1, 3), 0,
   "the same leaf cover remains full shelter for hostile ecology");
-assert.equal(skyEcologyExposureLevel(columns, 3, 0, 3), 0,
+assert.equal(skyEcologyExposureLevel(columns, 3, 1, 3), 0,
   "an enclosed stone cave remains ecology-dark");
-assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 0, 3)) > skyLitIntensity(1, 0),
+assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 1, 3)) > skyLitIntensity(1, 0),
   "canopy shade stays visibly brighter than an enclosed cave");
-assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 0, 3)) < skyLitIntensity(1, 3),
+assert.ok(skyLitIntensity(1, skyExposureLevel(leafColumns, 3, 1, 3)) < skyLitIntensity(1, 3),
   "canopy shade remains visibly dimmer than open sky");
 
 const replacedColumn = new Map<string, BlockId>();
@@ -251,7 +251,7 @@ for (let x = 0; x < 16; x += 1) {
 const seamColumns: SkyOccluderColumns = new Map();
 writeChunkSkyOccluders(seamColumns, 0, 0, seamRoof);
 writeChunkSkyOccluders(seamColumns, 1, 0, seamRoof);
-assert.equal(skyExposureLevel(seamColumns, 7, 0, 3), 0);
+assert.equal(skyExposureLevel(seamColumns, 7, 1, 3), 0);
 seamRoof.delete(blockKey(5, 5, 3));
 refreshEditedSkyColumns(
   seamColumns,
@@ -259,7 +259,7 @@ refreshEditedSkyColumns(
   (x, y, z) => seamRoof.get(blockKey(x, y, z)) ?? BLOCK.AIR,
 );
 assert.equal(
-  skyExposureLevel(seamColumns, 7, 0, 3),
+  skyExposureLevel(seamColumns, 7, 1, 3),
   1,
   "the west-face sample of the block at x=8 changes when the two-inside roof entrance opens",
 );

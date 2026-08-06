@@ -22,6 +22,7 @@ import {
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
 import { stripClientDevelopmentSurfaces } from "./client-development-surface-transform.mjs";
+import { compactClientBuiltinAliases } from "./client-builtin-alias-compaction.mjs";
 import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.mjs";
 import { compactClientStringPool } from "./client-string-pool-compaction.mjs";
 import { compactServerPropertyKeys } from "./server-property-key-compaction.mjs";
@@ -251,7 +252,8 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
     if (!compactedOutput) throw new Error("Compact server key transform produced no output.");
     bundledText = compactedOutput.text;
   } else {
-    const shaped = await compactClientJsxPropShapes(bundledText);
+    const aliased = await compactClientBuiltinAliases(bundledText);
+    const shaped = await compactClientJsxPropShapes(aliased);
     const pooled = await compactClientStringPool(shaped);
     const compacted = await build({
       charset: "utf8",

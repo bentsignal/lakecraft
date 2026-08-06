@@ -28,7 +28,7 @@ export const DEFAULT_CLIENT_SETTINGS: Readonly<ClientSettings> = Object.freeze({
   soundMuted: false,
   mouseSensitivity: 100,
   renderDistance: 6,
-  fovDegrees: 70,
+  fovDegrees: 90,
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {

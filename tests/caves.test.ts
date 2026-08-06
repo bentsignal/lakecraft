@@ -24,7 +24,7 @@ let carvedStone = 0;
 for (let x = MIN; x <= MAX; x += 1) {
   for (let z = MIN; z <= MAX; z += 1) {
     const top = terrainHeight(x, z, SEED);
-    for (let y = 0; y <= top; y += 1) {
+    for (let y = TERRAIN_MIN_Y; y <= top; y += 1) {
       const natural = terrainBaseBlock(x, y, z, SEED);
       const present = caves.get(blockKey(x, y, z));
       if (natural === BLOCK.STONE) {
@@ -33,7 +33,7 @@ for (let x = MIN; x <= MAX; x += 1) {
       } else {
         assert.notEqual(present, undefined, `cave removed protected ${natural} at ${x},${y},${z}`);
       }
-      if (y === 0) assert.notEqual(present, undefined, `cave breached the y=0 foundation at ${x},${z}`);
+      if (y === TERRAIN_MIN_Y) assert.equal(present, BLOCK.BEDROCK, `cave breached bedrock at ${x},${z}`);
       if (Math.max(Math.abs(x), Math.abs(z)) <= CAVE_SPAWN_SANCTUARY_RADIUS) {
         assert.notEqual(present, undefined, `spawn sanctuary was carved at ${x},${y},${z}`);
       }
@@ -69,7 +69,7 @@ assert.deepEqual(
   "cross-boundary cave tunnels must merge byte-for-byte",
 );
 let seamTunnelPairs = 0;
-for (let y = 1; y <= 6; y += 1) {
+for (let y = 5; y <= 64; y += 1) {
   for (let z = MIN; z <= MAX; z += 1) {
     if (
       terrainBaseBlock(-3, y, z, SEED) === BLOCK.STONE
@@ -82,8 +82,8 @@ for (let y = 1; y <= 6; y += 1) {
 assert.ok(seamTunnelPairs > 0, "the seam test should exercise a tunnel crossing both halves");
 assert.ok(generationMs < 250, `radius-32 cave terrain took ${generationMs.toFixed(1)}ms`);
 
-// Deep streamed chunks expose caves below the legacy y=0 foundation without
-// breaching their true floor, and an arbitrary negative-coordinate seam agrees.
+// Deep streamed chunks expose caves above bedrock, and an arbitrary
+// negative-coordinate seam agrees.
 const deepWhole = createTerrainRegion(SEED, -1_008, -993, 2_000, 2_007, { minimumY: TERRAIN_MIN_Y });
 const deepWest = createTerrainChunk(SEED, -126, 250);
 const deepEast = createTerrainChunk(SEED, -125, 250);
@@ -96,7 +96,7 @@ let deepCarvedStone = 0;
 for (let x = -1_008; x <= -993; x += 1) {
   for (let z = 2_000; z <= 2_007; z += 1) {
     assert.notEqual(deepWhole.get(blockKey(x, TERRAIN_MIN_Y, z)), undefined, "true floor must remain solid");
-    for (let y = TERRAIN_MIN_Y + 1; y < 0; y += 1) {
+    for (let y = TERRAIN_MIN_Y + 1; y < 63; y += 1) {
       if (terrainBaseBlock(x, y, z, SEED) === BLOCK.STONE && !deepWhole.has(blockKey(x, y, z))) {
         deepCarvedStone += 1;
       }
