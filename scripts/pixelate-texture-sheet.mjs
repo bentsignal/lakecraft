@@ -725,9 +725,22 @@ function applyImportedMinecraftBlockTextures(image, names, columns, tileSize, ce
     const tileX = cells[tile] % columns;
     const tileY = Math.floor(cells[tile] / columns);
     for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
-      const input = (y * tileSize + x) * 4;
+      let input = (y * tileSize + x) * 4;
+      if (name === "leaves" && source.rgba[input + 3] === 0) {
+        let distance = Infinity;
+        for (let sy = 0; sy < tileSize; sy += 1) for (let sx = 0; sx < tileSize; sx += 1) {
+          const candidate = (sy * tileSize + sx) * 4;
+          const nextDistance = Math.abs(sx - x) + Math.abs(sy - y);
+          if (source.rgba[candidate + 3] && nextDistance < distance) {
+            input = candidate;
+            distance = nextDistance;
+          }
+        }
+      }
       const output = ((tileY * tileSize + y) * image.width + tileX * tileSize + x) * 4;
-      image.rgba.set(tintImportedPixel(source, input, tint), output);
+      const pixel = tintImportedPixel(source, input, tint);
+      if (name === "leaves") pixel[3] = 255;
+      image.rgba.set(pixel, output);
     }
   }
   const sideTile = names.indexOf("grass_side");

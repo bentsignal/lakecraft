@@ -345,7 +345,7 @@ assert.deepEqual(
     previousOccurrences: 1_085,
     previousUniqueValues: 98,
     previousSourceFingerprint: "3b7a3dbfcd1bf6ff9dc1c4456f33ddfe9719d69da8c9f2949b574a62cf495699",
-    occurrenceDelta: 7,
+    occurrenceDelta: 9,
     uniqueValueDelta: 1,
     promotedThresholdValue: "top",
     source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",

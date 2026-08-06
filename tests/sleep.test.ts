@@ -26,11 +26,11 @@ assert.deepEqual(worldClockSnapshot(null, 5_000), {
   cycleLengthMs: WORLD_CYCLE_LENGTH_MS,
   serverNow: 5_000,
 });
-assert.deepEqual(worldClockSnapshot({ epochMs: "1000", epochPhase: "1.25" }, 5_000), {
+assert.deepEqual(worldClockSnapshot({ epochMs: "-1000", epochPhase: "1.25" }, 5_000), {
   key: WORLD_CLOCK_KEY,
   epochMs: 1_000,
   epochPhase: 0.25,
-  cycleLengthMs: WORLD_CYCLE_LENGTH_MS,
+  cycleLengthMs: -WORLD_CYCLE_LENGTH_MS,
   serverNow: 5_000,
 });
 const morning = morningClockSnapshot(42_000);

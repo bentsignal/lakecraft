@@ -9,8 +9,8 @@ import {
 import { createDayNightState, sampleDayNight } from "../client/game/dayNight.ts";
 
 assert.equal(ATMOSPHERE_SCREEN_TRIANGLE.length, 6, "sky remains one fullscreen triangle");
-assert.match(ATMOSPHERE_FRAGMENT_SHADER, /cloudWorld/, "sky pass includes world-anchored clouds");
-assert.match(ATMOSPHERE_FRAGMENT_SHADER, /squareDisc/, "celestial bodies keep pixel-square silhouettes");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /96\.-E\.y/, "cloud height is intersected in world space, not offset from the eye");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /float b\(/, "celestial bodies keep pixel-square silhouettes");
 assert.doesNotMatch(ATMOSPHERE_FRAGMENT_SHADER, /\bsin\s*\(/, "fullscreen hashes avoid expensive per-pixel sine calls");
 
 const noon = celestialDirection(Math.PI / 2);
@@ -32,6 +32,15 @@ invalid.sunIntensity = 2;
 invalid.moonIntensity = -2;
 invalid.starIntensity = Number.NaN;
 assert.deepEqual(atmosphereLightLevels(invalid), { sun: 1, moon: 0, stars: 0 });
+
+const target: readonly [number, number, number] = [20, 96, -12];
+for (const eye of [[0, 8, 0], [0, 28, 0]] as const) {
+  const delta = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]] as const;
+  const distance = (96 - eye[1]) / delta[1];
+  const projected = [eye[0] + delta[0] * distance, eye[2] + delta[2] * distance];
+  assert.ok(Math.abs(projected[0] - target[0]) < 1e-9 && Math.abs(projected[1] - target[2]) < 1e-9,
+    "jumping changes the viewing ray but not the cloud's world coordinate");
+}
 
 let checksum = 0;
 const startedAt = performance.now();

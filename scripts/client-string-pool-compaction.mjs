@@ -8,12 +8,12 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 592;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 524;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4b95e42effbfeab45644df543a1117fe54b3b058de8d092b5467b72b836079e8";
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_092;
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 594;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 525;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "956b8738c76ea9e4ffa01140d16d216eaba5b72c72ae0f59ce44fc0ea6501554";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_094;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "e494fb343fbf765a79e5a6eb00d361fb851920bb5a06132ca9062e48b56fbbd2";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -67,12 +67,12 @@ export const COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA = Object.freeze({
 });
 // Atlas-backed block icons now rebuild from the production atlas instead of
 // carrying redundant serialized runs. The runtime rasterizer promotes `top`
-// over the repeated-pool threshold and adds seven reviewed uses.
+// over the repeated-pool threshold and adds nine reviewed uses.
 export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   previousOccurrences: 1_085,
   previousUniqueValues: 98,
   previousSourceFingerprint: "3b7a3dbfcd1bf6ff9dc1c4456f33ddfe9719d69da8c9f2949b574a62cf495699",
-  occurrenceDelta: 7,
+  occurrenceDelta: 9,
   uniqueValueDelta: 1,
   promotedThresholdValue: "top",
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",

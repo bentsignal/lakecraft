@@ -127,7 +127,7 @@ export function GameHud({
   optionsOpen = false,
   mouseSensitivity = 100,
   onSensitivityChange,
-  fovDegrees = 70,
+  fovDegrees = 90,
   onFovChange,
   renderDistance,
   onRenderDistanceChange,

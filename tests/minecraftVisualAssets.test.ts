@@ -185,6 +185,22 @@ for (const [name, channels] of [["grass_top", plainsGrass], ["leaves", plainsFol
   const cell = TEXTURE_ATLAS_CELLS[tile];
   const tileX = cell % TEXTURE_ATLAS_COLUMNS;
   const tileY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
+  if (name === "leaves") {
+    const installedColors = new Set<string>();
+    for (let pixel = 0; pixel < 256; pixel += 1) {
+      const offset = pixel * 4;
+      if (source.rgba[offset + 3]) installedColors.add(
+        [0, 1, 2].map((channel) => tint(source.rgba[offset + channel], channels[channel])).concat(255).join(","),
+      );
+    }
+    for (let pixel = 0; pixel < 256; pixel += 1) {
+      const atlasOffset = ((tileY * 16 + Math.floor(pixel / 16)) * TEXTURE_ATLAS_COLUMNS * 16
+        + tileX * 16 + pixel % 16) * 4;
+      assert.ok(installedColors.has([...TEXTURE_ATLAS_RGBA.subarray(atlasOffset, atlasOffset + 4)].join(",")),
+        `opaque leaves pixel ${pixel} remains in the installed tinted palette`);
+    }
+    continue;
+  }
   for (let pixel = 0; pixel < 256; pixel += 1) {
     const sourceOffset = pixel * 4;
     const atlasOffset = ((tileY * 16 + Math.floor(pixel / 16)) * TEXTURE_ATLAS_COLUMNS * 16

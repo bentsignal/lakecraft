@@ -144,7 +144,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
     colors.add(`${tile[offset]},${tile[offset + 1]},${tile[offset + 2]},${tile[offset + 3]}`);
   }
   assert.ok(colors.size >= 3, `${TEXTURE_ATLAS_NAMES[index]} must retain readable pixel variation`);
-  if (!new Set(["leaves", "glass", "sapling"]).has(TEXTURE_ATLAS_NAMES[index])
+  if (!new Set(["glass", "sapling"]).has(TEXTURE_ATLAS_NAMES[index])
   ) {
     for (let offset = 3; offset < tile.length; offset += 4) {
       assert.equal(tile[offset], 255, `${TEXTURE_ATLAS_NAMES[index]} remains an opaque terrain material`);

@@ -771,6 +771,16 @@ function SinglePlayerWorld({
       appendCommandMessage(`Time set to ${parsed.command.time}.`, "system");
       return;
     }
+    if (parsed.command.kind === "gamerule") {
+      const engine = engineRef.current;
+      if (!engine) {
+        appendCommandMessage("The world clock is not ready.", "warning");
+        return;
+      }
+      engine.setDaylightCycle(parsed.command.value);
+      markWorldDirty();
+      return;
+    }
     if (parsed.command.kind === "locate") {
       const cave = engineRef.current?.findNearestCave() ?? null;
       appendCommandMessage(cave

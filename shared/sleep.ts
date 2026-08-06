@@ -1,7 +1,7 @@
 
 import * as BS from "./bundleStrings.ts";
 export const WORLD_CLOCK_KEY = "main";
-export const WORLD_CYCLE_LENGTH_MS = 8 * 60 * 1_000;
+export const WORLD_CYCLE_LENGTH_MS = 20 * 60 * 1_000;
 export const MORNING_PHASE = 0.25;
 export const ACTIVE_PLAYER_WINDOW_MS = 90_000;
 export const SLEEP_VOTE_FRESH_MS = 100_000;
@@ -73,12 +73,11 @@ export function worldPhaseAt(
   epochPhase: number,
   cycleLengthMs = WORLD_CYCLE_LENGTH_MS,
 ): number {
-  const safeCycle = Number.isFinite(cycleLengthMs) && cycleLengthMs > 0
-    ? cycleLengthMs
-    : WORLD_CYCLE_LENGTH_MS;
+  const finiteCycle = Number.isFinite(cycleLengthMs) ? cycleLengthMs : 0;
+  const safeCycle = Math.abs(finiteCycle) || WORLD_CYCLE_LENGTH_MS;
   const safeNow = Number.isFinite(serverNow) ? serverNow : 0;
   const safeEpoch = Number.isFinite(epochMs) ? epochMs : 0;
-  return normalizeWorldPhase(normalizeWorldPhase(epochPhase) + (safeNow - safeEpoch) / safeCycle);
+  return normalizeWorldPhase(normalizeWorldPhase(epochPhase) + (finiteCycle > 0 ? (safeNow - safeEpoch) / safeCycle : 0));
 }
 
 export function worldClockSnapshot(row: Readonly<ClockRowLike> | null, serverNow: number): WorldClockSnapshot {
@@ -87,20 +86,20 @@ export function worldClockSnapshot(row: Readonly<ClockRowLike> | null, serverNow
   const parsedEpochPhase = row ? Number(row.epochPhase) : 0;
   return {
     key: WORLD_CLOCK_KEY,
-    epochMs: Number.isFinite(parsedEpochMs) ? parsedEpochMs : 0,
+    epochMs: Number.isFinite(parsedEpochMs) ? Math.abs(parsedEpochMs) : 0,
     epochPhase: normalizeWorldPhase(parsedEpochPhase),
-    cycleLengthMs: WORLD_CYCLE_LENGTH_MS,
+    cycleLengthMs: parsedEpochMs < 0 ? -WORLD_CYCLE_LENGTH_MS : WORLD_CYCLE_LENGTH_MS,
     serverNow: now,
   };
 }
 
-export function morningClockSnapshot(serverNow: number): WorldClockSnapshot {
+export function morningClockSnapshot(serverNow: number, advances = true): WorldClockSnapshot {
   const now = Number.isFinite(serverNow) ? serverNow : 0;
   return {
     key: WORLD_CLOCK_KEY,
     epochMs: now,
     epochPhase: MORNING_PHASE,
-    cycleLengthMs: WORLD_CYCLE_LENGTH_MS,
+    cycleLengthMs: advances ? WORLD_CYCLE_LENGTH_MS : -WORLD_CYCLE_LENGTH_MS,
     serverNow: now,
   };
 }

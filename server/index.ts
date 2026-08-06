@@ -3993,7 +3993,7 @@ export default capsule({
       const existingClock = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
       const clockValue = {
         clockKey: WORLD_CLOCK_KEY,
-        epochMs: String(serverNow),
+        epochMs: String((existingClock && Number(existingClock.epochMs) < 0) ? -serverNow : serverNow),
         epochPhase: String(MORNING_PHASE)
       };
       if (existingClock) await ctx.db.worldClock.update(existingClock.id, clockValue);
@@ -4006,7 +4006,7 @@ export default capsule({
         activePlayers: status.activePlayers,
         sleepingPlayers: status.sleepingPlayers,
         requiredPlayers: status.requiredPlayers,
-        clock: morningClockSnapshot(serverNow)
+        clock: morningClockSnapshot(serverNow, Number(clockValue.epochMs) >= 0)
       };
     }),
 
@@ -5418,6 +5418,20 @@ export default capsule({
       const elapsed = previous ? now - Number(previous.sentAt) : CHAT_RATE_LIMIT_MS;
       if (elapsed < CHAT_RATE_LIMIT_MS) {
         return { ok: false, reason: BS.rateLimited, retryAfterMs: CHAT_RATE_LIMIT_MS - elapsed };
+      }
+
+      const rule = validation.message.match(/^\/gamerule\s+doDaylightCycle\s+(true|false)$/i);
+      if (rule) {
+        const existing = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
+        const current = worldClockSnapshot(existing, now);
+        const enabled = rule[1].toLowerCase() === "true";
+        const value = {
+          clockKey: WORLD_CLOCK_KEY,
+          epochMs: String(enabled ? now : -now),
+          epochPhase: String(worldPhaseAt(now, current.epochMs, current.epochPhase, current.cycleLengthMs)),
+        };
+        if (existing) await ctx.db.worldClock.update(existing.id, value);
+        else await ctx.db.worldClock.insert(value);
       }
 
       const message = await ctx.db.chatMessages.insert({

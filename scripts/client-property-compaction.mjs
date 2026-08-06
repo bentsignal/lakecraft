@@ -425,6 +425,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "senderLabels": "Xo",
   "serverTimeOffsetMs": "uo",
   "setArmor": "cP",
+  "setDaylightCycle": "dc",
   "setDayNightClock": "R",
   "setDroppedItem": "cQ",
   "setDroppedItems": "Qe",

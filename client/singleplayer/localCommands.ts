@@ -42,6 +42,7 @@ export type ParsedLocalCommand =
   | { kind: "gamemode"; mode: LocalGameMode }
   | { kind: "give"; itemId: ItemId; count: number }
   | { kind: "time"; time: LocalTimePreset }
+  | { kind: "gamerule"; value: boolean }
   | { kind: "locate"; feature: "cave" };
 
 export type LocalCommandParseResult =
@@ -125,6 +126,18 @@ export function parseLocalCommand(
       return { ok: false, code: "usage", message: "Usage: /time set <day|night>" };
     }
     return { ok: true, command: { kind: "time", time: tokens[1] } };
+  }
+  if (name === "gamerule") {
+    const value = tokens[1];
+    if (tokens.length !== 2
+      || tokens[0]?.toLowerCase() !== "dodaylightcycle"
+      || (value !== "true" && value !== "false")) {
+      return { ok: false, code: "usage", message: "Usage: /gamerule doDaylightCycle <true|false>" };
+    }
+    return { ok: true, command: {
+      kind: "gamerule",
+      value: value === "true",
+    } };
   }
   if (name === "locate") {
     return tokens.length === 1 && tokens[0] === "cave"

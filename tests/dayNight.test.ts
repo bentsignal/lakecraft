@@ -1,24 +1,32 @@
 import assert from "node:assert/strict";
 import {
   createDayNightState,
+  DEFAULT_DAY_NIGHT_CONFIG,
   phaseAtTime,
   sampleDayNight,
   timeToMorningMs,
   type DayNightConfig,
 } from "../client/game/dayNight.ts";
 import { applyDayNightClockUpdate } from "../client/game/voxelEngine.ts";
+import { readFileSync } from "node:fs";
 
 const config: DayNightConfig = {
   cycleLengthMs: 1_000,
   epochMs: 10_000,
   epochPhase: 0,
 };
+assert.equal(DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs, 20 * 60 * 1_000);
+assert.match(readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8"),
+  /phaseAtTime,[\s\S]*?setDaylightCycle\(enabled\)[\s\S]*?phaseAtTime\(worldTimeMs, dayNightConfig\)/,
+  "the live engine imports the phase sampler used to re-anchor daylight toggles");
 
 assert.equal(phaseAtTime(10_000, config), 0);
 assert.equal(phaseAtTime(10_250, config), 0.25);
 assert.equal(phaseAtTime(11_000, config), 0);
 assert.equal(phaseAtTime(9_750, config), 0.75, "times before the epoch must wrap positively");
 assert.equal(phaseAtTime(10_000, { ...config, epochPhase: 1.25 }), 0.25);
+assert.equal(phaseAtTime(10_750, { ...config, cycleLengthMs: -config.cycleLengthMs, epochPhase: 0.4 }), 0.4,
+  "disabled daylight freezes the sky while world time continues");
 
 const state = createDayNightState();
 assert.equal(sampleDayNight(10_000, config, state), state, "caller-provided output should be reused");
@@ -62,7 +70,7 @@ assert.equal(timeToMorningMs(9_750, config), 500);
 const mutableClock = { ...config };
 assert.equal(applyDayNightClockUpdate(mutableClock, { epochMs: 20_000, epochPhase: 0.25 }, 0, 125), 125);
 assert.deepEqual(mutableClock, { ...config, epochMs: 20_000, epochPhase: 0.25 });
-assert.equal(applyDayNightClockUpdate(mutableClock, { cycleLengthMs: -1 }, 125, Number.NaN), 125);
+assert.equal(applyDayNightClockUpdate(mutableClock, { cycleLengthMs: 0 }, 125, Number.NaN), 125);
 assert.equal(mutableClock.cycleLengthMs, config.cycleLengthMs, "invalid clock updates should be ignored");
 
 for (const value of [noon, justBeforeWrap, atWrap, dawnA, dawnB, dawnC]) {
