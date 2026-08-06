@@ -13,6 +13,8 @@ attribute vec3 aPosition;attribute vec3 aColor;uniform mat4 uMvp;uniform vec3 uL
 void main(){gl_Position=uMvp*vec4(aPosition,1.0);vColor=aColor*uLight;}
 `;
 export const COLOR_FRAGMENT_SHADER = `precision mediump float;varying vec3 vColor;void main(){gl_FragColor=vec4(vColor,1.0);}`;
+export const MOB_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute vec3 aTint;uniform mat4 uMvp;uniform vec3 uLight;varying vec2 vUv;varying vec3 vLight;void main(){gl_Position=uMvp*vec4(aPosition,1.);vUv=aUv;vLight=aTint*uLight;}`;
+export const MOB_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;varying vec2 vUv;varying vec3 vLight;void main(){vec4 t=texture2D(uAtlas,vUv);if(t.a<.02)discard;gl_FragColor=vec4(t.rgb*vLight,t.a);}`;
 
 export function createVisualProgram(
   gl: WebGLRenderingContext,

@@ -109,6 +109,24 @@ export const COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA = Object.freeze({
   source: "client/game/audio.ts#official sampled audio",
   exclusionChanges: 0,
 });
+export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA = Object.freeze({
+  previousOccurrences: 1_092,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: 56,
+  uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#exact-textured-model-dispatch",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze({
+  previousOccurrences: 1_148,
+  previousUniqueValues: 106,
+  previousSourceFingerprint: "ce3b7181b6c75c183e201096398d2c62a4017a56fe092a659bb9fff645dd4c8b",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 0,
+  source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 378;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 111;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144";
@@ -147,23 +165,31 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA = Object.freeze({
   source: "client/game/audio.ts#official sampled audio",
   exclusionChanges: 0,
 });
+export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA = Object.freeze({
+  previousOccurrences: 374,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 22,
+  uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#mob-texture-program",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze({
+  previousOccurrences: 396,
+  previousUniqueValues: 117,
+  previousSourceFingerprint: "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b",
+  occurrenceDelta: 6,
+  uniqueValueDelta: 2,
+  source: "client/game/mobRenderer.ts#createMobTexture",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
-  "1.2..21.",
-  "2.1..2",
-  "2.1.2.",
-  "1.....2..1.....2",
-  "2......1..2..1..",
-  "1....2..2.....1.",
-  "2....1...1....2.",
-  "1....2..1",
-  "2..1....2",
-  "121",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 20;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 10;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 0;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 0;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "client/game/mobRenderer.ts";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "b38c44d8076339edd689f0a89bacdd179deb93977714e287ac89ad215b2653cb";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e";
 // Gameplay modes and local persistence outcomes form a closed internal
 // identity boundary. Only strict comparison operands and switch cases may
 // enter this pool: JSX/DOM values, object keys, payload strings, and UI copy

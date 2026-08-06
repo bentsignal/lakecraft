@@ -1,6 +1,6 @@
 # Lakecraft texture pipeline
 
-Lakecraft uses a deterministic two-source texture pipeline. The checked-in OpenAI ImageGen concept sheet supplies original fallback tiles. A hash-pinned importer then selects only compatibility assets for implemented content from the project owner's locally installed Minecraft Java 26.2 client. Runtime code imports compact palette-indexed RGBA modules; Lakebed does not need an image loader or loose static assets.
+Lakecraft uses a deterministic two-source texture pipeline. The checked-in OpenAI ImageGen concept sheet supplies original fallback tiles. A hash-pinned importer then selects only compatibility assets for implemented content from the project owner's locally installed Minecraft Java 26.2 client. Runtime code imports compact generated modules; Lakebed does not need loose static assets.
 
 ## Regenerate the block atlas
 
@@ -27,6 +27,14 @@ The importer enforces the reviewed 26.2 JAR SHA-256 before reading assets, then 
 At runtime WebGL uploads the reconstructed 96×128 RGBA array once with nearest-neighbor filtering. Blocks select a tile per face: logs expose installed growth rings, workbenches and furnaces have their installed top, front, and side materials, and stone bricks use the installed masonry tile. One contiguous 64×64 region preserves the complete installed normal-chest entity texture without resampling, allowing the retained three-part chest mesh to address native UVs directly without another texture, draw pass, or split-face seam. Connected oak-fence posts, rails, and swinging gate bars reuse the installed oak-plank tile in the retained terrain batch, so they add no atlas cell or draw pass. Glass is kept out of the opaque terrain buffers and composited in a far-to-near, per-visible-chunk alpha pass with depth writes disabled. Oak saplings use a fixed 12-vertex crossed mesh in the ordinary chunk batch with a 0.5 alpha cutoff.
 
 Minecraft renders chest, oak-fence, oak-fence-gate, and stone-brick-slab items from model or special-entity geometry rather than standalone 16×16 item PNGs. The importer therefore records each exact 26.2 item/model parent chain and the normal 64×64 chest entity texture. The item-art generator resolves inherited display transforms, elements, face UVs, and texture references, then deterministically rasterizes those sources into the bounded 16×16 inventory stream. First-person, dropped, and remote held views reuse that same generated catalog art; calibration of a live multi-cuboid first-person model remains a separate orientation task. The bed remains intentionally Lakecraft-authored.
+
+## Regenerate the mob atlas
+
+```sh
+node scripts/generate-mob-texture-atlas.mjs
+```
+
+The mob generator reads only the already hash-pinned import manifest. It packs the exact installed temperate pig, cow, chicken, sheep base/wool, zombie, skeleton, creeper, and spider PNGs into one deterministic 208×128 atlas, with the installed bow sprite reserved for the skeleton's held item. The generated module records the atlas and individual source SHA-256 values; parity tests compare every production texel with its installed source. Standard Java pixel-unit cuboids, texture offsets, part pivots, limb gait, sheep wool overlay, skeleton bow pose, and creeper fuse tint all feed the same fixed retained mob buffer used by the world and Visual Lab. Nearest-neighbor sampling preserves native pixels, while hurt, torch/day lighting, and death fall remain lightweight vertex/material transforms rather than alternate textures.
 
 ## Check deployment headroom
 

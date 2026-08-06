@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { buildPlayerArmorGeometry } from "../client/game/playerArmorGeometry.ts";
 import { buildPlayerSkinGeometry } from "../client/game/playerSkinGeometry.ts";
-import { createMobRenderer, mobVertexCountForKind } from "../client/game/mobRenderer.ts";
+import { MOB_VERTEX_STRIDE, createMobRenderer, mobVertexCountForKind } from "../client/game/mobRenderer.ts";
 import type { MobKind, MobPoseSnapshot } from "../client/game/mobs.ts";
 
 function floatHash(values: Float32Array): string {
@@ -88,40 +88,40 @@ function pose(kind: MobKind, values: Partial<MobPoseSnapshot> = {}): MobPoseSnap
 }
 
 const MOB_HASHES: Readonly<Record<string, string>> = {
-  "pig:base": "5f27fed4be3f8e9f308f7741db1aaf4f544bfd06846bdd210a75030aeefc9d92",
-  "pig:fallen": "ebd939c5efb60caa1e1fd244fad36c9a166a19454556edce84beebf2df7ae507",
-  "pig:hurt": "83bcd21ff8f5e7a9985f5baae9cc4648a4e0940ccae27c964dbe38b7196397b7",
-  "cow:base": "8f7fa9792996ea03560df801d7a54b655ded36a22c9179a1e433fe0bb12a2707",
-  "cow:fallen": "9b16ae4a51129be8730ca6aa10c95c903b7c7b22bc0839bd22f61581c34214fd",
-  "cow:hurt": "bbdad2b7be595c5db648d97aa4009aa35d7b8a7128d262a12f666d41549f543c",
-  "sheep:base": "035287bb9ab17caa0300f7040406935fc588d38d040c8d58f8ba930d6753f73b",
-  "sheep:fallen": "14b93838a35aa9efad63eeb7c53575c88677adf5d62b7096595b8ad8b30dbcc3",
-  "sheep:hurt": "b0c5cf37ae97b71b3347c567cc3ef1899f83dbcb4286158d269f47cb5674a485",
-  "chicken:base": "d0560abfbb3553d40c261c1555a60936a8c1df87e00bc924e1077b0337d14910",
-  "chicken:fallen": "b68ff162b7827846b0847f55eb7fe1a5bbb1c082f914fa620764125dd18e5846",
-  "chicken:hurt": "0111b7489245323102a9d9d4acc09465ce6d684fdfdf71df823acb6c8fa983df",
-  "zombie:base": "1a7a1da1c75312e27258606c0801e99f898ea43738560e7faf98bf106769067c",
-  "zombie:fallen": "8f70f6c7a36f3c96ec901a7e303742c7764325fcf8e520a9fa57412e4efa2d40",
-  "zombie:hurt": "def42c1863ab8ea754721952ed82639e77ac265bc0698484e876bbf07fc1ab73",
-  "skeleton:base": "d3c02d43fa06de0db54135de668dc95b8a1d8b5e62871c18d2aeea5fbe9db20e",
-  "skeleton:fallen": "dd23b6c3ce692e2d5c20d7a7058b5bb2df1f9a59bc7250cfe347b590076f4961",
-  "skeleton:hurt": "4152e92ad9bd473350bf06ed662b32c760d546cb81cbb5c423c7020c7c9c1113",
-  "creeper:base": "b5945585cd59c5b95fd50bfa07319d05dc4e0432fe6d7b7cd66205550c6034b3",
-  "creeper:fallen": "40b8eb252ec9bdcd28ea71a208da43e5d98f2a125344f9f32375aea78591082d",
-  "creeper:hurt": "e15b529c563cd3f091b45b22a73310f73553b9b641369daa85bc7b3ffb0db1d2",
-  "spider:base": "c73f8cb99ef1c0860303ea530865bf454c0f56c55aef529e44d7c9347ae464b9",
-  "spider:fallen": "f9dfb43b21ee401bf151226fd02cf37b4f70981bdf93b1cafd467818b961188e",
-  "spider:hurt": "be21b40cd5b9a56454e7fc8129410086040ce7144903096d8481c800c552ba19",
-  "sheep:sheared": "9ac5bddd21ebc17086a73c13d03636b3bf17d71fa0a954b46334aed56d67a3ed",
-  "zombie:sun": "413702339f7440178be6319ce956b0d8e10b70f0d9d6817a459a59e7ef31aee1",
-  "creeper:fused": "940e2fa535463a0fb243b2ee78d0153fa0b4e493149abc1b57b8ed5e52abd51d",
+  "pig:base": "f6d04ec32fa01cab58d0ff1a0cd52f000002be487cd30666715d2d2484c0fdfe",
+  "pig:fallen": "a229e03c20ba8c2a7d47153f04e90c3d1e360a10a488ffd7e132fa0dd8905cbe",
+  "pig:hurt": "d4108e7231d71d1d83b1ed25ff33179b7594b870f122df2e87db74b89a9805e0",
+  "cow:base": "a2146643aadcd527612dce99a67bef63fea331e64a6330e914c68cc2f41a80b8",
+  "cow:fallen": "c0c29be531ce32711820ff21b7d31ef272629ddfcc04edb593c7640f1d6e6aa1",
+  "cow:hurt": "c88b5d0a3879a4cec32ccbb0687d31909baa2cdbef7600abcae5f84aae2fd403",
+  "sheep:base": "c277bbd00beaa6089cc2da65b2ae5ba2764266ea25b96e2abb27a8a167064bf4",
+  "sheep:fallen": "783f9afea4e16b5079d855161725a8562e5f6c7793b4a2c3acd3f843bca78868",
+  "sheep:hurt": "a272af6ff5a49b195b04fd57c9f60e146a2048befe216266f09609392866c208",
+  "chicken:base": "bf023f4c4583a76bcc82073d0bdf965bb6201177112680757143fa708861573a",
+  "chicken:fallen": "662c619652540da8c982c0d770db9338491da19a66bfa342f71a55c572f96d36",
+  "chicken:hurt": "5110d749f54d131184be362b724af90d7819e129a24b4d785e57a0fc18d0cfa5",
+  "zombie:base": "4d5198593e18a0655c1b32587a73488110c52c0fa37356ae61c1dc664f666d4c",
+  "zombie:fallen": "659cc630ff0ec72c67b8ebcf5fce1a5d9d856c513df580d904453c6adcb59466",
+  "zombie:hurt": "a1eb3fe6ea47cd82ca328e1458a345c29fe8bf5a56a49de10afe982ce2c4053e",
+  "skeleton:base": "b285ca213661d259d1db42f96e3fe0fa630b67bbfd3fbc4ce2f8d9142bb75999",
+  "skeleton:fallen": "af680576e2048cf492d16dca0e9c55aa2fe57ff3ef02ba80a7e0f0713b39aec7",
+  "skeleton:hurt": "62fd4926388e7bcae61f83e0c9b08a2950ab6841cef2e104981c4848679b8b6c",
+  "creeper:base": "cdb77d50eea56d00d9ce70faa94753a5ee2783aa1b5d0ae732c3d60432c29900",
+  "creeper:fallen": "049a7a13bf13dab3c766dca8a34e7b76bdb88c977774645a157816e762cd7583",
+  "creeper:hurt": "11ded5295aed0df781624ec867609e3157405dbd7a0a83f876255cbebb7d6414",
+  "spider:base": "df94ed6ca4232ba857cfc1f18213eac0e518b59ae02c0a1eca11c1276c5885ce",
+  "spider:fallen": "c78544836f0781a866978246a03903a28988806fe53a849383e81ae2fad8c355",
+  "spider:hurt": "ee2319b4d4975bac5e6af9323a234ce179f8f1ba131cfb644fc283bdacd2d16b",
+  "sheep:sheared": "477dad0461dee9c82795fe08b58fe21d97166772190ebde24162fd01830f5139",
+  "zombie:sun": "5463dfc113b766e60148c318dfe7b94d0575ec9cdb5b9202be225af80a3f4643",
+  "creeper:fused": "b300b11841ba4a91e83bdb045f8f2bb87967e3325fc25698d76c1fa2fd4e1524",
 };
 const gl = new FakeWebGl();
 const renderer = createMobRenderer(gl as unknown as WebGLRenderingContext);
 function snapshot(name: string, mob: MobPoseSnapshot, time = 0): void {
   renderer.rebuild([mob], 0, 0, 0, 1, 1, time);
   assert.ok(gl.uploaded);
-  const geometry = gl.uploaded.slice(0, mobVertexCountForKind(mob.kind) * 6);
+  const geometry = gl.uploaded.slice(0, mobVertexCountForKind(mob.kind) * MOB_VERTEX_STRIDE);
   assert.equal(floatHash(geometry), MOB_HASHES[name], `${name} packed panels preserve every pre-pack Float32 byte`);
 }
 for (const kind of ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"] as const) {

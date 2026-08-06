@@ -27,6 +27,15 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     logicalResolution: 64,
     fingerprint: "abf17456",
   }),
+  mobs: Object.freeze({
+    sourceKind: "minecraft-26.2-local-import" as const,
+    importer: "scripts/import-minecraft-visual-assets.mjs",
+    generator: "scripts/generate-mob-texture-atlas.mjs",
+    output: "client/game/generated/mobTextureAtlas.ts",
+    atlasResolution: Object.freeze([208, 128] as const),
+    kinds: Object.freeze(["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"] as const),
+    fingerprint: "204e2b83",
+  }),
   userSkin: Object.freeze({
     sourceKind: "user-supplied-local" as const,
     acceptedResolutions: Object.freeze([64, 128] as const),

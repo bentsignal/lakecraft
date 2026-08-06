@@ -24,12 +24,16 @@ import {
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA,
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
   COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA,
   COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA,
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_DELTA,
@@ -114,17 +118,14 @@ for (const lookupName of webglUniformValues) {
 }
 
 const fixedFrequencyTwoValues = [...COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES];
-assert.deepEqual(fixedFrequencyTwoValues, [
-  "1.2..21.", "2.1..2", "2.1.2.", "1.....2..1.....2", "2......1..2..1..",
-  "1....2..2.....1.", "2....1...1....2.", "1....2..1", "2..1....2", "121",
-], "the frequency-two pool is one exact mesh-descriptor allowlist");
+assert.deepEqual(fixedFrequencyTwoValues, [], "exact mob models retire the authored dot-pattern descriptor vocabulary");
 assert.equal(new Set(fixedFrequencyTwoValues).size, COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES, fixedFrequencyTwoValues.length * 2);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "client/game/mobRenderer.ts");
 assert.equal(
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT,
-  "b38c44d8076339edd689f0a89bacdd179deb93977714e287ac89ad215b2653cb",
+  "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e",
   "the exact mesh-descriptor occurrence order and kinds change only intentionally",
 );
 const mobRendererSource = await readFile(new URL("../client/game/mobRenderer.ts", import.meta.url), "utf8");
@@ -456,6 +457,30 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA, {
   uniqueValueDelta: 10,
   source: "client/game/audio.ts#official sampled audio",
   exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
+  previousOccurrences: 1_092, previousUniqueValues: 99,
+  previousSourceFingerprint: "bc6ee9a11b728887fed6d97278975fc3db815d2ad34db6de94b7a48f752fccad",
+  occurrenceDelta: 56, uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#exact-textured-model-dispatch", exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA, {
+  previousOccurrences: 1_148, previousUniqueValues: 106,
+  previousSourceFingerprint: "ce3b7181b6c75c183e201096398d2c62a4017a56fe092a659bb9fff645dd4c8b",
+  occurrenceDelta: 3, uniqueValueDelta: 0,
+  source: "client/game/mobRenderer.ts#mob-texture-lifecycle", exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA, {
+  previousOccurrences: 374, previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 22, uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#mob-texture-program", exclusionChanges: 0,
+});
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA, {
+  previousOccurrences: 396, previousUniqueValues: 117,
+  previousSourceFingerprint: "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b",
+  occurrenceDelta: 6, uniqueValueDelta: 2,
+  source: "client/game/mobRenderer.ts#createMobTexture", exclusionChanges: 0,
 });
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,

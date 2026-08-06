@@ -7,28 +7,30 @@ import {
 } from "./mobs.ts";
 import { TNT_FUSE_MS, TNT_MAX_ACTIVE_FUSES } from "../../shared/tntAuthority.ts";
 import { mobFacingYaw } from "../../shared/mobMotionAuthority.ts";
-import { decodeStaticBytes } from "../staticData.ts";
 import type { PrimedTntVisualFuse } from "./types.ts";
 import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeometry.ts";
+import {
+  MOB_TEXTURE_ATLAS_HEIGHT,
+  MOB_TEXTURE_ATLAS_PNG,
+  MOB_TEXTURE_ATLAS_WIDTH,
+  MOB_TEXTURE_REGIONS,
+} from "./generated/mobTextureAtlas.ts";
 
 type Vec3 = readonly [number, number, number];
 
 const VERTICES_PER_KIND: Readonly<Record<MobKind, number>> = Object.freeze({
-  pig: 432,
-  cow: 432,
-  sheep: 432,
-  chicken: 432,
-  zombie: 432,
-  skeleton: 432,
-  creeper: 432,
-  spider: 432,
+  pig: 252,
+  cow: 324,
+  sheep: 288,
+  chicken: 288,
+  zombie: 252,
+  skeleton: 228,
+  creeper: 216,
+  spider: 396,
 });
 
-// Quantized [minX,minY,maxX,maxY,z,r,g,b] quads add pixel-scale face and
-// surface marks without paying a complete 36-vertex box per mark.
-const MOB_GEOMETRY_BYTES = decodeStaticBytes("0bLhJp&jnf1pf?OLPQlMh&W.rw*kdJG?s,l2MOQGC5g#_0#e=!vWnbxAy_HMFoRFc1!2-hap4#HoM(}f3(M{ny?)](x+*zr2+hVFap90SDq5(f1@Cc=mVFO#0cHL^l,>zj0#0dwCv+uf1oF(!tA&lowh56)FcXRlk+EE?ap69aScCS?04rV40&B?kBcR+P8WDAD17CI:As$xO9V@5hO]$xo03JK_Wvs[H2MLRCyO,D/90/U]2z.jxap8_L0frS>arRXnMh[99c(6ROIK3P0ap97lJfB)^xAgRLu[6a)2:>shM@:+hneCXmDuk2{3{zV&03^7jqN.]&iSJXvU=*^GvM(!Uz7#Ral?%zHdLUNmW#hr2Fk/(EH?p/Jape3Ch=jx+-9jr]3_qJhO}#xu01}SLlGTUr@.9>CdPQD7xm@okpdv1bzO>yOaphQwWWRc,8upP<yE3#CrpQ265*Fv(q)/g(H?/^SwJ^Hi0bO!zurz2pTPjO>:DPeeCrk?bIa^AM2]L5!hB9TfrSB7Bl>:b0IJOb{d%F-rwT&A6auyFxwKHQep[NU706ky0C::llp5{9-ur:SFxnF{O31v_2O@%p=wb%G_OwH/%r:>.[9-3U_LNN@02veBeQEJ3a00+-ve5lA):&)<)0?5qwNih*o", 516, 523);
-
-const FLOATS_PER_VERTEX = 6;
+export const MOB_VERTEX_STRIDE = 8;
+const FLOATS_PER_VERTEX = MOB_VERTEX_STRIDE;
 const VERTICES_PER_BOX = 36;
 const MAX_BOXES_PER_MOB = 12;
 const RENDER_DISTANCE_SQUARED = 30 * 30;
@@ -116,6 +118,79 @@ export interface MobRenderer {
   destroy(): void;
 }
 
+interface PendingMobTextureLoad {
+  image: HTMLImageElement;
+  active: boolean;
+  onLoad: EventListener;
+  onError: EventListener;
+}
+
+const pendingMobTextureLoads = new WeakMap<WebGLTexture, PendingMobTextureLoad>();
+
+export function createMobTexture(gl: WebGLRenderingContext): WebGLTexture {
+  const texture = gl.createTexture();
+  if (!texture) throw new Error("Unable to allocate the installed mob texture atlas.");
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  // A complete texture must exist before the asynchronous PNG can settle.
+  // White is neutral because mob vertex tinting supplies the fallback color.
+  gl.texImage2D(
+    gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0,
+    gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]),
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  // Headless geometry/exposure fixtures intentionally provide WebGL without a
+  // DOM image loader; gameplay browsers take the exact installed PNG path.
+  if (!globalThis.Image) return texture;
+  const image = new globalThis.Image();
+  const pending: PendingMobTextureLoad = {
+    image,
+    active: true,
+    onLoad: () => undefined,
+    onError: () => undefined,
+  };
+  const finish = () => {
+    pending.active = false;
+    image.removeEventListener("load", pending.onLoad);
+    image.removeEventListener("error", pending.onError);
+    pendingMobTextureLoads.delete(texture);
+  };
+  pending.onLoad = () => {
+    if (!pending.active) return;
+    try {
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      // Model UVs intentionally use the Java texture files' top-left pixel
+      // coordinates. WebGL's unflipped HTML upload maps that first source row
+      // to v=0, so flipping here would sample the mob packed beneath it.
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    } finally {
+      finish();
+    }
+  };
+  pending.onError = () => {
+    if (pending.active) finish();
+  };
+  pendingMobTextureLoads.set(texture, pending);
+  image.addEventListener("load", pending.onLoad, { once: true });
+  image.addEventListener("error", pending.onError, { once: true });
+  image.src = `data:image/png;base64,${MOB_TEXTURE_ATLAS_PNG}`;
+  return texture;
+}
+
+export function destroyMobTexture(gl: WebGLRenderingContext, texture: WebGLTexture): void {
+  const pending = pendingMobTextureLoads.get(texture);
+  if (pending) {
+    pending.active = false;
+    pending.image.removeEventListener("load", pending.onLoad);
+    pending.image.removeEventListener("error", pending.onError);
+    pendingMobTextureLoads.delete(texture);
+  }
+  gl.deleteTexture(texture);
+}
+
 export function mobVertexCountForKind(kind: MobKind): number {
   return VERTICES_PER_KIND[kind];
 }
@@ -133,7 +208,13 @@ interface VertexWriter {
   hurtMix: number;
   deathCos: number;
   deathSin: number;
+  tintR: number;
+  tintG: number;
+  tintB: number;
 }
+
+const WHITE_U = (MOB_TEXTURE_ATLAS_WIDTH - 0.5) / MOB_TEXTURE_ATLAS_WIDTH;
+const WHITE_V = (MOB_TEXTURE_ATLAS_HEIGHT - 0.5) / MOB_TEXTURE_ATLAS_HEIGHT;
 
 function appendBox(
   writer: VertexWriter,
@@ -173,6 +254,8 @@ function appendBox(
       writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
       writer.data[writer.offset++] = originY + deathY;
       writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
+      writer.data[writer.offset++] = WHITE_U;
+      writer.data[writer.offset++] = WHITE_V;
       const baseRed = red * shade;
       const baseGreen = green * shade;
       const baseBlue = blue * shade;
@@ -241,7 +324,7 @@ const SURFACE_PALETTES = [
   ZOMBIE_SURFACE, SKELETON_SURFACE, CREEPER_SURFACE, SPIDER_SURFACE, SPIDER_EYES,
 ] as const;
 const SURFACE_PANEL_STRIDE = 9;
-const SURFACE_PANEL_DATA: readonly (number | string)[] = Object.freeze([
+const SURFACE_PANEL_DATA: readonly (number | string)[] = /* @__PURE__ */ Object.freeze([
   2,-0.382,-0.5,0.43,0.45,0.79,4,"1..2.21.",0, 3,0.382,-0.5,0.43,0.45,0.79,4,"2.1..1.2",0,
   4,0.822,-0.34,-0.49,0.34,0.45,4,"1.2..21.",0, 1,-0.552,-0.34,0.43,0.34,0.79,4,"1..2",0,
   2,-0.462,-0.58,0.62,0.54,1.08,4,"1.2..11.",1, 3,0.462,-0.58,0.62,0.54,1.08,4,"2..1.2..",1,
@@ -264,7 +347,7 @@ const SURFACE_PANEL_DATA: readonly (number | string)[] = Object.freeze([
   2,-0.482,-0.56,0.36,0.08,0.66,2,"1.2.",8, 3,0.482,-0.56,0.36,0.08,0.66,2,"2.1.",8,
   1,-0.682,-0.38,0.38,0.38,0.65,2,"12",8,
 ]);
-const SURFACE_PANEL_RANGES = Object.freeze({
+const SURFACE_PANEL_RANGES = /* @__PURE__ */ Object.freeze({
   pig: [0, 4], cow: [4, 8], chicken: [8, 13], zombie: [13, 21],
   skeleton: [21, 26], creeper: [26, 34], spider: [34, 39],
 } as const);
@@ -411,10 +494,13 @@ function appendColoredTriangle(
   red: number, green: number, blue: number,
 ): void {
   writer.data[writer.offset++] = ax; writer.data[writer.offset++] = ay; writer.data[writer.offset++] = az;
+  writer.data[writer.offset++] = WHITE_U; writer.data[writer.offset++] = WHITE_V;
   writer.data[writer.offset++] = red; writer.data[writer.offset++] = green; writer.data[writer.offset++] = blue;
   writer.data[writer.offset++] = bx; writer.data[writer.offset++] = by; writer.data[writer.offset++] = bz;
+  writer.data[writer.offset++] = WHITE_U; writer.data[writer.offset++] = WHITE_V;
   writer.data[writer.offset++] = red; writer.data[writer.offset++] = green; writer.data[writer.offset++] = blue;
   writer.data[writer.offset++] = cx; writer.data[writer.offset++] = cy; writer.data[writer.offset++] = cz;
+  writer.data[writer.offset++] = WHITE_U; writer.data[writer.offset++] = WHITE_V;
   writer.data[writer.offset++] = red; writer.data[writer.offset++] = green; writer.data[writer.offset++] = blue;
 }
 
@@ -634,6 +720,205 @@ function appendCreeperSurface(writer: VertexWriter, x: number, y: number, z: num
   appendPackedSurfacePanels(writer, x, y, z, yaw, SURFACE_PANEL_RANGES.creeper);
 }
 
+type MobTextureName = keyof typeof MOB_TEXTURE_REGIONS;
+const MODEL_FACE_VERTICES = Object.freeze([
+  [0,1,0, 1,1,0, 1,0,0, 0,1,0, 1,0,0, 0,0,0], // north / face
+  [1,1,1, 0,1,1, 0,0,1, 1,1,1, 0,0,1, 1,0,1], // south / back
+  [0,1,1, 0,1,0, 0,0,0, 0,1,1, 0,0,0, 0,0,1], // west
+  [1,1,0, 1,1,1, 1,0,1, 1,1,0, 1,0,1, 1,0,0], // east
+  [0,0,0, 1,0,0, 1,0,1, 0,0,0, 1,0,1, 0,0,1], // top
+  [0,1,1, 1,1,1, 1,1,0, 0,1,1, 1,1,0, 0,1,0], // bottom
+] as const);
+const MODEL_FACE_SHADES = Object.freeze([0.88, 0.78, 0.72, 0.82, 1, 0.62] as const);
+
+function appendModelCube(
+  writer: VertexWriter,
+  originX: number, originY: number, originZ: number, yaw: number,
+  texture: MobTextureName,
+  texU: number, texV: number,
+  partX: number, partY: number, partZ: number,
+  partRx: number, partRy: number, partRz: number,
+  cubeX: number, cubeY: number, cubeZ: number,
+  width: number, height: number, depth: number,
+  hidden = false,
+  inflate = 0,
+): void {
+  const region = MOB_TEXTURE_REGIONS[texture];
+  const rectangles = [
+    [texU + depth, texV + depth, width, height],
+    [texU + depth * 2 + width, texV + depth, width, height],
+    [texU, texV + depth, depth, height],
+    [texU + depth + width, texV + depth, depth, height],
+    [texU + depth, texV, width, depth],
+    [texU + depth + width, texV, width, depth],
+  ] as const;
+  const cosX = Math.cos(partRx), sinX = Math.sin(partRx);
+  const cosY = Math.cos(partRy), sinY = Math.sin(partRy);
+  const cosZ = Math.cos(partRz), sinZ = Math.sin(partRz);
+  const cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
+  for (let face = 0; face < 6; face += 1) {
+    const points = MODEL_FACE_VERTICES[face];
+    const rect = rectangles[face];
+    const shade = MODEL_FACE_SHADES[face];
+    for (let vertex = 0; vertex < 6; vertex += 1) {
+      const point = vertex * 3;
+      const nx = points[point], ny = points[point + 1], nz = points[point + 2];
+      let mx = hidden ? 0 : cubeX - inflate + nx * (width + inflate * 2);
+      let my = hidden ? 0 : cubeY - inflate + ny * (height + inflate * 2);
+      let mz = hidden ? 0 : cubeZ - inflate + nz * (depth + inflate * 2);
+      const rotatedY = my * cosX - mz * sinX;
+      const rotatedZ = my * sinX + mz * cosX;
+      my = rotatedY; mz = rotatedZ;
+      const rotatedX = mx * cosY + mz * sinY;
+      mz = -mx * sinY + mz * cosY; mx = rotatedX;
+      const finalX = mx * cosZ - my * sinZ;
+      my = mx * sinZ + my * cosZ; mx = finalX;
+      const localX = (partX + mx) / 16;
+      const localY = (24 - partY - my) / 16;
+      const localZ = -(partZ + mz) / 16;
+      const deathY = 0.72 + (localY - 0.72) * writer.deathCos - localZ * writer.deathSin;
+      const deathZ = (localY - 0.72) * writer.deathSin + localZ * writer.deathCos;
+      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      writer.data[writer.offset++] = originY + deathY;
+      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
+      const right = vertex === 1 || vertex === 2 || vertex === 4;
+      const top = vertex === 2 || vertex === 4 || vertex === 5;
+      const pixelU = region[0] + rect[0] + (right ? rect[2] : 0);
+      const pixelV = region[1] + rect[1] + (top ? 0 : rect[3]);
+      writer.data[writer.offset++] = (pixelU + (right ? -0.01 : 0.01)) / MOB_TEXTURE_ATLAS_WIDTH;
+      writer.data[writer.offset++] = (pixelV + (top ? 0.01 : -0.01)) / MOB_TEXTURE_ATLAS_HEIGHT;
+      const hurt = writer.hurtMix;
+      const baseR = writer.tintR * shade;
+      const baseG = writer.tintG * shade;
+      const baseB = writer.tintB * shade;
+      writer.data[writer.offset++] = baseR + (1 - baseR) * hurt;
+      writer.data[writer.offset++] = baseG + (0.08 - baseG) * hurt;
+      writer.data[writer.offset++] = baseB + (0.08 - baseB) * hurt;
+    }
+  }
+}
+
+function appendExactPig(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  appendModelCube(writer,x,y,z,yaw,"pig",0,0,0,12,-6,0,0,0,-4,-4,-8,8,8,8);
+  appendModelCube(writer,x,y,z,yaw,"pig",16,16,0,12,-6,0,0,0,-2,0,-9,4,3,1);
+  appendModelCube(writer,x,y,z,yaw,"pig",28,8,0,11,2,Math.PI/2,0,0,-5,-10,-7,10,16,8);
+  for (const [px,pz,phase] of [[-3,7,1],[3,7,-1],[-3,-5,-1],[3,-5,1]] as const)
+    appendModelCube(writer,x,y,z,yaw,"pig",0,16,px,18,pz,swing*phase,0,0,-2,0,-2,4,6,4);
+}
+
+function appendExactCow(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  appendModelCube(writer,x,y,z,yaw,"cow",0,0,0,4,-8,0,0,0,-4,-4,-6,8,8,6);
+  appendModelCube(writer,x,y,z,yaw,"cow",22,0,0,4,-8,0,0,0,-5,-5,-4,1,3,1);
+  appendModelCube(writer,x,y,z,yaw,"cow",22,0,0,4,-8,0,0,0,4,-5,-4,1,3,1);
+  appendModelCube(writer,x,y,z,yaw,"cow",18,4,0,5,2,Math.PI/2,0,0,-6,-10,-7,12,18,10);
+  appendModelCube(writer,x,y,z,yaw,"cow",52,0,0,5,2,Math.PI/2,0,0,-2,2,-8,4,6,1);
+  for (const [px,pz,phase] of [[-4,7,1],[4,7,-1],[-4,-6,-1],[4,-6,1]] as const)
+    appendModelCube(writer,x,y,z,yaw,"cow",0,16,px,12,pz,swing*phase,0,0,-2,0,-2,4,12,4);
+}
+
+function appendExactSheep(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number, sheared: boolean): void {
+  appendModelCube(writer,x,y,z,yaw,"sheep",0,0,0,6,-8,0,0,0,-3,-4,-6,6,6,8);
+  appendModelCube(writer,x,y,z,yaw,"sheep",28,8,0,5,2,Math.PI/2,0,0,-4,-10,-7,8,16,6);
+  for (const [px,pz,phase] of [[-3,7,1],[3,7,-1],[-3,-5,-1],[3,-5,1]] as const)
+    appendModelCube(writer,x,y,z,yaw,"sheep",0,16,px,12,pz,swing*phase,0,0,-2,0,-2,4,12,4);
+  appendModelCube(writer,x,y,z,yaw,"sheep_wool",0,0,0,6,-8,0,0,0,-3,-4,-4,6,6,6,sheared,.6);
+  appendModelCube(writer,x,y,z,yaw,"sheep_wool",28,8,0,5,2,Math.PI/2,0,0,-4,-10,-7,8,16,6,sheared,1.75);
+}
+
+function appendExactChicken(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  appendModelCube(writer,x,y,z,yaw,"chicken",0,0,0,15,-4,0,0,0,-2,-6,-2,4,6,3);
+  appendModelCube(writer,x,y,z,yaw,"chicken",14,0,0,15,-4,0,0,0,-2,-4,-4,4,2,2);
+  appendModelCube(writer,x,y,z,yaw,"chicken",14,4,0,15,-4,0,0,0,-1,-2,-3,2,2,2);
+  appendModelCube(writer,x,y,z,yaw,"chicken",0,9,0,16,0,Math.PI/2,0,0,-3,-4,-3,6,8,6);
+  appendModelCube(writer,x,y,z,yaw,"chicken",24,13,-4,13,0,-swing*0.5,0,0,-1,0,-3,1,4,6);
+  appendModelCube(writer,x,y,z,yaw,"chicken",24,13,4,13,0,swing*0.5,0,0,0,0,-3,1,4,6);
+  appendModelCube(writer,x,y,z,yaw,"chicken",26,0,-2,19,1,swing,0,0,-1,0,-3,3,5,3);
+  appendModelCube(writer,x,y,z,yaw,"chicken",26,0,1,19,1,-swing,0,0,-1,0,-3,3,5,3);
+}
+
+function appendExactZombie(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  appendModelCube(writer,x,y,z,yaw,"zombie",0,0,0,0,0,0,0,0,-4,-8,-4,8,8,8);
+  appendModelCube(writer,x,y,z,yaw,"zombie",32,0,0,0,0,0,0,0,-4,-8,-4,8,8,8);
+  appendModelCube(writer,x,y,z,yaw,"zombie",16,16,0,0,0,0,0,0,-4,0,-2,8,12,4);
+  appendModelCube(writer,x,y,z,yaw,"zombie",40,16,-5,2,0,-Math.PI/2+swing*0.35,0,0,-3,-2,-2,4,12,4);
+  appendModelCube(writer,x,y,z,yaw,"zombie",40,16,5,2,0,-Math.PI/2-swing*0.35,0,0,-1,-2,-2,4,12,4);
+  appendModelCube(writer,x,y,z,yaw,"zombie",0,16,-1.9,12,0,swing,0,0,-2,0,-2,4,12,4);
+  appendModelCube(writer,x,y,z,yaw,"zombie",0,16,1.9,12,0,-swing,0,0,-2,0,-2,4,12,4);
+}
+
+function appendBowSprite(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
+  const cos = Math.cos(yaw), sin = Math.sin(yaw);
+  // The installed bow is a square 16 x 16 generated-item sprite. Its opaque
+  // pixels already draw the curved bow, string, and grip, so the carrier must
+  // remain square instead of collapsing that artwork onto a diagonal ribbon.
+  // A 45-degree roll makes the sprite's own lower-left-to-upper-right limb
+  // stand upright. Pixel (3, 8), the idle sprite's grip, lands at the forward
+  // right hand at roughly (-.31, 1.05, .58) in skeleton-local coordinates.
+  const side = 0.78 / Math.SQRT2;
+  const gripX = -0.31, gripY = 1.05, planeZ = 0.58;
+  const left = gripX - side * (3 / 16 + 8 / 16);
+  const top = gripY - side * (3 / 16 - 8 / 16);
+  const corners = [
+    [left, top],
+    [left + side, top + side],
+    [left + side * 2, top],
+    [left + side, top - side],
+  ] as const;
+  const order = [0,1,2,0,2,3,2,1,0,3,2,0] as const;
+  for (let i=0;i<order.length;i+=1) {
+    const index=order[i], point=corners[index];
+    const localX=point[0], localY=point[1], localZ=planeZ;
+    const deathY=0.72+(localY-0.72)*writer.deathCos-localZ*writer.deathSin;
+    const deathZ=(localY-0.72)*writer.deathSin+localZ*writer.deathCos;
+    writer.data[writer.offset++]=x+localX*cos-deathZ*sin;
+    writer.data[writer.offset++]=y+deathY;
+    writer.data[writer.offset++]=z+localX*sin+deathZ*cos;
+    const u=index===1||index===2?208:192;
+    const v=index>=2?16:0;
+    writer.data[writer.offset++]=(u+(u===208?-0.01:0.01))/MOB_TEXTURE_ATLAS_WIDTH;
+    writer.data[writer.offset++]=(v+(v===16?-0.01:0.01))/MOB_TEXTURE_ATLAS_HEIGHT;
+    writer.data[writer.offset++]=writer.tintR;
+    writer.data[writer.offset++]=writer.tintG;
+    writer.data[writer.offset++]=writer.tintB;
+  }
+}
+
+function appendExactSkeleton(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  appendModelCube(writer,x,y,z,yaw,"skeleton",0,0,0,0,0,0,0,0,-4,-8,-4,8,8,8);
+  appendModelCube(writer,x,y,z,yaw,"skeleton",16,16,0,0,0,0,0,0,-4,0,-2,8,12,4);
+  appendModelCube(writer,x,y,z,yaw,"skeleton",40,16,-5,2,0,-1.15+swing*0.2,0,-0.12,-1,-2,-1,2,12,2);
+  appendModelCube(writer,x,y,z,yaw,"skeleton",40,16,5,2,0,-0.92-swing*0.2,0,0.18,-1,-2,-1,2,12,2);
+  appendModelCube(writer,x,y,z,yaw,"skeleton",0,16,-2,12,0,swing,0,0,-1,0,-1,2,12,2);
+  appendModelCube(writer,x,y,z,yaw,"skeleton",0,16,2,12,0,-swing,0,0,-1,0,-1,2,12,2);
+  appendBowSprite(writer,x,y,z,yaw);
+}
+
+function appendExactCreeper(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number, fuseProgress: number): void {
+  const progress=Math.max(0,Math.min(1,fuseProgress));
+  const flash=progress>=1?.65:(Math.floor(progress*14)&1)===1?progress*.65:0;
+  writer.tintR=1; writer.tintG=1-flash*0.28; writer.tintB=1-flash*0.28;
+  appendModelCube(writer,x,y,z,yaw,"creeper",0,0,0,6,0,0,0,0,-4,-8,-4,8,8,8);
+  appendModelCube(writer,x,y,z,yaw,"creeper",16,16,0,6,0,0,0,0,-4,0,-2,8,12,4);
+  for (const [px,pz,phase] of [[-2,4,1],[2,4,-1],[-2,-4,-1],[2,-4,1]] as const)
+    appendModelCube(writer,x,y,z,yaw,"creeper",0,16,px,18,pz,swing*phase,0,0,-2,0,-2,4,6,4);
+  writer.tintR=writer.tintG=writer.tintB=1;
+}
+
+function appendExactSpider(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
+  appendModelCube(writer,x,y,z,yaw,"spider",32,4,0,15,-3,0,0,0,-4,-4,-8,8,8,8);
+  appendModelCube(writer,x,y,z,yaw,"spider",0,0,0,15,0,0,0,0,-3,-3,-3,6,6,6);
+  appendModelCube(writer,x,y,z,yaw,"spider",0,12,0,15,9,0,0,0,-5,-4,-6,10,8,12);
+  const rows=[
+    [2,Math.PI/4,Math.PI/4], [1,Math.PI/8,0.5812], [0,-Math.PI/8,0.5812], [-1,-Math.PI/4,Math.PI/4],
+  ] as const;
+  for(let row=0;row<4;row+=1){
+    const [pz,baseY,baseZ]=rows[row];
+    const phase=((row&1)===0?1:-1)*swing*0.35;
+    appendModelCube(writer,x,y,z,yaw,"spider",18,0,-4,15,pz,0,baseY+phase,-baseZ,-15,-1,-1,16,2,2);
+    appendModelCube(writer,x,y,z,yaw,"spider",18,0,4,15,pz,0,-baseY-phase,baseZ,-1,-1,-1,16,2,2);
+  }
+}
+
 function appendPig(writer: VertexWriter, x: number, y: number, z: number, yaw: number, swing: number): void {
   appendQuadrupedLegs(writer,x,y,z,yaw,swing,0.18,0.42,-0.38,0.43,0.13,0.72,0.38,0.43);
   appendStaticBoxes(writer,x,y,z,yaw,264,309);
@@ -824,7 +1109,10 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
   const primedSample: PrimedTntVisualSample = { progress: 0, scale: 0.98, flashMix: 0 };
   let primedCount = 0;
   let primedClockOffset = 0;
-  const writer: VertexWriter = { data: vertices, offset: 0, hurtMix: 0, deathCos: 1, deathSin: 0 };
+  const writer: VertexWriter = {
+    data: vertices, offset: 0, hurtMix: 0, deathCos: 1, deathSin: 0,
+    tintR: 1, tintG: 1, tintB: 1,
+  };
   const observedHealth = new Map<string, number>();
   const hurtUntilSeconds = new Map<string, number>();
   const gait = new Map<string, {
@@ -980,14 +1268,15 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
         const swing = locomoting
           ? Math.sin(gaitState.phase) * mobGaitAmplitude(travelDistance / sampleSeconds)
           : 0;
-        if (pose.kind === "pig") appendPig(writer, x, y, z, yaw, swing);
-        else if (pose.kind === "cow") appendCow(writer, x, y, z, yaw, swing);
-        else if (pose.kind === "sheep") appendSheep(writer, x, y, z, yaw, swing, pose.sheared);
-        else if (pose.kind === "chicken") appendChicken(writer, x, y, z, yaw, swing);
-        else if (pose.kind === "zombie") appendZombie(writer, x, y, z, yaw, swing);
-        else if (pose.kind === "skeleton") appendSkeleton(writer, x, y, z, yaw, swing);
-        else if (pose.kind === "creeper") appendCreeper(writer, x, y, z, yaw, swing, pose.fuseProgress);
-        else appendSpider(writer, x, y, z, yaw, swing);
+        writer.tintR = writer.tintG = writer.tintB = 1;
+        if (pose.kind === "pig") appendExactPig(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "cow") appendExactCow(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "sheep") appendExactSheep(writer, x, y, z, yaw, swing, pose.sheared);
+        else if (pose.kind === "chicken") appendExactChicken(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "zombie") appendExactZombie(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "skeleton") appendExactSkeleton(writer, x, y, z, yaw, swing);
+        else if (pose.kind === "creeper") appendExactCreeper(writer, x, y, z, yaw, swing, pose.fuseProgress);
+        else appendExactSpider(writer, x, y, z, yaw, swing);
         stats.visibleMobCount += 1;
       }
       // Hurt color is entity-local. Projectiles and primed TNT share this
