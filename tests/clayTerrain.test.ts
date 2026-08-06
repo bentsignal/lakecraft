@@ -82,16 +82,16 @@ const density = clayColumns / eligibleColumns;
 assert.equal(clayColumns, 605, "the deterministic clay footprint golden changed");
 assert.equal(twoDeepColumns, 311);
 assert.equal(threeDeepColumns, 294);
-assert.equal(candidateClayBlocks, 1_449);
-assert.equal(survivingClayBlocks, 1_352);
-assert.equal(caveCarvedClayBlocks, 97, "caves must continue to win over clay deposits");
+assert.equal(candidateClayBlocks, 1_463);
+assert.equal(survivingClayBlocks, 1_463);
+assert.equal(caveCarvedClayBlocks, 0, "shallow clay remains above the shifted cave ceiling");
 assert.equal(dirtReplacements, 1_293);
-assert.equal(stoneReplacements, 156);
+assert.equal(stoneReplacements, 170);
 assert.ok(density >= 0.015 && density <= 0.035,
   `clay column density ${(density * 100).toFixed(2)}% escaped its rare 1.5–3.5% budget`);
-assert.equal(clientClayBlock(-76, 5, -17, SEED), BLOCK.CLAY);
-assert.equal(authoritativeClayBlock(-76, 5, -17, SEED), "clay");
-assert.equal(naturalWorldBlockAt(-76, 5, -17, SEED), "clay", "known visible clay authority anchor drifted");
+assert.equal(clientClayBlock(-76, 68, -17, SEED), BLOCK.CLAY);
+assert.equal(authoritativeClayBlock(-76, 68, -17, SEED), "clay");
+assert.equal(naturalWorldBlockAt(-76, 68, -17, SEED), "clay", "known visible clay authority anchor drifted");
 
 // These two 2x2 chunk windows contain clay crossing x=16 and z=32. Each
 // independently generated chunk quartet must reproduce its whole region.

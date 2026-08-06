@@ -5,12 +5,14 @@ import {
   SINGLEPLAYER_SAVE_MAX_SLOT_CHARS,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
   SINGLEPLAYER_SAVE_SLOT_B_KEY,
+  SINGLEPLAYER_SAVE_VERSION,
   canonicalSinglePlayerJson,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
   resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
   serializeSinglePlayerSave,
+  unsupportedSinglePlayerSaveMessage,
   validateSinglePlayerSnapshot,
   type SinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
@@ -45,6 +47,24 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
     if (this.failDeletesFor === key) throw new Error("simulated delete failure");
     this.values.delete(key);
   }
+}
+
+// Pre-coordinate-reset journals fail closed as an explicit, user-actionable
+// unsupported format. They are never guessed, shifted, or overwritten.
+{
+  const storage = new MemoryStorage();
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_A_KEY, JSON.stringify({
+    format: "lakecraft.singleplayer",
+    version: 1,
+  }));
+  const loaded = loadSinglePlayerSave(storage);
+  assert.equal(SINGLEPLAYER_SAVE_VERSION, 2);
+  assert.equal(loaded.status, "unsupported");
+  if (loaded.status !== "unsupported") throw new Error(loaded.status);
+  assert.deepEqual(loaded.versions, [1]);
+  assert.match(unsupportedSinglePlayerSaveMessage(loaded.versions), /retired terrain coordinate system/);
+  assert.match(unsupportedSinglePlayerSaveMessage(loaded.versions), /No data was changed/);
+  assert.match(unsupportedSinglePlayerSaveMessage([99]), /newer Lakecraft version/);
 }
 
 function richSnapshot(): SinglePlayerSnapshot {
@@ -238,10 +258,10 @@ function richSnapshot(): SinglePlayerSnapshot {
 {
   const huge = createDefaultSinglePlayerSnapshot();
   huge.world.edits = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.edits }, (_, index) => ({
-    x: index, y: 0, z: -index, block: 32 as const,
+    x: index, y: 2, z: -index, block: 32 as const,
   }));
   huge.chests = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.chests }, (_, index) => ({
-    coordKey: `${index}:0:0`,
+    coordKey: `${index}:2:0`,
     inventory: Array.from({ length: 27 }, () => ({ itemId: "brick" as const, count: 64 })),
   }));
   huge.progression.recipes = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.progressionEntries }, (_, index) =>

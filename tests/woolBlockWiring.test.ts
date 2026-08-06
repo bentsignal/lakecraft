@@ -72,14 +72,14 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
     `${label} wool placement adds no dedicated network or timer loop`);
 }
 assert.match(client, /wool:\s*BLOCK\.WOOL[\s\S]*?\[BLOCK\.WOOL\]:\s*"wool"/, "multiplayer has protocol, game, and item round-trip mappings");
-assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/, "single-player saves retain wool and every newer append-only block ID");
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/, "single-player saves retain wool and every newer append-only block ID");
 assert.match(single, /action:\s*"break"[\s\S]*?audioSurfaceForBlock\(edit\.block\)/, "local edits emit bounded break/place particles and material audio");
 
 const editMutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("sleepVote: mutation(async"));
 assert.ok(editMutation.includes("parseWorldBlockOperation(rawRequest)"));
 assert.ok(editMutation.includes("resolveWorldBlockOperation(request"));
 assert.ok(editMutation.includes("blockType: effect.nextBlock"));
-assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air"\)\)/,
+assert.match(server, /const PLACEABLE_BLOCKS = new Set<string>\(BLOCK_TYPES\.filter\(\(block\) => block !== "air" && block !== "bedrock"\)\)/,
   "Lakebed derives its placeable catalog from the shared protocol, including wool");
 assert.doesNotMatch(editMutation, /setInterval|setTimeout|fetch\(/, "wool uses the existing discrete exact-once world mutation without another backend loop");
 

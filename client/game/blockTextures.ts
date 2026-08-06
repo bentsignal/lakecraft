@@ -35,6 +35,7 @@ const UNIFORM_BLOCK_TEXTURES: Readonly<Partial<Record<BlockId, TextureAtlasName>
   [BLOCK.STONE_BRICK_SLAB]: BS.stoneBricks,
   [BLOCK.CLAY]: "clay",
   [BLOCK.BRICKS]: "bricks",
+  [BLOCK.BEDROCK]: "bedrock",
   [BLOCK.SAND]: "sand",
   [BLOCK.GRAVEL]: "gravel",
   [BLOCK.WOOL]: "wool",

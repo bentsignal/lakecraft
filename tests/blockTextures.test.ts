@@ -44,6 +44,7 @@ const uniformMappings: ReadonlyArray<readonly [BlockId, TextureAtlasName]> = [
   [BLOCK.GOLD_ORE, "gold_ore"],
   [BLOCK.DIAMOND_ORE, "diamond_ore"],
   [BLOCK.GLASS, "glass"],
+  [BLOCK.BEDROCK, "bedrock"],
 ];
 const mappedTextureNames = new Set<TextureAtlasName>(["grass_top", "grass_side", "dirt"]);
 for (const [block, texture] of uniformMappings) {

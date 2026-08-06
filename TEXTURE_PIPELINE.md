@@ -18,7 +18,7 @@ node scripts/pixelate-texture-sheet.mjs \
   --source-rows 4 \
   --tile-size 16 \
   --inset 0 \
-  --names grass_top,grass_side,dirt,stone,cobblestone,oak_log,oak_planks,leaves,sand,coal_ore,iron_ore,gold_ore,diamond_ore,glass,crafting_table_side,furnace_side,oak_log_end,crafting_table_top,crafting_table_front,furnace_front,furnace_top,tnt_side,tnt_top,tnt_bottom,gravel,wool,sapling,stone_bricks,clay,bricks \
+  --names grass_top,grass_side,dirt,stone,cobblestone,oak_log,oak_planks,leaves,sand,coal_ore,iron_ore,gold_ore,diamond_ore,glass,crafting_table_side,furnace_side,oak_log_end,crafting_table_top,crafting_table_front,furnace_front,furnace_top,tnt_side,tnt_top,tnt_bottom,gravel,wool,sapling,stone_bricks,clay,bricks,bedrock \
   --ts client/game/generated/textureAtlas.ts
 ```
 

@@ -8,9 +8,19 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 592;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 524;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "dae65329dae063fa8762ffc180ff6c580a576dd2c7a58aa0ecff97026d97b041";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 593;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 525;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c5e00c64ce79e2fcf4f817c84fd8c29c81edabf641c757702e7e97c29f053521";
+export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
+  previousOccurrences: 592,
+  previousUniqueValues: 524,
+  previousSourceFingerprint: "dae65329dae063fa8762ffc180ff6c580a576dd2c7a58aa0ecff97026d97b041",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  addedValue: "This world uses the retired terrain coordinate system and cannot be loaded. No data was changed; reset it to start fresh.",
+  source: "client/singleplayer/localSave.ts#unsupportedSinglePlayerSaveMessage",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_092;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
 export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "21d654d522cbbafe7d697733720c2c2abcb4ac0baa31a9255e061c9eb7f97ce9";
@@ -78,9 +88,9 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 374;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 110;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 378;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 111;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144";
 // Painting the cached GUI block raster introduces the client's third `2d`
 // context request. That existing API literal consequently enters the exact
 // three/four-use pool; no UI, wire, storage, or gameplay value is added.
@@ -92,6 +102,19 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA = Object.freeze({
   uniqueValueDelta: 1,
   promotedValue: "2d",
   source: "client/components/ItemGlyph.tsx#paintAtlasBlockIcon",
+  exclusionChanges: 0,
+});
+// The immutable foundation is a world/protocol identity, never an ItemId.
+// Its four remaining runtime spellings enter only the low-frequency pool;
+// item, icon, held-cube, creative, and placement adapters stay absent.
+export const COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA = Object.freeze({
+  previousOccurrences: 374,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 4,
+  uniqueValueDelta: 1,
+  promotedValue: "bedrock",
+  source: "world-only terrain/protocol adapters",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([

@@ -219,7 +219,7 @@ function strictRespawnPoint(value: unknown): PlayerRespawnPoint | null | undefin
   if (!hasOnlyKeys(record, ["x", "y", "z", "yaw", "pitch"], ["x", "y", "z", "yaw", "pitch"])) return undefined;
   const { x, y, z, yaw, pitch } = record;
   if (typeof x !== "number" || !Number.isFinite(x) || x < -64 || x > 64
-    || typeof y !== "number" || !Number.isFinite(y) || y < -4 || y > 96
+    || typeof y !== "number" || !Number.isFinite(y) || y < 1 || y > 192
     || typeof z !== "number" || !Number.isFinite(z) || z < -64 || z > 64
     || typeof yaw !== "number" || !Number.isFinite(yaw) || yaw < -100_000 || yaw > 100_000
     || typeof pitch !== "number" || !Number.isFinite(pitch) || pitch < -1.52 || pitch > 1.52) return undefined;

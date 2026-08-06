@@ -45,7 +45,7 @@ assert.ok(importerSource.includes(`EXPECTED_JAR_SHA256 = "${assets.source.jarSha
 assert.equal(Object.keys(assets.itemTextures).length, 67);
 assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 11);
-assert.equal(Object.keys(assets.blocks).length, 30);
+assert.equal(Object.keys(assets.blocks).length, 31);
 assert.equal(Object.keys(assets.blockItemTextures).length, 4);
 assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
 assert.deepEqual(Object.keys(assets.blockItemModelChains), [

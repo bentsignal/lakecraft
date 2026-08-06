@@ -53,8 +53,8 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "18a5fb37f3c83205792e73637bc8b5034c529c02dc67c938b889524fc18ba877",
-  "removing containment declarations reproduces the reviewed auth/query/receipt-refactored server behavior source",
+  "b117fcf43017e88456b6c7e15e7410df7e4d906ce6b0150755ce69cae76fba44",
+  "removing containment declarations reproduces the reviewed positive-coordinate server behavior source",
 );
 
 assert.doesNotMatch(server, /\bsinglePlayerCloudBackups\s*:/,
@@ -87,8 +87,8 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 154, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "71947631db6c78faf96f5f71dd79c4545537db69c977db1f34dee5bd10586219",
-  "runtime sources match the reviewed installed-asset checkpoint plus the isolated dev-only visual lab");
+  "aa42c1e131eda796002fdeacba73b6127509d1def098b42e82ade67f27755309",
+  "runtime sources match the reviewed positive-coordinate terrain and world-only bedrock boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

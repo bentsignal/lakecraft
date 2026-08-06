@@ -13,8 +13,8 @@ import {
 } from "../shared/avatarAppearance.ts";
 
 assert.deepEqual(
-  validatePresencePoseFields(" -1000000 ", "128", "1000000", "100000", "-2"),
-  { x: -1_000_000, y: 128, z: 1_000_000, yaw: 100_000, pitch: -2 },
+  validatePresencePoseFields(" -1000000 ", "192", "1000000", "100000", "-2"),
+  { x: -1_000_000, y: 192, z: 1_000_000, yaw: 100_000, pitch: -2 },
   "the documented spatial envelope is accepted at its exact bounds",
 );
 
@@ -82,8 +82,8 @@ assert.deepEqual(normalizeAvatarAppearance(undefined, "iron_boots", "stone", "",
 });
 for (const fields of [
   ["-1000000.01", "8", "0", "0", "0"],
-  ["0", "-24.01", "0", "0", "0"],
-  ["0", "128.01", "0", "0", "0"],
+  ["0", "0.99", "0", "0", "0"],
+  ["0", "192.01", "0", "0", "0"],
   ["0", "8", "1000000.01", "0", "0"],
   ["0", "8", "0", "100000.01", "0"],
   ["0", "8", "0", "0", "2.01"],

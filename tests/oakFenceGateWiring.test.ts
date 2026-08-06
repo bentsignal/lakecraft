@@ -143,7 +143,7 @@ assert.match(client, /onBlockEdit:\s*\(edit, previousBlock\)[\s\S]{0,140}handleB
   "multiplayer preserves the prior state needed to serialize a toggle safely");
 assert.match(client, /next === BLOCK\.DOOR_OPEN \|\| next === BLOCK\.OAK_FENCE_GATE_OPEN/,
   "confirmed gate opens and closes reuse direction-specific wood sounds");
-assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICKS/,
+assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/,
   "single-player saves retain both append-only gate states");
 assert.match(local,
   /previousBlock === BLOCK\.OAK_FENCE_GATE_CLOSED && edit\.block === BLOCK\.OAK_FENCE_GATE_OPEN[\s\S]{0,160}previousBlock === BLOCK\.OAK_FENCE_GATE_OPEN && edit\.block === BLOCK\.OAK_FENCE_GATE_CLOSED/,

@@ -92,7 +92,7 @@ assert.equal(reason({ ...mine, operationId: "tiny" }), "invalid_operation_id");
 assert.equal(reason({ ...mine, operationId: "x".repeat(65) }), "invalid_operation_id");
 assert.equal(reason({ ...mine, kind: "smelt" }), "invalid_kind");
 assert.equal(reason({ ...mine, x: 1.25 }), "invalid_coordinate");
-assert.equal(reason({ ...mine, y: 129 }), "invalid_coordinate");
+assert.equal(reason({ ...mine, y: 193 }), "invalid_coordinate");
 assert.equal(reason({ ...mine, z: 1_000_001 }), "invalid_coordinate");
 assert.equal(reason({ ...mine, expectedChunkRevision: "01" }), "invalid_revision");
 assert.equal(reason({ ...mine, expectedInventoryRevision: "-1" }), "invalid_revision");
@@ -337,7 +337,7 @@ for (let index = 0; index < 1_000; index += 1) {
     operationId: `toggle_request_${String(index).padStart(4, "0")}`,
     kind: "toggle" as const,
     x: 0,
-    y: 0,
+    y: 2,
     z: 0,
     expectedBlock: replayState.currentBlock,
     expectedChunkRevision: replayState.chunkRevision,

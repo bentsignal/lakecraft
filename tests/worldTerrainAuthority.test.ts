@@ -44,6 +44,7 @@ const ENGINE_TO_PROTOCOL: Readonly<Record<EngineBlockId, BlockType>> = {
   [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
   [BLOCK.CLAY]: "clay",
   [BLOCK.BRICKS]: "bricks",
+  [BLOCK.BEDROCK]: "bedrock",
 };
 
 const chunkCache = new Map<string, Map<string, EngineBlockId>>();
@@ -67,36 +68,25 @@ function assertParity(x: number, y: number, z: number, seed = WORLD_TERRAIN_SEED
   );
 }
 
-assert.equal(WORLD_TERRAIN_MIN_Y, -24);
+assert.equal(WORLD_TERRAIN_MIN_Y, 1);
 assert.equal(WORLD_TERRAIN_SEED, 7319);
 assert.equal(naturalWorldBlockAt(Number.NaN, 0, 0), "air");
 assert.equal(naturalWorldBlockAt(0.5, 0, 0), "air");
 assert.equal(naturalWorldBlockAt(0, WORLD_TERRAIN_MIN_Y - 1, 0), "air");
-assert.equal(naturalWorldBlockAt(0, 129, 0), "air");
+assert.equal(naturalWorldBlockAt(0, 193, 0), "air");
 
 const namedSamples = [
-  [-64, -8, -64, "gold_ore", "negative gold"],
-  [-64, -19, -60, "iron_ore", "negative iron"],
-  [-63, -12, -64, "coal_ore", "negative coal"],
-  [-62, -12, -62, "diamond_ore", "negative diamond"],
-  [-57, -23, -57, "air", "negative deep cave"],
-  [-64, 7, -53, "sand", "negative beach"],
-  [-64, -2, -37, "gravel", "negative gravel pocket"],
-  [-76, 5, -17, "clay", "negative shallow clay lens"],
-  [-59, 9, -33, "wood", "negative tree trunk"],
-  [-61, 10, -34, "leaves", "negative tree canopy"],
-  [8, -13, 14, "air", "positive chunk-boundary cave"],
-  [14, -15, 12, "diamond_ore", "positive chunk-boundary diamond"],
-  [13, 9, 13, "wood", "positive chunk-boundary trunk"],
-  [11, 10, 12, "leaves", "positive chunk-boundary canopy"],
-  [1_000, -21, -1_997, "air", "far mixed-sign cave"],
-  [1_001, -3, -1_998, "gravel", "far mixed-sign gravel"],
-  [-997, 5, 2_000, "sand", "far mixed-sign beach"],
-  [-996, -15, 2_003, "diamond_ore", "far mixed-sign diamond"],
-  [65_536, -5, -65_536, "air", "large exact-boundary cave"],
-  [65_536, -12, -65_536, "iron_ore", "large exact-boundary iron"],
-  [-65_541, 9, 65_529, "sand", "large negative-boundary beach"],
-  [-65_543, 11, 65_530, "wood", "large negative-boundary trunk"],
+  [-80, 1, -80, "bedrock", "foundation"],
+  [-80, 8, -80, "gold_ore", "deep gold"],
+  [-80, 21, -80, "coal_ore", "coal"],
+  [-80, 39, -80, "iron_ore", "iron"],
+  [-80, 69, -80, "air", "deep cave"],
+  [-80, 73, -70, "leaves", "tree canopy"],
+  [-80, 50, -55, "gravel", "gravel pocket"],
+  [-80, 9, -52, "diamond_ore", "low diamond"],
+  [-80, 74, -33, "wood", "tree trunk"],
+  [-80, 69, -12, "sand", "beach"],
+  [-76, 68, -17, "clay", "shallow clay lens"],
 ] as const;
 const namedKinds = new Set<BlockType>();
 for (const [x, y, z, expected, label] of namedSamples) {
@@ -105,7 +95,7 @@ for (const [x, y, z, expected, label] of namedSamples) {
   namedKinds.add(expected);
 }
 for (const expected of [
-  "air", "sand", "gravel", "clay", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "wood", "leaves",
+  "air", "bedrock", "sand", "gravel", "clay", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "wood", "leaves",
 ] as const) assert.equal(namedKinds.has(expected), true, `missing explicit ${expected} authority anchor`);
 
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
@@ -141,7 +131,7 @@ const startedAt = performance.now();
 for (const [chunkX, chunkZ] of [[1, 1], [125, -250]] as const) {
   for (let x = chunkX * 8; x < chunkX * 8 + 8; x += 1) {
     for (let z = chunkZ * 8; z < chunkZ * 8 + 8; z += 1) {
-      for (let y = WORLD_TERRAIN_MIN_Y - 2; y <= 24; y += 1) {
+      for (let y = WORLD_TERRAIN_MIN_Y - 2; y <= 84; y += 1) {
         assertParity(x, y, z);
         comparisons += 1;
       }
@@ -152,7 +142,7 @@ for (const seed of [WORLD_TERRAIN_SEED, 1, 987_654_321]) {
   for (const [chunkX, chunkZ] of chunkCoordinates) {
     for (let sample = 0; sample < 65; sample += 1) {
       const x = chunkX * 8 + Math.floor(random() * 8);
-      const y = WORLD_TERRAIN_MIN_Y - 2 + Math.floor(random() * 54);
+      const y = WORLD_TERRAIN_MIN_Y - 2 + Math.floor(random() * 86);
       const z = chunkZ * 8 + Math.floor(random() * 8);
       assertParity(x, y, z, seed);
       comparisons += 1;
@@ -163,7 +153,7 @@ for (const seed of [WORLD_TERRAIN_SEED, 1, 987_654_321]) {
 // Exercise both sides of negative, positive, near, and far chunk seams.
 for (const boundary of [-1_000_000, -65_536, -8, 0, 8, 65_536, 1_000_000]) {
   for (const offset of [-1, 0, 1]) {
-    for (let y = WORLD_TERRAIN_MIN_Y; y <= 24; y += 3) {
+    for (let y = WORLD_TERRAIN_MIN_Y; y <= 84; y += 3) {
       assertParity(boundary + offset, y, 17);
       assertParity(17, y, boundary + offset);
       comparisons += 2;

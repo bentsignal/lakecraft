@@ -351,6 +351,7 @@ const LOCAL_EXPLOSION_PROTECTED_BLOCKS = new Set<BlockId>([
   BLOCK.FURNACE,
   BLOCK.DOOR_CLOSED,
   BLOCK.DOOR_OPEN,
+  BLOCK.BEDROCK,
 ]);
 
 export const LOCAL_TNT_TERRAIN_RADIUS = 4.5;
@@ -576,7 +577,7 @@ export const BED_HEAD_MESH_VERTEX_COUNT = 0;
 export const LADDER_MESH_VERTEX_COUNT = 252;
 /** The 7x7 streaming window bounds glass to one extra draw per visible chunk. */
 export const MAX_TRANSPARENT_CHUNK_DRAWS = (MAX_LOCAL_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
-export const MAX_RESPAWN_HEIGHT = 128;
+export const MAX_RESPAWN_HEIGHT = 192;
 export const PLAYER_GRAVITY = 22;
 export const PLAYER_TERMINAL_VELOCITY = -18;
 export const PLAYER_JUMP_SPEED = 8.25;
@@ -940,7 +941,7 @@ export function validateRespawnPoint(
     !Number.isFinite(point.x)
     || !Number.isFinite(point.y)
     || !Number.isFinite(point.z)
-    || (point.y < -24 || point.y > MAX_RESPAWN_HEIGHT)
+    || (point.y < TERRAIN_MIN_Y || point.y > MAX_RESPAWN_HEIGHT)
     || !Number.isFinite(horizontalLimit)
     || horizontalLimit <= 0
     || Math.abs(point.x) > horizontalLimit
@@ -1768,7 +1769,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function getBlock(x: number, y: number, z: number): BlockId {
-    if (y < TERRAIN_MIN_Y) return BLOCK.STONE;
+    if (y < TERRAIN_MIN_Y) return BLOCK.AIR;
     return blocks.get(blockKey(x, y, z)) ?? BLOCK.AIR;
   }
 
@@ -2030,7 +2031,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (!primaryActionHold.held || !primaryActionHold.miningArmed || miningTimer || !target) return false;
     const mined = { ...target.block };
     const targetPrimed = primedTnt.has(blockKey(mined.x, mined.y, mined.z));
-    const editAllowed = options.canEditBlock?.() !== false && options.canMineBlock?.(mined) !== false;
+    const editAllowed = mined.block !== BLOCK.BEDROCK
+      && options.canEditBlock?.() !== false && options.canMineBlock?.(mined) !== false;
     if (!shouldStartHeldMining(primaryActionHold, {
       pointerLocked: document.pointerLockElement === canvas,
       playerAlive: playerHealth > 0,

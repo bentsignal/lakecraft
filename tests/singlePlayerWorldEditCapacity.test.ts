@@ -17,29 +17,29 @@ import {
 
 const limit = SINGLEPLAYER_SAVE_LIMITS.edits;
 const edits = (count: number): WorldEdit[] => Array.from({ length: count }, (_, x) => ({
-  x, y: 0, z: 0, block: x % 2 ? BLOCK.DIRT : BLOCK.STONE,
+  x, y: 2, z: 0, block: x % 2 ? BLOCK.DIRT : BLOCK.STONE,
 }));
 
 const index = createLocalWorldEditIndex(edits(limit - 1));
-assert.equal(tryCommitLocalWorldEdits(index, [{ x: limit - 1, y: 0, z: 0, block: BLOCK.GRASS }], limit), true);
+assert.equal(tryCommitLocalWorldEdits(index, [{ x: limit - 1, y: 2, z: 0, block: BLOCK.GRASS }], limit), true);
 assert.equal(index.size, limit, "edit 12,000 fits exactly");
 
 const beforeRejection = JSON.stringify([...index]);
-assert.equal(tryCommitLocalWorldEdits(index, [{ x: limit, y: 0, z: 0, block: BLOCK.WOOD }], limit), false);
+assert.equal(tryCommitLocalWorldEdits(index, [{ x: limit, y: 2, z: 0, block: BLOCK.WOOD }], limit), false);
 assert.equal(JSON.stringify([...index]), beforeRejection, "edit 12,001 rejects without touching old or new rows");
-assert.equal(tryCommitLocalWorldEdits(index, [{ x: 0, y: 0, z: 0, block: BLOCK.PLANKS }], limit), true);
+assert.equal(tryCommitLocalWorldEdits(index, [{ x: 0, y: 2, z: 0, block: BLOCK.PLANKS }], limit), true);
 assert.equal(index.size, limit, "a full journal accepts an existing-coordinate overwrite");
-assert.equal(index.get("0:0:0")?.block, BLOCK.PLANKS);
+assert.equal(index.get("0:2:0")?.block, BLOCK.PLANKS);
 
 const duplicateBatch = createLocalWorldEditIndex(edits(limit - 1));
 assert.equal(canCommitLocalWorldEdits(duplicateBatch, [
-  { x: limit - 1, y: 0, z: 0, block: BLOCK.DIRT },
-  { x: limit - 1, y: 0, z: 0, block: BLOCK.GRASS },
-  { x: 0, y: 0, z: 0, block: BLOCK.WOOD },
+  { x: limit - 1, y: 2, z: 0, block: BLOCK.DIRT },
+  { x: limit - 1, y: 2, z: 0, block: BLOCK.GRASS },
+  { x: 0, y: 2, z: 0, block: BLOCK.WOOD },
 ], limit), true, "capacity counts distinct novel keys, not batch length");
 assert.equal(tryCommitLocalWorldEdits(duplicateBatch, [
-  { x: limit - 1, y: 0, z: 0, block: BLOCK.DIRT },
-  { x: limit, y: 0, z: 0, block: BLOCK.WOOD },
+  { x: limit - 1, y: 2, z: 0, block: BLOCK.DIRT },
+  { x: limit, y: 2, z: 0, block: BLOCK.WOOD },
 ], limit), false, "a batch crossing the boundary rejects atomically");
 assert.equal(duplicateBatch.size, limit - 1);
 
@@ -60,7 +60,7 @@ const storage = new MemoryStorage();
 const snapshot = createDefaultSinglePlayerSnapshot(9_001, 100);
 snapshot.world.edits = [...index.values()];
 const saved = saveSinglePlayerSnapshot(storage, snapshot, 200);
-assert.equal(saved.ok, true, "a full bounded journal remains a valid format-v1 save");
+assert.equal(saved.ok, true, "a full bounded journal remains a valid format-v2 save");
 const loaded = loadSinglePlayerSave(storage);
 assert.equal(loaded.status, "loaded");
 if (loaded.status !== "loaded") throw new Error(loaded.status);
@@ -70,7 +70,7 @@ assert.equal(loaded.snapshot.world.edits.find((edit) => edit.x === limit - 1)?.b
 
 const start = performance.now();
 for (let sample = 0; sample < 50_000; sample += 1) {
-  assert.equal(tryCommitLocalWorldEdits(index, [{ x: 0, y: 0, z: 0, block: sample % 2 ? BLOCK.STONE : BLOCK.DIRT }], limit), true);
+  assert.equal(tryCommitLocalWorldEdits(index, [{ x: 0, y: 2, z: 0, block: sample % 2 ? BLOCK.STONE : BLOCK.DIRT }], limit), true);
 }
 const elapsedMs = performance.now() - start;
 assert.ok(elapsedMs < 500, "single-coordinate commits stay O(1), independent of 12,000 stored edits");

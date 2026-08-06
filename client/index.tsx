@@ -338,7 +338,7 @@ function furnaceOperationId(): string {
   return `furnace_${crypto.randomUUID()}`;
 }
 
-const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate_closed" | "oak_fence_gate_open" | "stone_brick_slab" | "clay" | "bricks"> = {
+const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "wood" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door_closed" | "door_open" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate_closed" | "oak_fence_gate_open" | "stone_brick_slab" | "clay" | "bricks" | "bedrock"> = {
   [BLOCK.AIR]: "air",
   [BLOCK.GRASS]: "grass",
   [BLOCK.DIRT]: "dirt",
@@ -355,6 +355,7 @@ const ENGINE_TO_PROTOCOL: Record<EngineBlockId, "air" | "grass" | "dirt" | "ston
   [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
   [BLOCK.CLAY]: "clay",
   [BLOCK.BRICKS]: "bricks",
+  [BLOCK.BEDROCK]: "bedrock",
   [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore",
   [BLOCK.IRON_ORE]: "iron_ore",
@@ -391,6 +392,7 @@ const PROTOCOL_TO_ENGINE: Record<string, EngineBlockId> = {
   stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
   clay: BLOCK.CLAY,
   bricks: BLOCK.BRICKS,
+  bedrock: BLOCK.BEDROCK,
   glass: BLOCK.GLASS,
   coal_ore: BLOCK.COAL_ORE,
   iron_ore: BLOCK.IRON_ORE,
@@ -627,7 +629,7 @@ function createInventoryActionOperationId(): string {
 }
 
 const WORLD_RADIUS = 18;
-const DEFAULT_PLAYER_POSE: Readonly<PlayerPose> = Object.freeze({ x: 0.5, y: 8, z: 0.5, yaw: 0, pitch: 0 });
+const DEFAULT_PLAYER_POSE: Readonly<PlayerPose> = Object.freeze({ x: 0.5, y: 69.02, z: 0.5, yaw: 0, pitch: 0 });
 function visibleWorldChunkKeys(x: number, z: number): string[] {
   const centerX = worldEditChunkCoordinate(x);
   const centerZ = worldEditChunkCoordinate(z);

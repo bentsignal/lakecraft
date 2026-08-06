@@ -17,7 +17,7 @@ export const VISUAL_ASSET_MANIFEST = Object.freeze({
     generator: "scripts/pixelate-texture-sheet.mjs",
     output: "client/game/generated/texture-atlas-v1.png",
     logicalResolution: 16,
-    fingerprint: "1acef111",
+    fingerprint: "f2d97b41",
   }),
   defaultPlayerSkin: Object.freeze({
     sourceKind: "minecraft-26.2-local-import" as const,
