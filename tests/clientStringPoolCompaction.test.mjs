@@ -21,12 +21,15 @@ import {
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA,
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
   COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_DELTA,
   COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA,
@@ -356,13 +359,13 @@ assert.deepEqual(
 assert.equal(
   COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.previousOccurrences
     + COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA.previousOccurrences,
   "exact mob model dispatch accounts for the latest repeated occurrence increase",
 );
 assert.equal(
   COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.previousUniqueValues
     + COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA.previousUniqueValues,
   "exact mob model dispatch accounts for the latest reviewed value promotion",
 );
 assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
@@ -374,6 +377,25 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
   source: "client/game/mobRenderer.ts#exact-textured-model-dispatch",
   exclusionChanges: 0,
 }, "exact mob texture identities stay pinned to one reviewed renderer boundary");
+assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA, {
+  previousOccurrences: 1_148,
+  previousUniqueValues: 106,
+  previousSourceFingerprint: "ce3b7181b6c75c183e201096398d2c62a4017a56fe092a659bb9fff645dd4c8b",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 0,
+  source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
+  exclusionChanges: 0,
+}, "mob texture lifecycle strings stay pinned to one reviewed loader boundary");
+assert.equal(
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA.previousOccurrences
+    + COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
+);
+assert.equal(
+  COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA.previousUniqueValues
+    + COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+);
 assert.deepEqual(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
   {
@@ -391,14 +413,52 @@ assert.deepEqual(
 assert.equal(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousOccurrences
     + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA.previousOccurrences,
   "the block canvas accounts for the exact low-frequency occurrence increase",
 );
 assert.equal(
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.previousUniqueValues
     + COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA.uniqueValueDelta,
-  COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA.previousUniqueValues,
   "the block canvas accounts for the one newly promoted API value",
+);
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA, {
+  previousOccurrences: 374,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 22,
+  uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#mob-texture-program",
+  exclusionChanges: 0,
+});
+assert.equal(
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA.previousOccurrences
+    + COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA.previousOccurrences,
+);
+assert.equal(
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA.previousUniqueValues
+    + COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA.previousUniqueValues,
+);
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA, {
+  previousOccurrences: 396,
+  previousUniqueValues: 117,
+  previousSourceFingerprint: "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b",
+  occurrenceDelta: 6,
+  uniqueValueDelta: 2,
+  source: "client/game/mobRenderer.ts#createMobTexture",
+  exclusionChanges: 0,
+});
+assert.equal(
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA.previousOccurrences
+    + COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
+);
+assert.equal(
+  COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA.previousUniqueValues
+    + COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
 );
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,

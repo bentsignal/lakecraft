@@ -12,13 +12,13 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // dedicated texture. It is one new human string and occurrence.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 593;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 525;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "6c57df9d1e038c55730988deafe020fed0565dcc2e270dd430af4ed7d7ff5841";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "3e26baf7a1fed7058eddc0244487981a1c0fa71249fd31db1c17ffa3361e689d";
 // Exact mob cuboids and atlas regions intentionally reuse the eight mob-kind
 // identities and their renderer branches. Review this boundary alongside the
 // generated texture parity test whenever the model catalog changes.
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_148;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_151;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 106;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "ce3b7181b6c75c183e201096398d2c62a4017a56fe092a659bb9fff645dd4c8b";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "f34b4933353ded672b1de3709a4a5869057e6d8792eb5ac9f090067bff122066";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -94,11 +94,23 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA = Object.freeze({
   source: "client/game/mobRenderer.ts#exact-textured-model-dispatch",
   exclusionChanges: 0,
 });
+// The loader lifecycle owns explicit load/error cleanup and destruction at
+// each mob-atlas owner. Those reviewed paths add three uses of already-pooled
+// values without promoting any new runtime string.
+export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze({
+  previousOccurrences: 1_148,
+  previousUniqueValues: 106,
+  previousSourceFingerprint: "ce3b7181b6c75c183e201096398d2c62a4017a56fe092a659bb9fff645dd4c8b",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 0,
+  source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
+  exclusionChanges: 0,
+});
 // The dedicated mob texture program adds reviewed low-frequency texture and
 // shader bindings shared by gameplay and the production Visual Lab renderer.
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 396;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 117;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 402;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 119;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7b09ffcf500870ae2f17f5ad42cf01da93257944135b5fe265e9b6edfef2a9d8";
 // Painting the cached GUI block raster introduces the client's third `2d`
 // context request. That existing API literal consequently enters the exact
 // three/four-use pool; no UI, wire, storage, or gameplay value is added.
@@ -110,6 +122,28 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA = Object.freeze({
   uniqueValueDelta: 1,
   promotedValue: "2d",
   source: "client/components/ItemGlyph.tsx#paintAtlasBlockIcon",
+  exclusionChanges: 0,
+});
+// The dedicated mob texture shader and installed-atlas upload add reviewed
+// low-frequency bindings beyond the GUI canvas checkpoint.
+export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA = Object.freeze({
+  previousOccurrences: 374,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "922b39a38e005f3013436f6aef0a8d35dfdb942e54f950c8195316922006514e",
+  occurrenceDelta: 22,
+  uniqueValueDelta: 7,
+  source: "client/game/mobRenderer.ts#mob-texture-program",
+  exclusionChanges: 0,
+});
+// Fallback allocation plus explicit load/error settlement introduces six
+// reviewed low-frequency occurrences and two new lifecycle values.
+export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze({
+  previousOccurrences: 396,
+  previousUniqueValues: 117,
+  previousSourceFingerprint: "7545fcec4903261ac65a6902101edd1da274e70c3740d5194840674bf13d967b",
+  occurrenceDelta: 6,
+  uniqueValueDelta: 2,
+  source: "client/game/mobRenderer.ts#createMobTexture",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([

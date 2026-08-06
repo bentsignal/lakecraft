@@ -137,10 +137,11 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // canonical skin-storage codec added exactly the two source-shape deltas pinned
 // below; compact manifest keys, exclusions, runtime strings, and server records
 // stayed exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "81551499a261fa97f9bae0e45acc825c91865f572f1f645b8ef02363bac9cdc4";
-// Shared visual provenance now includes the reviewed mob atlas metadata; it is
-// presentation-only and never enters the compact server-key allowlist.
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "157d500d0739a4fc7a91f0e088057ba5190a76d63a7dc00fcf7bc639b319c7df";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "009b03dc312b09b811799d2035c540267d529041dee21bf1ba1acfd360c95f93";
+// Shared visual provenance now includes the reviewed mob atlas metadata,
+// loader lifecycle, and GUI atlas reconstruction. These are presentation-only
+// and never enter the compact server-key allowlist.
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "a058142c634761aaaba25317d963d65b0b56e538fd77a33912adc51eb643fe4a";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "b055a528ddd8ba7b903bd5706adaf1ce3b2958079de2b2a9ee79d9ff542b39f6";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
