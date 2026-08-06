@@ -5422,6 +5422,9 @@ export default capsule({
 
       const rule = validation.message.match(/^\/gamerule\s+doDaylightCycle\s+(true|false)$/i);
       if (rule) {
+        // The earliest immutable profile owns shared-world operator commands.
+        const owner = await oldestByIndex(ctx.db.profiles, "by_creation").first();
+        if (owner?.userId !== ctx.auth.userId) return { ok: false, reason: "permission" };
         const existing = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
         const current = worldClockSnapshot(existing, now);
         const enabled = rule[1].toLowerCase() === "true";
@@ -5436,8 +5439,8 @@ export default capsule({
 
       const message = await ctx.db.chatMessages.insert({
         userId: ctx.auth.userId,
-        username: profile.username,
-        message: validation.message,
+        username: rule ? "System" : profile.username,
+        message: rule ? `Daylight cycle ${rule[1].toLowerCase()}.` : validation.message,
         sentAt: String(now)
       });
       return { ok: true, message };

@@ -73,11 +73,10 @@ export function worldPhaseAt(
   epochPhase: number,
   cycleLengthMs = WORLD_CYCLE_LENGTH_MS,
 ): number {
-  const finiteCycle = Number.isFinite(cycleLengthMs) ? cycleLengthMs : 0;
-  const safeCycle = Math.abs(finiteCycle) || WORLD_CYCLE_LENGTH_MS;
+  const safeCycle = Number.isFinite(cycleLengthMs) && cycleLengthMs || WORLD_CYCLE_LENGTH_MS;
   const safeNow = Number.isFinite(serverNow) ? serverNow : 0;
   const safeEpoch = Number.isFinite(epochMs) ? epochMs : 0;
-  return normalizeWorldPhase(normalizeWorldPhase(epochPhase) + (finiteCycle > 0 ? (safeNow - safeEpoch) / safeCycle : 0));
+  return normalizeWorldPhase(normalizeWorldPhase(epochPhase) + (safeCycle > 0 ? (safeNow - safeEpoch) / safeCycle : 0));
 }
 
 export function worldClockSnapshot(row: Readonly<ClockRowLike> | null, serverNow: number): WorldClockSnapshot {

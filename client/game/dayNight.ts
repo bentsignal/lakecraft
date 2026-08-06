@@ -88,11 +88,11 @@ export function phaseAtTime(
   serverTimeMs: number,
   config: Readonly<DayNightConfig> = DEFAULT_DAY_NIGHT_CONFIG,
 ): number {
-  const finiteCycle = Number.isFinite(config.cycleLengthMs) ? config.cycleLengthMs : 0;
-  const cycleLengthMs = Math.abs(finiteCycle) || DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs;
+  const cycleLengthMs = Number.isFinite(config.cycleLengthMs) && config.cycleLengthMs
+    || DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs;
   const epochMs = Number.isFinite(config.epochMs) ? config.epochMs : 0;
   const epochPhase = Number.isFinite(config.epochPhase) ? config.epochPhase : 0;
-  return positiveModulo(epochPhase + (finiteCycle > 0 ? (serverTimeMs - epochMs) / cycleLengthMs : 0), 1);
+  return positiveModulo(epochPhase + (cycleLengthMs > 0 ? (serverTimeMs - epochMs) / cycleLengthMs : 0), 1);
 }
 
 /**

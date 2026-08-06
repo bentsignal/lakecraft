@@ -97,7 +97,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   poseSequence: [5, 9],
   previousBlock: [13, 6],
   radius: [23, 4],
-  reason: [61, 735],
+  reason: [61, 736],
   receiptCreatedAt: [0, 26],
   remainingDurability: [3, 13],
   replayed: [5, 35],
@@ -117,7 +117,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   targetKind: [20, 2],
   targetUserId: [20, 3],
   updatedAt: [12, 1],
-  userId: [286, 89],
+  userId: [288, 89],
   username: [9, 8],
   version: [9, 11],
   weaponItemId: [7, 2],
@@ -137,9 +137,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // canonical skin-storage codec added exactly the two source-shape deltas pinned
 // below; compact manifest keys, exclusions, runtime strings, and server records
 // stayed exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "edb1a928cdc4de8429dc2d4099cf9054fd5e95eac67e6f1027c67183730df876";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "52fad98eebf0a2f15bf6dd555345fbcfc93b19db7d6b551986fce3c536124995";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "b055a528ddd8ba7b903bd5706adaf1ce3b2958079de2b2a9ee79d9ff542b39f6";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "b9d22f1816aa273d11f084d23ec99dccf69f9e916f3f3fb5b7f0bf383718475d";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "65b8743a324097c795ed251bb92ee20b73d131df41c9a11d26cb06cc075319fe";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "2f571e4de8deab7142d35ecbf20638ace250366df0e60bc36ea3fb13ceecf21e";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",

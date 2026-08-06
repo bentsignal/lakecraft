@@ -779,6 +779,7 @@ function SinglePlayerWorld({
       }
       engine.setDaylightCycle(parsed.command.value);
       markWorldDirty();
+      appendCommandMessage(`Daylight cycle ${parsed.command.value ? "enabled" : "disabled"}.`, "system");
       return;
     }
     if (parsed.command.kind === "locate") {

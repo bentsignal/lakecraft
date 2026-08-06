@@ -32,6 +32,7 @@ export const LOCAL_COMMAND_HELP = [
   "/gamemode <survival|creative>",
   "/give <item> [count]",
   "/time set <day|night>",
+  "/gamerule doDaylightCycle <true|false>",
   "/locate cave",
 ] as const;
 
@@ -128,6 +129,9 @@ export function parseLocalCommand(
     return { ok: true, command: { kind: "time", time: tokens[1] } };
   }
   if (name === "gamerule") {
+    if (!permissions.setTime) {
+      return { ok: false, code: "permission", message: "You do not have permission to set the time." };
+    }
     const value = tokens[1];
     if (tokens.length !== 2
       || tokens[0]?.toLowerCase() !== "dodaylightcycle"

@@ -24,6 +24,7 @@ import {
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
+  COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA,
   COMPACT_CLIENT_REPEATED_HELD_BLOCK_RESTORE_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_DELTA,
@@ -356,7 +357,7 @@ assert.deepEqual(
 assert.equal(
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.previousOccurrences
     + COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA.occurrenceDelta,
-  COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
+  COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA.previousOccurrences,
   "runtime atlas icon reconstruction accounts for the exact repeated occurrence increase",
 );
 assert.equal(
@@ -365,6 +366,19 @@ assert.equal(
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
   "runtime atlas icon reconstruction accounts for the promoted top value",
 );
+assert.deepEqual(COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA, {
+  previousOccurrences: 1_094,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "e494fb343fbf765a79e5a6eb00d361fb851920bb5a06132ca9062e48b56fbbd2",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  addedOccurrenceValue: "system",
+  source: "client/singleplayer/SinglePlayerApp.tsx#submitLocalCommand",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA.occurrenceDelta,
+COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
 assert.deepEqual(
   COMPACT_CLIENT_REPEATED_SKIN_STORAGE_CODEC_DELTA,
   {

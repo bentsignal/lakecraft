@@ -16,9 +16,18 @@ const config: DayNightConfig = {
   epochPhase: 0,
 };
 assert.equal(DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs, 20 * 60 * 1_000);
-assert.match(readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8"),
+const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+assert.match(engineSource,
   /phaseAtTime,[\s\S]*?setDaylightCycle\(enabled\)[\s\S]*?phaseAtTime\(worldTimeMs, dayNightConfig\)/,
   "the live engine imports the phase sampler used to re-anchor daylight toggles");
+const localAppSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+assert.match(localAppSource, /Daylight cycle \$\{parsed\.command\.value \? "enabled" : "disabled"\}/,
+  "local daylight changes emit a system confirmation");
+const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+assert.match(serverSource, /oldestByIndex\(ctx\.db\.profiles, "by_creation"\)\.first\(\)[\s\S]*?owner\?\.userId !== ctx\.auth\.userId[\s\S]*?reason: "permission"/,
+  "shared-world gamerules are restricted to the first immutable profile as world operator");
+assert.match(serverSource, /username: rule \? "System"[\s\S]*?message: rule \? `Daylight cycle/,
+  "authorized multiplayer daylight changes emit a system-authored confirmation");
 
 assert.equal(phaseAtTime(10_000, config), 0);
 assert.equal(phaseAtTime(10_250, config), 0.25);

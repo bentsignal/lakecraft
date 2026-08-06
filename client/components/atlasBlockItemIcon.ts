@@ -1,4 +1,5 @@
 import type { ItemId } from "../../shared/game.ts";
+import { blockIdForCubeItem } from "../game/blockItemCubeGeometry.ts";
 import { blockTextureForFace } from "../game/blockTextures.ts";
 import {
   TEXTURE_ATLAS_CELLS,
@@ -8,18 +9,8 @@ import {
   TEXTURE_TILE_SIZE,
   type TextureAtlasName,
 } from "../game/generated/textureAtlas.ts";
-import { BLOCK, type BlockId } from "../game/types.ts";
 
 export type AtlasBlockIconRun = Readonly<{ x: number; y: number; width: number; color: string }>;
-
-const BLOCK_BY_ITEM: Readonly<Partial<Record<ItemId, BlockId>>> = {
-  grass: BLOCK.GRASS, dirt: BLOCK.DIRT, stone: BLOCK.STONE, cobblestone: BLOCK.COBBLESTONE,
-  sand: BLOCK.SAND, gravel: BLOCK.GRAVEL, glass: BLOCK.GLASS, coal_ore: BLOCK.COAL_ORE,
-  iron_ore: BLOCK.IRON_ORE, gold_ore: BLOCK.GOLD_ORE, diamond_ore: BLOCK.DIAMOND_ORE,
-  log: BLOCK.WOOD, leaves: BLOCK.LEAVES, planks: BLOCK.PLANKS,
-  crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE, tnt: BLOCK.TNT,
-  wool: BLOCK.WOOL, stone_bricks: BLOCK.STONE_BRICKS, clay: BLOCK.CLAY, bricks: BLOCK.BRICKS,
-};
 
 type Point = readonly [x: number, y: number, u: number, v: number];
 type Grid = string[][];
@@ -59,8 +50,8 @@ function face(grid: Grid, texture: TextureAtlasName, points: readonly [Point, Po
 
 /** Reconstruct atlas-backed block icons once, losslessly replacing redundant serialized run data. */
 export function atlasBlockItemIconRuns(itemId: ItemId): readonly AtlasBlockIconRun[] | undefined {
-  const block = BLOCK_BY_ITEM[itemId];
-  if (block === undefined) return undefined;
+  const block = blockIdForCubeItem(itemId);
+  if (block === null) return undefined;
   const top = blockTextureForFace(block, "top");
   const left = blockTextureForFace(block, "north");
   const right = blockTextureForFace(block, "east");

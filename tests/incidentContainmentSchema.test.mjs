@@ -53,7 +53,7 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "0e713788be6cb1043d9adf3ffbee12fa3265ecaaafb1b9665511fdc25b361407",
+  "818469c44bae18ffa3ded0fe8d71ce3cdee0aead64336c2db786560be5f512c2",
   "removing containment declarations reproduces the reviewed auth/query/receipt-refactored server behavior source",
 );
 
@@ -87,7 +87,7 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 154, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "b2aa5d6581ea8346ddab673f92dc59f39609234450af31ae151d620d2338d277",
+  "6b3e5574785b526390ea05f54f2668a6e7182192c18378afc0ac52108106ebfc",
   "runtime sources match the reviewed installed-asset checkpoint plus the isolated dev-only visual lab");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

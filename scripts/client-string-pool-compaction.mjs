@@ -8,12 +8,12 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 594;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 525;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "956b8738c76ea9e4ffa01140d16d216eaba5b72c72ae0f59ce44fc0ea6501554";
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_094;
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 596;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 526;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "b494f12c31c8f24d950e6bc86c748d51cc5304e92980c0026bf305e0eaa2fb03";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_095;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 99;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "e494fb343fbf765a79e5a6eb00d361fb851920bb5a06132ca9062e48b56fbbd2";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "54c7c77a9a12c8f4c8eb7fa1744cd7502315c115c501db4fe49cdc1d7bc697f6";
 // The lossless visual descriptor pack replaced repeated panel face arguments
 // with numeric face indexes. These four values consequently fell below the
 // five-use pool floor; the armor slot decoder's known literal additions are
@@ -78,9 +78,19 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 371;
+export const COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA = Object.freeze({
+  previousOccurrences: 1_094,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "e494fb343fbf765a79e5a6eb00d361fb851920bb5a06132ca9062e48b56fbbd2",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  addedOccurrenceValue: "system",
+  source: "client/singleplayer/SinglePlayerApp.tsx#submitLocalCommand",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 372;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 109;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51c27dce84789a33f5c2530c81b45222714f2c9c518bb54fca9f4b2c5ed9850f";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "aa18923c9f3f4f3eb57aba9689a0c9a23573d7d6323c021d868262ce2e6abd54";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "1.2..21.",
   "2.1..2",
