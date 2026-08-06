@@ -52,6 +52,36 @@ for(let offset=0;offset<stats.vertexCount*MOB_VERTEX_STRIDE;offset+=MOB_VERTEX_S
 const expectedVertices:Record<MobKind,number>={pig:252,cow:324,sheep:288,chicken:288,zombie:252,skeleton:228,creeper:216,spider:396};
 for(const kind of kinds)assert.equal(mobVertexCountForKind(kind),expectedVertices[kind],`${kind} uses its fixed exact-model budget`);
 
+const skeleton=pose("skeleton",10);skeleton.x=skeleton.previousX=0;skeleton.y=skeleton.previousY=0;skeleton.z=skeleton.previousZ=6;
+renderer.rebuild([skeleton],0,8,0,-1,1,2.5);
+const skeletonGeometry=gl.uploaded!.slice(0,mobVertexCountForKind("skeleton")*MOB_VERTEX_STRIDE);
+const bowStart=(mobVertexCountForKind("skeleton")-12)*MOB_VERTEX_STRIDE;
+const bowVertex=(index:number)=>[
+  skeletonGeometry[bowStart+index*MOB_VERTEX_STRIDE],
+  skeletonGeometry[bowStart+index*MOB_VERTEX_STRIDE+1],
+  skeletonGeometry[bowStart+index*MOB_VERTEX_STRIDE+2],
+] as const;
+// The first two triangles expose the four front-face corners as 0, 1, 2, 5.
+const bowCorners=[bowVertex(0),bowVertex(1),bowVertex(2),bowVertex(5)] as const;
+const distance=(a:readonly number[],b:readonly number[])=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+const bowU=distance(bowCorners[0],bowCorners[1]),bowV=distance(bowCorners[0],bowCorners[3]);
+assert.ok(bowU>.7&&bowU<.85&&bowV>.7&&bowV<.85,"the installed 16x16 bow rides a substantial square item plane");
+assert.ok(Math.max(bowU,bowV)/Math.min(bowU,bowV)<1.05,"the bow sprite cannot regress to the former 8:1 ribbon");
+const edgeU=bowCorners[1].map((value,index)=>value-bowCorners[0][index]);
+const edgeV=bowCorners[3].map((value,index)=>value-bowCorners[0][index]);
+assert.ok(Math.abs(edgeU.reduce((sum,value,index)=>sum+value*edgeV[index],0))<1e-5,"square bow edges remain perpendicular in world space");
+const grip=bowCorners[0].map((value,index)=>value+edgeU[index]*3/16+edgeV[index]*8/16);
+assert.ok(distance(grip,[-.31,1.05,6.58])<.015,"the bow's opaque grip socket stays attached to the skeleton's forward right hand");
+const camera=[0,1.2,8] as const;
+const projected=bowCorners.map(([worldX,worldY,worldZ])=>[(worldX-camera[0])/(camera[2]-worldZ),(worldY-camera[1])/(camera[2]-worldZ)] as const);
+const screenXs=projected.map(([screenX])=>screenX),screenYs=projected.map(([,screenY])=>screenY);
+const projectedWidth=Math.max(...screenXs)-Math.min(...screenXs),projectedHeight=Math.max(...screenYs)-Math.min(...screenYs);
+let projectedArea=0;
+for(let index=0;index<4;index+=1){const next=(index+1)%4;projectedArea+=projected[index][0]*projected[next][1]-projected[next][0]*projected[index][1];}
+projectedArea=Math.abs(projectedArea)*.5;
+assert.ok(projectedWidth/projectedHeight>.9&&projectedWidth/projectedHeight<1.1,"a front gameplay camera sees the bow's balanced square carrier");
+assert.ok(projectedArea/(projectedWidth*projectedHeight)>.45,"the projected bow plane keeps enough area to reveal its sprite instead of a ribbon silhouette");
+
 const zombie=pose("zombie",20);zombie.previousX=zombie.x;zombie.behavior="idle";
 renderer.rebuild([zombie],0,0,0,1,1,3);
 const upright=gl.uploaded!.slice(0,mobVertexCountForKind("zombie")*MOB_VERTEX_STRIDE);

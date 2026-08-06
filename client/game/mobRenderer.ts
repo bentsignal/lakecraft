@@ -848,11 +848,26 @@ function appendExactZombie(writer: VertexWriter, x: number, y: number, z: number
 
 function appendBowSprite(writer: VertexWriter, x: number, y: number, z: number, yaw: number): void {
   const cos = Math.cos(yaw), sin = Math.sin(yaw);
-  const corners = [[-0.62,0.78],[0.18,1.58],[0.28,1.48],[-0.52,0.68]] as const;
+  // The installed bow is a square 16 x 16 generated-item sprite. Its opaque
+  // pixels already draw the curved bow, string, and grip, so the carrier must
+  // remain square instead of collapsing that artwork onto a diagonal ribbon.
+  // A 45-degree roll makes the sprite's own lower-left-to-upper-right limb
+  // stand upright. Pixel (3, 8), the idle sprite's grip, lands at the forward
+  // right hand at roughly (-.31, 1.05, .58) in skeleton-local coordinates.
+  const side = 0.78 / Math.SQRT2;
+  const gripX = -0.31, gripY = 1.05, planeZ = 0.58;
+  const left = gripX - side * (3 / 16 + 8 / 16);
+  const top = gripY - side * (3 / 16 - 8 / 16);
+  const corners = [
+    [left, top],
+    [left + side, top + side],
+    [left + side * 2, top],
+    [left + side, top - side],
+  ] as const;
   const order = [0,1,2,0,2,3,2,1,0,3,2,0] as const;
   for (let i=0;i<order.length;i+=1) {
     const index=order[i], point=corners[index];
-    const localX=point[0], localY=point[1], localZ=0.28;
+    const localX=point[0], localY=point[1], localZ=planeZ;
     const deathY=0.72+(localY-0.72)*writer.deathCos-localZ*writer.deathSin;
     const deathZ=(localY-0.72)*writer.deathSin+localZ*writer.deathCos;
     writer.data[writer.offset++]=x+localX*cos-deathZ*sin;
