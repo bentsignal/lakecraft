@@ -1,5 +1,5 @@
 import { ITEMS, maxItemDurability, remainingItemDurability, type ItemId, type ItemStack } from "../../shared/game";
-import { atlasBlockItemGuiIcon, type AtlasBlockGuiIcon } from "./atlasBlockItemIcon.ts";
+import { ATLAS_BLOCK_GUI_ICON_SIZE, atlasBlockItemGuiIcon, paintAtlasBlockGuiIcon, type AtlasBlockGuiIcon } from "./atlasBlockItemIcon.ts";
 import { ITEM_ICON_SIZE, getItemIconArt } from "./itemIconArt";
 
 export type ItemGlyphProps = {
@@ -12,11 +12,7 @@ const paintedBlockCanvases = new WeakMap<HTMLCanvasElement, AtlasBlockGuiIcon>()
 
 function paintAtlasBlockIcon(canvas: HTMLCanvasElement | null, icon: AtlasBlockGuiIcon): void {
   if (!canvas || paintedBlockCanvases.get(canvas) === icon) return;
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  const image = context.createImageData(icon.size, icon.size);
-  image.data.set(icon.rgba);
-  context.putImageData(image, 0, 0);
+  paintAtlasBlockGuiIcon(canvas, icon);
   paintedBlockCanvases.set(canvas, icon);
 }
 
@@ -40,10 +36,10 @@ export function ItemIcon({ stack, compact = false, muted = false }: ItemGlyphPro
       {guiBlock ? (
         <canvas
           className="lc-item-icon__svg"
-          data-source-resolution={guiBlock.size}
-          height={guiBlock.size}
+          data-source-resolution={ATLAS_BLOCK_GUI_ICON_SIZE}
+          height={ATLAS_BLOCK_GUI_ICON_SIZE}
           ref={(canvas) => paintAtlasBlockIcon(canvas, guiBlock)}
-          width={guiBlock.size}
+          width={ATLAS_BLOCK_GUI_ICON_SIZE}
         />
       ) : (
         <svg className="lc-item-icon__svg" viewBox={`0 0 ${ITEM_ICON_SIZE} ${ITEM_ICON_SIZE}`} shape-rendering="crispEdges" focusable="false">
