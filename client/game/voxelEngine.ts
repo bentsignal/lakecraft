@@ -43,6 +43,7 @@ import {
 import {
   DEFAULT_DAY_NIGHT_CONFIG,
   createDayNightState,
+  phaseAtTime,
   sampleDayNight,
   type DayNightConfig,
 } from "./dayNight.ts";
@@ -922,8 +923,8 @@ export function applyDayNightClockUpdate(
   currentServerTimeOffsetMs: number,
   nextServerTimeOffsetMs?: number,
 ): number {
-  if (Number.isFinite(update.cycleLengthMs) && (update.cycleLengthMs ?? 0) > 0) {
-    target.cycleLengthMs = update.cycleLengthMs as number;
+  if (update.cycleLengthMs && Number.isFinite(update.cycleLengthMs)) {
+    target.cycleLengthMs = update.cycleLengthMs;
   }
   if (Number.isFinite(update.epochMs)) target.epochMs = update.epochMs as number;
   if (Number.isFinite(update.epochPhase)) target.epochPhase = update.epochPhase as number;
@@ -4299,6 +4300,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         const now = performance.now();
         render(now, 0, now);
       }
+    },
+    setDaylightCycle(enabled) {
+      const phase = phaseAtTime(worldTimeMs, dayNightConfig);
+      dayNightConfig.epochMs = worldTimeMs;
+      dayNightConfig.epochPhase = phase;
+      dayNightConfig.cycleLengthMs = Math.abs(dayNightConfig.cycleLengthMs) * (enabled ? 1 : -1);
+      return enabled;
     },
     setRenderDistance(radius) {
       const next = clampNumber(Math.floor(radius), 1, MAX_LOCAL_STREAMING_CHUNK_RADIUS);

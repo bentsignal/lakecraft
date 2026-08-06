@@ -27,7 +27,7 @@ class MemoryStorage implements ClientSettingsStorage {
 const missing = new MemoryStorage();
 assert.deepEqual(loadClientSettings(missing), DEFAULT_CLIENT_SETTINGS, "missing preferences use deterministic defaults");
 assert.equal(DEFAULT_CLIENT_SETTINGS.renderDistance, 6, "new users default to the tested six-chunk radius");
-assert.equal(DEFAULT_CLIENT_SETTINGS.fovDegrees, 70, "new users default to the familiar seventy-degree camera");
+assert.equal(DEFAULT_CLIENT_SETTINGS.fovDegrees, 90, "new users default to the requested ninety-degree camera");
 assert.equal(missing.values.size, 0, "loading missing preferences never writes storage");
 
 missing.values.set(CLIENT_SETTINGS_STORAGE_KEY, "not json");
@@ -38,23 +38,23 @@ assert.deepEqual(loadClientSettings(missing), DEFAULT_CLIENT_SETTINGS, "unknown 
 
 assert.deepEqual(
   normalizeClientSettings({ soundMuted: true, mouseSensitivity: -1 }),
-  { soundMuted: true, mouseSensitivity: MOUSE_SENSITIVITY_MIN, renderDistance: 6, fovDegrees: 70 },
+  { soundMuted: true, mouseSensitivity: MOUSE_SENSITIVITY_MIN, renderDistance: 6, fovDegrees: 90 },
   "low finite sensitivity is clamped without discarding a valid sound preference",
 );
 assert.deepEqual(
   normalizeClientSettings({ soundMuted: "true", mouseSensitivity: 9_000 }),
-  { soundMuted: false, mouseSensitivity: MOUSE_SENSITIVITY_MAX, renderDistance: 6, fovDegrees: 70 },
+  { soundMuted: false, mouseSensitivity: MOUSE_SENSITIVITY_MAX, renderDistance: 6, fovDegrees: 90 },
   "invalid field types fall back independently while finite sensitivity is clamped",
 );
 assert.deepEqual(
   normalizeClientSettings({ soundMuted: true, mouseSensitivity: Number.NaN }),
-  { soundMuted: true, mouseSensitivity: 100, renderDistance: 6, fovDegrees: 70 },
+  { soundMuted: true, mouseSensitivity: 100, renderDistance: 6, fovDegrees: 90 },
   "non-finite sensitivity falls back to its default",
 );
 
 const legacy = new MemoryStorage();
 legacy.values.set(LEGACY_AUDIO_MUTED_STORAGE_KEY, "true");
-assert.deepEqual(loadClientSettings(legacy), { soundMuted: true, mouseSensitivity: 100, renderDistance: 6, fovDegrees: 70 }, "legacy audio preference remains honored");
+assert.deepEqual(loadClientSettings(legacy), { soundMuted: true, mouseSensitivity: 100, renderDistance: 6, fovDegrees: 90 }, "legacy audio preference remains honored");
 assert.equal(legacy.values.has(CLIENT_SETTINGS_STORAGE_KEY), false, "legacy reads do not silently migrate or write");
 
 const existing = new MemoryStorage();
@@ -64,7 +64,7 @@ existing.values.set(CLIENT_SETTINGS_STORAGE_KEY, JSON.stringify({
   mouseSensitivity: 90,
   renderDistance: 3,
 }));
-assert.deepEqual(loadClientSettings(existing), { soundMuted: false, mouseSensitivity: 90, renderDistance: 3, fovDegrees: 70 },
+assert.deepEqual(loadClientSettings(existing), { soundMuted: false, mouseSensitivity: 90, renderDistance: 3, fovDegrees: 90 },
   "new fields default without overwriting a saved user's existing preferences");
 
 const roundTrip = new MemoryStorage();
@@ -75,6 +75,11 @@ assert.deepEqual(
   { version: 1, soundMuted: true, mouseSensitivity: 137.5, renderDistance: RENDER_DISTANCE_MAX, fovDegrees: FOV_DEGREES_MAX },
   "save emits only the canonical versioned fields",
 );
+const explicitFov = new MemoryStorage();
+explicitFov.values.set(CLIENT_SETTINGS_STORAGE_KEY, JSON.stringify({
+  version: 1, soundMuted: false, mouseSensitivity: 100, renderDistance: 6, fovDegrees: 70,
+}));
+assert.equal(loadClientSettings(explicitFov).fovDegrees, 70, "an existing explicit camera preference is never replaced by the new default");
 assert.equal(normalizeClientSettings({ renderDistance: -4 }).renderDistance, RENDER_DISTANCE_MIN,
   "render distance uses the bounded offline minimum");
 assert.equal(normalizeClientSettings({ renderDistance: 9 }).renderDistance, 9,

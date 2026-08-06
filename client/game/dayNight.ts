@@ -36,8 +36,7 @@ export interface DayNightState {
 }
 
 export const DEFAULT_DAY_NIGHT_CONFIG: Readonly<DayNightConfig> = Object.freeze({
-  // Short enough to make the full cycle visible during an alpha play session.
-  cycleLengthMs: 8 * 60 * 1_000,
+  cycleLengthMs: 20 * 60 * 1_000,
   epochMs: 0,
   epochPhase: 0,
 });
@@ -89,12 +88,11 @@ export function phaseAtTime(
   serverTimeMs: number,
   config: Readonly<DayNightConfig> = DEFAULT_DAY_NIGHT_CONFIG,
 ): number {
-  const cycleLengthMs = Number.isFinite(config.cycleLengthMs) && config.cycleLengthMs > 0
-    ? config.cycleLengthMs
-    : DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs;
+  const cycleLengthMs = Number.isFinite(config.cycleLengthMs) && config.cycleLengthMs
+    || DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs;
   const epochMs = Number.isFinite(config.epochMs) ? config.epochMs : 0;
   const epochPhase = Number.isFinite(config.epochPhase) ? config.epochPhase : 0;
-  return positiveModulo(epochPhase + (serverTimeMs - epochMs) / cycleLengthMs, 1);
+  return positiveModulo(epochPhase + (cycleLengthMs > 0 ? (serverTimeMs - epochMs) / cycleLengthMs : 0), 1);
 }
 
 /**
@@ -106,9 +104,8 @@ export function timeToMorningMs(
   config: Readonly<DayNightConfig> = DEFAULT_DAY_NIGHT_CONFIG,
   morningPhase = MORNING_PHASE,
 ): number {
-  const cycleLengthMs = Number.isFinite(config.cycleLengthMs) && config.cycleLengthMs > 0
-    ? config.cycleLengthMs
-    : DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs;
+  const cycleLengthMs = Math.abs(Number.isFinite(config.cycleLengthMs) ? config.cycleLengthMs : 0)
+    || DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs;
   const phase = phaseAtTime(serverTimeMs, config);
   const target = positiveModulo(Number.isFinite(morningPhase) ? morningPhase : MORNING_PHASE, 1);
   let distance = positiveModulo(target - phase, 1);

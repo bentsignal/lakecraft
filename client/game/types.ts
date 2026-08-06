@@ -210,7 +210,7 @@ export function validateVoxelRuntimeSnapshotDetailed(value: unknown): VoxelRunti
     return { ok: false, path: "$.mobAccumulatorSeconds" };
   }
   if (typeof dayNight.cycleLengthMs !== "number" || !Number.isFinite(dayNight.cycleLengthMs)
-    || dayNight.cycleLengthMs <= 0 || dayNight.cycleLengthMs > 1_000_000_000_000) {
+    || dayNight.cycleLengthMs === 0 || Math.abs(dayNight.cycleLengthMs) > 1_000_000_000_000) {
     return { ok: false, path: "$.dayNight.cycleLengthMs" };
   }
   if (typeof dayNight.epochMs !== "number" || !Number.isFinite(dayNight.epochMs)
@@ -367,7 +367,7 @@ export interface VoxelEngineOptions {
   getMouseLookSensitivity?: () => number;
   /** Vertical camera FOV in radians, sampled live so Options apply without recreating the engine. */
   getFieldOfViewRadians?: () => number;
-  /** Shared clock configuration. Defaults to an eight-minute alpha cycle. */
+  /** Shared clock configuration. Defaults to Minecraft's twenty-minute cycle. */
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
   serverTimeOffsetMs?: number;
@@ -516,6 +516,8 @@ export interface VoxelEngine {
   /** Settles sand/gravel after one explicit offline edit; never creates network traffic. */
   settleFallingBlocks(edit: Readonly<WorldEdit>, previousBlock: BlockId): WorldEdit[];
   setDayNightClock(config: Partial<DayNightConfig>, serverTimeOffsetMs?: number): void;
+  /** Toggles only sky-clock advancement; simulation time and gameplay continue. */
+  setDaylightCycle(enabled: boolean): boolean;
   /** Reconciles the offline terrain window immediately and returns the bounded radius. */
   setRenderDistance(radius: number): number;
   /** Freezes local movement, simulation, combat, fuses, particles, and world time. */

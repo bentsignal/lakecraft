@@ -88,6 +88,16 @@ export const COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA = Object.freeze({
   source: "client/components/atlasBlockItemIcon.ts#atlasBlockItemIconRuns",
   exclusionChanges: 0,
 });
+export const COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA = Object.freeze({
+  previousOccurrences: 1_094,
+  previousUniqueValues: 99,
+  previousSourceFingerprint: "e494fb343fbf765a79e5a6eb00d361fb851920bb5a06132ca9062e48b56fbbd2",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  addedOccurrenceValue: "system",
+  source: "client/singleplayer/SinglePlayerApp.tsx#submitLocalCommand",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 378;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 111;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "1424b040b100812c4fabcc53e85bc57c28bde52eb82017a5033f863f74d40144";
