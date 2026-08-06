@@ -9,7 +9,7 @@ for (const contract of [
   "readPlayerSkinFile", "64×64 / 128×128 PNG", "local preview only", "Wide · 4px", "Slim · 3px",
   "Mob catalog", "Mob visual state", "production mob batch", "Use in this world",
   "First person", "SCREEN-SPACE CAMERA · LIVE POSE TUNING",
-  "VIEWMODEL_STRATEGIES", "Current", "Model transform", "Screen fit", "Skin grip",
+  "VIEWMODEL_STRATEGIES", "Current", "Model transform", "Skin grip",
   "comparison candidates, not accepted production changes", "Reference overlay",
   "Choose screenshot or reference", "local overlay only", "Reference opacity", "Silhouette",
   "Reference comparison mode", "Ghost", "Difference", "mixBlendMode",

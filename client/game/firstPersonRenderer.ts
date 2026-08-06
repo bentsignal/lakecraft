@@ -210,7 +210,7 @@ export const FIRST_PERSON_PICKAXE_PRESENTATION = spritePresentation([
   // the bottom-right edge.  This is deliberately not an inventory-style
   // centered beauty shot of the complete sprite.
   0.74, -0.53, -1.12,
-  1.50, 0.03,
+  1.65, 0.03,
   12, 180, -22,
   /** Lower wooden handle; the hand should read as gripping this pixel. */
   3, 13,
@@ -238,12 +238,15 @@ export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean
       2, sword ? 13 : 14,
     ];
   } else if (itemId === "bow") {
-    // The nearest opaque socket is one 16px cell left of the old transparent
-    // pivot; offset center by the matching world-space cell to preserve frame.
+    // Minecraft's installed handheld model turns the generated sprite into the
+    // camera with a -90° Y rotation and a 25° roll. Lakecraft's camera-space
+    // plane has no matching item-model basis, so the visually equivalent turn
+    // lands at -68° here: the arrow recedes toward the crosshair while the bow
+    // remains readable instead of collapsing to a one-pixel edge.
     pose = [
-      bowDrawn ? 0.916875 : 0.94, bowDrawn ? -0.01 : -0.03, -1.12,
-      bowDrawn ? 1.55 : 1.6, 0.035,
-      0, 180, 0,
+      bowDrawn ? -0.15 : -0.2, bowDrawn ? -0.26 : -0.28, -1.12,
+      bowDrawn ? 1.36 : 1.42, 0.06,
+      0, -68, 25,
       3, 8,
     ];
   } else if (itemId === "shears") {

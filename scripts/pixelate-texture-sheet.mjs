@@ -2,6 +2,7 @@ import { deflateSync, inflateSync } from "node:zlib";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { encodeStaticBytes } from "./static-byte-encoding.mjs";
+import { decodePng as decodeImportedPng } from "./png-rgba.mjs";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -665,6 +666,24 @@ function applyNamedMaterialRules(image, names, columns, tileSize) {
   }
 }
 
+function applyImportedMinecraftBlockTextures(image, names, columns, tileSize, blockTextures) {
+  for (const [name, payload] of Object.entries(blockTextures ?? {})) {
+    const tile = names.indexOf(name);
+    if (tile < 0) continue;
+    const source = decodeImportedPng(Buffer.from(payload, "base64"));
+    if (source.width !== tileSize || source.height !== tileSize) {
+      fail(`imported block texture ${name} must be ${tileSize}x${tileSize}.`);
+    }
+    const tileX = tile % columns;
+    const tileY = Math.floor(tile / columns);
+    for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
+      const input = (y * tileSize + x) * 4;
+      const output = ((tileY * tileSize + y) * image.width + tileX * tileSize + x) * 4;
+      image.rgba.set(source.rgba.subarray(input, input + 4), output);
+    }
+  }
+}
+
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let index = 0; index < 256; index += 1) {
@@ -835,6 +854,17 @@ const pixelated = expandNamedAtlas(
   options.tileSize,
 );
 applyNamedMaterialRules(pixelated, options.names, options.columns, options.tileSize);
+const importedVisualAssets = JSON.parse(await readFile(
+  new URL("./generated/minecraft-visual-assets-v26.2.json", import.meta.url),
+  "utf8",
+));
+applyImportedMinecraftBlockTextures(
+  pixelated,
+  options.names,
+  options.columns,
+  options.tileSize,
+  importedVisualAssets.blocks,
+);
 const pngBytes = encodePng(pixelated);
 await writeFile(options.output, pngBytes);
 if (options.ts) {

@@ -1,26 +1,31 @@
-/** Auditable provenance for bundled visuals; metadata only, never third-party pixels. */
+/** Auditable provenance for bundled and locally imported visual compatibility data. */
 export const VISUAL_ASSET_MANIFEST = Object.freeze({
-  policyVersion: 1,
-  provenance: "bundled-original" as const,
+  policyVersion: 2,
+  provenance: "mixed-original-and-user-authorized-local-import" as const,
   itemIcons: Object.freeze({
-    sourceKind: "procedural-original" as const,
+    sourceKind: "original-plus-minecraft-26.2-local-import" as const,
+    importer: "scripts/import-minecraft-visual-assets.mjs",
     generator: "scripts/generate-item-icon-art.ts",
     output: "client/components/itemIconArt.ts",
     logicalResolution: 16,
-    fingerprint: "7b9c8ca8",
+    fingerprint: "15967dd2",
   }),
   blockAtlas: Object.freeze({
-    sourceKind: "original-concept-and-procedural" as const,
+    sourceKind: "original-concept-plus-minecraft-26.2-local-import" as const,
     concept: "design/texture-concepts/lakecraft-materials-v1.png",
+    importer: "scripts/import-minecraft-visual-assets.mjs",
     generator: "scripts/pixelate-texture-sheet.mjs",
     output: "client/game/generated/texture-atlas-v1.png",
     logicalResolution: 16,
-    fingerprint: "ae350b4f",
+    fingerprint: "07b23a8c",
   }),
   defaultPlayerSkin: Object.freeze({
-    sourceKind: "procedural-original" as const,
-    generator: "client/game/playerSkin.ts#createLakecraftDefaultSkinPixels",
+    sourceKind: "minecraft-26.2-local-import" as const,
+    importer: "scripts/import-minecraft-visual-assets.mjs",
+    generator: "scripts/generate-default-player-skin.ts",
+    output: "client/game/generated/defaultPlayerSkin.ts",
     logicalResolution: 64,
+    fingerprint: "abf17456",
   }),
   userSkin: Object.freeze({
     sourceKind: "user-supplied-local" as const,

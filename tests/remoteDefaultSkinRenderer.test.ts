@@ -64,7 +64,7 @@ for (const [name, color] of Object.entries({
 assert.equal(
   verticesWithColor([13, 135, 140]).length,
   0,
-  "the legacy teal shirt is absent from the original Lakecraft explorer",
+  "the old approximation color is absent from the installed standard palette",
 );
 
 let minX = Infinity; let maxX = -Infinity;
@@ -83,7 +83,7 @@ const scarfOffsets = verticesWithColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.scarf);
 const scarfX = scarfOffsets.map((offset) => body[offset]);
 const scarfY = scarfOffsets.map((offset) => body[offset + 1]);
 assert.ok(Math.min(...scarfX) < -0.12 && Math.max(...scarfX) > 0.12,
-  "the explorer's orange scarf crosses the chest");
+  "the standard shirt accent crosses the chest");
 assert.ok(Math.min(...scarfY) >= 1.36 && Math.max(...scarfY) <= 1.49,
   "the scarf remains at the collar rather than becoming anonymous body color");
 
@@ -114,7 +114,7 @@ assert.deepEqual(gpuAllocations, [
 fixedCapacityRenderer.destroy();
 
 console.log(JSON.stringify({
-  benchmark: "remote bundled-original default skin fidelity",
+  benchmark: "remote installed-default skin fidelity",
   baseBoxes: REMOTE_DEFAULT_PLAYER_BOX_COUNT,
   baseVerticesPerPlayer: BASE_AVATAR_VERTICES_PER_PLAYER,
   avatarCapacityBytes32: fullCapacity.avatarFloats * Float32Array.BYTES_PER_ELEMENT,

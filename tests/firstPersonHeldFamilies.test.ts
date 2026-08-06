@@ -111,26 +111,28 @@ const shovelHead = projectedBounds(
     && shovelUpload[offset + 5] > shovelUpload[offset + 3] * 0.9,
 );
 const sword = render("iron_sword");
-assert.ok(pickaxe.minX > 0.3 && pickaxe.maxX >= 0.98 && pickaxe.minY <= -0.98 && pickaxe.maxY > -0.1,
-  "pickaxe matches the supplied middle-right head and cropped lower-right grip envelope");
-assert.ok(axe.minX > 0.4 && axe.minX < 0.5 && axe.maxX > 0.97
-  && axe.minY < -0.92 && axe.maxY < 0.05,
-"axe enters from the right 28% of the viewport and crops at the hand socket");
-assert.ok(shovel.minX > 0.65 && shovel.minX < 0.8 && shovel.maxX > 0.95
-  && shovel.minY < -0.92 && shovel.maxY < 0.05,
-`shovel keeps its narrow head in the right quarter without becoming a centered icon: ${JSON.stringify(shovel)}`);
+assert.ok(pickaxe.minX > 0.2 && pickaxe.maxX > 0.9 && pickaxe.minY <= -0.98 && pickaxe.maxY > -0.05,
+  `exact installed pickaxe texture fills the middle-right head and cropped lower-right grip envelope: ${JSON.stringify(pickaxe)}`);
+assert.ok(axe.minX > 0.4 && axe.minX < 0.5 && axe.maxX > 0.9
+  && axe.minY < -0.9 && axe.maxY < 0.05,
+`exact installed axe stays in the lower-right hand envelope: ${JSON.stringify(axe)}`);
+assert.ok(shovel.minX > 0.6 && shovel.minX < 0.7 && shovel.maxX > 0.88
+  && shovel.minY < -0.88 && shovel.maxY < 0.05,
+`exact installed shovel keeps its narrow head in the right quarter: ${JSON.stringify(shovel)}`);
 assert.ok(shovelHead.maxY - shovelHead.minY >= (shovelHead.maxX - shovelHead.minX) * 1.02,
   `shovel head retains enough vertical taper to read as a spade rather than a hammer: ${JSON.stringify(shovelHead)}`);
 assert.ok(sword.minX > 0.5 && sword.maxX > 1.15 && sword.minY < -0.98 && sword.maxY > 0.18,
-  "sword blade rises from a cropped grip through the reviewed upper-right combat envelope");
+  `sword blade rises from a cropped grip through the reviewed upper-right combat envelope: ${JSON.stringify(sword)}`);
 
 const bowIdle = render("bow");
 const bowDraw = render("bow", true);
-assert.ok(bowIdle.minX > 0.58 && bowIdle.maxX > 0.96
-  && bowIdle.minY < -0.96 && bowIdle.maxY > -0.14,
-`idle bow remains a tall lower-right silhouette: ${JSON.stringify(bowIdle)}`);
-assert.ok(bowDraw.minX < bowIdle.minX - 0.35 && bowDraw.maxX > 0.95,
-  "drawing the bow visibly extends the arrow from the right-hand bow toward screen center");
+assert.ok(bowIdle.minX > 0.2 && bowIdle.maxX > 0.75 && bowIdle.maxX < 0.85
+  && bowIdle.minY < -1.05 && bowIdle.maxY > -0.42,
+`exact installed idle bow recedes from the cropped lower-right grip toward the crosshair: ${JSON.stringify(bowIdle)}`);
+assert.notDeepEqual(bowDraw, bowIdle, "drawing the bow changes the exact installed right-hand silhouette");
+assert.ok(bowDraw.minX > 0.16 && bowDraw.maxX > 0.9 && bowDraw.maxX < 0.98
+  && bowDraw.minY < -1.18,
+  `drawn bow keeps the arrow aimed inward from the lower-right edge: ${JSON.stringify(bowDraw)}`);
 assert.ok(bowDraw.maxY - bowDraw.minY > 0.8,
   "drawn bow retains the tall near-vertical first-person silhouette");
 

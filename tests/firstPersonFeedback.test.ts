@@ -41,10 +41,10 @@ const canonicalHeldSpriteVertices = {
   bow_full_draw: appendItemSpriteGeometry([], getBowIconArt(3)),
 };
 assert.deepEqual(canonicalHeldSpriteVertices, {
-  iron_pickaxe: 1_008,
-  iron_sword: 1_032,
+  iron_pickaxe: 1_140,
+  iron_sword: 1_356,
   apple: 732,
-  bow_full_draw: 1_116,
+  bow_full_draw: 1_500,
 }, "exact held-item fixtures are derived from the current reviewed canonical sprite art");
 assert.equal(stats[0], 0, "empty hand no longer uploads a synthetic solid-color arm");
 assert.equal(stats[1], 0);
@@ -75,7 +75,7 @@ renderer[3]("bow", BLOCK.AIR);
 renderer[4](true, 1);
 assert.equal(stats[0], canonicalHeldSpriteVertices.bow_full_draw,
   "full-draw bow uses its canonical opaque-edge sprite without an unrelated arm");
-assert.ok(stats[3] < 30 * 1_024, "held sprite uploads remain below 30 KiB");
+assert.ok(stats[3] < 40 * 1_024, "exact installed held sprites remain below 40 KiB per retained upload");
 
 const retainedPose = new Float32Array([9, 9, 9, 9, 9, 9]);
 const idle = sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS, false, false);

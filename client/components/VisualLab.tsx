@@ -49,7 +49,6 @@ const VIEWMODEL_STRATEGIES: readonly Readonly<{
 }>[] = [
   { id: "production", label: "Current", note: "The current in-game renderer and arm, preserved as the control." },
   { id: "transform", label: "Model transform", note: "Item-only composition based on a conventional handheld transform." },
-  { id: "billboard", label: "Screen fit", note: "A nearly flat, mirrored sprite fitted directly in screen space." },
   { id: "grip", label: "Skin grip", note: "A smaller screen-fit sprite paired with the standard-skin arm." },
 ];
 
@@ -104,7 +103,7 @@ export function VisualLab({ open, onApplySkin, onClose, skinStorage }: VisualLab
   const [skinModel, setSkinModel] = useState<PlayerSkinModel>("wide");
   const [skinImage, setSkinImage] = useState<HTMLImageElement | null>(null);
   const [skinDataUrl, setSkinDataUrl] = useState<string | null>(null);
-  const [skinFile, setSkinFile] = useState("Built-in original Lakecraft explorer");
+  const [skinFile, setSkinFile] = useState("Installed standard player skin");
   const [skinError, setSkinError] = useState("");
   const [playerHeldItem, setPlayerHeldItem] = useState<ItemId | null>("diamond_pickaxe");
   const [playerRigMotion, setPlayerRigMotion] = useState<PlayerRigMotion>("idle");
@@ -308,7 +307,7 @@ export function VisualLab({ open, onApplySkin, onClose, skinStorage }: VisualLab
     setSkinImage(null);
     setSkinDataUrl(null);
     setSkinModel("wide");
-    setSkinFile("Built-in original Lakecraft explorer");
+    setSkinFile("Installed standard player skin");
     setSkinError(cleared ? "" : "Built-in skin restored for this session, but browser storage could not clear the saved skin.");
     onApplySkin?.(null, "wide");
   }

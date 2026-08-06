@@ -130,7 +130,7 @@ assert.equal((canonicalIconFingerprint >>> 0).toString(16).padStart(8, "0"),
 assert.deepEqual(iconHashes, {
   string: "2668b3c95a850e42ce6c17e24b4efbfbe5823bd6a68f46b177ecfa351660d21c",
   arrow: "2b55a7d3abe7c73da29eb16b6c723f4a530d615377eae32ab702419aef52ce9e",
-  bow: "4c373a690f0233b17d57ad2281fd22af2b0f2e8681ad9cfcca0bdb87917fff4b",
+  bow: "9c942044895cf1c81423ff086fd7eb26c84059a863339159ec9fc7c0695b3972",
 });
 assert.equal(new Set(Object.values(iconHashes)).size, 3, "each progression item has distinct original pixel art");
 

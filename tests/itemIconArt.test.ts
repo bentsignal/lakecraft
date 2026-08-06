@@ -70,7 +70,11 @@ const componentSize = (cells: ReadonlySet<string>): number => {
   const pending = [first];
   while (pending.length > 0) {
     const [x, y] = pending.pop()!.split(":").map(Number);
-    for (const neighbor of [`${x - 1}:${y}`, `${x + 1}:${y}`, `${x}:${y - 1}`, `${x}:${y + 1}`]) {
+    for (const neighbor of [
+      `${x - 1}:${y - 1}`, `${x}:${y - 1}`, `${x + 1}:${y - 1}`,
+      `${x - 1}:${y}`, `${x + 1}:${y}`,
+      `${x - 1}:${y + 1}`, `${x}:${y + 1}`, `${x + 1}:${y + 1}`,
+    ]) {
       if (cells.has(neighbor) && !visited.has(neighbor)) { visited.add(neighbor); pending.push(neighbor); }
     }
   }
@@ -87,18 +91,15 @@ assert.equal(new Set(["pickaxe", "axe", "shovel", "sword"]
 
 for (const itemId of ["iron_axe", "iron_shovel", "iron_sword"] as const) {
   const cells = occupiedCells(itemId);
-  assert.equal(componentSize(cells), cells.size, `${itemId} is one four-neighbor-connected silhouette`);
+  assert.equal(componentSize(cells), cells.size, `${itemId} is one pixel-connected installed silhouette`);
 }
 for (const [stage, art] of bowStages.entries()) {
   const cells = occupiedArtCells(art);
   assert.equal(componentSize(cells), cells.size, `bow stage ${stage} keeps its limb, string, and arrow connected`);
 }
-const bowStringColor = "#e8e3d7";
-const bowDrawDepths = bowStages.map((art) => Math.max(...art.runs
-  .filter(({ color }) => color === bowStringColor)
-  .map(({ x, width }) => x + width - 1)));
-assert.deepEqual(bowDrawDepths, [7, 8, 10, 12],
-  "idle through full draw monotonically pull the string nock deeper without rotating the bow");
+const bowOccupancy = bowStages.map((art) => [...occupiedArtCells(art)].length);
+assert.deepEqual(bowOccupancy, [70, 88, 88, 88],
+  "installed idle and draw textures preserve their exact opaque-pixel progression");
 
 const planeCatalogIds = itemIds.filter((itemId) => ITEMS[itemId].category === "material" || ITEMS[itemId].category === "food");
 assert.equal(new Set(planeCatalogIds.map(occupancyMask)).size, planeCatalogIds.length,
@@ -107,7 +108,7 @@ const intentionallyLooseParticles = new Set<ItemId>(["bone_meal", "gunpowder"]);
 for (const itemId of planeCatalogIds) {
   if (intentionallyLooseParticles.has(itemId)) continue;
   const cells = occupiedCells(itemId);
-  assert.equal(componentSize(cells), cells.size, `${itemId} is one four-neighbor-connected solid or thread silhouette`);
+  assert.equal(componentSize(cells), cells.size, `${itemId} is one pixel-connected solid or thread silhouette`);
 }
 for (const [itemId, landmarks] of Object.entries({
   stick: ["3:13", "12:4"], string: ["3:3", "7:7", "11:3", "7:14"],
@@ -131,42 +132,11 @@ for (const [itemId, openCells] of Object.entries({
   for (const cell of openCells) assert.equal(cells.has(cell), false, `${itemId} preserves negative space at ${cell}`);
 }
 
-const pickaxeCells = occupiedCells("iron_pickaxe");
-for (const cell of ["4:1", "10:1", "3:2", "8:3", "8:4", "7:5", "6:6", "14:5", "13:7", "1:14"] as const) {
-  assert.ok(pickaxeCells.has(cell), `pickaxe retains crown, socket, right tine, and long grip at ${cell}`);
+for (const itemId of ["iron_pickaxe", "iron_axe", "iron_shovel", "iron_sword"] as const) {
+  const cells = occupiedCells(itemId);
+  assert.ok(cells.size >= 50 && cells.size <= 90, `${itemId} retains the installed compact tool silhouette`);
+  assert.equal(componentSize(cells), cells.size, `${itemId} head and handle remain pixel-connected`);
 }
-// Concave head space + transparent canvas padding.
-for (const cell of ["3:3", "4:3", "5:4", "10:5", "11:6", "11:7", "0:0", "15:0", "0:15", "15:15"] as const) {
-  assert.equal(pickaxeCells.has(cell), false,
-    `pickaxe keeps transparent negative space at ${cell}`);
-}
-for (const cell of ["8:3", "8:4", "7:5", "6:6", "6:7", "5:8"] as const) {
-  assert.ok(pickaxeCells.has(cell), `pickaxe handle remains physically joined through ${cell}`);
-}
-const axeCells = occupiedCells("iron_axe");
-for (const cell of ["9:1", "7:2", "14:2", "8:5", "6:7", "1:14"] as const) {
-  assert.ok(axeCells.has(cell), `axe retains its compact poll, broad blade, eye, and stair-step haft at ${cell}`);
-}
-for (const cell of ["6:2", "14:5", "13:6", "0:0", "15:15"] as const) {
-  assert.equal(axeCells.has(cell), false, `axe preserves asymmetric head and canvas negative space at ${cell}`);
-}
-const shovelCells = occupiedCells("iron_shovel");
-for (const cell of ["10:1", "8:3", "14:3", "10:5", "9:6", "1:14"] as const) {
-  assert.ok(shovelCells.has(cell), `shovel retains its centered diamond spade, neck, and staircase shaft at ${cell}`);
-}
-for (const cell of ["7:3", "15:3", "8:5", "13:5", "0:0"] as const) {
-  assert.equal(shovelCells.has(cell), false, `shovel keeps compact spade and surrounding negative space at ${cell}`);
-}
-const swordCells = occupiedCells("iron_sword");
-for (const cell of ["13:1", "12:2", "7:7", "3:8", "10:10", "9:11", "1:14"] as const) {
-  assert.ok(swordCells.has(cell), `sword retains its tapered blade, perpendicular guard, grip, and pommel at ${cell}`);
-}
-for (const cell of ["11:1", "2:8", "8:11", "7:13", "0:15"] as const) {
-  assert.equal(swordCells.has(cell), false, `sword preserves readable gaps around blade, guard, and short grip at ${cell}`);
-}
-const ironPickaxeColors = new Set(getItemIconArt("iron_pickaxe").runs.map(({ color }) => color));
-assert.ok(ironPickaxeColors.has("#d1d6d2") && ironPickaxeColors.has("#7b4e28") && ironPickaxeColors.has("#ba8350"),
-  "pickaxe keeps a distance-readable iron head plus two-tone wooden handle for local and remote renderers");
 for (const family of [
   ["pork", "beef", "mutton", "rotten_flesh"],
   ["cooked_pork", "cooked_beef", "cooked_mutton", "rotten_flesh"],
@@ -184,11 +154,11 @@ const generatorSource = readFileSync(new URL("../scripts/generate-item-icon-art.
 for (const contract of ["blockTextureForFace", "TEXTURE_ATLAS_RGBA", "texturedQuad", "atlasBlock"]) {
   assert.ok(generatorSource.includes(contract), `block inventory sprites derive from production atlas data through ${contract}`);
 }
-const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 8791, 5500, true\)/)?.[1];
+const packedPayload = generatedSource.match(/decodeStaticBytes\("([^"]+)", 9705, 6124, true\)/)?.[1];
 assert.ok(packedPayload);
-assert.equal(packedPayload.length, 6_875,
+assert.equal(packedPayload.length, 7_655,
   "item icons and drawn bow states retain the reviewed row-packed extended LZSS fixture");
-const compactArt = decodeStaticBytes(packedPayload, 8_791, 5_500, true);
+const compactArt = decodeStaticBytes(packedPayload, 9_705, 6_124, true);
 let compactCursor = 0;
 const shapeRuns: number[] = [];
 for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1) {
@@ -202,7 +172,7 @@ for (let remaining = compactArt[compactCursor++]; remaining > 0; remaining -= 1)
   shapeRuns.push(runCount);
   compactCursor += runCount;
 }
-assert.equal(shapeRuns.length, 71, "shared item and bow geometry table remains bounded well below its one-byte limit");
+assert.equal(shapeRuns.length, 72, "shared item and bow geometry table remains bounded well below its one-byte limit");
 let decodedRunCount = 0;
 const readCompactRecord = (label: string): void => {
   const shapeIndex = compactArt[compactCursor++];
@@ -213,9 +183,9 @@ const readCompactRecord = (label: string): void => {
   compactCursor += colorCount * 3 + Math.ceil(shapeRuns[shapeIndex] / 2);
 };
 for (const itemId of itemIds) readCompactRecord(itemId);
-assert.equal(decodedRunCount, 5_184, "geometry sharing preserves every reviewed icon run");
+assert.equal(decodedRunCount, 5_562, "geometry sharing preserves every reviewed icon run");
 for (let stage = 0; stage < 3; stage += 1) readCompactRecord(`bow draw stage ${stage}`);
-assert.equal(decodedRunCount, 5_311, "the shared stream preserves every reviewed item and bow-state run");
+assert.equal(decodedRunCount, 5_778, "the shared stream preserves every reviewed item and bow-state run");
 assert.equal(compactCursor, compactArt.length, "item and bow decoder consumes the compact stream exactly once");
 const itemFixtureDirectory = mkdtempSync(join(tmpdir(), "lakecraft-invalid-item-icons-"));
 let invalidItemFixture = 0;
@@ -224,7 +194,7 @@ const rejectInvalidItemData = async (bytes: Uint8Array, label: string): Promise<
   const fixtureSource = generatedSource
     .replace('"../../shared/game.ts"', JSON.stringify(new URL("../../shared/game.ts", generatedPath).href))
     .replace('"../staticData.ts"', JSON.stringify(new URL("../staticData.ts", generatedPath).href))
-    .replace(/decodeStaticBytes\("[^"]+", 8791, 5500, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
+    .replace(/decodeStaticBytes\("[^"]+", 9705, 6124, true\)/, `Uint8Array.from(${JSON.stringify([...bytes])})`);
   writeFileSync(fixturePath, fixtureSource);
   await assert.rejects(import(pathToFileURL(fixturePath).href), /^Error: Invalid item icon data\.$/, label);
 };
@@ -264,9 +234,9 @@ try {
   await rejectInvalidItemData(invalidColor, "an out-of-range local color index fails closed");
   await rejectInvalidItemData(compactArt.subarray(0, compactArt.length - 1),
     "a truncated item payload fails closed");
-  const noncanonicalItemPayload = new Uint8Array(5_501);
-  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 5_500));
-  noncanonicalItemPayload[5_500] = 1;
+  const noncanonicalItemPayload = new Uint8Array(6_125);
+  noncanonicalItemPayload.set(decodeStaticEncoding(packedPayload).subarray(0, 6_124));
+  noncanonicalItemPayload[6_124] = 1;
   await rejectInvalidItemPayload(encodeStaticBytes(noncanonicalItemPayload),
     "the real item module rejects nonzero bytes after its declared packed payload");
 } finally {

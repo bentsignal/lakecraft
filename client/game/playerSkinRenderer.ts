@@ -50,7 +50,10 @@ export type PlayerSkinRenderer = Readonly<{
 export function thirdPersonHeldItemPresentation(itemId: ItemId): ItemSpriteGeometryOptions {
   const visual = itemVisual(itemId);
   const display = visual.display.thirdPersonRight;
-  const baseSize = visual.family === "block" ? 1.25 : 0.54;
+  // Generated/handheld pixels are authored against a 16-unit item frame. The
+  // former 0.54 base made an exact 16x16 tool barely half a forearm tall; use
+  // the actual hand-scale frame so the installed silhouette reads in F5 views.
+  const baseSize = visual.family === "block" ? 1.25 : 0.82;
   // Bow display translation is authored around its own centered grip while
   // generated/block/handheld parents are authored around the lower hand.
   const socketY = visual.parent === "bow" ? 0.875 : 0.53;

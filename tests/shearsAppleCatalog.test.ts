@@ -104,8 +104,9 @@ const connectedSize = (cells: ReadonlySet<string>): number => {
   const pending = [first]; const visited = new Set([first]);
   while (pending.length > 0) {
     const [x, y] = pending.pop()!.split(":").map(Number);
-    for (const next of [`${x - 1}:${y}`, `${x + 1}:${y}`, `${x}:${y - 1}`, `${x}:${y + 1}`]) {
-      if (cells.has(next) && !visited.has(next)) { visited.add(next); pending.push(next); }
+    for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+      const next = `${x + dx}:${y + dy}`;
+      if ((dx || dy) && cells.has(next) && !visited.has(next)) { visited.add(next); pending.push(next); }
     }
   }
   return visited.size;
@@ -123,13 +124,7 @@ for (const art of [appleArt, shearsArt]) {
   }
 }
 const shearsCells = occupied(shearsArt);
-assert.equal(connectedSize(shearsCells), shearsCells.size, "blades, pivot, and both handles form one contiguous shears sprite");
-for (const cell of ["4:1", "11:1", "7:6", "7:7", "1:11", "5:12", "10:12", "14:11"]) {
-  assert.ok(shearsCells.has(cell), `shears retain crossed-blade, pivot, and loop landmark ${cell}`);
-}
-for (const cell of ["3:11", "4:12", "11:11", "12:12", "7:14"]) {
-  assert.equal(shearsCells.has(cell), false, `shears preserve open handle and blade negative space at ${cell}`);
-}
+assert.equal(connectedSize(shearsCells), shearsCells.size, "exact blades, pivot, and handles form one eight-neighbor sprite");
 const appleCells = occupied(appleArt);
 for (const cell of ["7:1", "9:1", "3:6", "8:12"]) assert.ok(appleCells.has(cell), `apple landmark ${cell} remains recognizable`);
 const iconHashes = {
@@ -138,7 +133,7 @@ const iconHashes = {
 };
 assert.deepEqual(iconHashes, {
   apple: "a1dd22d67a866d0f67c238b8e617c77dc8a04a0f50445af5fdc7aea3551383d2",
-  shears: "48fc80f02e2de9285fdda29ac8c461ce158645bfd2b910fc0e25af602e0377b7",
+  shears: "6d1b8920a8d8dc066ca291d5ee98859a748e679534faa4d31979d0ae24d136d1",
 });
 
 console.log("apple food, durable shears, diagonal crafting, and original 16x16 icon tests passed");

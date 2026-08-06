@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { BLOCKS, ITEMS, type ArmorSlot, type BlockId, type ItemId, type ToolKind, type ToolTier } from "../shared/game.ts";
 import * as BS from "../shared/bundleStrings.ts";
@@ -12,6 +12,7 @@ import {
 } from "../client/game/generated/textureAtlas.ts";
 import { BLOCK, type BlockId as EngineBlockId } from "../client/game/types.ts";
 import { encodeStaticBytes } from "./static-byte-encoding.mjs";
+import { decodePng } from "./png-rgba.mjs";
 
 export const ITEM_ICON_SIZE = 16;
 export type ItemIconFamily = "block" | "material" | "tool" | "armor" | "food";
@@ -21,6 +22,18 @@ export type ItemIconArt = Readonly<{ family: ItemIconFamily; variant: string; ru
 type Grid = string[][];
 type Palette = Record<string, string>;
 const cache = new Map<ItemId, ItemIconArt>();
+const EXACT_IMPORTED_ITEMS = new Set<ItemId>([
+  "bow", "shears", BS.flintAndSteel,
+  ...Object.entries(ITEMS).filter(([, item]) => item.tool).map(([itemId]) => itemId as ItemId),
+]);
+type ImportedVisualAssets = Readonly<{
+  itemTextures: Readonly<Partial<Record<ItemId, string>>>;
+  bowStages: readonly string[];
+}>;
+const importedVisualAssets = JSON.parse(await readFile(
+  new URL("./generated/minecraft-visual-assets-v26.2.json", import.meta.url),
+  "utf8",
+)) as ImportedVisualAssets;
 
 const ENGINE_BLOCK_BY_ITEM: Readonly<Partial<Record<BlockId, EngineBlockId>>> = Object.freeze({
   grass: BLOCK.GRASS, dirt: BLOCK.DIRT, stone: BLOCK.STONE, cobblestone: BLOCK.COBBLESTONE,
@@ -36,6 +49,18 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   const cached = cache.get(itemId);
   if (cached) return cached;
   const item = ITEMS[itemId];
+  const importedTexture = importedVisualAssets.itemTextures[itemId];
+  if (importedTexture && EXACT_IMPORTED_ITEMS.has(itemId)) {
+    const variant = item.category === "tool" && item.tool ? `${item.tool.tier}-${item.tool.kind}`
+      : item.category === "armor" && item.armor ? `${armorMaterial(itemId)}-${item.armor.slot}` : itemId;
+    const art = Object.freeze({
+      family: item.category,
+      variant,
+      runs: Object.freeze(importedPngRuns(importedTexture, itemId)),
+    });
+    cache.set(itemId, art);
+    return art;
+  }
   const grid = makeGrid();
   let palette: Palette;
   let variant = itemId;
@@ -61,6 +86,31 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   const art = Object.freeze({ family: item.category, variant, runs: Object.freeze(runs(grid, palette)) });
   cache.set(itemId, art);
   return art;
+}
+
+function importedPngRuns(payload: string, label: string): ItemIconRun[] {
+  const image = decodePng(Buffer.from(payload, "base64"));
+  if (image.width !== ITEM_ICON_SIZE || image.height !== ITEM_ICON_SIZE) {
+    throw new Error(`Imported icon ${label} must be 16x16.`);
+  }
+  const result: ItemIconRun[] = [];
+  for (let y = 0; y < ITEM_ICON_SIZE; y += 1) {
+    for (let x = 0; x < ITEM_ICON_SIZE;) {
+      const offset = (y * ITEM_ICON_SIZE + x) * 4;
+      if (image.rgba[offset + 3] < 128) { x += 1; continue; }
+      const color = `#${[0, 1, 2].map((channel) => image.rgba[offset + channel].toString(16).padStart(2, "0")).join("")}`;
+      let end = x + 1;
+      while (end < ITEM_ICON_SIZE) {
+        const next = (y * ITEM_ICON_SIZE + end) * 4;
+        const nextColor = `#${[0, 1, 2].map((channel) => image.rgba[next + channel].toString(16).padStart(2, "0")).join("")}`;
+        if (image.rgba[next + 3] < 128 || nextColor !== color) break;
+        end += 1;
+      }
+      result.push(Object.freeze({ x, y, width: end - x, color }));
+      x = end;
+    }
+  }
+  return result;
 }
 
 const makeGrid = (): Grid => Array.from({ length: ITEM_ICON_SIZE }, () => Array<string>(ITEM_ICON_SIZE).fill(""));
@@ -805,28 +855,19 @@ const outputPath = process.argv[2];
 if (!outputPath) throw new Error("Pass the generated client module path.");
 
 const bowDrawArt = ([1, 2, 3] as const).map((stage) => {
-  const grid = makeGrid();
-  const palette = bow(grid, stage);
   return Object.freeze({
     family: "tool" as const,
     variant: `drawing-${stage - 1}`,
-    runs: Object.freeze(runs(grid, palette)),
+    runs: Object.freeze(importedPngRuns(importedVisualAssets.bowStages[stage - 1], `bow_pulling_${stage - 1}`)),
   });
 });
 
-const bytes: number[] = [];
+let decodedBytes = 0;
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
   const art = getItemIconArt(itemId);
   const colors = [...new Set(art.runs.map(({ color }) => color))];
-  if (art.runs.length > 255 || colors.length > 16) throw new Error(`Icon ${itemId} exceeds the compact encoding.`);
-  bytes.push(art.runs.length, colors.length);
-  for (const color of colors) {
-    const value = Number.parseInt(color.slice(1), 16);
-    bytes.push(value >> 16, value >> 8 & 255, value & 255);
-  }
-  for (const run of art.runs) {
-    bytes.push(run.x << 4 | run.y, (run.width - 1) << 4 | colors.indexOf(run.color));
-  }
+  if (colors.length > 16) throw new Error(`Icon ${itemId} exceeds the compact palette encoding.`);
+  decodedBytes += 2 + colors.length * 3 + art.runs.length * 2;
 }
 const itemIds = Object.keys(ITEMS) as ItemId[];
 const encodedArt = [...itemIds.map((itemId) => getItemIconArt(itemId)), ...bowDrawArt];
@@ -938,4 +979,4 @@ const source = `// Generated by scripts/generate-item-icon-art.ts. Do not hand-e
   + `export function getItemIconArt(itemId: ItemId): ItemIconArt { return cache.result.get(itemId)!; }\n`
   + `export function getBowIconArt(stage: BowIconStage): ItemIconArt { return stage === 0 ? getItemIconArt("bow") : cache.bowDrawArt[stage - 1] ?? getItemIconArt("bow"); }\n`;
 await writeFile(resolve(outputPath), source);
-console.log(JSON.stringify({ items: Object.keys(ITEMS).length, decodedBytes: bytes.length, formatBytes: compactBytes.length, shapes: shapes.length, packedBytes: packed.length, sourceBytes: Buffer.byteLength(source) }));
+console.log(JSON.stringify({ items: Object.keys(ITEMS).length, decodedBytes, formatBytes: compactBytes.length, shapes: shapes.length, packedBytes: packed.length, sourceBytes: Buffer.byteLength(source) }));

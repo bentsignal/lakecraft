@@ -19,6 +19,9 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   chunkKey: [15, 14],
   consumed: [8, 8],
   cookProgressMs: [13, 4],
+  // Interning keeps the serialized key spelling exact; it only avoids repeating
+  // the same source literal throughout the closed server bundle.
+  coordKey: [97, 42],
   craftingContext: [10, 24],
   damage: [11, 15],
   deadUntil: [23, 20],
@@ -61,8 +64,10 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   maxHealth: [7, 12],
   missReason: [4, 7],
   mobAuthority: [16, 2],
+  mobId: [86, 19],
   mobWorldAuthority: [11, 2],
   online: [20, 12],
+  operationId: [90, 43],
   output: [21, 36],
   ownerUserId: [11, 8],
   playerCombat: [25, 1],
@@ -101,9 +106,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // canonical skin-storage codec added exactly the two source-shape deltas pinned
 // below; compact manifest keys, exclusions, runtime strings, and server records
 // stayed exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "dbaac997b3de323161410bb239ae5c5eb5903bead8aba4a6bbcedf0abd8e50fc";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "aa3880da3dcdd000b43e8f7fd850fc0bd90767c29f371901f730af3fdf9a9c49";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "067fc82c3253b9141ce901989f0f208496b8de01d9176df53e21fa1806e43f10";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "6c6494809e2b0bfb76a042d77a5dd10ac601e64e02c6740424ac49cb30ee993b";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "e5c2c033245049d2730c7d1b0efdb25b60b0aca0adcb7ce63a5aa92360637267";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "33aff532a239440d25671bf4c9d8f1e0a07d99098984877a21147f5a63da5d9c";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",

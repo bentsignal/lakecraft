@@ -1,3 +1,5 @@
+import { DEFAULT_PLAYER_SKIN_RGBA } from "./generated/defaultPlayerSkin.ts";
+
 export const PLAYER_SKIN_MAX_BYTES = 2 * 1024 * 1024;
 export const PLAYER_SKIN_SIZES = Object.freeze([64, 128] as const);
 export const PLAYER_SKIN_STORAGE_KEY = "lakecraft.player-skin.v1";
@@ -176,7 +178,7 @@ export function savePersistedPlayerSkin(
   }
 }
 
-/** Restores the bundled-original skin without disturbing world saves. */
+/** Restores the installed standard skin without disturbing world saves. */
 export function clearPersistedPlayerSkin(storage: PlayerSkinStorageAdapter): boolean {
   if (typeof storage.removeItem !== "function") return false;
   try {
@@ -187,63 +189,24 @@ export function clearPersistedPlayerSkin(storage: PlayerSkinStorageAdapter): boo
   }
 }
 
-type Rgba = readonly [red: number, green: number, blue: number, alpha?: number];
-
 /**
- * Canonical palette for Lakecraft's bundled-original explorer. Keeping these
- * colors public lets low-detail/distance renderers match the authored skin
- * without copying a second, eventually divergent approximation.
+ * Dominant colors sampled from the installed standard player skin. Keeping
+ * these public lets low-detail/distance renderers match the exact UV texture.
  */
 export const LAKECRAFT_DEFAULT_SKIN_PALETTE = Object.freeze({
-  skin: Object.freeze([174, 112, 75] as const),
-  skinShade: Object.freeze([142, 83, 57] as const),
-  hair: Object.freeze([50, 34, 26] as const),
-  jacket: Object.freeze([57, 78, 54] as const),
-  jacketShade: Object.freeze([38, 57, 39] as const),
-  trousers: Object.freeze([44, 51, 61] as const),
-  boots: Object.freeze([32, 27, 25] as const),
-  scarf: Object.freeze([179, 80, 38] as const),
-  eyes: Object.freeze([40, 70, 73] as const),
-  badge: Object.freeze([191, 155, 74] as const),
+  skin: Object.freeze([170, 114, 89] as const),
+  skinShade: Object.freeze([129, 83, 57] as const),
+  hair: Object.freeze([43, 30, 13] as const),
+  jacket: Object.freeze([0, 175, 175] as const),
+  jacketShade: Object.freeze([0, 127, 127] as const),
+  trousers: Object.freeze([65, 53, 155] as const),
+  boots: Object.freeze([55, 55, 55] as const),
+  scarf: Object.freeze([10, 188, 188] as const),
+  eyes: Object.freeze([0, 104, 104] as const),
+  badge: Object.freeze([0, 204, 204] as const),
 });
 
-/** Original Lakecraft explorer skin used when a player has not supplied a local skin. */
+/** Installed standard skin used when a player has not supplied a local skin. */
 export function createLakecraftDefaultSkinPixels(): Uint8Array {
-  const pixels = new Uint8Array(64 * 64 * 4);
-  const fill = (x: number, y: number, width: number, height: number, color: Rgba): void => {
-    for (let py = y; py < y + height; py += 1) for (let px = x; px < x + width; px += 1) {
-      const offset = (py * 64 + px) * 4;
-      pixels[offset] = color[0]; pixels[offset + 1] = color[1]; pixels[offset + 2] = color[2];
-      pixels[offset + 3] = color[3] ?? 255;
-    }
-  };
-  const dot = (x: number, y: number, color: Rgba): void => fill(x, y, 1, 1, color);
-  const {
-    skin, skinShade, hair, jacket, jacketShade, trousers, boots, scarf, eyes, badge,
-  } = LAKECRAFT_DEFAULT_SKIN_PALETTE;
-
-  fill(0, 0, 32, 16, skin);
-  fill(8, 0, 8, 8, hair); fill(24, 8, 8, 8, hair);
-  fill(8, 8, 8, 3, hair); fill(0, 8, 8, 4, hair); fill(16, 8, 8, 4, hair);
-  dot(10, 12, eyes); dot(13, 12, eyes);
-  fill(11, 14, 3, 1, skinShade);
-
-  fill(16, 16, 24, 16, jacket); fill(16, 20, 4, 12, jacketShade);
-  fill(20, 20, 8, 2, scarf); dot(23, 23, badge);
-  fill(40, 16, 16, 16, skin); fill(40, 20, 16, 4, jacket);
-  fill(0, 16, 16, 16, trousers); fill(0, 28, 16, 4, boots);
-
-  fill(16, 48, 16, 16, trousers); fill(16, 60, 16, 4, boots);
-  fill(32, 48, 16, 16, skin); fill(32, 52, 16, 4, jacket);
-
-  // Outer-layer pixels are transparent except for a restrained collar, cuffs,
-  // hair fringe, and boot trim. That keeps third-party overlay expectations intact.
-  fill(32, 0, 32, 16, [0, 0, 0, 0]);
-  fill(40, 8, 8, 2, hair); dot(40, 10, hair); dot(47, 10, hair);
-  fill(16, 32, 24, 16, [0, 0, 0, 0]); fill(20, 36, 8, 2, scarf);
-  fill(40, 32, 16, 16, [0, 0, 0, 0]); fill(44, 42, 4, 2, jacketShade);
-  fill(0, 32, 16, 16, [0, 0, 0, 0]); fill(4, 42, 4, 2, boots);
-  fill(0, 48, 16, 16, [0, 0, 0, 0]); fill(4, 58, 4, 2, boots);
-  fill(48, 48, 16, 16, [0, 0, 0, 0]); fill(52, 58, 4, 2, jacketShade);
-  return pixels;
+  return DEFAULT_PLAYER_SKIN_RGBA;
 }

@@ -73,7 +73,7 @@ export type VisualLabRenderer = Readonly<{
 
 export type VisualLabMobState = "idle" | "walk" | "hurt" | "fallen" | "special";
 export type VisualLabLighting = "day" | "night" | "torch" | "unlit";
-export type VisualLabViewmodelStrategy = "production" | "transform" | "billboard" | "grip";
+export type VisualLabViewmodelStrategy = "production" | "transform" | "grip";
 export type VisualLabSilhouette = readonly [number, number, number, number, number];
 
 const SPECIAL_VISUAL_BLOCKS: Readonly<Partial<Record<ItemId, EngineBlockId>>> = {
@@ -134,13 +134,12 @@ function experimentalSpritePresentation(
       pivotPixels: source.pivotPixels,
     });
   }
-  const mirroredPivot: readonly [number, number] = [15 - source.pivotPixels[0], source.pivotPixels[1]];
   return Object.freeze({
-    center: strategy === "grip" ? [0.5, -0.28, -1.14] : [0.48, -0.28, -1.12],
-    size: source.size * (strategy === "grip" ? 0.78 : 0.9),
+    center: [0.5, -0.28, -1.14],
+    size: source.size * 0.78,
     depth: 0.006,
-    rotationDegrees: strategy === "grip" ? [4, 0, -18] : [0, 0, -22],
-    pivotPixels: mirroredPivot,
+    rotationDegrees: [4, 0, -18],
+    pivotPixels: [15 - source.pivotPixels[0], source.pivotPixels[1]],
   });
 }
 
@@ -150,8 +149,7 @@ function transformedBlockGeometry(
 ): Float32Array {
   const output = blockGeometry(block);
   const center = strategy === "grip" ? [0.38, -0.28, -1.3] : [0.48, -0.42, -1.3];
-  const rotation = strategy === "transform" ? [30, 45, 0]
-    : strategy === "billboard" ? [24, -32, 0] : [28, -38, 2];
+  const rotation = strategy === "transform" ? [30, 45, 0] : [28, -38, 2];
   const size = strategy === "grip" ? 0.58 : 0.66;
   const rx = rotation[0] * Math.PI / 180;
   const ry = rotation[1] * Math.PI / 180;

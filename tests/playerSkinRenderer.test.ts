@@ -21,7 +21,7 @@ for (const itemId of ["dirt", "diamond_pickaxe", "apple", "bow"] as const) {
   assert.deepEqual(presentation.rotationDegrees, display.rotationDegrees, `${itemId} consumes the canonical third-person rotation`);
   assert.equal(
     presentation.size,
-    (itemVisual(itemId).family === "block" ? 1.25 : 0.54) * display.scale[0],
+    (itemVisual(itemId).family === "block" ? 1.25 : 0.82) * display.scale[0],
     `${itemId} consumes canonical third-person scale`,
   );
   assert.ok(presentation.center?.every(Number.isFinite));
