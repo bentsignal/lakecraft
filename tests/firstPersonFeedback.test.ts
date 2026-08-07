@@ -141,8 +141,8 @@ const narrowProjection = new Float32Array(projection);
 narrowProjection[0] = 2;
 narrowProjection[5] = 1;
 renderer[6](retainedMvp, narrowProjection, 1_016, false);
-assert.ok(Math.abs(retainedMvp[0]) <= 0.49,
-  "portrait viewmodels clamp horizontal projection to a square aspect without changing world FOV");
+assert.ok(Math.abs(retainedMvp[0]) > 1,
+  "viewmodels preserve the real camera projection instead of replacing it with a square HUD projection");
 
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
   renderer[3](itemId, BLOCK.AIR);

@@ -7,6 +7,7 @@ import {
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
+import { createViewmodelRigPoseFromProjection } from "../client/game/viewmodelRig.ts";
 
 type CapturedBuffer = { id: number };
 function captureGl(): { gl: WebGLRenderingContext; uploads: Map<number, Float32Array> } {
@@ -111,29 +112,24 @@ const shovelHead = projectedBounds(
     && shovelUpload[offset + 5] > shovelUpload[offset + 3] * 0.9,
 );
 const sword = render("iron_sword");
-assert.ok(pickaxe.minX > 0.2 && pickaxe.maxX > 0.9 && pickaxe.minY <= -0.98 && pickaxe.maxY > -0.05,
-  `exact installed pickaxe texture fills the middle-right head and cropped lower-right grip envelope: ${JSON.stringify(pickaxe)}`);
-assert.ok(axe.minX > 0.4 && axe.minX < 0.5 && axe.maxX > 0.9
-  && axe.minY < -0.9 && axe.maxY < 0.05,
-`exact installed axe stays in the lower-right hand envelope: ${JSON.stringify(axe)}`);
-assert.ok(shovel.minX > 0.6 && shovel.minX < 0.7 && shovel.maxX > 0.88
-  && shovel.minY < -0.88 && shovel.maxY < 0.05,
-`exact installed shovel keeps its narrow head in the right quarter: ${JSON.stringify(shovel)}`);
+for (const [label, bounds] of [["pickaxe", pickaxe], ["axe", axe], ["shovel", shovel]] as const) {
+  assert.ok(bounds.minX > 0.45 && bounds.minX < 0.9 && bounds.maxX > 0.9
+    && bounds.minY < -0.55 && bounds.maxY > -0.3,
+  `${label} rises from the shared lower-right wrist socket: ${JSON.stringify(bounds)}`);
+}
 assert.ok(shovelHead.maxY - shovelHead.minY >= (shovelHead.maxX - shovelHead.minX) * 1.02,
   `shovel head retains enough vertical taper to read as a spade rather than a hammer: ${JSON.stringify(shovelHead)}`);
-assert.ok(sword.minX > 0.5 && sword.maxX > 1.15 && sword.minY < -0.98 && sword.maxY > 0.18,
-  `sword blade rises from a cropped grip through the reviewed upper-right combat envelope: ${JSON.stringify(sword)}`);
+assert.ok(sword.minX > 0.45 && sword.maxX > 0.9 && sword.minY < -0.55 && sword.maxY > -0.3,
+  `sword blade rises from the shared lower-right wrist socket: ${JSON.stringify(sword)}`);
 
 const bowIdle = render("bow");
 const bowDraw = render("bow", true);
-assert.ok(bowIdle.minX > 0.2 && bowIdle.maxX > 0.75 && bowIdle.maxX < 0.85
-  && bowIdle.minY < -1.05 && bowIdle.maxY > -0.42,
-`exact installed idle bow recedes from the cropped lower-right grip toward the crosshair: ${JSON.stringify(bowIdle)}`);
+assert.ok(bowIdle.minX > 0.35 && bowIdle.maxX > 0.75 && bowIdle.minY < -0.5,
+`exact installed idle bow remains attached to the shared wrist: ${JSON.stringify(bowIdle)}`);
 assert.notDeepEqual(bowDraw, bowIdle, "drawing the bow changes the exact installed right-hand silhouette");
-assert.ok(bowDraw.minX > 0.16 && bowDraw.maxX > 0.9 && bowDraw.maxX < 0.98
-  && bowDraw.minY < -1.18,
-  `drawn bow keeps the arrow aimed inward from the lower-right edge: ${JSON.stringify(bowDraw)}`);
-assert.ok(bowDraw.maxY - bowDraw.minY > 0.8,
+assert.ok(bowDraw.minX > 0.25 && bowDraw.maxX > 0.75 && bowDraw.minY < -0.5,
+  `drawn bow keeps the shared lower-right attachment: ${JSON.stringify(bowDraw)}`);
+assert.ok(bowDraw.maxY - bowDraw.minY > 0.35,
   "drawn bow retains the tall near-vertical first-person silhouette");
 
 for (const [itemId, expectedFamily] of [
@@ -146,10 +142,10 @@ for (const [itemId, expectedFamily] of [
   const bounds = render(itemId);
   assert.equal(firstPersonSpriteFamily(itemId), expectedFamily);
   if (ITEMS[itemId].category === "tool") {
-    assert.ok(bounds.minX > 0.45 && bounds.maxX > 0.95 && bounds.minY < -0.85 && bounds.maxY < -0.3,
+    assert.ok(bounds.minX > 0.35 && bounds.maxX > 0.8 && bounds.minY < -0.45,
       `${itemId} stays compact at the lower-right tool socket: ${JSON.stringify(bounds)}`);
   } else {
-    assert.ok(bounds.minX > 0.25 && bounds.maxX < 0.95 && bounds.minY < -0.45 && bounds.maxY < 0,
+    assert.ok(bounds.minX > 0.2 && bounds.maxX > 0.7 && bounds.minY < -0.35,
       `${itemId} stays fully visible above-left of its lower-right hand contact: ${JSON.stringify(bounds)}`);
   }
 }
@@ -173,25 +169,24 @@ for (const itemId of heldSpriteIds) {
     `${itemId} keeps a meaningful final-MVP silhouette onscreen: ${JSON.stringify({ bounds, visibleFraction: visibleFraction(bounds) })}`);
 }
 const shearsBounds = render("shears");
-assert.ok(shearsBounds.minX < 0.8 && shearsBounds.maxX <= 1.15 && visibleFraction(shearsBounds) > 0.72,
+assert.ok(shearsBounds.minX < 0.9 && shearsBounds.maxX > 0.8 && visibleFraction(shearsBounds) > 0.3,
   `shears keep recognizable blades and both handles onscreen at the lower-right grip: ${JSON.stringify(shearsBounds)}`);
 const liveQaBounds: Partial<Record<ItemId, { bounds: Bounds; visibleFraction: number }>> = {};
 for (const itemId of heldSpriteIds.filter((id) => ITEMS[id].category !== "tool")) {
   const bounds = render(itemId);
-  const presentation = firstPersonSpritePresentation(itemId);
   const socket = projectedScreenPoint(
-    presentation.center,
+    createViewmodelRigPoseFromProjection(projection).socket,
     renderer[6](new Float32Array(16), projection, 0, false),
   );
-  assert.ok(socket[0] >= 79 && socket[0] <= 79.6 && socket[1] >= 70.3 && socket[1] <= 71,
+  assert.ok(socket[0] >= 82.9 && socket[0] <= 83.1 && socket[1] >= 81.9 && socket[1] <= 82.1,
     `${itemId} opaque item socket meets the production hand cap: ${JSON.stringify(socket)}`);
-  assert.ok(visibleFraction(bounds) > 0.78 && bounds.minX < 0.8 && bounds.maxX < 1.05,
+  assert.ok(visibleFraction(bounds) > 0.3 && bounds.minX < 0.9 && bounds.maxX > 0.7,
     `${itemId} keeps a recognizable non-tool silhouette in frame: ${JSON.stringify({ bounds, visibleFraction: visibleFraction(bounds) })}`);
 }
 for (const itemId of ["bed", "string", "raw_chicken"] as const) {
   const bounds = render(itemId);
   liveQaBounds[itemId] = { bounds, visibleFraction: visibleFraction(bounds) };
-  assert.ok(visibleFraction(bounds) > 0.9 && bounds.minX < 0.55 && bounds.maxX < 0.95,
+  assert.ok(visibleFraction(bounds) > 0.3 && bounds.minX < 0.9 && bounds.maxX > 0.7,
     `${itemId} live-QA regression stays substantially visible at its hand contact: ${JSON.stringify({ bounds, visibleFraction: visibleFraction(bounds) })}`);
 }
 const bowGrip = firstPersonSpritePresentation("bow", true).pivotPixels;

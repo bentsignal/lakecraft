@@ -3235,7 +3235,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       torchCount: torchLights.size,
       activeTorchLights,
       firstPersonDrawCalls: firstPersonFeedbackHidden || playerHealth <= 0 ? 0
-        : firstPersonStats[2] + Number(cameraMode === "first_person" && selectedItem !== "bow"),
+        : firstPersonStats[2] + Number(cameraMode === "first_person"),
       firstPersonVertexCount: firstPersonStats[0] + firstPersonStats[1]
         + (selectedItem === "bow" ? 0 : FIRST_PERSON_SKIN_ARM_VERTICES),
       firstPersonLastUploadBytes: firstPersonStats[3],
@@ -3610,7 +3610,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[0]);
         drawCalls += 1;
       }
-      if (selectedItem !== "bow") {
+      {
         const exposure = 0.38 + viewmodelSkyExposure * 0.62;
         firstPersonSkinLight[0] = clampNumber((dayNightState.ambientR * dayNightState.ambientIntensity
           + dayNightState.directionalR * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
@@ -3620,8 +3620,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
         firstPersonSkinRenderer.draw(
           firstPersonMvpMatrix,
+          projectionMatrix,
           firstPersonSkinLight,
-          usesCanonicalHeldBlock(selectedItem, selectedBlock),
         );
         drawCalls += 1;
       }

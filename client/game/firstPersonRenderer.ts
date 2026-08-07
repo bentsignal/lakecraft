@@ -11,8 +11,19 @@ import {
   type FirstPersonGroupTuning,
   type FirstPersonTuning,
 } from "./firstPersonTuning.ts";
+import {
+  MINECRAFT_BLOCK_FIRST_PERSON,
+  MINECRAFT_BOW_FIRST_PERSON,
+  MINECRAFT_HANDHELD_FIRST_PERSON,
+} from "./generated/viewmodelDisplayTransforms.ts";
+import {
+  createViewmodelRigPose,
+  createViewmodelRigPoseFromProjection,
+  type ViewmodelRigPose,
+} from "./viewmodelRig.ts";
 
 type Vec3 = readonly [number, number, number];
+const VANILLA_FIRST_PERSON_ITEM_BASE_SCALE = 1;
 
 const FLOATS_PER_COLOR_VERTEX = 6;
 export const FIRST_PERSON_MAX_COLOR_VERTICES = ITEM_SPRITE_MAX_VERTICES;
@@ -307,6 +318,101 @@ function appendTexturedCube(output: number[], block: BlockId, tuning: FirstPerso
   }
 }
 
+function appendSocketedTexturedCube(
+  output: number[],
+  block: BlockId,
+  pose: ViewmodelRigPose,
+  tuning: FirstPersonTuning["block"],
+): void {
+  const transform = MINECRAFT_BLOCK_FIRST_PERSON;
+  const size = transform.scale[0] * pose.itemScale * tuning.size / FIRST_PERSON_TUNING.block.size;
+  // The lower-near corner is the block's physical contact with the hand. Every
+  // vertex is authored relative to it, so that contact is exactly the wrist.
+  const grip = [size * 0.32, -size * 0.48, size * 0.28] as const;
+  const rotation = [
+    transform.rotationDegrees[0] + tuning.rotationDegrees[0] - FIRST_PERSON_TUNING.block.rotationDegrees[0],
+    transform.rotationDegrees[1] + tuning.rotationDegrees[1] - FIRST_PERSON_TUNING.block.rotationDegrees[1],
+    transform.rotationDegrees[2] + tuning.rotationDegrees[2] - FIRST_PERSON_TUNING.block.rotationDegrees[2],
+  ] as const;
+  for (const face of CUBE_FACES) {
+    const texture = blockTextureForFace(block, face[0]);
+    if (!texture) continue;
+    const uv = textureAtlasUv(texture);
+    for (const point of face[5]) {
+      const horizontal = face[1] !== 0 ? point[2] : point[0];
+      const vertical = face[2] !== 0 ? point[2] : point[1];
+      appendTransformedPoint(
+        output,
+        (point[0] - 0.5) * size - grip[0],
+        (point[1] - 0.5) * size - grip[1],
+        (point[2] - 0.5) * size - grip[2],
+        pose.socket[0], pose.socket[1], pose.socket[2],
+        rotation[0] * Math.PI / 180,
+        rotation[1] * Math.PI / 180,
+        rotation[2] * Math.PI / 180,
+      );
+      output.push(
+        uv.left + (uv.right - uv.left) * horizontal,
+        uv.bottom + (uv.top - uv.bottom) * vertical,
+        face[4],
+      );
+    }
+  }
+}
+
+function appendSocketedItemSprite(
+  output: number[],
+  itemId: ItemId,
+  pose: ViewmodelRigPose,
+  bowDrawn: boolean,
+  bowStage: 0 | 1 | 2,
+  tuning: FirstPersonGroupTuning,
+): void {
+  const source = firstPersonSpritePresentation(itemId, bowDrawn);
+  const display = itemId === "bow" ? MINECRAFT_BOW_FIRST_PERSON : MINECRAFT_HANDHELD_FIRST_PERSON;
+  appendItemSpriteGeometry(
+    output,
+    itemId === "bow" ? getBowIconArt(bowDrawn ? bowStage + 1 as 1 | 2 | 3 : 0) : getItemIconArt(itemId),
+    {
+      center: pose.socket,
+      size: display.scale[0] * pose.itemScale * VANILLA_FIRST_PERSON_ITEM_BASE_SCALE * tuning.scale,
+      depth: Math.max(
+        pose.itemScale / 64,
+        display.scale[2] * pose.itemScale * VANILLA_FIRST_PERSON_ITEM_BASE_SCALE * tuning.scale / 16,
+      ),
+      // Vanilla's right-hand item pass contributes a 45° yaw before the JSON
+      // firstperson_righthand transform. Keeping the two transforms explicit
+      // prevents another hand-authored per-tool pose catalog.
+      rotationDegrees: [
+        display.rotationDegrees[0] + tuning.rotationDegrees[0],
+        display.rotationDegrees[1] + 45 + tuning.rotationDegrees[1],
+        display.rotationDegrees[2] + tuning.rotationDegrees[2],
+      ],
+      pivotPixels: source.pivotPixels,
+    },
+  );
+}
+
+export function writeSocketedViewmodelActionMatrix(
+  output: Float32Array,
+  pose: Readonly<FirstPersonActionPose>,
+  rig: ViewmodelRigPose,
+): Float32Array {
+  const rx = pose[3] ?? 0; const ry = pose[4] ?? 0; const rz = pose[5] ?? 0;
+  const cx = Math.cos(rx); const sx = Math.sin(rx);
+  const cy = Math.cos(ry); const sy = Math.sin(ry);
+  const cz = Math.cos(rz); const sz = Math.sin(rz);
+  output[0] = cz * cy; output[1] = sz * cy; output[2] = -sy; output[3] = 0;
+  output[4] = cz * sy * sx - sz * cx; output[5] = sz * sy * sx + cz * cx; output[6] = cy * sx; output[7] = 0;
+  output[8] = cz * sy * cx + sz * sx; output[9] = sz * sy * cx - cz * sx; output[10] = cy * cx; output[11] = 0;
+  const [pivotX, pivotY, pivotZ] = rig.shoulder;
+  output[12] = pivotX - (output[0] * pivotX + output[4] * pivotY + output[8] * pivotZ);
+  output[13] = pivotY - (output[1] * pivotX + output[5] * pivotY + output[9] * pivotZ);
+  output[14] = pivotZ - (output[2] * pivotX + output[6] * pivotY + output[10] * pivotZ);
+  output[15] = 1;
+  return output;
+}
+
 export function firstPersonBufferCapacity(): readonly [
   colorVertexCount: number,
   texturedVertexCount: number,
@@ -426,24 +532,17 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   const stats: FirstPersonRenderStats = [0, 0, 0, 0, 0, 0, capacity[2]];
   let tuningSnapshot = currentFirstPersonTuning();
   let activeTuning: FirstPersonTuning = tuningSnapshot.tuning;
+  let rigPose = createViewmodelRigPose(70 * Math.PI / 180, 16 / 9);
+  let projectionFingerprint = "";
 
   function rebuild(): void {
     const geometry: GeometryWriter = [[], []];
     const tuningGroup = firstPersonHeldItemTuningGroup(itemId, block);
     if (tuningGroup === "block") {
-      appendTexturedCube(geometry[1], block, activeTuning);
+      appendSocketedTexturedCube(geometry[1], block, rigPose, activeTuning.block);
     } else if (tuningGroup && itemId) {
-      const start = geometry[0].length;
-      const presentation = firstPersonSpritePresentation(itemId, charging);
-      appendItemSpriteGeometry(
-        geometry[0],
-        itemId === "bow" ? getBowIconArt(charging ? chargeStage + 1 as 1 | 2 | 3 : 0) : getItemIconArt(itemId),
-        presentation,
-      );
-      applyGroupTuning(
-        geometry[0],
-        start,
-        FLOATS_PER_COLOR_VERTEX,
+      appendSocketedItemSprite(
+        geometry[0], itemId, rigPose, charging, chargeStage,
         tuningGroup === "bow" ? activeTuning.bow
           : tuningGroup === "tool" ? activeTuning.tool
             : activeTuning.otherItem,
@@ -502,6 +601,12 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
     },
     (output, projection, now, reducedMotion) => {
       refreshLiveTuning();
+      const nextProjectionFingerprint = `${projection[0].toFixed(6)}:${projection[5].toFixed(6)}`;
+      if (nextProjectionFingerprint !== projectionFingerprint) {
+        projectionFingerprint = nextProjectionFingerprint;
+        rigPose = createViewmodelRigPoseFromProjection(projection);
+        rebuild();
+      }
       sampleFirstPersonAction(
         actionPose,
         actionKind,
@@ -509,15 +614,8 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
         Boolean(itemId && ITEMS[itemId].category === "food"),
         reducedMotion,
       );
-      writeFirstPersonModelMatrix(modelMatrix, actionPose, activeTuning);
+      writeSocketedViewmodelActionMatrix(modelMatrix, actionPose, rigPose);
       viewProjection.set(projection);
-      // Sprite poses retain their authored square viewmodel projection, but a
-      // real cube must keep the camera's horizontal perspective scale. Applying
-      // the square sprite projection to a cube widens it by the viewport aspect
-      // ratio (1.78x at 16:9), which is the held-block stretch regression.
-      if ((itemId && !usesCanonicalHeldBlock(itemId, block)) || viewProjection[0] > viewProjection[5]) {
-        viewProjection[0] = viewProjection[5];
-      }
       return writeMatrixProduct(output, viewProjection, modelMatrix);
     },
     () => {

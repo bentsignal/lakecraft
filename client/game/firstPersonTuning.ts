@@ -1,9 +1,10 @@
 /**
  * FIRST-PERSON POSE LAB
  *
- * These are the source defaults used when a world starts. For instant visual
- * tuning, pause the game and use the on-screen POSE LAB. Lakebed does not hot
- * replace this plain TypeScript module inside an already-running WebGL engine.
+ * These are optional development deltas on top of the socketed viewmodel rig.
+ * Position and pivot are retained for compatibility with saved Pose Lab state,
+ * but the live renderer intentionally ignores them: the item grip may not move
+ * away from the wrist socket. Rotation and scale remain safe live controls.
  *
  * Start with ONE small change:
  *   position:        change by 0.02 (example: 0 becomes 0.02)
@@ -73,14 +74,12 @@ export const FIRST_PERSON_TUNING = {
     pivot: [0.08, -0.04, -1.18] as FirstPersonVector,
   },
 
-  // EDIT `block` FOR A FULL CUBE, such as dirt, stone, or planks. The stone
-  // brick slab also uses this box. These items use `center`, `rotationDegrees`,
-  // and `size` instead of the four knobs above. Use 0.02, 5 degrees, and 0.05
-  // as the same safe first steps. Center is also [X, Y, Z].
+  // The installed Minecraft block firstperson_righthand transform is the
+  // baseline. Pose Lab changes are deltas around the locked wrist contact.
   block: {
-    center: [0.14, -0.1, -1.36] as FirstPersonVector,
-    rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,
-    size: 0.64,
+    center: [0, 0, 0] as FirstPersonVector,
+    rotationDegrees: [0, 315, 0] as FirstPersonVector,
+    size: 0.4,
   },
 } as const;
 

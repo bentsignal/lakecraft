@@ -95,9 +95,13 @@ assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("inventory
   "the inventory keeps the held arm and item visible behind its workspace");
 assert.ok(singlePlayer.includes("<FirstPersonPoseLab") && poseLab.includes("publishFirstPersonTuning(next)"),
   "the paused surface owns a direct runtime tuning panel instead of pretending source HMR updates WebGL");
-for (const label of ["Position", "Rotation degrees", "Scale", "Pivot (advanced)", "Center", "Size"]) {
+for (const label of ["Rotation degrees", "Scale", "Size", "SOCKETED RIG"]) {
   assert.ok(poseLab.includes(label), `Pose Lab exposes the ${label} control`);
 }
+assert.equal(poseLab.includes('<VectorInputs label="Position"'), false,
+  "the socketed rig no longer exposes a control that can detach the item from the hand");
+assert.equal(poseLab.includes('<VectorInputs label="Pivot (advanced)"'), false,
+  "the socketed rig no longer exposes arbitrary floating pivots");
 
 type CapturedBuffer = { id: number };
 let nextBufferId = 0;
@@ -118,6 +122,9 @@ const gl = {
 const originalSnapshot = currentFirstPersonTuning();
 const renderer = createFirstPersonRenderer(gl);
 renderer[3]("iron_pickaxe", BLOCK.AIR);
+const identityProjection = new Float32Array(16);
+identityProjection[0] = identityProjection[5] = identityProjection[10] = identityProjection[15] = 1;
+renderer[6](new Float32Array(16), identityProjection, 0, false);
 const beforeUpdate = uploads.get(1)?.slice();
 if (!beforeUpdate) throw new Error("initial tool upload missing");
 const meshUpdatesBefore = renderer[2][5];
@@ -128,8 +135,6 @@ publishFirstPersonTuning({
     scale: originalSnapshot.tuning.tool.scale + 0.5,
   },
 });
-const identityProjection = new Float32Array(16);
-identityProjection[0] = identityProjection[5] = identityProjection[10] = identityProjection[15] = 1;
 renderer[6](new Float32Array(16), identityProjection, 0, false);
 const afterUpdate = uploads.get(1);
 if (!afterUpdate) throw new Error("live-updated tool upload missing");

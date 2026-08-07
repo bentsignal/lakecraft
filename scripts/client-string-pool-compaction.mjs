@@ -34,9 +34,9 @@ export const COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_150;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "b25a1b70625b28b795219c82c9fa9fc12e50f8ad7290bbc9d6736ecc51d30c15";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_145;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 106;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "a0377d7ee28c815e6f87b80a0bcb914319f1ddb58a57c1ba36aec9a6435a1fc0";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -44,6 +44,15 @@ export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   occurrenceDelta: 58,
   uniqueValueDelta: 8,
   sources: Object.freeze(["environment", "official-sounds", "exact-mobs"]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_VIEWMODEL_RIG_DELTA = Object.freeze({
+  previousOccurrences: 1_150,
+  previousUniqueValues: 107,
+  previousSourceFingerprint: "b25a1b70625b28b795219c82c9fa9fc12e50f8ad7290bbc9d6736ecc51d30c15",
+  occurrenceDelta: -5,
+  uniqueValueDelta: -1,
+  source: "client/game/viewmodelRig.ts#socketed-first-person-rig",
   exclusionChanges: 0,
 });
 // The lossless visual descriptor pack replaced repeated panel face arguments
@@ -149,9 +158,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 417;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "59a53008712a865933bf38cab63513e8e402063969b0a3c3c46a86bbf0f89aea";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 421;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "8b9e5a8c413a5adbe3362b19d25050c787a55996d87025c8575a7cb6844cfa33";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -159,6 +168,15 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   occurrenceDelta: 39,
   uniqueValueDelta: 12,
   sources: Object.freeze(["official-sounds", "exact-mobs", "mob-texture-lifecycle"]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_VIEWMODEL_RIG_DELTA = Object.freeze({
+  previousOccurrences: 417,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "59a53008712a865933bf38cab63513e8e402063969b0a3c3c46a86bbf0f89aea",
+  occurrenceDelta: 4,
+  uniqueValueDelta: 1,
+  source: "client/game/viewmodelRig.ts#socketed-first-person-rig",
   exclusionChanges: 0,
 });
 // Painting the cached GUI block raster introduces the client's third `2d`
