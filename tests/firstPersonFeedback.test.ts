@@ -166,6 +166,8 @@ const gameHud = readFileSync(new URL("../client/components/GameHud.tsx", import.
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.ok(engine.includes("createFirstPersonRenderer(gl)"), "the retained viewmodel is created beside the world renderers");
 assert.ok(engine.includes("createFirstPersonSkinRenderer(gl)"), "the standard-skin arm owns a separate retained texture batch");
+assert.ok(engine.includes("if (selectedItem === null)"),
+  "the skin arm renders only for an empty slot instead of underneath held items");
 assert.ok(engine.includes("gl.clear(gl.DEPTH_BUFFER_BIT)"), "viewmodel receives a fresh depth plane after world rendering");
 assert.ok(engine.includes("writeFirstPersonMvp"), "actions alter only the small model matrix during frames");
 assert.ok(rendererSource.includes("const actionPose: FirstPersonActionPose"), "the renderer retains one mutable action pose");
@@ -192,7 +194,7 @@ assert.ok(localFeedbackCalls.length >= 2 && localFeedbackCalls.every((predicate)
 assert.ok(localFeedbackCalls.every((predicate) => !predicate.includes("pointerCaptureNeeded")),
   "Click to Play keeps the held pose visible while pointer capture is recovered");
 assert.ok(localFeedbackCalls.every((predicate) => !predicate.includes("inventoryOpen")),
-  "the inventory keeps the held arm and item visible behind its workspace");
+  "the inventory keeps the active arm-or-item presentation visible behind its workspace");
 assert.equal(gameHud.includes("FirstPersonHeldItem"), false, "the HUD no longer paints a duplicate DOM hand");
 assert.equal(styles.includes("lc-first-person"), false, "the rejected CSS 3D/sprite rig is absent from the artifact");
 

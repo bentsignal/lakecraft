@@ -3237,9 +3237,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       torchCount: torchLights.size,
       activeTorchLights,
       firstPersonDrawCalls: firstPersonFeedbackHidden || playerHealth <= 0 ? 0
-        : firstPersonStats[2] + Number(cameraMode === "first_person"),
+        : firstPersonStats[2] + Number(cameraMode === "first_person" && selectedItem === null),
       firstPersonVertexCount: firstPersonStats[0] + firstPersonStats[1]
-        + (selectedItem === "bow" ? 0 : FIRST_PERSON_SKIN_ARM_VERTICES),
+        + (selectedItem === null ? FIRST_PERSON_SKIN_ARM_VERTICES : 0),
       firstPersonLastUploadBytes: firstPersonStats[3],
       firstPersonTotalUploadBytes: firstPersonStats[4],
       firstPersonMeshUpdates: firstPersonStats[5],
@@ -3622,7 +3622,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[0]);
         drawCalls += 1;
       }
-      {
+      // Minecraft's first-person presentation is mutually exclusive: the
+      // player's arm is visible for an empty slot, while every selected item
+      // (block, tool, bow, or food) replaces it rather than sitting in a hand.
+      if (selectedItem === null) {
         const exposure = 0.38 + viewmodelSkyExposure * 0.62;
         firstPersonSkinLight[0] = clampNumber((dayNightState.ambientR * dayNightState.ambientIntensity
           + dayNightState.directionalR * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);

@@ -1,10 +1,10 @@
 /**
  * FIRST-PERSON POSE LAB
  *
- * These are optional development deltas on top of the socketed viewmodel rig.
- * Position and pivot are retained for compatibility with saved Pose Lab state,
- * but the live renderer intentionally ignores them: the item grip may not move
- * away from the wrist socket. Rotation and scale remain safe live controls.
+ * These are optional development deltas on top of the first-person viewmodel.
+ * Empty-hand and held-item presentations are mutually exclusive. Position and
+ * pivot are retained for compatibility with saved Pose Lab state; rotation and
+ * scale remain the safe live controls for each selected item family.
  *
  * Start with ONE small change:
  *   position:        change by 0.02 (example: 0 becomes 0.02)

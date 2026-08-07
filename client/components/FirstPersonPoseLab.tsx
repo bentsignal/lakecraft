@@ -197,10 +197,10 @@ export function FirstPersonPoseLab({
 
   const active = tuning[group];
   const readout = group === "block"
-    ? `socket locked · Minecraft rotation [${active.rotationDegrees.join(", ")}] · size ${active.size}`
+    ? `item only · Minecraft rotation [${active.rotationDegrees.join(", ")}] · size ${active.size}`
     : group === "arm"
-      ? "shoulder → wrist → item socket locked"
-      : `socket locked · rotation delta [${active.rotationDegrees.join(", ")}] · scale ${active.scale}`;
+      ? "empty slot only · full-width skin arm"
+      : `item only · rotation delta [${active.rotationDegrees.join(", ")}] · scale ${active.scale}`;
 
   async function copyValues(): Promise<void> {
     try {
@@ -215,7 +215,7 @@ export function FirstPersonPoseLab({
     <aside aria-label="First-person pose lab" className="lc-pose-lab">
       <style>{POSE_LAB_CSS}</style>
       <header className="lc-pose-lab__head"><strong>POSE LAB</strong><span className="lc-pose-lab__live">● LIVE</span></header>
-      <div className="lc-pose-lab__socket-note">SOCKETED RIG · The hand and item share one wrist. FOV changes cannot pull them apart.</div>
+      <div className="lc-pose-lab__socket-note">EXCLUSIVE VIEWMODEL · An empty slot shows the arm. Any selected item replaces it.</div>
       <label>
         <span>What are you holding?</span>
         <select onChange={(event) => setGroup(event.currentTarget.value as PoseGroup)} value={group}>
@@ -240,7 +240,7 @@ export function FirstPersonPoseLab({
           <div className="lc-pose-lab__row lc-pose-lab__single"><span>Size</span><ScrubNumberInput label="Size" min={0.05} onChange={updateBlockSize} step={0.01} value={active.size} /></div>
         </>
       ) : group === "arm" ? (
-        <div className="lc-pose-lab__socket-note">Arm placement comes from the screen-edge shoulder and wrist anchors. It is intentionally not free-floating.</div>
+        <div className="lc-pose-lab__socket-note">The full-width skin arm appears only for an empty hotbar slot.</div>
       ) : (
         <>
           <VectorInputs label="Rotation degrees" onChange={(index, value) => updateTransformVector("rotationDegrees", index, value)} step={1} value={active.rotationDegrees} />
@@ -254,7 +254,7 @@ export function FirstPersonPoseLab({
       {onOpenVisualLab ? <button onClick={onOpenVisualLab} style={{ marginTop: "6px", width: "100%" }} type="button">Open full Visual Lab</button> : null}
       {onCycleCamera ? <button onClick={() => setCameraMode(onCycleCamera().replaceAll("_", " "))} style={{ marginTop: "6px", width: "100%" }} type="button">Cycle camera (F) · {cameraMode}</button> : null}
       <output className="lc-pose-lab__readout">{readout}</output>
-      <small className="lc-pose-lab__hint">Drag rotation or scale up/down to scrub. The locked wrist stays attached while the paused preview updates.</small>
+      <small className="lc-pose-lab__hint">Drag rotation or scale up/down to scrub. The paused preview updates immediately.</small>
     </aside>
   );
 }

@@ -9,7 +9,7 @@ This is the simple way to show the developer how the arm, block, tool, or bow sh
 3. Press **Escape** so the game is paused, or stay on **Click to Play**.
 4. Use the **POSE LAB** panel on the left side of the game.
 
-The held arm and item stay visible while **Game Menu** or **Click to Play** is on screen. Every number in POSE LAB updates the retained WebGL model directly. You do not need to save a file, unpause, click the game, or refresh the browser.
+The active first-person presentation stays visible while **Game Menu** or **Click to Play** is on screen. An empty slot shows the arm; any selected item replaces it. Every number in POSE LAB updates the retained WebGL model directly. You do not need to save a file, unpause, click the game, or refresh the browser.
 
 ## Pick the right box
 

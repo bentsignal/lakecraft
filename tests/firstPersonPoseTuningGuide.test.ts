@@ -92,16 +92,16 @@ assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("pauseOpen
 assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("pointerCaptureNeeded")),
   "Click to Play keeps the paused pose visible");
 assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("inventoryOpen")),
-  "the inventory keeps the held arm and item visible behind its workspace");
+  "the inventory keeps the active arm-or-item presentation visible behind its workspace");
 assert.ok(singlePlayer.includes("<FirstPersonPoseLab") && poseLab.includes("publishFirstPersonTuning(next)"),
   "the paused surface owns a direct runtime tuning panel instead of pretending source HMR updates WebGL");
-for (const label of ["Rotation degrees", "Scale", "Size", "SOCKETED RIG"]) {
+for (const label of ["Rotation degrees", "Scale", "Size", "EXCLUSIVE VIEWMODEL"]) {
   assert.ok(poseLab.includes(label), `Pose Lab exposes the ${label} control`);
 }
 assert.equal(poseLab.includes('<VectorInputs label="Position"'), false,
-  "the socketed rig no longer exposes a control that can detach the item from the hand");
+  "the lab no longer exposes arbitrary presentation translation");
 assert.equal(poseLab.includes('<VectorInputs label="Pivot (advanced)"'), false,
-  "the socketed rig no longer exposes arbitrary floating pivots");
+  "the lab no longer exposes arbitrary floating pivots");
 
 type CapturedBuffer = { id: number };
 let nextBufferId = 0;

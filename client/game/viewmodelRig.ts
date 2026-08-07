@@ -25,7 +25,9 @@ export const VIEWMODEL_WRIST_NDC = Object.freeze([0.66, -0.64] as const);
 // though its two screen anchors still look superficially connected.
 export const VIEWMODEL_SHOULDER_DEPTH = 0.86;
 export const VIEWMODEL_WRIST_DEPTH = 1.18;
-export const VIEWMODEL_ARM_CROSS_SECTION_SCALE = 0.45;
+// Keep the real skin arm's four-pixel width/depth. The old 0.45 multiplier
+// compressed both axes into a visibly skinny stick in first person.
+export const VIEWMODEL_ARM_CROSS_SECTION_SCALE = 1.5;
 
 function finitePositive(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;

@@ -103,10 +103,10 @@ type ExposureFixture = {
   ambient: number[];
   torchRadius: number[];
   armLight: Float32Array[];
-  heldCube: Float32Array;
+  heldCube: Float32Array | undefined;
 };
 
-function runExposureFixture(input: { roof: boolean; torch: boolean; phase: number }): ExposureFixture {
+function runExposureFixture(input: { roof: boolean; torch: boolean; phase: number; emptyHand?: boolean }): ExposureFixture {
   scalarCalls.length = 0;
   vectorCalls.length = 0;
   uploads.length = 0;
@@ -135,13 +135,13 @@ function runExposureFixture(input: { roof: boolean; torch: boolean; phase: numbe
     initialEdits: edits,
     initialPose: { x: 0.5, y: fixtureY + 0.02, z: 0.5, yaw: 0, pitch: 0 },
     preserveInitialPose: true,
-    selectedItem: "dirt",
-    selectedBlock: BLOCK.DIRT,
+    selectedItem: input.emptyHand ? null : "dirt",
+    selectedBlock: input.emptyHand ? BLOCK.AIR : BLOCK.DIRT,
     dayNight: { cycleLengthMs: 1_000_000_000, epochMs, epochPhase: input.phase },
     serverTimeOffsetMs: epochMs - Date.now(),
   });
   const heldCube = uploads.find((upload) => upload.length === 36 * 6);
-  if (!heldCube) throw new Error("the live engine did not upload its retained held-cube vertex data");
+  if (!input.emptyHand && !heldCube) throw new Error("the live engine did not upload its retained held-cube vertex data");
   engine.start();
   driveFrame();
   const exposure = scalarCalls.filter((call) => call.location.name === "uSkyExposure").map((call) => call.value);
@@ -169,15 +169,18 @@ assert.ok(VERTEX_SHADER.includes("e*uSkyExposure"),
 const openDay = runExposureFixture({ roof: false, torch: false, phase: 0.5 });
 assert.deepEqual(openDay.exposure, [1, 1, 1, 1],
   "world color/terrain, mob, and held-item terrain paths receive full exposure under open sky");
-assertLight(openDay.armLight, [1.12, 1.12, 1.12],
+assert.equal(openDay.armLight.length, 0, "a selected block replaces the skin arm");
+const openDayEmpty = runExposureFixture({ roof: false, torch: false, phase: 0.5, emptyHand: true });
+assertLight(openDayEmpty.armLight, [1.12, 1.12, 1.12],
   "the skin arm receives its separately clamped noon light");
-assert.equal(openDay.heldCube.length, 216, "the actual atlas cube remains one retained 36-vertex upload");
-assert.equal([...openDay.heldCube].filter((_value, index) => index % 6 === 5).every((shade) => shade > 0 && shade <= 1), true,
+assert.equal(openDay.heldCube?.length, 216, "the actual atlas cube remains one retained 36-vertex upload");
+assert.equal([...(openDay.heldCube ?? [])].filter((_value, index) => index % 6 === 5).every((shade) => shade > 0 && shade <= 1), true,
   "the actual textured vertex stream preserves six authored face shades for shader lighting");
 
 const openNight = runExposureFixture({ roof: false, torch: false, phase: 0 });
 assert.deepEqual(openNight.exposure, [1, 1, 1, 1], "night changes ambient light, not open-sky occlusion");
-assertLight(openNight.armLight, [0.32, 0.32, 0.32],
+const openNightEmpty = runExposureFixture({ roof: false, torch: false, phase: 0, emptyHand: true });
+assertLight(openNightEmpty.armLight, [0.32, 0.32, 0.32],
   "the open-sky skin arm retains the reviewed moonlit floor");
 assert.ok(Math.max(...openNight.ambient) < Math.min(...openDay.ambient),
   "exposed night retains its real lower day/night ambient signal");
@@ -185,7 +188,8 @@ assert.ok(Math.max(...openNight.ambient) < Math.min(...openDay.ambient),
 const caveDay = runExposureFixture({ roof: true, torch: false, phase: 0.5 });
 assert.deepEqual(caveDay.exposure, [1, 1, 1, 0],
   "world and mob draws stay normalized while the held-item terrain path receives zero cave exposure");
-assertLight(caveDay.armLight, [0.4484, 0.4522, 0.46018],
+const caveDayEmpty = runExposureFixture({ roof: true, torch: false, phase: 0.5, emptyHand: true });
+assertLight(caveDayEmpty.armLight, [0.4484, 0.4522, 0.46018],
   "the skin arm receives the reviewed reduced noon light beneath a roof");
 assert.deepEqual(caveDay.ambient, openDay.ambient,
   "cave darkness is supplied by occlusion rather than faked by changing day uniforms");
@@ -194,7 +198,8 @@ assert.deepEqual(caveDay.torchRadius, [0, 0, 0, 0],
 
 const caveTorch = runExposureFixture({ roof: true, torch: true, phase: 0.5 });
 assert.deepEqual(caveTorch.exposure, [1, 1, 1, 0], "a cave torch does not erase roof occlusion");
-assertLight(caveTorch.armLight, [0.4484, 0.4522, 0.46018],
+const caveTorchEmpty = runExposureFixture({ roof: true, torch: true, phase: 0.5, emptyHand: true });
+assertLight(caveTorchEmpty.armLight, [0.4484, 0.4522, 0.46018],
   "nearby torch uniforms do not replace the arm's bounded sky/day light vector");
 assert.deepEqual(caveTorch.torchRadius, [11, 11, 11, 5.5],
   "world and mob paths receive the full torch radius while the held-item terrain path receives its bounded half-radius");
