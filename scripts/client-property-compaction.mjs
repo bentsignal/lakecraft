@@ -87,6 +87,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "canSprint": "af",
   "canTakePlayerDamage": "$t",
   "cancelRangedActionForEscape": "a0",
+  "captureScreenshot": "s0",
   "card": "En",
   "cardEdge": "$r",
   "cardHeight": "Da",

@@ -50,6 +50,7 @@ import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
 import { performanceHudCoreText, performanceHudFpsText } from "../game/performanceHud.ts";
 import { clearPersistedPlayerSkin, loadPersistedPlayerSkin } from "../game/playerSkin.ts";
+import { copyGameScreenshot, downloadGameScreenshot, gameScreenshotFilename } from "./gameScreenshot.ts";
 import {
   fieldOfViewRadians,
   loadClientSettings,
@@ -1924,6 +1925,30 @@ function SinglePlayerWorld({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "F2" && !event.repeat) {
+        const engine = engineRef.current;
+        if (!engine) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const png = engine.captureScreenshot();
+        const copied = copyGameScreenshot(png);
+        const filename = gameScreenshotFilename();
+        void png.then((blob) => {
+          downloadGameScreenshot(blob, filename);
+          return copied;
+        }).then((didCopy) => setMessages((current) => [...current.slice(-2), {
+          id: `screenshot-${Date.now()}`,
+          text: didCopy ? "Screenshot copied" : "Screenshot saved",
+          detail: didCopy ? `${filename} also saved to Downloads.` : `${filename} saved to Downloads.`,
+          tone: "success",
+        }]), () => setMessages((current) => [...current.slice(-2), {
+          id: `screenshot-error-${Date.now()}`,
+          text: "Screenshot failed",
+          detail: "The game kept running. Press F2 to try again.",
+          tone: "warning",
+        }]));
+        return;
+      }
       if (event.code === "F3" && !event.repeat) {
         event.preventDefault();
         if (performanceOutputRef.current) {

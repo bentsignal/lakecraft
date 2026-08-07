@@ -465,6 +465,8 @@ export interface VoxelEngineOptions {
 export interface VoxelEngine {
   start(): void;
   destroy(): void;
+  /** Captures the next complete WebGL frame without releasing pointer lock. */
+  captureScreenshot(): Promise<Blob>;
   applyWorldEdits(edits: readonly WorldEdit[]): boolean;
   applyMobCombatStates(states: readonly MobCombatStateSnapshot[], serverTimeOffsetMs?: number): void;
   /** Reconciles the retained renderer against Lakebed's shared fixed-tick mob timeline. */

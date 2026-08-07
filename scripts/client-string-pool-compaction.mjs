@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 598;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 528;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "b71e72d778294cb8244918a141fb0b61f66e1cf798dc625c2eed21109d12e70f";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 605;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 535;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4d723bdd87b365f87b9d5caa980745c9cdfad905170048bf579e9d6ab33ab125";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -34,9 +34,22 @@ export const COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_145;
+export const COMPACT_CLIENT_HUMAN_GAME_SCREENSHOT_DELTA = Object.freeze({
+  previousOccurrences: 598,
+  previousUniqueValues: 528,
+  previousSourceFingerprint: "b71e72d778294cb8244918a141fb0b61f66e1cf798dc625c2eed21109d12e70f",
+  occurrenceDelta: 7,
+  uniqueValueDelta: 7,
+  sources: Object.freeze([
+    "client/game/voxelEngine.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/singleplayer/gameScreenshot.ts",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_146;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 106;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "a0377d7ee28c815e6f87b80a0bcb914319f1ddb58a57c1ba36aec9a6435a1fc0";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "b6a71e41bdcc2506081ff81506f4398ec8561fa0c6f11887879a81dcb63f13a7";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -53,6 +66,19 @@ export const COMPACT_CLIENT_REPEATED_VIEWMODEL_RIG_DELTA = Object.freeze({
   occurrenceDelta: -5,
   uniqueValueDelta: -1,
   source: "client/game/viewmodelRig.ts#socketed-first-person-rig",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_GAME_SCREENSHOT_DELTA = Object.freeze({
+  previousOccurrences: 1_145,
+  previousUniqueValues: 106,
+  previousSourceFingerprint: "a0377d7ee28c815e6f87b80a0bcb914319f1ddb58a57c1ba36aec9a6435a1fc0",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  addedOccurrenceValue: "image/png",
+  sources: Object.freeze([
+    "client/game/voxelEngine.ts",
+    "client/singleplayer/gameScreenshot.ts",
+  ]),
   exclusionChanges: 0,
 });
 // The lossless visual descriptor pack replaced repeated panel face arguments
@@ -158,9 +184,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 421;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 422;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "8b9e5a8c413a5adbe3362b19d25050c787a55996d87025c8575a7cb6844cfa33";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "012841fabaab73e046841bb88df3121c46ce64864c181a60be011a3a5065202c";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -177,6 +203,15 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_VIEWMODEL_RIG_DELTA = Object.freeze({
   occurrenceDelta: 4,
   uniqueValueDelta: 1,
   source: "client/game/viewmodelRig.ts#socketed-first-person-rig",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_GAME_SCREENSHOT_DELTA = Object.freeze({
+  previousOccurrences: 421,
+  previousUniqueValues: 124,
+  previousSourceFingerprint: "8b9e5a8c413a5adbe3362b19d25050c787a55996d87025c8575a7cb6844cfa33",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  source: "client/singleplayer/gameScreenshot.ts#downloadGameScreenshot",
   exclusionChanges: 0,
 });
 // Painting the cached GUI block raster introduces the client's third `2d`

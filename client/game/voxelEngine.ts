@@ -1954,6 +1954,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let targetOutlineVertexCount = 0;
   let running = false;
   let destroyed = false;
+  let pendingScreenshot: {
+    promise: Promise<Blob>;
+    resolve: (blob: Blob) => void;
+    reject: (reason: Error) => void;
+  } | null = null;
   let paused = false;
   let pausedStartedAt = 0;
   let pausedVisualTime = 0;
@@ -3642,6 +3647,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
     }
 
+    if (pendingScreenshot) {
+      const capture = pendingScreenshot;
+      pendingScreenshot = null;
+      canvas.toBlob((blob) => {
+        if (blob) capture.resolve(blob);
+        else capture.reject(new Error("The browser could not encode the game frame."));
+      }, "image/png");
+    }
+
   }
 
   function frame(now: number): void {
@@ -4114,6 +4128,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (destroyed) return;
       destroyed = true;
       running = false;
+      pendingScreenshot?.reject(new Error("The game closed before the screenshot completed."));
+      pendingScreenshot = null;
       resetMovementView();
       cancelAnimationFrame(frameId);
       window.removeEventListener("keydown", onKeyDown);
@@ -4161,6 +4177,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteProgram(atmosphereProgram);
       gl.deleteTexture(terrainTexture);
       destroyMobTexture(gl, mobTexture);
+    },
+    captureScreenshot() {
+      if (destroyed) return Promise.reject(new Error("The game is closed."));
+      if (pendingScreenshot) return pendingScreenshot.promise;
+      let resolve!: (blob: Blob) => void;
+      let reject!: (reason: Error) => void;
+      const promise = new Promise<Blob>((accept, decline) => { resolve = accept; reject = decline; });
+      pendingScreenshot = { promise, resolve, reject };
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+      return promise;
     },
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;
