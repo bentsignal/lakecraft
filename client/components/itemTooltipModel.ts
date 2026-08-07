@@ -3,7 +3,7 @@ import {
   maxItemDurability,
   remainingItemDurability,
   type ItemStack,
-} from "../../shared/game";
+} from "../../shared/game.ts";
 
 const TOOLTIP_GAP = 10;
 const VIEWPORT_MARGIN = 8;

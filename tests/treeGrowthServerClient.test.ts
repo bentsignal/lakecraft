@@ -14,9 +14,10 @@ for (const marker of [
 ]) assert.ok(server.includes(marker), `missing bounded tree authority marker: ${marker}`);
 
 const mutation = server.slice(server.indexOf("growOakTree: mutation(async"), server.indexOf("editWorldBlock: mutation(async"));
+assert.match(server, /function hasAuthenticatedUser[\s\S]*?ctx\.auth\.isAuthenticated && !ctx\.auth\.isGuest/,
+  "shared authentication guard preserves signed-in, non-guest semantics");
 for (const marker of [
-  "ctx.auth.isAuthenticated",
-  "ctx.auth.isGuest",
+  "hasAuthenticatedUser(ctx)",
   "isValidTreeGrowthOperationId",
   "worldBlockOperationPoseFingerprint",
   "ctx.db.treeGrowthReceipts",

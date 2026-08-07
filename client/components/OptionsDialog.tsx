@@ -8,15 +8,17 @@ export interface OptionsDialogProps {
   open: boolean;
   soundMuted: boolean;
   mouseSensitivity: number;
+  fovDegrees: number;
   onToggleSound: () => void;
   onSensitivityChange: (value: number) => void;
+  onFovChange: (value: number) => void;
   renderDistance?: number;
   onRenderDistanceChange?: (value: number) => void;
   onBack: () => void;
   returnFocusId?: string;
 }
 
-export function OptionsDialog({ open, soundMuted, mouseSensitivity, renderDistance, onToggleSound, onSensitivityChange, onRenderDistanceChange, onBack, returnFocusId }: OptionsDialogProps) {
+export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, renderDistance, onToggleSound, onSensitivityChange, onFovChange, onRenderDistanceChange, onBack, returnFocusId }: OptionsDialogProps) {
   const close = () => {
     onBack();
     if (returnFocusId) window.requestAnimationFrame(() => document.getElementById(returnFocusId)?.focus());
@@ -55,10 +57,14 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, renderDistan
             <span>Sensitivity: {mouseSensitivity}%</span>
             <input aria-label="Mouse sensitivity" aria-valuetext={`${mouseSensitivity}%`} max="200" min="10" onInput={(event) => onSensitivityChange(Number(event.currentTarget.value))} step="5" type="range" value={mouseSensitivity} />
           </label>
+          <label className="lc-options__slider">
+            <span>FOV: {fovDegrees}°</span>
+            <input aria-label="Field of view" aria-valuetext={`${fovDegrees} degrees`} max="110" min="30" onInput={(event) => onFovChange(Number(event.currentTarget.value))} step="1" type="range" value={fovDegrees} />
+          </label>
           {renderDistance !== undefined && onRenderDistanceChange ? (
             <label className="lc-options__slider">
               <span>Render Distance: {renderDistance} chunks</span>
-              <input aria-label="Render distance" aria-valuetext={`${renderDistance} chunks`} max="6" min="2" onInput={(event) => onRenderDistanceChange(Number(event.currentTarget.value))} step="1" type="range" value={renderDistance} />
+              <input aria-label="Render distance" aria-valuetext={`${renderDistance} chunks`} max="12" min="2" onInput={(event) => onRenderDistanceChange(Number(event.currentTarget.value))} step="1" type="range" value={renderDistance} />
             </label>
           ) : null}
           <button autoFocus className="lc-options__done" onClick={close} type="button">Done</button>

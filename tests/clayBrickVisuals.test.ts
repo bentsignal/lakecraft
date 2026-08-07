@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, type BlockFace } from "../client/game/blockTextures.ts";
 import {
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_RGBA,
@@ -10,6 +11,12 @@ import {
 } from "../client/game/generated/textureAtlas.ts";
 import { blockHasCollision, blockMaterialColor, blockOccludesFaces } from "../client/game/voxelEngine.ts";
 import { BLOCK } from "../client/game/types.ts";
+import { decodePng } from "../scripts/png-rgba.mjs";
+
+const installedBlocks = (JSON.parse(readFileSync(
+  new URL("../scripts/generated/minecraft-visual-assets-v26.2.json", import.meta.url),
+  "utf8",
+)) as { blocks: Readonly<Record<string, string>> }).blocks;
 
 const faces: readonly BlockFace[] = ["east", "west", "top", "bottom", "south", "north"];
 assert.equal(BLOCK.CLAY, 31, "clay appends after the deployed slab engine identity");
@@ -28,14 +35,20 @@ function tileColors(name: "clay" | "bricks"): Map<string, number> {
   assert.ok(index >= 28, `${name} appends into existing atlas capacity`);
   const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
   const colors = new Map<string, number>();
+  const installed = decodePng(Buffer.from(installedBlocks[name], "base64"));
+  assert.deepEqual([installed.width, installed.height], [16, 16]);
   for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) {
     for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
-      const tileX = index % TEXTURE_ATLAS_COLUMNS;
-      const tileY = Math.floor(index / TEXTURE_ATLAS_COLUMNS);
+      const cell = TEXTURE_ATLAS_CELLS[index];
+      const tileX = cell % TEXTURE_ATLAS_COLUMNS;
+      const tileY = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
       const offset = ((tileY * TEXTURE_TILE_SIZE + y) * atlasWidth + tileX * TEXTURE_TILE_SIZE + x) * 4;
       const rgba = `${TEXTURE_ATLAS_RGBA[offset]},${TEXTURE_ATLAS_RGBA[offset + 1]},${TEXTURE_ATLAS_RGBA[offset + 2]},${TEXTURE_ATLAS_RGBA[offset + 3]}`;
       colors.set(rgba, (colors.get(rgba) ?? 0) + 1);
       assert.equal(TEXTURE_ATLAS_RGBA[offset + 3], 255, `${name} does not require a transparent draw pass`);
+      assert.deepEqual([...TEXTURE_ATLAS_RGBA.subarray(offset, offset + 4)],
+        [...installed.rgba.subarray((y * TEXTURE_TILE_SIZE + x) * 4, (y * TEXTURE_TILE_SIZE + x) * 4 + 4)],
+        `${name} atlas pixel ${x},${y} exactly preserves its installed source`);
     }
   }
   return colors;
@@ -45,10 +58,10 @@ const clayColors = tileColors("clay");
 const brickColors = tileColors("bricks");
 assert.equal(TEXTURE_ATLAS_NAMES.indexOf("clay"), 28);
 assert.equal(TEXTURE_ATLAS_NAMES.indexOf("bricks"), 29);
-assert.equal(clayColors.size, 4, "clay uses a restrained original four-tone surface");
-assert.ok((clayColors.get("153,170,187,255") ?? 0) > 200, "smooth compressed clay remains the dominant read");
-assert.equal(brickColors.size, 5, "fired masonry uses five warm tones including mortar");
-assert.ok((brickColors.get("68,51,51,255") ?? 0) >= 70, "deep mortar keeps staggered courses legible at 16px");
+assert.ok(clayColors.size >= 6, "installed clay retains enough tonal variation to read as compressed clay");
+assert.ok(Math.max(...clayColors.values()) >= 90, "smooth clay keeps a dominant field beneath its flecks");
+assert.ok(brickColors.size >= 6, "installed fired masonry retains mortar and warm brick variation");
+assert.notDeepEqual(brickColors, clayColors, "clay and fired brick remain visibly distinct materials");
 
 for (const block of ["clay", "bricks"] as const) {
   const art = getItemIconArt(block);

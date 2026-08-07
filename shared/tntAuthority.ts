@@ -83,7 +83,7 @@ export function validateTntIgnitionRequestJson(rawJson: string): TntIgnitionRequ
   if (!value || !exactKeys(value, [BS.operationId, "x", "y", "z", "blockInstanceToken"])
     || !BS.isString(value.operationId) || !OPERATION_PATTERN.test(value.operationId)
     || !coordinate(value.x, -1_000_000, 1_000_000)
-    || !coordinate(value.y, -24, 128)
+    || !coordinate(value.y, 1, 192)
     || !coordinate(value.z, -1_000_000, 1_000_000)
     || !BS.isString(value.blockInstanceToken) || !TOKEN_PATTERN.test(value.blockInstanceToken)) return null;
   return {
@@ -222,7 +222,7 @@ export function normalizeStoredTntFuse(row: Readonly<Record<string, unknown>>): 
     || !BS.isString(row.coordKey) || row.coordKey !== `${x}:${y}:${z}`
     || !BS.isString(row.blockInstanceToken) || !TOKEN_PATTERN.test(row.blockInstanceToken)
     || !BS.isString(row.igniterUserId) || !row.igniterUserId
-    || !coordinate(x, -1_000_000, 1_000_000) || !coordinate(y, -24, 128) || !coordinate(z, -1_000_000, 1_000_000)
+    || !coordinate(x, -1_000_000, 1_000_000) || !coordinate(y, 1, 192) || !coordinate(z, -1_000_000, 1_000_000)
     || !Number.isSafeInteger(ignitedAt) || ignitedAt < 0 || dueAt !== ignitedAt + TNT_FUSE_MS) return null;
   return { eventId: row.eventId, ignitionId: row.ignitionId, coordKey: row.coordKey,
     x, y, z, blockInstanceToken: row.blockInstanceToken, igniterUserId: row.igniterUserId, ignitedAt, dueAt };

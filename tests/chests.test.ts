@@ -12,7 +12,7 @@ import { ITEMS } from "../shared/game.ts";
 
 assert.deepEqual(validateChestCoordinate("12:7:-9"), { ok: true, coordKey: "12:7:-9", x: 12, y: 7, z: -9 });
 assert.deepEqual(validateChestCoordinate(" 001:02:-003 "), { ok: true, coordKey: "1:2:-3", x: 1, y: 2, z: -3 });
-for (const invalid of ["", "1:2", "1:2:3:4", "1.5:2:3", "65:2:3", "1:65:3", "1:2:-65", "abc:2:3"]) {
+for (const invalid of ["", "1:2", "1:2:3:4", "1.5:2:3", "65:2:3", "1:193:3", "1:0:3", "1:2:-65", "abc:2:3"]) {
   assert.deepEqual(validateChestCoordinate(invalid), { ok: false, reason: "invalid_coordinate" }, invalid);
 }
 

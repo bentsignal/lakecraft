@@ -18,36 +18,6 @@ import { resolveWorldBlockOperation } from "../shared/worldBlockOperations.ts";
 
 const ironHelmetMaximum = ITEMS.iron_helmet.armor!.maxDurability;
 
-const legacyV3 = validatePlayerStateJson(JSON.stringify({
-  version: 3,
-  inventory: [{ itemId: "iron_helmet", count: 1 }],
-  selectedHotbar: 0,
-  equipment: {
-    head: "diamond_helmet",
-    chest: null,
-    legs: null,
-    feet: null,
-  },
-  respawnPoint: null,
-  hunger: 20,
-}));
-assert.equal(legacyV3.ok, true);
-if (!legacyV3.ok) throw new Error("legacy v3 armor should migrate");
-assert.equal(legacyV3.state.version, PLAYER_STATE_VERSION);
-assert.deepEqual(legacyV3.state.inventory[0], {
-  itemId: "iron_helmet",
-  count: 1,
-  durability: ironHelmetMaximum,
-});
-assert.deepEqual(legacyV3.state.equipment.head, {
-  itemId: "diamond_helmet",
-  durability: ITEMS.diamond_helmet.armor!.maxDurability,
-});
-
-const rawLegacy = validatePlayerStateJson(JSON.stringify([{ itemId: "iron_helmet", count: 1 }]));
-assert.equal(rawLegacy.ok, true);
-if (rawLegacy.ok) assert.equal(rawLegacy.state.inventory[0]?.durability, ironHelmetMaximum);
-
 const canonicalEquipment: Equipment = {
   ...createEmptyEquipment(),
   head: { itemId: "iron_helmet", durability: 17 },
@@ -64,31 +34,24 @@ assert.equal(canonical.ok, true);
 if (!canonical.ok) throw new Error("canonical armor state should validate");
 
 for (const [payload, reason] of [
-  [{ version: PLAYER_STATE_VERSION, inventory: createEmptyInventory() }, "invalid_equipment"],
-  [{ version: PLAYER_STATE_VERSION, inventory: createEmptyInventory(), equipment: {
+  [{ version: PLAYER_STATE_VERSION, inventory: createEmptyInventory() }, "invalid_shape"],
+  [{ ...canonical.state, equipment: {
     head: "iron_helmet", chest: null, legs: null, feet: null,
   } }, "invalid_equipment"],
-  [{ version: PLAYER_STATE_VERSION, inventory: createEmptyInventory(), equipment: {
+  [{ ...canonical.state, equipment: {
     head: { itemId: "iron_helmet", durability: 0 }, chest: null, legs: null, feet: null,
   } }, "invalid_equipment"],
-  [{ version: PLAYER_STATE_VERSION, inventory: createEmptyInventory(), equipment: {
+  [{ ...canonical.state, equipment: {
     head: { itemId: "iron_helmet", durability: ironHelmetMaximum + 1 }, chest: null, legs: null, feet: null,
   } }, "invalid_equipment"],
-  [{ version: PLAYER_STATE_VERSION, inventory: [{ itemId: "iron_helmet", count: 1 }], equipment: createEmptyEquipment() }, "invalid_inventory"],
+  [{ ...canonical.state, inventory: [{ itemId: "iron_helmet", count: 1 }] }, "invalid_inventory"],
 ] as const) {
   const result = validatePlayerStateJson(JSON.stringify(payload));
   assert.deepEqual(result, { ok: false, reason });
 }
 
-assert.deepEqual(
-  validatePlayerStateJson(JSON.stringify({
-    version: 3,
-    inventory: [{ itemId: "iron_pickaxe", count: 1 }],
-    equipment: createEmptyEquipment(),
-  })),
-  { ok: false, reason: "invalid_inventory" },
-  "v3 already required exact tool durability and must not regain the legacy repair path",
-);
+assert.deepEqual(validatePlayerStateJson(JSON.stringify({ ...canonical.state, version: 3 })),
+  { ok: false, reason: "invalid_version" });
 
 function validatedState(equipment: Equipment, inventory = createEmptyInventory()) {
   const result = validatePlayerStateJson(JSON.stringify({

@@ -106,15 +106,15 @@ for (const [key, block] of first) {
   const y = Number(yString);
   if (block === BLOCK.GOLD_ORE) {
     goldCount += 1;
-    assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= -4);
+    assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= 32);
   } else {
     diamondCount += 1;
-    assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= -12);
+    assert.ok(y >= TERRAIN_MIN_Y + 1 && y <= 10);
   }
 }
 assert.ok(goldCount > 0 && goldCount < 96, `bounded gold count: ${goldCount}`);
 assert.ok(diamondCount > 0 && diamondCount < 64, `bounded diamond count: ${diamondCount}`);
-assert.equal(terrainOreBlock(0, 8, 0, seed), null, "advanced ores never reach the surface");
+assert.equal(terrainOreBlock(0, 68, 0, seed), null, "advanced ores never reach the surface");
 assert.notDeepEqual(blockMaterialColor(BLOCK.GOLD_ORE), blockMaterialColor(BLOCK.STONE));
 assert.notDeepEqual(blockMaterialColor(BLOCK.DIAMOND_ORE), blockMaterialColor(BLOCK.STONE));
 

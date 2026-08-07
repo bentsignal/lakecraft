@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
+import { blockIdForCubeItem } from "../client/game/blockItemCubeGeometry.ts";
 import {
   STONE_BRICK_SLAB_HEIGHT,
   blockCollisionHeight,
@@ -13,6 +14,10 @@ import { BLOCK } from "../client/game/types.ts";
 import { appendWorldBlockCrackLines } from "../client/game/blockCracks.ts";
 import { BLOCK_PARTICLES_PER_ACTION, createBlockParticleSystem } from "../client/game/blockParticles.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
+import { writeDroppedItemGeometry, droppedBlockCubeVertexCount, type DroppedItemGeometryStats } from "../client/game/droppedItemRenderer.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
+import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
+import { remoteHeldItemRects, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
 import {
   STONE_BRICK_SLAB_MESH_VERTEX_COUNT,
   appendStoneBrickSlabMesh,
@@ -29,6 +34,7 @@ import {
   segmentIntersectsVoxelHeight,
   segmentVoxelHeightIntersectionFraction,
 } from "../shared/rangedCombat.ts";
+import { itemVisual } from "../shared/visualCatalog.ts";
 
 assert.equal(BLOCK.STONE_BRICK_SLAB, 30, "the slab appends after both gate states without renumbering engine IDs");
 assert.equal(STONE_BRICK_SLAB_HEIGHT, 0.5);
@@ -102,9 +108,78 @@ assert.equal(slabArt.variant, "stone_brick_slab");
 assert.ok(slabArt.runs.length >= 20, "inventory and held views use a readable original low masonry sprite");
 assert.notDeepEqual(slabArt.runs, getItemIconArt("stone_bricks").runs,
   "the slab silhouette is distinct from the full stone-brick cube");
+assert.equal(itemVisual("stone_brick_slab").parent, "block", "the slab retains its shared block-item catalog definition");
+assert.equal(blockIdForCubeItem("stone_brick_slab"), null,
+  "a partial-height slab cannot enter any full-cube held or dropped path");
+
+const expectedHeldGeometry: number[] = [];
+const expectedHeldVertices = appendItemSpriteGeometry(
+  expectedHeldGeometry,
+  slabArt,
+  firstPersonSpritePresentation("stone_brick_slab"),
+);
+let nextBufferId = 0;
+let boundBuffer: WebGLBuffer | null = null;
+const uploads = new Map<WebGLBuffer, Float32Array>();
+const captureGl = {
+  ARRAY_BUFFER: 0x8892,
+  DYNAMIC_DRAW: 0x88e8,
+  createBuffer: () => ({ id: ++nextBufferId }),
+  bindBuffer: (_target: number, buffer: WebGLBuffer | null) => { boundBuffer = buffer; },
+  bufferData: () => undefined,
+  bufferSubData: (_target: number, _offset: number, data: Float32Array) => {
+    if (!boundBuffer) throw new Error("held slab capture buffer was not bound");
+    uploads.set(boundBuffer, new Float32Array(data));
+  },
+  deleteBuffer: () => undefined,
+} as unknown as WebGLRenderingContext;
+const heldRenderer = createFirstPersonRenderer(captureGl);
+heldRenderer[3]("stone_brick_slab", BLOCK.STONE_BRICK_SLAB);
+const heldUpload = uploads.get(heldRenderer[0]);
+assert.ok(heldUpload, "the first-person slab uploads shared item-sprite color geometry");
+assert.equal(heldRenderer[2][0], expectedHeldVertices, "the first-person slab keeps canonical sprite vertex parity");
+assert.equal(heldUpload.length, expectedHeldGeometry.length, "the first-person slab uploads one complete color stream");
+for (let offset = 0; offset < heldUpload.length; offset += 1) {
+  assert.ok(Math.abs(heldUpload[offset] - expectedHeldGeometry[offset]) < 1e-6,
+    `first-person slab float ${offset} retains canonical inventory-art geometry parity`);
+}
+assert.equal(heldRenderer[2][1], 0, "the partial-height slab never emits textured full-cube output");
+heldRenderer[7]();
+
+assert.equal(droppedBlockCubeVertexCount("stone_brick_slab"), 0,
+  "dropped slabs cannot enter the retained full-cube template map");
+const droppedOutput = new Float32Array(slabArt.runs.length * 6 * 6);
+const droppedStats: DroppedItemGeometryStats = { totalItemCount: 0, visibleItemCount: 0, vertexCount: 0 };
+writeDroppedItemGeometry(
+  new Float32Array([0, 1, 0]),
+  new Float32Array([0]),
+  ["stone_brick_slab"],
+  1,
+  [0, 1, 0],
+  0,
+  droppedOutput,
+  droppedStats,
+);
+assert.equal(droppedStats.vertexCount, slabArt.runs.length * 6,
+  "one dropped slab uses the canonical inventory-sprite run count");
+
+const remoteRects = remoteHeldItemRects("stone_brick_slab");
+assert.equal(remoteHeldItemVertexCount("stone_brick_slab"), remoteRects.length * 6);
+assert.ok(remoteRects.length > 0, "remote players retain a visible slab silhouette");
+const slabPalette = new Set(slabArt.runs.map((run) => run.color.toLowerCase()));
+for (const rectangle of remoteRects) {
+  const color = `#${rectangle.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`;
+  assert.ok(slabPalette.has(color), "remote held slabs use only canonical inventory-art colors");
+}
+
 const heldSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.match(heldSource, /itemId === "door" \|\| itemId === "bed" \|\| itemId === "ladder" \|\| itemId === "stone_brick_slab"[\s\S]{0,500}appendColorBox/,
-  "the first-person hand uses solid half-height slab geometry");
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+  assert.ok(heldSource.includes(sharedPath), `held slabs use the shared visual pipeline through ${sharedPath}`);
+}
+assert.equal(heldSource.includes("appendColorBox"), false,
+  "the removed bespoke color-box held approximation cannot return");
+assert.equal(heldSource.includes("appendSpecialBlock"), false,
+  "the removed special-block held approximation cannot bypass shared item art");
 
 const slabLookup = (x: number, y: number, z: number) => (
   x === 1 && y === 7 && z === 0 ? BLOCK.STONE_BRICK_SLAB : BLOCK.AIR

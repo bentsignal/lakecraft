@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  chestAtlasUv,
   TEXTURED_WORLD_VERTEX_FLOATS,
   blockTextureForFace,
   textureAtlasUv,
   type BlockFace,
+  type TextureUvBounds,
 } from "../client/game/blockTextures.ts";
 import {
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_RGBA,
@@ -40,6 +44,7 @@ const uniformMappings: ReadonlyArray<readonly [BlockId, TextureAtlasName]> = [
   [BLOCK.GOLD_ORE, "gold_ore"],
   [BLOCK.DIAMOND_ORE, "diamond_ore"],
   [BLOCK.GLASS, "glass"],
+  [BLOCK.BEDROCK, "bedrock"],
 ];
 const mappedTextureNames = new Set<TextureAtlasName>(["grass_top", "grass_side", "dirt"]);
 for (const [block, texture] of uniformMappings) {
@@ -70,11 +75,16 @@ for (const face of ["east", "west", "south", "bottom"] as const) {
 mappedTextureNames.add("furnace_front");
 mappedTextureNames.add("furnace_side");
 mappedTextureNames.add("furnace_top");
-for (const face of ["east", "west", "south", "north"] as const) {
+const tntSideFaces = ["east", "west", "south", "north"] as const;
+const tntSideUvs = new Set<TextureUvBounds>();
+for (const face of tntSideFaces) {
   assert.equal(blockTextureForFace(BLOCK.TNT, face), "tnt_side");
-  assert.equal(textureAtlasUv(blockTextureForFace(BLOCK.TNT, face)!), textureAtlasUv("tnt_side"),
+  const sideUv = textureAtlasUv(blockTextureForFace(BLOCK.TNT, face)!);
+  tntSideUvs.add(sideUv);
+  assert.equal(sideUv, textureAtlasUv("tnt_side"),
     `TNT ${face} reuses the exact labeled side-face UV tile`);
 }
+assert.equal(tntSideUvs.size, 1, "all four TNT sides retain byte-identical labeled texture parity");
 assert.equal(blockTextureForFace(BLOCK.TNT, "top"), "tnt_top");
 assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");
 mappedTextureNames.add("tnt_side");
@@ -84,8 +94,11 @@ mappedTextureNames.add("sapling");
 assert.deepEqual(
   [...mappedTextureNames].sort(),
   [...TEXTURE_ATLAS_NAMES].sort(),
-  "every generated atlas tile is reachable from at least one block face",
+  "every ordinary material atlas tile is reachable from at least one block face",
 );
+const specialGeometry = readFileSync(new URL("../client/game/specialBlockGeometry.ts", import.meta.url), "utf8");
+assert.ok(specialGeometry.includes("chestAtlasUv(point[2], point[3])"),
+  "the contiguous entity-texture region is reachable through the retained special chest mesh");
 
 for (const specialBlock of [
   BLOCK.AIR,
@@ -113,8 +126,9 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   assert.ok(uv.bottom >= 0 && uv.bottom < uv.top && uv.top <= 1);
   assert.ok(Math.abs((uv.right - uv.left) - expectedCellSpanU) < 1e-12);
   assert.ok(Math.abs((uv.top - uv.bottom) - expectedCellSpanV) < 1e-12);
-  const column = index % TEXTURE_ATLAS_COLUMNS;
-  const row = Math.floor(index / TEXTURE_ATLAS_COLUMNS);
+  const cell = TEXTURE_ATLAS_CELLS[index];
+  const column = cell % TEXTURE_ATLAS_COLUMNS;
+  const row = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
   assert.equal(Math.floor(((uv.left + uv.right) / 2) * TEXTURE_ATLAS_COLUMNS), column);
   assert.equal(
     Math.floor((1 - (uv.bottom + uv.top) / 2) * TEXTURE_ATLAS_ROWS),
@@ -124,9 +138,9 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 }
 
 const firstRow = textureAtlasUv("grass_top");
-assert.ok(firstRow.top > 0.98 && firstRow.bottom > 0.83 && firstRow.bottom < 0.84);
-const lastRow = textureAtlasUv("bricks");
-assert.ok(lastRow.bottom > 0 && lastRow.bottom < 0.02 && lastRow.top < 0.17);
+assert.ok(firstRow.top > 0.99 && firstRow.bottom > 0.87 && firstRow.bottom < 0.88);
+assert.deepEqual(chestAtlasUv(0, 0), [(2 * 16 + 0.5) / 96, 1 - (4 * 16 + 0.5) / 128]);
+assert.deepEqual(chestAtlasUv(63, 63), [(2 * 16 + 63.5) / 96, 1 - (4 * 16 + 63.5) / 128]);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the
 // old six-float stride instead of increasing every streamed chunk allocation.
@@ -136,7 +150,8 @@ const representativeWorldBytes = representativeWorldVertices
   * TEXTURED_WORLD_VERTEX_FLOATS
   * Float32Array.BYTES_PER_ELEMENT;
 const atlasBytes = TEXTURE_ATLAS_RGBA.byteLength;
-assert.equal(atlasBytes, 30 * 16 * 16 * 4, "the append-only RGBA texture stays at 30 KiB");
+assert.equal(atlasBytes, 48 * 16 * 16 * 4,
+  "the append-only RGBA texture stays at 48 KiB with exact normal-chest quadrants");
 assert.ok(representativeWorldBytes <= 4_080_000, "170k streamed vertices stay within the 4.08MB world VBO budget");
 assert.ok(
   representativeWorldBytes + atlasBytes < 4 * 1024 * 1024,

@@ -5,54 +5,51 @@ import {
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import { ITEMS, type ArmorId, type ItemId } from "../../shared/game.ts";
+import { getBowIconArt, getItemIconArt, type ItemIconArt } from "../components/itemIconArt.ts";
 import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES, NAMEPLATE_FONT } from "./generated/renderGeometry.ts";
+import { LAKECRAFT_DEFAULT_SKIN_PALETTE } from "./playerSkin.ts";
 
 type Vec3 = readonly [number, number, number];
 
 const FLOATS_PER_VERTEX = 6;
 const VERTICES_PER_BOX = 36;
-const BASE_AVATAR_BOXES = 17;
+export const REMOTE_DEFAULT_PLAYER_BOX_COUNT = 17;
+export const REMOTE_DEFAULT_PLAYER_HEIGHT = 2;
+const BASE_AVATAR_BOXES = REMOTE_DEFAULT_PLAYER_BOX_COUNT;
 const MAX_ARMOR_BOXES = 10;
-const MAX_HELD_ITEM_BOXES = 2;
+export const REMOTE_HELD_ITEM_LOGICAL_SIZE = 8;
+export const REMOTE_HELD_ITEM_MAX_RECTS = 24;
+const VERTICES_PER_HELD_ITEM_RECT = 6;
 const MAX_GLYPH_PIXELS = 15;
 const REMOTE_RENDER_DISTANCE_SQUARED = 64 * 64;
 
 export const REMOTE_MESH_INTERVAL_MS = 1_000 / 30;
 export const BASE_AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_BOXES * VERTICES_PER_BOX;
 export const MAX_ARMOR_VERTICES_PER_PLAYER = MAX_ARMOR_BOXES * VERTICES_PER_BOX;
-export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = MAX_HELD_ITEM_BOXES * VERTICES_PER_BOX;
-/** Worst-case fixed avatar capacity, including a two-box tool and all armor. */
+export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = REMOTE_HELD_ITEM_MAX_RECTS * VERTICES_PER_HELD_ITEM_RECT;
+/** Worst-case fixed avatar capacity, including a bounded canonical sprite and all armor. */
 export const AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER
   + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
 export const MAX_NAMEPLATE_VERTICES_PER_PLAYER = 6 + MAX_PLAYER_NAME_LENGTH * MAX_GLYPH_PIXELS * 6;
 
+function normalizedColor(color: readonly [number, number, number]): Vec3 {
+  return Object.freeze([color[0] / 255, color[1] / 255, color[2] / 255]) as Vec3;
+}
+
 const COLORS = {
-  skin: [0.72, 0.50, 0.34] as Vec3,
-  skinHighlight: [0.82, 0.60, 0.43] as Vec3,
-  shirt: [0.05, 0.53, 0.55] as Vec3,
-  pants: [0.12, 0.20, 0.58] as Vec3,
-  shoes: [0.14, 0.12, 0.13] as Vec3,
-  hair: [0.18, 0.10, 0.055] as Vec3,
-  eye: [0.08, 0.19, 0.30] as Vec3,
-  mouth: [0.30, 0.13, 0.10] as Vec3,
+  skin: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.skin),
+  jacket: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.jacket),
+  trousers: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.trousers),
+  boots: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.boots),
+  hair: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.hair),
+  eye: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.eyes),
+  mouth: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.skinShade),
+  scarf: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.scarf),
   leatherArmor: [0.48, 0.25, 0.11] as Vec3,
   ironArmor: [0.72, 0.74, 0.72] as Vec3,
   goldArmor: [0.92, 0.72, 0.12] as Vec3,
   diamondArmor: [0.20, 0.76, 0.74] as Vec3,
-  toolHandle: [0.43, 0.27, 0.11] as Vec3,
-  woodItem: [0.58, 0.36, 0.16] as Vec3,
-  stoneItem: [0.43, 0.45, 0.44] as Vec3,
-  ironItem: [0.76, 0.78, 0.76] as Vec3,
-  goldItem: [0.94, 0.76, 0.16] as Vec3,
-  diamondItem: [0.20, 0.82, 0.79] as Vec3,
-  greenItem: [0.28, 0.51, 0.20] as Vec3,
-  sandItem: [0.78, 0.69, 0.45] as Vec3,
-  gravelItem: [0.47, 0.45, 0.42] as Vec3,
-  glassItem: [0.54, 0.77, 0.79] as Vec3,
-  coalItem: [0.14, 0.15, 0.14] as Vec3,
-  woolItem: [0.84, 0.82, 0.76] as Vec3,
-  redItem: [0.66, 0.22, 0.18] as Vec3,
   nameBackground: [0.025, 0.028, 0.035] as Vec3,
   nameText: [0.94, 0.95, 0.90] as Vec3,
 };
@@ -60,6 +57,103 @@ const COLORS = {
 interface VertexWriter {
   data: Float32Array;
   offset: number;
+}
+
+export type RemoteHeldItemRect = Readonly<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: Vec3;
+}>;
+
+type MutableHeldRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  order: number;
+};
+
+function parseIconColor(color: string): Vec3 {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error(`Invalid remote held-item color: ${color}`);
+  return Object.freeze([
+    Number.parseInt(color.slice(1, 3), 16) / 255,
+    Number.parseInt(color.slice(3, 5), 16) / 255,
+    Number.parseInt(color.slice(5, 7), 16) / 255,
+  ]) as Vec3;
+}
+
+/**
+ * Builds an 8×8 remote-distance mip directly from the canonical 16×16 icon.
+ * Each 2×2 source cell chooses its most frequent opaque canonical color; equal
+ * counts preserve source scan order. Same-color cells are greedily merged, and
+ * the 24 largest stable rectangles retain at least the recognizable silhouette
+ * while strictly bounding the 32-player retained batch.
+ */
+function buildRemoteHeldItemRects(art: ItemIconArt): readonly RemoteHeldItemRect[] {
+  const source = Array.from({ length: 16 }, () => Array<string | null>(16).fill(null));
+  for (const run of art.runs) for (let x = run.x; x < run.x + run.width; x += 1) source[run.y][x] = run.color;
+  const mip = Array.from(
+    { length: REMOTE_HELD_ITEM_LOGICAL_SIZE },
+    () => Array<string | null>(REMOTE_HELD_ITEM_LOGICAL_SIZE).fill(null),
+  );
+  for (let y = 0; y < REMOTE_HELD_ITEM_LOGICAL_SIZE; y += 1) for (let x = 0; x < REMOTE_HELD_ITEM_LOGICAL_SIZE; x += 1) {
+    const counts = new Map<string, number>();
+    for (let offsetY = 0; offsetY < 2; offsetY += 1) for (let offsetX = 0; offsetX < 2; offsetX += 1) {
+      const color = source[y * 2 + offsetY][x * 2 + offsetX];
+      if (color) counts.set(color, (counts.get(color) ?? 0) + 1);
+    }
+    let selected: string | null = null;
+    let selectedCount = 0;
+    for (const [color, count] of counts) if (count > selectedCount) {
+      selected = color;
+      selectedCount = count;
+    }
+    mip[y][x] = selected;
+  }
+  const rectangles: MutableHeldRect[] = [];
+  for (let y = 0; y < REMOTE_HELD_ITEM_LOGICAL_SIZE; y += 1) for (let x = 0; x < REMOTE_HELD_ITEM_LOGICAL_SIZE; x += 1) {
+    const color = mip[y][x];
+    if (!color) continue;
+    let width = 1;
+    while (x + width < REMOTE_HELD_ITEM_LOGICAL_SIZE && mip[y][x + width] === color) width += 1;
+    let height = 1;
+    heightLoop: while (y + height < REMOTE_HELD_ITEM_LOGICAL_SIZE) {
+      for (let nextX = x; nextX < x + width; nextX += 1) if (mip[y + height][nextX] !== color) break heightLoop;
+      height += 1;
+    }
+    rectangles.push({ x, y, width, height, color, order: rectangles.length });
+    for (let nextY = y; nextY < y + height; nextY += 1) {
+      for (let nextX = x; nextX < x + width; nextX += 1) mip[nextY][nextX] = null;
+    }
+  }
+  return Object.freeze(rectangles
+    .sort((left, right) => right.width * right.height - left.width * left.height || left.order - right.order)
+    .slice(0, REMOTE_HELD_ITEM_MAX_RECTS)
+    .sort((left, right) => left.order - right.order)
+    .map((rect) => Object.freeze({
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      color: parseIconColor(rect.color),
+    })));
+}
+
+const REMOTE_HELD_ITEM_RECTS: Readonly<Record<ItemId, readonly RemoteHeldItemRect[]>> = Object.freeze(
+  Object.fromEntries(Object.keys(ITEMS).map((itemId) => [itemId, buildRemoteHeldItemRects(getItemIconArt(itemId as ItemId))])) as
+    Record<ItemId, readonly RemoteHeldItemRect[]>,
+);
+const REMOTE_DRAWN_BOW_RECTS = buildRemoteHeldItemRects(getBowIconArt(3));
+
+export function remoteHeldItemRects(itemId: ItemId, bowDrawing = false): readonly RemoteHeldItemRect[] {
+  return itemId === "bow" && bowDrawing ? REMOTE_DRAWN_BOW_RECTS : REMOTE_HELD_ITEM_RECTS[itemId];
+}
+
+export function remoteHeldItemVertexCount(itemId: ItemId, bowDrawing = false): number {
+  return remoteHeldItemRects(itemId, bowDrawing).length * VERTICES_PER_HELD_ITEM_RECT;
 }
 
 export interface RemoteGeometryStats {
@@ -159,135 +253,94 @@ function armorColor(itemId: ArmorId): Vec3 {
   return itemId.startsWith("iron_") ? COLORS.ironArmor : COLORS.leatherArmor;
 }
 
-function heldItemColor(itemId: ItemId): Vec3 {
-  const tool = ITEMS[itemId].tool;
-  if (tool?.tier === "diamond") return COLORS.diamondItem;
-  if (tool?.tier === "gold") return COLORS.goldItem;
-  if (tool?.tier === "iron") return COLORS.ironItem;
-  if (tool?.tier === "stone") return COLORS.stoneItem;
-  if (tool) return COLORS.woodItem;
-  switch (itemId) {
-    case "grass":
-    case "leaves": return COLORS.greenItem;
-    case "stone":
-    case "cobblestone":
-    case "furnace":
-    case "coal_ore": return COLORS.stoneItem;
-    case "iron_ore":
-    case "raw_iron":
-    case "iron_ingot": return COLORS.ironItem;
-    case "gold_ore":
-    case "raw_gold":
-    case "gold_ingot": return COLORS.goldItem;
-    case "diamond_ore":
-    case "diamond": return COLORS.diamondItem;
-    case "sand": return COLORS.sandItem;
-    case "gravel": return COLORS.gravelItem;
-    case "glass": return COLORS.glassItem;
-    case "gunpowder": return COLORS.coalItem;
-    case "flint": return COLORS.stoneItem;
-    case "flint_and_steel": return COLORS.ironItem;
-    case "tnt": return COLORS.redItem;
-    case "coal": return COLORS.coalItem;
-    case "wool": return COLORS.woolItem;
-    case "bed":
-    case "pork":
-    case "beef":
-    case "mutton":
-    case "cooked_pork":
-    case "cooked_beef":
-    case "cooked_mutton":
-    case "rotten_flesh": return COLORS.redItem;
-    default: return COLORS.woodItem;
-  }
-}
-
 function appendArmor(writer: VertexWriter, state: RemoteAvatarMotion, stride: number, rightArmPitch: number): void {
   const headYaw = state.rendered.yaw;
   const headPitch = state.rendered.pitch * 0.32;
   if (state.armorHead) {
     const color = armorColor(state.armorHead);
-    appendBox(writer,state,headYaw,headPitch,1.62,0,-0.28,1.84,-0.28,0.28,1.94,0.28,color);
-    appendBox(writer,state,headYaw,headPitch,1.62,0,-0.28,1.47,-0.28,-0.23,1.86,0.28,color);
-    appendBox(writer,state,headYaw,headPitch,1.62,0,0.23,1.47,-0.28,0.28,1.86,0.28,color);
+    appendBox(writer,state,headYaw,headPitch,1.75,0,-0.28,1.91,-0.28,0.28,2.05,0.28,color);
+    appendBox(writer,state,headYaw,headPitch,1.75,0,-0.28,1.52,-0.28,-0.23,1.94,0.28,color);
+    appendBox(writer,state,headYaw,headPitch,1.75,0,0.23,1.52,-0.28,0.28,1.94,0.28,color);
   }
   if (state.armorChest) {
     const color = armorColor(state.armorChest);
-    appendBox(writer,state,state.bodyYaw,0,0,0,-0.35,0.70,-0.205,0.35,1.40,-0.18,color);
-    appendBox(writer,state,state.bodyYaw,-stride*0.9,1.31,0,-0.57,1.14,-0.16,-0.33,1.42,0.16,color);
-    appendBox(writer,state,state.bodyYaw,rightArmPitch,1.31,0,0.33,1.14,-0.16,0.57,1.42,0.16,color);
+    appendBox(writer,state,state.bodyYaw,0,0,0,-0.27,0.73,-0.15,0.27,1.52,0.15,color);
+    appendBox(writer,state,state.bodyYaw,-stride*0.9,1.50,0,-0.52,1.20,-0.15,-0.23,1.52,0.15,color);
+    appendBox(writer,state,state.bodyYaw,rightArmPitch,1.50,0,0.23,1.20,-0.15,0.52,1.52,0.15,color);
   }
   if (state.armorLegs) {
     const color = armorColor(state.armorLegs);
-    appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.27,0.10,-0.17,-0.01,0.73,-0.14,color);
-    appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.01,0.10,-0.17,0.27,0.73,-0.14,color);
+    appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.27,0.10,-0.15,0.01,0.77,-0.13,color);
+    appendBox(writer,state,state.bodyYaw,-stride,0.75,0,-0.01,0.10,-0.15,0.27,0.77,-0.13,color);
   }
   if (state.armorFeet) {
     const color = armorColor(state.armorFeet);
-    appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.27,-0.01,-0.17,-0.01,0.17,0.18,color);
-    appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.01,-0.01,-0.17,0.27,0.17,0.18,color);
+    appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.27,-0.01,-0.15,0.01,0.27,0.18,color);
+    appendBox(writer,state,state.bodyYaw,-stride,0.75,0,-0.01,-0.01,-0.15,0.27,0.27,0.18,color);
   }
 }
+
+const HELD_ITEM_QUAD = Object.freeze([
+  Object.freeze([0, 0]), Object.freeze([1, 0]), Object.freeze([1, 1]),
+  Object.freeze([0, 0]), Object.freeze([1, 1]), Object.freeze([0, 1]),
+] as const);
 
 function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, rightArmPitch: number): void {
   const itemId = state.heldItem;
   if (!itemId) return;
-  const item = ITEMS[itemId];
-  const armPitch = rightArmPitch;
-  const color = heldItemColor(itemId);
-  if (itemId === "bow") {
-    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.26,-0.07,0.48,0.58,-0.02,COLORS.toolHandle);
-    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.57,-0.07,0.48,0.91,-0.02,color);
-    return;
-  }
-  if (itemId === "flint_and_steel") {
-    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.43,0.28,-0.07,0.50,0.75,-0.02,COLORS.ironItem);
-    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.36,0.22,-0.08,0.45,0.45,0,COLORS.coalItem);
-    return;
-  }
-  if (!item.tool) {
-    appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.35,0.43,-0.25,0.62,0.70,0.02,color);
-    return;
-  }
-  appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.44,0.28,-0.08,0.50,0.80,-0.02,COLORS.toolHandle);
-  switch (item.tool.kind) {
-    case "sword":
-      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.40,0.08,-0.07,0.54,0.54,-0.03,color);
-      break;
-    case "pickaxe":
-      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.29,0.22,-0.08,0.65,0.34,-0.02,color);
-      break;
-    case "axe":
-      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.38,0.18,-0.09,0.59,0.42,-0.01,color);
-      break;
-    default:
-      appendBox(writer,state,state.bodyYaw,armPitch,1.31,0,0.39,0.16,-0.10,0.55,0.37,0,color);
-      break;
+  const rectangles = remoteHeldItemRects(itemId, state.bowDrawing);
+  const unit = 0.066;
+  const socketX = 0.445;
+  const socketY = 0.70;
+  const socketZ = -0.165;
+  const pivotX = 4;
+  const pivotY = 6.4;
+  const cosPitch = Math.cos(rightArmPitch);
+  const sinPitch = Math.sin(rightArmPitch);
+  const cosYaw = Math.cos(state.bodyYaw);
+  const sinYaw = Math.sin(state.bodyYaw);
+  for (const rect of rectangles) for (const point of HELD_ITEM_QUAD) {
+    const localX = socketX + (rect.x + rect.width * point[0] - pivotX) * unit;
+    const unrotatedY = socketY + (pivotY - rect.y - rect.height * point[1]) * unit;
+    const offsetY = unrotatedY - 1.50;
+    const localY = 1.50 + offsetY * cosPitch - socketZ * sinPitch;
+    const localZ = offsetY * sinPitch + socketZ * cosPitch;
+    writeVertex(
+      writer,
+      state.rendered.x + localX * cosYaw - localZ * sinYaw,
+      state.rendered.y + localY,
+      state.rendered.z + localX * sinYaw + localZ * cosYaw,
+      rect.color,
+      0.94,
+    );
   }
 }
 
 function appendAvatar(writer: VertexWriter, state: RemoteAvatarMotion): void {
   const stride = Math.min(0.72, state.horizontalSpeed * 0.16) * Math.sin(state.walkPhase);
   const rightArmPitch = state.bowDrawing ? -1.12 : stride * 0.9 - state.armActionPhase * 1.8;
-  appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.26,0.08,-0.14,-0.02,0.72,0.14,COLORS.pants);
-  appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.02,0.08,-0.14,0.26,0.72,0.14,COLORS.pants);
-  appendBox(writer,state,state.bodyYaw,stride,0.69,0,-0.26,0,-0.15,-0.02,0.12,0.16,COLORS.shoes);
-  appendBox(writer,state,state.bodyYaw,-stride,0.69,0,0.02,0,-0.15,0.26,0.12,0.16,COLORS.shoes);
-  appendBox(writer,state,state.bodyYaw,0,0,0,-0.34,0.69,-0.18,0.34,1.39,0.18,COLORS.shirt);
-  appendBox(writer,state,state.bodyYaw,-stride*0.9,1.31,0,-0.55,0.68,-0.14,-0.34,1.18,0.14,COLORS.skin);
-  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.31,0,0.34,0.68,-0.14,0.55,1.18,0.14,COLORS.skin);
-  appendBox(writer,state,state.bodyYaw,-stride*0.9,1.31,0,-0.55,1.17,-0.145,-0.34,1.4,0.145,COLORS.shirt);
-  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.31,0,0.34,1.17,-0.145,0.55,1.4,0.145,COLORS.shirt);
+  // Core proportions match the bundled standard-skin rig exactly: 4 px legs
+  // and arms, an 8×12 px torso, and an 8 px head at 1/16 world units/pixel.
+  appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.25,0,-0.125,0,0.75,0.125,COLORS.trousers);
+  appendBox(writer,state,state.bodyYaw,-stride,0.75,0,0,0,-0.125,0.25,0.75,0.125,COLORS.trousers);
+  appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.25,0,-0.13,0,0.25,0.13,COLORS.boots);
+  appendBox(writer,state,state.bodyYaw,-stride,0.75,0,0,0,-0.13,0.25,0.25,0.13,COLORS.boots);
+  appendBox(writer,state,state.bodyYaw,0,0,0,-0.25,0.75,-0.125,0.25,1.50,0.125,COLORS.jacket);
+  appendBox(writer,state,state.bodyYaw,-stride*0.9,1.50,0,-0.50,0.75,-0.125,-0.25,1.50,0.125,COLORS.skin);
+  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.50,0,0.25,0.75,-0.125,0.50,1.50,0.125,COLORS.skin);
+  appendBox(writer,state,state.bodyYaw,-stride*0.9,1.50,0,-0.505,1.25,-0.13,-0.245,1.505,0.13,COLORS.jacket);
+  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.50,0,0.245,1.25,-0.13,0.505,1.505,0.13,COLORS.jacket);
   const headYaw = state.rendered.yaw;
   const headPitch = state.rendered.pitch * 0.32;
-  appendBox(writer,state,headYaw,headPitch,1.62,0,-0.25,1.39,-0.25,0.25,1.89,0.25,COLORS.skinHighlight);
-  appendBox(writer,state,headYaw,headPitch,1.62,0,-0.26,1.80,-0.26,0.26,1.91,0.26,COLORS.hair);
-  appendBox(writer,state,headYaw,headPitch,1.62,0,-0.26,1.70,0.245,0.26,1.84,0.27,COLORS.hair);
-  appendBox(writer,state,headYaw,headPitch,1.62,0,-0.19,1.72,-0.27,-0.04,1.79,-0.245,COLORS.hair);
-  appendBox(writer,state,headYaw,headPitch,1.62,0,0.11,1.72,-0.27,0.25,1.79,-0.245,COLORS.hair);
-  appendBox(writer,state,headYaw,headPitch,1.62,0,-0.15,1.63,-0.272,-0.06,1.69,-0.248,COLORS.eye);
-  appendBox(writer,state,headYaw,headPitch,1.62,0,0.06,1.63,-0.272,0.15,1.69,-0.248,COLORS.eye);
-  appendBox(writer,state,headYaw,headPitch,1.62,0,-0.08,1.50,-0.273,0.08,1.54,-0.248,COLORS.mouth);
+  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.25,1.50,-0.25,0.25,2.00,0.25,COLORS.skin);
+  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.255,1.93,-0.255,0.255,2.005,0.255,COLORS.hair);
+  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.255,1.72,0.245,0.255,1.94,0.255,COLORS.hair);
+  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.19,1.83,-0.255,0.19,1.94,-0.245,COLORS.hair);
+  // The bright scarf is the bundled explorer's distance-readable signature.
+  appendBox(writer,state,state.bodyYaw,0,0,0,-0.13,1.365,-0.14,0.13,1.485,-0.125,COLORS.scarf);
+  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.15,1.69,-0.255,-0.06,1.75,-0.245,COLORS.eye);
+  appendBox(writer,state,headYaw,headPitch,1.75,0,0.06,1.69,-0.255,0.15,1.75,-0.245,COLORS.eye);
+  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.08,1.57,-0.256,0.08,1.61,-0.245,COLORS.mouth);
   appendArmor(writer, state, stride, rightArmPitch);
   appendHeldItem(writer, state, rightArmPitch);
 }
@@ -355,7 +408,7 @@ function appendNameplate(writer: VertexWriter, state: RemoteAvatarMotion, camera
   }
 }
 
-/** Writes into caller-owned fixed buffers and allocates no arrays or typed arrays. */
+/** Writes into caller-owned fixed buffers without allocating geometry arrays. */
 export function writeRemotePlayerGeometry(
   states: ReadonlyMap<string, RemoteAvatarMotion>,
   camera: Vec3,

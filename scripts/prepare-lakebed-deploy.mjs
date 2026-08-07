@@ -21,6 +21,11 @@ import {
   compactClientPropertyCache,
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
+import { stripClientDevelopmentSurfaces } from "./client-development-surface-transform.mjs";
+import { compactClientBuiltinAliases } from "./client-builtin-alias-compaction.mjs";
+import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.mjs";
+import { compactClientStringPool } from "./client-string-pool-compaction.mjs";
+import { compactServerPropertyKeys } from "./server-property-key-compaction.mjs";
 import {
   copyOwnedStageFile,
   createOwnedStageDirectory,
@@ -101,9 +106,12 @@ const cssTemplateMinifier = {
     }));
     esbuild.onLoad({ filter: /\.[tj]sx?$/ }, async ({ path }) => {
       const source = await readFile(path, "utf8");
-      let compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
-        ? compactClientIdentifiers(source)
+      const stagedSource = path === join(sourceRoot, "client", "singleplayer", "SinglePlayerApp.tsx")
+        ? stripClientDevelopmentSurfaces(source)
         : source;
+      let compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
+        ? compactClientIdentifiers(stagedSource)
+        : stagedSource;
       if (path === join(sourceRoot, "shared", "game.ts")) {
         compactedSource = compactClientGameCatalog(compactedSource);
       }
@@ -197,7 +205,12 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
       actualNames.length !== expectedNames.length
       || expectedNames.some((name, index) => actualNames[index] !== name)
     ) {
-      throw new Error("Compact client property live set changed; review the fixed compatibility manifest.");
+      const actual = new Set(actualNames);
+      const expected = new Set(expectedNames);
+      throw new Error(
+        `Compact client property live set changed; missing ${JSON.stringify(expectedNames.filter((name) => !actual.has(name)))}; `
+        + `unexpected ${JSON.stringify(actualNames.filter((name) => !expected.has(name)))}.`,
+      );
     }
   }
   const result = await build(options);
@@ -222,11 +235,45 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
   }
   const output = result.outputFiles?.[0];
   if (!output) throw new Error(`Bundling ${sourcePath} produced no output.`);
+  let bundledText = output.text;
+  if (server) {
+    const interned = await compactServerPropertyKeys(bundledText);
+    const compacted = await build({
+      charset: "utf8",
+      format: "esm",
+      legalComments: "none",
+      minify: true,
+      platform: "browser",
+      stdin: { contents: interned, loader: "js", sourcefile: "lakecraft-server-stage.js" },
+      target: "es2022",
+      write: false,
+    });
+    const compactedOutput = compacted.outputFiles?.[0];
+    if (!compactedOutput) throw new Error("Compact server key transform produced no output.");
+    bundledText = compactedOutput.text;
+  } else {
+    const aliased = await compactClientBuiltinAliases(bundledText);
+    const shaped = await compactClientJsxPropShapes(aliased);
+    const pooled = await compactClientStringPool(shaped);
+    const compacted = await build({
+      charset: "utf8",
+      format: "esm",
+      legalComments: "none",
+      minify: true,
+      platform: "browser",
+      stdin: { contents: pooled, loader: "js", sourcefile: "lakecraft-client-stage.js" },
+      target: "es2022",
+      write: false,
+    });
+    const compactedOutput = compacted.outputFiles?.[0];
+    if (!compactedOutput) throw new Error("Compact client string-pool transform produced no output.");
+    bundledText = compactedOutput.text;
+  }
   await createOwnedStageDirectory(stagingPlan, dirname(targetPath));
   await writeOwnedStageFile(
     stagingPlan,
     targetPath,
-    server ? appendServerSourceMapBoundary(output.text) : appendClientSourceMapBoundary(output.text),
+    server ? appendServerSourceMapBoundary(bundledText) : appendClientSourceMapBoundary(bundledText),
   );
 }
 

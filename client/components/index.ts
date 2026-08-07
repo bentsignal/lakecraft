@@ -14,6 +14,8 @@ export { CraftingGridView, type CraftingGridViewProps } from "./CraftingGrid";
 export { InventoryCraftingDrawer, type InventoryCraftingDrawerProps } from "./InventoryDrawer";
 export { ChestDrawer, type ChestDrawerProps, type ChestTransferDirection } from "./ChestDrawer";
 export { FurnaceDrawer, type FurnaceDrawerProps } from "./FurnaceDrawer";
+export { FirstPersonPoseLab } from "./FirstPersonPoseLab";
+export { VisualLab } from "./VisualLab";
 export { MobileUnsupportedOverlay, type MobileUnsupportedOverlayProps } from "./MobileUnsupportedOverlay";
 export { StatusStrip, SurvivalHud, type StatusStripProps, type SurvivalHudProps } from "./StatusStrip";
 export { ToastSurface, type HudMessage, type ToastSurfaceProps } from "./ToastSurface";

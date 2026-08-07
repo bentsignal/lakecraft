@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, type BlockFace } from "../client/game/blockTextures.ts";
 import {
+  TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
   TEXTURE_ATLAS_NAMES,
   TEXTURE_ATLAS_RGBA,
@@ -10,6 +11,12 @@ import {
 } from "../client/game/generated/textureAtlas.ts";
 import { blockHasCollision, blockMaterialColor, blockOccludesFaces } from "../client/game/voxelEngine.ts";
 import { BLOCK } from "../client/game/types.ts";
+import { decodePng } from "../scripts/png-rgba.mjs";
+
+const installedBlocks = (JSON.parse(readFileSync(
+  new URL("../scripts/generated/minecraft-visual-assets-v26.2.json", import.meta.url),
+  "utf8",
+)) as { blocks: Readonly<Record<string, string>> }).blocks;
 
 assert.equal(BLOCK.STONE_BRICKS, 26, "stone bricks append after saplings without renumbering existing blocks");
 assert.equal(blockHasCollision(BLOCK.STONE_BRICKS), true, "stone bricks retain full-cube collision");
@@ -20,22 +27,30 @@ for (const face of ["east", "west", "top", "bottom", "south", "north"] as readon
 }
 
 const stoneBrickIndex = TEXTURE_ATLAS_NAMES.indexOf("stone_bricks");
+const stoneBrickCell = TEXTURE_ATLAS_CELLS[stoneBrickIndex];
 assert.equal(stoneBrickIndex, 27, "stone bricks append after every previously shipped texture tile");
 const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
 const colors = new Map<string, number>();
+const installedStoneBricks = decodePng(Buffer.from(installedBlocks.stone_bricks, "base64"));
+assert.deepEqual([installedStoneBricks.width, installedStoneBricks.height], [16, 16]);
 for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) {
   for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
-    const tileX = stoneBrickIndex % TEXTURE_ATLAS_COLUMNS;
-    const tileY = Math.floor(stoneBrickIndex / TEXTURE_ATLAS_COLUMNS);
+    const tileX = stoneBrickCell % TEXTURE_ATLAS_COLUMNS;
+    const tileY = Math.floor(stoneBrickCell / TEXTURE_ATLAS_COLUMNS);
     const offset = ((tileY * TEXTURE_TILE_SIZE + y) * atlasWidth + tileX * TEXTURE_TILE_SIZE + x) * 4;
     const rgb = `${TEXTURE_ATLAS_RGBA[offset]},${TEXTURE_ATLAS_RGBA[offset + 1]},${TEXTURE_ATLAS_RGBA[offset + 2]}`;
     colors.set(rgb, (colors.get(rgb) ?? 0) + 1);
     assert.equal(TEXTURE_ATLAS_RGBA[offset + 3], 255, "stone bricks stay in the opaque terrain pass");
+    assert.deepEqual([...TEXTURE_ATLAS_RGBA.subarray(offset, offset + 4)],
+      [...installedStoneBricks.rgba.subarray((y * TEXTURE_TILE_SIZE + x) * 4, (y * TEXTURE_TILE_SIZE + x) * 4 + 4)],
+      `stone-brick atlas pixel ${x},${y} exactly preserves its installed source`);
   }
 }
-assert.equal(colors.size, 5, "masonry uses a restrained five-tone stone palette");
-assert.ok((colors.get("68,68,68") ?? 0) >= 70, "dark one-pixel mortar keeps staggered courses readable");
-assert.equal(colors.has("153,153,136"), true, "worn warm highlights distinguish bricks from smooth stone");
+assert.ok(colors.size >= 7, "installed masonry retains distinct stone and mortar tones");
+const stoneBrightness = [...colors.keys()].map((rgb) => rgb.split(",").map(Number)
+  .reduce((sum, channel) => sum + channel, 0) / 3);
+assert.ok(Math.max(...stoneBrightness) - Math.min(...stoneBrightness) >= 50,
+  "installed mortar remains visibly darker than its brick faces");
 
 const art = getItemIconArt("stone_bricks");
 assert.equal(art.family, "block");

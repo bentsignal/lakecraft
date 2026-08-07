@@ -53,8 +53,8 @@ const expandedLocalPlan = planChunkWindow(
   8,
   MAX_LOCAL_STREAMING_CHUNK_RADIUS,
 );
-assert.equal(expandedLocalPlan.active.length, 169, "the explicit offline ceiling exposes a bounded 13x13 window");
-assert.equal(expandedLocalPlan.load.length, 120, "expanding from the default window loads only the additional ring");
+assert.equal(expandedLocalPlan.active.length, 625, "the explicit offline ceiling exposes a bounded 25x25 window");
+assert.equal(expandedLocalPlan.load.length, 576, "expanding from the default window loads only the additional rings");
 const incrementalStartedAt = performance.now();
 let incrementalBlockCount = 0;
 for (const coordinate of oneChunkTravel.load) {

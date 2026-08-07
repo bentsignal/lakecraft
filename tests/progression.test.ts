@@ -209,7 +209,7 @@ assert.deepEqual(parseSerializablePlayerStateJson(JSON.stringify(stateWithSpawn)
 for (const invalidSpawn of [
   null,
   { x: 65, y: 8, z: 0, yaw: 0, pitch: 0 },
-  { x: 0, y: 97, z: 0, yaw: 0, pitch: 0 },
+  { x: 0, y: 193, z: 0, yaw: 0, pitch: 0 },
   { x: 0, y: 8, z: -65, yaw: 0, pitch: 0 },
   { x: 0, y: 8, z: 0, yaw: Number.POSITIVE_INFINITY, pitch: 0 },
   { x: 0, y: 8, z: 0, yaw: 0, pitch: 2 },

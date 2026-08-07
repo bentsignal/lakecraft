@@ -5,7 +5,9 @@ export const MOUSE_SENSITIVITY_MIN = 10;
 export const MOUSE_SENSITIVITY_MAX = 200;
 export const DEFAULT_MOUSE_LOOK_SCALE = 0.0022;
 export const RENDER_DISTANCE_MIN = 2;
-export const RENDER_DISTANCE_MAX = 6;
+export const RENDER_DISTANCE_MAX = 12;
+export const FOV_DEGREES_MIN = 30;
+export const FOV_DEGREES_MAX = 110;
 
 export interface ClientSettings {
   soundMuted: boolean;
@@ -13,6 +15,8 @@ export interface ClientSettings {
   mouseSensitivity: number;
   /** Offline horizontal chunk radius. Multiplayer retains its server-bounded window. */
   renderDistance: number;
+  /** Vertical camera field of view in degrees. */
+  fovDegrees: number;
 }
 
 export interface ClientSettingsStorage {
@@ -24,6 +28,7 @@ export const DEFAULT_CLIENT_SETTINGS: Readonly<ClientSettings> = Object.freeze({
   soundMuted: false,
   mouseSensitivity: 100,
   renderDistance: 6,
+  fovDegrees: 90,
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,12 +45,18 @@ function normalizeRenderDistance(value: unknown): number {
   return Math.min(RENDER_DISTANCE_MAX, Math.max(RENDER_DISTANCE_MIN, Math.floor(value)));
 }
 
+function normalizeFovDegrees(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_CLIENT_SETTINGS.fovDegrees;
+  return Math.min(FOV_DEGREES_MAX, Math.max(FOV_DEGREES_MIN, Math.round(value)));
+}
+
 export function normalizeClientSettings(value: unknown): ClientSettings {
   const candidate = isRecord(value) ? value : {};
   return {
     soundMuted: typeof candidate.soundMuted === "boolean" ? candidate.soundMuted : DEFAULT_CLIENT_SETTINGS.soundMuted,
     mouseSensitivity: normalizeSensitivity(candidate.mouseSensitivity),
     renderDistance: normalizeRenderDistance(candidate.renderDistance),
+    fovDegrees: normalizeFovDegrees(candidate.fovDegrees),
   };
 }
 
@@ -81,4 +92,8 @@ export function saveClientSettings(storage: ClientSettingsStorage | null | undef
 
 export function mouseLookScale(mouseSensitivity: unknown): number {
   return DEFAULT_MOUSE_LOOK_SCALE * normalizeSensitivity(mouseSensitivity) / DEFAULT_CLIENT_SETTINGS.mouseSensitivity;
+}
+
+export function fieldOfViewRadians(fovDegrees: unknown): number {
+  return normalizeFovDegrees(fovDegrees) * Math.PI / 180;
 }

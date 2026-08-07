@@ -1,0 +1,451 @@
+{
+  "format": "lakecraft.minecraft-sound-assets.v1",
+  "minecraftVersion": "26.2",
+  "assetIndexId": "32",
+  "assetIndexSha1": "4050401d6e5df16ef17c2d0adea6fd37937badae",
+  "soundsJsonSha1": "9ac006d5537ed0fa4a7bcd1eccfc505155847686",
+  "resourceBaseUrl": "https://resources.download.minecraft.net",
+  "sourceIndexBytes": 586366,
+  "groups": {
+    "footstep:grass": {
+      "event": "block.grass.step",
+      "assets": [
+        {
+          "path": "minecraft/sounds/step/grass1.ogg",
+          "hash": "6d68d66730c285e0c866c71b0cfcdf065ad96e42",
+          "size": 8002
+        }
+      ]
+    },
+    "blockBreak:grass": {
+      "event": "block.grass.break",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/grass1.ogg",
+          "hash": "f970f8e68b06d60603af52120056ff2eb66ac75d",
+          "size": 7706
+        }
+      ]
+    },
+    "blockPlace:grass": {
+      "event": "block.grass.place",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/grass1.ogg",
+          "hash": "f970f8e68b06d60603af52120056ff2eb66ac75d",
+          "size": 7706
+        }
+      ]
+    },
+    "footstep:stone": {
+      "event": "block.stone.step",
+      "assets": [
+        {
+          "path": "minecraft/sounds/step/stone1.ogg",
+          "hash": "ef859078b24917d4a9d12e84c2a63d08bef04d97",
+          "size": 8657
+        }
+      ]
+    },
+    "blockBreak:stone": {
+      "event": "block.stone.break",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/stone1.ogg",
+          "hash": "4ec831592ae2bcbac1b4047a9f9f72a2de5ca834",
+          "size": 7434
+        }
+      ]
+    },
+    "blockPlace:stone": {
+      "event": "block.stone.place",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/stone1.ogg",
+          "hash": "4ec831592ae2bcbac1b4047a9f9f72a2de5ca834",
+          "size": 7434
+        }
+      ]
+    },
+    "footstep:wood": {
+      "event": "block.wood.step",
+      "assets": [
+        {
+          "path": "minecraft/sounds/step/wood1.ogg",
+          "hash": "a120746451672bfebaf36c8dcf8844c13138fa80",
+          "size": 8202
+        }
+      ]
+    },
+    "blockBreak:wood": {
+      "event": "block.wood.break",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/wood1.ogg",
+          "hash": "ef59a7ee4163d8b06fcda67e356ffe717756adda",
+          "size": 7283
+        }
+      ]
+    },
+    "blockPlace:wood": {
+      "event": "block.wood.place",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/wood1.ogg",
+          "hash": "ef59a7ee4163d8b06fcda67e356ffe717756adda",
+          "size": 7283
+        }
+      ]
+    },
+    "footstep:sand": {
+      "event": "block.sand.step",
+      "assets": [
+        {
+          "path": "minecraft/sounds/step/sand1.ogg",
+          "hash": "6831f2025b403ae7b7db7d535872f74e900167d7",
+          "size": 5945
+        }
+      ]
+    },
+    "blockBreak:sand": {
+      "event": "block.sand.break",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/sand1.ogg",
+          "hash": "fbb8115856475678b59b9c923a17bb3c1c685629",
+          "size": 6058
+        }
+      ]
+    },
+    "blockPlace:sand": {
+      "event": "block.sand.place",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/sand1.ogg",
+          "hash": "fbb8115856475678b59b9c923a17bb3c1c685629",
+          "size": 6058
+        }
+      ]
+    },
+    "footstep:gravel": {
+      "event": "block.gravel.step",
+      "assets": [
+        {
+          "path": "minecraft/sounds/step/gravel1.ogg",
+          "hash": "2cb1b36b8660308e06256e2e18b92205ab9abed1",
+          "size": 8402
+        }
+      ]
+    },
+    "blockBreak:gravel": {
+      "event": "block.gravel.break",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/gravel1.ogg",
+          "hash": "6993351945532093490fe7d1e62ada30c290c52e",
+          "size": 7783
+        }
+      ]
+    },
+    "blockPlace:gravel": {
+      "event": "block.gravel.place",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/gravel1.ogg",
+          "hash": "6993351945532093490fe7d1e62ada30c290c52e",
+          "size": 7783
+        }
+      ]
+    },
+    "footstep:metal": {
+      "event": "block.metal.step",
+      "assets": [
+        {
+          "path": "minecraft/sounds/step/stone1.ogg",
+          "hash": "ef859078b24917d4a9d12e84c2a63d08bef04d97",
+          "size": 8657
+        }
+      ]
+    },
+    "blockBreak:metal": {
+      "event": "block.metal.break",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/stone1.ogg",
+          "hash": "4ec831592ae2bcbac1b4047a9f9f72a2de5ca834",
+          "size": 7434
+        }
+      ]
+    },
+    "blockPlace:metal": {
+      "event": "block.metal.place",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/stone1.ogg",
+          "hash": "4ec831592ae2bcbac1b4047a9f9f72a2de5ca834",
+          "size": 7434
+        }
+      ]
+    },
+    "footstep:glass": {
+      "event": "block.glass.step",
+      "assets": [
+        {
+          "path": "minecraft/sounds/step/stone1.ogg",
+          "hash": "ef859078b24917d4a9d12e84c2a63d08bef04d97",
+          "size": 8657
+        }
+      ]
+    },
+    "blockBreak:glass": {
+      "event": "block.glass.break",
+      "assets": [
+        {
+          "path": "minecraft/sounds/random/glass1.ogg",
+          "hash": "fa35a51bb74a4a6cf0c48161342db5a8577f13e5",
+          "size": 9937
+        }
+      ]
+    },
+    "blockPlace:glass": {
+      "event": "block.glass.place",
+      "assets": [
+        {
+          "path": "minecraft/sounds/dig/stone1.ogg",
+          "hash": "4ec831592ae2bcbac1b4047a9f9f72a2de5ca834",
+          "size": 7434
+        }
+      ]
+    },
+    "mobIdle:pig": {
+      "event": "entity.pig.ambient",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/pig/say1.ogg",
+          "hash": "22c5aefca088b196a011a1615aaaa6b68f2ad703",
+          "size": 6241
+        }
+      ]
+    },
+    "mobHurt:pig": {
+      "event": "entity.pig.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/pig/say1.ogg",
+          "hash": "22c5aefca088b196a011a1615aaaa6b68f2ad703",
+          "size": 6241
+        }
+      ]
+    },
+    "mobDeath:pig": {
+      "event": "entity.pig.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/pig/death.ogg",
+          "hash": "49b6b073bc60bca804c3ad0bc28dc547361ebd3e",
+          "size": 9226
+        }
+      ]
+    },
+    "mobIdle:cow": {
+      "event": "entity.cow.ambient",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/cow/say1.ogg",
+          "hash": "50b928af4d33822d8cc5ca0d0161053e491b6c5a",
+          "size": 10083
+        }
+      ]
+    },
+    "mobHurt:cow": {
+      "event": "entity.cow.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/cow/hurt1.ogg",
+          "hash": "43544ddbc393f3a6869e26d5cef76eea44cd49b3",
+          "size": 7835
+        }
+      ]
+    },
+    "mobDeath:cow": {
+      "event": "entity.cow.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/cow/hurt1.ogg",
+          "hash": "43544ddbc393f3a6869e26d5cef76eea44cd49b3",
+          "size": 7835
+        }
+      ]
+    },
+    "mobIdle:sheep": {
+      "event": "entity.sheep.ambient",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/sheep/say1.ogg",
+          "hash": "debbd3aa0f42c073f44313d4d8e5b6dccf3b55fa",
+          "size": 11331
+        }
+      ]
+    },
+    "mobHurt:sheep": {
+      "event": "entity.sheep.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/sheep/say1.ogg",
+          "hash": "debbd3aa0f42c073f44313d4d8e5b6dccf3b55fa",
+          "size": 11331
+        }
+      ]
+    },
+    "mobDeath:sheep": {
+      "event": "entity.sheep.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/sheep/say1.ogg",
+          "hash": "debbd3aa0f42c073f44313d4d8e5b6dccf3b55fa",
+          "size": 11331
+        }
+      ]
+    },
+    "mobIdle:chicken": {
+      "event": "entity.chicken.ambient",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/chicken/say1.ogg",
+          "hash": "833f9b908db2f877e678c377b9f62f9b726d7b0c",
+          "size": 8526
+        }
+      ]
+    },
+    "mobHurt:chicken": {
+      "event": "entity.chicken.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/chicken/hurt1.ogg",
+          "hash": "4eff70fec48a26fe31c76b414cb732d47595e2c7",
+          "size": 8992
+        }
+      ]
+    },
+    "mobDeath:chicken": {
+      "event": "entity.chicken.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/chicken/hurt1.ogg",
+          "hash": "4eff70fec48a26fe31c76b414cb732d47595e2c7",
+          "size": 8992
+        }
+      ]
+    },
+    "mobIdle:zombie": {
+      "event": "entity.zombie.ambient",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/zombie/say1.ogg",
+          "hash": "65b762da90c8b192ee065692fcd50068f571b3fc",
+          "size": 17748
+        }
+      ]
+    },
+    "mobHurt:zombie": {
+      "event": "entity.zombie.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/zombie/hurt1.ogg",
+          "hash": "e46ef10953dadb96e7faab3dddcfecc5551b652b",
+          "size": 11714
+        }
+      ]
+    },
+    "mobDeath:zombie": {
+      "event": "entity.zombie.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/zombie/death.ogg",
+          "hash": "51deaef407de6444854e4da39b165faa0d41370d",
+          "size": 10795
+        }
+      ]
+    },
+    "mobIdle:skeleton": {
+      "event": "entity.skeleton.ambient",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/skeleton/say1.ogg",
+          "hash": "82a837074ebb499c05a8ec9258190288ddcb5cbe",
+          "size": 9281
+        }
+      ]
+    },
+    "mobHurt:skeleton": {
+      "event": "entity.skeleton.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/skeleton/hurt1.ogg",
+          "hash": "6df446a07ce7f7aa292e8eeeab9f96543acd805b",
+          "size": 10729
+        }
+      ]
+    },
+    "mobDeath:skeleton": {
+      "event": "entity.skeleton.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/skeleton/death.ogg",
+          "hash": "324bdca11921a46b0c87e61bf7a93047e70eb750",
+          "size": 18505
+        }
+      ]
+    },
+    "mobHurt:creeper": {
+      "event": "entity.creeper.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/creeper/say1.ogg",
+          "hash": "6fc976d65fc742451db2049a2a38a1007b976bc1",
+          "size": 8031
+        }
+      ]
+    },
+    "mobDeath:creeper": {
+      "event": "entity.creeper.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/creeper/death.ogg",
+          "hash": "bd090d4d049f06217d1436552525d96ea1fa53b0",
+          "size": 13695
+        }
+      ]
+    },
+    "mobIdle:spider": {
+      "event": "entity.spider.ambient",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/spider/say1.ogg",
+          "hash": "8a687fb7ea955d58a8e758a7e6ca8147c48dd477",
+          "size": 10210
+        }
+      ]
+    },
+    "mobHurt:spider": {
+      "event": "entity.spider.hurt",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/spider/say1.ogg",
+          "hash": "8a687fb7ea955d58a8e758a7e6ca8147c48dd477",
+          "size": 10210
+        }
+      ]
+    },
+    "mobDeath:spider": {
+      "event": "entity.spider.death",
+      "assets": [
+        {
+          "path": "minecraft/sounds/mob/spider/death.ogg",
+          "hash": "eec5d186206792d2c650e1dbaa9c8796c56d2ea3",
+          "size": 15134
+        }
+      ]
+    }
+  }
+}

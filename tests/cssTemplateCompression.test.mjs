@@ -159,7 +159,7 @@ assert.equal(
   "compact family names must remain collision-free",
 );
 assert.ok(
-  COMPACT_CLIENT_IDENTIFIER_FAMILIES.every(([readable, compact]) => readable.startsWith("lc-") && /^x[a-z]$/.test(compact)),
+  COMPACT_CLIENT_IDENTIFIER_FAMILIES.every(([readable, compact]) => readable.startsWith("lc-") && /^x[a-z0-9]$/.test(compact)),
   "family rewrites must stay inside the private client namespace",
 );
 const allClientSources = await Promise.all((await clientSourcePaths()).map((path) => readFile(path, "utf8")));

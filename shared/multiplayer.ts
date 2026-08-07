@@ -72,7 +72,7 @@ export type SendChatResult =
   | { ok: true; message: ChatMessage }
   | {
       ok: false;
-      reason: "authentication_required" | "profile_required" | "empty" | "too_long" | "rate_limited";
+      reason: "authentication_required" | "profile_required" | "empty" | "too_long" | "rate_limited" | "permission";
       retryAfterMs?: number;
     };
 

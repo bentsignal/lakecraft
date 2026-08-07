@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
+/* @lakecraft-development:imports:start */
+import { FirstPersonPoseLab, VisualLab } from "../components";
+/* @lakecraft-development:imports:end */
 import { ChatOverlay, type LakecraftChatMessage } from "../chat";
 import {
   BLOCK,
@@ -46,7 +49,9 @@ import { planOakTreeGrowth } from "../../shared/treeGrowth";
 import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
 import { performanceHudCoreText, performanceHudFpsText } from "../game/performanceHud.ts";
+import { clearPersistedPlayerSkin, loadPersistedPlayerSkin } from "../game/playerSkin.ts";
 import {
+  fieldOfViewRadians,
   loadClientSettings,
   mouseLookScale,
   normalizeClientSettings,
@@ -60,6 +65,7 @@ import {
   loadSinglePlayerSave,
   resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
+  unsupportedSinglePlayerSaveMessage,
   type SinglePlayerLoadResult,
   type SinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
@@ -220,7 +226,7 @@ function loadInitialLocalWorld(world: LocalWorldRecord, storage: SinglePlayerSto
     };
   };
   try {
-    const load = loadSinglePlayerSave(storage, { now: () => now, migrateLegacy: false, worldId: world.id });
+    const load = loadSinglePlayerSave(storage, { worldId: world.id });
     if (load.snapshot) return finish(load.snapshot, load, false);
     if (load.status === "empty") {
       const snapshot = createDefaultSinglePlayerSnapshot(world.seed, world.createdAt, world.id);
@@ -262,6 +268,7 @@ function SinglePlayerWorld({
   const initial = useRef<InitialLocalWorld | null>(null);
   if (!initial.current) initial.current = loadInitialLocalWorld(world, storage);
   const initialSnapshot = initial.current.snapshot;
+
   const initialGameMode: LocalGameMode = initialSnapshot.world.gameMode ?? "survival";
   const initialPlayerHealth = initialGameMode === "creative"
     ? MAX_HEALTH
@@ -339,6 +346,9 @@ function SinglePlayerWorld({
   const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(true);
   const [silentPointerRecaptureDenied, setSilentPointerRecaptureDenied] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  /* @lakecraft-development:state:start */
+  const [visualLabOpen, setVisualLabOpen] = useState(false);
+  /* @lakecraft-development:state:end */
   const [clientSettings, setClientSettings] = useState(() => loadClientSettings(storage));
   const clientSettingsRef = useRef(clientSettings);
   clientSettingsRef.current = clientSettings;
@@ -354,14 +364,13 @@ function SinglePlayerWorld({
   const [commandDraft, setCommandDraft] = useState("");
   const [commandMessages, setCommandMessages] = useState<LakecraftChatMessage[]>([]);
   const worldModalOpen = containerOpen || sleepingBed !== null;
-  const uiModalOpen = worldModalOpen || commandOpen;
+  const uiModalOpen = worldModalOpen || commandOpen/* @lakecraft-development:modal:start */ || visualLabOpen/* @lakecraft-development:modal:end */;
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
-    : initial.current.load.status === "migrated" ? "Imported the previous local world."
-      : initial.current.load.status === "unsupported"
-        ? "This world needs a newer Lakecraft version. Saving is disabled; reset it to start fresh."
+    : initial.current.load.status === "unsupported"
+        ? unsupportedSinglePlayerSaveMessage(initial.current.load.versions)
         : initial.current.saveLocked
           ? "This local world could not be read. Saving is disabled; reset it to start fresh."
           : "";
@@ -472,8 +481,34 @@ function SinglePlayerWorld({
     applyPointerSessionEvent({ type: "close_ui_escape", now });
   }
 
+  function requestGameplayPointerLockAfterEscapeRelease(): void {
+    const requestGeneration = pointerLockRequestRef.current;
+    let cleanupTimer = 0;
+    const onEscapeRelease = (event: KeyboardEvent) => {
+      if (event.code !== "Escape") return;
+      window.removeEventListener("keyup", onEscapeRelease, true);
+      window.clearTimeout(cleanupTimer);
+      if (requestGeneration !== pointerLockRequestRef.current
+        || !pointerSessionMountedRef.current
+        || pointerUiBlockedRef.current
+        || pointerSessionRef.current.pauseOpen
+        || document.visibilityState !== "visible") return;
+      // Waiting for keyup avoids Chrome's native Escape-unlock tail. Browsers
+      // that allow re-entry after our earlier programmatic inventory release
+      // resume immediately; the existing movement-key fallback remains armed
+      // if this quiet attempt is rejected.
+      requestEnginePointerLock(true);
+    };
+    window.addEventListener("keyup", onEscapeRelease, true);
+    cleanupTimer = window.setTimeout(() => {
+      window.removeEventListener("keyup", onEscapeRelease, true);
+    }, 1_000);
+  }
+
   function closeInventoryAndResume(keyboardCode?: "Escape" | "KeyE"): void {
     const closeInventoryUi = () => {
+      pointerUiBlockedRef.current = uiModalOpen || deathScreenOpen
+        || document.visibilityState !== "visible";
       setInventoryOpen(false);
       setCraftingContext("field");
     };
@@ -488,7 +523,10 @@ function SinglePlayerWorld({
       },
       (onStarted) => requestGameplayPointerLock(onStarted),
       closeInventoryUi,
-      () => armGameplayResumeAfterEscape(performance.now()),
+      () => {
+        armGameplayResumeAfterEscape(performance.now());
+        requestGameplayPointerLockAfterEscapeRelease();
+      },
     );
   }
 
@@ -732,6 +770,17 @@ function SinglePlayerWorld({
       engine.setDayNightClock(update.config, update.serverTimeOffsetMs);
       markWorldDirty();
       appendCommandMessage(`Time set to ${parsed.command.time}.`, "system");
+      return;
+    }
+    if (parsed.command.kind === "gamerule") {
+      const engine = engineRef.current;
+      if (!engine) {
+        appendCommandMessage("The world clock is not ready.", "warning");
+        return;
+      }
+      engine.setDaylightCycle(parsed.command.value);
+      markWorldDirty();
+      appendCommandMessage(`Daylight cycle ${parsed.command.value ? "enabled" : "disabled"}.`, "system");
       return;
     }
     if (parsed.command.kind === "locate") {
@@ -1192,6 +1241,7 @@ function SinglePlayerWorld({
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
       getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
+      getFieldOfViewRadians: () => fieldOfViewRadians(clientSettingsRef.current.fovDegrees),
       onSimulationStep: (elapsedSeconds) => {
         const localEngine = engineRef.current;
         if (!localEngine || dropsRef.current.length === 0) return;
@@ -1312,7 +1362,11 @@ function SinglePlayerWorld({
             intent.origin[0],
             intent.origin[2],
           );
-          if (hit.applied) audio.play("mobHurt", { seed: `${projectile.projectileId}:${intent.target.id}`, intensity: 0.7 });
+          if (hit.applied) audio.play(hit.killed ? "mobDeath" : "mobHurt", {
+            seed: `${projectile.projectileId}:${intent.target.id}`,
+            intensity: hit.killed ? 0.9 : 0.7,
+            mob: intent.target.mobKind,
+          });
         }
       },
       getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
@@ -1448,7 +1502,12 @@ function SinglePlayerWorld({
         recordLocalExplosion(`creeper:${mobId}`, edits, 0);
         markWorldDirty();
       },
-      onLocalMobHit: () => {
+      onLocalMobHit: (kind, killed) => {
+        audio.play(killed ? "mobDeath" : "mobHurt", {
+          seed: `local-mob-hit:${kind}:${performance.now().toFixed(0)}`,
+          intensity: killed ? 0.9 : 0.68,
+          mob: kind,
+        });
         if (gameModeRef.current === "creative") return;
         const slot = selectedRef.current;
         const held = inventoryRef.current[slot]?.itemId ?? null;
@@ -1456,6 +1515,7 @@ function SinglePlayerWorld({
         if (!wear.used) return;
         updateInventory(wear.inventory);
       },
+      onMobIdle: (kind, mobId, intensity, pan) => audio.play("mobIdle", { seed: mobId, mob: kind, intensity, pan }),
       onMobUse: (target) => {
         if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
         let acceptedInventory: Inventory | null = null;
@@ -1519,7 +1579,7 @@ function SinglePlayerWorld({
       onHotbarSelect: selectHotbar,
       onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: (action) => {
-        if (action === "attack") audio.play("mobHurt", {
+        if (action === "attack") audio.play("playerAttack", {
           seed: `local-mob-hit:${performance.now().toFixed(0)}`,
           intensity: 0.68,
         });
@@ -1651,7 +1711,27 @@ function SinglePlayerWorld({
       },
     });
     engineRef.current = engine;
-    engine.setFirstPersonFeedbackHidden(inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen);
+    const persistedSkin = loadPersistedPlayerSkin(storage);
+    if (persistedSkin) {
+      const image = new Image();
+      image.onload = () => {
+        if (engineRef.current !== engine) return;
+        if (image.naturalWidth !== persistedSkin.width || image.naturalHeight !== persistedSkin.height) {
+          clearPersistedPlayerSkin(storage);
+          return;
+        }
+        engine.setPlayerSkin(image, persistedSkin.model);
+      };
+      image.onerror = () => clearPersistedPlayerSkin(storage);
+      image.src = persistedSkin.dataUrl;
+    }
+    engine.setPlayerArmor({
+      head: equipmentRef.current.head?.itemId ?? null,
+      chest: equipmentRef.current.chest?.itemId ?? null,
+      legs: equipmentRef.current.legs?.itemId ?? null,
+      feet: equipmentRef.current.feet?.itemId ?? null,
+    });
+    engine.setFirstPersonFeedbackHidden(worldModalOpen || deathScreenOpen || commandOpen);
     if (initialRuntimeRef.current && !engine.importRuntimeSnapshot(initialRuntimeRef.current)) {
       setAutosaveStatusText("The saved player runtime was invalid; world state was left untouched.");
       saveLockedRef.current = true;
@@ -1726,7 +1806,7 @@ function SinglePlayerWorld({
       documentVisible: document.visibilityState === "visible",
     });
     engineRef.current?.setFirstPersonFeedbackHidden(
-      inventoryOpen || worldModalOpen || deathScreenOpen || commandOpen,
+      worldModalOpen || deathScreenOpen || commandOpen,
     );
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
@@ -1834,6 +1914,15 @@ function SinglePlayerWorld({
   }, [inventory, selected]);
 
   useEffect(() => {
+    engineRef.current?.setPlayerArmor({
+      head: equipment.head?.itemId ?? null,
+      chest: equipment.chest?.itemId ?? null,
+      legs: equipment.legs?.itemId ?? null,
+      feet: equipment.feet?.itemId ?? null,
+    });
+  }, [equipment]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "F3" && !event.repeat) {
         event.preventDefault();
@@ -1842,6 +1931,9 @@ function SinglePlayerWorld({
         }
         return;
       }
+      /* @lakecraft-development:guard:start */
+      if (visualLabOpen) return;
+      /* @lakecraft-development:guard:end */
       if (consumeSinglePlayerCommandSurfaceEscape(
         commandSurfaceOpenRef.current,
         event,
@@ -1935,6 +2027,9 @@ function SinglePlayerWorld({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [
     optionsOpen,
+    /* @lakecraft-development:dependency:start */
+    visualLabOpen,
+    /* @lakecraft-development:dependency:end */
     pauseOpen,
     inventoryOpen,
     worldModalOpen,
@@ -1945,6 +2040,11 @@ function SinglePlayerWorld({
 
   const lastAutosavedText = lastAutosavedAt === null ? "Last autosaved —"
     : `Last autosaved ${new Date(lastAutosavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
+  /* @lakecraft-development:callback:start */
+  const setPoseLabBowPreview = useCallback((drawn: boolean | null) => {
+    engineRef.current?.setPoseLabDrawPreview(drawn);
+  }, []);
+  /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
     if (!persist("quit")) return;
     quitSavedRef.current = true;
@@ -1980,6 +2080,20 @@ function SinglePlayerWorld({
       {silentPointerRecaptureDenied && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
         <small className="lc-silent-recapture">Press a movement key or click the world to recapture the mouse</small>
       ) : null}
+      {/* @lakecraft-development:render:start */}
+      <FirstPersonPoseLab
+        onBowPreviewChange={setPoseLabBowPreview}
+        onCycleCamera={() => engineRef.current?.cycleCameraMode() ?? "first_person"}
+        onOpenVisualLab={() => setVisualLabOpen(true)}
+        open={(pauseOpen || pointerCaptureNeeded) && !inventoryOpen && !uiModalOpen && !deathScreenOpen}
+      />
+      <VisualLab
+        onApplySkin={(source, model) => engineRef.current?.setPlayerSkin(source, model)}
+        onClose={() => setVisualLabOpen(false)}
+        open={visualLabOpen}
+        skinStorage={storage}
+      />
+      {/* @lakecraft-development:render:end */}
       <GameHud
         connected={false}
         craftingContext={craftingContext}
@@ -2016,10 +2130,12 @@ function SinglePlayerWorld({
           equipmentRef.current = snapshot.equipment;
           markWorldDirty();
         }}
+        fovDegrees={clientSettings.fovDegrees}
         mouseSensitivity={clientSettings.mouseSensitivity}
         renderDistance={clientSettings.renderDistance}
         onCloseOptions={() => setOptionsOpen(false)}
         onOptions={() => setOptionsOpen(true)}
+        onFovChange={(fovDegrees) => updateClientSettings({ ...clientSettingsRef.current, fovDegrees })}
         onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
         onRenderDistanceChange={(renderDistance) => {
           updateClientSettings({ ...clientSettingsRef.current, renderDistance });

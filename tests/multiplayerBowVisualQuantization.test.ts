@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { PLAYER_BOW_FULL_CHARGE_MS } from "../client/game/voxelEngine.ts";
 
 const referenceStage = (progress: number): 0 | 1 | 2 => progress >= 0.9 ? 2 : progress >= 0.55 ? 1 : 0;
 const visualChargeMs = (charging: boolean, normalizedCharge: number): number => (
@@ -45,8 +46,26 @@ assert.equal(singlePlayer.includes("lakebed/client"), false, "local bow feedback
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const intentStart = engine.indexOf("function rangedShotIntent");
 const intentEnd = engine.indexOf("function requestCanvasPointerLock", intentStart);
-assert.match(engine.slice(intentStart, intentEnd), /chargeMs: Math\.max\(0, Math\.min\(PLAYER_BOW_FULL_CHARGE_MS, now - rangedChargeStartedAt\)\)/,
+assert.match(
+  engine.slice(intentStart, intentEnd),
+  /chargeMs: clampNumber\(now - rangedChargeStartedAt, 0, PLAYER_BOW_FULL_CHARGE_MS\)/,
   "exact monotonic charge duration remains engine-owned");
+const clampedChargeDuration = (now: number, startedAt: number): number => (
+  Math.max(0, Math.min(PLAYER_BOW_FULL_CHARGE_MS, now - startedAt))
+);
+const chargeDurations = [
+  clampedChargeDuration(900, 1_000),
+  clampedChargeDuration(1_425, 1_000),
+  clampedChargeDuration(2_000, 1_000),
+  clampedChargeDuration(2_400, 1_000),
+];
+assert.deepEqual(
+  chargeDurations,
+  [0, 425, PLAYER_BOW_FULL_CHARGE_MS, PLAYER_BOW_FULL_CHARGE_MS],
+  "negative, partial, exact-full, and over-full elapsed charge clamp to the engine bounds",
+);
+assert.ok(chargeDurations.every((duration, index) => index === 0 || duration >= chargeDurations[index - 1]),
+  "clamped charge duration stays monotonic across the boundary cases");
 assert.match(engine, /setFirstPersonBowCharge\([\s\S]{0,240}PLAYER_BOW_FULL_CHARGE_MS/,
   "the same exact engine clock drives only three retained geometry uploads");
 

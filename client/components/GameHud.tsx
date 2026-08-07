@@ -59,6 +59,8 @@ export type GameHudProps = {
   optionsOpen?: boolean;
   mouseSensitivity?: number;
   onSensitivityChange?: (value: number) => void;
+  fovDegrees?: number;
+  onFovChange?: (value: number) => void;
   renderDistance?: number;
   onRenderDistanceChange?: (value: number) => void;
   onCloseOptions?: () => void;
@@ -125,6 +127,8 @@ export function GameHud({
   optionsOpen = false,
   mouseSensitivity = 100,
   onSensitivityChange,
+  fovDegrees = 90,
+  onFovChange,
   renderDistance,
   onRenderDistanceChange,
   onCloseOptions,
@@ -170,10 +174,12 @@ export function GameHud({
         open={pauseOpen && !optionsOpen && !deathScreenOpen}
         title={pauseTitle}
       />
-      {onCloseOptions && onSensitivityChange && onToggleSound ? (
+      {onCloseOptions && onSensitivityChange && onFovChange && onToggleSound ? (
         <OptionsDialog
+          fovDegrees={fovDegrees}
           mouseSensitivity={mouseSensitivity}
           onBack={onCloseOptions}
+          onFovChange={onFovChange}
           onSensitivityChange={onSensitivityChange}
           onRenderDistanceChange={onRenderDistanceChange}
           onToggleSound={onToggleSound}

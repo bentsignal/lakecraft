@@ -235,8 +235,10 @@ export function LobbyScreen(props: LobbyScreenProps) {
       </section>
       {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
       <OptionsDialog
+        fovDegrees={props.settings.fovDegrees}
         mouseSensitivity={props.settings.mouseSensitivity}
         onBack={() => setOptionsOpen(false)}
+        onFovChange={(fovDegrees) => props.onSettingsChange({ ...props.settings, fovDegrees })}
         onSensitivityChange={(mouseSensitivity) => props.onSettingsChange({ ...props.settings, mouseSensitivity })}
         onToggleSound={() => props.onSettingsChange({ ...props.settings, soundMuted: !props.settings.soundMuted })}
         open={optionsOpen}

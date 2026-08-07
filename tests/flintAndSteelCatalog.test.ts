@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { CRAFTING_GRID_RECIPES, INITIAL_RECIPE_PATTERNS, matchCraftingGrid } from "../shared/craftingGrid.ts";
 import {
   FLINT_DROP_CHANCE_DENOMINATOR,
@@ -12,6 +11,7 @@ import {
   maxItemDurability,
 } from "../shared/game.ts";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
+import { remoteHeldItemRects, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
 import { resolveWorldBlockOperation } from "../shared/worldBlockOperations.ts";
 
 assert.equal(ITEMS.flint.category, "material");
@@ -93,14 +93,33 @@ assert.equal(applyConfirmedDurableItemUse(inventory, 2, "bow").used, false, "aut
 
 const flintArt = getItemIconArt("flint");
 const strikerArt = getItemIconArt("flint_and_steel");
+const strikerCells = new Set<string>();
+for (const run of strikerArt.runs) for (let x = run.x; x < run.x + run.width; x += 1) strikerCells.add(`${x}:${run.y}`);
+const pending = [strikerCells.values().next().value!];
+const connected = new Set(pending);
+while (pending.length > 0) {
+  const [x, y] = pending.pop()!.split(":").map(Number);
+  for (const next of [
+    `${x - 1}:${y - 1}`, `${x}:${y - 1}`, `${x + 1}:${y - 1}`,
+    `${x - 1}:${y}`, `${x + 1}:${y}`,
+    `${x - 1}:${y + 1}`, `${x}:${y + 1}`, `${x + 1}:${y + 1}`,
+  ]) {
+    if (strikerCells.has(next) && !connected.has(next)) { connected.add(next); pending.push(next); }
+  }
+}
 assert.ok(flintArt.runs.length >= 8);
 assert.ok(strikerArt.runs.length >= 8);
 assert.notDeepEqual(flintArt.runs, getItemIconArt("coal").runs);
 assert.notDeepEqual(strikerArt.runs, getItemIconArt("iron_ingot").runs);
 assert.equal(strikerArt.family, "tool", "held first-person presentation uses the tool-sized sprite rig");
+assert.ok(connected.size >= 35 && connected.size <= 50,
+  "the exact installed steel hook remains a substantial component beside the flint");
+assert.equal(strikerCells.size, 85, "the exact striker stays compact inside its 16px frame");
 
-const remote = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", import.meta.url), "utf8");
-assert.match(remote, /case\s+"flint_and_steel":\s*return\s+COLORS\.ironItem/);
-assert.match(remote, /if\s*\(itemId\s*===\s*"flint_and_steel"\)/, "remote players receive an explicit two-part striker silhouette");
+const remoteStriker = remoteHeldItemRects("flint_and_steel");
+assert.equal(remoteHeldItemVertexCount("flint_and_steel"), remoteStriker.length * 6);
+assert.ok(remoteStriker.length >= 8, "remote players retain a recognizable bounded striker silhouette");
+assert.ok(new Set(remoteStriker.map((rect) => rect.color.join(","))).size >= 3,
+  "remote striker reuses the canonical multicolor flint-and-steel palette");
 
 console.log("flint, flint-and-steel crafting, durability, drop, and visual tests passed");

@@ -28,11 +28,11 @@ import type { LocalGameMode } from "./localCommands.ts";
 import { LOCAL_DROP_TERMINAL_VELOCITY } from "./localDropGravity.ts";
 
 export const SINGLEPLAYER_SAVE_FORMAT = "lakecraft.singleplayer" as const;
-export const SINGLEPLAYER_SAVE_VERSION = 1 as const;
+export const SINGLEPLAYER_SAVE_VERSION = 2 as const;
+export const SINGLEPLAYER_GENERATOR_VERSION = 2 as const;
 export const SINGLEPLAYER_SAVE_SLOT_A_KEY = "lakecraft.singleplayer.save.a";
 export const SINGLEPLAYER_SAVE_SLOT_B_KEY = "lakecraft.singleplayer.save.b";
 export const SINGLEPLAYER_SAVE_HEAD_KEY = "lakecraft.singleplayer.save.head";
-export const SINGLEPLAYER_LEGACY_SAVE_KEY = "lakecraft.singleplayer.v1";
 export const SINGLEPLAYER_WORLD_STORAGE_PREFIX = "lakecraft.singleplayer.world.";
 /** localStorage is commonly quota-limited to a few MiB; leave room for the second slot and other app data. */
 export const SINGLEPLAYER_SAVE_MAX_SLOT_CHARS = 900_000;
@@ -56,6 +56,8 @@ export const SINGLEPLAYER_SAVE_LIMITS = Object.freeze({
 });
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
+const SINGLEPLAYER_WORLD_MIN_Y = 1;
+const SINGLEPLAYER_WORLD_MAX_Y = 192;
 const MAX_WEATHER_MS = 7 * 24 * 60 * 60 * 1_000;
 const ARMOR_SLOTS: readonly ArmorSlot[] = ["head", "chest", "legs", "feet"];
 const WEATHER_KINDS = new Set(["clear", "rain", "thunder"]);
@@ -163,12 +165,10 @@ export interface SinglePlayerSnapshot {
     seed: number;
     createdAt: number;
     activePlayMs: number;
-    /** Missing only on saves written before local commands/game modes were added. */
-    gameMode?: LocalGameMode;
+    gameMode: LocalGameMode;
     weather: SinglePlayerWeatherState;
     edits: WorldEdit[];
-    /** Directional pairing for ordinary BED edits. Missing only on older saves. */
-    beds?: BedStructure[];
+    beds: BedStructure[];
   };
   player: {
     inventory: Inventory;
@@ -185,7 +185,7 @@ export interface SinglePlayerSnapshot {
   chests: SinglePlayerChestState[];
   furnaces: SinglePlayerFurnaceState[];
   primedTnt: SinglePlayerPrimedTntState[];
-  /** Authoritative engine pose/respawn/health/time/mob simulation snapshot. Null only for a fresh or migrated legacy world. */
+  /** Authoritative engine pose/respawn/health/time/mob simulation snapshot. Null only for a fresh world. */
   runtime: VoxelRuntimeSnapshot | null;
 }
 
@@ -205,8 +205,7 @@ export type SinglePlayerSnapshotValidation =
 export type SinglePlayerLoadResult =
   | { status: "empty"; snapshot: null; sequence: 0 }
   | { status: "loaded" | "recovered"; snapshot: SinglePlayerSnapshot; sequence: number; savedAt: number; slot: SinglePlayerSaveSlot; issues: string[] }
-  | { status: "migrated"; snapshot: SinglePlayerSnapshot; sequence: number; savedAt: number; slot: SinglePlayerSaveSlot | null; persisted: boolean; issues: string[] }
-  | { status: "corrupt"; snapshot: null; sequence: 0; reason: "storage_read_failed" | "no_valid_snapshot" | "legacy_invalid"; issues: string[] }
+  | { status: "corrupt"; snapshot: null; sequence: 0; reason: "storage_read_failed" | "no_valid_snapshot"; issues: string[] }
   | { status: "unsupported"; snapshot: null; sequence: 0; versions: number[]; issues: string[] };
 
 export type SinglePlayerSaveResult =
@@ -221,6 +220,12 @@ export type SinglePlayerResetResult =
     key?: string;
     mutationStarted: boolean;
   };
+
+export function unsupportedSinglePlayerSaveMessage(versions: readonly number[]): string {
+  return versions.length > 0 && versions.every((version) => version < SINGLEPLAYER_SAVE_VERSION)
+    ? "This world uses the retired terrain coordinate system and cannot be loaded. No data was changed; reset it to start fresh."
+    : "This world needs a newer Lakecraft version. Saving is disabled; reset it to start fresh.";
+}
 
 type ParsedSlot =
   | { kind: "empty"; slot: SinglePlayerSaveSlot }
@@ -265,7 +270,6 @@ export function singlePlayerWorldStorageKey(worldId: string, key: string): strin
 
 export function singlePlayerWorldStorageKeys(worldId: string): readonly string[] {
   return [
-    singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_LEGACY_SAVE_KEY),
     singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_HEAD_KEY),
     singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_SLOT_A_KEY),
     singlePlayerWorldStorageKey(worldId, SINGLEPLAYER_SAVE_SLOT_B_KEY),
@@ -308,7 +312,7 @@ function coordinateKey(value: unknown): value is string {
   if (!match) return false;
   const [x, y, z] = match.slice(1).map(Number);
   return safeInteger(x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-    && safeInteger(y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+    && safeInteger(y, SINGLEPLAYER_WORLD_MIN_Y, SINGLEPLAYER_WORLD_MAX_Y)
     && safeInteger(z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
     && value === `${x}:${y}:${z}`;
 }
@@ -364,9 +368,10 @@ function validateEdits(value: unknown): WorldEdit[] | null {
   for (const candidate of value) {
     if (!isRecord(candidate) || !exactKeys(candidate, ["x", "y", "z", "block"])
       || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !safeInteger(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !safeInteger(candidate.y, SINGLEPLAYER_WORLD_MIN_Y + 1, SINGLEPLAYER_WORLD_MAX_Y)
       || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.BRICKS)) return null;
+      || !safeInteger(candidate.block, BLOCK.AIR, BLOCK.BEDROCK)
+      || candidate.block === BLOCK.BEDROCK) return null;
     const key = `${candidate.x}:${candidate.y}:${candidate.z}`;
     if (coordinates.has(key)) return null;
     coordinates.add(key);
@@ -380,20 +385,16 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
   const drops: SinglePlayerDropState[] = [];
   const ids = new Set<string>();
   for (const candidate of value) {
-    if (!isRecord(candidate)) return null;
-    const legacyKeys = ["dropId", "item", "x", "y", "z", "droppedAt"];
-    const hasMotion = Object.prototype.hasOwnProperty.call(candidate, "velocityY")
-      || Object.prototype.hasOwnProperty.call(candidate, "settled");
-    if (!exactKeys(candidate, hasMotion ? [...legacyKeys, "velocityY", "settled"] : legacyKeys) || !identifier(candidate.dropId)
+    if (!isRecord(candidate)
+      || !exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt", "velocityY", "settled"])
+      || !identifier(candidate.dropId)
       || !finiteNumber(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !finiteNumber(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !finiteNumber(candidate.y, SINGLEPLAYER_WORLD_MIN_Y, SINGLEPLAYER_WORLD_MAX_Y)
       || !finiteNumber(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || ids.has(candidate.dropId) || !safeInteger(candidate.droppedAt, 0, MAX_TIMESTAMP)
-      || (hasMotion && (
-        !finiteNumber(candidate.velocityY, LOCAL_DROP_TERMINAL_VELOCITY, 0)
-        || typeof candidate.settled !== "boolean"
-        || (candidate.settled && candidate.velocityY !== 0)
-      ))) return null;
+      || !finiteNumber(candidate.velocityY, LOCAL_DROP_TERMINAL_VELOCITY, 0)
+      || typeof candidate.settled !== "boolean"
+      || (candidate.settled && candidate.velocityY !== 0)) return null;
     const item = validateStack(candidate.item);
     if (!item) return null;
     ids.add(candidate.dropId);
@@ -404,8 +405,8 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
       y: candidate.y,
       z: candidate.z,
       droppedAt: candidate.droppedAt,
-      velocityY: hasMotion ? candidate.velocityY as number : 0,
-      settled: hasMotion ? candidate.settled as boolean : false,
+      velocityY: candidate.velocityY,
+      settled: candidate.settled,
     });
   }
   return drops.sort((left, right) => left.dropId.localeCompare(right.dropId));
@@ -449,7 +450,7 @@ function validatePrimedTnt(value: unknown): SinglePlayerPrimedTntState[] | null 
     if (!isRecord(candidate) || !exactKeys(candidate, ["eventId", "x", "y", "z", "ignitedAt", "dueAt"])
       || !identifier(candidate.eventId) || ids.has(candidate.eventId)
       || !safeInteger(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
-      || !safeInteger(candidate.y, -SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate, SINGLEPLAYER_SAVE_LIMITS.verticalCoordinate)
+      || !safeInteger(candidate.y, SINGLEPLAYER_WORLD_MIN_Y + 1, SINGLEPLAYER_WORLD_MAX_Y)
       || !safeInteger(candidate.z, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || !safeInteger(candidate.ignitedAt, 0, MAX_TIMESTAMP) || !safeInteger(candidate.dueAt, candidate.ignitedAt, MAX_TIMESTAMP)) return null;
     ids.add(candidate.eventId);
@@ -481,21 +482,14 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
   if (!isRecord(value) || !exactKeys(value, ["world", "player", "progression", "drops", "chests", "furnaces", "primedTnt", "runtime"])) {
     return { ok: false, reason: BS.invalidSnapshot, path: "$" };
   }
-  const worldKeys = ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "weather", "edits"];
-  const worldHasGameMode = isRecord(value.world) && Object.prototype.hasOwnProperty.call(value.world, "gameMode");
-  const worldHasBeds = isRecord(value.world) && Object.prototype.hasOwnProperty.call(value.world, "beds");
-  const actualWorldKeys = [
-    ...worldKeys,
-    ...(worldHasGameMode ? ["gameMode"] : []),
-    ...(worldHasBeds ? ["beds"] : []),
-  ];
-  if (!isRecord(value.world) || !exactKeys(value.world, actualWorldKeys)
+  if (!isRecord(value.world)
+    || !exactKeys(value.world, ["worldId", "generatorVersion", "seed", "createdAt", "activePlayMs", "gameMode", "weather", "edits", "beds"])
     || !identifier(value.world.worldId)
-    || !safeInteger(value.world.generatorVersion, 1, 1_000_000)
+    || value.world.generatorVersion !== SINGLEPLAYER_GENERATOR_VERSION
     || !safeInteger(value.world.seed, -2_147_483_648, 2_147_483_647)
     || !safeInteger(value.world.createdAt, 0, MAX_TIMESTAMP)
     || !safeInteger(value.world.activePlayMs, 0, MAX_TIMESTAMP)
-    || (worldHasGameMode && value.world.gameMode !== "survival" && value.world.gameMode !== "creative")) {
+    || (value.world.gameMode !== "survival" && value.world.gameMode !== "creative")) {
     return { ok: false, reason: BS.invalidSnapshot, path: "$.world" };
   }
   if (!isRecord(value.world.weather) || !exactKeys(value.world.weather, ["kind", "remainingMs"])
@@ -503,7 +497,7 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
     || !safeInteger(value.world.weather.remainingMs, 0, MAX_WEATHER_MS)) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.weather" };
   const edits = validateEdits(value.world.edits);
   if (!edits) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.edits" };
-  const beds = worldHasBeds ? validateBedStructures(value.world.beds, edits, SINGLEPLAYER_SAVE_LIMITS.beds) : [];
+  const beds = validateBedStructures(value.world.beds, edits, SINGLEPLAYER_SAVE_LIMITS.beds);
   if (!beds) return { ok: false, reason: BS.invalidSnapshot, path: "$.world.beds" };
 
   if (!isRecord(value.player) || !exactKeys(value.player, ["inventory", "equipment", "selectedHotbar", "hunger"])) {
@@ -540,8 +534,7 @@ export function validateSinglePlayerSnapshot(value: unknown): SinglePlayerSnapsh
       world: {
         worldId: value.world.worldId, generatorVersion: value.world.generatorVersion, seed: value.world.seed,
         createdAt: value.world.createdAt, activePlayMs: value.world.activePlayMs,
-        ...(worldHasGameMode ? { gameMode: value.world.gameMode as LocalGameMode } : {}),
-        ...(worldHasBeds ? { beds } : {}),
+        gameMode: value.world.gameMode as LocalGameMode, beds,
         weather: { kind: value.world.weather.kind as SinglePlayerWeatherState["kind"], remainingMs: value.world.weather.remainingMs }, edits,
       },
       player: { inventory, equipment, selectedHotbar: value.player.selectedHotbar, hunger: value.player.hunger },
@@ -555,7 +548,7 @@ export function createDefaultSinglePlayerSnapshot(seed = 7_319, createdAt = 0, w
   return {
     world: {
       worldId,
-      generatorVersion: 1,
+      generatorVersion: SINGLEPLAYER_GENERATOR_VERSION,
       seed,
       createdAt,
       activePlayMs: 0,
@@ -683,34 +676,9 @@ function readHead(storage: SinglePlayerStorageAdapter): { slot: SinglePlayerSave
   }
 }
 
-function legacySnapshot(raw: string): SinglePlayerSnapshot | null {
-  if (raw.length === 0 || raw.length > SINGLEPLAYER_SAVE_MAX_SLOT_CHARS) return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!isRecord(value) || !exactKeys(value, ["inventory", "equipment", "selected", "hunger", "edits", "drops"])) return null;
-  const inventory = validateInventory(value.inventory);
-  const equipment = validateEquipment(value.equipment);
-  const edits = validateEdits(value.edits);
-  const drops = validateDrops(value.drops);
-  if (!inventory || !equipment || !edits || edits.length > 8_000 || !drops || drops.length > 256
-    || !safeInteger(value.selected, 0, HOTBAR_SIZE - 1) || !safeInteger(value.hunger, 0, MAX_HUNGER)) return null;
-  const snapshot = createDefaultSinglePlayerSnapshot();
-  snapshot.player.inventory = inventory;
-  snapshot.player.equipment = equipment;
-  snapshot.player.selectedHotbar = value.selected;
-  snapshot.player.hunger = value.hunger;
-  snapshot.world.edits = edits;
-  snapshot.drops = drops;
-  return snapshot;
-}
-
 export function loadSinglePlayerSave(
   storage: SinglePlayerStorageAdapter,
-  options: { now?: () => number; migrateLegacy?: boolean; persistMigration?: boolean; worldId?: string } = {},
+  options: SinglePlayerWorldStorageOptions = {},
 ): SinglePlayerLoadResult {
   const targetStorage = selectedStorage(storage, options);
   const scanned = readSlots(targetStorage, options.worldId);
@@ -738,35 +706,6 @@ export function loadSinglePlayerSave(
   const occupiedInvalid = scanned.slots.some((slot) => slot.kind === "corrupt");
   if (occupiedInvalid || scanned.readFailed) {
     return { status: "corrupt", snapshot: null, sequence: 0, reason: scanned.readFailed ? "storage_read_failed" : "no_valid_snapshot", issues };
-  }
-  let legacyRaw: string | null = null;
-  try {
-    legacyRaw = targetStorage.getItem(SINGLEPLAYER_LEGACY_SAVE_KEY);
-  } catch {
-    return { status: "corrupt", snapshot: null, sequence: 0, reason: "storage_read_failed", issues: [...issues, "legacy:storage_read_failed"] };
-  }
-  if (legacyRaw !== null && options.migrateLegacy !== false) {
-    let migrated = legacySnapshot(legacyRaw);
-    if (!migrated) return { status: "corrupt", snapshot: null, sequence: 0, reason: "legacy_invalid", issues: [...issues, "legacy:invalid"] };
-    if (options.worldId) {
-      migrated = { ...migrated, world: { ...migrated.world, worldId: options.worldId } };
-    }
-    const savedAt = Math.max(0, Math.min(MAX_TIMESTAMP, Math.floor((options.now ?? Date.now)())));
-    if (options.persistMigration === false) {
-      return {
-        status: "migrated",
-        snapshot: migrated,
-        sequence: 0,
-        savedAt,
-        slot: null,
-        persisted: false,
-        issues,
-      };
-    }
-    const write = saveSinglePlayerSnapshot(storage, migrated, savedAt, options);
-    return write.ok
-      ? { status: "migrated", snapshot: write.envelope.payload, sequence: write.sequence, savedAt, slot: write.slot, persisted: true, issues }
-      : { status: "migrated", snapshot: migrated, sequence: 0, savedAt, slot: null, persisted: false, issues: [...issues, `migration:${write.reason}`] };
   }
   return { status: "empty", snapshot: null, sequence: 0 };
 }
@@ -850,7 +789,6 @@ export function resetSinglePlayerSave(
   const selected = highestValid(scanned.slots);
   const selectedKey = selected ? slotKey(selected.slot) : null;
   const nonSelectedKeys = [
-    SINGLEPLAYER_LEGACY_SAVE_KEY,
     SINGLEPLAYER_SAVE_HEAD_KEY,
     SINGLEPLAYER_SAVE_SLOT_A_KEY,
     SINGLEPLAYER_SAVE_SLOT_B_KEY,

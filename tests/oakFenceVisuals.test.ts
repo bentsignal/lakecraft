@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
+import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import {
   OAK_FENCE_BOX_VERTEX_COUNT,
   OAK_FENCE_HEIGHT,
@@ -16,6 +18,7 @@ import {
   type OakFenceConnections,
 } from "../client/game/voxelEngine.ts";
 import { BLOCK, type BlockId } from "../client/game/types.ts";
+import { itemVisual } from "../shared/visualCatalog.ts";
 
 assert.equal(BLOCK.OAK_FENCE, 27, "oak fences append after stone bricks without renumbering shipped engine IDs");
 assert.equal(blockHasCollision(BLOCK.OAK_FENCE), true, "a fence blocks traversal through its occupied cell");
@@ -86,9 +89,50 @@ assert.equal(art.variant, "oak_fence");
 assert.ok(art.runs.length >= 18, "inventory and held views use a readable original post-and-rails sprite");
 assert.notDeepEqual(art.runs, getItemIconArt("planks").runs);
 
+assert.equal(itemVisual("oak_fence").parent, "block", "oak fence retains its shared block-item visual definition");
+const expectedHeldGeometry: number[] = [];
+const expectedHeldVertices = appendItemSpriteGeometry(
+  expectedHeldGeometry,
+  art,
+  firstPersonSpritePresentation("oak_fence"),
+);
+let nextBufferId = 0;
+let boundBuffer: WebGLBuffer | null = null;
+const uploads = new Map<WebGLBuffer, Float32Array>();
+const captureGl = {
+  ARRAY_BUFFER: 0x8892,
+  DYNAMIC_DRAW: 0x88e8,
+  createBuffer: () => ({ id: ++nextBufferId }),
+  bindBuffer: (_target: number, buffer: WebGLBuffer | null) => { boundBuffer = buffer; },
+  bufferData: () => undefined,
+  bufferSubData: (_target: number, _offset: number, data: Float32Array) => {
+    if (!boundBuffer) throw new Error("held fence capture buffer was not bound");
+    uploads.set(boundBuffer, new Float32Array(data));
+  },
+  deleteBuffer: () => undefined,
+} as unknown as WebGLRenderingContext;
+const heldRenderer = createFirstPersonRenderer(captureGl);
+heldRenderer[3]("oak_fence", BLOCK.OAK_FENCE);
+const heldUpload = uploads.get(heldRenderer[0]);
+assert.ok(heldUpload, "oak fence uploads shared item-sprite color geometry");
+assert.equal(heldRenderer[2][0], expectedHeldVertices, "oak fence keeps canonical sprite vertex parity");
+assert.equal(heldUpload.length, expectedHeldGeometry.length, "oak fence uploads one complete six-float color stream");
+for (let offset = 3; offset < heldUpload.length; offset += 6) {
+  for (let channel = 0; channel < 3; channel += 1) {
+    assert.ok(Math.abs(heldUpload[offset + channel] - expectedHeldGeometry[offset + channel]) < 1e-6,
+      `oak fence vertex color ${offset / 6}:${channel} retains canonical inventory-art parity`);
+  }
+}
+assert.equal(heldRenderer[2][1], 0, "oak fence never falls through to textured full-cube output");
+heldRenderer[7]();
 const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.match(held, /itemId === "oak_fence" \|\| itemId === "oak_fence_gate"[\s\S]{0,500}appendColorBox/,
-  "held fences use solid posts and rails rather than a flat silhouette");
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+  assert.ok(held.includes(sharedPath), `held fences use the shared visual pipeline through ${sharedPath}`);
+}
+assert.equal(held.includes("appendColorBox"), false,
+  "the removed bespoke color-box held approximation cannot return");
+assert.equal(held.includes("appendSpecialBlock"), false,
+  "the removed special-block held approximation cannot bypass shared item art");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /block === BLOCK\.OAK_FENCE[\s\S]{0,420}appendOakFenceMesh\(\s*textureVertices/,
   "oak fences reuse the retained textured chunk batch");

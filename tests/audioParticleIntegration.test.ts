@@ -68,7 +68,7 @@ assert.doesNotMatch(particles, /\bfetch\s*\(/, "local particles cannot create ne
 for (const successfulActionCue of [
   'play("pickup"',
   'play("craft"',
-  'play("mobHurt"',
+  'play("mobIdle"',
   'play("playerAttack"',
   'play("playerHurt"',
   'play("uiConfirm"',
@@ -77,5 +77,9 @@ for (const successfulActionCue of [
 ]) {
   assert.ok(app.includes(successfulActionCue), `client integration retains ${successfulActionCue}`);
 }
+assert.ok(app.includes('? "mobDeath" : "mobHurt"') && singlePlayer.includes('? "mobDeath" : "mobHurt"'),
+  "fatal multiplayer and single-player hits select the dedicated death samples");
+assert.ok(engineTypes.includes("onMobIdle?:") && engine.includes("startedAt >= nextMobIdleAt"),
+  "ambient mob sounds are proximity- and interval-gated in the engine rather than emitted every frame");
 
 console.log("audio and particle client integration source tests passed");

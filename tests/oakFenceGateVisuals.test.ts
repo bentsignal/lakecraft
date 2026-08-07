@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/game/blockTextures.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
+import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import {
   OAK_FENCE_GATE_MESH_VERTEX_COUNT,
   OAK_FENCE_HEIGHT,
@@ -17,6 +19,7 @@ import {
   tryInteractBlock,
 } from "../client/game/voxelEngine.ts";
 import { BLOCK, type BlockTarget } from "../client/game/types.ts";
+import { itemVisual } from "../shared/visualCatalog.ts";
 
 assert.equal(BLOCK.OAK_FENCE_GATE_CLOSED, 28, "closed gate appends after oak fence without renumbering engine IDs");
 assert.equal(BLOCK.OAK_FENCE_GATE_OPEN, 29, "open gate is the next append-only render state");
@@ -82,9 +85,56 @@ assert.equal(art.family, "block");
 assert.equal(art.variant, "oak_fence_gate");
 assert.ok(art.runs.length >= 20, "inventory gate art reads as two posts, rails, and hinges");
 assert.notDeepEqual(art.runs, getItemIconArt("oak_fence").runs);
+
+let nextBufferId = 0;
+let boundBuffer: WebGLBuffer | null = null;
+const uploads = new Map<WebGLBuffer, Float32Array>();
+const captureGl = {
+  ARRAY_BUFFER: 0x8892,
+  DYNAMIC_DRAW: 0x88e8,
+  createBuffer: () => ({ id: ++nextBufferId }),
+  bindBuffer: (_target: number, buffer: WebGLBuffer | null) => { boundBuffer = buffer; },
+  bufferData: () => undefined,
+  bufferSubData: (_target: number, _offset: number, data: Float32Array) => {
+    if (!boundBuffer) throw new Error("held fence capture buffer was not bound");
+    uploads.set(boundBuffer, new Float32Array(data));
+  },
+  deleteBuffer: () => undefined,
+} as unknown as WebGLRenderingContext;
+const heldRenderer = createFirstPersonRenderer(captureGl);
+for (const [itemId, block] of [
+  ["oak_fence", BLOCK.OAK_FENCE],
+  ["oak_fence_gate", BLOCK.OAK_FENCE_GATE_CLOSED],
+] as const) {
+  assert.equal(itemVisual(itemId).parent, "block", `${itemId} retains the shared block-item visual definition`);
+  const expectedGeometry: number[] = [];
+  const expectedVertices = appendItemSpriteGeometry(
+    expectedGeometry,
+    getItemIconArt(itemId),
+    firstPersonSpritePresentation(itemId),
+  );
+  heldRenderer[3](itemId, block);
+  const uploaded = uploads.get(heldRenderer[0]);
+  assert.ok(uploaded, `${itemId} uploads shared item-sprite color geometry`);
+  assert.equal(heldRenderer[2][0], expectedVertices, `${itemId} keeps canonical sprite vertex parity`);
+  assert.equal(uploaded.length, expectedGeometry.length, `${itemId} uploads one complete six-float color stream`);
+  for (let offset = 3; offset < uploaded.length; offset += 6) {
+    for (let channel = 0; channel < 3; channel += 1) {
+      assert.ok(Math.abs(uploaded[offset + channel] - expectedGeometry[offset + channel]) < 1e-6,
+        `${itemId} vertex color ${offset / 6}:${channel} retains canonical inventory-art parity`);
+    }
+  }
+  assert.equal(heldRenderer[2][1], 0, `${itemId} never falls through to textured full-cube output`);
+}
+heldRenderer[7]();
 const held = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
-assert.match(held, /itemId === "oak_fence" \|\| itemId === "oak_fence_gate"[\s\S]{0,500}appendColorBox/,
-  "held gates use solid posts and rails from the compact WebGL model basis");
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+  assert.ok(held.includes(sharedPath), `held fences use the shared visual pipeline through ${sharedPath}`);
+}
+assert.equal(held.includes("appendColorBox"), false,
+  "the removed bespoke color-box held approximation cannot return");
+assert.equal(held.includes("appendSpecialBlock"), false,
+  "the removed special-block held approximation cannot bypass shared item art");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /isOakFenceGateBlock\(block\)[\s\S]{0,260}appendOakFenceGateMesh\(\s*textureVertices/,
   "both states use the retained oak-textured chunk batch");

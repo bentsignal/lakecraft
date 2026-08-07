@@ -98,7 +98,9 @@ export async function verifyLakebedBuild(plan, reportBuffer) {
   await assertRegularFile(artifactPath, "Lakebed artifact");
   const artifactBuffer = await readFile(artifactPath);
   if (artifactBuffer.length > (1024 * 1024) - (32 * 1024)) {
-    throw new Error("Lakebed artifact does not preserve the required 32 KiB headroom.");
+    throw new Error(
+      `Lakebed artifact does not preserve the required 32 KiB headroom (${artifactBuffer.length} bytes).`,
+    );
   }
   const outer = parseJson(artifactBuffer, "Lakebed artifact");
   if (outer.mediaType !== "application/vnd.lakebed.artifact+json"

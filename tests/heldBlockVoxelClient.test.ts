@@ -5,8 +5,11 @@ import {
   textureAtlasUv,
   type BlockFace,
 } from "../client/game/blockTextures.ts";
-import { createFirstPersonRenderer } from "../client/game/firstPersonRenderer.ts";
+import { getItemIconArt } from "../client/components/itemIconArt.ts";
+import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
+import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
 import { BLOCK } from "../client/game/types.ts";
+import { itemVisual } from "../shared/visualCatalog.ts";
 
 const faces: readonly BlockFace[] = ["east", "west", "top", "bottom", "south", "north"];
 for (const block of [BLOCK.DIRT, BLOCK.GRASS, BLOCK.WOOD, BLOCK.STONE_BRICKS, BLOCK.CLAY, BLOCK.BRICKS]) {
@@ -69,6 +72,25 @@ for (const [itemId, block] of [
     });
   });
 }
+for (const [itemId, block] of [
+  ["door", BLOCK.DOOR_CLOSED],
+  ["torch", BLOCK.TORCH],
+  ["bed", BLOCK.BED],
+] as const) {
+  assert.equal(itemVisual(itemId).parent, "block", `${itemId} retains its shared block visual definition`);
+  assert.equal(blockTextureForFace(block, "east"), null, `${itemId} is not misclassified as a full atlas cube`);
+  const expectedVertices = appendItemSpriteGeometry(
+    [],
+    getItemIconArt(itemId),
+    firstPersonSpritePresentation(itemId),
+  );
+  heldRenderer[3](itemId, block);
+  const uploaded = captured.uploadFor(heldRenderer[0]);
+  assert.ok(uploaded, `${itemId} uploads canonical item-sprite geometry`);
+  assert.equal(heldRenderer[2][0], expectedVertices, `${itemId} keeps canonical sprite vertex parity`);
+  assert.equal(uploaded.length, expectedVertices * 6, `${itemId} uploads exactly one six-float color vertex stream`);
+  assert.equal(heldRenderer[2][1], 0, `${itemId} never falls through to full-cube textured geometry`);
+}
 heldRenderer[7]();
 
 const renderer = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
@@ -77,8 +99,15 @@ assert.ok(renderer.includes("blockTextureForFace(block, face[0])"), "held blocks
 assert.ok(renderer.includes("textureAtlasUv(texture)"), "held blocks use the canonical half-texel atlas UV resolver");
 assert.equal((cubeFaces.match(/\["(east|west|top|bottom|south|north)"/g) ?? []).length, 6,
   "one canonical cube basis has six complete solid faces");
-assert.ok(renderer.includes("appendSpecialBlock"), "thin placeables receive compact solid geometry rather than a sprite exception");
-assert.equal(renderer.includes("ItemIcon"), false, "first-person block/tool geometry has no inventory-icon dependency");
+for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {
+  assert.ok(renderer.includes(sharedPath), `thin placeables use the shared canonical sprite path through ${sharedPath}`);
+}
+assert.equal(renderer.includes("appendSpecialBlock"), false,
+  "the removed arbitrary special-block approximation cannot bypass canonical item art");
+assert.equal(renderer.includes("ItemGlyph"), false,
+  "first-person geometry shares canonical art data without depending on the inventory UI component");
+assert.equal(renderer.includes("<ItemIcon"), false,
+  "the WebGL renderer never substitutes a DOM inventory icon for geometry");
 
 const hud = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.equal(hud.includes("lc-held-voxel"), false, "CSS block approximations are removed");

@@ -2,6 +2,7 @@ import { deflateSync, inflateSync } from "node:zlib";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { encodeStaticBytes } from "./static-byte-encoding.mjs";
+import { decodePng as decodeImportedPng } from "./png-rgba.mjs";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -218,6 +219,47 @@ function copyTile(source, sourceIndex, output, outputIndex, sourceColumns, outpu
   }
 }
 
+// Small connected silhouettes keep ore embedded in the host stone instead of
+// reading as evenly spaced dots. Each tuple is x, y, and palette-tone index.
+const ORE_CLUSTER_SHAPES = [
+  [[0,0,0],[1,0,1],[0,1,1],[1,1,2],[2,1,1],[1,2,0]],
+  [[0,0,0],[1,0,1],[1,1,2],[2,1,1],[2,2,2],[3,2,1],[2,3,0]],
+  [[1,0,0],[0,1,1],[1,1,2],[2,1,1],[1,2,0]],
+];
+
+const ORE_RECIPES = Object.freeze({
+  coal_ore: {
+    tones: [[34,34,34,255],[51,51,51,255],[85,85,85,255]],
+    clusters: [[1,1,0],[9,2,1],[4,7,2],[10,10,0],[1,11,1]],
+  },
+  iron_ore: {
+    tones: [[119,68,51,255],[187,119,85,255],[221,170,119,255]],
+    clusters: [[3,1,1],[10,4,0],[1,8,2],[8,11,1]],
+  },
+  gold_ore: {
+    tones: [[170,102,17,255],[238,187,34,255],[255,221,85,255]],
+    clusters: [[1,2,2],[9,1,0],[5,8,1],[11,11,2]],
+  },
+  diamond_ore: {
+    tones: [[17,119,136,255],[34,187,204,255],[119,238,238,255]],
+    clusters: [[3,1,2],[10,5,0],[2,10,0],[9,12,2]],
+  },
+});
+
+function paintOreTile(output, outputIndex, columns, tileSize, stoneIndex, name) {
+  const recipe = ORE_RECIPES[name];
+  if (!recipe || stoneIndex < 0) fail(`cannot derive ${name} without the canonical stone tile.`);
+  copyTile(output, stoneIndex, output, outputIndex, columns, columns, tileSize);
+  const originX = (outputIndex % columns) * tileSize;
+  const originY = Math.floor(outputIndex / columns) * tileSize;
+  for (const [clusterX, clusterY, shapeIndex] of recipe.clusters) {
+    const shape = ORE_CLUSTER_SHAPES[shapeIndex];
+    for (const [x, y, tone] of shape) {
+      setPixel(output, originX + clusterX + x, originY + clusterY + y, recipe.tones[tone]);
+    }
+  }
+}
+
 function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
   const originX = (outputIndex % columns) * tileSize;
   const originY = Math.floor(outputIndex / columns) * tileSize;
@@ -285,6 +327,30 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "furnace_side") {
+    // Neutral original masonry used on every non-front vertical face. It is
+    // intentionally free of an opening so a furnace keeps one readable
+    // orientation instead of appearing to have a mouth on every side.
+    const mortar = [68, 68, 68, 255];
+    const shadow = [102, 102, 102, 255];
+    const stone = [136, 136, 136, 255];
+    const highlight = [170, 170, 153, 255];
+    fill(stone);
+    for (const y of [0, 4, 8, 12, 15]) {
+      for (let x = 0; x < tileSize; x += 1) paint(x, y, mortar);
+    }
+    for (let course = 0; course < 4; course += 1) {
+      const seamA = course % 2 === 0 ? 6 : 2;
+      const seamB = course % 2 === 0 ? 14 : 10;
+      for (let y = course * 4 + 1; y < Math.min(course * 4 + 4, tileSize); y += 1) {
+        paint(seamA, y, mortar); paint(seamB, y, mortar);
+      }
+    }
+    for (const [x, y] of [[1,1],[2,1],[7,1],[8,1],[3,5],[4,5],[11,5],[12,5],[1,9],[6,9],[7,9],[13,9],[3,13],[9,13]]) paint(x, y, highlight);
+    for (const [x, y] of [[4,2],[11,3],[1,6],[8,6],[14,7],[4,10],[10,11],[1,14],[12,14]]) paint(x, y, shadow);
+    return;
+  }
+
   if (name === "furnace_front") {
     const mortar = [68, 68, 68, 255];
     const stone = [136, 136, 136, 255];
@@ -323,23 +389,33 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
   }
 
   if (name === "tnt_side") {
-    const dark = [102, 17, 17, 255];
+    const dark = [85, 17, 17, 255];
+    const shadow = [136, 34, 34, 255];
     const red = [187, 51, 34, 255];
     const lightRed = [221, 68, 51, 255];
+    const paperShadow = [204, 187, 153, 255];
     const paper = [238, 221, 187, 255];
+    const paperLight = [255, 238, 204, 255];
     const ink = [34, 34, 34, 255];
     fill(red);
     for (let y = 0; y < tileSize; y += 1) {
       for (let x = 0; x < tileSize; x += 1) {
-        if (((x * 5 + y * 3) & 15) === 0) paint(x, y, lightRed);
+        if ((y < 5 || y > 10) && ((x * 5 + y * 3) & 15) === 0) paint(x, y, lightRed);
         if (x === 0 || x === 15) paint(x, y, dark);
       }
     }
-    for (let y = 5; y <= 10; y += 1) for (let x = 0; x < tileSize; x += 1) paint(x, y, paper);
-    // Chunky, legible T N T mark across the paper band.
+    for (let x = 1; x < 15; x += 1) {
+      paint(x, 4, shadow);
+      paint(x, 5, paperShadow);
+      for (let y = 6; y <= 9; y += 1) paint(x, y, paper);
+      paint(x, 10, paperLight);
+      paint(x, 11, shadow);
+    }
+    // A hand-authored 3×4 T-N-T wordmark. The open center N and generous
+    // paper negative space keep it readable on placed, held, and inventory cubes.
     for (const [x, y] of [
       [1,6],[2,6],[3,6],[2,7],[2,8],[2,9],
-      [6,6],[6,7],[6,8],[6,9],[7,7],[8,8],[9,6],[9,7],[9,8],[9,9],
+      [6,6],[9,6],[6,7],[7,7],[9,7],[6,8],[8,8],[9,8],[6,9],[9,9],
       [12,6],[13,6],[14,6],[13,7],[13,8],[13,9],
     ]) paint(x, y, ink);
     return;
@@ -347,32 +423,41 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
 
   if (name === "tnt_top") {
     const dark = [85, 17, 17, 255];
+    const shadow = [136, 34, 34, 255];
     const red = [187, 51, 34, 255];
     const light = [238, 85, 51, 255];
+    const cord = [204, 170, 102, 255];
     const fuse = [34, 34, 34, 255];
+    const ember = [255, 170, 34, 255];
     fill(red);
     for (let y = 0; y < tileSize; y += 1) {
       for (let x = 0; x < tileSize; x += 1) {
-        const radius = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
-        if (radius > 6) paint(x, y, dark);
-        else if (radius > 4 && ((x + y) & 1) === 0) paint(x, y, light);
+        if (x === 0 || x === 15 || y === 0 || y === 15) paint(x, y, dark);
+        else if (x === 5 || x === 10 || y === 5 || y === 10) paint(x, y, shadow);
+        else if (((x + 2 * y) % 7) === 0) paint(x, y, light);
       }
     }
-    for (const [x, y] of [[7,6],[8,6],[6,7],[7,7],[8,7],[9,7],[7,8],[8,8],[8,9]]) paint(x, y, fuse);
+    for (const [x, y] of [[6,7],[6,8],[7,6],[7,9],[8,6],[8,9],[9,7],[9,8]]) paint(x, y, cord);
+    for (const [x, y] of [[7,7],[8,7],[7,8],[8,8],[8,6],[9,6],[9,5],[10,5],[10,4]]) paint(x, y, fuse);
+    paint(11, 3, ember); paint(10, 3, [238, 85, 34, 255]);
     return;
   }
 
   if (name === "tnt_bottom") {
-    const dark = [102, 17, 17, 255];
+    const dark = [68, 17, 17, 255];
+    const strap = [102, 51, 34, 255];
     const red = [170, 34, 34, 255];
     const light = [204, 68, 51, 255];
+    const fastener = [170, 136, 85, 255];
     fill(red);
     for (let y = 0; y < tileSize; y += 1) {
       for (let x = 0; x < tileSize; x += 1) {
         if (x < 2 || x > 13 || y < 2 || y > 13) paint(x, y, dark);
-        else if (((x >> 1) + (y >> 1)) % 3 === 0) paint(x, y, light);
+        else if ((x === 6 || x === 9 || y === 6 || y === 9)) paint(x, y, strap);
+        else if (((x * 3 + y * 5) & 15) === 0) paint(x, y, light);
       }
     }
+    for (const [x, y] of [[3,3],[12,3],[3,12],[12,12]]) paint(x, y, fastener);
     return;
   }
 
@@ -530,6 +615,13 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "bedrock") {
+    // Deterministic fallback only; the reviewed installed asset replaces this
+    // tile in production just below, as it does for every canonical material.
+    fill([53, 53, 53, 255]);
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 
@@ -542,9 +634,14 @@ function expandNamedAtlas(source, names, columns, rows, sourceColumns, sourceRow
   const sourceTileCount = sourceColumns * sourceRows;
   for (let index = 0; index < sourceTileCount; index += 1) {
     copyTile(source, index, output, index, sourceColumns, columns, tileSize);
+    if (names[index] === "furnace_side") paintDerivedTile(output, index, columns, tileSize, names[index]);
+  }
+  const stoneIndex = names.indexOf("stone");
+  for (let index = 0; index < sourceTileCount; index += 1) {
+    if (ORE_RECIPES[names[index]]) paintOreTile(output, index, columns, tileSize, stoneIndex, names[index]);
   }
   for (let index = sourceTileCount; index < names.length; index += 1) {
-    paintDerivedTile(output, index, columns, tileSize, names[index]);
+    if (!names[index].startsWith("chest_")) paintDerivedTile(output, index, columns, tileSize, names[index]);
   }
   return output;
 }
@@ -572,6 +669,115 @@ function applyNamedMaterialRules(image, names, columns, tileSize) {
       image.rgba[offset + 1] = color[1];
       image.rgba[offset + 2] = color[2];
       image.rgba[offset + 3] = frame ? 187 : glint ? 102 : 24;
+    }
+  }
+}
+
+const PLAINS_GRASS_TINT = [0x91, 0xbd, 0x59];
+const PLAINS_FOLIAGE_TINT = [0x77, 0xab, 0x2f];
+
+function tintImportedPixel(source, offset, tint) {
+  return [
+    Math.round(source.rgba[offset] * tint[0] / 255),
+    Math.round(source.rgba[offset + 1] * tint[1] / 255),
+    Math.round(source.rgba[offset + 2] * tint[2] / 255),
+    source.rgba[offset + 3],
+  ];
+}
+
+function compatibilityAtlasLayout(names, columns, rows) {
+  const chestColumn = columns - 4;
+  const chestRow = rows - 4;
+  if (chestColumn < 0 || chestRow < 0) fail("normal chest texture requires one contiguous 4x4 atlas region.");
+  const cells = [];
+  for (let cell = 0; cell < columns * rows && cells.length < names.length; cell += 1) {
+    const column = cell % columns;
+    const row = Math.floor(cell / columns);
+    if (column >= chestColumn && row >= chestRow) continue;
+    cells.push(cell);
+  }
+  if (cells.length !== names.length) fail("named materials do not fit beside the contiguous normal chest texture.");
+  return { cells, chestColumn, chestRow };
+}
+
+function applyImportedMinecraftBlockTextures(image, names, columns, tileSize, cells, blockTextures, blockLayers) {
+  const decoded = {};
+  for (const [name, payload] of Object.entries(blockTextures ?? {})) {
+    const tile = names.indexOf(name);
+    if (tile < 0) continue;
+    const source = decodeImportedPng(Buffer.from(payload, "base64"));
+    if (source.width !== tileSize || source.height !== tileSize) {
+      fail(`imported block texture ${name} must be ${tileSize}x${tileSize}.`);
+    }
+    decoded[name] = source;
+    const tileX = cells[tile] % columns;
+    const tileY = Math.floor(cells[tile] / columns);
+    for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
+      const input = (y * tileSize + x) * 4;
+      const output = ((tileY * tileSize + y) * image.width + tileX * tileSize + x) * 4;
+      image.rgba.set(source.rgba.subarray(input, input + 4), output);
+    }
+  }
+  const overlayPayload = blockLayers?.grass_side_overlay;
+  if (!decoded.grass_top || !decoded.grass_side || !decoded.leaves || !overlayPayload) {
+    fail("installed grass and leaves require top, side, side-overlay, and foliage layers.");
+  }
+  const overlay = decodeImportedPng(Buffer.from(overlayPayload, "base64"));
+  if (overlay.width !== tileSize || overlay.height !== tileSize) {
+    fail(`imported block layer grass_side_overlay must be ${tileSize}x${tileSize}.`);
+  }
+  for (const [name, tint] of [["grass_top", PLAINS_GRASS_TINT], ["leaves", PLAINS_FOLIAGE_TINT]]) {
+    const tile = names.indexOf(name);
+    const source = decoded[name];
+    const tileX = cells[tile] % columns;
+    const tileY = Math.floor(cells[tile] / columns);
+    for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
+      let input = (y * tileSize + x) * 4;
+      if (name === "leaves" && source.rgba[input + 3] === 0) {
+        let distance = Infinity;
+        for (let sy = 0; sy < tileSize; sy += 1) for (let sx = 0; sx < tileSize; sx += 1) {
+          const candidate = (sy * tileSize + sx) * 4;
+          const nextDistance = Math.abs(sx - x) + Math.abs(sy - y);
+          if (source.rgba[candidate + 3] && nextDistance < distance) {
+            input = candidate;
+            distance = nextDistance;
+          }
+        }
+      }
+      const output = ((tileY * tileSize + y) * image.width + tileX * tileSize + x) * 4;
+      const pixel = tintImportedPixel(source, input, tint);
+      if (name === "leaves") pixel[3] = 255;
+      image.rgba.set(pixel, output);
+    }
+  }
+  const sideTile = names.indexOf("grass_side");
+  const sideX = cells[sideTile] % columns;
+  const sideY = Math.floor(cells[sideTile] / columns);
+  for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
+    const input = (y * tileSize + x) * 4;
+    const output = ((sideY * tileSize + y) * image.width + sideX * tileSize + x) * 4;
+    const over = tintImportedPixel(overlay, input, PLAINS_GRASS_TINT);
+    const alpha = over[3] / 255;
+    image.rgba[output] = Math.round(over[0] * alpha + image.rgba[output] * (1 - alpha));
+    image.rgba[output + 1] = Math.round(over[1] * alpha + image.rgba[output + 1] * (1 - alpha));
+    image.rgba[output + 2] = Math.round(over[2] * alpha + image.rgba[output + 2] * (1 - alpha));
+  }
+}
+
+function applyImportedMinecraftChestTexture(image, columns, tileSize, chestColumn, chestRow, entities) {
+  const payload = entities.chest_normal;
+  if (!payload) fail("installed normal chest entity texture is required.");
+  const chest = decodeImportedPng(Buffer.from(payload, "base64"));
+  if (chest.width !== 64 || chest.height !== 64 || tileSize !== 16) {
+    fail("installed normal chest entity texture must be 64x64 over 16px atlas tiles.");
+  }
+  for (let tileY = 0; tileY < 4; tileY += 1) for (let tileX = 0; tileX < 4; tileX += 1) {
+    const outputX = (chestColumn + tileX) * tileSize;
+    const outputY = (chestRow + tileY) * tileSize;
+    for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
+      const source = ((tileY * tileSize + y) * chest.width + tileX * tileSize + x) * 4;
+      const output = ((outputY + y) * image.width + outputX + x) * 4;
+      image.rgba.set(chest.rgba.subarray(source, source + 4), output);
     }
   }
 }
@@ -656,36 +862,40 @@ function packStaticBytes(bytes, extended = false) {
 
 function textureSource(image, names, columns, rows, tileSize, inputName) {
   const canonicalNames = names.length ? names : Array.from({ length: columns * rows }, (_, index) => `texture_${index}`);
+  const layout = compatibilityAtlasLayout(canonicalNames, columns, rows);
+  const tilePixels = canonicalNames.map((_, tile) => {
+    const cell = layout.cells[tile];
+    const tileColumn = cell % columns;
+    const tileRow = Math.floor(cell / columns);
+    const pixels = [];
+    for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
+      pixels.push((tileRow * tileSize + y) * columns * tileSize + tileColumn * tileSize + x);
+    }
+    return pixels;
+  });
   const palette = [];
   const paletteIndexes = new Map();
-  const pixelIndexes = new Uint8Array(image.rgba.length / 4);
-  for (let pixel = 0; pixel < pixelIndexes.length; pixel += 1) {
+  const ordinaryIndexes = tilePixels.map((pixels) => pixels.map((pixel) => {
     const offset = pixel * 4;
     const key = `${image.rgba[offset]},${image.rgba[offset + 1]},${image.rgba[offset + 2]},${image.rgba[offset + 3]}`;
     let paletteIndex = paletteIndexes.get(key);
     if (paletteIndex === undefined) {
       paletteIndex = palette.length / 4;
-      if (paletteIndex >= 256) fail("generated atlas exceeds the compact 256-color runtime palette.");
+      if (paletteIndex >= 65_536) fail("generated atlas exceeds the compact 65,536-color runtime palette.");
       paletteIndexes.set(key, paletteIndex);
       palette.push(image.rgba[offset], image.rgba[offset + 1], image.rgba[offset + 2], image.rgba[offset + 3]);
     }
-    pixelIndexes[pixel] = paletteIndex;
-  }
+    return paletteIndex;
+  }));
   const palettePacked = packStaticBytes(palette);
-  const frequencies = new Uint32Array(256);
-  for (const paletteIndex of pixelIndexes) frequencies[paletteIndex] += 1;
+  const frequencies = new Uint32Array(palette.length / 4);
+  for (const pixels of ordinaryIndexes) for (const paletteIndex of pixels) frequencies[paletteIndex] += 1;
   const tileColorCounts = [];
   const tilePalettes = [];
-  const tilePixels = [];
-  for (let tile = 0; tile < columns * rows; tile += 1) {
-    const tileColumn = tile % columns;
-    const tileRow = Math.floor(tile / columns);
-    const pixels = [];
-    for (let y = 0; y < tileSize; y += 1) for (let x = 0; x < tileSize; x += 1) {
-      pixels.push(pixelIndexes[(tileRow * tileSize + y) * columns * tileSize + tileColumn * tileSize + x]);
-    }
+  const tileIndexBytes = [];
+  for (const pixels of ordinaryIndexes) {
     const colors = [...new Set(pixels)].sort((left, right) => frequencies[right] - frequencies[left] || left - right);
-    if (colors.length > 255) fail(`atlas tile ${tile} exceeds the compact 255-color local palette.`);
+    if (colors.length > 255) fail("an atlas tile exceeds the compact 255-color local palette.");
     const indexes = new Map(colors.map((color, index) => [color, index]));
     const bits = Math.max(1, Math.ceil(Math.log2(colors.length)));
     tileColorCounts.push(colors.length);
@@ -697,34 +907,71 @@ function textureSource(image, names, columns, rows, tileSize, inputName) {
       available += bits;
       if (available >= 8) {
         available -= 8;
-        tilePixels.push(buffer >> available & 255);
+        tileIndexBytes.push(buffer >> available & 255);
         buffer &= 2 ** available - 1;
       }
     }
-    if (available > 0) tilePixels.push(buffer << (8 - available));
+    if (available > 0) tileIndexBytes.push(buffer << (8 - available));
   }
-  const compactIndexes = [...tileColorCounts, ...tilePalettes, ...tilePixels];
+  const tilePaletteBytes = tilePalettes.flatMap((color) => [color >> 8, color & 255]);
+  const compactIndexes = [...tileColorCounts, ...tilePaletteBytes, ...tileIndexBytes];
   const indexPacked = packStaticBytes(compactIndexes, true);
   const paletteOffset = tileColorCounts.length;
-  const pixelOffset = paletteOffset + tilePalettes.length;
+  const pixelOffset = paletteOffset + tilePaletteBytes.length;
+
+  const chestKeys = [];
+  const chestFrequencies = new Map();
+  for (let y = 0; y < tileSize * 4; y += 1) for (let x = 0; x < tileSize * 4; x += 1) {
+    const offset = (((layout.chestRow * tileSize + y) * columns * tileSize)
+      + layout.chestColumn * tileSize + x) * 4;
+    const key = `${image.rgba[offset]},${image.rgba[offset + 1]},${image.rgba[offset + 2]},${image.rgba[offset + 3]}`;
+    chestKeys.push(key);
+    chestFrequencies.set(key, (chestFrequencies.get(key) ?? 0) + 1);
+  }
+  const chestColors = Array.from(chestFrequencies.keys()).sort((left, right) =>
+    chestFrequencies.get(right) - chestFrequencies.get(left) || left.localeCompare(right));
+  if (!chestColors.length || chestColors.length > 255) fail("normal chest texture exceeds the compact one-byte palette.");
+  const chestPalette = chestColors.flatMap((key) => key.split(",").map(Number));
+  const chestPalettePacked = packStaticBytes(chestPalette);
+  const chestColorIndexes = new Map(chestColors.map((color, index) => [color, index]));
+  const chestBits = Math.max(1, Math.ceil(Math.log2(chestColors.length)));
+  const chestIndexBytes = [];
+  let chestBuffer = 0;
+  let chestAvailable = 0;
+  for (const key of chestKeys) {
+    chestBuffer = chestBuffer * 2 ** chestBits + chestColorIndexes.get(key);
+    chestAvailable += chestBits;
+    if (chestAvailable >= 8) {
+      chestAvailable -= 8;
+      chestIndexBytes.push(chestBuffer >> chestAvailable & 255);
+      chestBuffer &= 2 ** chestAvailable - 1;
+    }
+  }
+  if (chestAvailable > 0) chestIndexBytes.push(chestBuffer << (8 - chestAvailable));
+  const chestIndexPacked = packStaticBytes(chestIndexBytes, true);
   return `// Generated by scripts/pixelate-texture-sheet.mjs from ${JSON.stringify(inputName)}.\n`
-    + `// Do not hand-edit; regenerate from an original concept sheet.\n`
+    + `// Do not hand-edit; regenerate from the original concept sheet and named procedural recipes.\n`
     + `import { decodeStaticBytes } from "../../staticData.ts";\n`
     + `export const TEXTURE_TILE_SIZE = ${tileSize};\n`
     + `export const TEXTURE_ATLAS_COLUMNS = ${columns};\n`
     + `export const TEXTURE_ATLAS_ROWS = ${rows};\n`
     + `export const TEXTURE_ATLAS_NAMES = ${JSON.stringify(canonicalNames)} as const;\n`
+    + `export const TEXTURE_ATLAS_CELLS = ${JSON.stringify(layout.cells)} as const;\n`
+    + `export const CHEST_ATLAS_COLUMN = ${layout.chestColumn}, CHEST_ATLAS_ROW = ${layout.chestRow};\n`
     + `export type TextureAtlasName = typeof TEXTURE_ATLAS_NAMES[number];\n`
     + `const TEXTURE_ATLAS_PALETTE = decodeStaticBytes(${JSON.stringify(palettePacked.payload)}, ${palette.length}, ${palettePacked.size});\n`
     + `const invalid = (): never => { throw new Error("Invalid texture atlas data."); }, data = decodeStaticBytes(${JSON.stringify(indexPacked.payload)}, ${compactIndexes.length}, ${indexPacked.size}, true);\n`
-    + `export const TEXTURE_ATLAS_RGBA = new Uint8Array(${pixelIndexes.length * 4});\n`
-    + `let palette = ${paletteOffset}, source = ${pixelOffset}; for (let tile = 0; tile < ${columns * rows}; tile += 1) {\n`
-    + `  const colors = data[tile]; if (!colors || palette + colors > ${pixelOffset}) invalid(); const bits = Math.max(1, Math.ceil(Math.log2(colors))); let buffer = 0, available = 0;\n`
-    + `  for (let pixel = 0; pixel < ${tileSize * tileSize}; pixel += 1) { while (available < bits) { if (source >= data.length) invalid(); buffer = buffer * 256 + data[source++]; available += 8; } available -= bits; const color = buffer >> available & 2 ** bits - 1; buffer &= 2 ** available - 1; if (color >= colors) invalid();\n`
-    + `    const input = data[palette + color] * 4, output = ((Math.floor(tile / ${columns}) * ${tileSize} + Math.floor(pixel / ${tileSize})) * ${columns * tileSize} + tile % ${columns} * ${tileSize} + pixel % ${tileSize}) * 4; if (input + 3 >= TEXTURE_ATLAS_PALETTE.length) invalid();\n`
+    + `export const TEXTURE_ATLAS_RGBA = new Uint8Array(${image.rgba.length});\n`
+    + `let palette = ${paletteOffset}, source = ${pixelOffset}; for (let tile = 0; tile < TEXTURE_ATLAS_NAMES.length; tile += 1) {\n`
+    + `  const colors = data[tile]; if (!colors || palette + colors * 2 > ${pixelOffset}) invalid(); const bits = Math.max(1, Math.ceil(Math.log2(colors))); let buffer = 0, available = 0;\n`
+    + `  const cell = TEXTURE_ATLAS_CELLS[tile]; for (let pixel = 0; pixel < ${tileSize * tileSize}; pixel += 1) { while (available < bits) { if (source >= data.length) invalid(); buffer = buffer * 256 + data[source++]; available += 8; } available -= bits; const color = buffer >> available & 2 ** bits - 1; buffer &= 2 ** available - 1; if (color >= colors) invalid();\n`
+    + `    const input = (data[palette + color * 2] * 256 + data[palette + color * 2 + 1]) * 4, output = ((Math.floor(cell / ${columns}) * ${tileSize} + Math.floor(pixel / ${tileSize})) * ${columns * tileSize} + cell % ${columns} * ${tileSize} + pixel % ${tileSize}) * 4; if (input + 3 >= TEXTURE_ATLAS_PALETTE.length) invalid();\n`
     + `    for (let channel = 0; channel < 4; channel += 1) TEXTURE_ATLAS_RGBA[output + channel] = TEXTURE_ATLAS_PALETTE[input + channel]; }\n`
-    + `  if (buffer) invalid(); palette += colors;\n`
-    + `}\nif (palette !== ${pixelOffset} || source !== data.length) invalid();\n`;
+    + `  if (buffer) invalid(); palette += colors * 2;\n`
+    + `}\nif (palette !== ${pixelOffset} || source !== data.length) invalid();\n`
+    + `const chestPalette = decodeStaticBytes(${JSON.stringify(chestPalettePacked.payload)}, ${chestPalette.length}, ${chestPalettePacked.size}), chest = decodeStaticBytes(${JSON.stringify(chestIndexPacked.payload)}, ${chestIndexBytes.length}, ${chestIndexPacked.size}, true);\n`
+    + `let chestSource = 0, chestBuffer = 0, chestAvailable = 0; for (let pixel = 0; pixel < ${tileSize * tileSize * 16}; pixel += 1) { while (chestAvailable < ${chestBits}) { if (chestSource >= chest.length) invalid(); chestBuffer = chestBuffer * 256 + chest[chestSource++]; chestAvailable += 8; } chestAvailable -= ${chestBits}; const color = chestBuffer >> chestAvailable & ${2 ** chestBits - 1}; chestBuffer &= 2 ** chestAvailable - 1; const input = color * 4, output = ((CHEST_ATLAS_ROW * ${tileSize} + Math.floor(pixel / ${tileSize * 4})) * ${columns * tileSize} + CHEST_ATLAS_COLUMN * ${tileSize} + pixel % ${tileSize * 4}) * 4; if (input + 3 >= chestPalette.length) invalid(); for (let channel = 0; channel < 4; channel += 1) TEXTURE_ATLAS_RGBA[output + channel] = chestPalette[input + channel]; }\n`
+    + `if (chestBuffer || chestSource !== chest.length) invalid();\n`;
 }
 
 const options = parseArguments(process.argv.slice(2));
@@ -745,7 +992,29 @@ const pixelated = expandNamedAtlas(
   options.sourceRows,
   options.tileSize,
 );
+const atlasLayout = compatibilityAtlasLayout(options.names, options.columns, options.rows);
 applyNamedMaterialRules(pixelated, options.names, options.columns, options.tileSize);
+const importedVisualAssets = JSON.parse(await readFile(
+  new URL("./generated/minecraft-visual-assets-v26.2.json", import.meta.url),
+  "utf8",
+));
+applyImportedMinecraftBlockTextures(
+  pixelated,
+  options.names,
+  options.columns,
+  options.tileSize,
+  atlasLayout.cells,
+  importedVisualAssets.blocks,
+  importedVisualAssets.blockLayers,
+);
+applyImportedMinecraftChestTexture(
+  pixelated,
+  options.columns,
+  options.tileSize,
+  atlasLayout.chestColumn,
+  atlasLayout.chestRow,
+  importedVisualAssets.entities,
+);
 const pngBytes = encodePng(pixelated);
 await writeFile(options.output, pngBytes);
 if (options.ts) {

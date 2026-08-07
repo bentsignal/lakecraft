@@ -3,7 +3,7 @@ export const WORLD_CHUNK_SIZE = 8;
 export const DEFAULT_STREAMING_CHUNK_RADIUS = 3;
 export const MAX_STREAMING_CHUNK_RADIUS = 3;
 /** Offline worlds may opt into a larger bounded window without expanding Lakebed query limits. */
-export const MAX_LOCAL_STREAMING_CHUNK_RADIUS = 6;
+export const MAX_LOCAL_STREAMING_CHUNK_RADIUS = 12;
 export const MAX_STREAMING_CHUNK_COUNT = (MAX_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
 
 export interface ChunkCoordinate {

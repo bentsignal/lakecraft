@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   MAX_PRIMED_TNT_VISUALS,
+  MOB_VERTEX_STRIDE,
   PRIMED_TNT_LABEL_VERTICES,
   PRIMED_TNT_VERTICES_PER_ENTITY,
   createMobRenderer,
@@ -20,7 +21,7 @@ assert.ok(late.scale > early.scale && late.scale <= 1.08, "the final beat swells
 assert.equal(MAX_PRIMED_TNT_VISUALS, TNT_MAX_ACTIVE_FUSES, "visual and Lakebed row ceilings cannot drift");
 assert.equal(PRIMED_TNT_LABEL_VERTICES, 4 * 7 * 3, "seven open T-N-T glyph triangles label every TNT side");
 assert.equal(PRIMED_TNT_VERTICES_PER_ENTITY, 174, "body, four side bands and labels, and five-face fuse cap stay bounded");
-assert.equal(primedTntBufferBytes(), 133_632, "the labeled maximum fuse geometry stays near 130 KiB");
+assert.equal(primedTntBufferBytes(), 178_176, "the labeled maximum fuse geometry stays below 175 KiB");
 
 let allocatedBytes = 0;
 let uploadCalls = 0;
@@ -65,10 +66,10 @@ const lateNow = base + 3_950;
 try {
   Date.now = () => earlyNow;
   assert.equal(renderer.rebuild([], 2, 2, 0, 1, 1, 0).primedTntVertexCount, PRIMED_TNT_VERTICES_PER_ENTITY);
-  const earlyGeometry = uploaded!.slice(0, PRIMED_TNT_VERTICES_PER_ENTITY * 6);
+  const earlyGeometry = uploaded!.slice(0, PRIMED_TNT_VERTICES_PER_ENTITY * MOB_VERTEX_STRIDE);
   Date.now = () => lateNow;
   renderer.rebuild([], 2, 2, 0, 1, 1, 0);
-  const lateGeometry = uploaded!.slice(0, PRIMED_TNT_VERTICES_PER_ENTITY * 6);
+  const lateGeometry = uploaded!.slice(0, PRIMED_TNT_VERTICES_PER_ENTITY * MOB_VERTEX_STRIDE);
   const earlyVisual = samplePrimedTntVisual(base, base + 4_000, earlyNow, { progress: 0, scale: 0, flashMix: 0 });
   const lateVisual = samplePrimedTntVisual(base, base + 4_000, lateNow, { progress: 0, scale: 0, flashMix: 0 });
   const center = [2.5, 4.5, 2.5] as const;
@@ -78,7 +79,7 @@ try {
     const start = labelStarts[side];
     const projected: Array<readonly [number, number]> = [];
     for (let vertex = start; vertex < start + 21; vertex += 1) {
-      const offset = vertex * 6;
+      const offset = vertex * MOB_VERTEX_STRIDE;
       const tangent = side < 2 ? 2 : 0;
       assert.ok(Math.abs((earlyGeometry[offset + 1] - center[1]) / earlyVisual.scale
         - (lateGeometry[offset + 1] - center[1]) / lateVisual.scale) < 1e-5,
@@ -101,7 +102,7 @@ try {
     const normal = side === 0 ? [1, 0, 0] as const : side === 1 ? [-1, 0, 0] as const
       : side === 2 ? [0, 0, 1] as const : [0, 0, -1] as const;
     for (let triangle = 0; triangle < 7; triangle += 1) {
-      const offsets = [0, 1, 2].map((vertex) => (start + triangle * 3 + vertex) * 6);
+      const offsets = [0, 1, 2].map((vertex) => (start + triangle * 3 + vertex) * MOB_VERTEX_STRIDE);
       const a = offsets.map((offset) => [
         earlyGeometry[offset] - center[0],
         earlyGeometry[offset + 1] - center[1],
@@ -128,14 +129,14 @@ try {
     && Math.max(...projectedLabels[0].slice(6, 15).map(([u]) => u)) <= 0.101
     && Math.min(...projectedLabels[0].slice(15).map(([u]) => u)) > 0,
   "the projected glyph reads left-to-right as T, centered open N, T");
-  const nStart = (labelStarts[0] + 6) * 6;
+  const nStart = (labelStarts[0] + 6) * MOB_VERTEX_STRIDE;
   let nArea = 0;
   let minU = Number.POSITIVE_INFINITY;
   let maxU = Number.NEGATIVE_INFINITY;
   let minV = Number.POSITIVE_INFINITY;
   let maxV = Number.NEGATIVE_INFINITY;
   for (let triangle = 0; triangle < 3; triangle += 1) {
-    const vertices = [0, 1, 2].map((vertex) => nStart + (triangle * 3 + vertex) * 6);
+    const vertices = [0, 1, 2].map((vertex) => nStart + (triangle * 3 + vertex) * MOB_VERTEX_STRIDE);
     const points = vertices.map((offset) => [earlyGeometry[offset + 2], earlyGeometry[offset + 1]] as const);
     for (const [u, v] of points) {
       minU = Math.min(minU, u); maxU = Math.max(maxU, u);

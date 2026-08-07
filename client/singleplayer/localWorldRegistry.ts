@@ -15,8 +15,6 @@ export const LOCAL_WORLD_REGISTRY_FORMAT = "lakecraft.local-world-registry" as c
 export const LOCAL_WORLD_REGISTRY_VERSION = 4 as const;
 export const LOCAL_WORLD_REGISTRY_SLOT_A_KEY = "lakecraft.singleplayer.worlds.a";
 export const LOCAL_WORLD_REGISTRY_SLOT_B_KEY = "lakecraft.singleplayer.worlds.b";
-export const LOCAL_WORLD_CREATE_TRANSACTION_KEY = "lakecraft.singleplayer.worlds.create";
-export const LOCAL_WORLD_DELETE_TRANSACTION_KEY = "lakecraft.singleplayer.worlds.delete";
 export const LOCAL_WORLD_TRANSACTION_LEASE_MS = 5_000;
 export const LOCAL_WORLD_REGISTRY_MAX_WORLDS = 6;
 export const LOCAL_WORLD_REGISTRY_MAX_CHARS = 32_000;
@@ -27,11 +25,7 @@ export const LOCAL_WORLD_NAMESPACE_BUDGET_CHARS = SINGLEPLAYER_WORLD_SAVE_MAX_SL
 export const LOCAL_WORLD_CAPACITY_WARNING_CHARS = Math.floor(LOCAL_WORLD_NAMESPACE_BUDGET_CHARS * 0.8);
 
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
-const LEGACY_TRANSACTION_PENDING = "transaction:recovery_pending";
-const LEGACY_TRANSACTION_KEYS = [
-  LOCAL_WORLD_CREATE_TRANSACTION_KEY,
-  LOCAL_WORLD_DELETE_TRANSACTION_KEY,
-] as const;
+const TRANSACTION_RECOVERY_PENDING = "transaction:recovery_pending";
 
 export interface LocalWorldRecord {
   id: string;
@@ -40,7 +34,6 @@ export interface LocalWorldRecord {
   initialGameMode: LocalGameMode;
   createdAt: number;
   lastPlayedAt: number;
-  importedLegacy: boolean;
 }
 
 export interface LocalWorldRegistry {
@@ -155,8 +148,7 @@ type ParsedRegistrySlot =
 
 type LocalWorldPendingTransaction =
   | [0, number, number, LocalWorldRecord]
-  | [1, number, number, number, LocalWorldRecord]
-  | [1, number, number, number, LocalWorldRecord, Array<string | null>];
+  | [1, number, number, number, LocalWorldRecord];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -216,14 +208,13 @@ function validWorldId(value: unknown): value is string {
 
 function validateWorldRecord(value: unknown): LocalWorldRecord | null {
   if (!isRecord(value)
-    || !exactKeys(value, ["id", "name", "seed", "initialGameMode", "createdAt", "lastPlayedAt", "importedLegacy"])
+    || !exactKeys(value, ["id", "name", "seed", "initialGameMode", "createdAt", "lastPlayedAt"])
     || !validWorldId(value.id)
     || typeof value.name !== "string" || normalizeLocalWorldName(value.name) !== value.name
     || !safeInteger(value.seed, -2_147_483_648, 2_147_483_647)
     || (value.initialGameMode !== "survival" && value.initialGameMode !== "creative")
     || !safeInteger(value.createdAt, 0, MAX_TIMESTAMP)
-    || (!safeInteger(value.lastPlayedAt, value.createdAt, MAX_TIMESTAMP) && value.lastPlayedAt !== 0)
-    || typeof value.importedLegacy !== "boolean") return null;
+    || (!safeInteger(value.lastPlayedAt, value.createdAt, MAX_TIMESTAMP) && value.lastPlayedAt !== 0)) return null;
   return {
     id: value.id,
     name: value.name,
@@ -231,7 +222,6 @@ function validateWorldRecord(value: unknown): LocalWorldRecord | null {
     initialGameMode: value.initialGameMode,
     createdAt: value.createdAt,
     lastPlayedAt: value.lastPlayedAt,
-    importedLegacy: value.importedLegacy,
   };
 }
 
@@ -254,9 +244,8 @@ function registryBody(
   sequence: number,
   savedAt: number,
   pending: LocalWorldPendingTransaction | null,
-  version = LOCAL_WORLD_REGISTRY_VERSION,
 ): [number, number, number, LocalWorldRecord[], LocalWorldPendingTransaction | null] {
-  return [version, sequence, savedAt, payload.worlds, pending];
+  return [LOCAL_WORLD_REGISTRY_VERSION, sequence, savedAt, payload.worlds, pending];
 }
 
 function serializeRegistry(
@@ -281,20 +270,16 @@ function registrySlotKey(slot: 0 | 1): string {
   return slot ? LOCAL_WORLD_REGISTRY_SLOT_B_KEY : LOCAL_WORLD_REGISTRY_SLOT_A_KEY;
 }
 
-function parsePending(value: unknown, compactDelete = true): LocalWorldPendingTransaction | null {
-  if (!Array.isArray(value) || (value.length !== 4 && value.length !== 5 && value.length !== 6)
+function parsePending(value: unknown): LocalWorldPendingTransaction | null {
+  if (!Array.isArray(value) || (value.length !== 4 && value.length !== 5)
     || (value[0] !== 0 && value[0] !== 1)
     || !safeInteger(value[1], 1, Number.MAX_SAFE_INTEGER)
     || !safeInteger(value[2], 0, MAX_TIMESTAMP)) return null;
   const type = value[0];
   const deletedAt = value[3];
   const world = validateWorldRecord(value[type ? 4 : 3]);
-  const values = value[5];
   if (!world || (type
-    ? (value.length !== 6 && (!compactDelete || value.length !== 5))
-      || !safeInteger(deletedAt, 0, MAX_TIMESTAMP)
-      || (value.length === 6 && (!Array.isArray(values) || values.length !== 4
-        || !values.every((entry) => entry === null || typeof entry === "string")))
+    ? value.length !== 5 || !safeInteger(deletedAt, 0, MAX_TIMESTAMP)
     : value.length !== 4)) return null;
   const recoverAfter = Math.min(
     MAX_TIMESTAMP,
@@ -302,9 +287,7 @@ function parsePending(value: unknown, compactDelete = true): LocalWorldPendingTr
   );
   if (value[2] !== recoverAfter) return null;
   return type
-    ? value.length === 6
-      ? [1, value[1], recoverAfter, deletedAt as number, world, values as Array<string | null>]
-      : [1, value[1], recoverAfter, deletedAt as number, world]
+    ? [1, value[1], recoverAfter, deletedAt as number, world]
     : [0, value[1], recoverAfter, world];
 }
 
@@ -332,38 +315,12 @@ function parseRegistrySlot(slot: 0 | 1, raw: string | null): ParsedRegistrySlot 
   } catch {
     return [2, slot, "invalid_json"];
   }
-  if (isRecord(value)) {
-    if (value.format === LOCAL_WORLD_REGISTRY_FORMAT && safeInteger(value.version, 0, Number.MAX_SAFE_INTEGER)
-      && value.version !== 1) return [3, slot, value.version];
-    if (!exactKeys(value, ["checksum", "format", "payload", "savedAt", "sequence", "version"])
-      || value.format !== LOCAL_WORLD_REGISTRY_FORMAT || value.version !== 1
-      || typeof value.checksum !== "string" || !/^[0-9a-f]{8}$/.test(value.checksum)
-      || !safeInteger(value.savedAt, 0, MAX_TIMESTAMP)
-      || !safeInteger(value.sequence, 1, Number.MAX_SAFE_INTEGER)) {
-      return [2, slot, "invalid_envelope"];
-    }
-    const registry = validateLocalWorldRegistry(value.payload);
-    if (!registry) return [2, slot, "invalid_registry"];
-    const body = {
-      format: LOCAL_WORLD_REGISTRY_FORMAT,
-      payload: registry,
-      savedAt: value.savedAt,
-      sequence: value.sequence,
-      version: 1,
-    };
-    const envelope = { checksum: value.checksum, ...body };
-    return singlePlayerSaveChecksum(body) === value.checksum
-      && canonicalSinglePlayerJson(envelope) === raw
-      ? [1, slot, raw, registry, value.sequence, null]
-      : [2, slot, "invalid_envelope"];
-  }
   if (Array.isArray(value) && typeof value[0] === "number"
-    && Number.isSafeInteger(value[0]) && value[0] !== 3
-    && value[0] !== LOCAL_WORLD_REGISTRY_VERSION) {
+    && Number.isSafeInteger(value[0]) && value[0] !== LOCAL_WORLD_REGISTRY_VERSION) {
     return [3, slot, value[0]];
   }
   if (!Array.isArray(value) || value.length !== 6
-    || (value[0] !== 3 && value[0] !== LOCAL_WORLD_REGISTRY_VERSION)
+    || value[0] !== LOCAL_WORLD_REGISTRY_VERSION
     || typeof value[1] !== "string" || !/^[0-9a-f]{8}$/.test(value[1])
     || !safeInteger(value[2], 1, Number.MAX_SAFE_INTEGER)
     || !safeInteger(value[3], 0, MAX_TIMESTAMP)) {
@@ -371,12 +328,9 @@ function parseRegistrySlot(slot: 0 | 1, raw: string | null): ParsedRegistrySlot 
   }
   const registry = validateLocalWorldRegistry({ worlds: value[4] });
   if (!registry) return [2, slot, "invalid_registry"];
-  const pending = value[5] === null ? null : parsePending(
-    value[5],
-    value[0] === LOCAL_WORLD_REGISTRY_VERSION,
-  );
+  const pending = value[5] === null ? null : parsePending(value[5]);
   if (value[5] !== null && (!pending || pending[1] !== value[2])) return [2, slot, "invalid_registry"];
-  const body = registryBody(registry, value[2], value[3], pending, value[0]);
+  const body = registryBody(registry, value[2], value[3], pending);
   if (singlePlayerSaveChecksum(body) !== value[1]) return [2, slot, "checksum_mismatch"];
   if (canonicalSinglePlayerJson([body[0], value[1], ...body.slice(1)]) !== raw) {
     return [2, slot, "noncanonical_envelope"];
@@ -384,16 +338,31 @@ function parseRegistrySlot(slot: 0 | 1, raw: string | null): ParsedRegistrySlot 
   return [1, slot, raw, registry, value[2], pending];
 }
 
-function readRegistrySlots(storage: SinglePlayerStorageAdapter): [ParsedRegistrySlot[], boolean] {
+function readRegistrySlots(storage: SinglePlayerStorageAdapter, cleanup = false): [ParsedRegistrySlot[], boolean] {
   const slots: ParsedRegistrySlot[] = [];
+  const raw: Array<string | null> = [];
   let readFailed = false;
   for (const slot of [0, 1] as const) {
     try {
-      slots.push(parseRegistrySlot(slot, storage.getItem(registrySlotKey(slot))));
+      raw[slot] = storage.getItem(registrySlotKey(slot));
+      slots.push(parseRegistrySlot(slot, raw[slot]));
     } catch {
       readFailed = true;
+      raw[slot] = null;
       slots.push([2, slot, "storage_read_failed"]);
     }
+  }
+  if (cleanup && !readFailed && !slots.some((slot) => slot[0] === 1)) {
+    try {
+      for (let slot = 0 as 0 | 1; slot < 2; slot += 1) {
+        if (slots[slot][0] < 2) continue;
+        const key = registrySlotKey(slot);
+        if (storage.getItem(key) !== raw[slot]) throw 0;
+        storage.removeItem?.(key);
+        if (storage.getItem(key) !== null) throw 0;
+        slots[slot] = [0, slot];
+      }
+    } catch {}
   }
   return [slots, readFailed];
 }
@@ -417,8 +386,9 @@ type ValidRegistrySlot = Extract<ParsedRegistrySlot, [1, ...unknown[]]>;
 
 function loadRegistryState(
   storage: SinglePlayerStorageAdapter,
+  cleanup = false,
 ): [LocalWorldRegistryLoadResult, ValidRegistrySlot | null] {
-  const scanned = readRegistrySlots(storage);
+  const scanned = readRegistrySlots(storage, cleanup);
   const issues = scanned[0].flatMap((slot) => slot[0] === 2 ? [`${slot[1] ? "b" : "a"}:${slot[2]}`]
     : slot[0] === 3 ? [`${slot[1] ? "b" : "a"}:unsupported_v${slot[2]}`] : []);
   const unsupported = scanned[0].filter((slot): slot is Extract<ParsedRegistrySlot, [3, ...unknown[]]> => slot[0] === 3);
@@ -455,13 +425,11 @@ function loadRegistryState(
 }
 
 function scanRegistryState(storage: SinglePlayerStorageAdapter): ValidRegistrySlot | null {
-  if (!fixedLegacyTransactionsAbsent(storage)) return null;
   const [first, selected] = loadRegistryState(storage);
   if (first.status !== "loaded" || !selected) return null;
   const [second, verified] = loadRegistryState(storage);
   return second.status === "loaded"
     && verified?.[1] === selected[1] && verified[2] === selected[2]
-    && fixedLegacyTransactionsAbsent(storage)
     ? verified
     : null;
 }
@@ -479,88 +447,6 @@ function storageRemover(storage: SinglePlayerStorageAdapter): ((key: string) => 
   }
 }
 
-function legacyTransactionDeadline(raw: string): number | null {
-  if (raw.length === 0 || raw.length > SINGLEPLAYER_WORLD_SAVE_MAX_SLOT_CHARS * 10) return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  return isRecord(value) && safeInteger(value.recoverAfter, 0, MAX_TIMESTAMP)
-    ? value.recoverAfter : null;
-}
-
-function legacyTransactionKeys(storage: SinglePlayerStorageAdapter): string[] | null {
-  try {
-    const listKeys = storage.listKeys;
-    if (typeof listKeys !== "function") return null;
-    const listed: unknown = listKeys.call(storage);
-    if (!Array.isArray(listed) || !listed.every((key) => typeof key === "string")) return null;
-    const keys = (listed as string[]).filter((key) =>
-      LEGACY_TRANSACTION_KEYS.some((prefix) => key === prefix || key.startsWith(`${prefix}.`)));
-    return keys.length === new Set(keys).size && keys.every((key) => key.length <= 128)
-      ? keys : null;
-  } catch {
-    return null;
-  }
-}
-
-function scanLegacyTransactions(
-  storage: SinglePlayerStorageAdapter,
-): Array<[string, string, number | null]> | null {
-  const keys = legacyTransactionKeys(storage);
-  if (!keys) return null;
-  const entries: Array<[string, string, number | null]> = [];
-  try {
-    for (const key of keys) {
-      const raw = storage.getItem(key);
-      if (raw === null) return null;
-      entries.push([key, raw, legacyTransactionDeadline(raw)]);
-    }
-  } catch {
-    return null;
-  }
-  const verify = legacyTransactionKeys(storage);
-  if (!verify || !sameStrings(keys, verify)) return null;
-  try {
-    for (const [key, raw] of entries) if (storage.getItem(key) !== raw) return null;
-  } catch {
-    return null;
-  }
-  const closing = legacyTransactionKeys(storage);
-  return closing && sameStrings(keys, closing) ? entries : null;
-}
-
-function preflightLegacyTransactions(
-  storage: SinglePlayerStorageAdapter,
-  observedAt: number,
-): string | null {
-  const entries = scanLegacyTransactions(storage);
-  if (!entries) return LEGACY_TRANSACTION_PENDING;
-  if (entries.some((entry) => entry[2] !== null
-    && observedAt < entry[2]! && entry[2]! - observedAt <= LOCAL_WORLD_TRANSACTION_LEASE_MS)) {
-    return "transaction:active";
-  }
-  if (!entries.length) return null;
-  const removeItem = storageRemover(storage);
-  if (!removeItem) return LEGACY_TRANSACTION_PENDING;
-  try {
-    for (const [key, raw] of entries) {
-      if (storage.getItem(key) !== raw) return LEGACY_TRANSACTION_PENDING;
-      removeItem(key);
-      if (storage.getItem(key) !== null) return LEGACY_TRANSACTION_PENDING;
-    }
-  } catch {
-    return LEGACY_TRANSACTION_PENDING;
-  }
-  return LEGACY_TRANSACTION_PENDING;
-}
-
-function fixedLegacyTransactionsAbsent(storage: SinglePlayerStorageAdapter): boolean {
-  return scanLegacyTransactions(storage)?.length === 0;
-}
-
 function sameWorld(left: LocalWorldRecord, right: LocalWorldRecord): boolean {
   return canonicalSinglePlayerJson(left) === canonicalSinglePlayerJson(right);
 }
@@ -570,8 +456,7 @@ function sameWorldIdentity(left: LocalWorldRecord, right: LocalWorldRecord): boo
     && left.name === right.name
     && left.seed === right.seed
     && left.initialGameMode === right.initialGameMode
-    && left.createdAt === right.createdAt
-    && left.importedLegacy === right.importedLegacy;
+    && left.createdAt === right.createdAt;
 }
 
 function pendingDeletesWorld(pending: LocalWorldPendingTransaction | null, worldId: string): boolean {
@@ -604,15 +489,13 @@ export function loadLocalWorldRegistry(
   observedAt = Date.now(),
 ): LocalWorldRegistryLoadResult {
   const recoveryAt = timestamp(observedAt);
-  const legacyIssue = preflightLegacyTransactions(storage, recoveryAt);
-  const [loaded, slot] = loadRegistryState(storage);
-  if (legacyIssue) return withRecoveryIssue(loaded, legacyIssue);
+  const [loaded, slot] = loadRegistryState(storage, true);
   const pending = slot?.[5];
   if (!pending) return loaded;
   if (recoveryAt < pending[2]) return withRecoveryIssue(loaded, "transaction:active");
-  if (!loaded.registry || !slot) return withRecoveryIssue(loaded, LEGACY_TRANSACTION_PENDING);
+  if (!loaded.registry || !slot) return withRecoveryIssue(loaded, TRANSACTION_RECOVERY_PENDING);
   const pendingRaw = mirrorPending(storage, slot[4], pending);
-  if (!pendingRaw) return withRecoveryIssue(loaded, LEGACY_TRANSACTION_PENDING);
+  if (!pendingRaw) return withRecoveryIssue(loaded, TRANSACTION_RECOVERY_PENDING);
 
   const type = pending[0] ? "delete" : "create";
   const world = pending[pending[0] ? 4 : 3] as LocalWorldRecord;
@@ -632,7 +515,7 @@ export function loadLocalWorldRegistry(
         if (!values || values.some((value) => value !== null)) throw new Error();
         completed = "cleanup_completed";
       } else if (sameWorld(registered, world)) {
-        const created = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: world.id });
+        const created = loadSinglePlayerSave(storage, { worldId: world.id });
         if (!created.snapshot || created.snapshot.world.worldId !== world.id
           || created.snapshot.world.gameMode !== world.initialGameMode) throw new Error();
         completed = "commit_completed";
@@ -647,18 +530,6 @@ export function loadLocalWorldRegistry(
       const values = readWorldValues(storage, world.id);
       if (!values || values.some((value) => value !== null)) throw new Error();
       completed = "cleanup_completed";
-    } else if (sameWorld(registered, world) && pending.length === 6) {
-      const values = pending[5];
-      const keys = singlePlayerWorldStorageKeys(world.id);
-      if (!removeItem) throw new Error();
-      for (let index = 0; index < keys.length; index += 1) {
-        if (!ownsMirroredPending(storage, pendingRaw)) throw new Error();
-        if (values[index] === null) removeItem(keys[index]);
-        else storage.setItem(keys[index], values[index]!);
-        if (!ownsMirroredPending(storage, pendingRaw)) throw new Error();
-      }
-      if (!sameStrings(readWorldValues(storage, world.id) ?? [], values)) throw new Error();
-      completed = "rollback_completed";
     }
   } catch {
     return withRecoveryIssue(loaded, `${type}:recovery_pending`);
@@ -692,10 +563,6 @@ function saveRegistryState(
   pending: LocalWorldPendingTransaction | null,
   expectedPending: LocalWorldPendingTransaction | null,
 ): LocalWorldRegistrySaveResult {
-  if (preflightLegacyTransactions(
-    storage,
-    timestamp(savedAt),
-  )) return failure("unsafe_existing_data");
   const scanned = readRegistrySlots(storage);
   const current = highestRegistrySlot(scanned[0]);
   if (scanned[1]) return failure("storage_read_failed");
@@ -764,12 +631,11 @@ function ownsPending(
 
 function ownsMirroredPending(storage: SinglePlayerStorageAdapter, raw: string): boolean {
   try {
-    if (!fixedLegacyTransactionsAbsent(storage)) return false;
     for (let pass = 0; pass < 2; pass += 1) {
       if (storage.getItem(LOCAL_WORLD_REGISTRY_SLOT_A_KEY) !== raw
         || storage.getItem(LOCAL_WORLD_REGISTRY_SLOT_B_KEY) !== raw) return false;
     }
-    return fixedLegacyTransactionsAbsent(storage);
+    return true;
   } catch {
     return false;
   }
@@ -779,12 +645,10 @@ function stablePendingRaw(
   storage: SinglePlayerStorageAdapter,
   raw: string,
 ): ValidRegistrySlot | null {
-  if (!fixedLegacyTransactionsAbsent(storage)) return null;
   const [, first] = loadRegistryState(storage);
   if (first?.[2] !== raw || !first[5]) return null;
   const [, second] = loadRegistryState(storage);
-  return second?.[1] === first[1] && second[2] === raw
-    && fixedLegacyTransactionsAbsent(storage) ? second : null;
+  return second?.[1] === first[1] && second[2] === raw ? second : null;
 }
 
 function mirrorPending(
@@ -845,8 +709,7 @@ function persistNewLocalWorld(
     candidate.name === name
     && candidate.seed === input.seed
     && candidate.initialGameMode === input.gameMode
-    && candidate.createdAt === input.createdAt
-    && !candidate.importedLegacy);
+    && candidate.createdAt === input.createdAt);
   if (replayed) return { ok: true, world: replayed, registry };
   if (registry.worlds.length >= LOCAL_WORLD_REGISTRY_MAX_WORLDS) {
     return failure("world_limit_reached");
@@ -860,7 +723,6 @@ function persistNewLocalWorld(
     initialGameMode: input.gameMode,
     createdAt: input.createdAt,
     lastPlayedAt: 0,
-    importedLegacy: false,
   };
   const pending = makePending(0, generation, world);
   const begun = saveRegistryState(storage, registry, input.createdAt, generation - 1, pending, null);
@@ -928,8 +790,7 @@ export function createLocalWorld(
     candidate.name === name
     && candidate.seed === seed
     && candidate.initialGameMode === input.gameMode
-    && candidate.createdAt === createdAt
-    && !candidate.importedLegacy) : null;
+    && candidate.createdAt === createdAt) : null;
   if (replayed) return { ok: true, world: replayed, registry: loaded.registry };
   return persistNewLocalWorld(storage, loaded.registry, loaded.sequence + 1, {
     name: input.name,
@@ -944,7 +805,7 @@ export function inspectLocalWorld(
   world: LocalWorldRecord,
   registryOverheadChars = 0,
 ): LocalWorldInspection {
-  const load = loadSinglePlayerSave(storage, { migrateLegacy: false, worldId: world.id });
+  const load = loadSinglePlayerSave(storage, { worldId: world.id });
   let usedChars = Math.max(0, Math.floor(registryOverheadChars));
   let largestSlotChars = 0;
   let capacity: LocalWorldCapacity = "ok";

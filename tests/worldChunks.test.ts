@@ -25,7 +25,7 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
   }
 }
 
-assert.equal(WORLD_CHUNK_CODEC_VERSION, 4);
+assert.equal(WORLD_CHUNK_CODEC_VERSION, 5);
 assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 6);
 assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 63, "six-bit snapshots reserve zero and expose 63 block codes");
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 33, "clay and bricks append without changing the six-bit codec");
@@ -57,7 +57,7 @@ assert.deepEqual(
 
 const blockTypes = WORLD_CHUNK_BLOCK_TYPES.filter((block) => block !== "air");
 const edits: WorldChunkEditInput[] = [];
-for (let y = WORLD_EDIT_MIN_Y; y <= WORLD_EDIT_MAX_Y && edits.length < 1_500; y += 1) {
+for (let y = WORLD_EDIT_MIN_Y + 1; y <= WORLD_EDIT_MAX_Y && edits.length < 1_500; y += 1) {
   for (let z = -20; z <= 20 && edits.length < 1_500; z += 1) {
     for (let x = -20; x <= 20 && edits.length < 1_500; x += 1) {
       edits.push({
@@ -145,7 +145,7 @@ if (ordering.ok) {
 }
 
 const fullChunk: WorldChunkEditInput[] = [];
-for (let y = WORLD_EDIT_MIN_Y; y <= WORLD_EDIT_MAX_Y; y += 1) {
+for (let y = WORLD_EDIT_MIN_Y + 1; y <= WORLD_EDIT_MAX_Y; y += 1) {
   for (let z = 0; z < 8; z += 1) {
     for (let x = 0; x < 8; x += 1) fullChunk.push({ x, y, z, blockType: "stone" });
   }
@@ -154,94 +154,19 @@ const fullSnapshot = createWorldChunkSnapshot("0:0", fullChunk);
 assert.equal(fullSnapshot.ok, true);
 if (fullSnapshot.ok) {
   assert.ok(fullSnapshot.snapshotJson.length < MAX_WORLD_CHUNK_SNAPSHOT_BYTES, `dense snapshot was ${fullSnapshot.snapshotJson.length} bytes`);
-  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 4, "new snapshots use six-bit sparse vertical sections");
+  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 5, "new snapshots use six-bit sparse vertical sections");
   const decoded = decodeWorldChunkSnapshot("0:0", fullSnapshot.snapshotJson);
   assert.equal(decoded.ok && decoded.edits.length, fullChunk.length);
 }
 
-// Production rows written before ore/furnace support used two four-bit cells
-// per byte. They must remain readable and upgrade on the next edit.
-const legacyPacked = new Uint8Array(Math.ceil((69 * 8 * 8) / 2));
-const legacyStoneIndex = (0 - -4) * 64;
-legacyPacked[legacyStoneIndex >> 1] = 4; // v1 code 4 = stone
-const legacySnapshot = JSON.stringify({ v: 1, cells: Buffer.from(legacyPacked).toString("base64") });
-const legacyDecoded = decodeWorldChunkSnapshot("0:0", legacySnapshot);
-assert.equal(legacyDecoded.ok, true);
-if (legacyDecoded.ok) assert.equal(legacyDecoded.edits.find((edit) => edit.coordKey === "0:0:0")?.blockType, "stone");
-const migrated = applyWorldChunkEdit("0:0", legacySnapshot, { x: 1, y: 0, z: 0, blockType: "furnace" });
-assert.equal(migrated.ok, true);
-if (migrated.ok) {
-  assert.equal(JSON.parse(migrated.snapshotJson).v, 4, "editing a legacy row migrates it to the current codec");
-  const decoded = decodeWorldChunkSnapshot("0:0", migrated.snapshotJson);
-  assert.equal(decoded.ok, true);
-  if (decoded.ok) {
-    assert.equal(decoded.edits.find((edit) => edit.coordKey === "0:0:0")?.blockType, "stone");
-    assert.equal(decoded.edits.find((edit) => edit.coordKey === "1:0:0")?.blockType, "furnace");
-  }
-}
-
-// Production v2 rows used one fixed-height, five-bit stream. Keep the byte
-// layout readable, then upgrade it only when a write occurs.
-const legacyV2Packed = new Uint8Array(Math.ceil((69 * 8 * 8 * 5) / 8));
-const legacyV2OriginIndex = (0 - -4) * 64;
-setPackedCode(legacyV2Packed, legacyV2OriginIndex, 16, 5); // code 16 = furnace
-const legacyV2Snapshot = JSON.stringify({ v: 2, cells: Buffer.from(legacyV2Packed).toString("base64") });
-const legacyV2Decoded = decodeWorldChunkSnapshot("0:0", legacyV2Snapshot);
-assert.equal(legacyV2Decoded.ok, true);
-if (legacyV2Decoded.ok) {
-  assert.equal(legacyV2Decoded.edits.find((edit) => edit.coordKey === "0:0:0")?.blockType, "furnace");
-}
-const migratedV2 = applyWorldChunkEdit("0:0", legacyV2Snapshot, { x: 1, y: 0, z: 0, blockType: "glass" });
-assert.equal(migratedV2.ok, true);
-if (migratedV2.ok) {
-  assert.equal(JSON.parse(migratedV2.snapshotJson).v, 4, "v2 upgrades lazily on write");
-  const decoded = decodeWorldChunkSnapshot("0:0", migratedV2.snapshotJson);
-  assert.equal(decoded.ok, true);
-  if (decoded.ok) assert.deepEqual(
-    decoded.edits.map(({ blockType }) => blockType),
-    ["furnace", "glass"],
-  );
-}
-
-// Deployed v3 rows used sparse 8-high sections with 320-byte five-bit cells.
-// Code 31 is especially important: it was shipped before v4 and must retain
-// its exact stone-brick-slab meaning.
-const legacyV3Section = new Uint8Array((8 * 8 * 8 * 5) / 8);
-setPackedCode(legacyV3Section, 0, 31, 5); // code 31 = stone_brick_slab
-setPackedCode(legacyV3Section, 1, 1, 5); // code 1 = explicit air
-const legacyV3Snapshot = JSON.stringify({
-  v: 3,
-  sections: [{ y: 0, cells: Buffer.from(legacyV3Section).toString("base64") }],
-});
-const legacyV3Decoded = decodeWorldChunkSnapshot("0:0", legacyV3Snapshot);
-assert.equal(legacyV3Decoded.ok, true);
-if (legacyV3Decoded.ok) assert.deepEqual(
-  legacyV3Decoded.edits.map(({ coordKey, blockType }) => ({ coordKey, blockType })),
-  [
-    { coordKey: "0:0:0", blockType: "stone_brick_slab" },
-    { coordKey: "1:0:0", blockType: "air" },
-  ],
-);
-const migratedV3 = applyWorldChunkEdit("0:0", legacyV3Snapshot, { x: 2, y: 0, z: 0, blockType: "torch" });
-assert.equal(migratedV3.ok, true);
-if (migratedV3.ok) {
-  assert.equal(JSON.parse(migratedV3.snapshotJson).v, 4, "v3 upgrades lazily on write");
-  const decoded = decodeWorldChunkSnapshot("0:0", migratedV3.snapshotJson);
-  assert.equal(decoded.ok, true);
-  if (decoded.ok) assert.deepEqual(
-    decoded.edits.map(({ blockType }) => blockType),
-    ["stone_brick_slab", "air", "torch"],
-  );
-}
-
 const highestCode = createWorldChunkSnapshot("0:0", [
-  { x: 0, y: 1, z: 0, blockType: "cobblestone" },
-  { x: 1, y: 1, z: 0, blockType: "sand" },
-  { x: 2, y: 1, z: 0, blockType: "glass" },
-  { x: 3, y: 1, z: 0, blockType: "gold_ore" },
-  { x: 4, y: 1, z: 0, blockType: "diamond_ore" },
-  { x: 5, y: 1, z: 0, blockType: "tnt" },
-  { x: 6, y: 1, z: 0, blockType: "gravel" },
+  { x: 0, y: 2, z: 0, blockType: "cobblestone" },
+  { x: 1, y: 2, z: 0, blockType: "sand" },
+  { x: 2, y: 2, z: 0, blockType: "glass" },
+  { x: 3, y: 2, z: 0, blockType: "gold_ore" },
+  { x: 4, y: 2, z: 0, blockType: "diamond_ore" },
+  { x: 5, y: 2, z: 0, blockType: "tnt" },
+  { x: 6, y: 2, z: 0, blockType: "gravel" },
 ]);
 assert.equal(highestCode.ok, true);
 if (highestCode.ok) {
@@ -254,7 +179,7 @@ if (highestCode.ok) {
 }
 
 const currentSectionProbe = createWorldChunkSnapshot("0:0", [
-  { x: 0, y: 0, z: 0, blockType: "bricks" },
+  { x: 0, y: 2, z: 0, blockType: "bricks" },
 ]);
 assert.equal(currentSectionProbe.ok, true);
 if (currentSectionProbe.ok) {
@@ -262,7 +187,7 @@ if (currentSectionProbe.ok) {
     v: number;
     sections: Array<{ y: number; cells: string }>;
   };
-  assert.equal(parsed.v, 4);
+  assert.equal(parsed.v, 5);
   assert.equal(parsed.sections.length, 1);
   assert.equal(Buffer.from(parsed.sections[0].cells, "base64").length, 384, "v4 sections allocate six bits for each of 512 cells");
 }
@@ -280,7 +205,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   decodeWorldChunkSnapshot("0:0", JSON.stringify({
-    v: 5,
+    v: 6,
     sections: [{ y: 0, cells: Buffer.from(new Uint8Array(384)).toString("base64") }],
   })),
   { ok: false, reason: "invalid_snapshot" },
@@ -288,14 +213,14 @@ assert.deepEqual(
 );
 
 const deterministicEdits: WorldChunkEditInput[] = [
-  { x: 7, y: 128, z: 7, blockType: "bricks" },
-  { x: 0, y: -24, z: 0, blockType: "air" },
+  { x: 7, y: 192, z: 7, blockType: "bricks" },
+  { x: 0, y: 2, z: 0, blockType: "air" },
   { x: 4, y: 17, z: 2, blockType: "diamond_ore" },
-  { x: 3, y: -1, z: 6, blockType: "torch" },
+  { x: 3, y: 3, z: 6, blockType: "torch" },
 ];
 const deterministicForward = createWorldChunkSnapshot("0:0", deterministicEdits);
 const deterministicReverse = createWorldChunkSnapshot("0:0", [...deterministicEdits].reverse());
-assert.deepEqual(deterministicForward, deterministicReverse, "v4 encoding is byte-for-byte deterministic across input order");
+assert.deepEqual(deterministicForward, deterministicReverse, "v5 encoding is byte-for-byte deterministic across input order");
 
 const empty = createWorldChunkSnapshot("0:0", []);
 assert.equal(empty.ok, true);

@@ -136,13 +136,13 @@ const edgeInventory = createEmptyInventory();
 edgeInventory[0] = { itemId: "dirt", count: 1 };
 const edge = planDeathDrops({
   identity, inventory: edgeInventory, equipment: createEmptyEquipment(),
-  deathPose: { x: 1_000_000, y: 512, z: -1_000_000 },
+  deathPose: { x: 1_000_000, y: 192, z: -1_000_000 },
 });
 assert.equal(edge.ok, true);
 if (edge.ok) {
   assert.equal(edge.drops.length, 1);
   assert.ok(edge.drops[0].position.x <= 1_000_000 && edge.drops[0].position.z >= -1_000_000);
-  assert.ok(edge.drops[0].position.y <= 512, "scatter positions remain valid at the world ceiling");
+  assert.ok(edge.drops[0].position.y <= 192, "scatter positions remain valid at the world ceiling");
 }
 
 function expectFailure(

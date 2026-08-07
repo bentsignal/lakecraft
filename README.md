@@ -53,8 +53,8 @@ Singleplayer requires no account and saves only in that browser. The title scree
 
 ## Project shape
 
-- `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered original 16×16 texture atlas, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
-- `client/components/` — Minecraft-style survival HUD, 93 original pixel item sprites, manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
+- `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered 16×16 compatibility atlas imported from the owner's installed client, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
+- `client/components/` — Minecraft-style survival HUD, 97 item sprites (71 exact installed sprites plus exact-texture block renders and retained Lakecraft bed/special geometry), manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
 - `client/singleplayer/` — offline world integration plus a checksummed two-slot browser-local journal for inventory, edits, drops, containers, TNT, pose, health, time, and deterministic mob state; signing in does not currently upload these worlds
 - `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, quota-batched multiplayer history/chat, CAS-safe inventories, atomic world item drops/pickups, persistent furnaces and shared-chest transfers, a leased deterministic mob authority, and the synchronized sleep clock
 - `shared/` — pure item, recipe, furnace, and wire-protocol types

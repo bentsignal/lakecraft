@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  COMPACT_CLIENT_COMPUTED_STORAGE_PROPERTIES,
   COMPACT_CLIENT_PROPERTY_MANGLE_CACHE,
   COMPACT_CLIENT_PROPERTY_PATTERN,
   COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE,
@@ -37,7 +38,12 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 553, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 599, "reviewed compatibility boundary changes only intentionally");
+assert.equal(
+  createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
+  "06a5a7fbcfc2ee42005bdd8a5249e183b89d58b315c512e744b04a16275e5d9a",
+  "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
+);
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
 assert.equal(new Set(compactNames).size, compactNames.length, "compact property names stay unique");
 assert.ok(manifestNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "source names are identifiers");
@@ -112,7 +118,7 @@ const reviewedPrivatePropertyPaths = {
   openPause: { declarations: ["client/singleplayer/sessionState.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"] },
   optimisticEdit: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
   pauseEpoch: { declarations: ["client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/index.tsx", "client/multiplayerGameplay.ts"] },
-  plan: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
+  plan: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/game/contactSheetExport.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/game/contactSheetExport.ts"] },
   playable: { declarations: ["client/singleplayer/localWorldBrowserIssue.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts"] },
   previousOffsetX: { declarations: ["client/game/mobKnockback.ts"], uses: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"] },
   previousOffsetZ: { declarations: ["client/game/mobKnockback.ts"], uses: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"] },
@@ -141,7 +147,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 489 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 535 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
@@ -178,7 +184,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "68bc012abb3305a742e9fc958f4a8e550834d72e7738507e98e40a031ad9a4bb",
+  "3cdf5222f428e9474983a27bce59e55d6acecb637d33cf24e026982137088a5f",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
@@ -203,8 +209,26 @@ const testQuotedNames = [...COMPACT_CLIENT_TEST_QUOTED_PROPERTIES];
 assert.deepEqual(testQuotedNames, [...testQuotedNames].sort(), "test-quoted allowlist stays sorted");
 assert.equal(new Set(testQuotedNames).size, testQuotedNames.length, "test-quoted allowlist stays unique");
 const testQuotedSet = new Set(testQuotedNames);
+const computedStorageNames = [...COMPACT_CLIENT_COMPUTED_STORAGE_PROPERTIES];
+assert.deepEqual(computedStorageNames, ["dataUrl", "model"], "only the skin wire codec has computed storage keys");
+const computedStorageSet = new Set(computedStorageNames);
+for (const name of computedStorageNames) {
+  assert.ok(COMPACT_CLIENT_PROPERTY_PATTERN.test(name), `${name} remains globally compactable`);
+  assert.deepEqual(
+    (analysis.quotedPropertyPaths[name] ?? []).filter((path) => !path.startsWith("tests/")),
+    ["client/game/playerSkin.ts"],
+    `${name} has exactly one reviewed computed-literal storage boundary`,
+  );
+  assert.equal(
+    analysis.jsonStringifyPropertyNames.includes(name),
+    false,
+    `${name} reaches JSON only through the computed storage codec`,
+  );
+}
 const expectedCandidateNames = [
-  ...manifestNames.filter((name) => !testQuotedSet.has(name) && !(name in COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE)),
+  ...manifestNames.filter((name) => !testQuotedSet.has(name)
+    && !computedStorageSet.has(name)
+    && !(name in COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE)),
   // These remain source-live but are tree-shaken from the final client entry.
   "onDismissControls",
   "onOpenHelp",
@@ -492,6 +516,7 @@ const boundaryBundles = new Map();
 for (const entryPoint of [
   "client/MultiplayerSegmentTransport.tsx",
   "client/multiplayerSegmentClient.ts",
+  "client/game/playerSkin.ts",
   "client/settings.ts",
   "client/singleplayer/localSave.ts",
   "client/worldBlockEditClient.ts",
@@ -513,9 +538,31 @@ async function importBundled(text) {
   return import(`data:text/javascript;base64,${Buffer.from(text).toString("base64")}`);
 }
 
+const runtimePropertyProbe = await build({
+  ...commonBuildOptions,
+  minify: false,
+  mangleCache: compactClientPropertyCache(),
+  mangleProps: COMPACT_CLIENT_PROPERTY_PATTERN,
+  mangleQuoted: false,
+  stdin: {
+    contents: 'const record={model:"wide",dataUrl:"internal"};export const modelValue=record.model;export const dataUrlValue=record.dataUrl;',
+    loader: "js",
+    sourcefile: "runtime-property-probe.js",
+  },
+});
+const runtimePropertyProbeText = runtimePropertyProbe.outputFiles[0].text;
+assert.match(runtimePropertyProbeText, /\ba9:/, "ordinary model properties use their fixed compact alias");
+assert.match(runtimePropertyProbeText, /\bVt:/, "ordinary dataUrl properties use their fixed compact alias");
+const runtimePropertyProbeModule = await importBundled(runtimePropertyProbeText);
+assert.deepEqual(
+  [runtimePropertyProbeModule.modelValue, runtimePropertyProbeModule.dataUrlValue],
+  ["wide", "internal"],
+  "runtime properties remain usable after compaction",
+);
+
 const settingsBase = await importBundled(boundaryBundles.get("client/settings.ts").baseline);
 const settingsCompact = await importBundled(boundaryBundles.get("client/settings.ts").compact);
-const settingsInput = { soundMuted: true, mouseSensitivity: 137 };
+const settingsInput = { soundMuted: true, mouseSensitivity: 137, fovDegrees: 92 };
 assert.deepEqual(
   settingsCompact.normalizeClientSettings(settingsInput),
   settingsBase.normalizeClientSettings(settingsInput),
@@ -543,6 +590,62 @@ assert.deepEqual(
   settingsBase.loadClientSettings(settingsBaseStorage),
   "persisted settings round-trip stays exact",
 );
+
+const skinBase = await importBundled(boundaryBundles.get("client/game/playerSkin.ts").baseline);
+const skinCompact = await importBundled(boundaryBundles.get("client/game/playerSkin.ts").compact);
+const skinInput = {
+  version: 1,
+  name: "user-owned-skin.png",
+  width: 64,
+  height: 64,
+  model: "slim",
+  dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+};
+const skinStorage = () => {
+  const values = new Map();
+  return {
+    values,
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+};
+const expectedSkinJson = '{"version":1,"name":"user-owned-skin.png","width":64,"height":64,"model":"slim","dataUrl":"data:image/png;base64,iVBORw0KGgo="}';
+for (const [writer, reader, direction] of [
+  [skinBase, skinCompact, "baseline save loads in compact"],
+  [skinCompact, skinBase, "compact save loads in baseline"],
+]) {
+  const storage = skinStorage();
+  assert.equal(writer.savePersistedPlayerSkin(storage, skinInput), true, direction);
+  const raw = storage.values.get(writer.PLAYER_SKIN_STORAGE_KEY);
+  assert.equal(raw, expectedSkinJson, `${direction}: JSON stays byte-for-byte canonical`);
+  assert.deepEqual(
+    Object.keys(JSON.parse(raw)),
+    ["version", "name", "width", "height", "model", "dataUrl"],
+    `${direction}: literal keys and order survive compaction`,
+  );
+  assert.deepEqual(
+    Object.keys(JSON.parse(raw)).filter((key) => compactNames.includes(key)),
+    [],
+    `${direction}: no mangle alias is persisted as a JSON key`,
+  );
+  const loadedSkin = reader.loadPersistedPlayerSkin(storage);
+  assert.deepEqual(loadedSkin, skinInput, direction);
+  assert.equal(Object.isFrozen(loadedSkin), true, `${direction}: loaded canonical records stay frozen`);
+  assert.equal(raw.includes('"a9"'), false, `${direction}: the retired model alias never reaches storage`);
+  assert.equal(raw.includes('"Vt"'), false, `${direction}: the retired dataUrl alias never reaches storage`);
+}
+for (const runtime of [skinBase, skinCompact]) {
+  for (const malformed of [
+    { ...skinInput, version: 2 },
+    { ...skinInput, model: "narrow" },
+    { ...skinInput, extra: true },
+    JSON.parse('{"version":1,"name":"user-owned-skin.png","width":64,"height":64,"a9":"slim","Vt":"data:image/png;base64,iVBORw0KGgo="}'),
+  ]) {
+    const storage = skinStorage();
+    storage.values.set(runtime.PLAYER_SKIN_STORAGE_KEY, JSON.stringify(malformed));
+    assert.equal(runtime.loadPersistedPlayerSkin(storage), null, "malformed, future, and aliased records fail closed");
+  }
+}
 
 const saveBase = await importBundled(boundaryBundles.get("client/singleplayer/localSave.ts").baseline);
 const saveCompact = await importBundled(boundaryBundles.get("client/singleplayer/localSave.ts").compact);

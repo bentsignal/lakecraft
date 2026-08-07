@@ -14,11 +14,11 @@ function orderedMapDigest(blocks: ReadonlyMap<string, BlockId>): string {
 // Ordered-map fingerprints cover spawn blending, negative seams, far
 // coordinates, and every intentional deterministic material-layer change.
 const chunkSnapshots = [
-  { coordinate: [0, 0], size: 2_079, sha256: "26ca1b1f3662e5392b743398efda5bbe5bec4e9ae80c53015f4825ddd243775b" },
-  { coordinate: [1, -1], size: 2_165, sha256: "f325f858dbf82a5003cdfa5595d0b540ab9398a8dfb7dd513d1d16ecb2c8e0f1" },
-  { coordinate: [-4, 3], size: 1_750, sha256: "9004f411e5e3eb6e66000ce55a609657089121f5789f6acae863439ab654aa03" },
-  { coordinate: [25_000, -25_000], size: 1_839, sha256: "d192ff58101388cf9e815bc266f217487faec837c78a05ccf56affa3efc7171f" },
-  { coordinate: [-25_003, 24_998], size: 2_084, sha256: "4eb2eeceedb5b8d0c31ad3ef7c2a5041671350f2b63970d42d7a6402f2a681ea" },
+  { coordinate: [0, 0], size: 4_465, sha256: "60489766bfb7f0d8ffaac07b15c62421a6c6945c84c232c6ec2319409ca0af43" },
+  { coordinate: [1, -1], size: 4_383, sha256: "757238bd2de81fdf6a68462ecbebde9be18bed67b05c67d6bf8f00c2585d5b3e" },
+  { coordinate: [-4, 3], size: 4_038, sha256: "2485d7d7890a253eaf4d4db59069395acdfd16e04ec570b01a45ac763a6fd2ba" },
+  { coordinate: [25_000, -25_000], size: 4_102, sha256: "288aa30b976584560b16b842c3ea2847f79b32d50530f856e38b7889b2700627" },
+  { coordinate: [-25_003, 24_998], size: 4_369, sha256: "c48613d57ee0666184fd1b56c2bb477ec3ddcc4839660b925887b19fa0bb4c46" },
 ] as const;
 
 for (const snapshot of chunkSnapshots) {
@@ -32,10 +32,10 @@ for (const snapshot of chunkSnapshots) {
 }
 
 const eager = createTerrain(7_319, 20);
-assert.equal(eager.size, 16_005);
+assert.equal(eager.size, 114_337);
 assert.equal(
   orderedMapDigest(eager),
-  "95c9bd89d2fc0630e87029724428257d4aed62546132aaac0e3f694243e975d3",
+  "3a5a094a814fa1d88ed899bccf5dc8d89ea5265d82ef9cb79ee665d07869b5a0",
   "the eager compatibility generator preserves its complete expected ordered map",
 );
 
@@ -48,7 +48,7 @@ for (let run = 0; run < 3; run += 1) {
     blockCount += createTerrainChunk(7_319, coordinate.x, coordinate.z).size;
   }
   timings.push(performance.now() - startedAt);
-  assert.equal(blockCount, 94_376, "the exact performance window preserves its clay-aware output count");
+  assert.equal(blockCount, 204_853, "the exact performance window preserves its shifted terrain output count");
 }
 
 console.log(JSON.stringify({

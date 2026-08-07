@@ -1,5 +1,18 @@
 export { createVoxelEngine } from "./voxelEngine.ts";
 export {
+  createProductionContactSheetExport,
+  planProductionContactSheet,
+  productionContactSheetItemIds,
+  renderProductionContactSheet,
+} from "./contactSheetExport.ts";
+export type {
+  ProductionContactSheetCategory,
+  ProductionContactSheetCell,
+  ProductionContactSheetExport,
+  ProductionContactSheetOptions,
+  ProductionContactSheetPlan,
+} from "./contactSheetExport.ts";
+export {
   DEFAULT_FOV_RADIANS,
   SNEAKING_BODY_HEIGHT,
   SNEAKING_EYE_HEIGHT,
@@ -13,6 +26,7 @@ export {
   clampSneakAxisMovement,
   createHeadBobState,
   headBobProfileForMovement,
+  movementFovRadians,
   movementActivityMultiplier,
   normalizeMovementInput,
   postureTargetsForMovement,
@@ -32,7 +46,7 @@ export { WORLD_CHUNK_SIZE, chunkCoordinate, chunkKeyForBlock, dirtyChunkKeysForE
 export { MAX_PRIMED_TNT_VISUALS, PRIMED_TNT_VERTICES_PER_ENTITY, createMobRenderer, mobVertexCountForKind, primedTntBufferBytes, samplePrimedTntVisual } from "./mobRenderer.ts";
 export { DROPPED_ITEM_MESH_INTERVAL_MS, DROPPED_ITEM_RENDER_DISTANCE, DROPPED_ITEM_VERTICES_PER_ITEM, MAX_RENDERED_DROPPED_ITEMS, createDroppedItemRenderer, droppedItemBufferCapacity, writeDroppedItemGeometry } from "./droppedItemRenderer.ts";
 export { MAX_RENDERED_PLAYER_PROJECTILES, PLAYER_PROJECTILE_GRAVITY, PLAYER_PROJECTILE_LIFETIME_MS, PLAYER_PROJECTILE_MESH_INTERVAL_MS, PLAYER_PROJECTILE_RENDER_DISTANCE, PLAYER_PROJECTILE_VERTICES, createPlayerProjectileRenderer, playerProjectileBufferCapacity, samplePlayerProjectile } from "./playerProjectileRenderer.ts";
-export { AVATAR_VERTICES_PER_PLAYER, MAX_NAMEPLATE_VERTICES_PER_PLAYER, REMOTE_MESH_INTERVAL_MS, createRemotePlayerRenderer, remotePlayerBufferCapacity, writeRemotePlayerGeometry } from "./remotePlayerRenderer.ts";
+export { AVATAR_VERTICES_PER_PLAYER, MAX_NAMEPLATE_VERTICES_PER_PLAYER, REMOTE_HELD_ITEM_LOGICAL_SIZE, REMOTE_HELD_ITEM_MAX_RECTS, REMOTE_MESH_INTERVAL_MS, createRemotePlayerRenderer, remoteHeldItemRects, remoteHeldItemVertexCount, remotePlayerBufferCapacity, writeRemotePlayerGeometry } from "./remotePlayerRenderer.ts";
 export {
   MAX_CONTACT_DAMAGE_PER_TICK,
   MOB_COMBAT_AUTHORITY,

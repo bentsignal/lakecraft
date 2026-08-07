@@ -18,12 +18,15 @@ import {
 import {
   SINGLEPLAYER_SAVE_HEAD_KEY,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
+  canonicalSinglePlayerJson,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
   saveSinglePlayerSnapshot,
   serializeSinglePlayerSave,
+  singlePlayerSaveChecksum,
   type SinglePlayerStorageAdapter,
 } from "../client/singleplayer/localSave.ts";
+import { stripClientDevelopmentSurfaces } from "../scripts/client-development-surface-transform.mjs";
 
 assert.deepEqual(parseLocalCommand("/help"), { ok: true, command: { kind: "help" } });
 assert.deepEqual(parseLocalCommand(" /GaMeMoDe creative "), {
@@ -39,6 +42,14 @@ assert.deepEqual(parseLocalCommand("/give bow"), {
   command: { kind: "give", itemId: "bow", count: 1 },
 });
 assert.deepEqual(parseLocalCommand("/locate cave"), { ok: true, command: { kind: "locate", feature: "cave" } });
+assert.deepEqual(parseLocalCommand("/gamerule doDaylightCycle false"), {
+  ok: true, command: { kind: "gamerule", value: false },
+});
+const deniedDaylightCycle = parseLocalCommand("/gamerule doDaylightCycle false",
+  { changeGameMode: true, giveItems: true, setTime: false });
+assert.equal(deniedDaylightCycle.ok, false);
+if (!deniedDaylightCycle.ok) assert.equal(deniedDaylightCycle.code, "permission");
+assert.equal(parseLocalCommand("/gamerule doDaylightCycle").ok, false);
 assert.equal(parseLocalCommand("/locate village").ok, false);
 assert.equal(parseLocalCommand("give dirt").ok, false, "slash syntax is mandatory and deterministic");
 assert.equal(parseLocalCommand("/give not_an_item").ok, false, "the canonical item catalog rejects unknown IDs");
@@ -97,18 +108,26 @@ assert.equal(reloaded.status, "loaded");
 if (reloaded.status !== "loaded") throw new Error(reloaded.status);
 assert.equal(reloaded.snapshot.world.gameMode, "creative", "game mode survives save/reload");
 
-const legacySnapshot = createDefaultSinglePlayerSnapshot(126, 99);
-delete legacySnapshot.world.gameMode;
-const legacySerialized = serializeSinglePlayerSave(legacySnapshot, 1, 199);
-assert.equal(legacySerialized.ok, true);
-if (!legacySerialized.ok) throw new Error(legacySerialized.reason);
-const legacyStorage = new MemoryStorage();
-legacyStorage.values.set(SINGLEPLAYER_SAVE_SLOT_A_KEY, legacySerialized.raw);
-legacyStorage.values.set(SINGLEPLAYER_SAVE_HEAD_KEY, JSON.stringify({ sequence: 1, slot: "a" }));
-const legacyReloaded = loadSinglePlayerSave(legacyStorage);
-assert.equal(legacyReloaded.status, "loaded");
-if (legacyReloaded.status !== "loaded") throw new Error(legacyReloaded.status);
-assert.equal(legacyReloaded.snapshot.world.gameMode, undefined, "old v1 checksum and payload shape remain valid");
+const incompleteSnapshot = createDefaultSinglePlayerSnapshot(126, 99);
+delete incompleteSnapshot.world.gameMode;
+assert.deepEqual(serializeSinglePlayerSave(incompleteSnapshot, 1, 199), {
+  ok: false,
+  reason: "invalid_snapshot",
+  path: "$.world",
+}, "serialization rejects a current-format snapshot without its required game mode");
+const validSerialized = serializeSinglePlayerSave(createDefaultSinglePlayerSnapshot(126, 99), 1, 199);
+assert.equal(validSerialized.ok, true);
+if (!validSerialized.ok) throw new Error(validSerialized.reason);
+const incompleteEnvelope = JSON.parse(validSerialized.raw);
+delete incompleteEnvelope.payload.world.gameMode;
+const { checksum: _discardedChecksum, ...incompleteBody } = incompleteEnvelope;
+incompleteEnvelope.checksum = singlePlayerSaveChecksum(incompleteBody);
+const incompleteStorage = new MemoryStorage();
+incompleteStorage.values.set(SINGLEPLAYER_SAVE_SLOT_A_KEY, canonicalSinglePlayerJson(incompleteEnvelope));
+incompleteStorage.values.set(SINGLEPLAYER_SAVE_HEAD_KEY, JSON.stringify({ sequence: 1, slot: "a" }));
+const incompleteReloaded = loadSinglePlayerSave(incompleteStorage);
+assert.equal(incompleteReloaded.status, "corrupt",
+  "loading rejects a checksummed current-format journal missing its required game mode");
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const chat = readFileSync(new URL("../client/chat/ChatOverlay.tsx", import.meta.url), "utf8");
@@ -120,8 +139,30 @@ assert.ok(app.includes('historyLabel="Command history"'));
 assert.ok(app.includes('warningSender="[Error]"'));
 assert.ok(app.includes("const worldModalOpen = containerOpen || sleepingBed !== null;"),
   "the command console does not freeze the live local simulation");
-assert.ok(app.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+const uiModalDeclaration = app.match(/^\s*const uiModalOpen = [^\n]+;$/m)?.[0].trim();
+assert.ok(uiModalDeclaration, "the UI/input blocker declaration remains explicit");
+assert.ok(uiModalDeclaration.includes("worldModalOpen") && uiModalDeclaration.includes("commandOpen"),
   "the command console remains a pointer-safe UI blocker");
+const visualLabModalTerm = "/* @lakecraft-development:modal:start */ || visualLabOpen"
+  + "/* @lakecraft-development:modal:end */";
+assert.equal(
+  uiModalDeclaration.replace(visualLabModalTerm, ""),
+  "const uiModalOpen = worldModalOpen || commandOpen;",
+  "any Visual Lab UI blocker remains inside the correctly paired development-only marker span",
+);
+const ongoingPause = app.slice(
+  app.indexOf("const paused = singlePlayerGameplayPaused", app.indexOf("engine.start();")),
+  app.indexOf("if (deathScreenOpen) setOptionsOpen(false)"),
+);
+const ongoingPausePredicate = ongoingPause.slice(0, ongoingPause.indexOf("});") + 3);
+assert.ok(ongoingPausePredicate.includes("worldModalOpen"),
+  "world modals continue to freeze the simulation");
+assert.equal(ongoingPausePredicate.includes("commandOpen"), false,
+  "the command console blocks input without freezing the simulation");
+assert.ok(
+  stripClientDevelopmentSurfaces(app).includes("const uiModalOpen = worldModalOpen || commandOpen;"),
+  "compact stripping removes the development-only Visual Lab blocker cleanly",
+);
 assert.ok(app.includes('canTakePlayerDamage: () => gameModeRef.current === "survival"'));
 assert.ok(app.includes('if (gameModeRef.current === "creative") return 0'));
 assert.ok(app.includes('(gameModeRef.current === "creative" || countItem(inventoryRef.current, "arrow") > 0)'),

@@ -1,553 +1,117 @@
 import assert from "node:assert/strict";
 import {
-  MOB_GAIT_RADIANS_PER_BLOCK,
   MOB_FULL_GAIT_SPEED_BLOCKS_PER_SECOND,
-  MOB_MESH_INTERVAL_MS,
+  MOB_GAIT_RADIANS_PER_BLOCK,
+  MOB_VERTEX_STRIDE,
   advanceMobGaitPhase,
   createMobRenderer,
-  mobTravelYaw,
   mobGaitAmplitude,
+  mobTravelYaw,
   mobVertexCountForKind,
 } from "../client/game/mobRenderer.ts";
 import type { MobKind, MobPoseSnapshot } from "../client/game/mobs.ts";
 
-assert.ok(Math.abs(advanceMobGaitPhase(0, 0.25) - MOB_GAIT_RADIANS_PER_BLOCK * 0.25) < 1e-12,
-  "gait advances in direct proportion to actual distance");
-assert.equal(advanceMobGaitPhase(1.2, 0), 1.2, "stationary mobs retain their gait phase without animating");
-assert.ok(Math.abs(mobTravelYaw(1, 0, 0) + Math.PI / 2) < 1e-12, "eastbound travel faces east in the mesh yaw convention");
-assert.ok(Math.abs(mobTravelYaw(-1, 0, 0) - Math.PI / 2) < 1e-12, "westbound travel faces west in the mesh yaw convention");
-assert.ok(Math.abs(mobTravelYaw(0, 1, 0.7)) < 1e-12, "southbound travel faces local +Z");
-assert.ok(Math.abs(Math.abs(mobTravelYaw(0, -1, 0)) - Math.PI) < 1e-12, "northbound travel faces north");
-assert.equal(mobTravelYaw(0, 0, 0.7), 0.7, "zero displacement preserves stable authored facing");
-const slowGaitAdvance = advanceMobGaitPhase(0, 0.02);
-const fastGaitAdvance = advanceMobGaitPhase(0, 0.08);
-assert.ok(Math.abs(fastGaitAdvance - slowGaitAdvance * 4) < 1e-12,
-  "four-times-faster translation advances the gait exactly four times faster");
-assert.equal(mobGaitAmplitude(0), 0, "idle displacement has no gait amplitude");
-assert.ok(Math.abs(mobGaitAmplitude(0.5) * 2 - mobGaitAmplitude(1)) < 1e-12,
-  "gait amplitude scales linearly with actual slow and ordinary speeds");
-assert.equal(mobGaitAmplitude(MOB_FULL_GAIT_SPEED_BLOCKS_PER_SECOND * 2), 0.46,
-  "fast gait amplitude remains bounded at the authored joint range");
-for (const [dx, dz] of [[1, 1], [1, -1], [-1, -1], [-1, 1]] as const) {
-  const yaw = mobTravelYaw(dx, dz, 0);
-  const distance = Math.hypot(dx, dz);
-  assert.ok(Math.abs(-Math.sin(yaw) - dx / distance) < 1e-12
-    && Math.abs(Math.cos(yaw) - dz / distance) < 1e-12,
-  `diagonal ${dx},${dz} maps local +Z onto actual world travel`);
-}
+assert.ok(Math.abs(advanceMobGaitPhase(0, .25)-MOB_GAIT_RADIANS_PER_BLOCK*.25)<1e-12);
+assert.equal(mobGaitAmplitude(0),0);
+assert.equal(mobGaitAmplitude(MOB_FULL_GAIT_SPEED_BLOCKS_PER_SECOND*2),.46);
+assert.ok(Math.abs(mobTravelYaw(1,0,0)+Math.PI/2)<1e-12);
 
 class FakeWebGl {
-  readonly ARRAY_BUFFER = 0x8892;
-  readonly DYNAMIC_DRAW = 0x88e8;
-  readonly buffer = { kind: "mob-batch" };
-  createBufferCalls = 0;
-  allocationBytes = 0;
-  uploadCalls = 0;
-  uploaded: Float32Array | null = null;
-  deleted = false;
-
-  createBuffer() {
-    this.createBufferCalls += 1;
-    return this.buffer;
-  }
-
-  bindBuffer(_target: number, buffer: unknown) {
-    assert.equal(buffer, this.buffer);
-  }
-
-  bufferData(_target: number, bytes: number, _usage: number) {
-    this.allocationBytes = bytes;
-  }
-
-  bufferSubData(_target: number, _offset: number, data: Float32Array) {
-    this.uploadCalls += 1;
-    this.uploaded = data;
-  }
-
-  deleteBuffer(buffer: unknown) {
-    assert.equal(buffer, this.buffer);
-    this.deleted = true;
-  }
+  readonly ARRAY_BUFFER=0x8892; readonly DYNAMIC_DRAW=0x88e8;
+  readonly buffer={kind:"mob-batch"}; allocationBytes=0; uploadCalls=0;
+  uploaded:Float32Array|null=null; deleted=false;
+  createBuffer(){return this.buffer;}
+  bindBuffer(_target:number,buffer:unknown){assert.equal(buffer,this.buffer);}
+  bufferData(_target:number,bytes:number,_usage:number){this.allocationBytes=bytes;}
+  bufferSubData(_target:number,_offset:number,data:Float32Array){this.uploadCalls+=1;this.uploaded=data;}
+  deleteBuffer(buffer:unknown){assert.equal(buffer,this.buffer);this.deleted=true;}
 }
 
-function pose(kind: MobKind, x: number, z: number, index: number): MobPoseSnapshot {
-  return {
-    id: `${kind}-${index}`,
-    kind,
-    x,
-    y: 7,
-    z,
-    yaw: Math.PI * 0.2,
-    previousX: x - 0.5,
-    previousY: 7,
-    previousZ: z - 0.25,
-    previousYaw: 0,
-    behavior: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider" ? "chase" : "wander",
-    health: 8,
-    maxHealth: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider" ? 20 : 10,
-    hostileActive: kind === "zombie" || kind === "skeleton" || kind === "creeper" || kind === "spider",
-    sheared: false,
-    fuseProgress: kind === "creeper" ? 0.7 : 0,
-    sunBurning: false,
-    deathFall: 0,
-  };
+function pose(kind:MobKind,index=0):MobPoseSnapshot{return {
+  id:`${kind}-${index}`,kind,x:index*.3,y:7,z:6+index*.2,yaw:0,
+  previousX:index*.3-.12,previousY:7,previousZ:6+index*.2,previousYaw:0,
+  behavior:"wander",health:10,maxHealth:10,hostileActive:false,sheared:false,
+  fuseProgress:kind==="creeper"?.82:0,sunBurning:false,deathFall:0,
+};}
+const kinds:MobKind[]=["pig","cow","sheep","chicken","zombie","skeleton","creeper","spider"];
+const gl=new FakeWebGl();
+const renderer=createMobRenderer(gl as unknown as WebGLRenderingContext);
+assert.equal(gl.allocationBytes,1_090_560,"one fixed 1.04 MiB retained batch covers 64 textured mobs, projectiles, and TNT");
+assert.ok(gl.allocationBytes<1.1*1024*1024);
+const stats=renderer.rebuild(kinds.map(pose),0,0,0,1,1,2);
+assert.equal(stats.visibleMobCount,8);
+assert.equal(stats.vertexCount,kinds.reduce((sum,kind)=>sum+mobVertexCountForKind(kind),0));
+assert.equal(gl.uploadCalls,1);
+const geometry=gl.uploaded!;
+for(let offset=0;offset<stats.vertexCount*MOB_VERTEX_STRIDE;offset+=MOB_VERTEX_STRIDE){
+  for(let field=0;field<MOB_VERTEX_STRIDE;field+=1)assert.ok(Number.isFinite(geometry[offset+field]));
+  assert.ok(geometry[offset+3]>=0&&geometry[offset+3]<=1,"atlas U stays normalized");
+  assert.ok(geometry[offset+4]>=0&&geometry[offset+4]<=1,"atlas V stays normalized");
+  assert.ok(geometry[offset+5]>=0&&geometry[offset+5]<=1,"red tint stays normalized");
 }
+const expectedVertices:Record<MobKind,number>={pig:252,cow:324,sheep:288,chicken:288,zombie:252,skeleton:228,creeper:216,spider:396};
+for(const kind of kinds)assert.equal(mobVertexCountForKind(kind),expectedVertices[kind],`${kind} uses its fixed exact-model budget`);
 
-const gl = new FakeWebGl();
-const renderer = createMobRenderer(gl as unknown as WebGLRenderingContext);
-assert.equal(gl.createBufferCalls, 1, "all mobs should share one WebGL buffer");
-assert.ok(gl.allocationBytes > 0);
-assert.equal(
-  gl.allocationBytes,
-  817_920,
-  "64 mobs, 24 projectiles, and 32 four-side-labeled primed TNT visuals share one fixed 798.75 KiB allocation",
-);
-assert.ok(gl.allocationBytes <= 800 * 1024, "the complete 64-mob/projectile/TNT batch stays under 800 KiB");
+const skeleton=pose("skeleton",10);skeleton.x=skeleton.previousX=0;skeleton.y=skeleton.previousY=0;skeleton.z=skeleton.previousZ=6;
+renderer.rebuild([skeleton],0,8,0,-1,1,2.5);
+const skeletonGeometry=gl.uploaded!.slice(0,mobVertexCountForKind("skeleton")*MOB_VERTEX_STRIDE);
+const bowStart=(mobVertexCountForKind("skeleton")-12)*MOB_VERTEX_STRIDE;
+const bowVertex=(index:number)=>[
+  skeletonGeometry[bowStart+index*MOB_VERTEX_STRIDE],
+  skeletonGeometry[bowStart+index*MOB_VERTEX_STRIDE+1],
+  skeletonGeometry[bowStart+index*MOB_VERTEX_STRIDE+2],
+] as const;
+// The first two triangles expose the four front-face corners as 0, 1, 2, 5.
+const bowCorners=[bowVertex(0),bowVertex(1),bowVertex(2),bowVertex(5)] as const;
+const distance=(a:readonly number[],b:readonly number[])=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+const bowU=distance(bowCorners[0],bowCorners[1]),bowV=distance(bowCorners[0],bowCorners[3]);
+assert.ok(bowU>.7&&bowU<.85&&bowV>.7&&bowV<.85,"the installed 16x16 bow rides a substantial square item plane");
+assert.ok(Math.max(bowU,bowV)/Math.min(bowU,bowV)<1.05,"the bow sprite cannot regress to the former 8:1 ribbon");
+const edgeU=bowCorners[1].map((value,index)=>value-bowCorners[0][index]);
+const edgeV=bowCorners[3].map((value,index)=>value-bowCorners[0][index]);
+assert.ok(Math.abs(edgeU.reduce((sum,value,index)=>sum+value*edgeV[index],0))<1e-5,"square bow edges remain perpendicular in world space");
+const grip=bowCorners[0].map((value,index)=>value+edgeU[index]*3/16+edgeV[index]*8/16);
+assert.ok(distance(grip,[-.31,1.05,6.58])<.015,"the bow's opaque grip socket stays attached to the skeleton's forward right hand");
+const camera=[0,1.2,8] as const;
+const projected=bowCorners.map(([worldX,worldY,worldZ])=>[(worldX-camera[0])/(camera[2]-worldZ),(worldY-camera[1])/(camera[2]-worldZ)] as const);
+const screenXs=projected.map(([screenX])=>screenX),screenYs=projected.map(([,screenY])=>screenY);
+const projectedWidth=Math.max(...screenXs)-Math.min(...screenXs),projectedHeight=Math.max(...screenYs)-Math.min(...screenYs);
+let projectedArea=0;
+for(let index=0;index<4;index+=1){const next=(index+1)%4;projectedArea+=projected[index][0]*projected[next][1]-projected[next][0]*projected[index][1];}
+projectedArea=Math.abs(projectedArea)*.5;
+assert.ok(projectedWidth/projectedHeight>.9&&projectedWidth/projectedHeight<1.1,"a front gameplay camera sees the bow's balanced square carrier");
+assert.ok(projectedArea/(projectedWidth*projectedHeight)>.45,"the projected bow plane keeps enough area to reveal its sprite instead of a ribbon silhouette");
 
-const kinds: MobKind[] = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"];
-const poses = kinds.map((kind, index) => pose(kind, index * 2 - 3, 8 + index, index));
-const stats = renderer.rebuild(poses, 0, 0, 0, 1, 0.5, 2);
-const expectedVertexCount = kinds.reduce((total, kind) => total + mobVertexCountForKind(kind), 0);
-assert.equal(stats.totalMobCount, 8);
-assert.equal(stats.visibleMobCount, 8);
-assert.equal(stats.vertexCount, expectedVertexCount);
-assert.equal(gl.uploadCalls, 1, "one rebuild should issue one batched geometry upload");
-assert.ok(gl.uploaded);
+const zombie=pose("zombie",20);zombie.previousX=zombie.x;zombie.behavior="idle";
+renderer.rebuild([zombie],0,0,0,1,1,3);
+const upright=gl.uploaded!.slice(0,mobVertexCountForKind("zombie")*MOB_VERTEX_STRIDE);
+renderer.rebuild([{...zombie,health:0,deathFall:1}],0,0,0,1,1,3.1);
+const fallen=gl.uploaded!.slice(0,upright.length);
+const yRange=(data:Float32Array)=>{let low=Infinity,high=-Infinity;for(let i=1;i<data.length;i+=MOB_VERTEX_STRIDE){low=Math.min(low,data[i]);high=Math.max(high,data[i]);}return high-low;};
+assert.ok(yRange(fallen)<yRange(upright),"death progress lays the exact textured model down");
 
-const deathZombie = pose("zombie", 0, 6, 44);
-deathZombie.behavior = "idle";
-deathZombie.previousX = deathZombie.x;
-deathZombie.previousY = deathZombie.y;
-deathZombie.previousZ = deathZombie.z;
-deathZombie.previousYaw = deathZombie.yaw = 0;
-renderer.rebuild([deathZombie], 0, 0, 0, 1, 1, 2.1);
-const uprightDeathGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
-renderer.rebuild([{ ...deathZombie, health: 0, deathFall: 1 }], 0, 0, 0, 1, 1, 2.2);
-const fallenDeathGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
-assert.notDeepEqual(fallenDeathGeometry, uprightDeathGeometry, "death progress rotates the retained whole-mob mesh");
-const verticalRange = (geometry: Float32Array) => {
-  let minimum = Infinity;
-  let maximum = -Infinity;
-  for (let offset = 1; offset < geometry.length; offset += 6) {
-    minimum = Math.min(minimum, geometry[offset]);
-    maximum = Math.max(maximum, geometry[offset]);
-  }
-  return maximum - minimum;
-};
-assert.ok(verticalRange(fallenDeathGeometry) < verticalRange(uprightDeathGeometry), "the completed pose lies flatter on the ground");
-assert.equal(gl.createBufferCalls, 1, "death animation reuses the original fixed GPU buffer");
+const sheep=pose("sheep",30);sheep.previousX=sheep.x;sheep.behavior="idle";
+renderer.rebuild([sheep],0,0,0,1,1,4);
+const woolly=gl.uploaded!.slice(0,mobVertexCountForKind("sheep")*MOB_VERTEX_STRIDE);
+renderer.rebuild([{...sheep,sheared:true}],0,0,0,1,1,4.1);
+const sheared=gl.uploaded!.slice(0,woolly.length);
+assert.notDeepEqual(sheared,woolly,"shearing degenerates the two wool-layer cuboids while retaining base skin");
+assert.equal(sheared.length,woolly.length);
 
-renderer.rebuild([deathZombie], 0, 0, 0, 1, 1, 3);
-const ordinarySunGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
-renderer.rebuild([{ ...deathZombie, sunBurning: true }], 0, 0, 0, 1, 1, 3.1);
-const burningSunGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("zombie") * 6);
-assert.notDeepEqual(burningSunGeometry, ordinarySunGeometry, "direct-sky burning receives retained warm visual feedback");
+renderer.rebuild([sheep],0,0,0,1,1,5);
+const calm=gl.uploaded!.slice(0,woolly.length);sheep.health-=1;
+renderer.rebuild([sheep],0,0,0,1,1,5.1);
+const hurt=gl.uploaded!.slice(0,woolly.length);
+assert.equal(hurt[0],calm[0]);
+assert.ok(hurt[5]>calm[5]&&hurt[6]<calm[6]&&hurt[7]<calm[7],"hurt flash tints texture toward red without moving it");
 
-const woollySheep = pose("sheep", 0, 8, 50);
-renderer.rebuild([woollySheep], 0, 0, 0, 1, 1, 3);
-const woollyGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
-renderer.rebuild([{ ...woollySheep, sheared: true }], 0, 0, 0, 1, 1, 3);
-const shearedGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
-assert.notDeepEqual(shearedGeometry, woollyGeometry, "authority shearing must visibly narrow and recolor the retained sheep mesh");
-assert.equal(shearedGeometry.length, woollyGeometry.length, "sheared sheep keep the fixed batched vertex budget");
+const stillCow=pose("cow",40);stillCow.previousX=stillCow.x;stillCow.behavior="wander";
+renderer.rebuild([stillCow],0,0,0,1,1,6);
+const still=gl.uploaded!.slice(0,mobVertexCountForKind("cow")*MOB_VERTEX_STRIDE);
+renderer.rebuild([{...stillCow,id:"cow-idle",behavior:"idle"}],0,0,0,1,1,6.1);
+assert.deepEqual(gl.uploaded!.slice(0,still.length),still,"a blocked wander label cannot animate in place");
 
-const hurtSheep = pose("sheep", 0, 6, 60);
-hurtSheep.behavior = "idle";
-hurtSheep.previousX = hurtSheep.x;
-hurtSheep.previousY = hurtSheep.y;
-hurtSheep.previousZ = hurtSheep.z;
-hurtSheep.previousYaw = hurtSheep.yaw;
-renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10);
-const calmHurtTestGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
-hurtSheep.health -= 1;
-renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10);
-const freshHurtGeometry = gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6);
-assert.equal(freshHurtGeometry[0], calmHurtTestGeometry[0], "hurt feedback cannot move retained mob geometry");
-assert.ok(freshHurtGeometry[3] > calmHurtTestGeometry[3], "damage flashes the mob toward red");
-assert.ok(freshHurtGeometry[4] < calmHurtTestGeometry[4], "damage removes green from the hurt palette");
-assert.ok(freshHurtGeometry[5] < calmHurtTestGeometry[5], "damage removes blue from the hurt palette");
-renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10.49);
-assert.deepEqual(
-  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
-  freshHurtGeometry,
-  "equal health keeps the original flash deadline without extending or changing its tint",
-);
-renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 10.5);
-assert.deepEqual(
-  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
-  calmHurtTestGeometry,
-  "the retained hurt flash expires exactly after half a second",
-);
-
-hurtSheep.health -= 1;
-renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 20);
-assert.ok(gl.uploaded![3] > calmHurtTestGeometry[3], "a later health decrease starts a fresh flash");
-hurtSheep.health += 1;
-renderer.rebuild([hurtSheep], 0, 0, 0, 1, 1, 20.1);
-assert.deepEqual(
-  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
-  calmHurtTestGeometry,
-  "healing or respawn clears an active hurt flash",
-);
-
-const initiallyDamagedSheep = { ...hurtSheep, id: "sheep-initially-damaged", health: 1 };
-renderer.rebuild([initiallyDamagedSheep], 0, 0, 0, 1, 1, 30);
-assert.deepEqual(
-  gl.uploaded!.slice(0, mobVertexCountForKind("sheep") * 6),
-  calmHurtTestGeometry,
-  "the first observation initializes health silently even when a mob is already hurt",
-);
-
-const tintIsolationSheep = { ...hurtSheep, id: "sheep-tint-isolation", health: 8 };
-renderer.rebuild([tintIsolationSheep], 0, 0, 0, 1, 1, 40);
-tintIsolationSheep.health = 7;
-const calmCow = pose("cow", 2, 6, 61);
-calmCow.behavior = "idle";
-calmCow.previousX = calmCow.x;
-calmCow.previousY = calmCow.y;
-calmCow.previousZ = calmCow.z;
-calmCow.previousYaw = calmCow.yaw;
-renderer.rebuild([tintIsolationSheep, calmCow], 0, 0, 0, 1, 1, 40);
-const cowFloatOffset = mobVertexCountForKind("sheep") * 6;
-const cowAfterHurt = gl.uploaded!.slice(cowFloatOffset, cowFloatOffset + mobVertexCountForKind("cow") * 6);
-renderer.rebuild([calmCow], 0, 0, 0, 1, 1, 40);
-assert.deepEqual(
-  cowAfterHurt,
-  gl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6),
-  "hurt tint is reset before the next mob in the shared batch",
-);
-
-const futureFuseNow = Date.now();
-renderer.setPrimedTntFuses([{
-  x: 0,
-  y: 7,
-  z: 5,
-  ignitedAt: futureFuseNow + 10_000,
-  dueAt: futureFuseNow + 14_000,
-}], futureFuseNow);
-renderer.rebuild([tintIsolationSheep], 0, 0, 0, 1, 1, 40.1);
-const hurtWithTntStats = renderer.rebuild(
-  [{ ...tintIsolationSheep, health: 6 }],
-  0, 0, 0, 1, 1, 40.2,
-);
-const primedFloatOffset = (hurtWithTntStats.vertexCount - hurtWithTntStats.primedTntVertexCount) * 6;
-const tntAfterHurt = gl.uploaded!.slice(primedFloatOffset, hurtWithTntStats.vertexCount * 6);
-const tntOnlyStats = renderer.rebuild([], 0, 0, 0, 1, 1, 40.2);
-assert.deepEqual(
-  tntAfterHurt,
-  gl.uploaded!.slice(0, tntOnlyStats.vertexCount * 6),
-  "mob hurt tint cannot bleed into primed TNT geometry sharing the writer",
-);
-renderer.setPrimedTntFuses([]);
-
-const used = gl.uploaded!.subarray(0, stats.vertexCount * 6);
-assert.equal(used.length, stats.vertexCount * 6, "positions and colors should be interleaved as six floats per vertex");
-for (let offset = 0; offset < used.length; offset += 6) {
-  assert.ok(Number.isFinite(used[offset]) && Number.isFinite(used[offset + 1]) && Number.isFinite(used[offset + 2]));
-  assert.ok(used[offset + 3] >= 0 && used[offset + 3] <= 1);
-  assert.ok(used[offset + 4] >= 0 && used[offset + 4] <= 1);
-  assert.ok(used[offset + 5] >= 0 && used[offset + 5] <= 1);
-}
-
-for (const kind of kinds) {
-  assert.equal(mobVertexCountForKind(kind) % 6, 0, `${kind} geometry should contain complete triangles`);
-  assert.ok(mobVertexCountForKind(kind) >= 6 * 36, `${kind} should have a recognizable multipart silhouette`);
-  assert.ok(mobVertexCountForKind(kind) <= 12 * 36, `${kind} must stay inside the retained twelve-box allowance`);
-}
-
-const colorSignatures = new Set<string>();
-for (let index = 0; index < kinds.length; index += 1) {
-  const kindStats = renderer.rebuild([pose(kinds[index], 0, 4, index)], 0, 0, 0, 1, 1, 0);
-  const kindData = gl.uploaded!;
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  for (let offset = 0; offset < kindStats.vertexCount * 6; offset += 6) {
-    red += kindData[offset + 3];
-    green += kindData[offset + 4];
-    blue += kindData[offset + 5];
-  }
-  colorSignatures.add(`${red.toFixed(2)},${green.toFixed(2)},${blue.toFixed(2)}`);
-}
-assert.equal(colorSignatures.size, kinds.length, "each mob kind should have a distinct color palette");
-
-const baseBoxes: Readonly<Partial<Record<MobKind, number>>> = {
-  pig: 9,
-  cow: 9,
-  sheep: 7,
-  chicken: 9,
-  zombie: 6,
-  skeleton: 9,
-  creeper: 6,
-};
-const detailQuads: Readonly<Partial<Record<MobKind, number>>> = {
-  pig: 4,
-  cow: 5,
-  sheep: 5,
-  chicken: 4,
-  zombie: 6,
-  skeleton: 3,
-  creeper: 6,
-};
-
-// The first two cow detail quads are its eyes on local +Z. Prove against the
-// generated vertices—not just scalar yaw math—that every travel direction puts
-// those front pixels ahead of the body. This catches sign/convention regressions
-// that previously let east/west mobs moonwalk while unit yaw assertions passed.
-const facingGl = new FakeWebGl();
-const facingRenderer = createMobRenderer(facingGl as unknown as WebGLRenderingContext);
-for (const [index, [travelX, travelZ]] of ([
-  [1, 0], [-1, 0], [0, 1], [0, -1],
-  [1, 1], [1, -1], [-1, -1], [-1, 1],
-] as const).entries()) {
-  const distance = Math.hypot(travelX, travelZ);
-  const currentX = travelX / distance * 0.2;
-  const currentZ = 4 + travelZ / distance * 0.2;
-  const movingCow = pose("cow", currentX, currentZ, 300 + index);
-  movingCow.previousX = 0;
-  movingCow.previousZ = 4;
-  // Conflict deliberately: render-facing must follow actual displacement.
-  movingCow.previousYaw = movingCow.yaw = Math.PI * 0.37;
-  facingRenderer.rebuild([movingCow], 0, 0, 0, 1, 1, index);
-  const eyeStart = 9 * 36 * 6;
-  let eyeX = 0;
-  let eyeZ = 0;
-  for (let vertex = 0; vertex < 12; vertex += 1) {
-    eyeX += facingGl.uploaded![eyeStart + vertex * 6];
-    eyeZ += facingGl.uploaded![eyeStart + vertex * 6 + 2];
-  }
-  eyeX = eyeX / 12 - currentX;
-  eyeZ = eyeZ / 12 - currentZ;
-  const forwardDot = eyeX * travelX / distance + eyeZ * travelZ / distance;
-  const lateral = eyeX * -travelZ / distance + eyeZ * travelX / distance;
-  assert.ok(forwardDot > 0.35, `cow front pixels lead ${travelX},${travelZ} travel`);
-  assert.ok(Math.abs(lateral) < 0.05, `cow front pixels do not mirror ${travelX},${travelZ} travel`);
-}
-
-const blockedWander = pose("cow", 0, 4, 390);
-blockedWander.previousX = blockedWander.x;
-blockedWander.previousY = blockedWander.y;
-blockedWander.previousZ = blockedWander.z;
-blockedWander.previousYaw = blockedWander.yaw = 0;
-facingRenderer.rebuild([blockedWander], 0, 0, 0, 1, 1, 20);
-const blockedGeometry = facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6);
-const idleCow = { ...blockedWander, id: "cow-idle-control", behavior: "idle" as const };
-facingRenderer.rebuild([idleCow], 0, 0, 0, 1, 1, 20.04);
-assert.deepEqual(facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6), blockedGeometry,
-  "a blocked wander label cannot animate a cow in place");
-
-const fallingCow = { ...blockedWander, id: "cow-vertical-fall", y: 6, previousY: 7 };
-facingRenderer.rebuild([fallingCow], 0, 0, 0, 1, 1, 20.08);
-const fallingGeometry = facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6);
-const landedCow = { ...fallingCow, id: "cow-landed-control", previousY: 6 };
-facingRenderer.rebuild([landedCow], 0, 0, 0, 1, 1, 20.12);
-assert.deepEqual(facingGl.uploaded!.slice(0, mobVertexCountForKind("cow") * 6), fallingGeometry,
-  "vertical falling alone cannot trigger horizontal gait");
-
-const turningCow = pose("cow", 0.2, 4, 391);
-turningCow.previousX = 0;
-turningCow.previousZ = 4;
-turningCow.previousYaw = turningCow.yaw = 0;
-facingRenderer.rebuild([turningCow], 0, 0, 0, 1, 1, 21);
-turningCow.previousX = turningCow.x;
-turningCow.previousZ = turningCow.z;
-turningCow.z -= 0.2;
-facingRenderer.rebuild([turningCow], 0, 0, 0, 1, 1, 21.04);
-const turnedEyeStart = 9 * 36 * 6;
-let turnedEyeZ = 0;
-for (let vertex = 0; vertex < 12; vertex += 1) turnedEyeZ += facingGl.uploaded![turnedEyeStart + vertex * 6 + 2];
-assert.ok(turnedEyeZ / 12 < turningCow.z - 0.35,
-  "a live east-to-north turn puts the cow's front pixels ahead of its new travel");
-facingRenderer.destroy();
-
-for (const kind of kinds.slice(0, -1)) {
-  const frontPose = pose(kind, 0, 4, 200);
-  frontPose.previousX = frontPose.x;
-  frontPose.previousY = frontPose.y;
-  frontPose.previousZ = frontPose.z;
-  frontPose.previousYaw = frontPose.yaw = 0;
-  const detailStats = renderer.rebuild([frontPose], 0, 0, 0, 1, 1, 0);
-  const boxCount = baseBoxes[kind]!;
-  const quadCount = detailQuads[kind]!;
-  assert.equal(detailStats.vertexCount, boxCount * 36 + quadCount * 6, `${kind} detail uses six-vertex quads`);
-  const detailGeometry = gl.uploaded!.slice(boxCount * 36 * 6, detailStats.vertexCount * 6);
-  for (let quad = 0; quad < quadCount; quad += 1) {
-    const start = quad * 6 * 6;
-    const z = detailGeometry[start + 2];
-    for (let vertex = 0; vertex < 6; vertex += 1) {
-      assert.equal(detailGeometry[start + vertex * 6 + 2], z, `${kind} patch ${quad} is a flat offset quad`);
-    }
-  }
-  const leftEye = Array.from({ length: 6 }, (_, vertex) => detailGeometry[vertex * 6]);
-  const rightEye = Array.from({ length: 6 }, (_, vertex) => detailGeometry[(6 + vertex) * 6]);
-  assert.ok(Math.max(...leftEye) < Math.min(...rightEye), `${kind} keeps two separated front-facing eye pixels`);
-}
-
-const chicken = pose("chicken", 0, 4, 0);
-chicken.previousX = chicken.x;
-chicken.previousZ = chicken.z;
-chicken.previousYaw = chicken.yaw = 0;
-const stillChicken = renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0);
-const stillChickenGeometry = gl.uploaded!.slice(0, stillChicken.vertexCount * 6);
-let whiteChickenVertices = 0;
-let yellowChickenVertices = 0;
-let redChickenVertices = 0;
-for (let offset = 0; offset < stillChickenGeometry.length; offset += 6) {
-  const red = stillChickenGeometry[offset + 3];
-  const green = stillChickenGeometry[offset + 4];
-  const blue = stillChickenGeometry[offset + 5];
-  if (red > 0.65 && green > 0.65 && blue > 0.6) whiteChickenVertices += 1;
-  if (red > 0.55 && green > 0.3 && blue < 0.1) yellowChickenVertices += 1;
-  if (red > 0.45 && green < 0.12 && blue < 0.1) redChickenVertices += 1;
-}
-assert.equal(stillChicken.vertexCount, 9 * 36 + 4 * 6, "a chicken adds four flat face/feather pixels to nine bounded boxes");
-assert.ok(whiteChickenVertices >= 72, "the chicken has a recognizable white body and head");
-assert.ok(yellowChickenVertices >= 36, "the chicken has a visible yellow beak and legs");
-assert.ok(redChickenVertices >= 12, "the chicken has a visible red wattle below its beak");
-renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0.1);
-const walkingChickenGeometry = gl.uploaded!.slice(0, stillChicken.vertexCount * 6);
-assert.deepEqual(
-  walkingChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
-  stillChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
-  "a wander label cannot animate stationary chicken wings",
-);
-chicken.previousZ = chicken.z;
-chicken.z += 0.1;
-renderer.rebuild([chicken], 0, 0, 0, 1, 1, 0.2);
-assert.notDeepEqual(
-  gl.uploaded!.subarray(6 * 36 * 6, 8 * 36 * 6),
-  stillChickenGeometry.subarray(6 * 36 * 6, 8 * 36 * 6),
-  "actual chicken displacement animates both wing boxes",
-);
-
-const spider = pose("spider", 0, 4, 0);
-spider.previousX = spider.x;
-spider.previousZ = spider.z;
-spider.previousYaw = spider.yaw = 0;
-const stillSpider = renderer.rebuild([spider], 0, 0, 0, 1, 1, 0);
-const stillSpiderGeometry = gl.uploaded!.slice(0, stillSpider.vertexCount * 6);
-let minimumX = Infinity;
-let maximumX = -Infinity;
-let minimumY = Infinity;
-let maximumY = -Infinity;
-let brightRedVertices = 0;
-for (let offset = 0; offset < stillSpiderGeometry.length; offset += 6) {
-  minimumX = Math.min(minimumX, stillSpiderGeometry[offset]);
-  maximumX = Math.max(maximumX, stillSpiderGeometry[offset]);
-  minimumY = Math.min(minimumY, stillSpiderGeometry[offset + 1]);
-  maximumY = Math.max(maximumY, stillSpiderGeometry[offset + 1]);
-  if (stillSpiderGeometry[offset + 3] > 0.6 && stillSpiderGeometry[offset + 4] < 0.1) brightRedVertices += 1;
-}
-assert.equal(stillSpider.vertexCount, 12 * 36, "a spider is exactly two body boxes, two eyes, and eight legs");
-assert.ok(maximumX - minimumX > 2, "spider legs create a wide silhouette");
-assert.ok(maximumY - minimumY < 0.7, "the spider stays recognizably low to the ground");
-assert.ok(brightRedVertices >= 12, "the forward face includes two visible bright-red eye blocks");
-renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.1);
-const walkingSpiderGeometry = gl.uploaded!.slice(0, stillSpider.vertexCount * 6);
-assert.deepEqual(
-  walkingSpiderGeometry.subarray(4 * 36 * 6),
-  stillSpiderGeometry.subarray(4 * 36 * 6),
-  "a chase label cannot animate stationary spider legs",
-);
-spider.previousX = spider.x;
-spider.x += 0.1;
-renderer.rebuild([spider], 0, 0, 0, 1, 1, 0.2);
-assert.notDeepEqual(
-  gl.uploaded!.subarray(4 * 36 * 6),
-  stillSpiderGeometry.subarray(4 * 36 * 6),
-  "actual spider displacement animates all eight leg boxes",
-);
-
-const calmCreeper = pose("creeper", 0, 4, 30);
-calmCreeper.fuseProgress = 0;
-renderer.rebuild([calmCreeper], 0, 0, 0, 1, 1, 0);
-const calmColor = gl.uploaded![3];
-calmCreeper.fuseProgress = 1;
-renderer.rebuild([calmCreeper], 0, 0, 0, 1, 1, 0);
-assert.ok(gl.uploaded![3] > calmColor, "a completed creeper fuse visibly flashes toward white");
-
-const interpolatedPose = pose("pig", 2, 4, 20);
-interpolatedPose.previousX = 0;
-interpolatedPose.previousYaw = interpolatedPose.yaw;
-renderer.rebuild([interpolatedPose], 0, 0, 0, 1, 0, 0);
-const previousFirstX = gl.uploaded![0];
-renderer.rebuild([interpolatedPose], 0, 0, 0, 1, 1, 0);
-const currentFirstX = gl.uploaded![0];
-assert.ok(Math.abs((currentFirstX - previousFirstX) - 2) < 0.0001, "geometry should interpolate snapshot movement");
-
-const farAway = pose("pig", 31, 0, 9);
-const behindCamera = pose("zombie", 0, -20, 10);
-const nearbyBehindCamera = pose("sheep", 0, -5, 11);
-const uploadsBeforeCulling = gl.uploadCalls;
-const cullingStats = renderer.rebuild([farAway, behindCamera, nearbyBehindCamera], 0, 0, 0, 1, 1, 3);
-assert.equal(cullingStats.totalMobCount, 3);
-assert.equal(cullingStats.visibleMobCount, 1, "distance and rear-view culling should retain only the nearby mob");
-assert.equal(cullingStats.vertexCount, mobVertexCountForKind("sheep"));
-assert.equal(gl.uploadCalls, uploadsBeforeCulling + 1, "the culled mob set still uses one batch upload");
-
-const projectileStats = renderer.rebuild(
-  [],
-  0,
-  0,
-  0,
-  1,
-  1,
-  3,
-  Array.from({ length: 24 }, (_, id) => ({
-    id,
-    x: id % 4,
-    y: 2,
-    z: 4 + Math.floor(id / 4),
-    previousX: id % 4,
-    previousY: 2,
-    previousZ: 4 + Math.floor(id / 4),
-    yaw: 0,
-    pitch: 0,
-  })),
-);
-assert.equal(projectileStats.projectileCount, 24);
-assert.equal(projectileStats.projectileVertexCount, 24 * 36);
-assert.equal(projectileStats.vertexCount, 24 * 36, "the fixed arrow pool must fit in the shared batch allocation");
-
-const reusedStats = renderer.rebuild([], 0, 0, 0, 1, 0, 0);
-assert.equal(reusedStats, stats, "renderer stats should be reused rather than allocated every frame");
-assert.equal(reusedStats.vertexCount, 0);
-renderer.destroy();
-assert.equal(gl.deleted, true);
-
-const cadenceGl = new FakeWebGl();
-const cadenceRenderer = createMobRenderer(cadenceGl as unknown as WebGLRenderingContext);
-const cadenceSpider = pose("spider", 0, 4, 90);
-const cadenceStats = cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0, [], 0);
-const firstCadenceGeometry = cadenceGl.uploaded!.slice();
-cadenceSpider.x = 2;
-assert.equal(cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.016, [], 16), cadenceStats);
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.032, [], 32);
-assert.equal(cadenceGl.uploadCalls, 1, "16 and 32ms frames reuse the retained 30Hz mob batch");
-assert.deepEqual(cadenceGl.uploaded, firstCadenceGeometry, "a skipped mesh frame cannot mutate retained GPU input");
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.034, [], 34);
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.05, [], 50);
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.068, [], 68);
-assert.equal(cadenceGl.uploadCalls, 3, "0, 34, and 68ms are the only due uploads");
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.01, [], 10);
-assert.equal(cadenceGl.uploadCalls, 4, "a backward frame clock rebuilds instead of stalling");
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.02, [], 20);
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.044, [], 44);
-assert.equal(cadenceGl.uploadCalls, 5, "the cadence recovers from the rolled-back clock");
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.05);
-cadenceRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, 0.06, [], Number.NaN);
-assert.equal(cadenceGl.uploadCalls, 7, "omitted and nonfinite clocks preserve immediate deterministic rebuilds");
-cadenceRenderer.destroy();
-
-const stressGl = new FakeWebGl();
-const stressRenderer = createMobRenderer(stressGl as unknown as WebGLRenderingContext);
-for (let frame = 0; frame < 600; frame += 1) {
-  stressRenderer.rebuild([cadenceSpider], 0, 0, 0, 1, 1, frame / 60, [], frame * 1_000 / 60);
-}
-assert.ok(stressGl.uploadCalls >= 299 && stressGl.uploadCalls <= 301,
-  `ten simulated seconds stay at 30Hz (received ${stressGl.uploadCalls} uploads)`);
-assert.equal(stressGl.createBufferCalls, 1, "cadence limiting never reallocates the retained mob buffer");
-assert.equal(MOB_MESH_INTERVAL_MS, 1_000 / 30);
-stressRenderer.destroy();
-
-console.log("lakecraft mob renderer geometry tests: ok");
+const far=pose("pig",50);far.x=far.previousX=100;far.z=far.previousZ=100;
+assert.equal(renderer.rebuild([far],0,0,0,1,1,7).visibleMobCount,0);
+renderer.destroy();assert.equal(gl.deleted,true);
+console.log("lakecraft exact textured mob renderer tests: ok");

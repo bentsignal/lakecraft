@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import * as BS from "../shared/bundleStrings.ts";
+import {
+  newestUserRows,
+  type IndexedTable,
+  type OrderedIndexQuery,
+} from "../server/queryOrder.ts";
 import {
   canonicalMotionBatchPayload,
   decodeMotionBatch,
@@ -36,14 +42,72 @@ const publishHandler = server.slice(
   server.indexOf("publishMotionSegments: mutation"),
   server.indexOf("authorizeRespawn: mutation"),
 );
+const existingReceiptAt = publishHandler.indexOf("const existingReceipt = matchingReceipts[0]");
+const replayGateOffsets = [
+  "const presenceRows = await newestUserRows(ctx.db.playerPresence, ctx.auth.userId)",
+  "const activeRows = await newestByIndex(ctx.db.playerPresence",
+  "const acceptanceRows = await newestUserRows(ctx.db.motionAcceptance, ctx.auth.userId)",
+  'const budgetRows = await newestMatchingRows(ctx.db.motionDailyBudgets, "by_key", "budgetKey", "motion")',
+].map((marker) => publishHandler.indexOf(marker));
 assert.ok(
-  publishHandler.indexOf("const existingReceipt = matchingReceipts[0]")
-    < publishHandler.indexOf("const presenceRows = await newestByIndex(ctx.db.playerPresence"),
+  existingReceiptAt >= 0 && replayGateOffsets.every((offset) => offset > existingReceiptAt),
   "exact retry must resolve before liveness/quota gates",
 );
+
+const helperCalls: unknown[][] = [];
+const helperRows = [{ id: "newest" }, { id: "duplicate" }];
+const helperQuery: OrderedIndexQuery<{ id: string }> = {
+  order(direction) { helperCalls.push(["order", direction]); return this; },
+  async collect() { return helperRows; },
+  async first() { return helperRows[0]; },
+  async take(count) { helperCalls.push(["take", count]); return helperRows.slice(0, count); },
+};
+const helperTable: IndexedTable<{ id: string }> = {
+  withIndex(index, range) {
+    helperCalls.push(["withIndex", index]);
+    range?.({
+      eq(field, value) { helperCalls.push(["eq", field, value]); return this; },
+      gt() { return this; },
+      gte() { return this; },
+      lt() { return this; },
+      lte() { return this; },
+    });
+    return helperQuery;
+  },
+};
+assert.deepEqual(await newestUserRows(helperTable, "user_server_01"), helperRows);
+assert.deepEqual(helperCalls, [
+  ["withIndex", BS.byUser],
+  ["eq", BS.userId, "user_server_01"],
+  ["order", "desc"],
+  ["take", 2],
+], "newestUserRows preserves the reviewed newest-by-user duplicate-detection semantics");
+const compositeHandler = server.slice(
+  server.indexOf("multiplayerComposite: query"),
+  server.indexOf("myPresence: query"),
+);
 assert.ok(
-  server.includes('if (!ctx.auth.isAuthenticated || ctx.auth.isGuest)'),
-  "both APIs must reject guests",
+  publishHandler.includes("if (!hasAuthenticatedUser(ctx))")
+  && compositeHandler.includes("if (!hasAuthenticatedUser(ctx))"),
+  "both multiplayer APIs retain the shared signed-in-only guard at their operation sites",
+);
+assert.match(
+  server,
+  /function hasAuthenticatedUser\(ctx:[^)]*\): boolean \{[\s\S]{0,120}return ctx\.auth\.isAuthenticated && !ctx\.auth\.isGuest;[\s\S]{0,20}\}/,
+  "the shared guard means exactly authenticated and non-guest",
+);
+const authenticatedUserDecision = (isAuthenticated: boolean, isGuest: boolean): boolean => (
+  isAuthenticated && !isGuest
+);
+assert.deepEqual(
+  [
+    authenticatedUserDecision(false, false),
+    authenticatedUserDecision(false, true),
+    authenticatedUserDecision(true, true),
+    authenticatedUserDecision(true, false),
+  ],
+  [false, false, false, true],
+  "only a signed-in non-guest identity passes the multiplayer auth guard",
 );
 assert.ok(
   server.includes('Math.hypot(pose.x - callerPose.x, pose.y - callerPose.y, pose.z - callerPose.z) > request.radius'),

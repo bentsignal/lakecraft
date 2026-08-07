@@ -62,10 +62,10 @@ const glMethods: Record<string, (...args: any[]) => any> = {
 };
 for (const method of [
   "activeTexture", "attachShader", "bindBuffer", "bindTexture", "blendFunc", "bufferData", "bufferSubData",
-  "clear", "clearColor", "compileShader", "deleteBuffer", "deleteProgram", "deleteTexture", "depthMask",
+  "clear", "clearColor", "compileShader", "deleteBuffer", "deleteProgram", "deleteShader", "deleteTexture", "depthMask",
   "disable", "disableVertexAttribArray", "drawArrays", "enable", "enableVertexAttribArray", "lineWidth",
   "linkProgram", "pixelStorei", "shaderSource", "texImage2D", "texParameteri", "uniform1f", "uniform1i",
-  "uniform3f", "uniform3fv", "uniform4fv", "uniformMatrix4fv", "useProgram", "vertexAttribPointer", "viewport",
+  "uniform2fv", "uniform3f", "uniform3fv", "uniform4fv", "uniformMatrix4fv", "useProgram", "vertexAttribPointer", "viewport",
 ]) glMethods[method] = noop;
 
 let nextConstant = 1;
@@ -124,14 +124,14 @@ function createLiveEngine(options: VoxelEngineOptions): {
   };
 }
 
-const bed = createBedStructure({ x: 0, y: 20, z: 0 }, "east");
+const bed = createBedStructure({ x: 0, y: 90, z: 0 }, "east");
 const baseEdits: WorldEdit[] = [
-  { x: 0, y: 19, z: 0, block: BLOCK.STONE },
-  { x: 1, y: 19, z: 0, block: BLOCK.STONE },
+  { x: 0, y: 89, z: 0, block: BLOCK.STONE },
+  { x: 1, y: 89, z: 0, block: BLOCK.STONE },
   { ...bed.foot, block: BLOCK.BED },
   { ...bed.head, block: BLOCK.BED },
-  { x: 0, y: 21, z: 0, block: BLOCK.SAND },
-  { x: 1, y: 21, z: 0, block: BLOCK.GRAVEL },
+  { x: 0, y: 91, z: 0, block: BLOCK.SAND },
+  { x: 1, y: 91, z: 0, block: BLOCK.GRAVEL },
 ];
 
 for (const selected of [bed.foot, bed.head]) {
@@ -144,7 +144,7 @@ for (const selected of [bed.foot, bed.head]) {
     initialEdits: baseEdits,
     initialBedStructures: [bed],
     twoBlockBeds: true,
-    initialPose: { x: selected.x + 0.5, y: 20.02, z: 3.5, yaw: 0, pitch: -0.43 },
+    initialPose: { x: selected.x + 0.5, y: 90.02, z: 3.5, yaw: 0, pitch: -0.43 },
     preserveInitialPose: true,
     getMiningDuration: () => 0,
     acceptWorldEdits: (edits) => { acceptedBatch = edits.map((edit) => ({ ...edit })); return true; },
@@ -186,7 +186,7 @@ const rejected = createLiveEngine({
   initialEdits: baseEdits,
   initialBedStructures: [bed],
   twoBlockBeds: true,
-  initialPose: { x: 0.5, y: 20.02, z: 3.5, yaw: 0, pitch: -0.43 },
+  initialPose: { x: 0.5, y: 90.02, z: 3.5, yaw: 0, pitch: -0.43 },
   preserveInitialPose: true,
   getMiningDuration: () => 0,
   acceptWorldEdits: (edits) => { rejectedBatch = edits.map((edit) => ({ ...edit })); return false; },
@@ -206,7 +206,7 @@ assert.deepEqual(rejected.engine.getBedAt(bed.head.x, bed.head.y, bed.head.z), b
   "capacity rejection preserves terrain and pair metadata atomically");
 rejected.engine.destroy();
 
-const farBed = createBedStructure({ x: 240, y: 20, z: 240 }, "north");
+const farBed = createBedStructure({ x: 240, y: 90, z: 240 }, "north");
 const farEdits: WorldEdit[] = [
   { ...farBed.foot, block: BLOCK.BED },
   { ...farBed.head, block: BLOCK.BED },

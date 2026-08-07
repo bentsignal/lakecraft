@@ -141,13 +141,16 @@ function finitePose(pose: MotionPose): boolean {
  * cover the whole publish interval without overflowing 128 keyframes.
  */
 export class MotionSegmentRecorder {
+  readonly sessionId: string;
   private samples: MotionPoseSample[] = [];
   private actions: MotionActionSample[] = [];
   private nextSequence = 0;
   private pending: PendingBatch | null = null;
   private captureIntervalMs = MOTION_SAMPLE_QUANTUM_MS;
 
-  constructor(public readonly sessionId: string) {}
+  constructor(sessionId: string) {
+    this.sessionId = sessionId;
+  }
 
   configurePublishInterval(publishIntervalMs: number): void {
     const boundedWindow = Math.min(MOTION_MAX_BATCH_DURATION_MS, Math.max(MOTION_SAMPLE_QUANTUM_MS, publishIntervalMs));

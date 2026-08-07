@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { validatePlayerStateJson } from "../shared/chestTransfers.ts";
+import { PLAYER_STATE_VERSION } from "../shared/chestTransfers.ts";
+import { createEmptyEquipment, createEmptyInventory } from "../shared/game.ts";
 import {
   CHEST_RECEIPT_OVERFLOW_PRUNE_LIMIT,
   MAX_CHEST_TRANSFER_RECEIPTS_PER_USER,
@@ -19,13 +21,27 @@ assert.ok(transferMutation.includes("playerRows.length !== 1"), "a chest transfe
 assert.ok(transferMutation.includes("reason: BS.inventoryRequired"));
 assert.equal(transferMutation.includes("ctx.db.inventories.insert"), false, "a forged client ledger can never bootstrap through a chest");
 
-const stored = JSON.stringify([{ itemId: "stone", count: 4 }]);
+const storedInventory = createEmptyInventory();
+storedInventory[0] = { itemId: "stone", count: 4 };
+const stored = JSON.stringify({
+  version: PLAYER_STATE_VERSION,
+  inventory: storedInventory,
+  selectedHotbar: 0,
+  equipment: createEmptyEquipment(),
+  respawnPoint: null,
+  hunger: 20,
+});
 const canonical = validatePlayerStateJson(stored);
 assert.equal(canonical.ok, true);
 if (!canonical.ok) throw new Error("fixture should validate");
 assert.equal(compareStoredPlayerState(stored, canonical.playerStateJson), "match");
 
-const fabricated = validatePlayerStateJson(JSON.stringify([{ itemId: "stone", count: 64 }]));
+const fabricatedInventory = createEmptyInventory();
+fabricatedInventory[0] = { itemId: "stone", count: 64 };
+const fabricated = validatePlayerStateJson(JSON.stringify({
+  ...canonical.state,
+  inventory: fabricatedInventory,
+}));
 assert.equal(fabricated.ok, true);
 if (!fabricated.ok) throw new Error("fixture should validate");
 assert.equal(compareStoredPlayerState(stored, fabricated.playerStateJson), "mismatch");

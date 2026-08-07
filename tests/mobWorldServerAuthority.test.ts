@@ -204,7 +204,7 @@ const creeperMutation = server.slice(
 );
 for (const marker of [
   "validateCreeperExplosionRequestJson(requestJson)",
-  'newestByIndex(ctx.db.creeperExplosionReceipts, "by_event", (q) => q.eq("eventId", request.operationId))',
+  'newestMatchingRows(ctx.db.creeperExplosionReceipts, "by_event", "eventId", request.operationId)',
   "authorizeCreeperExplosionRequest(request, authority)",
   "applyAuthoritativeWorldExplosion(ctx.db",
   "checkpointRevision: String(advanced.revision + 1)",

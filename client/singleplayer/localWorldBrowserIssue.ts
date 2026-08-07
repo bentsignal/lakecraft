@@ -15,8 +15,7 @@ function sameWorld(left: LocalWorldRecord, right: LocalWorldRecord): boolean {
     && left.seed === right.seed
     && left.initialGameMode === right.initialGameMode
     && left.createdAt === right.createdAt
-    && left.lastPlayedAt === right.lastPlayedAt
-    && left.importedLegacy === right.importedLegacy;
+    && left.lastPlayedAt === right.lastPlayedAt;
 }
 
 export function verifiedCreatedLocalWorld(
@@ -63,7 +62,7 @@ export function localWorldDeleteState(issues: readonly string[]): readonly [stri
   if (has("invalid_transaction_cleared")) {
     return ["!Invalid deletion ignored. Worlds remain available; orphaned data may remain.", false];
   }
-  if (has("rollback_completed") || has("cleanup_completed")) {
+  if (has("cleanup_completed")) {
     return ["Deletion recovered; other worlds unchanged.", false];
   }
   return ["", false];

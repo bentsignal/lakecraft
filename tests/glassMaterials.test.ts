@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { raycastVoxels } from "../client/game/terrain.ts";
-import { MAX_STREAMING_CHUNK_COUNT } from "../client/game/chunks.ts";
+import {
+  DEFAULT_STREAMING_CHUNK_RADIUS,
+  MAX_LOCAL_STREAMING_CHUNK_RADIUS,
+  MAX_STREAMING_CHUNK_COUNT,
+} from "../client/game/chunks.ts";
 import {
   MAX_TRANSPARENT_CHUNK_DRAWS,
   blockFaceIsOccluded,
@@ -29,24 +33,32 @@ assert.equal(blockFaceIsOccluded(BLOCK.GLASS, BLOCK.STONE), true, "opaque neighb
 assert.equal(blockFaceIsOccluded(BLOCK.STONE, BLOCK.GLASS), false, "glass does not remove an opaque neighbor face");
 assert.equal(blockFaceIsOccluded(BLOCK.GLASS, BLOCK.AIR), false);
 
-assert.equal(MAX_TRANSPARENT_CHUNK_DRAWS, MAX_STREAMING_CHUNK_COUNT);
+const maxLocalStreamingChunkCount = (MAX_LOCAL_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
+assert.equal(MAX_TRANSPARENT_CHUNK_DRAWS, maxLocalStreamingChunkCount,
+  "transparent draws cover the configurable maximum local render-distance window");
+assert.equal(MAX_STREAMING_CHUNK_COUNT, (DEFAULT_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2,
+  "the default/Lakebed streaming window remains separately bounded to 7x7");
 assert.deepEqual(sortTransparentChunkKeysBackToFront([], [0, 0, 0]), []);
 assert.deepEqual(
   sortTransparentChunkKeysBackToFront(["0,0", "2,0", "-1,0"], [4, 8, 4]),
   ["2,0", "-1,0", "0,0"],
   "transparent chunks render far-to-near around the camera chunk",
 );
-const stressKeys = Array.from({ length: 20 * 20 }, (_, index) => `${index % 20},${Math.floor(index / 20)}`);
+const stressSide = MAX_LOCAL_STREAMING_CHUNK_RADIUS * 2 + 2;
+const stressKeys = Array.from({ length: stressSide ** 2 }, (_, index) =>
+  `${index % stressSide},${Math.floor(index / stressSide)}`);
 const boundedStressOrder = sortTransparentChunkKeysBackToFront(stressKeys, [0, 8, 0]);
-assert.equal(boundedStressOrder.length, MAX_STREAMING_CHUNK_COUNT, "pathological input is capped to the 7x7 window");
+const expectedStressDraws = Math.min(stressKeys.length, maxLocalStreamingChunkCount);
+assert.equal(boundedStressOrder.length, expectedStressDraws,
+  "pathological input is capped to the configurable maximum local window");
 assert.equal(new Set(boundedStressOrder).size, boundedStressOrder.length);
 
 const baselineDrawCalls = 22;
 assert.equal(baselineDrawCalls + sortTransparentChunkKeysBackToFront([], [0, 0, 0]).length, 22);
 assert.equal(
   baselineDrawCalls + boundedStressOrder.length,
-  71,
-  "the worst visible window adds at most one glass draw for each of 49 chunks",
+  baselineDrawCalls + expectedStressDraws,
+  "the worst visible local window adds at most one glass draw per configured chunk",
 );
 
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");

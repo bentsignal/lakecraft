@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -279,6 +280,7 @@ function makeRealVideo(format, width, height, durationMs, tag) {
 const artifactFixtureRoot = mkdtempSync(join(tmpdir(), "lakecraft-task41-real-artifact-"));
 process.addListener("exit", () => rmSync(artifactFixtureRoot, { recursive: true, force: true }));
 let artifactFixtureCache;
+let artifactFixtureRepoRoot;
 
 function checkedCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -294,43 +296,165 @@ function checkedCommand(command, args, options = {}) {
   return result.stdout;
 }
 
+const SOURCE_SNAPSHOT_EXCLUDED_SEGMENTS = new Set([
+  ".git",
+  ".lakebed",
+  ".tmp",
+  "artifacts",
+  "coverage",
+  "dist",
+  "evidence",
+  "node_modules",
+  "temp",
+  "tmp",
+]);
+
+function sourceSnapshotPathExcluded(path) {
+  const segments = path.split("/");
+  const basename = segments.at(-1) ?? "";
+  return (
+    segments.some((segment) => SOURCE_SNAPSHOT_EXCLUDED_SEGMENTS.has(segment))
+    || basename.startsWith(".codex-tmp-")
+    || basename.startsWith("lakecraft-task41-")
+    || basename.startsWith("task41-evidence-")
+    || basename === ".env"
+    || basename.startsWith(".env.")
+    || basename === ".netrc"
+    || basename === ".npmrc"
+  );
+}
+
+function currentSourceSnapshot(sourceRoot, targetRoot) {
+  const inventory = spawnSync(
+    "git",
+    ["-C", sourceRoot, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    { encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
+  );
+  assert.equal(inventory.status, 0, inventory.stderr?.toString("utf8"));
+  const paths = inventory.stdout.toString("utf8").split("\0").filter(Boolean).sort();
+  const includedPaths = paths.filter((path) => {
+    assert.ok(
+      !path.startsWith("/")
+      && !path.includes("\\")
+      && path.split("/").every((segment) => segment && segment !== "." && segment !== ".."),
+      `unsafe current-source snapshot path: ${path}`,
+    );
+    return !sourceSnapshotPathExcluded(path);
+  });
+  assert.ok(includedPaths.length > 0, "current-source snapshot must contain reviewed worktree files");
+  const manifest = includedPaths.map((path) => {
+    const sourcePath = join(sourceRoot, ...path.split("/"));
+    const info = lstatSync(sourcePath);
+    assert.ok(info.isFile() && !info.isSymbolicLink(), `current-source snapshot path must be a regular file: ${path}`);
+    const contents = readFileSync(sourcePath);
+    write(targetRoot, path, contents);
+    return { bytes: contents.length, path, sha256: digest(contents) };
+  });
+  return Object.freeze({
+    hash: digest(Buffer.from(JSON.stringify(manifest))),
+    manifest: Object.freeze(manifest),
+  });
+}
+
+function assertSourceSnapshot(root, snapshot) {
+  const manifest = snapshot.manifest.map(({ path }) => {
+    const contents = readFileSync(join(root, ...path.split("/")));
+    return { bytes: contents.length, path, sha256: digest(contents) };
+  });
+  assert.deepEqual(manifest, snapshot.manifest, "isolated source snapshot must retain the authoritative worktree manifest");
+  assert.equal(
+    digest(Buffer.from(JSON.stringify(manifest))),
+    snapshot.hash,
+    "isolated source snapshot hash must retain the authoritative worktree hash",
+  );
+}
+
+function initializeSourceSnapshotRepository(sourceRoot) {
+  checkedCommand("git", ["-C", sourceRoot, "init", "--quiet"]);
+  checkedCommand("git", ["-C", sourceRoot, "add", "--all"]);
+  checkedCommand(
+    "git",
+    [
+      "-C",
+      sourceRoot,
+      "-c",
+      "user.name=Lakecraft QA",
+      "-c",
+      "user.email=qa@lakecraft.invalid",
+      "commit",
+      "--quiet",
+      "--no-gpg-sign",
+      "-m",
+      "Deterministic current-source test snapshot",
+    ],
+    {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",
+        GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z",
+      },
+    },
+  );
+  const replacementCommit = checkedCommand("git", ["-C", sourceRoot, "rev-parse", "HEAD"]).trim();
+  const expectedCommitBody = checkedCommand("git", ["-C", PROJECT_ROOT, "cat-file", "commit", COMMIT]);
+  const importedCommit = checkedCommand(
+    "git",
+    ["-C", sourceRoot, "hash-object", "-t", "commit", "-w", "--stdin"],
+    { input: expectedCommitBody },
+  ).trim();
+  assert.equal(importedCommit, COMMIT, "isolated repository must retain the evidence commit identity");
+  checkedCommand("git", ["-C", sourceRoot, "replace", COMMIT, replacementCommit]);
+  assert.equal(
+    checkedCommand("git", ["-C", sourceRoot, "rev-parse", `${COMMIT}^{tree}`]).trim(),
+    checkedCommand("git", ["-C", sourceRoot, "rev-parse", `${replacementCommit}^{tree}`]).trim(),
+    "the evidence commit must resolve to the authoritative current-source tree in the isolated repository",
+  );
+}
+
 function realArtifactFixture() {
   if (artifactFixtureCache) return artifactFixtureCache;
-  const archivePath = join(artifactFixtureRoot, "source.tar");
-  const sourceRoot = join(artifactFixtureRoot, "source");
-  mkdirSync(sourceRoot);
-  checkedCommand("git", [
-    "-C",
-    PROJECT_ROOT,
-    "archive",
-    "--format=tar",
-    `--output=${archivePath}`,
-    COMMIT,
-  ]);
-  checkedCommand("tar", ["-xf", archivePath, "-C", sourceRoot]);
-  const builds = ["a", "b"].map((name) => {
-    const stageRoot = join(artifactFixtureRoot, `stage-${name}`);
-    checkedCommand(
-      process.execPath,
-      [join(sourceRoot, "scripts", "build-lakebed-audit.mjs"), stageRoot],
-      { cwd: sourceRoot },
-    );
-    const reportText = readFileSync(join(stageRoot, "build-report.json"), "utf8");
-    const report = JSON.parse(reportText);
-    const metadataBuffer = readFileSync(join(stageRoot, "artifact-metadata.json"));
-    return {
-      report,
-      reportBuffer: Buffer.from(reportText),
-      metadataBuffer,
-      clientBuffer: readFileSync(join(stageRoot, "staged/client-index.tsx")),
-      serverBuffer: readFileSync(join(stageRoot, "staged/server-index.ts")),
-    };
-  });
-  assert.deepEqual(builds[0].metadataBuffer, builds[1].metadataBuffer);
-  assert.deepEqual(builds[0].clientBuffer, builds[1].clientBuffer);
-  assert.deepEqual(builds[0].serverBuffer, builds[1].serverBuffer);
-  artifactFixtureCache = builds;
-  return builds;
+  const fixtureRoot = mkdtempSync(join(artifactFixtureRoot, "fixture-"));
+  try {
+    const sourceRoot = join(fixtureRoot, "source");
+    mkdirSync(sourceRoot);
+    const sourceSnapshot = currentSourceSnapshot(PROJECT_ROOT, sourceRoot);
+    assertSourceSnapshot(sourceRoot, sourceSnapshot);
+    initializeSourceSnapshotRepository(sourceRoot);
+    artifactFixtureRepoRoot = sourceRoot;
+    const builds = ["a", "b"].map((name) => {
+      const stageRoot = join(fixtureRoot, `stage-${name}`);
+      checkedCommand(
+        process.execPath,
+        [join(sourceRoot, "scripts", "build-lakebed-audit.mjs"), stageRoot],
+        { cwd: sourceRoot },
+      );
+      assertSourceSnapshot(sourceRoot, sourceSnapshot);
+      const reportText = readFileSync(join(stageRoot, "build-report.json"), "utf8");
+      const report = JSON.parse(reportText);
+      const metadataBuffer = readFileSync(join(stageRoot, "artifact-metadata.json"));
+      return {
+        report,
+        reportBuffer: Buffer.from(reportText),
+        metadataBuffer,
+        clientBuffer: readFileSync(join(stageRoot, "staged/client-index.tsx")),
+        serverBuffer: readFileSync(join(stageRoot, "staged/server-index.ts")),
+      };
+    });
+    assert.deepEqual(builds[0].metadataBuffer, builds[1].metadataBuffer);
+    assert.deepEqual(builds[0].clientBuffer, builds[1].clientBuffer);
+    assert.deepEqual(builds[0].serverBuffer, builds[1].serverBuffer);
+    artifactFixtureCache = builds;
+    return builds;
+  } catch (error) {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function currentSourceRepoRoot() {
+  realArtifactFixture();
+  assert.ok(artifactFixtureRepoRoot, "current-source artifact repository must be initialized");
+  return artifactFixtureRepoRoot;
 }
 
 function createFixture({ multiplayerStatus = "passed", nowMs = Date.now() } = {}) {
@@ -792,7 +916,7 @@ async function assertFileInvalid(fixture, pattern) {
   await assert.rejects(
     verifyTask41EvidenceFiles(fixture.evidence, fixture.root, {
       expectedCommit: COMMIT,
-      repoRoot: PROJECT_ROOT,
+      repoRoot: currentSourceRepoRoot(),
       nowMs: fixture.nowMs,
     }),
     pattern,
@@ -996,7 +1120,7 @@ test("a complete, freshly bound manifest with substantive generated files verifi
     );
     await verifyTask41EvidenceFiles(fixture.evidence, fixture.root, {
       expectedCommit: COMMIT,
-      repoRoot: PROJECT_ROOT,
+      repoRoot: currentSourceRepoRoot(),
       nowMs: fixture.nowMs,
     });
   } finally {
@@ -1022,7 +1146,7 @@ test("the CLI returns exit 0 only for complete proof and exit 2 for valid deferr
         "--expected-commit",
         COMMIT,
         "--repo-root",
-        PROJECT_ROOT,
+        currentSourceRepoRoot(),
         "--validator-output",
         validatorOutputPath,
       ], { encoding: "utf8" });
@@ -1231,7 +1355,7 @@ test("the CLI fails closed when ffprobe or ffmpeg is unavailable", () => {
         "--expected-commit",
         COMMIT,
         "--repo-root",
-        PROJECT_ROOT,
+        currentSourceRepoRoot(),
       ], {
         encoding: "utf8",
         env: { ...process.env, PATH: pathSetup(fixture) },

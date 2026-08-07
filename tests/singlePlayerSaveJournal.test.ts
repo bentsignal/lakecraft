@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import {
-  SINGLEPLAYER_LEGACY_SAVE_KEY,
   SINGLEPLAYER_SAVE_HEAD_KEY,
   SINGLEPLAYER_SAVE_LIMITS,
   SINGLEPLAYER_SAVE_MAX_SLOT_CHARS,
   SINGLEPLAYER_SAVE_SLOT_A_KEY,
   SINGLEPLAYER_SAVE_SLOT_B_KEY,
+  SINGLEPLAYER_SAVE_VERSION,
   canonicalSinglePlayerJson,
   createDefaultSinglePlayerSnapshot,
   loadSinglePlayerSave,
   resetSinglePlayerSave,
   saveSinglePlayerSnapshot,
   serializeSinglePlayerSave,
+  unsupportedSinglePlayerSaveMessage,
   validateSinglePlayerSnapshot,
   type SinglePlayerSnapshot,
   type SinglePlayerStorageAdapter,
@@ -46,6 +47,24 @@ class MemoryStorage implements SinglePlayerStorageAdapter {
     if (this.failDeletesFor === key) throw new Error("simulated delete failure");
     this.values.delete(key);
   }
+}
+
+// Pre-coordinate-reset journals fail closed as an explicit, user-actionable
+// unsupported format. They are never guessed, shifted, or overwritten.
+{
+  const storage = new MemoryStorage();
+  storage.values.set(SINGLEPLAYER_SAVE_SLOT_A_KEY, JSON.stringify({
+    format: "lakecraft.singleplayer",
+    version: 1,
+  }));
+  const loaded = loadSinglePlayerSave(storage);
+  assert.equal(SINGLEPLAYER_SAVE_VERSION, 2);
+  assert.equal(loaded.status, "unsupported");
+  if (loaded.status !== "unsupported") throw new Error(loaded.status);
+  assert.deepEqual(loaded.versions, [1]);
+  assert.match(unsupportedSinglePlayerSaveMessage(loaded.versions), /retired terrain coordinate system/);
+  assert.match(unsupportedSinglePlayerSaveMessage(loaded.versions), /No data was changed/);
+  assert.match(unsupportedSinglePlayerSaveMessage([99]), /newer Lakecraft version/);
 }
 
 function richSnapshot(): SinglePlayerSnapshot {
@@ -195,49 +214,6 @@ function richSnapshot(): SinglePlayerSnapshot {
   assert.deepEqual(loaded.snapshot, first);
 }
 
-// Legacy lakecraft.singleplayer.v1 is migrated exactly once into the journal.
-{
-  const storage = new MemoryStorage();
-  const source = richSnapshot();
-  const legacy = {
-    inventory: source.player.inventory,
-    equipment: source.player.equipment,
-    selected: source.player.selectedHotbar,
-    hunger: source.player.hunger,
-    edits: source.world.edits,
-    drops: source.drops,
-  };
-  storage.values.set(SINGLEPLAYER_LEGACY_SAVE_KEY, JSON.stringify(legacy));
-  const loaded = loadSinglePlayerSave(storage, { now: () => 7_777 });
-  assert.equal(loaded.status, "migrated");
-  if (loaded.status !== "migrated") throw new Error(loaded.status);
-  assert.equal(loaded.persisted, true);
-  assert.equal(loaded.sequence, 1);
-  assert.equal(loaded.savedAt, 7_777);
-  assert.deepEqual(loaded.snapshot.player.inventory, source.player.inventory);
-  assert.deepEqual(loaded.snapshot.world.edits, source.world.edits);
-  assert.ok(storage.values.has(SINGLEPLAYER_SAVE_SLOT_A_KEY));
-  assert.equal(loadSinglePlayerSave(storage).status, "loaded");
-}
-
-// Invalid legacy rows are surfaced, never silently truncated/repaired into a new world.
-{
-  const storage = new MemoryStorage();
-  const source = richSnapshot();
-  storage.values.set(SINGLEPLAYER_LEGACY_SAVE_KEY, JSON.stringify({
-    inventory: source.player.inventory,
-    equipment: source.player.equipment,
-    selected: 999,
-    hunger: source.player.hunger,
-    edits: source.world.edits,
-    drops: source.drops,
-  }));
-  const loaded = loadSinglePlayerSave(storage);
-  assert.equal(loaded.status, "corrupt");
-  if (loaded.status !== "corrupt") throw new Error(loaded.status);
-  assert.equal(loaded.reason, "legacy_invalid");
-}
-
 // Bounds are hard failures; the codec does not slice arrays, clamp coordinates, or repair durability.
 {
   const tooManyEdits = richSnapshot();
@@ -282,10 +258,10 @@ function richSnapshot(): SinglePlayerSnapshot {
 {
   const huge = createDefaultSinglePlayerSnapshot();
   huge.world.edits = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.edits }, (_, index) => ({
-    x: index, y: 0, z: -index, block: 32 as const,
+    x: index, y: 2, z: -index, block: 32 as const,
   }));
   huge.chests = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.chests }, (_, index) => ({
-    coordKey: `${index}:0:0`,
+    coordKey: `${index}:2:0`,
     inventory: Array.from({ length: 27 }, () => ({ itemId: "brick" as const, count: 64 })),
   }));
   huge.progression.recipes = Array.from({ length: SINGLEPLAYER_SAVE_LIMITS.progressionEntries }, (_, index) =>
@@ -318,14 +294,12 @@ function richSnapshot(): SinglePlayerSnapshot {
   const storage = new MemoryStorage();
   storage.values.set(SINGLEPLAYER_SAVE_SLOT_A_KEY, "not json");
   storage.values.set(SINGLEPLAYER_SAVE_SLOT_B_KEY, "{}");
-  storage.values.set(SINGLEPLAYER_LEGACY_SAVE_KEY, "also invalid");
   storage.values.set("lakecraft.settings.v1", "keep-me");
   assert.equal(loadSinglePlayerSave(storage).status, "corrupt");
   const reset = resetSinglePlayerSave(storage);
   assert.equal(reset.ok, true);
   if (!reset.ok) throw new Error(reset.reason);
   assert.deepEqual(new Set(reset.removedKeys), new Set([
-    SINGLEPLAYER_LEGACY_SAVE_KEY,
     SINGLEPLAYER_SAVE_HEAD_KEY,
     SINGLEPLAYER_SAVE_SLOT_A_KEY,
     SINGLEPLAYER_SAVE_SLOT_B_KEY,
@@ -371,8 +345,6 @@ function richSnapshot(): SinglePlayerSnapshot {
   assert.deepEqual(storage.operations, [
     `get:${SINGLEPLAYER_SAVE_SLOT_A_KEY}`,
     `get:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
-    `remove:${SINGLEPLAYER_LEGACY_SAVE_KEY}`,
-    `get:${SINGLEPLAYER_LEGACY_SAVE_KEY}`,
     `remove:${SINGLEPLAYER_SAVE_HEAD_KEY}`,
     `get:${SINGLEPLAYER_SAVE_HEAD_KEY}`,
     `remove:${SINGLEPLAYER_SAVE_SLOT_B_KEY}`,
@@ -412,4 +384,4 @@ function richSnapshot(): SinglePlayerSnapshot {
   assert.deepEqual(loaded.snapshot, previousGood);
 }
 
-console.log("durable single-player save journal roundtrip, recovery, migration, bounds, determinism, and budget tests passed");
+console.log("durable current-format single-player save journal roundtrip, recovery, bounds, determinism, and budget tests passed");

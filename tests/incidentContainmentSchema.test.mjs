@@ -53,8 +53,8 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "90bf64e6017b2dae763c47b0f569dfbadb63c661dcfc29b8bf00a530ed9586c9",
-  "removing containment declarations reproduces exact e245f0b server behavior source",
+  "3dd8a36cfba1f5976987745473269c759fdc616586673b878c40f27ad2014c23",
+  "removing containment declarations reproduces the reviewed integrated server behavior source",
 );
 
 assert.doesNotMatch(server, /\bsinglePlayerCloudBackups\s*:/,
@@ -85,10 +85,10 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 133, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 156, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "6e19e68d338e581329016bb8716c17ce1db35aafdeb2c87cc99f06c8d8a22d84",
-  "runtime sources match the reviewed paused-pose, input, beds, combat, TNT, ecology, and containment checkpoint");
+  "f9f64a1f43ddbd6ec5f198f4e30bf4652e0a422c2bd4589f357d83bf2c98e90a",
+  "runtime sources match the reviewed integrated realism and world-only bedrock boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

@@ -162,15 +162,10 @@ function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[]
   return keys.every((key) => allowed.includes(key)) && required.every((key) => keys.includes(key));
 }
 
-function strictInventory(
-  value: unknown,
-  size: number,
-  allowLegacyToolDurability: boolean,
-  allowLegacyArmorDurability: boolean,
-): Inventory | null {
-  if (!Array.isArray(value) || value.length > size) return null;
+function strictInventory(value: unknown, size: number): Inventory | null {
+  if (!Array.isArray(value) || value.length !== size) return null;
   const output: Inventory = new Array(size).fill(null);
-  for (let index = 0; index < value.length; index += 1) {
+  for (let index = 0; index < size; index += 1) {
     const slot = value[index] as unknown;
     if (slot === null) continue;
     if (!slot || typeof slot !== "object" || Array.isArray(slot)) return null;
@@ -187,13 +182,7 @@ function strictInventory(
       continue;
     }
     if (record.count !== 1) return null;
-    // Versions 1-3 and raw legacy arrays did not persist armor durability;
-    // versions 1/2 and raw legacy arrays also omitted tool durability.
-    const mayOmitDurability = ITEMS[itemId].tool
-      ? allowLegacyToolDurability
-      : allowLegacyArmorDurability;
-    if (record.durability === undefined && !mayOmitDurability) return null;
-    const durability = record.durability === undefined ? maximum : record.durability;
+    const durability = record.durability;
     if (typeof durability !== "number" || !Number.isInteger(durability)
       || durability < 1 || durability > maximum) return null;
     output[index] = { itemId, count: 1, durability };
@@ -201,8 +190,7 @@ function strictInventory(
   return output;
 }
 
-function strictEquipment(value: unknown, allowLegacyArmorIds: boolean): Equipment | null {
-  if (value === undefined) return allowLegacyArmorIds ? createEmptyEquipment() : null;
+function strictEquipment(value: unknown): Equipment | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (!hasOnlyKeys(record, ARMOR_SLOTS, ARMOR_SLOTS)) return null;
@@ -210,13 +198,6 @@ function strictEquipment(value: unknown, allowLegacyArmorIds: boolean): Equipmen
   for (const slot of ARMOR_SLOTS) {
     const candidate = record[slot];
     if (candidate === null) continue;
-    if (BS.isString(candidate)) {
-      if (!allowLegacyArmorIds || !Object.prototype.hasOwnProperty.call(ITEMS, candidate)) return null;
-      const armor = ITEMS[candidate as ItemId].armor;
-      if (!armor || armor.slot !== slot) return null;
-      output[slot] = { itemId: candidate as ArmorId, durability: armor.maxDurability };
-      continue;
-    }
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
     const stack = candidate as Record<string, unknown>;
     if (!hasOnlyKeys(stack, ["itemId", BS.durability], ["itemId", BS.durability])
@@ -231,20 +212,21 @@ function strictEquipment(value: unknown, allowLegacyArmorIds: boolean): Equipmen
 }
 
 function strictRespawnPoint(value: unknown): PlayerRespawnPoint | null | undefined {
-  if (value === undefined || value === null) return null;
+  if (value === null) return null;
+  if (value === undefined) return undefined;
   if (typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   if (!hasOnlyKeys(record, ["x", "y", "z", "yaw", "pitch"], ["x", "y", "z", "yaw", "pitch"])) return undefined;
   const { x, y, z, yaw, pitch } = record;
   if (typeof x !== "number" || !Number.isFinite(x) || x < -64 || x > 64
-    || typeof y !== "number" || !Number.isFinite(y) || y < -4 || y > 96
+    || typeof y !== "number" || !Number.isFinite(y) || y < 1 || y > 192
     || typeof z !== "number" || !Number.isFinite(z) || z < -64 || z > 64
     || typeof yaw !== "number" || !Number.isFinite(yaw) || yaw < -100_000 || yaw > 100_000
     || typeof pitch !== "number" || !Number.isFinite(pitch) || pitch < -1.52 || pitch > 1.52) return undefined;
   return { x, y, z, yaw, pitch };
 }
 
-/** Strictly accepts legacy raw inventories and known player-state envelopes without minting defaults on corruption. */
+/** Strictly accepts the current player-state envelope without minting defaults on corruption. */
 export function validatePlayerStateJson(rawJson: string): PlayerStateValidation {
   if (rawJson.length > MAX_PLAYER_STATE_JSON_LENGTH) return { ok: false, reason: "too_large" };
   let parsed: unknown;
@@ -254,54 +236,29 @@ export function validatePlayerStateJson(rawJson: string): PlayerStateValidation 
     return { ok: false, reason: "invalid_json" };
   }
 
-  let inventory: Inventory | null;
-  let selectedHotbar = 0;
-  let equipment = createEmptyEquipment();
-  let respawnPoint: PlayerRespawnPoint | null = null;
-  let hunger = MAX_HUNGER;
-  if (Array.isArray(parsed)) {
-    inventory = strictInventory(parsed, INVENTORY_SIZE, true, true);
-  } else {
-    if (!parsed || typeof parsed !== "object") return { ok: false, reason: BS.invalidShape };
-    const record = parsed as Record<string, unknown>;
-    if (!hasOnlyKeys(record, PLAYER_STATE_KEYS, [BS.inventory])) return { ok: false, reason: BS.invalidShape };
-    if (record.version !== undefined && record.version !== 1 && record.version !== 2
-      && record.version !== 3 && record.version !== PLAYER_STATE_VERSION) {
-      return { ok: false, reason: "invalid_version" };
-    }
-    inventory = strictInventory(
-      record.inventory,
-      INVENTORY_SIZE,
-      record.version !== 3 && record.version !== PLAYER_STATE_VERSION,
-      record.version !== PLAYER_STATE_VERSION,
-    );
-    if (record.selectedHotbar !== undefined) {
-      if (typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
-        || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) {
-        return { ok: false, reason: "invalid_selected_hotbar" };
-      }
-      selectedHotbar = record.selectedHotbar;
-    }
-    const parsedEquipment = strictEquipment(record.equipment, record.version !== PLAYER_STATE_VERSION);
-    if (!parsedEquipment) return { ok: false, reason: "invalid_equipment" };
-    equipment = parsedEquipment;
-    const parsedRespawnPoint = strictRespawnPoint(record.respawnPoint);
-    if (parsedRespawnPoint === undefined) return { ok: false, reason: "invalid_respawn_point" };
-    respawnPoint = parsedRespawnPoint;
-    if (record.hunger !== undefined) {
-      if (typeof record.hunger !== "number" || !Number.isInteger(record.hunger)
-        || record.hunger < 0 || record.hunger > MAX_HUNGER) return { ok: false, reason: "invalid_hunger" };
-      hunger = record.hunger;
-    }
-  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: BS.invalidShape };
+  const record = parsed as Record<string, unknown>;
+  if (!hasOnlyKeys(record, PLAYER_STATE_KEYS, PLAYER_STATE_KEYS)) return { ok: false, reason: BS.invalidShape };
+  if (record.version !== PLAYER_STATE_VERSION) return { ok: false, reason: "invalid_version" };
+  const inventory = strictInventory(record.inventory, INVENTORY_SIZE);
   if (!inventory) return { ok: false, reason: BS.invalidInventory };
+  if (typeof record.selectedHotbar !== "number" || !Number.isInteger(record.selectedHotbar)
+    || record.selectedHotbar < 0 || record.selectedHotbar >= HOTBAR_SIZE) {
+    return { ok: false, reason: "invalid_selected_hotbar" };
+  }
+  const equipment = strictEquipment(record.equipment);
+  if (!equipment) return { ok: false, reason: "invalid_equipment" };
+  const respawnPoint = strictRespawnPoint(record.respawnPoint);
+  if (respawnPoint === undefined) return { ok: false, reason: "invalid_respawn_point" };
+  if (typeof record.hunger !== "number" || !Number.isInteger(record.hunger)
+    || record.hunger < 0 || record.hunger > MAX_HUNGER) return { ok: false, reason: "invalid_hunger" };
   const state: CanonicalPlayerState = {
     version: PLAYER_STATE_VERSION,
     inventory,
-    selectedHotbar,
+    selectedHotbar: record.selectedHotbar,
     equipment,
     respawnPoint,
-    hunger,
+    hunger: record.hunger,
   };
   const playerStateJson = JSON.stringify(state);
   return playerStateJson.length <= MAX_PLAYER_STATE_JSON_LENGTH

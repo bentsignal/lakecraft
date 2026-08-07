@@ -175,6 +175,7 @@ export type SmeltResult =
   | { ok: false; inventory: Inventory; reason: "missing_input" | "missing_fuel" | "inventory_full" | "unknown_recipe" };
 
 export type SerializablePlayerState = {
+  version: 4;
   inventory: Inventory;
   selectedHotbar: number;
   equipment: Equipment;
@@ -1078,7 +1079,7 @@ export function normalizeRespawnPoint(value: unknown): PlayerRespawnPoint | null
   const candidate = value as Partial<Record<keyof PlayerRespawnPoint, unknown>>;
   const { x, y, z, yaw, pitch } = candidate;
   if (typeof x !== "number" || !Number.isFinite(x) || x < -64 || x > 64
-    || typeof y !== "number" || !Number.isFinite(y) || y < -4 || y > 96
+    || typeof y !== "number" || !Number.isFinite(y) || y < 1 || y > 192
     || typeof z !== "number" || !Number.isFinite(z) || z < -64 || z > 64
     || typeof yaw !== "number" || !Number.isFinite(yaw) || yaw < -100_000 || yaw > 100_000
     || typeof pitch !== "number" || !Number.isFinite(pitch) || pitch < -1.52 || pitch > 1.52) {
@@ -1095,6 +1096,7 @@ export function createSerializablePlayerState(
   hunger = MAX_HUNGER,
 ): SerializablePlayerState {
   return {
+    version: 4,
     inventory: normalizeInventory(inventory),
     selectedHotbar: clampHotbarIndex(selectedHotbar),
     equipment: normalizeEquipment(equipment),

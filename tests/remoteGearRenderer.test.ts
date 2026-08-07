@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
+import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { createRemoteAvatarMotion, type RemoteAvatarMotion } from "../client/game/avatar.ts";
+import { ITEMS, type ItemId } from "../shared/game.ts";
 import type { RemotePlayer } from "../client/game/types.ts";
 import {
   AVATAR_VERTICES_PER_PLAYER,
   BASE_AVATAR_VERTICES_PER_PLAYER,
   MAX_ARMOR_VERTICES_PER_PLAYER,
   MAX_HELD_ITEM_VERTICES_PER_PLAYER,
+  REMOTE_HELD_ITEM_LOGICAL_SIZE,
+  REMOTE_HELD_ITEM_MAX_RECTS,
   REMOTE_MESH_INTERVAL_MS,
   createRemotePlayerRenderer,
   remotePlayerBufferCapacity,
+  remoteHeldItemRects,
+  remoteHeldItemVertexCount,
   writeRemotePlayerGeometry,
   type RemoteGeometryStats,
 } from "../client/game/remotePlayerRenderer.ts";
@@ -23,8 +29,9 @@ const basePlayer: RemotePlayer = {
   pitch: 0,
 };
 
-function geometry(overrides: Partial<RemotePlayer> = {}) {
+function geometry(overrides: Partial<RemotePlayer> = {}, motionOverrides: Partial<RemoteAvatarMotion> = {}) {
   const state = createRemoteAvatarMotion({ ...basePlayer, ...overrides }, 0);
+  Object.assign(state, motionOverrides);
   const states = new Map<string, RemoteAvatarMotion>([[state.id, state]]);
   const capacity = remotePlayerBufferCapacity(1);
   const avatar = new Float32Array(capacity.avatarFloats);
@@ -43,10 +50,46 @@ assert.ok(BASE_AVATAR_VERTICES_PER_PLAYER > 500, "the recognizable detailed Stev
 const heldBlock = geometry({ heldItem: "sand" });
 const heldMaterial = geometry({ heldItem: "coal" });
 const heldTool = geometry({ heldItem: "iron_pickaxe" });
-assert.equal(heldBlock.stats.avatarVertexCount, BASE_AVATAR_VERTICES_PER_PLAYER + 36);
-assert.equal(heldMaterial.stats.avatarVertexCount, BASE_AVATAR_VERTICES_PER_PLAYER + 36);
-assert.equal(heldTool.stats.avatarVertexCount, BASE_AVATAR_VERTICES_PER_PLAYER + MAX_HELD_ITEM_VERTICES_PER_PLAYER);
+assert.equal(heldBlock.stats.avatarVertexCount, BASE_AVATAR_VERTICES_PER_PLAYER + remoteHeldItemVertexCount("sand"));
+assert.equal(heldMaterial.stats.avatarVertexCount, BASE_AVATAR_VERTICES_PER_PLAYER + remoteHeldItemVertexCount("coal"));
+assert.equal(heldTool.stats.avatarVertexCount, BASE_AVATAR_VERTICES_PER_PLAYER + remoteHeldItemVertexCount("iron_pickaxe"));
+assert.ok(remoteHeldItemVertexCount("sand") > remoteHeldItemVertexCount("coal"),
+  "dense block texture and loose coal retain distinct canonical silhouettes");
 assert.equal(heldBlock.stats.nameplateVertexCount, bare.stats.nameplateVertexCount, "held gear cannot disturb names");
+
+function canonicalMipOccupiedCells(itemId: ItemId): number {
+  const occupied = Array.from({ length: 16 }, () => Array<boolean>(16).fill(false));
+  for (const run of getItemIconArt(itemId).runs) {
+    for (let x = run.x; x < run.x + run.width; x += 1) occupied[run.y][x] = true;
+  }
+  let cells = 0;
+  for (let y = 0; y < 8; y += 1) for (let x = 0; x < 8; x += 1) {
+    if (occupied[y * 2][x * 2] || occupied[y * 2][x * 2 + 1]
+      || occupied[y * 2 + 1][x * 2] || occupied[y * 2 + 1][x * 2 + 1]) cells += 1;
+  }
+  return cells;
+}
+
+for (const itemId of Object.keys(ITEMS) as ItemId[]) {
+  const canonicalColors = new Set(getItemIconArt(itemId).runs.map((run) => run.color.toLowerCase()));
+  const rectangles = remoteHeldItemRects(itemId);
+  assert.ok(rectangles.length > 0 && rectangles.length <= REMOTE_HELD_ITEM_MAX_RECTS,
+    `${itemId} has a non-empty bounded remote sprite`);
+  for (const rectangle of rectangles) {
+    assert.ok(rectangle.x >= 0 && rectangle.y >= 0
+      && rectangle.x + rectangle.width <= REMOTE_HELD_ITEM_LOGICAL_SIZE
+      && rectangle.y + rectangle.height <= REMOTE_HELD_ITEM_LOGICAL_SIZE);
+    const color = `#${rectangle.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`;
+    assert.ok(canonicalColors.has(color), `${itemId} remote mip uses only exact canonical palette colors`);
+  }
+  const retainedCells = rectangles.reduce((total, rectangle) => total + rectangle.width * rectangle.height, 0);
+  const retainedRatio = retainedCells / canonicalMipOccupiedCells(itemId);
+  assert.ok(retainedRatio >= 0.85 || rectangles.length === REMOTE_HELD_ITEM_MAX_RECTS,
+    `${itemId} retains at least 85% of its occupied distance mip or consumes the full bounded rectangle budget`);
+  if (retainedRatio < 0.85) assert.ok(retainedCells >= REMOTE_HELD_ITEM_MAX_RECTS,
+    `${itemId} budget-capped mip still preserves at least one occupied cell per retained rectangle`);
+}
+assert.equal(MAX_HELD_ITEM_VERTICES_PER_PLAYER, REMOTE_HELD_ITEM_MAX_RECTS * 6);
 
 const heldToolStart = BASE_AVATAR_VERTICES_PER_PLAYER * 6;
 let heldToolMinX = Infinity;
@@ -61,8 +104,32 @@ for (let offset = heldToolStart; offset < heldTool.stats.avatarVertexCount * 6; 
   if (red > 0.52 && green > 0.52) ironToolVertices += 1;
   if (red > green * 1.3) woodenHandleVertices += 1;
 }
-assert.ok(heldToolMinX > 0.25 && heldToolMaxX > 0.6, "held tool is attached at Steve's right hand");
+assert.ok(heldToolMinX > 0.18 && heldToolMaxX > 0.6, "held tool is attached at Steve's right hand");
 assert.ok(ironToolVertices > 0 && woodenHandleVertices > 0, "pickaxe has a readable iron head and wooden handle");
+
+function heldCentroid(sample: ReturnType<typeof geometry>): readonly [number, number, number] {
+  const start = BASE_AVATAR_VERTICES_PER_PLAYER * 6;
+  const end = sample.stats.avatarVertexCount * 6;
+  const count = (end - start) / 6;
+  let x = 0; let y = 0; let z = 0;
+  for (let offset = start; offset < end; offset += 6) {
+    x += sample.avatar[offset]; y += sample.avatar[offset + 1]; z += sample.avatar[offset + 2];
+  }
+  return [x / count, y / count, z / count];
+}
+const idlePickaxeCenter = heldCentroid(heldTool);
+const swungPickaxe = geometry({ heldItem: "iron_pickaxe" }, { armActionPhase: 0.5 });
+const swungPickaxeCenter = heldCentroid(swungPickaxe);
+assert.notDeepEqual(swungPickaxeCenter, idlePickaxeCenter, "canonical sprite follows the animated right-arm pitch");
+assert.ok(swungPickaxeCenter[2] > idlePickaxeCenter[2] + 0.1,
+  "swinging rotates the held sprite through the same anatomical shoulder joint as the hand");
+
+const idleBow = geometry({ heldItem: "bow" });
+const drawnBow = geometry({ heldItem: "bow" }, { bowDrawing: true });
+assert.equal(idleBow.stats.avatarVertexCount - BASE_AVATAR_VERTICES_PER_PLAYER, remoteHeldItemVertexCount("bow", false));
+assert.equal(drawnBow.stats.avatarVertexCount - BASE_AVATAR_VERTICES_PER_PLAYER, remoteHeldItemVertexCount("bow", true));
+assert.notDeepEqual(remoteHeldItemRects("bow", false), remoteHeldItemRects("bow", true),
+  "remote draw state swaps to the canonical drawn-bow artwork");
 
 const headOnly = geometry({ armorHead: "iron_helmet" });
 const chestOnly = geometry({ armorChest: "iron_chestplate" });
@@ -91,8 +158,12 @@ const fullyLeather = geometry({
   armorLegs: "leather_leggings",
   armorFeet: "leather_boots",
 });
-assert.equal(fullyIron.stats.avatarVertexCount, AVATAR_VERTICES_PER_PLAYER);
-assert.equal(fullyLeather.stats.avatarVertexCount, AVATAR_VERTICES_PER_PLAYER);
+assert.equal(fullyIron.stats.avatarVertexCount,
+  BASE_AVATAR_VERTICES_PER_PLAYER + MAX_ARMOR_VERTICES_PER_PLAYER + remoteHeldItemVertexCount("iron_sword"));
+assert.equal(fullyLeather.stats.avatarVertexCount,
+  BASE_AVATAR_VERTICES_PER_PLAYER + MAX_ARMOR_VERTICES_PER_PLAYER + remoteHeldItemVertexCount("wooden_sword"));
+assert.ok(fullyIron.stats.avatarVertexCount <= AVATAR_VERTICES_PER_PLAYER);
+assert.ok(fullyLeather.stats.avatarVertexCount <= AVATAR_VERTICES_PER_PLAYER);
 assert.equal(fullyIron.capacity.avatarFloats, AVATAR_VERTICES_PER_PLAYER * 6);
 
 function gearBrightness(sample: ReturnType<typeof geometry>): number {

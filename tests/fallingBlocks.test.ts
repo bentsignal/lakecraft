@@ -71,9 +71,9 @@ const occupiedFloor = resolveFallingBlocks({
 assert.deepEqual(occupiedFloor, { ok: true, moves: [], edits: [], finalBlocks: {} });
 
 const longStack = resolveFallingBlocks({
-  trigger: trigger(2, "stone", "air"),
-  authoritativeCells: [cell(0, "stone"), cell(1, "air"), cell(2, "air"),
-    ...Array.from({ length: FALLING_BLOCK_MAX_MOVES + 3 }, (_, index) => cell(3 + index, index % 2 ? "gravel" : "sand"))],
+  trigger: trigger(3, "stone", "air"),
+  authoritativeCells: [cell(1, "bedrock"), cell(2, "air"), cell(3, "air"),
+    ...Array.from({ length: FALLING_BLOCK_MAX_MOVES + 3 }, (_, index) => cell(4 + index, index % 2 ? "gravel" : "sand"))],
 });
 assert.equal(longStack.ok, true);
 if (longStack.ok) {
@@ -85,12 +85,12 @@ if (longStack.ok) {
 const worldFloor = resolveFallingBlocks({
   trigger: trigger(WORLD_EDIT_MIN_Y + 2, "air", "sand"),
   authoritativeCells: [
-    cell(WORLD_EDIT_MIN_Y, "air"), cell(WORLD_EDIT_MIN_Y + 1, "air"),
+    cell(WORLD_EDIT_MIN_Y, "bedrock"), cell(WORLD_EDIT_MIN_Y + 1, "air"),
     cell(WORLD_EDIT_MIN_Y + 2, "sand"), cell(WORLD_EDIT_MIN_Y + 3, "air"),
   ],
 });
 assert.equal(worldFloor.ok, true);
-if (worldFloor.ok) assert.equal(worldFloor.moves[0].destination.y, WORLD_EDIT_MIN_Y);
+if (worldFloor.ok) assert.equal(worldFloor.moves[0].destination.y, WORLD_EDIT_MIN_Y + 1);
 
 assert.deepEqual(resolveFallingBlocks({
   trigger: trigger(6, "air", "sand"), authoritativeCells: [cell(4, "air"), cell(6, "sand"), cell(7, "air")],

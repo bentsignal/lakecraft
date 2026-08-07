@@ -125,8 +125,10 @@ export const STANDING_EYE_HEIGHT = PLAYER_STANDING_EYE_HEIGHT;
 export const SNEAKING_EYE_HEIGHT = PLAYER_SNEAKING_EYE_HEIGHT;
 export const STANDING_BODY_HEIGHT = 1.78;
 export const SNEAKING_BODY_HEIGHT = 1.5;
-export const DEFAULT_FOV_RADIANS = Math.PI / 3;
-export const SPRINT_FOV_RADIANS = 66 * Math.PI / 180;
+export const DEFAULT_FOV_RADIANS = 90 * Math.PI / 180;
+export const SPRINT_FOV_RADIANS = 99 * Math.PI / 180;
+const MIN_FOV_RADIANS = 30 * Math.PI / 180;
+const MAX_FOV_RADIANS = 110 * Math.PI / 180;
 
 const MOVEMENT_EPSILON = 1e-4;
 const FORWARD_SPRINT_THRESHOLD = 0.1;
@@ -306,6 +308,12 @@ export function postureTargetsForMovement(mode: PlayerMovementMode): Readonly<Pl
   if (mode === "sneak") return SNEAK_POSTURE;
   if (mode === "sprint") return SPRINT_POSTURE;
   return IDLE_POSTURE;
+}
+
+/** Applies the existing ten-percent sprint widening to any configured base FOV. */
+export function movementFovRadians(mode: PlayerMovementMode, baseFovRadians = DEFAULT_FOV_RADIANS): number {
+  const base = finiteClamp(baseFovRadians, MIN_FOV_RADIANS, MAX_FOV_RADIANS, DEFAULT_FOV_RADIANS);
+  return mode === "sprint" ? base * SPRINT_FOV_RADIANS / DEFAULT_FOV_RADIANS : base;
 }
 
 /**
