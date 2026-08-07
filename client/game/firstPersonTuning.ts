@@ -74,11 +74,11 @@ export const FIRST_PERSON_TUNING = {
     pivot: [0.08, -0.04, -1.18] as FirstPersonVector,
   },
 
-  // The installed Minecraft block firstperson_righthand transform is the
-  // baseline. Pose Lab changes are deltas around the locked wrist contact.
+  // This prior live-reviewed angle combines the installed block transform with
+  // the camera-hand presentation: top plus two sides, lower corner in hand.
   block: {
     center: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [0, 315, 0] as FirstPersonVector,
+    rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,
     size: 0.4,
   },
 } as const;

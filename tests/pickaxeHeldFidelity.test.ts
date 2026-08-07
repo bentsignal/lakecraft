@@ -239,12 +239,12 @@ assert.ok(pickViewport.minX > 0.55 && pickViewport.minX < 0.75,
 assert.ok(pickViewport.maxX >= 0.95 && pickViewport.maxX < 1.3,
   "the exact pickaxe head stays readable at the right viewport edge");
 assert.ok(pickViewport.minY < -0.7, "the lower handle reaches the hand in the lower-right");
-assert.ok(pickViewport.maxY > -0.15 && pickViewport.maxY < 0.15,
-  "the head stays around the mid-right horizon instead of filling the screen");
+assert.ok(pickViewport.maxY > -0.3 && pickViewport.maxY < 0.05,
+  "the outward-reaching wrist keeps the head in the middle-right without filling the screen");
 assert.ok(Math.abs(gripNdc[0] - 0.66) < 1e-12 && Math.abs(gripNdc[1] + 0.64) < 1e-12,
   "grip is the rig's exact low/right wrist socket");
 assert.ok(pickViewport.maxY > gripNdc[1] + 0.35, "head sits clearly above the grip");
-assert.ok(pickViewport.minX < gripNdc[0] - 0.04, "the mirrored head extends leftward from the lower-right grip");
+assert.ok(pickViewport.minX < gripNdc[0] - 0.03, "the mirrored head extends leftward from the lower-right grip");
 
 // Swing still animates through the shared action matrix without reallocating geometry
 const swingPose = sampleFirstPersonAction([0, 0, 0, 0, 0, 0], "mine", 110, false, false);

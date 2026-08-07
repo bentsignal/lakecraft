@@ -20,8 +20,11 @@ export const VIEWMODEL_NEAR = 0.01;
 export const VIEWMODEL_FAR = 8;
 export const VIEWMODEL_SHOULDER_NDC = Object.freeze([1.16, -1.2] as const);
 export const VIEWMODEL_WRIST_NDC = Object.freeze([0.66, -0.64] as const);
-export const VIEWMODEL_SHOULDER_DEPTH = 1.18;
-export const VIEWMODEL_WRIST_DEPTH = 0.86;
+// The shoulder begins nearest the camera and the wrist reaches away into the
+// world. Reversing these depths makes the arm point back at the viewer even
+// though its two screen anchors still look superficially connected.
+export const VIEWMODEL_SHOULDER_DEPTH = 0.86;
+export const VIEWMODEL_WRIST_DEPTH = 1.18;
 export const VIEWMODEL_ARM_CROSS_SECTION_SCALE = 0.45;
 
 function finitePositive(value: number, fallback: number): number {

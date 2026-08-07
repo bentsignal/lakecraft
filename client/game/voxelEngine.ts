@@ -1575,6 +1575,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobAtlasLocation = gl.getUniformLocation(mobProgram, "uAtlas");
   const atmospherePositionLocation = gl.getAttribLocation(atmosphereProgram, "p");
   const atmosphereAspectLocation = gl.getUniformLocation(atmosphereProgram, "A");
+  const atmosphereFovLocation = gl.getUniformLocation(atmosphereProgram, "Q");
   const atmosphereTimeLocation = gl.getUniformLocation(atmosphereProgram, "T");
   const atmosphereEyeLocation = gl.getUniformLocation(atmosphereProgram, "E");
   const atmosphereForwardLocation = gl.getUniformLocation(atmosphereProgram, "F");
@@ -1636,6 +1637,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const raycastEye: Vec3 = [0, 0, 0];
   const raycastFacing: Vec3 = [0, 0, 0];
   const projectionMatrix = new Float32Array(16);
+  const firstPersonProjectionMatrix = new Float32Array(16);
   const viewMatrix = new Float32Array(16);
   const mvpMatrix = new Float32Array(16);
   const firstPersonMvpMatrix = new Float32Array(16);
@@ -3291,9 +3293,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     renderCenter[1] = eye[1] + facing[1];
     renderCenter[2] = eye[2] + facing[2];
     writeRenderDistanceFogRange(fogRange, streamingChunkRadius);
+    const aspect = canvas.width / canvas.height;
     writePerspectiveMatrix(projectionMatrix,
       cameraPosture.fovRadians,
-      canvas.width / canvas.height,
+      aspect,
+      0.05,
+      fogRange[1] + WORLD_CHUNK_SIZE,
+    );
+    // Sprint widens the world camera, but the viewmodel follows only the
+    // configured FOV. Transient sprint smoothing must not stretch the arm.
+    writePerspectiveMatrix(firstPersonProjectionMatrix,
+      options.getFieldOfViewRadians?.() ?? cameraPosture.fovRadians,
+      aspect,
       0.05,
       fogRange[1] + WORLD_CHUNK_SIZE,
     );
@@ -3346,6 +3357,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.enableVertexAttribArray(atmospherePositionLocation);
     gl.vertexAttribPointer(atmospherePositionLocation, 2, gl.FLOAT, false, 0, 0);
     gl.uniform1f(atmosphereAspectLocation, canvas.width / canvas.height);
+    gl.uniform1f(atmosphereFovLocation, Math.tan(cameraPosture.fovRadians / 2));
     gl.uniform1f(atmosphereTimeLocation, now / 1_000);
     gl.uniform3fv(atmosphereEyeLocation, eye);
     gl.uniform3fv(atmosphereForwardLocation, facing);
@@ -3576,7 +3588,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.clear(gl.DEPTH_BUFFER_BIT);
       writeFirstPersonMvp(
         firstPersonMvpMatrix,
-        projectionMatrix,
+        firstPersonProjectionMatrix,
         now,
         reducedMotionQuery?.matches === true,
       );
@@ -3620,7 +3632,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
         firstPersonSkinRenderer.draw(
           firstPersonMvpMatrix,
-          projectionMatrix,
+          firstPersonProjectionMatrix,
           firstPersonSkinLight,
         );
         drawCalls += 1;

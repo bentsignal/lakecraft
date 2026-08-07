@@ -330,9 +330,9 @@ function appendSocketedTexturedCube(
   // vertex is authored relative to it, so that contact is exactly the wrist.
   const grip = [size * 0.32, -size * 0.48, size * 0.28] as const;
   const rotation = [
-    transform.rotationDegrees[0] + tuning.rotationDegrees[0] - FIRST_PERSON_TUNING.block.rotationDegrees[0],
-    transform.rotationDegrees[1] + tuning.rotationDegrees[1] - FIRST_PERSON_TUNING.block.rotationDegrees[1],
-    transform.rotationDegrees[2] + tuning.rotationDegrees[2] - FIRST_PERSON_TUNING.block.rotationDegrees[2],
+    transform.rotationDegrees[0] + tuning.rotationDegrees[0] - MINECRAFT_BLOCK_FIRST_PERSON.rotationDegrees[0],
+    transform.rotationDegrees[1] + tuning.rotationDegrees[1] - MINECRAFT_BLOCK_FIRST_PERSON.rotationDegrees[1],
+    transform.rotationDegrees[2] + tuning.rotationDegrees[2] - MINECRAFT_BLOCK_FIRST_PERSON.rotationDegrees[2],
   ] as const;
   for (const face of CUBE_FACES) {
     const texture = blockTextureForFace(block, face[0]);

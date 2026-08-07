@@ -27,9 +27,14 @@ assert.ok(engine.includes("cameraPosture.fovRadians = movementFovRadians(movemen
   "camera resets discard sprint widening without discarding the configured base FOV");
 assert.match(
   engine,
-  /writePerspectiveMatrix\(\s*projectionMatrix,\s*cameraPosture\.fovRadians,\s*canvas\.width \/ canvas\.height,\s*0\.05,\s*fogRange\[1\] \+ WORLD_CHUNK_SIZE,\s*\)/,
+  /writePerspectiveMatrix\(\s*projectionMatrix,\s*cameraPosture\.fovRadians,\s*aspect,\s*0\.05,\s*fogRange\[1\] \+ WORLD_CHUNK_SIZE,\s*\)/,
   "rendering consumes the smoothed FOV with the render-distance fog-derived far plane",
 );
+assert.match(engine,
+  /writePerspectiveMatrix\(firstPersonProjectionMatrix,\s*options\.getFieldOfViewRadians\?\.\(\) \?\? cameraPosture\.fovRadians,\s*aspect,/,
+  "temporary sprint FOV widening cannot stretch the first-person arm and held item");
+assert.match(engine, /uniform1f\(atmosphereFovLocation, Math\.tan\(cameraPosture\.fovRadians \/ 2\)\)/,
+  "the sky and world share the same smoothed sprint-FOV projection");
 assert.ok(engine.includes("const eye = cameraEye(renderEye);"), "rendering consumes the bobbed visual camera origin through retained scratch");
 assert.ok(engine.includes("interactionEye(raycastEye)"), "block targeting uses the posture eye without cosmetic bob or allocation");
 assert.ok(engine.includes("const eye = interactionEye();"), "combat uses the same Lakebed-valid posture eye");

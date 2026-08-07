@@ -89,9 +89,9 @@ const renderer = createFirstPersonRenderer(capture.gl);
 renderer[3]("dirt", BLOCK.DIRT);
 const cube = capture.uploads.get(2);
 if (!cube) throw new Error("textured cube upload missing");
-for (const [index, expected] of [0, 315 * Math.PI / 180, 0].entries()) {
+for (const [index, expected] of [28.648, -37.815, 2.292].map((value) => value * Math.PI / 180).entries()) {
   assert.ok(Math.abs(FIRST_PERSON_CUBE_ROTATION[index] - expected) < 0.00001,
-    "human-readable tuning degrees preserve the installed Minecraft block display pose");
+    "human-readable tuning degrees preserve the prior live-reviewed held-block pose");
 }
 const cubeCenters = Array.from({ length: 6 }, (_, face) => center(cube, face * 6, 6));
 assert.ok(cubeCenters.every((point) => point.every(Number.isFinite)),

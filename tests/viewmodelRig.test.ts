@@ -37,6 +37,8 @@ for (const fovDegrees of fovs) {
     assertPointNear(projectViewmodelPoint(pose.wrist, fov, aspect), VIEWMODEL_WRIST_NDC,
       `wrist remains at the authored hand socket at FOV ${fovDegrees}, aspect ${aspect}`);
     assert.strictEqual(pose.socket, pose.wrist, "item socket is the wrist object, not a nearby copy");
+    assert.ok(pose.wrist[2] < pose.shoulder[2],
+      "the wrist reaches away from the camera instead of pointing back at the player");
     assert.ok(pose.armLength > 0.1 && Number.isFinite(pose.armLength));
     const projection = writeViewmodelProjection(new Float32Array(16), fov, aspect);
     assert.ok(Number.isFinite(projection[0]) && projection[0] > 0);
