@@ -16,12 +16,6 @@ import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
 import { appendItemSpriteGeometry, ITEM_SPRITE_VERTEX_FLOATS } from "../client/game/itemSpriteGeometry.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
-import {
-  createViewmodelRigPoseFromProjection,
-  projectViewmodelPoint,
-  viewmodelProjectionParameters,
-} from "../client/game/viewmodelRig.ts";
-
 const PICKAXE_TIERS = ["wooden", "stone", "iron", "golden", "diamond"] as const;
 
 function occupancy(itemId: ItemId): ReadonlySet<string> {
@@ -117,11 +111,8 @@ assert.ok(FIRST_PERSON_PICKAXE_PRESENTATION.depth < axePresentation.depth,
   "pickaxe extrusion is thinner than the independently authored axe depth");
 assert.ok(Math.abs(FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees[1] - 180) <= 8,
   "pickaxe Y rotation mirrors grip into the lower-right hand near 180°");
-assert.notDeepEqual(
-  [...FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees],
-  [...axePresentation.rotationDegrees],
-  "pickaxe pose is distinct from axe/shovel/sword presentation",
-);
+assert.notDeepEqual(FIRST_PERSON_PICKAXE_PRESENTATION, axePresentation,
+  "pickaxe has a reference-calibrated anchor and scale distinct from axe/shovel/sword presentation");
 
 type CapturedBuffer = { id: number };
 function captureGl(): { gl: WebGLRenderingContext; uploads: Map<number, Float32Array> } {
@@ -228,21 +219,17 @@ assert.ok(pick.depth > 0.01 && pick.depth < 0.5,
 const wideProjection = perspective(16 / 9);
 const pickMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
 const pickViewport = ndcBounds(pickUpload, renderer[2][0], pickMvp);
-const rig = createViewmodelRigPoseFromProjection(wideProjection);
-const projectionParameters = viewmodelProjectionParameters(wideProjection);
-const gripNdc = projectViewmodelPoint(
-  rig.socket, projectionParameters.verticalFovRadians, projectionParameters.aspect,
-);
+const gripNdc = FIRST_PERSON_PICKAXE_PRESENTATION.center.slice(0, 2);
 console.log(JSON.stringify({ pickViewport, gripNdc }));
-assert.ok(pickViewport.minX > 0.55 && pickViewport.minX < 0.75,
+assert.ok(pickViewport.minX > 0.5 && pickViewport.minX < 0.7,
   "the visible pickaxe begins in the middle-right rather than centered broadside");
 assert.ok(pickViewport.maxX >= 0.95 && pickViewport.maxX < 1.3,
   "the exact pickaxe head stays readable at the right viewport edge");
 assert.ok(pickViewport.minY < -0.7, "the lower handle reaches the hand in the lower-right");
-assert.ok(pickViewport.maxY > -0.3 && pickViewport.maxY < 0.05,
-  "the outward-reaching wrist keeps the head in the middle-right without filling the screen");
-assert.ok(Math.abs(gripNdc[0] - 0.66) < 1e-12 && Math.abs(gripNdc[1] + 0.64) < 1e-12,
-  "grip is the rig's exact low/right wrist socket");
+assert.ok(pickViewport.maxY > -0.35 && pickViewport.maxY < 0.1,
+  "the screen-space grip keeps the head in the middle-right without filling the screen");
+assert.ok(Math.abs(gripNdc[0] - 1.08) < 1e-12 && Math.abs(gripNdc[1] + 1.05) < 1e-12,
+  "grip is independently anchored just beyond the lower-right frame");
 assert.ok(pickViewport.maxY > gripNdc[1] + 0.35, "head sits clearly above the grip");
 assert.ok(pickViewport.minX < gripNdc[0] - 0.03, "the mirrored head extends leftward from the lower-right grip");
 

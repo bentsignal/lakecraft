@@ -2,9 +2,9 @@
  * FIRST-PERSON POSE LAB
  *
  * These are optional development deltas on top of the first-person viewmodel.
- * Empty-hand and held-item presentations are mutually exclusive. Position and
- * pivot are retained for compatibility with saved Pose Lab state; rotation and
- * scale remain the safe live controls for each selected item family.
+ * Empty-hand and held-item presentations are mutually exclusive. Held-item X/Y
+ * position values are screen-space deltas, while Z changes camera depth. This
+ * keeps the authored pose visually stable when gameplay FOV changes.
  *
  * Start with ONE small change:
  *   position:        change by 0.02 (example: 0 becomes 0.02)
@@ -79,7 +79,7 @@ export const FIRST_PERSON_TUNING = {
   block: {
     center: [0, 0, 0] as FirstPersonVector,
     rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,
-    size: 0.4,
+    size: 0.82,
   },
 } as const;
 

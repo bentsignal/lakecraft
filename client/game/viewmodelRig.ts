@@ -7,6 +7,8 @@ export type ViewmodelRigPose = Readonly<{
   wrist: ViewmodelVec3;
   socket: ViewmodelVec3;
   armLength: number;
+  verticalFovRadians: number;
+  aspect: number;
   viewScale: number;
   itemScale: number;
 }>;
@@ -27,7 +29,7 @@ export const VIEWMODEL_SHOULDER_DEPTH = 0.86;
 export const VIEWMODEL_WRIST_DEPTH = 1.18;
 // Keep the real skin arm's four-pixel width/depth. The old 0.45 multiplier
 // compressed both axes into a visibly skinny stick in first person.
-export const VIEWMODEL_ARM_CROSS_SECTION_SCALE = 1.5;
+export const VIEWMODEL_ARM_CROSS_SECTION_SCALE = 1.8;
 
 function finitePositive(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -76,6 +78,8 @@ export function createViewmodelRigPose(
       wrist[1] - shoulder[1],
       wrist[2] - shoulder[2],
     ),
+    verticalFovRadians,
+    aspect,
     viewScale: Math.tan(verticalFovRadians / 2),
     itemScale: Math.tan(verticalFovRadians / 2) * (aspect >= 1 ? 1 : aspect / (16 / 9)),
   });

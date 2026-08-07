@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { ITEMS, type ItemId } from "../../shared/game.ts";
 import {
   FIRST_PERSON_TUNING,
   currentFirstPersonTuning,
@@ -20,9 +21,28 @@ const GROUP_LABELS: Readonly<Record<PoseGroup, string>> = {
   otherItem: "Other item",
 };
 
+const PREVIEW_ITEMS = Object.freeze([
+  "diamond_pickaxe",
+  "diamond_axe",
+  "diamond_shovel",
+  "diamond_sword",
+  "planks",
+  "bow",
+  "cooked_chicken",
+  "iron_ingot",
+] as const satisfies readonly ItemId[]);
+
+function poseGroupForItem(itemId: ItemId | null): PoseGroup {
+  if (itemId === null) return "arm";
+  if (itemId === "bow") return "bow";
+  if (ITEMS[itemId].tool) return "tool";
+  if (ITEMS[itemId].category === "block" && itemId !== "torch") return "block";
+  return "otherItem";
+}
+
 const POSE_LAB_CSS = `
 .lc-pose-lab{--lab-ink:#e8e2d1;--lab-dim:#a9a18d;--lab-edge:#15130f;--lab-panel:#26231d;--lab-well:#11100d;background:linear-gradient(135deg,#343026,#211f1a);border:2px solid var(--lab-edge);box-shadow:inset 1px 1px #706956,inset -1px -1px #090806,4px 5px 0 rgba(0,0,0,.42);color:var(--lab-ink);font:11px/1.15 var(--lc-pixel-font,"Courier New",monospace);left:12px;max-height:calc(100dvh - 62px);overflow:auto;padding:9px;position:fixed;top:42px;width:min(332px,calc(100vw - 24px));z-index:90}
-.lc-pose-lab *{box-sizing:border-box}.lc-pose-lab__head{align-items:center;display:flex;justify-content:space-between;margin-bottom:8px}.lc-pose-lab__head strong{font-size:14px;font-weight:400;letter-spacing:.07em}.lc-pose-lab__live{color:#8dff7a;font-size:9px}.lc-pose-lab label{display:grid;gap:4px}.lc-pose-lab select,.lc-pose-lab input,.lc-pose-lab button{background:var(--lab-well);border:1px solid #0a0907;box-shadow:inset 1px 1px #050504,inset -1px -1px #575143;color:var(--lab-ink);font:11px var(--lc-pixel-font,"Courier New",monospace)}.lc-pose-lab select{height:28px;padding:4px 6px;width:100%}.lc-pose-lab__row{margin-top:8px}.lc-pose-lab__row>span{color:var(--lab-dim);font-size:9px;letter-spacing:.05em;text-transform:uppercase}.lc-pose-lab__triplet{display:grid;gap:5px;grid-template-columns:repeat(3,minmax(0,1fr))}.lc-pose-lab__scrub{display:block;position:relative}.lc-pose-lab__scrub b{color:#817966;font-size:8px;font-weight:400;left:5px;pointer-events:none;position:absolute;top:8px;z-index:1}.lc-pose-lab__scrub em{color:#7f9271;font-size:11px;font-style:normal;pointer-events:none;position:absolute;right:5px;top:7px;z-index:1}.lc-pose-lab input{appearance:textfield;cursor:ns-resize;height:27px;min-width:0;padding:4px 17px 4px 16px;touch-action:none;user-select:none;width:100%}.lc-pose-lab input::-webkit-inner-spin-button,.lc-pose-lab input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.lc-pose-lab input[data-scrubbing="true"]{background:#252d1e;border-color:#9fbd82;cursor:ns-resize;outline:1px solid #d9ffc0}.lc-pose-lab input:focus,.lc-pose-lab select:focus,.lc-pose-lab button:focus-visible{border-color:#fff;outline:1px solid #fff}.lc-pose-lab__single{grid-template-columns:1fr}.lc-pose-lab__single input{padding-left:7px}.lc-pose-lab__socket-note{background:#1c281b;border:1px solid #43583d;color:#b9d5af;font-size:9px;line-height:1.35;margin-top:8px;padding:7px}.lc-pose-lab__bow-preview{background:rgba(0,0,0,.2);border:1px solid #15130f;margin-top:8px;padding:6px}.lc-pose-lab__bow-preview>span{color:var(--lab-dim);display:block;font-size:9px;letter-spacing:.05em;margin-bottom:5px;text-transform:uppercase}.lc-pose-lab__bow-preview-controls{display:grid;gap:5px;grid-template-columns:1fr 1fr}.lc-pose-lab__bow-preview button[aria-pressed="true"]{background:#4a593c;border-color:#a5c88c;box-shadow:inset 1px 1px #788e67,inset -1px -1px #182013;color:#efffe5}.lc-pose-lab__bow-preview small{color:#928b79;display:block;font-size:8px;line-height:1.3;margin-top:5px}.lc-pose-lab__actions{display:grid;gap:6px;grid-template-columns:1fr 1fr;margin-top:9px}.lc-pose-lab button{cursor:pointer;min-height:28px;padding:5px}.lc-pose-lab button:hover{background:#474032}.lc-pose-lab__readout{background:rgba(0,0,0,.24);color:#c8c0aa;display:block;font-size:8px;line-height:1.35;margin-top:8px;overflow-wrap:anywhere;padding:6px}.lc-pose-lab__hint{color:var(--lab-dim);display:block;font-size:8px;line-height:1.35;margin-top:7px}@media(max-width:720px){.lc-pose-lab{max-height:42dvh;top:auto;bottom:10px}}
+.lc-pose-lab *{box-sizing:border-box}.lc-pose-lab__head{align-items:center;display:flex;justify-content:space-between;margin-bottom:8px}.lc-pose-lab__head strong{font-size:14px;font-weight:400;letter-spacing:.07em}.lc-pose-lab__live{color:#8dff7a;font-size:9px}.lc-pose-lab label{display:grid;gap:4px}.lc-pose-lab select,.lc-pose-lab input,.lc-pose-lab button{background:var(--lab-well);border:1px solid #0a0907;box-shadow:inset 1px 1px #050504,inset -1px -1px #575143;color:var(--lab-ink);font:11px var(--lc-pixel-font,"Courier New",monospace)}.lc-pose-lab select{height:28px;padding:4px 6px;width:100%}.lc-pose-lab__row{margin-top:8px}.lc-pose-lab__row>span{color:var(--lab-dim);font-size:9px;letter-spacing:.05em;text-transform:uppercase}.lc-pose-lab__triplet{display:grid;gap:5px;grid-template-columns:repeat(3,minmax(0,1fr))}.lc-pose-lab__scrub{display:block;position:relative}.lc-pose-lab__scrub b{color:#817966;font-size:8px;font-weight:400;left:5px;pointer-events:none;position:absolute;top:8px;z-index:1}.lc-pose-lab__scrub em{color:#7f9271;font-size:11px;font-style:normal;pointer-events:none;position:absolute;right:5px;top:7px;z-index:1}.lc-pose-lab input{appearance:textfield;cursor:ns-resize;height:27px;min-width:0;padding:4px 17px 4px 16px;touch-action:none;user-select:none;width:100%}.lc-pose-lab input::-webkit-inner-spin-button,.lc-pose-lab input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.lc-pose-lab input[data-scrubbing="true"]{background:#252d1e;border-color:#9fbd82;cursor:ns-resize;outline:1px solid #d9ffc0}.lc-pose-lab input:focus,.lc-pose-lab select:focus,.lc-pose-lab button:focus-visible{border-color:#fff;outline:1px solid #fff}.lc-pose-lab__single{grid-template-columns:1fr}.lc-pose-lab__single input{padding-left:7px}.lc-pose-lab__socket-note{background:#1c281b;border:1px solid #43583d;color:#b9d5af;font-size:9px;line-height:1.35;margin-top:8px;padding:7px}.lc-pose-lab__preview{background:rgba(0,0,0,.2);border:1px solid #15130f;margin:8px 0;padding:6px}.lc-pose-lab__preview>span{color:var(--lab-dim);font-size:9px;letter-spacing:.05em;text-transform:uppercase}.lc-pose-lab__bow-preview{background:rgba(0,0,0,.2);border:1px solid #15130f;margin-top:8px;padding:6px}.lc-pose-lab__bow-preview>span{color:var(--lab-dim);display:block;font-size:9px;letter-spacing:.05em;margin-bottom:5px;text-transform:uppercase}.lc-pose-lab__bow-preview-controls{display:grid;gap:5px;grid-template-columns:1fr 1fr}.lc-pose-lab__bow-preview button[aria-pressed="true"]{background:#4a593c;border-color:#a5c88c;box-shadow:inset 1px 1px #788e67,inset -1px -1px #182013;color:#efffe5}.lc-pose-lab__bow-preview small{color:#928b79;display:block;font-size:8px;line-height:1.3;margin-top:5px}.lc-pose-lab__actions{display:grid;gap:6px;grid-template-columns:1fr 1fr;margin-top:9px}.lc-pose-lab button{cursor:pointer;min-height:28px;padding:5px}.lc-pose-lab button:hover{background:#474032}.lc-pose-lab__readout{background:rgba(0,0,0,.24);color:#c8c0aa;display:block;font-size:8px;line-height:1.35;margin-top:8px;overflow-wrap:anywhere;padding:6px}.lc-pose-lab__hint{color:var(--lab-dim);display:block;font-size:8px;line-height:1.35;margin-top:7px}@media(max-width:720px){.lc-pose-lab{max-height:42dvh;top:auto;bottom:10px}}
 `;
 
 function finite(value: number, fallback: number): number {
@@ -134,18 +154,36 @@ export function FirstPersonPoseLab({
   open,
   onBowPreviewChange,
   onCycleCamera,
+  onHeldItemPreviewChange,
   onOpenVisualLab,
+  onUsePreviewChange,
 }: {
   open: boolean;
   onBowPreviewChange?: (drawn: boolean | null) => void;
   onCycleCamera?: () => string;
+  onHeldItemPreviewChange?: (itemId: ItemId | null | undefined) => void;
   onOpenVisualLab?: () => void;
+  onUsePreviewChange?: (active: boolean) => void;
 }) {
   const [group, setGroup] = useState<PoseGroup>("tool");
   const [tuning, setTuning] = useState<FirstPersonTuning>(() => currentFirstPersonTuning().tuning);
   const [copied, setCopied] = useState(false);
   const [bowDrawn, setBowDrawn] = useState(false);
   const [cameraMode, setCameraMode] = useState("first person");
+  const [previewItem, setPreviewItem] = useState("actual");
+  const [usePreview, setUsePreview] = useState(false);
+
+  useEffect(() => {
+    if (open) return;
+    setPreviewItem("actual");
+    onHeldItemPreviewChange?.(undefined);
+  }, [onHeldItemPreviewChange, open]);
+
+  useEffect(() => {
+    const active = open && group === "otherItem" && usePreview;
+    onUsePreviewChange?.(active);
+    return () => onUsePreviewChange?.(false);
+  }, [group, onUsePreviewChange, open, usePreview]);
 
   useEffect(() => {
     if (!open || group !== "bow") {
@@ -197,10 +235,10 @@ export function FirstPersonPoseLab({
 
   const active = tuning[group];
   const readout = group === "block"
-    ? `item only · Minecraft rotation [${active.rotationDegrees.join(", ")}] · size ${active.size}`
+    ? `item only · anchor offset [${active.center.join(", ")}] · Minecraft rotation [${active.rotationDegrees.join(", ")}] · size ${active.size}`
     : group === "arm"
       ? "empty slot only · full-width skin arm"
-      : `item only · rotation delta [${active.rotationDegrees.join(", ")}] · scale ${active.scale}`;
+      : `item only · anchor offset [${active.position.join(", ")}] · rotation delta [${active.rotationDegrees.join(", ")}] · scale ${active.scale}`;
 
   async function copyValues(): Promise<void> {
     try {
@@ -216,6 +254,24 @@ export function FirstPersonPoseLab({
       <style>{POSE_LAB_CSS}</style>
       <header className="lc-pose-lab__head"><strong>POSE LAB</strong><span className="lc-pose-lab__live">● LIVE</span></header>
       <div className="lc-pose-lab__socket-note">EXCLUSIVE VIEWMODEL · An empty slot shows the arm. Any selected item replaces it.</div>
+      <label className="lc-pose-lab__preview">
+        <span>Preview item</span>
+        <select
+          aria-label="Preview held item"
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setPreviewItem(value);
+            const itemId = value === "actual" ? undefined : value === "empty" ? null : value as ItemId;
+            onHeldItemPreviewChange?.(itemId);
+            if (itemId !== undefined) setGroup(poseGroupForItem(itemId));
+          }}
+          value={previewItem}
+        >
+          <option value="actual">Actual hotbar selection</option>
+          <option value="empty">Empty hand</option>
+          {PREVIEW_ITEMS.map((itemId) => <option key={itemId} value={itemId}>{ITEMS[itemId].label}</option>)}
+        </select>
+      </label>
       <label>
         <span>What are you holding?</span>
         <select onChange={(event) => setGroup(event.currentTarget.value as PoseGroup)} value={group}>
@@ -234,8 +290,19 @@ export function FirstPersonPoseLab({
           <small>Hold a bow, then switch poses here. This never fires or consumes an arrow.</small>
         </div>
       ) : null}
+      {group === "otherItem" ? (
+        <div className="lc-pose-lab__bow-preview">
+          <span>Use preview</span>
+          <div aria-label="Item use preview" className="lc-pose-lab__bow-preview-controls" role="group">
+            <button aria-pressed={!usePreview} onClick={() => setUsePreview(false)} type="button">Idle</button>
+            <button aria-pressed={usePreview} onClick={() => setUsePreview(true)} type="button">Mid-use</button>
+          </div>
+          <small>With food selected, Mid-use freezes the eating pose for reference comparison.</small>
+        </div>
+      ) : null}
       {group === "block" ? (
         <>
+          <VectorInputs label="Screen anchor offset" onChange={(index, value) => updateBlockVector("center", index, value)} step={0.01} value={active.center} />
           <VectorInputs label="Rotation degrees" onChange={(index, value) => updateBlockVector("rotationDegrees", index, value)} step={1} value={active.rotationDegrees} />
           <div className="lc-pose-lab__row lc-pose-lab__single"><span>Size</span><ScrubNumberInput label="Size" min={0.05} onChange={updateBlockSize} step={0.01} value={active.size} /></div>
         </>
@@ -243,6 +310,7 @@ export function FirstPersonPoseLab({
         <div className="lc-pose-lab__socket-note">The full-width skin arm appears only for an empty hotbar slot.</div>
       ) : (
         <>
+          <VectorInputs label="Screen anchor offset" onChange={(index, value) => updateTransformVector("position", index, value)} step={0.01} value={active.position} />
           <VectorInputs label="Rotation degrees" onChange={(index, value) => updateTransformVector("rotationDegrees", index, value)} step={1} value={active.rotationDegrees} />
           <div className="lc-pose-lab__row lc-pose-lab__single"><span>Scale</span><ScrubNumberInput label="Scale" min={0.05} onChange={updateTransformScale} step={0.01} value={active.scale} /></div>
         </>

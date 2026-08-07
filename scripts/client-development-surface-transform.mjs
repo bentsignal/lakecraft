@@ -4,8 +4,8 @@ const REVIEWED_DEVELOPMENT_SURFACES = Object.freeze({
   modal: "b6b7c1c8",
   guard: "cfe8bf8b",
   dependency: "55faebb2",
-  callback: "2cec4c55",
-  render: "90c1681d",
+  callback: "5385195e",
+  render: "e33185c9",
 });
 
 function fingerprint(source) {

@@ -2069,6 +2069,15 @@ function SinglePlayerWorld({
   const setPoseLabBowPreview = useCallback((drawn: boolean | null) => {
     engineRef.current?.setPoseLabDrawPreview(drawn);
   }, []);
+  const setPoseLabHeldItemPreview = useCallback((itemId: ItemId | null | undefined) => {
+    const actual = inventoryRef.current[selectedRef.current]?.itemId ?? null;
+    const preview = itemId === undefined ? actual : itemId;
+    engineRef.current?.setSelectedBlock(preview ? ITEM_TO_ENGINE[preview] ?? BLOCK.AIR : BLOCK.AIR);
+    engineRef.current?.setSelectedItem(preview);
+  }, []);
+  const setPoseLabUsePreview = useCallback((active: boolean) => {
+    engineRef.current?.setPoseLabActionPreview(active ? "use" : null, 0.65);
+  }, []);
   /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
     if (!persist("quit")) return;
@@ -2109,7 +2118,9 @@ function SinglePlayerWorld({
       <FirstPersonPoseLab
         onBowPreviewChange={setPoseLabBowPreview}
         onCycleCamera={() => engineRef.current?.cycleCameraMode() ?? "first_person"}
+        onHeldItemPreviewChange={setPoseLabHeldItemPreview}
         onOpenVisualLab={() => setVisualLabOpen(true)}
+        onUsePreviewChange={setPoseLabUsePreview}
         open={(pauseOpen || pointerCaptureNeeded) && !inventoryOpen && !uiModalOpen && !deathScreenOpen}
       />
       <VisualLab

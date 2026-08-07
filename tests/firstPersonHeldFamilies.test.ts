@@ -7,7 +7,6 @@ import {
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
-import { createViewmodelRigPoseFromProjection } from "../client/game/viewmodelRig.ts";
 
 type CapturedBuffer = { id: number };
 function captureGl(): { gl: WebGLRenderingContext; uploads: Map<number, Float32Array> } {
@@ -31,10 +30,10 @@ function captureGl(): { gl: WebGLRenderingContext; uploads: Map<number, Float32A
   };
 }
 
-function perspective(aspect: number): Float32Array {
+function perspective(aspect: number, fovDegrees = 70): Float32Array {
   const projection = new Float32Array(16);
   const near = 0.05; const far = 90;
-  const f = 1 / Math.tan(70 * Math.PI / 360);
+  const f = 1 / Math.tan(fovDegrees * Math.PI / 360);
   projection[0] = f / aspect; projection[5] = f;
   projection[10] = (far + near) / (near - far); projection[11] = -1;
   projection[14] = 2 * far * near / (near - far);
@@ -47,13 +46,6 @@ function visibleFraction(bounds: Bounds): number {
   const visibleHeight = Math.max(0, Math.min(1, bounds.maxY) - Math.max(-1, bounds.minY));
   return visibleWidth * visibleHeight
     / ((bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY));
-}
-function projectedScreenPoint(point: readonly [number, number, number], mvp: Float32Array): readonly [number, number] {
-  const [x, y, z] = point;
-  const w = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
-  const screenX = (mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12]) / w;
-  const screenY = (mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13]) / w;
-  return [(screenX + 1) * 50, (1 - screenY) * 50];
 }
 function projectedBounds(
   data: Float32Array,
@@ -79,12 +71,13 @@ function projectedBounds(
 const capture = captureGl();
 const renderer = createFirstPersonRenderer(capture.gl);
 const projection = perspective(16 / 9);
-function render(itemId: ItemId, drawn = false): Bounds {
+function render(itemId: ItemId, drawn = false, activeProjection = projection): Bounds {
   renderer[3](itemId, BLOCK.AIR);
   renderer[4](drawn, drawn ? 1 : 0);
+  const mvp = renderer[6](new Float32Array(16), activeProjection, 0, false);
   const upload = capture.uploads.get(1);
   if (!upload) throw new Error(`${itemId} color upload missing`);
-  return projectedBounds(upload, renderer[2][0], renderer[6](new Float32Array(16), projection, 0, false));
+  return projectedBounds(upload, renderer[2][0], mvp);
 }
 
 assert.equal(firstPersonSpriteFamily("iron_pickaxe"), "pickaxe");
@@ -115,7 +108,7 @@ const sword = render("iron_sword");
 for (const [label, bounds] of [["pickaxe", pickaxe], ["axe", axe], ["shovel", shovel]] as const) {
   assert.ok(bounds.minX > 0.45 && bounds.minX < 0.9 && bounds.maxX > 0.9
     && bounds.minY < -0.55 && bounds.maxY > -0.3,
-  `${label} rises from the shared lower-right wrist socket: ${JSON.stringify(bounds)}`);
+  `${label} rises from its independent lower-right screen anchor: ${JSON.stringify(bounds)}`);
 }
 assert.ok(shovelHead.maxY - shovelHead.minY >= (shovelHead.maxX - shovelHead.minX) * 1.02,
   `shovel head retains enough vertical taper to read as a spade rather than a hammer: ${JSON.stringify(shovelHead)}`);
@@ -125,10 +118,10 @@ assert.ok(sword.minX > 0.45 && sword.maxX > 0.9 && sword.minY < -0.55 && sword.m
 const bowIdle = render("bow");
 const bowDraw = render("bow", true);
 assert.ok(bowIdle.minX > 0.35 && bowIdle.maxX > 0.75 && bowIdle.minY < -0.5,
-`exact installed idle bow remains attached to the shared wrist: ${JSON.stringify(bowIdle)}`);
+`exact installed idle bow remains grounded at the lower-right screen edge: ${JSON.stringify(bowIdle)}`);
 assert.notDeepEqual(bowDraw, bowIdle, "drawing the bow changes the exact installed right-hand silhouette");
 assert.ok(bowDraw.minX > 0.25 && bowDraw.maxX > 0.75 && bowDraw.minY < -0.5,
-  `drawn bow keeps the shared lower-right attachment: ${JSON.stringify(bowDraw)}`);
+  `drawn bow keeps its reference-calibrated lower-right presentation: ${JSON.stringify(bowDraw)}`);
 assert.ok(bowDraw.maxY - bowDraw.minY > 0.35,
   "drawn bow retains the tall near-vertical first-person silhouette");
 
@@ -143,10 +136,10 @@ for (const [itemId, expectedFamily] of [
   assert.equal(firstPersonSpriteFamily(itemId), expectedFamily);
   if (ITEMS[itemId].category === "tool") {
     assert.ok(bounds.minX > 0.35 && bounds.maxX > 0.8 && bounds.minY < -0.45,
-      `${itemId} stays compact at the lower-right tool socket: ${JSON.stringify(bounds)}`);
+      `${itemId} stays compact at the lower-right tool anchor: ${JSON.stringify(bounds)}`);
   } else {
     assert.ok(bounds.minX > 0.2 && bounds.maxX > 0.7 && bounds.minY < -0.35,
-      `${itemId} stays fully visible above-left of its lower-right hand contact: ${JSON.stringify(bounds)}`);
+      `${itemId} stays meaningfully visible above-left of its lower-right screen anchor: ${JSON.stringify(bounds)}`);
   }
 }
 
@@ -174,12 +167,6 @@ assert.ok(shearsBounds.minX < 0.9 && shearsBounds.maxX > 0.8 && visibleFraction(
 const liveQaBounds: Partial<Record<ItemId, { bounds: Bounds; visibleFraction: number }>> = {};
 for (const itemId of heldSpriteIds.filter((id) => ITEMS[id].category !== "tool")) {
   const bounds = render(itemId);
-  const socket = projectedScreenPoint(
-    createViewmodelRigPoseFromProjection(projection).socket,
-    renderer[6](new Float32Array(16), projection, 0, false),
-  );
-  assert.ok(socket[0] >= 82.9 && socket[0] <= 83.1 && socket[1] >= 81.9 && socket[1] <= 82.1,
-    `${itemId} opaque item socket meets the production hand cap: ${JSON.stringify(socket)}`);
   assert.ok(visibleFraction(bounds) > 0.3 && bounds.minX < 0.9 && bounds.maxX > 0.7,
     `${itemId} keeps a recognizable non-tool silhouette in frame: ${JSON.stringify({ bounds, visibleFraction: visibleFraction(bounds) })}`);
 }
@@ -206,6 +193,13 @@ assert.notDeepEqual(firstPersonSpritePresentation("iron_axe"), firstPersonSprite
   "axe and shovel have independently authored hand sockets rather than one arbitrary tool transform");
 assert.notDeepEqual(firstPersonSpritePresentation("bow"), firstPersonSpritePresentation("bow", true),
   "idle and drawn bows expose distinct reference-driven presentations");
+
+const pickaxeAt70 = render("iron_pickaxe", false, perspective(16 / 9, 70));
+const pickaxeAt110 = render("iron_pickaxe", false, perspective(16 / 9, 110));
+for (const edge of ["minX", "maxX", "minY", "maxY"] as const) {
+  assert.ok(Math.abs(pickaxeAt70[edge] - pickaxeAt110[edge]) < 0.04,
+    `screen-space held-item anchors remain visually stable across gameplay FOV for ${edge}: ${JSON.stringify({ pickaxeAt70, pickaxeAt110 })}`);
+}
 
 console.log(JSON.stringify({ benchmark: "first-person held family NDC envelopes", pickaxe, axe, shovel, shovelHead, sword, bowIdle, bowDraw, liveQaBounds }));
 renderer[7]();

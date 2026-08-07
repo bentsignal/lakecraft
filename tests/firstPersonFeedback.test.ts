@@ -93,7 +93,10 @@ assert.ok(
 );
 const eat = sampleFirstPersonAction(retainedPose, "use", FIRST_PERSON_ACTION_MS / 2, true, false);
 assert.strictEqual(eat, retainedPose, "food action sampling remains allocation-free");
-assert.ok(retainedPose[1] > 0.35 && retainedPose[0] < -0.29, "food rises toward the center/mouth at its use apex");
+assert.ok(
+  retainedPose[1] > 0.14 && retainedPose[0] < -2.2,
+  "food shifts decisively toward the lower-center mouth position at its use apex",
+);
 assert.strictEqual(
   sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS / 2, false, true),
   retainedPose,

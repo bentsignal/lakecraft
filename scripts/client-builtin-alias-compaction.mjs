@@ -11,11 +11,11 @@ import { pathToFileURL } from "node:url";
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "floor", 244]),
-  Object.freeze(["Math", "max", 267]),
-  Object.freeze(["Math", "min", 199]),
+  Object.freeze(["Math", "max", 270]),
+  Object.freeze(["Math", "min", 200]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 710;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "bb742a2b706d40f64c03ee3bb8323bab03f569d40b68acce1f6b4689d4026f84";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 714;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "95058862d47c3ff31240cca9f5f1b694544a0264475f74c90b1b69a219b9bd00";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

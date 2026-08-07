@@ -12,6 +12,7 @@ for (const component of ["FirstPersonPoseLab", "VisualLab"]) {
 const compact = stripClientDevelopmentSurfaces(source);
 for (const developmentOnly of [
   "FirstPersonPoseLab", "VisualLab", "visualLabOpen", "setVisualLabOpen", "setPoseLabBowPreview",
+  "setPoseLabHeldItemPreview", "setPoseLabUsePreview",
 ]) {
   assert.equal(compact.includes(developmentOnly), false,
     `compact anonymous source excludes development-only ${developmentOnly}`);

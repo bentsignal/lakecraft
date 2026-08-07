@@ -137,8 +137,28 @@ const portraitMvp = renderer[6](new Float32Array(16), portraitProjection, 0, fal
 const portraitBow = capture.uploads.get(1);
 if (!portraitBow) throw new Error("portrait bow upload missing");
 const bowBounds = clipBounds(portraitBow, portraitMvp);
-assert.ok(bowBounds[0] >= -1 && bowBounds[1] <= 1.01 && bowBounds[2] >= -1 && bowBounds[3] <= 1,
-  `the complete drawn bow stays visible at a portrait two-to-one projection: ${JSON.stringify(bowBounds)}`);
+assert.ok(bowBounds[0] > 0 && bowBounds[0] < 0.6 && bowBounds[1] > 1 && bowBounds[1] < 1.3
+  && bowBounds[2] > -1.3 && bowBounds[3] < -0.3,
+`the responsive portrait pose keeps a meaningful lower-right bow silhouette without covering the center: ${JSON.stringify(bowBounds)}`);
+
+const landscapeProjection = new Float32Array(16);
+const landscapeF = 1 / Math.tan(70 * Math.PI / 360);
+landscapeProjection[0] = landscapeF / (16 / 9);
+landscapeProjection[5] = landscapeF;
+landscapeProjection[10] = -1;
+landscapeProjection[11] = -1;
+landscapeProjection[14] = -0.2;
+renderer[3]("cooked_chicken", BLOCK.AIR);
+renderer[8]("use", 0.65);
+const eatingMvp = renderer[6](new Float32Array(16), landscapeProjection, 0, false);
+const eatingFood = capture.uploads.get(1);
+if (!eatingFood) throw new Error("mid-eating food upload missing");
+const eatingBounds = clipBounds(eatingFood, eatingMvp);
+assert.ok(eatingBounds[0] > -0.5 && eatingBounds[0] < 0
+  && eatingBounds[1] > 0.2 && eatingBounds[1] < 0.7
+  && eatingBounds[2] < -0.8 && eatingBounds[3] > -0.4 && eatingBounds[3] < 0.2,
+`the frozen eating pose moves food from the right edge to the supplied lower-center reference envelope: ${JSON.stringify(eatingBounds)}`);
+renderer[8](null);
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const viewmodelDraw = engine.slice(

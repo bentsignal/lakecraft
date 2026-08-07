@@ -1612,6 +1612,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     triggerFirstPersonAction,
     writeFirstPersonMvp,
     destroyFirstPersonRenderer,
+    setFirstPersonActionPreview,
   ] = createFirstPersonRenderer(gl);
   const blockParticles = createBlockParticleSystem();
   const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
@@ -4303,6 +4304,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const next = drawn === null ? null : drawn === true;
       if (firstPersonBowPreviewDrawn === next) return;
       firstPersonBowPreviewDrawn = next;
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+    },
+    setPoseLabActionPreview(kind, progress) {
+      setFirstPersonActionPreview(kind, progress);
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
     },
     setRemotePlayers(players) {

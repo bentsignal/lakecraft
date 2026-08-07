@@ -47,9 +47,9 @@ export const COMPACT_CLIENT_HUMAN_GAME_SCREENSHOT_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_146;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_148;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 106;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "b6a71e41bdcc2506081ff81506f4398ec8561fa0c6f11887879a81dcb63f13a7";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "499b0ae5a73c5a0bb2e007d2d05d524716eff3180c5b4b86c415e3ad782de276";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -78,6 +78,18 @@ export const COMPACT_CLIENT_REPEATED_GAME_SCREENSHOT_DELTA = Object.freeze({
   sources: Object.freeze([
     "client/game/voxelEngine.ts",
     "client/singleplayer/gameScreenshot.ts",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_SCREENSPACE_ITEM_DELTA = Object.freeze({
+  previousOccurrences: 1_146,
+  previousUniqueValues: 106,
+  previousSourceFingerprint: "b6a71e41bdcc2506081ff81506f4398ec8561fa0c6f11887879a81dcb63f13a7",
+  occurrenceDelta: 2,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/game/firstPersonRenderer.ts",
+    "client/game/viewmodelRig.ts",
   ]),
   exclusionChanges: 0,
 });
@@ -184,9 +196,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 422;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 423;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "012841fabaab73e046841bb88df3121c46ce64864c181a60be011a3a5065202c";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "3457aabb8418a084469bac754991b36aad16956b126c00a0b1dfb538e5497127";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -212,6 +224,18 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_GAME_SCREENSHOT_DELTA = Object.freeze(
   occurrenceDelta: 1,
   uniqueValueDelta: 0,
   source: "client/singleplayer/gameScreenshot.ts#downloadGameScreenshot",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_SCREENSPACE_ITEM_DELTA = Object.freeze({
+  previousOccurrences: 422,
+  previousUniqueValues: 124,
+  previousSourceFingerprint: "012841fabaab73e046841bb88df3121c46ce64864c181a60be011a3a5065202c",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/game/firstPersonRenderer.ts",
+    "client/game/viewmodelRig.ts",
+  ]),
   exclusionChanges: 0,
 });
 // Painting the cached GUI block raster introduces the client's third `2d`
