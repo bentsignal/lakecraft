@@ -31,15 +31,14 @@ export function stepThirdPersonFacing(
   current: ThirdPersonFacingState,
   lookYaw: number,
   lookPitch: number,
-  travelYaw: number | null,
+  moving: boolean,
   dt: number,
 ): ThirdPersonFacingState {
   const safeLookYaw = Number.isFinite(lookYaw) ? lookYaw : current.bodyYaw;
   const safeDt = Number.isFinite(dt) ? Math.max(0, Math.min(0.1, dt)) : 0;
   const lookDelta = shortestAngleDelta(current.bodyYaw, safeLookYaw);
-  const moving = travelYaw !== null && Number.isFinite(travelYaw);
   const desiredBodyYaw = moving
-    ? travelYaw!
+    ? safeLookYaw
     : Math.abs(lookDelta) > MAX_HEAD_YAW
       ? safeLookYaw - Math.sign(lookDelta) * MAX_HEAD_YAW
       : current.bodyYaw;

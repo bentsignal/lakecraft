@@ -541,7 +541,7 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_THIRD_PERSON_POSE_DELTA, {
   previousOccurrences: 1_148,
   previousUniqueValues: 106,
   previousSourceFingerprint: "499b0ae5a73c5a0bb2e007d2d05d524716eff3180c5b4b86c415e3ad782de276",
-  occurrenceDelta: 11,
+  occurrenceDelta: 12,
   uniqueValueDelta: 1,
   sources: [
     "client/components/FirstPersonPoseLab.tsx",

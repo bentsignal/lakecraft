@@ -28,6 +28,9 @@ assert.deepEqual(playerRigInputForMovement("idle", 1_200), { motion: "idle", pha
 assert.deepEqual(playerRigInputForMovement("sprint", 210), { motion: "walk", phase: 0.5, intensity: 1 });
 assert.equal(playerRigInputForMovement("sneak", 450).intensity, 0.45);
 assert.equal(playerRigInputForMovement("sneak", 450).crouching, true);
+assert.deepEqual(playerRigInputForMovement("sneak", 450, false), {
+  motion: "idle", phase: 0.1875, crouching: true,
+}, "stationary crouching never reuses the walking cycle");
 assert.equal(playerRigInputForMovement("ladder", 360).intensity, 0.65);
 
 assert.deepEqual(PLAYER_RIG_SKIN_DRAWS, [
@@ -78,6 +81,9 @@ assert.ok(crouch.bodyPitch > 0.4 && crouch.bodyYOffset < -0.1,
 writePlayerRigPartMatrix(matrix, "root", crouch, "wide", true, new Float32Array(16));
 assert.notEqual(matrix[6], 0, "the crouched torso leans forward around its hip pivot");
 assert.ok(matrix[13] < 0, "the crouched torso is visibly lowered");
+writePlayerRigPartMatrix(matrix, "rightLeg", crouch, "wide", true, new Float32Array(16));
+assert.equal(matrix[14], 0.25, "crouching moves the leg pivot behind the lowered upper body");
+assert.equal(matrix[6], 0, "stationary crouching keeps both legs out of the walk cycle");
 
 const armorDraws = playerArmorRigDraws(fullPlayerArmorAppearance("iron"));
 assert.equal(armorDraws.reduce((total, draw) => total + draw.count, 0), 20 * 36);
@@ -95,7 +101,9 @@ const rendererSource = readFileSync(new URL("../client/game/playerSkinRenderer.t
 assert.match(rendererSource, /setPartMvp\("rightArm", true, itemMvpLocation\)/,
   "held items inherit the same anatomical right-arm joint as the hand socket");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-assert.match(engineSource, /playerRigInputForMovement\(movementMode, now\)/,
+assert.match(engineSource, /playerRigInputForMovement\(movementMode, now, movementActivity > 0\)/,
   "third-person production samples the deterministic rig from live movement state");
+assert.match(engineSource, /@lakecraft-voxel-development:rig-preview:start[\s\S]*previewMode/,
+  "the visual Pose Lab can override the live rig only inside its reviewed development surface");
 
 console.log("articulated local player rig tests passed");

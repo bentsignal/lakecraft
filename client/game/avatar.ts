@@ -240,10 +240,11 @@ export function advanceRemoteAvatarMotion(
     ? Math.sin(Math.PI * armActionElapsed / 450)
     : 0;
 
-  const intendedSpeed = Math.hypot(state.velocityX, state.velocityZ);
-  const desiredBodyYaw = intendedSpeed > 0.08
-    ? Math.atan2(state.velocityX, -state.velocityZ)
-    : state.rendered.yaw;
+  // The avatar faces the direction the player is looking while locomotion is
+  // free to move forward, backward, or sideways relative to that facing.
+  // Keeping the same yaw contract as the local F5 rig also prevents remote
+  // players from visibly sprinting backward when their input turns quickly.
+  const desiredBodyYaw = state.rendered.yaw;
   state.bodyYaw += shortestAngleDelta(state.bodyYaw, desiredBodyYaw) * (1 - Math.exp(-7 * dt));
 
 }

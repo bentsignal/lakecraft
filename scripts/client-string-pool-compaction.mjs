@@ -47,9 +47,9 @@ export const COMPACT_CLIENT_HUMAN_GAME_SCREENSHOT_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_159;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_160;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "27a4a76bfa1ee2304777777cb541c00f28ea904945dbb92da8e0528a12279d4b";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "4c1784d760ac6a536450371631649c8789b5414df8cf5aa77b9b2b57fec5bb07";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -97,7 +97,7 @@ export const COMPACT_CLIENT_REPEATED_THIRD_PERSON_POSE_DELTA = Object.freeze({
   previousOccurrences: 1_148,
   previousUniqueValues: 106,
   previousSourceFingerprint: "499b0ae5a73c5a0bb2e007d2d05d524716eff3180c5b4b86c415e3ad782de276",
-  occurrenceDelta: 11,
+  occurrenceDelta: 12,
   uniqueValueDelta: 1,
   sources: Object.freeze([
     "client/components/FirstPersonPoseLab.tsx",

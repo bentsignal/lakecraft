@@ -10,7 +10,7 @@ import { itemVisual } from "../shared/visualCatalog.ts";
 const source = readFileSync(new URL("../client/game/playerSkinRenderer.ts", import.meta.url), "utf8");
 for (const contract of [
   "buildPlayerSkinGeometry", "gl.NEAREST", "gl.CLAMP_TO_EDGE", "uSkin", "uLight",
-  "pose.yaw + Math.PI", "gl.enable(gl.BLEND)", "PLAYER_RIG_SKIN_DRAWS", "setPartMvp",
+  "Math.PI - pose.yaw", "gl.enable(gl.BLEND)", "PLAYER_RIG_SKIN_DRAWS", "setPartMvp",
   "appendItemSpriteGeometry", "setHeldItem(itemId)", "heldItemVertexCount",
   "buildPlayerArmorGeometry", "setArmor(appearance)", "armorVertexCount",
   "itemVisual(itemId)", "display.thirdPersonRight", "thirdPersonHeldItemPresentation(heldItem, tuning)",

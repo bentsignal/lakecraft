@@ -17,7 +17,7 @@ import {
 } from "../game/thirdPersonTuning.ts";
 import type { PlayerCameraMode } from "../game/playerCamera.ts";
 
-type PoseGroup = "block" | "tool" | "bow" | "arm" | "otherItem";
+type PoseGroup = "block" | "tool" | "bow" | "arm" | "otherItem" | "torch";
 type TransformVectorField = "position" | "rotationDegrees" | "pivot";
 type PosePerspective = "first_person" | "third_person";
 
@@ -27,6 +27,7 @@ const GROUP_LABELS: Readonly<Record<PoseGroup, string>> = {
   bow: "Bow",
   arm: "Arm / empty hand",
   otherItem: "Other item",
+  torch: "Torch",
 };
 
 const PREVIEW_ITEMS = Object.freeze([
@@ -168,6 +169,7 @@ export function FirstPersonPoseLab({
   onCycleCamera,
   onHeldItemPreviewChange,
   onOpenVisualLab,
+  onRigPreviewChange,
   onUsePreviewChange,
 }: {
   open: boolean;
@@ -176,6 +178,7 @@ export function FirstPersonPoseLab({
   onCycleCamera?: () => string;
   onHeldItemPreviewChange?: (itemId: ItemId | null | undefined) => void;
   onOpenVisualLab?: () => void;
+  onRigPreviewChange?: (kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down") => void;
   onUsePreviewChange?: (active: boolean) => void;
 }) {
   const [group, setGroup] = useState<PoseGroup>("tool");
@@ -187,6 +190,7 @@ export function FirstPersonPoseLab({
   const [cameraMode, setCameraMode] = useState("first person");
   const [previewItem, setPreviewItem] = useState("actual");
   const [usePreview, setUsePreview] = useState(false);
+  const [rigPreview, setRigPreview] = useState<"live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down">("live");
 
   useEffect(() => {
     if (open) return;
@@ -209,6 +213,12 @@ export function FirstPersonPoseLab({
     return () => onBowPreviewChange?.(null);
   }, [bowDrawn, group, onBowPreviewChange, open, perspective]);
 
+  useEffect(() => {
+    const next = open && perspective === "third_person" ? rigPreview : "live";
+    onRigPreviewChange?.(next);
+    return () => onRigPreviewChange?.("live");
+  }, [onRigPreviewChange, open, perspective, rigPreview]);
+
   if (!open) return null;
 
   function commit(next: FirstPersonTuning): void {
@@ -224,7 +234,7 @@ export function FirstPersonPoseLab({
   }
 
   function updateTransformVector(field: TransformVectorField, index: number, value: number): void {
-    if (group === "block") return;
+    if (group === "block" || group === "torch") return;
     const current = tuning[group];
     commit({
       ...tuning,
@@ -233,7 +243,7 @@ export function FirstPersonPoseLab({
   }
 
   function updateTransformScale(value: number): void {
-    if (group === "block") return;
+    if (group === "block" || group === "torch") return;
     const current = tuning[group];
     commit({ ...tuning, [group]: { ...current, scale: Math.max(0.05, finite(value, current.scale)) } });
   }
@@ -273,10 +283,14 @@ export function FirstPersonPoseLab({
       if (group !== "arm") commitThirdPerson({ ...thirdPersonTuning, [group]: THIRD_PERSON_TUNING[group] });
       return;
     }
+    if (group === "torch") {
+      commit({ ...tuning, otherItem: FIRST_PERSON_TUNING.otherItem });
+      return;
+    }
     commit({ ...tuning, [group]: FIRST_PERSON_TUNING[group] });
   }
 
-  const active = tuning[group];
+  const active = group === "torch" ? tuning.otherItem : tuning[group];
   const thirdPersonActive = group === "arm" ? null : thirdPersonTuning[group];
   const readout = perspective === "third_person"
     ? thirdPersonActive
@@ -308,7 +322,7 @@ export function FirstPersonPoseLab({
             setPerspective("first_person");
             if (previewItem !== "actual") {
               setGroup(poseGroupForItem(previewItem === "empty" ? null : previewItem as ItemId, "first_person"));
-            }
+            } else if (group === "torch") setGroup("otherItem");
             setCameraMode("first person");
             onCameraModeChange?.("first_person");
           }} type="button">First person</button>
@@ -346,7 +360,7 @@ export function FirstPersonPoseLab({
       <label>
         <span>What are you holding?</span>
         <select onChange={(event) => setGroup(event.currentTarget.value as PoseGroup)} value={group}>
-          {(Object.keys(GROUP_LABELS) as PoseGroup[]).map((value) => (
+          {(Object.keys(GROUP_LABELS) as PoseGroup[]).filter((value) => perspective === "third_person" || value !== "torch").map((value) => (
             <option key={value} value={value}>{GROUP_LABELS[value]}</option>
           ))}
         </select>
@@ -369,6 +383,19 @@ export function FirstPersonPoseLab({
             <button aria-pressed={usePreview} onClick={() => setUsePreview(true)} type="button">Mid-use</button>
           </div>
           <small>With food selected, Mid-use freezes the eating pose for reference comparison.</small>
+        </div>
+      ) : null}
+      {perspective === "third_person" ? (
+        <div className="lc-pose-lab__bow-preview">
+          <span>Rig pose preview</span>
+          <div aria-label="Third-person rig preview" className="lc-pose-lab__bow-preview-controls" role="group">
+            {(["live", "idle", "walk", "crouch", "crouch_profile", "walk_profile", "look_up", "look_down"] as const).map((value) => (
+              <button aria-pressed={rigPreview === value} key={value} onClick={() => setRigPreview(value)} type="button">
+                {value.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+          <small>Freeze a repeatable rig state for screenshot comparison. Live restores gameplay motion.</small>
         </div>
       ) : null}
       {perspective === "third_person" ? group === "arm" ? (

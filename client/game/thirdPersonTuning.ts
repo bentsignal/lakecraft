@@ -1,7 +1,7 @@
 import { ITEMS, type ItemId } from "../../shared/game.ts";
 
 export type ThirdPersonVector = readonly [x: number, y: number, z: number];
-export type ThirdPersonPoseGroup = "block" | "tool" | "bow" | "otherItem";
+export type ThirdPersonPoseGroup = "block" | "tool" | "bow" | "otherItem" | "torch";
 
 export interface ThirdPersonGroupTuning {
   readonly position: ThirdPersonVector;
@@ -23,6 +23,7 @@ export const THIRD_PERSON_TUNING: Readonly<Record<ThirdPersonPoseGroup, ThirdPer
   tool: group([-0.04, 0.09, 0], [-89, -71, -144]),
   bow: group([0.06, -0.08, -0.09], [-2, -85, -50]),
   otherItem: group([0, 0.08, -0.09], [1, -100, 7]),
+  torch: group([0, 0.16, 0.08], [64, -5, 1]),
 });
 
 export type ThirdPersonTuning = typeof THIRD_PERSON_TUNING;
@@ -39,7 +40,8 @@ const liveTuningHost = globalThis as typeof globalThis & {
 
 export function thirdPersonPoseGroupForItem(itemId: ItemId): ThirdPersonPoseGroup {
   if (itemId === "bow") return "bow";
-  if (itemId === "chest" || itemId === "torch") return "otherItem";
+  if (itemId === "torch") return "torch";
+  if (itemId === "chest") return "otherItem";
   if (ITEMS[itemId].tool) return "tool";
   if (ITEMS[itemId].category === "block" && itemId !== "torch") return "block";
   return "otherItem";

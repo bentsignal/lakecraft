@@ -150,7 +150,10 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
         heldItemTuningRevision = liveTuning.revision;
         rebuildHeldItemGeometry(liveTuning.tuning);
       }
-      const angle = pose.yaw + Math.PI;
+      // Skin geometry is authored facing +Z while engine yaw zero faces -Z.
+      // Mirroring yaw here (instead of adding yaw) keeps the body facing the
+      // same world direction as the camera for every quadrant.
+      const angle = Math.PI - pose.yaw;
       const cosine = Math.cos(angle); const sine = Math.sin(angle);
       modelMatrix.set([cosine,0,-sine,0, 0,1,0,0, sine,0,cosine,0, pose.x,pose.y,pose.z,1]);
       const rigPose = resolvePlayerRigPose(rig);

@@ -350,6 +350,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "onResume": "vr",
   "onRetry": "nn",
   "onRetryMessage": "au",
+  "onRigPreviewChange": "d5",
   "onRightClickSlot": "ca",
   "onSelectHotbar": "xr",
   "onSensitivityChange": "St",

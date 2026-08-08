@@ -2090,6 +2090,10 @@ function SinglePlayerWorld({
   const setPoseLabUsePreview = useCallback((active: boolean) => {
     engineRef.current?.setPoseLabActionPreview(active ? "use" : null, 0.65);
   }, []);
+  const setPoseLabRigPreview = useCallback((kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down") => {
+    const code = ({ live: 0, idle: 1, walk: 2, crouch: 3, crouch_profile: 4, walk_profile: 5, look_up: 6, look_down: 7 } as const)[kind];
+    engineRef.current?.setPoseLabRigPreview(code);
+  }, []);
   /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
     if (!persist("quit")) return;
@@ -2133,6 +2137,7 @@ function SinglePlayerWorld({
         onCycleCamera={() => engineRef.current?.cycleCameraMode() ?? "first_person"}
         onHeldItemPreviewChange={setPoseLabHeldItemPreview}
         onOpenVisualLab={() => setVisualLabOpen(true)}
+        onRigPreviewChange={setPoseLabRigPreview}
         onUsePreviewChange={setPoseLabUsePreview}
         open={(pauseOpen || pointerCaptureNeeded) && !inventoryOpen && !uiModalOpen && !deathScreenOpen}
       />

@@ -12,7 +12,7 @@ assert.equal(thirdPersonPoseGroupForItem("bow"), "bow");
 assert.equal(thirdPersonPoseGroupForItem("planks"), "block");
 assert.equal(thirdPersonPoseGroupForItem("iron_ingot"), "otherItem");
 assert.equal(thirdPersonPoseGroupForItem("chest"), "otherItem");
-assert.equal(thirdPersonPoseGroupForItem("torch"), "otherItem");
+assert.equal(thirdPersonPoseGroupForItem("torch"), "torch");
 
 assert.deepEqual(THIRD_PERSON_TUNING.tool, {
   position: [-0.04, 0.09, 0], rotationDegrees: [-89, -71, -144], scale: 1,
@@ -25,6 +25,9 @@ assert.deepEqual(THIRD_PERSON_TUNING.bow, {
 });
 assert.deepEqual(THIRD_PERSON_TUNING.otherItem, {
   position: [0, 0.08, -0.09], rotationDegrees: [1, -100, 7], scale: 1,
+});
+assert.deepEqual(THIRD_PERSON_TUNING.torch, {
+  position: [0, 0.16, 0.08], rotationDegrees: [64, -5, 1], scale: 1,
 });
 
 const baseline = thirdPersonHeldItemPresentation("diamond_pickaxe", THIRD_PERSON_TUNING);

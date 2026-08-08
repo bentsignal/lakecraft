@@ -66,8 +66,8 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
     : -1;
   const actionSwing = actionProgress >= 0 && actionProgress < 1 ? Math.sin(actionProgress * Math.PI) * 1.8 : 0;
   const bodyPitch = input.crouching ? 0.5 : 0;
-  const bodyYOffset = input.crouching ? -0.16 : 0;
-  const bodyZOffset = input.crouching ? 0.08 : 0;
+  const bodyYOffset = input.crouching ? -0.2 : 0;
+  const bodyZOffset = 0;
   if (input.motion === "idle") {
     const breath = cycle * 0.018 * intensity;
     return Object.freeze({
@@ -97,12 +97,15 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
 }
 
 /** Stable time-to-cycle mapping; no renderer-owned timer or random state is required. */
-export function playerRigInputForMovement(mode: PlayerMovementMode, timeMs: number): PlayerRigInput {
+export function playerRigInputForMovement(mode: PlayerMovementMode, timeMs: number, moving = mode !== "idle"): PlayerRigInput {
   const time = Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0;
-  if (mode === "idle") return Object.freeze({ motion: "idle", phase: time / 2_400 });
+  const crouching = mode === "sneak";
+  if (mode === "idle" || !moving) {
+    return Object.freeze({ motion: "idle", phase: time / 2_400, ...(crouching ? { crouching: true } : {}) });
+  }
   const cycleMs = mode === "sprint" ? 420 : mode === "sneak" ? 900 : mode === "ladder" ? 720 : 600;
   const intensity = mode === "sprint" ? 1 : mode === "sneak" ? 0.45 : mode === "ladder" ? 0.65 : 0.82;
-  return Object.freeze({ motion: "walk", phase: time / cycleMs, intensity, ...(mode === "sneak" ? { crouching: true } : {}) });
+  return Object.freeze({ motion: "walk", phase: time / cycleMs, intensity, ...(crouching ? { crouching: true } : {}) });
 }
 
 function pitchForPart(part: PlayerRigPart, pose: PlayerRigPose): number {
@@ -126,14 +129,21 @@ export function writePlayerRigPartMatrix(
   remapStandardSkinSides: boolean,
   scratch?: Float32Array,
 ): Float32Array {
-  const needsBodyPose = (part === "head" || part === "root" || part === "rightArm" || part === "leftArm")
+  const upperBodyPart = part === "head" || part === "root" || part === "rightArm" || part === "leftArm";
+  const legPart = part === "rightLeg" || part === "leftLeg";
+  const needsBodyPose = upperBodyPart
     && (pose.bodyPitch !== 0 || pose.bodyYOffset !== 0 || pose.bodyZOffset !== 0);
-  const localOutput = needsBodyPose ? scratch ?? new Float32Array(16) : output;
+  const needsCrouchLegOffset = legPart && pose.bodyPitch !== 0;
+  const localOutput = needsBodyPose || needsCrouchLegOffset ? scratch ?? new Float32Array(16) : output;
   if (part === "head") {
+    // The upper-body hinge is applied after the head joint. Compensating the
+    // local pitch keeps the head tracking the camera instead of forcing it to
+    // stare at the ground whenever the player crouches.
+    const articulatedHeadPitch = pose.headPitch - pose.bodyPitch;
     const yawCosine = Math.cos(pose.headYaw);
     const yawSine = Math.sin(pose.headYaw);
-    const pitchCosine = Math.cos(pose.headPitch);
-    const pitchSine = Math.sin(pose.headPitch);
+    const pitchCosine = Math.cos(articulatedHeadPitch);
+    const pitchSine = Math.sin(articulatedHeadPitch);
     const pivotY = 1.5;
     localOutput.set([
       yawCosine, 0, -yawSine, 0,
@@ -163,7 +173,14 @@ export function writePlayerRigPartMatrix(
       translateX, pivotY * (1 - cosine), -pivotY * sine, 1,
     ]);
   }
-  if (needsBodyPose) {
+  if (needsCrouchLegOffset) {
+    // Minecraft-style sneaking moves both leg pivots behind the lowered torso
+    // instead of bending the entire avatar at the waist. The walking pitch, if
+    // present, remains local to each leg and stationary sneaking stays still.
+    localOutput[13] -= 0.0125;
+    localOutput[14] += 0.25;
+    output.set(localOutput);
+  } else if (needsBodyPose) {
     const cosine = Math.cos(pose.bodyPitch);
     const sine = Math.sin(pose.bodyPitch);
     const pivotY = 0.75;
