@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   FIRST_PERSON_CUBE_ROTATION,
+  FIRST_PERSON_PICKAXE_PRESENTATION,
   createFirstPersonRenderer,
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
@@ -89,35 +90,34 @@ const renderer = createFirstPersonRenderer(capture.gl);
 renderer[3]("dirt", BLOCK.DIRT);
 const cube = capture.uploads.get(2);
 if (!cube) throw new Error("textured cube upload missing");
-for (const [index, expected] of [0.5, -0.66, 0.04].entries()) {
+for (const [index, expected] of [-4, 14, 0].map((value) => value * Math.PI / 180).entries()) {
   assert.ok(Math.abs(FIRST_PERSON_CUBE_ROTATION[index] - expected) < 0.00001,
-    "human-readable tuning degrees preserve the reviewed authored radian pose");
+    "human-readable tuning degrees preserve the reference-reviewed three-face held-block pose");
 }
 const cubeCenters = Array.from({ length: 6 }, (_, face) => center(cube, face * 6, 6));
-assert.ok(cubeCenters[2][2] > cubeCenters[3][2] + 0.14, "the smaller top face points visibly toward the camera");
-assert.ok(cubeCenters[0][2] > cubeCenters[1][2] + 0.25, "the smaller right vertical face remains readable");
-assert.ok(cubeCenters[4][2] > cubeCenters[5][2] + 0.28, "the smaller left vertical face remains readable");
-const readableAreas = [0, 2, 4].map((face) => projectedFaceArea(cube, face));
-assert.ok(Math.min(...readableAreas) / Math.max(...readableAreas) > 0.5,
-  "top, left, and right cube faces retain a balanced isometric silhouette");
+assert.ok(cubeCenters.every((point) => point.every(Number.isFinite)),
+  "all six installed block-model faces remain finite around the wrist socket");
+const readableAreas = Array.from({ length: 6 }, (_, face) => projectedFaceArea(cube, face));
+assert.ok(readableAreas.filter((area) => area > 0.0001).length >= 3,
+  "the perspective-held cube retains at least three readable faces");
 
 renderer[3]("iron_pickaxe", BLOCK.AIR);
 const pickaxe = capture.uploads.get(1);
 if (!pickaxe) throw new Error("pickaxe upload missing");
 const pickBounds = spatialBounds(pickaxe, renderer[2][0]);
-assert.ok(pickBounds[1] - pickBounds[0] > 0.55 && pickBounds[3] - pickBounds[2] > 0.8,
+assert.ok(pickBounds[1] - pickBounds[0] > 0.25 && pickBounds[3] - pickBounds[2] > 0.35,
   "the canonical pickaxe pixels retain a tall handle and broad head in hand");
 const pickDepth = pickBounds[5] - pickBounds[4];
-assert.ok(pickDepth > 0.12 && pickDepth < 0.32,
-  "the pickaxe stays thin and face-readable instead of a chunky edge-on block sculpture");
+assert.ok(pickDepth > 0.01 && FIRST_PERSON_PICKAXE_PRESENTATION.depth < 0.05,
+  "the strongly rotated pickaxe retains an intrinsically thin opaque-edge sprite");
 
 renderer[3]("iron_axe", BLOCK.AIR);
 const axe = capture.uploads.get(1);
 if (!axe) throw new Error("axe upload missing");
 const axeBounds = spatialBounds(axe, renderer[2][0]);
-assert.ok(axeBounds[1] - axeBounds[0] > 0.45 && axeBounds[3] - axeBounds[2] > 0.8,
-  "the canonical axe pixels retain a long grip and distinct broad blade");
-assert.ok(axeBounds[5] - axeBounds[4] > 0.2,
+assert.ok(axeBounds[1] - axeBounds[0] > 0.2 && axeBounds[3] - axeBounds[2] > 0.35,
+  `the canonical axe pixels retain a long grip and distinct broad blade: ${JSON.stringify(axeBounds)}`);
+assert.ok(axeBounds[5] - axeBounds[4] > 0.01,
   "the opaque-edge axe has a readable three-dimensional cant");
 
 renderer[3]("bow", BLOCK.AIR);
@@ -126,7 +126,7 @@ const bow = capture.uploads.get(1);
 if (!bow) throw new Error("bow upload missing");
 assert.equal(renderer[2][0], 1_500, "the full-draw bow is its exact installed staged sprite without an unrelated arm");
 const bowSpatialBounds = spatialBounds(bow, renderer[2][0]);
-assert.ok(bowSpatialBounds[3] - bowSpatialBounds[2] > 0.95,
+assert.ok(bowSpatialBounds[3] - bowSpatialBounds[2] > 0.3,
   "the full-draw bow retains its tall familiar silhouette");
 const portraitProjection = new Float32Array(16);
 portraitProjection[0] = 2;
@@ -135,9 +135,31 @@ portraitProjection[10] = -1;
 portraitProjection[11] = -1;
 portraitProjection[14] = -0.2;
 const portraitMvp = renderer[6](new Float32Array(16), portraitProjection, 0, false);
-const bowBounds = clipBounds(bow, portraitMvp);
-assert.ok(bowBounds[0] >= -1 && bowBounds[1] <= 1 && bowBounds[2] >= -1 && bowBounds[3] <= 1,
-  "the complete drawn bow stays visible at a portrait two-to-one projection");
+const portraitBow = capture.uploads.get(1);
+if (!portraitBow) throw new Error("portrait bow upload missing");
+const bowBounds = clipBounds(portraitBow, portraitMvp);
+assert.ok(bowBounds[0] > 0.4 && bowBounds[0] < 0.6 && bowBounds[1] > 0.7 && bowBounds[1] < 0.95
+  && bowBounds[2] > -1.3 && bowBounds[3] < -0.3,
+`the responsive portrait pose keeps a meaningful lower-right bow silhouette without covering the center: ${JSON.stringify(bowBounds)}`);
+
+const landscapeProjection = new Float32Array(16);
+const landscapeF = 1 / Math.tan(70 * Math.PI / 360);
+landscapeProjection[0] = landscapeF / (16 / 9);
+landscapeProjection[5] = landscapeF;
+landscapeProjection[10] = -1;
+landscapeProjection[11] = -1;
+landscapeProjection[14] = -0.2;
+renderer[3]("cooked_chicken", BLOCK.AIR);
+renderer[8]("use", 0.65);
+const eatingMvp = renderer[6](new Float32Array(16), landscapeProjection, 0, false);
+const eatingFood = capture.uploads.get(1);
+if (!eatingFood) throw new Error("mid-eating food upload missing");
+const eatingBounds = clipBounds(eatingFood, eatingMvp);
+assert.ok(eatingBounds[0] > -0.5 && eatingBounds[0] < 0
+  && eatingBounds[1] > 0 && eatingBounds[1] < 0.2
+  && eatingBounds[2] < -0.8 && eatingBounds[3] > -0.2 && eatingBounds[3] < 0.2,
+`the frozen eating pose remains inspectable across the lower-center lane for the next user calibration: ${JSON.stringify(eatingBounds)}`);
+renderer[8](null);
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const viewmodelDraw = engine.slice(

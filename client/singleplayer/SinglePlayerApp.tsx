@@ -40,6 +40,7 @@ import {
   type Inventory,
   type ItemId,
 } from "../../shared/game";
+import { FIRST_PERSON_FOOD_ACTION_MS } from "../game/firstPersonRenderer.ts";
 import { RANGED_GRAVITY, rangedChargeProfile } from "../../shared/rangedCombat.ts";
 import { planDeathDrops } from "../../shared/deathDrops.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
@@ -50,6 +51,7 @@ import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
 import { performanceHudCoreText, performanceHudFpsText } from "../game/performanceHud.ts";
 import { clearPersistedPlayerSkin, loadPersistedPlayerSkin } from "../game/playerSkin.ts";
+import { copyGameScreenshot, downloadGameScreenshot, gameScreenshotFilename } from "./gameScreenshot.ts";
 import {
   fieldOfViewRadians,
   loadClientSettings,
@@ -1088,6 +1090,7 @@ function SinglePlayerWorld({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let foodUseTimer: number | null = null;
     pointerSessionMountedRef.current = true;
     const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, maxVoices: 12 });
     audioRef.current = audio;
@@ -1589,12 +1592,20 @@ function SinglePlayerWorld({
       },
       onUseSelectedItem: () => {
         if (gameModeRef.current === "creative") return false;
-        const result = consumeFood(inventoryRef.current, selectedRef.current, hungerRef.current);
-        if (!result.ok) return false;
-        hungerRef.current = result.hunger;
-        survivalStateRef.current = { ...survivalStateRef.current, hunger: result.hunger };
-        setHunger(result.hunger);
-        updateInventory(result.inventory);
+        if (foodUseTimer !== null) return false;
+        const selectedSlot = selectedRef.current;
+        const selectedStack = inventoryRef.current[selectedSlot];
+        if (!selectedStack || !consumeFood(inventoryRef.current, selectedSlot, hungerRef.current).ok) return false;
+        foodUseTimer = window.setTimeout(() => {
+          foodUseTimer = null;
+          if (inventoryRef.current[selectedSlot] !== selectedStack) return;
+          const result = consumeFood(inventoryRef.current, selectedSlot, hungerRef.current);
+          if (!result.ok) return;
+          hungerRef.current = result.hunger;
+          survivalStateRef.current = { ...survivalStateRef.current, hunger: result.hunger };
+          setHunger(result.hunger);
+          updateInventory(result.inventory);
+        }, FIRST_PERSON_FOOD_ACTION_MS);
         return true;
       },
       onInteractBlock: (target) => {
@@ -1781,6 +1792,8 @@ function SinglePlayerWorld({
     return () => {
       pointerSessionMountedRef.current = false;
       supersedePointerLockRequest();
+      if (foodUseTimer !== null) window.clearTimeout(foodUseTimer);
+      foodUseTimer = null;
       for (const timer of fuseTimers.values()) {
         clearFuseSchedule(timer);
       }
@@ -1924,6 +1937,30 @@ function SinglePlayerWorld({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "F2" && !event.repeat) {
+        const engine = engineRef.current;
+        if (!engine) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const png = engine.captureScreenshot();
+        const copied = copyGameScreenshot(png);
+        const filename = gameScreenshotFilename();
+        void png.then((blob) => {
+          downloadGameScreenshot(blob, filename);
+          return copied;
+        }).then((didCopy) => setMessages((current) => [...current.slice(-2), {
+          id: `screenshot-${Date.now()}`,
+          text: didCopy ? "Screenshot copied" : "Screenshot saved",
+          detail: didCopy ? `${filename} also saved to Downloads.` : `${filename} saved to Downloads.`,
+          tone: "success",
+        }]), () => setMessages((current) => [...current.slice(-2), {
+          id: `screenshot-error-${Date.now()}`,
+          text: "Screenshot failed",
+          detail: "The game kept running. Press F2 to try again.",
+          tone: "warning",
+        }]));
+        return;
+      }
       if (event.code === "F3" && !event.repeat) {
         event.preventDefault();
         if (performanceOutputRef.current) {
@@ -2044,6 +2081,15 @@ function SinglePlayerWorld({
   const setPoseLabBowPreview = useCallback((drawn: boolean | null) => {
     engineRef.current?.setPoseLabDrawPreview(drawn);
   }, []);
+  const setPoseLabHeldItemPreview = useCallback((itemId: ItemId | null | undefined) => {
+    const actual = inventoryRef.current[selectedRef.current]?.itemId ?? null;
+    const preview = itemId === undefined ? actual : itemId;
+    engineRef.current?.setSelectedBlock(preview ? ITEM_TO_ENGINE[preview] ?? BLOCK.AIR : BLOCK.AIR);
+    engineRef.current?.setSelectedItem(preview);
+  }, []);
+  const setPoseLabUsePreview = useCallback((active: boolean) => {
+    engineRef.current?.setPoseLabActionPreview(active ? "use" : null, 0.65);
+  }, []);
   /* @lakecraft-development:callback:end */
   const returnToTitle = () => {
     if (!persist("quit")) return;
@@ -2084,7 +2130,9 @@ function SinglePlayerWorld({
       <FirstPersonPoseLab
         onBowPreviewChange={setPoseLabBowPreview}
         onCycleCamera={() => engineRef.current?.cycleCameraMode() ?? "first_person"}
+        onHeldItemPreviewChange={setPoseLabHeldItemPreview}
         onOpenVisualLab={() => setVisualLabOpen(true)}
+        onUsePreviewChange={setPoseLabUsePreview}
         open={(pauseOpen || pointerCaptureNeeded) && !inventoryOpen && !uiModalOpen && !deathScreenOpen}
       />
       <VisualLab

@@ -21,7 +21,7 @@ const stageGeometry = [0, 1, 2, 3].map((stage) => {
 });
 assert.equal(new Set(stageGeometry.map((geometry) => JSON.stringify(geometry))).size, 4,
   "idle and three draw states resolve to distinct canonical opaque-edge geometry");
-assert.ok(source.includes("getBowIconArt(charging ? chargeStage + 1")
+assert.ok(source.includes("getBowIconArt(bowDrawn ? bowStage + 1")
   && source.includes("appendItemSpriteGeometry"),
 "the monotonic charge stage selects the shared inventory/held bow artwork");
 assert.equal(source.includes("<svg"), false, "the bow no longer falls back to flat SVG presentation");
@@ -30,6 +30,11 @@ assert.equal(source.includes("appendArm(geometry[0]);\n    if (itemId === \"bow\
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engine, /const bowCharging = selectedItem === "bow" && rangedChargeStartedAt > 0/);
+assert.match(
+  engine,
+  /if \(selectedItem === null\) \{[\s\S]{0,1200}firstPersonSkinRenderer\.draw\(/,
+  "the bow, including every draw stage, replaces the hand instead of composing over it",
+);
 assert.match(engine, /setFirstPersonBowCharge\([\s\S]{0,240}PLAYER_BOW_FULL_CHARGE_MS/,
   "engine-owned monotonic charge directly selects the retained bow model");
 assert.ok(engine.includes('emitHandAction("use");') && engine.includes("options.onRangedRelease?.(intent)"),

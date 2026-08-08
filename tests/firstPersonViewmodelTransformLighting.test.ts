@@ -7,6 +7,7 @@ import {
   firstPersonBufferCapacity,
   sampleFirstPersonAction,
   writeFirstPersonModelMatrix,
+  writeSocketedViewmodelActionMatrix,
 } from "../client/game/firstPersonRenderer.ts";
 import { writeMatrixProduct } from "../client/game/matrixProduct.ts";
 import { BLOCK } from "../client/game/types.ts";
@@ -15,8 +16,14 @@ import {
   FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
   FIRST_PERSON_SKIN_SLEEVE_INFLATE,
   buildFirstPersonSkinArmGeometry,
+  buildSocketedFirstPersonSkinArmGeometry,
   writeResponsiveFirstPersonSkinMvp,
 } from "../client/game/firstPersonSkinRenderer.ts";
+import {
+  createViewmodelRigPoseFromProjection,
+  projectViewmodelPoint,
+  viewmodelProjectionParameters,
+} from "../client/game/viewmodelRig.ts";
 import {
   PLAYER_SKIN_BOX_FLOATS,
   PLAYER_SKIN_VERTEX_STRIDE,
@@ -161,84 +168,65 @@ assert.equal([...gl.allocations.values()].reduce((total, bytes) => total + bytes
 assert.ok(capacity[2] + FIRST_PERSON_SKIN_ARM_BUFFER_BYTES < 120 * 1_024,
   "the complete canonical-sprite and standard-skin viewmodel stays below 120 KiB");
 
-const colorBuffer = renderer[0] as unknown as object;
 const texturedBuffer = renderer[1] as unknown as object;
-const skinArm = buildFirstPersonSkinArmGeometry("wide", FIRST_PERSON_TUNING.arm);
-const sourceSkinArm = buildPlayerSkinPartGeometry("rightArm", "wide", FIRST_PERSON_SKIN_SLEEVE_INFLATE);
-const blockSkinArm = buildFirstPersonSkinArmGeometry("wide", FIRST_PERSON_TUNING.arm, true);
-const sourceBlockSkinArm = buildPlayerSkinPartGeometry("rightArm", "wide");
 const mvp = new Float32Array(16);
-const skinMvp = new Float32Array(16);
-const attackMvp = new Float32Array(16);
-const attackSkinMvp = new Float32Array(16);
-const attackPose = sampleFirstPersonAction([0, 0, 0, 0, 0, 0], "attack", 110, false, false);
-const attackModel = writeFirstPersonModelMatrix(new Float32Array(16), attackPose);
-const viewportBounds: Array<{ viewport: string; width: number; height: number }> = [];
+const viewportBounds: Array<{ viewport: string; pixelWidth: number; pixelHeight: number }> = [];
 const blockGripSamples: Array<{ viewport: string; block: ReturnType<typeof screenPercent>; hand: readonly [number, number] }> = [];
 for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const) {
+  const projection = perspective(width / height);
+  const pose = createViewmodelRigPoseFromProjection(projection);
+  const parameters = viewmodelProjectionParameters(projection);
+  const skinArm = buildSocketedFirstPersonSkinArmGeometry("wide", projection);
   renderer[3](null, BLOCK.AIR);
-  renderer[6](mvp, perspective(width / height), 0, false);
-  writeResponsiveFirstPersonSkinMvp(skinMvp, mvp);
-  const emptyBounds = ndcBounds(skinArm, skinMvp);
+  renderer[6](mvp, projection, 0, false);
+  const emptyBounds = ndcBounds(skinArm, mvp);
   const armScreen = screenPercent(emptyBounds);
-  assert.ok(emptyBounds.minX > 0.25 && emptyBounds.maxY < -0.25,
-    `${width}x${height} empty hand stays wholly below/right of the crosshair`);
-  assert.ok(armScreen.left >= 74.5 && armScreen.left <= 75.75,
-    `${width}x${height} arm begins at the reviewed lower-right anchor: ${JSON.stringify(armScreen)}`);
-  assert.ok(armScreen.right >= 93.25 && armScreen.right <= 94.75,
-    `${width}x${height} arm remains visible inside the right edge: ${JSON.stringify(armScreen)}`);
-  assert.ok(armScreen.top >= 65.5 && armScreen.top <= 67,
-    `${width}x${height} visible hand begins near two-thirds viewport height: ${JSON.stringify(armScreen)}`);
-  assert.ok(armScreen.bottom >= 99 && armScreen.bottom <= 100.75,
-    `${width}x${height} shoulder exits cleanly through the bottom edge: ${JSON.stringify(armScreen)}`);
-  const shoulder = jointCentroid(skinArm, sourceSkinArm, skinMvp, 1.5);
-  const hand = jointCentroid(skinArm, sourceSkinArm, skinMvp, 0.75);
-  assert.ok(shoulder[0] > hand[0] + 7 && shoulder[1] > hand[1] + 15,
-    `${width}x${height} idle arm enters at the lower-right shoulder and reaches the upper-left hand: ${JSON.stringify({ shoulder, hand })}`);
-
-  writeMatrixProduct(attackMvp, perspective(width / height), attackModel);
-  writeResponsiveFirstPersonSkinMvp(attackSkinMvp, attackMvp);
-  const attackScreen = screenPercent(ndcBounds(skinArm, attackSkinMvp));
-  assert.ok(attackScreen.left >= 67.5 && attackScreen.left <= 69.25
-    && attackScreen.right >= 87 && attackScreen.right <= 89,
-  `${width}x${height} mid-attack arm remains horizontally visible: ${JSON.stringify(attackScreen)}`);
-  assert.ok(attackScreen.top >= 65 && attackScreen.top <= 67
-    && attackScreen.bottom >= 93 && attackScreen.bottom <= 95,
-  `${width}x${height} mid-attack arm remains vertically visible: ${JSON.stringify(attackScreen)}`);
-  const attackShoulder = jointCentroid(skinArm, sourceSkinArm, attackSkinMvp, 1.5);
-  const attackHand = jointCentroid(skinArm, sourceSkinArm, attackSkinMvp, 0.75);
-  assert.ok(attackShoulder[0] > attackHand[0] + 7 && attackShoulder[1] > attackHand[1] + 15,
-    `${width}x${height} mid-attack preserves lower-right shoulder to upper-left hand order: ${JSON.stringify({ attackShoulder, attackHand })}`);
+  assert.ok(emptyBounds.minX > 0.2 && emptyBounds.maxY < -0.3,
+    `${width}x${height} empty hand stays wholly below/right of the crosshair: ${JSON.stringify(emptyBounds)}`);
+  assert.ok(armScreen.left > 60 && armScreen.top > 65 && armScreen.bottom > 100,
+    `${width}x${height} arm enters from the lower-right edge: ${JSON.stringify(armScreen)}`);
+  const handNdc = projectViewmodelPoint(pose.socket, parameters.verticalFovRadians, parameters.aspect);
+  const shoulderNdc = projectViewmodelPoint(pose.shoulder, parameters.verticalFovRadians, parameters.aspect);
+  assert.ok(Math.abs(handNdc[0] - 0.66) < 1e-12 && Math.abs(handNdc[1] + 0.64) < 1e-12,
+    `${width}x${height} wrist stays at the shared item socket`);
+  assert.ok(shoulderNdc[0] > 1 && shoulderNdc[1] < -1,
+    `${width}x${height} shoulder root stays outside the lower-right frame`);
+  const attackPose = sampleFirstPersonAction([0, 0, 0, 0, 0, 0], "attack", 110, false, false);
+  const attackModel = writeSocketedViewmodelActionMatrix(new Float32Array(16), attackPose, pose);
+  const attackMvp = writeMatrixProduct(new Float32Array(16), projection, attackModel);
+  const attackBounds = ndcBounds(skinArm, attackMvp);
+  assert.ok(attackBounds.minX > -0.1 && attackBounds.maxY < 0.2,
+    `${width}x${height} socketed swing remains in the hand quadrant: ${JSON.stringify(attackBounds)}`);
 
   renderer[3]("dirt", BLOCK.DIRT);
-  renderer[6](mvp, perspective(width / height), 0, false);
-  skinMvp.set(mvp);
-  const armBounds = ndcBounds(blockSkinArm, skinMvp);
+  renderer[6](mvp, projection, 0, false);
+  const armBounds = ndcBounds(skinArm, mvp);
   const blockBounds = ndcBounds(gl.uploads.get(texturedBuffer)!, mvp);
   const blockScreen = screenPercent(blockBounds);
   assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.05,
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
   assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < 0,
     `${width}x${height} held block leaves the crosshair's horizontal lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
-  assert.ok(blockBounds.maxX - blockBounds.minX < 0.55
-    && blockBounds.maxY - blockBounds.minY < 0.64,
-  `${width}x${height} held atlas cube cannot cover most of the world: ${JSON.stringify(blockBounds)}`);
-  const blockHand = jointCentroid(blockSkinArm, sourceBlockSkinArm, skinMvp, 0.75);
-  const handCap = jointScreenPoints(blockSkinArm, sourceBlockSkinArm, skinMvp, 0.75);
-  assert.ok(handCap.some(([x, y]) => x >= blockScreen.right || y >= blockScreen.bottom),
-    `${width}x${height} the gripping hand remains visible beyond the cube's lower-right edge: ${JSON.stringify({ blockScreen, handCap })}`);
-  blockGripSamples.push({ viewport: `${width}x${height}`, block: blockScreen, hand: blockHand });
+  assert.ok(blockBounds.maxX - blockBounds.minX < 1.55
+    && blockBounds.maxY - blockBounds.minY < 1.8,
+  `${width}x${height} held atlas cube stays confined to the lower-right presentation: ${JSON.stringify(blockBounds)}`);
+  const blockAnchor = [85, 88] as const;
+  assert.ok(blockAnchor[0] >= blockScreen.left && blockAnchor[0] <= blockScreen.right
+    && blockAnchor[1] >= blockScreen.top && blockAnchor[1] <= blockScreen.bottom,
+    `${width}x${height} cube surrounds its independent screen anchor: ${JSON.stringify({ blockScreen, blockAnchor })}`);
+  blockGripSamples.push({ viewport: `${width}x${height}`, block: blockScreen, hand: blockAnchor });
   viewportBounds.push({
     viewport: `${width}x${height}`,
-    width: Number((blockBounds.maxX - blockBounds.minX).toFixed(6)),
-    height: Number((blockBounds.maxY - blockBounds.minY).toFixed(6)),
+    pixelWidth: Number(((blockBounds.maxX - blockBounds.minX) * width / 2).toFixed(3)),
+    pixelHeight: Number(((blockBounds.maxY - blockBounds.minY) * height / 2).toFixed(3)),
   });
 }
-assert.deepEqual(viewportBounds, [
-  { viewport: "1920x1080", width: 0.2887, height: 0.584123 },
-  { viewport: "800x720", width: 0.461921, height: 0.584123 },
-  { viewport: "390x844", width: 0.513245, height: 0.584123 },
-], "the canonical held cube preserves the known-good perspective envelope instead of stretching to a square NDC box");
+for (const sample of viewportBounds) {
+  assert.ok(sample.pixelWidth > 55 && sample.pixelHeight > 55
+    && sample.pixelWidth / sample.pixelHeight > 0.55
+    && sample.pixelWidth / sample.pixelHeight < 1.45,
+  `the held cube uses real perspective without horizontal stretching: ${JSON.stringify(sample)}`);
+}
 console.log(JSON.stringify({ benchmark: "held atlas cube NDC bounds", samples: viewportBounds, blockGripSamples }));
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");

@@ -17,12 +17,12 @@ export const ATMOSPHERE_VERTEX_SHADER = `attribute vec2 p;varying vec2 v;void ma
  * coordinates so looking around never makes the sky slide with the camera.
  */
 export const ATMOSPHERE_FRAGMENT_SHADER = `precision mediump float;
-uniform float A,T,S,M,R;uniform vec3 E,F,X,Y,K,G,D,N;varying vec2 v;
+uniform float A,Q,T,S,M,R;uniform vec3 E,F,X,Y,K,G,D,N;varying vec2 v;
 float h(vec2 p){vec3 v=fract(vec3(p.xyx)*.1031);v+=dot(v,v.yzx+33.33);return fract((v.x+v.y)*v.z);}
 float j(vec3 p){p=fract(p*.1031);p+=dot(p,p.zyx+31.32);return fract((p.x+p.y)*p.z);}
 float b(vec3 r,vec3 c,float s){vec3 d=abs(r-c);return step(max(d.x,max(d.y,d.z)),s);}
 void main(){
-vec3 r=normalize(F+X*v.x*A*.57735026919+Y*v.y*.57735026919);
+vec3 r=normalize(F+X*v.x*A*Q+Y*v.y*Q);
 vec3 z=K*vec3(.78,.9,1.08),c=mix(min(vec3(1.),G*vec3(1.12,1.09,1.05)),z,smoothstep(-.16,.58,r.y));
 float g=smoothstep(.975,.998,dot(r,D))*S;c+=vec3(1.,.57,.2)*g*.26;float s=b(r,D,.043)*step(.01,S);c=mix(c,vec3(1.,.94,.54),s);
 float m=b(r,N,.039)*step(.01,M);c=mix(c,vec3(.84,.88,.74),m);c=mix(c,z,m*b(r,normalize(N+vec3(.025,.014,0.)),.027)*.88);

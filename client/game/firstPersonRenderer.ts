@@ -11,13 +11,21 @@ import {
   type FirstPersonGroupTuning,
   type FirstPersonTuning,
 } from "./firstPersonTuning.ts";
+import {
+  createViewmodelRigPose,
+  createViewmodelRigPoseFromProjection,
+  unprojectViewmodelAnchor,
+  type ViewmodelRigPose,
+} from "./viewmodelRig.ts";
 
 type Vec3 = readonly [number, number, number];
+const HELD_BLOCK_ANCHOR_NDC = Object.freeze([0.7, -0.76, -1.16] as const);
 
 const FLOATS_PER_COLOR_VERTEX = 6;
 export const FIRST_PERSON_MAX_COLOR_VERTICES = ITEM_SPRITE_MAX_VERTICES;
 export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
+export const FIRST_PERSON_FOOD_ACTION_MS = 1_000;
 export const FIRST_PERSON_MODEL_SCALE = FIRST_PERSON_TUNING.rig.scale;
 export const FIRST_PERSON_MODEL_PIVOT: readonly [number, number, number] = FIRST_PERSON_TUNING.rig.pivot;
 /** Camera-space authored poses; action motion still pivots through the shared wrist rig below. */
@@ -91,6 +99,7 @@ export type FirstPersonRenderer = readonly [
   triggerAction: (kind: FirstPersonActionKind, now: number) => void,
   writeMvp: (output: Float32Array, projection: Float32Array, now: number, reducedMotion: boolean) => Float32Array,
   destroy: () => void,
+  setActionPreview: (kind: FirstPersonActionKind | null, progress?: number) => void,
 ];
 
 function appendTransformedPoint(
@@ -199,19 +208,20 @@ function spritePresentation(pose: FirstPersonSpritePose): FirstPersonSpritePrese
 }
 
 /**
- * Camera-space presentation for the shared inventory pickaxe sprite. The 16x16
- * art runs grip→head from lower-left to upper-right; a near-180° Y turn puts
+ * Screen-space presentation for the shared inventory pickaxe sprite. The 16x16
+ * art runs grip→head from lower-left to upper-right; a 180° Y turn puts
  * the grip in the lower-right hand while a shallow pitch/roll and thin depth
  * keep the stepped silhouette face-readable instead of edge-on.
  */
 export const FIRST_PERSON_PICKAXE_PRESENTATION = spritePresentation([
-  // Calibrated from the supplied 16:9 Java first-person reference: the head
-  // occupies the middle/right of the view while the lower grip exits through
-  // the bottom-right edge.  This is deliberately not an inventory-style
-  // centered beauty shot of the complete sprite.
-  0.74, -0.53, -1.12,
-  1.65, 0.03,
-  12, 180, -22,
+  // The grip exits beyond the lower-right edge while the mirrored head rises
+  // up and left, matching the supplied Java first-person reference.
+  // The reviewed 25-degree handheld roll moves the visible silhouette down
+  // around its grip. Lift the pivot by the matching 0.20 NDC so the item keeps
+  // the already-approved lower-right screen envelope.
+  1.08, -0.85, -1.16,
+  1.25, 0.03,
+  0, 180, 25,
   /** Lower wooden handle; the hand should read as gripping this pixel. */
   3, 13,
 ]);
@@ -223,7 +233,12 @@ export function firstPersonSpriteFamily(itemId: ItemId, bowDrawn = false): strin
       : item.category === "food" ? "food" : item.category === "block" ? "specialBlock" : "material");
 }
 
-/** Reference-calibrated camera-space sprite pose, independent of inventory art. */
+/**
+ * Reference-calibrated screen presentation, independent of inventory art.
+ * `center` is the opaque grip in NDC X/Y plus a negative camera depth. `size`
+ * is the sprite's full vertical NDC extent before rotation. Keeping those two
+ * values in screen space makes the held item stable across gameplay FOVs.
+ */
 export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean): FirstPersonSpritePresentation {
   const kind = ITEMS[itemId].tool?.kind;
   if (kind === "pickaxe") return FIRST_PERSON_PICKAXE_PRESENTATION;
@@ -232,35 +247,30 @@ export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean
     const sword = kind === "sword";
     const shovel = kind === "shovel";
     pose = [
-      sword ? 1.34 : shovel ? 0.69 : 0.82, sword ? -0.52 : -0.55, -1.12,
-      sword ? 1.9 : kind === "axe" ? 1.35 : 1.3, 0.035,
-      10, 180, shovel ? -50 : -22,
+      1.05, -0.85, -1.16,
+      sword ? 1.05 : kind === "axe" ? 1.15 : kind === "shovel" ? 1.15 : 1.2, 0.035,
+      0, 180, 25,
       2, sword ? 13 : 14,
     ];
   } else if (itemId === "bow") {
-    // Minecraft's installed handheld model turns the generated sprite into the
-    // camera with a -90° Y rotation and a 25° roll. Lakecraft's camera-space
-    // plane has no matching item-model basis, so the visually equivalent turn
-    // lands at -68° here: the arrow recedes toward the crosshair while the bow
-    // remains readable instead of collapsing to a one-pixel edge.
     pose = [
-      bowDrawn ? -0.15 : -0.2, bowDrawn ? -0.26 : -0.28, -1.12,
-      bowDrawn ? 1.36 : 1.42, 0.06,
-      0, -68, 25,
+      0.88, bowDrawn ? -0.93 : -1.02, -1.16,
+      bowDrawn ? 1.75 : 1.52, 0.045,
+      0, 180, bowDrawn ? -83 : -80,
       3, 8,
     ];
   } else if (itemId === "shears") {
-    pose = [0.78, -0.48, -1.14, 1, 0.04, 8, 180, -18, 6, 11];
+    pose = [1, -1.04, -1.16, 1.18, 0.04, 4, 180, -4, 6, 11];
   } else if (itemId === "flint_and_steel") {
-    pose = [0.84, -0.5, -1.14, 1, 0.04, 8, 180, -18, 8, 11];
+    pose = [1, -1.04, -1.16, 1.12, 0.04, 4, 180, -4, 8, 11];
   } else {
     const category = ITEMS[itemId].category;
     const food = category === "food";
     const special = category === "block";
     pose = [
-      0.29, 0.18, -1.15,
-      food || special ? 0.92 : 0.9, 0.04,
-      8, 180, -18,
+      food ? 1 : special ? 0.9 : 0.88, -1.04, -1.16,
+      food ? 1.36 : special ? 1.2 : 1.28, 0.04,
+      4, 180, -4,
       8, special ? 13 : 12,
     ];
   }
@@ -307,6 +317,115 @@ function appendTexturedCube(output: number[], block: BlockId, tuning: FirstPerso
   }
 }
 
+function appendSocketedTexturedCube(
+  output: number[],
+  block: BlockId,
+  pose: ViewmodelRigPose,
+  tuning: FirstPersonTuning["block"],
+): void {
+  const depth = Math.max(0.2, -HELD_BLOCK_ANCHOR_NDC[2] - tuning.center[2]);
+  const center = unprojectViewmodelAnchor(
+    HELD_BLOCK_ANCHOR_NDC[0] + tuning.center[0],
+    HELD_BLOCK_ANCHOR_NDC[1] + tuning.center[1],
+    depth,
+    pose.verticalFovRadians,
+    pose.aspect,
+  );
+  const size = tuning.size * pose.itemScale * depth;
+  const rotation = tuning.rotationDegrees;
+  for (const face of CUBE_FACES) {
+    const texture = blockTextureForFace(block, face[0]);
+    if (!texture) continue;
+    const uv = textureAtlasUv(texture);
+    for (const point of face[5]) {
+      const horizontal = face[1] !== 0 ? point[2] : point[0];
+      const vertical = face[2] !== 0 ? point[2] : point[1];
+      appendTransformedPoint(
+        output,
+        (point[0] - 0.5) * size,
+        (point[1] - 0.5) * size,
+        (point[2] - 0.5) * size,
+        center[0], center[1], center[2],
+        rotation[0] * Math.PI / 180,
+        rotation[1] * Math.PI / 180,
+        rotation[2] * Math.PI / 180,
+      );
+      output.push(
+        uv.left + (uv.right - uv.left) * horizontal,
+        uv.bottom + (uv.top - uv.bottom) * vertical,
+        face[4],
+      );
+    }
+  }
+}
+
+function appendSocketedItemSprite(
+  output: number[],
+  itemId: ItemId,
+  pose: ViewmodelRigPose,
+  bowDrawn: boolean,
+  bowStage: 0 | 1 | 2,
+  tuning: FirstPersonGroupTuning,
+): void {
+  const start = output.length;
+  const source = firstPersonSpritePresentation(itemId, bowDrawn);
+  const depth = Math.max(0.2, -source.center[2] - tuning.position[2]);
+  const center = unprojectViewmodelAnchor(
+    source.center[0] + tuning.position[0],
+    source.center[1] + tuning.position[1],
+    depth,
+    pose.verticalFovRadians,
+    pose.aspect,
+  );
+  const size = source.size * pose.itemScale * depth * tuning.scale;
+  appendItemSpriteGeometry(
+    output,
+    itemId === "bow" ? getBowIconArt(bowDrawn ? bowStage + 1 as 1 | 2 | 3 : 0) : getItemIconArt(itemId),
+    {
+      center,
+      size,
+      depth: Math.max(size / 96, size * source.depth),
+      rotationDegrees: [
+        source.rotationDegrees[0] + tuning.rotationDegrees[0],
+        source.rotationDegrees[1] + tuning.rotationDegrees[1],
+        source.rotationDegrees[2] + tuning.rotationDegrees[2],
+      ],
+      pivotPixels: source.pivotPixels,
+    },
+  );
+  // Preserve the user's exact 90-degree-FOV calibration, but do not let wider
+  // gameplay FOV multiply a strongly pitched sprite's rotated depth and push
+  // it through the near plane. X/Y still follow gameplay FOV as authored.
+  const inverseWideFovDepthScale = 1 / (pose.itemScale > 1 ? pose.itemScale : 1);
+  for (let offset = start; offset < output.length; offset += FLOATS_PER_COLOR_VERTEX) {
+    output[offset + 2] = center[2]
+      + (output[offset + 2] - center[2]) * inverseWideFovDepthScale;
+  }
+}
+
+export function writeSocketedViewmodelActionMatrix(
+  output: Float32Array,
+  pose: Readonly<FirstPersonActionPose>,
+  rig: ViewmodelRigPose,
+): Float32Array {
+  const rx = pose[3] ?? 0; const ry = pose[4] ?? 0; const rz = pose[5] ?? 0;
+  const cx = Math.cos(rx); const sx = Math.sin(rx);
+  const cy = Math.cos(ry); const sy = Math.sin(ry);
+  const cz = Math.cos(rz); const sz = Math.sin(rz);
+  output[0] = cz * cy; output[1] = sz * cy; output[2] = -sy; output[3] = 0;
+  output[4] = cz * sy * sx - sz * cx; output[5] = sz * sy * sx + cz * cx; output[6] = cy * sx; output[7] = 0;
+  output[8] = cz * sy * cx + sz * sx; output[9] = sz * sy * cx - cz * sx; output[10] = cy * cx; output[11] = 0;
+  const [pivotX, pivotY, pivotZ] = rig.shoulder;
+  const actionX = (pose[0] ?? 0) * rig.viewScale * rig.aspect / (16 / 9);
+  const actionY = (pose[1] ?? 0) * rig.viewScale;
+  const actionZ = (pose[2] ?? 0) * rig.viewScale;
+  output[12] = pivotX + actionX - (output[0] * pivotX + output[4] * pivotY + output[8] * pivotZ);
+  output[13] = pivotY + actionY - (output[1] * pivotX + output[5] * pivotY + output[9] * pivotZ);
+  output[14] = pivotZ + actionZ - (output[2] * pivotX + output[6] * pivotY + output[10] * pivotZ);
+  output[15] = 1;
+  return output;
+}
+
 export function firstPersonBufferCapacity(): readonly [
   colorVertexCount: number,
   texturedVertexCount: number,
@@ -333,13 +452,17 @@ export function sampleFirstPersonAction(
   reducedMotion: boolean,
 ): FirstPersonActionPose {
   output.fill(0);
-  if (reducedMotion || !Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs >= FIRST_PERSON_ACTION_MS) return output;
-  const progress = elapsedMs / FIRST_PERSON_ACTION_MS;
+  const durationMs = kind === "use" && foodHeld ? FIRST_PERSON_FOOD_ACTION_MS : FIRST_PERSON_ACTION_MS;
+  if (reducedMotion || !Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs >= durationMs) return output;
+  const progress = elapsedMs / durationMs;
   const arc = Math.sin(Math.PI * progress);
   if (kind === "use" && foodHeld) {
-    output[0] = -0.30 * arc;
-    output[1] = 0.36 * arc;
-    output[2] = 0.15 * arc;
+    // Eating brings the food toward the mouth in the lower center of the
+    // screen. These camera-space offsets intentionally become larger as Z
+    // approaches the player, matching the supplied mid-eating reference.
+    output[0] = -2.3 * arc;
+    output[1] = 0.15 * arc;
+    output[2] = 0;
     output[3] = -0.12 * arc;
     output[4] = -0.20 * arc;
     return output;
@@ -420,30 +543,24 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
   let chargeStage: 0 | 1 | 2 = 0;
   let actionKind: FirstPersonActionKind = "use";
   let actionStartedAt = -Infinity;
+  let actionPreview: Readonly<{ kind: FirstPersonActionKind; progress: number }> | null = null;
   const actionPose: FirstPersonActionPose = [0, 0, 0, 0, 0, 0];
   const modelMatrix = new Float32Array(16);
   const viewProjection = new Float32Array(16);
   const stats: FirstPersonRenderStats = [0, 0, 0, 0, 0, 0, capacity[2]];
   let tuningSnapshot = currentFirstPersonTuning();
   let activeTuning: FirstPersonTuning = tuningSnapshot.tuning;
+  let rigPose = createViewmodelRigPose(70 * Math.PI / 180, 16 / 9);
+  let projectionFingerprint = "";
 
   function rebuild(): void {
     const geometry: GeometryWriter = [[], []];
     const tuningGroup = firstPersonHeldItemTuningGroup(itemId, block);
     if (tuningGroup === "block") {
-      appendTexturedCube(geometry[1], block, activeTuning);
+      appendSocketedTexturedCube(geometry[1], block, rigPose, activeTuning.block);
     } else if (tuningGroup && itemId) {
-      const start = geometry[0].length;
-      const presentation = firstPersonSpritePresentation(itemId, charging);
-      appendItemSpriteGeometry(
-        geometry[0],
-        itemId === "bow" ? getBowIconArt(charging ? chargeStage + 1 as 1 | 2 | 3 : 0) : getItemIconArt(itemId),
-        presentation,
-      );
-      applyGroupTuning(
-        geometry[0],
-        start,
-        FLOATS_PER_COLOR_VERTEX,
+      appendSocketedItemSprite(
+        geometry[0], itemId, rigPose, charging, chargeStage,
         tuningGroup === "bow" ? activeTuning.bow
           : tuningGroup === "tool" ? activeTuning.tool
             : activeTuning.otherItem,
@@ -502,27 +619,36 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
     },
     (output, projection, now, reducedMotion) => {
       refreshLiveTuning();
+      const nextProjectionFingerprint = `${projection[0].toFixed(6)}:${projection[5].toFixed(6)}`;
+      if (nextProjectionFingerprint !== projectionFingerprint) {
+        projectionFingerprint = nextProjectionFingerprint;
+        rigPose = createViewmodelRigPoseFromProjection(projection);
+        rebuild();
+      }
+      const previewKind = actionPreview?.kind ?? actionKind;
+      const foodHeld = Boolean(itemId && ITEMS[itemId].category === "food");
       sampleFirstPersonAction(
         actionPose,
-        actionKind,
-        now - actionStartedAt,
-        Boolean(itemId && ITEMS[itemId].category === "food"),
+        previewKind,
+        actionPreview
+          ? actionPreview.progress * (previewKind === "use" && foodHeld ? FIRST_PERSON_FOOD_ACTION_MS : FIRST_PERSON_ACTION_MS)
+          : now - actionStartedAt,
+        foodHeld,
         reducedMotion,
       );
-      writeFirstPersonModelMatrix(modelMatrix, actionPose, activeTuning);
+      writeSocketedViewmodelActionMatrix(modelMatrix, actionPose, rigPose);
       viewProjection.set(projection);
-      // Sprite poses retain their authored square viewmodel projection, but a
-      // real cube must keep the camera's horizontal perspective scale. Applying
-      // the square sprite projection to a cube widens it by the viewport aspect
-      // ratio (1.78x at 16:9), which is the held-block stretch regression.
-      if ((itemId && !usesCanonicalHeldBlock(itemId, block)) || viewProjection[0] > viewProjection[5]) {
-        viewProjection[0] = viewProjection[5];
-      }
       return writeMatrixProduct(output, viewProjection, modelMatrix);
     },
     () => {
       gl.deleteBuffer(colorBuffer);
       gl.deleteBuffer(texturedBuffer);
+    },
+    (kind, progress = 0.65) => {
+      actionPreview = kind === null ? null : {
+        kind,
+        progress: Math.max(0, Math.min(0.999, Number.isFinite(progress) ? progress : 0.65)),
+      };
     },
   ];
 }

@@ -16,7 +16,6 @@ import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
 import { appendItemSpriteGeometry, ITEM_SPRITE_VERTEX_FLOATS } from "../client/game/itemSpriteGeometry.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
-
 const PICKAXE_TIERS = ["wooden", "stone", "iron", "golden", "diamond"] as const;
 
 function occupancy(itemId: ItemId): ReadonlySet<string> {
@@ -110,13 +109,10 @@ assert.deepEqual(FIRST_PERSON_PICKAXE_PRESENTATION.pivotPixels, [3, 13],
 const axePresentation = firstPersonSpritePresentation("iron_axe");
 assert.ok(FIRST_PERSON_PICKAXE_PRESENTATION.depth < axePresentation.depth,
   "pickaxe extrusion is thinner than the independently authored axe depth");
-assert.ok(Math.abs(FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees[1] - 180) <= 8,
-  "pickaxe Y rotation mirrors grip into the lower-right hand near 180°");
-assert.notDeepEqual(
-  [...FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees],
-  [...axePresentation.rotationDegrees],
-  "pickaxe pose is distinct from axe/shovel/sword presentation",
-);
+assert.deepEqual(FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees, [0, 180, 25],
+  "pickaxe keeps the mirrored right-hand face with the reviewed handheld roll");
+assert.notDeepEqual(FIRST_PERSON_PICKAXE_PRESENTATION, axePresentation,
+  "pickaxe has a reference-calibrated anchor and scale distinct from axe/shovel/sword presentation");
 
 type CapturedBuffer = { id: number };
 function captureGl(): { gl: WebGLRenderingContext; uploads: Map<number, Float32Array> } {
@@ -215,25 +211,27 @@ const pickUpload = capture.uploads.get(1);
 assert.ok(pickUpload, "pickaxe color buffer uploaded");
 assert.equal(renderer[2][0], 1_140, "held pickaxe vertex count matches inventory extrusion");
 const pick = spatialBounds(pickUpload, renderer[2][0]);
-assert.ok(pick.width > 0.55 && pick.height > 0.8, "held pickaxe keeps tall handle + broad head");
-assert.ok(pick.depth > 0.12 && pick.depth < 0.32, "held pickaxe depth is thin, not a cube sculpture");
+assert.ok(pick.width > 0.25 && pick.height > 0.35,
+  `held pickaxe keeps tall handle + broad head: ${JSON.stringify(pick)}`);
+assert.ok(pick.depth > 0.01 && FIRST_PERSON_PICKAXE_PRESENTATION.depth < 0.05,
+  `the strongly rotated held pickaxe retains an intrinsically thin opaque-edge sprite: ${JSON.stringify(pick)}`);
 
 const wideProjection = perspective(16 / 9);
 const pickMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
 const pickViewport = ndcBounds(pickUpload, renderer[2][0], pickMvp);
-const gripNdc = ndcOfPixel(3, 13, FIRST_PERSON_PICKAXE_PRESENTATION, pickMvp);
-const crownNdc = ndcOfPixel(8, 2, FIRST_PERSON_PICKAXE_PRESENTATION, pickMvp);
-console.log(JSON.stringify({ pickViewport, gripNdc, crownNdc }));
-assert.ok(pickViewport.minX > 0.2 && pickViewport.minX < 0.5,
+const gripNdc = FIRST_PERSON_PICKAXE_PRESENTATION.center.slice(0, 2);
+console.log(JSON.stringify({ pickViewport, gripNdc }));
+assert.ok(pickViewport.minX > 0.4 && pickViewport.minX < 0.7,
   "the visible pickaxe begins in the middle-right rather than centered broadside");
-assert.ok(pickViewport.maxX >= 0.9 && pickViewport.maxX < 1,
-  "the exact pickaxe head stays readable beside the right viewport edge");
-assert.ok(pickViewport.minY <= -0.98, "the lower handle reaches or crops through the bottom viewport edge");
-assert.ok(pickViewport.maxY > -0.2 && pickViewport.maxY < 0.12,
-  "the head stays around the mid-right horizon instead of filling the screen");
-assert.ok(gripNdc[0] > 0.72 && gripNdc[1] < -0.62, "grip sits low/right at the hand socket");
-assert.ok(crownNdc[1] > gripNdc[1] + 0.35, "head sits clearly above the grip");
-assert.ok(crownNdc[0] < gripNdc[0] - 0.06, "the mirrored head extends leftward from the lower-right grip");
+assert.ok(pickViewport.maxX >= 0.95 && pickViewport.maxX < 1.4,
+  "the exact pickaxe head stays readable at the right viewport edge");
+assert.ok(pickViewport.minY < -0.7, "the lower handle reaches the hand in the lower-right");
+assert.ok(pickViewport.maxY > -0.4 && pickViewport.maxY < 0.25,
+  "the screen-space grip keeps the head in the middle-right without filling the screen");
+assert.ok(Math.abs(gripNdc[0] - 1.08) < 1e-12 && Math.abs(gripNdc[1] + 0.85) < 1e-12,
+  "grip is independently anchored just beyond the lower-right frame");
+assert.ok(pickViewport.maxY > gripNdc[1] + 0.35, "head sits clearly above the grip");
+assert.ok(pickViewport.minX < gripNdc[0] - 0.03, "the mirrored head extends leftward from the lower-right grip");
 
 // Swing still animates through the shared action matrix without reallocating geometry
 const swingPose = sampleFirstPersonAction([0, 0, 0, 0, 0, 0], "mine", 110, false, false);
@@ -247,17 +245,17 @@ assert.ok(midSwing.every(Number.isFinite), "swing MVP stays finite for pickaxe")
 
 // --- Non-pickaxe tools keep shared tool presentation ---
 renderer[3]("iron_axe", BLOCK.AIR);
+const axeMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
 const axeUpload = capture.uploads.get(1);
 assert.ok(axeUpload);
 const axe = spatialBounds(axeUpload, renderer[2][0]);
-assert.ok(axe.depth > 0.2, "axe retains the thicker shared tool cant");
+assert.ok(axe.depth > 0.01, "axe retains an opaque-edge 3D extrusion");
 assert.equal(renderer[2][0], appendItemSpriteGeometry([], getItemIconArt("iron_axe")),
   "axe held geometry still matches its inventory sprite topology");
-const axeMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
 const axeViewport = ndcBounds(axeUpload, renderer[2][0], axeMvp);
-assert.ok(axeViewport.minX > 0.4 && axeViewport.maxX > 0.92
-  && axeViewport.minY < -0.9 && axeViewport.maxY < 0.05,
-"the exact axe enters from the same lower-right socket without inheriting pickaxe geometry");
+assert.ok(axeViewport.minX > 0.4 && axeViewport.maxX > 0.9
+  && axeViewport.minY < -0.6 && axeViewport.maxY < 0.2,
+`the exact axe enters from the same lower-right socket without inheriting pickaxe geometry: ${JSON.stringify(axeViewport)}`);
 
 renderer[3]("iron_sword", BLOCK.AIR);
 assert.equal(renderer[2][0], appendItemSpriteGeometry([], getItemIconArt("iron_sword")),

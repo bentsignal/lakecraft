@@ -1,9 +1,10 @@
 /**
  * FIRST-PERSON POSE LAB
  *
- * These are the source defaults used when a world starts. For instant visual
- * tuning, pause the game and use the on-screen POSE LAB. Lakebed does not hot
- * replace this plain TypeScript module inside an already-running WebGL engine.
+ * These are optional development deltas on top of the first-person viewmodel.
+ * Empty-hand and held-item presentations are mutually exclusive. Held-item X/Y
+ * position values are screen-space deltas, while Z changes camera depth. This
+ * keeps the authored pose visually stable when gameplay FOV changes.
  *
  * Start with ONE small change:
  *   position:        change by 0.02 (example: 0 becomes 0.02)
@@ -50,16 +51,16 @@ export const FIRST_PERSON_TUNING = {
 
   // EDIT `tool` FOR A PICKAXE, AXE, SHOVEL, OR SWORD.
   tool: {
-    position: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [0, 0, 0] as FirstPersonVector,
-    scale: 1,
+    position: [-0.46, -0.21, 0] as FirstPersonVector,
+    rotationDegrees: [102, 43, -137] as FirstPersonVector,
+    scale: 1.1,
     pivot: [0.14, -0.16, -1.17] as FirstPersonVector,
   },
 
   // EDIT `bow` FOR THE BOW.
   bow: {
-    position: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [0, 0, 0] as FirstPersonVector,
+    position: [-0.3, 0.14, -0.02] as FirstPersonVector,
+    rotationDegrees: [70, 44, -3] as FirstPersonVector,
     scale: 1,
     pivot: [0.4, 0, -1.12] as FirstPersonVector,
   },
@@ -67,20 +68,18 @@ export const FIRST_PERSON_TUNING = {
   // EDIT `otherItem` FOR FOOD, MATERIALS, AND SPECIAL HELD BLOCK ITEMS.
   // Examples: torch, chest, bed, door, ladder, fence, fence gate, and sapling.
   otherItem: {
-    position: [0, 0, 0] as FirstPersonVector,
+    position: [-0.24, 0.01, 0] as FirstPersonVector,
     rotationDegrees: [0, 0, 0] as FirstPersonVector,
     scale: 1,
     pivot: [0.08, -0.04, -1.18] as FirstPersonVector,
   },
 
-  // EDIT `block` FOR A FULL CUBE, such as dirt, stone, or planks. The stone
-  // brick slab also uses this box. These items use `center`, `rotationDegrees`,
-  // and `size` instead of the four knobs above. Use 0.02, 5 degrees, and 0.05
-  // as the same safe first steps. Center is also [X, Y, Z].
+  // This prior live-reviewed angle combines the installed block transform with
+  // the camera-hand presentation: top plus two sides, lower corner in hand.
   block: {
-    center: [0.14, -0.1, -1.36] as FirstPersonVector,
-    rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,
-    size: 0.64,
+    center: [0, 0, 0] as FirstPersonVector,
+    rotationDegrees: [-4, 14, 0] as FirstPersonVector,
+    size: 0.82,
   },
 } as const;
 

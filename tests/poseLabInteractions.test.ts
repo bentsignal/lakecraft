@@ -18,7 +18,10 @@ const component = readFileSync(new URL("../client/components/FirstPersonPoseLab.
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const types = readFileSync(new URL("../client/game/types.ts", import.meta.url), "utf8");
 assert.match(component, /setPointerCapture\(event\.pointerId\)/, "scrubbing retains the pointer outside a tiny input");
-assert.match(component, /Drag any value up\/down to scrub/);
+assert.match(component, /Drag rotation or scale up\/down to scrub/);
+assert.match(component, /EXCLUSIVE VIEWMODEL/, "Pose Lab identifies the mutually exclusive hand and item modes");
+assert.doesNotMatch(component, /label="Position"|label="Pivot"|label="Center"/,
+  "Pose Lab keeps each presentation on its reviewed screen anchor");
 assert.match(component, /aria-label="Bow draw preview"/);
 assert.match(component, /aria-pressed=\{bowDrawn\}/);
 assert.match(component, /This never fires or consumes an arrow/);

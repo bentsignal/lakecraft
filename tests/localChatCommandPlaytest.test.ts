@@ -209,7 +209,7 @@ assert.ok(feedbackPredicates.every((predicate) => (
   && predicate.includes("commandOpen")
 )), "world modals, death, and chat hide the held viewmodel");
 assert.ok(feedbackPredicates.every((predicate) => !predicate.includes("inventoryOpen")),
-  "inventory deliberately keeps the held arm and item visible behind its workspace");
+  "inventory deliberately keeps the active arm-or-item presentation visible behind its workspace");
 const shortcutBranch = app.slice(app.indexOf("const commandShortcutDraft"), app.indexOf('if (event.code === "KeyQ"'));
 assert.ok(shortcutBranch.includes("inventoryOpen || worldModalOpen || deathScreenOpen"), "higher-priority modals fence every chat shortcut");
 assert.ok(shortcutBranch.indexOf("commandSurfaceOpenRef.current = true") < shortcutBranch.indexOf("setCommandOpen(true)"),

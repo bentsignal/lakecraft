@@ -10,6 +10,8 @@ import { createDayNightState, sampleDayNight } from "../client/game/dayNight.ts"
 
 assert.equal(ATMOSPHERE_SCREEN_TRIANGLE.length, 6, "sky remains one fullscreen triangle");
 assert.match(ATMOSPHERE_FRAGMENT_SHADER, /96\.-E\.y/, "cloud height is intersected in world space, not offset from the eye");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /X\*v\.x\*A\*Q\+Y\*v\.y\*Q/,
+  "clouds and celestial bodies reconstruct rays from the live world-camera FOV");
 assert.match(ATMOSPHERE_FRAGMENT_SHADER, /i=abs\(r\.y\)/, "cloud horizon fading works above and below the world plane");
 assert.match(
   ATMOSPHERE_FRAGMENT_SHADER,

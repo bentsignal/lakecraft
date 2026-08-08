@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { getBowIconArt, getItemIconArt } from "../client/components/itemIconArt.ts";
 import {
   FIRST_PERSON_ACTION_MS,
+  FIRST_PERSON_FOOD_ACTION_MS,
   FIRST_PERSON_MAX_COLOR_VERTICES,
   FIRST_PERSON_MODEL_PIVOT,
   createFirstPersonRenderer,
@@ -91,9 +92,13 @@ assert.ok(
     && retainedPose[5] > 0.18,
   "attack reaches a pitched, yawed, counter-leaning swing apex",
 );
-const eat = sampleFirstPersonAction(retainedPose, "use", FIRST_PERSON_ACTION_MS / 2, true, false);
+assert.equal(FIRST_PERSON_FOOD_ACTION_MS, 1_000, "food use remains visible for one full second");
+const eat = sampleFirstPersonAction(retainedPose, "use", FIRST_PERSON_FOOD_ACTION_MS / 2, true, false);
 assert.strictEqual(eat, retainedPose, "food action sampling remains allocation-free");
-assert.ok(retainedPose[1] > 0.35 && retainedPose[0] < -0.29, "food rises toward the center/mouth at its use apex");
+assert.ok(
+  retainedPose[1] > 0.14 && retainedPose[0] < -2.2,
+  "food shifts decisively toward the lower-center mouth position at its use apex",
+);
 assert.strictEqual(
   sampleFirstPersonAction(retainedPose, "attack", FIRST_PERSON_ACTION_MS / 2, false, true),
   retainedPose,
@@ -141,8 +146,8 @@ const narrowProjection = new Float32Array(projection);
 narrowProjection[0] = 2;
 narrowProjection[5] = 1;
 renderer[6](retainedMvp, narrowProjection, 1_016, false);
-assert.ok(Math.abs(retainedMvp[0]) <= 0.49,
-  "portrait viewmodels clamp horizontal projection to a square aspect without changing world FOV");
+assert.ok(Math.abs(retainedMvp[0]) > 1,
+  "viewmodels preserve the real camera projection instead of replacing it with a square HUD projection");
 
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
   renderer[3](itemId, BLOCK.AIR);
@@ -166,6 +171,8 @@ const gameHud = readFileSync(new URL("../client/components/GameHud.tsx", import.
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.ok(engine.includes("createFirstPersonRenderer(gl)"), "the retained viewmodel is created beside the world renderers");
 assert.ok(engine.includes("createFirstPersonSkinRenderer(gl)"), "the standard-skin arm owns a separate retained texture batch");
+assert.ok(engine.includes("if (selectedItem === null)"),
+  "the skin arm renders only for an empty slot instead of underneath held items");
 assert.ok(engine.includes("gl.clear(gl.DEPTH_BUFFER_BIT)"), "viewmodel receives a fresh depth plane after world rendering");
 assert.ok(engine.includes("writeFirstPersonMvp"), "actions alter only the small model matrix during frames");
 assert.ok(rendererSource.includes("const actionPose: FirstPersonActionPose"), "the renderer retains one mutable action pose");
@@ -192,7 +199,7 @@ assert.ok(localFeedbackCalls.length >= 2 && localFeedbackCalls.every((predicate)
 assert.ok(localFeedbackCalls.every((predicate) => !predicate.includes("pointerCaptureNeeded")),
   "Click to Play keeps the held pose visible while pointer capture is recovered");
 assert.ok(localFeedbackCalls.every((predicate) => !predicate.includes("inventoryOpen")),
-  "the inventory keeps the held arm and item visible behind its workspace");
+  "the inventory keeps the active arm-or-item presentation visible behind its workspace");
 assert.equal(gameHud.includes("FirstPersonHeldItem"), false, "the HUD no longer paints a duplicate DOM hand");
 assert.equal(styles.includes("lc-first-person"), false, "the rejected CSS 3D/sprite rig is absent from the artifact");
 

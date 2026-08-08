@@ -465,6 +465,8 @@ export interface VoxelEngineOptions {
 export interface VoxelEngine {
   start(): void;
   destroy(): void;
+  /** Captures the next complete WebGL frame without releasing pointer lock. */
+  captureScreenshot(): Promise<Blob>;
   applyWorldEdits(edits: readonly WorldEdit[]): boolean;
   applyMobCombatStates(states: readonly MobCombatStateSnapshot[], serverTimeOffsetMs?: number): void;
   /** Reconciles the retained renderer against Lakebed's shared fixed-tick mob timeline. */
@@ -503,6 +505,8 @@ export interface VoxelEngine {
   setFirstPersonFeedbackHidden(hidden: boolean): void;
   /** Paused Pose Lab visual override only; null restores ordinary gameplay charge rendering. */
   setPoseLabDrawPreview(drawn: boolean | null): void;
+  /** Paused Pose Lab action override only; null restores ordinary gameplay animation. */
+  setPoseLabActionPreview(kind: "use" | null, progress?: number): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
   setDroppedItems(items: readonly DroppedItemRenderItem[]): void;

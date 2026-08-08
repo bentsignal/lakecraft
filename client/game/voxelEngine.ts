@@ -1575,6 +1575,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobAtlasLocation = gl.getUniformLocation(mobProgram, "uAtlas");
   const atmospherePositionLocation = gl.getAttribLocation(atmosphereProgram, "p");
   const atmosphereAspectLocation = gl.getUniformLocation(atmosphereProgram, "A");
+  const atmosphereFovLocation = gl.getUniformLocation(atmosphereProgram, "Q");
   const atmosphereTimeLocation = gl.getUniformLocation(atmosphereProgram, "T");
   const atmosphereEyeLocation = gl.getUniformLocation(atmosphereProgram, "E");
   const atmosphereForwardLocation = gl.getUniformLocation(atmosphereProgram, "F");
@@ -1611,6 +1612,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     triggerFirstPersonAction,
     writeFirstPersonMvp,
     destroyFirstPersonRenderer,
+    setFirstPersonActionPreview,
   ] = createFirstPersonRenderer(gl);
   const blockParticles = createBlockParticleSystem();
   const particleCapacity = blockParticleBufferCapacity(blockParticles.capacity);
@@ -1636,6 +1638,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const raycastEye: Vec3 = [0, 0, 0];
   const raycastFacing: Vec3 = [0, 0, 0];
   const projectionMatrix = new Float32Array(16);
+  const firstPersonProjectionMatrix = new Float32Array(16);
   const viewMatrix = new Float32Array(16);
   const mvpMatrix = new Float32Array(16);
   const firstPersonMvpMatrix = new Float32Array(16);
@@ -1952,6 +1955,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let targetOutlineVertexCount = 0;
   let running = false;
   let destroyed = false;
+  let pendingScreenshot: {
+    promise: Promise<Blob>;
+    resolve: (blob: Blob) => void;
+    reject: (reason: Error) => void;
+  } | null = null;
   let paused = false;
   let pausedStartedAt = 0;
   let pausedVisualTime = 0;
@@ -3235,9 +3243,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       torchCount: torchLights.size,
       activeTorchLights,
       firstPersonDrawCalls: firstPersonFeedbackHidden || playerHealth <= 0 ? 0
-        : firstPersonStats[2] + Number(cameraMode === "first_person" && selectedItem !== "bow"),
+        : firstPersonStats[2] + Number(cameraMode === "first_person" && selectedItem === null),
       firstPersonVertexCount: firstPersonStats[0] + firstPersonStats[1]
-        + (selectedItem === "bow" ? 0 : FIRST_PERSON_SKIN_ARM_VERTICES),
+        + (selectedItem === null ? FIRST_PERSON_SKIN_ARM_VERTICES : 0),
       firstPersonLastUploadBytes: firstPersonStats[3],
       firstPersonTotalUploadBytes: firstPersonStats[4],
       firstPersonMeshUpdates: firstPersonStats[5],
@@ -3291,9 +3299,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     renderCenter[1] = eye[1] + facing[1];
     renderCenter[2] = eye[2] + facing[2];
     writeRenderDistanceFogRange(fogRange, streamingChunkRadius);
+    const aspect = canvas.width / canvas.height;
     writePerspectiveMatrix(projectionMatrix,
       cameraPosture.fovRadians,
-      canvas.width / canvas.height,
+      aspect,
+      0.05,
+      fogRange[1] + WORLD_CHUNK_SIZE,
+    );
+    // Sprint widens the world camera, but the viewmodel follows only the
+    // configured FOV. Transient sprint smoothing must not stretch the arm.
+    writePerspectiveMatrix(firstPersonProjectionMatrix,
+      options.getFieldOfViewRadians?.() ?? cameraPosture.fovRadians,
+      aspect,
       0.05,
       fogRange[1] + WORLD_CHUNK_SIZE,
     );
@@ -3346,6 +3363,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.enableVertexAttribArray(atmospherePositionLocation);
     gl.vertexAttribPointer(atmospherePositionLocation, 2, gl.FLOAT, false, 0, 0);
     gl.uniform1f(atmosphereAspectLocation, canvas.width / canvas.height);
+    gl.uniform1f(atmosphereFovLocation, Math.tan(cameraPosture.fovRadians / 2));
     gl.uniform1f(atmosphereTimeLocation, now / 1_000);
     gl.uniform3fv(atmosphereEyeLocation, eye);
     gl.uniform3fv(atmosphereForwardLocation, facing);
@@ -3576,7 +3594,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.clear(gl.DEPTH_BUFFER_BIT);
       writeFirstPersonMvp(
         firstPersonMvpMatrix,
-        projectionMatrix,
+        firstPersonProjectionMatrix,
         now,
         reducedMotionQuery?.matches === true,
       );
@@ -3610,7 +3628,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         gl.drawArrays(gl.TRIANGLES, 0, firstPersonStats[0]);
         drawCalls += 1;
       }
-      if (selectedItem !== "bow") {
+      // Minecraft's first-person presentation is mutually exclusive: the
+      // player's arm is visible for an empty slot, while every selected item
+      // (block, tool, bow, or food) replaces it rather than sitting in a hand.
+      if (selectedItem === null) {
         const exposure = 0.38 + viewmodelSkyExposure * 0.62;
         firstPersonSkinLight[0] = clampNumber((dayNightState.ambientR * dayNightState.ambientIntensity
           + dayNightState.directionalR * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
@@ -3620,11 +3641,20 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
         firstPersonSkinRenderer.draw(
           firstPersonMvpMatrix,
+          firstPersonProjectionMatrix,
           firstPersonSkinLight,
-          usesCanonicalHeldBlock(selectedItem, selectedBlock),
         );
         drawCalls += 1;
       }
+    }
+
+    if (pendingScreenshot) {
+      const capture = pendingScreenshot;
+      pendingScreenshot = null;
+      canvas.toBlob((blob) => {
+        if (blob) capture.resolve(blob);
+        else capture.reject(new Error("The browser could not encode the game frame."));
+      }, "image/png");
     }
 
   }
@@ -4099,6 +4129,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (destroyed) return;
       destroyed = true;
       running = false;
+      pendingScreenshot?.reject(new Error("The game closed before the screenshot completed."));
+      pendingScreenshot = null;
       resetMovementView();
       cancelAnimationFrame(frameId);
       window.removeEventListener("keydown", onKeyDown);
@@ -4146,6 +4178,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteProgram(atmosphereProgram);
       gl.deleteTexture(terrainTexture);
       destroyMobTexture(gl, mobTexture);
+    },
+    captureScreenshot() {
+      if (destroyed) return Promise.reject(new Error("The game is closed."));
+      if (pendingScreenshot) return pendingScreenshot.promise;
+      let resolve!: (blob: Blob) => void;
+      let reject!: (reason: Error) => void;
+      const promise = new Promise<Blob>((accept, decline) => { resolve = accept; reject = decline; });
+      pendingScreenshot = { promise, resolve, reject };
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+      return promise;
     },
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;
@@ -4262,6 +4304,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const next = drawn === null ? null : drawn === true;
       if (firstPersonBowPreviewDrawn === next) return;
       firstPersonBowPreviewDrawn = next;
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+    },
+    setPoseLabActionPreview(kind, progress) {
+      setFirstPersonActionPreview(kind, progress);
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
     },
     setRemotePlayers(players) {

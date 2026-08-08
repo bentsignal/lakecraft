@@ -5,6 +5,10 @@ import {
 } from "./playerSkinGeometry.ts";
 import { currentFirstPersonTuning, type FirstPersonGroupTuning } from "./firstPersonTuning.ts";
 import { createVisualProgram, SKIN_FRAGMENT_SHADER, SKIN_VERTEX_SHADER } from "./visualShaders.ts";
+import {
+  createViewmodelRigPoseFromProjection,
+  transformViewmodelArmPoint,
+} from "./viewmodelRig.ts";
 
 const ARM_BOXES = 2;
 /** Vanilla-style quarter-pixel sleeve shell: concentric, never a separate fist. */
@@ -17,8 +21,8 @@ export const FIRST_PERSON_SKIN_REFERENCE_ASPECT = 16 / 9;
 export type FirstPersonSkinRenderer = Readonly<{
   draw(
     mvp: Float32Array,
+    projection: Float32Array,
     light: readonly [number, number, number],
-    blockMode?: boolean,
   ): void;
   setSkin(source: TexImageSource | null, model: PlayerSkinModel): void;
   destroy(): void;
@@ -89,6 +93,35 @@ export function buildFirstPersonSkinArmGeometry(
 }
 
 /**
+ * New live viewmodel arm. The canonical skin cuboid is treated as a bone whose
+ * top-center is the shoulder and bottom-center is the wrist. This makes the
+ * final hand endpoint mathematically identical to the held-item socket.
+ */
+export function buildSocketedFirstPersonSkinArmGeometry(
+  model: PlayerSkinModel,
+  projection: Float32Array,
+): Float32Array {
+  const output = buildPlayerSkinPartGeometry("rightArm", model, FIRST_PERSON_SKIN_SLEEVE_INFLATE);
+  const centerX = model === "slim" ? 0.34375 : 0.375;
+  const shoulderY = model === "slim" ? 1.46875 : 1.5;
+  const wristY = model === "slim" ? 0.71875 : 0.75;
+  const localShoulder = [centerX, shoulderY, 0] as const;
+  const pose = createViewmodelRigPoseFromProjection(projection);
+  for (let offset = 0; offset < output.length; offset += PLAYER_SKIN_VERTEX_STRIDE) {
+    const point = transformViewmodelArmPoint(
+      [output[offset], output[offset + 1], output[offset + 2]],
+      localShoulder,
+      shoulderY - wristY,
+      pose,
+    );
+    output[offset] = point[0];
+    output[offset + 1] = point[1];
+    output[offset + 2] = point[2];
+  }
+  return output;
+}
+
+/**
  * Keeps the camera arm at a stable screen-space width without changing the
  * world/held-item projection. Perspective makes horizontal NDC scale inversely
  * proportional to aspect ratio; row norms recover that ratio even while the
@@ -120,10 +153,15 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
     throw new Error("First-person skin bindings are incomplete.");
   }
   let model: PlayerSkinModel = "wide";
-  let blockMode = false;
   let tuningSnapshot = currentFirstPersonTuning();
+  let projectionFingerprint = "";
+  const initialProjection = new Float32Array(16);
+  initialProjection[0] = 1 / (16 / 9 * Math.tan(70 * Math.PI / 360));
+  initialProjection[5] = 1 / Math.tan(70 * Math.PI / 360);
+  initialProjection[10] = -1; initialProjection[11] = -1; initialProjection[14] = -0.02;
+  const retainedProjection = new Float32Array(initialProjection);
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm, blockMode), gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, buildSocketedFirstPersonSkinArmGeometry(model, initialProjection), gl.DYNAMIC_DRAW);
   gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -131,21 +169,21 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
   const finalMvp = new Float32Array(16);
 
   return Object.freeze({
-    draw(mvp, light, nextBlockMode = false) {
+    draw(mvp, projection, light) {
       const nextTuning = currentFirstPersonTuning();
-      if (nextTuning.revision !== tuningSnapshot.revision || nextBlockMode !== blockMode) {
+      const nextProjectionFingerprint = `${projection[0].toFixed(6)}:${projection[5].toFixed(6)}`;
+      if (nextTuning.revision !== tuningSnapshot.revision || nextProjectionFingerprint !== projectionFingerprint) {
         tuningSnapshot = nextTuning;
-        blockMode = nextBlockMode;
+        projectionFingerprint = nextProjectionFingerprint;
+        retainedProjection.set(projection);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferData(
           gl.ARRAY_BUFFER,
-          buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm, blockMode),
-          gl.STATIC_DRAW,
+          buildSocketedFirstPersonSkinArmGeometry(model, projection),
+          gl.DYNAMIC_DRAW,
         );
       }
-      // Keep a distinct retained matrix so caller-owned viewmodel state is never mutated.
-      if (blockMode) finalMvp.set(mvp);
-      else writeResponsiveFirstPersonSkinMvp(finalMvp, mvp);
+      finalMvp.set(mvp);
       gl.useProgram(program); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       const stride = PLAYER_SKIN_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
       gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position, 3, gl.FLOAT, false, stride, 0);
@@ -162,8 +200,8 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferData(
           gl.ARRAY_BUFFER,
-          buildFirstPersonSkinArmGeometry(model, tuningSnapshot.tuning.arm, blockMode),
-          gl.STATIC_DRAW,
+          buildSocketedFirstPersonSkinArmGeometry(model, retainedProjection),
+          gl.DYNAMIC_DRAW,
         );
       }
       gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);

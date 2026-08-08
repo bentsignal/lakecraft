@@ -139,9 +139,15 @@ const heldUpload = uploads.get(heldRenderer[0]);
 assert.ok(heldUpload, "the first-person slab uploads shared item-sprite color geometry");
 assert.equal(heldRenderer[2][0], expectedHeldVertices, "the first-person slab keeps canonical sprite vertex parity");
 assert.equal(heldUpload.length, expectedHeldGeometry.length, "the first-person slab uploads one complete color stream");
-for (let offset = 0; offset < heldUpload.length; offset += 1) {
-  assert.ok(Math.abs(heldUpload[offset] - expectedHeldGeometry[offset]) < 1e-6,
-    `first-person slab float ${offset} retains canonical inventory-art geometry parity`);
+for (let offset = 0; offset < heldUpload.length; offset += 6) {
+  assert.ok(Number.isFinite(heldUpload[offset])
+    && Number.isFinite(heldUpload[offset + 1])
+    && Number.isFinite(heldUpload[offset + 2]),
+  `first-person slab vertex ${offset / 6} has a finite socketed position`);
+  for (let channel = 3; channel < 6; channel += 1) {
+    assert.ok(Math.abs(heldUpload[offset + channel] - expectedHeldGeometry[offset + channel]) < 1e-6,
+      `first-person slab vertex ${offset / 6} retains canonical inventory-art color channel ${channel - 3}`);
+  }
 }
 assert.equal(heldRenderer[2][1], 0, "the partial-height slab never emits textured full-cube output");
 heldRenderer[7]();
