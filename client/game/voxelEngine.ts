@@ -3548,7 +3548,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       thirdPersonRenderPose.z = pose.z;
       thirdPersonRenderPose.yaw = thirdPersonFacing.bodyYaw;
       thirdPersonRenderPose.pitch = pose.pitch;
-      let rigInput = playerRigInputForMovement(movementMode, now, movementActivity > 0);
+      let rigInput = playerRigInputForMovement(movementMode, now, movementActivity > 0.5);
       let previewHeadPitch = thirdPersonFacing.headPitch;
       /* @lakecraft-voxel-development:rig-preview:start */
       if (thirdPersonRigPreview !== 0) {

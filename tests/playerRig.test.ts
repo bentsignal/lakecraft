@@ -31,6 +31,13 @@ assert.equal(playerRigInputForMovement("sneak", 450).crouching, true);
 assert.deepEqual(playerRigInputForMovement("sneak", 450, false), {
   motion: "idle", phase: 0.1875, crouching: true,
 }, "stationary crouching never reuses the walking cycle");
+const crouchWalkInput = playerRigInputForMovement("sneak", 225, true);
+const crouchWalk = resolvePlayerRigPose(crouchWalkInput);
+assert.equal(crouchWalkInput.motion, "walk");
+assert.equal(crouchWalkInput.crouching, true);
+assert.notEqual(crouchWalk.rightLegPitch, 0, "moving crouch has its own restrained step animation");
+assert.ok(Math.abs(crouchWalk.rightLegPitch) < Math.abs(walk.rightLegPitch),
+  "crouch-walking never reuses the full standing stride");
 assert.equal(playerRigInputForMovement("ladder", 360).intensity, 0.65);
 
 assert.deepEqual(PLAYER_RIG_SKIN_DRAWS, [
@@ -76,13 +83,27 @@ assert.ok(action.rightArmPitch < -1.7, "a local action visibly swings the right 
 assert.equal(action.leftArmPitch, resolvePlayerRigPose({ motion: "idle", phase: 0 }).leftArmPitch,
   "one-handed actions do not disturb the off hand");
 const crouch = resolvePlayerRigPose({ motion: "idle", phase: 0, crouching: true });
-assert.ok(crouch.bodyPitch > 0.4 && crouch.bodyYOffset < -0.1,
-  "sneaking has a lowered forward body posture rather than only a slow walk cycle");
+assert.ok(crouch.bodyPitch > 0.4 && crouch.bodyYOffset === 0,
+  "sneaking hinges forward at the shared hip rather than detaching a lowered torso");
 writePlayerRigPartMatrix(matrix, "root", crouch, "wide", true, new Float32Array(16));
 assert.notEqual(matrix[6], 0, "the crouched torso leans forward around its hip pivot");
-assert.ok(matrix[13] < 0, "the crouched torso is visibly lowered");
+assert.ok(Math.abs(matrix[5] * 0.75 + matrix[13] - 0.75) < 1e-7
+  && Math.abs(matrix[6] * 0.75 + matrix[14]) < 1e-7,
+  "the crouched torso remains connected to the unchanged leg hip pivot");
+const standingLook = resolvePlayerRigPose({ motion: "idle", phase: 0, headYaw: 0.55, headPitch: -0.3 });
+const crouchedLook = resolvePlayerRigPose({
+  motion: "idle", phase: 0, headYaw: 0.55, headPitch: -0.3, crouching: true,
+});
+const standingHeadMatrix = new Float32Array(16);
+const crouchedHeadMatrix = new Float32Array(16);
+writePlayerRigPartMatrix(standingHeadMatrix, "head", standingLook, "wide", true);
+writePlayerRigPartMatrix(crouchedHeadMatrix, "head", crouchedLook, "wide", true);
+assert.deepEqual([...crouchedHeadMatrix.slice(0, 12)], [...standingHeadMatrix.slice(0, 12)],
+  "crouching preserves standing head tracking without adding sideways roll");
+assert.notEqual(crouchedHeadMatrix[13], standingHeadMatrix[13],
+  "the crouched neck position follows the leaned torso");
 writePlayerRigPartMatrix(matrix, "rightLeg", crouch, "wide", true, new Float32Array(16));
-assert.equal(matrix[14], 0.25, "crouching moves the leg pivot behind the lowered upper body");
+assert.ok(Math.abs(matrix[14]) < 1e-7, "stationary crouching keeps the leg attached at the shared hip");
 assert.equal(matrix[6], 0, "stationary crouching keeps both legs out of the walk cycle");
 
 const armorDraws = playerArmorRigDraws(fullPlayerArmorAppearance("iron"));
@@ -101,8 +122,8 @@ const rendererSource = readFileSync(new URL("../client/game/playerSkinRenderer.t
 assert.match(rendererSource, /setPartMvp\("rightArm", true, itemMvpLocation\)/,
   "held items inherit the same anatomical right-arm joint as the hand socket");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-assert.match(engineSource, /playerRigInputForMovement\(movementMode, now, movementActivity > 0\)/,
-  "third-person production samples the deterministic rig from live movement state");
+assert.match(engineSource, /playerRigInputForMovement\(movementMode, now, movementActivity > 0\.5\)/,
+  "third-person production distinguishes actual movement from idle crouch activity");
 assert.match(engineSource, /@lakecraft-voxel-development:rig-preview:start[\s\S]*previewMode/,
   "the visual Pose Lab can override the live rig only inside its reviewed development surface");
 
