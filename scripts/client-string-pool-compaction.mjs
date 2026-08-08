@@ -47,9 +47,9 @@ export const COMPACT_CLIENT_HUMAN_GAME_SCREENSHOT_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_148;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 106;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "499b0ae5a73c5a0bb2e007d2d05d524716eff3180c5b4b86c415e3ad782de276";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_160;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "4c1784d760ac6a536450371631649c8789b5414df8cf5aa77b9b2b57fec5bb07";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -90,6 +90,19 @@ export const COMPACT_CLIENT_REPEATED_SCREENSPACE_ITEM_DELTA = Object.freeze({
   sources: Object.freeze([
     "client/game/firstPersonRenderer.ts",
     "client/game/viewmodelRig.ts",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_THIRD_PERSON_POSE_DELTA = Object.freeze({
+  previousOccurrences: 1_148,
+  previousUniqueValues: 106,
+  previousSourceFingerprint: "499b0ae5a73c5a0bb2e007d2d05d524716eff3180c5b4b86c415e3ad782de276",
+  occurrenceDelta: 12,
+  uniqueValueDelta: 1,
+  sources: Object.freeze([
+    "client/components/FirstPersonPoseLab.tsx",
+    "client/game/playerRig.ts",
+    "client/game/thirdPersonTuning.ts",
   ]),
   exclusionChanges: 0,
 });
@@ -196,9 +209,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 423;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 421;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "3457aabb8418a084469bac754991b36aad16956b126c00a0b1dfb538e5497127";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "88ddadf7ef0b315a78332300101a18977434e5629352bf7770fe03fbbae837aa";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -235,6 +248,20 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_SCREENSPACE_ITEM_DELTA = Object.freeze
   sources: Object.freeze([
     "client/game/firstPersonRenderer.ts",
     "client/game/viewmodelRig.ts",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_THIRD_PERSON_POSE_DELTA = Object.freeze({
+  previousOccurrences: 423,
+  previousUniqueValues: 124,
+  previousSourceFingerprint: "3457aabb8418a084469bac754991b36aad16956b126c00a0b1dfb538e5497127",
+  occurrenceDelta: -2,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/components/FirstPersonPoseLab.tsx",
+    "client/game/playerRig.ts",
+    "client/game/thirdPersonFacing.ts",
+    "client/game/thirdPersonTuning.ts",
   ]),
   exclusionChanges: 0,
 });

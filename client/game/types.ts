@@ -500,6 +500,8 @@ export interface VoxelEngine {
   setPlayerArmor(appearance: PlayerArmorAppearance): void;
   /** Cycles first person, third person behind, then third person facing the player. */
   cycleCameraMode(): PlayerCameraMode;
+  /** Selects an exact camera mode for development pose inspection. */
+  setCameraMode(mode: PlayerCameraMode): void;
   getCameraMode(): PlayerCameraMode;
   /** Removes the viewmodel for blocking UI, death, screenshots, or other cinematic surfaces. */
   setFirstPersonFeedbackHidden(hidden: boolean): void;
@@ -507,6 +509,8 @@ export interface VoxelEngine {
   setPoseLabDrawPreview(drawn: boolean | null): void;
   /** Paused Pose Lab action override only; null restores ordinary gameplay animation. */
   setPoseLabActionPreview(kind: "use" | null, progress?: number): void;
+  /** Paused Pose Lab rig override only; live restores ordinary gameplay motion. */
+  setPoseLabRigPreview(kind: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
   setDroppedItems(items: readonly DroppedItemRenderItem[]): void;

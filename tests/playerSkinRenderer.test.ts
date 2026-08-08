@@ -2,32 +2,37 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PLAYER_SKIN_VERTEX_COUNT } from "../client/game/playerSkinGeometry.ts";
 import { thirdPersonHeldItemPresentation } from "../client/game/playerSkinRenderer.ts";
+import { THIRD_PERSON_TUNING, thirdPersonPoseGroupForItem } from "../client/game/thirdPersonTuning.ts";
+import { blockIdForCubeItem } from "../client/game/blockItemCubeGeometry.ts";
 import { resolvePlayerRigPose, writePlayerRigPartMatrix } from "../client/game/playerRig.ts";
 import { itemVisual } from "../shared/visualCatalog.ts";
 
 const source = readFileSync(new URL("../client/game/playerSkinRenderer.ts", import.meta.url), "utf8");
 for (const contract of [
   "buildPlayerSkinGeometry", "gl.NEAREST", "gl.CLAMP_TO_EDGE", "uSkin", "uLight",
-  "pose.yaw + Math.PI", "gl.enable(gl.BLEND)", "PLAYER_RIG_SKIN_DRAWS", "setPartMvp",
+  "Math.PI - pose.yaw", "gl.enable(gl.BLEND)", "PLAYER_RIG_SKIN_DRAWS", "setPartMvp",
   "appendItemSpriteGeometry", "setHeldItem(itemId)", "heldItemVertexCount",
   "buildPlayerArmorGeometry", "setArmor(appearance)", "armorVertexCount",
-  "itemVisual(itemId)", "display.thirdPersonRight", "thirdPersonHeldItemPresentation(itemId)",
-  "appendBlockItemCubeGeometry", "blockIdForCubeItem(itemId)",
+  "itemVisual(itemId)", "display.thirdPersonRight", "thirdPersonHeldItemPresentation(heldItem, tuning)",
+  "appendBlockItemCubeGeometry", "blockIdForCubeItem(heldItem)",
   "resolvePlayerRigPose(rig)", "playerArmorRigDraws", "setPartMvp(\"rightArm\", true", "drawCallCount",
+  "currentThirdPersonTuning()", "heldItemTuningRevision", "rebuildHeldItemGeometry",
 ]) assert.ok(source.includes(contract), `world skin renderer retains ${contract}`);
 for (const itemId of ["dirt", "diamond_pickaxe", "apple", "bow"] as const) {
   const presentation = thirdPersonHeldItemPresentation(itemId);
   const display = itemVisual(itemId).display.thirdPersonRight;
-  assert.deepEqual(presentation.rotationDegrees, display.rotationDegrees, `${itemId} consumes the canonical third-person rotation`);
+  const tuning = THIRD_PERSON_TUNING[thirdPersonPoseGroupForItem(itemId)];
+  assert.deepEqual(presentation.rotationDegrees, display.rotationDegrees.map((value, index) =>
+    value + tuning.rotationDegrees[index]), `${itemId} consumes the reviewed third-person rotation delta`);
   assert.equal(
     presentation.size,
-    (itemVisual(itemId).family === "block" ? 1.25 : 0.82) * display.scale[0],
-    `${itemId} consumes canonical third-person scale`,
+    (blockIdForCubeItem(itemId) !== null ? 1.25 : 0.82) * display.scale[0] * tuning.scale,
+    `${itemId} consumes reviewed third-person scale`,
   );
   assert.ok(presentation.center?.every(Number.isFinite));
   assert.equal(
     presentation.center?.[1],
-    (itemVisual(itemId).parent === "bow" ? 0.875 : 0.53) + display.translation[1] / 16,
+    (itemVisual(itemId).parent === "bow" ? 0.875 : 0.53) + display.translation[1] / 16 + tuning.position[1],
     `${itemId} resolves the correct hand socket family`,
   );
   assert.deepEqual(

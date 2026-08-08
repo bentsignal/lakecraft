@@ -28,7 +28,7 @@ assert.equal(buildPlayerArmorGeometry({ head: "iron_boots" }).length, 0,
   "an armor ID in the wrong slot fails closed instead of drawing the wrong shell");
 assert.equal(PLAYER_ARMOR_MAX_BOXES, 20, "the fidelity pass remains a small fixed cuboid budget");
 assert.deepEqual(PLAYER_ARMOR_BOX_GROUPS, {
-  head: [["root", 4]],
+  head: [["head", 4]],
   chest: [["root", 4], ["rightArm", 2], ["leftArm", 2]],
   legs: [["root", 2], ["rightLeg", 1], ["leftLeg", 1]],
   feet: [["rightLeg", 2], ["leftLeg", 2]],

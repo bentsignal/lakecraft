@@ -25,6 +25,10 @@ import {
   lzCompressCss,
   lzDecompressCss,
 } from "../scripts/css-lz-compression.mjs";
+import {
+  stripClientDevelopmentSurfaces,
+  stripVoxelDevelopmentSurfaces,
+} from "../scripts/client-development-surface-transform.mjs";
 
 async function clientSourcePaths(directory = new URL("../client/", import.meta.url)) {
   const paths = [];
@@ -162,7 +166,16 @@ assert.ok(
   COMPACT_CLIENT_IDENTIFIER_FAMILIES.every(([readable, compact]) => readable.startsWith("lc-") && /^x[a-z0-9]$/.test(compact)),
   "family rewrites must stay inside the private client namespace",
 );
-const allClientSources = await Promise.all((await clientSourcePaths()).map((path) => readFile(path, "utf8")));
+const allClientSources = await Promise.all((await clientSourcePaths()).map(async (path) => {
+  const source = await readFile(path, "utf8");
+  if (path.pathname.endsWith("/client/singleplayer/SinglePlayerApp.tsx")) {
+    return stripClientDevelopmentSurfaces(source);
+  }
+  if (path.pathname.endsWith("/client/game/voxelEngine.ts")) {
+    return stripVoxelDevelopmentSurfaces(source);
+  }
+  return source;
+}));
 assert.equal(auditCompactClientIdentifierCorpus(allClientSources), true, "the reviewed private identifier corpus must stay exact");
 for (const [, compact] of COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES) {
   assert.throws(

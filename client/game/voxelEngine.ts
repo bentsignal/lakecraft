@@ -25,7 +25,7 @@ import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
-import { createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
+import { FIRST_PERSON_ACTION_MS, createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
 import {
   createFirstPersonSkinRenderer,
   FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
@@ -34,6 +34,7 @@ import {
 import { nextPlayerCameraMode, writePlayerCamera, type PlayerCameraMode } from "./playerCamera.ts";
 import { createPlayerSkinRenderer } from "./playerSkinRenderer.ts";
 import { playerRigInputForMovement } from "./playerRig.ts";
+import { createThirdPersonFacingState, stepThirdPersonFacing } from "./thirdPersonFacing.ts";
 import { BLOCK_MATERIAL_COLORS as BLOCK_COLORS } from "./blockColors.ts";
 import {
   blockParticleBufferCapacity,
@@ -1671,6 +1672,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     yaw: options.initialPose?.yaw ?? 0,
     pitch: options.initialPose?.pitch ?? -0.08,
   };
+  let thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
+  const thirdPersonRenderPose: PlayerPose = { ...pose };
   let respawnPoint: PlayerPose = {
     x: 0.5,
     y: startY,
@@ -1946,6 +1949,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let firstPersonFeedbackHidden = false;
   let cameraMode: PlayerCameraMode = "first_person";
   let firstPersonBowPreviewDrawn: boolean | null = null;
+  /* @lakecraft-voxel-development:state:start */
+  let thirdPersonRigPreview: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 = 0;
+  /* @lakecraft-voxel-development:state:end */
   setFirstPersonHeldItem(selectedItem, selectedBlock);
   let worldVertexCount = 0;
   let remoteVertexCount = 0;
@@ -2031,9 +2037,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let firstPersonExposureBlockZ = Infinity;
   let firstPersonExposureDirty = true;
   const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
+  let thirdPersonActionStartedAt = -Infinity;
 
   function emitHandAction(action: "mine" | "attack" | "place" | "use"): void {
-    triggerFirstPersonAction(action, performance.now());
+    const now = performance.now();
+    triggerFirstPersonAction(action, now);
+    thirdPersonActionStartedAt = now;
     options.onHandAction?.(action);
   }
 
@@ -3047,6 +3056,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
 
     const movedHorizontally = Math.hypot(pose.x - movementStartX, pose.z - movementStartZ);
+    thirdPersonFacing = stepThirdPersonFacing(
+      thirdPersonFacing,
+      pose.yaw,
+      -pose.pitch,
+      movedHorizontally > 0.0001,
+      dt,
+    );
     advanceHeadBob(
       cameraBob,
       movementMode,
@@ -3527,8 +3543,36 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         + dayNightState.directionalG * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
       playerSkinLight[2] = clampNumber((dayNightState.ambientB * dayNightState.ambientIntensity
         + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
+      thirdPersonRenderPose.x = pose.x;
+      thirdPersonRenderPose.y = pose.y;
+      thirdPersonRenderPose.z = pose.z;
+      thirdPersonRenderPose.yaw = thirdPersonFacing.bodyYaw;
+      thirdPersonRenderPose.pitch = pose.pitch;
+      let rigInput = playerRigInputForMovement(movementMode, now, movementActivity > 0);
+      let previewHeadPitch = thirdPersonFacing.headPitch;
+      /* @lakecraft-voxel-development:rig-preview:start */
+      if (thirdPersonRigPreview !== 0) {
+        const previewMode = thirdPersonRigPreview === 3 || thirdPersonRigPreview === 4 ? "sneak"
+          : thirdPersonRigPreview === 2 || thirdPersonRigPreview === 5 ? "walk" : "idle";
+        rigInput = playerRigInputForMovement(
+          previewMode,
+          now,
+          thirdPersonRigPreview === 2 || thirdPersonRigPreview === 5,
+        );
+        if (thirdPersonRigPreview === 4 || thirdPersonRigPreview === 5) {
+          thirdPersonRenderPose.yaw += Math.PI / 2;
+        }
+        previewHeadPitch = thirdPersonRigPreview === 6 ? -0.65
+          : thirdPersonRigPreview === 7 ? 0.65 : thirdPersonFacing.headPitch;
+      }
+      /* @lakecraft-voxel-development:rig-preview:end */
       playerSkinRenderer.setHeldItem(selectedItem);
-      playerSkinRenderer.draw(mvp, pose, playerSkinLight, playerRigInputForMovement(movementMode, now));
+      playerSkinRenderer.draw(mvp, thirdPersonRenderPose, playerSkinLight, {
+        ...rigInput,
+        headYaw: thirdPersonFacing.headYaw,
+        headPitch: previewHeadPitch,
+        actionProgress: Math.min(1, Math.max(0, (now - thirdPersonActionStartedAt) / FIRST_PERSON_ACTION_MS)),
+      });
       const localPlayerDrawCalls = playerSkinRenderer.drawCallCount;
       drawCalls += localPlayerDrawCalls;
       avatarDrawCalls += localPlayerDrawCalls;
@@ -4287,6 +4331,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
       return cameraMode;
     },
+    setCameraMode(mode) {
+      cameraMode = mode;
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+    },
     getCameraMode() {
       return cameraMode;
     },
@@ -4310,6 +4358,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       setFirstPersonActionPreview(kind, progress);
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
     },
+    /* @lakecraft-voxel-development:method:start */
+    setPoseLabRigPreview(kind) {
+      thirdPersonRigPreview = kind;
+      lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+    },
+    /* @lakecraft-voxel-development:method:end */
     setRemotePlayers(players) {
       const now = performance.now();
       const incomingIds = new Set<string>();
@@ -4510,6 +4564,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = nextPose.z;
       pose.yaw = nextPose.yaw;
       pose.pitch = nextPose.pitch;
+      thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
       clearPlayerMotion();
       playerViewSuspended = false;
       fallAirborne = false;
@@ -4542,6 +4597,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = snapshot.pose.z;
       pose.yaw = snapshot.pose.yaw;
       pose.pitch = snapshot.pose.pitch;
+      thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
       respawnPoint = { ...snapshot.respawnPoint };
       playerHealth = snapshot.playerHealth;
       worldTimeMs = snapshot.worldTimeMs;
@@ -4593,6 +4649,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = respawnPoint.z;
       pose.yaw = respawnPoint.yaw;
       pose.pitch = respawnPoint.pitch;
+      thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
       updateStreamingWindow(true);
       pose.y = resolveSafeSpawnY(
         respawnPoint.y,

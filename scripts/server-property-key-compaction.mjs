@@ -137,8 +137,8 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // Reviewed through the canonical GUI block raster base. The explicit
 // MotionSegmentRecorder and skin-storage deltas remain pinned below; compact
 // manifest keys, exclusions, runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "dd53e787b8c11b21e83c9d135da0a75ab8bde6c2108265a4996d1ea287deb86e";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "079aef8ce6b2bba76265a2cd6525643ddb870718f5e1917408af9af938a9c002";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "eea289398dd386b7c3d185b4f526cb9c2eb721e66f65dbcffb0321050bfdc70e";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "368f79db2adbc55d76933c74e2bbe56d42368a9b0a4fd99f328f40f9cf72ac05";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "2f571e4de8deab7142d35ecbf20638ace250366df0e60bc36ea3fb13ceecf21e";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server

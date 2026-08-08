@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { stripClientDevelopmentSurfaces } from "../scripts/client-development-surface-transform.mjs";
+import {
+  stripClientDevelopmentSurfaces,
+  stripVoxelDevelopmentSurfaces,
+} from "../scripts/client-development-surface-transform.mjs";
 
 const source = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 for (const component of ["FirstPersonPoseLab", "VisualLab"]) {
@@ -30,6 +33,30 @@ assert.throws(
   () => stripClientDevelopmentSurfaces(source.replace("/* @lakecraft-development:state:start */", "")),
   /marker state is missing/,
   "missing compact-stage markers fail closed",
+);
+
+const voxelSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+assert.ok(voxelSource.includes("setPoseLabRigPreview"),
+  "normal local development exposes the visual rig preview");
+const compactVoxel = stripVoxelDevelopmentSurfaces(voxelSource);
+for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", "@lakecraft-voxel-development:"]) {
+  assert.equal(compactVoxel.includes(developmentOnly), false,
+    `compact anonymous voxel source excludes development-only ${developmentOnly}`);
+}
+assert.ok(compactVoxel.includes("playerRigInputForMovement(movementMode, now, movementActivity > 0)"),
+  "production movement-driven rig behavior remains after the preview override is removed");
+assert.throws(
+  () => stripVoxelDevelopmentSurfaces(voxelSource.replace("previewMode,", '"idle",')),
+  /Compact voxel development-surface rig-preview changed/,
+  "voxel preview changes require an explicit compact-stage review",
+);
+assert.throws(
+  () => stripVoxelDevelopmentSurfaces(voxelSource.replace(
+    "/* @lakecraft-voxel-development:method:start */",
+    "",
+  )),
+  /marker method is missing/,
+  "missing voxel compact-stage markers fail closed",
 );
 
 console.log("client development-surface compact staging tests: ok");

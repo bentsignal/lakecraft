@@ -4,8 +4,14 @@ const REVIEWED_DEVELOPMENT_SURFACES = Object.freeze({
   modal: "b6b7c1c8",
   guard: "cfe8bf8b",
   dependency: "55faebb2",
-  callback: "5385195e",
-  render: "e33185c9",
+  callback: "4eb667e6",
+  render: "86b20f0f",
+});
+
+const REVIEWED_VOXEL_DEVELOPMENT_SURFACES = Object.freeze({
+  state: "995293cc",
+  "rig-preview": "3692d20b",
+  method: "47244734",
 });
 
 function fingerprint(source) {
@@ -45,6 +51,33 @@ export function stripClientDevelopmentSurfaces(source) {
   }
   if (transformed.includes("@lakecraft-development:")) {
     throw new Error("Compact development-surface transform left an unreviewed marker behind.");
+  }
+  return transformed;
+}
+
+/** Removes only the reviewed Pose Lab rig hooks from the compact voxel engine. */
+export function stripVoxelDevelopmentSurfaces(source) {
+  let transformed = source;
+  for (const [name, expectedFingerprint] of Object.entries(REVIEWED_VOXEL_DEVELOPMENT_SURFACES)) {
+    const start = `/* @lakecraft-voxel-development:${name}:start */`;
+    const end = `/* @lakecraft-voxel-development:${name}:end */`;
+    const startAt = transformed.indexOf(start);
+    const endAt = transformed.indexOf(end);
+    if (startAt < 0 || endAt < startAt || transformed.indexOf(start, startAt + start.length) >= 0
+      || transformed.indexOf(end, endAt + end.length) >= 0) {
+      throw new Error(`Compact voxel development-surface marker ${name} is missing, duplicated, or out of order.`);
+    }
+    const body = transformed.slice(startAt + start.length, endAt);
+    const actualFingerprint = fingerprint(body);
+    if (actualFingerprint !== expectedFingerprint) {
+      throw new Error(
+        `Compact voxel development-surface ${name} changed (expected ${expectedFingerprint}, found ${actualFingerprint}).`,
+      );
+    }
+    transformed = transformed.slice(0, startAt) + transformed.slice(endAt + end.length);
+  }
+  if (transformed.includes("@lakecraft-voxel-development:")) {
+    throw new Error("Compact voxel development-surface transform left an unreviewed marker behind.");
   }
   return transformed;
 }

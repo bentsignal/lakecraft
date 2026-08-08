@@ -21,7 +21,7 @@ import {
   compactClientPropertyCache,
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
-import { stripClientDevelopmentSurfaces } from "./client-development-surface-transform.mjs";
+import { stripClientDevelopmentSurfaces, stripVoxelDevelopmentSurfaces } from "./client-development-surface-transform.mjs";
 import { compactClientBuiltinAliases } from "./client-builtin-alias-compaction.mjs";
 import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.mjs";
 import { compactClientStringPool } from "./client-string-pool-compaction.mjs";
@@ -62,11 +62,23 @@ async function clientSourcePaths(directory = join(sourceRoot, "client")) {
   return paths.sort();
 }
 
+function stripReviewedClientDevelopmentSource(path, source) {
+  if (path === join(sourceRoot, "client", "singleplayer", "SinglePlayerApp.tsx")) {
+    return stripClientDevelopmentSurfaces(source);
+  }
+  if (path === join(sourceRoot, "client", "game", "voxelEngine.ts")) {
+    return stripVoxelDevelopmentSurfaces(source);
+  }
+  return source;
+}
+
 async function createCssBundlePlan() {
   const templates = [];
   const indexes = new Map();
   const paths = await clientSourcePaths();
-  const rawSources = await Promise.all(paths.map((path) => readFile(path, "utf8")));
+  const rawSources = await Promise.all(paths.map(async (path) => (
+    stripReviewedClientDevelopmentSource(path, await readFile(path, "utf8"))
+  )));
   auditCompactClientIdentifierCorpus(rawSources);
   for (let pathIndex = 0; pathIndex < paths.length; pathIndex += 1) {
     const path = paths[pathIndex];
@@ -106,9 +118,7 @@ const cssTemplateMinifier = {
     }));
     esbuild.onLoad({ filter: /\.[tj]sx?$/ }, async ({ path }) => {
       const source = await readFile(path, "utf8");
-      const stagedSource = path === join(sourceRoot, "client", "singleplayer", "SinglePlayerApp.tsx")
-        ? stripClientDevelopmentSurfaces(source)
-        : source;
+      const stagedSource = stripReviewedClientDevelopmentSource(path, source);
       let compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
         ? compactClientIdentifiers(stagedSource)
         : stagedSource;

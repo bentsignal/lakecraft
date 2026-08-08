@@ -7,15 +7,19 @@ import {
   compactClientBuiltinAliases,
 } from "../scripts/client-builtin-alias-compaction.mjs";
 
-assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 3, "the alias boundary remains deliberately narrow");
-assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 714);
+assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 10, "the alias boundary remains deliberately narrow");
+assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_202);
 assert.match(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT, /^[0-9a-f]{64}$/);
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
-  "Math.floor", "Math.max", "Math.min",
+  "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.max", "Math.min", "Math.round",
+  "Math.sin", "Object.freeze",
 ]);
 
-const fixtureKeys = ["Math.floor", "Math.max", "Math.min"];
-const fixture = "globalThis.__lcAliasFixture=[Math.floor(2.9),Math.max(3,7),Math.min(-4,9)];";
+const fixtureKeys = [
+  "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.max", "Math.min", "Math.round",
+  "Math.sin", "Object.freeze",
+];
+const fixture = "globalThis.__lcAliasFixture=[Math.abs(-4),Math.cos(0),Math.ceil(2.1),Math.floor(2.9),Math.hypot(3,4),Math.max(3,7),Math.min(-4,9),Math.round(2.5),Math.sin(0),Object.freeze({a:1}).a];";
 const fixtureBoundary = {
   counts: Object.freeze(Object.fromEntries(fixtureKeys.map((key) => [key, 1]))),
   occurrences: fixtureKeys.length,
@@ -23,7 +27,7 @@ const fixtureBoundary = {
 };
 const transformed = await compactClientBuiltinAliases(fixture, fixtureBoundary);
 new Function(transformed)();
-assert.deepEqual(globalThis.__lcAliasFixture, [2, 7, -4],
+assert.deepEqual(globalThis.__lcAliasFixture, [4, 1, 3, 2, 5, 7, -4, 3, 0, 1],
   "receiver-independent aliases preserve native call results and argument order");
 delete globalThis.__lcAliasFixture;
 for (const key of fixtureKeys) {
