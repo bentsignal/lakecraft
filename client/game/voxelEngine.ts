@@ -25,7 +25,7 @@ import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
-import { createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
+import { FIRST_PERSON_ACTION_MS, createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
 import {
   createFirstPersonSkinRenderer,
   FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
@@ -34,6 +34,7 @@ import {
 import { nextPlayerCameraMode, writePlayerCamera, type PlayerCameraMode } from "./playerCamera.ts";
 import { createPlayerSkinRenderer } from "./playerSkinRenderer.ts";
 import { playerRigInputForMovement } from "./playerRig.ts";
+import { createThirdPersonFacingState, stepThirdPersonFacing } from "./thirdPersonFacing.ts";
 import { BLOCK_MATERIAL_COLORS as BLOCK_COLORS } from "./blockColors.ts";
 import {
   blockParticleBufferCapacity,
@@ -1671,6 +1672,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     yaw: options.initialPose?.yaw ?? 0,
     pitch: options.initialPose?.pitch ?? -0.08,
   };
+  let thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
+  const thirdPersonRenderPose: PlayerPose = { ...pose };
   let respawnPoint: PlayerPose = {
     x: 0.5,
     y: startY,
@@ -2031,9 +2034,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let firstPersonExposureBlockZ = Infinity;
   let firstPersonExposureDirty = true;
   const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
+  let thirdPersonActionStartedAt = -Infinity;
 
   function emitHandAction(action: "mine" | "attack" | "place" | "use"): void {
-    triggerFirstPersonAction(action, performance.now());
+    const now = performance.now();
+    triggerFirstPersonAction(action, now);
+    thirdPersonActionStartedAt = now;
     options.onHandAction?.(action);
   }
 
@@ -3047,6 +3053,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
 
     const movedHorizontally = Math.hypot(pose.x - movementStartX, pose.z - movementStartZ);
+    const travelYaw = movedHorizontally > 0.0001
+      ? Math.atan2(pose.x - movementStartX, -(pose.z - movementStartZ))
+      : null;
+    thirdPersonFacing = stepThirdPersonFacing(
+      thirdPersonFacing,
+      pose.yaw,
+      -pose.pitch,
+      travelYaw,
+      dt,
+    );
     advanceHeadBob(
       cameraBob,
       movementMode,
@@ -3527,8 +3543,19 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         + dayNightState.directionalG * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
       playerSkinLight[2] = clampNumber((dayNightState.ambientB * dayNightState.ambientIntensity
         + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
+      thirdPersonRenderPose.x = pose.x;
+      thirdPersonRenderPose.y = pose.y;
+      thirdPersonRenderPose.z = pose.z;
+      thirdPersonRenderPose.yaw = thirdPersonFacing.bodyYaw;
+      thirdPersonRenderPose.pitch = pose.pitch;
+      const rigInput = playerRigInputForMovement(movementMode, now);
       playerSkinRenderer.setHeldItem(selectedItem);
-      playerSkinRenderer.draw(mvp, pose, playerSkinLight, playerRigInputForMovement(movementMode, now));
+      playerSkinRenderer.draw(mvp, thirdPersonRenderPose, playerSkinLight, {
+        ...rigInput,
+        headYaw: thirdPersonFacing.headYaw,
+        headPitch: thirdPersonFacing.headPitch,
+        actionProgress: Math.min(1, Math.max(0, (now - thirdPersonActionStartedAt) / FIRST_PERSON_ACTION_MS)),
+      });
       const localPlayerDrawCalls = playerSkinRenderer.drawCallCount;
       drawCalls += localPlayerDrawCalls;
       avatarDrawCalls += localPlayerDrawCalls;
@@ -4287,6 +4314,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
       return cameraMode;
     },
+    setCameraMode(mode) {
+      cameraMode = mode;
+      if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+    },
     getCameraMode() {
       return cameraMode;
     },
@@ -4510,6 +4541,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = nextPose.z;
       pose.yaw = nextPose.yaw;
       pose.pitch = nextPose.pitch;
+      thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
       clearPlayerMotion();
       playerViewSuspended = false;
       fallAirborne = false;
@@ -4542,6 +4574,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = snapshot.pose.z;
       pose.yaw = snapshot.pose.yaw;
       pose.pitch = snapshot.pose.pitch;
+      thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
       respawnPoint = { ...snapshot.respawnPoint };
       playerHealth = snapshot.playerHealth;
       worldTimeMs = snapshot.worldTimeMs;
@@ -4593,6 +4626,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.z = respawnPoint.z;
       pose.yaw = respawnPoint.yaw;
       pose.pitch = respawnPoint.pitch;
+      thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
       updateStreamingWindow(true);
       pose.y = resolveSafeSpawnY(
         respawnPoint.y,

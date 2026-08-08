@@ -3,9 +3,9 @@ import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES } from "./generated/renderGeome
 import type { PlayerSkinModel } from "./playerSkin.ts";
 
 export const PLAYER_ARMOR_VERTEX_STRIDE = 6;
-export type PlayerArmorJoint = "root" | "rightArm" | "leftArm" | "rightLeg" | "leftLeg";
+export type PlayerArmorJoint = "head" | "root" | "rightArm" | "leftArm" | "rightLeg" | "leftLeg";
 export const PLAYER_ARMOR_BOX_GROUPS: Readonly<Record<ArmorSlot, readonly (readonly [PlayerArmorJoint, number])[]>> = Object.freeze({
-  head: Object.freeze([["root", 4]]),
+  head: Object.freeze([["head", 4]]),
   chest: Object.freeze([["root", 4], ["rightArm", 2], ["leftArm", 2]]),
   legs: Object.freeze([["root", 2], ["rightLeg", 1], ["leftLeg", 1]]),
   feet: Object.freeze([["rightLeg", 2], ["leftLeg", 2]]),

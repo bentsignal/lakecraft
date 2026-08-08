@@ -8,10 +8,18 @@ import {
   type FirstPersonVector,
 } from "../game/firstPersonTuning.ts";
 import { poseLabScrubValue } from "./poseLabScrub.ts";
+import {
+  THIRD_PERSON_TUNING,
+  currentThirdPersonTuning,
+  publishThirdPersonTuning,
+  thirdPersonPoseGroupForItem,
+  type ThirdPersonTuning,
+} from "../game/thirdPersonTuning.ts";
+import type { PlayerCameraMode } from "../game/playerCamera.ts";
 
 type PoseGroup = "block" | "tool" | "bow" | "arm" | "otherItem";
-type TransformGroup = Exclude<PoseGroup, "block">;
 type TransformVectorField = "position" | "rotationDegrees" | "pivot";
+type PosePerspective = "first_person" | "third_person";
 
 const GROUP_LABELS: Readonly<Record<PoseGroup, string>> = {
   block: "Full block",
@@ -30,10 +38,13 @@ const PREVIEW_ITEMS = Object.freeze([
   "bow",
   "cooked_chicken",
   "iron_ingot",
+  "chest",
+  "torch",
 ] as const satisfies readonly ItemId[]);
 
-function poseGroupForItem(itemId: ItemId | null): PoseGroup {
+function poseGroupForItem(itemId: ItemId | null, perspective: PosePerspective): PoseGroup {
   if (itemId === null) return "arm";
+  if (perspective === "third_person") return thirdPersonPoseGroupForItem(itemId);
   if (itemId === "bow") return "bow";
   if (ITEMS[itemId].tool) return "tool";
   if (ITEMS[itemId].category === "block" && itemId !== "torch") return "block";
@@ -153,6 +164,7 @@ function VectorInputs({
 export function FirstPersonPoseLab({
   open,
   onBowPreviewChange,
+  onCameraModeChange,
   onCycleCamera,
   onHeldItemPreviewChange,
   onOpenVisualLab,
@@ -160,6 +172,7 @@ export function FirstPersonPoseLab({
 }: {
   open: boolean;
   onBowPreviewChange?: (drawn: boolean | null) => void;
+  onCameraModeChange?: (mode: PlayerCameraMode) => void;
   onCycleCamera?: () => string;
   onHeldItemPreviewChange?: (itemId: ItemId | null | undefined) => void;
   onOpenVisualLab?: () => void;
@@ -167,6 +180,8 @@ export function FirstPersonPoseLab({
 }) {
   const [group, setGroup] = useState<PoseGroup>("tool");
   const [tuning, setTuning] = useState<FirstPersonTuning>(() => currentFirstPersonTuning().tuning);
+  const [thirdPersonTuning, setThirdPersonTuning] = useState<ThirdPersonTuning>(() => currentThirdPersonTuning().tuning);
+  const [perspective, setPerspective] = useState<PosePerspective>("first_person");
   const [copied, setCopied] = useState(false);
   const [bowDrawn, setBowDrawn] = useState(false);
   const [cameraMode, setCameraMode] = useState("first person");
@@ -180,25 +195,31 @@ export function FirstPersonPoseLab({
   }, [onHeldItemPreviewChange, open]);
 
   useEffect(() => {
-    const active = open && group === "otherItem" && usePreview;
+    const active = open && perspective === "first_person" && group === "otherItem" && usePreview;
     onUsePreviewChange?.(active);
     return () => onUsePreviewChange?.(false);
-  }, [group, onUsePreviewChange, open, usePreview]);
+  }, [group, onUsePreviewChange, open, perspective, usePreview]);
 
   useEffect(() => {
-    if (!open || group !== "bow") {
+    if (!open || perspective !== "first_person" || group !== "bow") {
       onBowPreviewChange?.(null);
       return;
     }
     onBowPreviewChange?.(bowDrawn);
     return () => onBowPreviewChange?.(null);
-  }, [bowDrawn, group, onBowPreviewChange, open]);
+  }, [bowDrawn, group, onBowPreviewChange, open, perspective]);
 
   if (!open) return null;
 
   function commit(next: FirstPersonTuning): void {
     publishFirstPersonTuning(next);
     setTuning(next);
+    setCopied(false);
+  }
+
+  function commitThirdPerson(next: ThirdPersonTuning): void {
+    publishThirdPersonTuning(next);
+    setThirdPersonTuning(next);
     setCopied(false);
   }
 
@@ -229,12 +250,39 @@ export function FirstPersonPoseLab({
     commit({ ...tuning, block: { ...tuning.block, size: Math.max(0.05, finite(value, tuning.block.size)) } });
   }
 
+  function updateThirdPersonVector(field: "position" | "rotationDegrees", index: number, value: number): void {
+    if (group === "arm") return;
+    const current = thirdPersonTuning[group];
+    commitThirdPerson({
+      ...thirdPersonTuning,
+      [group]: { ...current, [field]: vectorWithValue(current[field], index, value) },
+    });
+  }
+
+  function updateThirdPersonScale(value: number): void {
+    if (group === "arm") return;
+    const current = thirdPersonTuning[group];
+    commitThirdPerson({
+      ...thirdPersonTuning,
+      [group]: { ...current, scale: Math.max(0.05, finite(value, current.scale)) },
+    });
+  }
+
   function resetGroup(): void {
+    if (perspective === "third_person") {
+      if (group !== "arm") commitThirdPerson({ ...thirdPersonTuning, [group]: THIRD_PERSON_TUNING[group] });
+      return;
+    }
     commit({ ...tuning, [group]: FIRST_PERSON_TUNING[group] });
   }
 
   const active = tuning[group];
-  const readout = group === "block"
+  const thirdPersonActive = group === "arm" ? null : thirdPersonTuning[group];
+  const readout = perspective === "third_person"
+    ? thirdPersonActive
+      ? `third person · ${group} · position delta [${thirdPersonActive.position.join(", ")}] · rotation delta [${thirdPersonActive.rotationDegrees.join(", ")}] · scale ${thirdPersonActive.scale}`
+      : "third person · empty hand · articulated player rig"
+    : group === "block"
     ? `item only · anchor offset [${active.center.join(", ")}] · Minecraft rotation [${active.rotationDegrees.join(", ")}] · size ${active.size}`
     : group === "arm"
       ? "empty slot only · full-width skin arm"
@@ -250,10 +298,33 @@ export function FirstPersonPoseLab({
   }
 
   return (
-    <aside aria-label="First-person pose lab" className="lc-pose-lab">
+    <aside aria-label="Pose lab" className="lc-pose-lab">
       <style>{POSE_LAB_CSS}</style>
       <header className="lc-pose-lab__head"><strong>POSE LAB</strong><span className="lc-pose-lab__live">● LIVE</span></header>
-      <div className="lc-pose-lab__socket-note">EXCLUSIVE VIEWMODEL · An empty slot shows the arm. Any selected item replaces it.</div>
+      <div className="lc-pose-lab__bow-preview">
+        <span>Editing perspective</span>
+        <div aria-label="Pose editing perspective" className="lc-pose-lab__bow-preview-controls" role="group">
+          <button aria-pressed={perspective === "first_person"} onClick={() => {
+            setPerspective("first_person");
+            if (previewItem !== "actual") {
+              setGroup(poseGroupForItem(previewItem === "empty" ? null : previewItem as ItemId, "first_person"));
+            }
+            setCameraMode("first person");
+            onCameraModeChange?.("first_person");
+          }} type="button">First person</button>
+          <button aria-pressed={perspective === "third_person"} onClick={() => {
+            setPerspective("third_person");
+            if (previewItem !== "actual") {
+              setGroup(poseGroupForItem(previewItem === "empty" ? null : previewItem as ItemId, "third_person"));
+            }
+            setCameraMode("third person back");
+            onCameraModeChange?.("third_person_back");
+          }} type="button">Third person</button>
+        </div>
+      </div>
+      <div className="lc-pose-lab__socket-note">{perspective === "first_person"
+        ? "EXCLUSIVE VIEWMODEL · An empty slot shows the arm. Any selected item replaces it."
+        : "ARTICULATED PLAYER RIG · Item edits are local offsets on the right-hand socket. Camera look drives the head while the body follows naturally."}</div>
       <label className="lc-pose-lab__preview">
         <span>Preview item</span>
         <select
@@ -263,7 +334,7 @@ export function FirstPersonPoseLab({
             setPreviewItem(value);
             const itemId = value === "actual" ? undefined : value === "empty" ? null : value as ItemId;
             onHeldItemPreviewChange?.(itemId);
-            if (itemId !== undefined) setGroup(poseGroupForItem(itemId));
+            if (itemId !== undefined) setGroup(poseGroupForItem(itemId, perspective));
           }}
           value={previewItem}
         >
@@ -280,7 +351,7 @@ export function FirstPersonPoseLab({
           ))}
         </select>
       </label>
-      {group === "bow" ? (
+      {perspective === "first_person" && group === "bow" ? (
         <div className="lc-pose-lab__bow-preview">
           <span>Bow preview</span>
           <div aria-label="Bow draw preview" className="lc-pose-lab__bow-preview-controls" role="group">
@@ -290,7 +361,7 @@ export function FirstPersonPoseLab({
           <small>Hold a bow, then switch poses here. This never fires or consumes an arrow.</small>
         </div>
       ) : null}
-      {group === "otherItem" ? (
+      {perspective === "first_person" && group === "otherItem" ? (
         <div className="lc-pose-lab__bow-preview">
           <span>Use preview</span>
           <div aria-label="Item use preview" className="lc-pose-lab__bow-preview-controls" role="group">
@@ -300,7 +371,15 @@ export function FirstPersonPoseLab({
           <small>With food selected, Mid-use freezes the eating pose for reference comparison.</small>
         </div>
       ) : null}
-      {group === "block" ? (
+      {perspective === "third_person" ? group === "arm" ? (
+        <div className="lc-pose-lab__socket-note">The empty-hand pose follows the articulated right arm. Select an item family to tune its hand-socket transform.</div>
+      ) : thirdPersonActive ? (
+        <>
+          <VectorInputs label="Hand socket offset" onChange={(index, value) => updateThirdPersonVector("position", index, value)} step={0.01} value={thirdPersonActive.position} />
+          <VectorInputs label="Rotation delta" onChange={(index, value) => updateThirdPersonVector("rotationDegrees", index, value)} step={1} value={thirdPersonActive.rotationDegrees} />
+          <div className="lc-pose-lab__row lc-pose-lab__single"><span>Scale</span><ScrubNumberInput label="Third-person scale" min={0.05} onChange={updateThirdPersonScale} step={0.01} value={thirdPersonActive.scale} /></div>
+        </>
+      ) : null : group === "block" ? (
         <>
           <VectorInputs label="Screen anchor offset" onChange={(index, value) => updateBlockVector("center", index, value)} step={0.01} value={active.center} />
           <VectorInputs label="Rotation degrees" onChange={(index, value) => updateBlockVector("rotationDegrees", index, value)} step={1} value={active.rotationDegrees} />

@@ -33,6 +33,11 @@ import {
   SKIN_FRAGMENT_SHADER,
   SKIN_VERTEX_SHADER,
 } from "./visualShaders.ts";
+import {
+  currentThirdPersonTuning,
+  thirdPersonPoseGroupForItem,
+  type ThirdPersonTuning,
+} from "./thirdPersonTuning.ts";
 
 export type PlayerSkinRenderer = Readonly<{
   readonly vertexCount: number;
@@ -47,13 +52,18 @@ export type PlayerSkinRenderer = Readonly<{
 }>;
 
 /** Resolves the catalog's 16-unit third-person transform onto the right-hand socket. */
-export function thirdPersonHeldItemPresentation(itemId: ItemId): ItemSpriteGeometryOptions {
+export function thirdPersonHeldItemPresentation(
+  itemId: ItemId,
+  tuning: ThirdPersonTuning = currentThirdPersonTuning().tuning,
+): ItemSpriteGeometryOptions {
   const visual = itemVisual(itemId);
   const display = visual.display.thirdPersonRight;
+  const delta = tuning[thirdPersonPoseGroupForItem(itemId)];
+  const specialBlockSprite = itemId === "chest" || itemId === "torch";
   // Generated/handheld pixels are authored against a 16-unit item frame. The
   // former 0.54 base made an exact 16x16 tool barely half a forearm tall; use
   // the actual hand-scale frame so the installed silhouette reads in F5 views.
-  const baseSize = visual.family === "block" ? 1.25 : 0.82;
+  const baseSize = blockIdForCubeItem(itemId) !== null ? 1.25 : 0.82;
   // Bow display translation is authored around its own centered grip while
   // generated/block/handheld parents are authored around the lower hand.
   const socketY = visual.parent === "bow" ? 0.875 : 0.53;
@@ -63,13 +73,17 @@ export function thirdPersonHeldItemPresentation(itemId: ItemId): ItemSpriteGeome
   const socketZ = visual.parent === "bow" ? 0.05 : 0.17;
   return Object.freeze({
     center: [
-      0.39 + display.translation[0] / 16,
-      socketY + display.translation[1] / 16,
-      socketZ + display.translation[2] / 16,
+      0.39 + display.translation[0] / 16 + delta.position[0],
+      socketY + display.translation[1] / 16 + delta.position[1] + (specialBlockSprite ? 0.03125 : 0),
+      socketZ + display.translation[2] / 16 + delta.position[2] + (specialBlockSprite ? 0.0625 : 0),
     ],
-    size: baseSize * display.scale[0],
-    depth: Math.max(0.028, 0.052 * display.scale[2]),
-    rotationDegrees: display.rotationDegrees,
+    size: baseSize * display.scale[0] * delta.scale * (specialBlockSprite ? 1.47 : 1),
+    depth: Math.max(0.028, 0.052 * display.scale[2] * delta.scale),
+    rotationDegrees: [
+      display.rotationDegrees[0] + delta.rotationDegrees[0] - (specialBlockSprite ? 75 : 0),
+      display.rotationDegrees[1] + delta.rotationDegrees[1] - (specialBlockSprite ? 45 : 0),
+      display.rotationDegrees[2] + delta.rotationDegrees[2],
+    ],
     pivotPixels: display.pivot ? [display.pivot[0], display.pivot[1]] : undefined,
   });
 }
@@ -97,6 +111,7 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
   let vertexCount = geometry.length / PLAYER_SKIN_VERTEX_STRIDE;
   let heldItem: ItemId | null = null;
   let heldItemVertexCount = 0;
+  let heldItemTuningRevision = -1;
   let armorAppearance: PlayerArmorAppearance = Object.freeze({});
   let armorVertexCount = 0;
   let armorDraws = playerArmorRigDraws(armorAppearance);
@@ -109,7 +124,20 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, createLakecraftDefaultSkinPixels());
   const modelMatrix = new Float32Array(16); const partMatrix = new Float32Array(16);
+  const rigScratchMatrix = new Float32Array(16);
   const worldPartMatrix = new Float32Array(16); const mvp = new Float32Array(16);
+
+  function rebuildHeldItemGeometry(tuning: ThirdPersonTuning): void {
+    const output: number[] = [];
+    if (heldItem) {
+      const presentation = thirdPersonHeldItemPresentation(heldItem, tuning);
+      if (blockIdForCubeItem(heldItem) !== null) appendBlockItemCubeGeometry(output, heldItem, presentation);
+      else appendItemSpriteGeometry(output, getItemIconArt(heldItem), presentation);
+    }
+    const data = new Float32Array(output);
+    heldItemVertexCount = data.length / ITEM_SPRITE_VERTEX_FLOATS;
+    gl.bindBuffer(gl.ARRAY_BUFFER, itemBuffer); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  }
 
   const renderer: PlayerSkinRenderer = {
     get vertexCount() { return vertexCount; },
@@ -117,12 +145,17 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
     get armorVertexCount() { return armorVertexCount; },
     get drawCallCount() { return PLAYER_RIG_SKIN_DRAWS.length + armorDraws.length + Number(heldItemVertexCount > 0); },
     draw(viewProjection, pose, light, rig = { motion: "idle", phase: 0 }) {
+      const liveTuning = currentThirdPersonTuning();
+      if (liveTuning.revision !== heldItemTuningRevision) {
+        heldItemTuningRevision = liveTuning.revision;
+        rebuildHeldItemGeometry(liveTuning.tuning);
+      }
       const angle = pose.yaw + Math.PI;
       const cosine = Math.cos(angle); const sine = Math.sin(angle);
       modelMatrix.set([cosine,0,-sine,0, 0,1,0,0, sine,0,cosine,0, pose.x,pose.y,pose.z,1]);
       const rigPose = resolvePlayerRigPose(rig);
       const setPartMvp = (part: (typeof PLAYER_RIG_SKIN_DRAWS)[number]["part"], remapStandardSkinSides: boolean, location: WebGLUniformLocation) => {
-        writePlayerRigPartMatrix(partMatrix, part, rigPose, model, remapStandardSkinSides);
+        writePlayerRigPartMatrix(partMatrix, part, rigPose, model, remapStandardSkinSides, rigScratchMatrix);
         writeMatrixProduct(worldPartMatrix, modelMatrix, partMatrix);
         writeMatrixProduct(mvp, viewProjection, worldPartMatrix);
         gl.uniformMatrix4fv(location, false, mvp);
@@ -177,17 +210,11 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
       else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, createLakecraftDefaultSkinPixels());
     },
     setHeldItem(itemId) {
-      if (itemId === heldItem) return;
+      const liveTuning = currentThirdPersonTuning();
+      if (itemId === heldItem && liveTuning.revision === heldItemTuningRevision) return;
       heldItem = itemId;
-      const output: number[] = [];
-      if (itemId) {
-        const presentation = thirdPersonHeldItemPresentation(itemId);
-        if (blockIdForCubeItem(itemId) !== null) appendBlockItemCubeGeometry(output, itemId, presentation);
-        else appendItemSpriteGeometry(output, getItemIconArt(itemId), presentation);
-      }
-      const data = new Float32Array(output);
-      heldItemVertexCount = data.length / ITEM_SPRITE_VERTEX_FLOATS;
-      gl.bindBuffer(gl.ARRAY_BUFFER, itemBuffer); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      heldItemTuningRevision = liveTuning.revision;
+      rebuildHeldItemGeometry(liveTuning.tuning);
     },
     setArmor(appearance) {
       armorAppearance = Object.freeze({ ...appearance });
