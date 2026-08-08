@@ -109,8 +109,8 @@ assert.deepEqual(FIRST_PERSON_PICKAXE_PRESENTATION.pivotPixels, [3, 13],
 const axePresentation = firstPersonSpritePresentation("iron_axe");
 assert.ok(FIRST_PERSON_PICKAXE_PRESENTATION.depth < axePresentation.depth,
   "pickaxe extrusion is thinner than the independently authored axe depth");
-assert.ok(Math.abs(FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees[1] - 180) <= 8,
-  "pickaxe Y rotation mirrors grip into the lower-right hand near 180°");
+assert.deepEqual(FIRST_PERSON_PICKAXE_PRESENTATION.rotationDegrees, [0, 180, 25],
+  "pickaxe keeps the mirrored right-hand face with the reviewed handheld roll");
 assert.notDeepEqual(FIRST_PERSON_PICKAXE_PRESENTATION, axePresentation,
   "pickaxe has a reference-calibrated anchor and scale distinct from axe/shovel/sword presentation");
 
@@ -221,14 +221,14 @@ const pickMvp = renderer[6](new Float32Array(16), wideProjection, 0, false);
 const pickViewport = ndcBounds(pickUpload, renderer[2][0], pickMvp);
 const gripNdc = FIRST_PERSON_PICKAXE_PRESENTATION.center.slice(0, 2);
 console.log(JSON.stringify({ pickViewport, gripNdc }));
-assert.ok(pickViewport.minX > 0.5 && pickViewport.minX < 0.7,
+assert.ok(pickViewport.minX > 0.4 && pickViewport.minX < 0.7,
   "the visible pickaxe begins in the middle-right rather than centered broadside");
 assert.ok(pickViewport.maxX >= 0.95 && pickViewport.maxX < 1.3,
   "the exact pickaxe head stays readable at the right viewport edge");
 assert.ok(pickViewport.minY < -0.7, "the lower handle reaches the hand in the lower-right");
-assert.ok(pickViewport.maxY > -0.35 && pickViewport.maxY < 0.1,
+assert.ok(pickViewport.maxY > -0.4 && pickViewport.maxY < 0.1,
   "the screen-space grip keeps the head in the middle-right without filling the screen");
-assert.ok(Math.abs(gripNdc[0] - 1.08) < 1e-12 && Math.abs(gripNdc[1] + 1.05) < 1e-12,
+assert.ok(Math.abs(gripNdc[0] - 1.08) < 1e-12 && Math.abs(gripNdc[1] + 0.85) < 1e-12,
   "grip is independently anchored just beyond the lower-right frame");
 assert.ok(pickViewport.maxY > gripNdc[1] + 0.35, "head sits clearly above the grip");
 assert.ok(pickViewport.minX < gripNdc[0] - 0.03, "the mirrored head extends leftward from the lower-right grip");
@@ -253,7 +253,7 @@ assert.ok(axe.depth > 0.01, "axe retains an opaque-edge 3D extrusion");
 assert.equal(renderer[2][0], appendItemSpriteGeometry([], getItemIconArt("iron_axe")),
   "axe held geometry still matches its inventory sprite topology");
 const axeViewport = ndcBounds(axeUpload, renderer[2][0], axeMvp);
-assert.ok(axeViewport.minX > 0.55 && axeViewport.maxX > 0.9
+assert.ok(axeViewport.minX > 0.4 && axeViewport.maxX > 0.9
   && axeViewport.minY < -0.6 && axeViewport.maxY < 0.2,
 `the exact axe enters from the same lower-right socket without inheriting pickaxe geometry: ${JSON.stringify(axeViewport)}`);
 

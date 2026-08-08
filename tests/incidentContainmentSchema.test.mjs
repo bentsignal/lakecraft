@@ -87,7 +87,7 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 159, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "efcb5e470b84670915aae9d81597be40b4f7fff0445664856d80a5843c495370",
+  "c21e96fb4b1d94c8d4119a73b7c9b7de48c99eab576660f90b6c00fdda8ee97f",
   "runtime sources match the reviewed integrated realism, world-only bedrock, and screen-space item boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

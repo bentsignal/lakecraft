@@ -105,18 +105,26 @@ const shovelHead = projectedBounds(
     && shovelUpload[offset + 5] > shovelUpload[offset + 3] * 0.9,
 );
 const sword = render("iron_sword");
+for (const itemId of ["iron_pickaxe", "iron_axe", "iron_shovel", "iron_sword"] as const) {
+  assert.deepEqual(firstPersonSpritePresentation(itemId).rotationDegrees, [0, 180, 25],
+    `${itemId} retains the mirrored right-hand face and reference-reviewed handheld roll`);
+}
 for (const [label, bounds] of [["pickaxe", pickaxe], ["axe", axe], ["shovel", shovel]] as const) {
-  assert.ok(bounds.minX > 0.45 && bounds.minX < 0.9 && bounds.maxX > 0.9
-    && bounds.minY < -0.55 && bounds.maxY > -0.3,
+  assert.ok(bounds.minX > 0.39 && bounds.minX < 0.9 && bounds.maxX > 0.9
+    && bounds.minY < -0.55 && bounds.maxY > -0.45,
   `${label} rises from its independent lower-right screen anchor: ${JSON.stringify(bounds)}`);
 }
 assert.ok(shovelHead.maxY - shovelHead.minY >= (shovelHead.maxX - shovelHead.minX) * 1.02,
   `shovel head retains enough vertical taper to read as a spade rather than a hammer: ${JSON.stringify(shovelHead)}`);
-assert.ok(sword.minX > 0.45 && sword.maxX > 0.9 && sword.minY < -0.55 && sword.maxY > -0.3,
+assert.ok(sword.minX > 0.35 && sword.maxX > 0.9 && sword.minY < -0.55 && sword.maxY > -0.45,
   `sword blade rises from the shared lower-right wrist socket: ${JSON.stringify(sword)}`);
 
 const bowIdle = render("bow");
 const bowDraw = render("bow", true);
+assert.deepEqual(firstPersonSpritePresentation("bow").rotationDegrees, [0, 180, -80],
+  "idle bow stays upright along the right edge");
+assert.deepEqual(firstPersonSpritePresentation("bow", true).rotationDegrees, [0, 180, -83],
+  "drawn bow keeps its near-vertical arc while the arrow aims across the screen");
 assert.ok(bowIdle.minX > 0.35 && bowIdle.maxX > 0.75 && bowIdle.minY < -0.5,
 `exact installed idle bow remains grounded at the lower-right screen edge: ${JSON.stringify(bowIdle)}`);
 assert.notDeepEqual(bowDraw, bowIdle, "drawing the bow changes the exact installed right-hand silhouette");

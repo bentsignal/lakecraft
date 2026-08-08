@@ -78,7 +78,7 @@ export const FIRST_PERSON_TUNING = {
   // the camera-hand presentation: top plus two sides, lower corner in hand.
   block: {
     center: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [28.648, -37.815, 2.292] as FirstPersonVector,
+    rotationDegrees: [30, 45, 0] as FirstPersonVector,
     size: 0.82,
   },
 } as const;

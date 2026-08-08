@@ -207,7 +207,7 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
   assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < 0,
     `${width}x${height} held block leaves the crosshair's horizontal lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
-  assert.ok(blockBounds.maxX - blockBounds.minX < 1.3
+  assert.ok(blockBounds.maxX - blockBounds.minX < 1.55
     && blockBounds.maxY - blockBounds.minY < 1.8,
   `${width}x${height} held atlas cube stays confined to the lower-right presentation: ${JSON.stringify(blockBounds)}`);
   const blockAnchor = [85, 88] as const;

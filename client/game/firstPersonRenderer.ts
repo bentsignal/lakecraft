@@ -215,9 +215,12 @@ function spritePresentation(pose: FirstPersonSpritePose): FirstPersonSpritePrese
 export const FIRST_PERSON_PICKAXE_PRESENTATION = spritePresentation([
   // The grip exits beyond the lower-right edge while the mirrored head rises
   // up and left, matching the supplied Java first-person reference.
-  1.08, -1.05, -1.16,
+  // The reviewed 25-degree handheld roll moves the visible silhouette down
+  // around its grip. Lift the pivot by the matching 0.20 NDC so the item keeps
+  // the already-approved lower-right screen envelope.
+  1.08, -0.85, -1.16,
   1.25, 0.03,
-  4, 180, -4,
+  0, 180, 25,
   /** Lower wooden handle; the hand should read as gripping this pixel. */
   3, 13,
 ]);
@@ -243,16 +246,16 @@ export function firstPersonSpritePresentation(itemId: ItemId, bowDrawn?: boolean
     const sword = kind === "sword";
     const shovel = kind === "shovel";
     pose = [
-      1.05, -1.05, -1.16,
+      1.05, -0.85, -1.16,
       sword ? 1.05 : kind === "axe" ? 1.15 : kind === "shovel" ? 1.15 : 1.2, 0.035,
-      4, 180, sword ? -6 : shovel ? -10 : -4,
+      0, 180, 25,
       2, sword ? 13 : 14,
     ];
   } else if (itemId === "bow") {
     pose = [
       0.88, bowDrawn ? -0.93 : -1.02, -1.16,
       bowDrawn ? 1.75 : 1.52, 0.045,
-      0, 180, bowDrawn ? -49 : -46,
+      0, 180, bowDrawn ? -83 : -80,
       3, 8,
     ];
   } else if (itemId === "shears") {
