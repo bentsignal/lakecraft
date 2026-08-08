@@ -9,18 +9,20 @@ export interface ThirdPersonGroupTuning {
   readonly scale: number;
 }
 
-const NEUTRAL_GROUP: ThirdPersonGroupTuning = Object.freeze({
-  position: Object.freeze([0, 0, 0] as ThirdPersonVector),
-  rotationDegrees: Object.freeze([0, 0, 0] as ThirdPersonVector),
-  scale: 1,
-});
+function group(
+  position: ThirdPersonVector,
+  rotationDegrees: ThirdPersonVector,
+  scale = 1,
+): ThirdPersonGroupTuning {
+  return Object.freeze({ position: Object.freeze(position), rotationDegrees: Object.freeze(rotationDegrees), scale });
+}
 
 /** Live Pose Lab deltas applied after each catalog-authored third-person transform. */
 export const THIRD_PERSON_TUNING: Readonly<Record<ThirdPersonPoseGroup, ThirdPersonGroupTuning>> = Object.freeze({
-  block: NEUTRAL_GROUP,
-  tool: NEUTRAL_GROUP,
-  bow: NEUTRAL_GROUP,
-  otherItem: NEUTRAL_GROUP,
+  block: group([0, 0, 0], [-4, -42, 2]),
+  tool: group([-0.04, 0.09, 0], [-89, -71, -144]),
+  bow: group([0.06, -0.08, -0.09], [-2, -85, -50]),
+  otherItem: group([0, 0.08, -0.09], [1, -100, 7]),
 });
 
 export type ThirdPersonTuning = typeof THIRD_PERSON_TUNING;
@@ -37,6 +39,7 @@ const liveTuningHost = globalThis as typeof globalThis & {
 
 export function thirdPersonPoseGroupForItem(itemId: ItemId): ThirdPersonPoseGroup {
   if (itemId === "bow") return "bow";
+  if (itemId === "chest" || itemId === "torch") return "otherItem";
   if (ITEMS[itemId].tool) return "tool";
   if (ITEMS[itemId].category === "block" && itemId !== "torch") return "block";
   return "otherItem";

@@ -47,9 +47,9 @@ export const COMPACT_CLIENT_HUMAN_GAME_SCREENSHOT_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_157;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_159;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "2a0585201d5f43895901497ccb0fe60c262bbcc2bae5bd3bf59ad5ff59e88c24";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "27a4a76bfa1ee2304777777cb541c00f28ea904945dbb92da8e0528a12279d4b";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -97,7 +97,7 @@ export const COMPACT_CLIENT_REPEATED_THIRD_PERSON_POSE_DELTA = Object.freeze({
   previousOccurrences: 1_148,
   previousUniqueValues: 106,
   previousSourceFingerprint: "499b0ae5a73c5a0bb2e007d2d05d524716eff3180c5b4b86c415e3ad782de276",
-  occurrenceDelta: 9,
+  occurrenceDelta: 11,
   uniqueValueDelta: 1,
   sources: Object.freeze([
     "client/components/FirstPersonPoseLab.tsx",
@@ -209,9 +209,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 418;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "6b5b447a73d9d28d63ed58601158a38d728be5bb3b9a24f7b54b9ba83a9c37ad";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 421;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "88ddadf7ef0b315a78332300101a18977434e5629352bf7770fe03fbbae837aa";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -255,8 +255,8 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_THIRD_PERSON_POSE_DELTA = Object.freez
   previousOccurrences: 423,
   previousUniqueValues: 124,
   previousSourceFingerprint: "3457aabb8418a084469bac754991b36aad16956b126c00a0b1dfb538e5497127",
-  occurrenceDelta: -5,
-  uniqueValueDelta: -1,
+  occurrenceDelta: -2,
+  uniqueValueDelta: 0,
   sources: Object.freeze([
     "client/components/FirstPersonPoseLab.tsx",
     "client/game/playerRig.ts",

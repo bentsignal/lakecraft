@@ -25,7 +25,7 @@ import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
-import { createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
+import { FIRST_PERSON_ACTION_MS, createFirstPersonRenderer, usesCanonicalHeldBlock } from "./firstPersonRenderer.ts";
 import {
   createFirstPersonSkinRenderer,
   FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
@@ -2034,9 +2034,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let firstPersonExposureBlockZ = Infinity;
   let firstPersonExposureDirty = true;
   const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
+  let thirdPersonActionStartedAt = -Infinity;
 
   function emitHandAction(action: "mine" | "attack" | "place" | "use"): void {
-    triggerFirstPersonAction(action, performance.now());
+    const now = performance.now();
+    triggerFirstPersonAction(action, now);
+    thirdPersonActionStartedAt = now;
     options.onHandAction?.(action);
   }
 
@@ -3050,11 +3053,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
 
     const movedHorizontally = Math.hypot(pose.x - movementStartX, pose.z - movementStartZ);
+    const travelYaw = movedHorizontally > 0.0001
+      ? Math.atan2(pose.x - movementStartX, -(pose.z - movementStartZ))
+      : null;
     thirdPersonFacing = stepThirdPersonFacing(
       thirdPersonFacing,
       pose.yaw,
       -pose.pitch,
-      movedHorizontally > 0.0001,
+      travelYaw,
       dt,
     );
     advanceHeadBob(
@@ -3548,6 +3554,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         ...rigInput,
         headYaw: thirdPersonFacing.headYaw,
         headPitch: thirdPersonFacing.headPitch,
+        actionProgress: Math.min(1, Math.max(0, (now - thirdPersonActionStartedAt) / FIRST_PERSON_ACTION_MS)),
       });
       const localPlayerDrawCalls = playerSkinRenderer.drawCallCount;
       drawCalls += localPlayerDrawCalls;

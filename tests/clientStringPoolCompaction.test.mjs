@@ -541,7 +541,7 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_THIRD_PERSON_POSE_DELTA, {
   previousOccurrences: 1_148,
   previousUniqueValues: 106,
   previousSourceFingerprint: "499b0ae5a73c5a0bb2e007d2d05d524716eff3180c5b4b86c415e3ad782de276",
-  occurrenceDelta: 9,
+  occurrenceDelta: 11,
   uniqueValueDelta: 1,
   sources: [
     "client/components/FirstPersonPoseLab.tsx",
@@ -629,8 +629,8 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_THIRD_PERSON_POSE_DELTA, {
   previousOccurrences: 423,
   previousUniqueValues: 124,
   previousSourceFingerprint: "3457aabb8418a084469bac754991b36aad16956b126c00a0b1dfb538e5497127",
-  occurrenceDelta: -5,
-  uniqueValueDelta: -1,
+  occurrenceDelta: -2,
+  uniqueValueDelta: 0,
   sources: [
     "client/components/FirstPersonPoseLab.tsx",
     "client/game/playerRig.ts",

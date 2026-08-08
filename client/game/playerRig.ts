@@ -14,6 +14,10 @@ export type PlayerRigInput = Readonly<{
   /** Camera-relative look angles; the torso yaw is applied by the world matrix. */
   headYaw?: number;
   headPitch?: number;
+  /** One-shot right-arm animation, normalized from 0 at start to 1 at finish. */
+  actionProgress?: number;
+  /** Lowers and leans the upper body instead of reusing a walk-only silhouette. */
+  crouching?: boolean;
 }>;
 
 export type PlayerRigPose = Readonly<{
@@ -23,6 +27,9 @@ export type PlayerRigPose = Readonly<{
   leftArmPitch: number;
   rightLegPitch: number;
   leftLegPitch: number;
+  bodyPitch: number;
+  bodyYOffset: number;
+  bodyZOffset: number;
 }>;
 
 export type PlayerRigDrawRange = Readonly<{
@@ -54,25 +61,38 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
   const intensity = Math.max(0, Math.min(1, Number.isFinite(input.intensity) ? input.intensity! : 1));
   const headYaw = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, Number.isFinite(input.headYaw) ? input.headYaw! : 0));
   const headPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, Number.isFinite(input.headPitch) ? input.headPitch! : 0));
+  const actionProgress = Number.isFinite(input.actionProgress)
+    ? Math.max(0, Math.min(1, input.actionProgress!))
+    : -1;
+  const actionSwing = actionProgress >= 0 && actionProgress < 1 ? Math.sin(actionProgress * Math.PI) * 1.8 : 0;
+  const bodyPitch = input.crouching ? 0.5 : 0;
+  const bodyYOffset = input.crouching ? -0.16 : 0;
+  const bodyZOffset = input.crouching ? 0.08 : 0;
   if (input.motion === "idle") {
     const breath = cycle * 0.018 * intensity;
     return Object.freeze({
       headYaw,
       headPitch,
-      rightArmPitch: -0.055 + breath,
+      rightArmPitch: -0.055 + breath - actionSwing,
       leftArmPitch: 0.04 - breath,
       rightLegPitch: 0,
       leftLegPitch: 0,
+      bodyPitch,
+      bodyYOffset,
+      bodyZOffset,
     });
   }
   const swing = cycle * 0.78 * intensity;
   return Object.freeze({
     headYaw,
     headPitch,
-    rightArmPitch: swing,
+    rightArmPitch: swing - actionSwing,
     leftArmPitch: -swing,
     rightLegPitch: -swing,
     leftLegPitch: swing,
+    bodyPitch,
+    bodyYOffset,
+    bodyZOffset,
   });
 }
 
@@ -82,7 +102,7 @@ export function playerRigInputForMovement(mode: PlayerMovementMode, timeMs: numb
   if (mode === "idle") return Object.freeze({ motion: "idle", phase: time / 2_400 });
   const cycleMs = mode === "sprint" ? 420 : mode === "sneak" ? 900 : mode === "ladder" ? 720 : 600;
   const intensity = mode === "sprint" ? 1 : mode === "sneak" ? 0.45 : mode === "ladder" ? 0.65 : 0.82;
-  return Object.freeze({ motion: "walk", phase: time / cycleMs, intensity });
+  return Object.freeze({ motion: "walk", phase: time / cycleMs, intensity, ...(mode === "sneak" ? { crouching: true } : {}) });
 }
 
 function pitchForPart(part: PlayerRigPart, pose: PlayerRigPose): number {
@@ -104,14 +124,18 @@ export function writePlayerRigPartMatrix(
   pose: PlayerRigPose,
   model: PlayerSkinModel,
   remapStandardSkinSides: boolean,
+  scratch?: Float32Array,
 ): Float32Array {
+  const needsBodyPose = (part === "head" || part === "root" || part === "rightArm" || part === "leftArm")
+    && (pose.bodyPitch !== 0 || pose.bodyYOffset !== 0 || pose.bodyZOffset !== 0);
+  const localOutput = needsBodyPose ? scratch ?? new Float32Array(16) : output;
   if (part === "head") {
     const yawCosine = Math.cos(pose.headYaw);
     const yawSine = Math.sin(pose.headYaw);
     const pitchCosine = Math.cos(pose.headPitch);
     const pitchSine = Math.sin(pose.headPitch);
     const pivotY = 1.5;
-    output.set([
+    localOutput.set([
       yawCosine, 0, -yawSine, 0,
       yawSine * pitchSine, pitchCosine, yawCosine * pitchSine, 0,
       yawSine * pitchCosine, -pitchSine, yawCosine * pitchCosine, 0,
@@ -120,25 +144,41 @@ export function writePlayerRigPartMatrix(
       -pivotY * yawCosine * pitchSine,
       1,
     ]);
-    return output;
+  } else {
+    const pitch = pitchForPart(part, pose);
+    const cosine = Math.cos(pitch);
+    const sine = Math.sin(pitch);
+    const armCenter = model === "slim" ? 0.34375 : 0.375;
+    const translateX = !remapStandardSkinSides || part === "root" ? 0
+      : part === "rightArm" ? -2 * armCenter
+        : part === "leftArm" ? 2 * armCenter
+          : part === "rightLeg" ? -0.25
+            : 0.25;
+    const pivotY = part === "rightArm" || part === "leftArm" ? model === "slim" ? 1.46875 : 1.5
+      : part === "rightLeg" || part === "leftLeg" ? 0.75 : 0;
+    localOutput.set([
+      1, 0, 0, 0,
+      0, cosine, sine, 0,
+      0, -sine, cosine, 0,
+      translateX, pivotY * (1 - cosine), -pivotY * sine, 1,
+    ]);
   }
-  const pitch = pitchForPart(part, pose);
-  const cosine = Math.cos(pitch);
-  const sine = Math.sin(pitch);
-  const armCenter = model === "slim" ? 0.34375 : 0.375;
-  const translateX = !remapStandardSkinSides || part === "root" ? 0
-    : part === "rightArm" ? -2 * armCenter
-      : part === "leftArm" ? 2 * armCenter
-        : part === "rightLeg" ? -0.25
-          : 0.25;
-  const pivotY = part === "rightArm" || part === "leftArm" ? model === "slim" ? 1.46875 : 1.5
-    : part === "rightLeg" || part === "leftLeg" ? 0.75 : 0;
-  output.set([
-    1, 0, 0, 0,
-    0, cosine, sine, 0,
-    0, -sine, cosine, 0,
-    translateX, pivotY * (1 - cosine), -pivotY * sine, 1,
-  ]);
+  if (needsBodyPose) {
+    const cosine = Math.cos(pose.bodyPitch);
+    const sine = Math.sin(pose.bodyPitch);
+    const pivotY = 0.75;
+    const translateY = pivotY * (1 - cosine) + pose.bodyYOffset;
+    const translateZ = -pivotY * sine + pose.bodyZOffset;
+    for (let column = 0; column < 4; column += 1) {
+      const offset = column * 4;
+      const x = localOutput[offset]; const y = localOutput[offset + 1];
+      const z = localOutput[offset + 2]; const w = localOutput[offset + 3];
+      output[offset] = x;
+      output[offset + 1] = cosine * y - sine * z + translateY * w;
+      output[offset + 2] = sine * y + cosine * z + translateZ * w;
+      output[offset + 3] = w;
+    }
+  }
   return output;
 }
 

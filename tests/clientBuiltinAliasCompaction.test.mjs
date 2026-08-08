@@ -8,7 +8,7 @@ import {
 } from "../scripts/client-builtin-alias-compaction.mjs";
 
 assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 10, "the alias boundary remains deliberately narrow");
-assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_196);
+assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_203);
 assert.match(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT, /^[0-9a-f]{64}$/);
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
   "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.max", "Math.min", "Math.round",

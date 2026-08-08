@@ -12,12 +12,12 @@ import {
   THIRD_PERSON_TUNING,
   currentThirdPersonTuning,
   publishThirdPersonTuning,
+  thirdPersonPoseGroupForItem,
   type ThirdPersonTuning,
 } from "../game/thirdPersonTuning.ts";
 import type { PlayerCameraMode } from "../game/playerCamera.ts";
 
 type PoseGroup = "block" | "tool" | "bow" | "arm" | "otherItem";
-type TransformGroup = Exclude<PoseGroup, "block">;
 type TransformVectorField = "position" | "rotationDegrees" | "pivot";
 type PosePerspective = "first_person" | "third_person";
 
@@ -38,10 +38,13 @@ const PREVIEW_ITEMS = Object.freeze([
   "bow",
   "cooked_chicken",
   "iron_ingot",
+  "chest",
+  "torch",
 ] as const satisfies readonly ItemId[]);
 
-function poseGroupForItem(itemId: ItemId | null): PoseGroup {
+function poseGroupForItem(itemId: ItemId | null, perspective: PosePerspective): PoseGroup {
   if (itemId === null) return "arm";
+  if (perspective === "third_person") return thirdPersonPoseGroupForItem(itemId);
   if (itemId === "bow") return "bow";
   if (ITEMS[itemId].tool) return "tool";
   if (ITEMS[itemId].category === "block" && itemId !== "torch") return "block";
@@ -303,11 +306,17 @@ export function FirstPersonPoseLab({
         <div aria-label="Pose editing perspective" className="lc-pose-lab__bow-preview-controls" role="group">
           <button aria-pressed={perspective === "first_person"} onClick={() => {
             setPerspective("first_person");
+            if (previewItem !== "actual") {
+              setGroup(poseGroupForItem(previewItem === "empty" ? null : previewItem as ItemId, "first_person"));
+            }
             setCameraMode("first person");
             onCameraModeChange?.("first_person");
           }} type="button">First person</button>
           <button aria-pressed={perspective === "third_person"} onClick={() => {
             setPerspective("third_person");
+            if (previewItem !== "actual") {
+              setGroup(poseGroupForItem(previewItem === "empty" ? null : previewItem as ItemId, "third_person"));
+            }
             setCameraMode("third person back");
             onCameraModeChange?.("third_person_back");
           }} type="button">Third person</button>
@@ -325,7 +334,7 @@ export function FirstPersonPoseLab({
             setPreviewItem(value);
             const itemId = value === "actual" ? undefined : value === "empty" ? null : value as ItemId;
             onHeldItemPreviewChange?.(itemId);
-            if (itemId !== undefined) setGroup(poseGroupForItem(itemId));
+            if (itemId !== undefined) setGroup(poseGroupForItem(itemId, perspective));
           }}
           value={previewItem}
         >

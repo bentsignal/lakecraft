@@ -59,10 +59,11 @@ export function thirdPersonHeldItemPresentation(
   const visual = itemVisual(itemId);
   const display = visual.display.thirdPersonRight;
   const delta = tuning[thirdPersonPoseGroupForItem(itemId)];
+  const specialBlockSprite = itemId === "chest" || itemId === "torch";
   // Generated/handheld pixels are authored against a 16-unit item frame. The
   // former 0.54 base made an exact 16x16 tool barely half a forearm tall; use
   // the actual hand-scale frame so the installed silhouette reads in F5 views.
-  const baseSize = visual.family === "block" ? 1.25 : 0.82;
+  const baseSize = blockIdForCubeItem(itemId) !== null ? 1.25 : 0.82;
   // Bow display translation is authored around its own centered grip while
   // generated/block/handheld parents are authored around the lower hand.
   const socketY = visual.parent === "bow" ? 0.875 : 0.53;
@@ -73,14 +74,14 @@ export function thirdPersonHeldItemPresentation(
   return Object.freeze({
     center: [
       0.39 + display.translation[0] / 16 + delta.position[0],
-      socketY + display.translation[1] / 16 + delta.position[1],
-      socketZ + display.translation[2] / 16 + delta.position[2],
+      socketY + display.translation[1] / 16 + delta.position[1] + (specialBlockSprite ? 0.03125 : 0),
+      socketZ + display.translation[2] / 16 + delta.position[2] + (specialBlockSprite ? 0.0625 : 0),
     ],
-    size: baseSize * display.scale[0] * delta.scale,
+    size: baseSize * display.scale[0] * delta.scale * (specialBlockSprite ? 1.47 : 1),
     depth: Math.max(0.028, 0.052 * display.scale[2] * delta.scale),
     rotationDegrees: [
-      display.rotationDegrees[0] + delta.rotationDegrees[0],
-      display.rotationDegrees[1] + delta.rotationDegrees[1],
+      display.rotationDegrees[0] + delta.rotationDegrees[0] - (specialBlockSprite ? 75 : 0),
+      display.rotationDegrees[1] + delta.rotationDegrees[1] - (specialBlockSprite ? 45 : 0),
       display.rotationDegrees[2] + delta.rotationDegrees[2],
     ],
     pivotPixels: display.pivot ? [display.pivot[0], display.pivot[1]] : undefined,
@@ -123,6 +124,7 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, createLakecraftDefaultSkinPixels());
   const modelMatrix = new Float32Array(16); const partMatrix = new Float32Array(16);
+  const rigScratchMatrix = new Float32Array(16);
   const worldPartMatrix = new Float32Array(16); const mvp = new Float32Array(16);
 
   function rebuildHeldItemGeometry(tuning: ThirdPersonTuning): void {
@@ -153,7 +155,7 @@ export function createPlayerSkinRenderer(gl: WebGLRenderingContext): PlayerSkinR
       modelMatrix.set([cosine,0,-sine,0, 0,1,0,0, sine,0,cosine,0, pose.x,pose.y,pose.z,1]);
       const rigPose = resolvePlayerRigPose(rig);
       const setPartMvp = (part: (typeof PLAYER_RIG_SKIN_DRAWS)[number]["part"], remapStandardSkinSides: boolean, location: WebGLUniformLocation) => {
-        writePlayerRigPartMatrix(partMatrix, part, rigPose, model, remapStandardSkinSides);
+        writePlayerRigPartMatrix(partMatrix, part, rigPose, model, remapStandardSkinSides, rigScratchMatrix);
         writeMatrixProduct(worldPartMatrix, modelMatrix, partMatrix);
         writeMatrixProduct(mvp, viewProjection, worldPartMatrix);
         gl.uniformMatrix4fv(location, false, mvp);

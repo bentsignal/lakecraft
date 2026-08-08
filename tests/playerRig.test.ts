@@ -27,6 +27,7 @@ assert.deepEqual(resolvePlayerRigPose({ motion: "walk", phase: Number.NaN }),
 assert.deepEqual(playerRigInputForMovement("idle", 1_200), { motion: "idle", phase: 0.5 });
 assert.deepEqual(playerRigInputForMovement("sprint", 210), { motion: "walk", phase: 0.5, intensity: 1 });
 assert.equal(playerRigInputForMovement("sneak", 450).intensity, 0.45);
+assert.equal(playerRigInputForMovement("sneak", 450).crouching, true);
 assert.equal(playerRigInputForMovement("ladder", 360).intensity, 0.65);
 
 assert.deepEqual(PLAYER_RIG_SKIN_DRAWS, [
@@ -66,6 +67,17 @@ const transformedPivotY = matrix[5] * pivotY + matrix[13];
 const transformedPivotZ = matrix[6] * pivotY + matrix[14];
 assert.ok(Math.abs(transformedPivotY - pivotY) < 1e-7 && Math.abs(transformedPivotZ) < 1e-7,
   "arm rotation preserves its shoulder pivot");
+
+const action = resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.5 });
+assert.ok(action.rightArmPitch < -1.7, "a local action visibly swings the right arm and held item");
+assert.equal(action.leftArmPitch, resolvePlayerRigPose({ motion: "idle", phase: 0 }).leftArmPitch,
+  "one-handed actions do not disturb the off hand");
+const crouch = resolvePlayerRigPose({ motion: "idle", phase: 0, crouching: true });
+assert.ok(crouch.bodyPitch > 0.4 && crouch.bodyYOffset < -0.1,
+  "sneaking has a lowered forward body posture rather than only a slow walk cycle");
+writePlayerRigPartMatrix(matrix, "root", crouch, "wide", true, new Float32Array(16));
+assert.notEqual(matrix[6], 0, "the crouched torso leans forward around its hip pivot");
+assert.ok(matrix[13] < 0, "the crouched torso is visibly lowered");
 
 const armorDraws = playerArmorRigDraws(fullPlayerArmorAppearance("iron"));
 assert.equal(armorDraws.reduce((total, draw) => total + draw.count, 0), 20 * 36);
