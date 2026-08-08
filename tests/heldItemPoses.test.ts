@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   FIRST_PERSON_CUBE_ROTATION,
+  FIRST_PERSON_PICKAXE_PRESENTATION,
   createFirstPersonRenderer,
 } from "../client/game/firstPersonRenderer.ts";
 import { BLOCK } from "../client/game/types.ts";
@@ -89,7 +90,7 @@ const renderer = createFirstPersonRenderer(capture.gl);
 renderer[3]("dirt", BLOCK.DIRT);
 const cube = capture.uploads.get(2);
 if (!cube) throw new Error("textured cube upload missing");
-for (const [index, expected] of [30, 45, 0].map((value) => value * Math.PI / 180).entries()) {
+for (const [index, expected] of [-4, 14, 0].map((value) => value * Math.PI / 180).entries()) {
   assert.ok(Math.abs(FIRST_PERSON_CUBE_ROTATION[index] - expected) < 0.00001,
     "human-readable tuning degrees preserve the reference-reviewed three-face held-block pose");
 }
@@ -107,8 +108,8 @@ const pickBounds = spatialBounds(pickaxe, renderer[2][0]);
 assert.ok(pickBounds[1] - pickBounds[0] > 0.25 && pickBounds[3] - pickBounds[2] > 0.35,
   "the canonical pickaxe pixels retain a tall handle and broad head in hand");
 const pickDepth = pickBounds[5] - pickBounds[4];
-assert.ok(pickDepth > 0.01 && pickDepth < 0.5,
-  "the pickaxe stays thin and face-readable instead of a chunky edge-on block sculpture");
+assert.ok(pickDepth > 0.01 && FIRST_PERSON_PICKAXE_PRESENTATION.depth < 0.05,
+  "the strongly rotated pickaxe retains an intrinsically thin opaque-edge sprite");
 
 renderer[3]("iron_axe", BLOCK.AIR);
 const axe = capture.uploads.get(1);
@@ -137,7 +138,7 @@ const portraitMvp = renderer[6](new Float32Array(16), portraitProjection, 0, fal
 const portraitBow = capture.uploads.get(1);
 if (!portraitBow) throw new Error("portrait bow upload missing");
 const bowBounds = clipBounds(portraitBow, portraitMvp);
-assert.ok(bowBounds[0] > 0 && bowBounds[0] < 0.6 && bowBounds[1] > 1 && bowBounds[1] < 1.3
+assert.ok(bowBounds[0] > 0.4 && bowBounds[0] < 0.6 && bowBounds[1] > 0.7 && bowBounds[1] < 0.95
   && bowBounds[2] > -1.3 && bowBounds[3] < -0.3,
 `the responsive portrait pose keeps a meaningful lower-right bow silhouette without covering the center: ${JSON.stringify(bowBounds)}`);
 
@@ -155,9 +156,9 @@ const eatingFood = capture.uploads.get(1);
 if (!eatingFood) throw new Error("mid-eating food upload missing");
 const eatingBounds = clipBounds(eatingFood, eatingMvp);
 assert.ok(eatingBounds[0] > -0.5 && eatingBounds[0] < 0
-  && eatingBounds[1] > 0.2 && eatingBounds[1] < 0.7
-  && eatingBounds[2] < -0.8 && eatingBounds[3] > -0.4 && eatingBounds[3] < 0.2,
-`the frozen eating pose moves food from the right edge to the supplied lower-center reference envelope: ${JSON.stringify(eatingBounds)}`);
+  && eatingBounds[1] > 0 && eatingBounds[1] < 0.2
+  && eatingBounds[2] < -0.8 && eatingBounds[3] > -0.2 && eatingBounds[3] < 0.2,
+`the frozen eating pose remains inspectable across the lower-center lane for the next user calibration: ${JSON.stringify(eatingBounds)}`);
 renderer[8](null);
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");

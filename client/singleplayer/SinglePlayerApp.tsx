@@ -40,6 +40,7 @@ import {
   type Inventory,
   type ItemId,
 } from "../../shared/game";
+import { FIRST_PERSON_FOOD_ACTION_MS } from "../game/firstPersonRenderer.ts";
 import { RANGED_GRAVITY, rangedChargeProfile } from "../../shared/rangedCombat.ts";
 import { planDeathDrops } from "../../shared/deathDrops.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
@@ -1089,6 +1090,7 @@ function SinglePlayerWorld({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let foodUseTimer: number | null = null;
     pointerSessionMountedRef.current = true;
     const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, maxVoices: 12 });
     audioRef.current = audio;
@@ -1590,12 +1592,20 @@ function SinglePlayerWorld({
       },
       onUseSelectedItem: () => {
         if (gameModeRef.current === "creative") return false;
-        const result = consumeFood(inventoryRef.current, selectedRef.current, hungerRef.current);
-        if (!result.ok) return false;
-        hungerRef.current = result.hunger;
-        survivalStateRef.current = { ...survivalStateRef.current, hunger: result.hunger };
-        setHunger(result.hunger);
-        updateInventory(result.inventory);
+        if (foodUseTimer !== null) return false;
+        const selectedSlot = selectedRef.current;
+        const selectedStack = inventoryRef.current[selectedSlot];
+        if (!selectedStack || !consumeFood(inventoryRef.current, selectedSlot, hungerRef.current).ok) return false;
+        foodUseTimer = window.setTimeout(() => {
+          foodUseTimer = null;
+          if (inventoryRef.current[selectedSlot] !== selectedStack) return;
+          const result = consumeFood(inventoryRef.current, selectedSlot, hungerRef.current);
+          if (!result.ok) return;
+          hungerRef.current = result.hunger;
+          survivalStateRef.current = { ...survivalStateRef.current, hunger: result.hunger };
+          setHunger(result.hunger);
+          updateInventory(result.inventory);
+        }, FIRST_PERSON_FOOD_ACTION_MS);
         return true;
       },
       onInteractBlock: (target) => {
@@ -1782,6 +1792,8 @@ function SinglePlayerWorld({
     return () => {
       pointerSessionMountedRef.current = false;
       supersedePointerLockRequest();
+      if (foodUseTimer !== null) window.clearTimeout(foodUseTimer);
+      foodUseTimer = null;
       for (const timer of fuseTimers.values()) {
         clearFuseSchedule(timer);
       }

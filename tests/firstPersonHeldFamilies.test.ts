@@ -5,6 +5,7 @@ import {
   firstPersonSpriteFamily,
   firstPersonSpritePresentation,
 } from "../client/game/firstPersonRenderer.ts";
+import { FIRST_PERSON_TUNING } from "../client/game/firstPersonTuning.ts";
 import { BLOCK } from "../client/game/types.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 
@@ -91,6 +92,16 @@ assert.equal(firstPersonSpriteFamily("flint_and_steel"), "flintSteel");
 assert.equal(firstPersonSpriteFamily("apple"), "food");
 assert.equal(firstPersonSpriteFamily("iron_ingot"), "material");
 assert.equal(firstPersonSpriteFamily("torch"), "specialBlock");
+assert.deepEqual(FIRST_PERSON_TUNING.tool, {
+  position: [-0.46, -0.21, 0], rotationDegrees: [102, 43, -137], scale: 1.1, pivot: [0.14, -0.16, -1.17],
+}, "tool and weapon defaults exactly preserve the user-authored Pose Lab calibration");
+assert.deepEqual(FIRST_PERSON_TUNING.bow, {
+  position: [-0.3, 0.14, -0.02], rotationDegrees: [70, 44, -3], scale: 1, pivot: [0.4, 0, -1.12],
+}, "bow defaults exactly preserve the user-authored Pose Lab calibration");
+assert.deepEqual(FIRST_PERSON_TUNING.otherItem.position, [-0.24, 0.01, 0],
+  "food and flat materials share the user-authored anchor offset");
+assert.deepEqual(FIRST_PERSON_TUNING.block.rotationDegrees, [-4, 14, 0],
+  "held blocks use the user-authored absolute Minecraft rotation");
 
 const pickaxe = render("iron_pickaxe");
 const axe = render("iron_axe");
@@ -202,11 +213,11 @@ assert.notDeepEqual(firstPersonSpritePresentation("iron_axe"), firstPersonSprite
 assert.notDeepEqual(firstPersonSpritePresentation("bow"), firstPersonSpritePresentation("bow", true),
   "idle and drawn bows expose distinct reference-driven presentations");
 
-const pickaxeAt70 = render("iron_pickaxe", false, perspective(16 / 9, 70));
+const pickaxeAt90 = render("iron_pickaxe", false, perspective(16 / 9, 90));
 const pickaxeAt110 = render("iron_pickaxe", false, perspective(16 / 9, 110));
 for (const edge of ["minX", "maxX", "minY", "maxY"] as const) {
-  assert.ok(Math.abs(pickaxeAt70[edge] - pickaxeAt110[edge]) < 0.04,
-    `screen-space held-item anchors remain visually stable across gameplay FOV for ${edge}: ${JSON.stringify({ pickaxeAt70, pickaxeAt110 })}`);
+  assert.ok(Math.abs(pickaxeAt90[edge] - pickaxeAt110[edge]) < 0.04,
+    `wide gameplay FOV preserves the user's 90-degree Pose Lab calibration for ${edge}: ${JSON.stringify({ pickaxeAt90, pickaxeAt110 })}`);
 }
 
 console.log(JSON.stringify({ benchmark: "first-person held family NDC envelopes", pickaxe, axe, shovel, shovelHead, sword, bowIdle, bowDraw, liveQaBounds }));

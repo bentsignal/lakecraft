@@ -25,6 +25,7 @@ const FLOATS_PER_COLOR_VERTEX = 6;
 export const FIRST_PERSON_MAX_COLOR_VERTICES = ITEM_SPRITE_MAX_VERTICES;
 export const FIRST_PERSON_MAX_TEXTURED_VERTICES = 36;
 export const FIRST_PERSON_ACTION_MS = 220;
+export const FIRST_PERSON_FOOD_ACTION_MS = 1_000;
 export const FIRST_PERSON_MODEL_SCALE = FIRST_PERSON_TUNING.rig.scale;
 export const FIRST_PERSON_MODEL_PIVOT: readonly [number, number, number] = FIRST_PERSON_TUNING.rig.pivot;
 /** Camera-space authored poses; action motion still pivots through the shared wrist rig below. */
@@ -366,6 +367,7 @@ function appendSocketedItemSprite(
   bowStage: 0 | 1 | 2,
   tuning: FirstPersonGroupTuning,
 ): void {
+  const start = output.length;
   const source = firstPersonSpritePresentation(itemId, bowDrawn);
   const depth = Math.max(0.2, -source.center[2] - tuning.position[2]);
   const center = unprojectViewmodelAnchor(
@@ -391,6 +393,14 @@ function appendSocketedItemSprite(
       pivotPixels: source.pivotPixels,
     },
   );
+  // Preserve the user's exact 90-degree-FOV calibration, but do not let wider
+  // gameplay FOV multiply a strongly pitched sprite's rotated depth and push
+  // it through the near plane. X/Y still follow gameplay FOV as authored.
+  const inverseWideFovDepthScale = 1 / (pose.itemScale > 1 ? pose.itemScale : 1);
+  for (let offset = start; offset < output.length; offset += FLOATS_PER_COLOR_VERTEX) {
+    output[offset + 2] = center[2]
+      + (output[offset + 2] - center[2]) * inverseWideFovDepthScale;
+  }
 }
 
 export function writeSocketedViewmodelActionMatrix(
@@ -442,8 +452,9 @@ export function sampleFirstPersonAction(
   reducedMotion: boolean,
 ): FirstPersonActionPose {
   output.fill(0);
-  if (reducedMotion || !Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs >= FIRST_PERSON_ACTION_MS) return output;
-  const progress = elapsedMs / FIRST_PERSON_ACTION_MS;
+  const durationMs = kind === "use" && foodHeld ? FIRST_PERSON_FOOD_ACTION_MS : FIRST_PERSON_ACTION_MS;
+  if (reducedMotion || !Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs >= durationMs) return output;
+  const progress = elapsedMs / durationMs;
   const arc = Math.sin(Math.PI * progress);
   if (kind === "use" && foodHeld) {
     // Eating brings the food toward the mouth in the lower center of the
@@ -614,11 +625,15 @@ export function createFirstPersonRenderer(gl: WebGLRenderingContext): FirstPerso
         rigPose = createViewmodelRigPoseFromProjection(projection);
         rebuild();
       }
+      const previewKind = actionPreview?.kind ?? actionKind;
+      const foodHeld = Boolean(itemId && ITEMS[itemId].category === "food");
       sampleFirstPersonAction(
         actionPose,
-        actionPreview?.kind ?? actionKind,
-        actionPreview ? actionPreview.progress * FIRST_PERSON_ACTION_MS : now - actionStartedAt,
-        Boolean(itemId && ITEMS[itemId].category === "food"),
+        previewKind,
+        actionPreview
+          ? actionPreview.progress * (previewKind === "use" && foodHeld ? FIRST_PERSON_FOOD_ACTION_MS : FIRST_PERSON_ACTION_MS)
+          : now - actionStartedAt,
+        foodHeld,
         reducedMotion,
       );
       writeSocketedViewmodelActionMatrix(modelMatrix, actionPose, rigPose);

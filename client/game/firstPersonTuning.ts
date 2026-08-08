@@ -51,16 +51,16 @@ export const FIRST_PERSON_TUNING = {
 
   // EDIT `tool` FOR A PICKAXE, AXE, SHOVEL, OR SWORD.
   tool: {
-    position: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [0, 0, 0] as FirstPersonVector,
-    scale: 1,
+    position: [-0.46, -0.21, 0] as FirstPersonVector,
+    rotationDegrees: [102, 43, -137] as FirstPersonVector,
+    scale: 1.1,
     pivot: [0.14, -0.16, -1.17] as FirstPersonVector,
   },
 
   // EDIT `bow` FOR THE BOW.
   bow: {
-    position: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [0, 0, 0] as FirstPersonVector,
+    position: [-0.3, 0.14, -0.02] as FirstPersonVector,
+    rotationDegrees: [70, 44, -3] as FirstPersonVector,
     scale: 1,
     pivot: [0.4, 0, -1.12] as FirstPersonVector,
   },
@@ -68,7 +68,7 @@ export const FIRST_PERSON_TUNING = {
   // EDIT `otherItem` FOR FOOD, MATERIALS, AND SPECIAL HELD BLOCK ITEMS.
   // Examples: torch, chest, bed, door, ladder, fence, fence gate, and sapling.
   otherItem: {
-    position: [0, 0, 0] as FirstPersonVector,
+    position: [-0.24, 0.01, 0] as FirstPersonVector,
     rotationDegrees: [0, 0, 0] as FirstPersonVector,
     scale: 1,
     pivot: [0.08, -0.04, -1.18] as FirstPersonVector,
@@ -78,7 +78,7 @@ export const FIRST_PERSON_TUNING = {
   // the camera-hand presentation: top plus two sides, lower corner in hand.
   block: {
     center: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [30, 45, 0] as FirstPersonVector,
+    rotationDegrees: [-4, 14, 0] as FirstPersonVector,
     size: 0.82,
   },
 } as const;

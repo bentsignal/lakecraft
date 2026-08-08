@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { getBowIconArt, getItemIconArt } from "../client/components/itemIconArt.ts";
 import {
   FIRST_PERSON_ACTION_MS,
+  FIRST_PERSON_FOOD_ACTION_MS,
   FIRST_PERSON_MAX_COLOR_VERTICES,
   FIRST_PERSON_MODEL_PIVOT,
   createFirstPersonRenderer,
@@ -91,7 +92,8 @@ assert.ok(
     && retainedPose[5] > 0.18,
   "attack reaches a pitched, yawed, counter-leaning swing apex",
 );
-const eat = sampleFirstPersonAction(retainedPose, "use", FIRST_PERSON_ACTION_MS / 2, true, false);
+assert.equal(FIRST_PERSON_FOOD_ACTION_MS, 1_000, "food use remains visible for one full second");
+const eat = sampleFirstPersonAction(retainedPose, "use", FIRST_PERSON_FOOD_ACTION_MS / 2, true, false);
 assert.strictEqual(eat, retainedPose, "food action sampling remains allocation-free");
 assert.ok(
   retainedPose[1] > 0.14 && retainedPose[0] < -2.2,
