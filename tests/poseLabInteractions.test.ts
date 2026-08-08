@@ -25,7 +25,16 @@ assert.doesNotMatch(component, /label="Position"|label="Pivot"|label="Center"/,
 assert.match(component, /aria-label="Bow draw preview"/);
 assert.match(component, /aria-pressed=\{bowDrawn\}/);
 assert.match(component, /This never fires or consumes an arrow/);
+assert.match(component, /Editing perspective/);
+assert.match(component, /publishThirdPersonTuning\(next\)/,
+  "third-person controls publish directly into the retained renderer");
+assert.match(component, /Hand socket offset/);
+assert.match(component, /Rotation delta/);
+assert.match(component, /onCameraModeChange\?\.\("third_person_back"\)/,
+  "selecting third-person editing switches to the rear inspection camera");
 assert.match(app, /onBowPreviewChange=\{setPoseLabBowPreview\}/);
+assert.match(app, /onCameraModeChange=\{\(mode\) => engineRef\.current\?\.setCameraMode\(mode\)\}/);
 assert.match(types, /setPoseLabDrawPreview\(drawn: boolean \| null\): void/);
+assert.match(types, /setCameraMode\(mode: PlayerCameraMode\): void/);
 
 console.log("Pose Lab scrubbing and paused bow preview tests passed");

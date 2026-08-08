@@ -500,6 +500,8 @@ export interface VoxelEngine {
   setPlayerArmor(appearance: PlayerArmorAppearance): void;
   /** Cycles first person, third person behind, then third person facing the player. */
   cycleCameraMode(): PlayerCameraMode;
+  /** Selects an exact camera mode for development pose inspection. */
+  setCameraMode(mode: PlayerCameraMode): void;
   getCameraMode(): PlayerCameraMode;
   /** Removes the viewmodel for blocking UI, death, screenshots, or other cinematic surfaces. */
   setFirstPersonFeedbackHidden(hidden: boolean): void;

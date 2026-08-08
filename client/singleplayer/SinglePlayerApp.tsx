@@ -2129,6 +2129,7 @@ function SinglePlayerWorld({
       {/* @lakecraft-development:render:start */}
       <FirstPersonPoseLab
         onBowPreviewChange={setPoseLabBowPreview}
+        onCameraModeChange={(mode) => engineRef.current?.setCameraMode(mode)}
         onCycleCamera={() => engineRef.current?.cycleCameraMode() ?? "first_person"}
         onHeldItemPreviewChange={setPoseLabHeldItemPreview}
         onOpenVisualLab={() => setVisualLabOpen(true)}

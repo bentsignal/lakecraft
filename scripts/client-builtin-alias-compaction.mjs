@@ -10,12 +10,19 @@ import { pathToFileURL } from "node:url";
 // corresponding globals. The ordered occurrence fingerprint makes that claim
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
+  Object.freeze(["Math", "abs", 94]),
+  Object.freeze(["Math", "cos", 45]),
+  Object.freeze(["Math", "ceil", 41]),
   Object.freeze(["Math", "floor", 244]),
-  Object.freeze(["Math", "max", 270]),
-  Object.freeze(["Math", "min", 200]),
+  Object.freeze(["Math", "hypot", 39]),
+  Object.freeze(["Math", "max", 276]),
+  Object.freeze(["Math", "min", 206]),
+  Object.freeze(["Math", "round", 34]),
+  Object.freeze(["Math", "sin", 56]),
+  Object.freeze(["Object", "freeze", 161]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 714;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "95058862d47c3ff31240cca9f5f1b694544a0264475f74c90b1b69a219b9bd00";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_196;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "5e59dfcb6fabc2e7476c5f99746bb54b02a64ece39597c0d596e934d9ff4c004";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

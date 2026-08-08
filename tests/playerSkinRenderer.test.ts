@@ -11,9 +11,10 @@ for (const contract of [
   "pose.yaw + Math.PI", "gl.enable(gl.BLEND)", "PLAYER_RIG_SKIN_DRAWS", "setPartMvp",
   "appendItemSpriteGeometry", "setHeldItem(itemId)", "heldItemVertexCount",
   "buildPlayerArmorGeometry", "setArmor(appearance)", "armorVertexCount",
-  "itemVisual(itemId)", "display.thirdPersonRight", "thirdPersonHeldItemPresentation(itemId)",
-  "appendBlockItemCubeGeometry", "blockIdForCubeItem(itemId)",
+  "itemVisual(itemId)", "display.thirdPersonRight", "thirdPersonHeldItemPresentation(heldItem, tuning)",
+  "appendBlockItemCubeGeometry", "blockIdForCubeItem(heldItem)",
   "resolvePlayerRigPose(rig)", "playerArmorRigDraws", "setPartMvp(\"rightArm\", true", "drawCallCount",
+  "currentThirdPersonTuning()", "heldItemTuningRevision", "rebuildHeldItemGeometry",
 ]) assert.ok(source.includes(contract), `world skin renderer retains ${contract}`);
 for (const itemId of ["dirt", "diamond_pickaxe", "apple", "bow"] as const) {
   const presentation = thirdPersonHeldItemPresentation(itemId);

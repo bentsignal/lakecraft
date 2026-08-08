@@ -4,16 +4,21 @@ import type { PlayerMovementMode } from "./playerMovement.ts";
 import type { PlayerSkinModel } from "./playerSkin.ts";
 
 export type PlayerRigMotion = "idle" | "walk";
-export type PlayerRigPart = "root" | "rightArm" | "leftArm" | "rightLeg" | "leftLeg";
+export type PlayerRigPart = "head" | "root" | "rightArm" | "leftArm" | "rightLeg" | "leftLeg";
 
 export type PlayerRigInput = Readonly<{
   motion: PlayerRigMotion;
   /** Normalized deterministic cycle; values outside 0..1 wrap. */
   phase: number;
   intensity?: number;
+  /** Camera-relative look angles; the torso yaw is applied by the world matrix. */
+  headYaw?: number;
+  headPitch?: number;
 }>;
 
 export type PlayerRigPose = Readonly<{
+  headYaw: number;
+  headPitch: number;
   rightArmPitch: number;
   leftArmPitch: number;
   rightLegPitch: number;
@@ -30,7 +35,8 @@ const BOX_VERTICES = 36;
 
 /** Base and outer skin boxes stay together so overlays follow the exact same joint. */
 export const PLAYER_RIG_SKIN_DRAWS: readonly PlayerRigDrawRange[] = Object.freeze([
-  Object.freeze({ part: "root", first: 0, count: 4 * BOX_VERTICES }),
+  Object.freeze({ part: "head", first: 0, count: 2 * BOX_VERTICES }),
+  Object.freeze({ part: "root", first: 2 * BOX_VERTICES, count: 2 * BOX_VERTICES }),
   Object.freeze({ part: "rightArm", first: 4 * BOX_VERTICES, count: 2 * BOX_VERTICES }),
   Object.freeze({ part: "leftArm", first: 6 * BOX_VERTICES, count: 2 * BOX_VERTICES }),
   Object.freeze({ part: "rightLeg", first: 8 * BOX_VERTICES, count: 2 * BOX_VERTICES }),
@@ -46,9 +52,13 @@ function normalizedPhase(value: number): number {
 export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
   const cycle = Math.sin(normalizedPhase(input.phase) * Math.PI * 2);
   const intensity = Math.max(0, Math.min(1, Number.isFinite(input.intensity) ? input.intensity! : 1));
+  const headYaw = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, Number.isFinite(input.headYaw) ? input.headYaw! : 0));
+  const headPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, Number.isFinite(input.headPitch) ? input.headPitch! : 0));
   if (input.motion === "idle") {
     const breath = cycle * 0.018 * intensity;
     return Object.freeze({
+      headYaw,
+      headPitch,
       rightArmPitch: -0.055 + breath,
       leftArmPitch: 0.04 - breath,
       rightLegPitch: 0,
@@ -57,6 +67,8 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
   }
   const swing = cycle * 0.78 * intensity;
   return Object.freeze({
+    headYaw,
+    headPitch,
     rightArmPitch: swing,
     leftArmPitch: -swing,
     rightLegPitch: -swing,
@@ -93,6 +105,23 @@ export function writePlayerRigPartMatrix(
   model: PlayerSkinModel,
   remapStandardSkinSides: boolean,
 ): Float32Array {
+  if (part === "head") {
+    const yawCosine = Math.cos(pose.headYaw);
+    const yawSine = Math.sin(pose.headYaw);
+    const pitchCosine = Math.cos(pose.headPitch);
+    const pitchSine = Math.sin(pose.headPitch);
+    const pivotY = 1.5;
+    output.set([
+      yawCosine, 0, -yawSine, 0,
+      yawSine * pitchSine, pitchCosine, yawCosine * pitchSine, 0,
+      yawSine * pitchCosine, -pitchSine, yawCosine * pitchCosine, 0,
+      -pivotY * yawSine * pitchSine,
+      pivotY * (1 - pitchCosine),
+      -pivotY * yawCosine * pitchSine,
+      1,
+    ]);
+    return output;
+  }
   const pitch = pitchForPart(part, pose);
   const cosine = Math.cos(pitch);
   const sine = Math.sin(pitch);

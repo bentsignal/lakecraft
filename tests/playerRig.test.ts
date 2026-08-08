@@ -30,7 +30,8 @@ assert.equal(playerRigInputForMovement("sneak", 450).intensity, 0.45);
 assert.equal(playerRigInputForMovement("ladder", 360).intensity, 0.65);
 
 assert.deepEqual(PLAYER_RIG_SKIN_DRAWS, [
-  { part: "root", first: 0, count: 144 },
+  { part: "head", first: 0, count: 72 },
+  { part: "root", first: 72, count: 72 },
   { part: "rightArm", first: 144, count: 72 },
   { part: "leftArm", first: 216, count: 72 },
   { part: "rightLeg", first: 288, count: 72 },
@@ -40,6 +41,12 @@ assert.equal(PLAYER_RIG_SKIN_DRAWS.reduce((total, draw) => total + draw.count, 0
   "base and outer skin layers are each covered exactly once");
 
 const matrix = new Float32Array(16);
+const looking = resolvePlayerRigPose({ motion: "idle", phase: 0, headYaw: 0.5, headPitch: -0.25 });
+writePlayerRigPartMatrix(matrix, "head", looking, "wide", true);
+assert.notEqual(matrix[2], 0, "head yaw articulates independently from the torso world matrix");
+assert.notEqual(matrix[9], 0, "head pitch articulates around the neck pivot");
+assert.ok(Math.abs(matrix[5] * 1.5 + matrix[13] - 1.5) < 1e-7,
+  "head pitch preserves the neck pivot instead of orbiting the skull");
 writePlayerRigPartMatrix(matrix, "rightArm", walk, "wide", true);
 assert.equal(matrix[12], -0.75, "standard right-arm UV geometry moves to anatomical -X");
 writePlayerRigPartMatrix(matrix, "leftArm", walk, "slim", true);
@@ -63,7 +70,7 @@ assert.ok(Math.abs(transformedPivotY - pivotY) < 1e-7 && Math.abs(transformedPiv
 const armorDraws = playerArmorRigDraws(fullPlayerArmorAppearance("iron"));
 assert.equal(armorDraws.reduce((total, draw) => total + draw.count, 0), 20 * 36);
 assert.deepEqual(armorDraws.map((draw) => draw.part), [
-  "root", "root", "rightArm", "leftArm", "root", "rightLeg", "leftLeg", "rightLeg", "leftLeg",
+  "head", "root", "rightArm", "leftArm", "root", "rightLeg", "leftLeg", "rightLeg", "leftLeg",
 ], "crown, chest plates, bracers, belt, leggings, cuffs, and boots follow their anatomical joints");
 assert.deepEqual(armorDraws.map((draw) => draw.count), [144, 144, 72, 72, 72, 36, 36, 72, 72],
   "every detailed plate group maps to its exact articulated joint range");
