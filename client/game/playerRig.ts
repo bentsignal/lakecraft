@@ -70,7 +70,7 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
   // while also travelling out and back. The previous 1.8-radian pitch-only
   // flick looked like the shoulder was dislocating in third person.
   const actionSwing = actionActive ? Math.sin(actionProgress * Math.PI) * 0.92 : 0;
-  const actionSweep = actionActive ? Math.sin(actionProgress * Math.PI * 2) * 0.3 : 0;
+  const actionSweep = actionActive ? -Math.sin(actionProgress * Math.PI * 2) * 0.3 : 0;
   const bodyPitch = input.crouching ? 0.5 : 0;
   // Sneaking counterbalances around the feet. The lower body leans backward by
   // the same angle that the torso leans forward, keeping the neck directly

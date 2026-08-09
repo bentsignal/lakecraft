@@ -81,9 +81,9 @@ assert.ok(Math.abs(transformedPivotY - pivotY) < 1e-7 && Math.abs(transformedPiv
 const action = resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.5 });
 assert.ok(action.rightArmPitch < -0.9 && action.rightArmPitch > -1.1,
   "a local action has a readable but restrained forward pitch");
-assert.ok(resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.25 }).rightArmYaw > 0.25
-  && resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.75 }).rightArmYaw < -0.25,
-"the action travels outward and back in a circular arc instead of flicking on one axis");
+assert.ok(resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.25 }).rightArmYaw < -0.25
+  && resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.75 }).rightArmYaw > 0.25,
+"the action travels clockwise and back in a circular arc instead of flicking on one axis");
 assert.ok(Math.abs(action.rightArmYaw) < 1e-7, "the action crosses its resting yaw at mid-swing");
 assert.equal(action.leftArmPitch, resolvePlayerRigPose({ motion: "idle", phase: 0 }).leftArmPitch,
   "one-handed actions do not disturb the off hand");
@@ -139,5 +139,7 @@ assert.match(engineSource, /@lakecraft-voxel-development:rig-preview:start[\s\S]
   "the visual Pose Lab can override the live rig only inside its reviewed development surface");
 assert.match(engineSource, /thirdPersonRigPreview === 8\) previewActionProgress = 0\.25/,
   "the visual Pose Lab exposes one deterministic quarter-swing frame for screenshot review");
+assert.match(engineSource, /previewHeadYaw = thirdPersonRigPreview === 9[\s\S]*headYaw: -previewHeadYaw/,
+  "third-person horizontal look previews exercise the corrected render-basis handoff");
 
 console.log("articulated local player rig tests passed");

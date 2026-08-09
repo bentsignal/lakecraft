@@ -1950,7 +1950,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let cameraMode: PlayerCameraMode = "first_person";
   let firstPersonBowPreviewDrawn: boolean | null = null;
   /* @lakecraft-voxel-development:state:start */
-  let thirdPersonRigPreview: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 = 0;
+  let thirdPersonRigPreview: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 = 0;
   /* @lakecraft-voxel-development:state:end */
   setFirstPersonHeldItem(selectedItem, selectedBlock);
   let worldVertexCount = 0;
@@ -3549,6 +3549,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       thirdPersonRenderPose.yaw = thirdPersonFacing.bodyYaw;
       thirdPersonRenderPose.pitch = pose.pitch;
       let rigInput = playerRigInputForMovement(movementMode, now, movementActivity > 0.5);
+      let previewHeadYaw = thirdPersonFacing.headYaw;
       let previewHeadPitch = thirdPersonFacing.headPitch;
       let previewActionProgress = Math.min(1, Math.max(0, (now - thirdPersonActionStartedAt) / FIRST_PERSON_ACTION_MS));
       /* @lakecraft-voxel-development:rig-preview:start */
@@ -3566,12 +3567,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         previewHeadPitch = thirdPersonRigPreview === 6 ? -0.65
           : thirdPersonRigPreview === 7 ? 0.65 : thirdPersonFacing.headPitch;
         if (thirdPersonRigPreview === 8) previewActionProgress = 0.25;
+        previewHeadYaw = thirdPersonRigPreview === 9 ? 0.65
+          : thirdPersonRigPreview === 10 ? -0.65 : thirdPersonFacing.headYaw;
       }
       /* @lakecraft-voxel-development:rig-preview:end */
       playerSkinRenderer.setHeldItem(selectedItem);
       playerSkinRenderer.draw(mvp, thirdPersonRenderPose, playerSkinLight, {
         ...rigInput,
-        headYaw: thirdPersonFacing.headYaw,
+        // Camera/world yaw and the skin rig's local head basis use opposite
+        // handedness. Flip only at this rendering boundary so body following
+        // remains unchanged while both third-person views track left/right.
+        headYaw: -previewHeadYaw,
         headPitch: previewHeadPitch,
         actionProgress: previewActionProgress,
       });

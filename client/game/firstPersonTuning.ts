@@ -43,8 +43,8 @@ export const FIRST_PERSON_TUNING = {
 
   // EDIT `arm` FOR THE ARM AND EMPTY HAND.
   arm: {
-    position: [0, 0, 0] as FirstPersonVector,
-    rotationDegrees: [0, 0, 0] as FirstPersonVector,
+    position: [-0.37, 0.23, 0] as FirstPersonVector,
+    rotationDegrees: [1, -41, -1] as FirstPersonVector,
     scale: 1,
     pivot: [0.56, -0.49, -1.23] as FirstPersonVector,
   },
