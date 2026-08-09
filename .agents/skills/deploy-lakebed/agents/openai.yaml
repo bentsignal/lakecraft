@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Lakebed"
+  short_description: "Safely release Lakecraft to Lakebed"
+  default_prompt: "Use $deploy-lakebed to deploy and verify Lakecraft production."
