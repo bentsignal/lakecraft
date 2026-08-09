@@ -23,9 +23,11 @@ import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
 import { cycleHotbarIndex } from "./game/hotbarInput";
 import { RealtimeMultiplayerTransport, type RealtimeBlockSink } from "./RealtimeMultiplayerTransport.tsx";
 import {
+  loadMultiplayerInvitationTokens,
   loadSavedMultiplayerServers,
   multiplayerStatusUrl,
   normalizeMultiplayerEndpoint,
+  saveMultiplayerInvitationToken,
   saveMultiplayerServers,
   type RealtimeConnectionPhase,
   type SavedMultiplayerServer,
@@ -995,7 +997,9 @@ function GameApp({
   const [selectedServerId, setSelectedServerId] = useState("");
   const [directConnectValue, setDirectConnectValue] = useState("");
   const [directConnectToken, setDirectConnectToken] = useState("");
-  const [demoServerTokens, setDemoServerTokens] = useState<Record<string, string>>({});
+  const [demoServerTokens, setDemoServerTokens] = useState<Record<string, string>>(
+    () => loadMultiplayerInvitationTokens(window.localStorage),
+  );
   const [serverStatuses, setServerStatuses] = useState<Record<string, {
     status: "online" | "offline";
     onlinePlayers: number;
@@ -3367,20 +3371,26 @@ function GameApp({
     }
     const registered = registeredServers.find((server) => server.canonicalWssUrl === endpoint);
     const id = registered?.id ?? `direct:${endpoint}`;
+    const enteredToken = directConnectToken.trim();
+    const persistedTokens = loadMultiplayerInvitationTokens(window.localStorage);
+    const invitationToken = enteredToken.length >= 16
+      ? enteredToken
+      : demoServerTokens[endpoint] || persistedTokens[endpoint] || "";
     const next = [
       { id, name: registered?.name ?? new URL(endpoint).host, endpoint },
       ...savedMultiplayerServers.filter((server) => server.endpoint !== endpoint),
     ].slice(0, 24);
     setSavedMultiplayerServers(next);
     saveMultiplayerServers(window.localStorage, next);
-    if (directConnectToken.length >= 16) {
-      setDemoServerTokens((current) => ({ ...current, [endpoint]: directConnectToken }));
+    if (invitationToken) {
+      saveMultiplayerInvitationToken(window.localStorage, endpoint, invitationToken);
+      setDemoServerTokens((current) => ({ ...current, [endpoint]: invitationToken }));
     }
     setSelectedServerId(id);
     setDirectConnectValue("");
     setDirectConnectToken("");
     setJoinPhase("idle");
-    setJoinError(registered || directConnectToken.length >= 16
+    setJoinError(registered || invitationToken
       ? ""
       : "This address was saved. Add it again with its private invitation token before joining.");
   }
@@ -3389,7 +3399,8 @@ function GameApp({
     if (!profile || joinPhase === "joining" || joinPhase === "waiting" || joinPhase === "ready") return;
     const selected = combinedServers.find((server) => server.id === selectedServerId);
     const registered = selected && registeredServers.find((server) => server.id === selected.id);
-    const demoToken = selected ? demoServerTokens[selected.endpoint] : "";
+    const persistedTokens = loadMultiplayerInvitationTokens(window.localStorage);
+    const demoToken = selected ? demoServerTokens[selected.endpoint] || persistedTokens[selected.endpoint] || "" : "";
     if (!selected || (!registered && (!demoToken || demoToken.length < 16))) {
       setJoinPhase("error");
       setJoinError("This server is not registered with Lakebed. Add it again with its private invitation token.");

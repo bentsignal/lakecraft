@@ -2,6 +2,7 @@ import type { PlayerPose, RemotePlayer, WorldEdit } from "./game/types.ts";
 
 export const REALTIME_PROTOCOL_VERSION = 1 as const;
 export const MULTIPLAYER_SERVERS_STORAGE_KEY = "lakecraft:multiplayer-servers:v1";
+export const MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY = "lakecraft:multiplayer-invitation-tokens:v1";
 
 export type RealtimeConnectionPhase = "idle" | "connecting" | "online" | "reconnecting" | "offline" | "error";
 
@@ -154,6 +155,43 @@ export function saveMultiplayerServers(
     getItem: () => JSON.stringify(servers),
   } as Pick<Storage, "getItem">);
   storage.setItem(MULTIPLAYER_SERVERS_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+export function loadMultiplayerInvitationTokens(
+  storage: Pick<Storage, "getItem">,
+): Record<string, string> {
+  try {
+    const parsed = JSON.parse(storage.getItem(MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY) ?? "{}") as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const tokens: Record<string, string> = {};
+    for (const [candidate, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const endpoint = normalizeMultiplayerEndpoint(candidate);
+      const token = boundedText(value, 256).trim();
+      if (!endpoint || token.length < 16 || tokens[endpoint]) continue;
+      tokens[endpoint] = token;
+      if (Object.keys(tokens).length >= 24) break;
+    }
+    return tokens;
+  } catch {
+    return {};
+  }
+}
+
+export function saveMultiplayerInvitationToken(
+  storage: Pick<Storage, "getItem" | "setItem">,
+  endpointValue: string,
+  tokenValue: string,
+): boolean {
+  const endpoint = normalizeMultiplayerEndpoint(endpointValue);
+  const token = tokenValue.trim().slice(0, 256);
+  if (!endpoint || token.length < 16) return false;
+  try {
+    const tokens = loadMultiplayerInvitationTokens(storage);
+    storage.setItem(MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY, JSON.stringify({ ...tokens, [endpoint]: token }));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export class RealtimeMultiplayerClient {

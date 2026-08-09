@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY,
   MULTIPLAYER_SERVERS_STORAGE_KEY,
+  loadMultiplayerInvitationTokens,
   loadSavedMultiplayerServers,
   multiplayerStatusUrl,
   normalizeMultiplayerEndpoint,
+  saveMultiplayerInvitationToken,
   saveMultiplayerServers,
 } from "../client/realtimeMultiplayer.ts";
 
@@ -49,6 +52,21 @@ assert.deepEqual(JSON.parse(savedValue), [{
   endpoint: "wss://fern-hollow.up.railway.app/ws",
 }]);
 
+const credentialStorage = new Map<string, string>();
+assert.equal(saveMultiplayerInvitationToken({
+  getItem: (key) => credentialStorage.get(key) ?? null,
+  setItem: (key, value) => credentialStorage.set(key, value),
+}, "https://fern-hollow.up.railway.app", "  private-invitation-token  "), true);
+assert.deepEqual(loadMultiplayerInvitationTokens({
+  getItem: (key) => credentialStorage.get(key) ?? null,
+}), { "wss://fern-hollow.up.railway.app/ws": "private-invitation-token" });
+assert.ok(credentialStorage.has(MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY));
+assert.doesNotMatch(savedValue, /private-invitation-token/);
+assert.equal(saveMultiplayerInvitationToken({
+  getItem: () => null,
+  setItem: () => assert.fail("short credentials must not be written"),
+}, "safe.example", "too-short"), false);
+
 const appSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const statusProbe = appSource.slice(
   appSource.indexOf("void fetch(statusUrl"),
@@ -57,5 +75,7 @@ const statusProbe = appSource.slice(
 assert.ok(statusProbe.includes('body.ok !== true'));
 assert.ok(statusProbe.includes('body.status !== "online"'));
 assert.ok(statusProbe.includes("body.protocolVersion !== 1"));
+assert.ok(appSource.includes("demoServerTokens[selected.endpoint] || persistedTokens[selected.endpoint]"),
+  "saved invitation tokens survive authentication redirects and page reloads");
 
 console.log("realtime multiplayer client helpers: ok");
