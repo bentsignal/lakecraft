@@ -106,9 +106,11 @@ export function inspectEnvironment(env = process.env) {
 export function validateTemplatePlan(plan) {
   const problems = [];
   if (plan?.format !== "lakecraft.railway-template-plan.v1") problems.push("unexpected format");
-  if (plan?.service?.sourceRoot !== "/apps/game-server") problems.push("sourceRoot must be /apps/game-server");
-  if (plan?.service?.configFile !== "/apps/game-server/railway.json") {
-    problems.push("configFile must be /apps/game-server/railway.json");
+  if (plan?.templateUrl !== "https://railway.com/deploy/lakecraft-multiplayer-server") {
+    problems.push("templateUrl must point to the published Lakecraft template");
+  }
+  if (plan?.service?.image !== "ghcr.io/bentsignal/lakecraft-server:railway-beta") {
+    problems.push("service must use the public Lakecraft Railway beta image");
   }
   if (plan?.service?.volume?.mountPath !== "/data" || plan?.service?.volume?.required !== true) {
     problems.push("a required /data volume is missing");
@@ -119,7 +121,7 @@ export function validateTemplatePlan(plan) {
   for (const name of ["AUTH_MODE", "LOCAL_DEMO_TOKEN", "SERVER_ID", "PUBLIC_SERVER_NAME", "ALLOWED_ORIGINS"]) {
     if (!variables.has(name)) problems.push(`template variable ${name} is missing`);
   }
-  if (variables.get("LOCAL_DEMO_TOKEN")?.templateValue !== "${{ secret(32) }}") {
+  if (variables.get("LOCAL_DEMO_TOKEN")?.templateValue !== '${{ secret(48, "0123456789abcdef") }}') {
     problems.push("LOCAL_DEMO_TOKEN must use Railway's secret generator");
   }
   return problems;

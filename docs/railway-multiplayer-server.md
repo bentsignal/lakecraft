@@ -1,9 +1,9 @@
 # Host a Lakecraft multiplayer server on Railway
 
-Lakecraft's game server is a small, dependency-free Bun service. Railway builds
-only `apps/game-server`, keeps the world in one SQLite file on a volume, and
-terminates HTTPS/WSS for the browser client. The URL players paste into Direct
-Connect is `wss://YOUR-DOMAIN/ws`.
+Lakecraft's game server is a small, dependency-free Bun service. Railway runs
+the published Lakecraft server image, keeps the world in one SQLite file on a
+volume, and terminates HTTPS/WSS for the browser client. The URL players paste
+into Direct Connect is `wss://YOUR-DOMAIN/ws`.
 
 This beta uses one server process and one persistent volume. Do not add replicas
 or enable app sleeping: player sockets and authoritative tick state live in that
@@ -11,41 +11,28 @@ process, and SQLite lives on that process's volume.
 
 ## Deploy the current beta
 
-Until the maintainers publish the checked-in template plan as a Railway
-template, the safe manual path is:
-
-1. In Railway, create a project from the Lakecraft GitHub repository and open
-   the new service's settings.
-2. Set **Root Directory** to `/apps/game-server`.
-3. Set **Config File Path** to `/apps/game-server/railway.json`. Railway's
-   config path is repository-absolute even when a service has a root directory.
-4. Attach one volume to the service at exactly `/data`. `railway.json` refuses
-   a deployment without that mount.
-5. Enable **HTTP Public Networking** and generate a Railway domain. An HTTP
-   domain carries both the `/status` health request and WebSocket upgrades on
-   `/ws`; a TCP proxy is unnecessary.
-6. Add the beta variables below. Generate the two random values locally with
-   `node tools/lakecraft-server/cli.mjs secrets`, or use equivalent high-entropy
-   values from a password manager.
-7. Deploy the staged Railway changes. No package install or build command runs;
-   the Docker image starts the TypeScript entrypoint directly with Bun.
-8. Check the deployment and copy the Direct Connect address:
+1. Open the [Lakecraft Multiplayer Server template](https://railway.com/deploy/lakecraft-multiplayer-server)
+   and click **Deploy**. Railway creates the service, generated HTTPS domain,
+   `/data` volume, and high-entropy invitation credentials.
+2. Wait for the deployment and health check to turn green.
+3. Copy the generated domain from the service's **Networking** settings and
+   convert it to `wss://YOUR-DOMAIN/ws`, or check it from this repository:
 
    ```sh
    node tools/lakecraft-server/cli.mjs check https://YOUR-DOMAIN
    ```
 
-   Share the `wss://.../ws` address and demo token separately. Do not put the
-   token in the URL, screenshots, chat logs, or a public server-list entry.
+4. Reveal `LOCAL_DEMO_TOKEN` in the service's **Variables** settings. Share the
+   `wss://.../ws` address and token separately with trusted friends. Do not put
+   the token in the URL, screenshots, logs, or a public server-list entry.
 
 The relevant Railway settings are captured in
 `tools/lakecraft-server/railway-template-plan.json`. That file is a validated
-maintainer handoff, not an importable Railway manifest. Railway's
-[config-as-code](https://docs.railway.com/config-as-code/reference) owns the
-image, health, restart, and one-replica constraints; Railway's template composer
-must create the [volume](https://docs.railway.com/volumes), variables, and
-generated domain. After a maintainer creates and publishes that template, its
-generated template URL can replace steps 1–7 with Railway's Deploy button.
+maintainer mirror of the published template, not an importable Railway manifest.
+The Railway template owns the public image, [volume](https://docs.railway.com/volumes),
+variables, generated domain, health check, restart policy, and one-replica
+constraint. The image is published from `apps/game-server` by the checked-in
+GitHub Actions workflow.
 
 ## Beta variables
 

@@ -12,7 +12,8 @@ node tools/lakecraft-server/cli.mjs connection example.up.railway.app
 node tools/lakecraft-server/cli.mjs check https://example.up.railway.app
 ```
 
-`railway-template-plan.json` is a reviewed handoff for Railway's template
-composer. It is deliberately not presented as an importable Railway manifest:
-Railway config-as-code covers build/deploy settings, while the template composer
-creates volumes, variables, and public domains.
+Deploy the current beta with the published
+[Lakecraft Multiplayer Server template](https://railway.com/deploy/lakecraft-multiplayer-server).
+`railway-template-plan.json` is the reviewed, testable mirror of that Railway
+template. It is deliberately not presented as an importable Railway manifest.
+The marketplace overview lives in `docs/railway-template-overview.md`.

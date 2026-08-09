@@ -1,9 +1,9 @@
 {
   "format": "lakecraft.railway-template-plan.v1",
+  "templateUrl": "https://railway.com/deploy/lakecraft-multiplayer-server",
   "service": {
     "name": "Lakecraft Server",
-    "sourceRoot": "/apps/game-server",
-    "configFile": "/apps/game-server/railway.json",
+    "image": "ghcr.io/bentsignal/lakecraft-server:railway-beta",
     "replicas": 1,
     "publicNetworking": {
       "type": "HTTP",
@@ -25,7 +25,7 @@
     },
     {
       "name": "LOCAL_DEMO_TOKEN",
-      "templateValue": "${{ secret(32) }}",
+      "templateValue": "${{ secret(48, \"0123456789abcdef\") }}",
       "secret": true,
       "description": "Share this token privately with invited players, separately from the server URL."
     },
@@ -43,11 +43,31 @@
       "name": "ALLOWED_ORIGINS",
       "templateValue": "https://craft.lakebed.app",
       "description": "Comma-separated exact web origins permitted to open the WebSocket. Add localhost only for local development."
+    },
+    {
+      "name": "DATA_DIR",
+      "templateValue": "/data",
+      "description": "Persistent SQLite directory mounted from the Railway volume."
+    },
+    {
+      "name": "MAX_PLAYERS",
+      "templateValue": "32",
+      "description": "Maximum concurrent players accepted by the server."
+    },
+    {
+      "name": "MAX_PERSISTED_BLOCKS",
+      "templateValue": "1000",
+      "description": "Maximum persisted block edits in the beta world snapshot."
+    },
+    {
+      "name": "PUBLIC_SERVER_DESCRIPTION",
+      "templateValue": "Persistent Lakecraft multiplayer hosted on Railway",
+      "description": "Description shown in server metadata and status output."
     }
   ],
   "operatorNotes": [
     "Keep exactly one replica because the server uses one SQLite database and in-memory realtime state.",
     "Do not enable Serverless App Sleeping for a multiplayer server.",
-    "The Railway template composer, not config-as-code, creates the volume and generated public domain."
+    "The published Railway template creates the image-backed service, volume, variables, and generated public domain."
   ]
 }
