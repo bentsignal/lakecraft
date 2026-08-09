@@ -1,0 +1,161 @@
+# Host a Lakecraft multiplayer server on Railway
+
+Lakecraft's game server is a small, dependency-free Bun service. Railway builds
+only `apps/game-server`, keeps the world in one SQLite file on a volume, and
+terminates HTTPS/WSS for the browser client. The URL players paste into Direct
+Connect is `wss://YOUR-DOMAIN/ws`.
+
+This beta uses one server process and one persistent volume. Do not add replicas
+or enable app sleeping: player sockets and authoritative tick state live in that
+process, and SQLite lives on that process's volume.
+
+## Deploy the current beta
+
+Until the maintainers publish the checked-in template plan as a Railway
+template, the safe manual path is:
+
+1. In Railway, create a project from the Lakecraft GitHub repository and open
+   the new service's settings.
+2. Set **Root Directory** to `/apps/game-server`.
+3. Set **Config File Path** to `/apps/game-server/railway.json`. Railway's
+   config path is repository-absolute even when a service has a root directory.
+4. Attach one volume to the service at exactly `/data`. `railway.json` refuses
+   a deployment without that mount.
+5. Enable **HTTP Public Networking** and generate a Railway domain. An HTTP
+   domain carries both the `/status` health request and WebSocket upgrades on
+   `/ws`; a TCP proxy is unnecessary.
+6. Add the beta variables below. Generate the two random values locally with
+   `node tools/lakecraft-server/cli.mjs secrets`, or use equivalent high-entropy
+   values from a password manager.
+7. Deploy the staged Railway changes. No package install or build command runs;
+   the Docker image starts the TypeScript entrypoint directly with Bun.
+8. Check the deployment and copy the Direct Connect address:
+
+   ```sh
+   node tools/lakecraft-server/cli.mjs check https://YOUR-DOMAIN
+   ```
+
+   Share the `wss://.../ws` address and demo token separately. Do not put the
+   token in the URL, screenshots, chat logs, or a public server-list entry.
+
+The relevant Railway settings are captured in
+`tools/lakecraft-server/railway-template-plan.json`. That file is a validated
+maintainer handoff, not an importable Railway manifest. Railway's
+[config-as-code](https://docs.railway.com/config-as-code/reference) owns the
+image, health, restart, and one-replica constraints; Railway's template composer
+must create the [volume](https://docs.railway.com/volumes), variables, and
+generated domain. After a maintainer creates and publishes that template, its
+generated template URL can replace steps 1–7 with Railway's Deploy button.
+
+## Beta variables
+
+| Variable | Value | Purpose |
+| --- | --- | --- |
+| `AUTH_MODE` | `local-demo` | Enables the invitation-token beta without a control-plane registration. |
+| `LOCAL_DEMO_TOKEN` | 32 random bytes | Secret every invited player enters alongside the server address. |
+| `SERVER_ID` | Stable random lowercase/number ID | Keeps the server identity stable across restarts. |
+| `PUBLIC_SERVER_NAME` | Your chosen name | Friendly name returned by server metadata/status. |
+| `ALLOWED_ORIGINS` | `https://craft.lakebed.app` | Exact browser origin allowed to upgrade to WebSocket. Use a comma-separated list only when intentionally allowing more origins. |
+
+`PORT` and `RAILWAY_PUBLIC_DOMAIN` are injected by Railway. The container sets
+`HOST=0.0.0.0` and `DATA_DIR=/data`. Railway also exposes
+`RAILWAY_VOLUME_MOUNT_PATH`; the operator doctor verifies that it agrees with
+`DATA_DIR`:
+
+```sh
+AUTH_MODE=local-demo \
+LOCAL_DEMO_TOKEN='replace-me' \
+SERVER_ID='replace-me' \
+ALLOWED_ORIGINS='https://craft.lakebed.app' \
+DATA_DIR='/data' \
+RAILWAY_VOLUME_MOUNT_PATH='/data' \
+node tools/lakecraft-server/cli.mjs doctor
+```
+
+The doctor reports missing names but never reads back or prints secret values.
+
+## Lakebed-authenticated mode
+
+`AUTH_MODE=lakebed` replaces the shared demo token with short-lived player
+tickets. It additionally requires:
+
+- `LAKEBED_TICKET_REDEEM_URL`
+- `LAKEBED_REGISTRATION_CREDENTIAL` (secret)
+- `SERVER_ID` — copy the exact registration row ID returned when this server is
+  registered in Lakebed. Do not use the unrelated random ID produced for
+  `local-demo`; ticket redemption is deliberately scoped to this value.
+
+Keep `ALLOWED_ORIGINS` restricted in either mode. Lakebed mode is the intended
+public-server path once registration and ticket redemption are available; the
+local-demo mode is intentionally an invitation-only multiplayer demo.
+
+The shared `local-demo` token is not individual identity. A modified client
+holding it can choose another demo user ID, so do not use this mode for public
+or untrusted players. Lakebed-authenticated mode derives identity only from the
+one-use ticket redemption response.
+
+The server-issued reconnect credential is hash-only at rest, rotates whenever
+it is used, and expires ten minutes after issuance. An uninterrupted socket can
+remain connected; after an expired credential or a later disconnect, the player
+returns through the lobby to mint a fresh Lakebed ticket.
+
+## Local Docker smoke test
+
+No project dependencies are installed:
+
+```sh
+docker build -t lakecraft-server apps/game-server
+docker volume create lakecraft-world
+docker run --rm -p 3001:3001 \
+  -v lakecraft-world:/data \
+  -e AUTH_MODE=local-demo \
+  -e LOCAL_DEMO_TOKEN='replace-with-a-random-token' \
+  -e SERVER_ID='local-friends' \
+  -e PUBLIC_SERVER_NAME='Local Friends' \
+  -e ALLOWED_ORIGINS='http://localhost:3000' \
+  lakecraft-server
+```
+
+In another terminal:
+
+```sh
+node tools/lakecraft-server/cli.mjs check http://127.0.0.1:3001
+```
+
+## Persistence and updates
+
+The world database is `/data/lakecraft.sqlite`. Keep the same volume attached
+when redeploying. Download backups through Railway's volume tools before a risky
+upgrade. A fresh service without the old volume is a fresh world.
+
+Keep the service at exactly one replica. Zero-overlap deployments are deliberate
+so two authoritative processes never write the same SQLite volume. Connected
+players will briefly disconnect during deploy and should reconnect to the same
+domain afterward.
+
+## Repository and Lakebed artifact boundary
+
+This milestone does not move the existing Lakebed capsule. The compact Lakebed
+transaction already builds a sealed temporary payload from only the bundled
+`client/index.tsx`, bundled `server/index.ts`, `favicon.svg`, and sanitized
+Lakebed control files. It does not recursively copy the repository. Consequently
+`apps/game-server`, `tools/lakecraft-server`, and this document stay outside the
+Lakebed artifact even though they remain in the same repository.
+
+Continue using the existing audited Lakebed build transaction for release
+evidence. Do not replace it with a raw repository-root upload. This boundary can
+be verified after multiplayer changes with:
+
+```sh
+evidence_parent="$(mktemp -d)"
+node scripts/build-lakebed-audit.mjs "$evidence_parent/multiplayer-boundary"
+node scripts/check-lakebed-artifact-size.mjs \
+  "$evidence_parent/multiplayer-boundary/artifact-metadata.json"
+```
+
+A future physical move to `apps/lakebed-capsule` may make the repository shape
+more obvious, but it would churn imports, tooling, deployment ownership, and
+production evidence without reducing today's compact payload. It is not needed
+for this multiplayer demo.
+
+Railway reference: [isolated monorepo root directories and config paths](https://docs.railway.com/deployments/monorepo), [Dockerfiles](https://docs.railway.com/builds/dockerfiles), and [publishing templates](https://docs.railway.com/templates/publish-and-share).

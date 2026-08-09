@@ -7,8 +7,12 @@ const types = readFileSync(new URL("../client/game/types.ts", import.meta.url), 
 
 assert.equal(app.includes('"mobWorldAuthority"'), false, "mob snapshots must not use a second client query");
 assert.equal(app.includes("mobQuerySample"), false, "the 200ms mob polling sample is removed");
-assert.ok(app.includes("onMobWorldAuthority={setMobWorldAuthority}"));
-assert.ok(app.includes("mobIds={mobIds}"));
+assert.equal(app.includes("<MultiplayerSegmentTransport"), false,
+  "the retired Lakebed segment transport is not mounted beside Railway realtime multiplayer");
+assert.equal(app.includes("onMobWorldAuthority={setMobWorldAuthority}"), false,
+  "the first Railway slice does not pretend its server implements mob authority");
+assert.equal(app.includes("mobIds={mobIds}"), false,
+  "mob ids are not sent through the retired Lakebed transport");
 assert.ok(app.includes("MOB_CHECKPOINT_ATTEMPT_MIN_MS = 30_000"));
 assert.ok(app.includes("checkpointForeground"), "menus/background must not checkpoint mob authority");
 assert.ok(app.includes('useMutation<[requestJson: string], MobWorldCheckpointResult>("checkpointMobWorld")'));

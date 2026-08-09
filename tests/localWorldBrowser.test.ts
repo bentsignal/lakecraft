@@ -43,9 +43,8 @@ const leaveSingleplayer = root.slice(
   root.indexOf("\n  return singlePlayer", root.indexOf("  function leaveSingleplayer")),
 );
 assert.ok(leaveSingleplayer.includes("singlePlayerTitleUrl(window.location.href)")
-  && leaveSingleplayer.includes("if (hostedSinglePlayer) setSinglePlayerTitle(true)")
-  && leaveSingleplayer.includes("else setSinglePlayer(false)"),
-  "Back removes only the single-player route flag before restoring the main menu");
+  && leaveSingleplayer.includes("setSinglePlayer(false)"),
+  "Back removes the single-player route flag before restoring the main menu");
 
 const header = browser.slice(
   browser.indexOf('<div className="lc-local-world-header">'),

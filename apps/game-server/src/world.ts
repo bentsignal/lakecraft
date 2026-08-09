@@ -1,0 +1,427 @@
+import type { JoinAuthenticator } from "./auth";
+import type { ServerConfig } from "./config";
+import type { WorldStore } from "./database";
+import {
+  PROTOCOL_VERSION,
+  decodeClientMessage,
+  encodeServerMessage,
+  protocolError,
+  type ClientMessage,
+  type PublicPlayer,
+  type ServerMessage,
+} from "./protocol";
+
+export interface Peer {
+  readonly id: string;
+  send(payload: string): void;
+  close(code: number, reason: string): void;
+  bufferedAmount(): number;
+}
+
+interface Controls {
+  moveX: number;
+  moveZ: number;
+  jump: boolean;
+  sprint: boolean;
+}
+
+interface ConnectionState {
+  peer: Peer;
+  joined: boolean;
+  joining: boolean;
+  sessionId?: string;
+  player?: PublicPlayer;
+  resumeHash?: string;
+  resumeExpiresAt?: number;
+  controls: Controls;
+  vy: number;
+  lastInputSeq: number;
+  lastEditSeq: number;
+  lastInputAt: number;
+  rateWindowAt: number;
+  rateCount: number;
+  lastSavedAt: number;
+}
+
+// Feet pose on the deterministic client's height-68 spawn plateau.
+const SPAWN = { x: 0.5, y: 69.02, z: 0.5 };
+const NEARBY_RADIUS = 96;
+const EDIT_REACH = 8;
+const MAX_MESSAGE_BYTES = 16 * 1024;
+const SOFT_BACKPRESSURE = 64 * 1024;
+const HARD_BACKPRESSURE = 256 * 1024;
+export const RESUME_TOKEN_TTL_MS = 10 * 60 * 1_000;
+
+export class GameWorld {
+  private readonly connections = new Map<string, ConnectionState>();
+  private readonly userConnections = new Map<string, ConnectionState>();
+  private tickNumber = 0;
+  private shuttingDown = false;
+
+  constructor(
+    readonly config: ServerConfig,
+    private readonly store: WorldStore,
+    private readonly authenticator: JoinAuthenticator,
+  ) {}
+
+  get playerCount(): number {
+    return this.userConnections.size;
+  }
+
+  get connectionCount(): number {
+    return this.connections.size;
+  }
+
+  isJoined(peerId: string): boolean {
+    return this.connections.get(peerId)?.joined ?? false;
+  }
+
+  open(peer: Peer, now = Date.now()): void {
+    if (this.connections.has(peer.id)) return;
+    this.connections.set(peer.id, {
+      peer,
+      joined: false,
+      joining: false,
+      controls: { moveX: 0, moveZ: 0, jump: false, sprint: false },
+      vy: 0,
+      lastInputSeq: 0,
+      lastEditSeq: 0,
+      lastInputAt: now,
+      rateWindowAt: now,
+      rateCount: 0,
+      lastSavedAt: now,
+    });
+    this.send(peer, {
+      v: PROTOCOL_VERSION,
+      type: "hello",
+      serverId: this.config.serverId,
+      serverName: this.config.serverName,
+      authMode: this.config.authMode,
+      tickHz: this.config.tickHz,
+      snapshotHz: this.config.snapshotHz,
+    });
+  }
+
+  close(peer: Peer): void {
+    const state = this.connections.get(peer.id);
+    if (!state) return;
+    this.connections.delete(peer.id);
+    if (state.player && this.userConnections.get(state.player.id) === state) {
+      this.userConnections.delete(state.player.id);
+      if (state.resumeHash && state.resumeExpiresAt !== undefined && !this.shuttingDown) {
+        this.store.savePlayer(state.player, state.resumeHash, Date.now(), state.resumeExpiresAt);
+      }
+    }
+  }
+
+  async message(peer: Peer, raw: string, now = Date.now()): Promise<void> {
+    const state = this.connections.get(peer.id);
+    if (!state) return;
+    const bytes = new TextEncoder().encode(raw).byteLength;
+    if (bytes > MAX_MESSAGE_BYTES) {
+      this.fail(state, "bad_message", "Message exceeds 16 KiB", true);
+      return;
+    }
+    if (now - state.rateWindowAt >= 1_000) {
+      state.rateWindowAt = now;
+      state.rateCount = 0;
+    }
+    state.rateCount++;
+    if (state.rateCount > 120) {
+      this.fail(state, "rate_limited", "Message rate exceeded", true, true);
+      return;
+    }
+
+    const decoded = decodeClientMessage(raw);
+    if (!decoded.ok) {
+      this.fail(state, decoded.code, decoded.message, decoded.code === "unsupported_version");
+      return;
+    }
+    const message = decoded.message;
+    if (message.type === "ping") {
+      this.send(peer, { v: PROTOCOL_VERSION, type: "pong", t: message.t, serverTime: now });
+      return;
+    }
+    if (message.type === "join") {
+      await this.join(state, message, now);
+      return;
+    }
+    if (!state.joined || !state.player) {
+      this.fail(state, "join_required", "Authenticate with a join message first");
+      return;
+    }
+    if (message.type === "input") this.input(state, message, now);
+    else this.blockEdit(state, message, now);
+  }
+
+  tick(now = Date.now()): void {
+    this.tickNumber++;
+    const dt = 1 / this.config.tickHz;
+    for (const state of this.userConnections.values()) {
+      const player = state.player!;
+      if (now - state.lastInputAt > 300) {
+        state.controls.moveX = 0;
+        state.controls.moveZ = 0;
+        state.controls.jump = false;
+      }
+      const speed = state.controls.sprint ? 6.0 : 4.3;
+      player.vx = state.controls.moveX * speed;
+      player.vz = state.controls.moveZ * speed;
+      player.x += player.vx * dt;
+      player.z += player.vz * dt;
+
+      const grounded = player.y <= SPAWN.y + 0.0001;
+      if (state.controls.jump && grounded) state.vy = 7.5;
+      state.controls.jump = false;
+      state.vy -= 20 * dt;
+      player.y += state.vy * dt;
+      if (player.y < SPAWN.y) {
+        player.y = SPAWN.y;
+        state.vy = 0;
+      }
+      player.vy = state.vy;
+
+      if (now - state.lastSavedAt >= 1_000 && state.resumeHash && state.resumeExpiresAt !== undefined) {
+        this.store.savePlayer(player, state.resumeHash, now, state.resumeExpiresAt);
+        state.lastSavedAt = now;
+      }
+    }
+  }
+
+  snapshots(now = Date.now()): void {
+    for (const state of this.userConnections.values()) {
+      if (state.peer.bufferedAmount() > SOFT_BACKPRESSURE) continue;
+      const self = state.player!;
+      const players = [...this.userConnections.values()]
+        .filter((other) => other !== state && squaredDistance(self, other.player!) <= NEARBY_RADIUS ** 2)
+        .slice(0, 32)
+        .map((other) => ({ ...other.player! }));
+      this.send(state.peer, {
+        v: PROTOCOL_VERSION,
+        type: "snapshot",
+        serverTick: this.tickNumber,
+        sentAt: now,
+        inputAck: state.lastInputSeq,
+        self: { ...self },
+        players,
+      });
+    }
+  }
+
+  shutdown(): void {
+    this.shuttingDown = true;
+    for (const state of this.userConnections.values()) {
+      if (state.player && state.resumeHash && state.resumeExpiresAt !== undefined) {
+        this.store.savePlayer(state.player, state.resumeHash, Date.now(), state.resumeExpiresAt);
+      }
+    }
+  }
+
+  private async join(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "join" }>,
+    now: number,
+  ): Promise<void> {
+    if (state.joined || state.joining) {
+      this.fail(state, "already_joined", "Connection already joined");
+      return;
+    }
+    state.joining = true;
+    try {
+      const suppliedResumeHash = message.resumeToken ? await hashToken(message.resumeToken) : "";
+      const resumeRecord = suppliedResumeHash ? this.store.loadPlayerByResumeHash(suppliedResumeHash) : null;
+      const validResumeRecord = resumeRecord && resumeRecord.resumeExpiresAt > now ? resumeRecord : null;
+      const principal = validResumeRecord
+        ? { userId: validResumeRecord.player.id, displayName: validResumeRecord.player.name }
+        : await this.authenticator.authenticate(message);
+      const existingForUser = this.userConnections.get(principal.userId);
+      if (!existingForUser && this.playerCount >= this.config.maxPlayers) {
+        this.fail(state, "server_full", "Server is full", true, true);
+        return;
+      }
+      const stored = this.store.loadPlayer(principal.userId);
+      const resumed = Boolean(stored && validResumeRecord && stored.resumeHash === suppliedResumeHash);
+      const resumeToken = createResumeToken();
+      const resumeHash = await hashToken(resumeToken);
+      const resumeExpiresAt = now + RESUME_TOKEN_TTL_MS;
+      const player: PublicPlayer = resumed
+        ? { ...stored!.player, name: principal.displayName, vx: 0, vy: 0, vz: 0 }
+        : {
+            id: principal.userId,
+            name: principal.displayName,
+            ...SPAWN,
+            yaw: 0,
+            pitch: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+          };
+
+      if (existingForUser) {
+        existingForUser.joined = false;
+        existingForUser.controls = { moveX: 0, moveZ: 0, jump: false, sprint: false };
+        existingForUser.peer.close(4001, "Reconnected from another socket");
+      }
+      state.joined = true;
+      state.player = player;
+      state.sessionId = crypto.randomUUID();
+      state.resumeHash = resumeHash;
+      state.resumeExpiresAt = resumeExpiresAt;
+      state.lastInputAt = now;
+      this.userConnections.set(player.id, state);
+      this.store.savePlayer(player, resumeHash, now, resumeExpiresAt);
+      const revision = this.store.getRevision();
+      this.send(state.peer, {
+        v: PROTOCOL_VERSION,
+        type: "welcome",
+        sessionId: state.sessionId,
+        resumeToken,
+        resumed,
+        player: { ...player },
+        serverTick: this.tickNumber,
+        inputAck: state.lastInputSeq,
+        blocksRevision: revision,
+      });
+      this.send(state.peer, {
+        v: PROTOCOL_VERSION,
+        type: "world_snapshot",
+        revision,
+        edits: this.store.getAllBlockEdits(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Authentication failed";
+      this.fail(state, "auth_failed", message, true);
+    } finally {
+      state.joining = false;
+    }
+  }
+
+  private input(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "input" }>,
+    now: number,
+  ): void {
+    // A resumed browser retains its sequence counter, while a socket starts
+    // without transport history. Rebase from the first input, then enforce the
+    // ordinary replay and bounded-gap window for every subsequent message.
+    if (state.lastInputSeq !== 0 && message.seq <= state.lastInputSeq) {
+      this.fail(state, "stale_input", "Input sequence is stale");
+      return;
+    }
+    if (state.lastInputSeq !== 0 && message.seq > state.lastInputSeq + 64) {
+      this.fail(state, "input_gap", "Input sequence gap exceeds 64", false, true);
+      return;
+    }
+    state.lastInputSeq = message.seq;
+    state.lastInputAt = now;
+    state.controls = {
+      moveX: message.moveX,
+      moveZ: message.moveZ,
+      jump: message.jump,
+      sprint: message.sprint,
+    };
+    state.player!.yaw = normalizeYaw(message.yaw);
+    state.player!.pitch = message.pitch;
+    if (message.heldItem !== undefined) state.player!.heldItem = message.heldItem;
+  }
+
+  private blockEdit(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "block_edit" }>,
+    now: number,
+  ): void {
+    const player = state.player!;
+    const prior = this.store.getBlockOperation(player.id, message.operationId);
+    if (prior) {
+      this.send(state.peer, {
+        v: PROTOCOL_VERSION,
+        type: "block_patch",
+        operationId: message.operationId,
+        edit: prior,
+      });
+      return;
+    }
+    if (state.lastEditSeq !== 0
+      && (message.seq <= state.lastEditSeq || message.seq > state.lastEditSeq + 64)) {
+      this.fail(state, "invalid_edit", "Edit sequence is stale or has a gap", false, true, message.operationId);
+      return;
+    }
+    // Consume the sequence even when semantic validation below rejects the
+    // operation, so the established window cannot be repeatedly rebased.
+    state.lastEditSeq = message.seq;
+    const center = { x: message.x + 0.5, y: message.y + 0.5, z: message.z + 0.5 };
+    if (squaredDistance(player, center) > EDIT_REACH ** 2) {
+      this.fail(state, "edit_too_far", "Block edit exceeds server reach", false, false, message.operationId);
+      return;
+    }
+    const result = this.store.applyBlockEdit(
+      {
+        operationId: message.operationId,
+        x: message.x,
+        y: message.y,
+        z: message.z,
+        block: message.block,
+        editorId: player.id,
+        editedAt: now,
+      },
+      this.config.maxPersistedBlocks,
+    );
+    if (!result) {
+      this.fail(state, "world_limit", "This server reached its persisted block limit", false, false, message.operationId);
+      return;
+    }
+    for (const other of this.userConnections.values()) {
+      if (squaredDistance(player, other.player!) > (NEARBY_RADIUS * 2) ** 2) continue;
+      this.send(other.peer, {
+        v: PROTOCOL_VERSION,
+        type: "block_patch",
+        operationId: other === state ? message.operationId : undefined,
+        edit: result.edit,
+      });
+    }
+  }
+
+  private send(peer: Peer, message: ServerMessage): void {
+    if (peer.bufferedAmount() > HARD_BACKPRESSURE) {
+      peer.send(encodeServerMessage(protocolError("backpressure", "Client is not reading messages", { fatal: true, retryable: true })));
+      peer.close(1013, "Backpressure");
+      return;
+    }
+    peer.send(encodeServerMessage(message));
+  }
+
+  private fail(
+    state: ConnectionState,
+    code: Parameters<typeof protocolError>[0],
+    message: string,
+    fatal = false,
+    retryable = false,
+    operationId?: string,
+  ): void {
+    this.send(state.peer, protocolError(code, message, { fatal, retryable, operationId }));
+    if (fatal) state.peer.close(code === "rate_limited" ? 1008 : 4003, message.slice(0, 100));
+  }
+}
+
+function squaredDistance(
+  left: { x: number; y: number; z: number },
+  right: { x: number; y: number; z: number },
+): number {
+  return (left.x - right.x) ** 2 + (left.y - right.y) ** 2 + (left.z - right.z) ** 2;
+}
+
+function normalizeYaw(yaw: number): number {
+  const twoPi = Math.PI * 2;
+  return ((yaw + Math.PI) % twoPi + twoPi) % twoPi - Math.PI;
+}
+
+function createResumeToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashToken(token: string): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}

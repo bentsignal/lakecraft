@@ -1,0 +1,53 @@
+{
+  "format": "lakecraft.railway-template-plan.v1",
+  "service": {
+    "name": "Lakecraft Server",
+    "sourceRoot": "/apps/game-server",
+    "configFile": "/apps/game-server/railway.json",
+    "replicas": 1,
+    "publicNetworking": {
+      "type": "HTTP",
+      "generateDomain": true,
+      "healthPath": "/status",
+      "websocketPath": "/ws"
+    },
+    "volume": {
+      "required": true,
+      "mountPath": "/data",
+      "description": "Persistent SQLite world storage"
+    }
+  },
+  "variables": [
+    {
+      "name": "AUTH_MODE",
+      "templateValue": "local-demo",
+      "description": "Zero-setup beta mode; switch to lakebed only after configuring the control-plane variables."
+    },
+    {
+      "name": "LOCAL_DEMO_TOKEN",
+      "templateValue": "${{ secret(32) }}",
+      "secret": true,
+      "description": "Share this token privately with invited players, separately from the server URL."
+    },
+    {
+      "name": "SERVER_ID",
+      "templateValue": "${{ secret(16, \"abcdefghijklmnopqrstuvwxyz0123456789\") }}",
+      "description": "Stable ID for this self-hosted server."
+    },
+    {
+      "name": "PUBLIC_SERVER_NAME",
+      "templateValue": "Lakecraft Server",
+      "description": "Name shown in health output and the Lakecraft server list."
+    },
+    {
+      "name": "ALLOWED_ORIGINS",
+      "templateValue": "https://craft.lakebed.app",
+      "description": "Comma-separated exact web origins permitted to open the WebSocket. Add localhost only for local development."
+    }
+  ],
+  "operatorNotes": [
+    "Keep exactly one replica because the server uses one SQLite database and in-memory realtime state.",
+    "Do not enable Serverless App Sleeping for a multiplayer server.",
+    "The Railway template composer, not config-as-code, creates the volume and generated public domain."
+  ]
+}

@@ -7,13 +7,13 @@ import { pathToFileURL } from "node:url";
 // Reviewed generated-JSX second-argument shapes in the closed compact client.
 // Helpers preserve these public prop names literally; no property is mangled.
 export const COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS = Object.freeze({
-  "className,aria-hidden": 10,
-  "className,aria-hidden,children": 6,
-  "className,aria-label,children": 12,
-  "className,children": 57,
+  "className,aria-hidden": 9,
+  "className,aria-hidden,children": 5,
+  "className,aria-label,children": 11,
+  "className,children": 54,
   "className,d": 4,
   "className,id,children": 4,
-  "className,onClick,type,children": 7,
+  "className,onClick,type,children": 6,
   "className,role,aria-label,children": 9,
   "className,role,aria-live,children": 4,
   "className,role,aria-modal,aria-labelledby,children": 6,
@@ -26,7 +26,7 @@ export const COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS = Object.freeze({
 // before JSX shape reconstruction. Do not sample it from the staged client:
 // string pooling and the following minify pass intentionally change the AST
 // value kinds that this fail-closed boundary records.
-export const COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT = "012ebd86e4e322d3b77af411106ef1b7fc80f3f31e7b50f8bf7c37b7cc76bb6f";
+export const COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT = "33fd232915975be6608f184c70d2676f80b2a60d30f77b2bdc85037c23033470";
 export const COMPACT_CLIENT_JSX_PROP_SHAPE_INPUT_BOUNDARY = "raw-pre-jsx-v1";
 
 let typescriptPromise;
@@ -126,9 +126,9 @@ export async function compactClientJsxPropShapes(source, expected = {
 }) {
   assertRawPreJsxPropShapeInput(source);
   const analysis = await analyzeClientJsxPropShapes(source, expected.counts);
-  for (const [shape, count] of Object.entries(expected.counts)) {
-    if (analysis.counts[shape] !== count) fail(`${shape} live count changed; expected ${count}, received ${analysis.counts[shape]}`);
-  }
+  const countMismatches = Object.entries(expected.counts).flatMap(([shape, count]) =>
+    analysis.counts[shape] === count ? [] : [`${shape}: expected ${count}, received ${analysis.counts[shape]}`]);
+  if (countMismatches.length > 0) fail(`live counts changed; ${countMismatches.join("; ")}`);
   if (analysis.fingerprint !== expected.fingerprint) {
     fail(`source fingerprint changed; expected ${expected.fingerprint}, received ${analysis.fingerprint}`);
   }

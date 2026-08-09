@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 607;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 537;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c819a96e157f34f994940b0dfef19d5a7d5cef5f6e5315fb26feaa6f2ada16de";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 598;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 536;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "92f94e0edcd6b6a6303e87c8b1a6c48cf4d862266d6972d687b8e7dc5197890e";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -57,9 +57,24 @@ export const COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA = Object.freeze({
   source: "client/singleplayer/SinglePlayerApp.tsx#world-loading-status",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_171;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 108;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "86d6cdb7d321ee8fe9f67b1f27dc73c2ce3a7a69e2c19c66c40db057e1ab1b2d";
+export const COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
+  previousOccurrences: 607,
+  previousUniqueValues: 537,
+  previousSourceFingerprint: "c819a96e157f34f994940b0dfef19d5a7d5cef5f6e5315fb26feaa6f2ada16de",
+  occurrenceDelta: -9,
+  uniqueValueDelta: -1,
+  sources: Object.freeze([
+    "client/index.tsx",
+    "client/lobby/LobbyScreen.tsx",
+    "client/realtimeMultiplayer.ts",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+    "client/index.tsx#retired-lakebed-presence-stage",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_155;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "f560d9234d168d0ddbd93ad5066075a7e689583abc96e5ddd1d09e1bf4fef11b";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -135,6 +150,21 @@ export const COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA = Object.freeze({
   sources: Object.freeze([
     "client/gameplayKeyboardCapture.ts",
     "client/runtimeMode.ts",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
+  previousOccurrences: 1_171,
+  previousUniqueValues: 108,
+  previousSourceFingerprint: "86d6cdb7d321ee8fe9f67b1f27dc73c2ce3a7a69e2c19c66c40db057e1ab1b2d",
+  occurrenceDelta: -16,
+  uniqueValueDelta: -1,
+  sources: Object.freeze([
+    "client/index.tsx",
+    "client/runtimeMode.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+    "client/index.tsx#retired-lakebed-presence-stage",
   ]),
   exclusionChanges: 0,
 });
@@ -241,9 +271,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 417;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 410;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 120;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "a25c799378a0c665c4e20563b3765ca1531e0ff8ef922d76f7641d0fdea394ba";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -305,6 +335,20 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA = Object.freeze
   uniqueValueDelta: -1,
   promotedThresholdValue: "function",
   source: "client/gameplayKeyboardCapture.ts#browser-capability-guards",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
+  previousOccurrences: 417,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5",
+  occurrenceDelta: -7,
+  uniqueValueDelta: -3,
+  sources: Object.freeze([
+    "client/index.tsx",
+    "client/runtimeMode.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+  ]),
   exclusionChanges: 0,
 });
 // Painting the cached GUI block raster introduces the client's third `2d`

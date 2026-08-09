@@ -62,11 +62,11 @@ assert.ok(client.indexOf("? <SinglePlayerApp") < client.indexOf(": <LakebedMulti
 
 const lobby = readFileSync(new URL("../client/lobby/LobbyScreen.tsx", import.meta.url), "utf8");
 const serverBrowser = lobby.slice(lobby.indexOf("function ServerBrowser"), lobby.indexOf("export function LobbyScreen"));
-assert.match(serverBrowser, /liveStatus\?\.onlinePlayers \?\? 0/,
-  "the loading state cannot misreport the signed-in viewer as an authoritative online player");
-assert.match(serverBrowser, /useQuery<FernHollowServerStatus>\("fernHollowStatus"\)/,
-  "only the conditionally-mounted server browser subscribes to the status query");
-assert.doesNotMatch(lobby.slice(lobby.indexOf("export function LobbyScreen")), /useQuery</,
-  "the title screen does not spend a server-status subscription before Multiplayer is opened");
+assert.match(serverBrowser, /props\.servers \? \[\.\.\.props\.servers\] : \[fallbackServer\]/,
+  "the browser renders the external directory supplied by the control-plane client");
+assert.match(serverBrowser, /server\.onlinePlayers \?\? 0/,
+  "loading server health cannot misreport the viewer as an authoritative online player");
+assert.doesNotMatch(lobby, /useQuery/,
+  "the presentation component does not own a hidden Lakebed subscription");
 
 console.log("Fern Hollow reactive status and auth-boundary tests passed");

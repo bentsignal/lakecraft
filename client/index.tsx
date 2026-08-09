@@ -17,16 +17,19 @@ import {
   type WorldEdit as EngineWorldEdit,
 } from "./game";
 import { performanceHudCoreText } from "./game/performanceHud.ts";
-import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lobby";
-import { SinglePlayerApp, SinglePlayerTitleScreen } from "./singleplayer";
-import {
-  isHostedLakebedHostname,
-  shouldShowHostedSinglePlayerTitle,
-  shouldRunSinglePlayer,
-  singlePlayerTitleUrl,
-} from "./runtimeMode.ts";
+import { LobbyScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameClaimState } from "./lobby";
+import { SinglePlayerApp } from "./singleplayer";
+import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
 import { cycleHotbarIndex } from "./game/hotbarInput";
-import { MultiplayerSegmentTransport } from "./MultiplayerSegmentTransport.tsx";
+import { RealtimeMultiplayerTransport, type RealtimeBlockSink } from "./RealtimeMultiplayerTransport.tsx";
+import {
+  loadSavedMultiplayerServers,
+  multiplayerStatusUrl,
+  normalizeMultiplayerEndpoint,
+  saveMultiplayerServers,
+  type RealtimeConnectionPhase,
+  type SavedMultiplayerServer,
+} from "./realtimeMultiplayer.ts";
 import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
 import {
   canApplyAuthoritativeKnockback,
@@ -186,6 +189,26 @@ const QUERY_RECOVERY_CSS = `
 const PRESENCE_BUDGET_STORAGE_PREFIX = "lakecraft:presence-budget:v1:";
 /** Browser-side guard matching the quota-honest persisted mob cadence. */
 const MOB_CHECKPOINT_ATTEMPT_MIN_MS = 30_000;
+
+type ExternalMultiplayerServer = {
+  id: string;
+  name: string;
+  description: string;
+  canonicalWssUrl: string;
+  status?: "online" | "busy" | "maintenance" | "offline";
+  capacity?: number;
+};
+
+type ExternalJoinTicketResult =
+  | { ok: true; ticket: string; serverId: string; canonicalWssUrl: string; expiresAt: number }
+  | { ok: false; reason: string };
+
+type RealtimeSession = {
+  ticket?: string;
+  serverId: string;
+  endpoint: string;
+  demo?: { token: string; userId: string; name: string };
+};
 
 function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.BED
@@ -765,6 +788,7 @@ function GameApp({
   const savedPresence = useQuery<PlayerPresence | null>("myPresence");
   const savedInventory = useQuery<PersistedInventory | null>("myInventory");
   const profile = useQuery<Profile | null>("myProfile");
+  const externalMultiplayerServers = useQuery<ExternalMultiplayerServer[]>("externalMultiplayerServers") ?? [];
   const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
   const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
   const furnaceResult = useQuery<FurnaceAtResult, { coordKey: string; sample: string }>(
@@ -785,6 +809,9 @@ function GameApp({
     poseYaw: string,
     posePitch: string,
   ], WorldBlockEditMutationResult>("editWorldBlock");
+  const createExternalMultiplayerJoinTicket = useMutation<[serverId: string], ExternalJoinTicketResult>(
+    "createExternalMultiplayerJoinTicket",
+  );
   const growOakTree = useMutation<[
     requestJson: string,
     poseX: string,
@@ -961,6 +988,21 @@ function GameApp({
   const [transportForeground, setTransportForeground] = useState(() => document.visibilityState === "visible" && document.hasFocus());
   const [segmentTelemetry, setSegmentTelemetry] = useState<SegmentTelemetry | null>(null);
   const [joinPhase, setJoinPhase] = useState<LobbyJoinPhase>("idle");
+  const [joinError, setJoinError] = useState("");
+  const [savedMultiplayerServers, setSavedMultiplayerServers] = useState<SavedMultiplayerServer[]>(
+    () => loadSavedMultiplayerServers(window.localStorage),
+  );
+  const [selectedServerId, setSelectedServerId] = useState("");
+  const [directConnectValue, setDirectConnectValue] = useState("");
+  const [directConnectToken, setDirectConnectToken] = useState("");
+  const [demoServerTokens, setDemoServerTokens] = useState<Record<string, string>>({});
+  const [serverStatuses, setServerStatuses] = useState<Record<string, {
+    status: "online" | "offline";
+    onlinePlayers: number;
+    capacity: number;
+  }>>({});
+  const [realtimeSession, setRealtimeSession] = useState<RealtimeSession | null>(null);
+  const realtimeBlockSinkRef = useRef<RealtimeBlockSink | null>(null);
   const [usernameDraft, setUsernameDraft] = useState("");
   const [usernameState, setUsernameState] = useState<UsernameClaimState>("idle");
   const [usernameError, setUsernameError] = useState("");
@@ -989,6 +1031,78 @@ function GameApp({
     chest: Boolean(activeChestKey),
     bed: Boolean(activeBedKey),
   });
+  const registeredServers = externalMultiplayerServers.flatMap((server) => {
+    const endpoint = normalizeMultiplayerEndpoint(server.canonicalWssUrl);
+    return endpoint ? [{ ...server, canonicalWssUrl: endpoint }] : [];
+  });
+  const registeredEndpointIds = new Map(registeredServers.map((server) => [server.canonicalWssUrl, server.id]));
+  const combinedServers = [...registeredServers.map((server): SavedMultiplayerServer => ({
+    id: server.id,
+    name: server.name,
+    endpoint: server.canonicalWssUrl,
+  }))];
+  for (const saved of savedMultiplayerServers) {
+    if (combinedServers.some((server) => server.endpoint === saved.endpoint)) continue;
+    combinedServers.push({
+      ...saved,
+      id: registeredEndpointIds.get(saved.endpoint) ?? saved.id,
+    });
+  }
+  const serverProbeKey = combinedServers.map((server) => `${server.id}\u0000${server.endpoint}`).join("\u0001");
+  const lobbyServers: LobbyServerEntry[] = combinedServers.map((server) => {
+    const registered = registeredServers.find((candidate) => candidate.id === server.id);
+    const probe = serverStatuses[server.endpoint];
+    return {
+      id: server.id,
+      name: registered?.name ?? server.name,
+      description: registered?.description ?? "Direct Connect · community server",
+      endpoint: server.endpoint,
+      status: registered?.status === "maintenance" ? "maintenance" : probe?.status ?? "busy",
+      onlinePlayers: probe?.onlinePlayers ?? 0,
+      capacity: probe?.capacity ?? registered?.capacity ?? 20,
+    };
+  });
+  const activeServerName = lobbyServers.find((server) => server.id === realtimeSession?.serverId)?.name
+    ?? lobbyServers.find((server) => server.id === selectedServerId)?.name
+    ?? "Community Server";
+
+  useEffect(() => {
+    if (!serverProbeKey) return;
+    const controller = new AbortController();
+    for (const server of combinedServers.slice(0, 24)) {
+      const statusUrl = multiplayerStatusUrl(server.endpoint);
+      if (!statusUrl) continue;
+      void fetch(statusUrl, { signal: controller.signal }).then(async (response) => {
+        if (!response.ok) throw new Error("status_unavailable");
+        const body = await response.json() as Record<string, unknown>;
+        if (body.ok !== true || body.status !== "online" || body.protocolVersion !== 1) {
+          throw new Error("status_incompatible");
+        }
+        setServerStatuses((current) => ({
+          ...current,
+          [server.endpoint]: {
+            status: "online",
+            onlinePlayers: typeof body.players === "number" && Number.isFinite(body.players)
+              ? Math.max(0, Math.floor(body.players)) : 0,
+            capacity: typeof body.capacity === "number" && Number.isFinite(body.capacity)
+              ? Math.max(1, Math.floor(body.capacity)) : 20,
+          },
+        }));
+      }).catch(() => {
+        if (controller.signal.aborted) return;
+        setServerStatuses((current) => ({
+          ...current,
+          [server.endpoint]: { status: "offline", onlinePlayers: 0, capacity: current[server.endpoint]?.capacity ?? 20 },
+        }));
+      });
+    }
+    return () => controller.abort();
+  }, [serverProbeKey]);
+
+  useEffect(() => {
+    if (selectedServerId && combinedServers.some((server) => server.id === selectedServerId)) return;
+    setSelectedServerId(combinedServers[0]?.id ?? "");
+  }, [serverProbeKey, selectedServerId]);
   if (!authoritativeKnockbackGateRef.current) {
     authoritativeKnockbackGateRef.current = { paused: multiplayerPaused, pauseEpoch: multiplayerPaused ? 1 : 0 };
   } else updateAuthoritativeKnockbackGate(authoritativeKnockbackGateRef.current, multiplayerPaused);
@@ -1510,6 +1624,46 @@ function GameApp({
   }
 
   async function submitPendingWorldBlockEdit(pending: PendingWorldBlockEdit): Promise<void> {
+    if (realtimeSession) {
+      const sink = realtimeBlockSinkRef.current;
+      if (!sink) {
+        rollbackPendingWorldBlockEdit(
+          pending,
+          "Edit paused",
+          "The realtime server is still reconnecting. The block was restored.",
+          true,
+        );
+        return;
+      }
+      try {
+        const confirmed = await sink(pending.operationId, pending.optimisticEdit);
+        if (pendingWorldBlockEditRef.current !== pending) return;
+        authoritativeWorldEditRef.current.set(
+          blockCoordinateKey(confirmed.x, confirmed.y, confirmed.z),
+          confirmed,
+        );
+        engineRef.current?.applyWorldEdits([confirmed]);
+        const seed = `${pending.operationId}:${confirmed.x},${confirmed.y},${confirmed.z}`;
+        if (confirmed.block === BLOCK.AIR && pending.previousBlock !== BLOCK.AIR) {
+          audioRef.current?.play("blockBreak", { seed, surface: audioSurfaceForBlock(pending.previousBlock) });
+          engineRef.current?.spawnBlockParticles({
+            action: "break", block: pending.previousBlock, x: confirmed.x, y: confirmed.y, z: confirmed.z,
+          });
+        } else if (confirmed.block !== BLOCK.AIR) {
+          audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(confirmed.block) });
+        }
+        releasePendingWorldBlockEdit(pending);
+        setConnected(true);
+      } catch {
+        rollbackPendingWorldBlockEdit(
+          pending,
+          pending.optimisticEdit.block === BLOCK.AIR ? "Mine rejected" : "Edit rejected",
+          "The realtime server did not accept this block edit, so the local block was restored.",
+          true,
+        );
+      }
+      return;
+    }
     try {
       await flushInventoryActions();
       if (pendingWorldBlockEditRef.current !== pending) return;
@@ -2413,6 +2567,7 @@ function GameApp({
   }, [worldChunks, inWorld, auth.userId]);
 
   useEffect(() => {
+    if (realtimeSession) return;
     if (worldChunks?.ok) {
       for (const chunkKey of worldChunkKeys) {
         if (!worldChunkRevisionRef.current.has(chunkKey)) worldChunkRevisionRef.current.set(chunkKey, "0");
@@ -2436,7 +2591,7 @@ function GameApp({
       pendingWorldBlockEditRef.current?.optimisticEdit ?? null,
     ));
     if (worldChunks?.ok) engineRef.current?.setPrimedTntFuses(worldChunks.tntFuses, worldChunks.serverNow);
-  }, [worldEvents, worldChunks, worldChunkKeys]);
+  }, [worldEvents, worldChunks, worldChunkKeys, realtimeSession?.serverId]);
 
   useEffect(() => {
     if (!activeChestKey || chestResult === undefined) return;
@@ -2462,10 +2617,11 @@ function GameApp({
     setChestOperationBusy(false);
   }, [activeChestKey, chestResult]);
 
+  // LAKEBED_COMPACT_RETIRED_PRESENCE_START
   useEffect(() => {
     // MultiplayerSegmentTransport owns visual motion. This path remains only
     // as Lakebed's sparse authoritative lease for world and combat actions.
-    const authorityLeaseTransportEnabled = true;
+    const authorityLeaseTransportEnabled = realtimeSession === null;
     if (!authorityLeaseTransportEnabled) return;
     if (!inWorld || auth.isLoading || !auth.isAuthenticated || auth.isGuest || !profile) return;
     const scheduler = createPresenceSchedulerState();
@@ -2742,7 +2898,8 @@ function GameApp({
       if (startRetryTimer) window.clearTimeout(startRetryTimer);
       void leavePlayer(activeSessionId).catch(() => undefined);
     };
-  }, [inWorld, auth.userId, auth.isLoading, auth.isAuthenticated, auth.isGuest, profile?.username]);
+  }, [inWorld, auth.userId, auth.isLoading, auth.isAuthenticated, auth.isGuest, profile?.username, realtimeSession?.serverId]);
+  // LAKEBED_COMPACT_RETIRED_PRESENCE_END
 
   useEffect(() => {
     if (!droppedItemsResult) return;
@@ -3201,10 +3358,66 @@ function GameApp({
     });
   }
 
+  function addDirectServer() {
+    const endpoint = normalizeMultiplayerEndpoint(directConnectValue);
+    if (!endpoint) {
+      setJoinPhase("error");
+      setJoinError("Enter a valid wss:// or https:// Railway server address.");
+      return;
+    }
+    const registered = registeredServers.find((server) => server.canonicalWssUrl === endpoint);
+    const id = registered?.id ?? `direct:${endpoint}`;
+    const next = [
+      { id, name: registered?.name ?? new URL(endpoint).host, endpoint },
+      ...savedMultiplayerServers.filter((server) => server.endpoint !== endpoint),
+    ].slice(0, 24);
+    setSavedMultiplayerServers(next);
+    saveMultiplayerServers(window.localStorage, next);
+    if (directConnectToken.length >= 16) {
+      setDemoServerTokens((current) => ({ ...current, [endpoint]: directConnectToken }));
+    }
+    setSelectedServerId(id);
+    setDirectConnectValue("");
+    setDirectConnectToken("");
+    setJoinPhase("idle");
+    setJoinError(registered || directConnectToken.length >= 16
+      ? ""
+      : "This address was saved. Add it again with its private invitation token before joining.");
+  }
+
   function enterWorld() {
-    if (!profile) return;
+    if (!profile || joinPhase === "joining" || joinPhase === "waiting" || joinPhase === "ready") return;
+    const selected = combinedServers.find((server) => server.id === selectedServerId);
+    const registered = selected && registeredServers.find((server) => server.id === selected.id);
+    const demoToken = selected ? demoServerTokens[selected.endpoint] : "";
+    if (!selected || (!registered && (!demoToken || demoToken.length < 16))) {
+      setJoinPhase("error");
+      setJoinError("This server is not registered with Lakebed. Add it again with its private invitation token.");
+      return;
+    }
+    setJoinError("");
     setJoinPhase("joining");
-    void flushInventoryActions().then(() => window.setTimeout(() => {
+    void flushInventoryActions().then(async () => {
+      let session: RealtimeSession;
+      if (!registered) {
+        session = {
+          serverId: selected.id,
+          endpoint: selected.endpoint,
+          demo: { token: demoToken, userId: auth.userId, name: profile.username },
+        };
+      } else {
+        const ticket = await createExternalMultiplayerJoinTicket(registered.id);
+        if (!ticket.ok || ticket.expiresAt <= Date.now()) {
+          throw new Error(ticket.ok ? "join_ticket_expired" : ticket.reason);
+        }
+        session = {
+          ticket: ticket.ticket,
+          serverId: ticket.serverId,
+          endpoint: normalizeMultiplayerEndpoint(ticket.canonicalWssUrl) ?? registered.canonicalWssUrl,
+        };
+      }
+      setRealtimeSession(session);
+      window.setTimeout(() => {
       if (!hydratedRef.current || savedPresence === undefined) {
         setJoinPhase("waiting");
         return;
@@ -3216,7 +3429,15 @@ function GameApp({
         setPauseOpen(false);
         setJoinPhase("idle");
       }, 180);
-    }, 260));
+      }, 100);
+    }).catch((error: unknown) => {
+      const detail = error instanceof Error ? error.message : "join_failed";
+      setRealtimeSession(null);
+      setJoinPhase("error");
+      setJoinError(detail === "join_ticket_expired"
+        ? "The join ticket expired before the server connection opened. Try again."
+        : "Lakebed could not authorize this server connection.");
+    });
   }
 
   useEffect(() => {
@@ -3237,7 +3458,7 @@ function GameApp({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [joinPhase, inventoryReady, savedPresence, profile?.id]);
+  }, [joinPhase, inventoryReady, savedPresence, profile?.id, realtimeSession?.ticket]);
 
   useEffect(() => {
     if (inWorld && !auth.isLoading && (!auth.isAuthenticated || auth.isGuest)) {
@@ -3308,8 +3529,29 @@ function GameApp({
         displayName={profile?.username ?? auth.displayName}
         email={auth.email}
         joinPhase={joinPhase}
+        joinError={joinError}
+        servers={lobbyServers}
+        selectedServerId={selectedServerId}
+        directConnectValue={directConnectValue}
+        directConnectToken={directConnectToken}
         settings={clientSettings}
+        onAddDirectServer={addDirectServer}
+        onDirectConnectChange={(value) => {
+          setDirectConnectValue(value);
+          if (joinPhase === "error") setJoinPhase("idle");
+          setJoinError("");
+        }}
+        onDirectConnectTokenChange={(value) => {
+          setDirectConnectToken(value);
+          if (joinPhase === "error") setJoinPhase("idle");
+          setJoinError("");
+        }}
         onJoinWorld={enterWorld}
+        onSelectServer={(serverId) => {
+          setSelectedServerId(serverId);
+          setJoinPhase("idle");
+          setJoinError("");
+        }}
         onJoinSingleplayer={onJoinSingleplayer}
         onSettingsChange={updateClientSettings}
         onSignInWithGoogle={() => {
@@ -3375,22 +3617,31 @@ function GameApp({
       <style>{APP_CSS}</style>
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
 
-      {segmentSessionReady ? (
-        <MultiplayerSegmentTransport
-          userId={auth.userId}
-          sessionId={presenceSessionIdRef.current}
-          paused={multiplayerPaused}
+      {realtimeSession ? (
+        <RealtimeMultiplayerTransport
+          endpoint={realtimeSession.endpoint}
+          ticket={realtimeSession.ticket}
+          serverId={realtimeSession.serverId}
+          demo={realtimeSession.demo}
           getPose={() => engineRef.current?.getPose() ?? poseRef.current}
-          mobIds={mobIds}
-          onConnected={setConnected}
-          onMobWorldAuthority={setMobWorldAuthority}
+          onPhase={(phase: RealtimeConnectionPhase, detail?: string) => {
+            setConnected(phase === "online");
+            if (phase === "error" && detail) notify("Server connection rejected", detail, "warning");
+          }}
+          onReconcilePose={(pose) => engineRef.current?.reconcilePose(pose)}
           onRemotePlayers={(players) => {
             realtimePresenceRef.current = players.length > 0;
             setSegmentRemotePlayers(players);
             engineRef.current?.setRemotePlayers(players);
           }}
-          onTelemetry={setSegmentTelemetry}
-          registerActionSink={(sink) => { motionActionSinkRef.current = sink; }}
+          onWorldEdits={(edits, replace) => {
+            if (replace) authoritativeWorldEditRef.current.clear();
+            for (const edit of edits) {
+              authoritativeWorldEditRef.current.set(blockCoordinateKey(edit.x, edit.y, edit.z), edit);
+            }
+            engineRef.current?.applyWorldEdits(edits);
+          }}
+          registerBlockSink={(sink) => { realtimeBlockSinkRef.current = sink; }}
         />
       ) : null}
 
@@ -3419,7 +3670,7 @@ function GameApp({
         onDismissMessage={(id) => setMessages((current) => current.filter((message) => message.id !== id))}
         onDisconnect={() => {
           void flushInventoryActions();
-          void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
+          if (!realtimeSession) void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
           exitPointerLockForUi();
           setOptionsOpen(false);
           setPauseOpen(false);
@@ -3430,6 +3681,8 @@ function GameApp({
           setActiveChestKey("");
           setActiveBedKey("");
           setMobIds([]);
+          setRealtimeSession(null);
+          setSegmentRemotePlayers([]);
         }}
         onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
         fovDegrees={clientSettings.fovDegrees}
@@ -3458,7 +3711,7 @@ function GameApp({
         onSelectHotbar={handleSelectHotbar}
         onTitleScreen={() => {
           void flushInventoryActions();
-          void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
+          if (!realtimeSession) void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
           exitPointerLockForUi();
           setDeathScreenOpen(false);
           setRespawning(false);
@@ -3472,15 +3725,17 @@ function GameApp({
           setActiveChestKey("");
           setActiveBedKey("");
           setMobIds([]);
+          setRealtimeSession(null);
+          setSegmentRemotePlayers([]);
         }}
         playerName={profile?.username ?? auth.displayName}
         pauseOpen={pauseOpen}
         players={playerListEntries}
-        roomCode="FERN-01"
+        roomCode={realtimeSession ? "RAILWAY" : "FERN-01"}
         selectedIndex={selectedHotbar}
         respawning={respawning}
         showPlayerList={showPlayerList}
-        worldName="Fern Hollow"
+        worldName={activeServerName}
       />
 
       <FurnaceDrawer
@@ -3584,31 +3839,22 @@ function LakebedMultiplayerApp({ onJoinSingleplayer }: { onJoinSingleplayer: () 
 }
 
 export function App() {
-  const hostedSinglePlayer = isHostedLakebedHostname(window.location.hostname);
   const [singlePlayer, setSinglePlayer] = useState(
     () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
-  );
-  const [singlePlayerTitle, setSinglePlayerTitle] = useState(
-    () => shouldShowHostedSinglePlayerTitle(window.location.hostname, window.location.search),
   );
 
   function joinSingleplayer(): void {
     const url = new URL(window.location.href);
     url.searchParams.set("singleplayer", "1");
     window.history.replaceState(window.history.state, "", url);
-    setSinglePlayerTitle(false);
     setSinglePlayer(true);
   }
 
   function leaveSingleplayer(): void {
     window.history.replaceState(window.history.state, "", singlePlayerTitleUrl(window.location.href));
-    if (hostedSinglePlayer) setSinglePlayerTitle(true);
-    else setSinglePlayer(false);
+    setSinglePlayer(false);
   }
 
-  if (hostedSinglePlayer) return singlePlayerTitle
-    ? <SinglePlayerTitleScreen onJoinSingleplayer={joinSingleplayer} />
-    : <SinglePlayerApp onExit={leaveSingleplayer} />;
   return singlePlayer
     ? <SinglePlayerApp onExit={leaveSingleplayer} />
     : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />;

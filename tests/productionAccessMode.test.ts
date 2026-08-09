@@ -15,18 +15,18 @@ for (const hostname of [
   "lakebed.app",
 ]) {
   assert.equal(isHostedLakebedHostname(hostname), true, `${hostname} is a hosted Lakebed origin`);
-  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, ""), true,
-    `${hostname} bare URL opens the Lakecraft title screen`);
+  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, ""), false,
+    `${hostname} uses the unified title screen`);
   assert.equal(shouldShowHostedSinglePlayerTitle(hostname, "?singleplayer=1"), false,
     `${hostname} explicit single-player route opens the world list`);
-  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, "?singleplayer=0"), true,
-    `${hostname} non-active route remains on the title screen`);
-  assert.equal(shouldRunSinglePlayer(hostname, ""), true, `${hostname} root is single-player-only`);
-  assert.equal(shouldRunSinglePlayer(hostname, "?multiplayer=1"), true, `${hostname} cannot opt into multiplayer`);
-  assert.equal(shouldRunSinglePlayer(hostname, "?singleplayer=0&multiplayer=1"), true,
-    `${hostname} cannot override the production gate with query parameters`);
-  assert.equal(shouldRunSinglePlayer(hostname, "?singleplayer=0&singleplayer=1"), true,
-    `${hostname} cannot bypass the production gate with duplicate parameters`);
+  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, "?singleplayer=0"), false,
+    `${hostname} no longer has a separate hosted-only title branch`);
+  assert.equal(shouldRunSinglePlayer(hostname, ""), false, `${hostname} root exposes the unified Lakecraft title`);
+  assert.equal(shouldRunSinglePlayer(hostname, "?multiplayer=1"), false, `${hostname} can open multiplayer`);
+  assert.equal(shouldRunSinglePlayer(hostname, "?singleplayer=0&multiplayer=1"), false,
+    `${hostname} stays on the unified title without the explicit single-player route`);
+  assert.equal(shouldRunSinglePlayer(hostname, "?singleplayer=0&singleplayer=1"), false,
+    `${hostname} follows URLSearchParams first-value behavior for duplicate route flags`);
 }
 
 for (const hostname of [
@@ -61,18 +61,11 @@ const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8"
 const appRoute = app.slice(app.indexOf("export function App()"));
 assert.ok(appRoute.indexOf("shouldRunSinglePlayer") < appRoute.indexOf("<LakebedMultiplayerApp"),
   "the host policy runs before the Lakebed multiplayer tree can mount");
-assert.ok(appRoute.includes("shouldShowHostedSinglePlayerTitle(window.location.hostname, window.location.search)"),
-  "the initial hosted render distinguishes the bare title URL from the explicit world-list route");
 assert.equal(appRoute.match(/<LakebedMultiplayerApp\b/g)?.length, 1,
-  "multiplayer remains implemented behind one unreachable hosted branch");
-assert.ok(appRoute.includes("if (hostedSinglePlayer) return singlePlayerTitle")
-  && appRoute.includes("<SinglePlayerTitleScreen onJoinSingleplayer={joinSingleplayer} />"),
-  "hosted Back returns to a local-only title surface instead of mounting Lakebed multiplayer");
-assert.ok(appRoute.indexOf("if (hostedSinglePlayer) return singlePlayerTitle")
-  < appRoute.indexOf("return singlePlayer\n"),
-  "the hosted gate dominates every render path that can reach multiplayer");
-assert.ok(appRoute.includes("if (hostedSinglePlayer) setSinglePlayerTitle(true);")
-  && appRoute.includes("else setSinglePlayer(false);"),
-  "only non-hosted Back can leave the single-player tree");
+  "the unified title has one multiplayer application branch");
+assert.doesNotMatch(appRoute, /hostedSinglePlayer|SinglePlayerTitleScreen|setSinglePlayerTitle/,
+  "the superseded production multiplayer gate is gone");
+assert.ok(appRoute.includes("setSinglePlayer(false);"),
+  "Back from local worlds returns to the unified title on every host");
 
-console.log("production single-player access policy tests passed");
+console.log("production unified access policy tests passed");

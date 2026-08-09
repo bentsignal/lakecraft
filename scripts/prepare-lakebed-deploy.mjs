@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,7 +63,31 @@ async function clientSourcePaths(directory = join(sourceRoot, "client")) {
   return paths.sort();
 }
 
+const RETIRED_PRESENCE_START = "  // LAKEBED_COMPACT_RETIRED_PRESENCE_START\n";
+const RETIRED_PRESENCE_END = "  // LAKEBED_COMPACT_RETIRED_PRESENCE_END\n";
+const RETIRED_PRESENCE_FINGERPRINT = "3b8b384cb18e5ad9a32bf93340d267273172e87c0a2335942851e112e3a3fd43";
+
+function stripRetiredLakebedPresenceSource(source) {
+  const start = source.indexOf(RETIRED_PRESENCE_START);
+  const end = source.indexOf(RETIRED_PRESENCE_END);
+  if (start < 0 || end <= start
+    || source.indexOf(RETIRED_PRESENCE_START, start + RETIRED_PRESENCE_START.length) >= 0
+    || source.indexOf(RETIRED_PRESENCE_END, end + RETIRED_PRESENCE_END.length) >= 0) {
+    throw new Error("Compact client retired-presence boundary changed; review the production capsule split.");
+  }
+  const bodyStart = start + RETIRED_PRESENCE_START.length;
+  const body = source.slice(bodyStart, end);
+  const fingerprint = createHash("sha256").update(body).digest("hex");
+  if (fingerprint !== RETIRED_PRESENCE_FINGERPRINT) {
+    throw new Error(`Compact client retired-presence body changed; expected ${RETIRED_PRESENCE_FINGERPRINT}, received ${fingerprint}.`);
+  }
+  return `${source.slice(0, start)}  useEffect(() => {}, []);\n${source.slice(end + RETIRED_PRESENCE_END.length)}`;
+}
+
 function stripReviewedClientDevelopmentSource(path, source) {
+  if (path === join(sourceRoot, "client", "index.tsx")) {
+    return stripRetiredLakebedPresenceSource(source);
+  }
   if (path === join(sourceRoot, "client", "singleplayer", "SinglePlayerApp.tsx")) {
     return stripClientDevelopmentSurfaces(source);
   }

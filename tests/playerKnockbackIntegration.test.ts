@@ -25,6 +25,8 @@ assert.ok(claimFlow.includes("mobWorldAuthority.poses.find((pose) => pose.mobId 
 assert.ok(claimFlow.includes("engineRef.current?.applyConfirmedMobKnockback("));
 assert.ok(claimFlow.indexOf("result.ok && result.damage > 0") < claimFlow.indexOf("applyConfirmedMobKnockback"), "remote motion never predicts damage");
 assert.ok(client.includes("engineRef.current?.setPaused(multiplayerPaused)"), "every blocking multiplayer surface freezes the retained engine");
-assert.ok(client.includes("paused={multiplayerPaused}"), "transport and local simulation share one exhaustive pause predicate");
+assert.ok(client.includes("<RealtimeMultiplayerTransport"), "the Railway realtime transport is mounted");
+assert.equal(client.includes("paused={multiplayerPaused}"), false,
+  "the retired Lakebed segment transport no longer owns multiplayer pause state");
 
 console.log("player knockback integration tests passed");

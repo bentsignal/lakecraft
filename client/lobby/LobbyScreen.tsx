@@ -1,6 +1,4 @@
 import { useMemo, useState } from "preact/hooks";
-import { useQuery } from "lakebed/client";
-import type { FernHollowServerStatus } from "../../shared/multiplayer";
 import { OptionsDialog } from "../components/OptionsDialog";
 import type { ClientSettings } from "../settings";
 import { LobbyStyles } from "./LobbyStyles";
@@ -10,6 +8,16 @@ export type LobbyAuthState = "loading" | "signed_out" | "needs_username" | "read
 export type UsernameClaimState = "idle" | "checking" | "available" | "saving" | "claimed" | "taken" | "error";
 export type LobbyWorldStatus = "online" | "busy" | "maintenance" | "offline";
 export type LobbyJoinPhase = "idle" | "joining" | "waiting" | "ready" | "error";
+
+export interface LobbyServerEntry {
+  id: string;
+  name: string;
+  description: string;
+  endpoint: string;
+  status: LobbyWorldStatus;
+  onlinePlayers?: number;
+  capacity?: number;
+}
 
 export interface LobbyScreenProps {
   authState: LobbyAuthState;
@@ -24,6 +32,10 @@ export interface LobbyScreenProps {
   joinPhase?: LobbyJoinPhase;
   queuePosition?: number;
   joinError?: string;
+  servers?: readonly LobbyServerEntry[];
+  selectedServerId?: string;
+  directConnectValue?: string;
+  directConnectToken?: string;
   buildLabel?: string;
   settings: ClientSettings;
   onSignInWithGoogle: () => void;
@@ -32,6 +44,10 @@ export interface LobbyScreenProps {
   onUsernameChange: (value: string) => void;
   onUsernameSubmit: (value: string) => void;
   onJoinWorld: () => void;
+  onSelectServer?: (serverId: string) => void;
+  onDirectConnectChange?: (value: string) => void;
+  onDirectConnectTokenChange?: (value: string) => void;
+  onAddDirectServer?: () => void;
   onOpenHelp?: () => void;
   onSettingsChange: (settings: ClientSettings) => void;
 }
@@ -58,6 +74,15 @@ function usernameStatus(state: UsernameClaimState, fallback = "") {
   if (state === "taken") return fallback || "That username is already taken.";
   if (state === "error") return fallback || "Lakebed could not save that username.";
   return "3–16 letters, numbers, or underscores";
+}
+
+function serverEndpointLabel(endpoint: string): string {
+  if (!endpoint) return "Lakebed legacy world";
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return "Invalid server address";
+  }
 }
 
 function Panorama() {
@@ -155,19 +180,26 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
   onChooseUsername: () => void;
   props: LobbyScreenProps;
 }) {
-  const liveStatus = useQuery<FernHollowServerStatus>("fernHollowStatus");
   const phase = props.joinPhase ?? "idle";
-  const status = liveStatus?.status ?? props.worldStatus ?? "busy";
+  const fallbackServer: LobbyServerEntry = {
+    id: "fern-hollow",
+    name: props.worldName || "Fern Hollow",
+    description: props.worldDescription || "Lakecraft survival world",
+    endpoint: "",
+    status: props.worldStatus ?? "busy",
+  };
+  const servers = props.servers ? [...props.servers] : [fallbackServer];
+  const selected = servers.find((server) => server.id === props.selectedServerId) ?? servers[0];
+  const status = selected?.status ?? "offline";
   const joining = phase === "joining" || phase === "waiting" || phase === "ready";
-  const canJoin = props.authState === "ready" && status !== "maintenance" && status !== "offline" && !joining;
+  const canJoin = props.authState === "ready" && Boolean(selected)
+    && status !== "maintenance" && status !== "offline" && !joining;
   const accountHint = props.authState === "signed_out" ? "Sign in to join this server."
     : props.authState === "needs_username" ? "Choose a player name before joining."
       : props.authState === "loading" ? "Checking your Lakebed account…"
         : status === "maintenance" ? "Server maintenance in progress."
           : status === "offline" ? "The server is currently offline."
             : "Select a server and click Join Server.";
-  const count = Math.max(0, liveStatus?.onlinePlayers ?? 0);
-  const capacity = liveStatus?.capacity ?? 20;
 
   return (
     <main className="lc-server-browser">
@@ -177,18 +209,61 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
       <section className="lc-server-browser__content" aria-label="Multiplayer server list">
         <h1>Play Multiplayer</h1>
         <div className="lc-server-list" role="listbox" aria-label="Available servers">
-          <button aria-selected="true" className="lc-server-row is-selected" role="option" type="button">
-            <span className="lc-server-icon" aria-hidden="true"><i /><i /><i /></span>
-            <span className="lc-server-copy">
-              <strong>{props.worldName || "Fern Hollow"}</strong>
-              <small>{props.worldDescription || "Lakecraft survival world"}</small>
-            </span>
-            <span className="lc-server-population">
-              <i className={`is-${status}`} aria-hidden="true" />
-              <small>{count} / {capacity}</small>
-            </span>
-          </button>
+          {servers.length === 0 ? (
+            <div className="lc-server-empty">
+              <strong>No servers saved</strong>
+              <small>Paste a Railway server address below to add it.</small>
+            </div>
+          ) : null}
+          {servers.map((server) => {
+            const selectedRow = server.id === selected?.id;
+            return (
+              <button
+                aria-selected={selectedRow}
+                className={`lc-server-row${selectedRow ? " is-selected" : ""}`}
+                key={server.id}
+                onClick={() => props.onSelectServer?.(server.id)}
+                role="option"
+                type="button"
+              >
+                <span className="lc-server-icon" aria-hidden="true"><i /><i /><i /></span>
+                <span className="lc-server-copy">
+                  <strong>{server.name}</strong>
+                  <small>{server.description}</small>
+                  <em>{serverEndpointLabel(server.endpoint)}</em>
+                </span>
+                <span className="lc-server-population">
+                  <i className={`is-${server.status}`} aria-hidden="true" />
+                  <small>{Math.max(0, server.onlinePlayers ?? 0)} / {server.capacity ?? 20}</small>
+                </span>
+              </button>
+            );
+          })}
         </div>
+        {props.onDirectConnectChange && props.onAddDirectServer ? (
+          <form className="lc-direct-connect" onSubmit={(event) => { event.preventDefault(); props.onAddDirectServer?.(); }}>
+            <label htmlFor="lc-direct-server">Direct Connect</label>
+            <input
+              id="lc-direct-server"
+              onInput={(event) => props.onDirectConnectChange?.(event.currentTarget.value)}
+              placeholder="wss://your-server.up.railway.app/ws"
+              spellcheck={false}
+              value={props.directConnectValue ?? ""}
+            />
+            {props.onDirectConnectTokenChange ? (
+              <input
+                aria-label="Invitation token"
+                autoComplete="off"
+                onInput={(event) => props.onDirectConnectTokenChange?.(event.currentTarget.value)}
+                placeholder="Invitation token (beta servers)"
+                spellcheck={false}
+                type="password"
+                value={props.directConnectToken ?? ""}
+              />
+            ) : null}
+            <button type="submit">Add Server</button>
+          </form>
+        ) : null}
         <p className={`lc-server-hint${phase === "error" ? " is-error" : ""}`} role={phase === "error" ? "alert" : "status"}>{phase === "error" && props.joinError ? props.joinError : accountHint}</p>
         <div className="lc-server-actions">
           {menuButton(<JoinLabel {...props} />, props.onJoinWorld, !canJoin)}
