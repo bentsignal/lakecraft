@@ -21,6 +21,7 @@ import { LobbyScreen, type LobbyJoinPhase, type UsernameClaimState } from "./lob
 import { SinglePlayerApp, SinglePlayerTitleScreen } from "./singleplayer";
 import {
   isHostedLakebedHostname,
+  shouldShowHostedSinglePlayerTitle,
   shouldRunSinglePlayer,
   singlePlayerTitleUrl,
 } from "./runtimeMode.ts";
@@ -3587,7 +3588,9 @@ export function App() {
   const [singlePlayer, setSinglePlayer] = useState(
     () => shouldRunSinglePlayer(window.location.hostname, window.location.search),
   );
-  const [singlePlayerTitle, setSinglePlayerTitle] = useState(false);
+  const [singlePlayerTitle, setSinglePlayerTitle] = useState(
+    () => shouldShowHostedSinglePlayerTitle(window.location.hostname, window.location.search),
+  );
 
   function joinSingleplayer(): void {
     const url = new URL(window.location.href);

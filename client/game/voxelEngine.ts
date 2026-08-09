@@ -187,6 +187,7 @@ import {
   advanceHeadBob,
   createHeadBobState,
   createCreativeFlightTapState,
+  createForwardSprintTapState,
   creativeFlightVerticalVelocity,
   movementFovRadians,
   resetHeadBob,
@@ -194,10 +195,12 @@ import {
   smoothMovementValue,
   smoothPlayerPosture,
   updateSprintControl,
+  transitionForwardSprintTap,
   transitionCreativeFlightTap,
   writeHorizontalMovementDelta,
   writePlayerEye,
   type HeadBobOffsets,
+  type ForwardSprintTapState,
   type PlayerMovementMode,
   type PlayerPostureTargets,
   type SprintControlCode,
@@ -1949,6 +1952,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const keys = new Set<string>();
   let creativeFlight = createCreativeFlightTapState();
   let sprintControls: SprintControlState = RELEASED_SPRINT_CONTROLS;
+  let forwardSprintTap: ForwardSprintTapState = createForwardSprintTapState();
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
   let selectedItem = options.selectedItem ?? null;
   let firstPersonFeedbackHidden = false;
@@ -2077,6 +2081,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function clearHeldMovementInput(): void {
     keys.clear();
     sprintControls = RELEASED_SPRINT_CONTROLS;
+    forwardSprintTap = createForwardSprintTapState();
     creativeFlight.lastSpaceTapAt = -Infinity;
   }
 
@@ -3002,7 +3007,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       movementMode,
       () => collides(pose.x, pose.y, pose.z, STANDING_BODY_HEIGHT),
     );
-    const sprintHeld = sprintControlHeld(sprintControls);
+    const sprintHeld = sprintControlHeld(sprintControls) || forwardSprintTap.active;
     // Once attached, W/S become vertical controls while strafing remains the
     // deliberate way to step off the non-solid ladder.
     const forward = ladderAtFrameStart ? 0 : forwardInput;
@@ -3872,7 +3877,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const controlKey = event.code === "ControlLeft" || event.code === "ControlRight";
     if (controlKey) sprintControls = updateSprintControl(sprintControls, event.code as SprintControlCode, true);
-    else keys.add(event.code);
+    else {
+      if (event.code === "KeyW") {
+        forwardSprintTap = transitionForwardSprintTap(forwardSprintTap, performance.now(), true, event.repeat);
+      }
+      keys.add(event.code);
+    }
     if (event.code === "Space") {
       const wasFlying = creativeFlight.flying;
       creativeFlight = transitionCreativeFlightTap(
@@ -3900,7 +3910,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function onKeyUp(event: KeyboardEvent): void {
     if (event.code === "ControlLeft" || event.code === "ControlRight") {
       sprintControls = updateSprintControl(sprintControls, event.code, false);
-    } else keys.delete(event.code);
+    } else {
+      if (event.code === "KeyW") {
+        forwardSprintTap = transitionForwardSprintTap(forwardSprintTap, performance.now(), false);
+      }
+      keys.delete(event.code);
+    }
   }
 
   function releaseTransientInput(): void {

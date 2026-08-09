@@ -52,6 +52,10 @@ import { cycleHotbarIndex } from "../game/hotbarInput";
 import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
 import { performanceHudCoreText, performanceHudFpsText } from "../game/performanceHud.ts";
 import { clearPersistedPlayerSkin, loadPersistedPlayerSkin } from "../game/playerSkin.ts";
+import {
+  releaseGameplayKeyboardCapture,
+  requestGameplayKeyboardCapture,
+} from "../gameplayKeyboardCapture.ts";
 import { copyGameScreenshot, downloadGameScreenshot, gameScreenshotFilename } from "./gameScreenshot.ts";
 import {
   fieldOfViewRadians,
@@ -477,6 +481,7 @@ function SinglePlayerWorld({
 
   function requestGameplayPointerLock(onStarted = () => undefined): void {
     applyPointerSessionEvent({ type: "resume" }, onStarted);
+    requestGameplayKeyboardCapture();
   }
 
   function armGameplayResumeAfterEscape(now: number): void {
@@ -1818,6 +1823,7 @@ function SinglePlayerWorld({
       if (audioRef.current === audio) audioRef.current = null;
       engine.destroy();
       engineRef.current = null;
+      releaseGameplayKeyboardCapture();
     };
   }, [worldBooting]);
 
@@ -2111,6 +2117,7 @@ function SinglePlayerWorld({
     if (!persist("quit")) return;
     quitSavedRef.current = true;
     if (document.pointerLockElement) document.exitPointerLock();
+    releaseGameplayKeyboardCapture();
     onExit();
   };
 

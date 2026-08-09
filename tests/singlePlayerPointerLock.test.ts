@@ -469,6 +469,12 @@ assertSourceOrder(
   "the Play-gesture request handles asynchronous rejection before reporting handoff",
 );
 assertSourceOrder(
+  guardedRequest,
+  "document.documentElement.requestPointerLock()",
+  "requestGameplayKeyboardCapture()",
+  "the Play gesture requests pointer lock before fullscreen consumes its transient activation",
+);
+assertSourceOrder(
   handoffSource,
   "return true;",
   "catch {",

@@ -73,10 +73,49 @@ export const CREATIVE_FLIGHT_SPEED = 7;
 export const CREATIVE_FLIGHT_SPRINT_RATIO = 1.6;
 export const CREATIVE_FLIGHT_SPRINT_SPEED = CREATIVE_FLIGHT_SPEED * CREATIVE_FLIGHT_SPRINT_RATIO;
 export const CREATIVE_FLIGHT_DOUBLE_TAP_MS = 300;
+export const FORWARD_SPRINT_DOUBLE_TAP_MS = 100;
 
 export interface CreativeFlightTapState {
   flying: boolean;
   lastSpaceTapAt: number;
+}
+
+export interface ForwardSprintTapState {
+  /** Release time of the first W tap; -Infinity means no tap is armed. */
+  armedAt: number;
+  /** True from the second W press until that press is released. */
+  active: boolean;
+}
+
+export function createForwardSprintTapState(): ForwardSprintTapState {
+  return { armedAt: Number.NEGATIVE_INFINITY, active: false };
+}
+
+/**
+ * Implements Minecraft-style press/release/press W sprinting. The first W
+ * release arms a short window, the second non-repeat press starts sprinting,
+ * and releasing that second press stops it without arming an accidental third
+ * press.
+ */
+export function transitionForwardSprintTap(
+  state: Readonly<ForwardSprintTapState>,
+  now: number,
+  pressed: boolean,
+  repeat = false,
+): ForwardSprintTapState {
+  if (repeat || !Number.isFinite(now)) return state as ForwardSprintTapState;
+  if (pressed) {
+    const elapsed = now - state.armedAt;
+    if (!state.active && elapsed >= 0 && elapsed <= FORWARD_SPRINT_DOUBLE_TAP_MS) {
+      return { armedAt: Number.NEGATIVE_INFINITY, active: true };
+    }
+    return state.active || state.armedAt === Number.NEGATIVE_INFINITY
+      ? state as ForwardSprintTapState
+      : { armedAt: Number.NEGATIVE_INFINITY, active: false };
+  }
+  return state.active
+    ? createForwardSprintTapState()
+    : { armedAt: now, active: false };
 }
 
 export function createCreativeFlightTapState(): CreativeFlightTapState {

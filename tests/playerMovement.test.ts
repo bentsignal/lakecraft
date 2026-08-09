@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   DEFAULT_FOV_RADIANS,
+  FORWARD_SPRINT_DOUBLE_TAP_MS,
   SNEAKING_BODY_HEIGHT,
   SNEAKING_EYE_HEIGHT,
   SNEAK_SPEED,
@@ -12,6 +13,7 @@ import {
   WALK_SPEED,
   advanceHeadBob,
   clampSneakAxisMovement,
+  createForwardSprintTapState,
   createHeadBobState,
   headBobProfileForMovement,
   movementFovRadians,
@@ -26,6 +28,7 @@ import {
   smoothMovementValue,
   smoothPlayerPosture,
   updateSprintControl,
+  transitionForwardSprintTap,
   writeHorizontalMovementDelta,
   writePlayerEye,
   type PlayerMovementMode,
@@ -43,6 +46,33 @@ assert.equal(sprintControlHeld(updateSprintControl(bothControls, "ControlLeft", 
   "releasing one Ctrl preserves the independently held side");
 assert.deepEqual(updateSprintControl(leftControl, "ControlLeft", false), RELEASED_SPRINT_CONTROLS,
   "releasing the held Ctrl stops sprint immediately");
+
+assert.equal(FORWARD_SPRINT_DOUBLE_TAP_MS, 100);
+const forwardTapStart = createForwardSprintTapState();
+const firstForwardPress = transitionForwardSprintTap(forwardTapStart, 1_000, true);
+assert.equal(firstForwardPress, forwardTapStart, "the first W press walks without sprinting");
+const forwardTapArmed = transitionForwardSprintTap(firstForwardPress, 1_080, false);
+assert.deepEqual(forwardTapArmed, { armedAt: 1_080, active: false });
+const doubleTapSprint = transitionForwardSprintTap(forwardTapArmed, 1_150, true);
+assert.equal(doubleTapSprint.active, true, "a second W press inside the tap window starts sprinting");
+assert.equal(
+  transitionForwardSprintTap(doubleTapSprint, 1_151, true, true),
+  doubleTapSprint,
+  "native repeats cannot retrigger or cancel double-tap sprint",
+);
+assert.deepEqual(
+  transitionForwardSprintTap(doubleTapSprint, 1_500, false),
+  createForwardSprintTapState(),
+  "releasing the sprinting W press stops sprint without arming a third tap",
+);
+const expiredForwardTap = transitionForwardSprintTap(forwardTapArmed, 1_181, true);
+assert.equal(expiredForwardTap.active, false, "a slow second W press remains a walk");
+assert.equal(expiredForwardTap.armedAt, Number.NEGATIVE_INFINITY, "the expired first tap is consumed");
+assert.equal(
+  transitionForwardSprintTap(forwardTapArmed, Number.NaN, true),
+  forwardTapArmed,
+  "invalid clocks cannot corrupt the input state",
+);
 
 const diagonal = normalizeMovementInput(1, 1);
 assert.ok(Math.abs(diagonal.magnitude - 1) < 1e-12, "diagonal input is normalized");

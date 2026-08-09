@@ -11,6 +11,12 @@ export function shouldRunSinglePlayer(hostname: string, search: string): boolean
   return new URLSearchParams(search).get("singleplayer") === "1";
 }
 
+/** Bare hosted URLs land on Lakecraft's title; the explicit route opens worlds. */
+export function shouldShowHostedSinglePlayerTitle(hostname: string, search: string): boolean {
+  return isHostedLakebedHostname(hostname)
+    && new URLSearchParams(search).get("singleplayer") !== "1";
+}
+
 /** Returns the clean title URL without discarding unrelated local query flags. */
 export function singlePlayerTitleUrl(value: string): string {
   const url = new URL(value);

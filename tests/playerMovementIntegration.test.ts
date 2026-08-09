@@ -5,18 +5,27 @@ const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
 assert.ok(engine.includes("sprintControlHeld(sprintControls)"), "either physical Ctrl side requests sprint");
+assert.ok(engine.includes("sprintControlHeld(sprintControls) || forwardSprintTap.active"),
+  "Ctrl and Minecraft-style W double tap independently request sprint");
 assert.ok(engine.includes('"ControlLeft", "ControlRight"].includes(event.code)'), "pointer-locked movement prevents browser Ctrl shortcuts");
 const keyDown = engine.slice(engine.indexOf("function onKeyDown"), engine.indexOf("function onKeyUp"));
 const keyUp = engine.slice(engine.indexOf("function onKeyUp"), engine.indexOf("function releaseTransientInput"));
 assert.ok(keyDown.includes("updateSprintControl(sprintControls, event.code as SprintControlCode, true)"),
   "keydown records the exact physical Ctrl side without toggle heuristics");
+assert.ok(keyDown.includes("transitionForwardSprintTap(forwardSprintTap, performance.now(), true, event.repeat)"),
+  "W keydown advances the repeat-safe double-tap state");
 assert.ok(keyUp.includes("updateSprintControl(sprintControls, event.code, false)"),
   "keyup releases the exact Ctrl side without trusting modifier metadata");
+assert.ok(keyUp.includes("transitionForwardSprintTap(forwardSprintTap, performance.now(), false)"),
+  "W keyup arms or releases Minecraft-style double-tap sprint");
 assert.equal(keyUp.includes("event.ctrlKey"), false, "keyup cannot leave sprint latched through inconsistent modifier metadata");
 assert.ok(engine.includes('window.addEventListener("blur", onWindowBlur)'), "focus loss releases held movement input");
 assert.ok(engine.includes('document.addEventListener("visibilitychange", onVisibilityChange)'), "backgrounding the tab releases held movement input");
 const transientReset = engine.slice(engine.indexOf("function releaseTransientInput"), engine.indexOf("function onWindowBlur"));
 assert.ok(transientReset.includes("clearHeldMovementInput();"), "blur and background handlers share the complete sprint reset");
+const heldMovementReset = engine.slice(engine.indexOf("function clearHeldMovementInput"), engine.indexOf("function updateMiningCrackGeometry"));
+assert.ok(heldMovementReset.includes("forwardSprintTap = createForwardSprintTapState();"),
+  "pause, focus loss, death, and pointer loss cannot leave double-tap sprint latched");
 assert.ok(engine.includes("const sneakHeld = resolveSneakIntent("), "Shift and low-ceiling posture use the tested release helper");
 assert.ok(engine.includes('movementMode === "sneak" && grounded'), "ledge protection is limited to grounded sneaking");
 assert.ok(engine.includes("clampSneakAxisMovement(amount"), "sneak movement uses the deterministic support clamp");

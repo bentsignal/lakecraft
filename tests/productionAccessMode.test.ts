@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   isHostedLakebedHostname,
+  shouldShowHostedSinglePlayerTitle,
   shouldRunSinglePlayer,
   singlePlayerTitleUrl,
 } from "../client/runtimeMode.ts";
@@ -14,6 +15,12 @@ for (const hostname of [
   "lakebed.app",
 ]) {
   assert.equal(isHostedLakebedHostname(hostname), true, `${hostname} is a hosted Lakebed origin`);
+  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, ""), true,
+    `${hostname} bare URL opens the Lakecraft title screen`);
+  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, "?singleplayer=1"), false,
+    `${hostname} explicit single-player route opens the world list`);
+  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, "?singleplayer=0"), true,
+    `${hostname} non-active route remains on the title screen`);
   assert.equal(shouldRunSinglePlayer(hostname, ""), true, `${hostname} root is single-player-only`);
   assert.equal(shouldRunSinglePlayer(hostname, "?multiplayer=1"), true, `${hostname} cannot opt into multiplayer`);
   assert.equal(shouldRunSinglePlayer(hostname, "?singleplayer=0&multiplayer=1"), true,
@@ -31,6 +38,8 @@ for (const hostname of [
   "lakebed.application",
 ]) {
   assert.equal(isHostedLakebedHostname(hostname), false, `${hostname} is not a hosted Lakebed origin`);
+  assert.equal(shouldShowHostedSinglePlayerTitle(hostname, ""), false,
+    `${hostname} does not use the hosted title policy`);
   assert.equal(shouldRunSinglePlayer(hostname, ""), false, `${hostname} keeps the multiplayer development lobby`);
   assert.equal(shouldRunSinglePlayer(hostname, "?singleplayer=1"), true, `${hostname} retains explicit local single-player`);
 }
@@ -52,6 +61,8 @@ const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8"
 const appRoute = app.slice(app.indexOf("export function App()"));
 assert.ok(appRoute.indexOf("shouldRunSinglePlayer") < appRoute.indexOf("<LakebedMultiplayerApp"),
   "the host policy runs before the Lakebed multiplayer tree can mount");
+assert.ok(appRoute.includes("shouldShowHostedSinglePlayerTitle(window.location.hostname, window.location.search)"),
+  "the initial hosted render distinguishes the bare title URL from the explicit world-list route");
 assert.equal(appRoute.match(/<LakebedMultiplayerApp\b/g)?.length, 1,
   "multiplayer remains implemented behind one unreachable hosted branch");
 assert.ok(appRoute.includes("if (hostedSinglePlayer) return singlePlayerTitle")
