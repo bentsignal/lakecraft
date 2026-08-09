@@ -806,6 +806,39 @@ assert.deepEqual(
 );
 delete globalThis.__lakecraftClientStringFixture;
 
+const keywordBoundaryFixture = [
+  'function pooledDirection(index){',
+  'if(index===0)return"north";',
+  'if(index===1)return"north";',
+  'if(index===2)return"north";',
+  'if(index===3)return"north";',
+  'return"north"}',
+  'globalThis.__lakecraftKeywordBoundaryFixture=[pooledDirection(0),typeof"north"];',
+].join("");
+const keywordBoundaryAnalysis = await analyzeClientStringPool(keywordBoundaryFixture);
+const keywordBoundaryExpected = Object.fromEntries(
+  ["human", "repeated", "lowFrequency", "fixedFrequencyTwo", "webglUniform", "fixedIdentity"].map(
+    (category) => [category, {
+      occurrences: keywordBoundaryAnalysis[category].occurrences.length,
+      uniqueValues: keywordBoundaryAnalysis[category].values.length,
+      ...(category === "fixedIdentity" ? {
+        incrementalUniqueValues: keywordBoundaryAnalysis.fixedIdentityIncrementalUniqueValues,
+      } : {}),
+      fingerprint: keywordBoundaryAnalysis[category].fingerprint,
+    }],
+  ),
+);
+const transformedKeywordBoundaryFixture = await compactClientStringPool(
+  keywordBoundaryFixture,
+  keywordBoundaryExpected,
+);
+assert.doesNotMatch(transformedKeywordBoundaryFixture, /(?:return|typeof)__lakecraftClientStrings/,
+  "pool replacements preserve lexical boundaries after adjacent keywords");
+new Function(transformedKeywordBoundaryFixture)();
+assert.deepEqual(globalThis.__lakecraftKeywordBoundaryFixture, ["north", "string"],
+  "pooled return values and typeof operands execute with their original semantics");
+delete globalThis.__lakecraftKeywordBoundaryFixture;
+
 const importAnalysis = await analyzeClientStringPool(
   'import value from "Human readable module";export * from "Another readable module";import("Dynamic readable module");',
 );

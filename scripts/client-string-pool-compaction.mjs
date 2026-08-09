@@ -770,14 +770,22 @@ export async function compactClientStringPool(source, expected = {
   if (new TextDecoder().decode(decoded) !== serialized) fail("compressed pool did not round-trip byte-for-byte");
 
   let output = source;
-  const replacements = analysis.occurrences.map(({ start, end, index }) => ({
-    start, end, text: `__lakecraftClientStrings[${index}]`,
-  })).sort((left, right) => right.start - left.start);
+  const replacements = analysis.occurrences.map(({ start, end, index }) => {
+    const needsLeadingTokenBoundary = start > 0 && /[A-Za-z0-9_$]/.test(source[start - 1]);
+    return {
+      start,
+      end,
+      text: `${needsLeadingTokenBoundary ? " " : ""}__lakecraftClientStrings[${index}]`,
+    };
+  }).sort((left, right) => right.start - left.start);
   for (let index = 1; index < replacements.length; index += 1) {
     if (replacements[index - 1].start < replacements[index].end) fail("replacement ranges overlap");
   }
   for (const replacement of replacements) {
     output = output.slice(0, replacement.start) + replacement.text + output.slice(replacement.end);
+  }
+  if (/[A-Za-z0-9_$]__lakecraftClientStrings/.test(output)) {
+    fail("pool replacement merged with an adjacent identifier token");
   }
   const runtime = `const __lakecraftDecodeClientStringPool=${decodeClientStringPool.toString()};`
     + `const __lakecraftClientStrings=JSON.parse(new TextDecoder().decode(`
