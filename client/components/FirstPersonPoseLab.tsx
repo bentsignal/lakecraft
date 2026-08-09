@@ -178,7 +178,7 @@ export function FirstPersonPoseLab({
   onCycleCamera?: () => string;
   onHeldItemPreviewChange?: (itemId: ItemId | null | undefined) => void;
   onOpenVisualLab?: () => void;
-  onRigPreviewChange?: (kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down") => void;
+  onRigPreviewChange?: (kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down" | "swing") => void;
   onUsePreviewChange?: (active: boolean) => void;
 }) {
   const [group, setGroup] = useState<PoseGroup>("tool");
@@ -190,7 +190,7 @@ export function FirstPersonPoseLab({
   const [cameraMode, setCameraMode] = useState("first person");
   const [previewItem, setPreviewItem] = useState("actual");
   const [usePreview, setUsePreview] = useState(false);
-  const [rigPreview, setRigPreview] = useState<"live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down">("live");
+  const [rigPreview, setRigPreview] = useState<"live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down" | "swing">("live");
 
   useEffect(() => {
     if (open) return;
@@ -389,7 +389,7 @@ export function FirstPersonPoseLab({
         <div className="lc-pose-lab__bow-preview">
           <span>Rig pose preview</span>
           <div aria-label="Third-person rig preview" className="lc-pose-lab__bow-preview-controls" role="group">
-            {(["live", "idle", "walk", "crouch", "crouch_profile", "walk_profile", "look_up", "look_down"] as const).map((value) => (
+            {(["live", "idle", "walk", "crouch", "crouch_profile", "walk_profile", "look_up", "look_down", "swing"] as const).map((value) => (
               <button aria-pressed={rigPreview === value} key={value} onClick={() => setRigPreview(value)} type="button">
                 {value.replace("_", " ")}
               </button>

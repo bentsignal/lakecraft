@@ -4,13 +4,13 @@ const REVIEWED_DEVELOPMENT_SURFACES = Object.freeze({
   modal: "b6b7c1c8",
   guard: "cfe8bf8b",
   dependency: "55faebb2",
-  callback: "4eb667e6",
+  callback: "e3de66dc",
   render: "86b20f0f",
 });
 
 const REVIEWED_VOXEL_DEVELOPMENT_SURFACES = Object.freeze({
-  state: "995293cc",
-  "rig-preview": "3692d20b",
+  state: "94313898",
+  "rig-preview": "16419334",
   method: "47244734",
 });
 

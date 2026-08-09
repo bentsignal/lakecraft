@@ -137,5 +137,7 @@ assert.match(engineSource, /playerRigInputForMovement\(movementMode, now, moveme
   "third-person production distinguishes actual movement from idle crouch activity");
 assert.match(engineSource, /@lakecraft-voxel-development:rig-preview:start[\s\S]*previewMode/,
   "the visual Pose Lab can override the live rig only inside its reviewed development surface");
+assert.match(engineSource, /thirdPersonRigPreview === 8\) previewActionProgress = 0\.25/,
+  "the visual Pose Lab exposes one deterministic quarter-swing frame for screenshot review");
 
 console.log("articulated local player rig tests passed");
