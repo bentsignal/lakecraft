@@ -156,6 +156,14 @@ assert.deepEqual(
   [...pivot],
   "the compact base scale preserves the lower-right action pivot",
 );
+const armProjection = perspective(16 / 9);
+const defaultSocketedArm = buildSocketedFirstPersonSkinArmGeometry("wide", armProjection, FIRST_PERSON_TUNING.arm);
+const movedSocketedArm = buildSocketedFirstPersonSkinArmGeometry("wide", armProjection, {
+  ...FIRST_PERSON_TUNING.arm,
+  position: [0.25, 0, 0],
+});
+assert.equal(Number((movedSocketedArm[0] - defaultSocketedArm[0]).toFixed(6)), 0.25,
+  "empty-hand Pose Lab tuning changes the live socketed arm geometry directly");
 
 const gl = new CapturingWebGl();
 const renderer = createFirstPersonRenderer(gl as unknown as WebGLRenderingContext);
@@ -176,7 +184,7 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   const projection = perspective(width / height);
   const pose = createViewmodelRigPoseFromProjection(projection);
   const parameters = viewmodelProjectionParameters(projection);
-  const skinArm = buildSocketedFirstPersonSkinArmGeometry("wide", projection);
+  const skinArm = buildSocketedFirstPersonSkinArmGeometry("wide", projection, FIRST_PERSON_TUNING.arm);
   renderer[3](null, BLOCK.AIR);
   renderer[6](mvp, projection, 0, false);
   const emptyBounds = ndcBounds(skinArm, mvp);

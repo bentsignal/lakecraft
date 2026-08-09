@@ -98,6 +98,9 @@ assert.ok(singlePlayer.includes("<FirstPersonPoseLab") && poseLab.includes("publ
 for (const label of ["Rotation degrees", "Scale", "Size", "EXCLUSIVE VIEWMODEL"]) {
   assert.ok(poseLab.includes(label), `Pose Lab exposes the ${label} control`);
 }
+assert.match(poseLab,
+  /group === "arm" \? \([\s\S]*Select an empty hotbar slot[\s\S]*Screen anchor offset[\s\S]*Rotation degrees[\s\S]*Scale/,
+  "the empty-hand branch exposes live position, rotation, and scale controls instead of a dead note");
 assert.equal(poseLab.includes('<VectorInputs label="Position"'), false,
   "the lab no longer exposes arbitrary presentation translation");
 assert.equal(poseLab.includes('<VectorInputs label="Pivot (advanced)"'), false,

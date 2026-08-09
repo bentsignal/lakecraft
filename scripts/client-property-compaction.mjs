@@ -426,6 +426,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "retryAvailable": "xa",
   "returnFocusId": "P",
   "rightArmPitch": "b6",
+  "rightArmYaw": "q4",
   "rightLegPitch": "b7",
   "roomCode": "Ys",
   "runs": "c9",

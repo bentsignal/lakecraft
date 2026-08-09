@@ -100,6 +100,7 @@ export function buildFirstPersonSkinArmGeometry(
 export function buildSocketedFirstPersonSkinArmGeometry(
   model: PlayerSkinModel,
   projection: Float32Array,
+  tuning: FirstPersonGroupTuning = currentFirstPersonTuning().tuning.arm,
 ): Float32Array {
   const output = buildPlayerSkinPartGeometry("rightArm", model, FIRST_PERSON_SKIN_SLEEVE_INFLATE);
   const centerX = model === "slim" ? 0.34375 : 0.375;
@@ -118,6 +119,7 @@ export function buildSocketedFirstPersonSkinArmGeometry(
     output[offset + 1] = point[1];
     output[offset + 2] = point[2];
   }
+  applyTuning(output, tuning);
   return output;
 }
 
@@ -161,7 +163,9 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
   initialProjection[10] = -1; initialProjection[11] = -1; initialProjection[14] = -0.02;
   const retainedProjection = new Float32Array(initialProjection);
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, buildSocketedFirstPersonSkinArmGeometry(model, initialProjection), gl.DYNAMIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER,
+    buildSocketedFirstPersonSkinArmGeometry(model, initialProjection, tuningSnapshot.tuning.arm),
+    gl.DYNAMIC_DRAW);
   gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -179,7 +183,7 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferData(
           gl.ARRAY_BUFFER,
-          buildSocketedFirstPersonSkinArmGeometry(model, projection),
+          buildSocketedFirstPersonSkinArmGeometry(model, projection, nextTuning.tuning.arm),
           gl.DYNAMIC_DRAW,
         );
       }
@@ -200,7 +204,7 @@ export function createFirstPersonSkinRenderer(gl: WebGLRenderingContext): FirstP
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferData(
           gl.ARRAY_BUFFER,
-          buildSocketedFirstPersonSkinArmGeometry(model, retainedProjection),
+          buildSocketedFirstPersonSkinArmGeometry(model, retainedProjection, tuningSnapshot.tuning.arm),
           gl.DYNAMIC_DRAW,
         );
       }

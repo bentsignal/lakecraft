@@ -79,17 +79,24 @@ assert.ok(Math.abs(transformedPivotY - pivotY) < 1e-7 && Math.abs(transformedPiv
   "arm rotation preserves its shoulder pivot");
 
 const action = resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.5 });
-assert.ok(action.rightArmPitch < -1.7, "a local action visibly swings the right arm and held item");
+assert.ok(action.rightArmPitch < -0.9 && action.rightArmPitch > -1.1,
+  "a local action has a readable but restrained forward pitch");
+assert.ok(resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.25 }).rightArmYaw > 0.25
+  && resolvePlayerRigPose({ motion: "idle", phase: 0, actionProgress: 0.75 }).rightArmYaw < -0.25,
+"the action travels outward and back in a circular arc instead of flicking on one axis");
+assert.ok(Math.abs(action.rightArmYaw) < 1e-7, "the action crosses its resting yaw at mid-swing");
 assert.equal(action.leftArmPitch, resolvePlayerRigPose({ motion: "idle", phase: 0 }).leftArmPitch,
   "one-handed actions do not disturb the off hand");
 const crouch = resolvePlayerRigPose({ motion: "idle", phase: 0, crouching: true });
-assert.ok(crouch.bodyPitch > 0.4 && crouch.bodyYOffset === 0,
-  "sneaking hinges forward at the shared hip rather than detaching a lowered torso");
+assert.ok(crouch.bodyPitch > 0.4 && crouch.bodyYOffset < 0 && crouch.bodyZOffset < 0,
+  "sneaking lowers and counterbalances the shared hip behind the standing center line");
 writePlayerRigPartMatrix(matrix, "root", crouch, "wide", true, new Float32Array(16));
 assert.notEqual(matrix[6], 0, "the crouched torso leans forward around its hip pivot");
-assert.ok(Math.abs(matrix[5] * 0.75 + matrix[13] - 0.75) < 1e-7
-  && Math.abs(matrix[6] * 0.75 + matrix[14]) < 1e-7,
-  "the crouched torso remains connected to the unchanged leg hip pivot");
+const crouchedHipY = 0.75 * Math.cos(crouch.bodyPitch);
+const crouchedHipZ = -0.75 * Math.sin(crouch.bodyPitch);
+assert.ok(Math.abs(matrix[5] * 0.75 + matrix[13] - crouchedHipY) < 1e-7
+  && Math.abs(matrix[6] * 0.75 + matrix[14] - crouchedHipZ) < 1e-7,
+  "the crouched torso remains connected to the backward-displaced leg hip pivot");
 const standingLook = resolvePlayerRigPose({ motion: "idle", phase: 0, headYaw: 0.55, headPitch: -0.3 });
 const crouchedLook = resolvePlayerRigPose({
   motion: "idle", phase: 0, headYaw: 0.55, headPitch: -0.3, crouching: true,
@@ -102,9 +109,13 @@ assert.deepEqual([...crouchedHeadMatrix.slice(0, 12)], [...standingHeadMatrix.sl
   "crouching preserves standing head tracking without adding sideways roll");
 assert.notEqual(crouchedHeadMatrix[13], standingHeadMatrix[13],
   "the crouched neck position follows the leaned torso");
+assert.ok(Math.abs(crouchedHeadMatrix[14] - standingHeadMatrix[14]) < 1e-7,
+  "counterbalanced crouching moves the head straight down without pushing it forward");
 writePlayerRigPartMatrix(matrix, "rightLeg", crouch, "wide", true, new Float32Array(16));
-assert.ok(Math.abs(matrix[14]) < 1e-7, "stationary crouching keeps the leg attached at the shared hip");
-assert.equal(matrix[6], 0, "stationary crouching keeps both legs out of the walk cycle");
+assert.ok(Math.abs(matrix[5] * 0.75 + matrix[13] - crouchedHipY) < 1e-7
+  && Math.abs(matrix[6] * 0.75 + matrix[14] - crouchedHipZ) < 1e-7,
+"stationary crouching keeps the backward-leaning leg attached at the shared hip");
+assert.ok(matrix[6] < 0, "stationary crouching leans both legs backward without a walk cycle");
 
 const armorDraws = playerArmorRigDraws(fullPlayerArmorAppearance("iron"));
 assert.equal(armorDraws.reduce((total, draw) => total + draw.count, 0), 20 * 36);
