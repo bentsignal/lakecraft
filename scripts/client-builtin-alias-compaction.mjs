@@ -19,10 +19,10 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "min", 208]),
   Object.freeze(["Math", "round", 34]),
   Object.freeze(["Math", "sin", 67]),
-  Object.freeze(["Object", "freeze", 161]),
+  Object.freeze(["Object", "freeze", 162]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_219;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "bbd1b7bd812db003f85baf2e78aa7c1b916febd9565af61dae1c28ec6efe6283";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_220;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "1c76baa5845704763faad5b612ba7261790d90174a4944a9432ad543985e0801";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

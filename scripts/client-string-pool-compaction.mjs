@@ -57,9 +57,9 @@ export const COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA = Object.freeze({
   source: "client/singleplayer/SinglePlayerApp.tsx#world-loading-status",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_165;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "d78c720d484f82126a883216f7ace975aeaf24957c5fca8aa30ff36e69e32cac";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_171;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 108;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "86d6cdb7d321ee8fe9f67b1f27dc73c2ce3a7a69e2c19c66c40db057e1ab1b2d";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -124,6 +124,18 @@ export const COMPACT_CLIENT_REPEATED_WORLD_LOADING_DELTA = Object.freeze({
   uniqueValueDelta: 0,
   addedOccurrenceValues: Object.freeze(["lc-pointer-capture", "status"]),
   source: "client/singleplayer/SinglePlayerApp.tsx#world-loading-status",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA = Object.freeze({
+  previousOccurrences: 1_165,
+  previousUniqueValues: 107,
+  previousSourceFingerprint: "d78c720d484f82126a883216f7ace975aeaf24957c5fca8aa30ff36e69e32cac",
+  occurrenceDelta: 6,
+  uniqueValueDelta: 1,
+  sources: Object.freeze([
+    "client/gameplayKeyboardCapture.ts",
+    "client/runtimeMode.ts",
+  ]),
   exclusionChanges: 0,
 });
 // The lossless visual descriptor pack replaced repeated panel face arguments
@@ -229,9 +241,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 421;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "88ddadf7ef0b315a78332300101a18977434e5629352bf7770fe03fbbae837aa";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 417;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -283,6 +295,16 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_THIRD_PERSON_POSE_DELTA = Object.freez
     "client/game/thirdPersonFacing.ts",
     "client/game/thirdPersonTuning.ts",
   ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA = Object.freeze({
+  previousOccurrences: 421,
+  previousUniqueValues: 124,
+  previousSourceFingerprint: "88ddadf7ef0b315a78332300101a18977434e5629352bf7770fe03fbbae837aa",
+  occurrenceDelta: -4,
+  uniqueValueDelta: -1,
+  promotedThresholdValue: "function",
+  source: "client/gameplayKeyboardCapture.ts#browser-capability-guards",
   exclusionChanges: 0,
 });
 // Painting the cached GUI block raster introduces the client's third `2d`
