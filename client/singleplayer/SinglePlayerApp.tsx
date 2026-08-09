@@ -346,6 +346,8 @@ function SinglePlayerWorld({
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN);
   const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(true);
+  const [worldBooting, setWorldBooting] = useState(false);
+  const [worldReady, setWorldReady] = useState(false);
   const [silentPointerRecaptureDenied, setSilentPointerRecaptureDenied] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   /* @lakecraft-development:state:start */
@@ -1088,6 +1090,14 @@ function SinglePlayerWorld({
   }
 
   useEffect(() => {
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setWorldBooting(true));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!worldBooting) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     let foodUseTimer: number | null = null;
@@ -1789,6 +1799,7 @@ function SinglePlayerWorld({
         markWorldDirty();
       }
     }
+    setWorldReady(true);
     return () => {
       pointerSessionMountedRef.current = false;
       supersedePointerLockRequest();
@@ -1807,7 +1818,7 @@ function SinglePlayerWorld({
       engine.destroy();
       engineRef.current = null;
     };
-  }, []);
+  }, [worldBooting]);
 
   useEffect(() => {
     const paused = singlePlayerGameplayPaused({
@@ -2104,8 +2115,9 @@ function SinglePlayerWorld({
 
   return (
     <main className="lc-singleplayer">
-      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}</style>
+      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture[role=status]{background:#202020;color:#fff;flex-direction:column;gap:10px;z-index:90}.lc-pointer-capture[role=status] strong{font-size:22px;text-shadow:2px 2px #000}.lc-pointer-capture[role=status] small{color:#bbb}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}</style>
       <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
+      {!worldReady ? <div className="lc-pointer-capture" role="status" aria-live="polite"><strong>Loading world</strong><small>Preparing terrain…</small></div> : null}
       <span
         aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}. ${gameMode} mode`}
         className="lc-singleplayer-coordinates"
@@ -2119,7 +2131,7 @@ function SinglePlayerWorld({
         ref={performanceOutputRef}
       />
       <output aria-label="Frames per second" className="lc-local-fps" ref={fpsOutputRef}>FPS --</output>
-      {pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
+      {worldReady && pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
         <div className="lc-pointer-capture" role="presentation">
           <button autoFocus onClick={() => requestGameplayPointerLock()} type="button">
             Click to Play
@@ -2161,7 +2173,7 @@ function SinglePlayerWorld({
         inventory={inventory}
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
-        modalOpen={uiModalOpen || pointerCaptureNeeded}
+        modalOpen={uiModalOpen || pointerCaptureNeeded || !worldReady}
         messages={messages}
         onCloseInventory={closeInventoryAndResume}
         onCrafted={() => undefined}

@@ -14,6 +14,7 @@ import {
   dirtyChunkKeysForEdits,
   parseChunkKey,
   planChunkWindow,
+  type ChunkCoordinate,
 } from "./chunks.ts";
 import {
   MAX_REMOTE_PLAYERS,
@@ -245,6 +246,7 @@ export const PLAYER_MAX_HEALTH = 20;
 export const MOUSE_LOOK_SENSITIVITY = 0.0022;
 export const MAX_LOOK_PITCH = 1.52;
 export const STREAMING_MESH_REBUILDS_PER_FRAME = 1;
+export const STREAMING_TERRAIN_CHANGES_PER_FRAME = 1;
 export const LOCAL_MOB_STREAM_SPAWN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * WORLD_CHUNK_SIZE - 2;
 export const LOCAL_MOB_STREAM_CLEAR_RADIUS = LOCAL_MOB_STREAM_SPAWN_RADIUS - 2;
 export const LOCAL_MOB_STREAM_RETAIN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * WORLD_CHUNK_SIZE + WORLD_CHUNK_SIZE / 2;
@@ -1729,6 +1731,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const chunkBlocks = new Map<string, Set<string>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
+  let pendingChunkLoads: ChunkCoordinate[] = [];
+  let pendingChunkUnloads: ChunkCoordinate[] = [];
   const rememberedEditsByChunk = new Map<string, Map<string, WorldEdit>>();
   const initialEditBlocks = new Map<string, BlockId>();
   for (const edit of options.initialEdits ?? []) {
@@ -2243,7 +2247,29 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
   }
 
-  function updateStreamingWindow(force = false): void {
+  function processPendingTerrainChunks(limit = STREAMING_TERRAIN_CHANGES_PER_FRAME): void {
+    if (!pendingChunkLoads.length && !pendingChunkUnloads.length) return;
+    const dirty = new Set<string>();
+    for (let index = 0; index < limit; index += 1) {
+      const unload = pendingChunkUnloads.shift();
+      if (unload) {
+        markChunkAndNeighbors(dirty, unload.x, unload.z);
+        unloadTerrainChunk(unload.x, unload.z);
+      }
+      const load = pendingChunkLoads.shift();
+      if (load) {
+        loadTerrainChunk(load.x, load.z);
+        markChunkAndNeighbors(dirty, load.x, load.z);
+      }
+      if (!unload && !load) break;
+    }
+    for (const key of dirty) {
+      if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+    }
+    if (dirty.size) invalidateMobTorchLightCache();
+  }
+
+  function updateStreamingWindow(force = false, immediate = false): void {
     const nextCenterKey = chunkKeyForBlock(pose.x, pose.z);
     if (!force && nextCenterKey === streamingCenterKey) return;
     const plan = planChunkWindow(
@@ -2255,21 +2281,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       MAX_LOCAL_STREAMING_CHUNK_RADIUS,
     );
     streamingCenterKey = chunkKey(plan.center.x, plan.center.z);
-    if (!plan.load.length && !plan.unload.length) return;
-
-    const dirty = new Set<string>();
-    for (const coordinate of plan.unload) {
-      markChunkAndNeighbors(dirty, coordinate.x, coordinate.z);
-      unloadTerrainChunk(coordinate.x, coordinate.z);
-    }
-    for (const coordinate of plan.load) {
-      loadTerrainChunk(coordinate.x, coordinate.z);
-      markChunkAndNeighbors(dirty, coordinate.x, coordinate.z);
-    }
-    for (const key of dirty) {
-      if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
-    }
-    invalidateMobTorchLightCache();
+    pendingChunkLoads = plan.load;
+    pendingChunkUnloads = plan.unload;
+    if (immediate) processPendingTerrainChunks(Number.POSITIVE_INFINITY);
     if (localMobStreaming && !sharedMobMotionActive) {
       mobStreamingCenterX = (plan.center.x + 0.5) * WORLD_CHUNK_SIZE;
       mobStreamingCenterZ = (plan.center.z + 0.5) * WORLD_CHUNK_SIZE;
@@ -2939,6 +2953,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function update(dt: number, now: number): void {
     options.onSimulationStep?.(dt);
+    processPendingTerrainChunks();
     if (playerHealth <= 0) {
       if (!playerViewSuspended) {
         resetMovementView();
@@ -3717,6 +3732,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
     if (paused) {
+      processPendingTerrainChunks();
+      processPendingChunkMeshes();
       if (!firstPersonFeedbackHidden && playerHealth > 0
         && document.visibilityState === "visible"
         && now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS) {
@@ -4206,6 +4223,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
       chunkMeshes.clear();
       pendingChunkMeshRebuilds.clear();
+      pendingChunkLoads = [];
+      pendingChunkUnloads = [];
       loadedChunkKeys.clear();
       chunkBlocks.clear();
       blocks.clear();
@@ -4577,7 +4596,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       playerViewSuspended = false;
       fallAirborne = false;
       fallPeakY = pose.y;
-      updateStreamingWindow(true);
+      updateStreamingWindow(true, true);
       poseDirty = true;
       options.onPoseChange?.({ ...pose });
     },
@@ -4626,7 +4645,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallAirborne = false;
       fallPeakY = pose.y;
       target = null;
-      updateStreamingWindow(true);
+      updateStreamingWindow(true, true);
       writeReactiveMobPoseSnapshots();
       writeMobProjectileSnapshots(mobSimulation, mobProjectileSnapshots);
       poseDirty = true;
@@ -4658,7 +4677,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.yaw = respawnPoint.yaw;
       pose.pitch = respawnPoint.pitch;
       thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
-      updateStreamingWindow(true);
+      updateStreamingWindow(true, true);
       pose.y = resolveSafeSpawnY(
         respawnPoint.y,
         respawnPoint.y,

@@ -9,7 +9,7 @@ assert.ok(start >= 0 && end > start);
 
 const setX = respawn.indexOf("pose.x = respawnPoint.x");
 const setZ = respawn.indexOf("pose.z = respawnPoint.z");
-const stream = respawn.indexOf("updateStreamingWindow(true)");
+const stream = respawn.indexOf("updateStreamingWindow(true, true)");
 const safeY = respawn.indexOf("pose.y = resolveSafeSpawnY(");
 const health = respawn.indexOf("playerHealth = PLAYER_MAX_HEALTH");
 const poseCallback = respawn.indexOf("options.onPoseChange?.({ ...pose })");
@@ -17,6 +17,8 @@ const healthCallback = respawn.indexOf("options.onPlayerHealthChange?.(playerHea
 assert.ok(setX >= 0 && setZ > setX && stream > setZ,
   "saved X/Z become the streaming center before a potentially far respawn is probed");
 assert.ok(stream < safeY, "target chunks and persisted edits load before collision reads");
+assert.match(respawn, /updateStreamingWindow\(true, true\)/,
+  "respawn bypasses paced exploration streaming so collision reads see the destination immediately");
 assert.match(respawn, /resolveSafeSpawnY\(\s*respawnPoint\.y,\s*respawnPoint\.y,/,
   "saved Y is both preference and floor so a clear underground bed is preserved");
 assert.match(respawn, /\(candidateY\) => collides\(respawnPoint\.x, candidateY, respawnPoint\.z\)/,
