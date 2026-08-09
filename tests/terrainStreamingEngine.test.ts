@@ -8,7 +8,10 @@ import {
   planChunkWindow,
 } from "../client/game/chunks.ts";
 import { blockKey, terrainHeight } from "../client/game/terrain.ts";
-import { materializeTerrainChunk } from "../client/game/voxelEngine.ts";
+import {
+  STREAMING_TERRAIN_CHANGES_PER_FRAME,
+  materializeTerrainChunk,
+} from "../client/game/voxelEngine.ts";
 import { BLOCK, type WorldEdit } from "../client/game/types.ts";
 
 const SEED = 7_319;
@@ -45,6 +48,14 @@ assert.ok(initialBlockCount > 70_000, "the active window should include deep min
 const oneChunkTravel = planChunkWindow(8.5, 0.5, loaded, DEFAULT_STREAMING_CHUNK_RADIUS);
 assert.equal(oneChunkTravel.load.length, 7, "crossing one chunk should load one new edge only");
 assert.equal(oneChunkTravel.unload.length, 7, "crossing one chunk should unload one old edge only");
+assert.equal(STREAMING_TERRAIN_CHANGES_PER_FRAME, 1, "runtime terrain work stays bounded to one edge pair per frame");
+for (const radius of [6, MAX_LOCAL_STREAMING_CHUNK_RADIUS]) {
+  const window = planChunkWindow(0.5, 0.5, new Set(), radius, 8, MAX_LOCAL_STREAMING_CHUNK_RADIUS);
+  const keys = new Set(window.active.map(({ x, z }) => chunkKey(x, z)));
+  const edge = planChunkWindow(8.5, 0.5, keys, radius, 8, MAX_LOCAL_STREAMING_CHUNK_RADIUS);
+  assert.equal(edge.load.length, radius * 2 + 1);
+  assert.equal(edge.unload.length, radius * 2 + 1);
+}
 const expandedLocalPlan = planChunkWindow(
   0.5,
   0.5,

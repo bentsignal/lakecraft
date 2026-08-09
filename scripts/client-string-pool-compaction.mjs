@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 605;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 535;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4d723bdd87b365f87b9d5caa980745c9cdfad905170048bf579e9d6ab33ab125";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 607;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 537;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c819a96e157f34f994940b0dfef19d5a7d5cef5f6e5315fb26feaa6f2ada16de";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -47,9 +47,19 @@ export const COMPACT_CLIENT_HUMAN_GAME_SCREENSHOT_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_160;
+export const COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA = Object.freeze({
+  previousOccurrences: 605,
+  previousUniqueValues: 535,
+  previousSourceFingerprint: "4d723bdd87b365f87b9d5caa980745c9cdfad905170048bf579e9d6ab33ab125",
+  occurrenceDelta: 2,
+  uniqueValueDelta: 2,
+  addedValues: Object.freeze(["Loading world", "Preparing terrain…"]),
+  source: "client/singleplayer/SinglePlayerApp.tsx#world-loading-status",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_165;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "4c1784d760ac6a536450371631649c8789b5414df8cf5aa77b9b2b57fec5bb07";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "d78c720d484f82126a883216f7ace975aeaf24957c5fca8aa30ff36e69e32cac";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -104,6 +114,16 @@ export const COMPACT_CLIENT_REPEATED_THIRD_PERSON_POSE_DELTA = Object.freeze({
     "client/game/playerRig.ts",
     "client/game/thirdPersonTuning.ts",
   ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_WORLD_LOADING_DELTA = Object.freeze({
+  previousOccurrences: 1_160,
+  previousUniqueValues: 107,
+  previousSourceFingerprint: "4c1784d760ac6a536450371631649c8789b5414df8cf5aa77b9b2b57fec5bb07",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 0,
+  addedOccurrenceValues: Object.freeze(["lc-pointer-capture", "status"]),
+  source: "client/singleplayer/SinglePlayerApp.tsx#world-loading-status",
   exclusionChanges: 0,
 });
 // The lossless visual descriptor pack replaced repeated panel face arguments

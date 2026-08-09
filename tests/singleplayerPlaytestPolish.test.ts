@@ -63,5 +63,17 @@ assert.ok(multiplayer.includes("modalOpen={chatOpen || furnaceOpen || Boolean(ac
 assert.ok(engine.includes('document.pointerLockElement !== canvas'), "engine input remains gated on pointer lock");
 assert.ok(engine.includes("appendWorldBlockCrackLines(crackLines, target.block"), "cracks use target.block, never target.place");
 assert.ok(engine.includes("function updateMiningCrackGeometry()"), "crack geometry uploads only when bounded progress changes, not every render");
+assert.ok(singleplayer.includes('role="status" aria-live="polite"><strong>Loading world</strong>'),
+  "world entry renders a blocking, announced loading state before terrain is ready");
+assert.ok(singleplayer.includes("worldReady && pointerCaptureNeeded"),
+  "Click to Play cannot cover or compete with initial world loading");
+const streamingWindow = engine.slice(
+  engine.indexOf("function updateStreamingWindow("),
+  engine.indexOf("function setBlock(", engine.indexOf("function updateStreamingWindow(")),
+);
+assert.doesNotMatch(streamingWindow, /loadTerrainChunk\(|unloadTerrainChunk\(/,
+  "crossing a chunk only replans bounded work; it never materializes the whole edge synchronously");
+assert.match(engine, /if \(paused\) \{\s+processPendingTerrainChunks\(\);\s+processPendingChunkMeshes\(\);/,
+  "paused render-distance changes continue through the same bounded terrain and mesh queues");
 
 console.log("single-player playtest polish tests passed");

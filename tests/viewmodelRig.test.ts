@@ -20,6 +20,12 @@ import { writeSocketedViewmodelActionMatrix } from "../client/game/firstPersonRe
 
 const fovs = [30, 70, 90, 110];
 const aspects = [4 / 3, 16 / 9, 21 / 9, 390 / 844];
+const neutralArmTuning = {
+  position: [0, 0, 0] as const,
+  rotationDegrees: [0, 0, 0] as const,
+  scale: 1,
+  pivot: [0, 0, 0] as const,
+};
 function assertPointNear(
   actual: readonly [number, number],
   expected: readonly [number, number],
@@ -45,7 +51,7 @@ for (const fovDegrees of fovs) {
     assert.ok(Number.isFinite(projection[5]) && projection[5] > 0);
 
     const sourceArm = buildPlayerSkinPartGeometry("rightArm", "wide");
-    const socketedArm = buildSocketedFirstPersonSkinArmGeometry("wide", projection);
+    const socketedArm = buildSocketedFirstPersonSkinArmGeometry("wide", projection, neutralArmTuning);
     const wristSamples = new Map<string, number[]>();
     for (let offset = 0; offset < 36 * PLAYER_SKIN_VERTEX_STRIDE; offset += PLAYER_SKIN_VERTEX_STRIDE) {
       if (Math.abs(sourceArm[offset + 1] - 0.75) < 1e-8) {
