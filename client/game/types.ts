@@ -300,6 +300,16 @@ export interface VoxelPerformanceStats {
   averageFrameTimeMs: number;
   p95FrameTimeMs: number;
   frameSampleCount: number;
+  /** Main-thread simulation/update work measured for the latest rendered frame. */
+  lastUpdateMs: number;
+  /** Main-thread WebGL submission and dynamic-geometry work for the latest frame. */
+  lastRenderMs: number;
+  /** Terrain materialization/removal work charged to the latest frame. */
+  lastTerrainStreamingMs: number;
+  pendingTerrainLoads: number;
+  pendingTerrainUnloads: number;
+  pendingMeshRebuilds: number;
+  /** Mesh generation/upload work charged to the latest rendered frame. */
   lastMeshRebuildMs: number;
   totalMeshRebuildMs: number;
   lastRebuiltChunkCount: number;
@@ -511,6 +521,8 @@ export interface VoxelEngine {
   setPoseLabActionPreview(kind: "use" | null, progress?: number): void;
   /** Paused Pose Lab rig override only; live restores ordinary gameplay motion. */
   setPoseLabRigPreview(kind: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10): void;
+  /** Development benchmark hook; absent from compact production builds. */
+  setBenchmarkLook?(yaw: number, pitch: number): void;
   setRemotePlayers(players: readonly RemotePlayer[]): void;
   /** Replaces the bounded Lakebed-authoritative item snapshot rendered in-world. */
   setDroppedItems(items: readonly DroppedItemRenderItem[]): void;

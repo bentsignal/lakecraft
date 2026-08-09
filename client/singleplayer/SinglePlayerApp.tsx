@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks"
 import { ChestDrawer, FurnaceDrawer, GameHud, type ChestTransferDirection, type HudMessage } from "../components";
 /* @lakecraft-development:imports:start */
 import { FirstPersonPoseLab, VisualLab } from "../components";
+import { SinglePlayerPerformanceBenchmark } from "./PerformanceBenchmark.tsx";
 /* @lakecraft-development:imports:end */
 import { ChatOverlay, type LakecraftChatMessage } from "../chat";
 import {
@@ -2285,6 +2286,12 @@ function SinglePlayerWorld({
 }
 
 export function SinglePlayerApp({ onExit }: { onExit: () => void }) {
+  /* @lakecraft-development:benchmark:start */
+  const benchmarkDistance = Number(new URLSearchParams(window.location.search).get("distance"));
+  if (new URLSearchParams(window.location.search).get("performance") === "1") {
+    return <SinglePlayerPerformanceBenchmark renderDistance={benchmarkDistance === 12 ? 12 : 6} />;
+  }
+  /* @lakecraft-development:benchmark:end */
   const storage = useMemo(browserSinglePlayerStorage, []);
   const [activeWorld, setActiveWorld] = useState<{
     world: LocalWorldRecord;

@@ -11,11 +11,13 @@ for (const component of ["FirstPersonPoseLab", "VisualLab"]) {
   assert.ok(source.includes(`import { FirstPersonPoseLab, VisualLab }`),
     "normal local development still imports both inspection surfaces");
 }
+assert.ok(source.includes("SinglePlayerPerformanceBenchmark"),
+  "normal local development exposes the autonomous WebGL benchmark");
 
 const compact = stripClientDevelopmentSurfaces(source);
 for (const developmentOnly of [
   "FirstPersonPoseLab", "VisualLab", "visualLabOpen", "setVisualLabOpen", "setPoseLabBowPreview",
-  "setPoseLabHeldItemPreview", "setPoseLabUsePreview",
+  "setPoseLabHeldItemPreview", "setPoseLabUsePreview", "SinglePlayerPerformanceBenchmark", "benchmarkDistance",
 ]) {
   assert.equal(compact.includes(developmentOnly), false,
     `compact anonymous source excludes development-only ${developmentOnly}`);
@@ -38,8 +40,10 @@ assert.throws(
 const voxelSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.ok(voxelSource.includes("setPoseLabRigPreview"),
   "normal local development exposes the visual rig preview");
+assert.ok(voxelSource.includes("setBenchmarkLook"),
+  "normal local development exposes deterministic benchmark look control");
 const compactVoxel = stripVoxelDevelopmentSurfaces(voxelSource);
-for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", "@lakecraft-voxel-development:"]) {
+for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", "setBenchmarkLook", "@lakecraft-voxel-development:"]) {
   assert.equal(compactVoxel.includes(developmentOnly), false,
     `compact anonymous voxel source excludes development-only ${developmentOnly}`);
 }

@@ -1731,6 +1731,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const chunkBlocks = new Map<string, Set<string>>();
   const loadedChunkKeys = new Set<string>();
   const pendingChunkMeshRebuilds = new Set<string>();
+  const pendingTerrainMeshDirtyChunks = new Set<string>();
   let pendingChunkLoads: ChunkCoordinate[] = [];
   let pendingChunkUnloads: ChunkCoordinate[] = [];
   const rememberedEditsByChunk = new Map<string, Map<string, WorldEdit>>();
@@ -2035,6 +2036,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const mobStepSeconds = 0.1;
   let playerHealth = PLAYER_MAX_HEALTH;
   let lastPerformanceSent = 0;
+  let lastUpdateMs = 0;
+  let lastRenderMs = 0;
+  let lastTerrainStreamingMs = 0;
   let firstPersonSkyExposure = 1;
   let firstPersonExposureBlockX = Infinity;
   let firstPersonExposureBlockY = Infinity;
@@ -2247,26 +2251,32 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
   }
 
-  function processPendingTerrainChunks(limit = STREAMING_TERRAIN_CHANGES_PER_FRAME): void {
-    if (!pendingChunkLoads.length && !pendingChunkUnloads.length) return;
-    const dirty = new Set<string>();
+  function processPendingTerrainChunks(limit = STREAMING_TERRAIN_CHANGES_PER_FRAME): boolean {
+    lastTerrainStreamingMs = 0;
+    if (!pendingChunkLoads.length && !pendingChunkUnloads.length) return false;
+    const startedAt = performance.now();
     for (let index = 0; index < limit; index += 1) {
       const unload = pendingChunkUnloads.shift();
       if (unload) {
-        markChunkAndNeighbors(dirty, unload.x, unload.z);
+        markChunkAndNeighbors(pendingTerrainMeshDirtyChunks, unload.x, unload.z);
         unloadTerrainChunk(unload.x, unload.z);
       }
       const load = pendingChunkLoads.shift();
       if (load) {
         loadTerrainChunk(load.x, load.z);
-        markChunkAndNeighbors(dirty, load.x, load.z);
+        markChunkAndNeighbors(pendingTerrainMeshDirtyChunks, load.x, load.z);
       }
       if (!unload && !load) break;
     }
-    for (const key of dirty) {
-      if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+    if (!pendingChunkLoads.length && !pendingChunkUnloads.length) {
+      for (const key of pendingTerrainMeshDirtyChunks) {
+        if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+      }
+      pendingTerrainMeshDirtyChunks.clear();
     }
-    if (dirty.size) invalidateMobTorchLightCache();
+    invalidateMobTorchLightCache();
+    lastTerrainStreamingMs = performance.now() - startedAt;
+    return true;
   }
 
   function updateStreamingWindow(force = false, immediate = false): void {
@@ -2571,8 +2581,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pendingChunkMeshRebuilds.delete(key);
       rebuildChunkMesh(key);
     }
-    lastMeshRebuildMs = performance.now() - startedAt;
-    totalMeshRebuildMs += lastMeshRebuildMs;
+    const rebuildMs = performance.now() - startedAt;
+    lastMeshRebuildMs += rebuildMs;
+    totalMeshRebuildMs += rebuildMs;
     lastRebuiltChunkCount = uniqueKeys.length;
     totalRebuiltChunkCount += uniqueKeys.length;
   }
@@ -2953,7 +2964,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function update(dt: number, now: number): void {
     options.onSimulationStep?.(dt);
-    processPendingTerrainChunks();
+    const processedTerrain = processPendingTerrainChunks();
     if (playerHealth <= 0) {
       if (!playerViewSuspended) {
         resetMovementView();
@@ -2968,7 +2979,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       target = null;
       fallAirborne = false;
       fallPeakY = pose.y;
-      processPendingChunkMeshes();
+      if (!processedTerrain) processPendingChunkMeshes();
       updateMobs(dt);
       return;
     }
@@ -3120,7 +3131,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       poseDirty = false;
       options.onPoseChange?.({ ...pose });
     }
-    processPendingChunkMeshes();
+    if (!processedTerrain) processPendingChunkMeshes();
     updateMobs(dt);
   }
 
@@ -3237,6 +3248,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       averageFrameTimeMs,
       p95FrameTimeMs: sortedFrameTimes[p95Index] ?? 0,
       frameSampleCount: frameTimes.length,
+      lastUpdateMs,
+      lastRenderMs,
+      lastTerrainStreamingMs,
+      pendingTerrainLoads: pendingChunkLoads.length,
+      pendingTerrainUnloads: pendingChunkUnloads.length,
+      pendingMeshRebuilds: pendingChunkMeshRebuilds.size,
       lastMeshRebuildMs,
       totalMeshRebuildMs,
       lastRebuiltChunkCount,
@@ -3728,12 +3745,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function frame(now: number): void {
     if (!running || destroyed) return;
+    lastMeshRebuildMs = 0;
     const frameTimeMs = Math.max(0, now - lastFrame);
     const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
     if (paused) {
-      processPendingTerrainChunks();
-      processPendingChunkMeshes();
+      const processedTerrain = processPendingTerrainChunks();
+      if (!processedTerrain) processPendingChunkMeshes();
       if (!firstPersonFeedbackHidden && playerHealth > 0
         && document.visibilityState === "visible"
         && now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS) {
@@ -3765,9 +3783,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       frameTimes.push(frameTimeMs);
       if (frameTimes.length > 120) frameTimes.shift();
     }
+    const updateStartedAt = performance.now();
     if (!paused) update(dt, now);
+    lastUpdateMs = performance.now() - updateStartedAt;
     const visualNow = paused ? pausedVisualTime : now;
+    const renderStartedAt = performance.now();
     render(visualNow, paused ? 0 : dt, now);
+    lastRenderMs = performance.now() - renderStartedAt;
     if (now - lastPerformanceSent >= 500) {
       lastPerformanceSent = now;
       options.onPerformanceStats?.(getPerformanceStats());
@@ -4389,6 +4411,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     setPoseLabRigPreview(kind) {
       thirdPersonRigPreview = kind;
       lastPausedRenderAt = Number.NEGATIVE_INFINITY;
+    },
+    setBenchmarkLook(yaw, pitch) {
+      if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) return;
+      pose.yaw = yaw;
+      pose.pitch = clampNumber(pitch, -MAX_LOOK_PITCH, MAX_LOOK_PITCH);
+      poseDirty = true;
     },
     /* @lakecraft-voxel-development:method:end */
     setRemotePlayers(players) {
