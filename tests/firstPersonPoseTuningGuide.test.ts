@@ -31,6 +31,11 @@ for (const group of ["arm", "tool", "bow", "otherItem"] as const) {
   assert.match(tuningSource, new RegExp("EDIT `" + group + "` FOR", "i"),
     `${group} has a literal human-facing edit label`);
 }
+assert.deepEqual(FIRST_PERSON_TUNING.arm.position, [-0.37, 0.23, 0],
+  "the accepted empty-hand screen anchor is preserved");
+assert.deepEqual(FIRST_PERSON_TUNING.arm.rotationDegrees, [1, -41, -1],
+  "the accepted empty-hand orientation is preserved");
+assert.equal(FIRST_PERSON_TUNING.arm.scale, 1, "the accepted empty-hand scale is preserved");
 assert.equal(tuningSource.includes("unchanged("), false, "every user-editable group is an explicit object");
 assert.match(tuningSource, /LEAVE THIS ALONE AT FIRST[^\n]*`rig`/,
   "the global rig cannot be mistaken for the first tuning target");
@@ -98,6 +103,9 @@ assert.ok(singlePlayer.includes("<FirstPersonPoseLab") && poseLab.includes("publ
 for (const label of ["Rotation degrees", "Scale", "Size", "EXCLUSIVE VIEWMODEL"]) {
   assert.ok(poseLab.includes(label), `Pose Lab exposes the ${label} control`);
 }
+assert.match(poseLab,
+  /group === "arm" \? \([\s\S]*Select an empty hotbar slot[\s\S]*Screen anchor offset[\s\S]*Rotation degrees[\s\S]*Scale/,
+  "the empty-hand branch exposes live position, rotation, and scale controls instead of a dead note");
 assert.equal(poseLab.includes('<VectorInputs label="Position"'), false,
   "the lab no longer exposes arbitrary presentation translation");
 assert.equal(poseLab.includes('<VectorInputs label="Pivot (advanced)"'), false,

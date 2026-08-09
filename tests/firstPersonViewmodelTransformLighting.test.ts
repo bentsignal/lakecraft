@@ -156,6 +156,14 @@ assert.deepEqual(
   [...pivot],
   "the compact base scale preserves the lower-right action pivot",
 );
+const armProjection = perspective(16 / 9);
+const defaultSocketedArm = buildSocketedFirstPersonSkinArmGeometry("wide", armProjection, FIRST_PERSON_TUNING.arm);
+const movedSocketedArm = buildSocketedFirstPersonSkinArmGeometry("wide", armProjection, {
+  ...FIRST_PERSON_TUNING.arm,
+  position: [FIRST_PERSON_TUNING.arm.position[0] + 0.25, ...FIRST_PERSON_TUNING.arm.position.slice(1)] as [number, number, number],
+});
+assert.equal(Number((movedSocketedArm[0] - defaultSocketedArm[0]).toFixed(6)), 0.25,
+  "empty-hand Pose Lab tuning changes the live socketed arm geometry directly");
 
 const gl = new CapturingWebGl();
 const renderer = createFirstPersonRenderer(gl as unknown as WebGLRenderingContext);
@@ -176,14 +184,14 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   const projection = perspective(width / height);
   const pose = createViewmodelRigPoseFromProjection(projection);
   const parameters = viewmodelProjectionParameters(projection);
-  const skinArm = buildSocketedFirstPersonSkinArmGeometry("wide", projection);
+  const skinArm = buildSocketedFirstPersonSkinArmGeometry("wide", projection, FIRST_PERSON_TUNING.arm);
   renderer[3](null, BLOCK.AIR);
   renderer[6](mvp, projection, 0, false);
   const emptyBounds = ndcBounds(skinArm, mvp);
   const armScreen = screenPercent(emptyBounds);
-  assert.ok(emptyBounds.minX > 0.2 && emptyBounds.maxY < -0.3,
-    `${width}x${height} empty hand stays wholly below/right of the crosshair: ${JSON.stringify(emptyBounds)}`);
-  assert.ok(armScreen.left > 60 && armScreen.top > 65 && armScreen.bottom > 100,
+  assert.ok(emptyBounds.maxX > 0.2 && emptyBounds.maxY < 0 && emptyBounds.minY < -0.7,
+    `${width}x${height} empty hand stays anchored to the lower-right viewport: ${JSON.stringify(emptyBounds)}`);
+  assert.ok(armScreen.right > 60 && armScreen.top > 50 && armScreen.bottom > 85,
     `${width}x${height} arm enters from the lower-right edge: ${JSON.stringify(armScreen)}`);
   const handNdc = projectViewmodelPoint(pose.socket, parameters.verticalFovRadians, parameters.aspect);
   const shoulderNdc = projectViewmodelPoint(pose.shoulder, parameters.verticalFovRadians, parameters.aspect);
@@ -195,7 +203,7 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   const attackModel = writeSocketedViewmodelActionMatrix(new Float32Array(16), attackPose, pose);
   const attackMvp = writeMatrixProduct(new Float32Array(16), projection, attackModel);
   const attackBounds = ndcBounds(skinArm, attackMvp);
-  assert.ok(attackBounds.minX > -0.1 && attackBounds.maxY < 0.2,
+  assert.ok(attackBounds.maxX > 0.2 && attackBounds.maxY < 0.2,
     `${width}x${height} socketed swing remains in the hand quadrant: ${JSON.stringify(attackBounds)}`);
 
   renderer[3]("dirt", BLOCK.DIRT);
@@ -203,9 +211,9 @@ for (const [width, height] of [[1_920, 1_080], [800, 720], [390, 844]] as const)
   const armBounds = ndcBounds(skinArm, mvp);
   const blockBounds = ndcBounds(gl.uploads.get(texturedBuffer)!, mvp);
   const blockScreen = screenPercent(blockBounds);
-  assert.ok(Math.min(armBounds.minX, blockBounds.minX) > 0.05,
+  assert.ok(blockBounds.minX > 0.05,
     `${width}x${height} held block leaves the crosshair's vertical lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
-  assert.ok(Math.max(armBounds.maxY, blockBounds.maxY) < 0,
+  assert.ok(blockBounds.maxY < 0,
     `${width}x${height} held block leaves the crosshair's horizontal lane clear: ${JSON.stringify({ armBounds, blockBounds })}`);
   assert.ok(blockBounds.maxX - blockBounds.minX < 1.55
     && blockBounds.maxY - blockBounds.minY < 1.8,

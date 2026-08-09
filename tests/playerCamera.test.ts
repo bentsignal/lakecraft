@@ -16,11 +16,11 @@ writePlayerCamera(eye, facing, "first_person", [2, 3, 4], [0, 0, -1], () => fals
 assert.deepEqual(eye, [2, 3, 4]); assert.deepEqual(facing, [0, 0, -1]);
 
 writePlayerCamera(eye, facing, "third_person_back", [0, 2, 0], [0, 0, -1], () => false);
-assert.deepEqual(eye, [0, 1.8, 4]);
+assert.deepEqual(eye, [0, 1.8, 4.5]);
 assert.ok(facing[2] < -0.99, "rear camera looks back toward the player");
 
 writePlayerCamera(eye, facing, "third_person_front", [0, 2, 0], [0, 0, -1], () => false);
-assert.deepEqual(eye, [0, 1.8, -4]);
+assert.deepEqual(eye, [0, 1.8, -4.5]);
 assert.ok(facing[2] > 0.99, "front camera looks at the player's face");
 
 writePlayerCamera(eye, facing, "third_person_back", [0, 2, 0], [0, 0, -1], (_x, _y, z) => z >= 2);

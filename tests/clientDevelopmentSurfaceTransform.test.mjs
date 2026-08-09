@@ -43,7 +43,7 @@ for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", 
   assert.equal(compactVoxel.includes(developmentOnly), false,
     `compact anonymous voxel source excludes development-only ${developmentOnly}`);
 }
-assert.ok(compactVoxel.includes("playerRigInputForMovement(movementMode, now, movementActivity > 0)"),
+assert.ok(compactVoxel.includes("playerRigInputForMovement(movementMode, now, movementActivity > 0.5)"),
   "production movement-driven rig behavior remains after the preview override is removed");
 assert.throws(
   () => stripVoxelDevelopmentSurfaces(voxelSource.replace("previewMode,", '"idle",')),

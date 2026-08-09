@@ -24,6 +24,7 @@ export type PlayerRigPose = Readonly<{
   headYaw: number;
   headPitch: number;
   rightArmPitch: number;
+  rightArmYaw: number;
   leftArmPitch: number;
   rightLegPitch: number;
   leftLegPitch: number;
@@ -64,16 +65,26 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
   const actionProgress = Number.isFinite(input.actionProgress)
     ? Math.max(0, Math.min(1, input.actionProgress!))
     : -1;
-  const actionSwing = actionProgress >= 0 && actionProgress < 1 ? Math.sin(actionProgress * Math.PI) * 1.8 : 0;
+  const actionActive = actionProgress >= 0 && actionProgress < 1;
+  // A gameplay swing follows a compact ellipse: the arm reaches down/forward
+  // while also travelling out and back. The previous 1.8-radian pitch-only
+  // flick looked like the shoulder was dislocating in third person.
+  const actionSwing = actionActive ? Math.sin(actionProgress * Math.PI) * 0.92 : 0;
+  const actionSweep = actionActive ? -Math.sin(actionProgress * Math.PI * 2) * 0.3 : 0;
   const bodyPitch = input.crouching ? 0.5 : 0;
-  const bodyYOffset = input.crouching ? -0.2 : 0;
-  const bodyZOffset = 0;
+  // Sneaking counterbalances around the feet. The lower body leans backward by
+  // the same angle that the torso leans forward, keeping the neck directly
+  // above its standing horizontal position instead of moving the whole avatar
+  // forward. These offsets are the exact displaced hip coordinates.
+  const bodyYOffset = bodyPitch === 0 ? 0 : 0.75 * (Math.cos(bodyPitch) - 1);
+  const bodyZOffset = bodyPitch === 0 ? 0 : -0.75 * Math.sin(bodyPitch);
   if (input.motion === "idle") {
     const breath = cycle * 0.018 * intensity;
     return Object.freeze({
       headYaw,
       headPitch,
       rightArmPitch: -0.055 + breath - actionSwing,
+      rightArmYaw: actionSweep,
       leftArmPitch: 0.04 - breath,
       rightLegPitch: 0,
       leftLegPitch: 0,
@@ -87,6 +98,7 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
     headYaw,
     headPitch,
     rightArmPitch: swing - actionSwing,
+    rightArmYaw: actionSweep,
     leftArmPitch: -swing,
     rightLegPitch: -swing,
     leftLegPitch: swing,
@@ -129,21 +141,18 @@ export function writePlayerRigPartMatrix(
   remapStandardSkinSides: boolean,
   scratch?: Float32Array,
 ): Float32Array {
-  const upperBodyPart = part === "head" || part === "root" || part === "rightArm" || part === "leftArm";
-  const legPart = part === "rightLeg" || part === "leftLeg";
+  const upperBodyPart = part === "root" || part === "rightArm" || part === "leftArm";
   const needsBodyPose = upperBodyPart
     && (pose.bodyPitch !== 0 || pose.bodyYOffset !== 0 || pose.bodyZOffset !== 0);
-  const needsCrouchLegOffset = legPart && pose.bodyPitch !== 0;
-  const localOutput = needsBodyPose || needsCrouchLegOffset ? scratch ?? new Float32Array(16) : output;
+  const localOutput = needsBodyPose ? scratch ?? new Float32Array(16) : output;
   if (part === "head") {
-    // The upper-body hinge is applied after the head joint. Compensating the
-    // local pitch keeps the head tracking the camera instead of forcing it to
-    // stare at the ground whenever the player crouches.
-    const articulatedHeadPitch = pose.headPitch - pose.bodyPitch;
+    // The head keeps exactly the standing yaw/pitch basis while crouching.
+    // Only its neck position follows the torso hinge; multiplying the head's
+    // yaw by the body pitch created an unintended sideways roll.
     const yawCosine = Math.cos(pose.headYaw);
     const yawSine = Math.sin(pose.headYaw);
-    const pitchCosine = Math.cos(articulatedHeadPitch);
-    const pitchSine = Math.sin(articulatedHeadPitch);
+    const pitchCosine = Math.cos(pose.headPitch);
+    const pitchSine = Math.sin(pose.headPitch);
     const pivotY = 1.5;
     localOutput.set([
       yawCosine, 0, -yawSine, 0,
@@ -154,10 +163,17 @@ export function writePlayerRigPartMatrix(
       -pivotY * yawCosine * pitchSine,
       1,
     ]);
+    if (pose.bodyPitch !== 0 || pose.bodyYOffset !== 0 || pose.bodyZOffset !== 0) {
+      const neckAboveHip = 0.75;
+      localOutput[13] += neckAboveHip * (Math.cos(pose.bodyPitch) - 1) + pose.bodyYOffset;
+      localOutput[14] += neckAboveHip * Math.sin(pose.bodyPitch) + pose.bodyZOffset;
+    }
   } else {
     const pitch = pitchForPart(part, pose);
-    const cosine = Math.cos(pitch);
-    const sine = Math.sin(pitch);
+    const legPart = part === "rightLeg" || part === "leftLeg";
+    const basePitch = legPart && pose.bodyPitch !== 0 ? -pose.bodyPitch : pitch;
+    const cosine = Math.cos(basePitch);
+    const sine = Math.sin(basePitch);
     const armCenter = model === "slim" ? 0.34375 : 0.375;
     const translateX = !remapStandardSkinSides || part === "root" ? 0
       : part === "rightArm" ? -2 * armCenter
@@ -165,22 +181,53 @@ export function writePlayerRigPartMatrix(
           : part === "rightLeg" ? -0.25
             : 0.25;
     const pivotY = part === "rightArm" || part === "leftArm" ? model === "slim" ? 1.46875 : 1.5
-      : part === "rightLeg" || part === "leftLeg" ? 0.75 : 0;
+      : legPart && pose.bodyPitch === 0 ? 0.75 : 0;
     localOutput.set([
       1, 0, 0, 0,
       0, cosine, sine, 0,
       0, -sine, cosine, 0,
       translateX, pivotY * (1 - cosine), -pivotY * sine, 1,
     ]);
+    if (legPart && pose.bodyPitch !== 0 && pitch !== 0) {
+      // Crouch-walking articulates around the already displaced hip so each
+      // leg stays connected while preserving the shared backward lean.
+      const walkCosine = Math.cos(pitch);
+      const walkSine = Math.sin(pitch);
+      const hipY = 0.75 * Math.cos(pose.bodyPitch);
+      const hipZ = -0.75 * Math.sin(pose.bodyPitch);
+      const translateY = hipY * (1 - walkCosine) + hipZ * walkSine;
+      const translateZ = hipZ * (1 - walkCosine) - hipY * walkSine;
+      for (let column = 0; column < 4; column += 1) {
+        const offset = column * 4;
+        const x = localOutput[offset]; const y = localOutput[offset + 1];
+        const z = localOutput[offset + 2]; const w = localOutput[offset + 3];
+        localOutput[offset] = x;
+        localOutput[offset + 1] = walkCosine * y - walkSine * z + translateY * w;
+        localOutput[offset + 2] = walkSine * y + walkCosine * z + translateZ * w;
+        localOutput[offset + 3] = w;
+      }
+    }
+    if (part === "rightArm" && pose.rightArmYaw !== 0) {
+      // The outward half of the action arc pivots around the anatomical
+      // shoulder after standard-skin side remapping, then returns through the
+      // resting pose during the second half.
+      const yawCosine = Math.cos(pose.rightArmYaw);
+      const yawSine = Math.sin(pose.rightArmYaw);
+      const shoulderX = -armCenter;
+      const translateYawX = shoulderX * (1 - yawCosine);
+      const translateYawZ = shoulderX * yawSine;
+      for (let column = 0; column < 4; column += 1) {
+        const offset = column * 4;
+        const x = localOutput[offset]; const y = localOutput[offset + 1];
+        const z = localOutput[offset + 2]; const w = localOutput[offset + 3];
+        localOutput[offset] = yawCosine * x + yawSine * z + translateYawX * w;
+        localOutput[offset + 1] = y;
+        localOutput[offset + 2] = -yawSine * x + yawCosine * z + translateYawZ * w;
+        localOutput[offset + 3] = w;
+      }
+    }
   }
-  if (needsCrouchLegOffset) {
-    // Minecraft-style sneaking moves both leg pivots behind the lowered torso
-    // instead of bending the entire avatar at the waist. The walking pitch, if
-    // present, remains local to each leg and stationary sneaking stays still.
-    localOutput[13] -= 0.0125;
-    localOutput[14] += 0.25;
-    output.set(localOutput);
-  } else if (needsBodyPose) {
+  if (needsBodyPose) {
     const cosine = Math.cos(pose.bodyPitch);
     const sine = Math.sin(pose.bodyPitch);
     const pivotY = 0.75;

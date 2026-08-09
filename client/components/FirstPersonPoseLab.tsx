@@ -178,7 +178,7 @@ export function FirstPersonPoseLab({
   onCycleCamera?: () => string;
   onHeldItemPreviewChange?: (itemId: ItemId | null | undefined) => void;
   onOpenVisualLab?: () => void;
-  onRigPreviewChange?: (kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down") => void;
+  onRigPreviewChange?: (kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down" | "swing" | "look_left" | "look_right") => void;
   onUsePreviewChange?: (active: boolean) => void;
 }) {
   const [group, setGroup] = useState<PoseGroup>("tool");
@@ -190,7 +190,7 @@ export function FirstPersonPoseLab({
   const [cameraMode, setCameraMode] = useState("first person");
   const [previewItem, setPreviewItem] = useState("actual");
   const [usePreview, setUsePreview] = useState(false);
-  const [rigPreview, setRigPreview] = useState<"live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down">("live");
+  const [rigPreview, setRigPreview] = useState<"live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down" | "swing" | "look_left" | "look_right">("live");
 
   useEffect(() => {
     if (open) return;
@@ -299,7 +299,7 @@ export function FirstPersonPoseLab({
     : group === "block"
     ? `item only · anchor offset [${active.center.join(", ")}] · Minecraft rotation [${active.rotationDegrees.join(", ")}] · size ${active.size}`
     : group === "arm"
-      ? "empty slot only · full-width skin arm"
+      ? `empty slot only · anchor offset [${active.position.join(", ")}] · rotation delta [${active.rotationDegrees.join(", ")}] · scale ${active.scale}`
       : `item only · anchor offset [${active.position.join(", ")}] · rotation delta [${active.rotationDegrees.join(", ")}] · scale ${active.scale}`;
 
   async function copyValues(): Promise<void> {
@@ -389,7 +389,7 @@ export function FirstPersonPoseLab({
         <div className="lc-pose-lab__bow-preview">
           <span>Rig pose preview</span>
           <div aria-label="Third-person rig preview" className="lc-pose-lab__bow-preview-controls" role="group">
-            {(["live", "idle", "walk", "crouch", "crouch_profile", "walk_profile", "look_up", "look_down"] as const).map((value) => (
+            {(["live", "idle", "walk", "crouch", "crouch_profile", "walk_profile", "look_up", "look_down", "look_left", "look_right", "swing"] as const).map((value) => (
               <button aria-pressed={rigPreview === value} key={value} onClick={() => setRigPreview(value)} type="button">
                 {value.replace("_", " ")}
               </button>
@@ -413,7 +413,12 @@ export function FirstPersonPoseLab({
           <div className="lc-pose-lab__row lc-pose-lab__single"><span>Size</span><ScrubNumberInput label="Size" min={0.05} onChange={updateBlockSize} step={0.01} value={active.size} /></div>
         </>
       ) : group === "arm" ? (
-        <div className="lc-pose-lab__socket-note">The full-width skin arm appears only for an empty hotbar slot.</div>
+        <>
+          <div className="lc-pose-lab__socket-note">Select an empty hotbar slot to see these live arm adjustments.</div>
+          <VectorInputs label="Screen anchor offset" onChange={(index, value) => updateTransformVector("position", index, value)} step={0.01} value={active.position} />
+          <VectorInputs label="Rotation degrees" onChange={(index, value) => updateTransformVector("rotationDegrees", index, value)} step={1} value={active.rotationDegrees} />
+          <div className="lc-pose-lab__row lc-pose-lab__single"><span>Scale</span><ScrubNumberInput label="Scale" min={0.05} onChange={updateTransformScale} step={0.01} value={active.scale} /></div>
+        </>
       ) : (
         <>
           <VectorInputs label="Screen anchor offset" onChange={(index, value) => updateTransformVector("position", index, value)} step={0.01} value={active.position} />

@@ -2090,8 +2090,8 @@ function SinglePlayerWorld({
   const setPoseLabUsePreview = useCallback((active: boolean) => {
     engineRef.current?.setPoseLabActionPreview(active ? "use" : null, 0.65);
   }, []);
-  const setPoseLabRigPreview = useCallback((kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down") => {
-    const code = ({ live: 0, idle: 1, walk: 2, crouch: 3, crouch_profile: 4, walk_profile: 5, look_up: 6, look_down: 7 } as const)[kind];
+  const setPoseLabRigPreview = useCallback((kind: "live" | "idle" | "walk" | "crouch" | "crouch_profile" | "walk_profile" | "look_up" | "look_down" | "swing" | "look_left" | "look_right") => {
+    const code = ({ live: 0, idle: 1, walk: 2, crouch: 3, crouch_profile: 4, walk_profile: 5, look_up: 6, look_down: 7, swing: 8, look_left: 9, look_right: 10 } as const)[kind];
     engineRef.current?.setPoseLabRigPreview(code);
   }, []);
   /* @lakecraft-development:callback:end */

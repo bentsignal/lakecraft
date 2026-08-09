@@ -36,7 +36,7 @@ export function writePlayerCamera(
   playerEye: Vec3,
   playerFacing: Vec3,
   blocked: (x: number, y: number, z: number) => boolean,
-  distance = 4,
+  distance = 4.5,
 ): void {
   if (mode === "first_person") {
     eye[0] = playerEye[0]; eye[1] = playerEye[1]; eye[2] = playerEye[2];
