@@ -1,0 +1,46 @@
+name: Publish Lakecraft game server image
+
+on:
+  push:
+    branches:
+      - t3code/build-railway-multiplayer
+    paths:
+      - apps/game-server/**
+      - .github/workflows/publish-game-server-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: lakecraft-game-server-image
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@v4
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish the Railway image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/lakecraft-server
+          SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          docker build \
+            --label "org.opencontainers.image.revision=${SOURCE_REVISION}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --tag "${IMAGE}:railway-beta" \
+            --tag "${IMAGE}:sha-${SOURCE_REVISION}" \
+            apps/game-server
+          docker push "${IMAGE}:railway-beta"
+          docker push "${IMAGE}:sha-${SOURCE_REVISION}"
