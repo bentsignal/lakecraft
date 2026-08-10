@@ -135,11 +135,12 @@ const BUILTIN_EXCLUSIONS = Object.freeze([
 ]);
 export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // Reviewed through the canonical GUI block raster base plus the Railway chat,
-// held-item, and remote-skin paths. The explicit MotionSegmentRecorder and
-// skin-storage deltas remain pinned below; compact manifest keys, exclusions,
+// held-item, remote-skin, and bounded appearance-concurrency paths. The
+// explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
+// compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "a2e67c25258f79da77420a59cf910a3d2e83bd68f334fb4731ba6207f4541cee";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "acf1eddd611f8732905f827d86244b0fef24b0763f25dcd599cb7945df4d97fb";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "b864c844f4089c993f19f1dd839ce5f4974d72da47bef89923973aabdc49682d";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "af0c1a2f83d5f6b974ce9926170faecd45740f8a9fada876f3339ea3e9feda1a";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "9ef3b2dcb31f64db5ecb9dc7b792742315249a8077ef54f60542e90cfb7ad7d1";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server

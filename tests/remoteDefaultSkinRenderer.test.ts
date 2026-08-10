@@ -9,6 +9,11 @@ import {
 } from "../client/game/remotePlayerRenderer.ts";
 import {
   REMOTE_SKIN_FLOATS_PER_PLAYER,
+  REMOTE_SKIN_ATLAS_COLUMNS,
+  REMOTE_SKIN_ATLAS_BYTES,
+  REMOTE_SKIN_ATLAS_HEIGHT,
+  REMOTE_SKIN_ATLAS_ROWS,
+  REMOTE_SKIN_ATLAS_WIDTH,
   createRemotePlayerSkinRenderer,
   writeRemotePlayerSkinGeometry,
 } from "../client/game/remotePlayerSkinRenderer.ts";
@@ -32,11 +37,16 @@ assert.equal(
   1,
   "canonical skin geometry is built once at module initialization, never inside the 30Hz batch writer",
 );
+assert.equal(rendererSource.match(/buildPlayerSkinGeometry\("slim"\)/g)?.length, 1,
+  "canonical slim geometry is also built exactly once");
+assert.match(rendererSource, /writePlayerRigPartMatrix\([^\n]+state\.skinModel/,
+  "slim geometry and its canonical slim joint pivots use the same model");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.ok(engineSource.includes("remoteStats.updated || (remoteStates.size === 0 && remoteSkinVertexCount !== 0)"),
   "an already-empty remote batch skips skin geometry work while the first empty frame clears stale vertices");
 
 assert.equal(REMOTE_DEFAULT_PLAYER_BOX_COUNT, PLAYER_SKIN_BOX_COUNT);
+assert.equal(REMOTE_SKIN_ATLAS_BYTES, 524_288, "32 selected skins consume one fixed half-megabyte RGBA atlas");
 assert.equal(REMOTE_DEFAULT_PLAYER_HEIGHT, 2);
 assert.equal(BASE_AVATAR_VERTICES_PER_PLAYER, PLAYER_SKIN_VERTEX_COUNT);
 assert.equal(vertexCount, PLAYER_SKIN_VERTEX_COUNT, "one remote uses the complete base+outer-layer skin mesh");
@@ -44,10 +54,29 @@ for (let vertex = 0; vertex < vertexCount; vertex += 1) {
   const offset = vertex * PLAYER_SKIN_VERTEX_STRIDE;
   assert.deepEqual(
     [...output.subarray(offset + 3, offset + 6)],
-    [...canonical.subarray(offset + 3, offset + 6)],
-    `remote vertex ${vertex} preserves canonical UV and face shade`,
+    [canonical[offset + 3] / REMOTE_SKIN_ATLAS_COLUMNS,
+      canonical[offset + 4] / REMOTE_SKIN_ATLAS_ROWS, canonical[offset + 5]],
+    `remote vertex ${vertex} maps canonical UV and face shade into atlas slot zero`,
   );
 }
+
+const slimState = createRemoteAvatarMotion({ ...player, id: "slim-rig", x: 2, skinId: "a".repeat(64), skinModel: "slim" }, 0);
+const paired = new Map<string, RemoteAvatarMotion>([[state.id, state], [slimState.id, slimState]]);
+const pairedOutput = new Float32Array(REMOTE_SKIN_FLOATS_PER_PLAYER * 2);
+assert.equal(writeRemotePlayerSkinGeometry(paired, [0, 2, -4], pairedOutput), PLAYER_SKIN_VERTEX_COUNT * 2);
+const slimCanonical = buildPlayerSkinGeometry("slim");
+const slimStart = PLAYER_SKIN_VERTEX_COUNT * PLAYER_SKIN_VERTEX_STRIDE;
+assert.deepEqual(
+  [...pairedOutput.subarray(slimStart + 3, slimStart + 6)],
+  [(slimCanonical[3] + 1) / REMOTE_SKIN_ATLAS_COLUMNS,
+    slimCanonical[4] / REMOTE_SKIN_ATLAS_ROWS, slimCanonical[5]],
+  "the second remote maps its selected slim skin into the second fixed atlas slot",
+);
+assert.notDeepEqual(
+  pairedOutput.slice(4 * 36 * PLAYER_SKIN_VERTEX_STRIDE, 8 * 36 * PLAYER_SKIN_VERTEX_STRIDE),
+  pairedOutput.slice(slimStart + 4 * 36 * PLAYER_SKIN_VERTEX_STRIDE, slimStart + 8 * 36 * PLAYER_SKIN_VERTEX_STRIDE),
+  "slim arms use slim geometry and pivots instead of the wide transform",
+);
 
 let minY = Infinity; let maxY = -Infinity;
 for (let offset = 0; offset < vertexCount * PLAYER_SKIN_VERTEX_STRIDE; offset += PLAYER_SKIN_VERTEX_STRIDE) {
@@ -70,6 +99,7 @@ assert.notDeepEqual(output.slice(armStart, armEnd), idle.slice(armStart, armEnd)
 
 let unpackFlip = 1;
 let uploadedFlip = -1;
+const skinUploads: Array<{ x: number; y: number; pixels: Uint8Array }> = [];
 const blendEvents: string[] = [];
 const textureUnits: number[] = [];
 const fakeGl = {
@@ -87,7 +117,13 @@ const fakeGl = {
   bufferData: () => undefined, bufferSubData: () => undefined,
   createTexture: () => ({}), deleteTexture: () => undefined, bindTexture: () => undefined,
   pixelStorei: (name: number, value: number) => { if (name === 0x9240) unpackFlip = value; },
-  texParameteri: () => undefined, texImage2D: () => { uploadedFlip = unpackFlip; },
+  texParameteri: () => undefined, texImage2D: (_target: number, _level: number, _internal: number, width: number, height: number) => {
+    uploadedFlip = unpackFlip;
+    assert.equal(width, REMOTE_SKIN_ATLAS_WIDTH);
+    assert.equal(height, REMOTE_SKIN_ATLAS_HEIGHT);
+  },
+  texSubImage2D: (_target: number, _level: number, x: number, y: number, _width: number, _height: number,
+    _format: number, _type: number, pixels: Uint8Array) => skinUploads.push({ x, y, pixels }),
   getAttribLocation: (_program: unknown, name: string) => ({ aPosition: 0, aUv: 1, aShade: 2 })[name] ?? -1,
   getUniformLocation: () => ({}), useProgram: () => undefined, enableVertexAttribArray: () => undefined,
   vertexAttribPointer: () => undefined, uniformMatrix4fv: () => undefined, uniform3f: () => undefined,
@@ -99,6 +135,18 @@ const fakeGl = {
 const glRenderer = createRemotePlayerSkinRenderer(fakeGl);
 assert.equal(uploadedFlip, 0, "remote default skin upload resets inherited UNPACK_FLIP_Y_WEBGL state");
 glRenderer.update(states, [0, 2, -4]);
+assert.equal(skinUploads.length, 1, "one bounded atlas upload installs one visible player's fallback skin");
+const customPixels = new Uint8Array(64 * 64 * 4).fill(91);
+slimState.skinPixels = customPixels;
+glRenderer.update(new Map([[slimState.id, slimState]]), [0, 2, -4]);
+assert.equal(skinUploads.at(-1)?.pixels, customPixels,
+  "a verified per-player custom skin buffer is uploaded directly into its bounded atlas slot");
+glRenderer.update(paired, [0, 2, -4]);
+assert.deepEqual(
+  { x: skinUploads.at(-1)?.x, y: skinUploads.at(-1)?.y, pixels: skinUploads.at(-1)?.pixels },
+  { x: 64, y: 0, pixels: customPixels },
+  "stable traversal maps the second visible player to slot one and reuploads when ordering changes",
+);
 glRenderer.draw(new Float32Array(16), [1, 1, 1]);
 assert.deepEqual(blendEvents, ["enable", "draw", "disable"], "remote skin draw contains its blend state");
 assert.deepEqual(textureUnits, [fakeGl.TEXTURE0], "remote skin explicitly samples texture unit zero");

@@ -386,6 +386,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "peekMaxAgeMs": "aQ",
   "playerAlive": "ri",
   "pivotPixels": "b5",
+  "pixels": "e3",
   "playerName": "es",
   "playerSender": "ea",
   "pointerCaptureNeeded": "N",
@@ -474,6 +475,9 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "showSurvivalStatus": "aV",
   "skin": "Gr",
   "skinFloats": "d6",
+  "skinId": "e4",
+  "skinModel": "e5",
+  "skinPixels": "e6",
   "skinShade": "c0",
   "skinStorage": "c1",
   "skinVertexCount": "d7",
@@ -687,13 +691,17 @@ export const COMPACT_CLIENT_TEST_QUOTED_PROPERTIES = Object.freeze([
 ]);
 
 /**
- * Globally compactable properties with one reviewed computed-literal storage
- * codec. Quoted access is confined to that codec and `mangleQuoted: false`
- * keeps its versioned JSON keys literal while ordinary property access shrinks.
+ * Globally compactable properties with a reviewed computed-literal JSON
+ * boundary. Quoted access is confined to these codecs and `mangleQuoted:
+ * false` keeps persisted and realtime wire keys literal while ordinary
+ * bundle-internal property access shrinks.
  */
 export const COMPACT_CLIENT_COMPUTED_STORAGE_PROPERTIES = Object.freeze([
   "dataUrl",
   "model",
+  "skinId",
+  "skinModel",
+  "skinPixels",
 ]);
 
 const compactPropertyNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);

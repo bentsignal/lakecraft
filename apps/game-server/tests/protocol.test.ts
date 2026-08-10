@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PROTOCOL_VERSION, decodeClientMessage, encodeServerMessage } from "../src/protocol";
+import { PROTOCOL_VERSION, SKIN_PIXEL_BYTES, decodeClientMessage, encodeServerMessage } from "../src/protocol";
 
 describe("protocol v1", () => {
   test("accepts normalized movement inputs", () => {
@@ -76,5 +76,33 @@ describe("protocol v1", () => {
     expect(decodeClientMessage(JSON.stringify({
       v: 1, type: "chat_send", operationId: "chat_12345678", message: "x".repeat(181),
     })).ok).toBe(false);
+  });
+
+  test("accepts only bounded content-addressed skin and exact-slot armor messages", () => {
+    const skinPixels = Buffer.alloc(SKIN_PIXEL_BYTES, 7).toString("base64");
+    const valid = {
+      v: 1, type: "appearance_set", seq: 1,
+      appearance: {
+        skinId: "a".repeat(64), skinModel: "slim",
+        armorHead: "diamond_helmet", armorChest: "iron_chestplate",
+        armorLegs: "golden_leggings", armorFeet: "leather_boots",
+      },
+      skinPixels,
+    };
+    expect(decodeClientMessage(JSON.stringify(valid))).toMatchObject({
+      ok: true, message: { type: "appearance_set", seq: 1, appearance: { skinModel: "slim" } },
+    });
+    expect(Buffer.byteLength(JSON.stringify(valid))).toBeGreaterThan(16 * 1024);
+    expect(Buffer.byteLength(JSON.stringify(valid))).toBeLessThan(32 * 1024);
+    expect(decodeClientMessage(JSON.stringify({
+      ...valid, appearance: { ...valid.appearance, armorHead: "iron_chestplate" },
+    })).ok).toBe(false);
+    expect(decodeClientMessage(JSON.stringify({ ...valid, skinPixels: skinPixels.slice(4) })).ok).toBe(false);
+    expect(decodeClientMessage(JSON.stringify({
+      ...valid, appearance: { ...valid.appearance, skinId: "default", skinModel: "slim" },
+    })).ok).toBe(false);
+    expect(decodeClientMessage(JSON.stringify({
+      v: 1, type: "appearance_request", userId: "alex", skinId: "a".repeat(64),
+    })).ok).toBe(true);
   });
 });

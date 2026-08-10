@@ -19,6 +19,7 @@ import { LobbyScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameC
 import { SinglePlayerApp } from "./singleplayer";
 import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
 import { cycleHotbarIndex } from "./game/hotbarInput";
+import { hydrateSelectedPlayerSkin, type HydratedPlayerSkin } from "./game/playerSkin.ts";
 import {
   RealtimeMultiplayerTransport,
   type RealtimeBlockSink,
@@ -889,6 +890,7 @@ function GameApp({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VoxelEngine | null>(null);
+  const selectedSkinPromiseRef = useRef<Promise<HydratedPlayerSkin> | null>(null);
   const audioRef = useRef<GameAudio | null>(null);
   const poseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const presenceSessionIdRef = useRef("");
@@ -967,6 +969,8 @@ function GameApp({
   if (!presenceSchedulerRef.current) presenceSchedulerRef.current = createPresenceSchedulerState();
   if (!presenceBurstGuardRef.current) presenceBurstGuardRef.current = createPresenceBurstGuardState(Date.now());
   if (!confirmedFeedbackOperationsRef.current) confirmedFeedbackOperationsRef.current = new Set<string>();
+  const selectedSkin = () => selectedSkinPromiseRef.current ??=
+    hydrateSelectedPlayerSkin(window.localStorage);
 
   const [inventory, setInventory] = useState<Inventory>(() => createStarterInventory());
   const [equipment, setEquipment] = useState<Equipment>(() => createEmptyEquipment());
@@ -1811,6 +1815,12 @@ function GameApp({
     const selected = inventory[selectedHotbar];
     engineRef.current?.setSelectedBlock(selected ? ITEM_TO_ENGINE[selected.itemId] ?? BLOCK.AIR : BLOCK.AIR);
     engineRef.current?.setSelectedItem(selected?.itemId ?? null);
+    engineRef.current?.setPlayerArmor({
+      head: equipment.head?.itemId ?? null,
+      chest: equipment.chest?.itemId ?? null,
+      legs: equipment.legs?.itemId ?? null,
+      feet: equipment.feet?.itemId ?? null,
+    });
   }, [inventory, selectedHotbar, equipment]);
 
   useEffect(() => {
@@ -2400,6 +2410,9 @@ function GameApp({
         },
       });
       engineRef.current = engine;
+      void selectedSkin().then((skin) => {
+        if (engineRef.current === engine) engine.setPlayerSkin(skin.source, skin.model);
+      });
       engine.setPaused(multiplayerPaused);
       engine.setFirstPersonFeedbackHidden(multiplayerPaused);
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
@@ -3638,6 +3651,13 @@ function GameApp({
           localUsername={realtimeSession.demo?.name ?? profile?.username ?? "Player"}
           getPose={() => engineRef.current?.getPose() ?? poseRef.current}
           getHeldItem={() => inventoryRef.current[selectedRef.current]?.itemId ?? null}
+          getSkin={selectedSkin}
+          getArmor={() => ({
+            armorHead: equipmentRef.current.head?.itemId ?? "",
+            armorChest: equipmentRef.current.chest?.itemId ?? "",
+            armorLegs: equipmentRef.current.legs?.itemId ?? "",
+            armorFeet: equipmentRef.current.feet?.itemId ?? "",
+          })}
           onPhase={(phase: RealtimeConnectionPhase, detail?: string) => {
             setTransportReady(phase === "online");
             if (phase === "error" && detail) notify("Server connection rejected", detail, "warning");

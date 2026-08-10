@@ -15,6 +15,12 @@ import { createVisualProgram, SKIN_FRAGMENT_SHADER, SKIN_VERTEX_SHADER } from ".
 type Vec3 = readonly [number, number, number];
 const REMOTE_RENDER_DISTANCE_SQUARED = 64 * 64;
 const REMOTE_WIDE_SKIN_GEOMETRY = buildPlayerSkinGeometry("wide");
+const REMOTE_SLIM_SKIN_GEOMETRY = buildPlayerSkinGeometry("slim");
+export const REMOTE_SKIN_ATLAS_COLUMNS = 8;
+export const REMOTE_SKIN_ATLAS_ROWS = 4;
+export const REMOTE_SKIN_ATLAS_WIDTH = REMOTE_SKIN_ATLAS_COLUMNS * 64;
+export const REMOTE_SKIN_ATLAS_HEIGHT = REMOTE_SKIN_ATLAS_ROWS * 64;
+export const REMOTE_SKIN_ATLAS_BYTES = REMOTE_SKIN_ATLAS_WIDTH * REMOTE_SKIN_ATLAS_HEIGHT * 4;
 const REMOTE_PART_MATRIX = new Float32Array(16);
 const REMOTE_RIG_SCRATCH_MATRIX = new Float32Array(16);
 const REMOTE_RIG_POSE = {} as PlayerRigPose;
@@ -34,31 +40,36 @@ export function writeRemotePlayerSkinGeometry(
 ): number {
   let offset = 0;
   let visited = 0;
+  let slot = 0;
   for (const state of states.values()) {
     if (visited++ >= MAX_REMOTE_PLAYERS) break;
     const dx = state.rendered.x - camera[0];
     const dz = state.rendered.z - camera[2];
     if (dx * dx + dz * dz > REMOTE_RENDER_DISTANCE_SQUARED) continue;
     const rig = resolveRemoteAvatarRigPose(state, REMOTE_RIG_POSE);
+    const geometry = state.skinModel === "slim" ? REMOTE_SLIM_SKIN_GEOMETRY : REMOTE_WIDE_SKIN_GEOMETRY;
+    const atlasX = slot % REMOTE_SKIN_ATLAS_COLUMNS;
+    const atlasY = Math.floor(slot / REMOTE_SKIN_ATLAS_COLUMNS);
     const angle = Math.PI - state.bodyYaw;
     const cosine = Math.cos(angle);
     const sine = Math.sin(angle);
     for (const draw of PLAYER_RIG_SKIN_DRAWS) {
-      writePlayerRigPartMatrix(REMOTE_PART_MATRIX, draw.part, rig, "wide", true, REMOTE_RIG_SCRATCH_MATRIX);
+      writePlayerRigPartMatrix(REMOTE_PART_MATRIX, draw.part, rig, state.skinModel, true, REMOTE_RIG_SCRATCH_MATRIX);
       const end = (draw.first + draw.count) * PLAYER_SKIN_VERTEX_STRIDE;
       for (let source = draw.first * PLAYER_SKIN_VERTEX_STRIDE; source < end; source += PLAYER_SKIN_VERTEX_STRIDE) {
-        const x = REMOTE_WIDE_SKIN_GEOMETRY[source]; const y = REMOTE_WIDE_SKIN_GEOMETRY[source + 1]; const z = REMOTE_WIDE_SKIN_GEOMETRY[source + 2];
+        const x = geometry[source]; const y = geometry[source + 1]; const z = geometry[source + 2];
         const localX = REMOTE_PART_MATRIX[0] * x + REMOTE_PART_MATRIX[4] * y + REMOTE_PART_MATRIX[8] * z + REMOTE_PART_MATRIX[12];
         const localY = REMOTE_PART_MATRIX[1] * x + REMOTE_PART_MATRIX[5] * y + REMOTE_PART_MATRIX[9] * z + REMOTE_PART_MATRIX[13];
         const localZ = REMOTE_PART_MATRIX[2] * x + REMOTE_PART_MATRIX[6] * y + REMOTE_PART_MATRIX[10] * z + REMOTE_PART_MATRIX[14];
         output[offset++] = state.rendered.x + cosine * localX + sine * localZ;
         output[offset++] = state.rendered.y + localY;
         output[offset++] = state.rendered.z - sine * localX + cosine * localZ;
-        output[offset++] = REMOTE_WIDE_SKIN_GEOMETRY[source + 3];
-        output[offset++] = REMOTE_WIDE_SKIN_GEOMETRY[source + 4];
-        output[offset++] = REMOTE_WIDE_SKIN_GEOMETRY[source + 5];
+        output[offset++] = (geometry[source + 3] + atlasX) / REMOTE_SKIN_ATLAS_COLUMNS;
+        output[offset++] = (geometry[source + 4] + atlasY) / REMOTE_SKIN_ATLAS_ROWS;
+        output[offset++] = geometry[source + 5];
       }
     }
+    slot += 1;
   }
   return offset / PLAYER_SKIN_VERTEX_STRIDE;
 }
@@ -73,6 +84,8 @@ export function createRemotePlayerSkinRenderer(gl: WebGLRenderingContext): Remot
     throw new Error("Player skin shader bindings are incomplete.");
   }
   const data = new Float32Array(MAX_REMOTE_PLAYERS * REMOTE_SKIN_FLOATS_PER_PLAYER);
+  const defaultPixels = createLakecraftDefaultSkinPixels();
+  const uploadedIds = Array<string>(MAX_REMOTE_PLAYERS).fill("");
   let upload = data.subarray(0, 0);
   let vertexCount = 0;
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -83,9 +96,30 @@ export function createRemotePlayerSkinRenderer(gl: WebGLRenderingContext): Remot
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, createLakecraftDefaultSkinPixels());
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, REMOTE_SKIN_ATLAS_WIDTH, REMOTE_SKIN_ATLAS_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   return Object.freeze({
     update(states, camera) {
+      let visited = 0;
+      let slot = 0;
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      for (const state of states.values()) {
+        if (visited++ >= MAX_REMOTE_PLAYERS) break;
+        const dx = state.rendered.x - camera[0], dz = state.rendered.z - camera[2];
+        if (dx * dx + dz * dz > REMOTE_RENDER_DISTANCE_SQUARED) continue;
+        const uploadId = state.skinPixels ? state.skinId : "default";
+        if (uploadedIds[slot] !== uploadId) {
+          uploadedIds[slot] = uploadId;
+          gl.texSubImage2D(
+            gl.TEXTURE_2D, 0,
+            slot % REMOTE_SKIN_ATLAS_COLUMNS * 64,
+            Math.floor(slot / REMOTE_SKIN_ATLAS_COLUMNS) * 64,
+            64, 64, gl.RGBA, gl.UNSIGNED_BYTE,
+            state.skinPixels ?? defaultPixels,
+          );
+        }
+        slot += 1;
+      }
       vertexCount = writeRemotePlayerSkinGeometry(states, camera, data);
       const floats = vertexCount * PLAYER_SKIN_VERTEX_STRIDE;
       if (upload.length !== floats) upload = data.subarray(0, floats);

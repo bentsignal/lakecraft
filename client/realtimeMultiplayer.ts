@@ -1,6 +1,13 @@
 import type { PlayerPose, RemotePlayer, WorldEdit } from "./game/types.ts";
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
 import {
+  decodePlayerSkinWirePixels,
+  encodePlayerSkinWirePixels,
+  playerSkinWireId,
+  type HydratedPlayerSkin,
+  type PlayerSkinModel,
+} from "./game/playerSkin.ts";
+import {
   REALTIME_CHAT_MAX_LENGTH,
   normalizeRealtimeChat,
   type RealtimeChatEvent,
@@ -13,6 +20,12 @@ export const MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY = "lakecraft:multiplayer-
 
 export type RealtimeConnectionPhase = "idle" | "connecting" | "online" | "reconnecting" | "offline" | "error";
 export type RealtimeGameMode = "survival" | "creative";
+export type RealtimeArmorAppearance = Readonly<{
+  armorHead: string;
+  armorChest: string;
+  armorLegs: string;
+  armorFeet: string;
+}>;
 
 export type SavedMultiplayerServer = {
   id: string;
@@ -34,6 +47,8 @@ export type RealtimeClientOptions = {
   localUsername: string;
   getPose: () => PlayerPose;
   getHeldItem?: () => string | null;
+  getSkin?: () => Promise<HydratedPlayerSkin>;
+  getArmor?: () => RealtimeArmorAppearance;
   onPhase: (phase: RealtimeConnectionPhase, detail?: string) => void;
   onRemotePlayers: (players: RemotePlayer[]) => void;
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
@@ -49,6 +64,12 @@ type PendingBlockEdit = {
 };
 
 type RealtimeEnvelope = Record<string, unknown> & { v: number; type: string };
+type RemoteAppearance = RealtimeArmorAppearance & {
+  skinId: string;
+  skinModel: PlayerSkinModel;
+};
+
+const APPEARANCE_CAPABILITY = "appearance-v1";
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -127,6 +148,24 @@ function decodeChatMessage(value: unknown): RealtimeChatMessage | null {
     || sequence === null || !Number.isSafeInteger(sequence) || sequence < 1
     || sentAt === null || sentAt < 0) return null;
   return { id, operationId, userId, username, message, sequence, sentAt, delivery: "sent" };
+}
+
+function decodeAppearance(value: unknown): (RemoteAppearance & { userId: string }) | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const userId = boundedText(source.userId, 128);
+  const skinId = boundedText(source["skinId"], 64);
+  if (!userId || !/^(?:default|[a-f0-9]{64})$/.test(skinId)
+    || (source["skinModel"] !== "wide" && source["skinModel"] !== "slim")) return null;
+  return {
+    userId,
+    skinId,
+    skinModel: skinId === "default" ? "wide" : source["skinModel"],
+    armorHead: boundedText(source.armorHead, 64),
+    armorChest: boundedText(source.armorChest, 64),
+    armorLegs: boundedText(source.armorLegs, 64),
+    armorFeet: boundedText(source.armorFeet, 64),
+  };
 }
 
 export function normalizeMultiplayerEndpoint(value: string): string | null {
@@ -238,12 +277,27 @@ export class RealtimeMultiplayerClient {
   private sequence = 0;
   private blockSequence = 0;
   private actionSequence = 0;
+  private appearanceSequence = 0;
   private gameMode: RealtimeGameMode = "survival";
   private reconnectAttempt = 0;
   private lastPose: PlayerPose | null = null;
   private lastPoseAt = 0;
   private pendingBlocks = new Map<string, PendingBlockEdit>();
   private pendingChat = new Map<string, string>();
+  private appearanceSupported = false;
+  private localSkin: HydratedPlayerSkin | null = null;
+  private localSkinLoading = false;
+  private localSkinBase64 = "";
+  private lastAppearanceSignature = "";
+  private remoteAppearances = new Map<string, RemoteAppearance>();
+  private remoteSkins = new Map<string, Uint8Array>();
+  private lastSnapshotPlayers: RemotePlayer[] = [];
+  private appearanceRequests: string[] = [];
+  private appearanceRequestSet = new Set<string>();
+  private activeAppearanceRequest = "";
+  private appearanceRequestGeneration = 0;
+  private appearanceDigestGeneration = 0;
+  private appearanceRequestTimer = 0;
 
   constructor(options: RealtimeClientOptions) {
     this.options = options;
@@ -259,6 +313,7 @@ export class RealtimeMultiplayerClient {
     this.stopped = true;
     window.clearTimeout(this.reconnectTimer);
     window.clearInterval(this.sampleTimer);
+    window.clearTimeout(this.appearanceRequestTimer);
     this.reconnectTimer = 0;
     this.sampleTimer = 0;
     this.socket?.close(1000, "client_leave");
@@ -270,6 +325,12 @@ export class RealtimeMultiplayerClient {
     }
     this.pendingBlocks.clear();
     this.pendingChat.clear();
+    this.remoteAppearances.clear();
+    this.remoteSkins.clear();
+    this.lastSnapshotPlayers = [];
+    this.appearanceRequests = [];
+    this.appearanceRequestSet.clear();
+    this.activeAppearanceRequest = "";
     this.options.onRemotePlayers([]);
     this.options.onPhase("offline");
   }
@@ -339,6 +400,7 @@ export class RealtimeMultiplayerClient {
       return;
     }
     this.options.onPhase(reconnecting ? "reconnecting" : "connecting");
+    this.appearanceSupported = false;
     let socket: WebSocket;
     try {
       socket = new WebSocket(endpoint);
@@ -369,6 +431,11 @@ export class RealtimeMultiplayerClient {
       this.joined = false;
       window.clearInterval(this.sampleTimer);
       this.sampleTimer = 0;
+      window.clearTimeout(this.appearanceRequestTimer);
+      this.appearanceRequestTimer = 0;
+      this.activeAppearanceRequest = "";
+      this.appearanceRequests = [];
+      this.appearanceRequestSet.clear();
       if (!this.stopped) this.scheduleReconnect("Server connection closed.");
     };
   }
@@ -422,13 +489,145 @@ export class RealtimeMultiplayerClient {
         sprint: Math.hypot(dx, dz) / dt > nominalSpeed * 1.12,
         heldItem: heldItem ?? "",
       });
+      this.publishAppearance(false);
       this.lastPose = pose;
       this.lastPoseAt = now;
     }, 50);
   }
 
+  private prepareAppearance(): void {
+    if (this.localSkin || this.localSkinLoading || !this.options.getSkin) return;
+    this.localSkinLoading = true;
+    void this.options.getSkin().then((skin) => {
+      this.localSkin = skin;
+      if (this.joined) this.publishAppearance(true);
+    }).catch(() => undefined).finally(() => { this.localSkinLoading = false; });
+  }
+
+  private publishAppearance(includeSkin: boolean): void {
+    if (!this.joined || !this.appearanceSupported || !this.localSkin) return;
+    const armor = this.options.getArmor?.() ?? {
+      armorHead: "", armorChest: "", armorLegs: "", armorFeet: "",
+    };
+    const appearance: RemoteAppearance = {
+      skinId: this.localSkin.id,
+      skinModel: this.localSkin.model,
+      armorHead: armor.armorHead || "",
+      armorChest: armor.armorChest || "",
+      armorLegs: armor.armorLegs || "",
+      armorFeet: armor.armorFeet || "",
+    };
+    const signature = Object.values(appearance).join("\u0000");
+    if (!includeSkin && signature === this.lastAppearanceSignature) return;
+    this.lastAppearanceSignature = signature;
+    this.appearanceSequence += 1;
+    if (includeSkin && appearance.skinId !== "default" && !this.localSkinBase64) {
+      this.localSkinBase64 = encodePlayerSkinWirePixels(this.localSkin.pixels);
+    }
+    const wireAppearance = {
+      ["skinId"]: appearance.skinId,
+      ["skinModel"]: appearance.skinModel,
+      armorHead: appearance.armorHead,
+      armorChest: appearance.armorChest,
+      armorLegs: appearance.armorLegs,
+      armorFeet: appearance.armorFeet,
+    };
+    this.send({
+      v: REALTIME_PROTOCOL_VERSION,
+      type: "appearance_set",
+      seq: this.appearanceSequence,
+      appearance: wireAppearance,
+      ...(includeSkin && appearance.skinId !== "default" ? { ["skinPixels"]: this.localSkinBase64 } : {}),
+    });
+  }
+
+  private queueAppearance(userId: string, skinId: string): void {
+    if (skinId === "default" || this.remoteSkins.has(skinId)) return;
+    const key = `${userId}\u0000${skinId}`;
+    if (this.activeAppearanceRequest === key || this.appearanceRequestSet.has(key)) return;
+    if (this.appearanceRequests.length >= 32) return;
+    this.appearanceRequestSet.add(key);
+    this.appearanceRequests.push(key);
+    this.requestNextAppearance();
+  }
+
+  private requestNextAppearance(): void {
+    if (!this.joined || !this.appearanceSupported || this.activeAppearanceRequest || this.appearanceRequestTimer) return;
+    const key = this.appearanceRequests.shift();
+    if (!key) return;
+    this.appearanceRequestSet.delete(key);
+    this.activeAppearanceRequest = key;
+    this.appearanceRequestGeneration += 1;
+    const separator = key.indexOf("\u0000");
+    this.send({
+      v: REALTIME_PROTOCOL_VERSION,
+      type: "appearance_request",
+      userId: key.slice(0, separator),
+      ["skinId"]: key.slice(separator + 1),
+    });
+    this.appearanceRequestTimer = window.setTimeout(() => {
+      this.appearanceRequestTimer = 0;
+      this.activeAppearanceRequest = "";
+      this.requestNextAppearance();
+    }, 2_000);
+  }
+
+  private finishAppearanceRequest(): void {
+    this.activeAppearanceRequest = "";
+    window.clearTimeout(this.appearanceRequestTimer);
+    this.appearanceRequestTimer = window.setTimeout(() => {
+      this.appearanceRequestTimer = 0;
+      this.requestNextAppearance();
+    }, 250);
+  }
+
+  private emitRemotePlayers(): void {
+    this.options.onRemotePlayers(this.lastSnapshotPlayers.map((player) => {
+      const appearance = this.remoteAppearances.get(player.id);
+      return appearance ? {
+        ...player,
+        ...appearance,
+        skinPixels: this.remoteSkins.get(appearance.skinId) ?? null,
+      } : player;
+    }));
+  }
+
+  private async acceptAppearanceBlob(message: RealtimeEnvelope): Promise<void> {
+    const userId = boundedText(message.userId, 128);
+    const skinId = boundedText(message["skinId"], 64);
+    const key = `${userId}\u0000${skinId}`;
+    if (!userId || !/^[a-f0-9]{64}$/.test(skinId) || key !== this.activeAppearanceRequest) return;
+    const generation = this.appearanceRequestGeneration;
+    if (this.appearanceDigestGeneration === generation) return;
+    this.appearanceDigestGeneration = generation;
+    try {
+      const pixels = decodePlayerSkinWirePixels(message["skinPixels"]);
+      if (!pixels || await playerSkinWireId(pixels) !== skinId) return;
+      if (this.activeAppearanceRequest !== key || this.appearanceRequestGeneration !== generation) return;
+      if (this.remoteSkins.size >= 32 && !this.remoteSkins.has(skinId)) {
+        const referenced = new Set([...this.remoteAppearances.values()].map((appearance) => appearance.skinId));
+        const stale = [...this.remoteSkins.keys()].find((id) => !referenced.has(id));
+        if (!stale) return;
+        this.remoteSkins.delete(stale);
+      }
+      this.remoteSkins.set(skinId, pixels);
+      this.emitRemotePlayers();
+    } finally {
+      if (this.appearanceDigestGeneration === generation) this.appearanceDigestGeneration = 0;
+      if (this.activeAppearanceRequest === key && this.appearanceRequestGeneration === generation) {
+        this.finishAppearanceRequest();
+      }
+    }
+  }
+
   private handleMessage(message: RealtimeEnvelope | null): void {
     if (!message) return;
+    if (message.type === "hello") {
+      this.appearanceSupported = Array.isArray(message.capabilities)
+        && message.capabilities.includes(APPEARANCE_CAPABILITY);
+      if (this.appearanceSupported) this.prepareAppearance();
+      return;
+    }
     if (message.type === "welcome") {
       const token = boundedText(message.resumeToken, 256);
       if (token) this.resumeToken = token;
@@ -443,9 +642,47 @@ export class RealtimeMultiplayerClient {
       }
       this.options.onPhase("online");
       this.beginSampling();
+      this.prepareAppearance();
+      this.publishAppearance(true);
       for (const [operationId, message] of this.pendingChat) {
         this.send({ v: REALTIME_PROTOCOL_VERSION, type: "chat_send", operationId, message });
       }
+      return;
+    }
+    if (message.type === "appearance_roster") {
+      this.remoteAppearances.clear();
+      if (Array.isArray(message.players)) for (const value of message.players.slice(0, 32)) {
+        const appearance = decodeAppearance(value);
+        if (!appearance) continue;
+        const { userId, ...state } = appearance;
+        this.remoteAppearances.set(userId, state);
+        this.queueAppearance(userId, state.skinId);
+      }
+      this.emitRemotePlayers();
+      return;
+    }
+    if (message.type === "appearance_state") {
+      const appearance = decodeAppearance(message.player);
+      if (!appearance) return;
+      const { userId, ...state } = appearance;
+      if (userId !== this.options.localUserId) {
+        if (!this.remoteAppearances.has(userId) && this.remoteAppearances.size >= 32) return;
+        this.remoteAppearances.set(userId, state);
+        this.queueAppearance(userId, state.skinId);
+        this.emitRemotePlayers();
+      }
+      return;
+    }
+    if (message.type === "appearance_remove") {
+      const userId = boundedText(message.userId, 128);
+      if (userId) {
+        this.remoteAppearances.delete(userId);
+        this.emitRemotePlayers();
+      }
+      return;
+    }
+    if (message.type === "appearance_blob") {
+      void this.acceptAppearanceBlob(message);
       return;
     }
     if (message.type === "world_snapshot") {
@@ -520,7 +757,8 @@ export class RealtimeMultiplayerClient {
           });
         }
       }
-      this.options.onRemotePlayers(players);
+      this.lastSnapshotPlayers = players;
+      this.emitRemotePlayers();
       return;
     }
     if (message.type === "error") {

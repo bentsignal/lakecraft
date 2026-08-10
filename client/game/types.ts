@@ -267,6 +267,9 @@ export interface RemotePlayer extends PlayerPose {
   armorChest?: ArmorId | null;
   armorLegs?: ArmorId | null;
   armorFeet?: ArmorId | null;
+  skinId?: string;
+  skinModel?: PlayerSkinModel;
+  skinPixels?: Uint8Array | null;
   visualActions?: readonly {
     sequence: number;
     kind: MotionVisualActionKind;

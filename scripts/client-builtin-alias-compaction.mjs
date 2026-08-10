@@ -4,8 +4,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// These receiver-independent native functions dominate the remaining repeated
-// syntax in the closed production client. Snapshotting their callable values
+// These receiver-independent native statics dominate the remaining repeated
+// syntax in the closed production client. Snapshotting their values
 // once is lossless for Lakecraft, whose bundle neither shadows nor mutates the
 // corresponding globals. The ordered occurrence fingerprint makes that claim
 // fail closed whenever the first-stage bundle changes.
@@ -13,16 +13,30 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "abs", 90]),
   Object.freeze(["Math", "cos", 52]),
   Object.freeze(["Math", "ceil", 35]),
-  Object.freeze(["Math", "floor", 241]),
+  Object.freeze(["Math", "floor", 243]),
   Object.freeze(["Math", "hypot", 36]),
+  Object.freeze(["Math", "imul", 36]),
   Object.freeze(["Math", "max", 252]),
   Object.freeze(["Math", "min", 200]),
   Object.freeze(["Math", "round", 28]),
   Object.freeze(["Math", "sin", 64]),
-  Object.freeze(["Object", "freeze", 161]),
+  Object.freeze(["Math", "PI", 110]),
+  Object.freeze(["Object", "freeze", 164]),
+  Object.freeze(["Object", "keys", 31]),
+  Object.freeze(["Array", "isArray", 78]),
+  Object.freeze(["Number", "isFinite", 266]),
+  Object.freeze(["Number", "isInteger", 52]),
+  Object.freeze(["Number", "isSafeInteger", 44]),
+  Object.freeze(["Number", "MAX_SAFE_INTEGER", 26]),
+  Object.freeze(["Number", "NEGATIVE_INFINITY", 25]),
+  Object.freeze(["Number", "POSITIVE_INFINITY", 13]),
+  Object.freeze(["Number", "parseInt", 13]),
+  Object.freeze(["Date", "now", 78]),
+  Object.freeze(["JSON", "stringify", 35]),
+  Object.freeze(["JSON", "parse", 14]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_159;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "fd19e117c97b8bf2053cb81843ee1bbc7e50aec6d04feede7da413aab4731d6f";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_985;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "c10a03b426fc068c46daf38d72976783a5e60cdb803021e55a01ba849ab396c7";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -120,12 +134,6 @@ export async function compactClientBuiltinAliases(source, expected = PRODUCTION_
       }
       const key = `${node.expression.text}.${node.name.text}`;
       if (ALIAS_INDEX.has(key)) {
-        const call = node.parent;
-        if (!call || !ts.isCallExpression(call) || call.expression !== node
-          || call.questionDotToken || node.questionDotToken) {
-          fail(`${key} is used outside a direct, non-optional call (${ts.SyntaxKind[call?.kind] ?? "missing"}: `
-            + `${source.slice(Math.max(0, node.getStart(sourceFile) - 24), Math.min(source.length, node.end + 36))})`);
-        }
         counts.set(key, counts.get(key) + 1);
         occurrences.push({
           end: node.end,

@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 583;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 520;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "18bd2ab516030b53c08a9b72fdc40cf6e91f43d7fce7d59cfa706d9b275ee190";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 587;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 523;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "66a84e6ad070c9ee12abc5f59a4acfd7773e63f3d60537014bd88532a84f9c28";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -73,9 +73,32 @@ export const COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_189;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 113;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "83f9ee33ed0e731999c3b2368489f2e972ed5efd673fedf13422d58cb7565e0f";
+export const COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA = Object.freeze({
+  previousOccurrences: 583,
+  previousUniqueValues: 520,
+  previousSourceFingerprint: "18bd2ab516030b53c08a9b72fdc40cf6e91f43d7fce7d59cfa706d9b275ee190",
+  occurrenceDelta: 4,
+  uniqueValueDelta: 3,
+  source: "client/game/playerSkin.ts#strict-wire-codec",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_200;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 114;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "c3e164c53d369621dc3338e9fe3ba7633ee94014669c4c5c3f5a4360f7e639b6";
+export const COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA = Object.freeze({
+  previousOccurrences: 1_189,
+  previousUniqueValues: 113,
+  previousSourceFingerprint: "83f9ee33ed0e731999c3b2368489f2e972ed5efd673fedf13422d58cb7565e0f",
+  occurrenceDelta: 11,
+  uniqueValueDelta: 1,
+  sources: Object.freeze([
+    "client/game/avatar.ts",
+    "client/game/playerSkin.ts",
+    "client/game/remotePlayerSkinRenderer.ts",
+    "client/realtimeMultiplayer.ts",
+  ]),
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,

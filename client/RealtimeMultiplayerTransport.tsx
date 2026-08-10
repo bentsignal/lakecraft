@@ -2,6 +2,7 @@ import { useEffect, useRef } from "preact/hooks";
 import type { PlayerPose, RemotePlayer, WorldEdit } from "./game/types.ts";
 import type { RealtimeChatEvent } from "./realtimeChat.ts";
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
+import type { HydratedPlayerSkin } from "./game/playerSkin.ts";
 import {
   RealtimeMultiplayerClient,
   type RealtimeConnectionPhase,
@@ -21,6 +22,8 @@ export function RealtimeMultiplayerTransport(props: {
   localUsername: string;
   getPose: () => PlayerPose;
   getHeldItem?: () => string | null;
+  getSkin?: () => Promise<HydratedPlayerSkin>;
+  getArmor?: () => { armorHead: string; armorChest: string; armorLegs: string; armorFeet: string };
   onPhase: (phase: RealtimeConnectionPhase, detail?: string) => void;
   onRemotePlayers: (players: RemotePlayer[]) => void;
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
@@ -44,6 +47,10 @@ export function RealtimeMultiplayerTransport(props: {
       localUsername: props.localUsername,
       getPose: () => propsRef.current.getPose(),
       getHeldItem: () => propsRef.current.getHeldItem?.() ?? null,
+      getSkin: () => propsRef.current.getSkin?.() ?? Promise.reject(new Error("skin_unavailable")),
+      getArmor: () => propsRef.current.getArmor?.() ?? {
+        armorHead: "", armorChest: "", armorLegs: "", armorFeet: "",
+      },
       onPhase: (phase, detail) => propsRef.current.onPhase(phase, detail),
       onRemotePlayers: (players) => propsRef.current.onRemotePlayers(players),
       onWorldEdits: (edits, replace) => propsRef.current.onWorldEdits(edits, replace),

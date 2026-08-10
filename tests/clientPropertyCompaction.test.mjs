@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 620, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 624, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "8370bfbe9c0c01d1726a208586b334825b669d224aff7f7b0792369082dddec5",
+  "c2a164d4e4749ebd98e2c69898e1f0ac455dce33bff57a6c72153563e640226f",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -136,7 +136,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 567 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 571 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
@@ -199,14 +199,21 @@ assert.deepEqual(testQuotedNames, [...testQuotedNames].sort(), "test-quoted allo
 assert.equal(new Set(testQuotedNames).size, testQuotedNames.length, "test-quoted allowlist stays unique");
 const testQuotedSet = new Set(testQuotedNames);
 const computedStorageNames = [...COMPACT_CLIENT_COMPUTED_STORAGE_PROPERTIES];
-assert.deepEqual(computedStorageNames, ["dataUrl", "model"], "only the skin wire codec has computed storage keys");
+const reviewedComputedBoundaryPaths = {
+  dataUrl: ["client/game/playerSkin.ts"],
+  model: ["client/game/playerSkin.ts"],
+  skinId: ["client/realtimeMultiplayer.ts"],
+  skinModel: ["client/realtimeMultiplayer.ts"],
+  skinPixels: ["client/realtimeMultiplayer.ts"],
+};
+assert.deepEqual(computedStorageNames, Object.keys(reviewedComputedBoundaryPaths), "only reviewed JSON codecs have computed keys");
 const computedStorageSet = new Set(computedStorageNames);
 for (const name of computedStorageNames) {
   assert.ok(COMPACT_CLIENT_PROPERTY_PATTERN.test(name), `${name} remains globally compactable`);
   assert.deepEqual(
     (analysis.quotedPropertyPaths[name] ?? []).filter((path) => !path.startsWith("tests/")),
-    ["client/game/playerSkin.ts"],
-    `${name} has exactly one reviewed computed-literal storage boundary`,
+    reviewedComputedBoundaryPaths[name],
+    `${name} has exactly one reviewed computed-literal JSON boundary`,
   );
   assert.equal(
     analysis.jsonStringifyPropertyNames.includes(name),
@@ -535,6 +542,7 @@ for (const entryPoint of [
   "client/MultiplayerSegmentTransport.tsx",
   "client/multiplayerSegmentClient.ts",
   "client/game/playerSkin.ts",
+  "client/realtimeMultiplayer.ts",
   "client/settings.ts",
   "client/singleplayer/localSave.ts",
   "client/worldBlockEditClient.ts",
@@ -551,6 +559,18 @@ for (const entryPoint of [
   );
   boundaryBundles.set(entryPoint, { compact, baseline });
 }
+
+const realtimeCompact = boundaryBundles.get("client/realtimeMultiplayer.ts").compact;
+for (const [key, exactCount] of [["skinId", 4], ["skinModel", 4], ["skinPixels", 2]]) {
+  assert.equal(
+    realtimeCompact.split(key).length - 1,
+    exactCount,
+    `compact realtime input/output codecs retain every literal ${key} wire boundary`,
+  );
+}
+assert.match(realtimeCompact, /skinId/);
+assert.match(realtimeCompact, /skinModel/);
+assert.match(realtimeCompact, /skinPixels/);
 
 async function importBundled(text) {
   return import(`data:text/javascript;base64,${Buffer.from(text).toString("base64")}`);

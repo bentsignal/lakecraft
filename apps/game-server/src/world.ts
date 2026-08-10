@@ -4,11 +4,13 @@ import type { WorldStore } from "./database";
 import type { AdminPlayerSummary, AdminWorldControl, ServerGameMode } from "./adminPortal";
 import {
   CHAT_MESSAGE_MAX_LENGTH,
+  APPEARANCE_CAPABILITY,
   PROTOCOL_VERSION,
   decodeClientMessage,
   encodeServerMessage,
   protocolError,
   type ClientMessage,
+  type PublicAppearance,
   type PublicPlayer,
   type ServerMessage,
 } from "./protocol";
@@ -49,23 +51,42 @@ interface ConnectionState {
   vy: number;
   lastInputSeq: number;
   lastActionSeq: number;
+  lastAppearanceSeq: number;
   lastEditSeq: number;
   lastInputAt: number;
   rateWindowAt: number;
   rateCount: number;
   lastSavedAt: number;
+  lastSkinAt: number;
+  appearanceRequestWindowAt: number;
+  appearanceRequestCount: number;
+  appearanceRequestKeys: Set<string>;
+  appearance: PublicAppearance;
+  skinPixels?: string;
 }
 
 // Feet pose on the deterministic client's height-68 spawn plateau.
 const SPAWN = { x: 0.5, y: terrainFeetY(0.5, 0.5), z: 0.5 };
 const NEARBY_RADIUS = 96;
 const EDIT_REACH = 8;
-const MAX_MESSAGE_BYTES = 16 * 1024;
+const MAX_MESSAGE_BYTES = 32 * 1024;
 const SOFT_BACKPRESSURE = 64 * 1024;
 const HARD_BACKPRESSURE = 256 * 1024;
 export const CHAT_HISTORY_LIMIT = 80;
 export const CHAT_RATE_LIMIT_MS = 900;
 export const RESUME_TOKEN_TTL_MS = 10 * 60 * 1_000;
+export const SKIN_CHANGE_RATE_LIMIT_MS = 3_000;
+export const APPEARANCE_REQUEST_RATE_LIMIT = 4;
+export const APPEARANCE_REQUEST_RATE_WINDOW_MS = 1_000;
+
+const DEFAULT_APPEARANCE: PublicAppearance = Object.freeze({
+  skinId: "default",
+  skinModel: "wide",
+  armorHead: "",
+  armorChest: "",
+  armorLegs: "",
+  armorFeet: "",
+});
 
 export class GameWorld implements AdminWorldControl {
   private readonly connections = new Map<string, ConnectionState>();
@@ -135,11 +156,17 @@ export class GameWorld implements AdminWorldControl {
       vy: 0,
       lastInputSeq: 0,
       lastActionSeq: 0,
+      lastAppearanceSeq: 0,
       lastEditSeq: 0,
       lastInputAt: now,
       rateWindowAt: now,
       rateCount: 0,
       lastSavedAt: now,
+      lastSkinAt: Number.NEGATIVE_INFINITY,
+      appearanceRequestWindowAt: now,
+      appearanceRequestCount: 0,
+      appearanceRequestKeys: new Set(),
+      appearance: { ...DEFAULT_APPEARANCE },
     });
     this.send(peer, {
       v: PROTOCOL_VERSION,
@@ -149,6 +176,7 @@ export class GameWorld implements AdminWorldControl {
       authMode: this.config.authMode,
       tickHz: this.config.tickHz,
       snapshotHz: this.config.snapshotHz,
+      capabilities: [APPEARANCE_CAPABILITY],
     });
   }
 
@@ -161,6 +189,9 @@ export class GameWorld implements AdminWorldControl {
       if (state.resumeHash && state.resumeExpiresAt !== undefined && !this.shuttingDown) {
         this.store.savePlayer(state.player, state.resumeHash, Date.now(), state.resumeExpiresAt);
       }
+      for (const other of this.userConnections.values()) {
+        this.send(other.peer, { v: PROTOCOL_VERSION, type: "appearance_remove", userId: state.player.id });
+      }
     }
   }
 
@@ -169,7 +200,7 @@ export class GameWorld implements AdminWorldControl {
     if (!state) return;
     const bytes = new TextEncoder().encode(raw).byteLength;
     if (bytes > MAX_MESSAGE_BYTES) {
-      this.fail(state, "bad_message", "Message exceeds 16 KiB", true);
+      this.fail(state, "bad_message", "Message exceeds 32 KiB", true);
       return;
     }
     if (now - state.rateWindowAt >= 1_000) {
@@ -203,7 +234,9 @@ export class GameWorld implements AdminWorldControl {
     if (message.type === "input") this.input(state, message, now);
     else if (message.type === "action") this.action(state, message);
     else if (message.type === "block_edit") this.blockEdit(state, message, now);
-    else this.chat(state, message, now);
+    else if (message.type === "chat_send") this.chat(state, message, now);
+    else if (message.type === "appearance_set") await this.setAppearance(state, message, now);
+    else this.sendAppearance(state, message, now);
   }
 
   tick(now = Date.now()): void {
@@ -334,6 +367,8 @@ export class GameWorld implements AdminWorldControl {
       player.y = Math.min(MAX_PLAYER_Y, Math.max(player.y, terrainFeetY(player.x, player.z)));
 
       if (existingForUser) {
+        state.appearance = { ...existingForUser.appearance };
+        state.skinPixels = existingForUser.skinPixels;
         existingForUser.joined = false;
         existingForUser.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
         existingForUser.peer.close(4001, "Reconnected from another socket");
@@ -369,6 +404,21 @@ export class GameWorld implements AdminWorldControl {
         type: "chat_history",
         messages: this.store.recentChat(CHAT_HISTORY_LIMIT),
       });
+      this.send(state.peer, {
+        v: PROTOCOL_VERSION,
+        type: "appearance_roster",
+        players: [...this.userConnections.values()]
+          .filter((other) => other !== state && other.player)
+          .slice(0, 32)
+          .map((other) => ({ userId: other.player!.id, ...other.appearance })),
+      });
+      for (const other of this.userConnections.values()) {
+        if (other !== state) this.send(other.peer, {
+          v: PROTOCOL_VERSION,
+          type: "appearance_state",
+          player: { userId: player.id, ...state.appearance },
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed";
       this.fail(state, "auth_failed", message, true);
@@ -420,6 +470,78 @@ export class GameWorld implements AdminWorldControl {
     });
     if (actions.length > 8) actions.splice(0, actions.length - 8);
     state.player!.visualActions = actions;
+  }
+
+  private async setAppearance(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "appearance_set" }>,
+    now: number,
+  ): Promise<void> {
+    if (message.seq <= state.lastAppearanceSeq
+      || (state.lastAppearanceSeq !== 0 && message.seq > state.lastAppearanceSeq + 64)) return;
+    state.lastAppearanceSeq = message.seq;
+    let skinPixels = state.skinPixels;
+    if (message.appearance.skinId === "default") {
+      skinPixels = undefined;
+    } else if (message.skinPixels !== undefined) {
+      if (now - state.lastSkinAt < SKIN_CHANGE_RATE_LIMIT_MS) {
+        this.fail(state, "rate_limited", "Skin changes are rate limited", false, true);
+        return;
+      }
+      state.lastSkinAt = now;
+      const digest = await hashSkinPixels(message.skinPixels);
+      if (this.connections.get(state.peer.id) !== state || !state.joined || !state.player
+        || state.lastAppearanceSeq !== message.seq) return;
+      if (digest !== message.appearance.skinId) {
+        this.fail(state, "bad_message", "Skin hash does not match its pixels");
+        return;
+      }
+      skinPixels = message.skinPixels;
+    } else if (message.appearance.skinId !== state.appearance.skinId || !skinPixels) {
+      this.fail(state, "bad_message", "Unknown skin reference");
+      return;
+    }
+    state.appearance = { ...message.appearance };
+    state.skinPixels = skinPixels;
+    for (const other of this.userConnections.values()) this.send(other.peer, {
+      v: PROTOCOL_VERSION,
+      type: "appearance_state",
+      player: { userId: state.player!.id, ...state.appearance },
+    });
+  }
+
+  private sendAppearance(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "appearance_request" }>,
+    now: number,
+  ): void {
+    const key = `${message.userId}\u0000${message.skinId}`;
+    if (state.appearanceRequestKeys.has(key)) return;
+    if (now - state.appearanceRequestWindowAt >= APPEARANCE_REQUEST_RATE_WINDOW_MS) {
+      state.appearanceRequestWindowAt = now;
+      state.appearanceRequestCount = 0;
+    }
+    state.appearanceRequestCount++;
+    if (state.appearanceRequestCount > APPEARANCE_REQUEST_RATE_LIMIT) {
+      this.fail(state, "rate_limited", "Appearance requests are rate limited", false, true);
+      return;
+    }
+    const target = this.userConnections.get(message.userId);
+    const skinPixels = target?.appearance.skinId === message.skinId ? target.skinPixels : undefined;
+    if (skinPixels) {
+      if (state.appearanceRequestKeys.size >= 32) {
+        const oldest = state.appearanceRequestKeys.values().next().value;
+        if (oldest !== undefined) state.appearanceRequestKeys.delete(oldest);
+      }
+      state.appearanceRequestKeys.add(key);
+    }
+    this.send(state.peer, {
+      v: PROTOCOL_VERSION,
+      type: "appearance_blob",
+      userId: message.userId,
+      skinId: message.skinId,
+      ...(skinPixels ? { skinPixels } : {}),
+    });
   }
 
   private blockEdit(
@@ -555,5 +677,11 @@ function createResumeToken(): string {
 
 async function hashToken(token: string): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashSkinPixels(base64: string): Promise<string> {
+  const pixels = Buffer.from(base64, "base64");
+  const bytes = await crypto.subtle.digest("SHA-256", pixels);
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

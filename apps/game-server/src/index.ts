@@ -139,7 +139,7 @@ const server = Bun.serve<SocketData>({
       considerSuspend();
     },
     drain() {},
-    maxPayloadLength: 16 * 1024,
+    maxPayloadLength: 32 * 1024,
     idleTimeout: 120,
   },
 });

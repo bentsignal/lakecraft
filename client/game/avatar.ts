@@ -1,4 +1,5 @@
 import type { PlayerPose, RemotePlayer } from "./types.ts";
+import { PLAYER_SKIN_WIRE_BYTES, type PlayerSkinModel } from "./playerSkin.ts";
 import { ITEMS, type ArmorId, type ArmorSlot, type ItemId } from "../../shared/game.ts";
 import { resolvePlayerRigPose, type PlayerRigInput, type PlayerRigPose } from "./playerRig.ts";
 import {
@@ -28,6 +29,9 @@ export interface RemoteAvatarMotion {
   armorChest: ArmorId | null;
   armorLegs: ArmorId | null;
   armorFeet: ArmorId | null;
+  skinId: string;
+  skinModel: PlayerSkinModel;
+  skinPixels: Uint8Array | null;
   rendered: PlayerPose;
   target: PlayerPose;
   velocityX: number;
@@ -120,6 +124,19 @@ function assignRemoteGear(state: RemoteAvatarMotion, player: RemotePlayer): void
   state.armorFeet = sanitizeRemoteArmor(player.armorFeet, "feet");
 }
 
+/** Keeps malformed community-server skin data outside the WebGL upload path. */
+function assignRemoteSkin(state: RemoteAvatarMotion, player: RemotePlayer): void {
+  const id = typeof player.skinId === "string" && /^(?:default|[a-f0-9]{64})$/.test(player.skinId)
+    ? player.skinId
+    : "default";
+  state.skinId = id;
+  state.skinModel = id !== "default" && player.skinModel === "slim" ? "slim" : "wide";
+  state.skinPixels = id !== "default" && player.skinPixels instanceof Uint8Array
+    && player.skinPixels.byteLength === PLAYER_SKIN_WIRE_BYTES
+    ? player.skinPixels
+    : null;
+}
+
 function applyRemoteVisualActions(state: RemoteAvatarMotion, player: RemotePlayer, now: number): void {
   for (const action of player.visualActions ?? []) {
     if (!action || !Number.isSafeInteger(action.sequence) || action.sequence < 1
@@ -169,6 +186,9 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     armorChest: null,
     armorLegs: null,
     armorFeet: null,
+    skinId: "default",
+    skinModel: "wide",
+    skinPixels: null,
     rendered: { ...target },
     target: { ...target },
     velocityX: 0,
@@ -189,6 +209,7 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     assignBoundedVelocity(state, player.vx as number, player.vy as number, player.vz as number);
   }
   assignRemoteGear(state, player);
+  assignRemoteSkin(state, player);
   applyRemoteVisualActions(state, player, now);
   return state;
 }
@@ -215,6 +236,7 @@ export function applyRemoteAvatarSnapshot(
   state.name = sanitizePlayerName(player.name);
   state.color = player.color;
   assignRemoteGear(state, player);
+  assignRemoteSkin(state, player);
   applyRemoteVisualActions(state, player, now);
   state.lastSnapshotAt = now;
 }

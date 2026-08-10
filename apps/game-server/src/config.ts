@@ -35,7 +35,7 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
     tickHz: integer(env.TICK_HZ, 20, 5, 60, "TICK_HZ"),
     snapshotHz: integer(env.SNAPSHOT_HZ, 10, 1, 30, "SNAPSHOT_HZ"),
     idleSuspendMs: integer(env.IDLE_SUSPEND_MS, 15_000, 0, 300_000, "IDLE_SUSPEND_MS"),
-    maxPlayers: integer(env.MAX_PLAYERS, 32, 1, 128, "MAX_PLAYERS"),
+    maxPlayers: integer(env.MAX_PLAYERS, 32, 1, 32, "MAX_PLAYERS"),
     maxPersistedBlocks: integer(env.MAX_PERSISTED_BLOCKS, 1_000, 1, 1_000, "MAX_PERSISTED_BLOCKS"),
     allowedOrigins: (env.ALLOWED_ORIGINS || "")
       .split(",")

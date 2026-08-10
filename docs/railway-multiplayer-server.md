@@ -136,13 +136,22 @@ so two authoritative processes never write the same SQLite volume. Connected
 players will briefly disconnect during deploy and should reconnect to the same
 domain afterward.
 
-## Current appearance boundary
+## Bounded player appearance
 
-Protocol v1 synchronizes the selected held-item ID and bounded visual actions,
-but it does not yet upload player skin pixels or equipped armor. Remote players
-therefore use Lakecraft's installed standard skin and omit armor while retaining
-the canonical articulated rig. A later protocol revision can add authenticated,
-size-bounded appearance references without putting PNG payloads in snapshots.
+The additive `appearance-v1` capability keeps appearance out of the 10 Hz pose
+snapshot. Each joined player publishes exact equipped armor IDs and either the
+installed default or a content-addressed, nearest-neighbor 64×64 RGBA reduction
+of their browser-selected skin. The original PNG never leaves the browser.
+Joining clients receive a small roster and request missing skin blobs one at a
+time, so no message approaches the 256 KB client envelope and a 32-player join
+cannot create one unbounded burst. The server validates the SHA-256 and exact
+armor slots, rate-limits uploads and blob requests, and retains at most one
+transient skin blob per live connection; appearance is never written to SQLite.
+Armor is validated cosmetic self-report from the browser, not an inventory-
+authorized gameplay signal, so no combat or protection rule may trust it.
+Clients render
+the 32-player bound through one fixed 512×256 texture atlas and preserve the
+installed skin as the fallback for absent, invalid, or legacy-server data.
 
 ## Repository and Lakebed artifact boundary
 

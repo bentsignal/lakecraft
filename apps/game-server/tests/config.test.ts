@@ -36,4 +36,17 @@ describe("server configuration", () => {
       ADMIN_TOKEN: "a-private-admin-token-with-enough-entropy",
     }).adminToken).toBe("a-private-admin-token-with-enough-entropy");
   });
+
+  test("caps configured capacity at the 32-player protocol and renderer bound", () => {
+    expect(loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      MAX_PLAYERS: "32",
+    }).maxPlayers).toBe(32);
+    expect(() => loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      MAX_PLAYERS: "33",
+    })).toThrow("MAX_PLAYERS must be an integer from 1 to 32");
+  });
 });

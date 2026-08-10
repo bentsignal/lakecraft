@@ -4,11 +4,24 @@ export const PROTOCOL_VERSION = 1 as const;
 export const BLOCK_ID_MIN = 0;
 export const BLOCK_ID_MAX = 33;
 export const CHAT_MESSAGE_MAX_LENGTH = 180;
+export const SKIN_PIXEL_BYTES = 64 * 64 * 4;
+export const SKIN_PIXEL_BASE64_LENGTH = 21_848;
+export const APPEARANCE_CAPABILITY = "appearance-v1" as const;
 
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
 export type ServerGameMode = "survival" | "creative";
 export type VisualActionKind = "swing" | "jump" | "crouch_on" | "crouch_off" | "use" | "slot" | "bow_draw" | "bow_release";
 export type PublicVisualAction = { sequence: number; kind: VisualActionKind; value?: number };
+export type SkinModel = "wide" | "slim";
+export interface PublicAppearance {
+  skinId: string;
+  skinModel: SkinModel;
+  armorHead: string;
+  armorChest: string;
+  armorLegs: string;
+  armorFeet: string;
+}
+export type PlayerAppearance = PublicAppearance & { userId: string };
 
 export interface PublicPlayer {
   id: string;
@@ -92,6 +105,19 @@ export type ClientMessage =
       kind: VisualActionKind;
       value?: number;
     }
+  | {
+      v: ProtocolVersion;
+      type: "appearance_set";
+      seq: number;
+      appearance: PublicAppearance;
+      skinPixels?: string;
+    }
+  | {
+      v: ProtocolVersion;
+      type: "appearance_request";
+      userId: string;
+      skinId: string;
+    }
   | { v: ProtocolVersion; type: "ping"; t: number };
 
 export type ServerMessage =
@@ -103,6 +129,7 @@ export type ServerMessage =
       authMode: "lakebed" | "local-demo";
       tickHz: number;
       snapshotHz: number;
+      capabilities: readonly [typeof APPEARANCE_CAPABILITY];
     }
   | {
       v: ProtocolVersion;
@@ -146,6 +173,10 @@ export type ServerMessage =
       type: "chat_message";
       message: RealtimeChatMessage;
     }
+  | { v: ProtocolVersion; type: "appearance_roster"; players: PlayerAppearance[] }
+  | { v: ProtocolVersion; type: "appearance_state"; player: PlayerAppearance }
+  | { v: ProtocolVersion; type: "appearance_blob"; userId: string; skinId: string; skinPixels?: string }
+  | { v: ProtocolVersion; type: "appearance_remove"; userId: string }
   | {
       v: ProtocolVersion;
       type: "error";
@@ -184,6 +215,31 @@ const integer = (value: unknown): value is number => Number.isSafeInteger(value)
 const shortString = (value: unknown, max: number): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max;
 const VISUAL_ACTIONS = new Set<VisualActionKind>(["swing", "jump", "crouch_on", "crouch_off", "use", "slot", "bow_draw", "bow_release"]);
+const SKIN_ID = /^(?:default|[a-f0-9]{64})$/;
+const SKIN_PIXELS = /^[A-Za-z0-9+/]{21846}==$/;
+const ARMOR = Object.freeze({
+  armorHead: /^(?:|(?:leather|iron|golden|diamond)_helmet)$/,
+  armorChest: /^(?:|(?:leather|iron|golden|diamond)_chestplate)$/,
+  armorLegs: /^(?:|(?:leather|iron|golden|diamond)_leggings)$/,
+  armorFeet: /^(?:|(?:leather|iron|golden|diamond)_boots)$/,
+});
+
+function appearance(value: unknown): PublicAppearance | null {
+  if (!object(value) || !SKIN_ID.test(String(value.skinId ?? ""))
+    || (value.skinModel !== "wide" && value.skinModel !== "slim")
+    || typeof value.armorHead !== "string" || !ARMOR.armorHead.test(value.armorHead)
+    || typeof value.armorChest !== "string" || !ARMOR.armorChest.test(value.armorChest)
+    || typeof value.armorLegs !== "string" || !ARMOR.armorLegs.test(value.armorLegs)
+    || typeof value.armorFeet !== "string" || !ARMOR.armorFeet.test(value.armorFeet)) return null;
+  return {
+    skinId: value.skinId as string,
+    skinModel: value.skinId === "default" ? "wide" : value.skinModel,
+    armorHead: value.armorHead,
+    armorChest: value.armorChest,
+    armorLegs: value.armorLegs,
+    armorFeet: value.armorFeet,
+  };
+}
 
 function invalid(message: string): DecodeResult {
   return { ok: false, code: "bad_message", message };
@@ -295,6 +351,33 @@ export function decodeClientMessage(raw: string): DecodeResult {
     }
     if (value.kind !== "slot" && value.value !== undefined) return invalid("action value is not supported");
     return { ok: true, message: value as unknown as ClientMessage };
+  }
+
+  if (value.type === "appearance_set") {
+    if (!integer(value.seq) || value.seq < 1) return invalid("appearance seq must be a positive integer");
+    const normalized = appearance(value.appearance);
+    if (!normalized) return invalid("appearance is invalid");
+    if (value.skinPixels !== undefined && (typeof value.skinPixels !== "string"
+      || value.skinPixels.length !== SKIN_PIXEL_BASE64_LENGTH || !SKIN_PIXELS.test(value.skinPixels))) {
+      return invalid("skinPixels must be exact 64x64 RGBA base64");
+    }
+    if (normalized.skinId === "default" && value.skinPixels !== undefined) return invalid("default skin cannot include pixels");
+    return { ok: true, message: {
+      v: PROTOCOL_VERSION,
+      type: "appearance_set",
+      seq: value.seq,
+      appearance: normalized,
+      ...(value.skinPixels === undefined ? {} : { skinPixels: value.skinPixels }),
+    } };
+  }
+
+  if (value.type === "appearance_request") {
+    if (!shortString(value.userId, 128) || !SKIN_ID.test(String(value.skinId ?? ""))) {
+      return invalid("appearance request is invalid");
+    }
+    return { ok: true, message: {
+      v: PROTOCOL_VERSION, type: "appearance_request", userId: value.userId, skinId: value.skinId,
+    } };
   }
 
   if (value.type === "ping") {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { JoinAuthenticator } from "../src/auth";
 import type { ServerConfig } from "../src/config";
 import { WorldStore } from "../src/database";
-import type { ClientMessage, ServerMessage } from "../src/protocol";
+import { APPEARANCE_CAPABILITY, SKIN_PIXEL_BYTES, type ClientMessage, type ServerMessage } from "../src/protocol";
 import { GameWorld, RESUME_TOKEN_TTL_MS, type Peer } from "../src/world";
 import { terrainHeight as clientTerrainHeight } from "../../../client/game/terrain";
 import {
@@ -376,6 +376,139 @@ describe("authoritative world", () => {
       code: "rate_limited", operationId: "chat_alex_0002", fatal: false, retryable: true,
     });
     expect(peer.closed).toBeUndefined();
+    store.close();
+  });
+
+  test("relays bounded selected skins and armor out-of-band without snapshot or database growth", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const alex = new FakePeer("socket-appearance-a");
+    const steve = new FakePeer("socket-appearance-b");
+    world.open(alex, 1_000);
+    world.open(steve, 1_000);
+    expect(alex.ofType("hello")[0].capabilities).toEqual([APPEARANCE_CAPABILITY]);
+    await world.message(alex, JSON.stringify(join("alex", "Alex")), 1_000);
+    await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
+    expect(steve.ofType("appearance_roster")[0].players).toEqual([{
+      userId: "alex", skinId: "default", skinModel: "wide",
+      armorHead: "", armorChest: "", armorLegs: "", armorFeet: "",
+    }]);
+
+    const skinPixels = Buffer.alloc(SKIN_PIXEL_BYTES, 17).toString("base64");
+    const digest = await crypto.subtle.digest("SHA-256", Buffer.from(skinPixels, "base64"));
+    const skinId = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    await world.message(alex, JSON.stringify({
+      v: 1, type: "appearance_set", seq: 1,
+      appearance: {
+        skinId, skinModel: "slim", armorHead: "diamond_helmet",
+        armorChest: "iron_chestplate", armorLegs: "golden_leggings", armorFeet: "leather_boots",
+      },
+      skinPixels,
+    }), 2_000);
+    expect(steve.ofType("appearance_state").at(-1)?.player).toMatchObject({
+      userId: "alex", skinId, skinModel: "slim", armorHead: "diamond_helmet",
+    });
+    await world.message(steve, JSON.stringify({
+      v: 1, type: "appearance_request", userId: "alex", skinId,
+    }), 2_100);
+    expect(steve.ofType("appearance_blob").at(-1)).toEqual({
+      v: 1, type: "appearance_blob", userId: "alex", skinId, skinPixels,
+    });
+    await world.message(steve, JSON.stringify({
+      v: 1, type: "appearance_request", userId: "alex", skinId,
+    }), 2_101);
+    expect(steve.ofType("appearance_blob")).toHaveLength(1);
+    for (let request = 0; request < 4; request += 1) await world.message(steve, JSON.stringify({
+      v: 1, type: "appearance_request", userId: "missing", skinId: String(request).repeat(64),
+    }), 2_110 + request);
+    expect(steve.ofType("appearance_blob")).toHaveLength(4);
+    expect(steve.ofType("error").at(-1)).toMatchObject({
+      code: "rate_limited", message: "Appearance requests are rate limited", fatal: false,
+    });
+
+    world.snapshots(2_200);
+    expect(steve.ofType("snapshot").at(-1)?.players[0]).not.toHaveProperty("skinId");
+    expect(steve.ofType("snapshot").at(-1)?.players[0]).not.toHaveProperty("armorHead");
+    expect(store.loadPlayer("alex")?.player).not.toHaveProperty("skinId");
+
+    await world.message(alex, JSON.stringify({
+      v: 1, type: "appearance_set", seq: 2,
+      appearance: {
+        skinId, skinModel: "slim", armorHead: "",
+        armorChest: "", armorLegs: "", armorFeet: "",
+      },
+      skinPixels,
+    }), 2_200);
+    expect(alex.ofType("error").at(-1)).toMatchObject({ code: "rate_limited", fatal: false });
+    await world.message(alex, JSON.stringify({
+      v: 1, type: "appearance_set", seq: 3,
+      appearance: {
+        skinId: "b".repeat(64), skinModel: "wide", armorHead: "",
+        armorChest: "", armorLegs: "", armorFeet: "",
+      },
+      skinPixels,
+    }), 5_001);
+    expect(alex.ofType("error").at(-1)).toMatchObject({ code: "bad_message", message: "Skin hash does not match its pixels" });
+    store.close();
+  });
+
+  test("never applies a slow skin upload after a newer appearance sequence", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const alex = new FakePeer("socket-appearance-race-a");
+    const steve = new FakePeer("socket-appearance-race-b");
+    world.open(alex, 1_000);
+    world.open(steve, 1_000);
+    await world.message(alex, JSON.stringify(join("alex", "Alex")), 1_000);
+    await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
+    const skinPixels = Buffer.alloc(SKIN_PIXEL_BYTES, 23).toString("base64");
+    const digest = await crypto.subtle.digest("SHA-256", Buffer.from(skinPixels, "base64"));
+    const skinId = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const slow = world.message(alex, JSON.stringify({
+      v: 1, type: "appearance_set", seq: 1,
+      appearance: { skinId, skinModel: "wide", armorHead: "", armorChest: "", armorLegs: "", armorFeet: "" },
+      skinPixels,
+    }), 2_000);
+    await world.message(alex, JSON.stringify({
+      v: 1, type: "appearance_set", seq: 2,
+      appearance: { skinId: "default", skinModel: "wide", armorHead: "", armorChest: "", armorLegs: "", armorFeet: "" },
+    }), 2_001);
+    await slow;
+    expect(steve.ofType("appearance_state").at(-1)?.player.skinId).toBe("default");
+    expect(steve.ofType("appearance_state").some((message) => message.player.skinId === skinId)).toBe(false);
+    store.close();
+  });
+
+  test("an empty appearance lookup does not consume the later one-shot blob response", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const steve = new FakePeer("socket-appearance-late-steve");
+    world.open(steve, 1_000);
+    await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
+    const skinPixels = Buffer.alloc(SKIN_PIXEL_BYTES, 29).toString("base64");
+    const digest = await crypto.subtle.digest("SHA-256", Buffer.from(skinPixels, "base64"));
+    const skinId = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    await world.message(steve, JSON.stringify({
+      v: 1, type: "appearance_request", userId: "alex", skinId,
+    }), 2_000);
+    expect(steve.ofType("appearance_blob").at(-1)).toEqual({
+      v: 1, type: "appearance_blob", userId: "alex", skinId,
+    });
+
+    const alex = new FakePeer("socket-appearance-late-alex");
+    world.open(alex, 2_100);
+    await world.message(alex, JSON.stringify(join("alex", "Alex")), 2_100);
+    await world.message(alex, JSON.stringify({
+      v: 1, type: "appearance_set", seq: 1,
+      appearance: { skinId, skinModel: "wide", armorHead: "", armorChest: "", armorLegs: "", armorFeet: "" },
+      skinPixels,
+    }), 2_200);
+    await world.message(steve, JSON.stringify({
+      v: 1, type: "appearance_request", userId: "alex", skinId,
+    }), 3_001);
+    expect(steve.ofType("appearance_blob").at(-1)).toEqual({
+      v: 1, type: "appearance_blob", userId: "alex", skinId, skinPixels,
+    });
     store.close();
   });
 

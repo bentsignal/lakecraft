@@ -346,7 +346,7 @@ export function VisualLab({ open, onApplySkin, onClose, skinStorage }: VisualLab
             </ul>
             </> : mode === "player" ? <div className="lc-visual-lab__skin-controls">
               <h2>PLAYER SKIN</h2>
-              <p>Preview a skin made for the standard 64×64 layout. The file stays in this browser and is never uploaded.</p>
+              <p>Preview a standard skin. The original PNG stays in this browser; realtime multiplayer relays a reduced 64×64 appearance to connected players.</p>
               <label className="lc-visual-lab__skin-import">Choose skin PNG<input accept="image/png,.png" onChange={(event) => { void importSkin(event.currentTarget.files?.[0]); }} type="file" /></label>
               <div aria-label="Player arm model" className="lc-visual-lab__model" role="group">
                 <button aria-pressed={skinModel === "wide"} onClick={() => setSkinModel("wide")} type="button">Wide · 4px</button>
@@ -438,7 +438,7 @@ export function VisualLab({ open, onApplySkin, onClose, skinStorage }: VisualLab
             </> : mode === "player" ? <>
               <section className="lc-visual-lab__section"><h3>Rig contract</h3><dl className="lc-visual-lab__facts"><dt>Texture</dt><dd>64×64 / 128×128 PNG</dd><dt>Arm model</dt><dd>{skinModel}</dd><dt>Motion</dt><dd>{playerRigMotion} · {Math.round(playerRigPhase * 100)}%</dd><dt>Held</dt><dd>{playerHeldItem ?? "empty"}</dd><dt>Armor</dt><dd>{playerArmor ?? "none"}</dd><dt>Parts</dt><dd>head · body · articulated arms · articulated legs</dd><dt>Outer layers</dt><dd>hat · jacket · sleeves · pants</dd><dt>Vertices</dt><dd>{vertices}</dd>{silhouette ? <><dt>Silhouette</dt><dd>{silhouette[2]}% × {silhouette[3]}%</dd><dt>Frame position</dt><dd>{silhouette[0]}% left · {silhouette[1]}% top</dd></> : null}</dl></section>
               <section className="lc-visual-lab__section"><h3>Inspection</h3><p className="lc-visual-lab__note">Drag through every angle to inspect head, arm width, limb seams, mirrored sides, transparent outer layers, and nearest-neighbor pixels. This exact UV contract drives the local first-person arm and third-person player rig.</p></section>
-              <section className="lc-visual-lab__section"><h3>Privacy</h3><p className="lc-visual-lab__note">Imported skin pixels remain in this browser. Lakecraft does not bundle or upload the selected file.</p></section>
+              <section className="lc-visual-lab__section"><h3>Privacy</h3><p className="lc-visual-lab__note">Lakecraft never bundles or uploads the original file. When you join realtime multiplayer, its reduced 64×64 appearance is relayed transiently to connected players.</p></section>
             </> : <>
               <section className="lc-visual-lab__section"><h3>Mob contract</h3><dl className="lc-visual-lab__facts"><dt>Kind</dt><dd>{selectedMob}</dd><dt>State</dt><dd>{mobState === "fallen" ? <>death</> : mobState}</dd><dt>Vertices</dt><dd>{vertices}</dd><dt>Draw calls</dt><dd>{drawCalls}</dd><dt>Source</dt><dd>installed 26.2 texture · production mob batch</dd>{silhouette ? <><dt>Silhouette</dt><dd>{silhouette[2]}% × {silhouette[3]}%</dd><dt>Frame position</dt><dd>{silhouette[0]}% left · {silhouette[1]}% top</dd></> : null}</dl></section>
               <section className="lc-visual-lab__section"><h3>Inspection</h3><p className="lc-visual-lab__note">Orbit the exact world geometry and compare idle, walking, damage, fall-over death, and kind-specific state. Special previews sheared sheep and a primed creeper; other kinds intentionally remain at rest.</p></section>
