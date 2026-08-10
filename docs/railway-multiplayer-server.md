@@ -13,7 +13,7 @@ process, and SQLite lives on that process's volume.
 
 1. Open the [Lakecraft Multiplayer Server template](https://railway.com/deploy/lakecraft-multiplayer-server)
    and click **Deploy**. Railway creates the service, generated HTTPS domain,
-   `/data` volume, and high-entropy invitation credentials.
+   `/data` volume, and separate high-entropy player and administrator credentials.
 2. Wait for the deployment and health check to turn green.
 3. Copy the generated domain from the service's **Networking** settings and
    convert it to `wss://YOUR-DOMAIN/ws`, or check it from this repository:
@@ -25,6 +25,9 @@ process, and SQLite lives on that process's volume.
 4. Reveal `LOCAL_DEMO_TOKEN` in the service's **Variables** settings. Share the
    `wss://.../ws` address and token separately with trusted friends. Do not put
    the token in the URL, screenshots, logs, or a public server-list entry.
+5. Open `https://YOUR-DOMAIN/admin` and enter `ADMIN_TOKEN` when you need the
+   private server console. The console can switch known players between Survival
+   and Creative or disconnect a live player. Do not give this token to players.
 
 The relevant Railway settings are captured in
 `tools/lakecraft-server/railway-template-plan.json`. That file is a validated
@@ -40,6 +43,7 @@ GitHub Actions workflow.
 | --- | --- | --- |
 | `AUTH_MODE` | `local-demo` | Enables the invitation-token beta without a control-plane registration. |
 | `LOCAL_DEMO_TOKEN` | 32 random bytes | Secret every invited player enters alongside the server address. |
+| `ADMIN_TOKEN` | A different 32-byte secret | Enables the private `/admin` console for roles and live player controls. |
 | `SERVER_ID` | Stable random lowercase/number ID | Keeps the server identity stable across restarts. |
 | `PUBLIC_SERVER_NAME` | Your chosen name | Friendly name returned by server metadata/status. |
 | `ALLOWED_ORIGINS` | `https://craft.lakebed.app` | Exact browser origin allowed to upgrade to WebSocket. Use a comma-separated list only when intentionally allowing more origins. |
@@ -52,6 +56,7 @@ GitHub Actions workflow.
 ```sh
 AUTH_MODE=local-demo \
 LOCAL_DEMO_TOKEN='replace-me' \
+ADMIN_TOKEN='use-a-different-private-secret' \
 SERVER_ID='replace-me' \
 ALLOWED_ORIGINS='https://craft.lakebed.app' \
 DATA_DIR='/data' \
@@ -60,6 +65,17 @@ node tools/lakecraft-server/cli.mjs doctor
 ```
 
 The doctor reports missing names but never reads back or prints secret values.
+
+## Per-server admin console and data ownership
+
+Every deployed server carries its own small admin surface at `/admin`; it is not
+part of `craft.lakebed.app` and adds nothing to the Lakebed capsule artifact.
+That console changes only the selected Railway world's state. Realtime movement,
+chat, block edits, reconnect credentials, and per-world roles belong in Railway's
+SQLite authority because clients need low-latency ordering and the data must move
+with a self-hosted world. Lakebed remains the source of truth for account identity,
+the public server directory, server ownership/registration, and short-lived join
+tickets. Do not copy per-tick movement or chat into the Lakebed database.
 
 ## Lakebed-authenticated mode
 
@@ -119,6 +135,14 @@ Keep the service at exactly one replica. Zero-overlap deployments are deliberate
 so two authoritative processes never write the same SQLite volume. Connected
 players will briefly disconnect during deploy and should reconnect to the same
 domain afterward.
+
+## Current appearance boundary
+
+Protocol v1 synchronizes the selected held-item ID and bounded visual actions,
+but it does not yet upload player skin pixels or equipped armor. Remote players
+therefore use Lakecraft's installed standard skin and omit armor while retaining
+the canonical articulated rig. A later protocol revision can add authenticated,
+size-bounded appearance references without putting PNG payloads in snapshots.
 
 ## Repository and Lakebed artifact boundary
 

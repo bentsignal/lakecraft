@@ -84,30 +84,16 @@ VERT 42,000  MESH 1.5ms`);
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-assert.ok(app.includes('if (event.code === "F3" && !event.repeat)'), "held F3 cannot repeatedly flip the overlay");
-assert.ok(app.indexOf('if (event.code === "F3"') < app.indexOf("consumeSinglePlayerCommandSurfaceEscape("),
-  "the debug toggle is independent of pause, inventory, and command focus handling");
-assert.ok(app.includes("if (performanceOutputRef.current && !performanceOutputRef.current.hidden)"),
-  "hidden performance sampling causes no DOM or React churn");
-assert.ok(app.includes("performanceOutputRef.current.hidden = !performanceOutputRef.current.hidden"),
-  "the stable output node hides and shows without frame-loop React renders");
-assert.ok(app.includes("if (fpsOutputRef.current) fpsOutputRef.current.textContent = performanceHudFpsText(stats)"),
-  "the always-visible counter writes the existing performance sample directly without React state");
-assert.ok(app.includes('aria-label="Frames per second" className="lc-local-fps"'),
-  "the compact counter is exposed as a named output");
-assert.ok(app.includes("const fpsOutputRef = useRef<HTMLOutputElement | null>(null)"));
-const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-assert.ok(engine.includes("if (now - lastPerformanceSent >= 500)"),
-  "FPS text reuses the engine's bounded twice-per-second sampling cadence");
+for (const retiredDebugSurface of ["performanceOutputRef", 'event.code === "F3"', "lc-local-perf", "fpsOutputRef", "lc-local-fps"]) {
+  assert.equal(app.includes(retiredDebugSurface), false,
+    `${retiredDebugSurface} stays out of the size-constrained single-player production surface`);
+}
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
-assert.match(styles, /\.lakecraft-perf,.lc-local-perf \{[^}]*font: 11px\/1\.4[^}]*position: fixed;[^}]*top: 12px;/);
-assert.ok(styles.includes(".lc-local-perf { right: 8px; top: 38px; }"),
-  "local overlay stays in the upper-right, away from crosshair and hotbar at both target widths");
-assert.match(styles, /\.lc-local-fps \{[^}]*background:#000b;[^}]*color:#fff;[^}]*right:8px;[^}]*top:8px;/,
-  "the always-visible FPS readout is unobtrusive and high-contrast in the top-right");
+assert.equal(styles.includes(".lc-local-fps"), false,
+  "retired FPS-only CSS does not consume the production capsule reserve");
 assert.equal(app.includes("useQuery") || app.includes("useMutation"), false,
   "the single-player path adds no Lakebed query or mutation");
-assert.equal(multiplayer.match(/performanceHudCoreText\(/g)?.length, 1,
-  "multiplayer preserves its complete detail surface through the shared formatter");
+assert.equal(multiplayer.includes("performanceHudCoreText"), false,
+  "the production multiplayer bundle does not carry a second debug-detail surface");
 
-console.log("single-player F3 performance overlay tests passed");
+console.log("production performance debug-surface boundary tests passed");

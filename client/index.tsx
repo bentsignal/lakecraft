@@ -13,15 +13,21 @@ import {
   type PlayerProjectileVisual,
   type RemotePlayer,
   type VoxelEngine,
-  type VoxelPerformanceStats,
   type WorldEdit as EngineWorldEdit,
 } from "./game";
-import { performanceHudCoreText } from "./game/performanceHud.ts";
 import { LobbyScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
 import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
 import { cycleHotbarIndex } from "./game/hotbarInput";
-import { RealtimeMultiplayerTransport, type RealtimeBlockSink } from "./RealtimeMultiplayerTransport.tsx";
+import {
+  RealtimeMultiplayerTransport,
+  type RealtimeBlockSink,
+  type RealtimeChatSink,
+} from "./RealtimeMultiplayerTransport.tsx";
+import {
+  applyRealtimeChatEvent,
+  type RealtimeChatMessage,
+} from "./realtimeChat.ts";
 import {
   loadMultiplayerInvitationTokens,
   loadSavedMultiplayerServers,
@@ -30,6 +36,7 @@ import {
   saveMultiplayerInvitationToken,
   saveMultiplayerServers,
   type RealtimeConnectionPhase,
+  type RealtimeGameMode,
   type SavedMultiplayerServer,
 } from "./realtimeMultiplayer.ts";
 import type { MobWorldCompositeSnapshot, SegmentTelemetry } from "./multiplayerSegmentClient.ts";
@@ -90,10 +97,8 @@ import {
 } from "../shared/chestTransfers";
 import {
   CHAT_MESSAGE_MAX_LENGTH,
-  type ChatMessage,
   type ClaimUsernameResult,
   type Profile,
-  type SendChatResult,
 } from "../shared/multiplayer";
 import { type PlayerCombatState } from "../shared/playerCombat";
 import {
@@ -791,7 +796,6 @@ function GameApp({
   const savedInventory = useQuery<PersistedInventory | null>("myInventory");
   const profile = useQuery<Profile | null>("myProfile");
   const externalMultiplayerServers = useQuery<ExternalMultiplayerServer[]>("externalMultiplayerServers") ?? [];
-  const chatEvents = useQuery<ChatMessage[]>("recentChat") ?? [];
   const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
   const furnaceResult = useQuery<FurnaceAtResult, { coordKey: string; sample: string }>(
     "furnaceAt",
@@ -828,7 +832,6 @@ function GameApp({
   const leavePlayer = useMutation<[sessionId: string], void>("leavePlayer");
   const applyInventoryActionMutation = useMutation<[requestJson: string], InventoryActionMutationResult>("applyInventoryAction");
   const claimUsername = useMutation<[requestedUsername: string], ClaimUsernameResult>("claimUsername");
-  const sendChat = useMutation<[rawMessage: string], SendChatResult>("sendChat");
   const transferChest = useMutation<[requestJson: string], ChestTransferResult>("transferChest");
   const operateFurnace = useMutation<[requestJson: string], FurnaceOperationResult>("operateFurnace");
   const sleepInBed = useMutation<[coordKey: string], SleepInBedResult>("sleepInBed");
@@ -986,7 +989,7 @@ function GameApp({
   const [engineError, setEngineError] = useState("");
   const [inventoryReady, setInventoryReady] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [segmentSessionReady, setSegmentSessionReady] = useState(false);
+  const [transportReady, setTransportReady] = useState(false);
   const [transportForeground, setTransportForeground] = useState(() => document.visibilityState === "visible" && document.hasFocus());
   const [segmentTelemetry, setSegmentTelemetry] = useState<SegmentTelemetry | null>(null);
   const [joinPhase, setJoinPhase] = useState<LobbyJoinPhase>("idle");
@@ -1007,16 +1010,17 @@ function GameApp({
   }>>({});
   const [realtimeSession, setRealtimeSession] = useState<RealtimeSession | null>(null);
   const realtimeBlockSinkRef = useRef<RealtimeBlockSink | null>(null);
+  const realtimeChatSinkRef = useRef<RealtimeChatSink | null>(null);
+  const realtimeGameModeRef = useRef<RealtimeGameMode>("survival");
+  const [realtimeChatMessages, setRealtimeChatMessages] = useState<RealtimeChatMessage[]>([]);
+  const [realtimeGameMode, setRealtimeGameMode] = useState<RealtimeGameMode>("survival");
   const [usernameDraft, setUsernameDraft] = useState("");
   const [usernameState, setUsernameState] = useState<UsernameClaimState>("idle");
   const [usernameError, setUsernameError] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
-  const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState("");
   const [lastSeenChatCount, setLastSeenChatCount] = useState(0);
-  const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
-  const [showPerformance, setShowPerformance] = useState(false);
   const [playerHealth, setPlayerHealth] = useState(20);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
@@ -1039,7 +1043,6 @@ function GameApp({
     const endpoint = normalizeMultiplayerEndpoint(server.canonicalWssUrl);
     return endpoint ? [{ ...server, canonicalWssUrl: endpoint }] : [];
   });
-  const registeredEndpointIds = new Map(registeredServers.map((server) => [server.canonicalWssUrl, server.id]));
   const combinedServers = [...registeredServers.map((server): SavedMultiplayerServer => ({
     id: server.id,
     name: server.name,
@@ -1047,10 +1050,7 @@ function GameApp({
   }))];
   for (const saved of savedMultiplayerServers) {
     if (combinedServers.some((server) => server.endpoint === saved.endpoint)) continue;
-    combinedServers.push({
-      ...saved,
-      id: registeredEndpointIds.get(saved.endpoint) ?? saved.id,
-    });
+    combinedServers.push(saved);
   }
   const serverProbeKey = combinedServers.map((server) => `${server.id}\u0000${server.endpoint}`).join("\u0001");
   const lobbyServers: LobbyServerEntry[] = combinedServers.map((server) => {
@@ -1071,16 +1071,24 @@ function GameApp({
     ?? "Community Server";
 
   useEffect(() => {
+    setRealtimeChatMessages([]);
+    setLastSeenChatCount(0);
+    setChatError("");
+    realtimeGameModeRef.current = "survival";
+    setRealtimeGameMode("survival");
+  }, [realtimeSession?.endpoint]);
+
+  useEffect(() => {
     if (!serverProbeKey) return;
     const controller = new AbortController();
     for (const server of combinedServers.slice(0, 24)) {
       const statusUrl = multiplayerStatusUrl(server.endpoint);
       if (!statusUrl) continue;
       void fetch(statusUrl, { signal: controller.signal }).then(async (response) => {
-        if (!response.ok) throw new Error("status_unavailable");
+        if (!response.ok) throw 0;
         const body = await response.json() as Record<string, unknown>;
         if (body.ok !== true || body.status !== "online" || body.protocolVersion !== 1) {
-          throw new Error("status_incompatible");
+          throw 0;
         }
         setServerStatuses((current) => ({
           ...current,
@@ -1657,7 +1665,6 @@ function GameApp({
           audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(confirmed.block) });
         }
         releasePendingWorldBlockEdit(pending);
-        setConnected(true);
       } catch {
         rollbackPendingWorldBlockEdit(
           pending,
@@ -1926,6 +1933,7 @@ function GameApp({
         onHotbarSelect: handleSelectHotbar,
         onHotbarCycle: (direction) => handleSelectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
         getMiningDuration: (block) => {
+          if (realtimeGameModeRef.current === "creative") return 0.05;
           const gameBlock = ENGINE_TO_GAME[block];
           const heldItem = inventoryRef.current[selectedRef.current]?.itemId;
           return gameBlock ? miningSeconds(gameBlock, heldItem) : 0.2;
@@ -2198,7 +2206,10 @@ function GameApp({
           intensity,
           pan,
         }),
-        canSprint: () => hungerRef.current > 6,
+        canSprint: () => realtimeGameModeRef.current === "creative" || hungerRef.current > 6,
+        canCreativeFly: () => Boolean(realtimeSession) && realtimeGameModeRef.current === "creative",
+        canMobsTargetPlayer: () => realtimeGameModeRef.current !== "creative",
+        canTakePlayerDamage: () => realtimeGameModeRef.current !== "creative",
         onHandAction: (action) => {
           if (action === "attack") audioRef.current?.play("playerAttack", { seed: performance.now().toFixed(0), intensity: 0.44 });
         },
@@ -2387,7 +2398,6 @@ function GameApp({
           setChestError("");
           return true;
         },
-        onPerformanceStats: setPerformanceStats,
       });
       engineRef.current = engine;
       engine.setPaused(multiplayerPaused);
@@ -2631,7 +2641,7 @@ function GameApp({
     const scheduler = createPresenceSchedulerState();
     const guard = loadPresenceBurstGuard(auth.userId, Date.now());
     const presenceSessionId = crypto.randomUUID();
-    setSegmentSessionReady(false);
+    setTransportReady(false);
     presenceSessionIdRef.current = presenceSessionId;
     presenceNextPoseSequenceRef.current = 1;
     setMobLeaseSessionId(presenceSessionId);
@@ -2786,7 +2796,7 @@ function GameApp({
         }
         recordPresenceSuccess(guard, Date.now());
         setConnected(true);
-        setSegmentSessionReady(true);
+        setTransportReady(true);
       }).catch((error: unknown) => {
         if (cancelled) return;
         retrySafetyWrite = Boolean(safetyWrite);
@@ -2895,7 +2905,7 @@ function GameApp({
     return () => {
       cancelled = true;
       const activeSessionId = presenceSessionIdRef.current;
-      setSegmentSessionReady(false);
+      setTransportReady(false);
       setMobLeaseSessionId((current) => current === activeSessionId ? "" : current);
       if (presenceSampleRef.current === samplePresence) presenceSampleRef.current = null;
       if (interval) window.clearInterval(interval);
@@ -2972,16 +2982,11 @@ function GameApp({
         }
         return;
       }
-      if (event.code === "F3" && !event.repeat) {
-        event.preventDefault();
-        setShowPerformance((shown) => !shown);
-        return;
-      }
       if (chatOpen) {
         if (event.code === "Escape") {
           event.preventDefault();
           setChatOpen(false);
-          setLastSeenChatCount(chatEvents.length);
+          setLastSeenChatCount(realtimeChatMessages.length);
           engineRef.current?.requestPointerLock();
         }
         return;
@@ -3012,7 +3017,7 @@ function GameApp({
         event.preventDefault();
         exitPointerLockForUi();
         setChatOpen(true);
-        setLastSeenChatCount(chatEvents.length);
+        setLastSeenChatCount(realtimeChatMessages.length);
         setChatError("");
         return;
       }
@@ -3034,8 +3039,9 @@ function GameApp({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [inWorld, optionsOpen, pauseOpen, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, chatEvents.length]);
+  }, [inWorld, optionsOpen, pauseOpen, activeChestKey, activeBedKey, chatOpen, inventoryOpen, furnaceOpen, realtimeChatMessages.length]);
 
+  const worldConnected = realtimeSession ? transportReady : connected;
   const playerListEntries = segmentRemotePlayers.map((player) => ({
     id: player.id,
     name: player.name,
@@ -3043,7 +3049,7 @@ function GameApp({
     connected: true,
   }));
   if (profile && !playerListEntries.some(({ isSelf }) => isSelf)) {
-    playerListEntries.unshift({ id: auth.userId, name: profile.username, isSelf: true, connected });
+    playerListEntries.unshift({ id: auth.userId, name: profile.username, isSelf: true, connected: worldConnected });
   }
 
   function handleInventoryWorkspaceChange(
@@ -3060,6 +3066,7 @@ function GameApp({
       || furnaceBusyRef.current) return false;
     updateInventory(snapshot.inventory);
     updateEquipment(snapshot.equipment);
+    if (realtimeGameModeRef.current === "creative") return true;
     const workstation = activeWorkstationRef.current;
     const actionContext: CraftingContext = workstation?.kind === "crafting_table" ? "crafting_table" : "field";
     const workstationCoordKey = actionContext === "crafting_table" && workstation
@@ -3169,6 +3176,7 @@ function GameApp({
     selectedRef.current = selectedHotbar;
     setSelectedHotbar(selectedHotbar);
     motionActionSinkRef.current?.("slot", selectedHotbar);
+    if (realtimeGameModeRef.current === "creative") return;
     void enqueueInventoryAction({ kind: "select_hotbar", selectedHotbar });
   }
 
@@ -3482,24 +3490,15 @@ function GameApp({
   }, [inWorld, auth.isLoading, auth.isAuthenticated, auth.isGuest]);
 
   function handleChatSubmit(value: string) {
-    setChatSending(true);
     setChatError("");
-    void sendChat(value).then((result) => {
-      if (result.ok) {
-        setChatDraft("");
-        setLastSeenChatCount(chatEvents.length + 1);
-        return;
-      }
-      if (result.reason === "rate_limited") {
-        setChatError(`Slow down — try again in ${Math.max(1, Math.ceil((result.retryAfterMs ?? 0) / 100) / 10)}s.`);
-      } else if (result.reason === "too_long") {
-        setChatError(`Messages can be at most ${CHAT_MESSAGE_MAX_LENGTH} characters.`);
-      } else if (result.reason === "profile_required") {
-        setChatError("Choose an explorer tag before chatting.");
-      } else {
-        setChatError("Lakebed could not send that message.");
-      }
-    }).catch(() => setChatError("Chat lost contact with Lakebed. Try again.")).finally(() => setChatSending(false));
+    const sink = realtimeChatSinkRef.current;
+    if (!sink) {
+      setChatError("Chat is reconnecting to this server.");
+      return;
+    }
+    setChatDraft("");
+    setLastSeenChatCount(realtimeChatMessages.length + 1);
+    void sink(value).catch(() => setChatError("Chat is reconnecting to this server."));
   }
 
   const signedIn = auth.isAuthenticated && !auth.isGuest;
@@ -3510,12 +3509,13 @@ function GameApp({
       : profile
         ? "ready"
         : "needs_username";
-  const chatMessages: LakecraftChatMessage[] = chatEvents.map((message) => ({
+  const chatMessages: LakecraftChatMessage[] = realtimeChatMessages.map((message) => ({
     id: message.id,
     username: message.username,
     body: message.message,
-    sentAt: Number(message.sentAt),
-    own: message.userId === auth.userId,
+    sentAt: message.sentAt,
+    own: message.userId === (realtimeSession?.demo?.userId ?? auth.userId),
+    delivery: message.delivery,
   }));
   const unreadChat = chatOpen ? 0 : Math.max(0, chatMessages.length - lastSeenChatCount);
   const presenceTelemetry = presenceBurstGuardSnapshot(
@@ -3634,9 +3634,12 @@ function GameApp({
           ticket={realtimeSession.ticket}
           serverId={realtimeSession.serverId}
           demo={realtimeSession.demo}
+          localUserId={realtimeSession.demo?.userId ?? auth.userId ?? ""}
+          localUsername={realtimeSession.demo?.name ?? profile?.username ?? "Player"}
           getPose={() => engineRef.current?.getPose() ?? poseRef.current}
+          getHeldItem={() => inventoryRef.current[selectedRef.current]?.itemId ?? null}
           onPhase={(phase: RealtimeConnectionPhase, detail?: string) => {
-            setConnected(phase === "online");
+            setTransportReady(phase === "online");
             if (phase === "error" && detail) notify("Server connection rejected", detail, "warning");
           }}
           onReconcilePose={(pose) => engineRef.current?.reconcilePose(pose)}
@@ -3652,12 +3655,24 @@ function GameApp({
             }
             engineRef.current?.applyWorldEdits(edits);
           }}
+          onChatEvent={(event) => setRealtimeChatMessages((messages) => applyRealtimeChatEvent(messages, event))}
+          onGameMode={(gameMode) => {
+            if (realtimeGameModeRef.current === gameMode) return;
+            realtimeGameModeRef.current = gameMode;
+            setRealtimeGameMode(gameMode);
+            advanceInventoryAuthorityEpoch();
+            if (gameMode === "survival" && latestSavedInventoryRef.current) {
+              loadCanonicalPlayer(latestSavedInventoryRef.current);
+            }
+          }}
           registerBlockSink={(sink) => { realtimeBlockSinkRef.current = sink; }}
+          registerChatSink={(sink) => { realtimeChatSinkRef.current = sink; }}
+          registerActionSink={(sink) => { motionActionSinkRef.current = sink; }}
         />
       ) : null}
 
       <GameHud
-        connected={connected}
+        connected={worldConnected}
         equipment={equipment}
         craftingContext={craftingContext}
         deathCause="You died"
@@ -3667,11 +3682,13 @@ function GameApp({
         maxHunger={MAX_HUNGER}
         inventory={inventory}
         inventoryAuthorityEpoch={inventoryAuthorityEpoch}
+        creativeInventory={Boolean(realtimeSession) && realtimeGameMode === "creative"}
         inventoryOpen={inventoryOpen}
         modalOpen={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}
         messages={messages}
         mobileUnsupported={mobileUnsupported}
         onlineCount={Math.max(1, segmentRemotePlayers.length + 1)}
+        showSurvivalStatus={realtimeGameMode !== "creative"}
         onCloseInventory={() => {
           closeInventory();
           engineRef.current?.requestPointerLock();
@@ -3805,7 +3822,7 @@ function GameApp({
       ) : null}
 
       <ChatOverlay
-        connected={connected}
+        connected={worldConnected}
         draft={chatDraft}
         error={chatError}
         maxLength={CHAT_MESSAGE_MAX_LENGTH}
@@ -3824,16 +3841,9 @@ function GameApp({
         }}
         onSubmit={handleChatSubmit}
         open={chatOpen}
-        sending={chatSending}
+        sending={false}
         unreadCount={unreadChat}
       />
-
-      {showPerformance && performanceStats ? (
-        <output className="lakecraft-perf" aria-label="Performance statistics">{performanceHudCoreText(
-          performanceStats,
-          [poseRef.current.x, poseRef.current.y, poseRef.current.z, segmentSyncTelemetry],
-        )}</output>
-      ) : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}
     </main>

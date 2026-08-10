@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 598;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 536;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "92f94e0edcd6b6a6303e87c8b1a6c48cf4d862266d6972d687b8e7dc5197890e";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 583;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 520;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "18bd2ab516030b53c08a9b72fdc40cf6e91f43d7fce7d59cfa706d9b275ee190";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -61,20 +61,21 @@ export const COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
   previousOccurrences: 607,
   previousUniqueValues: 537,
   previousSourceFingerprint: "c819a96e157f34f994940b0dfef19d5a7d5cef5f6e5315fb26feaa6f2ada16de",
-  occurrenceDelta: -9,
-  uniqueValueDelta: -1,
+  occurrenceDelta: -24,
+  uniqueValueDelta: -17,
   sources: Object.freeze([
     "client/index.tsx",
     "client/lobby/LobbyScreen.tsx",
     "client/realtimeMultiplayer.ts",
+    "client/singleplayer/SinglePlayerApp.tsx#retired-debug-surface",
     "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
     "client/index.tsx#retired-lakebed-presence-stage",
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_155;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 107;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "f560d9234d168d0ddbd93ad5066075a7e689583abc96e5ddd1d09e1bf4fef11b";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_189;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 113;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "83f9ee33ed0e731999c3b2368489f2e972ed5efd673fedf13422d58cb7565e0f";
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -157,12 +158,13 @@ export const COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA = Object.freeze(
   previousOccurrences: 1_171,
   previousUniqueValues: 108,
   previousSourceFingerprint: "86d6cdb7d321ee8fe9f67b1f27dc73c2ce3a7a69e2c19c66c40db057e1ab1b2d",
-  occurrenceDelta: -16,
-  uniqueValueDelta: -1,
+  occurrenceDelta: 18,
+  uniqueValueDelta: 5,
   sources: Object.freeze([
     "client/index.tsx",
     "client/runtimeMode.ts",
     "client/realtimeMultiplayer.ts",
+    "client/game/remotePlayerRenderer.ts",
     "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
     "client/index.tsx#retired-lakebed-presence-stage",
   ]),
@@ -271,9 +273,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 410;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 120;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "a25c799378a0c665c4e20563b3765ca1531e0ff8ef922d76f7641d0fdea394ba";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 403;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 118;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "63d37475e28c5be55035cf4c827bfbb127408b1a035bf9b34155bc2580e717e1";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -341,12 +343,14 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA = Object.fr
   previousOccurrences: 417,
   previousUniqueValues: 123,
   previousSourceFingerprint: "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5",
-  occurrenceDelta: -7,
-  uniqueValueDelta: -3,
+  occurrenceDelta: -14,
+  uniqueValueDelta: -5,
   sources: Object.freeze([
     "client/index.tsx",
     "client/runtimeMode.ts",
     "client/realtimeMultiplayer.ts",
+    "client/game/remotePlayerRenderer.ts",
+    "client/singleplayer/SinglePlayerApp.tsx#retired-debug-surface",
     "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
   ]),
   exclusionChanges: 0,
@@ -405,12 +409,27 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA = Object.f
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
+  "$.world.worldId", "ControlLeft", "ControlRight", "alertdialog", "assertive", "beforeunload",
+  "behaviorUntilSeconds", "checksum_mismatch", "chestClose", "chestOpen", "chestplate",
+  "contextmenu", "craft.lakebed.app", "crafting_table_front", "crafting_table_side", "crafting_table_top",
+  "createdAt", "crispEdges", "deathUntil", "door_closed", "duplicate", "equipment", "expectedBlock",
+  "expectedChunkRevision", "expectedInventoryRevision", "first_person", "from_chest", "furnace_front",
+  "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds", "grass_side", "grass_top",
+  "ineligible", "invalid_chunk_key", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
+  "invalid_slot", "invalid_transaction_cleared", "lock_change", "miningHit", "mousedown", "mousemove",
+  "multiplayer", "multiplayer_not_connected", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
+  "no_recipe", "noncanonical_envelope", "oak_fence_gate_closed", "oak_log_end", "pointerlockerror",
+  "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
+  "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
+  "tnt_bottom", "unsafe_existing_data", "velocityX", "velocityZ", "world-mode", "world-seed", "world-title",
+  "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
+  "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 0;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 0;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 156;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 78;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "client/game/mobRenderer.ts";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "d1e284b4004150f7c60f5bca8225a203adef3ec854ab7b5415cdce3cbca1979d";
 // Gameplay modes and local persistence outcomes form a closed internal
 // identity boundary. Only strict comparison operands and switch cases may
 // enter this pool: JSX/DOM values, object keys, payload strings, and UI copy
@@ -424,12 +443,12 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 55;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 67;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
-export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 2;
+export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
-  creative: 26,
+  creative: 38,
   survival: 10,
   loaded: 3,
   recovered: 3,
@@ -437,7 +456,7 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   unsupported: 6,
   empty: 2,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "61866ec52b9b320d8ca8b23c27f9cdd606541c7593acfd2e05af0e6d815f8bed";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "dda5223efbeff47c2b238b8901dc93235ca080d25d86a547a3cd95bc6c764d15";
 // WebGL uniform names are a closed API boundary between authored shader text
 // and `getUniformLocation`. Keep this semantic category separate from the
 // generic frequency floors: attributes, DOM/UI text, wire values, and newly
@@ -458,15 +477,15 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_VALUES = Object.freeze([
   "uSkyExposure",
   "uTorchLights[0]",
 ]);
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 51;
-export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 43;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 54;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 46;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_UNIQUE_VALUES = 14;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_COUNTS = Object.freeze({
-  uMvp: 9,
-  uSkin: 3,
+  uMvp: 10,
+  uSkin: 4,
   uAtlas: 3,
-  uLight: 6,
+  uLight: 7,
   uCamera: 3,
   uFogEnabled: 3,
   uFogRange: 3,
@@ -479,7 +498,7 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_COUNTS = Object.freeze({
   "uTorchLights[0]": 3,
 });
 export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_COUNTS = Object.freeze({
-  uMvp: 6,
+  uMvp: 9,
   uSkin: 2,
   uAtlas: 2,
   uLight: 3,
@@ -494,7 +513,7 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_COUNTS = Object.freeze({
   uSkyExposure: 3,
   "uTorchLights[0]": 3,
 });
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b";
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "3ecfd0ea9ca3887fbd141fb623876c2205be8e47280ad069caba81427c951d0e";
 // uMvp and uLight already qualify for the generic pools. The category is
 // unioned by occurrence, preserving their existing indexes and adding only
 // the remaining 22 occurrences / 11 values.

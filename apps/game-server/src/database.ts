@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { BlockEdit, PublicPlayer } from "./protocol";
+import type { BlockEdit, PublicPlayer, RealtimeChatMessage, ServerGameMode } from "./protocol";
 
 interface PlayerRow {
   user_id: string;
@@ -11,6 +11,7 @@ interface PlayerRow {
   pitch: number;
   resume_hash: string;
   resume_expires_at: number;
+  game_mode: string;
   updated_at: number;
 }
 
@@ -22,6 +23,15 @@ interface BlockRow {
   block: number;
   editor_id: string;
   edited_at: number;
+}
+
+interface ChatRow {
+  sequence: number;
+  operation_id: string;
+  user_id: string;
+  username: string;
+  message: string;
+  sent_at: number;
 }
 
 export interface StoredPlayer {
@@ -57,6 +67,7 @@ export class WorldStore {
         pitch REAL NOT NULL,
         resume_hash TEXT NOT NULL,
         resume_expires_at INTEGER NOT NULL DEFAULT 0,
+        game_mode TEXT NOT NULL DEFAULT 'survival' CHECK (game_mode IN ('survival', 'creative')),
         updated_at INTEGER NOT NULL
       );
       CREATE UNIQUE INDEX IF NOT EXISTS player_state_resume_hash ON player_state (resume_hash);
@@ -90,10 +101,24 @@ export class WorldStore {
         redeemed_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS redeemed_tickets_age ON redeemed_tickets (redeemed_at);
+
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        message TEXT NOT NULL,
+        sent_at INTEGER NOT NULL,
+        UNIQUE (user_id, operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS chat_messages_sent_at ON chat_messages (sent_at);
     `);
     const playerColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(player_state)").all();
     if (!playerColumns.some((column) => column.name === "resume_expires_at")) {
       this.db.exec("ALTER TABLE player_state ADD COLUMN resume_expires_at INTEGER NOT NULL DEFAULT 0;");
+    }
+    if (!playerColumns.some((column) => column.name === "game_mode")) {
+      this.db.exec("ALTER TABLE player_state ADD COLUMN game_mode TEXT NOT NULL DEFAULT 'survival';");
     }
   }
 
@@ -115,6 +140,61 @@ export class WorldStore {
       FROM block_edits ORDER BY revision ASC
     `).all();
     return rows.map(toBlockEdit);
+  }
+
+  recentChat(limit: number): RealtimeChatMessage[] {
+    const boundedLimit = Math.max(1, Math.min(256, Math.floor(limit)));
+    const rows = this.db.query<ChatRow, [number]>(`
+      SELECT sequence, operation_id, user_id, username, message, sent_at
+      FROM chat_messages ORDER BY sequence DESC LIMIT ?
+    `).all(boundedLimit);
+    return rows.reverse().map(toChatMessage);
+  }
+
+  appendChat(
+    input: { operationId: string; userId: string; username: string; message: string; sentAt: number },
+    rateLimitMs: number,
+    historyLimit: number,
+  ): { ok: true; message: RealtimeChatMessage; duplicate: boolean } | { ok: false; retryAfterMs: number } {
+    return this.db.transaction(() => {
+      const duplicate = this.db.query<ChatRow, [string, string]>(`
+        SELECT sequence, operation_id, user_id, username, message, sent_at
+        FROM chat_messages WHERE user_id = ? AND operation_id = ?
+      `).get(input.userId, input.operationId);
+      if (duplicate) return { ok: true as const, message: toChatMessage(duplicate), duplicate: true };
+
+      const previous = this.db.query<{ sent_at: number }, [string]>(`
+        SELECT sent_at FROM chat_messages WHERE user_id = ? ORDER BY sequence DESC LIMIT 1
+      `).get(input.userId);
+      const elapsed = previous ? input.sentAt - previous.sent_at : rateLimitMs;
+      if (elapsed < rateLimitMs) {
+        return { ok: false as const, retryAfterMs: Math.max(1, rateLimitMs - elapsed) };
+      }
+
+      const inserted = this.db.query(`
+        INSERT INTO chat_messages (operation_id, user_id, username, message, sent_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(input.operationId, input.userId, input.username, input.message, input.sentAt);
+      const sequence = Number(inserted.lastInsertRowid);
+      this.db.query(`
+        DELETE FROM chat_messages WHERE sequence NOT IN (
+          SELECT sequence FROM chat_messages ORDER BY sequence DESC LIMIT ?
+        )
+      `).run(Math.max(1, Math.min(256, Math.floor(historyLimit))));
+      return {
+        ok: true as const,
+        duplicate: false,
+        message: {
+          id: `chat:${sequence}`,
+          sequence,
+          operationId: input.operationId,
+          userId: input.userId,
+          username: input.username,
+          message: input.message,
+          sentAt: input.sentAt,
+        },
+      };
+    })();
   }
 
   getBlockOperation(userId: string, operationId: string): BlockEdit | null {
@@ -195,7 +275,7 @@ export class WorldStore {
 
   loadPlayer(userId: string): StoredPlayer | null {
     const row = this.db.query<PlayerRow, [string]>(`
-      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, updated_at
+      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, updated_at
       FROM player_state WHERE user_id = ?
     `).get(userId);
     return row ? toStoredPlayer(row) : null;
@@ -203,7 +283,7 @@ export class WorldStore {
 
   loadPlayerByResumeHash(resumeHash: string): StoredPlayer | null {
     const row = this.db.query<PlayerRow, [string]>(`
-      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, updated_at
+      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, updated_at
       FROM player_state WHERE resume_hash = ?
     `).get(resumeHash);
     return row ? toStoredPlayer(row) : null;
@@ -217,9 +297,9 @@ export class WorldStore {
   ): void {
     this.db.query(`
       INSERT INTO player_state (
-        user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, updated_at
+        user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (user_id) DO UPDATE SET
         display_name = excluded.display_name,
         x = excluded.x,
@@ -229,6 +309,7 @@ export class WorldStore {
         pitch = excluded.pitch,
         resume_hash = excluded.resume_hash,
         resume_expires_at = excluded.resume_expires_at,
+        game_mode = excluded.game_mode,
         updated_at = excluded.updated_at
     `).run(
       player.id,
@@ -240,8 +321,25 @@ export class WorldStore {
       player.pitch,
       resumeHash,
       resumeExpiresAt,
+      player.gameMode === "creative" ? "creative" : "survival",
       updatedAt,
     );
+  }
+
+  listPlayers(): Array<{ id: string; name: string; gameMode: ServerGameMode }> {
+    return this.db.query<{ user_id: string; display_name: string; game_mode: string }, []>(`
+      SELECT user_id, display_name, game_mode FROM player_state ORDER BY updated_at DESC
+    `).all().map((row) => ({
+      id: row.user_id,
+      name: row.display_name,
+      gameMode: row.game_mode === "creative" ? "creative" : "survival",
+    }));
+  }
+
+  setPlayerGameMode(userId: string, gameMode: ServerGameMode): boolean {
+    const result = this.db.query("UPDATE player_state SET game_mode = ?, updated_at = ? WHERE user_id = ?")
+      .run(gameMode, Date.now(), userId);
+    return result.changes === 1;
   }
 
   /** Returns false for a replayed ticket id. */
@@ -266,6 +364,7 @@ function toStoredPlayer(row: PlayerRow): StoredPlayer {
       z: row.z,
       yaw: row.yaw,
       pitch: row.pitch,
+      gameMode: row.game_mode === "creative" ? "creative" : "survival",
     },
     resumeHash: row.resume_hash,
     resumeExpiresAt: row.resume_expires_at,
@@ -282,5 +381,17 @@ function toBlockEdit(row: BlockRow): BlockEdit {
     block: row.block,
     editorId: row.editor_id,
     editedAt: row.edited_at,
+  };
+}
+
+function toChatMessage(row: ChatRow): RealtimeChatMessage {
+  return {
+    id: `chat:${row.sequence}`,
+    sequence: row.sequence,
+    operationId: row.operation_id,
+    userId: row.user_id,
+    username: row.username,
+    message: row.message,
+    sentAt: row.sent_at,
   };
 }

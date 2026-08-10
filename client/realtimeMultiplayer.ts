@@ -1,10 +1,18 @@
 import type { PlayerPose, RemotePlayer, WorldEdit } from "./game/types.ts";
+import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
+import {
+  REALTIME_CHAT_MAX_LENGTH,
+  normalizeRealtimeChat,
+  type RealtimeChatEvent,
+  type RealtimeChatMessage,
+} from "./realtimeChat.ts";
 
 export const REALTIME_PROTOCOL_VERSION = 1 as const;
 export const MULTIPLAYER_SERVERS_STORAGE_KEY = "lakecraft:multiplayer-servers:v1";
 export const MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY = "lakecraft:multiplayer-invitation-tokens:v1";
 
 export type RealtimeConnectionPhase = "idle" | "connecting" | "online" | "reconnecting" | "offline" | "error";
+export type RealtimeGameMode = "survival" | "creative";
 
 export type SavedMultiplayerServer = {
   id: string;
@@ -22,10 +30,15 @@ export type RealtimeClientOptions = {
   ticket?: string;
   serverId: string;
   demo?: { token: string; userId: string; name: string };
+  localUserId: string;
+  localUsername: string;
   getPose: () => PlayerPose;
+  getHeldItem?: () => string | null;
   onPhase: (phase: RealtimeConnectionPhase, detail?: string) => void;
   onRemotePlayers: (players: RemotePlayer[]) => void;
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
+  onChatEvent: (event: RealtimeChatEvent) => void;
+  onGameMode: (gameMode: RealtimeGameMode) => void;
   onReconcilePose?: (pose: PlayerPose) => void;
 };
 
@@ -75,6 +88,10 @@ function decodePose(value: unknown): PlayerPose | null {
   return { x, y, z, yaw, pitch };
 }
 
+export function decodeRealtimeGameMode(value: unknown): RealtimeGameMode {
+  return value === "creative" ? "creative" : "survival";
+}
+
 function decodeWorldEdit(value: unknown): RealtimeWorldEdit | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const source = value as Record<string, unknown>;
@@ -94,6 +111,22 @@ function decodeWorldEdit(value: unknown): RealtimeWorldEdit | null {
     ...(typeof source.operationId === "string" ? { operationId: source.operationId.slice(0, 96) } : {}),
     ...(revision !== null && Number.isSafeInteger(revision) ? { revision } : {}),
   };
+}
+
+function decodeChatMessage(value: unknown): RealtimeChatMessage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const id = boundedText(source.id, 96);
+  const operationId = boundedText(source.operationId, 96);
+  const userId = boundedText(source.userId, 128);
+  const username = boundedText(source.username, 32);
+  const message = boundedText(source.message, REALTIME_CHAT_MAX_LENGTH);
+  const sequence = finiteNumber(source.sequence);
+  const sentAt = finiteNumber(source.sentAt);
+  if (!id || !operationId || !userId || !username || !message
+    || sequence === null || !Number.isSafeInteger(sequence) || sequence < 1
+    || sentAt === null || sentAt < 0) return null;
+  return { id, operationId, userId, username, message, sequence, sentAt, delivery: "sent" };
 }
 
 export function normalizeMultiplayerEndpoint(value: string): string | null {
@@ -204,10 +237,13 @@ export class RealtimeMultiplayerClient {
   private resumeToken = "";
   private sequence = 0;
   private blockSequence = 0;
+  private actionSequence = 0;
+  private gameMode: RealtimeGameMode = "survival";
   private reconnectAttempt = 0;
   private lastPose: PlayerPose | null = null;
   private lastPoseAt = 0;
   private pendingBlocks = new Map<string, PendingBlockEdit>();
+  private pendingChat = new Map<string, string>();
 
   constructor(options: RealtimeClientOptions) {
     this.options = options;
@@ -233,6 +269,7 @@ export class RealtimeMultiplayerClient {
       pending.reject(new Error("multiplayer_disconnected"));
     }
     this.pendingBlocks.clear();
+    this.pendingChat.clear();
     this.options.onRemotePlayers([]);
     this.options.onPhase("offline");
   }
@@ -262,6 +299,37 @@ export class RealtimeMultiplayerClient {
       }, 5_000);
       this.pendingBlocks.set(operationId, { resolve, reject, timer });
     });
+  }
+
+  submitChat(rawMessage: string): Promise<void> {
+    const message = normalizeRealtimeChat(rawMessage);
+    if (!message) return Promise.reject(new Error("empty"));
+    if (message.length > REALTIME_CHAT_MAX_LENGTH) return Promise.reject(new Error("too_long"));
+    if (!this.joined || this.socket?.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("multiplayer_not_connected"));
+    }
+    if (this.pendingChat.size >= 16) return Promise.reject(new Error("multiplayer_chat_backlog"));
+    const operationId = `chat_${crypto.randomUUID()}`;
+    const optimistic: RealtimeChatMessage = {
+      id: `pending:${operationId}`,
+      sequence: 0,
+      operationId,
+      userId: this.options.localUserId,
+      username: this.options.localUsername || "Player",
+      message,
+      sentAt: Date.now(),
+      delivery: "sending",
+    };
+    this.pendingChat.set(operationId, message);
+    this.options.onChatEvent({ type: "optimistic", message: optimistic });
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "chat_send", operationId, message });
+    return Promise.resolve();
+  }
+
+  submitAction(kind: MotionVisualActionKind, value?: number): void {
+    if (!this.joined || this.socket?.readyState !== WebSocket.OPEN) return;
+    this.actionSequence += 1;
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "action", seq: this.actionSequence, kind, ...(value === undefined ? {} : { value }) });
   }
 
   private open(reconnecting: boolean): void {
@@ -333,22 +401,26 @@ export class RealtimeMultiplayerClient {
       const dx = pose.x - previous.x;
       const dz = pose.z - previous.z;
       const dy = pose.y - previous.y;
-      const nominalSpeed = 4.32;
+      const creative = this.gameMode === "creative";
+      const nominalSpeed = creative ? 7 : 4.32;
       this.sequence += 1;
       const rawMoveX = dx / (dt * nominalSpeed);
       const rawMoveZ = dz / (dt * nominalSpeed);
       const moveMagnitude = Math.max(1, Math.hypot(rawMoveX, rawMoveZ));
+      const heldItem = this.options.getHeldItem?.() ?? null;
       this.send({
         v: REALTIME_PROTOCOL_VERSION,
         type: "input",
         seq: this.sequence,
         dtMs: dt * 1_000,
         moveX: rawMoveX / moveMagnitude,
+        ...(creative ? { moveY: Math.max(-1, Math.min(1, dy / (dt * 7))) } : {}),
         moveZ: rawMoveZ / moveMagnitude,
         yaw: pose.yaw,
         pitch: pose.pitch,
         jump: dy > 0.045,
         sprint: Math.hypot(dx, dz) / dt > nominalSpeed * 1.12,
+        heldItem: heldItem ?? "",
       });
       this.lastPose = pose;
       this.lastPoseAt = now;
@@ -364,8 +436,16 @@ export class RealtimeMultiplayerClient {
       this.reconnectAttempt = 0;
       const initial = Array.isArray(message.blocks) ? message.blocks.map(decodeWorldEdit).filter(Boolean) as RealtimeWorldEdit[] : [];
       if (initial.length > 0) this.options.onWorldEdits(initial, true);
+      const welcomePlayer = message.player;
+      if (welcomePlayer && typeof welcomePlayer === "object" && !Array.isArray(welcomePlayer)) {
+        this.gameMode = decodeRealtimeGameMode((welcomePlayer as Record<string, unknown>).gameMode);
+        this.options.onGameMode(this.gameMode);
+      }
       this.options.onPhase("online");
       this.beginSampling();
+      for (const [operationId, message] of this.pendingChat) {
+        this.send({ v: REALTIME_PROTOCOL_VERSION, type: "chat_send", operationId, message });
+      }
       return;
     }
     if (message.type === "world_snapshot") {
@@ -389,8 +469,27 @@ export class RealtimeMultiplayerClient {
       }
       return;
     }
+    if (message.type === "chat_history") {
+      const messages = Array.isArray(message.messages)
+        ? message.messages.slice(-80).map(decodeChatMessage).filter(Boolean) as RealtimeChatMessage[]
+        : [];
+      this.options.onChatEvent({ type: "history", messages });
+      for (const chat of messages) this.pendingChat.delete(chat.operationId);
+      return;
+    }
+    if (message.type === "chat_message") {
+      const chat = decodeChatMessage(message.message);
+      if (!chat) return;
+      this.pendingChat.delete(chat.operationId);
+      this.options.onChatEvent({ type: "confirmed", message: chat });
+      return;
+    }
     if (message.type === "snapshot") {
       const self = decodePose(message.self);
+      if (message.self && typeof message.self === "object" && !Array.isArray(message.self)) {
+        this.gameMode = decodeRealtimeGameMode((message.self as Record<string, unknown>).gameMode);
+        this.options.onGameMode(this.gameMode);
+      }
       const local = this.options.getPose();
       if (self && Math.hypot(self.x - local.x, self.y - local.y, self.z - local.z) > 1.5) {
         this.options.onReconcilePose?.(self);
@@ -406,10 +505,15 @@ export class RealtimeMultiplayerClient {
           const vx = finiteNumber(source.vx);
           const vy = finiteNumber(source.vy);
           const vz = finiteNumber(source.vz);
+          const visualActions = Array.isArray(source.visualActions)
+            ? source.visualActions.slice(-8) as RemotePlayer["visualActions"]
+            : [];
           players.push({
             ...pose,
             id,
             name: boundedText(source.name ?? source.username, 32) || "Player",
+            ...(typeof source.heldItem === "string" ? { heldItem: boundedText(source.heldItem, 64) } : {}),
+            ...(visualActions.length ? { visualActions } : {}),
             ...(vx === null ? {} : { vx }),
             ...(vy === null ? {} : { vy }),
             ...(vz === null ? {} : { vz }),
@@ -421,6 +525,14 @@ export class RealtimeMultiplayerClient {
     }
     if (message.type === "error") {
       const operationId = boundedText(message.operationId, 96);
+      if (operationId?.startsWith("chat_")) {
+        this.pendingChat.delete(operationId);
+        this.options.onChatEvent({
+          type: "failed",
+          operationId,
+        });
+        return;
+      }
       if (operationId) {
         const pending = this.pendingBlocks.get(operationId);
         if (pending) {
@@ -437,4 +549,5 @@ export class RealtimeMultiplayerClient {
       }
     }
   }
+
 }

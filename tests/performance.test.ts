@@ -152,12 +152,13 @@ for (const playerCount of [1, 8, 32]) {
   const capacity = remotePlayerBufferCapacity(playerCount);
   const avatarData = new Float32Array(capacity.avatarFloats);
   const nameplateData = new Float32Array(capacity.nameplateFloats);
-  const remoteStats: RemoteGeometryStats = { avatarVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
+  const remoteStats: RemoteGeometryStats = { avatarVertexCount: 0, skinVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
   writeRemotePlayerGeometry(remoteStates(playerCount), [0, 9, 0], avatarData, nameplateData, remoteStats);
   assert.equal(remoteStats.visiblePlayerCount, playerCount);
-  assert.equal(remoteStats.avatarVertexCount, playerCount * BASE_AVATAR_VERTICES_PER_PLAYER);
-  assert.equal(remoteStats.nameplateVertexCount, playerCount * 1_158);
-  const uploadBytes = (remoteStats.avatarVertexCount + remoteStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
+  assert.equal(remoteStats.avatarVertexCount, 0);
+  assert.equal(remoteStats.skinVertexCount, playerCount * BASE_AVATAR_VERTICES_PER_PLAYER);
+  assert.equal(remoteStats.nameplateVertexCount, playerCount * 1_638);
+  const uploadBytes = (remoteStats.skinVertexCount + remoteStats.avatarVertexCount + remoteStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
   assert.ok(uploadBytes <= capacity.totalBytes);
   remoteBenchmarks.push({ playerCount, uploadBytes, capacityBytes: capacity.totalBytes });
 }
@@ -166,19 +167,31 @@ const maximalHeldItem = (Object.keys(ITEMS) as ItemId[])
   .find((itemId) => remoteHeldItemVertexCount(itemId) === MAX_HELD_ITEM_VERTICES_PER_PLAYER);
 assert.ok(maximalHeldItem, "the catalog contains a true 24-rectangle remote held-item fixture");
 const printableGlyphs = Array.from({ length: 64 }, (_, index) => index + 32);
-const glyphPixels = (codePoint: number) => NAMEPLATE_FONT[codePoint].toString(2).replaceAll("0", "").length;
+const glyphRects = (codePoint: number) => {
+  let rectangles = 0;
+  for (let row = 0; row < 7; row += 1) {
+    const bits = NAMEPLATE_FONT[codePoint * 7 + row];
+    let previous = false;
+    for (let column = 0; column < 5; column += 1) {
+      const lit = Boolean(bits & 1 << (4 - column));
+      if (lit && !previous) rectangles += 1;
+      previous = lit;
+    }
+  }
+  return rectangles;
+};
 const maximalGlyphCodePoint = printableGlyphs.reduce((best, codePoint) => (
-  glyphPixels(codePoint) > glyphPixels(best) ? codePoint : best
+  glyphRects(codePoint) > glyphRects(best) ? codePoint : best
 ));
-const maximalGlyphPixels = glyphPixels(maximalGlyphCodePoint);
-assert.equal(maximalGlyphPixels, 13, "the generated 3x5 font's true maximum-lit glyph has 13 pixels");
+const maximalGlyphRects = glyphRects(maximalGlyphCodePoint);
+assert.ok(maximalGlyphRects >= 17 && maximalGlyphRects <= 21, "5x7 row merging stays inside the fixed rectangle budget");
 const maximalName = String.fromCharCode(maximalGlyphCodePoint).repeat(MAX_PLAYER_NAME_LENGTH);
 assert.equal(maximalName.length, 16);
 
 const gearedCapacity = remotePlayerBufferCapacity(MAX_REMOTE_PLAYERS);
 const gearedAvatarData = new Float32Array(gearedCapacity.avatarFloats);
 const gearedNameplateData = new Float32Array(gearedCapacity.nameplateFloats);
-const gearedStats: RemoteGeometryStats = { avatarVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
+const gearedStats: RemoteGeometryStats = { avatarVertexCount: 0, skinVertexCount: 0, nameplateVertexCount: 0, visiblePlayerCount: 0 };
 writeRemotePlayerGeometry(
   remoteStates(MAX_REMOTE_PLAYERS, true, maximalHeldItem, maximalName),
   [0, 9, 0],
@@ -189,26 +202,27 @@ writeRemotePlayerGeometry(
 assert.equal(gearedStats.visiblePlayerCount, MAX_REMOTE_PLAYERS);
 const gearedVerticesPerPlayer = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
-assert.equal(gearedStats.avatarVertexCount, MAX_REMOTE_PLAYERS * gearedVerticesPerPlayer);
+assert.equal(gearedStats.skinVertexCount, MAX_REMOTE_PLAYERS * BASE_AVATAR_VERTICES_PER_PLAYER);
+assert.equal(gearedStats.avatarVertexCount, MAX_REMOTE_PLAYERS * (gearedVerticesPerPlayer - BASE_AVATAR_VERTICES_PER_PLAYER));
 assert.equal(gearedVerticesPerPlayer, AVATAR_VERTICES_PER_PLAYER);
-const maximalNameplateVerticesPerPlayer = 6 + MAX_PLAYER_NAME_LENGTH * maximalGlyphPixels * 6;
+const maximalNameplateVerticesPerPlayer = 6 + MAX_PLAYER_NAME_LENGTH * maximalGlyphRects * 6;
 assert.equal(gearedStats.nameplateVertexCount, MAX_REMOTE_PLAYERS * maximalNameplateVerticesPerPlayer);
-const gearedUploadBytes = (gearedStats.avatarVertexCount + gearedStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
+const gearedUploadBytes = (gearedStats.skinVertexCount + gearedStats.avatarVertexCount + gearedStats.nameplateVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT;
 const base32UploadBytes = remoteBenchmarks[remoteBenchmarks.length - 1].uploadBytes;
 const fixtureDeltaBytes = gearedUploadBytes - base32UploadBytes;
 const gearDeltaBytes = MAX_REMOTE_PLAYERS
   * (gearedVerticesPerPlayer - BASE_AVATAR_VERTICES_PER_PLAYER)
   * 6 * Float32Array.BYTES_PER_ELEMENT;
 const nameDeltaBytes = MAX_REMOTE_PLAYERS
-  * (maximalNameplateVerticesPerPlayer - 1_158)
+  * (maximalNameplateVerticesPerPlayer - 1_638)
   * 6 * Float32Array.BYTES_PER_ELEMENT;
 assert.equal(
   fixtureDeltaBytes,
   gearDeltaBytes + nameDeltaBytes,
 );
 assert.ok(gearedUploadBytes <= gearedCapacity.totalBytes, "32 fully geared players fit the one preallocated avatar buffer");
-assert.equal(gearedUploadBytes, 1_820_160, "true maximum catalog gear/name fixture remains deterministic");
-assert.ok(gearedUploadBytes < 2_000_000, `worst-case remote upload ${gearedUploadBytes} exceeded 2MB`);
+assert.equal(gearedUploadBytes, 1_976_832, "true maximum catalog gear/name fixture remains deterministic");
+assert.ok(gearedUploadBytes < 2_100_000, `worst-case remote upload ${gearedUploadBytes} exceeded 2.1MB`);
 
 const glCalls = { bufferData: 0, bufferSubData: 0, deleteBuffer: 0 };
 let nextBufferId = 0;
@@ -228,19 +242,19 @@ assert.equal(glCalls.bufferSubData, 0, "zero remotes must skip GPU uploads");
 const oneRemote = remoteStates(1);
 oneRemote.get("remote-0")!.target.x += 1;
 assert.equal(remoteRenderer.update(oneRemote, 0, 0.016, [0, 9, 0]).updated, true);
-assert.equal(glCalls.bufferSubData, 2);
+assert.equal(glCalls.bufferSubData, 1, "a skin-only player uploads only the nameplate gear buffer here");
 const firstInterpolatedX = oneRemote.get("remote-0")!.rendered.x;
 assert.equal(remoteRenderer.update(oneRemote, REMOTE_MESH_INTERVAL_MS / 2, 0.016, [0, 9, 0]).updated, false);
 assert.ok(oneRemote.get("remote-0")!.rendered.x > firstInterpolatedX, "interpolation should advance between capped mesh uploads");
-assert.equal(glCalls.bufferSubData, 2);
+assert.equal(glCalls.bufferSubData, 1);
 assert.equal(
   remoteRenderer.update(remoteStates(2, true), REMOTE_MESH_INTERVAL_MS * 0.75, 0.016, [0, 9, 0]).updated,
   false,
   "even player-count and gear changes must respect the 30Hz upload cap",
 );
-assert.equal(glCalls.bufferSubData, 2);
+assert.equal(glCalls.bufferSubData, 1);
 assert.equal(remoteRenderer.update(oneRemote, REMOTE_MESH_INTERVAL_MS + 1, 0.016, [0, 9, 0]).updated, true);
-assert.equal(glCalls.bufferSubData, 4);
+assert.equal(glCalls.bufferSubData, 2);
 remoteRenderer.destroy();
 assert.equal(glCalls.deleteBuffer, 2);
 

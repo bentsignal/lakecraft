@@ -23,26 +23,27 @@ assert.equal(BOX_VERTEX_COORDINATES.every((coordinate) => coordinate === 0 || co
   "cube coordinates remain normalized and bounded");
 assert.deepEqual(BOX_FACE_SHADES, [0.79, 0.68, 1, 0.52, 0.88, 0.73],
   "shared mob, player, and dropped-item face lighting stays exact");
-assert.equal(NAMEPLATE_FONT.length, 96, "supported ASCII nameplate glyph lookup stays fixed and bounded");
-assert.equal(NAMEPLATE_FONT.every((glyph) => glyph <= 0x7fff), true, "every glyph fits its 3x5 bit mask");
-assert.equal(NAMEPLATE_FONT[32], 0, "space remains blank");
-assert.equal(NAMEPLATE_FONT[33], NAMEPLATE_FONT[63], "unsupported ASCII falls back to the question mark");
-assert.equal(NAMEPLATE_FONT["A".charCodeAt(0)].toString(2).padStart(15, "0"), "010101111101101");
-assert.equal(NAMEPLATE_FONT["_".charCodeAt(0)].toString(2).padStart(15, "0"), "000000000000111");
+assert.equal(NAMEPLATE_FONT.length, 96 * 7, "supported ASCII nameplates retain seven bounded rows per glyph");
+assert.equal(NAMEPLATE_FONT.every((row) => row <= 0b11111), true, "every row fits its five-pixel mask");
+const rows = (character: string) => [...NAMEPLATE_FONT.slice(character.charCodeAt(0) * 7, (character.charCodeAt(0) + 1) * 7)];
+assert.deepEqual(rows(" "), [0,0,0,0,0,0,0], "space remains blank");
+assert.deepEqual(rows("!"), rows("?"), "unsupported ASCII falls back to the question mark");
+assert.deepEqual(rows("A"), [14,17,17,31,17,17,17]);
+assert.deepEqual(rows("_"), [0,0,0,0,0,0,31]);
 
 const canonical = JSON.stringify([
   [...BOX_VERTEX_COORDINATES],
   BOX_FACE_SHADES,
   [...NAMEPLATE_FONT],
 ]);
-assert.equal(fnv1a32(canonical), "f697727a",
+assert.equal(fnv1a32(canonical), "8c774e39",
   "the complete cube-coordinate, face-shade, and nameplate-glyph fixture changed unexpectedly");
 
 const generatedPath = new URL("../client/game/generated/renderGeometry.ts", import.meta.url);
 const generatedSource = readFileSync(generatedPath, "utf8");
 const payloads = [...generatedSource.matchAll(/decodeStaticBytes\("([^"]+)", (\d+), (\d+)\)/g)];
 assert.deepEqual(payloads.map((match) => [match[1].length, Number(match[2]), Number(match[3])]),
-  [[65, 108, 50], [140, 192, 111]], "renderer fixtures retain their reviewed packed and decoded bounds");
+  [[65, 108, 50], [330, 672, 261]], "renderer fixtures retain their reviewed packed and decoded bounds");
 assert.equal((generatedSource.match(/decodeStaticBytes\(/g) ?? []).length, 2,
   "renderer tables decode once at module initialization through the shared helper");
 

@@ -31,6 +31,7 @@ test("refuses token-bearing URLs", () => {
 test("doctor validates Railway persistence and demo auth without exposing secrets", () => {
   const valid = inspectEnvironment({
     ALLOWED_ORIGINS: "https://craft.lakebed.app",
+    ADMIN_TOKEN: "a-private-admin-token-with-enough-entropy",
     AUTH_MODE: "local-demo",
     DATA_DIR: "/data",
     LOCAL_DEMO_TOKEN: "secret-value",

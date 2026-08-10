@@ -98,13 +98,13 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   poseSequence: [5, 9],
   previousBlock: [13, 6],
   radius: [23, 4],
-  reason: [61, 772],
+  reason: [60, 765],
   receiptCreatedAt: [0, 26],
   remainingDurability: [3, 13],
   replayed: [5, 35],
   request: [22, 12],
   resultJson: [15, 26],
-  retryAfterMs: [2, 25],
+  retryAfterMs: [2, 24],
   revision: [129, 83],
   selectedHotbar: [63, 12],
   serverNow: [48, 272],
@@ -118,8 +118,8 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   targetKind: [20, 2],
   targetUserId: [20, 3],
   updatedAt: [12, 1],
-  userId: [300, 92],
-  username: [15, 10],
+  userId: [295, 90],
+  username: [14, 8],
   version: [9, 11],
   weaponItemId: [7, 2],
   workstationCoordKey: [6, 2],
@@ -134,12 +134,13 @@ const BUILTIN_EXCLUSIONS = Object.freeze([
   "sort", "stringify", "take", "toString", "update", "withIndex",
 ]);
 export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
-// Reviewed through the canonical GUI block raster base. The explicit
-// MotionSegmentRecorder and skin-storage deltas remain pinned below; compact
-// manifest keys, exclusions, runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "ac3baf32e09ff523cd08fbade638ad719b1e4136d0296315a39631d482451a81";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "8c0b340a147dc2f2732c609cc153c856ed05174f48dfe20841002170d15ccf5d";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "c399d4e20559f35a6dc7a7172d48d2b6d5705b9204acb7feaee4df5f093f0ea4";
+// Reviewed through the canonical GUI block raster base plus the Railway chat,
+// held-item, and remote-skin paths. The explicit MotionSegmentRecorder and
+// skin-storage deltas remain pinned below; compact manifest keys, exclusions,
+// runtime strings, and server records stay exact.
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "a2e67c25258f79da77420a59cf910a3d2e83bd68f334fb4731ba6207f4541cee";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "acf1eddd611f8732905f827d86244b0fef24b0763f25dcd599cb7945df4d97fb";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "9ef3b2dcb31f64db5ecb9dc7b792742315249a8077ef54f60542e90cfb7ad7d1";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
 // bundle contains a larger set of ordinary property spellings that can be
@@ -147,8 +148,8 @@ export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3
 // Derivation is deterministic, but the exact reviewed live set is hash-pinned
 // so source drift fails closed instead of silently broadening the transform.
 export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
-export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 285;
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "48897511f3811d8e65e02b71aea7fbbac4a7364502a1c9cf4f5709dfc7ed27c0";
+export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 283;
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "97ebb89e07f504a4c9cbb819bfe09cdb68c60ce3e0c8e8c7a7eb2706dbdddb53";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",
   sessionId: Object.freeze({

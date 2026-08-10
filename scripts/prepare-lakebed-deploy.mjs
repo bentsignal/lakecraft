@@ -65,7 +65,7 @@ async function clientSourcePaths(directory = join(sourceRoot, "client")) {
 
 const RETIRED_PRESENCE_START = "  // LAKEBED_COMPACT_RETIRED_PRESENCE_START\n";
 const RETIRED_PRESENCE_END = "  // LAKEBED_COMPACT_RETIRED_PRESENCE_END\n";
-const RETIRED_PRESENCE_FINGERPRINT = "3b8b384cb18e5ad9a32bf93340d267273172e87c0a2335942851e112e3a3fd43";
+const RETIRED_PRESENCE_FINGERPRINT = "80cf6f7a51e8f961715cfef7082b4b1e4ab8f7e897f382aec894c0ee005a18ac";
 
 function stripRetiredLakebedPresenceSource(source) {
   const start = source.indexOf(RETIRED_PRESENCE_START);

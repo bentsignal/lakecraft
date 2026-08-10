@@ -21,7 +21,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const names = Object.keys(COMPACT_SERVER_KEY_COUNTS);
 assert.deepEqual(names, [...names].sort(), "server key manifest stays sorted");
 assert.equal(names.length, 115, "server key compatibility boundary changes only intentionally");
-assert.equal(COMPACT_SERVER_EXTENDED_KEY_COUNT, 285, "the reviewed extended interning boundary remains exact");
+assert.equal(COMPACT_SERVER_EXTENDED_KEY_COUNT, 283, "the reviewed extended interning boundary remains exact");
 assert.equal(COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN, 10, "extended keys remain above the conservative floor");
 assert.match(COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT, /^[0-9a-f]{64}$/);
 assert.deepEqual(names.filter((name) => COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS.includes(name)), [],

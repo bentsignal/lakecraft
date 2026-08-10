@@ -19,4 +19,21 @@ describe("server configuration", () => {
       ALLOWED_ORIGINS: "https://craft.lakebed.app",
     }).allowedOrigins).toEqual(["https://craft.lakebed.app"]);
   });
+
+  test("keeps the admin portal opt-in and rejects weak admin tokens", () => {
+    expect(loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+    }).adminToken).toBeUndefined();
+    expect(() => loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      ADMIN_TOKEN: "too-short",
+    })).toThrow("ADMIN_TOKEN must be at least 24 characters");
+    expect(loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      ADMIN_TOKEN: "a-private-admin-token-with-enough-entropy",
+    }).adminToken).toBe("a-private-admin-token-with-enough-entropy");
+  });
 });

@@ -18,6 +18,7 @@ const compact = stripClientDevelopmentSurfaces(source);
 for (const developmentOnly of [
   "FirstPersonPoseLab", "VisualLab", "visualLabOpen", "setVisualLabOpen", "setPoseLabBowPreview",
   "setPoseLabHeldItemPreview", "setPoseLabUsePreview", "SinglePlayerPerformanceBenchmark", "benchmarkDistance",
+  "captureScreenshot",
 ]) {
   assert.equal(compact.includes(developmentOnly), false,
     `compact anonymous source excludes development-only ${developmentOnly}`);
@@ -43,7 +44,7 @@ assert.ok(voxelSource.includes("setPoseLabRigPreview"),
 assert.ok(voxelSource.includes("setBenchmarkLook"),
   "normal local development exposes deterministic benchmark look control");
 const compactVoxel = stripVoxelDevelopmentSurfaces(voxelSource);
-for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", "setBenchmarkLook", "@lakecraft-voxel-development:"]) {
+for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", "setBenchmarkLook", "pendingScreenshot", "captureScreenshot", "@lakecraft-voxel-development:"]) {
   assert.equal(compactVoxel.includes(developmentOnly), false,
     `compact anonymous voxel source excludes development-only ${developmentOnly}`);
 }

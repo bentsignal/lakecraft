@@ -1,7 +1,9 @@
 import type { JoinAuthenticator } from "./auth";
 import type { ServerConfig } from "./config";
 import type { WorldStore } from "./database";
+import type { AdminPlayerSummary, AdminWorldControl, ServerGameMode } from "./adminPortal";
 import {
+  CHAT_MESSAGE_MAX_LENGTH,
   PROTOCOL_VERSION,
   decodeClientMessage,
   encodeServerMessage,
@@ -10,6 +12,15 @@ import {
   type PublicPlayer,
   type ServerMessage,
 } from "./protocol";
+import {
+  CREATIVE_FLIGHT_SPEED,
+  CREATIVE_FLIGHT_SPRINT_SPEED,
+  MAX_PLAYER_XZ,
+  MAX_PLAYER_Y,
+  PLAYER_GRAVITY,
+  PLAYER_JUMP_SPEED,
+  terrainFeetY,
+} from "./terrain";
 
 export interface Peer {
   readonly id: string;
@@ -20,6 +31,7 @@ export interface Peer {
 
 interface Controls {
   moveX: number;
+  moveY: number;
   moveZ: number;
   jump: boolean;
   sprint: boolean;
@@ -36,6 +48,7 @@ interface ConnectionState {
   controls: Controls;
   vy: number;
   lastInputSeq: number;
+  lastActionSeq: number;
   lastEditSeq: number;
   lastInputAt: number;
   rateWindowAt: number;
@@ -44,18 +57,21 @@ interface ConnectionState {
 }
 
 // Feet pose on the deterministic client's height-68 spawn plateau.
-const SPAWN = { x: 0.5, y: 69.02, z: 0.5 };
+const SPAWN = { x: 0.5, y: terrainFeetY(0.5, 0.5), z: 0.5 };
 const NEARBY_RADIUS = 96;
 const EDIT_REACH = 8;
 const MAX_MESSAGE_BYTES = 16 * 1024;
 const SOFT_BACKPRESSURE = 64 * 1024;
 const HARD_BACKPRESSURE = 256 * 1024;
+export const CHAT_HISTORY_LIMIT = 80;
+export const CHAT_RATE_LIMIT_MS = 900;
 export const RESUME_TOKEN_TTL_MS = 10 * 60 * 1_000;
 
-export class GameWorld {
+export class GameWorld implements AdminWorldControl {
   private readonly connections = new Map<string, ConnectionState>();
   private readonly userConnections = new Map<string, ConnectionState>();
   private tickNumber = 0;
+  private visualActionSequence = 0;
   private shuttingDown = false;
 
   constructor(
@@ -76,15 +92,49 @@ export class GameWorld {
     return this.connections.get(peerId)?.joined ?? false;
   }
 
+  adminPlayers(): AdminPlayerSummary[] {
+    return this.store.listPlayers().map((player) => ({
+      ...player,
+      connected: this.userConnections.has(player.id),
+    }));
+  }
+
+  setPlayerGameMode(userId: string, gameMode: ServerGameMode): boolean {
+    if (!this.store.setPlayerGameMode(userId, gameMode)) return false;
+    const state = this.userConnections.get(userId);
+    if (state?.player) {
+      state.player.gameMode = gameMode;
+      state.controls.moveY = 0;
+      state.vy = 0;
+      state.player.vy = 0;
+    }
+    return true;
+  }
+
+  kickPlayer(userId: string): boolean {
+    const state = this.userConnections.get(userId);
+    if (!state?.player) return false;
+    // Persist the latest pose/role while rotating away the browser's current
+    // resume credential. Clearing the in-memory credential prevents close()
+    // from writing the still-valid hash back over this revocation.
+    this.store.savePlayer(state.player, `revoked:${crypto.randomUUID()}`, Date.now(), 0);
+    state.resumeHash = undefined;
+    state.resumeExpiresAt = undefined;
+    this.close(state.peer);
+    state.peer.close(4002, "Disconnected by server operator");
+    return true;
+  }
+
   open(peer: Peer, now = Date.now()): void {
     if (this.connections.has(peer.id)) return;
     this.connections.set(peer.id, {
       peer,
       joined: false,
       joining: false,
-      controls: { moveX: 0, moveZ: 0, jump: false, sprint: false },
+      controls: { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false },
       vy: 0,
       lastInputSeq: 0,
+      lastActionSeq: 0,
       lastEditSeq: 0,
       lastInputAt: now,
       rateWindowAt: now,
@@ -151,7 +201,9 @@ export class GameWorld {
       return;
     }
     if (message.type === "input") this.input(state, message, now);
-    else this.blockEdit(state, message, now);
+    else if (message.type === "action") this.action(state, message);
+    else if (message.type === "block_edit") this.blockEdit(state, message, now);
+    else this.chat(state, message, now);
   }
 
   tick(now = Date.now()): void {
@@ -161,22 +213,39 @@ export class GameWorld {
       const player = state.player!;
       if (now - state.lastInputAt > 300) {
         state.controls.moveX = 0;
+        state.controls.moveY = 0;
         state.controls.moveZ = 0;
         state.controls.jump = false;
       }
-      const speed = state.controls.sprint ? 6.0 : 4.3;
+      const creative = player.gameMode === "creative";
+      const speed = creative
+        ? state.controls.sprint ? CREATIVE_FLIGHT_SPRINT_SPEED : CREATIVE_FLIGHT_SPEED
+        : state.controls.sprint ? 6.0 : 4.3;
       player.vx = state.controls.moveX * speed;
       player.vz = state.controls.moveZ * speed;
-      player.x += player.vx * dt;
-      player.z += player.vz * dt;
+      const nextX = player.x + player.vx * dt;
+      if (Math.abs(nextX) <= MAX_PLAYER_XZ && terrainFeetY(nextX, player.z) <= player.y + 0.0001) player.x = nextX;
+      else player.vx = 0;
+      const nextZ = player.z + player.vz * dt;
+      if (Math.abs(nextZ) <= MAX_PLAYER_XZ && terrainFeetY(player.x, nextZ) <= player.y + 0.0001) player.z = nextZ;
+      else player.vz = 0;
 
-      const grounded = player.y <= SPAWN.y + 0.0001;
-      if (state.controls.jump && grounded) state.vy = 7.5;
+      const groundY = terrainFeetY(player.x, player.z);
+      if (creative) {
+        state.vy = state.controls.moveY * CREATIVE_FLIGHT_SPEED;
+      } else {
+        const grounded = player.y <= groundY + 0.0001;
+        if (state.controls.jump && grounded) state.vy = PLAYER_JUMP_SPEED;
+        state.vy -= PLAYER_GRAVITY * dt;
+      }
       state.controls.jump = false;
-      state.vy -= 20 * dt;
       player.y += state.vy * dt;
-      if (player.y < SPAWN.y) {
-        player.y = SPAWN.y;
+      if (player.y > MAX_PLAYER_Y) {
+        player.y = MAX_PLAYER_Y;
+        state.vy = 0;
+      }
+      if (player.y < groundY) {
+        player.y = groundY;
         state.vy = 0;
       }
       player.vy = state.vy;
@@ -255,11 +324,18 @@ export class GameWorld {
             vx: 0,
             vy: 0,
             vz: 0,
+            gameMode: stored?.player.gameMode === "creative" ? "creative" : "survival",
           };
+      // Older fixed-floor servers could persist players below the actual
+      // deterministic surface. Heal those poses before the first welcome so a
+      // reconnect cannot begin embedded in the spawn rim.
+      player.x = Math.max(-MAX_PLAYER_XZ, Math.min(MAX_PLAYER_XZ, player.x));
+      player.z = Math.max(-MAX_PLAYER_XZ, Math.min(MAX_PLAYER_XZ, player.z));
+      player.y = Math.min(MAX_PLAYER_Y, Math.max(player.y, terrainFeetY(player.x, player.z)));
 
       if (existingForUser) {
         existingForUser.joined = false;
-        existingForUser.controls = { moveX: 0, moveZ: 0, jump: false, sprint: false };
+        existingForUser.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
         existingForUser.peer.close(4001, "Reconnected from another socket");
       }
       state.joined = true;
@@ -287,6 +363,11 @@ export class GameWorld {
         type: "world_snapshot",
         revision,
         edits: this.store.getAllBlockEdits(),
+      });
+      this.send(state.peer, {
+        v: PROTOCOL_VERSION,
+        type: "chat_history",
+        messages: this.store.recentChat(CHAT_HISTORY_LIMIT),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed";
@@ -316,6 +397,9 @@ export class GameWorld {
     state.lastInputAt = now;
     state.controls = {
       moveX: message.moveX,
+      // Protocol-v1 clients without moveY retain upward flight via `jump`;
+      // explicit moveY adds hover/descent without changing the join contract.
+      moveY: message.moveY ?? (message.jump ? 1 : 0),
       moveZ: message.moveZ,
       jump: message.jump,
       sprint: message.sprint,
@@ -323,6 +407,19 @@ export class GameWorld {
     state.player!.yaw = normalizeYaw(message.yaw);
     state.player!.pitch = message.pitch;
     if (message.heldItem !== undefined) state.player!.heldItem = message.heldItem;
+  }
+
+  private action(state: ConnectionState, message: Extract<ClientMessage, { type: "action" }>): void {
+    if (message.seq <= state.lastActionSeq || (state.lastActionSeq !== 0 && message.seq > state.lastActionSeq + 64)) return;
+    state.lastActionSeq = message.seq;
+    const actions = state.player!.visualActions ?? [];
+    actions.push({
+      sequence: ++this.visualActionSequence,
+      kind: message.kind,
+      ...(message.value === undefined ? {} : { value: message.value }),
+    });
+    if (actions.length > 8) actions.splice(0, actions.length - 8);
+    state.player!.visualActions = actions;
   }
 
   private blockEdit(
@@ -378,6 +475,41 @@ export class GameWorld {
         operationId: other === state ? message.operationId : undefined,
         edit: result.edit,
       });
+    }
+  }
+
+  private chat(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "chat_send" }>,
+    now: number,
+  ): void {
+    const player = state.player!;
+    const result = this.store.appendChat({
+      operationId: message.operationId,
+      userId: player.id,
+      username: player.name,
+      message: message.message.slice(0, CHAT_MESSAGE_MAX_LENGTH),
+      sentAt: now,
+    }, CHAT_RATE_LIMIT_MS, CHAT_HISTORY_LIMIT);
+    if (!result.ok) {
+      this.fail(
+        state,
+        "rate_limited",
+        `Chat rate exceeded; retry in ${result.retryAfterMs}ms`,
+        false,
+        true,
+        message.operationId,
+      );
+      return;
+    }
+    if (result.duplicate) {
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "chat_message", message: result.message });
+      return;
+    }
+    // The SQLite sequence is the single server-wide order. Broadcast in the
+    // same turn so the sender's optimistic row is acknowledged immediately.
+    for (const other of this.userConnections.values()) {
+      this.send(other.peer, { v: PROTOCOL_VERSION, type: "chat_message", message: result.message });
     }
   }
 

@@ -1,7 +1,10 @@
 # Lakecraft production operations
 
-This runbook keeps Lakebed as the only deployment, database, auth, and
-synchronization service. It is deliberately fail-closed: a missing claim,
+This runbook covers the Lakebed capsule, which owns the player client, account
+identity, public server directory, registration, and short-lived join tickets.
+Realtime multiplayer worlds are separate Railway deployments with their own
+SQLite volumes; see `docs/railway-multiplayer-server.md`. The Lakebed release is
+deliberately fail-closed: a missing claim,
 private-inspection authorization failure, quota shortage, unexpected deploy,
 artifact mismatch, or compact-size regression stops the release.
 

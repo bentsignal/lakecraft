@@ -1,4 +1,5 @@
 import { createAuthenticator } from "./auth";
+import { handleAdminRequest } from "./adminPortal";
 import { loadConfig } from "./config";
 import { WorldStore } from "./database";
 import { PROTOCOL_VERSION } from "./protocol";
@@ -51,8 +52,14 @@ function considerSuspend(): void {
 const server = Bun.serve<SocketData>({
   hostname: config.host,
   port: config.port,
-  fetch(request, bunServer) {
+  async fetch(request, bunServer) {
     const url = new URL(request.url);
+    const adminResponse = await handleAdminRequest(request, url, config.adminToken, {
+      name: config.serverName,
+      description: config.serverDescription,
+      capacity: config.maxPlayers,
+    }, world);
+    if (adminResponse) return adminResponse;
     if (request.method === "GET" && url.pathname === "/status") {
       return Response.json(
         {
@@ -63,6 +70,7 @@ const server = Bun.serve<SocketData>({
           capacity: config.maxPlayers,
           protocolVersion: PROTOCOL_VERSION,
           status: "online",
+          adminEnabled: Boolean(config.adminToken),
         },
         { headers: { "access-control-allow-origin": "*", "cache-control": "no-store" } },
       );

@@ -2,10 +2,7 @@ import { boolean, capsule, endpoint, id, json, mutation, query, string, table, t
 import { newestByIndex, newestMatchingRow, newestMatchingRows, newestUserRows, oldestByIndex } from "./queryOrder.ts";
 import { maintainUserReceipts, newestUserOperationReceipt, userOperationReceiptRows } from "./receiptMaintenance.ts";
 import {
-  CHAT_RATE_LIMIT_MS,
-  RECENT_CHAT_LIMIT,
   fernHollowServerStatus,
-  validateChatMessage,
   validateUsername
 } from "../shared/multiplayer";
 import {
@@ -1520,15 +1517,6 @@ export default capsule({
       .index("by_user_server", ["userId", "serverId"])
       .index("by_expiry", ["expiresAt"]),
 
-    chatMessages: table({
-      userId: string(),
-      username: string(),
-      message: string(),
-      sentAt: string()
-    })
-      .index("by_sent_at", ["sentAt"])
-      .index("by_user_sent_at", ["userId", "sentAt"]),
-
     /** Singleton-like shared day/night origin, addressed by WORLD_CLOCK_KEY. */
     worldClock: table({
       clockKey: string(),
@@ -2000,12 +1988,6 @@ export default capsule({
         return { available: true, username: validation.username };
       }
       return { available: false, username: validation.username, reason: "taken" };
-    }),
-
-    recentChat: query(async (ctx) => {
-      const newest = await newestByIndex(ctx.db.chatMessages, "by_sent_at")
-        .take(RECENT_CHAT_LIMIT);
-      return newest.reverse();
     }),
 
     worldClock: query(async (ctx) => {
@@ -5592,48 +5574,6 @@ export default capsule({
       return { ok: true, profile };
     }),
 
-    sendChat: mutation(async (ctx, rawMessage: string) => {
-      if (!hasAuthenticatedUser(ctx)) {
-        return { ok: false, reason: BS.authenticationRequired };
-      }
-      const validation = validateChatMessage(rawMessage);
-      if (!validation.ok) return { ok: false, reason: validation.reason };
-
-      const profile = await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId);
-      if (!profile) return { ok: false, reason: "profile_required" };
-
-      const previous = await newestMatchingRow(ctx.db.chatMessages, "by_user_sent_at", BS.userId, ctx.auth.userId);
-      const now = Date.now();
-      const elapsed = previous ? now - Number(previous.sentAt) : CHAT_RATE_LIMIT_MS;
-      if (elapsed < CHAT_RATE_LIMIT_MS) {
-        return { ok: false, reason: BS.rateLimited, retryAfterMs: CHAT_RATE_LIMIT_MS - elapsed };
-      }
-
-      const rule = validation.message.match(/^\/gamerule\s+doDaylightCycle\s+(true|false)$/i);
-      if (rule) {
-        // The earliest immutable profile owns shared-world operator commands.
-        const owner = await oldestByIndex(ctx.db.profiles, "by_creation").first();
-        if (owner?.userId !== ctx.auth.userId) return { ok: false, reason: "permission" };
-        const existing = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
-        const current = worldClockSnapshot(existing, now);
-        const enabled = rule[1].toLowerCase() === "true";
-        const value = {
-          clockKey: WORLD_CLOCK_KEY,
-          epochMs: String(enabled ? now : -now),
-          epochPhase: String(worldPhaseAt(now, current.epochMs, current.epochPhase, current.cycleLengthMs)),
-        };
-        if (existing) await ctx.db.worldClock.update(existing.id, value);
-        else await ctx.db.worldClock.insert(value);
-      }
-
-      const message = await ctx.db.chatMessages.insert({
-        userId: ctx.auth.userId,
-        username: rule ? "System" : profile.username,
-        message: rule ? `Daylight cycle ${rule[1].toLowerCase()}.` : validation.message,
-        sentAt: String(now)
-      });
-      return { ok: true, message };
-    })
   },
 
   endpoints: {

@@ -41,7 +41,7 @@ assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property ma
 assert.equal(manifestNames.length, 620, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "f6e0b6de488ceeb3864d0fba26110c3171544930dae0bf055d66c154ff3077c2",
+  "8370bfbe9c0c01d1726a208586b334825b669d224aff7f7b0792369082dddec5",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -279,7 +279,13 @@ const reviewedRuntimePaths = {
   deathScreenOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
   inventoryOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
   isRangedWeaponSelected: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  messages: ["client/chat/ChatOverlay.tsx", "client/components/GameHud.tsx", "client/components/ToastSurface.tsx"],
+  messages: [
+    "client/chat/ChatOverlay.tsx",
+    "client/components/GameHud.tsx",
+    "client/components/ToastSurface.tsx",
+    "client/realtimeChat.ts",
+    "client/realtimeMultiplayer.ts",
+  ],
   mobileUnsupported: ["client/components/GameHud.tsx", "client/index.tsx", "client/multiplayerGameplay.ts"],
   normalized: ["client/lobby/LobbyScreen.tsx"],
   offsetZ: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"],

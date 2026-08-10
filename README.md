@@ -1,6 +1,6 @@
 # Lakecraft
 
-Lakecraft is a deliberately unreasonable multiplayer voxel sandbox built entirely as a [Lakebed](https://lakebed.dev) capsule. Lakebed is intentionally the auth system, database, realtime-ish presence/chat transport, runtime, and host even though it was not designed to be a game backend. The 3D renderer is dependency-free TypeScript/WebGL.
+Lakecraft is a dependency-free TypeScript/WebGL voxel sandbox whose player client, accounts, and server directory ship as a [Lakebed](https://lakebed.dev) capsule. Low-latency multiplayer worlds run as self-hostable Bun services on Railway, with one SQLite volume and admin console per world.
 
 Play the current production build at [craft.lakebed.app](https://craft.lakebed.app).
 
@@ -49,14 +49,14 @@ Singleplayer requires no account and saves only in that browser. The title scree
 - Single-player commands include `/help`, `/gamemode <survival|creative>`, and `/give <item> [count]`; Up/Down recalls command history
 - Hold `Tab` for the live player list; `Esc` opens the game menu
 - Single-player worlds autosave after each minute of active play and force a verified save before Save and Quit leaves the world
-- `F3` toggles live frame, mesh, chunk, and draw-call counters
 
 ## Project shape
 
 - `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered 16×16 compatibility atlas imported from the owner's installed client, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
 - `client/components/` — Minecraft-style survival HUD, 97 item sprites (71 exact installed sprites plus exact-texture block renders and retained Lakecraft bed/special geometry), manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
 - `client/singleplayer/` — offline world integration plus a checksummed two-slot browser-local journal for inventory, edits, drops, containers, TNT, pose, health, time, and deterministic mob state; signing in does not currently upload these worlds
-- `server/index.ts` — Lakebed schema, auth-backed profiles, compact authoritative world chunks, quota-batched multiplayer history/chat, CAS-safe inventories, atomic world item drops/pickups, persistent furnaces and shared-chest transfers, a leased deterministic mob authority, and the synchronized sleep clock
+- `server/index.ts` — Lakebed schema, auth-backed profiles, public external-server registrations, short-lived join tickets, and the existing shared progression/state authorities
+- `apps/game-server/` — self-hostable Railway realtime authority for movement, jumping, chat, block edits, reconnect credentials, roles, and the per-world `/admin` console
 - `shared/` — pure item, recipe, furnace, and wire-protocol types
 
 The original pixel-art workflow and exact regeneration command live in [TEXTURE_PIPELINE.md](./TEXTURE_PIPELINE.md).
@@ -92,7 +92,9 @@ recovery procedure live in
 
 ## Multiplayer architecture
 
-Lakebed owns accounts, unique usernames, compact block-edit snapshots, chat, inventories and hunger, furnaces, chests, dropped items, the world clock, and mob/player combat state. Players sample motion locally, publish bounded quantized history batches at a daily-quota-derived cadence, and fetch one proximity composite containing nearby histories plus deterministic mob authority. Clients replay/interpolate that delayed history locally; combat, blocks and items remain separate server-authoritative operations. A sparse authoritative presence lease keeps reach, survival and world actions fenced without restoring the old 5 Hz write loop. Each placed furnace has one persistent Lakebed state with Minecraft-style input, coal-fuel, and output slots. Cooking takes ten seconds per item; elapsed work is materialized from trusted server time when a client reads or transfers a stack, so cooking can finish while every client is away without a background timer or periodic mutation. The open furnace UI projects that trusted state locally at 20 Hz and reconciles with Lakebed at 0.5 Hz, while only explicit stack transfers write. Inventory and furnace changes commit together behind inventory, revision, and placed-block-instance compare-and-swap tokens plus bounded exact-replay receipts, preventing duplicated or lost items across retries and concurrent users.
+Lakebed owns accounts, unique usernames, the public server directory, server ownership/registration, and 45-second scoped join tickets. The selected Railway world redeems that ticket and then becomes the low-latency authority for movement, jumping, chat, block edits, reconnect credentials, and per-world Survival/Creative roles. Its SQLite database is deliberately portable with the self-hosted world and is the only source of truth for those realtime records; they are not mirrored into Lakebed. The current progression systems still backed by the capsule—inventory, hunger, containers, drops, clock, and combat—remain Lakebed-authoritative while that migration boundary is narrowed in later multiplayer milestones. The exact operational split and self-hosting flow are documented in [docs/railway-multiplayer-server.md](./docs/railway-multiplayer-server.md).
+
+The older quota-batched Lakebed motion and chat paths are retired from the production client. Railway sends nearby snapshots at realtime cadence, stores bounded chat history in server order, and immediately echoes optimistic messages back to the sender. Each server carries its own token-protected `/admin` surface for live player controls and persistent role grants without adding bytes to the Lakebed capsule.
 
 World mining loot is coordinate-derived and replay-safe. Gravel resolves flint only for shovels; oak leaves resolve to the block only for 238-use iron shears, otherwise to a one-in-200 apple, a one-in-20 sapling, or nothing. Single-player and Lakebed world operations call the same pure resolver, while successful shears wear commits atomically with the block edit and rejected or replayed operations consume no durability. Logs can be smelted into charcoal, and a shared fuel predicate keeps the furnace UI and Lakebed transfer authority aligned on coal and charcoal. Both fuels reuse the same trusted-time 80-second burn materializer and exact-replay receipts.
 

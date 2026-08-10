@@ -99,6 +99,11 @@ export function inspectEnvironment(env = process.env) {
     if (authMode === "lakebed") errors.push(message);
     else warnings.push(message);
   }
+  if (!env.ADMIN_TOKEN?.trim()) {
+    warnings.push("ADMIN_TOKEN is unset; the per-server /admin console will be disabled.");
+  } else if (env.ADMIN_TOKEN.trim().length < 24) {
+    errors.push("ADMIN_TOKEN must be at least 24 characters.");
+  }
 
   return Object.freeze({ authMode, dataDir, errors, provider, volumePath, warnings });
 }
@@ -118,11 +123,14 @@ export function validateTemplatePlan(plan) {
   if (plan?.service?.publicNetworking?.type !== "HTTP") problems.push("HTTP public networking is required");
   if (plan?.service?.replicas !== 1) problems.push("the SQLite service must use exactly one replica");
   const variables = new Map((plan?.variables ?? []).map((entry) => [entry.name, entry]));
-  for (const name of ["AUTH_MODE", "LOCAL_DEMO_TOKEN", "SERVER_ID", "PUBLIC_SERVER_NAME", "ALLOWED_ORIGINS"]) {
+  for (const name of ["AUTH_MODE", "LOCAL_DEMO_TOKEN", "ADMIN_TOKEN", "SERVER_ID", "PUBLIC_SERVER_NAME", "ALLOWED_ORIGINS"]) {
     if (!variables.has(name)) problems.push(`template variable ${name} is missing`);
   }
   if (variables.get("LOCAL_DEMO_TOKEN")?.templateValue !== '${{ secret(48, "0123456789abcdef") }}') {
     problems.push("LOCAL_DEMO_TOKEN must use Railway's secret generator");
+  }
+  if (variables.get("ADMIN_TOKEN")?.templateValue !== '${{ secret(48, "0123456789abcdef") }}') {
+    problems.push("ADMIN_TOKEN must use Railway's secret generator");
   }
   return problems;
 }

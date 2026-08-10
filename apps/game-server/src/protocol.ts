@@ -3,8 +3,12 @@
 export const PROTOCOL_VERSION = 1 as const;
 export const BLOCK_ID_MIN = 0;
 export const BLOCK_ID_MAX = 33;
+export const CHAT_MESSAGE_MAX_LENGTH = 180;
 
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
+export type ServerGameMode = "survival" | "creative";
+export type VisualActionKind = "swing" | "jump" | "crouch_on" | "crouch_off" | "use" | "slot" | "bow_draw" | "bow_release";
+export type PublicVisualAction = { sequence: number; kind: VisualActionKind; value?: number };
 
 export interface PublicPlayer {
   id: string;
@@ -17,7 +21,9 @@ export interface PublicPlayer {
   vx?: number;
   vy?: number;
   vz?: number;
-  heldItem?: number;
+  heldItem?: string;
+  visualActions?: PublicVisualAction[];
+  gameMode?: ServerGameMode;
 }
 
 export interface BlockEdit {
@@ -28,6 +34,16 @@ export interface BlockEdit {
   block: number;
   editorId: string;
   editedAt: number;
+}
+
+export interface RealtimeChatMessage {
+  id: string;
+  sequence: number;
+  operationId: string;
+  userId: string;
+  username: string;
+  message: string;
+  sentAt: number;
 }
 
 export type ClientMessage =
@@ -45,12 +61,13 @@ export type ClientMessage =
       seq: number;
       dtMs: number;
       moveX: number;
+      moveY?: number;
       moveZ: number;
       yaw: number;
       pitch: number;
       jump: boolean;
       sprint: boolean;
-      heldItem?: number;
+      heldItem?: string;
     }
   | {
       v: ProtocolVersion;
@@ -61,6 +78,19 @@ export type ClientMessage =
       y: number;
       z: number;
       block: number;
+    }
+  | {
+      v: ProtocolVersion;
+      type: "chat_send";
+      operationId: string;
+      message: string;
+    }
+  | {
+      v: ProtocolVersion;
+      type: "action";
+      seq: number;
+      kind: VisualActionKind;
+      value?: number;
     }
   | { v: ProtocolVersion; type: "ping"; t: number };
 
@@ -108,6 +138,16 @@ export type ServerMessage =
     }
   | {
       v: ProtocolVersion;
+      type: "chat_history";
+      messages: RealtimeChatMessage[];
+    }
+  | {
+      v: ProtocolVersion;
+      type: "chat_message";
+      message: RealtimeChatMessage;
+    }
+  | {
+      v: ProtocolVersion;
       type: "error";
       code: ErrorCode;
       message: string;
@@ -143,6 +183,7 @@ const finite = (value: unknown): value is number =>
 const integer = (value: unknown): value is number => Number.isSafeInteger(value);
 const shortString = (value: unknown, max: number): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max;
+const VISUAL_ACTIONS = new Set<VisualActionKind>(["swing", "jump", "crouch_on", "crouch_off", "use", "slot", "bow_draw", "bow_release"]);
 
 function invalid(message: string): DecodeResult {
   return { ok: false, code: "bad_message", message };
@@ -202,10 +243,14 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (!finite(value.dtMs) || value.dtMs < 0 || value.dtMs > 250) return invalid("input dtMs is out of range");
     if (!finite(value.moveX) || !finite(value.moveZ)) return invalid("movement axes must be finite");
     if (Math.hypot(value.moveX, value.moveZ) > 1.001) return invalid("movement axes exceed unit length");
+    if (value.moveY !== undefined && (!finite(value.moveY) || Math.abs(value.moveY) > 1.001)) {
+      return invalid("vertical movement axis exceeds unit length");
+    }
     if (!finite(value.yaw) || Math.abs(value.yaw) > 1e6) return invalid("yaw is invalid");
     if (!finite(value.pitch) || value.pitch < -Math.PI / 2 || value.pitch > Math.PI / 2) return invalid("pitch is invalid");
     if (typeof value.jump !== "boolean" || typeof value.sprint !== "boolean") return invalid("input flags are invalid");
-    if (value.heldItem !== undefined && (!integer(value.heldItem) || value.heldItem < 0 || value.heldItem > 255)) {
+    if (value.heldItem !== undefined
+      && (typeof value.heldItem !== "string" || !/^(?:|[a-z0-9_]{1,64})$/.test(value.heldItem))) {
       return invalid("heldItem is invalid");
     }
     return { ok: true, message: value as unknown as ClientMessage };
@@ -221,6 +266,34 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (!integer(value.block) || value.block < BLOCK_ID_MIN || value.block > BLOCK_ID_MAX) {
       return invalid(`block must be an integer from ${BLOCK_ID_MIN} to ${BLOCK_ID_MAX}`);
     }
+    return { ok: true, message: value as unknown as ClientMessage };
+  }
+
+  if (value.type === "chat_send") {
+    if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)) {
+      return invalid("chat operationId is invalid");
+    }
+    if (typeof value.message !== "string") return invalid("chat message must be a string");
+    const message = value.message.trim().replace(/\s+/g, " ");
+    if (!message) return invalid("chat message is empty");
+    if (message.length > CHAT_MESSAGE_MAX_LENGTH) {
+      return invalid(`chat message exceeds ${CHAT_MESSAGE_MAX_LENGTH} characters`);
+    }
+    return {
+      ok: true,
+      message: { v: PROTOCOL_VERSION, type: "chat_send", operationId: value.operationId, message },
+    };
+  }
+
+  if (value.type === "action") {
+    if (!integer(value.seq) || value.seq < 1) return invalid("action seq must be a positive integer");
+    if (typeof value.kind !== "string" || !VISUAL_ACTIONS.has(value.kind as VisualActionKind)) {
+      return invalid("action kind is invalid");
+    }
+    if (value.kind === "slot" && (!integer(value.value) || value.value < 0 || value.value > 8)) {
+      return invalid("slot action value is invalid");
+    }
+    if (value.kind !== "slot" && value.value !== undefined) return invalid("action value is not supported");
     return { ok: true, message: value as unknown as ClientMessage };
   }
 

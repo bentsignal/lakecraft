@@ -1,5 +1,6 @@
 import type { PlayerPose, RemotePlayer } from "./types.ts";
 import { ITEMS, type ArmorId, type ArmorSlot, type ItemId } from "../../shared/game.ts";
+import { resolvePlayerRigPose, type PlayerRigInput, type PlayerRigPose } from "./playerRig.ts";
 import {
   PRESENCE_MAX_EXTRAPOLATION_MS,
   PRESENCE_MAX_HORIZONTAL_SPEED,
@@ -39,6 +40,7 @@ export interface RemoteAvatarMotion {
   lastVisualActionSequence: number;
   armActionStartedAt: number;
   armActionPhase: number;
+  armActionProgress: number;
   bowDrawing: boolean;
   crouching: boolean;
 }
@@ -120,7 +122,10 @@ function assignRemoteGear(state: RemoteAvatarMotion, player: RemotePlayer): void
 
 function applyRemoteVisualActions(state: RemoteAvatarMotion, player: RemotePlayer, now: number): void {
   for (const action of player.visualActions ?? []) {
-    if (!Number.isSafeInteger(action.sequence) || action.sequence <= state.lastVisualActionSequence) continue;
+    if (!action || !Number.isSafeInteger(action.sequence) || action.sequence < 1
+      || !/^(swing|jump|crouch_(on|off)|use|slot|bow_(draw|release))$/.test(action.kind)
+      || (action.kind === "slot" ? !Number.isSafeInteger(action.value) || action.value! < 0 || action.value! > 8 : action.value !== undefined)
+      || action.sequence <= state.lastVisualActionSequence) continue;
     state.lastVisualActionSequence = action.sequence;
     if (action.kind === "swing" || action.kind === "use" || action.kind === "bow_release") {
       state.armActionStartedAt = now;
@@ -130,6 +135,20 @@ function applyRemoteVisualActions(state: RemoteAvatarMotion, player: RemotePlaye
     if (action.kind === "crouch_on") state.crouching = true;
     if (action.kind === "crouch_off") state.crouching = false;
   }
+}
+
+/** One canonical pose contract shared by the remote skin and every gear joint. */
+const REMOTE_RIG_INPUT: PlayerRigInput = { motion: "idle", phase: 0 };
+export function resolveRemoteAvatarRigPose(state: RemoteAvatarMotion, output?: PlayerRigPose): PlayerRigPose {
+  const input = REMOTE_RIG_INPUT as { -readonly [Key in keyof PlayerRigInput]: PlayerRigInput[Key] };
+  input.motion = state.horizontalSpeed > 0.04 ? "walk" : "idle";
+  input.phase = state.walkPhase / (Math.PI * 2);
+  input.intensity = Math.min(1, state.horizontalSpeed / 4.3);
+  input.headYaw = -shortestAngleDelta(state.bodyYaw, state.rendered.yaw);
+  input.headPitch = state.rendered.pitch;
+  input.actionProgress = state.armActionProgress;
+  input.crouching = state.crouching;
+  return resolvePlayerRigPose(input, output);
 }
 
 export function shortestAngleDelta(from: number, to: number): number {
@@ -162,6 +181,7 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     lastVisualActionSequence: -1,
     armActionStartedAt: -Infinity,
     armActionPhase: 0,
+    armActionProgress: 1,
     bowDrawing: false,
     crouching: false,
   };
@@ -236,6 +256,7 @@ export function advanceRemoteAvatarMotion(
   state.horizontalSpeed += (measuredSpeed - state.horizontalSpeed) * gaitFollow;
   state.walkPhase = (state.walkPhase + state.horizontalSpeed * dt * 7.5) % (Math.PI * 2);
   const armActionElapsed = now - state.armActionStartedAt;
+  state.armActionProgress = armActionElapsed >= 0 && armActionElapsed < 450 ? armActionElapsed / 450 : 1;
   state.armActionPhase = armActionElapsed >= 0 && armActionElapsed < 450
     ? Math.sin(Math.PI * armActionElapsed / 450)
     : 0;

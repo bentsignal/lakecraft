@@ -141,5 +141,9 @@ applyRemoteAvatarSnapshot(acting, player({
 }), 1_250);
 assert.equal(acting.bowDrawing, false);
 assert.equal(acting.lastVisualActionSequence, 5, "replayed visual actions apply exactly once by sequence");
+assert.doesNotThrow(() => applyRemoteAvatarSnapshot(acting, player({
+  visualActions: [null, { sequence: 6, kind: "unknown" }, { sequence: 7, kind: "slot", value: 9 }] as never,
+}), 1_300), "malformed community-server actions never reach avatar animation state");
+assert.equal(acting.lastVisualActionSequence, 5);
 
 console.log("lakecraft avatar tests: ok");

@@ -1,0 +1,95 @@
+import { describe, expect, test } from "bun:test";
+import {
+  handleAdminRequest,
+  type AdminPlayerSummary,
+  type AdminWorldControl,
+} from "../src/adminPortal";
+
+const TOKEN = "a-private-admin-token-with-enough-entropy";
+const INFO = { name: "Fern Hollow", description: "Test world", capacity: 32 };
+
+function mockWorld(): AdminWorldControl & { players: AdminPlayerSummary[] } {
+  const players: AdminPlayerSummary[] = [
+    { id: "user-1", name: "Alex", gameMode: "survival", connected: true },
+  ];
+  return {
+    players,
+    adminPlayers: () => players.map((player) => ({ ...player })),
+    setPlayerGameMode(userId, gameMode) {
+      const player = players.find((candidate) => candidate.id === userId);
+      if (!player) return false;
+      player.gameMode = gameMode;
+      return true;
+    },
+    kickPlayer(userId) {
+      const player = players.find((candidate) => candidate.id === userId && candidate.connected);
+      if (!player) return false;
+      player.connected = false;
+      return true;
+    },
+  };
+}
+
+async function call(path: string, init: RequestInit = {}, token: string | null = TOKEN) {
+  const world = mockWorld();
+  const request = new Request(`http://server.test${path}`, init);
+  const response = await handleAdminRequest(request, new URL(request.url), token ?? undefined, INFO, world);
+  return { response, world };
+}
+
+describe("server-local admin portal", () => {
+  test("is absent when no admin token is configured", async () => {
+    const { response } = await call("/admin", {}, null);
+    expect(response?.status).toBe(404);
+  });
+
+  test("serves a no-store portal without embedding the secret", async () => {
+    const { response } = await call("/admin");
+    expect(response?.status).toBe(200);
+    expect(response?.headers.get("cache-control")).toBe("no-store");
+    const html = await response!.text();
+    expect(html).toContain("Lakecraft Console");
+    expect(html).not.toContain(TOKEN);
+  });
+
+  test("requires bearer authentication for state and commands", async () => {
+    const { response } = await call("/admin/api/state");
+    expect(response?.status).toBe(401);
+    expect(response?.headers.get("www-authenticate")).toBe("Bearer");
+  });
+
+  test("lists players and persists mode commands through the control interface", async () => {
+    const state = await call("/admin/api/state", { headers: { authorization: `Bearer ${TOKEN}` } });
+    expect(state.response?.status).toBe(200);
+    expect(await state.response!.json()).toMatchObject({
+      ok: true,
+      server: INFO,
+      players: [{ id: "user-1", gameMode: "survival", connected: true }],
+    });
+
+    const changed = await call("/admin/api/player-mode", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ userId: "user-1", gameMode: "creative" }),
+    });
+    expect(changed.response?.status).toBe(200);
+    expect(changed.world.players[0].gameMode).toBe("creative");
+  });
+
+  test("validates commands and never treats an offline player as kickable", async () => {
+    const invalid = await call("/admin/api/player-mode", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ userId: "user-1", gameMode: "operator" }),
+    });
+    expect(invalid.response?.status).toBe(400);
+
+    const kicked = await call("/admin/api/kick", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ userId: "user-1" }),
+    });
+    expect(kicked.response?.status).toBe(200);
+    expect(kicked.world.players[0].connected).toBe(false);
+  });
+});

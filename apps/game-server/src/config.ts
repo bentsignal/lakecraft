@@ -8,6 +8,7 @@ export interface ServerConfig {
   ticketRedeemUrl?: string;
   registrationCredential?: string;
   localDemoToken?: string;
+  adminToken?: string;
   dataDir: string;
   tickHz: number;
   snapshotHz: number;
@@ -41,6 +42,11 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
       .map((origin) => origin.trim())
       .filter(Boolean),
   };
+
+  if (env.ADMIN_TOKEN) {
+    if (env.ADMIN_TOKEN.length < 24) throw new Error("ADMIN_TOKEN must be at least 24 characters");
+    config.adminToken = env.ADMIN_TOKEN;
+  }
 
   if (authMode === "lakebed") {
     if (config.allowedOrigins.length === 0) {

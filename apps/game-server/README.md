@@ -8,6 +8,7 @@ This is the standalone Bun realtime data plane for a single Lakecraft world. It 
 AUTH_MODE=local-demo \
 SERVER_ID=my-local-world \
 LOCAL_DEMO_TOKEN=replace-with-at-least-16-characters \
+ADMIN_TOKEN=replace-with-a-separate-32-byte-secret \
 bun run src/index.ts
 ```
 
@@ -31,6 +32,8 @@ For explicitly insecure local demos, use `AUTH_MODE=local-demo` and set `LOCAL_D
 
 Optional settings are `HOST` (default `0.0.0.0`), `PORT` (Railway injects this; default `3001`), `DATA_DIR` (default `./data`), `PUBLIC_SERVER_NAME`, `PUBLIC_SERVER_DESCRIPTION`, `TICK_HZ` (20), `SNAPSHOT_HZ` (10), `IDLE_SUSPEND_MS` (15000), `MAX_PLAYERS` (32), and `MAX_PERSISTED_BLOCKS` (1000; the current full-snapshot protocol cap). `ALLOWED_ORIGINS` is a comma-separated browser-origin allowlist and is required in Lakebed-authenticated mode.
 
+Set `ADMIN_TOKEN` to a separate secret of at least 24 characters to enable the per-world console at `https://YOUR-SERVER/admin`. The console keeps its token in browser session storage, sends it only in an Authorization header, and can grant or revoke Creative mode and disconnect a player. Player roles are persisted in this world's SQLite database. Never reuse or share the player invitation token as the admin token.
+
 Attach a Railway volume at `/data` and set `DATA_DIR=/data`. A single replica is required because SQLite is the authority for one world.
 
 ## Protocol v1
@@ -39,4 +42,4 @@ Messages are JSON text objects with `{ "v": 1, "type": "..." }`. The server send
 
 Block values are numeric Lakecraft `BlockId` values 0 through 33. Movement axes are normalized world-space X/Z intent, not a trusted client pose. The JSON envelope is deliberately versioned so a later compact binary codec can be negotiated without changing authority semantics.
 
-The first slice does not yet implement terrain collision beyond the deterministic height-68 spawn plateau, combat, inventory, mobs, chat, or in-place reauthorization of an uninterrupted socket. It uses the matching feet ground plane at y=69.02, expires reconnect credentials after ten minutes, and limits block interaction to eight blocks from the authoritative player pose.
+Movement authority uses the browser's deterministic surface-height function, player footprint, gravity, and jump impulse, so natural slopes and the spawn rim cannot diverge into fixed-floor corrections. Authored block edits, trees, and cave interiors do not yet alter server collision. The realtime server does not own combat, inventory, or mobs yet; those still use the current Lakebed gameplay paths. It expires reconnect credentials after ten minutes and limits block interaction to eight blocks from the authoritative player pose.

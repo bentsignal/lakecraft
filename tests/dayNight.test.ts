@@ -24,10 +24,10 @@ const localAppSource = readFileSync(new URL("../client/singleplayer/SinglePlayer
 assert.match(localAppSource, /Daylight cycle \$\{parsed\.command\.value \? "enabled" : "disabled"\}/,
   "local daylight changes emit a system confirmation");
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-assert.match(serverSource, /oldestByIndex\(ctx\.db\.profiles, "by_creation"\)\.first\(\)[\s\S]*?owner\?\.userId !== ctx\.auth\.userId[\s\S]*?reason: "permission"/,
-  "shared-world gamerules are restricted to the first immutable profile as world operator");
-assert.match(serverSource, /username: rule \? "System"[\s\S]*?message: rule \? `Daylight cycle/,
-  "authorized multiplayer daylight changes emit a system-authored confirmation");
+for (const retiredLakebedChatSurface of ["chatMessages", "recentChat", "sendChat"]) {
+  assert.equal(serverSource.includes(retiredLakebedChatSurface), false,
+    `${retiredLakebedChatSurface} stays retired now that Railway owns realtime multiplayer chat`);
+}
 
 assert.equal(phaseAtTime(10_000, config), 0);
 assert.equal(phaseAtTime(10_250, config), 0.25);

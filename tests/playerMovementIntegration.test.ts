@@ -72,7 +72,8 @@ assert.ok(pointerReset.includes("releaseTransientInput();"), "pointer-lock loss 
 assert.ok(pauseReset.includes("clearHeldMovementInput();"), "opening a menu releases sprint");
 assert.ok(pauseReset.includes("resetMovementView();"), "opening a menu hard-resets residual camera gait");
 assert.ok(!engine.includes("pose.y + 1.62"), "no stale fixed interaction eye remains in the engine");
-assert.ok(client.includes("canSprint: () => hungerRef.current > 6"), "survival hunger gates Ctrl sprint");
+assert.ok(client.includes('canSprint: () => realtimeGameModeRef.current === "creative" || hungerRef.current > 6'),
+  "survival hunger gates Ctrl sprint while server-granted Creative bypasses hunger");
 assert.ok(client.includes("activityHalfUnitsForDisplacement") === false, "the client cannot author survival exertion");
 assert.ok(!client.includes("tickSurvival("), "the client no longer advances survival health locally");
 assert.ok(!client.includes("recentlyActiveUntilRef"), "the old pose-update activity approximation is removed");

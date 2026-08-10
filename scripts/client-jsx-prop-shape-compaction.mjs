@@ -8,8 +8,8 @@ import { pathToFileURL } from "node:url";
 // Helpers preserve these public prop names literally; no property is mangled.
 export const COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS = Object.freeze({
   "className,aria-hidden": 9,
-  "className,aria-hidden,children": 5,
-  "className,aria-label,children": 11,
+  "className,aria-hidden,children": 4,
+  "className,aria-label,children": 10,
   "className,children": 54,
   "className,d": 4,
   "className,id,children": 4,
@@ -26,7 +26,7 @@ export const COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS = Object.freeze({
 // before JSX shape reconstruction. Do not sample it from the staged client:
 // string pooling and the following minify pass intentionally change the AST
 // value kinds that this fail-closed boundary records.
-export const COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT = "33fd232915975be6608f184c70d2676f80b2a60d30f77b2bdc85037c23033470";
+export const COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT = "46b8a20a2cee19b8095d5d255fffc9a23d6775fcd423f8e02d2caeb795a16a06";
 export const COMPACT_CLIENT_JSX_PROP_SHAPE_INPUT_BOUNDARY = "raw-pre-jsx-v1";
 
 let typescriptPromise;

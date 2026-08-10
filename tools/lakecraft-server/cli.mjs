@@ -87,10 +87,11 @@ async function main(args) {
     if (positional.length) throw new Error(usage());
     const values = {
       LOCAL_DEMO_TOKEN: randomBytes(32).toString("base64url"),
+      ADMIN_TOKEN: randomBytes(32).toString("base64url"),
       SERVER_ID: randomBytes(12).toString("hex"),
     };
     if (json) console.log(JSON.stringify(values, null, 2));
-    else console.log(`LOCAL_DEMO_TOKEN=${values.LOCAL_DEMO_TOKEN}\nSERVER_ID=${values.SERVER_ID}`);
+    else console.log(`LOCAL_DEMO_TOKEN=${values.LOCAL_DEMO_TOKEN}\nADMIN_TOKEN=${values.ADMIN_TOKEN}\nSERVER_ID=${values.SERVER_ID}`);
     return;
   }
   if (command === "template-check") {

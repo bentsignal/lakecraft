@@ -2,50 +2,39 @@ import {
   MAX_PLAYER_NAME_LENGTH,
   MAX_REMOTE_PLAYERS,
   advanceRemoteAvatarMotion,
+  resolveRemoteAvatarRigPose,
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import { ITEMS, type ArmorId, type ItemId } from "../../shared/game.ts";
 import { getBowIconArt, getItemIconArt, type ItemIconArt } from "../components/itemIconArt.ts";
 import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES, NAMEPLATE_FONT } from "./generated/renderGeometry.ts";
-import { LAKECRAFT_DEFAULT_SKIN_PALETTE } from "./playerSkin.ts";
+import { PLAYER_SKIN_BOX_COUNT, PLAYER_SKIN_VERTEX_COUNT } from "./playerSkinGeometry.ts";
+import { writePlayerRigPartMatrix, type PlayerRigPart, type PlayerRigPose } from "./playerRig.ts";
 
 type Vec3 = readonly [number, number, number];
 
 const FLOATS_PER_VERTEX = 6;
 const VERTICES_PER_BOX = 36;
-export const REMOTE_DEFAULT_PLAYER_BOX_COUNT = 17;
+export const REMOTE_DEFAULT_PLAYER_BOX_COUNT = PLAYER_SKIN_BOX_COUNT;
 export const REMOTE_DEFAULT_PLAYER_HEIGHT = 2;
-const BASE_AVATAR_BOXES = REMOTE_DEFAULT_PLAYER_BOX_COUNT;
 const MAX_ARMOR_BOXES = 10;
 export const REMOTE_HELD_ITEM_LOGICAL_SIZE = 8;
 export const REMOTE_HELD_ITEM_MAX_RECTS = 24;
 const VERTICES_PER_HELD_ITEM_RECT = 6;
-const MAX_GLYPH_PIXELS = 15;
+const MAX_GLYPH_RECTS = 21;
 const REMOTE_RENDER_DISTANCE_SQUARED = 64 * 64;
 
 export const REMOTE_MESH_INTERVAL_MS = 1_000 / 30;
-export const BASE_AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_BOXES * VERTICES_PER_BOX;
+export const BASE_AVATAR_VERTICES_PER_PLAYER = PLAYER_SKIN_VERTEX_COUNT;
 export const MAX_ARMOR_VERTICES_PER_PLAYER = MAX_ARMOR_BOXES * VERTICES_PER_BOX;
 export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = REMOTE_HELD_ITEM_MAX_RECTS * VERTICES_PER_HELD_ITEM_RECT;
 /** Worst-case fixed avatar capacity, including a bounded canonical sprite and all armor. */
 export const AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER
   + MAX_HELD_ITEM_VERTICES_PER_PLAYER;
-export const MAX_NAMEPLATE_VERTICES_PER_PLAYER = 6 + MAX_PLAYER_NAME_LENGTH * MAX_GLYPH_PIXELS * 6;
-
-function normalizedColor(color: readonly [number, number, number]): Vec3 {
-  return Object.freeze([color[0] / 255, color[1] / 255, color[2] / 255]) as Vec3;
-}
+export const MAX_NAMEPLATE_VERTICES_PER_PLAYER = 6 + MAX_PLAYER_NAME_LENGTH * MAX_GLYPH_RECTS * 6;
 
 const COLORS = {
-  skin: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.skin),
-  jacket: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.jacket),
-  trousers: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.trousers),
-  boots: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.boots),
-  hair: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.hair),
-  eye: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.eyes),
-  mouth: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.skinShade),
-  scarf: normalizedColor(LAKECRAFT_DEFAULT_SKIN_PALETTE.scarf),
   leatherArmor: [0.48, 0.25, 0.11] as Vec3,
   ironArmor: [0.72, 0.74, 0.72] as Vec3,
   goldArmor: [0.92, 0.72, 0.12] as Vec3,
@@ -53,6 +42,9 @@ const COLORS = {
   nameBackground: [0.025, 0.028, 0.035] as Vec3,
   nameText: [0.94, 0.95, 0.90] as Vec3,
 };
+const GEAR_PART_MATRIX = new Float32Array(16);
+const GEAR_RIG_SCRATCH_MATRIX = new Float32Array(16);
+const GEAR_RIG_POSE = {} as PlayerRigPose;
 
 interface VertexWriter {
   data: Float32Array;
@@ -158,6 +150,7 @@ export function remoteHeldItemVertexCount(itemId: ItemId, bowDrawing = false): n
 
 export interface RemoteGeometryStats {
   avatarVertexCount: number;
+  skinVertexCount: number;
   nameplateVertexCount: number;
   visiblePlayerCount: number;
 }
@@ -184,16 +177,19 @@ export interface RemotePlayerRenderer {
 
 export function remotePlayerBufferCapacity(playerCount = MAX_REMOTE_PLAYERS): {
   avatarFloats: number;
+  skinFloats: number;
   nameplateFloats: number;
   totalBytes: number;
 } {
   const count = Math.max(0, Math.min(MAX_REMOTE_PLAYERS, Math.floor(playerCount)));
-  const avatarFloats = count * AVATAR_VERTICES_PER_PLAYER * FLOATS_PER_VERTEX;
+  const avatarFloats = count * (MAX_ARMOR_VERTICES_PER_PLAYER + MAX_HELD_ITEM_VERTICES_PER_PLAYER) * FLOATS_PER_VERTEX;
+  const skinFloats = count * BASE_AVATAR_VERTICES_PER_PLAYER * FLOATS_PER_VERTEX;
   const nameplateFloats = count * MAX_NAMEPLATE_VERTICES_PER_PLAYER * FLOATS_PER_VERTEX;
   return {
     avatarFloats,
     nameplateFloats,
-    totalBytes: (avatarFloats + nameplateFloats) * Float32Array.BYTES_PER_ELEMENT,
+    skinFloats,
+    totalBytes: (avatarFloats + skinFloats + nameplateFloats) * Float32Array.BYTES_PER_ELEMENT,
   };
 }
 
@@ -206,13 +202,39 @@ function writeVertex(writer: VertexWriter, x: number, y: number, z: number, colo
   writer.data[writer.offset++] = color[2] * shade;
 }
 
-function appendBox(
+function writeRigVertex(
   writer: VertexWriter,
   state: RemoteAvatarMotion,
-  yaw: number,
-  pitch: number,
-  pivotY: number,
-  pivotZ: number,
+  cosine: number,
+  sine: number,
+  x: number,
+  y: number,
+  z: number,
+  color: Vec3,
+  shade = 1,
+): void {
+  const localX = GEAR_PART_MATRIX[0] * x + GEAR_PART_MATRIX[4] * y + GEAR_PART_MATRIX[8] * z + GEAR_PART_MATRIX[12];
+  const localY = GEAR_PART_MATRIX[1] * x + GEAR_PART_MATRIX[5] * y + GEAR_PART_MATRIX[9] * z + GEAR_PART_MATRIX[13];
+  const localZ = GEAR_PART_MATRIX[2] * x + GEAR_PART_MATRIX[6] * y + GEAR_PART_MATRIX[10] * z + GEAR_PART_MATRIX[14];
+  writeVertex(
+    writer,
+    state.rendered.x + cosine * localX + sine * localZ,
+    state.rendered.y + localY,
+    state.rendered.z - sine * localX + cosine * localZ,
+    color,
+    shade,
+  );
+}
+
+function selectGearPart(part: PlayerRigPart, pose: PlayerRigPose, remapStandardSkinSides = false): void {
+  writePlayerRigPartMatrix(GEAR_PART_MATRIX, part, pose, "wide", remapStandardSkinSides, GEAR_RIG_SCRATCH_MATRIX);
+}
+
+function appendRigBox(
+  writer: VertexWriter,
+  state: RemoteAvatarMotion,
+  cosine: number,
+  sine: number,
   minX: number,
   minY: number,
   minZ: number,
@@ -221,28 +243,13 @@ function appendBox(
   maxZ: number,
   color: Vec3,
 ): void {
-  const cosPitch = Math.cos(pitch);
-  const sinPitch = Math.sin(pitch);
-  const cosYaw = Math.cos(yaw);
-  const sinYaw = Math.sin(yaw);
   for (let faceIndex = 0, point = 0; faceIndex < BOX_FACE_SHADES.length; faceIndex += 1) {
     const shade = BOX_FACE_SHADES[faceIndex];
     for (let vertexIndex = 0; vertexIndex < 6; vertexIndex += 1) {
       const localX = minX + BOX_VERTEX_COORDINATES[point++] * (maxX - minX);
-      const unrotatedY = minY + BOX_VERTEX_COORDINATES[point++] * (maxY - minY);
-      const unrotatedZ = minZ + BOX_VERTEX_COORDINATES[point++] * (maxZ - minZ);
-      const offsetY = unrotatedY - pivotY;
-      const offsetZ = unrotatedZ - pivotZ;
-      const localY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
-      const localZ = pivotZ + offsetY * sinPitch + offsetZ * cosPitch;
-      writeVertex(
-        writer,
-        state.rendered.x + localX * cosYaw - localZ * sinYaw,
-        state.rendered.y + localY,
-        state.rendered.z + localX * sinYaw + localZ * cosYaw,
-        color,
-        shade,
-      );
+      const localY = minY + BOX_VERTEX_COORDINATES[point++] * (maxY - minY);
+      const localZ = minZ + BOX_VERTEX_COORDINATES[point++] * (maxZ - minZ);
+      writeRigVertex(writer, state, cosine, sine, localX, localY, localZ, color, shade);
     }
   }
 }
@@ -253,30 +260,42 @@ function armorColor(itemId: ArmorId): Vec3 {
   return itemId.startsWith("iron_") ? COLORS.ironArmor : COLORS.leatherArmor;
 }
 
-function appendArmor(writer: VertexWriter, state: RemoteAvatarMotion, stride: number, rightArmPitch: number): void {
-  const headYaw = state.rendered.yaw;
-  const headPitch = state.rendered.pitch * 0.32;
+function appendArmor(
+  writer: VertexWriter,
+  state: RemoteAvatarMotion,
+  rig: PlayerRigPose,
+  cosine: number,
+  sine: number,
+): void {
   if (state.armorHead) {
     const color = armorColor(state.armorHead);
-    appendBox(writer,state,headYaw,headPitch,1.75,0,-0.28,1.91,-0.28,0.28,2.05,0.28,color);
-    appendBox(writer,state,headYaw,headPitch,1.75,0,-0.28,1.52,-0.28,-0.23,1.94,0.28,color);
-    appendBox(writer,state,headYaw,headPitch,1.75,0,0.23,1.52,-0.28,0.28,1.94,0.28,color);
+    selectGearPart("head", rig);
+    appendRigBox(writer,state,cosine,sine,-0.28,1.91,-0.28,0.28,2.05,0.28,color);
+    appendRigBox(writer,state,cosine,sine,-0.28,1.52,-0.28,-0.23,1.94,0.28,color);
+    appendRigBox(writer,state,cosine,sine,0.23,1.52,-0.28,0.28,1.94,0.28,color);
   }
   if (state.armorChest) {
     const color = armorColor(state.armorChest);
-    appendBox(writer,state,state.bodyYaw,0,0,0,-0.27,0.73,-0.15,0.27,1.52,0.15,color);
-    appendBox(writer,state,state.bodyYaw,-stride*0.9,1.50,0,-0.52,1.20,-0.15,-0.23,1.52,0.15,color);
-    appendBox(writer,state,state.bodyYaw,rightArmPitch,1.50,0,0.23,1.20,-0.15,0.52,1.52,0.15,color);
+    selectGearPart("root", rig);
+    appendRigBox(writer,state,cosine,sine,-0.27,0.73,-0.15,0.27,1.52,0.15,color);
+    selectGearPart("rightArm", rig);
+    appendRigBox(writer,state,cosine,sine,-0.52,1.20,-0.15,-0.23,1.52,0.15,color);
+    selectGearPart("leftArm", rig);
+    appendRigBox(writer,state,cosine,sine,0.23,1.20,-0.15,0.52,1.52,0.15,color);
   }
   if (state.armorLegs) {
     const color = armorColor(state.armorLegs);
-    appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.27,0.10,-0.15,0.01,0.77,-0.13,color);
-    appendBox(writer,state,state.bodyYaw,-stride,0.75,0,-0.01,0.10,-0.15,0.27,0.77,-0.13,color);
+    selectGearPart("rightLeg", rig);
+    appendRigBox(writer,state,cosine,sine,-0.27,0.10,-0.15,0.01,0.77,-0.13,color);
+    selectGearPart("leftLeg", rig);
+    appendRigBox(writer,state,cosine,sine,-0.01,0.10,-0.15,0.27,0.77,-0.13,color);
   }
   if (state.armorFeet) {
     const color = armorColor(state.armorFeet);
-    appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.27,-0.01,-0.15,0.01,0.27,0.18,color);
-    appendBox(writer,state,state.bodyYaw,-stride,0.75,0,-0.01,-0.01,-0.15,0.27,0.27,0.18,color);
+    selectGearPart("rightLeg", rig);
+    appendRigBox(writer,state,cosine,sine,-0.27,-0.01,-0.15,0.01,0.27,0.18,color);
+    selectGearPart("leftLeg", rig);
+    appendRigBox(writer,state,cosine,sine,-0.01,-0.01,-0.15,0.27,0.27,0.18,color);
   }
 }
 
@@ -285,7 +304,13 @@ const HELD_ITEM_QUAD = Object.freeze([
   Object.freeze([0, 0]), Object.freeze([1, 1]), Object.freeze([0, 1]),
 ] as const);
 
-function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, rightArmPitch: number): void {
+function appendHeldItem(
+  writer: VertexWriter,
+  state: RemoteAvatarMotion,
+  rig: PlayerRigPose,
+  cosine: number,
+  sine: number,
+): void {
   const itemId = state.heldItem;
   if (!itemId) return;
   const rectangles = remoteHeldItemRects(itemId, state.bowDrawing);
@@ -295,54 +320,21 @@ function appendHeldItem(writer: VertexWriter, state: RemoteAvatarMotion, rightAr
   const socketZ = -0.165;
   const pivotX = 4;
   const pivotY = 6.4;
-  const cosPitch = Math.cos(rightArmPitch);
-  const sinPitch = Math.sin(rightArmPitch);
-  const cosYaw = Math.cos(state.bodyYaw);
-  const sinYaw = Math.sin(state.bodyYaw);
+  selectGearPart("rightArm", rig, true);
   for (const rect of rectangles) for (const point of HELD_ITEM_QUAD) {
     const localX = socketX + (rect.x + rect.width * point[0] - pivotX) * unit;
-    const unrotatedY = socketY + (pivotY - rect.y - rect.height * point[1]) * unit;
-    const offsetY = unrotatedY - 1.50;
-    const localY = 1.50 + offsetY * cosPitch - socketZ * sinPitch;
-    const localZ = offsetY * sinPitch + socketZ * cosPitch;
-    writeVertex(
-      writer,
-      state.rendered.x + localX * cosYaw - localZ * sinYaw,
-      state.rendered.y + localY,
-      state.rendered.z + localX * sinYaw + localZ * cosYaw,
-      rect.color,
-      0.94,
-    );
+    const localY = socketY + (pivotY - rect.y - rect.height * point[1]) * unit;
+    writeRigVertex(writer, state, cosine, sine, localX, localY, socketZ, rect.color, 0.94);
   }
 }
 
-function appendAvatar(writer: VertexWriter, state: RemoteAvatarMotion): void {
-  const stride = Math.min(0.72, state.horizontalSpeed * 0.16) * Math.sin(state.walkPhase);
-  const rightArmPitch = state.bowDrawing ? -1.12 : stride * 0.9 - state.armActionPhase * 1.8;
-  // Core proportions match the bundled standard-skin rig exactly: 4 px legs
-  // and arms, an 8×12 px torso, and an 8 px head at 1/16 world units/pixel.
-  appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.25,0,-0.125,0,0.75,0.125,COLORS.trousers);
-  appendBox(writer,state,state.bodyYaw,-stride,0.75,0,0,0,-0.125,0.25,0.75,0.125,COLORS.trousers);
-  appendBox(writer,state,state.bodyYaw,stride,0.75,0,-0.25,0,-0.13,0,0.25,0.13,COLORS.boots);
-  appendBox(writer,state,state.bodyYaw,-stride,0.75,0,0,0,-0.13,0.25,0.25,0.13,COLORS.boots);
-  appendBox(writer,state,state.bodyYaw,0,0,0,-0.25,0.75,-0.125,0.25,1.50,0.125,COLORS.jacket);
-  appendBox(writer,state,state.bodyYaw,-stride*0.9,1.50,0,-0.50,0.75,-0.125,-0.25,1.50,0.125,COLORS.skin);
-  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.50,0,0.25,0.75,-0.125,0.50,1.50,0.125,COLORS.skin);
-  appendBox(writer,state,state.bodyYaw,-stride*0.9,1.50,0,-0.505,1.25,-0.13,-0.245,1.505,0.13,COLORS.jacket);
-  appendBox(writer,state,state.bodyYaw,rightArmPitch,1.50,0,0.245,1.25,-0.13,0.505,1.505,0.13,COLORS.jacket);
-  const headYaw = state.rendered.yaw;
-  const headPitch = state.rendered.pitch * 0.32;
-  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.25,1.50,-0.25,0.25,2.00,0.25,COLORS.skin);
-  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.255,1.93,-0.255,0.255,2.005,0.255,COLORS.hair);
-  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.255,1.72,0.245,0.255,1.94,0.255,COLORS.hair);
-  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.19,1.83,-0.255,0.19,1.94,-0.245,COLORS.hair);
-  // The bright scarf is the bundled explorer's distance-readable signature.
-  appendBox(writer,state,state.bodyYaw,0,0,0,-0.13,1.365,-0.14,0.13,1.485,-0.125,COLORS.scarf);
-  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.15,1.69,-0.255,-0.06,1.75,-0.245,COLORS.eye);
-  appendBox(writer,state,headYaw,headPitch,1.75,0,0.06,1.69,-0.255,0.15,1.75,-0.245,COLORS.eye);
-  appendBox(writer,state,headYaw,headPitch,1.75,0,-0.08,1.57,-0.256,0.08,1.61,-0.245,COLORS.mouth);
-  appendArmor(writer, state, stride, rightArmPitch);
-  appendHeldItem(writer, state, rightArmPitch);
+function appendAvatarGear(writer: VertexWriter, state: RemoteAvatarMotion): void {
+  const rig = resolveRemoteAvatarRigPose(state, GEAR_RIG_POSE);
+  const angle = Math.PI - state.bodyYaw;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  appendArmor(writer, state, rig, cosine, sine);
+  appendHeldItem(writer, state, rig, cosine, sine);
 }
 
 function appendBillboardQuad(
@@ -386,23 +378,27 @@ function appendNameplate(writer: VertexWriter, state: RemoteAvatarMotion, camera
   normalZ /= length;
   const rightX = normalZ;
   const rightZ = -normalX;
-  const pixel = 0.025;
-  const advance = pixel * 4;
-  const textWidth = Math.max(pixel * 3, state.name.length * advance - pixel);
-  appendBillboardQuad(writer,centerX,centerY,centerZ,rightX,rightZ,normalX,normalZ,-textWidth/2-0.055,-0.045,textWidth+0.11,0.225,0,COLORS.nameBackground);
+  const pixel = 0.018;
+  const advance = pixel * 6;
+  const textWidth = Math.max(pixel * 5, state.name.length * advance - pixel);
+  appendBillboardQuad(writer,centerX,centerY,centerZ,rightX,rightZ,normalX,normalZ,-textWidth/2-0.05,-0.035,textWidth+0.1,0.205,0,COLORS.nameBackground);
   const startX = -textWidth / 2;
   for (let characterIndex = 0; characterIndex < state.name.length; characterIndex += 1) {
     const character = state.name[characterIndex].toUpperCase();
-    const glyph = character.length === 1 ? NAMEPLATE_FONT[character.charCodeAt(0)] ?? NAMEPLATE_FONT[63] : NAMEPLATE_FONT[63];
-    for (let row = 0; row < 5; row += 1) {
-      for (let column = 0; column < 3; column += 1) {
-        if (!(glyph & 1 << (14 - row * 3 - column))) continue;
+    const code = character.length === 1 && character.charCodeAt(0) < 96 ? character.charCodeAt(0) : 63;
+    for (let row = 0; row < 7; row += 1) {
+      const bits = NAMEPLATE_FONT[code * 7 + row];
+      for (let column = 0; column < 5;) {
+        if (!(bits & 1 << (4 - column))) { column += 1; continue; }
+        let run = 1;
+        while (column + run < 5 && (bits & 1 << (4 - column - run))) run += 1;
         appendBillboardQuad(
           writer, centerX, centerY, centerZ, rightX, rightZ, normalX, normalZ,
           startX + characterIndex * advance + column * pixel,
-          0.015 + (4 - row) * pixel,
-          pixel * 0.82, pixel * 0.82, 0.006, COLORS.nameText,
+          0.01 + (6 - row) * pixel,
+          pixel * (run - 0.16), pixel * 0.84, 0.006, COLORS.nameText,
         );
+        column += run;
       }
     }
   }
@@ -426,11 +422,12 @@ export function writeRemotePlayerGeometry(
     const dx = state.rendered.x - camera[0];
     const dz = state.rendered.z - camera[2];
     if (dx * dx + dz * dz > REMOTE_RENDER_DISTANCE_SQUARED) continue;
-    appendAvatar(avatarWriter, state);
+    appendAvatarGear(avatarWriter, state);
     appendNameplate(nameplateWriter, state, camera);
     visible += 1;
   }
   stats.avatarVertexCount = avatarWriter.offset / FLOATS_PER_VERTEX;
+  stats.skinVertexCount = visible * BASE_AVATAR_VERTICES_PER_PLAYER;
   stats.nameplateVertexCount = nameplateWriter.offset / FLOATS_PER_VERTEX;
   stats.visiblePlayerCount = visible;
   return stats;
@@ -450,6 +447,7 @@ export function createRemotePlayerRenderer(gl: WebGLRenderingContext): RemotePla
   let lastMeshAt = -Infinity;
   const stats: RemotePlayerRenderStats = {
     avatarVertexCount: 0,
+    skinVertexCount: 0,
     nameplateVertexCount: 0,
     visiblePlayerCount: 0,
     meshMs: 0,
@@ -471,6 +469,7 @@ export function createRemotePlayerRenderer(gl: WebGLRenderingContext): RemotePla
       stats.updated = false;
       if (states.size === 0) {
         stats.avatarVertexCount = 0;
+        stats.skinVertexCount = 0;
         stats.nameplateVertexCount = 0;
         stats.visiblePlayerCount = 0;
         stats.meshMs = 0;

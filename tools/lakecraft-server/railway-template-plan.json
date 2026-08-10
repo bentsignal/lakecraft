@@ -30,6 +30,12 @@
       "description": "Share this token privately with invited players, separately from the server URL."
     },
     {
+      "name": "ADMIN_TOKEN",
+      "templateValue": "${{ secret(48, \"0123456789abcdef\") }}",
+      "secret": true,
+      "description": "Private password for this server's /admin console. Never share it with players."
+    },
+    {
       "name": "SERVER_ID",
       "templateValue": "${{ secret(16, \"abcdefghijklmnopqrstuvwxyz0123456789\") }}",
       "description": "Stable ID for this self-hosted server."

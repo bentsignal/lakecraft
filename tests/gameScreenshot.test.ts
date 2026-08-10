@@ -20,7 +20,7 @@ assert.match(helper, /link\.download = filename[\s\S]{0,100}link\.click\(\)/,
   "every screenshot also has a reliable Downloads fallback");
 assert.match(engine, /if \(pendingScreenshot\)[\s\S]{0,260}canvas\.toBlob/,
   "capture runs immediately after a complete retained WebGL render");
-assert.ok(app.indexOf('event.code === "F2"') < app.indexOf('event.code === "F3"'),
-  "screenshot handling remains available before other gameplay key routing");
+assert.ok(app.indexOf('event.code === "F2"') < app.indexOf("consumeSinglePlayerCommandSurfaceEscape("),
+  "screenshot handling remains available before command and gameplay key routing");
 
 console.log("pointer-lock-safe F2 screenshot workflow tests passed");

@@ -4,6 +4,25 @@ import type { ServerConfig } from "../src/config";
 import { WorldStore } from "../src/database";
 import type { ClientMessage, ServerMessage } from "../src/protocol";
 import { GameWorld, RESUME_TOKEN_TTL_MS, type Peer } from "../src/world";
+import { terrainHeight as clientTerrainHeight } from "../../../client/game/terrain";
+import {
+  CREATIVE_FLIGHT_SPEED,
+  CREATIVE_FLIGHT_SPRINT_SPEED,
+  MAX_PLAYER_Y,
+  PLAYER_FEET_CLEARANCE,
+  PLAYER_GRAVITY,
+  PLAYER_JUMP_SPEED,
+  terrainFeetY,
+  terrainHeight,
+} from "../src/terrain";
+import {
+  PLAYER_GRAVITY as CLIENT_PLAYER_GRAVITY,
+  PLAYER_JUMP_SPEED as CLIENT_PLAYER_JUMP_SPEED,
+} from "../../../client/game/voxelEngine";
+import {
+  CREATIVE_FLIGHT_SPEED as CLIENT_CREATIVE_FLIGHT_SPEED,
+  CREATIVE_FLIGHT_SPRINT_SPEED as CLIENT_CREATIVE_FLIGHT_SPRINT_SPEED,
+} from "../../../client/game/playerMovement";
 
 class FakePeer implements Peer {
   readonly sent: ServerMessage[] = [];
@@ -56,6 +75,21 @@ function join(userId: string, name = userId, resumeToken?: string): ClientMessag
 }
 
 describe("authoritative world", () => {
+  test("matches the browser's deterministic terrain surface across the playable region", () => {
+    for (let x = -128; x <= 128; x += 7) {
+      for (let z = -128; z <= 128; z += 11) {
+        expect(terrainHeight(x, z)).toBe(clientTerrainHeight(x, z, 7319));
+      }
+    }
+    expect(terrainFeetY(0.5, 0.5)).toBe(68 + PLAYER_FEET_CLEARANCE);
+    expect(terrainFeetY(0.5, 4.72)).toBe(69 + PLAYER_FEET_CLEARANCE);
+    expect(terrainFeetY(0.5, -4.72)).toBe(71 + PLAYER_FEET_CLEARANCE);
+    expect(PLAYER_GRAVITY).toBe(CLIENT_PLAYER_GRAVITY);
+    expect(PLAYER_JUMP_SPEED).toBe(CLIENT_PLAYER_JUMP_SPEED);
+    expect(CREATIVE_FLIGHT_SPEED).toBe(CLIENT_CREATIVE_FLIGHT_SPEED);
+    expect(CREATIVE_FLIGHT_SPRINT_SPEED).toBe(CLIENT_CREATIVE_FLIGHT_SPRINT_SPEED);
+  });
+
   test("integrates validated sequenced inputs and emits spatial snapshots", async () => {
     const store = new WorldStore(":memory:");
     const world = new GameWorld(config(), store, authenticator);
@@ -69,6 +103,7 @@ describe("authoritative world", () => {
     await world.message(alex, JSON.stringify({
       v: 1, type: "input", seq: 1, dtMs: 16, moveX: 1, moveZ: 0,
       yaw: Math.PI * 3, pitch: 0.1, jump: false, sprint: true,
+      heldItem: "iron_pickaxe",
     }), 1_010);
     world.tick(1_020);
     world.snapshots(1_030);
@@ -79,6 +114,13 @@ describe("authoritative world", () => {
     expect(snapshot.self.yaw).toBeCloseTo(-Math.PI);
     expect(snapshot.players).toHaveLength(1);
     expect(snapshot.players[0]).toMatchObject({ id: "steve", name: "Steve" });
+    await world.message(alex, JSON.stringify({ v:1, type:"action", seq:1, kind:"swing" }), 1_031);
+    world.snapshots(1_032);
+    expect(steve.ofType("snapshot").at(-1)?.players[0]).toMatchObject({
+      id: "alex",
+      heldItem: "iron_pickaxe",
+      visualActions: [{ sequence: 1, kind: "swing" }],
+    });
     store.close();
   });
 
@@ -230,6 +272,209 @@ describe("authoritative world", () => {
       fatal: false,
     });
     expect(store.getRevision()).toBe(0);
+    store.close();
+  });
+
+  test("blocks the fixed-floor regression and lets a jump clear the one-block spawn rim", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("socket-a");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex")), 1_000);
+
+    let sequence = 0;
+    let now = 1_000;
+    const input = async (jump: boolean) => {
+      sequence += 1;
+      now += 50;
+      await world.message(peer, JSON.stringify({
+        v: 1, type: "input", seq: sequence, dtMs: 50, moveX: 0, moveZ: 1,
+        yaw: 0, pitch: 0, jump, sprint: false,
+      }), now);
+      world.tick(now);
+    };
+
+    for (let tick = 0; tick < 20; tick += 1) await input(false);
+    world.snapshots(now);
+    const blocked = peer.ofType("snapshot").at(-1)!.self;
+    expect(blocked.z).toBeGreaterThan(4.5);
+    expect(blocked.z).toBeLessThan(4.72);
+    expect(blocked.y).toBeCloseTo(69.02);
+
+    for (let tick = 0; tick < 14; tick += 1) await input(tick === 0);
+    world.snapshots(now);
+    const landed = peer.ofType("snapshot").at(-1)!.self;
+    expect(landed.z).toBeGreaterThan(5);
+    expect(landed.y).toBeGreaterThanOrEqual(70.02);
+    store.close();
+  });
+
+  test("heals a legacy resumed pose persisted below its deterministic surface", async () => {
+    const store = new WorldStore(":memory:");
+    const resumeToken = "legacy-token";
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(resumeToken));
+    const resumeHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    store.savePlayer({
+      id: "alex", name: "Alex", x: 0.5, y: 69.02, z: -5.2,
+      yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0,
+    }, resumeHash, 500, 10_000);
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("socket-a");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex", "Alex", resumeToken)), 1_000);
+    expect(peer.ofType("welcome")[0]?.player.y).toBe(terrainFeetY(0.5, -5.2));
+    store.close();
+  });
+
+  test("echoes chat immediately in one server order, deduplicates retries, and restores history", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const alex = new FakePeer("socket-chat-a");
+    const steve = new FakePeer("socket-chat-b");
+    world.open(alex, 1_000);
+    world.open(steve, 1_000);
+    await world.message(alex, JSON.stringify(join("alex", "Alex")), 1_000);
+    await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
+
+    const first = { v: 1, type: "chat_send", operationId: "chat_alex_0001", message: "hello" };
+    await world.message(alex, JSON.stringify(first), 2_000);
+    expect(alex.ofType("chat_message").at(-1)).toMatchObject({
+      message: { sequence: 1, operationId: "chat_alex_0001", userId: "alex", message: "hello" },
+    });
+    expect(steve.ofType("chat_message").at(-1)?.message.sequence).toBe(1);
+
+    await world.message(steve, JSON.stringify({
+      v: 1, type: "chat_send", operationId: "chat_steve_001", message: "hi",
+    }), 2_010);
+    expect(alex.ofType("chat_message").map(({ message }) => message.sequence)).toEqual([1, 2]);
+    expect(steve.ofType("chat_message").map(({ message }) => message.sequence)).toEqual([1, 2]);
+
+    await world.message(alex, JSON.stringify(first), 2_020);
+    expect(alex.ofType("chat_message").map(({ message }) => message.sequence)).toEqual([1, 2, 1]);
+    expect(steve.ofType("chat_message").map(({ message }) => message.sequence)).toEqual([1, 2]);
+
+    const resumed = new FakePeer("socket-chat-reconnect");
+    world.open(resumed, 3_000);
+    await world.message(resumed, JSON.stringify(join("sam", "Sam")), 3_000);
+    expect(resumed.ofType("chat_history")[0].messages.map(({ sequence }) => sequence)).toEqual([1, 2]);
+    store.close();
+  });
+
+  test("chat rate limits are operation-correlated without disconnecting the sender", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("socket-chat-rate");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex", "Alex")), 1_000);
+    await world.message(peer, JSON.stringify({
+      v: 1, type: "chat_send", operationId: "chat_alex_0001", message: "one",
+    }), 2_000);
+    await world.message(peer, JSON.stringify({
+      v: 1, type: "chat_send", operationId: "chat_alex_0002", message: "two",
+    }), 2_100);
+    expect(peer.ofType("error").at(-1)).toMatchObject({
+      code: "rate_limited", operationId: "chat_alex_0002", fatal: false, retryable: true,
+    });
+    expect(peer.closed).toBeUndefined();
+    store.close();
+  });
+
+  test("admin grants are persisted, reflected in snapshots, and live players can be kicked", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("socket-admin");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex", "Alex")), 1_000);
+    expect(world.adminPlayers()).toEqual([{
+      id: "alex", name: "Alex", gameMode: "survival", connected: true,
+    }]);
+    expect(world.setPlayerGameMode("alex", "creative")).toBe(true);
+    world.snapshots(1_100);
+    expect(peer.ofType("snapshot").at(-1)?.self.gameMode).toBe("creative");
+    expect(store.loadPlayer("alex")?.player.gameMode).toBe("creative");
+    expect(world.kickPlayer("alex")).toBe(true);
+    expect(peer.closed).toEqual({ code: 4002, reason: "Disconnected by server operator" });
+    expect(world.playerCount).toBe(0);
+    expect(world.adminPlayers()[0]).toMatchObject({ gameMode: "creative", connected: false });
+    store.close();
+  });
+
+  test("admin kick revokes automatic resume while allowing a fresh authenticated join", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const first = new FakePeer("socket-kick-first");
+    world.open(first, 1_000);
+    await world.message(first, JSON.stringify(join("alex", "Alex")), 1_000);
+    const kickedToken = first.ofType("welcome")[0].resumeToken;
+
+    expect(world.kickPlayer("alex")).toBe(true);
+    expect(first.closed).toEqual({ code: 4002, reason: "Disconnected by server operator" });
+
+    const automatic = new FakePeer("socket-kick-automatic");
+    world.open(automatic, 2_000);
+    await world.message(automatic, JSON.stringify(join("alex", "Alex", kickedToken)), 2_000);
+    expect(automatic.ofType("welcome")).toHaveLength(0);
+    expect(automatic.ofType("error").at(-1)).toMatchObject({ code: "auth_failed", fatal: true });
+
+    const fresh = new FakePeer("socket-kick-fresh");
+    world.open(fresh, 3_000);
+    await world.message(fresh, JSON.stringify(join("alex", "Alex")), 3_000);
+    expect(fresh.ofType("welcome")[0]).toMatchObject({ resumed: false, player: { id: "alex", name: "Alex" } });
+    store.close();
+  });
+
+  test("creative grants permit sustained authoritative flight and revocation lands safely", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("socket-creative-flight");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex", "Alex")), 1_000);
+    expect(world.setPlayerGameMode("alex", "creative")).toBe(true);
+
+    let sequence = 0;
+    let now = 1_000;
+    const input = async (moveX: number, moveY: number, sprint = false) => {
+      sequence += 1;
+      now += 50;
+      await world.message(peer, JSON.stringify({
+        v: 1, type: "input", seq: sequence, dtMs: 50,
+        moveX, moveY, moveZ: 0, yaw: 0, pitch: 0, jump: moveY > 0, sprint,
+      }), now);
+      world.tick(now);
+    };
+
+    for (let tick = 0; tick < 40; tick += 1) await input(0, 1);
+    world.snapshots(now);
+    const ascended = peer.ofType("snapshot").at(-1)!.self;
+    expect(ascended.y).toBeCloseTo(69.02 + CREATIVE_FLIGHT_SPEED * 2);
+    expect(ascended.vy).toBe(CREATIVE_FLIGHT_SPEED);
+
+    for (let tick = 0; tick < 10; tick += 1) await input(1, 0);
+    for (let tick = 0; tick < 10; tick += 1) await input(1, 0, true);
+    world.snapshots(now);
+    const traversed = peer.ofType("snapshot").at(-1)!.self;
+    expect(traversed.x).toBeCloseTo(0.5 + CREATIVE_FLIGHT_SPEED / 2 + CREATIVE_FLIGHT_SPRINT_SPEED / 2);
+    expect(traversed.y).toBeCloseTo(ascended.y);
+
+    for (let tick = 0; tick < 8; tick += 1) await input(0, -1);
+    world.snapshots(now);
+    const descended = peer.ofType("snapshot").at(-1)!.self;
+    expect(descended.y).toBeCloseTo(ascended.y - CREATIVE_FLIGHT_SPEED * 0.4);
+
+    expect(world.setPlayerGameMode("alex", "survival")).toBe(true);
+    for (let tick = 0; tick < 40; tick += 1) await input(0, 0);
+    world.snapshots(now);
+    const landed = peer.ofType("snapshot").at(-1)!.self;
+    expect(landed.gameMode).toBe("survival");
+    expect(landed.y).toBe(terrainFeetY(landed.x, landed.z));
+    expect(landed.vy).toBe(0);
+
+    expect(world.setPlayerGameMode("alex", "creative")).toBe(true);
+    for (let tick = 0; tick < 400; tick += 1) await input(0, 1);
+    world.snapshots(now);
+    const ceiling = peer.ofType("snapshot").at(-1)!.self;
+    expect(ceiling.y).toBe(MAX_PLAYER_Y);
+    expect(ceiling.vy).toBe(0);
     store.close();
   });
 });

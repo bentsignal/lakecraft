@@ -23,6 +23,7 @@ import {
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import { createRemotePlayerRenderer } from "./remotePlayerRenderer.ts";
+import { createRemotePlayerSkinRenderer } from "./remotePlayerSkinRenderer.ts";
 import { raycastRemotePlayers } from "./remotePlayerTargeting.ts";
 import { createDroppedItemRenderer } from "./droppedItemRenderer.ts";
 import { createPlayerProjectileRenderer, type PlayerProjectileVisual } from "./playerProjectileRenderer.ts";
@@ -1605,6 +1606,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   gl.bindBuffer(gl.ARRAY_BUFFER, atmosphereBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, ATMOSPHERE_SCREEN_TRIANGLE, gl.STATIC_DRAW);
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
+  const remotePlayerSkinRenderer = createRemotePlayerSkinRenderer(gl);
   const playerSkinRenderer = createPlayerSkinRenderer(gl);
   const firstPersonSkinRenderer = createFirstPersonSkinRenderer(gl);
   const droppedItemRenderer = createDroppedItemRenderer(gl);
@@ -1964,17 +1966,20 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   setFirstPersonHeldItem(selectedItem, selectedBlock);
   let worldVertexCount = 0;
   let remoteVertexCount = 0;
+  let remoteSkinVertexCount = 0;
   let nameplateVertexCount = 0;
   const remoteStates = new Map<string, RemoteAvatarMotion>();
   let target: BlockTarget | null = null;
   let targetOutlineVertexCount = 0;
   let running = false;
   let destroyed = false;
+  /* @lakecraft-voxel-development:screenshot-state:start */
   let pendingScreenshot: {
     promise: Promise<Blob>;
     resolve: (blob: Blob) => void;
     reject: (reason: Error) => void;
   } | null = null;
+  /* @lakecraft-voxel-development:screenshot-state:end */
   let paused = false;
   let pausedStartedAt = 0;
   let pausedVisualTime = 0;
@@ -3269,7 +3274,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       visibleChunkCount,
       drawCalls,
       avatarDrawCalls,
-      avatarVertexCount: remoteVertexCount,
+      avatarVertexCount: remoteVertexCount + remoteSkinVertexCount,
       nameplateVertexCount,
       remoteMeshMs: remotePlayerRenderer.stats.meshMs,
       remoteUploadBytes: remotePlayerRenderer.stats.uploadBytes,
@@ -3303,7 +3308,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       firstPersonTotalUploadBytes: firstPersonStats[4],
       firstPersonMeshUpdates: firstPersonStats[5],
       firstPersonBufferBytes: firstPersonStats[6] + FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
-      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + primedTntVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT
+      estimatedMeshBytes: (worldVertexCount + remoteVertexCount + remoteSkinVertexCount + nameplateVertexCount + mobVertexCount + droppedItemVertexCount + primedTntVertexCount + particleVertexCount) * 6 * Float32Array.BYTES_PER_ELEMENT
         + firstPersonStats[6] + FIRST_PERSON_SKIN_ARM_BUFFER_BYTES,
     };
   }
@@ -3314,6 +3319,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (refreshDynamicGeometry) {
       const remoteStats = remotePlayerRenderer.update(remoteStates, now, dt, eye);
       remoteVertexCount = remoteStats.avatarVertexCount;
+      if (remoteStats.updated || (remoteStates.size === 0 && remoteSkinVertexCount !== 0)) {
+        remoteSkinVertexCount = remotePlayerSkinRenderer.update(remoteStates, eye);
+      }
       nameplateVertexCount = remoteStats.nameplateVertexCount;
       const droppedItemStats = droppedItemRenderer.update(now, eye);
       droppedItemVertexCount = droppedItemStats.vertexCount;
@@ -3506,6 +3514,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.drawArrays(gl.TRIANGLES, 0, mesh.colorVertexCount);
       drawCalls += 1;
     }
+    playerSkinLight[0] = clampNumber((dayNightState.ambientR * dayNightState.ambientIntensity
+      + dayNightState.directionalR * dayNightState.directionalIntensity * 0.55) * (0.38 + viewmodelSkyExposure * 0.62), 0.32, 1.12);
+    playerSkinLight[1] = clampNumber((dayNightState.ambientG * dayNightState.ambientIntensity
+      + dayNightState.directionalG * dayNightState.directionalIntensity * 0.55) * (0.38 + viewmodelSkyExposure * 0.62), 0.32, 1.12);
+    playerSkinLight[2] = clampNumber((dayNightState.ambientB * dayNightState.ambientIntensity
+      + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * (0.38 + viewmodelSkyExposure * 0.62), 0.32, 1.12);
+    if (remoteSkinVertexCount) {
+      remotePlayerSkinRenderer.draw(mvp, playerSkinLight);
+      drawCalls += 1;
+      avatarDrawCalls += 1;
+      gl.useProgram(program);
+    }
     if (remoteVertexCount) {
       bindBuffer(remotePlayerRenderer.avatarBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, remoteVertexCount);
@@ -3573,13 +3593,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
 
     if (cameraMode !== "first_person") {
-      const exposure = 0.38 + viewmodelSkyExposure * 0.62;
-      playerSkinLight[0] = clampNumber((dayNightState.ambientR * dayNightState.ambientIntensity
-        + dayNightState.directionalR * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
-      playerSkinLight[1] = clampNumber((dayNightState.ambientG * dayNightState.ambientIntensity
-        + dayNightState.directionalG * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
-      playerSkinLight[2] = clampNumber((dayNightState.ambientB * dayNightState.ambientIntensity
-        + dayNightState.directionalB * dayNightState.directionalIntensity * 0.55) * exposure, 0.32, 1.12);
       thirdPersonRenderPose.x = pose.x;
       thirdPersonRenderPose.y = pose.y;
       thirdPersonRenderPose.z = pose.z;
@@ -3737,6 +3750,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
     }
 
+    /* @lakecraft-voxel-development:screenshot-render:start */
     if (pendingScreenshot) {
       const capture = pendingScreenshot;
       pendingScreenshot = null;
@@ -3745,6 +3759,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         else capture.reject(new Error("The browser could not encode the game frame."));
       }, "image/png");
     }
+    /* @lakecraft-voxel-development:screenshot-render:end */
 
   }
 
@@ -4235,8 +4250,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (destroyed) return;
       destroyed = true;
       running = false;
+      /* @lakecraft-voxel-development:screenshot-destroy:start */
       pendingScreenshot?.reject(new Error("The game closed before the screenshot completed."));
       pendingScreenshot = null;
+      /* @lakecraft-voxel-development:screenshot-destroy:end */
       resetMovementView();
       cancelAnimationFrame(frameId);
       window.removeEventListener("keydown", onKeyDown);
@@ -4269,6 +4286,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       torchLights.clear();
       mobTorchColumns.clear();
       remotePlayerRenderer.destroy();
+      remotePlayerSkinRenderer.destroy();
       playerSkinRenderer.destroy();
       firstPersonSkinRenderer.destroy();
       droppedItemRenderer.destroy();
@@ -4287,6 +4305,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteTexture(terrainTexture);
       destroyMobTexture(gl, mobTexture);
     },
+    /* @lakecraft-voxel-development:screenshot-method:start */
     captureScreenshot() {
       if (destroyed) return Promise.reject(new Error("The game is closed."));
       if (pendingScreenshot) return pendingScreenshot.promise;
@@ -4297,6 +4316,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
       return promise;
     },
+    /* @lakecraft-voxel-development:screenshot-method:end */
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;
     },

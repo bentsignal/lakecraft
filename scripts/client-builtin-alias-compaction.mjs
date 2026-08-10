@@ -11,18 +11,18 @@ import { pathToFileURL } from "node:url";
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "abs", 90]),
-  Object.freeze(["Math", "cos", 54]),
-  Object.freeze(["Math", "ceil", 36]),
+  Object.freeze(["Math", "cos", 52]),
+  Object.freeze(["Math", "ceil", 35]),
   Object.freeze(["Math", "floor", 241]),
   Object.freeze(["Math", "hypot", 36]),
   Object.freeze(["Math", "max", 252]),
-  Object.freeze(["Math", "min", 199]),
+  Object.freeze(["Math", "min", 200]),
   Object.freeze(["Math", "round", 28]),
-  Object.freeze(["Math", "sin", 67]),
-  Object.freeze(["Object", "freeze", 162]),
+  Object.freeze(["Math", "sin", 64]),
+  Object.freeze(["Object", "freeze", 161]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_165;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "44be008924ee2ab9f5613baa7308876903b41d2fe9450116fbfc906885b86bb0";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_159;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "fd19e117c97b8bf2053cb81843ee1bbc7e50aec6d04feede7da413aab4731d6f";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

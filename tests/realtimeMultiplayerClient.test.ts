@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY,
   MULTIPLAYER_SERVERS_STORAGE_KEY,
+  decodeRealtimeGameMode,
   loadMultiplayerInvitationTokens,
   loadSavedMultiplayerServers,
   multiplayerStatusUrl,
@@ -10,6 +11,10 @@ import {
   saveMultiplayerInvitationToken,
   saveMultiplayerServers,
 } from "../client/realtimeMultiplayer.ts";
+
+assert.equal(decodeRealtimeGameMode("creative"), "creative");
+assert.equal(decodeRealtimeGameMode("survival"), "survival");
+assert.equal(decodeRealtimeGameMode("operator"), "survival", "unknown server roles fail closed to Survival");
 
 assert.equal(
   normalizeMultiplayerEndpoint("https://fern-hollow.up.railway.app"),

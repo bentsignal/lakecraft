@@ -17,3 +17,7 @@ Deploy the current beta with the published
 `railway-template-plan.json` is the reviewed, testable mirror of that Railway
 template. It is deliberately not presented as an importable Railway manifest.
 The marketplace overview lives in `docs/railway-template-overview.md`.
+
+The template also generates an `ADMIN_TOKEN`. Open `https://YOUR-DOMAIN/admin`
+and enter that secret to operate the per-world console. Keep it separate from
+the invitation token; the `secrets` command generates both independently.
