@@ -35,6 +35,7 @@ export interface PublicPlayer {
   vy?: number;
   vz?: number;
   heldItem?: string;
+  crouching?: boolean;
   visualActions?: PublicVisualAction[];
   gameMode?: ServerGameMode;
 }
@@ -57,6 +58,19 @@ export interface RealtimeChatMessage {
   username: string;
   message: string;
   sentAt: number;
+}
+export interface PublicDrop {
+  dropId: string;
+  ownerUserId: string;
+  itemId: string;
+  count: number;
+  durability?: number;
+  x: number;
+  y: number;
+  z: number;
+  droppedAt: number;
+  ownerPickupAt: number;
+  expiresAt: number;
 }
 
 export type ClientMessage =
@@ -81,6 +95,9 @@ export type ClientMessage =
       jump: boolean;
       sprint: boolean;
       heldItem?: string;
+      x?: number;
+      y?: number;
+      z?: number;
     }
   | {
       v: ProtocolVersion;
@@ -98,6 +115,18 @@ export type ClientMessage =
       operationId: string;
       message: string;
     }
+  | {
+      v: ProtocolVersion;
+      type: "drop_item";
+      operationId: string;
+      itemId: string;
+      count: number;
+      durability?: number;
+      x: number;
+      y: number;
+      z: number;
+    }
+  | { v: ProtocolVersion; type: "pickup_item"; operationId: string; dropId: string }
   | {
       v: ProtocolVersion;
       type: "action";
@@ -173,6 +202,8 @@ export type ServerMessage =
       type: "chat_message";
       message: RealtimeChatMessage;
     }
+  | { v: ProtocolVersion; type: "drop_snapshot"; drops: PublicDrop[] }
+  | { v: ProtocolVersion; type: "drop_result"; operationId: string; action: "drop" | "pickup"; drop?: PublicDrop }
   | { v: ProtocolVersion; type: "appearance_roster"; players: PlayerAppearance[] }
   | { v: ProtocolVersion; type: "appearance_state"; player: PlayerAppearance }
   | { v: ProtocolVersion; type: "appearance_blob"; userId: string; skinId: string; skinPixels?: string }
@@ -309,6 +340,11 @@ export function decodeClientMessage(raw: string): DecodeResult {
       && (typeof value.heldItem !== "string" || !/^(?:|[a-z0-9_]{1,64})$/.test(value.heldItem))) {
       return invalid("heldItem is invalid");
     }
+    const hasPose = value.x !== undefined || value.y !== undefined || value.z !== undefined;
+    if (hasPose && (!finite(value.x) || !finite(value.y) || !finite(value.z)
+      || Math.abs(value.x) > 1_000_000 || value.y < -64 || value.y > 320 || Math.abs(value.z) > 1_000_000)) {
+      return invalid("input pose is invalid");
+    }
     return { ok: true, message: value as unknown as ClientMessage };
   }
 
@@ -339,6 +375,24 @@ export function decodeClientMessage(raw: string): DecodeResult {
       ok: true,
       message: { v: PROTOCOL_VERSION, type: "chat_send", operationId: value.operationId, message },
     };
+  }
+
+  if (value.type === "drop_item") {
+    if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)
+      || typeof value.itemId !== "string" || !/^[a-z0-9_]{1,64}$/.test(value.itemId)
+      || !integer(value.count) || value.count < 1 || value.count > 64
+      || (value.durability !== undefined && (!integer(value.durability) || value.durability < 1 || value.durability > 65535))
+      || !finite(value.x) || !finite(value.y) || !finite(value.z)
+      || Math.abs(value.x) > 1_000_000 || value.y < -64 || value.y > 320 || Math.abs(value.z) > 1_000_000) {
+      return invalid("drop item is invalid");
+    }
+    return { ok: true, message: value as unknown as ClientMessage };
+  }
+
+  if (value.type === "pickup_item") {
+    if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)
+      || !shortString(value.dropId, 96)) return invalid("pickup item is invalid");
+    return { ok: true, message: value as unknown as ClientMessage };
   }
 
   if (value.type === "action") {

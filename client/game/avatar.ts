@@ -211,6 +211,7 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
   assignRemoteGear(state, player);
   assignRemoteSkin(state, player);
   applyRemoteVisualActions(state, player, now);
+  if (typeof player.crouching === "boolean") state.crouching = player.crouching;
   return state;
 }
 
@@ -238,6 +239,7 @@ export function applyRemoteAvatarSnapshot(
   assignRemoteGear(state, player);
   assignRemoteSkin(state, player);
   applyRemoteVisualActions(state, player, now);
+  if (typeof player.crouching === "boolean") state.crouching = player.crouching;
   state.lastSnapshotAt = now;
 }
 

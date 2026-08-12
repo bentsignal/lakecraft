@@ -139,14 +139,14 @@ for (const lookupName of webglUniformValues) {
 }
 
 const fixedFrequencyTwoValues = [...COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES];
-assert.equal(fixedFrequencyTwoValues.length, 78, "the reviewed long frequency-two pool stays exact");
+assert.equal(fixedFrequencyTwoValues.length, 77, "the reviewed long frequency-two pool stays exact");
 assert.equal(new Set(fixedFrequencyTwoValues).size, COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES, fixedFrequencyTwoValues.length * 2);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "closed compact client bundle");
 assert.equal(
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT,
-  "d1e284b4004150f7c60f5bca8225a203adef3ec854ab7b5415cdce3cbca1979d",
+  "20c9075d3a7f68f00b51bb656a833f553e3958c683fce7782bbadd3aef629038",
   "the exact reviewed occurrence order and kinds change only intentionally",
 );
 
@@ -365,9 +365,9 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA, {
   previousOccurrences: 583,
   previousUniqueValues: 520,
   previousSourceFingerprint: "18bd2ab516030b53c08a9b72fdc40cf6e91f43d7fce7d59cfa706d9b275ee190",
-  occurrenceDelta: 4,
-  uniqueValueDelta: 3,
-  source: "client/game/playerSkin.ts#strict-wire-codec",
+  occurrenceDelta: -19,
+  uniqueValueDelta: -17,
+  source: "client/index.tsx#compact-railway-authority-and-player-skin-wire",
   exclusionChanges: 0,
 });
 assert.equal(COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA.previousOccurrences
@@ -670,13 +670,14 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA, {
   previousOccurrences: 1_189,
   previousUniqueValues: 113,
   previousSourceFingerprint: "83f9ee33ed0e731999c3b2368489f2e972ed5efd673fedf13422d58cb7565e0f",
-  occurrenceDelta: 11,
-  uniqueValueDelta: 1,
+  occurrenceDelta: -23,
+  uniqueValueDelta: -3,
   sources: [
     "client/game/avatar.ts",
     "client/game/playerSkin.ts",
     "client/game/remotePlayerSkinRenderer.ts",
     "client/realtimeMultiplayer.ts",
+    "client/index.tsx#realtime-drops-and-pose-parity",
   ],
   exclusionChanges: 0,
 });
@@ -795,8 +796,8 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA, {
   previousOccurrences: 417,
   previousUniqueValues: 123,
   previousSourceFingerprint: "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5",
-  occurrenceDelta: -14,
-  uniqueValueDelta: -5,
+  occurrenceDelta: -2,
+  uniqueValueDelta: -2,
   sources: [
     "client/index.tsx",
     "client/runtimeMode.ts",

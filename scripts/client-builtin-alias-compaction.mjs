@@ -13,31 +13,31 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "abs", 90]),
   Object.freeze(["Math", "cos", 52]),
   Object.freeze(["Math", "ceil", 35]),
-  Object.freeze(["Math", "floor", 243]),
-  Object.freeze(["Math", "hypot", 36]),
+  Object.freeze(["Math", "floor", 242]),
+  Object.freeze(["Math", "hypot", 37]),
   Object.freeze(["Math", "imul", 36]),
-  Object.freeze(["Math", "max", 252]),
-  Object.freeze(["Math", "min", 200]),
+  Object.freeze(["Math", "max", 250]),
+  Object.freeze(["Math", "min", 199]),
   Object.freeze(["Math", "round", 28]),
   Object.freeze(["Math", "sin", 64]),
   Object.freeze(["Math", "PI", 110]),
   Object.freeze(["Object", "freeze", 164]),
   Object.freeze(["Object", "keys", 31]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
-  Object.freeze(["Array", "isArray", 88]),
+  Object.freeze(["Array", "isArray", 90]),
   Object.freeze(["Number", "isFinite", 266]),
   Object.freeze(["Number", "isInteger", 52]),
-  Object.freeze(["Number", "isSafeInteger", 44]),
-  Object.freeze(["Number", "MAX_SAFE_INTEGER", 26]),
+  Object.freeze(["Number", "isSafeInteger", 45]),
+  Object.freeze(["Number", "MAX_SAFE_INTEGER", 24]),
   Object.freeze(["Number", "NEGATIVE_INFINITY", 25]),
-  Object.freeze(["Number", "POSITIVE_INFINITY", 13]),
+  Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
   Object.freeze(["Number", "parseInt", 13]),
-  Object.freeze(["Date", "now", 78]),
-  Object.freeze(["JSON", "stringify", 35]),
+  Object.freeze(["Date", "now", 76]),
+  Object.freeze(["JSON", "stringify", 31]),
   Object.freeze(["JSON", "parse", 14]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_995;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "4661135b4f611b9983f9b227a263fa9926518af58205d3abc077a9382321b27b";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_988;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "4d3b02c42fb864c84d07ca6e824012d315aeb640015207ac1353ab3d6938c38d";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

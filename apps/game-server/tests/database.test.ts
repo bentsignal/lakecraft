@@ -121,4 +121,17 @@ describe("SQLite world persistence", () => {
     expect(store.recentChat(80).map(({ sequence }) => sequence)).toEqual([2, 3]);
     store.close();
   });
+
+  test("persists exact world drops and prunes expired items", () => {
+    const store = new WorldStore(":memory:");
+    const drop = {
+      dropId:"drop:test", ownerUserId:"u1", itemId:"diamond_pickaxe", count:1, durability:120,
+      x:1, y:69.02, z:2, droppedAt:1_000, ownerPickupAt:1_500, expiresAt:10_000,
+    };
+    store.saveDrop(drop, "drop_operation_1");
+    expect(store.getDropOperation("u1", "drop_operation_1")).toEqual(drop);
+    expect(store.listDrops(9_999)).toEqual([drop]);
+    expect(store.listDrops(10_000)).toEqual([]);
+    store.close();
+  });
 });

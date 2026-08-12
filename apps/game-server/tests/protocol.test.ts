@@ -16,11 +16,15 @@ describe("protocol v1", () => {
       jump: false,
       sprint: true,
       heldItem: "iron_pickaxe",
+      x: 1.25,
+      y: 69.02,
+      z: -2.5,
     }));
     expect(decoded.ok).toBe(true);
     if (decoded.ok && decoded.message.type === "input") {
       expect(decoded.message.heldItem).toBe("iron_pickaxe");
       expect(decoded.message.moveY).toBe(-1);
+      expect(decoded.message.x).toBe(1.25);
     }
   });
 
@@ -37,6 +41,19 @@ describe("protocol v1", () => {
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"input", seq:1, dtMs:16, moveX:0, moveZ:0, yaw:0, pitch:0,
       jump:false, sprint:false, heldItem:"../pickaxe",
+    })).ok).toBe(false);
+  });
+
+  test("bounds shared item drops and pickup operations", () => {
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"drop_item", operationId:"drop_12345678", itemId:"diamond_pickaxe", count:1,
+      durability:120, x:0.5, y:69.02, z:0.5,
+    })).ok).toBe(true);
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"pickup_item", operationId:"pickup_12345678", dropId:"drop:known",
+    })).ok).toBe(true);
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"drop_item", operationId:"drop_12345678", itemId:"../bad", count:65, x:0, y:0, z:0,
     })).ok).toBe(false);
   });
 

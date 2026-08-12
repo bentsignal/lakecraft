@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { BlockEdit, PublicPlayer, RealtimeChatMessage, ServerGameMode } from "./protocol";
+import type { BlockEdit, PublicDrop, PublicPlayer, RealtimeChatMessage, ServerGameMode } from "./protocol";
 
 interface PlayerRow {
   user_id: string;
@@ -32,6 +32,10 @@ interface ChatRow {
   username: string;
   message: string;
   sent_at: number;
+}
+interface DropRow {
+  drop_id: string; operation_id: string; owner_user_id: string; item_id: string; count: number;
+  durability: number | null; x: number; y: number; z: number; dropped_at: number; owner_pickup_at: number; expires_at: number;
 }
 
 export interface StoredPlayer {
@@ -112,6 +116,23 @@ export class WorldStore {
         UNIQUE (user_id, operation_id)
       );
       CREATE INDEX IF NOT EXISTS chat_messages_sent_at ON chat_messages (sent_at);
+
+      CREATE TABLE IF NOT EXISTS dropped_items (
+        drop_id TEXT PRIMARY KEY,
+        operation_id TEXT NOT NULL,
+        owner_user_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        durability INTEGER,
+        x REAL NOT NULL,
+        y REAL NOT NULL,
+        z REAL NOT NULL,
+        dropped_at INTEGER NOT NULL,
+        owner_pickup_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        UNIQUE (owner_user_id, operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS dropped_items_expiry ON dropped_items (expires_at);
     `);
     const playerColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(player_state)").all();
     if (!playerColumns.some((column) => column.name === "resume_expires_at")) {
@@ -149,6 +170,34 @@ export class WorldStore {
       FROM chat_messages ORDER BY sequence DESC LIMIT ?
     `).all(boundedLimit);
     return rows.reverse().map(toChatMessage);
+  }
+
+  listDrops(now = Date.now()): PublicDrop[] {
+    this.db.query("DELETE FROM dropped_items WHERE expires_at <= ?").run(now);
+    return this.db.query<DropRow, []>(`
+      SELECT drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, expires_at
+      FROM dropped_items ORDER BY dropped_at ASC LIMIT 256
+    `).all().map(toPublicDrop);
+  }
+
+  getDropOperation(ownerUserId: string, operationId: string): PublicDrop | null {
+    const row = this.db.query<DropRow, [string, string]>(`
+      SELECT drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, expires_at
+      FROM dropped_items WHERE owner_user_id = ? AND operation_id = ?
+    `).get(ownerUserId, operationId);
+    return row ? toPublicDrop(row) : null;
+  }
+
+  saveDrop(drop: PublicDrop, operationId: string): void {
+    this.db.query(`
+      INSERT INTO dropped_items (drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(drop.dropId, operationId, drop.ownerUserId, drop.itemId, drop.count, drop.durability ?? null,
+      drop.x, drop.y, drop.z, drop.droppedAt, drop.ownerPickupAt, drop.expiresAt);
+  }
+
+  deleteDrop(dropId: string): boolean {
+    return this.db.query("DELETE FROM dropped_items WHERE drop_id = ?").run(dropId).changes > 0;
   }
 
   appendChat(
@@ -393,5 +442,21 @@ function toChatMessage(row: ChatRow): RealtimeChatMessage {
     username: row.username,
     message: row.message,
     sentAt: row.sent_at,
+  };
+}
+
+function toPublicDrop(row: DropRow): PublicDrop {
+  return {
+    dropId: row.drop_id,
+    ownerUserId: row.owner_user_id,
+    itemId: row.item_id,
+    count: row.count,
+    ...(row.durability === null ? {} : { durability: row.durability }),
+    x: row.x,
+    y: row.y,
+    z: row.z,
+    droppedAt: row.dropped_at,
+    ownerPickupAt: row.owner_pickup_at,
+    expiresAt: row.expires_at,
   };
 }

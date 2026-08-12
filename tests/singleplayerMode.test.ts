@@ -9,8 +9,8 @@ assert.ok(app.includes("shouldRunSinglePlayer(window.location.hostname, window.l
   "the route must apply the tested host policy before choosing an app tree");
 assert.ok(app.includes("? <SinglePlayerApp onExit={leaveSingleplayer} />\n    : <LakebedMultiplayerApp onJoinSingleplayer={joinSingleplayer} />"),
   "the route must choose exactly one app tree");
-assert.equal(app.includes("requestDocumentPointerLockHandoff"), false,
-  "entering the world browser does not transiently capture the pointer before Play");
+assert.ok(app.includes("entryPointerLockHandoffRef.current = requestDocumentPointerLockHandoff()"),
+  "multiplayer Play uses the same gesture-bound pointer/fullscreen handoff as single-player");
 assert.equal(singleplayer.includes("lakebed/client"), false, "single-player must not import the Lakebed client runtime");
 assert.equal(singleplayer.includes("useQuery"), false, "single-player must not issue Lakebed queries");
 assert.equal(singleplayer.includes("useMutation"), false, "single-player must not issue Lakebed mutations");

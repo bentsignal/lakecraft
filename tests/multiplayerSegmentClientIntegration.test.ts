@@ -13,7 +13,8 @@ assert.match(app, /onReconcilePose=\{\(pose\) => engineRef\.current\?\.reconcile
 assert.match(app, /LAKEBED_COMPACT_RETIRED_PRESENCE_START/);
 assert.match(app, /const multiplayerPaused = multiplayerGameplayPaused\(\{/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("jump"\)/);
-assert.match(app, /motionActionSinkRef\.current\?\.\("swing"\)/);
+assert.match(app, /action === "use" \? "use" : "swing"/);
+assert.match(app, /crouching \? "crouch_on" : "crouch_off"/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("slot", selectedHotbar\)/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("bow_draw"\)/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("bow_release"\)/);

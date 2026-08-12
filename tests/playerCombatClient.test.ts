@@ -9,7 +9,7 @@ for (const required of [
   "transportForeground && !realtimeSession",
   'useMutation<[requestJson: string]',
   '>("attackPlayer")',
-  "onRemotePlayerAttack: (target) =>",
+  "onRemotePlayerAttack: realtimeSession ? () => undefined : (target) =>",
   "targetUserId: target.id",
   "selectedHotbar,",
   "weaponItemId,",
@@ -17,8 +17,8 @@ for (const required of [
 ]) assert.ok(client.includes(required), `missing PvP client integration: ${required}`);
 
 const callback = client.slice(
-  client.indexOf("onRemotePlayerAttack: (target) =>"),
-  client.indexOf("onMobDrops:", client.indexOf("onRemotePlayerAttack: (target) =>")),
+  client.indexOf("onRemotePlayerAttack: realtimeSession ? () => undefined : (target) =>"),
+  client.indexOf("onMobDrops:", client.indexOf("onRemotePlayerAttack: realtimeSession ? () => undefined : (target) =>")),
 );
 assert.ok(callback.length > 0);
 assert.ok(

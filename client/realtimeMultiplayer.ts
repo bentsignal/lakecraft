@@ -1,5 +1,7 @@
 import type { PlayerPose, RemotePlayer, WorldEdit } from "./game/types.ts";
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
+import { ITEMS, type ItemStack } from "../shared/game.ts";
+import type { NormalizedDroppedItem } from "../shared/droppedItems.ts";
 import {
   decodePlayerSkinWirePixels,
   encodePlayerSkinWirePixels,
@@ -54,6 +56,7 @@ export type RealtimeClientOptions = {
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
+  onDrops: (drops: NormalizedDroppedItem[]) => void;
   onReconcilePose?: (pose: PlayerPose) => void;
 };
 
@@ -62,6 +65,7 @@ type PendingBlockEdit = {
   reject: (error: Error) => void;
   timer: number;
 };
+type PendingDrop = { resolve: (drop: NormalizedDroppedItem) => void; reject: (error: Error) => void; timer: number };
 
 type RealtimeEnvelope = Record<string, unknown> & { v: number; type: string };
 type RemoteAppearance = RealtimeArmorAppearance & {
@@ -166,6 +170,23 @@ function decodeAppearance(value: unknown): (RemoteAppearance & { userId: string 
     armorLegs: boundedText(source.armorLegs, 64),
     armorFeet: boundedText(source.armorFeet, 64),
   };
+}
+
+function decodeDrop(value: unknown): NormalizedDroppedItem | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const dropId = boundedText(source.dropId, 96);
+  const itemId = boundedText(source.itemId, 64);
+  const ownerUserId = boundedText(source.ownerUserId, 128);
+  const count = finiteNumber(source.count);
+  const x = finiteNumber(source.x); const y = finiteNumber(source.y); const z = finiteNumber(source.z);
+  const droppedAt = finiteNumber(source.droppedAt); const ownerPickupAt = finiteNumber(source.ownerPickupAt); const expiresAt = finiteNumber(source.expiresAt);
+  if (!dropId || !ownerUserId || !Object.prototype.hasOwnProperty.call(ITEMS, itemId)
+    || count === null || !Number.isSafeInteger(count) || count < 1 || count > ITEMS[itemId as keyof typeof ITEMS].maxStack
+    || x === null || y === null || z === null || droppedAt === null || ownerPickupAt === null || expiresAt === null) return null;
+  const durability = finiteNumber(source.durability);
+  const item = { itemId, count, ...(durability === null ? {} : { durability }) } as ItemStack;
+  return { dropId, chunkKey: `${Math.floor(x / 16)}:${Math.floor(z / 16)}`, ownerUserId, sourceUserId: ownerUserId, item, x, y, z, droppedAt, ownerPickupAt, expiresAt };
 }
 
 export function normalizeMultiplayerEndpoint(value: string): string | null {
@@ -284,6 +305,7 @@ export class RealtimeMultiplayerClient {
   private lastPoseAt = 0;
   private pendingBlocks = new Map<string, PendingBlockEdit>();
   private pendingChat = new Map<string, string>();
+  private pendingDrops = new Map<string, PendingDrop>();
   private appearanceSupported = false;
   private localSkin: HydratedPlayerSkin | null = null;
   private localSkinLoading = false;
@@ -298,6 +320,7 @@ export class RealtimeMultiplayerClient {
   private appearanceRequestGeneration = 0;
   private appearanceDigestGeneration = 0;
   private appearanceRequestTimer = 0;
+  private sentPoses = new Map<number, PlayerPose>();
 
   constructor(options: RealtimeClientOptions) {
     this.options = options;
@@ -325,9 +348,12 @@ export class RealtimeMultiplayerClient {
     }
     this.pendingBlocks.clear();
     this.pendingChat.clear();
+    for (const pending of this.pendingDrops.values()) { window.clearTimeout(pending.timer); pending.reject(new Error("multiplayer_disconnected")); }
+    this.pendingDrops.clear();
     this.remoteAppearances.clear();
     this.remoteSkins.clear();
     this.lastSnapshotPlayers = [];
+    this.sentPoses.clear();
     this.appearanceRequests = [];
     this.appearanceRequestSet.clear();
     this.activeAppearanceRequest = "";
@@ -391,6 +417,26 @@ export class RealtimeMultiplayerClient {
     if (!this.joined || this.socket?.readyState !== WebSocket.OPEN) return;
     this.actionSequence += 1;
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "action", seq: this.actionSequence, kind, ...(value === undefined ? {} : { value }) });
+  }
+
+  submitDrop(operationId: string, item: ItemStack, pose: PlayerPose): Promise<NormalizedDroppedItem> {
+    return this.submitDropOperation(operationId, {
+      type: "drop_item", itemId: item.itemId, count: item.count,
+      ...(item.durability === undefined ? {} : { durability: item.durability }), x: pose.x, y: pose.y, z: pose.z,
+    });
+  }
+
+  submitPickup(operationId: string, dropId: string): Promise<NormalizedDroppedItem> {
+    return this.submitDropOperation(operationId, { type: "pickup_item", dropId });
+  }
+
+  private submitDropOperation(operationId: string, operation: Record<string, unknown>): Promise<NormalizedDroppedItem> {
+    if (!this.joined || this.socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error("multiplayer_not_connected"));
+    this.send({ v: REALTIME_PROTOCOL_VERSION, operationId, ...operation });
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => { this.pendingDrops.delete(operationId); reject(new Error("multiplayer_drop_timeout")); }, 5_000);
+      this.pendingDrops.set(operationId, { resolve, reject, timer });
+    });
   }
 
   private open(reconnecting: boolean): void {
@@ -488,7 +534,12 @@ export class RealtimeMultiplayerClient {
         jump: dy > 0.045,
         sprint: Math.hypot(dx, dz) / dt > nominalSpeed * 1.12,
         heldItem: heldItem ?? "",
+        x: pose.x,
+        y: pose.y,
+        z: pose.z,
       });
+      this.sentPoses.set(this.sequence, { ...pose });
+      if (this.sentPoses.size > 96) this.sentPoses.delete(this.sentPoses.keys().next().value!);
       this.publishAppearance(false);
       this.lastPose = pose;
       this.lastPoseAt = now;
@@ -639,7 +690,10 @@ export class RealtimeMultiplayerClient {
       if (welcomePlayer && typeof welcomePlayer === "object" && !Array.isArray(welcomePlayer)) {
         this.gameMode = decodeRealtimeGameMode((welcomePlayer as Record<string, unknown>).gameMode);
         this.options.onGameMode(this.gameMode);
+        const welcomePose = decodePose(welcomePlayer);
+        if (welcomePose) this.options.onReconcilePose?.(welcomePose);
       }
+      this.sentPoses.clear();
       this.options.onPhase("online");
       this.beginSampling();
       this.prepareAppearance();
@@ -721,15 +775,43 @@ export class RealtimeMultiplayerClient {
       this.options.onChatEvent({ type: "confirmed", message: chat });
       return;
     }
+    if (message.type === "drop_snapshot") {
+      this.options.onDrops(Array.isArray(message.drops) ? message.drops.slice(0, 256).map(decodeDrop).filter(Boolean) as NormalizedDroppedItem[] : []);
+      return;
+    }
+    if (message.type === "drop_result") {
+      const operationId = boundedText(message.operationId, 96);
+      const pending = this.pendingDrops.get(operationId);
+      const drop = decodeDrop(message.drop);
+      if (!pending || !drop) return;
+      window.clearTimeout(pending.timer);
+      this.pendingDrops.delete(operationId);
+      pending.resolve(drop);
+      return;
+    }
     if (message.type === "snapshot") {
       const self = decodePose(message.self);
       if (message.self && typeof message.self === "object" && !Array.isArray(message.self)) {
         this.gameMode = decodeRealtimeGameMode((message.self as Record<string, unknown>).gameMode);
         this.options.onGameMode(this.gameMode);
       }
-      const local = this.options.getPose();
-      if (self && Math.hypot(self.x - local.x, self.y - local.y, self.z - local.z) > 1.5) {
-        this.options.onReconcilePose?.(self);
+      const ack = finiteNumber(message.inputAck);
+      const acknowledged = ack !== null ? this.sentPoses.get(ack) : undefined;
+      if (self && acknowledged) {
+        const correctionX = self.x - acknowledged.x;
+        const correctionY = self.y - acknowledged.y;
+        const correctionZ = self.z - acknowledged.z;
+        if (Math.hypot(correctionX, correctionY, correctionZ) > 0.75) {
+          const local = this.options.getPose();
+          this.options.onReconcilePose?.({
+            x: local.x + correctionX,
+            y: local.y + correctionY,
+            z: local.z + correctionZ,
+            yaw: local.yaw,
+            pitch: local.pitch,
+          });
+        }
+        for (const sequence of this.sentPoses.keys()) if (sequence <= ack!) this.sentPoses.delete(sequence);
       }
       const players: RemotePlayer[] = [];
       if (Array.isArray(message.players)) {
@@ -750,6 +832,7 @@ export class RealtimeMultiplayerClient {
             id,
             name: boundedText(source.name ?? source.username, 32) || "Player",
             ...(typeof source.heldItem === "string" ? { heldItem: boundedText(source.heldItem, 64) } : {}),
+            ...(typeof source.crouching === "boolean" ? { crouching: source.crouching } : {}),
             ...(visualActions.length ? { visualActions } : {}),
             ...(vx === null ? {} : { vx }),
             ...(vy === null ? {} : { vy }),
@@ -772,6 +855,13 @@ export class RealtimeMultiplayerClient {
         return;
       }
       if (operationId) {
+        const drop = this.pendingDrops.get(operationId);
+        if (drop) {
+          window.clearTimeout(drop.timer);
+          this.pendingDrops.delete(operationId);
+          drop.reject(new Error(boundedText(message.code, 64) || "multiplayer_drop_rejected"));
+          return;
+        }
         const pending = this.pendingBlocks.get(operationId);
         if (pending) {
           window.clearTimeout(pending.timer);

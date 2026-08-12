@@ -12,6 +12,7 @@ import {
   type ClientMessage,
   type PublicAppearance,
   type PublicPlayer,
+  type PublicDrop,
   type ServerMessage,
 } from "./protocol";
 import {
@@ -63,6 +64,7 @@ interface ConnectionState {
   appearanceRequestKeys: Set<string>;
   appearance: PublicAppearance;
   skinPixels?: string;
+  clientPoseAuthority: boolean;
 }
 
 // Feet pose on the deterministic client's height-68 spawn plateau.
@@ -78,6 +80,9 @@ export const RESUME_TOKEN_TTL_MS = 10 * 60 * 1_000;
 export const SKIN_CHANGE_RATE_LIMIT_MS = 3_000;
 export const APPEARANCE_REQUEST_RATE_LIMIT = 4;
 export const APPEARANCE_REQUEST_RATE_WINDOW_MS = 1_000;
+const DROP_TTL_MS = 5 * 60_000;
+const DROP_OWNER_DELAY_MS = 500;
+const DROP_REACH = 3;
 
 const DEFAULT_APPEARANCE: PublicAppearance = Object.freeze({
   skinId: "default",
@@ -93,13 +98,17 @@ export class GameWorld implements AdminWorldControl {
   private readonly userConnections = new Map<string, ConnectionState>();
   private tickNumber = 0;
   private visualActionSequence = 0;
+  private readonly drops = new Map<string, PublicDrop>();
+  private readonly dropOperations = new Map<string, PublicDrop>();
   private shuttingDown = false;
 
   constructor(
     readonly config: ServerConfig,
     private readonly store: WorldStore,
     private readonly authenticator: JoinAuthenticator,
-  ) {}
+  ) {
+    for (const drop of store.listDrops()) this.drops.set(drop.dropId, drop);
+  }
 
   get playerCount(): number {
     return this.userConnections.size;
@@ -167,6 +176,7 @@ export class GameWorld implements AdminWorldControl {
       appearanceRequestCount: 0,
       appearanceRequestKeys: new Set(),
       appearance: { ...DEFAULT_APPEARANCE },
+      clientPoseAuthority: false,
     });
     this.send(peer, {
       v: PROTOCOL_VERSION,
@@ -235,12 +245,21 @@ export class GameWorld implements AdminWorldControl {
     else if (message.type === "action") this.action(state, message);
     else if (message.type === "block_edit") this.blockEdit(state, message, now);
     else if (message.type === "chat_send") this.chat(state, message, now);
+    else if (message.type === "drop_item") this.dropItem(state, message, now);
+    else if (message.type === "pickup_item") this.pickupItem(state, message, now);
     else if (message.type === "appearance_set") await this.setAppearance(state, message, now);
     else this.sendAppearance(state, message, now);
   }
 
   tick(now = Date.now()): void {
     this.tickNumber++;
+    let removedDrop = false;
+    for (const [id, drop] of this.drops) if (drop.expiresAt <= now) {
+      this.drops.delete(id);
+      this.store.deleteDrop(id);
+      removedDrop = true;
+    }
+    if (removedDrop) this.broadcastDrops();
     const dt = 1 / this.config.tickHz;
     for (const state of this.userConnections.values()) {
       const player = state.player!;
@@ -253,7 +272,15 @@ export class GameWorld implements AdminWorldControl {
       const creative = player.gameMode === "creative";
       const speed = creative
         ? state.controls.sprint ? CREATIVE_FLIGHT_SPRINT_SPEED : CREATIVE_FLIGHT_SPEED
-        : state.controls.sprint ? 6.0 : 4.3;
+        : state.controls.sprint ? 5.6 : 4.35;
+      if (state.clientPoseAuthority) {
+        if (now - state.lastInputAt > 300) player.vx = player.vy = player.vz = 0;
+        if (now - state.lastSavedAt >= 1_000 && state.resumeHash && state.resumeExpiresAt !== undefined) {
+          this.store.savePlayer(player, state.resumeHash, now, state.resumeExpiresAt);
+          state.lastSavedAt = now;
+        }
+        continue;
+      }
       player.vx = state.controls.moveX * speed;
       player.vz = state.controls.moveZ * speed;
       const nextX = player.x + player.vx * dt;
@@ -404,6 +431,7 @@ export class GameWorld implements AdminWorldControl {
         type: "chat_history",
         messages: this.store.recentChat(CHAT_HISTORY_LIMIT),
       });
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_snapshot", drops: [...this.drops.values()] });
       this.send(state.peer, {
         v: PROTOCOL_VERSION,
         type: "appearance_roster",
@@ -445,6 +473,28 @@ export class GameWorld implements AdminWorldControl {
     }
     state.lastInputSeq = message.seq;
     state.lastInputAt = now;
+    if (message.x !== undefined && message.y !== undefined && message.z !== undefined) {
+      const player = state.player!;
+      const dt = Math.max(0.025, message.dtMs / 1_000);
+      const dx = message.x - player.x;
+      const dy = message.y - player.y;
+      const dz = message.z - player.z;
+      const maxStep = 1.5 + dt * (player.gameMode === "creative" ? CREATIVE_FLIGHT_SPRINT_SPEED : 8.5);
+      if (Math.hypot(dx, dz) > maxStep || Math.abs(dy) > maxStep) {
+        // The next ordinary snapshot acknowledges this sample while retaining
+        // the last accepted pose. The browser applies that delta to its current
+        // prediction, recovering without a toast or a permanently rejected gap.
+        return;
+      }
+      player.x = message.x;
+      player.y = message.y;
+      player.z = message.z;
+      player.vx = dx / dt;
+      player.vy = dy / dt;
+      player.vz = dz / dt;
+      state.vy = player.vy;
+      state.clientPoseAuthority = true;
+    }
     state.controls = {
       moveX: message.moveX,
       // Protocol-v1 clients without moveY retain upward flight via `jump`;
@@ -470,6 +520,8 @@ export class GameWorld implements AdminWorldControl {
     });
     if (actions.length > 8) actions.splice(0, actions.length - 8);
     state.player!.visualActions = actions;
+    if (message.kind === "crouch_on") state.player!.crouching = true;
+    if (message.kind === "crouch_off") state.player!.crouching = false;
   }
 
   private async setAppearance(
@@ -633,6 +685,56 @@ export class GameWorld implements AdminWorldControl {
     for (const other of this.userConnections.values()) {
       this.send(other.peer, { v: PROTOCOL_VERSION, type: "chat_message", message: result.message });
     }
+  }
+
+  private dropItem(state: ConnectionState, message: Extract<ClientMessage, { type: "drop_item" }>, now: number): void {
+    const key = `${state.player!.id}\u0000${message.operationId}`;
+    const replay = this.dropOperations.get(key) ?? this.store.getDropOperation(state.player!.id, message.operationId);
+    if (replay) {
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "drop", drop: replay });
+      return;
+    }
+    if (this.drops.size >= 256 || squaredDistance(state.player!, message) > DROP_REACH ** 2) {
+      this.fail(state, "bad_message", "Item drop is out of reach or the world drop limit is full", false, false, message.operationId);
+      return;
+    }
+    const drop: PublicDrop = {
+      dropId: `drop:${crypto.randomUUID()}`,
+      ownerUserId: state.player!.id,
+      itemId: message.itemId,
+      count: message.count,
+      ...(message.durability === undefined ? {} : { durability: message.durability }),
+      x: message.x,
+      y: message.y,
+      z: message.z,
+      droppedAt: now,
+      ownerPickupAt: now + DROP_OWNER_DELAY_MS,
+      expiresAt: now + DROP_TTL_MS,
+    };
+    this.drops.set(drop.dropId, drop);
+    this.store.saveDrop(drop, message.operationId);
+    this.dropOperations.set(key, drop);
+    if (this.dropOperations.size > 512) this.dropOperations.delete(this.dropOperations.keys().next().value!);
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "drop", drop });
+    this.broadcastDrops();
+  }
+
+  private pickupItem(state: ConnectionState, message: Extract<ClientMessage, { type: "pickup_item" }>, now: number): void {
+    const drop = this.drops.get(message.dropId);
+    if (!drop || drop.expiresAt <= now || (drop.ownerUserId === state.player!.id && drop.ownerPickupAt > now)
+      || squaredDistance(state.player!, drop) > DROP_REACH ** 2) {
+      this.fail(state, "bad_message", "Item is unavailable or out of reach", false, false, message.operationId);
+      return;
+    }
+    this.drops.delete(drop.dropId);
+    this.store.deleteDrop(drop.dropId);
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop });
+    this.broadcastDrops();
+  }
+
+  private broadcastDrops(): void {
+    const message: ServerMessage = { v: PROTOCOL_VERSION, type: "drop_snapshot", drops: [...this.drops.values()] };
+    for (const state of this.userConnections.values()) this.send(state.peer, message);
   }
 
   private send(peer: Peer, message: ServerMessage): void {

@@ -3,6 +3,8 @@ import type { PlayerPose, RemotePlayer, WorldEdit } from "./game/types.ts";
 import type { RealtimeChatEvent } from "./realtimeChat.ts";
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
 import type { HydratedPlayerSkin } from "./game/playerSkin.ts";
+import type { ItemStack } from "../shared/game.ts";
+import type { NormalizedDroppedItem } from "../shared/droppedItems.ts";
 import {
   RealtimeMultiplayerClient,
   type RealtimeConnectionPhase,
@@ -12,6 +14,8 @@ import {
 
 export type RealtimeBlockSink = (operationId: string, edit: WorldEdit) => Promise<RealtimeWorldEdit>;
 export type RealtimeChatSink = (message: string) => Promise<void>;
+export type RealtimeDropSink = (operationId: string, item: ItemStack, pose: PlayerPose) => Promise<NormalizedDroppedItem>;
+export type RealtimePickupSink = (operationId: string, dropId: string) => Promise<NormalizedDroppedItem>;
 
 export function RealtimeMultiplayerTransport(props: {
   endpoint: string;
@@ -30,9 +34,12 @@ export function RealtimeMultiplayerTransport(props: {
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
   onReconcilePose: (pose: PlayerPose) => void;
+  onDrops: (drops: NormalizedDroppedItem[]) => void;
   registerBlockSink: (sink: RealtimeBlockSink | null) => void;
   registerChatSink: (sink: RealtimeChatSink | null) => void;
   registerActionSink: (sink: ((kind: MotionVisualActionKind, value?: number) => void) | null) => void;
+  registerDropSink: (sink: RealtimeDropSink | null) => void;
+  registerPickupSink: (sink: RealtimePickupSink | null) => void;
 }) {
   const propsRef = useRef(props);
   propsRef.current = props;
@@ -57,15 +64,20 @@ export function RealtimeMultiplayerTransport(props: {
       onChatEvent: (event) => propsRef.current.onChatEvent(event),
       onGameMode: (gameMode) => propsRef.current.onGameMode(gameMode),
       onReconcilePose: (pose) => propsRef.current.onReconcilePose(pose),
+      onDrops: (drops) => propsRef.current.onDrops(drops),
     });
     props.registerBlockSink((operationId, edit) => client.submitBlockEdit(operationId, edit));
     props.registerChatSink((message) => client.submitChat(message));
     props.registerActionSink((kind, value) => client.submitAction(kind, value));
+    props.registerDropSink((operationId, item, pose) => client.submitDrop(operationId, item, pose));
+    props.registerPickupSink((operationId, dropId) => client.submitPickup(operationId, dropId));
     client.start();
     return () => {
       props.registerBlockSink(null);
       props.registerChatSink(null);
       props.registerActionSink(null);
+      props.registerDropSink(null);
+      props.registerPickupSink(null);
       client.stop();
     };
   }, [props.endpoint, props.ticket, props.serverId, props.demo?.token, props.localUserId, props.localUsername]);

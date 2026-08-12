@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 587;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 523;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "66a84e6ad070c9ee12abc5f59a4acfd7773e63f3d60537014bd88532a84f9c28";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 564;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 503;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fcd03ec0b220a5a656f8f908b68d6efc55e1ff45f8bf1e735d10b27f7746b2cf";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -77,25 +77,26 @@ export const COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA = Object.freeze({
   previousOccurrences: 583,
   previousUniqueValues: 520,
   previousSourceFingerprint: "18bd2ab516030b53c08a9b72fdc40cf6e91f43d7fce7d59cfa706d9b275ee190",
-  occurrenceDelta: 4,
-  uniqueValueDelta: 3,
-  source: "client/game/playerSkin.ts#strict-wire-codec",
+  occurrenceDelta: -19,
+  uniqueValueDelta: -17,
+  source: "client/index.tsx#compact-railway-authority-and-player-skin-wire",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_200;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 114;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "c3e164c53d369621dc3338e9fe3ba7633ee94014669c4c5c3f5a4360f7e639b6";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_166;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 110;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "7432a311b0f521732a2f61e22fce196c8ba6a591163aec66dc6d8acb2e43db27";
 export const COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA = Object.freeze({
   previousOccurrences: 1_189,
   previousUniqueValues: 113,
   previousSourceFingerprint: "83f9ee33ed0e731999c3b2368489f2e972ed5efd673fedf13422d58cb7565e0f",
-  occurrenceDelta: 11,
-  uniqueValueDelta: 1,
+  occurrenceDelta: -23,
+  uniqueValueDelta: -3,
   sources: Object.freeze([
     "client/game/avatar.ts",
     "client/game/playerSkin.ts",
     "client/game/remotePlayerSkinRenderer.ts",
     "client/realtimeMultiplayer.ts",
+    "client/index.tsx#realtime-drops-and-pose-parity",
   ]),
   exclusionChanges: 0,
 });
@@ -296,9 +297,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 403;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 118;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "63d37475e28c5be55035cf4c827bfbb127408b1a035bf9b34155bc2580e717e1";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 415;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 121;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "80507b569cbea80abb96e1c522d53ea7443504e1cddcda5e24b17a30f3c83551";
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -366,8 +367,8 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA = Object.fr
   previousOccurrences: 417,
   previousUniqueValues: 123,
   previousSourceFingerprint: "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5",
-  occurrenceDelta: -14,
-  uniqueValueDelta: -5,
+  occurrenceDelta: -2,
+  uniqueValueDelta: -2,
   sources: Object.freeze([
     "client/index.tsx",
     "client/runtimeMode.ts",
@@ -440,7 +441,7 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds", "grass_side", "grass_top",
   "ineligible", "invalid_chunk_key", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
   "invalid_slot", "invalid_transaction_cleared", "lock_change", "miningHit", "mousedown", "mousemove",
-  "multiplayer", "multiplayer_not_connected", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
+  "multiplayer", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
   "no_recipe", "noncanonical_envelope", "oak_fence_gate_closed", "oak_log_end", "pointerlockerror",
   "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
   "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
@@ -448,11 +449,11 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 156;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 78;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 154;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 77;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "d1e284b4004150f7c60f5bca8225a203adef3ec854ab7b5415cdce3cbca1979d";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "20c9075d3a7f68f00b51bb656a833f553e3958c683fce7782bbadd3aef629038";
 // Gameplay modes and local persistence outcomes form a closed internal
 // identity boundary. Only strict comparison operands and switch cases may
 // enter this pool: JSX/DOM values, object keys, payload strings, and UI copy

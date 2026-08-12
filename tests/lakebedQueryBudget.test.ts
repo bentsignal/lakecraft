@@ -23,7 +23,7 @@ test("lobby hydrates through one positional Lakebed query and then unmounts it",
   assert.doesNotMatch(bootstrap, /return \{/);
 });
 
-test("Railway multiplayer keeps only inventory subscribed while world queries are legacy-only", () => {
+test("Railway multiplayer unsubscribes all Lakebed world and inventory polling", () => {
   const bridge = client.slice(
     client.indexOf("function LakebedWorldQueries"),
     client.indexOf("function GameApp"),
@@ -34,7 +34,7 @@ test("Railway multiplayer keeps only inventory subscribed while world queries ar
   );
   assert.match(bridge, /"furnaceAt"/);
   assert.match(client, /transportForeground && !realtimeSession \? \(/);
-  assert.match(client, /transportForeground \? <InventoryQuery onResult=\{setSavedInventory\} \/> : null/);
+  assert.match(client, /transportForeground && !realtimeSession \? <InventoryQuery onResult=\{setSavedInventory\} \/> : null/);
 });
 
 test("GameApp no longer mounts Lakebed reads unconditionally", () => {

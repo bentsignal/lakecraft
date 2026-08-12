@@ -109,7 +109,7 @@ describe("authoritative world", () => {
     world.snapshots(1_030);
     const snapshot = alex.ofType("snapshot").at(-1)!;
     expect(snapshot.inputAck).toBe(1);
-    expect(snapshot.self.x).toBeCloseTo(0.8);
+    expect(snapshot.self.x).toBeCloseTo(0.78);
     expect(snapshot.self.y).toBeCloseTo(69.02);
     expect(snapshot.self.yaw).toBeCloseTo(-Math.PI);
     expect(snapshot.players).toHaveLength(1);
@@ -146,6 +146,50 @@ describe("authoritative world", () => {
       revision: 1,
       edits: [{ x: 0, y: 69, z: 1, block: 4, editorId: "alex" }],
     });
+    store.close();
+  });
+
+  test("acknowledges canonical browser poses without integrating them twice", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("pose-socket");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("pose-user")), 1_000);
+    await world.message(peer, JSON.stringify({
+      v:1, type:"input", seq:1, dtMs:50, moveX:1, moveZ:0, yaw:0.4, pitch:0,
+      jump:false, sprint:true, x:0.78, y:69.02, z:0.5,
+    }), 1_050);
+    for (let now = 1_051; now <= 1_250; now += 50) world.tick(now);
+    world.snapshots(1_251);
+    expect(peer.ofType("snapshot").at(-1)?.self).toMatchObject({ x:0.78, y:69.02, z:0.5 });
+    store.close();
+  });
+
+  test("broadcasts crouch state, held items, and player-to-player item transfers", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const alex = new FakePeer("drop-a");
+    const steve = new FakePeer("drop-b");
+    world.open(alex, 1_000); world.open(steve, 1_000);
+    await world.message(alex, JSON.stringify(join("alex")), 1_000);
+    await world.message(steve, JSON.stringify(join("steve")), 1_000);
+    await world.message(alex, JSON.stringify({ v:1,type:"action",seq:1,kind:"crouch_on" }), 1_010);
+    await world.message(alex, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:50,moveX:0,moveZ:0,yaw:0,pitch:0,jump:false,sprint:false,heldItem:"diamond_pickaxe",
+      x:0.5,y:69.02,z:0.5,
+    }), 1_011);
+    world.snapshots(1_012);
+    expect(steve.ofType("snapshot").at(-1)?.players[0]).toMatchObject({ crouching:true, heldItem:"diamond_pickaxe" });
+    await world.message(alex, JSON.stringify({
+      v:1,type:"drop_item",operationId:"drop_transfer_1",itemId:"diamond_pickaxe",count:1,durability:120,x:0.5,y:69.02,z:0.5,
+    }), 1_020);
+    const drop = alex.ofType("drop_result").at(-1)?.drop;
+    expect(drop).toMatchObject({ itemId:"diamond_pickaxe", durability:120, ownerUserId:"alex" });
+    await world.message(steve, JSON.stringify({
+      v:1,type:"pickup_item",operationId:"pickup_transfer_1",dropId:drop!.dropId,
+    }), 1_600);
+    expect(steve.ofType("drop_result").at(-1)).toMatchObject({ action:"pickup", drop:{ dropId:drop!.dropId } });
+    expect(alex.ofType("drop_snapshot").at(-1)?.drops).toEqual([]);
     store.close();
   });
 

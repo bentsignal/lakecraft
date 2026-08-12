@@ -56,6 +56,7 @@ const client = new RealtimeMultiplayerClient({
   onWorldEdits: () => {},
   onChatEvent: (event) => events.push(event),
   onGameMode: () => {},
+  onDrops: () => {},
 });
 
 const welcome = {

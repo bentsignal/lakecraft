@@ -18,12 +18,16 @@ import {
 import { LobbyScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
 import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
+import { releaseGameplayKeyboardCapture, requestGameplayKeyboardCapture } from "./gameplayKeyboardCapture.ts";
+import { requestDocumentPointerLockHandoff } from "./pointerLockHandoff.ts";
 import { cycleHotbarIndex } from "./game/hotbarInput";
 import { hydrateSelectedPlayerSkin, type HydratedPlayerSkin } from "./game/playerSkin.ts";
 import {
   RealtimeMultiplayerTransport,
   type RealtimeBlockSink,
   type RealtimeChatSink,
+  type RealtimeDropSink,
+  type RealtimePickupSink,
 } from "./RealtimeMultiplayerTransport.tsx";
 import {
   applyRealtimeChatEvent,
@@ -61,6 +65,7 @@ import {
   MAX_HEALTH,
   MAX_HUNGER,
   attackDamage,
+  addItemStack,
   clampHotbarIndex,
   countItem,
   createEmptyEquipment,
@@ -1017,6 +1022,7 @@ function GameApp({
   const worldChunkCenterRef = useRef("");
   const intentionalPointerUnlockRef = useRef(false);
   const droppedItemsClockRef = useRef<{ result: DroppedItemsQueryResult; receivedAt: number } | null>(null);
+  const realtimeDropsRef = useRef<NormalizedDroppedItem[]>([]);
   const droppedPickupAttemptRef = useRef(new Map<string, number>());
   const lastDroppedPickupSweepRef = useRef(0);
   const appliedOwnCombatHealthRef = useRef<number | null>(null);
@@ -1044,6 +1050,8 @@ function GameApp({
   const playerProjectilesRef = useRef<PlayerProjectileVisual[]>([]);
   const previousChestKeyRef = useRef("");
   const motionActionSinkRef = useRef<((kind: MotionVisualActionKind, value?: number) => void) | null>(null);
+  const entryPointerLockHandoffRef = useRef(false);
+  const realtimeCrouchingRef = useRef(false);
   const previousSegmentPoseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const authorityTrafficPausedRef = useRef(false);
   const authoritativeKnockbackGateRef = useRef<AuthoritativeKnockbackGate | null>(null);
@@ -1097,6 +1105,8 @@ function GameApp({
   const [realtimeSession, setRealtimeSession] = useState<RealtimeSession | null>(null);
   const realtimeBlockSinkRef = useRef<RealtimeBlockSink | null>(null);
   const realtimeChatSinkRef = useRef<RealtimeChatSink | null>(null);
+  const realtimeDropSinkRef = useRef<RealtimeDropSink | null>(null);
+  const realtimePickupSinkRef = useRef<RealtimePickupSink | null>(null);
   const realtimeGameModeRef = useRef<RealtimeGameMode>("survival");
   const [realtimeChatMessages, setRealtimeChatMessages] = useState<RealtimeChatMessage[]>([]);
   const [realtimeGameMode, setRealtimeGameMode] = useState<RealtimeGameMode>("survival");
@@ -1592,6 +1602,21 @@ function GameApp({
     if (!stack) return;
     droppedItemBusyRef.current = true;
     try {
+      if (realtimeSession) {
+        const count = dropWholeStack ? stack.count : 1;
+        const item = { ...stack, count };
+        const sink = realtimeDropSinkRef.current;
+        if (!sink) throw new Error("multiplayer_not_connected");
+        const dropped = await sink(droppedItemOperationId(), item, poseRef.current);
+        const next = [...inventoryRef.current];
+        const current = next[sourceSlot];
+        if (!current || current.itemId !== stack.itemId || current.count < count) throw new Error("inventory_changed");
+        next[sourceSlot] = current.count === count ? null : { ...current, count: current.count - count };
+        updateInventory(next);
+        droppedPickupAttemptRef.current.set(dropped.dropId, Number.POSITIVE_INFINITY);
+        audioRef.current?.play("blockPlace", { seed: dropped.dropId, intensity: 0.45, surface: "generic" });
+        return;
+      }
       if (!await flushInventoryActions()) throw new Error("inventory_action_pending");
       const result = await dropItemMutation(JSON.stringify({
         operationId: droppedItemOperationId(),
@@ -1623,6 +1648,16 @@ function GameApp({
     if (!hydratedRef.current || rangedChargeActiveRef.current || droppedItemBusyRef.current || chestBusyRef.current || pendingWorldBlockEditRef.current) return;
     droppedItemBusyRef.current = true;
     try {
+      if (realtimeSession) {
+        const planned = addItemStack(inventoryRef.current, drop.item);
+        if (planned.remainder > 0) return;
+        const sink = realtimePickupSinkRef.current;
+        if (!sink) throw new Error("multiplayer_not_connected");
+        await sink(droppedItemOperationId(), drop.dropId);
+        updateInventory(planned.inventory);
+        audioRef.current?.play("pickup", { seed: drop.dropId, intensity: 0.72 });
+        return;
+      }
       if (!await flushInventoryActions()) throw new Error("inventory_action_pending");
       const result = await pickupDroppedItemMutation(JSON.stringify({
         operationId: droppedItemOperationId(),
@@ -1645,6 +1680,19 @@ function GameApp({
   }
 
   function maybePickupNearbyDroppedItem(pose: PlayerPose): void {
+    if (realtimeSession) {
+      const now = Date.now();
+      const nearby = realtimeDropsRef.current
+        .filter((drop) => drop.expiresAt > now && (drop.ownerUserId !== auth.userId || drop.ownerPickupAt <= now))
+        .map((drop) => ({ drop, distance: Math.hypot(drop.x - pose.x, drop.y - pose.y, drop.z - pose.z) }))
+        .filter(({ distance }) => distance <= DROPPED_ITEM_PICKUP_RADIUS)
+        .sort((left, right) => left.distance - right.distance)[0]?.drop;
+      if (nearby && Date.now() - (droppedPickupAttemptRef.current.get(nearby.dropId) ?? 0) >= 5_000) {
+        droppedPickupAttemptRef.current.set(nearby.dropId, Date.now());
+        void pickupNearbyDroppedItem(nearby);
+      }
+      return;
+    }
     const snapshot = droppedItemsClockRef.current;
     if (!snapshot?.result.ok || !Array.isArray(snapshot.result.items) || droppedItemBusyRef.current) return;
     const estimatedServerNow = snapshot.result.serverNow + Math.max(0, Date.now() - snapshot.receivedAt);
@@ -2042,7 +2090,8 @@ function GameApp({
         },
         getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
         getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
-        isRangedWeaponSelected: () => inventoryRef.current[selectedRef.current]?.itemId === "bow"
+        // LAKEBED_COMPACT_LEGACY_COMBAT_START
+        isRangedWeaponSelected: () => !realtimeSession && inventoryRef.current[selectedRef.current]?.itemId === "bow"
           && countItem(inventoryRef.current, "arrow") > 0,
         onRangedChargeChange: (charging, normalizedCharge) => {
           rangedChargeActiveRef.current = charging;
@@ -2176,12 +2225,10 @@ function GameApp({
         },
         onUseSelectedItem: () => {
           const used = handleUseItem();
-          if (used) motionActionSinkRef.current?.("use");
           return used;
         },
-        onMobUse: (target) => {
+        onMobUse: realtimeSession ? undefined : (target) => {
           if (target.kind !== "sheep" || inventoryRef.current[selectedRef.current]?.itemId !== "shears") return false;
-          motionActionSinkRef.current?.("use");
           const operationId = createMobShearOperationId();
           void flushInventoryActions().then(async (flushed) => {
             if (!flushed) throw new Error("inventory_action_pending");
@@ -2205,8 +2252,7 @@ function GameApp({
           });
           return true;
         },
-        onMobAttack: (target, damage) => {
-          motionActionSinkRef.current?.("swing");
+        onMobAttack: realtimeSession ? undefined : (target, damage) => {
           const operationId = createCombatOperationId();
           const attackPose = engineRef.current?.getPose();
           void flushInventoryActions().then(async (flushed) => {
@@ -2245,8 +2291,7 @@ function GameApp({
             notify("Attack lost contact", "Lakebed could not confirm that hit.", "warning");
           });
         },
-        onRemotePlayerAttack: (target) => {
-          motionActionSinkRef.current?.("swing");
+        onRemotePlayerAttack: realtimeSession ? () => undefined : (target) => {
           const selectedHotbar = selectedRef.current;
           const weaponItemId = inventoryRef.current[selectedHotbar]?.itemId ?? "";
           const operationId = createCombatOperationId();
@@ -2280,6 +2325,7 @@ function GameApp({
             notify("PvP lost contact", "Lakebed could not confirm that swing.", "warning");
           });
         },
+        // LAKEBED_COMPACT_LEGACY_COMBAT_END
         onMiningHit: (target) => {
           const surface = audioSurfaceForBlock(target.block.block);
           const seed = `${target.block.x},${target.block.y},${target.block.z}:${performance.now().toFixed(0)}`;
@@ -2314,6 +2360,13 @@ function GameApp({
         canTakePlayerDamage: () => realtimeGameModeRef.current !== "creative",
         onHandAction: (action) => {
           if (action === "attack") audioRef.current?.play("playerAttack", { seed: performance.now().toFixed(0), intensity: 0.44 });
+          motionActionSinkRef.current?.(action === "use" ? "use" : "swing");
+        },
+        onMovementModeChange: (mode) => {
+          const crouching = mode === "sneak";
+          if (crouching === realtimeCrouchingRef.current) return;
+          realtimeCrouchingRef.current = crouching;
+          motionActionSinkRef.current?.(crouching ? "crouch_on" : "crouch_off");
         },
         onPlayerDamage: (amount) => {
           audioRef.current?.play("mobAttack", { seed: `mob:${amount}:${performance.now().toFixed(0)}`, intensity: 0.7 });
@@ -2323,7 +2376,6 @@ function GameApp({
           setPlayerHealth(health);
         },
         onBlockEdit: (edit, previousBlock) => {
-          motionActionSinkRef.current?.("swing");
           handleBlockEdit(edit, previousBlock);
         },
         onPoseChange: (pose) => {
@@ -2510,6 +2562,10 @@ function GameApp({
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
       setMobIds(engine.getMobIds());
       engine.start();
+      if (entryPointerLockHandoffRef.current && document.pointerLockElement === document.documentElement) {
+        entryPointerLockHandoffRef.current = false;
+        engine.requestPointerLock();
+      }
       return () => {
         for (const timer of tntClaimTimersRef.current.values()) window.clearTimeout(timer);
         tntClaimTimersRef.current.clear();
@@ -2520,6 +2576,7 @@ function GameApp({
         respawnRequestInFlightRef.current = false;
         engine.destroy();
         engineRef.current = null;
+        releaseGameplayKeyboardCapture();
       };
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : "Unable to start the WebGL world.");
@@ -3032,9 +3089,10 @@ function GameApp({
   }, [inWorld, droppedItemsResult, auth.userId]);
 
   useEffect(() => {
+    if (realtimeSession) return;
     const resultItems = droppedItemsResult?.ok && Array.isArray(droppedItemsResult.items) ? droppedItemsResult.items : [];
     engineRef.current?.setDroppedItems(resultItems);
-  }, [inWorld, inventoryReady, droppedItemsResult]);
+  }, [inWorld, inventoryReady, droppedItemsResult, realtimeSession?.serverId]);
 
   useEffect(() => {
     for (const [dropId, attemptedAt] of droppedPickupAttemptRef.current) {
@@ -3520,6 +3578,7 @@ function GameApp({
       setJoinError("This server is not registered with Lakebed. Add it again with its private invitation token.");
       return;
     }
+    entryPointerLockHandoffRef.current = requestDocumentPointerLockHandoff();
     setJoinError("");
     setJoinPhase("joining");
     void flushInventoryActions().then(async () => {
@@ -3559,6 +3618,7 @@ function GameApp({
       const detail = error instanceof Error ? error.message : "join_failed";
       setRealtimeSession(null);
       setJoinPhase("error");
+      releaseGameplayKeyboardCapture();
       setJoinError(detail === "join_ticket_expired"
         ? "The join ticket expired before the server connection opened. Try again."
         : "Lakebed could not authorize this server connection.");
@@ -3742,7 +3802,7 @@ function GameApp({
   return (
     <main className="lakecraft-shell">
       <style>{APP_CSS}</style>
-      {transportForeground ? <InventoryQuery onResult={setSavedInventory} /> : null}
+      {transportForeground && !realtimeSession ? <InventoryQuery onResult={setSavedInventory} /> : null}
       {transportForeground && !realtimeSession ? (
         <LakebedWorldQueries
           activeChestKey={activeChestKey}
@@ -3807,9 +3867,16 @@ function GameApp({
               loadCanonicalPlayer(latestSavedInventoryRef.current);
             }
           }}
+          onDrops={(drops) => {
+            realtimeDropsRef.current = drops;
+            engineRef.current?.setDroppedItems(drops);
+            maybePickupNearbyDroppedItem(poseRef.current);
+          }}
           registerBlockSink={(sink) => { realtimeBlockSinkRef.current = sink; }}
           registerChatSink={(sink) => { realtimeChatSinkRef.current = sink; }}
           registerActionSink={(sink) => { motionActionSinkRef.current = sink; }}
+          registerDropSink={(sink) => { realtimeDropSinkRef.current = sink; }}
+          registerPickupSink={(sink) => { realtimePickupSinkRef.current = sink; }}
         />
       ) : null}
 
@@ -3842,6 +3909,7 @@ function GameApp({
           void flushInventoryActions();
           if (!realtimeSession) void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
           exitPointerLockForUi();
+          releaseGameplayKeyboardCapture();
           setOptionsOpen(false);
           setPauseOpen(false);
           setShowPlayerList(false);
@@ -3876,6 +3944,7 @@ function GameApp({
         onResume={() => {
           setOptionsOpen(false);
           setPauseOpen(false);
+          requestGameplayKeyboardCapture();
           engineRef.current?.requestPointerLock();
         }}
         onSelectHotbar={handleSelectHotbar}
@@ -3883,6 +3952,7 @@ function GameApp({
           void flushInventoryActions();
           if (!realtimeSession) void leavePlayer(presenceSessionIdRef.current).catch(() => undefined);
           exitPointerLockForUi();
+          releaseGameplayKeyboardCapture();
           setDeathScreenOpen(false);
           setRespawning(false);
           setOptionsOpen(false);

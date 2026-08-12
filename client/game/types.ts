@@ -263,6 +263,7 @@ export interface RemotePlayer extends PlayerPose {
   vy?: number;
   vz?: number;
   heldItem?: ItemId | null;
+  crouching?: boolean;
   armorHead?: ArmorId | null;
   armorChest?: ArmorId | null;
   armorLegs?: ArmorId | null;
