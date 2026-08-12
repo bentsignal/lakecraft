@@ -221,7 +221,7 @@ function parsePlayerState(row: PersistedInventory | null) {
   return canonical.ok ? canonical.state : null;
 }
 
-function LakebedQueryRecovery({ error, retry }: { error: Error; retry: () => void }) {
+function LobbyBootstrapRecovery({ error, retry }: { error: Error; retry: () => void }) {
   const [remainingMs, setRemainingMs] = useState(0);
   const quota = classifyPresenceTransportError(error) === "quota";
   const [resetAt] = useState(() => quota ? presenceTransportQuotaResetAt(error, Date.now()) : null);
@@ -251,10 +251,10 @@ function LakebedQueryRecovery({ error, retry }: { error: Error; retry: () => voi
     <main className="lakecraft-query-recovery" role="status" aria-live="polite">
       <style>{QUERY_RECOVERY_CSS}</style>
       <section>
-        <h1>{quota ? "LAKEBED QUOTA PAUSED" : "RECONNECTING TO LAKEBED"}</h1>
+        <h1>{quota ? "ACCOUNT SERVICES PAUSED" : "ACCOUNT SERVICES UNAVAILABLE"}</h1>
         <p>{quota
-          ? `The shared world will retry automatically in ${Math.max(1, Math.ceil(remainingMs / 1_000))}s. No refresh is needed.`
-          : "The shared world query failed. Retry when your connection is ready; the page has not reloaded."}</p>
+          ? `The server directory will retry automatically in ${Math.max(1, Math.ceil(remainingMs / 1_000))}s. No refresh is needed.`
+          : "Lakecraft could not load your account and server directory. A running Railway world is never disconnected by this lobby request."}</p>
         {!quota ? <button type="button" onClick={retry}>Retry now</button> : null}
       </section>
     </main>
@@ -945,10 +945,6 @@ function RailwayMultiplayerSession({
   }, [multiplayerPaused]);
 
   useEffect(() => {
-    chestInventoryRef.current = chestInventory;
-  }, [chestInventory]);
-
-  useEffect(() => {
     if (!auth.isAuthenticated || auth.isGuest || hydratedUserRef.current === auth.userId || savedInventory === undefined) return;
     if (savedInventory && savedInventory.userId !== auth.userId) return;
     hydratedRef.current = true;
@@ -1498,9 +1494,11 @@ function RailwayMultiplayerSession({
   if (!inWorld) {
     return (
       <>
-      {transportForeground && lakebedIdentity !== "" && !bootstrapReady ? (
-        <LobbyBootstrapQuery identity={lakebedIdentity} onResult={acceptBootstrap} />
-      ) : null}
+      <ErrorBoundary fallback={(error, retry) => <LobbyBootstrapRecovery error={error} retry={retry} />}>
+        {transportForeground && lakebedIdentity !== "" && !bootstrapReady ? (
+          <LobbyBootstrapQuery identity={lakebedIdentity} onResult={acceptBootstrap} />
+        ) : null}
+      </ErrorBoundary>
       <LobbyScreen
         authState={lobbyAuthState}
         buildLabel="MULTIPLAYER ALPHA"
@@ -1788,11 +1786,7 @@ function RailwayMultiplayerSession({
 
 function LakebedMultiplayerApp({ onJoinSingleplayer }: { onJoinSingleplayer: () => void }) {
   const [inWorld, setInWorld] = useState(false);
-  return (
-    <ErrorBoundary fallback={(error, retry) => <LakebedQueryRecovery error={error} retry={retry} />}>
-      <RailwayMultiplayerSession inWorld={inWorld} setInWorld={setInWorld} onJoinSingleplayer={onJoinSingleplayer} />
-    </ErrorBoundary>
-  );
+  return <RailwayMultiplayerSession inWorld={inWorld} setInWorld={setInWorld} onJoinSingleplayer={onJoinSingleplayer} />;
 }
 
 export function App() {

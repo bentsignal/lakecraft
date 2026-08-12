@@ -10,7 +10,7 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 485;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 432;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "3017233673b31d0102eccc94b9509f2c9044fdc2292cd9fa26bf72ea3855f216";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "d3fee41acf2b4451fd645191b087966b2e6275f907b0bb24274ccd0e4a461a38";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,

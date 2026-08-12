@@ -1956,9 +1956,16 @@ export default capsule({
      * and server property mangling cannot alter this wire boundary.
      */
     clientBootstrap: query(async (ctx) => {
-      const presence = (await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId)) ?? null;
-      const inventory = (await newestMatchingRow(ctx.db.inventories, BS.byUser, BS.userId, ctx.auth.userId)) ?? null;
-      const profile = (await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId)) ?? null;
+      const authenticated = hasAuthenticatedUser(ctx);
+      const presence = authenticated
+        ? (await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
+        : null;
+      const inventory = authenticated
+        ? (await newestMatchingRow(ctx.db.inventories, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
+        : null;
+      const profile = authenticated
+        ? (await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
+        : null;
       const rows = await newestByIndex(ctx.db.externalMultiplayerServers, "by_creation").take(100);
       const servers = rows
         .filter((row) => row.active && canonicalizeExternalMultiplayerWssUrl(row.canonicalWssUrl) === row.canonicalWssUrl)

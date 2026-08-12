@@ -53,7 +53,7 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "0916fcb54b7113d12e02fcb00b8c4f71e2e22789ac1539de0fa568d3cb27358d",
+  "6aa0ea83cf8ed1d032b2636d38a9510f4534c361a76605989dbf8a78e03dd453",
   "removing containment declarations reproduces the reviewed integrated server behavior source",
 );
 
@@ -87,7 +87,7 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 180, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "deebe7f64d0fb943469cd70f6c95875bc662b5d9e86edbdc6b357721d507bfb6",
+  "124cdbb17fae2233597771f9d4980147ee95b922bbdc5a751337dfdcedf00b43",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

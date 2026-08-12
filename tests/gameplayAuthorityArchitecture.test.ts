@@ -37,6 +37,8 @@ test("Railway gameplay cannot split world authority back into Lakebed", () => {
     "Lakebed remains the account inventory authority");
   assert.match(railway, /createExternalMultiplayerJoinTicket/,
     "Lakebed remains the directory and ticket issuer");
+  assert.doesNotMatch(railway, /\bchestInventory(?:Ref)?\b/,
+    "retired Lakebed chest state cannot leave an undefined runtime reference in Railway gameplay");
 });
 
 test("authority adapters fail closed around incompatible ownership", () => {

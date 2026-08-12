@@ -14,6 +14,11 @@ test("lobby hydrates through one positional Lakebed query and then unmounts it",
   assert.match(bridge, /useQuery<ClientBootstrap>\("clientBootstrap"\)/);
   assert.match(client, /transportForeground && lakebedIdentity !== "" && !bootstrapReady/);
   assert.match(client, /setBootstrapIdentity\(identity\)/);
+  assert.match(client, /<ErrorBoundary fallback=\{\(error, retry\) => <LobbyBootstrapRecovery/,
+    "only the lobby bootstrap query is allowed to enter Lakebed recovery UI");
+  const appBoundary = client.slice(client.indexOf("function LakebedMultiplayerApp"), client.indexOf("export function App"));
+  assert.doesNotMatch(appBoundary, /<ErrorBoundary/,
+    "a Lakebed lobby failure cannot replace an active Railway gameplay session");
 
   const bootstrap = server.slice(
     server.indexOf("clientBootstrap: query"),
@@ -21,6 +26,16 @@ test("lobby hydrates through one positional Lakebed query and then unmounts it",
   );
   assert.match(bootstrap, /return \[presence, inventory, profile, servers\] as const/);
   assert.doesNotMatch(bootstrap, /return \{/);
+  assert.match(bootstrap, /const authenticated = hasAuthenticatedUser\(ctx\)/);
+  for (const table of ["playerPresence", "inventories", "profiles"]) {
+    assert.match(bootstrap, new RegExp(`const [^=]+ = authenticated[\\s\\S]+?ctx\\.db\\.${table}`),
+      `${table} is never queried with a guest identity`);
+  }
+});
+
+test("retired shared-world recovery copy cannot return", () => {
+  assert.doesNotMatch(client, /shared world query|RECONNECTING TO LAKEBED/);
+  assert.match(client, /A running Railway world is never disconnected by this lobby request\./);
 });
 
 test("Railway gameplay has no Lakebed world or inventory polling bridge", () => {
