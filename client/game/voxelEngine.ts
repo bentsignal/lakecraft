@@ -1932,7 +1932,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     ))
       && !blocks.has(blockKey(x, y, z)) && !blocks.has(blockKey(x, y + 1, z)),
   };
-  const mobSimulation = createMobSimulation(createMobSpawns(mobPopulationOptions));
+  const mobSimulation = createMobSimulation(options.simulateMobs === false ? [] : createMobSpawns(mobPopulationOptions));
   let mobIds = listMobIds(mobSimulation);
   let nextMobIdleAt = performance.now() + 3_500;
   let mobIdleSequence = 0;
@@ -2847,6 +2847,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function updateMobs(dt: number): void {
+    if (options.simulateMobs === false) return;
     const startedAt = performance.now();
     respawnExpiredAuthoritativeMobs(mobSimulation, Date.now() + mobCombatServerTimeOffsetMs);
     if (options.onMobIdle && startedAt >= nextMobIdleAt) {

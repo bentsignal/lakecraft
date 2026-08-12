@@ -163,8 +163,10 @@ assert.ok(
   stripClientDevelopmentSurfaces(app).includes("const uiModalOpen = worldModalOpen || commandOpen;"),
   "compact stripping removes the development-only Visual Lab blocker cleanly",
 );
-assert.ok(app.includes('canTakePlayerDamage: () => gameModeRef.current === "survival"'));
-assert.ok(app.includes('if (gameModeRef.current === "creative") return 0'));
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
+assert.ok(presentation.includes('canTakePlayerDamage: () => context.getGameMode() === "survival"'));
+assert.ok(app.includes("getGameMode: () => gameModeRef.current"));
+assert.ok(presentation.includes('if (context.getGameMode() === "creative") return 0.05'));
 assert.ok(app.includes('(gameModeRef.current === "creative" || countItem(inventoryRef.current, "arrow") > 0)'),
   "Creative bows do not require or consume arrows");
 assert.ok(app.includes('const nextInventory = creative ? inventoryRef.current : inventoryRef.current.map'),

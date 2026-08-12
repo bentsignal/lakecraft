@@ -225,7 +225,7 @@ export function normalizeMovementInput(forward: number, strafe: number): Normali
     safeForward /= rawMagnitude;
     safeStrafe /= rawMagnitude;
   }
-  const magnitude = Math.min(1, Math.hypot(safeForward, safeStrafe));
+  const magnitude = rawMagnitude > 1 ? 1 : rawMagnitude;
   if (magnitude <= MOVEMENT_EPSILON) {
     return { forward: 0, strafe: 0, magnitude: 0 };
   }

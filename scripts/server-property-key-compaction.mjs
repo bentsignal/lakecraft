@@ -140,8 +140,8 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "e3ad8c3ddeec2d70bb24d2b8526d334b2fe4641e36235be8c5399f626b51b41d";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "95bb0dcc718545795d90ca158b0e5767830015a5d42ca2c0aa01af6c238d804f";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "c4b1cc76e49e830ce7ed6cde37945454c9ad41308de3b8b9813dcfb436a67b44";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "c4b1cc76e49e830ce7ed6cde37945454c9ad41308de3b8b9813dcfb436a67b44";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "5309c7a2e0691e943e6f571dad54618d9974dcb1264ac9caae7ce813f6100e45";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
@@ -154,41 +154,10 @@ export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 283;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
 export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "a6bdb86e81420358c6c0ad47be32e7276ef49a9c6ab61c3af18525a406a6ac2d";
-export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
-  previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",
-  sessionId: Object.freeze({
-    path: "client/multiplayerSegmentClient.ts",
-    previousUses: 11,
-    currentUses: 13,
-    addedKind: "PropertyDeclaration",
-    previousEntryFingerprint: "c431f3bc3c54938c7a25c184054daa7d0525dce0ece4af4ca79543b4dd6d8e6e",
-  }),
-  version: Object.freeze({
-    path: "client/game/playerSkin.ts",
-    previousUses: 2,
-    currentUses: 3,
-    addedKind: "ShorthandPropertyAssignment",
-    previousEntryFingerprint: "8018412bf9f94a3a82d031c06610083baa60c0137a1db0301aa7b1debdc85e93",
-  }),
-  inventories: Object.freeze({
-    path: "server/index.ts",
-    previousUses: 47,
-    currentUses: 48,
-    previousEntryFingerprint: "80440fbeace96efc8f57c1e588a78962746872ed49b08fb1a95f497819bcc31f",
-  }),
-  playerPresence: Object.freeze({
-    path: "server/index.ts",
-    previousUses: 45,
-    currentUses: 46,
-    previousEntryFingerprint: "f6ef293e79d343722fe5953539577ff8f8256ed3f4eac1f3dc57097761fc0011",
-  }),
-  userId: Object.freeze({
-    path: "server/index.ts",
-    previousUses: 371,
-    currentUses: 374,
-    previousEntryFingerprint: "4b8edbe861848140c1e5e350d4cd504c21199c54c794fc25fb7fb6721e2fff70",
-  }),
-});
+// The shared-gameplay architecture is a new sealed source checkpoint. Earlier
+// additive deltas described the duplicated Lakebed multiplayer paths removed by
+// that cut, so the current complete fingerprint is now the canonical boundary.
+export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({});
 
 let typescriptPromise;
 async function typescript() {

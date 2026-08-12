@@ -2,106 +2,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { normalizeAvatarAppearance } from "../shared/avatarAppearance.ts";
 
-assert.deepEqual(
-  normalizeAvatarAppearance(
-    "iron_sword",
-    "iron_helmet",
-    "iron_chestplate",
-    "iron_leggings",
-    "iron_boots",
-  ),
-  {
-    heldItem: "iron_sword",
-    armorHead: "iron_helmet",
-    armorChest: "iron_chestplate",
-    armorLegs: "iron_leggings",
-    armorFeet: "iron_boots",
-  },
-  "a local inventory/equipment sample stays canonical on the presence wire",
-);
+assert.deepEqual(normalizeAvatarAppearance("iron_sword", "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots"), {
+  heldItem: "iron_sword", armorHead: "iron_helmet", armorChest: "iron_chestplate", armorLegs: "iron_leggings", armorFeet: "iron_boots",
+});
+assert.deepEqual(normalizeAvatarAppearance("bad", "bad", "bad", "bad", "bad"), {
+  heldItem: "", armorHead: "", armorChest: "", armorLegs: "", armorFeet: "",
+});
 
-assert.deepEqual(
-  normalizeAvatarAppearance("obsidian_sword", "iron_boots", "iron_sword", "stone", "<script>"),
-  { heldItem: "", armorHead: "", armorChest: "", armorLegs: "", armorFeet: "" },
-  "malformed remote appearance data is never forwarded to the renderer",
-);
-assert.deepEqual(
-  normalizeAvatarAppearance(undefined, undefined, undefined, undefined, undefined),
-  { heldItem: "", armorHead: "", armorChest: "", armorLegs: "", armorFeet: "" },
-  "legacy presence rows render with empty appearance slots",
-);
+const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const transport = readFileSync(new URL("../client/RealtimeMultiplayerTransport.tsx", import.meta.url), "utf8");
+const realtime = readFileSync(new URL("../client/realtimeMultiplayer.ts", import.meta.url), "utf8");
+assert.match(multiplayer, /getHeldItem=\{\(\) => inventoryRef\.current\[selectedRef\.current\]\?\.itemId \?\? null\}/);
+assert.match(multiplayer, /getSkin=\{selectedSkin\}/);
+assert.match(multiplayer, /getArmor=\{\(\) => \(\{/);
+assert.match(multiplayer, /registerActionSink=\{\(sink\) => \{ motionActionSinkRef\.current = sink;/);
+assert.match(transport, /client\.submitAction\(kind, value\)/);
+assert.match(realtime, /appearance_set|appearance_request|appearance_blob/);
+assert.doesNotMatch(multiplayer, /heartbeatPlayer|MultiplayerSegmentTransport/);
 
-const source = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const transportSource = readFileSync(new URL("../client/MultiplayerSegmentTransport.tsx", import.meta.url), "utf8");
-assert.equal(
-  source.match(/void heartbeatPlayer\(/g)?.length ?? 0,
-  1,
-  "appearance must reuse the one sparse-presence heartbeat call path",
-);
-assert.equal(
-  source.match(/normalizeAvatarAppearance\(/g)?.length ?? 0,
-  2,
-  "appearance is normalized for sparse and action-time authority writes",
-);
-
-const mutationStart = source.indexOf("const heartbeatPlayer = useMutation");
-const mutationEnd = source.indexOf(";", mutationStart);
-assert.ok(mutationStart >= 0 && mutationEnd > mutationStart, "heartbeat mutation declaration exists");
-const mutationDeclaration = source.slice(mutationStart, mutationEnd);
-const mutationFields = ["vz: string", "heldItem: string", "armorHead: string", "armorChest: string", "armorLegs: string", "armorFeet: string"];
-let previousField = -1;
-for (const field of mutationFields) {
-  const fieldIndex = mutationDeclaration.indexOf(field);
-  assert.ok(fieldIndex > previousField, `${field} follows the existing velocity fields in wire order`);
-  previousField = fieldIndex;
-}
-
-const schedulerGate = source.indexOf("if (!reservePresenceAttempt(guard, attemptAt, realtime)) return;");
-const outboundNormalization = source.indexOf("const worn = equipmentRef.current;", schedulerGate);
-const heartbeatCall = source.indexOf("void heartbeatPlayer(", outboundNormalization);
-assert.ok(
-  schedulerGate >= 0 && outboundNormalization > schedulerGate && heartbeatCall > outboundNormalization,
-  "inventory/equipment are sampled only after the existing quota scheduler approves a write",
-);
-for (const field of ["worn.head?.itemId", "worn.chest?.itemId", "worn.legs?.itemId", "worn.feet?.itemId"]) {
-  assert.ok(
-    source.slice(outboundNormalization, heartbeatCall).includes(field),
-    `${field} keeps durable equipment metadata off the sparse presence wire`,
-  );
-}
-const heartbeatEnd = source.indexOf(").then(", heartbeatCall);
-const heartbeatArguments = source.slice(heartbeatCall, heartbeatEnd);
-const outboundFields = [
-  "decision.fields.vz",
-  "appearance.heldItem",
-  "appearance.armorHead",
-  "appearance.armorChest",
-  "appearance.armorLegs",
-  "appearance.armorFeet",
-];
-previousField = -1;
-for (const field of outboundFields) {
-  const fieldIndex = heartbeatArguments.indexOf(field);
-  assert.ok(fieldIndex > previousField, `${field} is sent in the server contract order`);
-  previousField = fieldIndex;
-}
-
-const remoteMappingStart = transportSource.indexOf("function replayVisualToRemotePlayer");
-const remoteMappingEnd = transportSource.indexOf("function MultiplayerCompositeQuery", remoteMappingStart);
-const remoteMapping = transportSource.slice(remoteMappingStart, remoteMappingEnd);
-for (const field of [
-  "player.heldItem",
-  "player.armorHead",
-  "player.armorChest",
-  "player.armorLegs",
-  "player.armorFeet",
-  "heldItem: appearance.heldItem || null",
-  "armorHead: appearance.armorHead || null",
-  "armorChest: appearance.armorChest || null",
-  "armorLegs: appearance.armorLegs || null",
-  "armorFeet: appearance.armorFeet || null",
-]) {
-  assert.ok(remoteMapping.includes(field), `remote mapping includes ${field}`);
-}
-
-console.log("avatar appearance client integration tests passed");
+console.log("Railway avatar appearance integration tests passed");

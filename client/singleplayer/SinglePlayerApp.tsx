@@ -8,7 +8,6 @@ import { ChatOverlay, type LakecraftChatMessage } from "../chat";
 import {
   BLOCK,
   MORNING_PHASE,
-  createVoxelEngine,
   phaseAtTime,
   planLocalTntExplosion,
   type BlockId as EngineBlockId,
@@ -18,6 +17,7 @@ import {
   type VoxelEngine,
   type WorldEdit,
 } from "../game";
+import { createGameplaySessionEngine, createLocalGameplayAuthority } from "../gameplay/index.ts";
 import {
   MAX_HEALTH,
   MAX_HUNGER,
@@ -50,13 +50,20 @@ import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
 import { planOakTreeGrowth } from "../../shared/treeGrowth";
 import { cycleHotbarIndex } from "../game/hotbarInput";
-import { createGameAudio, type GameAudio, type GameAudioSurface } from "../game/audio";
+import { createGameAudio, type GameAudio } from "../game/audio";
 import { clearPersistedPlayerSkin, loadPersistedPlayerSkin } from "../game/playerSkin.ts";
 import {
   releaseGameplayKeyboardCapture,
   requestGameplayKeyboardCapture,
 } from "../gameplayKeyboardCapture.ts";
-import { GameplayDiagnostics, handleGameplayScreenshotKey } from "../gameplayDiagnostics.tsx";
+import { handleGameplayScreenshotKey } from "../gameplayDiagnostics.tsx";
+import {
+  audioSurfaceForBlock,
+  createGameplayPresentationOptions,
+  ENGINE_TO_GAME,
+  GameplaySessionSurface,
+  ITEM_TO_ENGINE,
+} from "../gameplay/index.ts";
 import {
   fieldOfViewRadians,
   loadClientSettings,
@@ -156,59 +163,6 @@ import {
 import { LocalWorldBrowser } from "./LocalWorldBrowser.tsx";
 import { recordFirstLocalWorldPlay, type LocalWorldRecord } from "./localWorldRegistry.ts";
 
-const ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
-  [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
-  [BLOCK.COBBLESTONE]: "cobblestone", [BLOCK.SAND]: "sand", [BLOCK.GLASS]: "glass",
-  [BLOCK.GRAVEL]: "gravel",
-  [BLOCK.COAL_ORE]: "coal_ore", [BLOCK.IRON_ORE]: "iron_ore", [BLOCK.GOLD_ORE]: "gold_ore",
-  [BLOCK.DIAMOND_ORE]: "diamond_ore", [BLOCK.WOOD]: "log", [BLOCK.LEAVES]: "leaves",
-  [BLOCK.PLANKS]: "planks", [BLOCK.CRAFTING_TABLE]: "crafting_table", [BLOCK.FURNACE]: "furnace",
-  [BLOCK.TORCH]: "torch", [BLOCK.CHEST]: "chest", [BLOCK.DOOR_CLOSED]: "door",
-  [BLOCK.DOOR_OPEN]: "door", [BLOCK.BED]: "bed", [BLOCK.LADDER]: "ladder",
-  [BLOCK.TNT]: "tnt",
-  [BLOCK.WOOL]: "wool",
-  [BLOCK.SAPLING]: "sapling",
-  [BLOCK.STONE_BRICKS]: "stone_bricks",
-  [BLOCK.OAK_FENCE]: "oak_fence",
-  [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate",
-  [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate",
-  [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab",
-  [BLOCK.CLAY]: "clay",
-  [BLOCK.BRICKS]: "bricks",
-};
-
-const ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
-  grass: BLOCK.GRASS, dirt: BLOCK.DIRT, stone: BLOCK.STONE, cobblestone: BLOCK.COBBLESTONE,
-  sand: BLOCK.SAND, gravel: BLOCK.GRAVEL, glass: BLOCK.GLASS, coal_ore: BLOCK.COAL_ORE, iron_ore: BLOCK.IRON_ORE,
-  gold_ore: BLOCK.GOLD_ORE, diamond_ore: BLOCK.DIAMOND_ORE, log: BLOCK.WOOD, leaves: BLOCK.LEAVES,
-  planks: BLOCK.PLANKS, crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE,
-  torch: BLOCK.TORCH, chest: BLOCK.CHEST, door: BLOCK.DOOR_CLOSED, bed: BLOCK.BED, ladder: BLOCK.LADDER,
-  tnt: BLOCK.TNT,
-  wool: BLOCK.WOOL,
-  sapling: BLOCK.SAPLING,
-  stone_bricks: BLOCK.STONE_BRICKS,
-  oak_fence: BLOCK.OAK_FENCE,
-  oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
-  stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
-  clay: BLOCK.CLAY,
-  bricks: BLOCK.BRICKS,
-};
-
-function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
-  if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.SAPLING
-    || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
-  if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
-    || block === BLOCK.CHEST || block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || block === BLOCK.LADDER
-    || block === BLOCK.OAK_FENCE || block === BLOCK.OAK_FENCE_GATE_CLOSED || block === BLOCK.OAK_FENCE_GATE_OPEN) return "wood";
-  if (block === BLOCK.SAND) return "sand";
-  if (block === BLOCK.GRAVEL) return "gravel";
-  if (block === BLOCK.GLASS) return "glass";
-  if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
-  if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE
-    || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.BRICKS) return "stone";
-  if (block === BLOCK.CLAY) return "gravel";
-  return "generic";
-}
 
 type InitialLocalWorld = {
   snapshot: SinglePlayerSnapshot;
@@ -261,7 +215,7 @@ function loadInitialLocalWorld(world: LocalWorldRecord, storage: SinglePlayerSto
   }
 }
 
-function SinglePlayerWorld({
+function LocalGameplaySession({
   entryPointerLockHandoff = false,
   world,
   onExit,
@@ -1250,7 +1204,19 @@ function SinglePlayerWorld({
         }
       }
     }
-    const engine = createVoxelEngine(canvas, {
+    const presentationOptions = createGameplayPresentationOptions({
+      getSettings: () => clientSettingsRef.current,
+      getInventory: () => inventoryRef.current,
+      getEquipment: () => equipmentRef.current,
+      getSelectedHotbar: () => selectedRef.current,
+      getGameMode: () => gameModeRef.current,
+      getHunger: () => hungerRef.current,
+      selectHotbar,
+      audio,
+      footstepSeedPrefix: "local-step",
+      onPerformanceStats: setPerformanceStats,
+    });
+    const engine = createGameplaySessionEngine(canvas, createLocalGameplayAuthority({
       seed: worldRef.current.seed,
       streamingChunkRadius: clientSettingsRef.current.renderDistance,
       initialEdits: [...editsRef.current.values()],
@@ -1258,8 +1224,6 @@ function SinglePlayerWorld({
       twoBlockBeds: true,
       initialPose: initialRuntimeRef.current?.pose,
       preserveInitialPose: Boolean(initialRuntimeRef.current),
-      getMouseLookSensitivity: () => mouseLookScale(clientSettingsRef.current.mouseSensitivity),
-      getFieldOfViewRadians: () => fieldOfViewRadians(clientSettingsRef.current.fovDegrees),
       onSimulationStep: (elapsedSeconds) => {
         const localEngine = engineRef.current;
         if (!localEngine || dropsRef.current.length === 0) return;
@@ -1328,14 +1292,6 @@ function SinglePlayerWorld({
         );
       },
       allowUnlockedKeyboardInput: () => silentPointerRecaptureRef.current,
-      selectedBlock: ITEM_TO_ENGINE[inventoryRef.current[selectedRef.current]?.itemId ?? "stick"] ?? BLOCK.AIR,
-      selectedItem: inventoryRef.current[selectedRef.current]?.itemId ?? null,
-      getMiningDuration: (block) => {
-        if (gameModeRef.current === "creative") return 0;
-        const gameBlock = ENGINE_TO_GAME[block];
-        return gameBlock ? miningSeconds(gameBlock, inventoryRef.current[selectedRef.current]?.itemId) : 0.2;
-      },
-      getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
       isRangedWeaponSelected: () => inventoryRef.current[selectedRef.current]?.itemId === "bow"
         && (gameModeRef.current === "creative" || countItem(inventoryRef.current, "arrow") > 0),
       onRangedRelease: (intent) => {
@@ -1387,11 +1343,6 @@ function SinglePlayerWorld({
           });
         }
       },
-      getPlayerProtection: () => equippedArmorProtection(equipmentRef.current),
-      canTakePlayerDamage: () => gameModeRef.current === "survival",
-      canCreativeFly: () => gameModeRef.current === "creative",
-      canMobsTargetPlayer: () => gameModeRef.current === "survival",
-      canSprint: () => hungerRef.current > 6 || gameModeRef.current === "creative",
       continuousBlockPlacement: true,
       canPlaceSelectedBlock: (block) => {
         const stack = inventoryRef.current[selectedRef.current];
@@ -1411,11 +1362,6 @@ function SinglePlayerWorld({
         return !drop || dropsRef.current.length < SINGLEPLAYER_SAVE_LIMITS.drops;
       },
       acceptWorldEdits: acceptLocalWorldEdits,
-      onFootstep: (block) => audio.play("footstep", {
-        seed: `local-step:${block}:${performance.now().toFixed(0)}`,
-        surface: audioSurfaceForBlock(block),
-        intensity: 0.5,
-      }),
       onBlockEdit: (edit, previousBlock, journalEdits) => {
         if ((previousBlock === BLOCK.CHEST || previousBlock === BLOCK.FURNACE) && edit.block !== previousBlock) {
           settleBrokenContainerContents(edit.x, edit.y, edit.z, previousBlock);
@@ -1594,8 +1540,6 @@ function SinglePlayerWorld({
           intensity: Math.min(1, 0.45 + amount / 12),
         });
       },
-      onHotbarSelect: selectHotbar,
-      onHotbarCycle: (direction) => selectHotbar(cycleHotbarIndex(selectedRef.current, direction)),
       onHandAction: (action) => {
         if (action === "attack") audio.play("playerAttack", {
           seed: `local-mob-hit:${performance.now().toFixed(0)}`,
@@ -1729,8 +1673,7 @@ function SinglePlayerWorld({
         });
         collectLocalDrops(pose);
       },
-      onPerformanceStats: setPerformanceStats,
-    });
+    }), presentationOptions);
     engineRef.current = engine;
     const persistedSkin = loadPersistedPlayerSkin(storage);
     if (persistedSkin) {
@@ -2088,19 +2031,19 @@ function SinglePlayerWorld({
   };
 
   return (
-    <main className="lc-singleplayer">
-      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture[role=status]{background:#202020;color:#fff;flex-direction:column;gap:10px;z-index:90}.lc-pointer-capture[role=status] strong{font-size:22px;text-shadow:2px 2px #000}.lc-pointer-capture[role=status] small{color:#bbb}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}</style>
-      <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
-      {!worldReady ? <div className="lc-pointer-capture" role="status" aria-live="polite"><strong>Loading world</strong><small>Preparing terrain…</small></div> : null}
-      <GameplayDiagnostics gameMode={gameMode} pose={coordinates} stats={performanceStats} />
-      {worldReady && pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
-        <div className="lc-pointer-capture" role="presentation">
-          <button autoFocus onClick={() => requestGameplayPointerLock()} type="button">
-            Click to Play
-            <small>Capture the mouse · Escape opens Game Menu</small>
-          </button>
-        </div>
-      ) : null}
+    <GameplaySessionSurface
+      authority="local"
+      canvasLabel="Lakecraft single-player voxel world"
+      canvasRef={canvasRef}
+      diagnostics={{ gameMode, pose: coordinates, stats: performanceStats }}
+      pointerCapture={{
+        visible: worldReady && pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen,
+        onRequest: () => requestGameplayPointerLock(),
+      }}
+      ready={worldReady}
+      rootClassName="lc-singleplayer"
+      rootStyle={`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}
+    >
       {silentPointerRecaptureDenied && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
         <small className="lc-silent-recapture">Press a movement key or click the world to recapture the mouse</small>
       ) : null}
@@ -2242,7 +2185,7 @@ function SinglePlayerWorld({
           </section>
         </div>
       ) : null}
-    </main>
+    </GameplaySessionSurface>
   );
 }
 
@@ -2260,7 +2203,7 @@ export function SinglePlayerApp({ onExit }: { onExit: () => void }) {
   } | null>(null);
 
   return activeWorld ? (
-    <SinglePlayerWorld
+    <LocalGameplaySession
       entryPointerLockHandoff={activeWorld.pointerLockHandoff}
       key={activeWorld.world.id}
       onExit={() => setActiveWorld(null)}

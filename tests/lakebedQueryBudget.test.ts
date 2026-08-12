@@ -8,7 +8,7 @@ const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf
 test("lobby hydrates through one positional Lakebed query and then unmounts it", () => {
   const bridge = client.slice(
     client.indexOf("function LobbyBootstrapQuery"),
-    client.indexOf("function InventoryQuery"),
+    client.indexOf("function RailwayMultiplayerSession"),
   );
   assert.equal((bridge.match(/useQuery</g) ?? []).length, 1);
   assert.match(bridge, /useQuery<ClientBootstrap>\("clientBootstrap"\)/);
@@ -23,21 +23,13 @@ test("lobby hydrates through one positional Lakebed query and then unmounts it",
   assert.doesNotMatch(bootstrap, /return \{/);
 });
 
-test("Railway multiplayer unsubscribes all Lakebed world and inventory polling", () => {
-  const bridge = client.slice(
-    client.indexOf("function LakebedWorldQueries"),
-    client.indexOf("function GameApp"),
-  );
-  assert.deepEqual(
-    [...bridge.matchAll(/useQuery<[^\n]+?\>\("([^"]+)"/g)].map((match) => match[1]).sort(),
-    ["chestAt", "droppedItems", "myPresence", "playerCombatStates", "worldChunks", "worldClock", "worldEdits"].sort(),
-  );
-  assert.match(bridge, /"furnaceAt"/);
-  assert.match(client, /transportForeground && !realtimeSession \? \(/);
-  assert.match(client, /transportForeground && !realtimeSession \? <InventoryQuery onResult=\{setSavedInventory\} \/> : null/);
+test("Railway gameplay has no Lakebed world or inventory polling bridge", () => {
+  assert.doesNotMatch(client, /function (?:InventoryQuery|LakebedWorldQueries)/);
+  assert.doesNotMatch(client, /useQuery<[^\n]+?>\("(?:myInventory|chestAt|droppedItems|myPresence|playerCombatStates|worldChunks|worldClock|worldEdits|furnaceAt)"/);
+  assert.match(client, /if \(!inWorld \|\| !inventoryReady \|\| !realtimeSession\) return/);
 });
 
-test("GameApp no longer mounts Lakebed reads unconditionally", () => {
-  const body = client.slice(client.indexOf("function GameApp"), client.indexOf("const editWorldBlock"));
+test("RailwayMultiplayerSession no longer mounts Lakebed reads unconditionally", () => {
+  const body = client.slice(client.indexOf("function RailwayMultiplayerSession"), client.indexOf("const editWorldBlock"));
   assert.doesNotMatch(body, /useQuery</);
 });

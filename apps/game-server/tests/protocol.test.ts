@@ -55,6 +55,9 @@ describe("protocol v1", () => {
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"drop_item", operationId:"drop_12345678", itemId:"../bad", count:65, x:0, y:0, z:0,
     })).ok).toBe(false);
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"respawn", operationId:"respawn_12345678",
+    }))).toMatchObject({ ok:true, message:{ type:"respawn", operationId:"respawn_12345678" } });
   });
 
   test("rejects version mismatches, oversized axes, and invalid block ids", () => {

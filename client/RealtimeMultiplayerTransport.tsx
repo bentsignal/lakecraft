@@ -16,6 +16,7 @@ export type RealtimeBlockSink = (operationId: string, edit: WorldEdit) => Promis
 export type RealtimeChatSink = (message: string) => Promise<void>;
 export type RealtimeDropSink = (operationId: string, item: ItemStack, pose: PlayerPose) => Promise<NormalizedDroppedItem>;
 export type RealtimePickupSink = (operationId: string, dropId: string) => Promise<NormalizedDroppedItem>;
+export type RealtimeRespawnSink = () => Promise<PlayerPose>;
 
 export function RealtimeMultiplayerTransport(props: {
   endpoint: string;
@@ -40,6 +41,7 @@ export function RealtimeMultiplayerTransport(props: {
   registerActionSink: (sink: ((kind: MotionVisualActionKind, value?: number) => void) | null) => void;
   registerDropSink: (sink: RealtimeDropSink | null) => void;
   registerPickupSink: (sink: RealtimePickupSink | null) => void;
+  registerRespawnSink: (sink: RealtimeRespawnSink | null) => void;
 }) {
   const propsRef = useRef(props);
   propsRef.current = props;
@@ -71,6 +73,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerActionSink((kind, value) => client.submitAction(kind, value));
     props.registerDropSink((operationId, item, pose) => client.submitDrop(operationId, item, pose));
     props.registerPickupSink((operationId, dropId) => client.submitPickup(operationId, dropId));
+    props.registerRespawnSink(() => client.submitRespawn());
     client.start();
     return () => {
       props.registerBlockSink(null);
@@ -78,6 +81,7 @@ export function RealtimeMultiplayerTransport(props: {
       props.registerActionSink(null);
       props.registerDropSink(null);
       props.registerPickupSink(null);
+      props.registerRespawnSink(null);
       client.stop();
     };
   }, [props.endpoint, props.ticket, props.serverId, props.demo?.token, props.localUserId, props.localUsername]);

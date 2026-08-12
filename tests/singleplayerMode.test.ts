@@ -16,13 +16,14 @@ assert.equal(singleplayer.includes("useQuery"), false, "single-player must not i
 assert.equal(singleplayer.includes("useMutation"), false, "single-player must not issue Lakebed mutations");
 assert.ok(singleplayer.includes("saveSinglePlayerSnapshot(storage"), "single-player state should persist through the verified browser journal");
 assert.ok(singleplayer.includes("loadSinglePlayerSave(storage"), "single-player should restore the browser-local world before engine startup");
-assert.ok(singleplayer.includes("createVoxelEngine"), "single-player uses the real voxel engine");
+assert.ok(singleplayer.includes("createGameplaySessionEngine"), "single-player uses the shared playable-engine boundary");
 assert.ok(singleplayer.includes("const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN)"), "single-player enters the world without opening the pause menu");
 assert.ok(singleplayer.includes("const [optionsOpen, setOptionsOpen] = useState(false)"), "single-player never enters behind Options");
 assert.ok(singleplayer.includes("engine.setPaused(initiallyPaused);\n    setLocalFusesPausedRef.current(initiallyPaused);\n    engine.start();"),
   "the initial active/modal state reaches the engine before its first frame");
-assert.ok(singleplayer.includes('canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0}'),
-  "the active single-player canvas is immediately focusable and pointer-ready");
+const surface = readFileSync(new URL("../client/gameplay/GameplaySessionSurface.tsx", import.meta.url), "utf8");
+assert.ok(singleplayer.includes('canvasLabel="Lakecraft single-player voxel world"') && surface.includes("tabIndex={0}"),
+  "the shared active canvas is immediately focusable and pointer-ready");
 assert.ok(lobby.includes("Singleplayer"), "the title screen exposes single-player");
 
 console.log("single-player offline mode tests passed");

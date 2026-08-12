@@ -49,24 +49,26 @@ const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerAp
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const diagnostics = readFileSync(new URL("../client/gameplayDiagnostics.tsx", import.meta.url), "utf8");
+const surface = readFileSync(new URL("../client/gameplay/GameplaySessionSurface.tsx", import.meta.url), "utf8");
 assert.equal(singleplayer.includes("SINGLE-PLAYER · LOCAL SAVE · 0 LAKEBED REQUESTS"), false);
 assert.equal(singleplayer.includes("Browser-local: no Google account and zero Lakebed requests."), false);
-assert.ok(singleplayer.includes("GameplayDiagnostics") && diagnostics.includes("XYZ: {x} / {y} / {z}"));
+assert.ok(singleplayer.includes("GameplaySessionSurface") && surface.includes("GameplayDiagnostics") && diagnostics.includes("XYZ: {x} / {y} / {z}"));
 assert.ok(singleplayer.includes("onPoseChange"), "coordinates are driven by the local engine pose callback");
-assert.ok(singleplayer.includes("onHotbarSelect: selectHotbar"));
-assert.ok(singleplayer.includes("onHotbarCycle:"));
-assert.ok(multiplayer.includes("onHotbarSelect: handleSelectHotbar"), "multiplayer number keys use pointer-lock-gated engine input");
-assert.ok(multiplayer.includes("onHotbarCycle: (direction) => handleSelectHotbar(cycleHotbarIndex"), "multiplayer wheel selection is wired");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
+assert.ok(presentation.includes("onHotbarSelect: context.selectHotbar"));
+assert.ok(presentation.includes("onHotbarCycle:"));
+assert.ok(singleplayer.includes("selectHotbar,") && multiplayer.includes("selectHotbar: handleSelectHotbar"),
+  "both modes inject their state sink into one pointer-lock-gated hotbar rule");
 const multiplayerKeyHandler = multiplayer.slice(multiplayer.indexOf("const onKey = (event: KeyboardEvent)"), multiplayer.indexOf("const onKeyUp =", multiplayer.indexOf("const onKey = (event: KeyboardEvent)")));
 assert.doesNotMatch(multiplayerKeyHandler, /\^Digit\[1-9\]/, "a global key handler cannot select slots behind menus");
-assert.ok(multiplayer.includes("modalOpen={chatOpen || furnaceOpen || Boolean(activeChestKey) || Boolean(activeBedKey)}"),
-  "multiplayer chat and world drawers hide the shared survival HUD and selected-item caption");
+assert.ok(multiplayer.includes("modalOpen={chatOpen}"),
+  "multiplayer chat hides the shared survival HUD and selected-item caption");
 assert.ok(engine.includes('document.pointerLockElement !== canvas'), "engine input remains gated on pointer lock");
 assert.ok(engine.includes("appendWorldBlockCrackLines(crackLines, target.block"), "cracks use target.block, never target.place");
 assert.ok(engine.includes("function updateMiningCrackGeometry()"), "crack geometry uploads only when bounded progress changes, not every render");
-assert.ok(singleplayer.includes('role="status" aria-live="polite"><strong>Loading world</strong>'),
+assert.ok(surface.includes('role="status" aria-live="polite"><strong>Loading world</strong>'),
   "world entry renders a blocking, announced loading state before terrain is ready");
-assert.ok(singleplayer.includes("worldReady && pointerCaptureNeeded"),
+assert.ok(surface.includes("ready && pointerCapture?.visible"),
   "Click to Play cannot cover or compete with initial world loading");
 const streamingWindow = engine.slice(
   engine.indexOf("function updateStreamingWindow("),

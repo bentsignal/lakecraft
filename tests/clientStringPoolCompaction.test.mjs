@@ -143,14 +143,14 @@ for (const lookupName of webglUniformValues) {
 }
 
 const fixedFrequencyTwoValues = [...COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES];
-assert.equal(fixedFrequencyTwoValues.length, 77, "the reviewed long frequency-two pool stays exact");
+assert.equal(fixedFrequencyTwoValues.length, 70, "the reviewed long frequency-two pool stays exact");
 assert.equal(new Set(fixedFrequencyTwoValues).size, COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES, fixedFrequencyTwoValues.length * 2);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "closed compact client bundle");
 assert.equal(
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT,
-  "20c9075d3a7f68f00b51bb656a833f553e3958c683fce7782bbadd3aef629038",
+  "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12",
   "the exact reviewed occurrence order and kinds change only intentionally",
 );
 
@@ -165,7 +165,7 @@ assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES, 1,
   "creative is already repeated while survival remains the one incremental pool value");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT,
-  "f2833987c112d9130537ed25d21ae7e942d0f7ac3812cefa6c6b2f3d52cfdef6",
+  "358cf0997bf825646abdd7792dbb7a58347210c5925ca1548979416c4456f5c2",
   "the exact identity occurrence order, syntax kinds, contexts, and values change only intentionally");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.previousOccurrences
   + COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.occurrenceDelta,

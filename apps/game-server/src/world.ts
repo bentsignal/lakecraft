@@ -247,6 +247,7 @@ export class GameWorld implements AdminWorldControl {
     else if (message.type === "chat_send") this.chat(state, message, now);
     else if (message.type === "drop_item") this.dropItem(state, message, now);
     else if (message.type === "pickup_item") this.pickupItem(state, message, now);
+    else if (message.type === "respawn") this.respawn(state, message, now);
     else if (message.type === "appearance_set") await this.setAppearance(state, message, now);
     else this.sendAppearance(state, message, now);
   }
@@ -730,6 +731,20 @@ export class GameWorld implements AdminWorldControl {
     this.store.deleteDrop(drop.dropId);
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop });
     this.broadcastDrops();
+  }
+
+  private respawn(state: ConnectionState, message: Extract<ClientMessage, { type: "respawn" }>, now: number): void {
+    const player = state.player!;
+    Object.assign(player, SPAWN, { yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0 });
+    state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
+    state.vy = 0;
+    state.clientPoseAuthority = false;
+    state.lastInputAt = now;
+    if (state.resumeHash && state.resumeExpiresAt !== undefined) {
+      this.store.savePlayer(player, state.resumeHash, now, state.resumeExpiresAt);
+      state.lastSavedAt = now;
+    }
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "respawned", operationId: message.operationId, player: { ...player } });
   }
 
   private broadcastDrops(): void {

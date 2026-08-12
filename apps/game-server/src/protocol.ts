@@ -127,6 +127,7 @@ export type ClientMessage =
       z: number;
     }
   | { v: ProtocolVersion; type: "pickup_item"; operationId: string; dropId: string }
+  | { v: ProtocolVersion; type: "respawn"; operationId: string }
   | {
       v: ProtocolVersion;
       type: "action";
@@ -204,6 +205,7 @@ export type ServerMessage =
     }
   | { v: ProtocolVersion; type: "drop_snapshot"; drops: PublicDrop[] }
   | { v: ProtocolVersion; type: "drop_result"; operationId: string; action: "drop" | "pickup"; drop?: PublicDrop }
+  | { v: ProtocolVersion; type: "respawned"; operationId: string; player: PublicPlayer }
   | { v: ProtocolVersion; type: "appearance_roster"; players: PlayerAppearance[] }
   | { v: ProtocolVersion; type: "appearance_state"; player: PlayerAppearance }
   | { v: ProtocolVersion; type: "appearance_blob"; userId: string; skinId: string; skinPixels?: string }
@@ -393,6 +395,13 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)
       || !shortString(value.dropId, 96)) return invalid("pickup item is invalid");
     return { ok: true, message: value as unknown as ClientMessage };
+  }
+
+  if (value.type === "respawn") {
+    if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)) {
+      return invalid("respawn operationId is invalid");
+    }
+    return { ok: true, message: { v: PROTOCOL_VERSION, type: "respawn", operationId: value.operationId } };
   }
 
   if (value.type === "action") {

@@ -56,12 +56,9 @@ assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");
 assert.ok(getItemIconArt("gunpowder").runs.length >= 8);
 assert.ok(getItemIconArt("tnt").runs.length >= 8);
 
-const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-for (const [source, label] of [[multiplayer, "multiplayer"], [singleplayer, "single-player"]] as const) {
-  assert.match(source, /\[BLOCK\.TNT\]:\s*"tnt"/, `${label} maps engine TNT back to the shared item/block identity`);
-  assert.match(source, /tnt:\s*BLOCK\.TNT/, `${label} maps shared TNT into engine block 22`);
-}
+const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
+assert.match(catalog, /\[BLOCK\.TNT\]:\s*"tnt"/, "the shared gameplay catalog maps engine TNT to its identity");
+assert.match(catalog, /tnt:\s*BLOCK\.TNT/, "the shared gameplay catalog maps held TNT into the engine");
 assert.ok(remoteHeldItemGeometry("gunpowder").length > 0, "remote hands render extruded canonical loose gunpowder");
 assert.equal(remoteHeldItemGeometry("tnt").length / 6, 36, "remote TNT is a true bounded six-face cube");
 assert.notDeepEqual(remoteHeldItemGeometry("tnt"), remoteHeldItemGeometry("gunpowder"));

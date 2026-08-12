@@ -6,6 +6,7 @@ import { CREEPER_EXPLOSION_MAX_BLOCKS } from "../shared/creeperExplosion.ts";
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
 
 assert.ok(engine.includes("consumeDueLocalCreeperExplosions(mobSimulation, localCreeperExplosions)"), "the offline engine consumes completed creeper fuses");
 assert.ok(engine.includes("applyLocalExplosionEdits(edits)"), "a completed fuse resolves terrain through the bounded local blast path");
@@ -15,7 +16,8 @@ assert.ok(engine.includes('options.onPlayerDamage?.(appliedDamage, "creeper")'),
 assert.ok(engine.includes("options.onLocalCreeperExplosion?."), "the application is notified exactly at the completed-fuse boundary");
 assert.ok(singleplayer.includes("onLocalCreeperExplosion"), "single-player persists automatic creeper terrain edits");
 assert.ok(singleplayer.includes('recordLocalExplosion(`creeper:${mobId}`'), "creeper and TNT blasts share save, sound, particles, and chain handling");
-assert.ok(singleplayer.includes("getPlayerProtection: () => equippedArmorProtection(equipmentRef.current)"), "single-player combat reads equipped armor");
+assert.ok(presentation.includes("getPlayerProtection: () => equippedArmorProtection(context.getEquipment())")
+  && singleplayer.includes("getEquipment: () => equipmentRef.current"), "single-player combat reads equipped armor through shared presentation");
 assert.ok(singleplayer.includes('audio.play(killed ? "mobDeath" : "mobHurt"'),
   "successful local attacks distinguish audible hurt and death confirmation");
 

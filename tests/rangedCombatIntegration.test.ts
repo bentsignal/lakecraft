@@ -1,49 +1,17 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const remote = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", import.meta.url), "utf8");
-const held = readFileSync(new URL("../client/game/thirdPersonHeldItem.ts", import.meta.url), "utf8");
 
-for (const required of [
-  "rangedCharges: table({",
-  "rangedCombatReceipts: table({",
-  "beginFingerprint: string().default",
-  "beginInventoryRevision: string().default",
-  'rangedCombat: mutation(async (ctx, requestJson: string)',
-  "validateRangedCombatRequestJson(requestJson)",
-  "authoritativeCombatPose(presenceRows[0]",
-  "authoritativeRangedOccluders(ctx.db, trajectory, target)",
-  'removeItem(playerState.state.inventory, "arrow", 1)',
-  'selectedStack?.itemId === "bow"',
-  "remainingItemDurability(bow)",
-  "encodeRangedCombatReceipt(resolution.receipt)",
-  "maintainRangedCombatReceipts",
-]) assert.ok(server.includes(required), `missing ranged server integration: ${required}`);
+assert.doesNotMatch(multiplayer, /rangedCombat|retryExactLakebedMutation|playerCombatStates/,
+  "Railway multiplayer cannot send combat to Lakebed");
+assert.match(singleplayer, /onRangedRelease: \(intent\)/);
+assert.match(singleplayer, /rangedChargeProfile\(intent\.chargeMs\)/);
+assert.match(engine, /createPlayerProjectileRenderer\(gl\)/);
+assert.match(engine, /onRangedRelease\?\.\(intent\)/);
+assert.match(remote, /remoteHeldItemGeometry\(itemId, state\.bowDrawing\)/);
 
-assert.equal(server.includes("request.origin"), false, "server must never trust a client shot origin");
-assert.equal(server.includes("request.direction"), false, "server must never trust a client shot direction");
-assert.equal(server.includes("request.damage"), false, "server must never trust client ranged damage");
-assert.ok(server.includes('.take(2)'), "authority rows and receipts must detect duplicate state");
-
-for (const required of [
-  'useMutation<[requestJson: string], RangedCombatMutationResult>("rangedCombat")',
-  'kind: "begin_charge"',
-  'kind: "cancel_charge"',
-  'kind: "release"',
-  "retryExactLakebedMutation",
-  "expectedInventoryRevision",
-  "loadCanonicalPlayer(result.inventory)",
-  "setPlayerProjectiles(playerProjectilesRef.current)",
-  "selectedItem:",
-  "setFirstPersonFeedbackHidden",
-]) assert.ok(client.includes(required), `missing ranged client integration: ${required}`);
-
-assert.ok(engine.includes("createPlayerProjectileRenderer(gl)"));
-assert.ok(engine.includes("setPlayerProjectiles(projectiles"));
-assert.ok(engine.includes("onRangedRelease?.(intent)"));
-assert.ok((remote + held).includes('itemId === "bow"'), "remote avatars need a recognizable held bow");
-
-console.log("Lakebed ranged combat integration tests passed");
+console.log("ranged combat authority boundary tests passed");

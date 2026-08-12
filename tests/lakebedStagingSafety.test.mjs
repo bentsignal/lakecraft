@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -318,7 +319,9 @@ test("transaction permits a sticky shared temporary parent and still owns cleanu
   const safe = await fixture(t, '{ "name": "audit" }\n');
   const stickyParent = join(safe.root, "sticky-parent");
   await mkdir(stickyParent, { mode: 0o700 });
-  await chmod(stickyParent, 0o1777);
+  // Bun 1.3 masks the sticky bit from fs.chmod on macOS; exercise the actual
+  // filesystem boundary through the platform chmod executable instead.
+  execFileSync("chmod", ["1777", stickyParent]);
   const result = await runStagedTransaction({
     sourceRoot: safe.sourceRoot,
     stageParent: stickyParent,

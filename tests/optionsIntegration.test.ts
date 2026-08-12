@@ -44,10 +44,11 @@ assert.ok(engineTypes.includes("getMouseLookSensitivity?: () => number"), "the e
 assert.ok(engineTypes.includes("getFieldOfViewRadians?: () => number"), "the engine exposes a live FOV seam");
 assert.ok(engine.includes("options.getMouseLookSensitivity?.()"), "pointer movement samples the current sensitivity without recreating the engine");
 assert.ok(engine.includes("options.getFieldOfViewRadians?.()"), "camera posture samples the current FOV without recreating the engine");
-assert.ok(app.includes("mouseLookScale(clientSettingsRef.current.mouseSensitivity)"), "multiplayer reads sensitivity from a live ref");
-assert.ok(singlePlayer.includes("mouseLookScale(clientSettingsRef.current.mouseSensitivity)"), "single-player reads sensitivity from a live ref");
-assert.ok(app.includes("fieldOfViewRadians(clientSettingsRef.current.fovDegrees)"), "multiplayer reads FOV from a live ref");
-assert.ok(singlePlayer.includes("fieldOfViewRadians(clientSettingsRef.current.fovDegrees)"), "single-player reads FOV from a live ref");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
+assert.ok(presentation.includes("mouseLookScale(context.getSettings().mouseSensitivity)"), "both modes read sensitivity through the shared live context");
+assert.ok(presentation.includes("fieldOfViewRadians(context.getSettings().fovDegrees)"), "both modes read FOV through the shared live context");
+assert.ok(app.includes("getSettings: () => clientSettingsRef.current"));
+assert.ok(singlePlayer.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(lobby.includes("fovDegrees={props.settings.fovDegrees}"), "title Options edits the same persisted FOV setting");
 assert.ok(singlePlayer.includes("engineRef.current?.setRenderDistance(renderDistance)"), "single-player reconciles a changed render radius immediately");
 assert.ok(singlePlayer.includes("audioRef.current = audio"), "single-player retains its audio surface for immediate mute updates");

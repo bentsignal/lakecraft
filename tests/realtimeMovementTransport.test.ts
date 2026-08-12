@@ -63,6 +63,11 @@ socket.receive({ type:"snapshot", inputAck:input.seq, self:{ ...pose, gameMode:"
 }] });
 assert.deepEqual({ heldItem:remotes[0].heldItem,crouching:remotes[0].crouching,action:remotes[0].visualActions[0].kind },
   { heldItem:"iron_pickaxe",crouching:true,action:"swing" }, "third-person pose inputs survive the transport decoder");
+socket.receive({ type:"snapshot", inputAck:input.seq, self:{ ...pose, gameMode:"survival" }, players:[{
+  id:"malformed",name:"Malformed",x:2,y:69.02,z:2,yaw:0,pitch:0,visualActions:[null,{ sequence:3,kind:"invalid" }],
+}] });
+assert.doesNotThrow(() => remotes, "untrusted community-server action payloads cannot break rendering");
+assert.deepEqual(remotes[0].visualActions ?? [], [], "malformed visual actions are removed at the wire boundary");
 const dropPromise = client.submitDrop("drop_transport_1", { itemId:"diamond_pickaxe",count:1,durability:120 }, pose);
 const dropRequest = socket.sent.at(-1)!;
 socket.receive({ type:"drop_result",operationId:dropRequest.operationId,action:"drop",drop:{
@@ -75,5 +80,11 @@ socket.receive({ type:"drop_snapshot",drops:[{
   droppedAt:1,ownerPickupAt:501,expiresAt:300001,
 }] });
 assert.equal(drops[0].item.itemId, "diamond_pickaxe", "Railway drop snapshots retain exact item metadata");
+const respawnPromise = client.submitRespawn();
+const respawnRequest = socket.sent.at(-1)!;
+assert.equal(respawnRequest.type, "respawn");
+socket.receive({ type:"respawned",operationId:respawnRequest.operationId,player:{ x:0.5,y:69.02,z:0.5,yaw:0,pitch:0 } });
+assert.deepEqual(await respawnPromise, { x:0.5,y:69.02,z:0.5,yaw:0,pitch:0 },
+  "respawn resolves only from the Railway authority response");
 client.stop();
 console.log("realtime acknowledged movement: ok");

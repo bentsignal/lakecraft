@@ -63,52 +63,7 @@ async function clientSourcePaths(directory = join(sourceRoot, "client")) {
   return paths.sort();
 }
 
-const RETIRED_PRESENCE_START = "  // LAKEBED_COMPACT_RETIRED_PRESENCE_START\n";
-const RETIRED_PRESENCE_END = "  // LAKEBED_COMPACT_RETIRED_PRESENCE_END\n";
-const RETIRED_PRESENCE_FINGERPRINT = "80cf6f7a51e8f961715cfef7082b4b1e4ab8f7e897f382aec894c0ee005a18ac";
-const LEGACY_COMBAT_START = "        // LAKEBED_COMPACT_LEGACY_COMBAT_START\n";
-const LEGACY_COMBAT_END = "        // LAKEBED_COMPACT_LEGACY_COMBAT_END\n";
-const LEGACY_COMBAT_FINGERPRINT = "37b28b822e2afa004c5eae27b6740c042da5e8de5119b5114a15fecba307fd76";
-
-function stripRetiredLakebedPresenceSource(source) {
-  const start = source.indexOf(RETIRED_PRESENCE_START);
-  const end = source.indexOf(RETIRED_PRESENCE_END);
-  if (start < 0 || end <= start
-    || source.indexOf(RETIRED_PRESENCE_START, start + RETIRED_PRESENCE_START.length) >= 0
-    || source.indexOf(RETIRED_PRESENCE_END, end + RETIRED_PRESENCE_END.length) >= 0) {
-    throw new Error("Compact client retired-presence boundary changed; review the production capsule split.");
-  }
-  const bodyStart = start + RETIRED_PRESENCE_START.length;
-  const body = source.slice(bodyStart, end);
-  const fingerprint = createHash("sha256").update(body).digest("hex");
-  if (fingerprint !== RETIRED_PRESENCE_FINGERPRINT) {
-    throw new Error(`Compact client retired-presence body changed; expected ${RETIRED_PRESENCE_FINGERPRINT}, received ${fingerprint}.`);
-  }
-  return `${source.slice(0, start)}  useEffect(() => {}, []);\n${source.slice(end + RETIRED_PRESENCE_END.length)}`;
-}
-
-function stripLegacyLakebedCombatSource(source) {
-  const start = source.indexOf(LEGACY_COMBAT_START);
-  const end = source.indexOf(LEGACY_COMBAT_END);
-  if (start < 0 || end <= start || source.indexOf(LEGACY_COMBAT_START, start + LEGACY_COMBAT_START.length) >= 0
-    || source.indexOf(LEGACY_COMBAT_END, end + LEGACY_COMBAT_END.length) >= 0) {
-    throw new Error("Compact client legacy-combat boundary changed; review the Railway authority split.");
-  }
-  const body = source.slice(start + LEGACY_COMBAT_START.length, end);
-  const fingerprint = createHash("sha256").update(body).digest("hex");
-  if (fingerprint !== LEGACY_COMBAT_FINGERPRINT) {
-    throw new Error(`Compact client legacy-combat body changed; expected ${LEGACY_COMBAT_FINGERPRINT}, received ${fingerprint}.`);
-  }
-  return `${source.slice(0, start)}        isRangedWeaponSelected: () => false,\n`
-    + `        onUseSelectedItem: () => handleUseItem(),\n`
-    + `        onMobAttack: undefined,\n`
-    + `        onRemotePlayerAttack: () => undefined,\n${source.slice(end + LEGACY_COMBAT_END.length)}`;
-}
-
 function stripReviewedClientDevelopmentSource(path, source) {
-  if (path === join(sourceRoot, "client", "index.tsx")) {
-    return stripLegacyLakebedCombatSource(stripRetiredLakebedPresenceSource(source));
-  }
   if (path === join(sourceRoot, "client", "singleplayer", "SinglePlayerApp.tsx")) {
     return stripClientDevelopmentSurfaces(source);
   }

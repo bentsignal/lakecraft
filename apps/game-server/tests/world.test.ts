@@ -193,6 +193,25 @@ describe("authoritative world", () => {
     store.close();
   });
 
+  test("respawns through server authority and persists the canonical spawn", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("respawn-socket");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex")), 1_000);
+    await world.message(peer, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:50,moveX:0,moveZ:0,yaw:1,pitch:0.2,jump:false,sprint:false,
+      x:12,y:80,z:-6,
+    }), 1_050);
+    await world.message(peer, JSON.stringify({ v:1,type:"respawn",operationId:"respawn_test_1" }), 1_100);
+    expect(peer.ofType("respawned").at(-1)).toMatchObject({
+      operationId:"respawn_test_1",
+      player:{ x:0.5, y:69.02, z:0.5, yaw:0, pitch:0, vx:0, vy:0, vz:0 },
+    });
+    expect(store.loadPlayer("alex")?.player).toMatchObject({ x:0.5, y:69.02, z:0.5 });
+    store.close();
+  });
+
   test("rotates resume tokens and restores the last authoritative pose", async () => {
     const store = new WorldStore(":memory:");
     const world = new GameWorld(config(), store, authenticator);

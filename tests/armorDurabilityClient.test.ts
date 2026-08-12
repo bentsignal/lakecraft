@@ -1,64 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const inventoryDrawer = readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8");
+const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const drawer = readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8");
 
-const updateEquipment = client.slice(
-  client.indexOf("function updateEquipment("),
-  client.indexOf("function recordConfirmedToolUse", client.indexOf("function updateEquipment(")),
-);
-assert.ok(updateEquipment.includes("equipmentRef.current = next"));
-assert.ok(updateEquipment.includes("setEquipment(next)"));
+assert.doesNotMatch(multiplayer, /claimMobPlayerDamage|attackMob/,
+  "disabled local mobs cannot mutate Lakebed armor durability in a Railway world");
+assert.match(multiplayer, /getArmor=\{\(\) => \(\{/,
+  "multiplayer publishes cosmetic equipment through Railway appearance");
+assert.match(singleplayer, /applyConfirmedArmorDamage/);
+assert.match(drawer, /maxItemDurability\(itemId\)/);
+assert.match(drawer, /className="lc-equipment-panel/);
 
-const canonicalLoad = client.slice(
-  client.indexOf("function loadCanonicalPlayer("),
-  client.indexOf("function enqueueInventoryAction", client.indexOf("function loadCanonicalPlayer(")),
-);
-assert.ok(canonicalLoad.includes("validatePlayerStateJson(row.inventoryJson)"), "canonical loads fail closed instead of clamping corrupt armor");
-assert.equal(canonicalLoad.includes("parseSerializablePlayerStateJson"), false);
-assert.equal(canonicalLoad.includes("notify("), false, "routine canonical armor changes do not produce top-right gameplay toasts");
-
-const mobDamage = client.slice(
-  client.indexOf("void claimMobPlayerDamage("),
-  client.indexOf("}, [mobWorldAuthority", client.indexOf("void claimMobPlayerDamage(")),
-);
-assert.ok(mobDamage.includes("loadCanonicalPlayer(result.inventory)"), "mob damage reconciles armor from the same Lakebed transaction");
-
-const savedInventoryReconciliation = client.slice(
-  client.indexOf("latestSavedInventoryRef.current = savedInventory"),
-  client.indexOf("}, [savedInventory, auth.userId]"),
-);
-assert.ok(
-  savedInventoryReconciliation.includes("loadCanonicalPlayer(savedInventory)"),
-  "authoritative PvP wear arriving through the existing inventory query still reconciles equipment",
-);
-
-const saveConflictReconciliation = client.slice(
-  client.indexOf('result.reason === "conflict"'),
-  client.indexOf('result.reason === "authentication_required"'),
-);
-assert.ok(
-  saveConflictReconciliation.includes("loadCanonicalPlayer(result.inventory)"),
-  "a concurrent PvP break is still reconciled when it races a revisioned inventory action",
-);
-
-const equipHandler = client.slice(
-  client.indexOf("function handleInventoryWorkspaceChange"),
-  client.indexOf("function loadCanonicalChest"),
-);
-assert.ok(equipHandler.includes("updateEquipment(snapshot.equipment)"));
-assert.ok(equipHandler.includes("expectedAuthorityEpoch !== inventoryAuthorityEpochRef.current"));
-assert.equal(equipHandler.includes("setInterval"), false, "armor durability adds no client mutation loop");
-
-const equipmentSlots = inventoryDrawer.slice(
-  inventoryDrawer.indexOf('(Object.keys(workspace.equipment) as ArmorSlot[])'),
-  inventoryDrawer.indexOf('<div className="lc-player-preview"'),
-);
-assert.ok(equipmentSlots.includes("const stack = workspace.equipment[slot]"));
-assert.ok(equipmentSlots.includes("stack.durability"));
-assert.ok(equipmentSlots.includes("maxItemDurability(itemId)"));
-assert.ok(equipmentSlots.includes("<ItemGlyph stack={stack ? { ...stack, count: 1 } : null} compact />"));
-assert.ok(equipmentSlots.includes("aria-label="));
-
-console.log("armor durability client reconciliation and HUD tests passed");
+console.log("armor durability client boundary tests passed");

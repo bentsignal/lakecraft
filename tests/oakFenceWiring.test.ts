@@ -73,19 +73,10 @@ const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "ut
 const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
-  assert.match(source, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"/,
-    `${label} maps engine fence 27 to the canonical shared identity`);
-  assert.match(source, /oak_fence:\s*BLOCK\.OAK_FENCE/,
-    `${label} maps held fence items back into engine block 27`);
-  assert.match(source, /BLOCK\.OAK_FENCE[\s\S]{0,80}return\s+"wood"/,
-    `${label} uses the existing wood break, place, mining, and footstep audio surface`);
-  assert.doesNotMatch(source,
-    /(?:setInterval|setTimeout|useMutation)[^\n]*oak_fence|oak_fence[^\n]*(?:setInterval|setTimeout|useMutation)/i,
-    `${label} adds no fence-specific timer, polling loop, or mutation`);
-}
-assert.match(client, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"[\s\S]*?oak_fence:\s*BLOCK\.OAK_FENCE/,
-  "multiplayer round-trips engine, protocol, game, and item identities");
+const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
+assert.match(catalog, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"/);
+assert.match(catalog, /oak_fence:\s*BLOCK\.OAK_FENCE/);
+assert.match(catalog, /BLOCK\.OAK_FENCE[^\n]*BLOCK\.OAK_FENCE_GATE_CLOSED[^\n]*BLOCK\.OAK_FENCE_GATE_OPEN[^\n]*return "wood"/);
 assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/,
   "single-player save validation retains oak fences and every newer append-only engine ID");
 

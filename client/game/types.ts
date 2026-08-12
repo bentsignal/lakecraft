@@ -362,6 +362,8 @@ export interface VoxelPerformanceStats {
 }
 
 export interface VoxelEngineOptions {
+  /** Local worlds simulate mobs in-process; network worlds receive them from their authority. */
+  simulateMobs?: boolean;
   seed?: number;
   worldRadius?: number;
   /** Offline-only bounded horizontal chunk radius; omitted callers retain the 7x7 default. */

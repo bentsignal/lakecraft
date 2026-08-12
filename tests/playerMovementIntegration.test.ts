@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
 
 assert.ok(engine.includes("sprintControlHeld(sprintControls)"), "either physical Ctrl side requests sprint");
 assert.ok(engine.includes("sprintControlHeld(sprintControls) || forwardSprintTap.active"),
@@ -72,7 +73,8 @@ assert.ok(pointerReset.includes("releaseTransientInput();"), "pointer-lock loss 
 assert.ok(pauseReset.includes("clearHeldMovementInput();"), "opening a menu releases sprint");
 assert.ok(pauseReset.includes("resetMovementView();"), "opening a menu hard-resets residual camera gait");
 assert.ok(!engine.includes("pose.y + 1.62"), "no stale fixed interaction eye remains in the engine");
-assert.ok(client.includes('canSprint: () => realtimeGameModeRef.current === "creative" || hungerRef.current > 6'),
+assert.ok(presentation.includes('canSprint: () => context.getGameMode() === "creative" || context.getHunger() > 6')
+  && client.includes("getGameMode: () => realtimeGameModeRef.current"),
   "survival hunger gates Ctrl sprint while server-granted Creative bypasses hunger");
 assert.ok(client.includes("activityHalfUnitsForDisplacement") === false, "the client cannot author survival exertion");
 assert.ok(!client.includes("tickSurvival("), "the client no longer advances survival health locally");

@@ -275,7 +275,7 @@ assert.ok(browser.includes("browserSinglePlayerStorage()") && browser.includes("
   "the browser consumes the guarded storage boundary and accepts the root's shared adapter");
 
 assert.ok(app.includes("<LocalWorldBrowser"), "single-player enters the world browser before constructing gameplay");
-assert.ok(app.includes("<SinglePlayerWorld"), "only an activated world mounts the voxel engine");
+assert.ok(app.includes("<LocalGameplaySession"), "only an activated local session mounts the voxel engine");
 assert.ok(app.includes("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })"),
   "autosave/quit commits stay in the active world namespace");
 assert.ok(app.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),

@@ -131,8 +131,8 @@ const app = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8"
 assert.match(app, /setRealtimeChatMessages\(\[\]\);[\s\S]{0,240}\[realtimeSession\?\.endpoint\]/,
   "chat projection resets whenever the realtime endpoint changes");
 assert.match(app, /const \[transportReady, setTransportReady\] = useState\(false\)/);
-assert.match(app, /const worldConnected = realtimeSession \? transportReady : connected/,
-  "world surfaces select Railway readiness independently from Lakebed mutation health");
+assert.match(app, /const worldConnected = transportReady/,
+  "the Railway gameplay surface uses only Railway readiness");
 const realtimeTransport = app.slice(app.indexOf("<RealtimeMultiplayerTransport"), app.indexOf("<GameHud"));
 assert.match(realtimeTransport, /setTransportReady\(phase === "online"\)/,
   "Railway lifecycle exclusively updates the realtime connection channel");

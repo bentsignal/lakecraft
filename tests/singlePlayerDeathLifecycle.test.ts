@@ -20,7 +20,7 @@ assert.ok(app.includes("useState(() => singlePlayerStartsDead(initialSnapshot.ru
   "the death modal derives its first render from validated persisted health without waiting for an engine callback");
 const healthStart = app.indexOf("onPlayerHealthChange:");
 const damageStart = app.indexOf("onPlayerDamage:", healthStart);
-const hotbarStart = app.indexOf("onHotbarSelect:", damageStart);
+const hotbarStart = app.indexOf("onHandAction:", damageStart);
 const healthFlow = app.slice(healthStart, damageStart);
 const damageFlow = app.slice(damageStart, hotbarStart);
 assert.ok(healthStart >= 0 && damageStart > healthStart && hotbarStart > damageStart);

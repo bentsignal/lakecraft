@@ -85,10 +85,10 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 173, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 180, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "94f3de323bbd35436eca5f5d8cf02fece947506907015025b5b681e60b28cc76",
-  "runtime sources match the reviewed integrated realism, third-person visual, loading-state, and paced-terrain boundary");
+  "deebe7f64d0fb943469cd70f6c95875bc662b5d9e86edbdc6b357721d507bfb6",
+  "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

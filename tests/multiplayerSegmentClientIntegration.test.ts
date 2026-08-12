@@ -10,14 +10,15 @@ assert.doesNotMatch(app, /<MultiplayerSegmentTransport/,
   "the retired Lakebed motion transport is no longer reachable from the production client");
 assert.match(app, /registerBlockSink=\{\(sink\) => \{ realtimeBlockSinkRef\.current = sink; \}\}/);
 assert.match(app, /onReconcilePose=\{\(pose\) => engineRef\.current\?\.reconcilePose\(pose\)\}/);
-assert.match(app, /LAKEBED_COMPACT_RETIRED_PRESENCE_START/);
+assert.doesNotMatch(app, /LAKEBED_COMPACT_RETIRED_PRESENCE_START/,
+  "the retired Lakebed presence implementation is deleted rather than staged for compaction");
+assert.doesNotMatch(app, /heartbeatPlayer|publishMotionSegments|multiplayerComposite/,
+  "the playable Railway session cannot spend Lakebed quota on world motion");
 assert.match(app, /const multiplayerPaused = multiplayerGameplayPaused\(\{/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("jump"\)/);
 assert.match(app, /action === "use" \? "use" : "swing"/);
 assert.match(app, /crouching \? "crouch_on" : "crouch_off"/);
 assert.match(app, /motionActionSinkRef\.current\?\.\("slot", selectedHotbar\)/);
-assert.match(app, /motionActionSinkRef\.current\?\.\("bow_draw"\)/);
-assert.match(app, /motionActionSinkRef\.current\?\.\("bow_release"\)/);
 assert.match(app, /registerActionSink=\{\(sink\) => \{ motionActionSinkRef\.current = sink; \}\}/,
   "the mounted Railway transport receives local visual actions");
 assert.match(app, /getHeldItem=\{\(\) => inventoryRef\.current\[selectedRef\.current\]\?\.itemId \?\? null\}/,

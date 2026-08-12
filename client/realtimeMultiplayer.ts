@@ -66,6 +66,7 @@ type PendingBlockEdit = {
   timer: number;
 };
 type PendingDrop = { resolve: (drop: NormalizedDroppedItem) => void; reject: (error: Error) => void; timer: number };
+type PendingRespawn = { resolve: (pose: PlayerPose) => void; reject: (error: Error) => void; timer: number };
 
 type RealtimeEnvelope = Record<string, unknown> & { v: number; type: string };
 type RemoteAppearance = RealtimeArmorAppearance & {
@@ -111,6 +112,29 @@ function decodePose(value: unknown): PlayerPose | null {
   if (x === null || y === null || z === null || yaw === null || pitch === null) return null;
   if (Math.abs(x) > 1_000_000 || y < -64 || y > 320 || Math.abs(z) > 1_000_000) return null;
   return { x, y, z, yaw, pitch };
+}
+
+const REMOTE_ACTION_KINDS = new Set<MotionVisualActionKind>([
+  "swing", "jump", "crouch_on", "crouch_off", "use", "slot", "bow_draw", "bow_release",
+]);
+
+function decodeVisualActions(value: unknown): NonNullable<RemotePlayer["visualActions"]> {
+  if (!Array.isArray(value)) return [];
+  const actions: Array<NonNullable<RemotePlayer["visualActions"]>[number]> = [];
+  for (const candidate of value.slice(-8)) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    const source = candidate as Record<string, unknown>;
+    if (!Number.isSafeInteger(source.sequence) || (source.sequence as number) < 1
+      || typeof source.kind !== "string" || !REMOTE_ACTION_KINDS.has(source.kind as MotionVisualActionKind)) continue;
+    const kind = source.kind as MotionVisualActionKind;
+    if (kind === "slot") {
+      if (!Number.isSafeInteger(source.value) || (source.value as number) < 0 || (source.value as number) > 8) continue;
+      actions.push({ sequence: source.sequence as number, kind, value: source.value as number });
+    } else if (source.value === undefined) {
+      actions.push({ sequence: source.sequence as number, kind });
+    }
+  }
+  return actions;
 }
 
 export function decodeRealtimeGameMode(value: unknown): RealtimeGameMode {
@@ -306,6 +330,7 @@ export class RealtimeMultiplayerClient {
   private pendingBlocks = new Map<string, PendingBlockEdit>();
   private pendingChat = new Map<string, string>();
   private pendingDrops = new Map<string, PendingDrop>();
+  private pendingRespawn: PendingRespawn | null = null;
   private appearanceSupported = false;
   private localSkin: HydratedPlayerSkin | null = null;
   private localSkinLoading = false;
@@ -350,6 +375,11 @@ export class RealtimeMultiplayerClient {
     this.pendingChat.clear();
     for (const pending of this.pendingDrops.values()) { window.clearTimeout(pending.timer); pending.reject(new Error("multiplayer_disconnected")); }
     this.pendingDrops.clear();
+    if (this.pendingRespawn) {
+      window.clearTimeout(this.pendingRespawn.timer);
+      this.pendingRespawn.reject(new Error("multiplayer_disconnected"));
+      this.pendingRespawn = null;
+    }
     this.remoteAppearances.clear();
     this.remoteSkins.clear();
     this.lastSnapshotPlayers = [];
@@ -428,6 +458,21 @@ export class RealtimeMultiplayerClient {
 
   submitPickup(operationId: string, dropId: string): Promise<NormalizedDroppedItem> {
     return this.submitDropOperation(operationId, { type: "pickup_item", dropId });
+  }
+
+  submitRespawn(): Promise<PlayerPose> {
+    if (!this.joined || this.socket?.readyState !== WebSocket.OPEN || this.pendingRespawn) {
+      return Promise.reject(new Error("multiplayer_not_connected"));
+    }
+    const operationId = `respawn_${crypto.randomUUID()}`;
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "respawn", operationId });
+    return new Promise<PlayerPose>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        this.pendingRespawn = null;
+        reject(new Error("multiplayer_respawn_timeout"));
+      }, 5_000);
+      this.pendingRespawn = { resolve, reject, timer };
+    });
   }
 
   private submitDropOperation(operationId: string, operation: Record<string, unknown>): Promise<NormalizedDroppedItem> {
@@ -789,6 +834,16 @@ export class RealtimeMultiplayerClient {
       pending.resolve(drop);
       return;
     }
+    if (message.type === "respawned") {
+      const pose = decodePose(message.player);
+      const operationId = boundedText(message.operationId, 96);
+      const pending = this.pendingRespawn;
+      if (!pending || !pose || !operationId.startsWith("respawn_")) return;
+      window.clearTimeout(pending.timer);
+      this.pendingRespawn = null;
+      pending.resolve(pose);
+      return;
+    }
     if (message.type === "snapshot") {
       const self = decodePose(message.self);
       if (message.self && typeof message.self === "object" && !Array.isArray(message.self)) {
@@ -824,9 +879,7 @@ export class RealtimeMultiplayerClient {
           const vx = finiteNumber(source.vx);
           const vy = finiteNumber(source.vy);
           const vz = finiteNumber(source.vz);
-          const visualActions = Array.isArray(source.visualActions)
-            ? source.visualActions.slice(-8) as RemotePlayer["visualActions"]
-            : [];
+          const visualActions = decodeVisualActions(source.visualActions);
           players.push({
             ...pose,
             id,
@@ -855,6 +908,13 @@ export class RealtimeMultiplayerClient {
         return;
       }
       if (operationId) {
+        if (operationId.startsWith("respawn_") && this.pendingRespawn) {
+          const pending = this.pendingRespawn;
+          window.clearTimeout(pending.timer);
+          this.pendingRespawn = null;
+          pending.reject(new Error(boundedText(message.code, 64) || "multiplayer_respawn_rejected"));
+          return;
+        }
         const drop = this.pendingDrops.get(operationId);
         if (drop) {
           window.clearTimeout(drop.timer);

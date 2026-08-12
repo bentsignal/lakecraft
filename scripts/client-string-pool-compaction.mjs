@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 576;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 515;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "6c1a0fa8e9ab85cccd63569b01d74f40d22c061f94f9477ce1c78dbf74468f40";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 485;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 432;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "3017233673b31d0102eccc94b9509f2c9044fdc2292cd9fa26bf72ea3855f216";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -86,26 +86,36 @@ export const COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 564,
   previousUniqueValues: 503,
   previousSourceFingerprint: "fcd03ec0b220a5a656f8f908b68d6efc55e1ff45f8bf1e735d10b27f7746b2cf",
-  occurrenceDelta: 12,
-  uniqueValueDelta: 12,
+  occurrenceDelta: -79,
+  uniqueValueDelta: -71,
   sources: Object.freeze([
+    "client/gameplay/GameplaySessionSurface.tsx",
+    "client/gameplay/authority.ts",
+    "client/gameplay/pointerSession.ts",
+    "client/gameplay/presentation.ts",
     "client/gameplayDiagnostics.tsx",
     "client/gameplayScreenshot.ts",
     "client/game/thirdPersonHeldItem.ts",
-    "client/index.tsx#realtime-mining-drop",
+    "client/index.tsx#retired-lakebed-world-authority",
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_174;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 111;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "ea88979c229701cdb512965519521bfb2d61d50e3d832052a5daffdde22b975c";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_018;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 97;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "74e17420ec34785cdaabfc9ff7ba30199e8e6442337a495bf3cbef64003ceb1c";
 export const COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 1_166,
   previousUniqueValues: 110,
   previousSourceFingerprint: "7432a311b0f521732a2f61e22fce196c8ba6a591163aec66dc6d8acb2e43db27",
-  occurrenceDelta: 8,
-  uniqueValueDelta: 1,
-  sources: Object.freeze(["client/gameplayDiagnostics.tsx", "client/gameplayScreenshot.ts", "client/game/thirdPersonHeldItem.ts"]),
+  occurrenceDelta: -148,
+  uniqueValueDelta: -13,
+  sources: Object.freeze([
+    "client/gameplay/GameplaySessionSurface.tsx",
+    "client/gameplay/authority.ts",
+    "client/gameplay/pointerSession.ts",
+    "client/gameplay/presentation.ts",
+    "client/index.tsx#retired-lakebed-world-authority",
+  ]),
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA = Object.freeze({
@@ -320,16 +330,22 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 414;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 120;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "977ec76919696f1eeaed60cf244b3ac11c5db396d3a849bae8be268c8f8ebc38";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 417;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "f0809d16908c2692d7b076caefccb44f3b34e112015943229a42c2d1a525c894";
 export const COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 415,
   previousUniqueValues: 121,
   previousSourceFingerprint: "80507b569cbea80abb96e1c522d53ea7443504e1cddcda5e24b17a30f3c83551",
-  occurrenceDelta: -1,
-  uniqueValueDelta: -1,
-  source: "client/game/remotePlayerRenderer.ts#retired-flat-item-mip",
+  occurrenceDelta: 2,
+  uniqueValueDelta: 2,
+  sources: Object.freeze([
+    "client/gameplay/authority.ts",
+    "client/gameplay/engine.ts",
+    "client/gameplay/pointerSession.ts",
+    "client/gameplay/presentation.ts",
+    "client/index.tsx#retired-lakebed-world-authority",
+  ]),
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
@@ -466,26 +482,26 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA = Object.f
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "$.world.worldId", "ControlLeft", "ControlRight", "alertdialog", "assertive", "beforeunload",
-  "behaviorUntilSeconds", "checksum_mismatch", "chestClose", "chestOpen", "chestplate",
+  "behaviorUntilSeconds", "checksum_mismatch", "chestplate",
   "contextmenu", "craft.lakebed.app", "crafting_table_front", "crafting_table_side", "crafting_table_top",
-  "createdAt", "crispEdges", "deathUntil", "door_closed", "duplicate", "equipment", "expectedBlock",
-  "expectedChunkRevision", "expectedInventoryRevision", "first_person", "from_chest", "furnace_front",
+  "createdAt", "crispEdges", "deathUntil", "duplicate", "equipment", "expectedBlock",
+  "expectedChunkRevision", "expectedInventoryRevision", "first_person", "furnace_front",
   "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds", "grass_side", "grass_top",
-  "ineligible", "invalid_chunk_key", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
-  "invalid_slot", "invalid_transaction_cleared", "lock_change", "miningHit", "mousedown", "mousemove",
+  "ineligible", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
+  "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousedown", "mousemove",
   "multiplayer", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
-  "no_recipe", "noncanonical_envelope", "oak_fence_gate_closed", "oak_log_end", "pointerlockerror",
+  "no_recipe", "noncanonical_envelope", "oak_log_end", "pointerlockerror",
   "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
   "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
   "tnt_bottom", "unsafe_existing_data", "velocityX", "velocityZ", "world-mode", "world-seed", "world-title",
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 154;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 77;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 140;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 70;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "20c9075d3a7f68f00b51bb656a833f553e3958c683fce7782bbadd3aef629038";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12";
 // Gameplay modes and local persistence outcomes form a closed internal
 // identity boundary. Only strict comparison operands and switch cases may
 // enter this pool: JSX/DOM values, object keys, payload strings, and UI copy
@@ -499,12 +515,12 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 68;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
-  creative: 38,
+  creative: 33,
   survival: 11,
   loaded: 3,
   recovered: 3,
@@ -512,14 +528,14 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   unsupported: 6,
   empty: 2,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "f2833987c112d9130537ed25d21ae7e942d0f7ac3812cefa6c6b2f3d52cfdef6";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "358cf0997bf825646abdd7792dbb7a58347210c5925ca1548979416c4456f5c2";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
-  previousOccurrences: 67,
+  previousOccurrences: 68,
   previousUniqueValues: 7,
-  previousSourceFingerprint: "dda5223efbeff47c2b238b8901dc93235ca080d25d86a547a3cd95bc6c764d15",
-  occurrenceDelta: 1,
+  previousSourceFingerprint: "f2833987c112d9130537ed25d21ae7e942d0f7ac3812cefa6c6b2f3d52cfdef6",
+  occurrenceDelta: -5,
   uniqueValueDelta: 0,
-  source: "client/gameplayDiagnostics.tsx#game-mode-label",
+  source: "shared gameplay authority replacing duplicated multiplayer creative branches",
 });
 // WebGL uniform names are a closed API boundary between authored shader text
 // and `getUniformLocation`. Keep this semantic category separate from the
@@ -907,7 +923,9 @@ export async function compactClientStringPool(source, expected = {
       fail(`${category} live set changed; expected ${boundary.occurrences}/${boundary.uniqueValues}/${boundary.fingerprint}, received `
         + `${actual.occurrences.length}/${actual.values.length}/${actual.fingerprint}`
         + (category === "fixedIdentity"
-          ? `; incremental unique values ${analysis.fixedIdentityIncrementalUniqueValues}` : ""));
+          ? `; incremental unique values ${analysis.fixedIdentityIncrementalUniqueValues}; retained counts ${JSON.stringify(Object.fromEntries(actual.values.map((value, index) => [value, actual.counts[index]])))}` : "")
+        + (category === "fixedFrequencyTwo"
+          ? `; retained values ${JSON.stringify(actual.values)}` : ""));
     }
   }
   const serialized = JSON.stringify(analysis.values);

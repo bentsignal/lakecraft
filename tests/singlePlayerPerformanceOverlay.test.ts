@@ -84,8 +84,9 @@ VERT 42,000  MESH 1.5ms`);
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-assert.ok(app.includes("GameplayDiagnostics") && multiplayer.includes("GameplayDiagnostics"),
-  "both gameplay modes render the same coordinates and FPS surface");
+const surface = readFileSync(new URL("../client/gameplay/GameplaySessionSurface.tsx", import.meta.url), "utf8");
+assert.ok(app.includes("GameplaySessionSurface") && multiplayer.includes("GameplaySessionSurface") && surface.includes("GameplayDiagnostics"),
+  "both gameplay modes render one shared coordinates and FPS surface");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.equal(styles.includes(".lc-local-fps"), false,
   "retired FPS-only CSS does not consume the production capsule reserve");

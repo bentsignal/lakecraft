@@ -81,13 +81,11 @@ const heldRenderer = readFileSync(new URL("../client/game/firstPersonRenderer.ts
 assert.ok(heldRenderer.includes("blockTextureForFace(block, face[0])") && heldRenderer.includes("textureAtlasUv(texture)"),
   "held clay and bricks reuse their exact world-atlas surface tiles on solid cubes");
 
-for (const relative of ["../client/index.tsx", "../client/singleplayer/SinglePlayerApp.tsx"] as const) {
-  const source = readFileSync(new URL(relative, import.meta.url), "utf8");
-  assert.match(source, /\[BLOCK\.CLAY\]:\s*"clay"/);
-  assert.match(source, /\[BLOCK\.BRICKS\]:\s*"bricks"/);
-  assert.match(source, /clay:\s*BLOCK\.CLAY/);
-  assert.match(source, /bricks:\s*BLOCK\.BRICKS/);
-}
+const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
+assert.match(catalog, /\[BLOCK\.CLAY\]:\s*"clay"/);
+assert.match(catalog, /\[BLOCK\.BRICKS\]:\s*"bricks"/);
+assert.match(catalog, /clay:\s*BLOCK\.CLAY/);
+assert.match(catalog, /bricks:\s*BLOCK\.BRICKS/);
 const rendererSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(rendererSource, /block === BLOCK\.GLASS \? transparentVertices : textureVertices/,
   "all other atlas cubes, including clay and bricks, reuse the existing opaque VBO");
