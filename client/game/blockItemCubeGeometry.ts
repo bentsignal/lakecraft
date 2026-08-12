@@ -159,3 +159,33 @@ export function appendBlockItemCubeGeometry(
   }
   return vertices;
 }
+
+/** Six-face distance geometry; it keeps the canonical cube and transform while collapsing only per-texel color detail. */
+export function appendCompactBlockItemCubeGeometry(
+  output: number[],
+  itemId: ItemId,
+  options: BlockItemCubeOptions = {},
+): number {
+  const block = blockIdForCubeItem(itemId);
+  if (block === null) return 0;
+  const center = options.center ?? [0, 0, 0];
+  const size = options.size ?? 1;
+  const rotation = options.rotationDegrees ?? [0, 0, 0];
+  const start = output.length;
+  for (const face of CUBE_FACES) {
+    const texture = blockTextureForFace(block, face[0]);
+    if (!texture) continue;
+    let red = 0; let green = 0; let blue = 0; let count = 0;
+    for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
+      const color = atlasPixel(texture, x, y);
+      if (color[3] < 16) continue;
+      red += color[0]; green += color[1]; blue += color[2]; count += 1;
+    }
+    if (!count) continue;
+    for (const authoredPoint of face[5]) {
+      const point = transformPoint(authoredPoint, center, size, rotation);
+      output.push(point[0], point[1], point[2], red / count / 255 * face[4], green / count / 255 * face[4], blue / count / 255 * face[4]);
+    }
+  }
+  return (output.length - start) / BLOCK_ITEM_CUBE_VERTEX_FLOATS;
+}

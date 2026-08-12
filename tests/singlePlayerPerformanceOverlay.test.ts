@@ -84,16 +84,14 @@ VERT 42,000  MESH 1.5ms`);
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-for (const retiredDebugSurface of ["performanceOutputRef", 'event.code === "F3"', "lc-local-perf", "fpsOutputRef", "lc-local-fps"]) {
-  assert.equal(app.includes(retiredDebugSurface), false,
-    `${retiredDebugSurface} stays out of the size-constrained single-player production surface`);
-}
+assert.ok(app.includes("GameplayDiagnostics") && multiplayer.includes("GameplayDiagnostics"),
+  "both gameplay modes render the same coordinates and FPS surface");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 assert.equal(styles.includes(".lc-local-fps"), false,
   "retired FPS-only CSS does not consume the production capsule reserve");
 assert.equal(app.includes("useQuery") || app.includes("useMutation"), false,
   "the single-player path adds no Lakebed query or mutation");
 assert.equal(multiplayer.includes("performanceHudCoreText"), false,
-  "the production multiplayer bundle does not carry a second debug-detail surface");
+  "shared diagnostics stay compact instead of duplicating the retired debug-detail surface");
 
 console.log("production performance debug-surface boundary tests passed");

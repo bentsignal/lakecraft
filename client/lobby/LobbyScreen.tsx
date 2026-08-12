@@ -44,6 +44,7 @@ export interface LobbyScreenProps {
   onUsernameChange: (value: string) => void;
   onUsernameSubmit: (value: string) => void;
   onJoinWorld: () => void;
+  onJoinServer?: (serverId: string) => void;
   onSelectServer?: (serverId: string) => void;
   onDirectConnectChange?: (value: string) => void;
   onDirectConnectTokenChange?: (value: string) => void;
@@ -223,6 +224,7 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
                 className={`lc-server-row${selectedRow ? " is-selected" : ""}`}
                 key={server.id}
                 onClick={() => props.onSelectServer?.(server.id)}
+                onDblClick={() => props.onJoinServer?.(server.id)}
                 role="option"
                 type="button"
               >

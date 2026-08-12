@@ -221,8 +221,8 @@ assert.equal(
   gearDeltaBytes + nameDeltaBytes,
 );
 assert.ok(gearedUploadBytes <= gearedCapacity.totalBytes, "32 fully geared players fit the one preallocated avatar buffer");
-assert.equal(gearedUploadBytes, 1_976_832, "true maximum catalog gear/name fixture remains deterministic");
-assert.ok(gearedUploadBytes < 2_100_000, `worst-case remote upload ${gearedUploadBytes} exceeded 2.1MB`);
+assert.equal(gearedUploadBytes, 3_432_960, "true maximum catalog gear/name fixture remains deterministic");
+assert.ok(gearedUploadBytes < 3_500_000, `worst-case remote upload ${gearedUploadBytes} exceeded 3.5MB`);
 
 const glCalls = { bufferData: 0, bufferSubData: 0, deleteBuffer: 0 };
 let nextBufferId = 0;

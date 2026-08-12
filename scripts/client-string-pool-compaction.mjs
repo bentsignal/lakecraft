@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 564;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 503;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fcd03ec0b220a5a656f8f908b68d6efc55e1ff45f8bf1e735d10b27f7746b2cf";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 576;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 515;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "6c1a0fa8e9ab85cccd63569b01d74f40d22c061f94f9477ce1c78dbf74468f40";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -82,9 +82,32 @@ export const COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA = Object.freeze({
   source: "client/index.tsx#compact-railway-authority-and-player-skin-wire",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_166;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 110;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "7432a311b0f521732a2f61e22fce196c8ba6a591163aec66dc6d8acb2e43db27";
+export const COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 564,
+  previousUniqueValues: 503,
+  previousSourceFingerprint: "fcd03ec0b220a5a656f8f908b68d6efc55e1ff45f8bf1e735d10b27f7746b2cf",
+  occurrenceDelta: 12,
+  uniqueValueDelta: 12,
+  sources: Object.freeze([
+    "client/gameplayDiagnostics.tsx",
+    "client/gameplayScreenshot.ts",
+    "client/game/thirdPersonHeldItem.ts",
+    "client/index.tsx#realtime-mining-drop",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_174;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 111;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "ea88979c229701cdb512965519521bfb2d61d50e3d832052a5daffdde22b975c";
+export const COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 1_166,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "7432a311b0f521732a2f61e22fce196c8ba6a591163aec66dc6d8acb2e43db27",
+  occurrenceDelta: 8,
+  uniqueValueDelta: 1,
+  sources: Object.freeze(["client/gameplayDiagnostics.tsx", "client/gameplayScreenshot.ts", "client/game/thirdPersonHeldItem.ts"]),
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA = Object.freeze({
   previousOccurrences: 1_189,
   previousUniqueValues: 113,
@@ -297,9 +320,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 415;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 121;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "80507b569cbea80abb96e1c522d53ea7443504e1cddcda5e24b17a30f3c83551";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 414;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 120;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "977ec76919696f1eeaed60cf244b3ac11c5db396d3a849bae8be268c8f8ebc38";
+export const COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 415,
+  previousUniqueValues: 121,
+  previousSourceFingerprint: "80507b569cbea80abb96e1c522d53ea7443504e1cddcda5e24b17a30f3c83551",
+  occurrenceDelta: -1,
+  uniqueValueDelta: -1,
+  source: "client/game/remotePlayerRenderer.ts#retired-flat-item-mip",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -467,20 +499,28 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 67;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 68;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   creative: 38,
-  survival: 10,
+  survival: 11,
   loaded: 3,
   recovered: 3,
   corrupt: 5,
   unsupported: 6,
   empty: 2,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "dda5223efbeff47c2b238b8901dc93235ca080d25d86a547a3cd95bc6c764d15";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "f2833987c112d9130537ed25d21ae7e942d0f7ac3812cefa6c6b2f3d52cfdef6";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 67,
+  previousUniqueValues: 7,
+  previousSourceFingerprint: "dda5223efbeff47c2b238b8901dc93235ca080d25d86a547a3cd95bc6c764d15",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  source: "client/gameplayDiagnostics.tsx#game-mode-label",
+});
 // WebGL uniform names are a closed API boundary between authored shader text
 // and `getUniformLocation`. Keep this semantic category separate from the
 // generic frequency floors: attributes, DOM/UI text, wire values, and newly

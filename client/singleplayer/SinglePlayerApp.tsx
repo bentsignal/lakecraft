@@ -14,6 +14,7 @@ import {
   type BlockId as EngineBlockId,
   type LocalExplosionEdit,
   type PlayerProjectileVisual,
+  type VoxelPerformanceStats,
   type VoxelEngine,
   type WorldEdit,
 } from "../game";
@@ -55,7 +56,7 @@ import {
   releaseGameplayKeyboardCapture,
   requestGameplayKeyboardCapture,
 } from "../gameplayKeyboardCapture.ts";
-import { copyGameScreenshot, downloadGameScreenshot, gameScreenshotFilename } from "./gameScreenshot.ts";
+import { GameplayDiagnostics, handleGameplayScreenshotKey } from "../gameplayDiagnostics.tsx";
 import {
   fieldOfViewRadians,
   loadClientSettings,
@@ -374,6 +375,7 @@ function SinglePlayerWorld({
   const [craftingContext, setCraftingContext] = useState<CraftingContext>("field");
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
+  const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
     : initial.current.load.status === "unsupported"
         ? unsupportedSinglePlayerSaveMessage(initial.current.load.versions)
@@ -1727,6 +1729,7 @@ function SinglePlayerWorld({
         });
         collectLocalDrops(pose);
       },
+      onPerformanceStats: setPerformanceStats,
     });
     engineRef.current = engine;
     const persistedSkin = loadPersistedPlayerSkin(storage);
@@ -1946,32 +1949,9 @@ function SinglePlayerWorld({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      /* @lakecraft-development:screenshot:start */
-      if (event.code === "F2" && !event.repeat) {
-        const engine = engineRef.current;
-        if (!engine) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        const png = engine.captureScreenshot();
-        const copied = copyGameScreenshot(png);
-        const filename = gameScreenshotFilename();
-        void png.then((blob) => {
-          downloadGameScreenshot(blob, filename);
-          return copied;
-        }).then((didCopy) => setMessages((current) => [...current.slice(-2), {
-          id: `screenshot-${Date.now()}`,
-          text: didCopy ? "Screenshot copied" : "Screenshot saved",
-          detail: didCopy ? `${filename} also saved to Downloads.` : `${filename} saved to Downloads.`,
-          tone: "success",
-        }]), () => setMessages((current) => [...current.slice(-2), {
-          id: `screenshot-error-${Date.now()}`,
-          text: "Screenshot failed",
-          detail: "The game kept running. Press F2 to try again.",
-          tone: "warning",
-        }]));
-        return;
-      }
-      /* @lakecraft-development:screenshot:end */
+      if (handleGameplayScreenshotKey(event, engineRef.current, (text, detail, tone) => {
+        setMessages((current) => [...current.slice(-2), { id: `screenshot-${Date.now()}`, text, detail, tone }]);
+      })) return;
       /* @lakecraft-development:guard:start */
       if (visualLabOpen) return;
       /* @lakecraft-development:guard:end */
@@ -2109,15 +2089,10 @@ function SinglePlayerWorld({
 
   return (
     <main className="lc-singleplayer">
-      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-singleplayer-coordinates{color:#fff;font:16px/1.2 var(--lc-pixel-font,"Courier New",monospace);left:8px;letter-spacing:.01em;pointer-events:none;position:fixed;text-shadow:2px 2px #202020;top:7px;z-index:8}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture[role=status]{background:#202020;color:#fff;flex-direction:column;gap:10px;z-index:90}.lc-pointer-capture[role=status] strong{font-size:22px;text-shadow:2px 2px #000}.lc-pointer-capture[role=status] small{color:#bbb}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}</style>
+      <style>{`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-pointer-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-pointer-capture[role=status]{background:#202020;color:#fff;flex-direction:column;gap:10px;z-index:90}.lc-pointer-capture[role=status] strong{font-size:22px;text-shadow:2px 2px #000}.lc-pointer-capture[role=status] small{color:#bbb}.lc-pointer-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-pointer-capture button:hover,.lc-pointer-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-pointer-capture small{display:block;font-size:12px;margin-top:8px}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}</style>
       <canvas aria-label="Lakecraft single-player voxel world" ref={canvasRef} tabIndex={0} />
       {!worldReady ? <div className="lc-pointer-capture" role="status" aria-live="polite"><strong>Loading world</strong><small>Preparing terrain…</small></div> : null}
-      <span
-        aria-label={`Coordinates X ${coordinates.x}, Y ${coordinates.y}, Z ${coordinates.z}. ${gameMode} mode`}
-        className="lc-singleplayer-coordinates"
-      >
-        XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z} · {gameMode === "creative" ? "Creative" : "Survival"}
-      </span>
+      <GameplayDiagnostics gameMode={gameMode} pose={coordinates} stats={performanceStats} />
       {worldReady && pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
         <div className="lc-pointer-capture" role="presentation">
           <button autoFocus onClick={() => requestGameplayPointerLock()} type="button">

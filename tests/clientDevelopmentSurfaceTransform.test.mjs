@@ -18,13 +18,14 @@ const compact = stripClientDevelopmentSurfaces(source);
 for (const developmentOnly of [
   "FirstPersonPoseLab", "VisualLab", "visualLabOpen", "setVisualLabOpen", "setPoseLabBowPreview",
   "setPoseLabHeldItemPreview", "setPoseLabUsePreview", "SinglePlayerPerformanceBenchmark", "benchmarkDistance",
-  "captureScreenshot",
 ]) {
   assert.equal(compact.includes(developmentOnly), false,
     `compact anonymous source excludes development-only ${developmentOnly}`);
 }
 assert.equal(compact.includes("@lakecraft-development:"), false,
   "compact source consumes every reviewed marker");
+assert.ok(compact.includes("handleGameplayScreenshotKey"),
+  "production retains the shared single-player screenshot workflow");
 assert.ok(compact.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
   "production modal semantics remain valid after the Visual Lab state is removed");
 assert.throws(
@@ -44,10 +45,12 @@ assert.ok(voxelSource.includes("setPoseLabRigPreview"),
 assert.ok(voxelSource.includes("setBenchmarkLook"),
   "normal local development exposes deterministic benchmark look control");
 const compactVoxel = stripVoxelDevelopmentSurfaces(voxelSource);
-for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", "setBenchmarkLook", "pendingScreenshot", "captureScreenshot", "@lakecraft-voxel-development:"]) {
+for (const developmentOnly of ["thirdPersonRigPreview", "setPoseLabRigPreview", "setBenchmarkLook", "@lakecraft-voxel-development:"]) {
   assert.equal(compactVoxel.includes(developmentOnly), false,
     `compact anonymous voxel source excludes development-only ${developmentOnly}`);
 }
+assert.ok(compactVoxel.includes("pendingScreenshot") && compactVoxel.includes("captureScreenshot"),
+  "production retains next-frame capture for both gameplay modes");
 assert.ok(compactVoxel.includes("playerRigInputForMovement(movementMode, now, movementActivity > 0.5)"),
   "production movement-driven rig behavior remains after the preview override is removed");
 assert.throws(

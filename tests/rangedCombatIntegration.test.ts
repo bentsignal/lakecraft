@@ -5,6 +5,7 @@ const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf
 const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const remote = readFileSync(new URL("../client/game/remotePlayerRenderer.ts", import.meta.url), "utf8");
+const held = readFileSync(new URL("../client/game/thirdPersonHeldItem.ts", import.meta.url), "utf8");
 
 for (const required of [
   "rangedCharges: table({",
@@ -43,6 +44,6 @@ for (const required of [
 assert.ok(engine.includes("createPlayerProjectileRenderer(gl)"));
 assert.ok(engine.includes("setPlayerProjectiles(projectiles"));
 assert.ok(engine.includes("onRangedRelease?.(intent)"));
-assert.ok(remote.includes('itemId === "bow"'), "remote avatars need a recognizable held bow");
+assert.ok((remote + held).includes('itemId === "bow"'), "remote avatars need a recognizable held bow");
 
 console.log("Lakebed ranged combat integration tests passed");

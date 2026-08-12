@@ -73,7 +73,7 @@ xsection-rule|3 xsingleplayer|3 xv-workspace|3 ysleep-layer|3 xc__station|3 xdur
 xingredient|3 xlocal-perf|0 xp-panorama|4 xc__status|3 xp-content|4 xc__flame|3
 xr-status|3 xc-layer|3 xl__icon|3 xp-hills|5 xr-layer|3 xs__body|3 xlocal-world-feedback|3
 xv-panel|3 xu-wrap|3 xv-slot|3 xw-link|3 yperf|0
-xc-inventory-grid--hotbar|2 xsingleplayer-coordinates|2 xlocal-world-delete-copy|3
+xc-inventory-grid--hotbar|2 xgameplay-diagnostics|2 xlocal-world-delete-copy|3
 xh__autosave-status|2 xunsupported__stamp|2 xc-inventory-title|2 xh__last-autosaved|2
 xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|3 xlocal-world-retry|2
 xunsupported__card|2 xunsupported__icon|2 xunsupported__topo|2 xunsupported-title|2 xlocal-world-feedback-copy|2 xlocal-world-stage|2

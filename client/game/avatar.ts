@@ -1,7 +1,7 @@
 import type { PlayerPose, RemotePlayer } from "./types.ts";
 import { PLAYER_SKIN_WIRE_BYTES, type PlayerSkinModel } from "./playerSkin.ts";
 import { ITEMS, type ArmorId, type ArmorSlot, type ItemId } from "../../shared/game.ts";
-import { resolvePlayerRigPose, type PlayerRigInput, type PlayerRigPose } from "./playerRig.ts";
+import { playerRigCycleMilliseconds, resolvePlayerRigPose, type PlayerRigInput, type PlayerRigPose } from "./playerRig.ts";
 import {
   PRESENCE_MAX_EXTRAPOLATION_MS,
   PRESENCE_MAX_HORIZONTAL_SPEED,
@@ -159,10 +159,12 @@ const REMOTE_RIG_INPUT: PlayerRigInput = { motion: "idle", phase: 0 };
 export function resolveRemoteAvatarRigPose(state: RemoteAvatarMotion, output?: PlayerRigPose): PlayerRigPose {
   const input = REMOTE_RIG_INPUT as { -readonly [Key in keyof PlayerRigInput]: PlayerRigInput[Key] };
   input.motion = state.horizontalSpeed > 0.04 ? "walk" : "idle";
-  input.phase = state.walkPhase / (Math.PI * 2);
+  input.phase = state.walkPhase;
   input.intensity = Math.min(1, state.horizontalSpeed / 4.3);
   input.headYaw = -shortestAngleDelta(state.bodyYaw, state.rendered.yaw);
-  input.headPitch = state.rendered.pitch;
+  // Engine pitch is positive when the camera looks up; skin rig pitch rotates
+  // the face downward, so local and remote avatars share the same inversion.
+  input.headPitch = -state.rendered.pitch;
   input.actionProgress = state.armActionProgress;
   input.crouching = state.crouching;
   return resolvePlayerRigPose(input, output);
@@ -278,7 +280,8 @@ export function advanceRemoteAvatarMotion(
   );
   const gaitFollow = 1 - Math.exp(-10 * dt);
   state.horizontalSpeed += (measuredSpeed - state.horizontalSpeed) * gaitFollow;
-  state.walkPhase = (state.walkPhase + state.horizontalSpeed * dt * 7.5) % (Math.PI * 2);
+  const movementMode = state.crouching ? "sneak" : state.horizontalSpeed > 5 ? "sprint" : "walk";
+  state.walkPhase = (state.walkPhase + dt * 1_000 / playerRigCycleMilliseconds(movementMode)) % 1;
   const armActionElapsed = now - state.armActionStartedAt;
   state.armActionProgress = armActionElapsed >= 0 && armActionElapsed < 450 ? armActionElapsed / 450 : 1;
   state.armActionPhase = armActionElapsed >= 0 && armActionElapsed < 450

@@ -5,11 +5,11 @@ import {
   resolveRemoteAvatarRigPose,
   type RemoteAvatarMotion,
 } from "./avatar.ts";
-import { ITEMS, type ArmorId, type ItemId } from "../../shared/game.ts";
-import { getBowIconArt, getItemIconArt, type ItemIconArt } from "../components/itemIconArt.ts";
+import { type ArmorId, type ItemId } from "../../shared/game.ts";
 import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES, NAMEPLATE_FONT } from "./generated/renderGeometry.ts";
 import { PLAYER_SKIN_BOX_COUNT, PLAYER_SKIN_VERTEX_COUNT } from "./playerSkinGeometry.ts";
 import { writePlayerRigPartMatrix, type PlayerRigPart, type PlayerRigPose } from "./playerRig.ts";
+import { buildThirdPersonHeldItemGeometry } from "./thirdPersonHeldItem.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -18,16 +18,14 @@ const VERTICES_PER_BOX = 36;
 export const REMOTE_DEFAULT_PLAYER_BOX_COUNT = PLAYER_SKIN_BOX_COUNT;
 export const REMOTE_DEFAULT_PLAYER_HEIGHT = 2;
 const MAX_ARMOR_BOXES = 10;
-export const REMOTE_HELD_ITEM_LOGICAL_SIZE = 8;
-export const REMOTE_HELD_ITEM_MAX_RECTS = 24;
-const VERTICES_PER_HELD_ITEM_RECT = 6;
 const MAX_GLYPH_RECTS = 21;
 const REMOTE_RENDER_DISTANCE_SQUARED = 64 * 64;
 
 export const REMOTE_MESH_INTERVAL_MS = 1_000 / 30;
 export const BASE_AVATAR_VERTICES_PER_PLAYER = PLAYER_SKIN_VERTEX_COUNT;
 export const MAX_ARMOR_VERTICES_PER_PLAYER = MAX_ARMOR_BOXES * VERTICES_PER_BOX;
-export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = REMOTE_HELD_ITEM_MAX_RECTS * VERTICES_PER_HELD_ITEM_RECT;
+/** Exact maximum of the installed catalog's extruded sprites; distance cubes use 36 vertices. */
+export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = 2_040;
 /** Worst-case fixed avatar capacity, including a bounded canonical sprite and all armor. */
 export const AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER
@@ -51,101 +49,23 @@ interface VertexWriter {
   offset: number;
 }
 
-export type RemoteHeldItemRect = Readonly<{
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  color: Vec3;
-}>;
+const REMOTE_HELD_ITEM_GEOMETRY = new Map<string, Float32Array>();
 
-type MutableHeldRect = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  color: string;
-  order: number;
-};
-
-function parseIconColor(color: string): Vec3 {
-  if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error(`Invalid remote held-item color: ${color}`);
-  return Object.freeze([
-    Number.parseInt(color.slice(1, 3), 16) / 255,
-    Number.parseInt(color.slice(3, 5), 16) / 255,
-    Number.parseInt(color.slice(5, 7), 16) / 255,
-  ]) as Vec3;
-}
-
-/**
- * Builds an 8×8 remote-distance mip directly from the canonical 16×16 icon.
- * Each 2×2 source cell chooses its most frequent opaque canonical color; equal
- * counts preserve source scan order. Same-color cells are greedily merged, and
- * the 24 largest stable rectangles retain at least the recognizable silhouette
- * while strictly bounding the 32-player retained batch.
- */
-function buildRemoteHeldItemRects(art: ItemIconArt): readonly RemoteHeldItemRect[] {
-  const source = Array.from({ length: 16 }, () => Array<string | null>(16).fill(null));
-  for (const run of art.runs) for (let x = run.x; x < run.x + run.width; x += 1) source[run.y][x] = run.color;
-  const mip = Array.from(
-    { length: REMOTE_HELD_ITEM_LOGICAL_SIZE },
-    () => Array<string | null>(REMOTE_HELD_ITEM_LOGICAL_SIZE).fill(null),
-  );
-  for (let y = 0; y < REMOTE_HELD_ITEM_LOGICAL_SIZE; y += 1) for (let x = 0; x < REMOTE_HELD_ITEM_LOGICAL_SIZE; x += 1) {
-    const counts = new Map<string, number>();
-    for (let offsetY = 0; offsetY < 2; offsetY += 1) for (let offsetX = 0; offsetX < 2; offsetX += 1) {
-      const color = source[y * 2 + offsetY][x * 2 + offsetX];
-      if (color) counts.set(color, (counts.get(color) ?? 0) + 1);
+export function remoteHeldItemGeometry(itemId: ItemId, bowDrawing = false): Float32Array {
+  const key = `${itemId}:${Number(bowDrawing)}`;
+  let geometry = REMOTE_HELD_ITEM_GEOMETRY.get(key);
+  if (!geometry) {
+    geometry = buildThirdPersonHeldItemGeometry(itemId, undefined, bowDrawing, true);
+    if (geometry.length / FLOATS_PER_VERTEX > MAX_HELD_ITEM_VERTICES_PER_PLAYER) {
+      throw new Error(`Remote held item ${itemId} exceeded its reviewed geometry budget.`);
     }
-    let selected: string | null = null;
-    let selectedCount = 0;
-    for (const [color, count] of counts) if (count > selectedCount) {
-      selected = color;
-      selectedCount = count;
-    }
-    mip[y][x] = selected;
+    REMOTE_HELD_ITEM_GEOMETRY.set(key, geometry);
   }
-  const rectangles: MutableHeldRect[] = [];
-  for (let y = 0; y < REMOTE_HELD_ITEM_LOGICAL_SIZE; y += 1) for (let x = 0; x < REMOTE_HELD_ITEM_LOGICAL_SIZE; x += 1) {
-    const color = mip[y][x];
-    if (!color) continue;
-    let width = 1;
-    while (x + width < REMOTE_HELD_ITEM_LOGICAL_SIZE && mip[y][x + width] === color) width += 1;
-    let height = 1;
-    heightLoop: while (y + height < REMOTE_HELD_ITEM_LOGICAL_SIZE) {
-      for (let nextX = x; nextX < x + width; nextX += 1) if (mip[y + height][nextX] !== color) break heightLoop;
-      height += 1;
-    }
-    rectangles.push({ x, y, width, height, color, order: rectangles.length });
-    for (let nextY = y; nextY < y + height; nextY += 1) {
-      for (let nextX = x; nextX < x + width; nextX += 1) mip[nextY][nextX] = null;
-    }
-  }
-  return Object.freeze(rectangles
-    .sort((left, right) => right.width * right.height - left.width * left.height || left.order - right.order)
-    .slice(0, REMOTE_HELD_ITEM_MAX_RECTS)
-    .sort((left, right) => left.order - right.order)
-    .map((rect) => Object.freeze({
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-      color: parseIconColor(rect.color),
-    })));
-}
-
-const REMOTE_HELD_ITEM_RECTS: Readonly<Record<ItemId, readonly RemoteHeldItemRect[]>> = Object.freeze(
-  Object.fromEntries(Object.keys(ITEMS).map((itemId) => [itemId, buildRemoteHeldItemRects(getItemIconArt(itemId as ItemId))])) as
-    Record<ItemId, readonly RemoteHeldItemRect[]>,
-);
-const REMOTE_DRAWN_BOW_RECTS = buildRemoteHeldItemRects(getBowIconArt(3));
-
-export function remoteHeldItemRects(itemId: ItemId, bowDrawing = false): readonly RemoteHeldItemRect[] {
-  return itemId === "bow" && bowDrawing ? REMOTE_DRAWN_BOW_RECTS : REMOTE_HELD_ITEM_RECTS[itemId];
+  return geometry;
 }
 
 export function remoteHeldItemVertexCount(itemId: ItemId, bowDrawing = false): number {
-  return remoteHeldItemRects(itemId, bowDrawing).length * VERTICES_PER_HELD_ITEM_RECT;
+  return remoteHeldItemGeometry(itemId, bowDrawing).length / FLOATS_PER_VERTEX;
 }
 
 export interface RemoteGeometryStats {
@@ -299,11 +219,6 @@ function appendArmor(
   }
 }
 
-const HELD_ITEM_QUAD = Object.freeze([
-  Object.freeze([0, 0]), Object.freeze([1, 0]), Object.freeze([1, 1]),
-  Object.freeze([0, 0]), Object.freeze([1, 1]), Object.freeze([0, 1]),
-] as const);
-
 function appendHeldItem(
   writer: VertexWriter,
   state: RemoteAvatarMotion,
@@ -313,18 +228,12 @@ function appendHeldItem(
 ): void {
   const itemId = state.heldItem;
   if (!itemId) return;
-  const rectangles = remoteHeldItemRects(itemId, state.bowDrawing);
-  const unit = 0.066;
-  const socketX = 0.445;
-  const socketY = 0.70;
-  const socketZ = -0.165;
-  const pivotX = 4;
-  const pivotY = 6.4;
+  const geometry = remoteHeldItemGeometry(itemId, state.bowDrawing);
   selectGearPart("rightArm", rig, true);
-  for (const rect of rectangles) for (const point of HELD_ITEM_QUAD) {
-    const localX = socketX + (rect.x + rect.width * point[0] - pivotX) * unit;
-    const localY = socketY + (pivotY - rect.y - rect.height * point[1]) * unit;
-    writeRigVertex(writer, state, cosine, sine, localX, localY, socketZ, rect.color, 0.94);
+  for (let offset = 0; offset < geometry.length; offset += FLOATS_PER_VERTEX) {
+    writeRigVertex(writer, state, cosine, sine, geometry[offset], geometry[offset + 1], geometry[offset + 2], [
+      geometry[offset + 3], geometry[offset + 4], geometry[offset + 5],
+    ]);
   }
 }
 

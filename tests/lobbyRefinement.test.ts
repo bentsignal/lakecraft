@@ -15,6 +15,8 @@ assert.ok(lobby.includes('role="listbox"') && lobby.includes('role="option"'), "
 assert.ok(lobby.includes("props.servers") && lobby.includes("server.onlinePlayers ?? 0"),
   "the multiplayer directory renders control-plane servers and live occupancy");
 assert.ok(lobby.includes("Join Server") && lobby.includes(">Back<"), "the server browser exposes the requested Join and Back actions");
+assert.ok(lobby.includes("onDblClick={() => props.onJoinServer?.(server.id)}")
+  && app.includes("onJoinServer={enterWorld}"), "double-click joins the exact server row without waiting for selected-state propagation");
 assert.ok(lobby.includes("Direct Connect") && lobby.includes("onAddDirectServer"),
   "the server directory has a working saved-address path");
 assert.ok(styles.includes(".lc-dirt-background") && styles.includes("image-rendering:pixelated"), "the server directory uses a pixelated dirt backdrop");

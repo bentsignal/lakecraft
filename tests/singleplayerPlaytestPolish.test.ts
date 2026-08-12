@@ -48,9 +48,10 @@ for (let offset = 0; offset < vertices.length; offset += 6) {
 const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const diagnostics = readFileSync(new URL("../client/gameplayDiagnostics.tsx", import.meta.url), "utf8");
 assert.equal(singleplayer.includes("SINGLE-PLAYER · LOCAL SAVE · 0 LAKEBED REQUESTS"), false);
 assert.equal(singleplayer.includes("Browser-local: no Google account and zero Lakebed requests."), false);
-assert.ok(singleplayer.includes("XYZ: {coordinates.x} / {coordinates.y} / {coordinates.z}"));
+assert.ok(singleplayer.includes("GameplayDiagnostics") && diagnostics.includes("XYZ: {x} / {y} / {z}"));
 assert.ok(singleplayer.includes("onPoseChange"), "coordinates are driven by the local engine pose callback");
 assert.ok(singleplayer.includes("onHotbarSelect: selectHotbar"));
 assert.ok(singleplayer.includes("onHotbarCycle:"));

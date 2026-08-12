@@ -154,7 +154,7 @@ glRenderer.destroy();
 
 const capacity = remotePlayerBufferCapacity(32);
 assert.equal(capacity.skinFloats, 32 * REMOTE_SKIN_FLOATS_PER_PLAYER);
-assert.equal(capacity.avatarFloats / 32 / PLAYER_SKIN_VERTEX_STRIDE, 10 * 36 + 24 * 6,
+assert.equal(capacity.avatarFloats / 32 / PLAYER_SKIN_VERTEX_STRIDE, 10 * 36 + 2_040,
   "gear batch carries only bounded armor and held-item geometry, never a duplicate body");
 
 console.log(JSON.stringify({

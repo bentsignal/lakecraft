@@ -109,15 +109,18 @@ export function resolvePlayerRigPose(input: PlayerRigInput, output?: PlayerRigPo
 }
 
 /** Stable time-to-cycle mapping; no renderer-owned timer or random state is required. */
+export function playerRigCycleMilliseconds(mode: PlayerMovementMode): number {
+  return mode === "sprint" ? 420 : mode === "sneak" ? 900 : mode === "ladder" ? 720 : 600;
+}
+
 export function playerRigInputForMovement(mode: PlayerMovementMode, timeMs: number, moving = mode !== "idle"): PlayerRigInput {
   const time = Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0;
   const crouching = mode === "sneak";
   if (mode === "idle" || !moving) {
     return Object.freeze({ motion: "idle", phase: time / 2_400, ...(crouching ? { crouching: true } : {}) });
   }
-  const cycleMs = mode === "sprint" ? 420 : mode === "sneak" ? 900 : mode === "ladder" ? 720 : 600;
   const intensity = mode === "sprint" ? 1 : mode === "sneak" ? 0.45 : mode === "ladder" ? 0.65 : 0.82;
-  return Object.freeze({ motion: "walk", phase: time / cycleMs, intensity, ...(crouching ? { crouching: true } : {}) });
+  return Object.freeze({ motion: "walk", phase: time / playerRigCycleMilliseconds(mode), intensity, ...(crouching ? { crouching: true } : {}) });
 }
 
 function pitchForPart(part: PlayerRigPart, pose: PlayerRigPose): number {

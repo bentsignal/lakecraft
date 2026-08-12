@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { createRemoteAvatarMotion, resolveRemoteAvatarRigPose, type RemoteAvatarMotion } from "../client/game/avatar.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 import type { RemotePlayer } from "../client/game/types.ts";
@@ -10,12 +9,10 @@ import {
   BASE_AVATAR_VERTICES_PER_PLAYER,
   MAX_ARMOR_VERTICES_PER_PLAYER,
   MAX_HELD_ITEM_VERTICES_PER_PLAYER,
-  REMOTE_HELD_ITEM_LOGICAL_SIZE,
-  REMOTE_HELD_ITEM_MAX_RECTS,
   REMOTE_MESH_INTERVAL_MS,
   createRemotePlayerRenderer,
   remotePlayerBufferCapacity,
-  remoteHeldItemRects,
+  remoteHeldItemGeometry,
   remoteHeldItemVertexCount,
   writeRemotePlayerGeometry,
   type RemoteGeometryStats,
@@ -56,43 +53,16 @@ const heldTool = geometry({ heldItem: "iron_pickaxe" });
 assert.equal(heldBlock.stats.avatarVertexCount, remoteHeldItemVertexCount("sand"));
 assert.equal(heldMaterial.stats.avatarVertexCount, remoteHeldItemVertexCount("coal"));
 assert.equal(heldTool.stats.avatarVertexCount, remoteHeldItemVertexCount("iron_pickaxe"));
-assert.ok(remoteHeldItemVertexCount("sand") > remoteHeldItemVertexCount("coal"),
-  "dense block texture and loose coal retain distinct canonical silhouettes");
+assert.ok(remoteHeldItemVertexCount("sand") < remoteHeldItemVertexCount("coal"),
+  "solid blocks stay true 3D cubes while irregular materials keep their extruded silhouette");
 assert.equal(heldBlock.stats.nameplateVertexCount, bare.stats.nameplateVertexCount, "held gear cannot disturb names");
 
-function canonicalMipOccupiedCells(itemId: ItemId): number {
-  const occupied = Array.from({ length: 16 }, () => Array<boolean>(16).fill(false));
-  for (const run of getItemIconArt(itemId).runs) {
-    for (let x = run.x; x < run.x + run.width; x += 1) occupied[run.y][x] = true;
-  }
-  let cells = 0;
-  for (let y = 0; y < 8; y += 1) for (let x = 0; x < 8; x += 1) {
-    if (occupied[y * 2][x * 2] || occupied[y * 2][x * 2 + 1]
-      || occupied[y * 2 + 1][x * 2] || occupied[y * 2 + 1][x * 2 + 1]) cells += 1;
-  }
-  return cells;
-}
-
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
-  const canonicalColors = new Set(getItemIconArt(itemId).runs.map((run) => run.color.toLowerCase()));
-  const rectangles = remoteHeldItemRects(itemId);
-  assert.ok(rectangles.length > 0 && rectangles.length <= REMOTE_HELD_ITEM_MAX_RECTS,
-    `${itemId} has a non-empty bounded remote sprite`);
-  for (const rectangle of rectangles) {
-    assert.ok(rectangle.x >= 0 && rectangle.y >= 0
-      && rectangle.x + rectangle.width <= REMOTE_HELD_ITEM_LOGICAL_SIZE
-      && rectangle.y + rectangle.height <= REMOTE_HELD_ITEM_LOGICAL_SIZE);
-    const color = `#${rectangle.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`;
-    assert.ok(canonicalColors.has(color), `${itemId} remote mip uses only exact canonical palette colors`);
-  }
-  const retainedCells = rectangles.reduce((total, rectangle) => total + rectangle.width * rectangle.height, 0);
-  const retainedRatio = retainedCells / canonicalMipOccupiedCells(itemId);
-  assert.ok(retainedRatio >= 0.85 || rectangles.length === REMOTE_HELD_ITEM_MAX_RECTS,
-    `${itemId} retains at least 85% of its occupied distance mip or consumes the full bounded rectangle budget`);
-  if (retainedRatio < 0.85) assert.ok(retainedCells >= REMOTE_HELD_ITEM_MAX_RECTS,
-    `${itemId} budget-capped mip still preserves at least one occupied cell per retained rectangle`);
+  const canonical = remoteHeldItemGeometry(itemId);
+  assert.ok(canonical.length > 0, `${itemId} has non-empty canonical third-person geometry`);
+  assert.equal(canonical.length / 6, remoteHeldItemVertexCount(itemId));
+  assert.ok(remoteHeldItemVertexCount(itemId) <= MAX_HELD_ITEM_VERTICES_PER_PLAYER);
 }
-assert.equal(MAX_HELD_ITEM_VERTICES_PER_PLAYER, REMOTE_HELD_ITEM_MAX_RECTS * 6);
 
 const heldToolStart = 0;
 let heldToolMinX = Infinity;
@@ -107,8 +77,15 @@ for (let offset = heldToolStart; offset < heldTool.stats.avatarVertexCount * 6; 
   if (red > 0.52 && green > 0.52) ironToolVertices += 1;
   if (red > green * 1.3) woodenHandleVertices += 1;
 }
-assert.ok(heldToolMinX > 0.03 && heldToolMaxX > 0.48, "held tool is attached at the canonical right hand");
+assert.ok(heldToolMinX > 0.25 && heldToolMaxX < 0.6, "held tool is attached at the canonical right hand");
 assert.ok(ironToolVertices > 0 && woodenHandleVertices > 0, "pickaxe has a readable iron head and wooden handle");
+const pickaxeGeometry = remoteHeldItemGeometry("iron_pickaxe");
+let minDepth = Infinity; let maxDepth = -Infinity;
+for (let offset = 2; offset < pickaxeGeometry.length; offset += 6) {
+  minDepth = Math.min(minDepth, pickaxeGeometry[offset]);
+  maxDepth = Math.max(maxDepth, pickaxeGeometry[offset]);
+}
+assert.ok(maxDepth - minDepth > 0.02, "remote pickaxe keeps the canonical extruded front, back, and edge faces");
 
 function heldCentroid(sample: ReturnType<typeof geometry>): readonly [number, number, number] {
   const start = 0;
@@ -156,11 +133,9 @@ const actionCrouchPickaxe = geometry(
   { heldItem: "iron_pickaxe" },
   { armActionProgress: 0.5, crouching: true },
 );
-const firstPickaxeRect = remoteHeldItemRects("iron_pickaxe")[0];
+const firstPickaxePoint = remoteHeldItemGeometry("iron_pickaxe");
 const expectedHeldPoint = canonicalWorldPoint(actionCrouchPickaxe.state, "rightArm", true, [
-  0.445 + (firstPickaxeRect.x - 4) * 0.066,
-  0.70 + (6.4 - firstPickaxeRect.y) * 0.066,
-  -0.165,
+  firstPickaxePoint[0], firstPickaxePoint[1], firstPickaxePoint[2],
 ]);
 assertPointClose(actionCrouchPickaxe.avatar, expectedHeldPoint,
   "held item uses the exact canonical action+crouch right-arm matrix");
@@ -169,7 +144,7 @@ const idleBow = geometry({ heldItem: "bow" });
 const drawnBow = geometry({ heldItem: "bow" }, { bowDrawing: true });
 assert.equal(idleBow.stats.avatarVertexCount, remoteHeldItemVertexCount("bow", false));
 assert.equal(drawnBow.stats.avatarVertexCount, remoteHeldItemVertexCount("bow", true));
-assert.notDeepEqual(remoteHeldItemRects("bow", false), remoteHeldItemRects("bow", true),
+assert.notDeepEqual(remoteHeldItemGeometry("bow", false), remoteHeldItemGeometry("bow", true),
   "remote draw state swaps to the canonical drawn-bow artwork");
 
 const headOnly = geometry({ armorHead: "iron_helmet" });

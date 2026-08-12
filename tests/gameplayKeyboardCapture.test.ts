@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { GAMEPLAY_KEYBOARD_LOCK_CODES } from "../client/gameplayKeyboardCapture.ts";
 
-assert.deepEqual(GAMEPLAY_KEYBOARD_LOCK_CODES, ["KeyW"],
-  "Keyboard Lock stays narrowly scoped to W and its modifier combinations");
+assert.deepEqual(GAMEPLAY_KEYBOARD_LOCK_CODES, ["KeyW", "Escape"],
+  "Keyboard Lock protects Ctrl+W and lets chat own Escape without leaving fullscreen");
 
 const capture = readFileSync(new URL("../client/gameplayKeyboardCapture.ts", import.meta.url), "utf8");
 const handoff = readFileSync(new URL("../client/pointerLockHandoff.ts", import.meta.url), "utf8");
 const singlePlayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
 assert.ok(capture.includes('root.requestFullscreen({ navigationUI: "hide" })'),
   "Ctrl+W protection enters the JavaScript fullscreen mode required by Keyboard Lock");
@@ -29,5 +30,8 @@ assert.ok(resume.indexOf("applyPointerSessionEvent") < resume.indexOf("requestGa
   "Back to Game requests mouse capture before restoring fullscreen Ctrl+W protection");
 assert.ok(singlePlayer.includes("releaseGameplayKeyboardCapture();"),
   "leaving the world releases the key lock and fullscreen session");
+const multiplayerEntry = multiplayer.slice(multiplayer.indexOf("function enterWorld"), multiplayer.indexOf("useEffect", multiplayer.indexOf("function enterWorld")));
+assert.ok(multiplayerEntry.includes("requestDocumentPointerLockHandoff()") && multiplayerEntry.includes("requestGameplayKeyboardCapture()"),
+  "multiplayer uses the same entry gesture for mouse, fullscreen, Ctrl+W, and chat Escape capture");
 
 console.log("lakecraft gameplay keyboard capture tests: ok");

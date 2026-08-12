@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 
 for (const required of [
   "droppedItems: table({",
@@ -31,5 +32,10 @@ assert.equal(pickupMutation.includes("request.x"), false, "pickup distance must 
 assert.ok(pickupMutation.includes("droppedItems.delete"), "a complete pickup removes the world entity");
 assert.ok(pickupMutation.includes("droppedItems.update"), "a partial pickup retains the exact remainder");
 assert.ok(pickupMutation.indexOf("inventories.update") < pickupMutation.indexOf("droppedItemReceipts.insert"));
+
+const realtimeMine = client.slice(client.indexOf("async function submitPendingWorldBlockEdit"), client.indexOf("function handleBlockEdit"));
+assert.ok(realtimeMine.includes("getDeterministicMiningDrop") && realtimeMine.includes("realtimeDropSinkRef.current")
+  && realtimeMine.includes("await dropSink(dropOperationId, drop, dropPose)"),
+"a confirmed Railway block break publishes one deterministic shared drop through the existing exact-once world-drop authority");
 
 console.log("lakecraft dropped item Lakebed integration tests: ok");

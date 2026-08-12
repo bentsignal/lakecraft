@@ -12,6 +12,7 @@ import {
   type PlayerPose,
   type PlayerProjectileVisual,
   type RemotePlayer,
+  type VoxelPerformanceStats,
   type VoxelEngine,
   type WorldEdit as EngineWorldEdit,
 } from "./game";
@@ -20,6 +21,7 @@ import { SinglePlayerApp } from "./singleplayer";
 import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
 import { releaseGameplayKeyboardCapture, requestGameplayKeyboardCapture } from "./gameplayKeyboardCapture.ts";
 import { requestDocumentPointerLockHandoff } from "./pointerLockHandoff.ts";
+import { GameplayDiagnostics, handleGameplayScreenshotKey } from "./gameplayDiagnostics.tsx";
 import { cycleHotbarIndex } from "./game/hotbarInput";
 import { hydrateSelectedPlayerSkin, type HydratedPlayerSkin } from "./game/playerSkin.ts";
 import {
@@ -74,6 +76,7 @@ import {
   createStarterInventory,
   consumeFood,
   equippedArmorProtection,
+  getDeterministicMiningDrop,
   miningSeconds,
   normalizeInventory,
   type BlockId,
@@ -1080,6 +1083,8 @@ function GameApp({
   const [showPlayerList, setShowPlayerList] = useState(false);
   const [mobileUnsupported, setMobileUnsupported] = useState(false);
   const [messages, setMessages] = useState<HudMessage[]>([]);
+  const [diagnosticPose, setDiagnosticPose] = useState<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
+  const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [engineError, setEngineError] = useState("");
   const [inventoryReady, setInventoryReady] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -1805,6 +1810,36 @@ function GameApp({
           engineRef.current?.spawnBlockParticles({
             action: "break", block: pending.previousBlock, x: confirmed.x, y: confirmed.y, z: confirmed.z,
           });
+          if (realtimeGameModeRef.current !== "creative") {
+            const block = ENGINE_TO_GAME[pending.previousBlock];
+            const drop = block ? getDeterministicMiningDrop(
+              block,
+              pending.expectedHeldItem,
+              confirmed.x,
+              confirmed.y,
+              confirmed.z,
+            ) : null;
+            const dropSink = realtimeDropSinkRef.current;
+            if (drop && dropSink) {
+              const dropOperationId = `mine:${pending.operationId}`.slice(0, 96);
+              const dropPose = {
+                x: confirmed.x + 0.5,
+                y: confirmed.y + 0.45,
+                z: confirmed.z + 0.5,
+                yaw: 0,
+                pitch: 0,
+              };
+              try {
+                await dropSink(dropOperationId, drop, dropPose);
+              } catch {
+                try {
+                  await dropSink(dropOperationId, drop, dropPose);
+                } catch {
+                  notify("Drop connection lost", "The block broke, but the server could not publish its item drop.");
+                }
+              }
+            }
+          }
         } else if (confirmed.block !== BLOCK.AIR) {
           audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(confirmed.block) });
         }
@@ -2383,6 +2418,9 @@ function GameApp({
           if (pose.y - previousSegmentPose.y > 0.08) motionActionSinkRef.current?.("jump");
           previousSegmentPoseRef.current = pose;
           poseRef.current = pose;
+          setDiagnosticPose((current) => Math.floor(current.x) === Math.floor(pose.x)
+            && Math.floor(current.y) === Math.floor(pose.y)
+            && Math.floor(current.z) === Math.floor(pose.z) ? current : pose);
           const pickupSweepAt = performance.now();
           if (pickupSweepAt - lastDroppedPickupSweepRef.current >= 250) {
             lastDroppedPickupSweepRef.current = pickupSweepAt;
@@ -2406,6 +2444,7 @@ function GameApp({
             notify(`${label} out of reach`, `Move back to the ${workstation.kind === "furnace" ? "furnace" : "crafting table"} to keep using it.`, "warning");
           }
         },
+        onPerformanceStats: setPerformanceStats,
         onTargetChange: (target) => { targetRef.current = target; },
         onPointerLockChange: (locked) => {
           if (locked) {
@@ -3111,6 +3150,7 @@ function GameApp({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!inWorld) return;
+      if (handleGameplayScreenshotKey(event, engineRef.current, notify)) return;
       if (event.code === "Tab") {
         event.preventDefault();
         if (!event.repeat && !pauseOpen && !chatOpen && !inventoryOpen && !furnaceOpen && !activeChestKey && !activeBedKey) {
@@ -3567,9 +3607,9 @@ function GameApp({
       : "This address was saved. Add it again with its private invitation token before joining.");
   }
 
-  function enterWorld() {
+  function enterWorld(serverId = selectedServerId) {
     if (!profile || joinPhase === "joining" || joinPhase === "waiting" || joinPhase === "ready") return;
-    const selected = combinedServers.find((server) => server.id === selectedServerId);
+    const selected = combinedServers.find((server) => server.id === serverId);
     const registered = selected && registeredServers.find((server) => server.id === selected.id);
     const persistedTokens = loadMultiplayerInvitationTokens(window.localStorage);
     const demoToken = selected ? demoServerTokens[selected.endpoint] || persistedTokens[selected.endpoint] || "" : "";
@@ -3579,6 +3619,7 @@ function GameApp({
       return;
     }
     entryPointerLockHandoffRef.current = requestDocumentPointerLockHandoff();
+    requestGameplayKeyboardCapture();
     setJoinError("");
     setJoinPhase("joining");
     void flushInventoryActions().then(async () => {
@@ -3727,7 +3768,8 @@ function GameApp({
           if (joinPhase === "error") setJoinPhase("idle");
           setJoinError("");
         }}
-        onJoinWorld={enterWorld}
+        onJoinWorld={() => enterWorld()}
+        onJoinServer={enterWorld}
         onSelectServer={(serverId) => {
           setSelectedServerId(serverId);
           setJoinPhase("idle");
@@ -3822,6 +3864,11 @@ function GameApp({
         />
       ) : null}
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
+      <GameplayDiagnostics
+        gameMode={realtimeSession ? realtimeGameMode : "survival"}
+        pose={diagnosticPose}
+        stats={performanceStats}
+      />
 
       {realtimeSession ? (
         <RealtimeMultiplayerTransport

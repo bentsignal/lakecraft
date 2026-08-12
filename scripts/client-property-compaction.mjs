@@ -321,6 +321,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "onInventoryWorkspaceChange": "Sr",
   "onInventoryWorkspacePreview": "ha",
   "onJoinWorld": "$i",
+  "onJoinServer": "cJ",
   "onLeftClickSlot": "sa",
   "onLocalCreeperExplosion": "F",
   "onLocalMobHit": "G",

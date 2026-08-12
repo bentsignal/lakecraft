@@ -8,16 +8,17 @@ import { resolvePlayerRigPose, writePlayerRigPartMatrix } from "../client/game/p
 import { itemVisual } from "../shared/visualCatalog.ts";
 
 const source = readFileSync(new URL("../client/game/playerSkinRenderer.ts", import.meta.url), "utf8");
+const heldItemSource = readFileSync(new URL("../client/game/thirdPersonHeldItem.ts", import.meta.url), "utf8");
 for (const contract of [
   "buildPlayerSkinGeometry", "gl.NEAREST", "gl.CLAMP_TO_EDGE", "uSkin", "uLight",
   "Math.PI - pose.yaw", "gl.enable(gl.BLEND)", "PLAYER_RIG_SKIN_DRAWS", "setPartMvp",
   "appendItemSpriteGeometry", "setHeldItem(itemId)", "heldItemVertexCount",
   "buildPlayerArmorGeometry", "setArmor(appearance)", "armorVertexCount",
-  "itemVisual(itemId)", "display.thirdPersonRight", "thirdPersonHeldItemPresentation(heldItem, tuning)",
-  "appendBlockItemCubeGeometry", "blockIdForCubeItem(heldItem)",
+  "itemVisual(itemId)", "display.thirdPersonRight", "buildThirdPersonHeldItemGeometry(heldItem, tuning)",
+  "appendBlockItemCubeGeometry", "blockIdForCubeItem(itemId)",
   "resolvePlayerRigPose(rig)", "playerArmorRigDraws", "setPartMvp(\"rightArm\", true", "drawCallCount",
   "currentThirdPersonTuning()", "heldItemTuningRevision", "rebuildHeldItemGeometry",
-]) assert.ok(source.includes(contract), `world skin renderer retains ${contract}`);
+]) assert.ok((source + heldItemSource).includes(contract), `shared world skin renderer retains ${contract}`);
 for (const itemId of ["dirt", "diamond_pickaxe", "apple", "bow"] as const) {
   const presentation = thirdPersonHeldItemPresentation(itemId);
   const display = itemVisual(itemId).display.thirdPersonRight;

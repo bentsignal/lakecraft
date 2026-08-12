@@ -7,17 +7,12 @@ const REVIEWED_DEVELOPMENT_SURFACES = Object.freeze({
   callback: "ea9612b8",
   render: "86b20f0f",
   benchmark: "12742b65",
-  screenshot: "fefc6258",
 });
 
 const REVIEWED_VOXEL_DEVELOPMENT_SURFACES = Object.freeze({
   state: "fc80f9f4",
   "rig-preview": "1328333d",
   method: "9701338b",
-  "screenshot-state": "1d4682c6",
-  "screenshot-render": "f28244ac",
-  "screenshot-destroy": "6973b803",
-  "screenshot-method": "d58ed5ef",
 });
 
 function fingerprint(source) {

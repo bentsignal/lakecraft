@@ -4,11 +4,13 @@ import {
   advanceRemoteAvatarMotion,
   applyRemoteAvatarSnapshot,
   createRemoteAvatarMotion,
+  resolveRemoteAvatarRigPose,
   sanitizePlayerName,
   sanitizeRemoteArmor,
   sanitizeRemoteHeldItem,
   shortestAngleDelta,
 } from "../client/game/avatar.ts";
+import { playerRigCycleMilliseconds } from "../client/game/playerRig.ts";
 import { PRESENCE_MAX_EXTRAPOLATION_MS, PRESENCE_MAX_HORIZONTAL_SPEED, PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS, PRESENCE_MAX_VERTICAL_SPEED, PRESENCE_MAX_X } from "../shared/presenceMotion.ts";
 import type { RemotePlayer } from "../client/game/types.ts";
 
@@ -145,5 +147,13 @@ assert.doesNotThrow(() => applyRemoteAvatarSnapshot(acting, player({
   visualActions: [null, { sequence: 6, kind: "unknown" }, { sequence: 7, kind: "slot", value: 9 }] as never,
 }), 1_300), "malformed community-server actions never reach avatar animation state");
 assert.equal(acting.lastVisualActionSequence, 5);
+
+const lookingUp = createRemoteAvatarMotion(player({ pitch: 0.4 }), 0);
+assert.ok(Math.abs(resolveRemoteAvatarRigPose(lookingUp).headPitch + 0.4) < 1e-8,
+  "positive engine pitch renders the remote head looking up, matching local F5 inversion");
+assert.deepEqual(
+  [playerRigCycleMilliseconds("walk"), playerRigCycleMilliseconds("sprint"), playerRigCycleMilliseconds("sneak")],
+  [600, 420, 900],
+  "local and remote rigs share reviewed walk, sprint, and crouch cadence");
 
 console.log("lakecraft avatar tests: ok");

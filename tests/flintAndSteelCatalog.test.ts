@@ -11,7 +11,7 @@ import {
   maxItemDurability,
 } from "../shared/game.ts";
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
-import { remoteHeldItemRects, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
+import { remoteHeldItemGeometry, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
 import { resolveWorldBlockOperation } from "../shared/worldBlockOperations.ts";
 
 assert.equal(ITEMS.flint.category, "material");
@@ -116,10 +116,10 @@ assert.ok(connected.size >= 35 && connected.size <= 50,
   "the exact installed steel hook remains a substantial component beside the flint");
 assert.equal(strikerCells.size, 85, "the exact striker stays compact inside its 16px frame");
 
-const remoteStriker = remoteHeldItemRects("flint_and_steel");
-assert.equal(remoteHeldItemVertexCount("flint_and_steel"), remoteStriker.length * 6);
-assert.ok(remoteStriker.length >= 8, "remote players retain a recognizable bounded striker silhouette");
-assert.ok(new Set(remoteStriker.map((rect) => rect.color.join(","))).size >= 3,
+const remoteStriker = remoteHeldItemGeometry("flint_and_steel");
+assert.equal(remoteHeldItemVertexCount("flint_and_steel"), remoteStriker.length / 6);
+assert.ok(remoteStriker.length >= 8 * 6, "remote players retain a recognizable bounded striker silhouette");
+assert.ok(new Set(Array.from({ length: remoteStriker.length / 6 }, (_, vertex) => remoteStriker.slice(vertex * 6 + 3, vertex * 6 + 6).join(","))).size >= 3,
   "remote striker reuses the canonical multicolor flint-and-steel palette");
 
 console.log("flint, flint-and-steel crafting, durability, drop, and visual tests passed");

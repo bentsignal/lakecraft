@@ -1973,13 +1973,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let targetOutlineVertexCount = 0;
   let running = false;
   let destroyed = false;
-  /* @lakecraft-voxel-development:screenshot-state:start */
   let pendingScreenshot: {
     promise: Promise<Blob>;
     resolve: (blob: Blob) => void;
     reject: (reason: Error) => void;
   } | null = null;
-  /* @lakecraft-voxel-development:screenshot-state:end */
   let paused = false;
   let pausedStartedAt = 0;
   let pausedVisualTime = 0;
@@ -3750,7 +3748,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }
     }
 
-    /* @lakecraft-voxel-development:screenshot-render:start */
     if (pendingScreenshot) {
       const capture = pendingScreenshot;
       pendingScreenshot = null;
@@ -3759,7 +3756,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         else capture.reject(new Error("The browser could not encode the game frame."));
       }, "image/png");
     }
-    /* @lakecraft-voxel-development:screenshot-render:end */
 
   }
 
@@ -4250,10 +4246,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (destroyed) return;
       destroyed = true;
       running = false;
-      /* @lakecraft-voxel-development:screenshot-destroy:start */
       pendingScreenshot?.reject(new Error("The game closed before the screenshot completed."));
       pendingScreenshot = null;
-      /* @lakecraft-voxel-development:screenshot-destroy:end */
       resetMovementView();
       cancelAnimationFrame(frameId);
       window.removeEventListener("keydown", onKeyDown);
@@ -4305,7 +4299,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteTexture(terrainTexture);
       destroyMobTexture(gl, mobTexture);
     },
-    /* @lakecraft-voxel-development:screenshot-method:start */
     captureScreenshot() {
       if (destroyed) return Promise.reject(new Error("The game is closed."));
       if (pendingScreenshot) return pendingScreenshot.promise;
@@ -4316,7 +4309,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (paused) lastPausedRenderAt = Number.NEGATIVE_INFINITY;
       return promise;
     },
-    /* @lakecraft-voxel-development:screenshot-method:end */
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;
     },
