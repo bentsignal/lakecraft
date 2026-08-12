@@ -5,7 +5,8 @@ const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "ut
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 
 for (const required of [
-  '"playerCombatStates", inWorld ? combatUserIds : []',
+  '"playerCombatStates", combatUserIds',
+  "transportForeground && !realtimeSession",
   'useMutation<[requestJson: string]',
   '>("attackPlayer")',
   "onRemotePlayerAttack: (target) =>",

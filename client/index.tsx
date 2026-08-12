@@ -207,6 +207,20 @@ type ExternalMultiplayerServer = {
   capacity?: number;
 };
 
+type ClientBootstrap = readonly [
+  PlayerPresence | null,
+  PersistedInventory | null,
+  Profile | null,
+  ExternalMultiplayerServer[],
+];
+
+type PlayerCombatQueryResult = {
+  ok: boolean;
+  reason?: string;
+  states: PlayerCombatState[];
+  serverNow: number;
+};
+
 type ExternalJoinTicketResult =
   | { ok: true; ticket: string; serverId: string; canonicalWssUrl: string; expiresAt: number }
   | { ok: false; reason: string };
@@ -761,6 +775,81 @@ function LakebedQueryRecovery({ error, retry }: { error: Error; retry: () => voi
   );
 }
 
+function LobbyBootstrapQuery({
+  identity,
+  onResult,
+}: {
+  identity: string;
+  onResult: (identity: string, result: ClientBootstrap) => void;
+}) {
+  const result = useQuery<ClientBootstrap>("clientBootstrap");
+  useEffect(() => {
+    if (Array.isArray(result) && result.length === 4) onResult(identity, result);
+  }, [identity, onResult, result]);
+  return null;
+}
+
+function InventoryQuery({ onResult }: { onResult: (result: PersistedInventory | null) => void }) {
+  const result = useQuery<PersistedInventory | null>("myInventory");
+  useEffect(() => {
+    if (result === null || (!Array.isArray(result) && typeof result === "object")) onResult(result);
+  }, [onResult, result]);
+  return null;
+}
+
+function LakebedWorldQueries({
+  activeChestKey,
+  activeFurnaceKey,
+  combatUserIds,
+  droppedChunkKeys,
+  furnaceQuerySample,
+  onChest,
+  onCombat,
+  onDroppedItems,
+  onFurnace,
+  onPresence,
+  onWorldChunks,
+  onWorldClock,
+  onWorldEvents,
+  worldChunkKeys,
+}: {
+  activeChestKey: string;
+  activeFurnaceKey: string;
+  combatUserIds: string[];
+  droppedChunkKeys: string[];
+  furnaceQuerySample: string;
+  onChest: (result: ChestAtResult | undefined) => void;
+  onCombat: (result: PlayerCombatQueryResult | undefined) => void;
+  onDroppedItems: (result: DroppedItemsQueryResult | undefined) => void;
+  onFurnace: (result: FurnaceAtResult | undefined) => void;
+  onPresence: (result: PlayerPresence | null) => void;
+  onWorldChunks: (result: WorldChunksQueryResult | undefined) => void;
+  onWorldClock: (result: WorldClockSnapshot | undefined) => void;
+  onWorldEvents: (result: WorldEdit[]) => void;
+  worldChunkKeys: string[];
+}) {
+  const worldEvents = useQuery<WorldEdit[]>("worldEdits");
+  const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", worldChunkKeys);
+  const combat = useQuery<PlayerCombatQueryResult, string[]>("playerCombatStates", combatUserIds);
+  const presence = useQuery<PlayerPresence | null>("myPresence");
+  const chest = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
+  const furnace = useQuery<FurnaceAtResult, { coordKey: string; sample: string }>(
+    "furnaceAt",
+    { coordKey: activeFurnaceKey, sample: activeFurnaceKey ? furnaceQuerySample : "0" },
+  );
+  const clock = useQuery<WorldClockSnapshot>("worldClock");
+  const dropped = useQuery<DroppedItemsQueryResult, string[]>("droppedItems", droppedChunkKeys);
+  useEffect(() => { if (Array.isArray(worldEvents)) onWorldEvents(worldEvents); }, [onWorldEvents, worldEvents]);
+  useEffect(() => { if (!Array.isArray(worldChunks)) onWorldChunks(worldChunks); }, [onWorldChunks, worldChunks]);
+  useEffect(() => { if (!Array.isArray(combat)) onCombat(combat); }, [combat, onCombat]);
+  useEffect(() => { if (presence === null || (!Array.isArray(presence) && typeof presence === "object")) onPresence(presence); }, [onPresence, presence]);
+  useEffect(() => { if (!Array.isArray(chest)) onChest(chest); }, [chest, onChest]);
+  useEffect(() => { if (!Array.isArray(furnace)) onFurnace(furnace); }, [furnace, onFurnace]);
+  useEffect(() => { if (!Array.isArray(clock)) onWorldClock(clock); }, [clock, onWorldClock]);
+  useEffect(() => { if (!Array.isArray(dropped)) onDroppedItems(dropped); }, [dropped, onDroppedItems]);
+  return null;
+}
+
 function GameApp({
   inWorld,
   setInWorld,
@@ -781,32 +870,25 @@ function GameApp({
   const [mobLeaseSessionId, setMobLeaseSessionId] = useState("");
   const [segmentRemotePlayers, setSegmentRemotePlayers] = useState<RemotePlayer[]>([]);
   const [worldChunkKeys, setWorldChunkKeys] = useState<string[]>(() => visibleWorldChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
-  const worldEvents = useQuery<WorldEdit[]>("worldEdits") ?? [];
-  const worldChunks = useQuery<WorldChunksQueryResult, string[]>("worldChunks", worldChunkKeys);
+  const [worldEvents, setWorldEvents] = useState<WorldEdit[]>([]);
+  const [worldChunks, setWorldChunks] = useState<WorldChunksQueryResult | undefined>(undefined);
   const combatUserIds = [...new Set([
     auth.userId,
     ...segmentRemotePlayers.slice(0, 127).map((player) => player.id),
   ].filter((userId): userId is string => typeof userId === "string" && userId.length > 0))].sort();
-  const playerCombatResult = useQuery<{
-    ok: boolean;
-    reason?: string;
-    states: PlayerCombatState[];
-    serverNow: number;
-  }, string[]>("playerCombatStates", inWorld ? combatUserIds : []);
-  const savedPresence = useQuery<PlayerPresence | null>("myPresence");
-  const savedInventory = useQuery<PersistedInventory | null>("myInventory");
-  const profile = useQuery<Profile | null>("myProfile");
-  const externalMultiplayerServers = useQuery<ExternalMultiplayerServer[]>("externalMultiplayerServers") ?? [];
-  const chestResult = useQuery<ChestAtResult, string>("chestAt", activeChestKey);
-  const furnaceResult = useQuery<FurnaceAtResult, { coordKey: string; sample: string }>(
-    "furnaceAt",
-    { coordKey: activeFurnaceKey, sample: activeFurnaceKey ? furnaceQuerySample : "0" },
-  );
-  const worldClock = useQuery<WorldClockSnapshot>("worldClock");
+  const [playerCombatResult, setPlayerCombatResult] = useState<PlayerCombatQueryResult | undefined>(undefined);
+  const [bootstrapIdentity, setBootstrapIdentity] = useState("");
+  const [savedPresence, setSavedPresence] = useState<PlayerPresence | null | undefined>(undefined);
+  const [savedInventory, setSavedInventory] = useState<PersistedInventory | null | undefined>(undefined);
+  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
+  const [externalMultiplayerServers, setExternalMultiplayerServers] = useState<ExternalMultiplayerServer[]>([]);
+  const [chestResult, setChestResult] = useState<ChestAtResult | undefined>(undefined);
+  const [furnaceResult, setFurnaceResult] = useState<FurnaceAtResult | undefined>(undefined);
+  const [worldClock, setWorldClock] = useState<WorldClockSnapshot | undefined>(undefined);
   const [mobIds, setMobIds] = useState<string[]>([]);
   const [mobWorldAuthority, setMobWorldAuthority] = useState<MobWorldCompositeSnapshot | null>(null);
   const [droppedChunkKeys, setDroppedChunkKeys] = useState<string[]>(() => visibleDroppedItemChunkKeys(DEFAULT_PLAYER_POSE.x, DEFAULT_PLAYER_POSE.z));
-  const droppedItemsResult = useQuery<DroppedItemsQueryResult, string[]>("droppedItems", inWorld ? droppedChunkKeys : []);
+  const [droppedItemsResult, setDroppedItemsResult] = useState<DroppedItemsQueryResult | undefined>(undefined);
 
   const editWorldBlock = useMutation<[
     requestJson: string,
@@ -1032,6 +1114,16 @@ function GameApp({
   const [chestBusy, setChestBusy] = useState(false);
   const [chestError, setChestError] = useState("");
   const [activeBedKey, setActiveBedKey] = useState("");
+  const lakebedIdentity = auth.isLoading ? "" : auth.userId ?? "guest";
+  const bootstrapReady = lakebedIdentity !== "" && bootstrapIdentity === lakebedIdentity;
+  const acceptBootstrap = (identity: string, result: ClientBootstrap) => {
+    if (identity !== (auth.userId ?? "guest")) return;
+    setSavedPresence(result[0]);
+    setSavedInventory(result[1]);
+    setProfile(result[2]);
+    setExternalMultiplayerServers(result[3]);
+    setBootstrapIdentity(identity);
+  };
   const multiplayerPaused = multiplayerGameplayPaused({
     foreground: transportForeground,
     mobileUnsupported,
@@ -3360,6 +3452,7 @@ function GameApp({
     setUsernameError("");
     void claimUsername(value).then((result) => {
       if (result.ok) {
+        setProfile(result.profile);
         setUsernameDraft(result.profile.username);
         setUsernameState("claimed");
         return;
@@ -3547,6 +3640,10 @@ function GameApp({
 
   if (!inWorld) {
     return (
+      <>
+      {transportForeground && lakebedIdentity !== "" && !bootstrapReady ? (
+        <LobbyBootstrapQuery identity={lakebedIdentity} onResult={acceptBootstrap} />
+      ) : null}
       <LobbyScreen
         authState={lobbyAuthState}
         buildLabel="MULTIPLAYER ALPHA"
@@ -3587,6 +3684,11 @@ function GameApp({
         }}
         onSignOut={() => {
           signOut();
+          setBootstrapIdentity("");
+          setSavedPresence(undefined);
+          setSavedInventory(undefined);
+          setProfile(undefined);
+          setExternalMultiplayerServers([]);
           updateInventory(createStarterInventory());
           const emptyEquipment = createEmptyEquipment();
           updateEquipment(emptyEquipment);
@@ -3633,12 +3735,32 @@ function GameApp({
         worldName="Fern Hollow"
         worldStatus="online"
       />
+      </>
     );
   }
 
   return (
     <main className="lakecraft-shell">
       <style>{APP_CSS}</style>
+      {transportForeground ? <InventoryQuery onResult={setSavedInventory} /> : null}
+      {transportForeground && !realtimeSession ? (
+        <LakebedWorldQueries
+          activeChestKey={activeChestKey}
+          activeFurnaceKey={activeFurnaceKey}
+          combatUserIds={combatUserIds}
+          droppedChunkKeys={droppedChunkKeys}
+          furnaceQuerySample={furnaceQuerySample}
+          onChest={setChestResult}
+          onCombat={setPlayerCombatResult}
+          onDroppedItems={setDroppedItemsResult}
+          onFurnace={setFurnaceResult}
+          onPresence={setSavedPresence}
+          onWorldChunks={setWorldChunks}
+          onWorldClock={setWorldClock}
+          onWorldEvents={setWorldEvents}
+          worldChunkKeys={worldChunkKeys}
+        />
+      ) : null}
       <canvas aria-label="Lakecraft voxel world" className="lakecraft-world" data-testid="voxel-world" ref={canvasRef} tabIndex={0} />
 
       {realtimeSession ? (

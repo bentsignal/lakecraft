@@ -62,7 +62,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   ignitionId: [19, 10],
   ingredients: [2, 22],
   inputJson: [12, 5],
-  inventories: [46, 1],
+  inventories: [47, 1],
   inventory: [73, 83],
   inventoryJson: [27, 22],
   inventoryRevision: [10, 8],
@@ -92,7 +92,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   parentEventId: [9, 5],
   playerCombat: [25, 1],
   playerCombatReceipts: [9, 1],
-  playerPresence: [44, 1],
+  playerPresence: [45, 1],
   playerState: [8, 4],
   playerStateJson: [20, 10],
   poseSequence: [5, 9],
@@ -118,7 +118,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   targetKind: [20, 2],
   targetUserId: [20, 3],
   updatedAt: [12, 1],
-  userId: [295, 90],
+  userId: [298, 90],
   username: [14, 8],
   version: [9, 11],
   weaponItemId: [7, 2],
@@ -139,9 +139,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "b864c844f4089c993f19f1dd839ce5f4974d72da47bef89923973aabdc49682d";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "af0c1a2f83d5f6b974ce9926170faecd45740f8a9fada876f3339ea3e9feda1a";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "9ef3b2dcb31f64db5ecb9dc7b792742315249a8077ef54f60542e90cfb7ad7d1";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "8a905983065807cc58280b276a30d6ddf49f5c5446dc456ec99ac04a82b86748";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "518c0cde71b958d801fc27826bcf10b26f841353462fdd49a40399fec390278d";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "5309c7a2e0691e943e6f571dad54618d9974dcb1264ac9caae7ce813f6100e45";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
 // bundle contains a larger set of ordinary property spellings that can be
@@ -150,7 +150,9 @@ export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3
 // so source drift fails closed instead of silently broadening the transform.
 export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
 export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 283;
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "97ebb89e07f504a4c9cbb819bfe09cdb68c60ce3e0c8e8c7a7eb2706dbdddb53";
+// The positional clientBootstrap query reorders existing high-gain server keys
+// without adding a new compact wire property.
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "a6bdb86e81420358c6c0ad47be32e7276ef49a9c6ab61c3af18525a406a6ac2d";
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",
   sessionId: Object.freeze({
@@ -166,6 +168,24 @@ export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
     currentUses: 3,
     addedKind: "ShorthandPropertyAssignment",
     previousEntryFingerprint: "8018412bf9f94a3a82d031c06610083baa60c0137a1db0301aa7b1debdc85e93",
+  }),
+  inventories: Object.freeze({
+    path: "server/index.ts",
+    previousUses: 47,
+    currentUses: 48,
+    previousEntryFingerprint: "80440fbeace96efc8f57c1e588a78962746872ed49b08fb1a95f497819bcc31f",
+  }),
+  playerPresence: Object.freeze({
+    path: "server/index.ts",
+    previousUses: 45,
+    currentUses: 46,
+    previousEntryFingerprint: "f6ef293e79d343722fe5953539577ff8f8256ed3f4eac1f3dc57097761fc0011",
+  }),
+  userId: Object.freeze({
+    path: "server/index.ts",
+    previousUses: 371,
+    currentUses: 374,
+    previousEntryFingerprint: "af83a2276c7b775dce19792f4b82d151439f332b41359675101da14401e022df",
   }),
 });
 

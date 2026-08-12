@@ -80,26 +80,30 @@ const fingerprintInput = names.map((name) => ({
     .filter(([path]) => !path.startsWith("tests/"))),
 }));
 const fingerprint = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const reviewedKeyNames = Object.keys(COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA)
+  .filter((name) => Object.hasOwn(COMPACT_SERVER_KEY_COUNTS, name));
 assert.equal(fingerprint(COMPACT_SERVER_KEY_COUNTS), COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT,
   "compact key names, counts, order, and emitted runtime strings stay unchanged");
 assert.equal(fingerprint(COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS), COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT,
   "the JavaScript, Lakebed, auth, and database exclusion boundary stays unchanged");
 assert.equal(
-  fingerprint(fingerprintInput.filter(({ name }) => name !== "sessionId" && name !== "version")),
+  fingerprint(fingerprintInput.filter(({ name }) => !reviewedKeyNames.includes(name))),
   COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT,
   "every non-reviewed key keeps identical declaration/use paths, counts, and kinds",
 );
-for (const name of ["sessionId", "version"]) {
+for (const name of reviewedKeyNames) {
   const delta = COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA[name];
   const current = fingerprintInput.find((entry) => entry.name === name);
   assert.ok(current, `${name} remains in the analyzed source boundary`);
   assert.equal(current.counts[delta.path], delta.currentUses,
     `${name} has only its reviewed property-use increase`);
-  assert.equal(current.kinds[`${delta.path}:${delta.addedKind}`], 1,
-    `${name} has exactly one reviewed added declaration kind`);
+  if (delta.addedKind) {
+    assert.equal(current.kinds[`${delta.path}:${delta.addedKind}`], 1,
+      `${name} has exactly one reviewed added declaration kind`);
+  }
   const normalized = JSON.parse(JSON.stringify(current));
   normalized.counts[delta.path] = delta.previousUses;
-  delete normalized.kinds[`${delta.path}:${delta.addedKind}`];
+  if (delta.addedKind) delete normalized.kinds[`${delta.path}:${delta.addedKind}`];
   assert.equal(fingerprint(normalized), delta.previousEntryFingerprint,
     `${name} paths and every non-reviewed count/kind reproduce the prior checkpoint exactly`);
 }

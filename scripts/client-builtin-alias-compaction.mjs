@@ -23,7 +23,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "PI", 110]),
   Object.freeze(["Object", "freeze", 164]),
   Object.freeze(["Object", "keys", 31]),
-  Object.freeze(["Array", "isArray", 78]),
+  // Query bridges reject Lakebed's [] loading sentinel before publishing data.
+  Object.freeze(["Array", "isArray", 88]),
   Object.freeze(["Number", "isFinite", 266]),
   Object.freeze(["Number", "isInteger", 52]),
   Object.freeze(["Number", "isSafeInteger", 44]),
@@ -35,8 +36,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 35]),
   Object.freeze(["JSON", "parse", 14]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_985;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "c10a03b426fc068c46daf38d72976783a5e60cdb803021e55a01ba849ab396c7";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_995;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "4661135b4f611b9983f9b227a263fa9926518af58205d3abc077a9382321b27b";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

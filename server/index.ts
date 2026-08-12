@@ -1950,6 +1950,22 @@ export default capsule({
       (await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
     ),
 
+    /**
+     * One bounded lobby request replaces four permanently mounted browser
+     * subscriptions. The tuple is intentionally positional so compact client
+     * and server property mangling cannot alter this wire boundary.
+     */
+    clientBootstrap: query(async (ctx) => {
+      const presence = (await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId)) ?? null;
+      const inventory = (await newestMatchingRow(ctx.db.inventories, BS.byUser, BS.userId, ctx.auth.userId)) ?? null;
+      const profile = (await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId)) ?? null;
+      const rows = await newestByIndex(ctx.db.externalMultiplayerServers, "by_creation").take(100);
+      const servers = rows
+        .filter((row) => row.active && canonicalizeExternalMultiplayerWssUrl(row.canonicalWssUrl) === row.canonicalWssUrl)
+        .map(externalMultiplayerServerView);
+      return [presence, inventory, profile, servers] as const;
+    }),
+
     externalMultiplayerServers: query(async (ctx) => {
       const rows = await newestByIndex(ctx.db.externalMultiplayerServers, "by_creation").take(100);
       return rows
