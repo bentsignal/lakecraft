@@ -72,6 +72,27 @@ const pickupAfterExpiry = collectLocalDroppedItems(emptyInventory, pruned.drops,
 });
 assert.deepEqual(pickupAfterExpiry.inventory, emptyInventory, "expiry cannot mint removed items into inventory");
 
+const manualToss: LocalDroppedItem = {
+  dropId: "manual-toss",
+  item: { itemId: "dirt", count: 1 },
+  x: 0,
+  y: 1,
+  z: 0,
+  droppedAt: now - 10_000,
+  velocityY: 0,
+  settled: true,
+  ownerPickupBlocked: true,
+};
+const stationaryOwner = collectLocalDroppedItems(emptyInventory, [manualToss], { x: 0, y: 1, z: 0 }, undefined, now);
+assert.equal(stationaryOwner.drops.length, 1, "a stationary player cannot recollect their own Q-drop after the timer");
+assert.equal(stationaryOwner.drops[0].ownerPickupBlocked, true);
+const leftDrop = collectLocalDroppedItems(emptyInventory, stationaryOwner.drops, { x: 3, y: 1, z: 0 }, undefined, now);
+assert.equal(leftDrop.changed, true, "leaving the drop radius durably releases the owner barrier");
+assert.equal(leftDrop.drops[0].ownerPickupBlocked, undefined);
+const returnedOwner = collectLocalDroppedItems(leftDrop.inventory, leftDrop.drops, { x: 0, y: 1, z: 0 }, undefined, now);
+assert.equal(returnedOwner.drops.length, 0, "the owner can collect the toss after leaving and returning");
+assert.equal(returnedOwner.inventory[0]?.itemId, "dirt");
+
 const saturatedStalePool = Array.from(
   { length: SINGLEPLAYER_SAVE_LIMITS.drops },
   (_, index): LocalDroppedItem => ({

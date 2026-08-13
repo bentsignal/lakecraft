@@ -23,6 +23,7 @@ const MAX_PARTIAL_SUPPORT_HEIGHT = DOOR_SUPPORT_HEIGHT;
 export type LocalDroppedItem = DroppedItemRenderItem & {
   velocityY: number;
   settled: boolean;
+  ownerPickupBlocked?: boolean;
 };
 
 export type LocalDropGravityClock = {
