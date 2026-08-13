@@ -249,11 +249,11 @@ function appendBox(
       const offsetZ = unrotatedZ - pivotZ;
       const pitchedY = pivotY + offsetY * cosPitch - offsetZ * sinPitch;
       const pitchedZ = pivotZ + offsetY * sinPitch + offsetZ * cosPitch;
-      const deathY = 0.72 + (pitchedY - 0.72) * writer.deathCos - pitchedZ * writer.deathSin;
-      const deathZ = (pitchedY - 0.72) * writer.deathSin + pitchedZ * writer.deathCos;
-      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      const deathX = localX * writer.deathCos - (pitchedY - 0.72) * writer.deathSin;
+      const deathY = 0.72 + localX * writer.deathSin + (pitchedY - 0.72) * writer.deathCos;
+      writer.data[writer.offset++] = originX + deathX * cosYaw - pitchedZ * sinYaw;
       writer.data[writer.offset++] = originY + deathY;
-      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
+      writer.data[writer.offset++] = originZ + deathX * sinYaw + pitchedZ * cosYaw;
       writer.data[writer.offset++] = WHITE_U;
       writer.data[writer.offset++] = WHITE_V;
       const baseRed = red * shade;
@@ -293,11 +293,11 @@ function appendMobPatches(
       const top = point >= 2 && point <= 4 ? 1 : 0;
       const localX = minX + corner * width;
       const localY = minY + top * height;
-      const deathY = 0.72 + (localY - 0.72) * writer.deathCos - localZ * writer.deathSin;
-      const deathZ = (localY - 0.72) * writer.deathSin + localZ * writer.deathCos;
-      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      const deathX = localX * writer.deathCos - (localY - 0.72) * writer.deathSin;
+      const deathY = 0.72 + localX * writer.deathSin + (localY - 0.72) * writer.deathCos;
+      writer.data[writer.offset++] = originX + deathX * cosYaw - localZ * sinYaw;
       writer.data[writer.offset++] = originY + deathY;
-      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
+      writer.data[writer.offset++] = originZ + deathX * sinYaw + localZ * cosYaw;
       const hurtMix = writer.hurtMix;
       writer.data[writer.offset++] = red + (1 - red) * hurtMix;
       writer.data[writer.offset++] = green + (0.06 - green) * hurtMix;
@@ -420,11 +420,11 @@ function appendSurfacePanel(
         localY = plane + epsilon;
         localZ = -v;
       }
-      const deathY = 0.72 + (localY - 0.72) * writer.deathCos - localZ * writer.deathSin;
-      const deathZ = (localY - 0.72) * writer.deathSin + localZ * writer.deathCos;
-      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      const deathX = localX * writer.deathCos - (localY - 0.72) * writer.deathSin;
+      const deathY = 0.72 + localX * writer.deathSin + (localY - 0.72) * writer.deathCos;
+      writer.data[writer.offset++] = originX + deathX * cosYaw - localZ * sinYaw;
       writer.data[writer.offset++] = originY + deathY;
-      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
+      writer.data[writer.offset++] = originZ + deathX * sinYaw + localZ * cosYaw;
       const hurtMix = writer.hurtMix;
       writer.data[writer.offset++] = color[0] + (1 - color[0]) * hurtMix;
       writer.data[writer.offset++] = color[1] + (0.06 - color[1]) * hurtMix;
@@ -776,11 +776,11 @@ function appendModelCube(
       const localX = (partX + mx) / 16;
       const localY = (24 - partY - my) / 16;
       const localZ = -(partZ + mz) / 16;
-      const deathY = 0.72 + (localY - 0.72) * writer.deathCos - localZ * writer.deathSin;
-      const deathZ = (localY - 0.72) * writer.deathSin + localZ * writer.deathCos;
-      writer.data[writer.offset++] = originX + localX * cosYaw - deathZ * sinYaw;
+      const deathX = localX * writer.deathCos - (localY - 0.72) * writer.deathSin;
+      const deathY = 0.72 + localX * writer.deathSin + (localY - 0.72) * writer.deathCos;
+      writer.data[writer.offset++] = originX + deathX * cosYaw - localZ * sinYaw;
       writer.data[writer.offset++] = originY + deathY;
-      writer.data[writer.offset++] = originZ + localX * sinYaw + deathZ * cosYaw;
+      writer.data[writer.offset++] = originZ + deathX * sinYaw + localZ * cosYaw;
       const right = vertex === 1 || vertex === 2 || vertex === 4;
       const top = vertex === 2 || vertex === 4 || vertex === 5;
       const pixelU = region[0] + rect[0] + (right ? rect[2] : 0);
@@ -868,11 +868,11 @@ function appendBowSprite(writer: VertexWriter, x: number, y: number, z: number, 
   for (let i=0;i<order.length;i+=1) {
     const index=order[i], point=corners[index];
     const localX=point[0], localY=point[1], localZ=planeZ;
-    const deathY=0.72+(localY-0.72)*writer.deathCos-localZ*writer.deathSin;
-    const deathZ=(localY-0.72)*writer.deathSin+localZ*writer.deathCos;
-    writer.data[writer.offset++]=x+localX*cos-deathZ*sin;
+    const deathX=localX*writer.deathCos-(localY-0.72)*writer.deathSin;
+    const deathY=0.72+localX*writer.deathSin+(localY-0.72)*writer.deathCos;
+    writer.data[writer.offset++]=x+deathX*cos-localZ*sin;
     writer.data[writer.offset++]=y+deathY;
-    writer.data[writer.offset++]=z+localX*sin+deathZ*cos;
+    writer.data[writer.offset++]=z+deathX*sin+localZ*cos;
     const u=index===1||index===2?208:192;
     const v=index>=2?16:0;
     writer.data[writer.offset++]=(u+(u===208?-0.01:0.01))/MOB_TEXTURE_ATLAS_WIDTH;
@@ -1220,7 +1220,11 @@ export function createMobRenderer(gl: WebGLRenderingContext): MobRenderer {
           : 0;
         const deathAngle = deathFall * Math.PI * 0.5;
         writer.deathCos = Math.cos(deathAngle);
-        writer.deathSin = Math.sin(deathAngle);
+        let sideHash = 0;
+        for (let character = 0; character < pose.id.length; character += 1) {
+          sideHash = (sideHash * 31 + pose.id.charCodeAt(character)) | 0;
+        }
+        writer.deathSin = Math.sin(deathAngle) * (sideHash & 1 ? 1 : -1);
         if (hurtUntil > 0 && visualSeconds >= hurtUntil) hurtUntilSeconds.delete(pose.id);
         const x = pose.previousX + (pose.x - pose.previousX) * alpha;
         const y = pose.previousY + (pose.y - pose.previousY) * alpha;

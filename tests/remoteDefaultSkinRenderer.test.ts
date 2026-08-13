@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRemoteAvatarMotion, type RemoteAvatarMotion } from "../client/game/avatar.ts";
 import {
   BASE_AVATAR_VERTICES_PER_PLAYER,
+  MAX_HELD_ITEM_VERTICES_PER_PLAYER,
   REMOTE_DEFAULT_PLAYER_BOX_COUNT,
   REMOTE_DEFAULT_PLAYER_HEIGHT,
   remotePlayerBufferCapacity,
@@ -154,7 +155,7 @@ glRenderer.destroy();
 
 const capacity = remotePlayerBufferCapacity(32);
 assert.equal(capacity.skinFloats, 32 * REMOTE_SKIN_FLOATS_PER_PLAYER);
-assert.equal(capacity.avatarFloats / 32 / PLAYER_SKIN_VERTEX_STRIDE, 10 * 36 + 2_040,
+assert.equal(capacity.avatarFloats / 32 / PLAYER_SKIN_VERTEX_STRIDE, 10 * 36 + MAX_HELD_ITEM_VERTICES_PER_PLAYER,
   "gear batch carries only bounded armor and held-item geometry, never a duplicate body");
 
 console.log(JSON.stringify({

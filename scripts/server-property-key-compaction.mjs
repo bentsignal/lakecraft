@@ -38,8 +38,8 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   durability: [54, 14],
   durationTicks: [6, 1],
   elapsedSeconds: [3, 4],
-  equipment: [17, 10],
-  eventId: [39, 22],
+  equipment: [17, 11],
+  eventId: [42, 23],
   expectedBlock: [13, 3],
   expectedChestUpdatedAt: [4, 1],
   expectedChunkRevision: [7, 3],
@@ -56,14 +56,14 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   health: [61, 39],
   heartbeatAt: [36, 13],
   heldBowDurability: [7, 2],
-  hunger: [21, 23],
+  hunger: [21, 24],
   ignitedAt: [11, 8],
   igniterUserId: [15, 8],
   ignitionId: [19, 10],
   ingredients: [2, 22],
   inputJson: [12, 5],
   inventories: [47, 1],
-  inventory: [73, 83],
+  inventory: [73, 84],
   inventoryJson: [27, 22],
   inventoryRevision: [10, 8],
   inventorySlot: [9, 1],
@@ -94,11 +94,11 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   playerCombatReceipts: [9, 1],
   playerPresence: [45, 1],
   playerState: [8, 4],
-  playerStateJson: [20, 10],
+  playerStateJson: [20, 11],
   poseSequence: [5, 9],
   previousBlock: [13, 6],
   radius: [23, 4],
-  reason: [60, 765],
+  reason: [60, 766],
   receiptCreatedAt: [0, 26],
   remainingDurability: [3, 13],
   replayed: [5, 35],
@@ -112,7 +112,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   snapshot: [3, 2],
   snapshotJson: [19, 9],
   sourceSlot: [25, 3],
-  state: [111, 30],
+  state: [111, 31],
   targetCombat: [10, 1],
   targetId: [20, 2],
   targetKind: [20, 2],
@@ -140,9 +140,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "8dcb4a3a17209246c90ebef355ec8e305162d4b5abc0684eb0dff00d192b4cb0";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "000acad424690a4ea839b7ad34d30696b68c0b70ba249f71786d00e4af2d4301";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "5309c7a2e0691e943e6f571dad54618d9974dcb1264ac9caae7ce813f6100e45";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "6ddc300619b28f4a4b5847e188c491bb29a58389e03495e030d2b60978b1c59c";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "49ebf3ffec0a01b7d025737e37791c45f1c11fd1f6f453866327378bd85b84ac";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "da96e3bd6e317b305e5adaf9abead32c2558d13e90f8bdc93df30c4f914ea651";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
 // bundle contains a larger set of ordinary property spellings that can be
@@ -153,7 +153,7 @@ export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
 export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 283;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "a6bdb86e81420358c6c0ad47be32e7276ef49a9c6ab61c3af18525a406a6ac2d";
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "b059a4a9d9e8ba68c200ff321311f5640eebf7eba185937691e64ffde35ca867";
 // The shared-gameplay architecture is a new sealed source checkpoint. Earlier
 // additive deltas described the duplicated Lakebed multiplayer paths removed by
 // that cut, so the current complete fingerprint is now the canonical boundary.
@@ -174,31 +174,41 @@ export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   },
   health: {
     previousEntryFingerprint: "60c9aaebbfc0d3f1ea43b4f6e159ba8ee8ab4c828c570abe4dc32ea3158e887d",
-    declarations: ["client/realtimeMultiplayer.ts"],
-    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
-    counts: { "client/index.tsx": [null, 2], "client/realtimeMultiplayer.ts": [null, 5] },
+    declarations: ["client/game/avatar.ts", "client/game/remotePlayerTargeting.ts", "client/game/types.ts", "client/realtimeMultiplayer.ts"],
+    uses: ["client/game/avatar.ts", "client/game/remotePlayerTargeting.ts", "client/game/types.ts", "client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: {
+      "client/game/avatar.ts": [null, 8],
+      "client/game/remotePlayerTargeting.ts": [null, 2],
+      "client/game/types.ts": [null, 1],
+      "client/index.tsx": [null, 2],
+      "client/realtimeMultiplayer.ts": [null, 7],
+    },
     kinds: {
+      "client/game/avatar.ts:PropertySignature": [null, 1],
+      "client/game/avatar.ts:ShorthandPropertyAssignment": [null, 1],
+      "client/game/remotePlayerTargeting.ts:PropertySignature": [null, 1],
+      "client/game/types.ts:PropertySignature": [null, 1],
       "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
-      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 1],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 2],
     },
   },
   itemId: {
     previousEntryFingerprint: "297403a97f82a70186ce155916be3fd2090ee636e6fe00b9997710f512f803f4",
-    counts: { "client/index.tsx": [14, 15] },
+    counts: { "client/index.tsx": [14, 14] },
   },
   killed: {
     previousEntryFingerprint: "3c2643836b6760b2591a2869e1913c5cc1c493952fd773bb9ab2fea9a8b87c15",
     declarations: ["client/realtimeMultiplayer.ts"],
     uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
-    counts: { "client/index.tsx": [null, 1], "client/realtimeMultiplayer.ts": [null, 4] },
+    counts: { "client/index.tsx": [null, 2], "client/realtimeMultiplayer.ts": [null, 4] },
     kinds: {
       "client/realtimeMultiplayer.ts:PropertyAssignment": [null, 1],
       "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
     },
   },
   operationId: {
-    previousEntryFingerprint: "5b3bdbd87493451c98cda8f6ace948f2cc3db4488e991c067ca271d52fadaec9",
-    counts: { "client/index.tsx": [9, 11], "client/realtimeMultiplayer.ts": [23, 27] },
+    previousEntryFingerprint: "a6e413a797b59cdd0bb1e0fee745b878bbdaf63d8bb85f1f1678b41201418cc5",
+    counts: { "client/index.tsx": [9, 13], "client/realtimeMultiplayer.ts": [23, 27] },
     kinds: {
       "client/realtimeMultiplayer.ts:PropertySignature": [1, 2],
       "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [9, 11],
@@ -215,8 +225,8 @@ export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
     },
   },
   userId: {
-    previousEntryFingerprint: "d271b45d963f4456f2503bdfa8001bab7a19d521b416296978dd71fa53d16ecb",
-    counts: { "client/index.tsx": [23, 25] },
+    previousEntryFingerprint: "2a449723b6a007fd34ebbf34285969af1d5421ecab3a08edbccc2f6b6b00dd85",
+    counts: { "client/index.tsx": [23, 30] },
   },
 });
 

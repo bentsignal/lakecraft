@@ -1,4 +1,4 @@
-import { MAX_REMOTE_PLAYERS, resolveRemoteAvatarRigPose, type RemoteAvatarMotion } from "./avatar.ts";
+import { MAX_REMOTE_PLAYERS, resolveRemoteAvatarRigPose, writeRemoteAvatarDeathLocal, type RemoteAvatarMotion } from "./avatar.ts";
 import { createLakecraftDefaultSkinPixels } from "./playerSkin.ts";
 import {
   buildPlayerSkinGeometry,
@@ -24,6 +24,7 @@ export const REMOTE_SKIN_ATLAS_BYTES = REMOTE_SKIN_ATLAS_WIDTH * REMOTE_SKIN_ATL
 const REMOTE_PART_MATRIX = new Float32Array(16);
 const REMOTE_RIG_SCRATCH_MATRIX = new Float32Array(16);
 const REMOTE_RIG_POSE = {} as PlayerRigPose;
+const REMOTE_DEATH_LOCAL = new Float32Array(2);
 export const REMOTE_SKIN_FLOATS_PER_PLAYER = PLAYER_SKIN_VERTEX_COUNT * PLAYER_SKIN_VERTEX_STRIDE;
 
 export type RemotePlayerSkinRenderer = Readonly<{
@@ -43,6 +44,7 @@ export function writeRemotePlayerSkinGeometry(
   let slot = 0;
   for (const state of states.values()) {
     if (visited++ >= MAX_REMOTE_PLAYERS) break;
+    if (state.deathHidden) continue;
     const dx = state.rendered.x - camera[0];
     const dz = state.rendered.z - camera[2];
     if (dx * dx + dz * dz > REMOTE_RENDER_DISTANCE_SQUARED) continue;
@@ -61,9 +63,11 @@ export function writeRemotePlayerSkinGeometry(
         const localX = REMOTE_PART_MATRIX[0] * x + REMOTE_PART_MATRIX[4] * y + REMOTE_PART_MATRIX[8] * z + REMOTE_PART_MATRIX[12];
         const localY = REMOTE_PART_MATRIX[1] * x + REMOTE_PART_MATRIX[5] * y + REMOTE_PART_MATRIX[9] * z + REMOTE_PART_MATRIX[13];
         const localZ = REMOTE_PART_MATRIX[2] * x + REMOTE_PART_MATRIX[6] * y + REMOTE_PART_MATRIX[10] * z + REMOTE_PART_MATRIX[14];
-        output[offset++] = state.rendered.x + cosine * localX + sine * localZ;
-        output[offset++] = state.rendered.y + localY;
-        output[offset++] = state.rendered.z - sine * localX + cosine * localZ;
+        writeRemoteAvatarDeathLocal(state, localX, localY, REMOTE_DEATH_LOCAL);
+        const deathX = REMOTE_DEATH_LOCAL[0];
+        output[offset++] = state.rendered.x + cosine * deathX + sine * localZ;
+        output[offset++] = state.rendered.y + REMOTE_DEATH_LOCAL[1];
+        output[offset++] = state.rendered.z - sine * deathX + cosine * localZ;
         output[offset++] = (geometry[source + 3] + atlasX) / REMOTE_SKIN_ATLAS_COLUMNS;
         output[offset++] = (geometry[source + 4] + atlasY) / REMOTE_SKIN_ATLAS_ROWS;
         output[offset++] = geometry[source + 5];
@@ -105,6 +109,7 @@ export function createRemotePlayerSkinRenderer(gl: WebGLRenderingContext): Remot
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
       for (const state of states.values()) {
         if (visited++ >= MAX_REMOTE_PLAYERS) break;
+        if (state.deathHidden) continue;
         const dx = state.rendered.x - camera[0], dz = state.rendered.z - camera[2];
         if (dx * dx + dz * dz > REMOTE_RENDER_DISTANCE_SQUARED) continue;
         const uploadId = state.skinPixels ? state.skinId : "default";

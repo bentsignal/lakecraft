@@ -121,6 +121,19 @@ const selected = applyInventoryAction(starter, { kind: "select_hotbar", selected
 assert.equal(selected.ok && selected.state.selectedHotbar, 7);
 assert.deepEqual(selected.ok && inventoryActionLedger(selected.state), inventoryActionLedger(starter));
 
+const deathSettled = applyInventoryAction(starter, { kind: "death_settle", eventId: "attack:death-0001" });
+assert.equal(deathSettled.ok, true);
+if (!deathSettled.ok) throw new Error(deathSettled.reason);
+assert.equal(deathSettled.state.inventory.every((stack) => stack === null), true);
+assert.deepEqual(deathSettled.state.equipment, createEmptyEquipment());
+assert.equal(deathSettled.state.hunger, 20);
+assert.equal(validateInventoryActionRequestJson(JSON.stringify({
+  operationId: "inventory_death_0001",
+  expectedRevision: "12",
+  kind: "death_settle",
+  eventId: "attack:death-0001",
+})).ok, true, "a bounded fatal event can persist the conserved empty carried state");
+
 const operationId = "inventory_action_000001";
 const canonicalDesired = JSON.stringify(rearranged);
 const requestJson = JSON.stringify({

@@ -63,10 +63,11 @@ client.submitAction("crouch_on");
 assert.equal(socket.sent.at(-1)?.kind, "crouch_on");
 socket.receive({ type:"snapshot", inputAck:input.seq, self:{ ...pose, gameMode:"survival" }, players:[{
   id:"steve",name:"Steve",x:1,y:69.02,z:1,yaw:0,pitch:0,heldItem:"iron_pickaxe",crouching:true,
-  visualActions:[{ sequence:2, kind:"swing" }],
+  health:0,visualActions:[{ sequence:2, kind:"swing" }],
 }] });
 assert.deepEqual({ heldItem:remotes[0].heldItem,crouching:remotes[0].crouching,action:remotes[0].visualActions[0].kind },
   { heldItem:"iron_pickaxe",crouching:true,action:"swing" }, "third-person pose inputs survive the transport decoder");
+assert.equal(remotes[0].health, 0, "remote fatal health survives the bounded snapshot decoder");
 socket.receive({ type:"snapshot", inputAck:input.seq, self:{ ...pose, gameMode:"survival" }, players:[{
   id:"malformed",name:"Malformed",x:2,y:69.02,z:2,yaw:0,pitch:0,visualActions:[null,{ sequence:3,kind:"invalid" }],
 }] });
@@ -94,7 +95,13 @@ const respawnPromise = client.submitRespawn();
 const respawnRequest = socket.sent.at(-1)!;
 assert.equal(respawnRequest.type, "respawn");
 socket.receive({ type:"respawned",operationId:respawnRequest.operationId,player:{ x:0.5,y:69.02,z:0.5,yaw:0,pitch:0 } });
-assert.deepEqual(await respawnPromise, { x:0.5,y:69.02,z:0.5,yaw:0,pitch:0 },
+const respawnPose = await respawnPromise;
+assert.deepEqual(respawnPose, { x:0.5,y:69.02,z:0.5,yaw:0,pitch:0 },
   "respawn resolves only from the Railway authority response");
+pose = respawnPose;
+intervals.values().next().value?.();
+const rebasedInput = socket.sent.findLast((message) => message.type === "input")!;
+assert.deepEqual([rebasedInput.moveX, rebasedInput.moveZ, rebasedInput.jump], [0, 0, false],
+  "the first post-respawn sample is rebased at spawn instead of replaying dead-pose movement");
 client.stop();
 console.log("realtime acknowledged movement: ok");

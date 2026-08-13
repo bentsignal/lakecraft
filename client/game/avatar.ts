@@ -20,6 +20,8 @@ import {
 
 export const MAX_REMOTE_PLAYERS = 32;
 export const MAX_PLAYER_NAME_LENGTH = 16;
+export const REMOTE_PLAYER_DEATH_FALL_MS = 520;
+export const REMOTE_PLAYER_DEATH_VISIBLE_MS = 1_150;
 
 export interface RemoteAvatarMotion {
   readonly id: string;
@@ -48,6 +50,35 @@ export interface RemoteAvatarMotion {
   armActionProgress: number;
   bowDrawing: boolean;
   crouching: boolean;
+  health: number;
+  deathStartedAt: number;
+  deathFall: number;
+  deathHidden: boolean;
+  deathSide: -1 | 1;
+}
+
+function boundedRemoteHealth(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 20 ? value : 20;
+}
+
+function deathSideForId(id: string): -1 | 1 {
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) hash = (hash * 31 + id.charCodeAt(index)) | 0;
+  return hash & 1 ? 1 : -1;
+}
+
+/** Shared root transform used by the remote skin, armor, and held-item paths. */
+export function writeRemoteAvatarDeathLocal(
+  state: RemoteAvatarMotion,
+  x: number,
+  y: number,
+  output: Float32Array,
+): void {
+  const angle = state.deathFall * Math.PI * 0.5;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle) * state.deathSide;
+  output[0] = x * cosine - (y - 0.72) * sine;
+  output[1] = 0.72 + x * sine + (y - 0.72) * cosine;
 }
 
 function finiteRange(value: number, fallback: number, minimum: number, maximum: number): number {
@@ -180,6 +211,7 @@ export function shortestAngleDelta(from: number, to: number): number {
 
 export function createRemoteAvatarMotion(player: RemotePlayer, now: number): RemoteAvatarMotion {
   const target = safePose(player);
+  const health = boundedRemoteHealth(player.health);
   const state: RemoteAvatarMotion = {
     id: String(player.id).slice(0, 128),
     name: sanitizePlayerName(player.name),
@@ -207,6 +239,11 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     armActionProgress: 1,
     bowDrawing: false,
     crouching: false,
+    health,
+    deathStartedAt: health <= 0 ? now : Number.POSITIVE_INFINITY,
+    deathFall: 0,
+    deathHidden: false,
+    deathSide: deathSideForId(String(player.id)),
   };
   if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
     assignBoundedVelocity(state, player.vx as number, player.vy as number, player.vz as number);
@@ -224,6 +261,14 @@ export function applyRemoteAvatarSnapshot(
   player: RemotePlayer,
   now: number,
 ): void {
+  const health = boundedRemoteHealth(player.health);
+  if (health <= 0 && state.health > 0) state.deathStartedAt = now;
+  if (health > 0 && state.health <= 0) {
+    state.deathStartedAt = Number.POSITIVE_INFINITY;
+    state.deathFall = 0;
+    state.deathHidden = false;
+  }
+  state.health = health;
   const next = safePose(player, state.target);
   const elapsed = Math.max(1 / 60, Math.min(2, (now - state.lastSnapshotAt) / 1_000));
   if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
@@ -257,6 +302,14 @@ export function advanceRemoteAvatarMotion(
   now: number,
   deltaSeconds: number,
 ): void {
+  if (state.health <= 0) {
+    const deathElapsed = Math.max(0, now - state.deathStartedAt);
+    state.deathFall = Math.min(1, deathElapsed / REMOTE_PLAYER_DEATH_FALL_MS);
+    state.deathHidden = deathElapsed >= REMOTE_PLAYER_DEATH_VISIBLE_MS;
+    state.velocityX = state.velocityY = state.velocityZ = 0;
+    state.horizontalSpeed = 0;
+    state.crouching = false;
+  }
   const dt = Math.max(0, Math.min(0.1, deltaSeconds));
   if (dt === 0) return;
   const snapshotAge = Math.max(0, (now - state.lastSnapshotAt) / 1_000);

@@ -88,7 +88,12 @@ const upright=gl.uploaded!.slice(0,mobVertexCountForKind("zombie")*MOB_VERTEX_ST
 renderer.rebuild([{...zombie,health:0,deathFall:1}],0,0,0,1,1,3.1);
 const fallen=gl.uploaded!.slice(0,upright.length);
 const yRange=(data:Float32Array)=>{let low=Infinity,high=-Infinity;for(let i=1;i<data.length;i+=MOB_VERTEX_STRIDE){low=Math.min(low,data[i]);high=Math.max(high,data[i]);}return high-low;};
+const axisRange=(data:Float32Array,axis:number)=>{let low=Infinity,high=-Infinity;for(let i=axis;i<data.length;i+=MOB_VERTEX_STRIDE){low=Math.min(low,data[i]);high=Math.max(high,data[i]);}return high-low;};
 assert.ok(yRange(fallen)<yRange(upright),"death progress lays the exact textured model down");
+assert.ok(axisRange(fallen,0)>axisRange(upright,0)*1.8,
+  "death rotates height onto the mob's left/right axis instead of face-planting forward");
+assert.ok(Math.abs(axisRange(fallen,2)-axisRange(upright,2))<0.05,
+  "side-fall preserves front/back depth");
 
 const sheep=pose("sheep",30);sheep.previousX=sheep.x;sheep.behavior="idle";
 renderer.rebuild([sheep],0,0,0,1,1,4);

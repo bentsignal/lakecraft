@@ -272,6 +272,12 @@ export class GameWorld implements AdminWorldControl {
     const dt = 1 / this.config.tickHz;
     for (const state of this.userConnections.values()) {
       const player = state.player!;
+      if ((player.health ?? 20) <= 0) {
+        player.vx = player.vy = player.vz = 0;
+        state.vy = 0;
+        state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
+        continue;
+      }
       if (now - state.lastInputAt > 300) {
         state.controls.moveX = 0;
         state.controls.moveY = 0;
@@ -483,6 +489,10 @@ export class GameWorld implements AdminWorldControl {
     }
     state.lastInputSeq = message.seq;
     state.lastInputAt = now;
+    if ((state.player!.health ?? 20) <= 0) {
+      state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
+      return;
+    }
     if (message.x !== undefined && message.y !== undefined && message.z !== undefined) {
       const player = state.player!;
       const dt = Math.max(0.025, message.dtMs / 1_000);
@@ -522,6 +532,7 @@ export class GameWorld implements AdminWorldControl {
   private action(state: ConnectionState, message: Extract<ClientMessage, { type: "action" }>): void {
     if (message.seq <= state.lastActionSeq || (state.lastActionSeq !== 0 && message.seq > state.lastActionSeq + 64)) return;
     state.lastActionSeq = message.seq;
+    if ((state.player!.health ?? 20) <= 0) return;
     const actions = state.player!.visualActions ?? [];
     actions.push({
       sequence: ++this.visualActionSequence,
@@ -754,6 +765,8 @@ export class GameWorld implements AdminWorldControl {
   private respawn(state: ConnectionState, message: Extract<ClientMessage, { type: "respawn" }>, now: number): void {
     const player = state.player!;
     Object.assign(player, SPAWN, { yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0, health: 20 });
+    player.crouching = false;
+    player.visualActions = [];
     state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
     state.vy = 0;
     state.clientPoseAuthority = false;
@@ -812,6 +825,8 @@ export class GameWorld implements AdminWorldControl {
     if (hit.killed && targetState) {
       targetState.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
       target.vx = target.vy = target.vz = 0;
+      target.crouching = false;
+      target.visualActions = [];
     }
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });
     if (targetState !== state) this.send(targetState!.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });

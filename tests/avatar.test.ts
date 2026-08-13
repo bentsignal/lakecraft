@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   MAX_PLAYER_NAME_LENGTH,
+  REMOTE_PLAYER_DEATH_FALL_MS,
+  REMOTE_PLAYER_DEATH_VISIBLE_MS,
   advanceRemoteAvatarMotion,
   applyRemoteAvatarSnapshot,
   createRemoteAvatarMotion,
@@ -159,5 +161,16 @@ assert.deepEqual(
   [playerRigCycleMilliseconds("walk"), playerRigCycleMilliseconds("sprint"), playerRigCycleMilliseconds("sneak")],
   [600, 420, 900],
   "local and remote rigs share reviewed walk, sprint, and crouch cadence");
+
+const killed = createRemoteAvatarMotion(player({ health: 20, crouching: true }), 10_000);
+applyRemoteAvatarSnapshot(killed, player({ health: 0, crouching: true }), 10_100);
+advanceRemoteAvatarMotion(killed, 10_100 + REMOTE_PLAYER_DEATH_FALL_MS, 0.016);
+assert.equal(killed.deathFall, 1, "a fatal snapshot finishes the shared side-fall on a bounded clock");
+assert.equal(killed.crouching, false, "death clears stale crouch posture instead of oscillating it");
+advanceRemoteAvatarMotion(killed, 10_100 + REMOTE_PLAYER_DEATH_VISIBLE_MS, 0.016);
+assert.equal(killed.deathHidden, true, "the corpse disappears after its visible death window");
+applyRemoteAvatarSnapshot(killed, player({ health: 20, x: 0.5, y: 69.02, z: 0.5 }), 12_000);
+assert.deepEqual([killed.deathFall, killed.deathHidden, killed.health], [0, false, 20],
+  "respawn atomically restores an upright visible remote avatar");
 
 console.log("lakecraft avatar tests: ok");

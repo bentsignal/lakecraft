@@ -60,7 +60,7 @@ const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.met
 assert.match(catalog, /\[BLOCK\.TNT\]:\s*"tnt"/, "the shared gameplay catalog maps engine TNT to its identity");
 assert.match(catalog, /tnt:\s*BLOCK\.TNT/, "the shared gameplay catalog maps held TNT into the engine");
 assert.ok(remoteHeldItemGeometry("gunpowder").length > 0, "remote hands render extruded canonical loose gunpowder");
-assert.equal(remoteHeldItemGeometry("tnt").length / 6, 576, "remote TNT keeps a bounded 4x4 texture on every cube face");
+assert.equal(remoteHeldItemGeometry("tnt").length / 6, 9_216, "remote TNT uses the exact authored 16x16 face geometry shared with local F5");
 assert.notDeepEqual(remoteHeldItemGeometry("tnt"), remoteHeldItemGeometry("gunpowder"));
 
 console.log("gunpowder and TNT catalog/visual contract tests passed");

@@ -264,6 +264,7 @@ export interface RemotePlayer extends PlayerPose {
   vz?: number;
   heldItem?: ItemId | null;
   crouching?: boolean;
+  health?: number;
   armorHead?: ArmorId | null;
   armorChest?: ArmorId | null;
   armorLegs?: ArmorId | null;
@@ -562,6 +563,8 @@ export interface VoxelEngine {
   applyConfirmedMobKnockback(eventId: string, attackerX: number, attackerZ: number, damage: number, eventTimeMs?: number): boolean;
   /** Snap to a Lakebed-authoritative pose without changing health or respawn state. */
   reconcilePose(pose: PlayerPose): void;
+  /** Atomically restores health and snaps every local movement system to a server-authoritative respawn. */
+  respawnAt(pose: PlayerPose): void;
   getPose(): PlayerPose;
   getRespawnPoint(): PlayerPose;
   getPlayerHealth(): number;

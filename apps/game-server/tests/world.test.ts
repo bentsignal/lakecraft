@@ -254,6 +254,44 @@ describe("authoritative world", () => {
     store.close();
   });
 
+  test("freezes a dead pose and atomically clears crouch/action state on respawn", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const attacker = new FakePeer("death-attacker");
+    const target = new FakePeer("death-target");
+    world.open(attacker, 1_000); world.open(target, 1_000);
+    await world.message(attacker, JSON.stringify(join("attacker")), 1_000);
+    await world.message(target, JSON.stringify(join("target")), 1_000);
+    await world.message(attacker, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:50,moveX:0,moveZ:0,yaw:0,pitch:0,jump:false,sprint:false,
+      heldItem:"iron_sword",x:0.5,y:69.02,z:0.5,
+    }), 1_010);
+    await world.message(target, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:250,moveX:0,moveZ:0,yaw:Math.PI,pitch:0,jump:false,sprint:false,
+      x:0.5,y:69.02,z:-1.5,
+    }), 1_011);
+    await world.message(target, JSON.stringify({ v:1,type:"action",seq:1,kind:"crouch_on" }), 1_012);
+    for (let hit = 0; hit < 4; hit += 1) {
+      await world.message(attacker, JSON.stringify({
+        v:1,type:"player_attack",operationId:`attack:death-${hit}`,targetId:"target",
+      }), 1_100 + hit * 500);
+    }
+    expect(target.ofType("player_hit").at(-1)).toMatchObject({ health:0, killed:true });
+    await world.message(target, JSON.stringify({
+      v:1,type:"input",seq:2,dtMs:50,moveX:1,moveZ:0,yaw:1,pitch:0.2,jump:true,sprint:true,
+      x:1.5,y:80,z:-1.5,
+    }), 2_700);
+    await world.message(target, JSON.stringify({ v:1,type:"action",seq:2,kind:"crouch_on" }), 2_701);
+    world.tick(2_750); world.snapshots(2_751);
+    expect(target.ofType("snapshot").at(-1)?.self).toMatchObject({ x:0.5,y:69.02,z:-1.5,health:0,crouching:false,visualActions:[] });
+    await world.message(target, JSON.stringify({ v:1,type:"respawn",operationId:"respawn_death_1" }), 2_800);
+    world.snapshots(2_801);
+    expect(target.ofType("snapshot").at(-1)?.self).toMatchObject({
+      x:0.5,y:69.02,z:0.5,health:20,crouching:false,visualActions:[],
+    });
+    store.close();
+  });
+
   test("rotates resume tokens and restores the last authoritative pose", async () => {
     const store = new WorldStore(":memory:");
     const world = new GameWorld(config(), store, authenticator);
