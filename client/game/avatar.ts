@@ -22,6 +22,7 @@ export const MAX_REMOTE_PLAYERS = 32;
 export const MAX_PLAYER_NAME_LENGTH = 16;
 export const REMOTE_PLAYER_DEATH_FALL_MS = 520;
 export const REMOTE_PLAYER_DEATH_VISIBLE_MS = 1_150;
+export const REMOTE_PLAYER_HURT_FLASH_MS = 350;
 
 export interface RemoteAvatarMotion {
   readonly id: string;
@@ -51,6 +52,8 @@ export interface RemoteAvatarMotion {
   bowDrawing: boolean;
   crouching: boolean;
   health: number;
+  hurtStartedAt: number;
+  hurtFlash: boolean;
   deathStartedAt: number;
   deathFall: number;
   deathHidden: boolean;
@@ -240,6 +243,8 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     bowDrawing: false,
     crouching: false,
     health,
+    hurtStartedAt: Number.NEGATIVE_INFINITY,
+    hurtFlash: false,
     deathStartedAt: health <= 0 ? now : Number.POSITIVE_INFINITY,
     deathFall: 0,
     deathHidden: false,
@@ -262,6 +267,7 @@ export function applyRemoteAvatarSnapshot(
   now: number,
 ): void {
   const health = boundedRemoteHealth(player.health);
+  if (health < state.health) state.hurtStartedAt = now;
   if (health <= 0 && state.health > 0) state.deathStartedAt = now;
   if (health > 0 && state.health <= 0) {
     state.deathStartedAt = Number.POSITIVE_INFINITY;
@@ -269,6 +275,7 @@ export function applyRemoteAvatarSnapshot(
     state.deathHidden = false;
   }
   state.health = health;
+  state.hurtFlash = now - state.hurtStartedAt < REMOTE_PLAYER_HURT_FLASH_MS;
   const next = safePose(player, state.target);
   const elapsed = Math.max(1 / 60, Math.min(2, (now - state.lastSnapshotAt) / 1_000));
   if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
@@ -302,6 +309,7 @@ export function advanceRemoteAvatarMotion(
   now: number,
   deltaSeconds: number,
 ): void {
+  state.hurtFlash = now - state.hurtStartedAt < REMOTE_PLAYER_HURT_FLASH_MS;
   if (state.health <= 0) {
     const deathElapsed = Math.max(0, now - state.deathStartedAt);
     state.deathFall = Math.min(1, deathElapsed / REMOTE_PLAYER_DEATH_FALL_MS);

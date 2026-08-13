@@ -14,6 +14,7 @@ import {
   type PublicPlayer,
   type PublicDrop,
   type PlayerHit,
+  type SelfDamageResult,
   type ServerMessage,
 } from "./protocol";
 import {
@@ -61,6 +62,7 @@ interface ConnectionState {
   lastSavedAt: number;
   lastSkinAt: number;
   lastAttackAt: number;
+  lastSelfDamageAt: number;
   appearanceRequestWindowAt: number;
   appearanceRequestCount: number;
   appearanceRequestKeys: Set<string>;
@@ -84,7 +86,7 @@ export const SKIN_CHANGE_RATE_LIMIT_MS = 3_000;
 export const APPEARANCE_REQUEST_RATE_LIMIT = 4;
 export const APPEARANCE_REQUEST_RATE_WINDOW_MS = 1_000;
 const DROP_TTL_MS = 5 * 60_000;
-const DROP_OWNER_DELAY_MS = 150;
+const DROP_OWNER_DELAY_MS = 750;
 const DROP_REACH = 3;
 const PLAYER_ATTACK_REACH = 6.25;
 const PLAYER_ATTACK_COOLDOWN_MS = 400;
@@ -106,6 +108,7 @@ export class GameWorld implements AdminWorldControl {
   private readonly drops = new Map<string, PublicDrop>();
   private readonly dropOperations = new Map<string, PublicDrop>();
   private readonly playerHitOperations = new Map<string, PlayerHit>();
+  private readonly selfDamageOperations = new Map<string, SelfDamageResult>();
   private shuttingDown = false;
 
   constructor(
@@ -179,6 +182,7 @@ export class GameWorld implements AdminWorldControl {
       lastSavedAt: now,
       lastSkinAt: Number.NEGATIVE_INFINITY,
       lastAttackAt: Number.NEGATIVE_INFINITY,
+      lastSelfDamageAt: Number.NEGATIVE_INFINITY,
       appearanceRequestWindowAt: now,
       appearanceRequestCount: 0,
       appearanceRequestKeys: new Set(),
@@ -255,6 +259,7 @@ export class GameWorld implements AdminWorldControl {
     else if (message.type === "drop_item") this.dropItem(state, message, now);
     else if (message.type === "pickup_item") this.pickupItem(state, message, now);
     else if (message.type === "player_attack") this.playerAttack(state, message, now);
+    else if (message.type === "self_damage") this.selfDamage(state, message, now);
     else if (message.type === "respawn") this.respawn(state, message, now);
     else if (message.type === "appearance_set") await this.setAppearance(state, message, now);
     else this.sendAppearance(state, message, now);
@@ -830,6 +835,52 @@ export class GameWorld implements AdminWorldControl {
     }
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });
     if (targetState !== state) this.send(targetState!.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });
+  }
+
+  private selfDamage(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "self_damage" }>,
+    now: number,
+  ): void {
+    const player = state.player!;
+    const operationKey = `${player.id}\u0000${message.operationId}`;
+    const replay = this.selfDamageOperations.get(operationKey);
+    if (replay) {
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "self_damage_result", ...replay });
+      return;
+    }
+    if (player.gameMode === "creative" || (player.health ?? 20) <= 0) {
+      this.fail(state, "bad_message", "Player cannot take fall damage", false, false, message.operationId);
+      return;
+    }
+    if (now - state.lastSelfDamageAt < 100) {
+      this.fail(state, "rate_limited", "Fall damage is cooling down", false, true, message.operationId);
+      return;
+    }
+    state.lastSelfDamageAt = now;
+    const damage = Math.min(player.health ?? 20, message.damage);
+    const health = Math.max(0, (player.health ?? 20) - damage);
+    player.health = health;
+    const result: SelfDamageResult = {
+      operationId: message.operationId,
+      damage,
+      health,
+      killed: health === 0,
+      cause: "fall",
+    };
+    this.selfDamageOperations.set(operationKey, result);
+    if (this.selfDamageOperations.size > 512) this.selfDamageOperations.delete(this.selfDamageOperations.keys().next().value!);
+    if (result.killed) {
+      state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
+      player.vx = player.vy = player.vz = 0;
+      player.crouching = false;
+      player.visualActions = [];
+    }
+    if (state.resumeHash && state.resumeExpiresAt !== undefined) {
+      this.store.savePlayer(player, state.resumeHash, now, state.resumeExpiresAt);
+      state.lastSavedAt = now;
+    }
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "self_damage_result", ...result });
   }
 
   private broadcastDrops(): void {

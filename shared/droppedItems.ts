@@ -14,7 +14,7 @@ import {
 import * as BS from "./bundleStrings.ts";
 
 export const DROPPED_ITEM_TTL_MS = 5 * 60 * 1_000;
-export const DROPPED_ITEM_OWNER_PICKUP_DELAY_MS = 500;
+export const DROPPED_ITEM_OWNER_PICKUP_DELAY_MS = 750;
 export const DROPPED_ITEM_PICKUP_RADIUS = 2;
 export const DROPPED_ITEM_CHUNK_SIZE = 16;
 export const MAX_DROPPED_ITEM_REQUEST_LENGTH = 8_191;
@@ -34,6 +34,17 @@ const DROP_ID_PATTERN = /^di_[a-z0-9]{14}$/;
 const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export type DroppedItemPosition = { x: number; y: number; z: number };
+
+/** Shared non-grid-snapped Q-drop origin used by local and Railway worlds. */
+export function droppedItemForwardPosition(
+  pose: Readonly<{ x: number; y: number; z: number; yaw: number }>,
+): DroppedItemPosition {
+  return {
+    x: pose.x + Math.sin(pose.yaw) * 1.25,
+    y: pose.y + 0.65,
+    z: pose.z - Math.cos(pose.yaw) * 1.25,
+  };
+}
 export type VisibleDroppedItemChunkKeysValidation =
   | { ok: true; chunkKeys: string[] }
   | { ok: false; reason: "invalid_chunk_keys" | "too_many_chunks" };

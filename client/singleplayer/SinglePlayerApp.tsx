@@ -45,6 +45,7 @@ import {
 import { FIRST_PERSON_FOOD_ACTION_MS } from "../game/firstPersonRenderer.ts";
 import { RANGED_GRAVITY, rangedChargeProfile } from "../../shared/rangedCombat.ts";
 import { planDeathDrops } from "../../shared/deathDrops.ts";
+import { droppedItemForwardPosition } from "../../shared/droppedItems.ts";
 import type { StowedInventorySnapshot } from "../../shared/inventoryWorkspace";
 import type { InventoryRecipeBatch } from "../../shared/inventoryActions";
 import { TNT_FUSE_MS, TNT_IGNITION_REACH } from "../../shared/tntAuthority";
@@ -949,14 +950,13 @@ function LocalGameplaySession({
       ? stack ? { ...stack } : null
       : stack.count === count ? null : { ...stack, count: stack.count - count }) as Inventory;
     const pose = engine.getPose();
+    const position = droppedItemForwardPosition(pose);
     const droppedAt = Date.now();
     localDropSequenceRef.current += 1;
     const dropped: LocalDroppedItem = {
       dropId: `local_drop_${droppedAt}_${localDropSequenceRef.current}`.slice(0, 96),
       item: { ...source, count },
-      x: pose.x + Math.sin(pose.yaw) * 2.25,
-      y: pose.y + 1.1,
-      z: pose.z - Math.cos(pose.yaw) * 2.25,
+      ...position,
       droppedAt,
       velocityY: 0,
       settled: false,

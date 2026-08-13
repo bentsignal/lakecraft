@@ -147,7 +147,9 @@ function writeRigVertex(
     state.rendered.x + cosine * deathX + sine * localZ,
     state.rendered.y + deathY,
     state.rendered.z - sine * deathX + cosine * localZ,
-    color,
+    state.hurtFlash
+      ? [Math.min(1, color[0] * 0.45 + 0.55), color[1] * 0.35, color[2] * 0.35]
+      : color,
     shade,
   );
 }

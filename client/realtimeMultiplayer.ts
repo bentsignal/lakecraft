@@ -336,6 +336,7 @@ export class RealtimeMultiplayerClient {
   private pendingBlocks = new Map<string, PendingBlockEdit>();
   private pendingChat = new Map<string, string>();
   private pendingDrops = new Map<string, PendingDrop>();
+  private pendingSelfDamage = new Map<string, number>();
   private pendingRespawn: PendingRespawn | null = null;
   private appearanceSupported = false;
   private localSkin: HydratedPlayerSkin | null = null;
@@ -381,6 +382,7 @@ export class RealtimeMultiplayerClient {
     this.pendingChat.clear();
     for (const pending of this.pendingDrops.values()) { window.clearTimeout(pending.timer); pending.reject(new Error("multiplayer_disconnected")); }
     this.pendingDrops.clear();
+    this.pendingSelfDamage.clear();
     if (this.pendingRespawn) {
       window.clearTimeout(this.pendingRespawn.timer);
       this.pendingRespawn.reject(new Error("multiplayer_disconnected"));
@@ -469,6 +471,15 @@ export class RealtimeMultiplayerClient {
   submitPlayerAttack(operationId: string, targetId: string): void {
     if (!this.joined || this.socket?.readyState !== WebSocket.OPEN) return;
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "player_attack", operationId, targetId });
+  }
+
+  submitSelfDamage(operationId: string, damage: number): void {
+    if (!this.joined || this.socket?.readyState !== WebSocket.OPEN
+      || !/^[A-Za-z0-9:_-]{8,96}$/.test(operationId)
+      || !Number.isInteger(damage) || damage < 1 || damage > 20) return;
+    this.pendingSelfDamage.set(operationId, damage);
+    if (this.pendingSelfDamage.size > 8) this.pendingSelfDamage.delete(this.pendingSelfDamage.keys().next().value!);
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "self_damage", operationId, damage, cause: "fall" });
   }
 
   submitRespawn(): Promise<PlayerPose> {
@@ -759,6 +770,9 @@ export class RealtimeMultiplayerClient {
       for (const [operationId, message] of this.pendingChat) {
         this.send({ v: REALTIME_PROTOCOL_VERSION, type: "chat_send", operationId, message });
       }
+      for (const [operationId, damage] of this.pendingSelfDamage) {
+        this.send({ v: REALTIME_PROTOCOL_VERSION, type: "self_damage", operationId, damage, cause: "fall" });
+      }
       return;
     }
     if (message.type === "appearance_roster") {
@@ -862,6 +876,17 @@ export class RealtimeMultiplayerClient {
         killed: message.killed, attackerX, attackerZ });
       return;
     }
+    if (message.type === "self_damage_result") {
+      const operationId = boundedText(message.operationId, 96);
+      const damage = finiteNumber(message.damage);
+      const health = finiteNumber(message.health);
+      if (!this.pendingSelfDamage.has(operationId) || damage === null || !Number.isInteger(damage)
+        || damage < 1 || damage > 20 || health === null || !Number.isInteger(health) || health < 0 || health > 20
+        || message.cause !== "fall" || typeof message.killed !== "boolean") return;
+      this.pendingSelfDamage.delete(operationId);
+      this.options.onSelfHealth(health);
+      return;
+    }
     if (message.type === "respawned") {
       const pose = decodePose(message.player);
       const operationId = boundedText(message.operationId, 96);
@@ -947,6 +972,10 @@ export class RealtimeMultiplayerClient {
       }
       if (operationId) {
         if (operationId.startsWith("attack:")) return;
+        if (operationId.startsWith("fall:")) {
+          this.pendingSelfDamage.delete(operationId);
+          return;
+        }
         if (operationId.startsWith("respawn_") && this.pendingRespawn) {
           const pending = this.pendingRespawn;
           window.clearTimeout(pending.timer);

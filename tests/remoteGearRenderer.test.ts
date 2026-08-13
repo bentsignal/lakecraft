@@ -50,6 +50,7 @@ assert.ok(BASE_AVATAR_VERTICES_PER_PLAYER > 400, "the complete canonical base an
 const heldBlock = geometry({ heldItem: "sand" });
 const heldMaterial = geometry({ heldItem: "coal" });
 const heldTool = geometry({ heldItem: "iron_pickaxe" });
+const hurtTool = geometry({ heldItem: "iron_pickaxe" }, { hurtFlash: true });
 assert.equal(heldBlock.stats.avatarVertexCount, remoteHeldItemVertexCount("sand"));
 assert.equal(heldMaterial.stats.avatarVertexCount, remoteHeldItemVertexCount("coal"));
 assert.equal(heldTool.stats.avatarVertexCount, remoteHeldItemVertexCount("iron_pickaxe"));
@@ -57,6 +58,8 @@ assert.ok(remoteHeldItemVertexCount("sand") > remoteHeldItemVertexCount("coal"),
   "remote blocks retain every authored 16x16 face texel from the same local F5 geometry path");
 assert.ok(remoteHeldItemVertexCount("sand") > 36,
   "remote held blocks retain a bounded authored-atlas texture mosaic instead of one flat color per face");
+assert.ok(hurtTool.avatar[3] > heldTool.avatar[3] && hurtTool.avatar[4] < heldTool.avatar[4],
+  "remote held gear flashes red with the damaged player instead of visually detaching");
 const sandColors = new Set<string>();
 for (let offset = 0; offset < remoteHeldItemGeometry("sand").length; offset += 6) {
   sandColors.add(Array.from(remoteHeldItemGeometry("sand").slice(offset + 3, offset + 6)).join(":"));

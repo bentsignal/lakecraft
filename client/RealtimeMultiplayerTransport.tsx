@@ -19,6 +19,7 @@ export type RealtimeDropSink = (operationId: string, item: ItemStack, pose: Play
 export type RealtimePickupSink = (operationId: string, dropId: string) => Promise<NormalizedDroppedItem>;
 export type RealtimeRespawnSink = () => Promise<PlayerPose>;
 export type RealtimePlayerAttackSink = (operationId: string, targetId: string) => void;
+export type RealtimeSelfDamageSink = (operationId: string, damage: number) => void;
 
 export function RealtimeMultiplayerTransport(props: {
   endpoint: string;
@@ -47,6 +48,7 @@ export function RealtimeMultiplayerTransport(props: {
   registerPickupSink: (sink: RealtimePickupSink | null) => void;
   registerRespawnSink: (sink: RealtimeRespawnSink | null) => void;
   registerPlayerAttackSink: (sink: RealtimePlayerAttackSink | null) => void;
+  registerSelfDamageSink: (sink: RealtimeSelfDamageSink | null) => void;
 }) {
   const propsRef = useRef(props);
   propsRef.current = props;
@@ -82,6 +84,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerPickupSink((operationId, dropId) => client.submitPickup(operationId, dropId));
     props.registerRespawnSink(() => client.submitRespawn());
     props.registerPlayerAttackSink((operationId, targetId) => client.submitPlayerAttack(operationId, targetId));
+    props.registerSelfDamageSink((operationId, damage) => client.submitSelfDamage(operationId, damage));
     client.start();
     return () => {
       props.registerBlockSink(null);
@@ -91,6 +94,7 @@ export function RealtimeMultiplayerTransport(props: {
       props.registerPickupSink(null);
       props.registerRespawnSink(null);
       props.registerPlayerAttackSink(null);
+      props.registerSelfDamageSink(null);
       client.stop();
     };
   }, [props.endpoint, props.ticket, props.serverId, props.demo?.token, props.localUserId, props.localUsername]);

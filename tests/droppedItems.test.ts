@@ -10,6 +10,7 @@ import {
   createDroppedItemId,
   createPersistedDroppedItem,
   droppedItemChunkKey,
+  droppedItemForwardPosition,
   normalizeDroppedItemRow,
   validateDropItemRequestJson,
   validateDroppedItemPosition,
@@ -23,6 +24,10 @@ import {
 import { INVENTORY_SIZE, createEmptyInventory, createSerializablePlayerState, type ItemStack } from "../shared/game.ts";
 
 const operationId = "drop_operation_1234";
+assert.deepEqual(droppedItemForwardPosition({ x: 4, y: 70, z: -2, yaw: 0 }), { x: 4, y: 70.65, z: -3.25 });
+const eastward = droppedItemForwardPosition({ x: 4, y: 70, z: -2, yaw: Math.PI / 2 });
+assert.ok(Math.abs(eastward.x - 5.25) < 1e-10 && Math.abs(eastward.z + 2) < 1e-10,
+  "Q-drops use the same continuous one-block-forward origin in every world mode");
 const pickupOperationId = "pickup_operation_1";
 const state = createSerializablePlayerState([{ itemId: "dirt", count: 12 }]);
 const playerStateJson = JSON.stringify(state);
@@ -142,7 +147,7 @@ for (const [change, reason] of [
 
 const empty = createEmptyInventory();
 assert.deepEqual(
-  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x, y: normalized.y, z: normalized.z }, now + 499),
+  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS - 1),
   { ok: false, reason: "owner_pickup_delay" },
 );
 assert.equal(
@@ -151,7 +156,7 @@ assert.equal(
   "another player may immediately collect a shared drop",
 );
 assert.deepEqual(
-  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x + DROPPED_ITEM_PICKUP_RADIUS + 0.01, y: normalized.y, z: normalized.z }, now + 500),
+  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x + DROPPED_ITEM_PICKUP_RADIUS + 0.01, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS),
   { ok: false, reason: "too_far" },
 );
 assert.deepEqual(
@@ -162,7 +167,7 @@ assert.deepEqual(
 const partialInventory = createEmptyInventory();
 partialInventory[0] = { itemId: "dirt", count: 62 };
 for (let index = 1; index < partialInventory.length; index += 1) partialInventory[index] = { itemId: "stone", count: 64 };
-const partialPickup = applyPickupDroppedItem(partialInventory, normalized, "user-a", normalized, now + 500);
+const partialPickup = applyPickupDroppedItem(partialInventory, normalized, "user-a", normalized, now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS);
 assert.equal(partialPickup.ok, true);
 if (!partialPickup.ok) throw new Error("partial pickup should apply");
 assert.deepEqual(partialPickup.inventory[0], { itemId: "dirt", count: 64 });

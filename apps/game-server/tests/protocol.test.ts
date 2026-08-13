@@ -56,6 +56,12 @@ describe("protocol v1", () => {
       v:1, type:"player_attack", operationId:"attack:12345678", targetId:"player-2",
     })).ok).toBe(true);
     expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"self_damage", operationId:"fall:12345678", damage:7, cause:"fall",
+    })).ok).toBe(true);
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"self_damage", operationId:"fall:12345678", damage:21, cause:"mob",
+    })).ok).toBe(false);
+    expect(decodeClientMessage(JSON.stringify({
       v:1, type:"player_attack", operationId:"short", targetId:"",
     })).ok).toBe(false);
     expect(decodeClientMessage(JSON.stringify({

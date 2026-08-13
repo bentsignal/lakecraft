@@ -121,6 +121,30 @@ const selected = applyInventoryAction(starter, { kind: "select_hotbar", selected
 assert.equal(selected.ok && selected.state.selectedHotbar, 7);
 assert.deepEqual(selected.ok && inventoryActionLedger(selected.state), inventoryActionLedger(starter));
 
+const placed = applyInventoryAction(starter, { kind: "place_block", sourceSlot: 2, expectedItemId: "dirt" });
+assert.equal(placed.ok, true);
+if (!placed.ok) throw new Error(placed.reason);
+assert.deepEqual(placed.state.inventory[2], { itemId: "dirt", count: 15 });
+assert.equal(placed.effect, "placed_block");
+assert.deepEqual(
+  applyInventoryAction(starter, { kind: "place_block", sourceSlot: 2, expectedItemId: "planks" }),
+  { ok: false, reason: "item_mismatch" },
+);
+assert.equal(validateInventoryActionRequestJson(JSON.stringify({
+  operationId: "inventory_place_0001",
+  expectedRevision: "12",
+  kind: "place_block",
+  sourceSlot: 2,
+  expectedItemId: "dirt",
+})).ok, true);
+assert.equal(validateInventoryActionRequestJson(JSON.stringify({
+  operationId: "inventory_place_0002",
+  expectedRevision: "12",
+  kind: "place_block",
+  sourceSlot: 0,
+  expectedItemId: "wooden_pickaxe",
+})).ok, false, "non-block items cannot pay for placement");
+
 const deathSettled = applyInventoryAction(starter, { kind: "death_settle", eventId: "attack:death-0001" });
 assert.equal(deathSettled.ok, true);
 if (!deathSettled.ok) throw new Error(deathSettled.reason);

@@ -464,7 +464,8 @@ export interface VoxelEngineOptions {
   }>) => void;
   /** Local preflight for survival damage. False leaves health and armor untouched. */
   canTakePlayerDamage?: () => boolean;
-  onPlayerDamage?: (amount: number, cause: PlayerDamageCause) => void;
+  /** Return false when an external authority will commit the health change. */
+  onPlayerDamage?: (amount: number, cause: PlayerDamageCause) => boolean | void;
   onPlayerHealthChange?: (health: number, maximumHealth: number) => void;
   /** Return true when the held non-block item handled secondary use (for example, eating food). */
   onUseSelectedItem?: () => boolean;

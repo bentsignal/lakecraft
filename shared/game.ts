@@ -528,6 +528,29 @@ export function cloneInventory(inventory: readonly (ItemStack | null)[]): Invent
   return inventory.map((stack) => stack ? { ...stack } : null);
 }
 
+export type SelectedPlacementConsumption =
+  | { ok: true; inventory: Inventory }
+  | { ok: false; inventory: Inventory };
+
+/** Consumes one block from exactly the selected slot; duplicate stacks elsewhere are untouched. */
+export function consumeSelectedPlacementStack(
+  inventory: readonly (ItemStack | null)[],
+  selectedSlot: number,
+  expectedItemId: ItemId,
+): SelectedPlacementConsumption {
+  const next = cloneInventory(inventory);
+  if (!Number.isInteger(selectedSlot) || selectedSlot < 0 || selectedSlot >= next.length) {
+    return { ok: false, inventory: next };
+  }
+  const selected = next[selectedSlot];
+  if (!selected || selected.itemId !== expectedItemId || selected.count < 1) {
+    return { ok: false, inventory: next };
+  }
+  if (selected.count === 1) next[selectedSlot] = null;
+  else next[selectedSlot] = { ...selected, count: selected.count - 1 };
+  return { ok: true, inventory: next };
+}
+
 /** Creates canonical stacks; newly acquired tools and armor begin at full durability. */
 export function createItemStack(itemId: ItemId, count = 1): ItemStack {
   const maximum = maxItemDurability(itemId);

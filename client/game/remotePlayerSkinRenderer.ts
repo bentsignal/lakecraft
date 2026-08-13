@@ -70,7 +70,7 @@ export function writeRemotePlayerSkinGeometry(
         output[offset++] = state.rendered.z - sine * deathX + cosine * localZ;
         output[offset++] = (geometry[source + 3] + atlasX) / REMOTE_SKIN_ATLAS_COLUMNS;
         output[offset++] = (geometry[source + 4] + atlasY) / REMOTE_SKIN_ATLAS_ROWS;
-        output[offset++] = geometry[source + 5];
+        output[offset++] = state.hurtFlash ? -geometry[source + 5] : geometry[source + 5];
       }
     }
     slot += 1;

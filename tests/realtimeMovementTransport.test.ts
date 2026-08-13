@@ -91,6 +91,10 @@ socket.receive({ type:"player_hit",operationId:"attack:transport",attackerId:"al
   damage:7,health:13,killed:false,attackerX:pose.x,attackerZ:pose.z });
 assert.deepEqual(playerHits.at(-1), { operationId:"attack:transport",attackerId:"alex",targetId:"steve",
   damage:7,health:13,killed:false,attackerX:pose.x,attackerZ:pose.z });
+client.submitSelfDamage("fall:transport", 6);
+assert.deepEqual(socket.sent.at(-1), { v:1,type:"self_damage",operationId:"fall:transport",damage:6,cause:"fall" });
+socket.receive({ type:"self_damage_result",operationId:"fall:transport",damage:6,health:14,killed:false,cause:"fall" });
+assert.equal(selfHealth, 14, "fall damage health only changes after Railway acknowledges and persists it");
 const respawnPromise = client.submitRespawn();
 const respawnRequest = socket.sent.at(-1)!;
 assert.equal(respawnRequest.type, "respawn");

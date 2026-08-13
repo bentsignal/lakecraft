@@ -4,6 +4,7 @@ import {
   MAX_HUNGER,
   RECIPES,
   consumeFood,
+  consumeSelectedPlacementStack,
   craftRecipe,
   createEmptyInventory,
   createEmptyEquipment,
@@ -40,6 +41,7 @@ export type InventoryAction =
   | { kind: "initialize" }
   | { kind: "select_hotbar"; selectedHotbar: number }
   | { kind: "eat"; sourceSlot: number; expectedItemId: ItemId }
+  | { kind: "place_block"; sourceSlot: number; expectedItemId: ItemId }
   | { kind: "death_settle"; eventId: string }
   | {
       kind: "workspace_commit";
@@ -89,7 +91,7 @@ export type InventoryActionApplyResult =
       ok: true;
       state: CanonicalPlayerState;
       playerStateJson: string;
-      effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar" | "death_settled";
+      effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "selected_hotbar" | "death_settled";
       consumed?: ItemId;
       restored?: number;
       crafted?: Array<{ itemId: ItemId; count: number }>;
@@ -100,7 +102,7 @@ export type InventoryActionMutationResult =
   | {
       ok: true;
       replayed: boolean;
-      effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar" | "death_settled";
+      effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "selected_hotbar" | "death_settled";
       inventory: PersistedInventoryState;
       consumed?: ItemId;
       restored?: number;
@@ -190,6 +192,16 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
       return { ok: false, reason: BS.invalidAction };
     }
     action = { kind: "eat", sourceSlot: record.sourceSlot, expectedItemId: record.expectedItemId as ItemId };
+  } else if (record.kind === "place_block") {
+    if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "expectedItemId"], [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "expectedItemId"])
+      || typeof record.sourceSlot !== "number" || !Number.isInteger(record.sourceSlot)
+      || record.sourceSlot < 0 || record.sourceSlot >= 36
+      || !BS.isString(record.expectedItemId)
+      || !Object.prototype.hasOwnProperty.call(ITEMS, record.expectedItemId)
+      || ITEMS[record.expectedItemId as ItemId].placesBlock === undefined) {
+      return { ok: false, reason: BS.invalidAction };
+    }
+    action = { kind: "place_block", sourceSlot: record.sourceSlot, expectedItemId: record.expectedItemId as ItemId };
   } else if (record.kind === "death_settle") {
     if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", "eventId"], [BS.operationId, BS.expectedRevision, "kind", "eventId"])
       || !BS.isString(record.eventId) || !/^[A-Za-z0-9:_-]{8,96}$/.test(record.eventId)) {
@@ -314,6 +326,18 @@ export function applyInventoryAction(
       restored: result.restored,
     };
   }
+  if (action.kind === "place_block") {
+    const result = consumeSelectedPlacementStack(previous.inventory, action.sourceSlot, action.expectedItemId);
+    if (!result.ok) return { ok: false, reason: previous.inventory[action.sourceSlot] ? "item_mismatch" : "empty_slot" };
+    const state = { ...previous, inventory: result.inventory };
+    return {
+      ok: true,
+      state,
+      playerStateJson: canonicalStateJson(state),
+      effect: "placed_block",
+      consumed: action.expectedItemId,
+    };
+  }
   if (action.kind === "death_settle") {
     const state = {
       ...previous,
@@ -383,7 +407,7 @@ export function decideInventoryActionReplay(
 }
 
 export type InventoryActionReceiptPayload = {
-  effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar" | "death_settled";
+  effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "selected_hotbar" | "death_settled";
   consumed?: ItemId;
   restored?: number;
   crafted?: Array<{ itemId: ItemId; count: number }>;
@@ -398,7 +422,7 @@ export function decodeInventoryActionReceipt(rawJson: string): InventoryActionRe
   try {
     const value = JSON.parse(rawJson) as Record<string, unknown>;
     if (!value || !hasOnlyKeys(value, ["effect", "consumed", "restored", "crafted"], ["effect"])
-      || !["initialized", "workspace_committed", "ate", "selected_hotbar", "death_settled"].includes(String(value.effect))) {
+      || !["initialized", "workspace_committed", "ate", "placed_block", "selected_hotbar", "death_settled"].includes(String(value.effect))) {
       return null;
     }
     if (value.consumed !== undefined && (!BS.isString(value.consumed)

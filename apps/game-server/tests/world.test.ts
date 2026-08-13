@@ -235,6 +235,27 @@ describe("authoritative world", () => {
     store.close();
   });
 
+  test("persists exact-once fall damage instead of restoring health from snapshots", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("fall-socket");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex")), 1_000);
+    const fall = { v:1,type:"self_damage",operationId:"fall:exactly-once",damage:7,cause:"fall" };
+    await world.message(peer, JSON.stringify(fall), 1_200);
+    await world.message(peer, JSON.stringify(fall), 1_201);
+    expect(peer.ofType("self_damage_result").slice(-2)).toEqual([
+      expect.objectContaining({ damage:7,health:13,killed:false,cause:"fall" }),
+      expect.objectContaining({ damage:7,health:13,killed:false,cause:"fall" }),
+    ]);
+    world.snapshots(1_202);
+    expect(peer.ofType("snapshot").at(-1)?.self.health).toBe(13);
+    expect(store.loadPlayer("alex")?.player.health).toBe(13);
+    await world.message(peer, JSON.stringify({ ...fall, operationId:"fall:fatal", damage:20 }), 1_400);
+    expect(peer.ofType("self_damage_result").at(-1)).toMatchObject({ damage:13,health:0,killed:true });
+    store.close();
+  });
+
   test("respawns through server authority and persists the canonical spawn", async () => {
     const store = new WorldStore(":memory:");
     const world = new GameWorld(config(), store, authenticator);
