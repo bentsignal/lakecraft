@@ -41,7 +41,11 @@ class FakePeer implements Peer {
 const authenticator: JoinAuthenticator = {
   async authenticate(message) {
     if (!message.demo) throw new Error("demo required");
-    return { userId: message.demo.userId, displayName: message.demo.name };
+    return {
+      userId: message.demo.userId,
+      displayName: message.demo.name,
+      ...(message.demo.inventoryJson === undefined ? {} : { initialInventoryJson: message.demo.inventoryJson }),
+    };
   },
 };
 
@@ -146,6 +150,32 @@ describe("authoritative world", () => {
       revision: 1,
       edits: [{ x: 0, y: 69, z: 1, block: 4, editorId: "alex" }],
     });
+    store.close();
+  });
+
+  test("runs shared pack actions on the realtime authority and restores them on reconnect", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const peer = new FakePeer("inventory-a");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("alex")), 1_000);
+    expect(peer.ofType("inventory_state")[0]?.inventory).toMatchObject({ userId:"alex",revision:"1" });
+
+    const requestJson = JSON.stringify({
+      operationId:"inventory_place_0001",expectedRevision:"1",kind:"place_block",sourceSlot:2,expectedItemId:"dirt",
+    });
+    await world.message(peer, JSON.stringify({ v:1,type:"inventory_action",requestJson }), 1_010);
+    await world.message(peer, JSON.stringify({ v:1,type:"inventory_action",requestJson }), 1_020);
+    expect(peer.ofType("inventory_result").slice(-2)).toMatchObject([
+      { operationId:"inventory_place_0001",result:{ ok:true,replayed:false,inventory:{ revision:"2" } } },
+      { operationId:"inventory_place_0001",result:{ ok:true,replayed:true,inventory:{ revision:"2" } } },
+    ]);
+    world.close(peer);
+
+    const resumed = new FakePeer("inventory-b");
+    world.open(resumed, 1_040);
+    await world.message(resumed, JSON.stringify(join("alex")), 1_040);
+    expect(resumed.ofType("inventory_state")[0]?.inventory).toMatchObject({ userId:"alex",revision:"2" });
     store.close();
   });
 

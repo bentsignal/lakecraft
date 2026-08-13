@@ -4,6 +4,8 @@ import type { RealtimeChatEvent } from "./realtimeChat.ts";
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
 import type { HydratedPlayerSkin } from "./game/playerSkin.ts";
 import type { ItemStack } from "../shared/game.ts";
+import type { InventoryActionMutationResult } from "../shared/inventoryActions.ts";
+import type { PersistedInventoryState } from "../shared/chestTransfers.ts";
 import type { NormalizedDroppedItem } from "../shared/droppedItems.ts";
 import {
   RealtimeMultiplayerClient,
@@ -25,6 +27,7 @@ export type RealtimePickupSink = (operationId: string, dropId: string) => Promis
 export type RealtimeRespawnSink = () => Promise<PlayerPose>;
 export type RealtimePlayerAttackSink = (operationId: string, targetId: string) => void;
 export type RealtimeSelfDamageSink = (operationId: string, damage: number) => void;
+export type RealtimeInventorySink = (requestJson: string) => Promise<InventoryActionMutationResult>;
 
 export function RealtimeMultiplayerTransport(props: {
   endpoint: string;
@@ -34,6 +37,7 @@ export function RealtimeMultiplayerTransport(props: {
   localUserId: string;
   localUsername: string;
   getPose: () => PlayerPose;
+  getInitialInventoryJson: () => string;
   getHeldItem?: () => string | null;
   getSkin?: () => Promise<HydratedPlayerSkin>;
   getArmor?: () => { armorHead: string; armorChest: string; armorLegs: string; armorFeet: string };
@@ -46,6 +50,7 @@ export function RealtimeMultiplayerTransport(props: {
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
   onSelfHealth: (health: number) => void;
+  onInventoryState: (inventory: PersistedInventoryState) => void;
   registerBlockSink: (sink: RealtimeBlockSink | null) => void;
   registerChatSink: (sink: RealtimeChatSink | null) => void;
   registerActionSink: (sink: ((kind: MotionVisualActionKind, value?: number) => void) | null) => void;
@@ -54,6 +59,7 @@ export function RealtimeMultiplayerTransport(props: {
   registerRespawnSink: (sink: RealtimeRespawnSink | null) => void;
   registerPlayerAttackSink: (sink: RealtimePlayerAttackSink | null) => void;
   registerSelfDamageSink: (sink: RealtimeSelfDamageSink | null) => void;
+  registerInventorySink: (sink: RealtimeInventorySink | null) => void;
 }) {
   const propsRef = useRef(props);
   propsRef.current = props;
@@ -67,6 +73,7 @@ export function RealtimeMultiplayerTransport(props: {
       localUserId: props.localUserId,
       localUsername: props.localUsername,
       getPose: () => propsRef.current.getPose(),
+      getInitialInventoryJson: () => propsRef.current.getInitialInventoryJson(),
       getHeldItem: () => propsRef.current.getHeldItem?.() ?? null,
       getSkin: () => propsRef.current.getSkin?.() ?? Promise.reject(new Error("skin_unavailable")),
       getArmor: () => propsRef.current.getArmor?.() ?? {
@@ -81,6 +88,7 @@ export function RealtimeMultiplayerTransport(props: {
       onDrops: (drops) => propsRef.current.onDrops(drops),
       onPlayerHit: (hit) => propsRef.current.onPlayerHit(hit),
       onSelfHealth: (health) => propsRef.current.onSelfHealth(health),
+      onInventoryState: (inventory) => propsRef.current.onInventoryState(inventory),
     });
     props.registerBlockSink((operationId, edit) => client.submitBlockEdit(operationId, edit));
     props.registerChatSink((message) => client.submitChat(message));
@@ -90,6 +98,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerRespawnSink(() => client.submitRespawn());
     props.registerPlayerAttackSink((operationId, targetId) => client.submitPlayerAttack(operationId, targetId));
     props.registerSelfDamageSink((operationId, damage) => client.submitSelfDamage(operationId, damage));
+    props.registerInventorySink((requestJson) => client.submitInventoryAction(requestJson));
     client.start();
     return () => {
       props.registerBlockSink(null);
@@ -100,6 +109,7 @@ export function RealtimeMultiplayerTransport(props: {
       props.registerRespawnSink(null);
       props.registerPlayerAttackSink(null);
       props.registerSelfDamageSink(null);
+      props.registerInventorySink(null);
       client.stop();
     };
   }, [props.endpoint, props.ticket, props.serverId, props.demo?.token, props.localUserId, props.localUsername]);

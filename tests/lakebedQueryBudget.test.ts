@@ -42,6 +42,9 @@ test("Railway gameplay has no Lakebed world or inventory polling bridge", () => 
   assert.doesNotMatch(client, /function (?:InventoryQuery|LakebedWorldQueries)/);
   assert.doesNotMatch(client, /useQuery<[^\n]+?>\("(?:myInventory|chestAt|droppedItems|myPresence|playerCombatStates|worldChunks|worldClock|worldEdits|furnaceAt)"/);
   assert.match(client, /if \(!inWorld \|\| !inventoryReady \|\| !realtimeSession\) return/);
+  assert.match(client, /const realtimeSink = realtimeSession \? realtimeInventorySinkRef\.current : null/);
+  assert.match(client, /realtimeSink[\s\S]*?await realtimeSink\(pending\.requestJson\)[\s\S]*?: await applyInventoryActionMutation/,
+    "ordinary multiplayer inventory actions are kept off the Lakebed mutation quota");
 });
 
 test("RailwayMultiplayerSession no longer mounts Lakebed reads unconditionally", () => {

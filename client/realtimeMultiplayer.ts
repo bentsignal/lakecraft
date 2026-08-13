@@ -1,6 +1,8 @@
 import type { PlayerPose, RemotePlayer, WorldEdit } from "./game/types.ts";
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
 import { ITEMS, type ItemStack } from "../shared/game.ts";
+import type { InventoryActionMutationResult } from "../shared/inventoryActions.ts";
+import { validatePlayerStateJson, type PersistedInventoryState } from "../shared/chestTransfers.ts";
 import type { NormalizedDroppedItem } from "../shared/droppedItems.ts";
 import {
   decodePlayerSkinWirePixels,
@@ -52,6 +54,7 @@ export type RealtimeClientOptions = {
   localUserId: string;
   localUsername: string;
   getPose: () => PlayerPose;
+  getInitialInventoryJson?: () => string;
   getHeldItem?: () => string | null;
   getSkin?: () => Promise<HydratedPlayerSkin>;
   getArmor?: () => RealtimeArmorAppearance;
@@ -63,6 +66,7 @@ export type RealtimeClientOptions = {
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
   onSelfHealth: (health: number) => void;
+  onInventoryState?: (inventory: PersistedInventoryState) => void;
   onReconcilePose?: (pose: PlayerPose) => void;
 };
 
@@ -73,6 +77,12 @@ type PendingBlockEdit = {
 };
 type PendingDrop = { resolve: (drop: NormalizedDroppedItem) => void; reject: (error: Error) => void; timer: number };
 type PendingRespawn = { resolve: (pose: PlayerPose) => void; reject: (error: Error) => void; timer: number };
+type PendingInventory = {
+  requestJson: string;
+  resolve: (result: InventoryActionMutationResult) => void;
+  reject: (error: Error) => void;
+  timer: number;
+};
 
 type RealtimeEnvelope = Record<string, unknown> & { v: number; type: string };
 type RemoteAppearance = RealtimeArmorAppearance & {
@@ -222,6 +232,41 @@ function decodeDrop(value: unknown): NormalizedDroppedItem | null {
   };
 }
 
+function decodeRealtimeInventory(value: unknown): PersistedInventoryState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const userId = boundedText(source.userId, 128);
+  const inventoryJson = typeof source.inventoryJson === "string" ? source.inventoryJson : "";
+  const revision = boundedText(source.revision, 16);
+  const createdAt = boundedText(source.createdAt, 32);
+  const updatedAt = boundedText(source.updatedAt, 32);
+  if (!userId || !/^(?:0|[1-9]\d{0,15})$/.test(revision) || !createdAt || !updatedAt
+    || !validatePlayerStateJson(inventoryJson).ok) return null;
+  return {
+    id: boundedText(source.id, 256) || `railway:${userId}`,
+    userId,
+    inventoryJson,
+    revision,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function decodeInventoryResult(value: unknown): InventoryActionMutationResult | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const inventory = source.inventory === null ? null : decodeRealtimeInventory(source.inventory);
+  if (source.ok === true) {
+    if (!inventory || typeof source.replayed !== "boolean" || typeof source.effect !== "string") return null;
+    return { ...source, inventory } as InventoryActionMutationResult;
+  }
+  if (source.ok !== false || typeof source.reason !== "string" || source.reason.length > 64) return null;
+  return {
+    ...source,
+    ...(source.inventory === undefined ? {} : { inventory }),
+  } as InventoryActionMutationResult;
+}
+
 export function normalizeMultiplayerEndpoint(value: string): string | null {
   try {
     const candidate = value.trim();
@@ -340,6 +385,7 @@ export class RealtimeMultiplayerClient {
   private pendingChat = new Map<string, string>();
   private pendingDrops = new Map<string, PendingDrop>();
   private pendingSelfDamage = new Map<string, number>();
+  private pendingInventory = new Map<string, PendingInventory>();
   private pendingRespawn: PendingRespawn | null = null;
   private appearanceSupported = false;
   private localSkin: HydratedPlayerSkin | null = null;
@@ -385,6 +431,11 @@ export class RealtimeMultiplayerClient {
     this.pendingChat.clear();
     for (const pending of this.pendingDrops.values()) { window.clearTimeout(pending.timer); pending.reject(new Error("multiplayer_disconnected")); }
     this.pendingDrops.clear();
+    for (const pending of this.pendingInventory.values()) {
+      window.clearTimeout(pending.timer);
+      pending.reject(new Error("multiplayer_disconnected"));
+    }
+    this.pendingInventory.clear();
     this.pendingSelfDamage.clear();
     if (this.pendingRespawn) {
       window.clearTimeout(this.pendingRespawn.timer);
@@ -452,6 +503,30 @@ export class RealtimeMultiplayerClient {
     this.options.onChatEvent({ type: "optimistic", message: optimistic });
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "chat_send", operationId, message });
     return Promise.resolve();
+  }
+
+  submitInventoryAction(requestJson: string): Promise<InventoryActionMutationResult> {
+    let operationId = "";
+    try {
+      const parsed = JSON.parse(requestJson) as { operationId?: unknown };
+      if (typeof parsed.operationId === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(parsed.operationId)) {
+        operationId = parsed.operationId;
+      }
+    } catch {
+      return Promise.reject(new Error("invalid_inventory_action"));
+    }
+    if (!operationId || requestJson.length > 8_191 || this.pendingInventory.has(operationId)
+      || !this.joined || this.socket?.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("multiplayer_inventory_unavailable"));
+    }
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "inventory_action", ["requestJson"]: requestJson });
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        this.pendingInventory.delete(operationId);
+        reject(new Error("multiplayer_inventory_timeout"));
+      }, 5_000);
+      this.pendingInventory.set(operationId, { requestJson, resolve, reject, timer });
+    });
   }
 
   submitAction(kind: MotionVisualActionKind, value?: number): void {
@@ -534,7 +609,14 @@ export class RealtimeMultiplayerClient {
         type: "join",
         ...(this.options.demo ? {} : { serverId: this.options.serverId }),
         ...(this.resumeToken || this.options.demo ? {} : { ticket: this.options.ticket }),
-        ...(!this.resumeToken && this.options.demo ? { demo: this.options.demo } : {}),
+        ...(!this.resumeToken && this.options.demo ? {
+          demo: {
+            ...this.options.demo,
+            ...(this.options.getInitialInventoryJson
+              ? { inventoryJson: this.options.getInitialInventoryJson() }
+              : {}),
+          },
+        } : {}),
         ...(this.resumeToken ? { resumeToken: this.resumeToken } : {}),
       });
     };
@@ -777,6 +859,9 @@ export class RealtimeMultiplayerClient {
       for (const [operationId, damage] of this.pendingSelfDamage) {
         this.send({ v: REALTIME_PROTOCOL_VERSION, type: "self_damage", operationId, damage, cause: "fall" });
       }
+      for (const pending of this.pendingInventory.values()) {
+        this.send({ v: REALTIME_PROTOCOL_VERSION, type: "inventory_action", ["requestJson"]: pending.requestJson });
+      }
       return;
     }
     if (message.type === "appearance_roster") {
@@ -863,6 +948,21 @@ export class RealtimeMultiplayerClient {
       window.clearTimeout(pending.timer);
       this.pendingDrops.delete(operationId);
       pending.resolve(drop);
+      return;
+    }
+    if (message.type === "inventory_state") {
+      const inventory = decodeRealtimeInventory(message.inventory);
+      if (inventory && inventory.userId === this.options.localUserId) this.options.onInventoryState?.(inventory);
+      return;
+    }
+    if (message.type === "inventory_result") {
+      const operationId = boundedText(message.operationId, 64);
+      const pending = this.pendingInventory.get(operationId);
+      const result = decodeInventoryResult(message.result);
+      if (!pending || !result) return;
+      window.clearTimeout(pending.timer);
+      this.pendingInventory.delete(operationId);
+      pending.resolve(result);
       return;
     }
     if (message.type === "player_hit") {

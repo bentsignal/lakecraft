@@ -37,10 +37,11 @@ jobs:
           SOURCE_REVISION: ${{ github.sha }}
         run: |
           docker build \
+            --file apps/game-server/Dockerfile \
             --label "org.opencontainers.image.revision=${SOURCE_REVISION}" \
             --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             --tag "${IMAGE}:railway-beta" \
             --tag "${IMAGE}:sha-${SOURCE_REVISION}" \
-            apps/game-server
+            .
           docker push "${IMAGE}:railway-beta"
           docker push "${IMAGE}:sha-${SOURCE_REVISION}"

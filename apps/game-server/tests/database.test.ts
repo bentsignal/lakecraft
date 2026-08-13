@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { WorldStore } from "../src/database";
+import { countItem } from "../../../shared/game.ts";
+import { validatePlayerStateJson } from "../../../shared/chestTransfers.ts";
 
 const paths: string[] = [];
 
@@ -13,6 +15,39 @@ afterEach(async () => {
 });
 
 describe("SQLite world persistence", () => {
+  test("persists and replays the shared inventory state machine without Lakebed gameplay writes", () => {
+    const store = new WorldStore(":memory:");
+    const initial = store.ensurePlayerInventory("alex", undefined, 1_000);
+    const initialState = validatePlayerStateJson(initial.inventoryJson);
+    expect(initialState.ok && countItem(initialState.state.inventory, "dirt")).toBe(16);
+
+    const placeRequest = JSON.stringify({
+      operationId:"inventory_place_0001",expectedRevision:"1",kind:"place_block",sourceSlot:2,expectedItemId:"dirt",
+    });
+    const placed = store.applyPlayerInventoryAction("alex", placeRequest, 1_010);
+    expect(placed).toMatchObject({ ok:true,replayed:false,effect:"placed_block",inventory:{ revision:"2" } });
+    if (!placed.ok) throw new Error("placement failed");
+    const placedState = validatePlayerStateJson(placed.inventory.inventoryJson);
+    expect(placedState.ok && countItem(placedState.state.inventory, "dirt")).toBe(15);
+    expect(store.applyPlayerInventoryAction("alex", placeRequest, 1_020)).toMatchObject({
+      ok:true,replayed:true,effect:"placed_block",inventory:{ revision:"2" },
+    });
+
+    const conflicting = store.applyPlayerInventoryAction("alex", JSON.stringify({
+      operationId:"inventory_place_0002",expectedRevision:"1",kind:"place_block",sourceSlot:2,expectedItemId:"dirt",
+    }), 1_030);
+    expect(conflicting).toMatchObject({ ok:false,reason:"conflict",inventory:{ revision:"2" } });
+
+    const credited = store.applyPlayerInventoryAction("alex", JSON.stringify({
+      operationId:"inventory_pickup_001",expectedRevision:"2",kind:"world_credit",stack:{ itemId:"dirt",count:1 },
+    }), 1_040);
+    expect(credited).toMatchObject({ ok:true,effect:"world_credited",inventory:{ revision:"3" } });
+    if (!credited.ok) throw new Error("credit failed");
+    const creditedState = validatePlayerStateJson(credited.inventory.inventoryJson);
+    expect(creditedState.ok && countItem(creditedState.state.inventory, "dirt")).toBe(16);
+    store.close();
+  });
+
   test("uses WAL and recovers player state, revisions, and idempotent operations", () => {
     const path = `/tmp/lakecraft-world-${crypto.randomUUID()}.sqlite`;
     paths.push(path);

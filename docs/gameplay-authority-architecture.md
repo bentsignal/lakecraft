@@ -30,9 +30,16 @@ appearance, game mode, and respawn results. The browser may predict presentation
 locally, but it reconciles to Railway responses and cannot silently fall back to
 Lakebed world mutations or local mob authority.
 
-Lakebed remains the account and control plane: authentication, usernames,
-server registration/join tickets, and the current account inventory bridge. It
-must not be used as the realtime world transport.
+The same Railway world also owns its durable per-server player packs. Placement,
+Q-drop, pickup, crafting, eating, selection, and death settlement use the pure
+shared inventory transitions, but revisions and idempotency receipts are stored
+in Railway SQLite. Lakebed provides a validated one-time seed on a player's
+first visit; ordinary multiplayer gameplay spends no Lakebed queries or
+mutations.
+
+Lakebed remains the account and control plane: authentication, usernames, and
+server registration/join tickets. It must not be used as the realtime world or
+multiplayer inventory transport.
 
 ## Change rule
 

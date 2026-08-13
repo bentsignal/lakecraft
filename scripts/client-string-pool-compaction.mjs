@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 487;
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 493;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 434;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fcc4f3167f8ce8749aa259070eb6d93d452800fd69d83253f6fe605f2a394525";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "8426149ab49b75f0b1c36a22ddf88b8f7fbe6a5c1622a1cef1e01cb1596c67a2";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -113,9 +113,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   previousOccurrences: 486,
   previousUniqueValues: 433,
   previousSourceFingerprint: "4048b67e45c872c7d61ab81f4434ea9e3f860707d0bcc9581248c0341d809a00",
-  occurrenceDelta: 1,
+  occurrenceDelta: 7,
   uniqueValueDelta: 1,
-  source: "client/index.tsx#durable-placement-and-world-item-recovery",
+  source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_023;
@@ -370,9 +370,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 421;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 422;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "449fabeec02f80b375ad17a086ccadaa9eaeb0c422f86d07a6691285fcd692dd";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "4d18861dcc8003dd60734bfc1ea1efdc2c67cf3a2f2876c27616582bc1e525e3";
 export const COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA = Object.freeze({
   previousOccurrences: 418,
   previousUniqueValues: 123,
@@ -408,12 +408,13 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_LOCAL_DROP_OWNER_DELTA = Object.freeze
   previousOccurrences: 420,
   previousUniqueValues: 124,
   previousSourceFingerprint: "6e0048fcf397cb87fe16cda84341df704070cb775b64fa2fc95b5decc779be03",
-  occurrenceDelta: 1,
+  occurrenceDelta: 2,
   uniqueValueDelta: 0,
   sources: Object.freeze([
     "client/singleplayer/SinglePlayerApp.tsx",
     "client/singleplayer/localDroppedItems.ts",
     "client/singleplayer/localSave.ts",
+    "client/realtimeMultiplayer.ts",
   ]),
   exclusionChanges: 0,
 });
@@ -608,20 +609,20 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 64;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   creative: 34,
-  survival: 11,
+  survival: 10,
   loaded: 3,
   recovered: 3,
   corrupt: 5,
   unsupported: 6,
   empty: 2,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "1d38c15e0808e08228375641f607d20566d12262cb5e1e50d1d9029f225872a5";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "232b8a8f4fe5784bbe9d910ab52110a277ba42dc0d4feab04dcdfd4062a517f3";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 68,
   previousUniqueValues: 7,
@@ -634,9 +635,9 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SURVIVAL_FEEDBACK_DELTA = Object.free
   previousOccurrences: 63,
   previousUniqueValues: 7,
   previousSourceFingerprint: "358cf0997bf825646abdd7792dbb7a58347210c5925ca1548979416c4456f5c2",
-  occurrenceDelta: 1,
+  occurrenceDelta: 0,
   uniqueValueDelta: 0,
-  source: "client/index.tsx#authoritative-survival-placement",
+  source: "Railway inventory authority removes the Lakebed survival-pack reload branch",
 });
 // WebGL uniform names are a closed API boundary between authored shader text
 // and `getUniformLocation`. Keep this semantic category separate from the

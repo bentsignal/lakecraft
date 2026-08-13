@@ -269,6 +269,7 @@ export class GameWorld implements AdminWorldControl {
     if (message.type === "input") this.input(state, message, now);
     else if (message.type === "action") this.action(state, message);
     else if (message.type === "block_edit") this.blockEdit(state, message, now);
+    else if (message.type === "inventory_action") this.inventoryAction(state, message, now);
     else if (message.type === "chat_send") this.chat(state, message, now);
     else if (message.type === "drop_item") this.dropItem(state, message, now);
     else if (message.type === "pickup_item") this.pickupItem(state, message, now);
@@ -473,6 +474,7 @@ export class GameWorld implements AdminWorldControl {
       state.lastInputAt = now;
       this.userConnections.set(player.id, state);
       this.store.savePlayer(player, resumeHash, now, resumeExpiresAt);
+      const inventory = this.store.ensurePlayerInventory(player.id, principal.initialInventoryJson, now);
       const revision = this.store.getRevision();
       this.send(state.peer, {
         v: PROTOCOL_VERSION,
@@ -491,6 +493,7 @@ export class GameWorld implements AdminWorldControl {
         revision,
         edits: this.store.getAllBlockEdits(),
       });
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_state", inventory });
       this.send(state.peer, {
         v: PROTOCOL_VERSION,
         type: "chat_history",
@@ -726,6 +729,28 @@ export class GameWorld implements AdminWorldControl {
         edit: result.edit,
       });
     }
+  }
+
+  private inventoryAction(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "inventory_action" }>,
+    now: number,
+  ): void {
+    let operationId = "";
+    try {
+      const parsed = JSON.parse(message.requestJson) as { operationId?: unknown };
+      if (typeof parsed.operationId === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(parsed.operationId)) {
+        operationId = parsed.operationId;
+      }
+    } catch {
+      // The shared validator below returns the canonical invalid_request result.
+    }
+    if (!operationId) {
+      this.fail(state, "bad_message", "Inventory operation ID is invalid", false, false);
+      return;
+    }
+    const result = this.store.applyPlayerInventoryAction(state.player!.id, message.requestJson, now);
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_result", operationId, result });
   }
 
   private chat(
