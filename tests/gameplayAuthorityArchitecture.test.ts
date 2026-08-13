@@ -21,6 +21,8 @@ test("local and Railway worlds enter through one gameplay session boundary", () 
   assert.match(railway, /createRailwayGameplayAuthority\(/);
   assert.match(local, /authority="local"/);
   assert.match(railway, /authority="railway"/);
+  assert.doesNotMatch(railway, /\bgetAttackDamage\s*:/,
+    "attack damage stays in the shared presentation adapter instead of colliding with Railway authority options");
 });
 
 test("Railway gameplay cannot split world authority back into Lakebed", () => {

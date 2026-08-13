@@ -87,7 +87,7 @@ for (const path of runtimeFiles) {
 }
 assert.equal(runtimeFiles.length, 180, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "070cde6cc2b0d7fd861204984648e7eafc938c751b858b5a8260f7a5d7007c2a",
+  "115b380bcb870041db16b98e393d0155af0629c00f6a78f42a46029bdb0df853",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
