@@ -5657,6 +5657,10 @@ export default capsule({
           await ctx.db.externalMultiplayerJoinTickets.delete(ticket.id);
           return json({ ok: false, reason: "invalid_ticket" }, { status: 401, headers: noStore });
         }
+        const inventoryRows = await newestMatchingRows(ctx.db.inventories, BS.byUser, BS.userId, ticket.userId);
+        const inventory = inventoryRows.length === 1 && validatePlayerStateJson(inventoryRows[0].inventoryJson).ok
+          ? inventoryRows[0]
+          : null;
         await ctx.db.externalMultiplayerJoinTickets.delete(ticket.id);
         return json({
           userId: ticket.userId,
@@ -5664,6 +5668,7 @@ export default capsule({
           ticketId: ticketHash,
           serverId: server.id,
           expiresAt: Number(ticket.expiresAt),
+          ...(inventory ? { inventoryJson: inventory.inventoryJson } : {}),
         }, { headers: noStore });
       },
     )

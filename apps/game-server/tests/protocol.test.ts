@@ -76,6 +76,22 @@ describe("protocol v1", () => {
     }))).toMatchObject({ ok:true, message:{ type:"respawn", operationId:"respawn_12345678" } });
   });
 
+  test("accepts only bounded opaque shared inventory actions", () => {
+    const requestJson = JSON.stringify({
+      operationId: "inventory_place_0001",
+      expectedRevision: "1",
+      kind: "place_block",
+      sourceSlot: 2,
+      expectedItemId: "dirt",
+    });
+    expect(decodeClientMessage(JSON.stringify({ v:1,type:"inventory_action",requestJson }))).toMatchObject({
+      ok:true,
+      message:{ type:"inventory_action",requestJson },
+    });
+    expect(decodeClientMessage(JSON.stringify({ v:1,type:"inventory_action",requestJson:"x" }))).toMatchObject({ ok:false });
+    expect(decodeClientMessage(JSON.stringify({ v:1,type:"inventory_action",requestJson:"x".repeat(8_192) }))).toMatchObject({ ok:false });
+  });
+
   test("rejects version mismatches, oversized axes, and invalid block ids", () => {
     expect(decodeClientMessage('{"v":2,"type":"ping","t":0}')).toMatchObject({
       ok: false,

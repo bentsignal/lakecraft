@@ -7,6 +7,7 @@ type JoinMessage = Extract<ClientMessage, { type: "join" }>;
 export interface AuthPrincipal {
   userId: string;
   displayName: string;
+  initialInventoryJson?: string;
 }
 
 export interface JoinAuthenticator {
@@ -34,6 +35,7 @@ class LocalDemoAuthenticator implements JoinAuthenticator {
     return {
       userId: sanitizeId(demo.userId),
       displayName: sanitizeName(demo.name),
+      ...(demo.inventoryJson === undefined ? {} : { initialInventoryJson: demo.inventoryJson }),
     };
   }
 }
@@ -69,7 +71,11 @@ class LakebedTicketAuthenticator implements JoinAuthenticator {
       throw new Error("Join ticket is expired or has an invalid lifetime");
     }
     if (!this.store.consumeTicket(payload.ticketId, now)) throw new Error("Join ticket was already used");
-    return { userId: sanitizeId(payload.userId), displayName: sanitizeName(payload.displayName) };
+    return {
+      userId: sanitizeId(payload.userId),
+      displayName: sanitizeName(payload.displayName),
+      ...(payload.inventoryJson === undefined ? {} : { initialInventoryJson: payload.inventoryJson }),
+    };
   }
 }
 
@@ -79,6 +85,7 @@ interface RedeemResponse {
   ticketId: string;
   serverId: string;
   expiresAt: number;
+  inventoryJson?: string;
 }
 
 function isRedeemResponse(value: unknown): value is RedeemResponse {
@@ -89,7 +96,8 @@ function isRedeemResponse(value: unknown): value is RedeemResponse {
     typeof item.displayName === "string" && item.displayName.length > 0 && item.displayName.length <= 64 &&
     typeof item.ticketId === "string" && item.ticketId.length > 0 && item.ticketId.length <= 256 &&
     typeof item.serverId === "string" && item.serverId.length > 0 && item.serverId.length <= 128 &&
-    typeof item.expiresAt === "number" && Number.isFinite(item.expiresAt)
+    typeof item.expiresAt === "number" && Number.isFinite(item.expiresAt) &&
+    (item.inventoryJson === undefined || (typeof item.inventoryJson === "string" && item.inventoryJson.length <= 16_384))
   );
 }
 

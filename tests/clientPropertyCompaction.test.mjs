@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 634, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 633, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "23fc9eee3d5f77bca67047eb36c296060fcfaaca6c54f871b9617c6b1ce6eec2",
+  "f9056f4388651ea10a3e1d9de9e9f01a396a59a63f6ff8b143bd6f22994e9bba",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -117,7 +117,6 @@ const reviewedPrivatePropertyPaths = {
   registryLoad: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/localWorldRegistry.ts"] },
   removedChest: { declarations: ["client/singleplayer/localContainers.ts"], uses: ["client/singleplayer/localContainers.ts"] },
   removedFurnace: { declarations: ["client/singleplayer/localContainers.ts"], uses: ["client/singleplayer/localContainers.ts"] },
-  requestJson: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
   savedRevision: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
   seedText: { declarations: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts", "client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts", "client/singleplayer/localWorldRegistry.ts"] },
   setInWorld: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
@@ -168,7 +167,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "633a7a900123ffa7732e40bbc06acb132bff8829ecf3ab90d96e9ae4f2dec153",
+  "e7a749654db7e9ff7b37071f70743f53df627c3eb75dfb7bdb309dccd787b743",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
@@ -569,6 +568,8 @@ for (const key of ["ownerMustLeave", "ownerPickupBlocked"]) {
   assert.match(realtimeCompact, new RegExp(key), `compact realtime drop codec preserves literal ${key}`);
   assert.match(boundaryBundles.get("client/realtimeMultiplayer.ts").baseline, new RegExp(key));
 }
+assert.equal(realtimeCompact.split("requestJson").length - 1, 4,
+  "compact realtime inventory keeps every pending-field and literal wire requestJson boundary");
 
 const bundledModuleDirectory = mkdtempSync(join(tmpdir(), "lakecraft-compact-modules-"));
 let bundledModuleSequence = 0;

@@ -1,5 +1,12 @@
 import { Database } from "bun:sqlite";
 import type { BlockEdit, PublicDrop, PublicPlayer, RealtimeChatMessage, ServerGameMode } from "./protocol";
+import {
+  applyInventoryAction,
+  createInitializedPlayerState,
+  validateInventoryActionRequestJson,
+  type InventoryActionMutationResult,
+} from "../../../shared/inventoryActions.ts";
+import { validatePlayerStateJson, type PersistedInventoryState } from "../../../shared/chestTransfers.ts";
 
 interface PlayerRow {
   user_id: string;
@@ -38,6 +45,19 @@ interface DropRow {
   drop_id: string; operation_id: string; owner_user_id: string; item_id: string; count: number;
   durability: number | null; x: number; y: number; z: number; dropped_at: number; owner_pickup_at: number; expires_at: number;
   owner_pickup_blocked: number;
+}
+
+interface PlayerInventoryRow {
+  user_id: string;
+  inventory_json: string;
+  revision: number;
+  created_at: number;
+  updated_at: number;
+}
+
+interface InventoryOperationRow {
+  fingerprint: string;
+  result_json: string;
 }
 
 export interface StoredPlayer {
@@ -156,6 +176,23 @@ export class WorldStore {
         picked_at INTEGER NOT NULL,
         PRIMARY KEY (user_id, operation_id)
       );
+
+      CREATE TABLE IF NOT EXISTS player_inventory (
+        user_id TEXT PRIMARY KEY,
+        inventory_json TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision >= 1),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS inventory_operations (
+        user_id TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, operation_id)
+      );
     `);
     const playerColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(player_state)").all();
     if (!playerColumns.some((column) => column.name === "resume_expires_at")) {
@@ -179,6 +216,88 @@ export class WorldStore {
 
   close(): void {
     this.db.close();
+  }
+
+  ensurePlayerInventory(userId: string, initialInventoryJson?: string, now = Date.now()): PersistedInventoryState {
+    return this.db.transaction(() => {
+      const existing = this.playerInventoryRow(userId);
+      if (existing) return toPersistedInventory(existing);
+      const validated = initialInventoryJson ? validatePlayerStateJson(initialInventoryJson) : null;
+      const state = validated?.ok ? validated.state : createInitializedPlayerState();
+      const inventoryJson = JSON.stringify(state);
+      this.db.query(`
+        INSERT INTO player_inventory (user_id, inventory_json, revision, created_at, updated_at)
+        VALUES (?, ?, 1, ?, ?)
+      `).run(userId, inventoryJson, now, now);
+      return toPersistedInventory(this.playerInventoryRow(userId)!);
+    })();
+  }
+
+  loadPlayerInventory(userId: string): PersistedInventoryState | null {
+    const row = this.playerInventoryRow(userId);
+    return row ? toPersistedInventory(row) : null;
+  }
+
+  applyPlayerInventoryAction(userId: string, requestJson: string, now = Date.now()): InventoryActionMutationResult {
+    const validation = validateInventoryActionRequestJson(requestJson);
+    if (!validation.ok) return {
+      ok: false,
+      reason: "invalid_request",
+      detail: validation.playerStateIssue ?? validation.reason,
+    };
+    const request = validation.request;
+    return this.db.transaction(() => {
+      const receipt = this.db.query<InventoryOperationRow, [string, string]>(`
+        SELECT fingerprint, result_json FROM inventory_operations
+        WHERE user_id = ? AND operation_id = ?
+      `).get(userId, request.operationId);
+      if (receipt) {
+        if (receipt.fingerprint !== request.fingerprint) return { ok: false, reason: "operation_id_reused" };
+        const replay = JSON.parse(receipt.result_json) as InventoryActionMutationResult;
+        return replay.ok ? { ...replay, replayed: true } : replay;
+      }
+      const row = this.playerInventoryRow(userId);
+      if (!row) return { ok: false, reason: "inventory_required", inventory: null };
+      const inventory = toPersistedInventory(row);
+      if (String(row.revision) !== request.expectedRevision) {
+        return { ok: false, reason: "conflict", inventory };
+      }
+      const previous = validatePlayerStateJson(row.inventory_json);
+      if (!previous.ok) return { ok: false, reason: "invalid_state", inventory };
+      const effect = applyInventoryAction(previous.state, request.action);
+      if (!effect.ok) return { ok: false, reason: effect.reason, inventory };
+      const revision = row.revision + 1;
+      this.db.query(`
+        UPDATE player_inventory SET inventory_json = ?, revision = ?, updated_at = ? WHERE user_id = ?
+      `).run(effect.playerStateJson, revision, now, userId);
+      const persisted = toPersistedInventory(this.playerInventoryRow(userId)!);
+      const result: InventoryActionMutationResult = {
+        ok: true,
+        replayed: false,
+        effect: effect.effect,
+        inventory: persisted,
+        ...(effect.consumed === undefined ? {} : { consumed: effect.consumed }),
+        ...(effect.restored === undefined ? {} : { restored: effect.restored }),
+        ...(effect.crafted === undefined ? {} : { crafted: effect.crafted }),
+      };
+      this.db.query(`
+        INSERT INTO inventory_operations (user_id, operation_id, fingerprint, result_json, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(userId, request.operationId, request.fingerprint, JSON.stringify(result), now);
+      this.db.query(`
+        DELETE FROM inventory_operations WHERE user_id = ? AND operation_id NOT IN (
+          SELECT operation_id FROM inventory_operations WHERE user_id = ? ORDER BY created_at DESC LIMIT 64
+        )
+      `).run(userId, userId);
+      return result;
+    })();
+  }
+
+  private playerInventoryRow(userId: string): PlayerInventoryRow | null {
+    return this.db.query<PlayerInventoryRow, [string]>(`
+      SELECT user_id, inventory_json, revision, created_at, updated_at
+      FROM player_inventory WHERE user_id = ?
+    `).get(userId) ?? null;
   }
 
   getRevision(): number {
@@ -536,5 +655,16 @@ function toPublicDrop(row: DropRow): PublicDrop {
     ownerPickupAt: row.owner_pickup_at,
     ownerPickupBlocked: row.owner_pickup_blocked === 1,
     expiresAt: row.expires_at,
+  };
+}
+
+function toPersistedInventory(row: PlayerInventoryRow): PersistedInventoryState {
+  return {
+    id: `railway:${row.user_id}`,
+    userId: row.user_id,
+    inventoryJson: row.inventory_json,
+    revision: String(row.revision),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
   };
 }

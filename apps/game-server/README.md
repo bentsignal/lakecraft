@@ -19,6 +19,15 @@ CLIENTS=10 LOCAL_DEMO_TOKEN=replace-with-at-least-16-characters \
 bun run scripts/synthetic-client.ts
 ```
 
+The release gameplay scenario starts a real server on a fresh temporary world,
+drives two WebSocket clients through place/break/pickup, Q-drop transfer, death
+drops, and respawn, verifies the full item ledger, and removes the isolated
+world:
+
+```sh
+bun run apps/game-server/scripts/transactional-gameplay-qa.ts
+```
+
 ## Configuration
 
 Required in production ticket mode:
@@ -44,4 +53,4 @@ Messages are JSON text objects with `{ "v": 1, "type": "..." }`. The server send
 
 Block values are numeric Lakecraft `BlockId` values 0 through 33. Movement axes are normalized world-space X/Z intent, while the accompanying pose is accepted only inside a tight per-sample displacement bound. The JSON envelope is deliberately versioned so a later compact binary codec can be negotiated without changing authority semantics.
 
-The realtime server persists bounded shared item drops in the world SQLite database; nearby players can exchange exact stacks through replay-safe, server-validated drop and pickup operations. It also owns melee PvP health, reach/aim checks, cooldowns, weapon damage, death, and respawn. Selected items, canonical swing/use actions, and explicit crouch state are relayed so remote avatars use the shared third-person rig. Cosmetic armor is deliberately not trusted for damage reduction yet, and multiplayer mobs still use the browser's existing simulation. Authored block edits, trees, and cave interiors do not yet alter server collision. Reconnect credentials expire after ten minutes, and block/drop/attack interactions are reach-limited against the accepted player pose. Player/event snapshots use a 21-chunk authority radius; each browser independently renders 2–12 terrain chunks according to its saved performance setting.
+The realtime server persists bounded shared item drops and each server-specific player pack in the world SQLite database; nearby players can exchange exact stacks through replay-safe, server-validated drop, pickup, and inventory operations. It also owns melee PvP health, reach/aim checks, cooldowns, weapon damage, death, and respawn. Selected items, canonical swing/use actions, and explicit crouch state are relayed so remote avatars use the shared third-person rig. Cosmetic armor is deliberately not trusted for damage reduction yet, and multiplayer mobs still use the browser's existing simulation. Authored block edits, trees, and cave interiors do not yet alter server collision. Reconnect credentials expire after ten minutes, and block/drop/attack interactions are reach-limited against the accepted player pose. Player/event snapshots use a 21-chunk authority radius; each browser independently renders 2–12 terrain chunks according to its saved performance setting.

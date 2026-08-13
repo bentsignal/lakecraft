@@ -101,7 +101,7 @@ export type ClientMessage =
       ticket?: string;
       serverId?: string;
       resumeToken?: string;
-      demo?: { token: string; userId: string; name: string };
+      demo?: { token: string; userId: string; name: string; inventoryJson?: string };
     }
   | {
       v: ProtocolVersion;
@@ -130,6 +130,7 @@ export type ClientMessage =
       z: number;
       block: number;
     }
+  | { v: ProtocolVersion; type: "inventory_action"; requestJson: string }
   | {
       v: ProtocolVersion;
       type: "chat_send";
@@ -229,6 +230,8 @@ export type ServerMessage =
     }
   | { v: ProtocolVersion; type: "drop_snapshot"; drops: PublicDrop[] }
   | { v: ProtocolVersion; type: "drop_result"; operationId: string; action: "drop" | "pickup"; drop?: PublicDrop }
+  | { v: ProtocolVersion; type: "inventory_state"; inventory: Record<string, unknown> }
+  | { v: ProtocolVersion; type: "inventory_result"; operationId: string; result: Record<string, unknown> }
   | ({ v: ProtocolVersion; type: "player_hit" } & PlayerHit)
   | ({ v: ProtocolVersion; type: "self_damage_result" } & SelfDamageResult)
   | { v: ProtocolVersion; type: "respawned"; operationId: string; player: PublicPlayer }
@@ -330,15 +333,22 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (value.resumeToken !== undefined && !shortString(value.resumeToken, 256)) {
       return invalid("resumeToken is invalid");
     }
-    let demo: { token: string; userId: string; name: string } | undefined;
+    let demo: { token: string; userId: string; name: string; inventoryJson?: string } | undefined;
     if (value.demo !== undefined) {
       if (
         !object(value.demo) ||
         !shortString(value.demo.token, 256) ||
         !shortString(value.demo.userId, 128) ||
-        !shortString(value.demo.name, 32)
+        !shortString(value.demo.name, 32) ||
+        (value.demo.inventoryJson !== undefined
+          && (typeof value.demo.inventoryJson !== "string" || value.demo.inventoryJson.length > 16_384))
       ) return invalid("demo credentials are invalid");
-      demo = { token: value.demo.token, userId: value.demo.userId, name: value.demo.name };
+      demo = {
+        token: value.demo.token,
+        userId: value.demo.userId,
+        name: value.demo.name,
+        ...(value.demo.inventoryJson === undefined ? {} : { inventoryJson: value.demo.inventoryJson }),
+      };
     }
     return {
       ok: true,
@@ -387,6 +397,17 @@ export function decodeClientMessage(raw: string): DecodeResult {
       return invalid(`block must be an integer from ${BLOCK_ID_MIN} to ${BLOCK_ID_MAX}`);
     }
     return { ok: true, message: value as unknown as ClientMessage };
+  }
+
+  if (value.type === "inventory_action") {
+    if (typeof value.requestJson !== "string" || value.requestJson.length < 2 || value.requestJson.length > 8_191) {
+      return invalid("inventory action is invalid");
+    }
+    return { ok: true, message: {
+      v: PROTOCOL_VERSION,
+      type: "inventory_action",
+      requestJson: value.requestJson,
+    } };
   }
 
   if (value.type === "chat_send") {

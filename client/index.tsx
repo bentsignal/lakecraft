@@ -40,6 +40,7 @@ import {
   type RealtimePlayerAttackSink,
   type RealtimeRespawnSink,
   type RealtimeSelfDamageSink,
+  type RealtimeInventorySink,
 } from "./RealtimeMultiplayerTransport.tsx";
 import {
   applyRealtimeChatEvent,
@@ -337,6 +338,8 @@ function RailwayMultiplayerSession({
   const lastCommittedPlayerJsonRef = useRef("");
   const inventoryActionQueueRef = useRef<PendingInventoryAction[]>([]);
   const inventoryActionPromiseRef = useRef<Promise<boolean> | null>(null);
+  const realtimeInventorySinkRef = useRef<RealtimeInventorySink | null>(null);
+  const realtimeInventoryAuthorityRef = useRef(false);
   const pendingWorldBlockEditRef = useRef<PendingWorldBlockEdit | null>(null);
   const authoritativeWorldEditRef = useRef(new Map<string, EngineWorldEdit>());
   const latestSavedInventoryRef = useRef<PersistedInventory | null | undefined>(undefined);
@@ -602,9 +605,9 @@ function RailwayMultiplayerSession({
         hungerRef.current = MAX_HUNGER;
         setHunger(MAX_HUNGER);
         advanceInventoryAuthorityEpoch();
-        // Lakebed remains the durable pack store, while Railway owns the world
-        // entities. This transition can only destroy the caller's carried
-        // state; the conserved stacks have already been accepted by Railway.
+        // The active Railway server owns both the durable pack and world
+        // entities for multiplayer. The shared inventory transition still
+        // provides the exact same conservation rules as local gameplay.
         void enqueueInventoryAction({ kind: "death_settle", eventId });
         return true;
       } catch {
@@ -802,7 +805,11 @@ function RailwayMultiplayerSession({
         }
         let result: InventoryActionMutationResult;
         try {
-          result = await applyInventoryActionMutation(pending.requestJson);
+          const realtimeSink = realtimeSession ? realtimeInventorySinkRef.current : null;
+          if (realtimeSession && !realtimeSink) throw new Error("realtime_inventory_not_ready");
+          result = realtimeSink
+            ? await realtimeSink(pending.requestJson)
+            : await applyInventoryActionMutation(pending.requestJson);
           if (pending.session !== inventoryAuthoritySessionRef.current) return false;
           pending.transportFailures = 0;
         } catch {
@@ -810,11 +817,11 @@ function RailwayMultiplayerSession({
           pending.transportFailures += 1;
           if (pending.transportFailures <= 3) {
             const retryDelay = 500 * 2 ** (pending.transportFailures - 1);
-            notify("Pack action delayed", `Lakebed will reconcile the same action in ${retryDelay / 1_000}s.`, "warning");
+            notify("Pack action delayed", `${realtimeSession ? "The game server" : "Lakebed"} will reconcile the same action in ${retryDelay / 1_000}s.`, "warning");
             await new Promise<void>((resolve) => window.setTimeout(resolve, retryDelay));
             continue;
           }
-          notify("Pack action paused", "Lakebed could not confirm the action. It remains queued with the same operation ID.", "warning");
+          notify("Pack action paused", `${realtimeSession ? "The game server" : "Lakebed"} could not confirm the action. It remains queued with the same operation ID.`, "warning");
           return false;
         }
         if (!result.ok) {
@@ -835,8 +842,8 @@ function RailwayMultiplayerSession({
           notify(
             result.reason === "conflict" ? "Pack reconciled" : "Pack action rejected",
             reconciled
-              ? "Lakebed restored the authoritative inventory; the unconfirmed action was discarded."
-              : `Lakebed rejected ${pending.action.kind.replaceAll("_", " ")}; no unconfirmed items were committed.`,
+              ? `${realtimeSession ? "The game server" : "Lakebed"} restored the authoritative inventory; the unconfirmed action was discarded (${result.reason}).`
+              : `${realtimeSession ? "The game server" : "Lakebed"} rejected ${pending.action.kind.replaceAll("_", " ")} (${result.reason}); no unconfirmed items were committed.`,
             "warning",
           );
           return false;
@@ -1084,8 +1091,8 @@ function RailwayMultiplayerSession({
         pending,
         pending.optimisticEdit.block === BLOCK.AIR ? "Mine rejected" : "Placement restored",
         placementPaid
-          ? "Railway did not confirm this placement. The block was restored and Lakebed returned the item."
-          : "Lakebed could not reserve that inventory item, so the local block was restored.",
+          ? "The game server did not confirm this placement. The block was restored and the item was returned."
+          : "The game server could not reserve that inventory item, so the local block was restored.",
         true,
       );
     }
@@ -1171,6 +1178,7 @@ function RailwayMultiplayerSession({
 
   useEffect(() => {
     latestSavedInventoryRef.current = savedInventory;
+    if (realtimeSession) return;
     if (!savedInventory || savedInventory.userId !== auth.userId) return;
     const pending = pendingWorldBlockEditRef.current;
     if (!pending
@@ -1185,7 +1193,11 @@ function RailwayMultiplayerSession({
       inventoryTokenRef.current = savedInventory.updatedAt;
       inventoryRevisionRef.current = savedInventory.revision;
     }
-  }, [savedInventory, auth.userId]);
+  }, [savedInventory, auth.userId, realtimeSession?.endpoint]);
+
+  useEffect(() => {
+    if (!realtimeSession) realtimeInventoryAuthorityRef.current = false;
+  }, [realtimeSession?.endpoint]);
 
 
   useEffect(() => {
@@ -1811,6 +1823,7 @@ function RailwayMultiplayerSession({
           localUserId={realtimeSession.demo?.userId ?? auth.userId ?? ""}
           localUsername={realtimeSession.demo?.name ?? profile?.username ?? "Player"}
           getPose={() => engineRef.current?.getPose() ?? poseRef.current}
+          getInitialInventoryJson={currentPlayerStateJson}
           getHeldItem={() => inventoryRef.current[selectedRef.current]?.itemId ?? null}
           getSkin={selectedSkin}
           getArmor={() => ({
@@ -1841,9 +1854,6 @@ function RailwayMultiplayerSession({
             realtimeGameModeRef.current = gameMode;
             setRealtimeGameMode(gameMode);
             advanceInventoryAuthorityEpoch();
-            if (gameMode === "survival" && latestSavedInventoryRef.current) {
-              loadCanonicalPlayer(latestSavedInventoryRef.current);
-            }
           }}
           onDrops={(drops) => {
             realtimeDropsRef.current = drops;
@@ -1859,6 +1869,17 @@ function RailwayMultiplayerSession({
             if (health <= 0 && !realtimeDeathSettlementRef.current) {
               void settleRealtimeDeath(`death:self:${Date.now().toString(36)}`);
             }
+          }}
+          onInventoryState={(authoritativeInventory) => {
+            if (!realtimeInventoryAuthorityRef.current) {
+              realtimeInventoryAuthorityRef.current = true;
+              inventoryAuthoritySessionRef.current += 1;
+              inventoryActionQueueRef.current.length = 0;
+              inventoryActionPromiseRef.current = null;
+              inventoryRevisionRef.current = "0";
+              lastCommittedPlayerJsonRef.current = "";
+            }
+            if (loadCanonicalPlayer(authoritativeInventory)) setInventoryReady(true);
           }}
           onPlayerHit={(hit) => {
             const localUserId = realtimeSession.demo?.userId ?? auth.userId ?? "";
@@ -1883,6 +1904,7 @@ function RailwayMultiplayerSession({
           registerRespawnSink={(sink) => { realtimeRespawnSinkRef.current = sink; }}
           registerPlayerAttackSink={(sink) => { realtimePlayerAttackSinkRef.current = sink; }}
           registerSelfDamageSink={(sink) => { realtimeSelfDamageSinkRef.current = sink; }}
+          registerInventorySink={(sink) => { realtimeInventorySinkRef.current = sink; }}
         />
       ) : null}
 

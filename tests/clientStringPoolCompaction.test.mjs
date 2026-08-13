@@ -175,7 +175,7 @@ assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES, 1,
   "creative is already repeated while survival remains the one incremental pool value");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT,
-  "1d38c15e0808e08228375641f607d20566d12262cb5e1e50d1d9029f225872a5",
+  "232b8a8f4fe5784bbe9d910ab52110a277ba42dc0d4feab04dcdfd4062a517f3",
   "the exact identity occurrence order, syntax kinds, contexts, and values change only intentionally");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.previousOccurrences
   + COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.occurrenceDelta,
@@ -412,9 +412,9 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA, {
   previousOccurrences: 486,
   previousUniqueValues: 433,
   previousSourceFingerprint: "4048b67e45c872c7d61ab81f4434ea9e3f860707d0bcc9581248c0341d809a00",
-  occurrenceDelta: 1,
+  occurrenceDelta: 7,
   uniqueValueDelta: 1,
-  source: "client/index.tsx#durable-placement-and-world-item-recovery",
+  source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
 assert.equal(COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA.previousOccurrences
@@ -966,12 +966,13 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_LOCAL_DROP_OWNER_DELTA, {
   previousOccurrences: 420,
   previousUniqueValues: 124,
   previousSourceFingerprint: "6e0048fcf397cb87fe16cda84341df704070cb775b64fa2fc95b5decc779be03",
-  occurrenceDelta: 1,
+  occurrenceDelta: 2,
   uniqueValueDelta: 0,
   sources: [
     "client/singleplayer/SinglePlayerApp.tsx",
     "client/singleplayer/localDroppedItems.ts",
     "client/singleplayer/localSave.ts",
+    "client/realtimeMultiplayer.ts",
   ],
   exclusionChanges: 0,
 });

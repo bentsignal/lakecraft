@@ -62,9 +62,9 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   ignitionId: [19, 10],
   ingredients: [2, 22],
   inputJson: [12, 5],
-  inventories: [47, 1],
+  inventories: [48, 1],
   inventory: [80, 90],
-  inventoryJson: [27, 22],
+  inventoryJson: [29, 23],
   inventoryRevision: [10, 8],
   inventorySlot: [9, 1],
   itemId: [113, 112],
@@ -118,7 +118,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   targetKind: [20, 2],
   targetUserId: [20, 3],
   updatedAt: [12, 1],
-  userId: [298, 90],
+  userId: [299, 90],
   username: [14, 8],
   version: [9, 11],
   weaponItemId: [7, 2],
@@ -140,9 +140,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "b8236e99721cddc72c8bab3c82dc49d18b480f95e2d7c52247267d73c8df2ebe";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "b8236e99721cddc72c8bab3c82dc49d18b480f95e2d7c52247267d73c8df2ebe";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "aa625535748f7bc40589707979de7b793c5f606e5be0475567052bffb45370c5";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "7800e0d58db7d10a1000a051460e15c431139635450640d5c1219a205786cb80";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "7800e0d58db7d10a1000a051460e15c431139635450640d5c1219a205786cb80";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "16f6de08d5a7f0301db40fc5db6ccc9b2f411adeb7a558b429825dd57329ac6e";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
 // bundle contains a larger set of ordinary property spellings that can be
@@ -153,7 +153,7 @@ export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
 export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 285;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "a943cf8f16d5afce0a74818e8dd3393917c2bb4c9d0b660224d9eb52b63c642f";
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "e0ac5e7c4e31b33fcd33aa35020fbaf441e49033092554badcd4728b841add84";
 // The shared-gameplay architecture is a new sealed source checkpoint. Earlier
 // additive deltas described the duplicated Lakebed multiplayer paths removed by
 // that cut, so the current complete fingerprint is now the canonical boundary.

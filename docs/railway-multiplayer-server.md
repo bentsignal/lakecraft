@@ -107,7 +107,7 @@ returns through the lobby to mint a fresh Lakebed ticket.
 No project dependencies are installed:
 
 ```sh
-docker build -t lakecraft-server apps/game-server
+docker build -f apps/game-server/Dockerfile -t lakecraft-server .
 docker volume create lakecraft-world
 docker run --rm -p 3001:3001 \
   -v lakecraft-world:/data \

@@ -642,7 +642,6 @@ export const COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "registryLoad": "bX",
   "removedChest": "bY",
   "removedFurnace": "bZ",
-  "requestJson": "b$",
   "savedRevision": "b_",
   "seedText": "cb",
   "setInWorld": "cc",

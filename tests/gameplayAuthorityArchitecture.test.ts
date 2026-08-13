@@ -35,8 +35,11 @@ test("Railway gameplay cannot split world authority back into Lakebed", () => {
     "claimTntExplosion", "attackPlayer", "rangedCombat", "dropItemMutation",
     "pickupDroppedItemMutation", "MultiplayerSegmentTransport",
   ]) assert.doesNotMatch(railway, new RegExp(`\\b${retired}\\b`), `${retired} must not re-enter Railway gameplay`);
-  assert.match(railway, /useMutation<[\s\S]*?>\("applyInventoryAction"\)/,
-    "Lakebed remains the account inventory authority");
+  assert.match(railway, /realtimeSink[\s\S]*?await realtimeSink\(pending\.requestJson\)[\s\S]*?: await applyInventoryActionMutation/,
+    "multiplayer pack actions use Railway while Lakebed remains only the pre-session fallback");
+  const realtimeStore = readFileSync(new URL("../apps/game-server/src/database.ts", import.meta.url), "utf8");
+  assert.match(realtimeStore, /from "\.\.\/\.\.\/\.\.\/shared\/inventoryActions\.ts"/,
+    "Railway runs the exact shared inventory transition implementation");
   assert.match(railway, /createExternalMultiplayerJoinTicket/,
     "Lakebed remains the directory and ticket issuer");
   assert.doesNotMatch(railway, /\bchestInventory(?:Ref)?\b/,

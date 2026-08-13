@@ -1,0 +1,7 @@
+*
+!apps/
+!apps/game-server/
+!apps/game-server/src/
+!apps/game-server/src/**
+!shared/
+!shared/**
