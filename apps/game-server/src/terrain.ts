@@ -5,8 +5,8 @@
  */
 
 export const WORLD_TERRAIN_SEED = 7319;
-export const PLAYER_GRAVITY = 22;
-export const PLAYER_JUMP_SPEED = 8.25;
+export const PLAYER_GRAVITY = 32;
+export const PLAYER_JUMP_SPEED = 10;
 export const CREATIVE_FLIGHT_SPEED = 7;
 export const CREATIVE_FLIGHT_SPRINT_SPEED = CREATIVE_FLIGHT_SPEED * 1.6;
 export const MAX_PLAYER_Y = 192;

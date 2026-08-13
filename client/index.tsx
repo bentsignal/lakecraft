@@ -39,6 +39,7 @@ import {
   type RealtimePickupSink,
   type RealtimePlayerAttackSink,
   type RealtimeRespawnSink,
+  type RealtimeSelfDamageSink,
 } from "./RealtimeMultiplayerTransport.tsx";
 import {
   applyRealtimeChatEvent,
@@ -77,6 +78,7 @@ import {
   createSerializablePlayerState,
   createStarterInventory,
   consumeFood,
+  consumeSelectedPlacementStack,
   getDeterministicMiningDrop,
   type BlockId,
   type CraftingContext,
@@ -111,6 +113,7 @@ import {
 import type { MotionVisualActionKind } from "../shared/multiplayerSegments.ts";
 import {
   DROPPED_ITEM_PICKUP_RADIUS,
+  droppedItemForwardPosition,
   type NormalizedDroppedItem,
 } from "../shared/droppedItems";
 import { planDeathDrops } from "../shared/deathDrops.ts";
@@ -183,6 +186,7 @@ type PendingInventoryAction = {
     | { kind: "initialize" }
     | { kind: "select_hotbar"; selectedHotbar: number }
     | { kind: "eat"; sourceSlot: number; expectedItemId: ItemId }
+    | { kind: "place_block"; sourceSlot: number; expectedItemId: ItemId }
     | { kind: "death_settle"; eventId: string }
     | {
         kind: "workspace_commit";
@@ -198,6 +202,7 @@ type PendingWorldBlockEdit = {
   optimisticEdit: EngineWorldEdit;
   previousBlock: EngineBlockId;
   expectedHeldItem: ItemId | null;
+  sourceSlot: number;
 };
 
 let worldBlockOperationSequence = 0;
@@ -341,6 +346,7 @@ function RailwayMultiplayerSession({
   const motionActionSinkRef = useRef<((kind: MotionVisualActionKind, value?: number) => void) | null>(null);
   const realtimeRespawnSinkRef = useRef<RealtimeRespawnSink | null>(null);
   const realtimePlayerAttackSinkRef = useRef<RealtimePlayerAttackSink | null>(null);
+  const realtimeSelfDamageSinkRef = useRef<RealtimeSelfDamageSink | null>(null);
   const entryPointerLockHandoffRef = useRef(false);
   const realtimeCrouchingRef = useRef(false);
   const previousSegmentPoseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
@@ -608,6 +614,7 @@ function RailwayMultiplayerSession({
     const engine = engineRef.current;
     const sink = realtimeRespawnSinkRef.current;
     if (!engine || !sink) return;
+    const pointerLock = engine.requestPointerLock();
     respawnRequestInFlightRef.current = true;
     setRespawning(true);
     void (async () => {
@@ -623,7 +630,9 @@ function RailwayMultiplayerSession({
       engine.respawnAt(pose);
       realtimeDeathSettlementRef.current = null;
       setDeathScreenOpen(false);
+      void pointerLock.then((locked) => setPointerCaptureNeeded(!locked));
     }).catch(() => {
+      void pointerLock.then((locked) => { if (locked) exitPointerLockForUi(); });
       notify("Respawn rejected", "The realtime server could not move this player safely.", "warning");
     }).finally(() => {
       respawnRequestInFlightRef.current = false;
@@ -638,6 +647,16 @@ function RailwayMultiplayerSession({
     if (!document.pointerLockElement) return;
     intentionalPointerUnlockRef.current = true;
     document.exitPointerLock();
+  }
+
+  function openRealtimeDeath(): void {
+    exitPointerLockForUi();
+    setPauseOpen(false);
+    setInventoryOpen(false);
+    setChatOpen(false);
+    setShowPlayerList(false);
+    setPointerCaptureNeeded(false);
+    setDeathScreenOpen(true);
   }
 
   function applyGameplayPointerEvent(event: GameplayPointerSessionEvent): void {
@@ -835,7 +854,12 @@ function RailwayMultiplayerSession({
       const item = { ...stack, count };
       const sink = realtimeDropSinkRef.current;
       if (!sink) throw new Error("multiplayer_not_connected");
-      const dropped = await sink(droppedItemOperationId(), item, poseRef.current);
+      const pose = poseRef.current;
+      const position = droppedItemForwardPosition(pose);
+      const dropped = await sink(droppedItemOperationId(), item, {
+        ...pose,
+        ...position,
+      });
       const next = [...inventoryRef.current];
       const current = next[sourceSlot];
       if (!current || current.itemId !== stack.itemId || current.count < count) throw new Error("inventory_changed");
@@ -989,6 +1013,15 @@ function RailwayMultiplayerSession({
           }
         }
       } else if (confirmed.block !== BLOCK.AIR) {
+        if (pending.previousBlock === BLOCK.AIR && realtimeGameModeRef.current !== "creative") {
+          const placedItem = ENGINE_TO_GAME[confirmed.block];
+          if (!placedItem || placedItem !== pending.expectedHeldItem) throw new Error("placement_item_mismatch");
+          const payment = consumeSelectedPlacementStack(inventoryRef.current, pending.sourceSlot, placedItem);
+          if (!payment.ok) throw new Error("placement_inventory_changed");
+          updateInventory(payment.inventory);
+          advanceInventoryAuthorityEpoch();
+          void enqueueInventoryAction({ kind: "place_block", sourceSlot: pending.sourceSlot, expectedItemId: placedItem });
+        }
         audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(confirmed.block) });
       }
       releasePendingWorldBlockEdit(pending);
@@ -1015,6 +1048,7 @@ function RailwayMultiplayerSession({
       optimisticEdit: { ...edit },
       previousBlock,
       expectedHeldItem: inventoryRef.current[selectedHotbar]?.itemId ?? null,
+      sourceSlot: selectedHotbar,
     };
     pendingWorldBlockEditRef.current = pending;
     void submitPendingWorldBlockEdit(pending);
@@ -1158,9 +1192,13 @@ function RailwayMultiplayerSession({
           realtimeCrouchingRef.current = crouching;
           motionActionSinkRef.current?.(crouching ? "crouch_on" : "crouch_off");
         },
-        onPlayerDamage: (amount) => {
+        onPlayerDamage: (amount, cause) => {
           audioRef.current?.play("mobAttack", { seed: `mob:${amount}:${performance.now().toFixed(0)}`, intensity: 0.7 });
           audioRef.current?.play("playerHurt", { seed: `${amount}:${performance.now().toFixed(0)}`, intensity: 0.78 });
+          if (cause === "fall") {
+            realtimeSelfDamageSinkRef.current?.(`fall:${crypto.randomUUID()}`, amount);
+            return false;
+          }
         },
         onPlayerHealthChange: (health) => {
           setPlayerHealth(health);
@@ -1758,7 +1796,8 @@ function RailwayMultiplayerSession({
           onSelfHealth={(health) => {
             setPlayerHealth(health);
             engineRef.current?.setPlayerHealth(health);
-            setDeathScreenOpen(health <= 0);
+            if (health <= 0 && !respawnRequestInFlightRef.current) openRealtimeDeath();
+            else setDeathScreenOpen(false);
             if (health <= 0 && !realtimeDeathSettlementRef.current) {
               void settleRealtimeDeath(`death:self:${Date.now().toString(36)}`);
             }
@@ -1774,7 +1813,7 @@ function RailwayMultiplayerSession({
                 hit.operationId, hit.attackerX, hit.attackerZ, hit.damage, performance.now(),
               );
             }
-            if (hit.killed) setDeathScreenOpen(true);
+            if (hit.killed && !respawnRequestInFlightRef.current) openRealtimeDeath();
             if (hit.killed) void settleRealtimeDeath(hit.operationId);
           }}
           registerBlockSink={(sink) => { realtimeBlockSinkRef.current = sink; }}
@@ -1784,6 +1823,7 @@ function RailwayMultiplayerSession({
           registerPickupSink={(sink) => { realtimePickupSinkRef.current = sink; }}
           registerRespawnSink={(sink) => { realtimeRespawnSinkRef.current = sink; }}
           registerPlayerAttackSink={(sink) => { realtimePlayerAttackSinkRef.current = sink; }}
+          registerSelfDamageSink={(sink) => { realtimeSelfDamageSinkRef.current = sink; }}
         />
       ) : null}
 

@@ -1,5 +1,6 @@
 import type { LocalMobDeathDropEvent } from "../game/mobs.ts";
 import {
+  DROPPED_ITEM_OWNER_PICKUP_DELAY_MS,
   DROPPED_ITEM_PICKUP_RADIUS,
   DROPPED_ITEM_TTL_MS,
 } from "../../shared/droppedItems.ts";
@@ -110,12 +111,17 @@ export function collectLocalDroppedItems(
   drops: readonly LocalDroppedItem[],
   pose: Readonly<{ x: number; y: number; z: number }>,
   pickupRadius = DROPPED_ITEM_PICKUP_RADIUS,
+  now = Date.now(),
 ): LocalDropCollectionResult {
   let nextInventory = inventory;
   let changed = false;
   const remaining: LocalDroppedItem[] = [];
   const radiusSquared = Math.max(0, pickupRadius) ** 2;
   for (const drop of drops) {
+    if (now < drop.droppedAt + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS) {
+      remaining.push(drop);
+      continue;
+    }
     const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
     if (distanceSquared > radiusSquared) {
       remaining.push(drop);
@@ -145,6 +151,7 @@ export function collectMovedLocalDroppedItems(
   movedIndices: ReadonlySet<number>,
   pose: Readonly<{ x: number; y: number; z: number }>,
   pickupRadius = DROPPED_ITEM_PICKUP_RADIUS,
+  now = Date.now(),
 ): LocalDropCollectionResult {
   let nextInventory = inventory;
   const changes: Array<{ index: number; remainder: number }> = [];
@@ -152,6 +159,7 @@ export function collectMovedLocalDroppedItems(
   for (const index of movedIndices) {
     const drop = drops[index];
     if (!drop) continue;
+    if (now < drop.droppedAt + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS) continue;
     const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
     if (distanceSquared > radiusSquared) continue;
     const added = addItemStack(nextInventory, drop.item);

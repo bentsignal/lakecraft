@@ -17,7 +17,7 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "hypot", 35]),
   Object.freeze(["Math", "imul", 35]),
   Object.freeze(["Math", "max", 244]),
-  Object.freeze(["Math", "min", 199]),
+  Object.freeze(["Math", "min", 200]),
   Object.freeze(["Math", "round", 29]),
   Object.freeze(["Math", "sin", 65]),
   Object.freeze(["Math", "PI", 109]),
@@ -27,18 +27,18 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Array", "isArray", 78]),
   Object.freeze(["Number", "isFinite", 259]),
   // Realtime PvP validates integral damage and health at the untrusted wire boundary.
-  Object.freeze(["Number", "isInteger", 53]),
+  Object.freeze(["Number", "isInteger", 56]),
   Object.freeze(["Number", "isSafeInteger", 43]),
   Object.freeze(["Number", "MAX_SAFE_INTEGER", 20]),
-  Object.freeze(["Number", "NEGATIVE_INFINITY", 25]),
+  Object.freeze(["Number", "NEGATIVE_INFINITY", 26]),
   Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
   Object.freeze(["Number", "parseInt", 10]),
-  Object.freeze(["Date", "now", 57]),
+  Object.freeze(["Date", "now", 59]),
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 11]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_912;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "7ba027f081913e4c92e0589051e62af220a18b3089f4d4ef8886eb075bf29bea";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_919;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "7101db9ef8c81e87b14e2ce0b112e061dca07c8ed571cb3cc860c0e20483fc53";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

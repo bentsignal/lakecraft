@@ -604,9 +604,9 @@ export const LADDER_MESH_VERTEX_COUNT = 252;
 /** The 7x7 streaming window bounds glass to one extra draw per visible chunk. */
 export const MAX_TRANSPARENT_CHUNK_DRAWS = (MAX_LOCAL_STREAMING_CHUNK_RADIUS * 2 + 1) ** 2;
 export const MAX_RESPAWN_HEIGHT = 192;
-export const PLAYER_GRAVITY = 22;
-export const PLAYER_TERMINAL_VELOCITY = -18;
-export const PLAYER_JUMP_SPEED = 8.25;
+export const PLAYER_GRAVITY = 32;
+export const PLAYER_TERMINAL_VELOCITY = -24;
+export const PLAYER_JUMP_SPEED = 10;
 const LOCAL_FALL_LANDING_EPSILON = 0.05;
 export const LADDER_CLIMB_SPEED = 3.2;
 export const LADDER_DESCEND_SPEED = -3.2;
@@ -3084,9 +3084,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (fallDistance > 0.25 && floorBlock !== BLOCK.AIR) options.onFootstep?.(floorBlock);
       if (damage > 0 && playerHealth > 0 && options.canTakePlayerDamage?.() !== false) {
         const appliedDamage = Math.min(playerHealth, damage);
-        playerHealth -= appliedDamage;
-        options.onPlayerDamage?.(appliedDamage, "fall");
-        options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+        if (options.onPlayerDamage?.(appliedDamage, "fall") !== false) {
+          playerHealth -= appliedDamage;
+          options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+        }
       }
     }
 

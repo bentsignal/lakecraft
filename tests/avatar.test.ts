@@ -3,6 +3,7 @@ import {
   MAX_PLAYER_NAME_LENGTH,
   REMOTE_PLAYER_DEATH_FALL_MS,
   REMOTE_PLAYER_DEATH_VISIBLE_MS,
+  REMOTE_PLAYER_HURT_FLASH_MS,
   advanceRemoteAvatarMotion,
   applyRemoteAvatarSnapshot,
   createRemoteAvatarMotion,
@@ -164,6 +165,9 @@ assert.deepEqual(
 
 const killed = createRemoteAvatarMotion(player({ health: 20, crouching: true }), 10_000);
 applyRemoteAvatarSnapshot(killed, player({ health: 0, crouching: true }), 10_100);
+assert.equal(killed.hurtFlash, true, "a remote health decrease immediately enables the shared hurt tint");
+advanceRemoteAvatarMotion(killed, 10_100 + REMOTE_PLAYER_HURT_FLASH_MS, 0.016);
+assert.equal(killed.hurtFlash, false, "hurt feedback clears on its bounded visual clock");
 advanceRemoteAvatarMotion(killed, 10_100 + REMOTE_PLAYER_DEATH_FALL_MS, 0.016);
 assert.equal(killed.deathFall, 1, "a fatal snapshot finishes the shared side-fall on a bounded clock");
 assert.equal(killed.crouching, false, "death clears stale crouch posture instead of oscillating it");

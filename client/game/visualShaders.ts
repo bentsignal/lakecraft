@@ -6,7 +6,7 @@ void main(){gl_Position=uMvp*vec4(aPosition,1.0);vUv=aUv;vShade=aShade;}
 export const SKIN_FRAGMENT_SHADER = `
 precision mediump float;uniform sampler2D uSkin;uniform vec3 uLight;
 varying vec2 vUv;varying float vShade;
-void main(){vec4 c=texture2D(uSkin,vUv);if(c.a<0.02)discard;gl_FragColor=vec4(c.rgb*uLight*vShade,c.a);}
+void main(){vec4 c=texture2D(uSkin,vUv);if(c.a<0.02)discard;float s=abs(vShade);vec3 rgb=c.rgb;if(vShade<0.0)rgb=mix(rgb,vec3(1.0,0.08,0.08),0.58);gl_FragColor=vec4(rgb*uLight*s,c.a);}
 `;
 export const COLOR_VERTEX_SHADER = `
 attribute vec3 aPosition;attribute vec3 aColor;uniform mat4 uMvp;uniform vec3 uLight;varying vec3 vColor;

@@ -87,6 +87,12 @@ for (let offset = 0; offset < vertexCount * PLAYER_SKIN_VERTEX_STRIDE; offset +=
 assert.ok(minY > 0.98 && minY < 1, "outer trouser layer extends a fraction below the base feet");
 assert.ok(maxY > 3 && maxY < 3.04, "outer hat layer preserves the two-block canonical silhouette");
 
+state.hurtFlash = true;
+writeRemotePlayerSkinGeometry(states, [0, 2, -4], output);
+assert.ok(output[5] < 0, "remote hurt feedback is encoded for the shared skin shader without another draw");
+state.hurtFlash = false;
+writeRemotePlayerSkinGeometry(states, [0, 2, -4], output);
+
 const idle = output.slice();
 state.horizontalSpeed = 4;
 state.walkPhase = Math.PI / 2;
