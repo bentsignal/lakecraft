@@ -370,9 +370,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 420;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 421;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "6e0048fcf397cb87fe16cda84341df704070cb775b64fa2fc95b5decc779be03";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "449fabeec02f80b375ad17a086ccadaa9eaeb0c422f86d07a6691285fcd692dd";
 export const COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA = Object.freeze({
   previousOccurrences: 418,
   previousUniqueValues: 123,
@@ -402,6 +402,19 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_ITEM_CONSERVATION_DELTA = Object.freez
   occurrenceDelta: 0,
   uniqueValueDelta: 0,
   source: "client/index.tsx#durable-placement-and-world-item-actions",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_LOCAL_DROP_OWNER_DELTA = Object.freeze({
+  previousOccurrences: 420,
+  previousUniqueValues: 124,
+  previousSourceFingerprint: "6e0048fcf397cb87fe16cda84341df704070cb775b64fa2fc95b5decc779be03",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/singleplayer/localDroppedItems.ts",
+    "client/singleplayer/localSave.ts",
+  ]),
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA = Object.freeze({

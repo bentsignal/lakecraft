@@ -140,6 +140,7 @@ export interface SinglePlayerDropState {
   droppedAt: number;
   velocityY: number;
   settled: boolean;
+  ownerPickupBlocked?: boolean;
 }
 
 export interface SinglePlayerChestState {
@@ -386,7 +387,8 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
   const ids = new Set<string>();
   for (const candidate of value) {
     if (!isRecord(candidate)
-      || !exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt", "velocityY", "settled"])
+      || !(exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt", "velocityY", "settled"])
+        || exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt", "velocityY", "settled", "ownerPickupBlocked"]))
       || !identifier(candidate.dropId)
       || !finiteNumber(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
       || !finiteNumber(candidate.y, SINGLEPLAYER_WORLD_MIN_Y, SINGLEPLAYER_WORLD_MAX_Y)
@@ -394,6 +396,7 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
       || ids.has(candidate.dropId) || !safeInteger(candidate.droppedAt, 0, MAX_TIMESTAMP)
       || !finiteNumber(candidate.velocityY, LOCAL_DROP_TERMINAL_VELOCITY, 0)
       || typeof candidate.settled !== "boolean"
+      || (candidate.ownerPickupBlocked !== undefined && typeof candidate.ownerPickupBlocked !== "boolean")
       || (candidate.settled && candidate.velocityY !== 0)) return null;
     const item = validateStack(candidate.item);
     if (!item) return null;
@@ -407,6 +410,7 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
       droppedAt: candidate.droppedAt,
       velocityY: candidate.velocityY,
       settled: candidate.settled,
+      ...(candidate.ownerPickupBlocked === true ? { ownerPickupBlocked: true } : {}),
     });
   }
   return drops.sort((left, right) => left.dropId.localeCompare(right.dropId));

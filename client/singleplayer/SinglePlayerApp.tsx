@@ -960,6 +960,7 @@ function LocalGameplaySession({
       droppedAt,
       velocityY: 0,
       settled: false,
+      ownerPickupBlocked: true,
     };
     inventoryRef.current = next;
     dropsRef.current = [...dropsRef.current, dropped];
