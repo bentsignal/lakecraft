@@ -33,5 +33,9 @@ assert.ok(singlePlayer.includes("releaseGameplayKeyboardCapture();"),
 const multiplayerEntry = multiplayer.slice(multiplayer.indexOf("function enterWorld"), multiplayer.indexOf("useEffect", multiplayer.indexOf("function enterWorld")));
 assert.ok(multiplayerEntry.includes("requestDocumentPointerLockHandoff()") && multiplayerEntry.includes("requestGameplayKeyboardCapture()"),
   "multiplayer uses the same entry gesture for mouse, fullscreen, Ctrl+W, and chat Escape capture");
+assert.ok(multiplayer.includes("function closeChatFromEscape()")
+  && multiplayer.includes("scheduleGameplayPointerLockAfterEscapeRelease(window")
+  && multiplayer.includes("engineRef.current?.requestPointerLock()"),
+"multiplayer chat Escape uses the shared post-keyup path to restore keyboard capture and mouse look immediately");
 
 console.log("lakecraft gameplay keyboard capture tests: ok");

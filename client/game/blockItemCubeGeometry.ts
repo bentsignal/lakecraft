@@ -15,6 +15,7 @@ type Vec3 = readonly [number, number, number];
 
 export const BLOCK_ITEM_CUBE_VERTEX_FLOATS = 6;
 export const BLOCK_ITEM_CUBE_MAX_VERTICES = 6 * TEXTURE_TILE_SIZE * TEXTURE_TILE_SIZE * 6;
+export const COMPACT_BLOCK_ITEM_GRID_SIZE = 4;
 
 export type BlockItemCubeOptions = Readonly<{
   center?: Vec3;
@@ -64,6 +65,28 @@ function atlasPixel(texture: TextureAtlasName, x: number, y: number): readonly [
     TEXTURE_ATLAS_RGBA[offset + 2],
     TEXTURE_ATLAS_RGBA[offset + 3],
   ];
+}
+
+function atlasMipColor(texture: TextureAtlasName, mipX: number, mipY: number): readonly [number, number, number, number] {
+  const sourceSize = TEXTURE_TILE_SIZE / COMPACT_BLOCK_ITEM_GRID_SIZE;
+  const startX = mipX * sourceSize;
+  const startY = mipY * sourceSize;
+  let best: readonly [number, number, number, number] = [0, 0, 0, 0];
+  let bestCount = 0;
+  for (let y = startY; y < startY + sourceSize; y += 1) for (let x = startX; x < startX + sourceSize; x += 1) {
+    const candidate = atlasPixel(texture, x, y);
+    if (candidate[3] < 16) continue;
+    let count = 0;
+    for (let compareY = startY; compareY < startY + sourceSize; compareY += 1) {
+      for (let compareX = startX; compareX < startX + sourceSize; compareX += 1) {
+        const value = atlasPixel(texture, compareX, compareY);
+        if (value[0] === candidate[0] && value[1] === candidate[1]
+          && value[2] === candidate[2] && value[3] === candidate[3]) count += 1;
+      }
+    }
+    if (count > bestCount) { best = candidate; bestCount = count; }
+  }
+  return best;
 }
 
 function pointAt(face: BlockFace, horizontal: number, vertical: number): Vec3 {
@@ -160,7 +183,7 @@ export function appendBlockItemCubeGeometry(
   return vertices;
 }
 
-/** Six-face distance geometry; it keeps the canonical cube and transform while collapsing only per-texel color detail. */
+/** Bounded 4x4 nearest-neighbor mip of the authored atlas for distant/remote held blocks. */
 export function appendCompactBlockItemCubeGeometry(
   output: number[],
   itemId: ItemId,
@@ -175,16 +198,26 @@ export function appendCompactBlockItemCubeGeometry(
   for (const face of CUBE_FACES) {
     const texture = blockTextureForFace(block, face[0]);
     if (!texture) continue;
-    let red = 0; let green = 0; let blue = 0; let count = 0;
-    for (let y = 0; y < TEXTURE_TILE_SIZE; y += 1) for (let x = 0; x < TEXTURE_TILE_SIZE; x += 1) {
-      const color = atlasPixel(texture, x, y);
-      if (color[3] < 16) continue;
-      red += color[0]; green += color[1]; blue += color[2]; count += 1;
-    }
-    if (!count) continue;
-    for (const authoredPoint of face[5]) {
-      const point = transformPoint(authoredPoint, center, size, rotation);
-      output.push(point[0], point[1], point[2], red / count / 255 * face[4], green / count / 255 * face[4], blue / count / 255 * face[4]);
+    const winding = face[0] === "west" || face[0] === "south"
+      ? [3, 2, 1, 3, 1, 0]
+      : face[0] === "bottom" ? [1, 0, 3, 1, 3, 2] : [0, 1, 2, 0, 2, 3];
+    for (let pixelY = 0; pixelY < COMPACT_BLOCK_ITEM_GRID_SIZE; pixelY += 1) {
+      const v0 = 1 - (pixelY + 1) / COMPACT_BLOCK_ITEM_GRID_SIZE;
+      const v1 = 1 - pixelY / COMPACT_BLOCK_ITEM_GRID_SIZE;
+      for (let pixelX = 0; pixelX < COMPACT_BLOCK_ITEM_GRID_SIZE; pixelX += 1) {
+        const color = atlasMipColor(texture, pixelX, pixelY);
+        if (color[3] < 16) continue;
+        const u0 = pixelX / COMPACT_BLOCK_ITEM_GRID_SIZE;
+        const u1 = (pixelX + 1) / COMPACT_BLOCK_ITEM_GRID_SIZE;
+        const points = [pointAt(face[0], u0, v0), pointAt(face[0], u0, v1),
+          pointAt(face[0], u1, v1), pointAt(face[0], u1, v0)];
+        for (const index of winding) {
+          const point = transformPoint(points[index], center, size, rotation);
+          const alpha = color[3] / 255;
+          output.push(point[0], point[1], point[2], color[0] / 255 * face[4] * alpha,
+            color[1] / 255 * face[4] * alpha, color[2] / 255 * face[4] * alpha);
+        }
+      }
     }
   }
   return (output.length - start) / BLOCK_ITEM_CUBE_VERTEX_FLOATS;

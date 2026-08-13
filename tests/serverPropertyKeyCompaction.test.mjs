@@ -95,15 +95,25 @@ for (const name of reviewedKeyNames) {
   const delta = COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA[name];
   const current = fingerprintInput.find((entry) => entry.name === name);
   assert.ok(current, `${name} remains in the analyzed source boundary`);
-  assert.equal(current.counts[delta.path], delta.currentUses,
-    `${name} has only its reviewed property-use increase`);
-  if (delta.addedKind) {
-    assert.equal(current.kinds[`${delta.path}:${delta.addedKind}`], 1,
-      `${name} has exactly one reviewed added declaration kind`);
+  for (const path of delta.declarations ?? []) {
+    assert.ok(current.declarations.includes(path), `${name} keeps its reviewed declaration path ${path}`);
   }
   const normalized = JSON.parse(JSON.stringify(current));
-  normalized.counts[delta.path] = delta.previousUses;
-  if (delta.addedKind) delete normalized.kinds[`${delta.path}:${delta.addedKind}`];
+  normalized.declarations = normalized.declarations.filter((path) => !(delta.declarations ?? []).includes(path));
+  for (const path of delta.uses ?? []) {
+    assert.ok(current.uses.includes(path), `${name} keeps its reviewed use path ${path}`);
+  }
+  normalized.uses = normalized.uses.filter((path) => !(delta.uses ?? []).includes(path));
+  for (const [path, [previousUses, currentUses]] of Object.entries(delta.counts ?? {})) {
+    assert.equal(current.counts[path], currentUses, `${name} keeps its reviewed property-use count at ${path}`);
+    if (previousUses === null) delete normalized.counts[path];
+    else normalized.counts[path] = previousUses;
+  }
+  for (const [kind, [previousCount, currentCount]] of Object.entries(delta.kinds ?? {})) {
+    assert.equal(current.kinds[kind], currentCount, `${name} keeps its reviewed declaration-kind count at ${kind}`);
+    if (previousCount === null) delete normalized.kinds[kind];
+    else normalized.kinds[kind] = previousCount;
+  }
   assert.equal(fingerprint(normalized), delta.previousEntryFingerprint,
     `${name} paths and every non-reviewed count/kind reproduce the prior checkpoint exactly`);
 }

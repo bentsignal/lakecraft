@@ -54,7 +54,7 @@ assert.match(heldSource, /blockTextureForFace\(block, face\[0\]\)/,
   "the block branch remains atlas-backed even though non-block items use canonical icon art");
 
 const remoteGravel = remoteHeldItemGeometry("gravel");
-assert.equal(remoteGravel.length / 6, 36, "remote gravel is a bounded true six-face distance cube");
+assert.equal(remoteGravel.length / 6, 576, "remote gravel is a bounded 4x4-per-face authored-atlas cube");
 assert.ok(new Set(Array.from({ length: remoteGravel.length / 6 }, (_, vertex) => remoteGravel[vertex * 6 + 2])).size > 1,
   "remote gravel retains front/back depth instead of becoming a flat hand quad");
 

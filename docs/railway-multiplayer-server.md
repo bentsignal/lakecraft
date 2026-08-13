@@ -153,6 +153,21 @@ Clients render
 the 32-player bound through one fixed 512×256 texture atlas and preserve the
 installed skin as the fallback for absent, invalid, or legacy-server data.
 
+## Realtime gameplay boundary
+
+Railway owns accepted player poses, shared block edits and drops, ordered chat,
+and melee PvP health for this world. Drop and attack operation IDs are replay-
+safe; pickup consumes the SQLite world-drop receipt once, and PvP validates
+target reach, facing, cooldown, server-observed held item, death, and respawn.
+Armor remains cosmetic and grants no protection. Lakebed still owns the player
+inventory and wider progression systems, so the current browser-side handoff
+from a consumed Railway pickup into Lakebed inventory is not yet one atomic
+cross-system transaction.
+
+The server sends nearby players and events within 21 chunks. This is a feed
+limit, not a forced GPU setting: each browser retains its own saved 2–12 chunk
+terrain render distance and can lower it without changing server authority.
+
 ## Repository and Lakebed artifact boundary
 
 This milestone does not move the existing Lakebed capsule. The compact Lakebed

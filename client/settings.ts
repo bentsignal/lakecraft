@@ -13,7 +13,7 @@ export interface ClientSettings {
   soundMuted: boolean;
   /** Mouse-look speed as a percentage; 100 preserves Lakecraft's original speed. */
   mouseSensitivity: number;
-  /** Offline horizontal chunk radius. Multiplayer retains its server-bounded window. */
+  /** Client-selected horizontal chunk radius for either gameplay authority. */
   renderDistance: number;
   /** Vertical camera field of view in degrees. */
   fovDegrees: number;

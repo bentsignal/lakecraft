@@ -2,6 +2,7 @@ import type { PlayerPose, RemotePlayer } from "./types.ts";
 import { PLAYER_SKIN_WIRE_BYTES, type PlayerSkinModel } from "./playerSkin.ts";
 import { ITEMS, type ArmorId, type ArmorSlot, type ItemId } from "../../shared/game.ts";
 import { playerRigCycleMilliseconds, resolvePlayerRigPose, type PlayerRigInput, type PlayerRigPose } from "./playerRig.ts";
+import { FIRST_PERSON_ACTION_MS } from "./firstPersonRenderer.ts";
 import {
   PRESENCE_MAX_EXTRAPOLATION_MS,
   PRESENCE_MAX_HORIZONTAL_SPEED,
@@ -283,9 +284,10 @@ export function advanceRemoteAvatarMotion(
   const movementMode = state.crouching ? "sneak" : state.horizontalSpeed > 5 ? "sprint" : "walk";
   state.walkPhase = (state.walkPhase + dt * 1_000 / playerRigCycleMilliseconds(movementMode)) % 1;
   const armActionElapsed = now - state.armActionStartedAt;
-  state.armActionProgress = armActionElapsed >= 0 && armActionElapsed < 450 ? armActionElapsed / 450 : 1;
-  state.armActionPhase = armActionElapsed >= 0 && armActionElapsed < 450
-    ? Math.sin(Math.PI * armActionElapsed / 450)
+  state.armActionProgress = armActionElapsed >= 0 && armActionElapsed < FIRST_PERSON_ACTION_MS
+    ? armActionElapsed / FIRST_PERSON_ACTION_MS : 1;
+  state.armActionPhase = armActionElapsed >= 0 && armActionElapsed < FIRST_PERSON_ACTION_MS
+    ? Math.sin(Math.PI * armActionElapsed / FIRST_PERSON_ACTION_MS)
     : 0;
 
   // The avatar faces the direction the player is looking while locomotion is

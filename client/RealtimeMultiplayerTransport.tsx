@@ -10,6 +10,7 @@ import {
   type RealtimeConnectionPhase,
   type RealtimeGameMode,
   type RealtimeWorldEdit,
+  type RealtimePlayerHit,
 } from "./realtimeMultiplayer.ts";
 
 export type RealtimeBlockSink = (operationId: string, edit: WorldEdit) => Promise<RealtimeWorldEdit>;
@@ -17,6 +18,7 @@ export type RealtimeChatSink = (message: string) => Promise<void>;
 export type RealtimeDropSink = (operationId: string, item: ItemStack, pose: PlayerPose) => Promise<NormalizedDroppedItem>;
 export type RealtimePickupSink = (operationId: string, dropId: string) => Promise<NormalizedDroppedItem>;
 export type RealtimeRespawnSink = () => Promise<PlayerPose>;
+export type RealtimePlayerAttackSink = (operationId: string, targetId: string) => void;
 
 export function RealtimeMultiplayerTransport(props: {
   endpoint: string;
@@ -36,12 +38,15 @@ export function RealtimeMultiplayerTransport(props: {
   onGameMode: (gameMode: RealtimeGameMode) => void;
   onReconcilePose: (pose: PlayerPose) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
+  onPlayerHit: (hit: RealtimePlayerHit) => void;
+  onSelfHealth: (health: number) => void;
   registerBlockSink: (sink: RealtimeBlockSink | null) => void;
   registerChatSink: (sink: RealtimeChatSink | null) => void;
   registerActionSink: (sink: ((kind: MotionVisualActionKind, value?: number) => void) | null) => void;
   registerDropSink: (sink: RealtimeDropSink | null) => void;
   registerPickupSink: (sink: RealtimePickupSink | null) => void;
   registerRespawnSink: (sink: RealtimeRespawnSink | null) => void;
+  registerPlayerAttackSink: (sink: RealtimePlayerAttackSink | null) => void;
 }) {
   const propsRef = useRef(props);
   propsRef.current = props;
@@ -67,6 +72,8 @@ export function RealtimeMultiplayerTransport(props: {
       onGameMode: (gameMode) => propsRef.current.onGameMode(gameMode),
       onReconcilePose: (pose) => propsRef.current.onReconcilePose(pose),
       onDrops: (drops) => propsRef.current.onDrops(drops),
+      onPlayerHit: (hit) => propsRef.current.onPlayerHit(hit),
+      onSelfHealth: (health) => propsRef.current.onSelfHealth(health),
     });
     props.registerBlockSink((operationId, edit) => client.submitBlockEdit(operationId, edit));
     props.registerChatSink((message) => client.submitChat(message));
@@ -74,6 +81,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerDropSink((operationId, item, pose) => client.submitDrop(operationId, item, pose));
     props.registerPickupSink((operationId, dropId) => client.submitPickup(operationId, dropId));
     props.registerRespawnSink(() => client.submitRespawn());
+    props.registerPlayerAttackSink((operationId, targetId) => client.submitPlayerAttack(operationId, targetId));
     client.start();
     return () => {
       props.registerBlockSink(null);
@@ -82,6 +90,7 @@ export function RealtimeMultiplayerTransport(props: {
       props.registerDropSink(null);
       props.registerPickupSink(null);
       props.registerRespawnSink(null);
+      props.registerPlayerAttackSink(null);
       client.stop();
     };
   }, [props.endpoint, props.ticket, props.serverId, props.demo?.token, props.localUserId, props.localUsername]);

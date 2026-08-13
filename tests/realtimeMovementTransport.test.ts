@@ -31,19 +31,23 @@ let pose = { x:0.5, y:69.02, z:0.5, yaw:0, pitch:0 };
 const reconciliations: typeof pose[] = [];
 let remotes: any[] = [];
 let drops: any[] = [];
+let selfHealth = 20;
+const playerHits: any[] = [];
 const client = new RealtimeMultiplayerClient({
   endpoint:"wss://example.test/ws", serverId:"server",
   demo:{ token:"0123456789abcdef", userId:"alex", name:"Alex" },
   localUserId:"alex", localUsername:"Alex", getPose:() => pose,
   getHeldItem:() => "diamond_pickaxe",
   onPhase:() => {}, onRemotePlayers:(players) => { remotes = players; }, onWorldEdits:() => {}, onChatEvent:() => {}, onGameMode:() => {}, onDrops:(next) => { drops = next; },
+  onSelfHealth:(health) => { selfHealth = health; }, onPlayerHit:(hit) => { playerHits.push(hit); },
   onReconcilePose:(next) => { reconciliations.push(next); pose = next; },
 });
 client.start();
 const socket = Socket.instance;
 socket.readyState = Socket.OPEN;
 socket.onopen?.();
-socket.receive({ type:"welcome", resumeToken:"resume", player:{ ...pose, gameMode:"survival" } });
+socket.receive({ type:"welcome", resumeToken:"resume", player:{ ...pose, gameMode:"survival", health:20 } });
+assert.equal(selfHealth, 20);
 reconciliations.length = 0;
 pose = { ...pose, x:0.72, yaw:0.2 };
 intervals.values().next().value?.();
@@ -80,6 +84,12 @@ socket.receive({ type:"drop_snapshot",drops:[{
   droppedAt:1,ownerPickupAt:501,expiresAt:300001,
 }] });
 assert.equal(drops[0].item.itemId, "diamond_pickaxe", "Railway drop snapshots retain exact item metadata");
+client.submitPlayerAttack("attack:transport", "steve");
+assert.deepEqual(socket.sent.at(-1), { v:1,type:"player_attack",operationId:"attack:transport",targetId:"steve" });
+socket.receive({ type:"player_hit",operationId:"attack:transport",attackerId:"alex",targetId:"steve",
+  damage:7,health:13,killed:false,attackerX:pose.x,attackerZ:pose.z });
+assert.deepEqual(playerHits.at(-1), { operationId:"attack:transport",attackerId:"alex",targetId:"steve",
+  damage:7,health:13,killed:false,attackerX:pose.x,attackerZ:pose.z });
 const respawnPromise = client.submitRespawn();
 const respawnRequest = socket.sent.at(-1)!;
 assert.equal(respawnRequest.type, "respawn");

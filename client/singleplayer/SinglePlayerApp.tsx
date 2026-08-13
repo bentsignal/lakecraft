@@ -143,6 +143,7 @@ import {
   createSinglePlayerPointerSessionState,
   orchestrateSinglePlayerInventoryClose,
   releaseBlockedSinglePlayerPointerLockGrant,
+  scheduleGameplayPointerLockAfterEscapeRelease,
   singlePlayerGameplayPaused,
   singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
@@ -446,26 +447,13 @@ function LocalGameplaySession({
 
   function requestGameplayPointerLockAfterEscapeRelease(): void {
     const requestGeneration = pointerLockRequestRef.current;
-    let cleanupTimer = 0;
-    const onEscapeRelease = (event: KeyboardEvent) => {
-      if (event.code !== "Escape") return;
-      window.removeEventListener("keyup", onEscapeRelease, true);
-      window.clearTimeout(cleanupTimer);
-      if (requestGeneration !== pointerLockRequestRef.current
-        || !pointerSessionMountedRef.current
-        || pointerUiBlockedRef.current
-        || pointerSessionRef.current.pauseOpen
-        || document.visibilityState !== "visible") return;
-      // Waiting for keyup avoids Chrome's native Escape-unlock tail. Browsers
-      // that allow re-entry after our earlier programmatic inventory release
-      // resume immediately; the existing movement-key fallback remains armed
-      // if this quiet attempt is rejected.
-      requestEnginePointerLock(true);
-    };
-    window.addEventListener("keyup", onEscapeRelease, true);
-    cleanupTimer = window.setTimeout(() => {
-      window.removeEventListener("keyup", onEscapeRelease, true);
-    }, 1_000);
+    scheduleGameplayPointerLockAfterEscapeRelease(window, () => (
+      requestGeneration === pointerLockRequestRef.current
+        && pointerSessionMountedRef.current
+        && !pointerUiBlockedRef.current
+        && !pointerSessionRef.current.pauseOpen
+        && document.visibilityState === "visible"
+    ), () => requestEnginePointerLock(true));
   }
 
   function closeInventoryAndResume(keyboardCode?: "Escape" | "KeyE"): void {
@@ -774,6 +762,7 @@ function LocalGameplaySession({
     setCommandOpen(false);
     commandHistoryIndexRef.current = commandHistoryRef.current.length;
     armGameplayResumeAfterEscape(now);
+    requestGameplayPointerLockAfterEscapeRelease();
   }
 
   function selectHotbar(index: number) {

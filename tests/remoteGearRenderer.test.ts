@@ -55,6 +55,13 @@ assert.equal(heldMaterial.stats.avatarVertexCount, remoteHeldItemVertexCount("co
 assert.equal(heldTool.stats.avatarVertexCount, remoteHeldItemVertexCount("iron_pickaxe"));
 assert.ok(remoteHeldItemVertexCount("sand") < remoteHeldItemVertexCount("coal"),
   "solid blocks stay true 3D cubes while irregular materials keep their extruded silhouette");
+assert.ok(remoteHeldItemVertexCount("sand") > 36,
+  "remote held blocks retain a bounded authored-atlas texture mosaic instead of one flat color per face");
+const sandColors = new Set<string>();
+for (let offset = 0; offset < remoteHeldItemGeometry("sand").length; offset += 6) {
+  sandColors.add(Array.from(remoteHeldItemGeometry("sand").slice(offset + 3, offset + 6)).join(":"));
+}
+assert.ok(sandColors.size > 6, "held block faces preserve visible per-cell texture variation");
 assert.equal(heldBlock.stats.nameplateVertexCount, bare.stats.nameplateVertexCount, "held gear cannot disturb names");
 
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {

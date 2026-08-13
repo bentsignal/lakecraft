@@ -26,7 +26,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
   Object.freeze(["Array", "isArray", 78]),
   Object.freeze(["Number", "isFinite", 259]),
-  Object.freeze(["Number", "isInteger", 49]),
+  // Realtime PvP validates integral damage and health at the untrusted wire boundary.
+  Object.freeze(["Number", "isInteger", 51]),
   Object.freeze(["Number", "isSafeInteger", 43]),
   Object.freeze(["Number", "MAX_SAFE_INTEGER", 20]),
   Object.freeze(["Number", "NEGATIVE_INFINITY", 25]),
@@ -36,8 +37,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 11]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_900;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "eb1aecfbaf1fed44e0b08e15fadb6e57d053f5d0e4a1697a51d33298da1d8a1a";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_902;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "b2e6c654e47f4061f01a2d3a99de3847e8754d2674d6713d66b11ce79a96b713";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

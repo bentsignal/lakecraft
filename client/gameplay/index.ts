@@ -3,7 +3,7 @@ export type { GameplayAuthorityAdapter, GameplayAuthorityCapabilities, GameplayA
 export { createGameplaySessionEngine } from "./engine.ts";
 export { GameplaySessionSurface, useGameplayAuthorityKind } from "./GameplaySessionSurface.tsx";
 export type { GameplaySessionSurfaceProps } from "./GameplaySessionSurface.tsx";
-export { gameplaySessionPaused } from "./pointerSession.ts";
+export { gameplaySessionPaused, scheduleGameplayPointerLockAfterEscapeRelease } from "./pointerSession.ts";
 export type { GameplaySessionBlockers } from "./pointerSession.ts";
 export { createGameplayPointerSessionState, transitionGameplayPointerSession } from "./pointerSession.ts";
 export type { GameplayPointerSessionEvent, GameplayPointerSessionState, GameplayPointerSessionTransition } from "./pointerSession.ts";

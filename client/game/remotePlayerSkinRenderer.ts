@@ -13,7 +13,7 @@ import {
 import { createVisualProgram, SKIN_FRAGMENT_SHADER, SKIN_VERTEX_SHADER } from "./visualShaders.ts";
 
 type Vec3 = readonly [number, number, number];
-const REMOTE_RENDER_DISTANCE_SQUARED = 64 * 64;
+const REMOTE_RENDER_DISTANCE_SQUARED = (21 * 16) ** 2;
 const REMOTE_WIDE_SKIN_GEOMETRY = buildPlayerSkinGeometry("wide");
 const REMOTE_SLIM_SKIN_GEOMETRY = buildPlayerSkinGeometry("slim");
 export const REMOTE_SKIN_ATLAS_COLUMNS = 8;

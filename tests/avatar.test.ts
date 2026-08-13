@@ -11,6 +11,7 @@ import {
   shortestAngleDelta,
 } from "../client/game/avatar.ts";
 import { playerRigCycleMilliseconds } from "../client/game/playerRig.ts";
+import { FIRST_PERSON_ACTION_MS } from "../client/game/firstPersonRenderer.ts";
 import { PRESENCE_MAX_EXTRAPOLATION_MS, PRESENCE_MAX_HORIZONTAL_SPEED, PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS, PRESENCE_MAX_VERTICAL_SPEED, PRESENCE_MAX_X } from "../shared/presenceMotion.ts";
 import type { RemotePlayer } from "../client/game/types.ts";
 
@@ -137,6 +138,9 @@ const acting = createRemoteAvatarMotion(player({
 assert.equal(acting.bowDrawing, true);
 advanceRemoteAvatarMotion(acting, 1_200, 0.016);
 assert.ok(acting.armActionPhase > 0, "replayed remote actions drive a visible arm animation");
+advanceRemoteAvatarMotion(acting, 1_000 + FIRST_PERSON_ACTION_MS + 1, 0.016);
+assert.equal(acting.armActionProgress, 1, "remote swings finish on the exact local/F5 action duration");
+assert.equal(acting.armActionPhase, 0);
 applyRemoteAvatarSnapshot(acting, player({
   heldItem: "bow",
   visualActions: [{ sequence: 4, kind: "swing" }, { sequence: 5, kind: "bow_release" }],

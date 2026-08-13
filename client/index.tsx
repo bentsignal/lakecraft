@@ -26,6 +26,7 @@ import {
   ENGINE_TO_GAME,
   GameplaySessionSurface,
   ITEM_TO_ENGINE,
+  scheduleGameplayPointerLockAfterEscapeRelease,
   transitionGameplayPointerSession,
   type GameplayPointerSessionEvent,
 } from "./gameplay/index.ts";
@@ -36,6 +37,7 @@ import {
   type RealtimeChatSink,
   type RealtimeDropSink,
   type RealtimePickupSink,
+  type RealtimePlayerAttackSink,
   type RealtimeRespawnSink,
 } from "./RealtimeMultiplayerTransport.tsx";
 import {
@@ -70,6 +72,7 @@ import {
   MAX_HEALTH,
   MAX_HUNGER,
   addItemStack,
+  attackDamage,
   clampHotbarIndex,
   createEmptyEquipment,
   createSerializablePlayerState,
@@ -330,15 +333,18 @@ function RailwayMultiplayerSession({
   const pointerSessionRef = useRef(createGameplayPointerSessionState(false));
   const realtimeDropsRef = useRef<NormalizedDroppedItem[]>([]);
   const droppedPickupAttemptRef = useRef(new Map<string, number>());
+  const appliedPickupDropsRef = useRef(new Set<string>());
   const lastDroppedPickupSweepRef = useRef(0);
   const respawnRequestInFlightRef = useRef(false);
   const motionActionSinkRef = useRef<((kind: MotionVisualActionKind, value?: number) => void) | null>(null);
   const realtimeRespawnSinkRef = useRef<RealtimeRespawnSink | null>(null);
+  const realtimePlayerAttackSinkRef = useRef<RealtimePlayerAttackSink | null>(null);
   const entryPointerLockHandoffRef = useRef(false);
   const realtimeCrouchingRef = useRef(false);
   const previousSegmentPoseRef = useRef<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const authorityTrafficPausedRef = useRef(false);
   const authoritativeKnockbackGateRef = useRef<AuthoritativeKnockbackGate | null>(null);
+  const chatEscapeRecaptureRef = useRef(0);
 
   const selectedSkin = () => selectedSkinPromiseRef.current ??=
     hydrateSelectedPlayerSkin(window.localStorage);
@@ -600,6 +606,22 @@ function RailwayMultiplayerSession({
     }
   }
 
+  function closeChatFromEscape(): void {
+    setChatOpen(false);
+    setLastSeenChatCount(realtimeChatMessages.length);
+    const generation = ++chatEscapeRecaptureRef.current;
+    requestGameplayKeyboardCapture();
+    applyGameplayPointerEvent({ type: "close_ui_escape", now: performance.now() });
+    scheduleGameplayPointerLockAfterEscapeRelease(window, () => (
+      generation === chatEscapeRecaptureRef.current
+      && document.visibilityState === "visible"
+      && engineRef.current !== null
+    ), () => {
+      requestGameplayKeyboardCapture();
+      void engineRef.current?.requestPointerLock().then((locked) => setPointerCaptureNeeded(!locked));
+    });
+  }
+
   function updateInventory(next: Inventory) {
     inventoryRef.current = next;
     setInventory(next);
@@ -780,12 +802,19 @@ function RailwayMultiplayerSession({
     if (!hydratedRef.current || droppedItemBusyRef.current || pendingWorldBlockEditRef.current) return;
     droppedItemBusyRef.current = true;
     try {
-      const planned = addItemStack(inventoryRef.current, drop.item);
-      if (planned.remainder > 0) return;
+      if (addItemStack(inventoryRef.current, drop.item).remainder > 0) return;
       const sink = realtimePickupSinkRef.current;
       if (!sink) throw new Error("multiplayer_not_connected");
-      await sink(droppedItemOperationId(), drop.dropId);
+      const confirmed = await sink(`pickup:${drop.dropId}`.slice(0, 96), drop.dropId);
+      if (appliedPickupDropsRef.current.has(confirmed.dropId)) return;
+      const planned = addItemStack(inventoryRef.current, confirmed.item);
+      if (planned.remainder > 0) throw new Error("inventory_changed");
+      appliedPickupDropsRef.current.add(confirmed.dropId);
+      if (appliedPickupDropsRef.current.size > 512) {
+        appliedPickupDropsRef.current.delete(appliedPickupDropsRef.current.values().next().value!);
+      }
       updateInventory(planned.inventory);
+      advanceInventoryAuthorityEpoch();
       audioRef.current?.play("pickup", { seed: drop.dropId, intensity: 0.72 });
     } catch {
     } finally {
@@ -1024,10 +1053,14 @@ function RailwayMultiplayerSession({
         initialPose: poseRef.current,
         preserveInitialPose: true,
         worldRadius: WORLD_RADIUS,
+        streamingChunkRadius: clientSettingsRef.current.renderDistance,
         canEditBlock: () => pendingWorldBlockEditRef.current === null,
         isRangedWeaponSelected: () => false,
+        getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
         onUseSelectedItem: () => handleUseItem(),
-        onRemotePlayerAttack: () => undefined,
+        onRemotePlayerAttack: (target) => {
+          realtimePlayerAttackSinkRef.current?.(`attack:${crypto.randomUUID()}`, target.id);
+        },
         onMiningHit: (target) => {
           const surface = audioSurfaceForBlock(target.block.block);
           const seed = `${target.block.x},${target.block.y},${target.block.z}:${performance.now().toFixed(0)}`;
@@ -1184,9 +1217,7 @@ function RailwayMultiplayerSession({
       if (chatOpen) {
         if (event.code === "Escape") {
           event.preventDefault();
-          setChatOpen(false);
-          setLastSeenChatCount(realtimeChatMessages.length);
-          applyGameplayPointerEvent({ type: "close_ui_escape", now: performance.now() });
+          closeChatFromEscape();
         }
         return;
       }
@@ -1658,12 +1689,31 @@ function RailwayMultiplayerSession({
             engineRef.current?.setDroppedItems(drops);
             maybePickupNearbyDroppedItem(poseRef.current);
           }}
+          onSelfHealth={(health) => {
+            setPlayerHealth(health);
+            engineRef.current?.setPlayerHealth(health);
+            setDeathScreenOpen(health <= 0);
+          }}
+          onPlayerHit={(hit) => {
+            const localUserId = realtimeSession.demo?.userId ?? auth.userId ?? "";
+            if (hit.targetId !== localUserId) return;
+            setPlayerHealth(hit.health);
+            engineRef.current?.setPlayerHealth(hit.health);
+            audioRef.current?.play("playerHurt", { seed: hit.operationId, intensity: 0.82 });
+            if (!authorityTrafficPausedRef.current && document.pointerLockElement) {
+              engineRef.current?.applyConfirmedMobKnockback(
+                hit.operationId, hit.attackerX, hit.attackerZ, hit.damage, performance.now(),
+              );
+            }
+            if (hit.killed) setDeathScreenOpen(true);
+          }}
           registerBlockSink={(sink) => { realtimeBlockSinkRef.current = sink; }}
           registerChatSink={(sink) => { realtimeChatSinkRef.current = sink; }}
           registerActionSink={(sink) => { motionActionSinkRef.current = sink; }}
           registerDropSink={(sink) => { realtimeDropSinkRef.current = sink; }}
           registerPickupSink={(sink) => { realtimePickupSinkRef.current = sink; }}
           registerRespawnSink={(sink) => { realtimeRespawnSinkRef.current = sink; }}
+          registerPlayerAttackSink={(sink) => { realtimePlayerAttackSinkRef.current = sink; }}
         />
       ) : null}
 
@@ -1708,10 +1758,15 @@ function RailwayMultiplayerSession({
         onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
         fovDegrees={clientSettings.fovDegrees}
         mouseSensitivity={clientSettings.mouseSensitivity}
+        renderDistance={clientSettings.renderDistance}
         onCloseOptions={() => setOptionsOpen(false)}
         onOptions={() => setOptionsOpen(true)}
         onFovChange={(fovDegrees) => updateClientSettings({ ...clientSettingsRef.current, fovDegrees })}
         onSensitivityChange={(mouseSensitivity) => updateClientSettings({ ...clientSettingsRef.current, mouseSensitivity })}
+        onRenderDistanceChange={(renderDistance) => {
+          updateClientSettings({ ...clientSettingsRef.current, renderDistance });
+          engineRef.current?.setRenderDistance(renderDistance);
+        }}
         optionsOpen={optionsOpen}
         onRespawn={requestRailwayRespawn}
         soundMuted={clientSettings.soundMuted}
@@ -1762,9 +1817,7 @@ function RailwayMultiplayerSession({
         maxLength={CHAT_MESSAGE_MAX_LENGTH}
         messages={chatMessages}
         onClose={() => {
-          setChatOpen(false);
-          setLastSeenChatCount(chatMessages.length);
-          applyGameplayPointerEvent({ type: "close_ui_escape", now: performance.now() });
+          closeChatFromEscape();
         }}
         onDraftChange={setChatDraft}
         onOpen={() => {

@@ -38,6 +38,18 @@ export interface PublicPlayer {
   crouching?: boolean;
   visualActions?: PublicVisualAction[];
   gameMode?: ServerGameMode;
+  health?: number;
+}
+
+export interface PlayerHit {
+  operationId: string;
+  attackerId: string;
+  targetId: string;
+  damage: number;
+  health: number;
+  killed: boolean;
+  attackerX: number;
+  attackerZ: number;
 }
 
 export interface BlockEdit {
@@ -127,6 +139,7 @@ export type ClientMessage =
       z: number;
     }
   | { v: ProtocolVersion; type: "pickup_item"; operationId: string; dropId: string }
+  | { v: ProtocolVersion; type: "player_attack"; operationId: string; targetId: string }
   | { v: ProtocolVersion; type: "respawn"; operationId: string }
   | {
       v: ProtocolVersion;
@@ -205,6 +218,7 @@ export type ServerMessage =
     }
   | { v: ProtocolVersion; type: "drop_snapshot"; drops: PublicDrop[] }
   | { v: ProtocolVersion; type: "drop_result"; operationId: string; action: "drop" | "pickup"; drop?: PublicDrop }
+  | ({ v: ProtocolVersion; type: "player_hit" } & PlayerHit)
   | { v: ProtocolVersion; type: "respawned"; operationId: string; player: PublicPlayer }
   | { v: ProtocolVersion; type: "appearance_roster"; players: PlayerAppearance[] }
   | { v: ProtocolVersion; type: "appearance_state"; player: PlayerAppearance }
@@ -395,6 +409,14 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)
       || !shortString(value.dropId, 96)) return invalid("pickup item is invalid");
     return { ok: true, message: value as unknown as ClientMessage };
+  }
+
+  if (value.type === "player_attack") {
+    if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)
+      || !shortString(value.targetId, 128)) return invalid("player attack is invalid");
+    return { ok: true, message: {
+      v: PROTOCOL_VERSION, type: "player_attack", operationId: value.operationId, targetId: value.targetId,
+    } };
   }
 
   if (value.type === "respawn") {

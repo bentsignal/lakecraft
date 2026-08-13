@@ -13,6 +13,7 @@ import {
   type PublicAppearance,
   type PublicPlayer,
   type PublicDrop,
+  type PlayerHit,
   type ServerMessage,
 } from "./protocol";
 import {
@@ -59,6 +60,7 @@ interface ConnectionState {
   rateCount: number;
   lastSavedAt: number;
   lastSkinAt: number;
+  lastAttackAt: number;
   appearanceRequestWindowAt: number;
   appearanceRequestCount: number;
   appearanceRequestKeys: Set<string>;
@@ -69,7 +71,8 @@ interface ConnectionState {
 
 // Feet pose on the deterministic client's height-68 spawn plateau.
 const SPAWN = { x: 0.5, y: terrainFeetY(0.5, 0.5), z: 0.5 };
-const NEARBY_RADIUS = 96;
+/** Twenty-one chunks: the authority can feed the highest supported client view. */
+const NEARBY_RADIUS = 21 * 16;
 const EDIT_REACH = 8;
 const MAX_MESSAGE_BYTES = 32 * 1024;
 const SOFT_BACKPRESSURE = 64 * 1024;
@@ -81,8 +84,10 @@ export const SKIN_CHANGE_RATE_LIMIT_MS = 3_000;
 export const APPEARANCE_REQUEST_RATE_LIMIT = 4;
 export const APPEARANCE_REQUEST_RATE_WINDOW_MS = 1_000;
 const DROP_TTL_MS = 5 * 60_000;
-const DROP_OWNER_DELAY_MS = 500;
+const DROP_OWNER_DELAY_MS = 150;
 const DROP_REACH = 3;
+const PLAYER_ATTACK_REACH = 6.25;
+const PLAYER_ATTACK_COOLDOWN_MS = 400;
 
 const DEFAULT_APPEARANCE: PublicAppearance = Object.freeze({
   skinId: "default",
@@ -100,6 +105,7 @@ export class GameWorld implements AdminWorldControl {
   private visualActionSequence = 0;
   private readonly drops = new Map<string, PublicDrop>();
   private readonly dropOperations = new Map<string, PublicDrop>();
+  private readonly playerHitOperations = new Map<string, PlayerHit>();
   private shuttingDown = false;
 
   constructor(
@@ -172,6 +178,7 @@ export class GameWorld implements AdminWorldControl {
       rateCount: 0,
       lastSavedAt: now,
       lastSkinAt: Number.NEGATIVE_INFINITY,
+      lastAttackAt: Number.NEGATIVE_INFINITY,
       appearanceRequestWindowAt: now,
       appearanceRequestCount: 0,
       appearanceRequestKeys: new Set(),
@@ -247,6 +254,7 @@ export class GameWorld implements AdminWorldControl {
     else if (message.type === "chat_send") this.chat(state, message, now);
     else if (message.type === "drop_item") this.dropItem(state, message, now);
     else if (message.type === "pickup_item") this.pickupItem(state, message, now);
+    else if (message.type === "player_attack") this.playerAttack(state, message, now);
     else if (message.type === "respawn") this.respawn(state, message, now);
     else if (message.type === "appearance_set") await this.setAppearance(state, message, now);
     else this.sendAppearance(state, message, now);
@@ -386,6 +394,7 @@ export class GameWorld implements AdminWorldControl {
             vy: 0,
             vz: 0,
             gameMode: stored?.player.gameMode === "creative" ? "creative" : "survival",
+            health: stored?.player.health ?? 20,
           };
       // Older fixed-floor servers could persist players below the actual
       // deterministic surface. Heal those poses before the first welcome so a
@@ -721,21 +730,30 @@ export class GameWorld implements AdminWorldControl {
   }
 
   private pickupItem(state: ConnectionState, message: Extract<ClientMessage, { type: "pickup_item" }>, now: number): void {
+    const replay = this.store.getPickupOperation(state.player!.id, message.operationId);
+    if (replay) {
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop: replay });
+      return;
+    }
     const drop = this.drops.get(message.dropId);
     if (!drop || drop.expiresAt <= now || (drop.ownerUserId === state.player!.id && drop.ownerPickupAt > now)
       || squaredDistance(state.player!, drop) > DROP_REACH ** 2) {
       this.fail(state, "bad_message", "Item is unavailable or out of reach", false, false, message.operationId);
       return;
     }
+    const consumed = this.store.consumeDrop(state.player!.id, message.operationId, drop.dropId, now);
+    if (!consumed) {
+      this.fail(state, "bad_message", "Item was already picked up", false, false, message.operationId);
+      return;
+    }
     this.drops.delete(drop.dropId);
-    this.store.deleteDrop(drop.dropId);
-    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop });
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop: consumed });
     this.broadcastDrops();
   }
 
   private respawn(state: ConnectionState, message: Extract<ClientMessage, { type: "respawn" }>, now: number): void {
     const player = state.player!;
-    Object.assign(player, SPAWN, { yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0 });
+    Object.assign(player, SPAWN, { yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0, health: 20 });
     state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
     state.vy = 0;
     state.clientPoseAuthority = false;
@@ -745,6 +763,58 @@ export class GameWorld implements AdminWorldControl {
       state.lastSavedAt = now;
     }
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "respawned", operationId: message.operationId, player: { ...player } });
+  }
+
+  private playerAttack(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "player_attack" }>,
+    now: number,
+  ): void {
+    const attacker = state.player!;
+    const operationKey = `${attacker.id}\u0000${message.operationId}`;
+    const replay = this.playerHitOperations.get(operationKey);
+    if (replay) {
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...replay });
+      return;
+    }
+    const targetState = this.userConnections.get(message.targetId);
+    const target = targetState?.player;
+    if (!target || target === attacker || target.gameMode === "creative" || (target.health ?? 20) <= 0
+      || (attacker.health ?? 20) <= 0 || squaredDistance(attacker, target) > PLAYER_ATTACK_REACH ** 2
+      || !isMeleeFacing(attacker, target)) {
+      this.fail(state, "bad_message", "Player is unavailable or out of melee reach", false, false, message.operationId);
+      return;
+    }
+    if (now - state.lastAttackAt < PLAYER_ATTACK_COOLDOWN_MS) {
+      this.fail(state, "rate_limited", "Player attack is cooling down", false, true, message.operationId);
+      return;
+    }
+    state.lastAttackAt = now;
+    const damage = heldItemAttackDamage(attacker.heldItem);
+    const health = Math.max(0, (target.health ?? 20) - damage);
+    target.health = health;
+    const hit: PlayerHit = {
+      operationId: message.operationId,
+      attackerId: attacker.id,
+      targetId: target.id,
+      damage,
+      health,
+      killed: health === 0,
+      attackerX: attacker.x,
+      attackerZ: attacker.z,
+    };
+    this.playerHitOperations.set(operationKey, hit);
+    if (this.playerHitOperations.size > 512) this.playerHitOperations.delete(this.playerHitOperations.keys().next().value!);
+    if (targetState?.resumeHash && targetState.resumeExpiresAt !== undefined) {
+      this.store.savePlayer(target, targetState.resumeHash, now, targetState.resumeExpiresAt);
+      targetState.lastSavedAt = now;
+    }
+    if (hit.killed && targetState) {
+      targetState.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
+      target.vx = target.vy = target.vz = 0;
+    }
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });
+    if (targetState !== state) this.send(targetState!.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });
   }
 
   private broadcastDrops(): void {
@@ -786,6 +856,18 @@ function normalizeYaw(yaw: number): number {
   return ((yaw + Math.PI) % twoPi + twoPi) % twoPi - Math.PI;
 }
 
+function isMeleeFacing(attacker: PublicPlayer, target: PublicPlayer): boolean {
+  const dx = target.x - attacker.x;
+  const dy = target.y + 0.925 - (attacker.y + 1.62);
+  const dz = target.z - attacker.z;
+  const distance = Math.hypot(dx, dy, dz);
+  if (distance < 0.01) return true;
+  const cosPitch = Math.cos(attacker.pitch);
+  const dot = (dx * Math.sin(attacker.yaw) * cosPitch + dy * Math.sin(attacker.pitch)
+    - dz * Math.cos(attacker.yaw) * cosPitch) / distance;
+  return dot >= 0.55;
+}
+
 function createResumeToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -801,4 +883,16 @@ async function hashSkinPixels(base64: string): Promise<string> {
   const pixels = Buffer.from(base64, "base64");
   const bytes = await crypto.subtle.digest("SHA-256", pixels);
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function heldItemAttackDamage(itemId: string | undefined): number {
+  if (!itemId) return 1;
+  const tier = itemId.startsWith("diamond_") ? 3
+    : itemId.startsWith("iron_") ? 2
+      : itemId.startsWith("stone_") ? 1 : 0;
+  if (itemId.endsWith("_sword")) return 4 + tier;
+  if (itemId.endsWith("_axe")) return 3 + tier;
+  if (itemId.endsWith("_pickaxe")) return 2 + tier;
+  if (itemId.endsWith("_shovel")) return 1 + tier;
+  return 1;
 }

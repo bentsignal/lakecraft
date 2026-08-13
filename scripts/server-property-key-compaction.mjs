@@ -140,8 +140,8 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "c4b1cc76e49e830ce7ed6cde37945454c9ad41308de3b8b9813dcfb436a67b44";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "c4b1cc76e49e830ce7ed6cde37945454c9ad41308de3b8b9813dcfb436a67b44";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "8dcb4a3a17209246c90ebef355ec8e305162d4b5abc0684eb0dff00d192b4cb0";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "000acad424690a4ea839b7ad34d30696b68c0b70ba249f71786d00e4af2d4301";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "5309c7a2e0691e943e6f571dad54618d9974dcb1264ac9caae7ce813f6100e45";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
@@ -157,7 +157,68 @@ export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "a6bdb86e81420358c6c0ad47
 // The shared-gameplay architecture is a new sealed source checkpoint. Earlier
 // additive deltas described the duplicated Lakebed multiplayer paths removed by
 // that cut, so the current complete fingerprint is now the canonical boundary.
-export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({});
+export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
+  damage: {
+    previousEntryFingerprint: "4363ea06150214c6d81b6f55e153df6569c2ef0b3145daee61334a0869328be6",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 1], "client/realtimeMultiplayer.ts": [null, 3] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 1],
+    },
+  },
+  dropId: {
+    previousEntryFingerprint: "75000957aeafcc2b0722a433ae8e80b82555bf8bb57b1869da81afde84feaef4",
+    counts: { "client/index.tsx": [6, 9] },
+  },
+  health: {
+    previousEntryFingerprint: "60c9aaebbfc0d3f1ea43b4f6e159ba8ee8ab4c828c570abe4dc32ea3158e887d",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 2], "client/realtimeMultiplayer.ts": [null, 5] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 1],
+    },
+  },
+  itemId: {
+    previousEntryFingerprint: "297403a97f82a70186ce155916be3fd2090ee636e6fe00b9997710f512f803f4",
+    counts: { "client/index.tsx": [14, 15] },
+  },
+  killed: {
+    previousEntryFingerprint: "3c2643836b6760b2591a2869e1913c5cc1c493952fd773bb9ab2fea9a8b87c15",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 1], "client/realtimeMultiplayer.ts": [null, 4] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertyAssignment": [null, 1],
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+    },
+  },
+  operationId: {
+    previousEntryFingerprint: "5b3bdbd87493451c98cda8f6ace948f2cc3db4488e991c067ca271d52fadaec9",
+    counts: { "client/index.tsx": [9, 11], "client/realtimeMultiplayer.ts": [23, 27] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [1, 2],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [9, 11],
+    },
+  },
+  targetId: {
+    previousEntryFingerprint: "0f1379462b330c0f2e6b6b42ca1e24f3c53c91aaa4b7aca3c3c74d58b470a1a3",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 1], "client/realtimeMultiplayer.ts": [null, 4] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 2],
+    },
+  },
+  userId: {
+    previousEntryFingerprint: "d271b45d963f4456f2503bdfa8001bab7a19d521b416296978dd71fa53d16ecb",
+    counts: { "client/index.tsx": [23, 25] },
+  },
+});
 
 let typescriptPromise;
 async function typescript() {

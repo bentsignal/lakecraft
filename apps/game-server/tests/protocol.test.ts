@@ -53,6 +53,12 @@ describe("protocol v1", () => {
       v:1, type:"pickup_item", operationId:"pickup_12345678", dropId:"drop:known",
     })).ok).toBe(true);
     expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"player_attack", operationId:"attack:12345678", targetId:"player-2",
+    })).ok).toBe(true);
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"player_attack", operationId:"short", targetId:"",
+    })).ok).toBe(false);
+    expect(decodeClientMessage(JSON.stringify({
       v:1, type:"drop_item", operationId:"drop_12345678", itemId:"../bad", count:65, x:0, y:0, z:0,
     })).ok).toBe(false);
     expect(decodeClientMessage(JSON.stringify({

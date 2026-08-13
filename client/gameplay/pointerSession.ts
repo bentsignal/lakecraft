@@ -94,6 +94,31 @@ export function singlePlayerSilentRecaptureKey(code: string, repeat = false): bo
 }
 
 /**
+ * Re-enters Pointer Lock on Escape keyup, after Chrome's reserved unlock tail.
+ * Chat and inventory surfaces in both authority modes share this sequencing so
+ * closing an overlay never leaves a visible cursor over live gameplay.
+ */
+export function scheduleGameplayPointerLockAfterEscapeRelease(
+  target: Window,
+  canRecapture: () => boolean,
+  request: () => void,
+): () => void {
+  let cleanupTimer = 0;
+  const cleanup = () => {
+    target.removeEventListener("keyup", onEscapeRelease, true);
+    target.clearTimeout(cleanupTimer);
+  };
+  const onEscapeRelease = (event: KeyboardEvent) => {
+    if (event.code !== "Escape") return;
+    cleanup();
+    if (canRecapture()) request();
+  };
+  target.addEventListener("keyup", onEscapeRelease, true);
+  cleanupTimer = target.setTimeout(cleanup, 1_000);
+  return cleanup;
+}
+
+/**
  * Escape is the browser's reserved Pointer Lock release gesture, so Chrome does
  * not let that same key activation reliably reacquire capture. E and pointer
  * clicks are ordinary trusted activations and can reacquire before the

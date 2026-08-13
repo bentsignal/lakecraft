@@ -33,8 +33,8 @@ assert.ok(dialog.includes('aria-label="Mouse sensitivity"') && dialog.includes("
 assert.ok(dialog.includes('aria-label="Field of view"') && dialog.includes('min="30"') && dialog.includes('max="110"'),
   "the shared Options screen exposes the full accessible FOV range");
 assert.ok(dialog.includes('aria-label="Render distance"') && dialog.includes("renderDistance !== undefined"),
-  "single-player can opt into a shared accessible render-distance slider without exposing it in multiplayer");
-assert.ok(dialog.includes('max="12"'), "the single-player slider exposes the twelve-chunk playtest ceiling");
+  "either authority can opt into the shared accessible render-distance slider");
+assert.ok(dialog.includes("RENDER_DISTANCE_MAX"), "the slider uses the shared tested chunk ceiling");
 assert.ok(dialog.includes('event.key !== "Tab"') && dialog.includes("event.shiftKey"), "keyboard focus is trapped in either tab direction");
 assert.ok(dialog.includes("returnFocusId") && pause.includes('id="lc-game-menu-options"')
   && lobby.includes('"lc-title-options"') && menuButton.includes("id={id}"),
@@ -51,6 +51,9 @@ assert.ok(app.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(singlePlayer.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(lobby.includes("fovDegrees={props.settings.fovDegrees}"), "title Options edits the same persisted FOV setting");
 assert.ok(singlePlayer.includes("engineRef.current?.setRenderDistance(renderDistance)"), "single-player reconciles a changed render radius immediately");
+assert.ok(app.includes("streamingChunkRadius: clientSettingsRef.current.renderDistance")
+  && app.includes("engineRef.current?.setRenderDistance(renderDistance)"),
+"multiplayer initializes and reconciles the same client-selected terrain radius");
 assert.ok(singlePlayer.includes("audioRef.current = audio"), "single-player retains its audio surface for immediate mute updates");
 
 for (const localOnly of [settings, dialog]) {

@@ -173,7 +173,8 @@ assert.ok(engine.includes("-Math.sin(mob.yaw),") && engine.includes("Math.cos(mo
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(multiplayer, /attackMob|rangedCombat/,
   "Railway multiplayer cannot reuse Lakebed combat receipts");
-assert.match(multiplayer, /onRemotePlayerAttack: \(\) => undefined/,
-  "network combat stays disabled until Railway owns the receipt and reaction");
+assert.ok(multiplayer.includes("realtimePlayerAttackSinkRef.current?.")
+  && multiplayer.includes("applyConfirmedMobKnockback("),
+"Railway-confirmed player damage reuses the retained exact-once knockback reaction");
 
 console.log("combat knockback and overlap tests passed");

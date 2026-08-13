@@ -12,6 +12,7 @@ interface PlayerRow {
   resume_hash: string;
   resume_expires_at: number;
   game_mode: string;
+  health: number;
   updated_at: number;
 }
 
@@ -72,6 +73,7 @@ export class WorldStore {
         resume_hash TEXT NOT NULL,
         resume_expires_at INTEGER NOT NULL DEFAULT 0,
         game_mode TEXT NOT NULL DEFAULT 'survival' CHECK (game_mode IN ('survival', 'creative')),
+        health INTEGER NOT NULL DEFAULT 20,
         updated_at INTEGER NOT NULL
       );
       CREATE UNIQUE INDEX IF NOT EXISTS player_state_resume_hash ON player_state (resume_hash);
@@ -133,6 +135,24 @@ export class WorldStore {
         UNIQUE (owner_user_id, operation_id)
       );
       CREATE INDEX IF NOT EXISTS dropped_items_expiry ON dropped_items (expires_at);
+
+      CREATE TABLE IF NOT EXISTS pickup_operations (
+        user_id TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        drop_id TEXT NOT NULL,
+        owner_user_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        durability INTEGER,
+        x REAL NOT NULL,
+        y REAL NOT NULL,
+        z REAL NOT NULL,
+        dropped_at INTEGER NOT NULL,
+        owner_pickup_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        picked_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, operation_id)
+      );
     `);
     const playerColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(player_state)").all();
     if (!playerColumns.some((column) => column.name === "resume_expires_at")) {
@@ -140,6 +160,9 @@ export class WorldStore {
     }
     if (!playerColumns.some((column) => column.name === "game_mode")) {
       this.db.exec("ALTER TABLE player_state ADD COLUMN game_mode TEXT NOT NULL DEFAULT 'survival';");
+    }
+    if (!playerColumns.some((column) => column.name === "health")) {
+      this.db.exec("ALTER TABLE player_state ADD COLUMN health INTEGER NOT NULL DEFAULT 20;");
     }
   }
 
@@ -198,6 +221,41 @@ export class WorldStore {
 
   deleteDrop(dropId: string): boolean {
     return this.db.query("DELETE FROM dropped_items WHERE drop_id = ?").run(dropId).changes > 0;
+  }
+
+  getPickupOperation(userId: string, operationId: string): PublicDrop | null {
+    const row = this.db.query<DropRow, [string, string]>(`
+      SELECT drop_id, '' AS operation_id, owner_user_id, item_id, count, durability,
+        x, y, z, dropped_at, owner_pickup_at, expires_at
+      FROM pickup_operations WHERE user_id = ? AND operation_id = ?
+    `).get(userId, operationId);
+    return row ? toPublicDrop(row) : null;
+  }
+
+  consumeDrop(userId: string, operationId: string, dropId: string, pickedAt: number): PublicDrop | null {
+    return this.db.transaction(() => {
+      const replay = this.getPickupOperation(userId, operationId);
+      if (replay) return replay;
+      const row = this.db.query<DropRow, [string]>(`
+        SELECT drop_id, operation_id, owner_user_id, item_id, count, durability,
+          x, y, z, dropped_at, owner_pickup_at, expires_at
+        FROM dropped_items WHERE drop_id = ?
+      `).get(dropId);
+      if (!row) return null;
+      this.db.query(`
+        INSERT INTO pickup_operations (user_id, operation_id, drop_id, owner_user_id, item_id, count,
+          durability, x, y, z, dropped_at, owner_pickup_at, expires_at, picked_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(userId, operationId, row.drop_id, row.owner_user_id, row.item_id, row.count,
+        row.durability, row.x, row.y, row.z, row.dropped_at, row.owner_pickup_at, row.expires_at, pickedAt);
+      this.db.query("DELETE FROM dropped_items WHERE drop_id = ?").run(dropId);
+      this.db.query(`
+        DELETE FROM pickup_operations WHERE rowid NOT IN (
+          SELECT rowid FROM pickup_operations ORDER BY picked_at DESC LIMIT 512
+        )
+      `).run();
+      return toPublicDrop(row);
+    })();
   }
 
   appendChat(
@@ -324,7 +382,7 @@ export class WorldStore {
 
   loadPlayer(userId: string): StoredPlayer | null {
     const row = this.db.query<PlayerRow, [string]>(`
-      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, updated_at
+      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, health, updated_at
       FROM player_state WHERE user_id = ?
     `).get(userId);
     return row ? toStoredPlayer(row) : null;
@@ -332,7 +390,7 @@ export class WorldStore {
 
   loadPlayerByResumeHash(resumeHash: string): StoredPlayer | null {
     const row = this.db.query<PlayerRow, [string]>(`
-      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, updated_at
+      SELECT user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, health, updated_at
       FROM player_state WHERE resume_hash = ?
     `).get(resumeHash);
     return row ? toStoredPlayer(row) : null;
@@ -346,9 +404,9 @@ export class WorldStore {
   ): void {
     this.db.query(`
       INSERT INTO player_state (
-        user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, updated_at
+        user_id, display_name, x, y, z, yaw, pitch, resume_hash, resume_expires_at, game_mode, health, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (user_id) DO UPDATE SET
         display_name = excluded.display_name,
         x = excluded.x,
@@ -359,6 +417,7 @@ export class WorldStore {
         resume_hash = excluded.resume_hash,
         resume_expires_at = excluded.resume_expires_at,
         game_mode = excluded.game_mode,
+        health = excluded.health,
         updated_at = excluded.updated_at
     `).run(
       player.id,
@@ -371,6 +430,7 @@ export class WorldStore {
       resumeHash,
       resumeExpiresAt,
       player.gameMode === "creative" ? "creative" : "survival",
+      Math.max(0, Math.min(20, Math.floor(player.health ?? 20))),
       updatedAt,
     );
   }
@@ -414,6 +474,7 @@ function toStoredPlayer(row: PlayerRow): StoredPlayer {
       yaw: row.yaw,
       pitch: row.pitch,
       gameMode: row.game_mode === "creative" ? "creative" : "survival",
+      health: Math.max(0, Math.min(20, row.health)),
     },
     resumeHash: row.resume_hash,
     resumeExpiresAt: row.resume_expires_at,

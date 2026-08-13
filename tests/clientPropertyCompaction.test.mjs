@@ -81,7 +81,7 @@ assert.deepEqual(
 const reviewedPrivatePropertyPaths = {
   accumulatorSeconds: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
   activePlayMsSinceSave: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
-  applyConfirmedMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts"] },
+  applyConfirmedMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"] },
   applyConfirmedPlayerHitMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts"] },
   autosaveDue: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
   blockReads: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
@@ -168,7 +168,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "4714229e085b1cbc181e1af6c7dd6d4bc764a2149322d74a796453afcfb0c76c",
+  "abc5e5d4ba44049ff30202afafb06135f77b1e3f7f56ca027a60c2751e62a73b",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [

@@ -189,7 +189,49 @@ describe("authoritative world", () => {
       v:1,type:"pickup_item",operationId:"pickup_transfer_1",dropId:drop!.dropId,
     }), 1_600);
     expect(steve.ofType("drop_result").at(-1)).toMatchObject({ action:"pickup", drop:{ dropId:drop!.dropId } });
+    await world.message(steve, JSON.stringify({
+      v:1,type:"pickup_item",operationId:"pickup_transfer_1",dropId:drop!.dropId,
+    }), 1_700);
+    expect(steve.ofType("drop_result").slice(-2)).toEqual([
+      expect.objectContaining({ action:"pickup", drop:expect.objectContaining({ dropId:drop!.dropId }) }),
+      expect.objectContaining({ action:"pickup", drop:expect.objectContaining({ dropId:drop!.dropId }) }),
+    ]);
     expect(alex.ofType("drop_snapshot").at(-1)?.drops).toEqual([]);
+    store.close();
+  });
+
+  test("applies authoritative PvP damage once with reach, cooldown, and persisted health", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const alex = new FakePeer("pvp-a");
+    const steve = new FakePeer("pvp-b");
+    world.open(alex, 1_000); world.open(steve, 1_000);
+    await world.message(alex, JSON.stringify(join("alex")), 1_000);
+    await world.message(steve, JSON.stringify(join("steve")), 1_000);
+    await world.message(alex, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:50,moveX:0,moveZ:0,yaw:0,pitch:0,jump:false,sprint:false,
+      heldItem:"iron_sword",x:0.5,y:69.02,z:0.5,
+    }), 1_010);
+    await world.message(steve, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:250,moveX:0,moveZ:0,yaw:Math.PI,pitch:0,jump:false,sprint:false,
+      x:0.5,y:69.02,z:-1.5,
+    }), 1_011);
+    const attack = { v:1,type:"player_attack",operationId:"attack:exactly-once",targetId:"steve" };
+    await world.message(alex, JSON.stringify(attack), 1_100);
+    await world.message(alex, JSON.stringify(attack), 1_101);
+    expect(alex.ofType("player_hit").slice(-2).map((hit) => hit.health)).toEqual([14, 14]);
+    expect(steve.ofType("player_hit")).toHaveLength(1);
+    expect(steve.ofType("player_hit")[0]).toMatchObject({ damage:6, health:14, killed:false });
+    expect(store.loadPlayer("steve")?.player.health).toBe(14);
+
+    await world.message(alex, JSON.stringify({ ...attack, operationId:"attack:cooldown" }), 1_200);
+    expect(alex.ofType("error").at(-1)).toMatchObject({ code:"rate_limited", operationId:"attack:cooldown" });
+    await world.message(alex, JSON.stringify({ ...attack, operationId:"attack:ready" }), 1_600);
+    expect(steve.ofType("player_hit").at(-1)).toMatchObject({ health:8 });
+    world.setPlayerGameMode("steve", "creative");
+    await world.message(alex, JSON.stringify({ ...attack, operationId:"attack:creative" }), 2_100);
+    expect(alex.ofType("error").at(-1)).toMatchObject({ code:"bad_message", operationId:"attack:creative" });
+    expect(store.loadPlayer("steve")?.player.health).toBe(8);
     store.close();
   });
 

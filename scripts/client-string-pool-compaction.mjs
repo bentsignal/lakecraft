@@ -100,9 +100,22 @@ export const COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_018;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_017;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 97;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "74e17420ec34785cdaabfc9ff7ba30199e8e6442337a495bf3cbef64003ceb1c";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "c243d1f1f3db3187d1db42496ef19b4af4d1dd9f0fe3246a0f96f7520ca94a3e";
+export const COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA = Object.freeze({
+  previousOccurrences: 1_018,
+  previousUniqueValues: 97,
+  previousSourceFingerprint: "74e17420ec34785cdaabfc9ff7ba30199e8e6442337a495bf3cbef64003ceb1c",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/gameplay/pointerSession.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/index.tsx",
+  ]),
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 1_166,
   previousUniqueValues: 110,
@@ -332,7 +345,29 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 417;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "f0809d16908c2692d7b076caefccb44f3b34e112015943229a42c2d1a525c894";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "618055f119146b1623ea7c6b19db5534cdafcbd7267c13a39788c2608f7e7b92";
+export const COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA = Object.freeze({
+  previousOccurrences: 418,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "6e2c8fac874a078698938db7e00bcaf50db718586401f4a2ef45934b5e6f07e5",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/gameplay/pointerSession.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/index.tsx",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA = Object.freeze({
+  previousOccurrences: 417,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "f0809d16908c2692d7b076caefccb44f3b34e112015943229a42c2d1a525c894",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze(["client/index.tsx", "client/realtimeMultiplayer.ts"]),
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 415,
   previousUniqueValues: 121,

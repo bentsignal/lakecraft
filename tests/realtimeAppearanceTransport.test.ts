@@ -43,6 +43,13 @@ class FakeWebSocket {
 }
 Object.assign(globalThis, { WebSocket: FakeWebSocket });
 
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100 && !predicate(); attempt += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  assert.ok(predicate(), "bounded asynchronous appearance work completes under full-suite load");
+}
+
 const localPixels = Uint8Array.from({ length: PLAYER_SKIN_WIRE_BYTES }, (_, index) => index % 239);
 const localId = await playerSkinWireId(localPixels);
 const remotePixels = Uint8Array.from({ length: PLAYER_SKIN_WIRE_BYTES }, (_, index) => index % 197);
@@ -99,7 +106,8 @@ socket.receive({
   type: "appearance_blob", userId: "steve", skinId: remoteId,
   skinPixels: encodePlayerSkinWirePixels(remotePixels),
 });
-await new Promise((resolve) => setTimeout(resolve, 0));
+await waitFor(() => projections.at(-1)?.[0].skinId === remoteId
+  && projections.at(-1)?.[0].skinPixels !== null);
 assert.equal(projections.at(-1)?.[0].skinId, remoteId);
 assert.equal(projections.at(-1)?.[0].armorHead, "iron_helmet");
 assert.deepEqual(projections.at(-1)?.[0].skinPixels, remotePixels,
@@ -236,9 +244,9 @@ assert.deepEqual(raceSocket.sent.findLast((message) => message.type === "appeara
 });
 Object.defineProperty(globalThis, "crypto", { configurable: true, value: nativeCrypto });
 releaseDigest?.();
-await new Promise((resolve) => setTimeout(resolve, 0));
+await waitFor(() => raceDigestCalls === 1);
 raceSocket.receive({ type: "appearance_blob", userId: "next", skinId: nextId, skinPixels: encodePlayerSkinWirePixels(nextPixels) });
-await new Promise((resolve) => setTimeout(resolve, 0));
+await waitFor(() => raceProjections.at(-1)?.[0].skinPixels !== null);
 assert.deepEqual(raceProjections.at(-1)?.[0].skinPixels, nextPixels,
   "a slow hash completing after timeout cannot clear or overwrite the newer active request");
 raceClient.stop();

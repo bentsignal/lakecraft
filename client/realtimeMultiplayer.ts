@@ -22,6 +22,10 @@ export const MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY = "lakecraft:multiplayer-
 
 export type RealtimeConnectionPhase = "idle" | "connecting" | "online" | "reconnecting" | "offline" | "error";
 export type RealtimeGameMode = "survival" | "creative";
+export type RealtimePlayerHit = Readonly<{
+  operationId: string; attackerId: string; targetId: string; damage: number; health: number;
+  killed: boolean; attackerX: number; attackerZ: number;
+}>;
 export type RealtimeArmorAppearance = Readonly<{
   armorHead: string;
   armorChest: string;
@@ -57,6 +61,8 @@ export type RealtimeClientOptions = {
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
+  onPlayerHit: (hit: RealtimePlayerHit) => void;
+  onSelfHealth: (health: number) => void;
   onReconcilePose?: (pose: PlayerPose) => void;
 };
 
@@ -460,6 +466,11 @@ export class RealtimeMultiplayerClient {
     return this.submitDropOperation(operationId, { type: "pickup_item", dropId });
   }
 
+  submitPlayerAttack(operationId: string, targetId: string): void {
+    if (!this.joined || this.socket?.readyState !== WebSocket.OPEN) return;
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "player_attack", operationId, targetId });
+  }
+
   submitRespawn(): Promise<PlayerPose> {
     if (!this.joined || this.socket?.readyState !== WebSocket.OPEN || this.pendingRespawn) {
       return Promise.reject(new Error("multiplayer_not_connected"));
@@ -737,6 +748,8 @@ export class RealtimeMultiplayerClient {
         this.options.onGameMode(this.gameMode);
         const welcomePose = decodePose(welcomePlayer);
         if (welcomePose) this.options.onReconcilePose?.(welcomePose);
+        const health = finiteNumber((welcomePlayer as Record<string, unknown>).health);
+        if (health !== null && health >= 0 && health <= 20) this.options.onSelfHealth(health);
       }
       this.sentPoses.clear();
       this.options.onPhase("online");
@@ -834,6 +847,21 @@ export class RealtimeMultiplayerClient {
       pending.resolve(drop);
       return;
     }
+    if (message.type === "player_hit") {
+      const operationId = boundedText(message.operationId, 96);
+      const attackerId = boundedText(message.attackerId, 128);
+      const targetId = boundedText(message.targetId, 128);
+      const damage = finiteNumber(message.damage);
+      const health = finiteNumber(message.health);
+      const attackerX = finiteNumber(message.attackerX);
+      const attackerZ = finiteNumber(message.attackerZ);
+      if (!operationId || !attackerId || !targetId || damage === null || !Number.isInteger(damage)
+        || damage < 1 || damage > 20 || health === null || !Number.isInteger(health) || health < 0 || health > 20
+        || attackerX === null || attackerZ === null || typeof message.killed !== "boolean") return;
+      this.options.onPlayerHit({ operationId, attackerId, targetId, damage, health,
+        killed: message.killed, attackerX, attackerZ });
+      return;
+    }
     if (message.type === "respawned") {
       const pose = decodePose(message.player);
       const operationId = boundedText(message.operationId, 96);
@@ -849,6 +877,8 @@ export class RealtimeMultiplayerClient {
       if (message.self && typeof message.self === "object" && !Array.isArray(message.self)) {
         this.gameMode = decodeRealtimeGameMode((message.self as Record<string, unknown>).gameMode);
         this.options.onGameMode(this.gameMode);
+        const health = finiteNumber((message.self as Record<string, unknown>).health);
+        if (health !== null && health >= 0 && health <= 20) this.options.onSelfHealth(health);
       }
       const ack = finiteNumber(message.inputAck);
       const acknowledged = ack !== null ? this.sentPoses.get(ack) : undefined;
@@ -908,6 +938,7 @@ export class RealtimeMultiplayerClient {
         return;
       }
       if (operationId) {
+        if (operationId.startsWith("attack:")) return;
         if (operationId.startsWith("respawn_") && this.pendingRespawn) {
           const pending = this.pendingRespawn;
           window.clearTimeout(pending.timer);
