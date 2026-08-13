@@ -869,6 +869,12 @@ export class RealtimeMultiplayerClient {
       if (!pending || !pose || !operationId.startsWith("respawn_")) return;
       window.clearTimeout(pending.timer);
       this.pendingRespawn = null;
+      // Rebase transport prediction before the promise callback moves the
+      // engine. The next 50 ms sample is now measured from the exact server
+      // spawn instead of the dead pose, so it cannot immediately undo respawn.
+      this.lastPose = pose;
+      this.lastPoseAt = performance.now();
+      this.sentPoses.clear();
       pending.resolve(pose);
       return;
     }
@@ -910,12 +916,14 @@ export class RealtimeMultiplayerClient {
           const vy = finiteNumber(source.vy);
           const vz = finiteNumber(source.vz);
           const visualActions = decodeVisualActions(source.visualActions);
+          const health = finiteNumber(source.health);
           players.push({
             ...pose,
             id,
             name: boundedText(source.name ?? source.username, 32) || "Player",
             ...(typeof source.heldItem === "string" ? { heldItem: boundedText(source.heldItem, 64) } : {}),
             ...(typeof source.crouching === "boolean" ? { crouching: source.crouching } : {}),
+            ...(health !== null && Number.isInteger(health) && health >= 0 && health <= 20 ? { health } : {}),
             ...(visualActions.length ? { visualActions } : {}),
             ...(vx === null ? {} : { vx }),
             ...(vy === null ? {} : { vy }),

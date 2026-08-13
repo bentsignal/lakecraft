@@ -713,7 +713,7 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA, {
   previousOccurrences: 1_018,
   previousUniqueValues: 97,
   previousSourceFingerprint: "74e17420ec34785cdaabfc9ff7ba30199e8e6442337a495bf3cbef64003ceb1c",
-  occurrenceDelta: -1,
+  occurrenceDelta: 0,
   uniqueValueDelta: 0,
   sources: [
     "client/gameplay/pointerSession.ts",

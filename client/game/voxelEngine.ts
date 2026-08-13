@@ -4656,6 +4656,25 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       poseDirty = true;
       options.onPoseChange?.({ ...pose });
     },
+    respawnAt(nextPose) {
+      cancelSecondaryPlacementHold(true);
+      pose.x = nextPose.x;
+      pose.y = nextPose.y;
+      pose.z = nextPose.z;
+      pose.yaw = nextPose.yaw;
+      pose.pitch = nextPose.pitch;
+      thirdPersonFacing = createThirdPersonFacingState(pose.yaw, -pose.pitch);
+      clearPlayerMotion();
+      playerViewSuspended = false;
+      fallAirborne = false;
+      fallPeakY = pose.y;
+      playerHealth = PLAYER_MAX_HEALTH;
+      target = null;
+      updateStreamingWindow(true, true);
+      poseDirty = true;
+      options.onPoseChange?.({ ...pose });
+      options.onPlayerHealthChange?.(playerHealth, PLAYER_MAX_HEALTH);
+    },
     getPose() { return { ...pose }; },
     getRespawnPoint() { return { ...respawnPoint }; },
     getPlayerHealth() { return playerHealth; },

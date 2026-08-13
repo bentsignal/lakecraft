@@ -1,7 +1,7 @@
 import type { ItemId } from "../../shared/game.ts";
 import { itemVisual } from "../../shared/visualCatalog.ts";
 import { getBowIconArt, getItemIconArt } from "../components/itemIconArt.ts";
-import { appendBlockItemCubeGeometry, appendCompactBlockItemCubeGeometry, blockIdForCubeItem } from "./blockItemCubeGeometry.ts";
+import { appendBlockItemCubeGeometry, blockIdForCubeItem } from "./blockItemCubeGeometry.ts";
 import {
   appendItemSpriteGeometry,
   ITEM_SPRITE_VERTEX_FLOATS,
@@ -47,12 +47,11 @@ export function buildThirdPersonHeldItemGeometry(
   itemId: ItemId,
   tuning: ThirdPersonTuning = currentThirdPersonTuning().tuning,
   bowDrawing = false,
-  distanceBlock = false,
 ): Float32Array {
   const output: number[] = [];
   const presentation = thirdPersonHeldItemPresentation(itemId, tuning);
   if (blockIdForCubeItem(itemId) !== null) {
-    (distanceBlock ? appendCompactBlockItemCubeGeometry : appendBlockItemCubeGeometry)(output, itemId, presentation);
+    appendBlockItemCubeGeometry(output, itemId, presentation);
   }
   else appendItemSpriteGeometry(output, itemId === "bow" && bowDrawing ? getBowIconArt(3) : getItemIconArt(itemId), presentation);
   return new Float32Array(output);

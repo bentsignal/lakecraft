@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 485;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 432;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "d3fee41acf2b4451fd645191b087966b2e6275f907b0bb24274ccd0e4a461a38";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 487;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 434;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "ef74d2549b3a40066d28222e5cb2b1ddd4d1eae7c272d3607062ea5ab8956423";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -86,8 +86,8 @@ export const COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 564,
   previousUniqueValues: 503,
   previousSourceFingerprint: "fcd03ec0b220a5a656f8f908b68d6efc55e1ff45f8bf1e735d10b27f7746b2cf",
-  occurrenceDelta: -79,
-  uniqueValueDelta: -71,
+  occurrenceDelta: -77,
+  uniqueValueDelta: -69,
   sources: Object.freeze([
     "client/gameplay/GameplaySessionSurface.tsx",
     "client/gameplay/authority.ts",
@@ -100,14 +100,14 @@ export const COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA = Object.freeze({
   ]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_017;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_018;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 97;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "c243d1f1f3db3187d1db42496ef19b4af4d1dd9f0fe3246a0f96f7520ca94a3e";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "980574898fe7b17c6a949f4c1c30405e96db6276c83bbb49d69fa2bb90057b71";
 export const COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA = Object.freeze({
   previousOccurrences: 1_018,
   previousUniqueValues: 97,
   previousSourceFingerprint: "74e17420ec34785cdaabfc9ff7ba30199e8e6442337a495bf3cbef64003ceb1c",
-  occurrenceDelta: -1,
+  occurrenceDelta: 0,
   uniqueValueDelta: 0,
   sources: Object.freeze([
     "client/gameplay/pointerSession.ts",

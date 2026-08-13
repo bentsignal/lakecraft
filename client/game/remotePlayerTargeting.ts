@@ -7,6 +7,7 @@ export interface RemotePlayerTargetCandidate {
   readonly id: string;
   readonly name?: string;
   readonly rendered: Readonly<PlayerPose>;
+  readonly health?: number;
 }
 
 export interface RemotePlayerRayTarget {
@@ -49,7 +50,7 @@ export function raycastRemotePlayers(
   const direction: Vec3 = [rawDirection[0] / length, rawDirection[1] / length, rawDirection[2] / length];
   let nearest: RemotePlayerRayTarget | null = null;
   for (const candidate of candidates) {
-    if (!candidate.id) continue;
+    if (!candidate.id || candidate.health === 0) continue;
     const pose = candidate.rendered;
     if (![pose.x, pose.y, pose.z].every(Number.isFinite)) continue;
     const distance = rayBoxDistance(

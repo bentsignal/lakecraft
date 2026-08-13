@@ -113,6 +113,7 @@ import {
   DROPPED_ITEM_PICKUP_RADIUS,
   type NormalizedDroppedItem,
 } from "../shared/droppedItems";
+import { planDeathDrops } from "../shared/deathDrops.ts";
 import {
   createWorldBlockOperationId,
   isDecimalRevisionAtLeast,
@@ -182,6 +183,7 @@ type PendingInventoryAction = {
     | { kind: "initialize" }
     | { kind: "select_hotbar"; selectedHotbar: number }
     | { kind: "eat"; sourceSlot: number; expectedItemId: ItemId }
+    | { kind: "death_settle"; eventId: string }
     | {
         kind: "workspace_commit";
         playerStateJson: string;
@@ -335,6 +337,7 @@ function RailwayMultiplayerSession({
   const appliedPickupDropsRef = useRef(new Set<string>());
   const lastDroppedPickupSweepRef = useRef(0);
   const respawnRequestInFlightRef = useRef(false);
+  const realtimeDeathSettlementRef = useRef<{ eventId: string; task: Promise<boolean> } | null>(null);
   const motionActionSinkRef = useRef<((kind: MotionVisualActionKind, value?: number) => void) | null>(null);
   const realtimeRespawnSinkRef = useRef<RealtimeRespawnSink | null>(null);
   const realtimePlayerAttackSinkRef = useRef<RealtimePlayerAttackSink | null>(null);
@@ -557,6 +560,49 @@ function RailwayMultiplayerSession({
     window.setTimeout(() => setMessages((current) => current.filter((message) => message.id !== id)), 3_500);
   }
 
+  function settleRealtimeDeath(eventId: string): Promise<boolean> {
+    const current = realtimeDeathSettlementRef.current;
+    if (current?.eventId === eventId) return current.task;
+    const task = (async () => {
+      const sink = realtimeDropSinkRef.current;
+      const localUserId = realtimeSession?.demo?.userId ?? auth.userId ?? "";
+      if (!sink || !localUserId) return false;
+      const deathPose = poseRef.current;
+      const plan = planDeathDrops({
+        identity: { userId: localUserId, eventId },
+        inventory: inventoryRef.current,
+        equipment: equipmentRef.current,
+        deathPose: { x: deathPose.x, y: deathPose.y, z: deathPose.z },
+      });
+      if (!plan.ok) return false;
+      droppedItemBusyRef.current = true;
+      try {
+        await Promise.all(plan.drops.map((drop) => sink(drop.operationId, drop.stack, {
+          ...drop.position,
+          yaw: deathPose.yaw,
+          pitch: deathPose.pitch,
+        })));
+        updateInventory(plan.carriedState.inventory);
+        updateEquipment(plan.carriedState.equipment);
+        hungerRef.current = MAX_HUNGER;
+        setHunger(MAX_HUNGER);
+        advanceInventoryAuthorityEpoch();
+        // Lakebed remains the durable pack store, while Railway owns the world
+        // entities. This transition can only destroy the caller's carried
+        // state; the conserved stacks have already been accepted by Railway.
+        void enqueueInventoryAction({ kind: "death_settle", eventId });
+        return true;
+      } catch {
+        notify("Death drops delayed", "The server could not place the entire pack yet. Respawn will stay locked so no items are duplicated.", "warning");
+        return false;
+      } finally {
+        droppedItemBusyRef.current = false;
+      }
+    })();
+    realtimeDeathSettlementRef.current = { eventId, task };
+    return task;
+  }
+
   function requestRailwayRespawn(): void {
     if (respawnRequestInFlightRef.current) return;
     const engine = engineRef.current;
@@ -564,11 +610,18 @@ function RailwayMultiplayerSession({
     if (!engine || !sink) return;
     respawnRequestInFlightRef.current = true;
     setRespawning(true);
-    void sink().then((pose) => {
+    void (async () => {
+      const settlement = realtimeDeathSettlementRef.current;
+      if (settlement && !await settlement.task) throw new Error("death_settlement_incomplete");
+      return sink();
+    })().then((pose) => {
       if (engineRef.current !== engine) return;
       setPlayerHealth(MAX_HEALTH);
-      engine.respawn();
-      engine.reconcilePose(pose);
+      realtimeCrouchingRef.current = false;
+      previousSegmentPoseRef.current = pose;
+      poseRef.current = pose;
+      engine.respawnAt(pose);
+      realtimeDeathSettlementRef.current = null;
       setDeathScreenOpen(false);
     }).catch(() => {
       notify("Respawn rejected", "The realtime server could not move this player safely.", "warning");
@@ -788,7 +841,10 @@ function RailwayMultiplayerSession({
       if (!current || current.itemId !== stack.itemId || current.count < count) throw new Error("inventory_changed");
       next[sourceSlot] = current.count === count ? null : { ...current, count: current.count - count };
       updateInventory(next);
-      droppedPickupAttemptRef.current.set(dropped.dropId, Number.POSITIVE_INFINITY);
+      // The Railway server already enforces the short owner delay. Keep the
+      // item eligible for the next sweep instead of permanently blacklisting
+      // a Q-drop in this browser.
+      droppedPickupAttemptRef.current.set(dropped.dropId, dropped.ownerPickupAt - 250);
       audioRef.current?.play("blockPlace", { seed: dropped.dropId, intensity: 0.45, surface: "generic" });
     } catch {
       notify("Drop lost contact", "The item stayed in your inventory. Try again.", "warning");
@@ -822,17 +878,29 @@ function RailwayMultiplayerSession({
   }
 
   function maybePickupNearbyDroppedItem(pose: PlayerPose): void {
+    if (deathScreenOpen) return;
     const now = Date.now();
+    const localUserId = realtimeSession?.demo?.userId ?? auth.userId ?? "";
     const nearby = realtimeDropsRef.current
-      .filter((drop) => drop.expiresAt > now && (drop.ownerUserId !== auth.userId || drop.ownerPickupAt <= now))
+      .filter((drop) => drop.expiresAt > now && (drop.ownerUserId !== localUserId || drop.ownerPickupAt <= now))
       .map((drop) => ({ drop, distance: Math.hypot(drop.x - pose.x, drop.y - pose.y, drop.z - pose.z) }))
       .filter(({ distance }) => distance <= DROPPED_ITEM_PICKUP_RADIUS)
       .sort((left, right) => left.distance - right.distance)[0]?.drop;
-    if (nearby && now - (droppedPickupAttemptRef.current.get(nearby.dropId) ?? 0) >= 5_000) {
+    if (nearby && now - (droppedPickupAttemptRef.current.get(nearby.dropId) ?? 0) >= 350) {
       droppedPickupAttemptRef.current.set(nearby.dropId, now);
       void pickupNearbyDroppedItem(nearby);
     }
   }
+
+  // Item attraction is time-based, not movement-based. A stationary player
+  // standing over a newly-mined or Q-dropped item must be able to collect it
+  // immediately after the server's owner delay without waiting for another
+  // pose event or drop broadcast.
+  useEffect(() => {
+    if (!inWorld || !realtimeSession) return;
+    const timer = window.setInterval(() => maybePickupNearbyDroppedItem(poseRef.current), 125);
+    return () => window.clearInterval(timer);
+  }, [inWorld, deathScreenOpen, realtimeSession?.endpoint, realtimeSession?.demo?.userId]);
 
   function releasePendingWorldBlockEdit(pending: PendingWorldBlockEdit): void {
     if (pendingWorldBlockEditRef.current !== pending) return;
@@ -1691,6 +1759,9 @@ function RailwayMultiplayerSession({
             setPlayerHealth(health);
             engineRef.current?.setPlayerHealth(health);
             setDeathScreenOpen(health <= 0);
+            if (health <= 0 && !realtimeDeathSettlementRef.current) {
+              void settleRealtimeDeath(`death:self:${Date.now().toString(36)}`);
+            }
           }}
           onPlayerHit={(hit) => {
             const localUserId = realtimeSession.demo?.userId ?? auth.userId ?? "";
@@ -1704,6 +1775,7 @@ function RailwayMultiplayerSession({
               );
             }
             if (hit.killed) setDeathScreenOpen(true);
+            if (hit.killed) void settleRealtimeDeath(hit.operationId);
           }}
           registerBlockSink={(sink) => { realtimeBlockSinkRef.current = sink; }}
           registerChatSink={(sink) => { realtimeChatSinkRef.current = sink; }}

@@ -3,6 +3,7 @@ import {
   MAX_REMOTE_PLAYERS,
   advanceRemoteAvatarMotion,
   resolveRemoteAvatarRigPose,
+  writeRemoteAvatarDeathLocal,
   type RemoteAvatarMotion,
 } from "./avatar.ts";
 import { type ArmorId, type ItemId } from "../../shared/game.ts";
@@ -10,6 +11,7 @@ import { BOX_FACE_SHADES, BOX_VERTEX_COORDINATES, NAMEPLATE_FONT } from "./gener
 import { PLAYER_SKIN_BOX_COUNT, PLAYER_SKIN_VERTEX_COUNT } from "./playerSkinGeometry.ts";
 import { writePlayerRigPartMatrix, type PlayerRigPart, type PlayerRigPose } from "./playerRig.ts";
 import { buildThirdPersonHeldItemGeometry } from "./thirdPersonHeldItem.ts";
+import { BLOCK_ITEM_CUBE_MAX_VERTICES } from "./blockItemCubeGeometry.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -24,8 +26,8 @@ const REMOTE_RENDER_DISTANCE_SQUARED = (21 * 16) ** 2;
 export const REMOTE_MESH_INTERVAL_MS = 1_000 / 30;
 export const BASE_AVATAR_VERTICES_PER_PLAYER = PLAYER_SKIN_VERTEX_COUNT;
 export const MAX_ARMOR_VERTICES_PER_PLAYER = MAX_ARMOR_BOXES * VERTICES_PER_BOX;
-/** Exact maximum of the installed catalog's extruded sprites; distance cubes use 36 vertices. */
-export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = 2_040;
+/** Exact shared local/remote block cube, or the largest installed extruded sprite. */
+export const MAX_HELD_ITEM_VERTICES_PER_PLAYER = Math.max(BLOCK_ITEM_CUBE_MAX_VERTICES, 2_040);
 /** Worst-case fixed avatar capacity, including a bounded canonical sprite and all armor. */
 export const AVATAR_VERTICES_PER_PLAYER = BASE_AVATAR_VERTICES_PER_PLAYER
   + MAX_ARMOR_VERTICES_PER_PLAYER
@@ -43,6 +45,7 @@ const COLORS = {
 const GEAR_PART_MATRIX = new Float32Array(16);
 const GEAR_RIG_SCRATCH_MATRIX = new Float32Array(16);
 const GEAR_RIG_POSE = {} as PlayerRigPose;
+const GEAR_DEATH_LOCAL = new Float32Array(2);
 
 interface VertexWriter {
   data: Float32Array;
@@ -55,7 +58,7 @@ export function remoteHeldItemGeometry(itemId: ItemId, bowDrawing = false): Floa
   const key = `${itemId}:${Number(bowDrawing)}`;
   let geometry = REMOTE_HELD_ITEM_GEOMETRY.get(key);
   if (!geometry) {
-    geometry = buildThirdPersonHeldItemGeometry(itemId, undefined, bowDrawing, true);
+    geometry = buildThirdPersonHeldItemGeometry(itemId, undefined, bowDrawing);
     if (geometry.length / FLOATS_PER_VERTEX > MAX_HELD_ITEM_VERTICES_PER_PLAYER) {
       throw new Error(`Remote held item ${itemId} exceeded its reviewed geometry budget.`);
     }
@@ -136,11 +139,14 @@ function writeRigVertex(
   const localX = GEAR_PART_MATRIX[0] * x + GEAR_PART_MATRIX[4] * y + GEAR_PART_MATRIX[8] * z + GEAR_PART_MATRIX[12];
   const localY = GEAR_PART_MATRIX[1] * x + GEAR_PART_MATRIX[5] * y + GEAR_PART_MATRIX[9] * z + GEAR_PART_MATRIX[13];
   const localZ = GEAR_PART_MATRIX[2] * x + GEAR_PART_MATRIX[6] * y + GEAR_PART_MATRIX[10] * z + GEAR_PART_MATRIX[14];
+  writeRemoteAvatarDeathLocal(state, localX, localY, GEAR_DEATH_LOCAL);
+  const deathX = GEAR_DEATH_LOCAL[0];
+  const deathY = GEAR_DEATH_LOCAL[1];
   writeVertex(
     writer,
-    state.rendered.x + cosine * localX + sine * localZ,
-    state.rendered.y + localY,
-    state.rendered.z - sine * localX + cosine * localZ,
+    state.rendered.x + cosine * deathX + sine * localZ,
+    state.rendered.y + deathY,
+    state.rendered.z - sine * deathX + cosine * localZ,
     color,
     shade,
   );
@@ -328,6 +334,7 @@ export function writeRemotePlayerGeometry(
   for (const state of states.values()) {
     if (visited >= MAX_REMOTE_PLAYERS) break;
     visited += 1;
+    if (state.deathHidden) continue;
     const dx = state.rendered.x - camera[0];
     const dz = state.rendered.z - camera[2];
     if (dx * dx + dz * dz > REMOTE_RENDER_DISTANCE_SQUARED) continue;

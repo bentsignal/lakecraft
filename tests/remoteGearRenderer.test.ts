@@ -53,8 +53,8 @@ const heldTool = geometry({ heldItem: "iron_pickaxe" });
 assert.equal(heldBlock.stats.avatarVertexCount, remoteHeldItemVertexCount("sand"));
 assert.equal(heldMaterial.stats.avatarVertexCount, remoteHeldItemVertexCount("coal"));
 assert.equal(heldTool.stats.avatarVertexCount, remoteHeldItemVertexCount("iron_pickaxe"));
-assert.ok(remoteHeldItemVertexCount("sand") < remoteHeldItemVertexCount("coal"),
-  "solid blocks stay true 3D cubes while irregular materials keep their extruded silhouette");
+assert.ok(remoteHeldItemVertexCount("sand") > remoteHeldItemVertexCount("coal"),
+  "remote blocks retain every authored 16x16 face texel from the same local F5 geometry path");
 assert.ok(remoteHeldItemVertexCount("sand") > 36,
   "remote held blocks retain a bounded authored-atlas texture mosaic instead of one flat color per face");
 const sandColors = new Set<string>();

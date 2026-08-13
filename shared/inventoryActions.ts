@@ -6,6 +6,7 @@ import {
   consumeFood,
   craftRecipe,
   createEmptyInventory,
+  createEmptyEquipment,
   createItemStack,
   type ArmorStack,
   type CraftingContext,
@@ -39,6 +40,7 @@ export type InventoryAction =
   | { kind: "initialize" }
   | { kind: "select_hotbar"; selectedHotbar: number }
   | { kind: "eat"; sourceSlot: number; expectedItemId: ItemId }
+  | { kind: "death_settle"; eventId: string }
   | {
       kind: "workspace_commit";
       playerState: CanonicalPlayerState;
@@ -87,7 +89,7 @@ export type InventoryActionApplyResult =
       ok: true;
       state: CanonicalPlayerState;
       playerStateJson: string;
-      effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar";
+      effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar" | "death_settled";
       consumed?: ItemId;
       restored?: number;
       crafted?: Array<{ itemId: ItemId; count: number }>;
@@ -98,7 +100,7 @@ export type InventoryActionMutationResult =
   | {
       ok: true;
       replayed: boolean;
-      effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar";
+      effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar" | "death_settled";
       inventory: PersistedInventoryState;
       consumed?: ItemId;
       restored?: number;
@@ -188,6 +190,12 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
       return { ok: false, reason: BS.invalidAction };
     }
     action = { kind: "eat", sourceSlot: record.sourceSlot, expectedItemId: record.expectedItemId as ItemId };
+  } else if (record.kind === "death_settle") {
+    if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", "eventId"], [BS.operationId, BS.expectedRevision, "kind", "eventId"])
+      || !BS.isString(record.eventId) || !/^[A-Za-z0-9:_-]{8,96}$/.test(record.eventId)) {
+      return { ok: false, reason: BS.invalidAction };
+    }
+    action = { kind: "death_settle", eventId: record.eventId };
   } else if (record.kind === "workspace_commit") {
     if (!hasOnlyKeys(
       record,
@@ -306,6 +314,15 @@ export function applyInventoryAction(
       restored: result.restored,
     };
   }
+  if (action.kind === "death_settle") {
+    const state = {
+      ...previous,
+      inventory: createEmptyInventory(),
+      equipment: createEmptyEquipment(),
+      hunger: MAX_HUNGER,
+    };
+    return { ok: true, state, playerStateJson: canonicalStateJson(state), effect: "death_settled" };
+  }
 
   const desired = action.playerState;
   if (desired.hunger !== previous.hunger || desired.selectedHotbar !== previous.selectedHotbar
@@ -366,7 +383,7 @@ export function decideInventoryActionReplay(
 }
 
 export type InventoryActionReceiptPayload = {
-  effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar";
+  effect: "initialized" | "workspace_committed" | "ate" | "selected_hotbar" | "death_settled";
   consumed?: ItemId;
   restored?: number;
   crafted?: Array<{ itemId: ItemId; count: number }>;
@@ -381,7 +398,7 @@ export function decodeInventoryActionReceipt(rawJson: string): InventoryActionRe
   try {
     const value = JSON.parse(rawJson) as Record<string, unknown>;
     if (!value || !hasOnlyKeys(value, ["effect", "consumed", "restored", "crafted"], ["effect"])
-      || !["initialized", "workspace_committed", "ate", "selected_hotbar"].includes(String(value.effect))) {
+      || !["initialized", "workspace_committed", "ate", "selected_hotbar", "death_settled"].includes(String(value.effect))) {
       return null;
     }
     if (value.consumed !== undefined && (!BS.isString(value.consumed)
