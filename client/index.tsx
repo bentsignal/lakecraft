@@ -54,6 +54,7 @@ import {
   saveMultiplayerServers,
   type RealtimeConnectionPhase,
   type RealtimeGameMode,
+  type RealtimeWorldEdit,
   type SavedMultiplayerServer,
 } from "./realtimeMultiplayer.ts";
 import {
@@ -78,13 +79,13 @@ import {
   createSerializablePlayerState,
   createStarterInventory,
   consumeFood,
-  consumeSelectedPlacementStack,
   getDeterministicMiningDrop,
   type BlockId,
   type CraftingContext,
   type Equipment,
   type Inventory,
   type ItemId,
+  type ItemStack,
   type PlayerRespawnPoint,
   type Recipe,
 } from "../shared/game";
@@ -181,12 +182,15 @@ type PendingInventoryAction = {
   operationId: string;
   requestJson: string;
   transportFailures: number;
+  authorityConflicts: number;
   session: number;
   action:
     | { kind: "initialize" }
     | { kind: "select_hotbar"; selectedHotbar: number }
     | { kind: "eat"; sourceSlot: number; expectedItemId: ItemId }
     | { kind: "place_block"; sourceSlot: number; expectedItemId: ItemId }
+    | { kind: "world_debit"; sourceSlot: number; stack: ItemStack }
+    | { kind: "world_credit"; stack: ItemStack }
     | { kind: "death_settle"; eventId: string }
     | {
         kind: "workspace_commit";
@@ -211,6 +215,10 @@ function createInventoryActionOperationId(): string {
     ? globalThis.crypto.randomUUID().replaceAll("-", "")
     : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
   return `inv_${Date.now().toString(36)}_${randomPart}`.slice(0, 64);
+}
+
+function relatedInventoryOperationId(kind: string, operationId: string): string {
+  return `${kind}_${operationId.replace(/[^A-Za-z0-9_-]/g, "_")}`.slice(0, 64);
 }
 
 const WORLD_RADIUS = 18;
@@ -409,6 +417,7 @@ function RailwayMultiplayerSession({
   const [chatError, setChatError] = useState("");
   const [lastSeenChatCount, setLastSeenChatCount] = useState(0);
   const [playerHealth, setPlayerHealth] = useState(20);
+  const playerHealthRef = useRef(20);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
   const [respawning, setRespawning] = useState(false);
   const lakebedIdentity = auth.isLoading ? "" : auth.userId ?? "guest";
@@ -623,6 +632,7 @@ function RailwayMultiplayerSession({
       return sink();
     })().then((pose) => {
       if (engineRef.current !== engine) return;
+      playerHealthRef.current = MAX_HEALTH;
       setPlayerHealth(MAX_HEALTH);
       realtimeCrouchingRef.current = false;
       previousSegmentPoseRef.current = pose;
@@ -754,7 +764,10 @@ function RailwayMultiplayerSession({
     return true;
   }
 
-  function enqueueInventoryAction(action: PendingInventoryAction["action"]): Promise<boolean> {
+  function enqueueInventoryAction(
+    action: PendingInventoryAction["action"],
+    operationId = createInventoryActionOperationId(),
+  ): Promise<boolean> {
     const queued = inventoryActionQueueRef.current;
     const last = queued[queued.length - 1];
     if (action.kind === "select_hotbar" && last?.action.kind === "select_hotbar" && !last.requestJson) {
@@ -762,9 +775,10 @@ function RailwayMultiplayerSession({
       return flushInventoryActions();
     }
     inventoryActionQueueRef.current.push({
-      operationId: createInventoryActionOperationId(),
+      operationId,
       requestJson: "",
       transportFailures: 0,
+      authorityConflicts: 0,
       session: inventoryAuthoritySessionRef.current,
       action,
     });
@@ -804,8 +818,14 @@ function RailwayMultiplayerSession({
           return false;
         }
         if (!result.ok) {
-          inventoryActionQueueRef.current.length = 0;
           const returnedInventory = "inventory" in result ? result.inventory : undefined;
+          if (result.reason === "conflict" && returnedInventory && pending.authorityConflicts < 3) {
+            pending.authorityConflicts += 1;
+            pending.requestJson = "";
+            if (!loadCanonicalPlayer(returnedInventory)) return false;
+            continue;
+          }
+          inventoryActionQueueRef.current.length = 0;
           const fallbackInventory = latestSavedInventoryRef.current;
           const reconciled = returnedInventory
             ? loadCanonicalPlayer(returnedInventory)
@@ -849,28 +869,33 @@ function RailwayMultiplayerSession({
     const stack = inventoryRef.current[sourceSlot];
     if (!stack) return;
     droppedItemBusyRef.current = true;
+    const operationId = droppedItemOperationId();
+    let debited = false;
     try {
       const count = dropWholeStack ? stack.count : 1;
       const item = { ...stack, count };
+      debited = await enqueueInventoryAction(
+        { kind: "world_debit", sourceSlot, stack: item },
+        relatedInventoryOperationId("drop", operationId),
+      );
+      if (!debited) throw new Error("inventory_rejected");
       const sink = realtimeDropSinkRef.current;
       if (!sink) throw new Error("multiplayer_not_connected");
       const pose = poseRef.current;
       const position = droppedItemForwardPosition(pose);
-      const dropped = await sink(droppedItemOperationId(), item, {
+      const dropped = await sink(operationId, item, {
         ...pose,
         ...position,
-      });
-      const next = [...inventoryRef.current];
-      const current = next[sourceSlot];
-      if (!current || current.itemId !== stack.itemId || current.count < count) throw new Error("inventory_changed");
-      next[sourceSlot] = current.count === count ? null : { ...current, count: current.count - count };
-      updateInventory(next);
-      // The Railway server already enforces the short owner delay. Keep the
-      // item eligible for the next sweep instead of permanently blacklisting
-      // a Q-drop in this browser.
-      droppedPickupAttemptRef.current.set(dropped.dropId, dropped.ownerPickupAt - 250);
+      }, true);
+      droppedPickupAttemptRef.current.set(dropped.dropId, dropped.droppedAt);
       audioRef.current?.play("blockPlace", { seed: dropped.dropId, intensity: 0.45, surface: "generic" });
     } catch {
+      if (debited) {
+        await enqueueInventoryAction(
+          { kind: "world_credit", stack: { ...stack, count: dropWholeStack ? stack.count : 1 } },
+          relatedInventoryOperationId("drop_refund", operationId),
+        );
+      }
       notify("Drop lost contact", "The item stayed in your inventory. Try again.", "warning");
     } finally {
       droppedItemBusyRef.current = false;
@@ -886,14 +911,23 @@ function RailwayMultiplayerSession({
       if (!sink) throw new Error("multiplayer_not_connected");
       const confirmed = await sink(`pickup:${drop.dropId}`.slice(0, 96), drop.dropId);
       if (appliedPickupDropsRef.current.has(confirmed.dropId)) return;
-      const planned = addItemStack(inventoryRef.current, confirmed.item);
-      if (planned.remainder > 0) throw new Error("inventory_changed");
+      const credited = await enqueueInventoryAction(
+        { kind: "world_credit", stack: confirmed.item },
+        relatedInventoryOperationId("pickup", confirmed.dropId),
+      );
+      if (!credited) {
+        const returnSink = realtimeDropSinkRef.current;
+        if (returnSink) await returnSink(
+          `return:${confirmed.dropId}`.slice(0, 96),
+          confirmed.item,
+          { ...poseRef.current, x: confirmed.x, y: confirmed.y, z: confirmed.z },
+        );
+        throw new Error("inventory_changed");
+      }
       appliedPickupDropsRef.current.add(confirmed.dropId);
       if (appliedPickupDropsRef.current.size > 512) {
         appliedPickupDropsRef.current.delete(appliedPickupDropsRef.current.values().next().value!);
       }
-      updateInventory(planned.inventory);
-      advanceInventoryAuthorityEpoch();
       audioRef.current?.play("pickup", { seed: drop.dropId, intensity: 0.72 });
     } catch {
     } finally {
@@ -902,11 +936,12 @@ function RailwayMultiplayerSession({
   }
 
   function maybePickupNearbyDroppedItem(pose: PlayerPose): void {
-    if (deathScreenOpen) return;
+    if (playerHealthRef.current <= 0) return;
     const now = Date.now();
     const localUserId = realtimeSession?.demo?.userId ?? auth.userId ?? "";
     const nearby = realtimeDropsRef.current
-      .filter((drop) => drop.expiresAt > now && (drop.ownerUserId !== localUserId || drop.ownerPickupAt <= now))
+      .filter((drop) => drop.expiresAt > now
+        && (drop.ownerUserId !== localUserId || (!drop.ownerPickupBlocked && drop.ownerPickupAt <= now)))
       .map((drop) => ({ drop, distance: Math.hypot(drop.x - pose.x, drop.y - pose.y, drop.z - pose.z) }))
       .filter(({ distance }) => distance <= DROPPED_ITEM_PICKUP_RADIUS)
       .sort((left, right) => left.distance - right.distance)[0]?.drop;
@@ -968,8 +1003,29 @@ function RailwayMultiplayerSession({
       );
       return;
     }
+    const placementItem = pending.optimisticEdit.block !== BLOCK.AIR
+      && pending.previousBlock === BLOCK.AIR
+      && realtimeGameModeRef.current !== "creative"
+      ? ENGINE_TO_GAME[pending.optimisticEdit.block]
+      : null;
+    let placementPaid = false;
     try {
-      const confirmed = await sink(pending.operationId, pending.optimisticEdit);
+      if (placementItem) {
+        if (placementItem !== pending.expectedHeldItem) throw new Error("placement_item_mismatch");
+        placementPaid = await enqueueInventoryAction(
+          { kind: "place_block", sourceSlot: pending.sourceSlot, expectedItemId: placementItem },
+          relatedInventoryOperationId("place", pending.operationId),
+        );
+        if (!placementPaid) throw new Error("placement_inventory_rejected");
+      }
+      let confirmed: RealtimeWorldEdit;
+      try {
+        confirmed = await sink(pending.operationId, pending.optimisticEdit);
+      } catch {
+        // The first acknowledgement can be lost after Railway commits. Its
+        // operation ledger makes this exact retry return the same block patch.
+        confirmed = await sink(pending.operationId, pending.optimisticEdit);
+      }
       if (pendingWorldBlockEditRef.current !== pending) return;
       authoritativeWorldEditRef.current.set(
         blockCoordinateKey(confirmed.x, confirmed.y, confirmed.z),
@@ -1013,23 +1069,23 @@ function RailwayMultiplayerSession({
           }
         }
       } else if (confirmed.block !== BLOCK.AIR) {
-        if (pending.previousBlock === BLOCK.AIR && realtimeGameModeRef.current !== "creative") {
-          const placedItem = ENGINE_TO_GAME[confirmed.block];
-          if (!placedItem || placedItem !== pending.expectedHeldItem) throw new Error("placement_item_mismatch");
-          const payment = consumeSelectedPlacementStack(inventoryRef.current, pending.sourceSlot, placedItem);
-          if (!payment.ok) throw new Error("placement_inventory_changed");
-          updateInventory(payment.inventory);
-          advanceInventoryAuthorityEpoch();
-          void enqueueInventoryAction({ kind: "place_block", sourceSlot: pending.sourceSlot, expectedItemId: placedItem });
-        }
+        if (placementItem && confirmed.block !== pending.optimisticEdit.block) throw new Error("placement_block_mismatch");
         audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(confirmed.block) });
       }
       releasePendingWorldBlockEdit(pending);
     } catch {
+      if (placementPaid && placementItem) {
+        await enqueueInventoryAction(
+          { kind: "world_credit", stack: { itemId: placementItem, count: 1 } },
+          relatedInventoryOperationId("place_refund", pending.operationId),
+        );
+      }
       rollbackPendingWorldBlockEdit(
         pending,
-        pending.optimisticEdit.block === BLOCK.AIR ? "Mine rejected" : "Edit rejected",
-        "The realtime server did not accept this block edit, so the local block was restored.",
+        pending.optimisticEdit.block === BLOCK.AIR ? "Mine rejected" : "Placement restored",
+        placementPaid
+          ? "Railway did not confirm this placement. The block was restored and Lakebed returned the item."
+          : "Lakebed could not reserve that inventory item, so the local block was restored.",
         true,
       );
     }
@@ -1201,6 +1257,7 @@ function RailwayMultiplayerSession({
           }
         },
         onPlayerHealthChange: (health) => {
+          playerHealthRef.current = health;
           setPlayerHealth(health);
         },
         onBlockEdit: (edit, previousBlock) => {
@@ -1794,6 +1851,7 @@ function RailwayMultiplayerSession({
             maybePickupNearbyDroppedItem(poseRef.current);
           }}
           onSelfHealth={(health) => {
+            playerHealthRef.current = health;
             setPlayerHealth(health);
             engineRef.current?.setPlayerHealth(health);
             if (health <= 0 && !respawnRequestInFlightRef.current) openRealtimeDeath();
@@ -1805,6 +1863,7 @@ function RailwayMultiplayerSession({
           onPlayerHit={(hit) => {
             const localUserId = realtimeSession.demo?.userId ?? auth.userId ?? "";
             if (hit.targetId !== localUserId) return;
+            playerHealthRef.current = hit.health;
             setPlayerHealth(hit.health);
             engineRef.current?.setPlayerHealth(hit.health);
             audioRef.current?.play("playerHurt", { seed: hit.operationId, intensity: 0.82 });

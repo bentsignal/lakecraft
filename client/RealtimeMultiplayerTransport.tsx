@@ -15,7 +15,12 @@ import {
 
 export type RealtimeBlockSink = (operationId: string, edit: WorldEdit) => Promise<RealtimeWorldEdit>;
 export type RealtimeChatSink = (message: string) => Promise<void>;
-export type RealtimeDropSink = (operationId: string, item: ItemStack, pose: PlayerPose) => Promise<NormalizedDroppedItem>;
+export type RealtimeDropSink = (
+  operationId: string,
+  item: ItemStack,
+  pose: PlayerPose,
+  ownerMustLeave?: boolean,
+) => Promise<NormalizedDroppedItem>;
 export type RealtimePickupSink = (operationId: string, dropId: string) => Promise<NormalizedDroppedItem>;
 export type RealtimeRespawnSink = () => Promise<PlayerPose>;
 export type RealtimePlayerAttackSink = (operationId: string, targetId: string) => void;
@@ -80,7 +85,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerBlockSink((operationId, edit) => client.submitBlockEdit(operationId, edit));
     props.registerChatSink((message) => client.submitChat(message));
     props.registerActionSink((kind, value) => client.submitAction(kind, value));
-    props.registerDropSink((operationId, item, pose) => client.submitDrop(operationId, item, pose));
+    props.registerDropSink((operationId, item, pose, ownerMustLeave) => client.submitDrop(operationId, item, pose, ownerMustLeave));
     props.registerPickupSink((operationId, dropId) => client.submitPickup(operationId, dropId));
     props.registerRespawnSink(() => client.submitRespawn());
     props.registerPlayerAttackSink((operationId, targetId) => client.submitPlayerAttack(operationId, targetId));

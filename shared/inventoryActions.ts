@@ -6,6 +6,8 @@ import {
   consumeFood,
   consumeSelectedPlacementStack,
   craftRecipe,
+  addItemStack,
+  areItemStacksCompatible,
   createEmptyInventory,
   createEmptyEquipment,
   createItemStack,
@@ -42,6 +44,8 @@ export type InventoryAction =
   | { kind: "select_hotbar"; selectedHotbar: number }
   | { kind: "eat"; sourceSlot: number; expectedItemId: ItemId }
   | { kind: "place_block"; sourceSlot: number; expectedItemId: ItemId }
+  | { kind: "world_debit"; sourceSlot: number; stack: ItemStack }
+  | { kind: "world_credit"; stack: ItemStack }
   | { kind: "death_settle"; eventId: string }
   | {
       kind: "workspace_commit";
@@ -91,7 +95,7 @@ export type InventoryActionApplyResult =
       ok: true;
       state: CanonicalPlayerState;
       playerStateJson: string;
-      effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "selected_hotbar" | "death_settled";
+      effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "world_debited" | "world_credited" | "selected_hotbar" | "death_settled";
       consumed?: ItemId;
       restored?: number;
       crafted?: Array<{ itemId: ItemId; count: number }>;
@@ -102,7 +106,7 @@ export type InventoryActionMutationResult =
   | {
       ok: true;
       replayed: boolean;
-      effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "selected_hotbar" | "death_settled";
+      effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "world_debited" | "world_credited" | "selected_hotbar" | "death_settled";
       inventory: PersistedInventoryState;
       consumed?: ItemId;
       restored?: number;
@@ -132,6 +136,27 @@ const COORDINATE = /^-?\d{1,7}:-?\d{1,4}:-?\d{1,7}$/;
 function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[], required: readonly string[]): boolean {
   const keys = Object.keys(record);
   return keys.every((key) => allowed.includes(key)) && required.every((key) => keys.includes(key));
+}
+
+function validatedStack(value: unknown): ItemStack | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (!hasOnlyKeys(record, ["itemId", "count", "durability"], ["itemId", "count"])
+    || !BS.isString(record.itemId) || !Object.prototype.hasOwnProperty.call(ITEMS, record.itemId)
+    || !Number.isInteger(record.count)) return null;
+  const itemId = record.itemId as ItemId;
+  const count = Number(record.count);
+  if (count < 1 || count > ITEMS[itemId].maxStack) return null;
+  const durability = record.durability;
+  const maximumDurability = ITEMS[itemId].tool?.maxDurability
+    ?? ITEMS[itemId].armor?.maxDurability
+    ?? ITEMS[itemId].ranged?.maxDurability
+    ?? ITEMS[itemId].utility?.maxDurability;
+  if (maximumDurability === undefined) {
+    if (durability !== undefined) return null;
+  } else if (count !== 1 || !Number.isInteger(durability)
+    || Number(durability) < 1 || Number(durability) > maximumDurability) return null;
+  return { itemId, count, ...(durability === undefined ? {} : { durability: Number(durability) }) };
 }
 
 function canonicalFingerprint(
@@ -202,6 +227,17 @@ export function validateInventoryActionRequestJson(rawJson: string): InventoryAc
       return { ok: false, reason: BS.invalidAction };
     }
     action = { kind: "place_block", sourceSlot: record.sourceSlot, expectedItemId: record.expectedItemId as ItemId };
+  } else if (record.kind === "world_debit") {
+    const stack = validatedStack(record.stack);
+    if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "stack"], [BS.operationId, BS.expectedRevision, "kind", BS.sourceSlot, "stack"])
+      || typeof record.sourceSlot !== "number" || !Number.isInteger(record.sourceSlot)
+      || record.sourceSlot < 0 || record.sourceSlot >= 36 || !stack) return { ok: false, reason: BS.invalidAction };
+    action = { kind: "world_debit", sourceSlot: record.sourceSlot, stack };
+  } else if (record.kind === "world_credit") {
+    const stack = validatedStack(record.stack);
+    if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", "stack"], [BS.operationId, BS.expectedRevision, "kind", "stack"])
+      || !stack) return { ok: false, reason: BS.invalidAction };
+    action = { kind: "world_credit", stack };
   } else if (record.kind === "death_settle") {
     if (!hasOnlyKeys(record, [BS.operationId, BS.expectedRevision, "kind", "eventId"], [BS.operationId, BS.expectedRevision, "kind", "eventId"])
       || !BS.isString(record.eventId) || !/^[A-Za-z0-9:_-]{8,96}$/.test(record.eventId)) {
@@ -338,6 +374,24 @@ export function applyInventoryAction(
       consumed: action.expectedItemId,
     };
   }
+  if (action.kind === "world_debit") {
+    const current = previous.inventory[action.sourceSlot];
+    if (!current || !areItemStacksCompatible(current, action.stack) || current.count < action.stack.count) {
+      return { ok: false, reason: current ? "item_mismatch" : "empty_slot" };
+    }
+    const inventory = [...previous.inventory];
+    inventory[action.sourceSlot] = current.count === action.stack.count
+      ? null
+      : { ...current, count: current.count - action.stack.count };
+    const state = { ...previous, inventory };
+    return { ok: true, state, playerStateJson: canonicalStateJson(state), effect: "world_debited", consumed: action.stack.itemId };
+  }
+  if (action.kind === "world_credit") {
+    const result = addItemStack(previous.inventory, action.stack);
+    if (result.remainder > 0) return { ok: false, reason: "inventory_full" };
+    const state = { ...previous, inventory: result.inventory };
+    return { ok: true, state, playerStateJson: canonicalStateJson(state), effect: "world_credited" };
+  }
   if (action.kind === "death_settle") {
     const state = {
       ...previous,
@@ -407,7 +461,7 @@ export function decideInventoryActionReplay(
 }
 
 export type InventoryActionReceiptPayload = {
-  effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "selected_hotbar" | "death_settled";
+  effect: "initialized" | "workspace_committed" | "ate" | "placed_block" | "world_debited" | "world_credited" | "selected_hotbar" | "death_settled";
   consumed?: ItemId;
   restored?: number;
   crafted?: Array<{ itemId: ItemId; count: number }>;
@@ -422,7 +476,7 @@ export function decodeInventoryActionReceipt(rawJson: string): InventoryActionRe
   try {
     const value = JSON.parse(rawJson) as Record<string, unknown>;
     if (!value || !hasOnlyKeys(value, ["effect", "consumed", "restored", "crafted"], ["effect"])
-      || !["initialized", "workspace_committed", "ate", "placed_block", "selected_hotbar", "death_settled"].includes(String(value.effect))) {
+      || !["initialized", "workspace_committed", "ate", "placed_block", "world_debited", "world_credited", "selected_hotbar", "death_settled"].includes(String(value.effect))) {
       return null;
     }
     if (value.consumed !== undefined && (!BS.isString(value.consumed)

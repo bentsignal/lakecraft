@@ -45,7 +45,7 @@ for (const text of [
   "Pack action delayed",
   "Drop lost contact",
   "Server connection rejected",
-  "Edit rejected",
+  "Placement restored",
 ] as const) assert.ok(multiplayer.includes(text), `multiplayer preserves actionable error/recovery feedback: ${text}`);
 
 for (const retired of ["TNT did not ignite", "Oak growth lost contact", "Presence lease invalid", "Chest transfer reconciled"]) {

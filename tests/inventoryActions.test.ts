@@ -145,6 +145,27 @@ assert.equal(validateInventoryActionRequestJson(JSON.stringify({
   expectedItemId: "wooden_pickaxe",
 })).ok, false, "non-block items cannot pay for placement");
 
+const worldDebited = applyInventoryAction(starter, {
+  kind: "world_debit", sourceSlot: 2, stack: { itemId: "dirt", count: 3 },
+});
+assert.equal(worldDebited.ok, true);
+if (!worldDebited.ok) throw new Error(worldDebited.reason);
+assert.deepEqual(worldDebited.state.inventory[2], { itemId: "dirt", count: 13 });
+const worldCredited = applyInventoryAction(worldDebited.state, {
+  kind: "world_credit", stack: { itemId: "dirt", count: 3 },
+});
+assert.equal(worldCredited.ok, true);
+if (!worldCredited.ok) throw new Error(worldCredited.reason);
+assert.deepEqual(worldCredited.state.inventory, starter.inventory, "a failed Railway drop can refund the exact durable debit");
+assert.equal(validateInventoryActionRequestJson(JSON.stringify({
+  operationId: "inventory_drop_0001", expectedRevision: "12", kind: "world_debit",
+  sourceSlot: 0, stack: { itemId: "wooden_pickaxe", count: 1, durability: 59 },
+})).ok, true);
+assert.equal(validateInventoryActionRequestJson(JSON.stringify({
+  operationId: "inventory_pickup_001", expectedRevision: "12", kind: "world_credit",
+  stack: { itemId: "dirt", count: 65 },
+})).ok, false, "world credits cannot forge an oversized stack");
+
 const deathSettled = applyInventoryAction(starter, { kind: "death_settle", eventId: "attack:death-0001" });
 assert.equal(deathSettled.ok, true);
 if (!deathSettled.ok) throw new Error(deathSettled.reason);

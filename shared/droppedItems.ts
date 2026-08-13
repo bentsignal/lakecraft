@@ -78,6 +78,7 @@ export type NormalizedDroppedItem = {
   z: number;
   droppedAt: number;
   ownerPickupAt: number;
+  ownerPickupBlocked?: boolean;
   expiresAt: number;
 };
 

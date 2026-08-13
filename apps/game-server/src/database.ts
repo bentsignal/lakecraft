@@ -37,6 +37,7 @@ interface ChatRow {
 interface DropRow {
   drop_id: string; operation_id: string; owner_user_id: string; item_id: string; count: number;
   durability: number | null; x: number; y: number; z: number; dropped_at: number; owner_pickup_at: number; expires_at: number;
+  owner_pickup_blocked: number;
 }
 
 export interface StoredPlayer {
@@ -131,6 +132,7 @@ export class WorldStore {
         z REAL NOT NULL,
         dropped_at INTEGER NOT NULL,
         owner_pickup_at INTEGER NOT NULL,
+        owner_pickup_blocked INTEGER NOT NULL DEFAULT 0 CHECK (owner_pickup_blocked IN (0, 1)),
         expires_at INTEGER NOT NULL,
         UNIQUE (owner_user_id, operation_id)
       );
@@ -149,6 +151,7 @@ export class WorldStore {
         z REAL NOT NULL,
         dropped_at INTEGER NOT NULL,
         owner_pickup_at INTEGER NOT NULL,
+        owner_pickup_blocked INTEGER NOT NULL DEFAULT 0 CHECK (owner_pickup_blocked IN (0, 1)),
         expires_at INTEGER NOT NULL,
         picked_at INTEGER NOT NULL,
         PRIMARY KEY (user_id, operation_id)
@@ -163,6 +166,14 @@ export class WorldStore {
     }
     if (!playerColumns.some((column) => column.name === "health")) {
       this.db.exec("ALTER TABLE player_state ADD COLUMN health INTEGER NOT NULL DEFAULT 20;");
+    }
+    const droppedItemColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(dropped_items)").all();
+    if (!droppedItemColumns.some((column) => column.name === "owner_pickup_blocked")) {
+      this.db.exec("ALTER TABLE dropped_items ADD COLUMN owner_pickup_blocked INTEGER NOT NULL DEFAULT 0;");
+    }
+    const pickupOperationColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(pickup_operations)").all();
+    if (!pickupOperationColumns.some((column) => column.name === "owner_pickup_blocked")) {
+      this.db.exec("ALTER TABLE pickup_operations ADD COLUMN owner_pickup_blocked INTEGER NOT NULL DEFAULT 0;");
     }
   }
 
@@ -198,14 +209,14 @@ export class WorldStore {
   listDrops(now = Date.now()): PublicDrop[] {
     this.db.query("DELETE FROM dropped_items WHERE expires_at <= ?").run(now);
     return this.db.query<DropRow, []>(`
-      SELECT drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, expires_at
+      SELECT drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, owner_pickup_blocked, expires_at
       FROM dropped_items ORDER BY dropped_at ASC LIMIT 256
     `).all().map(toPublicDrop);
   }
 
   getDropOperation(ownerUserId: string, operationId: string): PublicDrop | null {
     const row = this.db.query<DropRow, [string, string]>(`
-      SELECT drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, expires_at
+      SELECT drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, owner_pickup_blocked, expires_at
       FROM dropped_items WHERE owner_user_id = ? AND operation_id = ?
     `).get(ownerUserId, operationId);
     return row ? toPublicDrop(row) : null;
@@ -213,10 +224,15 @@ export class WorldStore {
 
   saveDrop(drop: PublicDrop, operationId: string): void {
     this.db.query(`
-      INSERT INTO dropped_items (drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO dropped_items (drop_id, operation_id, owner_user_id, item_id, count, durability, x, y, z, dropped_at, owner_pickup_at, owner_pickup_blocked, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(drop.dropId, operationId, drop.ownerUserId, drop.itemId, drop.count, drop.durability ?? null,
-      drop.x, drop.y, drop.z, drop.droppedAt, drop.ownerPickupAt, drop.expiresAt);
+      drop.x, drop.y, drop.z, drop.droppedAt, drop.ownerPickupAt, drop.ownerPickupBlocked ? 1 : 0, drop.expiresAt);
+  }
+
+  updateDropState(drop: PublicDrop): void {
+    this.db.query("UPDATE dropped_items SET y = ?, owner_pickup_blocked = ? WHERE drop_id = ?")
+      .run(drop.y, drop.ownerPickupBlocked ? 1 : 0, drop.dropId);
   }
 
   deleteDrop(dropId: string): boolean {
@@ -226,7 +242,7 @@ export class WorldStore {
   getPickupOperation(userId: string, operationId: string): PublicDrop | null {
     const row = this.db.query<DropRow, [string, string]>(`
       SELECT drop_id, '' AS operation_id, owner_user_id, item_id, count, durability,
-        x, y, z, dropped_at, owner_pickup_at, expires_at
+        x, y, z, dropped_at, owner_pickup_at, owner_pickup_blocked, expires_at
       FROM pickup_operations WHERE user_id = ? AND operation_id = ?
     `).get(userId, operationId);
     return row ? toPublicDrop(row) : null;
@@ -238,16 +254,16 @@ export class WorldStore {
       if (replay) return replay;
       const row = this.db.query<DropRow, [string]>(`
         SELECT drop_id, operation_id, owner_user_id, item_id, count, durability,
-          x, y, z, dropped_at, owner_pickup_at, expires_at
+          x, y, z, dropped_at, owner_pickup_at, owner_pickup_blocked, expires_at
         FROM dropped_items WHERE drop_id = ?
       `).get(dropId);
       if (!row) return null;
       this.db.query(`
         INSERT INTO pickup_operations (user_id, operation_id, drop_id, owner_user_id, item_id, count,
-          durability, x, y, z, dropped_at, owner_pickup_at, expires_at, picked_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          durability, x, y, z, dropped_at, owner_pickup_at, owner_pickup_blocked, expires_at, picked_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(userId, operationId, row.drop_id, row.owner_user_id, row.item_id, row.count,
-        row.durability, row.x, row.y, row.z, row.dropped_at, row.owner_pickup_at, row.expires_at, pickedAt);
+        row.durability, row.x, row.y, row.z, row.dropped_at, row.owner_pickup_at, row.owner_pickup_blocked, row.expires_at, pickedAt);
       this.db.query("DELETE FROM dropped_items WHERE drop_id = ?").run(dropId);
       this.db.query(`
         DELETE FROM pickup_operations WHERE rowid NOT IN (
@@ -518,6 +534,7 @@ function toPublicDrop(row: DropRow): PublicDrop {
     z: row.z,
     droppedAt: row.dropped_at,
     ownerPickupAt: row.owner_pickup_at,
+    ownerPickupBlocked: row.owner_pickup_blocked === 1,
     expiresAt: row.expires_at,
   };
 }

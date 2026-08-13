@@ -200,6 +200,61 @@ describe("authoritative world", () => {
     store.close();
   });
 
+  test("settles tossed items under gravity and requires the owner to leave before recollecting", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const owner = new FakePeer("toss-owner");
+    world.open(owner, 1_000);
+    await world.message(owner, JSON.stringify(join("alex")), 1_000);
+    await world.message(owner, JSON.stringify({
+      v:1,type:"drop_item",operationId:"drop_toss_gravity",itemId:"dirt",count:1,
+      ownerMustLeave:true,x:0.5,y:69.67,z:0.5,
+    }), 1_010);
+    const dropId = owner.ofType("drop_result").at(-1)!.drop!.dropId;
+    for (let now = 1_050; now <= 1_800; now += 50) world.tick(now);
+    const settled = owner.ofType("drop_snapshot").at(-1)!.drops[0];
+    expect(settled).toMatchObject({ dropId, y:69, ownerPickupBlocked:true });
+    await world.message(owner, JSON.stringify({
+      v:1,type:"pickup_item",operationId:"pickup_still_blocked",dropId,
+    }), 1_801);
+    expect(owner.ofType("error").at(-1)).toMatchObject({ operationId:"pickup_still_blocked" });
+    await world.message(owner, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:250,moveX:0,moveZ:0,yaw:0,pitch:0,jump:false,sprint:false,
+      x:3,y:69.02,z:0.5,
+    }), 1_850);
+    world.tick(1_900);
+    expect(owner.ofType("drop_snapshot").at(-1)!.drops[0]).toMatchObject({ ownerPickupBlocked:false });
+    await world.message(owner, JSON.stringify({
+      v:1,type:"pickup_item",operationId:"pickup_after_leaving",dropId,
+    }), 1_901);
+    expect(owner.ofType("drop_result").at(-1)).toMatchObject({ action:"pickup",drop:{ dropId } });
+    store.close();
+  });
+
+  test("never lets a dead player consume nearby death drops", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config(), store, authenticator);
+    const dead = new FakePeer("dead-picker");
+    const owner = new FakePeer("death-drop-owner");
+    world.open(dead, 1_000); world.open(owner, 1_000);
+    await world.message(dead, JSON.stringify(join("alex")), 1_000);
+    await world.message(owner, JSON.stringify(join("steve")), 1_000);
+    await world.message(owner, JSON.stringify({
+      v:1,type:"drop_item",operationId:"death_drop_nearby",itemId:"dirt",count:4,
+      x:0.5,y:69.02,z:0.5,
+    }), 1_010);
+    const dropId = owner.ofType("drop_result").at(-1)!.drop!.dropId;
+    await world.message(dead, JSON.stringify({
+      v:1,type:"self_damage",operationId:"fall_fatal_picker",damage:20,cause:"fall",
+    }), 1_020);
+    await world.message(dead, JSON.stringify({
+      v:1,type:"pickup_item",operationId:"pickup_while_dead",dropId,
+    }), 1_800);
+    expect(dead.ofType("error").at(-1)).toMatchObject({ operationId:"pickup_while_dead" });
+    expect(owner.ofType("drop_snapshot").at(-1)!.drops).toHaveLength(1);
+    store.close();
+  });
+
   test("applies authoritative PvP damage once with reach, cooldown, and persisted health", async () => {
     const store = new WorldStore(":memory:");
     const world = new GameWorld(config(), store, authenticator);

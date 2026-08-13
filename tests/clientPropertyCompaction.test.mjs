@@ -168,7 +168,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "7a6ea09ec1a98bfb80cb97c06d2cd5c9f4205d877340af74dba86ecf76247b87",
+  "633a7a900123ffa7732e40bbc06acb132bff8829ecf3ab90d96e9ae4f2dec153",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
@@ -565,6 +565,10 @@ for (const [key, exactCount] of [["skinId", 4], ["skinModel", 4], ["skinPixels",
 assert.match(realtimeCompact, /skinId/);
 assert.match(realtimeCompact, /skinModel/);
 assert.match(realtimeCompact, /skinPixels/);
+for (const key of ["ownerMustLeave", "ownerPickupBlocked"]) {
+  assert.match(realtimeCompact, new RegExp(key), `compact realtime drop codec preserves literal ${key}`);
+  assert.match(boundaryBundles.get("client/realtimeMultiplayer.ts").baseline, new RegExp(key));
+}
 
 const bundledModuleDirectory = mkdtempSync(join(tmpdir(), "lakecraft-compact-modules-"));
 let bundledModuleSequence = 0;
