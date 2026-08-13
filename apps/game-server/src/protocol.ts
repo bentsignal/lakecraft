@@ -90,6 +90,7 @@ export interface PublicDrop {
   z: number;
   droppedAt: number;
   ownerPickupAt: number;
+  ownerPickupBlocked: boolean;
   expiresAt: number;
 }
 
@@ -142,6 +143,7 @@ export type ClientMessage =
       itemId: string;
       count: number;
       durability?: number;
+      ownerMustLeave?: boolean;
       x: number;
       y: number;
       z: number;
@@ -408,6 +410,7 @@ export function decodeClientMessage(raw: string): DecodeResult {
       || typeof value.itemId !== "string" || !/^[a-z0-9_]{1,64}$/.test(value.itemId)
       || !integer(value.count) || value.count < 1 || value.count > 64
       || (value.durability !== undefined && (!integer(value.durability) || value.durability < 1 || value.durability > 65535))
+      || (value.ownerMustLeave !== undefined && typeof value.ownerMustLeave !== "boolean")
       || !finite(value.x) || !finite(value.y) || !finite(value.z)
       || Math.abs(value.x) > 1_000_000 || value.y < -64 || value.y > 320 || Math.abs(value.z) > 1_000_000) {
       return invalid("drop item is invalid");

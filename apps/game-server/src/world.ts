@@ -25,6 +25,7 @@ import {
   PLAYER_GRAVITY,
   PLAYER_JUMP_SPEED,
   terrainFeetY,
+  terrainHeight,
 } from "./terrain";
 
 export interface Peer {
@@ -88,6 +89,10 @@ export const APPEARANCE_REQUEST_RATE_WINDOW_MS = 1_000;
 const DROP_TTL_MS = 5 * 60_000;
 const DROP_OWNER_DELAY_MS = 750;
 const DROP_REACH = 3;
+const DROP_OWNER_LEAVE_DISTANCE = 2.25;
+const DROP_GRAVITY = 24;
+const DROP_TERMINAL_VELOCITY = -24;
+const DROP_BROADCAST_INTERVAL_MS = 100;
 const PLAYER_ATTACK_REACH = 6.25;
 const PLAYER_ATTACK_COOLDOWN_MS = 400;
 
@@ -106,9 +111,14 @@ export class GameWorld implements AdminWorldControl {
   private tickNumber = 0;
   private visualActionSequence = 0;
   private readonly drops = new Map<string, PublicDrop>();
+  private readonly dropVelocityY = new Map<string, number>();
+  private readonly settledDrops = new Set<string>();
+  private readonly blockOverrides = new Map<string, number>();
   private readonly dropOperations = new Map<string, PublicDrop>();
   private readonly playerHitOperations = new Map<string, PlayerHit>();
   private readonly selfDamageOperations = new Map<string, SelfDamageResult>();
+  private lastDropBroadcastAt = Number.NEGATIVE_INFINITY;
+  private dropsDirty = false;
   private shuttingDown = false;
 
   constructor(
@@ -116,7 +126,11 @@ export class GameWorld implements AdminWorldControl {
     private readonly store: WorldStore,
     private readonly authenticator: JoinAuthenticator,
   ) {
-    for (const drop of store.listDrops()) this.drops.set(drop.dropId, drop);
+    for (const edit of store.getAllBlockEdits()) this.blockOverrides.set(blockKey(edit.x, edit.y, edit.z), edit.block);
+    for (const drop of store.listDrops()) {
+      this.drops.set(drop.dropId, drop);
+      this.dropVelocityY.set(drop.dropId, 0);
+    }
   }
 
   get playerCount(): number {
@@ -267,14 +281,44 @@ export class GameWorld implements AdminWorldControl {
 
   tick(now = Date.now()): void {
     this.tickNumber++;
-    let removedDrop = false;
+    let dropsChanged = false;
     for (const [id, drop] of this.drops) if (drop.expiresAt <= now) {
       this.drops.delete(id);
+      this.dropVelocityY.delete(id);
+      this.settledDrops.delete(id);
       this.store.deleteDrop(id);
-      removedDrop = true;
+      dropsChanged = true;
     }
-    if (removedDrop) this.broadcastDrops();
     const dt = 1 / this.config.tickHz;
+    for (const drop of this.drops.values()) {
+      const owner = this.userConnections.get(drop.ownerUserId)?.player;
+      if (drop.ownerPickupBlocked && owner
+        && Math.hypot(owner.x - drop.x, owner.z - drop.z) > DROP_OWNER_LEAVE_DISTANCE) {
+        drop.ownerPickupBlocked = false;
+        this.store.updateDropState(drop);
+        dropsChanged = true;
+      }
+      if (this.settledDrops.has(drop.dropId)) continue;
+      const velocity = Math.max(DROP_TERMINAL_VELOCITY, (this.dropVelocityY.get(drop.dropId) ?? 0) - DROP_GRAVITY * dt);
+      const nextY = drop.y + velocity * dt;
+      const supportY = this.dropSupportY(drop.x, drop.z, drop.y);
+      if (nextY <= supportY) {
+        drop.y = supportY;
+        this.dropVelocityY.set(drop.dropId, 0);
+        this.settledDrops.add(drop.dropId);
+      } else {
+        drop.y = nextY;
+        this.dropVelocityY.set(drop.dropId, velocity);
+      }
+      this.store.updateDropState(drop);
+      dropsChanged = true;
+    }
+    this.dropsDirty ||= dropsChanged;
+    if (this.dropsDirty && now - this.lastDropBroadcastAt >= DROP_BROADCAST_INTERVAL_MS) {
+      this.lastDropBroadcastAt = now;
+      this.dropsDirty = false;
+      this.broadcastDrops();
+    }
     for (const state of this.userConnections.values()) {
       const player = state.player!;
       if ((player.health ?? 20) <= 0) {
@@ -667,6 +711,12 @@ export class GameWorld implements AdminWorldControl {
       this.fail(state, "world_limit", "This server reached its persisted block limit", false, false, message.operationId);
       return;
     }
+    this.blockOverrides.set(blockKey(result.edit.x, result.edit.y, result.edit.z), result.edit.block);
+    for (const drop of this.drops.values()) {
+      if (Math.floor(drop.x) === result.edit.x && Math.floor(drop.z) === result.edit.z) {
+        this.settledDrops.delete(drop.dropId);
+      }
+    }
     for (const other of this.userConnections.values()) {
       if (squaredDistance(player, other.player!) > (NEARBY_RADIUS * 2) ** 2) continue;
       this.send(other.peer, {
@@ -735,13 +785,17 @@ export class GameWorld implements AdminWorldControl {
       z: message.z,
       droppedAt: now,
       ownerPickupAt: now + DROP_OWNER_DELAY_MS,
+      ownerPickupBlocked: message.ownerMustLeave === true,
       expiresAt: now + DROP_TTL_MS,
     };
     this.drops.set(drop.dropId, drop);
+    this.dropVelocityY.set(drop.dropId, 0);
     this.store.saveDrop(drop, message.operationId);
     this.dropOperations.set(key, drop);
     if (this.dropOperations.size > 512) this.dropOperations.delete(this.dropOperations.keys().next().value!);
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "drop", drop });
+    this.lastDropBroadcastAt = now;
+    this.dropsDirty = false;
     this.broadcastDrops();
   }
 
@@ -752,7 +806,8 @@ export class GameWorld implements AdminWorldControl {
       return;
     }
     const drop = this.drops.get(message.dropId);
-    if (!drop || drop.expiresAt <= now || (drop.ownerUserId === state.player!.id && drop.ownerPickupAt > now)
+    if ((state.player!.health ?? 20) <= 0 || !drop || drop.expiresAt <= now
+      || (drop.ownerUserId === state.player!.id && (drop.ownerPickupBlocked || drop.ownerPickupAt > now))
       || squaredDistance(state.player!, drop) > DROP_REACH ** 2) {
       this.fail(state, "bad_message", "Item is unavailable or out of reach", false, false, message.operationId);
       return;
@@ -763,7 +818,11 @@ export class GameWorld implements AdminWorldControl {
       return;
     }
     this.drops.delete(drop.dropId);
+    this.dropVelocityY.delete(drop.dropId);
+    this.settledDrops.delete(drop.dropId);
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop: consumed });
+    this.lastDropBroadcastAt = now;
+    this.dropsDirty = false;
     this.broadcastDrops();
   }
 
@@ -888,6 +947,18 @@ export class GameWorld implements AdminWorldControl {
     for (const state of this.userConnections.values()) this.send(state.peer, message);
   }
 
+  private dropSupportY(x: number, z: number, fromY: number): number {
+    const blockX = Math.floor(x);
+    const blockZ = Math.floor(z);
+    const naturalTopBlock = terrainHeight(blockX, blockZ);
+    for (let y = Math.floor(fromY); y >= -64; y -= 1) {
+      const override = this.blockOverrides.get(blockKey(blockX, y, blockZ));
+      const block = override ?? (y <= naturalTopBlock ? 1 : 0);
+      if (dropSupportingBlock(block)) return y + 1;
+    }
+    return -64;
+  }
+
   private send(peer: Peer, message: ServerMessage): void {
     if (peer.bufferedAmount() > HARD_BACKPRESSURE) {
       peer.send(encodeServerMessage(protocolError("backpressure", "Client is not reading messages", { fatal: true, retryable: true })));
@@ -915,6 +986,14 @@ function squaredDistance(
   right: { x: number; y: number; z: number },
 ): number {
   return (left.x - right.x) ** 2 + (left.y - right.y) ** 2 + (left.z - right.z) ** 2;
+}
+
+function blockKey(x: number, y: number, z: number): string {
+  return `${x}:${y}:${z}`;
+}
+
+function dropSupportingBlock(block: number): boolean {
+  return block !== 0 && block !== 8 && block !== 11 && block !== 16 && block !== 25 && block !== 29;
 }
 
 function normalizeYaw(yaw: number): number {

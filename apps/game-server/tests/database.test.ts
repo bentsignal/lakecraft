@@ -126,7 +126,7 @@ describe("SQLite world persistence", () => {
     const store = new WorldStore(":memory:");
     const drop = {
       dropId:"drop:test", ownerUserId:"u1", itemId:"diamond_pickaxe", count:1, durability:120,
-      x:1, y:69.02, z:2, droppedAt:1_000, ownerPickupAt:1_500, expiresAt:10_000,
+      x:1, y:69.02, z:2, droppedAt:1_000, ownerPickupAt:1_500, ownerPickupBlocked:false, expiresAt:10_000,
     };
     store.saveDrop(drop, "drop_operation_1");
     expect(store.getDropOperation("u1", "drop_operation_1")).toEqual(drop);

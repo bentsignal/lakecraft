@@ -275,7 +275,7 @@ export function applyRemoteAvatarSnapshot(
     state.deathHidden = false;
   }
   state.health = health;
-  state.hurtFlash = now - state.hurtStartedAt < REMOTE_PLAYER_HURT_FLASH_MS;
+  state.hurtFlash = health <= 0 || now - state.hurtStartedAt < REMOTE_PLAYER_HURT_FLASH_MS;
   const next = safePose(player, state.target);
   const elapsed = Math.max(1 / 60, Math.min(2, (now - state.lastSnapshotAt) / 1_000));
   if ([player.vx, player.vy, player.vz].every(Number.isFinite)) {
@@ -309,7 +309,6 @@ export function advanceRemoteAvatarMotion(
   now: number,
   deltaSeconds: number,
 ): void {
-  state.hurtFlash = now - state.hurtStartedAt < REMOTE_PLAYER_HURT_FLASH_MS;
   if (state.health <= 0) {
     const deathElapsed = Math.max(0, now - state.deathStartedAt);
     state.deathFall = Math.min(1, deathElapsed / REMOTE_PLAYER_DEATH_FALL_MS);
@@ -318,6 +317,8 @@ export function advanceRemoteAvatarMotion(
     state.horizontalSpeed = 0;
     state.crouching = false;
   }
+  state.hurtFlash = state.health <= 0 && !state.deathHidden
+    || now - state.hurtStartedAt < REMOTE_PLAYER_HURT_FLASH_MS;
   const dt = Math.max(0, Math.min(0.1, deltaSeconds));
   if (dt === 0) return;
   const snapshotAge = Math.max(0, (now - state.lastSnapshotAt) / 1_000);

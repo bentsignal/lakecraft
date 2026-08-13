@@ -216,7 +216,10 @@ function decodeDrop(value: unknown): NormalizedDroppedItem | null {
     || x === null || y === null || z === null || droppedAt === null || ownerPickupAt === null || expiresAt === null) return null;
   const durability = finiteNumber(source.durability);
   const item = { itemId, count, ...(durability === null ? {} : { durability }) } as ItemStack;
-  return { dropId, chunkKey: `${Math.floor(x / 16)}:${Math.floor(z / 16)}`, ownerUserId, sourceUserId: ownerUserId, item, x, y, z, droppedAt, ownerPickupAt, expiresAt };
+  return {
+    dropId, chunkKey: `${Math.floor(x / 16)}:${Math.floor(z / 16)}`, ownerUserId, sourceUserId: ownerUserId,
+    item, x, y, z, droppedAt, ownerPickupAt, ownerPickupBlocked: source.ownerPickupBlocked === true, expiresAt,
+  };
 }
 
 export function normalizeMultiplayerEndpoint(value: string): string | null {
@@ -457,10 +460,11 @@ export class RealtimeMultiplayerClient {
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "action", seq: this.actionSequence, kind, ...(value === undefined ? {} : { value }) });
   }
 
-  submitDrop(operationId: string, item: ItemStack, pose: PlayerPose): Promise<NormalizedDroppedItem> {
+  submitDrop(operationId: string, item: ItemStack, pose: PlayerPose, ownerMustLeave = false): Promise<NormalizedDroppedItem> {
     return this.submitDropOperation(operationId, {
       type: "drop_item", itemId: item.itemId, count: item.count,
-      ...(item.durability === undefined ? {} : { durability: item.durability }), x: pose.x, y: pose.y, z: pose.z,
+      ...(item.durability === undefined ? {} : { durability: item.durability }),
+      ...(ownerMustLeave ? { ownerMustLeave: true } : {}), x: pose.x, y: pose.y, z: pose.z,
     });
   }
 

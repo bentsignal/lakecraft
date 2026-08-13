@@ -47,7 +47,7 @@ describe("protocol v1", () => {
   test("bounds shared item drops and pickup operations", () => {
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"drop_item", operationId:"drop_12345678", itemId:"diamond_pickaxe", count:1,
-      durability:120, x:0.5, y:69.02, z:0.5,
+      durability:120, ownerMustLeave:true, x:0.5, y:69.02, z:0.5,
     })).ok).toBe(true);
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"pickup_item", operationId:"pickup_12345678", dropId:"drop:known",
@@ -60,6 +60,10 @@ describe("protocol v1", () => {
     })).ok).toBe(true);
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"self_damage", operationId:"fall:12345678", damage:21, cause:"mob",
+    })).ok).toBe(false);
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"drop_item", operationId:"drop_12345678", itemId:"dirt", count:1,
+      ownerMustLeave:"yes", x:0, y:69, z:0,
     })).ok).toBe(false);
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"player_attack", operationId:"short", targetId:"",

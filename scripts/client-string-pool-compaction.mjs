@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 486;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 433;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4048b67e45c872c7d61ab81f4434ea9e3f860707d0bcc9581248c0341d809a00";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 487;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 434;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "fcc4f3167f8ce8749aa259070eb6d93d452800fd69d83253f6fe605f2a394525";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -109,9 +109,18 @@ export const COMPACT_CLIENT_HUMAN_SURVIVAL_FEEDBACK_DELTA = Object.freeze({
   sources: Object.freeze(["client/index.tsx", "client/realtimeMultiplayer.ts"]),
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_018;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 97;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "980574898fe7b17c6a949f4c1c30405e96db6276c83bbb49d69fa2bb90057b71";
+export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
+  previousOccurrences: 486,
+  previousUniqueValues: 433,
+  previousSourceFingerprint: "4048b67e45c872c7d61ab81f4434ea9e3f860707d0bcc9581248c0341d809a00",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 1,
+  source: "client/index.tsx#durable-placement-and-world-item-recovery",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_023;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 98;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "187bcbf970d8c8c562f25f947ea1a6487772f1184e833b541b28355b09bb607e";
 export const COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA = Object.freeze({
   previousOccurrences: 1_018,
   previousUniqueValues: 97,
@@ -123,6 +132,15 @@ export const COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA = Object.freeze({
     "client/singleplayer/SinglePlayerApp.tsx",
     "client/index.tsx",
   ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_ITEM_CONSERVATION_DELTA = Object.freeze({
+  previousOccurrences: 1_018,
+  previousUniqueValues: 97,
+  previousSourceFingerprint: "980574898fe7b17c6a949f4c1c30405e96db6276c83bbb49d69fa2bb90057b71",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 1,
+  source: "client/index.tsx#durable-placement-and-world-item-actions",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA = Object.freeze({
@@ -354,7 +372,7 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 420;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "40fa344c169840d827d4c54fd88899b811b141464810b4159a488cf9fa495e3f";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "6e0048fcf397cb87fe16cda84341df704070cb775b64fa2fc95b5decc779be03";
 export const COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA = Object.freeze({
   previousOccurrences: 418,
   previousUniqueValues: 123,
@@ -375,6 +393,15 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_SURVIVAL_FEEDBACK_DELTA = Object.freez
   occurrenceDelta: 3,
   uniqueValueDelta: 1,
   sources: Object.freeze(["client/index.tsx", "client/realtimeMultiplayer.ts", "client/game/avatar.ts"]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_ITEM_CONSERVATION_DELTA = Object.freeze({
+  previousOccurrences: 420,
+  previousUniqueValues: 124,
+  previousSourceFingerprint: "40fa344c169840d827d4c54fd88899b811b141464810b4159a488cf9fa495e3f",
+  occurrenceDelta: 0,
+  uniqueValueDelta: 0,
+  source: "client/index.tsx#durable-placement-and-world-item-actions",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA = Object.freeze({

@@ -37,5 +37,17 @@ const realtimeMine = client.slice(client.indexOf("async function submitPendingWo
 assert.ok(realtimeMine.includes("getDeterministicMiningDrop") && realtimeMine.includes("realtimeDropSinkRef.current")
   && realtimeMine.includes("await dropSink(dropOperationId, drop, dropPose)"),
 "a confirmed Railway block break publishes one deterministic shared drop through the existing exact-once world-drop authority");
+assert.ok(realtimeMine.indexOf('kind: "place_block"') < realtimeMine.indexOf("await sink(pending.operationId"),
+  "Lakebed reserves a placement item before Railway can make the block authoritative");
+assert.ok(realtimeMine.includes('kind: "world_credit"') && realtimeMine.includes('relatedInventoryOperationId("place_refund"'),
+  "an unconfirmed Railway placement refunds the exact idempotent Lakebed debit");
+const realtimeToss = client.slice(client.indexOf("async function handleDropSelected"), client.indexOf("async function pickupNearbyDroppedItem"));
+assert.ok(realtimeToss.indexOf('kind: "world_debit"') < realtimeToss.indexOf("await sink(operationId"),
+  "manual drops durably debit the pack before publishing the world entity");
+const realtimePickup = client.slice(client.indexOf("async function pickupNearbyDroppedItem"), client.indexOf("function maybePickupNearbyDroppedItem"));
+assert.ok(realtimePickup.indexOf("await sink(") < realtimePickup.indexOf('kind: "world_credit"'),
+  "a pickup credits Lakebed only after Railway consumes the exact world entity");
+assert.ok(realtimePickup.includes('`return:${confirmed.dropId}`'),
+  "a rejected durable credit re-publishes the stack instead of losing it");
 
 console.log("lakecraft dropped item Lakebed integration tests: ok");

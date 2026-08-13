@@ -167,12 +167,13 @@ const killed = createRemoteAvatarMotion(player({ health: 20, crouching: true }),
 applyRemoteAvatarSnapshot(killed, player({ health: 0, crouching: true }), 10_100);
 assert.equal(killed.hurtFlash, true, "a remote health decrease immediately enables the shared hurt tint");
 advanceRemoteAvatarMotion(killed, 10_100 + REMOTE_PLAYER_HURT_FLASH_MS, 0.016);
-assert.equal(killed.hurtFlash, false, "hurt feedback clears on its bounded visual clock");
+assert.equal(killed.hurtFlash, true, "a dead player stays red for the entire visible corpse window");
 advanceRemoteAvatarMotion(killed, 10_100 + REMOTE_PLAYER_DEATH_FALL_MS, 0.016);
 assert.equal(killed.deathFall, 1, "a fatal snapshot finishes the shared side-fall on a bounded clock");
 assert.equal(killed.crouching, false, "death clears stale crouch posture instead of oscillating it");
 advanceRemoteAvatarMotion(killed, 10_100 + REMOTE_PLAYER_DEATH_VISIBLE_MS, 0.016);
 assert.equal(killed.deathHidden, true, "the corpse disappears after its visible death window");
+assert.equal(killed.hurtFlash, false, "the fatal tint clears only when the corpse disappears");
 applyRemoteAvatarSnapshot(killed, player({ health: 20, x: 0.5, y: 69.02, z: 0.5 }), 12_000);
 assert.deepEqual([killed.deathFall, killed.deathHidden, killed.health], [0, false, 20],
   "respawn atomically restores an upright visible remote avatar");

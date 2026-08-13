@@ -73,18 +73,21 @@ socket.receive({ type:"snapshot", inputAck:input.seq, self:{ ...pose, gameMode:"
 }] });
 assert.doesNotThrow(() => remotes, "untrusted community-server action payloads cannot break rendering");
 assert.deepEqual(remotes[0].visualActions ?? [], [], "malformed visual actions are removed at the wire boundary");
-const dropPromise = client.submitDrop("drop_transport_1", { itemId:"diamond_pickaxe",count:1,durability:120 }, pose);
+const dropPromise = client.submitDrop("drop_transport_1", { itemId:"diamond_pickaxe",count:1,durability:120 }, pose, true);
 const dropRequest = socket.sent.at(-1)!;
+assert.equal(dropRequest.ownerMustLeave, true, "manual Q-tosses carry the owner leave-radius rule over the literal wire key");
 socket.receive({ type:"drop_result",operationId:dropRequest.operationId,action:"drop",drop:{
   dropId:"drop:test",ownerUserId:"alex",itemId:"diamond_pickaxe",count:1,durability:120,x:pose.x,y:pose.y,z:pose.z,
-  droppedAt:1,ownerPickupAt:501,expiresAt:300001,
+  droppedAt:1,ownerPickupAt:501,ownerPickupBlocked:true,expiresAt:300001,
 } });
-assert.equal((await dropPromise).item.durability, 120);
+const confirmedDrop = await dropPromise;
+assert.deepEqual([confirmedDrop.item.durability, confirmedDrop.ownerPickupBlocked], [120, true]);
 socket.receive({ type:"drop_snapshot",drops:[{
   dropId:"drop:test",ownerUserId:"alex",itemId:"diamond_pickaxe",count:1,durability:120,x:pose.x,y:pose.y,z:pose.z,
-  droppedAt:1,ownerPickupAt:501,expiresAt:300001,
+  droppedAt:1,ownerPickupAt:501,ownerPickupBlocked:true,expiresAt:300001,
 }] });
 assert.equal(drops[0].item.itemId, "diamond_pickaxe", "Railway drop snapshots retain exact item metadata");
+assert.equal(drops[0].ownerPickupBlocked, true, "the owner cannot recollect a toss before leaving its radius");
 client.submitPlayerAttack("attack:transport", "steve");
 assert.deepEqual(socket.sent.at(-1), { v:1,type:"player_attack",operationId:"attack:transport",targetId:"steve" });
 socket.receive({ type:"player_hit",operationId:"attack:transport",attackerId:"alex",targetId:"steve",
