@@ -7,6 +7,7 @@ import {
   createSinglePlayerPointerSessionState,
   orchestrateSinglePlayerInventoryClose,
   releaseBlockedSinglePlayerPointerLockGrant,
+  scheduleGameplayPointerLockAfterEscapeRelease,
   singlePlayerInventoryCloseUsesTrustedRecapture,
   singlePlayerSilentRecaptureKey,
   transitionSinglePlayerPointerSession,
@@ -29,6 +30,34 @@ function assertSourceOrder(source: string, before: string, after: string, messag
   assert.ok(beforeIndex >= 0, `${message}: missing ${before}`);
   assert.ok(afterIndex >= 0, `${message}: missing ${after}`);
   assert.ok(beforeIndex < afterIndex, message);
+}
+
+{
+  const listeners = new Set<(event: KeyboardEvent) => void>();
+  const timers = new Map<number, () => void>();
+  let timerId = 0;
+  const target = {
+    addEventListener(_type: string, listener: EventListenerOrEventListenerObject) {
+      listeners.add(listener as (event: KeyboardEvent) => void);
+    },
+    removeEventListener(_type: string, listener: EventListenerOrEventListenerObject) {
+      listeners.delete(listener as (event: KeyboardEvent) => void);
+    },
+    setTimeout(callback: () => void) { const id = ++timerId; timers.set(id, callback); return id; },
+    clearTimeout(id: number) { timers.delete(id); },
+  } as unknown as Window;
+  let requests = 0;
+  scheduleGameplayPointerLockAfterEscapeRelease(target, () => true, () => { requests += 1; });
+  const unrelated = new Event("keyup") as KeyboardEvent;
+  Object.defineProperty(unrelated, "code", { value: "KeyW" });
+  for (const listener of [...listeners]) listener(unrelated);
+  assert.equal(requests, 0, "only the native Escape release can complete the quiet recapture");
+  const escape = new Event("keyup") as KeyboardEvent;
+  Object.defineProperty(escape, "code", { value: "Escape" });
+  for (const listener of [...listeners]) listener(escape);
+  for (const listener of [...listeners]) listener(escape);
+  assert.equal(requests, 1, "Escape keyup requests pointer capture exactly once");
+  assert.equal(timers.size, 0, "successful recapture removes its bounded cleanup timer");
 }
 
 assert.throws(
@@ -489,8 +518,10 @@ const chatEscapeClose = singlePlayerSource.slice(
   singlePlayerSource.indexOf("function selectHotbar"),
 );
 assert.ok(chatEscapeClose.includes("armGameplayResumeAfterEscape"));
-assert.equal(chatEscapeClose.includes("requestGameplayPointerLock"), false,
-  "chat Escape cannot race Chrome with an impossible direct recapture request");
+assert.ok(chatEscapeClose.includes("requestGameplayPointerLockAfterEscapeRelease()"),
+  "chat Escape shares the post-keyup pointer recapture path instead of leaving a cursor over the world");
+assert.equal(chatEscapeClose.includes("requestEnginePointerLock("), false,
+  "chat Escape never races Chrome with a direct keydown recapture request");
 assert.equal(singlePlayerSource.includes('type: "resume_after_escape_keyup"'), false,
   "Escape itself is never treated as a Pointer Lock user activation");
 assert.match(singlePlayerSource, /silentPointerRecaptureRef\.current && singlePlayerSilentRecaptureKey[\s\S]{0,180}requestEnginePointerLock\(true\)/,
@@ -511,7 +542,7 @@ const escapeReleaseRecapture = singlePlayerSource.slice(
   singlePlayerSource.indexOf("function requestGameplayPointerLockAfterEscapeRelease"),
   singlePlayerSource.indexOf("function closeInventoryAndResume"),
 );
-assert.ok(escapeReleaseRecapture.includes('window.addEventListener("keyup", onEscapeRelease, true)')
+assert.ok(escapeReleaseRecapture.includes("scheduleGameplayPointerLockAfterEscapeRelease(window")
   && escapeReleaseRecapture.includes("requestEnginePointerLock(true)"),
 "the post-Escape attempt waits for key release and retains the movement-key fallback");
 assert.match(singlePlayerSource, /cancelRangedActionForEscape\(\)[\s\S]{0,300}armGameplayResumeAfterEscape/,

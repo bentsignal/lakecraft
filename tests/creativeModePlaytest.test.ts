@@ -131,10 +131,12 @@ const hud = readFileSync(new URL("../client/components/GameHud.tsx", import.meta
 const drawer = readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
 assert.ok(hud.includes("showSurvivalStatus ? <SurvivalHud"), "Creative hides hearts, hunger, and armor while retaining the hotbar");
 assert.ok(app.includes('showSurvivalStatus={gameMode === "survival"}'));
-assert.ok(app.includes('canCreativeFly: () => gameModeRef.current === "creative"'));
-assert.ok(app.includes('canMobsTargetPlayer: () => gameModeRef.current === "survival"'));
+assert.ok(presentation.includes('canCreativeFly: () => context.getGameMode() === "creative"'));
+assert.ok(app.includes("getGameMode: () => gameModeRef.current"));
+assert.ok(presentation.includes('canMobsTargetPlayer: () => context.getGameMode() === "survival"'));
 assert.ok(engine.includes('if (paused) return;'));
 assert.ok(engine.includes('document.pointerLockElement !== canvas'), "flight taps share the engine pointer-lock guard");
 assert.ok(engine.includes("options.canCreativeFly?.() !== true && creativeFlight.flying"), "Survival transition exits flight safely");

@@ -7,7 +7,7 @@ type NavigatorWithKeyboardLock = Navigator & {
   keyboard?: KeyboardLockController;
 };
 
-export const GAMEPLAY_KEYBOARD_LOCK_CODES = Object.freeze(["KeyW"] as const);
+export const GAMEPLAY_KEYBOARD_LOCK_CODES = Object.freeze(["KeyW", "Escape"] as const);
 
 function keyboardLockController(): KeyboardLockController | null {
   const keyboard = (navigator as NavigatorWithKeyboardLock).keyboard;

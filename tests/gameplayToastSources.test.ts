@@ -42,15 +42,15 @@ for (const text of [
 ] as const) assert.ok(singleplayer.includes(text), `single-player preserves actionable error/recovery feedback: ${text}`);
 
 for (const text of [
-  "Respawn reconciliation failed",
   "Pack action delayed",
   "Drop lost contact",
-  "TNT did not ignite",
-  "Oak growth lost contact",
-  "Armor reconciliation failed",
-  "Presence lease invalid",
-  "Chest transfer reconciled",
+  "Server connection rejected",
+  "Edit rejected",
 ] as const) assert.ok(multiplayer.includes(text), `multiplayer preserves actionable error/recovery feedback: ${text}`);
+
+for (const retired of ["TNT did not ignite", "Oak growth lost contact", "Presence lease invalid", "Chest transfer reconciled"]) {
+  assert.equal(multiplayer.includes(retired), false, `${retired} belonged to the retired Lakebed world path`);
+}
 
 assert.ok(singleplayer.includes("const [messages, setMessages] = useState<HudMessage[]>([])")
   && multiplayer.includes("const [messages, setMessages] = useState<HudMessage[]>([])")

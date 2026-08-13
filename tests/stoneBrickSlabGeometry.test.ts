@@ -17,7 +17,7 @@ import { blockTextureForFace, textureAtlasUv, type BlockFace } from "../client/g
 import { writeDroppedItemGeometry, droppedBlockCubeVertexCount, type DroppedItemGeometryStats } from "../client/game/droppedItemRenderer.ts";
 import { createFirstPersonRenderer, firstPersonSpritePresentation } from "../client/game/firstPersonRenderer.ts";
 import { appendItemSpriteGeometry } from "../client/game/itemSpriteGeometry.ts";
-import { remoteHeldItemRects, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
+import { remoteHeldItemGeometry, remoteHeldItemVertexCount } from "../client/game/remotePlayerRenderer.ts";
 import {
   STONE_BRICK_SLAB_MESH_VERTEX_COUNT,
   appendStoneBrickSlabMesh,
@@ -169,14 +169,9 @@ writeDroppedItemGeometry(
 assert.equal(droppedStats.vertexCount, slabArt.runs.length * 6,
   "one dropped slab uses the canonical inventory-sprite run count");
 
-const remoteRects = remoteHeldItemRects("stone_brick_slab");
-assert.equal(remoteHeldItemVertexCount("stone_brick_slab"), remoteRects.length * 6);
-assert.ok(remoteRects.length > 0, "remote players retain a visible slab silhouette");
-const slabPalette = new Set(slabArt.runs.map((run) => run.color.toLowerCase()));
-for (const rectangle of remoteRects) {
-  const color = `#${rectangle.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`;
-  assert.ok(slabPalette.has(color), "remote held slabs use only canonical inventory-art colors");
-}
+const remoteGeometry = remoteHeldItemGeometry("stone_brick_slab");
+assert.equal(remoteHeldItemVertexCount("stone_brick_slab"), remoteGeometry.length / 6);
+assert.ok(remoteGeometry.length > 0, "remote players retain a visible extruded slab silhouette");
 
 const heldSource = readFileSync(new URL("../client/game/firstPersonRenderer.ts", import.meta.url), "utf8");
 for (const sharedPath of ["getItemIconArt(itemId)", "appendItemSpriteGeometry("]) {

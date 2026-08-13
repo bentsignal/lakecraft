@@ -43,9 +43,8 @@ const leaveSingleplayer = root.slice(
   root.indexOf("\n  return singlePlayer", root.indexOf("  function leaveSingleplayer")),
 );
 assert.ok(leaveSingleplayer.includes("singlePlayerTitleUrl(window.location.href)")
-  && leaveSingleplayer.includes("if (hostedSinglePlayer) setSinglePlayerTitle(true)")
-  && leaveSingleplayer.includes("else setSinglePlayer(false)"),
-  "Back removes only the single-player route flag before restoring the main menu");
+  && leaveSingleplayer.includes("setSinglePlayer(false)"),
+  "Back removes the single-player route flag before restoring the main menu");
 
 const header = browser.slice(
   browser.indexOf('<div className="lc-local-world-header">'),
@@ -276,7 +275,7 @@ assert.ok(browser.includes("browserSinglePlayerStorage()") && browser.includes("
   "the browser consumes the guarded storage boundary and accepts the root's shared adapter");
 
 assert.ok(app.includes("<LocalWorldBrowser"), "single-player enters the world browser before constructing gameplay");
-assert.ok(app.includes("<SinglePlayerWorld"), "only an activated world mounts the voxel engine");
+assert.ok(app.includes("<LocalGameplaySession"), "only an activated local session mounts the voxel engine");
 assert.ok(app.includes("saveSinglePlayerSnapshot(storage, snapshot, now, { worldId: world.id })"),
   "autosave/quit commits stay in the active world namespace");
 assert.ok(app.includes("resetSinglePlayerSave(storage, { worldId: world.id })"),

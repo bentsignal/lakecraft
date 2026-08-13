@@ -125,24 +125,15 @@ const localSave = readFileSync(new URL("../client/singleplayer/localSave.ts", im
 const requestClient = readFileSync(new URL("../client/worldBlockEditClient.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 
-for (const [label, source] of [["multiplayer", client], ["single-player", local]] as const) {
-  assert.match(source, /\[BLOCK\.OAK_FENCE_GATE_CLOSED\]:\s*"oak_fence_gate"/,
-    `${label} maps the closed state to the canonical game block`);
-  assert.match(source, /\[BLOCK\.OAK_FENCE_GATE_OPEN\]:\s*"oak_fence_gate"/,
-    `${label} maps the open state to the same canonical game block`);
-  assert.match(source, /oak_fence_gate:\s*BLOCK\.OAK_FENCE_GATE_CLOSED/,
-    `${label} always places a held gate closed`);
-  assert.match(source, /BLOCK\.OAK_FENCE_GATE_CLOSED[^\n]*BLOCK\.OAK_FENCE_GATE_OPEN[^\n]*return\s+"wood"/,
-    `${label} gives both states wood interaction audio`);
-}
-assert.match(client, /\[BLOCK\.OAK_FENCE_GATE_CLOSED\]:\s*"oak_fence_gate_closed"/);
-assert.match(client, /\[BLOCK\.OAK_FENCE_GATE_OPEN\]:\s*"oak_fence_gate_open"/);
-assert.match(client, /oak_fence_gate_closed:\s*BLOCK\.OAK_FENCE_GATE_CLOSED/);
-assert.match(client, /oak_fence_gate_open:\s*BLOCK\.OAK_FENCE_GATE_OPEN/);
+const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
+assert.match(catalog, /\[BLOCK\.OAK_FENCE_GATE_CLOSED\]:\s*"oak_fence_gate"/);
+assert.match(catalog, /\[BLOCK\.OAK_FENCE_GATE_OPEN\]:\s*"oak_fence_gate"/);
+assert.match(catalog, /oak_fence_gate:\s*BLOCK\.OAK_FENCE_GATE_CLOSED/);
+assert.match(catalog, /BLOCK\.OAK_FENCE_GATE_CLOSED[^\n]*BLOCK\.OAK_FENCE_GATE_OPEN[^\n]*return "wood"/);
 assert.match(client, /onBlockEdit:\s*\(edit, previousBlock\)[\s\S]{0,140}handleBlockEdit\(edit, previousBlock\)/,
-  "multiplayer preserves the prior state needed to serialize a toggle safely");
-assert.match(client, /next === BLOCK\.DOOR_OPEN \|\| next === BLOCK\.OAK_FENCE_GATE_OPEN/,
-  "confirmed gate opens and closes reuse direction-specific wood sounds");
+  "multiplayer preserves the prior state when forwarding a numeric Railway edit");
+assert.match(client, /await sink\(pending\.operationId, pending\.optimisticEdit\)/,
+  "Railway receives the canonical engine edit without a second Lakebed codec");
 assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/,
   "single-player saves retain both append-only gate states");
 assert.match(local,

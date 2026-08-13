@@ -2,6 +2,5 @@
 import { decodeStaticBytes } from "../../staticData.ts";
 export const BOX_VERTEX_COORDINATES = decodeStaticBytes("<,J?T0rAf500L4X%W=t-696c.00S,Dar<vq#1B-36egBHiBClKb,tQ89#16900000", 108, 50);
 export const BOX_FACE_SHADES = Object.freeze([0.79,0.68,1,0.52,0.88,0.73] as const);
-const fontBytes = decodeStaticBytes("jyS@i0%l}{cqVV400z-SfJn7&00lR.0deSnMT?h?!h:7(D5=}NA?@,X]#Au=BsV+}0iOsbyI{A%C[TT2yG@gFML6pktDHEAu&Rh2$vqR,Q=@*c0iFkvBDP(Dtl5zx$AusbL5-S4v15sX", 192, 111);
-export const NAMEPLATE_FONT = new Uint16Array(96);
-for (let index = 0; index < NAMEPLATE_FONT.length; index += 1) NAMEPLATE_FONT[index] = fontBytes[index * 2] * 256 + fontBytes[index * 2 + 1];
+const fontBytes = decodeStaticBytes("Fdrd]1oX.c{cx0:74r-xipGVitKVR3H47q<{tL>^{xg%mfAHXa{BWQ?3H{_Gtouaq00SSdvm:aE84/t.3(3Li0s?OK0rJx72P)8&0s?bh03hgC3kaA-0:syA5c9p+4GD:CH:gas5f:w!4GD[+01F,l4?*iKMHQ!*XE&Iq5FkPPq4J&u5fhq:4??$F6Cbi@5fD3G2m@)P7xw1DeF6SU0t8di9#R>G0ULFC3)T9/7:/O=5G(mG9_.Cb74z>485i*^tl7ud1%Un70a3iD6^Q$*z,:P]A9A{ifIIV]C0E:&5dPDI6^%5*3JHtw5*G3@7yQ>#{@O}$9$[ov", 672, 261);
+export const NAMEPLATE_FONT = fontBytes;

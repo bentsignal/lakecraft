@@ -171,9 +171,10 @@ assert.ok(engine.includes("if (!result.killed) applyConfirmedPlayerHitMobKnockba
 assert.ok(engine.includes("-Math.sin(mob.yaw),") && engine.includes("Math.cos(mob.yaw),"),
   "coincident hit knockback follows the corrected local +Z mob-facing convention");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-assert.ok(multiplayer.includes("!result.replayed && !result.killed"),
-  "Lakebed melee receipt replays never duplicate mob reactions");
-assert.ok(multiplayer.includes("!result.replayed && result.shot.landed && !result.shot.killed"),
-  "Lakebed projectile misses, replay, and kills do not invent a reaction");
+assert.doesNotMatch(multiplayer, /attackMob|rangedCombat/,
+  "Railway multiplayer cannot reuse Lakebed combat receipts");
+assert.ok(multiplayer.includes("realtimePlayerAttackSinkRef.current?.")
+  && multiplayer.includes("applyConfirmedMobKnockback("),
+"Railway-confirmed player damage reuses the retained exact-once knockback reaction");
 
 console.log("combat knockback and overlap tests passed");

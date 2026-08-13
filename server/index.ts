@@ -1,11 +1,8 @@
-import { boolean, capsule, endpoint, mutation, query, string, table, text, type WriteDatabase } from "lakebed/server";
+import { boolean, capsule, endpoint, id, json, mutation, query, string, table, text, type WriteDatabase } from "lakebed/server";
 import { newestByIndex, newestMatchingRow, newestMatchingRows, newestUserRows, oldestByIndex } from "./queryOrder.ts";
 import { maintainUserReceipts, newestUserOperationReceipt, userOperationReceiptRows } from "./receiptMaintenance.ts";
 import {
-  CHAT_RATE_LIMIT_MS,
-  RECENT_CHAT_LIMIT,
   fernHollowServerStatus,
-  validateChatMessage,
   validateUsername
 } from "../shared/multiplayer";
 import {
@@ -321,6 +318,17 @@ import {
   utcQuotaWindowStartedAt,
   type MotionBatchV1,
 } from "../shared/multiplayerSegments.ts";
+import {
+  EXTERNAL_MULTIPLAYER_TICKET_TTL_MS,
+  bearerExternalMultiplayerCredential,
+  canonicalizeExternalMultiplayerWssUrl,
+  externalMultiplayerTicketIsRedeemable,
+  hashExternalMultiplayerSecret,
+  newExternalMultiplayerJoinTicket,
+  newExternalMultiplayerServerCredential,
+  validExternalMultiplayerJoinTicket,
+  validateExternalMultiplayerServerInput,
+} from "./externalMultiplayerControl.ts";
 import * as BS from "../shared/bundleStrings.ts";
 
 const PLACEABLE_BLOCKS = new Set<string>(BLOCK_TYPES.filter((block) => block !== "air" && block !== "bedrock"));
@@ -480,6 +488,15 @@ function incrementStoredRevision(value: unknown): string {
 
 function hasAuthenticatedUser(ctx: { auth: { isAuthenticated: boolean; isGuest: boolean } }): boolean {
   return ctx.auth.isAuthenticated && !ctx.auth.isGuest;
+}
+
+function externalMultiplayerServerView(row: Record<string, unknown>) {
+  return {
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+    description: String(row.description ?? ""),
+    canonicalWssUrl: String(row.canonicalWssUrl ?? ""),
+  };
 }
 
 async function maintainWorldBlockOperationReceipts(
@@ -1474,14 +1491,31 @@ export default capsule({
       .index("by_user", ["userId"])
       .index("by_username", ["normalizedUsername"]),
 
-    chatMessages: table({
+    /** Community-owned realtime servers. Credentials are only retained as SHA-256 digests. */
+    externalMultiplayerServers: table({
+      ownerUserId: string(),
+      name: string(),
+      description: string(),
+      canonicalWssUrl: string(),
+      credentialHash: string(),
+      active: boolean().default(true)
+    })
+      .index("by_owner", ["ownerUserId"])
+      .index("by_wss_url", ["canonicalWssUrl"])
+      .index("by_credential", ["credentialHash"]),
+
+    /** One short-lived opaque bearer ticket per user/server; redemption deletes it atomically. */
+    externalMultiplayerJoinTickets: table({
+      ticketHash: string(),
+      serverId: id("externalMultiplayerServers"),
       userId: string(),
       username: string(),
-      message: string(),
-      sentAt: string()
+      issuedAt: string(),
+      expiresAt: string()
     })
-      .index("by_sent_at", ["sentAt"])
-      .index("by_user_sent_at", ["userId", "sentAt"]),
+      .index("by_ticket", ["ticketHash"])
+      .index("by_user_server", ["userId", "serverId"])
+      .index("by_expiry", ["expiresAt"]),
 
     /** Singleton-like shared day/night origin, addressed by WORLD_CLOCK_KEY. */
     worldClock: table({
@@ -1916,6 +1950,43 @@ export default capsule({
       (await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
     ),
 
+    /**
+     * One bounded lobby request replaces four permanently mounted browser
+     * subscriptions. The tuple is intentionally positional so compact client
+     * and server property mangling cannot alter this wire boundary.
+     */
+    clientBootstrap: query(async (ctx) => {
+      const authenticated = hasAuthenticatedUser(ctx);
+      const presence = authenticated
+        ? (await newestMatchingRow(ctx.db.playerPresence, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
+        : null;
+      const inventory = authenticated
+        ? (await newestMatchingRow(ctx.db.inventories, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
+        : null;
+      const profile = authenticated
+        ? (await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId)) ?? null
+        : null;
+      const rows = await newestByIndex(ctx.db.externalMultiplayerServers, "by_creation").take(100);
+      const servers = rows
+        .filter((row) => row.active && canonicalizeExternalMultiplayerWssUrl(row.canonicalWssUrl) === row.canonicalWssUrl)
+        .map(externalMultiplayerServerView);
+      return [presence, inventory, profile, servers] as const;
+    }),
+
+    externalMultiplayerServers: query(async (ctx) => {
+      const rows = await newestByIndex(ctx.db.externalMultiplayerServers, "by_creation").take(100);
+      return rows
+        .filter((row) => row.active && canonicalizeExternalMultiplayerWssUrl(row.canonicalWssUrl) === row.canonicalWssUrl)
+        .map(externalMultiplayerServerView);
+    }),
+
+    myExternalMultiplayerServers: query(async (ctx) => {
+      if (!hasAuthenticatedUser(ctx)) return [];
+      const rows = await newestByIndex(ctx.db.externalMultiplayerServers, "by_owner", (q) => q.eq("ownerUserId", ctx.auth.userId))
+        .take(100);
+      return rows.map((row) => ({ ...externalMultiplayerServerView(row), active: row.active }));
+    }),
+
     /** One reactive server-list snapshot; presence writes invalidate it without a client poll loop. */
     fernHollowStatus: query(async (ctx) => {
       const serverNow = Date.now();
@@ -1940,12 +2011,6 @@ export default capsule({
         return { available: true, username: validation.username };
       }
       return { available: false, username: validation.username, reason: "taken" };
-    }),
-
-    recentChat: query(async (ctx) => {
-      const newest = await newestByIndex(ctx.db.chatMessages, "by_sent_at")
-        .take(RECENT_CHAT_LIMIT);
-      return newest.reverse();
     }),
 
     worldClock: query(async (ctx) => {
@@ -5375,6 +5440,134 @@ export default capsule({
       return result;
     }),
 
+    registerExternalMultiplayerServer: mutation(async (ctx, rawServer: unknown) => {
+      if (!hasAuthenticatedUser(ctx)) return { ok: false, reason: BS.authenticationRequired };
+      const profileRows = await newestMatchingRows(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId);
+      const profile = profileRows.length === 1 ? profileRows[0] : null;
+      if (!profile) return { ok: false, reason: "profile_required" };
+      const validation = validateExternalMultiplayerServerInput(rawServer);
+      if (!validation.ok) return validation;
+      const existingRows = await newestMatchingRows(
+        ctx.db.externalMultiplayerServers,
+        "by_wss_url",
+        "canonicalWssUrl",
+        validation.canonicalWssUrl,
+      );
+      if (existingRows.length > 0) {
+        return existingRows[0].ownerUserId === ctx.auth.userId
+          ? { ok: false, reason: "already_registered", server: externalMultiplayerServerView(existingRows[0]) }
+          : { ok: false, reason: "wss_url_taken" };
+      }
+      const owned = await newestByIndex(ctx.db.externalMultiplayerServers, "by_owner", (q) => q.eq("ownerUserId", ctx.auth.userId))
+        .take(21);
+      if (owned.length >= 20) return { ok: false, reason: "server_limit" };
+      const serverCredential = newExternalMultiplayerServerCredential();
+      if (!serverCredential) return { ok: false, reason: "secure_random_unavailable" };
+      const credentialHash = await hashExternalMultiplayerSecret(serverCredential).catch(() => null);
+      if (!credentialHash) return { ok: false, reason: "secure_hash_unavailable" };
+      const credentialCollision = await newestMatchingRow(
+        ctx.db.externalMultiplayerServers,
+        "by_credential",
+        "credentialHash",
+        credentialHash,
+      );
+      if (credentialCollision) return { ok: false, reason: "secure_random_collision" };
+      const server = await ctx.db.externalMultiplayerServers.insert({
+        ownerUserId: ctx.auth.userId,
+        name: validation.name,
+        description: validation.description,
+        canonicalWssUrl: validation.canonicalWssUrl,
+        credentialHash,
+        active: true,
+      });
+      return { ok: true, server: externalMultiplayerServerView(server), serverCredential };
+    }),
+
+    rotateExternalMultiplayerServerCredential: mutation(async (ctx, serverId: string) => {
+      if (!hasAuthenticatedUser(ctx)) return { ok: false, reason: BS.authenticationRequired };
+      const server = typeof serverId === "string" && serverId.length <= 128
+        ? await ctx.db.externalMultiplayerServers.get(serverId)
+        : null;
+      if (!server || server.ownerUserId !== ctx.auth.userId) return { ok: false, reason: "server_not_found" };
+      const serverCredential = newExternalMultiplayerServerCredential();
+      if (!serverCredential) return { ok: false, reason: "secure_random_unavailable" };
+      const credentialHash = await hashExternalMultiplayerSecret(serverCredential).catch(() => null);
+      if (!credentialHash) return { ok: false, reason: "secure_hash_unavailable" };
+      const collision = await newestMatchingRow(
+        ctx.db.externalMultiplayerServers,
+        "by_credential",
+        "credentialHash",
+        credentialHash,
+      );
+      if (collision) return { ok: false, reason: "secure_random_collision" };
+      await ctx.db.externalMultiplayerServers.update(server.id, { credentialHash });
+      return { ok: true, server: externalMultiplayerServerView(server), serverCredential };
+    }),
+
+    setExternalMultiplayerServerActive: mutation(async (ctx, serverId: string, active: boolean) => {
+      if (!hasAuthenticatedUser(ctx)) return { ok: false, reason: BS.authenticationRequired };
+      if (typeof active !== "boolean") return { ok: false, reason: "invalid_request" };
+      const server = typeof serverId === "string" && serverId.length <= 128
+        ? await ctx.db.externalMultiplayerServers.get(serverId)
+        : null;
+      if (!server || server.ownerUserId !== ctx.auth.userId) return { ok: false, reason: "server_not_found" };
+      const updated = await ctx.db.externalMultiplayerServers.update(server.id, { active });
+      return { ok: true, server: { ...externalMultiplayerServerView(updated ?? server), active } };
+    }),
+
+    createExternalMultiplayerJoinTicket: mutation(async (ctx, serverId: string) => {
+      const serverNow = Date.now();
+      if (!hasAuthenticatedUser(ctx)) {
+        return { ok: false, reason: BS.authenticationRequired, serverNow };
+      }
+      const profileRows = await newestMatchingRows(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId);
+      const profile = profileRows.length === 1 ? profileRows[0] : null;
+      if (!profile) return { ok: false, reason: "profile_required", serverNow };
+      const server = typeof serverId === "string" && serverId.length <= 128
+        ? await ctx.db.externalMultiplayerServers.get(serverId)
+        : null;
+      if (!server || !server.active
+        || canonicalizeExternalMultiplayerWssUrl(server.canonicalWssUrl) !== server.canonicalWssUrl) {
+        return { ok: false, reason: "server_not_found", serverNow };
+      }
+      const ticket = newExternalMultiplayerJoinTicket();
+      if (!ticket) return { ok: false, reason: "secure_random_unavailable", serverNow };
+      const ticketHash = await hashExternalMultiplayerSecret(ticket).catch(() => null);
+      if (!ticketHash) return { ok: false, reason: "secure_hash_unavailable", serverNow };
+      const collision = await newestMatchingRow(
+        ctx.db.externalMultiplayerJoinTickets,
+        "by_ticket",
+        "ticketHash",
+        ticketHash,
+      );
+      if (collision) return { ok: false, reason: "secure_random_collision", serverNow };
+      const prior = await newestByIndex(ctx.db.externalMultiplayerJoinTickets, "by_user_server", (q) => (
+        q.eq("userId", ctx.auth.userId).eq("serverId", server.id)
+      )).take(8);
+      for (const row of prior) await ctx.db.externalMultiplayerJoinTickets.delete(row.id);
+      const expired = await oldestByIndex(ctx.db.externalMultiplayerJoinTickets, "by_expiry", (q) => (
+        q.lte("expiresAt", String(serverNow))
+      )).take(8);
+      for (const row of expired) await ctx.db.externalMultiplayerJoinTickets.delete(row.id);
+      const expiresAt = serverNow + EXTERNAL_MULTIPLAYER_TICKET_TTL_MS;
+      await ctx.db.externalMultiplayerJoinTickets.insert({
+        ticketHash,
+        serverId: server.id,
+        userId: ctx.auth.userId,
+        username: profile.username,
+        issuedAt: String(serverNow),
+        expiresAt: String(expiresAt),
+      });
+      return {
+        ok: true,
+        ticket,
+        serverId: server.id,
+        canonicalWssUrl: server.canonicalWssUrl,
+        expiresAt,
+        serverNow,
+      };
+    }),
+
     claimUsername: mutation(async (ctx, requestedUsername: string) => {
       if (!hasAuthenticatedUser(ctx)) {
         return { ok: false, reason: BS.authenticationRequired };
@@ -5404,51 +5597,75 @@ export default capsule({
       return { ok: true, profile };
     }),
 
-    sendChat: mutation(async (ctx, rawMessage: string) => {
-      if (!hasAuthenticatedUser(ctx)) {
-        return { ok: false, reason: BS.authenticationRequired };
-      }
-      const validation = validateChatMessage(rawMessage);
-      if (!validation.ok) return { ok: false, reason: validation.reason };
-
-      const profile = await newestMatchingRow(ctx.db.profiles, BS.byUser, BS.userId, ctx.auth.userId);
-      if (!profile) return { ok: false, reason: "profile_required" };
-
-      const previous = await newestMatchingRow(ctx.db.chatMessages, "by_user_sent_at", BS.userId, ctx.auth.userId);
-      const now = Date.now();
-      const elapsed = previous ? now - Number(previous.sentAt) : CHAT_RATE_LIMIT_MS;
-      if (elapsed < CHAT_RATE_LIMIT_MS) {
-        return { ok: false, reason: BS.rateLimited, retryAfterMs: CHAT_RATE_LIMIT_MS - elapsed };
-      }
-
-      const rule = validation.message.match(/^\/gamerule\s+doDaylightCycle\s+(true|false)$/i);
-      if (rule) {
-        // The earliest immutable profile owns shared-world operator commands.
-        const owner = await oldestByIndex(ctx.db.profiles, "by_creation").first();
-        if (owner?.userId !== ctx.auth.userId) return { ok: false, reason: "permission" };
-        const existing = await newestMatchingRow(ctx.db.worldClock, "by_key", "clockKey", WORLD_CLOCK_KEY);
-        const current = worldClockSnapshot(existing, now);
-        const enabled = rule[1].toLowerCase() === "true";
-        const value = {
-          clockKey: WORLD_CLOCK_KEY,
-          epochMs: String(enabled ? now : -now),
-          epochPhase: String(worldPhaseAt(now, current.epochMs, current.epochPhase, current.cycleLengthMs)),
-        };
-        if (existing) await ctx.db.worldClock.update(existing.id, value);
-        else await ctx.db.worldClock.insert(value);
-      }
-
-      const message = await ctx.db.chatMessages.insert({
-        userId: ctx.auth.userId,
-        username: rule ? "System" : profile.username,
-        message: rule ? `Daylight cycle ${rule[1].toLowerCase()}.` : validation.message,
-        sentAt: String(now)
-      });
-      return { ok: true, message };
-    })
   },
 
   endpoints: {
-    status: endpoint({ method: "GET", path: "/api/status" }, () => text("lakecraft:ok"))
+    status: endpoint({ method: "GET", path: "/api/status" }, () => text("lakecraft:ok")),
+
+    redeemExternalMultiplayerJoinTicket: endpoint(
+      { method: "POST", path: "/api/multiplayer/redeem-join-ticket" },
+      async (ctx, req) => {
+        const noStore = { "Cache-Control": "private, no-store" };
+        const serverCredential = bearerExternalMultiplayerCredential(req.headers.get("authorization"));
+        if (!serverCredential) return json({ ok: false, reason: "unauthorized" }, { status: 401, headers: noStore });
+        const credentialHash = await hashExternalMultiplayerSecret(serverCredential).catch(() => null);
+        if (!credentialHash) return json({ ok: false, reason: "unavailable" }, { status: 503, headers: noStore });
+        const servers = await newestMatchingRows(
+          ctx.db.externalMultiplayerServers,
+          "by_credential",
+          "credentialHash",
+          credentialHash,
+        );
+        const server = servers.length === 1 ? servers[0] : null;
+        if (!server || !server.active
+          || canonicalizeExternalMultiplayerWssUrl(server.canonicalWssUrl) !== server.canonicalWssUrl) {
+          return json({ ok: false, reason: "unauthorized" }, { status: 401, headers: noStore });
+        }
+        const bodyText = await req.text();
+        if (bodyText.length < 2 || bodyText.length > 256) {
+          return json({ ok: false, reason: "invalid_request" }, { status: 400, headers: noStore });
+        }
+        let body: unknown;
+        try {
+          body = JSON.parse(bodyText);
+        } catch {
+          return json({ ok: false, reason: "invalid_request" }, { status: 400, headers: noStore });
+        }
+        if (!body || typeof body !== "object" || Array.isArray(body)
+          || Object.keys(body).sort().join(",") !== "serverId,ticket"
+          || (body as { serverId?: unknown }).serverId !== server.id
+          || !validExternalMultiplayerJoinTicket((body as { ticket?: unknown }).ticket)) {
+          return json({ ok: false, reason: "invalid_request" }, { status: 400, headers: noStore });
+        }
+        const ticketHash = await hashExternalMultiplayerSecret((body as { ticket: string }).ticket).catch(() => null);
+        if (!ticketHash) return json({ ok: false, reason: "unavailable" }, { status: 503, headers: noStore });
+        const tickets = await newestMatchingRows(
+          ctx.db.externalMultiplayerJoinTickets,
+          "by_ticket",
+          "ticketHash",
+          ticketHash,
+        );
+        const ticket = tickets.length === 1 ? tickets[0] : null;
+        const serverNow = Date.now();
+        if (!ticket || !externalMultiplayerTicketIsRedeemable(ticket, server.id, serverNow)) {
+          if (ticket && ticket.serverId === server.id) await ctx.db.externalMultiplayerJoinTickets.delete(ticket.id);
+          return json({ ok: false, reason: "invalid_ticket" }, { status: 401, headers: noStore });
+        }
+        const profiles = await newestMatchingRows(ctx.db.profiles, BS.byUser, BS.userId, ticket.userId);
+        const profile = profiles.length === 1 ? profiles[0] : null;
+        if (!profile || profile.username !== ticket.username || profile.normalizedUsername !== ticket.username) {
+          await ctx.db.externalMultiplayerJoinTickets.delete(ticket.id);
+          return json({ ok: false, reason: "invalid_ticket" }, { status: 401, headers: noStore });
+        }
+        await ctx.db.externalMultiplayerJoinTickets.delete(ticket.id);
+        return json({
+          userId: ticket.userId,
+          displayName: profile.username,
+          ticketId: ticketHash,
+          serverId: server.id,
+          expiresAt: Number(ticket.expiresAt),
+        }, { headers: noStore });
+      },
+    )
   }
 });

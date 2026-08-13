@@ -57,7 +57,7 @@ function normalizedPhase(value: number): number {
 }
 
 /** Pure pose sampling shared by live third-person rendering and deterministic Visual Lab scrubbing. */
-export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
+export function resolvePlayerRigPose(input: PlayerRigInput, output?: PlayerRigPose): PlayerRigPose {
   const cycle = Math.sin(normalizedPhase(input.phase) * Math.PI * 2);
   const intensity = Math.max(0, Math.min(1, Number.isFinite(input.intensity) ? input.intensity! : 1));
   const headYaw = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, Number.isFinite(input.headYaw) ? input.headYaw! : 0));
@@ -78,30 +78,30 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
   // forward. These offsets are the exact displaced hip coordinates.
   const bodyYOffset = bodyPitch === 0 ? 0 : 0.75 * (Math.cos(bodyPitch) - 1);
   const bodyZOffset = bodyPitch === 0 ? 0 : -0.75 * Math.sin(bodyPitch);
-  if (input.motion === "idle") {
-    const breath = cycle * 0.018 * intensity;
-    return Object.freeze({
-      headYaw,
-      headPitch,
-      rightArmPitch: -0.055 + breath - actionSwing,
-      rightArmYaw: actionSweep,
-      leftArmPitch: 0.04 - breath,
-      rightLegPitch: 0,
-      leftLegPitch: 0,
-      bodyPitch,
-      bodyYOffset,
-      bodyZOffset,
-    });
+  const idle = input.motion === "idle";
+  const swing = idle ? cycle * 0.018 * intensity : cycle * 0.78 * intensity;
+  const values = output as { -readonly [Key in keyof PlayerRigPose]: PlayerRigPose[Key] } | undefined;
+  if (values) {
+    values.headYaw = headYaw;
+    values.headPitch = headPitch;
+    values.rightArmPitch = (idle ? -0.055 + swing : swing) - actionSwing;
+    values.rightArmYaw = actionSweep;
+    values.leftArmPitch = idle ? 0.04 - swing : -swing;
+    values.rightLegPitch = idle ? 0 : -swing;
+    values.leftLegPitch = idle ? 0 : swing;
+    values.bodyPitch = bodyPitch;
+    values.bodyYOffset = bodyYOffset;
+    values.bodyZOffset = bodyZOffset;
+    return output!;
   }
-  const swing = cycle * 0.78 * intensity;
   return Object.freeze({
     headYaw,
     headPitch,
-    rightArmPitch: swing - actionSwing,
+    rightArmPitch: (idle ? -0.055 + swing : swing) - actionSwing,
     rightArmYaw: actionSweep,
-    leftArmPitch: -swing,
-    rightLegPitch: -swing,
-    leftLegPitch: swing,
+    leftArmPitch: idle ? 0.04 - swing : -swing,
+    rightLegPitch: idle ? 0 : -swing,
+    leftLegPitch: idle ? 0 : swing,
     bodyPitch,
     bodyYOffset,
     bodyZOffset,
@@ -109,15 +109,18 @@ export function resolvePlayerRigPose(input: PlayerRigInput): PlayerRigPose {
 }
 
 /** Stable time-to-cycle mapping; no renderer-owned timer or random state is required. */
+export function playerRigCycleMilliseconds(mode: PlayerMovementMode): number {
+  return mode === "sprint" ? 420 : mode === "sneak" ? 900 : mode === "ladder" ? 720 : 600;
+}
+
 export function playerRigInputForMovement(mode: PlayerMovementMode, timeMs: number, moving = mode !== "idle"): PlayerRigInput {
   const time = Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0;
   const crouching = mode === "sneak";
   if (mode === "idle" || !moving) {
     return Object.freeze({ motion: "idle", phase: time / 2_400, ...(crouching ? { crouching: true } : {}) });
   }
-  const cycleMs = mode === "sprint" ? 420 : mode === "sneak" ? 900 : mode === "ladder" ? 720 : 600;
   const intensity = mode === "sprint" ? 1 : mode === "sneak" ? 0.45 : mode === "ladder" ? 0.65 : 0.82;
-  return Object.freeze({ motion: "walk", phase: time / cycleMs, intensity, ...(crouching ? { crouching: true } : {}) });
+  return Object.freeze({ motion: "walk", phase: time / playerRigCycleMilliseconds(mode), intensity, ...(crouching ? { crouching: true } : {}) });
 }
 
 function pitchForPart(part: PlayerRigPart, pose: PlayerRigPose): number {

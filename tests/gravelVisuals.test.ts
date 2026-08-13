@@ -4,7 +4,7 @@ import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace, type BlockFace } from "../client/game/blockTextures.ts";
 import { TEXTURE_ATLAS_CELLS, TEXTURE_ATLAS_COLUMNS, TEXTURE_ATLAS_NAMES, TEXTURE_ATLAS_RGBA, TEXTURE_TILE_SIZE } from "../client/game/generated/textureAtlas.ts";
 import { BLOCK } from "../client/game/types.ts";
-import { REMOTE_HELD_ITEM_MAX_RECTS, remoteHeldItemRects } from "../client/game/remotePlayerRenderer.ts";
+import { remoteHeldItemGeometry } from "../client/game/remotePlayerRenderer.ts";
 import { decodePng } from "../scripts/png-rgba.mjs";
 
 const installedBlocks = (JSON.parse(readFileSync(
@@ -53,13 +53,9 @@ assert.ok(heldSource.includes("blockTextureForFace(block, face[0])") && heldSour
 assert.match(heldSource, /blockTextureForFace\(block, face\[0\]\)/,
   "the block branch remains atlas-backed even though non-block items use canonical icon art");
 
-const remoteGravel = remoteHeldItemRects("gravel");
-assert.ok(remoteGravel.length >= 16 && remoteGravel.length <= REMOTE_HELD_ITEM_MAX_RECTS,
-  "remote gravel keeps a dense but strictly bounded canonical pebble mip");
-const gravelPalette = new Set(gravelArt.runs.map((run) => run.color.toLowerCase()));
-for (const rect of remoteGravel) {
-  const color = `#${rect.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, "0")).join("")}`;
-  assert.ok(gravelPalette.has(color), "remote gravel uses only canonical catalog colors");
-}
+const remoteGravel = remoteHeldItemGeometry("gravel");
+assert.equal(remoteGravel.length / 6, 576, "remote gravel is a bounded 4x4-per-face authored-atlas cube");
+assert.ok(new Set(Array.from({ length: remoteGravel.length / 6 }, (_, vertex) => remoteGravel[vertex * 6 + 2])).size > 1,
+  "remote gravel retains front/back depth instead of becoming a flat hand quad");
 
 console.log("lakecraft gravel visual tests: ok");

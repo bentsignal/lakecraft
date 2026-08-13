@@ -4,25 +4,41 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// These receiver-independent native functions dominate the remaining repeated
-// syntax in the closed production client. Snapshotting their callable values
+// These receiver-independent native statics dominate the remaining repeated
+// syntax in the closed production client. Snapshotting their values
 // once is lossless for Lakecraft, whose bundle neither shadows nor mutates the
 // corresponding globals. The ordered occurrence fingerprint makes that claim
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
-  Object.freeze(["Math", "abs", 94]),
-  Object.freeze(["Math", "cos", 54]),
-  Object.freeze(["Math", "ceil", 41]),
-  Object.freeze(["Math", "floor", 244]),
-  Object.freeze(["Math", "hypot", 38]),
-  Object.freeze(["Math", "max", 278]),
-  Object.freeze(["Math", "min", 208]),
-  Object.freeze(["Math", "round", 34]),
-  Object.freeze(["Math", "sin", 67]),
-  Object.freeze(["Object", "freeze", 162]),
+  Object.freeze(["Math", "abs", 90]),
+  Object.freeze(["Math", "cos", 52]),
+  Object.freeze(["Math", "ceil", 34]),
+  Object.freeze(["Math", "floor", 240]),
+  Object.freeze(["Math", "hypot", 35]),
+  Object.freeze(["Math", "imul", 35]),
+  Object.freeze(["Math", "max", 242]),
+  Object.freeze(["Math", "min", 198]),
+  Object.freeze(["Math", "round", 29]),
+  Object.freeze(["Math", "sin", 64]),
+  Object.freeze(["Math", "PI", 108]),
+  Object.freeze(["Object", "freeze", 159]),
+  Object.freeze(["Object", "keys", 31]),
+  // Query bridges reject Lakebed's [] loading sentinel before publishing data.
+  Object.freeze(["Array", "isArray", 78]),
+  Object.freeze(["Number", "isFinite", 259]),
+  // Realtime PvP validates integral damage and health at the untrusted wire boundary.
+  Object.freeze(["Number", "isInteger", 51]),
+  Object.freeze(["Number", "isSafeInteger", 43]),
+  Object.freeze(["Number", "MAX_SAFE_INTEGER", 20]),
+  Object.freeze(["Number", "NEGATIVE_INFINITY", 25]),
+  Object.freeze(["Number", "POSITIVE_INFINITY", 13]),
+  Object.freeze(["Number", "parseInt", 10]),
+  Object.freeze(["Date", "now", 56]),
+  Object.freeze(["JSON", "stringify", 19]),
+  Object.freeze(["JSON", "parse", 11]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_220;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "1c76baa5845704763faad5b612ba7261790d90174a4944a9432ad543985e0801";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_902;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "b2e6c654e47f4061f01a2d3a99de3847e8754d2674d6713d66b11ce79a96b713";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -120,12 +136,6 @@ export async function compactClientBuiltinAliases(source, expected = PRODUCTION_
       }
       const key = `${node.expression.text}.${node.name.text}`;
       if (ALIAS_INDEX.has(key)) {
-        const call = node.parent;
-        if (!call || !ts.isCallExpression(call) || call.expression !== node
-          || call.questionDotToken || node.questionDotToken) {
-          fail(`${key} is used outside a direct, non-optional call (${ts.SyntaxKind[call?.kind] ?? "missing"}: `
-            + `${source.slice(Math.max(0, node.getStart(sourceFile) - 24), Math.min(source.length, node.end + 36))})`);
-        }
         counts.set(key, counts.get(key) + 1);
         occurrences.push({
           end: node.end,

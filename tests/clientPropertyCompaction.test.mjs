@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   COMPACT_CLIENT_COMPUTED_STORAGE_PROPERTIES,
   COMPACT_CLIENT_PROPERTY_MANGLE_CACHE,
@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 618, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 628, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "4eed9b2370a1a12ac98bf6f44352731d50668fb5f00f8b5776a5ec339c9c7ab8",
+  "be9778bb5846cbd639d32ad1fcd566b8679d36c9b769c79e1643cbd67c516dd0",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -81,41 +81,30 @@ assert.deepEqual(
 const reviewedPrivatePropertyPaths = {
   accumulatorSeconds: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
   activePlayMsSinceSave: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
-  appearances: { declarations: ["client/multiplayerSegmentClient.ts"], uses: ["client/multiplayerSegmentClient.ts"] },
   applyConfirmedMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"] },
-  applyConfirmedPlayerHitMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"] },
+  applyConfirmedPlayerHitMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts"] },
   autosaveDue: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
-  awaitingInventoryRevision: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
   blockReads: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
-  captureIntervalMs: { declarations: ["client/multiplayerSegmentClient.ts"], uses: ["client/multiplayerSegmentClient.ts"] },
   changeGameMode: { declarations: ["client/singleplayer/localCommands.ts"], uses: ["client/singleplayer/localCommands.ts"] },
-  chat: { declarations: ["client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/index.tsx", "client/multiplayerGameplay.ts"] },
-  closePause: { declarations: ["client/singleplayer/sessionState.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"] },
-  compositeIntervalMs: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/multiplayerSegmentClient.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/index.tsx", "client/multiplayerSegmentClient.ts"] },
+  chat: { declarations: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"] },
+  closePause: { declarations: ["client/gameplay/pointerSession.ts"], uses: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"] },
   creation: { declarations: ["client/singleplayer/localWorldBrowserIssue.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts"] },
-  cursors: { declarations: ["client/multiplayerSegmentClient.ts"], uses: ["client/multiplayerSegmentClient.ts"] },
-  death: { declarations: ["client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/index.tsx", "client/multiplayerGameplay.ts"] },
-  decision: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
+  death: { declarations: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"] },
   depleted: { declarations: ["client/singleplayer/localPlacement.ts"], uses: ["client/singleplayer/localPlacement.ts"] },
   dirtyRevision: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
-  foreground: { declarations: ["client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/index.tsx", "client/multiplayerGameplay.ts"] },
-  getPose: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"] },
+  foreground: { declarations: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"] },
+  getPose: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/RealtimeMultiplayerTransport.tsx", "client/game/types.ts", "client/game/voxelEngine.ts", "client/realtimeMultiplayer.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/RealtimeMultiplayerTransport.tsx", "client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/realtimeMultiplayer.ts", "client/singleplayer/PerformanceBenchmark.tsx", "client/singleplayer/SinglePlayerApp.tsx"] },
   giveItems: { declarations: ["client/singleplayer/localCommands.ts"], uses: ["client/singleplayer/localCommands.ts"] },
-  ignoreEscapeUntil: { declarations: ["client/singleplayer/sessionState.ts"], uses: ["client/singleplayer/sessionState.ts"] },
+  ignoreEscapeUntil: { declarations: ["client/gameplay/pointerSession.ts"], uses: ["client/gameplay/pointerSession.ts"] },
   inWorld: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
-  intentionalReleasePending: { declarations: ["client/singleplayer/sessionState.ts"], uses: ["client/singleplayer/sessionState.ts"] },
+  intentionalReleasePending: { declarations: ["client/gameplay/pointerSession.ts"], uses: ["client/gameplay/pointerSession.ts"] },
   lastSavedAt: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/localWorldRegistry.ts"] },
   listing: { declarations: ["client/singleplayer/localWorldBrowserIssue.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts"] },
   movedSteps: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
-  nextSequence: { declarations: ["client/multiplayerSegmentClient.ts"], uses: ["client/multiplayerSegmentClient.ts"] },
   offsetZ: { declarations: ["client/game/mobKnockback.ts"], uses: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"] },
-  onConnected: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
   onJoinSingleplayer: { declarations: ["client/index.tsx", "client/lobby/LobbyScreen.tsx", "client/singleplayer/LocalWorldBrowser.tsx"], uses: ["client/index.tsx", "client/lobby/LobbyScreen.tsx", "client/singleplayer/LocalWorldBrowser.tsx"] },
-  onMobWorldAuthority: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
-  onRemotePlayers: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
-  onResult: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
-  onTelemetry: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
-  openPause: { declarations: ["client/singleplayer/sessionState.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"] },
+  onRemotePlayers: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/RealtimeMultiplayerTransport.tsx", "client/realtimeMultiplayer.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/RealtimeMultiplayerTransport.tsx", "client/realtimeMultiplayer.ts"] },
+  openPause: { declarations: ["client/gameplay/pointerSession.ts"], uses: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"] },
   optimisticEdit: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
   pauseEpoch: { declarations: ["client/index.tsx", "client/multiplayerGameplay.ts"], uses: ["client/index.tsx", "client/multiplayerGameplay.ts"] },
   plan: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/game/contactSheetExport.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/game/contactSheetExport.ts"] },
@@ -123,9 +112,7 @@ const reviewedPrivatePropertyPaths = {
   previousOffsetX: { declarations: ["client/game/mobKnockback.ts"], uses: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"] },
   previousOffsetZ: { declarations: ["client/game/mobKnockback.ts"], uses: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"] },
   processedSteps: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
-  publishIntervalMs: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/multiplayerSegmentClient.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/index.tsx", "client/multiplayerSegmentClient.ts"] },
-  receivedAt: { declarations: ["client/components/FurnaceDrawer.tsx", "client/index.tsx"], uses: ["client/components/FurnaceDrawer.tsx", "client/index.tsx"] },
-  registerActionSink: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
+  receivedAt: { declarations: ["client/components/FurnaceDrawer.tsx"], uses: ["client/components/FurnaceDrawer.tsx"] },
   registry: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldRegistry.ts"] },
   registryLoad: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/localWorldRegistry.ts"] },
   removedChest: { declarations: ["client/singleplayer/localContainers.ts"], uses: ["client/singleplayer/localContainers.ts"] },
@@ -134,20 +121,17 @@ const reviewedPrivatePropertyPaths = {
   savedRevision: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
   seedText: { declarations: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts", "client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts", "client/singleplayer/localWorldRegistry.ts"] },
   setInWorld: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
-  showCaptureAffordance: { declarations: ["client/singleplayer/sessionState.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"] },
-  stalePlayers: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/multiplayerSegmentClient.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/index.tsx", "client/multiplayerSegmentClient.ts"] },
-  stalestRemoteMs: { declarations: ["client/MultiplayerSegmentTransport.tsx", "client/multiplayerSegmentClient.ts"], uses: ["client/MultiplayerSegmentTransport.tsx", "client/index.tsx", "client/multiplayerSegmentClient.ts"] },
+  showCaptureAffordance: { declarations: ["client/gameplay/pointerSession.ts"], uses: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"] },
   substeps: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
   transportFailures: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
   usedChars: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/localWorldRegistry.ts"] },
-  visuals: { declarations: ["client/MultiplayerSegmentTransport.tsx"], uses: ["client/MultiplayerSegmentTransport.tsx"] },
   wasActive: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/saveCadence.ts"] },
   woken: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/localDropGravity.ts"] },
 };
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 554 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 580 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
@@ -184,7 +168,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "3cdf5222f428e9474983a27bce59e55d6acecb637d33cf24e026982137088a5f",
+  "abc5e5d4ba44049ff30202afafb06135f77b1e3f7f56ca027a60c2751e62a73b",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
@@ -210,14 +194,21 @@ assert.deepEqual(testQuotedNames, [...testQuotedNames].sort(), "test-quoted allo
 assert.equal(new Set(testQuotedNames).size, testQuotedNames.length, "test-quoted allowlist stays unique");
 const testQuotedSet = new Set(testQuotedNames);
 const computedStorageNames = [...COMPACT_CLIENT_COMPUTED_STORAGE_PROPERTIES];
-assert.deepEqual(computedStorageNames, ["dataUrl", "model"], "only the skin wire codec has computed storage keys");
+const reviewedComputedBoundaryPaths = {
+  dataUrl: ["client/game/playerSkin.ts"],
+  model: ["client/game/playerSkin.ts"],
+  skinId: ["client/realtimeMultiplayer.ts"],
+  skinModel: ["client/realtimeMultiplayer.ts"],
+  skinPixels: ["client/realtimeMultiplayer.ts"],
+};
+assert.deepEqual(computedStorageNames, Object.keys(reviewedComputedBoundaryPaths), "only reviewed JSON codecs have computed keys");
 const computedStorageSet = new Set(computedStorageNames);
 for (const name of computedStorageNames) {
   assert.ok(COMPACT_CLIENT_PROPERTY_PATTERN.test(name), `${name} remains globally compactable`);
   assert.deepEqual(
     (analysis.quotedPropertyPaths[name] ?? []).filter((path) => !path.startsWith("tests/")),
-    ["client/game/playerSkin.ts"],
-    `${name} has exactly one reviewed computed-literal storage boundary`,
+    reviewedComputedBoundaryPaths[name],
+    `${name} has exactly one reviewed computed-literal JSON boundary`,
   );
   assert.equal(
     analysis.jsonStringifyPropertyNames.includes(name),
@@ -230,8 +221,34 @@ const expectedCandidateNames = [
     && !computedStorageSet.has(name)
     && !(name in COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE)),
   // These remain source-live but are tree-shaken from the final client entry.
+  "applyConfirmedMobKnockback",
+  "frameTimeMs",
+  "framesOver16_7Ms",
+  "framesOver25Ms",
+  "framesOver50Ms",
+  "maxFrameMs",
+  "maxLoadedChunks",
+  "maxPendingMeshRebuilds",
+  "maxPendingTerrainLoads",
+  "maxPendingTerrainUnloads",
+  "meanDrawCalls",
+  "meanFps",
+  "meanMeshRebuildMs",
+  "meanRenderMs",
+  "meanTerrainStreamingMs",
+  "meanUpdateMs",
+  "meanVisibleChunks",
+  "medianFrameMs",
   "onDismissControls",
   "onOpenHelp",
+  "onePercentLowFps",
+  "p95FrameMs",
+  "p95MeshRebuildMs",
+  "p95RenderMs",
+  "p95TerrainStreamingMs",
+  "p95UpdateMs",
+  "p99FrameMs",
+  "receivedAt",
   "showControls",
 ].sort();
 assert.deepEqual(
@@ -258,37 +275,39 @@ for (const name of testQuotedNames) {
   assert.ok(quotedTestPaths.length > 0, `${name} remains allowlisted only for test source assertions`);
 }
 const reviewedRuntimePaths = {
-  acceptWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
-  applyConfirmedMobKnockback: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
-  applyConfirmedPlayerHitMobKnockback: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
-  applyMobCombatStates: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
+  acceptWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/gameplay/authority.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  applyConfirmedPlayerHitMobKnockback: ["client/game/types.ts", "client/game/voxelEngine.ts"],
+  applyMobCombatStates: ["client/game/types.ts", "client/game/voxelEngine.ts"],
   applyWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  deathScreenOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
-  inventoryOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+  deathScreenOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
+  inventoryOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   isRangedWeaponSelected: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  messages: ["client/chat/ChatOverlay.tsx", "client/components/GameHud.tsx", "client/components/ToastSurface.tsx"],
-  mobileUnsupported: ["client/components/GameHud.tsx", "client/index.tsx", "client/multiplayerGameplay.ts"],
+  messages: [
+    "client/chat/ChatOverlay.tsx",
+    "client/components/GameHud.tsx",
+    "client/components/ToastSurface.tsx",
+    "client/realtimeChat.ts",
+    "client/realtimeMultiplayer.ts",
+  ],
+  mobileUnsupported: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/index.tsx", "client/multiplayerGameplay.ts"],
   normalized: ["client/lobby/LobbyScreen.tsx"],
   offsetZ: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"],
   onLocalCreeperExplosion: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   onLocalMobHit: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
-  onPlayerDamage: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
   onPoseChange: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  onRangedCancel: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
+  onRangedCancel: ["client/game/types.ts", "client/game/voxelEngine.ts"],
   onSignInWithGoogle: ["client/lobby/LobbyScreen.tsx"],
   onUseSelectedItem: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  pauseOpen: ["client/components/GameHud.tsx", "client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
-  pointerCaptureNeeded: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+  pauseOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  pointerCaptureNeeded: ["client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   previousOffsetX: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"],
   previousOffsetZ: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"],
-  realtime: ["client/index.tsx"],
   returnFocusId: ["client/components/OptionsDialog.tsx"],
-  setDayNightClock: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  setFirstPersonFeedbackHidden: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
+  setDayNightClock: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   setRespawnPoint: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
   setSelectedBlock: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
   settleFallingBlocks: ["client/game/types.ts", "client/game/voxelEngine.ts"],
-  worldModalOpen: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/sessionState.ts"],
+  worldModalOpen: ["client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
 };
 assert.deepEqual(Object.keys(reviewedRuntimePaths), testQuotedNames, "each test-quoted property has an exact path review");
 for (const [name, expectedPaths] of Object.entries(reviewedRuntimePaths)) {
@@ -517,6 +536,7 @@ for (const entryPoint of [
   "client/MultiplayerSegmentTransport.tsx",
   "client/multiplayerSegmentClient.ts",
   "client/game/playerSkin.ts",
+  "client/realtimeMultiplayer.ts",
   "client/settings.ts",
   "client/singleplayer/localSave.ts",
   "client/worldBlockEditClient.ts",
@@ -534,9 +554,26 @@ for (const entryPoint of [
   boundaryBundles.set(entryPoint, { compact, baseline });
 }
 
-async function importBundled(text) {
-  return import(`data:text/javascript;base64,${Buffer.from(text).toString("base64")}`);
+const realtimeCompact = boundaryBundles.get("client/realtimeMultiplayer.ts").compact;
+for (const [key, exactCount] of [["skinId", 4], ["skinModel", 4], ["skinPixels", 2]]) {
+  assert.equal(
+    realtimeCompact.split(key).length - 1,
+    exactCount,
+    `compact realtime input/output codecs retain every literal ${key} wire boundary`,
+  );
 }
+assert.match(realtimeCompact, /skinId/);
+assert.match(realtimeCompact, /skinModel/);
+assert.match(realtimeCompact, /skinPixels/);
+
+const bundledModuleDirectory = mkdtempSync(join(tmpdir(), "lakecraft-compact-modules-"));
+let bundledModuleSequence = 0;
+async function importBundled(text) {
+  const path = join(bundledModuleDirectory, `module-${bundledModuleSequence++}.mjs`);
+  writeFileSync(path, text);
+  return import(pathToFileURL(path).href);
+}
+process.on("exit", () => rmSync(bundledModuleDirectory, { recursive: true, force: true }));
 
 const runtimePropertyProbe = await build({
   ...commonBuildOptions,

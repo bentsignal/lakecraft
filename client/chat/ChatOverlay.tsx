@@ -154,7 +154,18 @@ export function ChatOverlay({
   }
 
   return (
-    <section className="lc-chat-dialog" role="dialog" aria-label={surfaceLabel} aria-modal="false">
+    <section
+      className="lc-chat-dialog"
+      role="dialog"
+      aria-label={surfaceLabel}
+      aria-modal="false"
+      onKeyDown={(event) => {
+        if (event.code !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
+    >
       <ChatStyles />
       <ul className="lc-chat-history" ref={historyRef} role="log" aria-live="polite" aria-relevant="additions text" aria-label={historyLabel}>
         {messages.map((message) => (

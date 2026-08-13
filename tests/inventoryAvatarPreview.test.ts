@@ -2,50 +2,25 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const drawer = readFileSync(new URL("../client/components/InventoryDrawer.tsx", import.meta.url), "utf8");
+const preview = readFileSync(new URL("../client/components/PlayerSkinPreview.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/components/HudStyles.tsx", import.meta.url), "utf8");
 
-const previewStart = drawer.indexOf('<div className="lc-player-preview"');
-const previewEnd = drawer.indexOf("</div>", previewStart) + "</div>".length;
-const previewMarkup = drawer.slice(previewStart, previewEnd);
-const previewCssStart = styles.indexOf(".lc-player-preview {");
-const previewCssEnd = styles.indexOf(".lc-inventory-window .lc-crafting-panel", previewCssStart);
-const previewCss = styles.slice(previewCssStart, previewCssEnd);
-
-assert.ok(previewStart >= 0 && previewEnd > previewStart, "inventory should retain its player preview");
-assert.equal(
-  previewMarkup.match(/<span className="lc-player-preview__/g)?.length,
-  6,
-  "preview should use exactly six lightweight body spans",
-);
-assert.equal(drawer.includes("lc-armor-score"), false, "preview should not overlay debug-style armor text");
-assert.equal(drawer.includes("equippedArmorProtection"), false, "removed armor text should leave no unused import");
-
-for (const token of [
-  "perspective: 360px",
-  "transform: rotateY(-18deg)",
-  "transform-style: preserve-3d",
-  ".lc-player-preview > span::after",
-  "transform: rotateY(90deg)",
-  ".lc-player-preview__head::before",
-  "transform: rotateX(90deg)",
-]) {
-  assert.ok(previewCss.includes(token), `preview should include dimensional treatment: ${token}`);
+assert.ok(drawer.includes("<PlayerSkinPreview open={open} />"), "inventory refreshes the canonical skin portrait each time it opens");
+assert.ok(preview.includes("loadPersistedPlayerSkin(window.localStorage)"), "portrait loads the user's selected skin");
+assert.ok(preview.includes("createLakecraftDefaultSkinPixels()"), "installed standard skin is the no-selection fallback");
+assert.ok(preview.includes("}, [open]);"), "skin changes made in the visual lab appear on the next inventory open");
+assert.ok(preview.includes("context.imageSmoothingEnabled = false"), "skin pixels remain nearest-neighbor crisp");
+assert.ok(preview.includes("const parts = ["), "portrait keeps its canonical modern-skin UV table flat and compact");
+for (const uv of ["8,8,8,8,24,4", "20,20,8,12,24,36", "44,20,armWidth,12,leftArmX,36", "20,52,4,12,40,84"]) {
+  assert.ok(preview.includes(uv), `portrait retains canonical modern-skin UV tuple: ${uv}`);
 }
-
-assert.match(previewCss, /\.lc-player-preview__head \{[^}]*height: 40px;[^}]*width: 40px;/);
-assert.match(previewCss, /\.lc-player-preview__body \{[^}]*height: 60px;[^}]*width: 40px;/);
-assert.match(previewCss, /\.lc-player-preview__arm \{[^}]*height: 60px;[^}]*width: 20px;/);
-assert.match(previewCss, /\.lc-player-preview__leg \{[^}]*height: 60px;[^}]*width: 20px;/);
-assert.ok(previewCss.includes("#4b2d1c"), "head should include a blocky hair layer");
-assert.ok(previewCss.includes("#45658a"), "head should include pixel eyes");
-
-assert.equal(/animation|@keyframes|skin/i.test(previewCss), false, "preview should add no timer or skin pipeline");
-assert.equal(/<canvas|<img/i.test(previewMarkup), false, "preview should remain CSS-only");
+assert.ok(preview.includes("index += 6"));
+assert.ok(preview.includes("sample(parts[index], parts[index + 1], parts[index + 2], parts[index + 3], parts[index + 4], parts[index + 5])"));
+assert.match(styles, /\.lc-player-preview \{[^}]*image-rendering:pixelated;[^}]*min-height:192px;/);
+assert.equal(styles.includes(".lc-player-preview__head"), false, "obsolete hardcoded CSS Steve is removed");
+assert.equal(drawer.includes("lc-armor-score"), false, "preview should not overlay debug-style armor text");
 
 const compactMedia = styles.slice(styles.indexOf("@media (max-width: 560px)"));
-assert.ok(
-  compactMedia.includes(".lc-equipment-panel { display: none; }"),
-  "compact view should continue hiding the preview instead of crowding the inventory",
-);
+assert.ok(compactMedia.includes(".lc-equipment-panel { display: none; }"), "compact inventory still hides the portrait");
 
-console.log("inventory avatar preview checks passed");
+console.log("inventory canonical skin preview checks passed");

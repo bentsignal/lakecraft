@@ -53,7 +53,7 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "3dd8a36cfba1f5976987745473269c759fdc616586673b878c40f27ad2014c23",
+  "6aa0ea83cf8ed1d032b2636d38a9510f4534c361a76605989dbf8a78e03dd453",
   "removing containment declarations reproduces the reviewed integrated server behavior source",
 );
 
@@ -85,10 +85,10 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-assert.equal(runtimeFiles.length, 161, "reviewed main runtime file set changed");
+assert.equal(runtimeFiles.length, 180, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "b121c3c84281f1874341130b7a720ccb0ca945c3727984416ea8ed62f30fe088",
-  "runtime sources match the reviewed integrated realism, third-person visual, loading-state, and paced-terrain boundary");
+  "070cde6cc2b0d7fd861204984648e7eafc938c751b858b5a8260f7a5d7007c2a",
+  "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))
   .map((path) => read(path)).join("\n");

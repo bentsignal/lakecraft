@@ -66,15 +66,10 @@ const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "ut
 const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
-for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
-  assert.match(source, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"/, `${label} maps engine stone bricks to the canonical game identity`);
-  assert.match(source, /stone_bricks:\s*BLOCK\.STONE_BRICKS/, `${label} maps the block item into engine block 26`);
-  assert.match(source, /BLOCK\.STONE_BRICKS[^\n]*return\s+"stone"/, `${label} uses the stone mining, placement, and footstep surface`);
-  assert.doesNotMatch(source, /(?:setInterval|setTimeout|useMutation)[^\n]*stone_bricks|stone_bricks[^\n]*(?:setInterval|setTimeout|useMutation)/i,
-    `${label} adds no dedicated stone-brick traffic or timer loop`);
-}
-assert.match(client, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"[\s\S]*?stone_bricks:\s*BLOCK\.STONE_BRICKS/,
-  "multiplayer round-trips engine, protocol, game, and item identities");
+const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
+assert.match(catalog, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"/);
+assert.match(catalog, /stone_bricks:\s*BLOCK\.STONE_BRICKS/);
+assert.match(catalog, /BLOCK\.STONE_BRICKS[^\n]*BLOCK\.STONE_BRICK_SLAB[^\n]*BLOCK\.BRICKS[^\n]*return "stone"/);
 assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/, "single-player saves retain stone bricks and every newer append-only block ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));

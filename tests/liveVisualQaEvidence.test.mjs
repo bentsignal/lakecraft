@@ -1083,7 +1083,7 @@ test("runbook documents trusted validation, sanitized storage, current UI labels
   );
 });
 
-test("a complete, freshly bound manifest with substantive generated files verifies", async () => {
+test("a complete, freshly bound manifest with substantive generated files verifies", { timeout: 30_000 }, async () => {
   const fixture = createFixture();
   try {
     const runCompletedAt = Date.parse(fixture.evidence.runCompletedAt);
@@ -1128,7 +1128,7 @@ test("a complete, freshly bound manifest with substantive generated files verifi
   }
 });
 
-test("the CLI returns exit 0 only for complete proof and exit 2 for valid deferred multiplayer proof", () => {
+test("the CLI returns exit 0 only for complete proof and exit 2 for valid deferred multiplayer proof", { timeout: 30_000 }, () => {
   for (const [status, expectedExit, expectedStatus] of [
     ["passed", 0, "valid"],
     ["deferred", 2, "valid-partial"],

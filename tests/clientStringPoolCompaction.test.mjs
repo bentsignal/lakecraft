@@ -14,6 +14,7 @@ import {
   COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES,
   COMPACT_CLIENT_FIXED_IDENTITY_VALUES,
+  COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA,
   COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES,
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
@@ -21,6 +22,9 @@ import {
   COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA,
   COMPACT_CLIENT_HUMAN_GAME_SCREENSHOT_DELTA,
   COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA,
+  COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA,
+  COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA,
+  COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
@@ -30,14 +34,21 @@ import {
   COMPACT_CLIENT_LOW_FREQUENCY_SCREENSPACE_ITEM_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_THIRD_PERSON_POSE_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_BLOCK_CANVAS_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_BEDROCK_WORLD_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA,
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA,
+  COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA,
+  COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA,
   COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA,
   COMPACT_CLIENT_REPEATED_VIEWMODEL_RIG_DELTA,
   COMPACT_CLIENT_REPEATED_GAME_SCREENSHOT_DELTA,
@@ -45,6 +56,7 @@ import {
   COMPACT_CLIENT_REPEATED_THIRD_PERSON_POSE_DELTA,
   COMPACT_CLIENT_REPEATED_WORLD_LOADING_DELTA,
   COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA,
+  COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA,
   COMPACT_CLIENT_REPEATED_ATLAS_ICON_RUNTIME_DELTA,
   COMPACT_CLIENT_REPEATED_DAYLIGHT_CONFIRMATION_DELTA,
   COMPACT_CLIENT_REPEATED_SOUND_RUNTIME_DELTA,
@@ -88,7 +100,7 @@ assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES,
 assert.equal(COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(
   COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT,
-  "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b",
+  "3ecfd0ea9ca3887fbd141fb623876c2205be8e47280ad069caba81427c951d0e",
   "the exact retained uniform lookup order and kinds change only intentionally",
 );
 
@@ -134,24 +146,16 @@ for (const lookupName of webglUniformValues) {
 }
 
 const fixedFrequencyTwoValues = [...COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES];
-assert.deepEqual(fixedFrequencyTwoValues, [], "exact mob models retire the authored dot-pattern descriptor vocabulary");
+assert.equal(fixedFrequencyTwoValues.length, 70, "the reviewed long frequency-two pool stays exact");
 assert.equal(new Set(fixedFrequencyTwoValues).size, COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES, fixedFrequencyTwoValues.length * 2);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND, "StringLiteral");
-assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "client/game/mobRenderer.ts");
+assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "closed compact client bundle");
 assert.equal(
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT,
-  "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e",
-  "the exact mesh-descriptor occurrence order and kinds change only intentionally",
+  "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12",
+  "the exact reviewed occurrence order and kinds change only intentionally",
 );
-const mobRendererSource = await readFile(new URL("../client/game/mobRenderer.ts", import.meta.url), "utf8");
-for (const value of fixedFrequencyTwoValues) {
-  assert.equal(
-    mobRendererSource.split(JSON.stringify(value)).length - 1,
-    2,
-    `${value} has exactly two authored occurrences in the reviewed mob renderer`,
-  );
-}
 
 const fixedIdentityValues = [...COMPACT_CLIENT_FIXED_IDENTITY_VALUES];
 assert.deepEqual(fixedIdentityValues,
@@ -161,11 +165,14 @@ assert.equal(new Set(fixedIdentityValues).size, COMPACT_CLIENT_FIXED_IDENTITY_UN
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES,
   Object.values(COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS).reduce((sum, count) => sum + count, 0));
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND, "StringLiteral");
-assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES, 2,
-  "only creative and survival are new pool values at this reviewed boundary");
+assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES, 1,
+  "creative is already repeated while survival remains the one incremental pool value");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT,
-  "61866ec52b9b320d8ca8b23c27f9cdd606541c7593acfd2e05af0e6d815f8bed",
+  "358cf0997bf825646abdd7792dbb7a58347210c5925ca1548979416c4456f5c2",
   "the exact identity occurrence order, syntax kinds, contexts, and values change only intentionally");
+assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES);
 
 const identityFixture = [
   'const mode="creative",status="loaded";',
@@ -337,9 +344,54 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA, {
   exclusionChanges: 0,
 });
 assert.equal(COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA.previousOccurrences
-  + COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+  + COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA.occurrenceDelta,
+COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA.previousUniqueValues
-  + COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+  + COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA, {
+  previousOccurrences: 607,
+  previousUniqueValues: 537,
+  previousSourceFingerprint: "c819a96e157f34f994940b0dfef19d5a7d5cef5f6e5315fb26feaa6f2ada16de",
+  occurrenceDelta: -24,
+  uniqueValueDelta: -17,
+  sources: [
+    "client/index.tsx",
+    "client/lobby/LobbyScreen.tsx",
+    "client/realtimeMultiplayer.ts",
+    "client/singleplayer/SinglePlayerApp.tsx#retired-debug-surface",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+    "client/index.tsx#retired-lakebed-presence-stage",
+  ],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA.occurrenceDelta,
+COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA, {
+  previousOccurrences: 583,
+  previousUniqueValues: 520,
+  previousSourceFingerprint: "18bd2ab516030b53c08a9b72fdc40cf6e91f43d7fce7d59cfa706d9b275ee190",
+  occurrenceDelta: -19,
+  uniqueValueDelta: -17,
+  source: "client/index.tsx#compact-railway-authority-and-player-skin-wire",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA.occurrenceDelta,
+COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA.previousUniqueValues);
+assert.equal(COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
 
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");
@@ -604,9 +656,77 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA, {
 });
 assert.equal(COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA.previousOccurrences
   + COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA.occurrenceDelta,
-COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA.previousUniqueValues
   + COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA, {
+  previousOccurrences: 1_171,
+  previousUniqueValues: 108,
+  previousSourceFingerprint: "86d6cdb7d321ee8fe9f67b1f27dc73c2ce3a7a69e2c19c66c40db057e1ab1b2d",
+  occurrenceDelta: 18,
+  uniqueValueDelta: 5,
+  sources: [
+    "client/index.tsx",
+    "client/runtimeMode.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/game/remotePlayerRenderer.ts",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+    "client/index.tsx#retired-lakebed-presence-stage",
+  ],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA.occurrenceDelta,
+COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA, {
+  previousOccurrences: 1_189,
+  previousUniqueValues: 113,
+  previousSourceFingerprint: "83f9ee33ed0e731999c3b2368489f2e972ed5efd673fedf13422d58cb7565e0f",
+  occurrenceDelta: -23,
+  uniqueValueDelta: -3,
+  sources: [
+    "client/game/avatar.ts",
+    "client/game/playerSkin.ts",
+    "client/game/remotePlayerSkinRenderer.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/index.tsx#realtime-drops-and-pose-parity",
+  ],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA.occurrenceDelta,
+COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA.previousUniqueValues);
+assert.equal(COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA, {
+  previousOccurrences: 1_018,
+  previousUniqueValues: 97,
+  previousSourceFingerprint: "74e17420ec34785cdaabfc9ff7ba30199e8e6442337a495bf3cbef64003ceb1c",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  sources: [
+    "client/gameplay/pointerSession.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/index.tsx",
+  ],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA.occurrenceDelta,
+COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA.uniqueValueDelta,
 COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA, {
   previousOccurrences: 371,
@@ -709,9 +829,71 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA, {
 });
 assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA.previousOccurrences
   + COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA.occurrenceDelta,
-COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA.previousUniqueValues
   + COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA, {
+  previousOccurrences: 417,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -2,
+  sources: [
+    "client/index.tsx",
+    "client/runtimeMode.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/game/remotePlayerRenderer.ts",
+    "client/singleplayer/SinglePlayerApp.tsx#retired-debug-surface",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+  ],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA.occurrenceDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA.previousUniqueValues);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA, {
+  previousOccurrences: 417,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "f0809d16908c2692d7b076caefccb44f3b34e112015943229a42c2d1a525c894",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  sources: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA.occurrenceDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA, {
+  previousOccurrences: 418,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "6e2c8fac874a078698938db7e00bcaf50db718586401f4a2ef45934b5e6f07e5",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  sources: [
+    "client/gameplay/pointerSession.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/index.tsx",
+  ],
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA.occurrenceDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA.uniqueValueDelta,
 COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
   previousOccurrences: 1_092, previousUniqueValues: 99,
@@ -765,10 +947,10 @@ const fixture = [
   'const belowThreshold=["four_only","four_only","four_only","four_only"];',
   'const excludedTwice=["twice_only","twice_only"];',
   `const fixedTwice=${JSON.stringify(fixedFrequencyTwoValues.flatMap((value) => [value, value]))};`,
-  'const rejectedIdentityTwice=["world_create_transaction_pending","world_create_transaction_pending"];',
+  'const rejectedIdentityTwice=["world_create_transaction_committed","world_create_transaction_committed"];',
   'const rejectedWireTwice=JSON.stringify({wire_candidate:"wire_candidate"});',
   'const rejectedPropertyTwice={property_candidate:1,other:{property_candidate:2}};',
-  'const rejectedDomTwice=["pointerlockerror","pointerlockerror"];',
+  'const rejectedDomTwice=["pointerlockchange","pointerlockchange"];',
   'const rejectedUiTwice=["Options…","Options…"];',
   'globalThis.__lakecraftClientStringFixture=[object,object.label,"A readable error happened!","Inventory",repeated,belowThreshold,excludedTwice,fixedTwice];',
 ].join("");
@@ -793,7 +975,7 @@ assert.ok(fixtureAnalysis.fixedFrequencyTwo.occurrences.every(
   ({ kind }) => kind === COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND,
 ), "every fixed occurrence retains its pinned syntax kind");
 for (const rejected of [
-  "world_create_transaction_pending", "wire_candidate", "property_candidate", "pointerlockerror", "Options…",
+  "world_create_transaction_committed", "wire_candidate", "property_candidate", "pointerlockchange", "Options…",
 ]) {
   assert.ok(!fixtureAnalysis.fixedFrequencyTwo.values.includes(rejected), `${rejected} cannot enter the closed category`);
 }

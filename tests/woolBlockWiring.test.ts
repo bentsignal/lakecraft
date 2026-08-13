@@ -64,14 +64,14 @@ const client = readFileSync(new URL("../client/index.tsx", import.meta.url), "ut
 const single = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const singleSave = readFileSync(new URL("../client/singleplayer/localSave.ts", import.meta.url), "utf8");
 const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
+assert.match(catalog, /\[BLOCK\.WOOL\]:\s*"wool"/);
+assert.match(catalog, /wool:\s*BLOCK\.WOOL/);
+assert.match(catalog, /BLOCK\.WOOL[^\n]*return\s+"grass"/);
 for (const [label, source] of [["multiplayer", client], ["single-player", single]] as const) {
-  assert.match(source, /\[BLOCK\.WOOL\]:\s*"wool"/, `${label} maps engine wool to the shared block/item identity`);
-  assert.match(source, /wool:\s*BLOCK\.WOOL/, `${label} maps held wool into engine block 24`);
-  assert.match(source, /BLOCK\.WOOL[^\n]*return\s+"grass"/, `${label} routes soft wool through the cloth-like grass audio surface`);
-  assert.doesNotMatch(source, /(?:setInterval|setTimeout|useMutation)[^\n]*wool|wool[^\n]*(?:setInterval|setTimeout|useMutation)/i,
-    `${label} wool placement adds no dedicated network or timer loop`);
+  assert.match(source, /\.\/gameplay\/index\.ts/,
+    `${label} consumes the shared gameplay catalog`);
 }
-assert.match(client, /wool:\s*BLOCK\.WOOL[\s\S]*?\[BLOCK\.WOOL\]:\s*"wool"/, "multiplayer has protocol, game, and item round-trip mappings");
 assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/, "single-player saves retain wool and every newer append-only block ID");
 assert.match(single, /action:\s*"break"[\s\S]*?audioSurfaceForBlock\(edit\.block\)/, "local edits emit bounded break/place particles and material audio");
 

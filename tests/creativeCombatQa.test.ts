@@ -170,8 +170,9 @@ assert.equal(death.carriedState.inventory.every((stack) => stack === null), true
 assert.deepEqual(death.carriedState.equipment, createEmptyEquipment());
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
 assert.equal(app.includes("lakebed/client"), false, "the documented single-player route adds zero Lakebed traffic");
-assert.ok(app.includes('canTakePlayerDamage: () => gameModeRef.current === "survival"'),
+assert.ok(presentation.includes('canTakePlayerDamage: () => context.getGameMode() === "survival"') && app.includes("getGameMode: () => gameModeRef.current"),
   "the guide's Survival boundary gates player damage");
 assert.ok(app.includes('if (gameModeRef.current === "creative") return;'),
   "Creative setup cannot accidentally spend melee durability");

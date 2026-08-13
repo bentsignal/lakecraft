@@ -42,6 +42,7 @@ import {
 } from "../../shared/inventoryActions";
 import { CraftingGridView } from "./CraftingGrid";
 import { ItemGlyph } from "./ItemGlyph";
+import { PlayerSkinPreview } from "./PlayerSkinPreview.tsx";
 import * as BS from "../../shared/bundleStrings.ts";
 import { itemTooltipAttributes } from "./itemTooltipModel";
 
@@ -420,14 +421,7 @@ export function InventoryCraftingDrawer({
                 );
               })}
             </div>
-            <div className="lc-player-preview" aria-hidden="true">
-              <span className="lc-player-preview__head" />
-              <span className="lc-player-preview__body" />
-              <span className="lc-player-preview__arm lc-player-preview__arm--left" />
-              <span className="lc-player-preview__arm lc-player-preview__arm--right" />
-              <span className="lc-player-preview__leg lc-player-preview__leg--left" />
-              <span className="lc-player-preview__leg lc-player-preview__leg--right" />
-            </div>
+            <PlayerSkinPreview open={open} />
           </section> : null}
 
           <section className="lc-crafting-panel" aria-label={size === 3 ? "Crafting grid" : undefined} aria-labelledby={size === 2 ? "lc-crafting-title" : undefined}>

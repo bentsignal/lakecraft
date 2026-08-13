@@ -7,19 +7,23 @@ import {
   compactClientBuiltinAliases,
 } from "../scripts/client-builtin-alias-compaction.mjs";
 
-assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 10, "the alias boundary remains deliberately narrow");
-assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_220);
+assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 24, "the alias boundary remains deliberately narrow");
+assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_902);
 assert.match(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT, /^[0-9a-f]{64}$/);
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
-  "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.max", "Math.min", "Math.round",
-  "Math.sin", "Object.freeze",
+  "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",
+  "Math.round", "Math.sin", "Math.PI", "Object.freeze", "Object.keys", "Array.isArray", "Number.isFinite",
+  "Number.isInteger", "Number.isSafeInteger", "Number.MAX_SAFE_INTEGER", "Number.NEGATIVE_INFINITY",
+  "Number.POSITIVE_INFINITY", "Number.parseInt", "Date.now", "JSON.stringify", "JSON.parse",
 ]);
 
 const fixtureKeys = [
-  "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.max", "Math.min", "Math.round",
-  "Math.sin", "Object.freeze",
+  "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",
+  "Math.round", "Math.sin", "Math.PI", "Object.freeze", "Object.keys", "Array.isArray", "Number.isFinite",
+  "Number.isInteger", "Number.isSafeInteger", "Number.MAX_SAFE_INTEGER", "Number.NEGATIVE_INFINITY",
+  "Number.POSITIVE_INFINITY", "Number.parseInt", "Date.now", "JSON.stringify", "JSON.parse",
 ];
-const fixture = "globalThis.__lcAliasFixture=[Math.abs(-4),Math.cos(0),Math.ceil(2.1),Math.floor(2.9),Math.hypot(3,4),Math.max(3,7),Math.min(-4,9),Math.round(2.5),Math.sin(0),Object.freeze({a:1}).a];";
+const fixture = "globalThis.__lcAliasFixture=[Math.abs(-4),Math.cos(0),Math.ceil(2.1),Math.floor(2.9),Math.hypot(3,4),Math.imul(2,3),Math.max(3,7),Math.min(-4,9),Math.round(2.5),Math.sin(0),Math.PI,Object.freeze({a:1}).a,Object.keys({a:1}).length,Array.isArray([]),Number.isFinite(4),Number.isInteger(4),Number.isSafeInteger(4),Number.MAX_SAFE_INTEGER,Number.NEGATIVE_INFINITY,Number.POSITIVE_INFINITY,Number.parseInt(\"12\",10),typeof Date.now()===\"number\",JSON.stringify({a:1}),JSON.parse(\"{\\\"a\\\":1}\").a];";
 const fixtureBoundary = {
   counts: Object.freeze(Object.fromEntries(fixtureKeys.map((key) => [key, 1]))),
   occurrences: fixtureKeys.length,
@@ -27,7 +31,7 @@ const fixtureBoundary = {
 };
 const transformed = await compactClientBuiltinAliases(fixture, fixtureBoundary);
 new Function(transformed)();
-assert.deepEqual(globalThis.__lcAliasFixture, [4, 1, 3, 2, 5, 7, -4, 3, 0, 1],
+assert.deepEqual(globalThis.__lcAliasFixture, [4, 1, 3, 2, 5, 6, 7, -4, 3, 0, Math.PI, 1, 1, true, true, true, true, Number.MAX_SAFE_INTEGER, -Infinity, Infinity, 12, true, '{"a":1}', 1],
   "receiver-independent aliases preserve native call results and argument order");
 delete globalThis.__lcAliasFixture;
 for (const key of fixtureKeys) {
@@ -42,10 +46,18 @@ await assert.rejects(
   compactClientBuiltinAliases("Math['floor'](1);", fixtureBoundary),
   /computed Math access/,
 );
-await assert.rejects(
-  compactClientBuiltinAliases("const callback=Math.floor;callback(1);", fixtureBoundary),
-  /outside a direct, non-optional call/,
-);
+const callbackFixture = `${fixture}globalThis.__lcAliasCallback=[2.9].map(Math.floor);`;
+const callbackKeys = [...fixtureKeys, "Math.floor"];
+const callbackTransformed = await compactClientBuiltinAliases(callbackFixture, {
+  counts: Object.freeze({ ...fixtureBoundary.counts, "Math.floor": 2 }),
+  occurrences: callbackKeys.length,
+  fingerprint: createHash("sha256").update(JSON.stringify(callbackKeys)).digest("hex"),
+});
+new Function(callbackTransformed)();
+assert.deepEqual(globalThis.__lcAliasCallback, [2],
+  "receiver-independent aliases preserve callback references as well as direct calls");
+delete globalThis.__lcAliasCallback;
+delete globalThis.__lcAliasFixture;
 await assert.rejects(
   compactClientBuiltinAliases("Math.floor=()=>0;Math.floor(1);", fixtureBoundary),
   /is mutated/,

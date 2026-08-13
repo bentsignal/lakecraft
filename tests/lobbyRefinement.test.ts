@@ -12,14 +12,17 @@ assert.equal(lobby.includes(">Sign In with Google<"), false, "Google branding is
 assert.ok(lobby.includes(">Sign In</button>"), "the multiplayer account panel exposes a compact sign-in action");
 assert.ok(lobby.includes(">Set Name</button>"), "signed-in accounts without a username expose concise name setup in the account panel");
 assert.ok(lobby.includes('role="listbox"') && lobby.includes('role="option"'), "the multiplayer screen exposes a semantic server list");
-assert.ok(lobby.includes('useQuery<FernHollowServerStatus>("fernHollowStatus")'),
-  "the visible multiplayer directory subscribes to one Lakebed server-status projection");
-assert.ok(lobby.includes('{count} / {capacity}'), "the Fern Hollow row displays authoritative player occupancy and capacity");
+assert.ok(lobby.includes("props.servers") && lobby.includes("server.onlinePlayers ?? 0"),
+  "the multiplayer directory renders control-plane servers and live occupancy");
 assert.ok(lobby.includes("Join Server") && lobby.includes(">Back<"), "the server browser exposes the requested Join and Back actions");
-assert.equal(lobby.includes("Direct Connection"), false, "the one-server directory has no inert action");
+assert.ok(lobby.includes("onDblClick={() => props.onJoinServer?.(server.id)}")
+  && app.includes("onJoinServer={enterWorld}"), "double-click joins the exact server row without waiting for selected-state propagation");
+assert.ok(lobby.includes("Direct Connect") && lobby.includes("onAddDirectServer"),
+  "the server directory has a working saved-address path");
 assert.ok(styles.includes(".lc-dirt-background") && styles.includes("image-rendering:pixelated"), "the server directory uses a pixelated dirt backdrop");
 assert.ok(styles.includes(".lc-server-actions{display:grid;gap:8px;grid-template-columns:1fr 1fr}"), "Join and Back share the server action row");
-assert.ok(app.includes('worldDescription="Survival · Lakebed shared world"'), "the server description stays concise and player-facing");
+assert.ok(app.includes('description: registered?.description ?? "Direct Connect · community server"'),
+  "the server description stays concise and player-facing");
 assert.ok((app.match(/setInWorld\(true\);[\s\S]{0,100}?setPauseOpen\(false\)/g) ?? []).length >= 2, "both multiplayer join paths enter without an artificial pause dialog");
 assert.ok(lobby.includes("<OptionsDialog") && lobby.includes('"lc-title-options"')
   && menuButton.includes("id={id}"), "title Options opens the shared accessible settings screen");

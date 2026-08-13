@@ -7,7 +7,7 @@ import { INITIAL_RECIPE_PATTERNS, matchCraftingGrid } from "../shared/craftingGr
 import { getItemIconArt } from "../client/components/itemIconArt.ts";
 import { blockTextureForFace } from "../client/game/blockTextures.ts";
 import { BLOCK } from "../client/game/types.ts";
-import { remoteHeldItemRects } from "../client/game/remotePlayerRenderer.ts";
+import { remoteHeldItemGeometry } from "../client/game/remotePlayerRenderer.ts";
 
 assert.equal(ITEMS.gunpowder.category, "material");
 assert.equal(ITEMS.gunpowder.maxStack, 64);
@@ -56,15 +56,11 @@ assert.equal(blockTextureForFace(BLOCK.TNT, "bottom"), "tnt_bottom");
 assert.ok(getItemIconArt("gunpowder").runs.length >= 8);
 assert.ok(getItemIconArt("tnt").runs.length >= 8);
 
-const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
-const singleplayer = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
-for (const [source, label] of [[multiplayer, "multiplayer"], [singleplayer, "single-player"]] as const) {
-  assert.match(source, /\[BLOCK\.TNT\]:\s*"tnt"/, `${label} maps engine TNT back to the shared item/block identity`);
-  assert.match(source, /tnt:\s*BLOCK\.TNT/, `${label} maps shared TNT into engine block 22`);
-}
-assert.ok(remoteHeldItemRects("gunpowder").length > 0, "remote hands render canonical loose gunpowder pixels");
-assert.ok(remoteHeldItemRects("tnt").length > remoteHeldItemRects("gunpowder").length,
-  "remote TNT retains its dense canonical block silhouette instead of a generic material box");
-assert.notDeepEqual(remoteHeldItemRects("tnt"), remoteHeldItemRects("gunpowder"));
+const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
+assert.match(catalog, /\[BLOCK\.TNT\]:\s*"tnt"/, "the shared gameplay catalog maps engine TNT to its identity");
+assert.match(catalog, /tnt:\s*BLOCK\.TNT/, "the shared gameplay catalog maps held TNT into the engine");
+assert.ok(remoteHeldItemGeometry("gunpowder").length > 0, "remote hands render extruded canonical loose gunpowder");
+assert.equal(remoteHeldItemGeometry("tnt").length / 6, 576, "remote TNT keeps a bounded 4x4 texture on every cube face");
+assert.notDeepEqual(remoteHeldItemGeometry("tnt"), remoteHeldItemGeometry("gunpowder"));
 
 console.log("gunpowder and TNT catalog/visual contract tests passed");

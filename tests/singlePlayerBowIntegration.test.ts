@@ -80,11 +80,12 @@ const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", i
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const engineTypes = readFileSync(new URL("../client/game/types.ts", import.meta.url), "utf8");
 const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
 
 assert.match(app, /isRangedWeaponSelected:[\s\S]{0,300}itemId === "bow"[\s\S]{0,300}(?:countItem\([^)]*, "arrow"\)|hasItem\([^)]*, "arrow"\))/,
   "single-player only starts a draw from a selected bow with ammunition");
-assert.match(app, /selectedItem: inventoryRef\.current\[selectedRef\.current\]\?\.itemId \?\? null/,
-  "single-player initializes the retained viewmodel from its canonical selected stack");
+assert.match(presentation, /selectedItem: selectedItem\(\)/,
+  "the shared presentation initializes the retained viewmodel from the canonical selected stack");
 assert.match(app, /setSelectedItem\(inventory\[selected\]\?\.itemId \?\? null\)/,
   "hotbar changes update the engine-owned bow model without React visual state");
 assert.doesNotMatch(app, /FirstPersonBow|setBowCharging|setBowChargeMs/,
@@ -122,8 +123,8 @@ assert.match(engineTypes, /cancelRangedActionForEscape\(\): boolean;/,
 
 assert.ok(engine.includes("options.onRangedRelease?.(intent)"), "delegated multiplayer release callback remains intact");
 assert.ok(engine.includes("setFirstPersonBowCharge"), "engine-owned charge selects retained bow geometry");
-assert.match(multiplayer, /onRangedRelease: \(intent\) =>[\s\S]{0,1800}rangedCombat\(requestJson\)/,
-  "multiplayer release remains one Lakebed-authoritative mutation");
+assert.doesNotMatch(multiplayer, /rangedCombat|onRangedRelease/,
+  "Railway multiplayer cannot route bow combat through the retired Lakebed world authority");
 assert.equal(app.includes("lakebed/client"), false, "single-player bow use adds zero Lakebed traffic");
 
 console.log("single-player bow integration contract tests passed");

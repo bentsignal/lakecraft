@@ -145,10 +145,10 @@ const helperCalls = Object.fromEntries(reviewedHelpers.map((helper) => [helper, 
 assert.deepEqual(
   Object.fromEntries(reviewedHelpers.map((helper) => [helper, helperCalls[helper].length])),
   {
-    newestByIndex: 31,
-  oldestByIndex: 14,
-    newestMatchingRows: 32,
-    newestMatchingRow: 48,
+    newestByIndex: 35,
+    oldestByIndex: 14,
+    newestMatchingRows: 38,
+    newestMatchingRow: 51,
     newestUserRows: 44,
     userOperationReceiptRows: 6,
     newestUserOperationReceipt: 7,
@@ -160,7 +160,7 @@ const orderedReadFingerprint = createHash("sha256").update(JSON.stringify(
 )).digest("hex");
 assert.equal(
   orderedReadFingerprint,
-  "9624c6fe9ac2215690d1f5b6ba7d4d4700b59f6fd828a4050048aa426c4a6099",
+  "7aba8bd70054d6759b1cf0c379c8f81dbb921919ef8fb0a937114c1678f8e52c",
   "ordered-read tables, indexes, ranges, bounds, or receipt routing changed",
 );
 assert.doesNotMatch(

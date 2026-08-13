@@ -1,0 +1,23 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile",
+    "watchPatterns": [
+      "/apps/game-server/**"
+    ]
+  },
+  "deploy": {
+    "startCommand": "bun run src/index.ts",
+    "numReplicas": 1,
+    "healthcheckPath": "/status",
+    "healthcheckTimeout": 30,
+    "sleepApplication": false,
+    "runtime": "V2",
+    "restartPolicyType": "ALWAYS",
+    "restartPolicyMaxRetries": 10,
+    "requiredMountPath": "/data",
+    "overlapSeconds": 0,
+    "drainingSeconds": 15
+  }
+}

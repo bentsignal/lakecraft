@@ -4,11 +4,14 @@ import {
   advanceRemoteAvatarMotion,
   applyRemoteAvatarSnapshot,
   createRemoteAvatarMotion,
+  resolveRemoteAvatarRigPose,
   sanitizePlayerName,
   sanitizeRemoteArmor,
   sanitizeRemoteHeldItem,
   shortestAngleDelta,
 } from "../client/game/avatar.ts";
+import { playerRigCycleMilliseconds } from "../client/game/playerRig.ts";
+import { FIRST_PERSON_ACTION_MS } from "../client/game/firstPersonRenderer.ts";
 import { PRESENCE_MAX_EXTRAPOLATION_MS, PRESENCE_MAX_HORIZONTAL_SPEED, PRESENCE_MAX_VERTICAL_EXTRAPOLATION_MS, PRESENCE_MAX_VERTICAL_SPEED, PRESENCE_MAX_X } from "../shared/presenceMotion.ts";
 import type { RemotePlayer } from "../client/game/types.ts";
 
@@ -135,11 +138,26 @@ const acting = createRemoteAvatarMotion(player({
 assert.equal(acting.bowDrawing, true);
 advanceRemoteAvatarMotion(acting, 1_200, 0.016);
 assert.ok(acting.armActionPhase > 0, "replayed remote actions drive a visible arm animation");
+advanceRemoteAvatarMotion(acting, 1_000 + FIRST_PERSON_ACTION_MS + 1, 0.016);
+assert.equal(acting.armActionProgress, 1, "remote swings finish on the exact local/F5 action duration");
+assert.equal(acting.armActionPhase, 0);
 applyRemoteAvatarSnapshot(acting, player({
   heldItem: "bow",
   visualActions: [{ sequence: 4, kind: "swing" }, { sequence: 5, kind: "bow_release" }],
 }), 1_250);
 assert.equal(acting.bowDrawing, false);
 assert.equal(acting.lastVisualActionSequence, 5, "replayed visual actions apply exactly once by sequence");
+assert.doesNotThrow(() => applyRemoteAvatarSnapshot(acting, player({
+  visualActions: [null, { sequence: 6, kind: "unknown" }, { sequence: 7, kind: "slot", value: 9 }] as never,
+}), 1_300), "malformed community-server actions never reach avatar animation state");
+assert.equal(acting.lastVisualActionSequence, 5);
+
+const lookingUp = createRemoteAvatarMotion(player({ pitch: 0.4 }), 0);
+assert.ok(Math.abs(resolveRemoteAvatarRigPose(lookingUp).headPitch + 0.4) < 1e-8,
+  "positive engine pitch renders the remote head looking up, matching local F5 inversion");
+assert.deepEqual(
+  [playerRigCycleMilliseconds("walk"), playerRigCycleMilliseconds("sprint"), playerRigCycleMilliseconds("sneak")],
+  [600, 420, 900],
+  "local and remote rigs share reviewed walk, sprint, and crouch cadence");
 
 console.log("lakecraft avatar tests: ok");

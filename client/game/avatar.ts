@@ -1,5 +1,8 @@
 import type { PlayerPose, RemotePlayer } from "./types.ts";
+import { PLAYER_SKIN_WIRE_BYTES, type PlayerSkinModel } from "./playerSkin.ts";
 import { ITEMS, type ArmorId, type ArmorSlot, type ItemId } from "../../shared/game.ts";
+import { playerRigCycleMilliseconds, resolvePlayerRigPose, type PlayerRigInput, type PlayerRigPose } from "./playerRig.ts";
+import { FIRST_PERSON_ACTION_MS } from "./firstPersonRenderer.ts";
 import {
   PRESENCE_MAX_EXTRAPOLATION_MS,
   PRESENCE_MAX_HORIZONTAL_SPEED,
@@ -27,6 +30,9 @@ export interface RemoteAvatarMotion {
   armorChest: ArmorId | null;
   armorLegs: ArmorId | null;
   armorFeet: ArmorId | null;
+  skinId: string;
+  skinModel: PlayerSkinModel;
+  skinPixels: Uint8Array | null;
   rendered: PlayerPose;
   target: PlayerPose;
   velocityX: number;
@@ -39,6 +45,7 @@ export interface RemoteAvatarMotion {
   lastVisualActionSequence: number;
   armActionStartedAt: number;
   armActionPhase: number;
+  armActionProgress: number;
   bowDrawing: boolean;
   crouching: boolean;
 }
@@ -118,9 +125,25 @@ function assignRemoteGear(state: RemoteAvatarMotion, player: RemotePlayer): void
   state.armorFeet = sanitizeRemoteArmor(player.armorFeet, "feet");
 }
 
+/** Keeps malformed community-server skin data outside the WebGL upload path. */
+function assignRemoteSkin(state: RemoteAvatarMotion, player: RemotePlayer): void {
+  const id = typeof player.skinId === "string" && /^(?:default|[a-f0-9]{64})$/.test(player.skinId)
+    ? player.skinId
+    : "default";
+  state.skinId = id;
+  state.skinModel = id !== "default" && player.skinModel === "slim" ? "slim" : "wide";
+  state.skinPixels = id !== "default" && player.skinPixels instanceof Uint8Array
+    && player.skinPixels.byteLength === PLAYER_SKIN_WIRE_BYTES
+    ? player.skinPixels
+    : null;
+}
+
 function applyRemoteVisualActions(state: RemoteAvatarMotion, player: RemotePlayer, now: number): void {
   for (const action of player.visualActions ?? []) {
-    if (!Number.isSafeInteger(action.sequence) || action.sequence <= state.lastVisualActionSequence) continue;
+    if (!action || !Number.isSafeInteger(action.sequence) || action.sequence < 1
+      || !/^(swing|jump|crouch_(on|off)|use|slot|bow_(draw|release))$/.test(action.kind)
+      || (action.kind === "slot" ? !Number.isSafeInteger(action.value) || action.value! < 0 || action.value! > 8 : action.value !== undefined)
+      || action.sequence <= state.lastVisualActionSequence) continue;
     state.lastVisualActionSequence = action.sequence;
     if (action.kind === "swing" || action.kind === "use" || action.kind === "bow_release") {
       state.armActionStartedAt = now;
@@ -130,6 +153,22 @@ function applyRemoteVisualActions(state: RemoteAvatarMotion, player: RemotePlaye
     if (action.kind === "crouch_on") state.crouching = true;
     if (action.kind === "crouch_off") state.crouching = false;
   }
+}
+
+/** One canonical pose contract shared by the remote skin and every gear joint. */
+const REMOTE_RIG_INPUT: PlayerRigInput = { motion: "idle", phase: 0 };
+export function resolveRemoteAvatarRigPose(state: RemoteAvatarMotion, output?: PlayerRigPose): PlayerRigPose {
+  const input = REMOTE_RIG_INPUT as { -readonly [Key in keyof PlayerRigInput]: PlayerRigInput[Key] };
+  input.motion = state.horizontalSpeed > 0.04 ? "walk" : "idle";
+  input.phase = state.walkPhase;
+  input.intensity = Math.min(1, state.horizontalSpeed / 4.3);
+  input.headYaw = -shortestAngleDelta(state.bodyYaw, state.rendered.yaw);
+  // Engine pitch is positive when the camera looks up; skin rig pitch rotates
+  // the face downward, so local and remote avatars share the same inversion.
+  input.headPitch = -state.rendered.pitch;
+  input.actionProgress = state.armActionProgress;
+  input.crouching = state.crouching;
+  return resolvePlayerRigPose(input, output);
 }
 
 export function shortestAngleDelta(from: number, to: number): number {
@@ -150,6 +189,9 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     armorChest: null,
     armorLegs: null,
     armorFeet: null,
+    skinId: "default",
+    skinModel: "wide",
+    skinPixels: null,
     rendered: { ...target },
     target: { ...target },
     velocityX: 0,
@@ -162,6 +204,7 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     lastVisualActionSequence: -1,
     armActionStartedAt: -Infinity,
     armActionPhase: 0,
+    armActionProgress: 1,
     bowDrawing: false,
     crouching: false,
   };
@@ -169,7 +212,9 @@ export function createRemoteAvatarMotion(player: RemotePlayer, now: number): Rem
     assignBoundedVelocity(state, player.vx as number, player.vy as number, player.vz as number);
   }
   assignRemoteGear(state, player);
+  assignRemoteSkin(state, player);
   applyRemoteVisualActions(state, player, now);
+  if (typeof player.crouching === "boolean") state.crouching = player.crouching;
   return state;
 }
 
@@ -195,7 +240,9 @@ export function applyRemoteAvatarSnapshot(
   state.name = sanitizePlayerName(player.name);
   state.color = player.color;
   assignRemoteGear(state, player);
+  assignRemoteSkin(state, player);
   applyRemoteVisualActions(state, player, now);
+  if (typeof player.crouching === "boolean") state.crouching = player.crouching;
   state.lastSnapshotAt = now;
 }
 
@@ -234,10 +281,13 @@ export function advanceRemoteAvatarMotion(
   );
   const gaitFollow = 1 - Math.exp(-10 * dt);
   state.horizontalSpeed += (measuredSpeed - state.horizontalSpeed) * gaitFollow;
-  state.walkPhase = (state.walkPhase + state.horizontalSpeed * dt * 7.5) % (Math.PI * 2);
+  const movementMode = state.crouching ? "sneak" : state.horizontalSpeed > 5 ? "sprint" : "walk";
+  state.walkPhase = (state.walkPhase + dt * 1_000 / playerRigCycleMilliseconds(movementMode)) % 1;
   const armActionElapsed = now - state.armActionStartedAt;
-  state.armActionPhase = armActionElapsed >= 0 && armActionElapsed < 450
-    ? Math.sin(Math.PI * armActionElapsed / 450)
+  state.armActionProgress = armActionElapsed >= 0 && armActionElapsed < FIRST_PERSON_ACTION_MS
+    ? armActionElapsed / FIRST_PERSON_ACTION_MS : 1;
+  state.armActionPhase = armActionElapsed >= 0 && armActionElapsed < FIRST_PERSON_ACTION_MS
+    ? Math.sin(Math.PI * armActionElapsed / FIRST_PERSON_ACTION_MS)
     : 0;
 
   // The avatar faces the direction the player is looking while locomotion is

@@ -33,7 +33,7 @@ const reviewed = [
   ["invalidWorldProbe", "invalid_world_probe", 3],
   ["inventoryRequired", "inventory_required", 14],
   ["mobDead", "mob_dead", 2],
-  ["rateLimited", "rate_limited", 3],
+  ["rateLimited", "rate_limited", 2],
   ["revisionConflict", "revision_conflict", 2],
   ["staleSequence", "stale_sequence", 3],
   ["targetStateInvalid", "target_state_invalid", 4],

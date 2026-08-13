@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 607;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 537;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c819a96e157f34f994940b0dfef19d5a7d5cef5f6e5315fb26feaa6f2ada16de";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 485;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 432;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "d3fee41acf2b4451fd645191b087966b2e6275f907b0bb24274ccd0e4a461a38";
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -57,9 +57,95 @@ export const COMPACT_CLIENT_HUMAN_WORLD_LOADING_DELTA = Object.freeze({
   source: "client/singleplayer/SinglePlayerApp.tsx#world-loading-status",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_171;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 108;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "86d6cdb7d321ee8fe9f67b1f27dc73c2ce3a7a69e2c19c66c40db057e1ab1b2d";
+export const COMPACT_CLIENT_HUMAN_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
+  previousOccurrences: 607,
+  previousUniqueValues: 537,
+  previousSourceFingerprint: "c819a96e157f34f994940b0dfef19d5a7d5cef5f6e5315fb26feaa6f2ada16de",
+  occurrenceDelta: -24,
+  uniqueValueDelta: -17,
+  sources: Object.freeze([
+    "client/index.tsx",
+    "client/lobby/LobbyScreen.tsx",
+    "client/realtimeMultiplayer.ts",
+    "client/singleplayer/SinglePlayerApp.tsx#retired-debug-surface",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+    "client/index.tsx#retired-lakebed-presence-stage",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_HUMAN_REMOTE_APPEARANCE_DELTA = Object.freeze({
+  previousOccurrences: 583,
+  previousUniqueValues: 520,
+  previousSourceFingerprint: "18bd2ab516030b53c08a9b72fdc40cf6e91f43d7fce7d59cfa706d9b275ee190",
+  occurrenceDelta: -19,
+  uniqueValueDelta: -17,
+  source: "client/index.tsx#compact-railway-authority-and-player-skin-wire",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_HUMAN_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 564,
+  previousUniqueValues: 503,
+  previousSourceFingerprint: "fcd03ec0b220a5a656f8f908b68d6efc55e1ff45f8bf1e735d10b27f7746b2cf",
+  occurrenceDelta: -79,
+  uniqueValueDelta: -71,
+  sources: Object.freeze([
+    "client/gameplay/GameplaySessionSurface.tsx",
+    "client/gameplay/authority.ts",
+    "client/gameplay/pointerSession.ts",
+    "client/gameplay/presentation.ts",
+    "client/gameplayDiagnostics.tsx",
+    "client/gameplayScreenshot.ts",
+    "client/game/thirdPersonHeldItem.ts",
+    "client/index.tsx#retired-lakebed-world-authority",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_017;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 97;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "c243d1f1f3db3187d1db42496ef19b4af4d1dd9f0fe3246a0f96f7520ca94a3e";
+export const COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA = Object.freeze({
+  previousOccurrences: 1_018,
+  previousUniqueValues: 97,
+  previousSourceFingerprint: "74e17420ec34785cdaabfc9ff7ba30199e8e6442337a495bf3cbef64003ceb1c",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/gameplay/pointerSession.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/index.tsx",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 1_166,
+  previousUniqueValues: 110,
+  previousSourceFingerprint: "7432a311b0f521732a2f61e22fce196c8ba6a591163aec66dc6d8acb2e43db27",
+  occurrenceDelta: -148,
+  uniqueValueDelta: -13,
+  sources: Object.freeze([
+    "client/gameplay/GameplaySessionSurface.tsx",
+    "client/gameplay/authority.ts",
+    "client/gameplay/pointerSession.ts",
+    "client/gameplay/presentation.ts",
+    "client/index.tsx#retired-lakebed-world-authority",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA = Object.freeze({
+  previousOccurrences: 1_189,
+  previousUniqueValues: 113,
+  previousSourceFingerprint: "83f9ee33ed0e731999c3b2368489f2e972ed5efd673fedf13422d58cb7565e0f",
+  occurrenceDelta: -23,
+  uniqueValueDelta: -3,
+  sources: Object.freeze([
+    "client/game/avatar.ts",
+    "client/game/playerSkin.ts",
+    "client/game/remotePlayerSkinRenderer.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/index.tsx#realtime-drops-and-pose-parity",
+  ]),
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 1_092,
   previousUniqueValues: 99,
@@ -135,6 +221,22 @@ export const COMPACT_CLIENT_REPEATED_KEYBOARD_CAPTURE_DELTA = Object.freeze({
   sources: Object.freeze([
     "client/gameplayKeyboardCapture.ts",
     "client/runtimeMode.ts",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
+  previousOccurrences: 1_171,
+  previousUniqueValues: 108,
+  previousSourceFingerprint: "86d6cdb7d321ee8fe9f67b1f27dc73c2ce3a7a69e2c19c66c40db057e1ab1b2d",
+  occurrenceDelta: 18,
+  uniqueValueDelta: 5,
+  sources: Object.freeze([
+    "client/index.tsx",
+    "client/runtimeMode.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/game/remotePlayerRenderer.ts",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+    "client/index.tsx#retired-lakebed-presence-stage",
   ]),
   exclusionChanges: 0,
 });
@@ -243,7 +345,44 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 417;
 export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 123;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "618055f119146b1623ea7c6b19db5534cdafcbd7267c13a39788c2608f7e7b92";
+export const COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA = Object.freeze({
+  previousOccurrences: 418,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "6e2c8fac874a078698938db7e00bcaf50db718586401f4a2ef45934b5e6f07e5",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/gameplay/pointerSession.ts",
+    "client/singleplayer/SinglePlayerApp.tsx",
+    "client/index.tsx",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_PVP_DELTA = Object.freeze({
+  previousOccurrences: 417,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "f0809d16908c2692d7b076caefccb44f3b34e112015943229a42c2d1a525c894",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  sources: Object.freeze(["client/index.tsx", "client/realtimeMultiplayer.ts"]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 415,
+  previousUniqueValues: 121,
+  previousSourceFingerprint: "80507b569cbea80abb96e1c522d53ea7443504e1cddcda5e24b17a30f3c83551",
+  occurrenceDelta: 2,
+  uniqueValueDelta: 2,
+  sources: Object.freeze([
+    "client/gameplay/authority.ts",
+    "client/gameplay/engine.ts",
+    "client/gameplay/pointerSession.ts",
+    "client/gameplay/presentation.ts",
+    "client/index.tsx#retired-lakebed-world-authority",
+  ]),
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA = Object.freeze({
   previousOccurrences: 378,
   previousUniqueValues: 111,
@@ -307,6 +446,22 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_KEYBOARD_CAPTURE_DELTA = Object.freeze
   source: "client/gameplayKeyboardCapture.ts#browser-capability-guards",
   exclusionChanges: 0,
 });
+export const COMPACT_CLIENT_LOW_FREQUENCY_REALTIME_MULTIPLAYER_DELTA = Object.freeze({
+  previousOccurrences: 417,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "2aeb3e07af4ac865b0ba8beb418788cf7b833879e790cfbbc5d651168d1ff1d5",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -2,
+  sources: Object.freeze([
+    "client/index.tsx",
+    "client/runtimeMode.ts",
+    "client/realtimeMultiplayer.ts",
+    "client/game/remotePlayerRenderer.ts",
+    "client/singleplayer/SinglePlayerApp.tsx#retired-debug-surface",
+    "client/MultiplayerSegmentTransport.tsx#retired-from-production-bundle",
+  ]),
+  exclusionChanges: 0,
+});
 // Painting the cached GUI block raster introduces the client's third `2d`
 // context request. That existing API literal consequently enters the exact
 // three/four-use pool; no UI, wire, storage, or gameplay value is added.
@@ -361,12 +516,27 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA = Object.f
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
+  "$.world.worldId", "ControlLeft", "ControlRight", "alertdialog", "assertive", "beforeunload",
+  "behaviorUntilSeconds", "checksum_mismatch", "chestplate",
+  "contextmenu", "craft.lakebed.app", "crafting_table_front", "crafting_table_side", "crafting_table_top",
+  "createdAt", "crispEdges", "deathUntil", "duplicate", "equipment", "expectedBlock",
+  "expectedChunkRevision", "expectedInventoryRevision", "first_person", "furnace_front",
+  "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds", "grass_side", "grass_top",
+  "ineligible", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
+  "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousedown", "mousemove",
+  "multiplayer", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
+  "no_recipe", "noncanonical_envelope", "oak_log_end", "pointerlockerror",
+  "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
+  "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
+  "tnt_bottom", "unsafe_existing_data", "velocityX", "velocityZ", "world-mode", "world-seed", "world-title",
+  "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
+  "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 0;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 0;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 140;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 70;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "client/game/mobRenderer.ts";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "cfa3e4b33be3208a54931e4f7f35fffc67311b8bfbb872026ecb2eb41642ea9e";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12";
 // Gameplay modes and local persistence outcomes form a closed internal
 // identity boundary. Only strict comparison operands and switch cases may
 // enter this pool: JSX/DOM values, object keys, payload strings, and UI copy
@@ -380,20 +550,28 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 55;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
-export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 2;
+export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
-  creative: 26,
-  survival: 10,
+  creative: 33,
+  survival: 11,
   loaded: 3,
   recovered: 3,
   corrupt: 5,
   unsupported: 6,
   empty: 2,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "61866ec52b9b320d8ca8b23c27f9cdd606541c7593acfd2e05af0e6d815f8bed";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "358cf0997bf825646abdd7792dbb7a58347210c5925ca1548979416c4456f5c2";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
+  previousOccurrences: 68,
+  previousUniqueValues: 7,
+  previousSourceFingerprint: "f2833987c112d9130537ed25d21ae7e942d0f7ac3812cefa6c6b2f3d52cfdef6",
+  occurrenceDelta: -5,
+  uniqueValueDelta: 0,
+  source: "shared gameplay authority replacing duplicated multiplayer creative branches",
+});
 // WebGL uniform names are a closed API boundary between authored shader text
 // and `getUniformLocation`. Keep this semantic category separate from the
 // generic frequency floors: attributes, DOM/UI text, wire values, and newly
@@ -414,15 +592,15 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_VALUES = Object.freeze([
   "uSkyExposure",
   "uTorchLights[0]",
 ]);
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 51;
-export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 43;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_OCCURRENCES = 54;
+export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_OCCURRENCES = 46;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_UNIQUE_VALUES = 14;
 export const COMPACT_CLIENT_WEBGL_UNIFORM_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_COUNTS = Object.freeze({
-  uMvp: 9,
-  uSkin: 3,
+  uMvp: 10,
+  uSkin: 4,
   uAtlas: 3,
-  uLight: 6,
+  uLight: 7,
   uCamera: 3,
   uFogEnabled: 3,
   uFogRange: 3,
@@ -435,7 +613,7 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_COUNTS = Object.freeze({
   "uTorchLights[0]": 3,
 });
 export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_COUNTS = Object.freeze({
-  uMvp: 6,
+  uMvp: 9,
   uSkin: 2,
   uAtlas: 2,
   uLight: 3,
@@ -450,7 +628,7 @@ export const COMPACT_CLIENT_WEBGL_UNIFORM_RETAINED_COUNTS = Object.freeze({
   uSkyExposure: 3,
   "uTorchLights[0]": 3,
 });
-export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "ce559ab7f72f92de17c805bcb3415eaed2048d98e203266289ad60836964031b";
+export const COMPACT_CLIENT_WEBGL_UNIFORM_SOURCE_FINGERPRINT = "3ecfd0ea9ca3887fbd141fb623876c2205be8e47280ad069caba81427c951d0e";
 // uMvp and uLight already qualify for the generic pools. The category is
 // unioned by occurrence, preserving their existing indexes and adding only
 // the remaining 22 occurrences / 11 values.
@@ -780,7 +958,9 @@ export async function compactClientStringPool(source, expected = {
       fail(`${category} live set changed; expected ${boundary.occurrences}/${boundary.uniqueValues}/${boundary.fingerprint}, received `
         + `${actual.occurrences.length}/${actual.values.length}/${actual.fingerprint}`
         + (category === "fixedIdentity"
-          ? `; incremental unique values ${analysis.fixedIdentityIncrementalUniqueValues}` : ""));
+          ? `; incremental unique values ${analysis.fixedIdentityIncrementalUniqueValues}; retained counts ${JSON.stringify(Object.fromEntries(actual.values.map((value, index) => [value, actual.counts[index]])))}` : "")
+        + (category === "fixedFrequencyTwo"
+          ? `; retained values ${JSON.stringify(actual.values)}` : ""));
     }
   }
   const serialized = JSON.stringify(analysis.values);

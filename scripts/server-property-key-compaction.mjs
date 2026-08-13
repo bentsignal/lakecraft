@@ -47,7 +47,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   expectedInventoryRevision: [15, 5],
   expectedInventoryUpdatedAt: [14, 4],
   expectedRevision: [11, 2],
-  expiresAt: [8, 8],
+  expiresAt: [12, 12],
   fingerprint: [41, 42],
   firstSequence: [16, 3],
   furnaces: [7, 1],
@@ -62,7 +62,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   ignitionId: [19, 10],
   ingredients: [2, 22],
   inputJson: [12, 5],
-  inventories: [46, 1],
+  inventories: [47, 1],
   inventory: [73, 83],
   inventoryJson: [27, 22],
   inventoryRevision: [10, 8],
@@ -88,26 +88,26 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   online: [20, 12],
   operationId: [90, 43],
   output: [21, 36],
-  ownerUserId: [11, 8],
+  ownerUserId: [14, 10],
   parentEventId: [9, 5],
   playerCombat: [25, 1],
   playerCombatReceipts: [9, 1],
-  playerPresence: [44, 1],
+  playerPresence: [45, 1],
   playerState: [8, 4],
   playerStateJson: [20, 10],
   poseSequence: [5, 9],
   previousBlock: [13, 6],
   radius: [23, 4],
-  reason: [61, 736],
+  reason: [60, 765],
   receiptCreatedAt: [0, 26],
   remainingDurability: [3, 13],
   replayed: [5, 35],
   request: [22, 12],
   resultJson: [15, 26],
-  retryAfterMs: [2, 25],
+  retryAfterMs: [2, 24],
   revision: [129, 83],
   selectedHotbar: [63, 12],
-  serverNow: [48, 265],
+  serverNow: [48, 272],
   sessionId: [32, 14],
   snapshot: [3, 2],
   snapshotJson: [19, 9],
@@ -118,8 +118,8 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   targetKind: [20, 2],
   targetUserId: [20, 3],
   updatedAt: [12, 1],
-  userId: [288, 89],
-  username: [9, 8],
+  userId: [298, 90],
+  username: [14, 8],
   version: [9, 11],
   weaponItemId: [7, 2],
   workstationCoordKey: [6, 2],
@@ -134,12 +134,15 @@ const BUILTIN_EXCLUSIONS = Object.freeze([
   "sort", "stringify", "take", "toString", "update", "withIndex",
 ]);
 export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
-// Reviewed through the canonical GUI block raster base. The explicit
-// MotionSegmentRecorder and skin-storage deltas remain pinned below; compact
-// manifest keys, exclusions, runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "eea289398dd386b7c3d185b4f526cb9c2eb721e66f65dbcffb0321050bfdc70e";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "368f79db2adbc55d76933c74e2bbe56d42368a9b0a4fd99f328f40f9cf72ac05";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "2f571e4de8deab7142d35ecbf20638ace250366df0e60bc36ea3fb13ceecf21e";
+// Reviewed through the canonical GUI block raster base plus the Railway chat,
+// held-item, remote-skin, bounded appearance-concurrency, acknowledged-pose,
+// and persisted Railway item-drop paths. The
+// explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
+// compact manifest keys, exclusions,
+// runtime strings, and server records stay exact.
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "8dcb4a3a17209246c90ebef355ec8e305162d4b5abc0684eb0dff00d192b4cb0";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "000acad424690a4ea839b7ad34d30696b68c0b70ba249f71786d00e4af2d4301";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "5309c7a2e0691e943e6f571dad54618d9974dcb1264ac9caae7ce813f6100e45";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
 // bundle contains a larger set of ordinary property spellings that can be
@@ -147,24 +150,74 @@ export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3
 // Derivation is deterministic, but the exact reviewed live set is hash-pinned
 // so source drift fails closed instead of silently broadening the transform.
 export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
-export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 277;
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "d78f889eb134e1c65675549ca23fd59f94b4f25853794f776a78b6bcf0c19774";
+export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 283;
+// The positional clientBootstrap query reorders existing high-gain server keys
+// without adding a new compact wire property.
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "a6bdb86e81420358c6c0ad47be32e7276ef49a9c6ab61c3af18525a406a6ac2d";
+// The shared-gameplay architecture is a new sealed source checkpoint. Earlier
+// additive deltas described the duplicated Lakebed multiplayer paths removed by
+// that cut, so the current complete fingerprint is now the canonical boundary.
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
-  previousFingerprint: "7f19e58da315369166f6f4cd60b9f08e5802f9f3aa9955a2888632b36ad3a23a",
-  sessionId: Object.freeze({
-    path: "client/multiplayerSegmentClient.ts",
-    previousUses: 11,
-    currentUses: 13,
-    addedKind: "PropertyDeclaration",
-    previousEntryFingerprint: "c431f3bc3c54938c7a25c184054daa7d0525dce0ece4af4ca79543b4dd6d8e6e",
-  }),
-  version: Object.freeze({
-    path: "client/game/playerSkin.ts",
-    previousUses: 2,
-    currentUses: 3,
-    addedKind: "ShorthandPropertyAssignment",
-    previousEntryFingerprint: "8018412bf9f94a3a82d031c06610083baa60c0137a1db0301aa7b1debdc85e93",
-  }),
+  damage: {
+    previousEntryFingerprint: "4363ea06150214c6d81b6f55e153df6569c2ef0b3145daee61334a0869328be6",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 1], "client/realtimeMultiplayer.ts": [null, 3] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 1],
+    },
+  },
+  dropId: {
+    previousEntryFingerprint: "75000957aeafcc2b0722a433ae8e80b82555bf8bb57b1869da81afde84feaef4",
+    counts: { "client/index.tsx": [6, 9] },
+  },
+  health: {
+    previousEntryFingerprint: "60c9aaebbfc0d3f1ea43b4f6e159ba8ee8ab4c828c570abe4dc32ea3158e887d",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 2], "client/realtimeMultiplayer.ts": [null, 5] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 1],
+    },
+  },
+  itemId: {
+    previousEntryFingerprint: "297403a97f82a70186ce155916be3fd2090ee636e6fe00b9997710f512f803f4",
+    counts: { "client/index.tsx": [14, 15] },
+  },
+  killed: {
+    previousEntryFingerprint: "3c2643836b6760b2591a2869e1913c5cc1c493952fd773bb9ab2fea9a8b87c15",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 1], "client/realtimeMultiplayer.ts": [null, 4] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertyAssignment": [null, 1],
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+    },
+  },
+  operationId: {
+    previousEntryFingerprint: "5b3bdbd87493451c98cda8f6ace948f2cc3db4488e991c067ca271d52fadaec9",
+    counts: { "client/index.tsx": [9, 11], "client/realtimeMultiplayer.ts": [23, 27] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [1, 2],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [9, 11],
+    },
+  },
+  targetId: {
+    previousEntryFingerprint: "0f1379462b330c0f2e6b6b42ca1e24f3c53c91aaa4b7aca3c3c74d58b470a1a3",
+    declarations: ["client/realtimeMultiplayer.ts"],
+    uses: ["client/index.tsx", "client/realtimeMultiplayer.ts"],
+    counts: { "client/index.tsx": [null, 1], "client/realtimeMultiplayer.ts": [null, 4] },
+    kinds: {
+      "client/realtimeMultiplayer.ts:PropertySignature": [null, 1],
+      "client/realtimeMultiplayer.ts:ShorthandPropertyAssignment": [null, 2],
+    },
+  },
+  userId: {
+    previousEntryFingerprint: "d271b45d963f4456f2503bdfa8001bab7a19d521b416296978dd71fa53d16ecb",
+    counts: { "client/index.tsx": [23, 25] },
+  },
 });
 
 let typescriptPromise;

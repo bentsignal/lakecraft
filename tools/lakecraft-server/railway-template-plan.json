@@ -1,0 +1,79 @@
+{
+  "format": "lakecraft.railway-template-plan.v1",
+  "templateUrl": "https://railway.com/deploy/lakecraft-multiplayer-server",
+  "service": {
+    "name": "Lakecraft Server",
+    "image": "ghcr.io/bentsignal/lakecraft-server:railway-beta",
+    "replicas": 1,
+    "publicNetworking": {
+      "type": "HTTP",
+      "generateDomain": true,
+      "healthPath": "/status",
+      "websocketPath": "/ws"
+    },
+    "volume": {
+      "required": true,
+      "mountPath": "/data",
+      "description": "Persistent SQLite world storage"
+    }
+  },
+  "variables": [
+    {
+      "name": "AUTH_MODE",
+      "templateValue": "local-demo",
+      "description": "Zero-setup beta mode; switch to lakebed only after configuring the control-plane variables."
+    },
+    {
+      "name": "LOCAL_DEMO_TOKEN",
+      "templateValue": "${{ secret(48, \"0123456789abcdef\") }}",
+      "secret": true,
+      "description": "Share this token privately with invited players, separately from the server URL."
+    },
+    {
+      "name": "ADMIN_TOKEN",
+      "templateValue": "${{ secret(48, \"0123456789abcdef\") }}",
+      "secret": true,
+      "description": "Private password for this server's /admin console. Never share it with players."
+    },
+    {
+      "name": "SERVER_ID",
+      "templateValue": "${{ secret(16, \"abcdefghijklmnopqrstuvwxyz0123456789\") }}",
+      "description": "Stable ID for this self-hosted server."
+    },
+    {
+      "name": "PUBLIC_SERVER_NAME",
+      "templateValue": "Lakecraft Server",
+      "description": "Name shown in health output and the Lakecraft server list."
+    },
+    {
+      "name": "ALLOWED_ORIGINS",
+      "templateValue": "https://craft.lakebed.app",
+      "description": "Comma-separated exact web origins permitted to open the WebSocket. Add localhost only for local development."
+    },
+    {
+      "name": "DATA_DIR",
+      "templateValue": "/data",
+      "description": "Persistent SQLite directory mounted from the Railway volume."
+    },
+    {
+      "name": "MAX_PLAYERS",
+      "templateValue": "32",
+      "description": "Maximum concurrent players accepted by the server."
+    },
+    {
+      "name": "MAX_PERSISTED_BLOCKS",
+      "templateValue": "1000",
+      "description": "Maximum persisted block edits in the beta world snapshot."
+    },
+    {
+      "name": "PUBLIC_SERVER_DESCRIPTION",
+      "templateValue": "Persistent Lakecraft multiplayer hosted on Railway",
+      "description": "Description shown in server metadata and status output."
+    }
+  ],
+  "operatorNotes": [
+    "Keep exactly one replica because the server uses one SQLite database and in-memory realtime state.",
+    "Do not enable Serverless App Sleeping for a multiplayer server.",
+    "The published Railway template creates the image-backed service, volume, variables, and generated public domain."
+  ]
+}

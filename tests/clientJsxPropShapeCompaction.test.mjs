@@ -13,22 +13,22 @@ assert.equal(Object.keys(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS).length, 14,
   "the production transform stays limited to the fourteen reviewed generated-JSX shapes");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_INPUT_BOUNDARY, "raw-pre-jsx-v1");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT,
-  "012ebd86e4e322d3b77af411106ef1b7fc80f3f31e7b50f8bf7c37b7cc76bb6f",
+  "1e92dc910e06da55c7e701bc382659c08a076c24199b06d59e1df5a5b2fc43c5",
   "the production fingerprint is sampled at the raw pre-JSX, pre-string-pool boundary");
 assert.deepEqual(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS, {
-  "className,aria-hidden": 10,
-  "className,aria-hidden,children": 6,
-  "className,aria-label,children": 12,
-  "className,children": 57,
+  "className,aria-hidden": 9,
+  "className,aria-hidden,children": 4,
+  "className,aria-label,children": 11,
+  "className,children": 51,
   "className,d": 4,
   "className,id,children": 4,
-  "className,onClick,type,children": 7,
+  "className,onClick,type,children": 6,
   "className,role,aria-label,children": 9,
   "className,role,aria-live,children": 4,
-  "className,role,aria-modal,aria-labelledby,children": 6,
+  "className,role,aria-modal,aria-labelledby,children": 5,
   "className,role,children": 12,
-  "disabled,onClick,type,children": 3,
-  "id,children": 13,
+  "disabled,onClick,type,children": 1,
+  "id,children": 12,
   "onClick,type,children": 4,
 });
 
@@ -88,7 +88,7 @@ await assert.rejects(
     counts: { ...fixtureManifest, "className,children": 3 },
     fingerprint: fixtureAnalysis.fingerprint,
   }),
-  /live count changed/,
+  /live counts changed/,
   "shape-count drift fails closed",
 );
 

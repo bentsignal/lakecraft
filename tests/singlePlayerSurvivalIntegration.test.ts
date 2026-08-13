@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", import.meta.url), "utf8");
 
 assert.ok(app.includes("createSurvivalTickState(hungerRef.current, healthRef.current)"));
-assert.ok(app.includes("canSprint: () => hungerRef.current > 6"), "six hunger points disable sprint");
+assert.ok(presentation.includes('canSprint: () => context.getGameMode() === "creative" || context.getHunger() > 6'), "six hunger points disable survival sprint");
 assert.ok(app.includes("onMovementModeChange: (_mode, activityMultiplier)"));
 assert.ok(app.includes("tickSurvival(survivalStateRef.current, elapsedSeconds, survivalActivityRef.current)"));
 assert.ok(app.includes("const elapsedSeconds = active ?"), "paused intervals advance survival by zero seconds");

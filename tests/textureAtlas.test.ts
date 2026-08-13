@@ -304,7 +304,9 @@ const regenerationDirectory = mkdtempSync(join(tmpdir(), "lakecraft-atlas-regres
 try {
   const regeneratedPngPath = join(regenerationDirectory, "texture-atlas-v1.png");
   const regeneratedTsPath = join(regenerationDirectory, "textureAtlas.ts");
-  const regeneration = spawnSync(process.execPath, [
+  // The checked-in PNG is generated with Node's deterministic zlib output;
+  // Bun exposes itself as process.execPath when this suite runs under `bun test`.
+  const regeneration = spawnSync("node", [
     new URL("../scripts/pixelate-texture-sheet.mjs", import.meta.url).pathname,
     new URL("../design/texture-concepts/lakecraft-materials-v1.png", import.meta.url).pathname,
     regeneratedPngPath,

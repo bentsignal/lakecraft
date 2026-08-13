@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import {
   PLAYER_SKIN_MAX_BYTES,
   PLAYER_SKIN_STORAGE_KEY,
+  PLAYER_SKIN_WIRE_BASE64_CHARS,
+  PLAYER_SKIN_WIRE_BYTES,
   clearPersistedPlayerSkin,
   inspectPlayerSkinPng,
+  decodePlayerSkinWirePixels,
+  encodePlayerSkinWirePixels,
   loadPersistedPlayerSkin,
   savePersistedPlayerSkin,
+  playerSkinWireId,
 } from "../client/game/playerSkin.ts";
 import {
   PLAYER_SKIN_BOX_COUNT,
@@ -87,6 +92,15 @@ assert.equal(clearPersistedPlayerSkin(storage), true);
 assert.equal(loadPersistedPlayerSkin(storage), null, "restoring the bundled skin removes only the skin preference");
 assert.equal(savePersistedPlayerSkin({ getItem: () => null, setItem: () => { throw new Error("full"); } }, persisted), false,
   "storage quota failures do not make an in-session skin import fail");
+
+const wirePixels = Uint8Array.from({ length: PLAYER_SKIN_WIRE_BYTES }, (_, index) => index % 251);
+const wireBase64 = encodePlayerSkinWirePixels(wirePixels);
+assert.equal(wireBase64.length, PLAYER_SKIN_WIRE_BASE64_CHARS);
+assert.deepEqual(decodePlayerSkinWirePixels(wireBase64), wirePixels, "bounded RGBA wire pixels round-trip exactly");
+assert.equal(decodePlayerSkinWirePixels(wireBase64.slice(1)), null);
+assert.equal(decodePlayerSkinWirePixels(`${wireBase64.slice(0, -2)}?!`), null);
+assert.match(await playerSkinWireId(wirePixels), /^[a-f0-9]{64}$/);
+await assert.rejects(() => playerSkinWireId(wirePixels.subarray(1)), /exactly 64×64 RGBA/);
 
 for (const model of ["wide", "slim"] as const) {
   const geometry = buildPlayerSkinGeometry(model);

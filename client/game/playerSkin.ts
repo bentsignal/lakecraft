@@ -4,6 +4,8 @@ export const PLAYER_SKIN_MAX_BYTES = 2 * 1024 * 1024;
 export const PLAYER_SKIN_SIZES = Object.freeze([64, 128] as const);
 export const PLAYER_SKIN_STORAGE_KEY = "lakecraft.player-skin.v1";
 export const PLAYER_SKIN_MAX_DATA_URL_CHARS = 2_796_240;
+export const PLAYER_SKIN_WIRE_BYTES = 64 * 64 * 4;
+export const PLAYER_SKIN_WIRE_BASE64_CHARS = 21_848;
 
 export type PlayerSkinModel = "wide" | "slim";
 
@@ -20,6 +22,13 @@ export type PersistedPlayerSkin = Readonly<{
   height: 64 | 128;
   model: PlayerSkinModel;
   dataUrl: string;
+}>;
+
+export type HydratedPlayerSkin = Readonly<{
+  id: string;
+  model: PlayerSkinModel;
+  pixels: Uint8Array;
+  source: HTMLImageElement | null;
 }>;
 
 export type PlayerSkinStorageAdapter = Readonly<{
@@ -209,4 +218,69 @@ export const LAKECRAFT_DEFAULT_SKIN_PALETTE = Object.freeze({
 /** Installed standard skin used when a player has not supplied a local skin. */
 export function createLakecraftDefaultSkinPixels(): Uint8Array {
   return DEFAULT_PLAYER_SKIN_RGBA;
+}
+
+/** Content-addresses the exact bounded pixels relayed by a realtime server. */
+export async function playerSkinWireId(pixels: Uint8Array): Promise<string> {
+  if (pixels.byteLength !== PLAYER_SKIN_WIRE_BYTES) throw new Error("Player skin pixels must be exactly 64×64 RGBA.");
+  const digest = await crypto.subtle.digest("SHA-256", pixels);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function encodePlayerSkinWirePixels(pixels: Uint8Array): string {
+  if (pixels.byteLength !== PLAYER_SKIN_WIRE_BYTES) throw new Error("Player skin pixels must be exactly 64×64 RGBA.");
+  let binary = "";
+  for (let offset = 0; offset < pixels.length; offset += 4_096) {
+    binary += String.fromCharCode(...pixels.subarray(offset, offset + 4_096));
+  }
+  return btoa(binary);
+}
+
+export function decodePlayerSkinWirePixels(value: unknown): Uint8Array | null {
+  if (typeof value !== "string" || value.length !== PLAYER_SKIN_WIRE_BASE64_CHARS
+    || !/^[A-Za-z0-9+/]{21846}==$/.test(value)) return null;
+  try {
+    const binary = atob(value);
+    if (binary.length !== PLAYER_SKIN_WIRE_BYTES) return null;
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+function loadSkinImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("The saved skin could not be decoded."));
+    image.src = dataUrl;
+  });
+}
+
+/**
+ * Hydrates the browser's selected skin once for both the local rig and the
+ * bounded realtime appearance payload. Imported 128px skins are reduced with
+ * nearest-neighbor sampling to the standard 64px wire layout.
+ */
+export async function hydrateSelectedPlayerSkin(storage: PlayerSkinStorageAdapter): Promise<HydratedPlayerSkin> {
+  const persisted = loadPersistedPlayerSkin(storage);
+  if (!persisted) {
+    return Object.freeze({ id: "default", model: "wide", pixels: createLakecraftDefaultSkinPixels(), source: null });
+  }
+  try {
+    const source = await loadSkinImage(persisted.dataUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("The saved skin could not be sampled.");
+    context.imageSmoothingEnabled = false;
+    context.clearRect(0, 0, 64, 64);
+    context.drawImage(source, 0, 0, 64, 64);
+    const pixels = new Uint8Array(context.getImageData(0, 0, 64, 64).data);
+    return Object.freeze({ id: await playerSkinWireId(pixels), model: persisted.model, pixels, source });
+  } catch {
+    clearPersistedPlayerSkin(storage);
+    return Object.freeze({ id: "default", model: "wide", pixels: createLakecraftDefaultSkinPixels(), source: null });
+  }
 }

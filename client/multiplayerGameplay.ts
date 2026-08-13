@@ -16,8 +16,16 @@ export interface AuthoritativeKnockbackGate {
 }
 
 export function multiplayerGameplayPaused(state: Readonly<MultiplayerGameplayBlockers>): boolean {
-  return !state.foreground || state.mobileUnsupported || state.death || state.pause || state.inventory
-    || state.chat || state.furnace || state.chest || state.bed;
+  return gameplaySessionPaused({
+    foreground: state.foreground,
+    pause: state.pause,
+    inventory: state.inventory,
+    chat: state.chat,
+    modal: state.furnace || state.chest || state.bed,
+    death: state.death,
+    pointerCapture: false,
+    mobileUnsupported: state.mobileUnsupported,
+  });
 }
 
 /** Every transition into blocking UI permanently invalidates outstanding damage promises. */
@@ -33,3 +41,4 @@ export function canApplyAuthoritativeKnockback(
 ): boolean {
   return !gate.paused && gate.pauseEpoch === requestPauseEpoch && pointerLocked;
 }
+import { gameplaySessionPaused } from "./gameplay/pointerSession.ts";
