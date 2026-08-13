@@ -72,7 +72,6 @@ import {
   MAX_HEALTH,
   MAX_HUNGER,
   addItemStack,
-  attackDamage,
   clampHotbarIndex,
   createEmptyEquipment,
   createSerializablePlayerState,
@@ -1056,7 +1055,6 @@ function RailwayMultiplayerSession({
         streamingChunkRadius: clientSettingsRef.current.renderDistance,
         canEditBlock: () => pendingWorldBlockEditRef.current === null,
         isRangedWeaponSelected: () => false,
-        getAttackDamage: () => attackDamage(inventoryRef.current[selectedRef.current]?.itemId),
         onUseSelectedItem: () => handleUseItem(),
         onRemotePlayerAttack: (target) => {
           realtimePlayerAttackSinkRef.current?.(`attack:${crypto.randomUUID()}`, target.id);
