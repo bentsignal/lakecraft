@@ -16,7 +16,9 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "ceil", 33]),
   Object.freeze(["Math", "floor", 258]),
   Object.freeze(["Math", "hypot", 35]),
-  Object.freeze(["Math", "imul", 36]),
+  // Remote atlas integrity now hashes the immutable PNG bytes with Web Crypto
+  // instead of applying one pixel-space FNV multiplication after browser decode.
+  Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
   Object.freeze(["Math", "max", 251]),
   Object.freeze(["Math", "min", 204]),
@@ -41,8 +43,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_005;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "a7b7b1be6a81aca33cefb7b65e0fd5ca5f63a6055b48003bbbea29bab2b8ce77";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_004;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "69999844ec3a937be1a1d359b66b93be2a0402af44f6eb6fe31be34fa48dfaa6";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -77,13 +79,13 @@ const PROPERTY_BOUNDARY = Object.freeze({
   fingerprint: COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT,
   occurrences: COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES,
 });
-const GLOBAL_ALIAS_SPEC = "Float32Array:78,Map:71,Set:56,Uint8Array:19,document:93,performance:74,window:121";
+const GLOBAL_ALIAS_SPEC = "Float32Array:78,Map:71,Set:56,Uint8Array:20,document:93,performance:74,window:121";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 512;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "d866e0d0bff440439395525771f51ea62e64f681c38994c65d55c52e128ab033";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 513;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "ef3d312b5bba9ed92df4cc030224a075df745afb6a3057c6544102b1d913b6c7";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),
