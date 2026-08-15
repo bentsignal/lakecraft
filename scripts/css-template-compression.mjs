@@ -171,7 +171,16 @@ function compactClientIdentifierNamespace(source) {
   for (const [readable, compact] of COMPACT_CLIENT_IDENTIFIER_FAMILIES) {
     compacted = compacted.replaceAll(readable, compact);
   }
-  return compacted.replaceAll("lakecraft-", "y").replaceAll("lc-", "x");
+  // These prefixes are private DOM/CSS namespaces, but the compact stage also
+  // contains absolute Railway asset URLs. Never rewrite a hostname or URL path
+  // segment: a changed origin fails as an opaque CORS error before the app can
+  // render its recovery UI.
+  const compactPrefix = (value, readable, replacement) => value.replaceAll(
+    readable,
+    (match, offset) => value[offset - 1] === "/" ? match : replacement,
+  );
+  compacted = compactPrefix(compacted, "lakecraft-", "y");
+  return compactPrefix(compacted, "lc-", "x");
 }
 
 export function cssDictionaryToken(index) {

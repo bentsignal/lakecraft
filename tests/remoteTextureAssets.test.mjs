@@ -5,6 +5,7 @@ import {
   remoteBlockTextureAtlasModule,
   remoteMobTextureAtlasModule,
 } from "../scripts/remote-texture-assets.mjs";
+import { compactClientIdentifiers } from "../scripts/css-template-compression.mjs";
 
 const blockSource = await readFile(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
 const mobSource = await readFile(new URL("../client/game/generated/mobTextureAtlas.ts", import.meta.url), "utf8");
@@ -20,6 +21,18 @@ assert.doesNotMatch(blockStage, /decodeStaticBytes/);
 assert.ok(mobStage.length < 600, "the sealed Lakebed stage does not embed the mob PNG");
 assert.match(mobStage, /mob-texture-atlas-204e2b83\.png/);
 assert.doesNotMatch(mobStage, /iVBOR/);
+
+const compactedBlockStage = compactClientIdentifiers(blockStage);
+const compactedMobStage = compactClientIdentifiers(mobStage);
+for (const origin of [
+  "https://lakecraft-production.up.railway.app",
+  "https://lakecraft-creative-production.up.railway.app",
+]) {
+  assert.ok(compactedBlockStage.includes(`${origin}/assets/block-texture-atlas-a607e4c6.png`));
+}
+assert.ok(compactedMobStage.includes("https://lakecraft-production.up.railway.app/assets/mob-texture-atlas-204e2b83.png"));
+assert.doesNotMatch(compactedBlockStage, /https:\/\/y(?:creative-)?production\.up\.railway\.app/);
+assert.doesNotMatch(compactedMobStage, /https:\/\/yproduction\.up\.railway\.app/);
 
 for (const [path, expected] of [
   ["../apps/game-server/assets/block-texture-atlas-a607e4c6.png", "e2129f5f77e252a155d8163371485e8279dae0056de5048f5afe44092ae7139e"],
