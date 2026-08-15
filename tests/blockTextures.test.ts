@@ -92,7 +92,7 @@ mappedTextureNames.add("tnt_top");
 mappedTextureNames.add("tnt_bottom");
 mappedTextureNames.add("sapling");
 mappedTextureNames.add("torch");
-for (let block = 1; block <= BLOCK.CRYING_OBSIDIAN; block += 1) {
+for (let block = 1; block <= BLOCK.NETHER_WART_BLOCK; block += 1) {
   for (const face of FACES) {
     const texture = blockTextureForFace(block as BlockId, face);
     if (texture) mappedTextureNames.add(texture);
@@ -147,8 +147,8 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 
 const firstRow = textureAtlasUv("grass_top");
 assert.ok(firstRow.top > 0.99 && firstRow.bottom > 0.93 && firstRow.bottom < 0.94);
-assert.deepEqual(chestAtlasUv(0, 0), [(8 * 16 + 0.5) / 192, 1 - (12 * 16 + 0.5) / 256]);
-assert.deepEqual(chestAtlasUv(63, 63), [(8 * 16 + 63.5) / 192, 1 - (12 * 16 + 63.5) / 256]);
+assert.deepEqual(chestAtlasUv(0, 0), [(12 * 16 + 0.5) / 256, 1 - (12 * 16 + 0.5) / 256]);
+assert.deepEqual(chestAtlasUv(63, 63), [(12 * 16 + 63.5) / 256, 1 - (12 * 16 + 63.5) / 256]);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the
 // old six-float stride instead of increasing every streamed chunk allocation.
@@ -158,8 +158,8 @@ const representativeWorldBytes = representativeWorldVertices
   * TEXTURED_WORLD_VERTEX_FLOATS
   * Float32Array.BYTES_PER_ELEMENT;
 const atlasBytes = TEXTURE_ATLAS_RGBA.byteLength;
-assert.equal(atlasBytes, 192 * 256 * 4,
-  "the expanded RGBA texture stays at one fixed 192 KiB atlas");
+assert.equal(atlasBytes, 256 * 256 * 4,
+  "the expanded RGBA texture stays at one fixed 256 KiB atlas");
 assert.ok(representativeWorldBytes <= 4_080_000, "170k streamed vertices stay within the 4.08MB world VBO budget");
 assert.ok(
   representativeWorldBytes + atlasBytes < 4.25 * 1024 * 1024,

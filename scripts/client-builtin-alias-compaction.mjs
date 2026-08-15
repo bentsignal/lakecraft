@@ -61,7 +61,7 @@ const PROPERTY_ALIAS_SPEC = "action:25,active:20,activeAppearanceRequest:10,acti
 // Closed-door sky exposure and paired-door Railway follow-ups add six reviewed
 // uses without broadening the fixed exact-key allowlist.
 const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
-  block: 175, endsWith: 24, flatMap: 18, height: 33, includes: 44, length: 431,
+  block: 175, endsWith: 24, filter: 47, flatMap: 19, height: 33, includes: 44, length: 431,
   previousBlock: 11, startsWith: 26, status: 20,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
@@ -69,8 +69,8 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 5_916;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "397e1bd2b835f01ac90d3258ccf1352fadc84399a95ed16e0cbd5d68b06c2d2e";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 5_918;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "61df49b4ae74061c943ed95d5aed71ea8d438005c7968a3ed28f77054b8b2871";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),

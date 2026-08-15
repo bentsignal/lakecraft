@@ -21,10 +21,26 @@ export const DECORATIVE_STONE_ITEMS = [
   "polished_blackstone_bricks", "end_stone", "end_stone_bricks", "purpur_block", "obsidian",
   "crying_obsidian",
 ] as const;
+export const ADDITIONAL_COLOR_BLOCK_ITEMS = [
+  ...BUILDING_COLORS.filter((color) => color !== "white").map((color) => `${color}_wool` as const),
+  ...BUILDING_COLORS.flatMap((color) => [
+    `${color}_terracotta` as const,
+    `${color}_glazed_terracotta` as const,
+  ]),
+] as const;
+export const ADDITIONAL_ARCHITECTURAL_ITEMS = [
+  "red_sandstone", "cut_red_sandstone", "chiseled_red_sandstone", "smooth_sandstone",
+  "smooth_red_sandstone", "amethyst_block", "budding_amethyst", "tuff", "dripstone_block",
+  "copper_block", "exposed_copper", "weathered_copper", "oxidized_copper", "cut_copper",
+  "exposed_cut_copper", "weathered_cut_copper", "oxidized_cut_copper", "sculk",
+  "nether_wart_block",
+] as const;
 export type DecorativeBlockItemId =
   | `${BuildingColor}_${"stained_glass" | "concrete"}`
   | typeof LUMINOUS_BLOCK_ITEMS[number]
-  | typeof DECORATIVE_STONE_ITEMS[number];
+  | typeof DECORATIVE_STONE_ITEMS[number]
+  | typeof ADDITIONAL_COLOR_BLOCK_ITEMS[number]
+  | typeof ADDITIONAL_ARCHITECTURAL_ITEMS[number];
 
 export type ExpandedBlockItemId =
   | `${ExtraWoodFamily}_${"log" | "planks" | "leaves" | "slab" | "stairs" | "door"}`
@@ -68,6 +84,8 @@ export const EXPANDED_BLOCK_STATE_TYPES = Object.freeze([
   ...BUILDING_COLORS.flatMap((color) => [`${color}_stained_glass`, `${color}_concrete`]),
   ...LUMINOUS_BLOCK_ITEMS,
   ...DECORATIVE_STONE_ITEMS,
+  ...ADDITIONAL_COLOR_BLOCK_ITEMS,
+  ...ADDITIONAL_ARCHITECTURAL_ITEMS,
 ] as ExpandedWorldBlockState[]);
 
 export type ExpandedBlockConstantName = Uppercase<ExpandedWorldBlockState>;
@@ -83,4 +101,6 @@ export const EXPANDED_BLOCK_ITEM_IDS = Object.freeze([
   ...BUILDING_COLORS.flatMap((color) => [`${color}_stained_glass`, `${color}_concrete`]),
   ...LUMINOUS_BLOCK_ITEMS,
   ...DECORATIVE_STONE_ITEMS,
+  ...ADDITIONAL_COLOR_BLOCK_ITEMS,
+  ...ADDITIONAL_ARCHITECTURAL_ITEMS,
 ] as ExpandedBlockItemId[]);

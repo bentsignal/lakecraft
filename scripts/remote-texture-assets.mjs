@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-const BLOCK_SOURCE_SHA256 = "0793880d90e0f01ae8156e2342ba51c450ec4939592354a20bd70aef58c1b41a";
+const BLOCK_SOURCE_SHA256 = "9010271fee8c312278a9c486f989434b7af15518634aac677e872821c268cb3c";
 const MOB_SOURCE_SHA256 = "3c4ccc1ca87a3d5c8a261ee8f05ac426b3881ce82b31a3a4d4144fda47e535da";
 const ASSET_ORIGINS = [
   "https://lakecraft-production.up.railway.app",
@@ -33,11 +33,11 @@ export function remoteBlockTextureAtlasModule(source) {
   const names = exact(source, /export const TEXTURE_ATLAS_NAMES = (\[[^\n]+\]) as const;/g, "name table");
   const cells = exact(source, /export const TEXTURE_ATLAS_CELLS = (\[[^\n]+\]) as const;/g, "cell table");
   const chest = exact(source, /export const CHEST_ATLAS_COLUMN = (\d+, CHEST_ATLAS_ROW = \d+);/g, "chest cell");
-  const urls = ASSET_ORIGINS.map((origin) => `${origin}/assets/block-texture-atlas-d94c19f9.png`);
+  const urls = ASSET_ORIGINS.map((origin) => `${origin}/assets/block-texture-atlas-a607e4c6.png`);
   return `export const TEXTURE_TILE_SIZE=${tileSize},TEXTURE_ATLAS_COLUMNS=${columns},TEXTURE_ATLAS_ROWS=${rows};`
     + `export const TEXTURE_ATLAS_NAMES=${names} as const,TEXTURE_ATLAS_CELLS=${cells} as const;`
     + `export const CHEST_ATLAS_COLUMN=${chest};export type TextureAtlasName=typeof TEXTURE_ATLAS_NAMES[number];`
-    + `const load=async()=>{let problem:unknown;for(const url of ${JSON.stringify(urls)})try{const response=await fetch(url,{cache:"force-cache",mode:"cors"});if(!response.ok)throw new Error(String(response.status));const image=await createImageBitmap(await response.blob());if(image.width!==TEXTURE_ATLAS_COLUMNS*TEXTURE_TILE_SIZE||image.height!==TEXTURE_ATLAS_ROWS*TEXTURE_TILE_SIZE){image.close();throw new Error("dimensions")}const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;const context=canvas.getContext("2d",{willReadFrequently:true});if(!context)throw new Error("canvas");context.drawImage(image,0,0);image.close();const bytes=new Uint8Array(context.getImageData(0,0,canvas.width,canvas.height).data),expected=0xd94c19f9;let hash=2166136261;for(const byte of bytes){hash^=byte;hash=Math.imul(hash,16777619)}if((hash>>>0)!==expected)throw new Error("fingerprint");return bytes}catch(error){problem=error}throw new Error("Could not load the shared Lakecraft texture atlas.",{cause:problem})};`
+    + `const load=async()=>{let problem:unknown;for(const url of ${JSON.stringify(urls)})try{const response=await fetch(url,{cache:"force-cache",mode:"cors"});if(!response.ok)throw new Error(String(response.status));const image=await createImageBitmap(await response.blob());if(image.width!==TEXTURE_ATLAS_COLUMNS*TEXTURE_TILE_SIZE||image.height!==TEXTURE_ATLAS_ROWS*TEXTURE_TILE_SIZE){image.close();throw new Error("dimensions")}const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;const context=canvas.getContext("2d",{willReadFrequently:true});if(!context)throw new Error("canvas");context.drawImage(image,0,0);image.close();const bytes=new Uint8Array(context.getImageData(0,0,canvas.width,canvas.height).data),expected=0xa607e4c6;let hash=2166136261;for(const byte of bytes){hash^=byte;hash=Math.imul(hash,16777619)}if((hash>>>0)!==expected)throw new Error("fingerprint");return bytes}catch(error){problem=error}throw new Error("Could not load the shared Lakecraft texture atlas.",{cause:problem})};`
     + `export const TEXTURE_ATLAS_RGBA=await load();`;
 }
 

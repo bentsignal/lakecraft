@@ -153,7 +153,7 @@ export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
 export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 289;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "9efea395b85d2982dca0d990b304ebc8d69221d925020f51b570b81496cc7aee";
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "91a0a9f6bcc279ad64eb0e69e8a120cf5a2e421d10e54efcd750c5ae46459209";
 // Keep the post-shared-gameplay checkpoint reconstructable. The only reviewed
 // source drift here removes owner-specific pickup filtering while leaving the
 // serialized Railway/Lakebed property spellings unchanged.
