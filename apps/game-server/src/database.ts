@@ -461,17 +461,22 @@ export class WorldStore {
   }
 
   isWhitelisted(username: string): boolean {
-    return Boolean(this.db.query("SELECT 1 FROM server_whitelist WHERE normalized_username=?").get(normalizeServerUsername(username)));
+    const normalized = tryNormalizeServerUsername(username);
+    return normalized === null ? false : Boolean(this.db.query("SELECT 1 FROM server_whitelist WHERE normalized_username=?").get(normalized));
   }
 
   roleFor(username: string): ServerRole | null {
+    const normalized = tryNormalizeServerUsername(username);
+    if (normalized === null) return null;
     return this.db.query<{ role: ServerRole }, [string]>("SELECT role FROM server_roles WHERE normalized_username=?")
-      .get(normalizeServerUsername(username))?.role ?? null;
+      .get(normalized)?.role ?? null;
   }
 
   banFor(username: string): { reason:string } | null {
+    const normalized = tryNormalizeServerUsername(username);
+    if (normalized === null) return null;
     return this.db.query<{ reason:string }, [string]>("SELECT reason FROM server_bans WHERE normalized_username=?")
-      .get(normalizeServerUsername(username)) ?? null;
+      .get(normalized) ?? null;
   }
 
   setWhitelisted(username: string, allowed: boolean): void {
@@ -881,6 +886,14 @@ export function normalizeServerUsername(value: string): string {
   const normalized = value.trim().toLocaleLowerCase("en-US");
   if (!/^[a-z0-9_-]{1,32}$/.test(normalized)) throw new Error("Username is invalid");
   return normalized;
+}
+
+function tryNormalizeServerUsername(value: string): string | null {
+  try {
+    return normalizeServerUsername(value);
+  } catch {
+    return null;
+  }
 }
 
 function toPersistedInventory(row: PlayerInventoryRow): PersistedInventoryState {

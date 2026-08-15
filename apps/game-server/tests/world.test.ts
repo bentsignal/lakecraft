@@ -918,6 +918,16 @@ describe("authoritative world", () => {
     store.close();
   });
 
+  test("admin state tolerates players persisted by older demo clients with spaced names", () => {
+    const store = new WorldStore(":memory:");
+    store.savePlayer({ id: "spawn-probe", name: "Spawn Probe", x: 0.5, y: 69.02, z: 0.5, yaw: 0, pitch: 0 }, "legacy-probe-hash");
+    const world = new GameWorld(config(), store, authenticator);
+    expect(world.adminState().players).toMatchObject([{
+      id: "spawn-probe", name: "Spawn Probe", role: null, connected: false,
+    }]);
+    store.close();
+  });
+
   test("persists whitelist, operator, ban, spawn, daylight, and server-chat administration",async()=>{
     const store=new WorldStore(":memory:"),world=new GameWorld(config({accessMode:"whitelist",initialWhitelist:["Alex"],daylightCycle:false,dayPhase:.5}),store,authenticator);
     const alex=new FakePeer("access-alex"),bob=new FakePeer("access-bob");world.open(alex,1000);world.open(bob,1000);
