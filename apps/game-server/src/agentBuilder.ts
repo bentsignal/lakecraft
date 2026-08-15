@@ -40,6 +40,12 @@ export const AGENT_BLOCK_NAMES = Object.freeze([
   "packed_mud", "mud_bricks", "prismarine", "prismarine_bricks", "dark_prismarine", "nether_bricks",
   "red_nether_bricks", "blackstone", "polished_blackstone", "polished_blackstone_bricks", "end_stone",
   "end_stone_bricks", "purpur_block", "obsidian", "crying_obsidian",
+  ...buildingColors.filter((color) => color !== "white").map((color) => `${color}_wool`),
+  ...buildingColors.flatMap((color) => [`${color}_terracotta`, `${color}_glazed_terracotta`]),
+  "red_sandstone", "cut_red_sandstone", "chiseled_red_sandstone", "smooth_sandstone",
+  "smooth_red_sandstone", "amethyst_block", "budding_amethyst", "tuff", "dripstone_block",
+  "copper_block", "exposed_copper", "weathered_copper", "oxidized_copper", "cut_copper",
+  "exposed_cut_copper", "weathered_cut_copper", "oxidized_cut_copper", "sculk", "nether_wart_block",
 ]);
 
 export interface AgentWorldMetadata {

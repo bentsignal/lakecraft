@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PROTOCOL_VERSION, SKIN_PIXEL_BYTES, decodeClientMessage, encodeServerMessage } from "../src/protocol";
+import { BLOCK_ID_MAX, PROTOCOL_VERSION, SKIN_PIXEL_BYTES, decodeClientMessage, encodeServerMessage } from "../src/protocol";
 
 describe("protocol v1", () => {
   test("accepts normalized movement inputs", () => {
@@ -102,7 +102,7 @@ describe("protocol v1", () => {
       yaw: 0, pitch: 0, jump: false, sprint: false,
     })).ok).toBe(false);
     expect(decodeClientMessage(JSON.stringify({
-      v: 1, type: "block_edit", operationId: "a", seq: 1, x: 0, y: 72, z: 0, block: 312,
+      v: 1, type: "block_edit", operationId: "a", seq: 1, x: 0, y: 72, z: 0, block: BLOCK_ID_MAX + 1,
     })).ok).toBe(false);
   });
 

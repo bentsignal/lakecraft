@@ -197,6 +197,20 @@ const BLOCK_PATHS = Object.freeze({
     "red_nether_bricks", "blackstone", "polished_blackstone", "polished_blackstone_bricks", "end_stone",
     "end_stone_bricks", "purpur_block", "obsidian", "crying_obsidian",
   ].map((name) => [name, `assets/minecraft/textures/block/${name}.png`])),
+  ...Object.fromEntries(BUILDING_COLORS.filter((color) => color !== "white")
+    .map((color) => [`${color}_wool`, `assets/minecraft/textures/block/${color}_wool.png`])),
+  ...Object.fromEntries(BUILDING_COLORS.flatMap((color) => [
+    [`${color}_terracotta`, `assets/minecraft/textures/block/${color}_terracotta.png`],
+    [`${color}_glazed_terracotta`, `assets/minecraft/textures/block/${color}_glazed_terracotta.png`],
+  ])),
+  ...Object.fromEntries([
+    "red_sandstone", "cut_red_sandstone", "chiseled_red_sandstone", "amethyst_block",
+    "budding_amethyst", "tuff", "dripstone_block",
+    "copper_block", "exposed_copper", "weathered_copper", "oxidized_copper", "cut_copper",
+    "exposed_cut_copper", "weathered_cut_copper", "oxidized_cut_copper", "sculk", "nether_wart_block",
+  ].map((name) => [name, `assets/minecraft/textures/block/${name}.png`])),
+  smooth_sandstone: "assets/minecraft/textures/block/sandstone_top.png",
+  smooth_red_sandstone: "assets/minecraft/textures/block/red_sandstone_top.png",
 });
 const BLOCK_ITEM_TEXTURE_PATHS = Object.freeze({
   torch: "assets/minecraft/textures/block/torch.png",

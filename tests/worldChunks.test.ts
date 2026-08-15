@@ -28,7 +28,7 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
 assert.equal(WORLD_CHUNK_CODEC_VERSION, 7);
 assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 10);
 assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 1023, "ten-bit snapshots reserve zero and expose 1,023 block codes");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 311, "the append-only catalog includes the expanded decorative pass");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 377, "the append-only catalog includes both expanded decorative passes");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
   WORLD_CHUNK_BLOCK_TYPES.slice(247, 253),

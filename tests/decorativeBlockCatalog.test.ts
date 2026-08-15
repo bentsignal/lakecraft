@@ -5,7 +5,14 @@ import { BLOCK, isGlassBlock, isLightEmittingBlock, isLuminousBlock } from "../c
 import { blockFaceIsOccluded } from "../client/game/voxelEngine.ts";
 import { ITEM_TO_ENGINE } from "../client/gameplay/catalog.ts";
 import { TEXTURE_ATLAS_NAMES } from "../client/game/generated/textureAtlas.ts";
-import { BUILDING_COLORS, DECORATIVE_STONE_ITEMS, EXPANDED_BLOCK_ITEM_IDS, LUMINOUS_BLOCK_ITEMS } from "../shared/expandedBuildingCatalog.ts";
+import {
+  ADDITIONAL_ARCHITECTURAL_ITEMS,
+  ADDITIONAL_COLOR_BLOCK_ITEMS,
+  BUILDING_COLORS,
+  DECORATIVE_STONE_ITEMS,
+  EXPANDED_BLOCK_ITEM_IDS,
+  LUMINOUS_BLOCK_ITEMS,
+} from "../shared/expandedBuildingCatalog.ts";
 import { ITEMS } from "../shared/game.ts";
 import { BLOCK_TYPES } from "../shared/protocol.ts";
 
@@ -15,7 +22,12 @@ const additions = [
   ...DECORATIVE_STONE_ITEMS,
 ];
 assert.equal(additions.length, 58);
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-additions.length), additions, "the new catalog is one append-only tail");
+const secondWave = [...ADDITIONAL_COLOR_BLOCK_ITEMS, ...ADDITIONAL_ARCHITECTURAL_ITEMS];
+assert.equal(secondWave.length, 66);
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(additions.length + secondWave.length), -secondWave.length), additions,
+  "the first decorative wave retains its append-only IDs");
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-secondWave.length), secondWave,
+  "the second decorative wave is one append-only tail");
 assert.deepEqual(AGENT_BLOCK_NAMES, BLOCK_TYPES, "browser and agent builders publish the identical numeric palette");
 
 for (const item of additions) {
@@ -23,6 +35,12 @@ for (const item of additions) {
   const block = ITEM_TO_ENGINE[item as keyof typeof ITEM_TO_ENGINE];
   assert.equal(typeof block, "number", `${item} maps to one engine block`);
   assert.ok(blockTextureForFace(block!, "north"), `${item} has an installed face texture`);
+}
+for (const item of secondWave) {
+  assert.ok(ITEMS[item as keyof typeof ITEMS], `${item} has a creative inventory definition`);
+  const block = ITEM_TO_ENGINE[item as keyof typeof ITEM_TO_ENGINE];
+  assert.equal(typeof block, "number", `${item} maps to one engine block`);
+  assert.equal(blockTextureForFace(block!, "north"), item, `${item} uses its exact installed Minecraft texture`);
 }
 
 for (const color of BUILDING_COLORS) {
@@ -43,5 +61,8 @@ assert.equal(blockTextureForFace(BLOCK.OCHRE_FROGLIGHT, "east"), "ochre_frogligh
 for (const texture of ["sea_lantern", "glowstone", "black_concrete", "cyan_stained_glass", "crying_obsidian"]) {
   assert.ok((TEXTURE_ATLAS_NAMES as readonly string[]).includes(texture), `${texture} is packed in the production atlas`);
 }
+for (const texture of ["orange_wool", "cyan_glazed_terracotta", "oxidized_cut_copper", "amethyst_block", "sculk"]) {
+  assert.ok((TEXTURE_ATLAS_NAMES as readonly string[]).includes(texture), `${texture} is packed in the production atlas`);
+}
 
-console.log("58 decorative and luminous building blocks share catalog, texture, light, and wire parity");
+console.log("124 decorative and luminous building blocks share catalog, texture, light, and wire parity");

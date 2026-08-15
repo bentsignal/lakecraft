@@ -93,9 +93,9 @@ assert.equal(blockCollisionHeightAt(BLOCK.OAK_STAIRS_UPSIDE_EAST, 0.1, 0.5), 1,
 
 assert.equal(BLOCK_TYPES[BLOCK.OAK_SLAB], "oak_slab");
 assert.equal(BLOCK_TYPES[BLOCK.BRICK_STAIRS_WEST], "brick_stairs_west");
-assert.ok(BLOCK.CRYING_OBSIDIAN <= REALTIME_BLOCK_ID_MAX);
-const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.CRYING_OBSIDIAN}]);
-assert.deepEqual(decodeRealtimeChunkEdits(0, 0, encoded), [{x:1,y:20,z:1,block:BLOCK.CRYING_OBSIDIAN}]);
+assert.ok(BLOCK.NETHER_WART_BLOCK <= REALTIME_BLOCK_ID_MAX);
+const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);
+assert.deepEqual(decodeRealtimeChunkEdits(0, 0, encoded), [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);
 
 assert.equal(gameBlockForWorldBlock("stone_brick_stairs_west"), "stone_brick_stairs");
 assert.equal(ITEMS.brick_stairs.placesBlock, "brick_stairs");
