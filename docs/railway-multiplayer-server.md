@@ -25,9 +25,11 @@ process, and SQLite lives on that process's volume.
 4. Reveal `LOCAL_DEMO_TOKEN` in the service's **Variables** settings. Share the
    `wss://.../ws` address and token separately with trusted friends. Do not put
    the token in the URL, screenshots, logs, or a public server-list entry.
-5. Open `https://YOUR-DOMAIN/admin` and enter `ADMIN_TOKEN` when you need the
-   private server console. The console can switch known players between Survival
-   and Creative or disconnect a live player. Do not give this token to players.
+5. Mint a one-time pairing code with an authenticated
+   `POST https://YOUR-DOMAIN/admin/api/pair-code`, then open
+   `https://YOUR-DOMAIN/admin` and pair that browser once. The private console
+   stores a signed 30-day session without receiving `ADMIN_TOKEN`; do not give
+   the pairing code to players.
 
 The relevant Railway settings are captured in
 `tools/lakecraft-server/railway-template-plan.json`. That file is a validated
@@ -99,6 +101,9 @@ The doctor reports missing names but never reads back or prints secret values.
 
 Every deployed server carries its own small admin surface at `/admin`; it is not
 part of `craft.lakebed.app` and adds nothing to the Lakebed capsule artifact.
+The Railway `ADMIN_TOKEN` is an operator credential and never enters the portal.
+Only a bearer-authenticated operator can mint a single-use, 10-character pairing
+code; the portal exchanges that code for a signed, expiring browser session.
 That console changes only the selected Railway world's state. Realtime movement,
 chat, block edits, reconnect credentials, and per-world roles belong in Railway's
 SQLite authority because clients need low-latency ordering and the data must move

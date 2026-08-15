@@ -18,6 +18,8 @@ Deploy the current beta with the published
 template. It is deliberately not presented as an importable Railway manifest.
 The marketplace overview lives in `docs/railway-template-overview.md`.
 
-The template also generates an `ADMIN_TOKEN`. Open `https://YOUR-DOMAIN/admin`
-and enter that secret to operate the per-world console. Keep it separate from
-the invitation token; the `secrets` command generates both independently.
+The template also generates an `ADMIN_TOKEN`. Use it from an operator terminal
+to mint a one-time pairing code at `/admin/api/pair-code`, then enter that short
+code at `https://YOUR-DOMAIN/admin`. The command deck stores a signed browser
+session without exposing the service token to the page. Keep the admin token
+separate from the invitation token; the `secrets` command generates both independently.
