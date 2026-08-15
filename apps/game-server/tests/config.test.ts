@@ -37,6 +37,26 @@ describe("server configuration", () => {
     }).adminToken).toBe("a-private-admin-token-with-enough-entropy");
   });
 
+  test("keeps the agent builder opt-in with a dedicated high-entropy credential", () => {
+    const base = { ...lakebedEnvironment, ALLOWED_ORIGINS: "https://craft.lakebed.app" };
+    expect(loadConfig(base).agentToken).toBeUndefined();
+    expect(() => loadConfig({ ...base, AGENT_TOKEN: "too-short" })).toThrow(
+      "AGENT_TOKEN must be at least 32 characters",
+    );
+    const agentToken = "a-distinct-agent-builder-token-with-enough-entropy";
+    expect(loadConfig({ ...base, AGENT_TOKEN: agentToken }).agentToken).toBe(agentToken);
+    expect(() => loadConfig({
+      ...base,
+      ADMIN_TOKEN: agentToken,
+      AGENT_TOKEN: agentToken,
+    })).toThrow("AGENT_TOKEN must be distinct");
+    expect(() => loadConfig({
+      ...base,
+      LAKEBED_REGISTRATION_CREDENTIAL: agentToken,
+      AGENT_TOKEN: agentToken,
+    })).toThrow("AGENT_TOKEN must be distinct");
+  });
+
   test("caps configured capacity at the 32-player protocol and renderer bound", () => {
     expect(loadConfig({
       ...lakebedEnvironment,
@@ -48,5 +68,45 @@ describe("server configuration", () => {
       ALLOWED_ORIGINS: "https://craft.lakebed.app",
       MAX_PLAYERS: "33",
     })).toThrow("MAX_PLAYERS must be an integer from 1 to 32");
+  });
+
+  test("keeps survival terrain as the zero-configuration default", () => {
+    expect(loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+    })).toMatchObject({
+      worldPreset: "default",
+      superflatGroundY: 20,
+      defaultGameMode: "survival",
+    });
+  });
+
+  test("strictly validates a Creative superflat world", () => {
+    expect(loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      WORLD_PRESET: "superflat",
+      SUPERFLAT_GROUND_Y: "20",
+      DEFAULT_GAME_MODE: "creative",
+    })).toMatchObject({
+      worldPreset: "superflat",
+      superflatGroundY: 20,
+      defaultGameMode: "creative",
+    });
+    expect(() => loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      WORLD_PRESET: "flat",
+    })).toThrow("WORLD_PRESET must be default or superflat");
+    expect(() => loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      SUPERFLAT_GROUND_Y: "10",
+    })).toThrow("SUPERFLAT_GROUND_Y must be an integer from 11 to 64");
+    expect(() => loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      DEFAULT_GAME_MODE: "operator",
+    })).toThrow("DEFAULT_GAME_MODE must be survival or creative");
   });
 });

@@ -4,6 +4,7 @@ import { ITEMS, type ItemStack } from "../shared/game.ts";
 import type { InventoryActionMutationResult } from "../shared/inventoryActions.ts";
 import { validatePlayerStateJson, type PersistedInventoryState } from "../shared/chestTransfers.ts";
 import type { NormalizedDroppedItem } from "../shared/droppedItems.ts";
+import { isWorldTerrainDescriptor, type WorldTerrainDescriptor } from "../shared/worldPreset.ts";
 import {
   decodePlayerSkinWirePixels,
   encodePlayerSkinWirePixels,
@@ -63,6 +64,7 @@ export type RealtimeClientOptions = {
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
+  onTerrain?: (terrain: WorldTerrainDescriptor) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
   onSelfHealth: (health: number) => void;
@@ -91,6 +93,7 @@ type RemoteAppearance = RealtimeArmorAppearance & {
 };
 
 const APPEARANCE_CAPABILITY = "appearance-v1";
+const DEFAULT_TERRAIN: WorldTerrainDescriptor = Object.freeze({ preset: "default", superflatGroundY: 20 });
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -228,7 +231,7 @@ function decodeDrop(value: unknown): NormalizedDroppedItem | null {
   const item = { itemId, count, ...(durability === null ? {} : { durability }) } as ItemStack;
   return {
     dropId, chunkKey: `${Math.floor(x / 16)}:${Math.floor(z / 16)}`, ownerUserId, sourceUserId: ownerUserId,
-    item, x, y, z, droppedAt, ownerPickupAt, ownerPickupBlocked: source.ownerPickupBlocked === true, expiresAt,
+    item, x, y, z, droppedAt, ownerPickupAt, expiresAt,
   };
 }
 
@@ -378,6 +381,7 @@ export class RealtimeMultiplayerClient {
   private actionSequence = 0;
   private appearanceSequence = 0;
   private gameMode: RealtimeGameMode = "survival";
+  private terrain?: WorldTerrainDescriptor;
   private reconnectAttempt = 0;
   private lastPose: PlayerPose | null = null;
   private lastPoseAt = 0;
@@ -535,11 +539,11 @@ export class RealtimeMultiplayerClient {
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "action", seq: this.actionSequence, kind, ...(value === undefined ? {} : { value }) });
   }
 
-  submitDrop(operationId: string, item: ItemStack, pose: PlayerPose, ownerMustLeave = false): Promise<NormalizedDroppedItem> {
+  submitDrop(operationId: string, item: ItemStack, pose: PlayerPose): Promise<NormalizedDroppedItem> {
     return this.submitDropOperation(operationId, {
       type: "drop_item", itemId: item.itemId, count: item.count,
       ...(item.durability === undefined ? {} : { durability: item.durability }),
-      ...(ownerMustLeave ? { ownerMustLeave: true } : {}), x: pose.x, y: pose.y, z: pose.z,
+      x: pose.x, y: pose.y, z: pose.z,
     });
   }
 
@@ -827,12 +831,31 @@ export class RealtimeMultiplayerClient {
   private handleMessage(message: RealtimeEnvelope | null): void {
     if (!message) return;
     if (message.type === "hello") {
+      if (message.terrain !== undefined && !isWorldTerrainDescriptor(message.terrain)) {
+        this.options.onPhase("error", "Server sent an invalid terrain preset.");
+        this.socket?.close(1002, "Invalid terrain preset");
+        return;
+      }
+      this.terrain = message.terrain === undefined ? DEFAULT_TERRAIN : { ...message.terrain } as WorldTerrainDescriptor;
+      this.options.onTerrain?.(this.terrain);
       this.appearanceSupported = Array.isArray(message.capabilities)
         && message.capabilities.includes(APPEARANCE_CAPABILITY);
       if (this.appearanceSupported) this.prepareAppearance();
       return;
     }
     if (message.type === "welcome") {
+      const welcomeTerrain = message.terrain === undefined
+        ? this.terrain ?? DEFAULT_TERRAIN
+        : isWorldTerrainDescriptor(message.terrain) ? message.terrain : null;
+      if (!welcomeTerrain
+        || (this.terrain && (welcomeTerrain.preset !== this.terrain.preset
+          || welcomeTerrain.superflatGroundY !== this.terrain.superflatGroundY))) {
+        this.options.onPhase("error", "Server terrain changed during join.");
+        this.socket?.close(1002, "Terrain preset mismatch");
+        return;
+      }
+      this.terrain = { ...welcomeTerrain };
+      this.options.onTerrain?.(this.terrain);
       const token = boundedText(message.resumeToken, 256);
       if (token) this.resumeToken = token;
       this.joined = true;

@@ -44,9 +44,13 @@ GitHub Actions workflow.
 | `AUTH_MODE` | `local-demo` | Enables the invitation-token beta without a control-plane registration. |
 | `LOCAL_DEMO_TOKEN` | 32 random bytes | Secret every invited player enters alongside the server address. |
 | `ADMIN_TOKEN` | A different 32-byte secret | Enables the private `/admin` console for roles and live player controls. |
+| `AGENT_TOKEN` | A third, different 32-byte secret | Enables the Railway-local `/agent/v1` builder API. Omit it to disable every builder route. |
 | `SERVER_ID` | Stable random lowercase/number ID | Keeps the server identity stable across restarts. |
 | `PUBLIC_SERVER_NAME` | Your chosen name | Friendly name returned by server metadata/status. |
 | `ALLOWED_ORIGINS` | `https://craft.lakebed.app` | Exact browser origin allowed to upgrade to WebSocket. Use a comma-separated list only when intentionally allowing more origins. |
+| `WORLD_PRESET` | `default` or `superflat` | Selects ordinary deterministic terrain or a flat building world. |
+| `SUPERFLAT_GROUND_Y` | `20` | Superflat grass height; bedrock remains at y=1, with three dirt layers and stone between. |
+| `DEFAULT_GAME_MODE` | `survival` or `creative` | First-join role for this server; stored per-player overrides remain authoritative. |
 
 `PORT` and `RAILWAY_PUBLIC_DOMAIN` are injected by Railway. The container sets
 `HOST=0.0.0.0` and `DATA_DIR=/data`. Railway also exposes
@@ -63,6 +67,25 @@ DATA_DIR='/data' \
 RAILWAY_VOLUME_MOUNT_PATH='/data' \
 node tools/lakecraft-server/cli.mjs doctor
 ```
+
+For the Creative world, use `WORLD_PRESET=superflat`,
+`SUPERFLAT_GROUND_Y=20`, and `DEFAULT_GAME_MODE=creative` on a new Railway
+service with its own empty volume. Terrain identity is pinned in SQLite on first
+boot; a later conflicting env change intentionally prevents startup. The
+existing Survival service omits these variables and therefore retains its
+`default` + `survival` behavior.
+
+To allow trusted coding agents to build in that Creative service, generate a
+unique `AGENT_TOKEN` and follow [`tools/lakecraft-agent/README.md`](../tools/lakecraft-agent/README.md).
+The token travels only in an Authorization header. It must never be copied into
+the service URL, a command argument, screenshots, or logs. The agent API reads,
+renders, and mutates only this Railway world's exact SQLite/terrain authority;
+it never consumes Lakebed query or mutation quota.
+
+The first builder release deliberately retains the protocol's 1,000-coordinate
+world cap and renders cameras synchronously. Treat it as a demo-scale building
+surface: avoid parallel maximum-resolution cameras, and move to chunked world
+snapshots before opening a large unrestricted public build server.
 
 The doctor reports missing names but never reads back or prints secret values.
 
@@ -159,10 +182,10 @@ Railway owns accepted player poses, shared block edits and drops, ordered chat,
 and melee PvP health for this world. Drop and attack operation IDs are replay-
 safe; pickup consumes the SQLite world-drop receipt once, and PvP validates
 target reach, facing, cooldown, server-observed held item, death, and respawn.
-Armor remains cosmetic and grants no protection. Lakebed still owns the player
-inventory and wider progression systems, so the current browser-side handoff
-from a consumed Railway pickup into Lakebed inventory is not yet one atomic
-cross-system transaction.
+Armor remains cosmetic and grants no protection. Railway also owns each
+server-specific player pack and the idempotency receipts for inventory actions;
+ordinary multiplayer placement, mining, drops, pickups, crafting, and death do
+not query or mutate Lakebed.
 
 The server sends nearby players and events within 21 chunks. This is a feed
 limit, not a forced GPU setting: each browser retains its own saved 2–12 chunk

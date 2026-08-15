@@ -960,7 +960,6 @@ function LocalGameplaySession({
       droppedAt,
       velocityY: 0,
       settled: false,
-      ownerPickupBlocked: true,
     };
     inventoryRef.current = next;
     dropsRef.current = [...dropsRef.current, dropped];
@@ -1773,6 +1772,17 @@ function LocalGameplaySession({
   useEffect(() => {
     if (deathScreenOpen) setOptionsOpen(false);
   }, [deathScreenOpen]);
+
+  // Pickup eligibility is timer-based, so a stationary player does not need a
+  // synthetic move-away-and-return cycle after manually dropping an item.
+  useEffect(() => {
+    if (!worldReady || deathScreenOpen) return;
+    const timer = window.setInterval(() => {
+      const engine = engineRef.current;
+      if (engine) collectLocalDrops(engine.getPose());
+    }, 125);
+    return () => window.clearInterval(timer);
+  }, [worldReady, deathScreenOpen]);
 
   useEffect(() => {
     const sample = () => {

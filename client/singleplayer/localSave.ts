@@ -140,7 +140,6 @@ export interface SinglePlayerDropState {
   droppedAt: number;
   velocityY: number;
   settled: boolean;
-  ownerPickupBlocked?: boolean;
 }
 
 export interface SinglePlayerChestState {
@@ -388,6 +387,8 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
   for (const candidate of value) {
     if (!isRecord(candidate)
       || !(exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt", "velocityY", "settled"])
+        // Old saves used a leave-radius latch. Accept and discard it so those
+        // worlds migrate naturally to the universal timestamp-only delay.
         || exactKeys(candidate, ["dropId", "item", "x", "y", "z", "droppedAt", "velocityY", "settled", "ownerPickupBlocked"]))
       || !identifier(candidate.dropId)
       || !finiteNumber(candidate.x, -SINGLEPLAYER_SAVE_LIMITS.worldCoordinate, SINGLEPLAYER_SAVE_LIMITS.worldCoordinate)
@@ -410,7 +411,6 @@ function validateDrops(value: unknown): SinglePlayerDropState[] | null {
       droppedAt: candidate.droppedAt,
       velocityY: candidate.velocityY,
       settled: candidate.settled,
-      ...(candidate.ownerPickupBlocked === true ? { ownerPickupBlocked: true } : {}),
     });
   }
   return drops.sort((left, right) => left.dropId.localeCompare(right.dropId));

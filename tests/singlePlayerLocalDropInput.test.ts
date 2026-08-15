@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DROPPED_ITEM_PICKUP_RADIUS } from "../shared/droppedItems.ts";
 
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const collection = readFileSync(new URL("../client/singleplayer/localDroppedItems.ts", import.meta.url), "utf8");
 
 const dropStart = app.indexOf("function dropLocalSelected(wholeStack: boolean)");
 const dropEnd = app.indexOf("function respawnLocally", dropStart);
@@ -18,7 +18,11 @@ assert.ok(app.includes('event.code === "KeyQ" && !event.repeat'));
 assert.ok(app.includes("pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen"));
 assert.ok(app.includes("document.querySelector('[aria-modal=\"true\"]')"), "an already-rendered modal closes the state-effect race");
 assert.ok(app.includes("dropLocalSelected(event.ctrlKey || event.metaKey)"));
-assert.ok(Math.hypot(2.25, 1.1) > DROPPED_ITEM_PICKUP_RADIUS, "the dropped stack starts outside immediate pickup range");
+assert.ok(app.includes("collectLocalDrops(engine.getPose())") && app.includes("}, 125)"),
+  "a stationary player retries collection when the universal timer opens");
+assert.ok(collection.includes("drop.droppedAt + DROPPED_ITEM_PICKUP_DELAY_MS"));
+assert.ok(!collection.includes("OWNER_PICKUP_LEAVE_DISTANCE") && !collection.includes("releaseOwnerPickupBarrier"),
+  "manual drops never require walking away and returning");
 assert.equal(app.includes("lakebed/client"), false);
 
 console.log("lakecraft single-player Q-drop input and conservation tests: ok");

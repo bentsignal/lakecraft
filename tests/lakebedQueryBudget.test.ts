@@ -41,7 +41,10 @@ test("retired shared-world recovery copy cannot return", () => {
 test("Railway gameplay has no Lakebed world or inventory polling bridge", () => {
   assert.doesNotMatch(client, /function (?:InventoryQuery|LakebedWorldQueries)/);
   assert.doesNotMatch(client, /useQuery<[^\n]+?>\("(?:myInventory|chestAt|droppedItems|myPresence|playerCombatStates|worldChunks|worldClock|worldEdits|furnaceAt)"/);
-  assert.match(client, /if \(!inWorld \|\| !inventoryReady \|\| !realtimeSession\) return/);
+  assert.match(client, /if \(!inWorld \|\| !inventoryReady \|\| !realtimeSession \|\| !realtimeTerrain\) return/,
+    "the gameplay engine waits for Railway to provide its terrain authority descriptor");
+  assert.match(client, /terrain: realtimeTerrain/,
+    "the Railway terrain descriptor is passed into the shared gameplay engine");
   assert.match(client, /const realtimeSink = realtimeSession \? realtimeInventorySinkRef\.current : null/);
   assert.match(client, /realtimeSink[\s\S]*?await realtimeSink\(pending\.requestJson\)[\s\S]*?: await applyInventoryActionMutation/,
     "ordinary multiplayer inventory actions are kept off the Lakebed mutation quota");

@@ -5,7 +5,7 @@ import {
   pruneExpiredLocalDroppedItems,
 } from "../client/singleplayer/localDroppedItems.ts";
 import { SINGLEPLAYER_SAVE_LIMITS } from "../client/singleplayer/localSave.ts";
-import { DROPPED_ITEM_TTL_MS } from "../shared/droppedItems.ts";
+import { DROPPED_ITEM_PICKUP_DELAY_MS, DROPPED_ITEM_TTL_MS } from "../shared/droppedItems.ts";
 import { createEmptyInventory } from "../shared/game.ts";
 
 const now = 1_000_000;
@@ -78,20 +78,17 @@ const manualToss: LocalDroppedItem = {
   x: 0,
   y: 1,
   z: 0,
-  droppedAt: now - 10_000,
+  droppedAt: now,
   velocityY: 0,
   settled: true,
-  ownerPickupBlocked: true,
 };
-const stationaryOwner = collectLocalDroppedItems(emptyInventory, [manualToss], { x: 0, y: 1, z: 0 }, undefined, now);
-assert.equal(stationaryOwner.drops.length, 1, "a stationary player cannot recollect their own Q-drop after the timer");
-assert.equal(stationaryOwner.drops[0].ownerPickupBlocked, true);
-const leftDrop = collectLocalDroppedItems(emptyInventory, stationaryOwner.drops, { x: 3, y: 1, z: 0 }, undefined, now);
-assert.equal(leftDrop.changed, true, "leaving the drop radius durably releases the owner barrier");
-assert.equal(leftDrop.drops[0].ownerPickupBlocked, undefined);
-const returnedOwner = collectLocalDroppedItems(leftDrop.inventory, leftDrop.drops, { x: 0, y: 1, z: 0 }, undefined, now);
-assert.equal(returnedOwner.drops.length, 0, "the owner can collect the toss after leaving and returning");
-assert.equal(returnedOwner.inventory[0]?.itemId, "dirt");
+const tooEarly = collectLocalDroppedItems(emptyInventory, [manualToss], { x: 0, y: 1, z: 0 }, undefined,
+  now + DROPPED_ITEM_PICKUP_DELAY_MS - 1);
+assert.equal(tooEarly.drops.length, 1, "the simple pickup timer blocks a stationary owner before its deadline");
+const stationaryOwner = collectLocalDroppedItems(emptyInventory, tooEarly.drops, { x: 0, y: 1, z: 0 }, undefined,
+  now + DROPPED_ITEM_PICKUP_DELAY_MS);
+assert.equal(stationaryOwner.drops.length, 0, "the owner can collect in place at the exact deadline");
+assert.equal(stationaryOwner.inventory[0]?.itemId, "dirt");
 
 const saturatedStalePool = Array.from(
   { length: SINGLEPLAYER_SAVE_LIMITS.drops },

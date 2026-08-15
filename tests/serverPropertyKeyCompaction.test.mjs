@@ -104,11 +104,16 @@ for (const name of reviewedKeyNames) {
     assert.ok(current.uses.includes(path), `${name} keeps its reviewed use path ${path}`);
   }
   normalized.uses = normalized.uses.filter((path) => !(delta.uses ?? []).includes(path));
+  for (const path of delta.removedUses ?? []) {
+    assert.equal(current.uses.includes(path), false, `${name} removes its reviewed use path ${path}`);
+  }
+  normalized.uses = [...normalized.uses, ...(delta.removedUses ?? [])].sort();
   for (const [path, [previousUses, currentUses]] of Object.entries(delta.counts ?? {})) {
-    assert.equal(current.counts[path], currentUses, `${name} keeps its reviewed property-use count at ${path}`);
+    assert.equal(current.counts[path] ?? null, currentUses, `${name} keeps its reviewed property-use count at ${path}`);
     if (previousUses === null) delete normalized.counts[path];
     else normalized.counts[path] = previousUses;
   }
+  normalized.counts = Object.fromEntries(Object.entries(normalized.counts).sort());
   for (const [kind, [previousCount, currentCount]] of Object.entries(delta.kinds ?? {})) {
     assert.equal(current.kinds[kind], currentCount, `${name} keeps its reviewed declaration-kind count at ${kind}`);
     if (previousCount === null) delete normalized.kinds[kind];

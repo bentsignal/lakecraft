@@ -14,7 +14,8 @@ import {
 import * as BS from "./bundleStrings.ts";
 
 export const DROPPED_ITEM_TTL_MS = 5 * 60 * 1_000;
-export const DROPPED_ITEM_OWNER_PICKUP_DELAY_MS = 750;
+/** Every new world drop is inert for everyone until this deadline. */
+export const DROPPED_ITEM_PICKUP_DELAY_MS = 1_000;
 export const DROPPED_ITEM_PICKUP_RADIUS = 2;
 export const DROPPED_ITEM_CHUNK_SIZE = 16;
 export const MAX_DROPPED_ITEM_REQUEST_LENGTH = 8_191;
@@ -78,7 +79,6 @@ export type NormalizedDroppedItem = {
   z: number;
   droppedAt: number;
   ownerPickupAt: number;
-  ownerPickupBlocked?: boolean;
   expiresAt: number;
 };
 
@@ -134,7 +134,7 @@ export type DropInventoryApplyResult =
 
 export type PickupInventoryApplyResult =
   | { ok: true; inventory: Inventory; picked: ItemStack; remaining: ItemStack | null }
-  | { ok: false; reason: "expired" | "owner_pickup_delay" | "too_far" | "no_capacity" | "conservation_failure" };
+  | { ok: false; reason: "expired" | "pickup_delay" | "too_far" | "no_capacity" | "conservation_failure" };
 
 function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[], required = allowed): boolean {
   const keys = Object.keys(record);
@@ -269,7 +269,7 @@ export function normalizeDroppedItemRow(value: unknown, now = Date.now(), includ
   const ownerPickupAt = finiteTimestamp(row.ownerPickupAt);
   const expiresAt = finiteTimestamp(row.expiresAt);
   if (!item.ok || !position || droppedAt === null || ownerPickupAt === null || expiresAt === null
-    || ownerPickupAt !== droppedAt + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS
+    || ownerPickupAt !== droppedAt + DROPPED_ITEM_PICKUP_DELAY_MS
     || expiresAt !== droppedAt + DROPPED_ITEM_TTL_MS
     || (!includeExpired && now >= expiresAt)) return null;
   const chunkKey = droppedItemChunkKey(position.x, position.z);
@@ -310,7 +310,7 @@ export function createPersistedDroppedItem(
     y: String(position.y),
     z: String(position.z),
     droppedAt: String(now),
-    ownerPickupAt: String(now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS),
+    ownerPickupAt: String(now + DROPPED_ITEM_PICKUP_DELAY_MS),
     expiresAt: String(now + DROPPED_ITEM_TTL_MS),
   };
 }
@@ -462,12 +462,12 @@ function addExactStack(inventory: readonly (ItemStack | null)[], item: ItemStack
 export function applyPickupDroppedItem(
   playerInventory: readonly (ItemStack | null)[],
   dropped: NormalizedDroppedItem,
-  actorUserId: string,
+  _actorUserId: string,
   rawPlayerPosition: DroppedItemPosition,
   now: number,
 ): PickupInventoryApplyResult {
   if (now >= dropped.expiresAt) return { ok: false, reason: "expired" };
-  if (actorUserId === dropped.ownerUserId && now < dropped.ownerPickupAt) return { ok: false, reason: "owner_pickup_delay" };
+  if (now < dropped.ownerPickupAt) return { ok: false, reason: "pickup_delay" };
   const position = validateDroppedItemPosition(rawPlayerPosition);
   if (!position) return { ok: false, reason: "too_far" };
   const distanceSquared = (position.x - dropped.x) ** 2 + (position.y - dropped.y) ** 2 + (position.z - dropped.z) ** 2;

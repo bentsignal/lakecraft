@@ -88,7 +88,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   online: [20, 12],
   operationId: [90, 43],
   output: [21, 36],
-  ownerUserId: [14, 10],
+  ownerUserId: [13, 10],
   parentEventId: [9, 5],
   playerCombat: [25, 1],
   playerCombatReceipts: [9, 1],
@@ -140,9 +140,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "7800e0d58db7d10a1000a051460e15c431139635450640d5c1219a205786cb80";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "7800e0d58db7d10a1000a051460e15c431139635450640d5c1219a205786cb80";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "16f6de08d5a7f0301db40fc5db6ccc9b2f411adeb7a558b429825dd57329ac6e";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "5e884a5ee5f982856d6bf41e46cbfcc4d4a0b287c0e4a9e564f120666fe7114a";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "bc60250058d083785507424f770c8ede73e9b111e79fa377cc4ee3a8a3e2915f";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "e2762c40d52c097b0af18afa1b6b8fdbccd009abf2c30d61f8fca460753fe772";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
 // bundle contains a larger set of ordinary property spellings that can be
@@ -154,10 +154,27 @@ export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 285;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
 export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "e0ac5e7c4e31b33fcd33aa35020fbaf441e49033092554badcd4728b841add84";
-// The shared-gameplay architecture is a new sealed source checkpoint. Earlier
-// additive deltas described the duplicated Lakebed multiplayer paths removed by
-// that cut, so the current complete fingerprint is now the canonical boundary.
-export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({});
+// Keep the post-shared-gameplay checkpoint reconstructable. The only reviewed
+// source drift here removes owner-specific pickup filtering while leaving the
+// serialized Railway/Lakebed property spellings unchanged.
+export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
+  ownerUserId: Object.freeze({
+    removedUses: Object.freeze(["client/index.tsx"]),
+    counts: Object.freeze({
+      "client/index.tsx": Object.freeze([1, null]),
+      "shared/droppedItems.ts": Object.freeze([8, 7]),
+    }),
+    previousEntryFingerprint: "3e05d98c2ef86a097b91c8a5ff456142bee42c20b746dd2c893f16acd741c532",
+    source: "universal timestamp-only dropped-item pickup eligibility",
+  }),
+  userId: Object.freeze({
+    counts: Object.freeze({
+      "client/index.tsx": Object.freeze([30, 28]),
+    }),
+    previousEntryFingerprint: "60f7dfbdd9303930143947bbb8731d690ee46b189e8d6af18405adfe55a77259",
+    source: "remove owner-specific local pickup filtering",
+  }),
+});
 
 let typescriptPromise;
 async function typescript() {

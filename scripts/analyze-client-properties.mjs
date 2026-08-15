@@ -25,6 +25,10 @@ const manuallyReservedNames = new Set([
   "mouseSensitivity",
   "settings",
   "soundMuted",
+  // Realtime hello/welcome JSON uses this literal key. It is also an internal
+  // engine option, so source-path analysis alone cannot prove it is safe to
+  // mangle; keep both ends of the wire on the public spelling.
+  "terrain",
   "webkitAudioContext",
 ]);
 

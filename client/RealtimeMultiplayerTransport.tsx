@@ -7,6 +7,7 @@ import type { ItemStack } from "../shared/game.ts";
 import type { InventoryActionMutationResult } from "../shared/inventoryActions.ts";
 import type { PersistedInventoryState } from "../shared/chestTransfers.ts";
 import type { NormalizedDroppedItem } from "../shared/droppedItems.ts";
+import type { WorldTerrainDescriptor } from "../shared/worldPreset.ts";
 import {
   RealtimeMultiplayerClient,
   type RealtimeConnectionPhase,
@@ -21,7 +22,6 @@ export type RealtimeDropSink = (
   operationId: string,
   item: ItemStack,
   pose: PlayerPose,
-  ownerMustLeave?: boolean,
 ) => Promise<NormalizedDroppedItem>;
 export type RealtimePickupSink = (operationId: string, dropId: string) => Promise<NormalizedDroppedItem>;
 export type RealtimeRespawnSink = () => Promise<PlayerPose>;
@@ -46,6 +46,7 @@ export function RealtimeMultiplayerTransport(props: {
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
+  onTerrain: (terrain: WorldTerrainDescriptor) => void;
   onReconcilePose: (pose: PlayerPose) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
@@ -84,6 +85,7 @@ export function RealtimeMultiplayerTransport(props: {
       onWorldEdits: (edits, replace) => propsRef.current.onWorldEdits(edits, replace),
       onChatEvent: (event) => propsRef.current.onChatEvent(event),
       onGameMode: (gameMode) => propsRef.current.onGameMode(gameMode),
+      onTerrain: (terrain) => propsRef.current.onTerrain(terrain),
       onReconcilePose: (pose) => propsRef.current.onReconcilePose(pose),
       onDrops: (drops) => propsRef.current.onDrops(drops),
       onPlayerHit: (hit) => propsRef.current.onPlayerHit(hit),
@@ -93,7 +95,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerBlockSink((operationId, edit) => client.submitBlockEdit(operationId, edit));
     props.registerChatSink((message) => client.submitChat(message));
     props.registerActionSink((kind, value) => client.submitAction(kind, value));
-    props.registerDropSink((operationId, item, pose, ownerMustLeave) => client.submitDrop(operationId, item, pose, ownerMustLeave));
+    props.registerDropSink((operationId, item, pose) => client.submitDrop(operationId, item, pose));
     props.registerPickupSink((operationId, dropId) => client.submitPickup(operationId, dropId));
     props.registerRespawnSink(() => client.submitRespawn());
     props.registerPlayerAttackSink((operationId, targetId) => client.submitPlayerAttack(operationId, targetId));

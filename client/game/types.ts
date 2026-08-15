@@ -19,6 +19,7 @@ import type { MotionVisualActionKind } from "../../shared/multiplayerSegments.ts
 import type { PlayerCameraMode } from "./playerCamera.ts";
 import type { PlayerSkinModel } from "./playerSkin.ts";
 import type { PlayerArmorAppearance } from "./playerArmorGeometry.ts";
+import type { WorldTerrainDescriptor } from "../../shared/worldPreset.ts";
 
 export const BLOCK = {
   AIR: 0,
@@ -366,6 +367,8 @@ export interface VoxelEngineOptions {
   /** Local worlds simulate mobs in-process; network worlds receive them from their authority. */
   simulateMobs?: boolean;
   seed?: number;
+  /** Server-selected natural terrain. Omitted local worlds retain the default generator. */
+  terrain?: WorldTerrainDescriptor;
   worldRadius?: number;
   /** Offline-only bounded horizontal chunk radius; omitted callers retain the 7x7 default. */
   streamingChunkRadius?: number;

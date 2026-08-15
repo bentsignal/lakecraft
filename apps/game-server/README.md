@@ -9,6 +9,7 @@ AUTH_MODE=local-demo \
 SERVER_ID=my-local-world \
 LOCAL_DEMO_TOKEN=replace-with-at-least-16-characters \
 ADMIN_TOKEN=replace-with-a-separate-32-byte-secret \
+AGENT_TOKEN=replace-with-a-third-independent-32-byte-secret \
 bun run src/index.ts
 ```
 
@@ -41,7 +42,19 @@ For explicitly insecure local demos, use `AUTH_MODE=local-demo` and set `LOCAL_D
 
 Optional settings are `HOST` (default `0.0.0.0`), `PORT` (Railway injects this; default `3001`), `DATA_DIR` (default `./data`), `PUBLIC_SERVER_NAME`, `PUBLIC_SERVER_DESCRIPTION`, `TICK_HZ` (20), `SNAPSHOT_HZ` (10), `IDLE_SUSPEND_MS` (15000), `MAX_PLAYERS` (32; the current renderer and appearance-protocol maximum), and `MAX_PERSISTED_BLOCKS` (1000; the current full-snapshot protocol cap). `ALLOWED_ORIGINS` is a comma-separated browser-origin allowlist and is required in Lakebed-authenticated mode.
 
+World shape and the first-join role are server-owned settings:
+
+- `WORLD_PRESET=default` retains the existing deterministic survival terrain. `WORLD_PRESET=superflat` creates an infinite flat grass surface with three dirt layers, stone beneath, and bedrock at y=1.
+- `SUPERFLAT_GROUND_Y` is the inclusive grass height from 11 through 64 (default 20, yielding 18 breakable layers above bedrock).
+- `DEFAULT_GAME_MODE=survival|creative` controls a player's role on their first join (default survival). An existing player's persisted server role still wins.
+
+The selected terrain preset and height are pinned in the world's SQLite volume. Changing either against an existing volume fails startup instead of silently reinterpreting block edits or player positions. Use a fresh volume for a new terrain shape.
+
 Set `ADMIN_TOKEN` to a separate secret of at least 24 characters to enable the per-world console at `https://YOUR-SERVER/admin`. The console keeps its token in browser session storage, sends it only in an Authorization header, and can grant or revoke Creative mode and disconnect a player. Player roles are persisted in this world's SQLite database. Never reuse or share the player invitation token as the admin token.
+
+Set `AGENT_TOKEN` to a third, independent secret of at least 32 characters to enable the bounded builder API at `/agent/v1`. Startup rejects reuse of the player invitation, Lakebed registration, or administrator secret. Builder authentication is Railway-local and bearer-header-only; neither the API nor the CLI sends gameplay operations through Lakebed. See [`tools/lakecraft-agent/README.md`](../../tools/lakecraft-agent/README.md) for status, block/region/edit/fill, camera PNG, and deterministic example commands. If `AGENT_TOKEN` is absent, every builder path returns 404.
+
+Builder mutations commit a maximum of 512 edits atomically to SQLite, persist an exact idempotency receipt across restarts, and immediately broadcast ordinary `block_patch` events to connected players. The most recent 512 potentially large receipts are retained to bound storage. Reads and native PNG renders sample the same config-selected terrain authority used by gameplay; camera output is capped at 320×200 and 128 blocks.
 
 Attach a Railway volume at `/data` and set `DATA_DIR=/data`. A single replica is required because SQLite is the authority for one world.
 

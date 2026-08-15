@@ -161,12 +161,39 @@ describe("SQLite world persistence", () => {
     const store = new WorldStore(":memory:");
     const drop = {
       dropId:"drop:test", ownerUserId:"u1", itemId:"diamond_pickaxe", count:1, durability:120,
-      x:1, y:69.02, z:2, droppedAt:1_000, ownerPickupAt:1_500, ownerPickupBlocked:false, expiresAt:10_000,
+      x:1, y:69.02, z:2, droppedAt:1_000, ownerPickupAt:2_000, expiresAt:10_000,
     };
     store.saveDrop(drop, "drop_operation_1");
     expect(store.getDropOperation("u1", "drop_operation_1")).toEqual(drop);
     expect(store.listDrops(9_999)).toEqual([drop]);
     expect(store.listDrops(10_000)).toEqual([]);
     store.close();
+  });
+
+  test("retains the universal pickup deadline and exact-once receipt across restart", () => {
+    const path = `/tmp/lakecraft-world-${crypto.randomUUID()}.sqlite`;
+    paths.push(path);
+    const drop = {
+      dropId:"drop:restart", ownerUserId:"owner", itemId:"dirt", count:1,
+      x:0.5, y:69, z:0.5, droppedAt:1_000, ownerPickupAt:2_000, expiresAt:10_000,
+    };
+    const first = new WorldStore(path);
+    // Production databases from the previous latch implementation retain
+    // these additive columns. New code must ignore them without a rebuild.
+    first.db.exec("ALTER TABLE dropped_items ADD COLUMN owner_pickup_blocked INTEGER NOT NULL DEFAULT 0;");
+    first.db.exec("ALTER TABLE pickup_operations ADD COLUMN owner_pickup_blocked INTEGER NOT NULL DEFAULT 0;");
+    first.saveDrop(drop, "drop_restart_operation");
+    first.close();
+
+    const restarted = new WorldStore(path);
+    expect(restarted.listDrops(1_999)).toEqual([drop]);
+    expect(restarted.consumeDrop("picker", "pickup_restart_operation", drop.dropId, 2_000)).toEqual(drop);
+    restarted.close();
+
+    const replayed = new WorldStore(path);
+    expect(replayed.listDrops(2_001)).toEqual([]);
+    expect(replayed.getPickupOperation("picker", "pickup_restart_operation")).toEqual(drop);
+    expect(replayed.consumeDrop("picker", "pickup_restart_operation", drop.dropId, 2_500)).toEqual(drop);
+    replayed.close();
   });
 });

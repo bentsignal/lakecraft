@@ -16,19 +16,22 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "floor", 240]),
   Object.freeze(["Math", "hypot", 35]),
   Object.freeze(["Math", "imul", 35]),
-  Object.freeze(["Math", "max", 244]),
+  // Superflat generation clamps its lower materialization bound once per region.
+  Object.freeze(["Math", "max", 245]),
   Object.freeze(["Math", "min", 200]),
   Object.freeze(["Math", "round", 29]),
   Object.freeze(["Math", "sin", 65]),
   Object.freeze(["Math", "PI", 109]),
-  Object.freeze(["Object", "freeze", 159]),
+  // The shared, immutable default/superflat terrain descriptor joins the client bundle.
+  Object.freeze(["Object", "freeze", 160]),
   Object.freeze(["Object", "keys", 31]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
-  Object.freeze(["Array", "isArray", 80]),
+  Object.freeze(["Array", "isArray", 81]),
   Object.freeze(["Number", "isFinite", 259]),
   // Realtime PvP validates integral damage and health at the untrusted wire boundary.
   Object.freeze(["Number", "isInteger", 56]),
-  Object.freeze(["Number", "isSafeInteger", 43]),
+  // Terrain descriptors reject non-integral or unsafe superflat ground heights.
+  Object.freeze(["Number", "isSafeInteger", 44]),
   Object.freeze(["Number", "MAX_SAFE_INTEGER", 20]),
   Object.freeze(["Number", "NEGATIVE_INFINITY", 26]),
   Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
@@ -37,8 +40,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_922;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "29a67a6aaf41bd59e411a833d5601f38caf6e2d03bf745dac581a35e27489a25";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_926;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "aeda1c3004627300b46ee5c11f2d9bc222d52815f3fa775c0e6d8b7eb5953da4";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

@@ -2,6 +2,13 @@ import type { JoinAuthenticator } from "./auth";
 import type { ServerConfig } from "./config";
 import type { WorldStore } from "./database";
 import type { AdminPlayerSummary, AdminWorldControl, ServerGameMode } from "./adminPortal";
+import type {
+  AgentBuilderWorld,
+  AgentRegionBounds,
+  AgentRegionResult,
+  AgentWorldMetadata,
+} from "./agentBuilder";
+import { applyAgentBatch, type AgentBatchInput, type AgentBatchResult } from "./agentBuilderPersistence";
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   APPEARANCE_CAPABILITY,
@@ -24,9 +31,13 @@ import {
   MAX_PLAYER_Y,
   PLAYER_GRAVITY,
   PLAYER_JUMP_SPEED,
-  terrainFeetY,
-  terrainHeight,
+  createTerrainAuthority,
+  type TerrainAuthority,
 } from "./terrain";
+import {
+  DROPPED_ITEM_PICKUP_DELAY_MS,
+  DROPPED_ITEM_TTL_MS,
+} from "../../../shared/droppedItems.ts";
 
 export interface Peer {
   readonly id: string;
@@ -72,8 +83,6 @@ interface ConnectionState {
   clientPoseAuthority: boolean;
 }
 
-// Feet pose on the deterministic client's height-68 spawn plateau.
-const SPAWN = { x: 0.5, y: terrainFeetY(0.5, 0.5), z: 0.5 };
 /** Twenty-one chunks: the authority can feed the highest supported client view. */
 const NEARBY_RADIUS = 21 * 16;
 const EDIT_REACH = 8;
@@ -86,10 +95,7 @@ export const RESUME_TOKEN_TTL_MS = 10 * 60 * 1_000;
 export const SKIN_CHANGE_RATE_LIMIT_MS = 3_000;
 export const APPEARANCE_REQUEST_RATE_LIMIT = 4;
 export const APPEARANCE_REQUEST_RATE_WINDOW_MS = 1_000;
-const DROP_TTL_MS = 5 * 60_000;
-const DROP_OWNER_DELAY_MS = 750;
 const DROP_REACH = 3;
-const DROP_OWNER_LEAVE_DISTANCE = 2.25;
 const DROP_GRAVITY = 24;
 const DROP_TERMINAL_VELOCITY = -24;
 const DROP_BROADCAST_INTERVAL_MS = 100;
@@ -105,7 +111,7 @@ const DEFAULT_APPEARANCE: PublicAppearance = Object.freeze({
   armorFeet: "",
 });
 
-export class GameWorld implements AdminWorldControl {
+export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   private readonly connections = new Map<string, ConnectionState>();
   private readonly userConnections = new Map<string, ConnectionState>();
   private tickNumber = 0;
@@ -120,12 +126,18 @@ export class GameWorld implements AdminWorldControl {
   private lastDropBroadcastAt = Number.NEGATIVE_INFINITY;
   private dropsDirty = false;
   private shuttingDown = false;
+  readonly terrain: TerrainAuthority;
 
   constructor(
     readonly config: ServerConfig,
     private readonly store: WorldStore,
     private readonly authenticator: JoinAuthenticator,
   ) {
+    store.assertTerrainConfiguration(config.worldPreset, config.superflatGroundY);
+    this.terrain = createTerrainAuthority({
+      preset: config.worldPreset,
+      superflatGroundY: config.superflatGroundY,
+    });
     for (const edit of store.getAllBlockEdits()) this.blockOverrides.set(blockKey(edit.x, edit.y, edit.z), edit.block);
     for (const drop of store.listDrops()) {
       this.drops.set(drop.dropId, drop);
@@ -143,6 +155,68 @@ export class GameWorld implements AdminWorldControl {
 
   isJoined(peerId: string): boolean {
     return this.connections.get(peerId)?.joined ?? false;
+  }
+
+  agentMetadata(): AgentWorldMetadata {
+    return {
+      serverId: this.config.serverId,
+      name: this.config.serverName,
+      description: this.config.serverDescription,
+      revision: this.store.getRevision(),
+      persistedBlocks: this.store.blockCount(),
+      maxPersistedBlocks: this.config.maxPersistedBlocks,
+      worldPreset: this.terrain.descriptor.preset,
+      ...(this.terrain.descriptor.preset === "superflat"
+        ? { groundY: this.terrain.descriptor.superflatGroundY }
+        : {}),
+      defaultGameMode: this.config.defaultGameMode,
+      connectedPlayers: this.playerCount,
+    };
+  }
+
+  agentEditsSince(sinceRevision: number, limit: number): import("./protocol").BlockEdit[] {
+    return this.store.getAllBlockEdits()
+      .filter((edit) => edit.revision > sinceRevision)
+      .slice(0, Math.max(1, Math.min(512, Math.floor(limit))));
+  }
+
+  agentReadRegion(bounds: AgentRegionBounds): AgentRegionResult {
+    const blocks: number[] = [];
+    for (let y = bounds.minY; y <= bounds.maxY; y++) {
+      for (let z = bounds.minZ; z <= bounds.maxZ; z++) {
+        for (let x = bounds.minX; x <= bounds.maxX; x++) blocks.push(this.agentBlockAt(x, y, z));
+      }
+    }
+    return {
+      revision: this.store.getRevision(),
+      bounds,
+      size: {
+        x: bounds.maxX - bounds.minX + 1,
+        y: bounds.maxY - bounds.minY + 1,
+        z: bounds.maxZ - bounds.minZ + 1,
+      },
+      order: "x,z,y",
+      blocks,
+    };
+  }
+
+  agentBlockAt(x: number, y: number, z: number): number {
+    return this.blockOverrides.get(blockKey(x, y, z)) ?? this.terrain.blockAt(x, y, z);
+  }
+
+  agentApplyBatch(input: AgentBatchInput): AgentBatchResult {
+    const result = applyAgentBatch(this.store, input, this.config.maxPersistedBlocks);
+    if (!result.ok || result.replayed) return result;
+    for (const edit of result.edits) {
+      this.blockOverrides.set(blockKey(edit.x, edit.y, edit.z), edit.block);
+      for (const drop of this.drops.values()) {
+        if (Math.floor(drop.x) === edit.x && Math.floor(drop.z) === edit.z) this.settledDrops.delete(drop.dropId);
+      }
+      for (const connection of this.userConnections.values()) {
+        this.send(connection.peer, { v: PROTOCOL_VERSION, type: "block_patch", edit });
+      }
+    }
+    return result;
   }
 
   adminPlayers(): AdminPlayerSummary[] {
@@ -211,6 +285,8 @@ export class GameWorld implements AdminWorldControl {
       authMode: this.config.authMode,
       tickHz: this.config.tickHz,
       snapshotHz: this.config.snapshotHz,
+      terrain: this.terrain.descriptor,
+      defaultGameMode: this.config.defaultGameMode,
       capabilities: [APPEARANCE_CAPABILITY],
     });
   }
@@ -292,13 +368,6 @@ export class GameWorld implements AdminWorldControl {
     }
     const dt = 1 / this.config.tickHz;
     for (const drop of this.drops.values()) {
-      const owner = this.userConnections.get(drop.ownerUserId)?.player;
-      if (drop.ownerPickupBlocked && owner
-        && Math.hypot(owner.x - drop.x, owner.z - drop.z) > DROP_OWNER_LEAVE_DISTANCE) {
-        drop.ownerPickupBlocked = false;
-        this.store.updateDropState(drop);
-        dropsChanged = true;
-      }
       if (this.settledDrops.has(drop.dropId)) continue;
       const velocity = Math.max(DROP_TERMINAL_VELOCITY, (this.dropVelocityY.get(drop.dropId) ?? 0) - DROP_GRAVITY * dt);
       const nextY = drop.y + velocity * dt;
@@ -349,13 +418,13 @@ export class GameWorld implements AdminWorldControl {
       player.vx = state.controls.moveX * speed;
       player.vz = state.controls.moveZ * speed;
       const nextX = player.x + player.vx * dt;
-      if (Math.abs(nextX) <= MAX_PLAYER_XZ && terrainFeetY(nextX, player.z) <= player.y + 0.0001) player.x = nextX;
+      if (Math.abs(nextX) <= MAX_PLAYER_XZ && this.terrain.feetY(nextX, player.z) <= player.y + 0.0001) player.x = nextX;
       else player.vx = 0;
       const nextZ = player.z + player.vz * dt;
-      if (Math.abs(nextZ) <= MAX_PLAYER_XZ && terrainFeetY(player.x, nextZ) <= player.y + 0.0001) player.z = nextZ;
+      if (Math.abs(nextZ) <= MAX_PLAYER_XZ && this.terrain.feetY(player.x, nextZ) <= player.y + 0.0001) player.z = nextZ;
       else player.vz = 0;
 
-      const groundY = terrainFeetY(player.x, player.z);
+      const groundY = this.terrain.feetY(player.x, player.z);
       if (creative) {
         state.vy = state.controls.moveY * CREATIVE_FLIGHT_SPEED;
       } else {
@@ -443,13 +512,17 @@ export class GameWorld implements AdminWorldControl {
         : {
             id: principal.userId,
             name: principal.displayName,
-            ...SPAWN,
+            x: 0.5,
+            y: this.terrain.feetY(0.5, 0.5),
+            z: 0.5,
             yaw: 0,
             pitch: 0,
             vx: 0,
             vy: 0,
             vz: 0,
-            gameMode: stored?.player.gameMode === "creative" ? "creative" : "survival",
+            gameMode: stored?.player.gameMode === "creative" || stored?.player.gameMode === "survival"
+              ? stored.player.gameMode
+              : this.config.defaultGameMode,
             health: stored?.player.health ?? 20,
           };
       // Older fixed-floor servers could persist players below the actual
@@ -457,7 +530,7 @@ export class GameWorld implements AdminWorldControl {
       // reconnect cannot begin embedded in the spawn rim.
       player.x = Math.max(-MAX_PLAYER_XZ, Math.min(MAX_PLAYER_XZ, player.x));
       player.z = Math.max(-MAX_PLAYER_XZ, Math.min(MAX_PLAYER_XZ, player.z));
-      player.y = Math.min(MAX_PLAYER_Y, Math.max(player.y, terrainFeetY(player.x, player.z)));
+      player.y = Math.min(MAX_PLAYER_Y, Math.max(player.y, this.terrain.feetY(player.x, player.z)));
 
       if (existingForUser) {
         state.appearance = { ...existingForUser.appearance };
@@ -486,6 +559,8 @@ export class GameWorld implements AdminWorldControl {
         serverTick: this.tickNumber,
         inputAck: state.lastInputSeq,
         blocksRevision: revision,
+        terrain: this.terrain.descriptor,
+        defaultGameMode: this.config.defaultGameMode,
       });
       this.send(state.peer, {
         v: PROTOCOL_VERSION,
@@ -809,9 +884,8 @@ export class GameWorld implements AdminWorldControl {
       y: message.y,
       z: message.z,
       droppedAt: now,
-      ownerPickupAt: now + DROP_OWNER_DELAY_MS,
-      ownerPickupBlocked: message.ownerMustLeave === true,
-      expiresAt: now + DROP_TTL_MS,
+      ownerPickupAt: now + DROPPED_ITEM_PICKUP_DELAY_MS,
+      expiresAt: now + DROPPED_ITEM_TTL_MS,
     };
     this.drops.set(drop.dropId, drop);
     this.dropVelocityY.set(drop.dropId, 0);
@@ -832,7 +906,7 @@ export class GameWorld implements AdminWorldControl {
     }
     const drop = this.drops.get(message.dropId);
     if ((state.player!.health ?? 20) <= 0 || !drop || drop.expiresAt <= now
-      || (drop.ownerUserId === state.player!.id && (drop.ownerPickupBlocked || drop.ownerPickupAt > now))
+      || drop.ownerPickupAt > now
       || squaredDistance(state.player!, drop) > DROP_REACH ** 2) {
       this.fail(state, "bad_message", "Item is unavailable or out of reach", false, false, message.operationId);
       return;
@@ -853,7 +927,10 @@ export class GameWorld implements AdminWorldControl {
 
   private respawn(state: ConnectionState, message: Extract<ClientMessage, { type: "respawn" }>, now: number): void {
     const player = state.player!;
-    Object.assign(player, SPAWN, { yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0, health: 20 });
+    Object.assign(player, {
+      x: 0.5, y: this.terrain.feetY(0.5, 0.5), z: 0.5,
+      yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0, health: 20,
+    });
     player.crouching = false;
     player.visualActions = [];
     state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
@@ -975,10 +1052,9 @@ export class GameWorld implements AdminWorldControl {
   private dropSupportY(x: number, z: number, fromY: number): number {
     const blockX = Math.floor(x);
     const blockZ = Math.floor(z);
-    const naturalTopBlock = terrainHeight(blockX, blockZ);
     for (let y = Math.floor(fromY); y >= -64; y -= 1) {
       const override = this.blockOverrides.get(blockKey(blockX, y, blockZ));
-      const block = override ?? (y <= naturalTopBlock ? 1 : 0);
+      const block = override ?? this.terrain.blockAt(blockX, y, blockZ);
       if (dropSupportingBlock(block)) return y + 1;
     }
     return -64;

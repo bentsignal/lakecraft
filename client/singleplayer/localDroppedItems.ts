@@ -1,6 +1,6 @@
 import type { LocalMobDeathDropEvent } from "../game/mobs.ts";
 import {
-  DROPPED_ITEM_OWNER_PICKUP_DELAY_MS,
+  DROPPED_ITEM_PICKUP_DELAY_MS,
   DROPPED_ITEM_PICKUP_RADIUS,
   DROPPED_ITEM_TTL_MS,
 } from "../../shared/droppedItems.ts";
@@ -15,20 +15,6 @@ export interface LocalDropCollectionResult {
   inventory: Inventory;
   drops: LocalDroppedItem[];
   changed: boolean;
-}
-
-const OWNER_PICKUP_LEAVE_DISTANCE = 2.25;
-
-function releaseOwnerPickupBarrier(
-  drop: LocalDroppedItem,
-  pose: Readonly<{ x: number; z: number }>,
-): LocalDroppedItem | null {
-  if (!drop.ownerPickupBlocked) return drop;
-  const dx = pose.x - drop.x;
-  const dz = pose.z - drop.z;
-  if (dx * dx + dz * dz <= OWNER_PICKUP_LEAVE_DISTANCE ** 2) return null;
-  const { ownerPickupBlocked: _blocked, ...released } = drop;
-  return released;
 }
 
 /**
@@ -132,30 +118,24 @@ export function collectLocalDroppedItems(
   const remaining: LocalDroppedItem[] = [];
   const radiusSquared = Math.max(0, pickupRadius) ** 2;
   for (const drop of drops) {
-    const eligibleDrop = releaseOwnerPickupBarrier(drop, pose);
-    if (!eligibleDrop) {
+    if (now < drop.droppedAt + DROPPED_ITEM_PICKUP_DELAY_MS) {
       remaining.push(drop);
       continue;
     }
-    if (eligibleDrop !== drop) changed = true;
-    if (now < eligibleDrop.droppedAt + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS) {
-      remaining.push(eligibleDrop);
-      continue;
-    }
-    const distanceSquared = (pose.x - eligibleDrop.x) ** 2 + (pose.y - eligibleDrop.y) ** 2 + (pose.z - eligibleDrop.z) ** 2;
+    const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
     if (distanceSquared > radiusSquared) {
-      remaining.push(eligibleDrop);
+      remaining.push(drop);
       continue;
     }
-    const added = addItemStack(nextInventory, eligibleDrop.item);
-    const picked = eligibleDrop.item.count - added.remainder;
+    const added = addItemStack(nextInventory, drop.item);
+    const picked = drop.item.count - added.remainder;
     if (picked <= 0) {
-      remaining.push(eligibleDrop);
+      remaining.push(drop);
       continue;
     }
     nextInventory = added.inventory;
     changed = true;
-    if (added.remainder > 0) remaining.push({ ...eligibleDrop, item: { ...eligibleDrop.item, count: added.remainder } });
+    if (added.remainder > 0) remaining.push({ ...drop, item: { ...drop.item, count: added.remainder } });
   }
   return { inventory: nextInventory, drops: remaining, changed };
 }
@@ -179,8 +159,7 @@ export function collectMovedLocalDroppedItems(
   for (const index of movedIndices) {
     const drop = drops[index];
     if (!drop) continue;
-    if (drop.ownerPickupBlocked) continue;
-    if (now < drop.droppedAt + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS) continue;
+    if (now < drop.droppedAt + DROPPED_ITEM_PICKUP_DELAY_MS) continue;
     const distanceSquared = (pose.x - drop.x) ** 2 + (pose.y - drop.y) ** 2 + (pose.z - drop.z) ** 2;
     if (distanceSquared > radiusSquared) continue;
     const added = addItemStack(nextInventory, drop.item);

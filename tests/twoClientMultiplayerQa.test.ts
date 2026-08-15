@@ -17,6 +17,7 @@ import {
 import { activePlayerPresences, type PlayerPresence } from "../shared/protocol.ts";
 import { buildOfflinePresenceValue } from "../server/playerPresence.ts";
 import {
+  DROPPED_ITEM_PICKUP_DELAY_MS,
   applyDropItemToInventory,
   applyPickupDroppedItem,
   createPersistedDroppedItem,
@@ -162,9 +163,20 @@ const droppedRow = createPersistedDroppedItem("qa-alice", dropValidation.request
 const normalizedDrop = droppedRow && normalizeDroppedItemRow(droppedRow, 70_001);
 assert.ok(normalizedDrop);
 if (!normalizedDrop) throw new Error("shared drop must normalize");
-const pickedUp = applyPickupDroppedItem(createEmptyInventory(), normalizedDrop, "qa-bob", normalizedDrop, 70_001);
+assert.deepEqual(
+  applyPickupDroppedItem(createEmptyInventory(), normalizedDrop, "qa-bob", normalizedDrop, 70_001),
+  { ok: false, reason: "pickup_delay" },
+  "all players observe the same one-second pickup delay",
+);
+const pickedUp = applyPickupDroppedItem(
+  createEmptyInventory(),
+  normalizedDrop,
+  "qa-bob",
+  normalizedDrop,
+  70_000 + DROPPED_ITEM_PICKUP_DELAY_MS,
+);
 assert.ok(pickedUp.ok);
-if (!pickedUp.ok) throw new Error("other client must be able to pick up immediately");
+if (!pickedUp.ok) throw new Error("other client must be able to pick up when the universal delay expires");
 assert.deepEqual(pickedUp.picked, { itemId: "diamond", count: 2 });
 
 const attackerInventory = createEmptyInventory();
