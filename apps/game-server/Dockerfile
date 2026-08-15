@@ -8,6 +8,7 @@ ENV NODE_ENV=production \
     DATA_DIR=/data
 
 COPY apps/game-server/src ./src
+COPY apps/game-server/assets ./assets
 COPY shared /app/shared
 
 # Railway volumes are mounted root-owned. Railway may also set

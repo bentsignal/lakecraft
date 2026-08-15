@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { ITEMS } from "../shared/game.ts";
-import { decodePng } from "./png-rgba.mjs";
+import { decodePng, encodePngRgba } from "./png-rgba.mjs";
 
 const [jarArgument, outputArgument] = process.argv.slice(2);
 if (!jarArgument || !outputArgument) {
@@ -74,6 +74,10 @@ const BLOCK_ITEM_MODEL_CHAINS = Object.freeze({
   stone_brick_stairs: ["assets/minecraft/items/stone_brick_stairs.json", "assets/minecraft/models/block/stone_brick_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
   brick_stairs: ["assets/minecraft/items/brick_stairs.json", "assets/minecraft/models/block/brick_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
 });
+const BUILDING_COLORS = [
+  "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+  "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
+];
 const BLOCK_PATHS = Object.freeze({
   grass_top: "assets/minecraft/textures/block/grass_block_top.png",
   grass_side: "assets/minecraft/textures/block/grass_block_side.png",
@@ -173,6 +177,26 @@ const BLOCK_PATHS = Object.freeze({
   smooth_stone: "assets/minecraft/textures/block/smooth_stone.png",
   calcite: "assets/minecraft/textures/block/calcite.png",
   deepslate: "assets/minecraft/textures/block/deepslate.png",
+  ...Object.fromEntries(BUILDING_COLORS.flatMap((color) => [
+    [`${color}_stained_glass`, `assets/minecraft/textures/block/${color}_stained_glass.png`],
+    [`${color}_concrete`, `assets/minecraft/textures/block/${color}_concrete.png`],
+  ])),
+  glowstone: "assets/minecraft/textures/block/glowstone.png",
+  sea_lantern: "assets/minecraft/textures/block/sea_lantern.png",
+  shroomlight: "assets/minecraft/textures/block/shroomlight.png",
+  ochre_froglight_side: "assets/minecraft/textures/block/ochre_froglight_side.png",
+  ochre_froglight_top: "assets/minecraft/textures/block/ochre_froglight_top.png",
+  verdant_froglight_side: "assets/minecraft/textures/block/verdant_froglight_side.png",
+  verdant_froglight_top: "assets/minecraft/textures/block/verdant_froglight_top.png",
+  pearlescent_froglight_side: "assets/minecraft/textures/block/pearlescent_froglight_side.png",
+  pearlescent_froglight_top: "assets/minecraft/textures/block/pearlescent_froglight_top.png",
+  magma_block: "assets/minecraft/textures/block/magma.png",
+  ...Object.fromEntries([
+    "mossy_cobblestone", "mossy_stone_bricks", "cracked_stone_bricks", "chiseled_stone_bricks",
+    "packed_mud", "mud_bricks", "prismarine", "prismarine_bricks", "dark_prismarine", "nether_bricks",
+    "red_nether_bricks", "blackstone", "polished_blackstone", "polished_blackstone_bricks", "end_stone",
+    "end_stone_bricks", "purpur_block", "obsidian", "crying_obsidian",
+  ].map((name) => [name, `assets/minecraft/textures/block/${name}.png`])),
 });
 const BLOCK_ITEM_TEXTURE_PATHS = Object.freeze({
   torch: "assets/minecraft/textures/block/torch.png",
@@ -204,6 +228,15 @@ function png(path, expectedWidth = null, expectedHeight = null) {
   return bytes.toString("base64");
 }
 
+function blockPng(path) {
+  const bytes = entry(path);
+  const decoded = decodePng(bytes);
+  if (decoded.width !== 16 || decoded.height < 16 || decoded.height % 16 !== 0) {
+    throw new Error(`${path} is ${decoded.width}x${decoded.height}; expected a 16px block texture strip.`);
+  }
+  return (decoded.height === 16 ? bytes : encodePngRgba(16, 16, decoded.rgba.subarray(0, 16 * 16 * 4))).toString("base64");
+}
+
 const itemTextures = {};
 for (const [itemId, definition] of Object.entries(ITEMS)) {
   if (definition.category === "block") continue;
@@ -217,7 +250,7 @@ const blockItemModelChains = Object.fromEntries(Object.entries(BLOCK_ITEM_MODEL_
   itemId,
   paths.map((path) => Object.freeze({ path, model: JSON.parse(entry(path).toString("utf8")) })),
 ]));
-const blocks = Object.fromEntries(Object.entries(BLOCK_PATHS).map(([name, path]) => [name, png(path, 16, 16)]));
+const blocks = Object.fromEntries(Object.entries(BLOCK_PATHS).map(([name, path]) => [name, blockPng(path)]));
 const blockItemTextures = Object.fromEntries(Object.entries(BLOCK_ITEM_TEXTURE_PATHS)
   .map(([name, path]) => [name, png(path, 16, 16)]));
 const blockLayers = Object.fromEntries(Object.entries(BLOCK_LAYER_PATHS)

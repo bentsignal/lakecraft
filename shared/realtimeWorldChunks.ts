@@ -3,7 +3,8 @@ export const REALTIME_WORLD_MIN_Y = -64;
 export const REALTIME_WORLD_MAX_Y = 320;
 export const REALTIME_WORLD_MAX_RADIUS = 12;
 export const REALTIME_WORLD_MAX_CHUNKS = (REALTIME_WORLD_MAX_RADIUS * 2 + 1) ** 2;
-export const REALTIME_BLOCK_ID_MAX = 253;
+/** The packed edit reserves 15 bits for the coordinate and 9 for the block. */
+export const REALTIME_BLOCK_ID_MAX = 511;
 
 export interface RealtimeChunkEdit {
   x: number;
@@ -78,7 +79,6 @@ export function decodeRealtimeChunkEdits(chunkX: number, chunkZ: number, source:
   let previousCoordinate = -1;
   for (let offset = 0; offset < bytes.length; offset += 3) {
     const packed = bytes[offset] | bytes[offset + 1] << 8 | bytes[offset + 2] << 16;
-    if (packed >>> 23 !== 0) return null;
     const coordinate = packed & 0x7fff;
     const block = packed >>> 15;
     if (coordinate <= previousCoordinate || block > REALTIME_BLOCK_ID_MAX) return null;

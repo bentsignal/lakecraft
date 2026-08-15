@@ -16,6 +16,7 @@ const doorStates = (family: string): string[] => [
   ...directions.map((direction) => `${family}_door_open_${direction}`),
 ];
 const woodFamilies = ["spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry"];
+const buildingColors = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"];
 export const AGENT_BLOCK_NAMES = Object.freeze([
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest",
   "door_closed", "door_open", "bed", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "furnace", "ladder",
@@ -33,6 +34,12 @@ export const AGENT_BLOCK_NAMES = Object.freeze([
   "sandstone", "cut_sandstone", "chiseled_sandstone", "smooth_stone", "calcite", "deepslate",
   ...["east", "south", "west"].map((direction) => `oak_door_closed_${direction}`),
   ...["east", "south", "west"].map((direction) => `oak_door_open_${direction}`),
+  ...buildingColors.flatMap((color) => [`${color}_stained_glass`, `${color}_concrete`]),
+  "glowstone", "sea_lantern", "shroomlight", "ochre_froglight", "verdant_froglight", "pearlescent_froglight", "magma_block",
+  "mossy_cobblestone", "mossy_stone_bricks", "cracked_stone_bricks", "chiseled_stone_bricks",
+  "packed_mud", "mud_bricks", "prismarine", "prismarine_bricks", "dark_prismarine", "nether_bricks",
+  "red_nether_bricks", "blackstone", "polished_blackstone", "polished_blackstone_bricks", "end_stone",
+  "end_stone_bricks", "purpur_block", "obsidian", "crying_obsidian",
 ]);
 
 export interface AgentWorldMetadata {
@@ -413,6 +420,11 @@ function agentBlockColor(block: number): readonly [number, number, number] {
   if (name.includes("spruce")) return [115, 85, 47];
   if (name.includes("leaves")) return [70, 125, 57];
   if (name.includes("deepslate")) return [73, 77, 77];
+  if (name.includes("glowstone") || name.includes("froglight") || name.includes("lantern")) return [239, 216, 143];
+  if (name.includes("prismarine")) return [80, 145, 132];
+  if (name.includes("nether") || name.includes("blackstone") || name.includes("obsidian")) return [57, 43, 61];
+  if (name.includes("end_stone")) return [220, 222, 158];
+  if (name.includes("purpur")) return [169, 121, 169];
   return [127, 127, 127];
 }
 

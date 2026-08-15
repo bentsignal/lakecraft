@@ -1,6 +1,6 @@
 import { WORLD_CHUNK_SIZE, chunkBounds, chunkKeyForBlock } from "./chunks.ts";
 import { TERRAIN_MIN_Y } from "./terrain.ts";
-import { BLOCK, blockStateName, isSlabBlock, isStairBlock, isTorchBlock, type BlockId } from "./types.ts";
+import { BLOCK, blockStateName, isGlassBlock, isSlabBlock, isStairBlock, isTorchBlock, type BlockId } from "./types.ts";
 import { WORLD_EDIT_MAX_Y } from "../../shared/worldChunks.ts";
 
 export const SKY_EXPOSURE_LEVELS = 3;
@@ -41,7 +41,7 @@ export function skyOccluderClass(block: BlockId): SkyOccluderClass {
     && block !== BLOCK.DOOR_OPEN
     && !state.includes("_door_")
     && block !== BLOCK.LADDER
-    && block !== BLOCK.GLASS
+    && !isGlassBlock(block)
     && block !== BLOCK.BED
     && block !== BLOCK.SAPLING
     && block !== BLOCK.OAK_FENCE

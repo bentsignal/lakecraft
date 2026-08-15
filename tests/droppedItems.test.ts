@@ -44,7 +44,7 @@ assert.deepEqual(
 );
 for (const invalid of [
   null,
-  { itemId: "obsidian", count: 1 },
+  { itemId: "not_a_lakecraft_item", count: 1 },
   { itemId: "dirt", count: 0 },
   { itemId: "dirt", count: 65 },
   { itemId: "dirt", count: 1, durability: 1 },

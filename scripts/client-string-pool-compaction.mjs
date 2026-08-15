@@ -10,7 +10,7 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // application copy or making a new literal eligible requires human review.
 export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 502;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 442;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "55348a7b4946f7a8c0b501c814056905bbd099eaa455910b3485c03648cd9c2b";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "8028359dca9b69aec2a81891d95cadfa3249cb8ee31d1145b7c952303f6cddd8";
 export const COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA=Object.freeze({
   previousOccurrences:497,previousUniqueValues:438,
   previousSourceFingerprint:"101d5534862451469ee48f47284d4f93ff4de513688b7b9be27c344e9141cb33",
@@ -141,9 +141,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_181;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_183;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 112;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "217e4feef38c4210095548b3a227dc4fea0c681d1992966ef26cae501d98f973";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "566cfbf94acd2b7cfd4e25ec023793cf8bd3490f4bce1037636b780be34e1747";
 export const COMPACT_CLIENT_REPEATED_CREATIVE_PARITY_DELTA = Object.freeze({
   previousOccurrences: 1_026,
   previousUniqueValues: 98,
@@ -187,6 +187,18 @@ export const COMPACT_CLIENT_REPEATED_THIN_DOOR_DELTA = Object.freeze({
   uniqueValueDelta: 1,
   valueDeltas: Object.freeze({ "_door_": 5 }),
   source: "client/game/skyExposure.ts#closed-directional-doors-remain-thin",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_REMOTE_TEXTURE_DELTA = Object.freeze({
+  previousOccurrences: 1_181,
+  previousUniqueValues: 112,
+  previousSourceFingerprint: "b4b19df72189bfa59accb701f1c923bedf8651408408f8a5f16cea477f601095",
+  occurrenceDelta: 2,
+  uniqueValueDelta: 0,
+  sources: Object.freeze([
+    "client/game/generated/textureAtlas.ts#immutable-Railway-atlas-loader",
+    "client/game/mobRenderer.ts#immutable-Railway-atlas-loader",
+  ]),
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_TERRAIN_PRESET_DELTA = Object.freeze({

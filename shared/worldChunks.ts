@@ -7,11 +7,11 @@ export const WORLD_EDIT_MAX_XZ = 1_000_000;
 export const WORLD_EDIT_MIN_Y = 1;
 export const WORLD_EDIT_MAX_Y = 192;
 export const WORLD_CHUNK_SECTION_HEIGHT = 8;
-export const WORLD_CHUNK_CODEC_VERSION = 6;
+export const WORLD_CHUNK_CODEC_VERSION = 7;
 export const MAX_VISIBLE_WORLD_CHUNKS = 49;
 export const MAX_WORLD_CHUNK_SNAPSHOT_BYTES = 24_576;
 /** Current snapshots reserve code zero for an untouched cell. */
-export const WORLD_CHUNK_CODEC_BITS_PER_CELL = 8;
+export const WORLD_CHUNK_CODEC_BITS_PER_CELL = 10;
 export const WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES = (1 << WORLD_CHUNK_CODEC_BITS_PER_CELL) - 1;
 
 export const WORLD_CHUNK_BLOCK_TYPES = [
@@ -120,6 +120,8 @@ export type WorldChunkTargetedSampleResult =
 
 const CELLS_PER_Y = WORLD_EDIT_CHUNK_SIZE * WORLD_EDIT_CHUNK_SIZE;
 const CURRENT_BITS_PER_CELL = WORLD_CHUNK_CODEC_BITS_PER_CELL;
+const LEGACY_CODEC_VERSION = 6;
+const LEGACY_BITS_PER_CELL = 8;
 const SECTION_CELL_COUNT = WORLD_CHUNK_SECTION_HEIGHT * CELLS_PER_Y;
 const SECTION_PACKED_BYTE_COUNT = Math.ceil(SECTION_CELL_COUNT * CURRENT_BITS_PER_CELL / 8);
 const MIN_SECTION_Y = Math.floor(WORLD_EDIT_MIN_Y / WORLD_CHUNK_SECTION_HEIGHT);
@@ -202,26 +204,23 @@ function cellAddress(x: number, y: number, z: number, chunkX: number, chunkZ: nu
 }
 
 function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerCell: number): void {
-  const codeMask = (1 << bitsPerCell) - 1;
   const bitIndex = index * bitsPerCell;
-  const byteIndex = bitIndex >> 3;
-  const shift = bitIndex & 7;
-  packed[byteIndex] = (packed[byteIndex] & ~(codeMask << shift)) | ((code << shift) & 0xff);
-  if (shift > 8 - bitsPerCell) {
-    const firstBits = 8 - shift;
-    const spillBits = bitsPerCell - firstBits;
-    const spillMask = (1 << spillBits) - 1;
-    packed[byteIndex + 1] = (packed[byteIndex + 1] & ~spillMask) | ((code >> firstBits) & spillMask);
+  for (let bit = 0; bit < bitsPerCell; bit += 1) {
+    const target = bitIndex + bit;
+    const mask = 1 << (target & 7);
+    const byte = target >> 3;
+    if (code & 1 << bit) packed[byte] |= mask;
+    else packed[byte] &= ~mask;
   }
 }
 
 function getPackedCode(packed: Uint8Array, index: number, bitsPerCell: number): number {
   const bitIndex = index * bitsPerCell;
-  const byteIndex = bitIndex >> 3;
-  const shift = bitIndex & 7;
-  let code = packed[byteIndex] >> shift;
-  if (shift > 8 - bitsPerCell) code |= packed[byteIndex + 1] << (8 - shift);
-  return code & ((1 << bitsPerCell) - 1);
+  let code = 0;
+  for (let bit = 0; bit < bitsPerCell; bit += 1) {
+    if (packed[(bitIndex + bit) >> 3] & 1 << ((bitIndex + bit) & 7)) code |= 1 << bit;
+  }
+  return code;
 }
 
 function setCurrentCode(packed: Uint8Array, index: number, code: number): void {
@@ -287,7 +286,9 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
   if (snapshotJson.length > MAX_WORLD_CHUNK_SNAPSHOT_BYTES) return null;
   try {
     const parsed = JSON.parse(snapshotJson) as { v?: unknown; sections?: unknown };
-    if (parsed.v !== WORLD_CHUNK_CODEC_VERSION || !Array.isArray(parsed.sections)) return null;
+    const bits = parsed.v === WORLD_CHUNK_CODEC_VERSION ? CURRENT_BITS_PER_CELL
+      : parsed.v === LEGACY_CODEC_VERSION ? LEGACY_BITS_PER_CELL : 0;
+    if (!bits || !Array.isArray(parsed.sections)) return null;
     if (parsed.sections.length > MAX_SECTION_COUNT) return null;
     const sections = new Map<number, Uint8Array>();
     for (const rawSection of parsed.sections) {
@@ -296,8 +297,15 @@ function parsePacked(snapshotJson: string): PackedSnapshot | null {
       if (!Number.isInteger(section.y) || Number(section.y) < MIN_SECTION_Y || Number(section.y) > MAX_SECTION_Y) return null;
       if (!BS.isString(section.cells) || sections.has(Number(section.y))) return null;
       const packed = decodeBase64(section.cells);
-      if (!packed || packed.length !== SECTION_PACKED_BYTE_COUNT) return null;
-      sections.set(Number(section.y), packed);
+      if (!packed || packed.length !== Math.ceil(SECTION_CELL_COUNT * bits / 8)) return null;
+      if (bits === CURRENT_BITS_PER_CELL) sections.set(Number(section.y), packed);
+      else {
+        const migrated = new Uint8Array(SECTION_PACKED_BYTE_COUNT);
+        for (let index = 0; index < SECTION_CELL_COUNT; index += 1) {
+          setCurrentCode(migrated, index, getPackedCode(packed, index, bits));
+        }
+        sections.set(Number(section.y), migrated);
+      }
     }
     return { sections };
   } catch {

@@ -46,7 +46,7 @@ assert.equal(Object.keys(assets.itemTextures).length, 67);
 assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
 assert.ok(Object.hasOwn(assets.entities, "chicken"), "the exact temperate chicken joins every implemented mob texture");
-assert.equal(Object.keys(assets.blocks).length, 98);
+assert.equal(Object.keys(assets.blocks).length, 159);
 assert.equal(Object.keys(assets.blockItemTextures).length, 11);
 assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
 assert.deepEqual(Object.keys(assets.blockItemModelChains), [
@@ -238,4 +238,4 @@ for (let pixel = 0; pixel < 256; pixel += 1) {
     `grass side pixel ${pixel} composites the installed tinted overlay over its installed base`);
 }
 
-console.log(`Minecraft 26.2 visual import verified (${exactItems.length + Object.keys(assets.blockItemTextures).length} exact production item sprites + 3 bow stages + 27 exact block tiles + 3 plains-tinted installed layers + default player skin)`);
+console.log(`Minecraft 26.2 visual import verified (${exactItems.length + Object.keys(assets.blockItemTextures).length} exact production item sprites + 3 bow stages + ${Object.keys(assets.blocks).length} exact block tiles + 3 plains-tinted installed layers + default player skin)`);

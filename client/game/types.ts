@@ -22,6 +22,7 @@ import type { PlayerArmorAppearance } from "./playerArmorGeometry.ts";
 import type { WorldTerrainDescriptor } from "../../shared/worldPreset.ts";
 import {
   EXPANDED_BLOCK_STATE_TYPES,
+  LUMINOUS_BLOCK_ITEMS,
   type ExpandedBlockConstantName,
 } from "../../shared/expandedBuildingCatalog.ts";
 
@@ -97,6 +98,18 @@ export function isTorchBlock(block: BlockId): boolean {
     || block === BLOCK.TORCH_WALL_NORTH
     || block === BLOCK.TORCH_WALL_SOUTH
     || block === BLOCK.TORCH_WALL_WEST;
+}
+
+export function isGlassBlock(block: BlockId): boolean {
+  return block === BLOCK.GLASS || blockStateName(block).endsWith("_stained_glass");
+}
+
+export function isLuminousBlock(block: BlockId): boolean {
+  return (LUMINOUS_BLOCK_ITEMS as readonly string[]).includes(blockStateName(block));
+}
+
+export function isLightEmittingBlock(block: BlockId): boolean {
+  return isTorchBlock(block) || isLuminousBlock(block);
 }
 
 export function isSlabBlock(block: BlockId): boolean {

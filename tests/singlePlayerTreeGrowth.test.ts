@@ -11,7 +11,7 @@ const interaction = source.slice(interactionStart, craftingStart);
 
 assert.match(catalog, /\[BLOCK\.SAPLING\]:\s*"sapling"/);
 assert.match(catalog, /sapling:\s*BLOCK\.SAPLING/);
-assert.match(saveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.OAK_DOOR_OPEN_WEST/, "offline saves retain saplings and later append-only block edits");
+assert.match(saveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.CRYING_OBSIDIAN/, "offline saves retain saplings and later append-only block edits");
 assert.match(interaction, /itemId === "bone_meal"/, "growth requires selected bone meal");
 assert.ok(
   interaction.indexOf("planOakTreeGrowth") < interaction.indexOf("stack.count - 1"),

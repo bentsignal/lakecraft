@@ -234,7 +234,7 @@ assert.match(catalogSource, /stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/);
 assert.equal(audioSurfaceForBlock(BLOCK.STONE_BRICKS), "stone");
 assert.equal(audioSurfaceForBlock(BLOCK.STONE_BRICK_SLAB), "stone");
 assert.equal(audioSurfaceForBlock(BLOCK.BRICKS), "stone");
-assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.OAK_DOOR_OPEN_WEST/,
+assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.CRYING_OBSIDIAN/,
   "single-player persistence admits every later append-only engine ID");
 const worldMutation = serverSource.slice(
   serverSource.indexOf("editWorldBlock: mutation(async"),

@@ -27,6 +27,7 @@ import { compactClientBuiltinAliases, compactClientPropertyKeyAliases } from "./
 import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.mjs";
 import { compactClientStringPool } from "./client-string-pool-compaction.mjs";
 import { compactServerPropertyKeys } from "./server-property-key-compaction.mjs";
+import { remoteBlockTextureAtlasModule, remoteMobTextureAtlasModule } from "./remote-texture-assets.mjs";
 import {
   copyOwnedStageFile,
   createOwnedStageDirectory,
@@ -118,7 +119,12 @@ const cssTemplateMinifier = {
       loader: "js",
     }));
     esbuild.onLoad({ filter: /\.[tj]sx?$/ }, async ({ path }) => {
-      const source = await readFile(path, "utf8");
+      let source = await readFile(path, "utf8");
+      if (path === join(sourceRoot, "client", "game", "generated", "textureAtlas.ts")) {
+        source = remoteBlockTextureAtlasModule(source);
+      } else if (path === join(sourceRoot, "client", "game", "generated", "mobTextureAtlas.ts")) {
+        source = remoteMobTextureAtlasModule(source);
+      }
       const stagedSource = stripReviewedClientDevelopmentSource(path, source);
       let compactedSource = path.startsWith(`${join(sourceRoot, "client")}${sep}`)
         ? compactClientIdentifiers(stagedSource)

@@ -138,7 +138,9 @@ export function blockTextureForFace(block: BlockId, face: BlockFace): TextureAtl
     if (state === "quartz_block") return (`quartz_block_${face === "top" ? "top" : face === "bottom" ? "bottom" : "side"}`) as TextureAtlasName;
     if (state === "quartz_pillar") return (face === "top" || face === "bottom" ? "quartz_pillar_top" : "quartz_pillar") as TextureAtlasName;
     if (state === "chiseled_quartz") return (face === "top" || face === "bottom" ? "chiseled_quartz_top" : "chiseled_quartz") as TextureAtlasName;
+    if (state.endsWith("_froglight")) return `${state}_${face === "top" || face === "bottom" ? "top" : "side"}` as TextureAtlasName;
     if (["granite", "polished_granite", "diorite", "polished_diorite", "andesite", "polished_andesite", "sandstone", "cut_sandstone", "chiseled_sandstone", "smooth_stone", "calcite", "deepslate"].includes(state)) return state as TextureAtlasName;
+    if ((TEXTURE_ATLAS_NAMES as readonly string[]).includes(state)) return state as TextureAtlasName;
   }
   return UNIFORM_BLOCK_TEXTURES[block] ?? null;
 }

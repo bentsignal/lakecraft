@@ -49,7 +49,7 @@ assert.deepEqual(
   { ok: false, reason: "too_many_slots" },
 );
 for (const invalidSlot of [
-  [{ itemId: "obsidian", count: 1 }],
+  [{ itemId: "not_a_lakecraft_item", count: 1 }],
   [{ itemId: "toString", count: 1 }],
   [{ itemId: "stone", count: 0 }],
   [{ itemId: "stone", count: 65 }],
