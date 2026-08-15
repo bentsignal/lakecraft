@@ -421,6 +421,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "remoteUploadBytes": "gi",
   "remoteVisiblePlayers": "ki",
   "rendered": "az",
+  "replaceWorldChunkEdits": "bJ",
   "resolveSpawnPosition": "cK",
   "resolveSpawnY": "cL",
   "respawnAt": "bH",

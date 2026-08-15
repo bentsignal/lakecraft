@@ -10,38 +10,38 @@ import { pathToFileURL } from "node:url";
 // corresponding globals. The ordered occurrence fingerprint makes that claim
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
-  Object.freeze(["Math", "abs", 90]),
+  Object.freeze(["Math", "abs", 96]),
   Object.freeze(["Math", "cos", 53]),
   Object.freeze(["Math", "ceil", 34]),
-  Object.freeze(["Math", "floor", 240]),
+  Object.freeze(["Math", "floor", 247]),
   Object.freeze(["Math", "hypot", 35]),
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 245]),
-  Object.freeze(["Math", "min", 200]),
+  Object.freeze(["Math", "max", 249]),
+  Object.freeze(["Math", "min", 202]),
   Object.freeze(["Math", "round", 29]),
   Object.freeze(["Math", "sin", 65]),
   Object.freeze(["Math", "PI", 109]),
   // The shared, immutable default/superflat terrain descriptor joins the client bundle.
-  Object.freeze(["Object", "freeze", 160]),
+  Object.freeze(["Object", "freeze", 161]),
   Object.freeze(["Object", "keys", 31]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
-  Object.freeze(["Array", "isArray", 81]),
+  Object.freeze(["Array", "isArray", 88]),
   Object.freeze(["Number", "isFinite", 259]),
   // Realtime PvP validates integral damage and health at the untrusted wire boundary.
-  Object.freeze(["Number", "isInteger", 56]),
+  Object.freeze(["Number", "isInteger", 58]),
   // Terrain descriptors reject non-integral or unsafe superflat ground heights.
-  Object.freeze(["Number", "isSafeInteger", 44]),
+  Object.freeze(["Number", "isSafeInteger", 50]),
   Object.freeze(["Number", "MAX_SAFE_INTEGER", 20]),
   Object.freeze(["Number", "NEGATIVE_INFINITY", 26]),
   Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
   Object.freeze(["Number", "parseInt", 10]),
-  Object.freeze(["Date", "now", 59]),
+  Object.freeze(["Date", "now", 60]),
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_926;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "aeda1c3004627300b46ee5c11f2d9bc222d52815f3fa775c0e6d8b7eb5953da4";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_962;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "791be36eaec7273512d8fbcfc9630c375ee36f5f1f5ea54d38df4c81558782ba";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,

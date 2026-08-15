@@ -42,7 +42,7 @@ GitHub Actions workflow.
 | Variable | Value | Purpose |
 | --- | --- | --- |
 | `AUTH_MODE` | `local-demo` | Enables the invitation-token beta without a control-plane registration. |
-| `LOCAL_DEMO_TOKEN` | 32 random bytes | Secret every invited player enters alongside the server address. |
+| `LOCAL_DEMO_TOKEN` | 32 random bytes | Legacy `ACCESS_MODE=token` invitation secret. |
 | `ADMIN_TOKEN` | A different 32-byte secret | Enables the private `/admin` console for roles and live player controls. |
 | `AGENT_TOKEN` | A third, different 32-byte secret | Enables the Railway-local `/agent/v1` builder API. Omit it to disable every builder route. |
 | `SERVER_ID` | Stable random lowercase/number ID | Keeps the server identity stable across restarts. |
@@ -53,6 +53,9 @@ GitHub Actions workflow.
 | `DEFAULT_GAME_MODE` | `survival` or `creative` | First-join role for this server; stored per-player overrides remain authoritative. |
 | `SPAWN_X`, `SPAWN_Z` | World-space decimals; default `0.5`, `0.5` | Authoritative first-join and respawn center. Put a Creative showcase spawn outside its build footprint. |
 | `SPAWN_YAW_DEGREES` | `-360` through `360`; default `0` | Initial horizontal view direction. The server converts degrees to its wire yaw. |
+| `ACCESS_MODE` | `token`, `public`, `password`, `whitelist`, or `closed` | Persistent access policy seeded on first boot. |
+| `WHITELIST_USERNAMES` | Comma-separated usernames | Seeds the persistent whitelist. |
+| `DAYLIGHT_CYCLE`, `DAY_PHASE` | `true`, `0.5` | Seeds the world clock; Creative commonly uses frozen noon. |
 
 `PORT` and `RAILWAY_PUBLIC_DOMAIN` are injected by Railway. The container sets
 `HOST=0.0.0.0` and `DATA_DIR=/data`. Railway also exposes
@@ -85,10 +88,10 @@ the service URL, a command argument, screenshots, or logs. The agent API reads,
 renders, and mutates only this Railway world's exact SQLite/terrain authority;
 it never consumes Lakebed query or mutation quota.
 
-The first builder release deliberately retains the protocol's 1,000-coordinate
-world cap and renders cameras synchronously. Treat it as a demo-scale building
-surface: avoid parallel maximum-resolution cameras, and move to chunked world
-snapshots before opening a large unrestricted public build server.
+World edits are streamed by 8×8 coordinate chunk and `MAX_PERSISTED_BLOCKS`
+defaults to 1,000,000. Joining loads only the selected render-distance window;
+the Railway process keeps a bounded on-demand chunk cache. Builder cameras still
+render synchronously, so avoid parallel maximum-resolution camera requests.
 
 The doctor reports missing names but never reads back or prints secret values.
 

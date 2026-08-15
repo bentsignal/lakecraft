@@ -64,6 +64,7 @@ const server = Bun.serve<SocketData>({
     }, world);
     if (adminResponse) return adminResponse;
     if (request.method === "GET" && url.pathname === "/status") {
+      const runtimeSettings = world.runtimeStatus();
       return Response.json(
         {
           ok: true,
@@ -77,12 +78,10 @@ const server = Bun.serve<SocketData>({
           agentBuilderEnabled: Boolean(config.agentToken),
           terrain: world.terrain.descriptor,
           defaultGameMode: config.defaultGameMode,
-          spawn: {
-            x: config.spawnX,
-            y: world.terrain.feetY(config.spawnX, config.spawnZ),
-            z: config.spawnZ,
-            yaw: config.spawnYaw,
-          },
+          accessMode: runtimeSettings.accessMode,
+          daylightCycle: runtimeSettings.daylightCycle,
+          dayPhase: runtimeSettings.dayPhase,
+          spawn: runtimeSettings.spawn,
         },
         { headers: { "access-control-allow-origin": "*", "cache-control": "no-store" } },
       );

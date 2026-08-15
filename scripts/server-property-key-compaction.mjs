@@ -140,8 +140,8 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "5e884a5ee5f982856d6bf41e46cbfcc4d4a0b287c0e4a9e564f120666fe7114a";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "bc60250058d083785507424f770c8ede73e9b111e79fa377cc4ee3a8a3e2915f";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "ce23a080a677df453ad683f58823cfe9f749838eb1fd1a69e3a70cff287930d6";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "76f73009c767698e99787559776e83c43fdb84a0da87452858531e45d224c00a";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "e2762c40d52c097b0af18afa1b6b8fdbccd009abf2c30d61f8fca460753fe772";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
@@ -158,6 +158,20 @@ export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "e0ac5e7c4e31b33fcd33aa35
 // source drift here removes owner-specific pickup filtering while leaving the
 // serialized Railway/Lakebed property spellings unchanged.
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
+  radius: Object.freeze({
+    declarations:Object.freeze(["client/realtimeMultiplayer.ts"]),
+    uses:Object.freeze(["client/realtimeMultiplayer.ts"]),
+    counts:Object.freeze({"client/realtimeMultiplayer.ts":Object.freeze([null,1])}),
+    kinds:Object.freeze({"client/realtimeMultiplayer.ts:ShorthandPropertyAssignment":Object.freeze([null,1])}),
+    previousEntryFingerprint:"5c10798ce822b64cda7ec824663ec59563b6907ec1952e89bb333bb521bab23f",
+    source:"render-distance coordinate chunk subscription",
+  }),
+  revision: Object.freeze({
+    counts:Object.freeze({"client/realtimeMultiplayer.ts":Object.freeze([5,7])}),
+    kinds:Object.freeze({"client/realtimeMultiplayer.ts:ShorthandPropertyAssignment":Object.freeze([2,3])}),
+    previousEntryFingerprint:"cf77f3d1a832c7956add3ae3ee38fc6c93d3786ebd22b217423f9353b0537d07",
+    source:"known coordinate chunk revisions",
+  }),
   ownerUserId: Object.freeze({
     removedUses: Object.freeze(["client/index.tsx"]),
     counts: Object.freeze({

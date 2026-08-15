@@ -18,6 +18,12 @@ import {
   type RealtimeChatEvent,
   type RealtimeChatMessage,
 } from "./realtimeChat.ts";
+import {
+  decodeRealtimeChunkEdits,
+  realtimeChunkCoordinate,
+  realtimeChunkKey,
+  realtimeChunkWindow,
+} from "../shared/realtimeWorldChunks.ts";
 
 export const REALTIME_PROTOCOL_VERSION = 1 as const;
 export const MULTIPLAYER_SERVERS_STORAGE_KEY = "lakecraft:multiplayer-servers:v1";
@@ -25,6 +31,9 @@ export const MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY = "lakecraft:multiplayer-
 
 export type RealtimeConnectionPhase = "idle" | "connecting" | "online" | "reconnecting" | "offline" | "error";
 export type RealtimeGameMode = "survival" | "creative";
+export type RealtimeWorldSettings = Readonly<{
+  spawn:{x:number;y:number;z:number;yaw:number}; daylightCycle:boolean; dayPhase:number;
+}>;
 export type RealtimePlayerHit = Readonly<{
   operationId: string; attackerId: string; targetId: string; damage: number; health: number;
   killed: boolean; attackerX: number; attackerZ: number;
@@ -50,11 +59,13 @@ export type RealtimeWorldEdit = WorldEdit & {
 export type RealtimeClientOptions = {
   endpoint: string;
   ticket?: string;
+  password?: string;
   serverId: string;
   demo?: { token: string; userId: string; name: string };
   localUserId: string;
   localUsername: string;
   getPose: () => PlayerPose;
+  getRenderDistance?: () => number;
   getInitialInventoryJson?: () => string;
   getHeldItem?: () => string | null;
   getSkin?: () => Promise<HydratedPlayerSkin>;
@@ -62,9 +73,12 @@ export type RealtimeClientOptions = {
   onPhase: (phase: RealtimeConnectionPhase, detail?: string) => void;
   onRemotePlayers: (players: RemotePlayer[]) => void;
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
+  onWorldChunk?: (chunkX: number, chunkZ: number, edits: RealtimeWorldEdit[]) => void;
+  onWorldChunksUnload?: (chunks: Array<{ x: number; z: number }>) => void;
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
   onTerrain?: (terrain: WorldTerrainDescriptor) => void;
+  onWorldSettings?: (settings: RealtimeWorldSettings) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
   onSelfHealth: (health: number) => void;
@@ -93,6 +107,7 @@ type RemoteAppearance = RealtimeArmorAppearance & {
 };
 
 const APPEARANCE_CAPABILITY = "appearance-v1";
+const WORLD_CHUNKS_CAPABILITY = "world-chunks-v1";
 const DEFAULT_TERRAIN: WorldTerrainDescriptor = Object.freeze({ preset: "default", superflatGroundY: 20 });
 
 function finiteNumber(value: unknown): number | null {
@@ -131,6 +146,15 @@ function decodePose(value: unknown): PlayerPose | null {
   if (x === null || y === null || z === null || yaw === null || pitch === null) return null;
   if (Math.abs(x) > 1_000_000 || y < -64 || y > 320 || Math.abs(z) > 1_000_000) return null;
   return { x, y, z, yaw, pitch };
+}
+
+function decodeWorldSettings(value:unknown):RealtimeWorldSettings|null {
+  if(!value||typeof value!=="object"||Array.isArray(value))return null;
+  const source=value as Record<string,unknown>,spawn=source.spawn;
+  if(!spawn||typeof spawn!=="object"||Array.isArray(spawn)||typeof source.daylightCycle!=="boolean")return null;
+  const point=spawn as Record<string,unknown>,x=finiteNumber(point.x),y=finiteNumber(point.y),z=finiteNumber(point.z),yaw=finiteNumber(point.yaw),phase=finiteNumber(source.dayPhase);
+  if(x===null||y===null||z===null||yaw===null||phase===null||Math.abs(x)>1_000_000||Math.abs(z)>1_000_000||y< -64||y>320||phase<0||phase>=1)return null;
+  return {spawn:{x,y,z,yaw},daylightCycle:source.daylightCycle,dayPhase:phase};
 }
 
 const REMOTE_ACTION_KINDS = new Set<MotionVisualActionKind>([
@@ -392,6 +416,10 @@ export class RealtimeMultiplayerClient {
   private pendingInventory = new Map<string, PendingInventory>();
   private pendingRespawn: PendingRespawn | null = null;
   private appearanceSupported = false;
+  private worldChunksSupported = false;
+  private chunkSequence = 0;
+  private chunkSubscription = "";
+  private chunkRevisions = new Map<string, number>();
   private localSkin: HydratedPlayerSkin | null = null;
   private localSkinLoading = false;
   private localSkinBase64 = "";
@@ -454,6 +482,14 @@ export class RealtimeMultiplayerClient {
     this.appearanceRequestSet.clear();
     this.activeAppearanceRequest = "";
     this.options.onRemotePlayers([]);
+    if (this.chunkRevisions.size) {
+      this.options.onWorldChunksUnload?.([...this.chunkRevisions.keys()].map((key) => {
+        const comma = key.indexOf(",");
+        return { x: Number(key.slice(0, comma)), z: Number(key.slice(comma + 1)) };
+      }));
+    }
+    this.chunkRevisions.clear();
+    this.chunkSubscription = "";
     this.options.onPhase("offline");
   }
 
@@ -597,6 +633,7 @@ export class RealtimeMultiplayerClient {
     }
     this.options.onPhase(reconnecting ? "reconnecting" : "connecting");
     this.appearanceSupported = false;
+    this.worldChunksSupported = false;
     let socket: WebSocket;
     try {
       socket = new WebSocket(endpoint);
@@ -613,6 +650,7 @@ export class RealtimeMultiplayerClient {
         type: "join",
         ...(this.options.demo ? {} : { serverId: this.options.serverId }),
         ...(this.resumeToken || this.options.demo ? {} : { ticket: this.options.ticket }),
+        ...(!this.resumeToken && this.options.password ? { password: this.options.password } : {}),
         ...(!this.resumeToken && this.options.demo ? {
           demo: {
             ...this.options.demo,
@@ -662,6 +700,7 @@ export class RealtimeMultiplayerClient {
     window.clearInterval(this.sampleTimer);
     this.lastPose = this.options.getPose();
     this.lastPoseAt = performance.now();
+    this.updateChunkSubscription(this.lastPose, true);
     this.sampleTimer = window.setInterval(() => {
       if (!this.joined) return;
       const pose = this.options.getPose();
@@ -698,9 +737,42 @@ export class RealtimeMultiplayerClient {
       this.sentPoses.set(this.sequence, { ...pose });
       if (this.sentPoses.size > 96) this.sentPoses.delete(this.sentPoses.keys().next().value!);
       this.publishAppearance(false);
+      this.updateChunkSubscription(pose, false);
       this.lastPose = pose;
       this.lastPoseAt = now;
     }, 50);
+  }
+
+  private updateChunkSubscription(pose: PlayerPose, force: boolean): void {
+    if (!this.joined || !this.worldChunksSupported) return;
+    const centerX = realtimeChunkCoordinate(pose.x);
+    const centerZ = realtimeChunkCoordinate(pose.z);
+    const radius = Math.max(1, Math.min(12, Math.floor(this.options.getRenderDistance?.() ?? 3)));
+    const signature = `${centerX},${centerZ},${radius}`;
+    if (!force && signature === this.chunkSubscription) return;
+    this.chunkSubscription = signature;
+    const target = realtimeChunkWindow(centerX, centerZ, radius);
+    const targetKeys = new Set(target.map((chunk) => realtimeChunkKey(chunk.x, chunk.z)));
+    const removed: Array<{ x: number; z: number }> = [];
+    for (const key of this.chunkRevisions.keys()) {
+      if (targetKeys.has(key)) continue;
+      this.chunkRevisions.delete(key);
+      const comma = key.indexOf(",");
+      removed.push({ x: Number(key.slice(0, comma)), z: Number(key.slice(comma + 1)) });
+    }
+    if (removed.length) this.options.onWorldChunksUnload?.(removed);
+    this.send({
+      v: REALTIME_PROTOCOL_VERSION,
+      type: "chunk_subscribe",
+      seq: ++this.chunkSequence,
+      centerX,
+      centerZ,
+      radius,
+      known: target.flatMap((chunk) => {
+        const revision = this.chunkRevisions.get(realtimeChunkKey(chunk.x, chunk.z));
+        return revision === undefined ? [] : [{ x: chunk.x, z: chunk.z, revision }];
+      }),
+    });
   }
 
   private prepareAppearance(): void {
@@ -838,8 +910,11 @@ export class RealtimeMultiplayerClient {
       }
       this.terrain = message.terrain === undefined ? DEFAULT_TERRAIN : { ...message.terrain } as WorldTerrainDescriptor;
       this.options.onTerrain?.(this.terrain);
+      const settings=decodeWorldSettings(message.worldSettings);if(settings)this.options.onWorldSettings?.(settings);
       this.appearanceSupported = Array.isArray(message.capabilities)
         && message.capabilities.includes(APPEARANCE_CAPABILITY);
+      this.worldChunksSupported = Array.isArray(message.capabilities)
+        && message.capabilities.includes(WORLD_CHUNKS_CAPABILITY);
       if (this.appearanceSupported) this.prepareAppearance();
       return;
     }
@@ -856,6 +931,7 @@ export class RealtimeMultiplayerClient {
       }
       this.terrain = { ...welcomeTerrain };
       this.options.onTerrain?.(this.terrain);
+      const settings=decodeWorldSettings(message.worldSettings);if(settings)this.options.onWorldSettings?.(settings);
       const token = boundedText(message.resumeToken, 256);
       if (token) this.resumeToken = token;
       this.joined = true;
@@ -885,6 +961,10 @@ export class RealtimeMultiplayerClient {
       for (const pending of this.pendingInventory.values()) {
         this.send({ v: REALTIME_PROTOCOL_VERSION, type: "inventory_action", ["requestJson"]: pending.requestJson });
       }
+      return;
+    }
+    if(message.type==="world_settings"){
+      const settings=decodeWorldSettings(message.settings);if(settings)this.options.onWorldSettings?.(settings);
       return;
     }
     if (message.type === "appearance_roster") {
@@ -924,8 +1004,40 @@ export class RealtimeMultiplayerClient {
       return;
     }
     if (message.type === "world_snapshot") {
+      if (this.worldChunksSupported) return;
       const edits = Array.isArray(message.edits) ? message.edits.map(decodeWorldEdit).filter(Boolean) as RealtimeWorldEdit[] : [];
       this.options.onWorldEdits(edits, true);
+      return;
+    }
+    if (message.type === "world_chunks") {
+      const seq = finiteNumber(message.seq);
+      if (seq === null || !Number.isSafeInteger(seq) || seq !== this.chunkSequence || !Array.isArray(message.chunks)) return;
+      for (const candidate of message.chunks.slice(0, 64)) {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+        const chunk = candidate as Record<string, unknown>;
+        const x = finiteNumber(chunk.x), z = finiteNumber(chunk.z), revision = finiteNumber(chunk.revision);
+        if (x === null || z === null || revision === null || !Number.isSafeInteger(x) || !Number.isSafeInteger(z)
+          || !Number.isSafeInteger(revision) || revision < 0 || typeof chunk.data !== "string") continue;
+        const edits = decodeRealtimeChunkEdits(x, z, chunk.data);
+        if (!edits) continue;
+        this.chunkRevisions.set(realtimeChunkKey(x, z), revision);
+        this.options.onWorldChunk?.(x, z, edits as RealtimeWorldEdit[]);
+      }
+      return;
+    }
+    if (message.type === "world_chunks_unload") {
+      const seq = finiteNumber(message.seq);
+      if (seq === null || seq !== this.chunkSequence || !Array.isArray(message.chunks)) return;
+      const unloaded: Array<{ x: number; z: number }> = [];
+      for (const candidate of message.chunks.slice(0, 625)) {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+        const x = finiteNumber((candidate as Record<string, unknown>).x);
+        const z = finiteNumber((candidate as Record<string, unknown>).z);
+        if (x === null || z === null || !Number.isSafeInteger(x) || !Number.isSafeInteger(z)) continue;
+        this.chunkRevisions.delete(realtimeChunkKey(x, z));
+        unloaded.push({ x, z });
+      }
+      if (unloaded.length) this.options.onWorldChunksUnload?.(unloaded);
       return;
     }
     if (message.type === "block_patch") {

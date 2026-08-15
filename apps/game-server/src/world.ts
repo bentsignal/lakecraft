@@ -1,7 +1,7 @@
 import type { JoinAuthenticator } from "./auth";
 import type { ServerConfig } from "./config";
-import type { WorldStore } from "./database";
-import type { AdminPlayerSummary, AdminWorldControl, ServerGameMode } from "./adminPortal";
+import type { ServerAccessMode, ServerAdministrationSettings, ServerRole, WorldStore } from "./database";
+import type { AdminPlayerSummary, AdminState, AdminWorldControl, ServerGameMode } from "./adminPortal";
 import type {
   AgentBuilderWorld,
   AgentRegionBounds,
@@ -12,6 +12,7 @@ import { applyAgentBatch, type AgentBatchInput, type AgentBatchResult } from "./
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   APPEARANCE_CAPABILITY,
+  WORLD_CHUNKS_CAPABILITY,
   PROTOCOL_VERSION,
   decodeClientMessage,
   encodeServerMessage,
@@ -23,6 +24,7 @@ import {
   type PlayerHit,
   type SelfDamageResult,
   type ServerMessage,
+  type WorldRuntimeSettings,
 } from "./protocol";
 import {
   CREATIVE_FLIGHT_SPEED,
@@ -42,6 +44,13 @@ import {
   FALL_PLAYER_BODY_HEIGHT,
   FALL_PLAYER_HALF_WIDTH,
 } from "../../../shared/fallWorldProbe.ts";
+import {
+  encodeRealtimeChunkEdits,
+  realtimeChunkCoordinate,
+  realtimeChunkKey,
+  realtimeChunkKeyForBlock,
+  realtimeChunkWindow,
+} from "../../../shared/realtimeWorldChunks.ts";
 
 export interface Peer {
   readonly id: string;
@@ -85,6 +94,8 @@ interface ConnectionState {
   appearance: PublicAppearance;
   skinPixels?: string;
   clientPoseAuthority: boolean;
+  lastChunkSeq: number;
+  subscribedChunks: Set<string>;
 }
 
 /** Twenty-one chunks: the authority can feed the highest supported client view. */
@@ -107,6 +118,8 @@ const PLAYER_ATTACK_REACH = 6.25;
 const PLAYER_ATTACK_COOLDOWN_MS = 400;
 const SAFE_SPAWN_SEARCH_RADIUS = 32;
 const NON_COLLIDING_SPAWN_BLOCKS = new Set([0, 8, 11, 16, 29]);
+const BLOCK_CHUNK_CACHE_LIMIT = 256;
+const CHUNK_BATCH_DATA_LIMIT = 128 * 1024;
 
 const DEFAULT_APPEARANCE: PublicAppearance = Object.freeze({
   skinId: "default",
@@ -125,7 +138,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   private readonly drops = new Map<string, PublicDrop>();
   private readonly dropVelocityY = new Map<string, number>();
   private readonly settledDrops = new Set<string>();
-  private readonly blockOverrides = new Map<string, number>();
+  private readonly blockChunkCache = new Map<string, Map<string, number>>();
   private readonly dropOperations = new Map<string, PublicDrop>();
   private readonly playerHitOperations = new Map<string, PlayerHit>();
   private readonly selfDamageOperations = new Map<string, SelfDamageResult>();
@@ -144,7 +157,15 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       preset: config.worldPreset,
       superflatGroundY: config.superflatGroundY,
     });
-    for (const edit of store.getAllBlockEdits()) this.blockOverrides.set(blockKey(edit.x, edit.y, edit.z), edit.block);
+    store.initializeAdministration({
+      accessMode: config.accessMode ?? "token",
+      spawnX: config.spawnX,
+      spawnZ: config.spawnZ,
+      spawnYaw: config.spawnYaw,
+      daylightCycle: config.daylightCycle ?? true,
+      dayPhase: config.dayPhase ?? 0.25,
+    });
+    for (const username of config.initialWhitelist ?? []) store.setWhitelisted(username, true);
     for (const drop of store.listDrops()) {
       this.drops.set(drop.dropId, drop);
       this.dropVelocityY.set(drop.dropId, 0);
@@ -157,6 +178,11 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
 
   get connectionCount(): number {
     return this.connections.size;
+  }
+
+  runtimeStatus(): { accessMode:ServerAccessMode;daylightCycle:boolean;dayPhase:number;spawn:Pick<PublicPlayer,"x"|"y"|"z"|"yaw"|"pitch"|"vx"|"vy"|"vz"> } {
+    const settings=this.store.administrationSettings();
+    return {accessMode:settings.accessMode,daylightCycle:settings.daylightCycle,dayPhase:this.effectiveDayPhase(settings),spawn:this.safeSpawn()};
   }
 
   isJoined(peerId: string): boolean {
@@ -182,9 +208,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   }
 
   agentEditsSince(sinceRevision: number, limit: number): import("./protocol").BlockEdit[] {
-    return this.store.getAllBlockEdits()
-      .filter((edit) => edit.revision > sinceRevision)
-      .slice(0, Math.max(1, Math.min(512, Math.floor(limit))));
+    return this.store.getBlockEditsSince(sinceRevision, limit);
   }
 
   agentReadRegion(bounds: AgentRegionBounds): AgentRegionResult {
@@ -208,7 +232,34 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   }
 
   agentBlockAt(x: number, y: number, z: number): number {
-    return this.blockOverrides.get(blockKey(x, y, z)) ?? this.terrain.blockAt(x, y, z);
+    const chunkX = realtimeChunkCoordinate(x);
+    const chunkZ = realtimeChunkCoordinate(z);
+    const overrides = this.cachedBlockChunk(chunkX, chunkZ);
+    return overrides.get(blockKey(x, y, z)) ?? this.terrain.blockAt(x, y, z);
+  }
+
+  private cachedBlockChunk(chunkX: number, chunkZ: number): Map<string, number> {
+    const key = realtimeChunkKey(chunkX, chunkZ);
+    const existing = this.blockChunkCache.get(key);
+    if (existing) {
+      this.blockChunkCache.delete(key);
+      this.blockChunkCache.set(key, existing);
+      return existing;
+    }
+    const loaded = new Map(this.store.getWorldChunk(chunkX, chunkZ).edits
+      .map((edit) => [blockKey(edit.x, edit.y, edit.z), edit.block] as const));
+    this.blockChunkCache.set(key, loaded);
+    while (this.blockChunkCache.size > BLOCK_CHUNK_CACHE_LIMIT) {
+      const oldest = this.blockChunkCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.blockChunkCache.delete(oldest);
+    }
+    return loaded;
+  }
+
+  private updateCachedBlock(edit: import("./protocol").BlockEdit): void {
+    const key = realtimeChunkKeyForBlock(edit.x, edit.z);
+    this.blockChunkCache.get(key)?.set(blockKey(edit.x, edit.y, edit.z), edit.block);
   }
 
   private poseObstructed(x: number, y: number, z: number): boolean {
@@ -231,44 +282,194 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   }
 
   private safeSpawn(): Pick<PublicPlayer, "x" | "y" | "z" | "yaw" | "pitch" | "vx" | "vy" | "vz"> {
+    const settings = this.store.administrationSettings();
     for (let radius = 0; radius <= SAFE_SPAWN_SEARCH_RADIUS; radius++) {
       for (let dz = -radius; dz <= radius; dz++) {
         for (let dx = -radius; dx <= radius; dx++) {
           if (radius > 0 && Math.abs(dx) !== radius && Math.abs(dz) !== radius) continue;
-          const x = this.config.spawnX + dx;
-          const z = this.config.spawnZ + dz;
+          const x = settings.spawnX + dx;
+          const z = settings.spawnZ + dz;
           const y = this.terrain.feetY(x, z);
           if (!this.poseObstructed(x, y, z)) {
-            return { x, y, z, yaw: this.config.spawnYaw, pitch: 0, vx: 0, vy: 0, vz: 0 };
+            return { x, y, z, yaw: settings.spawnYaw, pitch: 0, vx: 0, vy: 0, vz: 0 };
           }
         }
       }
     }
-    const x = this.config.spawnX;
-    const z = this.config.spawnZ;
-    return { x, y: Math.min(MAX_PLAYER_Y, this.terrain.feetY(x, z) + 3), z, yaw: this.config.spawnYaw, pitch: 0, vx: 0, vy: 0, vz: 0 };
+    const x = settings.spawnX;
+    const z = settings.spawnZ;
+    return { x, y: Math.min(MAX_PLAYER_Y, this.terrain.feetY(x, z) + 3), z, yaw: settings.spawnYaw, pitch: 0, vx: 0, vy: 0, vz: 0 };
+  }
+
+  private worldRuntimeSettings(): WorldRuntimeSettings {
+    const settings = this.store.administrationSettings();
+    return {
+      spawn: { x: settings.spawnX, y: this.terrain.feetY(settings.spawnX, settings.spawnZ), z: settings.spawnZ, yaw: settings.spawnYaw },
+      daylightCycle: settings.daylightCycle,
+      dayPhase: this.effectiveDayPhase(settings),
+    };
+  }
+
+  private effectiveDayPhase(settings:ServerAdministrationSettings,now=Date.now()):number {
+    if(!settings.daylightCycle)return settings.dayPhase;
+    return ((settings.dayPhase+(now-settings.updatedAt)/(20*60*1000))%1+1)%1;
+  }
+
+  private async assertPlayerAccess(
+    username: string,
+    message: Extract<ClientMessage, { type: "join" }>,
+    resumed: boolean,
+  ): Promise<void> {
+    const ban = this.store.banFor(username);
+    if (ban) throw new Error(`You are banned from this server${ban.reason ? `: ${ban.reason}` : ""}`);
+    const role = this.store.roleFor(username);
+    const settings = this.store.administrationSettings();
+    if (role === "operator") return;
+    if (settings.accessMode === "public") return;
+    if (settings.accessMode === "closed") throw new Error("This server is closed");
+    if (settings.accessMode === "whitelist") {
+      if (this.store.isWhitelisted(username) || role === "moderator") return;
+      throw new Error("You are not on this server's whitelist");
+    }
+    if (resumed) return;
+    if (settings.accessMode === "token") {
+      if (this.config.localDemoToken && timingSafeEqual(message.demo?.token ?? "", this.config.localDemoToken)) return;
+      throw new Error("The server invitation token is invalid");
+    }
+    const password = message.password ?? "";
+    const valid = settings.passwordHash
+      ? await Bun.password.verify(password, settings.passwordHash)
+      : Boolean(this.config.serverPassword && timingSafeEqual(password, this.config.serverPassword));
+    if (!valid) throw new Error("The server password is invalid");
   }
 
   agentApplyBatch(input: AgentBatchInput): AgentBatchResult {
     const result = applyAgentBatch(this.store, input, this.config.maxPersistedBlocks);
     if (!result.ok || result.replayed) return result;
     for (const edit of result.edits) {
-      this.blockOverrides.set(blockKey(edit.x, edit.y, edit.z), edit.block);
+      this.updateCachedBlock(edit);
       for (const drop of this.drops.values()) {
         if (Math.floor(drop.x) === edit.x && Math.floor(drop.z) === edit.z) this.settledDrops.delete(drop.dropId);
       }
-      for (const connection of this.userConnections.values()) {
-        this.send(connection.peer, { v: PROTOCOL_VERSION, type: "block_patch", edit });
-      }
+      this.broadcastBlockPatch(edit);
     }
     return result;
   }
 
   adminPlayers(): AdminPlayerSummary[] {
-    return this.store.listPlayers().map((player) => ({
+    return this.store.listAdminPlayers().map((player) => ({
       ...player,
       connected: this.userConnections.has(player.id),
+      role: this.store.roleFor(player.name),
     }));
+  }
+
+  adminState(): AdminState {
+    const {passwordHash,...settings}=this.store.administrationSettings();
+    return {
+      players: this.adminPlayers(),
+      settings:{...settings,dayPhase:this.effectiveDayPhase({...settings,passwordHash}),passwordConfigured:Boolean(passwordHash||this.config.serverPassword)},
+      access: this.store.listAccessEntries(),
+      chat: this.store.recentChat(CHAT_HISTORY_LIMIT),
+      revision: this.store.getRevision(),
+      persistedBlocks: this.store.blockCount(),
+      maxPersistedBlocks: this.config.maxPersistedBlocks,
+    };
+  }
+
+  async runAdminCommand(rawCommand: string): Promise<{ ok:boolean;message:string }> {
+    const command = rawCommand.trim();
+    const source = command.startsWith("/") ? command.slice(1) : command;
+    const [verbRaw, ...args] = source.split(/\s+/);
+    const verb = (verbRaw ?? "").toLowerCase();
+    const username = args[0] ?? "";
+    try {
+      if (verb === "say") {
+        const message = source.slice(4).trim();
+        if (!message) return { ok:false,message:"Usage: /say <message>" };
+        this.serverAnnouncement(message);
+        return { ok:true,message:"Server message sent." };
+      }
+      if (verb === "whitelist" && (args[0] === "add" || args[0] === "remove") && args[1]) {
+        this.store.setWhitelisted(args.slice(1).join(" "), args[0] === "add");
+        return { ok:true,message:`Whitelist ${args[0] === "add" ? "added" : "removed"}: ${args.slice(1).join(" ")}` };
+      }
+      if (["op","deop","mod","demod"].includes(verb) && username) {
+        const role: ServerRole | null = verb === "op" ? "operator" : verb === "mod" ? "moderator" : null;
+        this.store.setRole(args.join(" "), role);
+        if (role) this.store.setWhitelisted(args.join(" "), true);
+        return { ok:true,message:`${args.join(" ")} is now ${role ?? "a regular player"}.` };
+      }
+      if (verb === "kick" && username) {
+        const target = this.findPlayer(username);
+        if (!target || !this.kickPlayer(target.id)) return { ok:false,message:"That player is not connected." };
+        return { ok:true,message:`Kicked ${target.name}.` };
+      }
+      if (verb === "ban" && username) {
+        const target = this.findPlayer(username);
+        const name = target?.name ?? username;
+        const reason = args.slice(1).join(" ") || "Banned by a server operator";
+        this.store.setBanned(name, reason);
+        if (target) this.kickPlayer(target.id);
+        return { ok:true,message:`Banned ${name}: ${reason}` };
+      }
+      if ((verb === "pardon" || verb === "unban") && username) {
+        this.store.setBanned(args.join(" "), null);
+        return { ok:true,message:`Pardoned ${args.join(" ")}.` };
+      }
+      if (verb === "gamemode" && (args[0] === "creative" || args[0] === "survival") && args[1]) {
+        const target = this.findPlayer(args.slice(1).join(" "));
+        if (!target || !this.setPlayerGameMode(target.id, args[0])) return { ok:false,message:"Player not found." };
+        return { ok:true,message:`Set ${target.name} to ${args[0]}.` };
+      }
+      if (verb === "setworldspawn" && args.length >= 2) {
+        const x=Number(args[0]),z=Number(args[1]),yaw=args[2]===undefined?0:Number(args[2])*Math.PI/180;
+        if (![x,z,yaw].every(Number.isFinite)||Math.abs(x)>1_000_000||Math.abs(z)>1_000_000) return {ok:false,message:"Usage: /setworldspawn <x> <z> [yaw degrees]"};
+        this.store.updateAdministration({spawnX:x,spawnZ:z,spawnYaw:yaw});this.broadcastWorldSettings();
+        return {ok:true,message:`World spawn set to ${x}, ${z}.`};
+      }
+      if (verb === "time" && args[0] === "set" && args[1]) {
+        const phases:Record<string,number>={midnight:0,dawn:.25,day:.5,noon:.5,dusk:.75,night:0};
+        const phase=phases[args[1].toLowerCase()] ?? Number(args[1]);
+        if (!Number.isFinite(phase)) return {ok:false,message:"Usage: /time set day|noon|night|midnight|<0..1>"};
+        this.store.updateAdministration({dayPhase:((phase%1)+1)%1});this.broadcastWorldSettings();
+        return {ok:true,message:`Time set to ${args[1]}.`};
+      }
+      if (verb === "gamerule" && args[0]?.toLowerCase() === "dodaylightcycle" && ["true","false"].includes(args[1])) {
+        const settings=this.store.administrationSettings();
+        this.store.updateAdministration({dayPhase:this.effectiveDayPhase(settings),daylightCycle:args[1]==="true"});this.broadcastWorldSettings();
+        return {ok:true,message:`Daylight cycle ${args[1]==="true"?"enabled":"disabled"}.`};
+      }
+      if (verb === "open") { this.store.updateAdministration({accessMode:"public"});return {ok:true,message:"Server opened to the public."}; }
+      if (verb === "close") { this.store.updateAdministration({accessMode:"closed"});return {ok:true,message:"Server closed to new players."}; }
+      if (verb === "access" && ["token","public","password","whitelist","closed"].includes(args[0])) {
+        const accessMode=args[0] as ServerAccessMode;
+        if (accessMode === "password") {
+          const password=args.slice(1).join(" ");if(password.length<8)return {ok:false,message:"Usage: /access password <at least 8 characters>"};
+          this.store.updateAdministration({accessMode,passwordHash:await Bun.password.hash(password)});
+        } else this.store.updateAdministration({accessMode});
+        return {ok:true,message:`Server access is now ${accessMode}.`};
+      }
+      return {ok:false,message:"Unknown command. Try /say, /whitelist, /op, /mod, /kick, /ban, /pardon, /gamemode, /setworldspawn, /time, /gamerule, or /access."};
+    } catch (error) {
+      return {ok:false,message:error instanceof Error?error.message:"Command failed."};
+    }
+  }
+
+  private findPlayer(identity:string) {
+    const needle=identity.trim().toLocaleLowerCase("en-US");
+    return this.store.listPlayers().find((player)=>player.id.toLocaleLowerCase("en-US")===needle||player.name.toLocaleLowerCase("en-US")===needle);
+  }
+
+  private serverAnnouncement(message:string): void {
+    const result=this.store.appendChat({operationId:`server_${crypto.randomUUID()}`,userId:"server",username:"[Server]",message:message.slice(0,CHAT_MESSAGE_MAX_LENGTH),sentAt:Date.now()},0,CHAT_HISTORY_LIMIT);
+    if (!result.ok) return;
+    for (const state of this.userConnections.values()) this.send(state.peer,{v:PROTOCOL_VERSION,type:"chat_message",message:result.message});
+  }
+
+  private broadcastWorldSettings(): void {
+    const settings=this.worldRuntimeSettings();
+    for (const state of this.userConnections.values()) this.send(state.peer,{v:PROTOCOL_VERSION,type:"world_settings",settings});
   }
 
   setPlayerGameMode(userId: string, gameMode: ServerGameMode): boolean {
@@ -321,6 +522,8 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       appearanceRequestKeys: new Set(),
       appearance: { ...DEFAULT_APPEARANCE },
       clientPoseAuthority: false,
+      lastChunkSeq: 0,
+      subscribedChunks: new Set(),
     });
     this.send(peer, {
       v: PROTOCOL_VERSION,
@@ -332,7 +535,8 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       snapshotHz: this.config.snapshotHz,
       terrain: this.terrain.descriptor,
       defaultGameMode: this.config.defaultGameMode,
-      capabilities: [APPEARANCE_CAPABILITY],
+      worldSettings: this.worldRuntimeSettings(),
+      capabilities: [APPEARANCE_CAPABILITY, WORLD_CHUNKS_CAPABILITY],
     });
   }
 
@@ -387,7 +591,8 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       this.fail(state, "join_required", "Authenticate with a join message first");
       return;
     }
-    if (message.type === "input") this.input(state, message, now);
+    if (message.type === "chunk_subscribe") this.subscribeChunks(state, message);
+    else if (message.type === "input") this.input(state, message, now);
     else if (message.type === "action") this.action(state, message);
     else if (message.type === "block_edit") this.blockEdit(state, message, now);
     else if (message.type === "inventory_action") this.inventoryAction(state, message, now);
@@ -542,6 +747,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       const principal = validResumeRecord
         ? { userId: validResumeRecord.player.id, displayName: validResumeRecord.player.name }
         : await this.authenticator.authenticate(message);
+      await this.assertPlayerAccess(principal.displayName, message, Boolean(validResumeRecord));
       const existingForUser = this.userConnections.get(principal.userId);
       if (!existingForUser && this.playerCount >= this.config.maxPlayers) {
         this.fail(state, "server_full", "Server is full", true, true);
@@ -601,12 +807,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
         blocksRevision: revision,
         terrain: this.terrain.descriptor,
         defaultGameMode: this.config.defaultGameMode,
-      });
-      this.send(state.peer, {
-        v: PROTOCOL_VERSION,
-        type: "world_snapshot",
-        revision,
-        edits: this.store.getAllBlockEdits(),
+        worldSettings: this.worldRuntimeSettings(),
       });
       this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_state", inventory });
       this.send(state.peer, {
@@ -694,6 +895,63 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     state.player!.yaw = normalizeYaw(message.yaw);
     state.player!.pitch = message.pitch;
     if (message.heldItem !== undefined) state.player!.heldItem = message.heldItem;
+  }
+
+  private subscribeChunks(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "chunk_subscribe" }>,
+  ): void {
+    if (message.seq <= state.lastChunkSeq) return;
+    state.lastChunkSeq = message.seq;
+    const target = realtimeChunkWindow(message.centerX, message.centerZ, message.radius);
+    const targetKeys = new Set(target.map((chunk) => realtimeChunkKey(chunk.x, chunk.z)));
+    const unloaded = [...state.subscribedChunks]
+      .filter((key) => !targetKeys.has(key))
+      .map((key) => {
+        const comma = key.indexOf(",");
+        return { x: Number(key.slice(0, comma)), z: Number(key.slice(comma + 1)) };
+      });
+    state.subscribedChunks = targetKeys;
+    if (unloaded.length) this.send(state.peer, {
+      v: PROTOCOL_VERSION, type: "world_chunks_unload", seq: message.seq, chunks: unloaded,
+    });
+
+    const known = new Map(message.known.map((chunk) => [realtimeChunkKey(chunk.x, chunk.z), chunk.revision]));
+    let batch: Array<{ x: number; z: number; revision: number; data: string }> = [];
+    let batchBytes = 0;
+    const flush = () => {
+      if (!batch.length) return;
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "world_chunks", seq: message.seq, chunks: batch });
+      batch = [];
+      batchBytes = 0;
+    };
+    for (const chunk of target) {
+      const stored = this.store.getWorldChunk(chunk.x, chunk.z);
+      if (known.get(realtimeChunkKey(chunk.x, chunk.z)) === stored.revision) continue;
+      const data = encodeRealtimeChunkEdits(chunk.x, chunk.z, stored.edits);
+      if (batch.length && batchBytes + data.length > CHUNK_BATCH_DATA_LIMIT) flush();
+      batch.push({ x: chunk.x, z: chunk.z, revision: stored.revision, data });
+      batchBytes += data.length + 48;
+      if (batch.length >= 64) flush();
+    }
+    flush();
+  }
+
+  private broadcastBlockPatch(
+    edit: import("./protocol").BlockEdit,
+    author?: ConnectionState,
+    operationId?: string,
+  ): void {
+    const owner = realtimeChunkKeyForBlock(edit.x, edit.z);
+    for (const connection of this.userConnections.values()) {
+      if (connection !== author && !connection.subscribedChunks.has(owner)) continue;
+      this.send(connection.peer, {
+        v: PROTOCOL_VERSION,
+        type: "block_patch",
+        operationId: connection === author ? operationId : undefined,
+        edit,
+      });
+    }
   }
 
   private action(state: ConnectionState, message: Extract<ClientMessage, { type: "action" }>): void {
@@ -829,21 +1087,13 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       this.fail(state, "world_limit", "This server reached its persisted block limit", false, false, message.operationId);
       return;
     }
-    this.blockOverrides.set(blockKey(result.edit.x, result.edit.y, result.edit.z), result.edit.block);
+    this.updateCachedBlock(result.edit);
     for (const drop of this.drops.values()) {
       if (Math.floor(drop.x) === result.edit.x && Math.floor(drop.z) === result.edit.z) {
         this.settledDrops.delete(drop.dropId);
       }
     }
-    for (const other of this.userConnections.values()) {
-      if (squaredDistance(player, other.player!) > (NEARBY_RADIUS * 2) ** 2) continue;
-      this.send(other.peer, {
-        v: PROTOCOL_VERSION,
-        type: "block_patch",
-        operationId: other === state ? message.operationId : undefined,
-        edit: result.edit,
-      });
-    }
+    this.broadcastBlockPatch(result.edit, state, message.operationId);
   }
 
   private inventoryAction(
@@ -874,6 +1124,10 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     now: number,
   ): void {
     const player = state.player!;
+    if (message.message.startsWith("/") && this.store.roleFor(player.name) === "operator") {
+      void this.runAdminCommand(message.message).then((result) => this.serverAnnouncement(result.message));
+      return;
+    }
     const result = this.store.appendChat({
       operationId: message.operationId,
       userId: player.id,
@@ -1092,8 +1346,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     const blockX = Math.floor(x);
     const blockZ = Math.floor(z);
     for (let y = Math.floor(fromY); y >= -64; y -= 1) {
-      const override = this.blockOverrides.get(blockKey(blockX, y, blockZ));
-      const block = override ?? this.terrain.blockAt(blockX, y, blockZ);
+      const block = this.agentBlockAt(blockX, y, blockZ);
       if (dropSupportingBlock(block)) return y + 1;
     }
     return -64;
@@ -1130,6 +1383,15 @@ function squaredDistance(
 
 function blockKey(x: number, y: number, z: number): string {
   return `${x}:${y}:${z}`;
+}
+
+function timingSafeEqual(left: string, right: string): boolean {
+  const length = Math.max(left.length, right.length);
+  let difference = left.length ^ right.length;
+  for (let index = 0; index < length; index++) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+  }
+  return difference === 0;
 }
 
 function dropSupportingBlock(block: number): boolean {

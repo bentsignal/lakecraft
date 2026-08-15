@@ -16,7 +16,7 @@ export interface JoinAuthenticator {
 
 export function createAuthenticator(config: ServerConfig, store: WorldStore): JoinAuthenticator {
   return config.authMode === "local-demo"
-    ? new LocalDemoAuthenticator(config.localDemoToken!)
+    ? new LocalDemoAuthenticator()
     : new LakebedTicketAuthenticator(
         config.serverId,
         config.ticketRedeemUrl!,
@@ -26,11 +26,9 @@ export function createAuthenticator(config: ServerConfig, store: WorldStore): Jo
 }
 
 class LocalDemoAuthenticator implements JoinAuthenticator {
-  constructor(private readonly expectedToken: string) {}
-
   async authenticate(message: JoinMessage): Promise<AuthPrincipal> {
     const demo = message.demo;
-    if (!demo || !timingSafeEqual(demo.token, this.expectedToken)) throw new Error("Invalid local demo token");
+    if (!demo) throw new Error("A local player identity is required");
     // Local-demo is the only mode where client-provided identity is intentionally accepted.
     return {
       userId: sanitizeId(demo.userId),
@@ -111,11 +109,4 @@ function sanitizeName(value: string): string {
   const clean = value.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 32);
   if (!clean) throw new Error("Identity name is invalid");
   return clean;
-}
-
-function timingSafeEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let result = 0;
-  for (let index = 0; index < left.length; index++) result |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  return result === 0;
 }

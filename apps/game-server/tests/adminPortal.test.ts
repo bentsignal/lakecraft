@@ -10,11 +10,15 @@ const INFO = { name: "Fern Hollow", description: "Test world", capacity: 32 };
 
 function mockWorld(): AdminWorldControl & { players: AdminPlayerSummary[] } {
   const players: AdminPlayerSummary[] = [
-    { id: "user-1", name: "Alex", gameMode: "survival", connected: true },
+    { id:"user-1",name:"Alex",gameMode:"survival",connected:true,role:null,health:20,x:1,y:69,z:1 },
   ];
   return {
     players,
-    adminPlayers: () => players.map((player) => ({ ...player })),
+    adminState: () => ({
+      players:players.map((player)=>({...player})),
+      settings:{accessMode:"whitelist",passwordConfigured:false,spawnX:0.5,spawnZ:0.5,spawnYaw:0,daylightCycle:false,dayPhase:0.5,updatedAt:1},
+      access:[],chat:[],revision:7,persistedBlocks:3,maxPersistedBlocks:1_000_000,
+    }),
     setPlayerGameMode(userId, gameMode) {
       const player = players.find((candidate) => candidate.id === userId);
       if (!player) return false;
@@ -27,6 +31,7 @@ function mockWorld(): AdminWorldControl & { players: AdminPlayerSummary[] } {
       player.connected = false;
       return true;
     },
+    async runAdminCommand(command){return {ok:command==="/time set day",message:"done"}},
   };
 }
 
@@ -48,7 +53,7 @@ describe("server-local admin portal", () => {
     expect(response?.status).toBe(200);
     expect(response?.headers.get("cache-control")).toBe("no-store");
     const html = await response!.text();
-    expect(html).toContain("Lakecraft Console");
+    expect(html).toContain("Command Deck");
     expect(html).not.toContain(TOKEN);
   });
 
@@ -91,5 +96,11 @@ describe("server-local admin portal", () => {
     });
     expect(kicked.response?.status).toBe(200);
     expect(kicked.world.players[0].connected).toBe(false);
+  });
+
+  test("runs bounded console commands behind the same bearer gate", async()=>{
+    const result=await call("/admin/api/command",{method:"POST",headers:{authorization:`Bearer ${TOKEN}`,"content-type":"application/json"},body:JSON.stringify({command:"/time set day"})});
+    expect(result.response?.status).toBe(200);
+    expect(await result.response!.json()).toEqual({ok:true,message:"done"});
   });
 });

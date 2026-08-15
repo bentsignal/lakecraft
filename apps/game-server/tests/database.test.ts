@@ -112,6 +112,19 @@ describe("SQLite world persistence", () => {
     migrated.close();
   });
 
+  test("migrates legacy world edits into negative-safe coordinate chunks",()=>{
+    const path=`/tmp/lakecraft-world-${crypto.randomUUID()}.sqlite`;paths.push(path);
+    const legacy=new Database(path,{create:true});legacy.exec(`
+      CREATE TABLE block_edits(x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,block INTEGER NOT NULL,revision INTEGER NOT NULL UNIQUE,editor_id TEXT NOT NULL,edited_at INTEGER NOT NULL,PRIMARY KEY(x,y,z));
+      INSERT INTO block_edits VALUES(-1,70,-9,4,1,'builder',10);
+    `);legacy.close();
+    const migrated=new WorldStore(path);
+    expect(migrated.getWorldChunk(-1,-2)).toMatchObject({revision:1,edits:[{x:-1,y:70,z:-9,block:4}]});
+    expect(migrated.getWorldChunk(0,-2).edits).toEqual([]);
+    expect(migrated.db.query<{name:string},[]>("SELECT name FROM sqlite_master WHERE type='index' AND name='block_edits_chunk_revision'").get()?.name).toBe("block_edits_chunk_revision");
+    migrated.close();
+  });
+
   test("persists admin game-mode grants without exposing resume credentials in player listings", () => {
     const store = new WorldStore(":memory:");
     store.savePlayer({ id: "u1", name: "Alex", x: 1, y: 69.02, z: 1, yaw: 0, pitch: 0 }, "secret-hash");

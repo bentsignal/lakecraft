@@ -1,6 +1,7 @@
 /** Lakecraft realtime wire protocol. Keep this module runtime-agnostic/browser-safe. */
 
 import type { WorldTerrainDescriptor } from "../../../shared/worldPreset.ts";
+import { REALTIME_WORLD_MAX_CHUNKS, REALTIME_WORLD_MAX_RADIUS } from "../../../shared/realtimeWorldChunks.ts";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const BLOCK_ID_MIN = 0;
@@ -9,9 +10,15 @@ export const CHAT_MESSAGE_MAX_LENGTH = 180;
 export const SKIN_PIXEL_BYTES = 64 * 64 * 4;
 export const SKIN_PIXEL_BASE64_LENGTH = 21_848;
 export const APPEARANCE_CAPABILITY = "appearance-v1" as const;
+export const WORLD_CHUNKS_CAPABILITY = "world-chunks-v1" as const;
 
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
 export type ServerGameMode = "survival" | "creative";
+export interface WorldRuntimeSettings {
+  spawn: { x: number; y: number; z: number; yaw: number };
+  daylightCycle: boolean;
+  dayPhase: number;
+}
 export type VisualActionKind = "swing" | "jump" | "crouch_on" | "crouch_off" | "use" | "slot" | "bow_draw" | "bow_release";
 export type PublicVisualAction = { sequence: number; kind: VisualActionKind; value?: number };
 export type SkinModel = "wide" | "slim";
@@ -103,7 +110,17 @@ export type ClientMessage =
       ticket?: string;
       serverId?: string;
       resumeToken?: string;
+      password?: string;
       demo?: { token: string; userId: string; name: string; inventoryJson?: string };
+    }
+  | {
+      v: ProtocolVersion;
+      type: "chunk_subscribe";
+      seq: number;
+      centerX: number;
+      centerZ: number;
+      radius: number;
+      known: Array<{ x: number; z: number; revision: number }>;
     }
   | {
       v: ProtocolVersion;
@@ -187,7 +204,8 @@ export type ServerMessage =
       snapshotHz: number;
       terrain: WorldTerrainDescriptor;
       defaultGameMode: ServerGameMode;
-      capabilities: readonly [typeof APPEARANCE_CAPABILITY];
+      worldSettings: WorldRuntimeSettings;
+      capabilities: readonly [typeof APPEARANCE_CAPABILITY, typeof WORLD_CHUNKS_CAPABILITY];
     }
   | {
       v: ProtocolVersion;
@@ -201,12 +219,26 @@ export type ServerMessage =
       blocksRevision: number;
       terrain: WorldTerrainDescriptor;
       defaultGameMode: ServerGameMode;
+      worldSettings: WorldRuntimeSettings;
     }
+  | { v: ProtocolVersion; type: "world_settings"; settings: WorldRuntimeSettings }
   | {
       v: ProtocolVersion;
       type: "world_snapshot";
       revision: number;
       edits: BlockEdit[];
+    }
+  | {
+      v: ProtocolVersion;
+      type: "world_chunks";
+      seq: number;
+      chunks: Array<{ x: number; z: number; revision: number; data: string }>;
+    }
+  | {
+      v: ProtocolVersion;
+      type: "world_chunks_unload";
+      seq: number;
+      chunks: Array<{ x: number; z: number }>;
     }
   | {
       v: ProtocolVersion;
@@ -338,11 +370,14 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (value.resumeToken !== undefined && !shortString(value.resumeToken, 256)) {
       return invalid("resumeToken is invalid");
     }
+    if (value.password !== undefined && (typeof value.password !== "string" || value.password.length > 128)) {
+      return invalid("password is invalid");
+    }
     let demo: { token: string; userId: string; name: string; inventoryJson?: string } | undefined;
     if (value.demo !== undefined) {
       if (
         !object(value.demo) ||
-        !shortString(value.demo.token, 256) ||
+        typeof value.demo.token !== "string" || value.demo.token.length > 256 ||
         !shortString(value.demo.userId, 128) ||
         !shortString(value.demo.name, 32) ||
         (value.demo.inventoryJson !== undefined
@@ -363,9 +398,40 @@ export function decodeClientMessage(raw: string): DecodeResult {
         ticket: value.ticket as string | undefined,
         serverId: value.serverId as string | undefined,
         resumeToken: value.resumeToken as string | undefined,
+        password: value.password as string | undefined,
         demo,
       },
     };
+  }
+
+  if (value.type === "chunk_subscribe") {
+    if (!integer(value.seq) || value.seq < 1
+      || !integer(value.centerX) || Math.abs(value.centerX) > 125_000
+      || !integer(value.centerZ) || Math.abs(value.centerZ) > 125_000
+      || !integer(value.radius) || value.radius < 1 || value.radius > REALTIME_WORLD_MAX_RADIUS
+      || !Array.isArray(value.known) || value.known.length > REALTIME_WORLD_MAX_CHUNKS) {
+      return invalid("chunk subscription is invalid");
+    }
+    const known: Array<{ x: number; z: number; revision: number }> = [];
+    const keys = new Set<string>();
+    for (const candidate of value.known) {
+      if (!object(candidate) || !integer(candidate.x) || !integer(candidate.z)
+        || Math.abs(candidate.x) > 125_000 || Math.abs(candidate.z) > 125_000
+        || !integer(candidate.revision) || candidate.revision < 0) return invalid("known chunk is invalid");
+      const key = `${candidate.x},${candidate.z}`;
+      if (keys.has(key)) return invalid("known chunks must be unique");
+      keys.add(key);
+      known.push({ x: candidate.x, z: candidate.z, revision: candidate.revision });
+    }
+    return { ok: true, message: {
+      v: PROTOCOL_VERSION,
+      type: "chunk_subscribe",
+      seq: value.seq,
+      centerX: value.centerX,
+      centerZ: value.centerZ,
+      radius: value.radius,
+      known,
+    } };
   }
 
   if (value.type === "input") {

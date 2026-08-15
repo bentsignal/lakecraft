@@ -255,6 +255,7 @@ describe("Railway-local agent builder API", () => {
     await world.message(peer, JSON.stringify({
       v: 1, type: "join", demo: { token: "0123456789abcdef", userId: "viewer", name: "Viewer" },
     }), 1_000);
+    await world.message(peer,JSON.stringify({v:1,type:"chunk_subscribe",seq:1,centerX:0,centerZ:0,radius:1,known:[]}),1_001);
     messages.length = 0;
     const result = world.agentApplyBatch({
       operationId: "live.broadcast.0001", editorId: "agent:test", editedAt: 2_000,
