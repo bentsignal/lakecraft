@@ -41,6 +41,9 @@ describe("Lakebed ticket redemption", () => {
       worldPreset: "default",
       superflatGroundY: 20,
       defaultGameMode: "survival",
+      spawnX: 0.5,
+      spawnZ: 0.5,
+      spawnYaw: 0,
     };
     const auth = createAuthenticator(config, store);
     const join = { v: 1 as const, type: "join" as const, ticket: "opaque-ticket", serverId: "server-a" };

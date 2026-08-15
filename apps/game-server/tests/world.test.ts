@@ -71,6 +71,9 @@ function config(overrides: Partial<ServerConfig> = {}): ServerConfig {
     worldPreset: "default",
     superflatGroundY: 20,
     defaultGameMode: "survival",
+    spawnX: 0.5,
+    spawnZ: 0.5,
+    spawnYaw: 0,
     ...overrides,
   };
 }
@@ -134,6 +137,59 @@ describe("authoritative world", () => {
       terrain: { preset: "superflat", superflatGroundY: 20 },
       defaultGameMode: "creative",
     });
+    store.close();
+  });
+
+  test("uses a configurable clear Creative spawn and relocates an obstructed saved pose", async () => {
+    const store = new WorldStore(":memory:");
+    const original = new GameWorld(config({
+      worldPreset: "superflat",
+      superflatGroundY: 20,
+      defaultGameMode: "creative",
+    }), store, authenticator);
+    const first = new FakePeer("spawn-original");
+    original.open(first, 1_000);
+    await original.message(first, JSON.stringify(join("spawn-user")), 1_000);
+    const resumeToken = String(first.ofType("welcome")[0].resumeToken);
+    original.close(first);
+    expect(store.applyBlockEdit({
+      operationId: "spawn_obstruction_1",
+      x: 0,
+      y: 21,
+      z: 0,
+      block: 26,
+      editorId: "builder",
+      editedAt: 1_100,
+    }, 100)).not.toBeNull();
+
+    const relocated = new GameWorld(config({
+      worldPreset: "superflat",
+      superflatGroundY: 20,
+      defaultGameMode: "creative",
+      spawnX: -23.5,
+      spawnZ: -23.5,
+      spawnYaw: 3 * Math.PI / 4,
+    }), store, authenticator);
+    const resumed = new FakePeer("spawn-resumed");
+    relocated.open(resumed, 1_200);
+    await relocated.message(resumed, JSON.stringify(join("ignored", "ignored", resumeToken)), 1_200);
+    expect(resumed.ofType("welcome")[0]).toMatchObject({
+      resumed: true,
+      player: { x: -23.5, y: 21.02, z: -23.5, yaw: 3 * Math.PI / 4, gameMode: "creative" },
+    });
+    await relocated.message(resumed, JSON.stringify({
+      v:1,type:"respawn",operationId:"spawn_respawn_safe_1",
+    }), 1_300);
+    expect(resumed.ofType("respawned").at(-1)).toMatchObject({
+      player: { x: -23.5, y: 21.02, z: -23.5, yaw: 3 * Math.PI / 4 },
+    });
+    await relocated.message(resumed, JSON.stringify({
+      v:1,type:"input",seq:1,dtMs:50,moveX:0,moveY:1,moveZ:0,yaw:3 * Math.PI / 4,pitch:0,
+      jump:true,sprint:false,x:-23.5,y:21.37,z:-23.5,
+    }), 1_350);
+    relocated.tick(1_400);
+    relocated.snapshots(1_400);
+    expect(Number(resumed.ofType("snapshot").at(-1)?.self.y)).toBeGreaterThan(21.02);
     store.close();
   });
 

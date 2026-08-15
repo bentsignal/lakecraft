@@ -38,6 +38,10 @@ import {
   DROPPED_ITEM_PICKUP_DELAY_MS,
   DROPPED_ITEM_TTL_MS,
 } from "../../../shared/droppedItems.ts";
+import {
+  FALL_PLAYER_BODY_HEIGHT,
+  FALL_PLAYER_HALF_WIDTH,
+} from "../../../shared/fallWorldProbe.ts";
 
 export interface Peer {
   readonly id: string;
@@ -101,6 +105,8 @@ const DROP_TERMINAL_VELOCITY = -24;
 const DROP_BROADCAST_INTERVAL_MS = 100;
 const PLAYER_ATTACK_REACH = 6.25;
 const PLAYER_ATTACK_COOLDOWN_MS = 400;
+const SAFE_SPAWN_SEARCH_RADIUS = 32;
+const NON_COLLIDING_SPAWN_BLOCKS = new Set([0, 8, 11, 16, 29]);
 
 const DEFAULT_APPEARANCE: PublicAppearance = Object.freeze({
   skinId: "default",
@@ -171,6 +177,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
         : {}),
       defaultGameMode: this.config.defaultGameMode,
       connectedPlayers: this.playerCount,
+      spawn: this.safeSpawn(),
     };
   }
 
@@ -202,6 +209,44 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
 
   agentBlockAt(x: number, y: number, z: number): number {
     return this.blockOverrides.get(blockKey(x, y, z)) ?? this.terrain.blockAt(x, y, z);
+  }
+
+  private poseObstructed(x: number, y: number, z: number): boolean {
+    const minX = Math.floor(x - FALL_PLAYER_HALF_WIDTH);
+    const maxX = Math.floor(x + FALL_PLAYER_HALF_WIDTH);
+    const minY = Math.floor(y + 0.001);
+    const maxY = Math.floor(y + FALL_PLAYER_BODY_HEIGHT - 0.01);
+    const minZ = Math.floor(z - FALL_PLAYER_HALF_WIDTH);
+    const maxZ = Math.floor(z + FALL_PLAYER_HALF_WIDTH);
+    for (let blockX = minX; blockX <= maxX; blockX++) {
+      for (let blockY = minY; blockY <= maxY; blockY++) {
+        for (let blockZ = minZ; blockZ <= maxZ; blockZ++) {
+          if (!NON_COLLIDING_SPAWN_BLOCKS.has(this.agentBlockAt(blockX, blockY, blockZ))) return true;
+          const lower = this.agentBlockAt(blockX, blockY - 1, blockZ);
+          if (lower === 10 || lower === 27 || lower === 28) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private safeSpawn(): Pick<PublicPlayer, "x" | "y" | "z" | "yaw" | "pitch" | "vx" | "vy" | "vz"> {
+    for (let radius = 0; radius <= SAFE_SPAWN_SEARCH_RADIUS; radius++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (radius > 0 && Math.abs(dx) !== radius && Math.abs(dz) !== radius) continue;
+          const x = this.config.spawnX + dx;
+          const z = this.config.spawnZ + dz;
+          const y = this.terrain.feetY(x, z);
+          if (!this.poseObstructed(x, y, z)) {
+            return { x, y, z, yaw: this.config.spawnYaw, pitch: 0, vx: 0, vy: 0, vz: 0 };
+          }
+        }
+      }
+    }
+    const x = this.config.spawnX;
+    const z = this.config.spawnZ;
+    return { x, y: Math.min(MAX_PLAYER_Y, this.terrain.feetY(x, z) + 3), z, yaw: this.config.spawnYaw, pitch: 0, vx: 0, vy: 0, vz: 0 };
   }
 
   agentApplyBatch(input: AgentBatchInput): AgentBatchResult {
@@ -507,19 +552,13 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       const resumeToken = createResumeToken();
       const resumeHash = await hashToken(resumeToken);
       const resumeExpiresAt = now + RESUME_TOKEN_TTL_MS;
+      const spawn = this.safeSpawn();
       const player: PublicPlayer = resumed
         ? { ...stored!.player, name: principal.displayName, vx: 0, vy: 0, vz: 0 }
         : {
             id: principal.userId,
             name: principal.displayName,
-            x: 0.5,
-            y: this.terrain.feetY(0.5, 0.5),
-            z: 0.5,
-            yaw: 0,
-            pitch: 0,
-            vx: 0,
-            vy: 0,
-            vz: 0,
+            ...spawn,
             gameMode: stored?.player.gameMode === "creative" || stored?.player.gameMode === "survival"
               ? stored.player.gameMode
               : this.config.defaultGameMode,
@@ -531,6 +570,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       player.x = Math.max(-MAX_PLAYER_XZ, Math.min(MAX_PLAYER_XZ, player.x));
       player.z = Math.max(-MAX_PLAYER_XZ, Math.min(MAX_PLAYER_XZ, player.z));
       player.y = Math.min(MAX_PLAYER_Y, Math.max(player.y, this.terrain.feetY(player.x, player.z)));
+      if (this.poseObstructed(player.x, player.y, player.z)) Object.assign(player, spawn);
 
       if (existingForUser) {
         state.appearance = { ...existingForUser.appearance };
@@ -928,8 +968,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   private respawn(state: ConnectionState, message: Extract<ClientMessage, { type: "respawn" }>, now: number): void {
     const player = state.player!;
     Object.assign(player, {
-      x: 0.5, y: this.terrain.feetY(0.5, 0.5), z: 0.5,
-      yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0, health: 20,
+      ...this.safeSpawn(), health: 20,
     });
     player.crouching = false;
     player.visualActions = [];

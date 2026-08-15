@@ -34,6 +34,7 @@ class TestWorld implements AgentBuilderWorld {
       groundY: 20,
       defaultGameMode: "creative" as const,
       connectedPlayers: 0,
+      spawn: { x: 0.5, y: 21.02, z: 0.5, yaw: 0 },
     };
   }
 

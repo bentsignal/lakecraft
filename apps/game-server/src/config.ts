@@ -28,6 +28,9 @@ export interface ServerConfig {
   worldPreset: WorldPreset;
   superflatGroundY: number;
   defaultGameMode: ServerGameMode;
+  spawnX: number;
+  spawnZ: number;
+  spawnYaw: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): ServerConfig {
@@ -71,6 +74,9 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
     worldPreset,
     superflatGroundY: worldPreset === "superflat" ? requestedSuperflatGroundY : DEFAULT_SUPERFLAT_GROUND_Y,
     defaultGameMode,
+    spawnX: decimal(env.SPAWN_X, 0.5, -1_000_000, 1_000_000, "SPAWN_X"),
+    spawnZ: decimal(env.SPAWN_Z, 0.5, -1_000_000, 1_000_000, "SPAWN_Z"),
+    spawnYaw: decimal(env.SPAWN_YAW_DEGREES, 0, -360, 360, "SPAWN_YAW_DEGREES") * Math.PI / 180,
   };
 
   if (env.ADMIN_TOKEN) {
@@ -113,6 +119,14 @@ function integer(value: string | undefined, fallback: number, min: number, max: 
   const parsed = value === undefined ? fallback : Number(value);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
     throw new Error(`${name} must be an integer from ${min} to ${max}`);
+  }
+  return parsed;
+}
+
+function decimal(value: string | undefined, fallback: number, min: number, max: number, name: string): number {
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be a finite number from ${min} to ${max}`);
   }
   return parsed;
 }

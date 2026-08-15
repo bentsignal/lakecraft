@@ -51,6 +51,8 @@ GitHub Actions workflow.
 | `WORLD_PRESET` | `default` or `superflat` | Selects ordinary deterministic terrain or a flat building world. |
 | `SUPERFLAT_GROUND_Y` | `20` | Superflat grass height; bedrock remains at y=1, with three dirt layers and stone between. |
 | `DEFAULT_GAME_MODE` | `survival` or `creative` | First-join role for this server; stored per-player overrides remain authoritative. |
+| `SPAWN_X`, `SPAWN_Z` | World-space decimals; default `0.5`, `0.5` | Authoritative first-join and respawn center. Put a Creative showcase spawn outside its build footprint. |
+| `SPAWN_YAW_DEGREES` | `-360` through `360`; default `0` | Initial horizontal view direction. The server converts degrees to its wire yaw. |
 
 `PORT` and `RAILWAY_PUBLIC_DOMAIN` are injected by Railway. The container sets
 `HOST=0.0.0.0` and `DATA_DIR=/data`. Railway also exposes
@@ -69,7 +71,8 @@ node tools/lakecraft-server/cli.mjs doctor
 ```
 
 For the Creative world, use `WORLD_PRESET=superflat`,
-`SUPERFLAT_GROUND_Y=20`, and `DEFAULT_GAME_MODE=creative` on a new Railway
+`SUPERFLAT_GROUND_Y=20`, `DEFAULT_GAME_MODE=creative`, and a reviewed clear
+`SPAWN_X`/`SPAWN_Z` outside the intended build footprint on a new Railway
 service with its own empty volume. Terrain identity is pinned in SQLite on first
 boot; a later conflicting env change intentionally prevents startup. The
 existing Survival service omits these variables and therefore retains its
