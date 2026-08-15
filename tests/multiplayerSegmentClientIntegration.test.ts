@@ -17,6 +17,10 @@ assert.doesNotMatch(app, /LAKEBED_COMPACT_RETIRED_PRESENCE_START/,
 assert.doesNotMatch(app, /heartbeatPlayer|publishMotionSegments|multiplayerComposite/,
   "the playable Railway session cannot spend Lakebed quota on world motion");
 assert.match(app, /const multiplayerPaused = multiplayerGameplayPaused\(\{/);
+assert.match(app, /engine\.start\(\);\s*if \(initialWorldChunksReadyRef\.current\) requestAnimationFrame/,
+  "the multiplayer loading gate remains opaque until the engine has painted its first frame");
+assert.match(app, /onWorldChunksReady=\{\(\) => \{\s*initialWorldChunksReadyRef\.current = true;\s*requestAnimationFrame/,
+  "a completed chunk stream also waits for a browser paint before revealing the world");
 assert.match(app, /motionActionSinkRef\.current\?\.\("jump"\)/);
 assert.match(app, /action === "use" \? "use" : "swing"/);
 assert.match(app, /crouching \? "crouch_on" : "crouch_off"/);

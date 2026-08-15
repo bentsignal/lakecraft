@@ -722,7 +722,7 @@ export function writeRenderDistanceFogRange(
 // The color and terrain programs intentionally share this source fragment at
 // runtime. Keeping one compact copy preserves the readable CPU-side lighting
 // mirrors while avoiding two near-identical GLSL payloads in the client bundle.
-const LIGHTING_VERTEX_SHADER = `uniform vec3 uCamera,uAmbientColor,uDirectionalColor;uniform vec2 uFogRange;uniform float uFogEnabled,uAmbientIntensity,uDirectionalIntensity,uSkyExposure;uniform vec4 uTorchLights[8];vec3 lightAt(vec3 p,float e){float v=e*uSkyExposure;v=v*(1.5-.5*v);vec3 l=mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}),vec3(.16)+uAmbientColor*uAmbientIntensity*.75+uDirectionalColor*uDirectionalIntensity*.3,v),t=vec3(0.);for(int i=0;i<8;i++){vec4 q=uTorchLights[i];float a=step(.001,q.w)*clamp(1.-length(q.xyz-p)/max(q.w,.001),0.,1.);t+=vec3(1.,.43,.12)*a*a*.95;}return l+t;}float fogAt(vec3 p){return uFogEnabled*smoothstep(uFogRange.x,uFogRange.y,length(p-uCamera));}`;
+const LIGHTING_VERTEX_SHADER = `uniform vec3 uCamera,uAmbientColor,uDirectionalColor;uniform vec2 uFogRange;uniform float uFogEnabled,uAmbientIntensity,uDirectionalIntensity,uSkyExposure;uniform vec4 uTorchLights[8];vec3 lightAt(vec3 p,float e){float v=e*uSkyExposure;v=v*(1.5-.5*v);vec3 l=mix(vec3(${CAVE_LIGHT_FLOOR.toFixed(3)}),vec3(.16)+uAmbientColor*uAmbientIntensity*.75+uDirectionalColor*uDirectionalIntensity*.3,v);float t=0.;for(int i=0;i<8;i++){vec4 q=uTorchLights[i];float a=step(.001,q.w)*clamp(1.-length(q.xyz-p)/max(q.w,.001),0.,1.);t=max(t,a*a*.95);}return mix(l,max(l,vec3(1.,.63,.28)),t);}float fogAt(vec3 p){return uFogEnabled*smoothstep(uFogRange.x,uFogRange.y,length(p-uCamera));}`;
 
 export const VERTEX_SHADER = `attribute vec3 aPosition,aColor;uniform mat4 uMvp;uniform float uLightingEnabled;varying vec3 vColor;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);float p=step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)},aColor.r),r=aColor.r-p*${SKY_SHADE_PACK_MARKER.toFixed(1)};vec3 c=vec3(mix(aColor.r,mod(r,2.),p),aColor.g,aColor.b);float e=mix(1.,floor(r/2.)/${SKY_EXPOSURE_LEVELS.toFixed(1)},p);vColor=c*mix(vec3(1.),lightAt(aPosition,e),uLightingEnabled);vFog=fogAt(aPosition);}`;
 
@@ -1776,6 +1776,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const torchLights = new Map<string, TorchLightPosition>();
   const mobTorchColumns = new Map<string, number[]>();
   const mobTorchCache = createMobTorchLightCache();
+  const chunkTorchLightCache = new Map<string, Float32Array>();
   let mobTorchRevision = 0;
   const activeTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
   const firstPersonTorchUniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
@@ -1787,6 +1788,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function invalidateMobTorchLightCache(): void {
     mobTorchRevision = (mobTorchRevision + 1) & 0x7fffffff;
+    chunkTorchLightCache.clear();
   }
 
   function addTorchLight(key: string, x: number, y: number, z: number, block: BlockId): void {
@@ -2046,6 +2048,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   let selectedBlock = options.selectedBlock ?? BLOCK.DIRT;
   let selectedItem = options.selectedItem ?? null;
   let firstPersonFeedbackHidden = false;
+  let stepVisualOffsetY = 0;
   let cameraMode: PlayerCameraMode = "first_person";
   let firstPersonBowPreviewDrawn: boolean | null = null;
   /* @lakecraft-voxel-development:state:start */
@@ -2320,11 +2323,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     loadedChunkKeys.add(owner);
   }
 
-  function unloadTerrainChunk(chunkX: number, chunkZ: number): void {
+  function unloadTerrainChunk(chunkX: number, chunkZ: number, retainMesh = false): void {
     const owner = chunkKey(chunkX, chunkZ);
     if (!loadedChunkKeys.has(owner)) return;
     const mesh = chunkMeshes.get(owner);
-    if (mesh) {
+    if (mesh && !retainMesh) {
       worldVertexCount -= mesh.vertexCount;
       if (mesh.textureBuffer) gl.deleteBuffer(mesh.textureBuffer);
       if (mesh.transparentBuffer) gl.deleteBuffer(mesh.transparentBuffer);
@@ -2765,6 +2768,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       pose.x = step[0];
       pose.y = step[1];
       pose.z = step[2];
+      stepVisualOffsetY += initialY - step[1];
+      if (stepVisualOffsetY < -0.5) stepVisualOffsetY = -0.5;
       velocity[1] = 0;
       poseDirty = true;
       return false;
@@ -2780,7 +2785,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function cameraEye(out: Vec3 = [0, 0, 0]): Vec3 {
-    writePlayerEye(pose.x, pose.y, pose.z, pose.yaw, cameraPosture.eyeHeight, cameraBob, playerEyeForCamera);
+    writePlayerEye(pose.x, pose.y + stepVisualOffsetY, pose.z, pose.yaw, cameraPosture.eyeHeight, cameraBob, playerEyeForCamera);
     direction(playerFacingForCamera);
     writePlayerCamera(
       out,
@@ -2818,6 +2823,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function clearPlayerMotion(resetView = true): void {
     velocity[0] = velocity[1] = velocity[2] = 0;
     knockbackVelocity[0] = knockbackVelocity[2] = 0;
+    stepVisualOffsetY = 0;
     clearHeldMovementInput();
     if (resetView) resetMovementView();
   }
@@ -3099,6 +3105,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
   function update(dt: number, now: number): void {
     options.onSimulationStep?.(dt);
+    if (stepVisualOffsetY < 0) {
+      stepVisualOffsetY += dt * 5;
+      if (stepVisualOffsetY > 0) stepVisualOffsetY = 0;
+    }
     const processedTerrain = processPendingTerrainChunks();
     if (playerHealth <= 0) {
       if (!playerViewSuspended) {
@@ -3357,6 +3367,27 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
   }
 
+  function chunkTorchLights(mesh: ChunkMesh): Float32Array {
+    let uniforms = chunkTorchLightCache.get(mesh.key);
+    if (uniforms) return uniforms;
+    uniforms = new Float32Array(MAX_ACTIVE_TORCH_LIGHTS * 4);
+    const nearest = selectNearestTorchLights(
+      torchLights.values(),
+      [mesh.centerX, (mesh.minY + mesh.maxY) / 2, mesh.centerZ],
+      MAX_ACTIVE_TORCH_LIGHTS,
+    );
+    for (let index = 0; index < nearest.length; index += 1) {
+      const light = nearest[index];
+      const offset = index * 4;
+      uniforms[offset] = light.x;
+      uniforms[offset + 1] = light.y;
+      uniforms[offset + 2] = light.z;
+      uniforms[offset + 3] = TORCH_LIGHT_RADIUS;
+    }
+    chunkTorchLightCache.set(mesh.key, uniforms);
+    return uniforms;
+  }
+
   function updateFirstPersonSkyExposure(eye: Vec3): number {
     const blockX = Math.floor(eye[0]);
     const blockY = Math.floor(eye[1]);
@@ -3589,7 +3620,6 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform1f(terrainAmbientIntensityLocation, dayNightState.ambientIntensity);
     gl.uniform1f(terrainDirectionalIntensityLocation, dayNightState.directionalIntensity);
     gl.uniform1f(terrainSkyExposureLocation, 1);
-    gl.uniform4fv(terrainTorchLightsLocation, activeTorchUniforms);
     gl.uniform1f(terrainFogLocation, 1);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, terrainTexture);
@@ -3608,6 +3638,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         transparentMeshes.push(mesh);
       }
       if (!mesh.textureBuffer || !mesh.textureVertexCount) continue;
+      gl.uniform4fv(terrainTorchLightsLocation, chunkTorchLights(mesh));
       bindTerrainBuffer(mesh.textureBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, mesh.textureVertexCount);
       drawCalls += 1;
@@ -3633,15 +3664,16 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     gl.uniform1f(ambientIntensityLocation, dayNightState.ambientIntensity);
     gl.uniform1f(directionalIntensityLocation, dayNightState.directionalIntensity);
     gl.uniform1f(skyExposureLocation, 1);
-    gl.uniform4fv(torchLightsLocation, activeTorchUniforms);
     gl.uniform1f(lightingLocation, 1);
     gl.uniform1f(fogLocation, 1);
     for (const mesh of visibleMeshes) {
       if (!mesh.colorBuffer || !mesh.colorVertexCount) continue;
+      gl.uniform4fv(torchLightsLocation, chunkTorchLights(mesh));
       bindBuffer(mesh.colorBuffer);
       gl.drawArrays(gl.TRIANGLES, 0, mesh.colorVertexCount);
       drawCalls += 1;
     }
+    gl.uniform4fv(torchLightsLocation, activeTorchUniforms);
     playerSkinLight[0] = clampNumber((dayNightState.ambientR * dayNightState.ambientIntensity
       + dayNightState.directionalR * dayNightState.directionalIntensity * 0.55) * (0.38 + viewmodelSkyExposure * 0.62), 0.32, 1.12);
     playerSkinLight[1] = clampNumber((dayNightState.ambientG * dayNightState.ambientIntensity
@@ -3722,7 +3754,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
 
     if (cameraMode !== "first_person") {
       thirdPersonRenderPose.x = pose.x;
-      thirdPersonRenderPose.y = pose.y;
+      thirdPersonRenderPose.y = pose.y + stepVisualOffsetY;
       thirdPersonRenderPose.z = pose.z;
       thirdPersonRenderPose.yaw = thirdPersonFacing.bodyYaw;
       thirdPersonRenderPose.pitch = pose.pitch;
@@ -3776,6 +3808,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (let index = 0; index < transparentDrawCount; index += 1) {
         const mesh = transparentMeshes[index];
         if (!mesh.transparentBuffer || !mesh.transparentVertexCount) continue;
+        gl.uniform4fv(terrainTorchLightsLocation, chunkTorchLights(mesh));
         bindTerrainBuffer(mesh.transparentBuffer);
         gl.drawArrays(gl.TRIANGLES, 0, mesh.transparentVertexCount);
         drawCalls += 1;
@@ -3899,12 +3932,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (options.worldContinuesWhilePaused) worldTimeMs = advanceVoxelWorldTimeMs(worldTimeMs, dt, false);
       const processedTerrain = processPendingTerrainChunks();
       if (!processedTerrain) processPendingChunkMeshes();
-      if (!firstPersonFeedbackHidden && playerHealth > 0
-        && document.visibilityState === "visible"
+      if (document.visibilityState === "visible"
         && now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS) {
         lastPausedRenderAt = now;
         const pausedRenderTime = options.worldContinuesWhilePaused ? now : pausedVisualTime;
-        render(pausedRenderTime, 0, now, false);
+        render(pausedRenderTime, 0, now);
       }
       frameId = requestAnimationFrame(frame);
       return;
@@ -4369,8 +4401,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       // Seed a complete frozen frame for a paused HMR remount. The RAF heartbeat
       // then refreshes that retained geometry at a bounded cadence so a menu or
       // browser-compositor repaint cannot clear the pose preview.
-      if (paused && !firstPersonFeedbackHidden && playerHealth > 0
-        && document.visibilityState === "visible") {
+      if (paused && document.visibilityState === "visible") {
         render(pausedVisualTime, 0, pausedVisualTime);
         lastPausedRenderAt = pausedVisualTime;
       }
@@ -4455,10 +4486,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       ])));
       else rememberedEditsByChunk.delete(owner);
       if (loadedChunkKeys.has(owner)) {
-        unloadTerrainChunk(chunkX, chunkZ);
+        unloadTerrainChunk(chunkX, chunkZ, true);
         loadTerrainChunk(chunkX, chunkZ);
         markChunkAndNeighbors(pendingTerrainMeshDirtyChunks, chunkX, chunkZ);
-        for (const key of pendingTerrainMeshDirtyChunks) if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+        for (const key of pendingTerrainMeshDirtyChunks) {
+          if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+        }
         pendingTerrainMeshDirtyChunks.clear();
       }
       return true;

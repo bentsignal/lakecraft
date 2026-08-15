@@ -193,15 +193,17 @@ assertLight(caveDayEmpty.armLight, [0.4484, 0.4522, 0.46018],
   "the skin arm receives the reviewed reduced noon light beneath a roof");
 assert.deepEqual(caveDay.ambient, openDay.ambient,
   "cave darkness is supplied by occlusion rather than faked by changing day uniforms");
-assert.deepEqual(caveDay.torchRadius, [0, 0, 0, 0],
-  "an unlit cave has no synthetic torch in world, mob, or held-item terrain paths");
+assert.ok(caveDay.torchRadius.length >= 4 && caveDay.torchRadius.every((radius) => radius === 0),
+  "an unlit cave has no synthetic torch in per-chunk world, mob, or held-item terrain paths");
 
 const caveTorch = runExposureFixture({ roof: true, torch: true, phase: 0.5 });
 assert.deepEqual(caveTorch.exposure, [1, 1, 1, 0], "a cave torch does not erase roof occlusion");
 const caveTorchEmpty = runExposureFixture({ roof: true, torch: true, phase: 0.5, emptyHand: true });
 assertLight(caveTorchEmpty.armLight, [0.4484, 0.4522, 0.46018],
   "nearby torch uniforms do not replace the arm's bounded sky/day light vector");
-assert.deepEqual(caveTorch.torchRadius, [14, 14, 14, 7],
-  "world and mob paths receive the full torch radius while the held-item terrain path receives its bounded half-radius");
+assert.ok(caveTorch.torchRadius.filter((radius) => radius === 14).length >= 3
+  && caveTorch.torchRadius.includes(7)
+  && caveTorch.torchRadius.every((radius) => radius === 14 || radius === 7),
+"per-chunk world and mob paths receive the full torch radius while the held-item path receives its bounded half-radius");
 
 console.log("live first-person sky, cave, night, and torch exposure uniforms passed");

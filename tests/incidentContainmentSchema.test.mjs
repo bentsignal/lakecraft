@@ -85,11 +85,12 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-// The runtime adds one pure chat-shortcut helper shared by local and Railway
-// sessions without introducing another authority or cloud transport.
+// The reviewed runtime adds atomic chunk replacement, stable bounded torch
+// lighting, render-only step easing, live paused-world presentation, and a
+// first-painted-frame loading gate; none adds another authority or transport.
 assert.equal(runtimeFiles.length, 183, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "c3094977dd66560e93a46cec93af3fd3982c47d53a09ac3a9a746083162c8551",
+  "0ac7ea449de84f1a691e4fe5ee0269e893baa492a23719207cd48c462284a501",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

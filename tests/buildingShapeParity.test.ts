@@ -16,6 +16,7 @@ import {
   playerIntersectsBlockCollisionShape,
   planPlayerHalfStep,
 } from "../client/game/blockGeometry.ts";
+import { readFileSync } from "node:fs";
 import { BLOCK, isSlabBlock, isStairBlock, stairFacingForBlock } from "../client/game/types.ts";
 import { createEmptyInventory } from "../shared/game.ts";
 
@@ -52,6 +53,13 @@ assert.equal(planPlayerHalfStep(0.5, 1, 0.5, 0, 0.3, false, 0, () => false, () =
   "airborne movement never magnetizes onto a half step");
 assert.equal(planPlayerHalfStep(0.5, 1, 0.5, 0, 0.3, true, 0, () => false, () => false), null,
   "a step is accepted only when the raised pose has exact support");
+const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+assert.match(engineSource, /stepVisualOffsetY \+= initialY - step\[1\]/,
+  "the rendered camera/body stays at its pre-step height when collision authority steps upward");
+assert.match(engineSource, /stepVisualOffsetY \+= dt \* 5;[\s\S]*?stepVisualOffsetY > 0/,
+  "the shared first/third-person vertical offset eases to the authoritative height");
+assert.match(engineSource, /writePlayerEye\(pose\.x, pose\.y \+ stepVisualOffsetY/);
+assert.match(engineSource, /thirdPersonRenderPose\.y = pose\.y \+ stepVisualOffsetY/);
 
 assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, 0), BLOCK.OAK_STAIRS_NORTH);
 assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, Math.PI / 2), BLOCK.OAK_STAIRS_EAST);

@@ -59,8 +59,8 @@ assert.ok(bobAdvance.includes("cameraBob,") && bobAdvance.trimEnd().endsWith(");
   "the frame loop updates caller-owned bob state without transient allocation");
 assert.equal(engine.match(/const interactionBob: HeadBobOffsets = \{ x: 0, y: 0 \};/g)?.length, 1,
   "interaction rays retain one immutable zero-bob origin for crosshair and multiplayer envelopes");
-assert.ok(engine.includes("writePlayerEye(pose.x, pose.y, pose.z, pose.yaw, cameraPosture.eyeHeight, cameraBob"),
-  "visual camera translation and view direction still share the retained camera eye");
+assert.ok(engine.includes("writePlayerEye(pose.x, pose.y + stepVisualOffsetY, pose.z, pose.yaw, cameraPosture.eyeHeight, cameraBob"),
+  "visual camera translation and view direction share the retained eye plus the render-only step easing");
 assert.ok(engine.includes("resetMovementView();"), "pointer loss and reconciliation reset transient camera state");
 assert.ok(engine.includes("const mustRemainSneaking = collides"), "resets preserve crouch under a low ceiling");
 assert.ok(engine.includes("playerViewSuspended = true"), "death resets transient view state exactly once");

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
+import { readFileSync } from "node:fs";
 import {
   BLOCK,
   MAX_ACTIVE_TORCH_LIGHTS,
@@ -11,6 +12,19 @@ import {
   selectNearestTorchLights,
   torchPlacementBlock,
 } from "../client/game/index.ts";
+import { VERTEX_SHADER } from "../client/game/voxelEngine.ts";
+
+assert.match(VERTEX_SHADER, /t=max\(t,a\*a\*\.95\)/,
+  "overlapping torches take a bounded maximum instead of compounding brightness");
+assert.doesNotMatch(VERTEX_SHADER, /t\+=/,
+  "the production shader cannot add unbounded torch contributions");
+const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+assert.match(engineSource, /selectNearestTorchLights\([\s\S]*?\[mesh\.centerX, \(mesh\.minY \+ mesh\.maxY\) \/ 2, mesh\.centerZ\]/,
+  "terrain lighting is anchored to each chunk rather than the moving camera");
+assert.match(engineSource, /chunkTorchLightCache\.get\(mesh\.key\)/,
+  "stable per-chunk light selections are cached");
+assert.match(engineSource, /invalidateMobTorchLightCache[\s\S]*?chunkTorchLightCache\.clear\(\)/,
+  "the bounded cache invalidates only when the loaded torch set changes");
 
 const lights = [
   { x: 8, y: 1, z: 0 },

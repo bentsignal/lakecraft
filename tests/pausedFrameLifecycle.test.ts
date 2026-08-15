@@ -8,7 +8,7 @@ type Frame = (now: number) => void;
 let clock = 1_000;
 let nextFrameId = 1;
 const frames = new Map<number, Frame>();
-const glCalls = { clear: 0, drawArrays: 0, bufferSubData: 0, viewport: 0 };
+const glCalls = { clear: 0, drawArrays: 0, bufferData: 0, bufferSubData: 0, deleteBuffer: 0, viewport: 0 };
 
 function requestFrame(callback: Frame): number {
   const id = nextFrameId++;
@@ -44,12 +44,14 @@ const glMethods: Record<string, (...args: any[]) => any> = {
   getShaderInfoLog: () => "",
   clear: () => { glCalls.clear += 1; },
   drawArrays: () => { glCalls.drawArrays += 1; },
+  bufferData: () => { glCalls.bufferData += 1; },
   bufferSubData: () => { glCalls.bufferSubData += 1; },
+  deleteBuffer: () => { glCalls.deleteBuffer += 1; },
   viewport: () => { glCalls.viewport += 1; },
 };
 for (const method of [
-  "activeTexture", "attachShader", "bindBuffer", "bindTexture", "blendFunc", "bufferData", "clearColor",
-  "compileShader", "deleteBuffer", "deleteProgram", "deleteShader", "deleteTexture", "depthMask", "disable",
+  "activeTexture", "attachShader", "bindBuffer", "bindTexture", "blendFunc", "clearColor",
+  "compileShader", "deleteProgram", "deleteShader", "deleteTexture", "depthMask", "disable",
   "disableVertexAttribArray", "enable", "enableVertexAttribArray", "lineWidth", "linkProgram", "pixelStorei",
   "shaderSource", "texImage2D", "texParameteri", "uniform1f", "uniform1i", "uniform2fv", "uniform3f", "uniform3fv",
   "uniform4fv", "uniformMatrix4fv", "useProgram", "vertexAttribPointer",
@@ -182,8 +184,8 @@ const pausedPerformanceCallbacks = performanceCallbacks;
 driveFrame(1_051);
 assert.ok(glCalls.clear > pausedCalls.clear && glCalls.drawArrays > pausedCalls.drawArrays,
   "the first paused heartbeat redraws the retained world and held viewmodel after menu paint");
-assert.equal(glCalls.bufferSubData, pausedCalls.bufferSubData,
-  "paused redraws reuse retained mob, TNT, projectile, drop, and particle geometry");
+assert.ok(glCalls.bufferSubData >= pausedCalls.bufferSubData,
+  "paused redraws may refresh remote, drop, projectile, and particle presentation without advancing simulation");
 const firstPausedPreview = { ...glCalls };
 driveFrame(1_149);
 assert.deepEqual(glCalls, firstPausedPreview,
@@ -197,8 +199,8 @@ const pausedRenderCount = (glCalls.clear - boundedPreview.clear) / 2;
 assert.ok(Number.isInteger(pausedRenderCount) && pausedRenderCount > 0 && pausedRenderCount <= 96,
   "ten seconds of paused heartbeats redraw at no more than the 10 Hz compositor-safe cadence");
 assert.equal(PAUSED_RENDER_INTERVAL_MS, 100, "the paused preview cadence remains explicitly bounded at 10 Hz");
-assert.equal(glCalls.bufferSubData, pausedCalls.bufferSubData,
-  "the sustained paused cadence performs no dynamic geometry uploads");
+assert.ok(glCalls.bufferSubData >= pausedCalls.bufferSubData,
+  "the bounded cadence keeps server-driven presentation current behind chat and menus");
 assert.equal(performanceCallbacks, pausedPerformanceCallbacks, "paused heartbeats emit no performance samples");
 assert.deepEqual(engine.exportRuntimeSnapshot(), pausedSnapshot,
   "world time, mobs, player state, and accumulators remain frozen while paused");
@@ -206,7 +208,12 @@ assert.deepEqual(engine.exportRuntimeSnapshot(), pausedSnapshot,
 engine.setFirstPersonFeedbackHidden(true);
 const hiddenPreview = { ...glCalls };
 driveFrame(11_000);
-assert.deepEqual(glCalls, hiddenPreview, "blocking UI performs zero paused GL work");
+assert.ok(glCalls.clear > hiddenPreview.clear && glCalls.drawArrays > hiddenPreview.drawArrays,
+  "chat and menu UI hide the held viewmodel without freezing the shared world render");
+assert.ok(glCalls.bufferSubData >= hiddenPreview.bufferSubData,
+  "UI-blocked world refreshes may consume new server-driven geometry");
+assert.deepEqual(engine.exportRuntimeSnapshot(), pausedSnapshot,
+  "rendering behind blocking UI does not advance the paused local simulation");
 engine.setFirstPersonFeedbackHidden(false);
 (document as unknown as { visibilityState: DocumentVisibilityState }).visibilityState = "hidden";
 const backgroundPreview = { ...glCalls };
@@ -245,6 +252,14 @@ assert.ok(resumedSnapshot.worldTimeMs - pausedSnapshot.worldTimeMs <= 17,
 assert.ok(glCalls.clear > pausedCalls.clear && glCalls.drawArrays > pausedCalls.drawArrays,
   "rendering resumes on the existing heartbeat");
 assert.notDeepEqual(resumedSnapshot, activeSnapshot, "the live runtime resumes after the frozen interval");
+
+const beforeChunkSwap = { ...glCalls };
+assert.equal(engine.replaceWorldChunkEdits(0, 0, [{ x: 1, y: 80, z: 1, block: BLOCK.GLASS }]), true);
+assert.equal(glCalls.deleteBuffer, beforeChunkSwap.deleteBuffer,
+  "an authoritative refresh retains the visible GPU mesh while replacement work is queued");
+for (let index = 1; index <= 9; index += 1) driveFrame(40_016 + index);
+assert.ok(glCalls.bufferData > beforeChunkSwap.bufferData,
+  "the bounded mesh queue uploads the authoritative replacement without a void frame");
 
 engine.destroy();
 assert.equal(frames.size, 0, "destroy cancels the sole queued heartbeat");
