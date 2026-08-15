@@ -38,7 +38,7 @@ function assertUvRange(
   vertices: readonly number[],
   startVertex: number,
   vertexCount: number,
-  texture: "oak_planks" | "wool",
+  texture: "oak_planks" | "wool" | "torch",
 ): void {
   const uv = textureAtlasUv(texture);
   const end = (startVertex + vertexCount) * 6;
@@ -51,13 +51,21 @@ function assertUvRange(
 const torch = mesh();
 appendSpecialTorchMesh(torch, 3, 4, 5, 0.95, 0);
 assertCounts(torch, SPECIAL_TORCH_TEXTURED_VERTEX_COUNT, SPECIAL_TORCH_COLOR_VERTEX_COUNT);
-assertUvRange(torch.textured, 0, SPECIAL_TORCH_TEXTURED_VERTEX_COUNT, "oak_planks");
+assertUvRange(torch.textured, 0, SPECIAL_TORCH_TEXTURED_VERTEX_COUNT, "torch");
 for (let offset = 5; offset < torch.textured.length; offset += 6) {
   const shade = unpackSkyExposureShade(torch.textured[offset]);
   assert.equal(shade.exposureLevel, 0, "special atlas geometry retains cached cave exposure");
 }
-assert.ok(torch.color.some((value, index) => index % 6 === 3 && value > 0.9),
-  "the torch keeps a readable emissive ember detail");
+assert.equal(torch.color.length, 0, "the synthetic ember box is removed in favor of the exact torch texture");
+const floorTorchY = torch.textured.filter((_, index) => index % 6 === 1);
+assert.deepEqual([Math.min(...floorTorchY), Math.max(...floorTorchY)], [4, 4 + 10 / 16],
+  "the floor torch uses the installed 2x10x2-pixel model bounds");
+const wallTorch = mesh();
+appendSpecialTorchMesh(wallTorch, 3, 4, 5, 1, 0, "east");
+assertCounts(wallTorch, SPECIAL_TORCH_TEXTURED_VERTEX_COUNT, SPECIAL_TORCH_COLOR_VERTEX_COUNT);
+const wallTorchX = wallTorch.textured.filter((_, index) => index % 6 === 0);
+assert.ok(Math.min(...wallTorchX) > 2.93 && Math.max(...wallTorchX) < 3.31,
+  "the installed east-facing wall torch clips slightly into its west support and tilts outward");
 
 const chest = mesh();
 appendSpecialChestMesh(chest, 10, 20, 30, 1, 3);

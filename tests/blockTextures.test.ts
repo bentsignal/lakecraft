@@ -91,6 +91,7 @@ mappedTextureNames.add("tnt_side");
 mappedTextureNames.add("tnt_top");
 mappedTextureNames.add("tnt_bottom");
 mappedTextureNames.add("sapling");
+mappedTextureNames.add("torch");
 assert.deepEqual(
   [...mappedTextureNames].sort(),
   [...TEXTURE_ATLAS_NAMES].sort(),

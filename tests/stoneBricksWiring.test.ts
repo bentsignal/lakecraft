@@ -69,8 +69,8 @@ const server = readFileSync(new URL("../server/index.ts", import.meta.url), "utf
 const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
 assert.match(catalog, /\[BLOCK\.STONE_BRICKS\]:\s*"stone_bricks"/);
 assert.match(catalog, /stone_bricks:\s*BLOCK\.STONE_BRICKS/);
-assert.match(catalog, /BLOCK\.STONE_BRICKS[^\n]*BLOCK\.STONE_BRICK_SLAB[^\n]*BLOCK\.BRICKS[^\n]*return "stone"/);
-assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/, "single-player saves retain stone bricks and every newer append-only block ID");
+assert.match(catalog, /BLOCK\.STONE_BRICKS[\s\S]{0,180}BLOCK\.STONE_BRICK_SLAB[\s\S]{0,100}BLOCK\.BRICKS[\s\S]{0,220}return "stone"/);
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICK_STAIRS_WEST/, "single-player saves retain stone bricks and every newer append-only block ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));
 assert.ok(mutation.includes("parseWorldBlockOperation(rawRequest)"));

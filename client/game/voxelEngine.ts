@@ -70,6 +70,7 @@ import {
   appendSpecialDoorMesh,
   appendSpecialLadderMesh,
   appendSpecialTorchMesh,
+  type TorchMount,
 } from "./specialBlockGeometry.ts";
 import { writeMatrixProduct } from "./matrixProduct.ts";
 export { writeMatrixProduct };
@@ -79,10 +80,13 @@ import {
   blockContainsSolidPoint,
   blockSupportsPlayerFeet,
   playerIntersectsBlockCollisionHeight,
+  playerIntersectsBlockCollisionShape,
+  planPlayerHalfStep,
 } from "./blockGeometry.ts";
 import {
   bedCellKey,
   bedBreakEdits,
+  bedDirectionFromYaw,
   bedStructureKey,
   createBedStructure,
   planBedPlacement,
@@ -143,6 +147,10 @@ import {
 } from "./playerKnockback.ts";
 import {
   BLOCK,
+  isSlabBlock,
+  isStairBlock,
+  isTorchBlock,
+  stairFacingForBlock,
   type BedDirection,
   type BedStructure,
   type BlockId,
@@ -374,7 +382,9 @@ const LOCAL_TNT_DESTRUCTION_THRESHOLDS = [
 
 /** Higher values let a material be destroyed farther toward the edge of a blast. */
 export function localTntDestructionThreshold(block: BlockId): number {
-  return LOCAL_TNT_DESTRUCTION_THRESHOLDS[block];
+  // Append-only building states use the ordinary destructible-block threshold.
+  // Keeping the compact legacy table avoids silently making new shapes blast-proof.
+  return LOCAL_TNT_DESTRUCTION_THRESHOLDS[block] ?? 0.96;
 }
 
 /** Pure, bounded local crater plan shared by the engine and focused tests. */
@@ -594,7 +604,7 @@ interface RankedTorchLight extends TorchLightPosition {
 }
 
 export const MAX_ACTIVE_TORCH_LIGHTS = 8;
-export const TORCH_LIGHT_RADIUS = 11;
+export const TORCH_LIGHT_RADIUS = 14;
 export const TORCH_MESH_VERTEX_COUNT = 72;
 export const CHEST_MESH_VERTEX_COUNT = 108;
 export const DOOR_MESH_VERTEX_COUNT = 144;
@@ -744,11 +754,11 @@ export function selectNearestTorchLights(
   lights: Iterable<TorchLightPosition>,
   camera: readonly [number, number, number],
   limit = MAX_ACTIVE_TORCH_LIGHTS,
-  radius = TORCH_LIGHT_RADIUS,
+  selectionRadius = Number.POSITIVE_INFINITY,
 ): TorchLightPosition[] {
   const boundedLimit = clampNumber(Math.floor(limit), 0, MAX_ACTIVE_TORCH_LIGHTS);
-  if (boundedLimit === 0 || radius <= 0) return [];
-  const radiusSquared = radius * radius;
+  if (boundedLimit === 0 || selectionRadius <= 0) return [];
+  const radiusSquared = selectionRadius * selectionRadius;
   const ranked: RankedTorchLight[] = [];
   for (const light of lights) {
     const dx = light.x - camera[0];
@@ -796,7 +806,7 @@ export function sortTransparentChunkKeysBackToFront(
 
 export function blockHasCollision(block: BlockId): boolean {
   return block !== BLOCK.AIR
-    && block !== BLOCK.TORCH
+    && !isTorchBlock(block)
     && block !== BLOCK.DOOR_OPEN
     && block !== BLOCK.OAK_FENCE_GATE_OPEN
     && block !== BLOCK.LADDER
@@ -929,10 +939,41 @@ export function doorPlacementBlock(block: BlockId): BlockId {
   return block;
 }
 
+export function torchMountForBlock(block: BlockId): TorchMount | null {
+  if (block === BLOCK.TORCH) return "floor";
+  if (block === BLOCK.TORCH_WALL_EAST) return "east";
+  if (block === BLOCK.TORCH_WALL_NORTH) return "north";
+  if (block === BLOCK.TORCH_WALL_SOUTH) return "south";
+  if (block === BLOCK.TORCH_WALL_WEST) return "west";
+  return null;
+}
+
+/** Select a floor or wall state from the exact face hit by the shared raycast. */
+export function torchPlacementBlock(target: Readonly<BlockTarget>): BlockId | null {
+  if (target.place.y === target.block.y + 1) return BLOCK.TORCH;
+  if (target.place.y !== target.block.y || !blockOccludesFaces(target.block.block)) return null;
+  if (target.place.x === target.block.x + 1) return BLOCK.TORCH_WALL_EAST;
+  if (target.place.x === target.block.x - 1) return BLOCK.TORCH_WALL_WEST;
+  if (target.place.z === target.block.z + 1) return BLOCK.TORCH_WALL_SOUTH;
+  if (target.place.z === target.block.z - 1) return BLOCK.TORCH_WALL_NORTH;
+  return null;
+}
+
+/** Resolve one stair item identity to its append-only horizontal block state. */
+export function stairPlacementBlock(block: BlockId, yaw: number): BlockId {
+  const first = block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.OAK_STAIRS_WEST ? BLOCK.OAK_STAIRS_EAST
+    : block >= BLOCK.COBBLESTONE_STAIRS_EAST && block <= BLOCK.COBBLESTONE_STAIRS_WEST ? BLOCK.COBBLESTONE_STAIRS_EAST
+      : block >= BLOCK.STONE_BRICK_STAIRS_EAST && block <= BLOCK.STONE_BRICK_STAIRS_WEST ? BLOCK.STONE_BRICK_STAIRS_EAST
+        : block >= BLOCK.BRICK_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST ? BLOCK.BRICK_STAIRS_EAST : null;
+  if (first === null) return block;
+  const facing = bedDirectionFromYaw(yaw);
+  return first + (facing === "east" ? 0 : facing === "north" ? 1 : facing === "south" ? 2 : 3) as BlockId;
+}
+
 /** Maps the engine palette onto the shared blast-cover categories. */
 export function localCreeperExposureBlock(block: BlockId): BlockType {
   if (block === BLOCK.AIR) return "air";
-  if (block === BLOCK.TORCH) return "torch";
+  if (isTorchBlock(block)) return "torch";
   if (block === BLOCK.LADDER) return "ladder";
   if (block === BLOCK.DOOR_OPEN) return "door_open";
   if (block === BLOCK.OAK_FENCE_GATE_OPEN) return "oak_fence_gate_open";
@@ -1155,19 +1196,27 @@ function appendTexturedAxisAlignedBox(
   textureName: Parameters<typeof textureAtlasUv>[0],
   shade = 1,
   exposureLevel?: number,
+  omitFaces?: readonly BlockFace[],
 ): void {
   const uv = textureAtlasUv(textureName);
   for (const face of FACE_DEFS) {
+    if (omitFaces?.includes(face[0])) continue;
     for (const point of face[5]) {
-      const horizontal = face[1] !== 0 ? point[2] : point[0];
-      const vertical = face[2] !== 0 ? point[2] : point[1];
+      const position: Vec3 = [
+        min[0] + point[0] * (max[0] - min[0]),
+        min[1] + point[1] * (max[1] - min[1]),
+        min[2] + point[2] * (max[2] - min[2]),
+      ];
+      // Model cuboids address the matching sub-rectangle of a 16px block
+      // texture. Stretching the entire tile over every narrow post/rail face
+      // creates the large swimming bands that used to cover fences in motion.
+      const horizontalAxis = face[1] !== 0 ? 2 : face[2] !== 0 ? 2 : 0;
+      const verticalAxis = face[2] !== 0 ? 0 : 1;
+      const horizontal = position[horizontalAxis] - Math.floor(min[horizontalAxis]);
+      const vertical = position[verticalAxis] - Math.floor(min[verticalAxis]);
       pushTexturedVertex(
         output,
-        [
-          min[0] + point[0] * (max[0] - min[0]),
-          min[1] + point[1] * (max[1] - min[1]),
-          min[2] + point[2] * (max[2] - min[2]),
-        ],
+        position,
         uv.left + (uv.right - uv.left) * horizontal,
         uv.bottom + (uv.top - uv.bottom) * vertical,
         retainedTerrainShade(face[4] * shade, exposureLevel),
@@ -1192,12 +1241,27 @@ export function appendStoneBrickSlabMesh(
   getBlock?: (x: number, y: number, z: number) => BlockId,
   exposureLevel?: number,
 ): void {
-  const uv = textureAtlasUv("stone_bricks");
+  appendSlabMesh(output, x, y, z, BLOCK.STONE_BRICK_SLAB, shade, getBlock, exposureLevel);
+}
+
+export function appendSlabMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  block: BlockId,
+  shade = 1,
+  getBlock?: (x: number, y: number, z: number) => BlockId,
+  exposureLevel?: number,
+): void {
+  const texture = blockTextureForFace(block, "top");
+  if (!texture) return;
+  const uv = textureAtlasUv(texture);
   for (const face of FACE_DEFS) {
     if (getBlock) {
       const neighbor = getBlock(x + face[1], y + face[2], z + face[3]);
       const horizontalFace = face[2] === 0;
-      if ((horizontalFace && (neighbor === BLOCK.STONE_BRICK_SLAB || blockOccludesFaces(neighbor)))
+      if ((horizontalFace && (isSlabBlock(neighbor) || blockOccludesFaces(neighbor)))
         || (face[0] === "bottom" && blockOccludesFaces(neighbor))) continue;
     }
     for (const point of face[5]) {
@@ -1212,6 +1276,31 @@ export function appendStoneBrickSlabMesh(
       );
     }
   }
+}
+
+export const STAIR_MESH_VERTEX_COUNT = 66;
+
+/** Two cuboids form the Minecraft straight-stair silhouette without an internal bottom face. */
+export function appendStairMesh(
+  output: number[],
+  x: number,
+  y: number,
+  z: number,
+  block: BlockId,
+  shade = 1,
+  exposureLevel?: number,
+): void {
+  const texture = blockTextureForFace(block, "top");
+  const facing = stairFacingForBlock(block);
+  if (!texture || !facing) return;
+  appendTexturedAxisAlignedBox(output, [x, y, z], [x + 1, y + 0.5, z + 1], texture, shade, exposureLevel);
+  const minimum: Vec3 = [x, y + 0.5, z];
+  const maximum: Vec3 = [x + 1, y + 1, z + 1];
+  if (facing === "east") minimum[0] += 0.5;
+  else if (facing === "west") maximum[0] -= 0.5;
+  else if (facing === "south") minimum[2] += 0.5;
+  else maximum[2] -= 0.5;
+  appendTexturedAxisAlignedBox(output, minimum, maximum, texture, shade, exposureLevel, ["bottom"]);
 }
 
 export const SAPLING_MESH_VERTEX_COUNT = 12;
@@ -1257,7 +1346,7 @@ export function oakFenceMeshVertexCount(connections: OakFenceConnections): numbe
   return OAK_FENCE_BOX_VERTEX_COUNT * (1 + connectionCount * 2);
 }
 
-/** One 1.5-block post plus two rails for each connected horizontal direction. */
+/** Exact installed 4px post plus two 2x3px rails for each connected direction. */
 export function appendOakFenceMesh(
   output: number[],
   x: number,
@@ -1271,28 +1360,28 @@ export function appendOakFenceMesh(
   appendTexturedAxisAlignedBox(
     output,
     [x + 0.375, y, z + 0.375],
-    [x + 0.625, y + OAK_FENCE_HEIGHT, z + 0.625],
+    [x + 0.625, y + 1, z + 0.625],
     texture,
     shade,
     exposureLevel,
   );
   const addRails = (minX: number, maxX: number, minZ: number, maxZ: number): void => {
     appendTexturedAxisAlignedBox(
-      output, [minX, y + 0.50, minZ], [maxX, y + 0.75, maxZ], texture, shade, exposureLevel,
+      output, [minX, y + 6 / 16, minZ], [maxX, y + 9 / 16, maxZ], texture, shade, exposureLevel,
     );
     appendTexturedAxisAlignedBox(
-      output, [minX, y + 1.00, minZ], [maxX, y + 1.25, maxZ], texture, shade, exposureLevel,
+      output, [minX, y + 12 / 16, minZ], [maxX, y + 15 / 16, maxZ], texture, shade, exposureLevel,
     );
   };
-  if (connections.east) addRails(x + 0.5, x + 1, z + 0.4375, z + 0.5625);
-  if (connections.west) addRails(x, x + 0.5, z + 0.4375, z + 0.5625);
-  if (connections.south) addRails(x + 0.4375, x + 0.5625, z + 0.5, z + 1);
-  if (connections.north) addRails(x + 0.4375, x + 0.5625, z, z + 0.5);
+  if (connections.east) addRails(x + 0.5, x + 1, z + 7 / 16, z + 9 / 16);
+  if (connections.west) addRails(x, x + 0.5, z + 7 / 16, z + 9 / 16);
+  if (connections.south) addRails(x + 7 / 16, x + 9 / 16, z + 0.5, z + 1);
+  if (connections.north) addRails(x + 7 / 16, x + 9 / 16, z, z + 0.5);
 }
 
-export const OAK_FENCE_GATE_MESH_VERTEX_COUNT = OAK_FENCE_BOX_VERTEX_COUNT * 4;
+export const OAK_FENCE_GATE_MESH_VERTEX_COUNT = OAK_FENCE_BOX_VERTEX_COUNT * 8;
 
-/** Two fixed posts and two rails; opening swings the rails south around the west hinge. */
+/** Installed fence-gate model: two edge posts and two four-cuboid door halves. */
 export function appendOakFenceGateMesh(
   output: number[],
   x: number,
@@ -1303,38 +1392,29 @@ export function appendOakFenceGateMesh(
   exposureLevel?: number,
 ): void {
   const texture = "oak_planks" as const;
-  appendTexturedAxisAlignedBox(
-    output,
-    [x + 0.0625, y, z + 0.375],
-    [x + 0.1875, y + OAK_FENCE_HEIGHT, z + 0.625],
-    texture,
-    shade,
-    exposureLevel,
-  );
-  appendTexturedAxisAlignedBox(
-    output,
-    [x + 0.8125, y, z + 0.375],
-    [x + 0.9375, y + OAK_FENCE_HEIGHT, z + 0.625],
-    texture,
-    shade,
-    exposureLevel,
-  );
-  const appendRail = (minimumY: number, maximumY: number): void => {
-    appendTexturedAxisAlignedBox(
-      output,
-      open
-        ? [x + 0.0625, y + minimumY, z + 0.5]
-        : [x + 0.125, y + minimumY, z + 0.4375],
-      open
-        ? [x + 0.1875, y + maximumY, z + 1]
-        : [x + 0.875, y + maximumY, z + 0.5625],
-      texture,
-      shade,
-      exposureLevel,
-    );
+  const box = (from: Vec3, to: Vec3): void => {
+    appendTexturedAxisAlignedBox(output,
+      [x + from[0] / 16, y + from[1] / 16, z + from[2] / 16],
+      [x + to[0] / 16, y + to[1] / 16, z + to[2] / 16],
+      texture, shade, exposureLevel);
   };
-  appendRail(0.50, 0.75);
-  appendRail(1.00, 1.25);
+  box([0, 5, 7], [2, 16, 9]);
+  box([14, 5, 7], [16, 16, 9]);
+  if (open) {
+    box([0, 6, 13], [2, 15, 15]);
+    box([14, 6, 13], [16, 15, 15]);
+    box([0, 6, 9], [2, 9, 13]);
+    box([0, 12, 9], [2, 15, 13]);
+    box([14, 6, 9], [16, 9, 13]);
+    box([14, 12, 9], [16, 15, 13]);
+  } else {
+    box([6, 6, 7], [8, 15, 9]);
+    box([8, 6, 7], [10, 15, 9]);
+    box([2, 6, 7], [6, 9, 9]);
+    box([2, 12, 7], [6, 15, 9]);
+    box([10, 6, 7], [14, 9, 9]);
+    box([10, 12, 7], [14, 15, 9]);
+  }
 }
 
 function tint(color: Vec3, shade: number, variation = 1): Vec3 {
@@ -1709,8 +1789,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     mobTorchRevision = (mobTorchRevision + 1) & 0x7fffffff;
   }
 
-  function addTorchLight(key: string, x: number, y: number, z: number): void {
-    const light = { x: x + 0.5, y: y + 0.76, z: z + 0.5 };
+  function addTorchLight(key: string, x: number, y: number, z: number, block: BlockId): void {
+    const mount = torchMountForBlock(block);
+    const light = {
+      x: x + (mount === "east" ? 0.36 : mount === "west" ? 0.64 : 0.5),
+      y: y + (mount === "floor" ? 0.62 : 0.84),
+      z: z + (mount === "south" ? 0.36 : mount === "north" ? 0.64 : 0.5),
+    };
     torchLights.set(key, light);
     const columnKey = skyColumnKey(x, z);
     const column = mobTorchColumns.get(columnKey);
@@ -1794,9 +1879,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const [key, block] of materialized) {
       blocks.set(key, block);
       owned.add(key);
-      if (block === BLOCK.TORCH) {
+      if (isTorchBlock(block)) {
         const [x, y, z] = key.split(",").map(Number);
-        addTorchLight(key, x, y, z);
+        addTorchLight(key, x, y, z, block);
       }
     }
     chunkBlocks.set(owner, owned);
@@ -2226,9 +2311,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const [key, block] of materialized) {
       blocks.set(key, block);
       owned.add(key);
-      if (block === BLOCK.TORCH) {
+      if (isTorchBlock(block)) {
         const [x, y, z] = key.split(",").map(Number);
-        addTorchLight(key, x, y, z);
+        addTorchLight(key, x, y, z, block);
       }
     }
     chunkBlocks.set(owner, owned);
@@ -2325,14 +2410,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (previous === BLOCK.TNT && block !== BLOCK.TNT && primedTnt.delete(key)) {
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
     }
-    if (previous === BLOCK.TORCH) removeTorchLight(key);
+    if (isTorchBlock(previous)) removeTorchLight(key);
     if (block === BLOCK.AIR) {
       blocks.delete(key);
       const owned = chunkBlocks.get(owner);
       owned?.delete(key);
     } else {
       blocks.set(key, block);
-      if (block === BLOCK.TORCH) addTorchLight(key, x, y, z);
+      if (isTorchBlock(block)) addTorchLight(key, x, y, z, block);
       if (previous === BLOCK.AIR) {
         let owned = chunkBlocks.get(owner);
         if (!owned) {
@@ -2382,7 +2467,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
               : blockCollisionHeight(block)
         ),
       );
-      if (block === BLOCK.TORCH) {
+      const torchMount = torchMountForBlock(block);
+      if (torchMount) {
         appendSpecialTorchMesh(
           specialVertices,
           x,
@@ -2390,6 +2476,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           z,
           blockMaterialVariation(x, y, z),
           skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+          torchMount,
         );
         continue;
       }
@@ -2484,14 +2571,27 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         );
         continue;
       }
-      if (block === BLOCK.STONE_BRICK_SLAB) {
-        appendStoneBrickSlabMesh(
+      if (isSlabBlock(block)) {
+        appendSlabMesh(
           textureVertices,
           x,
           y,
           z,
+          block,
           blockMaterialVariation(x, y, z),
           getBlock,
+          skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+        );
+        continue;
+      }
+      if (isStairBlock(block)) {
+        appendStairMesh(
+          textureVertices,
+          x,
+          y,
+          z,
+          block,
+          blockMaterialVariation(x, y, z),
           skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
@@ -2624,7 +2724,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (let by = minY; by <= maxY; by += 1) {
         for (let bz = minZ; bz <= maxZ; bz += 1) {
           const block = getBlock(bx, by, bz);
-          if (blockHasCollision(block) && playerIntersectsBlockCollisionHeight(y, bodyHeight, by, block)) return true;
+          if (blockHasCollision(block)
+            && playerIntersectsBlockCollisionShape(x, y, z, bodyHeight, bx, by, bz, block)) return true;
           if (by > 0 && getBlock(bx, by - 1, bz) === BLOCK.DOOR_CLOSED) return true;
           if (getBlock(bx, by - 1, bz) === BLOCK.OAK_FENCE
             && playerIntersectsOakFenceHeight(y, bodyHeight, by - 1)) return true;
@@ -2642,21 +2743,40 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const xOffset of [-0.26, 0.26]) {
       for (const zOffset of [-0.26, 0.26]) {
         const block = getBlock(Math.floor(x + xOffset), sampleY, Math.floor(z + zOffset));
-        if (blockHasCollision(block) && blockSupportsPlayerFeet(block, sampleY, y)) return true;
+        if (blockHasCollision(block)
+          && blockSupportsPlayerFeet(block, sampleY, y, x + xOffset - Math.floor(x + xOffset), z + zOffset - Math.floor(z + zOffset))) return true;
       }
     }
     return false;
   }
 
   function moveHorizontalAxis(axis: 0 | 2, amount: number, protectLedge: boolean): boolean {
-    if (!protectLedge || amount === 0) return moveAxis(axis, amount);
+    if (amount === 0) return false;
+    const tryMove = (distance: number): boolean => {
+      const initialX = pose.x;
+      const initialY = pose.y;
+      const initialZ = pose.z;
+      const blocked = moveAxis(axis, distance);
+      if (!blocked || !grounded || velocity[1] > 0.01) return blocked;
+      const step = planPlayerHalfStep(
+        initialX, initialY, initialZ, axis, distance, grounded, velocity[1], collides, hasGroundSupport,
+      );
+      if (!step) return true;
+      pose.x = step[0];
+      pose.y = step[1];
+      pose.z = step[2];
+      velocity[1] = 0;
+      poseDirty = true;
+      return false;
+    };
+    if (!protectLedge) return tryMove(amount);
     const initial = axis === 0 ? pose.x : pose.z;
     const safeAmount = clampSneakAxisMovement(amount, (offset) => {
       const x = axis === 0 ? initial + offset : pose.x;
       const z = axis === 2 ? initial + offset : pose.z;
       return hasGroundSupport(x, pose.y, z);
     });
-    return moveAxis(axis, safeAmount);
+    return tryMove(safeAmount);
   }
 
   function cameraEye(out: Vec3 = [0, 0, 0]): Vec3 {
@@ -2671,7 +2791,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       (x, y, z) => {
         const blockY = Math.floor(y);
         const block = getBlock(Math.floor(x), blockY, Math.floor(z));
-        return blockHasCollision(block) && blockContainsSolidPoint(block, blockY, y);
+        return blockHasCollision(block)
+          && blockContainsSolidPoint(block, blockY, y, x, z, Math.floor(x), Math.floor(z));
       },
     );
     return out;
@@ -2906,7 +3027,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         isProjectileBlocked: (x, y, z) => {
           const blockY = Math.floor(y);
           const block = getBlock(Math.floor(x), blockY, Math.floor(z));
-          return blockHasCollision(block) && blockContainsSolidPoint(block, blockY, y);
+          return blockHasCollision(block)
+            && blockContainsSolidPoint(block, blockY, y, x, z, Math.floor(x), Math.floor(z));
         },
         projectileDamageSources,
         localLight: cachedMobLocalLight,
@@ -3221,7 +3343,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     lastTorchCameraY = eye[1];
     lastTorchCameraZ = eye[2];
     activeTorchUniforms.fill(0);
-    const nearest = selectNearestTorchLights(torchLights.values(), eye, MAX_ACTIVE_TORCH_LIGHTS, TORCH_LIGHT_RADIUS);
+    // Selection distance is independent of illumination falloff: a visible
+    // torch must light its own surroundings before the player walks into it.
+    const nearest = selectNearestTorchLights(torchLights.values(), eye, MAX_ACTIVE_TORCH_LIGHTS);
     activeTorchLights = nearest.length;
     for (let index = 0; index < nearest.length; index += 1) {
       const light = nearest[index];
@@ -3772,13 +3896,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const dt = Math.min(0.05, frameTimeMs / 1000);
     lastFrame = now;
     if (paused) {
+      if (options.worldContinuesWhilePaused) worldTimeMs = advanceVoxelWorldTimeMs(worldTimeMs, dt, false);
       const processedTerrain = processPendingTerrainChunks();
       if (!processedTerrain) processPendingChunkMeshes();
       if (!firstPersonFeedbackHidden && playerHealth > 0
         && document.visibilityState === "visible"
         && now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS) {
         lastPausedRenderAt = now;
-        render(pausedVisualTime, 0, pausedVisualTime, false);
+        const pausedRenderTime = options.worldContinuesWhilePaused ? now : pausedVisualTime;
+        render(pausedRenderTime, 0, now, false);
       }
       frameId = requestAnimationFrame(frame);
       return;
@@ -3975,11 +4101,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function playerIntersectsBlock(x: number, y: number, z: number, block: BlockId): boolean {
-    return pose.x + 0.29 > x
-      && pose.x - 0.29 < x + 1
-      && playerIntersectsBlockCollisionHeight(pose.y, cameraPosture.bodyHeight, y, block)
-      && pose.z + 0.29 > z
-      && pose.z - 0.29 < z + 1;
+    return playerIntersectsBlockCollisionShape(
+      pose.x, pose.y, pose.z, cameraPosture.bodyHeight, x, y, z, block,
+    );
   }
 
   function tryPlaceSelectedBlock(): boolean {
@@ -3999,13 +4123,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       return true;
     }
     const saplingPlacement = selectedBlock === BLOCK.SAPLING;
+    const placementBlock = selectedBlock === BLOCK.TORCH ? torchPlacementBlock(target)
+      : isStairBlock(selectedBlock) ? stairPlacementBlock(selectedBlock, pose.yaw)
+        : doorPlacementBlock(selectedBlock);
     const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
     if (
-      getBlock(x, y, z) !== BLOCK.AIR
+      placementBlock === null
+      || getBlock(x, y, z) !== BLOCK.AIR
       || !supportedSapling
       || (!saplingPlacement && playerIntersectsBlock(x, y, z, selectedBlock))
     ) return false;
-    if (!emitEdit({ x, y, z, block: doorPlacementBlock(selectedBlock) })) return false;
+    if (!emitEdit({ x, y, z, block: placementBlock })) return false;
     emitHandAction("place");
     return true;
   }

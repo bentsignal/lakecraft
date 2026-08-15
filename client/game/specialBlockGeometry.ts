@@ -1,4 +1,4 @@
-import { chestAtlasUv, textureAtlasUv, type TextureUvBounds } from "./blockTextures.ts";
+import { chestAtlasUv, textureAtlasPixelUv, textureAtlasUv, type TextureUvBounds } from "./blockTextures.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
 import { packSkyExposureShade } from "./skyExposure.ts";
 import type { BedDirection } from "./types.ts";
@@ -16,7 +16,7 @@ export type SpecialBlockMeshOutputs = Readonly<{
 }>;
 
 export const SPECIAL_TORCH_TEXTURED_VERTEX_COUNT = 36;
-export const SPECIAL_TORCH_COLOR_VERTEX_COUNT = 36;
+export const SPECIAL_TORCH_COLOR_VERTEX_COUNT = 0;
 export const SPECIAL_CHEST_TEXTURED_VERTEX_COUNT = 108;
 export const SPECIAL_CHEST_COLOR_VERTEX_COUNT = 0;
 export const SPECIAL_DOOR_TEXTURED_VERTEX_COUNT = 36;
@@ -26,11 +26,13 @@ export const SPECIAL_BED_COLOR_VERTEX_COUNT = 36;
 export const SPECIAL_LADDER_TEXTURED_VERTEX_COUNT = 252;
 export const SPECIAL_LADDER_COLOR_VERTEX_COUNT = 0;
 
-function retainedShade(faceShade: number, exposureLevel?: number): number {
+function retainedShade(faceShade: number, exposureLevel?: number, emissive = false): number {
   return exposureLevel === undefined
     ? faceShade
-    : packSkyExposureShade(faceShade, exposureLevel);
+    : packSkyExposureShade(faceShade, exposureLevel, emissive);
 }
+
+export type TorchMount = "floor" | "east" | "north" | "south" | "west";
 
 function appendTexturedBox(
   output: number[],
@@ -135,7 +137,28 @@ function appendColorBox(output: number[], min: Vec3, max: Vec3, color: Vec3): vo
   }
 }
 
-/** A narrow oak stem with a deliberately oversized warm ember cap. */
+function rotateWallTorchPoint(point: Vec3, mount: Exclude<TorchMount, "floor">): Vec3 {
+  const angle = -22.5 * Math.PI / 180;
+  const origin: Vec3 = [0, 3.5 / 16, 0.5];
+  const dx = point[0] - origin[0];
+  const dy = point[1] - origin[1];
+  const tilted: Vec3 = [
+    origin[0] + dx * Math.cos(angle) - dy * Math.sin(angle),
+    origin[1] + dx * Math.sin(angle) + dy * Math.cos(angle),
+    point[2],
+  ];
+  const rotations = { east: 0, south: 90, west: 180, north: 270 } as const;
+  const yaw = rotations[mount] * Math.PI / 180;
+  const centeredX = tilted[0] - 0.5;
+  const centeredZ = tilted[2] - 0.5;
+  return [
+    0.5 + centeredX * Math.cos(yaw) - centeredZ * Math.sin(yaw),
+    tilted[1],
+    0.5 + centeredX * Math.sin(yaw) + centeredZ * Math.cos(yaw),
+  ];
+}
+
+/** Exact installed 26.2 floor/wall torch model and source-pixel UV rectangles. */
 export function appendSpecialTorchMesh(
   output: SpecialBlockMeshOutputs,
   x: number,
@@ -143,21 +166,31 @@ export function appendSpecialTorchMesh(
   z: number,
   shade = 1,
   exposureLevel?: number,
+  mount: TorchMount = "floor",
 ): void {
-  appendTexturedBox(
-    output.textured,
-    [x + 0.42, y, z + 0.42],
-    [x + 0.58, y + 0.7, z + 0.58],
-    "oak_planks",
-    shade,
-    exposureLevel,
-  );
-  appendColorBox(
-    output.color,
-    [x + 0.38, y + 0.67, z + 0.38],
-    [x + 0.62, y + 0.88, z + 0.62],
-    [1, 0.58, 0.11],
-  );
+  const min: Vec3 = mount === "floor" ? [7 / 16, 0, 7 / 16] : [-1 / 16, 3.5 / 16, 7 / 16];
+  const max: Vec3 = mount === "floor" ? [9 / 16, 10 / 16, 9 / 16] : [1 / 16, 13.5 / 16, 9 / 16];
+  for (const face of CUBE_FACES) {
+    const source = face[0] === "bottom" ? [7, 13, 9, 15]
+      : face[0] === "top" ? [7, 6, 9, 8] : [7, 6, 9, 16];
+    for (const point of face[5]) {
+      const horizontal = face[1] !== 0 ? point[2] : point[0];
+      const vertical = face[2] !== 0 ? point[2] : point[1];
+      const local: Vec3 = [
+        min[0] + point[0] * (max[0] - min[0]),
+        min[1] + point[1] * (max[1] - min[1]),
+        min[2] + point[2] * (max[2] - min[2]),
+      ];
+      const transformed = mount === "floor" ? local : rotateWallTorchPoint(local, mount);
+      const uv = textureAtlasPixelUv(
+        "torch",
+        source[0] + 0.5 + horizontal * (source[2] - source[0] - 1),
+        source[3] - 0.5 - vertical * (source[3] - source[1] - 1),
+      );
+      output.textured.push(x + transformed[0], y + transformed[1], z + transformed[2],
+        uv[0], uv[1], retainedShade(shade, exposureLevel, true));
+    }
+  }
 }
 
 /** Exact installed normal-chest entity texture on the standard body, lid, and latch boxes. */

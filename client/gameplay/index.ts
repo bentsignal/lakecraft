@@ -10,3 +10,4 @@ export type { GameplayPointerSessionEvent, GameplayPointerSessionState, Gameplay
 export { audioSurfaceForBlock, ENGINE_TO_GAME, ITEM_TO_ENGINE } from "./catalog.ts";
 export { createGameplayPresentationOptions } from "./presentation.ts";
 export type { GameplayPresentationContext } from "./presentation.ts";
+export { gameplayChatShortcutDraft } from "./chatShortcut.ts";

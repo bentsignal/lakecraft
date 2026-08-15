@@ -74,9 +74,13 @@ const cutoutPixels = renderedPixels("glass");
 assert.ok(opaquePixels.some((value, index) => index % 4 === 3 && value === 255 && cutoutPixels[index] === 0),
   "alpha-cutout glass keeps transparent projected texels where opaque dirt paints pixels");
 
-for (const flatOrSpecial of ["iron_ingot", "coal", "leather", "chest", "oak_fence", "stone_brick_slab"] as const) {
+for (const flatOrSpecial of ["iron_ingot", "coal", "leather", "chest", "oak_fence"] as const) {
   assert.equal(atlasBlockItemGuiIcon(flatOrSpecial), undefined,
     `${flatOrSpecial} keeps its exact installed sprite or installed special-model render`);
+}
+for (const shaped of ["stone_brick_slab", "oak_slab", "cobblestone_stairs", "brick_stairs"] as const) {
+  assert.ok(atlasBlockItemGuiIcon(shaped)?.some((value, index) => index % 4 === 3 && value === 255),
+    `${shaped} uses a textured runtime-rendered building silhouette`);
 }
 
 const itemGlyphSource = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.meta.url), "utf8");

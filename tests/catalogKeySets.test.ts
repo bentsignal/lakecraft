@@ -6,6 +6,7 @@ const EXPECTED_BLOCK_IDS = [
   "grass", "dirt", "stone", "cobblestone", "sand", "gravel", "glass", "coal_ore", "iron_ore", "gold_ore",
   "diamond_ore", "log", "leaves", "planks", "crafting_table", "furnace", "torch", "chest", "door", "bed",
   "ladder", "tnt", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate", "stone_brick_slab", "clay", "bricks",
+  "oak_slab", "cobblestone_slab", "brick_slab", "oak_stairs", "cobblestone_stairs", "stone_brick_stairs", "brick_stairs",
 ] as const satisfies readonly BlockId[];
 const EXPECTED_ITEM_IDS = [
   ...EXPECTED_BLOCK_IDS,

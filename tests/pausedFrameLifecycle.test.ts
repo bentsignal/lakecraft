@@ -254,6 +254,22 @@ assert.equal(engine.setPaused(false), false);
 assert.equal(frames.size, 0, "pause calls after destroy cannot restart the loop");
 assert.deepEqual(glCalls, destroyedCalls, "destroyed engines remain render-inert");
 
+const livePausedEngine = createVoxelEngine(canvas, {
+  seed: 91,
+  worldRadius: 8,
+  worldContinuesWhilePaused: true,
+});
+livePausedEngine.start();
+driveFrame(40_032);
+livePausedEngine.setPaused(true);
+const livePauseStart = livePausedEngine.exportRuntimeSnapshot().worldTimeMs;
+driveFrame(40_048);
+driveFrame(40_064);
+assert.ok(livePausedEngine.exportRuntimeSnapshot().worldTimeMs > livePauseStart,
+  "multiplayer pause keeps the shared day/night clock moving while local input remains paused");
+livePausedEngine.destroy();
+assert.equal(frames.size, 0);
+
 const appSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 assert.equal(appSource.match(/singlePlayerGameplayPaused\(\{/g)?.length, 4,
   "startup, UI, visibility, and active-play accounting share one pause predicate");

@@ -64,7 +64,7 @@ for (const recipe of RECIPES) {
 
 assert.equal(
   createHash("sha256").update(JSON.stringify(INITIAL_RECIPE_PATTERNS)).digest("hex"),
-  "c85d1518f04d861ad80cbfe7e3c4dd7260ef023508ee9a23a2e37cd8e8831bea",
+  "773982cb3a6934f399355a76f5992a9771fcaf38a411edf92cb8028c7c73732d",
   "generated recipe patterns preserve the exact serialized layout and insertion order",
 );
 assert.equal(adaptRecipesToGrid([{ ...RECIPES[0], id: "unmapped" }]).length, 0);

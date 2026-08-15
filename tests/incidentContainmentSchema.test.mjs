@@ -85,11 +85,11 @@ for (const path of runtimeFiles) {
   runtimeHash.update("\0");
   runtimeHash.update(contents);
 }
-// The shared runtime adds one pure coordinate-chunk codec used by both browser
-// and Railway without introducing a Lakebed authority or cloud transport.
-assert.equal(runtimeFiles.length, 182, "reviewed main runtime file set changed");
+// The runtime adds one pure chat-shortcut helper shared by local and Railway
+// sessions without introducing another authority or cloud transport.
+assert.equal(runtimeFiles.length, 183, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "958ccc262bc5dba5269c84a2f7e65059fb5aebd7bf5b08602e7a166a22398f22",
+  "c3094977dd66560e93a46cec93af3fd3982c47d53a09ac3a9a746083162c8551",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

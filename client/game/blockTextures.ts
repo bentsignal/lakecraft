@@ -36,6 +36,25 @@ const UNIFORM_BLOCK_TEXTURES: Readonly<Partial<Record<BlockId, TextureAtlasName>
   [BLOCK.CLAY]: "clay",
   [BLOCK.BRICKS]: "bricks",
   [BLOCK.BEDROCK]: "bedrock",
+  [BLOCK.OAK_SLAB]: "oak_planks",
+  [BLOCK.COBBLESTONE_SLAB]: BS.cobblestone,
+  [BLOCK.BRICK_SLAB]: "bricks",
+  [BLOCK.OAK_STAIRS_EAST]: "oak_planks",
+  [BLOCK.OAK_STAIRS_NORTH]: "oak_planks",
+  [BLOCK.OAK_STAIRS_SOUTH]: "oak_planks",
+  [BLOCK.OAK_STAIRS_WEST]: "oak_planks",
+  [BLOCK.COBBLESTONE_STAIRS_EAST]: BS.cobblestone,
+  [BLOCK.COBBLESTONE_STAIRS_NORTH]: BS.cobblestone,
+  [BLOCK.COBBLESTONE_STAIRS_SOUTH]: BS.cobblestone,
+  [BLOCK.COBBLESTONE_STAIRS_WEST]: BS.cobblestone,
+  [BLOCK.STONE_BRICK_STAIRS_EAST]: BS.stoneBricks,
+  [BLOCK.STONE_BRICK_STAIRS_NORTH]: BS.stoneBricks,
+  [BLOCK.STONE_BRICK_STAIRS_SOUTH]: BS.stoneBricks,
+  [BLOCK.STONE_BRICK_STAIRS_WEST]: BS.stoneBricks,
+  [BLOCK.BRICK_STAIRS_EAST]: "bricks",
+  [BLOCK.BRICK_STAIRS_NORTH]: "bricks",
+  [BLOCK.BRICK_STAIRS_SOUTH]: "bricks",
+  [BLOCK.BRICK_STAIRS_WEST]: "bricks",
   [BLOCK.SAND]: "sand",
   [BLOCK.GRAVEL]: "gravel",
   [BLOCK.WOOL]: "wool",
@@ -49,9 +68,11 @@ const ATLAS_HEIGHT = TEXTURE_ATLAS_ROWS * TEXTURE_TILE_SIZE;
 const HALF_TEXEL_U = 0.5 / ATLAS_WIDTH;
 const HALF_TEXEL_V = 0.5 / ATLAS_HEIGHT;
 const TEXTURE_UV_BY_NAME = {} as Record<TextureAtlasName, TextureUvBounds>;
+const TEXTURE_CELL_BY_NAME = {} as Record<TextureAtlasName, number>;
 for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   const name = TEXTURE_ATLAS_NAMES[index];
   const cell = TEXTURE_ATLAS_CELLS[index];
+  TEXTURE_CELL_BY_NAME[name] = cell;
   const column = cell % TEXTURE_ATLAS_COLUMNS;
   const row = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
   TEXTURE_UV_BY_NAME[name] = Object.freeze({
@@ -99,6 +120,22 @@ export function textureAtlasUv(name: TextureAtlasName): TextureUvBounds {
   const uv = TEXTURE_UV_BY_NAME[name];
   if (!uv) throw new Error(`Unknown texture atlas tile: ${name}`);
   return uv;
+}
+
+/** Address a reviewed source-pixel center inside one 16x16 atlas tile. */
+export function textureAtlasPixelUv(
+  name: TextureAtlasName,
+  sourceU: number,
+  sourceV: number,
+): readonly [number, number] {
+  const cell = TEXTURE_CELL_BY_NAME[name];
+  if (cell === undefined) throw new Error(`Unknown texture atlas tile: ${name}`);
+  const column = cell % TEXTURE_ATLAS_COLUMNS;
+  const row = Math.floor(cell / TEXTURE_ATLAS_COLUMNS);
+  return [
+    (column * TEXTURE_TILE_SIZE + sourceU) / ATLAS_WIDTH,
+    1 - (row * TEXTURE_TILE_SIZE + sourceV) / ATLAS_HEIGHT,
+  ];
 }
 
 /** Address one exact source texel in the contiguous 64x64 normal-chest region. */

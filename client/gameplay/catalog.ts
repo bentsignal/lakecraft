@@ -14,6 +14,17 @@ export const ENGINE_TO_GAME: Readonly<Partial<Record<EngineBlockId, BlockId>>> =
   [BLOCK.SAPLING]: "sapling", [BLOCK.STONE_BRICKS]: "stone_bricks", [BLOCK.OAK_FENCE]: "oak_fence",
   [BLOCK.OAK_FENCE_GATE_CLOSED]: "oak_fence_gate", [BLOCK.OAK_FENCE_GATE_OPEN]: "oak_fence_gate",
   [BLOCK.STONE_BRICK_SLAB]: "stone_brick_slab", [BLOCK.CLAY]: "clay", [BLOCK.BRICKS]: "bricks",
+  [BLOCK.TORCH_WALL_EAST]: "torch", [BLOCK.TORCH_WALL_NORTH]: "torch",
+  [BLOCK.TORCH_WALL_SOUTH]: "torch", [BLOCK.TORCH_WALL_WEST]: "torch",
+  [BLOCK.OAK_SLAB]: "oak_slab", [BLOCK.COBBLESTONE_SLAB]: "cobblestone_slab", [BLOCK.BRICK_SLAB]: "brick_slab",
+  [BLOCK.OAK_STAIRS_EAST]: "oak_stairs", [BLOCK.OAK_STAIRS_NORTH]: "oak_stairs",
+  [BLOCK.OAK_STAIRS_SOUTH]: "oak_stairs", [BLOCK.OAK_STAIRS_WEST]: "oak_stairs",
+  [BLOCK.COBBLESTONE_STAIRS_EAST]: "cobblestone_stairs", [BLOCK.COBBLESTONE_STAIRS_NORTH]: "cobblestone_stairs",
+  [BLOCK.COBBLESTONE_STAIRS_SOUTH]: "cobblestone_stairs", [BLOCK.COBBLESTONE_STAIRS_WEST]: "cobblestone_stairs",
+  [BLOCK.STONE_BRICK_STAIRS_EAST]: "stone_brick_stairs", [BLOCK.STONE_BRICK_STAIRS_NORTH]: "stone_brick_stairs",
+  [BLOCK.STONE_BRICK_STAIRS_SOUTH]: "stone_brick_stairs", [BLOCK.STONE_BRICK_STAIRS_WEST]: "stone_brick_stairs",
+  [BLOCK.BRICK_STAIRS_EAST]: "brick_stairs", [BLOCK.BRICK_STAIRS_NORTH]: "brick_stairs",
+  [BLOCK.BRICK_STAIRS_SOUTH]: "brick_stairs", [BLOCK.BRICK_STAIRS_WEST]: "brick_stairs",
 });
 
 export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = Object.freeze({
@@ -25,6 +36,9 @@ export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = 
   wool: BLOCK.WOOL, sapling: BLOCK.SAPLING, stone_bricks: BLOCK.STONE_BRICKS, oak_fence: BLOCK.OAK_FENCE,
   oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED, stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
   clay: BLOCK.CLAY, bricks: BLOCK.BRICKS,
+  oak_slab: BLOCK.OAK_SLAB, cobblestone_slab: BLOCK.COBBLESTONE_SLAB, brick_slab: BLOCK.BRICK_SLAB,
+  oak_stairs: BLOCK.OAK_STAIRS_NORTH, cobblestone_stairs: BLOCK.COBBLESTONE_STAIRS_NORTH,
+  stone_brick_stairs: BLOCK.STONE_BRICK_STAIRS_NORTH, brick_stairs: BLOCK.BRICK_STAIRS_NORTH,
 });
 
 export function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
@@ -38,7 +52,9 @@ export function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.GLASS) return "glass";
   if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
   if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE
-    || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.BRICKS) return "stone";
+    || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.BRICKS
+    || block === BLOCK.COBBLESTONE_SLAB || block === BLOCK.BRICK_SLAB
+    || block >= BLOCK.COBBLESTONE_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST) return "stone";
+  if (block === BLOCK.OAK_SLAB || block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.OAK_STAIRS_WEST) return "wood";
   return "generic";
 }
-

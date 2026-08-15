@@ -19,6 +19,7 @@ import {
   type RealtimeChatMessage,
 } from "./realtimeChat.ts";
 import {
+  REALTIME_BLOCK_ID_MAX,
   decodeRealtimeChunkEdits,
   realtimeChunkCoordinate,
   realtimeChunkKey,
@@ -74,6 +75,7 @@ export type RealtimeClientOptions = {
   onRemotePlayers: (players: RemotePlayer[]) => void;
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
   onWorldChunk?: (chunkX: number, chunkZ: number, edits: RealtimeWorldEdit[]) => void;
+  onWorldChunksReady?: () => void;
   onWorldChunksUnload?: (chunks: Array<{ x: number; z: number }>) => void;
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
@@ -193,7 +195,7 @@ function decodeWorldEdit(value: unknown): RealtimeWorldEdit | null {
   const block = finiteNumber(source.block);
   if (x === null || y === null || z === null || block === null) return null;
   if (![x, y, z, block].every(Number.isInteger) || Math.abs(x) > 1_000_000 || y < -64 || y > 320
-    || Math.abs(z) > 1_000_000 || block < 0 || block > 33) return null;
+    || Math.abs(z) > 1_000_000 || block < 0 || block > REALTIME_BLOCK_ID_MAX) return null;
   const revision = finiteNumber(source.revision);
   return {
     x,
@@ -432,6 +434,7 @@ export class RealtimeMultiplayerClient {
   private activeAppearanceRequest = "";
   private appearanceRequestGeneration = 0;
   private appearanceDigestGeneration = 0;
+  private privateNoticeSequence = 0;
   private appearanceRequestTimer = 0;
   private sentPoses = new Map<number, PlayerPose>();
 
@@ -1007,6 +1010,7 @@ export class RealtimeMultiplayerClient {
       if (this.worldChunksSupported) return;
       const edits = Array.isArray(message.edits) ? message.edits.map(decodeWorldEdit).filter(Boolean) as RealtimeWorldEdit[] : [];
       this.options.onWorldEdits(edits, true);
+      this.options.onWorldChunksReady?.();
       return;
     }
     if (message.type === "world_chunks") {
@@ -1023,6 +1027,7 @@ export class RealtimeMultiplayerClient {
         this.chunkRevisions.set(realtimeChunkKey(x, z), revision);
         this.options.onWorldChunk?.(x, z, edits as RealtimeWorldEdit[]);
       }
+      if (message["complete"] !== false) this.options.onWorldChunksReady?.();
       return;
     }
     if (message.type === "world_chunks_unload") {
@@ -1069,6 +1074,24 @@ export class RealtimeMultiplayerClient {
       if (!chat) return;
       this.pendingChat.delete(chat.operationId);
       this.options.onChatEvent({ type: "confirmed", message: chat });
+      return;
+    }
+    if (message.type === "private_notice") {
+      const notice = boundedText(message.message, REALTIME_CHAT_MAX_LENGTH);
+      const sentAt = finiteNumber(message.sentAt);
+      if (!notice || sentAt === null || sentAt < 0) return;
+      this.privateNoticeSequence += 1;
+      const operationId = `notice_${this.privateNoticeSequence}_${Math.floor(sentAt)}`;
+      this.options.onChatEvent({ type: "confirmed", message: {
+        id: operationId,
+        sequence: 0,
+        operationId,
+        userId: "server",
+        username: "[Server]",
+        message: notice,
+        sentAt,
+        delivery: "sent",
+      } });
       return;
     }
     if (message.type === "drop_snapshot") {

@@ -66,6 +66,13 @@ const BLOCK_ITEM_MODEL_CHAINS = Object.freeze({
     "assets/minecraft/models/block/slab.json",
     "assets/minecraft/models/block/block.json",
   ],
+  oak_slab: ["assets/minecraft/items/oak_slab.json", "assets/minecraft/models/block/oak_slab.json", "assets/minecraft/models/block/slab.json", "assets/minecraft/models/block/block.json"],
+  cobblestone_slab: ["assets/minecraft/items/cobblestone_slab.json", "assets/minecraft/models/block/cobblestone_slab.json", "assets/minecraft/models/block/slab.json", "assets/minecraft/models/block/block.json"],
+  brick_slab: ["assets/minecraft/items/brick_slab.json", "assets/minecraft/models/block/brick_slab.json", "assets/minecraft/models/block/slab.json", "assets/minecraft/models/block/block.json"],
+  oak_stairs: ["assets/minecraft/items/oak_stairs.json", "assets/minecraft/models/block/oak_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
+  cobblestone_stairs: ["assets/minecraft/items/cobblestone_stairs.json", "assets/minecraft/models/block/cobblestone_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
+  stone_brick_stairs: ["assets/minecraft/items/stone_brick_stairs.json", "assets/minecraft/models/block/stone_brick_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
+  brick_stairs: ["assets/minecraft/items/brick_stairs.json", "assets/minecraft/models/block/brick_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
 });
 const BLOCK_PATHS = Object.freeze({
   grass_top: "assets/minecraft/textures/block/grass_block_top.png",
@@ -99,6 +106,7 @@ const BLOCK_PATHS = Object.freeze({
   clay: "assets/minecraft/textures/block/clay.png",
   bricks: "assets/minecraft/textures/block/bricks.png",
   bedrock: "assets/minecraft/textures/block/bedrock.png",
+  torch: "assets/minecraft/textures/block/torch.png",
 });
 const BLOCK_ITEM_TEXTURE_PATHS = Object.freeze({
   torch: "assets/minecraft/textures/block/torch.png",

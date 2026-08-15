@@ -9,7 +9,7 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab" | "clay" | "bricks";
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab" | "clay" | "bricks" | "oak_slab" | "cobblestone_slab" | "brick_slab" | "oak_stairs" | "cobblestone_stairs" | "stone_brick_stairs" | "brick_stairs";
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -254,6 +254,13 @@ export const BLOCKS = defineBlocks([
   ["stone_brick_slab", "Stone Brick Slab", "A half-height course of fitted stone bricks.", "#74766f", "#a3a59c", 1.5, "pickaxe", "stone_brick_slab", "wood"],
   ["clay", "Clay", "A soft blue-gray deposit that breaks into four clay balls.", "#9ea4b6", "#c0c5d2", 0.6, "shovel", "clay_ball"],
   ["bricks", "Bricks", "A sturdy red masonry block crafted from fired clay bricks.", "#964c3d", "#c16f59", 2, "pickaxe", "bricks", "wood"],
+  ["oak_slab", "Oak Slab", "A half-height oak plank for compact floors and trim.", "#a87841", "#d0a45e", 1.1, "axe", "oak_slab"],
+  ["cobblestone_slab", "Cobblestone Slab", "A half-height course of rough cobblestone.", "#686b65", "#979a91", 2, "pickaxe", "cobblestone_slab", "wood"],
+  ["brick_slab", "Brick Slab", "A half-height course of fired brick masonry.", "#964c3d", "#c16f59", 2, "pickaxe", "brick_slab", "wood"],
+  ["oak_stairs", "Oak Stairs", "Oak plank steps that turn smoothly with their placement direction.", "#a87841", "#d0a45e", 1.1, "axe", "oak_stairs"],
+  ["cobblestone_stairs", "Cobblestone Stairs", "Rough stone steps for durable builds.", "#686b65", "#979a91", 2, "pickaxe", "cobblestone_stairs", "wood"],
+  ["stone_brick_stairs", "Stone Brick Stairs", "Fitted masonry steps for formal structures.", "#74766f", "#a3a59c", 1.5, "pickaxe", "stone_brick_stairs", "wood"],
+  ["brick_stairs", "Brick Stairs", "Fired brick steps for decorative roofs and approaches.", "#964c3d", "#c16f59", 2, "pickaxe", "brick_stairs", "wood"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -298,6 +305,13 @@ const BLOCK_ITEM_SPECS = [
   ["stone_brick_slab", "SLAB", "▂"],
   ["clay", "CLY", "▦"],
   ["bricks", "BRK", "▦"],
+  ["oak_slab", "O·SL", "▂"],
+  ["cobblestone_slab", "C·SL", "▂"],
+  ["brick_slab", "B·SL", "▂"],
+  ["oak_stairs", "O·ST", "◿"],
+  ["cobblestone_stairs", "C·ST", "◿"],
+  ["stone_brick_stairs", "S·ST", "◿"],
+  ["brick_stairs", "B·ST", "◿"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [
@@ -456,6 +470,13 @@ export const RECIPES: readonly Recipe[] = [
   { id: "oak_fence_gate", label: "Oak fence gate", note: "Two boards and four sticks make one hinged oak gate.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 2 }, { itemId: "stick", count: 4 }], output: { itemId: "oak_fence_gate", count: 1 } },
   { id: "stone_brick_slab", label: "Stone brick slabs", note: "Three stone bricks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone_bricks", count: 3 }], output: { itemId: "stone_brick_slab", count: 6 } },
   { id: "bricks", label: "Bricks", note: "Four fired bricks make one masonry block.", craftingContext: "field", ingredients: [{ itemId: "brick", count: 4 }], output: { itemId: "bricks", count: 1 } },
+  { id: "oak_slab", label: "Oak slabs", note: "Three oak planks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 3 }], output: { itemId: "oak_slab", count: 6 } },
+  { id: "cobblestone_slab", label: "Cobblestone slabs", note: "Three cobblestone make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 3 }], output: { itemId: "cobblestone_slab", count: 6 } },
+  { id: "brick_slab", label: "Brick slabs", note: "Three brick blocks make six half-height building slabs.", craftingContext: "crafting_table", ingredients: [{ itemId: "bricks", count: 3 }], output: { itemId: "brick_slab", count: 6 } },
+  { id: "oak_stairs", label: "Oak stairs", note: "Six oak planks make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 6 }], output: { itemId: "oak_stairs", count: 4 } },
+  { id: "cobblestone_stairs", label: "Cobblestone stairs", note: "Six cobblestone make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 6 }], output: { itemId: "cobblestone_stairs", count: 4 } },
+  { id: "stone_brick_stairs", label: "Stone brick stairs", note: "Six stone bricks make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stone_bricks", count: 6 }], output: { itemId: "stone_brick_stairs", count: 4 } },
+  { id: "brick_stairs", label: "Brick stairs", note: "Six brick blocks make four stairs.", craftingContext: "crafting_table", ingredients: [{ itemId: "bricks", count: 6 }], output: { itemId: "brick_stairs", count: 4 } },
   { id: "furnace", label: "Furnace", note: "Eight cobblestone make a furnace for ore and food.", craftingContext: "crafting_table", ingredients: [{ itemId: "cobblestone", count: 8 }], output: { itemId: "furnace", count: 1 } },
   { id: "ladder", label: "Ladders", note: "Seven sticks make three climbable rungs.", craftingContext: "crafting_table", ingredients: [{ itemId: "stick", count: 7 }], output: { itemId: "ladder", count: 3 } },
   { id: "chest", label: "Chest", note: "Eight boards make shared storage.", craftingContext: "crafting_table", ingredients: [{ itemId: "planks", count: 8 }], output: { itemId: "chest", count: 1 } },

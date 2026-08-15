@@ -188,7 +188,7 @@ assert.ok(engine.includes("!firstPersonFeedbackHidden && playerHealth > 0"),
 assert.match(engine, /if \(paused && !firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
   "an HMR-remounted paused engine seeds a complete fresh pose preview");
 assert.ok(engine.includes("now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS")
-  && engine.includes("render(pausedVisualTime, 0, pausedVisualTime, false)"),
+  && engine.includes("render(pausedRenderTime, 0, now, false)"),
   "paused engines keep the viewmodel composited at a bounded cadence without refreshing dynamic geometry");
 assert.match(engine, /if \(!firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"/,
   "hidden, dead, and backgrounded paused engines perform no compositor redraw");

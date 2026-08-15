@@ -56,9 +56,57 @@ export const BLOCK = {
   CLAY: 31,
   BRICKS: 32,
   BEDROCK: 33,
+  TORCH_WALL_EAST: 34,
+  TORCH_WALL_NORTH: 35,
+  TORCH_WALL_SOUTH: 36,
+  TORCH_WALL_WEST: 37,
+  OAK_SLAB: 38,
+  COBBLESTONE_SLAB: 39,
+  BRICK_SLAB: 40,
+  OAK_STAIRS_EAST: 41,
+  OAK_STAIRS_NORTH: 42,
+  OAK_STAIRS_SOUTH: 43,
+  OAK_STAIRS_WEST: 44,
+  COBBLESTONE_STAIRS_EAST: 45,
+  COBBLESTONE_STAIRS_NORTH: 46,
+  COBBLESTONE_STAIRS_SOUTH: 47,
+  COBBLESTONE_STAIRS_WEST: 48,
+  STONE_BRICK_STAIRS_EAST: 49,
+  STONE_BRICK_STAIRS_NORTH: 50,
+  STONE_BRICK_STAIRS_SOUTH: 51,
+  STONE_BRICK_STAIRS_WEST: 52,
+  BRICK_STAIRS_EAST: 53,
+  BRICK_STAIRS_NORTH: 54,
+  BRICK_STAIRS_SOUTH: 55,
+  BRICK_STAIRS_WEST: 56,
 } as const;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
+
+export function isTorchBlock(block: BlockId): boolean {
+  return block === BLOCK.TORCH
+    || block === BLOCK.TORCH_WALL_EAST
+    || block === BLOCK.TORCH_WALL_NORTH
+    || block === BLOCK.TORCH_WALL_SOUTH
+    || block === BLOCK.TORCH_WALL_WEST;
+}
+
+export function isSlabBlock(block: BlockId): boolean {
+  return block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.OAK_SLAB
+    || block === BLOCK.COBBLESTONE_SLAB || block === BLOCK.BRICK_SLAB;
+}
+
+export type StairFacing = "east" | "north" | "south" | "west";
+
+export function stairFacingForBlock(block: BlockId): StairFacing | null {
+  const offset = block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST
+    ? (block - BLOCK.OAK_STAIRS_EAST) % 4 : -1;
+  return offset === 0 ? "east" : offset === 1 ? "north" : offset === 2 ? "south" : offset === 3 ? "west" : null;
+}
+
+export function isStairBlock(block: BlockId): boolean {
+  return stairFacingForBlock(block) !== null;
+}
 
 export type BedDirection = "north" | "south" | "east" | "west";
 
@@ -392,6 +440,8 @@ export interface VoxelEngineOptions {
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
   serverTimeOffsetMs?: number;
+  /** Multiplayer menus stop local input while the shared world clock keeps rendering. */
+  worldContinuesWhilePaused?: boolean;
   /** `edit` is the original semantic action; `journalEdits` are the remaining accepted LWW render/save batch. */
   onBlockEdit?: (edit: WorldEdit, previousBlock: BlockId, journalEdits: readonly WorldEdit[]) => void;
   /** Synchronously reserves a complete local edit batch before any terrain or callback side effect. */

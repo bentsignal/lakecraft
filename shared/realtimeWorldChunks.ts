@@ -3,6 +3,7 @@ export const REALTIME_WORLD_MIN_Y = -64;
 export const REALTIME_WORLD_MAX_Y = 320;
 export const REALTIME_WORLD_MAX_RADIUS = 12;
 export const REALTIME_WORLD_MAX_CHUNKS = (REALTIME_WORLD_MAX_RADIUS * 2 + 1) ** 2;
+export const REALTIME_BLOCK_ID_MAX = 56;
 
 export interface RealtimeChunkEdit {
   x: number;
@@ -47,7 +48,7 @@ export function encodeRealtimeChunkEdits(chunkX: number, chunkZ: number, edits: 
   for (const edit of edits) {
     if (![edit.x, edit.y, edit.z, edit.block].every(Number.isInteger)
       || edit.y < REALTIME_WORLD_MIN_Y || edit.y > REALTIME_WORLD_MAX_Y
-      || edit.block < 0 || edit.block > 33
+      || edit.block < 0 || edit.block > REALTIME_BLOCK_ID_MAX
       || realtimeChunkCoordinate(edit.x) !== chunkX || realtimeChunkCoordinate(edit.z) !== chunkZ) {
       throw new RangeError("Realtime chunk edit is outside its bounded chunk");
     }
@@ -80,7 +81,7 @@ export function decodeRealtimeChunkEdits(chunkX: number, chunkZ: number, source:
     if (packed >>> 21 !== 0) return null;
     const coordinate = packed & 0x7fff;
     const block = packed >>> 15;
-    if (coordinate <= previousCoordinate || block > 33) return null;
+    if (coordinate <= previousCoordinate || block > REALTIME_BLOCK_ID_MAX) return null;
     previousCoordinate = coordinate;
     const localX = coordinate & 7;
     const localZ = coordinate >>> 3 & 7;

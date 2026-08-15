@@ -89,8 +89,9 @@ describe("server-local admin portal", () => {
       body: JSON.stringify({ code: invitation.code }),
     });
     expect(replay.response?.status).toBe(401);
+    const tamperedToken = `${session.sessionToken.slice(0, -1)}${session.sessionToken.endsWith("0") ? "1" : "0"}`;
     const tampered = await call("/admin/api/state", {
-      headers: { authorization: `Bearer ${session.sessionToken.slice(0, -1)}0` },
+      headers: { authorization: `Bearer ${tamperedToken}` },
     });
     expect(tampered.response?.status).toBe(401);
   });

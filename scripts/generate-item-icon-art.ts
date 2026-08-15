@@ -47,6 +47,9 @@ const ENGINE_BLOCK_BY_ITEM: Readonly<Partial<Record<BlockId, EngineBlockId>>> = 
   wool: BLOCK.WOOL, stone_bricks: BLOCK.STONE_BRICKS, clay: BLOCK.CLAY, bricks: BLOCK.BRICKS,
 });
 const RUNTIME_ATLAS_BLOCK_IDS = new Set<ItemId>(Object.keys(ENGINE_BLOCK_BY_ITEM) as ItemId[]);
+for (const itemId of Object.keys(ITEMS) as ItemId[]) {
+  if (itemId.endsWith("_slab") || itemId.endsWith("_stairs")) RUNTIME_ATLAS_BLOCK_IDS.add(itemId);
+}
 
 /** Original deterministic 16x16 art shared by every inventory-like surface. */
 export function getItemIconArt(itemId: ItemId): ItemIconArt {
@@ -69,8 +72,8 @@ export function getItemIconArt(itemId: ItemId): ItemIconArt {
   const grid = makeGrid();
   let palette: Palette;
   let variant = itemId;
-  if (["chest", BS.oakFence, BS.oakFenceGate, BS.stoneBrickSlab].includes(itemId)) {
-    palette = installedBlockItemModel(grid, itemId as "chest" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab");
+  if (["chest", BS.oakFence, BS.oakFenceGate, BS.stoneBrickSlab, "oak_slab", "cobblestone_slab", "brick_slab", "oak_stairs", "cobblestone_stairs", "stone_brick_stairs", "brick_stairs"].includes(itemId)) {
+    palette = installedBlockItemModel(grid, itemId as ModelItemId);
   } else if (itemId === "sapling") palette = sapling(grid);
   else if (item.category === "block") palette = block(grid, itemId as BlockId);
   else if (itemId === "bow") {
@@ -236,7 +239,9 @@ type ResolvedBlockItemModel = Readonly<{
   textures: Readonly<Record<string, string>>;
 }>;
 
-function resolvedBlockItemModel(itemId: "oak_fence" | "oak_fence_gate" | "stone_brick_slab"): ResolvedBlockItemModel {
+type ModelItemId = "chest" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab" | "oak_slab" | "cobblestone_slab" | "brick_slab" | "oak_stairs" | "cobblestone_stairs" | "stone_brick_stairs" | "brick_stairs";
+
+function resolvedBlockItemModel(itemId: Exclude<ModelItemId, "chest">): ResolvedBlockItemModel {
   const chain = importedVisualAssets.blockItemModelChains[itemId];
   if (!chain?.length) throw new Error(`Missing installed model chain for ${itemId}.`);
   const display: Record<string, unknown> = {};
@@ -375,7 +380,7 @@ function chestElements(): readonly ImportedModelElement[] {
 
 function installedBlockItemModel(
   grid: Grid,
-  itemId: "chest" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab",
+  itemId: ModelItemId,
 ): Palette {
   if (itemId === "chest") {
     const chain = importedVisualAssets.blockItemModelChains.chest;

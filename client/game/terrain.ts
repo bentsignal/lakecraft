@@ -868,7 +868,7 @@ export function raycastVoxels(
     // Preserve the established rule that a ray never targets the voxel that
     // contains its origin (for example an eye inside leaves or an open door).
     if (x === originX && y === originY && z === originZ) continue;
-    if (currentBlock !== BLOCK.AIR && blockContainsSolidPoint(currentBlock, y, pointY)) {
+    if (currentBlock !== BLOCK.AIR && blockContainsSolidPoint(currentBlock, y, pointY, pointX, pointZ, x, z)) {
       // A descending ray may enter the empty upper half and later meet the slab
       // top without changing voxel coordinates. Its placement neighbor is the
       // cell above, not the already-occupied slab cell.

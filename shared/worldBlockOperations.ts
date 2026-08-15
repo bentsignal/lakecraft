@@ -352,9 +352,19 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
 export function gameBlockForWorldBlock(block: WorldChunkBlockType): BlockId | null {
   if (block === "air") return null;
   if (block === "wood") return "log";
+  if (block.startsWith("wall_torch_")) return "torch";
+  if (block.startsWith("oak_stairs_")) return "oak_stairs";
+  if (block.startsWith("cobblestone_stairs_")) return "cobblestone_stairs";
+  if (block.startsWith("stone_brick_stairs_")) return "stone_brick_stairs";
+  if (block.startsWith("brick_stairs_")) return "brick_stairs";
   if (block === BS.doorClosed || block === BS.doorOpen) return "door";
   if (block === BS.oakFenceGateClosed || block === BS.oakFenceGateOpen) return BS.oakFenceGate;
   return block;
+}
+
+function isPlacedVariant(item: ItemId, block: WorldChunkBlockType): boolean {
+  if (item === "torch") return block.startsWith("wall_torch_");
+  return item.endsWith("_stairs") && block.startsWith(`${item}_`);
 }
 
 export function placedWorldBlockForItem(itemId: ItemId): Exclude<WorldChunkBlockType, "air"> | null {
@@ -443,7 +453,9 @@ export function resolveWorldBlockOperation(
     if (!selected || !request.expectedHeldItem) return { ok: false, reason: "not_placeable" };
     const placedBlock = placedWorldBlockForItem(request.expectedHeldItem);
     if (!placedBlock) return { ok: false, reason: "not_placeable" };
-    if (placedBlock !== request.placedBlock) return { ok: false, reason: "placed_block_mismatch" };
+    if (placedBlock !== request.placedBlock && !isPlacedVariant(request.expectedHeldItem, request.placedBlock)) {
+      return { ok: false, reason: "placed_block_mismatch" };
+    }
     const inventory = cloneInventory(state.inventory);
     const placedStack = inventory[request.selectedHotbar];
     if (!placedStack) return { ok: false, reason: "held_item_mismatch" };

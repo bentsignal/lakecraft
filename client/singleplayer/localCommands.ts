@@ -9,6 +9,7 @@ import {
   type Inventory,
   type ItemId,
 } from "../../shared/game.ts";
+import { gameplayChatShortcutDraft } from "../gameplay/chatShortcut.ts";
 
 export type LocalGameMode = "survival" | "creative";
 
@@ -53,14 +54,7 @@ export type LocalCommandParseResult =
 const ITEM_IDS = Object.keys(ITEMS).sort() as ItemId[];
 
 /** Keyboard-layout-safe gameplay shortcut. Slash and its shifted ? key always seed a command. */
-export function localCommandShortcutDraft(
-  input: Readonly<Pick<KeyboardEvent, "code" | "key" | "repeat">>,
-): "" | "/" | null {
-  if (input.repeat) return null;
-  if (input.code === "Slash" || input.key === "/" || input.key === "?") return "/";
-  if (input.code === "KeyT" || input.code === "Enter") return "";
-  return null;
-}
+export const localCommandShortcutDraft = gameplayChatShortcutDraft;
 
 /** Pure clock mapping used by command execution and save/persistence tests. */
 export function localTimeClockUpdate(worldTimeMs: number, clientNowMs: number, time: LocalTimePreset) {

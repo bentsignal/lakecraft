@@ -201,7 +201,7 @@ assert.deepEqual(caveTorch.exposure, [1, 1, 1, 0], "a cave torch does not erase 
 const caveTorchEmpty = runExposureFixture({ roof: true, torch: true, phase: 0.5, emptyHand: true });
 assertLight(caveTorchEmpty.armLight, [0.4484, 0.4522, 0.46018],
   "nearby torch uniforms do not replace the arm's bounded sky/day light vector");
-assert.deepEqual(caveTorch.torchRadius, [11, 11, 11, 5.5],
+assert.deepEqual(caveTorch.torchRadius, [14, 14, 14, 7],
   "world and mob paths receive the full torch radius while the held-item terrain path receives its bounded half-radius");
 
 console.log("live first-person sky, cave, night, and torch exposure uniforms passed");

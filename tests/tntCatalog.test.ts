@@ -21,11 +21,21 @@ assert.deepEqual(BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "door_closed", "door_open", "bed", "coal_ore", "iron_ore",
   "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks", "bedrock",
+  "wall_torch_east", "wall_torch_north", "wall_torch_south", "wall_torch_west", "oak_slab", "cobblestone_slab", "brick_slab",
+  "oak_stairs_east", "oak_stairs_north", "oak_stairs_south", "oak_stairs_west",
+  "cobblestone_stairs_east", "cobblestone_stairs_north", "cobblestone_stairs_south", "cobblestone_stairs_west",
+  "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west",
+  "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west",
 ], "network block identity appends clay and bricks without renumbering shipped blocks");
 assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES, [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "bed", "door_closed", "door_open", "coal_ore", "iron_ore",
   "furnace", "ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks",
+  "wall_torch_east", "wall_torch_north", "wall_torch_south", "wall_torch_west", "oak_slab", "cobblestone_slab", "brick_slab",
+  "oak_stairs_east", "oak_stairs_north", "oak_stairs_south", "oak_stairs_west",
+  "cobblestone_stairs_east", "cobblestone_stairs_north", "cobblestone_stairs_south", "cobblestone_stairs_west",
+  "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west",
+  "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west",
 ], "persisted snapshot palette appends v4 codes 32 and 33 without renumbering deployed rows");
 
 const recipe = RECIPES.find(({ id }) => id === "tnt");

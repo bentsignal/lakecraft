@@ -28,11 +28,11 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
 assert.equal(WORLD_CHUNK_CODEC_VERSION, 5);
 assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 6);
 assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 63, "six-bit snapshots reserve zero and expose 63 block codes");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 33, "clay and bricks append without changing the six-bit codec");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 56, "mounted torches and the first creative shape family remain inside the six-bit codec");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
-  WORLD_CHUNK_BLOCK_TYPES.slice(-17),
-  ["ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks"],
+  WORLD_CHUNK_BLOCK_TYPES.slice(-23),
+  ["wall_torch_east", "wall_torch_north", "wall_torch_south", "wall_torch_west", "oak_slab", "cobblestone_slab", "brick_slab", "oak_stairs_east", "oak_stairs_north", "oak_stairs_south", "oak_stairs_west", "cobblestone_stairs_east", "cobblestone_stairs_north", "cobblestone_stairs_south", "cobblestone_stairs_west", "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west", "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west"],
   "new persisted block codes append without renumbering deployed materials",
 );
 
