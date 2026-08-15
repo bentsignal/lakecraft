@@ -181,17 +181,17 @@ try {
   alex.send({ v:1,type:"drop_item",operationId:"qa_mined_drop_0001",itemId:"dirt",count:1,x:0.5,y:69.45,z:1.5 });
   const mined = await alex.next("drop_result", (message) => message.operationId === "qa_mined_drop_0001");
   const minedDrop = mined.drop as Envelope;
-  await sleep(800);
+  await sleep(1_050);
   steve.send({ v:1,type:"pickup_item",operationId:"qa_pickup_mined_001",dropId:minedDrop.dropId });
   const pickedMine = await steve.next("drop_result", (message) => message.operationId === "qa_pickup_mined_001");
   await steve.inventoryAction("qa_credit_mined_0001",{ kind:"world_credit",stack:{ itemId:"dirt",count:1 } });
   log("place-break-pickup",{ alexRevision:alex.currentRevision(),steveRevision:steve.currentRevision(),dropId:(pickedMine.drop as Envelope).dropId });
 
   await alex.inventoryAction("qa_debit_toss_00001",{ kind:"world_debit",sourceSlot:2,stack:{ itemId:"dirt",count:1 } });
-  alex.send({ v:1,type:"drop_item",operationId:"qa_toss_drop_00001",itemId:"dirt",count:1,ownerMustLeave:true,x:0.5,y:69.45,z:-0.7 });
+  alex.send({ v:1,type:"drop_item",operationId:"qa_toss_drop_00001",itemId:"dirt",count:1,x:0.5,y:69.45,z:-0.7 });
   const tossed = await alex.next("drop_result", (message) => message.operationId === "qa_toss_drop_00001");
   const tossedDrop = tossed.drop as Envelope;
-  await sleep(800);
+  await sleep(1_050);
   steve.send({ v:1,type:"pickup_item",operationId:"qa_pickup_toss_001",dropId:tossedDrop.dropId });
   await steve.next("drop_result", (message) => message.operationId === "qa_pickup_toss_001");
   await steve.inventoryAction("qa_credit_toss_0001",{ kind:"world_credit",stack:{ itemId:"dirt",count:1 } });
@@ -236,6 +236,23 @@ try {
   steve.socket.close();
 } finally {
   server.kill("SIGINT");
-  await server.exited.catch(() => undefined);
+  const stoppedCleanly = await Promise.race([
+    server.exited.then(() => true, () => true),
+    sleep(2_000).then(() => false),
+  ]);
+  if (!stoppedCleanly) {
+    // A closing WebSocket must never strand the aggregate test process. The
+    // isolated server has already received its graceful SQLite flush signal;
+    // force only this disposable child down if Bun keeps a handle alive.
+    server.kill("SIGKILL");
+    await server.exited.catch(() => undefined);
+  }
   rmSync(dataDir,{ recursive:true,force:true });
 }
+
+// This file is an executable process-level harness, never an imported test
+// helper. Bun's client WebSocket can retain an internal handle after both peers
+// and the isolated server have closed, so exit explicitly only after the whole
+// successful scenario and cleanup have completed. Thrown failures skip here
+// and retain their non-zero exit status and stack.
+process.exit(0);

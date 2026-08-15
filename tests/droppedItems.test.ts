@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  DROPPED_ITEM_OWNER_PICKUP_DELAY_MS,
+  DROPPED_ITEM_PICKUP_DELAY_MS,
   DROPPED_ITEM_PICKUP_RADIUS,
   DROPPED_ITEM_TTL_MS,
   MAX_DROPPED_ITEM_REQUEST_LENGTH,
@@ -111,7 +111,7 @@ const row = createPersistedDroppedItem("user-a", operationId, appliedDrop.droppe
 assert.ok(row);
 assert.equal(createPersistedDroppedItem("user-a", "short", appliedDrop.dropped, { x: 1.25, y: 8, z: -2.5 }, now), null);
 if (!row) throw new Error("row should build");
-assert.equal(row.ownerPickupAt, String(now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS));
+assert.equal(row.ownerPickupAt, String(now + DROPPED_ITEM_PICKUP_DELAY_MS));
 assert.equal(row.expiresAt, String(now + DROPPED_ITEM_TTL_MS));
 const normalized = normalizeDroppedItemRow(row, now);
 assert.ok(normalized);
@@ -147,16 +147,21 @@ for (const [change, reason] of [
 
 const empty = createEmptyInventory();
 assert.deepEqual(
-  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS - 1),
-  { ok: false, reason: "owner_pickup_delay" },
-);
-assert.equal(
-  applyPickupDroppedItem(empty, normalized, "user-b", { x: normalized.x, y: normalized.y, z: normalized.z }, now + 1).ok,
-  true,
-  "another player may immediately collect a shared drop",
+  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_PICKUP_DELAY_MS - 1),
+  { ok: false, reason: "pickup_delay" },
 );
 assert.deepEqual(
-  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x + DROPPED_ITEM_PICKUP_RADIUS + 0.01, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS),
+  applyPickupDroppedItem(empty, normalized, "user-b", { x: normalized.x, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_PICKUP_DELAY_MS - 1),
+  { ok: false, reason: "pickup_delay" },
+  "the universal delay applies to every player",
+);
+assert.equal(
+  applyPickupDroppedItem(empty, normalized, "user-b", { x: normalized.x, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_PICKUP_DELAY_MS).ok,
+  true,
+  "another player may collect at the exact shared deadline",
+);
+assert.deepEqual(
+  applyPickupDroppedItem(empty, normalized, "user-a", { x: normalized.x + DROPPED_ITEM_PICKUP_RADIUS + 0.01, y: normalized.y, z: normalized.z }, now + DROPPED_ITEM_PICKUP_DELAY_MS),
   { ok: false, reason: "too_far" },
 );
 assert.deepEqual(
@@ -167,7 +172,7 @@ assert.deepEqual(
 const partialInventory = createEmptyInventory();
 partialInventory[0] = { itemId: "dirt", count: 62 };
 for (let index = 1; index < partialInventory.length; index += 1) partialInventory[index] = { itemId: "stone", count: 64 };
-const partialPickup = applyPickupDroppedItem(partialInventory, normalized, "user-a", normalized, now + DROPPED_ITEM_OWNER_PICKUP_DELAY_MS);
+const partialPickup = applyPickupDroppedItem(partialInventory, normalized, "user-a", normalized, now + DROPPED_ITEM_PICKUP_DELAY_MS);
 assert.equal(partialPickup.ok, true);
 if (!partialPickup.ok) throw new Error("partial pickup should apply");
 assert.deepEqual(partialPickup.inventory[0], { itemId: "dirt", count: 64 });
@@ -176,7 +181,8 @@ assert.deepEqual(partialPickup.remaining, { itemId: "dirt", count: 3 });
 
 const full = createEmptyInventory();
 for (let index = 0; index < full.length; index += 1) full[index] = { itemId: "stone", count: 64 };
-assert.deepEqual(applyPickupDroppedItem(full, normalized, "user-b", normalized, now + 1), { ok: false, reason: "no_capacity" });
+assert.deepEqual(applyPickupDroppedItem(full, normalized, "user-b", normalized, now + DROPPED_ITEM_PICKUP_DELAY_MS),
+  { ok: false, reason: "no_capacity" });
 
 const durableItem = { itemId: "wooden_pickaxe", count: 1, durability: 7 } as ItemStack;
 const durableRow = createPersistedDroppedItem("user-a", operationId, durableItem, { x: 0, y: 8, z: 0 }, now);
@@ -184,7 +190,7 @@ assert.ok(durableRow);
 const durableNormalized = durableRow && normalizeDroppedItemRow(durableRow, now);
 assert.ok(durableNormalized);
 if (durableNormalized) {
-  const pickup = applyPickupDroppedItem(empty, durableNormalized, "user-b", durableNormalized, now + 1);
+  const pickup = applyPickupDroppedItem(empty, durableNormalized, "user-b", durableNormalized, now + DROPPED_ITEM_PICKUP_DELAY_MS);
   assert.equal(pickup.ok, true);
   if (pickup.ok) assert.deepEqual(pickup.inventory[0], durableItem, "pickup preserves exact tool durability");
 }

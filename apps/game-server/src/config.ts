@@ -1,3 +1,11 @@
+import {
+  DEFAULT_SUPERFLAT_GROUND_Y,
+  SUPERFLAT_MAX_GROUND_Y,
+  SUPERFLAT_MIN_GROUND_Y,
+  type WorldPreset,
+} from "../../../shared/worldPreset.ts";
+import type { ServerGameMode } from "./protocol";
+
 export interface ServerConfig {
   host: string;
   port: number;
@@ -9,6 +17,7 @@ export interface ServerConfig {
   registrationCredential?: string;
   localDemoToken?: string;
   adminToken?: string;
+  agentToken?: string;
   dataDir: string;
   tickHz: number;
   snapshotHz: number;
@@ -16,6 +25,9 @@ export interface ServerConfig {
   maxPlayers: number;
   maxPersistedBlocks: number;
   allowedOrigins: string[];
+  worldPreset: WorldPreset;
+  superflatGroundY: number;
+  defaultGameMode: ServerGameMode;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): ServerConfig {
@@ -24,6 +36,21 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
     throw new Error("AUTH_MODE must be lakebed or local-demo");
   }
   const serverId = required(env.SERVER_ID, "SERVER_ID");
+  const worldPreset = env.WORLD_PRESET ?? "default";
+  if (worldPreset !== "default" && worldPreset !== "superflat") {
+    throw new Error("WORLD_PRESET must be default or superflat");
+  }
+  const defaultGameMode = env.DEFAULT_GAME_MODE ?? "survival";
+  if (defaultGameMode !== "survival" && defaultGameMode !== "creative") {
+    throw new Error("DEFAULT_GAME_MODE must be survival or creative");
+  }
+  const requestedSuperflatGroundY = integer(
+    env.SUPERFLAT_GROUND_Y,
+    DEFAULT_SUPERFLAT_GROUND_Y,
+    SUPERFLAT_MIN_GROUND_Y,
+    SUPERFLAT_MAX_GROUND_Y,
+    "SUPERFLAT_GROUND_Y",
+  );
   const config: ServerConfig = {
     host: env.HOST || "0.0.0.0",
     port: integer(env.PORT, 3001, 1, 65_535, "PORT"),
@@ -41,11 +68,19 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
+    worldPreset,
+    superflatGroundY: worldPreset === "superflat" ? requestedSuperflatGroundY : DEFAULT_SUPERFLAT_GROUND_Y,
+    defaultGameMode,
   };
 
   if (env.ADMIN_TOKEN) {
     if (env.ADMIN_TOKEN.length < 24) throw new Error("ADMIN_TOKEN must be at least 24 characters");
     config.adminToken = env.ADMIN_TOKEN;
+  }
+
+  if (env.AGENT_TOKEN) {
+    if (env.AGENT_TOKEN.length < 32) throw new Error("AGENT_TOKEN must be at least 32 characters");
+    config.agentToken = env.AGENT_TOKEN;
   }
 
   if (authMode === "lakebed") {
@@ -61,6 +96,10 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
   } else {
     config.localDemoToken = required(env.LOCAL_DEMO_TOKEN, "LOCAL_DEMO_TOKEN");
     if (config.localDemoToken.length < 16) throw new Error("LOCAL_DEMO_TOKEN must be at least 16 characters");
+  }
+  if (config.agentToken && [config.adminToken, config.localDemoToken, config.registrationCredential]
+    .some((secret) => secret === config.agentToken)) {
+    throw new Error("AGENT_TOKEN must be distinct from player, registration, and admin credentials");
   }
   return config;
 }

@@ -1,6 +1,11 @@
 import { BLOCK, type BlockId, type BlockTarget } from "./types.ts";
 import { WORLD_CHUNK_SIZE, chunkBounds } from "./chunks.ts";
 import { blockCollisionHeight, blockContainsSolidPoint } from "./blockGeometry.ts";
+import {
+  SUPERFLAT_BEDROCK_Y,
+  SUPERFLAT_DIRT_LAYERS,
+  type WorldTerrainDescriptor,
+} from "../../shared/worldPreset.ts";
 
 export const blockKey = (x: number, y: number, z: number) => `${x},${y},${z}`;
 
@@ -15,6 +20,7 @@ interface TerrainRegion {
 export interface TerrainRegionOptions {
   /** Inclusive natural floor. The canonical world begins with bedrock at y=1. */
   minimumY?: number;
+  terrain?: WorldTerrainDescriptor;
 }
 
 /** Deep enough for tiered ore progression while remaining compact per chunk. */
@@ -163,7 +169,8 @@ function rawTerrainHeight(x: number, z: number, seed: number): number {
   return 68.9 + broadHills + rollingGround + ridgeLift + smallVariation;
 }
 
-export function terrainHeight(x: number, z: number, seed: number): number {
+export function terrainHeight(x: number, z: number, seed: number, terrain?: WorldTerrainDescriptor): number {
+  if (terrain?.preset === "superflat") return terrain.superflatGroundY;
   const naturalHeight = rawTerrainHeight(x, z, seed);
   const spawnDistance = Math.max(Math.abs(x), Math.abs(z));
   const spawnBlend = Math.max(
@@ -538,6 +545,27 @@ function addGround(blocks: Map<string, BlockId>, region: TerrainRegion, seed: nu
   }
 }
 
+function addSuperflatGround(
+  blocks: Map<string, BlockId>,
+  region: TerrainRegion,
+  groundY: number,
+): void {
+  for (let x = region.minX; x <= region.maxX; x += 1) {
+    for (let z = region.minZ; z <= region.maxZ; z += 1) {
+      for (let y = Math.max(region.minY, SUPERFLAT_BEDROCK_Y); y <= groundY; y += 1) {
+        const block = y === SUPERFLAT_BEDROCK_Y
+          ? BLOCK.BEDROCK
+          : y === groundY
+            ? BLOCK.GRASS
+            : y >= groundY - SUPERFLAT_DIRT_LAYERS
+              ? BLOCK.DIRT
+              : BLOCK.STONE;
+        blocks.set(`${x},${y},${z}`, block);
+      }
+    }
+  }
+}
+
 function caveNode(cellX: number, cellZ: number, seed: number): CaveNode {
   return {
     // Nodes stay two blocks inside their owning cell. This bounds how far a
@@ -773,6 +801,10 @@ export function createTerrainRegion(
     maxZ: Math.floor(Math.max(minZ, maxZ)),
   };
   const blocks = new Map<string, BlockId>();
+  if (options.terrain?.preset === "superflat") {
+    addSuperflatGround(blocks, region, options.terrain.superflatGroundY);
+    return blocks;
+  }
   addGround(blocks, region, seed);
   carveCaves(blocks, region, seed);
   addTrees(blocks, region, seed);
@@ -788,10 +820,12 @@ export function createTerrainChunk(
   chunkX: number,
   chunkZ: number,
   size = WORLD_CHUNK_SIZE,
+  terrain?: WorldTerrainDescriptor,
 ): Map<string, BlockId> {
   const bounds = chunkBounds(chunkX, chunkZ, size);
   return createTerrainRegion(seed, bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ, {
     minimumY: TERRAIN_MIN_Y,
+    terrain,
   });
 }
 

@@ -8,9 +8,24 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 493;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 434;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "8426149ab49b75f0b1c36a22ddf88b8f7fbe6a5c1622a1cef1e01cb1596c67a2";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 497;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 438;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "101d5534862451469ee48f47284d4f93ff4de513688b7b9be27c344e9141cb33";
+export const COMPACT_CLIENT_HUMAN_TERRAIN_PRESET_DELTA = Object.freeze({
+  previousOccurrences: 493,
+  previousUniqueValues: 434,
+  previousSourceFingerprint: "8426149ab49b75f0b1c36a22ddf88b8f7fbe6a5c1622a1cef1e01cb1596c67a2",
+  occurrenceDelta: 4,
+  uniqueValueDelta: 4,
+  addedValues: Object.freeze([
+    "Server sent an invalid terrain preset.",
+    "Invalid terrain preset",
+    "Server terrain changed during join.",
+    "Terrain preset mismatch",
+  ]),
+  source: "client/realtimeMultiplayer.ts#terrain-preset-handshake",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA = Object.freeze({
   previousOccurrences: 592,
   previousUniqueValues: 524,
@@ -118,9 +133,19 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_023;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_026;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 98;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "187bcbf970d8c8c562f25f947ea1a6487772f1184e833b541b28355b09bb607e";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "67bf8f0d596143daf4c811c43460ac12b8534638ab64b808fb45d8534e7a0c4a";
+export const COMPACT_CLIENT_REPEATED_TERRAIN_PRESET_DELTA = Object.freeze({
+  previousOccurrences: 1_023,
+  previousUniqueValues: 98,
+  previousSourceFingerprint: "187bcbf970d8c8c562f25f947ea1a6487772f1184e833b541b28355b09bb607e",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 0,
+  valueDeltas: Object.freeze({ default: 1, error: 2 }),
+  source: "client/realtimeMultiplayer.ts#terrain-preset-handshake",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA = Object.freeze({
   previousOccurrences: 1_018,
   previousUniqueValues: 97,

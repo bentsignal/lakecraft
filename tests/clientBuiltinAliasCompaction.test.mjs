@@ -8,14 +8,24 @@ import {
 } from "../scripts/client-builtin-alias-compaction.mjs";
 
 assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 24, "the alias boundary remains deliberately narrow");
-assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_922);
-assert.match(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT, /^[0-9a-f]{64}$/);
+assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_926);
+assert.equal(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT,
+  "aeda1c3004627300b46ee5c11f2d9bc222d52815f3fa775c0e6d8b7eb5953da4");
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
   "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",
   "Math.round", "Math.sin", "Math.PI", "Object.freeze", "Object.keys", "Array.isArray", "Number.isFinite",
   "Number.isInteger", "Number.isSafeInteger", "Number.MAX_SAFE_INTEGER", "Number.NEGATIVE_INFINITY",
   "Number.POSITIVE_INFINITY", "Number.parseInt", "Date.now", "JSON.stringify", "JSON.parse",
 ]);
+assert.deepEqual(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES
+  .filter(([receiver, method]) => ["Math.max", "Object.freeze", "Array.isArray", "Number.isSafeInteger"]
+    .includes(`${receiver}.${method}`))
+  .map(([receiver, method, count]) => [`${receiver}.${method}`, count])), {
+  "Math.max": 245,
+  "Object.freeze": 160,
+  "Array.isArray": 81,
+  "Number.isSafeInteger": 44,
+}, "the terrain descriptor adds exactly one reviewed occurrence of each validation primitive");
 
 const fixtureKeys = [
   "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",

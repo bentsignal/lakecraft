@@ -38,6 +38,9 @@ describe("Lakebed ticket redemption", () => {
       maxPlayers: 8,
       maxPersistedBlocks: 100,
       allowedOrigins: [],
+      worldPreset: "default",
+      superflatGroundY: 20,
+      defaultGameMode: "survival",
     };
     const auth = createAuthenticator(config, store);
     const join = { v: 1 as const, type: "join" as const, ticket: "opaque-ticket", serverId: "server-a" };

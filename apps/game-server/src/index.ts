@@ -1,4 +1,5 @@
 import { createAuthenticator } from "./auth";
+import { handleAgentBuilderRequest } from "./agentBuilder";
 import { handleAdminRequest } from "./adminPortal";
 import { loadConfig } from "./config";
 import { WorldStore } from "./database";
@@ -54,6 +55,8 @@ const server = Bun.serve<SocketData>({
   port: config.port,
   async fetch(request, bunServer) {
     const url = new URL(request.url);
+    const agentResponse = await handleAgentBuilderRequest(request, url, config.agentToken, world);
+    if (agentResponse) return agentResponse;
     const adminResponse = await handleAdminRequest(request, url, config.adminToken, {
       name: config.serverName,
       description: config.serverDescription,
@@ -71,6 +74,9 @@ const server = Bun.serve<SocketData>({
           protocolVersion: PROTOCOL_VERSION,
           status: "online",
           adminEnabled: Boolean(config.adminToken),
+          agentBuilderEnabled: Boolean(config.agentToken),
+          terrain: world.terrain.descriptor,
+          defaultGameMode: config.defaultGameMode,
         },
         { headers: { "access-control-allow-origin": "*", "cache-control": "no-store" } },
       );

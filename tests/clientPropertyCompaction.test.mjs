@@ -50,6 +50,7 @@ assert.ok(manifestNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "sourc
 assert.ok(compactNames.every((name) => /^[A-Za-z_$][\w$]*$/.test(name)), "compact names are identifiers");
 assert.ok(manifestNames.every((name) => COMPACT_CLIENT_PROPERTY_PATTERN.test(name)), "pattern covers every manifest name");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("soundMuted"), false, "settings key stays reserved");
+assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("terrain"), false, "realtime terrain wire key stays reserved");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("worldId"), false, "save identity stays reserved");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("onClick"), false, "Preact event prop stays reserved");
 assert.equal(COMPACT_CLIENT_PROPERTY_PATTERN.test("requestPointerLock"), false, "browser API stays reserved");
@@ -167,7 +168,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "e7a749654db7e9ff7b37071f70743f53df627c3eb75dfb7bdb309dccd787b743",
+  "93d216a0187661b20f23760aac42b29191db59491fab5c9a250135c4160235d4",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
@@ -565,8 +566,8 @@ assert.match(realtimeCompact, /skinId/);
 assert.match(realtimeCompact, /skinModel/);
 assert.match(realtimeCompact, /skinPixels/);
 for (const key of ["ownerMustLeave", "ownerPickupBlocked"]) {
-  assert.match(realtimeCompact, new RegExp(key), `compact realtime drop codec preserves literal ${key}`);
-  assert.match(boundaryBundles.get("client/realtimeMultiplayer.ts").baseline, new RegExp(key));
+  assert.doesNotMatch(realtimeCompact, new RegExp(key), `compact realtime drops no longer carry ${key} latch state`);
+  assert.doesNotMatch(boundaryBundles.get("client/realtimeMultiplayer.ts").baseline, new RegExp(key));
 }
 assert.equal(realtimeCompact.split("requestJson").length - 1, 4,
   "compact realtime inventory keeps every pending-field and literal wire requestJson boundary");

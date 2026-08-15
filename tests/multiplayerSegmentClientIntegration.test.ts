@@ -9,7 +9,9 @@ assert.match(app, /<RealtimeMultiplayerTransport/);
 assert.doesNotMatch(app, /<MultiplayerSegmentTransport/,
   "the retired Lakebed motion transport is no longer reachable from the production client");
 assert.match(app, /registerBlockSink=\{\(sink\) => \{ realtimeBlockSinkRef\.current = sink; \}\}/);
-assert.match(app, /onReconcilePose=\{\(pose\) => engineRef\.current\?\.reconcilePose\(pose\)\}/);
+assert.match(app,
+  /onReconcilePose=\{\(pose\) => \{\s*poseRef\.current = pose;\s*engineRef\.current\?\.reconcilePose\(pose\);\s*\}\}/,
+  "Railway reconciliation keeps the fallback pose and live engine aligned");
 assert.doesNotMatch(app, /LAKEBED_COMPACT_RETIRED_PRESENCE_START/,
   "the retired Lakebed presence implementation is deleted rather than staged for compaction");
 assert.doesNotMatch(app, /heartbeatPlayer|publishMotionSegments|multiplayerComposite/,

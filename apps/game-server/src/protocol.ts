@@ -1,5 +1,7 @@
 /** Lakecraft realtime wire protocol. Keep this module runtime-agnostic/browser-safe. */
 
+import type { WorldTerrainDescriptor } from "../../../shared/worldPreset.ts";
+
 export const PROTOCOL_VERSION = 1 as const;
 export const BLOCK_ID_MIN = 0;
 export const BLOCK_ID_MAX = 33;
@@ -89,8 +91,8 @@ export interface PublicDrop {
   y: number;
   z: number;
   droppedAt: number;
+  /** Backward-compatible wire name for the universal pickup deadline. */
   ownerPickupAt: number;
-  ownerPickupBlocked: boolean;
   expiresAt: number;
 }
 
@@ -144,7 +146,6 @@ export type ClientMessage =
       itemId: string;
       count: number;
       durability?: number;
-      ownerMustLeave?: boolean;
       x: number;
       y: number;
       z: number;
@@ -184,6 +185,8 @@ export type ServerMessage =
       authMode: "lakebed" | "local-demo";
       tickHz: number;
       snapshotHz: number;
+      terrain: WorldTerrainDescriptor;
+      defaultGameMode: ServerGameMode;
       capabilities: readonly [typeof APPEARANCE_CAPABILITY];
     }
   | {
@@ -196,6 +199,8 @@ export type ServerMessage =
       serverTick: number;
       inputAck: number;
       blocksRevision: number;
+      terrain: WorldTerrainDescriptor;
+      defaultGameMode: ServerGameMode;
     }
   | {
       v: ProtocolVersion;
@@ -431,7 +436,6 @@ export function decodeClientMessage(raw: string): DecodeResult {
       || typeof value.itemId !== "string" || !/^[a-z0-9_]{1,64}$/.test(value.itemId)
       || !integer(value.count) || value.count < 1 || value.count > 64
       || (value.durability !== undefined && (!integer(value.durability) || value.durability < 1 || value.durability > 65535))
-      || (value.ownerMustLeave !== undefined && typeof value.ownerMustLeave !== "boolean")
       || !finite(value.x) || !finite(value.y) || !finite(value.z)
       || Math.abs(value.x) > 1_000_000 || value.y < -64 || value.y > 320 || Math.abs(value.z) > 1_000_000) {
       return invalid("drop item is invalid");

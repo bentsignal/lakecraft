@@ -13,6 +13,7 @@ import {
   type WorldEdit as EngineWorldEdit,
 } from "./game";
 import { createGameplaySessionEngine, createRailwayGameplayAuthority } from "./gameplay/index.ts";
+import type { WorldTerrainDescriptor } from "../shared/worldPreset.ts";
 import { LobbyScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
 import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
@@ -412,6 +413,7 @@ function RailwayMultiplayerSession({
   const realtimeGameModeRef = useRef<RealtimeGameMode>("survival");
   const [realtimeChatMessages, setRealtimeChatMessages] = useState<RealtimeChatMessage[]>([]);
   const [realtimeGameMode, setRealtimeGameMode] = useState<RealtimeGameMode>("survival");
+  const [realtimeTerrain, setRealtimeTerrain] = useState<WorldTerrainDescriptor | null>(null);
   const [usernameDraft, setUsernameDraft] = useState("");
   const [usernameState, setUsernameState] = useState<UsernameClaimState>("idle");
   const [usernameError, setUsernameError] = useState("");
@@ -945,10 +947,9 @@ function RailwayMultiplayerSession({
   function maybePickupNearbyDroppedItem(pose: PlayerPose): void {
     if (playerHealthRef.current <= 0) return;
     const now = Date.now();
-    const localUserId = realtimeSession?.demo?.userId ?? auth.userId ?? "";
     const nearby = realtimeDropsRef.current
       .filter((drop) => drop.expiresAt > now
-        && (drop.ownerUserId !== localUserId || (!drop.ownerPickupBlocked && drop.ownerPickupAt <= now)))
+        && drop.ownerPickupAt <= now)
       .map((drop) => ({ drop, distance: Math.hypot(drop.x - pose.x, drop.y - pose.y, drop.z - pose.z) }))
       .filter(({ distance }) => distance <= DROPPED_ITEM_PICKUP_RADIUS)
       .sort((left, right) => left.distance - right.distance)[0]?.drop;
@@ -960,7 +961,7 @@ function RailwayMultiplayerSession({
 
   // Item attraction is time-based, not movement-based. A stationary player
   // standing over a newly-mined or Q-dropped item must be able to collect it
-  // immediately after the server's owner delay without waiting for another
+  // immediately after the server's universal delay without waiting for another
   // pose event or drop broadcast.
   useEffect(() => {
     if (!inWorld || !realtimeSession) return;
@@ -1201,7 +1202,7 @@ function RailwayMultiplayerSession({
 
 
   useEffect(() => {
-    if (!inWorld || !inventoryReady || !realtimeSession) return;
+    if (!inWorld || !inventoryReady || !realtimeSession || !realtimeTerrain) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     try {
@@ -1220,7 +1221,9 @@ function RailwayMultiplayerSession({
       });
       const engine = createGameplaySessionEngine(canvas, createRailwayGameplayAuthority({
         initialPose: poseRef.current,
+        initialEdits: [...authoritativeWorldEditRef.current.values()],
         preserveInitialPose: true,
+        terrain: realtimeTerrain,
         worldRadius: WORLD_RADIUS,
         streamingChunkRadius: clientSettingsRef.current.renderDistance,
         canEditBlock: () => pendingWorldBlockEditRef.current === null,
@@ -1323,6 +1326,8 @@ function RailwayMultiplayerSession({
         },
       }), presentationOptions);
       engineRef.current = engine;
+      engine.setDroppedItems(realtimeDropsRef.current);
+      engine.setPlayerHealth(playerHealthRef.current);
       void selectedSkin().then((skin) => {
         if (engineRef.current === engine) engine.setPlayerSkin(skin.source, skin.model);
       });
@@ -1346,7 +1351,7 @@ function RailwayMultiplayerSession({
     } catch (error) {
       setEngineError(error instanceof Error ? error.message : "Unable to start the WebGL world.");
     }
-  }, [inWorld, inventoryReady]);
+  }, [inWorld, inventoryReady, realtimeTerrain?.preset, realtimeTerrain?.superflatGroundY]);
 
   useEffect(() => {
     for (const [dropId, attemptedAt] of droppedPickupAttemptRef.current) {
@@ -1593,6 +1598,7 @@ function RailwayMultiplayerSession({
     requestGameplayKeyboardCapture();
     setJoinError("");
     setJoinPhase("joining");
+    setRealtimeTerrain(null);
     void flushInventoryActions().then(async () => {
       let session: RealtimeSession;
       if (!registered) {
@@ -1836,7 +1842,10 @@ function RailwayMultiplayerSession({
             setTransportReady(phase === "online");
             if (phase === "error" && detail) notify("Server connection rejected", detail, "warning");
           }}
-          onReconcilePose={(pose) => engineRef.current?.reconcilePose(pose)}
+          onReconcilePose={(pose) => {
+            poseRef.current = pose;
+            engineRef.current?.reconcilePose(pose);
+          }}
           onRemotePlayers={(players) => {
             setSegmentRemotePlayers(players);
             engineRef.current?.setRemotePlayers(players);
@@ -1855,6 +1864,9 @@ function RailwayMultiplayerSession({
             setRealtimeGameMode(gameMode);
             advanceInventoryAuthorityEpoch();
           }}
+          onTerrain={(terrain) => setRealtimeTerrain((current) => current
+            && current.preset === terrain.preset
+            && current.superflatGroundY === terrain.superflatGroundY ? current : terrain)}
           onDrops={(drops) => {
             realtimeDropsRef.current = drops;
             engineRef.current?.setDroppedItems(drops);
@@ -1944,6 +1956,7 @@ function RailwayMultiplayerSession({
           setChatOpen(false);
           closeInventory();
           setRealtimeSession(null);
+          setRealtimeTerrain(null);
           setSegmentRemotePlayers([]);
         }}
         onInventoryWorkspaceChange={handleInventoryWorkspaceChange}
@@ -1989,6 +2002,7 @@ function RailwayMultiplayerSession({
           setChatOpen(false);
           closeInventory();
           setRealtimeSession(null);
+          setRealtimeTerrain(null);
           setSegmentRemotePlayers([]);
         }}
         playerName={profile?.username ?? auth.displayName}

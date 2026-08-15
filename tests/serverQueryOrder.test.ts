@@ -147,7 +147,7 @@ assert.deepEqual(
   {
     newestByIndex: 35,
     oldestByIndex: 14,
-    newestMatchingRows: 38,
+    newestMatchingRows: 39,
     newestMatchingRow: 51,
     newestUserRows: 44,
     userOperationReceiptRows: 6,
@@ -160,7 +160,7 @@ const orderedReadFingerprint = createHash("sha256").update(JSON.stringify(
 )).digest("hex");
 assert.equal(
   orderedReadFingerprint,
-  "7aba8bd70054d6759b1cf0c379c8f81dbb921919ef8fb0a937114c1678f8e52c",
+  "10f5eadf8dc9a2df96a239086221c28cb77215fb9ad2a82ce37524ce8bedf1ae",
   "ordered-read tables, indexes, ranges, bounds, or receipt routing changed",
 );
 assert.doesNotMatch(

@@ -5,6 +5,8 @@ import { WorldStore } from "../src/database";
 import { APPEARANCE_CAPABILITY, SKIN_PIXEL_BYTES, type ClientMessage, type ServerMessage } from "../src/protocol";
 import { GameWorld, RESUME_TOKEN_TTL_MS, type Peer } from "../src/world";
 import { terrainHeight as clientTerrainHeight } from "../../../client/game/terrain";
+import { createTerrainChunk } from "../../../client/game/terrain";
+import { BLOCK } from "../../../client/game/types";
 import {
   CREATIVE_FLIGHT_SPEED,
   CREATIVE_FLIGHT_SPRINT_SPEED,
@@ -12,6 +14,7 @@ import {
   PLAYER_FEET_CLEARANCE,
   PLAYER_GRAVITY,
   PLAYER_JUMP_SPEED,
+  createTerrainAuthority,
   terrainFeetY,
   terrainHeight,
 } from "../src/terrain";
@@ -65,6 +68,9 @@ function config(overrides: Partial<ServerConfig> = {}): ServerConfig {
     maxPlayers: 8,
     maxPersistedBlocks: 100,
     allowedOrigins: [],
+    worldPreset: "default",
+    superflatGroundY: 20,
+    defaultGameMode: "survival",
     ...overrides,
   };
 }
@@ -92,6 +98,56 @@ describe("authoritative world", () => {
     expect(PLAYER_JUMP_SPEED).toBe(CLIENT_PLAYER_JUMP_SPEED);
     expect(CREATIVE_FLIGHT_SPEED).toBe(CLIENT_CREATIVE_FLIGHT_SPEED);
     expect(CREATIVE_FLIGHT_SPRINT_SPEED).toBe(CLIENT_CREATIVE_FLIGHT_SPRINT_SPEED);
+    const authority = createTerrainAuthority({ preset: "default", superflatGroundY: 20 });
+    const chunk = createTerrainChunk(7319, -2, 3);
+    for (let x = -16; x < -8; x += 3) for (let z = 24; z < 32; z += 3) {
+      for (let y = 1; y <= 86; y += 1) {
+        expect(authority.blockAt(x, y, z)).toBe(chunk.get(`${x},${y},${z}`) ?? BLOCK.AIR);
+      }
+    }
+  });
+
+  test("shares exact superflat strata, spawn, collision, and Creative defaults with the browser", async () => {
+    const superflat = config({ worldPreset: "superflat", superflatGroundY: 20, defaultGameMode: "creative" });
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(superflat, store, authenticator);
+    const chunk = createTerrainChunk(7319, 0, 0, 16, world.terrain.descriptor);
+    for (let x = 0; x < 16; x += 3) for (let z = 0; z < 16; z += 5) {
+      for (let y = 0; y <= 22; y += 1) {
+        expect(world.terrain.blockAt(x, y, z)).toBe(chunk.get(`${x},${y},${z}`) ?? BLOCK.AIR);
+      }
+    }
+    expect(world.terrain.blockAt(0, 1, 0)).toBe(BLOCK.BEDROCK);
+    expect(world.terrain.blockAt(0, 16, 0)).toBe(BLOCK.STONE);
+    expect(world.terrain.blockAt(0, 17, 0)).toBe(BLOCK.DIRT);
+    expect(world.terrain.blockAt(0, 20, 0)).toBe(BLOCK.GRASS);
+    expect(world.terrain.feetY(0.5, 0.5)).toBe(20 + PLAYER_FEET_CLEARANCE);
+    const peer = new FakePeer("superflat-player");
+    world.open(peer, 1_000);
+    expect(peer.ofType("hello")[0]).toMatchObject({
+      terrain: { preset: "superflat", superflatGroundY: 20 },
+      defaultGameMode: "creative",
+    });
+    await world.message(peer, JSON.stringify(join("builder")), 1_000);
+    expect(peer.ofType("welcome")[0]).toMatchObject({
+      player: { gameMode: "creative", y: 20 + PLAYER_FEET_CLEARANCE },
+      terrain: { preset: "superflat", superflatGroundY: 20 },
+      defaultGameMode: "creative",
+    });
+    store.close();
+  });
+
+  test("pins a persisted world's terrain across server restarts", () => {
+    const store = new WorldStore(":memory:");
+    new GameWorld(config({ worldPreset: "superflat", superflatGroundY: 20 }), store, authenticator);
+    expect(() => new GameWorld(
+      config({ worldPreset: "superflat", superflatGroundY: 21 }),
+      store,
+      authenticator,
+    )).toThrow("World terrain is pinned to superflat:20; refusing superflat:21");
+    expect(() => new GameWorld(config({ worldPreset: "default" }), store, authenticator))
+      .toThrow("World terrain is pinned to superflat:20; refusing default:20");
+    store.close();
   });
 
   test("integrates validated sequenced inputs and emits spatial snapshots", async () => {
@@ -216,12 +272,16 @@ describe("authoritative world", () => {
     const drop = alex.ofType("drop_result").at(-1)?.drop;
     expect(drop).toMatchObject({ itemId:"diamond_pickaxe", durability:120, ownerUserId:"alex" });
     await world.message(steve, JSON.stringify({
+      v:1,type:"pickup_item",operationId:"pickup_transfer_early",dropId:drop!.dropId,
+    }), 2_019);
+    expect(steve.ofType("error").at(-1)).toMatchObject({ operationId:"pickup_transfer_early" });
+    await world.message(steve, JSON.stringify({
       v:1,type:"pickup_item",operationId:"pickup_transfer_1",dropId:drop!.dropId,
-    }), 1_600);
+    }), 2_020);
     expect(steve.ofType("drop_result").at(-1)).toMatchObject({ action:"pickup", drop:{ dropId:drop!.dropId } });
     await world.message(steve, JSON.stringify({
       v:1,type:"pickup_item",operationId:"pickup_transfer_1",dropId:drop!.dropId,
-    }), 1_700);
+    }), 2_021);
     expect(steve.ofType("drop_result").slice(-2)).toEqual([
       expect.objectContaining({ action:"pickup", drop:expect.objectContaining({ dropId:drop!.dropId }) }),
       expect.objectContaining({ action:"pickup", drop:expect.objectContaining({ dropId:drop!.dropId }) }),
@@ -230,7 +290,7 @@ describe("authoritative world", () => {
     store.close();
   });
 
-  test("settles tossed items under gravity and requires the owner to leave before recollecting", async () => {
+  test("settles tossed items and lets a stationary owner recollect after the universal delay", async () => {
     const store = new WorldStore(":memory:");
     const world = new GameWorld(config(), store, authenticator);
     const owner = new FakePeer("toss-owner");
@@ -238,25 +298,19 @@ describe("authoritative world", () => {
     await world.message(owner, JSON.stringify(join("alex")), 1_000);
     await world.message(owner, JSON.stringify({
       v:1,type:"drop_item",operationId:"drop_toss_gravity",itemId:"dirt",count:1,
-      ownerMustLeave:true,x:0.5,y:69.67,z:0.5,
+      x:0.5,y:69.67,z:0.5,
     }), 1_010);
     const dropId = owner.ofType("drop_result").at(-1)!.drop!.dropId;
     for (let now = 1_050; now <= 1_800; now += 50) world.tick(now);
     const settled = owner.ofType("drop_snapshot").at(-1)!.drops[0];
-    expect(settled).toMatchObject({ dropId, y:69, ownerPickupBlocked:true });
+    expect(settled).toMatchObject({ dropId, y:69, ownerPickupAt:2_010 });
     await world.message(owner, JSON.stringify({
       v:1,type:"pickup_item",operationId:"pickup_still_blocked",dropId,
-    }), 1_801);
+    }), 2_009);
     expect(owner.ofType("error").at(-1)).toMatchObject({ operationId:"pickup_still_blocked" });
     await world.message(owner, JSON.stringify({
-      v:1,type:"input",seq:1,dtMs:250,moveX:0,moveZ:0,yaw:0,pitch:0,jump:false,sprint:false,
-      x:3,y:69.02,z:0.5,
-    }), 1_850);
-    world.tick(1_900);
-    expect(owner.ofType("drop_snapshot").at(-1)!.drops[0]).toMatchObject({ ownerPickupBlocked:false });
-    await world.message(owner, JSON.stringify({
-      v:1,type:"pickup_item",operationId:"pickup_after_leaving",dropId,
-    }), 1_901);
+      v:1,type:"pickup_item",operationId:"pickup_after_timer",dropId,
+    }), 2_010);
     expect(owner.ofType("drop_result").at(-1)).toMatchObject({ action:"pickup",drop:{ dropId } });
     store.close();
   });
@@ -279,7 +333,7 @@ describe("authoritative world", () => {
     }), 1_020);
     await world.message(dead, JSON.stringify({
       v:1,type:"pickup_item",operationId:"pickup_while_dead",dropId,
-    }), 1_800);
+    }), 2_010);
     expect(dead.ofType("error").at(-1)).toMatchObject({ operationId:"pickup_while_dead" });
     expect(owner.ofType("drop_snapshot").at(-1)!.drops).toHaveLength(1);
     store.close();

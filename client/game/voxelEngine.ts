@@ -486,9 +486,10 @@ export function materializeTerrainChunk(
   chunkX: number,
   chunkZ: number,
   edits: Iterable<WorldEdit> = [],
+  terrain?: import("../../shared/worldPreset.ts").WorldTerrainDescriptor,
 ): Map<string, BlockId> {
   const owner = chunkKey(chunkX, chunkZ);
-  const materialized = createTerrainChunk(seed, chunkX, chunkZ);
+  const materialized = createTerrainChunk(seed, chunkX, chunkZ, WORLD_CHUNK_SIZE, terrain);
   for (const edit of edits) {
     if (chunkKeyForBlock(edit.x, edit.z) !== owner) continue;
     const key = blockKey(edit.x, edit.y, edit.z);
@@ -1655,6 +1656,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   gl.bufferData(gl.ARRAY_BUFFER, particleGeometry.byteLength, gl.DYNAMIC_DRAW);
 
   const seed = options.seed ?? 7319;
+  const terrain = options.terrain;
   const radius = clampNumber(options.worldRadius ?? 20, 8, 40);
   const dayNightConfig: DayNightConfig = {
     cycleLengthMs: options.dayNight?.cycleLengthMs ?? DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs,
@@ -1669,12 +1671,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const atmosphereSunDirection = new Float32Array(3);
   const atmosphereMoonDirection = new Float32Array(3);
   const maximumVertexAttributes = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number;
-  const startY = terrainHeight(0, 0, seed) + 1.02;
+  const startY = terrainHeight(0, 0, seed, terrain) + 1.02;
   const initialX = options.initialPose?.x ?? 0.5;
   const initialZ = options.initialPose?.z ?? 0.5;
   const pose: PlayerPose = {
     x: initialX,
-    y: options.initialPose?.y ?? terrainHeight(initialX, initialZ, seed) + 1.02,
+    y: options.initialPose?.y ?? terrainHeight(initialX, initialZ, seed, terrain) + 1.02,
     z: initialZ,
     yaw: options.initialPose?.yaw ?? 0,
     pitch: options.initialPose?.pitch ?? -0.08,
@@ -1785,6 +1787,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       coordinate.x,
       coordinate.z,
       rememberedEditsByChunk.get(owner)?.values() ?? [],
+      terrain,
     );
     writeChunkSkyOccluders(skyOccluderColumns, coordinate.x, coordinate.z, materialized);
     const owned = new Set<string>();
@@ -1861,7 +1864,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const caveX = x + dx;
       const caveZ = z + dz;
       if (!loadedChunkKeys.has(chunkKeyForBlock(caveX, caveZ))) continue;
-      const caveY = caveSpawnY(kind, caveX, terrainHeight(caveX, caveZ, seed) + 1, caveZ);
+      const caveY = caveSpawnY(kind, caveX, terrainHeight(caveX, caveZ, seed, terrain) + 1, caveZ);
       if (caveY !== null) return [caveX, caveY, caveZ];
     }
     return [x, surfaceY, z];
@@ -1885,7 +1888,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (!loadedChunkKeys.has(chunkKeyForBlock(x, z))) continue;
         const horizontalSquared = (x - originX) ** 2 + (z - originZ) ** 2;
         if (horizontalSquared > radius * radius || horizontalSquared >= bestDistanceSquared) continue;
-        const surfaceY = terrainHeight(x, z, seed) + 1;
+        const surfaceY = terrainHeight(x, z, seed, terrain) + 1;
         for (let y = surfaceY - 2; y > TERRAIN_MIN_Y; y -= 1) {
           if (getBlock(x, y, z) !== BLOCK.AIR
             || !blockSupportsPlayerFeet(getBlock(x, y - 1, z))
@@ -1919,7 +1922,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     radius: localMobStreaming ? LOCAL_MOB_STREAM_SPAWN_RADIUS : Math.max(6, radius - 2),
     centerX: localMobStreaming ? mobStreamingCenterX : 0,
     centerZ: localMobStreaming ? mobStreamingCenterZ : 0,
-    terrainHeight: (x, z) => terrainHeight(x, z, seed),
+    terrainHeight: (x, z) => terrainHeight(x, z, seed, terrain),
     resolveSpawnPosition: localMobSpawnPosition,
     passivePopulation: clampNumber(Math.floor(radius / 2), 6, 12),
     hostilePopulation: clampNumber(Math.floor(radius / 5), 2, 5),
@@ -2216,6 +2219,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       chunkX,
       chunkZ,
       rememberedEditsByChunk.get(owner)?.values() ?? [],
+      terrain,
     );
     writeChunkSkyOccluders(skyOccluderColumns, chunkX, chunkZ, materialized);
     const owned = new Set<string>();
@@ -2896,7 +2900,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       stepMobSimulation(mobSimulation, {
         dtSeconds: mobStepSeconds,
         isNight,
-        terrainHeight: (x, z) => terrainHeight(x, z, seed),
+        terrainHeight: (x, z) => terrainHeight(x, z, seed, terrain),
         player: playerTarget,
         canOccupy: mobCanOccupy,
         isProjectileBlocked: (x, y, z) => {
@@ -4210,7 +4214,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   if (!options.preserveInitialPose) {
     pose.y = resolveSafeSpawnY(
       pose.y,
-      terrainHeight(pose.x, pose.z, seed) + 1.02,
+      terrainHeight(pose.x, pose.z, seed, terrain) + 1.02,
       (candidateY) => collides(pose.x, candidateY, pose.z),
     );
   }

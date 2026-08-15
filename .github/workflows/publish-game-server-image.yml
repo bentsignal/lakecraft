@@ -3,9 +3,10 @@ name: Publish Lakecraft game server image
 on:
   push:
     branches:
-      - t3code/build-railway-multiplayer
+      - main
     paths:
       - apps/game-server/**
+      - shared/**
       - .github/workflows/publish-game-server-image.yml
   workflow_dispatch:
 
