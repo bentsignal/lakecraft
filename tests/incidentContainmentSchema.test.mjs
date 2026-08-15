@@ -87,10 +87,12 @@ for (const path of runtimeFiles) {
 }
 // The reviewed runtime adds atomic chunk replacement, stable bounded torch
 // lighting, render-only step easing, live paused-world presentation, and a
-// first-painted-frame loading gate; none adds another authority or transport.
-assert.equal(runtimeFiles.length, 183, "reviewed main runtime file set changed");
+// first-painted-frame loading gate, connected glass, derived stair/door
+// presentation, paired-door Railway commits, and expanded thin-block skylight;
+// none adds another authority or transport.
+assert.equal(runtimeFiles.length, 184, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "0ac7ea449de84f1a691e4fe5ee0269e893baa492a23719207cd48c462284a501",
+  "a64a916d9f9a3475be33bb88d86f9b4481e5199eb3ee81d587503e7b72b90b2c",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

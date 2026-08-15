@@ -7,14 +7,14 @@ const TUPLE_CATALOGS = [
     name: "BLOCKS",
     anchor: "export const BLOCKS = defineBlocks(",
     arrayAfterAnchor: true,
-    rows: 37,
+    rows: 100,
     widths: [8, 9],
     scalarPresentationIndexes: [1, 2, 3, 4],
   },
   {
     name: "BLOCK_ITEM_SPECS",
     anchor: "const BLOCK_ITEM_SPECS",
-    rows: 37,
+    rows: 100,
     widths: [3],
     scalarPresentationIndexes: [1, 2],
   },
@@ -286,7 +286,7 @@ const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, i
 `;
 
 const CLIENT_CATALOG_IDENTIFIER = "__lakecraftGameCatalog";
-const CLIENT_CATALOG_FINGERPRINT = "d81acfce";
+const CLIENT_CATALOG_FINGERPRINT = "0408510f";
 
 function compressStaticBytes(bytes) {
   const packed = [];
@@ -442,7 +442,7 @@ export function stripServerGamePresentation(source) {
   for (const replacement of replacements) {
     contents = `${contents.slice(0, replacement.start)}${replacement.text}${contents.slice(replacement.end)}`;
   }
-  contents = replaceAnchoredRange(contents, "function defineBlocks(", "export const BLOCKS = defineBlocks(", SERVER_DEFINE_BLOCKS, "block mechanics builder", "e45cb2fa");
+  contents = replaceAnchoredRange(contents, "function defineBlocks(", "export const BLOCKS = defineBlocks(", SERVER_DEFINE_BLOCKS, "block mechanics builder", "79dcea12");
   contents = replaceAnchoredRange(contents, "function blockItem(", "type BasicItemSpec =", SERVER_ITEM_BUILDERS, "item mechanics builders", "0eb24b09");
   contents = replaceAnchoredRange(contents, "const ITEM_ENTRIES:", "export const ITEMS =", SERVER_ITEM_ENTRIES, "item mechanics catalog", "f62069d2");
   contents = replaceAnchoredRange(contents, "function craftingTableRecipe(", "const GENERATED_TOOL_RECIPES =", SERVER_CRAFTING_TABLE_RECIPE, "recipe mechanics builder", "6fb8bfa0");

@@ -18,7 +18,7 @@ import { decodeStaticBytes } from "../client/staticData.ts";
 import { VISUAL_ASSET_MANIFEST } from "../shared/visualAssetManifest.ts";
 import { decodeStaticEncoding, encodeStaticBytes } from "../scripts/static-byte-encoding.mjs";
 
-const EXPECTED_NAMES = [
+const BASE_NAMES = [
   "grass_top",
   "grass_side",
   "dirt",
@@ -125,18 +125,18 @@ function connectedComponentSizes(points: ReadonlySet<string>): number[] {
 }
 
 assert.equal(TEXTURE_TILE_SIZE, 16, "world textures stay at Minecraft-scale 16px resolution");
-assert.equal(TEXTURE_ATLAS_COLUMNS, 6);
-assert.equal(TEXTURE_ATLAS_ROWS, 8);
-assert.deepEqual(TEXTURE_ATLAS_NAMES, EXPECTED_NAMES, "tile order is part of the renderer contract");
-assert.equal(TEXTURE_ATLAS_NAMES.length, 32);
-assert.deepEqual(TEXTURE_ATLAS_CELLS,
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 30, 31, 36, 37, 42, 43],
-  "ordinary tiles route around one contiguous 4x4 chest region");
-assert.deepEqual([CHEST_ATLAS_COLUMN, CHEST_ATLAS_ROW], [2, 4]);
+assert.equal(TEXTURE_ATLAS_COLUMNS, 8);
+assert.equal(TEXTURE_ATLAS_ROWS, 16);
+assert.deepEqual(TEXTURE_ATLAS_NAMES.slice(0, BASE_NAMES.length), BASE_NAMES,
+  "the deployed tile prefix stays append-only while the creative catalog expands");
+assert.equal(TEXTURE_ATLAS_NAMES.length, 98);
+assert.deepEqual(TEXTURE_ATLAS_CELLS, Array.from({ length: 98 }, (_, index) => index),
+  "ordinary tiles stay in one compact contiguous atlas region");
+assert.deepEqual([CHEST_ATLAS_COLUMN, CHEST_ATLAS_ROW], [4, 12]);
 
 const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
 const atlasHeight = TEXTURE_ATLAS_ROWS * TEXTURE_TILE_SIZE;
-assert.deepEqual([atlasWidth, atlasHeight], [96, 128]);
+assert.deepEqual([atlasWidth, atlasHeight], [128, 256]);
 assert.equal(TEXTURE_ATLAS_RGBA.length, atlasWidth * atlasHeight * 4);
 const tileFingerprints = new Set<string>();
 for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
@@ -147,6 +147,8 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   }
   assert.ok(colors.size >= 3, `${TEXTURE_ATLAS_NAMES[index]} must retain readable pixel variation`);
   if (!new Set(["glass", "sapling", "torch"]).has(TEXTURE_ATLAS_NAMES[index])
+    && !TEXTURE_ATLAS_NAMES[index].includes("_door_")
+    && !TEXTURE_ATLAS_NAMES[index].endsWith("_leaves")
   ) {
     for (let offset = 3; offset < tile.length; offset += 4) {
       assert.equal(tile[offset], 255, `${TEXTURE_ATLAS_NAMES[index]} remains an opaque terrain material`);
@@ -154,7 +156,8 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   }
   tileFingerprints.add(fnv1a32(tile));
 }
-assert.equal(tileFingerprints.size, 32, "all ordinary material tiles remain distinct");
+assert.equal(tileFingerprints.size, 97,
+  "the exact installed atlas is distinct except for Minecraft's identical quartz side/top pixels");
 
 assert.equal(new Set(["coal_ore", "iron_ore", "gold_ore", "diamond_ore"]
   .map((name) => fnv1a32(atlasTile(TEXTURE_ATLAS_NAMES.indexOf(name as typeof TEXTURE_ATLAS_NAMES[number]))))).size, 4,
@@ -271,12 +274,12 @@ try {
 }
 const tileColorCounts = compactIndexes.subarray(0, TEXTURE_ATLAS_NAMES.length);
 const localPaletteColors = tileColorCounts.reduce((sum, count) => sum + count, 0);
-assert.ok(localPaletteColors > 300 && localPaletteColors < 450,
-  "the 32 ordinary local palettes remain bounded after exact material import");
+assert.ok(localPaletteColors > 700 && localPaletteColors < 1_100,
+  "the expanded ordinary local palettes remain bounded after exact material import");
 assert.ok(Math.max(...tileColorCounts) <= 255,
   "local palette color counts stay inside the one-byte format");
-assert.ok(compactIndexes.length - tileColorCounts.length - localPaletteColors * 2 >= 3_500,
-  "the atlas retains one bounded bitstream for exactly 32 ordinary 16x16 tiles");
+assert.ok(compactIndexes.length - tileColorCounts.length - localPaletteColors * 2 >= 9_000,
+  "the atlas retains one bounded bitstream for every ordinary 16x16 tile");
 let localPaletteCursor = tileColorCounts.length;
 for (const colorCount of tileColorCounts) {
   const localPalette = Array.from({ length: colorCount }, (_, index) => (
@@ -290,7 +293,7 @@ for (const colorCount of tileColorCounts) {
 assert.equal(localPaletteCursor, tileColorCounts.length + localPaletteColors * 2,
   "all local palettes end at the reviewed bitstream boundary");
 assert.ok(generatedSource.includes('import { decodeStaticBytes } from "../../staticData.ts";')
-    && generatedSource.includes("export const TEXTURE_ATLAS_RGBA = new Uint8Array(49152)")
+    && generatedSource.includes("export const TEXTURE_ATLAS_RGBA = new Uint8Array(131072)")
     && !generatedSource.includes("TEXTURE_ATLAS_INDEXES")
     && !generatedSource.includes("new Uint8Array(7680)"),
   "one-time decoders expand ordinary tiles and the chest directly into the fixed RGBA buffer");
@@ -312,9 +315,9 @@ try {
     new URL("../design/texture-concepts/lakecraft-materials-v1.png", import.meta.url).pathname,
     regeneratedPngPath,
     "--columns",
-    "6",
-    "--rows",
     "8",
+    "--rows",
+    "16",
     "--source-columns",
     "4",
     "--source-rows",
@@ -322,7 +325,7 @@ try {
     "--inset",
     "0",
     "--names",
-    EXPECTED_NAMES.join(","),
+    TEXTURE_ATLAS_NAMES.join(","),
     "--ts",
     regeneratedTsPath,
   ], { encoding: "utf8" });

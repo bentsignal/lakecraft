@@ -16,7 +16,7 @@ const transformed = compactClientGameCatalog(source);
 
 assert.doesNotMatch(transformed, /A living cap over packed earth|A durable diamond helmet|Split one log into four boards|Smelt iron/,
   "reviewed catalog presentation text is hidden inside the encoded payload");
-assert.match(transformed, /new TextDecoder\(\)\.decode\(__lakecraftDecodeStaticBytes\("[^"]+",17804,\d+,true\)\)/,
+assert.match(transformed, /new TextDecoder\(\)\.decode\(__lakecraftDecodeStaticBytes\("[^"]+",24250,\d+,true\)\)/,
   "one bounded UTF-8 payload reconstructs the reviewed catalogs");
 assert.equal((transformed.match(/__lakecraftGameCatalog\[/g) ?? []).length, 12,
   "ten tuple catalogs, base recipes, and smelting recipes each use one table reference");
@@ -42,7 +42,7 @@ assert.throws(
 );
 assert.throws(
   () => compactClientGameCatalog(source.replace('["bricks", "BRK", "▦"],', "")),
-  /BLOCK_ITEM_SPECS expected 37 rows/,
+  /BLOCK_ITEM_SPECS expected 100 rows/,
   "tuple row removal fails before a compact build",
 );
 
@@ -51,6 +51,7 @@ try {
   mkdirSync(join(directory, "shared"));
   mkdirSync(join(directory, "client"));
   writeFileSync(join(directory, "shared", "game.ts"), transformed);
+  cpSync(new URL("../shared/expandedBuildingCatalog.ts", import.meta.url), join(directory, "shared", "expandedBuildingCatalog.ts"));
   cpSync(new URL("../client/staticData.ts", import.meta.url), join(directory, "client", "staticData.ts"));
   const compactGame = await import(`${pathToFileURL(join(directory, "shared", "game.ts")).href}?v=${Date.now()}`);
   assert.deepEqual(compactGame.BLOCKS, BLOCKS, "every decoded block field and number is exact");

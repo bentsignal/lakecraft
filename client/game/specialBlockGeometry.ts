@@ -1,4 +1,5 @@
 import { chestAtlasUv, textureAtlasPixelUv, textureAtlasUv, type TextureUvBounds } from "./blockTextures.ts";
+import type { TextureAtlasName } from "./generated/textureAtlas.ts";
 import { CUBE_FACES } from "./cubeFaces.ts";
 import { packSkyExposureShade } from "./skyExposure.ts";
 import type { BedDirection } from "./types.ts";
@@ -19,8 +20,8 @@ export const SPECIAL_TORCH_TEXTURED_VERTEX_COUNT = 36;
 export const SPECIAL_TORCH_COLOR_VERTEX_COUNT = 0;
 export const SPECIAL_CHEST_TEXTURED_VERTEX_COUNT = 108;
 export const SPECIAL_CHEST_COLOR_VERTEX_COUNT = 0;
-export const SPECIAL_DOOR_TEXTURED_VERTEX_COUNT = 36;
-export const SPECIAL_DOOR_COLOR_VERTEX_COUNT = 216;
+export const SPECIAL_DOOR_TEXTURED_VERTEX_COUNT = 72;
+export const SPECIAL_DOOR_COLOR_VERTEX_COUNT = 0;
 export const SPECIAL_BED_TEXTURED_VERTEX_COUNT = 72;
 export const SPECIAL_BED_COLOR_VERTEX_COUNT = 36;
 export const SPECIAL_LADDER_TEXTURED_VERTEX_COUNT = 252;
@@ -38,7 +39,7 @@ function appendTexturedBox(
   output: number[],
   min: Vec3,
   max: Vec3,
-  texture: "oak_planks" | "wool",
+  texture: TextureAtlasName,
   shade: number,
   exposureLevel?: number,
 ): void {
@@ -226,40 +227,37 @@ export function appendSpecialDoorMesh(
   y: number,
   z: number,
   open: boolean,
+  material: string = "oak",
+  facing: BedDirection = "north",
+  hinge: "left" | "right" = "left",
   shade = 1,
   exposureLevel?: number,
 ): void {
-  if (open) {
-    appendTexturedBox(
-      output.textured,
-      [x + 0.05, y, z + 0.02],
-      [x + 0.15, y + 1.9, z + 0.98],
-      "oak_planks",
-      shade,
-      exposureLevel,
-    );
-    appendColorBox(output.color, [x + 0.035, y + 0.18, z + 0.16], [x + 0.065, y + 0.75, z + 0.84], [0.38, 0.20, 0.07]);
-    appendColorBox(output.color, [x + 0.035, y + 1.05, z + 0.16], [x + 0.065, y + 1.70, z + 0.84], [0.38, 0.20, 0.07]);
-    appendColorBox(output.color, [x, y + 0.90, z + 0.77], [x + 0.05, y + 1.0, z + 0.87], [0.84, 0.69, 0.22]);
-    appendColorBox(output.color, [x + 0.135, y + 0.18, z + 0.16], [x + 0.165, y + 0.75, z + 0.84], [0.38, 0.20, 0.07]);
-    appendColorBox(output.color, [x + 0.135, y + 1.05, z + 0.16], [x + 0.165, y + 1.70, z + 0.84], [0.38, 0.20, 0.07]);
-    appendColorBox(output.color, [x + 0.15, y + 0.90, z + 0.77], [x + 0.20, y + 1.0, z + 0.87], [0.84, 0.69, 0.22]);
-    return;
-  }
-  appendTexturedBox(
-    output.textured,
-    [x + 0.02, y, z + 0.45],
-    [x + 0.98, y + 1.9, z + 0.55],
-    "oak_planks",
-    shade,
-    exposureLevel,
-  );
-  appendColorBox(output.color, [x + 0.16, y + 0.18, z + 0.42], [x + 0.84, y + 0.75, z + 0.455], [0.38, 0.20, 0.07]);
-  appendColorBox(output.color, [x + 0.16, y + 1.05, z + 0.42], [x + 0.84, y + 1.70, z + 0.455], [0.38, 0.20, 0.07]);
-  appendColorBox(output.color, [x + 0.77, y + 0.90, z + 0.38], [x + 0.87, y + 1.0, z + 0.43], [0.84, 0.69, 0.22]);
-  appendColorBox(output.color, [x + 0.16, y + 0.18, z + 0.545], [x + 0.84, y + 0.75, z + 0.58], [0.38, 0.20, 0.07]);
-  appendColorBox(output.color, [x + 0.16, y + 1.05, z + 0.545], [x + 0.84, y + 1.70, z + 0.58], [0.38, 0.20, 0.07]);
-  appendColorBox(output.color, [x + 0.77, y + 0.90, z + 0.57], [x + 0.87, y + 1.0, z + 0.62], [0.84, 0.69, 0.22]);
+  const facingAngle = facing === "east" ? Math.PI / 2 : facing === "south" ? Math.PI
+    : facing === "west" ? -Math.PI / 2 : 0;
+  const openAngle = open ? (hinge === "left" ? Math.PI / 2 : -Math.PI / 2) : 0;
+  const hingeX = hinge === "left" ? 0 : 1;
+  const transform = (localX: number, localY: number, localZ: number): Vec3 => {
+    const openX = hingeX + (localX - hingeX) * Math.cos(openAngle) - (localZ - 0.5) * Math.sin(openAngle);
+    const openZ = 0.5 + (localX - hingeX) * Math.sin(openAngle) + (localZ - 0.5) * Math.cos(openAngle);
+    const centeredX = openX - 0.5; const centeredZ = openZ - 0.5;
+    return [x + 0.5 + centeredX * Math.cos(facingAngle) - centeredZ * Math.sin(facingAngle),
+      y + localY, z + 0.5 + centeredX * Math.sin(facingAngle) + centeredZ * Math.cos(facingAngle)];
+  };
+  const appendHalf = (minimumY: number, maximumY: number, texture: TextureAtlasName): void => {
+    const uv = textureAtlasUv(texture);
+    for (const face of CUBE_FACES) for (const point of face[5]) {
+      const horizontal = face[1] !== 0 ? point[2] : point[0];
+      const vertical = face[2] !== 0 ? point[2] : point[1];
+      output.textured.push(...transform(point[0], minimumY + point[1] * (maximumY - minimumY),
+        7 / 16 + point[2] * 3 / 16),
+      uv.left + (uv.right - uv.left) * horizontal,
+      uv.bottom + (uv.top - uv.bottom) * vertical,
+      retainedShade(face[4] * shade, exposureLevel));
+    }
+  };
+  appendHalf(0, 1, `${material}_door_bottom` as TextureAtlasName);
+  appendHalf(1, 2, `${material}_door_top` as TextureAtlasName);
 }
 
 /**

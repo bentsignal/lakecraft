@@ -1,5 +1,6 @@
 import type { BlockId } from "./types.ts";
 import { BLOCK_MATERIAL_COLORS } from "./blockColors.ts";
+import { REALTIME_BLOCK_ID_MAX } from "../../shared/realtimeWorldChunks.ts";
 
 export type BlockParticleAction = "hit" | "break" | "place";
 
@@ -71,7 +72,7 @@ export const BLOCK_PARTICLES_PER_ACTION: Readonly<Record<BlockParticleAction, nu
 const FLOATS_PER_PARTICLE = BLOCK_PARTICLE_VERTICES * BLOCK_PARTICLE_FLOATS_PER_VERTEX;
 const GRAVITY = 13.5;
 const BOUNCE = 0.28;
-const MAX_BLOCK_ID = BLOCK_MATERIAL_COLORS.length - 1;
+const MAX_BLOCK_ID = REALTIME_BLOCK_ID_MAX;
 const UINT32_SCALE = 1 / 4_294_967_296;
 
 const BLOCK_COLORS = new Float32Array(BLOCK_MATERIAL_COLORS.flat());
@@ -195,7 +196,7 @@ export function createBlockParticleSystem(
       }
 
       let seed = eventSeed(event);
-      const colorOffset = event.block * 3;
+      const colorOffset = (event.block < BLOCK_MATERIAL_COLORS.length ? event.block : 3) * 3;
       for (let particleIndex = 0; particleIndex < spawnCount; particleIndex += 1) {
         const slot = nextSlot;
         nextSlot = nextSlot + 1 === capacity ? 0 : nextSlot + 1;

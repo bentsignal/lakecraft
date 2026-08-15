@@ -46,8 +46,8 @@ assert.equal(Object.keys(assets.itemTextures).length, 67);
 assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
 assert.ok(Object.hasOwn(assets.entities, "chicken"), "the exact temperate chicken joins every implemented mob texture");
-assert.equal(Object.keys(assets.blocks).length, 32);
-assert.equal(Object.keys(assets.blockItemTextures).length, 4);
+assert.equal(Object.keys(assets.blocks).length, 98);
+assert.equal(Object.keys(assets.blockItemTextures).length, 11);
 assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
 assert.deepEqual(Object.keys(assets.blockItemModelChains), [
   "chest", "oak_fence", "oak_fence_gate", "stone_brick_slab",

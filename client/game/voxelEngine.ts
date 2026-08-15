@@ -82,6 +82,8 @@ import {
   playerIntersectsBlockCollisionHeight,
   playerIntersectsBlockCollisionShape,
   planPlayerHalfStep,
+  stairShapeAt,
+  type StairShape,
 } from "./blockGeometry.ts";
 import {
   bedCellKey,
@@ -147,9 +149,11 @@ import {
 } from "./playerKnockback.ts";
 import {
   BLOCK,
+  blockStateName,
   isSlabBlock,
   isStairBlock,
   isTorchBlock,
+  isUpsideDownStairBlock,
   stairFacingForBlock,
   type BedDirection,
   type BedStructure,
@@ -805,9 +809,10 @@ export function sortTransparentChunkKeysBackToFront(
 }
 
 export function blockHasCollision(block: BlockId): boolean {
+  const door = doorStateForBlock(block);
   return block !== BLOCK.AIR
     && !isTorchBlock(block)
-    && block !== BLOCK.DOOR_OPEN
+    && door?.open !== true
     && block !== BLOCK.OAK_FENCE_GATE_OPEN
     && block !== BLOCK.LADDER
     && block !== BLOCK.SAPLING;
@@ -831,8 +836,7 @@ export function oakFenceConnectsTo(block: BlockId): boolean {
       blockOccludesFaces(block)
       && block !== BLOCK.CHEST
       && block !== BLOCK.BED
-      && block !== BLOCK.DOOR_CLOSED
-      && block !== BLOCK.DOOR_OPEN
+      && !isDoorBlock(block)
     );
 }
 
@@ -918,7 +922,42 @@ export function ladderVerticalVelocity(
 }
 
 export function isDoorBlock(block: BlockId): boolean {
-  return block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN;
+  return block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN || blockStateName(block).includes("_door_");
+}
+
+export type DoorState = Readonly<{ material: string; facing: NonNullable<ReturnType<typeof stairFacingForBlock>>; open: boolean }>;
+
+export function doorStateForBlock(block: BlockId): DoorState | null {
+  if (block === BLOCK.DOOR_CLOSED || block === BLOCK.DOOR_OPEN) {
+    return { material: "oak", facing: "north", open: block === BLOCK.DOOR_OPEN };
+  }
+  const state = blockStateName(block); const marker = state.indexOf("_door_");
+  if (marker < 0) return null;
+  const suffix = state.slice(marker + 6); const split = suffix.lastIndexOf("_");
+  const facing = suffix.slice(split + 1);
+  if (facing !== "east" && facing !== "north" && facing !== "south" && facing !== "west") return null;
+  return { material: state.slice(0, marker), facing, open: suffix.slice(0, split) === "open" };
+}
+
+function doorBlockForState(material: string, facing: DoorState["facing"], open: boolean): BlockId | null {
+  if (material === "oak" && facing === "north") return open ? BLOCK.DOOR_OPEN : BLOCK.DOOR_CLOSED;
+  const constant = `${material}_door_${open ? "open" : "closed"}_${facing}`.toUpperCase();
+  return (BLOCK as Readonly<Record<string, BlockId>>)[constant] ?? null;
+}
+
+export function doorHingeAt(
+  block: BlockId, x: number, y: number, z: number,
+  getBlock: (x: number, y: number, z: number) => BlockId,
+): "left" | "right" {
+  const door = doorStateForBlock(block);
+  if (!door) return "left";
+  const left = door.facing === "north" ? [-1, 0] : door.facing === "south" ? [1, 0]
+    : door.facing === "east" ? [0, -1] : [0, 1];
+  const leftDoor = doorStateForBlock(getBlock(x + left[0], y, z + left[1]));
+  const rightDoor = doorStateForBlock(getBlock(x - left[0], y, z - left[1]));
+  const matches = (candidate: DoorState | null): boolean => !!candidate
+    && candidate.material === door.material && candidate.facing === door.facing;
+  return matches(leftDoor) && !matches(rightDoor) ? "right" : "left";
 }
 
 export function isOakFenceGateBlock(block: BlockId): boolean {
@@ -926,15 +965,16 @@ export function isOakFenceGateBlock(block: BlockId): boolean {
 }
 
 export function toggledDoorBlock(block: BlockId): BlockId | null {
-  if (block === BLOCK.DOOR_CLOSED) return BLOCK.DOOR_OPEN;
-  if (block === BLOCK.DOOR_OPEN) return BLOCK.DOOR_CLOSED;
+  const door = doorStateForBlock(block);
+  if (door) return doorBlockForState(door.material, door.facing, !door.open);
   if (block === BLOCK.OAK_FENCE_GATE_CLOSED) return BLOCK.OAK_FENCE_GATE_OPEN;
   if (block === BLOCK.OAK_FENCE_GATE_OPEN) return BLOCK.OAK_FENCE_GATE_CLOSED;
   return null;
 }
 
-export function doorPlacementBlock(block: BlockId): BlockId {
-  if (isDoorBlock(block)) return BLOCK.DOOR_CLOSED;
+export function doorPlacementBlock(block: BlockId, yaw = 0): BlockId {
+  const door = doorStateForBlock(block);
+  if (door) return doorBlockForState(door.material, bedDirectionFromYaw(yaw), false) ?? block;
   if (isOakFenceGateBlock(block)) return BLOCK.OAK_FENCE_GATE_CLOSED;
   return block;
 }
@@ -960,14 +1000,15 @@ export function torchPlacementBlock(target: Readonly<BlockTarget>): BlockId | nu
 }
 
 /** Resolve one stair item identity to its append-only horizontal block state. */
-export function stairPlacementBlock(block: BlockId, yaw: number): BlockId {
-  const first = block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.OAK_STAIRS_WEST ? BLOCK.OAK_STAIRS_EAST
-    : block >= BLOCK.COBBLESTONE_STAIRS_EAST && block <= BLOCK.COBBLESTONE_STAIRS_WEST ? BLOCK.COBBLESTONE_STAIRS_EAST
-      : block >= BLOCK.STONE_BRICK_STAIRS_EAST && block <= BLOCK.STONE_BRICK_STAIRS_WEST ? BLOCK.STONE_BRICK_STAIRS_EAST
-        : block >= BLOCK.BRICK_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST ? BLOCK.BRICK_STAIRS_EAST : null;
-  if (first === null) return block;
+export function stairPlacementBlock(block: BlockId, yaw: number, pitch = 0, target?: Readonly<BlockTarget>): BlockId {
+  const state = blockStateName(block);
+  const stairs = state.indexOf("_stairs_");
+  if (stairs < 0) return block;
+  const family = state.slice(0, stairs);
+  const upsideDown = target?.place.y !== undefined && target.place.y < target.block.y || pitch > 0.55;
   const facing = bedDirectionFromYaw(yaw);
-  return first + (facing === "east" ? 0 : facing === "north" ? 1 : facing === "south" ? 2 : 3) as BlockId;
+  const constant = `${family}_stairs_${upsideDown ? "upside_" : ""}${facing}`.toUpperCase();
+  return (BLOCK as Readonly<Record<string, BlockId>>)[constant] ?? block;
 }
 
 /** Maps the engine palette onto the shared blast-cover categories. */
@@ -975,7 +1016,7 @@ export function localCreeperExposureBlock(block: BlockId): BlockType {
   if (block === BLOCK.AIR) return "air";
   if (isTorchBlock(block)) return "torch";
   if (block === BLOCK.LADDER) return "ladder";
-  if (block === BLOCK.DOOR_OPEN) return "door_open";
+  if (doorStateForBlock(block)?.open) return "door_open";
   if (block === BLOCK.OAK_FENCE_GATE_OPEN) return "oak_fence_gate_open";
   return "stone";
 }
@@ -985,6 +1026,25 @@ export function createDoorToggleEdit(target: BlockTarget): WorldEdit | null {
   return block === null
     ? null
     : { x: target.block.x, y: target.block.y, z: target.block.z, block };
+}
+
+export function createDoorToggleEdits(
+  target: BlockTarget,
+  getBlock: (x: number, y: number, z: number) => BlockId,
+): readonly WorldEdit[] {
+  const primary = createDoorToggleEdit(target);
+  const door = doorStateForBlock(target.block.block);
+  if (!primary || !door) return primary ? [primary] : [];
+  const side = door.facing === "north" || door.facing === "south" ? [1, 0] : [0, 1];
+  for (const sign of [-1, 1]) {
+    const x = target.block.x + side[0] * sign; const z = target.block.z + side[1] * sign;
+    const neighbor = getBlock(x, target.block.y, z); const state = doorStateForBlock(neighbor);
+    if (state?.material === door.material && state.facing === door.facing && state.open === door.open) {
+      const block = doorBlockForState(state.material, state.facing, !state.open);
+      if (block !== null) return [primary, { x, y: target.block.y, z, block }];
+    }
+  }
+  return [primary];
 }
 
 export function applyDayNightClockUpdate(
@@ -1189,6 +1249,52 @@ function appendTexturedBlockFace(
   }
 }
 
+function appendTexturedFacePatch(
+  output: number[], x: number, y: number, z: number,
+  face: (typeof FACE_DEFS)[number],
+  horizontalMin: number, horizontalMax: number, verticalMin: number, verticalMax: number,
+  sourceHorizontalMin: number, sourceHorizontalMax: number, sourceVerticalMin: number, sourceVerticalMax: number,
+  shade: number, exposureLevel: number,
+): void {
+  const uv = textureAtlasUv("glass");
+  for (const point of face[5]) {
+    const sourceH = face[1] !== 0 ? point[2] : point[0];
+    const sourceV = face[2] !== 0 ? point[2] : point[1];
+    const h = sourceH ? horizontalMax : horizontalMin;
+    const v = sourceV ? verticalMax : verticalMin;
+    const position: Vec3 = face[1] !== 0 ? [x + point[0], y + v, z + h]
+      : face[2] !== 0 ? [x + h, y + point[1], z + v] : [x + h, y + v, z + point[2]];
+    pushTexturedVertex(output, position,
+      uv.left + (uv.right - uv.left) * (sourceH ? sourceHorizontalMax : sourceHorizontalMin),
+      uv.bottom + (uv.top - uv.bottom) * (sourceV ? sourceVerticalMax : sourceVerticalMin),
+      retainedTerrainShade(shade, exposureLevel));
+  }
+}
+
+/** Keep the installed glass center while drawing only perimeter edges not joined to another glass cell. */
+export function appendConnectedGlassFace(
+  output: number[], x: number, y: number, z: number,
+  face: (typeof FACE_DEFS)[number], getBlock: (x: number, y: number, z: number) => BlockId,
+  shade: number, exposureLevel: number,
+): void {
+  const horizontalAxis = face[1] !== 0 ? 2 : 0;
+  const verticalAxis = face[2] !== 0 ? 2 : 1;
+  const neighbor = (axis: number, delta: number): boolean => {
+    const coordinate = [x, y, z]; coordinate[axis] += delta;
+    return getBlock(coordinate[0], coordinate[1], coordinate[2]) === BLOCK.GLASS;
+  };
+  const left = neighbor(horizontalAxis, -1); const right = neighbor(horizontalAxis, 1);
+  const bottom = neighbor(verticalAxis, -1); const top = neighbor(verticalAxis, 1);
+  const edge = 1 / 16;
+  appendTexturedFacePatch(output, x, y, z, face,
+    left ? 0 : edge, right ? 1 : 1 - edge, bottom ? 0 : edge, top ? 1 : 1 - edge,
+    edge, 1 - edge, edge, 1 - edge, shade, exposureLevel);
+  if (!left) appendTexturedFacePatch(output, x, y, z, face, 0, edge, 0, 1, 0, edge, 0, 1, shade, exposureLevel);
+  if (!right) appendTexturedFacePatch(output, x, y, z, face, 1 - edge, 1, 0, 1, 1 - edge, 1, 0, 1, shade, exposureLevel);
+  if (!bottom) appendTexturedFacePatch(output, x, y, z, face, edge, 1 - edge, 0, edge, edge, 1 - edge, 0, edge, shade, exposureLevel);
+  if (!top) appendTexturedFacePatch(output, x, y, z, face, edge, 1 - edge, 1 - edge, 1, edge, 1 - edge, 1 - edge, 1, shade, exposureLevel);
+}
+
 function appendTexturedAxisAlignedBox(
   output: number[],
   min: Vec3,
@@ -1280,7 +1386,28 @@ export function appendSlabMesh(
 
 export const STAIR_MESH_VERTEX_COUNT = 66;
 
-/** Two cuboids form the Minecraft straight-stair silhouette without an internal bottom face. */
+function stairHorizontalBounds(facing: NonNullable<ReturnType<typeof stairFacingForBlock>>): readonly [number, number, number, number] {
+  return facing === "east" ? [0.5, 1, 0, 1] : facing === "west" ? [0, 0.5, 0, 1]
+    : facing === "south" ? [0, 1, 0.5, 1] : [0, 1, 0, 0.5];
+}
+
+function stairSideFacing(
+  facing: NonNullable<ReturnType<typeof stairFacingForBlock>>,
+  left: boolean,
+): NonNullable<ReturnType<typeof stairFacingForBlock>> {
+  const directions = ["east", "south", "west", "north"] as const;
+  const index = directions.indexOf(facing);
+  return directions[(index + (left ? 3 : 1)) & 3];
+}
+
+function intersectStairBounds(
+  a: readonly [number, number, number, number],
+  b: readonly [number, number, number, number],
+): readonly [number, number, number, number] {
+  return [Math.max(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.min(a[3], b[3])];
+}
+
+/** Neighbor-derived cuboids form straight, inner, and outer corners in either vertical half. */
 export function appendStairMesh(
   output: number[],
   x: number,
@@ -1289,18 +1416,24 @@ export function appendStairMesh(
   block: BlockId,
   shade = 1,
   exposureLevel?: number,
+  shape: StairShape = "straight",
 ): void {
   const texture = blockTextureForFace(block, "top");
   const facing = stairFacingForBlock(block);
   if (!texture || !facing) return;
-  appendTexturedAxisAlignedBox(output, [x, y, z], [x + 1, y + 0.5, z + 1], texture, shade, exposureLevel);
-  const minimum: Vec3 = [x, y + 0.5, z];
-  const maximum: Vec3 = [x + 1, y + 1, z + 1];
-  if (facing === "east") minimum[0] += 0.5;
-  else if (facing === "west") maximum[0] -= 0.5;
-  else if (facing === "south") minimum[2] += 0.5;
-  else maximum[2] -= 0.5;
-  appendTexturedAxisAlignedBox(output, minimum, maximum, texture, shade, exposureLevel, ["bottom"]);
+  const upsideDown = isUpsideDownStairBlock(block);
+  appendTexturedAxisAlignedBox(output,
+    [x, y + (upsideDown ? 0.5 : 0), z], [x + 1, y + (upsideDown ? 1 : 0.5), z + 1],
+    texture, shade, exposureLevel);
+  const front = stairHorizontalBounds(facing);
+  const side = stairHorizontalBounds(stairSideFacing(facing, shape.endsWith("left")));
+  const boxes: Array<readonly [number, number, number, number]> = shape === "straight" ? [front]
+    : shape.startsWith("outer") ? [intersectStairBounds(front, side)]
+      : [front, intersectStairBounds(stairHorizontalBounds(stairSideFacing(stairSideFacing(facing, false), false)), side)];
+  for (const bounds of boxes) appendTexturedAxisAlignedBox(output,
+    [x + bounds[0], y + (upsideDown ? 0 : 0.5), z + bounds[2]],
+    [x + bounds[1], y + (upsideDown ? 0.5 : 1), z + bounds[3]],
+    texture, shade, exposureLevel, [upsideDown ? "top" : "bottom"]);
 }
 
 export const SAPLING_MESH_VERTEX_COUNT = 12;
@@ -2499,18 +2632,18 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         continue;
       }
       if (isDoorBlock(block)) {
-        const start = colorVertices.length;
+        const door = doorStateForBlock(block)!;
         appendSpecialDoorMesh(
           specialVertices,
           x,
           y,
           z,
-          block === BLOCK.DOOR_OPEN,
+          door.open,
+          door.material,
+          door.facing,
+          doorHingeAt(block, x, y, z, getBlock),
           blockMaterialVariation(x, y, z),
           skyExposureLevel(skyOccluderColumns, x, y + 1, z),
-        );
-        packColorVerticesForSky(
-          colorVertices, start, skyExposureLevel(skyOccluderColumns, x, y + 1, z),
         );
         continue;
       }
@@ -2596,6 +2729,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           block,
           blockMaterialVariation(x, y, z),
           skyExposureLevel(skyOccluderColumns, x, y + 1, z),
+          stairShapeAt(block, x, y, z, getBlock),
         );
         continue;
       }
@@ -2606,22 +2740,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (blockFaceIsOccluded(block, neighbor)) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
-          appendTexturedBlockFace(
-            block === BLOCK.GLASS ? transparentVertices : textureVertices,
-            x,
-            y,
-            z,
-            face,
-            textureName,
-            face[4] * variation,
-            skyExposureLevel(
-              skyOccluderColumns,
-              x + face[1],
-              y + face[2],
-              z + face[3],
-            ),
-            textureName === "furnace_front",
+          const destination = block === BLOCK.GLASS ? transparentVertices : textureVertices;
+          const exposure = skyExposureLevel(skyOccluderColumns, x + face[1], y + face[2], z + face[3]);
+          if (block === BLOCK.GLASS) appendConnectedGlassFace(
+            destination, x, y, z, face, getBlock, face[4] * variation, exposure,
           );
+          else appendTexturedBlockFace(destination, x, y, z, face, textureName,
+            face[4] * variation, exposure, textureName === "furnace_front");
           continue;
         }
         const color = tint(base, face[4], variation);
@@ -2728,8 +2853,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         for (let bz = minZ; bz <= maxZ; bz += 1) {
           const block = getBlock(bx, by, bz);
           if (blockHasCollision(block)
-            && playerIntersectsBlockCollisionShape(x, y, z, bodyHeight, bx, by, bz, block)) return true;
-          if (by > 0 && getBlock(bx, by - 1, bz) === BLOCK.DOOR_CLOSED) return true;
+            && playerIntersectsBlockCollisionShape(x, y, z, bodyHeight, bx, by, bz, block,
+              stairFacingForBlock(block) ? stairShapeAt(block, bx, by, bz, getBlock) : "straight")) return true;
+          if (by > 0 && doorStateForBlock(getBlock(bx, by - 1, bz))?.open === false) return true;
           if (getBlock(bx, by - 1, bz) === BLOCK.OAK_FENCE
             && playerIntersectsOakFenceHeight(y, bodyHeight, by - 1)) return true;
           if (getBlock(bx, by - 1, bz) === BLOCK.OAK_FENCE_GATE_CLOSED
@@ -2745,9 +2871,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const sampleY = Math.floor(y - 0.08);
     for (const xOffset of [-0.26, 0.26]) {
       for (const zOffset of [-0.26, 0.26]) {
-        const block = getBlock(Math.floor(x + xOffset), sampleY, Math.floor(z + zOffset));
+        const blockX = Math.floor(x + xOffset); const blockZ = Math.floor(z + zOffset);
+        const block = getBlock(blockX, sampleY, blockZ);
         if (blockHasCollision(block)
-          && blockSupportsPlayerFeet(block, sampleY, y, x + xOffset - Math.floor(x + xOffset), z + zOffset - Math.floor(z + zOffset))) return true;
+          && blockSupportsPlayerFeet(block, sampleY, y, x + xOffset - blockX, z + zOffset - blockZ,
+            stairFacingForBlock(block) ? stairShapeAt(block, blockX, sampleY, blockZ, getBlock) : "straight")) return true;
       }
     }
     return false;
@@ -2797,7 +2925,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         const blockY = Math.floor(y);
         const block = getBlock(Math.floor(x), blockY, Math.floor(z));
         return blockHasCollision(block)
-          && blockContainsSolidPoint(block, blockY, y, x, z, Math.floor(x), Math.floor(z));
+          && blockContainsSolidPoint(block, blockY, y, x, z, Math.floor(x), Math.floor(z),
+            stairFacingForBlock(block) ? stairShapeAt(block, Math.floor(x), blockY, Math.floor(z), getBlock) : "straight");
       },
     );
     return out;
@@ -3034,7 +3163,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
           const blockY = Math.floor(y);
           const block = getBlock(Math.floor(x), blockY, Math.floor(z));
           return blockHasCollision(block)
-            && blockContainsSolidPoint(block, blockY, y, x, z, Math.floor(x), Math.floor(z));
+            && blockContainsSolidPoint(block, blockY, y, x, z, Math.floor(x), Math.floor(z),
+              stairFacingForBlock(block) ? stairShapeAt(block, Math.floor(x), blockY, Math.floor(z), getBlock) : "straight");
         },
         projectileDamageSources,
         localLight: cachedMobLocalLight,
@@ -4135,6 +4265,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function playerIntersectsBlock(x: number, y: number, z: number, block: BlockId): boolean {
     return playerIntersectsBlockCollisionShape(
       pose.x, pose.y, pose.z, cameraPosture.bodyHeight, x, y, z, block,
+      stairFacingForBlock(block) ? stairShapeAt(block, x, y, z, getBlock) : "straight",
     );
   }
 
@@ -4156,14 +4287,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     }
     const saplingPlacement = selectedBlock === BLOCK.SAPLING;
     const placementBlock = selectedBlock === BLOCK.TORCH ? torchPlacementBlock(target)
-      : isStairBlock(selectedBlock) ? stairPlacementBlock(selectedBlock, pose.yaw)
-        : doorPlacementBlock(selectedBlock);
+      : isStairBlock(selectedBlock) ? stairPlacementBlock(selectedBlock, pose.yaw, pose.pitch, target)
+        : doorPlacementBlock(selectedBlock, pose.yaw);
     const supportedSapling = !saplingPlacement || canPlaceSapling(target, getBlock(x, y - 1, z));
     if (
       placementBlock === null
       || getBlock(x, y, z) !== BLOCK.AIR
       || !supportedSapling
-      || (!saplingPlacement && playerIntersectsBlock(x, y, z, selectedBlock))
+      || (!saplingPlacement && playerIntersectsBlock(x, y, z, placementBlock))
     ) return false;
     if (!emitEdit({ x, y, z, block: placementBlock })) return false;
     emitHandAction("place");
@@ -4291,11 +4422,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         selectedBlock,
       );
       if (target && !bypassBlockInteraction) {
-        const doorEdit = createDoorToggleEdit(target);
-        if (doorEdit) {
+        const doorEdits = createDoorToggleEdits(target, getBlock);
+        if (doorEdits.length) {
           if (options.canEditBlock?.() === false) return;
           emitHandAction("use");
-          emitEdit(doorEdit);
+          commitEditBatch(doorEdits[0], target.block.block, doorEdits.slice(1));
           return;
         }
         if (tryInteractBlock(target, options.onInteractBlock)) {

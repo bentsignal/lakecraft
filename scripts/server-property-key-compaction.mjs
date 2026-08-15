@@ -140,8 +140,8 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "a7b98e47ba2faad2deb5dee2f5d5c7f4bcc3c395000353ac53eee56f125a0619";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "e1e73ff64d76a4196a41003232af0833e12084ee75535c1e5cf85f37f875e26e";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "1ce954409c84e345730cf713420d6bb634cf9116a5c969b54c4ee76c4f9cfaa8";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "48871ecf62807ed1137552c21891a7966367cec0187167033939bc8fdb038dc0";
 export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "334daa94c298fc75d95d0cf66495fc3e1631e83eedba79747d0b4facf45aca84";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
@@ -150,10 +150,10 @@ export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3
 // Derivation is deterministic, but the exact reviewed live set is hash-pinned
 // so source drift fails closed instead of silently broadening the transform.
 export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
-export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 286;
+export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 289;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "ba5d63c2b998ba764e5ba2515842424357a4bcc51478a2fbd67c4d1d632e4bfa";
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "0a5d68690d87c06fce54f0278ff593f6a3419faacf56de566b31523cbd168181";
 // Keep the post-shared-gameplay checkpoint reconstructable. The only reviewed
 // source drift here removes owner-specific pickup filtering while leaving the
 // serialized Railway/Lakebed property spellings unchanged.
@@ -210,6 +210,15 @@ export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
     }),
     previousEntryFingerprint: "3e05d98c2ef86a097b91c8a5ff456142bee42c20b746dd2c893f16acd741c532",
     source: "universal timestamp-only dropped-item pickup eligibility",
+  }),
+  previousBlock: Object.freeze({
+    counts: Object.freeze({ "client/index.tsx": Object.freeze([8, 11]) }),
+    kinds: Object.freeze({
+      "client/index.tsx:PropertySignature": Object.freeze([1, 2]),
+      "client/index.tsx:PropertyAssignment": Object.freeze([null, 1]),
+    }),
+    previousEntryFingerprint: "e04e3f12c1c9e7a6689665b7b2747172cdfb11d66b21f0f8d229b0c3bce6293c",
+    source: "paired-door follow-up edits retain each neighbor's authoritative rollback block",
   }),
   userId: Object.freeze({
     counts: Object.freeze({

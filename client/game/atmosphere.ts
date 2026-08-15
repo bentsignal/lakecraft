@@ -27,7 +27,7 @@ vec3 z=K*vec3(.78,.9,1.08),c=mix(min(vec3(1.),G*vec3(1.12,1.09,1.05)),z,smoothst
 float g=smoothstep(.975,.998,dot(r,D))*S;c+=vec3(1.,.57,.2)*g*.26;float s=b(r,D,.043)*step(.01,S);c=mix(c,vec3(1.,.94,.54),s);
 float m=b(r,N,.039)*step(.01,M);c=mix(c,vec3(.84,.88,.74),m);c=mix(c,z,m*b(r,normalize(N+vec3(.025,.014,0.)),.027)*.88);
 float a=step(.9965,j(floor(r*250.)))*step(.025,r.y)*R*(1.-s);c=mix(c,vec3(.88,.91,1.),a*.86);
-float i=abs(r.y);if(i>.035){float d=(96.-E.y)/r.y;if(d>0.){vec2 w=E.xz+r.xz*d+vec2(T*.38,0.);vec2 q=floor(w/4.),k=floor(q/4.);float o=step(.43,h(k))*step(.39,h(q+k*7.));o*=smoothstep(.035,.12,i)*(1.-smoothstep(.62,.86,i));float l=(.48+S*.48+M*.08)*mix(1.,.72,step(0.,r.y));c=mix(c,vec3(l,l,l*.96),o*.76);}}
+float i=abs(r.y);if(i>.035){float d=(96.-E.y)/r.y;if(d>0.){vec2 w=E.xz+r.xz*d+vec2(T*.38,0.);vec2 q=floor(w/4.),k=floor(q/4.);float o=step(.43,h(k))*step(.39,h(q+k*7.));o*=smoothstep(.035,.12,i);float l=(.48+S*.48+M*.08)*mix(1.,.72,step(0.,r.y));c=mix(c,vec3(l,l,l*.96),o*.76);}}
 gl_FragColor=vec4(c,1.);}`;
 
 /** Sun and moon follow one fixed east-west arc shared by every client. */

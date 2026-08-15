@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import {
   DOOR_MESH_VERTEX_COUNT,
   appendDoorMesh,
+  blockFaceIsOccluded,
   blockHasCollision,
   blockOccludesFaces,
   createDoorToggleEdit,
+  createDoorToggleEdits,
+  doorHingeAt,
   doorPlacementBlock,
   isDoorBlock,
   toggledDoorBlock,
@@ -17,7 +20,10 @@ assert.equal(isDoorBlock(BLOCK.DOOR_CLOSED), true);
 assert.equal(isDoorBlock(BLOCK.DOOR_OPEN), true);
 assert.equal(isDoorBlock(BLOCK.WOOD), false);
 assert.equal(blockHasCollision(BLOCK.DOOR_CLOSED), true);
-assert.equal(blockOccludesFaces(BLOCK.DOOR_CLOSED), true);
+assert.equal(blockOccludesFaces(BLOCK.DOOR_CLOSED), false,
+  "a thin closed door never removes the floor or wall face behind it");
+assert.equal(blockFaceIsOccluded(BLOCK.STONE, BLOCK.SPRUCE_DOOR_CLOSED_NORTH), false,
+  "expanded closed doors retain the supporting block's visible face");
 assert.equal(blockHasCollision(BLOCK.DOOR_OPEN), false);
 assert.equal(blockOccludesFaces(BLOCK.DOOR_OPEN), false);
 assert.equal(toggledDoorBlock(BLOCK.DOOR_CLOSED), BLOCK.DOOR_OPEN);
@@ -26,6 +32,8 @@ assert.equal(toggledDoorBlock(BLOCK.WOOD), null);
 assert.equal(doorPlacementBlock(BLOCK.DOOR_OPEN), BLOCK.DOOR_CLOSED);
 assert.equal(doorPlacementBlock(BLOCK.DOOR_CLOSED), BLOCK.DOOR_CLOSED);
 assert.equal(doorPlacementBlock(BLOCK.STONE), BLOCK.STONE);
+assert.equal(doorPlacementBlock(BLOCK.SPRUCE_DOOR_OPEN_WEST, 0), BLOCK.SPRUCE_DOOR_CLOSED_NORTH);
+assert.equal(doorPlacementBlock(BLOCK.BIRCH_DOOR_CLOSED_NORTH, Math.PI / 2), BLOCK.BIRCH_DOOR_CLOSED_EAST);
 
 const target: BlockTarget = {
   block: { x: 3, y: 4, z: 5, block: BLOCK.DOOR_CLOSED },
@@ -34,6 +42,19 @@ const target: BlockTarget = {
 };
 assert.deepEqual(createDoorToggleEdit(target), { x: 3, y: 4, z: 5, block: BLOCK.DOOR_OPEN });
 assert.equal(createDoorToggleEdit({ ...target, block: { ...target.block, block: BLOCK.STONE } }), null);
+
+const doubleTarget: BlockTarget = {
+  block: { x: 4, y: 8, z: 9, block: BLOCK.SPRUCE_DOOR_CLOSED_NORTH },
+  place: { x: 4, y: 8, z: 10 }, distance: 2,
+};
+const doubleLookup = (x: number, y: number, z: number) =>
+  (x === 4 || x === 5) && y === 8 && z === 9 ? BLOCK.SPRUCE_DOOR_CLOSED_NORTH : BLOCK.AIR;
+assert.equal(doorHingeAt(doubleTarget.block.block, 4, 8, 9, doubleLookup), "left");
+assert.equal(doorHingeAt(BLOCK.SPRUCE_DOOR_CLOSED_NORTH, 5, 8, 9, doubleLookup), "right");
+assert.deepEqual(createDoorToggleEdits(doubleTarget, doubleLookup), [
+  { x: 4, y: 8, z: 9, block: BLOCK.SPRUCE_DOOR_OPEN_NORTH },
+  { x: 5, y: 8, z: 9, block: BLOCK.SPRUCE_DOOR_OPEN_NORTH },
+], "either half of a matching pair opens both leaves down the middle");
 
 function bounds(mesh: number[]) {
   const xs: number[] = [];

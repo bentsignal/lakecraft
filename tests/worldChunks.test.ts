@@ -25,14 +25,14 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
   }
 }
 
-assert.equal(WORLD_CHUNK_CODEC_VERSION, 5);
-assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 6);
-assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 63, "six-bit snapshots reserve zero and expose 63 block codes");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 56, "mounted torches and the first creative shape family remain inside the six-bit codec");
+assert.equal(WORLD_CHUNK_CODEC_VERSION, 6);
+assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 8);
+assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 255, "byte snapshots reserve zero and expose 255 block codes");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 253, "the append-only creative catalog fills but never exceeds the byte codec");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
-  WORLD_CHUNK_BLOCK_TYPES.slice(-23),
-  ["wall_torch_east", "wall_torch_north", "wall_torch_south", "wall_torch_west", "oak_slab", "cobblestone_slab", "brick_slab", "oak_stairs_east", "oak_stairs_north", "oak_stairs_south", "oak_stairs_west", "cobblestone_stairs_east", "cobblestone_stairs_north", "cobblestone_stairs_south", "cobblestone_stairs_west", "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west", "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west"],
+  WORLD_CHUNK_BLOCK_TYPES.slice(-6),
+  ["oak_door_closed_east", "oak_door_closed_south", "oak_door_closed_west", "oak_door_open_east", "oak_door_open_south", "oak_door_open_west"],
   "new persisted block codes append without renumbering deployed materials",
 );
 
@@ -154,7 +154,7 @@ const fullSnapshot = createWorldChunkSnapshot("0:0", fullChunk);
 assert.equal(fullSnapshot.ok, true);
 if (fullSnapshot.ok) {
   assert.ok(fullSnapshot.snapshotJson.length < MAX_WORLD_CHUNK_SNAPSHOT_BYTES, `dense snapshot was ${fullSnapshot.snapshotJson.length} bytes`);
-  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 5, "new snapshots use six-bit sparse vertical sections");
+  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 6, "new snapshots use byte-wide sparse vertical sections");
   const decoded = decodeWorldChunkSnapshot("0:0", fullSnapshot.snapshotJson);
   assert.equal(decoded.ok && decoded.edits.length, fullChunk.length);
 }
@@ -187,9 +187,9 @@ if (currentSectionProbe.ok) {
     v: number;
     sections: Array<{ y: number; cells: string }>;
   };
-  assert.equal(parsed.v, 5);
+  assert.equal(parsed.v, 6);
   assert.equal(parsed.sections.length, 1);
-  assert.equal(Buffer.from(parsed.sections[0].cells, "base64").length, 384, "v4 sections allocate six bits for each of 512 cells");
+  assert.equal(Buffer.from(parsed.sections[0].cells, "base64").length, 512, "v6 sections allocate one byte for each of 512 cells");
 }
 
 const unregisteredCapacityCode = new Uint8Array((8 * 8 * 8 * WORLD_CHUNK_CODEC_BITS_PER_CELL) / 8);
@@ -201,12 +201,12 @@ const unregisteredCapacitySnapshot = JSON.stringify({
 assert.deepEqual(
   decodeWorldChunkSnapshot("0:0", unregisteredCapacitySnapshot),
   { ok: false, reason: "invalid_snapshot" },
-  "the six-bit format has code capacity through 63 but rejects codes until their append-only palette entry exists",
+  "the byte format rejects codes until their append-only palette entry exists",
 );
 assert.deepEqual(
   decodeWorldChunkSnapshot("0:0", JSON.stringify({
-    v: 6,
-    sections: [{ y: 0, cells: Buffer.from(new Uint8Array(384)).toString("base64") }],
+    v: 7,
+    sections: [{ y: 0, cells: Buffer.from(new Uint8Array(512)).toString("base64") }],
   })),
   { ok: false, reason: "invalid_snapshot" },
   "future version numbers stay behind an explicit compatibility fence",

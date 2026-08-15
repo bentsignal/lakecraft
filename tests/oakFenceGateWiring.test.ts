@@ -130,11 +130,12 @@ assert.match(catalog, /\[BLOCK\.OAK_FENCE_GATE_CLOSED\]:\s*"oak_fence_gate"/);
 assert.match(catalog, /\[BLOCK\.OAK_FENCE_GATE_OPEN\]:\s*"oak_fence_gate"/);
 assert.match(catalog, /oak_fence_gate:\s*BLOCK\.OAK_FENCE_GATE_CLOSED/);
 assert.match(catalog, /BLOCK\.OAK_FENCE_GATE_CLOSED[^\n]*BLOCK\.OAK_FENCE_GATE_OPEN[^\n]*return "wood"/);
-assert.match(client, /onBlockEdit:\s*\(edit, previousBlock\)[\s\S]{0,140}handleBlockEdit\(edit, previousBlock\)/,
-  "multiplayer preserves the prior state when forwarding a numeric Railway edit");
+assert.match(client,
+  /onBlockEdit:\s*\(edit, previousBlock, journalEdits\)[\s\S]{0,160}handleBlockEdit\(edit, previousBlock, journalEdits\)/,
+  "multiplayer preserves the prior state and paired-door journal when forwarding a numeric Railway edit");
 assert.match(client, /await sink\(pending\.operationId, pending\.optimisticEdit\)/,
   "Railway receives the canonical engine edit without a second Lakebed codec");
-assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICK_STAIRS_WEST/,
+assert.match(localSave, /candidate\.block, BLOCK\.AIR, BLOCK\.OAK_DOOR_OPEN_WEST/,
   "single-player saves retain both append-only gate states");
 assert.match(local,
   /previousBlock === BLOCK\.OAK_FENCE_GATE_CLOSED && edit\.block === BLOCK\.OAK_FENCE_GATE_OPEN[\s\S]{0,160}previousBlock === BLOCK\.OAK_FENCE_GATE_OPEN && edit\.block === BLOCK\.OAK_FENCE_GATE_CLOSED/,

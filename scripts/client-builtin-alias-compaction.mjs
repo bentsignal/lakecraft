@@ -11,19 +11,20 @@ import { pathToFileURL } from "node:url";
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "abs", 96]),
-  Object.freeze(["Math", "cos", 57]),
+  // Directional doors and derived stair corners share retained transform math.
+  Object.freeze(["Math", "cos", 61]),
   Object.freeze(["Math", "ceil", 34]),
-  Object.freeze(["Math", "floor", 259]),
+  Object.freeze(["Math", "floor", 261]),
   Object.freeze(["Math", "hypot", 35]),
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 250]),
-  Object.freeze(["Math", "min", 202]),
+  Object.freeze(["Math", "max", 252]),
+  Object.freeze(["Math", "min", 204]),
   Object.freeze(["Math", "round", 29]),
-  Object.freeze(["Math", "sin", 69]),
-  Object.freeze(["Math", "PI", 111]),
+  Object.freeze(["Math", "sin", 73]),
+  Object.freeze(["Math", "PI", 116]),
   // The shared, immutable default/superflat terrain descriptor joins the client bundle.
-  Object.freeze(["Object", "freeze", 161]),
+  Object.freeze(["Object", "freeze", 164]),
   Object.freeze(["Object", "keys", 31]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
   Object.freeze(["Array", "isArray", 88]),
@@ -40,14 +41,53 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 1_987;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "20b982f4d84639fc5b64c3ea1e236bf743bfcc4acf75acab420f0e81c1fa2612";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_009;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "b944d62f46ddcc12fb3300ab39e4da0c633c15985ee9100c1126a81a92666cf1";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
   ]))),
   fingerprint: COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT,
   occurrences: COMPACT_CLIENT_BUILTIN_OCCURRENCES,
+});
+
+// Dot-property access repeats the literal key at every callsite, including for
+// public DOM/WebGL and persisted/wire records that must never be mangled. A
+// computed access through one immutable string preserves the exact observable
+// key (and method receiver) while paying for that key once. This fixed manifest
+// is taken from the sealed first-stage production bundle; it is intentionally
+// not inferred during a release build.
+const PROPERTY_ALIAS_SPEC = "action:25,active:20,activeAppearanceRequest:10,activeTexture:6,addEventListener:35,appearanceDigestGeneration:4,appearanceRequestGeneration:4,appearanceRequests:5,appearanceRequestSet:5,appearanceRequestTimer:9,appearanceSupported:5,ARRAY_BUFFER:75,authoritativeCells:5,authoritativeDeadUntil:6,authoritativeRevision:6,behavior:29,behaviorSeed:9,behaviorUntilSeconds:14,bindBuffer:42,bindTexture:16,block:173,bottom:22,bufferData:23,bufferSubData:10,burnRemainingMs:15,byteLength:15,BYTES_PER_ELEMENT:15,canonicalWssUrl:8,capacity:11,center:31,chainPrimed:7,charCodeAt:23,chests:17,chunkRevisions:8,CLAMP_TO_EDGE:10,clear:39,clearInterval:8,clearTimeout:24,COBBLESTONE_STAIRS_UPSIDE_EAST:3,command:15,cookProgressMs:15,coordKey:43,count:183,createBuffer:20,createdAt:28,current:830,currentTarget:18,cursor:45,cycleLengthMs:18,damageSequence:9,dayNight:8,deathUntil:9,delete:65,deleteBuffer:33,deleteProgram:13,deleteTexture:8,direction:24,directionX:19,directionZ:19,distance:20,documentElement:6,drawArrays:19,dropId:20,drops:26,durability:69,DYNAMIC_DRAW:14,elapsedSeconds:38,emitRemotePlayers:5,enableVertexAttribArray:22,endpoint:29,endsWith:20,envelope:12,epochMs:14,epochPhase:14,equipment:40,eventId:16,every:49,exitPointerLock:11,filter:46,flatMap:15,fromEntries:7,furnaces:17,fuseStartedAtSeconds:21,fuseUntilSeconds:17,gameMode:25,getAttribLocation:20,getItem:21,getUniformLocation:62,health:53,height:29,hostileActive:9,hunger:30,includes:41,indexOf:24,initialGameMode:14,inventory:102,inventoryJson:8,inventorySlot:11,isAuthenticated:5,itemId:176,lastMaterializedAtMs:10,lastPlayedAt:14,length:438,localeCompare:15,localStorage:11,maxDurability:11,maxHealth:10,maxStack:25,message:13,mobAccumulatorSeconds:6,mouseSensitivity:7,mutationStarted:9,nextContactDamageAtSeconds:4,offset:71,ONE_MINUS_SRC_ALPHA:5,onWorldChunksUnload:4,operationId:38,options:64,output:23,pendingBlocks:9,pendingChat:7,pendingDrops:8,pendingInventory:8,pendingProjectileDamage:9,pendingRespawn:12,pendingSelfDamage:9,pitch:44,pixelStorei:9,player:34,playerHealth:8,pointerLockElement:25,position:17,preventDefault:45,previousBlock:10,previousX:18,previousY:15,previousYaw:9,previousZ:18,projectiles:17,prototype:16,randomUUID:9,readyState:9,reason:50,recipeId:12,reject:21,remainder:16,remoteAppearances:9,remoteSkins:8,removeEventListener:37,renderDistance:7,repeat:24,requestJson:7,requestPointerLock:12,resolve:16,respawnPoint:9,resumeToken:7,revision:27,rotationDegrees:21,selectedHotbar:13,sentPoses:10,sequence:45,setTimeout:21,sheared:13,slice:108,snapshot:17,soundMuted:18,sourceSlot:9,startsWith:25,state:66,STATIC_DRAW:9,status:19,stopImmediatePropagation:6,subarray:14,sunDamageAt:9,superflatGroundY:10,target:25,terrain:18,texImage2D:10,texParameteri:20,TEXTURE_2D:47,TEXTURE_MAG_FILTER:5,TEXTURE_MIN_FILTER:5,toFixed:23,toLowerCase:7,toUpperCase:10,TRIANGLES:17,uniform1f:36,uniform3f:21,uniform3fv:8,uniformMatrix4fv:9,UNPACK_FLIP_Y_WEBGL:8,UNSIGNED_BYTE:11,useProgram:16,userId:35,username:15,value:36,values:34,velocityX:23,velocityY:23,velocityZ:23,vertexAttribPointer:22,visibilityState:15,world:69,worldChunksSupported:4,worldCoordinate:16,worldId:15,worlds:23,worldTimeMs:6";
+// Closed-door sky exposure and paired-door Railway follow-ups add six reviewed
+// uses without broadening the fixed exact-key allowlist.
+const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
+  block: 175, endsWith: 21, flatMap: 16, includes: 42, previousBlock: 11,
+});
+export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
+  const separator = entry.lastIndexOf(":");
+  const name = entry.slice(0, separator);
+  return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
+}));
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 5_910;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "508cbc7946afd6573e6b2db4c329ea38fcbb219f713e63fa3e9703709bc7d6e4";
+const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
+const PROPERTY_BOUNDARY = Object.freeze({
+  counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
+  fingerprint: COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT,
+  occurrences: COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES,
+});
+const GLOBAL_ALIAS_SPEC = "Float32Array:78,Map:71,Set:56,Uint8Array:19,document:92,performance:74,window:121";
+export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
+  const separator = entry.lastIndexOf(":");
+  return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
+}));
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 511;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "df9ea78c86ecab8d17794ee0701149a95b4af8bd8701c962712be8237dafa8ad";
+const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
+const GLOBAL_BOUNDARY = Object.freeze({
+  counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),
+  fingerprint: COMPACT_CLIENT_GLOBAL_FINGERPRINT,
+  occurrences: COMPACT_CLIENT_GLOBAL_OCCURRENCES,
 });
 
 const RECEIVERS = new Set(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver]) => receiver));
@@ -167,7 +207,6 @@ export async function compactClientBuiltinAliases(source, expected = PRODUCTION_
     fail(`live set changed; expected ${expected.occurrences}/${expected.fingerprint}, received `
       + `${occurrences.length}/${fingerprint}`);
   }
-
   let output = source;
   for (const occurrence of [...occurrences].sort((left, right) => right.start - left.start)) {
     output = output.slice(0, occurrence.start)
@@ -179,4 +218,129 @@ export async function compactClientBuiltinAliases(source, expected = PRODUCTION_
   const values = COMPACT_CLIENT_BUILTIN_ALIASES
     .map(([receiver, method]) => `${receiver}.${method}`).join(",");
   return `const [${declarations}]=[${values}];${output}`;
+}
+
+/** Preserve exact public/persisted key strings while deduplicating dot syntax. */
+export async function compactClientPropertyKeyAliases(
+  source,
+  expected = PROPERTY_BOUNDARY,
+  expectedGlobals = GLOBAL_BOUNDARY,
+) {
+  if (typeof source !== "string") throw new TypeError("Compact client property-key transform requires JavaScript source.");
+  if (source.includes("__lakecraftPropertyKey") || source.includes("__lakecraftGlobal")) {
+    fail("property-key runtime identifier collides with source text");
+  }
+  const ts = await typescript();
+  const sourceFile = ts.createSourceFile(
+    "lakecraft-client-pooled-stage.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS,
+  );
+  const occurrences = [];
+  const counts = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name]) => [name, 0]));
+  const globalOccurrences = [];
+  const globalCounts = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name]) => [name, 0]));
+  const bindings = new Set();
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) {
+      collectBindingNames(ts, node.name, bindings);
+    } else if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
+      bindings.add(node.name.text);
+    } else if (ts.isImportClause(node)) {
+      if (node.name) bindings.add(node.name.text);
+      if (node.namedBindings) {
+        if (ts.isNamespaceImport(node.namedBindings)) bindings.add(node.namedBindings.name.text);
+        else for (const element of node.namedBindings.elements) bindings.add(element.name.text);
+      }
+    } else if (ts.isCatchClause(node) && node.variableDeclaration) {
+      collectBindingNames(ts, node.variableDeclaration.name, bindings);
+    }
+    if ((ts.isPropertyAccessExpression(node) || ts.isPropertyAccessChain(node))
+      && PROPERTY_ALIAS_INDEX.has(node.name.text)) {
+      const key = node.name.text;
+      counts.set(key, counts.get(key) + 1);
+      occurrences.push({
+        end: node.end,
+        index: PROPERTY_ALIAS_INDEX.get(key),
+        key,
+        optional: Boolean(node.questionDotToken),
+        start: node.expression.end,
+      });
+    }
+    if (ts.isIdentifier(node) && GLOBAL_ALIAS_INDEX.has(node.text)) {
+      const parent = node.parent;
+      const isPropertyName = (ts.isPropertyAccessExpression(parent) || ts.isPropertyAccessChain(parent))
+          && parent.name === node
+        || (ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent)
+          || ts.isPropertyDeclaration(parent) || ts.isGetAccessorDeclaration(parent)
+          || ts.isSetAccessorDeclaration(parent)) && parent.name === node
+        || ts.isBindingElement(parent) && parent.name === node
+        || ts.isVariableDeclaration(parent) && parent.name === node
+        || ts.isParameter(parent) && parent.name === node
+        || ts.isFunctionDeclaration(parent) && parent.name === node
+        || ts.isClassDeclaration(parent) && parent.name === node;
+      if (!isPropertyName) {
+        const key = node.text;
+        globalCounts.set(key, globalCounts.get(key) + 1);
+        globalOccurrences.push({
+          end: node.end,
+          index: GLOBAL_ALIAS_INDEX.get(key),
+          key,
+          shorthand: ts.isShorthandPropertyAssignment(parent),
+          start: node.getStart(sourceFile),
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  for (const name of GLOBAL_ALIAS_INDEX.keys()) if (bindings.has(name)) fail(`${name} is shadowed by a bundle binding`);
+  const drifts = COMPACT_CLIENT_PROPERTY_KEY_ALIASES.flatMap(([name]) => {
+    const actual = counts.get(name);
+    const expectedCount = expected.counts?.[name];
+    return actual === expectedCount ? [] : [`${name} expected ${expectedCount}, received ${actual}`];
+  });
+  if (drifts.length) fail(drifts.join("; "));
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify(occurrences.map(({ key }) => key)))
+    .digest("hex");
+  if (occurrences.length !== expected.occurrences || fingerprint !== expected.fingerprint) {
+    fail(`property-key live set changed; expected ${expected.occurrences}/${expected.fingerprint}, received `
+      + `${occurrences.length}/${fingerprint}`);
+  }
+  const globalDrifts = COMPACT_CLIENT_GLOBAL_ALIASES.flatMap(([name]) => {
+    const actual = globalCounts.get(name);
+    const expectedCount = expectedGlobals.counts?.[name];
+    return actual === expectedCount ? [] : [`${name} expected ${expectedCount}, received ${actual}`];
+  });
+  if (globalDrifts.length) fail(globalDrifts.join("; "));
+  const globalFingerprint = createHash("sha256")
+    .update(JSON.stringify(globalOccurrences.map(({ key }) => key)))
+    .digest("hex");
+  if (globalOccurrences.length !== expectedGlobals.occurrences
+    || globalFingerprint !== expectedGlobals.fingerprint) {
+    fail(`global live set changed; expected ${expectedGlobals.occurrences}/${expectedGlobals.fingerprint}, received `
+      + `${globalOccurrences.length}/${globalFingerprint}`);
+  }
+  let output = source;
+  const replacements = [
+    ...occurrences.map((occurrence) => ({
+      ...occurrence,
+      text: `${occurrence.optional ? "?." : ""}[__lakecraftPropertyKey${occurrence.index}]`,
+    })),
+    ...globalOccurrences.map((occurrence) => ({
+      ...occurrence,
+      text: `${occurrence.shorthand ? `${occurrence.key}:` : ""}__lakecraftGlobal${occurrence.index}`,
+    })),
+  ];
+  for (const occurrence of replacements.sort((left, right) => right.start - left.start)) {
+    output = output.slice(0, occurrence.start)
+      + occurrence.text
+      + output.slice(occurrence.end);
+  }
+  const declarations = COMPACT_CLIENT_PROPERTY_KEY_ALIASES
+    .map((_entry, index) => `__lakecraftPropertyKey${index}`).join(",");
+  const values = COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name]) => JSON.stringify(name)).join(",");
+  const globalDeclarations = COMPACT_CLIENT_GLOBAL_ALIASES
+    .map((_entry, index) => `__lakecraftGlobal${index}`).join(",");
+  const globalValues = COMPACT_CLIENT_GLOBAL_ALIASES.map(([name]) => name).join(",");
+  return `const [${declarations}]=[${values}],[${globalDeclarations}]=[${globalValues}];${output}`;
 }

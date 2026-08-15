@@ -1,16 +1,17 @@
 
 import * as BS from "./bundleStrings.ts";
+import { EXPANDED_BLOCK_STATE_TYPES, type ExpandedWorldBlockState } from "./expandedBuildingCatalog.ts";
 export const WORLD_EDIT_CHUNK_SIZE = 8;
 export const WORLD_EDIT_MIN_XZ = -1_000_000;
 export const WORLD_EDIT_MAX_XZ = 1_000_000;
 export const WORLD_EDIT_MIN_Y = 1;
 export const WORLD_EDIT_MAX_Y = 192;
 export const WORLD_CHUNK_SECTION_HEIGHT = 8;
-export const WORLD_CHUNK_CODEC_VERSION = 5;
+export const WORLD_CHUNK_CODEC_VERSION = 6;
 export const MAX_VISIBLE_WORLD_CHUNKS = 49;
-export const MAX_WORLD_CHUNK_SNAPSHOT_BYTES = 16_384;
+export const MAX_WORLD_CHUNK_SNAPSHOT_BYTES = 24_576;
 /** Current snapshots reserve code zero for an untouched cell. */
-export const WORLD_CHUNK_CODEC_BITS_PER_CELL = 6;
+export const WORLD_CHUNK_CODEC_BITS_PER_CELL = 8;
 export const WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES = (1 << WORLD_CHUNK_CODEC_BITS_PER_CELL) - 1;
 
 export const WORLD_CHUNK_BLOCK_TYPES = [
@@ -71,9 +72,10 @@ export const WORLD_CHUNK_BLOCK_TYPES = [
   "brick_stairs_north",
   "brick_stairs_south",
   "brick_stairs_west",
+  ...EXPANDED_BLOCK_STATE_TYPES,
 ] as const;
 
-export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number];
+export type WorldChunkBlockType = (typeof WORLD_CHUNK_BLOCK_TYPES)[number] | ExpandedWorldBlockState;
 
 if (WORLD_CHUNK_BLOCK_TYPES.length > WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES) {
   throw new Error("World chunk block palette exceeds the current codec capacity.");

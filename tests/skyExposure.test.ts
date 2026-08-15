@@ -111,7 +111,18 @@ assert.equal(skyEcologyExposureLevel(replacedColumns, 3, 4, 3), 0,
 
 assert.equal(skyOccluderClass(BLOCK.AIR), 0);
 assert.equal(skyOccluderClass(BLOCK.LEAVES), 1);
+assert.equal(skyOccluderClass(BLOCK.SPRUCE_LEAVES), 1,
+  "every expanded wood leaf family uses the same partial skylight class");
+assert.equal(skyOccluderClass(BLOCK.SPRUCE_DOOR_CLOSED_NORTH), 0,
+  "a closed expanded door remains a thin non-occluding mesh");
+assert.equal(skyOccluderClass(BLOCK.DOOR_CLOSED), 0,
+  "the legacy closed oak door remains a thin non-occluding mesh");
 assert.equal(skyOccluderClass(BLOCK.STONE), 2);
+
+const expandedLeaves = new Map<string, SkyOccluderColumn>();
+writeChunkSkyOccluders(expandedLeaves, 0, 0, [["2,8,2", BLOCK.SPRUCE_LEAVES]]);
+assert.deepEqual(expandedLeaves.get("2,2"), { opaqueY: TERRAIN_MIN_Y - 1, leafY: 8 },
+  "streamed expanded leaves populate the leaf cache rather than the opaque cache");
 
 for (const faceShade of [0.52, 0.68, 0.73, 0.79, 0.88, 1]) {
   for (let exposure = 0; exposure <= SKY_EXPOSURE_LEVELS; exposure += 1) {
