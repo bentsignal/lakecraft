@@ -176,7 +176,9 @@ export function createMobTexture(gl: WebGLRenderingContext): WebGLTexture {
   pendingMobTextureLoads.set(texture, pending);
   image.addEventListener("load", pending.onLoad, { once: true });
   image.addEventListener("error", pending.onError, { once: true });
-  image.src = `data:image/png;base64,${MOB_TEXTURE_ATLAS_PNG}`;
+  image.src = MOB_TEXTURE_ATLAS_PNG.startsWith("https://")
+    ? MOB_TEXTURE_ATLAS_PNG
+    : `data:image/png;base64,${MOB_TEXTURE_ATLAS_PNG}`;
   return texture;
 }
 

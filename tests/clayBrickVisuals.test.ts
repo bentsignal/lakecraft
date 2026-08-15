@@ -87,7 +87,7 @@ assert.match(catalog, /\[BLOCK\.BRICKS\]:\s*"bricks"/);
 assert.match(catalog, /clay:\s*BLOCK\.CLAY/);
 assert.match(catalog, /bricks:\s*BLOCK\.BRICKS/);
 const rendererSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-assert.match(rendererSource, /block === BLOCK\.GLASS \? transparentVertices : textureVertices/,
+assert.match(rendererSource, /isGlassBlock\(block\) \? transparentVertices : textureVertices/,
   "all other atlas cubes, including clay and bricks, reuse the existing opaque VBO");
 
 console.log("lakecraft clay and brick client visuals tests: ok");

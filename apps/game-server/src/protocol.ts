@@ -1,11 +1,13 @@
 /** Lakecraft realtime wire protocol. Keep this module runtime-agnostic/browser-safe. */
 
 import type { WorldTerrainDescriptor } from "../../../shared/worldPreset.ts";
+import { BLOCK_TYPES } from "../../../shared/protocol.ts";
 import { REALTIME_BLOCK_ID_MAX, REALTIME_WORLD_MAX_CHUNKS, REALTIME_WORLD_MAX_RADIUS } from "../../../shared/realtimeWorldChunks.ts";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const BLOCK_ID_MIN = 0;
-export const BLOCK_ID_MAX = REALTIME_BLOCK_ID_MAX;
+export const BLOCK_ID_MAX = BLOCK_TYPES.length - 1;
+if (BLOCK_ID_MAX > REALTIME_BLOCK_ID_MAX) throw new Error("Block palette exceeds the realtime chunk codec.");
 export const CHAT_MESSAGE_MAX_LENGTH = 180;
 export const SKIN_PIXEL_BYTES = 64 * 64 * 4;
 export const SKIN_PIXEL_BASE64_LENGTH = 21_848;

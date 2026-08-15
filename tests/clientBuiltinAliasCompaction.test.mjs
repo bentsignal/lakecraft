@@ -11,9 +11,9 @@ import {
 } from "../scripts/client-builtin-alias-compaction.mjs";
 
 assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 24, "the alias boundary remains deliberately narrow");
-assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 2_009);
+assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 2_005);
 assert.equal(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT,
-  "b944d62f46ddcc12fb3300ab39e4da0c633c15985ee9100c1126a81a92666cf1");
+  "a7b7b1be6a81aca33cefb7b65e0fd5ca5f63a6055b48003bbbea29bab2b8ce77");
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
   "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",
   "Math.round", "Math.sin", "Math.PI", "Object.freeze", "Object.keys", "Array.isArray", "Number.isFinite",
@@ -24,7 +24,7 @@ assert.deepEqual(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES
   .filter(([receiver, method]) => ["Math.max", "Object.freeze", "Array.isArray", "Number.isSafeInteger"]
     .includes(`${receiver}.${method}`))
   .map(([receiver, method, count]) => [`${receiver}.${method}`, count])), {
-  "Math.max": 252,
+  "Math.max": 251,
   "Object.freeze": 164,
   "Array.isArray": 88,
   "Number.isSafeInteger": 50,

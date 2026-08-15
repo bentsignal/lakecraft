@@ -150,6 +150,9 @@ import {
 import {
   BLOCK,
   blockStateName,
+  isGlassBlock,
+  isLightEmittingBlock,
+  isLuminousBlock,
   isSlabBlock,
   isStairBlock,
   isTorchBlock,
@@ -788,7 +791,7 @@ export function blockOccludesFaces(block: BlockId): boolean {
 
 /** Glass keeps neighboring opaque faces, but adjacent glass cells share no internal seam. */
 export function blockFaceIsOccluded(block: BlockId, neighbor: BlockId): boolean {
-  return (block === BLOCK.GLASS && neighbor === BLOCK.GLASS) || blockOccludesFaces(neighbor);
+  return (isGlassBlock(block) && neighbor === block) || blockOccludesFaces(neighbor);
 }
 
 /** Stable far-to-near key order for the bounded per-chunk transparent pass. */
@@ -1254,9 +1257,9 @@ function appendTexturedFacePatch(
   face: (typeof FACE_DEFS)[number],
   horizontalMin: number, horizontalMax: number, verticalMin: number, verticalMax: number,
   sourceHorizontalMin: number, sourceHorizontalMax: number, sourceVerticalMin: number, sourceVerticalMax: number,
-  shade: number, exposureLevel: number,
+  shade: number, exposureLevel: number, textureName: Parameters<typeof textureAtlasUv>[0],
 ): void {
-  const uv = textureAtlasUv("glass");
+  const uv = textureAtlasUv(textureName);
   for (const point of face[5]) {
     const sourceH = face[1] !== 0 ? point[2] : point[0];
     const sourceV = face[2] !== 0 ? point[2] : point[1];
@@ -1275,24 +1278,25 @@ function appendTexturedFacePatch(
 export function appendConnectedGlassFace(
   output: number[], x: number, y: number, z: number,
   face: (typeof FACE_DEFS)[number], getBlock: (x: number, y: number, z: number) => BlockId,
-  shade: number, exposureLevel: number,
+  shade: number, exposureLevel: number, block: BlockId = BLOCK.GLASS,
 ): void {
+  const textureName = blockTextureForFace(block, face[0]) ?? "glass";
   const horizontalAxis = face[1] !== 0 ? 2 : 0;
   const verticalAxis = face[2] !== 0 ? 2 : 1;
   const neighbor = (axis: number, delta: number): boolean => {
     const coordinate = [x, y, z]; coordinate[axis] += delta;
-    return getBlock(coordinate[0], coordinate[1], coordinate[2]) === BLOCK.GLASS;
+    return getBlock(coordinate[0], coordinate[1], coordinate[2]) === block;
   };
   const left = neighbor(horizontalAxis, -1); const right = neighbor(horizontalAxis, 1);
   const bottom = neighbor(verticalAxis, -1); const top = neighbor(verticalAxis, 1);
   const edge = 1 / 16;
   appendTexturedFacePatch(output, x, y, z, face,
     left ? 0 : edge, right ? 1 : 1 - edge, bottom ? 0 : edge, top ? 1 : 1 - edge,
-    edge, 1 - edge, edge, 1 - edge, shade, exposureLevel);
-  if (!left) appendTexturedFacePatch(output, x, y, z, face, 0, edge, 0, 1, 0, edge, 0, 1, shade, exposureLevel);
-  if (!right) appendTexturedFacePatch(output, x, y, z, face, 1 - edge, 1, 0, 1, 1 - edge, 1, 0, 1, shade, exposureLevel);
-  if (!bottom) appendTexturedFacePatch(output, x, y, z, face, edge, 1 - edge, 0, edge, edge, 1 - edge, 0, edge, shade, exposureLevel);
-  if (!top) appendTexturedFacePatch(output, x, y, z, face, edge, 1 - edge, 1 - edge, 1, edge, 1 - edge, 1 - edge, 1, shade, exposureLevel);
+    edge, 1 - edge, edge, 1 - edge, shade, exposureLevel, textureName);
+  if (!left) appendTexturedFacePatch(output, x, y, z, face, 0, edge, 0, 1, 0, edge, 0, 1, shade, exposureLevel, textureName);
+  if (!right) appendTexturedFacePatch(output, x, y, z, face, 1 - edge, 1, 0, 1, 1 - edge, 1, 0, 1, shade, exposureLevel, textureName);
+  if (!bottom) appendTexturedFacePatch(output, x, y, z, face, edge, 1 - edge, 0, edge, edge, 1 - edge, 0, edge, shade, exposureLevel, textureName);
+  if (!top) appendTexturedFacePatch(output, x, y, z, face, edge, 1 - edge, 1 - edge, 1, edge, 1 - edge, 1 - edge, 1, shade, exposureLevel, textureName);
 }
 
 function appendTexturedAxisAlignedBox(
@@ -1928,7 +1932,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const mount = torchMountForBlock(block);
     const light = {
       x: x + (mount === "east" ? 0.36 : mount === "west" ? 0.64 : 0.5),
-      y: y + (mount === "floor" ? 0.62 : 0.84),
+      y: y + (isLuminousBlock(block) ? 0.5 : mount === "floor" ? 0.62 : 0.84),
       z: z + (mount === "south" ? 0.36 : mount === "north" ? 0.64 : 0.5),
     };
     torchLights.set(key, light);
@@ -2014,7 +2018,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const [key, block] of materialized) {
       blocks.set(key, block);
       owned.add(key);
-      if (isTorchBlock(block)) {
+      if (isLightEmittingBlock(block)) {
         const [x, y, z] = key.split(",").map(Number);
         addTorchLight(key, x, y, z, block);
       }
@@ -2447,7 +2451,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     for (const [key, block] of materialized) {
       blocks.set(key, block);
       owned.add(key);
-      if (isTorchBlock(block)) {
+      if (isLightEmittingBlock(block)) {
         const [x, y, z] = key.split(",").map(Number);
         addTorchLight(key, x, y, z, block);
       }
@@ -2546,14 +2550,14 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     if (previous === BLOCK.TNT && block !== BLOCK.TNT && primedTnt.delete(key)) {
       mobRenderer.setLocalPrimedTnt(x, y, z, false);
     }
-    if (isTorchBlock(previous)) removeTorchLight(key);
+    if (isLightEmittingBlock(previous)) removeTorchLight(key);
     if (block === BLOCK.AIR) {
       blocks.delete(key);
       const owned = chunkBlocks.get(owner);
       owned?.delete(key);
     } else {
       blocks.set(key, block);
-      if (isTorchBlock(block)) addTorchLight(key, x, y, z, block);
+      if (isLightEmittingBlock(block)) addTorchLight(key, x, y, z, block);
       if (previous === BLOCK.AIR) {
         let owned = chunkBlocks.get(owner);
         if (!owned) {
@@ -2740,13 +2744,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
         if (blockFaceIsOccluded(block, neighbor)) continue;
         const textureName = blockTextureForFace(block, face[0]);
         if (textureName) {
-          const destination = block === BLOCK.GLASS ? transparentVertices : textureVertices;
+          const destination = isGlassBlock(block) ? transparentVertices : textureVertices;
           const exposure = skyExposureLevel(skyOccluderColumns, x + face[1], y + face[2], z + face[3]);
-          if (block === BLOCK.GLASS) appendConnectedGlassFace(
-            destination, x, y, z, face, getBlock, face[4] * variation, exposure,
+          if (isGlassBlock(block)) appendConnectedGlassFace(
+            destination, x, y, z, face, getBlock, face[4] * variation, exposure, block,
           );
           else appendTexturedBlockFace(destination, x, y, z, face, textureName,
-            face[4] * variation, exposure, textureName === "furnace_front");
+            face[4] * variation, exposure, isLuminousBlock(block) || textureName === "furnace_front");
           continue;
         }
         const color = tint(base, face[4], variation);

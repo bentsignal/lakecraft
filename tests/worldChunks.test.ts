@@ -25,16 +25,26 @@ function setPackedCode(packed: Uint8Array, index: number, code: number, bitsPerC
   }
 }
 
-assert.equal(WORLD_CHUNK_CODEC_VERSION, 6);
-assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 8);
-assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 255, "byte snapshots reserve zero and expose 255 block codes");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 253, "the append-only creative catalog fills but never exceeds the byte codec");
+assert.equal(WORLD_CHUNK_CODEC_VERSION, 7);
+assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 10);
+assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 1023, "ten-bit snapshots reserve zero and expose 1,023 block codes");
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 311, "the append-only catalog includes the expanded decorative pass");
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.deepEqual(
-  WORLD_CHUNK_BLOCK_TYPES.slice(-6),
+  WORLD_CHUNK_BLOCK_TYPES.slice(247, 253),
   ["oak_door_closed_east", "oak_door_closed_south", "oak_door_closed_west", "oak_door_open_east", "oak_door_open_south", "oak_door_open_west"],
   "new persisted block codes append without renumbering deployed materials",
 );
+
+const legacyCells = new Uint8Array(512);
+setPackedCode(legacyCells, 2 * 64 + 1 + 2 * 8, 253, 8);
+const legacySnapshot = JSON.stringify({ v: 6, sections: [{ y: 0, cells: Buffer.from(legacyCells).toString("base64") }] });
+assert.deepEqual(decodeWorldChunkSnapshot("0:0", legacySnapshot), { ok: true, edits: [{
+  coordKey: "1:2:2", x: "1", y: "2", z: "2", blockType: "oak_door_open_west",
+}] }, "deployed byte snapshots decode without renumbering");
+const migratedLegacy = applyWorldChunkEdit("0:0", legacySnapshot, { x: 2, y: 2, z: 2, blockType: "glowstone" });
+assert.equal(migratedLegacy.ok, true);
+if (migratedLegacy.ok) assert.equal(JSON.parse(migratedLegacy.snapshotJson).v, 7, "a touched legacy chunk rewrites once into v7");
 
 assert.equal(worldEditChunkCoordinate(0), 0);
 assert.equal(worldEditChunkCoordinate(7), 0);
@@ -154,7 +164,7 @@ const fullSnapshot = createWorldChunkSnapshot("0:0", fullChunk);
 assert.equal(fullSnapshot.ok, true);
 if (fullSnapshot.ok) {
   assert.ok(fullSnapshot.snapshotJson.length < MAX_WORLD_CHUNK_SNAPSHOT_BYTES, `dense snapshot was ${fullSnapshot.snapshotJson.length} bytes`);
-  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 6, "new snapshots use byte-wide sparse vertical sections");
+  assert.equal(JSON.parse(fullSnapshot.snapshotJson).v, 7, "new snapshots use ten-bit sparse vertical sections");
   const decoded = decodeWorldChunkSnapshot("0:0", fullSnapshot.snapshotJson);
   assert.equal(decoded.ok && decoded.edits.length, fullChunk.length);
 }
@@ -187,9 +197,9 @@ if (currentSectionProbe.ok) {
     v: number;
     sections: Array<{ y: number; cells: string }>;
   };
-  assert.equal(parsed.v, 6);
+  assert.equal(parsed.v, 7);
   assert.equal(parsed.sections.length, 1);
-  assert.equal(Buffer.from(parsed.sections[0].cells, "base64").length, 512, "v6 sections allocate one byte for each of 512 cells");
+  assert.equal(Buffer.from(parsed.sections[0].cells, "base64").length, 640, "v7 sections allocate ten bits for each of 512 cells");
 }
 
 const unregisteredCapacityCode = new Uint8Array((8 * 8 * 8 * WORLD_CHUNK_CODEC_BITS_PER_CELL) / 8);
@@ -205,8 +215,8 @@ assert.deepEqual(
 );
 assert.deepEqual(
   decodeWorldChunkSnapshot("0:0", JSON.stringify({
-    v: 7,
-    sections: [{ y: 0, cells: Buffer.from(new Uint8Array(512)).toString("base64") }],
+    v: 8,
+    sections: [{ y: 0, cells: Buffer.from(new Uint8Array(640)).toString("base64") }],
   })),
   { ok: false, reason: "invalid_snapshot" },
   "future version numbers stay behind an explicit compatibility fence",
@@ -220,7 +230,7 @@ const deterministicEdits: WorldChunkEditInput[] = [
 ];
 const deterministicForward = createWorldChunkSnapshot("0:0", deterministicEdits);
 const deterministicReverse = createWorldChunkSnapshot("0:0", [...deterministicEdits].reverse());
-assert.deepEqual(deterministicForward, deterministicReverse, "v5 encoding is byte-for-byte deterministic across input order");
+assert.deepEqual(deterministicForward, deterministicReverse, "v7 encoding is byte-for-byte deterministic across input order");
 
 const empty = createWorldChunkSnapshot("0:0", []);
 assert.equal(empty.ok, true);

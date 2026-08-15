@@ -129,7 +129,7 @@ for (const family of [
 
 const canonicalArt = JSON.stringify(itemIds.map((itemId) => [itemId, getItemIconArt(itemId)]));
 assert.equal(fnv1a32(canonicalArt), VISUAL_ASSET_MANIFEST.itemIcons.fingerprint,
-  "the complete 167-icon run/color/variant fixture changed unexpectedly");
+  "the complete 225-icon run/color/variant fixture changed unexpectedly");
 const generatedPath = new URL("../client/components/itemIconArt.ts", import.meta.url);
 const generatedSource = readFileSync(generatedPath, "utf8");
 const atlasRuntimeSource = readFileSync(new URL("../client/components/atlasBlockItemIcon.ts", import.meta.url), "utf8");

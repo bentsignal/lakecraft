@@ -13,12 +13,12 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Math", "abs", 96]),
   // Directional doors and derived stair corners share retained transform math.
   Object.freeze(["Math", "cos", 61]),
-  Object.freeze(["Math", "ceil", 34]),
-  Object.freeze(["Math", "floor", 261]),
+  Object.freeze(["Math", "ceil", 33]),
+  Object.freeze(["Math", "floor", 258]),
   Object.freeze(["Math", "hypot", 35]),
-  Object.freeze(["Math", "imul", 35]),
+  Object.freeze(["Math", "imul", 36]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 252]),
+  Object.freeze(["Math", "max", 251]),
   Object.freeze(["Math", "min", 204]),
   Object.freeze(["Math", "round", 29]),
   Object.freeze(["Math", "sin", 73]),
@@ -41,8 +41,8 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_009;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "b944d62f46ddcc12fb3300ab39e4da0c633c15985ee9100c1126a81a92666cf1";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_005;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "a7b7b1be6a81aca33cefb7b65e0fd5ca5f63a6055b48003bbbea29bab2b8ce77";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -61,28 +61,29 @@ const PROPERTY_ALIAS_SPEC = "action:25,active:20,activeAppearanceRequest:10,acti
 // Closed-door sky exposure and paired-door Railway follow-ups add six reviewed
 // uses without broadening the fixed exact-key allowlist.
 const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
-  block: 175, endsWith: 21, flatMap: 16, includes: 42, previousBlock: 11,
+  block: 175, endsWith: 24, flatMap: 18, height: 33, includes: 44, length: 431,
+  previousBlock: 11, startsWith: 26, status: 20,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 5_910;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "508cbc7946afd6573e6b2db4c329ea38fcbb219f713e63fa3e9703709bc7d6e4";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 5_916;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "397e1bd2b835f01ac90d3258ccf1352fadc84399a95ed16e0cbd5d68b06c2d2e";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
   fingerprint: COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT,
   occurrences: COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES,
 });
-const GLOBAL_ALIAS_SPEC = "Float32Array:78,Map:71,Set:56,Uint8Array:19,document:92,performance:74,window:121";
+const GLOBAL_ALIAS_SPEC = "Float32Array:78,Map:71,Set:56,Uint8Array:19,document:93,performance:74,window:121";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 511;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "df9ea78c86ecab8d17794ee0701149a95b4af8bd8701c962712be8237dafa8ad";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 512;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "d866e0d0bff440439395525771f51ea62e64f681c38994c65d55c52e128ab033";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

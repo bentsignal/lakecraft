@@ -72,7 +72,7 @@ for (const [label, source] of [["multiplayer", client], ["single-player", single
   assert.match(source, /\.\/gameplay\/index\.ts/,
     `${label} consumes the shared gameplay catalog`);
 }
-assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.OAK_DOOR_OPEN_WEST/, "single-player saves retain wool and every newer append-only block ID");
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.CRYING_OBSIDIAN/, "single-player saves retain wool and every newer append-only block ID");
 assert.match(single, /action:\s*"break"[\s\S]*?audioSurfaceForBlock\(edit\.block\)/, "local edits emit bounded break/place particles and material audio");
 
 const editMutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("sleepVote: mutation(async"));

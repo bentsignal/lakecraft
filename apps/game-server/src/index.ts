@@ -4,6 +4,7 @@ import { handleAdminRequest } from "./adminPortal";
 import { loadConfig } from "./config";
 import { WorldStore } from "./database";
 import { PROTOCOL_VERSION } from "./protocol";
+import { handleVisualAssetRequest } from "./visualAssets";
 import { GameWorld, type Peer } from "./world";
 
 interface SocketData {
@@ -55,6 +56,8 @@ const server = Bun.serve<SocketData>({
   port: config.port,
   async fetch(request, bunServer) {
     const url = new URL(request.url);
+    const visualAsset = handleVisualAssetRequest(request, url);
+    if (visualAsset) return visualAsset;
     const agentResponse = await handleAgentBuilderRequest(request, url, config.agentToken, world);
     if (agentResponse) return agentResponse;
     const adminResponse = await handleAdminRequest(request, url, config.adminToken, {

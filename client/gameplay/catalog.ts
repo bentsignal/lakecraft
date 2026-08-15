@@ -83,7 +83,7 @@ export function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
     || block === BLOCK.OAK_FENCE || block === BLOCK.OAK_FENCE_GATE_CLOSED || block === BLOCK.OAK_FENCE_GATE_OPEN) return "wood";
   if (block === BLOCK.SAND) return "sand";
   if (block === BLOCK.GRAVEL || block === BLOCK.CLAY) return "gravel";
-  if (block === BLOCK.GLASS) return "glass";
+  if (block === BLOCK.GLASS || state.endsWith("_stained_glass")) return "glass";
   if (block === BLOCK.IRON_ORE || block === BLOCK.GOLD_ORE || block === BLOCK.DIAMOND_ORE || block === BLOCK.FURNACE) return "metal";
   if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE
     || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.BRICKS

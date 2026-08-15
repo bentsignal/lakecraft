@@ -5,6 +5,7 @@ import { decodePng } from "./png-rgba.mjs";
 
 const sourcePath = new URL("./generated/minecraft-visual-assets-v26.2.json", import.meta.url);
 const outputPath = new URL("../client/game/generated/mobTextureAtlas.ts", import.meta.url);
+const pngOutputPath = new URL("../client/game/generated/mob-texture-atlas-v1.png", import.meta.url);
 const imported = JSON.parse(await readFile(sourcePath, "utf8"));
 
 const WIDTH = 208;
@@ -98,4 +99,5 @@ const code = `/** Generated from the hash-pinned, user-owned Minecraft 26.2 JAR.
   + `export const MOB_TEXTURE_SOURCE_SHA256=${JSON.stringify(sourceSha256)} as const;\n`
   + `export const MOB_TEXTURE_REGIONS=${JSON.stringify(placements)} as const;\n`;
 await writeFile(outputPath, code);
+await writeFile(pngOutputPath, png);
 console.log(JSON.stringify({ output: outputPath.pathname, width: WIDTH, height: HEIGHT, bytes: png.length, atlasSha256 }));
