@@ -8,9 +8,17 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 497;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 438;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "101d5534862451469ee48f47284d4f93ff4de513688b7b9be27c344e9141cb33";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 502;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 442;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "55348a7b4946f7a8c0b501c814056905bbd099eaa455910b3485c03648cd9c2b";
+export const COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA=Object.freeze({
+  previousOccurrences:497,previousUniqueValues:438,
+  previousSourceFingerprint:"101d5534862451469ee48f47284d4f93ff4de513688b7b9be27c344e9141cb33",
+  occurrenceDelta:5,uniqueValueDelta:4,
+  addedValues:Object.freeze(["Lakecraft Creative","Lakecraft Survival","Official Lakecraft world · pinned","Enter this server's password in Direct Connect before joining.","This server still requires its private invitation token."]),
+  removedValue:"This server is not registered with Lakebed. Add it again with its private invitation token.",
+  source:"pinned first-party servers and persistent access-mode join guidance",exclusionChanges:0,
+});
 export const COMPACT_CLIENT_HUMAN_TERRAIN_PRESET_DELTA = Object.freeze({
   previousOccurrences: 493,
   previousUniqueValues: 434,

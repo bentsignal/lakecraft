@@ -170,10 +170,16 @@ type ExternalJoinTicketResult =
 
 type RealtimeSession = {
   ticket?: string;
+  password?: string;
   serverId: string;
   endpoint: string;
   demo?: { token: string; userId: string; name: string };
 };
+
+const PINNED_MULTIPLAYER_SERVERS:readonly SavedMultiplayerServer[] = Object.freeze([
+  {id:"pinned:creative",name:"Lakecraft Creative",endpoint:"wss://lake"+"craft-creative-production.up.railway.app/ws"},
+  {id:"pinned:survival",name:"Lakecraft Survival",endpoint:"wss://lake"+"craft-production.up.railway.app/ws"},
+]);
 
 
 function droppedItemOperationId(): string {
@@ -404,6 +410,7 @@ function RailwayMultiplayerSession({
     status: "online" | "offline";
     onlinePlayers: number;
     capacity: number;
+    accessMode: "token"|"public"|"password"|"whitelist"|"closed";
   }>>({});
   const [realtimeSession, setRealtimeSession] = useState<RealtimeSession | null>(null);
   const realtimeBlockSinkRef = useRef<RealtimeBlockSink | null>(null);
@@ -449,11 +456,14 @@ function RailwayMultiplayerSession({
     const endpoint = normalizeMultiplayerEndpoint(server.canonicalWssUrl);
     return endpoint ? [{ ...server, canonicalWssUrl: endpoint }] : [];
   });
-  const combinedServers = [...registeredServers.map((server): SavedMultiplayerServer => ({
-    id: server.id,
-    name: server.name,
-    endpoint: server.canonicalWssUrl,
-  }))];
+  const combinedServers:SavedMultiplayerServer[] = PINNED_MULTIPLAYER_SERVERS.map((pinned)=>{
+    const registered=registeredServers.find((server)=>server.canonicalWssUrl===pinned.endpoint);
+    return registered?{id:registered.id,name:registered.name,endpoint:registered.canonicalWssUrl}:{...pinned};
+  });
+  for(const server of registeredServers){
+    if(combinedServers.some((candidate)=>candidate.endpoint===server.canonicalWssUrl))continue;
+    combinedServers.push({id:server.id,name:server.name,endpoint:server.canonicalWssUrl});
+  }
   for (const saved of savedMultiplayerServers) {
     if (combinedServers.some((server) => server.endpoint === saved.endpoint)) continue;
     combinedServers.push(saved);
@@ -465,7 +475,7 @@ function RailwayMultiplayerSession({
     return {
       id: server.id,
       name: registered?.name ?? server.name,
-      description: registered?.description ?? "Direct Connect · community server",
+      description: registered?.description ?? (server.id.startsWith("pinned:") ? "Official Lakecraft world · pinned" : "Direct Connect · community server"),
       endpoint: server.endpoint,
       status: registered?.status === "maintenance" ? "maintenance" : probe?.status ?? "busy",
       onlinePlayers: probe?.onlinePlayers ?? 0,
@@ -504,13 +514,15 @@ function RailwayMultiplayerSession({
               ? Math.max(0, Math.floor(body.players)) : 0,
             capacity: typeof body.capacity === "number" && Number.isFinite(body.capacity)
               ? Math.max(1, Math.floor(body.capacity)) : 20,
+            accessMode: body.accessMode === "public" || body.accessMode === "password" || body.accessMode === "whitelist" || body.accessMode === "closed"
+              ? body.accessMode : "token",
           },
         }));
       }).catch(() => {
         if (controller.signal.aborted) return;
         setServerStatuses((current) => ({
           ...current,
-          [server.endpoint]: { status: "offline", onlinePlayers: 0, capacity: current[server.endpoint]?.capacity ?? 20 },
+          [server.endpoint]: { status: "offline", onlinePlayers: 0, capacity: current[server.endpoint]?.capacity ?? 20, accessMode:current[server.endpoint]?.accessMode??"token" },
         }));
       });
     }
@@ -1561,7 +1573,7 @@ function RailwayMultiplayerSession({
     const id = registered?.id ?? `direct:${endpoint}`;
     const enteredToken = directConnectToken.trim();
     const persistedTokens = loadMultiplayerInvitationTokens(window.localStorage);
-    const invitationToken = enteredToken.length >= 16
+    const invitationToken = enteredToken.length >= 8
       ? enteredToken
       : demoServerTokens[endpoint] || persistedTokens[endpoint] || "";
     const next = [
@@ -1589,9 +1601,11 @@ function RailwayMultiplayerSession({
     const registered = selected && registeredServers.find((server) => server.id === selected.id);
     const persistedTokens = loadMultiplayerInvitationTokens(window.localStorage);
     const demoToken = selected ? demoServerTokens[selected.endpoint] || persistedTokens[selected.endpoint] || "" : "";
-    if (!selected || (!registered && (!demoToken || demoToken.length < 16))) {
+    const accessMode=selected?serverStatuses[selected.endpoint]?.accessMode:"token";
+    const openDirect=accessMode==="public"||accessMode==="whitelist"||accessMode==="closed";
+    if (!selected || (!registered && !openDirect && (!demoToken || (accessMode!=="password"&&demoToken.length<16)))) {
       setJoinPhase("error");
-      setJoinError("This server is not registered with Lakebed. Add it again with its private invitation token.");
+      setJoinError(accessMode==="password"?"Enter this server's password in Direct Connect before joining.":"This server still requires its private invitation token.");
       return;
     }
     entryPointerLockHandoffRef.current = requestDocumentPointerLockHandoff();
@@ -1605,6 +1619,7 @@ function RailwayMultiplayerSession({
         session = {
           serverId: selected.id,
           endpoint: selected.endpoint,
+          ...(accessMode==="password"?{password:demoToken}:{}),
           demo: { token: demoToken, userId: auth.userId, name: profile.username },
         };
       } else {
@@ -1824,11 +1839,13 @@ function RailwayMultiplayerSession({
         <RealtimeMultiplayerTransport
           endpoint={realtimeSession.endpoint}
           ticket={realtimeSession.ticket}
+          password={realtimeSession.password}
           serverId={realtimeSession.serverId}
           demo={realtimeSession.demo}
           localUserId={realtimeSession.demo?.userId ?? auth.userId ?? ""}
           localUsername={realtimeSession.demo?.name ?? profile?.username ?? "Player"}
           getPose={() => engineRef.current?.getPose() ?? poseRef.current}
+          getRenderDistance={() => clientSettingsRef.current.renderDistance}
           getInitialInventoryJson={currentPlayerStateJson}
           getHeldItem={() => inventoryRef.current[selectedRef.current]?.itemId ?? null}
           getSkin={selectedSkin}
@@ -1857,6 +1874,26 @@ function RailwayMultiplayerSession({
             }
             engineRef.current?.applyWorldEdits(edits);
           }}
+          onWorldChunk={(chunkX, chunkZ, edits) => {
+            for (const [key, edit] of authoritativeWorldEditRef.current) {
+              if (Math.floor(edit.x / 8) === chunkX && Math.floor(edit.z / 8) === chunkZ) {
+                authoritativeWorldEditRef.current.delete(key);
+              }
+            }
+            for (const edit of edits) {
+              authoritativeWorldEditRef.current.set(blockCoordinateKey(edit.x, edit.y, edit.z), edit);
+            }
+            engineRef.current?.replaceWorldChunkEdits(chunkX, chunkZ, edits);
+          }}
+          onWorldChunksUnload={(chunks) => {
+            const removed = new Set(chunks.map((chunk) => `${chunk.x},${chunk.z}`));
+            for (const [key, edit] of authoritativeWorldEditRef.current) {
+              if (removed.has(`${Math.floor(edit.x / 8)},${Math.floor(edit.z / 8)}`)) {
+                authoritativeWorldEditRef.current.delete(key);
+              }
+            }
+            for (const chunk of chunks) engineRef.current?.replaceWorldChunkEdits(chunk.x, chunk.z, []);
+          }}
           onChatEvent={(event) => setRealtimeChatMessages((messages) => applyRealtimeChatEvent(messages, event))}
           onGameMode={(gameMode) => {
             if (realtimeGameModeRef.current === gameMode) return;
@@ -1867,6 +1904,10 @@ function RailwayMultiplayerSession({
           onTerrain={(terrain) => setRealtimeTerrain((current) => current
             && current.preset === terrain.preset
             && current.superflatGroundY === terrain.superflatGroundY ? current : terrain)}
+          onWorldSettings={(settings) => {
+            engineRef.current?.setDayNightClock({epochMs:Date.now(),epochPhase:settings.dayPhase});
+            engineRef.current?.setDaylightCycle(settings.daylightCycle);
+          }}
           onDrops={(drops) => {
             realtimeDropsRef.current = drops;
             engineRef.current?.setDroppedItems(drops);

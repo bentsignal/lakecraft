@@ -21,8 +21,8 @@ assert.ok(lobby.includes("Direct Connect") && lobby.includes("onAddDirectServer"
   "the server directory has a working saved-address path");
 assert.ok(styles.includes(".lc-dirt-background") && styles.includes("image-rendering:pixelated"), "the server directory uses a pixelated dirt backdrop");
 assert.ok(styles.includes(".lc-server-actions{display:grid;gap:8px;grid-template-columns:1fr 1fr}"), "Join and Back share the server action row");
-assert.ok(app.includes('description: registered?.description ?? "Direct Connect · community server"'),
-  "the server description stays concise and player-facing");
+assert.ok(app.includes('"Direct Connect · community server"')&&app.includes('"Official Lakecraft world · pinned"'),
+  "direct and pinned server descriptions stay concise and player-facing");
 assert.ok((app.match(/setInWorld\(true\);[\s\S]{0,100}?setPauseOpen\(false\)/g) ?? []).length >= 2, "both multiplayer join paths enter without an artificial pause dialog");
 assert.ok(lobby.includes("<OptionsDialog") && lobby.includes('"lc-title-options"')
   && menuButton.includes("id={id}"), "title Options opens the shared accessible settings screen");

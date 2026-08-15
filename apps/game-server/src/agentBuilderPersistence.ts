@@ -1,5 +1,6 @@
 import type { BlockEdit } from "./protocol";
 import type { WorldStore } from "./database";
+import { REALTIME_WORLD_CHUNK_SIZE } from "../../../shared/realtimeWorldChunks.ts";
 
 export interface AgentBatchInput {
   operationId: string;
@@ -61,8 +62,8 @@ export function applyAgentBatch(
 
     const persisted: BlockEdit[] = [];
     const insertEdit = store.db.query(`
-      INSERT INTO block_edits (x, y, z, block, revision, editor_id, edited_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO block_edits (x, y, z, chunk_x, chunk_z, block, revision, editor_id, edited_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (x, y, z) DO UPDATE SET
         block = excluded.block,
         revision = excluded.revision,
@@ -72,7 +73,11 @@ export function applyAgentBatch(
     for (const edit of input.edits) {
       store.db.query("UPDATE world_meta SET revision = revision + 1 WHERE id = 1").run();
       const revision = store.getRevision();
-      insertEdit.run(edit.x, edit.y, edit.z, edit.block, revision, input.editorId, input.editedAt);
+      insertEdit.run(
+        edit.x, edit.y, edit.z,
+        Math.floor(edit.x / REALTIME_WORLD_CHUNK_SIZE), Math.floor(edit.z / REALTIME_WORLD_CHUNK_SIZE),
+        edit.block, revision, input.editorId, input.editedAt,
+      );
       persisted.push({ ...edit, revision, editorId: input.editorId, editedAt: input.editedAt });
     }
     const result: Extract<AgentBatchResult, { ok: true }> = {

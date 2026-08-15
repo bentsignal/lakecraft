@@ -128,4 +128,14 @@ describe("server configuration", () => {
       SPAWN_YAW_DEGREES: "361",
     })).toThrow("SPAWN_YAW_DEGREES must be a finite number from -360 to 360");
   });
+
+  test("validates persisted server access bootstraps without requiring a demo token for open modes",()=>{
+    const base={AUTH_MODE:"local-demo",SERVER_ID:"direct-server"};
+    expect(loadConfig({...base,ACCESS_MODE:"whitelist",WHITELIST_USERNAMES:"Alex, Steve"})).toMatchObject({accessMode:"whitelist",initialWhitelist:["Alex","Steve"]});
+    expect(loadConfig({...base,ACCESS_MODE:"public"}).localDemoToken).toBeUndefined();
+    expect(()=>loadConfig({...base,ACCESS_MODE:"token"})).toThrow("LOCAL_DEMO_TOKEN is required");
+    expect(()=>loadConfig({...base,ACCESS_MODE:"password",SERVER_PASSWORD:"short"})).toThrow("SERVER_PASSWORD must be 8 to 128");
+    expect(loadConfig({...base,ACCESS_MODE:"password",SERVER_PASSWORD:"long enough"}).serverPassword).toBe("long enough");
+    expect(()=>loadConfig({...base,ACCESS_MODE:"unknown"})).toThrow("ACCESS_MODE must be");
+  });
 });

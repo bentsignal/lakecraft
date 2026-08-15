@@ -489,6 +489,8 @@ export interface VoxelEngine {
   /** Captures the next complete WebGL frame without releasing pointer lock. */
   captureScreenshot(): Promise<Blob>;
   applyWorldEdits(edits: readonly WorldEdit[]): boolean;
+  /** Replaces one bounded Railway override chunk without retaining the visited world forever. */
+  replaceWorldChunkEdits(chunkX: number, chunkZ: number, edits: readonly WorldEdit[]): boolean;
   applyMobCombatStates(states: readonly MobCombatStateSnapshot[], serverTimeOffsetMs?: number): void;
   /** Reconciles the retained renderer against Lakebed's shared fixed-tick mob timeline. */
   applyMobMotionSnapshot(poses: readonly MobMotionPose[], serverTimeOffsetMs?: number): void;

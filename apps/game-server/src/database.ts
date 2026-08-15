@@ -7,6 +7,7 @@ import {
   type InventoryActionMutationResult,
 } from "../../../shared/inventoryActions.ts";
 import { validatePlayerStateJson, type PersistedInventoryState } from "../../../shared/chestTransfers.ts";
+import { REALTIME_WORLD_CHUNK_SIZE } from "../../../shared/realtimeWorldChunks.ts";
 
 interface PlayerRow {
   user_id: string;
@@ -31,6 +32,34 @@ interface BlockRow {
   block: number;
   editor_id: string;
   edited_at: number;
+}
+
+export interface StoredWorldChunk {
+  x: number;
+  z: number;
+  revision: number;
+  edits: BlockEdit[];
+}
+
+export type ServerAccessMode = "token" | "public" | "password" | "whitelist" | "closed";
+export type ServerRole = "operator" | "moderator";
+export interface ServerAdministrationSettings {
+  accessMode: ServerAccessMode;
+  passwordHash: string | null;
+  spawnX: number;
+  spawnZ: number;
+  spawnYaw: number;
+  daylightCycle: boolean;
+  dayPhase: number;
+  updatedAt: number;
+}
+export interface ServerAccessEntry {
+  username: string;
+  normalizedUsername: string;
+  role?: ServerRole;
+  banned: boolean;
+  reason?: string;
+  updatedAt: number;
 }
 
 interface ChatRow {
@@ -108,6 +137,8 @@ export class WorldStore {
         x INTEGER NOT NULL,
         y INTEGER NOT NULL,
         z INTEGER NOT NULL,
+        chunk_x INTEGER NOT NULL DEFAULT 0,
+        chunk_z INTEGER NOT NULL DEFAULT 0,
         block INTEGER NOT NULL,
         revision INTEGER NOT NULL UNIQUE,
         editor_id TEXT NOT NULL,
@@ -196,6 +227,35 @@ export class WorldStore {
         created_at INTEGER NOT NULL,
         PRIMARY KEY (user_id, operation_id)
       );
+
+      CREATE TABLE IF NOT EXISTS server_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        access_mode TEXT NOT NULL CHECK (access_mode IN ('token','public','password','whitelist','closed')),
+        password_hash TEXT,
+        spawn_x REAL NOT NULL,
+        spawn_z REAL NOT NULL,
+        spawn_yaw REAL NOT NULL,
+        daylight_cycle INTEGER NOT NULL DEFAULT 1,
+        day_phase REAL NOT NULL DEFAULT 0.25,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS server_whitelist (
+        normalized_username TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS server_roles (
+        normalized_username TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('operator','moderator')),
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS server_bans (
+        normalized_username TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `);
     const playerColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(player_state)").all();
     if (!playerColumns.some((column) => column.name === "resume_expires_at")) {
@@ -207,6 +267,24 @@ export class WorldStore {
     if (!playerColumns.some((column) => column.name === "health")) {
       this.db.exec("ALTER TABLE player_state ADD COLUMN health INTEGER NOT NULL DEFAULT 20;");
     }
+    const blockColumns = this.db.query<{ name: string }, []>("PRAGMA table_info(block_edits)").all();
+    let migratedChunks = false;
+    if (!blockColumns.some((column) => column.name === "chunk_x")) {
+      this.db.exec("ALTER TABLE block_edits ADD COLUMN chunk_x INTEGER NOT NULL DEFAULT 0;");
+      migratedChunks = true;
+    }
+    if (!blockColumns.some((column) => column.name === "chunk_z")) {
+      this.db.exec("ALTER TABLE block_edits ADD COLUMN chunk_z INTEGER NOT NULL DEFAULT 0;");
+      migratedChunks = true;
+    }
+    if (migratedChunks) this.db.exec(`
+      UPDATE block_edits SET
+        chunk_x = CASE WHEN x >= 0 THEN CAST(x / ${REALTIME_WORLD_CHUNK_SIZE} AS INTEGER)
+          ELSE -CAST((-x + ${REALTIME_WORLD_CHUNK_SIZE - 1}) / ${REALTIME_WORLD_CHUNK_SIZE} AS INTEGER) END,
+        chunk_z = CASE WHEN z >= 0 THEN CAST(z / ${REALTIME_WORLD_CHUNK_SIZE} AS INTEGER)
+          ELSE -CAST((-z + ${REALTIME_WORLD_CHUNK_SIZE - 1}) / ${REALTIME_WORLD_CHUNK_SIZE} AS INTEGER) END;
+    `);
+    this.db.exec("CREATE INDEX IF NOT EXISTS block_edits_chunk_revision ON block_edits (chunk_x, chunk_z, revision);");
   }
 
   close(): void {
@@ -321,12 +399,132 @@ export class WorldStore {
     return this.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM block_edits").get()?.count ?? 0;
   }
 
+  initializeAdministration(input: Omit<ServerAdministrationSettings, "passwordHash" | "updatedAt">): void {
+    const now = Date.now();
+    this.db.query(`
+      INSERT OR IGNORE INTO server_settings
+        (id, access_mode, password_hash, spawn_x, spawn_z, spawn_yaw, daylight_cycle, day_phase, updated_at)
+      VALUES (1, ?, NULL, ?, ?, ?, ?, ?, ?)
+    `).run(input.accessMode, input.spawnX, input.spawnZ, input.spawnYaw, input.daylightCycle ? 1 : 0, input.dayPhase, now);
+  }
+
+  administrationSettings(): ServerAdministrationSettings {
+    const row = this.db.query<{
+      access_mode: ServerAccessMode; password_hash: string | null; spawn_x: number; spawn_z: number;
+      spawn_yaw: number; daylight_cycle: number; day_phase: number; updated_at: number;
+    }, []>(`SELECT access_mode,password_hash,spawn_x,spawn_z,spawn_yaw,daylight_cycle,day_phase,updated_at
+      FROM server_settings WHERE id=1`).get();
+    if (!row) throw new Error("Server administration settings are not initialized");
+    return {
+      accessMode: row.access_mode, passwordHash: row.password_hash, spawnX: row.spawn_x, spawnZ: row.spawn_z,
+      spawnYaw: row.spawn_yaw, daylightCycle: row.daylight_cycle === 1, dayPhase: row.day_phase, updatedAt: row.updated_at,
+    };
+  }
+
+  updateAdministration(patch: Partial<Pick<ServerAdministrationSettings,
+    "accessMode" | "passwordHash" | "spawnX" | "spawnZ" | "spawnYaw" | "daylightCycle" | "dayPhase">>): ServerAdministrationSettings {
+    const current = this.administrationSettings();
+    const touchesClock = patch.dayPhase !== undefined || patch.daylightCycle !== undefined;
+    const next = { ...current, ...patch, updatedAt: touchesClock ? Date.now() : current.updatedAt };
+    this.db.query(`UPDATE server_settings SET access_mode=?,password_hash=?,spawn_x=?,spawn_z=?,spawn_yaw=?,
+      daylight_cycle=?,day_phase=?,updated_at=? WHERE id=1`).run(
+      next.accessMode, next.passwordHash, next.spawnX, next.spawnZ, next.spawnYaw,
+      next.daylightCycle ? 1 : 0, next.dayPhase, next.updatedAt,
+    );
+    return next;
+  }
+
+  listAccessEntries(): ServerAccessEntry[] {
+    const whitelist = this.db.query<{ normalized_username:string;username:string;updated_at:number }, []>(
+      "SELECT normalized_username,username,updated_at FROM server_whitelist",
+    ).all();
+    const roles = new Map(this.db.query<{ normalized_username:string;username:string;role:ServerRole;updated_at:number }, []>(
+      "SELECT normalized_username,username,role,updated_at FROM server_roles",
+    ).all().map((row) => [row.normalized_username, row] as const));
+    const bans = new Map(this.db.query<{ normalized_username:string;username:string;reason:string;updated_at:number }, []>(
+      "SELECT normalized_username,username,reason,updated_at FROM server_bans",
+    ).all().map((row) => [row.normalized_username, row] as const));
+    const names = new Set([...whitelist.map((row) => row.normalized_username), ...roles.keys(), ...bans.keys()]);
+    return [...names].map((normalizedUsername) => {
+      const white = whitelist.find((row) => row.normalized_username === normalizedUsername);
+      const role = roles.get(normalizedUsername);
+      const ban = bans.get(normalizedUsername);
+      return {
+        username: white?.username ?? role?.username ?? ban!.username,
+        normalizedUsername,
+        ...(role ? { role: role.role } : {}),
+        banned: Boolean(ban),
+        ...(ban ? { reason: ban.reason } : {}),
+        updatedAt: Math.max(white?.updated_at ?? 0, role?.updated_at ?? 0, ban?.updated_at ?? 0),
+      };
+    }).sort((a, b) => a.username.localeCompare(b.username));
+  }
+
+  isWhitelisted(username: string): boolean {
+    return Boolean(this.db.query("SELECT 1 FROM server_whitelist WHERE normalized_username=?").get(normalizeServerUsername(username)));
+  }
+
+  roleFor(username: string): ServerRole | null {
+    return this.db.query<{ role: ServerRole }, [string]>("SELECT role FROM server_roles WHERE normalized_username=?")
+      .get(normalizeServerUsername(username))?.role ?? null;
+  }
+
+  banFor(username: string): { reason:string } | null {
+    return this.db.query<{ reason:string }, [string]>("SELECT reason FROM server_bans WHERE normalized_username=?")
+      .get(normalizeServerUsername(username)) ?? null;
+  }
+
+  setWhitelisted(username: string, allowed: boolean): void {
+    const normalized = normalizeServerUsername(username);
+    if (allowed) this.db.query(`INSERT INTO server_whitelist(normalized_username,username,updated_at) VALUES(?,?,?)
+      ON CONFLICT(normalized_username) DO UPDATE SET username=excluded.username,updated_at=excluded.updated_at`)
+      .run(normalized, username.trim(), Date.now());
+    else this.db.query("DELETE FROM server_whitelist WHERE normalized_username=?").run(normalized);
+  }
+
+  setRole(username: string, role: ServerRole | null): void {
+    const normalized = normalizeServerUsername(username);
+    if (role) this.db.query(`INSERT INTO server_roles(normalized_username,username,role,updated_at) VALUES(?,?,?,?)
+      ON CONFLICT(normalized_username) DO UPDATE SET username=excluded.username,role=excluded.role,updated_at=excluded.updated_at`)
+      .run(normalized, username.trim(), role, Date.now());
+    else this.db.query("DELETE FROM server_roles WHERE normalized_username=?").run(normalized);
+  }
+
+  setBanned(username: string, reason: string | null): void {
+    const normalized = normalizeServerUsername(username);
+    if (reason !== null) this.db.query(`INSERT INTO server_bans(normalized_username,username,reason,updated_at) VALUES(?,?,?,?)
+      ON CONFLICT(normalized_username) DO UPDATE SET username=excluded.username,reason=excluded.reason,updated_at=excluded.updated_at`)
+      .run(normalized, username.trim(), reason.slice(0, 160), Date.now());
+    else this.db.query("DELETE FROM server_bans WHERE normalized_username=?").run(normalized);
+  }
+
   getAllBlockEdits(): BlockEdit[] {
     const rows = this.db.query<BlockRow, []>(`
       SELECT revision, x, y, z, block, editor_id, edited_at
       FROM block_edits ORDER BY revision ASC
     `).all();
     return rows.map(toBlockEdit);
+  }
+
+  getBlockEditsSince(sinceRevision: number, limit: number): BlockEdit[] {
+    const bounded = Math.max(1, Math.min(512, Math.floor(limit)));
+    return this.db.query<BlockRow, [number, number]>(`
+      SELECT revision, x, y, z, block, editor_id, edited_at
+      FROM block_edits WHERE revision > ? ORDER BY revision ASC LIMIT ?
+    `).all(sinceRevision, bounded).map(toBlockEdit);
+  }
+
+  getWorldChunk(chunkX: number, chunkZ: number): StoredWorldChunk {
+    const rows = this.db.query<BlockRow, [number, number]>(`
+      SELECT revision, x, y, z, block, editor_id, edited_at
+      FROM block_edits WHERE chunk_x = ? AND chunk_z = ? ORDER BY revision ASC
+    `).all(chunkX, chunkZ);
+    return {
+      x: chunkX,
+      z: chunkZ,
+      revision: rows.reduce((latest, row) => Math.max(latest, row.revision), 0),
+      edits: rows.map(toBlockEdit),
+    };
   }
 
   recentChat(limit: number): RealtimeChatMessage[] {
@@ -486,14 +684,18 @@ export class WorldStore {
       this.db.query("UPDATE world_meta SET revision = revision + 1 WHERE id = 1").run();
       const revision = this.getRevision();
       this.db.query(`
-        INSERT INTO block_edits (x, y, z, block, revision, editor_id, edited_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO block_edits (x, y, z, chunk_x, chunk_z, block, revision, editor_id, edited_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (x, y, z) DO UPDATE SET
           block = excluded.block,
           revision = excluded.revision,
           editor_id = excluded.editor_id,
           edited_at = excluded.edited_at
-      `).run(input.x, input.y, input.z, input.block, revision, input.editorId, input.editedAt);
+      `).run(
+        input.x, input.y, input.z,
+        Math.floor(input.x / REALTIME_WORLD_CHUNK_SIZE), Math.floor(input.z / REALTIME_WORLD_CHUNK_SIZE),
+        input.block, revision, input.editorId, input.editedAt,
+      );
       this.db.query(`
         INSERT INTO block_operations (user_id, operation_id, revision, x, y, z, block, edited_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -583,13 +785,19 @@ export class WorldStore {
   }
 
   listPlayers(): Array<{ id: string; name: string; gameMode: ServerGameMode }> {
-    return this.db.query<{ user_id: string; display_name: string; game_mode: string }, []>(`
+    return this.db.query<{ user_id:string;display_name:string;game_mode:string }, []>(`
       SELECT user_id, display_name, game_mode FROM player_state ORDER BY updated_at DESC
     `).all().map((row) => ({
       id: row.user_id,
       name: row.display_name,
       gameMode: row.game_mode === "creative" ? "creative" : "survival",
     }));
+  }
+
+  listAdminPlayers(): Array<{ id:string;name:string;gameMode:ServerGameMode;health:number;x:number;y:number;z:number }> {
+    return this.db.query<{ user_id:string;display_name:string;game_mode:string;health:number;x:number;y:number;z:number }, []>(`
+      SELECT user_id,display_name,game_mode,health,x,y,z FROM player_state ORDER BY updated_at DESC
+    `).all().map((row)=>({id:row.user_id,name:row.display_name,gameMode:row.game_mode==="creative"?"creative":"survival",health:row.health,x:row.x,y:row.y,z:row.z}));
   }
 
   setPlayerGameMode(userId: string, gameMode: ServerGameMode): boolean {
@@ -667,6 +875,12 @@ function toPublicDrop(row: DropRow): PublicDrop {
     ownerPickupAt: row.owner_pickup_at,
     expiresAt: row.expires_at,
   };
+}
+
+export function normalizeServerUsername(value: string): string {
+  const normalized = value.trim().toLocaleLowerCase("en-US");
+  if (!/^[a-z0-9_-]{1,32}$/.test(normalized)) throw new Error("Username is invalid");
+  return normalized;
 }
 
 function toPersistedInventory(row: PlayerInventoryRow): PersistedInventoryState {

@@ -4318,6 +4318,23 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     applyWorldEdits(edits) {
       return commitWorldEditBatch(edits, true) !== null;
     },
+    replaceWorldChunkEdits(chunkX, chunkZ, edits) {
+      if (!Number.isInteger(chunkX) || !Number.isInteger(chunkZ)
+        || edits.some((edit) => chunkKeyForBlock(edit.x, edit.z) !== chunkKey(chunkX, chunkZ))) return false;
+      const owner = chunkKey(chunkX, chunkZ);
+      if (edits.length) rememberedEditsByChunk.set(owner, new Map(edits.map((edit) => [
+        blockKey(edit.x, edit.y, edit.z), { ...edit },
+      ])));
+      else rememberedEditsByChunk.delete(owner);
+      if (loadedChunkKeys.has(owner)) {
+        unloadTerrainChunk(chunkX, chunkZ);
+        loadTerrainChunk(chunkX, chunkZ);
+        markChunkAndNeighbors(pendingTerrainMeshDirtyChunks, chunkX, chunkZ);
+        for (const key of pendingTerrainMeshDirtyChunks) if (loadedChunkKeys.has(key)) pendingChunkMeshRebuilds.add(key);
+        pendingTerrainMeshDirtyChunks.clear();
+      }
+      return true;
+    },
     applyMobCombatStates(states, nextServerTimeOffsetMs) {
       if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
       applyAuthoritativeMobCombatStates(

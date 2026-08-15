@@ -5,6 +5,7 @@ import {
   type WorldPreset,
 } from "../../../shared/worldPreset.ts";
 import type { ServerGameMode } from "./protocol";
+import type { ServerAccessMode } from "./database";
 
 export interface ServerConfig {
   host: string;
@@ -31,6 +32,11 @@ export interface ServerConfig {
   spawnX: number;
   spawnZ: number;
   spawnYaw: number;
+  accessMode: ServerAccessMode;
+  serverPassword?: string;
+  initialWhitelist: string[];
+  daylightCycle: boolean;
+  dayPhase: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): ServerConfig {
@@ -54,6 +60,10 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
     SUPERFLAT_MAX_GROUND_Y,
     "SUPERFLAT_GROUND_Y",
   );
+  const accessMode = env.ACCESS_MODE ?? "token";
+  if (!["token", "public", "password", "whitelist", "closed"].includes(accessMode)) {
+    throw new Error("ACCESS_MODE must be token, public, password, whitelist, or closed");
+  }
   const config: ServerConfig = {
     host: env.HOST || "0.0.0.0",
     port: integer(env.PORT, 3001, 1, 65_535, "PORT"),
@@ -66,7 +76,7 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
     snapshotHz: integer(env.SNAPSHOT_HZ, 10, 1, 30, "SNAPSHOT_HZ"),
     idleSuspendMs: integer(env.IDLE_SUSPEND_MS, 15_000, 0, 300_000, "IDLE_SUSPEND_MS"),
     maxPlayers: integer(env.MAX_PLAYERS, 32, 1, 32, "MAX_PLAYERS"),
-    maxPersistedBlocks: integer(env.MAX_PERSISTED_BLOCKS, 1_000, 1, 1_000, "MAX_PERSISTED_BLOCKS"),
+    maxPersistedBlocks: integer(env.MAX_PERSISTED_BLOCKS, 1_000_000, 1, 2_000_000, "MAX_PERSISTED_BLOCKS"),
     allowedOrigins: (env.ALLOWED_ORIGINS || "")
       .split(",")
       .map((origin) => origin.trim())
@@ -77,6 +87,10 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
     spawnX: decimal(env.SPAWN_X, 0.5, -1_000_000, 1_000_000, "SPAWN_X"),
     spawnZ: decimal(env.SPAWN_Z, 0.5, -1_000_000, 1_000_000, "SPAWN_Z"),
     spawnYaw: decimal(env.SPAWN_YAW_DEGREES, 0, -360, 360, "SPAWN_YAW_DEGREES") * Math.PI / 180,
+    accessMode: accessMode as ServerAccessMode,
+    initialWhitelist: (env.WHITELIST_USERNAMES || "").split(",").map((name) => name.trim()).filter(Boolean),
+    daylightCycle: booleanValue(env.DAYLIGHT_CYCLE, true, "DAYLIGHT_CYCLE"),
+    dayPhase: decimal(env.DAY_PHASE, 0.25, 0, 0.999999, "DAY_PHASE"),
   };
 
   if (env.ADMIN_TOKEN) {
@@ -99,15 +113,30 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
       "LAKEBED_REGISTRATION_CREDENTIAL",
     );
     assertSecureRedeemUrl(config.ticketRedeemUrl);
-  } else {
-    config.localDemoToken = required(env.LOCAL_DEMO_TOKEN, "LOCAL_DEMO_TOKEN");
+  } else if (env.LOCAL_DEMO_TOKEN) {
+    config.localDemoToken = env.LOCAL_DEMO_TOKEN;
     if (config.localDemoToken.length < 16) throw new Error("LOCAL_DEMO_TOKEN must be at least 16 characters");
+  } else if (config.accessMode === "token") {
+    throw new Error("LOCAL_DEMO_TOKEN is required when ACCESS_MODE=token");
+  }
+  if (accessMode === "password") {
+    config.serverPassword = required(env.SERVER_PASSWORD, "SERVER_PASSWORD");
+    if (config.serverPassword.length < 8 || config.serverPassword.length > 128) {
+      throw new Error("SERVER_PASSWORD must be 8 to 128 characters");
+    }
   }
   if (config.agentToken && [config.adminToken, config.localDemoToken, config.registrationCredential]
     .some((secret) => secret === config.agentToken)) {
     throw new Error("AGENT_TOKEN must be distinct from player, registration, and admin credentials");
   }
   return config;
+}
+
+function booleanValue(value: string | undefined, fallback: boolean, name: string): boolean {
+  if (value === undefined) return fallback;
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  throw new Error(`${name} must be true or false`);
 }
 
 function required(value: string | undefined, name: string): string {

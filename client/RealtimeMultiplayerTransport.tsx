@@ -14,6 +14,7 @@ import {
   type RealtimeGameMode,
   type RealtimeWorldEdit,
   type RealtimePlayerHit,
+  type RealtimeWorldSettings,
 } from "./realtimeMultiplayer.ts";
 
 export type RealtimeBlockSink = (operationId: string, edit: WorldEdit) => Promise<RealtimeWorldEdit>;
@@ -32,11 +33,13 @@ export type RealtimeInventorySink = (requestJson: string) => Promise<InventoryAc
 export function RealtimeMultiplayerTransport(props: {
   endpoint: string;
   ticket?: string;
+  password?: string;
   serverId: string;
   demo?: { token: string; userId: string; name: string };
   localUserId: string;
   localUsername: string;
   getPose: () => PlayerPose;
+  getRenderDistance?: () => number;
   getInitialInventoryJson: () => string;
   getHeldItem?: () => string | null;
   getSkin?: () => Promise<HydratedPlayerSkin>;
@@ -44,9 +47,12 @@ export function RealtimeMultiplayerTransport(props: {
   onPhase: (phase: RealtimeConnectionPhase, detail?: string) => void;
   onRemotePlayers: (players: RemotePlayer[]) => void;
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
+  onWorldChunk?: (chunkX: number, chunkZ: number, edits: RealtimeWorldEdit[]) => void;
+  onWorldChunksUnload?: (chunks: Array<{ x: number; z: number }>) => void;
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
   onTerrain: (terrain: WorldTerrainDescriptor) => void;
+  onWorldSettings: (settings: RealtimeWorldSettings) => void;
   onReconcilePose: (pose: PlayerPose) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
@@ -69,11 +75,13 @@ export function RealtimeMultiplayerTransport(props: {
     const client = new RealtimeMultiplayerClient({
       endpoint: props.endpoint,
       ticket: props.ticket,
+      password: props.password,
       serverId: props.serverId,
       demo: props.demo,
       localUserId: props.localUserId,
       localUsername: props.localUsername,
       getPose: () => propsRef.current.getPose(),
+      getRenderDistance: () => propsRef.current.getRenderDistance?.() ?? 3,
       getInitialInventoryJson: () => propsRef.current.getInitialInventoryJson(),
       getHeldItem: () => propsRef.current.getHeldItem?.() ?? null,
       getSkin: () => propsRef.current.getSkin?.() ?? Promise.reject(new Error("skin_unavailable")),
@@ -83,9 +91,12 @@ export function RealtimeMultiplayerTransport(props: {
       onPhase: (phase, detail) => propsRef.current.onPhase(phase, detail),
       onRemotePlayers: (players) => propsRef.current.onRemotePlayers(players),
       onWorldEdits: (edits, replace) => propsRef.current.onWorldEdits(edits, replace),
+      onWorldChunk: (x, z, edits) => propsRef.current.onWorldChunk?.(x, z, edits),
+      onWorldChunksUnload: (chunks) => propsRef.current.onWorldChunksUnload?.(chunks),
       onChatEvent: (event) => propsRef.current.onChatEvent(event),
       onGameMode: (gameMode) => propsRef.current.onGameMode(gameMode),
       onTerrain: (terrain) => propsRef.current.onTerrain(terrain),
+      onWorldSettings: (settings) => propsRef.current.onWorldSettings(settings),
       onReconcilePose: (pose) => propsRef.current.onReconcilePose(pose),
       onDrops: (drops) => propsRef.current.onDrops(drops),
       onPlayerHit: (hit) => propsRef.current.onPlayerHit(hit),
@@ -114,7 +125,7 @@ export function RealtimeMultiplayerTransport(props: {
       props.registerInventorySink(null);
       client.stop();
     };
-  }, [props.endpoint, props.ticket, props.serverId, props.demo?.token, props.localUserId, props.localUsername]);
+  }, [props.endpoint, props.ticket, props.password, props.serverId, props.demo?.token, props.localUserId, props.localUsername]);
 
   return null;
 }

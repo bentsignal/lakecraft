@@ -254,10 +254,10 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
             />
             {props.onDirectConnectTokenChange ? (
               <input
-                aria-label="Invitation token"
+                aria-label="Server password or invitation token"
                 autoComplete="off"
                 onInput={(event) => props.onDirectConnectTokenChange?.(event.currentTarget.value)}
-                placeholder="Invitation token (beta servers)"
+                placeholder="Server password or invitation token"
                 spellcheck={false}
                 type="password"
                 value={props.directConnectToken ?? ""}

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { JoinAuthenticator } from "../src/auth";
 import type { ServerConfig } from "../src/config";
 import { WorldStore } from "../src/database";
-import { APPEARANCE_CAPABILITY, SKIN_PIXEL_BYTES, type ClientMessage, type ServerMessage } from "../src/protocol";
+import { APPEARANCE_CAPABILITY, SKIN_PIXEL_BYTES, WORLD_CHUNKS_CAPABILITY, type ClientMessage, type ServerMessage } from "../src/protocol";
 import { GameWorld, RESUME_TOKEN_TTL_MS, type Peer } from "../src/world";
 import { terrainHeight as clientTerrainHeight } from "../../../client/game/terrain";
 import { createTerrainChunk } from "../../../client/game/terrain";
@@ -26,6 +26,7 @@ import {
   CREATIVE_FLIGHT_SPEED as CLIENT_CREATIVE_FLIGHT_SPEED,
   CREATIVE_FLIGHT_SPRINT_SPEED as CLIENT_CREATIVE_FLIGHT_SPRINT_SPEED,
 } from "../../../client/game/playerMovement";
+import { decodeRealtimeChunkEdits } from "../../../shared/realtimeWorldChunks";
 
 class FakePeer implements Peer {
   readonly sent: ServerMessage[] = [];
@@ -170,6 +171,7 @@ describe("authoritative world", () => {
       spawnZ: -23.5,
       spawnYaw: 3 * Math.PI / 4,
     }), store, authenticator);
+    expect(await relocated.runAdminCommand("/setworldspawn -23.5 -23.5 135")).toMatchObject({ ok: true });
     const resumed = new FakePeer("spawn-resumed");
     relocated.open(resumed, 1_200);
     await relocated.message(resumed, JSON.stringify(join("ignored", "ignored", resumeToken)), 1_200);
@@ -258,10 +260,35 @@ describe("authoritative world", () => {
     const latePeer = new FakePeer("socket-late");
     world.open(latePeer, 1_300);
     await world.message(latePeer, JSON.stringify(join("steve")), 1_300);
-    expect(latePeer.ofType("world_snapshot")[0]).toMatchObject({
-      revision: 1,
-      edits: [{ x: 0, y: 69, z: 1, block: 4, editorId: "alex" }],
-    });
+    expect(latePeer.ofType("world_snapshot")).toHaveLength(0);
+    await world.message(latePeer, JSON.stringify({
+      v: 1, type: "chunk_subscribe", seq: 1, centerX: 0, centerZ: 0, radius: 1, known: [],
+    }), 1_301);
+    const streamedChunk = latePeer.ofType("world_chunks")
+      .flatMap((message) => message.chunks)
+      .find((chunk) => chunk.x === 0 && chunk.z === 0);
+    expect(streamedChunk?.revision).toBe(1);
+    expect(decodeRealtimeChunkEdits(0, 0, streamedChunk!.data)).toContainEqual({ x: 0, y: 69, z: 1, block: 4 });
+    store.close();
+  });
+
+  test("streams only subscribed chunks, skips known revisions, and scopes live patches", async()=>{
+    const store=new WorldStore(":memory:"),world=new GameWorld(config(),store,authenticator);
+    const near=new FakePeer("chunk-near"),far=new FakePeer("chunk-far");
+    world.open(near,1000);world.open(far,1000);
+    await world.message(near,JSON.stringify(join("near","Near")),1000);
+    await world.message(far,JSON.stringify(join("far","Far")),1000);
+    await world.message(near,JSON.stringify({v:1,type:"chunk_subscribe",seq:1,centerX:0,centerZ:0,radius:1,known:[]}),1010);
+    await world.message(far,JSON.stringify({v:1,type:"chunk_subscribe",seq:1,centerX:20,centerZ:20,radius:1,known:[]}),1010);
+    await world.message(near,JSON.stringify({v:1,type:"block_edit",operationId:"chunk-scope-1",seq:1,x:0,y:69,z:1,block:4}),1020);
+    expect(near.ofType("block_patch").at(-1)?.edit).toMatchObject({x:0,z:1,revision:1});
+    expect(far.ofType("block_patch")).toHaveLength(0);
+    const before=near.ofType("world_chunks").length;
+    const known=near.ofType("world_chunks").flatMap((message)=>message.chunks).map((chunk)=>({x:chunk.x,z:chunk.z,revision:chunk.x===0&&chunk.z===0?1:chunk.revision}));
+    await world.message(near,JSON.stringify({v:1,type:"chunk_subscribe",seq:2,centerX:0,centerZ:0,radius:1,known}),1030);
+    expect(near.ofType("world_chunks")).toHaveLength(before);
+    await world.message(near,JSON.stringify({v:1,type:"chunk_subscribe",seq:3,centerX:20,centerZ:20,radius:1,known:[]}),1040);
+    expect(near.ofType("world_chunks_unload").at(-1)?.chunks).toHaveLength(9);
     store.close();
   });
 
@@ -745,7 +772,7 @@ describe("authoritative world", () => {
     const steve = new FakePeer("socket-appearance-b");
     world.open(alex, 1_000);
     world.open(steve, 1_000);
-    expect(alex.ofType("hello")[0].capabilities).toEqual([APPEARANCE_CAPABILITY]);
+    expect(alex.ofType("hello")[0].capabilities).toEqual([APPEARANCE_CAPABILITY, WORLD_CHUNKS_CAPABILITY]);
     await world.message(alex, JSON.stringify(join("alex", "Alex")), 1_000);
     await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
     expect(steve.ofType("appearance_roster")[0].players).toEqual([{
@@ -877,7 +904,7 @@ describe("authoritative world", () => {
     const peer = new FakePeer("socket-admin");
     world.open(peer, 1_000);
     await world.message(peer, JSON.stringify(join("alex", "Alex")), 1_000);
-    expect(world.adminPlayers()).toEqual([{
+    expect(world.adminPlayers()).toMatchObject([{
       id: "alex", name: "Alex", gameMode: "survival", connected: true,
     }]);
     expect(world.setPlayerGameMode("alex", "creative")).toBe(true);
@@ -889,6 +916,43 @@ describe("authoritative world", () => {
     expect(world.playerCount).toBe(0);
     expect(world.adminPlayers()[0]).toMatchObject({ gameMode: "creative", connected: false });
     store.close();
+  });
+
+  test("persists whitelist, operator, ban, spawn, daylight, and server-chat administration",async()=>{
+    const store=new WorldStore(":memory:"),world=new GameWorld(config({accessMode:"whitelist",initialWhitelist:["Alex"],daylightCycle:false,dayPhase:.5}),store,authenticator);
+    const alex=new FakePeer("access-alex"),bob=new FakePeer("access-bob");world.open(alex,1000);world.open(bob,1000);
+    await world.message(alex,JSON.stringify(join("alex","Alex")),1000);
+    await world.message(bob,JSON.stringify(join("bob","Bob")),1000);
+    expect(alex.ofType("welcome")[0]?.worldSettings).toMatchObject({daylightCycle:false,dayPhase:.5});
+    expect(bob.ofType("error")[0]).toMatchObject({code:"auth_failed",fatal:true});
+    expect(await world.runAdminCommand("/whitelist add Bob")).toMatchObject({ok:true});
+    expect(await world.runAdminCommand("/op Alex")).toMatchObject({ok:true});
+    expect(await world.runAdminCommand("/setworldspawn 42.5 -19.5 90")).toMatchObject({ok:true});
+    expect(await world.runAdminCommand("/time set noon")).toMatchObject({ok:true});
+    expect(await world.runAdminCommand("/gamerule doDaylightCycle false")).toMatchObject({ok:true});
+    expect(await world.runAdminCommand("/say Maintenance in ten minutes")).toMatchObject({ok:true});
+    expect(world.adminState()).toMatchObject({
+      settings:{accessMode:"whitelist",spawnX:42.5,spawnZ:-19.5,daylightCycle:false,dayPhase:.5},
+      access:expect.arrayContaining([expect.objectContaining({username:"Alex",role:"operator"}),expect.objectContaining({username:"Bob",banned:false})]),
+      chat:[expect.objectContaining({username:"[Server]",message:"Maintenance in ten minutes"})],
+    });
+    expect(await world.runAdminCommand("/ban Alex testing")).toMatchObject({ok:true});
+    const retry=new FakePeer("access-alex-retry");world.open(retry,2000);await world.message(retry,JSON.stringify(join("alex","Alex")),2000);
+    expect(retry.ofType("error")[0]).toMatchObject({code:"auth_failed",fatal:true});
+    store.close();
+  });
+
+  test("supports password and public access without a shared invitation token",async()=>{
+    const store=new WorldStore(":memory:"),world=new GameWorld(config({accessMode:"password",serverPassword:"correct horse"}),store,authenticator);
+    const denied=new FakePeer("password-denied");world.open(denied,1000);
+    await world.message(denied,JSON.stringify({...join("denied","Denied"),password:"wrong"}),1000);
+    expect(denied.ofType("error")[0]).toMatchObject({code:"auth_failed"});
+    const allowed=new FakePeer("password-allowed");world.open(allowed,1000);
+    await world.message(allowed,JSON.stringify({...join("allowed","Allowed"),password:"correct horse"}),1000);
+    expect(allowed.ofType("welcome")).toHaveLength(1);
+    expect(await world.runAdminCommand("/access public")).toMatchObject({ok:true});
+    const publicPeer=new FakePeer("public");world.open(publicPeer,1000);await world.message(publicPeer,JSON.stringify(join("public","Public")),1000);
+    expect(publicPeer.ofType("welcome")).toHaveLength(1);store.close();
   });
 
   test("admin kick revokes automatic resume while allowing a fresh authenticated join", async () => {
