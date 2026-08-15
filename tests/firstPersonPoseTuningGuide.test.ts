@@ -84,11 +84,11 @@ assert.match(guide, /normal full cube[^\n]*dirt, stone, or planks[^\n]*`block`/i
 assert.match(guide, /special held block item[^\n]*torch, chest, bed, door/i);
 assert.equal(guide.includes("hoe"), false, "the guide lists only implemented tool kinds");
 
-assert.match(engine, /if \(paused && !firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
-  "a paused HMR remount seeds a complete visible pose frame");
+assert.match(engine, /if \(paused && document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
+  "a paused HMR remount seeds the shared world even when UI hides the held pose");
 assert.ok(engine.includes("now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS")
-  && engine.includes("render(pausedRenderTime, 0, now, false)"),
-"the visible paused pose continues redrawing at the bounded preview cadence");
+  && engine.includes("render(pausedRenderTime, 0, now)"),
+"the visible paused world and server-driven actors continue redrawing at bounded cadence");
 const feedbackPredicates = [...singlePlayer.matchAll(/setFirstPersonFeedbackHidden\(([\s\S]*?)\);/g)]
   .map((match) => match[1]);
 assert.ok(feedbackPredicates.length >= 2);

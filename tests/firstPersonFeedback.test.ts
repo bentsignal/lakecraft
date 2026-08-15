@@ -185,13 +185,13 @@ assert.equal(actionSamplerSource.includes("const idle"), false, "idle and reduce
 assert.ok(engine.includes("reducedMotionQuery?.matches === true"), "the OS motion preference reaches the WebGL pose sampler");
 assert.ok(engine.includes("!firstPersonFeedbackHidden && playerHealth > 0"),
   "blocking UI and death hide the viewmodel without making Game Menu hide the pose lab");
-assert.match(engine, /if \(paused && !firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
-  "an HMR-remounted paused engine seeds a complete fresh pose preview");
+assert.match(engine, /if \(paused && document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
+  "an HMR-remounted paused engine seeds the shared world behind any UI");
 assert.ok(engine.includes("now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS")
-  && engine.includes("render(pausedRenderTime, 0, now, false)"),
-  "paused engines keep the viewmodel composited at a bounded cadence without refreshing dynamic geometry");
-assert.match(engine, /if \(!firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"/,
-  "hidden, dead, and backgrounded paused engines perform no compositor redraw");
+  && engine.includes("render(pausedRenderTime, 0, now)"),
+  "paused engines keep the world, viewmodel, and server-driven geometry composited at bounded cadence");
+assert.match(engine, /if \(document\.visibilityState === "visible"[\s\S]{0,100}now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS/,
+  "visible paused worlds refresh at bounded cadence while background tabs remain render-inert");
 const localFeedbackCalls = [...singlePlayer.matchAll(/setFirstPersonFeedbackHidden\(([\s\S]*?)\);/g)]
   .map((match) => match[1]);
 assert.ok(localFeedbackCalls.length >= 2 && localFeedbackCalls.every((predicate) => !predicate.includes("pauseOpen")),

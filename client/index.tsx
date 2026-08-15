@@ -1354,7 +1354,9 @@ function RailwayMultiplayerSession({
       engine.setFirstPersonFeedbackHidden(multiplayerPaused);
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
       engine.start();
-      if (initialWorldChunksReadyRef.current) setWorldReady(true);
+      if (initialWorldChunksReadyRef.current) requestAnimationFrame(() => {
+        if (engineRef.current === engine) setWorldReady(true);
+      });
       if (entryPointerLockHandoffRef.current && document.pointerLockElement === document.documentElement) {
         entryPointerLockHandoffRef.current = false;
         engine.requestPointerLock();
@@ -1896,7 +1898,9 @@ function RailwayMultiplayerSession({
           }}
           onWorldChunksReady={() => {
             initialWorldChunksReadyRef.current = true;
-            if (engineRef.current) setWorldReady(true);
+            requestAnimationFrame(() => {
+              if (engineRef.current && initialWorldChunksReadyRef.current) setWorldReady(true);
+            });
           }}
           onWorldChunksUnload={(chunks) => {
             const removed = new Set(chunks.map((chunk) => `${chunk.x},${chunk.z}`));

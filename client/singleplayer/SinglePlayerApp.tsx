@@ -1731,7 +1731,9 @@ function LocalGameplaySession({
         markWorldDirty();
       }
     }
-    setWorldReady(true);
+    requestAnimationFrame(() => {
+      if (engineRef.current === engine) setWorldReady(true);
+    });
     return () => {
       pointerSessionMountedRef.current = false;
       supersedePointerLockRequest();
