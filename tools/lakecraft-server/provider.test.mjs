@@ -67,6 +67,7 @@ test("Railway config enforces the single-volume topology and a dependency-free i
 
   const dockerfile = await readFile(new URL("../../apps/game-server/Dockerfile", import.meta.url), "utf8");
   assert.match(dockerfile, /FROM oven\/bun:1\.3\.3-alpine@sha256:[a-f\d]{64}/);
-  assert.match(dockerfile, /COPY src \.\/src/);
+  assert.match(dockerfile, /COPY apps\/game-server\/src \.\/src/);
+  assert.match(dockerfile, /COPY shared \/app\/shared/);
   assert.doesNotMatch(dockerfile, /\b(?:npm|pnpm|yarn|bun)\s+install\b/);
 });

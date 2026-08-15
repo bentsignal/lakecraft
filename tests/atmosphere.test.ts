@@ -13,6 +13,8 @@ assert.match(ATMOSPHERE_FRAGMENT_SHADER, /96\.-E\.y/, "cloud height is intersect
 assert.match(ATMOSPHERE_FRAGMENT_SHADER, /X\*v\.x\*A\*Q\+Y\*v\.y\*Q/,
   "clouds and celestial bodies reconstruct rays from the live world-camera FOV");
 assert.match(ATMOSPHERE_FRAGMENT_SHADER, /i=abs\(r\.y\)/, "cloud horizon fading works above and below the world plane");
+assert.doesNotMatch(ATMOSPHERE_FRAGMENT_SHADER, /1\.-smoothstep\(\.62,\.86,i\)/,
+  "cloud cover remains continuous at the zenith instead of opening a camera-centered hole");
 assert.match(
   ATMOSPHERE_FRAGMENT_SHADER,
   /float i=abs\(r\.y\);if\(i>\.035\)\{float d=\(96\.-E\.y\)\/r\.y;if\(d>0\.\)\{/,

@@ -52,8 +52,8 @@ Singleplayer requires no account and saves only in that browser. The title scree
 
 ## Project shape
 
-- `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered 16×16 compatibility atlas imported from the owner's installed client, deterministic deep terrain with coal/iron/gold/diamond, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
-- `client/components/` — Minecraft-style survival HUD, 97 item sprites (71 exact installed sprites plus exact-texture block renders and retained Lakecraft bed/special geometry), manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
+- `client/game/` — custom streamed-chunk WebGL renderer with a nearest-filtered 98-material compatibility atlas imported from the owner's installed client, deterministic deep terrain with coal/iron/gold/diamond, connected glass, corner/upside-down stairs, exact wood-family doors, lighting, blocky player avatars, passive/hostile mobs, combat, movement, collisions, raycasting, and dropped-item rendering
+- `client/components/` — Minecraft-style survival HUD and Creative catalog with exact-texture block/item renders across oak, spruce, birch, jungle, acacia, dark oak, mangrove, cherry, bamboo, quartz, sandstone, and decorative stone families; manual 2×2/3×3 crafting, inventory/armor, pause/player-list menus, a three-slot furnace interface, and shared chests
 - `client/singleplayer/` — offline world integration plus a checksummed two-slot browser-local journal for inventory, edits, drops, containers, TNT, pose, health, time, and deterministic mob state; signing in does not currently upload these worlds
 - `server/index.ts` — Lakebed schema, auth-backed profiles, public external-server registrations, short-lived join tickets, and the existing shared progression/state authorities
 - `apps/game-server/` — self-hostable Railway realtime authority for movement, jumping, chat, block edits, world drops, melee health/PvP, reconnect credentials, roles, and the per-world `/admin` console

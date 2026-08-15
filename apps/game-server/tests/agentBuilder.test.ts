@@ -14,8 +14,11 @@ import { applyAgentBatch, type AgentBatchInput } from "../src/agentBuilderPersis
 import { loadConfig } from "../src/config";
 import { WorldStore } from "../src/database";
 import { GameWorld, type Peer } from "../src/world";
+import { BLOCK_TYPES } from "../../../shared/protocol";
 
 const TOKEN = "agent-builder-token-with-32-characters-minimum";
+
+expect(AGENT_BLOCK_NAMES).toEqual([...BLOCK_TYPES]);
 
 class TestWorld implements AgentBuilderWorld {
   readonly store = new WorldStore(":memory:");

@@ -1,6 +1,6 @@
 import { WORLD_CHUNK_SIZE, chunkBounds, chunkKeyForBlock } from "./chunks.ts";
 import { TERRAIN_MIN_Y } from "./terrain.ts";
-import { BLOCK, isSlabBlock, isStairBlock, isTorchBlock, type BlockId } from "./types.ts";
+import { BLOCK, blockStateName, isSlabBlock, isStairBlock, isTorchBlock, type BlockId } from "./types.ts";
 import { WORLD_EDIT_MAX_Y } from "../../shared/worldChunks.ts";
 
 export const SKY_EXPOSURE_LEVELS = 3;
@@ -27,12 +27,19 @@ export function skyColumnKey(x: number, z: number): string {
   return `${Math.floor(x)},${Math.floor(z)}`;
 }
 
+function isLeavesBlock(block: BlockId): boolean {
+  return block === BLOCK.LEAVES || blockStateName(block).endsWith("_leaves");
+}
+
 /** Thin, transparent, or explicitly open blocks do not stop the cheap vertical daylight test. */
 export function skyOccluderClass(block: BlockId): SkyOccluderClass {
-  if (block === BLOCK.LEAVES) return 1;
+  const state = blockStateName(block);
+  if (isLeavesBlock(block)) return 1;
   return block !== BLOCK.AIR
     && !isTorchBlock(block)
+    && block !== BLOCK.DOOR_CLOSED
     && block !== BLOCK.DOOR_OPEN
+    && !state.includes("_door_")
     && block !== BLOCK.LADDER
     && block !== BLOCK.GLASS
     && block !== BLOCK.BED
@@ -76,7 +83,7 @@ export function writeChunkSkyOccluders(
     const columnKey = skyColumnKey(x, z);
     const column = columns.get(columnKey);
     if (!column) continue;
-    if (block === BLOCK.LEAVES) column.leafY = Math.max(column.leafY, y);
+    if (isLeavesBlock(block)) column.leafY = Math.max(column.leafY, y);
     else column.opaqueY = Math.max(column.opaqueY, y);
   }
 }
@@ -103,7 +110,7 @@ export function refreshSkyOccluderColumn(
   let leafY = TERRAIN_MIN_Y - 1;
   for (let y = WORLD_EDIT_MAX_Y; y >= TERRAIN_MIN_Y; y -= 1) {
     const block = readBlock(x, y, z);
-    if (block === BLOCK.LEAVES) {
+    if (isLeavesBlock(block)) {
       leafY = Math.max(leafY, y);
       continue;
     }

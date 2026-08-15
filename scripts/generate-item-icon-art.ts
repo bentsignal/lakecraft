@@ -11,7 +11,9 @@ import {
   TEXTURE_TILE_SIZE,
   type TextureAtlasName,
 } from "../client/game/generated/textureAtlas.ts";
-import { BLOCK, type BlockId as EngineBlockId } from "../client/game/types.ts";
+import { type BlockId as EngineBlockId } from "../client/game/types.ts";
+import { ITEM_TO_ENGINE } from "../client/gameplay/catalog.ts";
+import { blockIdForCubeItem } from "../client/game/blockItemCubeGeometry.ts";
 import { encodeStaticBytes } from "./static-byte-encoding.mjs";
 import { decodePng } from "./png-rgba.mjs";
 
@@ -38,17 +40,12 @@ const importedVisualAssets = JSON.parse(await readFile(
   "utf8",
 )) as ImportedVisualAssets;
 
-const ENGINE_BLOCK_BY_ITEM: Readonly<Partial<Record<BlockId, EngineBlockId>>> = Object.freeze({
-  grass: BLOCK.GRASS, dirt: BLOCK.DIRT, stone: BLOCK.STONE, cobblestone: BLOCK.COBBLESTONE,
-  sand: BLOCK.SAND, gravel: BLOCK.GRAVEL, glass: BLOCK.GLASS, coal_ore: BLOCK.COAL_ORE,
-  iron_ore: BLOCK.IRON_ORE, gold_ore: BLOCK.GOLD_ORE, diamond_ore: BLOCK.DIAMOND_ORE,
-  log: BLOCK.WOOD, leaves: BLOCK.LEAVES, planks: BLOCK.PLANKS,
-  crafting_table: BLOCK.CRAFTING_TABLE, furnace: BLOCK.FURNACE, tnt: BLOCK.TNT,
-  wool: BLOCK.WOOL, stone_bricks: BLOCK.STONE_BRICKS, clay: BLOCK.CLAY, bricks: BLOCK.BRICKS,
-});
-const RUNTIME_ATLAS_BLOCK_IDS = new Set<ItemId>(Object.keys(ENGINE_BLOCK_BY_ITEM) as ItemId[]);
+const ENGINE_BLOCK_BY_ITEM: Readonly<Partial<Record<BlockId, EngineBlockId>>> = ITEM_TO_ENGINE;
+const RUNTIME_ATLAS_BLOCK_IDS = new Set<ItemId>();
 for (const itemId of Object.keys(ITEMS) as ItemId[]) {
-  if (itemId.endsWith("_slab") || itemId.endsWith("_stairs")) RUNTIME_ATLAS_BLOCK_IDS.add(itemId);
+  if (blockIdForCubeItem(itemId) !== null || itemId.endsWith("_slab") || itemId.endsWith("_stairs")) {
+    RUNTIME_ATLAS_BLOCK_IDS.add(itemId);
+  }
 }
 
 /** Original deterministic 16x16 art shared by every inventory-like surface. */

@@ -1,6 +1,7 @@
 import type { ItemId } from "../../shared/game.ts";
 import { blockIdForCubeItem } from "../game/blockItemCubeGeometry.ts";
 import { blockTextureForFace } from "../game/blockTextures.ts";
+import { ITEM_TO_ENGINE } from "../gameplay/catalog.ts";
 import {
   TEXTURE_ATLAS_CELLS,
   TEXTURE_ATLAS_COLUMNS,
@@ -80,12 +81,7 @@ function rgbaRuns(rgba: Uint8ClampedArray, size: number): readonly AtlasBlockIco
 
 function blockItemRgba(itemId: ItemId, size: number): Uint8ClampedArray | undefined {
   const shaped = itemId.endsWith("_slab") || itemId.endsWith("_stairs");
-  const sourceItem = shaped
-    ? itemId.startsWith("oak_") ? "planks"
-      : itemId.startsWith("cobblestone_") ? "cobblestone"
-        : itemId.startsWith("brick_") ? "bricks" : "stone_bricks"
-    : itemId;
-  const block = blockIdForCubeItem(sourceItem as ItemId);
+  const block = shaped ? ITEM_TO_ENGINE[itemId] ?? null : blockIdForCubeItem(itemId);
   if (block === null) return undefined;
   const top = blockTextureForFace(block, "top");
   const left = blockTextureForFace(block, "north");

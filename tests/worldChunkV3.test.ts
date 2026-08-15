@@ -24,9 +24,9 @@ assert.equal(WORLD_EDIT_MAX_XZ, 1_000_000);
 assert.equal(WORLD_EDIT_MIN_Y, 1);
 assert.equal(WORLD_EDIT_MAX_Y, 192);
 assert.equal(WORLD_CHUNK_SECTION_HEIGHT, 8);
-assert.equal(WORLD_CHUNK_CODEC_VERSION, 5);
-assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 6);
-assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 63);
+assert.equal(WORLD_CHUNK_CODEC_VERSION, 6);
+assert.equal(WORLD_CHUNK_CODEC_BITS_PER_CELL, 8);
+assert.equal(WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES, 255);
 
 assert.deepEqual(validateWorldChunkKey("-125000:125000"), {
   ok: true,
@@ -50,9 +50,9 @@ const sparseFar = createWorldChunkSnapshot(farChunkKey, [
 assert.equal(sparseFar.ok, true);
 if (!sparseFar.ok) throw new Error(sparseFar.reason);
 const sparseJson = JSON.parse(sparseFar.snapshotJson) as { v: number; sections: Array<{ y: number; cells: string }> };
-assert.equal(sparseJson.v, 5);
+assert.equal(sparseJson.v, 6);
 assert.deepEqual(sparseJson.sections.map((section) => section.y), [0, 24]);
-assert.ok(sparseFar.snapshotJson.length < 1_200, `two sparse v5 sections were ${sparseFar.snapshotJson.length} bytes`);
+assert.ok(sparseFar.snapshotJson.length < 1_600, `two sparse v6 sections were ${sparseFar.snapshotJson.length} bytes`);
 const sparseDecoded = decodeWorldChunkSnapshot(farChunkKey, sparseFar.snapshotJson);
 assert.equal(sparseDecoded.ok, true);
 if (sparseDecoded.ok) {
@@ -74,7 +74,7 @@ const appended = applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
 });
 assert.equal(appended.ok, true);
 if (appended.ok) {
-  assert.equal(JSON.parse(appended.snapshotJson).v, 5);
+  assert.equal(JSON.parse(appended.snapshotJson).v, 6);
   assert.equal(decodeWorldChunkSnapshot(farChunkKey, appended.snapshotJson).ok, true);
 }
 assert.equal(applyWorldChunkEdit(farChunkKey, sparseFar.snapshotJson, {
@@ -114,8 +114,8 @@ const denseDecodeStartedAt = performance.now();
 const denseDecoded = decodeWorldChunkSnapshot("0:0", denseSnapshot.snapshotJson);
 const denseDecodeMs = performance.now() - denseDecodeStartedAt;
 assert.equal(denseDecoded.ok && denseDecoded.edits.length, dense.length);
-assert.ok(denseEncodeMs < 100, `dense v5 encode took ${denseEncodeMs.toFixed(2)}ms`);
-assert.ok(denseDecodeMs < 100, `dense v5 decode took ${denseDecodeMs.toFixed(2)}ms`);
+assert.ok(denseEncodeMs < 100, `dense v6 encode took ${denseEncodeMs.toFixed(2)}ms`);
+assert.ok(denseDecodeMs < 100, `dense v6 decode took ${denseDecodeMs.toFixed(2)}ms`);
 
 assert.equal(decodeWorldChunkSnapshot("0:0", JSON.stringify({
   v: 5,

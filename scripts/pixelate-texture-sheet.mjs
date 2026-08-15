@@ -630,6 +630,13 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (/^(oak_door_|(?:spruce|birch|jungle|acacia|dark_oak|mangrove|cherry)_(?:log|log_end|planks|leaves|door_)|bamboo_|quartz_|chiseled_quartz|granite|polished_granite|diorite|polished_diorite|andesite|polished_andesite|sandstone|cut_sandstone|chiseled_sandstone|smooth_stone|calcite|deepslate)/.test(name)) {
+    // These cells are fail-closed placeholders. The hash-pinned installed
+    // source immediately replaces every pixel in applyImportedMinecraftBlockTextures.
+    fill([0, 0, 0, 0]);
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 

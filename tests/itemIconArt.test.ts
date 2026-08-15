@@ -9,15 +9,11 @@ import { decodeStaticBytes } from "../client/staticData.ts";
 import { ITEMS, type ItemId } from "../shared/game.ts";
 import { VISUAL_ASSET_MANIFEST } from "../shared/visualAssetManifest.ts";
 import { decodeStaticEncoding, encodeStaticBytes } from "../scripts/static-byte-encoding.mjs";
+import { blockIdForCubeItem } from "../client/game/blockItemCubeGeometry.ts";
 
 const itemIds = Object.keys(ITEMS) as ItemId[];
-const atlasBlockItemIds = new Set<ItemId>([
-  "grass", "dirt", "stone", "cobblestone", "sand", "gravel", "glass", "coal_ore", "iron_ore",
-  "gold_ore", "diamond_ore", "log", "leaves", "planks", "crafting_table", "furnace", "tnt",
-  "wool", "stone_bricks", "clay", "bricks",
-  "stone_brick_slab", "oak_slab", "cobblestone_slab", "brick_slab",
-  "oak_stairs", "cobblestone_stairs", "stone_brick_stairs", "brick_stairs",
-]);
+const atlasBlockItemIds = new Set<ItemId>(itemIds.filter((itemId) => blockIdForCubeItem(itemId) !== null
+  || itemId.endsWith("_slab") || itemId.endsWith("_stairs")));
 const serializedItemIds = itemIds.filter((itemId) => !atlasBlockItemIds.has(itemId));
 assert.ok(itemIds.length >= 70, "coverage includes the complete progression catalog");
 const fnv1a32 = (value: string): string => {
@@ -133,7 +129,7 @@ for (const family of [
 
 const canonicalArt = JSON.stringify(itemIds.map((itemId) => [itemId, getItemIconArt(itemId)]));
 assert.equal(fnv1a32(canonicalArt), VISUAL_ASSET_MANIFEST.itemIcons.fingerprint,
-  "the complete 104-icon run/color/variant fixture changed unexpectedly");
+  "the complete 167-icon run/color/variant fixture changed unexpectedly");
 const generatedPath = new URL("../client/components/itemIconArt.ts", import.meta.url);
 const generatedSource = readFileSync(generatedPath, "utf8");
 const atlasRuntimeSource = readFileSync(new URL("../client/components/atlasBlockItemIcon.ts", import.meta.url), "utf8");

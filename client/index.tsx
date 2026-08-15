@@ -5,6 +5,8 @@ import { GameHud, type HudMessage } from "./components";
 import { isCraftingTableWithinReach as isWorkstationWithinReach, type CraftingTablePosition as WorkstationPosition } from "./crafting";
 import {
   BLOCK,
+  isDoorBlock,
+  toggledDoorBlock,
   type BlockId as EngineBlockId,
   type PlayerPose,
   type RemotePlayer,
@@ -216,6 +218,7 @@ type PendingWorldBlockEdit = {
   previousBlock: EngineBlockId;
   expectedHeldItem: ItemId | null;
   sourceSlot: number;
+  followups: readonly Readonly<{ edit: EngineWorldEdit; previousBlock: EngineBlockId }>[];
 };
 
 let worldBlockOperationSequence = 0;
@@ -1003,6 +1006,7 @@ function RailwayMultiplayerSession({
     const authoritative = authoritativeWorldEditRef.current.get(coordKey);
     engineRef.current?.applyWorldEdits([
       authoritative ?? { ...pending.optimisticEdit, block: pending.previousBlock },
+      ...pending.followups.map(({ edit, previousBlock }) => ({ ...edit, block: previousBlock })),
     ]);
     const latestInventory = latestSavedInventoryRef.current;
     if (latestInventory
@@ -1095,6 +1099,8 @@ function RailwayMultiplayerSession({
         audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(confirmed.block) });
       }
       releasePendingWorldBlockEdit(pending);
+      const [next, ...remaining] = pending.followups;
+      if (next) beginPendingWorldBlockEdit(next.edit, next.previousBlock, remaining);
     } catch {
       if (placementPaid && placementItem) {
         await enqueueInventoryAction(
@@ -1114,11 +1120,11 @@ function RailwayMultiplayerSession({
 
   }
 
-  function handleBlockEdit(edit: EngineWorldEdit, previousBlock: EngineBlockId) {
-    if (pendingWorldBlockEditRef.current) {
-      engineRef.current?.applyWorldEdits([{ ...edit, block: previousBlock }]);
-      return;
-    }
+  function beginPendingWorldBlockEdit(
+    edit: EngineWorldEdit,
+    previousBlock: EngineBlockId,
+    followups: PendingWorldBlockEdit["followups"],
+  ): void {
     worldBlockOperationSequence += 1;
     const selectedHotbar = selectedRef.current;
     const pending: PendingWorldBlockEdit = {
@@ -1127,9 +1133,28 @@ function RailwayMultiplayerSession({
       previousBlock,
       expectedHeldItem: inventoryRef.current[selectedHotbar]?.itemId ?? null,
       sourceSlot: selectedHotbar,
+      followups,
     };
     pendingWorldBlockEditRef.current = pending;
     void submitPendingWorldBlockEdit(pending);
+  }
+
+  function handleBlockEdit(
+    edit: EngineWorldEdit,
+    previousBlock: EngineBlockId,
+    journalEdits: readonly EngineWorldEdit[] = [],
+  ) {
+    if (pendingWorldBlockEditRef.current) {
+      engineRef.current?.applyWorldEdits([{ ...edit, block: previousBlock }]);
+      return;
+    }
+    const followups = isDoorBlock(previousBlock) && isDoorBlock(edit.block)
+      ? journalEdits.flatMap((next) => {
+        const previous = toggledDoorBlock(next.block);
+        return previous !== null && isDoorBlock(previous) ? [{ edit: next, previousBlock: previous }] : [];
+      })
+      : [];
+    beginPendingWorldBlockEdit(edit, previousBlock, followups);
   }
 
   useEffect(() => {
@@ -1294,8 +1319,8 @@ function RailwayMultiplayerSession({
           playerHealthRef.current = health;
           setPlayerHealth(health);
         },
-        onBlockEdit: (edit, previousBlock) => {
-          handleBlockEdit(edit, previousBlock);
+        onBlockEdit: (edit, previousBlock, journalEdits) => {
+          handleBlockEdit(edit, previousBlock, journalEdits);
         },
         onPoseChange: (pose) => {
           const previousSegmentPose = previousSegmentPoseRef.current;

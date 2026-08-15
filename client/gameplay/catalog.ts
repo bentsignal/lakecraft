@@ -1,9 +1,18 @@
 import type { BlockId, ItemId } from "../../shared/game.ts";
-import { BLOCK, type BlockId as EngineBlockId } from "../game/types.ts";
+import { BLOCK, blockStateName, type BlockId as EngineBlockId } from "../game/types.ts";
 import type { GameAudioSurface } from "../game/audio.ts";
+import { EXPANDED_BLOCK_ITEM_IDS, EXPANDED_BLOCK_STATE_TYPES } from "../../shared/expandedBuildingCatalog.ts";
+
+function gameItemForExpandedState(state: string): BlockId | null {
+  const stairs = state.indexOf("_stairs_");
+  if (stairs >= 0) return `${state.slice(0, stairs)}_stairs` as BlockId;
+  const door = state.indexOf("_door_");
+  if (door >= 0) return (state.slice(0, door) === "oak" ? "door" : `${state.slice(0, door)}_door`) as BlockId;
+  return (EXPANDED_BLOCK_ITEM_IDS as readonly string[]).includes(state) ? state as BlockId : null;
+}
 
 /** Canonical gameplay/catalog bridge shared by every authority mode. */
-export const ENGINE_TO_GAME: Readonly<Partial<Record<EngineBlockId, BlockId>>> = Object.freeze({
+const BASE_ENGINE_TO_GAME: Partial<Record<EngineBlockId, BlockId>> = {
   [BLOCK.GRASS]: "grass", [BLOCK.DIRT]: "dirt", [BLOCK.STONE]: "stone",
   [BLOCK.COBBLESTONE]: "cobblestone", [BLOCK.SAND]: "sand", [BLOCK.GRAVEL]: "gravel", [BLOCK.GLASS]: "glass",
   [BLOCK.COAL_ORE]: "coal_ore", [BLOCK.IRON_ORE]: "iron_ore", [BLOCK.GOLD_ORE]: "gold_ore",
@@ -25,9 +34,21 @@ export const ENGINE_TO_GAME: Readonly<Partial<Record<EngineBlockId, BlockId>>> =
   [BLOCK.STONE_BRICK_STAIRS_SOUTH]: "stone_brick_stairs", [BLOCK.STONE_BRICK_STAIRS_WEST]: "stone_brick_stairs",
   [BLOCK.BRICK_STAIRS_EAST]: "brick_stairs", [BLOCK.BRICK_STAIRS_NORTH]: "brick_stairs",
   [BLOCK.BRICK_STAIRS_SOUTH]: "brick_stairs", [BLOCK.BRICK_STAIRS_WEST]: "brick_stairs",
+  [BLOCK.OAK_STAIRS_UPSIDE_EAST]: "oak_stairs", [BLOCK.OAK_STAIRS_UPSIDE_NORTH]: "oak_stairs",
+  [BLOCK.OAK_STAIRS_UPSIDE_SOUTH]: "oak_stairs", [BLOCK.OAK_STAIRS_UPSIDE_WEST]: "oak_stairs",
+  [BLOCK.COBBLESTONE_STAIRS_UPSIDE_EAST]: "cobblestone_stairs", [BLOCK.COBBLESTONE_STAIRS_UPSIDE_NORTH]: "cobblestone_stairs",
+  [BLOCK.COBBLESTONE_STAIRS_UPSIDE_SOUTH]: "cobblestone_stairs", [BLOCK.COBBLESTONE_STAIRS_UPSIDE_WEST]: "cobblestone_stairs",
+  [BLOCK.STONE_BRICK_STAIRS_UPSIDE_EAST]: "stone_brick_stairs", [BLOCK.STONE_BRICK_STAIRS_UPSIDE_NORTH]: "stone_brick_stairs",
+  [BLOCK.STONE_BRICK_STAIRS_UPSIDE_SOUTH]: "stone_brick_stairs", [BLOCK.STONE_BRICK_STAIRS_UPSIDE_WEST]: "stone_brick_stairs",
+  [BLOCK.BRICK_STAIRS_UPSIDE_EAST]: "brick_stairs", [BLOCK.BRICK_STAIRS_UPSIDE_NORTH]: "brick_stairs",
+  [BLOCK.BRICK_STAIRS_UPSIDE_SOUTH]: "brick_stairs", [BLOCK.BRICK_STAIRS_UPSIDE_WEST]: "brick_stairs",
+};
+export const ENGINE_TO_GAME: Readonly<Partial<Record<EngineBlockId, BlockId>>> = Object.freeze({
+  ...BASE_ENGINE_TO_GAME,
+  ...Object.fromEntries(EXPANDED_BLOCK_STATE_TYPES.map((state, index) => [57 + index, gameItemForExpandedState(state)])),
 });
 
-export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = Object.freeze({
+const BASE_ITEM_TO_ENGINE: Partial<Record<ItemId, EngineBlockId>> = {
   grass: BLOCK.GRASS, dirt: BLOCK.DIRT, stone: BLOCK.STONE, cobblestone: BLOCK.COBBLESTONE,
   sand: BLOCK.SAND, gravel: BLOCK.GRAVEL, glass: BLOCK.GLASS, coal_ore: BLOCK.COAL_ORE, iron_ore: BLOCK.IRON_ORE,
   gold_ore: BLOCK.GOLD_ORE, diamond_ore: BLOCK.DIAMOND_ORE, log: BLOCK.WOOD, leaves: BLOCK.LEAVES,
@@ -39,9 +60,22 @@ export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = 
   oak_slab: BLOCK.OAK_SLAB, cobblestone_slab: BLOCK.COBBLESTONE_SLAB, brick_slab: BLOCK.BRICK_SLAB,
   oak_stairs: BLOCK.OAK_STAIRS_NORTH, cobblestone_stairs: BLOCK.COBBLESTONE_STAIRS_NORTH,
   stone_brick_stairs: BLOCK.STONE_BRICK_STAIRS_NORTH, brick_stairs: BLOCK.BRICK_STAIRS_NORTH,
+};
+export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = Object.freeze({
+  ...BASE_ITEM_TO_ENGINE,
+  ...Object.fromEntries(EXPANDED_BLOCK_ITEM_IDS.map((item) => {
+    const family = item.endsWith("_stairs") ? `${item}_north`
+      : item.endsWith("_door") ? `${item.slice(0, -5)}_door_closed_north` : item;
+    return [item, (BLOCK as Readonly<Record<string, EngineBlockId>>)[family.toUpperCase()]];
+  })),
 });
 
 export function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
+  const state = blockStateName(block);
+  if (state.includes("_planks") || state.includes("_log") || state.includes("_leaves")
+    || state.includes("_slab") && !state.startsWith("quartz") || state.includes("_door_")
+    || state.includes("_stairs_") && !state.startsWith("quartz")) return "wood";
+  if (state) return "stone";
   if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.SAPLING
     || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";
   if (block === BLOCK.WOOD || block === BLOCK.PLANKS || block === BLOCK.CRAFTING_TABLE
@@ -54,7 +88,9 @@ export function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   if (block === BLOCK.STONE || block === BLOCK.COBBLESTONE || block === BLOCK.COAL_ORE
     || block === BLOCK.STONE_BRICKS || block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.BRICKS
     || block === BLOCK.COBBLESTONE_SLAB || block === BLOCK.BRICK_SLAB
-    || block >= BLOCK.COBBLESTONE_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST) return "stone";
-  if (block === BLOCK.OAK_SLAB || block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.OAK_STAIRS_WEST) return "wood";
+    || block >= BLOCK.COBBLESTONE_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST
+    || block >= BLOCK.COBBLESTONE_STAIRS_UPSIDE_EAST && block <= BLOCK.BRICK_STAIRS_UPSIDE_WEST) return "stone";
+  if (block === BLOCK.OAK_SLAB || block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.OAK_STAIRS_WEST
+    || block >= BLOCK.OAK_STAIRS_UPSIDE_EAST && block <= BLOCK.OAK_STAIRS_UPSIDE_WEST) return "wood";
   return "generic";
 }

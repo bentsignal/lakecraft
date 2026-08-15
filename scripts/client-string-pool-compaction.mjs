@@ -141,9 +141,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_084;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 102;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "98cd802448209645c361ed4226df37e85d7cd7e475509caae2f67d81696bca28";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_181;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 112;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "217e4feef38c4210095548b3a227dc4fea0c681d1992966ef26cae501d98f973";
 export const COMPACT_CLIENT_REPEATED_CREATIVE_PARITY_DELTA = Object.freeze({
   previousOccurrences: 1_026,
   previousUniqueValues: 98,
@@ -164,6 +164,29 @@ export const COMPACT_CLIENT_REPEATED_SHAPED_ICON_RUNTIME_DELTA = Object.freeze({
   occurrenceDelta: 7,
   uniqueValueDelta: 1,
   source: "client/components/atlasBlockItemIcon.ts#runtime-shaped-icons",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_BUILDING_CATALOG_DELTA = Object.freeze({
+  previousOccurrences: 1_084,
+  previousUniqueValues: 102,
+  previousSourceFingerprint: "98cd802448209645c361ed4226df37e85d7cd7e475509caae2f67d81696bca28",
+  occurrenceDelta: 92,
+  uniqueValueDelta: 9,
+  sources: Object.freeze([
+    "shared/expandedBuildingCatalog.ts",
+    "client/game/types.ts#directional-stairs-and-doors",
+    "client/game/blockTextures.ts#material-families",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_THIN_DOOR_DELTA = Object.freeze({
+  previousOccurrences: 1_176,
+  previousUniqueValues: 111,
+  previousSourceFingerprint: "9fdb7a06abd4334904a69ebe013aec01ce4dc98217503cbc982a3cd9341c079b",
+  occurrenceDelta: 5,
+  uniqueValueDelta: 1,
+  valueDeltas: Object.freeze({ "_door_": 5 }),
+  source: "client/game/skyExposure.ts#closed-directional-doors-remain-thin",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_TERRAIN_PRESET_DELTA = Object.freeze({
@@ -425,9 +448,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 440;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 129;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7ac4e3324c2c5cb4225acc400eb3391f5601e3e9bd20ae85c69d7dd9e48c0800";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 548;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 161;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "d6db9021f609ad28ec947dd4b5f35a3edb74393f7aa3ba2af155aabe42ac5037";
 export const COMPACT_CLIENT_LOW_FREQUENCY_CREATIVE_PARITY_DELTA = Object.freeze({
   previousOccurrences: 422,
   previousUniqueValues: 124,
@@ -444,6 +467,25 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_SHAPED_ICON_RUNTIME_DELTA = Object.fre
   occurrenceDelta: -3,
   uniqueValueDelta: -1,
   source: "client/components/atlasBlockItemIcon.ts#runtime-shaped-icons",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_BUILDING_CATALOG_DELTA = Object.freeze({
+  previousOccurrences: 440,
+  previousUniqueValues: 129,
+  previousSourceFingerprint: "7ac4e3324c2c5cb4225acc400eb3391f5601e3e9bd20ae85c69d7dd9e48c0800",
+  occurrenceDelta: 109,
+  uniqueValueDelta: 32,
+  source: "expanded exact-texture woods, masonry, stairs, slabs, doors, and connected glass",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_THIN_DOOR_LEAVES_DELTA = Object.freeze({
+  previousOccurrences: 549,
+  previousUniqueValues: 161,
+  previousSourceFingerprint: "d996e9bb20051d508e1552ccfc60d8ce5e3423879a0be3b87c906ba1cf515ac9",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  valueDeltas: Object.freeze({ "_door_": -4, "_leaves": 3 }),
+  source: "client/game/skyExposure.ts#expanded-leaf-cache-and-thin-directional-doors",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA = Object.freeze({

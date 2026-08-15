@@ -17,7 +17,7 @@ assert.equal(BLOCKS.tnt.preferredTool, "hand");
 assert.equal(isBlockType("tnt"), true);
 assert.equal(BLOCK_TYPES.indexOf("tnt"), 22, "the deployed TNT protocol code remains stable");
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("tnt"), 22, "the deployed TNT persisted code remains stable");
-assert.deepEqual(BLOCK_TYPES, [
+const deployedProtocolPrefix = [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "door_closed", "door_open", "bed", "coal_ore", "iron_ore",
   "gold_ore", "diamond_ore", "furnace", "ladder", "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks", "bedrock",
@@ -26,8 +26,10 @@ assert.deepEqual(BLOCK_TYPES, [
   "cobblestone_stairs_east", "cobblestone_stairs_north", "cobblestone_stairs_south", "cobblestone_stairs_west",
   "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west",
   "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west",
-], "network block identity appends clay and bricks without renumbering shipped blocks");
-assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES, [
+] as const;
+assert.deepEqual(BLOCK_TYPES.slice(0, deployedProtocolPrefix.length), deployedProtocolPrefix,
+  "network block identity preserves every shipped code before the creative expansion");
+const deployedPersistencePrefix = [
   "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
   "torch", "chest", "bed", "door_closed", "door_open", "coal_ore", "iron_ore",
   "furnace", "ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence", "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks",
@@ -36,7 +38,9 @@ assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES, [
   "cobblestone_stairs_east", "cobblestone_stairs_north", "cobblestone_stairs_south", "cobblestone_stairs_west",
   "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west",
   "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west",
-], "persisted snapshot palette appends v4 codes 32 and 33 without renumbering deployed rows");
+] as const;
+assert.deepEqual(WORLD_CHUNK_BLOCK_TYPES.slice(0, deployedPersistencePrefix.length), deployedPersistencePrefix,
+  "persisted snapshots preserve every deployed code before the creative expansion");
 
 const recipe = RECIPES.find(({ id }) => id === "tnt");
 assert.deepEqual(recipe?.ingredients, [{ itemId: "gunpowder", count: 5 }, { itemId: "sand", count: 4 }]);

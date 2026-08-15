@@ -6,14 +6,34 @@ export const AGENT_MAX_BATCH_EDITS = 512;
 export const AGENT_MAX_REGION_CELLS = 4_096;
 export const AGENT_MAX_REQUEST_BYTES = 64 * 1024;
 
-export const AGENT_BLOCK_NAMES = [
-  "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table",
-  "torch", "chest", "door_closed", "door_open", "bed", "coal_ore", "iron_ore",
-  "furnace", "ladder", "cobblestone", "sand", "glass", "gold_ore", "diamond_ore",
-  "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence",
-  "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks",
-  "bedrock",
-] as const;
+const directions = ["east", "north", "south", "west"];
+const stairStates = (family: string): string[] => [
+  ...directions.map((direction) => `${family}_stairs_${direction}`),
+  ...directions.map((direction) => `${family}_stairs_upside_${direction}`),
+];
+const doorStates = (family: string): string[] => [
+  ...directions.map((direction) => `${family}_door_closed_${direction}`),
+  ...directions.map((direction) => `${family}_door_open_${direction}`),
+];
+const woodFamilies = ["spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry"];
+export const AGENT_BLOCK_NAMES = Object.freeze([
+  "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest",
+  "door_closed", "door_open", "bed", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "furnace", "ladder",
+  "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence",
+  "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks", "bedrock",
+  "wall_torch_east", "wall_torch_north", "wall_torch_south", "wall_torch_west", "oak_slab", "cobblestone_slab",
+  "brick_slab", ...["oak", "cobblestone", "stone_brick", "brick"].flatMap((family) => stairStates(family).slice(0, 4)),
+  ...["oak", "cobblestone", "stone_brick", "brick"].flatMap((family) => stairStates(family).slice(4)),
+  ...woodFamilies.flatMap((family) => [
+    `${family}_log`, `${family}_planks`, `${family}_leaves`, `${family}_slab`, ...stairStates(family), ...doorStates(family),
+  ]),
+  "bamboo_block", "bamboo_planks", "bamboo_slab", ...stairStates("bamboo"),
+  "quartz_block", "quartz_pillar", "chiseled_quartz", "quartz_slab", ...stairStates("quartz"),
+  "granite", "polished_granite", "diorite", "polished_diorite", "andesite", "polished_andesite",
+  "sandstone", "cut_sandstone", "chiseled_sandstone", "smooth_stone", "calcite", "deepslate",
+  ...["east", "south", "west"].map((direction) => `oak_door_closed_${direction}`),
+  ...["east", "south", "west"].map((direction) => `oak_door_open_${direction}`),
+]);
 
 export interface AgentWorldMetadata {
   serverId: string;
@@ -325,7 +345,7 @@ export function renderAgentCamera(world: Pick<AgentBuilderWorld, "agentBlockAt">
         pixels[offset + 2] = Math.round(222 + sky * 25);
         continue;
       }
-      const color = BLOCK_COLORS[hit.block] ?? BLOCK_COLORS[0];
+      const color = agentBlockColor(hit.block);
       const faceLight = hit.faceY > 0 ? 1 : hit.faceY < 0 ? 0.52 : hit.faceX !== 0 ? 0.78 : 0.66;
       const fog = Math.max(0.28, 1 - hit.distance / (camera.maxDistance * 1.22));
       const checker = ((hit.x * 17 + hit.y * 31 + hit.z * 13) & 1) ? 0.96 : 1.04;
@@ -378,6 +398,23 @@ const BLOCK_COLORS: ReadonlyArray<readonly [number, number, number]> = [
   [224, 224, 224], [74, 126, 53], [122, 117, 110], [111, 79, 46], [115, 79, 45], [115, 79, 45],
   [128, 123, 116], [150, 161, 167], [150, 76, 59], [43, 43, 43],
 ];
+
+function agentBlockColor(block: number): readonly [number, number, number] {
+  const fixed = BLOCK_COLORS[block];
+  if (fixed) return fixed;
+  const name = AGENT_BLOCK_NAMES[block] ?? "stone";
+  if (name.includes("quartz") || name.includes("diorite") || name === "calcite") return [225, 222, 211];
+  if (name.includes("cherry")) return [218, 151, 158];
+  if (name.includes("acacia") || name.includes("brick") || name.includes("granite")) return [169, 91, 58];
+  if (name.includes("dark_oak")) return [66, 43, 27];
+  if (name.includes("mangrove")) return [116, 58, 55];
+  if (name.includes("birch") || name.includes("sandstone") || name.includes("bamboo")) return [205, 187, 117];
+  if (name.includes("jungle")) return [164, 108, 80];
+  if (name.includes("spruce")) return [115, 85, 47];
+  if (name.includes("leaves")) return [70, 125, 57];
+  if (name.includes("deepslate")) return [73, 77, 77];
+  return [127, 127, 127];
+}
 
 function encodePngRgb(width: number, height: number, pixels: Uint8Array): Uint8Array {
   const stride = width * 3;

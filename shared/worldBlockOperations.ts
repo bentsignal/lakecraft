@@ -55,11 +55,8 @@ export type PlaceWorldBlockOperation = InventoryOperationBase & {
   placedBlock: Exclude<WorldChunkBlockType, "air">;
 };
 
-export type ToggleableWorldBlock =
-  | "door_closed"
-  | "door_open"
-  | "oak_fence_gate_closed"
-  | "oak_fence_gate_open";
+export type ToggleableWorldBlock = Extract<WorldChunkBlockType,
+  "door_closed" | "door_open" | "oak_fence_gate_closed" | "oak_fence_gate_open" | `${string}_door_${string}`>;
 
 export type ToggleWorldBlockOperation = OperationBase & {
   kind: "toggle";
@@ -150,7 +147,7 @@ export type WorldBlockOperationResolution =
 
 const WORLD_BLOCK_SET = new Set<string>(WORLD_CHUNK_BLOCK_TYPES);
 const ITEM_SET = new Set<string>(Object.keys(ITEMS));
-const TOGGLED_WORLD_BLOCKS: Readonly<Record<ToggleableWorldBlock, ToggleableWorldBlock>> = {
+const TOGGLED_WORLD_BLOCKS: Readonly<Partial<Record<ToggleableWorldBlock, ToggleableWorldBlock>>> = {
   door_closed: BS.doorOpen,
   door_open: BS.doorClosed,
   oak_fence_gate_closed: BS.oakFenceGateOpen,
@@ -213,11 +210,16 @@ function isWorldBlock(value: unknown): value is WorldChunkBlockType {
 }
 
 export function isToggleableWorldBlock(value: unknown): value is ToggleableWorldBlock {
-  return BS.isString(value) && Object.prototype.hasOwnProperty.call(TOGGLED_WORLD_BLOCKS, value);
+  return BS.isString(value) && (Object.prototype.hasOwnProperty.call(TOGGLED_WORLD_BLOCKS, value)
+    || WORLD_BLOCK_SET.has(value) && /_door_(?:closed|open)_(?:east|north|south|west)$/.test(value));
 }
 
 export function toggledWorldBlock(block: ToggleableWorldBlock): ToggleableWorldBlock {
-  return TOGGLED_WORLD_BLOCKS[block];
+  const fixed = TOGGLED_WORLD_BLOCKS[block];
+  if (fixed) return fixed;
+  return (block.includes("_door_closed_")
+    ? block.replace("_door_closed_", "_door_open_")
+    : block.replace("_door_open_", "_door_closed_")) as ToggleableWorldBlock;
 }
 
 function isItemId(value: unknown): value is ItemId {
@@ -353,10 +355,10 @@ export function gameBlockForWorldBlock(block: WorldChunkBlockType): BlockId | nu
   if (block === "air") return null;
   if (block === "wood") return "log";
   if (block.startsWith("wall_torch_")) return "torch";
-  if (block.startsWith("oak_stairs_")) return "oak_stairs";
-  if (block.startsWith("cobblestone_stairs_")) return "cobblestone_stairs";
-  if (block.startsWith("stone_brick_stairs_")) return "stone_brick_stairs";
-  if (block.startsWith("brick_stairs_")) return "brick_stairs";
+  const stairs = block.indexOf("_stairs_");
+  if (stairs >= 0) return `${block.slice(0, stairs)}_stairs` as BlockId;
+  const door = block.indexOf("_door_");
+  if (door >= 0) return (block.slice(0, door) === "oak" ? "door" : `${block.slice(0, door)}_door`) as BlockId;
   if (block === BS.doorClosed || block === BS.doorOpen) return "door";
   if (block === BS.oakFenceGateClosed || block === BS.oakFenceGateOpen) return BS.oakFenceGate;
   return block;
@@ -364,7 +366,9 @@ export function gameBlockForWorldBlock(block: WorldChunkBlockType): BlockId | nu
 
 function isPlacedVariant(item: ItemId, block: WorldChunkBlockType): boolean {
   if (item === "torch") return block.startsWith("wall_torch_");
-  return item.endsWith("_stairs") && block.startsWith(`${item}_`);
+  return item.endsWith("_stairs") && block.startsWith(`${item}_`)
+    || item.endsWith("_door") && block.startsWith(`${item.slice(0, -5)}_door_closed_`)
+    || item === "door" && (block === BS.doorClosed || block.startsWith("oak_door_closed_"));
 }
 
 export function placedWorldBlockForItem(itemId: ItemId): Exclude<WorldChunkBlockType, "air"> | null {

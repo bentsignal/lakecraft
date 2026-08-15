@@ -8,7 +8,7 @@ import {
   TEXTURE_TILE_SIZE,
   type TextureAtlasName,
 } from "./generated/textureAtlas.ts";
-import { BLOCK, type BlockId } from "./types.ts";
+import { BLOCK, blockStateName, type BlockId } from "./types.ts";
 import * as BS from "../../shared/bundleStrings.ts";
 
 export type BlockFace = "east" | "west" | "top" | "bottom" | "south" | "north";
@@ -55,6 +55,22 @@ const UNIFORM_BLOCK_TEXTURES: Readonly<Partial<Record<BlockId, TextureAtlasName>
   [BLOCK.BRICK_STAIRS_NORTH]: "bricks",
   [BLOCK.BRICK_STAIRS_SOUTH]: "bricks",
   [BLOCK.BRICK_STAIRS_WEST]: "bricks",
+  [BLOCK.OAK_STAIRS_UPSIDE_EAST]: "oak_planks",
+  [BLOCK.OAK_STAIRS_UPSIDE_NORTH]: "oak_planks",
+  [BLOCK.OAK_STAIRS_UPSIDE_SOUTH]: "oak_planks",
+  [BLOCK.OAK_STAIRS_UPSIDE_WEST]: "oak_planks",
+  [BLOCK.COBBLESTONE_STAIRS_UPSIDE_EAST]: BS.cobblestone,
+  [BLOCK.COBBLESTONE_STAIRS_UPSIDE_NORTH]: BS.cobblestone,
+  [BLOCK.COBBLESTONE_STAIRS_UPSIDE_SOUTH]: BS.cobblestone,
+  [BLOCK.COBBLESTONE_STAIRS_UPSIDE_WEST]: BS.cobblestone,
+  [BLOCK.STONE_BRICK_STAIRS_UPSIDE_EAST]: BS.stoneBricks,
+  [BLOCK.STONE_BRICK_STAIRS_UPSIDE_NORTH]: BS.stoneBricks,
+  [BLOCK.STONE_BRICK_STAIRS_UPSIDE_SOUTH]: BS.stoneBricks,
+  [BLOCK.STONE_BRICK_STAIRS_UPSIDE_WEST]: BS.stoneBricks,
+  [BLOCK.BRICK_STAIRS_UPSIDE_EAST]: "bricks",
+  [BLOCK.BRICK_STAIRS_UPSIDE_NORTH]: "bricks",
+  [BLOCK.BRICK_STAIRS_UPSIDE_SOUTH]: "bricks",
+  [BLOCK.BRICK_STAIRS_UPSIDE_WEST]: "bricks",
   [BLOCK.SAND]: "sand",
   [BLOCK.GRAVEL]: "gravel",
   [BLOCK.WOOL]: "wool",
@@ -108,6 +124,21 @@ export function blockTextureForFace(block: BlockId, face: BlockFace): TextureAtl
     if (face === "top") return "tnt_top";
     if (face === "bottom") return "tnt_bottom";
     return "tnt_side";
+  }
+  const state = blockStateName(block);
+  if (state) {
+    const stair = state.indexOf("_stairs_");
+    const family = stair >= 0 ? state.slice(0, stair) : state.endsWith("_slab") ? state.slice(0, -5) : "";
+    if (family) return (family === "oak" ? "oak_planks" : family === "cobblestone" ? "cobblestone"
+      : family === "stone_brick" ? "stone_bricks" : family === "brick" ? "bricks"
+        : family === "quartz" ? "quartz_block_side" : `${family}_planks`) as TextureAtlasName;
+    if (state.endsWith("_planks") || state.endsWith("_leaves")) return state as TextureAtlasName;
+    if (state.endsWith("_log")) return (face === "top" || face === "bottom" ? `${state}_end` : state) as TextureAtlasName;
+    if (state === "bamboo_block") return (face === "top" || face === "bottom" ? "bamboo_block_top" : "bamboo_block") as TextureAtlasName;
+    if (state === "quartz_block") return (`quartz_block_${face === "top" ? "top" : face === "bottom" ? "bottom" : "side"}`) as TextureAtlasName;
+    if (state === "quartz_pillar") return (face === "top" || face === "bottom" ? "quartz_pillar_top" : "quartz_pillar") as TextureAtlasName;
+    if (state === "chiseled_quartz") return (face === "top" || face === "bottom" ? "chiseled_quartz_top" : "chiseled_quartz") as TextureAtlasName;
+    if (["granite", "polished_granite", "diorite", "polished_diorite", "andesite", "polished_andesite", "sandstone", "cut_sandstone", "chiseled_sandstone", "smooth_stone", "calcite", "deepslate"].includes(state)) return state as TextureAtlasName;
   }
   return UNIFORM_BLOCK_TEXTURES[block] ?? null;
 }

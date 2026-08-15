@@ -4,13 +4,16 @@ import {
   COMPACT_CLIENT_BUILTIN_ALIASES,
   COMPACT_CLIENT_BUILTIN_OCCURRENCES,
   COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT,
+  COMPACT_CLIENT_GLOBAL_ALIASES,
+  COMPACT_CLIENT_PROPERTY_KEY_ALIASES,
   compactClientBuiltinAliases,
+  compactClientPropertyKeyAliases,
 } from "../scripts/client-builtin-alias-compaction.mjs";
 
 assert.equal(COMPACT_CLIENT_BUILTIN_ALIASES.length, 24, "the alias boundary remains deliberately narrow");
-assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 1_987);
+assert.equal(COMPACT_CLIENT_BUILTIN_OCCURRENCES, 2_009);
 assert.equal(COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT,
-  "20b982f4d84639fc5b64c3ea1e236bf743bfcc4acf75acab420f0e81c1fa2612");
+  "b944d62f46ddcc12fb3300ab39e4da0c633c15985ee9100c1126a81a92666cf1");
 assert.deepEqual(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method]) => `${receiver}.${method}`), [
   "Math.abs", "Math.cos", "Math.ceil", "Math.floor", "Math.hypot", "Math.imul", "Math.max", "Math.min",
   "Math.round", "Math.sin", "Math.PI", "Object.freeze", "Object.keys", "Array.isArray", "Number.isFinite",
@@ -21,8 +24,8 @@ assert.deepEqual(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES
   .filter(([receiver, method]) => ["Math.max", "Object.freeze", "Array.isArray", "Number.isSafeInteger"]
     .includes(`${receiver}.${method}`))
   .map(([receiver, method, count]) => [`${receiver}.${method}`, count])), {
-  "Math.max": 250,
-  "Object.freeze": 161,
+  "Math.max": 252,
+  "Object.freeze": 164,
   "Array.isArray": 88,
   "Number.isSafeInteger": 50,
 }, "the chunk stream and terrain descriptor keep their validation primitive counts reviewed");
@@ -76,5 +79,52 @@ await assert.rejects(
   compactClientBuiltinAliases(fixture, { ...fixtureBoundary, occurrences: 4 }),
   /live set changed/,
 );
+
+const propertyKeys = ["current", "current", "itemId", "length", "value"];
+const propertyCounts = Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name]) => [name, 0]));
+Object.assign(propertyCounts, { current: 2, itemId: 1, length: 1, value: 1 });
+const propertyFixture = "globalThis.__lcPropertyFixture=(()=>{const r={current:1},b={itemId:'dirt',length:3},v={value:2};r.current+=2;return[r.current,b.itemId,b.length,v?.value]})();";
+const propertyTransformed = await compactClientPropertyKeyAliases(propertyFixture, {
+  counts: Object.freeze(propertyCounts),
+  occurrences: propertyKeys.length,
+  fingerprint: createHash("sha256").update(JSON.stringify(propertyKeys)).digest("hex"),
+}, {
+  counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name]) => [name, 0]))),
+  occurrences: 0,
+  fingerprint: createHash("sha256").update("[]").digest("hex"),
+});
+globalThis.window = globalThis;
+globalThis.document = {};
+new Function(propertyTransformed)();
+assert.deepEqual(globalThis.__lcPropertyFixture, [3, "dirt", 3, 2],
+  "computed aliases preserve mutation, wire-key lookup, length, optional chaining, and receiver semantics");
+delete globalThis.__lcPropertyFixture;
+delete globalThis.window;
+delete globalThis.document;
+assert.doesNotMatch(propertyTransformed, /\.current|\.itemId|\.length|\?\.value/,
+  "selected dot spellings are replaced by exact computed keys");
+for (const name of propertyKeys) assert.ok(propertyTransformed.includes(JSON.stringify(name)), `${name} remains literal`);
+
+globalThis.window = globalThis;
+globalThis.document = { value: 7 };
+const globalCounts = Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name]) => [name, 0]));
+Object.assign(globalCounts, { window: 2, document: 1 });
+const globalKeys = ["window", "window", "document"];
+const globalFixture = "globalThis.__lcGlobalFixture=(()=>{const record={window};return[Object.keys(record)[0],record.window===globalThis,window===globalThis,document['value']]})();";
+const globalTransformed = await compactClientPropertyKeyAliases(globalFixture, {
+  counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name]) => [name, 0]))),
+  occurrences: 0,
+  fingerprint: createHash("sha256").update("[]").digest("hex"),
+}, {
+  counts: Object.freeze(globalCounts),
+  occurrences: globalKeys.length,
+  fingerprint: createHash("sha256").update(JSON.stringify(globalKeys)).digest("hex"),
+});
+new Function(globalTransformed)();
+assert.deepEqual(globalThis.__lcGlobalFixture, ["window", true, true, 7],
+  "global aliases preserve shorthand object keys as well as value references");
+delete globalThis.__lcGlobalFixture;
+delete globalThis.window;
+delete globalThis.document;
 
 console.log("compact client builtin alias live-set and parity tests passed");

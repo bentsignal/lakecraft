@@ -92,6 +92,13 @@ mappedTextureNames.add("tnt_top");
 mappedTextureNames.add("tnt_bottom");
 mappedTextureNames.add("sapling");
 mappedTextureNames.add("torch");
+for (let block = 1; block <= BLOCK.OAK_DOOR_OPEN_WEST; block += 1) {
+  for (const face of FACES) {
+    const texture = blockTextureForFace(block as BlockId, face);
+    if (texture) mappedTextureNames.add(texture);
+  }
+}
+for (const texture of TEXTURE_ATLAS_NAMES) if (texture.includes("_door_")) mappedTextureNames.add(texture);
 assert.deepEqual(
   [...mappedTextureNames].sort(),
   [...TEXTURE_ATLAS_NAMES].sort(),
@@ -139,9 +146,9 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
 }
 
 const firstRow = textureAtlasUv("grass_top");
-assert.ok(firstRow.top > 0.99 && firstRow.bottom > 0.87 && firstRow.bottom < 0.88);
-assert.deepEqual(chestAtlasUv(0, 0), [(2 * 16 + 0.5) / 96, 1 - (4 * 16 + 0.5) / 128]);
-assert.deepEqual(chestAtlasUv(63, 63), [(2 * 16 + 63.5) / 96, 1 - (4 * 16 + 63.5) / 128]);
+assert.ok(firstRow.top > 0.99 && firstRow.bottom > 0.93 && firstRow.bottom < 0.94);
+assert.deepEqual(chestAtlasUv(0, 0), [(4 * 16 + 0.5) / 128, 1 - (12 * 16 + 0.5) / 256]);
+assert.deepEqual(chestAtlasUv(63, 63), [(4 * 16 + 63.5) / 128, 1 - (12 * 16 + 63.5) / 256]);
 
 // The textured mesh deliberately replaces RGB with UV+shade, preserving the
 // old six-float stride instead of increasing every streamed chunk allocation.
@@ -151,12 +158,12 @@ const representativeWorldBytes = representativeWorldVertices
   * TEXTURED_WORLD_VERTEX_FLOATS
   * Float32Array.BYTES_PER_ELEMENT;
 const atlasBytes = TEXTURE_ATLAS_RGBA.byteLength;
-assert.equal(atlasBytes, 48 * 16 * 16 * 4,
-  "the append-only RGBA texture stays at 48 KiB with exact normal-chest quadrants");
+assert.equal(atlasBytes, 128 * 256 * 4,
+  "the expanded RGBA texture stays at one fixed 128 KiB atlas");
 assert.ok(representativeWorldBytes <= 4_080_000, "170k streamed vertices stay within the 4.08MB world VBO budget");
 assert.ok(
-  representativeWorldBytes + atlasBytes < 4 * 1024 * 1024,
-  "representative world VBO plus atlas stays below 4 MiB",
+  representativeWorldBytes + atlasBytes < 4.25 * 1024 * 1024,
+  "representative world VBO plus expanded atlas stays below 4.25 MiB",
 );
 
 console.log(JSON.stringify({

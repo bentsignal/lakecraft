@@ -23,7 +23,7 @@ import {
 } from "./client-property-compaction.mjs";
 import { loadLakebedCompilerRuntime } from "./lakebed-compiler-runtime.mjs";
 import { stripClientDevelopmentSurfaces, stripVoxelDevelopmentSurfaces } from "./client-development-surface-transform.mjs";
-import { compactClientBuiltinAliases } from "./client-builtin-alias-compaction.mjs";
+import { compactClientBuiltinAliases, compactClientPropertyKeyAliases } from "./client-builtin-alias-compaction.mjs";
 import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.mjs";
 import { compactClientStringPool } from "./client-string-pool-compaction.mjs";
 import { compactServerPropertyKeys } from "./server-property-key-compaction.mjs";
@@ -266,13 +266,14 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
     const aliased = await compactClientBuiltinAliases(bundledText);
     const shaped = await compactClientJsxPropShapes(aliased);
     const pooled = await compactClientStringPool(shaped);
+    const keyed = await compactClientPropertyKeyAliases(pooled);
     const compacted = await build({
       charset: "utf8",
       format: "esm",
       legalComments: "none",
       minify: true,
       platform: "browser",
-      stdin: { contents: pooled, loader: "js", sourcefile: "lakecraft-client-stage.js" },
+      stdin: { contents: keyed, loader: "js", sourcefile: "lakecraft-client-stage.js" },
       target: "es2022",
       write: false,
     });

@@ -15,6 +15,7 @@ import {
   blockSupportsPlayerFeet,
   playerIntersectsBlockCollisionShape,
   planPlayerHalfStep,
+  stairShapeAt,
 } from "../client/game/blockGeometry.ts";
 import { readFileSync } from "node:fs";
 import { BLOCK, isSlabBlock, isStairBlock, stairFacingForBlock } from "../client/game/types.ts";
@@ -32,7 +33,8 @@ for (const slab of slabs) {
 }
 
 for (const stair of [BLOCK.OAK_STAIRS_EAST, BLOCK.COBBLESTONE_STAIRS_NORTH,
-  BLOCK.STONE_BRICK_STAIRS_SOUTH, BLOCK.BRICK_STAIRS_WEST] as const) {
+  BLOCK.STONE_BRICK_STAIRS_SOUTH, BLOCK.BRICK_STAIRS_WEST,
+  BLOCK.SPRUCE_STAIRS_EAST, BLOCK.QUARTZ_STAIRS_UPSIDE_WEST] as const) {
   assert.equal(isStairBlock(stair), true);
   const vertices: number[] = [];
   appendStairMesh(vertices, 0, 0, 0, stair);
@@ -64,12 +66,36 @@ assert.match(engineSource, /thirdPersonRenderPose\.y = pose\.y \+ stepVisualOffs
 assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, 0), BLOCK.OAK_STAIRS_NORTH);
 assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, Math.PI / 2), BLOCK.OAK_STAIRS_EAST);
 assert.equal(stairPlacementBlock(BLOCK.BRICK_STAIRS_NORTH, Math.PI), BLOCK.BRICK_STAIRS_SOUTH);
+assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, 0, 0.7), BLOCK.OAK_STAIRS_UPSIDE_NORTH);
+assert.equal(stairPlacementBlock(BLOCK.BRICK_STAIRS_NORTH, Math.PI / 2, 0.7), BLOCK.BRICK_STAIRS_UPSIDE_EAST);
+assert.equal(stairPlacementBlock(BLOCK.SPRUCE_STAIRS_NORTH, Math.PI, 0.7), BLOCK.SPRUCE_STAIRS_UPSIDE_SOUTH);
+assert.equal(stairPlacementBlock(BLOCK.QUARTZ_STAIRS_NORTH, -Math.PI / 2), BLOCK.QUARTZ_STAIRS_WEST);
+assert.equal(stairShapeAt(BLOCK.OAK_STAIRS_EAST, 0, 0, 0,
+  (x, _y, z) => x === 1 && z === 0 ? BLOCK.OAK_STAIRS_NORTH : BLOCK.AIR), "outer_left");
+assert.equal(stairShapeAt(BLOCK.OAK_STAIRS_EAST, 0, 0, 0,
+  (x, _y, z) => x === -1 && z === 0 ? BLOCK.OAK_STAIRS_SOUTH : BLOCK.AIR), "inner_right");
+assert.equal(stairShapeAt(BLOCK.SPRUCE_STAIRS_UPSIDE_NORTH, 0, 0, 0,
+  (x, _y, z) => x === 0 && z === -1 ? BLOCK.QUARTZ_STAIRS_UPSIDE_WEST : BLOCK.AIR), "outer_left",
+  "upside-down stairs derive the same corner silhouette, even across materials");
+assert.equal(stairShapeAt(BLOCK.SPRUCE_STAIRS_UPSIDE_NORTH, 0, 0, 0,
+  (x, _y, z) => x === 0 && z === -1 ? BLOCK.QUARTZ_STAIRS_WEST : BLOCK.AIR), "straight",
+  "stairs in opposite vertical halves never connect");
+assert.equal(stairShapeAt(BLOCK.OAK_STAIRS_EAST, 0, 0, 0,
+  (x, _y, z) => x === 1 && z === 0 ? BLOCK.OAK_STAIRS_NORTH
+    : x === 0 && z === 1 ? BLOCK.OAK_STAIRS_EAST : BLOCK.AIR), "straight",
+  "a same-facing stair on the outer side blocks an invalid T-intersection corner");
+assert.equal(stairShapeAt(BLOCK.OAK_STAIRS_EAST, 0, 0, 0,
+  (x, _y, z) => x === -1 && z === 0 ? BLOCK.OAK_STAIRS_SOUTH
+    : x === 0 && z === 1 ? BLOCK.OAK_STAIRS_EAST : BLOCK.AIR), "straight",
+  "a same-facing stair on the inner side blocks an invalid T-intersection corner");
+assert.equal(blockCollisionHeightAt(BLOCK.OAK_STAIRS_UPSIDE_EAST, 0.1, 0.5), 1,
+  "an upside-down stair keeps its walkable top slab across the whole cell");
 
 assert.equal(BLOCK_TYPES[BLOCK.OAK_SLAB], "oak_slab");
 assert.equal(BLOCK_TYPES[BLOCK.BRICK_STAIRS_WEST], "brick_stairs_west");
-assert.equal(REALTIME_BLOCK_ID_MAX, BLOCK.BRICK_STAIRS_WEST);
-const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.BRICK_STAIRS_WEST}]);
-assert.deepEqual(decodeRealtimeChunkEdits(0, 0, encoded), [{x:1,y:20,z:1,block:BLOCK.BRICK_STAIRS_WEST}]);
+assert.equal(REALTIME_BLOCK_ID_MAX, BLOCK.OAK_DOOR_OPEN_WEST);
+const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.OAK_DOOR_OPEN_WEST}]);
+assert.deepEqual(decodeRealtimeChunkEdits(0, 0, encoded), [{x:1,y:20,z:1,block:BLOCK.OAK_DOOR_OPEN_WEST}]);
 
 assert.equal(gameBlockForWorldBlock("stone_brick_stairs_west"), "stone_brick_stairs");
 assert.equal(ITEMS.brick_stairs.placesBlock, "brick_stairs");

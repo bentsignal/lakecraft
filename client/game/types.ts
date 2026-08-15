@@ -20,8 +20,12 @@ import type { PlayerCameraMode } from "./playerCamera.ts";
 import type { PlayerSkinModel } from "./playerSkin.ts";
 import type { PlayerArmorAppearance } from "./playerArmorGeometry.ts";
 import type { WorldTerrainDescriptor } from "../../shared/worldPreset.ts";
+import {
+  EXPANDED_BLOCK_STATE_TYPES,
+  type ExpandedBlockConstantName,
+} from "../../shared/expandedBuildingCatalog.ts";
 
-export const BLOCK = {
+const BASE_BLOCK = {
   AIR: 0,
   GRASS: 1,
   DIRT: 2,
@@ -80,6 +84,10 @@ export const BLOCK = {
   BRICK_STAIRS_SOUTH: 55,
   BRICK_STAIRS_WEST: 56,
 } as const;
+export const BLOCK = Object.freeze({
+  ...BASE_BLOCK,
+  ...Object.fromEntries(EXPANDED_BLOCK_STATE_TYPES.map((state, index) => [state.toUpperCase(), 57 + index])),
+}) as typeof BASE_BLOCK & Readonly<Record<ExpandedBlockConstantName, number>>;
 
 export type BlockId = (typeof BLOCK)[keyof typeof BLOCK];
 
@@ -93,19 +101,45 @@ export function isTorchBlock(block: BlockId): boolean {
 
 export function isSlabBlock(block: BlockId): boolean {
   return block === BLOCK.STONE_BRICK_SLAB || block === BLOCK.OAK_SLAB
-    || block === BLOCK.COBBLESTONE_SLAB || block === BLOCK.BRICK_SLAB;
+    || block === BLOCK.COBBLESTONE_SLAB || block === BLOCK.BRICK_SLAB
+    || blockStateName(block).endsWith("_slab");
 }
 
 export type StairFacing = "east" | "north" | "south" | "west";
+const BASE_STAIR_STATE_TYPES = [
+  "oak_stairs_east", "oak_stairs_north", "oak_stairs_south", "oak_stairs_west",
+  "cobblestone_stairs_east", "cobblestone_stairs_north", "cobblestone_stairs_south", "cobblestone_stairs_west",
+  "stone_brick_stairs_east", "stone_brick_stairs_north", "stone_brick_stairs_south", "stone_brick_stairs_west",
+  "brick_stairs_east", "brick_stairs_north", "brick_stairs_south", "brick_stairs_west",
+] as const;
+
+export function blockStateName(block: BlockId): string {
+  return block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST
+    ? BASE_STAIR_STATE_TYPES[block - BLOCK.OAK_STAIRS_EAST]
+    : block >= 57 ? EXPANDED_BLOCK_STATE_TYPES[block - 57] ?? "" : "";
+}
 
 export function stairFacingForBlock(block: BlockId): StairFacing | null {
-  const offset = block >= BLOCK.OAK_STAIRS_EAST && block <= BLOCK.BRICK_STAIRS_WEST
-    ? (block - BLOCK.OAK_STAIRS_EAST) % 4 : -1;
-  return offset === 0 ? "east" : offset === 1 ? "north" : offset === 2 ? "south" : offset === 3 ? "west" : null;
+  const state = blockStateName(block);
+  if (!state.includes("_stairs_")) return null;
+  const facing = state.slice(state.lastIndexOf("_") + 1);
+  return facing === "east" || facing === "north" || facing === "south" || facing === "west" ? facing : null;
 }
 
 export function isStairBlock(block: BlockId): boolean {
   return stairFacingForBlock(block) !== null;
+}
+
+export function isUpsideDownStairBlock(block: BlockId): boolean {
+  return blockStateName(block).includes("_stairs_upside_");
+}
+
+/** Stable material group shared by placement, connected-corner geometry, and inventory mapping. */
+export function stairMaterialIndexForBlock(block: BlockId): number {
+  const state = blockStateName(block);
+  if (!state.includes("_stairs_")) return -1;
+  return ["oak", "cobblestone", "stone_brick", "brick", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "bamboo", "quartz"]
+    .indexOf(state.slice(0, state.indexOf("_stairs_")));
 }
 
 export type BedDirection = "north" | "south" | "east" | "west";

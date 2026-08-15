@@ -41,7 +41,7 @@ assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property ma
 assert.equal(manifestNames.length, 654, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "c77284bbda1b2a3f0e4a5d1f90a49ee3b26eb0d63aa137f50030f47c0e608f96",
+  "d6f3bedec1ec2ea31e638d47a057a662a76acd13e13c03e8c630254f997986ca",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");

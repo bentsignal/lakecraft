@@ -9,7 +9,9 @@ export const STARVATION_DAMAGE_INTERVAL_SECONDS = 4;
 export const MAX_SURVIVAL_STEP_SECONDS = 5;
 export const STARVATION_MIN_HEALTH = 1;
 
-export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab" | "clay" | "bricks" | "oak_slab" | "cobblestone_slab" | "brick_slab" | "oak_stairs" | "cobblestone_stairs" | "stone_brick_stairs" | "brick_stairs";
+import type { ExpandedBlockItemId } from "./expandedBuildingCatalog.ts";
+
+export type BlockId = "grass" | "dirt" | "stone" | "cobblestone" | "sand" | "gravel" | "glass" | "coal_ore" | "iron_ore" | "gold_ore" | "diamond_ore" | "log" | "leaves" | "planks" | "crafting_table" | "furnace" | "torch" | "chest" | "door" | "bed" | "ladder" | "tnt" | "wool" | "sapling" | "stone_bricks" | "oak_fence" | "oak_fence_gate" | "stone_brick_slab" | "clay" | "bricks" | "oak_slab" | "cobblestone_slab" | "brick_slab" | "oak_stairs" | "cobblestone_stairs" | "stone_brick_stairs" | "brick_stairs" | ExpandedBlockItemId;
 export type ToolId =
   | "wooden_pickaxe"
   | "wooden_axe"
@@ -210,17 +212,17 @@ type BlockSpec = readonly [
 function defineBlocks(specs: readonly BlockSpec[]): Record<BlockId, BlockDefinition> {
   return Object.fromEntries(specs.map(([
     id, label, description, color, accent, hardness, preferredTool, drop, minimumTier,
-  ]) => [id, {
+  ]) => { const resolvedLabel = label || id.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" "); return [id, {
     id,
-    label,
-    description,
+    label: resolvedLabel,
+    description: description || `${resolvedLabel} building block.`,
     color,
     accent,
     hardness,
     preferredTool,
     ...(minimumTier ? { requiredDropTool: { kind: "pickaxe" as const, minimumTier } } : {}),
     drop,
-  }])) as Record<BlockId, BlockDefinition>;
+  }]; })) as Record<BlockId, BlockDefinition>;
 }
 
 export const BLOCKS = defineBlocks([
@@ -261,6 +263,16 @@ export const BLOCKS = defineBlocks([
   ["cobblestone_stairs", "Cobblestone Stairs", "Rough stone steps for durable builds.", "#686b65", "#979a91", 2, "pickaxe", "cobblestone_stairs", "wood"],
   ["stone_brick_stairs", "Stone Brick Stairs", "Fitted masonry steps for formal structures.", "#74766f", "#a3a59c", 1.5, "pickaxe", "stone_brick_stairs", "wood"],
   ["brick_stairs", "Brick Stairs", "Fired brick steps for decorative roofs and approaches.", "#964c3d", "#c16f59", 2, "pickaxe", "brick_stairs", "wood"],
+  ["spruce_log", "", "", "#73552f", "#9b7441", 1.6, "axe", "spruce_log"], ["spruce_planks", "", "", "#73552f", "#9b7441", 1.1, "axe", "spruce_planks"], ["spruce_leaves", "", "", "#52745a", "#73966f", 0.3, "hand", "spruce_leaves"], ["spruce_slab", "", "", "#73552f", "#9b7441", 1.1, "axe", "spruce_slab"], ["spruce_stairs", "", "", "#73552f", "#9b7441", 1.1, "axe", "spruce_stairs"], ["spruce_door", "", "", "#73552f", "#9b7441", 1.4, "axe", "spruce_door"],
+  ["birch_log", "", "", "#c9b87b", "#e5d49a", 1.6, "axe", "birch_log"], ["birch_planks", "", "", "#c9b87b", "#e5d49a", 1.1, "axe", "birch_planks"], ["birch_leaves", "", "", "#65964a", "#86b76b", 0.3, "hand", "birch_leaves"], ["birch_slab", "", "", "#c9b87b", "#e5d49a", 1.1, "axe", "birch_slab"], ["birch_stairs", "", "", "#c9b87b", "#e5d49a", 1.1, "axe", "birch_stairs"], ["birch_door", "", "", "#c9b87b", "#e5d49a", 1.4, "axe", "birch_door"],
+  ["jungle_log", "", "", "#a46c50", "#cb9071", 1.6, "axe", "jungle_log"], ["jungle_planks", "", "", "#a46c50", "#cb9071", 1.1, "axe", "jungle_planks"], ["jungle_leaves", "", "", "#3c7a35", "#65a45a", 0.3, "hand", "jungle_leaves"], ["jungle_slab", "", "", "#a46c50", "#cb9071", 1.1, "axe", "jungle_slab"], ["jungle_stairs", "", "", "#a46c50", "#cb9071", 1.1, "axe", "jungle_stairs"], ["jungle_door", "", "", "#a46c50", "#cb9071", 1.4, "axe", "jungle_door"],
+  ["acacia_log", "", "", "#a85b32", "#d47a43", 1.6, "axe", "acacia_log"], ["acacia_planks", "", "", "#a85b32", "#d47a43", 1.1, "axe", "acacia_planks"], ["acacia_leaves", "", "", "#5b813a", "#7fa35a", 0.3, "hand", "acacia_leaves"], ["acacia_slab", "", "", "#a85b32", "#d47a43", 1.1, "axe", "acacia_slab"], ["acacia_stairs", "", "", "#a85b32", "#d47a43", 1.1, "axe", "acacia_stairs"], ["acacia_door", "", "", "#a85b32", "#d47a43", 1.4, "axe", "acacia_door"],
+  ["dark_oak_log", "", "", "#422b1b", "#68452b", 1.6, "axe", "dark_oak_log"], ["dark_oak_planks", "", "", "#422b1b", "#68452b", 1.1, "axe", "dark_oak_planks"], ["dark_oak_leaves", "", "", "#315a2e", "#537b4d", 0.3, "hand", "dark_oak_leaves"], ["dark_oak_slab", "", "", "#422b1b", "#68452b", 1.1, "axe", "dark_oak_slab"], ["dark_oak_stairs", "", "", "#422b1b", "#68452b", 1.1, "axe", "dark_oak_stairs"], ["dark_oak_door", "", "", "#422b1b", "#68452b", 1.4, "axe", "dark_oak_door"],
+  ["mangrove_log", "", "", "#743a37", "#a24f4a", 1.6, "axe", "mangrove_log"], ["mangrove_planks", "", "", "#743a37", "#a24f4a", 1.1, "axe", "mangrove_planks"], ["mangrove_leaves", "", "", "#3d7138", "#62955b", 0.3, "hand", "mangrove_leaves"], ["mangrove_slab", "", "", "#743a37", "#a24f4a", 1.1, "axe", "mangrove_slab"], ["mangrove_stairs", "", "", "#743a37", "#a24f4a", 1.1, "axe", "mangrove_stairs"], ["mangrove_door", "", "", "#743a37", "#a24f4a", 1.4, "axe", "mangrove_door"],
+  ["cherry_log", "", "", "#d9a0a0", "#efbaba", 1.6, "axe", "cherry_log"], ["cherry_planks", "", "", "#d9a0a0", "#efbaba", 1.1, "axe", "cherry_planks"], ["cherry_leaves", "", "", "#e69cb1", "#f4bdcc", 0.3, "hand", "cherry_leaves"], ["cherry_slab", "", "", "#d9a0a0", "#efbaba", 1.1, "axe", "cherry_slab"], ["cherry_stairs", "", "", "#d9a0a0", "#efbaba", 1.1, "axe", "cherry_stairs"], ["cherry_door", "", "", "#d9a0a0", "#efbaba", 1.4, "axe", "cherry_door"],
+  ["bamboo_block", "", "", "#84943c", "#b4c45c", 1.6, "axe", "bamboo_block"], ["bamboo_planks", "", "", "#c5a94d", "#e2c96c", 1.1, "axe", "bamboo_planks"], ["bamboo_slab", "", "", "#c5a94d", "#e2c96c", 1.1, "axe", "bamboo_slab"], ["bamboo_stairs", "", "", "#c5a94d", "#e2c96c", 1.1, "axe", "bamboo_stairs"],
+  ["quartz_block", "", "", "#e7e3d5", "#faf7ed", 1.8, "pickaxe", "quartz_block", "wood"], ["quartz_pillar", "", "", "#e7e3d5", "#faf7ed", 1.8, "pickaxe", "quartz_pillar", "wood"], ["chiseled_quartz", "", "", "#e7e3d5", "#faf7ed", 1.8, "pickaxe", "chiseled_quartz", "wood"], ["quartz_slab", "", "", "#e7e3d5", "#faf7ed", 1.8, "pickaxe", "quartz_slab", "wood"], ["quartz_stairs", "", "", "#e7e3d5", "#faf7ed", 1.8, "pickaxe", "quartz_stairs", "wood"],
+  ["granite", "", "", "#9b6652", "#bd8068", 2, "pickaxe", "granite", "wood"], ["polished_granite", "", "", "#9b6652", "#bd8068", 2, "pickaxe", "polished_granite", "wood"], ["diorite", "", "", "#b8b8b3", "#d7d7d1", 2, "pickaxe", "diorite", "wood"], ["polished_diorite", "", "", "#b8b8b3", "#d7d7d1", 2, "pickaxe", "polished_diorite", "wood"], ["andesite", "", "", "#777b79", "#999d9a", 2, "pickaxe", "andesite", "wood"], ["polished_andesite", "", "", "#777b79", "#999d9a", 2, "pickaxe", "polished_andesite", "wood"], ["sandstone", "", "", "#d8c786", "#efe0a5", 1.2, "pickaxe", "sandstone", "wood"], ["cut_sandstone", "", "", "#d8c786", "#efe0a5", 1.2, "pickaxe", "cut_sandstone", "wood"], ["chiseled_sandstone", "", "", "#d8c786", "#efe0a5", 1.2, "pickaxe", "chiseled_sandstone", "wood"], ["smooth_stone", "", "", "#9b9c98", "#bdbeb9", 2, "pickaxe", "smooth_stone", "wood"], ["calcite", "", "", "#dddcd3", "#f0efe7", 1.5, "pickaxe", "calcite", "wood"], ["deepslate", "", "", "#4d5050", "#696d6c", 3, "pickaxe", "deepslate", "wood"],
 ]);
 
 function blockItem(id: BlockId, shortLabel: string, glyph: string): ItemDefinition {
@@ -312,6 +324,18 @@ const BLOCK_ITEM_SPECS = [
   ["cobblestone_stairs", "C·ST", "◿"],
   ["stone_brick_stairs", "S·ST", "◿"],
   ["brick_stairs", "B·ST", "◿"],
+  ["spruce_log", "S·LG", "▥"], ["spruce_planks", "S·PL", "▤"], ["spruce_leaves", "S·LF", "✤"], ["spruce_slab", "S·SL", "▂"], ["spruce_stairs", "S·ST", "◿"], ["spruce_door", "S·DR", "▥"],
+  ["birch_log", "BI·LG", "▥"], ["birch_planks", "BI·PL", "▤"], ["birch_leaves", "BI·LF", "✤"], ["birch_slab", "BI·SL", "▂"], ["birch_stairs", "BI·ST", "◿"], ["birch_door", "BI·DR", "▥"],
+  ["jungle_log", "J·LG", "▥"], ["jungle_planks", "J·PL", "▤"], ["jungle_leaves", "J·LF", "✤"], ["jungle_slab", "J·SL", "▂"], ["jungle_stairs", "J·ST", "◿"], ["jungle_door", "J·DR", "▥"],
+  ["acacia_log", "A·LG", "▥"], ["acacia_planks", "A·PL", "▤"], ["acacia_leaves", "A·LF", "✤"], ["acacia_slab", "A·SL", "▂"], ["acacia_stairs", "A·ST", "◿"], ["acacia_door", "A·DR", "▥"],
+  ["dark_oak_log", "DO·LG", "▥"], ["dark_oak_planks", "DO·PL", "▤"], ["dark_oak_leaves", "DO·LF", "✤"], ["dark_oak_slab", "DO·SL", "▂"], ["dark_oak_stairs", "DO·ST", "◿"], ["dark_oak_door", "DO·DR", "▥"],
+  ["mangrove_log", "M·LG", "▥"], ["mangrove_planks", "M·PL", "▤"], ["mangrove_leaves", "M·LF", "✤"], ["mangrove_slab", "M·SL", "▂"], ["mangrove_stairs", "M·ST", "◿"], ["mangrove_door", "M·DR", "▥"],
+  ["cherry_log", "C·LG", "▥"], ["cherry_planks", "C·PL", "▤"], ["cherry_leaves", "C·LF", "✤"], ["cherry_slab", "C·SL", "▂"], ["cherry_stairs", "C·ST", "◿"], ["cherry_door", "C·DR", "▥"],
+  ["bamboo_block", "BAM", "▥"], ["bamboo_planks", "B·PL", "▤"], ["bamboo_slab", "B·SL", "▂"], ["bamboo_stairs", "B·ST", "◿"],
+  ["quartz_block", "QTZ", "▦"], ["quartz_pillar", "Q·PL", "▥"], ["chiseled_quartz", "Q·CH", "▦"], ["quartz_slab", "Q·SL", "▂"], ["quartz_stairs", "Q·ST", "◿"],
+  ["granite", "GRA", "▦"], ["polished_granite", "P·GR", "▦"], ["diorite", "DIO", "▦"], ["polished_diorite", "P·DI", "▦"],
+  ["andesite", "AND", "▦"], ["polished_andesite", "P·AN", "▦"], ["sandstone", "SAND", "▦"], ["cut_sandstone", "C·SA", "▦"],
+  ["chiseled_sandstone", "CH·S", "▦"], ["smooth_stone", "SM·S", "▦"], ["calcite", "CAL", "▦"], ["deepslate", "DEEP", "▦"],
 ] as const;
 
 const BASIC_ITEM_SPECS: readonly BasicItemSpec[] = [

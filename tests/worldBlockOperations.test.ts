@@ -9,6 +9,7 @@ import {
   parseWorldBlockOperation,
   parseWorldBlockRevision,
   placedWorldBlockForItem,
+  toggledWorldBlock,
   resolveWorldBlockOperation,
   worldBlockOperationFingerprint,
 } from "../shared/worldBlockOperations.ts";
@@ -108,6 +109,9 @@ assert.equal(reason({ ...mine, padding: "🙂".repeat(1_100) }), "request_too_la
 assert.equal(placedWorldBlockForItem("log"), "wood");
 assert.equal(placedWorldBlockForItem("door"), "door_closed");
 assert.equal(placedWorldBlockForItem("diamond"), null);
+assert.equal(placedWorldBlockForItem("spruce_door"), "spruce_door");
+assert.equal(toggledWorldBlock("spruce_door_closed_west"), "spruce_door_open_west");
+assert.equal(toggledWorldBlock("spruce_door_open_west"), "spruce_door_closed_west");
 
 function emptyInventory(): Inventory {
   return Array.from({ length: INVENTORY_SIZE }, () => null);

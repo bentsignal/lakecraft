@@ -121,7 +121,7 @@ assert.equal(BLOCK_TYPES.indexOf("bricks"), 32, "bricks appends after clay");
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("stone_brick_slab"), 30);
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("clay"), 31, "clay persists as code 32");
 assert.equal(WORLD_CHUNK_BLOCK_TYPES.indexOf("bricks"), 32, "bricks persists as code 33");
-assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 56);
+assert.equal(WORLD_CHUNK_BLOCK_TYPES.length, 253);
 assert.ok(WORLD_CHUNK_BLOCK_TYPES.length <= WORLD_CHUNK_CODEC_MAX_BLOCK_TYPES);
 assert.equal(isBlockType("clay"), true);
 assert.equal(isBlockType("bricks"), true);

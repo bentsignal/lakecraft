@@ -10,6 +10,7 @@ import {
   type TextureAtlasName,
 } from "./generated/textureAtlas.ts";
 import { BLOCK, type BlockId } from "./types.ts";
+import { EXPANDED_BLOCK_ITEM_IDS } from "../../shared/expandedBuildingCatalog.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -47,7 +48,11 @@ const BLOCK_ITEMS: Readonly<Partial<Record<ItemId, BlockId>>> = Object.freeze({
 });
 
 export function blockIdForCubeItem(itemId: ItemId): BlockId | null {
-  return BLOCK_ITEMS[itemId] ?? null;
+  const base = BLOCK_ITEMS[itemId];
+  if (base !== undefined) return base;
+  if (!(EXPANDED_BLOCK_ITEM_IDS as readonly string[]).includes(itemId)
+    || itemId.endsWith("_slab") || itemId.endsWith("_stairs") || itemId.endsWith("_door")) return null;
+  return (BLOCK as Readonly<Record<string, BlockId>>)[itemId.toUpperCase()] ?? null;
 }
 
 function atlasPixel(texture: TextureAtlasName, x: number, y: number): readonly [number, number, number, number] {
