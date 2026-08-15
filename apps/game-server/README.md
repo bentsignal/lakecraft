@@ -40,7 +40,7 @@ Required in production ticket mode:
 
 For explicitly insecure local demos, use `AUTH_MODE=local-demo` and set `LOCAL_DEMO_TOKEN` to at least 16 characters. Only this mode accepts a client-provided id and name; anyone holding the shared token can impersonate another demo identity, so it is for trusted friend testing only.
 
-Optional settings are `HOST` (default `0.0.0.0`), `PORT` (Railway injects this; default `3001`), `DATA_DIR` (default `./data`), `PUBLIC_SERVER_NAME`, `PUBLIC_SERVER_DESCRIPTION`, `TICK_HZ` (20), `SNAPSHOT_HZ` (10), `IDLE_SUSPEND_MS` (15000), `MAX_PLAYERS` (32; the current renderer and appearance-protocol maximum), and `MAX_PERSISTED_BLOCKS` (1000; the current full-snapshot protocol cap). `ALLOWED_ORIGINS` is a comma-separated browser-origin allowlist and is required in Lakebed-authenticated mode.
+Optional settings are `HOST` (default `0.0.0.0`), `PORT` (Railway injects this; default `3001`), `DATA_DIR` (default `./data`), `PUBLIC_SERVER_NAME`, `PUBLIC_SERVER_DESCRIPTION`, `TICK_HZ` (20), `SNAPSHOT_HZ` (10), `IDLE_SUSPEND_MS` (15000), `MAX_PLAYERS` (32; the current renderer and appearance-protocol maximum), and `MAX_PERSISTED_BLOCKS` (1000; the current full-snapshot protocol cap). `SPAWN_X`, `SPAWN_Z`, and `SPAWN_YAW_DEGREES` configure the authoritative first-join and respawn point; if that player capsule becomes obstructed, the server searches outward for the nearest clear position and also repairs obstructed saved poses on reconnect. `ALLOWED_ORIGINS` is a comma-separated browser-origin allowlist and is required in Lakebed-authenticated mode.
 
 World shape and the first-join role are server-owned settings:
 

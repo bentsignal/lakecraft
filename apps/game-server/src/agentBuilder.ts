@@ -26,6 +26,7 @@ export interface AgentWorldMetadata {
   groundY?: number;
   defaultGameMode: ServerGameMode;
   connectedPlayers: number;
+  spawn: { x: number; y: number; z: number; yaw: number };
 }
 
 export interface AgentRegionBounds {

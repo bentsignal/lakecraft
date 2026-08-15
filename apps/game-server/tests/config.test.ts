@@ -78,6 +78,9 @@ describe("server configuration", () => {
       worldPreset: "default",
       superflatGroundY: 20,
       defaultGameMode: "survival",
+      spawnX: 0.5,
+      spawnZ: 0.5,
+      spawnYaw: 0,
     });
   });
 
@@ -88,10 +91,16 @@ describe("server configuration", () => {
       WORLD_PRESET: "superflat",
       SUPERFLAT_GROUND_Y: "20",
       DEFAULT_GAME_MODE: "creative",
+      SPAWN_X: "-23.5",
+      SPAWN_Z: "-23.5",
+      SPAWN_YAW_DEGREES: "135",
     })).toMatchObject({
       worldPreset: "superflat",
       superflatGroundY: 20,
       defaultGameMode: "creative",
+      spawnX: -23.5,
+      spawnZ: -23.5,
+      spawnYaw: 3 * Math.PI / 4,
     });
     expect(() => loadConfig({
       ...lakebedEnvironment,
@@ -108,5 +117,15 @@ describe("server configuration", () => {
       ALLOWED_ORIGINS: "https://craft.lakebed.app",
       DEFAULT_GAME_MODE: "operator",
     })).toThrow("DEFAULT_GAME_MODE must be survival or creative");
+    expect(() => loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      SPAWN_X: "NaN",
+    })).toThrow("SPAWN_X must be a finite number");
+    expect(() => loadConfig({
+      ...lakebedEnvironment,
+      ALLOWED_ORIGINS: "https://craft.lakebed.app",
+      SPAWN_YAW_DEGREES: "361",
+    })).toThrow("SPAWN_YAW_DEGREES must be a finite number from -360 to 360");
   });
 });
