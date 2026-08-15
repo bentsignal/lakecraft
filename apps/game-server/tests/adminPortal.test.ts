@@ -54,7 +54,45 @@ describe("server-local admin portal", () => {
     expect(response?.headers.get("cache-control")).toBe("no-store");
     const html = await response!.text();
     expect(html).toContain("Command Deck");
+    expect(html).toContain("10-character pairing code");
+    expect(html).toContain("signed 30-day session");
     expect(html).not.toContain(TOKEN);
+  });
+
+  test("pairs a browser once without exposing the Railway service token", async () => {
+    const minted = await call("/admin/api/pair-code", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(minted.response?.status).toBe(200);
+    const invitation = await minted.response!.json() as { code: string; expiresAt: number };
+    expect(invitation.code).toMatch(/^[A-HJ-NP-Z2-9]{10}$/);
+    expect(invitation.expiresAt).toBeGreaterThan(Date.now());
+
+    const paired = await call("/admin/api/pair", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: invitation.code.toLowerCase() }),
+    });
+    expect(paired.response?.status).toBe(200);
+    const session = await paired.response!.json() as { sessionToken: string };
+    expect(session.sessionToken).toMatch(/^v1\.\d{13}\.[a-f0-9]{32}\.[a-f0-9]{64}$/);
+    expect(session.sessionToken).not.toContain(TOKEN);
+
+    const state = await call("/admin/api/state", {
+      headers: { authorization: `Bearer ${session.sessionToken}` },
+    });
+    expect(state.response?.status).toBe(200);
+    const replay = await call("/admin/api/pair", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: invitation.code }),
+    });
+    expect(replay.response?.status).toBe(401);
+    const tampered = await call("/admin/api/state", {
+      headers: { authorization: `Bearer ${session.sessionToken.slice(0, -1)}0` },
+    });
+    expect(tampered.response?.status).toBe(401);
   });
 
   test("requires bearer authentication for state and commands", async () => {

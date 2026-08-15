@@ -89,7 +89,7 @@ for (const path of runtimeFiles) {
 // and Railway without introducing a Lakebed authority or cloud transport.
 assert.equal(runtimeFiles.length, 182, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "12c7656ad9272fd2e9fba47fed7144c397a58d796e6eb8ee09bf8183bada477e",
+  "958ccc262bc5dba5269c84a2f7e65059fb5aebd7bf5b08602e7a166a22398f22",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 634, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 631, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "467f5cf8ecb4bb1d9072dfbf0a0a5794a9d244d1bae1e6694fc1bddab62cbb43",
+  "40df820700dcd61b1da3b4a683eb2854cb339314007dadcc7cbea9f7e0941200",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -131,7 +131,7 @@ const reviewedPrivatePropertyPaths = {
 const privateNames = Object.keys(COMPACT_CLIENT_PRIVATE_PROPERTY_MANGLE_CACHE);
 assert.deepEqual(privateNames, [...privateNames].sort(), "private property namespace stays sorted");
 assert.deepEqual(privateNames, Object.keys(reviewedPrivatePropertyPaths), "each private property has one path fingerprint");
-assert.equal(manifestNames.length, 587 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
+assert.equal(manifestNames.length, 584 + privateNames.length, "private names cannot shadow the reviewed public candidate manifest");
 for (const [name, paths] of Object.entries(reviewedPrivatePropertyPaths)) {
   assert.deepEqual(
     (analysis.declarationPaths[name] ?? []).filter((path) => path.startsWith("client/")),
@@ -580,6 +580,94 @@ async function importBundled(text) {
   return import(pathToFileURL(path).href);
 }
 process.on("exit", () => rmSync(bundledModuleDirectory, { recursive: true, force: true }));
+
+const realtimeCompactModule = await importBundled(boundaryBundles.get("client/realtimeMultiplayer.ts").compact);
+const originalWebSocket = globalThis.WebSocket;
+const originalWindow = globalThis.window;
+class CompactRealtimeSocket {
+  static OPEN = 1;
+  static instance;
+  readyState = 0;
+  binaryType = "";
+  sent = [];
+  onopen = null;
+  onmessage = null;
+  onclose = null;
+  onerror = null;
+  constructor() { CompactRealtimeSocket.instance = this; }
+  send(payload) { this.sent.push(JSON.parse(payload)); }
+  close() { this.readyState = 3; }
+  receive(message) { this.onmessage?.({ data: JSON.stringify({ v: 1, ...message }) }); }
+}
+globalThis.WebSocket = CompactRealtimeSocket;
+globalThis.window = {
+  setTimeout: () => 1,
+  clearTimeout: () => undefined,
+  setInterval: () => 1,
+  clearInterval: () => undefined,
+};
+const compactWorldSettings = [];
+const compactRealtimeClient = new realtimeCompactModule.RealtimeMultiplayerClient({
+  endpoint: "wss://compact-wire.test/ws",
+  serverId: "compact-wire",
+  demo: { token: "", userId: "builder", name: "Builder" },
+  localUserId: "builder",
+  localUsername: "Builder",
+  [COMPACT_CLIENT_PROPERTY_MANGLE_CACHE.getPose]: () => ({ x: -23.5, y: 21.02, z: -23.5, yaw: 0, pitch: 0 }),
+  getRenderDistance: () => 4,
+  onPhase: () => undefined,
+  [COMPACT_CLIENT_PROPERTY_MANGLE_CACHE.onRemotePlayers]: () => undefined,
+  onWorldEdits: () => undefined,
+  onWorldChunk: () => undefined,
+  onWorldChunksUnload: () => undefined,
+  onWorldSettings: (settings) => compactWorldSettings.push({
+    daylightCycle: settings.daylightCycle,
+    dayPhase: settings.dayPhase,
+    spawn: Object.values(settings).find((value) => value && typeof value === "object" && "x" in value),
+  }),
+  onChatEvent: () => undefined,
+  onGameMode: () => undefined,
+  onTerrain: () => undefined,
+  onDrops: () => undefined,
+  onPlayerHit: () => undefined,
+  onSelfHealth: () => undefined,
+});
+compactRealtimeClient.start();
+const compactSocket = CompactRealtimeSocket.instance;
+compactSocket.readyState = CompactRealtimeSocket.OPEN;
+compactSocket.onopen?.();
+const frozenNoon = { spawn: { x: -23.5, y: 21.02, z: -23.5, yaw: 2.35 }, daylightCycle: false, dayPhase: 0.5 };
+compactSocket.receive({
+  type: "hello",
+  capabilities: ["appearance-v1", "world-chunks-v1"],
+  terrain: { preset: "superflat", superflatGroundY: 20 },
+  defaultGameMode: "creative",
+  worldSettings: frozenNoon,
+});
+compactSocket.receive({
+  type: "welcome",
+  resumeToken: "resume",
+  terrain: { preset: "superflat", superflatGroundY: 20 },
+  defaultGameMode: "creative",
+  worldSettings: frozenNoon,
+  player: { id: "builder", name: "Builder", x: -23.5, y: 21.02, z: -23.5, yaw: 0, pitch: 0, vx: 0, vy: 0, vz: 0, gameMode: "creative", health: 20 },
+});
+const compactChunkSubscription = compactSocket.sent.find((message) => message.type === "chunk_subscribe");
+assert.deepEqual(
+  Object.keys(compactChunkSubscription).sort(),
+  ["centerX", "centerZ", "known", "radius", "seq", "type", "v"],
+  "the actual compact browser emits the literal Railway chunk-subscription contract",
+);
+assert.deepEqual(
+  [compactChunkSubscription.centerX, compactChunkSubscription.centerZ, compactChunkSubscription.radius],
+  [-3, -3, 4],
+  "the compact chunk subscription preserves floor-safe coordinates and render radius",
+);
+assert.deepEqual(compactWorldSettings, [frozenNoon, frozenNoon],
+  "the actual compact browser decodes the literal frozen-noon spawn contract");
+compactRealtimeClient.stop();
+globalThis.WebSocket = originalWebSocket;
+globalThis.window = originalWindow;
 
 const runtimePropertyProbe = await build({
   ...commonBuildOptions,

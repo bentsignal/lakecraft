@@ -150,11 +150,11 @@ function decodePose(value: unknown): PlayerPose | null {
 
 function decodeWorldSettings(value:unknown):RealtimeWorldSettings|null {
   if(!value||typeof value!=="object"||Array.isArray(value))return null;
-  const source=value as Record<string,unknown>,spawn=source.spawn;
-  if(!spawn||typeof spawn!=="object"||Array.isArray(spawn)||typeof source.daylightCycle!=="boolean")return null;
-  const point=spawn as Record<string,unknown>,x=finiteNumber(point.x),y=finiteNumber(point.y),z=finiteNumber(point.z),yaw=finiteNumber(point.yaw),phase=finiteNumber(source.dayPhase);
+  const source=value as Record<string,unknown>,spawn=source["spawn"];
+  if(!spawn||typeof spawn!=="object"||Array.isArray(spawn)||typeof source["daylightCycle"]!=="boolean")return null;
+  const point=spawn as Record<string,unknown>,x=finiteNumber(point["x"]),y=finiteNumber(point["y"]),z=finiteNumber(point["z"]),yaw=finiteNumber(point["yaw"]),phase=finiteNumber(source["dayPhase"]);
   if(x===null||y===null||z===null||yaw===null||phase===null||Math.abs(x)>1_000_000||Math.abs(z)>1_000_000||y< -64||y>320||phase<0||phase>=1)return null;
-  return {spawn:{x,y,z,yaw},daylightCycle:source.daylightCycle,dayPhase:phase};
+  return {spawn:{x,y,z,yaw},daylightCycle:source["daylightCycle"] as boolean,dayPhase:phase};
 }
 
 const REMOTE_ACTION_KINDS = new Set<MotionVisualActionKind>([
@@ -762,15 +762,15 @@ export class RealtimeMultiplayerClient {
     }
     if (removed.length) this.options.onWorldChunksUnload?.(removed);
     this.send({
-      v: REALTIME_PROTOCOL_VERSION,
-      type: "chunk_subscribe",
-      seq: ++this.chunkSequence,
-      centerX,
-      centerZ,
-      radius,
-      known: target.flatMap((chunk) => {
+      ["v"]: REALTIME_PROTOCOL_VERSION,
+      ["type"]: "chunk_subscribe",
+      ["seq"]: ++this.chunkSequence,
+      ["centerX"]: centerX,
+      ["centerZ"]: centerZ,
+      ["radius"]: radius,
+      ["known"]: target.flatMap((chunk) => {
         const revision = this.chunkRevisions.get(realtimeChunkKey(chunk.x, chunk.z));
-        return revision === undefined ? [] : [{ x: chunk.x, z: chunk.z, revision }];
+        return revision === undefined ? [] : [{ ["x"]: chunk.x, ["z"]: chunk.z, ["revision"]: revision }];
       }),
     });
   }
@@ -1010,15 +1010,15 @@ export class RealtimeMultiplayerClient {
       return;
     }
     if (message.type === "world_chunks") {
-      const seq = finiteNumber(message.seq);
-      if (seq === null || !Number.isSafeInteger(seq) || seq !== this.chunkSequence || !Array.isArray(message.chunks)) return;
-      for (const candidate of message.chunks.slice(0, 64)) {
+      const seq = finiteNumber(message["seq"]);
+      if (seq === null || !Number.isSafeInteger(seq) || seq !== this.chunkSequence || !Array.isArray(message["chunks"])) return;
+      for (const candidate of message["chunks"].slice(0, 64)) {
         if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
         const chunk = candidate as Record<string, unknown>;
-        const x = finiteNumber(chunk.x), z = finiteNumber(chunk.z), revision = finiteNumber(chunk.revision);
+        const x = finiteNumber(chunk["x"]), z = finiteNumber(chunk["z"]), revision = finiteNumber(chunk["revision"]);
         if (x === null || z === null || revision === null || !Number.isSafeInteger(x) || !Number.isSafeInteger(z)
-          || !Number.isSafeInteger(revision) || revision < 0 || typeof chunk.data !== "string") continue;
-        const edits = decodeRealtimeChunkEdits(x, z, chunk.data);
+          || !Number.isSafeInteger(revision) || revision < 0 || typeof chunk["data"] !== "string") continue;
+        const edits = decodeRealtimeChunkEdits(x, z, chunk["data"]);
         if (!edits) continue;
         this.chunkRevisions.set(realtimeChunkKey(x, z), revision);
         this.options.onWorldChunk?.(x, z, edits as RealtimeWorldEdit[]);
@@ -1026,13 +1026,13 @@ export class RealtimeMultiplayerClient {
       return;
     }
     if (message.type === "world_chunks_unload") {
-      const seq = finiteNumber(message.seq);
-      if (seq === null || seq !== this.chunkSequence || !Array.isArray(message.chunks)) return;
+      const seq = finiteNumber(message["seq"]);
+      if (seq === null || seq !== this.chunkSequence || !Array.isArray(message["chunks"])) return;
       const unloaded: Array<{ x: number; z: number }> = [];
-      for (const candidate of message.chunks.slice(0, 625)) {
+      for (const candidate of message["chunks"].slice(0, 625)) {
         if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
-        const x = finiteNumber((candidate as Record<string, unknown>).x);
-        const z = finiteNumber((candidate as Record<string, unknown>).z);
+        const x = finiteNumber((candidate as Record<string, unknown>)["x"]);
+        const z = finiteNumber((candidate as Record<string, unknown>)["z"]);
         if (x === null || z === null || !Number.isSafeInteger(x) || !Number.isSafeInteger(z)) continue;
         this.chunkRevisions.delete(realtimeChunkKey(x, z));
         unloaded.push({ x, z });
