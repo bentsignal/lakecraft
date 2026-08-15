@@ -136,6 +136,16 @@ describe("SQLite world persistence", () => {
     store.close();
   });
 
+  test("keeps legacy display names from breaking read-only admin access lookups", () => {
+    const store = new WorldStore(":memory:");
+    store.savePlayer({ id: "old-bot", name: "Spawn Probe", x: 1, y: 69.02, z: 1, yaw: 0, pitch: 0 }, "legacy-probe-hash");
+    expect(store.listAdminPlayers()).toMatchObject([{ id: "old-bot", name: "Spawn Probe" }]);
+    expect(store.roleFor("Spawn Probe")).toBeNull();
+    expect(store.banFor("Spawn Probe")).toBeNull();
+    expect(store.isWhitelisted("Spawn Probe")).toBe(false);
+    store.close();
+  });
+
   test("enforces the unique persisted block cap but permits replacing a coordinate", () => {
     const store = new WorldStore(":memory:");
     expect(store.applyBlockEdit({ operationId: "a", x: 0, y: 72, z: 0, block: 1, editorId: "u", editedAt: 1 }, 1)).not.toBeNull();
