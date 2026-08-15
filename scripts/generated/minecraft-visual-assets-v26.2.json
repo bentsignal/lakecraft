@@ -2211,6 +2211,2101 @@
           }
         }
       }
+    ],
+    "oak_slab": [
+      {
+        "path": "assets/minecraft/items/oak_slab.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/oak_slab"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/oak_slab.json",
+        "model": {
+          "parent": "minecraft:block/slab",
+          "textures": {
+            "bottom": "minecraft:block/oak_planks",
+            "side": "minecraft:block/oak_planks",
+            "top": "minecraft:block/oak_planks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/slab.json",
+        "model": {
+          "parent": "block/block",
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "cobblestone_slab": [
+      {
+        "path": "assets/minecraft/items/cobblestone_slab.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/cobblestone_slab"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/cobblestone_slab.json",
+        "model": {
+          "parent": "minecraft:block/slab",
+          "textures": {
+            "bottom": "minecraft:block/cobblestone",
+            "side": "minecraft:block/cobblestone",
+            "top": "minecraft:block/cobblestone"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/slab.json",
+        "model": {
+          "parent": "block/block",
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "brick_slab": [
+      {
+        "path": "assets/minecraft/items/brick_slab.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/brick_slab"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/brick_slab.json",
+        "model": {
+          "parent": "minecraft:block/slab",
+          "textures": {
+            "bottom": "minecraft:block/bricks",
+            "side": "minecraft:block/bricks",
+            "top": "minecraft:block/bricks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/slab.json",
+        "model": {
+          "parent": "block/block",
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "oak_stairs": [
+      {
+        "path": "assets/minecraft/items/oak_stairs.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/oak_stairs"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/oak_stairs.json",
+        "model": {
+          "parent": "minecraft:block/stairs",
+          "textures": {
+            "bottom": "minecraft:block/oak_planks",
+            "side": "minecraft:block/oak_planks",
+            "top": "minecraft:block/oak_planks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/stairs.json",
+        "model": {
+          "parent": "block/block",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                135,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "head": {
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_lefthand": {
+              "rotation": [
+                75,
+                -135,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            }
+          },
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            },
+            {
+              "from": [
+                8,
+                8,
+                0
+              ],
+              "to": [
+                16,
+                16,
+                16
+              ],
+              "faces": {
+                "up": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top",
+                  "cullface": "up"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    0,
+                    8,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "cobblestone_stairs": [
+      {
+        "path": "assets/minecraft/items/cobblestone_stairs.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/cobblestone_stairs"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/cobblestone_stairs.json",
+        "model": {
+          "parent": "minecraft:block/stairs",
+          "textures": {
+            "bottom": "minecraft:block/cobblestone",
+            "side": "minecraft:block/cobblestone",
+            "top": "minecraft:block/cobblestone"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/stairs.json",
+        "model": {
+          "parent": "block/block",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                135,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "head": {
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_lefthand": {
+              "rotation": [
+                75,
+                -135,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            }
+          },
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            },
+            {
+              "from": [
+                8,
+                8,
+                0
+              ],
+              "to": [
+                16,
+                16,
+                16
+              ],
+              "faces": {
+                "up": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top",
+                  "cullface": "up"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    0,
+                    8,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "stone_brick_stairs": [
+      {
+        "path": "assets/minecraft/items/stone_brick_stairs.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/stone_brick_stairs"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/stone_brick_stairs.json",
+        "model": {
+          "parent": "minecraft:block/stairs",
+          "textures": {
+            "bottom": "minecraft:block/stone_bricks",
+            "side": "minecraft:block/stone_bricks",
+            "top": "minecraft:block/stone_bricks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/stairs.json",
+        "model": {
+          "parent": "block/block",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                135,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "head": {
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_lefthand": {
+              "rotation": [
+                75,
+                -135,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            }
+          },
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            },
+            {
+              "from": [
+                8,
+                8,
+                0
+              ],
+              "to": [
+                16,
+                16,
+                16
+              ],
+              "faces": {
+                "up": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top",
+                  "cullface": "up"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    0,
+                    8,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "brick_stairs": [
+      {
+        "path": "assets/minecraft/items/brick_stairs.json",
+        "model": {
+          "model": {
+            "type": "minecraft:model",
+            "model": "minecraft:block/brick_stairs"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/brick_stairs.json",
+        "model": {
+          "parent": "minecraft:block/stairs",
+          "textures": {
+            "bottom": "minecraft:block/bricks",
+            "side": "minecraft:block/bricks",
+            "top": "minecraft:block/bricks"
+          }
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/stairs.json",
+        "model": {
+          "parent": "block/block",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                135,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "head": {
+              "rotation": [
+                0,
+                -90,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_lefthand": {
+              "rotation": [
+                75,
+                -135,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            }
+          },
+          "textures": {
+            "particle": "#side"
+          },
+          "elements": [
+            {
+              "from": [
+                0,
+                0,
+                0
+              ],
+              "to": [
+                16,
+                8,
+                16
+              ],
+              "faces": {
+                "down": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#bottom",
+                  "cullface": "down"
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "west"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    8,
+                    16,
+                    16
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            },
+            {
+              "from": [
+                8,
+                8,
+                0
+              ],
+              "to": [
+                16,
+                16,
+                16
+              ],
+              "faces": {
+                "up": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    16
+                  ],
+                  "texture": "#top",
+                  "cullface": "up"
+                },
+                "north": {
+                  "uv": [
+                    0,
+                    0,
+                    8,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "north"
+                },
+                "south": {
+                  "uv": [
+                    8,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "south"
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side"
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    0,
+                    16,
+                    8
+                  ],
+                  "texture": "#side",
+                  "cullface": "east"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "path": "assets/minecraft/models/block/block.json",
+        "model": {
+          "gui_light": "side",
+          "display": {
+            "gui": {
+              "rotation": [
+                30,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.625,
+                0.625,
+                0.625
+              ]
+            },
+            "ground": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                3,
+                0
+              ],
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            },
+            "fixed": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            "on_shelf": {
+              "rotation": [
+                0,
+                180,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "thirdperson_righthand": {
+              "rotation": [
+                75,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                2.5,
+                0
+              ],
+              "scale": [
+                0.375,
+                0.375,
+                0.375
+              ]
+            },
+            "firstperson_righthand": {
+              "rotation": [
+                0,
+                45,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            },
+            "firstperson_lefthand": {
+              "rotation": [
+                0,
+                225,
+                0
+              ],
+              "translation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                0.4,
+                0.4,
+                0.4
+              ]
+            }
+          }
+        }
+      }
     ]
   },
   "blocks": {
@@ -2244,7 +4339,8 @@
     "stone_bricks": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAFVBMVEV/f394dnhqbWpaWVpjY2OcmZyLiYujkba6AAAAYklEQVR42lXOUQrEQAgE0Sob+/5HXjLDEvJQ8M+i+2obltIHj4Yt5WiFsEiLFNGwjlJQHEIdUD2XYb4yM/qsc8geTffC25At97pjFmtvDzhZESgPMVWKouOMuWnI+/9D/iE/bMYCbu05nvoAAAAASUVORK5CYII=",
     "clay": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAElBMVEWhp7Gvudasrr2ao7OcoayUmaQyP0y5AAAAcElEQVR42gXBMQ6DMAxA0V/b7BXtAQxpd5eEPQJ3R4L7n4X3OCcXRQZkoMVGh96q21vIZRn57qAU8qCBXNVZK+vu3l8HeChDUtBnapOpY+mnhwXbUlax+LDpzzMEruYSNo9on4vPWjCp+bB/MKpD0G9g9Q+q82ZaXAAAAABJRU5ErkJggg==",
     "bricks": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAG1BMVEV8RTaplI2ihn3GaFGxYk2LbmebVkOPUD9zPzGgdN/HAAAAbklEQVR42k2OQRLEIAzDRCBO/v/iHaelszkgLrLNOcq99zlH4RepgpKGkqB7dVfRHV1AZqzIzIyHWNf4w4TRCcpHQAlwDg4KPv/5LNzvHRq+O0o+hmDPOr1w7O2/e9Dbvx8GSPrPoQH7l3x+DNYPOiAEBGQstBIAAAAASUVORK5CYII=",
-    "bedrock": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAAbUlEQVR42gXBgQAAMBDEsLG8QmEKcFDVXfIGYDNBfGytRe2Qx8EBoeaebZ4pAL4jAGG18VBROIXj1VzN1eKeigoHMt9K0NWqnnCITKC9LVYc1eCdCq7c6p7AhAWAby1P4HD1NkFwJfg4uBruwH1D0lUfTgxevgAAAABJRU5ErkJggg=="
+    "bedrock": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAAbUlEQVR42gXBgQAAMBDEsLG8QmEKcFDVXfIGYDNBfGytRe2Qx8EBoeaebZ4pAL4jAGG18VBROIXj1VzN1eKeigoHMt9K0NWqnnCITKC9LVYc1eCdCq7c6p7AhAWAby1P4HD1NkFwJfg4uBruwH1D0lUfTgxevgAAAABJRU5ErkJggg==",
+    "torch": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAUElEQVR42mMYBYMd/L/B8P9/P8N/8g34P/0/EJBvwPz6gP+54WbkGzC11O1/qKseZS5wMlWiyACQCwbQC6AAtDWQpcwL1nrSlLnAXEscrwEAqjQsoSdmZ1wAAAAASUVORK5CYII="
   },
   "blockItemTextures": {
     "torch": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAUElEQVR42mMYBYMd/L/B8P9/P8N/8g34P/0/EJBvwPz6gP+54WbkGzC11O1/qKseZS5wMlWiyACQCwbQC6AAtDWQpcwL1nrSlLnAXEscrwEAqjQsoSdmZ1wAAAAASUVORK5CYII=",

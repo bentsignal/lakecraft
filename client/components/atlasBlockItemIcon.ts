@@ -79,7 +79,13 @@ function rgbaRuns(rgba: Uint8ClampedArray, size: number): readonly AtlasBlockIco
 }
 
 function blockItemRgba(itemId: ItemId, size: number): Uint8ClampedArray | undefined {
-  const block = blockIdForCubeItem(itemId);
+  const shaped = itemId.endsWith("_slab") || itemId.endsWith("_stairs");
+  const sourceItem = shaped
+    ? itemId.startsWith("oak_") ? "planks"
+      : itemId.startsWith("cobblestone_") ? "cobblestone"
+        : itemId.startsWith("brick_") ? "bricks" : "stone_bricks"
+    : itemId;
+  const block = blockIdForCubeItem(sourceItem as ItemId);
   if (block === null) return undefined;
   const top = blockTextureForFace(block, "top");
   const left = blockTextureForFace(block, "north");
@@ -88,6 +94,21 @@ function blockItemRgba(itemId: ItemId, size: number): Uint8ClampedArray | undefi
   const rgba = new Uint8ClampedArray(size * size * 4);
   const scale = size / 16;
   const p = (x: number, y: number, u: number, v: number): Point => [x * scale, y * scale, u, v];
+  if (shaped) {
+    const point = (x: number, y: number, z: number, u: number, v: number): Point =>
+      p(8 + 6 * x - 7 * z, 8 + 3 * x + 3 * z - 7 * y, u, v);
+    const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void => {
+      face(rgba, size, top, [point(x0, y1, z0, x0, z0), point(x1, y1, z0, x1, z0),
+        point(x1, y1, z1, x1, z1), point(x0, y1, z1, x0, z1)], 1);
+      face(rgba, size, left, [point(x0, y1, z1, x0, 1 - y1), point(x1, y1, z1, x1, 1 - y1),
+        point(x1, y0, z1, x1, 1 - y0), point(x0, y0, z1, x0, 1 - y0)], .8);
+      face(rgba, size, right, [point(x1, y1, z1, z1, 1 - y1), point(x1, y1, z0, z0, 1 - y1),
+        point(x1, y0, z0, z0, 1 - y0), point(x1, y0, z1, z1, 1 - y0)], .6);
+    };
+    box(0, 0, 0, 1, .5, 1);
+    if (itemId.endsWith("_stairs")) box(0, .5, .5, 1, 1, 1);
+    return rgba;
+  }
   face(rgba, size, top, [p(8, 1, .5, 0), p(14, 4, 1, .5), p(8, 8, .5, 1), p(1, 4, 0, .5)], 1);
   face(rgba, size, left, [p(1, 4, 0, 0), p(8, 8, 1, 0), p(8, 14, 1, 1), p(1, 10, 0, 1)], .8);
   face(rgba, size, right, [p(8, 8, 0, 0), p(14, 4, 1, 0), p(14, 10, 1, 1), p(8, 14, 0, 1)], .6);

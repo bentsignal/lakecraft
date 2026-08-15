@@ -4,7 +4,7 @@ import { TEXTURED_WORLD_VERTEX_FLOATS, blockTextureForFace, textureAtlasUv } fro
 import { CUBE_FACES } from "./cubeFaces.ts";
 import { ITEM_SPRITE_MAX_VERTICES, appendItemSpriteGeometry } from "./itemSpriteGeometry.ts";
 import { writeMatrixProduct } from "./matrixProduct.ts";
-import { BLOCK, type BlockId } from "./types.ts";
+import { BLOCK, isSlabBlock, isStairBlock, type BlockId } from "./types.ts";
 import {
   FIRST_PERSON_TUNING,
   currentFirstPersonTuning,
@@ -143,7 +143,7 @@ function canUseCanonicalCube(block: BlockId): boolean {
   // distinguishes the full atlas cubes without rebuilding a six-face probe.
   // The slab intentionally reuses the masonry tile for its placed half-height
   // mesh, so texture presence alone must not promote its held item to a cube.
-  return block !== BLOCK.AIR && block !== BLOCK.STONE_BRICK_SLAB
+  return block !== BLOCK.AIR && !isSlabBlock(block) && !isStairBlock(block)
     && blockTextureForFace(block, "east") !== null;
 }
 

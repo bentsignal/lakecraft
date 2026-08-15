@@ -229,8 +229,8 @@ const singlePlayerSaveSource = readFileSync(new URL("../client/singleplayer/loca
 const catalogSource = readFileSync(new URL("../client/gameplay/catalog.ts", import.meta.url), "utf8");
 assert.match(catalogSource, /\[BLOCK\.STONE_BRICK_SLAB\]:\s*"stone_brick_slab"/);
 assert.match(catalogSource, /stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/);
-assert.match(catalogSource, /BLOCK\.STONE_BRICKS[^\n]*BLOCK\.STONE_BRICK_SLAB[^\n]*BLOCK\.BRICKS[^\n]*return "stone"/);
-assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/,
+assert.match(catalogSource, /BLOCK\.STONE_BRICKS[\s\S]{0,180}BLOCK\.STONE_BRICK_SLAB[\s\S]{0,100}BLOCK\.BRICKS[\s\S]{0,220}return "stone"/);
+assert.match(singlePlayerSaveSource, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICK_STAIRS_WEST/,
   "single-player persistence admits every later append-only engine ID");
 const worldMutation = serverSource.slice(
   serverSource.indexOf("editWorldBlock: mutation(async"),

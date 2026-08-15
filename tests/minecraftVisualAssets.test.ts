@@ -46,11 +46,12 @@ assert.equal(Object.keys(assets.itemTextures).length, 67);
 assert.equal(assets.bowStages.length, 3);
 assert.equal(Object.keys(assets.entities).length, 12);
 assert.ok(Object.hasOwn(assets.entities, "chicken"), "the exact temperate chicken joins every implemented mob texture");
-assert.equal(Object.keys(assets.blocks).length, 31);
+assert.equal(Object.keys(assets.blocks).length, 32);
 assert.equal(Object.keys(assets.blockItemTextures).length, 4);
 assert.deepEqual(Object.keys(assets.blockLayers), ["grass_side_overlay"]);
 assert.deepEqual(Object.keys(assets.blockItemModelChains), [
   "chest", "oak_fence", "oak_fence_gate", "stone_brick_slab",
+  "oak_slab", "cobblestone_slab", "brick_slab", "oak_stairs", "cobblestone_stairs", "stone_brick_stairs", "brick_stairs",
 ]);
 assert.deepEqual(Object.fromEntries(Object.entries(assets.blockItemModelChains).map(([itemId, chain]) => [
   itemId,
@@ -79,11 +80,18 @@ assert.deepEqual(Object.fromEntries(Object.entries(assets.blockItemModelChains).
     "assets/minecraft/models/block/slab.json",
     "assets/minecraft/models/block/block.json",
   ],
+  oak_slab: ["assets/minecraft/items/oak_slab.json", "assets/minecraft/models/block/oak_slab.json", "assets/minecraft/models/block/slab.json", "assets/minecraft/models/block/block.json"],
+  cobblestone_slab: ["assets/minecraft/items/cobblestone_slab.json", "assets/minecraft/models/block/cobblestone_slab.json", "assets/minecraft/models/block/slab.json", "assets/minecraft/models/block/block.json"],
+  brick_slab: ["assets/minecraft/items/brick_slab.json", "assets/minecraft/models/block/brick_slab.json", "assets/minecraft/models/block/slab.json", "assets/minecraft/models/block/block.json"],
+  oak_stairs: ["assets/minecraft/items/oak_stairs.json", "assets/minecraft/models/block/oak_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
+  cobblestone_stairs: ["assets/minecraft/items/cobblestone_stairs.json", "assets/minecraft/models/block/cobblestone_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
+  stone_brick_stairs: ["assets/minecraft/items/stone_brick_stairs.json", "assets/minecraft/models/block/stone_brick_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
+  brick_stairs: ["assets/minecraft/items/brick_stairs.json", "assets/minecraft/models/block/brick_stairs.json", "assets/minecraft/models/block/stairs.json", "assets/minecraft/models/block/block.json"],
 }, "every model-rendered catalog item retains its exact installed inheritance chain");
-assert.deepEqual(Object.fromEntries(["oak_fence", "oak_fence_gate", "stone_brick_slab"].map((itemId) => {
+assert.deepEqual(Object.fromEntries(["oak_fence", "oak_fence_gate", "stone_brick_slab", "oak_slab", "cobblestone_slab", "brick_slab", "oak_stairs", "cobblestone_stairs", "stone_brick_stairs", "brick_stairs"].map((itemId) => {
   const parent = assets.blockItemModelChains[itemId].find(({ model }) => Array.isArray(model.elements));
   return [itemId, (parent?.model.elements as unknown[] | undefined)?.length];
-})), { oak_fence: 8, oak_fence_gate: 8, stone_brick_slab: 1 },
+})), { oak_fence: 8, oak_fence_gate: 8, stone_brick_slab: 1, oak_slab: 1, cobblestone_slab: 1, brick_slab: 1, oak_stairs: 2, cobblestone_stairs: 2, stone_brick_stairs: 2, brick_stairs: 2 },
 "installed parent elements remain the sole source of non-cube inventory geometry");
 
 assert.deepEqual(assets.models.handheld.display?.firstperson_righthand, {

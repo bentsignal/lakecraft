@@ -622,6 +622,14 @@ function paintDerivedTile(output, outputIndex, columns, tileSize, name) {
     return;
   }
 
+  if (name === "torch") {
+    // Deterministic fallback only; the reviewed installed 26.2 asset replaces
+    // this tile below. Keeping a recipe makes atlas regeneration fail closed
+    // on the imported source validation rather than on layout expansion.
+    fill([0, 0, 0, 0]);
+    return;
+  }
+
   fail(`no deterministic material recipe exists for derived tile ${name}.`);
 }
 

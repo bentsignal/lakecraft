@@ -77,7 +77,7 @@ const catalog = readFileSync(new URL("../client/gameplay/catalog.ts", import.met
 assert.match(catalog, /\[BLOCK\.OAK_FENCE\]:\s*"oak_fence"/);
 assert.match(catalog, /oak_fence:\s*BLOCK\.OAK_FENCE/);
 assert.match(catalog, /BLOCK\.OAK_FENCE[^\n]*BLOCK\.OAK_FENCE_GATE_CLOSED[^\n]*BLOCK\.OAK_FENCE_GATE_OPEN[^\n]*return "wood"/);
-assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BEDROCK/,
+assert.match(singleSave, /candidate\.block, BLOCK\.AIR, BLOCK\.BRICK_STAIRS_WEST/,
   "single-player save validation retains oak fences and every newer append-only engine ID");
 
 const mutation = server.slice(server.indexOf("editWorldBlock: mutation(async"), server.indexOf("startPresenceSession: mutation("));

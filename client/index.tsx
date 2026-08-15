@@ -27,6 +27,7 @@ import {
   ENGINE_TO_GAME,
   GameplaySessionSurface,
   ITEM_TO_ENGINE,
+  gameplayChatShortcutDraft,
   scheduleGameplayPointerLockAfterEscapeRelease,
   transitionGameplayPointerSession,
   type GameplayPointerSessionEvent,
@@ -391,6 +392,7 @@ function RailwayMultiplayerSession({
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
   const [engineError, setEngineError] = useState("");
   const [worldReady, setWorldReady] = useState(false);
+  const initialWorldChunksReadyRef = useRef(false);
   const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(false);
   const [inventoryReady, setInventoryReady] = useState(false);
   const [transportReady, setTransportReady] = useState(false);
@@ -1212,6 +1214,11 @@ function RailwayMultiplayerSession({
     if (!realtimeSession) realtimeInventoryAuthorityRef.current = false;
   }, [realtimeSession?.endpoint]);
 
+  useEffect(() => {
+    initialWorldChunksReadyRef.current = false;
+    setWorldReady(false);
+  }, [realtimeSession?.endpoint]);
+
 
   useEffect(() => {
     if (!inWorld || !inventoryReady || !realtimeSession || !realtimeTerrain) return;
@@ -1336,7 +1343,7 @@ function RailwayMultiplayerSession({
           );
           return true;
         },
-      }), presentationOptions);
+      }), {...presentationOptions, worldContinuesWhilePaused: true});
       engineRef.current = engine;
       engine.setDroppedItems(realtimeDropsRef.current);
       engine.setPlayerHealth(playerHealthRef.current);
@@ -1347,7 +1354,7 @@ function RailwayMultiplayerSession({
       engine.setFirstPersonFeedbackHidden(multiplayerPaused);
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
       engine.start();
-      setWorldReady(true);
+      if (initialWorldChunksReadyRef.current) setWorldReady(true);
       if (entryPointerLockHandoffRef.current && document.pointerLockElement === document.documentElement) {
         entryPointerLockHandoffRef.current = false;
         engine.requestPointerLock();
@@ -1433,9 +1440,11 @@ function RailwayMultiplayerSession({
         void handleDropSelected(event.ctrlKey || event.metaKey);
         return;
       }
-      if ((event.code === "KeyT" || event.code === "Enter") && !event.repeat && !inventoryOpen) {
+      const chatShortcutDraft = gameplayChatShortcutDraft(event);
+      if (chatShortcutDraft !== null && !inventoryOpen) {
         event.preventDefault();
         exitPointerLockForUi();
+        setChatDraft(chatShortcutDraft);
         setChatOpen(true);
         setLastSeenChatCount(realtimeChatMessages.length);
         setChatError("");
@@ -1884,6 +1893,10 @@ function RailwayMultiplayerSession({
               authoritativeWorldEditRef.current.set(blockCoordinateKey(edit.x, edit.y, edit.z), edit);
             }
             engineRef.current?.replaceWorldChunkEdits(chunkX, chunkZ, edits);
+          }}
+          onWorldChunksReady={() => {
+            initialWorldChunksReadyRef.current = true;
+            if (engineRef.current) setWorldReady(true);
           }}
           onWorldChunksUnload={(chunks) => {
             const removed = new Set(chunks.map((chunk) => `${chunk.x},${chunk.z}`));

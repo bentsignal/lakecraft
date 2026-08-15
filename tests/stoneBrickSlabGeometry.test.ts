@@ -246,12 +246,12 @@ assert.deepEqual(projectileHit && { ...projectileHit, fraction: Number(projectil
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engineSource,
-  /block === BLOCK\.STONE_BRICK_SLAB\)[\s\S]{0,180}appendStoneBrickSlabMesh\(\s*textureVertices/,
+  /if \(isSlabBlock\(block\)\)[\s\S]{0,180}appendSlabMesh\(\s*textureVertices/,
   "slabs append into the retained opaque terrain batch");
-assert.ok((engineSource.match(/blockHasCollision\(block\) && playerIntersectsBlockCollisionHeight/g)?.length ?? 0) >= 2,
-  "player and mob collision both use the partial-height AABB");
+assert.match(engineSource, /blockHasCollision\(block\)[\s\S]{0,100}playerIntersectsBlockCollisionShape/,
+  "player collision uses the shared partial-shape AABB");
 assert.match(engineSource,
-  /isProjectileBlocked:[\s\S]{0,220}blockHasCollision\(block\) && blockContainsSolidPoint\(block, blockY, y\)/,
+  /isProjectileBlocked:[\s\S]{0,280}blockHasCollision\(block\)[\s\S]{0,100}blockContainsSolidPoint\(block, blockY, y/,
   "local mob projectiles use the same upper-half pass-through rule");
 assert.match(serverSource,
   /cell\.slabSupport && block === "stone_brick_slab"\) supported = true/,

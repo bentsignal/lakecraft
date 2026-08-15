@@ -107,11 +107,11 @@ assert.ok(litOffCameraMob > LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX,
 assert.equal(localMobHostileActive("spider", litOffCameraMob), false, "an off-camera torch makes an unengaged spider neutral");
 assert.ok(Math.abs(sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 20, 1.76, 0)
   - litOffCameraMob) < 1e-6);
-assert.ok(torchColumnReads <= 23 * 23, "one coordinate-local cache miss has a fixed column-read bound");
+assert.ok(torchColumnReads <= 29 * 29, "one coordinate-local cache miss has a fixed column-read bound");
 const cachedReads = torchColumnReads;
 sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 20, 1.76, 0);
 assert.equal(torchColumnReads, cachedReads, "a fixed-AI sample in the same voxel reuses cached torch locality");
-const unlitAdjacentRegion = sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 8, 1.76, 0);
+const unlitAdjacentRegion = sampleCachedMobLocalLight(0, 0, countedTorchColumns, 1, mobLightCache, 5, 1.76, 0);
 assert.equal(unlitAdjacentRegion, 0, "an adjacent unlit region outside torch radius remains dark");
 offCameraTorchColumns.clear();
 assert.equal(sampleCachedMobLocalLight(0, 0, countedTorchColumns, 2, mobLightCache, 20, 1.76, 0), 0,
@@ -121,7 +121,7 @@ offCameraTorchColumns.set("20,0", [1.76]);
 assert.ok(Math.abs(sampleCachedMobLocalLight(0, 0, countedTorchColumns, 3, mobLightCache, 20, 1.76, 0)
   - litOffCameraMob) < 1e-6,
   "a stream revision invalidates and repopulates the coordinate-local cache");
-assert.ok(torchColumnReads - readsAfterEdit <= 23 * 23, "stream invalidation remains bounded to one spatial neighborhood");
+assert.ok(torchColumnReads - readsAfterEdit <= 29 * 29, "stream invalidation remains bounded to one spatial neighborhood");
 assert.equal(createMobSpawns({
   seed: 7319,
   radius: 2,

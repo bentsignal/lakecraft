@@ -76,7 +76,7 @@ const streamingWindow = engine.slice(
 );
 assert.doesNotMatch(streamingWindow, /loadTerrainChunk\(|unloadTerrainChunk\(/,
   "crossing a chunk only replans bounded work; it never materializes the whole edge synchronously");
-assert.match(engine, /if \(paused\) \{\s+const processedTerrain = processPendingTerrainChunks\(\);\s+if \(!processedTerrain\) processPendingChunkMeshes\(\);/,
+assert.match(engine, /if \(paused\) \{[\s\S]{0,180}const processedTerrain = processPendingTerrainChunks\(\);\s+if \(!processedTerrain\) processPendingChunkMeshes\(\);/,
   "paused render-distance changes continue through one bounded terrain or mesh queue step per frame");
 
 console.log("single-player playtest polish tests passed");

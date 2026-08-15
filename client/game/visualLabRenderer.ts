@@ -33,8 +33,9 @@ import {
 import {
   appendOakFenceGateMesh,
   appendOakFenceMesh,
+  appendSlabMesh,
+  appendStairMesh,
   appendSaplingMesh,
-  appendStoneBrickSlabMesh,
 } from "./voxelEngine.ts";
 import {
   appendSpecialBedMesh,
@@ -84,6 +85,9 @@ const SPECIAL_VISUAL_BLOCKS: Readonly<Partial<Record<ItemId, EngineBlockId>>> = 
   sapling: BLOCK.SAPLING,
   oak_fence: BLOCK.OAK_FENCE, oak_fence_gate: BLOCK.OAK_FENCE_GATE_CLOSED,
   stone_brick_slab: BLOCK.STONE_BRICK_SLAB,
+  oak_slab: BLOCK.OAK_SLAB, cobblestone_slab: BLOCK.COBBLESTONE_SLAB, brick_slab: BLOCK.BRICK_SLAB,
+  oak_stairs: BLOCK.OAK_STAIRS_NORTH, cobblestone_stairs: BLOCK.COBBLESTONE_STAIRS_NORTH,
+  stone_brick_stairs: BLOCK.STONE_BRICK_STAIRS_NORTH, brick_stairs: BLOCK.BRICK_STAIRS_NORTH,
 };
 
 function blockGeometry(block: EngineBlockId): Float32Array {
@@ -190,8 +194,10 @@ function specialBlockGeometry(
     appendOakFenceMesh(textured, -0.5, -0.75, -0.5, { north: true, east: true, south: true, west: true });
   } else if (itemId === "oak_fence_gate") {
     appendOakFenceGateMesh(textured, -0.5, -0.75, -0.5, variantIndex > 0);
-  } else if (itemId === "stone_brick_slab") {
-    appendStoneBrickSlabMesh(textured, -0.5, -0.25, -0.5);
+  } else if (itemId.endsWith("_slab")) {
+    appendSlabMesh(textured, -0.5, -0.25, -0.5, block);
+  } else if (itemId.endsWith("_stairs")) {
+    appendStairMesh(textured, -0.5, -0.5, -0.5, block);
   } else return null;
   let minX = Infinity; let maxX = -Infinity; let minY = Infinity;
   let maxY = -Infinity; let minZ = Infinity; let maxZ = -Infinity;

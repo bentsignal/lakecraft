@@ -1,11 +1,11 @@
 /** Lakecraft realtime wire protocol. Keep this module runtime-agnostic/browser-safe. */
 
 import type { WorldTerrainDescriptor } from "../../../shared/worldPreset.ts";
-import { REALTIME_WORLD_MAX_CHUNKS, REALTIME_WORLD_MAX_RADIUS } from "../../../shared/realtimeWorldChunks.ts";
+import { REALTIME_BLOCK_ID_MAX, REALTIME_WORLD_MAX_CHUNKS, REALTIME_WORLD_MAX_RADIUS } from "../../../shared/realtimeWorldChunks.ts";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const BLOCK_ID_MIN = 0;
-export const BLOCK_ID_MAX = 33;
+export const BLOCK_ID_MAX = REALTIME_BLOCK_ID_MAX;
 export const CHAT_MESSAGE_MAX_LENGTH = 180;
 export const SKIN_PIXEL_BYTES = 64 * 64 * 4;
 export const SKIN_PIXEL_BASE64_LENGTH = 21_848;
@@ -232,6 +232,7 @@ export type ServerMessage =
       v: ProtocolVersion;
       type: "world_chunks";
       seq: number;
+      complete?: boolean;
       chunks: Array<{ x: number; z: number; revision: number; data: string }>;
     }
   | {
@@ -265,6 +266,7 @@ export type ServerMessage =
       type: "chat_message";
       message: RealtimeChatMessage;
     }
+  | { v: ProtocolVersion; type: "private_notice"; message: string; sentAt: number }
   | { v: ProtocolVersion; type: "drop_snapshot"; drops: PublicDrop[] }
   | { v: ProtocolVersion; type: "drop_result"; operationId: string; action: "drop" | "pickup"; drop?: PublicDrop }
   | { v: ProtocolVersion; type: "inventory_state"; inventory: Record<string, unknown> }

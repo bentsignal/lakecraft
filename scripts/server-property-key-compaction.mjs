@@ -28,8 +28,8 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   // Interning keeps the serialized key spelling exact; it only avoids repeating
   // the same source literal throughout the closed server bundle.
   coordKey: [97, 42],
-  count: [146, 102],
-  craftingContext: [10, 24],
+  count: [146, 116],
+  craftingContext: [10, 31],
   damage: [11, 15],
   deadUntil: [23, 20],
   direction: [14, 3],
@@ -43,7 +43,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   expectedBlock: [13, 3],
   expectedChestUpdatedAt: [4, 1],
   expectedChunkRevision: [7, 3],
-  expectedHeldItem: [13, 2],
+  expectedHeldItem: [14, 2],
   expectedInventoryRevision: [15, 5],
   expectedInventoryUpdatedAt: [14, 4],
   expectedRevision: [11, 2],
@@ -60,14 +60,14 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   ignitedAt: [11, 8],
   igniterUserId: [15, 8],
   ignitionId: [19, 10],
-  ingredients: [2, 22],
+  ingredients: [2, 29],
   inputJson: [12, 5],
   inventories: [48, 1],
   inventory: [80, 90],
   inventoryJson: [29, 23],
   inventoryRevision: [10, 8],
   inventorySlot: [9, 1],
-  itemId: [113, 112],
+  itemId: [113, 126],
   keyframes: [15, 1],
   killed: [10, 14],
   lastAttackAt: [14, 18],
@@ -87,7 +87,7 @@ export const COMPACT_SERVER_KEY_COUNTS = Object.freeze({
   nearbyPlayers: [0, 8],
   online: [20, 12],
   operationId: [90, 43],
-  output: [21, 36],
+  output: [21, 43],
   ownerUserId: [13, 10],
   parentEventId: [9, 5],
   playerCombat: [25, 1],
@@ -140,9 +140,9 @@ export const COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS = BUILTIN_EXCLUSIONS;
 // explicit MotionSegmentRecorder and skin-storage deltas remain pinned below;
 // compact manifest keys, exclusions,
 // runtime strings, and server records stay exact.
-export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "01947efde9f429abcdf080006e0fff208483e8218ba45b47313bc6bea2ea0564";
-export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "76f73009c767698e99787559776e83c43fdb84a0da87452858531e45d224c00a";
-export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "e2762c40d52c097b0af18afa1b6b8fdbccd009abf2c30d61f8fca460753fe772";
+export const COMPACT_SERVER_KEY_SOURCE_FINGERPRINT = "a7b98e47ba2faad2deb5dee2f5d5c7f4bcc3c395000353ac53eee56f125a0619";
+export const COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT = "e1e73ff64d76a4196a41003232af0833e12084ee75535c1e5cf85f37f875e26e";
+export const COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT = "334daa94c298fc75d95d0cf66495fc3e1631e83eedba79747d0b4facf45aca84";
 export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3ea01b4270a494cc9b5ebf9c20c91609c8cb78c07d2";
 // Beyond the original hand-curated record-key manifest, the closed server
 // bundle contains a larger set of ordinary property spellings that can be
@@ -150,14 +150,49 @@ export const COMPACT_SERVER_KEY_EXCLUSIONS_FINGERPRINT = "2601aa554734c0a12761c3
 // Derivation is deterministic, but the exact reviewed live set is hash-pinned
 // so source drift fails closed instead of silently broadening the transform.
 export const COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN = 10;
-export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 285;
+export const COMPACT_SERVER_EXTENDED_KEY_COUNT = 286;
 // The positional clientBootstrap query reorders existing high-gain server keys
 // without adding a new compact wire property.
-export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "e0ac5e7c4e31b33fcd33aa35020fbaf441e49033092554badcd4728b841add84";
+export const COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT = "ba5d63c2b998ba764e5ba2515842424357a4bcc51478a2fbd67c4d1d632e4bfa";
 // Keep the post-shared-gameplay checkpoint reconstructable. The only reviewed
 // source drift here removes owner-specific pickup filtering while leaving the
 // serialized Railway/Lakebed property spellings unchanged.
 export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
+  count: Object.freeze({
+    counts: Object.freeze({ "shared/game.ts": Object.freeze([95, 109]) }),
+    kinds: Object.freeze({ "shared/game.ts:PropertyAssignment": Object.freeze([70, 84]) }),
+    previousEntryFingerprint: "ad8b12aa493026cf26622b51500aefa1d7ffbb6201cab0c0911767a87d0f3282",
+    source: "seven shaped-building recipes add one ingredient and one output count each",
+  }),
+  craftingContext: Object.freeze({
+    counts: Object.freeze({ "shared/game.ts": Object.freeze([24, 31]) }),
+    kinds: Object.freeze({ "shared/game.ts:PropertyAssignment": Object.freeze([22, 29]) }),
+    previousEntryFingerprint: "fdefb61877d34f89bfb95449f1507e39a2320ebd3ee5d115c39dcd4fd614b2c8",
+    source: "seven shaped-building recipes retain exact crafting contexts",
+  }),
+  expectedHeldItem: Object.freeze({
+    counts: Object.freeze({ "shared/worldBlockOperations.ts": Object.freeze([16, 17]) }),
+    previousEntryFingerprint: "3960859fe44952db05344872e54d4c6b1cfccdda248b8da1d98cc89faa21b025",
+    source: "canonical shaped-block placement validates the held item",
+  }),
+  ingredients: Object.freeze({
+    counts: Object.freeze({ "shared/game.ts": Object.freeze([27, 34]) }),
+    kinds: Object.freeze({ "shared/game.ts:PropertyAssignment": Object.freeze([22, 29]) }),
+    previousEntryFingerprint: "953f84fb667f859c71912b492df791bca7ffdf5050d4a03e635bec64b8a7dfe5",
+    source: "seven shaped-building recipes add explicit ingredient lists",
+  }),
+  itemId: Object.freeze({
+    counts: Object.freeze({ "shared/game.ts": Object.freeze([118, 132]) }),
+    kinds: Object.freeze({ "shared/game.ts:PropertyAssignment": Object.freeze([74, 88]) }),
+    previousEntryFingerprint: "3e0ea159d36bfae836df4dc64e96b5bd1a40cb6eee66d8d0e5d5cd7dee91f7c1",
+    source: "seven shaped-building recipes add ingredient and output item IDs",
+  }),
+  output: Object.freeze({
+    counts: Object.freeze({ "shared/game.ts": Object.freeze([41, 48]) }),
+    kinds: Object.freeze({ "shared/game.ts:PropertyAssignment": Object.freeze([32, 39]) }),
+    previousEntryFingerprint: "a12d79b1aa8c47b8c33cb4b30bd23e0bc2cbdb1e38aa71b6e1b8721a1917b783",
+    source: "seven shaped-building recipes add exact outputs",
+  }),
   radius: Object.freeze({
     previousEntryFingerprint:"5c10798ce822b64cda7ec824663ec59563b6907ec1952e89bb333bb521bab23f",
     source:"chunk subscription radius moved behind a literal compact-wire boundary",
@@ -179,6 +214,10 @@ export const COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA = Object.freeze({
   userId: Object.freeze({
     counts: Object.freeze({
       "client/index.tsx": Object.freeze([30, 28]),
+      "client/realtimeMultiplayer.ts": Object.freeze([14, 15]),
+    }),
+    kinds: Object.freeze({
+      "client/realtimeMultiplayer.ts:PropertyAssignment": Object.freeze([2, 3]),
     }),
     previousEntryFingerprint: "60f7dfbdd9303930143947bbb8731d690ee46b189e8d6af18405adfe55a77259",
     source: "remove owner-specific local pickup filtering",

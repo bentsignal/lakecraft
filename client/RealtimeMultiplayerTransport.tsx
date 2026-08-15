@@ -48,6 +48,7 @@ export function RealtimeMultiplayerTransport(props: {
   onRemotePlayers: (players: RemotePlayer[]) => void;
   onWorldEdits: (edits: RealtimeWorldEdit[], replace: boolean) => void;
   onWorldChunk?: (chunkX: number, chunkZ: number, edits: RealtimeWorldEdit[]) => void;
+  onWorldChunksReady?: () => void;
   onWorldChunksUnload?: (chunks: Array<{ x: number; z: number }>) => void;
   onChatEvent: (event: RealtimeChatEvent) => void;
   onGameMode: (gameMode: RealtimeGameMode) => void;
@@ -92,6 +93,7 @@ export function RealtimeMultiplayerTransport(props: {
       onRemotePlayers: (players) => propsRef.current.onRemotePlayers(players),
       onWorldEdits: (edits, replace) => propsRef.current.onWorldEdits(edits, replace),
       onWorldChunk: (x, z, edits) => propsRef.current.onWorldChunk?.(x, z, edits),
+      onWorldChunksReady: () => propsRef.current.onWorldChunksReady?.(),
       onWorldChunksUnload: (chunks) => propsRef.current.onWorldChunksUnload?.(chunks),
       onChatEvent: (event) => propsRef.current.onChatEvent(event),
       onGameMode: (gameMode) => propsRef.current.onGameMode(gameMode),

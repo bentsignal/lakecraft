@@ -61,15 +61,17 @@ const closed: number[] = [];
 const open: number[] = [];
 appendOakFenceGateMesh(closed, 8, 12, -4, false, 0.96);
 appendOakFenceGateMesh(open, 8, 12, -4, true, 0.96);
-assert.equal(OAK_FENCE_GATE_MESH_VERTEX_COUNT, 144, "two posts and two bars keep one exact fixed budget");
+assert.equal(OAK_FENCE_GATE_MESH_VERTEX_COUNT, 288,
+  "the installed model keeps two posts and six bounded door cuboids in one fixed budget");
 assert.equal(closed.length, OAK_FENCE_GATE_MESH_VERTEX_COUNT * 6);
 assert.equal(open.length, OAK_FENCE_GATE_MESH_VERTEX_COUNT * 6, "opening never reallocates a larger mesh shape");
 const closedPositions = Array.from({ length: closed.length / 6 }, (_, index) => closed.slice(index * 6, index * 6 + 3));
 const openPositions = Array.from({ length: open.length / 6 }, (_, index) => open.slice(index * 6, index * 6 + 3));
-assert.equal(Math.max(...closedPositions.map((position) => position[1])), 12 + OAK_FENCE_HEIGHT);
-assert.equal(Math.max(...openPositions.map((position) => position[1])), 12 + OAK_FENCE_HEIGHT);
-assert.equal(Math.max(...closedPositions.map((position) => position[2])), -3.375, "closed bars remain between the posts");
-assert.equal(Math.max(...openPositions.map((position) => position[2])), -3, "open bars visibly swing south around their hinge");
+assert.equal(Math.max(...closedPositions.map((position) => position[1])), 13);
+assert.equal(Math.max(...openPositions.map((position) => position[1])), 13);
+assert.equal(Math.max(...closedPositions.map((position) => position[2])), -3.4375, "closed bars remain between the posts");
+assert.equal(Math.max(...openPositions.map((position) => position[2])), -3.0625,
+  "open bars visibly swing south around both hinges");
 assert.notDeepEqual(closedPositions, openPositions);
 const uv = textureAtlasUv("oak_planks");
 for (const vertices of [closed, open]) {

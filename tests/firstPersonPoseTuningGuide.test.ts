@@ -67,8 +67,8 @@ assert.equal(blockIdForCubeItem("stone_brick_slab"), null,
 assert.doesNotMatch(blockItemCubeSource, /stone_brick_slab:\s*BLOCK\.STONE_BRICK_SLAB/,
   "the closed full-cube item map cannot silently reclassify the slab");
 assert.match(firstPersonRendererSource,
-  /block !== BLOCK\.STONE_BRICK_SLAB[\s\S]{0,100}blockTextureForFace\(block, "east"\) !== null/,
-  "full-cube tuning explicitly excludes the slab even though its placed mesh has a masonry texture");
+  /!isSlabBlock\(block\) && !isStairBlock\(block\)[\s\S]{0,100}blockTextureForFace\(block, "east"\) !== null/,
+  "full-cube tuning explicitly excludes shaped blocks even though their placed meshes have authored textures");
 assert.equal(firstPersonHeldItemTuningGroup("iron_pickaxe", BLOCK.AIR), "tool");
 assert.equal(firstPersonHeldItemTuningGroup("bow", BLOCK.AIR), "bow");
 assert.equal(firstPersonHeldItemTuningGroup("apple", BLOCK.AIR), "otherItem");
@@ -87,7 +87,7 @@ assert.equal(guide.includes("hoe"), false, "the guide lists only implemented too
 assert.match(engine, /if \(paused && !firstPersonFeedbackHidden && playerHealth > 0[\s\S]{0,100}document\.visibilityState === "visible"\) \{[\s\S]{0,100}render\(pausedVisualTime, 0, pausedVisualTime\)/,
   "a paused HMR remount seeds a complete visible pose frame");
 assert.ok(engine.includes("now - lastPausedRenderAt >= PAUSED_RENDER_INTERVAL_MS")
-  && engine.includes("render(pausedVisualTime, 0, pausedVisualTime, false)"),
+  && engine.includes("render(pausedRenderTime, 0, now, false)"),
 "the visible paused pose continues redrawing at the bounded preview cadence");
 const feedbackPredicates = [...singlePlayer.matchAll(/setFirstPersonFeedbackHidden\(([\s\S]*?)\);/g)]
   .map((match) => match[1]);

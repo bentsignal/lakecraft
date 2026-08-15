@@ -377,7 +377,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     };
   }
 
-  async runAdminCommand(rawCommand: string): Promise<{ ok:boolean;message:string }> {
+  async runAdminCommand(rawCommand: string, issuer?: ConnectionState): Promise<{ ok:boolean;message:string }> {
     const command = rawCommand.trim();
     const source = command.startsWith("/") ? command.slice(1) : command;
     const [verbRaw, ...args] = source.split(/\s+/);
@@ -396,9 +396,16 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       }
       if (["op","deop","mod","demod"].includes(verb) && username) {
         const role: ServerRole | null = verb === "op" ? "operator" : verb === "mod" ? "moderator" : null;
-        this.store.setRole(args.join(" "), role);
-        if (role) this.store.setWhitelisted(args.join(" "), true);
-        return { ok:true,message:`${args.join(" ")} is now ${role ?? "a regular player"}.` };
+        const targetName = args.join(" ");
+        this.store.setRole(targetName, role);
+        if (role) this.store.setWhitelisted(targetName, true);
+        const target = [...this.userConnections.values()].find((candidate) =>
+          candidate.player?.name.toLocaleLowerCase("en-US") === targetName.toLocaleLowerCase("en-US"));
+        if (target) this.privateNotice(target, role === "operator"
+          ? "You have been granted operator privileges."
+          : role === "moderator" ? "You have been granted moderator privileges."
+            : "Your server privileges have been removed.");
+        return { ok:true,message:`${targetName} is now ${role ?? "a regular player"}.` };
       }
       if (verb === "kick" && username) {
         const target = this.findPlayer(username);
@@ -417,9 +424,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
         this.store.setBanned(args.join(" "), null);
         return { ok:true,message:`Pardoned ${args.join(" ")}.` };
       }
-      if (verb === "gamemode" && (args[0] === "creative" || args[0] === "survival") && args[1]) {
-        const target = this.findPlayer(args.slice(1).join(" "));
+      if (verb === "gamemode" && (args[0] === "creative" || args[0] === "survival")) {
+        const target = args[1] ? this.findPlayer(args.slice(1).join(" ")) : issuer?.player;
+        if (!args[1] && !issuer) return {ok:false,message:"Usage: /gamemode <creative|survival> <player>"};
         if (!target || !this.setPlayerGameMode(target.id, args[0])) return { ok:false,message:"Player not found." };
+        const connection = this.userConnections.get(target.id);
+        if (connection) this.privateNotice(connection, `Your game mode was set to ${args[0]}.`);
         return { ok:true,message:`Set ${target.name} to ${args[0]}.` };
       }
       if (verb === "setworldspawn" && args.length >= 2) {
@@ -465,6 +475,10 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     const result=this.store.appendChat({operationId:`server_${crypto.randomUUID()}`,userId:"server",username:"[Server]",message:message.slice(0,CHAT_MESSAGE_MAX_LENGTH),sentAt:Date.now()},0,CHAT_HISTORY_LIMIT);
     if (!result.ok) return;
     for (const state of this.userConnections.values()) this.send(state.peer,{v:PROTOCOL_VERSION,type:"chat_message",message:result.message});
+  }
+
+  private privateNotice(state: ConnectionState, message: string): void {
+    this.send(state.peer,{v:PROTOCOL_VERSION,type:"private_notice",message:message.slice(0,CHAT_MESSAGE_MAX_LENGTH),sentAt:Date.now()});
   }
 
   private broadcastWorldSettings(): void {
@@ -919,9 +933,9 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     const known = new Map(message.known.map((chunk) => [realtimeChunkKey(chunk.x, chunk.z), chunk.revision]));
     let batch: Array<{ x: number; z: number; revision: number; data: string }> = [];
     let batchBytes = 0;
-    const flush = () => {
-      if (!batch.length) return;
-      this.send(state.peer, { v: PROTOCOL_VERSION, type: "world_chunks", seq: message.seq, chunks: batch });
+    const flush = (complete = false) => {
+      if (!batch.length && !complete) return;
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "world_chunks", seq: message.seq, complete, chunks: batch });
       batch = [];
       batchBytes = 0;
     };
@@ -934,7 +948,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       batchBytes += data.length + 48;
       if (batch.length >= 64) flush();
     }
-    flush();
+    flush(true);
   }
 
   private broadcastBlockPatch(
@@ -1125,7 +1139,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   ): void {
     const player = state.player!;
     if (message.message.startsWith("/") && this.store.roleFor(player.name) === "operator") {
-      void this.runAdminCommand(message.message).then((result) => this.serverAnnouncement(result.message));
+      void this.runAdminCommand(message.message, state).then((result) => this.privateNotice(state, result.message));
       return;
     }
     const result = this.store.appendChat({

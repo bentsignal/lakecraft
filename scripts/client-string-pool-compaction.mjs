@@ -141,9 +141,31 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_026;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 98;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "67bf8f0d596143daf4c811c43460ac12b8534638ab64b808fb45d8534e7a0c4a";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_084;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 102;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "98cd802448209645c361ed4226df37e85d7cd7e475509caae2f67d81696bca28";
+export const COMPACT_CLIENT_REPEATED_CREATIVE_PARITY_DELTA = Object.freeze({
+  previousOccurrences: 1_026,
+  previousUniqueValues: 98,
+  previousSourceFingerprint: "67bf8f0d596143daf4c811c43460ac12b8534638ab64b808fb45d8534e7a0c4a",
+  occurrenceDelta: 51,
+  uniqueValueDelta: 3,
+  sources: Object.freeze([
+    "client/game/specialBlockGeometry.ts#exact-torch-and-wall-mounts",
+    "client/game/voxelEngine.ts#shared-slab-stair-geometry",
+    "client/realtimeMultiplayer.ts#complete-chunk-loading-gate",
+  ]),
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_SHAPED_ICON_RUNTIME_DELTA = Object.freeze({
+  previousOccurrences: 1_077,
+  previousUniqueValues: 101,
+  previousSourceFingerprint: "edc86199579e692cb8ef28087dbb1d96b959374b2eddb162d5f8b48de1358dbb",
+  occurrenceDelta: 7,
+  uniqueValueDelta: 1,
+  source: "client/components/atlasBlockItemIcon.ts#runtime-shaped-icons",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_TERRAIN_PRESET_DELTA = Object.freeze({
   previousOccurrences: 1_023,
   previousUniqueValues: 98,
@@ -403,9 +425,27 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 422;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 124;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "4d18861dcc8003dd60734bfc1ea1efdc2c67cf3a2f2876c27616582bc1e525e3";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 440;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 129;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "7ac4e3324c2c5cb4225acc400eb3391f5601e3e9bd20ae85c69d7dd9e48c0800";
+export const COMPACT_CLIENT_LOW_FREQUENCY_CREATIVE_PARITY_DELTA = Object.freeze({
+  previousOccurrences: 422,
+  previousUniqueValues: 124,
+  previousSourceFingerprint: "4d18861dcc8003dd60734bfc1ea1efdc2c67cf3a2f2876c27616582bc1e525e3",
+  occurrenceDelta: 21,
+  uniqueValueDelta: 6,
+  source: "creative building shapes, torch states, and complete chunk handshake",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_SHAPED_ICON_RUNTIME_DELTA = Object.freeze({
+  previousOccurrences: 443,
+  previousUniqueValues: 130,
+  previousSourceFingerprint: "81be82b4bbe147ab11c8bc660502d859376a46e6b66f14a946d155dfaf70c25d",
+  occurrenceDelta: -3,
+  uniqueValueDelta: -1,
+  source: "client/components/atlasBlockItemIcon.ts#runtime-shaped-icons",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_POINTER_RECAPTURE_DELTA = Object.freeze({
   previousOccurrences: 418,
   previousUniqueValues: 123,

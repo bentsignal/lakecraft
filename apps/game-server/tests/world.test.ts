@@ -286,7 +286,8 @@ describe("authoritative world", () => {
     const before=near.ofType("world_chunks").length;
     const known=near.ofType("world_chunks").flatMap((message)=>message.chunks).map((chunk)=>({x:chunk.x,z:chunk.z,revision:chunk.x===0&&chunk.z===0?1:chunk.revision}));
     await world.message(near,JSON.stringify({v:1,type:"chunk_subscribe",seq:2,centerX:0,centerZ:0,radius:1,known}),1030);
-    expect(near.ofType("world_chunks")).toHaveLength(before);
+    expect(near.ofType("world_chunks")).toHaveLength(before + 1);
+    expect(near.ofType("world_chunks").at(-1)).toMatchObject({chunks:[],complete:true});
     await world.message(near,JSON.stringify({v:1,type:"chunk_subscribe",seq:3,centerX:20,centerZ:20,radius:1,known:[]}),1040);
     expect(near.ofType("world_chunks_unload").at(-1)?.chunks).toHaveLength(9);
     store.close();
@@ -937,6 +938,14 @@ describe("authoritative world", () => {
     expect(bob.ofType("error")[0]).toMatchObject({code:"auth_failed",fatal:true});
     expect(await world.runAdminCommand("/whitelist add Bob")).toMatchObject({ok:true});
     expect(await world.runAdminCommand("/op Alex")).toMatchObject({ok:true});
+    expect(alex.ofType("private_notice").at(-1)?.message).toBe("You have been granted operator privileges.");
+    expect(world.setPlayerGameMode("alex","creative")).toBe(true);
+    await world.message(alex,JSON.stringify({v:1,type:"chat_send",operationId:"command-gamemode-1",message:"/gamemode survival"}),1100);
+    await Promise.resolve();
+    expect(world.adminPlayers().find((player)=>player.id==="alex")?.gameMode).toBe("survival");
+    expect(alex.ofType("private_notice").map((notice)=>notice.message)).toEqual(expect.arrayContaining([
+      "Your game mode was set to survival.","Set Alex to survival.",
+    ]));
     expect(await world.runAdminCommand("/setworldspawn 42.5 -19.5 90")).toMatchObject({ok:true});
     expect(await world.runAdminCommand("/time set noon")).toMatchObject({ok:true});
     expect(await world.runAdminCommand("/gamerule doDaylightCycle false")).toMatchObject({ok:true});

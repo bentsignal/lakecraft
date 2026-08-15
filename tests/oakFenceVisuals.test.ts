@@ -67,7 +67,8 @@ const vertices: number[] = [];
 appendOakFenceMesh(vertices, 10, 7, -3, connected, 0.94);
 assert.equal(vertices.length, oakFenceMeshVertexCount(connected) * 6, "position, UV, and shade stay in one retained texture batch");
 const positions = Array.from({ length: vertices.length / 6 }, (_, index) => vertices.slice(index * 6, index * 6 + 3));
-assert.equal(Math.max(...positions.map((position) => position[1])), 7 + OAK_FENCE_HEIGHT, "the post reaches the 1.5-block fence top");
+assert.equal(Math.max(...positions.map((position) => position[1])), 8,
+  "the installed visual post is one block high while collision remains 1.5 blocks");
 assert.equal(Math.max(...positions.map((position) => position[0])), 11, "east rails connect to the neighboring cell edge");
 assert.equal(Math.min(...positions.map((position) => position[0])), 10, "west rails connect to the neighboring cell edge");
 assert.equal(Math.min(...positions.map((position) => position[2])), -3, "north rails connect to the neighboring cell edge");
@@ -77,6 +78,11 @@ for (let index = 0; index < vertices.length; index += 6) {
   assert.ok(vertices[index + 4] >= uv.bottom && vertices[index + 4] <= uv.top);
   assert.ok(vertices[index + 5] > 0 && vertices[index + 5] <= 0.94);
 }
+const postUvs = Array.from({ length: OAK_FENCE_BOX_VERTEX_COUNT }, (_, index) =>
+  vertices.slice(index * 6 + 3, index * 6 + 5));
+assert.ok(Math.max(...postUvs.map((point) => point[0])) - Math.min(...postUvs.map((point) => point[0]))
+  < (uv.right - uv.left) * 0.3,
+"the 4px post crops the plank tile instead of stretching all 16 pixels over its narrow faces");
 
 assert.equal(playerIntersectsOakFenceHeight(1.49, 1.8, 0), true, "ordinary jump height still intersects a 1.5-block fence");
 assert.equal(playerIntersectsOakFenceHeight(1.5, 1.8, 0), false, "a player standing exactly on the top is not trapped");

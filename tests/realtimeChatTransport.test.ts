@@ -68,6 +68,11 @@ client.start();
 const first = FakeWebSocket.instances[0]!;
 first.open();
 first.receive(welcome);
+first.receive({type:"private_notice",message:"You have been granted operator privileges.",sentAt:999});
+assert.deepEqual(events.at(-1),{type:"confirmed",message:{
+  id:"notice_1_999",sequence:0,operationId:"notice_1_999",userId:"server",username:"[Server]",
+  message:"You have been granted operator privileges.",sentAt:999,delivery:"sent",
+}},"private server administration feedback appears only in the recipient's normal chat projection");
 await client.submitChat("  survives reconnect  ");
 const original = first.sent.find((message) => message.type === "chat_send")!;
 assert.equal(events.at(-1)?.type, "optimistic", "sender is updated before an acknowledgement");
