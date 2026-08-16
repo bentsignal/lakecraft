@@ -37,6 +37,8 @@ export interface ServerConfig {
   initialWhitelist: string[];
   daylightCycle: boolean;
   dayPhase: number;
+  /** Defaults on for Survival and off for Creative; Railway owns the simulation. */
+  mobsEnabled?: boolean;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Bun.env): ServerConfig {
@@ -91,6 +93,7 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): S
     initialWhitelist: (env.WHITELIST_USERNAMES || "").split(",").map((name) => name.trim()).filter(Boolean),
     daylightCycle: booleanValue(env.DAYLIGHT_CYCLE, true, "DAYLIGHT_CYCLE"),
     dayPhase: decimal(env.DAY_PHASE, 0.25, 0, 0.999999, "DAY_PHASE"),
+    mobsEnabled: booleanValue(env.MOBS_ENABLED, defaultGameMode === "survival", "MOBS_ENABLED"),
   };
 
   if (env.ADMIN_TOKEN) {

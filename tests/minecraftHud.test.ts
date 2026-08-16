@@ -38,7 +38,7 @@ assert.ok(styles.includes("repeat(9, 40px)"), "desktop hotbar uses reference-sca
 assert.ok(styles.includes("var(--lc-pixel-font)"), "HUD uses the shared pixel-font variable");
 const hotbarCss = styles.slice(styles.indexOf(".lc-hotbar {"), styles.indexOf(".lc-item-glyph {"));
 assert.match(styles, /\.lc-survival-wrap \{[^}]*width: 364px;/, "desktop survival HUD owns the exact 364px reference width");
-assert.match(hotbarCss, /\.lc-hotbar \{[^}]*background: rgba\([^)]*,\.62\);[^}]*box-sizing: border-box;[^}]*overflow: visible;[^}]*padding: 0;[^}]*width: 100%;/,
+assert.match(hotbarCss, /\.lc-hotbar \{[^}]*background: rgba\([^)]*,\.72\);[^}]*box-sizing: border-box;[^}]*overflow: visible;[^}]*padding: 0;[^}]*width: 100%;/,
   "translucent zero-padding chrome makes nine 40px tracks plus two 2px borders exactly 364px wide");
 assert.equal(hotbarCss.includes("background: #8b8b8b"), false, "hotbar no longer uses an opaque gray slab");
 assert.match(hotbarCss, /\.lc-hotbar__slot \{[^}]*box-sizing: border-box;[^}]*height: 40px;/,
@@ -60,10 +60,14 @@ assert.equal((styles.match(/@keyframes lc-selected-item-name/g) ?? []).length, 1
 assert.equal(styles.includes("lc-item-glyph--empty::before"), false, "empty slots have no dashed placeholder chrome");
 assert.equal(styles.includes(".lc-slot__key"), false, "stale slot-number CSS is removed");
 const countCss = styles.slice(styles.indexOf(".lc-item-glyph__count"), styles.indexOf(".lc-durability"));
-assert.ok(countCss.includes("font: 700 15px/1") && countCss.includes("font-synthesis: none"),
+assert.ok(countCss.includes("font: 700 16px/.9") && countCss.includes("font-synthesis: none"),
   "shared hotbar and inventory counts use a larger crisp pixel face");
 assert.ok(countCss.includes("-webkit-text-stroke: 1px #111") && countCss.includes("text-shadow: 2px 2px #111"),
   "stack counts retain a full high-contrast outline and hard pixel shadow");
+assert.match(styles, /\.lc-inventory-window \{[^}]*max-width: calc\(100vw - 28px\);[^}]*width: 648px;/,
+  "the survival inventory keeps canonical desktop proportions while fitting narrow viewports");
+assert.match(styles, /\.lc-player-preview \{[^}]*background:#111;[^}]*image-rendering:pixelated;/,
+  "the real shared player skin renders against the reference inventory preview field");
 assert.match(gameHud, /!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen[\s\S]*?<Hotbar/,
   "the caption disappears with the shared survival HUD boundary");
 assert.ok(pauseMenu.includes("Back to Game") && pauseMenu.includes("Disconnect"), "pause menu exposes the core multiplayer actions");

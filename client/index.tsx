@@ -19,7 +19,7 @@ import type { WorldTerrainDescriptor } from "../shared/worldPreset.ts";
 import { LobbyScreen, type LobbyJoinPhase, type LobbyServerEntry, type UsernameClaimState } from "./lobby";
 import { SinglePlayerApp } from "./singleplayer";
 import { shouldRunSinglePlayer, singlePlayerTitleUrl } from "./runtimeMode.ts";
-import { releaseGameplayKeyboardCapture, requestGameplayKeyboardCapture } from "./gameplayKeyboardCapture.ts";
+import { releaseGameplayKeyboardCapture, requestGameplayKeyboardCapture, toggleGameplayFullscreen } from "./gameplayKeyboardCapture.ts";
 import { requestDocumentPointerLockHandoff } from "./pointerLockHandoff.ts";
 import { handleGameplayScreenshotKey } from "./gameplayDiagnostics.tsx";
 import {
@@ -41,6 +41,7 @@ import {
   type RealtimeChatSink,
   type RealtimeDropSink,
   type RealtimePickupSink,
+  type RealtimeMobAttackSink,
   type RealtimePlayerAttackSink,
   type RealtimeRespawnSink,
   type RealtimeSelfDamageSink,
@@ -48,6 +49,7 @@ import {
 } from "./RealtimeMultiplayerTransport.tsx";
 import {
   applyRealtimeChatEvent,
+  countUnreadRealtimeChat,
   type RealtimeChatMessage,
 } from "./realtimeChat.ts";
 import {
@@ -68,11 +70,13 @@ import {
   type AuthoritativeKnockbackGate,
 } from "./multiplayerGameplay.ts";
 import {
+  clientAudioLevels,
   loadClientSettings,
   normalizeClientSettings,
   saveClientSettings,
   type ClientSettings,
 } from "./settings.ts";
+import { gameplayControlActionForCode } from "./gameplay/controlBindings.ts";
 import {
   ITEMS,
   BLOCKS,
@@ -133,8 +137,6 @@ import {
 } from "./game/audio.ts";
 
 const APP_CSS = `
-@font-face { font-display: swap; font-family: "Pixelify Sans"; font-style: normal; font-weight: 400 700; src: url("https://fonts.gstatic.com/s/pixelifysans/v3/CHylV-3HFUT7aC4iv1TxGDR9Jn0Eiw.woff2") format("woff2"); }
-:root { --lc-pixel-font: "Pixelify Sans", "Courier New", monospace; }
 html, body, #app { height: 100vh; height: 100dvh; margin: 0; overflow: hidden; width: 100%; }
 body { background: #171b15; }
 button { -webkit-tap-highlight-color: transparent; }
@@ -368,6 +370,7 @@ function RailwayMultiplayerSession({
   const motionActionSinkRef = useRef<((kind: MotionVisualActionKind, value?: number) => void) | null>(null);
   const realtimeRespawnSinkRef = useRef<RealtimeRespawnSink | null>(null);
   const realtimePlayerAttackSinkRef = useRef<RealtimePlayerAttackSink | null>(null);
+  const realtimeMobAttackSinkRef = useRef<RealtimeMobAttackSink | null>(null);
   const realtimeSelfDamageSinkRef = useRef<RealtimeSelfDamageSink | null>(null);
   const entryPointerLockHandoffRef = useRef(false);
   const realtimeCrouchingRef = useRef(false);
@@ -393,9 +396,12 @@ function RailwayMultiplayerSession({
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [diagnosticPose, setDiagnosticPose] = useState<PlayerPose>({ ...DEFAULT_PLAYER_POSE });
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
+  const [debugOverlayVisible, setDebugOverlayVisible] = useState(false);
+  const [hudVisible, setHudVisible] = useState(true);
   const [engineError, setEngineError] = useState("");
   const [worldReady, setWorldReady] = useState(false);
   const initialWorldChunksReadyRef = useRef(false);
+  const revealWorldPresentationRef = useRef<(() => void) | null>(null);
   const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(false);
   const [inventoryReady, setInventoryReady] = useState(false);
   const [transportReady, setTransportReady] = useState(false);
@@ -432,7 +438,10 @@ function RailwayMultiplayerSession({
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [chatError, setChatError] = useState("");
-  const [lastSeenChatCount, setLastSeenChatCount] = useState(0);
+  const [lastSeenChatSequence, setLastSeenChatSequence] = useState(0);
+  const latestRealtimeChatSequence = realtimeChatMessages.reduce(
+    (latest, message) => Math.max(latest, message.sequence), 0,
+  );
   const [playerHealth, setPlayerHealth] = useState(20);
   const playerHealthRef = useRef(20);
   const [deathScreenOpen, setDeathScreenOpen] = useState(false);
@@ -457,6 +466,7 @@ function RailwayMultiplayerSession({
     chest: false,
     bed: false,
   });
+  const multiplayerAuthorityPaused = multiplayerPaused || !transportReady;
   const registeredServers = externalMultiplayerServers.flatMap((server) => {
     const endpoint = normalizeMultiplayerEndpoint(server.canonicalWssUrl);
     return endpoint ? [{ ...server, canonicalWssUrl: endpoint }] : [];
@@ -493,7 +503,7 @@ function RailwayMultiplayerSession({
 
   useEffect(() => {
     setRealtimeChatMessages([]);
-    setLastSeenChatCount(0);
+    setLastSeenChatSequence(0);
     setChatError("");
     realtimeGameModeRef.current = "survival";
     setRealtimeGameMode("survival");
@@ -539,9 +549,9 @@ function RailwayMultiplayerSession({
     setSelectedServerId(combinedServers[0]?.id ?? "");
   }, [serverProbeKey, selectedServerId]);
   if (!authoritativeKnockbackGateRef.current) {
-    authoritativeKnockbackGateRef.current = { paused: multiplayerPaused, pauseEpoch: multiplayerPaused ? 1 : 0 };
-  } else updateAuthoritativeKnockbackGate(authoritativeKnockbackGateRef.current, multiplayerPaused);
-  authorityTrafficPausedRef.current = multiplayerPaused;
+    authoritativeKnockbackGateRef.current = { paused: multiplayerAuthorityPaused, pauseEpoch: multiplayerAuthorityPaused ? 1 : 0 };
+  } else updateAuthoritativeKnockbackGate(authoritativeKnockbackGateRef.current, multiplayerAuthorityPaused);
+  authorityTrafficPausedRef.current = multiplayerAuthorityPaused;
 
   useEffect(() => {
     const update = () => setTransportForeground(document.visibilityState === "visible" && document.hasFocus());
@@ -567,10 +577,11 @@ function RailwayMultiplayerSession({
     setClientSettings(next);
     saveClientSettings(window.localStorage, next);
     if (soundChanged) audioRef.current?.setMuted(next.soundMuted);
+    audioRef.current?.setLevels(clientAudioLevels(next));
   }
 
   useEffect(() => {
-    const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, maxVoices: 16 });
+    const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, levels: clientAudioLevels(clientSettingsRef.current), maxVoices: 16 });
     audioRef.current = audio;
     const unlock = () => { void audio.unlock(); };
     const click = (event: MouseEvent) => {
@@ -711,7 +722,7 @@ function RailwayMultiplayerSession({
 
   function closeChatFromEscape(): void {
     setChatOpen(false);
-    setLastSeenChatCount(realtimeChatMessages.length);
+    setLastSeenChatSequence(latestRealtimeChatSequence);
     const generation = ++chatEscapeRecaptureRef.current;
     requestGameplayKeyboardCapture();
     applyGameplayPointerEvent({ type: "close_ui_escape", now: performance.now() });
@@ -1173,9 +1184,9 @@ function RailwayMultiplayerSession({
   }, [inventory, selectedHotbar, equipment]);
 
   useEffect(() => {
-    engineRef.current?.setPaused(multiplayerPaused);
-    engineRef.current?.setFirstPersonFeedbackHidden(multiplayerPaused);
-  }, [multiplayerPaused]);
+    engineRef.current?.setPaused(multiplayerAuthorityPaused || !worldReady);
+    engineRef.current?.setFirstPersonFeedbackHidden(multiplayerAuthorityPaused || !worldReady || !hudVisible);
+  }, [multiplayerAuthorityPaused, worldReady, hudVisible]);
 
   useEffect(() => {
     if (!auth.isAuthenticated || auth.isGuest || hydratedUserRef.current === auth.userId || savedInventory === undefined) return;
@@ -1241,6 +1252,7 @@ function RailwayMultiplayerSession({
 
   useEffect(() => {
     initialWorldChunksReadyRef.current = false;
+    revealWorldPresentationRef.current = null;
     setWorldReady(false);
   }, [realtimeSession?.endpoint]);
 
@@ -1275,6 +1287,9 @@ function RailwayMultiplayerSession({
         onUseSelectedItem: () => handleUseItem(),
         onRemotePlayerAttack: (target) => {
           realtimePlayerAttackSinkRef.current?.(`attack:${crypto.randomUUID()}`, target.id);
+        },
+        onMobAttack: (target) => {
+          realtimeMobAttackSinkRef.current?.(`mob_attack:${crypto.randomUUID()}`, target.id);
         },
         onMiningHit: (target) => {
           const surface = audioSurfaceForBlock(target.block.block);
@@ -1370,24 +1385,32 @@ function RailwayMultiplayerSession({
         },
       }), {...presentationOptions, worldContinuesWhilePaused: true});
       engineRef.current = engine;
+      const revealWorldPresentation = () => {
+        void engine.waitForWorldPresentation().then((presented) => {
+          if (!presented || engineRef.current !== engine || !initialWorldChunksReadyRef.current) return;
+          setWorldReady(true);
+          if (entryPointerLockHandoffRef.current && document.pointerLockElement === document.documentElement) {
+            entryPointerLockHandoffRef.current = false;
+            void engine.requestPointerLock();
+          } else setPointerCaptureNeeded(true);
+        });
+      };
+      revealWorldPresentationRef.current = revealWorldPresentation;
       engine.setDroppedItems(realtimeDropsRef.current);
       engine.setPlayerHealth(playerHealthRef.current);
       void selectedSkin().then((skin) => {
         if (engineRef.current === engine) engine.setPlayerSkin(skin.source, skin.model);
       });
-      engine.setPaused(multiplayerPaused);
-      engine.setFirstPersonFeedbackHidden(multiplayerPaused);
+      engine.setPaused(true);
+      engine.setFirstPersonFeedbackHidden(true);
       if (respawnPointRef.current) engine.setRespawnPoint(respawnPointRef.current);
       engine.start();
-      if (initialWorldChunksReadyRef.current) requestAnimationFrame(() => {
-        if (engineRef.current === engine) setWorldReady(true);
-      });
-      if (entryPointerLockHandoffRef.current && document.pointerLockElement === document.documentElement) {
-        entryPointerLockHandoffRef.current = false;
-        engine.requestPointerLock();
-      } else setPointerCaptureNeeded(true);
+      if (initialWorldChunksReadyRef.current) revealWorldPresentation();
       return () => {
         respawnRequestInFlightRef.current = false;
+        if (revealWorldPresentationRef.current === revealWorldPresentation) {
+          revealWorldPresentationRef.current = null;
+        }
         engine.destroy();
         engineRef.current = null;
         setWorldReady(false);
@@ -1416,13 +1439,27 @@ function RailwayMultiplayerSession({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!inWorld) return;
-      if (handleGameplayScreenshotKey(event, engineRef.current, notify)) return;
-      if (event.code === "Tab") {
-        event.preventDefault();
-        if (!event.repeat && !pauseOpen && !chatOpen && !inventoryOpen) {
-          setShowPlayerList(true);
+      const action = gameplayControlActionForCode(clientSettingsRef.current.keyBindings, event.code);
+      const globalGameplayShortcutAllowed = !optionsOpen && !pauseOpen && !chatOpen && !inventoryOpen;
+      if (globalGameplayShortcutAllowed) {
+        if (handleGameplayScreenshotKey(event, engineRef.current, notify, clientSettingsRef.current.keyBindings.screenshot)) return;
+        if (action === "debug" && !event.repeat) {
+          event.preventDefault();
+          setDebugOverlayVisible((visible) => !visible);
+          return;
         }
-        return;
+        if (action === "fullscreen" && !event.repeat && toggleGameplayFullscreen()) {
+          event.preventDefault();
+          return;
+        }
+        if (action === "toggleHud" && !event.repeat) {
+          event.preventDefault(); setHudVisible((visible) => !visible); return;
+        }
+        if (action === "playerList") {
+          event.preventDefault();
+          if (!event.repeat) setShowPlayerList(true);
+          return;
+        }
       }
       if (optionsOpen) {
         if (event.code === "Escape" && !event.repeat) {
@@ -1446,7 +1483,7 @@ function RailwayMultiplayerSession({
         return;
       }
       if (inventoryOpen) {
-        if (event.code === "Escape" || event.code === "KeyE") {
+        if (event.code === "Escape" || action === "inventory") {
           event.preventDefault();
           closeInventory();
           applyGameplayPointerEvent(event.code === "Escape"
@@ -1461,23 +1498,23 @@ function RailwayMultiplayerSession({
         if (document.pointerLockElement) document.exitPointerLock();
         return;
       }
-      if (event.code === "KeyQ" && !event.repeat) {
+      if (action === "drop" && !event.repeat) {
         event.preventDefault();
         if (inventoryOpen) return;
         void handleDropSelected(event.ctrlKey || event.metaKey);
         return;
       }
-      const chatShortcutDraft = gameplayChatShortcutDraft(event);
+      const chatShortcutDraft = gameplayChatShortcutDraft(event, clientSettingsRef.current.keyBindings);
       if (chatShortcutDraft !== null && !inventoryOpen) {
         event.preventDefault();
         exitPointerLockForUi();
         setChatDraft(chatShortcutDraft);
         setChatOpen(true);
-        setLastSeenChatCount(realtimeChatMessages.length);
+        setLastSeenChatSequence(latestRealtimeChatSequence);
         setChatError("");
         return;
       }
-      if (event.code === "KeyE" && !event.repeat) {
+      if (action === "inventory" && !event.repeat) {
         event.preventDefault();
         if (!hydratedRef.current) return;
         activeWorkstationRef.current = null;
@@ -1487,7 +1524,7 @@ function RailwayMultiplayerSession({
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.code === "Tab") setShowPlayerList(false);
+      if (event.code === clientSettingsRef.current.keyBindings.playerList) setShowPlayerList(false);
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
@@ -1495,7 +1532,7 @@ function RailwayMultiplayerSession({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [inWorld, optionsOpen, pauseOpen, chatOpen, inventoryOpen, realtimeChatMessages.length]);
+  }, [inWorld, optionsOpen, pauseOpen, chatOpen, inventoryOpen, latestRealtimeChatSequence]);
 
   const worldConnected = transportReady;
   const playerListEntries = segmentRemotePlayers.map((player) => ({
@@ -1731,7 +1768,7 @@ function RailwayMultiplayerSession({
       return;
     }
     setChatDraft("");
-    setLastSeenChatCount(realtimeChatMessages.length + 1);
+    setLastSeenChatSequence(latestRealtimeChatSequence);
     void sink(value).catch(() => setChatError("Chat is reconnecting to this server."));
   }
 
@@ -1751,7 +1788,7 @@ function RailwayMultiplayerSession({
     own: message.userId === (realtimeSession?.demo?.userId ?? auth.userId),
     delivery: message.delivery,
   }));
-  const unreadChat = chatOpen ? 0 : Math.max(0, chatMessages.length - lastSeenChatCount);
+  const unreadChat = chatOpen ? 0 : countUnreadRealtimeChat(realtimeChatMessages, lastSeenChatSequence);
   if (!inWorld) {
     return (
       <>
@@ -1859,9 +1896,10 @@ function RailwayMultiplayerSession({
         gameMode: realtimeSession ? realtimeGameMode : "survival",
         pose: diagnosticPose,
         stats: performanceStats,
+        visible: debugOverlayVisible && hudVisible,
       }}
       pointerCapture={{
-        visible: pointerCaptureNeeded && !multiplayerPaused,
+        visible: pointerCaptureNeeded && !multiplayerAuthorityPaused,
         onRequest: () => {
           requestGameplayKeyboardCapture();
           applyGameplayPointerEvent({ type: "resume" });
@@ -1893,6 +1931,10 @@ function RailwayMultiplayerSession({
           })}
           onPhase={(phase: RealtimeConnectionPhase, detail?: string) => {
             setTransportReady(phase === "online");
+            if (phase !== "online") {
+              initialWorldChunksReadyRef.current = false;
+              setWorldReady(false);
+            }
             if (phase === "error" && detail) notify("Server connection rejected", detail, "warning");
           }}
           onReconcilePose={(pose) => {
@@ -1923,9 +1965,7 @@ function RailwayMultiplayerSession({
           }}
           onWorldChunksReady={() => {
             initialWorldChunksReadyRef.current = true;
-            requestAnimationFrame(() => {
-              if (engineRef.current && initialWorldChunksReadyRef.current) setWorldReady(true);
-            });
+            revealWorldPresentationRef.current?.();
           }}
           onWorldChunksUnload={(chunks) => {
             const removed = new Set(chunks.map((chunk) => `${chunk.x},${chunk.z}`));
@@ -1991,6 +2031,30 @@ function RailwayMultiplayerSession({
             if (hit.killed && !respawnRequestInFlightRef.current) openRealtimeDeath();
             if (hit.killed) void settleRealtimeDeath(hit.operationId);
           }}
+          onMobSnapshot={(poses, states, serverNow) => {
+            const offset = serverNow - Date.now();
+            engineRef.current?.applyMobMotionSnapshot(poses, offset);
+            engineRef.current?.applyMobCombatStates(states, offset);
+          }}
+          onMobHit={(hit) => {
+            engineRef.current?.applyMobCombatStates([hit.state]);
+            const localUserId = realtimeSession.demo?.userId ?? auth.userId ?? "";
+            if (hit.attackerId !== localUserId) return;
+            if (!hit.killed) {
+              engineRef.current?.applyConfirmedPlayerHitMobKnockback(
+                hit.operationId,
+                hit.state.mobId,
+                poseRef.current.x,
+                poseRef.current.z,
+                hit.damage,
+              );
+            }
+            audioRef.current?.play(hit.killed ? "mobDeath" : "mobHurt", {
+              seed: hit.operationId,
+              mob: hit.state.kind,
+              intensity: 0.8,
+            });
+          }}
           registerBlockSink={(sink) => { realtimeBlockSinkRef.current = sink; }}
           registerChatSink={(sink) => { realtimeChatSinkRef.current = sink; }}
           registerActionSink={(sink) => { motionActionSinkRef.current = sink; }}
@@ -1998,6 +2062,7 @@ function RailwayMultiplayerSession({
           registerPickupSink={(sink) => { realtimePickupSinkRef.current = sink; }}
           registerRespawnSink={(sink) => { realtimeRespawnSinkRef.current = sink; }}
           registerPlayerAttackSink={(sink) => { realtimePlayerAttackSinkRef.current = sink; }}
+          registerMobAttackSink={(sink) => { realtimeMobAttackSinkRef.current = sink; }}
           registerSelfDamageSink={(sink) => { realtimeSelfDamageSinkRef.current = sink; }}
           registerInventorySink={(sink) => { realtimeInventorySinkRef.current = sink; }}
         />
@@ -2010,6 +2075,7 @@ function RailwayMultiplayerSession({
         deathCause="You died"
         deathScreenOpen={deathScreenOpen}
         health={playerHealth}
+        hudVisible={hudVisible}
         hunger={hunger}
         maxHunger={MAX_HUNGER}
         inventory={inventory}
@@ -2057,6 +2123,15 @@ function RailwayMultiplayerSession({
         optionsOpen={optionsOpen}
         onRespawn={requestRailwayRespawn}
         soundMuted={clientSettings.soundMuted}
+        masterVolume={clientSettings.masterVolume}
+        blocksVolume={clientSettings.blocksVolume}
+        hostileVolume={clientSettings.hostileVolume}
+        passiveVolume={clientSettings.passiveVolume}
+        playersVolume={clientSettings.playersVolume}
+        uiVolume={clientSettings.uiVolume}
+        keyBindings={clientSettings.keyBindings}
+        onKeyBindingsChange={(keyBindings) => updateClientSettings({ ...clientSettingsRef.current, keyBindings })}
+        onVolumeChange={(category, value) => updateClientSettings({ ...clientSettingsRef.current, [category]: value })}
         onToggleSound={() => {
           const nextMuted = !clientSettingsRef.current.soundMuted;
           updateClientSettings({ ...clientSettingsRef.current, soundMuted: nextMuted });
@@ -2098,7 +2173,7 @@ function RailwayMultiplayerSession({
         worldName={activeServerName}
       />
 
-      <ChatOverlay
+      {hudVisible || chatOpen ? <ChatOverlay
         connected={worldConnected}
         draft={chatDraft}
         error={chatError}
@@ -2111,14 +2186,14 @@ function RailwayMultiplayerSession({
         onOpen={() => {
           exitPointerLockForUi();
           setChatOpen(true);
-          setLastSeenChatCount(chatMessages.length);
+          setLastSeenChatSequence(latestRealtimeChatSequence);
           setChatError("");
         }}
         onSubmit={handleChatSubmit}
         open={chatOpen}
         sending={false}
         unreadCount={unreadChat}
-      />
+      /> : null}
 
       {engineError ? <section className="lakecraft-error" role="alert"><strong>WEBGL FIELD ERROR</strong><p>{engineError}</p></section> : null}
     </GameplaySessionSurface>

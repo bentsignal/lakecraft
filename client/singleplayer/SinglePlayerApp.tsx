@@ -56,6 +56,7 @@ import { clearPersistedPlayerSkin, loadPersistedPlayerSkin } from "../game/playe
 import {
   releaseGameplayKeyboardCapture,
   requestGameplayKeyboardCapture,
+  toggleGameplayFullscreen,
 } from "../gameplayKeyboardCapture.ts";
 import { handleGameplayScreenshotKey } from "../gameplayDiagnostics.tsx";
 import {
@@ -66,6 +67,7 @@ import {
   ITEM_TO_ENGINE,
 } from "../gameplay/index.ts";
 import {
+  clientAudioLevels,
   fieldOfViewRadians,
   loadClientSettings,
   mouseLookScale,
@@ -73,6 +75,7 @@ import {
   saveClientSettings,
   type ClientSettings,
 } from "../settings";
+import { gameplayControlActionForCode } from "../gameplay/controlBindings.ts";
 import {
   SINGLEPLAYER_SAVE_LIMITS,
   browserSinglePlayerStorage,
@@ -332,6 +335,8 @@ function LocalGameplaySession({
   const [messages, setMessages] = useState<HudMessage[]>([]);
   const [coordinates, setCoordinates] = useState({ x: 0, y: 0, z: 0 });
   const [performanceStats, setPerformanceStats] = useState<VoxelPerformanceStats | null>(null);
+  const [debugOverlayVisible, setDebugOverlayVisible] = useState(false);
+  const [hudVisible, setHudVisible] = useState(true);
   const initialSaveText = initial.current.load.status === "recovered" ? "Recovered the previous good save."
     : initial.current.load.status === "unsupported"
         ? unsupportedSinglePlayerSaveMessage(initial.current.load.versions)
@@ -507,6 +512,7 @@ function LocalGameplaySession({
     setClientSettings(next);
     saveClientSettings(storage, next);
     if (soundChanged) audioRef.current?.setMuted(next.soundMuted);
+    audioRef.current?.setLevels(clientAudioLevels(next));
   }
 
   function markWorldDirty(): void {
@@ -1050,7 +1056,7 @@ function LocalGameplaySession({
     if (!canvas) return;
     let foodUseTimer: number | null = null;
     pointerSessionMountedRef.current = true;
-    const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, maxVoices: 12 });
+    const audio = createGameAudio({ muted: clientSettingsRef.current.soundMuted, levels: clientAudioLevels(clientSettingsRef.current), maxVoices: 12 });
     audioRef.current = audio;
     const unlockAudio = () => { void audio.unlock(); };
     type LocalFuseTimer = {
@@ -1684,7 +1690,7 @@ function LocalGameplaySession({
       legs: equipmentRef.current.legs?.itemId ?? null,
       feet: equipmentRef.current.feet?.itemId ?? null,
     });
-    engine.setFirstPersonFeedbackHidden(worldModalOpen || deathScreenOpen || commandOpen);
+    engine.setFirstPersonFeedbackHidden(worldModalOpen || deathScreenOpen || commandOpen || !hudVisible);
     if (initialRuntimeRef.current && !engine.importRuntimeSnapshot(initialRuntimeRef.current)) {
       setAutosaveStatusText("The saved player runtime was invalid; world state was left untouched.");
       saveLockedRef.current = true;
@@ -1765,11 +1771,11 @@ function LocalGameplaySession({
       documentVisible: document.visibilityState === "visible",
     });
     engineRef.current?.setFirstPersonFeedbackHidden(
-      worldModalOpen || deathScreenOpen || commandOpen,
+      worldModalOpen || deathScreenOpen || commandOpen || !hudVisible,
     );
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
-  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded, hudVisible]);
 
   useEffect(() => {
     if (deathScreenOpen) setOptionsOpen(false);
@@ -1894,12 +1900,29 @@ function LocalGameplaySession({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (handleGameplayScreenshotKey(event, engineRef.current, (text, detail, tone) => {
-        setMessages((current) => [...current.slice(-2), { id: `screenshot-${Date.now()}`, text, detail, tone }]);
-      })) return;
+      const action = gameplayControlActionForCode(clientSettingsRef.current.keyBindings, event.code);
       /* @lakecraft-development:guard:start */
       if (visualLabOpen) return;
       /* @lakecraft-development:guard:end */
+      const globalGameplayShortcutAllowed = !commandSurfaceOpenRef.current && !optionsOpen
+        && !pointerSessionRef.current.pauseOpen && !inventoryOpen && !worldModalOpen && !deathScreenOpen;
+      if (globalGameplayShortcutAllowed) {
+        if (handleGameplayScreenshotKey(event, engineRef.current, (text, detail, tone) => {
+          setMessages((current) => [...current.slice(-2), { id: `screenshot-${Date.now()}`, text, detail, tone }]);
+        }, clientSettingsRef.current.keyBindings.screenshot)) return;
+        if (action === "debug" && !event.repeat) {
+          event.preventDefault();
+          setDebugOverlayVisible((visible) => !visible);
+          return;
+        }
+        if (action === "fullscreen" && !event.repeat && toggleGameplayFullscreen()) {
+          event.preventDefault();
+          return;
+        }
+        if (action === "toggleHud" && !event.repeat) {
+          event.preventDefault(); setHudVisible((visible) => !visible); return;
+        }
+      }
       if (consumeSinglePlayerCommandSurfaceEscape(
         commandSurfaceOpenRef.current,
         event,
@@ -1937,8 +1960,11 @@ function LocalGameplaySession({
       }
       if (silentPointerRecaptureRef.current && singlePlayerSilentRecaptureKey(event.code, event.repeat)) {
         requestEnginePointerLock(true);
+      } else if (silentPointerRecaptureRef.current && !event.repeat && action !== null
+        && ["moveForward", "moveBackward", "strafeLeft", "strafeRight", "jump", "sneak", "sprint"].includes(action)) {
+        requestEnginePointerLock(true);
       }
-      const commandShortcutDraft = localCommandShortcutDraft(event);
+      const commandShortcutDraft = localCommandShortcutDraft(event, clientSettingsRef.current.keyBindings);
       if (commandShortcutDraft !== null) {
         if (inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
@@ -1953,13 +1979,13 @@ function LocalGameplaySession({
         releasePointerLockForUi();
         return;
       }
-      if (event.code === "KeyQ" && !event.repeat) {
+      if (action === "drop" && !event.repeat) {
         if (pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen || document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
         dropLocalSelected(event.ctrlKey || event.metaKey);
         return;
       }
-      if ((event.code === "KeyE" || event.code === "Escape") && !event.repeat && containerOpen) {
+      if ((action === "inventory" || event.code === "Escape") && !event.repeat && containerOpen) {
         event.preventDefault();
         closeActiveContainer();
         return;
@@ -1971,7 +1997,7 @@ function LocalGameplaySession({
         if (document.pointerLockElement) document.exitPointerLock();
         return;
       }
-      if (event.code === "KeyE" && !event.repeat && !inventoryOpen) {
+      if (action === "inventory" && !event.repeat && !inventoryOpen) {
         event.preventDefault();
         setInventoryOpen(true);
         setCraftingContext("field");
@@ -2037,7 +2063,7 @@ function LocalGameplaySession({
       authority="local"
       canvasLabel="Lakecraft single-player voxel world"
       canvasRef={canvasRef}
-      diagnostics={{ gameMode, pose: coordinates, stats: performanceStats }}
+      diagnostics={{ gameMode, pose: coordinates, stats: performanceStats, visible: debugOverlayVisible && hudVisible }}
       pointerCapture={{
         visible: worldReady && pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen,
         onRequest: () => requestGameplayPointerLock(),
@@ -2075,6 +2101,7 @@ function LocalGameplaySession({
         equipment={equipment}
         creativeInventory={gameMode === "creative"}
         health={health}
+        hudVisible={hudVisible}
         hunger={hunger}
         showSurvivalStatus={gameMode === "survival"}
         inventory={inventory}
@@ -2127,6 +2154,15 @@ function LocalGameplaySession({
         respawnError={deathStatus}
         respawning={respawning}
         soundMuted={clientSettings.soundMuted}
+        masterVolume={clientSettings.masterVolume}
+        blocksVolume={clientSettings.blocksVolume}
+        hostileVolume={clientSettings.hostileVolume}
+        passiveVolume={clientSettings.passiveVolume}
+        playersVolume={clientSettings.playersVolume}
+        uiVolume={clientSettings.uiVolume}
+        keyBindings={clientSettings.keyBindings}
+        onKeyBindingsChange={(keyBindings) => updateClientSettings({ ...clientSettingsRef.current, keyBindings })}
+        onVolumeChange={(category, value) => updateClientSettings({ ...clientSettingsRef.current, [category]: value })}
         onToggleSound={() => {
           const nextMuted = !clientSettingsRef.current.soundMuted;
           updateClientSettings({ ...clientSettingsRef.current, soundMuted: nextMuted });
@@ -2136,7 +2172,7 @@ function LocalGameplaySession({
         }}
         worldName={world.name}
       />
-      <ChatOverlay
+      {hudVisible || commandOpen ? <ChatOverlay
         connected
         draft={commandDraft}
         historyLabel="Command history"
@@ -2158,7 +2194,7 @@ function LocalGameplaySession({
         surfaceLabel="Local command console"
         systemSender="[Game]"
         warningSender="[Error]"
-      />
+      /> : null}
       <FurnaceDrawer
         busy={false}
         error={containerError}

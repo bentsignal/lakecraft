@@ -14,9 +14,9 @@ const mobStage = remoteMobTextureAtlasModule(mobSource);
 
 assert.ok(blockStage.length < 7_000, "the sealed Lakebed stage keeps only the expanded name/cell map, never the full block atlas");
 assert.match(blockStage, /await load\(\)/);
-assert.match(blockStage, /block-texture-atlas-a607e4c6\.png/);
+assert.match(blockStage, /block-texture-atlas-9a3b9f30\.png/);
 assert.match(blockStage, /crypto\.subtle\.digest\("SHA-256",buffer\)/);
-assert.match(blockStage, /e2129f5f77e252a155d8163371485e8279dae0056de5048f5afe44092ae7139e/);
+assert.match(blockStage, /242bbf5316677c49565d829adfd5cadcc2830d5682ce95a80b7add3bbd4effa3/);
 assert.doesNotMatch(blockStage, /0xa607e4c6/);
 assert.match(blockStage, /TEXTURE_ATLAS_NAMES=.*nether_wart_block/);
 assert.doesNotMatch(blockStage, /decodeStaticBytes/);
@@ -30,13 +30,14 @@ for (const origin of [
   "https://lakecraft-production.up.railway.app",
   "https://lakecraft-creative-production.up.railway.app",
 ]) {
-  assert.ok(compactedBlockStage.includes(`${origin}/assets/block-texture-atlas-a607e4c6.png`));
+  assert.ok(compactedBlockStage.includes(`${origin}/assets/block-texture-atlas-9a3b9f30.png`));
 }
 assert.ok(compactedMobStage.includes("https://lakecraft-production.up.railway.app/assets/mob-texture-atlas-204e2b83.png"));
 assert.doesNotMatch(compactedBlockStage, /https:\/\/y(?:creative-)?production\.up\.railway\.app/);
 assert.doesNotMatch(compactedMobStage, /https:\/\/yproduction\.up\.railway\.app/);
 
 for (const [path, expected] of [
+  ["../apps/game-server/assets/block-texture-atlas-9a3b9f30.png", "242bbf5316677c49565d829adfd5cadcc2830d5682ce95a80b7add3bbd4effa3"],
   ["../apps/game-server/assets/block-texture-atlas-a607e4c6.png", "e2129f5f77e252a155d8163371485e8279dae0056de5048f5afe44092ae7139e"],
   ["../apps/game-server/assets/block-texture-atlas-d94c19f9.png", "1ac5805312f699ef1afd78a0038ccc6f2596e290dd4e6050b5ab1cd6b649ef89"],
   ["../apps/game-server/assets/mob-texture-atlas-204e2b83.png", "204e2b831ffd3716b9a1c04fab27fc832f0f0ce686c20896364a91d1b553e9f3"],

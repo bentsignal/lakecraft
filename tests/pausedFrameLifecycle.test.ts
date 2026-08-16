@@ -129,6 +129,26 @@ assert.equal(frames.size, 1);
 driveFrame(1_016);
 assert.ok(glCalls.clear > 0 && glCalls.drawArrays > 0 && glCalls.viewport > 0,
   "an active frame performs the real resize and WebGL render lifecycle");
+const settledPresentation = engine.waitForWorldPresentation();
+driveFrame(1_017);
+assert.equal(await settledPresentation, true,
+  "an already-settled world still waits for one complete rendered frame");
+engine.replaceWorldChunkEdits(0, 0, [{ x: 1, y: 12, z: 1, block: BLOCK.STONE }]);
+let authoritativePresentationSettled = false;
+const authoritativePresentation = engine.waitForWorldPresentation().then((presented) => {
+  authoritativePresentationSettled = presented;
+  return presented;
+});
+driveFrame(1_018);
+await Promise.resolve();
+assert.equal(authoritativePresentationSettled, false,
+  "one rebuilt neighbor cannot reveal a partially refreshed authoritative chunk window");
+for (let index = 0; index < 12 && !authoritativePresentationSettled; index += 1) {
+  driveFrame(1_019 + index);
+  await Promise.resolve();
+}
+assert.equal(await authoritativePresentation, true,
+  "the readiness promise resolves only after every dirty loaded mesh reaches one rendered frame");
 const activeSnapshot = engine.exportRuntimeSnapshot();
 
 (document as unknown as { pointerLockElement: Element | null }).pointerLockElement = canvas;

@@ -92,9 +92,12 @@ mappedTextureNames.add("tnt_top");
 mappedTextureNames.add("tnt_bottom");
 mappedTextureNames.add("sapling");
 mappedTextureNames.add("torch");
-for (let block = 1; block <= BLOCK.NETHER_WART_BLOCK; block += 1) {
+const allBlockIds = new Set(
+  Object.values(BLOCK).filter((value): value is BlockId => typeof value === "number"),
+);
+for (const block of allBlockIds) {
   for (const face of FACES) {
-    const texture = blockTextureForFace(block as BlockId, face);
+    const texture = blockTextureForFace(block, face);
     if (texture) mappedTextureNames.add(texture);
   }
 }

@@ -10,41 +10,41 @@ import { pathToFileURL } from "node:url";
 // corresponding globals. The ordered occurrence fingerprint makes that claim
 // fail closed whenever the first-stage bundle changes.
 export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
-  Object.freeze(["Math", "abs", 96]),
+  Object.freeze(["Math", "abs", 99]),
   // Directional doors and derived stair corners share retained transform math.
-  Object.freeze(["Math", "cos", 61]),
+  Object.freeze(["Math", "cos", 63]),
   Object.freeze(["Math", "ceil", 33]),
-  Object.freeze(["Math", "floor", 258]),
+  Object.freeze(["Math", "floor", 261]),
   Object.freeze(["Math", "hypot", 35]),
   // Remote atlas integrity now hashes the immutable PNG bytes with Web Crypto
   // instead of applying one pixel-space FNV multiplication after browser decode.
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 251]),
-  Object.freeze(["Math", "min", 204]),
-  Object.freeze(["Math", "round", 29]),
-  Object.freeze(["Math", "sin", 73]),
-  Object.freeze(["Math", "PI", 116]),
+  Object.freeze(["Math", "max", 260]),
+  Object.freeze(["Math", "min", 209]),
+  Object.freeze(["Math", "round", 35]),
+  Object.freeze(["Math", "sin", 75]),
+  Object.freeze(["Math", "PI", 118]),
   // The shared, immutable default/superflat terrain descriptor joins the client bundle.
-  Object.freeze(["Object", "freeze", 164]),
-  Object.freeze(["Object", "keys", 31]),
+  Object.freeze(["Object", "freeze", 172]),
+  Object.freeze(["Object", "keys", 33]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
-  Object.freeze(["Array", "isArray", 88]),
-  Object.freeze(["Number", "isFinite", 260]),
+  Object.freeze(["Array", "isArray", 94]),
+  Object.freeze(["Number", "isFinite", 261]),
   // Realtime PvP validates integral damage and health at the untrusted wire boundary.
-  Object.freeze(["Number", "isInteger", 58]),
+  Object.freeze(["Number", "isInteger", 60]),
   // Terrain descriptors reject non-integral or unsafe superflat ground heights.
-  Object.freeze(["Number", "isSafeInteger", 50]),
+  Object.freeze(["Number", "isSafeInteger", 55]),
   Object.freeze(["Number", "MAX_SAFE_INTEGER", 20]),
   Object.freeze(["Number", "NEGATIVE_INFINITY", 26]),
-  Object.freeze(["Number", "POSITIVE_INFINITY", 15]),
+  Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
   Object.freeze(["Number", "parseInt", 10]),
-  Object.freeze(["Date", "now", 60]),
+  Object.freeze(["Date", "now", 61]),
   Object.freeze(["JSON", "stringify", 19]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_004;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "69999844ec3a937be1a1d359b66b93be2a0402af44f6eb6fe31be34fa48dfaa6";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_060;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "a51635e755fd5a03272607285a450e02961d6b69cf30502b4efe695603906634";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -63,29 +63,41 @@ const PROPERTY_ALIAS_SPEC = "action:25,active:20,activeAppearanceRequest:10,acti
 // Closed-door sky exposure and paired-door Railway follow-ups add six reviewed
 // uses without broadening the fixed exact-key allowlist.
 const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
-  block: 175, endsWith: 24, filter: 47, flatMap: 19, height: 33, includes: 44, length: 431,
-  previousBlock: 11, startsWith: 26, status: 20,
+  addEventListener: 37, ARRAY_BUFFER: 77, behavior: 30, bindBuffer: 43, bindTexture: 17,
+  block: 175, bottom: 24, bufferData: 24, CLAMP_TO_EDGE: 12, clear: 41, createBuffer: 21,
+  current: 865, currentTarget: 19, delete: 66, deleteBuffer: 34, deleteProgram: 14,
+  deleteTexture: 9, documentElement: 8, drawArrays: 20, enableVertexAttribArray: 25,
+  endsWith: 24, every: 50, filter: 49, flatMap: 22, fromEntries: 9, getAttribLocation: 23,
+  getUniformLocation: 65, health: 55, height: 35, includes: 47, inventory: 103, length: 441,
+  maxHealth: 13, operationId: 43, options: 69, pixelStorei: 11, preventDefault: 54,
+  previousBlock: 11, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
+  randomUUID: 10, readyState: 10, removeEventListener: 39, renderDistance: 8, repeat: 32,
+  resolve: 19, revision: 28, sequence: 47, sheared: 16, slice: 113, startsWith: 33,
+  state: 70, STATIC_DRAW: 10, status: 20, stopImmediatePropagation: 8, texImage2D: 11,
+  texParameteri: 24, TEXTURE_2D: 53, TEXTURE_MAG_FILTER: 6, TEXTURE_MIN_FILTER: 6,
+  TRIANGLES: 18, uniform1f: 38, UNPACK_FLIP_Y_WEBGL: 9, UNSIGNED_BYTE: 12,
+  useProgram: 17, userId: 37, value: 37, vertexAttribPointer: 25,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 5_918;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "61df49b4ae74061c943ed95d5aed71ea8d438005c7968a3ed28f77054b8b2871";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_105;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "ad8f7bf439fb0fa872b08ab1804bd9985aa878e77e7a328a3d9db3615c1d7a72";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
   fingerprint: COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT,
   occurrences: COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES,
 });
-const GLOBAL_ALIAS_SPEC = "Float32Array:78,Map:71,Set:56,Uint8Array:20,document:93,performance:74,window:121";
+const GLOBAL_ALIAS_SPEC = "Float32Array:79,Map:73,Set:60,Uint8Array:20,document:101,performance:76,window:123";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 513;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "ef3d312b5bba9ed92df4cc030224a075df745afb6a3057c6544102b1d913b6c7";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 532;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "cae1b720573537e89bef6affa9a3deb8a0d7f89798564315093fa3c38d62af79";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

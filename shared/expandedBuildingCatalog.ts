@@ -35,6 +35,40 @@ export const ADDITIONAL_ARCHITECTURAL_ITEMS = [
   "exposed_cut_copper", "weathered_cut_copper", "oxidized_cut_copper", "sculk",
   "nether_wart_block",
 ] as const;
+
+/**
+ * Minecraft families whose existing full block has matching slab and stair
+ * variants.  The tuple keeps the item/state prefix beside the exact source
+ * block so catalog, recipes, rendering, and both multiplayer authorities
+ * cannot silently disagree about plural names such as nether bricks.
+ */
+export const STONE_SHAPE_FAMILIES = [
+  ["stone", "stone"],
+  ["sandstone", "sandstone"],
+  ["smooth_sandstone", "smooth_sandstone"],
+  ["red_sandstone", "red_sandstone"],
+  ["smooth_red_sandstone", "smooth_red_sandstone"],
+  ["nether_brick", "nether_bricks"],
+  ["blackstone", "blackstone"],
+  ["polished_blackstone", "polished_blackstone"],
+  ["polished_blackstone_brick", "polished_blackstone_bricks"],
+  ["cobbled_deepslate", "cobbled_deepslate"],
+  ["polished_deepslate", "polished_deepslate"],
+  ["deepslate_brick", "deepslate_bricks"],
+  ["deepslate_tile", "deepslate_tiles"],
+] as const;
+export type StoneShapeFamily = typeof STONE_SHAPE_FAMILIES[number][0];
+export type StoneShapeSourceItem = typeof STONE_SHAPE_FAMILIES[number][1];
+export const DEEPSLATE_BUILDING_ITEMS = [
+  "cobbled_deepslate", "polished_deepslate", "deepslate_bricks", "deepslate_tiles",
+] as const;
+export const STAIR_MATERIAL_FAMILIES = [
+  "oak", "cobblestone", "stone_brick", "brick", ...EXTRA_WOOD_FAMILIES, "bamboo", "quartz",
+  ...STONE_SHAPE_FAMILIES.map(([family]) => family),
+] as const;
+export const STONE_SHAPE_TEXTURES = Object.freeze(Object.fromEntries(
+  STONE_SHAPE_FAMILIES.map(([family, source]) => [family, source]),
+)) as Readonly<Record<StoneShapeFamily, StoneShapeSourceItem>>;
 export type DecorativeBlockItemId =
   | `${BuildingColor}_${"stained_glass" | "concrete"}`
   | typeof LUMINOUS_BLOCK_ITEMS[number]
@@ -49,12 +83,16 @@ export type ExpandedBlockItemId =
   | "granite" | "polished_granite" | "diorite" | "polished_diorite"
   | "andesite" | "polished_andesite" | "sandstone" | "cut_sandstone"
   | "chiseled_sandstone" | "smooth_stone" | "calcite" | "deepslate"
+  | typeof DEEPSLATE_BUILDING_ITEMS[number]
+  | `${StoneShapeFamily}_${"slab" | "stairs"}`
   | DecorativeBlockItemId;
 
 export type ExpandedWorldBlockState = ExpandedBlockItemId
   | `${"oak" | "cobblestone" | "stone_brick" | "brick"}_stairs_upside_${BuildingDirection}`
   | `${ExtraWoodFamily | "bamboo" | "quartz"}_stairs_${BuildingDirection}`
   | `${ExtraWoodFamily | "bamboo" | "quartz"}_stairs_upside_${BuildingDirection}`
+  | `${StoneShapeFamily}_stairs_${BuildingDirection}`
+  | `${StoneShapeFamily}_stairs_upside_${BuildingDirection}`
   | `${ExtraWoodFamily}_door_${"closed" | "open"}_${BuildingDirection}`
   | `oak_door_${"closed" | "open"}_${Exclude<BuildingDirection, "north">}`;
 
@@ -86,6 +124,8 @@ export const EXPANDED_BLOCK_STATE_TYPES = Object.freeze([
   ...DECORATIVE_STONE_ITEMS,
   ...ADDITIONAL_COLOR_BLOCK_ITEMS,
   ...ADDITIONAL_ARCHITECTURAL_ITEMS,
+  ...DEEPSLATE_BUILDING_ITEMS,
+  ...STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, ...stairStates(family)]),
 ] as ExpandedWorldBlockState[]);
 
 export type ExpandedBlockConstantName = Uppercase<ExpandedWorldBlockState>;
@@ -103,4 +143,6 @@ export const EXPANDED_BLOCK_ITEM_IDS = Object.freeze([
   ...DECORATIVE_STONE_ITEMS,
   ...ADDITIONAL_COLOR_BLOCK_ITEMS,
   ...ADDITIONAL_ARCHITECTURAL_ITEMS,
+  ...DEEPSLATE_BUILDING_ITEMS,
+  ...STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
 ] as ExpandedBlockItemId[]);

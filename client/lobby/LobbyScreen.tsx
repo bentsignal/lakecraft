@@ -3,6 +3,7 @@ import { OptionsDialog } from "../components/OptionsDialog";
 import type { ClientSettings } from "../settings";
 import { LobbyStyles } from "./LobbyStyles";
 import { menuButton } from "./menuButton.tsx";
+import { TitlePanorama } from "./TitlePanorama.tsx";
 
 export type LobbyAuthState = "loading" | "signed_out" | "needs_username" | "ready";
 export type UsernameClaimState = "idle" | "checking" | "available" | "saving" | "claimed" | "taken" | "error";
@@ -84,21 +85,6 @@ function serverEndpointLabel(endpoint: string): string {
   } catch {
     return "Invalid server address";
   }
-}
-
-function Panorama() {
-  return (
-    <div className="lc-title-panorama" aria-hidden="true">
-      <span className="lc-title-sun" />
-      <span className="lc-title-cloud cloud-one" />
-      <span className="lc-title-cloud cloud-two" />
-      <span className="lc-title-hills hills-back" />
-      <span className="lc-title-hills hills-front" />
-      <span className="lc-title-ground" />
-      <span className="lc-title-tree tree-one" />
-      <span className="lc-title-tree tree-two" />
-    </div>
-  );
 }
 
 function UsernameMenu(props: LobbyScreenProps & { onCancel?: () => void }) {
@@ -295,13 +281,13 @@ export function LobbyScreen(props: LobbyScreenProps) {
   return (
     <main className="lc-title-screen">
       <LobbyStyles />
-      <Panorama />
+      <TitlePanorama />
       <div className="lc-title-shade" aria-hidden="true" />
       <AccountPanel onSignIn={() => setPage("multiplayer")} onChooseUsername={() => setEditingUsername(true)} props={props} />
       <section className="lc-title-content" aria-label="Lakecraft main menu">
         <header className="lc-title-logo">
-          <h1>LAKECRAFT</h1>
-          <span>Multiplayer survival on Lakebed</span>
+          <h1 aria-label="Lakecraft" data-title="LAKECRAFT">LAKECRAFT</h1>
+          <span>Build farther. Wander together.</span>
         </header>
 
         <div className="lc-title-menu">
@@ -312,15 +298,26 @@ export function LobbyScreen(props: LobbyScreenProps) {
       </section>
       {showUsername ? <div className="lc-username-layer" role="presentation"><UsernameMenu {...props} onCancel={() => setEditingUsername(false)} /></div> : null}
       <OptionsDialog
+        blocksVolume={props.settings.blocksVolume}
         fovDegrees={props.settings.fovDegrees}
+        hostileVolume={props.settings.hostileVolume}
+        keyBindings={props.settings.keyBindings}
+        masterVolume={props.settings.masterVolume}
         mouseSensitivity={props.settings.mouseSensitivity}
         onBack={() => setOptionsOpen(false)}
         onFovChange={(fovDegrees) => props.onSettingsChange({ ...props.settings, fovDegrees })}
         onSensitivityChange={(mouseSensitivity) => props.onSettingsChange({ ...props.settings, mouseSensitivity })}
+        onKeyBindingsChange={(keyBindings) => props.onSettingsChange({ ...props.settings, keyBindings })}
+        onRenderDistanceChange={(renderDistance) => props.onSettingsChange({ ...props.settings, renderDistance })}
         onToggleSound={() => props.onSettingsChange({ ...props.settings, soundMuted: !props.settings.soundMuted })}
+        onVolumeChange={(category, value) => props.onSettingsChange({ ...props.settings, [category]: value })}
         open={optionsOpen}
+        passiveVolume={props.settings.passiveVolume}
+        playersVolume={props.settings.playersVolume}
+        renderDistance={props.settings.renderDistance}
         returnFocusId="lc-title-options"
         soundMuted={props.settings.soundMuted}
+        uiVolume={props.settings.uiVolume}
       />
       <footer className="lc-title-footer">
         <span>Lakecraft {props.buildLabel || "Alpha"}</span>

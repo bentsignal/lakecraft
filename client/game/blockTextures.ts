@@ -10,6 +10,7 @@ import {
 } from "./generated/textureAtlas.ts";
 import { BLOCK, blockStateName, type BlockId } from "./types.ts";
 import * as BS from "../../shared/bundleStrings.ts";
+import { STONE_SHAPE_TEXTURES } from "../../shared/expandedBuildingCatalog.ts";
 
 export type BlockFace = "east" | "west" | "top" | "bottom" | "south" | "north";
 
@@ -131,7 +132,8 @@ export function blockTextureForFace(block: BlockId, face: BlockFace): TextureAtl
     const family = stair >= 0 ? state.slice(0, stair) : state.endsWith("_slab") ? state.slice(0, -5) : "";
     if (family) return (family === "oak" ? "oak_planks" : family === "cobblestone" ? "cobblestone"
       : family === "stone_brick" ? "stone_bricks" : family === "brick" ? "bricks"
-        : family === "quartz" ? "quartz_block_side" : `${family}_planks`) as TextureAtlasName;
+        : family === "quartz" ? "quartz_block_side"
+          : STONE_SHAPE_TEXTURES[family as keyof typeof STONE_SHAPE_TEXTURES] ?? `${family}_planks`) as TextureAtlasName;
     if (state.endsWith("_planks") || state.endsWith("_leaves")) return state as TextureAtlasName;
     if (state.endsWith("_log")) return (face === "top" || face === "bottom" ? `${state}_end` : state) as TextureAtlasName;
     if (state === "bamboo_block") return (face === "top" || face === "bottom" ? "bamboo_block_top" : "bamboo_block") as TextureAtlasName;

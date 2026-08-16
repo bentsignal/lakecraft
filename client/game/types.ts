@@ -17,12 +17,14 @@ import type { BlockParticleEvent } from "./blockParticles.ts";
 import type { PlayerMovementMode } from "./playerMovement.ts";
 import type { MotionVisualActionKind } from "../../shared/multiplayerSegments.ts";
 import type { PlayerCameraMode } from "./playerCamera.ts";
+import type { GameplayControlBindings } from "../gameplay/controlBindings.ts";
 import type { PlayerSkinModel } from "./playerSkin.ts";
 import type { PlayerArmorAppearance } from "./playerArmorGeometry.ts";
 import type { WorldTerrainDescriptor } from "../../shared/worldPreset.ts";
 import {
   EXPANDED_BLOCK_STATE_TYPES,
   LUMINOUS_BLOCK_ITEMS,
+  STAIR_MATERIAL_FAMILIES,
   type ExpandedBlockConstantName,
 } from "../../shared/expandedBuildingCatalog.ts";
 
@@ -151,8 +153,7 @@ export function isUpsideDownStairBlock(block: BlockId): boolean {
 export function stairMaterialIndexForBlock(block: BlockId): number {
   const state = blockStateName(block);
   if (!state.includes("_stairs_")) return -1;
-  return ["oak", "cobblestone", "stone_brick", "brick", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "bamboo", "quartz"]
-    .indexOf(state.slice(0, state.indexOf("_stairs_")));
+  return (STAIR_MATERIAL_FAMILIES as readonly string[]).indexOf(state.slice(0, state.indexOf("_stairs_")));
 }
 
 export type BedDirection = "north" | "south" | "east" | "west";
@@ -483,6 +484,8 @@ export interface VoxelEngineOptions {
   getMouseLookSensitivity?: () => number;
   /** Vertical camera FOV in radians, sampled live so Options apply without recreating the engine. */
   getFieldOfViewRadians?: () => number;
+  /** Browser-local remappable controls, sampled on input/frame so Options apply immediately. */
+  getControlBindings?: () => Readonly<GameplayControlBindings>;
   /** Shared clock configuration. Defaults to Minecraft's twenty-minute cycle. */
   dayNight?: Partial<DayNightConfig>;
   /** Add a measured server-minus-client clock skew to Date.now(). */
@@ -583,6 +586,8 @@ export interface VoxelEngineOptions {
 export interface VoxelEngine {
   start(): void;
   destroy(): void;
+  /** Resolves after all currently queued terrain edits are meshed into a complete rendered frame. */
+  waitForWorldPresentation(): Promise<boolean>;
   /** Captures the next complete WebGL frame without releasing pointer lock. */
   captureScreenshot(): Promise<Blob>;
   applyWorldEdits(edits: readonly WorldEdit[]): boolean;

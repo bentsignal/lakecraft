@@ -41,7 +41,7 @@ assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property ma
 assert.equal(manifestNames.length, 654, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "d6f3bedec1ec2ea31e638d47a057a662a76acd13e13c03e8c630254f997986ca",
+  "fffb11e28c25c4ee1c382e5e1d1e8b901cfcbf9dc629b4954e7c8df6c7d069f4",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -83,7 +83,7 @@ const reviewedPrivatePropertyPaths = {
   accumulatorSeconds: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
   activePlayMsSinceSave: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
   applyConfirmedMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"] },
-  applyConfirmedPlayerHitMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts"] },
+  applyConfirmedPlayerHitMobKnockback: { declarations: ["client/game/types.ts", "client/game/voxelEngine.ts"], uses: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"] },
   autosaveDue: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
   blockReads: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
   changeGameMode: { declarations: ["client/singleplayer/localCommands.ts"], uses: ["client/singleplayer/localCommands.ts"] },
@@ -168,7 +168,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "93d216a0187661b20f23760aac42b29191db59491fab5c9a250135c4160235d4",
+  "c58837088c1e96a9f470a6c06a4f583210979f8b6144649f3b66a4906fa23bc8",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
@@ -276,8 +276,8 @@ for (const name of testQuotedNames) {
 }
 const reviewedRuntimePaths = {
   acceptWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/gameplay/authority.ts", "client/singleplayer/SinglePlayerApp.tsx"],
-  applyConfirmedPlayerHitMobKnockback: ["client/game/types.ts", "client/game/voxelEngine.ts"],
-  applyMobCombatStates: ["client/game/types.ts", "client/game/voxelEngine.ts"],
+  applyConfirmedPlayerHitMobKnockback: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
+  applyMobCombatStates: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx"],
   applyWorldEdits: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
   deathScreenOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   inventoryOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],

@@ -8,6 +8,16 @@ import {
 } from "../../../shared/inventoryActions.ts";
 import { validatePlayerStateJson, type PersistedInventoryState } from "../../../shared/chestTransfers.ts";
 import { REALTIME_WORLD_CHUNK_SIZE } from "../../../shared/realtimeWorldChunks.ts";
+import {
+  materializeMobAuthorityState,
+  resolveMobAttack,
+  type MobAttackFailureReason,
+  type MobAuthorityDrop,
+  type MobAuthorityKind,
+  type MobAuthorityState,
+  type StoredMobAuthorityState,
+} from "../../../shared/mobCombat.ts";
+import type { MobMotionCheckpoint } from "../../../shared/mobMotionAuthority.ts";
 
 interface PlayerRow {
   user_id: string;
@@ -86,6 +96,29 @@ interface PlayerInventoryRow {
 interface InventoryOperationRow {
   fingerprint: string;
   result_json: string;
+}
+
+interface MobStateRow {
+  mob_id: string;
+  kind: string;
+  health: number;
+  revision: number;
+  sheared: number;
+  dead_until: number;
+  last_attack_at: number;
+  last_attacker_id: string;
+}
+
+export type RailwayMobAttackResult =
+  | { ok: true; replayed: boolean; killed: boolean; drops: MobAuthorityDrop[]; state: MobAuthorityState }
+  | { ok: false; replayed?: boolean; reason: MobAttackFailureReason | "operation_id_reused"; state?: MobAuthorityState; retryAfterMs?: number };
+
+export interface StoredMobWorld {
+  checkpoint: MobMotionCheckpoint;
+  centerX: number;
+  centerZ: number;
+  nightMode: boolean;
+  updatedAt: number;
 }
 
 export interface StoredPlayer {
@@ -226,6 +259,35 @@ export class WorldStore {
         result_json TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         PRIMARY KEY (user_id, operation_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS mob_state (
+        mob_id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        health INTEGER NOT NULL,
+        revision INTEGER NOT NULL,
+        sheared INTEGER NOT NULL DEFAULT 0,
+        dead_until INTEGER NOT NULL,
+        last_attack_at INTEGER NOT NULL,
+        last_attacker_id TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mob_attack_operations (
+        user_id TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, operation_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS mob_world_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        checkpoint_json TEXT NOT NULL,
+        center_x INTEGER NOT NULL,
+        center_z INTEGER NOT NULL,
+        night_mode INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS server_settings (
@@ -809,6 +871,110 @@ export class WorldStore {
     const result = this.db.query("UPDATE player_state SET game_mode = ?, updated_at = ? WHERE user_id = ?")
       .run(gameMode, Date.now(), userId);
     return result.changes === 1;
+  }
+
+  mobAuthorityState(mobId: string, kind: MobAuthorityKind, serverNow: number): MobAuthorityState {
+    return materializeMobAuthorityState(this.mobStoredState(mobId), mobId, kind, serverNow);
+  }
+
+  mobAuthorityStates(
+    mobs: readonly { mobId: string; kind: MobAuthorityKind }[],
+    serverNow: number,
+  ): MobAuthorityState[] {
+    return mobs.map((mob) => this.mobAuthorityState(mob.mobId, mob.kind, serverNow));
+  }
+
+  applyMobAttack(
+    userId: string,
+    operationId: string,
+    mobId: string,
+    kind: MobAuthorityKind,
+    damage: number,
+    serverNow: number,
+  ): RailwayMobAttackResult {
+    return this.db.transaction(() => {
+      const fingerprint = `${mobId}\u0000${kind}\u0000${damage}`;
+      const prior = this.db.query<{ fingerprint: string; result_json: string }, [string, string]>(`
+        SELECT fingerprint,result_json FROM mob_attack_operations WHERE user_id=? AND operation_id=?
+      `).get(userId, operationId);
+      if (prior) {
+        if (prior.fingerprint !== fingerprint) return { ok: false as const, reason: "operation_id_reused" as const };
+        return { ...(JSON.parse(prior.result_json) as RailwayMobAttackResult), replayed: true };
+      }
+      const resolved = resolveMobAttack({
+        stored: this.mobStoredState(mobId),
+        rawMobId: mobId,
+        rawKind: kind,
+        rawDamage: damage,
+        attackerId: userId,
+        serverNow,
+      });
+      const result: RailwayMobAttackResult = resolved.ok
+        ? { ok: true, replayed: false, killed: resolved.killed, drops: resolved.drops, state: resolved.state }
+        : {
+            ok: false,
+            reason: resolved.reason,
+            ...(resolved.state ? { state: resolved.state } : {}),
+            ...(resolved.retryAfterMs === undefined ? {} : { retryAfterMs: resolved.retryAfterMs }),
+          };
+      if (resolved.ok) {
+        const row = resolved.nextRow;
+        this.db.query(`INSERT INTO mob_state
+          (mob_id,kind,health,revision,sheared,dead_until,last_attack_at,last_attacker_id)
+          VALUES(?,?,?,?,?,?,?,?)
+          ON CONFLICT(mob_id) DO UPDATE SET kind=excluded.kind,health=excluded.health,
+            revision=excluded.revision,sheared=excluded.sheared,dead_until=excluded.dead_until,
+            last_attack_at=excluded.last_attack_at,last_attacker_id=excluded.last_attacker_id
+        `).run(row.mobId, row.kind, Number(row.health), Number(row.revision), row.sheared === "true" ? 1 : 0,
+          Number(row.deadUntil), Number(row.lastAttackAt), row.lastAttackerId);
+      }
+      this.db.query(`INSERT INTO mob_attack_operations(user_id,operation_id,fingerprint,result_json,created_at)
+        VALUES(?,?,?,?,?)`).run(userId, operationId, fingerprint, JSON.stringify(result), serverNow);
+      this.db.query(`DELETE FROM mob_attack_operations WHERE rowid NOT IN (
+        SELECT rowid FROM mob_attack_operations ORDER BY created_at DESC LIMIT 1024
+      )`).run();
+      return result;
+    })();
+  }
+
+  saveMobWorld(world: StoredMobWorld): void {
+    this.db.query(`INSERT INTO mob_world_state(id,checkpoint_json,center_x,center_z,night_mode,updated_at)
+      VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET checkpoint_json=excluded.checkpoint_json,
+      center_x=excluded.center_x,center_z=excluded.center_z,night_mode=excluded.night_mode,updated_at=excluded.updated_at`)
+      .run(JSON.stringify(world.checkpoint), world.centerX, world.centerZ, world.nightMode ? 1 : 0, world.updatedAt);
+  }
+
+  loadMobWorld(): StoredMobWorld | null {
+    const row = this.db.query<{
+      checkpoint_json: string; center_x: number; center_z: number; night_mode: number; updated_at: number;
+    }, []>(`SELECT checkpoint_json,center_x,center_z,night_mode,updated_at FROM mob_world_state WHERE id=1`).get();
+    if (!row) return null;
+    try {
+      return {
+        checkpoint: JSON.parse(row.checkpoint_json) as MobMotionCheckpoint,
+        centerX: row.center_x,
+        centerZ: row.center_z,
+        nightMode: row.night_mode === 1,
+        updatedAt: row.updated_at,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private mobStoredState(mobId: string): StoredMobAuthorityState | null {
+    const row = this.db.query<MobStateRow, [string]>(`SELECT mob_id,kind,health,revision,sheared,
+      dead_until,last_attack_at,last_attacker_id FROM mob_state WHERE mob_id=?`).get(mobId);
+    return row ? {
+      mobId: row.mob_id,
+      kind: row.kind,
+      health: String(row.health),
+      revision: String(row.revision),
+      sheared: row.sheared === 1 ? "true" : "false",
+      deadUntil: String(row.dead_until),
+      lastAttackAt: String(row.last_attack_at),
+      lastAttackerId: row.last_attacker_id,
+    } : null;
   }
 
   /** Returns false for a replayed ticket id. */

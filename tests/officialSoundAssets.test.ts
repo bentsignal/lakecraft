@@ -83,6 +83,16 @@ const audio = createGameAudio({
 assert.equal(await audio.unlock(), true, "a user gesture can unlock official media even without Web Audio");
 assert.equal(audio.play("blockBreak", { seed: "block:1", surface: "grass", intensity: 0.8 }), true);
 assert.equal(media.at(-1)?.volume, 0.4, "official samples honor the existing master and cue volume");
+audio.setLevels({ master: 0.5, blocks: 0.25 });
+assert.ok(Math.abs((media.at(-1)?.volume ?? 0) - 0.05) < 1e-12,
+  "live official samples immediately follow category and master decreases");
+audio.setLevels({ master: 1, blocks: 1 });
+assert.ok(Math.abs((media.at(-1)?.volume ?? 0) - 0.4) < 1e-12,
+  "live official samples also follow volume increases without restarting");
+audio.setLevels({ master: 0.5, blocks: 0.25 });
+assert.equal(audio.play("blockPlace", { seed: "block:2", surface: "grass", intensity: 0.8 }), true);
+assert.ok(Math.abs((media.at(-1)?.volume ?? 0) - 0.05) < 1e-12,
+  "master and block category sliders multiply without affecting other categories");
 assert.equal(audio.play("mobHurt", { seed: "cow:1", mob: "cow" }), true);
 assert.equal(audio.play("mobDeath", { seed: "cow:1", mob: "cow" }), true,
   "distinct simultaneous combat cues do not silence each other");

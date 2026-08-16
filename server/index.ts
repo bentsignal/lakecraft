@@ -620,7 +620,7 @@ function rangedBlockOccludes(
 ): boolean | number {
   if (block === "air" || block === "torch" || block === "ladder"
     || block === "door_open" || block === "oak_fence_gate_open") return false;
-  if (block !== "stone_brick_slab") return true;
+  if (!block.endsWith("_slab")) return true;
   if (!segmentStart || !segmentEnd) return false;
   return segmentVoxelHeightIntersectionFraction(
     segmentStart,
@@ -1102,7 +1102,7 @@ async function authoritativeFallWorldFacts(
     const block = blocks.get(cell.coordKey);
     if (!block) return { ok: false, reason: BS.invalidWorldState };
     if (cell.support && fallSupportBlockHasCollision(block)) supported = true;
-    if (cell.slabSupport && block === "stone_brick_slab") supported = true;
+    if (cell.slabSupport && block.endsWith("_slab")) supported = true;
     if (cell.doorTop && cell.y + 1 > 0 && block === BS.doorClosed) supported = true;
     if (cell.ladder && block === "ladder") onLadder = true;
   }

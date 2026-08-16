@@ -1,52 +1,14 @@
 import type { AgentBatchResult } from "./agentBuilderPersistence";
 import type { BlockEdit, ServerGameMode } from "./protocol";
+import { BLOCK_TYPES } from "../../../shared/protocol";
 
 export const AGENT_API_PREFIX = "/agent/v1";
 export const AGENT_MAX_BATCH_EDITS = 512;
 export const AGENT_MAX_REGION_CELLS = 4_096;
 export const AGENT_MAX_REQUEST_BYTES = 64 * 1024;
 
-const directions = ["east", "north", "south", "west"];
-const stairStates = (family: string): string[] => [
-  ...directions.map((direction) => `${family}_stairs_${direction}`),
-  ...directions.map((direction) => `${family}_stairs_upside_${direction}`),
-];
-const doorStates = (family: string): string[] => [
-  ...directions.map((direction) => `${family}_door_closed_${direction}`),
-  ...directions.map((direction) => `${family}_door_open_${direction}`),
-];
-const woodFamilies = ["spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry"];
-const buildingColors = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"];
-export const AGENT_BLOCK_NAMES = Object.freeze([
-  "air", "grass", "dirt", "stone", "wood", "leaves", "planks", "crafting_table", "torch", "chest",
-  "door_closed", "door_open", "bed", "coal_ore", "iron_ore", "gold_ore", "diamond_ore", "furnace", "ladder",
-  "cobblestone", "sand", "glass", "tnt", "gravel", "wool", "sapling", "stone_bricks", "oak_fence",
-  "oak_fence_gate_closed", "oak_fence_gate_open", "stone_brick_slab", "clay", "bricks", "bedrock",
-  "wall_torch_east", "wall_torch_north", "wall_torch_south", "wall_torch_west", "oak_slab", "cobblestone_slab",
-  "brick_slab", ...["oak", "cobblestone", "stone_brick", "brick"].flatMap((family) => stairStates(family).slice(0, 4)),
-  ...["oak", "cobblestone", "stone_brick", "brick"].flatMap((family) => stairStates(family).slice(4)),
-  ...woodFamilies.flatMap((family) => [
-    `${family}_log`, `${family}_planks`, `${family}_leaves`, `${family}_slab`, ...stairStates(family), ...doorStates(family),
-  ]),
-  "bamboo_block", "bamboo_planks", "bamboo_slab", ...stairStates("bamboo"),
-  "quartz_block", "quartz_pillar", "chiseled_quartz", "quartz_slab", ...stairStates("quartz"),
-  "granite", "polished_granite", "diorite", "polished_diorite", "andesite", "polished_andesite",
-  "sandstone", "cut_sandstone", "chiseled_sandstone", "smooth_stone", "calcite", "deepslate",
-  ...["east", "south", "west"].map((direction) => `oak_door_closed_${direction}`),
-  ...["east", "south", "west"].map((direction) => `oak_door_open_${direction}`),
-  ...buildingColors.flatMap((color) => [`${color}_stained_glass`, `${color}_concrete`]),
-  "glowstone", "sea_lantern", "shroomlight", "ochre_froglight", "verdant_froglight", "pearlescent_froglight", "magma_block",
-  "mossy_cobblestone", "mossy_stone_bricks", "cracked_stone_bricks", "chiseled_stone_bricks",
-  "packed_mud", "mud_bricks", "prismarine", "prismarine_bricks", "dark_prismarine", "nether_bricks",
-  "red_nether_bricks", "blackstone", "polished_blackstone", "polished_blackstone_bricks", "end_stone",
-  "end_stone_bricks", "purpur_block", "obsidian", "crying_obsidian",
-  ...buildingColors.filter((color) => color !== "white").map((color) => `${color}_wool`),
-  ...buildingColors.flatMap((color) => [`${color}_terracotta`, `${color}_glazed_terracotta`]),
-  "red_sandstone", "cut_red_sandstone", "chiseled_red_sandstone", "smooth_sandstone",
-  "smooth_red_sandstone", "amethyst_block", "budding_amethyst", "tuff", "dripstone_block",
-  "copper_block", "exposed_copper", "weathered_copper", "oxidized_copper", "cut_copper",
-  "exposed_cut_copper", "weathered_cut_copper", "oxidized_cut_copper", "sculk", "nether_wart_block",
-]);
+/** Builder and browser use one append-only numeric palette. */
+export const AGENT_BLOCK_NAMES = BLOCK_TYPES;
 
 export interface AgentWorldMetadata {
   serverId: string;

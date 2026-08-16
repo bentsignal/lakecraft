@@ -15,6 +15,22 @@ afterEach(async () => {
 });
 
 describe("SQLite world persistence", () => {
+  test("owns exact-once mob health and death state without Lakebed mutations", () => {
+    const store = new WorldStore(":memory:");
+    const first = store.applyMobAttack("alex", "mob_attack_operation_1", "chicken-5nb-0", "chicken", 3, 1_000);
+    expect(first).toMatchObject({ ok: true, replayed: false, killed: false, state: { health: 1, revision: 1 } });
+    expect(store.applyMobAttack("alex", "mob_attack_operation_1", "chicken-5nb-0", "chicken", 3, 1_100))
+      .toMatchObject({ ok: true, replayed: true, killed: false, state: { health: 1, revision: 1 } });
+    expect(store.applyMobAttack("alex", "mob_attack_operation_1", "chicken-5nb-0", "chicken", 1, 1_100))
+      .toEqual({ ok: false, reason: "operation_id_reused" });
+    const killed = store.applyMobAttack("alex", "mob_attack_operation_2", "chicken-5nb-0", "chicken", 3, 1_300);
+    expect(killed).toMatchObject({ ok: true, replayed: false, killed: true, state: { health: 0, revision: 2 } });
+    expect(killed.ok && killed.drops).toContainEqual({ itemId: "raw_chicken", count: 1 });
+    expect(store.mobAuthorityState("chicken-5nb-0", "chicken", 1_301)).toMatchObject({ health: 0, revision: 2 });
+    expect(store.mobAuthorityState("chicken-5nb-0", "chicken", 31_300)).toMatchObject({ health: 4, revision: 2 });
+    store.close();
+  });
+
   test("persists and replays the shared inventory state machine without Lakebed gameplay writes", () => {
     const store = new WorldStore(":memory:");
     const initial = store.ensurePlayerInventory("alex", undefined, 1_000);

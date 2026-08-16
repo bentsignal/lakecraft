@@ -53,7 +53,7 @@ const withoutContainment = `${server.slice(0, start)}${server.slice(finish + end
   .replace('.index("by_created", ["receiptCreatedAt"]),\n  },', '.index("by_created", ["receiptCreatedAt"])\n  },');
 assert.equal(
   createHash("sha256").update(withoutContainment).digest("hex"),
-  "051aec1e0c70d5e72a8e763d6259e668ae2ebe88ca87e6d2882fd89e20bacb86",
+  "74364285639bf287969c6c7174d7e8a7942264f38644428c2c5dc28b6e6bc2a9",
   "removing containment declarations reproduces the reviewed integrated server behavior source",
 );
 
@@ -89,11 +89,12 @@ for (const path of runtimeFiles) {
 // lighting, render-only step easing, live paused-world presentation, and a
 // first-painted-frame loading gate, connected glass, derived stair/door
 // presentation, paired-door Railway commits, expanded thin-block skylight,
-// the decorative catalog, and immutable Railway-served texture delivery;
-// none adds another authority or transport.
-assert.equal(runtimeFiles.length, 184, "reviewed main runtime file set changed");
+// the decorative catalog, immutable Railway-served texture delivery, canonical
+// HUD/title/control presentation, and shared Railway mob-spawn layout; none
+// adds another Lakebed authority or multiplayer transport.
+assert.equal(runtimeFiles.length, 189, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "dd1e1d97ba0e70fd079753ada2a6e1af28fe7f2eeada3991c1de1c7fa3113efc",
+  "eaf6f49927c58c0be06122cbbe41a58db51cdb657228e9d0af96889710fe20f1",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

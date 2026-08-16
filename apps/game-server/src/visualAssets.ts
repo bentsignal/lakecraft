@@ -1,4 +1,5 @@
 export const VISUAL_ASSET_PATHS = Object.freeze({
+  "/assets/block-texture-atlas-9a3b9f30.png": "block-texture-atlas-9a3b9f30.png",
   "/assets/block-texture-atlas-a607e4c6.png": "block-texture-atlas-a607e4c6.png",
   "/assets/block-texture-atlas-d94c19f9.png": "block-texture-atlas-d94c19f9.png",
   "/assets/mob-texture-atlas-204e2b83.png": "mob-texture-atlas-204e2b83.png",

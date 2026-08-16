@@ -5,8 +5,9 @@ export function handleGameplayScreenshotKey(
   event: KeyboardEvent,
   engine: VoxelEngine | null,
   report: (title: string, detail: string, tone: "success" | "warning") => void,
+  code = "F2",
 ): boolean {
-  if (event.code !== "F2" || event.repeat || !engine) return false;
+  if (event.code !== "F2" && event.code !== code || event.repeat || !engine) return false;
   event.preventDefault();
   event.stopImmediatePropagation();
   const png = engine.captureScreenshot();
@@ -27,11 +28,14 @@ export function GameplayDiagnostics({
   pose,
   gameMode,
   stats,
+  visible = false,
 }: {
   pose: Pick<PlayerPose, "x" | "y" | "z">;
   gameMode: "creative" | "survival";
   stats: Pick<VoxelPerformanceStats, "fps"> | null;
+  visible?: boolean;
 }) {
+  if (!visible) return null;
   const x = Math.floor(pose.x); const y = Math.floor(pose.y); const z = Math.floor(pose.z);
   return (
     <aside className="lc-gameplay-diagnostics" aria-label={`Coordinates X ${x}, Y ${y}, Z ${z}. ${gameMode} mode`}>

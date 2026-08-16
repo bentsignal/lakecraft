@@ -4,6 +4,7 @@ import { TEXTURED_WORLD_VERTEX_FLOATS, blockTextureForFace } from "../client/gam
 import { packSkyExposureShade, unpackSkyExposureShade } from "../client/game/skyExposure.ts";
 import { BLOCK } from "../client/game/types.ts";
 import {
+  TERRAIN_FRAGMENT_SHADER,
   TERRAIN_VERTEX_SHADER,
   VERTEX_SHADER,
   appendSaplingMesh,
@@ -23,8 +24,11 @@ for (const [red, exposure] of [[0.57, 0], [0.57, 1], [0.57, 2], [0.57, 3]] as co
 }
 assert.match(TERRAIN_VERTEX_SHADER, /p=step\(7\.5,aShade\)/);
 assert.match(TERRAIN_VERTEX_SHADER, /e=mix\(1\.,floor\(s\/2\.\)\/3\.0,p\)/);
-assert.match(TERRAIN_VERTEX_SHADER, /vLight=\(lightAt\(aPosition,e\)\+vec3\(\.22,\.07,\.015\)\*m\)\*f/,
-  "torch emission is added after cave daylight attenuation");
+assert.match(TERRAIN_VERTEX_SHADER, /vLight=\(lightAt\(aPosition,e\)\+vec3\(\.18\)\*m\)\*f/,
+  "bounded neutral emission preserves each light source's installed texture color");
+assert.match(TERRAIN_VERTEX_SHADER, /vEmission=m/);
+assert.match(TERRAIN_FRAGMENT_SHADER, /min\(vec3\(1\.12\),texel\.rgb\*\(vLight\+texel\.rgb\*\.14\*vEmission\)\)/,
+  "the soft emissive lift is capped in the retained terrain pass without a bloom draw call");
 assert.equal(
   VERTEX_SHADER.match(/vec3 lightAt\(/g)?.length,
   1,

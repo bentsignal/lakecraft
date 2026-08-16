@@ -126,6 +126,7 @@ import {
   type MobPoseSnapshot,
   type MobProjectileSnapshot,
   type MobSpawnOptions,
+  type MobSpawnDescriptor,
   type LocalCreeperExplosionEvent,
   type MobDamageSource,
 } from "./mobs.ts";
@@ -190,7 +191,13 @@ import type { BlockType } from "../../shared/protocol.ts";
 import { ITEMS } from "../../shared/game.ts";
 import { WORLD_EDIT_MAX_Y, WORLD_EDIT_MIN_Y } from "../../shared/worldChunks.ts";
 import { appendWorldBlockCrackLines } from "./blockCracks.ts";
-import { hotbarIndexForDigitCode, hotbarWheelDirection } from "./hotbarInput.ts";
+import { hotbarWheelDirection } from "./hotbarInput.ts";
+import {
+  DEFAULT_GAMEPLAY_CONTROL_BINDINGS,
+  gameplayControlActionForCode,
+  hotbarActionIndex,
+  type GameplayControlAction,
+} from "../gameplay/controlBindings.ts";
 import {
   STANDING_BODY_HEIGHT,
   STANDING_EYE_HEIGHT,
@@ -219,7 +226,6 @@ import {
   type ForwardSprintTapState,
   type PlayerMovementMode,
   type PlayerPostureTargets,
-  type SprintControlCode,
   type SprintControlState,
 } from "./playerMovement.ts";
 import {
@@ -267,8 +273,8 @@ export const MAX_LOOK_PITCH = 1.52;
 export const STREAMING_MESH_REBUILDS_PER_FRAME = 1;
 export const STREAMING_TERRAIN_CHANGES_PER_FRAME = 1;
 export const LOCAL_MOB_STREAM_SPAWN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * WORLD_CHUNK_SIZE - 2;
-export const LOCAL_MOB_STREAM_CLEAR_RADIUS = LOCAL_MOB_STREAM_SPAWN_RADIUS - 2;
-export const LOCAL_MOB_STREAM_RETAIN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * WORLD_CHUNK_SIZE + WORLD_CHUNK_SIZE / 2;
+export const LOCAL_MOB_STREAM_CLEAR_RADIUS = Math.max(10, LOCAL_MOB_STREAM_SPAWN_RADIUS - 10);
+export const LOCAL_MOB_STREAM_RETAIN_RADIUS = DEFAULT_STREAMING_CHUNK_RADIUS * WORLD_CHUNK_SIZE + WORLD_CHUNK_SIZE;
 export const PLAYER_RANGED_REACH = 32;
 export const PLAYER_BOW_FULL_CHARGE_MS = 1_000;
 export const TARGET_OUTLINE_VERTEX_COUNT = 24;
@@ -735,9 +741,9 @@ export const VERTEX_SHADER = `attribute vec3 aPosition,aColor;uniform mat4 uMvp;
 
 export const FRAGMENT_SHADER = `precision mediump float;uniform vec3 uFogColor;varying vec3 vColor;varying float vFog;void main(){gl_FragColor=vec4(mix(vColor,uFogColor,vFog),1.);}`;
 
-export const TERRAIN_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute float aShade;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);float p=step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)},aShade),m=step(${(SKY_SHADE_PACK_MARKER + SKY_SHADE_EMISSIVE_MARKER - 0.5).toFixed(1)},aShade),s=aShade-p*${SKY_SHADE_PACK_MARKER.toFixed(1)}-m*${SKY_SHADE_EMISSIVE_MARKER.toFixed(1)},f=mix(aShade,mod(s,2.),p),e=mix(1.,floor(s/2.)/${SKY_EXPOSURE_LEVELS.toFixed(1)},p);vUv=aUv;vLight=(lightAt(aPosition,e)+vec3(.22,.07,.015)*m)*f;vFog=fogAt(aPosition);}`;
+export const TERRAIN_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute float aShade;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog,vEmission;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);float p=step(${(SKY_SHADE_PACK_MARKER - 0.5).toFixed(1)},aShade),m=step(${(SKY_SHADE_PACK_MARKER + SKY_SHADE_EMISSIVE_MARKER - 0.5).toFixed(1)},aShade),s=aShade-p*${SKY_SHADE_PACK_MARKER.toFixed(1)}-m*${SKY_SHADE_EMISSIVE_MARKER.toFixed(1)},f=mix(aShade,mod(s,2.),p),e=mix(1.,floor(s/2.)/${SKY_EXPOSURE_LEVELS.toFixed(1)},p);vUv=aUv;vLight=(lightAt(aPosition,e)+vec3(.18)*m)*f;vFog=fogAt(aPosition);vEmission=m;}`;
 
-export const TERRAIN_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;uniform float uAlphaCutoff;varying vec2 vUv;varying vec3 vLight;varying float vFog;void main(){vec4 texel=texture2D(uAtlas,vUv);if (texel.a < uAlphaCutoff) discard;gl_FragColor=vec4(mix(texel.rgb*vLight,uFogColor,vFog),texel.a);}`;
+export const TERRAIN_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;uniform float uAlphaCutoff;varying vec2 vUv;varying vec3 vLight;varying float vFog,vEmission;void main(){vec4 texel=texture2D(uAtlas,vUv);if (texel.a < uAlphaCutoff) discard;vec3 lit=min(vec3(1.12),texel.rgb*(vLight+texel.rgb*.14*vEmission));gl_FragColor=vec4(mix(lit,uFogColor,vFog),texel.a);}`;
 
 export const MOB_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute vec3 aTint;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);vUv=aUv;vLight=aTint*lightAt(aPosition,1.);vFog=fogAt(aPosition);}`;
 export const MOB_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;varying vec2 vUv;varying vec3 vLight;varying float vFog;void main(){vec4 t=texture2D(uAtlas,vUv);if(t.a<.02)discard;gl_FragColor=vec4(mix(t.rgb*vLight,uFogColor,vFog),t.a);}`;
@@ -1003,13 +1009,19 @@ export function torchPlacementBlock(target: Readonly<BlockTarget>): BlockId | nu
 }
 
 /** Resolve one stair item identity to its append-only horizontal block state. */
+export function stairFacingFromYaw(yaw: number): NonNullable<ReturnType<typeof stairFacingForBlock>> {
+  if (!Number.isFinite(yaw)) return "north";
+  const quarter = Math.round(yaw / (Math.PI / 2));
+  return (["north", "east", "south", "west"] as const)[((quarter % 4) + 4) % 4];
+}
+
 export function stairPlacementBlock(block: BlockId, yaw: number, pitch = 0, target?: Readonly<BlockTarget>): BlockId {
   const state = blockStateName(block);
   const stairs = state.indexOf("_stairs_");
   if (stairs < 0) return block;
   const family = state.slice(0, stairs);
   const upsideDown = target?.place.y !== undefined && target.place.y < target.block.y || pitch > 0.55;
-  const facing = bedDirectionFromYaw(yaw);
+  const facing = stairFacingFromYaw(yaw);
   const constant = `${family}_stairs_${upsideDown ? "upside_" : ""}${facing}`.toUpperCase();
   return (BLOCK as Readonly<Record<string, BlockId>>)[constant] ?? block;
 }
@@ -1965,6 +1977,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const pendingTerrainMeshDirtyChunks = new Set<string>();
   let pendingChunkLoads: ChunkCoordinate[] = [];
   let pendingChunkUnloads: ChunkCoordinate[] = [];
+  const worldPresentationWaiters: Array<(presented: boolean) => void> = [];
   const rememberedEditsByChunk = new Map<string, Map<string, WorldEdit>>();
   const initialEditBlocks = new Map<string, BlockId>();
   for (const edit of options.initialEdits ?? []) {
@@ -2075,8 +2088,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     z: number,
     attempt: number,
   ): readonly [number, number, number] {
-    if (MOB_DEFINITIONS[kind].passive || (attempt & 1) !== 0) return [x, surfaceY, z];
-    // Hostile surface candidates remain useful at night, but every other
+    if (MOB_DEFINITIONS[kind].passive) return [x, surfaceY, z];
+    const surfaceHostilesAllowed = dayNightState.label === "night" || dayNightState.label === "dusk";
+    if (surfaceHostilesAllowed && (attempt & 1) !== 0) return [x, surfaceY, z];
+    // Hostile surface candidates remain useful at night. In daylight every
     // attempt searches a bounded neighborhood for an enclosed floor. Searching
     // nearby columns matters because a cave seldom sits under the exact random
     // surface coordinate chosen by the population sampler.
@@ -2148,9 +2163,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     centerZ: localMobStreaming ? mobStreamingCenterZ : 0,
     terrainHeight: (x, z) => terrainHeight(x, z, seed, terrain),
     resolveSpawnPosition: localMobSpawnPosition,
-    passivePopulation: clampNumber(Math.floor(radius / 2), 6, 12),
-    hostilePopulation: clampNumber(Math.floor(radius / 5), 2, 5),
-    maxPopulation: 17,
+    passivePopulation: clampNumber(Math.floor(radius / 3), 5, 8),
+    hostilePopulation: clampNumber(Math.floor(radius / 6), 2, 4),
+    maxPopulation: 12,
     spawnClearRadius: localMobStreaming ? LOCAL_MOB_STREAM_CLEAR_RADIUS : 6,
     localLight: cachedMobLocalLight,
     isSpawnable: (_kind: unknown, x: number, y: number, z: number) => (!localMobStreaming || (
@@ -2179,6 +2194,9 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const projectileDamageSources: MobDamageSource[] = [];
   let knockbackReadyAtMs = 0;
   const keys = new Set<string>();
+  const controlBindings = () => options.getControlBindings?.() ?? DEFAULT_GAMEPLAY_CONTROL_BINDINGS;
+  const controlAction = (code: string): GameplayControlAction | null => gameplayControlActionForCode(controlBindings(), code);
+  const controlHeld = (action: GameplayControlAction): boolean => keys.has(controlBindings()[action]);
   let creativeFlight = createCreativeFlightTapState();
   let sprintControls: SprintControlState = RELEASED_SPRINT_CONTROLS;
   let forwardSprintTap: ForwardSprintTapState = createForwardSprintTapState();
@@ -3135,8 +3153,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     mobAccumulatorSeconds = Math.min(0.3, mobAccumulatorSeconds + dt);
     if (localMobStreaming) {
       localMobHabitatRefreshSeconds += dt;
-      if (localMobHabitatRefreshSeconds >= 5) {
-        localMobHabitatRefreshSeconds %= 5;
+      if (localMobHabitatRefreshSeconds >= 8) {
+        localMobHabitatRefreshSeconds %= 8;
         const replacements = createMobSpawns({
           ...mobPopulationOptions,
           centerX: mobStreamingCenterX,
@@ -3270,10 +3288,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       fallPeakY = pose.y;
     }
     const flying = creativeFlight.flying && options.canCreativeFly?.() === true;
-    const forwardInput = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
-    const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+    const forwardInput = (controlHeld("moveForward") ? 1 : 0) - (controlHeld("moveBackward") ? 1 : 0);
+    const strafe = (controlHeld("strafeRight") ? 1 : 0) - (controlHeld("strafeLeft") ? 1 : 0);
     const ladderAtFrameStart = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
-    const shiftHeld = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    const shiftHeld = controlHeld("sneak");
     // Standing-clearance reads are only needed on the release edge. The mode
     // then stays sneaking until the full standing body fits again.
     const sneakHeld = resolveSneakIntent(
@@ -3292,7 +3310,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       sneakHeld,
       onLadder: ladderAtFrameStart,
       ladderMotion: ladderAtFrameStart && (
-        forwardInput !== 0 || keys.has("Space") || shiftHeld
+        forwardInput !== 0 || controlHeld("jump") || shiftHeld
       ),
       hunger: options.canSprint?.() === false ? 0 : 20,
     });
@@ -3320,12 +3338,12 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     const touchingLadder = !flying && playerTouchesLadder(pose.x, pose.y, pose.z, getBlock);
     const verticalStartY = pose.y;
     velocity[1] = flying
-      ? creativeFlightVerticalVelocity(keys.has("Space"), shiftHeld)
+      ? creativeFlightVerticalVelocity(controlHeld("jump"), shiftHeld)
       : ladderVerticalVelocity(
         velocity[1],
         touchingLadder,
-        keys.has("KeyW") || keys.has("Space"),
-        keys.has("KeyS") || shiftHeld,
+        controlHeld("moveForward") || controlHeld("jump"),
+        controlHeld("moveBackward") || shiftHeld,
         dt,
       );
     const verticalBlocked = moveAxis(1, velocity[1] * dt);
@@ -4054,6 +4072,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       }, "image/png");
     }
 
+    if (!pendingChunkLoads.length && !pendingChunkUnloads.length
+      && !pendingTerrainMeshDirtyChunks.size && !pendingChunkMeshRebuilds.size
+      && worldPresentationWaiters.length) {
+      const settled = worldPresentationWaiters.splice(0);
+      queueMicrotask(() => settled.forEach((resolve) => resolve(true)));
+    }
+
   }
 
   function frame(now: number): void {
@@ -4169,30 +4194,36 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function onKeyDown(event: KeyboardEvent): void {
     if (paused) return;
     if (document.pointerLockElement !== canvas && options.allowUnlockedKeyboardInput?.() !== true) return;
-    if (event.code === "KeyF" && !event.repeat) {
+    const action = controlAction(event.code);
+    if (action === "perspective" && !event.repeat) {
       event.preventDefault();
       cameraMode = nextPlayerCameraMode(cameraMode);
       lastPausedRenderAt = Number.NEGATIVE_INFINITY;
       return;
     }
-    const hotbarIndex = hotbarIndexForDigitCode(event.code);
+    const hotbarIndex = hotbarActionIndex(action);
     if (hotbarIndex !== null) {
       event.preventDefault();
       cancelSecondaryPlacementHold();
       options.onHotbarSelect?.(hotbarIndex);
     }
-    if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight"].includes(event.code)) {
+    if (action && ["moveForward", "moveBackward", "strafeLeft", "strafeRight", "jump", "sneak", "sprint"].includes(action)) {
       event.preventDefault();
     }
-    const controlKey = event.code === "ControlLeft" || event.code === "ControlRight";
-    if (controlKey) sprintControls = updateSprintControl(sprintControls, event.code as SprintControlCode, true);
+    if (action === "attack" || action === "use") {
+      event.preventDefault();
+      applyCapturedMouseDown(action === "attack" ? 0 : 2);
+      return;
+    }
+    const controlKey = action === "sprint";
+    if (controlKey) sprintControls = updateSprintControl(sprintControls, "ControlLeft", true);
     else {
-      if (event.code === "KeyW") {
+      if (action === "moveForward") {
         forwardSprintTap = transitionForwardSprintTap(forwardSprintTap, performance.now(), true, event.repeat);
       }
       keys.add(event.code);
     }
-    if (event.code === "Space") {
+    if (action === "jump") {
       const wasFlying = creativeFlight.flying;
       creativeFlight = transitionCreativeFlightTap(
         creativeFlight,
@@ -4217,10 +4248,15 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onKeyUp(event: KeyboardEvent): void {
-    if (event.code === "ControlLeft" || event.code === "ControlRight") {
-      sprintControls = updateSprintControl(sprintControls, event.code, false);
+    const action = controlAction(event.code);
+    if (action === "attack" || action === "use") {
+      applyCapturedMouseUp(action === "attack" ? 0 : 2);
+      return;
+    }
+    if (action === "sprint") {
+      sprintControls = updateSprintControl(sprintControls, "ControlLeft", false);
     } else {
-      if (event.code === "KeyW") {
+      if (action === "moveForward") {
         forwardSprintTap = transitionForwardSprintTap(forwardSprintTap, performance.now(), false);
       }
       keys.delete(event.code);
@@ -4422,7 +4458,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       secondaryButtonHeld = true;
       if (useMobUnderCrosshair()) return;
       const bypassBlockInteraction = bypassBlockInteractionForPlacement(
-        keys.has("ShiftLeft") || keys.has("ShiftRight"),
+        controlHeld("sneak"),
         selectedBlock,
       );
       if (target && !bypassBlockInteraction) {
@@ -4465,9 +4501,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   function onMouseDown(event: MouseEvent): void {
     event.preventDefault();
     if (paused) return;
-    pressedMouseButtons.add(event.button);
+    const action = controlAction(`Mouse${event.button}`);
+    const button = action === "attack" ? 0 : action === "use" ? 2 : -1;
+    if (button < 0) return;
+    pressedMouseButtons.add(button);
     if (document.pointerLockElement !== canvas) {
-      const button = event.button;
       void requestCanvasPointerLock().then((locked) => {
         if (!locked || paused) return;
         applyCapturedMouseDown(button);
@@ -4475,7 +4513,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       });
       return;
     }
-    applyCapturedMouseDown(event.button);
+    applyCapturedMouseDown(button);
   }
 
   function applyCapturedMouseUp(button: number): void {
@@ -4492,8 +4530,11 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   }
 
   function onMouseUp(event: MouseEvent): void {
-    pressedMouseButtons.delete(event.button);
-    applyCapturedMouseUp(event.button);
+    const action = controlAction(`Mouse${event.button}`);
+    const button = action === "attack" ? 0 : action === "use" ? 2 : -1;
+    if (button < 0) return;
+    pressedMouseButtons.delete(button);
+    applyCapturedMouseUp(button);
   }
 
   function onPointerLockChange(): void {
@@ -4546,6 +4587,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       if (destroyed) return;
       destroyed = true;
       running = false;
+      worldPresentationWaiters.splice(0).forEach((resolve) => resolve(false));
       pendingScreenshot?.reject(new Error("The game closed before the screenshot completed."));
       pendingScreenshot = null;
       resetMovementView();
@@ -4599,6 +4641,10 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteTexture(terrainTexture);
       destroyMobTexture(gl, mobTexture);
     },
+    waitForWorldPresentation() {
+      if (destroyed) return Promise.resolve(false);
+      return new Promise<boolean>((resolve) => worldPresentationWaiters.push(resolve));
+    },
     captureScreenshot() {
       if (destroyed) return Promise.reject(new Error("The game is closed."));
       if (pendingScreenshot) return pendingScreenshot.promise;
@@ -4642,6 +4688,27 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
     },
     applyMobMotionSnapshot(poses: readonly MobMotionPose[], nextServerTimeOffsetMs?: number) {
       if (Number.isFinite(nextServerTimeOffsetMs)) mobCombatServerTimeOffsetMs = nextServerTimeOffsetMs as number;
+      const populationChanged = poses.length !== mobSimulation.mobs.length
+        || poses.some((authoritative, index) => {
+          const current = mobSimulation.mobs[index];
+          return !current || current.id !== authoritative.mobId || current.kind !== authoritative.kind;
+        });
+      if (populationChanged) {
+        const spawns: MobSpawnDescriptor[] = poses.slice(0, 64).map((authoritative, index) => ({
+          id: authoritative.mobId,
+          kind: authoritative.kind,
+          x: authoritative.x,
+          y: authoritative.y,
+          z: authoritative.z,
+          yaw: authoritative.yaw,
+          homeX: authoritative.x,
+          homeZ: authoritative.z,
+          behaviorSeed: ((index + 1) * 0x9e3779b1) >>> 0 || 0x6d2b79f5,
+        }));
+        mobSimulation.mobs = createMobSimulation(spawns).mobs;
+        mobIds = listMobIds(mobSimulation);
+        mobKnockbackReactions.clear();
+      }
       const now = performance.now();
       const priorAlpha = sharedMobMotionActive
         ? clampNumber((now - sharedMobMotionAppliedAt) / sharedMobMotionIntervalMs, 0, 1)
@@ -4656,6 +4723,17 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       for (const mob of mobSimulation.mobs) {
         const authoritative = byId.get(mob.id);
         if (!authoritative || authoritative.kind !== mob.kind) continue;
+        const discontinuity = (authoritative.x - mob.x) ** 2
+          + (authoritative.y - mob.y) ** 2 + (authoritative.z - mob.z) ** 2 > 8 ** 2;
+        if (discontinuity) {
+          // Railway rehomes at most one out-of-range habitat slot at a time,
+          // outside the clear radius. Never render that lifecycle transition
+          // as an impossible high-speed sprint through the world.
+          mob.previousX = mob.x = authoritative.x;
+          mob.previousY = mob.y = authoritative.y;
+          mob.previousZ = mob.z = authoritative.z;
+          mob.previousYaw = mob.yaw = authoritative.yaw;
+        }
         const displayedX = mob.previousX + (mob.x - mob.previousX) * priorAlpha;
         const displayedY = mob.previousY + (mob.y - mob.previousY) * priorAlpha;
         const displayedZ = mob.previousZ + (mob.z - mob.previousZ) * priorAlpha;

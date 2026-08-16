@@ -3,6 +3,8 @@
 import type { WorldTerrainDescriptor } from "../../../shared/worldPreset.ts";
 import { BLOCK_TYPES } from "../../../shared/protocol.ts";
 import { REALTIME_BLOCK_ID_MAX, REALTIME_WORLD_MAX_CHUNKS, REALTIME_WORLD_MAX_RADIUS } from "../../../shared/realtimeWorldChunks.ts";
+import type { MobAuthorityState } from "../../../shared/mobCombat.ts";
+import type { MobMotionPose } from "../../../shared/mobMotionAuthority.ts";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const BLOCK_ID_MIN = 0;
@@ -13,6 +15,7 @@ export const SKIN_PIXEL_BYTES = 64 * 64 * 4;
 export const SKIN_PIXEL_BASE64_LENGTH = 21_848;
 export const APPEARANCE_CAPABILITY = "appearance-v1" as const;
 export const WORLD_CHUNKS_CAPABILITY = "world-chunks-v1" as const;
+export const MOBS_CAPABILITY = "mobs-v1" as const;
 
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
 export type ServerGameMode = "survival" | "creative";
@@ -171,6 +174,7 @@ export type ClientMessage =
     }
   | { v: ProtocolVersion; type: "pickup_item"; operationId: string; dropId: string }
   | { v: ProtocolVersion; type: "player_attack"; operationId: string; targetId: string }
+  | { v: ProtocolVersion; type: "mob_attack"; operationId: string; mobId: string }
   | { v: ProtocolVersion; type: "self_damage"; operationId: string; damage: number; cause: "fall" }
   | { v: ProtocolVersion; type: "respawn"; operationId: string }
   | {
@@ -207,7 +211,7 @@ export type ServerMessage =
       terrain: WorldTerrainDescriptor;
       defaultGameMode: ServerGameMode;
       worldSettings: WorldRuntimeSettings;
-      capabilities: readonly [typeof APPEARANCE_CAPABILITY, typeof WORLD_CHUNKS_CAPABILITY];
+      capabilities: readonly [typeof APPEARANCE_CAPABILITY, typeof WORLD_CHUNKS_CAPABILITY, typeof MOBS_CAPABILITY];
     }
   | {
       v: ProtocolVersion;
@@ -270,6 +274,8 @@ export type ServerMessage =
     }
   | { v: ProtocolVersion; type: "private_notice"; message: string; sentAt: number }
   | { v: ProtocolVersion; type: "drop_snapshot"; drops: PublicDrop[] }
+  | { v: ProtocolVersion; type: "mob_snapshot"; serverNow: number; tick: number; poses: MobMotionPose[]; states: MobAuthorityState[] }
+  | { v: ProtocolVersion; type: "mob_hit"; operationId: string; attackerId: string; damage: number; killed: boolean; replayed: boolean; state: MobAuthorityState }
   | { v: ProtocolVersion; type: "drop_result"; operationId: string; action: "drop" | "pickup"; drop?: PublicDrop }
   | { v: ProtocolVersion; type: "inventory_state"; inventory: Record<string, unknown> }
   | { v: ProtocolVersion; type: "inventory_result"; operationId: string; result: Record<string, unknown> }
@@ -524,6 +530,17 @@ export function decodeClientMessage(raw: string): DecodeResult {
       || !shortString(value.targetId, 128)) return invalid("player attack is invalid");
     return { ok: true, message: {
       v: PROTOCOL_VERSION, type: "player_attack", operationId: value.operationId, targetId: value.targetId,
+    } };
+  }
+
+  if (value.type === "mob_attack") {
+    if (!shortString(value.operationId, 96) || !/^[A-Za-z0-9:_-]{8,96}$/.test(value.operationId)
+      || !shortString(value.mobId, 40)
+      || !/^(?:pig|cow|sheep|chicken|zombie|skeleton|creeper|spider)-5nb-[0-9a-z]{1,3}$/.test(value.mobId)) {
+      return invalid("mob attack is invalid");
+    }
+    return { ok: true, message: {
+      v: PROTOCOL_VERSION, type: "mob_attack", operationId: value.operationId, mobId: value.mobId,
     } };
   }
 

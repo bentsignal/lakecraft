@@ -2,7 +2,8 @@
 
 ## Pixelify Sans
 
-Lakecraft loads the Latin subset of **Pixelify Sans** from Google Fonts for its in-game UI.
+Lakecraft embeds the Latin WOFF2 subset of **Pixelify Sans** in the capsule for
+its in-game UI. No font file is fetched at runtime.
 
 - Copyright 2021 The Pixelify Sans Project Authors
 - Source: <https://github.com/eifetx/Pixelify-Sans>

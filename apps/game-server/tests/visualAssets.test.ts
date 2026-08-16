@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { handleVisualAssetRequest, VISUAL_ASSET_PATHS } from "../src/visualAssets";
 
 const EXPECTED = {
+  "/assets/block-texture-atlas-9a3b9f30.png": "242bbf5316677c49565d829adfd5cadcc2830d5682ce95a80b7add3bbd4effa3",
   "/assets/block-texture-atlas-a607e4c6.png": "e2129f5f77e252a155d8163371485e8279dae0056de5048f5afe44092ae7139e",
   "/assets/block-texture-atlas-d94c19f9.png": "1ac5805312f699ef1afd78a0038ccc6f2596e290dd4e6050b5ab1cd6b649ef89",
   "/assets/mob-texture-atlas-204e2b83.png": "204e2b831ffd3716b9a1c04fab27fc832f0f0ce686c20896364a91d1b553e9f3",

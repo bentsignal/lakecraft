@@ -33,7 +33,8 @@ assert.deepEqual(
 for (const block of ["grass", "dirt", "stone", "glass", "leaves", "door_closed", "oak_fence_gate_closed", "bed"] as const) {
   assert.equal(fallSupportBlockHasCollision(block), true, `${block} supports the player`);
 }
-for (const block of ["air", "torch", "door_open", "oak_fence_gate_open", "ladder", "stone_brick_slab"] as const) {
+for (const block of ["air", "torch", "door_open", "oak_fence_gate_open", "ladder", "stone_brick_slab",
+  "sandstone_slab", "deepslate_tile_slab"] as const) {
   assert.equal(fallSupportBlockHasCollision(block), false, `${block} does not count as solid support`);
 }
 assert.equal(validFallProbeBlock("ladder"), true);

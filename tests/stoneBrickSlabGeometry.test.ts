@@ -254,10 +254,10 @@ assert.match(engineSource,
   /isProjectileBlocked:[\s\S]{0,280}blockHasCollision\(block\)[\s\S]{0,100}blockContainsSolidPoint\(block, blockY, y/,
   "local mob projectiles use the same upper-half pass-through rule");
 assert.match(serverSource,
-  /cell\.slabSupport && block === "stone_brick_slab"\) supported = true/,
-  "Lakebed fall authority accepts the dedicated slab-top probe");
+  /cell\.slabSupport && block\.endsWith\("_slab"\)\) supported = true/,
+  "Lakebed fall authority accepts every catalog slab-top probe");
 assert.match(serverSource,
-  /block !== "stone_brick_slab"\) return true;[\s\S]{0,180}segmentVoxelHeightIntersectionFraction/,
-  "Lakebed ranged authority uses partial AABB cover instead of whole-cell cover");
+  /!block\.endsWith\("_slab"\)\) return true;[\s\S]{0,180}segmentVoxelHeightIntersectionFraction/,
+  "Lakebed ranged authority uses partial AABB cover for every catalog slab");
 
 console.log("stone-brick slab half-height collision, targeting, fall support, and projectile cover tests passed");

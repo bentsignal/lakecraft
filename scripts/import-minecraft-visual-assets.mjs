@@ -177,6 +177,10 @@ const BLOCK_PATHS = Object.freeze({
   smooth_stone: "assets/minecraft/textures/block/smooth_stone.png",
   calcite: "assets/minecraft/textures/block/calcite.png",
   deepslate: "assets/minecraft/textures/block/deepslate.png",
+  cobbled_deepslate: "assets/minecraft/textures/block/cobbled_deepslate.png",
+  polished_deepslate: "assets/minecraft/textures/block/polished_deepslate.png",
+  deepslate_bricks: "assets/minecraft/textures/block/deepslate_bricks.png",
+  deepslate_tiles: "assets/minecraft/textures/block/deepslate_tiles.png",
   ...Object.fromEntries(BUILDING_COLORS.flatMap((color) => [
     [`${color}_stained_glass`, `assets/minecraft/textures/block/${color}_stained_glass.png`],
     [`${color}_concrete`, `assets/minecraft/textures/block/${color}_concrete.png`],

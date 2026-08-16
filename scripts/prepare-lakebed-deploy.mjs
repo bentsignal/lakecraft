@@ -27,6 +27,7 @@ import { compactClientBuiltinAliases, compactClientPropertyKeyAliases } from "./
 import { compactClientJsxPropShapes } from "./client-jsx-prop-shape-compaction.mjs";
 import { compactClientStringPool } from "./client-string-pool-compaction.mjs";
 import { compactServerPropertyKeys } from "./server-property-key-compaction.mjs";
+import { stripRetiredLakebedGameplaySurfaces } from "./server-production-surface-transform.mjs";
 import { remoteBlockTextureAtlasModule, remoteMobTextureAtlasModule } from "./remote-texture-assets.mjs";
 import {
   copyOwnedStageFile,
@@ -162,6 +163,16 @@ const serverGameCatalogStripper = {
   },
 };
 
+const serverProductionSurfaceStripper = {
+  name: "lakecraft-server-production-surface-stripper",
+  setup(esbuild) {
+    esbuild.onLoad({ filter: /[/\\]server[/\\]index\.ts$/ }, async ({ path }) => ({
+      contents: stripRetiredLakebedGameplaySurfaces(await readFile(path, "utf8")),
+      loader: "ts",
+    }));
+  },
+};
+
 function appendServerSourceMapBoundary(source) {
   // Lakebed bundles this already-minified stage a second time with inline source
   // maps. Give that build a real upstream boundary so it does not embed the full
@@ -208,7 +219,9 @@ async function bundleEntrypoint(sourcePath, targetPath, { server = false } = {})
       mangleQuoted: false,
     }),
     platform: "browser",
-    plugins: server ? [serverGameCatalogStripper, cssTemplateMinifier] : [cssTemplateMinifier],
+    plugins: server
+      ? [serverProductionSurfaceStripper, serverGameCatalogStripper, cssTemplateMinifier]
+      : [cssTemplateMinifier],
     sourcemap: false,
     target: "es2022",
     treeShaking: true,

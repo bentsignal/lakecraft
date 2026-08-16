@@ -22,6 +22,7 @@ import {
 import { MAX_HEALTH } from "../shared/game.ts";
 import { mitigatedPlayerDamage } from "../shared/playerCombat.ts";
 import * as BS from "../shared/bundleStrings.ts";
+import { createDeterministicMobSpawnLayout } from "../shared/mobSpawnLayout.ts";
 
 export const MOB_WORLD_AUTHORITY_KEY = "main";
 export const MOB_WORLD_SEED = 7_319;
@@ -188,60 +189,17 @@ export function canonicalMobSpawnSnapshot(
   terrainHeight: (x: number, z: number) => number,
   isSpawnable: (kind: MobAuthorityKind, x: number, y: number, z: number) => boolean,
 ): Array<{ mobId: string; kind: MobAuthorityKind; x: number; y: number; z: number; yaw: number }> {
-  const seed = MOB_WORLD_SEED;
-  const radius = 16;
-  const passiveCount = 12;
-  const target = 16;
-  const clearRadius = 6;
-  const usableRange = radius - clearRadius;
-  const occupied = new Set<string>();
-  const spawns: Array<{ mobId: string; kind: MobAuthorityKind; x: number; y: number; z: number; yaw: number }> = [];
-  const hashUint = (x: number, z: number, salt: number) => {
-    let value = Math.imul(x ^ salt, 0x45d9f3b) ^ Math.imul(z + salt, 0x119de1f3);
-    value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
-    return (value ^ (value >>> 16)) >>> 0;
-  };
-  const hash01 = (x: number, z: number, salt: number) => hashUint(x, z, salt) / 4_294_967_296;
-  const safeSlope = (x: number, z: number) => {
-    const center = terrainHeight(x, z);
-    return Math.abs(terrainHeight(x + 1, z) - center) <= 1
-      && Math.abs(terrainHeight(x - 1, z) - center) <= 1
-      && Math.abs(terrainHeight(x, z + 1) - center) <= 1
-      && Math.abs(terrainHeight(x, z - 1) - center) <= 1;
-  };
-  const passiveKind = (slot: number): MobAuthorityKind => {
-    const choice = (slot + hashUint(seed, 71, seed + 19) % 4) % 4;
-    return choice === 0 ? "pig" : choice === 1 ? "cow" : choice === 2 ? "sheep" : "chicken";
-  };
-  const hostileKind = (slot: number): MobAuthorityKind => (
-    ((slot + hashUint(seed, 113, seed + 29) % 4) % 4) === 0
-      ? "zombie"
-      : ((slot + hashUint(seed, 113, seed + 29) % 4) % 4) === 1
-        ? "skeleton"
-        : ((slot + hashUint(seed, 113, seed + 29) % 4) % 4) === 2 ? "creeper" : "spider"
-  );
-  for (let attempt = 0; attempt < 384 && spawns.length < target; attempt += 1) {
-    const slot = spawns.length;
-    const kind = slot < passiveCount ? passiveKind(slot) : hostileKind(slot - passiveCount);
-    const angle = hash01(attempt, slot, seed + 101) * Math.PI * 2;
-    const distance = clearRadius + 1 + Math.sqrt(hash01(slot, attempt, seed + 131)) * (usableRange - 1);
-    const x = Math.max(-radius, Math.min(radius, Math.round(Math.cos(angle) * distance)));
-    const z = Math.max(-radius, Math.min(radius, Math.round(Math.sin(angle) * distance)));
-    const key = `${x},${z}`;
-    if (Math.max(Math.abs(x), Math.abs(z)) <= clearRadius || occupied.has(key) || !safeSlope(x, z)) continue;
-    const y = terrainHeight(x, z) + 1;
-    if (!isSpawnable(kind, x, y, z)) continue;
-    spawns.push({
-      mobId: `${kind}-${seed.toString(36)}-${slot.toString(36)}`,
-      kind,
-      x,
-      y,
-      z,
-      yaw: hash01(x, z, seed + 211) * Math.PI * 2 - Math.PI,
-    });
-    occupied.add(key);
-  }
-  return spawns;
+  return createDeterministicMobSpawnLayout({
+    seed: MOB_WORLD_SEED,
+    radius: 16,
+    terrainHeight,
+    maxPopulation: 16,
+    passivePopulation: 12,
+    hostilePopulation: 4,
+    spawnClearRadius: 6,
+    hardMaxPopulation: 16,
+    isSpawnable,
+  }).map(({ id, kind, x, y, z, yaw }) => ({ mobId: id, kind, x, y, z, yaw }));
 }
 
 export function createCanonicalMobWorldState(

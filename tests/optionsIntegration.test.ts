@@ -50,6 +50,9 @@ assert.ok(presentation.includes("fieldOfViewRadians(context.getSettings().fovDeg
 assert.ok(app.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(singlePlayer.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(lobby.includes("fovDegrees={props.settings.fovDegrees}"), "title Options edits the same persisted FOV setting");
+assert.ok(lobby.includes("renderDistance={props.settings.renderDistance}")
+  && lobby.includes("onRenderDistanceChange={(renderDistance) => props.onSettingsChange({ ...props.settings, renderDistance })}"),
+"title Options exposes the same persisted render-distance setting as both gameplay modes");
 assert.ok(singlePlayer.includes("engineRef.current?.setRenderDistance(renderDistance)"), "single-player reconciles a changed render radius immediately");
 assert.ok(app.includes("streamingChunkRadius: clientSettingsRef.current.renderDistance")
   && app.includes("engineRef.current?.setRenderDistance(renderDistance)"),

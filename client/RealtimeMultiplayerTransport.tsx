@@ -8,12 +8,15 @@ import type { InventoryActionMutationResult } from "../shared/inventoryActions.t
 import type { PersistedInventoryState } from "../shared/chestTransfers.ts";
 import type { NormalizedDroppedItem } from "../shared/droppedItems.ts";
 import type { WorldTerrainDescriptor } from "../shared/worldPreset.ts";
+import type { MobAuthorityState } from "../shared/mobCombat.ts";
+import type { MobMotionPose } from "../shared/mobMotionAuthority.ts";
 import {
   RealtimeMultiplayerClient,
   type RealtimeConnectionPhase,
   type RealtimeGameMode,
   type RealtimeWorldEdit,
   type RealtimePlayerHit,
+  type RealtimeMobHit,
   type RealtimeWorldSettings,
 } from "./realtimeMultiplayer.ts";
 
@@ -27,6 +30,7 @@ export type RealtimeDropSink = (
 export type RealtimePickupSink = (operationId: string, dropId: string) => Promise<NormalizedDroppedItem>;
 export type RealtimeRespawnSink = () => Promise<PlayerPose>;
 export type RealtimePlayerAttackSink = (operationId: string, targetId: string) => void;
+export type RealtimeMobAttackSink = (operationId: string, mobId: string) => void;
 export type RealtimeSelfDamageSink = (operationId: string, damage: number) => void;
 export type RealtimeInventorySink = (requestJson: string) => Promise<InventoryActionMutationResult>;
 
@@ -57,6 +61,8 @@ export function RealtimeMultiplayerTransport(props: {
   onReconcilePose: (pose: PlayerPose) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
+  onMobSnapshot?: (poses: MobMotionPose[], states: MobAuthorityState[], serverNow: number) => void;
+  onMobHit?: (hit: RealtimeMobHit) => void;
   onSelfHealth: (health: number) => void;
   onInventoryState: (inventory: PersistedInventoryState) => void;
   registerBlockSink: (sink: RealtimeBlockSink | null) => void;
@@ -66,6 +72,7 @@ export function RealtimeMultiplayerTransport(props: {
   registerPickupSink: (sink: RealtimePickupSink | null) => void;
   registerRespawnSink: (sink: RealtimeRespawnSink | null) => void;
   registerPlayerAttackSink: (sink: RealtimePlayerAttackSink | null) => void;
+  registerMobAttackSink?: (sink: RealtimeMobAttackSink | null) => void;
   registerSelfDamageSink: (sink: RealtimeSelfDamageSink | null) => void;
   registerInventorySink: (sink: RealtimeInventorySink | null) => void;
 }) {
@@ -102,6 +109,8 @@ export function RealtimeMultiplayerTransport(props: {
       onReconcilePose: (pose) => propsRef.current.onReconcilePose(pose),
       onDrops: (drops) => propsRef.current.onDrops(drops),
       onPlayerHit: (hit) => propsRef.current.onPlayerHit(hit),
+      onMobSnapshot: (poses, states, serverNow) => propsRef.current.onMobSnapshot?.(poses, states, serverNow),
+      onMobHit: (hit) => propsRef.current.onMobHit?.(hit),
       onSelfHealth: (health) => propsRef.current.onSelfHealth(health),
       onInventoryState: (inventory) => propsRef.current.onInventoryState(inventory),
     });
@@ -112,6 +121,7 @@ export function RealtimeMultiplayerTransport(props: {
     props.registerPickupSink((operationId, dropId) => client.submitPickup(operationId, dropId));
     props.registerRespawnSink(() => client.submitRespawn());
     props.registerPlayerAttackSink((operationId, targetId) => client.submitPlayerAttack(operationId, targetId));
+    props.registerMobAttackSink?.((operationId, mobId) => client.submitMobAttack(operationId, mobId));
     props.registerSelfDamageSink((operationId, damage) => client.submitSelfDamage(operationId, damage));
     props.registerInventorySink((requestJson) => client.submitInventoryAction(requestJson));
     client.start();
@@ -123,6 +133,7 @@ export function RealtimeMultiplayerTransport(props: {
       props.registerPickupSink(null);
       props.registerRespawnSink(null);
       props.registerPlayerAttackSink(null);
+      props.registerMobAttackSink?.(null);
       props.registerSelfDamageSink(null);
       props.registerInventorySink(null);
       client.stop();

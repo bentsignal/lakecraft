@@ -65,3 +65,18 @@ export function releaseGameplayKeyboardCapture(exitFullscreen = true): void {
     // Fullscreen may already be leaving through the browser's Escape handling.
   }
 }
+
+/** Best-effort F11-style toggle; browsers that reserve the key simply keep their native behavior. */
+export function toggleGameplayFullscreen(): boolean {
+  try {
+    if (document.fullscreenElement) {
+      void Promise.resolve(document.exitFullscreen()).catch(() => undefined);
+      return true;
+    }
+    if (typeof document.documentElement.requestFullscreen !== "function") return false;
+    void Promise.resolve(document.documentElement.requestFullscreen({ navigationUI: "hide" })).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}

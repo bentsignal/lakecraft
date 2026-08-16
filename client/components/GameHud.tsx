@@ -19,6 +19,7 @@ import { PauseMenu } from "./PauseMenu";
 import { PlayerList, type PlayerListEntry } from "./PlayerList";
 import { SurvivalHud } from "./StatusStrip";
 import { ToastSurface, type HudMessage } from "./ToastSurface";
+import type { GameplayControlBindings } from "../gameplay/controlBindings.ts";
 
 export type GameHudProps = {
   inventory: Inventory;
@@ -26,6 +27,7 @@ export type GameHudProps = {
   selectedIndex: number;
   inventoryOpen: boolean;
   modalOpen?: boolean;
+  hudVisible?: boolean;
   craftingContext: CraftingContext;
   messages?: readonly HudMessage[];
   health?: number;
@@ -66,6 +68,15 @@ export type GameHudProps = {
   onCloseOptions?: () => void;
   soundMuted?: boolean;
   onToggleSound?: () => void;
+  masterVolume?: number;
+  blocksVolume?: number;
+  hostileVolume?: number;
+  passiveVolume?: number;
+  playersVolume?: number;
+  uiVolume?: number;
+  onVolumeChange?: (category: "masterVolume" | "blocksVolume" | "hostileVolume" | "passiveVolume" | "playersVolume" | "uiVolume", value: number) => void;
+  keyBindings?: GameplayControlBindings;
+  onKeyBindingsChange?: (bindings: GameplayControlBindings) => void;
   autosaveStatusText?: string;
   lastAutosavedText?: string;
   disconnectDisabled?: boolean;
@@ -98,6 +109,7 @@ export function GameHud({
   selectedIndex,
   inventoryOpen,
   modalOpen = false,
+  hudVisible = true,
   craftingContext,
   messages = [],
   health = 20,
@@ -134,6 +146,15 @@ export function GameHud({
   onCloseOptions,
   soundMuted = false,
   onToggleSound,
+  masterVolume = 100,
+  blocksVolume = 100,
+  hostileVolume = 100,
+  passiveVolume = 100,
+  playersVolume = 100,
+  uiVolume = 100,
+  onVolumeChange,
+  keyBindings,
+  onKeyBindingsChange,
   autosaveStatusText,
   lastAutosavedText,
   disconnectDisabled = false,
@@ -151,7 +172,7 @@ export function GameHud({
     <>
       <HudStyles />
       <ItemTooltip />
-      <div className="lc-hud">
+      {hudVisible ? <div className="lc-hud">
         {!deathScreenOpen && !pauseOpen && !inventoryOpen && !modalOpen ? <Crosshair /> : null}
         {!deathScreenOpen && !inventoryOpen && !modalOpen && !pauseOpen ? (
           <div className="lc-survival-wrap">
@@ -161,7 +182,7 @@ export function GameHud({
         ) : null}
         <PlayerList players={players} visible={showPlayerList && !pauseOpen && !modalOpen && !deathScreenOpen} />
         {!deathScreenOpen ? <ToastSurface messages={messages} onDismiss={onDismissMessage} /> : null}
-      </div>
+      </div> : null}
       <PauseMenu
         autosaveStatusText={autosaveStatusText}
         disconnectDisabled={disconnectDisabled}
@@ -174,23 +195,32 @@ export function GameHud({
         open={pauseOpen && !optionsOpen && !deathScreenOpen}
         title={pauseTitle}
       />
-      {onCloseOptions && onSensitivityChange && onFovChange && onToggleSound ? (
+      {onCloseOptions && onSensitivityChange && onFovChange && onToggleSound && onVolumeChange && keyBindings && onKeyBindingsChange ? (
         <OptionsDialog
+          blocksVolume={blocksVolume}
           fovDegrees={fovDegrees}
           mouseSensitivity={mouseSensitivity}
+          hostileVolume={hostileVolume}
+          keyBindings={keyBindings}
+          masterVolume={masterVolume}
           onBack={onCloseOptions}
           onFovChange={onFovChange}
           onSensitivityChange={onSensitivityChange}
           onRenderDistanceChange={onRenderDistanceChange}
           onToggleSound={onToggleSound}
+          onKeyBindingsChange={onKeyBindingsChange}
+          onVolumeChange={onVolumeChange}
           open={optionsOpen && pauseOpen && !deathScreenOpen}
           returnFocusId="lc-game-menu-options"
           soundMuted={soundMuted}
+          passiveVolume={passiveVolume}
+          playersVolume={playersVolume}
+          uiVolume={uiVolume}
           renderDistance={renderDistance}
         />
       ) : null}
       <DeathScreen cause={deathCause} onRespawn={onRespawn} onTitleScreen={onTitleScreen} open={deathScreenOpen} respawnError={respawnError} respawning={respawning} respawnStatus={respawnStatus} score={deathScore} />
-      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} craftingContext={craftingContext} creative={creativeInventory} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
+      <InventoryCraftingDrawer authorityEpoch={inventoryAuthorityEpoch} closeKeyCode={keyBindings?.inventory} craftingContext={craftingContext} creative={creativeInventory} equipment={equipment} inventory={inventory} onClose={onCloseInventory} onCrafted={onCrafted} onWorkspaceChange={onInventoryWorkspaceChange} onWorkspacePreview={onInventoryWorkspacePreview} open={inventoryOpen && !deathScreenOpen} recipes={availableRecipes(craftingContext)} selectedIndex={selectedIndex} />
       <MobileUnsupportedOverlay visible={mobileUnsupported} onContinue={onContinueMobile} />
     </>
   );

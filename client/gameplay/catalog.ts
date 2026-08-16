@@ -1,7 +1,9 @@
 import type { BlockId, ItemId } from "../../shared/game.ts";
 import { BLOCK, blockStateName, type BlockId as EngineBlockId } from "../game/types.ts";
 import type { GameAudioSurface } from "../game/audio.ts";
-import { EXPANDED_BLOCK_ITEM_IDS, EXPANDED_BLOCK_STATE_TYPES } from "../../shared/expandedBuildingCatalog.ts";
+import { EXPANDED_BLOCK_ITEM_IDS, EXPANDED_BLOCK_STATE_TYPES, EXTRA_WOOD_FAMILIES } from "../../shared/expandedBuildingCatalog.ts";
+
+const EXPANDED_WOOD_SHAPE_PREFIXES = [...EXTRA_WOOD_FAMILIES, "bamboo"] as const;
 
 function gameItemForExpandedState(state: string): BlockId | null {
   const stairs = state.indexOf("_stairs_");
@@ -72,9 +74,9 @@ export const ITEM_TO_ENGINE: Readonly<Partial<Record<ItemId, EngineBlockId>>> = 
 
 export function audioSurfaceForBlock(block: EngineBlockId): GameAudioSurface {
   const state = blockStateName(block);
-  if (state.includes("_planks") || state.includes("_log") || state.includes("_leaves")
-    || state.includes("_slab") && !state.startsWith("quartz") || state.includes("_door_")
-    || state.includes("_stairs_") && !state.startsWith("quartz")) return "wood";
+  if (state.includes("_planks") || state.includes("_log") || state.includes("_leaves") || state.includes("_door_")
+    || (state.includes("_slab") || state.includes("_stairs_"))
+      && EXPANDED_WOOD_SHAPE_PREFIXES.some((family) => state.startsWith(`${family}_`))) return "wood";
   if (state) return "stone";
   if (block === BLOCK.GRASS || block === BLOCK.DIRT || block === BLOCK.LEAVES || block === BLOCK.SAPLING
     || block === BLOCK.BED || block === BLOCK.WOOL) return "grass";

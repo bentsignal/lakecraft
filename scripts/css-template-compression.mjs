@@ -55,43 +55,44 @@ function parsePrivateIdentifierRows(rows) {
 // This fixed, reviewed live set contains only Lakecraft-owned CSS/DOM names.
 // Order is stable and assigns the shortest outputs to the most frequent names.
 const COMPACT_CLIENT_PRIVATE_IDENTIFIER_ROWS = parsePrivateIdentifierRows(`
-xe-window|21 xi-peek|18 xi-compose|14 xi-message|13 xw-button|15
+xe-window|21 xi-peek|18 xi-compose|14 xi-message|13 xw-button|16
 xc-inventory-slot|11 xj-glyph|15 xo-menu|11 xe-grid__slot|13 xj-icon__svg|14 xn-panel|10
-xlocal-world-dialog|9 xoptions|9 ysleep|1 xslot|15 xunsupported|8 xg__signal|8 xc-slot|8
-xm-slot|10 xp-logo|9 xq-icon|8 xr-slot|8 xclose|9 yquery-recovery|7 xq-population|7
-xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|9 xe-grid|11 xlocal-world-header|6
-xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|8 xgameplay-capture|10
-xe-titlebar|7 xcrosshair|6 xq-browser|6 xp-footer|7 xs-layer|7 xlocal-world-browser|5
+xlocal-world-dialog|9 xoptions|11 ysleep|1 xslot|15 xunsupported|8 xg__signal|8 xc-slot|8
+xm-slot|10 xp-logo|13 xq-icon|8 xr-slot|8 xclose|9 yquery-recovery|7 xq-population|7
+xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|2 xe-grid|11 xlocal-world-header|6
+xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|9 xgameplay-capture|10
+xe-titlebar|7 xcrosshair|6 xq-browser|6 xp-footer|8 xs-layer|7 xlocal-world-browser|5
 xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|5
-xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|7 xq-copy|7 xq-row|5 xlocal-world-titlebar|5
+xe-upper|5 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|2 xq-copy|7 xq-row|5 xlocal-world-titlebar|5
 xingredient__icon|4 xlocal-world-row|4 xcursor-stack|5 xs__heading|4 xf__output|4
 xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|5 xk-layer|4 xw-layer|4
-xm-rack|4 xp-menu|5 xq-hint|6 yerror|4 xhud|4 xlocal-world-back|4 xc-inventory-grid|3
+xm-rack|4 xp-menu|6 xq-hint|6 yerror|4 xhud|4 xlocal-world-back|4 xc-inventory-grid|3
 xk-screen__status|3 xdirt-background|3 xequipment-panel|3 xk-screen__score|3
 xoptions-dialog|3 xoptions__done|3 xoptions__grid|3 xc__inventory|3 xr-status-row|3
 xsection-rule|3 xsingleplayer|3 xv-workspace|3 ysleep-layer|1 xc__station|3 xdurability|3
-xingredient|3 xlocal-perf|0 xp-panorama|4 xc__status|3 xp-content|4 xc__flame|3
-xr-status|3 xc-layer|3 xl__icon|3 xp-hills|5 xr-layer|3 xs__body|3 xlocal-world-feedback|3
+xingredient|3 xlocal-perf|0 xp-panorama|3 xc__status|3 xp-content|5 xc__flame|3
+xr-status|3 xc-layer|3 xl__icon|2 xp-hills|2 xr-layer|3 xs__body|3 xlocal-world-feedback|3
 xv-panel|3 xu-wrap|3 xv-slot|3 xw-link|3 yperf|0
 xc-inventory-grid--hotbar|2 xgameplay-diagnostics|2 xlocal-world-delete-copy|3
 xh__autosave-status|2 xunsupported__stamp|2 xc-inventory-title|2 xh__last-autosaved|2
 xh-autosave-status|2 xk-screen__buttons|2 xlocal-world-empty|3 xlocal-world-retry|2
 xunsupported__card|2 xunsupported__icon|2 xunsupported__topo|2 xunsupported-title|2 xlocal-world-feedback-copy|2 xlocal-world-stage|2
 xlocal-world-list|2 xk-screen__cause|2 xf__ingredients|2 xj-glyph__count|2
-xr-grid--player|2 ysleep__actions|0 xl__fill-layer|2
+xr-grid--player|2 ysleep__actions|0 xl__fill-layer|0
 xm-slot__label|3 xoptions-layer|2 xoptions-title|2
-xl__highlight|2 ysleep-title|0 xh__buttons|2 xl__outline|2 xpack-panel|2 xpack-title|2
+xl__highlight|0 ysleep-title|0 xh__buttons|2 xl__outline|0 xpack-panel|2 xpack-title|2
 xc__source|2 xf__action|2 xh-options|2 xi-history|2 xp-options|2 xi-unread|2
-xl__empty|2 xm-column|2 xp-ground|3 xc-title|2 xe-title|4 xg__head|2
-xh-title|2 xi-input|2 xk-cause|2 xk-score|2 xk-title|2 xl__fill|2 xp-error|2
-xp-shade|3 xr-retry|2 xr-title|2 xv-arrow|2 xv-title|2 xkicker|2 xn-head|2
-xq-list|2 xr-grid|2 xv-grid|2 xp-sun|3 yshell|2 yworld|2 xt-in|2
+xl__empty|0 xl__sprite|3 xl__sprite--empty|2 xl__sprite--fill|2 xm-column|2 xp-ground|1 xc-title|2 xe-title|4 xg__head|2
+xh-title|2 xi-input|2 xk-cause|2 xk-score|2 xk-title|2 xl__fill|0 xp-error|2
+xp-shade|4 xr-retry|2 xr-title|2 xv-arrow|2 xv-title|2 xkicker|2 xn-head|2
+xq-list|2 xr-grid|2 xv-grid|2 xp-sun|1 yshell|2 yworld|2 xt-in|2
 xworld-browser-title|1 xworld-dialog-title|1 xh__disconnect|1 xpencil-note|1
 xf__number|1 xp-loading|1 xf__arrow|1 xe-error|3 xf-list|1 xj-icon|1 xw-row|1
 xy-grid|8 xy-tabs|4 xy-search|3 xy-empty|2 xy-window|11 xy-workspace|3 xy-pane|7
 xy-pane--player|3 xy-pane--catalog|1 xy-switch|6 xy-grid-wrap|3 xy-armor|3
 xy-catalog|2 xy-help|2 xy-player|2 xsilent-recapture|2
 xlocal-fps|0 xq-empty|4 xdirect-connect|11 xdirect-server|2
+xoptions__control|7 xoptions__controls|2 xoptions__tabs|3
 `);
 
 const COMPACT_CLIENT_PRIVATE_CUSTOM_PROPERTY_ROWS = parsePrivateIdentifierRows(`
@@ -123,7 +124,7 @@ export const COMPACT_CLIENT_PRIVATE_IDENTIFIERS = Object.freeze([
 export const COMPACT_CLIENT_PRIVATE_IDENTIFIER_PREFIXES = Object.freeze([
   Object.freeze(["xc-slot--", "Yq0", 1]),
   Object.freeze(["xj-glyph--", "Yq1", 3]),
-  Object.freeze(["xl--", "Yq2", 7]),
+  Object.freeze(["xl--", "Yq2", 4]),
   Object.freeze(["xt--", "Yq3", 3]),
 ]);
 

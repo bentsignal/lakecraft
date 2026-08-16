@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ChatStyles } from "./ChatStyles";
-import { chatPeekMessageFading, nextChatPeekExpiryDelay, visibleChatPeekMessages } from "./chatPeek.ts";
+import { CHAT_PEEK_MAX_AGE_MS, chatPeekMessageFading, nextChatPeekExpiryDelay, visibleChatPeekMessages } from "./chatPeek.ts";
 
 export type ChatMessageTone = "player" | "system" | "warning";
 export type ChatDeliveryState = "sending" | "sent" | "failed";
@@ -92,7 +92,7 @@ export function ChatOverlay({
   playerSender,
   systemSender = "[Server]",
   warningSender = "[Warning]",
-  peekMaxAgeMs = Number.POSITIVE_INFINITY,
+  peekMaxAgeMs = CHAT_PEEK_MAX_AGE_MS,
   onDraftChange,
   onSubmit,
   onClose,

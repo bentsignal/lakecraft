@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { JoinAuthenticator } from "../src/auth";
 import type { ServerConfig } from "../src/config";
 import { WorldStore } from "../src/database";
-import { APPEARANCE_CAPABILITY, SKIN_PIXEL_BYTES, WORLD_CHUNKS_CAPABILITY, type ClientMessage, type ServerMessage } from "../src/protocol";
+import { APPEARANCE_CAPABILITY, MOBS_CAPABILITY, SKIN_PIXEL_BYTES, WORLD_CHUNKS_CAPABILITY, type ClientMessage, type ServerMessage } from "../src/protocol";
 import { GameWorld, RESUME_TOKEN_TTL_MS, type Peer } from "../src/world";
 import { terrainHeight as clientTerrainHeight } from "../../../client/game/terrain";
 import { createTerrainChunk } from "../../../client/game/terrain";
@@ -239,6 +239,64 @@ describe("authoritative world", () => {
       heldItem: "iron_pickaxe",
       visualActions: [{ sequence: 1, kind: "swing" }],
     });
+    store.close();
+  });
+
+  test("gives two clients one Railway-owned mob timeline and exact-once death drops", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config({ daylightCycle:false, dayPhase:0.5, mobsEnabled:true }), store, authenticator);
+    const alex = new FakePeer("mob-a");
+    const steve = new FakePeer("mob-b");
+    world.open(alex, 1_000); world.open(steve, 1_000);
+    await world.message(alex, JSON.stringify(join("alex", "Alex")), 1_000);
+    await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
+    world.tick(1_050); world.tick(1_100); world.snapshots(1_100);
+    const left = alex.ofType("mob_snapshot").at(-1)!;
+    const right = steve.ofType("mob_snapshot").at(-1)!;
+    expect(left).toEqual(right);
+    expect(left.poses).toHaveLength(12);
+    const chicken = left.poses.find((pose) => pose.kind === "chicken")!;
+
+    let x = 0.5, y = 69.02, z = 0.5;
+    const targetX = chicken.x;
+    const targetY = chicken.y;
+    const targetZ = chicken.z + 1.5;
+    let seq = 0;
+    while (Math.hypot(targetX - x, targetY - y, targetZ - z) > 0.01) {
+      const distance = Math.hypot(targetX - x, targetY - y, targetZ - z);
+      const step = Math.min(1.25, distance);
+      x += (targetX - x) / distance * step;
+      y += (targetY - y) / distance * step;
+      z += (targetZ - z) / distance * step;
+      await world.message(alex, JSON.stringify({
+        v:1,type:"input",seq:++seq,dtMs:50,moveX:0,moveZ:0,yaw:0,pitch:0,
+        jump:false,sprint:false,heldItem:"diamond_sword",x,y,z,
+      }), 1_100 + seq);
+    }
+    const attack = { v:1,type:"mob_attack",operationId:"mob_attack:death-proof",mobId:chicken.mobId };
+    await world.message(alex, JSON.stringify(attack), 1_500);
+    await world.message(alex, JSON.stringify(attack), 1_501);
+    expect(alex.ofType("mob_hit").slice(-2)).toMatchObject([
+      { killed:true,replayed:false,state:{ mobId:chicken.mobId,health:0 } },
+      { killed:true,replayed:true,state:{ mobId:chicken.mobId,health:0 } },
+    ]);
+    expect(steve.ofType("mob_hit").at(-1)).toMatchObject({ killed:true,state:{ mobId:chicken.mobId,health:0 } });
+    const drops = alex.ofType("drop_snapshot").at(-1)?.drops ?? [];
+    expect(drops.some((drop) => drop.itemId === "raw_chicken" && drop.count === 1)).toBe(true);
+    expect(drops.filter((drop) => drop.itemId === "raw_chicken")).toHaveLength(1);
+    world.snapshots(1_502);
+    expect(alex.ofType("mob_snapshot").at(-1)?.states.find((mob) => mob.mobId === chicken.mobId)?.health).toBe(0);
+    store.close();
+  });
+
+  test("keeps Creative servers mob-free by default", async () => {
+    const store = new WorldStore(":memory:");
+    const world = new GameWorld(config({ worldPreset:"superflat",defaultGameMode:"creative" }), store, authenticator);
+    const peer = new FakePeer("creative-mobs");
+    world.open(peer, 1_000);
+    await world.message(peer, JSON.stringify(join("builder")), 1_000);
+    world.tick(1_100); world.snapshots(1_100);
+    expect(peer.ofType("mob_snapshot").at(-1)).toMatchObject({ poses:[],states:[] });
     store.close();
   });
 
@@ -773,7 +831,7 @@ describe("authoritative world", () => {
     const steve = new FakePeer("socket-appearance-b");
     world.open(alex, 1_000);
     world.open(steve, 1_000);
-    expect(alex.ofType("hello")[0].capabilities).toEqual([APPEARANCE_CAPABILITY, WORLD_CHUNKS_CAPABILITY]);
+    expect(alex.ofType("hello")[0].capabilities).toEqual([APPEARANCE_CAPABILITY, WORLD_CHUNKS_CAPABILITY, MOBS_CAPABILITY]);
     await world.message(alex, JSON.stringify(join("alex", "Alex")), 1_000);
     await world.message(steve, JSON.stringify(join("steve", "Steve")), 1_000);
     expect(steve.ofType("appearance_roster")[0].players).toEqual([{

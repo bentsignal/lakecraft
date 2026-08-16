@@ -190,13 +190,18 @@ installed skin as the fallback for absent, invalid, or legacy-server data.
 ## Realtime gameplay boundary
 
 Railway owns accepted player poses, shared block edits and drops, ordered chat,
-and melee PvP health for this world. Drop and attack operation IDs are replay-
-safe; pickup consumes the SQLite world-drop receipt once, and PvP validates
+multiplayer inventory, melee PvP health, and the bounded mob ecology for this
+world. Drop and attack operation IDs are replay-safe; pickup consumes the
+SQLite world-drop receipt once, and PvP validates
 target reach, facing, cooldown, server-observed held item, death, and respawn.
 Armor remains cosmetic and grants no protection. Railway also owns each
 server-specific player pack and the idempotency receipts for inventory actions;
 ordinary multiplayer placement, mining, drops, pickups, crafting, and death do
 not query or mutate Lakebed.
+
+The realtime chunk codec currently has 499 append-only block states in a 9-bit
+palette (maximum 511). New catalog work must move to a wider versioned codec or
+deduplicate states before consuming the remaining 13 IDs.
 
 The server sends nearby players and events within 21 chunks. This is a feed
 limit, not a forced GPU setting: each browser retains its own saved 2–12 chunk
