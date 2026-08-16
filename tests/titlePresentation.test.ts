@@ -4,9 +4,14 @@ import { readFileSync } from "node:fs";
 const lobby = readFileSync(new URL("../client/lobby/LobbyScreen.tsx", import.meta.url), "utf8");
 const renderer = readFileSync(new URL("../client/lobby/TitlePanorama.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../client/lobby/LobbyStyles.tsx", import.meta.url), "utf8");
+const titleLogo = readFileSync(new URL("../client/lobby/TitleLogo.tsx", import.meta.url), "utf8");
 
-assert.ok(lobby.includes("<TitlePanorama />") && lobby.includes('aria-label="Lakecraft" data-title="LAKECRAFT"'),
-  "the title uses the shared voxel panorama and an original dimensional Lakecraft word treatment");
+assert.ok(lobby.includes("<TitlePanorama />") && lobby.includes("<TitleLogo />"),
+  "the title uses the shared voxel panorama and dedicated generated Lake Bed Edition wordmark");
+assert.ok(titleLogo.includes("LAKE_BED_EDITION_TITLE_WEBP_BASE64")
+  && titleLogo.includes("data:image/webp;base64")
+  && titleLogo.includes('alt="Minecraft — Lake Bed Edition"'),
+"the generated wordmark is an accessible, deterministic embedded image asset");
 assert.doesNotMatch(lobby, /Build farther|Wander together/,
   "the title screen does not include the removed tagline");
 assert.equal(lobby.includes("lc-title-hills"), false, "the retired disconnected CSS landscape is not rendered");
@@ -32,7 +37,7 @@ assert.ok(renderer.includes("const WORLD_SIZE = 72") && renderer.includes("p-vec
   "the panorama places a fixed camera inside a horizon-filling world instead of orbiting a finite island");
 assert.ok(renderer.includes("f=clamp((w.z-20.)/16.,0.,1.)"),
   "distance fog hides the bounded scene edge at the panorama horizon");
-assert.ok(styles.includes("content:attr(data-title)") && styles.includes("rotateX(8deg)"),
-  "Lakecraft receives its own layered dimensional lettering without copying a bitmap wordmark");
+assert.ok(styles.includes(".lc-title-logo img") && styles.includes("object-fit:contain"),
+  "the generated title preserves its aspect ratio across supported title-screen sizes");
 
 console.log("Lakecraft title presentation tests passed");

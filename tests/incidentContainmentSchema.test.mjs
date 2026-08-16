@@ -93,11 +93,12 @@ for (const path of runtimeFiles) {
 // HUD/title/control presentation, shared Railway mob-spawn layout, and
 // monotonic Railway inventory/block replay acknowledgements, exact embedded
 // dirt/loading presentation, the shared world-loading surface, and hash-checked
-// remote mob-atlas decoding for the compact capsule; none adds another Lakebed
-// authority or multiplayer transport.
-assert.equal(runtimeFiles.length, 193, "reviewed main runtime file set changed");
+// remote mob-atlas decoding for the compact capsule, the embedded Lake Bed
+// Edition title, exact hotbar textures, and transparent held-block edge
+// geometry; none adds another Lakebed authority or multiplayer transport.
+assert.equal(runtimeFiles.length, 196, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "d20e748a1ea2ff2bec569f5a63fa65ac9e25a7c441342a9acb18f2d08c78d2e1",
+  "de25ed86e33995be7a6df2dfdfa7cf22c2cd7673d9d4121b990033c23292d8d8",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

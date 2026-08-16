@@ -72,8 +72,8 @@ const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
   charCodeAt: 24, chunkRevisions: 11, CLAMP_TO_EDGE: 12, clear: 41, clearTimeout: 26, count: 182,
   createBuffer: 22, current: 854, currentTarget: 19, cycleLengthMs: 20, dayNight: 9, delete: 67, deleteBuffer: 36,
   deleteProgram: 18, deleteTexture: 10, documentElement: 8, drawArrays: 21, dropId: 18,
-  drops: 25, DYNAMIC_DRAW: 15, enableVertexAttribArray: 26, endsWith: 24, equipment: 39,
-  every: 50, filter: 49, flatMap: 24, fromEntries: 9, getAttribLocation: 24,
+  drops: 25, DYNAMIC_DRAW: 15, enableVertexAttribArray: 26, endsWith: 25, equipment: 39,
+  every: 50, filter: 50, flatMap: 24, fromEntries: 9, getAttribLocation: 24,
   // Embedding the block atlas replaces the remote response dimensions/status
   // with the generated decoder's byte-array length checks.
   getUniformLocation: 69, health: 55, height: 34, includes: 49, inventory: 102, length: 455,
@@ -94,8 +94,10 @@ export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_170;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "cfe0f040364c9126187c6dadcb3fee6e8d703152c77c51aa3e2bf63503ab54f7";
+// Transparent held-block edge detection adds one reviewed endsWith and filter
+// call while leaving every other exact property count unchanged.
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_172;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "7cd24b8c2a0342dc36e6ab1500fe028d480dee622e1773aa607802926a6cd1a6";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),

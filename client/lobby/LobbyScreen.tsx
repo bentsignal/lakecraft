@@ -4,6 +4,7 @@ import { WorldLoadingScreen } from "../components/WorldLoadingScreen.tsx";
 import type { ClientSettings } from "../settings";
 import { LobbyStyles } from "./LobbyStyles";
 import { menuButton } from "./menuButton.tsx";
+import { TitleLogo } from "./TitleLogo.tsx";
 import { TitlePanorama } from "./TitlePanorama.tsx";
 
 export type LobbyAuthState = "loading" | "signed_out" | "needs_username" | "ready";
@@ -292,9 +293,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
       <div className="lc-title-shade" aria-hidden="true" />
       <AccountPanel onSignIn={() => setPage("multiplayer")} onChooseUsername={() => setEditingUsername(true)} props={props} />
       <section className="lc-title-content" aria-label="Lakecraft main menu">
-        <header className="lc-title-logo">
-          <h1 aria-label="Lakecraft" data-title="LAKECRAFT">LAKECRAFT</h1>
-        </header>
+        <TitleLogo />
 
         <div className="lc-title-menu">
           {menuButton("Singleplayer", props.onJoinSingleplayer, false, 2)}
@@ -326,10 +325,6 @@ export function LobbyScreen(props: LobbyScreenProps) {
         soundMuted={props.settings.soundMuted}
         uiVolume={props.settings.uiVolume}
       />
-      <footer className="lc-title-footer">
-        <span>Lakecraft</span>
-        <span>craft.lakebed.app</span>
-      </footer>
     </main>
   );
 }

@@ -30,6 +30,10 @@ assert.match(styles, /\.lc-meter--hunger \{ flex-direction: row-reverse; justify
   "hunger index zero stays against the right edge so missing food appears from the left");
 assert.match(styles, /flex: 0 0 16px; height: 18px;[^}]*width: 18px;/,
   "9px art advances by 8px, preserving Minecraft's icon overlap and center separation");
+assert.match(styles, /\.lc-survival \{[^}]*height: 18px;[^}]*margin: 0 2px 2px;[^}]*position: relative;/,
+  "without an experience bar, health and hunger sit one two-pixel gap above the hotbar");
+assert.match(component, /armor > 0 \? <div className="lc-survival__armor">/,
+  "armor alone occupies the optional row above health instead of reserving empty vertical space");
 assert.match(component, /state !== "empty" \? <img[\s\S]*src=\{sprites\[state\]\}/,
   "full and half states use their canonical source sprite over the empty container");
 assert.match(styles, /\.lc-meter__sprite \{[^}]*height: 18px;[^}]*image-rendering: pixelated;[^}]*width: 18px;/,

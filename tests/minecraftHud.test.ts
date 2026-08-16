@@ -38,13 +38,14 @@ assert.ok(styles.includes("repeat(9, 40px)"), "desktop hotbar uses reference-sca
 assert.ok(styles.includes("var(--lc-pixel-font)"), "HUD uses the shared pixel-font variable");
 const hotbarCss = styles.slice(styles.indexOf(".lc-hotbar {"), styles.indexOf(".lc-item-glyph {"));
 assert.match(styles, /\.lc-survival-wrap \{[^}]*width: 364px;/, "desktop survival HUD owns the exact 364px reference width");
-assert.match(hotbarCss, /\.lc-hotbar \{[^}]*background: rgba\([^)]*,\.72\);[^}]*box-sizing: border-box;[^}]*overflow: visible;[^}]*padding: 0;[^}]*width: 100%;/,
-  "translucent zero-padding chrome makes nine 40px tracks plus two 2px borders exactly 364px wide");
-assert.equal(hotbarCss.includes("background: #8b8b8b"), false, "hotbar no longer uses an opaque gray slab");
+for (const token of ["MINECRAFT_HOTBAR_PNG_BASE64", "background-size: 100% 100%", "height: 44px", "padding: 2px", "width: 100%"] ) {
+  assert.ok(hotbarCss.includes(token), `hotbar exact frame CSS keeps ${token}`);
+}
+assert.equal(hotbarCss.includes("background: #8b8b8b"), false, "hotbar has no approximate opaque gray slab");
 assert.match(hotbarCss, /\.lc-hotbar__slot \{[^}]*box-sizing: border-box;[^}]*height: 40px;/,
   "40px border-box slots plus the hotbar border produce the exact 44px desktop height");
 const selectedFrameCss = hotbarCss.slice(hotbarCss.indexOf(".lc-hotbar__slot.is-selected::after"));
-for (const token of ["height: 48px", "width: 48px", "pointer-events: none", "position: absolute", "transform: translate(-50%,-50%)"]) {
+for (const token of ["MINECRAFT_HOTBAR_SELECTION_PNG_BASE64", "height: 46px", "width: 48px", "pointer-events: none", "position: absolute", "transform: translate(-50%,-50%)"]) {
   assert.ok(selectedFrameCss.includes(token), `selected frame preserves its protruding geometry: ${token}`);
 }
 assert.ok(hotbarCss.includes(".lc-hotbar__slot.is-selected::after"), "selection uses a frame pseudo-element without changing slot markup");
@@ -60,10 +61,11 @@ assert.equal((styles.match(/@keyframes lc-selected-item-name/g) ?? []).length, 1
 assert.equal(styles.includes("lc-item-glyph--empty::before"), false, "empty slots have no dashed placeholder chrome");
 assert.equal(styles.includes(".lc-slot__key"), false, "stale slot-number CSS is removed");
 const countCss = styles.slice(styles.indexOf(".lc-item-glyph__count"), styles.indexOf(".lc-durability"));
-assert.ok(countCss.includes("font: 700 16px/.9") && countCss.includes("font-synthesis: none"),
-  "shared hotbar and inventory counts use a larger crisp pixel face");
-assert.ok(countCss.includes("-webkit-text-stroke: 1px #111") && countCss.includes("text-shadow: 2px 2px #111"),
-  "stack counts retain a full high-contrast outline and hard pixel shadow");
+assert.ok(countCss.includes("font: 400 16px/16px") && countCss.includes("font-synthesis: none"),
+  "shared hotbar and inventory counts use the regular installed glyph face at the canonical scale");
+assert.equal(countCss.includes("-webkit-text-stroke"), false, "counts avoid the thick synthetic outline that obscured glyph pixels");
+assert.ok(countCss.includes("text-shadow: 2px 2px #3f3f3f") && countCss.includes("bottom: 2px") && countCss.includes("right: 2px"),
+  "stack counts use one hard Minecraft shadow at the lower-right slot anchor");
 assert.match(styles, /\.lc-inventory-window \{[^}]*max-width: calc\(100vw - 28px\);[^}]*width: 648px;/,
   "the survival inventory keeps canonical desktop proportions while fitting narrow viewports");
 assert.match(styles, /\.lc-player-preview \{[^}]*background:#111;[^}]*image-rendering:pixelated;/,

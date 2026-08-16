@@ -10,12 +10,18 @@ files are recorded in the generated manifest. Minecraft and its assets are
 copyright Mojang Studios/Microsoft. Lakecraft is not affiliated with or
 endorsed by Mojang Studios or Microsoft.
 
-The interface font and survival-inventory panel are generated from that same
-installed client's 26.2 assets. Each font-atlas pixel becomes a square
+The interface font, survival-inventory panel, and hotbar/selection sprites are
+generated from that same installed client's 26.2 assets. Each font-atlas pixel becomes a square
 TrueType outline, allowing the ordinary HTML menus, chat, and HUD to use the
 original glyph geometry without a runtime font request or a separately
 maintained text renderer. The small inventory PNG is retained losslessly so
 the slot and player-preview chrome is not reconstructed approximately in CSS.
+The 182×22 hotbar and 24×23 selection frame are retained losslessly at 2× UI
+scale so their borders and slot bevels also are not reconstructed in CSS.
+
+The home-screen “MINECRAFT / LAKE BED EDITION” title image was generated for
+this project with OpenAI ImageGen from a user-supplied composition reference,
+then cropped, scaled, and WebP-compressed locally with transparency preserved.
 
 The basic compatibility sound set is resolved from the owner's installed
 Minecraft Java Edition 26.2 asset index. Lakecraft stores only the reviewed

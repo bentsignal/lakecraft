@@ -540,6 +540,7 @@ const COMPACT_CLIENT_BASE_PROPERTY_MANGLE_CACHE = Object.freeze({
   "textureBuffer": "$e",
   "textureVertexCount": "yo",
   "textured": "c4",
+  "thickenTransparentEdges": "eK",
   "tintB": "dC",
   "tintG": "dB",
   "tintR": "dA",

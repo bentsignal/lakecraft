@@ -8,9 +8,24 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 541;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 475;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "568c542a93c4f7e4fbc7c62ae7996492001ef252a4e7aa539bb8e191747ac300";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 540;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 476;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "3e899a40463912088fcadcfdbf1f2e28036bcb5e64cf0b9c85447091bb4a9842";
+export const COMPACT_CLIENT_HUMAN_TITLE_HOTBAR_DELTA = Object.freeze({
+  previousOccurrences: 541,
+  previousUniqueValues: 475,
+  previousSourceFingerprint: "568c542a93c4f7e4fbc7c62ae7996492001ef252a4e7aa539bb8e191747ac300",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 1,
+  sources: Object.freeze([
+    "client/components/StatusStrip.tsx",
+    "client/lobby/LobbyScreen.tsx",
+    "client/lobby/TitleLogo.tsx",
+    "client/singleplayer/LocalWorldBrowser.tsx",
+  ]),
+  source: "generated Lake Bed Edition title, relocated auth controls, and compact status placement",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 502,
   previousUniqueValues: 442,
@@ -178,9 +193,18 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_339;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_337;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 133;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "e4c23f806aef6627c1689b08785268d0037b89bafa6bd7ae31f2fe6c97aa9384";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "0f2fe4ddcdc7fd928549bf72c3245e705df29b5a1d71fda8a226fee5f3341812";
+export const COMPACT_CLIENT_REPEATED_TITLE_HOTBAR_DELTA = Object.freeze({
+  previousOccurrences: 1_339,
+  previousUniqueValues: 133,
+  previousSourceFingerprint: "e4c23f806aef6627c1689b08785268d0037b89bafa6bd7ae31f2fe6c97aa9384",
+  occurrenceDelta: -2,
+  uniqueValueDelta: 0,
+  source: "home title/footer markup replacement and status-strip simplification",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 1_183,
   previousUniqueValues: 112,
@@ -539,9 +563,18 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 612;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 181;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "c2c7aac3b8580f8a09f5839e52e90f64a1bd0dfdf933364317e09a3761498bdd";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 615;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 182;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "2810fe17fb80b69319ae079c4cd3b31fe4756dc8b1ce864843aea47d972e4e57";
+export const COMPACT_CLIENT_LOW_FREQUENCY_TITLE_HOTBAR_DELTA = Object.freeze({
+  previousOccurrences: 612,
+  previousUniqueValues: 181,
+  previousSourceFingerprint: "c2c7aac3b8580f8a09f5839e52e90f64a1bd0dfdf933364317e09a3761498bdd",
+  occurrenceDelta: 3,
+  uniqueValueDelta: 1,
+  source: "generated WebP title and installed Minecraft hotbar data-image integration",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_REMOTE_MOB_ASSET_DELTA = Object.freeze({
   previousOccurrences: 609,
   previousUniqueValues: 180,
@@ -823,7 +856,7 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA = Object.f
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "$.world.worldId", "alertdialog", "assertive", "beforeunload",
   "behaviorUntilSeconds", "checksum_mismatch", "chestplate",
-  "contextmenu", "craft.lakebed.app", "crafting_table_front", "crafting_table_side", "crafting_table_top",
+  "contextmenu", "crafting_table_front", "crafting_table_side", "crafting_table_top",
   "createdAt", "deathUntil", "duplicate", "equipment", "expectedBlock",
   "expectedChunkRevision", "expectedInventoryRevision", "first_person", "furnace_front",
   "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds",
@@ -837,11 +870,21 @@ export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 126;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 63;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 124;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 62;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "90c37a81e3829a35c17f402ab15f0ddd0b4d4cd73fee917fd2c2414002c43db1";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "dee0ce7f3ce28c9c9f951c5e1d14fa496b28498c150417914e736165eddb9d00";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_TITLE_DELTA = Object.freeze({
+  previousOccurrences: 126,
+  previousUniqueValues: 63,
+  previousSourceFingerprint: "90c37a81e3829a35c17f402ab15f0ddd0b4d4cd73fee917fd2c2414002c43db1",
+  occurrenceDelta: -2,
+  uniqueValueDelta: -1,
+  removedValue: "craft.lakebed.app",
+  source: "requested removal of the title-screen Lakecraft footer",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 140,
   previousUniqueValues: 70,

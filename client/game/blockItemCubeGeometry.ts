@@ -21,6 +21,8 @@ export type BlockItemCubeOptions = Readonly<{
   center?: Vec3;
   size?: number;
   rotationDegrees?: Vec3;
+  /** Keeps thin transparent-block frames readable at third-person scale. */
+  thickenTransparentEdges?: boolean;
 }>;
 
 const BLOCK_ITEMS: Readonly<Partial<Record<ItemId, BlockId>>> = Object.freeze({
@@ -134,7 +136,15 @@ export function appendBlockItemCubeGeometry(
       const v0 = 1 - (pixelY + 1) / TEXTURE_TILE_SIZE;
       const v1 = 1 - pixelY / TEXTURE_TILE_SIZE;
       for (let pixelX = 0; pixelX < TEXTURE_TILE_SIZE; pixelX += 1) {
-        const color = atlasPixel(texture, pixelX, pixelY);
+        let color = atlasPixel(texture, pixelX, pixelY);
+        if (color[3] < 16 && options.thickenTransparentEdges) {
+          const neighbors = [[pixelX - 1, pixelY], [pixelX + 1, pixelY], [pixelX, pixelY - 1], [pixelX, pixelY + 1]] as const;
+          const edge = neighbors
+            .filter(([x, y]) => x >= 0 && x < TEXTURE_TILE_SIZE && y >= 0 && y < TEXTURE_TILE_SIZE)
+            .map(([x, y]) => atlasPixel(texture, x, y))
+            .find((sample) => sample[3] >= 16);
+          if (edge) color = [edge[0], edge[1], edge[2], 144];
+        }
         if (color[3] < 16) continue;
         const u0 = pixelX / TEXTURE_TILE_SIZE;
         const u1 = (pixelX + 1) / TEXTURE_TILE_SIZE;

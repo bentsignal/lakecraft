@@ -44,8 +44,7 @@ function Meter({ kind, value, max }: { kind: SurvivalIconKind; value: number; ma
 export function SurvivalHud({ health = 20, maxHealth = 20, hunger = 20, maxHunger = 20, armor = 0, maxArmor = 20 }: SurvivalHudProps) {
   return (
     <div className="lc-survival" aria-label="Survival status">
-      {armor > 0 ? <Meter kind="armor" max={maxArmor} value={armor} /> : <span />}
-      <span />
+      {armor > 0 ? <div className="lc-survival__armor"><Meter kind="armor" max={maxArmor} value={armor} /></div> : null}
       <Meter kind="health" max={maxHealth} value={health} />
       <Meter kind="hunger" max={maxHunger} value={hunger} />
     </div>

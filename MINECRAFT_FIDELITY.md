@@ -6,7 +6,7 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 
 - The WebGL world fills the visual viewport edge to edge. There is no branded header, card, frame, vignette, or permanent tutorial.
 - Exactly one small high-contrast crosshair is fixed at the true render center.
-- Nine square hotbar slots sit at bottom center. The selected slot uses a bright, thicker inset border; item counts sit at the lower right.
+- Nine square hotbar slots sit at bottom center using the exact installed 182×22 HUD sprite at 2× scale. The selected slot uses the installed 24×23 selection sprite; item counts use the regular bitmap face and one hard lower-right shadow.
 - Health is ten hearts above the hotbar on the left, hunger is ten food icons on the right, and armor appears above health only when equipped.
 - HUD labels are absent during normal play. Connection/performance diagnostics belong behind F3.
 
@@ -29,14 +29,14 @@ Lakecraft should feel immediately familiar to a Minecraft Java Edition player. T
 
 - Escape releases pointer lock and opens a centered `Game Menu` overlay. Multiplayer simulation continues behind it.
 - Primary actions are `Back to Game`, `Options…` (initially limited settings), and `Disconnect`/`Save and Quit to Title`.
-- The title/home screen uses a generated voxel-world panorama, a centered logo, and stacked gray pixel buttons. It should resemble the interaction hierarchy of Minecraft without copying its logo or menu art.
+- The title/home screen uses a generated voxel-world panorama, the generated “MINECRAFT / LAKE BED EDITION” title asset, and stacked gray pixel buttons. Compact player authentication lives at bottom left rather than competing with the title.
 
 ## Texture and type pipeline
 
 - World and item art use the selected installed 16×16 compatibility files with nearest-neighbor sampling. Lakecraft's original concept atlas remains the deterministic fallback for content without an imported match.
 - The importer must validate source version/hash, paths, dimensions, and exact production RGBA parity before assets enter the renderer.
 - Because Lakebed capsules only serve the favicon as a loose static asset, final atlases/fonts must be embedded as compact source data or generated at runtime.
-- Use a permissively licensed pixel font (Pixelify Sans is the initial candidate) and preserve its license. Render at integer-ish pixel sizes with a dark one-pixel-style shadow.
+- Use the reviewed installed bitmap glyph geometry already embedded for compatibility. Render at integer-ish pixel sizes with a dark one-pixel-style shadow and no synthetic weight or stroke.
 
 ## Performance and multiplayer
 

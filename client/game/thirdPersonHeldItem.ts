@@ -51,7 +51,10 @@ export function buildThirdPersonHeldItemGeometry(
   const output: number[] = [];
   const presentation = thirdPersonHeldItemPresentation(itemId, tuning);
   if (blockIdForCubeItem(itemId) !== null) {
-    appendBlockItemCubeGeometry(output, itemId, presentation);
+    appendBlockItemCubeGeometry(output, itemId, {
+      ...presentation,
+      thickenTransparentEdges: itemId === "glass" || itemId.endsWith("_stained_glass"),
+    });
   }
   else appendItemSpriteGeometry(output, itemId === "bow" && bowDrawing ? getBowIconArt(3) : getItemIconArt(itemId), presentation);
   return new Float32Array(output);

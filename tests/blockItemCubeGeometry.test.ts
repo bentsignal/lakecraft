@@ -35,6 +35,14 @@ const zs = dirt.filter((_, index) => index % BLOCK_ITEM_CUBE_VERTEX_FLOATS === 2
 assert.deepEqual([Math.min(...xs), Math.max(...xs)], [-0.5, 0.5]);
 assert.deepEqual([Math.min(...ys), Math.max(...ys)], [-0.5, 0.5]);
 assert.deepEqual([Math.min(...zs), Math.max(...zs)], [-0.5, 0.5]);
+const glass: number[] = [];
+const glassVertices = appendBlockItemCubeGeometry(glass, "glass");
+const readableGlass: number[] = [];
+const readableGlassVertices = appendBlockItemCubeGeometry(readableGlass, "glass", { thickenTransparentEdges: true });
+assert.ok(readableGlassVertices > glassVertices,
+  "third-person glass adds one dim inner edge so its installed one-pixel frame cannot disappear at avatar scale");
+assert.ok(readableGlassVertices < dirtVertices,
+  "third-person glass remains visibly transparent instead of becoming an opaque cube");
 assert.equal(appendBlockItemCubeGeometry([], "diamond_pickaxe"), 0, "non-block sprites never enter the cube path");
 assert.throws(() => appendBlockItemCubeGeometry([], "dirt", { size: 0 }), /finite and visible/);
 

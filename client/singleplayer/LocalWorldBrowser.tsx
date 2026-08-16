@@ -1,5 +1,6 @@
 import { useRef, useState } from "preact/hooks";
 import { LobbyStyles } from "../lobby/LobbyStyles.tsx";
+import { TitleLogo } from "../lobby/TitleLogo.tsx";
 import { requestDocumentPointerLockHandoff } from "../pointerLockHandoff.ts";
 import {
   LOCAL_WORLD_REGISTRY_MAX_WORLDS,
@@ -109,15 +110,11 @@ export function SinglePlayerTitleScreen({ onJoinSingleplayer }: { onJoinSinglepl
       <SinglePlayerPanorama />
       <div className="lc-title-shade" aria-hidden="true" />
       <section className="lc-title-content" aria-label="Lakecraft main menu">
-        <header className="lc-title-logo">
-          <h1>LAKECRAFT</h1>
-          <span>Build worlds that stay in this browser</span>
-        </header>
+        <TitleLogo />
         <div className="lc-title-menu">
           <button className="lc-menu-button is-wide" onClick={onJoinSingleplayer} type="button">Singleplayer</button>
         </div>
       </section>
-      <footer className="lc-title-footer"><span>Lakecraft</span><span>Local worlds</span></footer>
     </main>
   );
 }
