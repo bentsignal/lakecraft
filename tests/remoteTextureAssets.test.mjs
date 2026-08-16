@@ -9,8 +9,16 @@ import { compactClientIdentifiers } from "../scripts/css-template-compression.mj
 
 const blockSource = await readFile(new URL("../client/game/generated/textureAtlas.ts", import.meta.url), "utf8");
 const mobSource = await readFile(new URL("../client/game/generated/mobTextureAtlas.ts", import.meta.url), "utf8");
+const deploySource = await readFile(new URL("../scripts/prepare-lakebed-deploy.mjs", import.meta.url), "utf8");
 const blockStage = remoteBlockTextureAtlasModule(blockSource);
 const mobStage = remoteMobTextureAtlasModule(mobSource);
+
+// The remote block transform remains audited for rolling old capsules and the
+// Railway immutable asset contract, but new Lakebed capsules deliberately ship
+// the compact generated atlas in-module. A Railway asset rollout can therefore
+// never blank the title screen or game bootstrap again.
+assert.doesNotMatch(deploySource, /remoteBlockTextureAtlasModule/);
+assert.match(deploySource, /remoteMobTextureAtlasModule/);
 
 assert.ok(blockStage.length < 7_000, "the sealed Lakebed stage keeps only the expanded name/cell map, never the full block atlas");
 assert.match(blockStage, /await load\(\)/);
@@ -49,4 +57,4 @@ for (const [path, expected] of [
 
 const dockerfile = await readFile(new URL("../apps/game-server/Dockerfile", import.meta.url), "utf8");
 assert.match(dockerfile, /COPY apps\/game-server\/assets \.\/assets/);
-console.log("hash-versioned Railway texture assets preserve the compact Lakebed reserve");
+console.log("embedded block atlas fallback and hash-versioned Railway assets preserve release safety");
