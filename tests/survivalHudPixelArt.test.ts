@@ -28,7 +28,8 @@ assert.equal(/[\u2665\u25cf\u2662]/u.test(`${component}${meterStyles}`), false, 
 assert.equal(/Arial/i.test(meterStyles), false, "meter art has no browser-font dependency");
 assert.match(styles, /\.lc-meter--hunger \{ flex-direction: row-reverse; justify-content: flex-start; \}/,
   "hunger index zero stays against the right edge so missing food appears from the left");
-assert.match(styles, /flex: 0 0 18px; height: 18px;[^}]*width: 18px;/, "ten icons retain the existing 180px row footprint");
+assert.match(styles, /flex: 0 0 16px; height: 18px;[^}]*width: 18px;/,
+  "9px art advances by 8px, preserving Minecraft's icon overlap and center separation");
 assert.match(component, /state !== "empty" \? <img[\s\S]*src=\{sprites\[state\]\}/,
   "full and half states use their canonical source sprite over the empty container");
 assert.match(styles, /\.lc-meter__sprite \{[^}]*height: 18px;[^}]*image-rendering: pixelated;[^}]*width: 18px;/,

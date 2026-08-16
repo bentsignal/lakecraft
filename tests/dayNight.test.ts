@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
   createDayNightState,
+  createMorningDayNightConfig,
   DEFAULT_DAY_NIGHT_CONFIG,
+  MORNING_PHASE,
   phaseAtTime,
   sampleDayNight,
   timeToMorningMs,
@@ -16,11 +18,30 @@ const config: DayNightConfig = {
   epochPhase: 0,
 };
 assert.equal(DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs, 20 * 60 * 1_000);
+const firstGameplayAt = 1_750_000_123_456;
+const newWorldClock = createMorningDayNightConfig(firstGameplayAt);
+assert.deepEqual(newWorldClock, {
+  cycleLengthMs: DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs,
+  epochMs: firstGameplayAt,
+  epochPhase: MORNING_PHASE,
+});
+assert.equal(phaseAtTime(firstGameplayAt, newWorldClock), MORNING_PHASE,
+  "a never-played world begins at canonical sunrise regardless of wall-clock phase");
+assert.equal(sampleDayNight(firstGameplayAt, newWorldClock).label, "dawn");
+assert.equal(sampleDayNight(firstGameplayAt + 60_001, newWorldClock).label, "day");
+assert.equal(sampleDayNight(firstGameplayAt + 8 * 60_000, newWorldClock).label, "day",
+  "a new survival player receives multiple real minutes of full daylight before dusk");
 const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 assert.match(engineSource,
   /phaseAtTime,[\s\S]*?setDaylightCycle\(enabled\)[\s\S]*?phaseAtTime\(worldTimeMs, dayNightConfig\)/,
   "the live engine imports the phase sampler used to re-anchor daylight toggles");
 const localAppSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+assert.match(localAppSource,
+  /dayNight: retainedRuntime\?\.dayNight \?\? createMorningDayNightConfig\(gameplayStartedAtMs\)/,
+  "new local sessions use the canonical morning clock while saved worlds retain their clock");
+assert.match(localAppSource,
+  /serverTimeOffsetMs: retainedRuntime \? retainedRuntime\.worldTimeMs - gameplayStartedAtMs : 0/,
+  "saved local runtimes retain their world-time offset instead of resetting to morning");
 assert.match(localAppSource, /Daylight cycle \$\{parsed\.command\.value \? "enabled" : "disabled"\}/,
   "local daylight changes emit a system confirmation");
 const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");

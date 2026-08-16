@@ -50,6 +50,7 @@ const multiplayer = readFileSync(new URL("../client/index.tsx", import.meta.url)
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
 const diagnostics = readFileSync(new URL("../client/gameplayDiagnostics.tsx", import.meta.url), "utf8");
 const surface = readFileSync(new URL("../client/gameplay/GameplaySessionSurface.tsx", import.meta.url), "utf8");
+const loadingScreen = readFileSync(new URL("../client/components/WorldLoadingScreen.tsx", import.meta.url), "utf8");
 assert.equal(singleplayer.includes("SINGLE-PLAYER · LOCAL SAVE · 0 LAKEBED REQUESTS"), false);
 assert.equal(singleplayer.includes("Browser-local: no Google account and zero Lakebed requests."), false);
 assert.ok(singleplayer.includes("GameplaySessionSurface") && surface.includes("GameplayDiagnostics") && diagnostics.includes("XYZ: {x} / {y} / {z}"));
@@ -66,7 +67,7 @@ assert.ok(multiplayer.includes("modalOpen={chatOpen}"),
 assert.ok(engine.includes('document.pointerLockElement !== canvas'), "engine input remains gated on pointer lock");
 assert.ok(engine.includes("appendWorldBlockCrackLines(crackLines, target.block"), "cracks use target.block, never target.place");
 assert.ok(engine.includes("function updateMiningCrackGeometry()"), "crack geometry uploads only when bounded progress changes, not every render");
-assert.ok(surface.includes('role="status" aria-live="polite"><strong>Loading world</strong>'),
+assert.ok(surface.includes("!ready ? <WorldLoadingScreen />") && loadingScreen.includes('role="status"') && loadingScreen.includes('aria-live="polite"'),
   "world entry renders a blocking, announced loading state before terrain is ready");
 assert.doesNotMatch(surface, /Click to Play|Capture the mouse|pointerCapture/,
   "the gameplay surface has no pointer-capture interstitial to cover initial loading or live play");

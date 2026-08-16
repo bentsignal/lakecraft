@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 540;
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 541;
 export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 475;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "4db1b821bcfe49c104f45d9430a5984bbb4a4dfd5c7c71921397df8631603c00";
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "568c542a93c4f7e4fbc7c62ae7996492001ef252a4e7aa539bb8e191747ac300";
 export const COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 502,
   previousUniqueValues: 442,
@@ -42,10 +42,10 @@ export const COMPACT_CLIENT_HUMAN_EMBEDDED_ATLAS_DELTA = Object.freeze({
   previousOccurrences: 540,
   previousUniqueValues: 475,
   previousSourceFingerprint: "c59e9b79b94c65d0bde35ed72be4ef50a9ad765a5cbb31ccd9bb7823cb19bf89",
-  occurrenceDelta: 0,
+  occurrenceDelta: 1,
   uniqueValueDelta: 0,
-  sources: Object.freeze(["client/game/generated/textureAtlas.ts"]),
-  source: "embedded block-atlas fallback changes string provenance without broadening the reviewed human-copy set",
+  sources: Object.freeze(["client/game/generated/textureAtlas.ts", "client/components/WorldLoadingScreen.tsx"]),
+  source: "embedded visual assets and the shared loading screen add one reviewed duplicate loading label",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA=Object.freeze({
@@ -178,9 +178,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_337;
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_339;
 export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 133;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "25367a4911a7d85a6fadb942c087bd8fc83e307744032714ab3c69276938b1ae";
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "e4c23f806aef6627c1689b08785268d0037b89bafa6bd7ae31f2fe6c97aa9384";
 export const COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 1_183,
   previousUniqueValues: 112,
@@ -217,10 +217,10 @@ export const COMPACT_CLIENT_REPEATED_EMBEDDED_ATLAS_DELTA = Object.freeze({
   previousOccurrences: 1_339,
   previousUniqueValues: 133,
   previousSourceFingerprint: "59da08cd3085d38c8f4387a77956a4e42774dafd35f1dfa9c8db5f23ca48149c",
-  occurrenceDelta: -2,
+  occurrenceDelta: 0,
   uniqueValueDelta: 0,
-  sources: Object.freeze(["client/game/generated/textureAtlas.ts"]),
-  source: "embedded block-atlas fallback removes two repeated remote-loader literals from the production stage",
+  sources: Object.freeze(["client/game/generated/textureAtlas.ts", "client/components/WorldLoadingScreen.tsx"]),
+  source: "embedded block-atlas fallback removes two loader literals while the shared loading screen adds two reviewed repeats",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_CREATIVE_PARITY_DELTA = Object.freeze({

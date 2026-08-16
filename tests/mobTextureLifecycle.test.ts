@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createMobTexture, destroyMobTexture } from "../client/game/mobRenderer.ts";
+import { MOB_TEXTURE_ATLAS_PNG } from "../client/game/generated/mobTextureAtlas.ts";
 
 type Listener = EventListenerOrEventListenerObject;
 
@@ -24,6 +25,11 @@ class FakeImage {
       else listener.handleEvent(new Event(type));
     }
   }
+}
+
+class FakeBitmap {
+  closes = 0;
+  close(): void { this.closes += 1; }
 }
 
 class FakeGl {
@@ -50,64 +56,92 @@ class FakeGl {
   deleteTexture(texture: unknown) { assert.equal(texture, this.texture); this.deletes += 1; }
 }
 
+const bitmapDescriptor = Object.getOwnPropertyDescriptor(globalThis, "createImageBitmap");
 const imageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
-function setImage(value: typeof Image | undefined): void {
-  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value });
-}
+const urlDescriptor = Object.getOwnPropertyDescriptor(globalThis, "URL");
+const setGlobal = (key: string, value: unknown) =>
+  Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
 
-try {
-  setImage(undefined);
-  const headless = new FakeGl();
-  createMobTexture(headless as unknown as WebGLRenderingContext);
-  assert.equal(headless.uploads.length, 1, "headless creation synchronously uploads one valid fallback texel");
-  assert.equal(headless.uploads[0]?.[3], 1);
-  assert.equal(headless.uploads[0]?.[4], 1);
-  assert.deepEqual([...headless.uploads[0]?.[8] as Uint8Array], [255, 255, 255, 255]);
+async function run(): Promise<void> {
+  try {
+    let decodedBlob: Blob | null = null;
+    const bitmap = new FakeBitmap();
+    setGlobal("Image", undefined);
+    setGlobal("createImageBitmap", async (blob: Blob) => {
+      decodedBlob = blob;
+      return bitmap as unknown as ImageBitmap;
+    });
+    const gl = new FakeGl();
+    const texture = createMobTexture(gl as unknown as WebGLRenderingContext);
+    assert.equal(gl.uploads.length, 1, "the compact PNG gets one complete colored placeholder while it decodes");
+    assert.deepEqual([gl.uploads[0]?.[3], gl.uploads[0]?.[4]], [2, 2]);
+    const placeholder = [...gl.uploads[0]?.[8] as Uint8Array];
+    assert.equal(placeholder.length, 16);
+    assert.notDeepEqual(placeholder, new Array(16).fill(255), "the decode window cannot render all-white mobs");
+    await flush();
+    assert.equal(gl.uploads.length, 2, "ImageBitmap replaces the placeholder exactly once");
+    assert.equal(gl.uploads[1]?.length, 6, "the exact decoded source uses the TexImageSource overload");
+    assert.equal(gl.uploads[1]?.[5], bitmap);
+    assert.equal(gl.flips, 1);
+    assert.equal(bitmap.closes, 1);
+    assert.deepEqual(
+      Buffer.from(await decodedBlob!.arrayBuffer()),
+      Buffer.from(MOB_TEXTURE_ATLAS_PNG, "base64"),
+      "Blob decoding receives the exact hash-pinned installed atlas bytes",
+    );
+    destroyMobTexture(gl as unknown as WebGLRenderingContext, texture);
+    assert.equal(gl.deletes, 1);
 
-  FakeImage.instances.length = 0;
-  setImage(FakeImage as unknown as typeof Image);
-  const pendingGl = new FakeGl();
-  createMobTexture(pendingGl as unknown as WebGLRenderingContext);
-  const pending = FakeImage.instances.at(-1)!;
-  assert.equal(pendingGl.uploads.length, 1, "pending image keeps the complete fallback texture");
-  assert.ok(pending.src.startsWith("data:image/png;base64,"));
+    let resolveLate!: (bitmap: ImageBitmap) => void;
+    setGlobal("createImageBitmap", () => new Promise<ImageBitmap>((resolve) => { resolveLate = resolve; }));
+    const racedGl = new FakeGl();
+    const racedTexture = createMobTexture(racedGl as unknown as WebGLRenderingContext);
+    destroyMobTexture(racedGl as unknown as WebGLRenderingContext, racedTexture);
+    const lateBitmap = new FakeBitmap();
+    resolveLate(lateBitmap as unknown as ImageBitmap);
+    await flush();
+    assert.equal(racedGl.uploads.length, 1, "a late decoder cannot upload into a destroyed texture");
+    assert.equal(lateBitmap.closes, 1, "the late bitmap is still released");
 
-  pending.dispatch("load");
-  assert.equal(pendingGl.uploads.length, 2, "successful load replaces the fallback exactly once");
-  assert.equal(pendingGl.uploads[1]?.length, 6, "the successful upload uses the HTML image overload");
-  assert.equal(pendingGl.flips, 1);
-  pending.dispatch("error");
-  assert.equal(pendingGl.uploads.length, 2, "a settled success ignores later events");
-
-  const failedGl = new FakeGl();
-  createMobTexture(failedGl as unknown as WebGLRenderingContext);
-  const failed = FakeImage.instances.at(-1)!;
-  failed.dispatch("error");
-  assert.equal(failedGl.uploads.length, 1, "failure deterministically retains the fallback");
-  failed.dispatch("load");
-  assert.equal(failedGl.uploads.length, 1, "failure cannot later revive the async upload");
-
-  const destroyedGl = new FakeGl();
-  const destroyedTexture = createMobTexture(destroyedGl as unknown as WebGLRenderingContext);
-  const destroyed = FakeImage.instances.at(-1)!;
-  const capturedLoad = [...destroyed.listeners.get("load") ?? []][0] as EventListener;
-  const capturedError = [...destroyed.listeners.get("error") ?? []][0] as EventListener;
-  destroyMobTexture(destroyedGl as unknown as WebGLRenderingContext, destroyedTexture);
-  assert.equal(destroyedGl.deletes, 1);
-  assert.equal(destroyed.listeners.get("load")?.size, 0);
-  assert.equal(destroyed.listeners.get("error")?.size, 0);
-  capturedLoad.call(destroyed, new Event("load"));
-  capturedError.call(destroyed, new Event("error"));
-  assert.equal(destroyedGl.uploads.length, 1, "callbacks captured before destruction cannot touch deleted GL state");
+    const revoked: string[] = [];
+    setGlobal("createImageBitmap", undefined);
+    setGlobal("Image", FakeImage);
+    setGlobal("URL", {
+      createObjectURL: () => "blob:mob-atlas",
+      revokeObjectURL: (value: string) => revoked.push(value),
+    });
+    FakeImage.instances.length = 0;
+    const fallbackGl = new FakeGl();
+    createMobTexture(fallbackGl as unknown as WebGLRenderingContext);
+    const fallbackImage = FakeImage.instances[0]!;
+    assert.equal(fallbackImage.src, "blob:mob-atlas", "fallback decoding uses a Blob URL, never a data URL");
+    fallbackImage.dispatch("load");
+    assert.equal(fallbackGl.uploads.length, 2);
+    assert.equal(fallbackGl.uploads[1]?.[5], fallbackImage);
+    assert.deepEqual(revoked, ["blob:mob-atlas"]);
+  } finally {
+    for (const [key, descriptor] of [
+      ["createImageBitmap", bitmapDescriptor], ["Image", imageDescriptor], ["URL", urlDescriptor],
+    ] as const) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
 
   const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+  const gameplayEngine = readFileSync(new URL("../client/gameplay/engine.ts", import.meta.url), "utf8");
   const lab = readFileSync(new URL("../client/game/visualLabRenderer.ts", import.meta.url), "utf8");
-  assert.match(engine, /destroyMobTexture\(gl, mobTexture\)/, "gameplay destruction cancels the atlas loader");
-  assert.equal((lab.match(/destroyMobTexture\(gl, mobTexture\)/g) ?? []).length, 2,
-    "Visual Lab failure and normal destruction cancel the atlas loader");
-} finally {
-  if (imageDescriptor) Object.defineProperty(globalThis, "Image", imageDescriptor);
-  else Reflect.deleteProperty(globalThis, "Image");
+  assert.match(engine, /const mobTexture = createMobTexture\(gl\)/,
+    "the canonical voxel renderer owns the mob atlas for both authority modes");
+  assert.match(gameplayEngine, /return createVoxelEngine\(canvas, \{/,
+    "local and Railway sessions share that exact renderer");
+  assert.match(engine, /destroyMobTexture\(gl, mobTexture\)/);
+  assert.equal((lab.match(/destroyMobTexture\(gl, mobTexture\)/g) ?? []).length, 2);
+  console.log("mob texture Blob decode and lifecycle tests passed");
 }
 
-console.log("mob texture fallback and async lifecycle tests passed");
+void run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

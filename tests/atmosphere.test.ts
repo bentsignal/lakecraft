@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   ATMOSPHERE_FRAGMENT_SHADER,
   ATMOSPHERE_SCREEN_TRIANGLE,
@@ -27,7 +28,28 @@ assert.ok(
 );
 assert.doesNotMatch(ATMOSPHERE_FRAGMENT_SHADER, /if\(r\.y>/, "downward rays above cloud height remain eligible for intersection");
 assert.match(ATMOSPHERE_FRAGMENT_SHADER, /float b\(/, "celestial bodies keep pixel-square silhouettes");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /vec2 e\(vec3 r,vec3 c\)/,
+  "sun and moon share one camera-facing tangent projection");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /normalize\(cross\(a,c\)\)/,
+  "the tangent basis prevents the moon from shearing into a world-axis quadrilateral");
+assert.match(ATMOSPHERE_FRAGMENT_SHADER, /vec2 p=floor\(\(u\/0\.078\+0\.5\)\*8\.\)/,
+  "the moon stays a bounded eight-pixel tile rather than a displaced hollow cutout");
+assert.doesNotMatch(ATMOSPHERE_FRAGMENT_SHADER, /normalize\(N\+vec3/,
+  "moon shading cannot punch the reported oversized off-axis hole");
 assert.doesNotMatch(ATMOSPHERE_FRAGMENT_SHADER, /\bsin\s*\(/, "fullscreen hashes avoid expensive per-pixel sine calls");
+
+const engineSource = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
+const gameplayEngineSource = readFileSync(new URL("../client/gameplay/engine.ts", import.meta.url), "utf8");
+const localSource = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
+const multiplayerSource = readFileSync(new URL("../client/index.tsx", import.meta.url), "utf8");
+assert.match(engineSource, /createProgram\(gl, ATMOSPHERE_VERTEX_SHADER, ATMOSPHERE_FRAGMENT_SHADER\)/,
+  "the voxel engine owns the only gameplay celestial shader");
+assert.match(gameplayEngineSource, /return createVoxelEngine\(canvas, \{/,
+  "both authority modes enter the same canonical voxel renderer");
+assert.match(localSource, /createGameplaySessionEngine\(canvas, createLocalGameplayAuthority\(/);
+assert.match(multiplayerSource, /createGameplaySessionEngine\(canvas, createRailwayGameplayAuthority\(/);
+assert.doesNotMatch(localSource, /ATMOSPHERE_FRAGMENT_SHADER|writeCelestialDirection/,
+  "single-player cannot drift through a private moon implementation");
 
 const noon = celestialDirection(Math.PI / 2);
 const midnight = celestialDirection(Math.PI * 1.5);

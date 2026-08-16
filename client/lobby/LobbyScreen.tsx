@@ -1,5 +1,6 @@
 import { useMemo, useState } from "preact/hooks";
 import { OptionsDialog } from "../components/OptionsDialog";
+import { WorldLoadingScreen } from "../components/WorldLoadingScreen.tsx";
 import type { ClientSettings } from "../settings";
 import { LobbyStyles } from "./LobbyStyles";
 import { menuButton } from "./menuButton.tsx";
@@ -37,7 +38,6 @@ export interface LobbyScreenProps {
   selectedServerId?: string;
   directConnectValue?: string;
   directConnectToken?: string;
-  buildLabel?: string;
   settings: ClientSettings;
   onSignInWithGoogle: () => void;
   onJoinSingleplayer: () => void;
@@ -188,6 +188,13 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
           : status === "offline" ? "The server is currently offline."
             : "Select a server and click Join Server.";
 
+  if (joining) {
+    const detail = phase === "joining" ? `Connecting to ${selected?.name ?? "server"}…`
+      : phase === "waiting" ? "Waiting for player data…"
+        : "Building terrain…";
+    return <WorldLoadingScreen detail={detail} />;
+  }
+
   return (
     <main className="lc-server-browser">
       <LobbyStyles />
@@ -258,7 +265,7 @@ function ServerBrowser({ onBack, onChooseUsername, props }: {
           {menuButton("Back", onBack)}
         </div>
       </section>
-      <footer className="lc-title-footer"><span>Lakecraft {props.buildLabel || "Alpha"}</span><span>craft.lakebed.app</span></footer>
+      <footer className="lc-title-footer"><span>Lakecraft</span><span>craft.lakebed.app</span></footer>
     </main>
   );
 }
@@ -320,7 +327,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
         uiVolume={props.settings.uiVolume}
       />
       <footer className="lc-title-footer">
-        <span>Lakecraft {props.buildLabel || "Alpha"}</span>
+        <span>Lakecraft</span>
         <span>craft.lakebed.app</span>
       </footer>
     </main>

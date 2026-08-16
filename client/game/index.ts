@@ -73,6 +73,7 @@ export {
   DEFAULT_DAY_NIGHT_CONFIG,
   MORNING_PHASE,
   createDayNightState,
+  createMorningDayNightConfig,
   phaseAtTime,
   sampleDayNight,
   timeToMorningMs,

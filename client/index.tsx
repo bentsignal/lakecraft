@@ -1709,7 +1709,6 @@ function RailwayMultiplayerSession({
       </ErrorBoundary>
       <LobbyScreen
         authState={lobbyAuthState}
-        buildLabel="MULTIPLAYER ALPHA"
         displayName={profile?.username ?? auth.displayName}
         email={auth.email}
         joinPhase={joinPhase}

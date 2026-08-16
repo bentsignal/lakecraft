@@ -16,6 +16,7 @@ const CSS_BUNDLE_MAX_CANDIDATES = 256;
 export const COMPACT_CLIENT_IDENTIFIER_FAMILIES = Object.freeze([
   ["lc-visual-lab", "x0"],
   ["lc-pose-lab", "x1"],
+  ["lc-world-loading", "x2"],
   ["lc-player-preview", "xd"],
   ["lc-inventory", "xe"],
   ["lc-first-person", "xb"],
@@ -60,13 +61,13 @@ xc-inventory-slot|11 xj-glyph|15 xo-menu|11 xe-grid__slot|16 xj-icon__svg|15 xn-
 xlocal-world-dialog|9 xoptions|11 ysleep|1 xslot|15 xunsupported|8 xg__signal|8 xc-slot|8
 xm-slot|11 xp-logo|10 xq-icon|8 xr-slot|8 xclose|10 yquery-recovery|7 xq-population|7
 xworld-line|7 xc__header|7 xk-screen|7 xp-cloud|2 xe-grid|12 xlocal-world-header|6
-xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|9 xgameplay-capture|0
+xlocal-world-search|6 xlocal-world-select|6 xoptions__slider|10 xgameplay-capture|0
 xe-titlebar|10 xcrosshair|6 xq-browser|6 xp-footer|8 xs-layer|7 xlocal-world-browser|5
 xlocal-world-delete|5 xq-browser__content|5 xselected-item-name|5 xi-dialog|5 xv-result|6
 xe-upper|6 xo-layer|5 xz__slot|5 xo-help|5 xp-tree|2 xq-copy|7 xq-row|5 xlocal-world-titlebar|5
 xingredient__icon|4 xlocal-world-row|4 xcursor-stack|5 xs__heading|4 xf__output|4
 xj-tooltip|4 xq-actions|4 xc__arrow|4 xh__reset|4 xp-screen|5 xk-layer|4 xw-layer|4
-xm-rack|4 xp-menu|6 xq-hint|6 yerror|4 xhud|4 xgameplay-loading|4 xlocal-world-back|4 xc-inventory-grid|3
+xm-rack|4 xp-menu|6 xq-hint|6 yerror|4 xhud|4 xgameplay-loading|0 xlocal-world-back|4 xc-inventory-grid|3
 xk-screen__status|3 xdirt-background|3 xequipment-panel|4 xk-screen__score|3
 xoptions-dialog|3 xoptions__done|3 xoptions__grid|3 xc__inventory|3 xr-status-row|3
 xsection-rule|3 xsingleplayer|3 xv-workspace|4 ysleep-layer|1 xc__station|3 xdurability|3
@@ -137,7 +138,7 @@ const REVIEWED_COMPACT_IDENTIFIER_EXEMPTIONS = Object.freeze([
   // Compact-stage source marker; removed before bundling and never reaches the DOM or CSS.
   "ydevelopment",
 ]);
-const REVIEWED_COMPACT_IDENTIFIER_FAMILY_PREFIXES = Object.freeze(["x0", "x1"]);
+const REVIEWED_COMPACT_IDENTIFIER_FAMILY_PREFIXES = Object.freeze(["x0", "x1", "x2"]);
 
 function isCssIdentifierCharacter(character) {
   return character !== undefined && /[A-Za-z0-9_-]/.test(character);

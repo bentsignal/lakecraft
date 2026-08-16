@@ -117,7 +117,7 @@ export function SinglePlayerTitleScreen({ onJoinSingleplayer }: { onJoinSinglepl
           <button className="lc-menu-button is-wide" onClick={onJoinSingleplayer} type="button">Singleplayer</button>
         </div>
       </section>
-      <footer className="lc-title-footer"><span>Lakecraft Singleplayer Alpha</span><span>Local worlds</span></footer>
+      <footer className="lc-title-footer"><span>Lakecraft</span><span>Local worlds</span></footer>
     </main>
   );
 }

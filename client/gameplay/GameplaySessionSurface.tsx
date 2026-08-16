@@ -2,6 +2,7 @@ import { createContext, type ComponentChildren, type RefObject } from "preact";
 import { useContext } from "preact/hooks";
 import type { PlayerPose, VoxelPerformanceStats } from "../game/types.ts";
 import { GameplayDiagnostics } from "../gameplayDiagnostics.tsx";
+import { WorldLoadingScreen } from "../components/WorldLoadingScreen.tsx";
 import type { GameplayAuthorityKind } from "./authority.ts";
 
 const GameplayAuthorityContext = createContext<GameplayAuthorityKind | null>(null);
@@ -47,7 +48,6 @@ export function GameplaySessionSurface({
     <GameplayAuthorityContext.Provider value={authority}>
       <main className={rootClassName} data-gameplay-authority={authority}>
         {rootStyle ? <style>{rootStyle}</style> : null}
-        <style>{`.lc-gameplay-loading{align-items:center;background:#202020;color:#fff;display:flex;flex-direction:column;font-family:var(--lc-pixel-font,"Courier New",monospace);gap:10px;inset:0;justify-content:center;position:fixed;z-index:90}.lc-gameplay-loading strong{font-size:22px;text-shadow:2px 2px #000}.lc-gameplay-loading small{color:#bbb}`}</style>
         <canvas
           aria-label={canvasLabel}
           className={canvasClassName}
@@ -56,7 +56,7 @@ export function GameplaySessionSurface({
           tabIndex={0}
         />
         <GameplayDiagnostics {...diagnostics} />
-        {!ready ? <div className="lc-gameplay-loading" role="status" aria-live="polite"><strong>Loading world</strong><small>Preparing terrain…</small></div> : null}
+        {!ready ? <WorldLoadingScreen /> : null}
         {children}
       </main>
     </GameplayAuthorityContext.Provider>

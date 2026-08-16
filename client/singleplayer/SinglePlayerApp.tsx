@@ -8,6 +8,7 @@ import { ChatOverlay, type LakecraftChatMessage } from "../chat";
 import {
   BLOCK,
   MORNING_PHASE,
+  createMorningDayNightConfig,
   phaseAtTime,
   planLocalTntExplosion,
   type BlockId as EngineBlockId,
@@ -1184,18 +1185,24 @@ function LocalGameplaySession({
         }
       }
     }
-    const presentationOptions = createGameplayPresentationOptions({
-      getSettings: () => clientSettingsRef.current,
-      getInventory: () => inventoryRef.current,
-      getEquipment: () => equipmentRef.current,
-      getSelectedHotbar: () => selectedRef.current,
-      getGameMode: () => gameModeRef.current,
-      getHunger: () => hungerRef.current,
-      selectHotbar,
-      audio,
-      footstepSeedPrefix: "local-step",
-      onPerformanceStats: setPerformanceStats,
-    });
+    const gameplayStartedAtMs = Date.now();
+    const retainedRuntime = initialRuntimeRef.current;
+    const presentationOptions = {
+      ...createGameplayPresentationOptions({
+        getSettings: () => clientSettingsRef.current,
+        getInventory: () => inventoryRef.current,
+        getEquipment: () => equipmentRef.current,
+        getSelectedHotbar: () => selectedRef.current,
+        getGameMode: () => gameModeRef.current,
+        getHunger: () => hungerRef.current,
+        selectHotbar,
+        audio,
+        footstepSeedPrefix: "local-step",
+        onPerformanceStats: setPerformanceStats,
+      }),
+      dayNight: retainedRuntime?.dayNight ?? createMorningDayNightConfig(gameplayStartedAtMs),
+      serverTimeOffsetMs: retainedRuntime ? retainedRuntime.worldTimeMs - gameplayStartedAtMs : 0,
+    };
     const engine = createGameplaySessionEngine(canvas, createLocalGameplayAuthority({
       seed: worldRef.current.seed,
       streamingChunkRadius: clientSettingsRef.current.renderDistance,

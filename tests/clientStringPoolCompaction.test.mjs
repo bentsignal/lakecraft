@@ -541,10 +541,10 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_EMBEDDED_ATLAS_DELTA, {
   previousOccurrences: 540,
   previousUniqueValues: 475,
   previousSourceFingerprint: "c59e9b79b94c65d0bde35ed72be4ef50a9ad765a5cbb31ccd9bb7823cb19bf89",
-  occurrenceDelta: 0,
+  occurrenceDelta: 1,
   uniqueValueDelta: 0,
-  sources: ["client/game/generated/textureAtlas.ts"],
-  source: "embedded block-atlas fallback changes string provenance without broadening the reviewed human-copy set",
+  sources: ["client/game/generated/textureAtlas.ts", "client/components/WorldLoadingScreen.tsx"],
+  source: "embedded visual assets and the shared loading screen add one reviewed duplicate loading label",
   exclusionChanges: 0,
 });
 assert.equal(COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.previousOccurrences
@@ -1049,10 +1049,10 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_EMBEDDED_ATLAS_DELTA, {
   previousOccurrences: 1_339,
   previousUniqueValues: 133,
   previousSourceFingerprint: "59da08cd3085d38c8f4387a77956a4e42774dafd35f1dfa9c8db5f23ca48149c",
-  occurrenceDelta: -2,
+  occurrenceDelta: 0,
   uniqueValueDelta: 0,
-  sources: ["client/game/generated/textureAtlas.ts"],
-  source: "embedded block-atlas fallback removes two repeated remote-loader literals from the production stage",
+  sources: ["client/game/generated/textureAtlas.ts", "client/components/WorldLoadingScreen.tsx"],
+  source: "embedded block-atlas fallback removes two loader literals while the shared loading screen adds two reviewed repeats",
   exclusionChanges: 0,
 });
 assert.equal(COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.previousOccurrences

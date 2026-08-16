@@ -43,6 +43,20 @@ export const DEFAULT_DAY_NIGHT_CONFIG: Readonly<DayNightConfig> = Object.freeze(
 
 export const MORNING_PHASE = 0.25;
 
+/** Canonical first-session clock for a world that has no retained runtime yet. */
+export function createMorningDayNightConfig(
+  gameplayStartedAtMs: number,
+  cycleLengthMs = DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs,
+): DayNightConfig {
+  return {
+    cycleLengthMs: Number.isFinite(cycleLengthMs) && cycleLengthMs !== 0
+      ? Math.abs(cycleLengthMs)
+      : DEFAULT_DAY_NIGHT_CONFIG.cycleLengthMs,
+    epochMs: Number.isFinite(gameplayStartedAtMs) ? gameplayStartedAtMs : 0,
+    epochPhase: MORNING_PHASE,
+  };
+}
+
 const TAU = Math.PI * 2;
 
 // RGB keyframes are module constants so sampling does not allocate temporary colors.

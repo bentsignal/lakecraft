@@ -20,12 +20,13 @@ export const ATMOSPHERE_FRAGMENT_SHADER = `precision mediump float;
 uniform float A,Q,T,S,M,R;uniform vec3 E,F,X,Y,K,G,D,N;varying vec2 v;
 float h(vec2 p){vec3 v=fract(vec3(p.xyx)*.1031);v+=dot(v,v.yzx+33.33);return fract((v.x+v.y)*v.z);}
 float j(vec3 p){p=fract(p*.1031);p+=dot(p,p.zyx+31.32);return fract((p.x+p.y)*p.z);}
-float b(vec3 r,vec3 c,float s){vec3 d=abs(r-c);return step(max(d.x,max(d.y,d.z)),s);}
+vec2 e(vec3 r,vec3 c){vec3 a=abs(c.y)>.98?vec3(0.,0.,1.):vec3(0.,1.,0.);vec3 x=normalize(cross(a,c)),y=cross(c,x);float f=max(.001,dot(r,c));return vec2(dot(r,x),dot(r,y))/f;}
+float b(vec3 r,vec3 c,float s){vec2 d=abs(e(r,c));return step(max(d.x,d.y),s)*step(0.,dot(r,c));}
 void main(){
 vec3 r=normalize(F+X*v.x*A*Q+Y*v.y*Q);
 vec3 z=K*vec3(.78,.9,1.08),c=mix(min(vec3(1.),G*vec3(1.12,1.09,1.05)),z,smoothstep(-.16,.58,r.y));
 float g=smoothstep(.975,.998,dot(r,D))*S;c+=vec3(1.,.57,.2)*g*.26;float s=b(r,D,.043)*step(.01,S);c=mix(c,vec3(1.,.94,.54),s);
-float m=b(r,N,.039)*step(.01,M);c=mix(c,vec3(.84,.88,.74),m);c=mix(c,z,m*b(r,normalize(N+vec3(.025,.014,0.)),.027)*.88);
+vec2 u=e(r,N);float m=b(r,N,.039)*step(.01,M);vec2 p=floor((u/0.078+0.5)*8.);float n=step(.5,mod(p.x+p.y*3.,7.))*step(0.,p.x)*step(p.x,7.)*step(0.,p.y)*step(p.y,7.);c=mix(c,mix(vec3(.73,.76,.67),vec3(.88,.9,.78),n),m);
 float a=step(.9965,j(floor(r*250.)))*step(.025,r.y)*R*(1.-s);c=mix(c,vec3(.88,.91,1.),a*.86);
 float i=abs(r.y);if(i>.035){float d=(96.-E.y)/r.y;if(d>0.){vec2 w=E.xz+r.xz*d+vec2(T*.38,0.);vec2 q=floor(w/4.),k=floor(q/4.);float o=step(.43,h(k))*step(.39,h(q+k*7.));o*=smoothstep(.035,.12,i);float l=(.48+S*.48+M*.08)*mix(1.,.72,step(0.,r.y));c=mix(c,vec3(l,l,l*.96),o*.76);}}
 gl_FragColor=vec4(c,1.);}`;

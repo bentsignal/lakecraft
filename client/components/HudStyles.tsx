@@ -28,7 +28,7 @@ const HUD_CSS = `
 .lc-survival { display: grid; grid-template-columns: 1fr 1fr; height: 39px; margin: 0 2px 2px; }
 .lc-meter { align-items: center; display: flex; height: 18px; }
 .lc-meter--health, .lc-meter--armor { justify-content: flex-start; }.lc-meter--hunger { flex-direction: row-reverse; justify-content: flex-start; }
-.lc-meter__icon { display: block; flex: 0 0 18px; height: 18px; position: relative; width: 18px; }
+.lc-meter__icon { display: block; flex: 0 0 16px; height: 18px; position: relative; width: 18px; }
 .lc-meter__sprite { display: block; height: 18px; image-rendering: pixelated; inset: 0; position: absolute; user-select: none; width: 18px; }
 .lc-meter__sprite--empty { z-index: 0; }.lc-meter__sprite--fill { z-index: 1; }
 .lc-selected-item-name { bottom: calc(100% + 2px); color: #fff; font: 16px/1.2 var(--lc-pixel-font); left: 50%; max-width: min(330px,calc(100vw - 20px)); pointer-events: none; position: absolute; text-align: center; text-shadow: 2px 2px #202020; transform: translateX(-50%); width: 100%; }
