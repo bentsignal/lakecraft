@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { ITEMS } from "../shared/game.ts";
+import { ITEMS, RECIPES } from "../shared/game.ts";
+import { DEEPSLATE_BUILDING_ITEMS, STONE_SHAPE_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
 import { BLOCK_TYPES } from "../shared/protocol.ts";
 import { REALTIME_BLOCK_ID_MAX, decodeRealtimeChunkEdits, encodeRealtimeChunkEdits } from "../shared/realtimeWorldChunks.ts";
 import { gameBlockForWorldBlock, resolveWorldBlockOperation } from "../shared/worldBlockOperations.ts";
@@ -7,6 +8,7 @@ import {
   STAIR_MESH_VERTEX_COUNT,
   appendSlabMesh,
   appendStairMesh,
+  stairFacingFromYaw,
   stairPlacementBlock,
 } from "../client/game/voxelEngine.ts";
 import {
@@ -20,6 +22,8 @@ import {
 import { readFileSync } from "node:fs";
 import { BLOCK, isSlabBlock, isStairBlock, stairFacingForBlock } from "../client/game/types.ts";
 import { createEmptyInventory } from "../shared/game.ts";
+import { blockTextureForFace } from "../client/game/blockTextures.ts";
+import { ENGINE_TO_GAME, ITEM_TO_ENGINE } from "../client/gameplay/catalog.ts";
 
 const slabs = [BLOCK.STONE_BRICK_SLAB, BLOCK.OAK_SLAB, BLOCK.COBBLESTONE_SLAB, BLOCK.BRICK_SLAB] as const;
 for (const slab of slabs) {
@@ -70,6 +74,42 @@ assert.equal(stairPlacementBlock(BLOCK.OAK_STAIRS_NORTH, 0, 0.7), BLOCK.OAK_STAI
 assert.equal(stairPlacementBlock(BLOCK.BRICK_STAIRS_NORTH, Math.PI / 2, 0.7), BLOCK.BRICK_STAIRS_UPSIDE_EAST);
 assert.equal(stairPlacementBlock(BLOCK.SPRUCE_STAIRS_NORTH, Math.PI, 0.7), BLOCK.SPRUCE_STAIRS_UPSIDE_SOUTH);
 assert.equal(stairPlacementBlock(BLOCK.QUARTZ_STAIRS_NORTH, -Math.PI / 2), BLOCK.QUARTZ_STAIRS_WEST);
+assert.deepEqual([0, Math.PI / 2, Math.PI, -Math.PI / 2].map(stairFacingFromYaw),
+  ["north", "east", "south", "west"], "camera yaw resolves every cardinal placement quadrant");
+assert.equal(stairFacingFromYaw(Math.PI * 2), "north", "wrapped camera yaw preserves its cardinal direction");
+
+const placementTarget = {
+  block: { x: 0, y: 1, z: 0, block: BLOCK.STONE }, place: { x: 0, y: 0, z: 0 }, distance: 2,
+} as const;
+const directionFixtures = [[0, "NORTH"], [Math.PI / 2, "EAST"], [Math.PI, "SOUTH"], [-Math.PI / 2, "WEST"]] as const;
+for (const [family, source] of STONE_SHAPE_FAMILIES) {
+  const slabItem = `${family}_slab` as keyof typeof ITEMS;
+  const stairItem = `${family}_stairs` as keyof typeof ITEMS;
+  const slab = BLOCK[`${family}_slab`.toUpperCase() as keyof typeof BLOCK];
+  const north = BLOCK[`${family}_stairs_north`.toUpperCase() as keyof typeof BLOCK];
+  assert.equal(typeof slab, "number", `${family} slab has a stable numeric state`);
+  assert.equal(isSlabBlock(slab), true);
+  assert.equal(blockCollisionHeightAt(slab), 0.5);
+  assert.equal(ITEMS[slabItem].placesBlock, slabItem);
+  assert.equal(ITEMS[stairItem].placesBlock, stairItem);
+  assert.equal(blockTextureForFace(slab, "north"), source);
+  assert.equal(blockTextureForFace(north, "top"), source);
+  assert.equal(ITEM_TO_ENGINE[stairItem], north);
+  assert.equal(ENGINE_TO_GAME[north], stairItem);
+  assert.ok(RECIPES.some((recipe) => recipe.id === slabItem && recipe.output.count === 6));
+  assert.ok(RECIPES.some((recipe) => recipe.id === stairItem && recipe.output.count === 4));
+  const ordinary = directionFixtures.map(([yaw, suffix]) => stairPlacementBlock(north, yaw)
+    === BLOCK[`${family}_stairs_${suffix}`.toUpperCase() as keyof typeof BLOCK]);
+  assert.deepEqual(ordinary, [true, true, true, true], `${family} ordinary stairs rotate through all four camera headings`);
+  const upside = directionFixtures.map(([yaw, suffix]) => stairPlacementBlock(north, yaw, 0, placementTarget)
+    === BLOCK[`${family}_stairs_upside_${suffix}`.toUpperCase() as keyof typeof BLOCK]);
+  assert.deepEqual(upside, [true, true, true, true], `${family} underside stairs preserve every cardinal heading`);
+}
+for (const item of DEEPSLATE_BUILDING_ITEMS) {
+  const block = ITEM_TO_ENGINE[item];
+  assert.equal(typeof block, "number");
+  assert.equal(blockTextureForFace(block!, "north"), item, `${item} uses the installed Minecraft tile`);
+}
 assert.equal(stairShapeAt(BLOCK.OAK_STAIRS_EAST, 0, 0, 0,
   (x, _y, z) => x === 1 && z === 0 ? BLOCK.OAK_STAIRS_NORTH : BLOCK.AIR), "outer_left");
 assert.equal(stairShapeAt(BLOCK.OAK_STAIRS_EAST, 0, 0, 0,
@@ -94,8 +134,13 @@ assert.equal(blockCollisionHeightAt(BLOCK.OAK_STAIRS_UPSIDE_EAST, 0.1, 0.5), 1,
 assert.equal(BLOCK_TYPES[BLOCK.OAK_SLAB], "oak_slab");
 assert.equal(BLOCK_TYPES[BLOCK.BRICK_STAIRS_WEST], "brick_stairs_west");
 assert.ok(BLOCK.NETHER_WART_BLOCK <= REALTIME_BLOCK_ID_MAX);
+assert.equal(BLOCK_TYPES.length, 499, "the append-only shape catalog remains below the 9-bit realtime ceiling");
+assert.ok(BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST <= REALTIME_BLOCK_ID_MAX);
 const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);
 assert.deepEqual(decodeRealtimeChunkEdits(0, 0, encoded), [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);
+const tailEncoded = encodeRealtimeChunkEdits(0, 0, [{x:2,y:20,z:1,block:BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST}]);
+assert.deepEqual(decodeRealtimeChunkEdits(0, 0, tailEncoded), [{x:2,y:20,z:1,block:BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST}],
+  "the highest append-only building state round-trips through Railway chunk persistence");
 
 assert.equal(gameBlockForWorldBlock("stone_brick_stairs_west"), "stone_brick_stairs");
 assert.equal(ITEMS.brick_stairs.placesBlock, "brick_stairs");
@@ -111,5 +156,14 @@ if (placement.ok) {
   assert.equal(placement.effect.nextBlock, "brick_stairs_east");
   assert.equal(placement.effect.inventory[0]?.count, 1);
 }
+const tailInventory = createEmptyInventory();
+tailInventory[0] = {itemId:"deepslate_tile_stairs",count:1};
+const tailPlacement = resolveWorldBlockOperation({
+  operationId:"building-shape-tail-op",kind:"place",x:1,y:20,z:0,expectedBlock:"air",
+  placedBlock:"deepslate_tile_stairs_upside_west",selectedHotbar:0,expectedHeldItem:"deepslate_tile_stairs",
+  expectedInventoryRevision:"2",expectedChunkRevision:"2",
+}, {currentBlock:"air",inventory:tailInventory,inventoryRevision:"2",chunkRevision:"2"});
+assert.equal(tailPlacement.ok, true, "Lakebed and Railway inventory authority accept the highest stair variant");
+if (tailPlacement.ok) assert.equal(tailPlacement.effect.inventory[0], null);
 
 console.log("shared slab/stair geometry, collision, placement, inventory, and wire parity tests passed");

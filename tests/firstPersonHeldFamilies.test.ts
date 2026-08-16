@@ -167,7 +167,7 @@ assert.equal(new Set(["shears", "flint_and_steel", "apple", "stick", "torch"]
 "utility, food, material, and special-item families keep distinct visible hand sockets");
 
 const heldSpriteIds = Object.keys(ITEMS) as ItemId[];
-assert.equal(heldSpriteIds.length, 291, "every selectable item participates in attachment QA, including armor and shaped building blocks");
+assert.equal(heldSpriteIds.length, 321, "every selectable item participates in attachment QA, including armor and shaped building blocks");
 for (const itemId of heldSpriteIds) {
   const presentation = firstPersonSpritePresentation(itemId);
   const [pivotX, pivotY] = presentation.pivotPixels;

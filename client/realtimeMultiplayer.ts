@@ -25,6 +25,12 @@ import {
   realtimeChunkKey,
   realtimeChunkWindow,
 } from "../shared/realtimeWorldChunks.ts";
+import {
+  MOB_AUTHORITY_DEFINITIONS,
+  type MobAuthorityKind,
+  type MobAuthorityState,
+} from "../shared/mobCombat.ts";
+import type { MobMotionBehavior, MobMotionPose } from "../shared/mobMotionAuthority.ts";
 
 export const REALTIME_PROTOCOL_VERSION = 1 as const;
 export const MULTIPLAYER_SERVERS_STORAGE_KEY = "lakecraft:multiplayer-servers:v1";
@@ -38,6 +44,14 @@ export type RealtimeWorldSettings = Readonly<{
 export type RealtimePlayerHit = Readonly<{
   operationId: string; attackerId: string; targetId: string; damage: number; health: number;
   killed: boolean; attackerX: number; attackerZ: number;
+}>;
+export type RealtimeMobHit = Readonly<{
+  operationId: string;
+  attackerId: string;
+  damage: number;
+  killed: boolean;
+  replayed: boolean;
+  state: MobAuthorityState;
 }>;
 export type RealtimeArmorAppearance = Readonly<{
   armorHead: string;
@@ -83,6 +97,8 @@ export type RealtimeClientOptions = {
   onWorldSettings?: (settings: RealtimeWorldSettings) => void;
   onDrops: (drops: NormalizedDroppedItem[]) => void;
   onPlayerHit: (hit: RealtimePlayerHit) => void;
+  onMobSnapshot?: (poses: MobMotionPose[], states: MobAuthorityState[], serverNow: number) => void;
+  onMobHit?: (hit: RealtimeMobHit) => void;
   onSelfHealth: (health: number) => void;
   onInventoryState?: (inventory: PersistedInventoryState) => void;
   onReconcilePose?: (pose: PlayerPose) => void;
@@ -110,6 +126,7 @@ type RemoteAppearance = RealtimeArmorAppearance & {
 
 const APPEARANCE_CAPABILITY = "appearance-v1";
 const WORLD_CHUNKS_CAPABILITY = "world-chunks-v1";
+const MOBS_CAPABILITY = "mobs-v1";
 const DEFAULT_TERRAIN: WorldTerrainDescriptor = Object.freeze({ preset: "default", superflatGroundY: 20 });
 
 function finiteNumber(value: unknown): number | null {
@@ -296,6 +313,54 @@ function decodeInventoryResult(value: unknown): InventoryActionMutationResult | 
   } as InventoryActionMutationResult;
 }
 
+const MOB_KINDS = new Set<MobAuthorityKind>([
+  "pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider",
+]);
+const MOB_BEHAVIORS = new Set<MobMotionBehavior>(["dormant", "idle", "wander", "chase", "fuse"]);
+
+function decodeMobState(value: unknown): MobAuthorityState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const mobId = boundedText(source.mobId, 40);
+  const kind = boundedText(source.kind, 16) as MobAuthorityKind;
+  const definition = MOB_AUTHORITY_DEFINITIONS[kind];
+  const health = finiteNumber(source.health);
+  const maxHealth = finiteNumber(source.maxHealth);
+  const revision = finiteNumber(source.revision);
+  const deadUntil = finiteNumber(source.deadUntil);
+  const lastAttackAt = finiteNumber(source.lastAttackAt);
+  const lastAttackerId = boundedText(source.lastAttackerId, 128);
+  if (!/^(?:pig|cow|sheep|chicken|zombie|skeleton|creeper|spider)-5nb-[0-9a-z]{1,3}$/.test(mobId)
+    || !MOB_KINDS.has(kind) || !definition
+    || health === null || !Number.isInteger(health) || health < 0 || health > definition.maxHealth
+    || maxHealth !== definition.maxHealth
+    || revision === null || !Number.isSafeInteger(revision) || revision < 0
+    || deadUntil === null || !Number.isSafeInteger(deadUntil) || deadUntil < 0
+    || lastAttackAt === null || !Number.isSafeInteger(lastAttackAt) || lastAttackAt < 0
+    || typeof source.sheared !== "boolean" || (source.sheared && kind !== "sheep")) return null;
+  return { mobId, kind, health, maxHealth, revision, sheared: source.sheared,
+    deadUntil, lastAttackAt, lastAttackerId };
+}
+
+function decodeMobPose(value: unknown): MobMotionPose | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const mobId = boundedText(source.mobId, 40);
+  const kind = boundedText(source.kind, 16) as MobAuthorityKind;
+  const x = finiteNumber(source.x); const y = finiteNumber(source.y); const z = finiteNumber(source.z);
+  const yaw = finiteNumber(source.yaw); const fuseProgress = finiteNumber(source.fuseProgress);
+  const fuseStartedTick = finiteNumber(source.fuseStartedTick); const fuseUntilTick = finiteNumber(source.fuseUntilTick);
+  const behavior = boundedText(source.behavior, 16) as MobMotionBehavior;
+  if (!/^(?:pig|cow|sheep|chicken|zombie|skeleton|creeper|spider)-5nb-[0-9a-z]{1,3}$/.test(mobId)
+    || !MOB_KINDS.has(kind) || !MOB_BEHAVIORS.has(behavior)
+    || x === null || y === null || z === null || Math.abs(x) > 1_000_000 || y < -64 || y > 320 || Math.abs(z) > 1_000_000
+    || yaw === null || Math.abs(yaw) > Math.PI * 4 || fuseProgress === null || fuseProgress < 0 || fuseProgress > 1
+    || fuseStartedTick === null || !Number.isSafeInteger(fuseStartedTick) || fuseStartedTick < 0
+    || fuseUntilTick === null || !Number.isSafeInteger(fuseUntilTick) || fuseUntilTick < fuseStartedTick) return null;
+  return { mobId, kind, x, y, z, yaw, behavior, targetUserId: boundedText(source.targetUserId, 128),
+    fuseStartedTick, fuseUntilTick, fuseProgress };
+}
+
 export function normalizeMultiplayerEndpoint(value: string): string | null {
   try {
     const candidate = value.trim();
@@ -419,6 +484,7 @@ export class RealtimeMultiplayerClient {
   private pendingRespawn: PendingRespawn | null = null;
   private appearanceSupported = false;
   private worldChunksSupported = false;
+  private mobsSupported = false;
   private chunkSequence = 0;
   private chunkSubscription = "";
   private chunkRevisions = new Map<string, number>();
@@ -595,6 +661,13 @@ export class RealtimeMultiplayerClient {
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "player_attack", operationId, targetId });
   }
 
+  submitMobAttack(operationId: string, mobId: string): void {
+    if (!this.mobsSupported || !this.joined || this.socket?.readyState !== WebSocket.OPEN
+      || !/^[A-Za-z0-9:_-]{8,96}$/.test(operationId)
+      || !/^(?:pig|cow|sheep|chicken|zombie|skeleton|creeper|spider)-5nb-[0-9a-z]{1,3}$/.test(mobId)) return;
+    this.send({ v: REALTIME_PROTOCOL_VERSION, type: "mob_attack", operationId, mobId });
+  }
+
   submitSelfDamage(operationId: string, damage: number): void {
     if (!this.joined || this.socket?.readyState !== WebSocket.OPEN
       || !/^[A-Za-z0-9:_-]{8,96}$/.test(operationId)
@@ -637,6 +710,7 @@ export class RealtimeMultiplayerClient {
     this.options.onPhase(reconnecting ? "reconnecting" : "connecting");
     this.appearanceSupported = false;
     this.worldChunksSupported = false;
+    this.mobsSupported = false;
     let socket: WebSocket;
     try {
       socket = new WebSocket(endpoint);
@@ -918,6 +992,8 @@ export class RealtimeMultiplayerClient {
         && message.capabilities.includes(APPEARANCE_CAPABILITY);
       this.worldChunksSupported = Array.isArray(message.capabilities)
         && message.capabilities.includes(WORLD_CHUNKS_CAPABILITY);
+      this.mobsSupported = Array.isArray(message.capabilities)
+        && message.capabilities.includes(MOBS_CAPABILITY);
       if (this.appearanceSupported) this.prepareAppearance();
       return;
     }
@@ -1008,7 +1084,21 @@ export class RealtimeMultiplayerClient {
     }
     if (message.type === "world_snapshot") {
       if (this.worldChunksSupported) return;
-      const edits = Array.isArray(message.edits) ? message.edits.map(decodeWorldEdit).filter(Boolean) as RealtimeWorldEdit[] : [];
+      if (!Array.isArray(message.edits) || message.edits.length > 1_000) {
+        this.options.onPhase("error", "Server sent an invalid world snapshot.");
+        this.socket?.close(1002, "Invalid world snapshot");
+        return;
+      }
+      const edits: RealtimeWorldEdit[] = [];
+      for (const candidate of message.edits) {
+        const edit = decodeWorldEdit(candidate);
+        if (!edit) {
+          this.options.onPhase("error", "Server sent an invalid world snapshot.");
+          this.socket?.close(1002, "Invalid world snapshot");
+          return;
+        }
+        edits.push(edit);
+      }
       this.options.onWorldEdits(edits, true);
       this.options.onWorldChunksReady?.();
       return;
@@ -1016,16 +1106,23 @@ export class RealtimeMultiplayerClient {
     if (message.type === "world_chunks") {
       const seq = finiteNumber(message["seq"]);
       if (seq === null || !Number.isSafeInteger(seq) || seq !== this.chunkSequence || !Array.isArray(message["chunks"])) return;
-      for (const candidate of message["chunks"].slice(0, 64)) {
-        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+      const candidates = message["chunks"];
+      let invalidBatch = candidates.length > 64;
+      for (const candidate of candidates.slice(0, 64)) {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) { invalidBatch = true; break; }
         const chunk = candidate as Record<string, unknown>;
         const x = finiteNumber(chunk["x"]), z = finiteNumber(chunk["z"]), revision = finiteNumber(chunk["revision"]);
         if (x === null || z === null || revision === null || !Number.isSafeInteger(x) || !Number.isSafeInteger(z)
-          || !Number.isSafeInteger(revision) || revision < 0 || typeof chunk["data"] !== "string") continue;
+          || !Number.isSafeInteger(revision) || revision < 0 || typeof chunk["data"] !== "string") { invalidBatch = true; break; }
         const edits = decodeRealtimeChunkEdits(x, z, chunk["data"]);
-        if (!edits) continue;
+        if (!edits) { invalidBatch = true; break; }
         this.chunkRevisions.set(realtimeChunkKey(x, z), revision);
         this.options.onWorldChunk?.(x, z, edits as RealtimeWorldEdit[]);
+      }
+      if (invalidBatch) {
+        this.options.onPhase("error", "Server sent an invalid world chunk batch.");
+        this.socket?.close(1002, "Invalid world chunk batch");
+        return;
       }
       if (message["complete"] !== false) this.options.onWorldChunksReady?.();
       return;
@@ -1096,6 +1193,30 @@ export class RealtimeMultiplayerClient {
     }
     if (message.type === "drop_snapshot") {
       this.options.onDrops(Array.isArray(message.drops) ? message.drops.slice(0, 256).map(decodeDrop).filter(Boolean) as NormalizedDroppedItem[] : []);
+      return;
+    }
+    if (message.type === "mob_snapshot") {
+      const serverNow = finiteNumber(message.serverNow);
+      if (serverNow === null || serverNow < 0 || !Array.isArray(message.poses) || !Array.isArray(message.states)
+        || message.poses.length > 64 || message.states.length > 64) return;
+      const poses = message.poses.map(decodeMobPose).filter(Boolean) as MobMotionPose[];
+      const states = message.states.map(decodeMobState).filter(Boolean) as MobAuthorityState[];
+      if (poses.length !== message.poses.length || states.length !== message.states.length) return;
+      const stateIds = new Set(states.map((state) => state.mobId));
+      if (poses.some((pose) => !stateIds.has(pose.mobId))) return;
+      this.options.onMobSnapshot?.(poses, states, serverNow);
+      return;
+    }
+    if (message.type === "mob_hit") {
+      const operationId = boundedText(message.operationId, 96);
+      const attackerId = boundedText(message.attackerId, 128);
+      const damage = finiteNumber(message.damage);
+      const state = decodeMobState(message.state);
+      if (!operationId || !attackerId || damage === null || !Number.isInteger(damage) || damage < 1 || damage > 12
+        || !state || typeof message.killed !== "boolean" || typeof message.replayed !== "boolean"
+        || message.killed !== (state.health === 0)) return;
+      this.options.onMobHit?.({ operationId, attackerId, damage, killed: message.killed,
+        replayed: message.replayed, state });
       return;
     }
     if (message.type === "drop_result") {
@@ -1234,6 +1355,7 @@ export class RealtimeMultiplayerClient {
       }
       if (operationId) {
         if (operationId.startsWith("attack:")) return;
+        if (operationId.startsWith("mob_attack:")) return;
         if (operationId.startsWith("fall:")) {
           this.pendingSelfDamage.delete(operationId);
           return;

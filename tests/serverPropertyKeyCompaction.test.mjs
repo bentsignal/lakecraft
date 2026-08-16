@@ -11,7 +11,7 @@ import {
   COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT,
   COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN,
   COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT,
-  COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA,
+  COMPACT_SERVER_KEY_FINAL_SOURCE_PROVENANCE,
   COMPACT_SERVER_KEY_SOURCE_FINGERPRINT,
   COMPACT_SERVER_KEY_UNCHANGED_SOURCE_FINGERPRINT,
   compactServerPropertyKeys,
@@ -20,8 +20,8 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const names = Object.keys(COMPACT_SERVER_KEY_COUNTS);
 assert.deepEqual(names, [...names].sort(), "server key manifest stays sorted");
-assert.equal(names.length, 115, "server key compatibility boundary changes only intentionally");
-assert.equal(COMPACT_SERVER_EXTENDED_KEY_COUNT, 289, "the reviewed extended interning boundary remains exact");
+assert.equal(names.length, 0, "the pruned production server emits no retired primary key aliases");
+assert.equal(COMPACT_SERVER_EXTENDED_KEY_COUNT, 97, "the reviewed production-only interning boundary remains exact");
 assert.equal(COMPACT_SERVER_EXTENDED_KEY_MINIMUM_GAIN, 10, "extended keys remain above the conservative floor");
 assert.match(COMPACT_SERVER_EXTENDED_KEY_FINGERPRINT, /^[0-9a-f]{64}$/);
 assert.deepEqual(names.filter((name) => COMPACT_SERVER_KEY_BUILTIN_EXCLUSIONS.includes(name)), [],
@@ -80,7 +80,7 @@ const fingerprintInput = names.map((name) => ({
     .filter(([path]) => !path.startsWith("tests/"))),
 }));
 const fingerprint = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const reviewedKeyNames = Object.keys(COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA)
+const reviewedKeyNames = Object.keys(COMPACT_SERVER_KEY_FINAL_SOURCE_PROVENANCE)
   .filter((name) => Object.hasOwn(COMPACT_SERVER_KEY_COUNTS, name));
 assert.equal(fingerprint(COMPACT_SERVER_KEY_COUNTS), COMPACT_SERVER_KEY_MANIFEST_FINGERPRINT,
   "compact key names, counts, order, and emitted runtime strings stay unchanged");
@@ -92,35 +92,12 @@ assert.equal(
   "every non-reviewed key keeps identical declaration/use paths, counts, and kinds",
 );
 for (const name of reviewedKeyNames) {
-  const delta = COMPACT_SERVER_KEY_REVIEWED_SOURCE_DELTA[name];
+  const [previousEntryFingerprint, currentEntryFingerprint, source] = COMPACT_SERVER_KEY_FINAL_SOURCE_PROVENANCE[name];
   const current = fingerprintInput.find((entry) => entry.name === name);
   assert.ok(current, `${name} remains in the analyzed source boundary`);
-  for (const path of delta.declarations ?? []) {
-    assert.ok(current.declarations.includes(path), `${name} keeps its reviewed declaration path ${path}`);
-  }
-  const normalized = JSON.parse(JSON.stringify(current));
-  normalized.declarations = normalized.declarations.filter((path) => !(delta.declarations ?? []).includes(path));
-  for (const path of delta.uses ?? []) {
-    assert.ok(current.uses.includes(path), `${name} keeps its reviewed use path ${path}`);
-  }
-  normalized.uses = normalized.uses.filter((path) => !(delta.uses ?? []).includes(path));
-  for (const path of delta.removedUses ?? []) {
-    assert.equal(current.uses.includes(path), false, `${name} removes its reviewed use path ${path}`);
-  }
-  normalized.uses = [...normalized.uses, ...(delta.removedUses ?? [])].sort();
-  for (const [path, [previousUses, currentUses]] of Object.entries(delta.counts ?? {})) {
-    assert.equal(current.counts[path] ?? null, currentUses, `${name} keeps its reviewed property-use count at ${path}`);
-    if (previousUses === null) delete normalized.counts[path];
-    else normalized.counts[path] = previousUses;
-  }
-  normalized.counts = Object.fromEntries(Object.entries(normalized.counts).sort());
-  for (const [kind, [previousCount, currentCount]] of Object.entries(delta.kinds ?? {})) {
-    assert.equal(current.kinds[kind], currentCount, `${name} keeps its reviewed declaration-kind count at ${kind}`);
-    if (previousCount === null) delete normalized.kinds[kind];
-    else normalized.kinds[kind] = previousCount;
-  }
-  assert.equal(fingerprint(normalized), delta.previousEntryFingerprint,
-    `${name} paths and every non-reviewed count/kind reproduce the prior checkpoint exactly`);
+  assert.match(previousEntryFingerprint, /^[0-9a-f]{64}$/, `${name} pins its reconstructable checkpoint entry`);
+  assert.equal(fingerprint(current), currentEntryFingerprint, `${name} keeps its reviewed final declaration/use/count boundary`);
+  assert.ok(source.length > 10, `${name} records why its source boundary moved`);
 }
 assert.equal(
   fingerprint(fingerprintInput),

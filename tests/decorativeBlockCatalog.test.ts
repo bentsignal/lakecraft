@@ -10,8 +10,10 @@ import {
   ADDITIONAL_COLOR_BLOCK_ITEMS,
   BUILDING_COLORS,
   DECORATIVE_STONE_ITEMS,
+  DEEPSLATE_BUILDING_ITEMS,
   EXPANDED_BLOCK_ITEM_IDS,
   LUMINOUS_BLOCK_ITEMS,
+  STONE_SHAPE_FAMILIES,
 } from "../shared/expandedBuildingCatalog.ts";
 import { ITEMS } from "../shared/game.ts";
 import { BLOCK_TYPES } from "../shared/protocol.ts";
@@ -23,11 +25,17 @@ const additions = [
 ];
 assert.equal(additions.length, 58);
 const secondWave = [...ADDITIONAL_COLOR_BLOCK_ITEMS, ...ADDITIONAL_ARCHITECTURAL_ITEMS];
+const shapeTail = [
+  ...DEEPSLATE_BUILDING_ITEMS,
+  ...STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
+];
 assert.equal(secondWave.length, 66);
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(additions.length + secondWave.length), -secondWave.length), additions,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(additions.length + secondWave.length + shapeTail.length), -(secondWave.length + shapeTail.length)), additions,
   "the first decorative wave retains its append-only IDs");
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-secondWave.length), secondWave,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(secondWave.length + shapeTail.length), -shapeTail.length), secondWave,
   "the second decorative wave is one append-only tail");
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-shapeTail.length), shapeTail,
+  "the complete stone slab/stair expansion is append-only after deployed decorative IDs");
 assert.deepEqual(AGENT_BLOCK_NAMES, BLOCK_TYPES, "browser and agent builders publish the identical numeric palette");
 
 for (const item of additions) {
@@ -64,5 +72,8 @@ for (const texture of ["sea_lantern", "glowstone", "black_concrete", "cyan_stain
 for (const texture of ["orange_wool", "cyan_glazed_terracotta", "oxidized_cut_copper", "amethyst_block", "sculk"]) {
   assert.ok((TEXTURE_ATLAS_NAMES as readonly string[]).includes(texture), `${texture} is packed in the production atlas`);
 }
+for (const texture of DEEPSLATE_BUILDING_ITEMS) {
+  assert.ok((TEXTURE_ATLAS_NAMES as readonly string[]).includes(texture), `${texture} uses its exact installed texture`);
+}
 
-console.log("124 decorative and luminous building blocks share catalog, texture, light, and wire parity");
+console.log("decorative, luminous, and stone-shape building blocks share catalog, texture, light, and wire parity");

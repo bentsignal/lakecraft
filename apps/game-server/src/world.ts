@@ -12,6 +12,7 @@ import { applyAgentBatch, type AgentBatchInput, type AgentBatchResult } from "./
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   APPEARANCE_CAPABILITY,
+  MOBS_CAPABILITY,
   WORLD_CHUNKS_CAPABILITY,
   PROTOCOL_VERSION,
   decodeClientMessage,
@@ -51,6 +52,7 @@ import {
   realtimeChunkKeyForBlock,
   realtimeChunkWindow,
 } from "../../../shared/realtimeWorldChunks.ts";
+import { RailwayMobEcology } from "./mobEcology.ts";
 
 export interface Peer {
   readonly id: string;
@@ -141,10 +143,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   private readonly blockChunkCache = new Map<string, Map<string, number>>();
   private readonly dropOperations = new Map<string, PublicDrop>();
   private readonly playerHitOperations = new Map<string, PlayerHit>();
+  private readonly mobHitOperations = new Map<string, Extract<ServerMessage, { type: "mob_hit" }>>();
   private readonly selfDamageOperations = new Map<string, SelfDamageResult>();
   private lastDropBroadcastAt = Number.NEGATIVE_INFINITY;
   private dropsDirty = false;
   private shuttingDown = false;
+  private readonly mobEcology: RailwayMobEcology;
   readonly terrain: TerrainAuthority;
 
   constructor(
@@ -157,6 +161,18 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       preset: config.worldPreset,
       superflatGroundY: config.superflatGroundY,
     });
+    this.mobEcology = new RailwayMobEcology(
+      config.mobsEnabled ?? (config.defaultGameMode === "survival"),
+      {
+        descriptor: this.terrain.descriptor,
+        height: (x, z) => this.terrain.height(x, z),
+        feetY: (x, z) => this.terrain.feetY(x, z),
+        blockAt: (x, y, z) => this.agentBlockAt(x, y, z),
+      },
+      store,
+      config.spawnX,
+      config.spawnZ,
+    );
     store.initializeAdministration({
       accessMode: config.accessMode ?? "token",
       spawnX: config.spawnX,
@@ -550,7 +566,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       terrain: this.terrain.descriptor,
       defaultGameMode: this.config.defaultGameMode,
       worldSettings: this.worldRuntimeSettings(),
-      capabilities: [APPEARANCE_CAPABILITY, WORLD_CHUNKS_CAPABILITY],
+      capabilities: [APPEARANCE_CAPABILITY, WORLD_CHUNKS_CAPABILITY, MOBS_CAPABILITY],
     });
   }
 
@@ -614,6 +630,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     else if (message.type === "drop_item") this.dropItem(state, message, now);
     else if (message.type === "pickup_item") this.pickupItem(state, message, now);
     else if (message.type === "player_attack") this.playerAttack(state, message, now);
+    else if (message.type === "mob_attack") this.mobAttack(state, message, now);
     else if (message.type === "self_damage") this.selfDamage(state, message, now);
     else if (message.type === "respawn") this.respawn(state, message, now);
     else if (message.type === "appearance_set") await this.setAppearance(state, message, now);
@@ -713,9 +730,23 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
         state.lastSavedAt = now;
       }
     }
+    const mobStepInterval = Math.max(1, Math.round(this.config.tickHz / 10));
+    if (this.tickNumber % mobStepInterval === 0) {
+      const phase = this.worldRuntimeSettings().dayPhase;
+      const targets = [...this.userConnections.values()].flatMap((connection) => {
+        const player = connection.player;
+        return player && player.gameMode === "survival" && (player.health ?? 20) > 0
+          ? [{ userId: player.id, x: player.x, y: player.y, z: player.z, active: true }]
+          : [];
+      });
+      for (const hit of this.mobEcology.tick(targets, phase < 0.2 || phase > 0.8, now)) {
+        this.applyMobContactHit(hit, now);
+      }
+    }
   }
 
   snapshots(now = Date.now()): void {
+    const mobSnapshot = this.mobEcology.snapshot(now);
     for (const state of this.userConnections.values()) {
       if (state.peer.bufferedAmount() > SOFT_BACKPRESSURE) continue;
       const self = state.player!;
@@ -732,11 +763,13 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
         self: { ...self },
         players,
       });
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "mob_snapshot", ...mobSnapshot });
     }
   }
 
   shutdown(): void {
     this.shuttingDown = true;
+    this.mobEcology.persist();
     for (const state of this.userConnections.values()) {
       if (state.player && state.resumeHash && state.resumeExpiresAt !== undefined) {
         this.store.savePlayer(state.player, state.resumeHash, Date.now(), state.resumeExpiresAt);
@@ -1303,6 +1336,116 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     }
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });
     if (targetState !== state) this.send(targetState!.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...hit });
+  }
+
+  private mobAttack(
+    state: ConnectionState,
+    message: Extract<ClientMessage, { type: "mob_attack" }>,
+    now: number,
+  ): void {
+    const attacker = state.player!;
+    const operationKey = `${attacker.id}\u0000${message.operationId}`;
+    const replay = this.mobHitOperations.get(operationKey);
+    if (replay) {
+      this.send(state.peer, { ...replay, replayed: true });
+      return;
+    }
+    const pose = this.mobEcology.pose(message.mobId);
+    if (!pose || attacker.gameMode === "creative" || (attacker.health ?? 20) <= 0
+      || squaredDistance(attacker, pose) > PLAYER_ATTACK_REACH ** 2
+      || !isMeleeFacing(attacker, { ...pose, id: pose.mobId, name: pose.kind, pitch: 0 })) {
+      this.fail(state, "bad_message", "Mob is unavailable or out of melee reach", false, false, message.operationId);
+      return;
+    }
+    if (now - state.lastAttackAt < PLAYER_ATTACK_COOLDOWN_MS) {
+      this.fail(state, "rate_limited", "Mob attack is cooling down", false, true, message.operationId);
+      return;
+    }
+    state.lastAttackAt = now;
+    const damage = heldItemAttackDamage(attacker.heldItem);
+    const result = this.store.applyMobAttack(attacker.id, message.operationId, pose.mobId, pose.kind, damage, now);
+    if (!result.ok) {
+      this.fail(state, result.reason === "cooldown" ? "rate_limited" : "bad_message",
+        `Mob attack rejected: ${result.reason}`, false, result.reason === "cooldown", message.operationId);
+      return;
+    }
+    const hit: Extract<ServerMessage, { type: "mob_hit" }> = {
+      v: PROTOCOL_VERSION,
+      type: "mob_hit",
+      operationId: message.operationId,
+      attackerId: attacker.id,
+      damage,
+      killed: result.killed,
+      replayed: result.replayed,
+      state: result.state,
+    };
+    this.mobHitOperations.set(operationKey, hit);
+    if (this.mobHitOperations.size > 512) this.mobHitOperations.delete(this.mobHitOperations.keys().next().value!);
+    for (const connection of this.userConnections.values()) this.send(connection.peer, hit);
+    if (result.killed && !result.replayed) this.publishMobDrops(attacker.id, message.operationId, pose, result.drops, now);
+  }
+
+  private applyMobContactHit(
+    hit: import("./mobEcology.ts").RailwayMobContactHit,
+    now: number,
+  ): void {
+    const targetState = this.userConnections.get(hit.targetId);
+    const target = targetState?.player;
+    if (!target || target.gameMode === "creative" || (target.health ?? 20) <= 0) return;
+    const damage = Math.min(target.health ?? 20, hit.damage);
+    target.health = Math.max(0, (target.health ?? 20) - damage);
+    if (target.health === 0) {
+      targetState!.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
+      target.vx = target.vy = target.vz = 0;
+      target.crouching = false;
+      target.visualActions = [];
+    }
+    if (targetState!.resumeHash && targetState!.resumeExpiresAt !== undefined) {
+      this.store.savePlayer(target, targetState!.resumeHash, now, targetState!.resumeExpiresAt);
+      targetState!.lastSavedAt = now;
+    }
+    this.send(targetState!.peer, {
+      v: PROTOCOL_VERSION,
+      type: "player_hit",
+      operationId: hit.operationId,
+      attackerId: hit.mobId,
+      targetId: target.id,
+      damage,
+      health: target.health,
+      killed: target.health === 0,
+      attackerX: hit.attackerX,
+      attackerZ: hit.attackerZ,
+    });
+  }
+
+  private publishMobDrops(
+    ownerUserId: string,
+    operationId: string,
+    pose: { x: number; y: number; z: number },
+    rewards: readonly { itemId: string; count: number }[],
+    now: number,
+  ): void {
+    for (let index = 0; index < rewards.length && this.drops.size < 256; index += 1) {
+      const reward = rewards[index];
+      const drop: PublicDrop = {
+        dropId: `drop:${crypto.randomUUID()}`,
+        ownerUserId,
+        itemId: reward.itemId,
+        count: reward.count,
+        x: pose.x + (index - (rewards.length - 1) / 2) * 0.25,
+        y: pose.y + 0.4,
+        z: pose.z,
+        droppedAt: now,
+        ownerPickupAt: now + DROPPED_ITEM_PICKUP_DELAY_MS,
+        expiresAt: now + DROPPED_ITEM_TTL_MS,
+      };
+      this.drops.set(drop.dropId, drop);
+      this.dropVelocityY.set(drop.dropId, 0);
+      this.store.saveDrop(drop, `mob:${operationId}:${index}`.slice(0, 96));
+    }
+    this.lastDropBroadcastAt = now;
+    this.dropsDirty = false;
+    this.broadcastDrops();
   }
 
   private selfDamage(

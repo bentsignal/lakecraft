@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { applyRealtimeChatEvent, type RealtimeChatMessage } from "../client/realtimeChat.ts";
+import { applyRealtimeChatEvent, countUnreadRealtimeChat, type RealtimeChatMessage } from "../client/realtimeChat.ts";
 
 const confirmed = (
   sequence: number,
@@ -45,5 +45,16 @@ assert.deepEqual(state.map(({ operationId }) => operationId), ["chat_other_001",
 
 state = applyRealtimeChatEvent(state, { type: "failed", operationId: "chat_pending_01" });
 assert.equal(state.at(-1)?.delivery, "failed");
+
+state = applyRealtimeChatEvent([], { type: "history", messages: [
+  confirmed(3, "chat_3"), confirmed(1, "chat_1"), confirmed(2, "chat_2"),
+  { ...confirmed(2, "chat_2"), id: "duplicate-wire-id" },
+] });
+assert.deepEqual(state.map(({ sequence }) => sequence), [1, 2, 3],
+  "unordered reconnect history is sorted and duplicate operation receipts collapse");
+
+const fullWindow = Array.from({ length: 80 }, (_, index) => confirmed(index + 21, `chat_window_${index}`));
+assert.equal(countUnreadRealtimeChat(fullWindow, 98), 2,
+  "unread messages remain sequence-based after the bounded 80-row window has already filled");
 
 console.log("realtime chat reducer: ok");

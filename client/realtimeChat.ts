@@ -23,6 +23,13 @@ export function normalizeRealtimeChat(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+export function countUnreadRealtimeChat(
+  messages: readonly RealtimeChatMessage[],
+  lastSeenSequence: number,
+): number {
+  return messages.filter((message) => message.sequence > lastSeenSequence).length;
+}
+
 /** Deterministic projection for optimistic echo, acknowledgement and reconnect history. */
 export function applyRealtimeChatEvent(
   current: readonly RealtimeChatMessage[],
@@ -47,7 +54,15 @@ export function applyRealtimeChatEvent(
     ];
   }
 
-  return [...next]
+  const deduplicated: RealtimeChatMessage[] = [];
+  for (const message of next) {
+    const duplicate = deduplicated.findIndex((candidate) =>
+      candidate.id === message.id || candidate.operationId === message.operationId);
+    if (duplicate < 0) deduplicated.push(message);
+    else if (message.delivery === "sent" || deduplicated[duplicate].delivery !== "sent") deduplicated[duplicate] = message;
+  }
+
+  return deduplicated
     .sort((left, right) => {
       if (left.sequence > 0 && right.sequence > 0) return left.sequence - right.sequence;
       if (left.sequence > 0) return -1;

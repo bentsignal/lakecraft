@@ -132,7 +132,7 @@ assert.equal(incompleteReloaded.status, "corrupt",
 const app = readFileSync(new URL("../client/singleplayer/SinglePlayerApp.tsx", import.meta.url), "utf8");
 const chat = readFileSync(new URL("../client/chat/ChatOverlay.tsx", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta.url), "utf8");
-assert.ok(app.includes("localCommandShortcutDraft(event)"), "the shared layout-safe shortcut owns T, Enter, and slash opening");
+assert.ok(app.includes("localCommandShortcutDraft(event, clientSettingsRef.current.keyBindings)"), "the shared layout-safe shortcut owns the current chat and command bindings");
 assert.ok(app.includes('event.code === "ArrowUp" || event.code === "ArrowDown"'));
 assert.ok(app.includes('surfaceLabel="Local command console"'));
 assert.ok(app.includes('historyLabel="Command history"'));

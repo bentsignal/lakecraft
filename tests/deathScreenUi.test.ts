@@ -27,8 +27,8 @@ assert.ok(gameHud.includes("pauseOpen && !deathScreenOpen"), "pause menu cannot 
 assert.ok(gameHud.includes("inventoryOpen && !deathScreenOpen"), "inventory cannot overlap death UI");
 assert.ok(client.includes("death: deathScreenOpen") && multiplayerGameplay.includes("state.death"),
   "the shared multiplayer pause predicate explicitly includes death UI");
-assert.ok(client.includes("setFirstPersonFeedbackHidden(multiplayerPaused)"),
-  "the shared death-aware predicate still removes the multiplayer WebGL viewmodel");
+assert.ok(client.includes("setFirstPersonFeedbackHidden(multiplayerAuthorityPaused || !worldReady || !hudVisible)"),
+  "death, authority loss, loading, and F1 all remove the multiplayer WebGL viewmodel");
 assert.ok(singlePlayer.includes("pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen"), "single-player removes the WebGL viewmodel under the death UI");
 assert.ok(gameHud.includes("!deathScreenOpen ? <ToastSurface"), "gameplay notifications do not show through the translucent death tint");
 assert.match(gameHud, /<DeathScreen[^>]*respawnError=\{respawnError\}[^>]*respawnStatus=\{respawnStatus\}/, "GameHud forwards both optional feedback channels into the blocking modal");

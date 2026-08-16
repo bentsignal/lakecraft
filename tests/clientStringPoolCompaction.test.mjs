@@ -7,6 +7,7 @@ import {
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH,
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES,
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES,
+  COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA,
   COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES,
   COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND,
   COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES,
@@ -16,9 +17,11 @@ import {
   COMPACT_CLIENT_FIXED_IDENTITY_VALUES,
   COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA,
   COMPACT_CLIENT_FIXED_IDENTITY_SURVIVAL_FEEDBACK_DELTA,
+  COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA,
   COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES,
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA,
   COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA,
   COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA,
   COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA,
@@ -33,6 +36,7 @@ import {
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_VIEWMODEL_RIG_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_GAME_SCREENSHOT_DELTA,
@@ -58,6 +62,7 @@ import {
   COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES,
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
+  COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA,
   COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA,
   COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA,
   COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA,
@@ -165,16 +170,32 @@ for (const lookupName of webglUniformValues) {
 }
 
 const fixedFrequencyTwoValues = [...COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES];
-assert.equal(fixedFrequencyTwoValues.length, 70, "the reviewed long frequency-two pool stays exact");
+assert.equal(fixedFrequencyTwoValues.length, 63, "the reviewed long frequency-two pool stays exact");
 assert.equal(new Set(fixedFrequencyTwoValues).size, COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES, fixedFrequencyTwoValues.length * 2);
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH, "closed compact client bundle");
 assert.equal(
   COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT,
-  "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12",
+  "90c37a81e3829a35c17f402ab15f0ddd0b4d4cd73fee917fd2c2414002c43db1",
   "the exact reviewed occurrence order and kinds change only intentionally",
 );
+assert.deepEqual(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA, {
+  previousOccurrences: 140,
+  previousUniqueValues: 70,
+  previousSourceFingerprint: "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12",
+  occurrenceDelta: -14,
+  uniqueValueDelta: -7,
+  removedValues: ["ControlLeft", "ControlRight", "crispEdges", "grass_side", "grass_top", "mousedown", "oak_log_end"],
+  source: "remappable control bindings and atlas-backed presentation remove obsolete exact-two literals",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA.occurrenceDelta,
+  COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA.uniqueValueDelta,
+  COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES);
 
 const fixedIdentityValues = [...COMPACT_CLIENT_FIXED_IDENTITY_VALUES];
 assert.deepEqual(fixedIdentityValues,
@@ -187,13 +208,25 @@ assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES, 1,
   "creative is already repeated while survival remains the one incremental pool value");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT,
-  "232b8a8f4fe5784bbe9d910ab52110a277ba42dc0d4feab04dcdfd4062a517f3",
+  "19d8ab4b7769370db5ae8aa0140aa805c1dd4558ca753978595c1d153f047a1e",
   "the exact identity occurrence order, syntax kinds, contexts, and values change only intentionally");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.previousOccurrences
   + COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.occurrenceDelta,
 COMPACT_CLIENT_FIXED_IDENTITY_SURVIVAL_FEEDBACK_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SURVIVAL_FEEDBACK_DELTA.previousOccurrences
   + COMPACT_CLIENT_FIXED_IDENTITY_SURVIVAL_FEEDBACK_DELTA.occurrenceDelta,
+COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA.previousOccurrences);
+assert.deepEqual(COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA, {
+  previousOccurrences: 63,
+  previousUniqueValues: 7,
+  previousSourceFingerprint: "232b8a8f4fe5784bbe9d910ab52110a277ba42dc0d4feab04dcdfd4062a517f3",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  valueDeltas: { empty: 1 },
+  source: "authoritative multiplayer snapshot validation adds one explicit empty-state identity branch",
+});
+assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA.occurrenceDelta,
 COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES);
 
 const identityFixture = [
@@ -456,9 +489,30 @@ COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_HUMAN_TERRAIN_PRESET_DELTA.previousUniqueValues
   + COMPACT_CLIENT_HUMAN_TERRAIN_PRESET_DELTA.uniqueValueDelta,
 COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.previousUniqueValues);
-assert.equal(COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.previousOccurrences+COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.occurrenceDelta,COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
-assert.equal(COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.previousUniqueValues+COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.uniqueValueDelta,COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+assert.equal(COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.previousOccurrences+COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.occurrenceDelta,COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.previousUniqueValues+COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.uniqueValueDelta,COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.previousUniqueValues);
 assert.equal(COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA.exclusionChanges,0);
+assert.deepEqual(COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA, {
+  previousOccurrences: 502,
+  previousUniqueValues: 442,
+  previousSourceFingerprint: "8028359dca9b69aec2a81891d95cadfa3249cb8ee31d1145b7c952303f6cddd8",
+  occurrenceDelta: 42,
+  uniqueValueDelta: 37,
+  sources: [
+    "client/components/OptionsDialog.tsx",
+    "client/components/StatusStrip.tsx",
+    "client/gameplay/controlBindings.ts",
+    "client/index.tsx",
+    "client/lobby/LobbyScreen.tsx",
+    "client/realtimeMultiplayer.ts",
+  ],
+  source: "Minecraft-parity controls, HUD/title presentation, authoritative loading, and Railway mob feedback",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
 
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");
@@ -909,10 +963,32 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_REMOTE_TEXTURE_DELTA, {
 });
 assert.equal(COMPACT_CLIENT_REPEATED_REMOTE_TEXTURE_DELTA.previousOccurrences
   + COMPACT_CLIENT_REPEATED_REMOTE_TEXTURE_DELTA.occurrenceDelta,
-COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_REPEATED_REMOTE_TEXTURE_DELTA.previousUniqueValues
   + COMPACT_CLIENT_REPEATED_REMOTE_TEXTURE_DELTA.uniqueValueDelta,
-COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES);
+COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA, {
+  previousOccurrences: 1_183,
+  previousUniqueValues: 112,
+  previousSourceFingerprint: "566cfbf94acd2b7cfd4e25ec023793cf8bd3490f4bce1037636b780be34e1747",
+  occurrenceDelta: 106,
+  uniqueValueDelta: 11,
+  sources: [
+    "client/components/OptionsDialog.tsx",
+    "client/game/audio.ts",
+    "client/game/voxelEngine.ts",
+    "client/gameplay/controlBindings.ts",
+    "client/index.tsx",
+    "client/lobby/TitlePanorama.tsx",
+    "client/realtimeMultiplayer.ts",
+  ],
+  source: "Minecraft-parity controls, sampled-audio categories, title panorama, loading gate, and Railway mob authority",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.occurrenceDelta, COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.uniqueValueDelta, COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA, {
   previousOccurrences: 371,
   previousUniqueValues: 109,
@@ -1178,9 +1254,32 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_THIN_DOOR_LEAVES_DELTA, {
 });
 assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_THIN_DOOR_LEAVES_DELTA.previousOccurrences
   + COMPACT_CLIENT_LOW_FREQUENCY_THIN_DOOR_LEAVES_DELTA.occurrenceDelta,
-COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_THIN_DOOR_LEAVES_DELTA.previousUniqueValues
   + COMPACT_CLIENT_LOW_FREQUENCY_THIN_DOOR_LEAVES_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.previousUniqueValues);
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA, {
+  previousOccurrences: 548,
+  previousUniqueValues: 161,
+  previousSourceFingerprint: "d6db9021f609ad28ec947dd4b5f35a3edb74393f7aa3ba2af155aabe42ac5037",
+  occurrenceDelta: 21,
+  uniqueValueDelta: 6,
+  sources: [
+    "client/components/OptionsDialog.tsx",
+    "client/game/audio.ts",
+    "client/game/voxelEngine.ts",
+    "client/index.tsx",
+    "client/lobby/TitlePanorama.tsx",
+    "client/realtimeMultiplayer.ts",
+  ],
+  source: "low-frequency Minecraft-parity controls, sound categories, panorama, readiness, and mob feedback",
+  exclusionChanges: 0,
+});
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.uniqueValueDelta,
 COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
   previousOccurrences: 1_092, previousUniqueValues: 99,

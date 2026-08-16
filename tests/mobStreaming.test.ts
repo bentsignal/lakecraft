@@ -18,9 +18,9 @@ import { terrainHeight } from "../client/game/terrain.ts";
 
 const seed = 7319;
 const spawnRadius = 22;
-const clearRadius = 20;
-const retainRadius = 28;
-const population = 17;
+const clearRadius = 12;
+const retainRadius = 32;
+const population = 12;
 
 function populationAt(centerX: number, centerZ: number) {
   return createMobSpawns({
@@ -31,8 +31,8 @@ function populationAt(centerX: number, centerZ: number) {
     terrainHeight: () => 6,
     isSpawnable: () => true,
     maxPopulation: population,
-    passivePopulation: 12,
-    hostilePopulation: 5,
+    passivePopulation: 8,
+    hostilePopulation: 4,
     spawnClearRadius: clearRadius,
   });
 }
@@ -49,8 +49,8 @@ for (const spawn of populationAt(804, -396)) {
   const distance = Math.max(Math.abs(spawn.x - 804), Math.abs(spawn.z + 396));
   assert.ok(distance > clearRadius && distance <= spawnRadius, "new homes stay in the off-camera spawn ring");
 }
-assert.equal(origin.filter(({ kind }) => MOB_DEFINITIONS[kind].passive).length, 12);
-assert.equal(origin.filter(({ kind }) => !MOB_DEFINITIONS[kind].passive).length, 5);
+assert.equal(origin.filter(({ kind }) => MOB_DEFINITIONS[kind].passive).length, 8);
+assert.equal(origin.filter(({ kind }) => !MOB_DEFINITIONS[kind].passive).length, 4);
 assert.equal(isLocalMobSpawnOutsideView(4, 4, 0, 4, -20), false, "a spawn directly ahead is rejected");
 assert.equal(isLocalMobSpawnOutsideView(4, 4, 0, 24, 4), true, "a spawn outside the camera cone is eligible");
 assert.equal(isLocalMobSpawnOutsideView(4, 4, Math.PI / 2, 24, 4), false, "view rejection follows yaw");
@@ -219,8 +219,8 @@ for (let chunk = 0; chunk < 2_000; chunk += 1) {
     terrainHeight: (x, z) => terrainHeight(x, z, seed),
     isSpawnable: () => true,
     maxPopulation: population,
-    passivePopulation: 12,
-    hostilePopulation: 5,
+    passivePopulation: 8,
+    hostilePopulation: 4,
     spawnClearRadius: clearRadius,
   });
   minimumTerrainPopulation = Math.min(minimumTerrainPopulation, spawns.length);
@@ -235,6 +235,13 @@ assert.match(streamingWindow, /localMobStreaming && !sharedMobMotionActive/,
 assert.match(engine, /worldCenterX: localMobStreaming \? mobStreamingCenterX : 0/);
 assert.match(engine, /isLocalMobSpawnOutsideView\(pose\.x, pose\.z, pose\.yaw, x, z\)/,
   "streamed replacements cannot appear directly in the current camera cone");
+assert.match(engine, /passivePopulation: clampNumber\(Math\.floor\(radius \/ 3\), 5, 8\)/,
+  "the browser keeps passive wildlife sparse enough for recognizable herds");
+assert.match(engine, /hostilePopulation: clampNumber\(Math\.floor\(radius \/ 6\), 2, 4\)/);
+assert.match(engine, /localMobHabitatRefreshSeconds >= 8/,
+  "habitats are not visibly reshuffled every few seconds");
+assert.match(engine, /surfaceHostilesAllowed && \(attempt & 1\) !== 0/,
+  "daylight retries every hostile candidate into caves while night may use dark surfaces");
 
 console.log(JSON.stringify({
   benchmark: "bounded local mob terrain streaming",

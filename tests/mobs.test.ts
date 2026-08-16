@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import {
   HARD_MAX_MOB_POPULATION,
   MOB_DEFINITIONS,
+  PASSIVE_MOB_HERD_SIZE,
   createMobSimulation,
   createMobSpawns,
   damageMob,
@@ -46,6 +47,14 @@ for (const spawn of spawns) {
   assert.ok(Math.abs(spawn.x) <= spawnOptions.radius && Math.abs(spawn.z) <= spawnOptions.radius);
   assert.ok(Math.max(Math.abs(spawn.x), Math.abs(spawn.z)) > spawnOptions.spawnClearRadius);
   assert.equal(spawn.y, heightAt(spawn.x, spawn.z) + 1);
+}
+const passiveSpawns = spawns.filter((spawn) => MOB_DEFINITIONS[spawn.kind].passive);
+for (let index = 0; index < passiveSpawns.length; index += PASSIVE_MOB_HERD_SIZE) {
+  const herd = passiveSpawns.slice(index, index + PASSIVE_MOB_HERD_SIZE);
+  assert.equal(new Set(herd.map(({ kind }) => kind)).size, 1, "a passive family shares one species");
+  const anchor = herd[0]!;
+  assert.ok(herd.every(({ x, z }) => Math.hypot(x - anchor.x, z - anchor.z) <= 4),
+    "a passive family spawns as a visible herd rather than scattered singles");
 }
 assert.equal(createMobSpawns({ ...spawnOptions, maxPopulation: 0 }).length, 0);
 

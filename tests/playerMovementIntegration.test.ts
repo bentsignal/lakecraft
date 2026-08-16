@@ -8,15 +8,15 @@ const presentation = readFileSync(new URL("../client/gameplay/presentation.ts", 
 assert.ok(engine.includes("sprintControlHeld(sprintControls)"), "either physical Ctrl side requests sprint");
 assert.ok(engine.includes("sprintControlHeld(sprintControls) || forwardSprintTap.active"),
   "Ctrl and Minecraft-style W double tap independently request sprint");
-assert.ok(engine.includes('"ControlLeft", "ControlRight"].includes(event.code)'), "pointer-locked movement prevents browser Ctrl shortcuts");
+assert.ok(engine.includes('["moveForward", "moveBackward", "strafeLeft", "strafeRight", "jump", "sneak", "sprint"].includes(action)'), "pointer-locked remapped movement prevents browser shortcuts");
 const keyDown = engine.slice(engine.indexOf("function onKeyDown"), engine.indexOf("function onKeyUp"));
 const keyUp = engine.slice(engine.indexOf("function onKeyUp"), engine.indexOf("function releaseTransientInput"));
-assert.ok(keyDown.includes("updateSprintControl(sprintControls, event.code as SprintControlCode, true)"),
-  "keydown records the exact physical Ctrl side without toggle heuristics");
+assert.ok(keyDown.includes('updateSprintControl(sprintControls, "ControlLeft", true)'),
+  "keydown records the configured sprint action without toggle heuristics");
 assert.ok(keyDown.includes("transitionForwardSprintTap(forwardSprintTap, performance.now(), true, event.repeat)"),
   "W keydown advances the repeat-safe double-tap state");
-assert.ok(keyUp.includes("updateSprintControl(sprintControls, event.code, false)"),
-  "keyup releases the exact Ctrl side without trusting modifier metadata");
+assert.ok(keyUp.includes('updateSprintControl(sprintControls, "ControlLeft", false)'),
+  "keyup releases the configured sprint action without trusting modifier metadata");
 assert.ok(keyUp.includes("transitionForwardSprintTap(forwardSprintTap, performance.now(), false)"),
   "W keyup arms or releases Minecraft-style double-tap sprint");
 assert.equal(keyUp.includes("event.ctrlKey"), false, "keyup cannot leave sprint latched through inconsistent modifier metadata");

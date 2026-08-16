@@ -1,3 +1,9 @@
+import {
+  DEFAULT_GAMEPLAY_CONTROL_BINDINGS,
+  normalizeGameplayControlBindings,
+  type GameplayControlBindings,
+} from "./gameplay/controlBindings.ts";
+
 export const CLIENT_SETTINGS_STORAGE_KEY = "lakecraft:settings:v1";
 export const LEGACY_AUDIO_MUTED_STORAGE_KEY = "lakecraft:audio-muted:v1";
 
@@ -11,12 +17,20 @@ export const FOV_DEGREES_MAX = 110;
 
 export interface ClientSettings {
   soundMuted: boolean;
+  /** Independent 0..100 mix controls, persisted browser-locally. */
+  masterVolume: number;
+  blocksVolume: number;
+  hostileVolume: number;
+  passiveVolume: number;
+  playersVolume: number;
+  uiVolume: number;
   /** Mouse-look speed as a percentage; 100 preserves Lakecraft's original speed. */
   mouseSensitivity: number;
   /** Client-selected horizontal chunk radius for either gameplay authority. */
   renderDistance: number;
   /** Vertical camera field of view in degrees. */
   fovDegrees: number;
+  keyBindings: GameplayControlBindings;
 }
 
 export interface ClientSettingsStorage {
@@ -26,9 +40,16 @@ export interface ClientSettingsStorage {
 
 export const DEFAULT_CLIENT_SETTINGS: Readonly<ClientSettings> = Object.freeze({
   soundMuted: false,
+  masterVolume: 100,
+  blocksVolume: 100,
+  hostileVolume: 100,
+  passiveVolume: 100,
+  playersVolume: 100,
+  uiVolume: 100,
   mouseSensitivity: 100,
   renderDistance: 6,
   fovDegrees: 90,
+  keyBindings: { ...DEFAULT_GAMEPLAY_CONTROL_BINDINGS },
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,13 +71,25 @@ function normalizeFovDegrees(value: unknown): number {
   return Math.min(FOV_DEGREES_MAX, Math.max(FOV_DEGREES_MIN, Math.round(value)));
 }
 
+function normalizeVolume(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 100;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
 export function normalizeClientSettings(value: unknown): ClientSettings {
   const candidate = isRecord(value) ? value : {};
   return {
     soundMuted: typeof candidate.soundMuted === "boolean" ? candidate.soundMuted : DEFAULT_CLIENT_SETTINGS.soundMuted,
+    masterVolume: normalizeVolume(candidate.masterVolume),
+    blocksVolume: normalizeVolume(candidate.blocksVolume),
+    hostileVolume: normalizeVolume(candidate.hostileVolume),
+    passiveVolume: normalizeVolume(candidate.passiveVolume),
+    playersVolume: normalizeVolume(candidate.playersVolume),
+    uiVolume: normalizeVolume(candidate.uiVolume),
     mouseSensitivity: normalizeSensitivity(candidate.mouseSensitivity),
     renderDistance: normalizeRenderDistance(candidate.renderDistance),
     fovDegrees: normalizeFovDegrees(candidate.fovDegrees),
+    keyBindings: normalizeGameplayControlBindings(candidate.keyBindings),
   };
 }
 
@@ -96,4 +129,15 @@ export function mouseLookScale(mouseSensitivity: unknown): number {
 
 export function fieldOfViewRadians(fovDegrees: unknown): number {
   return normalizeFovDegrees(fovDegrees) * Math.PI / 180;
+}
+
+export function clientAudioLevels(settings: Readonly<ClientSettings>) {
+  return {
+    master: settings.masterVolume / 100,
+    blocks: settings.blocksVolume / 100,
+    hostile: settings.hostileVolume / 100,
+    passive: settings.passiveVolume / 100,
+    players: settings.playersVolume / 100,
+    ui: settings.uiVolume / 100,
+  };
 }

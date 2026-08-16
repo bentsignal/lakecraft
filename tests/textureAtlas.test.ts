@@ -129,8 +129,8 @@ assert.equal(TEXTURE_ATLAS_COLUMNS, 16);
 assert.equal(TEXTURE_ATLAS_ROWS, 16);
 assert.deepEqual(TEXTURE_ATLAS_NAMES.slice(0, BASE_NAMES.length), BASE_NAMES,
   "the deployed tile prefix stays append-only while the creative catalog expands");
-assert.equal(TEXTURE_ATLAS_NAMES.length, 225);
-assert.equal(new Set(TEXTURE_ATLAS_CELLS).size, 225, "every ordinary material owns one cell");
+assert.equal(TEXTURE_ATLAS_NAMES.length, 229);
+assert.equal(new Set(TEXTURE_ATLAS_CELLS).size, 229, "every ordinary material owns one cell");
 assert.deepEqual([CHEST_ATLAS_COLUMN, CHEST_ATLAS_ROW], [12, 12]);
 
 const atlasWidth = TEXTURE_ATLAS_COLUMNS * TEXTURE_TILE_SIZE;
@@ -156,7 +156,7 @@ for (let index = 0; index < TEXTURE_ATLAS_NAMES.length; index += 1) {
   }
   tileFingerprints.add(fnv1a32(tile));
 }
-assert.equal(tileFingerprints.size, 224,
+assert.equal(tileFingerprints.size, 228,
   "the exact installed atlas is distinct except for Minecraft's identical quartz side/top pixels");
 
 assert.equal(new Set(["coal_ore", "iron_ore", "gold_ore", "diamond_ore"]

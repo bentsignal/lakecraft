@@ -75,5 +75,28 @@ socket.receive({type:"world_chunks",seq:1,complete:false,chunks:[]});
 assert.equal(worldReady,0,"an intermediate chunk batch keeps the opaque loading gate in place");
 socket.receive({type:"world_chunks",seq:1,complete:true,chunks:[]});
 assert.equal(worldReady,1,"only the final subscribed chunk batch releases the world loading gate");
+socket.receive({type:"world_chunks",seq:1,complete:true,chunks:[{x:0,z:0,revision:1,data:"not-a-chunk"}]});
+assert.equal(worldReady,1,"a malformed final batch cannot release the authoritative loading gate");
+assert.equal(socket.readyState,3,"a malformed chunk batch closes the connection so a clean subscription can be retried");
 client.stop();
+
+let legacyWorldReady = 0;
+const legacy = new RealtimeMultiplayerClient({
+  endpoint: "wss://legacy.test/ws", serverId: "legacy",
+  demo: { token: "0123456789abcdef", userId: "builder", name: "Builder" },
+  localUserId: "builder", localUsername: "Builder",
+  getPose: () => ({ x: 0.5, y: 69.02, z: 0.5, yaw: 0, pitch: 0 }),
+  onPhase: () => {}, onRemotePlayers: () => {}, onWorldEdits: () => {}, onChatEvent: () => {}, onGameMode: () => {},
+  onWorldChunksReady: () => { legacyWorldReady += 1; }, onDrops: () => {}, onPlayerHit: () => {}, onSelfHealth: () => {},
+});
+legacy.start();
+const legacySocket = FakeWebSocket.instance;
+legacySocket.readyState = FakeWebSocket.OPEN;
+legacySocket.onopen?.();
+legacySocket.receive({ type: "hello", capabilities: [], terrain: { preset: "default", superflatGroundY: 20 } });
+legacySocket.receive({ type: "welcome", resumeToken: "resume", terrain: { preset: "default", superflatGroundY: 20 }, player: {} });
+legacySocket.receive({ type: "world_snapshot", edits: [{ x: 0, y: 69, z: 0, block: "invalid" }] });
+assert.equal(legacyWorldReady, 0, "a malformed legacy snapshot cannot bypass the authoritative loading gate");
+assert.equal(legacySocket.readyState, 3, "a malformed legacy snapshot reconnects instead of revealing partial terrain");
+legacy.stop();
 console.log("realtime terrain handshake: ok");

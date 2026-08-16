@@ -8,6 +8,13 @@ import {
   mobFacingYaw,
 } from "../../shared/mobMotionAuthority.ts";
 import * as BS from "../../shared/bundleStrings.ts";
+import {
+  PASSIVE_MOB_HERD_SIZE,
+  createDeterministicMobSpawnLayout,
+  mobSpawnHash01 as hash01,
+  mobSpawnHashUint as hashUint,
+} from "../../shared/mobSpawnLayout.ts";
+export { PASSIVE_MOB_HERD_SIZE } from "../../shared/mobSpawnLayout.ts";
 
 export type MobKind = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
 export type MobBehavior = "dormant" | "idle" | "wander" | "chase" | "fuse";
@@ -562,16 +569,6 @@ export interface MobRayTarget {
 
 export const MAX_CONTACT_DAMAGE_PER_TICK = 6;
 
-function hashUint(x: number, z: number, seed: number): number {
-  let value = Math.imul(x ^ seed, 0x45d9f3b) ^ Math.imul(z + seed, 0x119de1f3);
-  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
-  return (value ^ (value >>> 16)) >>> 0;
-}
-
-function hash01(x: number, z: number, seed: number): number {
-  return hashUint(x, z, seed) / 4294967296;
-}
-
 function nextRandom(mob: MobState): number {
   let value = mob.randomState | 0;
   value ^= value << 13;
@@ -583,25 +580,6 @@ function nextRandom(mob: MobState): number {
 
 function finiteInteger(value: number, fallback: number): number {
   return Number.isFinite(value) ? Math.floor(value) : fallback;
-}
-
-function passiveKind(index: number, seed: number): MobKind {
-  const offset = hashUint(seed, 71, seed + 19) % 4;
-  const choice = (index + offset) % 4;
-  return choice === 0 ? "pig" : choice === 1 ? "cow" : choice === 2 ? "sheep" : "chicken";
-}
-
-function hostileKind(index: number, seed: number): MobKind {
-  const choice = (index + hashUint(seed, 113, seed + 29) % 4) % 4;
-  return choice === 0 ? "zombie" : choice === 1 ? "skeleton" : choice === 2 ? "creeper" : "spider";
-}
-
-function hasSafeSlope(heightAt: (x: number, z: number) => number, x: number, z: number): boolean {
-  const center = heightAt(x, z);
-  return Math.abs(heightAt(x + 1, z) - center) <= 1
-    && Math.abs(heightAt(x - 1, z) - center) <= 1
-    && Math.abs(heightAt(x, z + 1) - center) <= 1
-    && Math.abs(heightAt(x, z - 1) - center) <= 1;
 }
 
 /** Creates a bounded, stable spawn list from only seed and terrain callbacks. */
@@ -616,62 +594,24 @@ export function createMobSpawns(options: Readonly<MobSpawnOptions>): MobSpawnDes
   const target = Math.min(maxPopulation, passiveTarget + hostileTarget);
   if (target === 0) return [];
 
-  const requestedPopulation = passiveTarget + hostileTarget;
-  const passiveCount = requestedPopulation === 0
-    ? 0
-    : Math.min(passiveTarget, Math.round(target * passiveTarget / requestedPopulation));
-  const radius = Math.max(1, Math.abs(finiteInteger(options.radius, 1)));
-  const centerX = finiteInteger(options.centerX ?? 0, 0);
-  const centerZ = finiteInteger(options.centerZ ?? 0, 0);
-  const clearRadius = clamp(finiteInteger(options.spawnClearRadius ?? 6, 6), 0, radius - 1);
-  const usableRange = Math.max(1, radius - clearRadius);
-  const occupied = new Set<string>();
-  const spawns: MobSpawnDescriptor[] = [];
-  const maxAttempts = Math.max(96, target * 32);
-
-  for (let attempt = 0; attempt < maxAttempts && spawns.length < target; attempt += 1) {
-    const slot = spawns.length;
-    const kind = slot < passiveCount
-      ? passiveKind(slot, options.seed)
-      : hostileKind(slot - passiveCount, options.seed);
-    const angle = hash01(attempt, slot, options.seed + 101) * Math.PI * 2;
-    const distance = clearRadius + 1 + Math.sqrt(hash01(slot, attempt, options.seed + 131)) * (usableRange - 1);
-    const candidateX = centerX + clamp(Math.round(Math.cos(angle) * distance), -radius, radius);
-    const candidateZ = centerZ + clamp(Math.round(Math.sin(angle) * distance), -radius, radius);
-    if (Math.max(Math.abs(candidateX - centerX), Math.abs(candidateZ - centerZ)) <= clearRadius) continue;
-    if (!hasSafeSlope(options.terrainHeight, candidateX, candidateZ)) continue;
-    const surfaceY = options.terrainHeight(candidateX, candidateZ) + 1;
-    const resolved = options.resolveSpawnPosition?.(kind, candidateX, surfaceY, candidateZ, attempt);
-    const x = Math.floor(resolved?.[0] ?? candidateX);
-    const z = Math.floor(resolved?.[2] ?? candidateZ);
-    const resolvedY = resolved?.[1]
-      ?? options.resolveSpawnY?.(kind, x, surfaceY, z, attempt)
-      ?? surfaceY;
-    if (!Number.isFinite(x) || !Number.isFinite(resolvedY) || !Number.isFinite(z)) continue;
-    const y = Math.floor(resolvedY);
-    if (Math.max(Math.abs(x - centerX), Math.abs(z - centerZ)) <= clearRadius) continue;
-    const key = `${x},${z}`;
-    if (occupied.has(key)) continue;
-    if (options.isSpawnable && !options.isSpawnable(kind, x, y, z)) continue;
-    if (!MOB_DEFINITIONS[kind].passive && options.localLight
-      && options.localLight(kind, x, y + MOB_DEFINITIONS[kind].height * 0.75, z)
-        >= LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX) continue;
-
-    const behaviorSeed = hashUint(x, z, options.seed + slot * 97 + 401) || 0x6d2b79f5;
-    spawns.push({
-      id: `${kind}-${(options.seed >>> 0).toString(36)}-${slot.toString(36)}`,
-      kind,
-      x,
-      y,
-      z,
-      yaw: hash01(x, z, options.seed + 211) * Math.PI * 2 - Math.PI,
-      homeX: x,
-      homeZ: z,
-      behaviorSeed,
-    });
-    occupied.add(key);
-  }
-  return spawns;
+  return createDeterministicMobSpawnLayout({
+    seed: options.seed,
+    radius: options.radius,
+    centerX: options.centerX,
+    centerZ: options.centerZ,
+    terrainHeight: options.terrainHeight,
+    maxPopulation,
+    passivePopulation: passiveTarget,
+    hostilePopulation: hostileTarget,
+    spawnClearRadius: options.spawnClearRadius ?? 6,
+    hardMaxPopulation: HARD_MAX_MOB_POPULATION,
+    resolveSpawnPosition: (kind, x, surfaceY, z, attempt) => options.resolveSpawnPosition?.(kind, x, surfaceY, z, attempt)
+      ?? [x, options.resolveSpawnY?.(kind, x, surfaceY, z, attempt) ?? surfaceY, z],
+    isSpawnable: (kind, x, y, z) => (!options.isSpawnable || options.isSpawnable(kind, x, y, z))
+      && (MOB_DEFINITIONS[kind].passive || !options.localLight
+        || options.localLight(kind, x, y + MOB_DEFINITIONS[kind].height * 0.75, z)
+          < LOCAL_MOB_HOSTILE_SPAWN_LIGHT_MAX),
+  }).map((spawn) => ({ ...spawn, homeX: spawn.x, homeZ: spawn.z }));
 }
 
 /**

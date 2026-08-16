@@ -34,6 +34,16 @@ export type GameAudioCue = (typeof GAME_AUDIO_CUES)[number];
 export type GameAudioSurface = "grass" | "stone" | "wood" | "sand" | "gravel" | "metal" | "glass" | "generic";
 export type GameAudioMob = "pig" | "cow" | "sheep" | "chicken" | "zombie" | "skeleton" | "creeper" | "spider";
 export type GameAudioWave = "sine" | "square" | "triangle" | "sawtooth";
+export type GameAudioCategory = "blocks" | "hostile" | "passive" | "players" | "ui";
+
+export interface GameAudioLevels {
+  master: number;
+  blocks: number;
+  hostile: number;
+  passive: number;
+  players: number;
+  ui: number;
+}
 
 export interface GameAudioPlayOptions {
   /** Stable action/world identifier. The same cue and seed produce the same timbre. */
@@ -71,6 +81,7 @@ export interface GameAudio {
   unlock(): Promise<boolean>;
   play(cue: GameAudioCue, options?: GameAudioPlayOptions): boolean;
   setMuted(muted: boolean): void;
+  setLevels(levels: Partial<GameAudioLevels>): void;
   toggleMuted(): boolean;
   isMuted(): boolean;
   isUnlocked(): boolean;
@@ -83,6 +94,7 @@ export interface CreateGameAudioOptions {
   /** Each voice is one cue, even when the cue contains several synthesis layers. */
   maxVoices?: number;
   masterGain?: number;
+  levels?: Partial<GameAudioLevels>;
   /** Test/embedding seam. Returning null installs the safe no-audio behavior. */
   contextFactory?: () => AudioContext | null;
   /** Test/embedding seam. Returning null keeps the procedural fallback. */
@@ -95,6 +107,9 @@ const SAMPLE_RETRY_MS = 30_000;
 const OFFICIAL_SURFACES: GameAudioSurface[] = ["grass", "stone", "wood", "sand", "gravel", "metal", "glass"];
 const OFFICIAL_MOBS: GameAudioMob[] = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"];
 const OFFICIAL_SOUND_BYTES = atob(OFFICIAL_SOUND_HASH_BYTES);
+const DEFAULT_AUDIO_LEVELS: Readonly<GameAudioLevels> = Object.freeze({
+  master: 1, blocks: 1, hostile: 1, passive: 1, players: 1, ui: 1,
+});
 
 const clamp = (value: number, low: number, high: number): number =>
   Number.isFinite(value) ? Math.min(high, Math.max(low, value)) : low;
@@ -128,6 +143,15 @@ export function officialSoundAsset(cue: GameAudioCue, options: GameAudioPlayOpti
 
 export function officialSoundUrl(hash: string): string {
   return `${OFFICIAL_SOUND_BASE}/${hash.slice(0, 2)}/${hash}`;
+}
+
+export function gameAudioCategory(cue: GameAudioCue, options: GameAudioPlayOptions = {}): GameAudioCategory {
+  if (cue.startsWith("ui") || cue === "craft") return "ui";
+  if (cue.startsWith("mob") || cue === "creeperFuse") {
+    return options.mob && ["pig", "cow", "sheep", "chicken"].includes(options.mob) ? "passive" : "hostile";
+  }
+  if (cue === "playerAttack" || cue === "playerHurt" || cue === "pickup") return "players";
+  return "blocks";
 }
 const SURFACES: Record<GameAudioSurface, readonly [number, number, number]> = {
   grass: [950, 0.82, 0.82],
@@ -216,7 +240,9 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
   const contextFactory = options.contextFactory ?? defaultContextFactory;
   const mediaFactory = options.mediaFactory ?? defaultMediaFactory;
   const maxVoices = Math.round(clamp(options.maxVoices ?? DEFAULT_MAX_VOICES, 1, 32));
-  const masterLevel = clamp(options.masterGain ?? 0.62, 0, 1);
+  const levels: GameAudioLevels = { ...DEFAULT_AUDIO_LEVELS, ...options.levels };
+  for (const category of Object.keys(levels) as (keyof GameAudioLevels)[]) levels[category] = clamp(levels[category], 0, 1);
+  let masterLevel = clamp(options.masterGain ?? 0.62, 0, 1) * levels.master;
   let muted = Boolean(options.muted);
   let context: AudioContext | null = null;
   let master: GainNode | null = null;
@@ -225,9 +251,13 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
   let destroyed = false;
   const voices: Voice[] = [];
   const sampleVoices: HTMLAudioElement[] = [];
+  const sampleVoiceMix = new Map<HTMLAudioElement, { category: GameAudioCategory; intensity: number }>();
   const lastSampleAt = new Map<GameAudioCue, number>();
   let sampleUnlocked = false;
   let sampleRetryAt = 0;
+
+  const categoryLevel = (cue: GameAudioCue, playOptions: GameAudioPlayOptions): number =>
+    levels[gameAudioCategory(cue, playOptions)];
 
   const cleanup = (voice: Voice): void => {
     if (voice.cleaned) return;
@@ -251,6 +281,7 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
     const index = sampleVoices.indexOf(media);
     if (index < 0) return;
     sampleVoices.splice(index, 1);
+    sampleVoiceMix.delete(media);
     media.onended = null;
     media.onerror = null;
     if (release) try {
@@ -324,7 +355,9 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
 
   const playProcedural = (cue: GameAudioCue, playOptions: GameAudioPlayOptions = {}): boolean => {
     if (destroyed || muted || !unlocked || !context || context.state !== "running" || !master || !noise) return false;
-    const plan = createGameAudioPlan(cue, playOptions);
+    const mix = categoryLevel(cue, playOptions);
+    if (mix <= 0) return false;
+    const plan = createGameAudioPlan(cue, { ...playOptions, intensity: (playOptions.intensity ?? .72) * mix });
     if (!plan.layers.some((entry) => entry.gain > 0)) return false;
     trimVoices();
 
@@ -403,7 +436,7 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
     const seed = gameAudioSeed(playOptions.seed);
     const intensity = clamp(playOptions.intensity ?? 0.72, 0, 1);
     media.preload = "auto";
-    media.volume = clamp(masterLevel * intensity, 0, 1);
+    media.volume = clamp(masterLevel * categoryLevel(cue, playOptions) * intensity, 0, 1);
     media.playbackRate = 0.9 + seed % 21 / 100;
     let failed = false;
     const fail = (): void => {
@@ -416,6 +449,7 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
     };
     media.onended = () => cleanupSample(media);
     media.onerror = fail;
+    sampleVoiceMix.set(media, { category: gameAudioCategory(cue, playOptions), intensity });
     sampleVoices.push(media);
     lastSampleAt.set(cue, now);
     try {
@@ -436,6 +470,18 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
       if (muted) {
         while (voices.length > 0) stopVoice(voices[voices.length - 1]);
         while (sampleVoices.length > 0) cleanupSample(sampleVoices[sampleVoices.length - 1], true);
+      }
+    },
+    setLevels(nextLevels): void {
+      for (const category of Object.keys(DEFAULT_AUDIO_LEVELS) as (keyof GameAudioLevels)[]) {
+        const value = nextLevels[category];
+        if (value !== undefined) levels[category] = clamp(value, 0, 1);
+      }
+      masterLevel = clamp(options.masterGain ?? 0.62, 0, 1) * levels.master;
+      setMasterLevel();
+      for (const media of sampleVoices) {
+        const mix = sampleVoiceMix.get(media);
+        if (mix) media.volume = clamp(masterLevel * levels[mix.category] * mix.intensity, 0, 1);
       }
     },
     toggleMuted(): boolean {

@@ -597,8 +597,8 @@ assert.ok(compactSinglePlayerSource.includes("const uiModalOpen = worldModalOpen
   "compact stripping removes the development-only Visual Lab blocker cleanly");
 assert.ok(ongoingPause.includes("pointerCaptureNeeded"), "denied capture remains an ongoing engine and fuse pause input");
 assert.ok(
-  ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded]"),
-  "successful capture reruns the ongoing pause effect immediately",
+  ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded, hudVisible]"),
+  "successful capture and F1 viewmodel visibility rerun the ongoing presentation effect immediately",
 );
 assert.match(singlePlayerSource, /setPointerCaptureNeeded\([\s\S]{0,160}!pointerSessionRef\.current\.pauseOpen,[\s\S]{0,20}\);/,
   "the lock-loss callback cannot overwrite capture-needed after opening Game Menu");

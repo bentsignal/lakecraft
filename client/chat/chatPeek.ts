@@ -3,6 +3,7 @@ export interface TimedChatMessage {
 }
 
 export const CHAT_PEEK_FADE_MS = 1_000;
+export const CHAT_PEEK_MAX_AGE_MS = 10_000;
 
 function sentAtMs(message: Readonly<TimedChatMessage>): number {
   if (typeof message.sentAt === "number") return message.sentAt;

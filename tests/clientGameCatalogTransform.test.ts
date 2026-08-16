@@ -16,7 +16,7 @@ const transformed = compactClientGameCatalog(source);
 
 assert.doesNotMatch(transformed, /A living cap over packed earth|A durable diamond helmet|Split one log into four boards|Smelt iron/,
   "reviewed catalog presentation text is hidden inside the encoded payload");
-assert.match(transformed, /new TextDecoder\(\)\.decode\(__lakecraftDecodeStaticBytes\("[^"]+",38954,\d+,true\)\)/,
+assert.match(transformed, /new TextDecoder\(\)\.decode\(__lakecraftDecodeStaticBytes\("[^"]+",49820,\d+,true\)\)/,
   "one bounded UTF-8 payload reconstructs the reviewed catalogs");
 assert.equal((transformed.match(/__lakecraftGameCatalog\[/g) ?? []).length, 12,
   "ten tuple catalogs, base recipes, and smelting recipes each use one table reference");
@@ -42,7 +42,7 @@ assert.throws(
 );
 assert.throws(
   () => compactClientGameCatalog(source.replace('["bricks", "BRK", "▦"],', "")),
-  /BLOCK_ITEM_SPECS expected 224 rows/,
+  /BLOCK_ITEM_SPECS expected 254 rows/,
   "tuple row removal fails before a compact build",
 );
 

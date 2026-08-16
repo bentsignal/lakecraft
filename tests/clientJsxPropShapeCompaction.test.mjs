@@ -9,27 +9,26 @@ import {
   compactClientJsxPropShapes,
 } from "../scripts/client-jsx-prop-shape-compaction.mjs";
 
-assert.equal(Object.keys(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS).length, 14,
-  "the production transform stays limited to the fourteen reviewed generated-JSX shapes");
+assert.equal(Object.keys(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS).length, 13,
+  "the production transform stays limited to the thirteen reviewed generated-JSX shapes");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_INPUT_BOUNDARY, "raw-pre-jsx-v1");
 assert.equal(COMPACT_CLIENT_JSX_PROP_SHAPE_SOURCE_FINGERPRINT,
-  "1e92dc910e06da55c7e701bc382659c08a076c24199b06d59e1df5a5b2fc43c5",
+  "11bea6bb1f579162944011177f5499ffd90c1ca4ed3f4b776abdb9bb3589c153",
   "the production fingerprint is sampled at the raw pre-JSX, pre-string-pool boundary");
 assert.deepEqual(COMPACT_CLIENT_JSX_PROP_SHAPE_COUNTS, {
   "className,aria-hidden": 9,
-  "className,aria-hidden,children": 4,
+  "className,aria-hidden,children": 3,
   "className,aria-label,children": 11,
-  "className,children": 51,
-  "className,d": 4,
+  "className,children": 55,
   "className,id,children": 4,
-  "className,onClick,type,children": 6,
+  "className,onClick,type,children": 7,
   "className,role,aria-label,children": 9,
   "className,role,aria-live,children": 4,
   "className,role,aria-modal,aria-labelledby,children": 5,
   "className,role,children": 12,
   "disabled,onClick,type,children": 1,
   "id,children": 12,
-  "onClick,type,children": 4,
+  "onClick,type,children": 5,
 });
 
 const fixtureManifest = {

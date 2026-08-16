@@ -9,7 +9,7 @@ assert.match(engine, /contactDamageSources\[0\] \?\? projectileDamageSources\[0\
 assert.match(engine, /knockbackReceipts\.has\(eventId\)/);
 assert.match(engine, /stepPlayerKnockbackAxis\(knockbackVelocity\[0\]/);
 assert.match(types, /applyConfirmedMobKnockback\(eventId: string/);
-assert.match(multiplayer, /engineRef\.current\?\.setPaused\(multiplayerPaused\)/);
+assert.match(multiplayer, /engineRef\.current\?\.setPaused\(multiplayerAuthorityPaused \|\| !worldReady\)/);
 assert.match(multiplayer, /<RealtimeMultiplayerTransport/);
 assert.doesNotMatch(multiplayer, /claimMobPlayerDamage|mobWorldAuthority\.damageClaims/,
   "Railway sessions cannot accept Lakebed knockback claims");

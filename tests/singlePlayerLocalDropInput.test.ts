@@ -14,7 +14,7 @@ assert.ok(drop.includes("item: { ...source, count }"), "durability metadata surv
 assert.ok(drop.includes("stack.count === count ? null : { ...stack, count: stack.count - count }"));
 assert.ok(drop.includes("inventoryRef.current = next") && drop.includes("dropsRef.current = [...dropsRef.current, dropped]"));
 
-assert.ok(app.includes('event.code === "KeyQ" && !event.repeat'));
+assert.ok(app.includes('action === "drop" && !event.repeat'), "dropping follows the remappable Drop Item control");
 assert.ok(app.includes("pauseOpen || inventoryOpen || worldModalOpen || deathScreenOpen"));
 assert.ok(app.includes("document.querySelector('[aria-modal=\"true\"]')"), "an already-rendered modal closes the state-effect race");
 assert.ok(app.includes("dropLocalSelected(event.ctrlKey || event.metaKey)"));

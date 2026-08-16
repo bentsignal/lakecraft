@@ -24,6 +24,7 @@ export interface GameplaySessionSurfaceProps {
     pose: Pick<PlayerPose, "x" | "y" | "z">;
     gameMode: "creative" | "survival";
     stats: Pick<VoxelPerformanceStats, "fps"> | null;
+    visible?: boolean;
   };
   ready?: boolean;
   pointerCapture?: {

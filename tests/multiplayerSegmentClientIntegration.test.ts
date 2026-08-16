@@ -17,10 +17,18 @@ assert.doesNotMatch(app, /LAKEBED_COMPACT_RETIRED_PRESENCE_START/,
 assert.doesNotMatch(app, /heartbeatPlayer|publishMotionSegments|multiplayerComposite/,
   "the playable Railway session cannot spend Lakebed quota on world motion");
 assert.match(app, /const multiplayerPaused = multiplayerGameplayPaused\(\{/);
-assert.match(app, /engine\.start\(\);\s*if \(initialWorldChunksReadyRef\.current\) requestAnimationFrame/,
-  "the multiplayer loading gate remains opaque until the engine has painted its first frame");
-assert.match(app, /onWorldChunksReady=\{\(\) => \{\s*initialWorldChunksReadyRef\.current = true;\s*requestAnimationFrame/,
-  "a completed chunk stream also waits for a browser paint before revealing the world");
+assert.match(app, /engine\.setPaused\(true\);\s*engine\.setFirstPersonFeedbackHidden\(true\)/,
+  "the multiplayer engine cannot move or expose its viewmodel while authoritative chunks are loading");
+assert.match(app, /engine\.waitForWorldPresentation\(\)\.then\(\(presented\) => \{/,
+  "the multiplayer loading gate waits for authoritative edits to be meshed into a rendered frame");
+assert.match(app, /onWorldChunksReady=\{\(\) => \{\s*initialWorldChunksReadyRef\.current = true;\s*revealWorldPresentationRef\.current\?\.\(\);/,
+  "a completed chunk stream requests the stronger rendered-presentation gate");
+assert.match(app, /const multiplayerAuthorityPaused = multiplayerPaused \|\| !transportReady/,
+  "a disconnected Railway authority pauses gameplay even after the initial world presentation");
+assert.match(app, /if \(phase !== "online"\) \{\s*initialWorldChunksReadyRef\.current = false;\s*setWorldReady\(false\);/,
+  "reconnects restore the opaque loading gate until a fresh authoritative chunk stream completes");
+assert.match(app, /engineRef\.current\?\.setPaused\(multiplayerAuthorityPaused \|\| !worldReady\)/,
+  "movement remains frozen until authority is online, presentation is ready, and ordinary UI gates are clear");
 assert.match(app, /motionActionSinkRef\.current\?\.\("jump"\)/);
 assert.match(app, /action === "use" \? "use" : "swing"/);
 assert.match(app, /crouching \? "crouch_on" : "crouch_off"/);

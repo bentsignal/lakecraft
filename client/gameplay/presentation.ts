@@ -10,10 +10,11 @@ import type { GameAudio } from "../game/audio.ts";
 import { cycleHotbarIndex } from "../game/hotbarInput.ts";
 import type { VoxelEngineOptions, VoxelPerformanceStats } from "../game/types.ts";
 import { fieldOfViewRadians, mouseLookScale, type ClientSettings } from "../settings.ts";
+import type { GameplayControlBindings } from "./controlBindings.ts";
 import { audioSurfaceForBlock, ENGINE_TO_GAME, ITEM_TO_ENGINE } from "./catalog.ts";
 
 export interface GameplayPresentationContext {
-  getSettings(): Pick<ClientSettings, "fovDegrees" | "mouseSensitivity">;
+  getSettings(): Pick<ClientSettings, "fovDegrees" | "mouseSensitivity" | "keyBindings">;
   getInventory(): Inventory;
   getEquipment(): Equipment;
   getSelectedHotbar(): number;
@@ -31,6 +32,7 @@ export function createGameplayPresentationOptions(context: GameplayPresentationC
   return {
     getMouseLookSensitivity: () => mouseLookScale(context.getSettings().mouseSensitivity),
     getFieldOfViewRadians: () => fieldOfViewRadians(context.getSettings().fovDegrees),
+    getControlBindings: (): GameplayControlBindings => context.getSettings().keyBindings,
     selectedBlock: ITEM_TO_ENGINE[selectedItem() ?? "stick"] ?? 0,
     selectedItem: selectedItem(),
     getMiningDuration: (block) => {
@@ -54,4 +56,3 @@ export function createGameplayPresentationOptions(context: GameplayPresentationC
     onPerformanceStats: context.onPerformanceStats,
   };
 }
-

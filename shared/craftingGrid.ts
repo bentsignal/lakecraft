@@ -1,5 +1,6 @@
 import { ITEMS, RECIPES, createItemStack, maxItemDurability, type ItemId, type ItemQuantity, type ItemStack, type Recipe } from "./game.ts";
 import * as BS from "./bundleStrings.ts";
+import { STONE_SHAPE_FAMILIES } from "./expandedBuildingCatalog.ts";
 
 export type CraftingGridSize = 2 | 3;
 export type CraftingGrid = ReadonlyArray<ItemStack | null>;
@@ -108,6 +109,10 @@ export const INITIAL_RECIPE_PATTERNS: Readonly<Record<string, RecipeShape>> = {
   cobblestone_stairs: { kind: "shaped", pattern: [[C, null, null], [C, C, null], [C, C, C]], allowHorizontalMirror: true },
   stone_brick_stairs: { kind: "shaped", pattern: [[BS.stoneBricks, null, null], [BS.stoneBricks, BS.stoneBricks, null], [BS.stoneBricks, BS.stoneBricks, BS.stoneBricks]], allowHorizontalMirror: true },
   brick_stairs: { kind: "shaped", pattern: [["bricks", null, null], ["bricks", "bricks", null], ["bricks", "bricks", "bricks"]], allowHorizontalMirror: true },
+  ...Object.fromEntries(STONE_SHAPE_FAMILIES.flatMap(([family, source]) => [
+    [`${family}_slab`, { kind: "shaped", pattern: [[source, source, source]] }],
+    [`${family}_stairs`, { kind: "shaped", pattern: [[source, null, null], [source, source, null], [source, source, source]], allowHorizontalMirror: true }],
+  ])),
   furnace: { kind: "shaped", pattern: [[C, C, C], [C, null, C], [C, C, C]] },
   ladder: { kind: "shaped", pattern: [[S, null, S], [S, S, S], [S, null, S]] },
   chest: { kind: "shaped", pattern: [[P, P, P], [P, null, P], [P, P, P]] },

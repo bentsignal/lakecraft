@@ -45,6 +45,7 @@ import { ItemGlyph } from "./ItemGlyph";
 import { PlayerSkinPreview } from "./PlayerSkinPreview.tsx";
 import * as BS from "../../shared/bundleStrings.ts";
 import { itemTooltipAttributes } from "./itemTooltipModel";
+import { gameplayControlCodeLabel } from "../gameplay/controlBindings.ts";
 
 const CATALOG_LABELS = {
   block: "Blocks",
@@ -63,6 +64,7 @@ export type InventoryCraftingDrawerProps = {
   selectedIndex?: number;
   recipes?: readonly Recipe[];
   onClose: (keyboardCode?: "Escape" | "KeyE") => void;
+  closeKeyCode?: string;
   onCrafted: (recipe: Recipe, craftedCount: number) => void;
   onWorkspaceChange: (
     snapshot: StowedInventorySnapshot,
@@ -83,6 +85,7 @@ export function InventoryCraftingDrawer({
   selectedIndex = 0,
   recipes,
   onClose,
+  closeKeyCode = "KeyE",
   onCrafted,
   onWorkspaceChange,
   onWorkspacePreview,
@@ -133,14 +136,14 @@ export function InventoryCraftingDrawer({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== "KeyE" && event.code !== "Escape") return;
+      if (event.code !== closeKeyCode && event.code !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      closeAndStow(event.code);
+      closeAndStow(event.code === "Escape" ? "Escape" : "KeyE");
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [open, authorityEpoch, inventory, equipment, craftingContext, creative, creativeView]);
+  }, [open, authorityEpoch, inventory, equipment, craftingContext, creative, creativeView, closeKeyCode]);
 
   function publish(next: InventoryWorkspace): boolean {
     const stowed = stowInventoryWorkspace(next);
@@ -271,7 +274,7 @@ export function InventoryCraftingDrawer({
         <aside className="lc-drawer lc-inventory-window lc-creative-window" role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
           <div className="lc-inventory-titlebar">
             <h2 id="lc-inventory-title">Creative Inventory</h2>
-            <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
+            <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>{gameplayControlCodeLabel(closeKeyCode)}</kbd></button>
           </div>
           <div className="lc-creative-switch" role="tablist" aria-label="Creative inventory view">
             <button aria-controls="lc-creative-catalog" aria-selected={creativeView === "catalog"} className={creativeView === "catalog" ? "is-active" : ""} onClick={() => setCreativeView("catalog")} role="tab" type="button">Catalog</button>
@@ -392,7 +395,7 @@ export function InventoryCraftingDrawer({
       <aside className={`lc-drawer lc-inventory-window${size === 3 ? " is-crafting-table" : ""}`} role="dialog" aria-modal="true" aria-labelledby="lc-inventory-title">
         <div className="lc-inventory-titlebar">
           <h2 id="lc-inventory-title">{craftingContext === BS.craftingTable ? "Crafting" : "Inventory"}</h2>
-          <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>E</kbd></button>
+          <button className="lc-close" onClick={closeAndStow} type="button" aria-label="Close inventory"><span>Done</span><kbd>{gameplayControlCodeLabel(closeKeyCode)}</kbd></button>
         </div>
 
         <div className="lc-inventory-upper">

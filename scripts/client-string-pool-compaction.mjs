@@ -8,9 +8,26 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 502;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 442;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "8028359dca9b69aec2a81891d95cadfa3249cb8ee31d1145b7c952303f6cddd8";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 544;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "ebec9ae04665f04366f1a2f5b1b92a6150afdc5e7bce9c5925def7c7a0ae0536";
+export const COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA = Object.freeze({
+  previousOccurrences: 502,
+  previousUniqueValues: 442,
+  previousSourceFingerprint: "8028359dca9b69aec2a81891d95cadfa3249cb8ee31d1145b7c952303f6cddd8",
+  occurrenceDelta: 42,
+  uniqueValueDelta: 37,
+  sources: Object.freeze([
+    "client/components/OptionsDialog.tsx",
+    "client/components/StatusStrip.tsx",
+    "client/gameplay/controlBindings.ts",
+    "client/index.tsx",
+    "client/lobby/LobbyScreen.tsx",
+    "client/realtimeMultiplayer.ts",
+  ]),
+  source: "Minecraft-parity controls, HUD/title presentation, authoritative loading, and Railway mob feedback",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA=Object.freeze({
   previousOccurrences:497,previousUniqueValues:438,
   previousSourceFingerprint:"101d5534862451469ee48f47284d4f93ff4de513688b7b9be27c344e9141cb33",
@@ -141,9 +158,27 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_183;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 112;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "566cfbf94acd2b7cfd4e25ec023793cf8bd3490f4bce1037636b780be34e1747";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_289;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 123;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "0488b36abfaba96823a80022e22b07f7bd9db8ade28c97eec3fe1ca230d79212";
+export const COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA = Object.freeze({
+  previousOccurrences: 1_183,
+  previousUniqueValues: 112,
+  previousSourceFingerprint: "566cfbf94acd2b7cfd4e25ec023793cf8bd3490f4bce1037636b780be34e1747",
+  occurrenceDelta: 106,
+  uniqueValueDelta: 11,
+  sources: Object.freeze([
+    "client/components/OptionsDialog.tsx",
+    "client/game/audio.ts",
+    "client/game/voxelEngine.ts",
+    "client/gameplay/controlBindings.ts",
+    "client/index.tsx",
+    "client/lobby/TitlePanorama.tsx",
+    "client/realtimeMultiplayer.ts",
+  ]),
+  source: "Minecraft-parity controls, sampled-audio categories, title panorama, loading gate, and Railway mob authority",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_REPEATED_CREATIVE_PARITY_DELTA = Object.freeze({
   previousOccurrences: 1_026,
   previousUniqueValues: 98,
@@ -460,9 +495,26 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 548;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 161;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "d6db9021f609ad28ec947dd4b5f35a3edb74393f7aa3ba2af155aabe42ac5037";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 569;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 167;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51eb5564c2df42f89f29270f61e81f91de2c34cee42fd9cce7ef57fbca9c0358";
+export const COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA = Object.freeze({
+  previousOccurrences: 548,
+  previousUniqueValues: 161,
+  previousSourceFingerprint: "d6db9021f609ad28ec947dd4b5f35a3edb74393f7aa3ba2af155aabe42ac5037",
+  occurrenceDelta: 21,
+  uniqueValueDelta: 6,
+  sources: Object.freeze([
+    "client/components/OptionsDialog.tsx",
+    "client/game/audio.ts",
+    "client/game/voxelEngine.ts",
+    "client/index.tsx",
+    "client/lobby/TitlePanorama.tsx",
+    "client/realtimeMultiplayer.ts",
+  ]),
+  source: "low-frequency Minecraft-parity controls, sound categories, panorama, readiness, and mob feedback",
+  exclusionChanges: 0,
+});
 export const COMPACT_CLIENT_LOW_FREQUENCY_CREATIVE_PARITY_DELTA = Object.freeze({
   previousOccurrences: 422,
   previousUniqueValues: 124,
@@ -702,27 +754,39 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_MOB_TEXTURE_LIFECYCLE_DELTA = Object.f
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_VALUES = Object.freeze([
-  "$.world.worldId", "ControlLeft", "ControlRight", "alertdialog", "assertive", "beforeunload",
+  "$.world.worldId", "alertdialog", "assertive", "beforeunload",
   "behaviorUntilSeconds", "checksum_mismatch", "chestplate",
   "contextmenu", "craft.lakebed.app", "crafting_table_front", "crafting_table_side", "crafting_table_top",
-  "createdAt", "crispEdges", "deathUntil", "duplicate", "equipment", "expectedBlock",
+  "createdAt", "deathUntil", "duplicate", "equipment", "expectedBlock",
   "expectedChunkRevision", "expectedInventoryRevision", "first_person", "furnace_front",
-  "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds", "grass_side", "grass_top",
+  "furnace_side", "furnace_top", "fuseStartedAtSeconds", "fuseUntilSeconds",
   "ineligible", "invalid_coordinate", "invalid_count", "invalid_equipment", "invalid_grid",
-  "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousedown", "mousemove",
+  "invalid_slot", "invalid_transaction_cleared", "miningHit", "mousemove",
   "multiplayer", "nextContactDamageAtSeconds", "nextRangedAttackAtSeconds",
-  "no_recipe", "noncanonical_envelope", "oak_log_end", "pointerlockerror",
+  "no_recipe", "noncanonical_envelope", "pointerlockerror",
   "raw_chicken", "respawnPoint", "rotten_flesh", "selectedHotbar", "shapeless", "sheep_wool",
   "spiderUntil", "stale_registry", "storage_verify_failed", "storage_write_failed", "sunDamageAt", "targetKind",
   "tnt_bottom", "unsafe_existing_data", "velocityX", "velocityZ", "world-mode", "world-seed", "world-title",
   "world_changed", "world_create_transaction_pending", "world_delete_cleanup_pending",
   "world_delete_transaction_pending",
 ]);
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 140;
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 70;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCES = 126;
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_UNIQUE_VALUES = 63;
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_PATH = "closed compact client bundle";
-export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_SOURCE_FINGERPRINT = "90c37a81e3829a35c17f402ab15f0ddd0b4d4cd73fee917fd2c2414002c43db1";
+export const COMPACT_CLIENT_FIXED_FREQUENCY_TWO_MINECRAFT_PARITY_DELTA = Object.freeze({
+  previousOccurrences: 140,
+  previousUniqueValues: 70,
+  previousSourceFingerprint: "9589bee90a9ec4eb168fac5d95d1ad920f349612250851c9181d34aef4604d12",
+  occurrenceDelta: -14,
+  uniqueValueDelta: -7,
+  removedValues: Object.freeze([
+    "ControlLeft", "ControlRight", "crispEdges", "grass_side", "grass_top", "mousedown", "oak_log_end",
+  ]),
+  source: "remappable control bindings and atlas-backed presentation remove obsolete exact-two literals",
+  exclusionChanges: 0,
+});
 // Gameplay modes and local persistence outcomes form a closed internal
 // identity boundary. Only strict comparison operands and switch cases may
 // enter this pool: JSX/DOM values, object keys, payload strings, and UI copy
@@ -736,7 +800,7 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 64;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
@@ -747,9 +811,9 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   recovered: 3,
   corrupt: 5,
   unsupported: 6,
-  empty: 2,
+  empty: 3,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "232b8a8f4fe5784bbe9d910ab52110a277ba42dc0d4feab04dcdfd4062a517f3";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "19d8ab4b7769370db5ae8aa0140aa805c1dd4558ca753978595c1d153f047a1e";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 68,
   previousUniqueValues: 7,
@@ -765,6 +829,15 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SURVIVAL_FEEDBACK_DELTA = Object.free
   occurrenceDelta: 0,
   uniqueValueDelta: 0,
   source: "Railway inventory authority removes the Lakebed survival-pack reload branch",
+});
+export const COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA = Object.freeze({
+  previousOccurrences: 63,
+  previousUniqueValues: 7,
+  previousSourceFingerprint: "232b8a8f4fe5784bbe9d910ab52110a277ba42dc0d4feab04dcdfd4062a517f3",
+  occurrenceDelta: 1,
+  uniqueValueDelta: 0,
+  valueDeltas: Object.freeze({ empty: 1 }),
+  source: "authoritative multiplayer snapshot validation adds one explicit empty-state identity branch",
 });
 // WebGL uniform names are a closed API boundary between authored shader text
 // and `getUniformLocation`. Keep this semantic category separate from the
