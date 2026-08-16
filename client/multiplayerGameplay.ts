@@ -23,7 +23,6 @@ export function multiplayerGameplayPaused(state: Readonly<MultiplayerGameplayBlo
     chat: state.chat,
     modal: state.furnace || state.chest || state.bed,
     death: state.death,
-    pointerCapture: false,
     mobileUnsupported: state.mobileUnsupported,
   });
 }

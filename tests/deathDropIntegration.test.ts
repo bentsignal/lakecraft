@@ -13,8 +13,11 @@ assert.match(multiplayer, /window\.setInterval\(\(\) => maybePickupNearbyDropped
   "stationary players keep sweeping nearby world items after the short owner delay");
 assert.doesNotMatch(multiplayer, /droppedPickupAttemptRef\.current\.set\([^\n]*POSITIVE_INFINITY/,
   "Q-drops are never permanently blacklisted from pickup in their source browser");
-assert.match(multiplayer, /planDeathDrops\([\s\S]*Promise\.all\(plan\.drops\.map[\s\S]*kind: "death_settle"/,
-  "Railway accepts every conserved carried stack before Lakebed persists the empty pack");
+const settlement = multiplayer.slice(multiplayer.indexOf("function settleRealtimeDeath"),multiplayer.indexOf("function requestRailwayRespawn"));
+assert.match(settlement, /enqueueInventoryAction\(\{ kind: "death_settle", eventId \}\)/,
+  "the browser asks Railway to derive and atomically settle the canonical death pack");
+assert.doesNotMatch(settlement, /planDeathDrops|realtimeDropSinkRef|drop\.stack/,
+  "the multiplayer browser never enumerates or submits client-authored death stacks");
 assert.doesNotMatch(multiplayer, /authorizeRespawn|scheduleAuthorizedRespawn|heartbeatPlayer/,
   "Railway sessions cannot use the retired Lakebed death/presence authority");
 assert.match(singleplayer, /planDeathDrops\([\s\S]*engine\.setDroppedItems\(dropsRef\.current\)/);

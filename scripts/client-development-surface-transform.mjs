@@ -5,7 +5,7 @@ const REVIEWED_DEVELOPMENT_SURFACES = Object.freeze({
   guard: "cfe8bf8b",
   dependency: "55faebb2",
   callback: "ea9612b8",
-  render: "86b20f0f",
+  render: "8f461026",
   benchmark: "12742b65",
 });
 

@@ -90,11 +90,12 @@ for (const path of runtimeFiles) {
 // first-painted-frame loading gate, connected glass, derived stair/door
 // presentation, paired-door Railway commits, expanded thin-block skylight,
 // the decorative catalog, immutable Railway-served texture delivery, canonical
-// HUD/title/control presentation, and shared Railway mob-spawn layout; none
-// adds another Lakebed authority or multiplayer transport.
-assert.equal(runtimeFiles.length, 189, "reviewed main runtime file set changed");
+// HUD/title/control presentation, shared Railway mob-spawn layout, and
+// monotonic Railway inventory/block replay acknowledgements; none adds
+// another Lakebed authority or multiplayer transport.
+assert.equal(runtimeFiles.length, 191, "reviewed main runtime file set changed");
 assert.equal(runtimeHash.digest("hex"),
-  "eaf6f49927c58c0be06122cbbe41a58db51cdb657228e9d0af96889710fe20f1",
+  "a6d4733414c36d858e1aaf408ed4c64ab2f0b86564bce9d879ceebeca9dbede4",
   "runtime sources match the reviewed shared-gameplay authority and presentation boundary");
 
 const clientSource = runtimeFiles.filter((path) => path.startsWith("client/"))

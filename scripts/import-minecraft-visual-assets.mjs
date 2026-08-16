@@ -212,6 +212,7 @@ const BLOCK_PATHS = Object.freeze({
     "budding_amethyst", "tuff", "dripstone_block",
     "copper_block", "exposed_copper", "weathered_copper", "oxidized_copper", "cut_copper",
     "exposed_cut_copper", "weathered_cut_copper", "oxidized_cut_copper", "sculk", "nether_wart_block",
+    "polished_tuff", "tuff_bricks", "resin_bricks",
   ].map((name) => [name, `assets/minecraft/textures/block/${name}.png`])),
   smooth_sandstone: "assets/minecraft/textures/block/sandstone_top.png",
   smooth_red_sandstone: "assets/minecraft/textures/block/red_sandstone_top.png",

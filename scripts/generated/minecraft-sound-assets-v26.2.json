@@ -2,7 +2,7 @@
   "format": "lakecraft.minecraft-sound-assets.v1",
   "minecraftVersion": "26.2",
   "assetIndexId": "32",
-  "assetIndexSha1": "4050401d6e5df16ef17c2d0adea6fd37937badae",
+  "assetIndexSha1": "cf75b185cb35b32e299b0c8e674fa202d7911a3c",
   "soundsJsonSha1": "9ac006d5537ed0fa4a7bcd1eccfc505155847686",
   "resourceBaseUrl": "https://resources.download.minecraft.net",
   "sourceIndexBytes": 586366,
@@ -444,6 +444,36 @@
           "path": "minecraft/sounds/mob/spider/death.ogg",
           "hash": "eec5d186206792d2c650e1dbaa9c8796c56d2ea3",
           "size": 15134
+        }
+      ]
+    },
+    "music:minecraft": {
+      "event": "music.game",
+      "assets": [
+        {
+          "path": "minecraft/sounds/music/game/minecraft.ogg",
+          "hash": "7f7777e5d5b163c5d64201fd53e5682599548a49",
+          "size": 2860084
+        }
+      ]
+    },
+    "music:haggstrom": {
+      "event": "music.game",
+      "assets": [
+        {
+          "path": "minecraft/sounds/music/game/haggstrom.ogg",
+          "hash": "c25705e16f1d51a56a2b0a4604250b3844ceadcf",
+          "size": 2178666
+        }
+      ]
+    },
+    "music:subwoofer_lullaby": {
+      "event": "music.game",
+      "assets": [
+        {
+          "path": "minecraft/sounds/music/game/subwoofer_lullaby.ogg",
+          "hash": "0dbcd56e6d8a931818f0913a0e23f784106d4ad8",
+          "size": 2196234
         }
       ]
     }

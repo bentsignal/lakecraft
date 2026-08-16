@@ -14,6 +14,7 @@ import {
   APPEARANCE_CAPABILITY,
   MOBS_CAPABILITY,
   WORLD_CHUNKS_CAPABILITY,
+  WORLD_CHUNKS_LEGACY_CAPABILITY,
   PROTOCOL_VERSION,
   decodeClientMessage,
   encodeServerMessage,
@@ -46,13 +47,25 @@ import {
   FALL_PLAYER_HALF_WIDTH,
 } from "../../../shared/fallWorldProbe.ts";
 import {
+  REALTIME_LEGACY_BLOCK_ID_MAX,
   encodeRealtimeChunkEdits,
   realtimeChunkCoordinate,
   realtimeChunkKey,
   realtimeChunkKeyForBlock,
   realtimeChunkWindow,
+  type RealtimeChunkCodecVersion,
 } from "../../../shared/realtimeWorldChunks.ts";
 import { RailwayMobEcology } from "./mobEcology.ts";
+import {
+  CREEPER_EXPLOSION_RADIUS,
+  planCreeperBlockDrops,
+  planCreeperTerrainDestruction,
+  resolveCreeperExplosionDamage,
+  sampleCreeperExplosionExposure,
+} from "../../../shared/creeperExplosion.ts";
+import { BLOCK_TYPES, type BlockType } from "../../../shared/protocol.ts";
+import { ITEMS } from "../../../shared/game.ts";
+import type { MobAuthorityKind } from "../../../shared/mobCombat.ts";
 
 export interface Peer {
   readonly id: string;
@@ -97,6 +110,7 @@ interface ConnectionState {
   skinPixels?: string;
   clientPoseAuthority: boolean;
   lastChunkSeq: number;
+  chunkCodecVersion: RealtimeChunkCodecVersion;
   subscribedChunks: Set<string>;
 }
 
@@ -141,10 +155,6 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   private readonly dropVelocityY = new Map<string, number>();
   private readonly settledDrops = new Set<string>();
   private readonly blockChunkCache = new Map<string, Map<string, number>>();
-  private readonly dropOperations = new Map<string, PublicDrop>();
-  private readonly playerHitOperations = new Map<string, PlayerHit>();
-  private readonly mobHitOperations = new Map<string, Extract<ServerMessage, { type: "mob_hit" }>>();
-  private readonly selfDamageOperations = new Map<string, SelfDamageResult>();
   private lastDropBroadcastAt = Number.NEGATIVE_INFINITY;
   private dropsDirty = false;
   private shuttingDown = false;
@@ -276,6 +286,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   private updateCachedBlock(edit: import("./protocol").BlockEdit): void {
     const key = realtimeChunkKeyForBlock(edit.x, edit.z);
     this.blockChunkCache.get(key)?.set(blockKey(edit.x, edit.y, edit.z), edit.block);
+    this.mobEcology.invalidateLighting();
   }
 
   private poseObstructed(x: number, y: number, z: number): boolean {
@@ -553,6 +564,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       appearance: { ...DEFAULT_APPEARANCE },
       clientPoseAuthority: false,
       lastChunkSeq: 0,
+      chunkCodecVersion: 1,
       subscribedChunks: new Set(),
     });
     this.send(peer, {
@@ -566,7 +578,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       terrain: this.terrain.descriptor,
       defaultGameMode: this.config.defaultGameMode,
       worldSettings: this.worldRuntimeSettings(),
-      capabilities: [APPEARANCE_CAPABILITY, WORLD_CHUNKS_CAPABILITY, MOBS_CAPABILITY],
+      capabilities: [APPEARANCE_CAPABILITY, WORLD_CHUNKS_LEGACY_CAPABILITY, WORLD_CHUNKS_CAPABILITY, MOBS_CAPABILITY],
     });
   }
 
@@ -742,11 +754,11 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       for (const hit of this.mobEcology.tick(targets, phase < 0.2 || phase > 0.8, now)) {
         this.applyMobContactHit(hit, now);
       }
+      for (const explosion of this.mobEcology.drainExplosions()) this.applyMobExplosion(explosion, now);
     }
   }
 
   snapshots(now = Date.now()): void {
-    const mobSnapshot = this.mobEcology.snapshot(now);
     for (const state of this.userConnections.values()) {
       if (state.peer.bufferedAmount() > SOFT_BACKPRESSURE) continue;
       const self = state.player!;
@@ -763,6 +775,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
         self: { ...self },
         players,
       });
+      const mobSnapshot = this.mobEcology.snapshot(now, self);
       this.send(state.peer, { v: PROTOCOL_VERSION, type: "mob_snapshot", ...mobSnapshot });
     }
   }
@@ -787,6 +800,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       return;
     }
     state.joining = true;
+    state.chunkCodecVersion = message.capabilities?.includes(WORLD_CHUNKS_CAPABILITY) ? 2 : 1;
     try {
       const suppliedResumeHash = message.resumeToken ? await hashToken(message.resumeToken) : "";
       const resumeRecord = suppliedResumeHash ? this.store.loadPlayerByResumeHash(suppliedResumeHash) : null;
@@ -975,7 +989,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     for (const chunk of target) {
       const stored = this.store.getWorldChunk(chunk.x, chunk.z);
       if (known.get(realtimeChunkKey(chunk.x, chunk.z)) === stored.revision) continue;
-      const data = encodeRealtimeChunkEdits(chunk.x, chunk.z, stored.edits);
+      const data = encodeRealtimeChunkEdits(chunk.x, chunk.z, stored.edits, state.chunkCodecVersion);
       if (batch.length && batchBytes + data.length > CHUNK_BATCH_DATA_LIMIT) flush();
       batch.push({ x: chunk.x, z: chunk.z, revision: stored.revision, data });
       batchBytes += data.length + 48;
@@ -992,6 +1006,7 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     const owner = realtimeChunkKeyForBlock(edit.x, edit.z);
     for (const connection of this.userConnections.values()) {
       if (connection !== author && !connection.subscribedChunks.has(owner)) continue;
+      if (connection.chunkCodecVersion === 1 && edit.block > REALTIME_LEGACY_BLOCK_ID_MAX) continue;
       this.send(connection.peer, {
         v: PROTOCOL_VERSION,
         type: "block_patch",
@@ -1095,13 +1110,68 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     now: number,
   ): void {
     const player = state.player!;
-    const prior = this.store.getBlockOperation(player.id, message.operationId);
+    if (message.requestJson) {
+      const replay = this.store.replayAuthoritativeBlockOperation(
+        player.id,
+        message.operationId,
+        message.requestJson,
+        message.block,
+        player.gameMode ?? this.config.defaultGameMode,
+      );
+      if (replay) {
+        if (!replay.ok) {
+          this.fail(state, "invalid_edit", `Railway rejected block replay (${replay.reason})`, false, false, message.operationId);
+          return;
+        }
+        const current = this.store.currentBlockReplayAck(replay.edit.x, replay.edit.y, replay.edit.z);
+        if (!current) {
+          this.fail(state, "invalid_edit", "Railway could not resolve current block state", false, false, message.operationId);
+          return;
+        }
+        if (state.chunkCodecVersion === 1 && current.block > REALTIME_LEGACY_BLOCK_ID_MAX) {
+          this.fail(state, "invalid_edit", "This block requires the current Lakecraft client", false, false, message.operationId);
+          return;
+        }
+        // A durable retry acknowledges the original operation without replaying
+        // historical world, inventory, or drop state. The current coordinate and
+        // chunk watermark let the requester safely reconcile after later edits.
+        if (player.gameMode !== "creative") {
+          const inventory = this.store.loadPlayerInventory(player.id);
+          if (!inventory) {
+            this.fail(state, "invalid_edit", "Railway could not load current inventory", false, false, message.operationId);
+            return;
+          }
+          this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_state", inventory });
+        }
+        this.send(state.peer, {
+          v: PROTOCOL_VERSION,
+          type: "block_patch",
+          operationId: message.operationId,
+          edit: current,
+        });
+        return;
+      }
+    }
+    if ((player.health ?? 20) <= 0) {
+      this.fail(state,"invalid_edit","Dead players cannot edit the world",false,false,message.operationId);
+      return;
+    }
+    const prior = message.requestJson ? null : this.store.getBlockOperation(player.id, message.operationId);
     if (prior) {
+      const current = this.store.currentBlockReplayAck(prior.x, prior.y, prior.z);
+      if (!current) {
+        this.fail(state, "invalid_edit", "Railway could not resolve current block state", false, false, message.operationId);
+        return;
+      }
+      if (state.chunkCodecVersion === 1 && current.block > REALTIME_LEGACY_BLOCK_ID_MAX) {
+        this.fail(state, "invalid_edit", "This block requires the current Lakecraft client", false, false, message.operationId);
+        return;
+      }
       this.send(state.peer, {
         v: PROTOCOL_VERSION,
         type: "block_patch",
         operationId: message.operationId,
-        edit: prior,
+        edit: current,
       });
       return;
     }
@@ -1113,34 +1183,73 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     // Consume the sequence even when semantic validation below rejects the
     // operation, so the established window cannot be repeatedly rebased.
     state.lastEditSeq = message.seq;
+    // A rolling-deploy v1 client cannot render states added after its deployed
+    // catalog. It must neither create one nor erase/replace a hidden one.
+    if (state.chunkCodecVersion === 1
+      && (message.block > REALTIME_LEGACY_BLOCK_ID_MAX
+        || this.agentBlockAt(message.x, message.y, message.z) > REALTIME_LEGACY_BLOCK_ID_MAX)) {
+      this.fail(
+        state,
+        "invalid_edit",
+        "This block requires the current Lakecraft client",
+        false,
+        false,
+        message.operationId,
+      );
+      return;
+    }
     const center = { x: message.x + 0.5, y: message.y + 0.5, z: message.z + 0.5 };
     if (squaredDistance(player, center) > EDIT_REACH ** 2) {
       this.fail(state, "edit_too_far", "Block edit exceeds server reach", false, false, message.operationId);
       return;
     }
-    const result = this.store.applyBlockEdit(
-      {
-        operationId: message.operationId,
-        x: message.x,
-        y: message.y,
-        z: message.z,
+    if (message.requestJson) {
+      let authorityRequest: { x?: unknown; y?: unknown; z?: unknown; operationId?: unknown };
+      try { authorityRequest = JSON.parse(message.requestJson); } catch {
+        this.fail(state, "invalid_edit", "Block authority request is invalid", false, false, message.operationId);
+        return;
+      }
+      if (authorityRequest.operationId !== message.operationId || authorityRequest.x !== message.x
+        || authorityRequest.y !== message.y || authorityRequest.z !== message.z) {
+        this.fail(state, "invalid_edit", "Block authority request does not match the edit", false, false, message.operationId);
+        return;
+      }
+      const result = this.store.applyAuthoritativeBlockOperation({
+        userId: player.id,
+        requestJson: message.requestJson,
         block: message.block,
-        editorId: player.id,
+        baseBlock: this.terrain.blockAt(message.x, message.y, message.z),
+        gameMode: player.gameMode ?? this.config.defaultGameMode,
         editedAt: now,
-      },
-      this.config.maxPersistedBlocks,
-    );
-    if (!result) {
-      this.fail(state, "world_limit", "This server reached its persisted block limit", false, false, message.operationId);
+        maxUniqueBlocks: this.config.maxPersistedBlocks,
+      });
+      if (!result.ok) {
+        this.fail(state, "invalid_edit", `Railway rejected block authority (${result.reason})`, false, false, message.operationId);
+        return;
+      }
+      this.updateCachedBlock(result.edit);
+      if(player.gameMode!=="creative")this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_state", inventory: result.inventory });
+      this.publishCommittedMiningDrop(player.id, message.operationId, result.drop);
+      this.broadcastBlockPatch(result.edit, state, message.operationId);
       return;
     }
-    this.updateCachedBlock(result.edit);
-    for (const drop of this.drops.values()) {
-      if (Math.floor(drop.x) === result.edit.x && Math.floor(drop.z) === result.edit.z) {
-        this.settledDrops.delete(drop.dropId);
-      }
+    // Deployed v1 tabs can continue reading their filtered world during a
+    // rolling release, but write authority cannot be selected by claiming an
+    // old codec. Refreshing negotiates the atomic request contract.
+    this.fail(state, "invalid_edit", "Refresh Lakecraft to edit this Railway world", false, false, message.operationId);
+  }
+
+  private publishCommittedMiningDrop(ownerUserId: string, operationId: string, planned?: PublicDrop): void {
+    if (!planned) return;
+    const active = this.store.getDropOperation(ownerUserId, `mine:${operationId}`.slice(0,96));
+    if (!active) return;
+    if (!this.drops.has(active.dropId)) {
+      this.drops.set(active.dropId, active);
+      this.dropVelocityY.set(active.dropId, 0);
     }
-    this.broadcastBlockPatch(result.edit, state, message.operationId);
+    this.lastDropBroadcastAt = Date.now();
+    this.dropsDirty = false;
+    this.broadcastDrops();
   }
 
   private inventoryAction(
@@ -1149,16 +1258,47 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     now: number,
   ): void {
     let operationId = "";
+    let kind = "";
     try {
-      const parsed = JSON.parse(message.requestJson) as { operationId?: unknown };
+      const parsed = JSON.parse(message.requestJson) as { operationId?: unknown; kind?: unknown };
       if (typeof parsed.operationId === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(parsed.operationId)) {
         operationId = parsed.operationId;
       }
+      if (parsed.kind === "world_credit") {
+        this.fail(state, "bad_message", "Railway world credits are server-authoritative", false, false, operationId || undefined);
+        return;
+      }
+      if (typeof parsed.kind === "string") kind = parsed.kind;
     } catch {
       // The shared validator below returns the canonical invalid_request result.
     }
     if (!operationId) {
       this.fail(state, "bad_message", "Inventory operation ID is invalid", false, false);
+      return;
+    }
+    if ((state.player!.health ?? 20) <= 0 && kind !== "death_settle") {
+      this.fail(state,"bad_message","Dead players cannot change their pack",false,false,operationId);
+      return;
+    }
+    if (kind === "death_settle") {
+      if ((state.player!.health ?? 20) > 0) {
+        this.fail(state,"bad_message","Only a dead player can settle death drops",false,false,operationId);
+        return;
+      }
+      const settlement = this.store.applyAuthoritativeDeathSettlement(
+        state.player!.id,message.requestJson,
+        {x:state.player!.x,y:state.player!.y,z:state.player!.z},now,
+      );
+      this.send(state.peer,{v:PROTOCOL_VERSION,type:"inventory_result",operationId,result:settlement.result});
+      if (settlement.result.ok) {
+        for (const drop of settlement.activeDrops) if (!this.drops.has(drop.dropId)) {
+          this.drops.set(drop.dropId,drop);
+          this.dropVelocityY.set(drop.dropId,0);
+        }
+        this.lastDropBroadcastAt=now;
+        this.dropsDirty=false;
+        this.broadcastDrops();
+      }
       return;
     }
     const result = this.store.applyPlayerInventoryAction(state.player!.id, message.requestJson, now);
@@ -1205,13 +1345,11 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
   }
 
   private dropItem(state: ConnectionState, message: Extract<ClientMessage, { type: "drop_item" }>, now: number): void {
-    const key = `${state.player!.id}\u0000${message.operationId}`;
-    const replay = this.dropOperations.get(key) ?? this.store.getDropOperation(state.player!.id, message.operationId);
-    if (replay) {
-      this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "drop", drop: replay });
+    if ((state.player!.health ?? 20) <= 0) {
+      this.fail(state,"bad_message","Dead players cannot submit item stacks",false,false,message.operationId);
       return;
     }
-    if (this.drops.size >= 256 || squaredDistance(state.player!, message) > DROP_REACH ** 2) {
+    if (squaredDistance(state.player!, message) > DROP_REACH ** 2) {
       this.fail(state, "bad_message", "Item drop is out of reach or the world drop limit is full", false, false, message.operationId);
       return;
     }
@@ -1228,21 +1366,50 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       ownerPickupAt: now + DROPPED_ITEM_PICKUP_DELAY_MS,
       expiresAt: now + DROPPED_ITEM_TTL_MS,
     };
-    this.drops.set(drop.dropId, drop);
-    this.dropVelocityY.set(drop.dropId, 0);
-    this.store.saveDrop(drop, message.operationId);
-    this.dropOperations.set(key, drop);
-    if (this.dropOperations.size > 512) this.dropOperations.delete(this.dropOperations.keys().next().value!);
-    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "drop", drop });
-    this.lastDropBroadcastAt = now;
-    this.dropsDirty = false;
-    this.broadcastDrops();
+    const committed = this.store.applyAuthoritativeDrop(
+      state.player!.id,
+      message.operationId,
+      message.sourceSlot,
+      { itemId: message.itemId as keyof typeof ITEMS, count: message.count,
+        ...(message.durability === undefined ? {} : { durability: message.durability }) },
+      drop,
+      now,
+      state.player!.gameMode??this.config.defaultGameMode,
+    );
+    if (!committed.ok) {
+      this.fail(state, "bad_message", `Railway rejected item drop (${committed.reason})`, false, false, message.operationId);
+      return;
+    }
+    const activeDrop = this.store.getDropOperation(state.player!.id,message.operationId);
+    if (activeDrop) {
+      this.drops.set(activeDrop.dropId,activeDrop);
+      this.dropVelocityY.set(activeDrop.dropId,0);
+    } else {
+      this.drops.delete(committed.drop.dropId);
+      this.dropVelocityY.delete(committed.drop.dropId);
+      this.settledDrops.delete(committed.drop.dropId);
+    }
+    if(state.player!.gameMode!=="creative")this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_state", inventory: committed.inventory });
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "drop", drop: committed.drop });
+    if (activeDrop) {
+      this.lastDropBroadcastAt = now;
+      this.dropsDirty = false;
+      this.broadcastDrops();
+    }
   }
 
   private pickupItem(state: ConnectionState, message: Extract<ClientMessage, { type: "pickup_item" }>, now: number): void {
     const replay = this.store.getPickupOperation(state.player!.id, message.operationId);
     if (replay) {
-      this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop: replay });
+      const consumed = state.player!.gameMode==="creative"
+        ? this.store.consumeDrop(state.player!.id,message.operationId,message.dropId,now)
+        : this.store.consumeDropIntoInventory(state.player!.id, message.operationId, message.dropId, now);
+      if (!consumed || ("ok" in consumed && !consumed.ok)) {
+        this.fail(state, "bad_message", "Railway rejected item pickup", false, false, message.operationId);
+        return;
+      }
+      if("ok" in consumed)this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_state", inventory: consumed.inventory });
+      this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop: "ok" in consumed?consumed.drop:consumed });
       return;
     }
     const drop = this.drops.get(message.dropId);
@@ -1252,15 +1419,18 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       this.fail(state, "bad_message", "Item is unavailable or out of reach", false, false, message.operationId);
       return;
     }
-    const consumed = this.store.consumeDrop(state.player!.id, message.operationId, drop.dropId, now);
-    if (!consumed) {
-      this.fail(state, "bad_message", "Item was already picked up", false, false, message.operationId);
+    const consumed = state.player!.gameMode==="creative"
+      ? this.store.consumeDrop(state.player!.id,message.operationId,drop.dropId,now)
+      : this.store.consumeDropIntoInventory(state.player!.id, message.operationId, drop.dropId, now);
+    if (!consumed || ("ok" in consumed && !consumed.ok)) {
+      this.fail(state, "bad_message", "Railway rejected item pickup", false, false, message.operationId);
       return;
     }
     this.drops.delete(drop.dropId);
     this.dropVelocityY.delete(drop.dropId);
     this.settledDrops.delete(drop.dropId);
-    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop: consumed });
+    if("ok" in consumed)this.send(state.peer, { v: PROTOCOL_VERSION, type: "inventory_state", inventory: consumed.inventory });
+    this.send(state.peer, { v: PROTOCOL_VERSION, type: "drop_result", operationId: message.operationId, action: "pickup", drop: "ok" in consumed?consumed.drop:consumed });
     this.lastDropBroadcastAt = now;
     this.dropsDirty = false;
     this.broadcastDrops();
@@ -1268,19 +1438,24 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
 
   private respawn(state: ConnectionState, message: Extract<ClientMessage, { type: "respawn" }>, now: number): void {
     const player = state.player!;
-    Object.assign(player, {
-      ...this.safeSpawn(), health: 20,
-    });
+    if((player.health??20)>0 || !state.resumeHash || state.resumeExpiresAt===undefined){
+      this.fail(state,"bad_message","Player cannot respawn before an authoritative settled death",false,false,message.operationId);
+      return;
+    }
+    const next={...player,...this.safeSpawn(),health:20};
+    const committed=this.store.commitPlayerRespawn(next,state.resumeHash,now,state.resumeExpiresAt);
+    if(!committed.ok){
+      this.fail(state,"bad_message",`Player cannot respawn (${committed.reason})`,false,false,message.operationId);
+      return;
+    }
+    Object.assign(player,next);
     player.crouching = false;
     player.visualActions = [];
     state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
     state.vy = 0;
     state.clientPoseAuthority = false;
     state.lastInputAt = now;
-    if (state.resumeHash && state.resumeExpiresAt !== undefined) {
-      this.store.savePlayer(player, state.resumeHash, now, state.resumeExpiresAt);
-      state.lastSavedAt = now;
-    }
+    state.lastSavedAt = now;
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "respawned", operationId: message.operationId, player: { ...player } });
   }
 
@@ -1290,10 +1465,13 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     now: number,
   ): void {
     const attacker = state.player!;
-    const operationKey = `${attacker.id}\u0000${message.operationId}`;
-    const replay = this.playerHitOperations.get(operationKey);
-    if (replay) {
-      this.send(state.peer, { v: PROTOCOL_VERSION, type: "player_hit", ...replay });
+    const durableReplay=this.store.replayAuthoritativePlayerAttack(attacker.id,message.operationId,message.targetId);
+    if(durableReplay){
+      if(!durableReplay.ok){this.fail(state,"bad_message",`Player attack rejected: ${durableReplay.reason}`,false,false,message.operationId);return;}
+      const current=this.userConnections.get(message.targetId)?.player??this.store.loadPlayer(message.targetId)?.player;
+      const health=current?.health??durableReplay.health;
+      this.send(state.peer,{v:PROTOCOL_VERSION,type:"player_hit",operationId:message.operationId,attackerId:attacker.id,
+        targetId:message.targetId,damage:durableReplay.damage,health,killed:health===0,attackerX:attacker.x,attackerZ:attacker.z});
       return;
     }
     const targetState = this.userConnections.get(message.targetId);
@@ -1309,8 +1487,19 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       return;
     }
     state.lastAttackAt = now;
-    const damage = heldItemAttackDamage(attacker.heldItem);
-    const health = Math.max(0, (target.health ?? 20) - damage);
+    const committed=this.store.applyAuthoritativePlayerAttack(attacker.id,message.operationId,target.id,now);
+    if(!committed.ok){
+      this.fail(state,"bad_message",`Player attack rejected: ${committed.reason}`,false,false,message.operationId);
+      return;
+    }
+    if(committed.replayed){
+      const currentHealth=target.health??committed.health;
+      this.send(state.peer,{v:PROTOCOL_VERSION,type:"player_hit",operationId:message.operationId,
+        attackerId:attacker.id,targetId:target.id,damage:committed.damage,health:currentHealth,killed:currentHealth===0,
+        attackerX:attacker.x,attackerZ:attacker.z});
+      return;
+    }
+    const {damage,health}=committed;
     target.health = health;
     const hit: PlayerHit = {
       operationId: message.operationId,
@@ -1322,12 +1511,8 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       attackerX: attacker.x,
       attackerZ: attacker.z,
     };
-    this.playerHitOperations.set(operationKey, hit);
-    if (this.playerHitOperations.size > 512) this.playerHitOperations.delete(this.playerHitOperations.keys().next().value!);
-    if (targetState?.resumeHash && targetState.resumeExpiresAt !== undefined) {
-      this.store.savePlayer(target, targetState.resumeHash, now, targetState.resumeExpiresAt);
-      targetState.lastSavedAt = now;
-    }
+    if(attacker.gameMode!=="creative")this.send(state.peer,{v:PROTOCOL_VERSION,type:"inventory_state",inventory:committed.attackerInventory});
+    if(target.gameMode!=="creative")this.send(targetState!.peer,{v:PROTOCOL_VERSION,type:"inventory_state",inventory:committed.targetInventory});
     if (hit.killed && targetState) {
       targetState.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
       target.vx = target.vy = target.vz = 0;
@@ -1344,10 +1529,13 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     now: number,
   ): void {
     const attacker = state.player!;
-    const operationKey = `${attacker.id}\u0000${message.operationId}`;
-    const replay = this.mobHitOperations.get(operationKey);
-    if (replay) {
-      this.send(state.peer, { ...replay, replayed: true });
+    const requestedKind=message.mobId.split("-",1)[0] as MobAuthorityKind;
+    const durableReplay=this.store.replayMobAttack(attacker.id,message.operationId,message.mobId,requestedKind);
+    if(durableReplay){
+      if(!durableReplay.ok){this.fail(state,"bad_message",`Mob attack rejected: ${durableReplay.reason}`,false,false,message.operationId);return;}
+      const current=this.store.mobAuthorityState(message.mobId,requestedKind,now);
+      this.send(state.peer,{v:PROTOCOL_VERSION,type:"mob_hit",operationId:message.operationId,attackerId:attacker.id,
+        damage:durableReplay.damage,killed:current.health===0,replayed:true,state:current});
       return;
     }
     const pose = this.mobEcology.pose(message.mobId);
@@ -1362,11 +1550,16 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       return;
     }
     state.lastAttackAt = now;
-    const damage = heldItemAttackDamage(attacker.heldItem);
-    const result = this.store.applyMobAttack(attacker.id, message.operationId, pose.mobId, pose.kind, damage, now);
+    const result = this.store.applyMobAttack(attacker.id, message.operationId, pose.mobId, pose.kind, now);
     if (!result.ok) {
       this.fail(state, result.reason === "cooldown" ? "rate_limited" : "bad_message",
         `Mob attack rejected: ${result.reason}`, false, result.reason === "cooldown", message.operationId);
+      return;
+    }
+    if(result.replayed){
+      const current=this.store.mobAuthorityState(pose.mobId,pose.kind,now);
+      this.send(state.peer,{v:PROTOCOL_VERSION,type:"mob_hit",operationId:message.operationId,attackerId:attacker.id,
+        damage:result.damage,killed:current.health===0,replayed:true,state:current});
       return;
     }
     const hit: Extract<ServerMessage, { type: "mob_hit" }> = {
@@ -1374,13 +1567,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       type: "mob_hit",
       operationId: message.operationId,
       attackerId: attacker.id,
-      damage,
+      damage:result.damage,
       killed: result.killed,
       replayed: result.replayed,
       state: result.state,
     };
-    this.mobHitOperations.set(operationKey, hit);
-    if (this.mobHitOperations.size > 512) this.mobHitOperations.delete(this.mobHitOperations.keys().next().value!);
+    if(attacker.gameMode!=="creative")this.send(state.peer,{v:PROTOCOL_VERSION,type:"inventory_state",inventory:result.inventory});
     for (const connection of this.userConnections.values()) this.send(connection.peer, hit);
     if (result.killed && !result.replayed) this.publishMobDrops(attacker.id, message.operationId, pose, result.drops, now);
   }
@@ -1392,18 +1584,18 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     const targetState = this.userConnections.get(hit.targetId);
     const target = targetState?.player;
     if (!target || target.gameMode === "creative" || (target.health ?? 20) <= 0) return;
-    const damage = Math.min(target.health ?? 20, hit.damage);
-    target.health = Math.max(0, (target.health ?? 20) - damage);
+    const committed=this.store.applyAuthoritativePlayerDamage(target.id,hit.operationId,`mob:${hit.mobId}`,hit.damage,true,now);
+    if(!committed.ok)return;
+    if(committed.replayed)return;
+    const {damage}=committed;
+    target.health = committed.health;
     if (target.health === 0) {
       targetState!.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
       target.vx = target.vy = target.vz = 0;
       target.crouching = false;
       target.visualActions = [];
     }
-    if (targetState!.resumeHash && targetState!.resumeExpiresAt !== undefined) {
-      this.store.savePlayer(target, targetState!.resumeHash, now, targetState!.resumeExpiresAt);
-      targetState!.lastSavedAt = now;
-    }
+    this.send(targetState!.peer,{v:PROTOCOL_VERSION,type:"inventory_state",inventory:committed.inventory});
     this.send(targetState!.peer, {
       v: PROTOCOL_VERSION,
       type: "player_hit",
@@ -1416,6 +1608,102 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       attackerX: hit.attackerX,
       attackerZ: hit.attackerZ,
     });
+  }
+
+  private applyMobExplosion(
+    explosion: import("./mobEcology.ts").RailwayMobExplosion,
+    now: number,
+  ): void {
+    const authority = { center: explosion.center, radius: CREEPER_EXPLOSION_RADIUS };
+    const destruction = planCreeperTerrainDestruction(authority, (cell) =>
+      (BLOCK_TYPES[this.agentBlockAt(cell.x, cell.y, cell.z)] ?? "air") as BlockType);
+    const playerDamage = [...this.userConnections.values()].flatMap((targetState) => {
+      const target = targetState.player;
+      if (!target || target.gameMode === "creative" || (target.health ?? 20) <= 0) return [];
+      const exposure = sampleCreeperExplosionExposure(authority, target, (cell) =>
+        (BLOCK_TYPES[this.agentBlockAt(cell.x, cell.y, cell.z)] ?? "air") as BlockType);
+      const damage = Math.min(target.health ?? 20, resolveCreeperExplosionDamage(authority, target, exposure));
+      return damage > 0 ? [{ targetState, target, damage }] : [];
+    });
+    const plannedRewards = planCreeperBlockDrops(explosion.eventId, destruction);
+    const explosionDrops: PublicDrop[] = plannedRewards
+      .slice(0, Math.max(0, 256 - this.drops.size))
+      .map((reward, index) => ({
+        dropId: `drop:creeper:${explosion.eventId}:${index}`.slice(0, 96),
+        ownerUserId: explosion.mobId,
+        itemId: reward.itemId,
+        count: reward.count,
+        x: explosion.center.x + (index - (plannedRewards.length - 1) / 2) * 0.25,
+        y: explosion.center.y + 0.4,
+        z: explosion.center.z,
+        droppedAt: now,
+        ownerPickupAt: now + DROPPED_ITEM_PICKUP_DELAY_MS,
+        expiresAt: now + DROPPED_ITEM_TTL_MS,
+      }));
+    const fingerprint = JSON.stringify([
+      explosion.mobId,
+      explosion.epoch,
+      explosion.fuseStartedTick,
+      explosion.explosionTick,
+      destruction.map((cell) => [cell.x, cell.y, cell.z, cell.previousBlock]),
+    ]);
+    const commit = this.store.applyMobExplosion({
+      eventId: explosion.eventId,
+      fingerprint,
+      mobId: explosion.mobId,
+      edits: destruction.map((cell) => ({ x: cell.x, y: cell.y, z: cell.z, block: 0 })),
+      playerDamage: playerDamage.map(({ target, damage }) => ({ userId: target.id, damage })),
+      drops: explosionDrops,
+      editedAt: now,
+      maxUniqueBlocks: this.config.maxPersistedBlocks,
+    });
+    if (commit.ok && !commit.replayed) {
+      for (const edit of commit.edits) {
+        this.updateCachedBlock(edit);
+        this.broadcastBlockPatch(edit);
+      }
+      for (const drop of commit.drops) {
+        this.drops.set(drop.dropId, drop);
+        this.dropVelocityY.set(drop.dropId, 0);
+      }
+      if (commit.drops.length) {
+        this.lastDropBroadcastAt = now;
+        this.dropsDirty = false;
+        this.broadcastDrops();
+      }
+    }
+
+    if (commit.ok && !commit.replayed) for (const applied of commit.playerDamage) {
+      const targetState = this.userConnections.get(applied.userId);
+      const target = targetState?.player;
+      if (!targetState || !target) continue;
+      target.health = applied.health;
+      if (applied.killed) {
+        targetState.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
+        target.vx = target.vy = target.vz = 0;
+        target.crouching = false;
+        target.visualActions = [];
+      }
+      if (targetState.resumeHash && targetState.resumeExpiresAt !== undefined) {
+        this.store.savePlayer(target, targetState.resumeHash, now, targetState.resumeExpiresAt);
+        targetState.lastSavedAt = now;
+      }
+      const inventory=this.store.loadPlayerInventory(target.id);
+      if(inventory&&target.gameMode!=="creative")this.send(targetState.peer,{v:PROTOCOL_VERSION,type:"inventory_state",inventory});
+      this.send(targetState.peer, {
+        v: PROTOCOL_VERSION,
+        type: "player_hit",
+        operationId: `creeper:${explosion.eventId}:${target.id}`.slice(0, 96),
+        attackerId: explosion.mobId,
+        targetId: target.id,
+        damage: applied.damage,
+        health: applied.health,
+        killed: applied.killed,
+        attackerX: explosion.center.x,
+        attackerZ: explosion.center.z,
+      });
+    }
+    this.mobEcology.acknowledgeExplosion(explosion.mobId, now);
   }
 
   private publishMobDrops(
@@ -1454,10 +1742,12 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
     now: number,
   ): void {
     const player = state.player!;
-    const operationKey = `${player.id}\u0000${message.operationId}`;
-    const replay = this.selfDamageOperations.get(operationKey);
-    if (replay) {
-      this.send(state.peer, { v: PROTOCOL_VERSION, type: "self_damage_result", ...replay });
+    const durableReplay=this.store.replayAuthoritativePlayerDamage(player.id,message.operationId,"fall",message.damage,false);
+    if(durableReplay){
+      if(!durableReplay.ok){this.fail(state,"bad_message",`Fall damage rejected: ${durableReplay.reason}`,false,false,message.operationId);return;}
+      const health=player.health??durableReplay.health;
+      this.send(state.peer,{v:PROTOCOL_VERSION,type:"self_damage_result",operationId:message.operationId,
+        damage:durableReplay.damage,health,killed:health===0,cause:"fall"});
       return;
     }
     if (player.gameMode === "creative" || (player.health ?? 20) <= 0) {
@@ -1469,8 +1759,15 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       return;
     }
     state.lastSelfDamageAt = now;
-    const damage = Math.min(player.health ?? 20, message.damage);
-    const health = Math.max(0, (player.health ?? 20) - damage);
+    const committed=this.store.applyAuthoritativePlayerDamage(player.id,message.operationId,"fall",message.damage,false,now);
+    if(!committed.ok){this.fail(state,"bad_message",`Fall damage rejected: ${committed.reason}`,false,false,message.operationId);return;}
+    if(committed.replayed){
+      const currentHealth=player.health??committed.health;
+      this.send(state.peer,{v:PROTOCOL_VERSION,type:"self_damage_result",operationId:message.operationId,
+        damage:committed.damage,health:currentHealth,killed:currentHealth===0,cause:"fall"});
+      return;
+    }
+    const {damage,health}=committed;
     player.health = health;
     const result: SelfDamageResult = {
       operationId: message.operationId,
@@ -1479,18 +1776,13 @@ export class GameWorld implements AdminWorldControl, AgentBuilderWorld {
       killed: health === 0,
       cause: "fall",
     };
-    this.selfDamageOperations.set(operationKey, result);
-    if (this.selfDamageOperations.size > 512) this.selfDamageOperations.delete(this.selfDamageOperations.keys().next().value!);
     if (result.killed) {
       state.controls = { moveX: 0, moveY: 0, moveZ: 0, jump: false, sprint: false };
       player.vx = player.vy = player.vz = 0;
       player.crouching = false;
       player.visualActions = [];
     }
-    if (state.resumeHash && state.resumeExpiresAt !== undefined) {
-      this.store.savePlayer(player, state.resumeHash, now, state.resumeExpiresAt);
-      state.lastSavedAt = now;
-    }
+    state.lastSavedAt=now;
     this.send(state.peer, { v: PROTOCOL_VERSION, type: "self_damage_result", ...result });
   }
 
@@ -1587,16 +1879,4 @@ async function hashSkinPixels(base64: string): Promise<string> {
   const pixels = Buffer.from(base64, "base64");
   const bytes = await crypto.subtle.digest("SHA-256", pixels);
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function heldItemAttackDamage(itemId: string | undefined): number {
-  if (!itemId) return 1;
-  const tier = itemId.startsWith("diamond_") ? 3
-    : itemId.startsWith("iron_") ? 2
-      : itemId.startsWith("stone_") ? 1 : 0;
-  if (itemId.endsWith("_sword")) return 4 + tier;
-  if (itemId.endsWith("_axe")) return 3 + tier;
-  if (itemId.endsWith("_pickaxe")) return 2 + tier;
-  if (itemId.endsWith("_shovel")) return 1 + tier;
-  return 1;
 }

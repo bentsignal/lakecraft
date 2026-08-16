@@ -6,6 +6,8 @@ import { BLOCK } from "../client/game/types.ts";
 import {
   TERRAIN_FRAGMENT_SHADER,
   TERRAIN_VERTEX_SHADER,
+  EMISSIVE_GLOW_FRAGMENT_SHADER,
+  EMISSIVE_GLOW_VERTEX_SHADER,
   VERTEX_SHADER,
   appendSaplingMesh,
 } from "../client/game/voxelEngine.ts";
@@ -28,7 +30,21 @@ assert.match(TERRAIN_VERTEX_SHADER, /vLight=\(lightAt\(aPosition,e\)\+vec3\(\.18
   "bounded neutral emission preserves each light source's installed texture color");
 assert.match(TERRAIN_VERTEX_SHADER, /vEmission=m/);
 assert.match(TERRAIN_FRAGMENT_SHADER, /min\(vec3\(1\.12\),texel\.rgb\*\(vLight\+texel\.rgb\*\.14\*vEmission\)\)/,
-  "the soft emissive lift is capped in the retained terrain pass without a bloom draw call");
+  "the emissive texture lift remains capped in the retained terrain pass");
+assert.match(EMISSIVE_GLOW_VERTEX_SHADER, /max\(length\(d\),\.001\)/,
+  "camera-coincident light sources cannot introduce NaN coordinates");
+assert.match(EMISSIVE_GLOW_VERTEX_SHADER, /v=1\.-smoothstep\(f\.x,f\.y,length\(d\)\)/,
+  "auras fade through the render-distance fog instead of floating beyond terrain");
+assert.match(EMISSIVE_GLOW_VERTEX_SHADER, /gl_PointSize=clamp\([^;]+,4\.,64\.\)/,
+  "one bounded point per active source creates a compact CSS-pixel aura");
+assert.match(EMISSIVE_GLOW_FRAGMENT_SHADER, /smoothstep\(\.12,1\.,d\)\)\*\.12\*v/,
+  "the glow has a soft radial edge and a restrained per-source alpha ceiling");
+assert.match(engine, /gl\.blendFunc\(gl\.SRC_ALPHA, gl\.ONE_MINUS_SRC_ALPHA\)/,
+  "source-over compositing bounds any number of overlapping auras instead of summing past white");
+assert.match(engine, /emissiveGlowHeightLocation, canvas\.height/,
+  "point sprites scale in framebuffer pixels so their CSS diameter stays stable across DPR values");
+assert.match(engine, /gl\.drawArrays\(gl\.POINTS, 0, activeTorchLights\)/,
+  "all nearby torches and luminous blocks share one capped draw call");
 assert.equal(
   VERTEX_SHADER.match(/vec3 lightAt\(/g)?.length,
   1,
@@ -72,7 +88,7 @@ for (const forbidden of [
 ]) {
   assert.equal(render.includes(forbidden), false, `render loop avoids exposure scan: ${forbidden}`);
 }
-assert.equal(engine.match(/gl\.drawArrays/g)?.length, 14, "cave lighting adds no draw call");
+assert.equal(engine.match(/gl\.drawArrays/g)?.length, 15, "emissive aura adds exactly one bounded draw call");
 assert.ok(engine.includes("appendSpecialTorchMesh("));
 assert.ok(engine.includes("const specialVertices = { textured: textureVertices, color: colorVertices }"),
   "the torch stem uses the retained atlas batch while its warm ember stays in the color batch");

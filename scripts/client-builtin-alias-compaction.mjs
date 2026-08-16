@@ -14,19 +14,19 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   // Directional doors and derived stair corners share retained transform math.
   Object.freeze(["Math", "cos", 63]),
   Object.freeze(["Math", "ceil", 33]),
-  Object.freeze(["Math", "floor", 261]),
-  Object.freeze(["Math", "hypot", 35]),
+  Object.freeze(["Math", "floor", 263]),
+  Object.freeze(["Math", "hypot", 36]),
   // Remote atlas integrity now hashes the immutable PNG bytes with Web Crypto
   // instead of applying one pixel-space FNV multiplication after browser decode.
   Object.freeze(["Math", "imul", 35]),
   // Superflat generation clamps its lower materialization bound once per region.
-  Object.freeze(["Math", "max", 260]),
-  Object.freeze(["Math", "min", 209]),
+  Object.freeze(["Math", "max", 262]),
+  Object.freeze(["Math", "min", 211]),
   Object.freeze(["Math", "round", 35]),
-  Object.freeze(["Math", "sin", 75]),
+  Object.freeze(["Math", "sin", 76]),
   Object.freeze(["Math", "PI", 118]),
   // The shared, immutable default/superflat terrain descriptor joins the client bundle.
-  Object.freeze(["Object", "freeze", 172]),
+  Object.freeze(["Object", "freeze", 173]),
   Object.freeze(["Object", "keys", 33]),
   // Query bridges reject Lakebed's [] loading sentinel before publishing data.
   Object.freeze(["Array", "isArray", 94]),
@@ -40,11 +40,11 @@ export const COMPACT_CLIENT_BUILTIN_ALIASES = Object.freeze([
   Object.freeze(["Number", "POSITIVE_INFINITY", 14]),
   Object.freeze(["Number", "parseInt", 10]),
   Object.freeze(["Date", "now", 61]),
-  Object.freeze(["JSON", "stringify", 19]),
+  Object.freeze(["JSON", "stringify", 20]),
   Object.freeze(["JSON", "parse", 12]),
 ]);
-export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_060;
-export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "a51635e755fd5a03272607285a450e02961d6b69cf30502b4efe695603906634";
+export const COMPACT_CLIENT_BUILTIN_OCCURRENCES = 2_070;
+export const COMPACT_CLIENT_BUILTIN_SOURCE_FINGERPRINT = "b944714037f46931e5d81c6ec083d1ac67cac8da20b35747df37841e0a11e967";
 const PRODUCTION_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_BUILTIN_ALIASES.map(([receiver, method, count]) => [
     `${receiver}.${method}`, count,
@@ -63,41 +63,46 @@ const PROPERTY_ALIAS_SPEC = "action:25,active:20,activeAppearanceRequest:10,acti
 // Closed-door sky exposure and paired-door Railway follow-ups add six reviewed
 // uses without broadening the fixed exact-key allowlist.
 const PROPERTY_ALIAS_COUNT_OVERRIDES = Object.freeze({
-  addEventListener: 37, ARRAY_BUFFER: 77, behavior: 30, bindBuffer: 43, bindTexture: 17,
-  block: 175, bottom: 24, bufferData: 24, CLAMP_TO_EDGE: 12, clear: 41, createBuffer: 21,
-  current: 865, currentTarget: 19, delete: 66, deleteBuffer: 34, deleteProgram: 14,
-  deleteTexture: 9, documentElement: 8, drawArrays: 20, enableVertexAttribArray: 25,
-  endsWith: 24, every: 50, filter: 49, flatMap: 22, fromEntries: 9, getAttribLocation: 23,
-  getUniformLocation: 65, health: 55, height: 35, includes: 47, inventory: 103, length: 441,
+  addEventListener: 38, ARRAY_BUFFER: 82, behavior: 30, bindBuffer: 46, bindTexture: 17,
+  block: 176, bottom: 24, bufferData: 25, bufferSubData: 11, BYTES_PER_ELEMENT: 16,
+  chunkRevisions: 11, CLAMP_TO_EDGE: 12, clear: 41, clearTimeout: 26, count: 182,
+  createBuffer: 22, current: 853, currentTarget: 19, delete: 67, deleteBuffer: 36,
+  deleteProgram: 18, deleteTexture: 10, documentElement: 8, drawArrays: 21, dropId: 18,
+  drops: 25, DYNAMIC_DRAW: 15, enableVertexAttribArray: 26, endsWith: 24, equipment: 39,
+  every: 50, filter: 49, flatMap: 24, fromEntries: 9, getAttribLocation: 24,
+  getUniformLocation: 69, health: 55, height: 38, includes: 48, inventory: 102, length: 446,
   maxHealth: 13, operationId: 43, options: 69, pixelStorei: 11, preventDefault: 54,
-  previousBlock: 11, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
-  randomUUID: 10, readyState: 10, removeEventListener: 39, renderDistance: 8, repeat: 32,
-  resolve: 19, revision: 28, sequence: 47, sheared: 16, slice: 113, startsWith: 33,
+  ONE_MINUS_SRC_ALPHA: 6, pendingBlocks: 11, pitch: 43, pointerLockElement: 24, position: 16,
+  previousBlock: 18, previousX: 19, previousY: 16, previousYaw: 10, previousZ: 19,
+  prototype: 17, randomUUID: 10, readyState: 10, reject: 24, removeEventListener: 40,
+  renderDistance: 8, repeat: 32, resolve: 19, revision: 32, selectedHotbar: 15,
+  sequence: 47, setTimeout: 22, sheared: 16, slice: 112, sourceSlot: 10, startsWith: 35,
   state: 70, STATIC_DRAW: 10, status: 20, stopImmediatePropagation: 8, texImage2D: 11,
   texParameteri: 24, TEXTURE_2D: 53, TEXTURE_MAG_FILTER: 6, TEXTURE_MIN_FILTER: 6,
-  TRIANGLES: 18, uniform1f: 38, UNPACK_FLIP_Y_WEBGL: 9, UNSIGNED_BYTE: 12,
-  useProgram: 17, userId: 37, value: 37, vertexAttribPointer: 25,
+  TRIANGLES: 18, uniform1f: 39, uniform3fv: 9, uniformMatrix4fv: 10,
+  UNPACK_FLIP_Y_WEBGL: 9, UNSIGNED_BYTE: 12, useProgram: 19, userId: 35, value: 37,
+  vertexAttribPointer: 26,
 });
 export const COMPACT_CLIENT_PROPERTY_KEY_ALIASES = Object.freeze(PROPERTY_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   const name = entry.slice(0, separator);
   return Object.freeze([name, PROPERTY_ALIAS_COUNT_OVERRIDES[name] ?? Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_105;
-export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "ad8f7bf439fb0fa872b08ab1804bd9985aa878e77e7a328a3d9db3615c1d7a72";
+export const COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES = 6_158;
+export const COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT = "d6ba5895004ee943fbaeed739a3df08bd3a86e205ead18f38fca47aad56da8ab";
 const PROPERTY_ALIAS_INDEX = new Map(COMPACT_CLIENT_PROPERTY_KEY_ALIASES.map(([name], index) => [name, index]));
 const PROPERTY_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_PROPERTY_KEY_ALIASES)),
   fingerprint: COMPACT_CLIENT_PROPERTY_KEY_FINGERPRINT,
   occurrences: COMPACT_CLIENT_PROPERTY_KEY_OCCURRENCES,
 });
-const GLOBAL_ALIAS_SPEC = "Float32Array:79,Map:73,Set:60,Uint8Array:20,document:101,performance:76,window:123";
+const GLOBAL_ALIAS_SPEC = "Float32Array:80,Map:73,Set:60,Uint8Array:20,document:100,performance:76,window:126";
 export const COMPACT_CLIENT_GLOBAL_ALIASES = Object.freeze(GLOBAL_ALIAS_SPEC.split(",").map((entry) => {
   const separator = entry.lastIndexOf(":");
   return Object.freeze([entry.slice(0, separator), Number(entry.slice(separator + 1))]);
 }));
-export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 532;
-export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "cae1b720573537e89bef6affa9a3deb8a0d7f89798564315093fa3c38d62af79";
+export const COMPACT_CLIENT_GLOBAL_OCCURRENCES = 535;
+export const COMPACT_CLIENT_GLOBAL_FINGERPRINT = "663679514092ac498cbf70eafc8c41349521741d30af8bb625c9db54680f1dbf";
 const GLOBAL_ALIAS_INDEX = new Map(COMPACT_CLIENT_GLOBAL_ALIASES.map(([name], index) => [name, index]));
 const GLOBAL_BOUNDARY = Object.freeze({
   counts: Object.freeze(Object.fromEntries(COMPACT_CLIENT_GLOBAL_ALIASES)),

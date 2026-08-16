@@ -1,15 +1,5 @@
 # Third-party notices
 
-## Pixelify Sans
-
-Lakecraft embeds the Latin WOFF2 subset of **Pixelify Sans** in the capsule for
-its in-game UI. No font file is fetched at runtime.
-
-- Copyright 2021 The Pixelify Sans Project Authors
-- Source: <https://github.com/eifetx/Pixelify-Sans>
-- License: SIL Open Font License 1.1
-- License text: <https://openfontlicense.org/open-font-license-official-text/>
-
 ## Minecraft visual compatibility assets
 
 This development branch contains the subset of Minecraft Java Edition 26.2
@@ -19,6 +9,13 @@ from the project owner's locally installed, user-owned client by
 files are recorded in the generated manifest. Minecraft and its assets are
 copyright Mojang Studios/Microsoft. Lakecraft is not affiliated with or
 endorsed by Mojang Studios or Microsoft.
+
+The interface font and survival-inventory panel are generated from that same
+installed client's 26.2 assets. Each font-atlas pixel becomes a square
+TrueType outline, allowing the ordinary HTML menus, chat, and HUD to use the
+original glyph geometry without a runtime font request or a separately
+maintained text renderer. The small inventory PNG is retained losslessly so
+the slot and player-preview chrome is not reconstructed approximately in CSS.
 
 The basic compatibility sound set is resolved from the owner's installed
 Minecraft Java Edition 26.2 asset index. Lakecraft stores only the reviewed

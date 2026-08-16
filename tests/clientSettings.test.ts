@@ -66,6 +66,7 @@ existing.values.set(CLIENT_SETTINGS_STORAGE_KEY, JSON.stringify({
 }));
 assert.deepEqual(loadClientSettings(existing), { ...DEFAULT_CLIENT_SETTINGS, mouseSensitivity: 90, renderDistance: 3 },
   "new fields default without overwriting a saved user's existing preferences");
+assert.equal(loadClientSettings(existing).musicVolume, 100, "the new music channel defaults safely for existing version-one preferences");
 
 const roundTrip = new MemoryStorage();
 assert.equal(saveClientSettings(roundTrip, { soundMuted: true, mouseSensitivity: 137.5, renderDistance: 99, fovDegrees: 999 }), true);
@@ -90,6 +91,8 @@ assert.equal(normalizeClientSettings({ fovDegrees: 91.4 }).fovDegrees, 91,
   "field of view persists whole degrees within the selectable range");
 assert.equal(normalizeClientSettings({ fovDegrees: 999 }).fovDegrees, FOV_DEGREES_MAX,
   "field of view uses the bounded camera maximum");
+assert.equal(normalizeClientSettings({ musicVolume: 37.6 }).musicVolume, 38,
+  "the music channel persists independently using the shared bounded mixer scale");
 assert.ok(Math.abs(fieldOfViewRadians(70) - 70 * Math.PI / 180) < 1e-12,
   "the renderer receives the normalized preference in radians");
 

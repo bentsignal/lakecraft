@@ -19,6 +19,7 @@ export interface ClientSettings {
   soundMuted: boolean;
   /** Independent 0..100 mix controls, persisted browser-locally. */
   masterVolume: number;
+  musicVolume: number;
   blocksVolume: number;
   hostileVolume: number;
   passiveVolume: number;
@@ -41,6 +42,7 @@ export interface ClientSettingsStorage {
 export const DEFAULT_CLIENT_SETTINGS: Readonly<ClientSettings> = Object.freeze({
   soundMuted: false,
   masterVolume: 100,
+  musicVolume: 100,
   blocksVolume: 100,
   hostileVolume: 100,
   passiveVolume: 100,
@@ -81,6 +83,7 @@ export function normalizeClientSettings(value: unknown): ClientSettings {
   return {
     soundMuted: typeof candidate.soundMuted === "boolean" ? candidate.soundMuted : DEFAULT_CLIENT_SETTINGS.soundMuted,
     masterVolume: normalizeVolume(candidate.masterVolume),
+    musicVolume: normalizeVolume(candidate.musicVolume),
     blocksVolume: normalizeVolume(candidate.blocksVolume),
     hostileVolume: normalizeVolume(candidate.hostileVolume),
     passiveVolume: normalizeVolume(candidate.passiveVolume),
@@ -134,6 +137,7 @@ export function fieldOfViewRadians(fovDegrees: unknown): number {
 export function clientAudioLevels(settings: Readonly<ClientSettings>) {
   return {
     master: settings.masterVolume / 100,
+    music: settings.musicVolume / 100,
     blocks: settings.blocksVolume / 100,
     hostile: settings.hostileVolume / 100,
     passive: settings.passiveVolume / 100,

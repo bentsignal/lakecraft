@@ -88,7 +88,6 @@ import {
   createSerializablePlayerState,
   createStarterInventory,
   consumeFood,
-  getDeterministicMiningDrop,
   type BlockId,
   type CraftingContext,
   type Equipment,
@@ -126,7 +125,6 @@ import {
   droppedItemForwardPosition,
   type NormalizedDroppedItem,
 } from "../shared/droppedItems";
-import { planDeathDrops } from "../shared/deathDrops.ts";
 import {
   createWorldBlockOperationId,
   isDecimalRevisionAtLeast,
@@ -402,7 +400,6 @@ function RailwayMultiplayerSession({
   const [worldReady, setWorldReady] = useState(false);
   const initialWorldChunksReadyRef = useRef(false);
   const revealWorldPresentationRef = useRef<(() => void) | null>(null);
-  const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(false);
   const [inventoryReady, setInventoryReady] = useState(false);
   const [transportReady, setTransportReady] = useState(false);
   const [transportForeground, setTransportForeground] = useState(() => document.visibilityState === "visible" && document.hasFocus());
@@ -612,34 +609,12 @@ function RailwayMultiplayerSession({
     const current = realtimeDeathSettlementRef.current;
     if (current?.eventId === eventId) return current.task;
     const task = (async () => {
-      const sink = realtimeDropSinkRef.current;
-      const localUserId = realtimeSession?.demo?.userId ?? auth.userId ?? "";
-      if (!sink || !localUserId) return false;
-      const deathPose = poseRef.current;
-      const plan = planDeathDrops({
-        identity: { userId: localUserId, eventId },
-        inventory: inventoryRef.current,
-        equipment: equipmentRef.current,
-        deathPose: { x: deathPose.x, y: deathPose.y, z: deathPose.z },
-      });
-      if (!plan.ok) return false;
+      if (!realtimeInventorySinkRef.current) return false;
       droppedItemBusyRef.current = true;
       try {
-        await Promise.all(plan.drops.map((drop) => sink(drop.operationId, drop.stack, {
-          ...drop.position,
-          yaw: deathPose.yaw,
-          pitch: deathPose.pitch,
-        })));
-        updateInventory(plan.carriedState.inventory);
-        updateEquipment(plan.carriedState.equipment);
-        hungerRef.current = MAX_HUNGER;
-        setHunger(MAX_HUNGER);
-        advanceInventoryAuthorityEpoch();
-        // The active Railway server owns both the durable pack and world
-        // entities for multiplayer. The shared inventory transition still
-        // provides the exact same conservation rules as local gameplay.
-        void enqueueInventoryAction({ kind: "death_settle", eventId });
-        return true;
+        // Railway derives every drop from its canonical pack and clears that
+        // pack in the same transaction; the browser never enumerates stacks.
+        return await enqueueInventoryAction({ kind: "death_settle", eventId });
       } catch {
         notify("Death drops delayed", "The server could not place the entire pack yet. Respawn will stay locked so no items are duplicated.", "warning");
         return false;
@@ -673,7 +648,7 @@ function RailwayMultiplayerSession({
       engine.respawnAt(pose);
       realtimeDeathSettlementRef.current = null;
       setDeathScreenOpen(false);
-      void pointerLock.then((locked) => setPointerCaptureNeeded(!locked));
+      void pointerLock;
     }).catch(() => {
       void pointerLock.then((locked) => { if (locked) exitPointerLockForUi(); });
       notify("Respawn rejected", "The realtime server could not move this player safely.", "warning");
@@ -698,7 +673,6 @@ function RailwayMultiplayerSession({
     setInventoryOpen(false);
     setChatOpen(false);
     setShowPlayerList(false);
-    setPointerCaptureNeeded(false);
     setDeathScreenOpen(true);
   }
 
@@ -711,12 +685,8 @@ function RailwayMultiplayerSession({
       setShowPlayerList(false);
     }
     if (transition.closePause) setPauseOpen(false);
-    if (event.type === "lock_change" && event.locked) setPointerCaptureNeeded(false);
-    if (transition.showCaptureAffordance) setPointerCaptureNeeded(true);
     if (transition.requestPointerLock) {
-      void engineRef.current?.requestPointerLock().then((locked) => {
-        setPointerCaptureNeeded(!locked);
-      });
+      void engineRef.current?.requestPointerLock();
     }
   }
 
@@ -732,7 +702,7 @@ function RailwayMultiplayerSession({
       && engineRef.current !== null
     ), () => {
       requestGameplayKeyboardCapture();
-      void engineRef.current?.requestPointerLock().then((locked) => setPointerCaptureNeeded(!locked));
+      void engineRef.current?.requestPointerLock();
     });
   }
 
@@ -907,15 +877,9 @@ function RailwayMultiplayerSession({
     if (!stack) return;
     droppedItemBusyRef.current = true;
     const operationId = droppedItemOperationId();
-    let debited = false;
     try {
       const count = dropWholeStack ? stack.count : 1;
       const item = { ...stack, count };
-      debited = await enqueueInventoryAction(
-        { kind: "world_debit", sourceSlot, stack: item },
-        relatedInventoryOperationId("drop", operationId),
-      );
-      if (!debited) throw new Error("inventory_rejected");
       const sink = realtimeDropSinkRef.current;
       if (!sink) throw new Error("multiplayer_not_connected");
       const pose = poseRef.current;
@@ -923,16 +887,10 @@ function RailwayMultiplayerSession({
       const dropped = await sink(operationId, item, {
         ...pose,
         ...position,
-      }, true);
+      }, sourceSlot);
       droppedPickupAttemptRef.current.set(dropped.dropId, dropped.droppedAt);
       audioRef.current?.play("blockPlace", { seed: dropped.dropId, intensity: 0.45, surface: "generic" });
     } catch {
-      if (debited) {
-        await enqueueInventoryAction(
-          { kind: "world_credit", stack: { ...stack, count: dropWholeStack ? stack.count : 1 } },
-          relatedInventoryOperationId("drop_refund", operationId),
-        );
-      }
       notify("Drop lost contact", "The item stayed in your inventory. Try again.", "warning");
     } finally {
       droppedItemBusyRef.current = false;
@@ -948,19 +906,6 @@ function RailwayMultiplayerSession({
       if (!sink) throw new Error("multiplayer_not_connected");
       const confirmed = await sink(`pickup:${drop.dropId}`.slice(0, 96), drop.dropId);
       if (appliedPickupDropsRef.current.has(confirmed.dropId)) return;
-      const credited = await enqueueInventoryAction(
-        { kind: "world_credit", stack: confirmed.item },
-        relatedInventoryOperationId("pickup", confirmed.dropId),
-      );
-      if (!credited) {
-        const returnSink = realtimeDropSinkRef.current;
-        if (returnSink) await returnSink(
-          `return:${confirmed.dropId}`.slice(0, 96),
-          confirmed.item,
-          { ...poseRef.current, x: confirmed.x, y: confirmed.y, z: confirmed.z },
-        );
-        throw new Error("inventory_changed");
-      }
       appliedPickupDropsRef.current.add(confirmed.dropId);
       if (appliedPickupDropsRef.current.size > 512) {
         appliedPickupDropsRef.current.delete(appliedPickupDropsRef.current.values().next().value!);
@@ -1045,23 +990,25 @@ function RailwayMultiplayerSession({
       && realtimeGameModeRef.current !== "creative"
       ? ENGINE_TO_GAME[pending.optimisticEdit.block]
       : null;
-    let placementPaid = false;
     try {
-      if (placementItem) {
-        if (placementItem !== pending.expectedHeldItem) throw new Error("placement_item_mismatch");
-        placementPaid = await enqueueInventoryAction(
-          { kind: "place_block", sourceSlot: pending.sourceSlot, expectedItemId: placementItem },
-          relatedInventoryOperationId("place", pending.operationId),
-        );
-        if (!placementPaid) throw new Error("placement_inventory_rejected");
-      }
+      if (placementItem && placementItem !== pending.expectedHeldItem) throw new Error("placement_item_mismatch");
       let confirmed: RealtimeWorldEdit;
       try {
-        confirmed = await sink(pending.operationId, pending.optimisticEdit);
+        confirmed = await sink(pending.operationId, pending.optimisticEdit, {
+          previousBlock: pending.previousBlock,
+          selectedHotbar: pending.sourceSlot,
+          expectedHeldItem: pending.expectedHeldItem,
+          expectedInventoryRevision: inventoryRevisionRef.current,
+        });
       } catch {
         // The first acknowledgement can be lost after Railway commits. Its
         // operation ledger makes this exact retry return the same block patch.
-        confirmed = await sink(pending.operationId, pending.optimisticEdit);
+        confirmed = await sink(pending.operationId, pending.optimisticEdit, {
+          previousBlock: pending.previousBlock,
+          selectedHotbar: pending.sourceSlot,
+          expectedHeldItem: pending.expectedHeldItem,
+          expectedInventoryRevision: inventoryRevisionRef.current,
+        });
       }
       if (pendingWorldBlockEditRef.current !== pending) return;
       authoritativeWorldEditRef.current.set(
@@ -1075,36 +1022,8 @@ function RailwayMultiplayerSession({
         engineRef.current?.spawnBlockParticles({
           action: "break", block: pending.previousBlock, x: confirmed.x, y: confirmed.y, z: confirmed.z,
         });
-        if (realtimeGameModeRef.current !== "creative") {
-          const block = ENGINE_TO_GAME[pending.previousBlock];
-          const drop = block ? getDeterministicMiningDrop(
-            block,
-            pending.expectedHeldItem,
-            confirmed.x,
-            confirmed.y,
-            confirmed.z,
-          ) : null;
-          const dropSink = realtimeDropSinkRef.current;
-          if (drop && dropSink) {
-            const dropOperationId = `mine:${pending.operationId}`.slice(0, 96);
-            const dropPose = {
-              x: confirmed.x + 0.5,
-              y: confirmed.y + 0.45,
-              z: confirmed.z + 0.5,
-              yaw: 0,
-              pitch: 0,
-            };
-            try {
-              await dropSink(dropOperationId, drop, dropPose);
-            } catch {
-              try {
-                await dropSink(dropOperationId, drop, dropPose);
-              } catch {
-                notify("Drop connection lost", "The block broke, but the server could not publish its item drop.");
-              }
-            }
-          }
-        }
+        // Railway atomically resolves tool wear, the block revision, and one
+        // persisted ground drop. A second client-authored drop would mint it.
       } else if (confirmed.block !== BLOCK.AIR) {
         if (placementItem && confirmed.block !== pending.optimisticEdit.block) throw new Error("placement_block_mismatch");
         audioRef.current?.play("blockPlace", { seed, surface: audioSurfaceForBlock(confirmed.block) });
@@ -1113,18 +1032,10 @@ function RailwayMultiplayerSession({
       const [next, ...remaining] = pending.followups;
       if (next) beginPendingWorldBlockEdit(next.edit, next.previousBlock, remaining);
     } catch {
-      if (placementPaid && placementItem) {
-        await enqueueInventoryAction(
-          { kind: "world_credit", stack: { itemId: placementItem, count: 1 } },
-          relatedInventoryOperationId("place_refund", pending.operationId),
-        );
-      }
       rollbackPendingWorldBlockEdit(
         pending,
         pending.optimisticEdit.block === BLOCK.AIR ? "Mine rejected" : "Placement restored",
-        placementPaid
-          ? "The game server did not confirm this placement. The block was restored and the item was returned."
-          : "The game server could not reserve that inventory item, so the local block was restored.",
+        "The game server could not reserve that inventory item, so the local block was restored.",
         true,
       );
     }
@@ -1392,7 +1303,7 @@ function RailwayMultiplayerSession({
           if (entryPointerLockHandoffRef.current && document.pointerLockElement === document.documentElement) {
             entryPointerLockHandoffRef.current = false;
             void engine.requestPointerLock();
-          } else setPointerCaptureNeeded(true);
+          }
         });
       };
       revealWorldPresentationRef.current = revealWorldPresentation;
@@ -1414,7 +1325,6 @@ function RailwayMultiplayerSession({
         engine.destroy();
         engineRef.current = null;
         setWorldReady(false);
-        setPointerCaptureNeeded(false);
         releaseGameplayKeyboardCapture();
       };
     } catch (error) {
@@ -1898,13 +1808,6 @@ function RailwayMultiplayerSession({
         stats: performanceStats,
         visible: debugOverlayVisible && hudVisible,
       }}
-      pointerCapture={{
-        visible: pointerCaptureNeeded && !multiplayerAuthorityPaused,
-        onRequest: () => {
-          requestGameplayKeyboardCapture();
-          applyGameplayPointerEvent({ type: "resume" });
-        },
-      }}
       ready={worldReady}
       rootClassName="lakecraft-shell"
       rootStyle={APP_CSS}
@@ -2124,6 +2027,7 @@ function RailwayMultiplayerSession({
         onRespawn={requestRailwayRespawn}
         soundMuted={clientSettings.soundMuted}
         masterVolume={clientSettings.masterVolume}
+        musicVolume={clientSettings.musicVolume}
         blocksVolume={clientSettings.blocksVolume}
         hostileVolume={clientSettings.hostileVolume}
         passiveVolume={clientSettings.passiveVolume}

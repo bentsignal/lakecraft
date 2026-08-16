@@ -8,9 +8,9 @@ import { encodeStaticBytes, STATIC_BYTE_ALPHABET } from "./static-byte-encoding.
 // This transform runs only on the closed, already-bundled production client.
 // The counts and fingerprint are an explicit compatibility boundary: changing
 // application copy or making a new literal eligible requires human review.
-export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 544;
-export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 479;
-export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "ebec9ae04665f04366f1a2f5b1b92a6150afdc5e7bce9c5925def7c7a0ae0536";
+export const COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES = 540;
+export const COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES = 475;
+export const COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT = "c59e9b79b94c65d0bde35ed72be4ef50a9ad765a5cbb31ccd9bb7823cb19bf89";
 export const COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 502,
   previousUniqueValues: 442,
@@ -26,6 +26,16 @@ export const COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA = Object.freeze({
     "client/realtimeMultiplayer.ts",
   ]),
   source: "Minecraft-parity controls, HUD/title presentation, authoritative loading, and Railway mob feedback",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA = Object.freeze({
+  previousOccurrences: 544,
+  previousUniqueValues: 479,
+  previousSourceFingerprint: "ebec9ae04665f04366f1a2f5b1b92a6150afdc5e7bce9c5925def7c7a0ae0536",
+  occurrenceDelta: -4,
+  uniqueValueDelta: -4,
+  sources: Object.freeze(["client/index.tsx"]),
+  source: "Railway-owned respawn, Creative inventory, and combat authority removed retired local rejection copy",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA=Object.freeze({
@@ -158,9 +168,9 @@ export const COMPACT_CLIENT_HUMAN_ITEM_CONSERVATION_DELTA = Object.freeze({
   source: "Railway-authoritative pack routing and durable world-item recovery",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_289;
-export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 123;
-export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "0488b36abfaba96823a80022e22b07f7bd9db8ade28c97eec3fe1ca230d79212";
+export const COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES = 1_339;
+export const COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES = 133;
+export const COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT = "59da08cd3085d38c8f4387a77956a4e42774dafd35f1dfa9c8db5f23ca48149c";
 export const COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 1_183,
   previousUniqueValues: 112,
@@ -177,6 +187,20 @@ export const COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA = Object.freeze({
     "client/realtimeMultiplayer.ts",
   ]),
   source: "Minecraft-parity controls, sampled-audio categories, title panorama, loading gate, and Railway mob authority",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA = Object.freeze({
+  previousOccurrences: 1_289,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "0488b36abfaba96823a80022e22b07f7bd9db8ade28c97eec3fe1ca230d79212",
+  occurrenceDelta: 50,
+  uniqueValueDelta: 10,
+  sources: Object.freeze([
+    "shared/expandedBuildingCatalog.ts",
+    "shared/game.ts",
+    "client/index.tsx",
+  ]),
+  source: "expanded slab/stair catalog plus Railway-owned inventory and combat envelopes",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_REPEATED_CREATIVE_PARITY_DELTA = Object.freeze({
@@ -495,9 +519,9 @@ export const COMPACT_CLIENT_REPEATED_MOB_TEXTURE_LIFECYCLE_DELTA = Object.freeze
   source: "client/game/mobRenderer.ts#mob-texture-lifecycle",
   exclusionChanges: 0,
 });
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 569;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 167;
-export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "51eb5564c2df42f89f29270f61e81f91de2c34cee42fd9cce7ef57fbca9c0358";
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES = 609;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES = 180;
+export const COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT = "3ae5ecba7416654837202a8e46ceb71d2820795d71ff51c77fa23df5d53e7c7d";
 export const COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA = Object.freeze({
   previousOccurrences: 548,
   previousUniqueValues: 161,
@@ -513,6 +537,20 @@ export const COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA = Object.freeze
     "client/realtimeMultiplayer.ts",
   ]),
   source: "low-frequency Minecraft-parity controls, sound categories, panorama, readiness, and mob feedback",
+  exclusionChanges: 0,
+});
+export const COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA = Object.freeze({
+  previousOccurrences: 569,
+  previousUniqueValues: 167,
+  previousSourceFingerprint: "51eb5564c2df42f89f29270f61e81f91de2c34cee42fd9cce7ef57fbca9c0358",
+  occurrenceDelta: 40,
+  uniqueValueDelta: 13,
+  sources: Object.freeze([
+    "shared/expandedBuildingCatalog.ts",
+    "shared/game.ts",
+    "client/index.tsx",
+  ]),
+  source: "expanded slab/stair catalog plus Railway-owned inventory and combat envelopes",
   exclusionChanges: 0,
 });
 export const COMPACT_CLIENT_LOW_FREQUENCY_CREATIVE_PARITY_DELTA = Object.freeze({
@@ -800,12 +838,12 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_VALUES = Object.freeze([
   "unsupported",
   "empty",
 ]);
-export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 64;
+export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES = 63;
 export const COMPACT_CLIENT_FIXED_IDENTITY_UNIQUE_VALUES = 7;
 export const COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES = 1;
 export const COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND = "StringLiteral";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
-  creative: 34,
+  creative: 33,
   survival: 10,
   loaded: 3,
   recovered: 3,
@@ -813,7 +851,7 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_COUNTS = Object.freeze({
   unsupported: 6,
   empty: 3,
 });
-export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "19d8ab4b7769370db5ae8aa0140aa805c1dd4558ca753978595c1d153f047a1e";
+export const COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT = "2a5f101f64a96b509af2bee05aa324640d9129039c27630d519848b90f10b26e";
 export const COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA = Object.freeze({
   previousOccurrences: 68,
   previousUniqueValues: 7,
@@ -838,6 +876,15 @@ export const COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA = Object.freez
   uniqueValueDelta: 0,
   valueDeltas: Object.freeze({ empty: 1 }),
   source: "authoritative multiplayer snapshot validation adds one explicit empty-state identity branch",
+});
+export const COMPACT_CLIENT_FIXED_IDENTITY_REPLAY_DELTA = Object.freeze({
+  previousOccurrences: 64,
+  previousUniqueValues: 7,
+  previousSourceFingerprint: "19d8ab4b7769370db5ae8aa0140aa805c1dd4558ca753978595c1d153f047a1e",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  valueDeltas: Object.freeze({ creative: -1 }),
+  source: "monotonic Railway block replay removes one retired local Creative rollback identity branch",
 });
 // WebGL uniform names are a closed API boundary between authored shader text
 // and `getUniformLocation`. Keep this semantic category separate from the

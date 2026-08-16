@@ -8,7 +8,7 @@ const glyph = readFileSync(new URL("../client/components/ItemGlyph.tsx", import.
 assert.equal(multiplayer.includes("recordConfirmedToolUse"), false);
 assert.doesNotMatch(multiplayer, /attackMob|attackPlayer|editWorldBlock/,
   "Railway actions cannot spend tools through retired Lakebed mutations");
-assert.match(multiplayer, /await sink\(pending\.operationId, pending\.optimisticEdit\)/);
+assert.match(multiplayer, /await sink\(pending\.operationId, pending\.optimisticEdit, \{[\s\S]*?expectedInventoryRevision/);
 assert.match(singleplayer, /applyConfirmedDurableItemUse/);
 assert.match(glyph, /className="lc-durability"/);
 

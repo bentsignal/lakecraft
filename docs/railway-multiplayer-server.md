@@ -191,17 +191,36 @@ installed skin as the fallback for absent, invalid, or legacy-server data.
 
 Railway owns accepted player poses, shared block edits and drops, ordered chat,
 multiplayer inventory, melee PvP health, and the bounded mob ecology for this
-world. Drop and attack operation IDs are replay-safe; pickup consumes the
-SQLite world-drop receipt once, and PvP validates
+world. Placement, mining, Q-drop, and pickup each commit their inventory and
+world effects in one SQLite transaction with a fingerprinted restart-safe
+receipt. A mined block becomes exactly one delayed persisted ground drop rather
+than an immediate client credit. Drop and attack operation IDs are replay-safe;
+pickup credits the pack while consuming the SQLite world drop once, and PvP validates
 target reach, facing, cooldown, server-observed held item, death, and respawn.
 Armor remains cosmetic and grants no protection. Railway also owns each
 server-specific player pack and the idempotency receipts for inventory actions;
 ordinary multiplayer placement, mining, drops, pickups, crafting, and death do
 not query or mutate Lakebed.
 
-The realtime chunk codec currently has 499 append-only block states in a 9-bit
-palette (maximum 511). New catalog work must move to a wider versioned codec or
-deduplicate states before consuming the remaining 13 IDs.
+The realtime chunk codec advertises `world-chunks-v2` and currently has 753
+append-only block states. Its tagged four-byte sparse records retain the same
+15-bit coordinate field and widen the block field to 16 bits (maximum 65,535).
+The decoder continues to accept representable untagged v1 three-byte records
+through block ID 511, while the deployed semantic v1 catalog ends at ID 498.
+Persisted Railway chunks therefore survive the capability transition without
+exposing unknown states to old renderers.
+During a rolling release, `hello` advertises both chunk capabilities and the
+browser declares v2 in its optional `join.capabilities`. A missing declaration
+selects v1 for that connection; states above 498 are withheld because that old
+browser has neither their palette nor renderer. Legacy connections are read-only
+for block edits because they cannot supply the atomic authority envelope. This
+makes Railway-first deployment safe without relying on a simultaneous Lakebed
+client update. Deploy both Railway worlds first, verify the v1/v2 handshake and
+atlas CORS, and then deploy Lakebed. Once a v2 client writes an ID above 511,
+rolling back to the old Railway binary is not safe; recover with a forward fix
+or a data-aware migration instead.
+Lakebed's separate single-player snapshot codec remains ten-bit and currently
+uses 752 of its 1,023 non-air block codes.
 
 The server sends nearby players and events within 21 chunks. This is a feed
 limit, not a forced GPU setting: each browser retains its own saved 2–12 chunk

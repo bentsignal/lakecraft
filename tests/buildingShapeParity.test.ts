@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { ITEMS, RECIPES } from "../shared/game.ts";
-import { DEEPSLATE_BUILDING_ITEMS, STONE_SHAPE_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
+import { CATALOG_V3_BLOCK_ITEMS, CATALOG_V3_STONE_SHAPE_FAMILIES, DEEPSLATE_BUILDING_ITEMS, STONE_SHAPE_FAMILIES } from "../shared/expandedBuildingCatalog.ts";
 import { BLOCK_TYPES } from "../shared/protocol.ts";
 import { REALTIME_BLOCK_ID_MAX, decodeRealtimeChunkEdits, encodeRealtimeChunkEdits } from "../shared/realtimeWorldChunks.ts";
 import { gameBlockForWorldBlock, resolveWorldBlockOperation } from "../shared/worldBlockOperations.ts";
@@ -104,11 +104,33 @@ for (const [family, source] of STONE_SHAPE_FAMILIES) {
   const upside = directionFixtures.map(([yaw, suffix]) => stairPlacementBlock(north, yaw, 0, placementTarget)
     === BLOCK[`${family}_stairs_upside_${suffix}`.toUpperCase() as keyof typeof BLOCK]);
   assert.deepEqual(upside, [true, true, true, true], `${family} underside stairs preserve every cardinal heading`);
+  for (const [shapeItem, placedBlock] of [[slabItem, `${family}_slab`], [stairItem, `${family}_stairs_upside_west`]] as const) {
+    const familyInventory = createEmptyInventory();
+    familyInventory[0] = { itemId: shapeItem, count: 1 };
+    const familyPlacement = resolveWorldBlockOperation({
+      operationId:`catalog-v2-${shapeItem}`,kind:"place",x:0,y:20,z:0,expectedBlock:"air",
+      placedBlock,selectedHotbar:0,expectedHeldItem:shapeItem,
+      expectedInventoryRevision:"1",expectedChunkRevision:"1",
+    }, {currentBlock:"air",inventory:familyInventory,inventoryRevision:"1",chunkRevision:"1"});
+    assert.equal(familyPlacement.ok, true, `${shapeItem} is accepted by shared placement authority`);
+    if (familyPlacement.ok) assert.equal(familyPlacement.effect.inventory[0], null);
+  }
 }
 for (const item of DEEPSLATE_BUILDING_ITEMS) {
   const block = ITEM_TO_ENGINE[item];
   assert.equal(typeof block, "number");
   assert.equal(blockTextureForFace(block!, "north"), item, `${item} uses the installed Minecraft tile`);
+}
+for (const item of CATALOG_V3_BLOCK_ITEMS) {
+  const inventory = createEmptyInventory();
+  inventory[0] = { itemId: item, count: 1 };
+  const placement = resolveWorldBlockOperation({
+    operationId:`catalog-v2-${item}`,kind:"place",x:0,y:20,z:0,expectedBlock:"air",
+    placedBlock:item,selectedHotbar:0,expectedHeldItem:item,
+    expectedInventoryRevision:"1",expectedChunkRevision:"1",
+  }, {currentBlock:"air",inventory,inventoryRevision:"1",chunkRevision:"1"});
+  assert.equal(placement.ok, true, `${item} is accepted by shared placement authority`);
+  if (placement.ok) assert.equal(placement.effect.inventory[0], null);
 }
 assert.equal(stairShapeAt(BLOCK.OAK_STAIRS_EAST, 0, 0, 0,
   (x, _y, z) => x === 1 && z === 0 ? BLOCK.OAK_STAIRS_NORTH : BLOCK.AIR), "outer_left");
@@ -134,13 +156,21 @@ assert.equal(blockCollisionHeightAt(BLOCK.OAK_STAIRS_UPSIDE_EAST, 0.1, 0.5), 1,
 assert.equal(BLOCK_TYPES[BLOCK.OAK_SLAB], "oak_slab");
 assert.equal(BLOCK_TYPES[BLOCK.BRICK_STAIRS_WEST], "brick_stairs_west");
 assert.ok(BLOCK.NETHER_WART_BLOCK <= REALTIME_BLOCK_ID_MAX);
-assert.equal(BLOCK_TYPES.length, 499, "the append-only shape catalog remains below the 9-bit realtime ceiling");
+assert.equal(BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST, 498, "the complete deployed v1 palette keeps its last numeric id");
+assert.equal(BLOCK_TYPES.length, 753, "the v2 append-only catalog crosses the retired 9-bit ceiling");
+assert.ok(BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST > 511 && BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST <= REALTIME_BLOCK_ID_MAX);
 assert.ok(BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST <= REALTIME_BLOCK_ID_MAX);
 const encoded = encodeRealtimeChunkEdits(0, 0, [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);
 assert.deepEqual(decodeRealtimeChunkEdits(0, 0, encoded), [{x:1,y:20,z:1,block:BLOCK.NETHER_WART_BLOCK}]);
 const tailEncoded = encodeRealtimeChunkEdits(0, 0, [{x:2,y:20,z:1,block:BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST}]);
 assert.deepEqual(decodeRealtimeChunkEdits(0, 0, tailEncoded), [{x:2,y:20,z:1,block:BLOCK.DEEPSLATE_TILE_STAIRS_UPSIDE_WEST}],
   "the highest append-only building state round-trips through Railway chunk persistence");
+const v2TailEncoded = encodeRealtimeChunkEdits(0, 0, [{x:3,y:20,z:1,block:BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST}]);
+assert.match(v2TailEncoded, /^v2:/);
+assert.deepEqual(decodeRealtimeChunkEdits(0, 0, v2TailEncoded), [{x:3,y:20,z:1,block:BLOCK.RESIN_BRICK_STAIRS_UPSIDE_WEST}],
+  "a state above 511 round-trips through the widened Railway chunk codec");
+assert.ok(CATALOG_V3_STONE_SHAPE_FAMILIES.every(([family]) => ITEMS[`${family}_slab` as keyof typeof ITEMS]
+  && ITEMS[`${family}_stairs` as keyof typeof ITEMS]), "every v2 shape family is present in the creative item catalog");
 
 assert.equal(gameBlockForWorldBlock("stone_brick_stairs_west"), "stone_brick_stairs");
 assert.equal(ITEMS.brick_stairs.placesBlock, "brick_stairs");

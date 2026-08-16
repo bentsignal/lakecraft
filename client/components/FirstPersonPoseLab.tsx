@@ -127,7 +127,7 @@ function ScrubNumberInput({
         type="number"
         value={value}
       />
-      <em aria-hidden="true">↕</em>
+      <em aria-hidden="true">↑↓</em>
     </label>
   );
 }

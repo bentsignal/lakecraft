@@ -34,21 +34,25 @@ assert.ok(pickupMutation.includes("droppedItems.update"), "a partial pickup reta
 assert.ok(pickupMutation.indexOf("inventories.update") < pickupMutation.indexOf("droppedItemReceipts.insert"));
 
 const realtimeMine = client.slice(client.indexOf("async function submitPendingWorldBlockEdit"), client.indexOf("function handleBlockEdit"));
-assert.ok(realtimeMine.includes("getDeterministicMiningDrop") && realtimeMine.includes("realtimeDropSinkRef.current")
-  && realtimeMine.includes("await dropSink(dropOperationId, drop, dropPose)"),
-"a confirmed Railway block break publishes one deterministic shared drop through the existing exact-once world-drop authority");
-assert.ok(realtimeMine.indexOf('kind: "place_block"') < realtimeMine.indexOf("await sink(pending.operationId"),
-  "the active game-server pack reserves a placement item before Railway makes the block authoritative");
-assert.ok(realtimeMine.includes('kind: "world_credit"') && realtimeMine.includes('relatedInventoryOperationId("place_refund"'),
-  "an unconfirmed Railway placement refunds the exact idempotent game-server debit");
+assert.ok(realtimeMine.includes("await sink(pending.operationId") && realtimeMine.includes("expectedInventoryRevision"),
+  "Railway receives the block and inventory preconditions in one authority request");
+assert.equal(realtimeMine.includes('kind: "place_block"'), false,
+  "the browser cannot separately debit a placement outside the Railway block transaction");
+assert.equal(realtimeMine.includes('kind: "world_credit"'), false,
+  "the browser cannot mint a mining pickup or placement refund");
+assert.equal(realtimeMine.includes("await dropSink("), false,
+  "Railway publishes the one persisted mining drop atomically with the block edit");
 const realtimeToss = client.slice(client.indexOf("async function handleDropSelected"), client.indexOf("async function pickupNearbyDroppedItem"));
-assert.ok(realtimeToss.indexOf('kind: "world_debit"') < realtimeToss.indexOf("await sink(operationId"),
-  "manual drops durably debit the pack before publishing the world entity");
+assert.ok(realtimeToss.includes("await sink(operationId") && realtimeToss.includes("sourceSlot"),
+  "manual drops submit the exact source slot for Railway's atomic debit plus entity creation");
+assert.equal(realtimeToss.includes('kind: "world_debit"'), false,
+  "manual drops cannot split the debit from world entity creation");
 const realtimePickup = client.slice(client.indexOf("async function pickupNearbyDroppedItem"), client.indexOf("function maybePickupNearbyDroppedItem"));
-assert.ok(realtimePickup.indexOf("await sink(") < realtimePickup.indexOf('kind: "world_credit"'),
-  "a pickup credits the server pack only after Railway consumes the exact world entity");
-assert.ok(realtimePickup.includes('`return:${confirmed.dropId}`'),
-  "a rejected durable credit re-publishes the stack instead of losing it");
+assert.ok(realtimePickup.includes("await sink("), "pickups require Railway confirmation");
+assert.equal(realtimePickup.includes('kind: "world_credit"'), false,
+  "Railway atomically credits the pack while consuming the exact world entity");
+assert.equal(realtimePickup.includes('`return:${confirmed.dropId}`'), false,
+  "there is no client-side compensating drop that can duplicate a pickup");
 
 assert.ok(client.includes("realtimeSink") && client.includes("realtimeInventorySinkRef.current"),
   "Railway gameplay never spends a Lakebed inventory mutation for these transfers");
