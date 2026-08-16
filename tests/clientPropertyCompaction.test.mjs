@@ -38,10 +38,10 @@ const manifestNames = Object.keys(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 const compactNames = Object.values(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE);
 
 assert.deepEqual(manifestNames, [...manifestNames].sort(), "reviewed property manifest stays sorted");
-assert.equal(manifestNames.length, 654, "reviewed compatibility boundary changes only intentionally");
+assert.equal(manifestNames.length, 653, "reviewed compatibility boundary changes only intentionally");
 assert.equal(
   createHash("sha256").update(JSON.stringify(COMPACT_CLIENT_PROPERTY_MANGLE_CACHE)).digest("hex"),
-  "fffb11e28c25c4ee1c382e5e1d1e8b901cfcbf9dc629b4954e7c8df6c7d069f4",
+  "a993511b561d7c682f46ea1f67c9833c600246287b53046dde41ce8e3db17799",
   "the reviewed source-to-alias manifest changes only with an explicit fingerprint update",
 );
 assert.equal(new Set(manifestNames).size, manifestNames.length, "source property names stay unique");
@@ -121,7 +121,6 @@ const reviewedPrivatePropertyPaths = {
   savedRevision: { declarations: ["client/singleplayer/saveCadence.ts"], uses: ["client/singleplayer/SinglePlayerApp.tsx", "client/singleplayer/saveCadence.ts"] },
   seedText: { declarations: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts", "client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/LocalWorldBrowser.tsx", "client/singleplayer/localWorldBrowserIssue.ts", "client/singleplayer/localWorldRegistry.ts"] },
   setInWorld: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
-  showCaptureAffordance: { declarations: ["client/gameplay/pointerSession.ts"], uses: ["client/gameplay/pointerSession.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"] },
   substeps: { declarations: ["client/singleplayer/localDropGravity.ts"], uses: ["client/singleplayer/localDropGravity.ts"] },
   transportFailures: { declarations: ["client/index.tsx"], uses: ["client/index.tsx"] },
   usedChars: { declarations: ["client/singleplayer/localWorldRegistry.ts"], uses: ["client/singleplayer/localWorldRegistry.ts"] },
@@ -168,7 +167,7 @@ const privateAstFingerprint = createHash("sha256").update(JSON.stringify(private
 })))).digest("hex");
 assert.equal(
   privateAstFingerprint,
-  "c58837088c1e96a9f470a6c06a4f583210979f8b6144649f3b66a4906fa23bc8",
+  "284dc212991c469a83582b676113ebcc20986c1af6079fbef3f31c0ca2523ec7",
   "same-file property use counts and declaration kinds cannot drift",
 );
 for (const name of [
@@ -299,7 +298,6 @@ const reviewedRuntimePaths = {
   onSignInWithGoogle: ["client/lobby/LobbyScreen.tsx"],
   onUseSelectedItem: ["client/game/types.ts", "client/game/voxelEngine.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
   pauseOpen: ["client/components/GameHud.tsx", "client/gameplay/pointerSession.ts", "client/index.tsx", "client/singleplayer/SinglePlayerApp.tsx"],
-  pointerCaptureNeeded: ["client/gameplay/pointerSession.ts", "client/singleplayer/SinglePlayerApp.tsx"],
   previousOffsetX: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"],
   previousOffsetZ: ["client/game/mobKnockback.ts", "client/game/voxelEngine.ts"],
   returnFocusId: ["client/components/OptionsDialog.tsx"],
@@ -569,7 +567,7 @@ for (const key of ["ownerMustLeave", "ownerPickupBlocked"]) {
   assert.doesNotMatch(realtimeCompact, new RegExp(key), `compact realtime drops no longer carry ${key} latch state`);
   assert.doesNotMatch(boundaryBundles.get("client/realtimeMultiplayer.ts").baseline, new RegExp(key));
 }
-assert.equal(realtimeCompact.split("requestJson").length - 1, 4,
+assert.equal(realtimeCompact.split("requestJson").length - 1, 5,
   "compact realtime inventory keeps every pending-field and literal wire requestJson boundary");
 
 const bundledModuleDirectory = mkdtempSync(join(tmpdir(), "lakecraft-compact-modules-"));

@@ -7,7 +7,6 @@ const LOBBY_CSS = `
 .lc-title-shade{inset:0;position:absolute}
 .lc-title-content{align-items:center;display:flex;flex-direction:column;inset:0;padding:7vh 18px 50px;position:absolute}
 .lc-title-logo{text-align:center}
-.lc-title-logo span{display:block}
 .lc-title-menu,.lc-username-menu{width:min(420px,calc(100vw - 32px))}
 .lc-title-menu{display:grid}
 .lc-menu-row{display:grid;gap:9px;grid-template-columns:1fr 1fr}
@@ -24,7 +23,7 @@ const LOBBY_CSS = `
 .lc-menu-link{background:none;border:0;color:#aaa;cursor:pointer;font-size:12px;margin-top:14px;text-decoration:underline}
 .lc-title-loading{background:rgba(0,0,0,.55);font-size:16px;margin-top:80px;padding:10px 14px}.lc-title-error{background:rgba(0,0,0,.65);font-size:13px;margin:1px 0 0;padding:7px;text-align:center}
 .lc-title-footer{bottom:8px;display:flex;font-size:12px;justify-content:space-between;left:9px;position:absolute;right:9px}.lc-title-footer span:last-child{text-align:right}
-@media(max-height:620px){.lc-title-logo h1{font-size:60px}.lc-username-menu{margin-top:28px}.lc-title-logo span{font-size:12px}}
+@media(max-height:620px){.lc-title-logo h1{font-size:60px}.lc-username-menu{margin-top:28px}}
 @media(max-width:520px){.lc-title-logo h1{font-size:54px}.lc-title-footer{font-size:10px}.lc-world-line small{display:none}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 `;
@@ -37,7 +36,6 @@ const TITLE_PARITY_CSS = `
 .lc-title-logo h1{color:#d7d9d8;font-size:clamp(58px,8.7vw,118px);font-weight:700;letter-spacing:-.065em;line-height:.76;margin:0;position:relative;-webkit-text-stroke:2px #252a28;text-shadow:0 3px #fbfffd,0 6px #89918e,0 9px #5b625f,0 12px #303633,4px 15px #111;transform:rotateX(8deg) scaleX(1.06);transform-origin:center bottom}
 .lc-title-logo h1:before{color:#455f3a;content:attr(data-title);inset:0;position:absolute;text-shadow:0 3px #6e8b55,0 6px #263820;transform:translateY(12px);z-index:-1}
 .lc-title-logo h1:after{background:linear-gradient(90deg,#89b95f,#4f8b4c 44%,#71a9bc 72%,#426e82);box-shadow:0 3px #263e2c;content:"";display:block;height:6px;margin:18px 5% 0}
-.lc-title-logo span{font-size:clamp(11px,1.2vw,16px);letter-spacing:.055em;margin-top:10px;text-shadow:2px 2px #111}
 .lc-title-menu{gap:8px;margin-top:clamp(42px,8vh,82px);width:min(480px,calc(100vw - 32px))}
 .lc-menu-button{background-color:#7e7e7e;background-image:linear-gradient(rgba(255,255,255,.08),rgba(0,0,0,.08));border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;font-size:clamp(15px,1.35vw,19px);height:44px}
 .lc-menu-button:hover:not(:disabled),.lc-menu-button:focus-visible{background:#7078ae;box-shadow:inset 2px 2px #aab0da,inset -2px -2px #3d416c;outline:2px solid #fff;outline-offset:0}

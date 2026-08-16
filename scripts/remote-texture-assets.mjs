@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-const BLOCK_SOURCE_SHA256 = "13961dcd334479e4cd95cec7a8f0a649a6ffad4b7c99b6d4a232f0ac3f2373e0";
-const BLOCK_PNG_SHA256 = "242bbf5316677c49565d829adfd5cadcc2830d5682ce95a80b7add3bbd4effa3";
+const BLOCK_SOURCE_SHA256 = "86634345db872108492c3ce63cca8419ca85c972765cc207eb6a82fba7469d79";
+const BLOCK_PNG_SHA256 = "0f3a9517c9850c970514a2a88873eee2bed205272cc318b484dde0bfbb7973e1";
 const MOB_SOURCE_SHA256 = "3c4ccc1ca87a3d5c8a261ee8f05ac426b3881ce82b31a3a4d4144fda47e535da";
 const ASSET_ORIGINS = [
   "https://lakecraft-production.up.railway.app",
@@ -34,7 +34,7 @@ export function remoteBlockTextureAtlasModule(source) {
   const names = exact(source, /export const TEXTURE_ATLAS_NAMES = (\[[^\n]+\]) as const;/g, "name table");
   const cells = exact(source, /export const TEXTURE_ATLAS_CELLS = (\[[^\n]+\]) as const;/g, "cell table");
   const chest = exact(source, /export const CHEST_ATLAS_COLUMN = (\d+, CHEST_ATLAS_ROW = \d+);/g, "chest cell");
-  const urls = ASSET_ORIGINS.map((origin) => `${origin}/assets/block-texture-atlas-9a3b9f30.png`);
+  const urls = ASSET_ORIGINS.map((origin) => `${origin}/assets/block-texture-atlas-0f3a9517.png`);
   return `export const TEXTURE_TILE_SIZE=${tileSize},TEXTURE_ATLAS_COLUMNS=${columns},TEXTURE_ATLAS_ROWS=${rows};`
     + `export const TEXTURE_ATLAS_NAMES=${names} as const,TEXTURE_ATLAS_CELLS=${cells} as const;`
     + `export const CHEST_ATLAS_COLUMN=${chest};export type TextureAtlasName=typeof TEXTURE_ATLAS_NAMES[number];`

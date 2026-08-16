@@ -9,9 +9,12 @@ import {
   ADDITIONAL_ARCHITECTURAL_ITEMS,
   ADDITIONAL_COLOR_BLOCK_ITEMS,
   BUILDING_COLORS,
+  CATALOG_V3_BLOCK_ITEMS,
+  CATALOG_V3_STONE_SHAPE_FAMILIES,
   DECORATIVE_STONE_ITEMS,
   DEEPSLATE_BUILDING_ITEMS,
   EXPANDED_BLOCK_ITEM_IDS,
+  LEGACY_STONE_SHAPE_FAMILIES,
   LUMINOUS_BLOCK_ITEMS,
   STONE_SHAPE_FAMILIES,
 } from "../shared/expandedBuildingCatalog.ts";
@@ -25,17 +28,23 @@ const additions = [
 ];
 assert.equal(additions.length, 58);
 const secondWave = [...ADDITIONAL_COLOR_BLOCK_ITEMS, ...ADDITIONAL_ARCHITECTURAL_ITEMS];
-const shapeTail = [
+const legacyShapeTail = [
   ...DEEPSLATE_BUILDING_ITEMS,
-  ...STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
+  ...LEGACY_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
+];
+const v3Tail = [
+  ...CATALOG_V3_BLOCK_ITEMS,
+  ...CATALOG_V3_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
 ];
 assert.equal(secondWave.length, 66);
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(additions.length + secondWave.length + shapeTail.length), -(secondWave.length + shapeTail.length)), additions,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(additions.length + secondWave.length + legacyShapeTail.length + v3Tail.length), -(secondWave.length + legacyShapeTail.length + v3Tail.length)), additions,
   "the first decorative wave retains its append-only IDs");
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(secondWave.length + shapeTail.length), -shapeTail.length), secondWave,
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(secondWave.length + legacyShapeTail.length + v3Tail.length), -(legacyShapeTail.length + v3Tail.length)), secondWave,
   "the second decorative wave is one append-only tail");
-assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-shapeTail.length), shapeTail,
-  "the complete stone slab/stair expansion is append-only after deployed decorative IDs");
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-(legacyShapeTail.length + v3Tail.length), -v3Tail.length), legacyShapeTail,
+  "the deployed stone slab/stair expansion preserves its complete id range");
+assert.deepEqual(EXPANDED_BLOCK_ITEM_IDS.slice(-v3Tail.length), v3Tail,
+  "waxed copper and the widened shape catalog are one new append-only tail");
 assert.deepEqual(AGENT_BLOCK_NAMES, BLOCK_TYPES, "browser and agent builders publish the identical numeric palette");
 
 for (const item of additions) {
@@ -50,6 +59,16 @@ for (const item of secondWave) {
   assert.equal(typeof block, "number", `${item} maps to one engine block`);
   assert.equal(blockTextureForFace(block!, "north"), item, `${item} uses its exact installed Minecraft texture`);
 }
+for (const item of CATALOG_V3_BLOCK_ITEMS) {
+  const block = ITEM_TO_ENGINE[item];
+  assert.equal(typeof block, "number", `${item} maps to one engine block`);
+  assert.ok(blockTextureForFace(block!, "north"), `${item} resolves its exact or oxidation-equivalent texture`);
+}
+assert.equal(blockTextureForFace(BLOCK.WAXED_COPPER_BLOCK, "north"), "copper_block");
+assert.equal(blockTextureForFace(BLOCK.WAXED_EXPOSED_CUT_COPPER, "north"), "exposed_cut_copper");
+assert.equal(blockTextureForFace(BLOCK.WAXED_WEATHERED_CUT_COPPER, "north"), "weathered_cut_copper");
+assert.equal(blockTextureForFace(BLOCK.WAXED_OXIDIZED_CUT_COPPER, "north"), "oxidized_cut_copper");
+assert.equal(STONE_SHAPE_FAMILIES.length, LEGACY_STONE_SHAPE_FAMILIES.length + CATALOG_V3_STONE_SHAPE_FAMILIES.length);
 
 for (const color of BUILDING_COLORS) {
   const glass = BLOCK[`${color.toUpperCase()}_STAINED_GLASS` as keyof typeof BLOCK];

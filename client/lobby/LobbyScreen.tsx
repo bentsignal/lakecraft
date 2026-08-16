@@ -287,7 +287,6 @@ export function LobbyScreen(props: LobbyScreenProps) {
       <section className="lc-title-content" aria-label="Lakecraft main menu">
         <header className="lc-title-logo">
           <h1 aria-label="Lakecraft" data-title="LAKECRAFT">LAKECRAFT</h1>
-          <span>Build farther. Wander together.</span>
         </header>
 
         <div className="lc-title-menu">
@@ -303,6 +302,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
         hostileVolume={props.settings.hostileVolume}
         keyBindings={props.settings.keyBindings}
         masterVolume={props.settings.masterVolume}
+        musicVolume={props.settings.musicVolume}
         mouseSensitivity={props.settings.mouseSensitivity}
         onBack={() => setOptionsOpen(false)}
         onFovChange={(fovDegrees) => props.onSettingsChange({ ...props.settings, fovDegrees })}

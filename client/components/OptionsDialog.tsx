@@ -7,12 +7,13 @@ import {
   assignGameplayControlBinding,
   gameplayControlCodeLabel,
   gameplayControlConflicts,
+  GAMEPLAY_CONTROL_RESERVED_INPUT_NOTE,
   type GameplayControlAction,
   type GameplayControlBindings,
 } from "../gameplay/controlBindings.ts";
 
 const OPTIONS_CSS = `
-.lc-options-layer{align-items:flex-start;background:rgba(0,0,0,.66);color:#fff;display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;overflow-y:auto;padding:clamp(38px,7vh,72px) 14px 24px;position:fixed;text-shadow:2px 2px #202020;z-index:95}.lc-options{max-width:720px;text-align:center;width:100%}.lc-options h2{font-size:22px;font-weight:400;margin:0 0 28px}.lc-options h3{font-size:16px;font-weight:400;grid-column:1/-1;margin:12px 0 0}.lc-options__grid{display:grid;gap:10px;grid-template-columns:1fr 1fr}.lc-options button,.lc-options__slider{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;font:16px/1 var(--lc-pixel-font,"Courier New",monospace);min-height:42px;padding:9px 16px;text-shadow:2px 2px #333}.lc-options button{cursor:pointer}.lc-options button:hover,.lc-options button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-options__slider{align-items:center;display:grid;gap:6px;grid-column:1/-1;grid-template-columns:190px 1fr}.lc-options__slider span{white-space:nowrap}.lc-options input{accent-color:#fff;cursor:pointer;width:100%}.lc-options__done{grid-column:1/-1;margin-top:20px}.lc-options__controls{display:grid;gap:5px;grid-column:1/-1}.lc-options__control{align-items:center;display:grid;gap:8px;grid-template-columns:minmax(160px,1fr) minmax(150px,.7fr);text-align:left}.lc-options__control button{font-size:14px;min-height:36px;padding:7px}.lc-options__control button.is-capturing{background:#8888c8}.lc-options__control button.is-conflict{color:#ff8b8b}.lc-options__control small{grid-column:1/-1;text-align:right}.lc-options__tabs{display:grid;gap:10px;grid-column:1/-1;grid-template-columns:repeat(3,1fr)}@media(max-width:520px){.lc-options__grid{grid-template-columns:1fr}.lc-options__slider,.lc-options__done,.lc-options h3{grid-column:1}.lc-options__slider{grid-template-columns:1fr}.lc-options__tabs{grid-template-columns:1fr}.lc-options__control{grid-template-columns:1fr}.lc-options h2{margin-bottom:20px}}
+.lc-options-layer{align-items:flex-start;background:rgba(0,0,0,.66);color:#fff;display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;overflow-y:auto;padding:clamp(38px,7vh,72px) 14px 24px;position:fixed;text-shadow:2px 2px #202020;z-index:95}.lc-options{max-width:720px;text-align:center;width:100%}.lc-options h2{font-size:22px;font-weight:400;margin:0 0 28px}.lc-options h3{font-size:16px;font-weight:400;grid-column:1/-1;margin:12px 0 0}.lc-options__grid{display:grid;gap:10px;grid-template-columns:1fr 1fr}.lc-options button,.lc-options__slider{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;font:16px/1 var(--lc-pixel-font,"Courier New",monospace);min-height:42px;padding:9px 16px;text-shadow:2px 2px #333}.lc-options button{cursor:pointer}.lc-options button:hover,.lc-options button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-options__slider{align-items:center;display:grid;gap:6px;grid-column:1/-1;grid-template-columns:190px 1fr}.lc-options__slider span{white-space:nowrap}.lc-options input{accent-color:#fff;cursor:pointer;width:100%}.lc-options__done{grid-column:1/-1;margin-top:20px}.lc-options__controls{display:grid;gap:5px;grid-column:1/-1}.lc-options__control{align-items:center;display:grid;gap:8px;grid-template-columns:minmax(160px,1fr) minmax(150px,.7fr);text-align:left}.lc-options__control button{font-size:14px;min-height:36px;padding:7px}.lc-options__control button.is-capturing{background:#8888c8}.lc-options__control button.is-conflict{color:#ff8b8b}.lc-options__control small{grid-column:1/-1;text-align:right}.lc-options__note{color:#bfbfbf;font-size:11px;grid-column:1/-1;line-height:1.4;text-align:left}.lc-options__tabs{display:grid;gap:10px;grid-column:1/-1;grid-template-columns:repeat(3,1fr)}@media(max-width:520px){.lc-options__grid{grid-template-columns:1fr}.lc-options__slider,.lc-options__done,.lc-options h3{grid-column:1}.lc-options__slider{grid-template-columns:1fr}.lc-options__tabs{grid-template-columns:1fr}.lc-options__control{grid-template-columns:1fr}.lc-options h2{margin-bottom:20px}}
 `;
 
 export interface OptionsDialogProps {
@@ -28,17 +29,18 @@ export interface OptionsDialogProps {
   onBack: () => void;
   returnFocusId?: string;
   masterVolume: number;
+  musicVolume: number;
   blocksVolume: number;
   hostileVolume: number;
   passiveVolume: number;
   playersVolume: number;
   uiVolume: number;
-  onVolumeChange: (category: "masterVolume" | "blocksVolume" | "hostileVolume" | "passiveVolume" | "playersVolume" | "uiVolume", value: number) => void;
+  onVolumeChange: (category: "masterVolume" | "musicVolume" | "blocksVolume" | "hostileVolume" | "passiveVolume" | "playersVolume" | "uiVolume", value: number) => void;
   keyBindings: GameplayControlBindings;
   onKeyBindingsChange: (bindings: GameplayControlBindings) => void;
 }
 
-export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, renderDistance, onToggleSound, onSensitivityChange, onFovChange, onRenderDistanceChange, onBack, returnFocusId, masterVolume, blocksVolume, hostileVolume, passiveVolume, playersVolume, uiVolume, onVolumeChange, keyBindings, onKeyBindingsChange }: OptionsDialogProps) {
+export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, renderDistance, onToggleSound, onSensitivityChange, onFovChange, onRenderDistanceChange, onBack, returnFocusId, masterVolume, musicVolume, blocksVolume, hostileVolume, passiveVolume, playersVolume, uiVolume, onVolumeChange, keyBindings, onKeyBindingsChange }: OptionsDialogProps) {
   const [panel, setPanel] = useState<"video" | "sound" | "controls">("video");
   const [captureAction, setCaptureAction] = useState<GameplayControlAction | null>(null);
   const close = () => {
@@ -114,7 +116,7 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, 
           {panel === "sound" ? <>
             <button aria-pressed={soundMuted} onClick={onToggleSound} type="button">Sound: {soundMuted ? "OFF" : "ON"}</button>
             {([
-              ["masterVolume", "Master Volume", masterVolume], ["blocksVolume", "Blocks", blocksVolume],
+              ["masterVolume", "Master Volume", masterVolume], ["musicVolume", "Music", musicVolume], ["blocksVolume", "Blocks", blocksVolume],
               ["hostileVolume", "Hostile Creatures", hostileVolume], ["passiveVolume", "Friendly Creatures", passiveVolume],
               ["playersVolume", "Players", playersVolume], ["uiVolume", "UI", uiVolume],
             ] as const).map(([category, label, value]) => <label className="lc-options__slider" key={category}>
@@ -136,6 +138,7 @@ export function OptionsDialog({ open, soundMuted, mouseSensitivity, fovDegrees, 
               })}
             </div>
             <button onClick={() => onKeyBindingsChange({ ...DEFAULT_GAMEPLAY_CONTROL_BINDINGS })} type="button">Reset Keys</button>
+            <small className="lc-options__note">{GAMEPLAY_CONTROL_RESERVED_INPUT_NOTE}</small>
           </> : null}
           <button autoFocus className="lc-options__done" onClick={close} type="button">Done</button>
         </div>

@@ -7,14 +7,14 @@ const TUPLE_CATALOGS = [
     name: "BLOCKS",
     anchor: "export const BLOCKS = defineBlocks(",
     arrayAfterAnchor: true,
-    rows: 254,
+    rows: 319,
     widths: [8, 9],
     scalarPresentationIndexes: [1, 2, 3, 4],
   },
   {
     name: "BLOCK_ITEM_SPECS",
     anchor: "const BLOCK_ITEM_SPECS",
-    rows: 254,
+    rows: 319,
     widths: [3],
     scalarPresentationIndexes: [1, 2],
   },
@@ -79,7 +79,7 @@ const TUPLE_CATALOGS = [
 ];
 
 const OBJECT_CATALOGS = [
-  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 108 },
+  { name: "RECIPES", anchor: "export const RECIPES", properties: ["label", "note"], expectedMatches: 216 },
   { name: "SMELTING_RECIPES", anchor: "export const SMELTING_RECIPES", properties: ["label"], expectedMatches: 10 },
 ];
 
@@ -191,7 +191,10 @@ function stripTupleCatalog(source, catalog) {
 
 function stripObjectCatalog(source, catalog) {
   const range = catalogArrayRange(source, catalog);
-  const propertyPattern = new RegExp(`\\b(${catalog.properties.join("|")}):\\s*("(?:\\\\.|[^"\\\\])*")\\s*,\\s*`, "g");
+  // Generated catalog rows are deliberately JSON-compatible while the older
+  // handwritten rows use TypeScript's unquoted keys. Strip presentation-only
+  // strings from both forms or fail the exact match count below.
+  const propertyPattern = new RegExp(`"?\\b(${catalog.properties.join("|")})\\b"?:\\s*("(?:\\\\.|[^"\\\\])*")\\s*,\\s*`, "g");
   let matches = 0;
   const text = range.text.replace(propertyPattern, () => {
     matches += 1;
@@ -286,7 +289,7 @@ const SERVER_CRAFTING_TABLE_RECIPE = `function craftingTableRecipe(id: ItemId, i
 `;
 
 const CLIENT_CATALOG_IDENTIFIER = "__lakecraftGameCatalog";
-const CLIENT_CATALOG_FINGERPRINT = "01b61008";
+const CLIENT_CATALOG_FINGERPRINT = "3014a56f";
 
 function compressStaticBytes(bytes) {
   const packed = [];
@@ -399,7 +402,7 @@ export function compactClientGameCatalog(source) {
     fail("RECIPES generated spread anchor changed.");
   }
   const literalRecipeText = recipeRange.text.slice(1, recipeSpread);
-  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 54);
+  const literalRecipes = parseObjectRows(literalRecipeText, "RECIPES", 108);
   const recipeIndex = catalogs.length;
   catalogs.push(literalRecipes);
   replacements.push({

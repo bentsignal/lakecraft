@@ -2,7 +2,7 @@ import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
 const assets = [
-  ["../client/game/generated/texture-atlas-v1.png", "block-texture-atlas-9a3b9f30.png", "242bbf5316677c49565d829adfd5cadcc2830d5682ce95a80b7add3bbd4effa3"],
+  ["../client/game/generated/texture-atlas-v1.png", "block-texture-atlas-0f3a9517.png", "0f3a9517c9850c970514a2a88873eee2bed205272cc318b484dde0bfbb7973e1"],
   ["../client/game/generated/mob-texture-atlas-v1.png", "mob-texture-atlas-204e2b83.png", "204e2b831ffd3716b9a1c04fab27fc832f0f0ce686c20896364a91d1b553e9f3"],
 ];
 const output = new URL("../apps/game-server/assets/", import.meta.url);

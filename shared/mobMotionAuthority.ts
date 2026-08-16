@@ -23,9 +23,10 @@ export const CREEPER_FUSE_VERTICAL_RANGE_BLOCKS = 3;
  * axis toward world -X, so eastbound (+X) travel requires a negative yaw.
  */
 export function mobFacingYaw(dx: number, dz: number, fallback: number): number {
-  return Number.isFinite(dx) && Number.isFinite(dz) && dx * dx + dz * dz > 0.000001
+  const yaw = Number.isFinite(dx) && Number.isFinite(dz) && dx * dx + dz * dz > 0.000001
     ? Math.atan2(-dx, dz)
     : fallback;
+  return Object.is(yaw, -0) ? 0 : yaw;
 }
 
 const MAX_TARGET_ID_LENGTH = 128;
@@ -65,6 +66,8 @@ export interface MobMotionTargetSnapshot {
 export interface MobMotionWorldSnapshot {
   isNight: boolean;
   targets: readonly MobMotionTargetSnapshot[];
+  /** Server-owned per-mob darkness eligibility; omitted by local play. */
+  activeHostileMobIds?: readonly string[];
 }
 
 export interface MobMotionMobState {
@@ -409,6 +412,9 @@ function moveMob(
 export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotionWorldSnapshot>): MobMotionState {
   if (state.tick >= MOB_MOTION_MAX_CHECKPOINT_TICK) return state;
   const targets = canonicalTargets(Array.isArray(snapshot.targets) ? snapshot.targets : []);
+  const activeHostileMobIds = snapshot.activeHostileMobIds === undefined
+    ? null
+    : new Set(snapshot.activeHostileMobIds);
   state.tick += 1;
   for (let index = 0; index < state.mobs.length; index += 1) {
     const mob = state.mobs[index];
@@ -420,7 +426,10 @@ export function stepMobMotion(state: MobMotionState, snapshot: Readonly<MobMotio
       continue;
     }
     mob.targetUserId = "";
-    if (!definition.passive && snapshot.isNight !== true) {
+    const hostileActive = activeHostileMobIds === null
+      ? snapshot.isNight === true
+      : activeHostileMobIds.has(mob.mobId);
+    if (!definition.passive && !hostileActive) {
       if (mob.kind === "creeper") cancelCreeperFuse(mob);
       mob.behavior = "dormant";
       mob.directionX = 0;

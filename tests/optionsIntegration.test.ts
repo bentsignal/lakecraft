@@ -35,6 +35,7 @@ assert.ok(dialog.includes('aria-label="Field of view"') && dialog.includes('min=
 assert.ok(dialog.includes('aria-label="Render distance"') && dialog.includes("renderDistance !== undefined"),
   "either authority can opt into the shared accessible render-distance slider");
 assert.ok(dialog.includes("RENDER_DISTANCE_MAX"), "the slider uses the shared tested chunk ceiling");
+assert.ok(dialog.includes('["musicVolume", "Music", musicVolume]'), "Music & Sounds exposes a dedicated persistent ambient-music channel");
 assert.ok(dialog.includes('event.key !== "Tab"') && dialog.includes("event.shiftKey"), "keyboard focus is trapped in either tab direction");
 assert.ok(dialog.includes("returnFocusId") && pause.includes('id="lc-game-menu-options"')
   && lobby.includes('"lc-title-options"') && menuButton.includes("id={id}"),
@@ -50,6 +51,11 @@ assert.ok(presentation.includes("fieldOfViewRadians(context.getSettings().fovDeg
 assert.ok(app.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(singlePlayer.includes("getSettings: () => clientSettingsRef.current"));
 assert.ok(lobby.includes("fovDegrees={props.settings.fovDegrees}"), "title Options edits the same persisted FOV setting");
+assert.ok(lobby.includes("musicVolume={props.settings.musicVolume}")
+  && hud.includes("musicVolume={musicVolume}")
+  && app.includes("musicVolume={clientSettings.musicVolume}")
+  && singlePlayer.includes("musicVolume={clientSettings.musicVolume}"),
+"title, single-player, and multiplayer all wire the same persistent music setting through shared Options");
 assert.ok(lobby.includes("renderDistance={props.settings.renderDistance}")
   && lobby.includes("onRenderDistanceChange={(renderDistance) => props.onSettingsChange({ ...props.settings, renderDistance })}"),
 "title Options exposes the same persisted render-distance setting as both gameplay modes");

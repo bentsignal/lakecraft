@@ -30,8 +30,8 @@ assert.ok(app.includes("setLocalFusesPausedRef.current(paused)"), "container mod
 
 assert.ok(app.includes("<FurnaceDrawer"));
 assert.ok(app.includes("<ChestDrawer"));
-assert.ok(app.includes("modalOpen={uiModalOpen || pointerCaptureNeeded || !worldReady}"),
-  "containers, chat, capture fallback, and world loading hide the crosshair and survival hotbar behind the modal");
+assert.ok(app.includes("modalOpen={uiModalOpen || !worldReady}"),
+  "containers, chat, and world loading hide the crosshair and survival hotbar behind the modal");
 assert.match(app, /engine\.start\(\);[\s\S]*?requestAnimationFrame\(\(\) => \{\s*if \(engineRef\.current === engine\) setWorldReady\(true\)/,
   "single-player shares the first-painted-frame loading boundary with multiplayer");
 assert.equal(app.includes("LOCAL SINGLE-PLAYER CONTAINER"), false, "local chest no longer exposes implementation/debug copy");

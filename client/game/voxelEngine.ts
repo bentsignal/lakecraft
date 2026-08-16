@@ -748,6 +748,10 @@ export const TERRAIN_FRAGMENT_SHADER = `precision mediump float;uniform sampler2
 export const MOB_VERTEX_SHADER = `attribute vec3 aPosition;attribute vec2 aUv;attribute vec3 aTint;uniform mat4 uMvp;varying vec2 vUv;varying vec3 vLight;varying float vFog;${LIGHTING_VERTEX_SHADER}void main(){gl_Position=uMvp*vec4(aPosition,1.);vUv=aUv;vLight=aTint*lightAt(aPosition,1.);vFog=fogAt(aPosition);}`;
 export const MOB_FRAGMENT_SHADER = `precision mediump float;uniform sampler2D uAtlas;uniform vec3 uFogColor;varying vec2 vUv;varying vec3 vLight;varying float vFog;void main(){vec4 t=texture2D(uAtlas,vUv);if(t.a<.02)discard;gl_FragColor=vec4(mix(t.rgb*vLight,uFogColor,vFog),t.a);}`;
 
+/** One bounded point-sprite pass gives nearby emitters a soft aura without a full-screen bloom buffer. */
+export const EMISSIVE_GLOW_VERTEX_SHADER = `attribute vec4 p;uniform mat4 m;uniform vec3 c;uniform vec2 f;uniform float h;varying float v;void main(){vec3 d=c-p.xyz,q=p.xyz+d/max(length(d),.001)*.58;gl_Position=m*vec4(q,1.);v=1.-smoothstep(f.x,f.y,length(d));gl_PointSize=clamp(p.w*h/max(gl_Position.w,.1)*.07,4.,64.);}`;
+export const EMISSIVE_GLOW_FRAGMENT_SHADER = `precision mediump float;varying float v;void main(){float d=length(gl_PointCoord-.5)*2.;float a=(1.-smoothstep(.12,1.,d))*.12*v;gl_FragColor=vec4(1.,.56,.18,a);}`;
+
 /** Stable material palette entry used by the dependency-free voxel renderer. */
 export function blockMaterialColor(block: BlockId): readonly [number, number, number] {
   return BLOCK_COLORS[block] ?? BLOCK_COLORS[BLOCK.STONE];
@@ -1763,6 +1767,7 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const terrainProgram = createProgram(gl, TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
   const mobProgram = createProgram(gl, MOB_VERTEX_SHADER, MOB_FRAGMENT_SHADER);
   const atmosphereProgram = createProgram(gl, ATMOSPHERE_VERTEX_SHADER, ATMOSPHERE_FRAGMENT_SHADER);
+  const emissiveGlowProgram = createProgram(gl, EMISSIVE_GLOW_VERTEX_SHADER, EMISSIVE_GLOW_FRAGMENT_SHADER);
   const terrainTexture = createTerrainTexture(gl);
   const mobTexture = createMobTexture(gl);
   const positionLocation = gl.getAttribLocation(program, "aPosition");
@@ -1825,16 +1830,24 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
   const atmosphereSunIntensityLocation = gl.getUniformLocation(atmosphereProgram, "S");
   const atmosphereMoonIntensityLocation = gl.getUniformLocation(atmosphereProgram, "M");
   const atmosphereStarIntensityLocation = gl.getUniformLocation(atmosphereProgram, "R");
+  const emissiveGlowPositionLocation = gl.getAttribLocation(emissiveGlowProgram, "p");
+  const emissiveGlowMvpLocation = gl.getUniformLocation(emissiveGlowProgram, "m");
+  const emissiveGlowCameraLocation = gl.getUniformLocation(emissiveGlowProgram, "c");
+  const emissiveGlowFogRangeLocation = gl.getUniformLocation(emissiveGlowProgram, "f");
+  const emissiveGlowHeightLocation = gl.getUniformLocation(emissiveGlowProgram, "h");
   const atmosphereBuffer = gl.createBuffer();
+  const emissiveGlowBuffer = gl.createBuffer();
   const lineBuffer = gl.createBuffer();
   const crackBuffer = gl.createBuffer();
   const particleBuffer = gl.createBuffer();
-  if (!lineBuffer || !crackBuffer || !atmosphereBuffer || !particleBuffer) throw new Error("Unable to allocate WebGL buffers.");
+  if (!lineBuffer || !crackBuffer || !atmosphereBuffer || !particleBuffer || !emissiveGlowBuffer) throw new Error("Unable to allocate WebGL buffers.");
   const targetOutlineGeometry = new Float32Array(TARGET_OUTLINE_VERTEX_COUNT * 6);
   gl.bindBuffer(gl.ARRAY_BUFFER, lineBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, targetOutlineGeometry.byteLength, gl.DYNAMIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, atmosphereBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, ATMOSPHERE_SCREEN_TRIANGLE, gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, emissiveGlowBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, MAX_ACTIVE_TORCH_LIGHTS * 4 * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
   const remotePlayerRenderer = createRemotePlayerRenderer(gl);
   const remotePlayerSkinRenderer = createRemotePlayerSkinRenderer(gl);
   const playerSkinRenderer = createPlayerSkinRenderer(gl);
@@ -3517,6 +3530,8 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       activeTorchUniforms[offset + 2] = light.z;
       activeTorchUniforms[offset + 3] = TORCH_LIGHT_RADIUS;
     }
+    gl.bindBuffer(gl.ARRAY_BUFFER, emissiveGlowBuffer);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, activeTorchUniforms);
   }
 
   function chunkTorchLights(mesh: ChunkMesh): Float32Array {
@@ -3946,6 +3961,28 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       const localPlayerDrawCalls = playerSkinRenderer.drawCallCount;
       drawCalls += localPlayerDrawCalls;
       avatarDrawCalls += localPlayerDrawCalls;
+      gl.useProgram(program);
+    }
+
+    if (activeTorchLights > 0) {
+      gl.useProgram(emissiveGlowProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, emissiveGlowBuffer);
+      gl.enableVertexAttribArray(emissiveGlowPositionLocation);
+      gl.vertexAttribPointer(emissiveGlowPositionLocation, 4, gl.FLOAT, false, 0, 0);
+      gl.uniformMatrix4fv(emissiveGlowMvpLocation, false, mvp);
+      gl.uniform3fv(emissiveGlowCameraLocation, eye);
+      gl.uniform2fv(emissiveGlowFogRangeLocation, fogRange);
+      // gl_PointSize is expressed in framebuffer pixels, so scale from the
+      // framebuffer height (which already includes DPR) to keep CSS size stable.
+      gl.uniform1f(emissiveGlowHeightLocation, canvas.height);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      gl.drawArrays(gl.POINTS, 0, activeTorchLights);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+      gl.disableVertexAttribArray(emissiveGlowPositionLocation);
+      drawCalls += 1;
       gl.useProgram(program);
     }
 
@@ -4633,11 +4670,13 @@ export function createVoxelEngine(canvas: HTMLCanvasElement, options: VoxelEngin
       gl.deleteBuffer(lineBuffer);
       gl.deleteBuffer(crackBuffer);
       gl.deleteBuffer(atmosphereBuffer);
+      gl.deleteBuffer(emissiveGlowBuffer);
       mobRenderer.destroy();
       gl.deleteProgram(program);
       gl.deleteProgram(terrainProgram);
       gl.deleteProgram(mobProgram);
       gl.deleteProgram(atmosphereProgram);
+      gl.deleteProgram(emissiveGlowProgram);
       gl.deleteTexture(terrainTexture);
       destroyMobTexture(gl, mobTexture);
     },

@@ -31,6 +31,9 @@ import {
   type MobAuthorityState,
 } from "../shared/mobCombat.ts";
 import type { MobMotionBehavior, MobMotionPose } from "../shared/mobMotionAuthority.ts";
+import { BLOCK_TYPES } from "../shared/protocol.ts";
+import type { WorldChunkBlockType } from "../shared/worldChunks.ts";
+import { buildWorldBlockOperationRequest } from "./worldBlockEditClient.ts";
 
 export const REALTIME_PROTOCOL_VERSION = 1 as const;
 export const MULTIPLAYER_SERVERS_STORAGE_KEY = "lakecraft:multiplayer-servers:v1";
@@ -38,6 +41,12 @@ export const MULTIPLAYER_INVITATION_TOKENS_STORAGE_KEY = "lakecraft:multiplayer-
 
 export type RealtimeConnectionPhase = "idle" | "connecting" | "online" | "reconnecting" | "offline" | "error";
 export type RealtimeGameMode = "survival" | "creative";
+export type RealtimeBlockAuthority = Readonly<{
+  previousBlock: number;
+  selectedHotbar: number;
+  expectedHeldItem: keyof typeof ITEMS | null;
+  expectedInventoryRevision: string;
+}>;
 export type RealtimeWorldSettings = Readonly<{
   spawn:{x:number;y:number;z:number;yaw:number}; daylightCycle:boolean; dayPhase:number;
 }>;
@@ -125,7 +134,7 @@ type RemoteAppearance = RealtimeArmorAppearance & {
 };
 
 const APPEARANCE_CAPABILITY = "appearance-v1";
-const WORLD_CHUNKS_CAPABILITY = "world-chunks-v1";
+const WORLD_CHUNKS_CAPABILITIES = ["world-chunks-v1", "world-chunks-v2"] as const;
 const MOBS_CAPABILITY = "mobs-v1";
 const DEFAULT_TERRAIN: WorldTerrainDescriptor = Object.freeze({ preset: "default", superflatGroundY: 20 });
 
@@ -562,13 +571,36 @@ export class RealtimeMultiplayerClient {
     this.options.onPhase("offline");
   }
 
-  submitBlockEdit(operationId: string, edit: WorldEdit): Promise<RealtimeWorldEdit> {
+  submitBlockEdit(
+    operationId: string,
+    edit: WorldEdit,
+    authority: RealtimeBlockAuthority,
+  ): Promise<RealtimeWorldEdit> {
     if (!this.joined || this.socket?.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("multiplayer_not_connected"));
     }
     if (!/^[A-Za-z0-9:_-]{8,96}$/.test(operationId) || this.pendingBlocks.has(operationId)) {
       return Promise.reject(new Error("invalid_multiplayer_operation"));
     }
+    const chunkKey = realtimeChunkKey(realtimeChunkCoordinate(edit.x), realtimeChunkCoordinate(edit.z));
+    const previousBlock = BLOCK_TYPES[authority.previousBlock] as WorldChunkBlockType | "bedrock" | undefined;
+    const nextBlock = BLOCK_TYPES[edit.block] as WorldChunkBlockType | "bedrock" | undefined;
+    if (!previousBlock || previousBlock === "bedrock" || !nextBlock || nextBlock === "bedrock") {
+      return Promise.reject(new Error("invalid_multiplayer_block_transition"));
+    }
+    const request = buildWorldBlockOperationRequest({
+      operationId,
+      x: edit.x,
+      y: edit.y,
+      z: edit.z,
+      previousBlock,
+      nextBlock,
+      selectedHotbar: authority.selectedHotbar,
+      expectedHeldItem: authority.expectedHeldItem,
+      expectedInventoryRevision: authority.expectedInventoryRevision,
+      expectedChunkRevision: String(this.chunkRevisions.get(chunkKey) ?? 0),
+    });
+    if (!request) return Promise.reject(new Error("invalid_multiplayer_block_transition"));
     this.blockSequence += 1;
     this.send({
       v: REALTIME_PROTOCOL_VERSION,
@@ -579,6 +611,7 @@ export class RealtimeMultiplayerClient {
       y: edit.y,
       z: edit.z,
       block: edit.block,
+      requestJson: JSON.stringify(request),
     });
     return new Promise<RealtimeWorldEdit>((resolve, reject) => {
       const timer = window.setTimeout(() => {
@@ -644,10 +677,16 @@ export class RealtimeMultiplayerClient {
     this.send({ v: REALTIME_PROTOCOL_VERSION, type: "action", seq: this.actionSequence, kind, ...(value === undefined ? {} : { value }) });
   }
 
-  submitDrop(operationId: string, item: ItemStack, pose: PlayerPose): Promise<NormalizedDroppedItem> {
+  submitDrop(
+    operationId: string,
+    item: ItemStack,
+    pose: PlayerPose,
+    sourceSlot?: number,
+  ): Promise<NormalizedDroppedItem> {
     return this.submitDropOperation(operationId, {
       type: "drop_item", itemId: item.itemId, count: item.count,
       ...(item.durability === undefined ? {} : { durability: item.durability }),
+      ...(sourceSlot === undefined ? {} : { sourceSlot }),
       x: pose.x, y: pose.y, z: pose.z,
     });
   }
@@ -725,6 +764,7 @@ export class RealtimeMultiplayerClient {
       this.send({
         v: REALTIME_PROTOCOL_VERSION,
         type: "join",
+        capabilities: [WORLD_CHUNKS_CAPABILITIES[1]],
         ...(this.options.demo ? {} : { serverId: this.options.serverId }),
         ...(this.resumeToken || this.options.demo ? {} : { ticket: this.options.ticket }),
         ...(!this.resumeToken && this.options.password ? { password: this.options.password } : {}),
@@ -991,7 +1031,7 @@ export class RealtimeMultiplayerClient {
       this.appearanceSupported = Array.isArray(message.capabilities)
         && message.capabilities.includes(APPEARANCE_CAPABILITY);
       this.worldChunksSupported = Array.isArray(message.capabilities)
-        && message.capabilities.includes(WORLD_CHUNKS_CAPABILITY);
+        && WORLD_CHUNKS_CAPABILITIES.some((capability) => message.capabilities.includes(capability));
       this.mobsSupported = Array.isArray(message.capabilities)
         && message.capabilities.includes(MOBS_CAPABILITY);
       if (this.appearanceSupported) this.prepareAppearance();
@@ -1147,6 +1187,26 @@ export class RealtimeMultiplayerClient {
       if (!decoded) return;
       const operationId = boundedText(message.operationId, 96);
       const edit = operationId ? { ...decoded, operationId } : decoded;
+      const chunkKey = realtimeChunkKey(
+        realtimeChunkCoordinate(edit.x),
+        realtimeChunkCoordinate(edit.z),
+      );
+      const knownRevision = this.chunkRevisions.get(chunkKey) ?? 0;
+      const stale = edit.revision !== undefined && edit.revision < knownRevision;
+      if (stale) {
+        if (edit.operationId) {
+          const pending = this.pendingBlocks.get(edit.operationId);
+          if (pending) {
+            window.clearTimeout(pending.timer);
+            this.pendingBlocks.delete(edit.operationId);
+            pending.reject(new Error("stale_multiplayer_block_ack"));
+          }
+        }
+        return;
+      }
+      if (edit.revision !== undefined) {
+        this.chunkRevisions.set(chunkKey, Math.max(knownRevision, edit.revision));
+      }
       this.options.onWorldEdits([edit], false);
       if (edit.operationId) {
         const pending = this.pendingBlocks.get(edit.operationId);

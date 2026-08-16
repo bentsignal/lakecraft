@@ -115,13 +115,13 @@ assert.equal(resumeClick.closePause, true, "Back to Game closes Game Menu");
 assert.equal(resumeClick.requestPointerLock, true, "Back to Game requests lock in the click handler");
 const recaptured = run(resumeClick.state, { type: "lock_change", locked: true, now: 500, uiBlocked: false });
 assert.equal(recaptured.state.locked, true);
-assert.equal(recaptured.showCaptureAffordance, false, "successful recapture removes the fallback affordance");
 const denied = run(resumeClick.state, { type: "lock_change", locked: false, now: 501, uiBlocked: false });
-assert.equal(denied.showCaptureAffordance, true, "denied or lost capture exposes one explicit recovery action");
+assert.equal(denied.openPause, false, "a denied resume request cannot summon a second overlay");
+assert.equal("showCaptureAffordance" in denied, false, "pointer transitions expose no capture-overlay signal");
 
 let settleTrustedRequest: ((locked: boolean) => void) | undefined;
 let pauseVisible = true;
-let pointerCaptureNeeded = true;
+let settledLock: boolean | undefined;
 const trustedRequestTrace: string[] = [];
 beginSinglePlayerPointerLockAttempt(
   () => {
@@ -131,27 +131,26 @@ beginSinglePlayerPointerLockAttempt(
   () => {
     trustedRequestTrace.push("resume");
     pauseVisible = false;
-    pointerCaptureNeeded = false;
   },
-  (locked) => { pointerCaptureNeeded = !locked; },
+  (locked) => { settledLock = locked; },
 );
 assert.deepEqual(trustedRequestTrace, ["request", "resume"],
   "Back to Game requests Pointer Lock before replacing the trusted-click UI");
 assert.equal(pauseVisible, false);
-assert.equal(pointerCaptureNeeded, false, "an in-flight trusted request never flashes Click to Play");
+assert.equal(settledLock, undefined, "an in-flight trusted request adds no capture interstitial state");
 settleTrustedRequest?.(true);
 await Promise.resolve();
-assert.equal(pointerCaptureNeeded, false, "a successful trusted request resumes without Click to Play");
+assert.equal(settledLock, true, "a successful trusted request resumes directly");
 
 let rejectTrustedRequest: ((locked: boolean) => void) | undefined;
 beginSinglePlayerPointerLockAttempt(
   () => new Promise<boolean>((resolve) => { rejectTrustedRequest = resolve; }),
-  () => { pointerCaptureNeeded = false; },
-  (locked) => { pointerCaptureNeeded = !locked; },
+  () => undefined,
+  (locked) => { settledLock = locked; },
 );
 rejectTrustedRequest?.(false);
 await Promise.resolve();
-assert.equal(pointerCaptureNeeded, true, "a genuine denial exposes the recoverable Click to Play fallback");
+assert.equal(settledLock, false, "a genuine denial is recorded without exposing an overlay");
 
 for (const supersession of ["pause", "ui"] as const) {
   let lateGrantReleased = false;
@@ -173,7 +172,7 @@ for (const supersession of ["pause", "ui"] as const) {
   let currentUiBlocked = false;
   beginSinglePlayerPointerLockAttempt(
     () => new Promise<boolean>((resolve) => { resolveDelayedGrant = resolve; }),
-    () => { pointerCaptureNeeded = false; },
+    () => undefined,
     (locked) => {
       if (attemptGeneration !== requestGeneration) {
         releaseBlockedSinglePlayerPointerLockGrant(
@@ -281,7 +280,7 @@ for (const commandResultRendered of [false, true]) {
   const close = run(beforeClose, { type: "close_ui_escape", now: 1_100 });
   assert.equal(close.openPause, false, "one chat Escape closes without Game Menu");
   assert.equal(close.requestPointerLock, false, "keydown waits until Chrome finishes its native Escape processing");
-  assert.equal(close.showCaptureAffordance, false, "closing chat never flashes Click to Play");
+  assert.equal("showCaptureAffordance" in close, false, "closing chat cannot flash a capture overlay");
 
   const repeat = run(close.state, { type: "escape", now: 1_101, repeat: true, uiBlocked: false });
   assert.equal(repeat.openPause, false, "the held Escape repeat cannot spend the suppression token or pause");
@@ -547,7 +546,8 @@ assert.ok(escapeReleaseRecapture.includes("scheduleGameplayPointerLockAfterEscap
 "the post-Escape attempt waits for key release and retains the movement-key fallback");
 assert.match(singlePlayerSource, /cancelRangedActionForEscape\(\)[\s\S]{0,300}armGameplayResumeAfterEscape/,
   "bow Escape cancels the draw before arming silent gameplay recapture");
-assert.ok(singlePlayerSource.includes("Click to Play"), "failed handoff has one explicit pointer-capture affordance");
+assert.doesNotMatch(singlePlayerSource, /Click to Play|Capture the mouse|pointerCaptureNeeded/,
+  "failed handoff remains silent and never mounts a capture interstitial");
 const escapeArm = singlePlayerSource.slice(
   singlePlayerSource.indexOf("function armGameplayResumeAfterEscape"),
   singlePlayerSource.indexOf("function warnWorldEditCapacity"),
@@ -569,7 +569,8 @@ const initialPause = singlePlayerSource.slice(
   singlePlayerSource.indexOf("const initiallyPaused = singlePlayerGameplayPaused"),
   singlePlayerSource.indexOf("engine.start();"),
 );
-assert.ok(initialPause.includes("pointerCaptureNeeded"), "the initial Click to Play fallback freezes the engine and local fuses");
+assert.equal(initialPause.includes("pointerCaptureNeeded"), false,
+  "missing pointer capture cannot freeze initial gameplay");
 const ongoingPause = singlePlayerSource.slice(
   singlePlayerSource.indexOf("const paused = singlePlayerGameplayPaused", singlePlayerSource.indexOf("engine.start();")),
   singlePlayerSource.indexOf("if (deathScreenOpen) setOptionsOpen(false)"),
@@ -595,22 +596,20 @@ assert.equal(ongoingPausePredicate.includes("commandOpen"), false,
 const compactSinglePlayerSource = stripClientDevelopmentSurfaces(singlePlayerSource);
 assert.ok(compactSinglePlayerSource.includes("const uiModalOpen = worldModalOpen || commandOpen;"),
   "compact stripping removes the development-only Visual Lab blocker cleanly");
-assert.ok(ongoingPause.includes("pointerCaptureNeeded"), "denied capture remains an ongoing engine and fuse pause input");
 assert.ok(
-  ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded, hudVisible]"),
-  "successful capture and F1 viewmodel visibility rerun the ongoing presentation effect immediately",
+  ongoingPause.includes("[pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, hudVisible]"),
+  "modal state and F1 viewmodel visibility rerun the ongoing presentation effect immediately",
 );
-assert.match(singlePlayerSource, /setPointerCaptureNeeded\([\s\S]{0,160}!pointerSessionRef\.current\.pauseOpen,[\s\S]{0,20}\);/,
-  "the lock-loss callback cannot overwrite capture-needed after opening Game Menu");
+assert.doesNotMatch(singlePlayerSource, /setPointerCaptureNeeded|silentPointerRecaptureDenied/,
+  "no pointer-lock callback can resurrect either capture overlay");
 const survivalSample = singlePlayerSource.slice(
   singlePlayerSource.indexOf("const sample = () =>"),
   singlePlayerSource.indexOf("const onVisibilityChange"),
 );
 assert.ok(
   survivalSample.includes("const active = !singlePlayerGameplayPaused({")
-    && survivalSample.includes("pointerCaptureNeeded")
     && survivalSample.includes("sampleSaveCadence(saveCadenceRef.current, now, active)"),
-  "Click to Play fallback cannot advance survival or the active autosave cadence",
+  "real modal blockers still gate survival and the active autosave cadence",
 );
 
 console.log("single-player pointer-lock ordering and input-release tests passed");

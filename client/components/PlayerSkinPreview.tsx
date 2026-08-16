@@ -12,12 +12,15 @@ function paintSkin(
   model: PlayerSkinModel,
 ): void {
   const ratio = sourceSize / 64;
+  const scale = Math.min(context.canvas.width / 80, context.canvas.height / 144);
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+  context.setTransform(scale, 0, 0, scale, (context.canvas.width - 80 * scale) / 2, 0);
   const sample = (u: number, v: number, width: number, height: number, x: number, y: number) => {
     context.drawImage(source, u * ratio, v * ratio, width * ratio, height * ratio, x, y, width * 4, height * 4);
   };
   const armWidth = model === "slim" ? 3 : 4;
   const leftArmX = 24 - armWidth * 4;
-  context.clearRect(0, 0, 80, 144);
   context.imageSmoothingEnabled = false;
   // Modern-skin front UVs. Transparent overlays preserve the exact hat,
   // sleeves, jacket, and trouser details selected for the canonical F5 rig.
@@ -53,5 +56,5 @@ export function PlayerSkinPreview({ open }: { open: boolean }) {
     selected.onload = () => paintSkin(context, selected, persisted.width, persisted.model);
     selected.src = persisted.dataUrl;
   }, [open]);
-  return <canvas aria-label="Your current player skin" className="lc-player-preview" height={144} ref={canvasRef} role="img" width={80} />;
+  return <canvas aria-label="Your current player skin" className="lc-player-preview" height={210} ref={canvasRef} role="img" width={147} />;
 }

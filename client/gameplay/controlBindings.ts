@@ -8,6 +8,9 @@ export const GAMEPLAY_CONTROL_ACTIONS = [
 export type GameplayControlAction = (typeof GAMEPLAY_CONTROL_ACTIONS)[number];
 export type GameplayControlBindings = Record<GameplayControlAction, string>;
 
+export const GAMEPLAY_CONTROL_RESERVED_INPUT_NOTE =
+  "Mouse wheel always cycles the hotbar. Escape and browser or text-editing shortcuts remain reserved by the browser.";
+
 export const DEFAULT_GAMEPLAY_CONTROL_BINDINGS: Readonly<GameplayControlBindings> = Object.freeze({
   moveForward: "KeyW", moveBackward: "KeyS", strafeLeft: "KeyA", strafeRight: "KeyD",
   jump: "Space", sprint: "ControlLeft", sneak: "ShiftLeft", inventory: "KeyE", drop: "KeyQ",

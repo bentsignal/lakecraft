@@ -68,8 +68,8 @@ assert.ok(engine.includes("appendWorldBlockCrackLines(crackLines, target.block")
 assert.ok(engine.includes("function updateMiningCrackGeometry()"), "crack geometry uploads only when bounded progress changes, not every render");
 assert.ok(surface.includes('role="status" aria-live="polite"><strong>Loading world</strong>'),
   "world entry renders a blocking, announced loading state before terrain is ready");
-assert.ok(surface.includes("ready && pointerCapture?.visible"),
-  "Click to Play cannot cover or compete with initial world loading");
+assert.doesNotMatch(surface, /Click to Play|Capture the mouse|pointerCapture/,
+  "the gameplay surface has no pointer-capture interstitial to cover initial loading or live play");
 const streamingWindow = engine.slice(
   engine.indexOf("function updateStreamingWindow("),
   engine.indexOf("function setBlock(", engine.indexOf("function updateStreamingWindow(")),

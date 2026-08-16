@@ -33,7 +33,6 @@ export interface SinglePlayerPauseState {
   inventoryOpen: boolean;
   worldModalOpen: boolean;
   deathScreenOpen: boolean;
-  pointerCaptureNeeded: boolean;
   documentVisible: boolean;
 }
 
@@ -44,14 +43,13 @@ export interface GameplaySessionBlockers {
   chat: boolean;
   modal: boolean;
   death: boolean;
-  pointerCapture: boolean;
   mobileUnsupported: boolean;
 }
 
 /** The sole pause predicate for local and network-backed gameplay sessions. */
 export function gameplaySessionPaused(state: Readonly<GameplaySessionBlockers>): boolean {
   return !state.foreground || state.pause || state.inventory || state.chat || state.modal
-    || state.death || state.pointerCapture || state.mobileUnsupported;
+    || state.death || state.mobileUnsupported;
 }
 
 /** One pause predicate used before engine startup and for every later UI/visibility transition. */
@@ -63,7 +61,6 @@ export function singlePlayerGameplayPaused(state: Readonly<SinglePlayerPauseStat
     chat: false,
     modal: state.worldModalOpen,
     death: state.deathScreenOpen,
-    pointerCapture: state.pointerCaptureNeeded,
     mobileUnsupported: false,
   });
 }
@@ -161,7 +158,6 @@ export interface SinglePlayerPointerSessionTransition {
   openPause: boolean;
   closePause: boolean;
   requestPointerLock: boolean;
-  showCaptureAffordance: boolean;
 }
 export type GameplayPointerSessionTransition = SinglePlayerPointerSessionTransition;
 
@@ -232,7 +228,6 @@ export function transitionSinglePlayerPointerSession(
     openPause: false,
     closePause: false,
     requestPointerLock: false,
-    showCaptureAffordance: false,
   });
 
   if (event.type === "intentional_release") {
@@ -320,10 +315,7 @@ export function transitionSinglePlayerPointerSession(
     intentionalReleasePending: false,
   };
   if (!wasLocked) {
-    return {
-      ...unchanged(next),
-      showCaptureAffordance: !event.uiBlocked && !current.pauseOpen,
-    };
+    return unchanged(next);
   }
   if (intentional || event.uiBlocked || current.pauseOpen) return unchanged(next);
   return {

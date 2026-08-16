@@ -37,12 +37,23 @@ export const ADDITIONAL_ARCHITECTURAL_ITEMS = [
 ] as const;
 
 /**
+ * Append-only third catalog wave. Waxing preserves the corresponding copper
+ * texture, while the tuff/resin entries use their own reviewed 26.2 tiles.
+ * Keep this wave after every state shipped by the 499-entry v1 palette.
+ */
+export const CATALOG_V3_BLOCK_ITEMS = [
+  "waxed_copper_block", "waxed_exposed_copper", "waxed_weathered_copper", "waxed_oxidized_copper",
+  "waxed_cut_copper", "waxed_exposed_cut_copper", "waxed_weathered_cut_copper", "waxed_oxidized_cut_copper",
+  "polished_tuff", "tuff_bricks", "resin_bricks",
+] as const;
+
+/**
  * Minecraft families whose existing full block has matching slab and stair
  * variants.  The tuple keeps the item/state prefix beside the exact source
  * block so catalog, recipes, rendering, and both multiplayer authorities
  * cannot silently disagree about plural names such as nether bricks.
  */
-export const STONE_SHAPE_FAMILIES = [
+export const LEGACY_STONE_SHAPE_FAMILIES = [
   ["stone", "stone"],
   ["sandstone", "sandstone"],
   ["smooth_sandstone", "smooth_sandstone"],
@@ -56,6 +67,41 @@ export const STONE_SHAPE_FAMILIES = [
   ["polished_deepslate", "polished_deepslate"],
   ["deepslate_brick", "deepslate_bricks"],
   ["deepslate_tile", "deepslate_tiles"],
+] as const;
+
+/** Matching slab/stair families appended after the complete deployed v1 tail. */
+export const CATALOG_V3_STONE_SHAPE_FAMILIES = [
+  ["granite", "granite"],
+  ["polished_granite", "polished_granite"],
+  ["diorite", "diorite"],
+  ["polished_diorite", "polished_diorite"],
+  ["andesite", "andesite"],
+  ["polished_andesite", "polished_andesite"],
+  ["mossy_cobblestone", "mossy_cobblestone"],
+  ["mossy_stone_brick", "mossy_stone_bricks"],
+  ["mud_brick", "mud_bricks"],
+  ["prismarine", "prismarine"],
+  ["prismarine_brick", "prismarine_bricks"],
+  ["dark_prismarine", "dark_prismarine"],
+  ["red_nether_brick", "red_nether_bricks"],
+  ["end_stone_brick", "end_stone_bricks"],
+  ["purpur", "purpur_block"],
+  ["cut_copper", "cut_copper"],
+  ["exposed_cut_copper", "exposed_cut_copper"],
+  ["weathered_cut_copper", "weathered_cut_copper"],
+  ["oxidized_cut_copper", "oxidized_cut_copper"],
+  ["waxed_cut_copper", "cut_copper", "waxed_cut_copper"],
+  ["waxed_exposed_cut_copper", "exposed_cut_copper", "waxed_exposed_cut_copper"],
+  ["waxed_weathered_cut_copper", "weathered_cut_copper", "waxed_weathered_cut_copper"],
+  ["waxed_oxidized_cut_copper", "oxidized_cut_copper", "waxed_oxidized_cut_copper"],
+  ["tuff", "tuff"],
+  ["polished_tuff", "polished_tuff"],
+  ["tuff_brick", "tuff_bricks"],
+  ["resin_brick", "resin_bricks"],
+] as const;
+export const STONE_SHAPE_FAMILIES = [
+  ...LEGACY_STONE_SHAPE_FAMILIES,
+  ...CATALOG_V3_STONE_SHAPE_FAMILIES,
 ] as const;
 export type StoneShapeFamily = typeof STONE_SHAPE_FAMILIES[number][0];
 export type StoneShapeSourceItem = typeof STONE_SHAPE_FAMILIES[number][1];
@@ -74,7 +120,8 @@ export type DecorativeBlockItemId =
   | typeof LUMINOUS_BLOCK_ITEMS[number]
   | typeof DECORATIVE_STONE_ITEMS[number]
   | typeof ADDITIONAL_COLOR_BLOCK_ITEMS[number]
-  | typeof ADDITIONAL_ARCHITECTURAL_ITEMS[number];
+  | typeof ADDITIONAL_ARCHITECTURAL_ITEMS[number]
+  | typeof CATALOG_V3_BLOCK_ITEMS[number];
 
 export type ExpandedBlockItemId =
   | `${ExtraWoodFamily}_${"log" | "planks" | "leaves" | "slab" | "stairs" | "door"}`
@@ -125,7 +172,9 @@ export const EXPANDED_BLOCK_STATE_TYPES = Object.freeze([
   ...ADDITIONAL_COLOR_BLOCK_ITEMS,
   ...ADDITIONAL_ARCHITECTURAL_ITEMS,
   ...DEEPSLATE_BUILDING_ITEMS,
-  ...STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, ...stairStates(family)]),
+  ...LEGACY_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, ...stairStates(family)]),
+  ...CATALOG_V3_BLOCK_ITEMS,
+  ...CATALOG_V3_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, ...stairStates(family)]),
 ] as ExpandedWorldBlockState[]);
 
 export type ExpandedBlockConstantName = Uppercase<ExpandedWorldBlockState>;
@@ -144,5 +193,7 @@ export const EXPANDED_BLOCK_ITEM_IDS = Object.freeze([
   ...ADDITIONAL_COLOR_BLOCK_ITEMS,
   ...ADDITIONAL_ARCHITECTURAL_ITEMS,
   ...DEEPSLATE_BUILDING_ITEMS,
-  ...STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
+  ...LEGACY_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
+  ...CATALOG_V3_BLOCK_ITEMS,
+  ...CATALOG_V3_STONE_SHAPE_FAMILIES.flatMap(([family]) => [`${family}_slab`, `${family}_stairs`]),
 ] as ExpandedBlockItemId[]);

@@ -7,8 +7,7 @@ import {
   type InventoryActionMutationResult,
 } from "../../../shared/inventoryActions.ts";
 import { validatePlayerStateJson, type CanonicalPlayerState } from "../../../shared/chestTransfers.ts";
-import { planDeathDrops } from "../../../shared/deathDrops.ts";
-import type { ItemStack } from "../../../shared/game.ts";
+import { createItemStack, type ItemStack } from "../../../shared/game.ts";
 
 type Envelope = Record<string, unknown> & { type: string };
 const token = "transactional-qa-token";
@@ -58,8 +57,10 @@ class Bot {
   private inventory: CanonicalPlayerState = createInitializedPlayerState();
   private revision = "1";
   private editSequence = 0;
+  private chunkRevision = 0;
 
-  constructor(readonly userId: string, readonly name: string) {
+  constructor(readonly userId: string, readonly name: string,initial?:CanonicalPlayerState) {
+    if(initial)this.inventory=initial;
     this.socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     this.socket.addEventListener("message", (event) => {
       this.messages.push(JSON.parse(String(event.data)) as Envelope);
@@ -72,7 +73,7 @@ class Bot {
       this.socket.addEventListener("error", () => reject(new Error(`${this.name} socket failed`)), { once:true });
     });
     this.send({
-      v:1,type:"join",demo:{
+      v:1,type:"join",capabilities:["world-chunks-v2"],demo:{
         token,userId:this.userId,name:this.name,inventoryJson:JSON.stringify(this.inventory),
       },
     });
@@ -125,14 +126,49 @@ class Bot {
     return result;
   }
 
-  async edit(operationId: string, x: number, y: number, z: number, block: number): Promise<Envelope> {
+  async edit(
+    operationId: string, x: number, y: number, z: number, block: number,
+    expectedBlock: "air" | "dirt",
+  ): Promise<{ patch:Envelope; drop?:Envelope }> {
     this.editSequence += 1;
-    this.send({ v:1,type:"block_edit",operationId,seq:this.editSequence,x,y,z,block });
-    return this.next("block_patch", (message) => message.operationId === operationId);
+    const requestJson = JSON.stringify(block === 0 ? {
+      operationId,kind:"mine",x,y,z,expectedBlock,selectedHotbar:2,expectedHeldItem:"dirt",
+      expectedInventoryRevision:this.revision,expectedChunkRevision:String(this.chunkRevision),
+    } : {
+      operationId,kind:"place",x,y,z,expectedBlock,placedBlock:"dirt",selectedHotbar:2,expectedHeldItem:"dirt",
+      expectedInventoryRevision:this.revision,expectedChunkRevision:String(this.chunkRevision),
+    });
+    this.send({ v:1,type:"block_edit",operationId,seq:this.editSequence,x,y,z,block,requestJson });
+    const inventory = await this.next("inventory_state");
+    this.acceptInventory(inventory.inventory);
+    let drop: Envelope | undefined;
+    if (block === 0) {
+      const snapshot = await this.next("drop_snapshot", (message) => Array.isArray(message.drops)
+        && message.drops.some((candidate) => (candidate as Envelope).dropId === `drop:mine:${operationId}`));
+      drop = (snapshot.drops as Envelope[]).find((candidate) => candidate.dropId === `drop:mine:${operationId}`);
+    }
+    const patch = await this.next("block_patch", (message) => message.operationId === operationId);
+    this.chunkRevision = Number((patch.edit as Envelope).revision);
+    return {patch,drop};
+  }
+
+  async drop(operationId: string, stack: ItemStack, position: {x:number;y:number;z:number}, sourceSlot?: number): Promise<Envelope> {
+    this.send({v:1,type:"drop_item",operationId,...stack,...position,...(sourceSlot === undefined ? {} : {sourceSlot})});
+    const inventory = await this.next("inventory_state");
+    this.acceptInventory(inventory.inventory);
+    return this.next("drop_result", (message) => message.operationId === operationId);
+  }
+
+  async pickup(operationId: string, dropId: string): Promise<Envelope> {
+    this.send({v:1,type:"pickup_item",operationId,dropId});
+    const inventory = await this.next("inventory_state");
+    this.acceptInventory(inventory.inventory);
+    return this.next("drop_result", (message) => message.operationId === operationId);
   }
 
   state(): CanonicalPlayerState { return this.inventory; }
   currentRevision(): string { return this.revision; }
+  syncInventory(value:unknown):void { this.acceptInventory(value); }
 
   private acceptInventory(value: unknown): void {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("missing inventory envelope");
@@ -170,31 +206,24 @@ function log(step: string, detail: Record<string, unknown>): void {
 try {
   await waitForServer();
   const alex = new Bot("qa_alex", "QA Alex");
-  const steve = new Bot("qa_steve", "QA Steve");
+  const steveState=createInitializedPlayerState();
+  steveState.selectedHotbar=0;steveState.inventory[0]=createItemStack("iron_sword");
+  const steve = new Bot("qa_steve", "QA Steve",steveState);
   await Promise.all([alex.join(),steve.join()]);
   const startingLedger = ledger([alex,steve],[]);
   log("joined",{ alexRevision:alex.currentRevision(),steveRevision:steve.currentRevision(),startingLedger });
 
-  await alex.inventoryAction("qa_place_inventory_0001",{ kind:"place_block",sourceSlot:2,expectedItemId:"dirt" });
-  await alex.edit("qa_place_world_0001",0,69,1,2);
-  await alex.edit("qa_break_world_0001",0,69,1,0);
-  alex.send({ v:1,type:"drop_item",operationId:"qa_mined_drop_0001",itemId:"dirt",count:1,x:0.5,y:69.45,z:1.5 });
-  const mined = await alex.next("drop_result", (message) => message.operationId === "qa_mined_drop_0001");
-  const minedDrop = mined.drop as Envelope;
+  await alex.edit("qa_place_world_0001",0,69,1,2,"air");
+  const mined = await alex.edit("qa_break_world_0001",0,69,1,0,"dirt");
+  const minedDrop = mined.drop!;
   await sleep(1_050);
-  steve.send({ v:1,type:"pickup_item",operationId:"qa_pickup_mined_001",dropId:minedDrop.dropId });
-  const pickedMine = await steve.next("drop_result", (message) => message.operationId === "qa_pickup_mined_001");
-  await steve.inventoryAction("qa_credit_mined_0001",{ kind:"world_credit",stack:{ itemId:"dirt",count:1 } });
+  const pickedMine = await steve.pickup("qa_pickup_mined_001",String(minedDrop.dropId));
   log("place-break-pickup",{ alexRevision:alex.currentRevision(),steveRevision:steve.currentRevision(),dropId:(pickedMine.drop as Envelope).dropId });
 
-  await alex.inventoryAction("qa_debit_toss_00001",{ kind:"world_debit",sourceSlot:2,stack:{ itemId:"dirt",count:1 } });
-  alex.send({ v:1,type:"drop_item",operationId:"qa_toss_drop_00001",itemId:"dirt",count:1,x:0.5,y:69.45,z:-0.7 });
-  const tossed = await alex.next("drop_result", (message) => message.operationId === "qa_toss_drop_00001");
+  const tossed = await alex.drop("qa_toss_drop_00001",{itemId:"dirt",count:1},{x:0.5,y:69.45,z:-0.7},2);
   const tossedDrop = tossed.drop as Envelope;
   await sleep(1_050);
-  steve.send({ v:1,type:"pickup_item",operationId:"qa_pickup_toss_001",dropId:tossedDrop.dropId });
-  await steve.next("drop_result", (message) => message.operationId === "qa_pickup_toss_001");
-  await steve.inventoryAction("qa_credit_toss_0001",{ kind:"world_credit",stack:{ itemId:"dirt",count:1 } });
+  await steve.pickup("qa_pickup_toss_001",String(tossedDrop.dropId));
   const afterTransfers = ledger([alex,steve],[]);
   if (afterTransfers !== startingLedger) throw new Error(`item conservation failed after transfers: ${afterTransfers}`);
   log("q-drop-transfer",{ conserved:true,ledger:afterTransfers });
@@ -204,27 +233,21 @@ try {
   for (let hit = 1; hit <= 4; hit += 1) {
     const operationId = `qa_fatal_attack_000${hit}`;
     steve.send({ v:1,type:"player_attack",operationId,targetId:"qa_alex" });
+    const weaponInventory=await steve.next("inventory_state");
+    steve.syncInventory(weaponInventory.inventory);
     const result = await steve.nextAny(["player_hit","error"], (message) => message.operationId === operationId);
     if (result.type === "error") throw new Error(`PvP step rejected: ${String(result.code)} ${String(result.message)}`);
     if (hit === 4 && result.killed !== true) throw new Error("fourth deterministic sword hit did not kill target");
     if (hit < 4) await sleep(410);
   }
-  const deathPlan = planDeathDrops({
-    identity:{ userId:"qa_alex",eventId:"qa_fatal_attack_0004" },
-    inventory:alex.state().inventory,
-    equipment:alex.state().equipment,
-    deathPose:{ x:0.5,y:69.02,z:0.5 },
-  });
-  if (!deathPlan.ok) throw new Error(`death plan failed: ${deathPlan.reason}`);
-  const deathDrops: Envelope[] = [];
-  for (const drop of deathPlan.drops) {
-    alex.send({ v:1,type:"drop_item",operationId:drop.operationId,...drop.stack,...drop.position });
-    const result = await alex.next("drop_result", (message) => message.operationId === drop.operationId);
-    deathDrops.push(result.drop as Envelope);
-  }
+  const preDeathLedger=ledger([alex,steve],[]);
   await alex.inventoryAction("qa_death_settle_0001",{ kind:"death_settle",eventId:"qa_fatal_attack_0004" });
+  const deathSnapshot = await alex.next("drop_snapshot",(message)=>Array.isArray(message.drops)
+    && message.drops.some((drop)=>(drop as Envelope).ownerUserId === "qa_alex"));
+  const deathDrops = (deathSnapshot.drops as Envelope[]).filter((drop)=>drop.ownerUserId === "qa_alex");
+  if (deathDrops.length === 0) throw new Error("Railway did not publish the authoritative death pack");
   const settledLedger = ledger([alex,steve],deathDrops);
-  if (settledLedger !== startingLedger) throw new Error(`death conservation failed: ${settledLedger}`);
+  if (settledLedger !== preDeathLedger) throw new Error(`death conservation failed: ${settledLedger}`);
   alex.send({ v:1,type:"pickup_item",operationId:"qa_dead_pickup_0001",dropId:deathDrops[0].dropId });
   const deadPickup = await alex.next("error", (message) => message.operationId === "qa_dead_pickup_0001");
   if (deadPickup.code !== "bad_message") throw new Error("dead player unexpectedly consumed a death drop");

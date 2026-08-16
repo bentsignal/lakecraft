@@ -67,6 +67,11 @@ async function run() {
 const source = readFileSync(new URL("../shared/game.ts", import.meta.url), "utf8");
 const transformed = stripServerGamePresentation(source);
 assert.throws(
+  () => stripServerGamePresentation(source.replace('"label":"Granite Slab",', "")),
+  /RECIPES expected 216 presentation properties, received 215/,
+  "quoted generated recipe presentation removal fails closed before staging",
+);
+assert.throws(
   () => stripServerGamePresentation(source.replace("pickaxe: 2", "pickaxe: 20")),
   /item mechanics builders body changed/,
   "server mechanics builders must fail closed instead of restoring stale frozen mechanics",

@@ -15,7 +15,7 @@ for (const app of [multiplayer, singleplayer]) {
 }
 assert.match(presentation, /onFootstep: \(block\) => context\.audio\.play\("footstep"/);
 assert.match(presentation, /audioSurfaceForBlock\(block\)/);
-assert.match(multiplayer, /await sink\(pending\.operationId, pending\.optimisticEdit\)/);
+assert.match(multiplayer, /await sink\(pending\.operationId, pending\.optimisticEdit, \{[\s\S]*?expectedInventoryRevision/);
 assert.match(multiplayer, /play\("blockBreak"[\s\S]*spawnBlockParticles\(\{[\s\S]*action: "break"/,
   "Railway confirmation, not Lakebed, emits break feedback");
 assert.match(singleplayer, /play\("blockBreak"[\s\S]*spawnBlockParticles\(\{ action: "break"/);

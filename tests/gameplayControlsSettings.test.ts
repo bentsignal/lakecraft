@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   DEFAULT_GAMEPLAY_CONTROL_BINDINGS,
+  GAMEPLAY_CONTROL_RESERVED_INPUT_NOTE,
   GAMEPLAY_CONTROL_ACTIONS,
   assignGameplayControlBinding,
   gameplayControlActionForCode,
@@ -31,12 +32,12 @@ assert.deepEqual(normalizeGameplayControlBindings({ moveForward: "invalid", debu
 });
 
 const normalized = normalizeClientSettings({
-  masterVolume: -50, blocksVolume: 45.4, hostileVolume: 101, passiveVolume: Number.NaN,
+  masterVolume: -50, musicVolume: 18.6, blocksVolume: 45.4, hostileVolume: 101, passiveVolume: Number.NaN,
   playersVolume: 0, uiVolume: 72, keyBindings: reassigned,
 });
 assert.deepEqual(
-  [normalized.masterVolume, normalized.blocksVolume, normalized.hostileVolume, normalized.passiveVolume, normalized.playersVolume, normalized.uiVolume],
-  [0, 45, 100, 100, 0, 72],
+  [normalized.masterVolume, normalized.musicVolume, normalized.blocksVolume, normalized.hostileVolume, normalized.passiveVolume, normalized.playersVolume, normalized.uiVolume],
+  [0, 19, 45, 100, 100, 0, 72],
   "the persistent mixer independently normalizes every meaningful category",
 );
 assert.equal(normalized.keyBindings.inventory, "KeyQ");
@@ -67,5 +68,8 @@ assert.ok(multiplayer.includes("const globalGameplayShortcutAllowed = !optionsOp
   "typing in chat, search, or options cannot trigger remapped global shortcuts");
 assert.ok(optionsDialog.includes('captureAction !== "attack" && captureAction !== "use"'),
   "the controls UI only offers mouse buttons for actions handled by pointer events");
+assert.ok(GAMEPLAY_CONTROL_RESERVED_INPUT_NOTE.includes("Mouse wheel always cycles the hotbar")
+  && optionsDialog.includes("GAMEPLAY_CONTROL_RESERVED_INPUT_NOTE"),
+"Options honestly documents wheel hotbar cycling and browser-reserved keys instead of exposing a nonfunctional remap");
 
 console.log("persistent conflict-safe gameplay controls and category sound settings tests passed");

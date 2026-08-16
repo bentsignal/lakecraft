@@ -91,6 +91,11 @@ export type WorldBlockOperationState = {
   chunkRevision: string;
 };
 
+export type WorldBlockOperationResolutionOptions = Readonly<{
+  /** Lakebed single-player credits directly; Railway multiplayer persists a ground drop. */
+  miningDropDestination?: "inventory" | "world";
+}>;
+
 export type WorldBlockOperationFailureReason =
   | "invalid_request"
   | "invalid_state"
@@ -266,7 +271,15 @@ export function worldBlockOperationFingerprint(request: WorldBlockOperationReque
     request.kind === "place" ? request.placedBlock : null]);
 }
 
-export function parseWorldBlockOperation(value: unknown): WorldBlockOperationParseResult {
+export type WorldBlockOperationBounds = Readonly<{ minXZ:number;maxXZ:number;minY:number;maxY:number }>;
+const LAKEBED_WORLD_BLOCK_BOUNDS: WorldBlockOperationBounds = Object.freeze({
+  minXZ:WORLD_EDIT_MIN_XZ,maxXZ:WORLD_EDIT_MAX_XZ,minY:WORLD_EDIT_MIN_Y,maxY:WORLD_EDIT_MAX_Y,
+});
+
+export function parseWorldBlockOperation(
+  value: unknown,
+  bounds: WorldBlockOperationBounds = LAKEBED_WORLD_BLOCK_BOUNDS,
+): WorldBlockOperationParseResult {
   if (!isRecord(value)) return { ok: false, reason: BS.invalidRequest };
   const byteLength = requestByteLength(value);
   if (byteLength === null) return { ok: false, reason: BS.invalidRequest };
@@ -277,9 +290,9 @@ export function parseWorldBlockOperation(value: unknown): WorldBlockOperationPar
   }
   const expectedKeys = value.kind === "mine" ? MINE_KEYS : value.kind === "place" ? PLACE_KEYS : TOGGLE_KEYS;
   if (!hasExactKeys(value, expectedKeys)) return { ok: false, reason: BS.invalidRequest };
-  if (!isCoordinate(value.x, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ)
-    || !isCoordinate(value.z, WORLD_EDIT_MIN_XZ, WORLD_EDIT_MAX_XZ)
-    || !isCoordinate(value.y, WORLD_EDIT_MIN_Y, WORLD_EDIT_MAX_Y)) {
+  if (!isCoordinate(value.x, bounds.minXZ, bounds.maxXZ)
+    || !isCoordinate(value.z, bounds.minXZ, bounds.maxXZ)
+    || !isCoordinate(value.y, bounds.minY, bounds.maxY)) {
     return { ok: false, reason: BS.invalidCoordinate };
   }
   if (parseWorldBlockRevision(value.expectedChunkRevision) === null) {
@@ -406,8 +419,10 @@ function resolveInventoryRevision(
 export function resolveWorldBlockOperation(
   request: WorldBlockOperationRequest,
   state: WorldBlockOperationState,
+  bounds: WorldBlockOperationBounds = LAKEBED_WORLD_BLOCK_BOUNDS,
+  options: WorldBlockOperationResolutionOptions = {},
 ): WorldBlockOperationResolution {
-  const parsed = parseWorldBlockOperation(request);
+  const parsed = parseWorldBlockOperation(request, bounds);
   if (!parsed.ok) return { ok: false, reason: BS.invalidRequest };
   request = parsed.request;
   if (!isWorldBlock(state.currentBlock)
@@ -502,7 +517,9 @@ export function resolveWorldBlockOperation(
       request.expectedHeldItem,
     );
   const drop = getDeterministicMiningDrop(gameBlock, request.expectedHeldItem, request.x, request.y, request.z);
-  const added = drop ? addItem(toolUse.inventory, drop.itemId, drop.count) : { inventory: toolUse.inventory, remainder: 0 };
+  const added = drop && options.miningDropDestination !== "world"
+    ? addItem(toolUse.inventory, drop.itemId, drop.count)
+    : { inventory: toolUse.inventory, remainder: 0 };
   if (added.remainder > 0) return { ok: false, reason: "inventory_full" };
   const inventoryChanged = !inventoriesEqual(state.inventory, added.inventory);
   const inventoryRevision = resolveInventoryRevision(state.inventoryRevision, inventoryChanged);

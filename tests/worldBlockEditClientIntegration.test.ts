@@ -8,7 +8,13 @@ const engine = readFileSync(new URL("../client/game/voxelEngine.ts", import.meta
 assert.doesNotMatch(multiplayer, /useMutation[^\n]*editWorldBlock|invokeWorldBlockEditWithOneRetry/,
   "Railway multiplayer cannot split block authority through Lakebed");
 assert.match(multiplayer, /realtimeBlockSinkRef\.current/);
-assert.match(multiplayer, /await sink\(pending\.operationId, pending\.optimisticEdit\)/);
+assert.match(multiplayer, /await sink\(pending\.operationId, pending\.optimisticEdit, \{[\s\S]*expectedInventoryRevision/,
+  "the block sink carries the canonical inventory and block preconditions into Railway's transaction");
+assert.doesNotMatch(
+  multiplayer.slice(multiplayer.indexOf("async function submitPendingWorldBlockEdit"),multiplayer.indexOf("function handleBlockEdit")),
+  /kind: "place_block"|kind: "world_credit"/,
+  "the browser cannot split placement debit or mining credit from the Railway block commit",
+);
 assert.match(multiplayer, /engineRef\.current\?\.applyWorldEdits\(\[confirmed\]\)/);
 assert.match(multiplayer, /block: pending\.previousBlock/,
   "a rejected Railway edit restores the exact optimistic predecessor");

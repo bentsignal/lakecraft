@@ -19,8 +19,9 @@ class FakeWebSocket {
   onmessage: ((event: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
+  sent: Array<Record<string, unknown>> = [];
   constructor() { FakeWebSocket.instance = this; }
-  send(_payload: string) {}
+  send(payload: string) { this.sent.push(JSON.parse(payload)); }
   close() { this.readyState = 3; }
   receive(message: Record<string, unknown>) {
     this.onmessage?.({ data: JSON.stringify({ v: 1, ...message }) });
@@ -30,6 +31,7 @@ Object.assign(globalThis, { WebSocket: FakeWebSocket });
 
 const terrains: WorldTerrainDescriptor[] = [];
 const phases: string[] = [];
+const worldEdits: Array<{x:number;y:number;z:number;block:number;revision?:number;operationId?:string}> = [];
 let worldReady = 0;
 const client = new RealtimeMultiplayerClient({
   endpoint: "wss://terrain.test/ws",
@@ -40,7 +42,7 @@ const client = new RealtimeMultiplayerClient({
   getPose: () => ({ x: 0.5, y: 21.02, z: 0.5, yaw: 0, pitch: 0 }),
   onPhase: (phase) => phases.push(phase),
   onRemotePlayers: () => {},
-  onWorldEdits: () => {},
+  onWorldEdits: (edits) => { worldEdits.push(...edits); },
   onChatEvent: () => {},
   onGameMode: () => {},
   onTerrain: (terrain) => terrains.push(terrain),
@@ -53,6 +55,8 @@ client.start();
 const socket = FakeWebSocket.instance;
 socket.readyState = FakeWebSocket.OPEN;
 socket.onopen?.();
+assert.deepEqual(socket.sent[0]?.capabilities, [WORLD_CHUNKS_CAPABILITY],
+  "a new browser declares v2 in its join before the server hello arrives");
 socket.receive({
   type: "hello",
   capabilities: ["appearance-v1",WORLD_CHUNKS_CAPABILITY],
@@ -75,6 +79,32 @@ socket.receive({type:"world_chunks",seq:1,complete:false,chunks:[]});
 assert.equal(worldReady,0,"an intermediate chunk batch keeps the opaque loading gate in place");
 socket.receive({type:"world_chunks",seq:1,complete:true,chunks:[]});
 assert.equal(worldReady,1,"only the final subscribed chunk batch releases the world loading gate");
+socket.receive({
+  type:"block_patch",
+  edit:{revision:2,x:0,y:21,z:0,block:0,editorId:"builder",editedAt:2_000},
+});
+assert.equal(worldEdits.at(-1)?.revision,2,"a newer authoritative patch establishes the chunk watermark");
+const staleOperation="stale-block-replay-0001";
+const stalePending=client.submitBlockEdit(staleOperation,{x:0,y:21,z:0,block:2},{
+  previousBlock:0,selectedHotbar:2,expectedHeldItem:"dirt",expectedInventoryRevision:"1",
+});
+socket.receive({
+  type:"block_patch",operationId:staleOperation,
+  edit:{revision:1,x:0,y:21,z:0,block:2,editorId:"builder",editedAt:1_000},
+});
+await assert.rejects(stalePending,/stale_multiplayer_block_ack/);
+assert.equal(worldEdits.at(-1)?.revision,2,"a stale retry acknowledgement cannot roll the rendered chunk backward");
+const currentPending=client.submitBlockEdit(staleOperation,{x:0,y:21,z:0,block:2},{
+  previousBlock:0,selectedHotbar:2,expectedHeldItem:"dirt",expectedInventoryRevision:"1",
+});
+socket.receive({
+  type:"block_patch",operationId:staleOperation,
+  edit:{revision:2,x:0,y:21,z:0,block:0,editorId:"builder",editedAt:2_000},
+});
+assert.deepEqual(await currentPending,{
+  revision:2,x:0,y:21,z:0,block:0,operationId:staleOperation,
+},"the exact retry resolves against current authoritative state");
+assert.equal(worldEdits.at(-1)?.block,0,"the requester reconciles to the current block without stale application");
 socket.receive({type:"world_chunks",seq:1,complete:true,chunks:[{x:0,z:0,revision:1,data:"not-a-chunk"}]});
 assert.equal(worldReady,1,"a malformed final batch cannot release the authoritative loading gate");
 assert.equal(socket.readyState,3,"a malformed chunk batch closes the connection so a clean subscription can be retried");

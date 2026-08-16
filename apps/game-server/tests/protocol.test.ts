@@ -2,6 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { BLOCK_ID_MAX, PROTOCOL_VERSION, SKIN_PIXEL_BYTES, decodeClientMessage, encodeServerMessage } from "../src/protocol";
 
 describe("protocol v1", () => {
+  test("negotiates the optional v2 chunk capability without rejecting old joins", () => {
+    expect(decodeClientMessage(JSON.stringify({ v:1, type:"join", resumeToken:"old-client-token" }))).toMatchObject({
+      ok:true, message:{ type:"join", capabilities:undefined },
+    });
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"join", resumeToken:"new-client-token", capabilities:["world-chunks-v2"],
+    }))).toMatchObject({ ok:true, message:{ type:"join", capabilities:["world-chunks-v2"] } });
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"join", resumeToken:"bad-client-token", capabilities:Array(9).fill("world-chunks-v2"),
+    })).ok).toBe(false);
+  });
+
   test("accepts normalized movement inputs", () => {
     const decoded = decodeClientMessage(JSON.stringify({
       v: 1,
@@ -47,8 +59,12 @@ describe("protocol v1", () => {
   test("bounds shared item drops and pickup operations", () => {
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"drop_item", operationId:"drop_12345678", itemId:"diamond_pickaxe", count:1,
-      durability:120, x:0.5, y:69.02, z:0.5,
-    })).ok).toBe(true);
+      durability:120, sourceSlot:4, x:0.5, y:69.02, z:0.5,
+    }))).toMatchObject({ok:true,message:{type:"drop_item",sourceSlot:4}});
+    expect(decodeClientMessage(JSON.stringify({
+      v:1, type:"drop_item", operationId:"drop_12345678", itemId:"diamond_pickaxe", count:1,
+      sourceSlot:36, x:0.5, y:69.02, z:0.5,
+    })).ok).toBe(false);
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"pickup_item", operationId:"pickup_12345678", dropId:"drop:known",
     })).ok).toBe(true);
@@ -76,6 +92,17 @@ describe("protocol v1", () => {
     expect(decodeClientMessage(JSON.stringify({
       v:1, type:"respawn", operationId:"respawn_12345678",
     }))).toMatchObject({ ok:true, message:{ type:"respawn", operationId:"respawn_12345678" } });
+  });
+
+  test("bounds the optional atomic block authority envelope", () => {
+    const requestJson = JSON.stringify({operationId:"block_authority_0001",kind:"place"});
+    expect(decodeClientMessage(JSON.stringify({
+      v:1,type:"block_edit",operationId:"block_authority_0001",seq:1,x:0,y:69,z:1,block:2,requestJson,
+    }))).toMatchObject({ok:true,message:{type:"block_edit",requestJson}});
+    expect(decodeClientMessage(JSON.stringify({
+      v:1,type:"block_edit",operationId:"block_authority_0001",seq:1,x:0,y:69,z:1,block:2,
+      requestJson:"x".repeat(2_049),
+    })).ok).toBe(false);
   });
 
   test("accepts only bounded opaque shared inventory actions", () => {

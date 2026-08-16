@@ -307,10 +307,8 @@ function LocalGameplaySession({
   const [respawning, setRespawning] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(SINGLE_PLAYER_INITIAL_PAUSE_OPEN);
-  const [pointerCaptureNeeded, setPointerCaptureNeeded] = useState(true);
   const [worldBooting, setWorldBooting] = useState(false);
   const [worldReady, setWorldReady] = useState(false);
-  const [silentPointerRecaptureDenied, setSilentPointerRecaptureDenied] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   /* @lakecraft-development:state:start */
   const [visualLabOpen, setVisualLabOpen] = useState(false);
@@ -351,7 +349,6 @@ function LocalGameplaySession({
 
   function clearSilentPointerRecapture(): void {
     silentPointerRecaptureRef.current = false;
-    setSilentPointerRecaptureDenied(false);
   }
 
   function supersedePointerLockRequest(): void {
@@ -366,7 +363,6 @@ function LocalGameplaySession({
       () => engine?.requestPointerLock() ?? false,
       () => {
         pointerLockPendingRef.current = Boolean(engine);
-        setPointerCaptureNeeded(false);
         onStarted();
       },
       (locked) => {
@@ -385,13 +381,8 @@ function LocalGameplaySession({
         pointerLockPendingRef.current = false;
         if (locked) {
           clearSilentPointerRecapture();
-          setPointerCaptureNeeded(false);
         } else if (silent) {
           silentPointerRecaptureRef.current = true;
-          setSilentPointerRecaptureDenied(true);
-          setPointerCaptureNeeded(false);
-        } else {
-          setPointerCaptureNeeded(true);
         }
       },
     );
@@ -409,13 +400,11 @@ function LocalGameplaySession({
         clearSilentPointerRecapture();
         setOptionsOpen(false);
         setPauseOpen(true);
-        setPointerCaptureNeeded(false);
       }
       if (transition.closePause) {
         clearSilentPointerRecapture();
         setPauseOpen(false);
       }
-      if (transition.showCaptureAffordance) setPointerCaptureNeeded(true);
       onStarted();
     };
     if (transition.requestPointerLock) requestEnginePointerLock(false, applyUiTransition);
@@ -426,7 +415,6 @@ function LocalGameplaySession({
     if (open) supersedePointerLockRequest();
     applyPointerSessionEvent({ type: "set_pause", open });
     setPauseOpen(open);
-    if (open) setPointerCaptureNeeded(false);
   }
 
   function releasePointerLockForUi(): void {
@@ -435,7 +423,6 @@ function LocalGameplaySession({
     supersedePointerLockRequest();
     pointerUiBlockedRef.current = true;
     applyPointerSessionEvent({ type: "intentional_release" });
-    setPointerCaptureNeeded(false);
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
@@ -446,8 +433,6 @@ function LocalGameplaySession({
 
   function armGameplayResumeAfterEscape(now: number): void {
     silentPointerRecaptureRef.current = true;
-    setSilentPointerRecaptureDenied(false);
-    setPointerCaptureNeeded(false);
     applyPointerSessionEvent({ type: "close_ui_escape", now });
   }
 
@@ -1255,7 +1240,6 @@ function LocalGameplaySession({
           && !pointerUiBlockedRef.current;
         if (entryHandoffActive) {
           entryPointerLockHandoffRef.current = false;
-          setPointerCaptureNeeded(true);
           engineRef.current?.requestPointerLock();
           return;
         }
@@ -1270,8 +1254,8 @@ function LocalGameplaySession({
           },
         )) return;
         // The browser can deliver the tail of Escape's unlock after the user
-        // has clicked Back to Game. The in-flight request's own result owns
-        // denial; this stale unlocked notification must not mount Click to Play.
+        // has clicked Back to Game. The in-flight request owns that stale
+        // notification, so it cannot disturb the resumed session.
         if (!locked && pointerLockPendingRef.current) return;
         if (locked) pointerLockPendingRef.current = false;
         applyPointerSessionEvent({
@@ -1281,10 +1265,6 @@ function LocalGameplaySession({
           uiBlocked: pointerUiBlockedRef.current,
         });
         if (locked) clearSilentPointerRecapture();
-        setPointerCaptureNeeded(
-          !locked && !pointerUiBlockedRef.current && !silentPointerRecaptureRef.current
-            && !pointerSessionRef.current.pauseOpen,
-        );
       },
       allowUnlockedKeyboardInput: () => silentPointerRecaptureRef.current,
       isRangedWeaponSelected: () => inventoryRef.current[selectedRef.current]?.itemId === "bow"
@@ -1713,7 +1693,6 @@ function LocalGameplaySession({
       inventoryOpen,
       worldModalOpen,
       deathScreenOpen,
-      pointerCaptureNeeded,
       documentVisible: document.visibilityState === "visible",
     });
     engine.setPaused(initiallyPaused);
@@ -1729,7 +1708,6 @@ function LocalGameplaySession({
         now: performance.now(),
         uiBlocked: false,
       });
-      setPointerCaptureNeeded(false);
     }
     for (const fuse of [...primedTntRef.current]) {
       if (!primeLocalTnt(fuse.x, fuse.y, fuse.z, Math.max(0, fuse.dueAt - Date.now()), 0, false)) {
@@ -1767,7 +1745,6 @@ function LocalGameplaySession({
       inventoryOpen,
       worldModalOpen,
       deathScreenOpen,
-      pointerCaptureNeeded,
       documentVisible: document.visibilityState === "visible",
     });
     engineRef.current?.setFirstPersonFeedbackHidden(
@@ -1775,7 +1752,7 @@ function LocalGameplaySession({
     );
     engineRef.current?.setPaused(paused);
     setLocalFusesPausedRef.current(paused);
-  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, pointerCaptureNeeded, hudVisible]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, commandOpen, hudVisible]);
 
   useEffect(() => {
     if (deathScreenOpen) setOptionsOpen(false);
@@ -1800,7 +1777,6 @@ function LocalGameplaySession({
         inventoryOpen,
         worldModalOpen,
         deathScreenOpen,
-        pointerCaptureNeeded,
         documentVisible: document.visibilityState === "visible",
       });
       const now = performance.now();
@@ -1835,15 +1811,10 @@ function LocalGameplaySession({
         inventoryOpen,
         worldModalOpen,
         deathScreenOpen,
-        pointerCaptureNeeded,
         documentVisible: document.visibilityState === "visible",
       });
       engineRef.current?.setPaused(paused);
       setLocalFusesPausedRef.current(paused);
-      if (!paused && !pointerUiBlockedRef.current && !silentPointerRecaptureRef.current
-        && document.pointerLockElement !== canvasRef.current) {
-        setPointerCaptureNeeded(true);
-      }
       sample();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -1851,7 +1822,7 @@ function LocalGameplaySession({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen, pointerCaptureNeeded]);
+  }, [pauseOpen, inventoryOpen, worldModalOpen, deathScreenOpen]);
 
   useEffect(() => {
     if (!sleepingBed) return;
@@ -1868,7 +1839,6 @@ function LocalGameplaySession({
       );
       markWorldDirty();
       setSleepingBed(null);
-      setPointerCaptureNeeded(true);
     }, 1_000);
     return () => window.clearTimeout(timer);
   }, [sleepingBed]);
@@ -2064,17 +2034,10 @@ function LocalGameplaySession({
       canvasLabel="Lakecraft single-player voxel world"
       canvasRef={canvasRef}
       diagnostics={{ gameMode, pose: coordinates, stats: performanceStats, visible: debugOverlayVisible && hudVisible }}
-      pointerCapture={{
-        visible: worldReady && pointerCaptureNeeded && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen,
-        onRequest: () => requestGameplayPointerLock(),
-      }}
       ready={worldReady}
       rootClassName="lc-singleplayer"
-      rootStyle={`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.lc-silent-recapture{bottom:12px;color:#ddd;font:11px/1.2 monospace;left:50%;pointer-events:none;position:fixed;text-shadow:1px 1px #111;transform:translateX(-50%);z-index:9}`}
+      rootStyle={`.lc-singleplayer{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden;background:#79a7cf}.lc-singleplayer>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}`}
     >
-      {silentPointerRecaptureDenied && !pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen ? (
-        <small className="lc-silent-recapture">Press a movement key or click the world to recapture the mouse</small>
-      ) : null}
       {/* @lakecraft-development:render:start */}
       <FirstPersonPoseLab
         onBowPreviewChange={setPoseLabBowPreview}
@@ -2084,7 +2047,7 @@ function LocalGameplaySession({
         onOpenVisualLab={() => setVisualLabOpen(true)}
         onRigPreviewChange={setPoseLabRigPreview}
         onUsePreviewChange={setPoseLabUsePreview}
-        open={(pauseOpen || pointerCaptureNeeded) && !inventoryOpen && !uiModalOpen && !deathScreenOpen}
+        open={pauseOpen && !inventoryOpen && !uiModalOpen && !deathScreenOpen}
       />
       <VisualLab
         onApplySkin={(source, model) => engineRef.current?.setPlayerSkin(source, model)}
@@ -2107,7 +2070,7 @@ function LocalGameplaySession({
         inventory={inventory}
         inventoryAuthorityEpoch={0}
         inventoryOpen={inventoryOpen}
-        modalOpen={uiModalOpen || pointerCaptureNeeded || !worldReady}
+        modalOpen={uiModalOpen || !worldReady}
         messages={messages}
         onCloseInventory={closeInventoryAndResume}
         onCrafted={() => undefined}
@@ -2155,6 +2118,7 @@ function LocalGameplaySession({
         respawning={respawning}
         soundMuted={clientSettings.soundMuted}
         masterVolume={clientSettings.masterVolume}
+        musicVolume={clientSettings.musicVolume}
         blocksVolume={clientSettings.blocksVolume}
         hostileVolume={clientSettings.hostileVolume}
         passiveVolume={clientSettings.passiveVolume}

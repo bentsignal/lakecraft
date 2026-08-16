@@ -27,10 +27,6 @@ export interface GameplaySessionSurfaceProps {
     visible?: boolean;
   };
   ready?: boolean;
-  pointerCapture?: {
-    visible: boolean;
-    onRequest(): void;
-  };
   children?: ComponentChildren;
 }
 
@@ -45,14 +41,13 @@ export function GameplaySessionSurface({
   canvasTestId,
   diagnostics,
   ready = true,
-  pointerCapture,
   children,
 }: GameplaySessionSurfaceProps) {
   return (
     <GameplayAuthorityContext.Provider value={authority}>
       <main className={rootClassName} data-gameplay-authority={authority}>
         {rootStyle ? <style>{rootStyle}</style> : null}
-        <style>{`.lc-gameplay-capture{align-items:center;background:rgba(0,0,0,.34);display:flex;font-family:var(--lc-pixel-font,"Courier New",monospace);inset:0;justify-content:center;position:fixed;z-index:75}.lc-gameplay-capture[role=status]{background:#202020;color:#fff;flex-direction:column;gap:10px;z-index:90}.lc-gameplay-capture[role=status] strong{font-size:22px;text-shadow:2px 2px #000}.lc-gameplay-capture[role=status] small{color:#bbb}.lc-gameplay-capture button{background:#777;border:2px solid #111;box-shadow:inset 2px 2px #aaa,inset -2px -2px #555;color:#fff;cursor:pointer;font:18px/1 var(--lc-pixel-font,"Courier New",monospace);min-width:min(360px,calc(100vw - 32px));padding:16px 24px;text-shadow:2px 2px #333}.lc-gameplay-capture button:hover,.lc-gameplay-capture button:focus-visible{background:#6b6bb6;box-shadow:inset 2px 2px #9b9be1,inset -2px -2px #3c3c76;outline:2px solid #fff}.lc-gameplay-capture small{display:block;font-size:12px;margin-top:8px}`}</style>
+        <style>{`.lc-gameplay-loading{align-items:center;background:#202020;color:#fff;display:flex;flex-direction:column;font-family:var(--lc-pixel-font,"Courier New",monospace);gap:10px;inset:0;justify-content:center;position:fixed;z-index:90}.lc-gameplay-loading strong{font-size:22px;text-shadow:2px 2px #000}.lc-gameplay-loading small{color:#bbb}`}</style>
         <canvas
           aria-label={canvasLabel}
           className={canvasClassName}
@@ -61,15 +56,7 @@ export function GameplaySessionSurface({
           tabIndex={0}
         />
         <GameplayDiagnostics {...diagnostics} />
-        {!ready ? <div className="lc-gameplay-capture" role="status" aria-live="polite"><strong>Loading world</strong><small>Preparing terrain…</small></div> : null}
-        {ready && pointerCapture?.visible ? (
-          <div className="lc-gameplay-capture" role="presentation">
-            <button autoFocus onClick={pointerCapture.onRequest} type="button">
-              Click to Play
-              <small>Capture the mouse · Escape opens Game Menu</small>
-            </button>
-          </div>
-        ) : null}
+        {!ready ? <div className="lc-gameplay-loading" role="status" aria-live="polite"><strong>Loading world</strong><small>Preparing terrain…</small></div> : null}
         {children}
       </main>
     </GameplayAuthorityContext.Provider>

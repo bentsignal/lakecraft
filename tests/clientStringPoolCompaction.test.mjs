@@ -18,10 +18,12 @@ import {
   COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA,
   COMPACT_CLIENT_FIXED_IDENTITY_SURVIVAL_FEEDBACK_DELTA,
   COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA,
+  COMPACT_CLIENT_FIXED_IDENTITY_REPLAY_DELTA,
   COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES,
   COMPACT_CLIENT_HUMAN_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA,
+  COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA,
   COMPACT_CLIENT_HUMAN_CHUNK_ADMIN_DELTA,
   COMPACT_CLIENT_HUMAN_VERTICAL_COORDINATE_DELTA,
   COMPACT_CLIENT_HUMAN_REALISM_STACK_DELTA,
@@ -37,6 +39,7 @@ import {
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA,
+  COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_REALISM_STACK_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_VIEWMODEL_RIG_DELTA,
   COMPACT_CLIENT_LOW_FREQUENCY_GAME_SCREENSHOT_DELTA,
@@ -63,6 +66,7 @@ import {
   COMPACT_CLIENT_REPEATED_STRING_SOURCE_FINGERPRINT,
   COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES,
   COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA,
+  COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA,
   COMPACT_CLIENT_REPEATED_REMOTE_APPEARANCE_DELTA,
   COMPACT_CLIENT_REPEATED_SHARED_GAMEPLAY_DELTA,
   COMPACT_CLIENT_REPEATED_POINTER_RECAPTURE_DELTA,
@@ -208,7 +212,7 @@ assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCE_KIND, "StringLiteral");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_INCREMENTAL_UNIQUE_VALUES, 1,
   "creative is already repeated while survival remains the one incremental pool value");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SOURCE_FINGERPRINT,
-  "19d8ab4b7769370db5ae8aa0140aa805c1dd4558ca753978595c1d153f047a1e",
+  "2a5f101f64a96b509af2bee05aa324640d9129039c27630d519848b90f10b26e",
   "the exact identity occurrence order, syntax kinds, contexts, and values change only intentionally");
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.previousOccurrences
   + COMPACT_CLIENT_FIXED_IDENTITY_SHARED_GAMEPLAY_DELTA.occurrenceDelta,
@@ -225,8 +229,20 @@ assert.deepEqual(COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA, {
   valueDeltas: { empty: 1 },
   source: "authoritative multiplayer snapshot validation adds one explicit empty-state identity branch",
 });
+assert.deepEqual(COMPACT_CLIENT_FIXED_IDENTITY_REPLAY_DELTA, {
+  previousOccurrences: 64,
+  previousUniqueValues: 7,
+  previousSourceFingerprint: "19d8ab4b7769370db5ae8aa0140aa805c1dd4558ca753978595c1d153f047a1e",
+  occurrenceDelta: -1,
+  uniqueValueDelta: 0,
+  valueDeltas: { creative: -1 },
+  source: "monotonic Railway block replay removes one retired local Creative rollback identity branch",
+});
 assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA.previousOccurrences
   + COMPACT_CLIENT_FIXED_IDENTITY_MINECRAFT_PARITY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_FIXED_IDENTITY_REPLAY_DELTA.previousOccurrences);
+assert.equal(COMPACT_CLIENT_FIXED_IDENTITY_REPLAY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_FIXED_IDENTITY_REPLAY_DELTA.occurrenceDelta,
 COMPACT_CLIENT_FIXED_IDENTITY_OCCURRENCES);
 
 const identityFixture = [
@@ -509,10 +525,26 @@ assert.deepEqual(COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA, {
   source: "Minecraft-parity controls, HUD/title presentation, authoritative loading, and Railway mob feedback",
   exclusionChanges: 0,
 });
+assert.deepEqual(COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA, {
+  previousOccurrences: 544,
+  previousUniqueValues: 479,
+  previousSourceFingerprint: "ebec9ae04665f04366f1a2f5b1b92a6150afdc5e7bce9c5925def7c7a0ae0536",
+  occurrenceDelta: -4,
+  uniqueValueDelta: -4,
+  sources: ["client/index.tsx"],
+  source: "Railway-owned respawn, Creative inventory, and combat authority removed retired local rejection copy",
+  exclusionChanges: 0,
+});
 assert.equal(COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.previousOccurrences
-  + COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+  + COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.previousUniqueValues
-  + COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
+  + COMPACT_CLIENT_HUMAN_MINECRAFT_PARITY_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA.previousUniqueValues);
+assert.equal(COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA.occurrenceDelta, COMPACT_CLIENT_HUMAN_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_HUMAN_RAILWAY_AUTHORITY_DELTA.uniqueValueDelta, COMPACT_CLIENT_HUMAN_STRING_UNIQUE_VALUES);
 
 assert.deepEqual(COMPACT_CLIENT_REPEATED_VISUAL_DESCRIPTOR_DELTA.removedThresholdValues,
   ["left", "right", "back", "top"], "only packed mob face names left the repeated-string boundary");
@@ -985,10 +1017,26 @@ assert.deepEqual(COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA, {
   source: "Minecraft-parity controls, sampled-audio categories, title panorama, loading gate, and Railway mob authority",
   exclusionChanges: 0,
 });
+assert.deepEqual(COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA, {
+  previousOccurrences: 1_289,
+  previousUniqueValues: 123,
+  previousSourceFingerprint: "0488b36abfaba96823a80022e22b07f7bd9db8ade28c97eec3fe1ca230d79212",
+  occurrenceDelta: 50,
+  uniqueValueDelta: 10,
+  sources: ["shared/expandedBuildingCatalog.ts", "shared/game.ts", "client/index.tsx"],
+  source: "expanded slab/stair catalog plus Railway-owned inventory and combat envelopes",
+  exclusionChanges: 0,
+});
 assert.equal(COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.previousOccurrences
-  + COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.occurrenceDelta, COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+  + COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.previousUniqueValues
-  + COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.uniqueValueDelta, COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES);
+  + COMPACT_CLIENT_REPEATED_MINECRAFT_PARITY_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA.previousUniqueValues);
+assert.equal(COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA.occurrenceDelta, COMPACT_CLIENT_REPEATED_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_REPEATED_CATALOG_AUTHORITY_DELTA.uniqueValueDelta, COMPACT_CLIENT_REPEATED_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_SOUND_RUNTIME_DELTA, {
   previousOccurrences: 371,
   previousUniqueValues: 109,
@@ -1275,11 +1323,27 @@ assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA, {
   source: "low-frequency Minecraft-parity controls, sound categories, panorama, readiness, and mob feedback",
   exclusionChanges: 0,
 });
+assert.deepEqual(COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA, {
+  previousOccurrences: 569,
+  previousUniqueValues: 167,
+  previousSourceFingerprint: "51eb5564c2df42f89f29270f61e81f91de2c34cee42fd9cce7ef57fbca9c0358",
+  occurrenceDelta: 40,
+  uniqueValueDelta: 13,
+  sources: ["shared/expandedBuildingCatalog.ts", "shared/game.ts", "client/index.tsx"],
+  source: "expanded slab/stair catalog plus Railway-owned inventory and combat envelopes",
+  exclusionChanges: 0,
+});
 assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.previousOccurrences
   + COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.occurrenceDelta,
-COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA.previousOccurrences);
 assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.previousUniqueValues
   + COMPACT_CLIENT_LOW_FREQUENCY_MINECRAFT_PARITY_DELTA.uniqueValueDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA.previousUniqueValues);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA.previousOccurrences
+  + COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA.occurrenceDelta,
+COMPACT_CLIENT_LOW_FREQUENCY_STRING_OCCURRENCES);
+assert.equal(COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA.previousUniqueValues
+  + COMPACT_CLIENT_LOW_FREQUENCY_CATALOG_AUTHORITY_DELTA.uniqueValueDelta,
 COMPACT_CLIENT_LOW_FREQUENCY_STRING_UNIQUE_VALUES);
 assert.deepEqual(COMPACT_CLIENT_REPEATED_MOB_TEXTURE_DELTA, {
   previousOccurrences: 1_092, previousUniqueValues: 99,

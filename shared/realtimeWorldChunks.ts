@@ -3,8 +3,15 @@ export const REALTIME_WORLD_MIN_Y = -64;
 export const REALTIME_WORLD_MAX_Y = 320;
 export const REALTIME_WORLD_MAX_RADIUS = 12;
 export const REALTIME_WORLD_MAX_CHUNKS = (REALTIME_WORLD_MAX_RADIUS * 2 + 1) ** 2;
-/** The packed edit reserves 15 bits for the coordinate and 9 for the block. */
-export const REALTIME_BLOCK_ID_MAX = 511;
+/** Highest block state shipped in the deployed v1 client catalog. */
+export const REALTIME_LEGACY_BLOCK_ID_MAX = 498;
+/** The v1 wire record can decode nine-bit IDs for persisted/backward-safe reads. */
+const REALTIME_LEGACY_RECORD_BLOCK_ID_MAX = 511;
+/** V2 reserves 15 coordinate bits and 16 block bits in one four-byte record. */
+export const REALTIME_BLOCK_ID_MAX = 65_535;
+export const REALTIME_CHUNK_CODEC_VERSION = 2 as const;
+export type RealtimeChunkCodecVersion = 1 | typeof REALTIME_CHUNK_CODEC_VERSION;
+const REALTIME_CHUNK_V2_PREFIX = "v2:";
 
 export interface RealtimeChunkEdit {
   x: number;
@@ -43,8 +50,13 @@ export function realtimeChunkWindow(centerX: number, centerZ: number, radius: nu
   return chunks;
 }
 
-/** Three packed bytes per sparse override: local x/z, absolute y, and numeric block id. */
-export function encodeRealtimeChunkEdits(chunkX: number, chunkZ: number, edits: readonly RealtimeChunkEdit[]): string {
+/** Tagged v2 writes four-byte records; negotiated legacy writes retain the deployed three-byte form. */
+export function encodeRealtimeChunkEdits(
+  chunkX: number,
+  chunkZ: number,
+  edits: readonly RealtimeChunkEdit[],
+  version: RealtimeChunkCodecVersion = REALTIME_CHUNK_CODEC_VERSION,
+): string {
   const unique = new Map<number, number>();
   for (const edit of edits) {
     if (![edit.x, edit.y, edit.z, edit.block].every(Number.isInteger)
@@ -53,6 +65,10 @@ export function encodeRealtimeChunkEdits(chunkX: number, chunkZ: number, edits: 
       || realtimeChunkCoordinate(edit.x) !== chunkX || realtimeChunkCoordinate(edit.z) !== chunkZ) {
       throw new RangeError("Realtime chunk edit is outside its bounded chunk");
     }
+    // A v1 browser has neither the numeric palette nor the renderer for newer
+    // states. Keep its stream valid during a rolling deploy by leaving those
+    // overrides invisible until the browser refreshes and negotiates v2.
+    if (version === 1 && edit.block > REALTIME_LEGACY_BLOCK_ID_MAX) continue;
     const localX = edit.x - chunkX * REALTIME_WORLD_CHUNK_SIZE;
     const localZ = edit.z - chunkZ * REALTIME_WORLD_CHUNK_SIZE;
     const y = edit.y - REALTIME_WORLD_MIN_Y;
@@ -60,28 +76,33 @@ export function encodeRealtimeChunkEdits(chunkX: number, chunkZ: number, edits: 
     unique.set(coordinate, edit.block);
   }
   const ordered = [...unique].sort((left, right) => left[0] - right[0]);
-  const bytes = new Uint8Array(ordered.length * 3);
+  const stride = version === 1 ? 3 : 4;
+  const bytes = new Uint8Array(ordered.length * stride);
   for (let index = 0; index < ordered.length; index++) {
     const [coordinate, block] = ordered[index];
-    const packed = coordinate | block << 15;
-    bytes[index * 3] = packed;
-    bytes[index * 3 + 1] = packed >>> 8;
-    bytes[index * 3 + 2] = packed >>> 16;
+    const packed = coordinate + block * 0x8000;
+    bytes[index * stride] = packed;
+    bytes[index * stride + 1] = packed >>> 8;
+    bytes[index * stride + 2] = packed >>> 16;
+    if (version === REALTIME_CHUNK_CODEC_VERSION) bytes[index * stride + 3] = packed >>> 24;
   }
-  return encodeBase64(bytes);
+  return (version === REALTIME_CHUNK_CODEC_VERSION ? REALTIME_CHUNK_V2_PREFIX : "") + encodeBase64(bytes);
 }
 
 export function decodeRealtimeChunkEdits(chunkX: number, chunkZ: number, source: string): RealtimeChunkEdit[] | null {
-  const bytes = decodeBase64(source);
-  if (!bytes || bytes.length % 3 !== 0 || bytes.length > REALTIME_WORLD_CHUNK_SIZE ** 2
-    * (REALTIME_WORLD_MAX_Y - REALTIME_WORLD_MIN_Y + 1) * 3) return null;
+  const v2 = source.startsWith(REALTIME_CHUNK_V2_PREFIX);
+  const stride = v2 ? 4 : 3;
+  const bytes = decodeBase64(v2 ? source.slice(REALTIME_CHUNK_V2_PREFIX.length) : source);
+  if (!bytes || bytes.length % stride !== 0 || bytes.length > REALTIME_WORLD_CHUNK_SIZE ** 2
+    * (REALTIME_WORLD_MAX_Y - REALTIME_WORLD_MIN_Y + 1) * stride) return null;
   const edits: RealtimeChunkEdit[] = [];
   let previousCoordinate = -1;
-  for (let offset = 0; offset < bytes.length; offset += 3) {
-    const packed = bytes[offset] | bytes[offset + 1] << 8 | bytes[offset + 2] << 16;
-    const coordinate = packed & 0x7fff;
-    const block = packed >>> 15;
-    if (coordinate <= previousCoordinate || block > REALTIME_BLOCK_ID_MAX) return null;
+  for (let offset = 0; offset < bytes.length; offset += stride) {
+    const packed = bytes[offset] + bytes[offset + 1] * 0x100 + bytes[offset + 2] * 0x10000
+      + (v2 ? bytes[offset + 3] * 0x1000000 : 0);
+    const coordinate = packed % 0x8000;
+    const block = Math.floor(packed / 0x8000);
+    if (coordinate <= previousCoordinate || block > (v2 ? REALTIME_BLOCK_ID_MAX : REALTIME_LEGACY_RECORD_BLOCK_ID_MAX)) return null;
     previousCoordinate = coordinate;
     const localX = coordinate & 7;
     const localZ = coordinate >>> 3 & 7;

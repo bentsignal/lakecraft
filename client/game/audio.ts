@@ -4,6 +4,7 @@ import {
   OFFICIAL_SOUND_BASE,
   OFFICIAL_SOUND_HASH_BYTES,
   OFFICIAL_SOUND_INDEXES,
+  OFFICIAL_MUSIC_INDEXES,
 } from "./generated/officialSoundAssets.ts";
 
 export const GAME_AUDIO_CUES = [
@@ -38,6 +39,7 @@ export type GameAudioCategory = "blocks" | "hostile" | "passive" | "players" | "
 
 export interface GameAudioLevels {
   master: number;
+  music: number;
   blocks: number;
   hostile: number;
   passive: number;
@@ -99,16 +101,23 @@ export interface CreateGameAudioOptions {
   contextFactory?: () => AudioContext | null;
   /** Test/embedding seam. Returning null keeps the procedural fallback. */
   mediaFactory?: (url: string) => HTMLAudioElement | null;
+  /** Deterministic seams for the sparse ambient-music scheduler. */
+  random?: () => number;
+  setTimeoutFn?: (callback: () => void, delayMs: number) => number;
+  clearTimeoutFn?: (timer: number) => void;
 }
 
 const DEFAULT_MAX_VOICES = 18;
 const MIN_GAIN = 0.0001;
 const SAMPLE_RETRY_MS = 30_000;
+const MUSIC_GAIN = 0.35;
+const MUSIC_GAP_MIN_MS = 10 * 60_000;
+const MUSIC_GAP_RANGE_MS = 10 * 60_000;
 const OFFICIAL_SURFACES: GameAudioSurface[] = ["grass", "stone", "wood", "sand", "gravel", "metal", "glass"];
 const OFFICIAL_MOBS: GameAudioMob[] = ["pig", "cow", "sheep", "chicken", "zombie", "skeleton", "creeper", "spider"];
 const OFFICIAL_SOUND_BYTES = atob(OFFICIAL_SOUND_HASH_BYTES);
 const DEFAULT_AUDIO_LEVELS: Readonly<GameAudioLevels> = Object.freeze({
-  master: 1, blocks: 1, hostile: 1, passive: 1, players: 1, ui: 1,
+  master: 1, music: 1, blocks: 1, hostile: 1, passive: 1, players: 1, ui: 1,
 });
 
 const clamp = (value: number, low: number, high: number): number =>
@@ -135,10 +144,19 @@ export function officialSoundAsset(cue: GameAudioCue, options: GameAudioPlayOpti
     if (mob >= 0 && action >= 0 && !(options.mob === "creeper" && action === 0)) index = 21 + mob * 3 + action - (mob >= 6 ? 1 : 0);
   }
   if (index < 0) return null;
-  const offset = Number.parseInt(OFFICIAL_SOUND_INDEXES[index], 36) * 20;
+  return officialAssetAt(OFFICIAL_SOUND_INDEXES, index);
+}
+
+function officialAssetAt(indexes: string, index: number): string | null {
+  if (index < 0 || index >= indexes.length) return null;
+  const offset = Number.parseInt(indexes[index], 36) * 20;
   let hash = "";
   for (let byte = offset; byte < offset + 20; byte += 1) hash += OFFICIAL_SOUND_BYTES.charCodeAt(byte).toString(16).padStart(2, "0");
   return hash;
+}
+
+export function officialMusicAsset(index: number): string | null {
+  return officialAssetAt(OFFICIAL_MUSIC_INDEXES, index);
 }
 
 export function officialSoundUrl(hash: string): string {
@@ -239,6 +257,9 @@ function createNoiseBuffer(context: AudioContext): AudioBuffer {
 export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio {
   const contextFactory = options.contextFactory ?? defaultContextFactory;
   const mediaFactory = options.mediaFactory ?? defaultMediaFactory;
+  const random = options.random ?? Math.random;
+  const setTimeoutFn = options.setTimeoutFn ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs) as unknown as number);
+  const clearTimeoutFn = options.clearTimeoutFn ?? ((timer) => globalThis.clearTimeout(timer));
   const maxVoices = Math.round(clamp(options.maxVoices ?? DEFAULT_MAX_VOICES, 1, 32));
   const levels: GameAudioLevels = { ...DEFAULT_AUDIO_LEVELS, ...options.levels };
   for (const category of Object.keys(levels) as (keyof GameAudioLevels)[]) levels[category] = clamp(levels[category], 0, 1);
@@ -255,6 +276,9 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
   const lastSampleAt = new Map<GameAudioCue, number>();
   let sampleUnlocked = false;
   let sampleRetryAt = 0;
+  let musicMedia: HTMLAudioElement | null = null;
+  let musicTimer: number | null = null;
+  let lastMusicIndex = -1;
 
   const categoryLevel = (cue: GameAudioCue, playOptions: GameAudioPlayOptions): number =>
     levels[gameAudioCategory(cue, playOptions)];
@@ -288,6 +312,49 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
       media.pause(); media.removeAttribute("src"); media.load();
     } catch { /* best-effort media release */ }
   };
+
+  function clearMusicTimer(): void {
+    if (musicTimer === null) return;
+    clearTimeoutFn(musicTimer);
+    musicTimer = null;
+  }
+
+  function releaseMusic(): void {
+    const media = musicMedia;
+    musicMedia = null;
+    if (!media) return;
+    media.onended = null;
+    media.onerror = null;
+    try { media.pause(); media.removeAttribute("src"); media.load(); } catch { /* best-effort media release */ }
+  }
+
+  function scheduleMusic(): void {
+    clearMusicTimer();
+    if (destroyed || muted || !sampleUnlocked || levels.music <= 0) return;
+    const delay = MUSIC_GAP_MIN_MS + clamp(random(), 0, 1) * MUSIC_GAP_RANGE_MS;
+    musicTimer = setTimeoutFn(() => { musicTimer = null; startMusic(); }, delay);
+  }
+
+  function startMusic(): void {
+    if (destroyed || muted || !sampleUnlocked || levels.music <= 0 || musicMedia || musicTimer !== null || OFFICIAL_MUSIC_INDEXES.length === 0) return;
+    let index = Math.floor(clamp(random(), 0, 0.999999) * OFFICIAL_MUSIC_INDEXES.length);
+    if (OFFICIAL_MUSIC_INDEXES.length > 1 && index === lastMusicIndex) index = (index + 1) % OFFICIAL_MUSIC_INDEXES.length;
+    const asset = officialMusicAsset(index);
+    const media = asset ? mediaFactory(officialSoundUrl(asset)) : null;
+    if (!media) { scheduleMusic(); return; }
+    lastMusicIndex = index;
+    musicMedia = media;
+    media.preload = "none";
+    media.volume = clamp(masterLevel * levels.music * MUSIC_GAIN, 0, 1);
+    const finish = (): void => {
+      if (musicMedia !== media) return;
+      releaseMusic();
+      scheduleMusic();
+    };
+    media.onended = finish;
+    media.onerror = finish;
+    try { void media.play().catch(finish); } catch { finish(); }
+  }
 
   const pruneVoices = (): void => {
     if (!context) return;
@@ -331,6 +398,7 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
   const unlock = async (): Promise<boolean> => {
     if (destroyed) return false;
     const samplesReady = unlockSamples();
+    if (samplesReady) startMusic();
     try {
       if (!context || context.state === "closed") {
         context = contextFactory();
@@ -468,9 +536,11 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
       muted = Boolean(nextMuted);
       setMasterLevel();
       if (muted) {
+        clearMusicTimer();
+        releaseMusic();
         while (voices.length > 0) stopVoice(voices[voices.length - 1]);
         while (sampleVoices.length > 0) cleanupSample(sampleVoices[sampleVoices.length - 1], true);
-      }
+      } else if (sampleUnlocked) startMusic();
     },
     setLevels(nextLevels): void {
       for (const category of Object.keys(DEFAULT_AUDIO_LEVELS) as (keyof GameAudioLevels)[]) {
@@ -483,14 +553,19 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
         const mix = sampleVoiceMix.get(media);
         if (mix) media.volume = clamp(masterLevel * levels[mix.category] * mix.intensity, 0, 1);
       }
+      if (musicMedia) musicMedia.volume = clamp(masterLevel * levels.music * MUSIC_GAIN, 0, 1);
+      if (levels.music <= 0) { clearMusicTimer(); releaseMusic(); }
+      else if (sampleUnlocked) startMusic();
     },
     toggleMuted(): boolean {
       muted = !muted;
       setMasterLevel();
       if (muted) {
+        clearMusicTimer();
+        releaseMusic();
         while (voices.length > 0) stopVoice(voices[voices.length - 1]);
         while (sampleVoices.length > 0) cleanupSample(sampleVoices[sampleVoices.length - 1], true);
-      }
+      } else if (sampleUnlocked) startMusic();
       return muted;
     },
     isMuted: () => muted,
@@ -504,6 +579,8 @@ export function createGameAudio(options: CreateGameAudioOptions = {}): GameAudio
       destroyed = true;
       unlocked = false;
       sampleUnlocked = false;
+      clearMusicTimer();
+      releaseMusic();
       while (voices.length > 0) stopVoice(voices[voices.length - 1]);
       while (sampleVoices.length > 0) cleanupSample(sampleVoices[sampleVoices.length - 1], true);
       try { master?.disconnect(); } catch { /* already disconnected */ }

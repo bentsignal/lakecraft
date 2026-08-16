@@ -69,12 +69,13 @@ export type GameHudProps = {
   soundMuted?: boolean;
   onToggleSound?: () => void;
   masterVolume?: number;
+  musicVolume?: number;
   blocksVolume?: number;
   hostileVolume?: number;
   passiveVolume?: number;
   playersVolume?: number;
   uiVolume?: number;
-  onVolumeChange?: (category: "masterVolume" | "blocksVolume" | "hostileVolume" | "passiveVolume" | "playersVolume" | "uiVolume", value: number) => void;
+  onVolumeChange?: (category: "masterVolume" | "musicVolume" | "blocksVolume" | "hostileVolume" | "passiveVolume" | "playersVolume" | "uiVolume", value: number) => void;
   keyBindings?: GameplayControlBindings;
   onKeyBindingsChange?: (bindings: GameplayControlBindings) => void;
   autosaveStatusText?: string;
@@ -147,6 +148,7 @@ export function GameHud({
   soundMuted = false,
   onToggleSound,
   masterVolume = 100,
+  musicVolume = 100,
   blocksVolume = 100,
   hostileVolume = 100,
   passiveVolume = 100,
@@ -203,6 +205,7 @@ export function GameHud({
           hostileVolume={hostileVolume}
           keyBindings={keyBindings}
           masterVolume={masterVolume}
+          musicVolume={musicVolume}
           onBack={onCloseOptions}
           onFovChange={onFovChange}
           onSensitivityChange={onSensitivityChange}

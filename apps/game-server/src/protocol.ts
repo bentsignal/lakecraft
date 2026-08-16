@@ -14,7 +14,8 @@ export const CHAT_MESSAGE_MAX_LENGTH = 180;
 export const SKIN_PIXEL_BYTES = 64 * 64 * 4;
 export const SKIN_PIXEL_BASE64_LENGTH = 21_848;
 export const APPEARANCE_CAPABILITY = "appearance-v1" as const;
-export const WORLD_CHUNKS_CAPABILITY = "world-chunks-v1" as const;
+export const WORLD_CHUNKS_LEGACY_CAPABILITY = "world-chunks-v1" as const;
+export const WORLD_CHUNKS_CAPABILITY = "world-chunks-v2" as const;
 export const MOBS_CAPABILITY = "mobs-v1" as const;
 
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
@@ -116,6 +117,7 @@ export type ClientMessage =
       serverId?: string;
       resumeToken?: string;
       password?: string;
+      capabilities?: readonly string[];
       demo?: { token: string; userId: string; name: string; inventoryJson?: string };
     }
   | {
@@ -153,6 +155,8 @@ export type ClientMessage =
       y: number;
       z: number;
       block: number;
+      /** Present for current clients; Railway resolves this atomically with inventory + world state. */
+      requestJson?: string;
     }
   | { v: ProtocolVersion; type: "inventory_action"; requestJson: string }
   | {
@@ -168,6 +172,7 @@ export type ClientMessage =
       itemId: string;
       count: number;
       durability?: number;
+      sourceSlot?: number;
       x: number;
       y: number;
       z: number;
@@ -211,7 +216,7 @@ export type ServerMessage =
       terrain: WorldTerrainDescriptor;
       defaultGameMode: ServerGameMode;
       worldSettings: WorldRuntimeSettings;
-      capabilities: readonly [typeof APPEARANCE_CAPABILITY, typeof WORLD_CHUNKS_CAPABILITY, typeof MOBS_CAPABILITY];
+      capabilities: readonly [typeof APPEARANCE_CAPABILITY, typeof WORLD_CHUNKS_LEGACY_CAPABILITY, typeof WORLD_CHUNKS_CAPABILITY, typeof MOBS_CAPABILITY];
     }
   | {
       v: ProtocolVersion;
@@ -383,6 +388,11 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (value.password !== undefined && (typeof value.password !== "string" || value.password.length > 128)) {
       return invalid("password is invalid");
     }
+    if (value.capabilities !== undefined && (!Array.isArray(value.capabilities)
+      || value.capabilities.length > 8
+      || !value.capabilities.every((capability) => shortString(capability, 64)))) {
+      return invalid("capabilities are invalid");
+    }
     let demo: { token: string; userId: string; name: string; inventoryJson?: string } | undefined;
     if (value.demo !== undefined) {
       if (
@@ -409,6 +419,7 @@ export function decodeClientMessage(raw: string): DecodeResult {
         serverId: value.serverId as string | undefined,
         resumeToken: value.resumeToken as string | undefined,
         password: value.password as string | undefined,
+        capabilities: value.capabilities as string[] | undefined,
         demo,
       },
     };
@@ -477,6 +488,10 @@ export function decodeClientMessage(raw: string): DecodeResult {
     if (!integer(value.block) || value.block < BLOCK_ID_MIN || value.block > BLOCK_ID_MAX) {
       return invalid(`block must be an integer from ${BLOCK_ID_MIN} to ${BLOCK_ID_MAX}`);
     }
+    if (value.requestJson !== undefined
+      && (typeof value.requestJson !== "string" || value.requestJson.length < 2 || value.requestJson.length > 2_048)) {
+      return invalid("block authority request is invalid");
+    }
     return { ok: true, message: value as unknown as ClientMessage };
   }
 
@@ -512,6 +527,7 @@ export function decodeClientMessage(raw: string): DecodeResult {
       || typeof value.itemId !== "string" || !/^[a-z0-9_]{1,64}$/.test(value.itemId)
       || !integer(value.count) || value.count < 1 || value.count > 64
       || (value.durability !== undefined && (!integer(value.durability) || value.durability < 1 || value.durability > 65535))
+      || (value.sourceSlot !== undefined && (!integer(value.sourceSlot) || value.sourceSlot < 0 || value.sourceSlot >= 36))
       || !finite(value.x) || !finite(value.y) || !finite(value.z)
       || Math.abs(value.x) > 1_000_000 || value.y < -64 || value.y > 320 || Math.abs(value.z) > 1_000_000) {
       return invalid("drop item is invalid");
